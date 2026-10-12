@@ -4,25 +4,36 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class GatherNDProgram final : public Program<GatherNDProgram> {
- public:
-  GatherNDProgram(const uint32_t batch_dims, const uint32_t indices_innerest_dim) : Program{"GatherND"},
-                                                                                    batch_dims_{batch_dims},
-                                                                                    indices_innerest_dim_{indices_innerest_dim} {}
+#define WEBGPU_GATHER_N_D_PROGRAM_CONFIG(F) \
+  F(uint32_t, batch_dims_)                  \
+  F(uint32_t, indices_innerest_dim_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct GatherNDProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATHER_N_D_PROGRAM_CONFIG);
+  static Config MakeConfig(const uint32_t batch_dims, const uint32_t indices_innerest_dim) {
+    Config result{};
+    result.batch_dims_ = uint32_t{batch_dims};
+    result.indices_innerest_dim_ = uint32_t{indices_innerest_dim};
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"data_size", ProgramUniformVariableDataType::Uint32});
+    return result;
+  }
+  static constexpr std::string_view name = "GatherND";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
- private:
-  uint32_t batch_dims_;
-  uint32_t indices_innerest_dim_;
+#define WEBGPU_GATHER_N_D_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, data_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATHER_N_D_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GATHER_N_D_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_GATHER_N_D_PROGRAM_CONFIG
+
+using GatherNDProgram = ConfiguredProgram<GatherNDProgramShader>;
 
 class GatherNDBase : public WebGpuKernel {
  public:

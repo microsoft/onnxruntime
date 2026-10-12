@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/engram_gate.h"
 
 #include "contrib_ops/webgpu/bert/engram_helper.h"
@@ -28,7 +29,8 @@ namespace {
 constexpr uint32_t kGateWorkgroupSize = 64;
 }  // namespace
 
-Status EngramGateScalarProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status EngramGateScalarProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                         ConfiguredShaderHelper& shader) {
   const auto& key = shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& query = shader.AddInput("query", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& key_norm_scale = shader.AddInput("key_norm_scale", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
@@ -85,7 +87,8 @@ Status EngramGateScalarProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status EngramGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status EngramGateProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                   ConfiguredShaderHelper& shader) {
   const auto& value = shader.AddInput("value", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& gate = shader.AddInput("gate", ShaderUsage::UseUniform);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
@@ -105,7 +108,8 @@ Status EngramGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status EngramGateNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status EngramGateNormProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                       ConfiguredShaderHelper& shader) {
   const auto& gated_value = shader.AddInput("gated_value", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& conv_norm_scale = shader.AddInput("conv_norm_scale", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& gated_value_normed = shader.AddOutput("gated_value_normed", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
@@ -192,11 +196,10 @@ Status EngramGate::ComputeInternal(ComputeContext& context) const {
   Tensor gate = context.CreateGPUTensor(DataTypeImpl::GetType<float>(), TensorShape({rows}));
   EngramGateScalarProgram gate_program;
   gate_program
-      .CacheHint(components)
-      .AddInputs({{key, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, components},
-                  {query, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, components},
-                  {key_norm_scale, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, components},
-                  {query_norm_scale, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, components}})
+      .AddInputs({{key, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, components},
+                  {query, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, components},
+                  {key_norm_scale, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, components},
+                  {query_norm_scale, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, components}})
       .AddOutput({&gate, ProgramTensorMetadataDependency::None})
       .SetWorkgroupSize(kGateWorkgroupSize)
       .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(rows))
@@ -210,9 +213,8 @@ Status EngramGate::ComputeInternal(ComputeContext& context) const {
   const int64_t total_vec = total / components;
   EngramGateProgram program;
   program
-      .CacheHint(components)
-      .AddInputs({{value, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, components},
-                  {&gate, ProgramTensorMetadataDependency::Type}})
+      .AddInputs({{value, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, components},
+                  {&gate, ProgramTensorMetadataDependency::None}})
       .AddOutput({output, ProgramTensorMetadataDependency::None, ProgramOutput::Flatten, components})
       .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(total_vec) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_vec)},
@@ -225,8 +227,8 @@ Status EngramGate::ComputeInternal(ComputeContext& context) const {
   }
 
   EngramGateNormProgram norm_program{};
-  norm_program.AddInputs({{output, ProgramTensorMetadataDependency::Type},
-                          {conv_norm_scale, ProgramTensorMetadataDependency::Type}})
+  norm_program.AddInputs({{output, ProgramTensorMetadataDependency::None},
+                          {conv_norm_scale, ProgramTensorMetadataDependency::None}})
       .AddOutput({output_normed, ProgramTensorMetadataDependency::None})
       .SetWorkgroupSize(kGateWorkgroupSize)
       .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(rows))

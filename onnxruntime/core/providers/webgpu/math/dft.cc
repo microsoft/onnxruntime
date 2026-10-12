@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/math/dft.h"
 
 #include <cmath>
@@ -124,15 +125,15 @@ static void EmitFftStage(OStringStream& os, uint32_t radix, uint32_t sub_transfo
      << "  workgroupBarrier();\n";
 }
 
-Status DFTProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status DFTProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
   const auto& input = shader.AddInput("x", ShaderUsage::UseUniform);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  const int sign = is_inverse_ ? 1 : -1;
-  const double scale = is_inverse_ ? 1.0 / length_ : 1.0;
+  const int sign = config.is_inverse_ ? 1 : -1;
+  const double scale = config.is_inverse_ ? 1.0 / config.length_ : 1.0;
 
   std::vector<uint32_t> radices;
-  ORT_RETURN_IF_NOT(FactorizeToRadices(length_, radices), "DFT length ", length_, " is not 5-smooth.");
+  ORT_RETURN_IF_NOT(FactorizeToRadices(config.length_, radices), "DFT length ", config.length_, " is not 5-smooth.");
 
   shader.AdditionalImplementation()
       << "var<workgroup> smem: array<vec2<f32>, " << 2 * kDftMaxSharedMemoryLength << ">;\n"
@@ -141,53 +142,57 @@ Status DFTProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "}\n";
 
   auto read_sample = [&](const std::string& index) {
-    const std::string offset = "in_base + (" + index + ") * uniforms.inner * " + std::to_string(input_components_) + "u";
+    const std::string offset =
+        "in_base + (" + index + ") * uniforms.inner * " + std::to_string(config.input_components_) + "u";
     const std::string real = "f32(" + input.GetByOffset(offset) + ")";
-    const std::string imag = input_components_ == 2 ? "f32(" + input.GetByOffset(offset + " + 1u") + ")" : "0.0";
+    const std::string imag = config.input_components_ == 2 ? "f32(" + input.GetByOffset(offset + " + 1u") + ")" : "0.0";
     return "vec2<f32>(" + real + ", " + imag + ")";
   };
 
-  shader.MainFunctionBody()
-      << "let row = workgroup_idx;\n"
-      << "if (row >= uniforms.batch) { return; }\n"
-      << "let outer = row / uniforms.inner;\n"
-      << "let within = row % uniforms.inner;\n"
-      << "let in_base = (outer * uniforms.signal_length * uniforms.inner + within) * " << input_components_ << "u;\n"
-      << "let out_base = (outer * uniforms.output_length * uniforms.inner + within) * " << output_components_ << "u;\n";
+  shader.MainFunctionBody() << "let row = workgroup_idx;\n"
+                            << "if (row >= uniforms.batch) { return; }\n"
+                            << "let outer = row / uniforms.inner;\n"
+                            << "let within = row % uniforms.inner;\n"
+                            << "let in_base = (outer * uniforms.signal_length * uniforms.inner + within) * "
+                            << config.input_components_ << "u;\n"
+                            << "let out_base = (outer * uniforms.output_length * uniforms.inner + within) * "
+                            << config.output_components_ << "u;\n";
 
-  if (is_inverse_ && is_onesided_) {
+  if (config.is_inverse_ && config.is_onesided_) {
     // For IRFFT the spectrum is the Hermitian extension of the half-spectrum input, zero-padded or
     // truncated when dft_length implies a different bin count than the input provides. The Nyquist
     // bin is only exempt from mirroring when it is actually present.
-    const uint32_t half_spectrum = length_ / 2 + 1;
+    const uint32_t half_spectrum = config.length_ / 2 + 1;
     const std::string conjugate_end =
-        length_ % 2 == 0
-            ? "select(provided, provided - 1u, provided == " + std::to_string(half_spectrum) + "u)"
-            : "provided";
-    shader.MainFunctionBody()
-        << "let provided = min(uniforms.signal_length, " << half_spectrum << "u);\n"
-        << "for (var i = local_idx; i < " << length_ << "u; i += " << kDftWorkgroupSize << "u) {\n"
-        << "  if (i < provided) { smem[i] = " << read_sample("i") << "; } else { smem[i] = vec2<f32>(0.0); }\n"
-        << "}\n"
-        << "workgroupBarrier();\n"
-        << "for (var k = local_idx + 1u; k < " << conjugate_end << "; k += " << kDftWorkgroupSize << "u) {\n"
-        << "  let h = smem[k];\n"
-        << "  smem[" << length_ << "u - k] = vec2<f32>(h.x, -h.y);\n"
-        << "}\n"
-        << "workgroupBarrier();\n";
+        config.length_ % 2 == 0 ? "select(provided, provided - 1u, provided == " + std::to_string(half_spectrum) + "u)"
+                                : "provided";
+    shader.MainFunctionBody() << "let provided = min(uniforms.signal_length, " << half_spectrum << "u);\n"
+                              << "for (var i = local_idx; i < " << config.length_ << "u; i += " << kDftWorkgroupSize
+                              << "u) {\n"
+                              << "  if (i < provided) { smem[i] = " << read_sample("i")
+                              << "; } else { smem[i] = vec2<f32>(0.0); }\n"
+                              << "}\n"
+                              << "workgroupBarrier();\n"
+                              << "for (var k = local_idx + 1u; k < " << conjugate_end << "; k += " << kDftWorkgroupSize
+                              << "u) {\n"
+                              << "  let h = smem[k];\n"
+                              << "  smem[" << config.length_ << "u - k] = vec2<f32>(h.x, -h.y);\n"
+                              << "}\n"
+                              << "workgroupBarrier();\n";
   } else {
-    shader.MainFunctionBody()
-        << "let load_count = min(uniforms.signal_length, " << length_ << "u);\n"
-        << "for (var i = local_idx; i < " << length_ << "u; i += " << kDftWorkgroupSize << "u) {\n"
-        << "  if (i < load_count) { smem[i] = " << read_sample("i") << "; } else { smem[i] = vec2<f32>(0.0); }\n"
-        << "}\n"
-        << "workgroupBarrier();\n";
+    shader.MainFunctionBody() << "let load_count = min(uniforms.signal_length, " << config.length_ << "u);\n"
+                              << "for (var i = local_idx; i < " << config.length_ << "u; i += " << kDftWorkgroupSize
+                              << "u) {\n"
+                              << "  if (i < load_count) { smem[i] = " << read_sample("i")
+                              << "; } else { smem[i] = vec2<f32>(0.0); }\n"
+                              << "}\n"
+                              << "workgroupBarrier();\n";
   }
 
   uint32_t sub_transform = 1;
   uint32_t read_offset = 0;
   for (uint32_t radix : radices) {
-    EmitFftStage(shader.MainFunctionBody(), radix, sub_transform, length_, read_offset, sign);
+    EmitFftStage(shader.MainFunctionBody(), radix, sub_transform, config.length_, read_offset, sign);
     sub_transform *= radix;
     read_offset = kDftMaxSharedMemoryLength - read_offset;
   }
@@ -195,12 +200,12 @@ Status DFTProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const std::string scaled = scale == 1.0
                                  ? "smem[" + std::to_string(read_offset) + "u + i]"
                                  : "smem[" + std::to_string(read_offset) + "u + i] * " + WgslFloat(scale);
-  shader.MainFunctionBody()
-      << "for (var i = local_idx; i < uniforms.output_length; i += " << kDftWorkgroupSize << "u) {\n"
-      << "  let v = " << scaled << ";\n"
-      << "  let off = out_base + i * uniforms.inner * " << output_components_ << "u;\n"
-      << "  " << output.SetByOffset("off", "output_element_t(v.x)") << "\n";
-  if (output_components_ == 2) {
+  shader.MainFunctionBody() << "for (var i = local_idx; i < uniforms.output_length; i += " << kDftWorkgroupSize
+                            << "u) {\n"
+                            << "  let v = " << scaled << ";\n"
+                            << "  let off = out_base + i * uniforms.inner * " << config.output_components_ << "u;\n"
+                            << "  " << output.SetByOffset("off", "output_element_t(v.x)") << "\n";
+  if (config.output_components_ == 2) {
     shader.MainFunctionBody()
         << "  " << output.SetByOffset("off + 1u", "output_element_t(v.y)") << "\n";
   }
@@ -209,17 +214,19 @@ Status DFTProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status DFTDirectProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status DFTDirectProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                  ConfiguredShaderHelper& shader) {
   const auto& input = shader.AddInput("x", ShaderUsage::UseUniform);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  const int sign = is_inverse_ ? 1 : -1;
-  const double scale = is_inverse_ ? 1.0 / length_ : 1.0;
+  const int sign = config.is_inverse_ ? 1 : -1;
+  const double scale = config.is_inverse_ ? 1.0 / config.length_ : 1.0;
 
   auto read_sample = [&](const std::string& index) {
-    const std::string offset = "in_base + (" + index + ") * uniforms.inner * " + std::to_string(input_components_) + "u";
+    const std::string offset =
+        "in_base + (" + index + ") * uniforms.inner * " + std::to_string(config.input_components_) + "u";
     const std::string real = "f32(" + input.GetByOffset(offset) + ")";
-    const std::string imag = input_components_ == 2 ? "f32(" + input.GetByOffset(offset + " + 1u") + ")" : "0.0";
+    const std::string imag = config.input_components_ == 2 ? "f32(" + input.GetByOffset(offset + " + 1u") + ")" : "0.0";
     return "vec2<f32>(" + real + ", " + imag + ")";
   };
 
@@ -227,22 +234,21 @@ Status DFTDirectProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "fn cmul(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {\n"
       << "  return vec2<f32>(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);\n"
       << "}\n";
-  if (is_inverse_ && is_onesided_) {
+  if (config.is_inverse_ && config.is_onesided_) {
     // For IRFFT the spectrum is the Hermitian extension of the half-spectrum input, zero-padded or
     // truncated when dft_length implies a different bin count than the input provides. Reads must
     // never pass `provided`, or they would land in the adjacent transform's data.
-    const uint32_t half_spectrum = length_ / 2 + 1;
-    shader.AdditionalImplementation()
-        << "fn spectrum(in_base: u32, k: u32) -> vec2<f32> {\n"
-        << "  let provided = min(uniforms.signal_length, " << half_spectrum << "u);\n"
-        << "  if (k < provided) { return " << read_sample("k") << "; }\n"
-        << "  let m = " << length_ << "u - k;\n"
-        << "  if (m < provided) {\n"
-        << "    let h = " << read_sample("m") << ";\n"
-        << "    return vec2<f32>(h.x, -h.y);\n"
-        << "  }\n"
-        << "  return vec2<f32>(0.0, 0.0);\n"
-        << "}\n";
+    const uint32_t half_spectrum = config.length_ / 2 + 1;
+    shader.AdditionalImplementation() << "fn spectrum(in_base: u32, k: u32) -> vec2<f32> {\n"
+                                      << "  let provided = min(uniforms.signal_length, " << half_spectrum << "u);\n"
+                                      << "  if (k < provided) { return " << read_sample("k") << "; }\n"
+                                      << "  let m = " << config.length_ << "u - k;\n"
+                                      << "  if (m < provided) {\n"
+                                      << "    let h = " << read_sample("m") << ";\n"
+                                      << "    return vec2<f32>(h.x, -h.y);\n"
+                                      << "  }\n"
+                                      << "  return vec2<f32>(0.0, 0.0);\n"
+                                      << "}\n";
   } else {
     shader.AdditionalImplementation()
         << "fn spectrum(in_base: u32, n: u32) -> vec2<f32> {\n"
@@ -257,22 +263,25 @@ Status DFTDirectProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "if (row >= uniforms.batch) { return; }\n"
       << "let outer = row / uniforms.inner;\n"
       << "let within = row % uniforms.inner;\n"
-      << "let in_base = (outer * uniforms.signal_length * uniforms.inner + within) * " << input_components_ << "u;\n"
-      << "let out_base = (outer * uniforms.output_length * uniforms.inner + within) * " << output_components_ << "u;\n"
+      << "let in_base = (outer * uniforms.signal_length * uniforms.inner + within) * " << config.input_components_
+      << "u;\n"
+      << "let out_base = (outer * uniforms.output_length * uniforms.inner + within) * " << config.output_components_
+      << "u;\n"
       << "for (var k = local_idx; k < uniforms.output_length; k += " << kDftWorkgroupSize << "u) {\n"
       << "  var acc = vec2<f32>(0.0, 0.0);\n"
       // kn_mod tracks (k*n) mod length via addition, so the twiddle index never overflows u32 at large N.
       << "  var kn_mod = 0u;\n"
-      << "  for (var n = 0u; n < " << length_ << "u; n++) {\n"
-      << "    let angle = " << WgslFloat(sign * kTwoPi) << " * f32(kn_mod) / " << WgslFloat(static_cast<double>(length_)) << ";\n"
+      << "  for (var n = 0u; n < " << config.length_ << "u; n++) {\n"
+      << "    let angle = " << WgslFloat(sign * kTwoPi) << " * f32(kn_mod) / "
+      << WgslFloat(static_cast<double>(config.length_)) << ";\n"
       << "    acc += cmul(spectrum(in_base, n), vec2<f32>(cos(angle), sin(angle)));\n"
       << "    kn_mod += k;\n"
-      << "    if (kn_mod >= " << length_ << "u) { kn_mod -= " << length_ << "u; }\n"
+      << "    if (kn_mod >= " << config.length_ << "u) { kn_mod -= " << config.length_ << "u; }\n"
       << "  }\n"
       << "  let v = " << scaled << ";\n"
-      << "  let off = out_base + k * uniforms.inner * " << output_components_ << "u;\n"
+      << "  let off = out_base + k * uniforms.inner * " << config.output_components_ << "u;\n"
       << "  " << output.SetByOffset("off", "output_element_t(v.x)") << "\n";
-  if (output_components_ == 2) {
+  if (config.output_components_ == 2) {
     shader.MainFunctionBody()
         << "  " << output.SetByOffset("off + 1u", "output_element_t(v.y)") << "\n";
   }
@@ -353,11 +362,9 @@ Status DFT::ComputeInternal(ComputeContext& context) const {
   if (use_shared_memory_fft) {
     DFTProgram program{transform_length, static_cast<uint32_t>(input_components),
                        static_cast<uint32_t>(output_components), is_inverse_, is_onesided_};
-    program
-        .AddInputs({{input_tensor, ProgramTensorMetadataDependency::Type}})
-        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::Type}})
-        .CacheHint(std::to_string(transform_length), std::to_string(input_components),
-                   std::to_string(output_components), std::to_string(is_inverse_), std::to_string(is_onesided_))
+    program.AddInputs({{input_tensor, ProgramTensorMetadataDependency::None}})
+        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None}})
+
         .SetWorkgroupSize(kDftWorkgroupSize)
         .SetDispatchGroupSize(static_cast<uint32_t>(batch))
         .AddUniformVariables({{static_cast<uint32_t>(batch)},
@@ -369,11 +376,9 @@ Status DFT::ComputeInternal(ComputeContext& context) const {
 
   DFTDirectProgram program{transform_length, static_cast<uint32_t>(input_components),
                            static_cast<uint32_t>(output_components), is_inverse_, is_onesided_};
-  program
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::Type}})
-      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::Type}})
-      .CacheHint(std::to_string(transform_length), std::to_string(input_components),
-                 std::to_string(output_components), std::to_string(is_inverse_), std::to_string(is_onesided_))
+  program.AddInputs({{input_tensor, ProgramTensorMetadataDependency::None}})
+      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None}})
+
       .SetWorkgroupSize(kDftWorkgroupSize)
       .SetDispatchGroupSize(static_cast<uint32_t>(batch))
       .AddUniformVariables({{static_cast<uint32_t>(batch)},

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include <vector>
 
 #include "core/util/math.h"
@@ -13,7 +14,8 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status DequantizeLinearProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                         ConfiguredShaderHelper& shader) {
   const auto& x = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& scale = shader.AddInput("scale", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseValueTypeAlias);
@@ -23,21 +25,21 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "let output_indices = " << output.OffsetToIndices("global_idx") << ";\n";
 
   // Get x input
-  if (packing_ == PackingMode::Packed4) {
+  if (config.packing_ == PackingMode::Packed4) {
     // 4-bit packing: 8 elements per u32
     shader.MainFunctionBody()
         << "let x = " << x.GetByOffset("global_idx / 8") << ";\n"
         << "let x_raw = (x >> ((global_idx % 8u) * 4u)) & 0xFu;\n";
-    if (packed_signed_) {
+    if (config.packed_signed_) {
       shader.MainFunctionBody()
           << "let x_value = select(input_element_t(x_raw), input_element_t(x_raw) - 16, x_raw >= 8u);\n";
     } else {
       shader.MainFunctionBody()
           << "let x_value = input_element_t(x_raw);\n";
     }
-  } else if (packing_ == PackingMode::Packed8) {
+  } else if (config.packing_ == PackingMode::Packed8) {
     // 8-bit packing: 4 elements per u32
-    std::string unpack = (packed_signed_) ? "unpack4xI8(x)" : "unpack4xU8(x)";
+    std::string unpack = (config.packed_signed_) ? "unpack4xI8(x)" : "unpack4xU8(x)";
     if (output.NumComponents() == 1) {
       shader.MainFunctionBody()
           << "let x = " << x.GetByOffset("global_idx / 4") << ";\n"
@@ -55,11 +57,11 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   // Get scaler
-  if (per_layer_) {
+  if (config.per_layer_) {
     // scale input is a scalar ()
     shader.MainFunctionBody()
         << "let scale_value = " << scale.GetByOffset("0") << ";\n";
-  } else if (per_axis_) {
+  } else if (config.per_axis_) {
     shader.MainFunctionBody()
         << "let scale_index = " << output.IndicesGet("output_indices", "uniforms.axis") << ";\n"
         << "let scale_value = " << scale.GetByOffset("scale_index") << ";\n";
@@ -67,7 +69,7 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
     // Block quantization. Scale input rank is same as input/output rank.
     // On the block axis, divide by block_size; on other axes, use output index directly.
     shader.MainFunctionBody() << "var scale_indices: scale_indices_t;\n";
-    for (int i = 0; i < rank_; i++) {
+    for (int i = 0; i < config.rank_; i++) {
       std::string idx = output.IndicesGet("output_indices", i);
       std::string value_expr = "select(" + idx + ", " + idx + " / uniforms.block_size, " + std::to_string(i) + "u == uniforms.axis)";
       shader.MainFunctionBody() << scale.IndicesSet("scale_indices", i, value_expr) << "\n";
@@ -77,18 +79,21 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   // Get zero-point
-  if (has_zeropoint_) {
+  if (config.has_zeropoint_) {
     const auto& zero_point = shader.AddInput("zero_point", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
-    if (packing_ == PackingMode::Packed4) {
+    if (config.packing_ == PackingMode::Packed4) {
       // 4-bit zero-point: 8 elements per u32, with sign extension for signed types
-      std::string sign_extend_prefix = packed_signed_ ? "let zp_raw = " : "let zero_point_value = input_element_t(";
-      std::string sign_extend_suffix = packed_signed_ ? ";\nlet zero_point_value = select(input_element_t(zp_raw), input_element_t(zp_raw) - 16, zp_raw >= 8u);\n"
-                                                      : ");\n";
-      if (per_layer_) {
+      std::string sign_extend_prefix =
+          config.packed_signed_ ? "let zp_raw = " : "let zero_point_value = input_element_t(";
+      std::string sign_extend_suffix = config.packed_signed_
+                                           ? ";\nlet zero_point_value = select(input_element_t(zp_raw), "
+                                             "input_element_t(zp_raw) - 16, zp_raw >= 8u);\n"
+                                           : ");\n";
+      if (config.per_layer_) {
         shader.MainFunctionBody()
             << sign_extend_prefix << zero_point.GetByOffset("0") << " & 0xFu" << sign_extend_suffix;
-      } else if (per_axis_) {
+      } else if (config.per_axis_) {
         shader.MainFunctionBody()
             << "let zero_point_index = " << output.IndicesGet("output_indices", "uniforms.axis") << ";\n"
             << "let zero_point_packed = " << zero_point.GetByOffset("zero_point_index / 8") << ";\n"
@@ -100,10 +105,10 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
             << sign_extend_prefix << "(zero_point_packed >> ((zero_point_offset % 8u) * 4u)) & 0xFu" << sign_extend_suffix;
       }
     } else {
-      std::string unpack = (packed_signed_) ? "unpack4xI8(zero_point_input)" : "unpack4xU8(zero_point_input)";
-      if (per_layer_) {
+      std::string unpack = (config.packed_signed_) ? "unpack4xI8(zero_point_input)" : "unpack4xU8(zero_point_input)";
+      if (config.per_layer_) {
         // zero-point input is a scalar
-        if (packing_ == PackingMode::Packed8) {
+        if (config.packing_ == PackingMode::Packed8) {
           shader.MainFunctionBody()
               << "let zero_point_input = " << zero_point.GetByOffset("0") << ";\n"
               << "let zero_point_vec = " << unpack << ";\n"
@@ -112,9 +117,9 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
           shader.MainFunctionBody()
               << "let zero_point_value = " << zero_point.GetByOffset("0") << ";\n";
         }
-      } else if (per_axis_) {
+      } else if (config.per_axis_) {
         // zero-point input is a 1D tensor
-        if (packing_ == PackingMode::Packed8) {
+        if (config.packing_ == PackingMode::Packed8) {
           shader.MainFunctionBody()
               << "let zero_point_index = " << output.IndicesGet("output_indices", "uniforms.axis") << ";\n"
               << "let zero_point_input = " << zero_point.GetByOffset("zero_point_index / 4") << ";\n"
@@ -127,7 +132,7 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
         }
       } else {
         // BlockedQuantization. The zero-point input shape is the same as the scale input shape.
-        if (packing_ == PackingMode::Packed8) {
+        if (config.packing_ == PackingMode::Packed8) {
           shader.MainFunctionBody()
               << "let zero_point_offset = " << scale.IndicesToOffset("scale_indices") << ";\n"
               << "let zero_point_input = " << zero_point.GetByOffset("zero_point_offset / 4") << ";\n"
@@ -241,16 +246,17 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
                                   static_cast<int>(x_shape.NumDimensions())};
 
   program
-      .AddInputs({{x, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, packed ? pack_factor : input_component}})
-      .AddInputs({{x_scale, ProgramTensorMetadataDependency::TypeAndRank}})
+      .AddInputs({{x, ProgramTensorMetadataDependency::None, ProgramInput::Flatten,
+                   packed ? pack_factor : input_component}})
+      .AddInputs({{x_scale, ProgramTensorMetadataDependency::None}})
       .AddOutput(use_components
-                     ? ProgramOutput{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, ProgramOutput::Flatten, components}
-                     : ProgramOutput{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, components})
+                     ? ProgramOutput{output_tensor, ProgramTensorMetadataDependency::None,
+                                     ProgramOutput::Flatten, components}
+                     : ProgramOutput{output_tensor, ProgramTensorMetadataDependency::None, components})
       .SetDispatchGroupSize((x_size / components + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(axis)}})
       .AddUniformVariables({{static_cast<uint32_t>(block_size)}})
-      .AddUniformVariables({{static_cast<uint32_t>(x_size / components)}})
-      .CacheHint(std::to_string(axis), std::to_string(is_packed_signed), std::to_string(per_layer), std::to_string(per_axis), std::to_string(block_size), std::to_string(static_cast<int>(packing)));
+      .AddUniformVariables({{static_cast<uint32_t>(x_size / components)}});
 
   if (x_zeropoint != nullptr) {
     program.AddInputs({{x_zeropoint, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, packed ? pack_factor : 1}});

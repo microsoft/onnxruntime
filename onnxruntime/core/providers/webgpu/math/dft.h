@@ -5,65 +5,82 @@
 
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
 // Shared-memory mixed-radix (2/3/4/5) Stockham FFT: one transform per workgroup, O(N log N).
 // Used when the transform length is 5-smooth and fits in workgroup memory.
-class DFTProgram final : public Program<DFTProgram> {
- public:
-  DFTProgram(uint32_t length, uint32_t input_components, uint32_t output_components, bool is_inverse, bool is_onesided)
-      : Program{"DFT"},
-        length_{length},
-        input_components_{input_components},
-        output_components_{output_components},
-        is_inverse_{is_inverse},
-        is_onesided_{is_onesided} {}
+#define WEBGPU_D_F_T_PROGRAM_CONFIG(F) \
+  F(uint32_t, length_)                 \
+  F(uint32_t, input_components_)       \
+  F(uint32_t, output_components_)      \
+  F(bool, is_inverse_)                 \
+  F(bool, is_onesided_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct DFTProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_D_F_T_PROGRAM_CONFIG);
+  static Config MakeConfig(uint32_t length, uint32_t input_components, uint32_t output_components, bool is_inverse, bool is_onesided) {
+    Config result{};
+    result.length_ = uint32_t{length};
+    result.input_components_ = uint32_t{input_components};
+    result.output_components_ = uint32_t{output_components};
+    result.is_inverse_ = bool{is_inverse};
+    result.is_onesided_ = bool{is_onesided};
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch", ProgramUniformVariableDataType::Uint32},
-      {"signal_length", ProgramUniformVariableDataType::Uint32},
-      {"inner", ProgramUniformVariableDataType::Uint32},
-      {"output_length", ProgramUniformVariableDataType::Uint32});
+    return result;
+  }
+  static constexpr std::string_view name = "DFT";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
- private:
-  uint32_t length_;
-  uint32_t input_components_;
-  uint32_t output_components_;
-  bool is_inverse_;
-  bool is_onesided_;
+#define WEBGPU_D_F_T_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch)                              \
+  U(Uint32, signal_length)                      \
+  U(Uint32, inner)                              \
+  U(Uint32, output_length)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_D_F_T_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_D_F_T_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_D_F_T_PROGRAM_CONFIG
+
+using DFTProgram = ConfiguredProgram<DFTProgramShader>;
 
 // Direct O(N^2) DFT for lengths the shared-memory FFT cannot take (non 5-smooth, or beyond the
 // workgroup memory budget). One workgroup per transform; each output bin sums over the input samples.
-class DFTDirectProgram final : public Program<DFTDirectProgram> {
- public:
-  DFTDirectProgram(uint32_t length, uint32_t input_components, uint32_t output_components, bool is_inverse, bool is_onesided)
-      : Program{"DFTDirect"},
-        length_{length},
-        input_components_{input_components},
-        output_components_{output_components},
-        is_inverse_{is_inverse},
-        is_onesided_{is_onesided} {}
+#define WEBGPU_D_F_T_DIRECT_PROGRAM_CONFIG(F) \
+  F(uint32_t, length_)                        \
+  F(uint32_t, input_components_)              \
+  F(uint32_t, output_components_)             \
+  F(bool, is_inverse_)                        \
+  F(bool, is_onesided_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct DFTDirectProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_D_F_T_DIRECT_PROGRAM_CONFIG);
+  static Config MakeConfig(uint32_t length, uint32_t input_components, uint32_t output_components, bool is_inverse, bool is_onesided) {
+    Config result{};
+    result.length_ = uint32_t{length};
+    result.input_components_ = uint32_t{input_components};
+    result.output_components_ = uint32_t{output_components};
+    result.is_inverse_ = bool{is_inverse};
+    result.is_onesided_ = bool{is_onesided};
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch", ProgramUniformVariableDataType::Uint32},
-      {"signal_length", ProgramUniformVariableDataType::Uint32},
-      {"inner", ProgramUniformVariableDataType::Uint32},
-      {"output_length", ProgramUniformVariableDataType::Uint32});
+    return result;
+  }
+  static constexpr std::string_view name = "DFTDirect";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
- private:
-  uint32_t length_;
-  uint32_t input_components_;
-  uint32_t output_components_;
-  bool is_inverse_;
-  bool is_onesided_;
+#define WEBGPU_D_F_T_DIRECT_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch)                                     \
+  U(Uint32, signal_length)                             \
+  U(Uint32, inner)                                     \
+  U(Uint32, output_length)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_D_F_T_DIRECT_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_D_F_T_DIRECT_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_D_F_T_DIRECT_PROGRAM_CONFIG
+
+using DFTDirectProgram = ConfiguredProgram<DFTDirectProgramShader>;
 
 class DFT final : public WebGpuKernel {
  public:

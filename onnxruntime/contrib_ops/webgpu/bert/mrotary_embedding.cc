@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/mrotary_embedding.h"
 
 #include <array>
@@ -26,23 +27,21 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>()),
     MRotaryEmbedding);
 
-Status MRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status MRotaryEmbeddingProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                         ConfiguredShaderHelper& shader) {
   const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
   const auto& position_ids = shader.AddInput("position_ids", ShaderUsage::None);
   const auto& cos_cache = shader.AddInput("cos_cache", ShaderUsage::None);
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::None);
   const auto& output = shader.AddOutput("output", ShaderUsage::None);
 
-  return WGSL_TEMPLATE_APPLY(shader, "bert/mrotary_embedding.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(interleaved, interleaved_),
-                             WGSL_TEMPLATE_PARAMETER(position_ids_use_storage_type, true),
-                             WGSL_TEMPLATE_PARAMETER(sectioned, mrope_layout_ == MRopeLayout::kSectioned),
-                             WGSL_TEMPLATE_PARAMETER(transposed, transposed_),
-                             WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
-                             WGSL_TEMPLATE_VARIABLE(input, input),
-                             WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(position_ids, position_ids),
-                             WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache));
+  return WGSL_TEMPLATE_APPLY(
+      shader, "bert/mrotary_embedding.wgsl.template", WGSL_TEMPLATE_PARAMETER(interleaved, config.interleaved_),
+      WGSL_TEMPLATE_PARAMETER(position_ids_use_storage_type, true),
+      WGSL_TEMPLATE_PARAMETER(sectioned, config.mrope_layout_ == MRopeLayout::kSectioned),
+      WGSL_TEMPLATE_PARAMETER(transposed, config.transposed_), WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
+      WGSL_TEMPLATE_VARIABLE(input, input), WGSL_TEMPLATE_VARIABLE(output, output),
+      WGSL_TEMPLATE_VARIABLE(position_ids, position_ids), WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache));
 }
 
 MRotaryEmbedding::MRotaryEmbedding(const OpKernelInfo& info) : WebGpuKernel(info) {
@@ -95,12 +94,12 @@ Status MRotaryEmbedding::ComputeInternal(onnxruntime::webgpu::ComputeContext& co
       static_cast<uint32_t>(parameters.mrope_section[2])};
 
   MRotaryEmbeddingProgram program{interleaved_, parameters.transposed, parameters.mrope_layout};
-  program.CacheHint(interleaved_, parameters.transposed, static_cast<int>(parameters.mrope_layout))
-      .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
-                  {position_ids, ProgramTensorMetadataDependency::TypeAndRank},
-                  {cos_cache, ProgramTensorMetadataDependency::TypeAndRank},
-                  {sin_cache, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
+  program
+      .AddInputs({{input, ProgramTensorMetadataDependency::None},
+                  {position_ids, ProgramTensorMetadataDependency::None},
+                  {cos_cache, ProgramTensorMetadataDependency::None},
+                  {sin_cache, ProgramTensorMetadataDependency::None}})
+      .AddOutput({output, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{scale_},
                             {output_size},

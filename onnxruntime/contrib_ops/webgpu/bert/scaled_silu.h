@@ -4,24 +4,34 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime::contrib::webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class ScaledSiLUProgram final : public Program<ScaledSiLUProgram> {
- public:
-  explicit ScaledSiLUProgram(bool has_scale)
-      : Program{"ScaledSiLU"}, has_scale_(has_scale) {}
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"count", ProgramUniformVariableDataType::Uint32},
-      {"alpha", ProgramUniformVariableDataType::Float32});
+#define WEBGPU_SCALED_SI_L_U_PROGRAM_CONFIG(F) F(bool, has_scale_)
 
- private:
-  bool has_scale_;
+struct ScaledSiLUProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SCALED_SI_L_U_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_scale) {
+    Config result{};
+    result.has_scale_ = bool(has_scale);
+
+    return result;
+  }
+  static constexpr std::string_view name = "ScaledSiLU";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
+#define WEBGPU_SCALED_SI_L_U_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, count)                                      \
+  U(Float32, alpha)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SCALED_SI_L_U_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SCALED_SI_L_U_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_SCALED_SI_L_U_PROGRAM_CONFIG
+
+using ScaledSiLUProgram = ConfiguredProgram<ScaledSiLUProgramShader>;
 
 class ScaledSiLU final : public WebGpuKernel {
  public:

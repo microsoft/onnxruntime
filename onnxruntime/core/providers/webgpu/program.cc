@@ -60,27 +60,8 @@ DEFINE_ENUM_STREAM_OP(OStringStream, ProgramUniformVariableDataType, ProgramUnif
 DEFINE_ENUM_STREAM_OP(std::ostream, ProgramConstantDataType, ProgramConstantDataTypeName)
 DEFINE_ENUM_STREAM_OP(OStringStream, ProgramConstantDataType, ProgramConstantDataTypeName)
 
-OStringStream& operator<<(OStringStream& os, ProgramTensorMetadataDependency dep) {
-  bool first = true;
-  if ((dep & ProgramTensorMetadataDependency::Type) == ProgramTensorMetadataDependency::Type) {
-    os << "Type";
-    first = false;
-  }
-  if ((dep & ProgramTensorMetadataDependency::Rank) == ProgramTensorMetadataDependency::Rank) {
-    if (!first) os << "|";
-    os << "Rank";
-    first = false;
-  }
-  if ((dep & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape) {
-    if (!first) os << "|";
-    os << "Shape";
-    first = false;
-  }
-  if (first) {
-    os << "None";
-  }
-
-  return os;
+OStringStream& operator<<(OStringStream& os, ProgramTensorMetadataDependency dependency) {
+  return os << (dependency == ProgramTensorMetadataDependency::Shape ? "Shape" : "None");
 }
 
 #ifndef NDEBUG
@@ -251,7 +232,7 @@ TensorShape GetReducedShape(const TensorShape& shape, int component /* > 1 */) {
 }
 }  // namespace
 
-ProgramInput::ProgramInput(const Tensor* tensor) : ProgramInput{tensor, ProgramTensorMetadataDependency::TypeAndRank} {}
+ProgramInput::ProgramInput(const Tensor* tensor) : ProgramInput{tensor, ProgramTensorMetadataDependency::None} {}
 
 ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component)
     : tensor{tensor},

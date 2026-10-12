@@ -6,7 +6,7 @@
 // Source: utils.wgsl.template
 
 template <>
-Status ApplyTemplate<"utils.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"utils.wgsl.template">::type ) {
+Status ApplyTemplate<"utils.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"utils.wgsl.template">::type ) {
   [[maybe_unused]] auto& ss = shader_helper.AdditionalImplementation();
 
 ss << __str_0;

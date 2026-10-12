@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/common/inlined_containers.h"
 #include "core/providers/webgpu/tensor/tile.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -14,7 +15,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status TileProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status TileProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
@@ -29,7 +30,7 @@ Status TileProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << input.IndicesSet("input_indices", i, input_dim_value) << ";\n";
   }
 
-  if (is_int64_) {
+  if (config.is_int64_) {
     // For int64 (stored as vec2<u32>), copy the raw storage bits to preserve the full
     // 64-bit value without loss. Using GetByIndices would silently truncate to i32.
     const auto input_value =
@@ -129,7 +130,7 @@ Status Tile::ComputeInternal(ComputeContext& context) const {
   bool is_int64 = input_tensor->DataType() == DataTypeImpl::GetType<int64_t>();
   TileProgram program{is_int64};
   program
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
+      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::None}})
       .AddOutputs({output_tensor})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)},

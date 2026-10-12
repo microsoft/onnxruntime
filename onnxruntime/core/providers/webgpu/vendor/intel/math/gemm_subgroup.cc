@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/math/gemm_utils.h"
@@ -184,7 +185,7 @@ bool CanUseAVec4CooperativeLoad(std::string_view architecture,
          elements_per_thread_y % max_lane_groups == 0;
 }
 
-Status MakeMatMulSubgroupSource(ShaderHelper& shader,
+Status MakeMatMulSubgroupSource(ConfiguredShaderHelper& shader,
                                 const InlinedVector<int64_t>& elements_per_thread,
                                 const ShaderIndicesHelper* batch_dims,
                                 bool is_vec4,

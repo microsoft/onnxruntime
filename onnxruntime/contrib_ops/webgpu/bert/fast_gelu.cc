@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/math/unary_elementwise_ops.h"
@@ -20,16 +21,17 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     FastGelu);
 
-Status FastGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status FastGeluProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                 ConfiguredShaderHelper& shader) {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& y = shader.AddOutput("y", ShaderUsage::UseUniform);
 
   shader.AdditionalImplementation() << TanhImpl;
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size")
                             << "  var a = " << x.GetByOffset("global_idx") << ";\n";
-  if (Inputs().size() > 1) {
+  if (shader.InputCount() > 1) {
     const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride);
-    if (bias_components_ == 1) {
+    if (config.bias_components_ == 1) {
       shader.MainFunctionBody() << "  let bias_offset = global_idx * 4;\n"
                                    "  a += x_value_t("
                                 << bias.GetByOffset("bias_offset % uniforms.bias_shape") << ", "
@@ -68,13 +70,13 @@ Status FastGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) c
   }
 
   FastGeluProgram program{bias_components};
-  program.AddInput({input, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
+  program.AddInput({input, ProgramTensorMetadataDependency::None, {vec_size}, 4})
       .AddOutput({output, ProgramTensorMetadataDependency::None, {vec_size}, 4})
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariable({vec_size});
 
   if (bias != nullptr) {
-    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, {bias_size}, bias_components});
+    program.AddInput({bias, ProgramTensorMetadataDependency::None, {bias_size}, bias_components});
   }
   return context.RunProgram(program);
 }

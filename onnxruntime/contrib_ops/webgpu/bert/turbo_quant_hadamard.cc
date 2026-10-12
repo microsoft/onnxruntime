@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/turbo_quant_hadamard.h"
 #include "contrib_ops/webgpu/bert/hadamard_transform.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -13,7 +14,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status TurboQuantHadamardProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                           ConfiguredShaderHelper& shader) {
   const auto& key = shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias |
                                                ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
   const auto& value = shader.AddInput("value", ShaderUsage::UseUniform);
@@ -21,11 +23,11 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
   const auto& present_key = shader.AddOutput("present_key", ShaderUsage::UseUniform);
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
 
-  if (use_seqlen_k_) {
+  if (config.use_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::None);
   }
   // Use the batch-wide GPU value for dispatch sizing: batch 0 is not necessarily the longest batch.
-  if (prepare_indirect_dispatch_) {
+  if (config.prepare_indirect_dispatch_) {
     shader.AddInput("total_sequence_length_input", ShaderUsage::None);
     shader.AddOutput("indirect_buffer", ShaderUsage::None);
   }
@@ -33,26 +35,22 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
   // Past KV cache is already u32-packed — add as uniform only (no type aliases needed).
   const ShaderVariableHelper* past_key = nullptr;
   const ShaderVariableHelper* past_value = nullptr;
-  if (has_past_) {
+  if (config.has_past_) {
     past_key = &shader.AddInput("past_key", ShaderUsage::UseUniform);
     past_value = &shader.AddInput("past_value", ShaderUsage::UseUniform);
   }
 
-  return WGSL_TEMPLATE_APPLY(shader, "bert/turbo_quant_hadamard.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(components, components_),
-                             WGSL_TEMPLATE_PARAMETER(compressed_head_size_u32, compressed_head_size_u32_),
-                             WGSL_TEMPLATE_PARAMETER(hadamard_size_log2, head_size_log2_),
-                             WGSL_TEMPLATE_PARAMETER(has_past, has_past_),
-                             WGSL_TEMPLATE_PARAMETER(kv_BNSH, kv_BNSH_),
-                             WGSL_TEMPLATE_PARAMETER(past_present_share_buffer, past_present_share_buffer_),
-                             WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch, prepare_indirect_dispatch_),
-                             WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
-                             WGSL_TEMPLATE_VARIABLE(key, key),
-                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(past_key, past_key),
-                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(past_value, past_value),
-                             WGSL_TEMPLATE_VARIABLE(present_key, present_key),
-                             WGSL_TEMPLATE_VARIABLE(present_value, present_value),
-                             WGSL_TEMPLATE_VARIABLE(value, value));
+  return WGSL_TEMPLATE_APPLY(
+      shader, "bert/turbo_quant_hadamard.wgsl.template", WGSL_TEMPLATE_PARAMETER(components, config.components_),
+      WGSL_TEMPLATE_PARAMETER(compressed_head_size_u32, config.compressed_head_size_u32_),
+      WGSL_TEMPLATE_PARAMETER(hadamard_size_log2, config.head_size_log2_),
+      WGSL_TEMPLATE_PARAMETER(has_past, config.has_past_), WGSL_TEMPLATE_PARAMETER(kv_BNSH, config.kv_BNSH_),
+      WGSL_TEMPLATE_PARAMETER(past_present_share_buffer, config.past_present_share_buffer_),
+      WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch, config.prepare_indirect_dispatch_),
+      WGSL_TEMPLATE_PARAMETER(use_seqlen_k, config.use_seqlen_k_), WGSL_TEMPLATE_VARIABLE(key, key),
+      WGSL_TEMPLATE_OPTIONAL_VARIABLE(past_key, past_key), WGSL_TEMPLATE_OPTIONAL_VARIABLE(past_value, past_value),
+      WGSL_TEMPLATE_VARIABLE(present_key, present_key), WGSL_TEMPLATE_VARIABLE(present_value, present_value),
+      WGSL_TEMPLATE_VARIABLE(value, value));
 }
 
 Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
@@ -90,8 +88,8 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
                                     prepare_indirect_dispatch, use_seqlen_k};
   // Inputs: K and V in their original format (fp16/fp32, vectorized).
   if (kv_BNSH) {
-    program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, components},
-                       {V, ProgramTensorMetadataDependency::TypeAndRank, components}});
+    program.AddInputs({{K, ProgramTensorMetadataDependency::None, components},
+                       {V, ProgramTensorMetadataDependency::None, components}});
   } else {
     ORT_RETURN_IF_ERROR(
         (parameters.qkv_format_ == Q_K_V_BSNH)
@@ -99,8 +97,8 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
             : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                               "qkv format ", parameters.qkv_format_, " is not supported yet."));
     TensorShape reshaped_KV_shape{parameters.batch_size_, parameters.kv_sequence_length_, kv_num_heads, head_size / components};
-    program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components},
-                       {V, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components}});
+    program.AddInputs({{K, ProgramTensorMetadataDependency::None, reshaped_KV_shape, components},
+                       {V, ProgramTensorMetadataDependency::None, reshaped_KV_shape, components}});
   }
 
   if (use_seqlen_k) {
@@ -112,13 +110,13 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
 
   // Past KV cache is already u32-packed (no vectorization).
   if (has_past) {
-    program.AddInputs({{past_key, ProgramTensorMetadataDependency::TypeAndRank},
-                       {past_value, ProgramTensorMetadataDependency::TypeAndRank}});
+    program.AddInputs({{past_key, ProgramTensorMetadataDependency::None},
+                       {past_value, ProgramTensorMetadataDependency::None}});
   }
 
   // Output: present KV cache as u32 (one fp32 scale followed by packed values).
-  program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank},
-                      {present_value, ProgramTensorMetadataDependency::Rank}});
+  program.AddOutputs({{present_key, ProgramTensorMetadataDependency::None},
+                      {present_value, ProgramTensorMetadataDependency::None}});
 
   if (prepare_indirect_dispatch) {
     program.AddOutput({indirect_buffer, ProgramTensorMetadataDependency::None});
@@ -130,9 +128,7 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
 
   program.SetDispatchGroupSize(total_workgroups)
       .SetWorkgroupSize(workgroup_size)
-      .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_,
-                 prepare_indirect_dispatch, use_seqlen_k, head_size_log2, components,
-                 compressed_head_size_u32)
+
       .AddUniformVariables({{static_cast<uint32_t>(parameters.batch_size_)},
                             {static_cast<uint32_t>(compressed_head_size_u32)},
                             {static_cast<uint32_t>(copy_sequence_length)},
@@ -149,17 +145,18 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
   return context.RunProgram(program);
 }
 
-Status TurboQuantFusedRotaryProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status TurboQuantFusedRotaryProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                              ConfiguredShaderHelper& shader) {
   const auto& packed_qkv = shader.AddInput("packed_qkv", ShaderUsage::UseUniform);
   const auto& cos_cache = shader.AddInput(
       "cos_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
 
-  if (use_seqlen_k_) {
+  if (config.use_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::None);
   }
   // Use the batch-wide GPU value for dispatch sizing: batch 0 is not necessarily the longest batch.
-  if (prepare_indirect_dispatch_) {
+  if (config.prepare_indirect_dispatch_) {
     shader.AddInput("total_sequence_length_input", ShaderUsage::None);
   }
 
@@ -168,25 +165,23 @@ Status TurboQuantFusedRotaryProgram::GenerateShaderCode(ShaderHelper& shader) co
   const auto& present_key = shader.AddOutput("present_key", ShaderUsage::UseUniform);
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
 
-  if (prepare_indirect_dispatch_) {
+  if (config.prepare_indirect_dispatch_) {
     shader.AddOutput("indirect_buffer", ShaderUsage::None);
   }
 
-  return WGSL_TEMPLATE_APPLY(shader, "bert/turbo_quant_fused_rotary_hadamard.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(compressed_head_size_u32, compressed_head_size_u32_),
-                             WGSL_TEMPLATE_PARAMETER(hadamard_size_log2, head_size_log2_),
-                             WGSL_TEMPLATE_PARAMETER(half_rotary_dim, half_rotary_dim_),
-                             WGSL_TEMPLATE_PARAMETER(multi_rotary_cache_concat_offset, multi_rotary_cache_concat_offset_),
-                             WGSL_TEMPLATE_PARAMETER(past_present_share_buffer, past_present_share_buffer_),
-                             WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch, prepare_indirect_dispatch_),
-                             WGSL_TEMPLATE_PARAMETER(use_multi_rotary_cache_concat, multi_rotary_cache_concat_offset_ > 0),
-                             WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
-                             WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
-                             WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv),
-                             WGSL_TEMPLATE_VARIABLE(present_key, present_key),
-                             WGSL_TEMPLATE_VARIABLE(present_value, present_value),
-                             WGSL_TEMPLATE_VARIABLE(query, query),
-                             WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache));
+  return WGSL_TEMPLATE_APPLY(
+      shader, "bert/turbo_quant_fused_rotary_hadamard.wgsl.template",
+      WGSL_TEMPLATE_PARAMETER(compressed_head_size_u32, config.compressed_head_size_u32_),
+      WGSL_TEMPLATE_PARAMETER(hadamard_size_log2, config.head_size_log2_),
+      WGSL_TEMPLATE_PARAMETER(half_rotary_dim, config.half_rotary_dim_),
+      WGSL_TEMPLATE_PARAMETER(multi_rotary_cache_concat_offset, config.multi_rotary_cache_concat_offset_),
+      WGSL_TEMPLATE_PARAMETER(past_present_share_buffer, config.past_present_share_buffer_),
+      WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch, config.prepare_indirect_dispatch_),
+      WGSL_TEMPLATE_PARAMETER(use_multi_rotary_cache_concat, config.multi_rotary_cache_concat_offset_ > 0),
+      WGSL_TEMPLATE_PARAMETER(use_seqlen_k, config.use_seqlen_k_), WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
+      WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv), WGSL_TEMPLATE_VARIABLE(present_key, present_key),
+      WGSL_TEMPLATE_VARIABLE(present_value, present_value), WGSL_TEMPLATE_VARIABLE(query, query),
+      WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache));
 }
 
 Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& context,
@@ -232,10 +227,10 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
                                        prepare_indirect_dispatch, use_seqlen_k,
                                        multi_rotary_cache_concat_offset};
 
-  program.AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank});
+  program.AddInput({packedQKV, ProgramTensorMetadataDependency::None});
   program.AddInputs({
-      {cos_cache, ProgramTensorMetadataDependency::TypeAndRank},
-      {sin_cache, ProgramTensorMetadataDependency::Rank},
+      {cos_cache, ProgramTensorMetadataDependency::None},
+      {sin_cache, ProgramTensorMetadataDependency::None},
   });
 
   if (use_seqlen_k) {
@@ -246,8 +241,8 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
   }
 
   program.AddOutputs({{query, ProgramTensorMetadataDependency::None},
-                      {present_key, ProgramTensorMetadataDependency::Rank},
-                      {present_value, ProgramTensorMetadataDependency::Rank}});
+                      {present_key, ProgramTensorMetadataDependency::None},
+                      {present_value, ProgramTensorMetadataDependency::None}});
 
   if (prepare_indirect_dispatch) {
     program.AddOutput({indirect_buffer, ProgramTensorMetadataDependency::None});
@@ -257,10 +252,7 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
 
   program.SetDispatchGroupSize(total_workgroups)
       .SetWorkgroupSize(workgroup_size)
-      .CacheHint(parameters.past_present_share_buffer_,
-                 prepare_indirect_dispatch, use_seqlen_k, head_size_log2,
-                 half_rotary_dim, compressed_head_size_u32,
-                 multi_rotary_cache_concat_offset)
+
       .AddUniformVariables({{static_cast<uint32_t>(parameters.batch_size_)},
                             {static_cast<uint32_t>(compressed_head_size_u32)},
                             {static_cast<uint32_t>(parameters.hidden_size_)},

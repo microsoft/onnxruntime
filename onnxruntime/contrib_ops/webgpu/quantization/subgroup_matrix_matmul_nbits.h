@@ -9,6 +9,7 @@
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
@@ -18,40 +19,50 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatMulNBitsProgram> {
- public:
-  SubgroupMatrixMatMulNBitsProgram(uint32_t nbits, SubgroupMatrixConfig config, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, uint32_t tile_m, uint32_t tile_n, bool has_tail_buffer)
-      : Program{"SubgroupMatrixMatMulNBits"},
-        nbits_(nbits),
-        config_(config),
-        has_zero_points_(has_zero_points),
-        has_bias_(has_bias),
-        has_weight_idx_{has_weight_idx},
-        has_weight_idx_indirect_{has_weight_idx_indirect},
-        tile_m_(tile_m),
-        tile_n_(tile_n),
-        has_tail_buffer_{has_tail_buffer} {};
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"M", ProgramUniformVariableDataType::Uint32},
-      {"N", ProgramUniformVariableDataType::Uint32},
-      {"K", ProgramUniformVariableDataType::Uint32},
-      {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
-      {"num_N_tile", ProgramUniformVariableDataType::Uint32},
-      {"num_M_tile", ProgramUniformVariableDataType::Uint32},
-      {"weight_idx", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_SUBGROUP_MATRIX_MAT_MUL_N_BITS_PROGRAM_CONFIG(F) \
+  F(uint32_t, nbits_)                                           \
+  F(SubgroupMatrixConfig, config_)                              \
+  F(bool, has_zero_points_)                                     \
+  F(bool, has_bias_)                                            \
+  F(bool, has_weight_idx_)                                      \
+  F(bool, has_weight_idx_indirect_)                             \
+  F(uint32_t, tile_m_)                                          \
+  F(uint32_t, tile_n_)                                          \
+  F(bool, has_tail_buffer_)
 
- private:
-  uint32_t nbits_;
-  SubgroupMatrixConfig config_;
-  bool has_zero_points_;
-  bool has_bias_;
-  bool has_weight_idx_;
-  bool has_weight_idx_indirect_;
-  uint32_t tile_m_;
-  uint32_t tile_n_;
-  bool has_tail_buffer_;
+struct SubgroupMatrixMatMulNBitsProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SUBGROUP_MATRIX_MAT_MUL_N_BITS_PROGRAM_CONFIG);
+  static Config MakeConfig(uint32_t nbits, SubgroupMatrixConfig config, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, uint32_t tile_m, uint32_t tile_n, bool has_tail_buffer) {
+    Config result{};
+    result.nbits_ = uint32_t(nbits);
+    result.config_ = SubgroupMatrixConfig(config);
+    result.has_zero_points_ = bool(has_zero_points);
+    result.has_bias_ = bool(has_bias);
+    result.has_weight_idx_ = bool{has_weight_idx};
+    result.has_weight_idx_indirect_ = bool{has_weight_idx_indirect};
+    result.tile_m_ = uint32_t(tile_m);
+    result.tile_n_ = uint32_t(tile_n);
+    result.has_tail_buffer_ = bool{has_tail_buffer};
+
+    return result;
+  }
+  static constexpr std::string_view name = "SubgroupMatrixMatMulNBits";
+  ;
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
+#define WEBGPU_SUBGROUP_MATRIX_MAT_MUL_N_BITS_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, M)                                                           \
+  U(Uint32, N)                                                           \
+  U(Uint32, K)                                                           \
+  U(Uint32, zero_blocks_per_col)                                         \
+  U(Uint32, num_N_tile)                                                  \
+  U(Uint32, num_M_tile)                                                  \
+  U(Uint32, weight_idx)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SUBGROUP_MATRIX_MAT_MUL_N_BITS_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SUBGROUP_MATRIX_MAT_MUL_N_BITS_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_SUBGROUP_MATRIX_MAT_MUL_N_BITS_PROGRAM_CONFIG
+
+using SubgroupMatrixMatMulNBitsProgram = ConfiguredProgram<SubgroupMatrixMatMulNBitsProgramShader>;
 
 Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
                                       const Tensor* zero_points, const Tensor* bias,

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/common/inlined_containers.h"
 #include "core/providers/webgpu/tensor/resize_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -168,36 +169,38 @@ std::string GetNearestPixelCaller(ResizeNearestMode mode) {
   }
 }
 
-Status ResizeNearestProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status ResizeNearestProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                      ConfiguredShaderHelper& shader) {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform |
                                                                    ShaderUsage::UseShapeAndStride |
                                                                    ShaderUsage::UseValueTypeAlias);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform |
                                                                       ShaderUsage::UseShapeAndStride);
 
-  std::string scales_index_str = GetElementAt("uniforms.scales", "axis", rank_);
-  std::string input_shape_index_str = GetElementAt("uniforms.input_shape", "axis", rank_);
-  std::string input_stride_index_str = GetElementAt("uniforms.input_stride", "axis", rank_ - 1);
+  std::string scales_index_str = GetElementAt("uniforms.scales", "axis", config.rank_);
+  std::string input_shape_index_str = GetElementAt("uniforms.input_shape", "axis", config.rank_);
+  std::string input_stride_index_str = GetElementAt("uniforms.input_stride", "axis", config.rank_ - 1);
 
   std::stringstream extrapolation_ss;
-  if (extrapolation_enabled_) {
+  if (config.extrapolation_enabled_) {
     extrapolation_ss << "      if ((input_coord < 0.0 || input_coord > f32(" << input_shape_index_str << " - 1))) {\n"
                      << "        " << output.SetByOffset("global_idx", "input_value_t(uniforms.extrapolation_value)") << ";\n"
                      << "        return;\n"
                      << "      }\n";
   }
 
-  TransformCoordinate(shader.AdditionalImplementation(), coordinate_transform_mode_);
-  CalcNearestPixel(shader.AdditionalImplementation(), nearest_mode_);
+  TransformCoordinate(shader.AdditionalImplementation(), config.coordinate_transform_mode_);
+  CalcNearestPixel(shader.AdditionalImplementation(), config.nearest_mode_);
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "  let output_indices = " << output.OffsetToIndices("global_idx") << ";\n"
                             << "  var input_index = u32(0);\n"
-                            << "  for(var axis = 0; axis < " << rank_ << "; axis++) {\n"
+                            << "  for(var axis = 0; axis < " << config.rank_ << "; axis++) {\n"
                             << "    var output_coord = output_indices[axis];\n"
                             << "    if (" << scales_index_str << " != 1.0) {\n"
-                            << "      let input_coord = " << GetCoordinateCaller(coordinate_transform_mode_, rank_) << ";\n"
+                            << "      let input_coord = "
+                            << GetCoordinateCaller(config.coordinate_transform_mode_, config.rank_) << ";\n"
                             << extrapolation_ss.str()
-                            << "      var nearest_coord = " << GetNearestPixelCaller(nearest_mode_) << ";\n"
+                            << "      var nearest_coord = " << GetNearestPixelCaller(config.nearest_mode_) << ";\n"
                             << "      if (nearest_coord >= i32(" << input_shape_index_str << ")) {\n"
                             << "        output_coord = " << input_shape_index_str << " - 1;\n"
                             << "      } else if (nearest_coord < 0) {\n"
@@ -206,7 +209,8 @@ Status ResizeNearestProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "        output_coord = u32(nearest_coord);\n"
                             << "      }"
                             << "    }\n"
-                            << "    input_index += select(output_coord * " << input_stride_index_str << ", output_coord, axis == " << rank_ - 1 << ");\n"
+                            << "    input_index += select(output_coord * " << input_stride_index_str
+                            << ", output_coord, axis == " << config.rank_ - 1 << ");\n"
                             << "  }\n"
                             << "  " << output.SetByOffset("global_idx", input.GetByOffset("input_index")) << ";\n";
 
@@ -228,76 +232,77 @@ Status ResizeNearestImpl(ComputeContext& context,
   uint32_t output_size = onnxruntime::narrow<uint32_t>(output_shape.Size());
 
   ResizeNearestProgram program{coordinate_transform_mode, nearest_mode, extrapolation_enabled, rank};
-  program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
+  program.AddInput({input_tensor, ProgramTensorMetadataDependency::None})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .CacheHint(std::to_string(static_cast<int>(extrapolation_enabled)),
-                 std::to_string(static_cast<int>(coordinate_transform_mode)),
-                 std::to_string(static_cast<int>(nearest_mode)))
+
       .AddUniformVariables({{roi}, {scales}, {output_size}, {extrapolation_value}});
 
   return context.RunProgram(program);
 }
 
-Status ResizeBilinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status ResizeBilinearProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                       ConfiguredShaderHelper& shader) {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform |
                                                                    ShaderUsage::UseShapeAndStride |
                                                                    ShaderUsage::UseValueTypeAlias);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform |
                                                                       ShaderUsage::UseShapeAndStride);
 
-  std::string scales_index_str = GetElementAt("uniforms.scales", "axis", rank_);
-  std::string input_shape_index_str = GetElementAt("uniforms.input_shape", "axis", rank_);
+  std::string scales_index_str = GetElementAt("uniforms.scales", "axis", config.rank_);
+  std::string input_shape_index_str = GetElementAt("uniforms.input_shape", "axis", config.rank_);
 
   std::stringstream extrapolation_ss;
-  if (extrapolation_enabled_) {
+  if (config.extrapolation_enabled_) {
     extrapolation_ss << "  if ((input_coord < 0.0 || input_coord > input_max_coord)) {\n"
                      << "    " << output.SetByOffset("global_idx", "input_value_t(uniforms.extrapolation_value)") << ";\n"
                      << "    return;\n"
                      << "  }\n";
   }
 
-  TransformCoordinate(shader.AdditionalImplementation(), coordinate_transform_mode_);
-  std::string transform_coordinate_caller = GetCoordinateCaller(coordinate_transform_mode_, rank_);
-  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "  let output_indices = " << output.OffsetToIndices("global_idx") << ";\n"
-                            << "  var input_indices = " << output.OffsetToIndices("global_idx") << ";\n"
-                            << "  var axis = " << rank_ - 2 << ";\n"
-                            << "  let input_height = u32(" << input_shape_index_str << ");\n"
-                            << "  var input_max_coord = f32(input_height - 1);\n"
-                            << "  var output_coord = output_indices[axis];\n"
-                            << "  var input_coord = select(f32(output_coord), " << transform_coordinate_caller << " , " << scales_index_str << " != 1.0);\n"
-                            << extrapolation_ss.str()
-                            << "  input_coord = max(0.0, min(input_coord, input_max_coord));\n"
-                            << "  let input_y_coord_int = u32(input_coord);\n"
-                            << "  let y_weight_0 = select(input_coord - f32(input_y_coord_int), 0.5, input_coord >= input_max_coord);\n"
-                            << "  axis = " << rank_ - 1 << ";\n"
-                            << "  let input_width = u32(" << input_shape_index_str << ");\n"
-                            << "  input_max_coord = f32(input_width - 1);\n"
-                            << "  output_coord = output_indices[axis];\n"
-                            << "  input_coord = select(f32(output_coord), " << transform_coordinate_caller << " , " << scales_index_str << " != 1.0);\n"
-                            << extrapolation_ss.str()
-                            << "  input_coord = max(0.0, min(input_coord, input_max_coord));\n"
-                            << "  let input_x_coord_int = u32(input_coord);\n"
-                            << "  let x_weight_0 = select(input_coord - f32(input_x_coord_int), 0.5, input_coord >= input_max_coord);\n"
-                            << "  let end_of_h = (input_y_coord_int >= input_height - 1);\n"
-                            << "  let end_of_w = (input_x_coord_int >= input_width - 1);\n"
-                            << "  let rank = " << rank_ << ";\n"
-                            << "  input_indices[rank - 2] = input_y_coord_int;\n"
-                            << "  input_indices[rank - 1] = input_x_coord_int;\n"
-                            << "  let x00 = " << input.GetByIndices("input_indices") << ";\n"
-                            << "  input_indices[rank - 1] = input_x_coord_int + 1;\n"
-                            << "  let x10 = select(" << input.GetByIndices("input_indices") << ", x00, end_of_w);\n"
-                            << "  input_indices[rank - 2] = input_y_coord_int + 1;\n"
-                            << "  input_indices[rank - 1] = input_x_coord_int;\n"
-                            << "  let x01 = select(" << input.GetByIndices("input_indices") << ", x00, end_of_h);\n"
-                            << "  input_indices[rank - 1] = input_x_coord_int + 1;\n"
-                            << "  let x11 = select(select(" << input.GetByIndices("input_indices") << ", x10, end_of_h), x01, end_of_w);\n"
-                            << "  let y_weight_1 = 1.0 - y_weight_0;\n"
-                            << "  let x_weight_1 = 1.0 - x_weight_0;\n"
-                            << "  var value = input_value_t(f32(x00) * y_weight_1 * x_weight_1 + f32(x01) * y_weight_0 * x_weight_1 + f32(x10) * "
-                            << "y_weight_1 * x_weight_0 + f32(x11) * y_weight_0 * x_weight_0);\n"
-                            << "  " << output.SetByOffset("global_idx", "value");
+  TransformCoordinate(shader.AdditionalImplementation(), config.coordinate_transform_mode_);
+  std::string transform_coordinate_caller = GetCoordinateCaller(config.coordinate_transform_mode_, config.rank_);
+  shader.MainFunctionBody()
+      << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+      << "  let output_indices = " << output.OffsetToIndices("global_idx") << ";\n"
+      << "  var input_indices = " << output.OffsetToIndices("global_idx") << ";\n"
+      << "  var axis = " << config.rank_ - 2 << ";\n"
+      << "  let input_height = u32(" << input_shape_index_str << ");\n"
+      << "  var input_max_coord = f32(input_height - 1);\n"
+      << "  var output_coord = output_indices[axis];\n"
+      << "  var input_coord = select(f32(output_coord), " << transform_coordinate_caller << " , " << scales_index_str
+      << " != 1.0);\n"
+      << extrapolation_ss.str() << "  input_coord = max(0.0, min(input_coord, input_max_coord));\n"
+      << "  let input_y_coord_int = u32(input_coord);\n"
+      << "  let y_weight_0 = select(input_coord - f32(input_y_coord_int), 0.5, input_coord >= input_max_coord);\n"
+      << "  axis = " << config.rank_ - 1 << ";\n"
+      << "  let input_width = u32(" << input_shape_index_str << ");\n"
+      << "  input_max_coord = f32(input_width - 1);\n"
+      << "  output_coord = output_indices[axis];\n"
+      << "  input_coord = select(f32(output_coord), " << transform_coordinate_caller << " , " << scales_index_str
+      << " != 1.0);\n"
+      << extrapolation_ss.str() << "  input_coord = max(0.0, min(input_coord, input_max_coord));\n"
+      << "  let input_x_coord_int = u32(input_coord);\n"
+      << "  let x_weight_0 = select(input_coord - f32(input_x_coord_int), 0.5, input_coord >= input_max_coord);\n"
+      << "  let end_of_h = (input_y_coord_int >= input_height - 1);\n"
+      << "  let end_of_w = (input_x_coord_int >= input_width - 1);\n"
+      << "  let rank = " << config.rank_ << ";\n"
+      << "  input_indices[rank - 2] = input_y_coord_int;\n"
+      << "  input_indices[rank - 1] = input_x_coord_int;\n"
+      << "  let x00 = " << input.GetByIndices("input_indices") << ";\n"
+      << "  input_indices[rank - 1] = input_x_coord_int + 1;\n"
+      << "  let x10 = select(" << input.GetByIndices("input_indices") << ", x00, end_of_w);\n"
+      << "  input_indices[rank - 2] = input_y_coord_int + 1;\n"
+      << "  input_indices[rank - 1] = input_x_coord_int;\n"
+      << "  let x01 = select(" << input.GetByIndices("input_indices") << ", x00, end_of_h);\n"
+      << "  input_indices[rank - 1] = input_x_coord_int + 1;\n"
+      << "  let x11 = select(select(" << input.GetByIndices("input_indices") << ", x10, end_of_h), x01, end_of_w);\n"
+      << "  let y_weight_1 = 1.0 - y_weight_0;\n"
+      << "  let x_weight_1 = 1.0 - x_weight_0;\n"
+      << "  var value = input_value_t(f32(x00) * y_weight_1 * x_weight_1 + f32(x01) * y_weight_0 * x_weight_1 + "
+         "f32(x10) * "
+      << "y_weight_1 * x_weight_0 + f32(x11) * y_weight_0 * x_weight_0);\n"
+      << "  " << output.SetByOffset("global_idx", "value");
 
   return Status::OK();
 }
@@ -316,102 +321,103 @@ Status ResizeBilinearImpl(ComputeContext& context,
   uint32_t output_size = onnxruntime::narrow<uint32_t>(output_shape.Size());
 
   ResizeBilinearProgram program{coordinate_transform_mode, extrapolation_enabled, rank};
-  program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
+  program.AddInput({input_tensor, ProgramTensorMetadataDependency::None})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .CacheHint(std::to_string(static_cast<int>(extrapolation_enabled)),
-                 std::to_string(static_cast<int>(coordinate_transform_mode)))
+
       .AddUniformVariables({{roi}, {scales}, {output_size}, {extrapolation_value}});
 
   return context.RunProgram(program);
 }
 
-Status ResizeTrilinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status ResizeTrilinearProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                        ConfiguredShaderHelper& shader) {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform |
                                                                    ShaderUsage::UseShapeAndStride |
                                                                    ShaderUsage::UseValueTypeAlias);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform |
                                                                       ShaderUsage::UseShapeAndStride);
 
-  std::string scales_index_str = GetElementAt("uniforms.scales", "axis", rank_);
-  std::string input_shape_index_str = GetElementAt("uniforms.input_shape", "axis", rank_);
+  std::string scales_index_str = GetElementAt("uniforms.scales", "axis", config.rank_);
+  std::string input_shape_index_str = GetElementAt("uniforms.input_shape", "axis", config.rank_);
 
   std::stringstream extrapolation_ss;
-  if (extrapolation_enabled_) {
+  if (config.extrapolation_enabled_) {
     extrapolation_ss << "  if ((input_coord < 0.0 || input_coord > f32(" << input_shape_index_str << " - 1))) {\n"
                      << "    " << output.SetByOffset("global_idx", "input_value_t(uniforms.extrapolation_value)") << ";\n"
                      << "    return;\n"
                      << "  }\n";
   }
 
-  TransformCoordinate(shader.AdditionalImplementation(), coordinate_transform_mode_);
-  std::string transform_coordinate_caller = GetCoordinateCaller(coordinate_transform_mode_, rank_);
-  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "  let output_indices = " << output.OffsetToIndices("global_idx") << ";\n"
-                            << "  var input_indices = " << output.OffsetToIndices("global_idx") << ";\n"
-                            << "  var axis = " << rank_ - 3 << ";\n"
-                            << "  let input_depth = u32(" << input_shape_index_str << ");\n"
-                            << "  var input_max_coord = f32(input_depth - 1);\n"
-                            << "  var output_coord = output_indices[axis];\n"
-                            << "  var input_coord = select(f32(output_coord), " << transform_coordinate_caller << " , " << scales_index_str << " != 1.0);\n"
-                            << extrapolation_ss.str()
-                            << "  input_coord = max(0.0, min(input_coord, input_max_coord));\n"
-                            << "  let input_z_coord_int = u32(input_coord);\n"
-                            << "  let z_weight_0 = select(input_coord - f32(input_z_coord_int), 0.5, input_coord >= input_max_coord);\n"
-                            << "  axis = " << rank_ - 2 << ";\n"
-                            << "  let input_height = u32(" << input_shape_index_str << ");\n"
-                            << "  input_max_coord = f32(input_height - 1);\n"
-                            << "  output_coord = output_indices[axis];\n"
-                            << "  input_coord = select(f32(output_coord), " << transform_coordinate_caller << " , " << scales_index_str << " != 1.0);\n"
-                            << extrapolation_ss.str()
-                            << "  input_coord = max(0.0, min(input_coord, input_max_coord));\n"
-                            << "  let input_y_coord_int = u32(input_coord);\n"
-                            << "  let y_weight_0 = select(input_coord - f32(input_y_coord_int), 0.5, input_coord >= input_max_coord);\n"
-                            << "  axis = " << rank_ - 1 << ";\n"
-                            << "  let input_width = u32(" << input_shape_index_str << ");\n"
-                            << "  input_max_coord = f32(input_width - 1);\n"
-                            << "  output_coord = output_indices[axis];\n"
-                            << "  input_coord = select(f32(output_coord), " << transform_coordinate_caller << " , " << scales_index_str << " != 1.0);\n"
-                            << extrapolation_ss.str()
-                            << "  input_coord = max(0.0, min(input_coord, input_max_coord));\n"
-                            << "  let input_x_coord_int = u32(input_coord);\n"
-                            << "  let x_weight_0 = select(input_coord - f32(input_x_coord_int), 0.5, input_coord >= input_max_coord);\n"
-                            << "  let end_of_d = (input_z_coord_int >= input_depth - 1);\n"
-                            << "  let end_of_h = (input_y_coord_int >= input_height - 1);\n"
-                            << "  let end_of_w = (input_x_coord_int >= input_width - 1);\n"
-                            << "  let rank = " << rank_ << ";\n"
-                            << "  input_indices[rank - 3] = input_z_coord_int;\n"
-                            << "  input_indices[rank - 2] = input_y_coord_int;\n"
-                            << "  input_indices[rank - 1] = input_x_coord_int;\n"
-                            << "  let x000 = " << input.GetByIndices("input_indices") << ";\n"
-                            << "  input_indices[rank - 1] = input_x_coord_int + 1;\n"
-                            << "  let x100 = select(" << input.GetByIndices("input_indices") << ", x000, end_of_w);\n"
-                            << "  input_indices[rank - 2] = input_y_coord_int + 1;\n"
-                            << "  input_indices[rank - 1] = input_x_coord_int;\n"
-                            << "  let x010 = select(" << input.GetByIndices("input_indices") << ", x000, end_of_h);\n"
-                            << "  input_indices[rank - 1] = input_x_coord_int + 1;\n"
-                            << "  let x110 = select(select(" << input.GetByIndices("input_indices") << ", x100, end_of_h), x010, end_of_w);\n"
-                            << "  input_indices[rank - 1] = input_x_coord_int;\n"
-                            << "  input_indices[rank - 2] = input_y_coord_int;\n"
-                            << "  input_indices[rank - 3] = select(input_z_coord_int + 1, input_z_coord_int, end_of_d);\n"
-                            << "  let x001 = select(" << input.GetByIndices("input_indices") << ", x000, end_of_d);\n"
-                            << "  input_indices[rank - 1] = input_x_coord_int + 1;\n"
-                            << "  let x101 = select(" << input.GetByIndices("input_indices") << ", x001, end_of_w);\n"
-                            << "  input_indices[rank - 2] = input_y_coord_int + 1;\n"
-                            << "  input_indices[rank - 1] = input_x_coord_int;\n"
-                            << "  let x011 = select(" << input.GetByIndices("input_indices") << ", x001, end_of_h);\n"
-                            << "  input_indices[rank - 1] = input_x_coord_int + 1;\n"
-                            << "  let x111 = select(select(" << input.GetByIndices("input_indices") << ", x101, end_of_h), x011, end_of_w);\n"
-                            << "  let z_weight_1 = 1.0 - z_weight_0;\n"
-                            << "  let y_weight_1 = 1.0 - y_weight_0;\n"
-                            << "  let x_weight_1 = 1.0 - x_weight_0;\n"
-                            << "  var value = input_value_t("
-                            << "f32(x000) * z_weight_1 * y_weight_1 * x_weight_1 + f32(x010) * z_weight_1 * y_weight_0 * x_weight_1 + "
-                            << "f32(x100) * z_weight_1 * y_weight_1 * x_weight_0 + f32(x110) * z_weight_1 * y_weight_0 * x_weight_0 + "
-                            << "f32(x001) * z_weight_0 * y_weight_1 * x_weight_1 + f32(x011) * z_weight_0 * y_weight_0 * x_weight_1 + "
-                            << "f32(x101) * z_weight_0 * y_weight_1 * x_weight_0 + f32(x111) * z_weight_0 * y_weight_0 * x_weight_0"
-                            << ");\n"
-                            << "  " << output.SetByOffset("global_idx", "value");
+  TransformCoordinate(shader.AdditionalImplementation(), config.coordinate_transform_mode_);
+  std::string transform_coordinate_caller = GetCoordinateCaller(config.coordinate_transform_mode_, config.rank_);
+  shader.MainFunctionBody()
+      << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+      << "  let output_indices = " << output.OffsetToIndices("global_idx") << ";\n"
+      << "  var input_indices = " << output.OffsetToIndices("global_idx") << ";\n"
+      << "  var axis = " << config.rank_ - 3 << ";\n"
+      << "  let input_depth = u32(" << input_shape_index_str << ");\n"
+      << "  var input_max_coord = f32(input_depth - 1);\n"
+      << "  var output_coord = output_indices[axis];\n"
+      << "  var input_coord = select(f32(output_coord), " << transform_coordinate_caller << " , " << scales_index_str
+      << " != 1.0);\n"
+      << extrapolation_ss.str() << "  input_coord = max(0.0, min(input_coord, input_max_coord));\n"
+      << "  let input_z_coord_int = u32(input_coord);\n"
+      << "  let z_weight_0 = select(input_coord - f32(input_z_coord_int), 0.5, input_coord >= input_max_coord);\n"
+      << "  axis = " << config.rank_ - 2 << ";\n"
+      << "  let input_height = u32(" << input_shape_index_str << ");\n"
+      << "  input_max_coord = f32(input_height - 1);\n"
+      << "  output_coord = output_indices[axis];\n"
+      << "  input_coord = select(f32(output_coord), " << transform_coordinate_caller << " , " << scales_index_str
+      << " != 1.0);\n"
+      << extrapolation_ss.str() << "  input_coord = max(0.0, min(input_coord, input_max_coord));\n"
+      << "  let input_y_coord_int = u32(input_coord);\n"
+      << "  let y_weight_0 = select(input_coord - f32(input_y_coord_int), 0.5, input_coord >= input_max_coord);\n"
+      << "  axis = " << config.rank_ - 1 << ";\n"
+      << "  let input_width = u32(" << input_shape_index_str << ");\n"
+      << "  input_max_coord = f32(input_width - 1);\n"
+      << "  output_coord = output_indices[axis];\n"
+      << "  input_coord = select(f32(output_coord), " << transform_coordinate_caller << " , " << scales_index_str
+      << " != 1.0);\n"
+      << extrapolation_ss.str() << "  input_coord = max(0.0, min(input_coord, input_max_coord));\n"
+      << "  let input_x_coord_int = u32(input_coord);\n"
+      << "  let x_weight_0 = select(input_coord - f32(input_x_coord_int), 0.5, input_coord >= input_max_coord);\n"
+      << "  let end_of_d = (input_z_coord_int >= input_depth - 1);\n"
+      << "  let end_of_h = (input_y_coord_int >= input_height - 1);\n"
+      << "  let end_of_w = (input_x_coord_int >= input_width - 1);\n"
+      << "  let rank = " << config.rank_ << ";\n"
+      << "  input_indices[rank - 3] = input_z_coord_int;\n"
+      << "  input_indices[rank - 2] = input_y_coord_int;\n"
+      << "  input_indices[rank - 1] = input_x_coord_int;\n"
+      << "  let x000 = " << input.GetByIndices("input_indices") << ";\n"
+      << "  input_indices[rank - 1] = input_x_coord_int + 1;\n"
+      << "  let x100 = select(" << input.GetByIndices("input_indices") << ", x000, end_of_w);\n"
+      << "  input_indices[rank - 2] = input_y_coord_int + 1;\n"
+      << "  input_indices[rank - 1] = input_x_coord_int;\n"
+      << "  let x010 = select(" << input.GetByIndices("input_indices") << ", x000, end_of_h);\n"
+      << "  input_indices[rank - 1] = input_x_coord_int + 1;\n"
+      << "  let x110 = select(select(" << input.GetByIndices("input_indices") << ", x100, end_of_h), x010, end_of_w);\n"
+      << "  input_indices[rank - 1] = input_x_coord_int;\n"
+      << "  input_indices[rank - 2] = input_y_coord_int;\n"
+      << "  input_indices[rank - 3] = select(input_z_coord_int + 1, input_z_coord_int, end_of_d);\n"
+      << "  let x001 = select(" << input.GetByIndices("input_indices") << ", x000, end_of_d);\n"
+      << "  input_indices[rank - 1] = input_x_coord_int + 1;\n"
+      << "  let x101 = select(" << input.GetByIndices("input_indices") << ", x001, end_of_w);\n"
+      << "  input_indices[rank - 2] = input_y_coord_int + 1;\n"
+      << "  input_indices[rank - 1] = input_x_coord_int;\n"
+      << "  let x011 = select(" << input.GetByIndices("input_indices") << ", x001, end_of_h);\n"
+      << "  input_indices[rank - 1] = input_x_coord_int + 1;\n"
+      << "  let x111 = select(select(" << input.GetByIndices("input_indices") << ", x101, end_of_h), x011, end_of_w);\n"
+      << "  let z_weight_1 = 1.0 - z_weight_0;\n"
+      << "  let y_weight_1 = 1.0 - y_weight_0;\n"
+      << "  let x_weight_1 = 1.0 - x_weight_0;\n"
+      << "  var value = input_value_t("
+      << "f32(x000) * z_weight_1 * y_weight_1 * x_weight_1 + f32(x010) * z_weight_1 * y_weight_0 * x_weight_1 + "
+      << "f32(x100) * z_weight_1 * y_weight_1 * x_weight_0 + f32(x110) * z_weight_1 * y_weight_0 * x_weight_0 + "
+      << "f32(x001) * z_weight_0 * y_weight_1 * x_weight_1 + f32(x011) * z_weight_0 * y_weight_0 * x_weight_1 + "
+      << "f32(x101) * z_weight_0 * y_weight_1 * x_weight_0 + f32(x111) * z_weight_0 * y_weight_0 * x_weight_0"
+      << ");\n"
+      << "  " << output.SetByOffset("global_idx", "value");
 
   return Status::OK();
 }
@@ -430,29 +436,29 @@ Status ResizeTrilinearImpl(ComputeContext& context,
   uint32_t output_size = onnxruntime::narrow<uint32_t>(output_shape.Size());
 
   ResizeTrilinearProgram program{coordinate_transform_mode, extrapolation_enabled, rank};
-  program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
+  program.AddInput({input_tensor, ProgramTensorMetadataDependency::None})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .CacheHint(std::to_string(static_cast<int>(extrapolation_enabled)),
-                 std::to_string(static_cast<int>(coordinate_transform_mode)))
+
       .AddUniformVariables({{roi}, {scales}, {output_size}, {extrapolation_value}});
 
   return context.RunProgram(program);
 }
 
-Status ResizeBiCubicProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status ResizeBiCubicProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                      ConfiguredShaderHelper& shader) {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform |
                                                                    ShaderUsage::UseShapeAndStride |
                                                                    ShaderUsage::UseValueTypeAlias);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform |
                                                                       ShaderUsage::UseShapeAndStride);
 
-  std::string scales_index_str = GetElementAt("uniforms.scales", "axis", rank_);
-  std::string input_shape_index_str = GetElementAt("uniforms.input_shape", "axis", rank_);
+  std::string scales_index_str = GetElementAt("uniforms.scales", "axis", config.rank_);
+  std::string input_shape_index_str = GetElementAt("uniforms.input_shape", "axis", config.rank_);
 
   std::stringstream exclude_outside_ss;
   std::stringstream extrapolation_enabled_ss;
-  if (exclude_outside_) {
+  if (config.exclude_outside_) {
     exclude_outside_ss << "  coeff[0] = select(coeff[0], 0.0, (input_coord_int - 1 < 0 || input_coord_int - 1 >= input_max_coord));\n"
                        << "  coeff[1] = select(coeff[1], 0.0, (input_coord_int + 0 < 0 || input_coord_int + 0 >= input_max_coord));\n"
                        << "  coeff[2] = select(coeff[2], 0.0, (input_coord_int + 1 < 0 || input_coord_int + 1 >= input_max_coord));\n"
@@ -460,7 +466,7 @@ Status ResizeBiCubicProgram::GenerateShaderCode(ShaderHelper& shader) const {
                        << "  coeff_sum = dot(coeff, vec4<f32>(1.0));\n";
   }
 
-  if (extrapolation_enabled_) {
+  if (config.extrapolation_enabled_) {
     extrapolation_enabled_ss << "  if ((input_coord < 0.0 || input_coord > f32(input_max_coord - 1))) {\n"
                              << "    " << output.SetByOffset("global_idx", "input_value_t(uniforms.extrapolation_value)") << ";\n"
                              << "    return;\n"
@@ -474,62 +480,61 @@ Status ResizeBiCubicProgram::GenerateShaderCode(ShaderHelper& shader) const {
            << "  coeff[3] = ((cubic_coeff_a * (2.0 - s_coord) - 5.0 * cubic_coeff_a) * (2.0 - s_coord) + 8.0 * cubic_coeff_a) * (2.0 - s_coord) - 4.0 * cubic_coeff_a;\n";
 
   std::stringstream cubic_interpolation_rowwise_ss;
-  cubic_interpolation_rowwise_ss << "  input_indices[" << rank_ - 2 << "] = u32(clamp(y, 0, input_height - 1));\n"
-                                 << "  input_indices[" << rank_ - 1 << "] = u32(clamp(input_x_coord_int - 1, 0, input_width - 1));\n"
+  cubic_interpolation_rowwise_ss << "  input_indices[" << config.rank_ - 2
+                                 << "] = u32(clamp(y, 0, input_height - 1));\n"
+                                 << "  input_indices[" << config.rank_ - 1
+                                 << "] = u32(clamp(input_x_coord_int - 1, 0, input_width - 1));\n"
                                  << "  value_rowwise = x_coeff[0] * " << input.GetByIndices("input_indices") << ";\n"
-                                 << "  input_indices[" << rank_ - 1 << "] = u32(clamp(input_x_coord_int, 0, input_width - 1));\n"
+                                 << "  input_indices[" << config.rank_ - 1
+                                 << "] = u32(clamp(input_x_coord_int, 0, input_width - 1));\n"
                                  << "  value_rowwise += x_coeff[1] * " << input.GetByIndices("input_indices") << ";\n"
-                                 << "  input_indices[" << rank_ - 1 << "] = u32(clamp(input_x_coord_int + 1, 0, input_width - 1));\n"
+                                 << "  input_indices[" << config.rank_ - 1
+                                 << "] = u32(clamp(input_x_coord_int + 1, 0, input_width - 1));\n"
                                  << "  value_rowwise += x_coeff[2] * " << input.GetByIndices("input_indices") << ";\n"
-                                 << "  input_indices[" << rank_ - 1 << "] = u32(clamp(input_x_coord_int + 2, 0, input_width - 1));\n"
+                                 << "  input_indices[" << config.rank_ - 1
+                                 << "] = u32(clamp(input_x_coord_int + 2, 0, input_width - 1));\n"
                                  << "  value_rowwise += x_coeff[3] * " << input.GetByIndices("input_indices") << ";\n";
 
-  TransformCoordinate(shader.AdditionalImplementation(), coordinate_transform_mode_);
-  std::string transform_coordinate_caller = GetCoordinateCaller(coordinate_transform_mode_, rank_);
+  TransformCoordinate(shader.AdditionalImplementation(), config.coordinate_transform_mode_);
+  std::string transform_coordinate_caller = GetCoordinateCaller(config.coordinate_transform_mode_, config.rank_);
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "  let output_indices = " << output.OffsetToIndices("global_idx") << ";\n"
                             << "  var input_indices = " << output.OffsetToIndices("global_idx") << ";\n"
-                            << "  var axis = " << rank_ - 2 << ";\n"
+                            << "  var axis = " << config.rank_ - 2 << ";\n"
                             << "  let input_height = i32(" << input_shape_index_str << ");\n"
                             << "  var input_max_coord = input_height;\n"
                             << "  var output_coord = output_indices[axis];\n"
-                            << "  var input_coord = select(f32(output_coord), " << transform_coordinate_caller << " , " << scales_index_str << " != 1.0);\n"
-                            << extrapolation_enabled_ss.str()
-                            << "  var coeff_sum = 1.0;\n"
+                            << "  var input_coord = select(f32(output_coord), " << transform_coordinate_caller << " , "
+                            << scales_index_str << " != 1.0);\n"
+                            << extrapolation_enabled_ss.str() << "  var coeff_sum = 1.0;\n"
                             << "  let cubic_coeff_a = uniforms.cubic_coeff_a;\n"
                             << "  var input_coord_int = i32(floor(input_coord));\n"
                             << "  var s_coord = abs(input_coord - f32(input_coord_int));\n"
                             << "  var coeff = vec4<f32>(0.0);\n"
-                            << coeff_ss.str()
-                            << exclude_outside_ss.str()
+                            << coeff_ss.str() << exclude_outside_ss.str()
                             << "  let input_y_coord_int = input_coord_int;\n"
                             << "  let y_coeff = coeff / coeff_sum;\n"
-                            << "  axis = " << rank_ - 1 << ";\n"
+                            << "  axis = " << config.rank_ - 1 << ";\n"
                             << "  let input_width = i32(" << input_shape_index_str << ");\n"
                             << "  input_max_coord = input_width;\n"
                             << "  output_coord = output_indices[axis];\n"
-                            << "  input_coord = select(f32(output_coord), " << transform_coordinate_caller << " , " << scales_index_str << " != 1.0);\n"
-                            << extrapolation_enabled_ss.str()
-                            << "  input_coord_int = i32(floor(input_coord));\n"
+                            << "  input_coord = select(f32(output_coord), " << transform_coordinate_caller << " , "
+                            << scales_index_str << " != 1.0);\n"
+                            << extrapolation_enabled_ss.str() << "  input_coord_int = i32(floor(input_coord));\n"
                             << "  s_coord = abs(input_coord - f32(input_coord_int));\n"
-                            << coeff_ss.str()
-                            << exclude_outside_ss.str()
+                            << coeff_ss.str() << exclude_outside_ss.str()
                             << "  let input_x_coord_int = input_coord_int;\n"
                             << "  let x_coeff = coeff / coeff_sum;\n"
                             << "  var y = input_y_coord_int - 1;\n"
                             << "  var value_rowwise = 0.0;\n"
                             << "  var value = 0.0;\n"
-                            << cubic_interpolation_rowwise_ss.str()
-                            << "  value += y_coeff[0] * value_rowwise;\n"
+                            << cubic_interpolation_rowwise_ss.str() << "  value += y_coeff[0] * value_rowwise;\n"
                             << "  y = input_y_coord_int;\n"
-                            << cubic_interpolation_rowwise_ss.str()
-                            << "  value += y_coeff[1] * value_rowwise;\n"
+                            << cubic_interpolation_rowwise_ss.str() << "  value += y_coeff[1] * value_rowwise;\n"
                             << "  y = input_y_coord_int + 1;\n"
-                            << cubic_interpolation_rowwise_ss.str()
-                            << "  value += y_coeff[2] * value_rowwise;\n"
+                            << cubic_interpolation_rowwise_ss.str() << "  value += y_coeff[2] * value_rowwise;\n"
                             << "  y = input_y_coord_int + 2;\n"
-                            << cubic_interpolation_rowwise_ss.str()
-                            << "  value += y_coeff[3] * value_rowwise;\n"
+                            << cubic_interpolation_rowwise_ss.str() << "  value += y_coeff[3] * value_rowwise;\n"
                             << output.SetByOffset("global_idx", "input_value_t(value)");
 
   return Status::OK();
@@ -551,12 +556,10 @@ Status ResizeBiCubicImpl(ComputeContext& context,
   uint32_t output_size = onnxruntime::narrow<uint32_t>(output_shape.Size());
 
   ResizeBiCubicProgram program{coordinate_transform_mode, extrapolation_enabled, exclude_outside, rank};
-  program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
+  program.AddInput({input_tensor, ProgramTensorMetadataDependency::None})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .CacheHint(std::to_string(static_cast<int>(extrapolation_enabled)),
-                 std::to_string(static_cast<int>(exclude_outside)),
-                 std::to_string(static_cast<int>(coordinate_transform_mode)))
+
       .AddUniformVariables({{roi}, {scales}, {output_size}, {extrapolation_value}, {cubic_coeff_a}});
 
   return context.RunProgram(program);

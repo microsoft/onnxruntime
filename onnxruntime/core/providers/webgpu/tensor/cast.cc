@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include <array>
 #include <string>
 #include <vector>
@@ -34,23 +35,21 @@ Status Cast::ComputeInternal(ComputeContext& context) const {
   uint32_t out_vec_size = onnxruntime::narrow<uint32_t>(out_components == 1 ? size : vec_size);
 
   CastProgram program{to_, is_from_int64, is_from_float, is_from_unsigned, is_from_uint8};
-  program
-      .AddInput({input_tensor, ProgramTensorMetadataDependency::Type, {in_vec_size}, in_components})
+  program.AddInput({input_tensor, ProgramTensorMetadataDependency::None, {in_vec_size}, in_components})
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, {out_vec_size}, out_components})
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},
           {static_cast<uint32_t>(size)},
-      })
-      .CacheHint(std::to_string(to_));
+      });
   return context.RunProgram(program);
 }
 
-Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
+Status CastProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh) {
   const auto& input = sh.AddInput("x", ShaderUsage::UseUniform);
   const auto& output = sh.AddOutput("y", ShaderUsage::UseUniform);
   std::string expression;
-  switch (to_) {
+  switch (config.to_) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       expression = "vec4<f16>(a)";
       break;
@@ -75,7 +74,7 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
       expression = "int32(a)";
       break;
     default:
-      ORT_NOT_IMPLEMENTED("Cast to type ", to_, " is not supported.");
+      ORT_NOT_IMPLEMENTED("Cast to type ", config.to_, " is not supported.");
   }
 
   // float32 -> int64 via IEEE 754 bit decomposition:
@@ -84,7 +83,7 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
   //   - Out-of-range, +/-Inf, NaN: saturate by sign to INT64_MAX / INT64_MIN.
   // Saturation is spec-compliant (ONNX leaves these undefined) but differs from x86 static_cast,
   // so don't pin a specific NaN->int64 result in cross-EP tests.
-  if (to_ == ONNX_NAMESPACE::TensorProto_DataType_INT64 && is_from_float_) {
+  if (config.to_ == ONNX_NAMESPACE::TensorProto_DataType_INT64 && config.is_from_float_) {
     sh.AdditionalImplementation() << "fn float_to_int64(f: f32) -> vec2<u32> {\n"
                                      "  let bits = bitcast<u32>(f);\n"
                                      "  let sign = (bits >> 31u) & 1u;\n"
@@ -125,7 +124,7 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
 
   sh.MainFunctionBody() << sh.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
 
-  if (is_from_int64_) {
+  if (config.is_from_int64_) {
     // int64 -> any (including int64)
     // Note: int64 inputs are not enabled by default (requires enable_int64).
     // This path handles the downcast to 32-bit types.
@@ -141,7 +140,7 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
                             << " = " << input.GetByOffset(MakeStringWithClassicLocale("base + ", i, "u")) << "; }\n";
     }
     sh.MainFunctionBody() << "  let a = vec4<i32>(a0, a1, a2, a3);\n";
-    if (to_ == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    if (config.to_ == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
       // int64 -> int64
       constexpr std::array<char, 4> kLanes{'x', 'y', 'z', 'w'};
       sh.MainFunctionBody() << output.SetByOffset("base", "a.x");
@@ -154,22 +153,22 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
     } else {
       sh.MainFunctionBody() << output.SetByOffset("global_idx", expression);
     }
-  } else if (to_ == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+  } else if (config.to_ == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     // cast to int64 (non-int64 inputs only)
     std::array<std::string, 4> values;
     constexpr std::array<char, 4> kLanes{'x', 'y', 'z', 'w'};
     // A uint8 input is stored packed (4 bytes per u32); GetByOffset returns the raw word, so
     // unpack4xU8 recovers the 4 per-lane byte values. Other inputs are already vec4-shaped.
-    const std::string load_a = is_from_uint8_ ? "unpack4xU8(" + input.GetByOffset("global_idx") + ")"
-                                              : input.GetByOffset("global_idx");
+    const std::string load_a =
+        config.is_from_uint8_ ? "unpack4xU8(" + input.GetByOffset("global_idx") + ")" : input.GetByOffset("global_idx");
     sh.MainFunctionBody() << "  let a = " << load_a << ";\n"
                           << "  let base = global_idx * 4u;\n";
     for (size_t i = 0; i < 4; ++i) {
-      if (is_from_float_) {
+      if (config.is_from_float_) {
         // float32/float16 -> int64: IEEE 754 bit decomposition. float16 reuses the
         // float32 helper since every f16 value is exactly representable as f32.
         values[i] = MakeStringWithClassicLocale("float_to_int64(f32(a.", kLanes[i], "))");
-      } else if (is_from_unsigned_) {
+      } else if (config.is_from_unsigned_) {
         // uint32/bool -> int64: zero-extend.
         values[i] = MakeStringWithClassicLocale("vec2<u32>(u32(a.", kLanes[i], "), 0u)");
       } else {
@@ -188,7 +187,7 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
   } else {
     // generic cast (no int64 involved). A uint8 input is stored packed (4 bytes per u32);
     // GetByOffset returns the raw word, so unpack4xU8 recovers the 4 per-lane byte values.
-    if (is_from_uint8_) {
+    if (config.is_from_uint8_) {
       sh.MainFunctionBody() << "  let a = unpack4xU8(" << input.GetByOffset("global_idx") << ");\n";
     } else {
       sh.MainFunctionBody() << "  let a = " << input.GetByOffset("global_idx") << ";\n";

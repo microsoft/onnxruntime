@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/quantization/matmul_bnb4.h"
 
 #include <string>
@@ -14,7 +15,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-Status MatMulBnb4Program::GenerateShaderCode(ShaderHelper& shader) const {
+Status MatMulBnb4ProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                   ConfiguredShaderHelper& shader) {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& b = shader.AddInput("input_b", ShaderUsage::None);
   const auto& absmax = shader.AddInput("absmax", ShaderUsage::UseValueTypeAlias);
@@ -24,17 +26,15 @@ Status MatMulBnb4Program::GenerateShaderCode(ShaderHelper& shader) const {
   // number of output rows each invocation computes; both drive constant-bounded loops in the
   // template (the WGSL compiler unrolls them). The FP4/NF4 dequantization table is selected by
   // `quant_type`.
-  return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_bnb4.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(a_components, a.NumComponents()),
-                             WGSL_TEMPLATE_PARAMETER(output_number, output_number_),
-                             WGSL_TEMPLATE_PARAMETER(quant_type, quant_type_),
-                             WGSL_TEMPLATE_VARIABLE(absmax, absmax),
-                             WGSL_TEMPLATE_VARIABLE(input_a, a),
-                             WGSL_TEMPLATE_VARIABLE(input_b, b),
-                             WGSL_TEMPLATE_VARIABLE(output, y));
+  return WGSL_TEMPLATE_APPLY(
+      shader, "quantization/matmul_bnb4.wgsl.template", WGSL_TEMPLATE_PARAMETER(a_components, a.NumComponents()),
+      WGSL_TEMPLATE_PARAMETER(output_number, config.output_number_),
+      WGSL_TEMPLATE_PARAMETER(quant_type, config.quant_type_), WGSL_TEMPLATE_VARIABLE(absmax, absmax),
+      WGSL_TEMPLATE_VARIABLE(input_a, a), WGSL_TEMPLATE_VARIABLE(input_b, b), WGSL_TEMPLATE_VARIABLE(output, y));
 }
 
-Status MatMulBnb4TileProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status MatMulBnb4TileProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                       ConfiguredShaderHelper& shader) {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& b = shader.AddInput("input_b", ShaderUsage::None);
   const auto& absmax = shader.AddInput("absmax", ShaderUsage::UseValueTypeAlias);
@@ -45,16 +45,13 @@ Status MatMulBnb4TileProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // scalar) and `rpt` (kGemmRowsPerThread) is only consumed by the vec4 branch. The shared-tile
   // storage type follows the input element type (input_a_element_t) to halve workgroup memory for
   // f16 inputs; the accumulator stays f32 for precision.
-  const int tile = components_ == 4 ? MatMulBnb4TileProgram::kGemmTile : MatMulBnb4TileProgram::kTileSize;
-  return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_bnb4_tile.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(components, components_),
-                             WGSL_TEMPLATE_PARAMETER(quant_type, quant_type_),
-                             WGSL_TEMPLATE_PARAMETER(rpt, MatMulBnb4TileProgram::kGemmRowsPerThread),
-                             WGSL_TEMPLATE_PARAMETER(tile, tile),
-                             WGSL_TEMPLATE_VARIABLE(absmax, absmax),
-                             WGSL_TEMPLATE_VARIABLE(input_a, a),
-                             WGSL_TEMPLATE_VARIABLE(input_b, b),
-                             WGSL_TEMPLATE_VARIABLE(output, y));
+  const int tile = config.components_ == 4 ? MatMulBnb4TileProgramShader::kGemmTile : MatMulBnb4TileProgramShader::kTileSize;
+  return WGSL_TEMPLATE_APPLY(
+      shader, "quantization/matmul_bnb4_tile.wgsl.template", WGSL_TEMPLATE_PARAMETER(components, config.components_),
+      WGSL_TEMPLATE_PARAMETER(quant_type, config.quant_type_),
+      WGSL_TEMPLATE_PARAMETER(rpt, MatMulBnb4TileProgramShader::kGemmRowsPerThread), WGSL_TEMPLATE_PARAMETER(tile, tile),
+      WGSL_TEMPLATE_VARIABLE(absmax, absmax), WGSL_TEMPLATE_VARIABLE(input_a, a), WGSL_TEMPLATE_VARIABLE(input_b, b),
+      WGSL_TEMPLATE_VARIABLE(output, y));
 }
 
 Status MatMulBnb4::ComputeInternal(ComputeContext& context) const {
@@ -98,7 +95,7 @@ Status MatMulBnb4::ComputeInternal(ComputeContext& context) const {
   // For larger M the shared-memory tiled kernel amortizes both the global A loads and the weight
   // dequantization across a tile of rows/columns. For small M (e.g. decode, M == 1) the row-tiled
   // kernel below has less overhead, so fall back to it.
-  constexpr int64_t kTileThreshold = MatMulBnb4TileProgram::kTileSize;
+  constexpr int64_t kTileThreshold = MatMulBnb4TileProgramShader::kTileSize;
   if (m >= kTileThreshold) {
     // Use the vec4 GEMM tiling when both N and K are multiples of 4 (A is read vec4 along K, B is
     // dequantized into vec4 output columns, and the output is stored vec4); otherwise fall back to
@@ -107,33 +104,31 @@ Status MatMulBnb4::ComputeInternal(ComputeContext& context) const {
     const int components = use_vec4 ? 4 : 1;
     MatMulBnb4TileProgram program{quant_type_, components};
     program
-        .AddInput({a, ProgramTensorMetadataDependency::TypeAndRank, components})
-        .AddInput({b, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4})
-        .AddInput({absmax, ProgramTensorMetadataDependency::TypeAndRank})
+        .AddInput({a, ProgramTensorMetadataDependency::None, components})
+        .AddInput({b, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, 4})
+        .AddInput({absmax, ProgramTensorMetadataDependency::None})
         .AddOutput({y, ProgramTensorMetadataDependency::None, components});
 
     if (use_vec4) {
       // 8x8 workgroup; each workgroup computes a 32x32 (kGemmTile) output block.
-      constexpr uint32_t wg = MatMulBnb4TileProgram::kGemmWorkgroup;
-      constexpr int64_t gtile = MatMulBnb4TileProgram::kGemmTile;
+      constexpr uint32_t wg = MatMulBnb4TileProgramShader::kGemmWorkgroup;
+      constexpr int64_t gtile = MatMulBnb4TileProgramShader::kGemmTile;
       program.SetWorkgroupSize(wg, wg, 1)
           .SetDispatchGroupSize(static_cast<uint32_t>(CeilDiv<int64_t>(N_, gtile)),
                                 static_cast<uint32_t>(CeilDiv<int64_t>(m, gtile)),
                                 1);
     } else {
-      constexpr uint32_t tile = MatMulBnb4TileProgram::kTileSize;
+      constexpr uint32_t tile = MatMulBnb4TileProgramShader::kTileSize;
       program.SetWorkgroupSize(tile, tile, 1)
           .SetDispatchGroupSize(static_cast<uint32_t>(CeilDiv<int64_t>(N_, tile)),
                                 static_cast<uint32_t>(CeilDiv<int64_t>(m, tile)),
                                 1);
     }
 
-    program
-        .AddUniformVariables({{static_cast<uint32_t>(m)},
-                              {static_cast<uint32_t>(N_)},
-                              {static_cast<uint32_t>(K_)},
-                              {static_cast<uint32_t>(block_size_)}})
-        .CacheHint(std::to_string(quant_type_), std::to_string(components));
+    program.AddUniformVariables({{static_cast<uint32_t>(m)},
+                                 {static_cast<uint32_t>(N_)},
+                                 {static_cast<uint32_t>(K_)},
+                                 {static_cast<uint32_t>(block_size_)}});
 
     return context.RunProgram(program);
   }
@@ -145,17 +140,15 @@ Status MatMulBnb4::ComputeInternal(ComputeContext& context) const {
   const int64_t dispatch_elements = (m / output_number) * N_;
 
   MatMulBnb4Program program{quant_type_, output_number};
-  program
-      .AddInput({a, ProgramTensorMetadataDependency::TypeAndRank, a_components})
-      .AddInput({b, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4})
-      .AddInput({absmax, ProgramTensorMetadataDependency::TypeAndRank})
+  program.AddInput({a, ProgramTensorMetadataDependency::None, a_components})
+      .AddInput({b, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, 4})
+      .AddInput({absmax, ProgramTensorMetadataDependency::None})
       .AddOutput({y, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize(static_cast<uint32_t>(CeilDiv<int64_t>(dispatch_elements, WORKGROUP_SIZE)))
       .AddUniformVariables({{static_cast<uint32_t>(N_)},
                             {static_cast<uint32_t>(K_)},
                             {static_cast<uint32_t>(block_size_)},
-                            {static_cast<uint32_t>(dispatch_elements)}})
-      .CacheHint(std::to_string(quant_type_), std::to_string(a_components), std::to_string(output_number));
+                            {static_cast<uint32_t>(dispatch_elements)}});
 
   return context.RunProgram(program);
 }

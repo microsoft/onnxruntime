@@ -4,40 +4,37 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class LayerNormProgram final : public Program<LayerNormProgram> {
- public:
-  LayerNormProgram(bool has_bias, bool simplified, bool has_mean_output,
-                   bool has_inv_std_dev_output, bool split_norm_dim = false,
-                   bool fp32_normalization = false)
-      : Program{"LayerNorm"},
-        has_bias_{has_bias},
-        simplified_{simplified},
-        has_mean_output_{has_mean_output},
-        has_inv_std_dev_output_{has_inv_std_dev_output},
-        split_norm_dim_{split_norm_dim},
-        fp32_normalization_{fp32_normalization} {}
+#define WEBGPU_LAYER_NORM_CONFIG(F) \
+  F(bool, simplified)               \
+  F(bool, has_mean_output)          \
+  F(bool, split_norm_dim)           \
+  F(bool, fp32_normalization)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+WEBGPU_DECLARE_SPECIALIZATION(LayerNormConfig, WEBGPU_LAYER_NORM_CONFIG);
+#undef WEBGPU_LAYER_NORM_CONFIG
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"components", ProgramUniformVariableDataType::Uint32},
-                                          {"norm_count", ProgramUniformVariableDataType::Uint32},
-                                          {"norm_size", ProgramUniformVariableDataType::Uint32},
-                                          {"norm_size_vectorized", ProgramUniformVariableDataType::Uint32},
-                                          {"epsilon", ProgramUniformVariableDataType::Float32});
+struct LayerNormShader {
+  using Config = LayerNormConfig;
+  static constexpr std::string_view name = "LayerNorm";
+  static Status GenerateShaderCode(const Config& config, ConfiguredShaderHelper& sh);
 
- private:
-  bool has_bias_;
-  bool simplified_;
-  bool has_mean_output_;
-  bool has_inv_std_dev_output_;
-  bool split_norm_dim_;
-  bool fp32_normalization_;
+#define WEBGPU_LAYER_NORM_SHADER_UNIFORMS(U) \
+  U(Uint32, components)                      \
+  U(Uint32, norm_count)                      \
+  U(Uint32, norm_size)                       \
+  U(Uint32, norm_size_vectorized)            \
+  U(Float32, epsilon)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_LAYER_NORM_SHADER_UNIFORMS);
+#undef WEBGPU_LAYER_NORM_SHADER_UNIFORMS
 };
+
+using LayerNormProgram = ConfiguredProgram<LayerNormShader>;
 
 template <bool simplified>
 class LayerNorm final : public WebGpuKernel {
@@ -49,9 +46,6 @@ class LayerNorm final : public WebGpuKernel {
   }
 
   Status ComputeInternal(ComputeContext& context) const override;
-
- protected:
-  std::string cache_hint;
 
  private:
   int64_t axis_;

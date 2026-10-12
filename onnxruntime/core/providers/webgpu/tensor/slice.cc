@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/common/inlined_containers.h"
 #include "core/providers/webgpu/tensor/slice.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -58,7 +59,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPU, 4),
     Slice);
 
-Status SliceProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status SliceProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
@@ -282,8 +283,8 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
 
   SliceProgram program{};
   program
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components}})
-      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, components}})
+      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::None, components}})
+      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, components}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{output_size}, {starts_reordered}, {steps_reordered}, {signs_reordered}});
   return context.RunProgram(program);

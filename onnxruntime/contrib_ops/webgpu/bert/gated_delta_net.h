@@ -10,6 +10,7 @@
 #include <string>
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -68,218 +69,332 @@ inline std::optional<GatedDeltaNetParallelPrefillPlan> SelectGatedDeltaNetParall
   return GatedDeltaNetParallelPrefillPlan{chunks_per_pass, workspace_bytes};
 }
 
-class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
- public:
-  GatedDeltaNetProgram(GatedDeltaNetUpdateRule update_rule, bool has_cu_seqlens, bool has_initial_state,
-                       bool initial_state_in_final_state, bool output_final_state, bool qwen_gate,
-                       bool sigmoid_beta, bool qk_l2_norm, bool use_packed_params, bool capture_state_updates,
-                       bool vectorized_value_io)
-      : Program{"GatedDeltaNet"},
-        update_rule_(update_rule),
-        has_cu_seqlens_(has_cu_seqlens),
-        has_initial_state_(has_initial_state),
-        initial_state_in_final_state_(initial_state_in_final_state),
-        output_final_state_(output_final_state),
-        qwen_gate_(qwen_gate),
-        sigmoid_beta_(sigmoid_beta),
-        qk_l2_norm_(qk_l2_norm),
-        use_packed_params_(use_packed_params),
-        capture_state_updates_(capture_state_updates),
-        vectorized_value_io_(vectorized_value_io) {}
+#define WEBGPU_GATED_DELTA_NET_PROGRAM_CONFIG(F) \
+  F(GatedDeltaNetUpdateRule, update_rule_)       \
+  F(bool, has_cu_seqlens_)                       \
+  F(bool, has_initial_state_)                    \
+  F(bool, initial_state_in_final_state_)         \
+  F(bool, output_final_state_)                   \
+  F(bool, qwen_gate_)                            \
+  F(bool, sigmoid_beta_)                         \
+  F(bool, qk_l2_norm_)                           \
+  F(bool, use_packed_params_)                    \
+  F(bool, capture_state_updates_)                \
+  F(bool, vectorized_value_io_)
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+struct GatedDeltaNetProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATED_DELTA_NET_PROGRAM_CONFIG);
+  static Config MakeConfig(GatedDeltaNetUpdateRule update_rule, bool has_cu_seqlens, bool has_initial_state,
+                           bool initial_state_in_final_state, bool output_final_state, bool qwen_gate, bool sigmoid_beta,
+                           bool qk_l2_norm, bool use_packed_params, bool capture_state_updates, bool vectorized_value_io) {
+    Config result{};
+    result.update_rule_ = GatedDeltaNetUpdateRule(update_rule);
+    result.has_cu_seqlens_ = bool(has_cu_seqlens);
+    result.has_initial_state_ = bool(has_initial_state);
+    result.initial_state_in_final_state_ = bool(initial_state_in_final_state);
+    result.output_final_state_ = bool(output_final_state);
+    result.qwen_gate_ = bool(qwen_gate);
+    result.sigmoid_beta_ = bool(sigmoid_beta);
+    result.qk_l2_norm_ = bool(qk_l2_norm);
+    result.use_packed_params_ = bool(use_packed_params);
+    result.capture_state_updates_ = bool(capture_state_updates);
+    result.vectorized_value_io_ = bool(vectorized_value_io);
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"total_tokens", ProgramUniformVariableDataType::Uint32},
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"num_heads_q", ProgramUniformVariableDataType::Uint32},
-      {"num_heads_v", ProgramUniformVariableDataType::Uint32},
-      {"head_size_qk", ProgramUniformVariableDataType::Uint32},
-      {"head_size_v", ProgramUniformVariableDataType::Uint32},
-      {"state_update_capacity", ProgramUniformVariableDataType::Uint32},
-      {"scale", ProgramUniformVariableDataType::Float32});
+    return result;
+  }
+  static constexpr std::string_view name = "GatedDeltaNet";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
- private:
-  GatedDeltaNetUpdateRule update_rule_;
-  bool has_cu_seqlens_;
-  bool has_initial_state_;
-  bool initial_state_in_final_state_;
-  bool output_final_state_;
-  bool qwen_gate_;
-  bool sigmoid_beta_;
-  bool qk_l2_norm_;
-  bool use_packed_params_;
-  bool capture_state_updates_;
-  bool vectorized_value_io_;
+#define WEBGPU_GATED_DELTA_NET_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, total_tokens)                                 \
+  U(Uint32, batch_size)                                   \
+  U(Uint32, num_heads_q)                                  \
+  U(Uint32, num_heads_v)                                  \
+  U(Uint32, head_size_qk)                                 \
+  U(Uint32, head_size_v)                                  \
+  U(Uint32, state_update_capacity)                        \
+  U(Float32, scale)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATED_DELTA_NET_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GATED_DELTA_NET_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_GATED_DELTA_NET_PROGRAM_CONFIG
 
-class GatedDeltaNetClearProgram final : public Program<GatedDeltaNetClearProgram> {
- public:
-  GatedDeltaNetClearProgram() : Program{"GatedDeltaNetClear"} {}
+using GatedDeltaNetProgram = ConfiguredProgram<GatedDeltaNetProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+#define WEBGPU_GATED_DELTA_NET_CLEAR_PROGRAM_CONFIG(F)
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"element_count", ProgramUniformVariableDataType::Uint32});
+struct GatedDeltaNetClearProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATED_DELTA_NET_CLEAR_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
+  static constexpr std::string_view name = "GatedDeltaNetClear";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
+
+#define WEBGPU_GATED_DELTA_NET_CLEAR_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, element_count)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATED_DELTA_NET_CLEAR_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GATED_DELTA_NET_CLEAR_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_GATED_DELTA_NET_CLEAR_PROGRAM_CONFIG
 
-class GatedDeltaNetPrefillPrepareProgram final : public Program<GatedDeltaNetPrefillPrepareProgram> {
- public:
-  GatedDeltaNetPrefillPrepareProgram() : Program{"GatedDeltaNetPrefillPrepare"} {}
+using GatedDeltaNetClearProgram = ConfiguredProgram<GatedDeltaNetClearProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+#define WEBGPU_GATED_DELTA_NET_PREFILL_PREPARE_PROGRAM_CONFIG(F)
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"total_tokens", ProgramUniformVariableDataType::Uint32},
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"num_heads_q", ProgramUniformVariableDataType::Uint32},
-      {"num_heads_v", ProgramUniformVariableDataType::Uint32},
-      {"head_size_qk", ProgramUniformVariableDataType::Uint32},
-      {"head_size_v", ProgramUniformVariableDataType::Uint32},
-      {"chunk_size", ProgramUniformVariableDataType::Uint32},
-      {"chunk_base", ProgramUniformVariableDataType::Uint32},
-      {"chunks_in_pass", ProgramUniformVariableDataType::Uint32});
+struct GatedDeltaNetPrefillPrepareProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATED_DELTA_NET_PREFILL_PREPARE_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
+  static constexpr std::string_view name = "GatedDeltaNetPrefillPrepare";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
+
+#define WEBGPU_GATED_DELTA_NET_PREFILL_PREPARE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, total_tokens)                                                 \
+  U(Uint32, batch_size)                                                   \
+  U(Uint32, num_heads_q)                                                  \
+  U(Uint32, num_heads_v)                                                  \
+  U(Uint32, head_size_qk)                                                 \
+  U(Uint32, head_size_v)                                                  \
+  U(Uint32, chunk_size)                                                   \
+  U(Uint32, chunk_base)                                                   \
+  U(Uint32, chunks_in_pass)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATED_DELTA_NET_PREFILL_PREPARE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GATED_DELTA_NET_PREFILL_PREPARE_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_GATED_DELTA_NET_PREFILL_PREPARE_PROGRAM_CONFIG
 
-class GatedDeltaNetPrefillScanProgram final : public Program<GatedDeltaNetPrefillScanProgram> {
- public:
-  GatedDeltaNetPrefillScanProgram(bool has_initial_state, bool has_carry_state, bool output_final_state)
-      : Program{"GatedDeltaNetPrefillScan"},
-        has_initial_state_(has_initial_state),
-        has_carry_state_(has_carry_state),
-        output_final_state_(output_final_state) {}
+using GatedDeltaNetPrefillPrepareProgram = ConfiguredProgram<GatedDeltaNetPrefillPrepareProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+#define WEBGPU_GATED_DELTA_NET_PREFILL_SCAN_PROGRAM_CONFIG(F) \
+  F(bool, has_initial_state_)                                 \
+  F(bool, has_carry_state_)                                   \
+  F(bool, output_final_state_)
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"num_heads_v", ProgramUniformVariableDataType::Uint32},
-      {"head_size_qk", ProgramUniformVariableDataType::Uint32},
-      {"head_size_v", ProgramUniformVariableDataType::Uint32},
-      {"chunks_in_pass", ProgramUniformVariableDataType::Uint32},
-      {"is_last_pass", ProgramUniformVariableDataType::Uint32});
+struct GatedDeltaNetPrefillScanProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATED_DELTA_NET_PREFILL_SCAN_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_initial_state, bool has_carry_state, bool output_final_state) {
+    Config result{};
+    result.has_initial_state_ = bool(has_initial_state);
+    result.has_carry_state_ = bool(has_carry_state);
+    result.output_final_state_ = bool(output_final_state);
 
- private:
-  bool has_initial_state_;
-  bool has_carry_state_;
-  bool output_final_state_;
+    return result;
+  }
+  static constexpr std::string_view name = "GatedDeltaNetPrefillScan";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
+
+#define WEBGPU_GATED_DELTA_NET_PREFILL_SCAN_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, batch_size)                                                \
+  U(Uint32, num_heads_v)                                               \
+  U(Uint32, head_size_qk)                                              \
+  U(Uint32, head_size_v)                                               \
+  U(Uint32, chunks_in_pass)                                            \
+  U(Uint32, is_last_pass)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATED_DELTA_NET_PREFILL_SCAN_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GATED_DELTA_NET_PREFILL_SCAN_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_GATED_DELTA_NET_PREFILL_SCAN_PROGRAM_CONFIG
 
-class GatedDeltaNetPrefillOutputProgram final : public Program<GatedDeltaNetPrefillOutputProgram> {
- public:
-  GatedDeltaNetPrefillOutputProgram() : Program{"GatedDeltaNetPrefillOutput"} {}
+using GatedDeltaNetPrefillScanProgram = ConfiguredProgram<GatedDeltaNetPrefillScanProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+#define WEBGPU_GATED_DELTA_NET_PREFILL_OUTPUT_PROGRAM_CONFIG(F)
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"total_tokens", ProgramUniformVariableDataType::Uint32},
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"num_heads_q", ProgramUniformVariableDataType::Uint32},
-      {"num_heads_v", ProgramUniformVariableDataType::Uint32},
-      {"head_size_qk", ProgramUniformVariableDataType::Uint32},
-      {"head_size_v", ProgramUniformVariableDataType::Uint32},
-      {"chunk_size", ProgramUniformVariableDataType::Uint32},
-      {"chunk_base", ProgramUniformVariableDataType::Uint32},
-      {"chunks_in_pass", ProgramUniformVariableDataType::Uint32},
-      {"scale", ProgramUniformVariableDataType::Float32});
+struct GatedDeltaNetPrefillOutputProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATED_DELTA_NET_PREFILL_OUTPUT_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
+  static constexpr std::string_view name = "GatedDeltaNetPrefillOutput";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
+
+#define WEBGPU_GATED_DELTA_NET_PREFILL_OUTPUT_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, total_tokens)                                                \
+  U(Uint32, batch_size)                                                  \
+  U(Uint32, num_heads_q)                                                 \
+  U(Uint32, num_heads_v)                                                 \
+  U(Uint32, head_size_qk)                                                \
+  U(Uint32, head_size_v)                                                 \
+  U(Uint32, chunk_size)                                                  \
+  U(Uint32, chunk_base)                                                  \
+  U(Uint32, chunks_in_pass)                                              \
+  U(Float32, scale)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATED_DELTA_NET_PREFILL_OUTPUT_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GATED_DELTA_NET_PREFILL_OUTPUT_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_GATED_DELTA_NET_PREFILL_OUTPUT_PROGRAM_CONFIG
 
-class GatedDeltaNetParamsProgram final : public Program<GatedDeltaNetParamsProgram> {
- public:
-  GatedDeltaNetParamsProgram(bool has_decay, bool has_beta, bool qwen_gate, bool sigmoid_beta)
-      : Program{"GatedDeltaNetParams"},
-        has_decay_(has_decay),
-        has_beta_(has_beta),
-        qwen_gate_(qwen_gate),
-        sigmoid_beta_(sigmoid_beta) {}
+using GatedDeltaNetPrefillOutputProgram = ConfiguredProgram<GatedDeltaNetPrefillOutputProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+#define WEBGPU_GATED_DELTA_NET_PARAMS_PROGRAM_CONFIG(F) \
+  F(bool, has_decay_)                                   \
+  F(bool, has_beta_)                                    \
+  F(bool, qwen_gate_)                                   \
+  F(bool, sigmoid_beta_)
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"total_tokens", ProgramUniformVariableDataType::Uint32},
-      {"num_heads_v", ProgramUniformVariableDataType::Uint32});
+struct GatedDeltaNetParamsProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATED_DELTA_NET_PARAMS_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_decay, bool has_beta, bool qwen_gate, bool sigmoid_beta) {
+    Config result{};
+    result.has_decay_ = bool(has_decay);
+    result.has_beta_ = bool(has_beta);
+    result.qwen_gate_ = bool(qwen_gate);
+    result.sigmoid_beta_ = bool(sigmoid_beta);
 
- private:
-  bool has_decay_;
-  bool has_beta_;
-  bool qwen_gate_;
-  bool sigmoid_beta_;
+    return result;
+  }
+  static constexpr std::string_view name = "GatedDeltaNetParams";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
+
+#define WEBGPU_GATED_DELTA_NET_PARAMS_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, total_tokens)                                        \
+  U(Uint32, num_heads_v)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATED_DELTA_NET_PARAMS_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GATED_DELTA_NET_PARAMS_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_GATED_DELTA_NET_PARAMS_PROGRAM_CONFIG
 
-class GatedDeltaNetCopyProgram final : public Program<GatedDeltaNetCopyProgram> {
- public:
-  GatedDeltaNetCopyProgram() : Program{"GatedDeltaNetCopy"} {}
+using GatedDeltaNetParamsProgram = ConfiguredProgram<GatedDeltaNetParamsProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+#define WEBGPU_GATED_DELTA_NET_COPY_PROGRAM_CONFIG(F)
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"element_count", ProgramUniformVariableDataType::Uint32});
+struct GatedDeltaNetCopyProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATED_DELTA_NET_COPY_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
+  static constexpr std::string_view name = "GatedDeltaNetCopy";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
+
+#define WEBGPU_GATED_DELTA_NET_COPY_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, element_count)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATED_DELTA_NET_COPY_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GATED_DELTA_NET_COPY_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_GATED_DELTA_NET_COPY_PROGRAM_CONFIG
 
-class GatedDeltaNetUnpackQkvProgram final : public Program<GatedDeltaNetUnpackQkvProgram> {
- public:
-  GatedDeltaNetUnpackQkvProgram() : Program{"GatedDeltaNetUnpackQkv"} {}
+using GatedDeltaNetCopyProgram = ConfiguredProgram<GatedDeltaNetCopyProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+#define WEBGPU_GATED_DELTA_NET_UNPACK_QKV_PROGRAM_CONFIG(F)
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"total_tokens", ProgramUniformVariableDataType::Uint32},
-      {"query_size", ProgramUniformVariableDataType::Uint32},
-      {"value_size", ProgramUniformVariableDataType::Uint32});
+struct GatedDeltaNetUnpackQkvProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATED_DELTA_NET_UNPACK_QKV_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
+  static constexpr std::string_view name = "GatedDeltaNetUnpackQkv";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
+
+#define WEBGPU_GATED_DELTA_NET_UNPACK_QKV_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, total_tokens)                                            \
+  U(Uint32, query_size)                                              \
+  U(Uint32, value_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATED_DELTA_NET_UNPACK_QKV_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GATED_DELTA_NET_UNPACK_QKV_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_GATED_DELTA_NET_UNPACK_QKV_PROGRAM_CONFIG
 
-class GatedDeltaNetNormalizeProgram final : public Program<GatedDeltaNetNormalizeProgram> {
- public:
-  GatedDeltaNetNormalizeProgram() : Program{"GatedDeltaNetNormalize"} {}
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"total_tokens", ProgramUniformVariableDataType::Uint32},
-      {"num_heads_q", ProgramUniformVariableDataType::Uint32},
-      {"head_size_qk", ProgramUniformVariableDataType::Uint32});
+using GatedDeltaNetUnpackQkvProgram = ConfiguredProgram<GatedDeltaNetUnpackQkvProgramShader>;
+
+#define WEBGPU_GATED_DELTA_NET_NORMALIZE_PROGRAM_CONFIG(F)
+
+struct GatedDeltaNetNormalizeProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATED_DELTA_NET_NORMALIZE_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
+  static constexpr std::string_view name = "GatedDeltaNetNormalize";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
+#define WEBGPU_GATED_DELTA_NET_NORMALIZE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, total_tokens)                                           \
+  U(Uint32, num_heads_q)                                            \
+  U(Uint32, head_size_qk)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATED_DELTA_NET_NORMALIZE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GATED_DELTA_NET_NORMALIZE_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_GATED_DELTA_NET_NORMALIZE_PROGRAM_CONFIG
 
-class GatedDeltaNetChunkPrepareProgram final : public Program<GatedDeltaNetChunkPrepareProgram> {
- public:
-  GatedDeltaNetChunkPrepareProgram(bool has_cu_seqlens) : Program{"GatedDeltaNetChunkPrepare"},
-                                                          has_cu_seqlens_(has_cu_seqlens) {}
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"total_tokens", ProgramUniformVariableDataType::Uint32},
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"num_heads_q", ProgramUniformVariableDataType::Uint32},
-      {"num_heads_v", ProgramUniformVariableDataType::Uint32},
-      {"head_size_qk", ProgramUniformVariableDataType::Uint32},
-      {"head_size_v", ProgramUniformVariableDataType::Uint32},
-      {"total_chunks", ProgramUniformVariableDataType::Uint32},
-      {"chunk_elements", ProgramUniformVariableDataType::Uint32});
+using GatedDeltaNetNormalizeProgram = ConfiguredProgram<GatedDeltaNetNormalizeProgramShader>;
 
- private:
-  bool has_cu_seqlens_;
+#define WEBGPU_GATED_DELTA_NET_CHUNK_PREPARE_PROGRAM_CONFIG(F) \
+  F(bool, has_cu_seqlens_)
+
+struct GatedDeltaNetChunkPrepareProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATED_DELTA_NET_CHUNK_PREPARE_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_cu_seqlens) {
+    Config result{};
+    result.has_cu_seqlens_ = bool(has_cu_seqlens);
+
+    return result;
+  }
+  static constexpr std::string_view name = "GatedDeltaNetChunkPrepare";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
+#define WEBGPU_GATED_DELTA_NET_CHUNK_PREPARE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, total_tokens)                                               \
+  U(Uint32, batch_size)                                                 \
+  U(Uint32, num_heads_q)                                                \
+  U(Uint32, num_heads_v)                                                \
+  U(Uint32, head_size_qk)                                               \
+  U(Uint32, head_size_v)                                                \
+  U(Uint32, total_chunks)                                               \
+  U(Uint32, chunk_elements)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATED_DELTA_NET_CHUNK_PREPARE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GATED_DELTA_NET_CHUNK_PREPARE_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_GATED_DELTA_NET_CHUNK_PREPARE_PROGRAM_CONFIG
 
-class GatedDeltaNetChunkScanProgram final : public Program<GatedDeltaNetChunkScanProgram> {
- public:
-  GatedDeltaNetChunkScanProgram(uint32_t head_size, bool has_cu_seqlens, bool has_initial_state,
-                                bool state_alias, bool output_final_state)
-      : Program{"GatedDeltaNetChunkScan"}, head_size_(head_size), has_cu_seqlens_(has_cu_seqlens), has_initial_state_(has_initial_state), state_alias_(state_alias), output_final_state_(output_final_state) {}
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"total_tokens", ProgramUniformVariableDataType::Uint32},
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"num_heads_v", ProgramUniformVariableDataType::Uint32},
-      {"head_size_qk", ProgramUniformVariableDataType::Uint32},
-      {"head_size_v", ProgramUniformVariableDataType::Uint32},
-      {"total_chunks", ProgramUniformVariableDataType::Uint32},
-      {"chunk_elements", ProgramUniformVariableDataType::Uint32},
-      {"scale", ProgramUniformVariableDataType::Float32});
+using GatedDeltaNetChunkPrepareProgram = ConfiguredProgram<GatedDeltaNetChunkPrepareProgramShader>;
 
- private:
-  uint32_t head_size_;
-  bool has_cu_seqlens_;
-  bool has_initial_state_;
-  bool state_alias_;
-  bool output_final_state_;
+#define WEBGPU_GATED_DELTA_NET_CHUNK_SCAN_PROGRAM_CONFIG(F) \
+  F(uint32_t, head_size_)                                   \
+  F(bool, has_cu_seqlens_)                                  \
+  F(bool, has_initial_state_)                               \
+  F(bool, state_alias_)                                     \
+  F(bool, output_final_state_)
+
+struct GatedDeltaNetChunkScanProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATED_DELTA_NET_CHUNK_SCAN_PROGRAM_CONFIG);
+  static Config MakeConfig(uint32_t head_size, bool has_cu_seqlens, bool has_initial_state,
+                           bool state_alias, bool output_final_state) {
+    Config result{};
+    result.head_size_ = uint32_t(head_size);
+    result.has_cu_seqlens_ = bool(has_cu_seqlens);
+    result.has_initial_state_ = bool(has_initial_state);
+    result.state_alias_ = bool(state_alias);
+    result.output_final_state_ = bool(output_final_state);
+
+    return result;
+  }
+  static constexpr std::string_view name = "GatedDeltaNetChunkScan";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
+#define WEBGPU_GATED_DELTA_NET_CHUNK_SCAN_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, total_tokens)                                            \
+  U(Uint32, batch_size)                                              \
+  U(Uint32, num_heads_v)                                             \
+  U(Uint32, head_size_qk)                                            \
+  U(Uint32, head_size_v)                                             \
+  U(Uint32, total_chunks)                                            \
+  U(Uint32, chunk_elements)                                          \
+  U(Float32, scale)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATED_DELTA_NET_CHUNK_SCAN_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GATED_DELTA_NET_CHUNK_SCAN_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_GATED_DELTA_NET_CHUNK_SCAN_PROGRAM_CONFIG
+
+using GatedDeltaNetChunkScanProgram = ConfiguredProgram<GatedDeltaNetChunkScanProgramShader>;
 
 class GatedDeltaNet final : public WebGpuKernel {
  public:

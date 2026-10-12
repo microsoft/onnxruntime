@@ -6,7 +6,7 @@
 // Source: tensor/oihw_to_ohwi.wgsl.template
 
 template <>
-Status ApplyTemplate<"tensor/oihw_to_ohwi.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"tensor/oihw_to_ohwi.wgsl.template">::type params) {
+Status ApplyTemplate<"tensor/oihw_to_ohwi.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"tensor/oihw_to_ohwi.wgsl.template">::type params) {
   [[maybe_unused]] auto& ss = shader_helper.AdditionalImplementation();
 
   // Extract variables

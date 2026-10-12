@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/common/inlined_containers.h"
 #include "core/providers/webgpu/nn/batch_norm.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"
@@ -42,7 +43,8 @@ WEBGPU_BATCH_NORM_VERSIONED_KERNEL(9, 13, kMSInternalNHWCDomain, true)
 WEBGPU_BATCH_NORM_VERSIONED_KERNEL(14, 14, kMSInternalNHWCDomain, true)
 WEBGPU_BATCH_NORM_KERNEL(15, kMSInternalNHWCDomain, true)
 
-Status BatchNormalizationProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status BatchNormalizationProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                           ConfiguredShaderHelper& shader) {
   const ShaderVariableHelper& input_tensor = shader.AddInput("input_tensor", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const ShaderVariableHelper& scale = shader.AddInput("scale", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const ShaderVariableHelper& B = shader.AddInput("B", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
@@ -52,18 +54,18 @@ Status BatchNormalizationProgram::GenerateShaderCode(ShaderHelper& shader) const
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "  var outputIndices = " << output.OffsetToIndices("global_idx") << ";\n";
-  if (spatial_) {
+  if (config.spatial_) {
     if (input_tensor.Rank() == 1) {
       shader.MainFunctionBody() << "  let cOffset = 0u;\n";
     } else {
-      if (format_ == DataLayout::NHWC) {
+      if (config.format_ == DataLayout::NHWC) {
         shader.MainFunctionBody() << "  let cOffset = outputIndices[" << input_tensor.Rank() - 1 << "];\n";
       } else {
         shader.MainFunctionBody() << "  let cOffset = outputIndices[1];\n";
       }
     }
   } else {
-    if (format_ == DataLayout::NCHW) {
+    if (config.format_ == DataLayout::NCHW) {
       shader.MainFunctionBody() << "  " << output.IndicesSet("outputIndices", "0", "0") << "\n"
                                 << "  let cOffset = " << output.IndicesToOffset("outputIndices") << ";\n";
     } else {
@@ -83,7 +85,8 @@ Status BatchNormalizationProgram::GenerateShaderCode(ShaderHelper& shader) const
                             << "  let input_mean = " << input_mean.GetByOffset("cOffset") << ";\n"
                             << "  let input_var = " << input_var.GetByOffset("cOffset") << ";\n"
                             << "  let x = " << input_tensor.GetByOffset("global_idx") << ";\n"
-                            << "  let value = (x - input_mean) * inverseSqrt(input_var + " << epsilon_ << ") * scale + B;\n"
+                            << "  let value = (x - input_mean) * inverseSqrt(input_var + " << config.epsilon_
+                            << ") * scale + B;\n"
                             << "  " << output.SetByOffset("global_idx", "value") << "\n";
 
   return Status::OK();
@@ -123,13 +126,12 @@ Status BatchNormalization<is_nhwc>::ComputeInternal(ComputeContext& context) con
 
   BatchNormalizationProgram program{epsilon_, spatial_, format_};
   program
-      .CacheHint(epsilon_, spatial_, format_, components)
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components},
-                  {scale, ProgramTensorMetadataDependency::TypeAndRank, c_components},
-                  {B, ProgramTensorMetadataDependency::TypeAndRank, c_components},
-                  {input_mean, ProgramTensorMetadataDependency::TypeAndRank, c_components},
-                  {input_var, ProgramTensorMetadataDependency::TypeAndRank, c_components}})
-      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, components}})
+      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::None, components},
+                  {scale, ProgramTensorMetadataDependency::None, c_components},
+                  {B, ProgramTensorMetadataDependency::None, c_components},
+                  {input_mean, ProgramTensorMetadataDependency::None, c_components},
+                  {input_var, ProgramTensorMetadataDependency::None, c_components}})
+      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, components}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)}});
   return context.RunProgram(program);

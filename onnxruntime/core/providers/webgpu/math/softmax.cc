@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include <string>
 
 #include "core/common/inlined_containers.h"
@@ -58,23 +59,24 @@ static std::string MaxVector(const std::string& name, int components) {
 }
 
 // Online Softmax implementation as described in https://arxiv.org/abs/1805.02867
-Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status SoftmaxProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
   // Add input and output variables
   const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
                                                ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   int components = input.NumComponents();
 
-  const std::string thread_max_scalar_decl = is_fp32_
+  const std::string thread_max_scalar_decl = config.is_fp32_
                                                  ? "var thread_max = x_element_t(-3.4028234663852886e+38f);\n"
                                                  : "var thread_max = x_element_t(-65504.0h);\n";
 
   // Define shared memory for row max and row sum
-  shader.AdditionalImplementation()
-      << "var<workgroup> row_max_shared : x_value_t;\n"
-      << "var<workgroup> row_sum_shared : x_value_t;\n"
-      << "var<workgroup> thread_max_scalar_shared : array<x_element_t, " << wg_ << ">;\n"
-      << "var<workgroup> thread_sum_scalar_shared : array<x_element_t, " << wg_ << ">;\n";
+  shader.AdditionalImplementation() << "var<workgroup> row_max_shared : x_value_t;\n"
+                                    << "var<workgroup> row_sum_shared : x_value_t;\n"
+                                    << "var<workgroup> thread_max_scalar_shared : array<x_element_t, " << config.wg_
+                                    << ">;\n"
+                                    << "var<workgroup> thread_sum_scalar_shared : array<x_element_t, " << config.wg_
+                                    << ">;\n";
 
   // Define helper functions to get and set values
   shader.AdditionalImplementation()
@@ -91,20 +93,20 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody()
       << "  let gindex = i32(global_idx);\n"
       << "  let lindex = i32(local_idx);\n"
-      << "  const wg = " << wg_ << ";\n"
+      << "  const wg = " << config.wg_ << ";\n"
       << "  let row = gindex / wg;\n"
       << "  let cols = uniforms.packedCols;\n"
       << "  let row_stride : i32 = uniforms.packedCols;\n"
 
       // Online accumulation: track scalar running max and scalar running sum.
-      << thread_max_scalar_decl
-      << "  var thread_sum = x_element_t(0.0);\n"
+      << thread_max_scalar_decl << "  var thread_sum = x_element_t(0.0);\n"
       << "  for (var col = lindex; col < cols; col += wg) {\n"
       << "    let value = getValue(row, col, row_stride);\n"
       << "    let value_max = x_element_t(" << MaxVector("value", components) << ");\n"
       << "    let new_max = max(thread_max, value_max);\n"
       << "    let shifted_exp = exp(value - x_value_t(new_max));\n"
-      << "    thread_sum = thread_sum * exp(thread_max - new_max) + x_element_t(" << SumVector("shifted_exp", components) << ");\n"
+      << "    thread_sum = thread_sum * exp(thread_max - new_max) + x_element_t("
+      << SumVector("shifted_exp", components) << ");\n"
       << "    thread_max = new_max;\n"
       << "  }\n"
       << "  thread_max_scalar_shared[lindex] = thread_max;\n"
@@ -119,7 +121,8 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "      let lhs_max = thread_max_scalar_shared[lindex];\n"
       << "      let lhs_sum = thread_sum_scalar_shared[lindex];\n"
       << "      let merged_max = max(lhs_max, rhs_max);\n"
-      << "      thread_sum_scalar_shared[lindex] = lhs_sum * exp(lhs_max - merged_max) + rhs_sum * exp(rhs_max - merged_max);\n"
+      << "      thread_sum_scalar_shared[lindex] = lhs_sum * exp(lhs_max - merged_max) + rhs_sum * exp(rhs_max - "
+         "merged_max);\n"
       << "      thread_max_scalar_shared[lindex] = merged_max;\n"
       << "    }\n"
       << "    workgroupBarrier();\n"
@@ -187,16 +190,15 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
   SoftmaxProgram program{workgroup_size, is_fp32};
   if (is_transpose_required) {
     program
-        .AddInputs({{&transposed_input_tensor, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components)}})
-        .AddOutputs({{&intermediate_output, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components)}});
+        .AddInputs({{&transposed_input_tensor, ProgramTensorMetadataDependency::None, static_cast<int>(components)}})
+        .AddOutputs({{&intermediate_output, ProgramTensorMetadataDependency::None, static_cast<int>(components)}});
   } else {
     program
-        .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components)}})
-        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components)}});
+        .AddInputs({{input_tensor, ProgramTensorMetadataDependency::None, static_cast<int>(components)}})
+        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, static_cast<int>(components)}});
   }
 
   program
-      .CacheHint(std::to_string(components), std::to_string(workgroup_size))
       .SetWorkgroupSize(workgroup_size)
       .SetDispatchGroupSize(static_cast<uint32_t>(rows))
       .AddUniformVariables({{static_cast<int32_t>(packed_cols)}});

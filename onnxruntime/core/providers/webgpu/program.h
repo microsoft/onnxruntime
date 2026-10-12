@@ -155,14 +155,11 @@ struct ProgramOverridableConstantDefinition {
   bool has_default_value;
 };
 
-// represents whether the program shader depends on the type, rank, or shape of an input/output tensor
+// Type, vector width and rank always participate in cache identity. Shape opts
+// into concrete dimension specialization; otherwise dimensions are uniforms.
 enum class ProgramTensorMetadataDependency : int {
   None = 0,
-  Type = 1,
-  Rank = 2,
-  Shape = 4,
-  TypeAndRank = Type | Rank,
-  TypeAndShape = Type | Shape,
+  Shape = 1,
 };
 OStringStream& operator<<(OStringStream& os, ProgramTensorMetadataDependency);
 
@@ -310,13 +307,6 @@ class ProgramBase {
   // chain-style methods for setting properties
   //
 
-  // set the cache hint for the program
-  template <typename... T>
-  ProgramBase& CacheHint(T&&... hints) {
-    cache_hint_ = absl::StrJoin(std::forward_as_tuple(std::forward<T>(hints)...), "|");
-    return *this;
-  }
-
   // add a program input
   ProgramBase& AddInput(ProgramInput&& input);
   // add multiple program inputs
@@ -356,12 +346,12 @@ class ProgramBase {
   // add a uniform variable.
   //
   // the specified uniform variable should match the uniform definition in the class,
-  // specified by macro WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES.
+  // specified by WEBGPU_DECLARE_UNIFORMS.
   ProgramBase& AddUniformVariable(ProgramUniformVariableValue&& variable);
   // add multiple uniform variables.
   //
   // the specified uniform variables should match the uniform definition in the class,
-  // specified by macro WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES.
+  // specified by WEBGPU_DECLARE_UNIFORMS.
   ProgramBase& AddUniformVariables(std::initializer_list<ProgramUniformVariableValue> variables);
 
   // set the overridable constants
@@ -376,13 +366,17 @@ class ProgramBase {
 
   virtual Status GenerateShaderCode(ShaderHelper& shader) const = 0;
 
+  // A structured program's static generator can only inspect its declared configuration
+  // and the metadata exposed by ConfiguredShaderHelper.
+  virtual const void* StructuredKeyType() const = 0;
+  virtual void AppendSpecializationKey(std::string&) const = 0;
+
   //
   // Properties Getters
   //
 
   inline const std::string& Name() const { return name_; }
   inline const ProgramMetadata& Metadata() const { return metadata_; }
-  inline const std::string& CacheHint() const { return cache_hint_; }
   inline const std::vector<ProgramInput>& Inputs() const { return inputs_; }
   inline const std::vector<ProgramOutput>& Outputs() const { return outputs_; }
   // The input/output that owns the physical buffer for a logical buffer view. A view owner must
@@ -412,7 +406,6 @@ class ProgramBase {
   std::string name_;
   ProgramMetadata metadata_;
 
-  std::string cache_hint_;
   std::vector<ProgramInput> inputs_;
   std::vector<ProgramOutput> outputs_;
   std::vector<TensorShape> indices_;
@@ -498,10 +491,13 @@ concept has_uniform_variables_correct_type = requires {
 
 template <typename T>
 class Program : public details::ProgramWrapper {
- public:
+ private:
+  template <typename Spec>
+  friend class ConfiguredProgram;
   template <typename... Args>
   Program(Args&&... args) : details::ProgramWrapper{std::forward<Args>(args)..., GetMetadata()} {}
 
+ public:
   static ProgramMetadata GetMetadata() {
     ProgramMetadata metadata;
     if constexpr (details::has_member_constants<T>) {
@@ -533,7 +529,7 @@ class Program : public details::ProgramWrapper {
     if constexpr (details::has_member_uniform_variables<T>) {
       static_assert(details::has_uniform_variables_correct_type<T>,
                     "Derived class of \"Program\" has member \"uniform_variables\" but its type is incorrect. "
-                    "Please use macro WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES() or WEBGPU_PROGRAM_EXTEND_UNIFORM_VARIABLES() to declare uniform variables.");
+                    "Please use WEBGPU_DECLARE_UNIFORMS() to declare runtime uniform slots.");
 
       constexpr const ProgramUniformVariableDefinition* ptr = T::uniform_variables.data();
       constexpr size_t len = T::uniform_variables.size();
@@ -586,11 +582,22 @@ constexpr std::array<std::remove_cv_t<T>, L + R> _concat2(const std::array<T, L>
 #define WEBGPU_PROGRAM_EXTEND_OVERRIDABLE_CONSTANTS(BASE, ...) \
   WEBGPU_PROGRAM_EXTEND_(overridable_constants, onnxruntime::webgpu::ProgramOverridableConstantDefinition, BASE, __VA_ARGS__)
 
-#define WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(...) \
-  WEBGPU_PROGRAM_DEFINE_(uniform_variables, onnxruntime::webgpu::ProgramUniformVariableDefinition, __VA_ARGS__)
+// Uniform declarations describe layout and expression names, never generation-time payloads.
+template <ProgramUniformVariableDataType Type>
+struct ShaderUniform final {
+  static constexpr auto data_type = Type;
+  std::string_view name;
+};
 
-#define WEBGPU_PROGRAM_EXTEND_UNIFORM_VARIABLES(BASE, ...) \
-  WEBGPU_PROGRAM_EXTEND_(uniform_variables, onnxruntime::webgpu::ProgramUniformVariableDefinition, BASE, __VA_ARGS__)
+#define WEBGPU_UNIFORM_SLOT(type, name) \
+  static constexpr onnxruntime::webgpu::ShaderUniform<onnxruntime::webgpu::ProgramUniformVariableDataType::type> name{#name};
+#define WEBGPU_UNIFORM_DEFINITION(type, name) \
+  {#name, onnxruntime::webgpu::ProgramUniformVariableDataType::type},
+#define WEBGPU_DECLARE_UNIFORMS(fields) \
+  struct Uniforms final {               \
+    fields(WEBGPU_UNIFORM_SLOT)         \
+  };                                    \
+  WEBGPU_PROGRAM_DEFINE_(uniform_variables, onnxruntime::webgpu::ProgramUniformVariableDefinition, fields(WEBGPU_UNIFORM_DEFINITION))
 
 }  // namespace webgpu
 }  // namespace onnxruntime

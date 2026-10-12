@@ -5,41 +5,70 @@
 
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class ComputeChannelScaleShiftProgram final : public Program<ComputeChannelScaleShiftProgram> {
- public:
-  ComputeChannelScaleShiftProgram(int components, float epsilon, int workgroup_size) : Program{"ComputeChannelScaleShift"}, components_(components), epsilon_(epsilon), workgroup_size_(workgroup_size) {}
+#define WEBGPU_CHANNEL_SCALE_CONFIG(F) \
+  F(float, epsilon)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+WEBGPU_DECLARE_SPECIALIZATION(ChannelScaleConfig, WEBGPU_CHANNEL_SCALE_CONFIG);
+#undef WEBGPU_CHANNEL_SCALE_CONFIG
 
-  int components_;
-  float epsilon_;
-  int workgroup_size_;
+struct ComputeChannelScaleShiftShader {
+  using Config = ChannelScaleConfig;
+  static constexpr std::string_view name = "ComputeChannelScaleShift";
+  static Status GenerateShaderCode(const Config& config, ConfiguredShaderHelper& sh);
 };
 
-class InstanceNormProgram final : public Program<InstanceNormProgram> {
- public:
-  InstanceNormProgram() : Program{"InstanceNorm"} {}
+using ComputeChannelScaleShiftProgram = ConfiguredProgram<ComputeChannelScaleShiftShader>;
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+#define WEBGPU_INSTANCE_NORM_PROGRAM_CONFIG(F)
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
+struct InstanceNormProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_INSTANCE_NORM_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
+  static constexpr std::string_view name = "InstanceNorm";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
+
+#define WEBGPU_INSTANCE_NORM_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_INSTANCE_NORM_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_INSTANCE_NORM_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_INSTANCE_NORM_PROGRAM_CONFIG
 
-class InstanceNormProgramNHWC final : public Program<InstanceNormProgramNHWC> {
- public:
-  InstanceNormProgramNHWC(int components) : Program{"InstanceNormNHWC"}, components_(components) {}
+using InstanceNormProgram = ConfiguredProgram<InstanceNormProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+#define WEBGPU_INSTANCE_NORM_PROGRAM_N_H_W_C_CONFIG(F) F(int, components_)
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32}, {"components", ProgramUniformVariableDataType::Uint32}, {"C", ProgramUniformVariableDataType::Uint32}, {"H", ProgramUniformVariableDataType::Uint32});
+struct InstanceNormProgramNHWCShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_INSTANCE_NORM_PROGRAM_N_H_W_C_CONFIG);
+  static Config MakeConfig(int components) {
+    Config result{};
+    result.components_ = int(components);
 
- private:
-  int components_;
+    return result;
+  }
+  static constexpr std::string_view name = "InstanceNormNHWC";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
+
+#define WEBGPU_INSTANCE_NORM_PROGRAM_N_H_W_C_SHADER_UNIFORMS(U) \
+  U(Uint32, output_size)                                        \
+  U(Uint32, components)                                         \
+  U(Uint32, C)                                                  \
+  U(Uint32, H)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_INSTANCE_NORM_PROGRAM_N_H_W_C_SHADER_UNIFORMS);
+#undef WEBGPU_INSTANCE_NORM_PROGRAM_N_H_W_C_SHADER_UNIFORMS
 };
+#undef WEBGPU_INSTANCE_NORM_PROGRAM_N_H_W_C_CONFIG
+
+using InstanceNormProgramNHWC = ConfiguredProgram<InstanceNormProgramNHWCShader>;
 
 template <bool is_nhwc>
 class InstanceNorm final : public WebGpuKernel {

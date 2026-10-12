@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -62,34 +63,43 @@ const std::string& Fp8E4M3DequantLutWgsl() {
   return lut;
 }
 
-class BlockFp8ExpertMatMulProgram final : public Program<BlockFp8ExpertMatMulProgram> {
- public:
-  BlockFp8ExpertMatMulProgram(bool has_bias, bool has_indirect_experts, bool broadcast_input, bool use_matrix)
-      : Program<BlockFp8ExpertMatMulProgram>{"QMoEBlockFp8ExpertMatMul"},
-        has_bias_{has_bias},
-        has_indirect_experts_{has_indirect_experts},
-        broadcast_input_{broadcast_input},
-        use_matrix_{use_matrix} {}
+#define WEBGPU_BLOCK_FP8_EXPERT_MAT_MUL_PROGRAM_CONFIG(F) \
+  F(bool, has_bias_)                                      \
+  F(bool, has_indirect_experts_)                          \
+  F(bool, broadcast_input_)                               \
+  F(bool, use_matrix_)
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+struct BlockFp8ExpertMatMulProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_BLOCK_FP8_EXPERT_MAT_MUL_PROGRAM_CONFIG);
+  static Config MakeConfig(bool has_bias, bool has_indirect_experts, bool broadcast_input, bool use_matrix) {
+    Config result{};
+    result.has_bias_ = bool{has_bias};
+    result.has_indirect_experts_ = bool{has_indirect_experts};
+    result.broadcast_input_ = bool{broadcast_input};
+    result.use_matrix_ = bool{use_matrix};
+
+    return result;
+  }
+  static constexpr std::string_view name = "QMoEBlockFp8ExpertMatMul";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
     const auto& weights = shader.AddInput("weights", ShaderUsage::UseElementTypeAlias);
     const auto& scales = shader.AddInput("scales", ShaderUsage::UseElementTypeAlias);
     const ShaderVariableHelper* bias = &input;
-    if (has_bias_) {
+    if (config.has_bias_) {
       bias = &shader.AddInput("bias", ShaderUsage::UseElementTypeAlias);
     }
     const ShaderVariableHelper* indirect_experts = &weights;
-    if (has_indirect_experts_) {
+    if (config.has_indirect_experts_) {
       indirect_experts = &shader.AddInput("indirect_experts", ShaderUsage::UseElementTypeAlias);
     }
     const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
     shader.AdditionalImplementation() << Fp8E4M3DequantLutWgsl();
     return WGSL_TEMPLATE_APPLY(shader, "moe/block_fp8_expert_matmul.wgsl.template",
-                               WGSL_TEMPLATE_PARAMETER(broadcast_input, broadcast_input_),
-                               WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
-                               WGSL_TEMPLATE_PARAMETER(has_indirect_experts, has_indirect_experts_),
-                               WGSL_TEMPLATE_PARAMETER(use_matrix, use_matrix_),
+                               WGSL_TEMPLATE_PARAMETER(broadcast_input, config.broadcast_input_),
+                               WGSL_TEMPLATE_PARAMETER(has_bias, config.has_bias_),
+                               WGSL_TEMPLATE_PARAMETER(has_indirect_experts, config.has_indirect_experts_),
+                               WGSL_TEMPLATE_PARAMETER(use_matrix, config.use_matrix_),
                                WGSL_TEMPLATE_VARIABLE(bias, *bias),
                                WGSL_TEMPLATE_VARIABLE(indirect_experts, *indirect_experts),
                                WGSL_TEMPLATE_VARIABLE(input, input),
@@ -98,20 +108,19 @@ class BlockFp8ExpertMatMulProgram final : public Program<BlockFp8ExpertMatMulPro
                                WGSL_TEMPLATE_VARIABLE(weights, weights));
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"rows", ProgramUniformVariableDataType::Uint32},
-      {"cols", ProgramUniformVariableDataType::Uint32},
-      {"inner", ProgramUniformVariableDataType::Uint32},
-      {"weight_byte_offset", ProgramUniformVariableDataType::Uint32},
-      {"scale_n_blocks", ProgramUniformVariableDataType::Uint32},
-      {"scale_k_blocks", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool has_bias_;
-  bool has_indirect_experts_;
-  bool broadcast_input_;
-  bool use_matrix_;
+#define WEBGPU_BLOCK_FP8_EXPERT_MAT_MUL_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, rows)                                                  \
+  U(Uint32, cols)                                                  \
+  U(Uint32, inner)                                                 \
+  U(Uint32, weight_byte_offset)                                    \
+  U(Uint32, scale_n_blocks)                                        \
+  U(Uint32, scale_k_blocks)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_BLOCK_FP8_EXPERT_MAT_MUL_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_BLOCK_FP8_EXPERT_MAT_MUL_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_BLOCK_FP8_EXPERT_MAT_MUL_PROGRAM_CONFIG
+
+using BlockFp8ExpertMatMulProgram = ConfiguredProgram<BlockFp8ExpertMatMulProgramShader>;
 
 Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
                                  const Tensor* input,
@@ -144,14 +153,14 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
                                                                 16, 16, 16, 32, false}})
                               .has_value();
   BlockFp8ExpertMatMulProgram program{bias != nullptr, indirect_experts != nullptr, broadcast_input, use_matrix};
-  program.AddInputs({{input, ProgramTensorMetadataDependency::Type}});
+  program.AddInputs({{input, ProgramTensorMetadataDependency::None}});
   if (indirect_experts) {
-    program.AddInputs({{&raw_weights, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
-        .AddInputs({{scales, ProgramTensorMetadataDependency::Type}});
+    program.AddInputs({{&raw_weights, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, 4}})
+        .AddInputs({{scales, ProgramTensorMetadataDependency::None}});
     if (bias) {
-      program.AddInputs({{bias, ProgramTensorMetadataDependency::Type}});
+      program.AddInputs({{bias, ProgramTensorMetadataDependency::None}});
     }
-    program.AddInputs({{indirect_experts, ProgramTensorMetadataDependency::Type}});
+    program.AddInputs({{indirect_experts, ProgramTensorMetadataDependency::None}});
   } else {
     const uint64_t weight_elements = uint64_t{cols} * inner;
     const uint64_t weight_offset = uint64_t{expert_idx} * weight_elements;
@@ -160,17 +169,17 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
     // Include the shared boundary word when an expert starts inside it.
     const uint32_t view_words = static_cast<uint32_t>((byte_offset + weight_elements + 3) / 4);
     program.AddInputs({ProgramInput::BufferView(&raw_weights,
-                                                ProgramTensorMetadataDependency::Type,
+                                                ProgramTensorMetadataDependency::None,
                                                 TensorShape({view_words}),
                                                 first_word,
                                                 4)})
         .AddInputs({ProgramInput::BufferView(scales,
-                                             ProgramTensorMetadataDependency::Type,
+                                             ProgramTensorMetadataDependency::None,
                                              TensorShape({scale_n_blocks * scale_k_blocks}),
                                              expert_idx * scale_n_blocks * scale_k_blocks)});
     if (bias) {
       program.AddInputs({ProgramInput::BufferView(bias,
-                                                  ProgramTensorMetadataDependency::Type,
+                                                  ProgramTensorMetadataDependency::None,
                                                   TensorShape({cols}),
                                                   expert_idx * cols)});
     }
@@ -180,8 +189,7 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
       .SetDispatchGroupSize(use_matrix ? (cols - 1) / 16 + 1 : (cols - 1) / 64 + 1,
                             use_matrix ? (rows - 1) / 64 + 1 : rows)
       .AddUniformVariables({rows, cols, inner, byte_offset,
-                            scale_n_blocks, scale_k_blocks})
-      .CacheHint(bias != nullptr, indirect_experts != nullptr, broadcast_input);
+                            scale_n_blocks, scale_k_blocks});
   if (use_matrix && context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
     program.SetSubgroupSize(32);
   }
@@ -225,19 +233,28 @@ Status ValidateBlockFp8Scales(const Tensor* scales, const char* name,
 
 }  // namespace
 
-class GateProgram final : public Program<GateProgram> {
- public:
-  GateProgram(int k, bool is_fp16, bool has_router_weights, bool normalize_routing_weights)
-      : Program<GateProgram>{"QmoeGate"},
-        k_{k},
-        is_fp16_{is_fp16},
-        has_router_weights_{has_router_weights},
-        normalize_routing_weights_{normalize_routing_weights} {}
+#define WEBGPU_GATE_PROGRAM_CONFIG(F) \
+  F(int, k_)                          \
+  F(bool, is_fp16_)                   \
+  F(bool, has_router_weights_)        \
+  F(bool, normalize_routing_weights_)
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+struct GateProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATE_PROGRAM_CONFIG);
+  static Config MakeConfig(int k, bool is_fp16, bool has_router_weights, bool normalize_routing_weights) {
+    Config result{};
+    result.k_ = int{k};
+    result.is_fp16_ = bool{is_fp16};
+    result.has_router_weights_ = bool{has_router_weights};
+    result.normalize_routing_weights_ = bool{normalize_routing_weights};
+
+    return result;
+  }
+  static constexpr std::string_view name = "QmoeGate";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& router_logits = shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
     const ShaderVariableHelper* router_weights = &router_logits;
-    if (has_router_weights_) {
+    if (config.has_router_weights_) {
       router_weights = &shader.AddInput("router_weights", ShaderUsage::UseElementTypeAlias);
     }
     const auto& topk_values = shader.AddOutput("topk_values");
@@ -245,60 +262,70 @@ class GateProgram final : public Program<GateProgram> {
     shader.AddOutput("tokencount_for_expert");
 
     return WGSL_TEMPLATE_APPLY(shader, "moe/gate.wgsl.template",
-                               WGSL_TEMPLATE_PARAMETER(has_router_weights, has_router_weights_),
-                               WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
-                               WGSL_TEMPLATE_PARAMETER(k, k_),
-                               WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, normalize_routing_weights_),
+                               WGSL_TEMPLATE_PARAMETER(has_router_weights, config.has_router_weights_),
+                               WGSL_TEMPLATE_PARAMETER(is_fp16, config.is_fp16_),
+                               WGSL_TEMPLATE_PARAMETER(k, config.k_),
+                               WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, config.normalize_routing_weights_),
                                WGSL_TEMPLATE_VARIABLE(hiddenstate_for_expert, hiddenstate_for_expert),
                                WGSL_TEMPLATE_VARIABLE(router_logits, router_logits),
                                WGSL_TEMPLATE_VARIABLE(router_weights, *router_weights),
                                WGSL_TEMPLATE_VARIABLE(topk_values, topk_values));
   };
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"rows", ProgramUniformVariableDataType::Uint32},
-      {"cols", ProgramUniformVariableDataType::Uint32},
-      {"token_offset", ProgramUniformVariableDataType::Uint32});
-
- private:
-  int k_;
-  bool is_fp16_;
-  bool has_router_weights_;
-  bool normalize_routing_weights_;
+#define WEBGPU_GATE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, rows)                              \
+  U(Uint32, cols)                              \
+  U(Uint32, token_offset)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_GATE_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_GATE_PROGRAM_CONFIG
 
-Gate1TokenProgram::Gate1TokenProgram(int k, bool is_fp16, bool has_router_weights, bool normalize_routing_weights)
-    : Program<Gate1TokenProgram>{"QmoeGate1Token"},
-      k_{k},
-      is_fp16_{is_fp16},
-      has_router_weights_{has_router_weights},
-      normalize_routing_weights_{normalize_routing_weights} {}
+using GateProgram = ConfiguredProgram<GateProgramShader>;
 
-Status Gate1TokenProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Gate1TokenProgramShader::Config Gate1TokenProgramShader::MakeConfig(int k, bool is_fp16, bool has_router_weights, bool normalize_routing_weights) {
+  Config result{};
+  result.k_ = int{k};
+  result.is_fp16_ = bool{is_fp16};
+  result.has_router_weights_ = bool{has_router_weights};
+  result.normalize_routing_weights_ = bool{normalize_routing_weights};
+
+  return result;
+}
+
+Status Gate1TokenProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
   const auto& router_logits = shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
   const ShaderVariableHelper* router_weights = &router_logits;
-  if (has_router_weights_) {
+  if (config.has_router_weights_) {
     router_weights = &shader.AddInput("router_weights", ShaderUsage::UseElementTypeAlias);
   }
   const auto& topk_values = shader.AddOutput("topk_values");
   const auto& indirect_experts = shader.AddOutput("indirect_experts");
 
   return WGSL_TEMPLATE_APPLY(shader, "moe/gate_1token.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(has_router_weights, has_router_weights_),
-                             WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
-                             WGSL_TEMPLATE_PARAMETER(k, k_),
-                             WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, normalize_routing_weights_),
+                             WGSL_TEMPLATE_PARAMETER(has_router_weights, config.has_router_weights_),
+                             WGSL_TEMPLATE_PARAMETER(is_fp16, config.is_fp16_),
+                             WGSL_TEMPLATE_PARAMETER(k, config.k_),
+                             WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, config.normalize_routing_weights_),
                              WGSL_TEMPLATE_VARIABLE(indirect_experts, indirect_experts),
                              WGSL_TEMPLATE_VARIABLE(router_logits, router_logits),
                              WGSL_TEMPLATE_VARIABLE(router_weights, *router_weights),
                              WGSL_TEMPLATE_VARIABLE(topk_values, topk_values));
 }
 
-class HiddenStateGatherProgram final : public Program<HiddenStateGatherProgram> {
- public:
-  HiddenStateGatherProgram() : Program<HiddenStateGatherProgram>{"QmoeHiddenStateGather"} {};
+#define WEBGPU_HIDDEN_STATE_GATHER_PROGRAM_CONFIG(F)
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+struct HiddenStateGatherProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_HIDDEN_STATE_GATHER_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
+  static constexpr std::string_view name = "QmoeHiddenStateGather";
+  ;
+
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& hiddenstate_for_expert = shader.AddInput("hiddenstate_for_expert", ShaderUsage::UseElementTypeAlias);
     const auto& hidden_state = shader.AddInput("hidden_state", ShaderUsage::UseElementTypeAlias);
     const auto& new_hidden_state = shader.AddOutput("new_hidden_state");
@@ -311,87 +338,127 @@ class HiddenStateGatherProgram final : public Program<HiddenStateGatherProgram> 
                                WGSL_TEMPLATE_VARIABLE(tokens, tokens));
   };
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"expert_idx", ProgramUniformVariableDataType::Uint32},
-      {"num_experts", ProgramUniformVariableDataType::Uint32},
-      {"num_tokens", ProgramUniformVariableDataType::Uint32},
-      {"hidden_size", ProgramUniformVariableDataType::Uint32});
-
- private:
+#define WEBGPU_HIDDEN_STATE_GATHER_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, expert_idx)                                       \
+  U(Uint32, num_experts)                                      \
+  U(Uint32, num_tokens)                                       \
+  U(Uint32, hidden_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_HIDDEN_STATE_GATHER_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_HIDDEN_STATE_GATHER_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_HIDDEN_STATE_GATHER_PROGRAM_CONFIG
 
-class ZeroTensorProgram final : public Program<ZeroTensorProgram> {
- public:
-  ZeroTensorProgram() : Program<ZeroTensorProgram>{"QmoeZeroTensor"} {};
+using HiddenStateGatherProgram = ConfiguredProgram<HiddenStateGatherProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+#define WEBGPU_ZERO_TENSOR_PROGRAM_CONFIG(F)
+
+struct ZeroTensorProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_ZERO_TENSOR_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
+  static constexpr std::string_view name = "QmoeZeroTensor";
+  ;
+
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& tensor = shader.AddOutput("tensor", ShaderUsage::UseElementTypeAlias);
     return WGSL_TEMPLATE_APPLY(shader, "moe/zero_tensor.wgsl.template",
                                WGSL_TEMPLATE_VARIABLE(tensor, tensor));
   };
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"size", ProgramUniformVariableDataType::Uint32});
-
- private:
+#define WEBGPU_ZERO_TENSOR_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_ZERO_TENSOR_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_ZERO_TENSOR_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_ZERO_TENSOR_PROGRAM_CONFIG
 
-class ZeroU32Program final : public Program<ZeroU32Program> {
- public:
-  ZeroU32Program() : Program<ZeroU32Program>{"QmoeZeroU32"} {}
+using ZeroTensorProgram = ConfiguredProgram<ZeroTensorProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+#define WEBGPU_ZERO_U32_PROGRAM_CONFIG(F)
+
+struct ZeroU32ProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_ZERO_U32_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
+  static constexpr std::string_view name = "QmoeZeroU32";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& output = shader.AddOutput("output");
     return WGSL_TEMPLATE_APPLY(shader, "moe/zero_u32.wgsl.template",
                                WGSL_TEMPLATE_VARIABLE(output, output));
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"size", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_ZERO_U32_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_ZERO_U32_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_ZERO_U32_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_ZERO_U32_PROGRAM_CONFIG
 
-class MoEActivationProgram final : public Program<MoEActivationProgram> {
- public:
-  MoEActivationProgram(MoEActivationType activation_type, int swiglu_fusion, bool has_fc3)
-      : Program<MoEActivationProgram>{"MoEActivation"},
-        activation_type_{activation_type},
-        swiglu_fusion_{swiglu_fusion},
-        has_fc3_{has_fc3} {}
+using ZeroU32Program = ConfiguredProgram<ZeroU32ProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+#define WEBGPU_MO_E_ACTIVATION_PROGRAM_CONFIG(F) \
+  F(MoEActivationType, activation_type_)         \
+  F(int, swiglu_fusion_)                         \
+  F(bool, has_fc3_)
+
+struct MoEActivationProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MO_E_ACTIVATION_PROGRAM_CONFIG);
+  static Config MakeConfig(MoEActivationType activation_type, int swiglu_fusion, bool has_fc3) {
+    Config result{};
+    result.activation_type_ = MoEActivationType{activation_type};
+    result.swiglu_fusion_ = int{swiglu_fusion};
+    result.has_fc3_ = bool{has_fc3};
+
+    return result;
+  }
+  static constexpr std::string_view name = "MoEActivation";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
     const ShaderVariableHelper* fc3_input = &input;
-    if (has_fc3_) {
+    if (config.has_fc3_) {
       fc3_input = &shader.AddInput("fc3_input", ShaderUsage::UseElementTypeAlias);
     }
     const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
 
     return WGSL_TEMPLATE_APPLY(shader, "moe/activation.wgsl.template",
-                               WGSL_TEMPLATE_PARAMETER(activation, static_cast<int>(activation_type_)),
-                               WGSL_TEMPLATE_PARAMETER(has_fc3, has_fc3_),
-                               WGSL_TEMPLATE_PARAMETER(swiglu_fusion, swiglu_fusion_),
+                               WGSL_TEMPLATE_PARAMETER(activation, static_cast<int>(config.activation_type_)),
+                               WGSL_TEMPLATE_PARAMETER(has_fc3, config.has_fc3_),
+                               WGSL_TEMPLATE_PARAMETER(swiglu_fusion, config.swiglu_fusion_),
                                WGSL_TEMPLATE_VARIABLE(fc3_input, *fc3_input),
                                WGSL_TEMPLATE_VARIABLE(input, input),
                                WGSL_TEMPLATE_VARIABLE(output, output));
   };
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"rows", ProgramUniformVariableDataType::Uint32},
-      {"cols", ProgramUniformVariableDataType::Uint32},
-      {"alpha", ProgramUniformVariableDataType::Float32},
-      {"beta", ProgramUniformVariableDataType::Float32},
-      {"swiglu_limit", ProgramUniformVariableDataType::Float32});
-
- private:
-  MoEActivationType activation_type_;
-  int swiglu_fusion_;
-  bool has_fc3_;
+#define WEBGPU_MO_E_ACTIVATION_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, rows)                                         \
+  U(Uint32, cols)                                         \
+  U(Float32, alpha)                                       \
+  U(Float32, beta)                                        \
+  U(Float32, swiglu_limit)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MO_E_ACTIVATION_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_MO_E_ACTIVATION_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_MO_E_ACTIVATION_PROGRAM_CONFIG
 
-class FusedFinalMix1TokenProgram final : public Program<FusedFinalMix1TokenProgram> {
- public:
-  FusedFinalMix1TokenProgram() : Program<FusedFinalMix1TokenProgram>{"QmoeFusedFinalMix1Token"} {}
+using MoEActivationProgram = ConfiguredProgram<MoEActivationProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+#define WEBGPU_FUSED_FINAL_MIX1_TOKEN_PROGRAM_CONFIG(F)
+
+struct FusedFinalMix1TokenProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_FUSED_FINAL_MIX1_TOKEN_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
+  static constexpr std::string_view name = "QmoeFusedFinalMix1Token";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& fc2_outputs = shader.AddInput("fc2_outputs", ShaderUsage::UseElementTypeAlias);
     const auto& router_values = shader.AddInput("router_values", ShaderUsage::UseElementTypeAlias);
     const auto& indirect_experts = shader.AddInput("indirect_experts", ShaderUsage::UseElementTypeAlias);
@@ -403,16 +470,27 @@ class FusedFinalMix1TokenProgram final : public Program<FusedFinalMix1TokenProgr
                                WGSL_TEMPLATE_VARIABLE(router_values, router_values));
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"k", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_FUSED_FINAL_MIX1_TOKEN_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, hidden_size)                                         \
+  U(Uint32, k)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_FUSED_FINAL_MIX1_TOKEN_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_FUSED_FINAL_MIX1_TOKEN_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_FUSED_FINAL_MIX1_TOKEN_PROGRAM_CONFIG
 
-class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
- public:
-  QMoEFinalMixProgram() : Program<QMoEFinalMixProgram>{"QMoEFinalMix"} {}
+using FusedFinalMix1TokenProgram = ConfiguredProgram<FusedFinalMix1TokenProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+#define WEBGPU_Q_MO_E_FINAL_MIX_PROGRAM_CONFIG(F)
+
+struct QMoEFinalMixProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_Q_MO_E_FINAL_MIX_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
+  static constexpr std::string_view name = "QMoEFinalMix";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& fc2_outputs = shader.AddInput("fc2_outputs", ShaderUsage::UseElementTypeAlias);
     const auto& router_values = shader.AddInput("router_values", ShaderUsage::UseElementTypeAlias);
     const auto& expert_tokens = shader.AddInput("expert_tokens", ShaderUsage::UseElementTypeAlias);
@@ -425,12 +503,17 @@ class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
                                WGSL_TEMPLATE_VARIABLE(router_values, router_values));
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"num_experts", ProgramUniformVariableDataType::Uint32},
-      {"expert_idx", ProgramUniformVariableDataType::Uint32},
-      {"token_offset", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_Q_MO_E_FINAL_MIX_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, hidden_size)                                   \
+  U(Uint32, num_experts)                                   \
+  U(Uint32, expert_idx)                                    \
+  U(Uint32, token_offset)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_Q_MO_E_FINAL_MIX_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_Q_MO_E_FINAL_MIX_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_Q_MO_E_FINAL_MIX_PROGRAM_CONFIG
+
+using QMoEFinalMixProgram = ConfiguredProgram<QMoEFinalMixProgramShader>;
 
 Status QMoE::ComputeInternal(ComputeContext& context) const {
   const Tensor* hidden_state = context.Input<Tensor>(0);
@@ -615,16 +698,15 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     // Step 1: Gate — select top-k experts
     Gate1TokenProgram gate{k_, is_fp16, router_weights != nullptr, normalize_routing_weights_};
     gate
-        .AddInputs({{router_logits, ProgramTensorMetadataDependency::Type}});
+        .AddInputs({{router_logits, ProgramTensorMetadataDependency::None}});
     if (router_weights) {
-      gate.AddInputs({{router_weights, ProgramTensorMetadataDependency::Type}});
+      gate.AddInputs({{router_weights, ProgramTensorMetadataDependency::None}});
     }
     gate.AddOutput({&router_values, ProgramTensorMetadataDependency::None})
         .AddOutput({&indirect_experts, ProgramTensorMetadataDependency::None})
         .SetWorkgroupSize(num_experts)
         .SetDispatchGroupSize(num_tokens)
-        .AddUniformVariables({num_tokens, num_experts})
-        .CacheHint(k_, is_fp16 ? "fp16" : "fp32", router_weights != nullptr, normalize_routing_weights_);
+        .AddUniformVariables({num_tokens, num_experts});
     ORT_RETURN_IF_ERROR(context.RunProgram(gate));
 
     // Step 2: Batched fc1 MatMulNBits with M=k, per-row expert selection.
@@ -660,17 +742,16 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                                                  /*override_M=*/k));
     }
     MoEActivationProgram activation{activation_type_, swiglu_fusion, fc3_outputs.has_value()};
-    activation.AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type}});
+    activation.AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::None}});
     if (fc3_outputs) {
-      activation.AddInputs({{&*fc3_outputs, ProgramTensorMetadataDependency::Type}});
+      activation.AddInputs({{&*fc3_outputs, ProgramTensorMetadataDependency::None}});
     }
     activation
         .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
         .SetWorkgroupSize(128)
         .SetDispatchGroupSize(((k * static_cast<uint32_t>(moe_params.inter_size)) + 127) / 128)
         .AddUniformVariables({k, static_cast<uint32_t>(moe_params.inter_size), activation_alpha_,
-                              activation_beta_, swiglu_limit_})
-        .CacheHint(static_cast<int>(activation_type_), swiglu_fusion, fc3_outputs.has_value());
+                              activation_beta_, swiglu_limit_});
     ORT_RETURN_IF_ERROR(context.RunProgram(activation));
 
     // Step 4: Batched fc2 MatMulNBits with M=k, per-row expert selection
@@ -693,9 +774,9 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     const uint32_t mix_wg_size = 256;
     FusedFinalMix1TokenProgram final_mix;
     final_mix
-        .AddInputs({{&fc2_outputs, ProgramTensorMetadataDependency::Type}})
-        .AddInputs({{&router_values, ProgramTensorMetadataDependency::Type}})
-        .AddInputs({{&indirect_experts, ProgramTensorMetadataDependency::Type}})
+        .AddInputs({{&fc2_outputs, ProgramTensorMetadataDependency::None}})
+        .AddInputs({{&router_values, ProgramTensorMetadataDependency::None}})
+        .AddInputs({{&indirect_experts, ProgramTensorMetadataDependency::None}})
         .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
         .SetWorkgroupSize(mix_wg_size)
         .SetDispatchGroupSize((hidden_size + mix_wg_size - 1) / mix_wg_size)
@@ -709,7 +790,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   const int total_output_size = (static_cast<int>(input_shape.Size()) + 3) / 4;
   ZeroTensorProgram zero;
   zero
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, ProgramOutput::Flatten, 4})
       .SetDispatchGroupSize((total_output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({static_cast<uint32_t>(total_output_size)});
   ORT_RETURN_IF_ERROR(context.RunProgram(zero));
@@ -744,17 +825,16 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
 
     GateProgram gate{k_, is_fp16, router_weights != nullptr, normalize_routing_weights_};
     gate
-        .AddInputs({{router_logits, ProgramTensorMetadataDependency::Type}});
+        .AddInputs({{router_logits, ProgramTensorMetadataDependency::None}});
     if (router_weights) {
-      gate.AddInputs({{router_weights, ProgramTensorMetadataDependency::Type}});
+      gate.AddInputs({{router_weights, ProgramTensorMetadataDependency::None}});
     }
     gate.AddOutput({&router_values, ProgramTensorMetadataDependency::None})
         .AddOutput({&gate_hidden, ProgramTensorMetadataDependency::None})
         .AddOutput({&gate_counts, ProgramTensorMetadataDependency::None, ProgramOutput::Atomic})
         .SetWorkgroupSize(num_experts)
         .SetDispatchGroupSize(static_cast<uint32_t>(num_tokens))
-        .AddUniformVariables({static_cast<uint32_t>(num_tokens), num_experts, static_cast<uint32_t>(token_offset)})
-        .CacheHint(k_, is_fp16 ? "fp16" : "fp32", router_weights != nullptr, normalize_routing_weights_);
+        .AddUniformVariables({static_cast<uint32_t>(num_tokens), num_experts, static_cast<uint32_t>(token_offset)});
 
     ORT_RETURN_IF_ERROR(context.RunProgram(gate));
 
@@ -779,8 +859,8 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       Tensor expert_tokens = context.CreateGPUTensor(dtype_uint32, expert_tokens_shape);
       HiddenStateGatherProgram gather;
       gather
-          .AddInputs({{&gate_hidden, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{hidden_state, ProgramTensorMetadataDependency::Type, 1}})
+          .AddInputs({{&gate_hidden, ProgramTensorMetadataDependency::None}})
+          .AddInputs({{hidden_state, ProgramTensorMetadataDependency::None, 1}})
           .AddOutput({&expert_hidden, ProgramTensorMetadataDependency::None, 1})
           .AddOutput({&expert_tokens, ProgramTensorMetadataDependency::None})
           .SetDispatchGroupSize(used_by)
@@ -827,17 +907,16 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                                                    fc3_expert_weight_bits_, context, &*fc3_outputs, expert_idx));
       }
       MoEActivationProgram activation{activation_type_, swiglu_fusion, fc3_outputs.has_value()};
-      activation.AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type}});
+      activation.AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::None}});
       if (fc3_outputs) {
-        activation.AddInputs({{&*fc3_outputs, ProgramTensorMetadataDependency::Type}});
+        activation.AddInputs({{&*fc3_outputs, ProgramTensorMetadataDependency::None}});
       }
       activation
           .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
           .SetWorkgroupSize(128)
           .SetDispatchGroupSize(((used_by * static_cast<uint32_t>(moe_params.inter_size)) + 127) / 128)
           .AddUniformVariables({used_by, static_cast<uint32_t>(moe_params.inter_size), activation_alpha_,
-                                activation_beta_, swiglu_limit_})
-          .CacheHint(static_cast<int>(activation_type_), swiglu_fusion, fc3_outputs.has_value());
+                                activation_beta_, swiglu_limit_});
       ORT_RETURN_IF_ERROR(context.RunProgram(activation));
 
       //
@@ -857,16 +936,15 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       //
       QMoEFinalMixProgram final_mix;
       final_mix
-          .AddInputs({{&fc2_outputs, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{&router_values, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{&expert_tokens, ProgramTensorMetadataDependency::Type}})
+          .AddInputs({{&fc2_outputs, ProgramTensorMetadataDependency::None}})
+          .AddInputs({{&router_values, ProgramTensorMetadataDependency::None}})
+          .AddInputs({{&expert_tokens, ProgramTensorMetadataDependency::None}})
           .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
           .SetDispatchGroupSize(used_by)
           .AddUniformVariables({hidden_size,
                                 num_experts,
                                 expert_idx,
-                                static_cast<uint32_t>(token_offset)})
-          .CacheHint(router_weights != nullptr, normalize_routing_weights_);
+                                static_cast<uint32_t>(token_offset)});
 
       ORT_RETURN_IF_ERROR(context.RunProgram(final_mix));
     }

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include <string>
 #include <sstream>
 #include "core/providers/webgpu/nn/grouped_conv.h"
@@ -95,7 +96,8 @@ std::string CanculateResult(const ShaderVariableHelper& x, const ShaderVariableH
   return ss.str();
 }
 
-Status GroupedConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GroupedConvProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                    ConfiguredShaderHelper& shader) {
   // The depthwise form addresses x and w by offset, so it does not pull in the shape uniforms the
   // way GetByIndices does - but it still reads them for the loop bounds and the strides it steps
   // by, so ask for them explicitly.
@@ -104,27 +106,32 @@ Status GroupedConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias |
                                            ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseShapeAndStride);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
-  shader.AdditionalImplementation() << GetActivationDeclaration(activation_, "output_value_t", "output_element_t");
+  std::string apply_activation = GetActivationSnippet(config.activation_, "output_value_t", "output_element_t");
+  shader.AdditionalImplementation() << GetActivationDeclaration(config.activation_, "output_value_t",
+                                                                "output_element_t");
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let output_indices = " << output.OffsetToIndices("global_idx") << ";\n"
                             << "let batch: u32 = output_indices[0];\n"
-                            << "let output_channel: u32 = " << output.IndicesGet("output_indices", is_channels_last_ ? "3" : "1") << ";\n"
-                            << "let xRCCorner_x: u32 = " << output.IndicesGet("output_indices", is_channels_last_ ? "1" : "2") << ";\n"
-                            << "let xRCCorner_y: u32 = " << output.IndicesGet("output_indices", is_channels_last_ ? "2" : "3") << ";\n"
+                            << "let output_channel: u32 = "
+                            << output.IndicesGet("output_indices", config.is_channels_last_ ? "3" : "1") << ";\n"
+                            << "let xRCCorner_x: u32 = "
+                            << output.IndicesGet("output_indices", config.is_channels_last_ ? "1" : "2") << ";\n"
+                            << "let xRCCorner_y: u32 = "
+                            << output.IndicesGet("output_indices", config.is_channels_last_ ? "2" : "3") << ";\n"
                             << "let xRCCorner: vec2<i32> = vec2<i32>(i32(xRCCorner_x), i32(xRCCorner_y)) * "
                                "vec2<i32>(i32(uniforms.strides[0]), i32(uniforms.strides[1])) - "
                                "vec2<i32>(i32(uniforms.pads[0]), i32(uniforms.pads[1]));\n"
                             << "var value: output_value_t = output_value_t(0);\n";
-  if (depthwise_vec_) {
+  if (config.depthwise_vec_) {
     shader.MainFunctionBody() << CalculateResultDepthwiseVec(x, w);
   } else {
     shader.MainFunctionBody()
         << "let group_id = output_channel * uniforms.components / uniforms.output_channels_per_group;\n"
-        << "let in_channel_offset = group_id * " << w.IndicesGet("uniforms.w_shape", is_channels_last_ ? 2 : 1) << ";\n"
-        << CanculateResult(x, w, is_channels_last_);
+        << "let in_channel_offset = group_id * " << w.IndicesGet("uniforms.w_shape", config.is_channels_last_ ? 2 : 1)
+        << ";\n"
+        << CanculateResult(x, w, config.is_channels_last_);
   }
-  if (has_bias_) {
+  if (config.has_bias_) {
     const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
     shader.MainFunctionBody() << "value += " + b.GetByIndices("output_channel") + ";\n";
   }

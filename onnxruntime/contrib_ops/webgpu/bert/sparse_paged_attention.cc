@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/sparse_paged_attention.h"
 
 #include <algorithm>
@@ -116,7 +117,8 @@ ONNX_OPERATOR_KERNEL_EX(
         .MayInplace(4, 2),
     SparsePagedAttention);
 
-Status SparsePagedAttentionScatterKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
+Status SparsePagedAttentionScatterKVProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                                      ConfiguredShaderHelper& sh) {
   const auto& key = sh.AddInput("key", ShaderUsage::UseUniform);
   const auto& value = sh.AddInput("value", ShaderUsage::UseUniform);
   const auto& slot_mapping = sh.AddInput("slot_mapping", ShaderUsage::UseUniform);
@@ -130,108 +132,106 @@ Status SparsePagedAttentionScatterKVProgram::GenerateShaderCode(ShaderHelper& sh
                              WGSL_TEMPLATE_VARIABLE(value_cache, value_cache));
 }
 
-Status SparsePagedAttentionTokenMetaProgram::GenerateShaderCode(ShaderHelper& sh) const {
+Status SparsePagedAttentionTokenMetaProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                                      ConfiguredShaderHelper& sh) {
   const auto& cumulative_sequence_length =
       sh.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
   const auto& past_seqlens = sh.AddInput("past_seqlens", ShaderUsage::UseUniform);
   const ShaderVariableHelper* auxiliary_lengths = &past_seqlens;
-  if (has_auxiliary_lengths_) {
+  if (config.has_auxiliary_lengths_) {
     auxiliary_lengths = &sh.AddInput("auxiliary_lengths", ShaderUsage::UseUniform);
   }
   const auto& token_meta = sh.AddOutput("token_meta", ShaderUsage::UseUniform);
   return WGSL_TEMPLATE_APPLY(sh, "bert/sparse_paged_attention_token_meta.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(has_auxiliary_lengths, has_auxiliary_lengths_),
+                             WGSL_TEMPLATE_PARAMETER(has_auxiliary_lengths, config.has_auxiliary_lengths_),
                              WGSL_TEMPLATE_VARIABLE(auxiliary_lengths, *auxiliary_lengths),
                              WGSL_TEMPLATE_VARIABLE(cumulative_sequence_length, cumulative_sequence_length),
                              WGSL_TEMPLATE_VARIABLE(past_seqlens, past_seqlens),
                              WGSL_TEMPLATE_VARIABLE(token_meta, token_meta));
 }
 
-Status SparsePagedAttentionMainProgram::GenerateShaderCode(ShaderHelper& sh) const {
+Status SparsePagedAttentionMainProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                                 ConfiguredShaderHelper& sh) {
   const auto& query = sh.AddInput("query", ShaderUsage::UseUniform);
   const auto& key_cache = sh.AddInput("key_cache", ShaderUsage::UseUniform);
   const auto& value_cache = sh.AddInput("value_cache", ShaderUsage::UseUniform);
   const auto& token_meta = sh.AddInput("token_meta", ShaderUsage::UseUniform);
   const auto& block_table = sh.AddInput("block_table", ShaderUsage::UseUniform);
   const ShaderVariableHelper* slot_mapping = &block_table;
-  if (use_slot_mapping_) {
+  if (config.use_slot_mapping_) {
     slot_mapping = &sh.AddInput("slot_mapping", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* selected_indices = &block_table;
   const ShaderVariableHelper* selected_counts = &block_table;
-  if (use_selected_) {
+  if (config.use_selected_) {
     selected_indices = &sh.AddInput("selected_indices", ShaderUsage::UseUniform);
     selected_counts = &sh.AddInput("selected_counts", ShaderUsage::UseUniform);
   }
-  const auto& output = sh.AddOutput(
-      "output", direct_output_ ? ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias : ShaderUsage::UseUniform);
-  return WGSL_TEMPLATE_APPLY(sh, "bert/sparse_paged_attention_main.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(dedup_selected, dedup_selected_),
-                             WGSL_TEMPLATE_PARAMETER(direct_output, direct_output_),
-                             WGSL_TEMPLATE_PARAMETER(is_causal, is_causal_),
-                             WGSL_TEMPLATE_PARAMETER(qkv_head_size, head_size_),
-                             WGSL_TEMPLATE_PARAMETER(use_local_window, use_local_window_),
-                             WGSL_TEMPLATE_PARAMETER(use_selected, use_selected_),
-                             WGSL_TEMPLATE_PARAMETER(use_slot_mapping, use_slot_mapping_),
-                             WGSL_TEMPLATE_VARIABLE(block_table, block_table),
-                             WGSL_TEMPLATE_VARIABLE(key_cache, key_cache),
-                             WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(query, query),
-                             WGSL_TEMPLATE_VARIABLE(selected_counts, *selected_counts),
-                             WGSL_TEMPLATE_VARIABLE(selected_indices, *selected_indices),
-                             WGSL_TEMPLATE_VARIABLE(slot_mapping, *slot_mapping),
-                             WGSL_TEMPLATE_VARIABLE(token_meta, token_meta),
-                             WGSL_TEMPLATE_VARIABLE(value_cache, value_cache));
+  const auto& output =
+      sh.AddOutput("output", config.direct_output_ ? ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias
+                                                   : ShaderUsage::UseUniform);
+  return WGSL_TEMPLATE_APPLY(
+      sh, "bert/sparse_paged_attention_main.wgsl.template",
+      WGSL_TEMPLATE_PARAMETER(dedup_selected, config.dedup_selected_),
+      WGSL_TEMPLATE_PARAMETER(direct_output, config.direct_output_),
+      WGSL_TEMPLATE_PARAMETER(is_causal, config.is_causal_), WGSL_TEMPLATE_PARAMETER(qkv_head_size, config.head_size_),
+      WGSL_TEMPLATE_PARAMETER(use_local_window, config.use_local_window_),
+      WGSL_TEMPLATE_PARAMETER(use_selected, config.use_selected_),
+      WGSL_TEMPLATE_PARAMETER(use_slot_mapping, config.use_slot_mapping_),
+      WGSL_TEMPLATE_VARIABLE(block_table, block_table), WGSL_TEMPLATE_VARIABLE(key_cache, key_cache),
+      WGSL_TEMPLATE_VARIABLE(output, output), WGSL_TEMPLATE_VARIABLE(query, query),
+      WGSL_TEMPLATE_VARIABLE(selected_counts, *selected_counts),
+      WGSL_TEMPLATE_VARIABLE(selected_indices, *selected_indices), WGSL_TEMPLATE_VARIABLE(slot_mapping, *slot_mapping),
+      WGSL_TEMPLATE_VARIABLE(token_meta, token_meta), WGSL_TEMPLATE_VARIABLE(value_cache, value_cache));
 }
 
-Status SparsePagedAttentionAuxiliaryProgram::GenerateShaderCode(ShaderHelper& sh) const {
+Status SparsePagedAttentionAuxiliaryProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                                      ConfiguredShaderHelper& sh) {
   const auto& query = sh.AddInput("query", ShaderUsage::UseUniform);
   const auto& auxiliary_key = sh.AddInput("auxiliary_key", ShaderUsage::UseUniform);
   const ShaderVariableHelper* auxiliary_value = &auxiliary_key;
-  if (!auxiliary_kv_shared_) {
+  if (!config.auxiliary_kv_shared_) {
     auxiliary_value = &sh.AddInput("auxiliary_value", ShaderUsage::UseUniform);
   }
   const auto& token_meta = sh.AddInput("token_meta", ShaderUsage::UseUniform);
   const auto& selected_indices = sh.AddInput("selected_indices", ShaderUsage::UseUniform);
   const auto& selected_counts = sh.AddInput("selected_counts", ShaderUsage::UseUniform);
-  const auto& output = sh.AddOutput(
-      "output", direct_output_ ? ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias : ShaderUsage::UseUniform);
-  return WGSL_TEMPLATE_APPLY(sh, "bert/sparse_paged_attention_auxiliary.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(auxiliary_kv_shared, auxiliary_kv_shared_),
-                             WGSL_TEMPLATE_PARAMETER(direct_output, direct_output_),
-                             WGSL_TEMPLATE_PARAMETER(qkv_head_size, head_size_),
-                             WGSL_TEMPLATE_VARIABLE(auxiliary_key, auxiliary_key),
-                             WGSL_TEMPLATE_VARIABLE(auxiliary_value, *auxiliary_value),
-                             WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(query, query),
-                             WGSL_TEMPLATE_VARIABLE(selected_counts, selected_counts),
-                             WGSL_TEMPLATE_VARIABLE(selected_indices, selected_indices),
-                             WGSL_TEMPLATE_VARIABLE(token_meta, token_meta));
+  const auto& output =
+      sh.AddOutput("output", config.direct_output_ ? ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias
+                                                   : ShaderUsage::UseUniform);
+  return WGSL_TEMPLATE_APPLY(
+      sh, "bert/sparse_paged_attention_auxiliary.wgsl.template",
+      WGSL_TEMPLATE_PARAMETER(auxiliary_kv_shared, config.auxiliary_kv_shared_),
+      WGSL_TEMPLATE_PARAMETER(direct_output, config.direct_output_),
+      WGSL_TEMPLATE_PARAMETER(qkv_head_size, config.head_size_), WGSL_TEMPLATE_VARIABLE(auxiliary_key, auxiliary_key),
+      WGSL_TEMPLATE_VARIABLE(auxiliary_value, *auxiliary_value), WGSL_TEMPLATE_VARIABLE(output, output),
+      WGSL_TEMPLATE_VARIABLE(query, query), WGSL_TEMPLATE_VARIABLE(selected_counts, selected_counts),
+      WGSL_TEMPLATE_VARIABLE(selected_indices, selected_indices), WGSL_TEMPLATE_VARIABLE(token_meta, token_meta));
 }
 
-Status SparsePagedAttentionFinalizeProgram::GenerateShaderCode(ShaderHelper& sh) const {
+Status SparsePagedAttentionFinalizeProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                                     ConfiguredShaderHelper& sh) {
   const ShaderVariableHelper* partial_main = nullptr;
   const ShaderVariableHelper* partial_auxiliary = nullptr;
-  if (has_main_) {
+  if (config.has_main_) {
     partial_main = &sh.AddInput("partial_main", ShaderUsage::UseUniform);
   }
-  if (has_auxiliary_) {
+  if (config.has_auxiliary_) {
     partial_auxiliary = &sh.AddInput("partial_auxiliary", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* fallback_partial = partial_main != nullptr ? partial_main : partial_auxiliary;
   partial_main = partial_main != nullptr ? partial_main : fallback_partial;
   partial_auxiliary = partial_auxiliary != nullptr ? partial_auxiliary : fallback_partial;
   const ShaderVariableHelper* head_sink = fallback_partial;
-  if (has_head_sink_) {
+  if (config.has_head_sink_) {
     head_sink = &sh.AddInput("head_sink", ShaderUsage::UseUniform);
   }
   const auto& output = sh.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   return WGSL_TEMPLATE_APPLY(sh, "bert/sparse_paged_attention_finalize.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(has_auxiliary, has_auxiliary_),
-                             WGSL_TEMPLATE_PARAMETER(has_head_sink, has_head_sink_),
-                             WGSL_TEMPLATE_PARAMETER(has_main, has_main_),
-                             WGSL_TEMPLATE_VARIABLE(head_sink, *head_sink),
-                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_PARAMETER(has_auxiliary, config.has_auxiliary_),
+                             WGSL_TEMPLATE_PARAMETER(has_head_sink, config.has_head_sink_),
+                             WGSL_TEMPLATE_PARAMETER(has_main, config.has_main_),
+                             WGSL_TEMPLATE_VARIABLE(head_sink, *head_sink), WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(partial_auxiliary, *partial_auxiliary),
                              WGSL_TEMPLATE_VARIABLE(partial_main, *partial_main));
 }
@@ -255,13 +255,13 @@ Status RunSparseScatterKVWithSlotMapping(onnxruntime::webgpu::ComputeContext& co
   SparsePagedAttentionScatterKVProgram program{};
   program
       .AddInputs({
-          {key, ProgramTensorMetadataDependency::TypeAndRank},
-          {value, ProgramTensorMetadataDependency::TypeAndRank},
-          {slot_mapping, ProgramTensorMetadataDependency::TypeAndRank},
+          {key, ProgramTensorMetadataDependency::None},
+          {value, ProgramTensorMetadataDependency::None},
+          {slot_mapping, ProgramTensorMetadataDependency::None},
       })
       .AddOutputs({
-          {key_cache_out, ProgramTensorMetadataDependency::TypeAndRank},
-          {value_cache_out, ProgramTensorMetadataDependency::TypeAndRank},
+          {key_cache_out, ProgramTensorMetadataDependency::None},
+          {value_cache_out, ProgramTensorMetadataDependency::None},
       })
       .AddUniformVariables({
           {kv_num_heads},
@@ -285,17 +285,17 @@ Status RunSparseTokenMeta(onnxruntime::webgpu::ComputeContext& context,
 
   SparsePagedAttentionTokenMetaProgram program{auxiliary_lengths != nullptr};
   program.AddInputs({
-      {cumulative_seqlens_q, ProgramTensorMetadataDependency::TypeAndRank},
-      {past_seqlens, ProgramTensorMetadataDependency::TypeAndRank},
+      {cumulative_seqlens_q, ProgramTensorMetadataDependency::None},
+      {past_seqlens, ProgramTensorMetadataDependency::None},
   });
   if (auxiliary_lengths != nullptr) {
-    program.AddInputs({{auxiliary_lengths, ProgramTensorMetadataDependency::TypeAndRank}});
+    program.AddInputs({{auxiliary_lengths, ProgramTensorMetadataDependency::None}});
   }
   program
       .AddOutputs({
-          {token_meta, ProgramTensorMetadataDependency::TypeAndRank},
+          {token_meta, ProgramTensorMetadataDependency::None},
       })
-      .CacheHint(auxiliary_lengths != nullptr)
+
       .AddUniformVariables({
           {batch_size},
           {auxiliary_capacity},
@@ -334,29 +334,28 @@ Status RunSparseMainPartial(onnxruntime::webgpu::ComputeContext& context,
                                           use_selected, dedup_selected, slot_mapping != nullptr,
                                           direct_output};
   program.AddInputs({
-      {query, ProgramTensorMetadataDependency::TypeAndRank},
-      {key_cache, ProgramTensorMetadataDependency::TypeAndRank},
-      {value_cache, ProgramTensorMetadataDependency::TypeAndRank},
-      {token_meta, ProgramTensorMetadataDependency::TypeAndRank},
-      {block_table, ProgramTensorMetadataDependency::TypeAndRank},
+      {query, ProgramTensorMetadataDependency::None},
+      {key_cache, ProgramTensorMetadataDependency::None},
+      {value_cache, ProgramTensorMetadataDependency::None},
+      {token_meta, ProgramTensorMetadataDependency::None},
+      {block_table, ProgramTensorMetadataDependency::None},
   });
   if (slot_mapping != nullptr) {
-    program.AddInputs({{slot_mapping, ProgramTensorMetadataDependency::TypeAndRank}});
+    program.AddInputs({{slot_mapping, ProgramTensorMetadataDependency::None}});
   }
   if (use_selected) {
     program.AddInputs({
-        {selected_indices, ProgramTensorMetadataDependency::TypeAndRank},
-        {selected_counts, ProgramTensorMetadataDependency::TypeAndRank},
+        {selected_indices, ProgramTensorMetadataDependency::None},
+        {selected_counts, ProgramTensorMetadataDependency::None},
     });
   }
   program
       .AddOutputs({
-          {output, ProgramTensorMetadataDependency::TypeAndRank},
+          {output, ProgramTensorMetadataDependency::None},
       })
       // Every value baked into the generated WGSL must appear here: the four
       // #params, the compile-time head size, and the workgroup size.
-      .CacheHint(parameters.head_size, is_causal, use_local_window, use_selected, dedup_selected,
-                 slot_mapping != nullptr, direct_output, kAttentionWorkgroupSize)
+
       .AddUniformVariables({
           {num_heads},
           {static_cast<uint32_t>(parameters.kv_num_heads)},
@@ -395,22 +394,22 @@ Status RunSparseAuxiliaryPartial(onnxruntime::webgpu::ComputeContext& context,
 
   SparsePagedAttentionAuxiliaryProgram program{parameters.head_size, auxiliary_kv_shared, direct_output};
   program.AddInputs({
-      {query, ProgramTensorMetadataDependency::TypeAndRank},
-      {auxiliary_key, ProgramTensorMetadataDependency::TypeAndRank},
+      {query, ProgramTensorMetadataDependency::None},
+      {auxiliary_key, ProgramTensorMetadataDependency::None},
   });
   if (!auxiliary_kv_shared) {
-    program.AddInputs({{auxiliary_value, ProgramTensorMetadataDependency::TypeAndRank}});
+    program.AddInputs({{auxiliary_value, ProgramTensorMetadataDependency::None}});
   }
   program
       .AddInputs({
-          {token_meta, ProgramTensorMetadataDependency::TypeAndRank},
-          {selected_indices, ProgramTensorMetadataDependency::TypeAndRank},
-          {selected_counts, ProgramTensorMetadataDependency::TypeAndRank},
+          {token_meta, ProgramTensorMetadataDependency::None},
+          {selected_indices, ProgramTensorMetadataDependency::None},
+          {selected_counts, ProgramTensorMetadataDependency::None},
       })
       .AddOutputs({
-          {output, ProgramTensorMetadataDependency::TypeAndRank},
+          {output, ProgramTensorMetadataDependency::None},
       })
-      .CacheHint(parameters.head_size, auxiliary_kv_shared, direct_output, kAttentionWorkgroupSize)
+
       .AddUniformVariables({
           {num_heads},
           {static_cast<uint32_t>(parameters.kv_num_heads)},
@@ -439,20 +438,19 @@ Status RunSparseFinalize(onnxruntime::webgpu::ComputeContext& context,
   SparsePagedAttentionFinalizeProgram program{partial_main != nullptr, partial_auxiliary != nullptr,
                                               head_sink != nullptr};
   if (partial_main != nullptr) {
-    program.AddInputs({{partial_main, ProgramTensorMetadataDependency::TypeAndRank}});
+    program.AddInputs({{partial_main, ProgramTensorMetadataDependency::None}});
   }
   if (partial_auxiliary != nullptr) {
-    program.AddInputs({{partial_auxiliary, ProgramTensorMetadataDependency::TypeAndRank}});
+    program.AddInputs({{partial_auxiliary, ProgramTensorMetadataDependency::None}});
   }
   if (head_sink != nullptr) {
-    program.AddInputs({{head_sink, ProgramTensorMetadataDependency::TypeAndRank}});
+    program.AddInputs({{head_sink, ProgramTensorMetadataDependency::None}});
   }
   program
       .AddOutputs({
-          {output, ProgramTensorMetadataDependency::TypeAndRank},
+          {output, ProgramTensorMetadataDependency::None},
       })
-      .CacheHint(partial_main != nullptr, partial_auxiliary != nullptr, head_sink != nullptr,
-                 kAttentionWorkgroupSize)
+
       .AddUniformVariables({
           {num_heads},
           {head_size},

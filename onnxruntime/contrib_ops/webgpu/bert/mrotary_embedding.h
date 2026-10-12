@@ -7,6 +7,7 @@
 
 #include "contrib_ops/cpu/bert/mrotary_embedding_helper.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -15,33 +16,40 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class MRotaryEmbeddingProgram final : public Program<MRotaryEmbeddingProgram> {
- public:
-  MRotaryEmbeddingProgram(bool interleaved, bool transposed,
-                          mrotary_embedding_helper::MRopeLayout mrope_layout)
-      : Program{"MRotaryEmbedding"},
-        interleaved_{interleaved},
-        transposed_{transposed},
-        mrope_layout_{mrope_layout} {}
+#define WEBGPU_M_ROTARY_EMBEDDING_PROGRAM_CONFIG(F) \
+  F(bool, interleaved_)                             \
+  F(bool, transposed_)                              \
+  F(mrotary_embedding_helper::MRopeLayout, mrope_layout_)
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
+struct MRotaryEmbeddingProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_M_ROTARY_EMBEDDING_PROGRAM_CONFIG);
+  static Config MakeConfig(bool interleaved, bool transposed, mrotary_embedding_helper::MRopeLayout mrope_layout) {
+    Config result{};
+    result.interleaved_ = bool{interleaved};
+    result.transposed_ = bool{transposed};
+    result.mrope_layout_ = mrotary_embedding_helper::MRopeLayout{mrope_layout};
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"scale", ProgramUniformVariableDataType::Float32},
-      {"output_size", ProgramUniformVariableDataType::Uint32},
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"sequence_length", ProgramUniformVariableDataType::Uint32},
-      {"num_heads", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"rotary_embedding_dim", ProgramUniformVariableDataType::Uint32},
-      {"max_sequence_length", ProgramUniformVariableDataType::Uint32},
-      {"mrope_section", ProgramUniformVariableDataType::Uint32});
+    return result;
+  }
+  static constexpr std::string_view name = "MRotaryEmbedding";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
 
- private:
-  const bool interleaved_;
-  const bool transposed_;
-  const mrotary_embedding_helper::MRopeLayout mrope_layout_;
+#define WEBGPU_M_ROTARY_EMBEDDING_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Float32, scale)                                          \
+  U(Uint32, output_size)                                     \
+  U(Uint32, batch_size)                                      \
+  U(Uint32, sequence_length)                                 \
+  U(Uint32, num_heads)                                       \
+  U(Uint32, head_size)                                       \
+  U(Uint32, rotary_embedding_dim)                            \
+  U(Uint32, max_sequence_length)                             \
+  U(Uint32, mrope_section)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_M_ROTARY_EMBEDDING_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_M_ROTARY_EMBEDDING_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_M_ROTARY_EMBEDDING_PROGRAM_CONFIG
+
+using MRotaryEmbeddingProgram = ConfiguredProgram<MRotaryEmbeddingProgramShader>;
 
 class MRotaryEmbedding final : public WebGpuKernel {
  public:

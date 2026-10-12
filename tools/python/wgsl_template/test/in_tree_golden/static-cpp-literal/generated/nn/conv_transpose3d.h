@@ -6,7 +6,7 @@
 // Source: nn/conv_transpose3d.wgsl.template
 
 template <>
-Status ApplyTemplate<"nn/conv_transpose3d.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"nn/conv_transpose3d.wgsl.template">::type params) {
+Status ApplyTemplate<"nn/conv_transpose3d.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"nn/conv_transpose3d.wgsl.template">::type params) {
   [[maybe_unused]] auto& ss = shader_helper.AdditionalImplementation();
 
   // Extract parameters

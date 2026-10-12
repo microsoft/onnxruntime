@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/generator/range.h"
 #include "core/providers/webgpu/shader_helper.h"
 
@@ -43,7 +44,7 @@ Status Range<T>::ComputeInternal(ComputeContext& context) const {
     delta_u32 = std::bit_cast<uint32_t>(delta);
   }
 
-  program.AddOutput({output_tensor, ProgramTensorMetadataDependency::Type})
+  program.AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           output_size,
@@ -54,14 +55,14 @@ Status Range<T>::ComputeInternal(ComputeContext& context) const {
   return context.RunProgram(program);
 }
 
-Status RangeProgram::GenerateShaderCode(ShaderHelper& sh) const {
+Status RangeProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh) {
   const auto& output = sh.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
   sh.MainFunctionBody() << sh.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size");
 
   // For int64, we need to cast to i32 first, then assign to output (which handles vec2<u32> conversion)
   // For int32 and float, we can use output_value_t directly
-  if (data_type_ == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+  if (config.data_type_ == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     // int64 case: bitcast to i32, compute with i32, then assign (automatic conversion to vec2<u32>)
     sh.MainFunctionBody() << "  let value = bitcast<i32>(uniforms.start) + i32(global_idx) * bitcast<i32>(uniforms.delta);\n"
                           << output.SetByOffset("global_idx", "value");

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_qkv.h"
 
 #include <optional>
@@ -23,36 +24,45 @@ namespace webgpu {
 
 namespace {
 
-class MatMulNBitsQkvDecodeProgram final
-    : public Program<MatMulNBitsQkvDecodeProgram> {
- public:
-  MatMulNBitsQkvDecodeProgram(uint32_t tile_size,
-                              bool single_scale_weights,
-                              uint32_t tile_size_k_vec,
-                              uint32_t k_unroll_tiles,
-                              bool has_norm,
-                              bool has_skip_input,
-                              bool has_skip_output,
-                              bool acc_f32)
-      : Program{"MatMulNBitsQkvDecode"},
-        tile_size_(tile_size),
-        single_scale_weights_(single_scale_weights),
-        tile_size_k_vec_(tile_size_k_vec),
-        k_unroll_tiles_(k_unroll_tiles),
-        has_norm_(has_norm),
-        has_skip_input_(has_skip_input),
-        has_skip_output_(has_skip_output),
-        acc_f32_(acc_f32) {
+#define WEBGPU_MAT_MUL_N_BITS_QKV_DECODE_PROGRAM_CONFIG(F) \
+  F(uint32_t, tile_size_)                                  \
+  F(bool, single_scale_weights_)                           \
+  F(uint32_t, tile_size_k_vec_)                            \
+  F(uint32_t, k_unroll_tiles_)                             \
+  F(bool, has_norm_)                                       \
+  F(bool, has_skip_input_)                                 \
+  F(bool, has_skip_output_)                                \
+  F(bool, acc_f32_)
+
+struct MatMulNBitsQkvDecodeProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MAT_MUL_N_BITS_QKV_DECODE_PROGRAM_CONFIG);
+  static Config MakeConfig(uint32_t tile_size, bool single_scale_weights, uint32_t tile_size_k_vec, uint32_t k_unroll_tiles,
+                           bool has_norm, bool has_skip_input, bool has_skip_output, bool acc_f32) {
+    Config result{};
+    result.tile_size_ = uint32_t(tile_size);
+    result.single_scale_weights_ = bool(single_scale_weights);
+    result.tile_size_k_vec_ = uint32_t(tile_size_k_vec);
+    result.k_unroll_tiles_ = uint32_t(k_unroll_tiles);
+    result.has_norm_ = bool(has_norm);
+    result.has_skip_input_ = bool(has_skip_input);
+    result.has_skip_output_ = bool(has_skip_output);
+    result.acc_f32_ = bool(acc_f32);
+
     // The no-norm variant runs against an already-normalized input tensor and therefore
     // never owns the residual skip path nor the residual passthrough output.
-    ORT_ENFORCE(has_norm_ || (!has_skip_input_ && !has_skip_output_),
+    ORT_ENFORCE(result.has_norm_ || (!result.has_skip_input_ && !result.has_skip_output_),
                 "MatMulNBitsQkvDecodeProgram: skip input/output require has_norm=true.");
-  }
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    return result;
+  }
+  static constexpr std::string_view name = "MatMulNBitsQkvDecode";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
     const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-    const auto* skip = has_skip_input_ ? &shader.AddInput("skip", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias) : nullptr;
-    const auto* norm_scale = has_norm_ ? &shader.AddInput("norm_scale", ShaderUsage::UseValueTypeAlias) : nullptr;
+    const auto* skip = config.has_skip_input_
+                           ? &shader.AddInput("skip", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias)
+                           : nullptr;
+    const auto* norm_scale =
+        config.has_norm_ ? &shader.AddInput("norm_scale", ShaderUsage::UseValueTypeAlias) : nullptr;
     const auto& q_b = shader.AddInput("q_b", ShaderUsage::UseValueTypeAlias);
     const auto& q_scales_b = shader.AddInput("q_scales_b");
     const auto& k_b = shader.AddInput("k_b");
@@ -68,68 +78,58 @@ class MatMulNBitsQkvDecodeProgram final
     const auto& v_output = shader.AddOutput("v_output",
                                             ShaderUsage::UseValueTypeAlias |
                                                 ShaderUsage::UseElementTypeAlias);
-    const auto* input_skip_bias_sum = has_skip_output_ ? &shader.AddOutput("input_skip_bias_sum", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias) : nullptr;
+    const auto* input_skip_bias_sum =
+        config.has_skip_output_ ? &shader.AddOutput("input_skip_bias_sum",
+                                                    ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias)
+                                : nullptr;
     const uint32_t components_a = a.NumComponents();
     const uint32_t components_b = q_b.NumComponents() / 4;
-    const uint32_t tile_size_k_vec = tile_size_k_vec_;
+    const uint32_t tile_size_k_vec = config.tile_size_k_vec_;
     const uint32_t elements_in_value_b = components_b * 8u;
     const uint32_t tile_size_k = tile_size_k_vec * elements_in_value_b;
     const uint32_t a_length_per_tile = tile_size_k / components_a;
-    const uint32_t sub_tile_count = WorkgroupSizeX() / tile_size_k_vec;
+    const uint32_t sub_tile_count = shader.WorkgroupSizeX() / tile_size_k_vec;
 
-    return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_qkv.wgsl.template",
-                               WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
-                               WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
-                               WGSL_TEMPLATE_PARAMETER(component_a, components_a),
-                               WGSL_TEMPLATE_PARAMETER(component_b, components_b),
-                               WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b),
-                               WGSL_TEMPLATE_PARAMETER(has_norm, has_norm_),
-                               WGSL_TEMPLATE_PARAMETER(has_skip_input, has_skip_input_),
-                               WGSL_TEMPLATE_PARAMETER(has_skip_output, has_skip_output_),
-                               WGSL_TEMPLATE_PARAMETER(k_unroll_tiles, k_unroll_tiles_),
-                               WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
-                               WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
-                               WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
-                               WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
-                               WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
-                               WGSL_TEMPLATE_VARIABLE(a, a),
-                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(input_skip_bias_sum, input_skip_bias_sum),
-                               WGSL_TEMPLATE_VARIABLE(k_b, k_b),
-                               WGSL_TEMPLATE_VARIABLE(k_output, k_output),
-                               WGSL_TEMPLATE_VARIABLE(k_scales_b, k_scales_b),
-                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(norm_scale, norm_scale),
-                               WGSL_TEMPLATE_VARIABLE(q_b, q_b),
-                               WGSL_TEMPLATE_VARIABLE(q_output, q_output),
-                               WGSL_TEMPLATE_VARIABLE(q_scales_b, q_scales_b),
-                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(skip, skip),
-                               WGSL_TEMPLATE_VARIABLE(v_b, v_b),
-                               WGSL_TEMPLATE_VARIABLE(v_output, v_output),
-                               WGSL_TEMPLATE_VARIABLE(v_scales_b, v_scales_b));
+    return WGSL_TEMPLATE_APPLY(
+        shader, "quantization/matmul_nbits_qkv.wgsl.template",
+        WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
+        WGSL_TEMPLATE_PARAMETER(acc_f32, config.acc_f32_), WGSL_TEMPLATE_PARAMETER(component_a, components_a),
+        WGSL_TEMPLATE_PARAMETER(component_b, components_b),
+        WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b),
+        WGSL_TEMPLATE_PARAMETER(has_norm, config.has_norm_),
+        WGSL_TEMPLATE_PARAMETER(has_skip_input, config.has_skip_input_),
+        WGSL_TEMPLATE_PARAMETER(has_skip_output, config.has_skip_output_),
+        WGSL_TEMPLATE_PARAMETER(k_unroll_tiles, config.k_unroll_tiles_),
+        WGSL_TEMPLATE_PARAMETER(single_scale_weights, config.single_scale_weights_),
+        WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count), WGSL_TEMPLATE_PARAMETER(tile_size, config.tile_size_),
+        WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k), WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
+        WGSL_TEMPLATE_VARIABLE(a, a), WGSL_TEMPLATE_OPTIONAL_VARIABLE(input_skip_bias_sum, input_skip_bias_sum),
+        WGSL_TEMPLATE_VARIABLE(k_b, k_b), WGSL_TEMPLATE_VARIABLE(k_output, k_output),
+        WGSL_TEMPLATE_VARIABLE(k_scales_b, k_scales_b), WGSL_TEMPLATE_OPTIONAL_VARIABLE(norm_scale, norm_scale),
+        WGSL_TEMPLATE_VARIABLE(q_b, q_b), WGSL_TEMPLATE_VARIABLE(q_output, q_output),
+        WGSL_TEMPLATE_VARIABLE(q_scales_b, q_scales_b), WGSL_TEMPLATE_OPTIONAL_VARIABLE(skip, skip),
+        WGSL_TEMPLATE_VARIABLE(v_b, v_b), WGSL_TEMPLATE_VARIABLE(v_output, v_output),
+        WGSL_TEMPLATE_VARIABLE(v_scales_b, v_scales_b));
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"Nq", ProgramUniformVariableDataType::Uint32},
-      {"Nkv", ProgramUniformVariableDataType::Uint32},
-      {"K", ProgramUniformVariableDataType::Uint32},
-      {"K_of_a", ProgramUniformVariableDataType::Uint32},
-      {"K_of_b", ProgramUniformVariableDataType::Uint32},
-      {"block_size", ProgramUniformVariableDataType::Uint32},
-      {"blocks_per_col", ProgramUniformVariableDataType::Uint32},
-      {"num_N_tile", ProgramUniformVariableDataType::Uint32},
-      {"batch_count", ProgramUniformVariableDataType::Uint32},
-      {"skip_size", ProgramUniformVariableDataType::Uint32},
-      {"epsilon", ProgramUniformVariableDataType::Float32});
-
- private:
-  uint32_t tile_size_;
-  bool single_scale_weights_;
-  uint32_t tile_size_k_vec_;
-  uint32_t k_unroll_tiles_;
-  bool has_norm_;
-  bool has_skip_input_;
-  bool has_skip_output_;
-  bool acc_f32_;
+#define WEBGPU_MAT_MUL_N_BITS_QKV_DECODE_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, Nq)                                                     \
+  U(Uint32, Nkv)                                                    \
+  U(Uint32, K)                                                      \
+  U(Uint32, K_of_a)                                                 \
+  U(Uint32, K_of_b)                                                 \
+  U(Uint32, block_size)                                             \
+  U(Uint32, blocks_per_col)                                         \
+  U(Uint32, num_N_tile)                                             \
+  U(Uint32, batch_count)                                            \
+  U(Uint32, skip_size)                                              \
+  U(Float32, epsilon)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MAT_MUL_N_BITS_QKV_DECODE_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_MAT_MUL_N_BITS_QKV_DECODE_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_MAT_MUL_N_BITS_QKV_DECODE_PROGRAM_CONFIG
+
+using MatMulNBitsQkvDecodeProgram = ConfiguredProgram<MatMulNBitsQkvDecodeProgramShader>;
 
 }  // namespace
 
@@ -337,23 +337,23 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   program.SetWorkgroupSize(workgroup_size);
   program.SetDispatchGroupSize(num_N_tile, 1, batch_count);
   program
-      .AddInput({decode_a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)});
+      .AddInput({decode_a, ProgramTensorMetadataDependency::None, static_cast<int>(components_a)});
   if (decode_has_skip_input) {
-    program.AddInput({skip, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)});
+    program.AddInput({skip, ProgramTensorMetadataDependency::None, static_cast<int>(components_a)});
   }
   if (decode_has_norm) {
-    program.AddInput({norm_scale, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)});
+    program.AddInput({norm_scale, ProgramTensorMetadataDependency::None, static_cast<int>(components_a)});
   }
   program
-      .AddInputs({{q_b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
-                  {q_scales, ProgramTensorMetadataDependency::TypeAndRank},
-                  {k_b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
-                  {k_scales, ProgramTensorMetadataDependency::TypeAndRank},
-                  {v_b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
-                  {v_scales, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutputs({{q_output, ProgramTensorMetadataDependency::TypeAndRank},
-                   {k_output, ProgramTensorMetadataDependency::TypeAndRank},
-                   {v_output, ProgramTensorMetadataDependency::TypeAndRank}})
+      .AddInputs({{q_b, ProgramTensorMetadataDependency::None, static_cast<int>(components_b_with_u32)},
+                  {q_scales, ProgramTensorMetadataDependency::None},
+                  {k_b, ProgramTensorMetadataDependency::None, static_cast<int>(components_b_with_u32)},
+                  {k_scales, ProgramTensorMetadataDependency::None},
+                  {v_b, ProgramTensorMetadataDependency::None, static_cast<int>(components_b_with_u32)},
+                  {v_scales, ProgramTensorMetadataDependency::None}})
+      .AddOutputs({{q_output, ProgramTensorMetadataDependency::None},
+                   {k_output, ProgramTensorMetadataDependency::None},
+                   {v_output, ProgramTensorMetadataDependency::None}})
       .AddUniformVariables({{Nq},
                             {Nkv},
                             {K},
@@ -364,22 +364,10 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                             {num_N_tile},
                             {batch_count},
                             {decode_has_skip_input ? onnxruntime::narrow<uint32_t>(skip->Shape().Size()) : 0u},
-                            {epsilon_}})
-      .CacheHint(Nq,
-                 Nkv,
-                 K,
-                 tile_size,
-                 tile_size_k_vec,
-                 k_unroll_tiles,
-                 single_scale_weights,
-                 decode_has_norm,
-                 decode_has_skip_input,
-                 decode_has_skip_output,
-                 acc_f32,
-                 "decode_qkv_sln");
+                            {epsilon_}});
   if (decode_has_skip_output) {
     program.AddOutput({decode_input_skip_bias_sum,
-                       ProgramTensorMetadataDependency::TypeAndRank,
+                       ProgramTensorMetadataDependency::None,
                        static_cast<int>(components_a)});
   }
 

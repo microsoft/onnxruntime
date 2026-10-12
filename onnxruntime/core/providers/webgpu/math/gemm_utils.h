@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 
 namespace onnxruntime {
@@ -13,34 +14,34 @@ namespace webgpu {
 // `ProgramManager::NormalizeDispatchGroupSize()`. In the shader we should always use
 // `logical_workgroup_id` and `logical_global_id` instead of `workgroup_id` and `global_id`.
 // Reject normalization-added workgroups before accesses or workgroup barriers.
-void InitializeLogicalWorkgroupIDAndGlobalID(ShaderHelper& shader);
+void InitializeLogicalWorkgroupIDAndGlobalID(ConfiguredShaderHelper& shader);
 
-void MatMulReadFnSource(ShaderHelper& shader,
+void MatMulReadFnSource(ConfiguredShaderHelper& shader,
                         const ShaderVariableHelper& a,
                         const ShaderVariableHelper& b,
                         const ShaderIndicesHelper* batch_dims,
                         bool transA,
                         bool transB);
 
-void MatMulWriteFnSourceForMatMul(ShaderHelper& shader,
+void MatMulWriteFnSourceForMatMul(ConfiguredShaderHelper& shader,
                                   const ShaderVariableHelper& output,
                                   const ShaderVariableHelper* bias,
                                   std::string activation_snippet,
                                   bool is_channels_last);
 
-void MatMulWriteFnSourceForGemm(ShaderHelper& shader,
+void MatMulWriteFnSourceForGemm(ConfiguredShaderHelper& shader,
                                 const ShaderVariableHelper& output,
                                 const ShaderVariableHelper* bias,
                                 bool c_is_scalar);
 
-void MatMulWriteFnSourceWithSplitK(ShaderHelper& shader,
+void MatMulWriteFnSourceWithSplitK(ConfiguredShaderHelper& shader,
                                    const ShaderVariableHelper& output,
                                    bool is_gemm,
                                    ProgramVariableDataType output_variable_type);
 
 // The two following functions are used to generate shader code for vec4 and scalar.
 // It is used in GEMM, Matmul, and Conv.
-Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
+Status MakeMatMulPackedVec4Source(ConfiguredShaderHelper& shader,
                                   const InlinedVector<int64_t>& elements_per_thread,
                                   uint32_t workgroup_size_x,
                                   uint32_t workgroup_size_y,
@@ -58,7 +59,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
                                   uint32_t split_dim_inner = 32,
                                   bool use_f32_accumulation = false);
 
-Status MakeMatMulPackedSource(ShaderHelper& shader,
+Status MakeMatMulPackedSource(ConfiguredShaderHelper& shader,
                               const InlinedVector<int64_t>& elements_per_thread,
                               uint32_t workgroup_size_x,
                               uint32_t workgroup_size_y,

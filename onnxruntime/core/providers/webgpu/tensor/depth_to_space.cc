@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/tensor/depth_to_space.h"
@@ -46,11 +47,12 @@ void AppendPermFunction(OStringStream& os, const ShaderVariableHelper& input, co
      << "}\n";
 }
 
-Status DepthToSpaceProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status DepthToSpaceProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                     ConfiguredShaderHelper& shader) {
   const ShaderVariableHelper& input = shader.AddInput("input");
   const ShaderVariableHelper& output = shader.AddOutput("output");
 
-  AppendPermFunction(shader.AdditionalImplementation(), input, perm_);
+  AppendPermFunction(shader.AdditionalImplementation(), input, config.perm_.data());
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "  let indices = " << output.OffsetToIndices("global_idx") << ";\n"
@@ -134,11 +136,10 @@ Status DepthToSpace<is_nhwc>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   TensorShape output_override_shape(shape_after_permutation_vec);
 
   DepthToSpaceProgram program{perm};
-  program
-      .AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, input_override_shape, 1})
+  program.AddInput({input, ProgramTensorMetadataDependency::None, input_override_shape, 1})
       .AddOutput({output, ProgramTensorMetadataDependency::None, output_override_shape, 1})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .CacheHint(absl::StrJoin(input_shape.GetDims(), "-"), blocksize_, is_dcr_ ? "DCR" : "CRD")
+
       .AddUniformVariable({static_cast<uint32_t>(output_size)});
   return context.RunProgram(program);
 }

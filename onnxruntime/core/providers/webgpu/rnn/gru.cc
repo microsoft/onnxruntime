@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/rnn/gru.h"
 
 #include <algorithm>
@@ -30,7 +31,7 @@ std::string ActivationToWgslFn(const std::string& activation) {
 }
 
 // WGSL helpers shared by both compute passes.
-void AppendActivationImpl(ShaderHelper& shader) {
+void AppendActivationImpl(ConfiguredShaderHelper& shader) {
   shader.AdditionalImplementation()
       << "fn sigmoid_f(v: f32) -> f32 {\n"
       << "  let clamped = clamp(v, -20.0, 20.0);\n"
@@ -80,9 +81,10 @@ Gru::Gru(const OpKernelInfo& info) : WebGpuKernel(info) {
 // ===========================================================================
 // GruStateCopyProgram
 // ===========================================================================
-Status GruStateCopyProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GruStateCopyProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                     ConfiguredShaderHelper& shader) {
   shader.AddInput("src", ShaderUsage::UseElementTypeAlias);
-  if (has_seq_lens_) shader.AddInput("seq_lens", ShaderUsage::UseElementTypeAlias);
+  if (config.has_seq_lens_) shader.AddInput("seq_lens", ShaderUsage::UseElementTypeAlias);
   shader.AddOutput("dst", ShaderUsage::UseElementTypeAlias);
   auto& body = shader.MainFunctionBody();
   body << "  let H = uniforms.hidden_size;\n"
@@ -93,13 +95,13 @@ Status GruStateCopyProgram::GenerateShaderCode(ShaderHelper& shader) const {
        << "  let batch_idx = global_idx / H;\n"
        << "  let j = global_idx % H;\n"
        << "  let flat_idx = batch_idx * H + j;\n";
-  if (layout_ == 0) {
+  if (config.layout_ == 0) {
     body << "  let state_idx = (dir * B + batch_idx) * H + j;\n";
   } else {
     body << "  let state_idx = (batch_idx * num_dir + dir) * H + j;\n";
   }
-  if (to_state_) {
-    if (has_seq_lens_) {
+  if (config.to_state_) {
+    if (config.has_seq_lens_) {
       body << "  if (u32(seq_lens[batch_idx]) == 0u) {\n"
            << "    dst[state_idx] = dst_element_t(0.0);\n"
            << "    return;\n"
@@ -115,12 +117,12 @@ Status GruStateCopyProgram::GenerateShaderCode(ShaderHelper& shader) const {
 // ===========================================================================
 // GruGateProgram - compute update (z) and reset (r) gates for the whole [batch, H].
 // ===========================================================================
-Status GruGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GruGateProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
   shader.AddInput("x", ShaderUsage::UseElementTypeAlias);
   shader.AddInput("w", ShaderUsage::UseElementTypeAlias);
   shader.AddInput("r", ShaderUsage::UseElementTypeAlias);
   shader.AddInput("h_prev", ShaderUsage::UseElementTypeAlias);
-  if (has_bias_) shader.AddInput("b", ShaderUsage::UseElementTypeAlias);
+  if (config.has_bias_) shader.AddInput("b", ShaderUsage::UseElementTypeAlias);
 
   shader.AddOutput("z_out", ShaderUsage::UseElementTypeAlias);
   shader.AddOutput("reset_out", ShaderUsage::UseElementTypeAlias);
@@ -142,7 +144,7 @@ Status GruGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // X * W^T
   body << "  let w_base = dir * 3u * H * I;\n";
-  if (layout_ == 0) {
+  if (config.layout_ == 0) {
     body << "  let x_base = (uniforms.timestep * B + batch_idx) * I;\n";
   } else {
     body << "  let x_base = (batch_idx * uniforms.seq_length + uniforms.timestep) * I;\n";
@@ -163,23 +165,23 @@ Status GruGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
        << "  }\n\n";
 
   // Bias: B = [Wbz, Wbr, Wbh, Rbz, Rbr, Rbh] per direction.
-  if (has_bias_) {
+  if (config.has_bias_) {
     body << "  let bb = dir * 6u * H;\n"
          << "  gate_z += f32(b[bb + j]) + f32(b[bb + 3u * H + j]);\n"
          << "  gate_r += f32(b[bb + H + j]) + f32(b[bb + 4u * H + j]);\n\n";
   }
 
-  if (has_clip_) {
+  if (config.has_clip_) {
     body << "  gate_z = clamp(gate_z, -uniforms.clip_value, uniforms.clip_value);\n"
          << "  gate_r = clamp(gate_r, -uniforms.clip_value, uniforms.clip_value);\n\n";
   }
 
-  body << "  gate_z = " << f_activation_fn_ << "(gate_z);\n"
-       << "  gate_r = " << f_activation_fn_ << "(gate_r);\n\n";
+  body << "  gate_z = " << config.f_activation_fn_ << "(gate_z);\n"
+       << "  gate_r = " << config.f_activation_fn_ << "(gate_r);\n\n";
 
   body << "  let oi = batch_idx * H + j;\n"
        << "  z_out[oi] = z_out_element_t(gate_z);\n";
-  if (linear_before_reset_) {
+  if (config.linear_before_reset_) {
     // The hidden pass applies the reset gate after the recurrent matmul, so pass r[j] through.
     body << "  reset_out[oi] = reset_out_element_t(gate_r);\n";
   } else {
@@ -192,18 +194,19 @@ Status GruGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
 // ===========================================================================
 // GruHiddenProgram - compute hidden gate (h) and new hidden state.
 // ===========================================================================
-Status GruHiddenProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GruHiddenProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                  ConfiguredShaderHelper& shader) {
   shader.AddInput("x", ShaderUsage::UseElementTypeAlias);
   shader.AddInput("w", ShaderUsage::UseElementTypeAlias);
   shader.AddInput("r", ShaderUsage::UseElementTypeAlias);
   shader.AddInput("h_prev", ShaderUsage::UseElementTypeAlias);
   shader.AddInput("z", ShaderUsage::UseElementTypeAlias);
   shader.AddInput("reset", ShaderUsage::UseElementTypeAlias);
-  if (has_bias_) shader.AddInput("b", ShaderUsage::UseElementTypeAlias);
-  if (has_seq_lens_) shader.AddInput("seq_lens", ShaderUsage::UseElementTypeAlias);
+  if (config.has_bias_) shader.AddInput("b", ShaderUsage::UseElementTypeAlias);
+  if (config.has_seq_lens_) shader.AddInput("seq_lens", ShaderUsage::UseElementTypeAlias);
 
   shader.AddOutput("h_new", ShaderUsage::UseElementTypeAlias);
-  if (has_Y_) shader.AddOutput("y_out", ShaderUsage::UseElementTypeAlias);
+  if (config.has_Y_) shader.AddOutput("y_out", ShaderUsage::UseElementTypeAlias);
 
   AppendActivationImpl(shader);
 
@@ -220,12 +223,12 @@ Status GruHiddenProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // Sequence length masking - carry the previous hidden state forward past the batch's seq length.
   // Use timestep (not the processing step) so reverse direction masks the correct positions.
-  if (has_seq_lens_) {
+  if (config.has_seq_lens_) {
     body << "  let batch_seq_len = u32(seq_lens[batch_idx]);\n"
          << "  if (uniforms.timestep >= batch_seq_len) {\n"
          << "    h_new[flat_idx] = h_prev[flat_idx];\n";
-    if (has_Y_) {
-      if (layout_ == 0) {
+    if (config.has_Y_) {
+      if (config.layout_ == 0) {
         body << "    y_out[((uniforms.timestep * num_dir + dir) * B + batch_idx) * H + j] = y_out_element_t(0.0);\n";
       } else {
         body << "    y_out[((batch_idx * uniforms.seq_length + uniforms.timestep) * num_dir + dir) * H + j] = y_out_element_t(0.0);\n";
@@ -238,7 +241,7 @@ Status GruHiddenProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // X * Wh^T
   body << "  var gate_h: f32 = 0.0;\n"
        << "  let w_base = dir * 3u * H * I;\n";
-  if (layout_ == 0) {
+  if (config.layout_ == 0) {
     body << "  let x_base = (uniforms.timestep * B + batch_idx) * I;\n";
   } else {
     body << "  let x_base = (batch_idx * uniforms.seq_length + uniforms.timestep) * I;\n";
@@ -250,13 +253,13 @@ Status GruHiddenProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Recurrent term depends on linear_before_reset.
   body << "  let r_base = dir * 3u * H * H;\n"
        << "  let h_base = batch_idx * H;\n";
-  if (linear_before_reset_) {
+  if (config.linear_before_reset_) {
     // ht = g(Xt*Wh + r (.) (H_prev*Rh + Rbh) + Wbh)
     body << "  var rec: f32 = 0.0;\n"
          << "  for (var k: u32 = 0u; k < H; k++) {\n"
          << "    rec += f32(h_prev[h_base + k]) * f32(r[r_base + (2u * H + j) * H + k]);\n"
          << "  }\n";
-    if (has_bias_) {
+    if (config.has_bias_) {
       body << "  rec += f32(b[dir * 6u * H + 5u * H + j]);\n";  // Rbh inside the reset gate
     }
     body << "  gate_h += f32(reset[h_base + j]) * rec;\n\n";
@@ -265,27 +268,27 @@ Status GruHiddenProgram::GenerateShaderCode(ShaderHelper& shader) const {
     body << "  for (var k: u32 = 0u; k < H; k++) {\n"
          << "    gate_h += f32(reset[h_base + k]) * f32(r[r_base + (2u * H + j) * H + k]);\n"
          << "  }\n";
-    if (has_bias_) {
+    if (config.has_bias_) {
       body << "  gate_h += f32(b[dir * 6u * H + 5u * H + j]);\n";  // Rbh
     }
     body << "\n";
   }
 
-  if (has_bias_) {
+  if (config.has_bias_) {
     body << "  gate_h += f32(b[dir * 6u * H + 2u * H + j]);\n\n";  // Wbh
   }
 
-  if (has_clip_) {
+  if (config.has_clip_) {
     body << "  gate_h = clamp(gate_h, -uniforms.clip_value, uniforms.clip_value);\n";
   }
-  body << "  gate_h = " << g_activation_fn_ << "(gate_h);\n\n";
+  body << "  gate_h = " << config.g_activation_fn_ << "(gate_h);\n\n";
 
   // Ht = (1 - z) (.) h + z (.) H_prev
   body << "  let zv = f32(z[flat_idx]);\n"
        << "  let hu = (1.0 - zv) * gate_h + zv * f32(h_prev[flat_idx]);\n"
        << "  h_new[flat_idx] = h_new_element_t(hu);\n";
-  if (has_Y_) {
-    if (layout_ == 0) {
+  if (config.has_Y_) {
+    if (config.layout_ == 0) {
       body << "  y_out[((uniforms.timestep * num_dir + dir) * B + batch_idx) * H + j] = y_out_element_t(hu);\n";
     } else {
       body << "  y_out[((batch_idx * uniforms.seq_length + uniforms.timestep) * num_dir + dir) * H + j] = y_out_element_t(hu);\n";
@@ -409,9 +412,9 @@ Status Gru::ComputeInternal(ComputeContext& context) const {
 
   auto copy_from_state = [&](const Tensor* src, Tensor* dst, int dir) -> Status {
     GruStateCopyProgram prog{/*to_state=*/false, static_cast<int>(layout_)};
-    prog.CacheHint("from", std::to_string(layout_));
+
     prog.SetWorkgroupSize(wg_size).SetDispatchGroupSize(num_groups);
-    prog.AddInputs({{src, ProgramTensorMetadataDependency::Type}});
+    prog.AddInputs({{src, ProgramTensorMetadataDependency::None}});
     prog.AddOutputs({{dst, ProgramTensorMetadataDependency::None}});
     prog.AddUniformVariables({
         {static_cast<uint32_t>(batch_size)},
@@ -424,10 +427,10 @@ Status Gru::ComputeInternal(ComputeContext& context) const {
 
   auto copy_to_state = [&](Tensor* src, Tensor* dst, int dir) -> Status {
     GruStateCopyProgram prog{/*to_state=*/true, static_cast<int>(layout_), has_seq_lens};
-    prog.CacheHint("to", std::to_string(layout_), std::to_string(has_seq_lens));
+
     prog.SetWorkgroupSize(wg_size).SetDispatchGroupSize(num_groups);
-    prog.AddInputs({{src, ProgramTensorMetadataDependency::Type}});
-    if (has_seq_lens) prog.AddInputs({{sequence_lens, ProgramTensorMetadataDependency::Type}});
+    prog.AddInputs({{src, ProgramTensorMetadataDependency::None}});
+    if (has_seq_lens) prog.AddInputs({{sequence_lens, ProgramTensorMetadataDependency::None}});
     prog.AddOutputs({{dst, ProgramTensorMetadataDependency::None}});
     prog.AddUniformVariables({
         {static_cast<uint32_t>(batch_size)},
@@ -464,14 +467,13 @@ Status Gru::ComputeInternal(ComputeContext& context) const {
 
       // Pass 1: update and reset gates.
       GruGateProgram gate_prog{B != nullptr, lbr, has_clip, static_cast<int>(layout_), fa};
-      gate_prog.CacheHint(std::to_string(B != nullptr), std::to_string(lbr),
-                          std::to_string(has_clip), std::to_string(layout_), fa);
+
       gate_prog.SetWorkgroupSize(wg_size).SetDispatchGroupSize(num_groups);
-      gate_prog.AddInputs({{X, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{W, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{R, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{h_read, ProgramTensorMetadataDependency::Type}});
-      if (B != nullptr) gate_prog.AddInputs({{B, ProgramTensorMetadataDependency::Type}});
+      gate_prog.AddInputs({{X, ProgramTensorMetadataDependency::None}})
+          .AddInputs({{W, ProgramTensorMetadataDependency::None}})
+          .AddInputs({{R, ProgramTensorMetadataDependency::None}})
+          .AddInputs({{h_read, ProgramTensorMetadataDependency::None}});
+      if (B != nullptr) gate_prog.AddInputs({{B, ProgramTensorMetadataDependency::None}});
       gate_prog.AddOutputs({{&Z, ProgramTensorMetadataDependency::None}})
           .AddOutputs({{&Reset, ProgramTensorMetadataDependency::None}});
       gate_prog.AddUniformVariables({
@@ -489,18 +491,16 @@ Status Gru::ComputeInternal(ComputeContext& context) const {
       // Pass 2: hidden gate and new state.
       GruHiddenProgram hidden_prog{B != nullptr, has_Y, has_seq_lens, lbr, has_clip,
                                    static_cast<int>(layout_), ga};
-      hidden_prog.CacheHint(std::to_string(B != nullptr), std::to_string(has_Y),
-                            std::to_string(has_seq_lens), std::to_string(lbr),
-                            std::to_string(has_clip), std::to_string(layout_), ga);
+
       hidden_prog.SetWorkgroupSize(wg_size).SetDispatchGroupSize(num_groups);
-      hidden_prog.AddInputs({{X, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{W, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{R, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{h_read, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{&Z, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{&Reset, ProgramTensorMetadataDependency::Type}});
-      if (B != nullptr) hidden_prog.AddInputs({{B, ProgramTensorMetadataDependency::Type}});
-      if (has_seq_lens) hidden_prog.AddInputs({{sequence_lens, ProgramTensorMetadataDependency::Type}});
+      hidden_prog.AddInputs({{X, ProgramTensorMetadataDependency::None}})
+          .AddInputs({{W, ProgramTensorMetadataDependency::None}})
+          .AddInputs({{R, ProgramTensorMetadataDependency::None}})
+          .AddInputs({{h_read, ProgramTensorMetadataDependency::None}})
+          .AddInputs({{&Z, ProgramTensorMetadataDependency::None}})
+          .AddInputs({{&Reset, ProgramTensorMetadataDependency::None}});
+      if (B != nullptr) hidden_prog.AddInputs({{B, ProgramTensorMetadataDependency::None}});
+      if (has_seq_lens) hidden_prog.AddInputs({{sequence_lens, ProgramTensorMetadataDependency::None}});
       hidden_prog.AddOutputs({{h_write, ProgramTensorMetadataDependency::None}});
       if (has_Y) hidden_prog.AddOutputs({{Y, ProgramTensorMetadataDependency::None}});
       hidden_prog.AddUniformVariables({

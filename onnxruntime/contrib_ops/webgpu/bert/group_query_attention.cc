@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "contrib_ops/webgpu/bert/attention_common.h"
 #include "contrib_ops/webgpu/bert/group_query_attention.h"
@@ -23,12 +24,13 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-Status SplitPackedQKVWithRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& sh) const {
+Status SplitPackedQKVWithRotaryEmbeddingProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                                          ConfiguredShaderHelper& sh) {
   const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseUniform);
   const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
   const auto& cos_cache = sh.AddInput("cos_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& sin_cache = sh.AddInput("sin_cache", ShaderUsage::UseUniform);
-  if (use_total_sequence_length_input_) {
+  if (config.use_total_sequence_length_input_) {
     sh.AddInput("total_sequence_length_input", ShaderUsage::None);
   }
 
@@ -36,18 +38,16 @@ Status SplitPackedQKVWithRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper
   const auto& key = sh.AddOutput("key", ShaderUsage::UseUniform);
   const auto& val = sh.AddOutput("val", ShaderUsage::UseUniform);
 
-  return WGSL_TEMPLATE_APPLY(sh, "bert/split_packed_qkv_with_rotary_embedding.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(interleaved, interleaved_),
-                             WGSL_TEMPLATE_PARAMETER(multi_rotary_cache_concat_offset, multi_rotary_cache_concat_offset_),
-                             WGSL_TEMPLATE_PARAMETER(use_multi_rotary_cache_concat, multi_rotary_cache_concat_offset_ > 0),
-                             WGSL_TEMPLATE_PARAMETER(use_total_sequence_length_input, use_total_sequence_length_input_),
-                             WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
-                             WGSL_TEMPLATE_VARIABLE(key, key),
-                             WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv),
-                             WGSL_TEMPLATE_VARIABLE(query, query),
-                             WGSL_TEMPLATE_VARIABLE(seqlens, seqlens),
-                             WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache),
-                             WGSL_TEMPLATE_VARIABLE(val, val));
+  return WGSL_TEMPLATE_APPLY(
+      sh, "bert/split_packed_qkv_with_rotary_embedding.wgsl.template",
+      WGSL_TEMPLATE_PARAMETER(interleaved, config.interleaved_),
+      WGSL_TEMPLATE_PARAMETER(multi_rotary_cache_concat_offset, config.multi_rotary_cache_concat_offset_),
+      WGSL_TEMPLATE_PARAMETER(use_multi_rotary_cache_concat, config.multi_rotary_cache_concat_offset_ > 0),
+      WGSL_TEMPLATE_PARAMETER(use_total_sequence_length_input, config.use_total_sequence_length_input_),
+      WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache), WGSL_TEMPLATE_VARIABLE(key, key),
+      WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv), WGSL_TEMPLATE_VARIABLE(query, query),
+      WGSL_TEMPLATE_VARIABLE(seqlens, seqlens), WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache),
+      WGSL_TEMPLATE_VARIABLE(val, val));
 }
 
 // Split packed QKV with Q/K rotary embedding fusion
@@ -91,12 +91,11 @@ Status RunSplitPackedQKVWithRotaryEmbedding(onnxruntime::webgpu::ComputeContext&
                                                    multi_rotary_cache_concat_offset,
                                                    use_total_sequence_length_input);
   program
-      .CacheHint(params.rotary_interleaved_, multi_rotary_cache_concat_offset, use_total_sequence_length_input)
-      .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})
+      .AddInput({packedQKV, ProgramTensorMetadataDependency::None, components})
       .AddInputs({
-          {seqlen_k, ProgramTensorMetadataDependency::TypeAndRank},
-          {cos_cache, ProgramTensorMetadataDependency::TypeAndRank, components},
-          {sin_cache, ProgramTensorMetadataDependency::Rank, components},
+          {seqlen_k, ProgramTensorMetadataDependency::None},
+          {cos_cache, ProgramTensorMetadataDependency::None, components},
+          {sin_cache, ProgramTensorMetadataDependency::None, components},
       });
   if (use_total_sequence_length_input) {
     program.AddInput({total_seqlen, ProgramTensorMetadataDependency::None});
@@ -185,16 +184,15 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
   // key_in the shader-validation in Debug builds fails with "Input dependency is not set
   // for Type, but type alias for element type or value type is used."
   const auto k_input_dep = has_qk_norm
-                               ? ProgramTensorMetadataDependency::TypeAndRank
-                               : ProgramTensorMetadataDependency::Rank;
+                               ? ProgramTensorMetadataDependency::None
+                               : ProgramTensorMetadataDependency::None;
   program
-      .CacheHint(params.rotary_interleaved_, has_qk_norm)
       .AddInputs({
-          {query_in, ProgramTensorMetadataDependency::TypeAndRank},
+          {query_in, ProgramTensorMetadataDependency::None},
           {key_in, k_input_dep},
-          {seqlen_k, ProgramTensorMetadataDependency::TypeAndRank},
-          {cos_cache, ProgramTensorMetadataDependency::Rank},
-          {sin_cache, ProgramTensorMetadataDependency::Rank},
+          {seqlen_k, ProgramTensorMetadataDependency::None},
+          {cos_cache, ProgramTensorMetadataDependency::None},
+          {sin_cache, ProgramTensorMetadataDependency::None},
       })
       .AddOutputs({
           {query_out, ProgramTensorMetadataDependency::None},
@@ -215,8 +213,8 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
 
   if (has_qk_norm) {
     program.AddInputs({
-        {q_norm_weight, ProgramTensorMetadataDependency::Type},
-        {k_norm_weight, ProgramTensorMetadataDependency::Type},
+        {q_norm_weight, ProgramTensorMetadataDependency::None},
+        {k_norm_weight, ProgramTensorMetadataDependency::None},
     });
   }
 

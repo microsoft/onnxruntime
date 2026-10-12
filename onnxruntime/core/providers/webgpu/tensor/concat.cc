@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/tensor/concat.h"
 
 #include "core/common/inlined_containers.h"
@@ -95,8 +96,8 @@ void AppendAssignOutputDataFunction(OStringStream& os, gsl::span<const ShaderVar
         "}\n";
 }
 
-Status ConcatProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  size_t input_count = Inputs().size();
+Status ConcatProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
+  size_t input_count = shader.InputCount();
   std::vector<const ShaderVariableHelper*> inputs;
   inputs.reserve(input_count);
   for (size_t i = 0; i < input_count; ++i) {
@@ -105,7 +106,8 @@ Status ConcatProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
   AppendCalculateInputIndexFunction(shader.AdditionalImplementation(), input_count);
-  AppendAssignOutputDataFunction(shader.AdditionalImplementation(), inputs, output, axis_, input_count, is_int64_);
+  AppendAssignOutputDataFunction(shader.AdditionalImplementation(), inputs, output, config.axis_, input_count,
+                                 config.is_int64_);
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let input_index = calculate_input_index(global_idx);\n"
@@ -178,7 +180,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
       if (input.tensor->Shape().Size() == 0) {
         continue;
       }
-      program.AddInput({input.tensor, ProgramTensorMetadataDependency::TypeAndRank, components});
+      program.AddInput({input.tensor, ProgramTensorMetadataDependency::None, components});
 
       uint32_t size = onnxruntime::narrow<int32_t>(input.tensor->Shape().Size()) / components;
       uint32_t axis_size = static_cast<uint32_t>(input.tensor->Shape()[axis]) / axis_divisor;
@@ -192,10 +194,11 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
     offsets.pop_back();
     sizes_in_concat_axis.pop_back();
 
-    program.CacheHint(absl::StrJoin(std::make_tuple(num_inputs_this_concat, prepare.axis), ","))
-        .AddOutputs({{prepare.output_tensor, ProgramTensorMetadataDependency::None, components}})
+    program.AddOutputs({{prepare.output_tensor, ProgramTensorMetadataDependency::None, components}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-        .AddUniformVariables({gsl::span<const uint32_t>(offsets.data(), offsets.size()), gsl::span<const uint32_t>(sizes_in_concat_axis.data(), sizes_in_concat_axis.size()), output_size});
+        .AddUniformVariables({gsl::span<const uint32_t>(offsets.data(), offsets.size()),
+                              gsl::span<const uint32_t>(sizes_in_concat_axis.data(), sizes_in_concat_axis.size()),
+                              output_size});
     ORT_RETURN_IF_ERROR(context.RunProgram(program));
 
     input_index += num_inputs_this_concat;

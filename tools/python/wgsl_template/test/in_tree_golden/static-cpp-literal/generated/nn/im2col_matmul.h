@@ -6,7 +6,7 @@
 // Source: nn/im2col_matmul.wgsl.template
 
 template <>
-Status ApplyTemplate<"nn/im2col_matmul.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"nn/im2col_matmul.wgsl.template">::type params) {
+Status ApplyTemplate<"nn/im2col_matmul.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"nn/im2col_matmul.wgsl.template">::type params) {
   [[maybe_unused]] auto& ss = shader_helper.AdditionalImplementation();
 
   // Extract parameters

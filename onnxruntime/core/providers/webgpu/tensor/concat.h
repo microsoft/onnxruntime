@@ -6,25 +6,37 @@
 #include "core/providers/cpu/tensor/concatbase.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class ConcatProgram final : public Program<ConcatProgram> {
- public:
-  ConcatProgram(size_t axis, bool is_int64) : Program{"Concat"}, axis_{axis}, is_int64_{is_int64} {
+#define WEBGPU_CONCAT_PROGRAM_CONFIG(F) \
+  F(size_t, axis_)                      \
+  F(bool, is_int64_)
+
+struct ConcatProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_CONCAT_PROGRAM_CONFIG);
+  static Config MakeConfig(size_t axis, bool is_int64) {
+    Config result{};
+    result.axis_ = size_t{axis};
+    result.is_int64_ = bool{is_int64};
+
+    return result;
   }
+  static constexpr std::string_view name = "Concat";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"offsets", ProgramUniformVariableDataType::Uint32},
-                                          {"sizes_in_concat_axis", ProgramUniformVariableDataType::Uint32},
-                                          {"output_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  size_t axis_;
-  bool is_int64_;
+#define WEBGPU_CONCAT_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, offsets)                             \
+  U(Uint32, sizes_in_concat_axis)                \
+  U(Uint32, output_size)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_CONCAT_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_CONCAT_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_CONCAT_PROGRAM_CONFIG
+
+using ConcatProgram = ConfiguredProgram<ConcatProgramShader>;
 
 class Concat final : public WebGpuKernel, public ConcatBase {
  public:

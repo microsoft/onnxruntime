@@ -27,6 +27,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/buffer_manager.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
@@ -358,14 +359,16 @@ TEST(WebGpuContextTest, CheckedCompletionDrainsAfterDeferredDispatchFailure) {
 }
 
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
-class PipelineCallbackTestProgram final : public webgpu::Program<PipelineCallbackTestProgram> {
- public:
-  PipelineCallbackTestProgram() : Program{"PipelineCallbackTest"} {}
-
-  Status GenerateShaderCode(webgpu::ShaderHelper&) const override {
+#define WEBGPU_CALLBACK_TEST_FIELDS(F)
+struct PipelineCallbackTestShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_CALLBACK_TEST_FIELDS);
+  static constexpr std::string_view name = "PipelineCallbackTest";
+  static Status GenerateShaderCode(const Config&, webgpu::ConfiguredShaderHelper&) {
     return Status::OK();
   }
 };
+#undef WEBGPU_CALLBACK_TEST_FIELDS
+using PipelineCallbackTestProgram = webgpu::ConfiguredProgram<PipelineCallbackTestShader>;
 
 Status StartPipelineCallbackTestBuild(webgpu::WebGpuContext& context, webgpu::PendingPipelineBuild& build,
                                       bool invalid_shader) {

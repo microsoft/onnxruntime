@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include <memory>
 
 #include "core/common/inlined_containers.h"
@@ -56,7 +57,7 @@ Status ComputeOutputShape(const TensorShape& cond_shape,
   return Status::OK();
 }
 
-Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status WhereProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
   const auto& c_input = shader.AddInput("c_data", ShaderUsage::UseUniform);
   const auto& a_input = shader.AddInput("a_data", ShaderUsage::UseUniform);
   const auto& b_input = shader.AddInput("b_data", ShaderUsage::UseUniform);
@@ -73,12 +74,12 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // INT64 is excluded because vec_size = output_size (one thread per element), so global_idx is
   // an element index — c_input.GetByOffset would read the wrong condition word. The is_int64_
   // branch below extracts the correct condition bit via offset_c / 4u and byte masking.
-  if (!is_broadcast_ && !is_int64_) {
+  if (!config.is_broadcast_ && !config.is_int64_) {
     shader.MainFunctionBody() << output.SetByOffset(
         "global_idx",
         expression(a_input.GetByOffset("global_idx"), b_input.GetByOffset("global_idx"), c_input.GetByOffset("global_idx")));
 
-  } else if (is_int64_) {
+  } else if (config.is_int64_) {
     // INT64: no vec4; process one element per thread using direct storage access.
     // Handles both broadcast and non-broadcast (BroadcastedIndicesToOffset returns global_idx for matching shapes).
     const auto& c_indices = shader.AddIndices("c_indices");
@@ -123,7 +124,7 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                 << rest_str << "[" << x << "] = " << type_cast << "(" << expression(a_expression, b_expression, c_expression) << ");\n";
     };
 
-    if (Outputs()[0].tensor->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_BOOL) {
+    if (shader.OutputElementType(0) == ONNX_NAMESPACE::TensorProto_DataType_BOOL) {
       shader.MainFunctionBody() << "var data = vec4<u32>(0);\n";
       single_assignment("data", "0", "u32");
       single_assignment("data", "1", "u32");
@@ -166,12 +167,11 @@ Status Where::ComputeInternal(ComputeContext& context) const {
                               y_shape == cond_shape);
   WhereProgram program{is_broadcast, is_int64};
   program
-      .CacheHint(is_broadcast, is_int64)
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddInputs({{cond_tensor, ProgramTensorMetadataDependency::Type, {(cond_shape.Size() + 3) / 4}, 4},
-                  {x_tensor, ProgramTensorMetadataDependency::Type, {is_int64 ? x_shape.Size() : (x_shape.Size() + 3) / 4}, component},
-                  {y_tensor, ProgramTensorMetadataDependency::Type, {is_int64 ? y_shape.Size() : (y_shape.Size() + 3) / 4}, component}})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, component})
+      .AddInputs({{cond_tensor, ProgramTensorMetadataDependency::None, {(cond_shape.Size() + 3) / 4}, 4},
+                  {x_tensor, ProgramTensorMetadataDependency::None, {is_int64 ? x_shape.Size() : (x_shape.Size() + 3) / 4}, component},
+                  {y_tensor, ProgramTensorMetadataDependency::None, {is_int64 ? y_shape.Size() : (y_shape.Size() + 3) / 4}, component}})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, {vec_size}, component})
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},
       });

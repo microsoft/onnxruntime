@@ -6,6 +6,7 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
@@ -36,20 +37,30 @@ class Softmax final : public WebGpuKernel {
   int opset_;
 };
 
-class SoftmaxProgram final : public Program<SoftmaxProgram> {
- public:
-  SoftmaxProgram(uint32_t wg, bool is_fp32)
-      : Program{"Softmax"}, wg_{wg}, is_fp32_{is_fp32} {
+#define WEBGPU_SOFTMAX_PROGRAM_CONFIG(F) \
+  F(uint32_t, wg_)                       \
+  F(bool, is_fp32_)
+
+struct SoftmaxProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SOFTMAX_PROGRAM_CONFIG);
+  static Config MakeConfig(uint32_t wg, bool is_fp32) {
+    Config result{};
+    result.wg_ = uint32_t{wg};
+    result.is_fp32_ = bool{is_fp32};
+
+    return result;
   }
+  static constexpr std::string_view name = "Softmax";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"packedCols", ProgramUniformVariableDataType::Int32});
-
- private:
-  uint32_t wg_;
-  bool is_fp32_;
+#define WEBGPU_SOFTMAX_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Int32, packedCols)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SOFTMAX_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_SOFTMAX_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_SOFTMAX_PROGRAM_CONFIG
+
+using SoftmaxProgram = ConfiguredProgram<SoftmaxProgramShader>;
 
 }  // namespace webgpu
 }  // namespace onnxruntime

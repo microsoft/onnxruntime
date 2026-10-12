@@ -6,73 +6,114 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class TopKProgram final : public Program<TopKProgram> {
- public:
-  TopKProgram(uint32_t wg, uint32_t shared_size, bool largest, bool is_fp16)
-      : Program{"TopK"}, wg_{wg}, shared_size_{shared_size}, largest_{largest}, is_fp16_{is_fp16} {}
+#define WEBGPU_TOP_K_PROGRAM_CONFIG(F) \
+  F(uint32_t, wg_)                     \
+  F(uint32_t, shared_size_)            \
+  F(bool, largest_)                    \
+  F(bool, is_fp16_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct TopKProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_TOP_K_PROGRAM_CONFIG);
+  static Config MakeConfig(uint32_t wg, uint32_t shared_size, bool largest, bool is_fp16) {
+    Config result{};
+    result.wg_ = uint32_t{wg};
+    result.shared_size_ = uint32_t{shared_size};
+    result.largest_ = bool{largest};
+    result.is_fp16_ = bool{is_fp16};
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"cols", ProgramUniformVariableDataType::Int32},
-      {"k", ProgramUniformVariableDataType::Int32});
+    return result;
+  }
+  static constexpr std::string_view name = "TopK";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
- private:
-  uint32_t wg_;
-  uint32_t shared_size_;
-  bool largest_;
-  bool is_fp16_;
+#define WEBGPU_TOP_K_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Int32, cols)                                \
+  U(Int32, k)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_TOP_K_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_TOP_K_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_TOP_K_PROGRAM_CONFIG
+
+using TopKProgram = ConfiguredProgram<TopKProgramShader>;
 
 // Global-memory bitonic sort programs for cols > 2048
-class TopKInitProgram final : public Program<TopKInitProgram> {
- public:
-  TopKInitProgram(bool largest, bool is_fp16)
-      : Program{"TopKInit"}, largest_{largest}, is_fp16_{is_fp16} {}
+#define WEBGPU_TOP_K_INIT_PROGRAM_CONFIG(F) \
+  F(bool, largest_)                         \
+  F(bool, is_fp16_)
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+struct TopKInitProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_TOP_K_INIT_PROGRAM_CONFIG);
+  static Config MakeConfig(bool largest, bool is_fp16) {
+    Config result{};
+    result.largest_ = bool{largest};
+    result.is_fp16_ = bool{is_fp16};
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"cols", ProgramUniformVariableDataType::Int32},
-      {"padded_cols", ProgramUniformVariableDataType::Int32});
+    return result;
+  }
+  static constexpr std::string_view name = "TopKInit";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
- private:
-  bool largest_;
-  bool is_fp16_;
+#define WEBGPU_TOP_K_INIT_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Int32, cols)                                     \
+  U(Int32, padded_cols)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_TOP_K_INIT_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_TOP_K_INIT_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_TOP_K_INIT_PROGRAM_CONFIG
 
-class TopKSortStepProgram final : public Program<TopKSortStepProgram> {
- public:
-  TopKSortStepProgram(bool largest)
-      : Program{"TopKSortStep"}, largest_{largest} {}
+using TopKInitProgram = ConfiguredProgram<TopKInitProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+#define WEBGPU_TOP_K_SORT_STEP_PROGRAM_CONFIG(F) F(bool, largest_)
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"block_size", ProgramUniformVariableDataType::Uint32},
-      {"gap", ProgramUniformVariableDataType::Uint32},
-      {"padded_cols", ProgramUniformVariableDataType::Uint32},
-      {"total_threads", ProgramUniformVariableDataType::Uint32});
+struct TopKSortStepProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_TOP_K_SORT_STEP_PROGRAM_CONFIG);
+  static Config MakeConfig(bool largest) {
+    Config result{};
+    result.largest_ = bool{largest};
 
- private:
-  bool largest_;
+    return result;
+  }
+  static constexpr std::string_view name = "TopKSortStep";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
+
+#define WEBGPU_TOP_K_SORT_STEP_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Uint32, block_size)                                   \
+  U(Uint32, gap)                                          \
+  U(Uint32, padded_cols)                                  \
+  U(Uint32, total_threads)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_TOP_K_SORT_STEP_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_TOP_K_SORT_STEP_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_TOP_K_SORT_STEP_PROGRAM_CONFIG
 
-class TopKOutputProgram final : public Program<TopKOutputProgram> {
- public:
-  TopKOutputProgram()
-      : Program{"TopKOutput"} {}
+using TopKSortStepProgram = ConfiguredProgram<TopKSortStepProgramShader>;
 
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
+#define WEBGPU_TOP_K_OUTPUT_PROGRAM_CONFIG(F)
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"padded_cols", ProgramUniformVariableDataType::Int32},
-      {"k", ProgramUniformVariableDataType::Int32});
+struct TopKOutputProgramShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_TOP_K_OUTPUT_PROGRAM_CONFIG);
+  static Config MakeConfig() {
+    Config result{};
+
+    return result;
+  }
+  static constexpr std::string_view name = "TopKOutput";
+  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
+
+#define WEBGPU_TOP_K_OUTPUT_PROGRAM_SHADER_UNIFORMS(U) \
+  U(Int32, padded_cols)                                \
+  U(Int32, k)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_TOP_K_OUTPUT_PROGRAM_SHADER_UNIFORMS);
+#undef WEBGPU_TOP_K_OUTPUT_PROGRAM_SHADER_UNIFORMS
 };
+#undef WEBGPU_TOP_K_OUTPUT_PROGRAM_CONFIG
+
+using TopKOutputProgram = ConfiguredProgram<TopKOutputProgramShader>;
 
 class TopK final : public WebGpuKernel {
  public:

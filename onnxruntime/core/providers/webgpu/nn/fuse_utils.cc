@@ -116,7 +116,8 @@ Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation) 
   return Status::OK();
 }
 
-std::string GetActivationDeclaration(const Activation& activation, std::string value_type, std::string base_type) {
+std::string GetActivationDeclaration(const ShaderActivation& activation, std::string value_type,
+                                     std::string base_type) {
   auto base_type_cast = [base_type](const std::string& value) -> std::string {
     return base_type + "(" + value + ")";
   };
@@ -158,7 +159,7 @@ std::string GetActivationDeclaration(const Activation& activation, std::string v
   }
 }
 
-std::string GetActivationSnippet(const Activation& activation, std::string value_type, std::string base_type) {
+std::string GetActivationSnippet(const ShaderActivation& activation, std::string value_type, std::string base_type) {
   auto base_type_cast = [base_type](const std::string& value) -> std::string {
     return base_type + "(" + value + ")";
   };
@@ -185,7 +186,7 @@ std::string GetActivationSnippet(const Activation& activation, std::string value
       return "value = tanh(value);";
     case ActivationKind::QuickGelu:
       // Alpha 1 omits the multiply and uniform read.
-      if (activation.HasUnitQuickGeluAlpha()) {
+      if (activation.unit_quick_gelu_alpha_) {
         return "value = value * (" + value_type_cast(FloatLiteral(1.0f)) + " / (" +
                value_type_cast(FloatLiteral(1.0f)) + " + exp(-value)));";
       }

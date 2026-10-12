@@ -181,13 +181,13 @@ TEST_F(WebGpuDispatchExecutionTest, PackedMatMulSupportsNonDefaultValidTuning) {
   MatMulProgram program{activation, /*bias=*/false, /*is_vec4=*/true,
                         elements_per_thread, /*is_channels_last=*/true,
                         /*split_dim_inner=*/1, /*tile_inner=*/64};
-  program.AddInputs({{&a, ProgramTensorMetadataDependency::TypeAndRank, a_program_shape, 4},
-                     {&b, ProgramTensorMetadataDependency::TypeAndRank, b_program_shape, 4}})
+  program.AddInputs({{&a, ProgramTensorMetadataDependency::None, a_program_shape, 4},
+                     {&b, ProgramTensorMetadataDependency::None, b_program_shape, 4}})
       .AddUniformVariables({{M}, {N}, {K}, {uint32_t{1}}, {uint32_t{1}}, {uint32_t{1}}, {uint32_t{1}}})
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(1, 1, 1)
       .SetWorkgroupSize(16, 4, 1)
-      .AddOutput(ProgramOutput(&output, ProgramTensorMetadataDependency::Rank,
+      .AddOutput(ProgramOutput(&output, ProgramTensorMetadataDependency::None,
                                output_program_shape, 4));
   AppendActivationUniformsData(activation, program);
 
@@ -215,20 +215,22 @@ void CheckResultsAndPadding(gsl::span<const float> output_data, size_t output_si
       << "Normalization-added workgroups modified output padding.";
 }
 
-class LogicalDispatchProbeProgram final : public Program<LogicalDispatchProbeProgram> {
- public:
-  LogicalDispatchProbeProgram() : Program{"LogicalDispatchProbe"} {}
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LogicalDispatchProbeProgram);
+#define WEBGPU_LOGICAL_PROBE_CONFIG(F)
+struct LogicalDispatchProbeShader {
+  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_LOGICAL_PROBE_CONFIG);
+  static constexpr std::string_view name = "LogicalDispatchProbe";
 
   static constexpr std::array<uint32_t, 3> kWorkgroupSize{4, 2, 2};
   static constexpr uint32_t kValuesPerWorkgroup = 6;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"logical_dispatch_x", ProgramUniformVariableDataType::Uint32},
-      {"logical_dispatch_y", ProgramUniformVariableDataType::Uint32},
-      {"logical_dispatch_z", ProgramUniformVariableDataType::Uint32});
+#define WEBGPU_LOGICAL_PROBE_UNIFORMS(U) \
+  U(Uint32, logical_dispatch_x)          \
+  U(Uint32, logical_dispatch_y)          \
+  U(Uint32, logical_dispatch_z)
+  WEBGPU_DECLARE_UNIFORMS(WEBGPU_LOGICAL_PROBE_UNIFORMS);
+#undef WEBGPU_LOGICAL_PROBE_UNIFORMS
 
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
+  static Status GenerateShaderCode(const Config&, ConfiguredShaderHelper& shader) {
     const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
     InitializeLogicalWorkgroupIDAndGlobalID(shader);
     // Padded groups must return uniformly before this barrier.
@@ -247,6 +249,8 @@ class LogicalDispatchProbeProgram final : public Program<LogicalDispatchProbePro
     return Status::OK();
   }
 };
+#undef WEBGPU_LOGICAL_PROBE_CONFIG
+using LogicalDispatchProbeProgram = ConfiguredProgram<LogicalDispatchProbeShader>;
 
 void CheckLogicalDispatch(WebGpuExecutionProvider& ep, const std::array<uint32_t, 3>& logical,
                           uint32_t dispatch_limit, bool expect_logical_oob_writes = false) {
@@ -261,8 +265,8 @@ void CheckLogicalDispatch(WebGpuExecutionProvider& ep, const std::array<uint32_t
     ASSERT_GT(physical_count, logical_count);
   }
   const uint32_t allowed_dispatch_z = expect_logical_oob_writes ? physical_count : logical[2];
-  constexpr auto workgroup_size = LogicalDispatchProbeProgram::kWorkgroupSize;
-  constexpr uint32_t values_per_workgroup = LogicalDispatchProbeProgram::kValuesPerWorkgroup;
+  constexpr auto workgroup_size = LogicalDispatchProbeShader::kWorkgroupSize;
+  constexpr uint32_t values_per_workgroup = LogicalDispatchProbeShader::kValuesPerWorkgroup;
   const size_t output_size = static_cast<size_t>(logical_count) * values_per_workgroup;
   // Even without the guard, every physical workgroup has a valid output slot.
   std::vector<float> output_data(static_cast<size_t>(physical_count) * values_per_workgroup, kOutputPaddingCanary);
@@ -270,7 +274,7 @@ void CheckLogicalDispatch(WebGpuExecutionProvider& ep, const std::array<uint32_t
   const OrtMemoryInfo memory_info(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
   Tensor output(DataTypeImpl::GetType<float>(), {static_cast<int64_t>(output_size)}, output_buffer.Get(), memory_info);
   LogicalDispatchProbeProgram program;
-  program.AddOutput({&output, ProgramTensorMetadataDependency::TypeAndRank})
+  program.AddOutput({&output, ProgramTensorMetadataDependency::None})
       .AddUniformVariables({{logical[0]}, {logical[1]}, {allowed_dispatch_z}})
       .SetWorkgroupSize(workgroup_size[0], workgroup_size[1], workgroup_size[2])
       .SetDispatchGroupSize(physical[0], physical[1], physical[2]);

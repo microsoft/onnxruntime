@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/hadamard_transform.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
@@ -11,15 +12,15 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-Status HadamardTransformProgram::GenerateShaderCode(ShaderHelper& sh) const {
+Status HadamardTransformProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
+                                                          ConfiguredShaderHelper& sh) {
   const auto& input = sh.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& output = sh.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
   return WGSL_TEMPLATE_APPLY(sh, "bert/hadamard_transform.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(components, components_),
-                             WGSL_TEMPLATE_PARAMETER(hadamard_size_log2, slice_size_log2_),
-                             WGSL_TEMPLATE_VARIABLE(input, input),
-                             WGSL_TEMPLATE_VARIABLE(output, output));
+                             WGSL_TEMPLATE_PARAMETER(components, config.components_),
+                             WGSL_TEMPLATE_PARAMETER(hadamard_size_log2, config.slice_size_log2_),
+                             WGSL_TEMPLATE_VARIABLE(input, input), WGSL_TEMPLATE_VARIABLE(output, output));
 }
 
 Status ApplyHadamardTransform(onnxruntime::webgpu::ComputeContext& context,
@@ -44,12 +45,12 @@ Status ApplyHadamardTransform(onnxruntime::webgpu::ComputeContext& context,
   const uint32_t workgroup_size = std::min(static_cast<uint32_t>(slice_size / 2), 64u);
 
   HadamardTransformProgram program(slice_size_log2, components);
-  program.AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, components});
-  program.AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, components});
+  program.AddInput({input, ProgramTensorMetadataDependency::None, components});
+  program.AddOutput({output, ProgramTensorMetadataDependency::None, components});
 
   program.SetDispatchGroupSize(num_slices)
       .SetWorkgroupSize(workgroup_size)
-      .CacheHint(slice_size_log2, components)
+
       .AddUniformVariables({{num_slices}});
 
   return context.RunProgram(program);

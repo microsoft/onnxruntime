@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/configured_program.h"
 #include <limits>
 #include <string>
 #include <vector>
@@ -14,17 +15,16 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status PadProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  if (!dim_value_zero_) {
+Status PadProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
+  if (!config.dim_value_zero_) {
     shader.AddInput("data", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseValueTypeAlias);
 
   return WGSL_TEMPLATE_APPLY(shader, "tensor/pad.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(dim_value_zero, dim_value_zero_),
-                             WGSL_TEMPLATE_PARAMETER(is_float16, is_float16_),
-                             WGSL_TEMPLATE_PARAMETER(pad_mode, mode_),
-                             WGSL_TEMPLATE_VARIABLE(output, output));
+                             WGSL_TEMPLATE_PARAMETER(dim_value_zero, config.dim_value_zero_),
+                             WGSL_TEMPLATE_PARAMETER(is_float16, config.is_float16_),
+                             WGSL_TEMPLATE_PARAMETER(pad_mode, config.mode_), WGSL_TEMPLATE_VARIABLE(output, output));
 }
 
 Status Pad::ComputeInternal(ComputeContext& context) const {
@@ -121,12 +121,13 @@ Status Pad::ComputeInternal(ComputeContext& context) const {
 
   PadProgram program{mode_, dim_value_zero, is_float16};
   if (!dim_value_zero) {
-    program.AddInput({input_tensor, ProgramTensorMetadataDependency::Rank});
+    program.AddInput({input_tensor, ProgramTensorMetadataDependency::None});
   }
-  program.AddOutput({output_tensor, ProgramTensorMetadataDependency::TypeAndRank})
+  program.AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .CacheHint(std::to_string(static_cast<int>(mode_)), dim_value_zero)
-      .AddUniformVariables({{gsl::span<const int32_t>(lower_pads.data(), lower_pads.size())}, {output_size}, {value_uint32}});
+
+      .AddUniformVariables(
+          {{gsl::span<const int32_t>(lower_pads.data(), lower_pads.size())}, {output_size}, {value_uint32}});
 
   return context.RunProgram(program);
 }
