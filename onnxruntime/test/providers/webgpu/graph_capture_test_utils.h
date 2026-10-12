@@ -47,7 +47,7 @@ class WebGpuGraphCaptureTester final : public OpTester {
     FillFeedsAndOutputNames(feeds, output_names);
     ASSERT_EQ(output_names.size(), 1u);
     for (const auto& [name, value] : feeds) {
-      const auto& source = value.Get<Tensor>();
+      const auto& source = value.template Get<Tensor>();
       OrtValue input;
       Tensor::InitOrtValue(source.DataType(), source.Shape(), allocator, input);
       if (source.Shape().Size() != 0) {
