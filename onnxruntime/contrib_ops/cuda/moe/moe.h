@@ -47,6 +47,8 @@ class MoE final : public CudaKernel, public MoEBase
     std::vector<T> cpu_data;
     std::vector<T> cpu_gemm_data;
     std::vector<float> cpu_gemm_float_data;
+    std::vector<T> swap_cpu_data;
+    std::vector<float> swap_cpu_float_data;
     IAllocatorUniquePtr<void> cuda_data;
     size_t bytes{0};
     size_t expert_bytes{0};
@@ -73,9 +75,11 @@ class MoE final : public CudaKernel, public MoEBase
   mutable std::mutex mGemmProfilerMutex;
   bool cpu_offload_enabled_{false};
   AllocatorPtr cuda_allocator_;
-  std::array<PackedTensor, 8> packed_inputs_;
+  mutable std::array<PackedTensor, 8> packed_inputs_;
   mutable InlinedVector<int> cuda_experts_;
   mutable InlinedVector<int> expert_map_;
+  mutable InlinedVector<int> cpu_experts_;
+  mutable InlinedVector<int> cpu_expert_map_;
   IAllocatorUniquePtr<void> device_expert_map_;
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   cudaStream_t input_copy_stream_{nullptr};
@@ -94,6 +98,7 @@ class MoE final : public CudaKernel, public MoEBase
   mutable int swap_cuda_expert_{-1};
   mutable int swap_cpu_expert_{-1};
   mutable size_t swap_cuda_slot_{0};
+  mutable size_t swap_cpu_slot_{0};
   size_t swap_staging_bytes_{0};
   int device_id_{0};
   mutable IAllocatorUniquePtr<void> swap_pinned_buffer_;

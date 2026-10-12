@@ -9,9 +9,9 @@
 Implement adaptive expert placement for Qwen 3.6 and other Mixture-of-Experts (MoE) models whose expert weights do not
 all fit in GPU memory.
 
-CPU memory keeps the canonical copy of every expert. CUDA holds a configurable subset of expert copies. Each `MoE` and
-`QMoE` node maintains one exponentially decayed counter per expert, uses those counters to rank experts, and updates
-its CUDA placement asynchronously.
+CPU and CUDA each hold a disjoint, configurable subset of experts. Each `MoE` and `QMoE` node maintains one
+exponentially decayed counter per expert, uses those counters to rank experts, and exchanges experts between CPU and
+CUDA asynchronously.
 
 The placement policy has two levels, both evaluated by the pilot after a complete model inference:
 
@@ -302,8 +302,8 @@ Implemented for the built-in CUDA FP16 and BF16 `MoE` paths:
 
 - Parse and validate `session.moe_cpu_offload_experts`; `0` disables offloading.
 - Use loaded counters to select CUDA experts globally; distribute an all-zero budget round-robin across eligible nodes.
-- Keep one representation of all constant expert weights on CPU and materialize only selected expert slices in compact
-  CUDA storage. All-CUDA nodes retain the original host weights; nodes with CPU experts retain the GEMM-layout weights.
+- Keep only CPU-resident experts in compact GEMM-layout CPU storage and materialize CUDA-resident experts in compact
+  CUDA storage. A swap exchanges one expert between these fixed-capacity stores through reusable staging buffers.
 - Keep this initial placement immutable: this step has no swaps or end-of-inference redistribution.
 - Dispatch CUDA-resident routes through CUTLASS. CPU-resident FP16 routes use MLAS FP16 GEMMs; BF16 weights are
   converted once during initialization and CPU-resident BF16 routes use MLAS FP32 GEMMs.

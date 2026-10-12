@@ -83,7 +83,7 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
     gsl::span<const MLFloat16> input,
     gsl::span<const int> route_experts,
     gsl::span<const float> route_scales,
-    gsl::span<const int> cuda_expert_map,
+    gsl::span<const int> cpu_expert_map,
     gsl::span<const MLFloat16> fc1_weights,
     gsl::span<const MLFloat16> fc1_bias,
     gsl::span<const MLFloat16> fc2_weights,
@@ -99,20 +99,23 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
   const int64_t fc1_output_size = parameters.fused_swiglu ? 2 * inter_size : inter_size;
   ORT_RETURN_IF(parameters.activation_type == ActivationType::SwiGLU && !parameters.fused_swiglu,
                 "FP16 MoE CPU offload requires fused_swiglu for SwiGLU activation.");
+  const size_t num_cpu_experts =
+      static_cast<size_t>(std::count_if(cpu_expert_map.begin(), cpu_expert_map.end(),
+                                        [](int slot) { return slot >= 0; }));
   ORT_RETURN_IF_NOT(input.size() == static_cast<size_t>(SafeInt<int64_t>(num_rows) * hidden_size) &&
                         route_experts.size() == static_cast<size_t>(SafeInt<int64_t>(num_rows) * experts_per_token) &&
                         route_scales.size() == route_experts.size() &&
-                        cuda_expert_map.size() == static_cast<size_t>(num_experts) &&
+                        cpu_expert_map.size() == static_cast<size_t>(num_experts) &&
                         fc1_weights.size() ==
-                            static_cast<size_t>(SafeInt<int64_t>(num_experts) * fc1_output_size * hidden_size) &&
+                            static_cast<size_t>(SafeInt<size_t>(num_cpu_experts) * fc1_output_size * hidden_size) &&
                         (fc1_bias.empty() ||
                          fc1_bias.size() ==
-                             static_cast<size_t>(SafeInt<int64_t>(num_experts) * fc1_output_size)) &&
+                             static_cast<size_t>(SafeInt<size_t>(num_cpu_experts) * fc1_output_size)) &&
                         fc2_weights.size() ==
-                            static_cast<size_t>(SafeInt<int64_t>(num_experts) * hidden_size * inter_size) &&
+                            static_cast<size_t>(SafeInt<size_t>(num_cpu_experts) * hidden_size * inter_size) &&
                         (fc2_bias.empty() ||
                          fc2_bias.size() ==
-                             static_cast<size_t>(SafeInt<int64_t>(num_experts) * hidden_size)) &&
+                             static_cast<size_t>(SafeInt<size_t>(num_cpu_experts) * hidden_size)) &&
                         output.size() == input.size(),
                     "Invalid FP16 MoE CPU-offload buffer sizes.");
 
@@ -121,7 +124,7 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
   for (size_t route = 0; route < route_experts.size(); ++route) {
     const int expert = route_experts[route];
     if (expert >= 0 && expert < num_experts &&
-        cuda_expert_map[static_cast<size_t>(expert)] < 0 && route_scales[route] > 0.0f) {
+        cpu_expert_map[static_cast<size_t>(expert)] >= 0 && route_scales[route] > 0.0f) {
       ++route_counts[static_cast<size_t>(expert)];
     }
   }
@@ -138,7 +141,7 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
   for (size_t route = 0; route < route_experts.size(); ++route) {
     const int expert = route_experts[route];
     if (expert >= 0 && expert < num_experts &&
-        cuda_expert_map[static_cast<size_t>(expert)] < 0 && route_scales[route] > 0.0f) {
+        cpu_expert_map[static_cast<size_t>(expert)] >= 0 && route_scales[route] > 0.0f) {
       routes[route_cursors[static_cast<size_t>(expert)]++] = static_cast<int64_t>(route);
     }
   }
@@ -149,7 +152,8 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
   std::vector<MLFloat16> expert_output(max_route_count * static_cast<size_t>(hidden_size));
 
   for (int64_t expert = 0; expert < num_experts; ++expert) {
-    if (cuda_expert_map[static_cast<size_t>(expert)] >= 0) {
+    const int cpu_slot = cpu_expert_map[static_cast<size_t>(expert)];
+    if (cpu_slot < 0) {
       continue;
     }
 
@@ -168,7 +172,7 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
     MLAS_HALF_GEMM_DATA_PARAMS fc1_params{};
     fc1_params.A = gathered.data();
     fc1_params.lda = static_cast<size_t>(hidden_size);
-    fc1_params.B = fc1_weights.data() + expert * fc1_output_size * hidden_size;
+    fc1_params.B = fc1_weights.data() + cpu_slot * fc1_output_size * hidden_size;
     fc1_params.ldb = static_cast<size_t>(fc1_output_size);
     fc1_params.C = fc1_output.data();
     fc1_params.ldc = static_cast<size_t>(fc1_output_size);
@@ -176,7 +180,7 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
                              static_cast<size_t>(hidden_size), fc1_params, thread_pool);
 
     const MLFloat16* expert_fc1_bias =
-        fc1_bias.empty() ? nullptr : fc1_bias.data() + expert * fc1_output_size;
+        fc1_bias.empty() ? nullptr : fc1_bias.data() + cpu_slot * fc1_output_size;
     if (expert_fc1_bias != nullptr) {
       for (size_t row = 0; row < route_count; ++row) {
         for (int64_t column = 0; column < fc1_output_size; ++column) {
@@ -213,7 +217,7 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
     MLAS_HALF_GEMM_DATA_PARAMS fc2_params{};
     fc2_params.A = activated.data();
     fc2_params.lda = static_cast<size_t>(inter_size);
-    fc2_params.B = fc2_weights.data() + expert * hidden_size * inter_size;
+    fc2_params.B = fc2_weights.data() + cpu_slot * hidden_size * inter_size;
     fc2_params.ldb = static_cast<size_t>(hidden_size);
     fc2_params.C = expert_output.data();
     fc2_params.ldc = static_cast<size_t>(hidden_size);
@@ -221,7 +225,7 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
                              static_cast<size_t>(inter_size), fc2_params, thread_pool);
 
     const MLFloat16* expert_fc2_bias =
-        fc2_bias.empty() ? nullptr : fc2_bias.data() + expert * hidden_size;
+        fc2_bias.empty() ? nullptr : fc2_bias.data() + cpu_slot * hidden_size;
     for (size_t row = 0; row < route_count; ++row) {
       const int64_t route = routes[route_begin + row];
       const int64_t token = route / experts_per_token;
@@ -248,7 +252,7 @@ inline Status ComputeMoeCpuOffloadedExpertsBFloat16(
     gsl::span<const BFloat16> input,
     gsl::span<const int> route_experts,
     gsl::span<const float> route_scales,
-    gsl::span<const int> cuda_expert_map,
+    gsl::span<const int> cpu_expert_map,
     gsl::span<const float> fc1_weights,
     gsl::span<const BFloat16> fc1_bias,
     gsl::span<const float> fc2_weights,
@@ -264,20 +268,23 @@ inline Status ComputeMoeCpuOffloadedExpertsBFloat16(
   const int64_t fc1_output_size = parameters.fused_swiglu ? 2 * inter_size : inter_size;
   ORT_RETURN_IF(parameters.activation_type == ActivationType::SwiGLU && !parameters.fused_swiglu,
                 "BF16 MoE CPU offload requires fused_swiglu for SwiGLU activation.");
+  const size_t num_cpu_experts =
+      static_cast<size_t>(std::count_if(cpu_expert_map.begin(), cpu_expert_map.end(),
+                                        [](int slot) { return slot >= 0; }));
   ORT_RETURN_IF_NOT(input.size() == static_cast<size_t>(SafeInt<int64_t>(num_rows) * hidden_size) &&
                         route_experts.size() == static_cast<size_t>(SafeInt<int64_t>(num_rows) * experts_per_token) &&
                         route_scales.size() == route_experts.size() &&
-                        cuda_expert_map.size() == static_cast<size_t>(num_experts) &&
+                        cpu_expert_map.size() == static_cast<size_t>(num_experts) &&
                         fc1_weights.size() ==
-                            static_cast<size_t>(SafeInt<int64_t>(num_experts) * fc1_output_size * hidden_size) &&
+                            static_cast<size_t>(SafeInt<size_t>(num_cpu_experts) * fc1_output_size * hidden_size) &&
                         (fc1_bias.empty() ||
                          fc1_bias.size() ==
-                             static_cast<size_t>(SafeInt<int64_t>(num_experts) * fc1_output_size)) &&
+                             static_cast<size_t>(SafeInt<size_t>(num_cpu_experts) * fc1_output_size)) &&
                         fc2_weights.size() ==
-                            static_cast<size_t>(SafeInt<int64_t>(num_experts) * hidden_size * inter_size) &&
+                            static_cast<size_t>(SafeInt<size_t>(num_cpu_experts) * hidden_size * inter_size) &&
                         (fc2_bias.empty() ||
                          fc2_bias.size() ==
-                             static_cast<size_t>(SafeInt<int64_t>(num_experts) * hidden_size)) &&
+                             static_cast<size_t>(SafeInt<size_t>(num_cpu_experts) * hidden_size)) &&
                         output.size() == input.size(),
                     "Invalid BF16 MoE CPU-offload buffer sizes.");
 
@@ -286,7 +293,7 @@ inline Status ComputeMoeCpuOffloadedExpertsBFloat16(
   for (size_t route = 0; route < route_experts.size(); ++route) {
     const int expert = route_experts[route];
     if (expert >= 0 && expert < num_experts &&
-        cuda_expert_map[static_cast<size_t>(expert)] < 0 && route_scales[route] > 0.0f) {
+        cpu_expert_map[static_cast<size_t>(expert)] >= 0 && route_scales[route] > 0.0f) {
       ++route_counts[static_cast<size_t>(expert)];
     }
   }
@@ -303,7 +310,7 @@ inline Status ComputeMoeCpuOffloadedExpertsBFloat16(
   for (size_t route = 0; route < route_experts.size(); ++route) {
     const int expert = route_experts[route];
     if (expert >= 0 && expert < num_experts &&
-        cuda_expert_map[static_cast<size_t>(expert)] < 0 && route_scales[route] > 0.0f) {
+        cpu_expert_map[static_cast<size_t>(expert)] >= 0 && route_scales[route] > 0.0f) {
       routes[route_cursors[static_cast<size_t>(expert)]++] = static_cast<int64_t>(route);
     }
   }
@@ -314,7 +321,8 @@ inline Status ComputeMoeCpuOffloadedExpertsBFloat16(
   std::vector<float> expert_output(max_route_count * static_cast<size_t>(hidden_size));
 
   for (int64_t expert = 0; expert < num_experts; ++expert) {
-    if (cuda_expert_map[static_cast<size_t>(expert)] >= 0) {
+    const int cpu_slot = cpu_expert_map[static_cast<size_t>(expert)];
+    if (cpu_slot < 0) {
       continue;
     }
 
@@ -335,7 +343,7 @@ inline Status ComputeMoeCpuOffloadedExpertsBFloat16(
     MLAS_SGEMM_DATA_PARAMS fc1_params{};
     fc1_params.A = gathered.data();
     fc1_params.lda = static_cast<size_t>(hidden_size);
-    fc1_params.B = fc1_weights.data() + expert * fc1_output_size * hidden_size;
+    fc1_params.B = fc1_weights.data() + cpu_slot * fc1_output_size * hidden_size;
     fc1_params.ldb = static_cast<size_t>(fc1_output_size);
     fc1_params.C = fc1_output.data();
     fc1_params.ldc = static_cast<size_t>(fc1_output_size);
@@ -345,7 +353,7 @@ inline Status ComputeMoeCpuOffloadedExpertsBFloat16(
                               static_cast<size_t>(hidden_size), fc1_params, thread_pool);
 
     const BFloat16* expert_fc1_bias =
-        fc1_bias.empty() ? nullptr : fc1_bias.data() + expert * fc1_output_size;
+        fc1_bias.empty() ? nullptr : fc1_bias.data() + cpu_slot * fc1_output_size;
     if (expert_fc1_bias != nullptr) {
       for (size_t row = 0; row < route_count; ++row) {
         for (int64_t column = 0; column < fc1_output_size; ++column) {
@@ -380,7 +388,7 @@ inline Status ComputeMoeCpuOffloadedExpertsBFloat16(
     MLAS_SGEMM_DATA_PARAMS fc2_params{};
     fc2_params.A = activated.data();
     fc2_params.lda = static_cast<size_t>(inter_size);
-    fc2_params.B = fc2_weights.data() + expert * hidden_size * inter_size;
+    fc2_params.B = fc2_weights.data() + cpu_slot * hidden_size * inter_size;
     fc2_params.ldb = static_cast<size_t>(hidden_size);
     fc2_params.C = expert_output.data();
     fc2_params.ldc = static_cast<size_t>(hidden_size);
@@ -390,7 +398,7 @@ inline Status ComputeMoeCpuOffloadedExpertsBFloat16(
                               static_cast<size_t>(inter_size), fc2_params, thread_pool);
 
     const BFloat16* expert_fc2_bias =
-        fc2_bias.empty() ? nullptr : fc2_bias.data() + expert * hidden_size;
+        fc2_bias.empty() ? nullptr : fc2_bias.data() + cpu_slot * hidden_size;
     for (size_t row = 0; row < route_count; ++row) {
       const int64_t route = routes[route_begin + row];
       const int64_t token = route / experts_per_token;

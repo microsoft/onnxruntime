@@ -286,11 +286,19 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
   }
   cuda_experts_.assign(cuda_experts.begin(), cuda_experts.end());
   expert_map_.assign(num_experts, -1);
+  cpu_experts_.clear();
+  cpu_expert_map_.assign(num_experts, -1);
   for (size_t index = 0; index < cuda_experts_.size(); ++index) {
     const int expert = cuda_experts_[index];
     ORT_RETURN_IF(expert < 0 || static_cast<size_t>(expert) >= num_experts,
                   "KernelPilot selected an invalid CUDA MoE expert: ", expert);
     expert_map_[static_cast<size_t>(expert)] = static_cast<int>(index);
+  }
+  for (size_t expert = 0; expert < num_experts; ++expert) {
+    if (expert_map_[expert] < 0) {
+      cpu_expert_map_[expert] = static_cast<int>(cpu_experts_.size());
+      cpu_experts_.push_back(static_cast<int>(expert));
+    }
   }
 
   for (int input_idx : {2, 3, 4, 5}) {
@@ -321,48 +329,63 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
     }
   }
 
-  for (int input_idx : {2, 4}) {
+  for (int input_idx : {2, 3, 4, 5}) {
     auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
-    if (cuda_experts_.size() == num_experts) {
+    if (!packed.present) {
       continue;
     }
-    const size_t output_size = static_cast<size_t>(
-        logical_output_sizes[static_cast<size_t>(input_idx)]);
-    const size_t input_size = static_cast<size_t>(input_idx == 2 ? hidden_size : inter_size);
-    const size_t expert_element_count = output_size * input_size;
-    ORT_RETURN_IF_NOT(
-        packed.shape.SizeFromDimension(1) == static_cast<int64_t>(expert_element_count) &&
-            (legacy_shape ? packed.shape[1] == static_cast<int64_t>(input_size)
-                          : packed.shape[1] == static_cast<int64_t>(output_size)),
-        "FP16/BF16 MoE input ", input_idx, " has an invalid ",
-        legacy_shape ? "legacy" : "standard", " expert weight shape.");
-    // Legacy shapes do not change CUTLASS's physical column-major K x N bytes; MLAS needs row-major K x N.
-    packed.gemm_input_size = input_size;
-    packed.gemm_output_size = output_size;
-    if constexpr (std::is_same_v<T, MLFloat16>) {
-      packed.cpu_gemm_data.resize(packed.cpu_data.size());
-      for (size_t expert = 0; expert < num_experts; ++expert) {
-        const T* source = packed.cpu_data.data() + expert * expert_element_count;
-        T* destination = packed.cpu_gemm_data.data() + expert * expert_element_count;
-        for (size_t output = 0; output < output_size; ++output) {
-          for (size_t input = 0; input < input_size; ++input) {
-            destination[input * output_size + output] = source[output * input_size + input];
+    const size_t expert_element_count = packed.expert_bytes / sizeof(T);
+    if (input_idx == 2 || input_idx == 4) {
+      const size_t output_size = static_cast<size_t>(
+          logical_output_sizes[static_cast<size_t>(input_idx)]);
+      const size_t input_size = static_cast<size_t>(input_idx == 2 ? hidden_size : inter_size);
+      ORT_RETURN_IF_NOT(
+          packed.shape.SizeFromDimension(1) == static_cast<int64_t>(expert_element_count) &&
+              (legacy_shape ? packed.shape[1] == static_cast<int64_t>(input_size)
+                            : packed.shape[1] == static_cast<int64_t>(output_size)),
+          "FP16/BF16 MoE input ", input_idx, " has an invalid ",
+          legacy_shape ? "legacy" : "standard", " expert weight shape.");
+      packed.gemm_input_size = input_size;
+      packed.gemm_output_size = output_size;
+      if constexpr (std::is_same_v<T, MLFloat16>) {
+        packed.cpu_gemm_data.resize(cpu_experts_.size() * expert_element_count);
+        packed.swap_cpu_data.resize(expert_element_count);
+        for (size_t cpu_slot = 0; cpu_slot < cpu_experts_.size(); ++cpu_slot) {
+          const size_t expert = static_cast<size_t>(cpu_experts_[cpu_slot]);
+          const T* source = packed.cpu_data.data() + expert * expert_element_count;
+          T* destination = packed.cpu_gemm_data.data() + cpu_slot * expert_element_count;
+          for (size_t output = 0; output < output_size; ++output) {
+            for (size_t input = 0; input < input_size; ++input) {
+              destination[input * output_size + output] = source[output * input_size + input];
+            }
+          }
+        }
+      } else if constexpr (std::is_same_v<T, BFloat16>) {
+        packed.cpu_gemm_float_data.resize(cpu_experts_.size() * expert_element_count);
+        packed.swap_cpu_float_data.resize(expert_element_count);
+        for (size_t cpu_slot = 0; cpu_slot < cpu_experts_.size(); ++cpu_slot) {
+          const size_t expert = static_cast<size_t>(cpu_experts_[cpu_slot]);
+          const T* source = packed.cpu_data.data() + expert * expert_element_count;
+          float* destination = packed.cpu_gemm_float_data.data() + cpu_slot * expert_element_count;
+          for (size_t output = 0; output < output_size; ++output) {
+            for (size_t input = 0; input < input_size; ++input) {
+              destination[input * output_size + output] = source[output * input_size + input].ToFloat();
+            }
           }
         }
       }
-    } else if constexpr (std::is_same_v<T, BFloat16>) {
-      packed.cpu_gemm_float_data.resize(packed.cpu_data.size());
-      for (size_t expert = 0; expert < num_experts; ++expert) {
-        const T* source = packed.cpu_data.data() + expert * expert_element_count;
-        float* destination = packed.cpu_gemm_float_data.data() + expert * expert_element_count;
-        for (size_t output = 0; output < output_size; ++output) {
-          for (size_t input = 0; input < input_size; ++input) {
-            destination[input * output_size + output] = source[output * input_size + input].ToFloat();
-          }
-        }
+      std::vector<T>{}.swap(packed.cpu_data);
+    } else {
+      std::vector<T> compact_cpu_data(cpu_experts_.size() * expert_element_count);
+      for (size_t cpu_slot = 0; cpu_slot < cpu_experts_.size(); ++cpu_slot) {
+        const size_t expert = static_cast<size_t>(cpu_experts_[cpu_slot]);
+        std::copy_n(packed.cpu_data.data() + expert * expert_element_count,
+                    expert_element_count,
+                    compact_cpu_data.data() + cpu_slot * expert_element_count);
       }
+      packed.cpu_data.swap(compact_cpu_data);
+      packed.swap_cpu_data.resize(expert_element_count);
     }
-    std::vector<T>{}.swap(packed.cpu_data);
   }
 
   if (!cuda_experts_.empty()) {
@@ -411,19 +434,17 @@ void MoE<T>::PrepareIncomingExpert() noexcept {
     if (!packed.present) {
       continue;
     }
-    const auto swap_cpu_data = [&]() {
-      auto* cpu_bytes = reinterpret_cast<char*>(packed.cpu_data.data());
-      std::memcpy(cpu_bytes + static_cast<size_t>(swap_cuda_expert_) * packed.expert_bytes,
+    const auto prepare_raw_data = [&]() {
+      std::memcpy(packed.swap_cpu_data.data(),
                   staging + packed.swap_offset, packed.expert_bytes);
       std::memcpy(staging + packed.swap_offset,
-                  cpu_bytes + static_cast<size_t>(swap_cpu_expert_) * packed.expert_bytes,
+                  packed.cpu_data.data() + swap_cpu_slot_ * (packed.expert_bytes / sizeof(T)),
                   packed.expert_bytes);
     };
     if (!packed.cpu_gemm_data.empty()) {
       const size_t expert_elements = packed.expert_bytes / sizeof(T);
       const auto* outgoing = reinterpret_cast<const T*>(staging + packed.swap_offset);
-      auto* outgoing_cpu = packed.cpu_gemm_data.data() +
-                           static_cast<size_t>(swap_cuda_expert_) * expert_elements;
+      auto* outgoing_cpu = packed.swap_cpu_data.data();
       for (size_t output = 0; output < packed.gemm_output_size; ++output) {
         for (size_t input = 0; input < packed.gemm_input_size; ++input) {
           outgoing_cpu[input * packed.gemm_output_size + output] =
@@ -431,7 +452,7 @@ void MoE<T>::PrepareIncomingExpert() noexcept {
         }
       }
       const auto* incoming_cpu = packed.cpu_gemm_data.data() +
-                                 static_cast<size_t>(swap_cpu_expert_) * expert_elements;
+                                 swap_cpu_slot_ * expert_elements;
       auto* incoming = reinterpret_cast<T*>(staging + packed.swap_offset);
       for (size_t output = 0; output < packed.gemm_output_size; ++output) {
         for (size_t input = 0; input < packed.gemm_input_size; ++input) {
@@ -443,8 +464,7 @@ void MoE<T>::PrepareIncomingExpert() noexcept {
       if (!packed.cpu_gemm_float_data.empty()) {
         const size_t expert_elements = packed.expert_bytes / sizeof(T);
         const auto* outgoing = reinterpret_cast<const T*>(staging + packed.swap_offset);
-        auto* outgoing_cpu = packed.cpu_gemm_float_data.data() +
-                             static_cast<size_t>(swap_cuda_expert_) * expert_elements;
+        auto* outgoing_cpu = packed.swap_cpu_float_data.data();
         for (size_t output = 0; output < packed.gemm_output_size; ++output) {
           for (size_t input = 0; input < packed.gemm_input_size; ++input) {
             outgoing_cpu[input * packed.gemm_output_size + output] =
@@ -452,7 +472,7 @@ void MoE<T>::PrepareIncomingExpert() noexcept {
           }
         }
         const auto* incoming_cpu = packed.cpu_gemm_float_data.data() +
-                                   static_cast<size_t>(swap_cpu_expert_) * expert_elements;
+                                   swap_cpu_slot_ * expert_elements;
         auto* incoming = reinterpret_cast<T*>(staging + packed.swap_offset);
         for (size_t output = 0; output < packed.gemm_output_size; ++output) {
           for (size_t input = 0; input < packed.gemm_input_size; ++input) {
@@ -461,10 +481,10 @@ void MoE<T>::PrepareIncomingExpert() noexcept {
           }
         }
       } else {
-        swap_cpu_data();
+        prepare_raw_data();
       }
     } else {
-      swap_cpu_data();
+      prepare_raw_data();
     }
   }
 }
@@ -480,7 +500,7 @@ Status MoE<T>::StartSwap(int cuda_expert_id, int cpu_expert_id) {
                 "MoE swap tried to evict a non-resident CUDA expert: ", cuda_expert_id);
   ORT_RETURN_IF(cpu_expert_id < 0 ||
                     static_cast<size_t>(cpu_expert_id) >= expert_map_.size() ||
-                    expert_map_[static_cast<size_t>(cpu_expert_id)] >= 0,
+                    cpu_expert_map_[static_cast<size_t>(cpu_expert_id)] < 0,
                 "MoE swap tried to stage an invalid CPU expert: ", cpu_expert_id);
   ORT_RETURN_IF_NOT(swap_staging_bytes_ > 0, "MoE swap has no expert data to transfer.");
 
@@ -496,6 +516,7 @@ Status MoE<T>::StartSwap(int cuda_expert_id, int cpu_expert_id) {
   swap_cuda_expert_ = cuda_expert_id;
   swap_cpu_expert_ = cpu_expert_id;
   swap_cuda_slot_ = static_cast<size_t>(std::distance(cuda_experts_.begin(), cuda_expert));
+  swap_cpu_slot_ = static_cast<size_t>(cpu_expert_map_[static_cast<size_t>(cpu_expert_id)]);
   swap_phase_ = SwapPhase::TransferInFlight;
 
   const auto schedule = [&]() -> Status {
@@ -556,10 +577,30 @@ Status MoE<T>::PrepareExpertSwapForInvocation(cudaStream_t stream, KernelPilot* 
         static_cast<const char*>(swap_cuda_staging_.get()) + packed.swap_offset,
         packed.expert_bytes, cudaMemcpyDeviceToDevice, stream));
   }
+  for (int input_idx : {2, 3, 4, 5}) {
+    auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
+    if (!packed.present) {
+      continue;
+    }
+    const size_t expert_elements = packed.expert_bytes / sizeof(T);
+    if (!packed.cpu_gemm_data.empty()) {
+      std::copy_n(packed.swap_cpu_data.data(), expert_elements,
+                  packed.cpu_gemm_data.data() + swap_cpu_slot_ * expert_elements);
+    } else if (!packed.cpu_gemm_float_data.empty()) {
+      std::copy_n(packed.swap_cpu_float_data.data(), expert_elements,
+                  packed.cpu_gemm_float_data.data() + swap_cpu_slot_ * expert_elements);
+    } else {
+      std::copy_n(packed.swap_cpu_data.data(), expert_elements,
+                  packed.cpu_data.data() + swap_cpu_slot_ * expert_elements);
+    }
+  }
 
   cuda_experts_[swap_cuda_slot_] = swap_cpu_expert_;
   expert_map_[static_cast<size_t>(swap_cuda_expert_)] = -1;
   expert_map_[static_cast<size_t>(swap_cpu_expert_)] = static_cast<int>(swap_cuda_slot_);
+  cpu_experts_[swap_cpu_slot_] = swap_cuda_expert_;
+  cpu_expert_map_[static_cast<size_t>(swap_cuda_expert_)] = static_cast<int>(swap_cpu_slot_);
+  cpu_expert_map_[static_cast<size_t>(swap_cpu_expert_)] = -1;
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(device_expert_map_.get(), expert_map_.data(),
                                        expert_map_.size() * sizeof(int),
                                        cudaMemcpyHostToDevice, stream));
@@ -1121,7 +1162,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
         ORT_RETURN_IF_ERROR(::onnxruntime::contrib::ComputeMoeCpuOffloadedExpertsFp16(
             gsl::make_span(host_input.get(), host_element_count),
             gsl::make_span(host_expert_indices.get(), expanded_rows),
-            gsl::make_span(host_expert_scales.get(), expanded_rows), expert_map_,
+            gsl::make_span(host_expert_scales.get(), expanded_rows), cpu_expert_map_,
             host_data(2), optional_host_data(3), host_data(4), optional_host_data(5),
             moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
             cpu_parameters, gsl::make_span(host_cpu_output.get(), host_element_count),
@@ -1133,7 +1174,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
         ORT_RETURN_IF_ERROR(::onnxruntime::contrib::ComputeMoeCpuOffloadedExpertsBFloat16(
             gsl::make_span(host_input.get(), host_element_count),
             gsl::make_span(host_expert_indices.get(), expanded_rows),
-            gsl::make_span(host_expert_scales.get(), expanded_rows), expert_map_,
+            gsl::make_span(host_expert_scales.get(), expanded_rows), cpu_expert_map_,
             host_data(2), optional_host_data(3), host_data(4), optional_host_data(5),
             moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
             cpu_parameters, gsl::make_span(host_cpu_output.get(), host_element_count),
