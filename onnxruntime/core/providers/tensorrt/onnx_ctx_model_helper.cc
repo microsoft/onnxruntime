@@ -45,7 +45,7 @@ const std::filesystem::path& GetModelPath(const GraphViewer& graph_viewer) {
   }
 
   const Graph& main_graph = *cur_graph;
-  return main_graph.ModelPath();
+  return main_graph.ModelPath().Path();
 }
 
 /*

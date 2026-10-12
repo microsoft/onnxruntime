@@ -7,6 +7,7 @@
 #include <vector>
 #include <filesystem>
 #include "core/common/inlined_containers.h"
+#include "core/common/model_path.h"
 #include "core/graph/basic_types.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 #include <gsl/gsl>
@@ -133,7 +134,7 @@ bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type);
 bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit);
 
 common::Status GetQuantizationScaleAndZeroPoint(
-    const GraphViewer& graph_viewer, const NodeUnitIODef& io_def, const std::filesystem::path& model_path,
+    const GraphViewer& graph_viewer, const NodeUnitIODef& io_def, const onnxruntime::ModelPath& model_path,
     float& scale, int32_t& zero_point);
 
 common::Status GetQuantizationScaleAndZeroPoint(

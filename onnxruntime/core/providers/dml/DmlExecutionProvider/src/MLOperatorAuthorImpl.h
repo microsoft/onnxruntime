@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <filesystem>
+#include "core/common/model_path.h"
 
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
@@ -285,7 +285,7 @@ class OnnxTensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
  public:
     OnnxTensorWrapper() = default;
 
-    OnnxTensorWrapper(onnx::TensorProto* impl, const std::filesystem::path& modelPath);
+    OnnxTensorWrapper(onnx::TensorProto* impl, const onnxruntime::ModelPath& modelPath);
 
     uint32_t STDMETHODCALLTYPE GetDimensionCount() const noexcept override;
 
@@ -683,5 +683,6 @@ bool TryGetStaticInputShapes(const onnxruntime::Node& node, EdgeShapes& inputSha
 bool TryGetStaticOutputShapes(const onnxruntime::Node& node, EdgeShapes& outputShapes);
 bool ContainsEmptyDimensions(const EdgeShapes& shapes, gsl::span<const uint32_t> ignoredShapeIndices = gsl::span<const uint32_t>());
 
-std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::TensorProto& initializer, const std::filesystem::path& modelPath);
+std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(
+    const onnx::TensorProto& initializer, const onnxruntime::ModelPath& modelPath);
 }    // namespace Windows::AI::MachineLearning::Adapter

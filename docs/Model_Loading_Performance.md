@@ -10,6 +10,26 @@ ONNX Runtime provides two independent loading optimizations for models with larg
 The CPU option is a session configuration entry. The CUDA option is an execution provider option passed when the
 CUDA EP is appended to `SessionOptions`.
 
+## External-file lifetime
+
+Native external-data loading resolves the location and retains the opened file for size checks, mappings, and reads.
+Mapping fallback and CUDA staging use that same file object rather than reopening the location. Supported in-tree
+links and symlinked model/blob-cache layouts continue to work; a resolved path that changes while opening can fail.
+
+The apparent directory and the resolved model-file directory are captured when opening an ONNX model. Loading,
+optimization, and native tensor loading retain this context, so later model-path or working-directory changes do not
+select different directories. Explicit external-data folder overrides use only their configured directory.
+
+An open file is not a snapshot of in-place writes or of multiple files. Native `IExternalDataLoader` implementations
+consume the framework's file via `LoadTensor(const RandomAccessFile&, ...)`; WASM loaders retain their mounted-file,
+pathname-based entry point. Internal APIs pass `ModelPath` to preserve the captured context; use its `Path()` accessor
+only when a plain filesystem path is needed, not when forwarding an external-tensor read.
+
+WASM model-path capture checks virtual-filesystem availability in JavaScript before issuing filesystem syscalls.
+Filesystem-enabled builds capture the apparent and resolved model directories, including symlinked model/blob-cache
+layouts. `FILESYSTEM=0` builds retain mounted-data loading without filesystem probes. Basic minimal builds, which load
+only ORT-format models, omit canonical ONNX file opening while preserving random-access reads and file mapping.
+
 ## Parallel CPU weight prepacking
 
 Some CPU kernels transform constant weights into a layout that is faster to use during inference. This prepacking
@@ -76,15 +96,14 @@ Models with weights embedded in the ONNX file do not use this external-data path
 
 ### Opened-file path validation requirements
 
-For native models that use external data, ONNX Runtime validates the canonical path of the opened file handle before
-reading or mapping it. This prevents a pathname or symlink from being swapped between validation and access.
+For native models that use external data, ONNX Runtime binds path validation to the opened file before reading or
+mapping it. This prevents a pathname or symlink from being swapped between validation and access.
 
-- On Linux and Android, `/proc/self/fd` must be available. Containers, chroots, and sandboxes must mount procfs so
-  ONNX Runtime can resolve the opened handle securely.
-- Apple platforms use `F_GETPATH`, FreeBSD uses `F_KINFO`, and Windows uses
-  `GetFinalPathNameByHandle`.
-- Other native POSIX platforms without a secure handle-backed canonical-path API, including the current NetBSD and
-  AIX implementations, fail closed when loading external-data models. Embedded-data models remain supported.
+- POSIX platforms supporting `openat`, `O_NOFOLLOW`, and `O_DIRECTORY` open each resolved path component relative
+  to the retained parent directory descriptor, rejecting replacement symlinks. This path does not require procfs.
+- Windows checks the opened file with `GetFinalPathNameByHandle`.
+- Native POSIX platforms without the required secure directory-relative open facilities fail closed when loading
+  external-data models. Embedded-data models remain supported.
 - WebAssembly does not provide native canonical-path validation. Its external-data loader uses the environment/path
   interface instead of the native opened-file path.
 

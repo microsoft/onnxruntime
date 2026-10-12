@@ -136,14 +136,24 @@ jobs:
             -v ${{ runner.temp }}/Release:/build/Release \
             -e NVIDIA_VISIBLE_DEVICES=all \
             -e ORT_TEST_CUDA_PLUGIN_EP=1 \
+            -e PYTHONUNBUFFERED=1 \
             ${{ steps.build_docker_image_step.outputs.full-image-name }} \
             bash -c "
               set -ex
               export PATH=/opt/python/cp312-cp312/bin:\$PATH
               export LD_LIBRARY_PATH=/build/Release/Release:/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
+              echo '[CUDA plugin diagnostics] Installing ORT wheel'
               python -m pip install /build/Release/Release/dist/onnxruntime*.whl
+              echo '[CUDA plugin diagnostics] Installing numpy and onnx'
               python -m pip install numpy onnx
+              echo '[CUDA plugin diagnostics] Installing CPU torch'
               python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
               cd /onnxruntime_src/onnxruntime/test/python/transformers
-              python test_cuda_plugin_ep.py
+              echo '[CUDA plugin diagnostics] Running complete Python suite with 300s periodic stack dumps'
+              python -u -X faulthandler -c \"import atexit, faulthandler, runpy, sys; \
+                faulthandler.dump_traceback_later(300, repeat=True); \
+                atexit.register(faulthandler.cancel_dump_traceback_later); \
+                sys.argv=['test_cuda_plugin_ep.py', '-v']; \
+                runpy.run_path('test_cuda_plugin_ep.py', run_name='__main__')\"
+              echo '[CUDA plugin diagnostics] Python suite exited successfully'
             "

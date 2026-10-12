@@ -24,6 +24,7 @@
 
 #include "core/common/path_string.h"
 #include "core/common/inlined_containers.h"
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/file_util.h"
@@ -70,6 +71,36 @@ TEST(PlatformEnvTest, GetErrnoInfo) {
 #if defined(_WIN32)
 #pragma warning(pop)
 #endif
+}
+
+#if defined(__wasm__)
+TEST(PlatformEnvTest, ModelPathCaptureDoesNotRequireAFileSystem) {
+  if (Env::HasFileSystem()) {
+    GTEST_SKIP() << "Requires a FILESYSTEM=0 build.";
+  }
+  for (const auto* path : {"", "models/model.onnx"}) {
+    ModelPath model_path;
+    ASSERT_STATUS_OK(Env::Default().CaptureModelPath(path, model_path));
+    EXPECT_EQ(model_path.Path(), std::filesystem::path(path));
+    EXPECT_EQ(model_path.GetExternalDataDirectories(), nullptr);
+  }
+}
+#endif
+
+TEST(PlatformEnvTest, ModelPathCapturePreservesAvailableFileSystemDirectories) {
+  if (!Env::HasFileSystem()) {
+    GTEST_SKIP() << "Requires a filesystem-enabled build.";
+  }
+  for (const auto* path : {ORT_TSTR(""), ORT_TSTR("model.onnx")}) {
+    ModelPath model_path;
+    ASSERT_STATUS_OK(Env::Default().CaptureModelPath(path, model_path, false));
+    EXPECT_EQ(model_path.Path(), std::filesystem::path(path));
+    ASSERT_NE(model_path.GetExternalDataDirectories(), nullptr);
+    PathString expected;
+    ASSERT_STATUS_OK(Env::Default().GetWeaklyCanonicalPath(ORT_TSTR("."), expected));
+    EXPECT_EQ(model_path.GetExternalDataDirectories()->apparent, std::filesystem::path(expected));
+    EXPECT_TRUE(model_path.GetExternalDataDirectories()->model_target.empty());
+  }
 }
 
 namespace {
@@ -231,7 +262,105 @@ TEST_F(RandomAccessFileTest, DefaultImplementationReportsUnsupportedWithoutRepla
   const auto* original = file_.get();
   EXPECT_EQ(Env::Default().Env::OpenRandomAccessFile(path_.c_str(), file_).Code(), common::NOT_IMPLEMENTED);
   EXPECT_EQ(file_.get(), original);
+  EXPECT_EQ(Env::Default().Env::OpenCanonicalFile(path_.c_str(), file_).Code(), common::NOT_IMPLEMENTED);
+  EXPECT_EQ(file_.get(), original);
 }
+
+#ifndef __wasm__
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+TEST_F(RandomAccessFileTest, OpensCanonicalPathsWithoutReplacingOutputOnFailure) {
+  PathString canonical;
+  ASSERT_STATUS_OK(Env::Default().GetWeaklyCanonicalPath(path_, canonical));
+  ASSERT_STATUS_OK(Env::Default().OpenCanonicalFile(canonical.c_str(), file_));
+  const auto* original = file_.get();
+  EXPECT_FALSE(Env::Default().OpenCanonicalFile(nullptr, file_).IsOK());
+  EXPECT_EQ(file_.get(), original);
+  EXPECT_FALSE(Env::Default().OpenCanonicalFile(ORT_TSTR("relative.bin"), file_).IsOK());
+  EXPECT_EQ(file_.get(), original);
+  EXPECT_FALSE(Env::Default().OpenCanonicalFile((canonical + ORT_TSTR(".missing")).c_str(), file_).IsOK());
+  EXPECT_EQ(file_.get(), original);
+  std::array<char, 4> bytes{};
+  ASSERT_STATUS_OK(file_->Read(11, bytes));
+  EXPECT_EQ(std::string(bytes.data(), bytes.size()), contents_.substr(11, bytes.size()));
+}
+
+TEST_F(RandomAccessFileTest, ModelOpeningPreservesDirectoriesAndFailureOutputs) {
+  ModelPath model_path;
+  ASSERT_STATUS_OK(Env::Default().OpenModelFile(path_, file_, model_path));
+  ASSERT_NE(model_path.GetExternalDataDirectories(), nullptr);
+  const auto* original_file = file_.get();
+  const auto* original_directories = model_path.GetExternalDataDirectories();
+  const ModelPath copied_path = model_path;
+  EXPECT_EQ(copied_path.GetExternalDataDirectories(), original_directories);
+  EXPECT_EQ(model_path.Path(), std::filesystem::path(path_));
+  EXPECT_TRUE(original_directories->apparent.is_absolute());
+  EXPECT_EQ(original_directories->model_target, original_directories->apparent);
+  EXPECT_EQ(Env::Default().OpenModelFile(path_ + ORT_TSTR(".missing"), file_, model_path).Code(),
+            common::NO_SUCHFILE);
+  EXPECT_EQ(file_.get(), original_file);
+  EXPECT_EQ(model_path.GetExternalDataDirectories(), original_directories);
+  std::array<char, 4> bytes{};
+  ASSERT_STATUS_OK(file_->Read(11, bytes));
+  EXPECT_EQ(std::string(bytes.data(), bytes.size()), contents_.substr(11, bytes.size()));
+}
+#else
+TEST_F(RandomAccessFileTest, BasicMinimalOmitsCanonicalOpening) {
+  const auto* original_file = file_.get();
+  EXPECT_EQ(Env::Default().OpenCanonicalFile(path_.c_str(), file_).Code(), common::NOT_IMPLEMENTED);
+  EXPECT_EQ(file_.get(), original_file);
+  std::array<char, 4> bytes{};
+  ASSERT_STATUS_OK(file_->Read(11, bytes));
+  EXPECT_EQ(std::string(bytes.data(), bytes.size()), contents_.substr(11, bytes.size()));
+}
+#endif
+
+TEST_F(RandomAccessFileTest, ExplicitDirectoryCaptureDoesNotRequireAModelFile) {
+  ModelPath model_path;
+  const auto missing_path = path_ + ORT_TSTR(".missing");
+  ASSERT_STATUS_OK(Env::Default().CaptureModelPath(missing_path, model_path, false));
+  ASSERT_NE(model_path.GetExternalDataDirectories(), nullptr);
+  EXPECT_TRUE(model_path.GetExternalDataDirectories()->apparent.is_absolute());
+  EXPECT_TRUE(model_path.GetExternalDataDirectories()->model_target.empty());
+  const auto* original = model_path.GetExternalDataDirectories();
+  PathString null_path = path_;
+  null_path.push_back(ORTCHAR_T{});
+  null_path += ORT_TSTR("ignored");
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      Env::Default().CaptureModelPath(std::filesystem::path(null_path), model_path), "null character");
+  EXPECT_EQ(model_path.GetExternalDataDirectories(), original);
+}
+
+TEST_F(RandomAccessFileTest, MappingRemainsValidAfterFileRelease) {
+  RandomAccessFile::MappedMemoryPtr mapping;
+  ASSERT_STATUS_OK(file_->Map(13, 19, mapping));
+  EXPECT_EQ(std::string(mapping.get(), 19), contents_.substr(13, 19));
+#ifndef _WIN32
+  // Windows retains read-only views to avoid reserving commit for the entire external file.
+  mapping[0] ^= 0x7f;
+#endif
+  std::array<char, 19> bytes{};
+  ASSERT_STATUS_OK(file_->Read(13, bytes));
+  EXPECT_EQ(std::string(bytes.data(), bytes.size()), contents_.substr(13, bytes.size()));
+  file_.reset();
+  EXPECT_EQ(mapping[1], contents_[14]);
+}
+
+TEST_F(RandomAccessFileTest, MappingRejectsInvalidRangesWithoutChangingOutput) {
+  RandomAccessFile::MappedMemoryPtr mapping;
+  ASSERT_STATUS_OK(file_->Map(0, 4, mapping));
+  const auto* original = mapping.get();
+  for (const auto offset : {FileOffsetType{-1}, std::numeric_limits<FileOffsetType>::max(),
+                            static_cast<FileOffsetType>(contents_.size())}) {
+    EXPECT_FALSE(file_->Map(offset, 4, mapping).IsOK());
+    EXPECT_EQ(mapping.get(), original);
+  }
+  EXPECT_FALSE(file_->Map(1, std::numeric_limits<size_t>::max(), mapping).IsOK());
+  EXPECT_EQ(mapping.get(), original);
+  EXPECT_FALSE(file_->ValidateRange(static_cast<FileOffsetType>(contents_.size() + 1), 0).IsOK());
+  ASSERT_STATUS_OK(file_->Map(static_cast<FileOffsetType>(contents_.size()), 0, mapping));
+  EXPECT_EQ(mapping, nullptr);
+}
+#endif  // !__wasm__
 
 TEST_F(RandomAccessFileTest, PathReplacementDoesNotChangeTheOpenFile) {
   const std::string replacement_contents = "replacement file";
@@ -249,12 +378,12 @@ TEST_F(RandomAccessFileTest, PathReplacementDoesNotChangeTheOpenFile) {
   const auto target_path = std::filesystem::absolute(path_).native();
   const size_t name_bytes = SafeInt<size_t>(target_path.size()) * sizeof(wchar_t);
   const size_t rename_info_bytes = SafeInt<size_t>(sizeof(FILE_RENAME_INFO)) + name_bytes;
-  const auto rename_info_size = gsl::narrow<DWORD>(rename_info_bytes);
+  const auto rename_info_size = narrow<DWORD>(rename_info_bytes);
   auto rename_buffer = std::make_unique<char[]>(rename_info_size);
   auto* rename_info = reinterpret_cast<FILE_RENAME_INFO*>(rename_buffer.get());
   rename_info->Flags = FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS;
   rename_info->RootDirectory = nullptr;
-  rename_info->FileNameLength = gsl::narrow<DWORD>(name_bytes);
+  rename_info->FileNameLength = narrow<DWORD>(name_bytes);
   std::memcpy(rename_info->FileName, target_path.c_str(), name_bytes);
   // Some SDK headers omit FileRenameInfoEx. Its documented FILE_INFO_BY_HANDLE_CLASS value is 22.
   constexpr auto kFileRenameInfoEx = static_cast<FILE_INFO_BY_HANDLE_CLASS>(22);

@@ -300,7 +300,7 @@ Status BuildAndSaveOptimizedModel(const onnxruntime::Model& model,
                                                   ? *output_model_path_ptr
                                                   : std::filesystem::path("");
     ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(output_model_path,
-                                                  model.MainGraph().ModelPath(),
+                                                  model.MainGraph().ModelPath().Path(),
                                                   valid_output_model_path,
                                                   gen_options.error_if_output_file_exists));
   }

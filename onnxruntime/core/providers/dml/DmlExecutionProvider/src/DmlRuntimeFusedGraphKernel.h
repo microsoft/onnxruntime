@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include <filesystem>
+#include "core/common/model_path.h"
 #include "core/framework/op_kernel.h"
 #include "GraphDescBuilder.h"
 #include "DmlRuntimeGraphFusionTransformer.h"
@@ -15,7 +15,7 @@ namespace Dml
     onnxruntime::OpKernel* CreateRuntimeFusedGraphKernel(
         const onnxruntime::OpKernelInfo& info,
         std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
-        std::filesystem::path modelPath,
+        onnxruntime::ModelPath modelPath,
         std::vector<std::shared_ptr<onnxruntime::Node>>&& subgraphNodes,
         std::vector<const onnxruntime::NodeArg*>&& subgraphInputs,
         std::vector<const onnxruntime::NodeArg*>&& subgraphOutputs,

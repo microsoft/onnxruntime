@@ -124,6 +124,7 @@ class IExternalDataLoader {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 #else
+  // Native loaders consume the file opened by the framework and must not reopen its pathname.
   virtual common::Status LoadTensor([[maybe_unused]] const RandomAccessFile& file,
                                     [[maybe_unused]] FileOffsetType data_offset,
                                     [[maybe_unused]] SafeInt<size_t> data_length,

@@ -1141,7 +1141,7 @@ bool IsQuantizationScaleSupported(const GraphViewer& graph_viewer,
 bool IsQuantizationZeroPointSupported(const GraphViewer& graph_viewer,
                                       const NodeUnitIODef& io_def,
                                       const std::string& op_type,
-                                      const std::filesystem::path& model_path,
+                                      const onnxruntime::ModelPath& model_path,
                                       bool is_quant_matmul,
                                       bool is_conv_matmul_u8s8_weight) {
   // zero point is optional here
@@ -1281,11 +1281,11 @@ bool IsQuantizedIOSupported(const GraphViewer& graph_viewer, const NodeUnit& nod
 bool HasRequiredScaleAndZeroPoint(const GraphViewer& graph_viewer,
                                   const std::string& op_desc,
                                   const NodeUnitIODef& io_def,
-                                  const std::filesystem::path& path,
+                                  const onnxruntime::ModelPath& model_path,
                                   float required_scale, int32_t required_zp) {
   float scale = 0.0f;
   int32_t zp = 0;
-  auto status = GetQuantizationScaleAndZeroPoint(graph_viewer, io_def, path, scale, zp);
+  auto status = GetQuantizationScaleAndZeroPoint(graph_viewer, io_def, model_path, scale, zp);
   if (!status.IsOK()) {
     LOGS_DEFAULT(ERROR) << op_desc << " GetQuantizationScaleAndZeroPoint failed, message: " << status.ErrorMessage();
     return false;
