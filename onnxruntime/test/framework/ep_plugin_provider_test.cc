@@ -329,6 +329,32 @@ TEST(PluginExecutionProviderFactoryTest, CreatePluginExecutionProviderFailsForTo
   EXPECT_EQ(context.ep_factory.GetReleaseEpCount(), 1);
 }
 
+// Test that the "all_or_external_only" value is only recognized in the "weightless_supported_modes" EP metadata entry.
+// The older "weightless_support" entry only allows the values defined in version 1.29, so a mode selected with
+// "ep.enable_weightless_mode" is rejected before the EP is created.
+TEST(PluginExecutionProviderFactoryTest, CreatePluginExecutionProvider_WeightlessAggregateValueOnlyInNewMetadataKey) {
+  auto create = [](const char* metadata_key) -> Status {
+    test_plugin_ep::CreateProviderTestContext context;
+    context.ep_device->ep_metadata.Add(metadata_key, "all_or_external_only");
+    context.ep_factory.SetNextEp(std::make_unique<test_plugin_ep::TestOrtEp>());
+
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, "2");
+
+    std::unique_ptr<PluginExecutionProvider> plugin_ep;
+    return context.provider_factory.CreatePluginExecutionProvider(
+        *static_cast<const OrtSessionOptions*>(session_options), test_plugin_ep::GetDefaultOrtLogger(), plugin_ep);
+  };
+
+  ASSERT_STATUS_OK(create(kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes));
+
+  Status status = create(kOrtEpDevice_EpMetadataKey_WeightlessSupport);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::EP_FAIL);
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("EP metadata 'weightless_support' = "
+                                                          "'all_or_external_only', which is not recognized"));
+}
+
 TEST(PluginExecutionProviderFactoryTest, CreatePluginExecutionProviderAcceptsHighVersion) {
   test_plugin_ep::CreateProviderTestContext context;
 
@@ -1087,8 +1113,8 @@ TEST(PluginExecutionProviderTest, Compile_WeightlessSupportDoesNotMatchEpMetadat
   };
 
   // Calls Compile() without fused nodes, which still validates the weightless mode, and returns the logged messages.
-  auto compile = [&ep_devices](const char* weightless_mode, GetWeightlessSupportFn get_weightless_support,
-                               std::vector<std::string>& messages) -> Status {
+  auto compile = [](const std::vector<const OrtEpDevice*>& ep_devices, const char* weightless_mode,
+                    GetWeightlessSupportFn get_weightless_support, std::vector<std::string>& messages) -> Status {
     auto capturing_sink = std::make_unique<CapturingSink>();
     CapturingSink* sink = capturing_sink.get();
     logging::LoggingManager logging_manager(std::move(capturing_sink), logging::Severity::kWARNING, false,
@@ -1130,14 +1156,14 @@ TEST(PluginExecutionProviderTest, Compile_WeightlessSupportDoesNotMatchEpMetadat
   // The requested mode is supported by both, so the mismatch is only a warning.
   {
     std::vector<std::string> messages;
-    ASSERT_STATUS_OK(compile("1", external_only, messages));
+    ASSERT_STATUS_OK(compile(ep_devices, "1", external_only, messages));
     EXPECT_TRUE(has_mismatch_warning(messages));
   }
 
   // The requested mode is not supported by GetWeightlessSupport(): the error includes the mismatch.
   {
     std::vector<std::string> messages;
-    Status status = compile("2", external_only, messages);
+    Status status = compile(ep_devices, "2", external_only, messages);
     ASSERT_FALSE(status.IsOK());
     EXPECT_EQ(status.Code(), common::EP_FAIL);
     EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr(mismatch));
@@ -1147,8 +1173,24 @@ TEST(PluginExecutionProviderTest, Compile_WeightlessSupportDoesNotMatchEpMetadat
   // GetWeightlessSupport() matches the EP metadata: no warning.
   {
     std::vector<std::string> messages;
-    ASSERT_STATUS_OK(compile("1", all_or_external_only, messages));
+    ASSERT_STATUS_OK(compile(ep_devices, "1", all_or_external_only, messages));
     EXPECT_FALSE(has_mismatch_warning(messages));
+  }
+
+  // "all_or_external_only" is not valid in the older "weightless_support" EP metadata entry, so it does not match.
+  {
+    auto legacy_ep_device = test_plugin_ep::MakeTestOrtEpDevice(hw_device.get());
+    legacy_ep_device->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_WeightlessSupport, "all_or_external_only");
+    const std::vector<const OrtEpDevice*> legacy_ep_devices{legacy_ep_device.get()};
+
+    std::vector<std::string> messages;
+    ASSERT_STATUS_OK(compile(legacy_ep_devices, "1", all_or_external_only, messages));
+    const std::string legacy_mismatch =
+        "GetWeightlessSupport() returns 'all_or_external_only', which does not match the EP metadata: "
+        "EP metadata 'weightless_support' = 'all_or_external_only'";
+    EXPECT_TRUE(std::any_of(messages.begin(), messages.end(), [&legacy_mismatch](const std::string& message) {
+      return message.find("[W:") != std::string::npos && message.find(legacy_mismatch) != std::string::npos;
+    }));
   }
 }
 
