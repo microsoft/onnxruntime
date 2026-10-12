@@ -91,7 +91,12 @@ void launch_moe_gemv_fp4_symmetric(
     const float* raw_global_scales, const T* bias, T* out,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
     int64_t n, int64_t k, int group_size, int sm, MoeGemvConfig config, bool sm80_pair_interleaved,
-    bool raw_n_packed, cudaStream_t stream, bool weights_row_major = false);
+    bool raw_n_packed, cudaStream_t stream, bool weights_row_major = false,
+    bool programmatic_dependent_launch = false);
+
+// `programmatic_dependent_launch` (raw row-major NVFP4 decode kernel only) launches the grid with the PDL attribute: it
+// must directly follow the fused-SwiGLU launch below on the same stream and may only read that kernel's output after
+// its own griddepcontrol.wait (see MoeGemvFp4DecodeKernel).
 
 // Launches the MXFP4 MoE GEMV and fuses interleaved SwiGLU activation.
 //   weight/scales/bias use raw FC1 output width n = 2 * inter_size

@@ -2193,6 +2193,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     const bool is_capturing = capture_status != cudaStreamCaptureStatusNone;
     const bool do_tune = enable_fp4_gemv_autotune_ && !have_tune && !is_capturing;
 
+    // FC1 -> FC2 -> finalize overlap through programmatic dependent launch (row-major NVFP4 decode kernels only):
+    // FC2 prefetches its weights and finalize its routing metadata while the previous kernel finishes.
+    static const bool fp4_gemv_pdl =
+        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_PDL", 1) != 0;
+    const bool fc2_finalize_pdl = fp4_gemv_pdl && use_raw_nvfp4_gemv && nvfp4_weights_row_major_;
     auto run_fused = [&](auto* t_ptr) {
       using T = std::remove_pointer_t<decltype(t_ptr)>;
       const bool skip_expand = fp4_gemv_skip_expand_;
@@ -2222,7 +2227,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             gemv_fc2_raw_global_scales,
             static_cast<const T*>(fc2_bias), static_cast<T*>(p_fc2_buf.get()),
             p_efto, p_exp, num_experts, expanded, hidden, inter, gemv_group_size, sm_, cfg,
-            fc2_gemv_sm80_layout, use_raw_nvfp4_gemv, stream, nvfp4_weights_row_major_);
+            fc2_gemv_sm80_layout, use_raw_nvfp4_gemv, stream, nvfp4_weights_row_major_, fc2_finalize_pdl);
       };
 
       if (do_tune) {
@@ -2313,7 +2318,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           static_cast<const T*>(p_fc2_buf.get()), static_cast<T*>(output->MutableDataRaw()),
           nullptr, expert_scales, unpermuted_row_to_permuted_row, p_r2u, expert_indices,
           p_efto, num_rows, hidden, static_cast<int64_t>(k_), num_experts,
-          parallelism_config, false, stream);
+          parallelism_config, false, stream, fc2_finalize_pdl);
     };
 
     if (is_fp16_) {
