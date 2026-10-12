@@ -254,28 +254,32 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     );
 
-// Experimental KleidiAI operator API adapters. Packed buffers created by
-// these functions contain the selected kernel configuration and cannot be
-// consumed by the regular MLAS or legacy KleidiAI paths.
+// FP32 packs start with the generic MLAS representation, followed by an
+// initialized optional Ops extension. Reserve the extension header even when
+// Ops is disabled so execution can inspect it within the public allocation.
+size_t MlasGemmNativePackBSize(size_t N, size_t K);
+
 size_t
     MLASCALL
-    MlasGemmPackBSizeKleidiAIOps(
+    MlasGemmPackBExtensionSizeKleidiAIOps(
         CBLAS_TRANSPOSE TransA,
         CBLAS_TRANSPOSE TransB,
         size_t N,
-        size_t K
+        size_t K,
+        bool UseOps
     );
 
 bool
     MLASCALL
-    MlasGemmPackBKleidiAIOps(
+    MlasGemmPackBExtensionKleidiAIOps(
         CBLAS_TRANSPOSE TransA,
         CBLAS_TRANSPOSE TransB,
         size_t N,
         size_t K,
         const float* B,
         size_t ldb,
-        void* PackedB
+        void* Extension,
+        bool UseOps
     );
 
 bool
@@ -293,7 +297,7 @@ bool
 
 bool
     MLASCALL
-    MlasGemmPackedBIsKleidiAIOps(const void* PackedB);
+    MlasGemmPackedBIsKleidiAIOps(const void* PackedB, size_t N, size_t K);
 
 #if defined(MLAS_SBGEMM_AVAILABLE)
 size_t

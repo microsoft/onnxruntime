@@ -26,6 +26,27 @@ Abstract:
 #include "mlasi.h"
 #if defined(MLAS_KLEIDIAI_OPS_AVAILABLE)
 #include "kleidiai/mlasi_kleidiai.h"
+
+size_t
+ArmKleidiAI::MlasGemmNativePackBSize(size_t N, size_t K)
+{
+    const size_t limit = std::numeric_limits<size_t>::max();
+    if (N > limit - (MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1)) {
+        MLAS_THROW_EX(std::overflow_error, "SGEMM packed dimension overflow.");
+    }
+    const size_t aligned_n =
+        (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
+    size_t bytes = 0;
+    if (MlasMultiplyOverflowsSizeT(aligned_n, K, &bytes) ||
+        MlasMultiplyOverflowsSizeT(bytes, sizeof(float), &bytes)) {
+        MLAS_THROW_EX(std::overflow_error, "SGEMM packed buffer size overflow.");
+    }
+    const size_t alignment = MlasGetPreferredBufferAlignment();
+    if (bytes > limit - (alignment - 1)) {
+        MLAS_THROW_EX(std::overflow_error, "SGEMM packed alignment overflow.");
+    }
+    return (bytes + alignment - 1) & ~(alignment - 1);
+}
 #endif
 
 //
@@ -1545,56 +1566,35 @@ MlasGemmBatch(
         GetMlasPlatform().MlasSGemmBatchOverride != nullptr &&
         TransA != CBLAS_TRANSPOSE::CblasTrans;
 #if defined(MLAS_KLEIDIAI_OPS_AVAILABLE)
-    if (can_use_override && Data != nullptr && BatchSize > 1) {
-        bool has_ops_packed_b = false;
-        bool has_other_b = false;
+    bool has_ops_packed_b = false;
+    if (can_use_override && Data != nullptr && BatchSize > 1 && M != 0) {
         for (size_t batch = 0; batch < BatchSize; ++batch) {
-            const bool is_ops_packed_b =
-                Data[batch].BIsPacked && ArmKleidiAI::MlasGemmPackedBIsKleidiAIOps(Data[batch].B);
-            has_ops_packed_b |= is_ops_packed_b;
-            has_other_b |= !is_ops_packed_b;
-        }
-        if (has_ops_packed_b && has_other_b) {
-            for (size_t batch = 0; batch < BatchSize; ++batch) {
-                MlasGemmBatch(
-                    TransA, TransB, M, N, K, &Data[batch], 1, ThreadPool,
-                    BackendKernelSelectorConfig
-                );
-            }
-            return;
+            has_ops_packed_b |= Data[batch].BIsPacked &&
+                ArmKleidiAI::MlasGemmPackedBIsKleidiAIOps(Data[batch].B, N, K);
         }
     }
+    if (has_ops_packed_b) {
+        // Decide independently for each entry. Retrying a partially completed
+        // batch would accumulate completed entries twice when beta is nonzero.
+        MLAS_BACKEND_KERNEL_SELECTOR_CONFIG fallback{};
+        fallback.use_kleidiai = false;
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+            if (!GetMlasPlatform().MlasSGemmBatchOverride(
+                    TransA, TransB, M, N, K, &Data[batch], 1, ThreadPool)) {
+                MlasGemmBatch(
+                    TransA, TransB, M, N, K, &Data[batch], 1, ThreadPool,
+                    &fallback
+                );
+            }
+        }
+        return;
+    }
 #endif
-
     // Override
     if (can_use_override &&
         GetMlasPlatform().MlasSGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)) {
         return;
     }
-#if defined(MLAS_KLEIDIAI_OPS_AVAILABLE)
-    bool has_foreign_packed_b = false;
-    if (Data != nullptr) {
-        for (size_t batch = 0; batch < BatchSize; ++batch) {
-            if (Data[batch].BIsPacked &&
-                ArmKleidiAI::MlasGemmPackedBIsKleidiAIOps(Data[batch].B)) {
-                MLAS_THROW_EX(std::runtime_error, "KleidiAI operator API rejected its own FP32 PackedB buffer.");
-            }
-            has_foreign_packed_b |= Data[batch].BIsPacked;
-        }
-    }
-
-    // Ops only owns its self-describing PackedB format today. On SME systems,
-    // retain the former direct KleidiAI route for unpacked shapes that Ops
-    // declines. Never pass a generic MLAS PackedB to the legacy adapter: its
-    // opaque packing format is different.
-    if (can_use_override && Data != nullptr && !has_foreign_packed_b) {
-        const auto& cpuid_info = MLAS_CPUIDINFO::GetCPUIDInfo();
-        if ((cpuid_info.HasArm_SME() || cpuid_info.HasArm_SME2()) &&
-            ArmKleidiAI::MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)) {
-            return;
-        }
-    }
-#endif
     //
     // Compute the number of target threads given the complexity of the SGEMM
     // operation. Small requests should run using the single threaded path.
@@ -1686,6 +1686,19 @@ Return Value:
 
 --*/
 {
+#if defined(MLAS_KLEIDIAI_OPS_AVAILABLE)
+    // Keep a native prefix for fallback and an inspectable extension even
+    // when Ops is disabled. All packs must use this public allocation size.
+    const size_t native_size = ArmKleidiAI::MlasGemmNativePackBSize(N, K);
+    const size_t extension_size = ArmKleidiAI::MlasGemmPackBExtensionSizeKleidiAIOps(
+        TransA, TransB, N, K,
+        !BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai
+    );
+    if (native_size > std::numeric_limits<size_t>::max() - extension_size) {
+        MLAS_THROW_EX(std::overflow_error, "SGEMM packed buffer extension overflow.");
+    }
+    return native_size + extension_size;
+#else
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
@@ -1718,6 +1731,7 @@ Return Value:
         ~(BufferAlignment - 1);
 
     return AlignedBytesRequired;
+#endif
 }
 
 void
@@ -1761,7 +1775,17 @@ Return Value:
 
 --*/
 {
-#if defined(USE_KLEIDIAI)
+#if defined(MLAS_KLEIDIAI_OPS_AVAILABLE)
+    if (N != 0 && K != 0) {
+        // An Ops packing decline only invalidates the optional extension;
+        // native MLAS packing below always supplies the fallback weights.
+        ArmKleidiAI::MlasGemmPackBExtensionKleidiAIOps(
+            TransA, TransB, N, K, B, ldb,
+            static_cast<std::byte*>(PackedB) + ArmKleidiAI::MlasGemmNativePackBSize(N, K),
+            !BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai
+        );
+    }
+#elif defined(USE_KLEIDIAI)
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSGemmPackBOverride != nullptr  &&
         // TODO: Remove once KAI supports transposing for A

@@ -714,15 +714,14 @@ if(onnxruntime_USE_KLEIDIAI)
   endif()
 endif()
 
-# KleidiAI Ops is the default GEMM implementation where the experimental
-# library currently supports the target toolchain. Other KleidiAI platforms keep
-# the legacy GEMM implementation without requiring a separate user option.
+# Supported KleidiAI targets use Ops for FP32 SGEMM with generic MLAS fallback.
+# Other targets retain the legacy FP32 adapter; other datatypes are unchanged.
 set(onnxruntime_KLEIDIAI_OPS_AVAILABLE OFF)
 if(onnxruntime_USE_KLEIDIAI AND NOT MSVC AND
    (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID))
   set(onnxruntime_KLEIDIAI_OPS_AVAILABLE ON)
 elseif(onnxruntime_USE_KLEIDIAI)
-  message(WARNING "KleidiAI Ops is not supported with this target/toolchain; using the legacy KleidiAI GEMM adapter.")
+  message(WARNING "KleidiAI Ops FP32 SGEMM is not supported with this target/toolchain; using the legacy KleidiAI FP32 adapter.")
 endif()
 
 #Dependencies begin

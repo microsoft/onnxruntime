@@ -850,12 +850,10 @@ Return Value:
 #endif
 
 #if defined(MLAS_KLEIDIAI_OPS_AVAILABLE)
-    // The operator API performs its own runtime feature checks and can select
-    // either SVE or the A64/Neon comparison family. MlasGemmBatch retains the
-    // direct SME adapter as a fallback for unpacked calls that Ops declines.
+    // FP32 SGEMM uses Ops where supported and generic MLAS otherwise. PackB
+    // retains native MLAS weights alongside an optional Ops representation.
+    // All other datatypes retain their existing KleidiAI overrides.
     this->MlasSGemmBatchOverride = ArmKleidiAI::MlasGemmBatchKleidiAIOps;
-    this->MlasSGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSizeKleidiAIOps;
-    this->MlasSGemmPackBOverride = ArmKleidiAI::MlasGemmPackBKleidiAIOps;
 #endif
 
 #if defined(MLAS_USE_SVE)

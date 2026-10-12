@@ -376,12 +376,11 @@ function(setup_kleidiai)
     ${MLAS_SRC_DIR}/kleidiai/convolve_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/qgemm_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/qnbitgemm_kleidiai.cpp
-    # Ops is the primary SGEMM adapter, but unpacked calls it declines retain
-    # the direct SME implementation as a runtime fallback.
-    ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp
   )
   if(onnxruntime_KLEIDIAI_OPS_AVAILABLE)
     list(APPEND kleidiai_mlas_sources ${MLAS_SRC_DIR}/kleidiai/ops_kleidiai.cpp)
+  else()
+    list(APPEND kleidiai_mlas_sources ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp)
   endif()
   target_sources(onnxruntime_mlas PRIVATE ${kleidiai_mlas_sources})
 

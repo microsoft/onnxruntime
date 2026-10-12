@@ -4,8 +4,10 @@
 // SPDX-License-Identifier: MIT
 //
 
-#include <algorithm>
 #include <arm_neon.h>
+
+#include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -13,7 +15,6 @@
 #include <cstring>
 #include <limits>
 #include <memory>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -27,7 +28,7 @@ namespace
 {
 
 constexpr uint64_t kPackedMagic = UINT64_C(0x504f54524f49414b);  // "KAIORTOP"
-constexpr uint16_t kPackedVersion = 2;
+constexpr uint16_t kPackedVersion = 3;
 constexpr size_t kPackedAlignment = 64;
 constexpr size_t kKernelNameCapacity = 96;
 
@@ -46,7 +47,6 @@ struct PackedHeader {
     uint32_t vector_length_bytes{};
     size_t n{};
     size_t k{};
-    size_t column_sums_offset{};
     size_t payload_offset{};
     size_t payload_size{};
     char kernel_name[kKernelNameCapacity]{};
@@ -77,8 +77,23 @@ struct AlignedByteBuffer {
 
 struct ThreadScratch {
     std::vector<float> fp32_output;
-    std::vector<PackedHeader> packed_headers;
+    std::vector<uint8_t> skipped_tasks;
     AlignedByteBuffer working;
+    bool in_use{};
+};
+
+struct ScratchLease {
+    ThreadScratch& scratch;
+
+    explicit ScratchLease(ThreadScratch& value) : scratch(value) { scratch.in_use = true; }
+    ~ScratchLease()
+    {
+        ArmKleidiAI::MlasShrinkKleidiAIScratchIfTooLarge(scratch.fp32_output);
+        ArmKleidiAI::MlasShrinkKleidiAIScratchIfTooLarge(scratch.working.storage);
+        scratch.in_use = false;
+    }
+    ScratchLease(const ScratchLease&) = delete;
+    ScratchLease& operator=(const ScratchLease&) = delete;
 };
 
 ThreadScratch&
@@ -232,6 +247,15 @@ FitsInInt(size_t value)
     return value <= static_cast<size_t>(std::numeric_limits<int>::max());
 }
 
+bool
+FitsOpsMatrixSpan(size_t rows, size_t columns, size_t stride)
+{
+    size_t offset = 0;
+    return rows != 0 && stride >= columns && FitsInInt(stride) &&
+           !MlasMultiplyOverflowsSizeT(rows - 1, stride, &offset) &&
+           !AddOverflows(offset, columns) && FitsInInt(offset + columns);
+}
+
 std::string
 RequestedKernelFilter()
 {
@@ -296,50 +320,45 @@ CurrentVectorLengthBytes(std::string_view kernel_name)
 }
 
 bool
-AlignAddressOffset(const void* base, size_t initial_offset, size_t alignment, size_t& result)
+PackingVectorLengthsAreCompatible()
 {
-    const uintptr_t address = reinterpret_cast<uintptr_t>(base);
-    if (address > std::numeric_limits<uintptr_t>::max() - initial_offset) {
+    struct VectorLengths {
+        uint32_t sve;
+        uint32_t sme;
+    };
+    static const VectorLengths packing_lengths = {
+        CurrentVectorLengthBytes("sve_"), CurrentVectorLengthBytes("sme_")
+    };
+    static std::atomic<bool> packing_enabled{true};
+    if (!packing_enabled.load()) {
         return false;
     }
-    const uintptr_t unaligned = address + initial_offset;
-    const size_t padding = (alignment - unaligned % alignment) % alignment;
-    if (AddOverflows(initial_offset, padding)) {
+    if (CurrentVectorLengthBytes("sve_") != packing_lengths.sve ||
+        CurrentVectorLengthBytes("sme_") != packing_lengths.sme) {
+        // PackB has no allocation-capacity argument. Keep one process-wide
+        // packing VL contract and permanently decline new Ops packs after a
+        // mismatch, including after restoring the original VL. Otherwise a
+        // header-only PackBSize result could later be followed by a full pack.
+        // Existing packs remain executable at their recorded vector length.
+        packing_enabled.store(false);
         return false;
     }
-    result = initial_offset + padding;
     return true;
 }
 
-bool
-ComputePackedLayout(
-    const void* base,
-    size_t payload_size,
-    size_t& column_sums_offset,
-    size_t& payload_offset,
-    size_t& total_size
-)
-{
-    size_t offset = sizeof(PackedHeader);
-    column_sums_offset = 0;
-
-    if (!AlignAddressOffset(base, offset, kPackedAlignment, payload_offset) ||
-        AddOverflows(payload_offset, payload_size)) {
-        return false;
-    }
-    total_size = payload_offset + payload_size;
-    return true;
-}
+constexpr size_t kPayloadOffset =
+    (sizeof(PackedHeader) + kPackedAlignment - 1) & ~(kPackedAlignment - 1);
 
 size_t
 MaximumPackedSize(size_t payload_size)
 {
-    size_t size = sizeof(PackedHeader);
-    if (AddOverflows(size, kPackedAlignment - 1) ||
-        AddOverflows(size + kPackedAlignment - 1, payload_size)) {
+    if (AddOverflows(kPayloadOffset, payload_size) ||
+        AddOverflows(kPayloadOffset + payload_size, kPackedAlignment - 1)) {
         return 0;
     }
-    return size + kPackedAlignment - 1 + payload_size;
+    // Relative offsets and aligned lengths survive shared-pack copies and
+    // concatenated allocations without depending on the allocation address.
+    return (kPayloadOffset + payload_size + kPackedAlignment - 1) & ~(kPackedAlignment - 1);
 }
 
 kai::ops::GemmArgs
@@ -381,7 +400,18 @@ SelectGemm(
     int max_threads = 1
 )
 {
-    if (!FitsInUnsigned(m) || !FitsInUnsigned(n) || !FitsInUnsigned(k) || max_threads < 1) {
+    if (!FitsInInt(m) || !FitsInInt(n) || !FitsInInt(k) || max_threads < 1 ||
+        m == 0 || n == 0 || k == 0) {
+        return nullptr;
+    }
+    // Ops v1.30 rounds and multiplies dimensions in unsigned arithmetic.
+    // Leave oversized matrices to MLAS rather than accepting a wrapped pack
+    // size or window. These margins cover FP32 tiles at the maximum Arm VL.
+    const uint64_t padded_n = static_cast<uint64_t>(n) + 1024;
+    const uint64_t padded_k = static_cast<uint64_t>(k) + 64;
+    const uint64_t padded_m = static_cast<uint64_t>(m) + 64;
+    const uint64_t unsigned_limit = std::numeric_limits<unsigned int>::max();
+    if (padded_n * padded_k > unsigned_limit || padded_m * padded_n > unsigned_limit) {
         return nullptr;
     }
     return kai::ops::gemm<Lhs, Rhs, Output>(MakeGemmArgs(m, n, k, config, accumulate, max_threads));
@@ -436,6 +466,9 @@ SelectPackedGemm(
     size_t& payload_size
 )
 {
+    if (!PackingVectorLengthsAreCompatible()) {
+        return false;
+    }
     kai::ops::GemmConfig constraints;
     constraints.filter = RequestedKernelFilter();
     // MLAS's reusable PackB API has no M or thread-count argument. Select a
@@ -490,9 +523,8 @@ ReadHeader(
     PackedHeader& header
 )
 {
-    // BIsPacked is shared with the generic MLAS packing format. Check only
-    // the small Ops prefix before reading the complete private header so a
-    // small foreign PackedB allocation cannot be read out of bounds.
+    // Every public PackB allocation reserves this extension header, including
+    // native-only packs. Its initialized zero prefix means Ops is unavailable.
     if (!HasPackedHeaderPrefix(packed_b, data_type)) {
         return false;
     }
@@ -515,17 +547,7 @@ ReadHeader(
         return false;
     }
 
-    size_t expected_column_sums_offset = 0;
-    size_t expected_payload_offset = 0;
-    size_t expected_total_size = 0;
-    return ComputePackedLayout(
-               packed_b, header.payload_size,
-               expected_column_sums_offset, expected_payload_offset,
-               expected_total_size
-           ) &&
-           header.column_sums_offset == expected_column_sums_offset &&
-           header.payload_offset == expected_payload_offset &&
-           expected_total_size <= MaximumPackedSize(header.payload_size);
+    return header.payload_offset == kPayloadOffset && MaximumPackedSize(header.payload_size) != 0;
 }
 
 bool
@@ -546,7 +568,8 @@ PackB(
     void* packed_b
 )
 {
-    if (b == nullptr || packed_b == nullptr || !FitsInInt(ldb)) {
+    if (b == nullptr || packed_b == nullptr ||
+        !FitsOpsMatrixSpan(transposed ? n : k, transposed ? k : n, ldb)) {
         return false;
     }
 
@@ -563,17 +586,8 @@ PackB(
         return false;
     }
 
-    size_t column_sums_offset = 0;
-    size_t payload_offset = 0;
-    size_t total_size = 0;
-    if (!ComputePackedLayout(
-            packed_b, payload_size,
-            column_sums_offset, payload_offset, total_size
-        )) {
-        return false;
-    }
     const size_t maximum_size = MaximumPackedSize(payload_size);
-    if (maximum_size == 0 || total_size > maximum_size) {
+    if (maximum_size == 0) {
         return false;
     }
 
@@ -588,22 +602,23 @@ PackB(
     header.vector_length_bytes = CurrentVectorLengthBytes(selected_config.filter);
     header.n = n;
     header.k = k;
-    header.column_sums_offset = column_sums_offset;
-    header.payload_offset = payload_offset;
+    header.payload_offset = kPayloadOffset;
     header.payload_size = payload_size;
     if (!CopyKernelName(header, selected_config.filter)) {
         return false;
     }
 
-    std::memcpy(packed_b, &header, sizeof(header));
+    std::memset(packed_b, 0, maximum_size);
     KLEIDIAI_KERNEL_LOG("kai::ops pack kernel=" << selected_config.filter << " N=" << n << " K=" << k << " payload_bytes=" << payload_size);
     gemm->pretranspose_B_array(
-        static_cast<std::byte*>(packed_b) + payload_offset,
+        static_cast<std::byte*>(packed_b) + kPayloadOffset,
         b,
         static_cast<int>(ldb),
         0,
         transposed
     );
+    // Publish the header only after a complete pack has been produced.
+    std::memcpy(packed_b, &header, sizeof(header));
     return true;
 }
 
@@ -758,6 +773,9 @@ PrepareGemm(
     const auto window = new_plan.gemm->get_window_size();
     new_plan.window_dim0 = window.get_size(0);
     new_plan.window_dim1 = window.get_size(1);
+    if (new_plan.window_dim0 == 0 || new_plan.window_dim1 == 0) {
+        return nullptr;
+    }
     new_plan.partition = PartitionWindow(window, max_threads);
     new_plan.gemm->set_nthreads(static_cast<int>(new_plan.partition.task_count));
     new_plan.working_size = new_plan.gemm->get_working_size();
@@ -789,7 +807,8 @@ ExecuteGemm(
     MLAS_THREADPOOL* thread_pool
 )
 {
-    if (a == nullptr || c == nullptr || !FitsInInt(lda) || !FitsInInt(ldc)) {
+    if (a == nullptr || c == nullptr || !FitsInInt(lda) || !FitsInInt(ldc) ||
+        CurrentVectorLengthBytes(plan.kernel_name) != plan.vector_length) {
         return false;
     }
 
@@ -817,15 +836,10 @@ ExecuteGemm(
 
     KLEIDIAI_KERNEL_LOG(
         "kai::ops execute kernel=" << plan.kernel_name << " type=" << data_type
-                                    << " M=" << m << " N=" << n << " K=" << k
-                                    << " accumulate=" << accumulate << " threads=" << plan.partition.task_count
+                                   << " M=" << m << " N=" << n << " K=" << k
+                                   << " accumulate=" << accumulate << " threads=" << plan.partition.task_count
     );
-    MlasTrySimpleParallel(thread_pool, plan.partition.task_count, [&](ptrdiff_t task_id) {
-        // SVE VL and SME streaming VL are per-thread state on Linux/Android.
-        // Never execute a scalable kernel against weights packed at another VL.
-        if (CurrentVectorLengthBytes(plan.kernel_name) != plan.vector_length) {
-            MLAS_THROW_EX(std::runtime_error, "KleidiAI Ops worker vector length differs from PackedB.");
-        }
+    auto run_task = [&](ptrdiff_t task_id) {
         const size_t dim0_id = static_cast<size_t>(task_id) % plan.partition.dim0_parts;
         const size_t dim1_id = static_cast<size_t>(task_id) / plan.partition.dim0_parts;
         const size_t dim0_start = dim0_id * plan.window_dim0 / plan.partition.dim0_parts;
@@ -841,7 +855,24 @@ ExecuteGemm(
             {dim1_id, plan.partition.dim1_parts}
         };
         gemm.execute(work_range, thread_locator, static_cast<int>(task_id));
+    };
+    auto& skipped = GetThreadScratch().skipped_tasks;
+    skipped.assign(static_cast<size_t>(plan.partition.task_count), 0);
+    MlasTrySimpleParallel(thread_pool, plan.partition.task_count, [&](ptrdiff_t task_id) {
+        // Worker VL is per-thread. Execute incompatible ranges on the validated
+        // caller after the pool completes; replaying completed ranges would
+        // double-accumulate when beta=1. Each byte has exactly one writer.
+        if (CurrentVectorLengthBytes(plan.kernel_name) != plan.vector_length) {
+            skipped[static_cast<size_t>(task_id)] = 1;
+            return;
+        }
+        run_task(task_id);
     });
+    for (size_t task_id = 0; task_id < skipped.size(); ++task_id) {
+        if (skipped[task_id] != 0) {
+            run_task(static_cast<ptrdiff_t>(task_id));
+        }
+    }
     return true;
 }
 
@@ -849,47 +880,60 @@ ExecuteGemm(
 
 size_t
     MLASCALL
-    ArmKleidiAI::MlasGemmPackBSizeKleidiAIOps(
+    ArmKleidiAI::MlasGemmPackBExtensionSizeKleidiAIOps(
         CBLAS_TRANSPOSE TransA,
         CBLAS_TRANSPOSE TransB,
         size_t N,
-        size_t K
+        size_t K,
+        bool UseOps
     )
 {
-    if (!IsRuntimeSupported() ||
-        TransA != CblasNoTrans || TransB != CblasNoTrans || N == 0 || K == 0) {
+    if (N == 0 || K == 0) {
         return 0;
+    }
+    // A zero header marks native-only packs, even when Ops is disabled or the
+    // input layout is unsupported. Execution can always inspect that header.
+    if (!UseOps || !IsRuntimeSupported() || TransA != CblasNoTrans || TransB != CblasNoTrans) {
+        return kPayloadOffset;
     }
     kai::ops::GemmConfig config;
     size_t payload_size = 0;
     if (!SelectPackedGemm<float, float, float>(N, K, config, payload_size)) {
-        return 0;
+        return kPayloadOffset;
     }
-    return MaximumPackedSize(payload_size);
+    const size_t size = MaximumPackedSize(payload_size);
+    return size != 0 ? size : kPayloadOffset;
 }
 
 bool
     MLASCALL
-    ArmKleidiAI::MlasGemmPackBKleidiAIOps(
+    ArmKleidiAI::MlasGemmPackBExtensionKleidiAIOps(
         CBLAS_TRANSPOSE TransA,
         CBLAS_TRANSPOSE TransB,
         size_t N,
         size_t K,
         const float* B,
         size_t ldb,
-        void* PackedB
+        void* Extension,
+        bool UseOps
     )
 {
-    return IsRuntimeSupported() &&
+    if (N == 0 || K == 0 || Extension == nullptr) {
+        return false;
+    }
+    const size_t size = MlasGemmPackBExtensionSizeKleidiAIOps(TransA, TransB, N, K, UseOps);
+    std::memset(Extension, 0, size);
+    return UseOps && IsRuntimeSupported() &&
            TransA == CblasNoTrans && TransB == CblasNoTrans &&
-           PackB<float, float, float>(PackedDataType::Fp32, N, K, B, ldb, false, PackedB);
+           PackB<float, float, float>(PackedDataType::Fp32, N, K, B, ldb, false, Extension);
 }
 
 bool
     MLASCALL
-    ArmKleidiAI::MlasGemmPackedBIsKleidiAIOps(const void* PackedB)
+    ArmKleidiAI::MlasGemmPackedBIsKleidiAIOps(const void* PackedB, size_t N, size_t K)
 {
-    return IsPackedType(PackedB, PackedDataType::Fp32);
+    return PackedB != nullptr && N != 0 && K != 0 &&
+           IsPackedType(static_cast<const std::byte*>(PackedB) + MlasGemmNativePackBSize(N, K), PackedDataType::Fp32);
 }
 
 bool
@@ -911,27 +955,23 @@ bool
     if (M == 0 || N == 0 || BatchSize == 0) {
         return true;
     }
-    if (TransA != CblasNoTrans || K == 0 || Data == nullptr) {
+    // False means no output was changed; the dispatcher falls back per entry.
+    if (BatchSize != 1 || TransA != CblasNoTrans || K == 0 || Data == nullptr ||
+        Data->A == nullptr || Data->C == nullptr || !Data->BIsPacked ||
+        !FitsOpsMatrixSpan(M, K, Data->lda) || !FitsOpsMatrixSpan(M, N, Data->ldc)) {
         return false;
     }
-
     auto& scratch = GetThreadScratch();
-    scratch.packed_headers.resize(BatchSize);
-    for (size_t batch = 0; batch < BatchSize; ++batch) {
-        if (Data[batch].A == nullptr || Data[batch].C == nullptr ||
-            !Data[batch].BIsPacked) {
-            return false;
-        }
-        auto& header = scratch.packed_headers[batch];
-        if (!ReadHeader(Data[batch].B, PackedDataType::Fp32, N, K, header)) {
-            return false;
-        }
-        // MLAS deliberately passes CblasTrans for any opaque PackedB. The actual
-        // source orientation is recorded in our header.
-        if (header.trans_b != static_cast<uint32_t>(CblasNoTrans) ||
-            (TransB != CblasNoTrans && TransB != CblasTrans)) {
-            return false;
-        }
+    if (scratch.in_use || Data->B == nullptr) {
+        return false;
+    }
+    ScratchLease lease(scratch);
+    const auto* extension = reinterpret_cast<const std::byte*>(Data->B) + MlasGemmNativePackBSize(N, K);
+    PackedHeader header{};
+    if (!ReadHeader(extension, PackedDataType::Fp32, N, K, header) ||
+        header.trans_b != static_cast<uint32_t>(CblasNoTrans) ||
+        (TransB != CblasNoTrans && TransB != CblasTrans)) {
+        return false;
     }
 
     size_t output_size = 0;
@@ -942,47 +982,44 @@ bool
         ThreadPool, double(M) * double(N) * double(K), double(MLAS_SGEMM_THREAD_COMPLEXITY)
     );
 
-    for (size_t batch = 0; batch < BatchSize; ++batch) {
-        const auto& params = Data[batch];
-        const auto& header = scratch.packed_headers[batch];
-        if (params.alpha == 0.0f) {
-            ApplyBeta(params.C, M, N, params.ldc, params.beta);
-            continue;
-        }
-        const bool can_write_directly =
-            params.alpha == 1.0f && (params.beta == 0.0f || params.beta == 1.0f);
-        const bool accumulate = params.beta == 1.0f;
-        CachedGemmPlan<float, float, float>* plan = nullptr;
-        if (can_write_directly) {
-            plan = PrepareGemm<float, float, float>(header, M, N, K, accumulate, max_threads);
-        }
-        if (plan != nullptr &&
-            ExecuteGemm(
-                *plan, params.A, params.lda,
-                params.C, params.ldc,
-                const_cast<std::byte*>(reinterpret_cast<const std::byte*>(params.B)) + header.payload_offset,
-                M, N, K, accumulate, "fp32", ThreadPool
-            )) {
-            continue;
-        }
-
-        // General alpha/beta values need a temporary product. This also provides
-        // a correctness fallback if a selected implementation cannot accumulate.
-        scratch.fp32_output.resize(output_size);
-        plan = PrepareGemm<float, float, float>(header, M, N, K, false, max_threads);
-        if (plan == nullptr ||
-            !ExecuteGemm(
-                *plan, params.A, params.lda,
-                scratch.fp32_output.data(), N,
-                const_cast<std::byte*>(reinterpret_cast<const std::byte*>(params.B)) + header.payload_offset,
-                M, N, K, false, "fp32", ThreadPool
-            )) {
-            return false;
-        }
-        ApplyAlphaBeta(
-            scratch.fp32_output.data(), M, N,
-            params.alpha, params.beta, params.C, params.ldc
-        );
+    const auto& params = *Data;
+    if (params.alpha == 0.0f) {
+        ApplyBeta(params.C, M, N, params.ldc, params.beta);
+        return true;
     }
+    const bool can_write_directly =
+        params.alpha == 1.0f && (params.beta == 0.0f || params.beta == 1.0f);
+    const bool accumulate = params.beta == 1.0f;
+    CachedGemmPlan<float, float, float>* plan = nullptr;
+    if (can_write_directly) {
+        plan = PrepareGemm<float, float, float>(header, M, N, K, accumulate, max_threads);
+    }
+    if (plan != nullptr &&
+        ExecuteGemm(
+            *plan, params.A, params.lda,
+            params.C, params.ldc,
+            const_cast<std::byte*>(extension) + header.payload_offset,
+            M, N, K, accumulate, "fp32", ThreadPool
+        )) {
+        return true;
+    }
+
+    // General alpha/beta values need a temporary product. This also provides
+    // a correctness fallback if a selected implementation cannot accumulate.
+    scratch.fp32_output.resize(output_size);
+    plan = PrepareGemm<float, float, float>(header, M, N, K, false, max_threads);
+    if (plan == nullptr ||
+        !ExecuteGemm(
+            *plan, params.A, params.lda,
+            scratch.fp32_output.data(), N,
+            const_cast<std::byte*>(extension) + header.payload_offset,
+            M, N, K, false, "fp32", ThreadPool
+        )) {
+        return false;
+    }
+    ApplyAlphaBeta(
+        scratch.fp32_output.data(), M, N,
+        params.alpha, params.beta, params.C, params.ldc
+    );
     return true;
 }
