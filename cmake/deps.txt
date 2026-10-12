@@ -36,6 +36,7 @@ mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.1.zip;d5ee
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip;9bc9e01dffb64d9e0773b2e44d2f22c51aace063
 # ONNX 1.23.2 final release (opset 28).
 # The 7 CI requirements.txt files are pinned to onnx==1.23.2.
+# ONNX_VERSION=1.23.2
 onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.23.2.zip;8846de32ab45e653c2cd651d8d6c4c299fb1583d
 # Use the latest commit of 10.9-GA
 onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/d5dce67db7c2e64b07e055571f5ec06f7f254de2.zip;01114d3b67650857281fa50faa2e412130a63b69
