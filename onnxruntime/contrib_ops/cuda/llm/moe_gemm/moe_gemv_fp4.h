@@ -109,7 +109,7 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
     int64_t inter_size, int64_t k, int group_size, int sm, cutlass_kernels::ActivationParams activation_params,
     MoeGemvConfig config, bool sm80_pair_interleaved, bool raw_n_packed,
     const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream,
-    bool weights_row_major = false);
+    bool weights_row_major = false, bool programmatic_dependent_launch = false);
 
 }  // namespace moe_gemv
 }  // namespace kernels

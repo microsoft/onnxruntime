@@ -639,13 +639,14 @@ __global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
   static_assert(Tiles == 1 || Tiles == 3, "tile count");
 
   // Programmatic dependent launch (only active when launched with the PDL attribute, otherwise no-ops): let the next
-  // kernel of the MoE chain start its prologue while this one runs. FC1 never runs as a dependent grid, so its
-  // wait is a no-op; FC2 reads only data of kernels that completed before FC1 started (expert maps, weights)
-  // before its own wait and the FC1 output after it.
-  asm volatile("griddepcontrol.launch_dependents;");
+  // kernel of the MoE chain start its prologue while this one runs. FC2 reads only data of kernels that completed
+  // before FC1 passed its wait (expert maps, weights) before its own wait and the FC1 output after it.
+  // FC1 triggers only after its own wait (the routing kernel may be its primary grid), so FC2 and the finalize
+  // kernel, which read routing metadata before their waits, never launch before that metadata is complete.
   if constexpr (FusedSwiGlu) {
     asm volatile("griddepcontrol.wait;" ::: "memory");
   }
+  asm volatile("griddepcontrol.launch_dependents;");
 
   const int row = static_cast<int>(blockIdx.x);
   int expert = permuted_row_to_expert != nullptr ? permuted_row_to_expert[row] : 0;
@@ -1084,7 +1085,8 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
     int64_t expanded_num_rows, int64_t inter_size, int64_t k, int group_size, int sm,
     cutlass_kernels::ActivationParams activation_params, MoeGemvConfig config, bool sm80_pair_interleaved,
     bool raw_n_packed,
-    const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream, bool weights_row_major) {
+    const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream, bool weights_row_major,
+    bool programmatic_dependent_launch) {
   ORT_UNUSED_PARAMETER(sm);
   if (raw_n_packed) {
     ORT_ENFORCE(group_size == 16, "Raw N-packed FP4 GEMV is NVFP4-only.");
@@ -1094,7 +1096,7 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
         act, weight, raw_block_scales, raw_global_scales, bias, out,
         expert_first_token_offset, permuted_row_to_expert, num_experts,
         expanded_num_rows, inter_size * 2, k, activation_params, permuted_row_to_source_row, num_rows, stream,
-        weights_row_major);
+        weights_row_major, programmatic_dependent_launch);
     return;
   }
   // Interleaved path: ColumnMajorInterleaved layout + dtype-conditional accumulation + smaller
@@ -1155,7 +1157,7 @@ template void launch_moe_gemv_fp4_symmetric_interleaved_swiglu<half>(
     const half*, const uint8_t*, const half*, const uint8_t*, const float*, const half*, half*,
     const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, MoeGemvConfig, bool, bool,
-    const int*, int64_t, cudaStream_t, bool);
+    const int*, int64_t, cudaStream_t, bool, bool);
 #ifdef ENABLE_BF16
 template void launch_moe_gemv_fp4_symmetric<__nv_bfloat16>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const uint8_t*, const float*,
@@ -1165,7 +1167,7 @@ template void launch_moe_gemv_fp4_symmetric_interleaved_swiglu<__nv_bfloat16>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const uint8_t*, const float*,
     const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
-    MoeGemvConfig, bool, bool, const int*, int64_t, cudaStream_t, bool);
+    MoeGemvConfig, bool, bool, const int*, int64_t, cudaStream_t, bool, bool);
 #endif
 
 }  // namespace moe_gemv
