@@ -61,8 +61,10 @@ example when older hardware or drivers only support `EXTERNAL_ONLY`.
 | `"weightless_support"` | 1.29 | `"none"`, `"external_only"`, `"all"`. |
 
 An EP reports `"weightless_supported_modes"` and keeps reporting `"weightless_support"` with the value it reported
-before, so that applications written for earlier versions keep working. For example, an EP that reported
-`"weightless_support"` = `"all"` and now also supports `EXTERNAL_ONLY`:
+before, so that applications written for earlier versions keep working. `"weightless_support"` only accepts the 1.29
+values: ORT treats a later value such as `"all_or_external_only"` in that key as not recognized.
+
+For example, an EP that reported `"weightless_support"` = `"all"` and now also supports `EXTERNAL_ONLY`:
 
 ```cpp
 ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_WeightlessSupport, "all");
