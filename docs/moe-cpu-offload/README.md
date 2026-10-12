@@ -116,6 +116,10 @@ expert ID, while global ties are broken by the fixed model-wide expert index. Th
 published placement; an asynchronous swap is not visible until the kernel publishes it. Each event also reports
 `moe_count` and `total_expert_count`.
 
+At the end of each successful run, `moe_expert_swaps` reports the number of in-flight swaps and eligible candidates
+blocked by the concurrency limit, both per CUDA device and in total. Candidates are recalculated after every run and
+are not retained in a persistent queue.
+
 ```json
 "selected_experts": [
   {

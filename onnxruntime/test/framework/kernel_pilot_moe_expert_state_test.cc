@@ -213,7 +213,7 @@ TEST_F(KernelPilotMoeExpertStateTest, LogsCounterUpdateAsStructuredJson) {
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
   ASSERT_STATUS_OK(state.EndRun());
 
-  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
+  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 2U);
   const std::string& message = capturing_sink_ptr->Messages()[0];
   constexpr std::string_view marker{"moe_expert_counters "};
   const size_t marker_position = message.find(marker);
@@ -252,6 +252,7 @@ TEST_F(KernelPilotMoeExpertStateTest, LogsCounterUpdateAsStructuredJson) {
                     {"device", "CPU"},
                 },
             }));
+  EXPECT_NE(capturing_sink_ptr->Messages()[1].find("moe_expert_swaps "), std::string::npos);
   EXPECT_FALSE(event.contains("counters"));
 }
 
@@ -514,7 +515,12 @@ TEST_F(KernelPilotMoeExpertStateTest, AdaptiveSwapHonorsPerDeviceLimit) {
       ASSERT_STATUS_OK(state.GetKernelPilot(kernels_[i])->AttachMoeExpertCache(&caches[i]));
     }
 
-    ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+    auto sink = std::make_unique<CapturingSink>();
+    auto* sink_ptr = sink.get();
+    logging::LoggingManager manager(std::move(sink), logging::Severity::kINFO, false,
+                                    logging::LoggingManager::InstanceType::Temporal);
+    auto logger = manager.CreateLogger("moe_swap_queue");
+    ASSERT_STATUS_OK(state.BeginRun("request", logger.get()));
     const int selected[] = {1};
     for (const auto* kernel : kernels_) {
       ASSERT_STATUS_OK(CollectAndRecord(state, kernel, selected));
@@ -528,6 +534,29 @@ TEST_F(KernelPilotMoeExpertStateTest, AdaptiveSwapHonorsPerDeviceLimit) {
         EXPECT_TRUE(caches[i].Swaps().empty());
       }
     }
+
+    constexpr std::string_view marker{"moe_expert_swaps "};
+    nlohmann::json event;
+    bool found_swap_event = false;
+    for (const auto& message : sink_ptr->Messages()) {
+      const size_t marker_position = message.find(marker);
+      if (marker_position != std::string::npos) {
+        event = nlohmann::json::parse(message.substr(marker_position + marker.size()));
+        found_swap_event = true;
+        break;
+      }
+    }
+    ASSERT_TRUE(found_swap_event);
+    EXPECT_EQ(event["request_id"], "request");
+    EXPECT_EQ(event["total_in_flight"], expected_swap_count);
+    EXPECT_EQ(event["total_blocked_candidates"], caches.size() - expected_swap_count);
+    ASSERT_EQ(event["devices"].size(), 1U);
+    EXPECT_EQ(event["devices"][0],
+              nlohmann::json({
+                  {"device_id", 0},
+                  {"in_flight", expected_swap_count},
+                  {"blocked_candidates", caches.size() - expected_swap_count},
+              }));
   }
 }
 

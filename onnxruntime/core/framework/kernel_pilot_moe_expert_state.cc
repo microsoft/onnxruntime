@@ -264,7 +264,11 @@ KernelPilot* KernelPilotMoeExpertState::GetKernelPilot(const OpKernel* kernel) {
 }
 
 Status KernelPilotMoeExpertState::ScheduleSwaps() {
-  InlinedHashMap<int, size_t> pending_by_device;
+  struct SwapQueueMetrics {
+    size_t in_flight{0};
+    size_t blocked_candidates{0};
+  };
+  std::map<int, SwapQueueMetrics> metrics_by_device;
   InlinedVector<KernelState*> ordered_states;
   ordered_states.reserve(kernels_.size());
   for (auto& [kernel, state] : kernels_) {
@@ -272,8 +276,9 @@ Status KernelPilotMoeExpertState::ScheduleSwaps() {
     auto* cache = state.pilot.GetMoeExpertCache();
     if (cache != nullptr) {
       ORT_RETURN_IF_ERROR(cache->ReclaimCompletedSwap());
+      auto& metrics = metrics_by_device[cache->DeviceId()];
       if (cache->HasPendingSwap()) {
-        ++pending_by_device[cache->DeviceId()];
+        ++metrics.in_flight;
       }
       ordered_states.push_back(&state);
     }
@@ -284,8 +289,8 @@ Status KernelPilotMoeExpertState::ScheduleSwaps() {
   for (auto* state : ordered_states) {
     auto* cache = state->pilot.GetMoeExpertCache();
     const int device_id = cache->DeviceId();
+    auto& metrics = metrics_by_device[device_id];
     if (cache->HasPendingSwap() ||
-        pending_by_device[device_id] >= max_in_flight_swaps_per_device_ ||
         state->cuda_experts.empty() ||
         state->cuda_experts.size() == state->experts.count) {
       continue;
@@ -318,9 +323,39 @@ Status KernelPilotMoeExpertState::ScheduleSwaps() {
     }
     ORT_ENFORCE(hottest_cpu_expert >= 0);
     if (cpu_max > (1.0 + swap_epsilon_) * cuda_min) {
+      if (metrics.in_flight >= max_in_flight_swaps_per_device_) {
+        ++metrics.blocked_candidates;
+        continue;
+      }
       ORT_RETURN_IF_ERROR(cache->StartSwap(coldest_cuda_expert, hottest_cpu_expert));
-      ++pending_by_device[device_id];
+      ++metrics.in_flight;
     }
+  }
+
+  if (logging_logger_ != nullptr &&
+      logging_logger_->OutputIsEnabled(logging::Severity::kINFO, logging::DataType::SYSTEM)) {
+    size_t total_in_flight = 0;
+    size_t total_blocked_candidates = 0;
+    std::ostringstream event;
+    event.imbue(std::locale::classic());
+    event << "{\"request_id\":";
+    common::WriteJsonString(event, logging_request_id_);
+    event << ",\"devices\":[";
+    bool first_device = true;
+    for (const auto& [device_id, metrics] : metrics_by_device) {
+      if (!first_device) {
+        event << ",";
+      }
+      first_device = false;
+      event << "{\"device_id\":" << device_id
+            << ",\"in_flight\":" << metrics.in_flight
+            << ",\"blocked_candidates\":" << metrics.blocked_candidates << "}";
+      total_in_flight += metrics.in_flight;
+      total_blocked_candidates += metrics.blocked_candidates;
+    }
+    event << "],\"total_in_flight\":" << total_in_flight
+          << ",\"total_blocked_candidates\":" << total_blocked_candidates << "}";
+    LOGS(*logging_logger_, INFO) << "moe_expert_swaps " << event.str();
   }
   return Status::OK();
 }
