@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <vector>
 
@@ -9,6 +11,10 @@
 
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "core/providers/cuda/cuda_common.h"
+
+#if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
+#include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -159,6 +165,77 @@ TEST(CUDA_EP_Unittest, QMoEFp8DequantizesOnlySelectedExpertsAndGathersBias) {
     TestSelectedDequantization<__nv_bfloat16>(layout);
   }
 }
+
+float FiniteFp8Reference(int code) {
+  const int exponent = (code >> 3) & 15;
+  const int mantissa = code & 7;
+  const float magnitude = exponent == 0 ? std::ldexp(static_cast<float>(mantissa), -9)
+                                       : std::ldexp(1.0f + static_cast<float>(mantissa) / 8.0f, exponent - 7);
+  return code & 128 ? -magnitude : magnitude;
+}
+
+bool SupportsFp8Gemv() {
+  int device = 0;
+  cudaDeviceProp properties{};
+  CUDA_CALL_THROW(cudaGetDevice(&device));
+  CUDA_CALL_THROW(cudaGetDeviceProperties(&properties, device));
+  return properties.major >= 8;
+}
+
+#if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
+template <typename T>
+void TestNvfp4GemvScaleCodes(int k) {
+  constexpr int n = 256;
+  std::vector<uint8_t> weights(n * k / 2, 0);
+  std::vector<uint8_t> scales(n * k / 16);
+  for (int row = 0; row < n; ++row) {
+    weights[row * k / 2] = 2;
+    std::fill_n(scales.begin() + row * k / 16, k / 16, static_cast<uint8_t>(row));
+  }
+  std::vector<T> input(k, T(0.0f));
+  input[0] = T(1.0f);
+  const float global = 0.37f;
+  const int expert = 0;
+  CudaBuffer device_weights(weights.size());
+  CudaBuffer device_scales(scales.size());
+  CudaBuffer device_input(input.size() * sizeof(T));
+  CudaBuffer device_global(sizeof(global));
+  CudaBuffer device_expert(sizeof(expert));
+  CudaBuffer device_output(n * sizeof(T));
+  device_weights.Upload(weights.data());
+  device_scales.Upload(scales.data());
+  device_input.Upload(input.data());
+  device_global.Upload(&global);
+  device_expert.Upload(&expert);
+  using namespace onnxruntime::llm::kernels::moe_gemv;
+  launch_moe_gemv_fp4_symmetric<T>(
+      device_input.As<T>(), device_weights.As<uint8_t>(), nullptr, device_scales.As<uint8_t>(),
+      device_global.As<float>(), nullptr, device_output.As<T>(), nullptr, device_expert.As<int>(),
+      1, 1, n, k, 16, 90, MoeGemvConfig::kDefault, false, true, nullptr, true);
+  std::array<T, n> actual{};
+  device_output.Download(actual.data());
+  for (int code = 0; code < 256; ++code) {
+    SCOPED_TRACE(code);
+    const float value = static_cast<float>(actual[code]);
+    if ((code & 127) == 127) {
+      EXPECT_TRUE(std::isnan(value));
+    } else {
+      EXPECT_EQ(value, static_cast<float>(T(FiniteFp8Reference(code) * global)));
+    }
+  }
+}
+
+TEST(CUDA_EP_Unittest, QMoENvfp4GemvAllScaleCodesPreserveScaledValuesAndNaNs) {
+  if (!SupportsFp8Gemv()) {
+    GTEST_SKIP() << "NVFP4 GEMV requires SM80+.";
+  }
+  for (int k : {16, 1040}) {
+    SCOPED_TRACE(k);
+    TestNvfp4GemvScaleCodes<half>(k);
+    TestNvfp4GemvScaleCodes<__nv_bfloat16>(k);
+  }
+}
+#endif
 
 }  // namespace
 }  // namespace test

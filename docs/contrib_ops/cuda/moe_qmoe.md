@@ -1128,6 +1128,15 @@ the raw kernel, so profiling them only adds synchronization and repeated work. W
 
 ### 9b.3 Fast E2M1 → half/bf16 decode
 
+For offline K-packed NVFP4 GEMV, `ORT_NVFP4_GEMV_NATIVE_SCALE=1` optionally
+uses native E4M3-to-half conversion on compiled SM90+ code for block scales.
+It defaults to false. Set it before initializing the runtime; the launch
+specializations cache its value. Older compiled architectures retain software
+conversion. Existing K-lane selection and optional expert-row reuse are retained.
+Global scaling, activation-dtype rounding, weight decoding, accumulation,
+routing, and prefill are unchanged. This scalar conversion does not introduce
+FP8 activations or native FP8 matrix multiplication.
+
 For native K-packed NVFP4 verification, `ORT_NVFP4_FC1_EXPERT_REUSE=1` enables
 experimental two-row FC1 weight and scale reuse. Set it before the first GEMV
 invocation; it is read once per launcher specialization. The dispatch is limited

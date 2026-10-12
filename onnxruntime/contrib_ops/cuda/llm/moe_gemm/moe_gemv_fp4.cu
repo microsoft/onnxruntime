@@ -11,6 +11,7 @@
 // Shared device-side kernels + launch/dispatch helpers (fpA_intB_gemv namespace).
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_device.cuh"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
+#include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "core/platform/env_var_utils.h"
 
 namespace onnxruntime::llm {
@@ -161,7 +162,13 @@ struct TypeTag {
 template <typename T>
 using Fp4GemvAccT = std::conditional_t<std::is_same<T, half>::value, half, float>;
 
+template <bool NativeDecode = false>
 __device__ __forceinline__ float DecodeE4M3Fn(uint8_t code) {
+#if defined(ORT_CUDA_TYPE_HELPER_HAS_FP8) && defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+  if constexpr (NativeDecode) {
+    return onnxruntime::contrib::cuda::e4m3_to_float(code);
+  }
+#endif
   const int sign = code & 0x80;
   const int exponent = (code >> 3) & 0x0f;
   const int mantissa = code & 0x07;
@@ -353,7 +360,7 @@ __global__ void MoeGemvFp4RawNPackedKernel(
 #endif
 }
 
-template <typename T, bool FusedSwiGlu, bool EnableBias, int KLanes = 8, bool ReuseExpertRows = false>
+template <typename T, bool FusedSwiGlu, bool EnableBias, int KLanes = 8, bool ReuseExpertRows = false, bool NativeScale = false>
 __global__ void MoeGemvFp4RawKPackedKernel(
     const T* act, const uint8_t* weight, const uint8_t* block_scales, const float* global_scales,
     const T* bias, T* out,
@@ -413,7 +420,7 @@ __global__ void MoeGemvFp4RawKPackedKernel(
        reduction_column += kKLanes * kBlockSize) {
     uint2 packed = *reinterpret_cast<const uint2*>(
         expert_weight + static_cast<int64_t>(column) * (reduction_size / 2) + reduction_column / 2);
-    const T scale = static_cast<T>(DecodeE4M3Fn(
+    const T scale = static_cast<T>(DecodeE4M3Fn<NativeScale>(
                                        expert_scales[static_cast<int64_t>(column) * (reduction_size / kBlockSize) +
                                                      reduction_column / kBlockSize]) *
                                    global_scale);
@@ -490,32 +497,42 @@ void LaunchMoeGemvFp4RawNPacked(
     const bool reuse_experts = enable_expert_reuse && FusedSwiGlu && n == 1280 && k == 2560 &&
                                expanded_num_rows >= 40 && expert_first_token_offset != nullptr &&
                                permuted_row_to_expert != nullptr;
-    const auto launch_k_packed = [&](auto k_lanes, auto reuse_rows) {
+    static const bool native_scale =
+        onnxruntime::ParseEnvironmentVariableWithDefault<bool>("ORT_NVFP4_GEMV_NATIVE_SCALE", false);
+    const auto launch_k_packed = [&](auto k_lanes, auto reuse_rows, auto native_tag) {
       constexpr int kKLanes = decltype(k_lanes)::value;
       constexpr bool kReuseRows = decltype(reuse_rows)::value;
+      constexpr bool kNativeScale = decltype(native_tag)::value;
       constexpr int kNativeColsPerBlock = kThreads / kKLanes;
       const dim3 native_grid(static_cast<unsigned>(expanded_num_rows),
                              static_cast<unsigned>((n + kNativeColsPerBlock - 1) / kNativeColsPerBlock));
       if (bias != nullptr) {
-        MoeGemvFp4RawKPackedKernel<T, FusedSwiGlu, true, kKLanes, kReuseRows><<<native_grid, kThreads, 0, stream>>>(
+        MoeGemvFp4RawKPackedKernel<T, FusedSwiGlu, true, kKLanes, kReuseRows, kNativeScale><<<native_grid, kThreads, 0, stream>>>(
             act, weight, block_scales, global_scales, bias, out,
             expert_first_token_offset, permuted_row_to_expert, num_experts,
             weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
             permuted_row_to_source_row, static_cast<int>(num_rows));
       } else {
-        MoeGemvFp4RawKPackedKernel<T, FusedSwiGlu, false, kKLanes, kReuseRows><<<native_grid, kThreads, 0, stream>>>(
+        MoeGemvFp4RawKPackedKernel<T, FusedSwiGlu, false, kKLanes, kReuseRows, kNativeScale><<<native_grid, kThreads, 0, stream>>>(
             act, weight, block_scales, global_scales, bias, out,
             expert_first_token_offset, permuted_row_to_expert, num_experts,
             weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
             permuted_row_to_source_row, static_cast<int>(num_rows));
       }
     };
-    if (k <= 1024) {
-      launch_k_packed(std::integral_constant<int, 4>{}, std::false_type{});
-    } else if (reuse_experts) {
-      launch_k_packed(std::integral_constant<int, 8>{}, std::true_type{});
+    const auto launch = [&](auto native_tag) {
+      if (k <= 1024) {
+        launch_k_packed(std::integral_constant<int, 4>{}, std::false_type{}, native_tag);
+      } else if (reuse_experts) {
+        launch_k_packed(std::integral_constant<int, 8>{}, std::true_type{}, native_tag);
+      } else {
+        launch_k_packed(std::integral_constant<int, 8>{}, std::false_type{}, native_tag);
+      }
+    };
+    if (native_scale) {
+      launch(std::true_type{});
     } else {
-      launch_k_packed(std::integral_constant<int, 8>{}, std::false_type{});
+      launch(std::false_type{});
     }
     return;
   }
