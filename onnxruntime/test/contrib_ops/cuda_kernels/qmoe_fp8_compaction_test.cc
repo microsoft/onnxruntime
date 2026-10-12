@@ -174,6 +174,7 @@ float FiniteFp8Reference(int code) {
   return code & 128 ? -magnitude : magnitude;
 }
 
+#if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
 bool SupportsFp8Gemv() {
   int device = 0;
   cudaDeviceProp properties{};
@@ -181,6 +182,7 @@ bool SupportsFp8Gemv() {
   CUDA_CALL_THROW(cudaGetDeviceProperties(&properties, device));
   return properties.major >= 8;
 }
+#endif
 
 #if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
 template <typename T>
