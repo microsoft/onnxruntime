@@ -5,6 +5,9 @@
 
 namespace onnxruntime {
 
+struct ProviderInfo_OpenVINO;
+ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO();
+
 bool InitProvidersSharedLibrary();
 void UnloadSharedProviders();
 

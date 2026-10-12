@@ -869,6 +869,40 @@ TEST(HalfGemmKleidiAISVE2p1, RejectsKAboveKernelLimit) {
 #endif
 }
 
+TEST(HalfGemmKleidiAISVE2p1, RejectsTransposedB) {
+#if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
+  const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
+  if (!cpuid.HasArmSVE2p1() || cpuid.HasArm_SME() || cpuid.HasArm_SME2()) {
+    GTEST_SKIP() << "SVE2.1 must be selected without an SME-priority backend.";
+  }
+  ASSERT_TRUE(IsSve2p1HalfGemmSelected());
+
+  constexpr size_t M = 2;
+  constexpr size_t N = 3;
+  constexpr size_t K = 4;
+  std::vector<MLFp16> a(M * K, MLFp16(1.0f));
+  std::vector<MLFp16> b(N * K, MLFp16(1.0f));
+  std::vector<MLFp16> c(M * N, MLFp16(-1.0f));
+
+  MLAS_HALF_GEMM_DATA_PARAMS data{};
+  data.A = a.data();
+  data.B = b.data();
+  data.C = reinterpret_cast<MLAS_FP16*>(c.data());
+  data.lda = K;
+  data.ldb = K;
+  data.ldc = N;
+  data.BIsTransposed = true;
+
+  EXPECT_EQ(ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasTrans, N, K), size_t{0});
+  EXPECT_FALSE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr));
+#if !defined(ORT_NO_EXCEPTIONS)
+  EXPECT_THROW(MlasHalfGemmBatch(M, N, K, 1, &data, nullptr), std::runtime_error);
+#endif
+#else
+  GTEST_SKIP() << "SVE2.1 HalfGemm requires an ARM64 KleidiAI test-hook build.";
+#endif
+}
+
 TEST(HalfGemmKleidiAISVE2p1, RuntimePackedTailCasesSingleThread) {
 #if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
   const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
@@ -1124,6 +1158,131 @@ TEST(HalfGemmKleidiAIPath, PackedBFloatSingleThreadVariedShapesAndBiasWithoutOut
 // KleidiAI-specific packed-B uses a separate direct-consumption contract from
 // generic halfgemm PackB. Unsupported combinations fail at the public API
 // boundary because generic MLAS cannot consume this backend-native layout.
+TEST(HalfGemmKleidiAIPath, TransposedBRuntimePacking) {
+#if defined(MLAS_TARGET_ARM64)
+  const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
+  if (!cpuid.HasArm_SME() && !cpuid.HasArm_SME2()) {
+    GTEST_SKIP() << "Transposed-B HalfGemm requires an SME or SME2 backend.";
+  }
+
+  constexpr size_t M = 2;
+  constexpr size_t N = 3;
+  constexpr size_t K = 4;
+  constexpr size_t ldb = K + 1;
+  std::vector<MLFp16> a(M * K);
+  std::vector<MLFp16> b(N * ldb, MLFp16(-1.0f));
+  std::vector<MLFp16> bias{MLFp16(1.0f), MLFp16(2.0f), MLFp16(3.0f)};
+  std::vector<MLFp16> c(M * N, MLFp16(0.0f));
+
+  for (size_t m = 0; m < M; ++m) {
+    for (size_t k = 0; k < K; ++k) {
+      a[m * K + k] = MLFp16(static_cast<float>(m * K + k + 1));
+    }
+  }
+  for (size_t n = 0; n < N; ++n) {
+    for (size_t k = 0; k < K; ++k) {
+      b[n * ldb + k] = MLFp16(static_cast<float>((n + 1) * (k + 1)));
+    }
+  }
+
+  MLAS_HALF_GEMM_DATA_PARAMS data{};
+  data.A = a.data();
+  data.B = b.data();
+  data.Bias = reinterpret_cast<const MLAS_FP16*>(bias.data());
+  data.C = reinterpret_cast<MLAS_FP16*>(c.data());
+  data.lda = K;
+  data.ldb = ldb;
+  data.ldc = N;
+  data.BIsTransposed = true;
+
+  ASSERT_NE(ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasTrans, N, K), size_t{0});
+  ASSERT_TRUE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr));
+  for (size_t m = 0; m < M; ++m) {
+    for (size_t n = 0; n < N; ++n) {
+      float expected = float(bias[n]);
+      for (size_t k = 0; k < K; ++k) {
+        expected += float(a[m * K + k]) * float(b[n * ldb + k]);
+      }
+      EXPECT_EQ(c[m * N + n], MLFp16(expected));
+    }
+  }
+
+  std::fill(c.begin(), c.end(), MLFp16(-1.0f));
+  data.ldb = K - 1;
+  EXPECT_FALSE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr));
+  for (const auto value : c) {
+    EXPECT_EQ(value, MLFp16(-1.0f));
+  }
+#else
+  GTEST_SKIP() << "Transposed-B HalfGemm requires an ARM64 KleidiAI build.";
+#endif
+}
+
+TEST(HalfGemmKleidiAIPath, TransposedBBackendNativePacking) {
+#if defined(MLAS_TARGET_ARM64)
+  const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
+  if (!cpuid.HasArm_SME() && !cpuid.HasArm_SME2()) {
+    GTEST_SKIP() << "Transposed-B HalfGemm requires an SME or SME2 backend.";
+  }
+
+  constexpr size_t M = 2;
+  constexpr size_t N = 3;
+  constexpr size_t K = 4;
+  constexpr size_t ldb = K + 1;
+  std::vector<MLFp16> a(M * K);
+  std::vector<MLFp16> b(N * ldb, MLFp16(-1.0f));
+  std::vector<MLFp16> c(M * N, MLFp16(0.0f));
+
+  for (size_t m = 0; m < M; ++m) {
+    for (size_t k = 0; k < K; ++k) {
+      a[m * K + k] = MLFp16(static_cast<float>(m * K + k + 1));
+    }
+  }
+  for (size_t n = 0; n < N; ++n) {
+    for (size_t k = 0; k < K; ++k) {
+      b[n * ldb + k] = MLFp16(static_cast<float>((n + 1) * (k + 1)));
+    }
+  }
+
+  const size_t packed_b_size =
+      ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasTrans, N, K);
+  ASSERT_NE(packed_b_size, size_t{0});
+  std::vector<std::byte> packed_b(packed_b_size);
+  ASSERT_TRUE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
+      CblasNoTrans, CblasTrans, N, K,
+      reinterpret_cast<const MLAS_FP16*>(b.data()), ldb, packed_b.data()));
+
+  MLAS_HALF_GEMM_DATA_PARAMS data{};
+  data.A = a.data();
+  data.B = packed_b.data();
+  data.C = reinterpret_cast<MLAS_FP16*>(c.data());
+  data.lda = K;
+  data.ldb = 0;
+  data.ldc = N;
+  data.BIsBackendNativePacked = true;
+
+  ASSERT_TRUE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr));
+  for (size_t m = 0; m < M; ++m) {
+    for (size_t n = 0; n < N; ++n) {
+      float expected = 0.0f;
+      for (size_t k = 0; k < K; ++k) {
+        expected += float(a[m * K + k]) * float(b[n * ldb + k]);
+      }
+      EXPECT_EQ(c[m * N + n], MLFp16(expected));
+    }
+  }
+
+  constexpr std::byte packed_b_initial_value{0x7f};
+  std::fill(packed_b.begin(), packed_b.end(), packed_b_initial_value);
+  EXPECT_FALSE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
+      CblasNoTrans, CblasTrans, N, K,
+      reinterpret_cast<const MLAS_FP16*>(b.data()), K - 1, packed_b.data()));
+  ExpectBufferFilledWith(packed_b, packed_b_initial_value);
+#else
+  GTEST_SKIP() << "Transposed-B HalfGemm requires an ARM64 KleidiAI build.";
+#endif
+}
+
 TEST(HalfGemmKleidiAIPath, KleidiAIPackedBWithBiasIsRejected) {
   if (!MlasFp16AccelerationSupported()) {
     GTEST_SKIP();
@@ -1247,7 +1406,7 @@ TEST(HalfGemmKleidiAIPath, KleidiAIPackedBSizeRejectsUnsupportedTranspose) {
   constexpr size_t K = 9;
 
   EXPECT_EQ(ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasTrans, CblasNoTrans, N, K), size_t{0});
-  EXPECT_EQ(ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasTrans, N, K), size_t{0});
+  EXPECT_EQ(ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasConjTrans, N, K), size_t{0});
 }
 
 TEST(HalfGemmKleidiAIPath, KleidiAIPackedBRejectsUnsupportedTranspose) {
@@ -1268,7 +1427,7 @@ TEST(HalfGemmKleidiAIPath, KleidiAIPackedBRejectsUnsupportedTranspose) {
   EXPECT_FALSE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
       CblasTrans, CblasNoTrans, N, K, reinterpret_cast<const MLAS_FP16*>(B.data()), N, packed_b.data()));
   EXPECT_FALSE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
-      CblasNoTrans, CblasTrans, N, K, reinterpret_cast<const MLAS_FP16*>(B.data()), N, packed_b.data()));
+      CblasNoTrans, CblasConjTrans, N, K, reinterpret_cast<const MLAS_FP16*>(B.data()), N, packed_b.data()));
 }
 
 TEST(HalfGemmKleidiAIPath, KleidiAIPackedBRejectsInvalidLeadingDimension) {

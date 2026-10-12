@@ -1488,9 +1488,11 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       A positive block_size selects square block scaling with float32, float16, or bfloat16 fc*_scales tensors shaped
       [num_experts, ceil(N / block_size), ceil(K / block_size)]:
         dequantized_weight[e, n, k] = float(weight[e, n, k]) * scale[e, n / block_size, k / block_size]
-      Partial edge blocks are allowed. No zero points or activation scales are used.
+      Partial edge blocks are allowed. No zero points or activation scales are accepted.
       Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
       Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
+      The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
+      that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
 
       Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
       Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
@@ -1572,7 +1574,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("block_size",
               "For integer quantization, size of each quantization block along the K (input feature) dimension. "
               "Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). "
-              "Both hidden_size and inter_size must be divisible by the block size. "
+              "For integer and FP4 quantization, both hidden_size and inter_size must be divisible by "
+              "the block size. FP8 with block_size=128 supports partial 128x128 tiles. "
               "The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 "
               "and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. "
               "For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, "

@@ -25,6 +25,10 @@ const MAX_FLOAT: f32 = 3.4028234663852886e+38;
 
 var<workgroup> shared_vals: array<router_logits_element_t, workgroup_size_x>;
 var<workgroup> shared_idxs: array<u32, workgroup_size_x>;
+#if normalize_routing_weights
+var<workgroup> selected_vals: array<router_logits_element_t, K>;
+var<workgroup> selected_idxs: array<u32, K>;
+#endif
 
 $MAIN {
     let row = workgroup_idx;
@@ -46,7 +50,44 @@ $MAIN {
     topk_values.setByOffset(output_base + local_idx, topk_values_value_t(0));
     workgroupBarrier();
 
-    // K is small, use a simple bubble sort
+#if normalize_routing_weights
+    var candidate_val = max_val;
+    var candidate_idx = local_idx;
+    for (var i = 0u; i < K; i++) {
+        shared_vals[local_idx] = candidate_val;
+        shared_idxs[local_idx] = candidate_idx;
+        workgroupBarrier();
+        for (var remaining = workgroup_size_x; remaining > 1u; remaining = (remaining + 1u) / 2u) {
+            let stride = (remaining + 1u) / 2u;
+            if (local_idx < remaining - stride) {
+                let other = local_idx + stride;
+                if (shared_idxs[local_idx] >= cols ||
+                    (shared_idxs[other] < cols &&
+                     (shared_vals[other] > shared_vals[local_idx] ||
+                      (shared_vals[other] == shared_vals[local_idx] && shared_idxs[other] < shared_idxs[local_idx])))) {
+                    shared_vals[local_idx] = shared_vals[other];
+                    shared_idxs[local_idx] = shared_idxs[other];
+                }
+            }
+            workgroupBarrier();
+        }
+        if (local_idx == 0u) {
+            selected_vals[i] = shared_vals[0];
+            selected_idxs[i] = shared_idxs[0];
+        }
+        workgroupBarrier();
+        if (local_idx == selected_idxs[i]) {
+            candidate_val = -MAX_FLOAT;
+            candidate_idx = cols;
+        }
+        workgroupBarrier();
+    }
+    if (local_idx < K) {
+        shared_vals[local_idx] = selected_vals[local_idx];
+        shared_idxs[local_idx] = selected_idxs[local_idx];
+    }
+    workgroupBarrier();
+#else
     for (var i = 0u; i < workgroup_size_x - 1u; i++) {
         for (var j = 0u; j < workgroup_size_x - 1u - i; j++) {
             if (local_idx == j && local_idx < cols && (local_idx + 1u) < cols) {
@@ -63,6 +104,7 @@ $MAIN {
             workgroupBarrier();
         }
     }
+#endif
     if (local_idx == 0u) {
 #if has_router_weights
         var sum : f32 = 1.0;
