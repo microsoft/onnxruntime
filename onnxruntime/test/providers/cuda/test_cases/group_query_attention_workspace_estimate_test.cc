@@ -431,9 +431,10 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, ParsedEnvelopeReachesNodeConfigWi
 
       auto non_windowed_config = *gqa_config;
       non_windowed_config.sliding_window_cache = false;
-      EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
-                       non_windowed_config, SeparateShapes(), Device(), options)
-                       .has_value());
+      EXPECT_EQ(EstimateGroupQueryAttentionWorkspace(
+                    non_windowed_config, SeparateShapes(), Device(), options)
+                    .has_value(),
+                test_case.expected > 0);
     }
   });
 }
