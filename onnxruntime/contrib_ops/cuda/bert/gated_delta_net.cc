@@ -330,6 +330,25 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.sm_major = prop.major;
 
   gdn::Plan plan = gdn::SelectPlan(desc, prop.sharedMemPerBlockOptin);
+  // The tensor-core chunked engines only have fp16 fragments. For bfloat16 tensors that would otherwise fall back to the
+  // sequential recurrence (one token at a time, 48 CTAs), run them on fp16 copies of q/k/v and convert the output back.
+  bool chunked_via_fp16 = false;
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    static const bool enabled =
+        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_GDN_BF16_VIA_FP16", 1) != 0;
+    const bool engine_open = forced_engine_ == gdn::Engine::kAuto || forced_engine_ == gdn::Engine::kChunked ||
+                             forced_engine_ == gdn::Engine::kChunkedSplit;
+    if (enabled && engine_open && plan.engine == gdn::Engine::kRecurrent) {
+      gdn::Descriptor desc_fp16 = desc;
+      desc_fp16.io_type = gdn::IoType::kFloat16;
+      gdn::Plan plan_fp16 = gdn::SelectPlan(desc_fp16, prop.sharedMemPerBlockOptin);
+      if (plan_fp16.engine == gdn::Engine::kChunked || plan_fp16.engine == gdn::Engine::kChunkedSplit) {
+        desc = desc_fp16;
+        plan = plan_fp16;
+        chunked_via_fp16 = true;
+      }
+    }
+  }
   if (forced_engine_ == gdn::Engine::kChunked ||
       forced_engine_ == gdn::Engine::kChunkedSplit) {
     ORT_RETURN_IF_NOT(
@@ -367,9 +386,15 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
                                         ? static_cast<size_t>(total_tokens) *
                                               (query_row_bytes + key_row_bytes + value_row_bytes)
                                         : 0;
+  const size_t output_row_bytes = static_cast<size_t>(std::max(num_heads_q, num_heads_v)) * head_size_v * sizeof(T);
+  const size_t fp16_copy_offset = (unpacked_qkv_bytes + plan.workspace_bytes + 255) & ~static_cast<size_t>(255);
+  const size_t fp16_copy_bytes = chunked_via_fp16
+                                     ? static_cast<size_t>(total_tokens) *
+                                           (query_row_bytes + key_row_bytes + value_row_bytes + output_row_bytes)
+                                     : 0;
   IAllocatorUniquePtr<uint8_t> workspace;
-  if (unpacked_qkv_bytes + plan.workspace_bytes > 0) {
-    workspace = GetScratchBuffer<uint8_t>(unpacked_qkv_bytes + plan.workspace_bytes,
+  if (unpacked_qkv_bytes + plan.workspace_bytes + fp16_copy_bytes > 0) {
+    workspace = GetScratchBuffer<uint8_t>(fp16_copy_offset + fp16_copy_bytes,
                                           GetComputeStream(context));
   }
 
@@ -396,6 +421,48 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
     query_data = reinterpret_cast<const CudaT*>(unpacked_query);
     key_data = reinterpret_cast<const CudaT*>(unpacked_key);
     value_data = reinterpret_cast<const CudaT*>(unpacked_value);
+  }
+
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    if (chunked_via_fp16) {
+      auto* half_query = reinterpret_cast<half*>(workspace.get() + fp16_copy_offset);
+      half* half_key = half_query + static_cast<size_t>(total_tokens) * num_heads_q * head_size_qk;
+      half* half_value = half_key + static_cast<size_t>(total_tokens) * num_heads_k * head_size_qk;
+      half* half_output = half_value + static_cast<size_t>(total_tokens) * num_heads_v * head_size_v;
+      ORT_RETURN_IF_ERROR(gdn::LaunchCastBf16ToHalf(query_data, half_query,
+                                                    static_cast<int64_t>(total_tokens) * num_heads_q * head_size_qk, stream));
+      ORT_RETURN_IF_ERROR(gdn::LaunchCastBf16ToHalf(key_data, half_key,
+                                                    static_cast<int64_t>(total_tokens) * num_heads_k * head_size_qk, stream));
+      ORT_RETURN_IF_ERROR(gdn::LaunchCastBf16ToHalf(value_data, half_value,
+                                                    static_cast<int64_t>(total_tokens) * num_heads_v * head_size_v, stream));
+      gdn::VariantPack<half> half_pack{};
+      half_pack.query = half_query;
+      half_pack.key = half_key;
+      half_pack.value = half_value;
+      half_pack.cu_seqlens = cu_seqlens != nullptr ? cu_seqlens->Data<int32_t>() : nullptr;
+      half_pack.capture_count = desc.state_update_active ? capture_count->Data<int32_t>() : nullptr;
+      half_pack.decay = decay != nullptr ? decay->Data<float>() : nullptr;
+      half_pack.beta = beta != nullptr ? beta->Data<float>() : nullptr;
+      half_pack.initial_state = initial_state != nullptr ? initial_state->Data<float>() : nullptr;
+      half_pack.a_log = a_log != nullptr ? a_log->Data<float>() : nullptr;
+      half_pack.dt_bias = dt_bias != nullptr ? dt_bias->Data<float>() : nullptr;
+      half_pack.output = half_output;
+      half_pack.final_state = final_state != nullptr ? final_state->MutableData<float>() : nullptr;
+      half_pack.state_update = state_update != nullptr ? state_update->MutableData<float>() : nullptr;
+      if (plan.workspace_bytes > 0) {
+        half_pack.workspace = workspace.get() + unpacked_qkv_bytes;
+      }
+      if (state_update != nullptr && state_update_capacity_ > 0 && !desc.state_update_active) {
+        CUDA_RETURN_IF_ERROR(cudaMemsetAsync(half_pack.state_update, 0, state_update->SizeInBytes(), stream));
+      }
+      const float half_scale = scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size_qk));
+      ORT_RETURN_IF_ERROR(gdn::LaunchGatedDeltaNet<half>(
+          desc, plan, half_pack, half_scale, prop.maxThreadsPerBlock,
+          static_cast<size_t>(prop.sharedMemPerBlockOptin), stream));
+      return gdn::LaunchCastHalfToBf16(half_output, reinterpret_cast<CudaT*>(output->MutableData<T>()),
+                                       static_cast<int64_t>(total_tokens) * std::max(num_heads_q, num_heads_v) * head_size_v,
+                                       stream);
+    }
   }
 
   gdn::VariantPack<CudaT> pack{};

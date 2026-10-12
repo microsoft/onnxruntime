@@ -10,8 +10,11 @@
 #include <algorithm>
 #include <cfloat>
 #include <limits>
+#include <type_traits>
 
+#include "contrib_ops/cuda/bert/dynamic_sparse_attention_prefill.cuh"
 #include "core/common/safeint.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
@@ -1123,7 +1126,37 @@ Status LaunchDynamicSparseAttention(
   const size_t fused_shared_bytes =
       (2 * static_cast<size_t>(candidate_capacity) + static_cast<size_t>(fused_threads)) * sizeof(float) +
       static_cast<size_t>(parameters.head_size) * sizeof(T);
-  if (UseFusedAttention(parameters, sizeof(T), max_shared_memory_per_block)) {
+  bool use_prefill_kernel = false;
+  if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+    static const bool enabled = ParseEnvironmentVariableWithDefault<int>("ORT_DSA_PREFILL_KERNEL", 1) != 0;
+    // max_shared_memory_per_block is the default 48 KB limit; the kernel opts in to more.
+    int device = 0;
+    int optin_shared = 0;
+    cudaGetDevice(&device);
+    cudaDeviceGetAttribute(&optin_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);
+    use_prefill_kernel =
+        enabled && parameters.sequence_length >= 8 && parameters.head_size == dsa_prefill::kHeadDim &&
+        !local_plus_selected && parameters.selected_kv_source == DynamicSparseAttentionKvSource::kMain &&
+        !parameters.use_smooth_softmax && parameters.max_selected > 0 &&
+        parameters.num_heads % parameters.kv_num_heads == 0 &&
+        parameters.num_heads / parameters.kv_num_heads <= dsa_prefill::kMaxGroup &&
+        static_cast<size_t>(optin_shared) >= dsa_prefill::kSharedBytes;
+  }
+  if (use_prefill_kernel) {
+    if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+      static const cudaError_t attribute_status = cudaFuncSetAttribute(
+          dsa_prefill::DynamicSparseAttentionPrefillKernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+          static_cast<int>(dsa_prefill::kSharedBytes));
+      CUDA_RETURN_IF_ERROR(attribute_status);
+      const dim3 grid(static_cast<unsigned>(parameters.batch_size * parameters.sequence_length),
+                      static_cast<unsigned>(parameters.kv_num_heads));
+      dsa_prefill::DynamicSparseAttentionPrefillKernel<<<grid, dsa_prefill::kThreads, dsa_prefill::kSharedBytes,
+                                                         stream>>>(
+          data.prepared_query, data.present_key, data.present_value, data.selected_indices, data.selected_counts,
+          data.seqlens_k, data.output, parameters.sequence_length, parameters.num_heads, parameters.kv_num_heads,
+          parameters.cache_capacity, parameters.max_selected, parameters.scale);
+    }
+  } else if (UseFusedAttention(parameters, sizeof(T), max_shared_memory_per_block)) {
     FusedDynamicSparseAttentionKernel<<<static_cast<int>(query_blocks), fused_threads, fused_shared_bytes, stream>>>(
         data.prepared_query, data.present_key, data.present_value,
         data.auxiliary_key, data.auxiliary_value, data.selected_indices,

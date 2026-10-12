@@ -784,6 +784,26 @@ Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const Varia
                             stream);
 }
 
+template <typename S, typename D>
+__global__ void GdnCastKernel(const S* __restrict__ src, D* __restrict__ dst, int64_t count) {
+  const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
+  for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; i < count; i += stride) {
+    dst[i] = static_cast<D>(static_cast<float>(src[i]));
+  }
+}
+
+Status LaunchCastBf16ToHalf(const __nv_bfloat16* src, half* dst, int64_t count, cudaStream_t stream) {
+  const int blocks = static_cast<int>(std::min<int64_t>((count + 255) / 256, 1 << 16));
+  GdnCastKernel<__nv_bfloat16, half><<<blocks, 256, 0, stream>>>(src, dst, count);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+Status LaunchCastHalfToBf16(const half* src, __nv_bfloat16* dst, int64_t count, cudaStream_t stream) {
+  const int blocks = static_cast<int>(std::min<int64_t>((count + 255) / 256, 1 << 16));
+  GdnCastKernel<half, __nv_bfloat16><<<blocks, 256, 0, stream>>>(src, dst, count);
+  return CUDA_CALL(cudaGetLastError());
+}
+
 template Status LaunchGatedDeltaNet<float>(const Descriptor&, const Plan&, const VariantPack<float>&,
                                            float, int, size_t, cudaStream_t);
 template Status LaunchGatedDeltaNet<half>(const Descriptor&, const Plan&, const VariantPack<half>&,

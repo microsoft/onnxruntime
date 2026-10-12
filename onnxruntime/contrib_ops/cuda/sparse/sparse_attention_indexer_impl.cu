@@ -18,6 +18,7 @@
 #include <limits>
 
 #include "core/common/safeint.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
 namespace onnxruntime {
@@ -378,6 +379,147 @@ __global__ void QsaBlockScoreKernel(const float* query_rotated, const T* present
       block_scores[row * params.max_block_count + block_index] = score * params.scale;
     }
     __syncthreads();
+  }
+}
+
+// Prefill scoring, step 1: every complete block's pooled / normalized / rotated key is the same for all query rows
+// that can see it (the visible-token list of a row is a prefix of the list of the batch's last row), so it is computed
+// once per (batch, block) instead of once per (row, block). One CTA per block; the arithmetic is the one of
+// QsaBlockScoreKernel.
+template <typename T>
+__global__ void QsaPoolBlockKeysKernel(const T* present_key, const T* key_norm_weight, const T* cos_cache,
+                                       const T* sin_cache, const int32_t* visible_indices,
+                                       const int32_t* visible_count, float* pooled_keys,
+                                       SparseAttentionIndexerParams params) {
+  extern __shared__ float shared[];
+  float* pooled = shared;
+  float* rotated = shared + params.head_size;
+  float* reduction = shared + 2 * params.head_size;
+
+  const int batch = static_cast<int>(blockIdx.y);
+  const int64_t last_row = static_cast<int64_t>(batch) * params.sequence_length + params.sequence_length - 1;
+  const int block_count = visible_count[last_row] / params.compress_ratio;
+  const int32_t* index_row = visible_indices + last_row * params.total_sequence_length;
+  const int64_t key_base = static_cast<int64_t>(batch) * params.key_cache_capacity * params.head_size;
+
+  for (int block_index = blockIdx.x; block_index < block_count; block_index += gridDim.x) {
+    const int32_t* group = index_row + static_cast<int64_t>(block_index) * params.compress_ratio;
+    for (int d = threadIdx.x; d < params.head_size; d += blockDim.x) {
+      float sum = 0.0f;
+      for (int t = 0; t < params.compress_ratio; ++t) {
+        sum += to_float<T>(present_key[key_base + static_cast<int64_t>(group[t]) * params.head_size + d]);
+      }
+      pooled[d] = sum / static_cast<float>(params.compress_ratio);
+    }
+    __syncthreads();
+    float sum_squares = 0.0f;
+    for (int d = threadIdx.x; d < params.head_size; d += blockDim.x) {
+      sum_squares += pooled[d] * pooled[d];
+    }
+    sum_squares = BlockSum(sum_squares, reduction);
+    const float inverse_rms = rsqrtf(sum_squares / static_cast<float>(params.head_size) + params.epsilon);
+    for (int d = threadIdx.x; d < params.head_size; d += blockDim.x) {
+      pooled[d] = pooled[d] * inverse_rms * to_float<T>(key_norm_weight[d]);
+    }
+    __syncthreads();
+    const int position = ClampPosition(group[0], params.max_rotary_length);
+    const int64_t cache_offset =
+        (static_cast<int64_t>(batch) * params.max_rotary_length + position) * params.rotary_width;
+    for (int d = threadIdx.x; d < params.head_size; d += blockDim.x) {
+      pooled_keys[(static_cast<int64_t>(batch) * params.max_block_count + block_index) * params.head_size + d] =
+          LeadingRope<T>(pooled, params.rotary_width, cos_cache + cache_offset, sin_cache + cache_offset, d);
+    }
+    __syncthreads();
+  }
+}
+
+constexpr int kScoreTileRows = 64;
+constexpr int kScoreTileBlocks = 64;
+constexpr int kScoreChunk = 32;
+
+// Prefill scoring, step 2: block_scores[row, j] = scale * sum_h relu(q_rot[row, h] . pooled[j]) for j below the row's
+// visible block count, as a register-tiled FP32 GEMM (64 rows x 64 blocks per CTA, 4 x 4 per thread).
+__global__ void __launch_bounds__(256) QsaTiledBlockScoreKernel(const float* query_rotated, const float* pooled_keys,
+                                                                const int32_t* visible_count, float* block_scores,
+                                                                SparseAttentionIndexerParams params) {
+  __shared__ float q_tile[kScoreTileRows][kScoreChunk + 1];
+  __shared__ float k_tile[kScoreTileBlocks][kScoreChunk + 1];
+
+  const int batch = static_cast<int>(blockIdx.z);
+  const int row0 = static_cast<int>(blockIdx.y) * kScoreTileRows;
+  const int block0 = static_cast<int>(blockIdx.x) * kScoreTileBlocks;
+  const int last_row_in_tile = min(row0 + kScoreTileRows, params.sequence_length) - 1;
+  const int64_t row_base = static_cast<int64_t>(batch) * params.sequence_length;
+  // Visible counts are non-decreasing with the row, so the last row of the tile bounds the tile's block range.
+  if (block0 >= visible_count[row_base + last_row_in_tile] / params.compress_ratio) {
+    return;
+  }
+
+  const int tx = threadIdx.x & 15;
+  const int ty = threadIdx.x >> 4;
+  float total[4][4];
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+#pragma unroll
+    for (int j = 0; j < 4; ++j) total[i][j] = 0.0f;
+  }
+
+  for (int head = 0; head < params.num_heads; ++head) {
+    float acc[4][4];
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+#pragma unroll
+      for (int j = 0; j < 4; ++j) acc[i][j] = 0.0f;
+    }
+    for (int d0 = 0; d0 < params.head_size; d0 += kScoreChunk) {
+      for (int idx = threadIdx.x; idx < kScoreTileRows * kScoreChunk; idx += 256) {
+        const int r = idx / kScoreChunk;
+        const int c = idx % kScoreChunk;
+        const int row = row0 + r;
+        q_tile[r][c] = row < params.sequence_length
+                           ? query_rotated[((row_base + row) * params.num_heads + head) * params.head_size + d0 + c]
+                           : 0.0f;
+        const int block = block0 + r;
+        k_tile[r][c] = block < params.max_block_count
+                           ? pooled_keys[(static_cast<int64_t>(batch) * params.max_block_count + block) * params.head_size +
+                                         d0 + c]
+                           : 0.0f;
+      }
+      __syncthreads();
+#pragma unroll 8
+      for (int dd = 0; dd < kScoreChunk; ++dd) {
+        float a[4], b[4];
+#pragma unroll
+        for (int i = 0; i < 4; ++i) a[i] = q_tile[ty + 16 * i][dd];
+#pragma unroll
+        for (int j = 0; j < 4; ++j) b[j] = k_tile[tx + 16 * j][dd];
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+#pragma unroll
+          for (int j = 0; j < 4; ++j) acc[i][j] = fmaf(a[i], b[j], acc[i][j]);
+        }
+      }
+      __syncthreads();
+    }
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+#pragma unroll
+      for (int j = 0; j < 4; ++j) total[i][j] += fmaxf(acc[i][j], 0.0f);
+    }
+  }
+
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    const int row = row0 + ty + 16 * i;
+    if (row >= params.sequence_length) continue;
+    const int block_count = visible_count[row_base + row] / params.compress_ratio;
+#pragma unroll
+    for (int j = 0; j < 4; ++j) {
+      const int block = block0 + tx + 16 * j;
+      if (block < block_count) {
+        block_scores[(row_base + row) * params.max_block_count + block] = total[i][j] * params.scale;
+      }
+    }
   }
 }
 
@@ -832,7 +974,8 @@ __global__ void CsaSelectKernel(const float* scores, const int64_t* position_ids
 
 size_t GetQsaWorkspaceFloatCount(const SparseAttentionIndexerParams& params) {
   const size_t rows = static_cast<size_t>(params.batch_size) * params.sequence_length;
-  return rows * params.num_heads * params.head_size + rows * std::max(params.max_block_count, 1);
+  const size_t pooled_keys = static_cast<size_t>(params.batch_size) * std::max(params.max_block_count, 1) * params.head_size;
+  return rows * params.num_heads * params.head_size + rows * std::max(params.max_block_count, 1) + pooled_keys;
 }
 
 size_t GetQsaWorkspaceIntCount(const SparseAttentionIndexerParams& params) {
@@ -899,7 +1042,22 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
   RotateQueryKernel<T, true><<<rotate_blocks, kThreads, rotate_shared_bytes, stream>>>(
       query, query_norm_weight, cos_cache, sin_cache, nullptr, query_rotated, params);
 
-  if (params.max_block_count > 0) {
+  static const bool tiled_scoring =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QSA_TILED_SCORING", 1) != 0;
+  if (params.max_block_count > 0 && tiled_scoring && params.sequence_length >= 16 && params.head_size % kScoreChunk == 0) {
+    float* pooled_keys = block_scores + rows * params.max_block_count;
+    ORT_RETURN_IF_ERROR(
+        ConfigureDynamicSharedMemory(QsaPoolBlockKeysKernel<T>, score_shared_bytes, "QsaPoolBlockKeysKernel"));
+    const dim3 pool_grid(static_cast<unsigned>(std::min(params.max_block_count, 4096)),
+                         static_cast<unsigned>(params.batch_size));
+    QsaPoolBlockKeysKernel<T><<<pool_grid, kThreads, score_shared_bytes, stream>>>(
+        present_key, key_norm_weight, cos_cache, sin_cache, visible_indices, visible_count, pooled_keys, params);
+    const dim3 score_grid(static_cast<unsigned>((params.max_block_count + kScoreTileBlocks - 1) / kScoreTileBlocks),
+                          static_cast<unsigned>((params.sequence_length + kScoreTileRows - 1) / kScoreTileRows),
+                          static_cast<unsigned>(params.batch_size));
+    QsaTiledBlockScoreKernel<<<score_grid, 256, 0, stream>>>(query_rotated, pooled_keys, visible_count,
+                                                             block_scores, params);
+  } else if (params.max_block_count > 0) {
     ORT_RETURN_IF_ERROR(
         ConfigureDynamicSharedMemory(QsaBlockScoreKernel<T>, score_shared_bytes, "QsaBlockScoreKernel"));
     const int64_t block_work = rows * params.max_block_count;

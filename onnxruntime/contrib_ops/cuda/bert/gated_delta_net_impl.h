@@ -5,6 +5,8 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 
 #include "core/common/status.h"
 #include "contrib_ops/cuda/bert/gated_delta_net_plan.h"
@@ -39,6 +41,11 @@ Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const Varia
                            size_t max_shared_memory_per_block, cudaStream_t stream);
 
 // Engine::kChunkedSplit. Defined in gated_delta_net_split_impl.cu; float16 only.
+// bfloat16 <-> float16 element conversion used to serve bfloat16 tensors with the fp16-only chunked engine.
+// bf16 -> fp16 is exact for magnitudes in [2^-14, 65504], the range q/k/v of a normalized layer occupy.
+Status LaunchCastBf16ToHalf(const __nv_bfloat16* src, half* dst, int64_t count, cudaStream_t stream);
+Status LaunchCastHalfToBf16(const half* src, __nv_bfloat16* dst, int64_t count, cudaStream_t stream);
+
 template <typename T>
 Status LaunchGatedDeltaNetSplit(const Descriptor& desc, const Plan& plan,
                                 const VariantPack<T>& pack, float scale, cudaStream_t stream);
