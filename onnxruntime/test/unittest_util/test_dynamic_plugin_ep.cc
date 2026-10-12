@@ -84,9 +84,11 @@ Status ParseInitializationConfig(std::string_view json_str, InitializationConfig
 
     // required keys
     parsed_json.at("ep_library_registration_name").get_to(config.ep_library_registration_name);
-    parsed_json.at("ep_library_path").get_to(config.ep_library_path);
 
     // optional keys
+    // `ep_library_path` is not needed when the EP library is already registered, e.g. a plugin EP that is
+    // statically linked into the ORT binary and registered by ORT core at environment creation.
+    config.ep_library_path = parsed_json.value<decltype(config.ep_library_path)>("ep_library_path", {});
     config.default_ep_options = parsed_json.value<decltype(config.default_ep_options)>("default_ep_options", {});
     config.selected_ep_name = parsed_json.value<decltype(config.selected_ep_name)>("selected_ep_name", {});
     config.selected_ep_device_indices =
@@ -116,8 +118,13 @@ Status ParseInitializationConfig(std::string_view json_str, InitializationConfig
 Status Initialize(Ort::Env& env, InitializationConfig config) {
   ORT_RETURN_IF(IsInitialized(), "Already initialized.");
 
-  auto ep_library_registration_handle = RegisterPluginEpLibrary(env, config.ep_library_registration_name,
-                                                                ToPathString(config.ep_library_path));
+  // An empty `ep_library_path` means the EP library is already registered and this infrastructure should not
+  // register or unregister it. That is the case for a plugin EP that is statically linked into the ORT binary.
+  auto ep_library_registration_handle =
+      config.ep_library_path.empty()
+          ? PluginEpLibraryRegistrationHandle{nullptr, [](void*) {}}
+          : RegisterPluginEpLibrary(env, config.ep_library_registration_name,
+                                    ToPathString(config.ep_library_path));
 
   ORT_RETURN_IF(config.selected_ep_device_indices.empty() == config.selected_ep_name.empty(),
                 "Exactly one of selected_ep_device_indices or selected_ep_name should be specified.");

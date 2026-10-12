@@ -1414,7 +1414,6 @@ struct ProviderHost {
   virtual void ModelMetadefIdGenerator__operator_delete(ModelMetadefIdGenerator* p) = 0;
   virtual int ModelMetadefIdGenerator__GenerateId(const ModelMetadefIdGenerator* p, const GraphViewer& graph_viewer, HashValue& model_hash) = 0;
 
-  // Float8E8M0 support — appended at end to preserve vtable ABI compatibility
 #if !defined(DISABLE_FLOAT8_TYPES)
   virtual MLDataType DataTypeImpl__GetType_Float8E8M0() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_Float8E8M0() = 0;
@@ -1426,6 +1425,9 @@ struct ProviderHost {
   virtual bool Tensor__IsDataType_Float8E8M0(const Tensor* p) noexcept = 0;
 #endif
 
+  virtual void SessionOptions__GetEpContextDataCallbacks(const OrtSessionOptions* p,
+                                                         OrtReadNamedBufferFunc* read_func, void** read_state,
+                                                         OrtWriteNamedBufferFunc* write_func, void** write_state) = 0;
   // Retained for provider vtable ABI compatibility. Run instrumentation is no longer active.
   virtual const RunInstrumentationContext* OpKernelContext__GetRunInstrumentationContext(
       const OpKernelContext* p) = 0;

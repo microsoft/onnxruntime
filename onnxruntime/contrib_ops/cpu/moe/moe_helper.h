@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/common/float16.h"
 #include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/framework/tensor_shape.h"
@@ -58,6 +59,22 @@ inline MoEWeightBits WeightBitsFromPackSize(int64_t pack_size) {
               "pack_size must be a positive divisor of 8, got ", pack_size, ".");
   const int64_t bits = 8 / pack_size;
   return MoEWeightBits{bits, bits, bits};
+}
+
+template <typename Tensor>
+Status CheckFp8BlockScale(const Tensor* scale, int64_t num_experts, int64_t rows, int64_t cols,
+                          int64_t block_size, const char* name) {
+  ORT_RETURN_IF_NOT(block_size > 0, "FP8 block scaling requires a positive block_size.");
+  ORT_RETURN_IF_NOT(scale != nullptr, "QMoE block-scaled FP8 requires ", name, ".");
+  ORT_RETURN_IF_NOT(scale->template IsDataType<float>() || scale->template IsDataType<MLFloat16>() ||
+                        scale->template IsDataType<BFloat16>(),
+                    name, " must be a float32, float16, or bfloat16 tensor for block-scaled FP8.");
+  const auto expected_shape = make_shape(num_experts,
+                                         rows / block_size + (rows % block_size != 0),
+                                         cols / block_size + (cols % block_size != 0));
+  ORT_RETURN_IF_NOT(scale->Shape() == expected_shape,
+                    name, " is expected to have shape ", expected_shape, ", got ", scale->Shape(), ".");
+  return Status::OK();
 }
 
 // Helper to check shape dimensions

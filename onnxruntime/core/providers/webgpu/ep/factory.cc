@@ -4,11 +4,13 @@
 #include "factory.h"
 #include "allocator.h"
 #include "ep.h"
+#include "runtime_compatibility.h"
 
 #include "core/framework/error_code_helper.h"
 #include "core/graph/constants.h"
 
 #include <algorithm>
+#include <functional>
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/config_options.h"
@@ -215,18 +217,21 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   // needs a device, and such a session stops before finalization and never allocates.
   const bool device_free = !WebGpuContextFactory::GetContext(context_id).HasDevice();
   // These implementations belong to this Session, not the Env shared allocator below.
-  // Plain writable Alloc must submit cached clears even during Run: a subsequent copy may
-  // use a different recording. Only a matching AllocOnStream may defer those clears.
+  // Serialized-mode callers serialize all operations; internal Run allocations can defer their clears.
   auto device_alloc = webgpu::CreateWebGpuAllocator(
+      context_id,
       device_free,
       [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
       [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
       false,
-      []() { return true; });
+      UseSerializedExecutionMode()
+          ? std::function<bool()>{[webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); }}
+          : std::function<bool()>{});
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // also retained by the EP adapter as the kernel temp-space allocator
       webgpu::CreateWebGpuAllocator(
+          context_id,
           device_free,
           [webgpu_ep_ptr]() -> const webgpu::BufferManager& {
             return webgpu_ep_ptr->InitializerBufferManager();
@@ -258,20 +263,18 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
                                   "Unsupported memory info for shared allocator.");
   }
 
-  // Env getters retain the context and an independent recording, not a Session EP.
-  // Keep the streamless ABI wrapper even though the shared implementation supports AllocOnStream.
+  // Env allocations submit their own clears and never borrow a Session recording.
   *allocator = new onnxruntime::ep::adapter::Allocator(
       memory_info,
       [](const OrtMemoryInfo&) -> AllocatorPtr {
         auto context = std::shared_ptr<WebGpuContext>(
             &WebGpuContextFactory::DefaultContext(),
             [](WebGpuContext*) { WebGpuContextFactory::ReleaseContext(0); });
-        auto recording = std::make_shared<CommandRecordingState>();
         return std::make_shared<GpuBufferAllocator>(
+            0,
             [context = std::move(context)]() -> const BufferManager& { return context->BufferManager(); },
-            [recording = std::move(recording)]() -> CommandRecordingState& { return *recording; },
-            false,
-            []() { return true; });
+            std::function<CommandRecordingState&()>{},
+            false);
       });
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
@@ -289,7 +292,7 @@ OrtStatus* ORT_API_CALL Factory::CreateDataTransferImpl(
     OrtEpFactory* /*this_ptr*/,
     OrtDataTransferImpl** data_transfer) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  *data_transfer = OrtWebGpuCreateDataTransfer();  // TODO(fs-eire): pass context id if needed
+  *data_transfer = OrtWebGpuCreateDataTransfer();
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }

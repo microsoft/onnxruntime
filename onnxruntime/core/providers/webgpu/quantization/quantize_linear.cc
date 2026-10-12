@@ -244,8 +244,8 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
       .AddInputs({{x, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, packed ? pack_factor : input_component}})
       .AddInputs({{x_scale, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutput(use_components
-                     ? ProgramOutput{output_tensor, ProgramTensorMetadataDependency::Rank, ProgramOutput::Flatten, components}
-                     : ProgramOutput{output_tensor, ProgramTensorMetadataDependency::Rank, components})
+                     ? ProgramOutput{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, ProgramOutput::Flatten, components}
+                     : ProgramOutput{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, components})
       .SetDispatchGroupSize((x_size / components + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(axis)}})
       .AddUniformVariables({{static_cast<uint32_t>(block_size)}})

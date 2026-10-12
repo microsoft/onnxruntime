@@ -26,6 +26,9 @@ struct Int2MoePrefillParams {
   int64_t num_rows = 0;
   int hidden_size = 0;
   int inter_size = 0;
+  int block_size = 0;
+  int fc1_weight_bits = 0;
+  int fc2_weight_bits = 0;
   int num_experts = 0;
   int top_k = 0;
   int sm = 0;

@@ -4,6 +4,8 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <string>
 #include "core/common/status.h"
 #include "core/session/model_compilation_options.h"
@@ -13,6 +15,62 @@ namespace onnxruntime {
 class Environment;
 
 namespace python {
+#if !defined(ORT_MINIMAL_BUILD)
+class PyEpContextData {
+ public:
+  PyEpContextData(const void* data, size_t size) : data_(data), size_(size) {}
+
+  size_t Size() const noexcept { return size_; }
+  pybind11::bytes Read(size_t offset, std::optional<size_t> length) const;
+  void Invalidate() noexcept;
+
+ private:
+  const void* data_ = nullptr;
+  size_t size_ = 0;
+  bool valid_ = true;
+};
+
+class PyEpContextDataBuffer {
+ public:
+  PyEpContextDataBuffer(OrtAllocator* allocator, size_t max_data_size);
+  ~PyEpContextDataBuffer();
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PyEpContextDataBuffer);
+
+  size_t Size() const noexcept { return size_; }
+  size_t MaxSize() const noexcept { return max_data_size_; }
+  bool IsAllocated() const noexcept { return allocated_; }
+
+  void Allocate(size_t size);
+  void Write(size_t offset, const pybind11::buffer& data);
+  void Detach(void*& buffer, size_t& size);
+  void Invalidate() noexcept;
+
+ private:
+  void ThrowIfInvalid() const;
+
+  OrtAllocator* allocator_ = nullptr;
+  const size_t max_data_size_;
+  void* buffer_ = nullptr;
+  size_t size_ = 0;
+  bool allocated_ = false;
+  bool valid_ = true;
+};
+
+using PyEpContextDataWriteFunc =
+    std::function<void(const std::string&, const std::shared_ptr<PyEpContextData>&)>;
+using PyEpContextDataReadFunc =
+    std::function<void(const std::string&, const std::shared_ptr<PyEpContextDataBuffer>&)>;
+
+struct PyEpContextDataReadRegistration {
+  PyEpContextDataReadFunc read_func;
+  size_t max_data_size;
+};
+
+OrtStatus* ORT_API_CALL PyEpContextDataReadFuncWrapper(void* state, const char* name, OrtAllocator* allocator,
+                                                       void** buffer, size_t* data_size);
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 // Type of the function provided by Python code that is called by ORT to write out the compiled model.
 using PyOutStreamWriteFunc = std::function<void(const pybind11::bytes& buffer)>;
 
@@ -67,7 +125,9 @@ class PyModelCompiler {
 
   // Note: Creation should be done via Create(). This constructor is public so that it can be called from
   // std::make_shared().
-  PyModelCompiler(onnxruntime::Environment& env, const PySessionOptions& sess_options,
+  PyModelCompiler(onnxruntime::Environment& env, const OrtSessionOptions& sess_options,
+                  std::shared_ptr<PyEpSelectionRegistration> py_ep_selection_registration,
+                  std::shared_ptr<PyEpContextDataReadRegistration> py_ep_context_data_read_registration,
                   const PyGetInitializerLocationFunc& py_get_initializer_location_func,
                   PrivateConstructorTag);
 
@@ -95,11 +155,22 @@ class PyModelCompiler {
   /// <returns>A Status indicating error or success.</returns>
   onnxruntime::Status CompileToOutStream(PyOutStreamWriteFunc& write_func);
 
+  void SetEpContextDataWriteFunc(PyEpContextDataWriteFunc write_func);
+  void ClearEpContextDataWriteFunc();
+
  private:
+  onnxruntime::Status BeginCompilation();
+  void EndCompilation() noexcept;
+
   onnxruntime::Environment& env_;
-  onnxruntime::ModelCompilationOptions model_compile_options_;
+  std::shared_ptr<PyEpSelectionRegistration> py_ep_selection_registration_;
+  std::shared_ptr<PyEpContextDataReadRegistration> py_ep_context_data_read_registration_;
   std::string input_model_bytes_;
   PyGetInitializerLocationFunc py_get_initializer_location_func_;
+  PyEpContextDataWriteFunc py_ep_context_data_write_func_;
+  onnxruntime::ModelCompilationOptions model_compile_options_;
+  std::mutex compilation_mutex_;
+  bool compilation_in_progress_{false};
 #endif  // defined(ORT_MINIMAL_BUILD)
 };
 }  // namespace python

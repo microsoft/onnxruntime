@@ -185,7 +185,6 @@
         "^test_unique_sorted_with_negative_axis_cpu$",
         "^test_unique_sorted_without_axis_cpu$",
         // TODO: Remove these exact CUDA skips when fallback nodes have providers and Swish(24) has a CPU kernel.
-        "^test_cast_DOUBLE_to_FLOAT_cuda$",
         "^test_celu_bfloat16_cuda$",
         "^test_celu_bfloat16_expanded_cuda$",
         "^test_celu_cuda$",

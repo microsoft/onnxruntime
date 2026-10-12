@@ -43,6 +43,7 @@ import re
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 # Make the sibling materializer importable regardless of CWD.
 _TOOLS_PYTHON = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "tools", "python"))
@@ -61,14 +62,14 @@ def _repo_root() -> str:
 
 
 def _expected_onnx_version() -> str | None:
-    """Parse the ONNX_VERSION metadata paired with the archive pin in cmake/deps.txt."""
+    """Derive the expected wheel version from the archive pin in cmake/deps.txt."""
     deps = os.path.join(_repo_root(), "cmake", "deps.txt")
     if not os.path.isfile(deps):
         return None
     with open(deps) as f:
         for line in f:
-            if line.startswith("# ONNX_VERSION="):
-                m = re.search(r"ONNX_VERSION=([0-9]+\.[0-9]+\.[0-9]+)", line)
+            if line.startswith("onnx;"):
+                m = re.search(r"/v([0-9]+\.[0-9]+\.[0-9]+)\.zip;", line)
                 if m:
                     return m.group(1)
     return None
@@ -122,6 +123,14 @@ def _find_oracle_node_dir() -> str | None:
 
 
 class NodeTestEquivalence(unittest.TestCase):
+    def test_expected_version_comes_from_archive_pin(self) -> None:
+        deps = "# ONNX_VERSION=1.23.0\nonnx;https://github.com/onnx/onnx/archive/refs/tags/v1.23.1.zip;archive_hash\n"
+        with (
+            mock.patch("os.path.isfile", return_value=True),
+            mock.patch("builtins.open", mock.mock_open(read_data=deps)),
+        ):
+            self.assertEqual(_expected_onnx_version(), "1.23.1")
+
     def test_materialized_equals_on_disk_oracle(self) -> None:
         oracle = _find_oracle_node_dir()
         if oracle is None:

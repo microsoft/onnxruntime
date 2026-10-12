@@ -24,6 +24,7 @@ import sys
 import unittest
 
 import numpy
+import pytest
 import torch
 import torch.nn.functional as F
 from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
@@ -241,10 +242,10 @@ def create_nvfp4_moe_onnx_graph(
         vals = tensor.cpu().float().flatten().tolist()
         initializers.append(helper.make_tensor(name, TensorProto.FLOAT, list(tensor.shape), vals, raw=False))
 
-    for name, tensor in [("fc1_bias", fc1_bias), ("fc2_bias", fc2_bias)]:
+    for name, tensor in (("fc1_bias", fc1_bias), ("fc2_bias", fc2_bias)):
         if tensor is not None:
-            vals = tensor.cpu().float().flatten().tolist()
-            initializers.append(helper.make_tensor(name, onnx_dtype, list(tensor.shape), vals, raw=False))
+            raw = tensor.contiguous().view(torch.uint8).cpu().numpy().tobytes()
+            initializers.append(helper.make_tensor(name, onnx_dtype, list(tensor.shape), raw, raw=True))
 
     graph_inputs = [
         helper.make_tensor_value_info("input", onnx_dtype, [num_tokens, hidden_size]),
@@ -321,6 +322,7 @@ class TestQMoENVFP4(unittest.TestCase):
         input_scale=1.0,
         atol_override=None,
         router_logits_override=None,
+        row_tile_size=0,
         use_bias=False,
         rtol_override=0.0,
     ):
@@ -388,6 +390,7 @@ class TestQMoENVFP4(unittest.TestCase):
 
         opts = onnxruntime.SessionOptions()
         opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        opts.add_session_config_entry("ep.cuda.qmoe_row_tile_size", str(row_tile_size))
         if disable_prepacking:
             opts.add_session_config_entry("session.disable_prepacking", "1")
         # gemv_mode toggles the fused FP4 GEMV decode path (read once in the QMoE op ctor during
@@ -687,6 +690,44 @@ class TestQMoENVFP4(unittest.TestCase):
     # "MTP" below is multi-token prediction (speculative decode): verifying N speculative
     # tokens runs N+1 tokens at once, so a top_k=8 model expands to (N+1)*8 rows.
     # ================================================================
+
+    @parameterized.expand(
+        [
+            (TensorProto.FLOAT16, 16, 3),
+            (TensorProto.FLOAT16, 16, 10),
+            (TensorProto.BFLOAT16, 16, 10),
+            (TensorProto.FLOAT16, 512, 2),
+            (TensorProto.BFLOAT16, 512, 2),
+            (TensorProto.FLOAT16, 512, 10),
+            (TensorProto.BFLOAT16, 512, 10),
+        ]
+    )
+    def test_nvfp4_gemv_unfused_expert_maps(self, onnx_dtype, num_experts, top_k):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=num_experts,
+            top_k=top_k,
+            num_tokens=2,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
+
+    @parameterized.expand([(1,), (6,)])
+    @unittest.skipUnless(os.getenv("ORT_RUN_LARGE_NVFP4_QMOE_TEST") == "1", "Opt-in large NVFP4 QMoE test")
+    def test_nvfp4_gemv_qwen38_official_shape(self, num_tokens):
+        self._run_nvfp4_moe_test(
+            hidden_size=2560,
+            inter_size=640,
+            num_experts=512,
+            top_k=10,
+            num_tokens=num_tokens,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+            input_scale=0.05,
+        )
 
     def test_nvfp4_fp16_gemv_decode_swiglu(self):
         self._run_nvfp4_moe_test(
@@ -1036,6 +1077,80 @@ class TestQMoENVFP4(unittest.TestCase):
             0.12,
             f"NVFP4 fused GEMV diverged from dequant fallback: max_diff={max_diff:.6f}",
         )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="CUDA NVFP4 QMoE required")
+@pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT16, TensorProto.BFLOAT16])
+@pytest.mark.parametrize("use_swiglu", [False, True])
+@pytest.mark.parametrize("row_tile_size", [0, 2])
+@pytest.mark.parametrize("disable_prepacking", [False, True])
+def test_nvfp4_compact_routing_and_bias(onnx_dtype, use_swiglu, row_tile_size, disable_prepacking):
+    selected_experts = [(30, 7), (1, 23), (1, 23), (30, 7), (0, 24), (30, 7), (28, 2)]
+    logits = numpy.full((len(selected_experts), 32), -20.0, dtype=numpy.float32)
+    for row, selected in enumerate(selected_experts):
+        logits[row, selected[0]] = 8.0
+        logits[row, selected[1]] = 7.0
+    TestQMoENVFP4()._run_nvfp4_moe_test(
+        hidden_size=64,
+        inter_size=64,
+        num_experts=32,
+        top_k=2,
+        num_tokens=len(selected_experts),
+        onnx_dtype=onnx_dtype,
+        use_swiglu=use_swiglu,
+        gemv_mode="0",
+        row_tile_size=row_tile_size,
+        disable_prepacking=disable_prepacking,
+        use_bias=True,
+        router_logits_override=logits,
+    )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="CUDA NVFP4 QMoE required")
+def test_nvfp4_compact_decode_scratch(capfd, monkeypatch):
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    logits = numpy.arange(512, dtype=numpy.float32).reshape(1, 512) / 128 - 2
+    TestQMoENVFP4()._run_nvfp4_moe_test(
+        hidden_size=64,
+        inter_size=64,
+        num_experts=512,
+        top_k=10,
+        num_tokens=1,
+        onnx_dtype=TensorProto.FLOAT16,
+        use_swiglu=True,
+        gemv_mode="0",
+        disable_prepacking=True,
+        router_logits_override=logits,
+    )
+    assert "QMoE NVFP4 ExpertCapacity=10 DequantWeightBytes=245760" in capfd.readouterr().out
+
+
+@pytest.mark.skipif(
+    os.getenv("ORT_RUN_LARGE_NVFP4_QMOE_TEST") != "1" or not torch.cuda.is_available() or not has_fp4_qmoe,
+    reason="Opt-in official 512-expert NVFP4 memory test",
+)
+@pytest.mark.parametrize("num_tokens", [1, 17])
+def test_nvfp4_compact_qwen38_official_shape(num_tokens, capfd, monkeypatch):
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    logits = numpy.stack(
+        [numpy.roll(numpy.arange(512, dtype=numpy.float32), row * 13) / 128 - 2 for row in range(num_tokens)]
+    )
+    TestQMoENVFP4()._run_nvfp4_moe_test(
+        hidden_size=2560,
+        inter_size=640,
+        num_experts=512,
+        top_k=10,
+        num_tokens=num_tokens,
+        onnx_dtype=TensorProto.FLOAT16,
+        use_swiglu=True,
+        gemv_mode="0",
+        input_scale=0.05,
+        disable_prepacking=True,
+        router_logits_override=logits,
+    )
+    capacity = num_tokens * 10
+    weight_bytes = capacity * (2 * 640 * 2560 + 2560 * 640) * 2
+    assert f"QMoE NVFP4 ExpertCapacity={capacity} DequantWeightBytes={weight_bytes}" in capfd.readouterr().out
 
 
 if __name__ == "__main__":
