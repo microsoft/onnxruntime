@@ -220,7 +220,7 @@ pip install "build\Release\Release\dist\onnxruntime-1.23.0-cp312-cp312-win_amd64
 
 ---
 
-## NVIDIA Jetson TX1/TX2/Nano/Xavier/Orin
+## NVIDIA Jetson TX1/TX2/Nano/Xavier/Orin/Thor
 
 ### Build Instructions
 {: .no_toc }
@@ -245,7 +245,9 @@ These instructions are for the latest [JetPack SDK](https://developer.nvidia.com
 
       3. Check [here](https://developer.nvidia.com/cuda-gpus#collapse5) for compute capability datasheet.
 
-   2. CMake can't automatically find the correct `nvcc` if it's not in the `PATH`. `nvcc` can be added to `PATH` via:
+   2. Jetson Thor (JetPack 7.x) has compute capability 11.0 (`sm_110`), which needs CUDA 13.0 or later. JetPack 7 ships CUDA 13, so no CUDA upgrade is needed.
+
+   3. CMake can't automatically find the correct `nvcc` if it's not in the `PATH`. `nvcc` can be added to `PATH` via:
 
       ```bash
       export PATH="/usr/local/cuda/bin:${PATH}"
@@ -257,20 +259,22 @@ These instructions are for the latest [JetPack SDK](https://developer.nvidia.com
       export CUDACXX="/usr/local/cuda/bin/nvcc"
       ```
 
-   3. Update TensorRT libraries
+   4. Update TensorRT libraries
       
       1. Jetpack 5.x supports up to TensorRT 8.5. Jetpack 6.x are equipped with TensorRT 8.6-10.3.
       
       2. Jetpack 6.x users can download latest TensorRT 10 TAR package for **jetpack** on [TensorRT SDK website](https://developer.nvidia.com/tensorrt/download/10x).
+
+      3. JetPack 7.x includes TensorRT 10 (for example, JetPack 7.2.1 ships TensorRT 10.16).
       
-      3. Check [here](../execution-providers/TensorRT-ExecutionProvider.md#requirements) for TensorRT/CUDA support matrix among all ONNX Runtime versions.
+      4. Check [here](../execution-providers/TensorRT-ExecutionProvider.md#requirements) for TensorRT/CUDA support matrix among all ONNX Runtime versions.
 
 3. Install the ONNX Runtime build dependencies on the Jetpack host:
 
    ```bash
    sudo apt install -y --no-install-recommends \
      build-essential software-properties-common libopenblas-dev \
-     libpython3.10-dev python3-pip python3-dev python3-setuptools python3-wheel
+     python3-pip python3-dev python3-setuptools python3-wheel
    ```
 
 4. Cmake is needed to build ONNX Runtime. Please check the minimum required CMake version [here](https://github.com/microsoft/onnxruntime/blob/main/cmake/CMakeLists.txt#L6). Download from https://cmake.org/download/ and add cmake executable to `PATH` to use it.
