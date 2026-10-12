@@ -3694,7 +3694,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         const auto& estimator_config = resource_accountant->GetWorkspaceEstimatorConfig();
         const auto gqa_workspace_max_total_sequence_length =
             estimator_config.cuda_gqa_workspace_max_total_sequence_length;
-        // Reader-only intent; no value changes route selection or sizing.
+        // The estimator resolves this intent to the route set that the GQA kernel enforces.
         KernelDispatchPolicy kernel_dispatch_policy = KernelDispatchPolicy::Auto;
         if (const auto& policy = estimator_config.kernel_dispatch_policy;
             policy.has_value()) {

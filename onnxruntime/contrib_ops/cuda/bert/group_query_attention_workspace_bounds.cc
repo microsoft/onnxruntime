@@ -230,9 +230,7 @@ GQAWorkspaceStatus XqaBackendEnvelope(const GQAWorkspaceProblem& problem,
   return status;
 }
 
-}  // namespace
-
-GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
+GQAWorkspaceAggregate GetGQAWorkspaceAggregateForPermittedBounds(
     const GQAWorkspaceBounds& bounds) noexcept {
   GQAWorkspaceAggregate aggregate;
   if (bounds.qkv_element_size != 2 ||
@@ -412,6 +410,123 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
     }
     if (!status.IsOK()) aggregate.status = status;
   }
+  return aggregate;
+}
+
+struct GQAMinimumRoute {
+  GQAWorkspaceStatus status;
+  GQAReachableBackend backend = GQAReachableBackend::None;
+  size_t workspace_bytes = 0;
+};
+
+template <size_t CandidateCount>
+GQAMinimumRoute SelectMinimumWorkspaceRoute(
+    const GQAWorkspaceBounds& bounds,
+    const std::array<GQAReachableBackend, CandidateCount>& candidates,
+    bool general_phase) noexcept {
+  GQAMinimumRoute selected;
+  selected.status = Unavailable(
+      general_phase ? "No analytically bounded GQA route covers prompt/general execution."
+                    : "No analytically bounded GQA route covers single-token decode.");
+
+  for (GQAReachableBackend candidate : candidates) {
+    if (!HasGQAReachableBackend(bounds.reachable_backends, candidate)) continue;
+
+    auto candidate_bounds = bounds;
+    candidate_bounds.reachable_backends = candidate;
+    candidate_bounds.prompt_reachable = general_phase;
+    candidate_bounds.decode_reachable = !general_phase;
+    const auto estimate =
+        GetGQAWorkspaceAggregateForPermittedBounds(candidate_bounds);
+    if (!estimate.status.IsOK()) continue;
+    if (selected.backend != GQAReachableBackend::None &&
+        estimate.total_workspace_bytes >= selected.workspace_bytes) {
+      continue;
+    }
+
+    selected.status = {};
+    selected.backend = candidate;
+    selected.workspace_bytes = estimate.total_workspace_bytes;
+  }
+
+  return selected;
+}
+
+}  // namespace
+
+GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
+    const GQAWorkspaceBounds& bounds,
+    KernelDispatchPolicy policy) noexcept {
+  GQAReachableBackend committed_backends = GQAReachableBackend::None;
+  switch (policy) {
+    case KernelDispatchPolicy::Auto:
+    case KernelDispatchPolicy::Latency:
+      committed_backends = bounds.reachable_backends;
+      break;
+    case KernelDispatchPolicy::Safe:
+      committed_backends = IntersectGQAReachableBackends(
+          bounds.reachable_backends, kAnalyticallyBoundedGQABackends);
+      break;
+    case KernelDispatchPolicy::Memory: {
+      auto selection_bounds = bounds;
+      if (selection_bounds.xqa_head_sink_storage !=
+              GQAXqaHeadSinkStorage::None ||
+          selection_bounds.head_sink_may_be_prepacked) {
+        // Level 1 knows that a constant sink may be prepacked, while Level 2
+        // knows the exact post-PrePack state. Rank both from the conservative
+        // dynamic-conversion recipe so they commit the same route set.
+        selection_bounds.xqa_head_sink_storage =
+            GQAXqaHeadSinkStorage::DynamicConversion;
+      }
+      constexpr std::array<GQAReachableBackend, 3> kGeneralPriority{
+          GQAReachableBackend::Flash,
+          GQAReachableBackend::MemoryEfficient,
+          GQAReachableBackend::Unfused};
+      constexpr std::array<GQAReachableBackend, 5> kDecodePriority{
+          GQAReachableBackend::Xqa,
+          GQAReachableBackend::FlashFastDecode,
+          GQAReachableBackend::Flash,
+          GQAReachableBackend::MemoryEfficient,
+          GQAReachableBackend::Unfused};
+
+      if (bounds.prompt_reachable) {
+        const auto selected =
+            SelectMinimumWorkspaceRoute(
+                selection_bounds, kGeneralPriority, true);
+        if (!selected.status.IsOK()) {
+          GQAWorkspaceAggregate aggregate;
+          aggregate.status = selected.status;
+          return aggregate;
+        }
+        committed_backends = committed_backends | selected.backend;
+      }
+      if (bounds.decode_reachable) {
+        const auto selected =
+            SelectMinimumWorkspaceRoute(
+                selection_bounds, kDecodePriority, false);
+        if (!selected.status.IsOK()) {
+          GQAWorkspaceAggregate aggregate;
+          aggregate.status = selected.status;
+          return aggregate;
+        }
+        committed_backends = committed_backends | selected.backend;
+      }
+      break;
+    }
+  }
+
+  if (committed_backends == GQAReachableBackend::None) {
+    GQAWorkspaceAggregate aggregate;
+    aggregate.status =
+        Unavailable("The GQA dispatch policy has no reachable permitted route.");
+    return aggregate;
+  }
+
+  auto committed_bounds = bounds;
+  committed_bounds.reachable_backends = committed_backends;
+  auto aggregate =
+      GetGQAWorkspaceAggregateForPermittedBounds(committed_bounds);
+  aggregate.committed_backends = committed_backends;
   return aggregate;
 }
 

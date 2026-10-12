@@ -9,12 +9,14 @@
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
 #include "contrib_ops/cuda/bert/group_query_attention_eligibility.h"
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+#include "core/framework/resource_accountant.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
 #endif
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
@@ -132,6 +134,29 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
   kv_cache_bit_width_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_cache_bit_width", 0));
+  dispatch_policy_ = ParseKernelDispatchPolicy(
+      info.GetConfigOptions()
+          .GetConfigEntry(kOrtSessionOptionsKernelDispatchPolicy)
+          .value_or(""));
+  switch (dispatch_policy_) {
+    case KernelDispatchPolicy::Memory:
+      committed_backends_.store(
+          static_cast<uint32_t>(GQAReachableBackend::None),
+          std::memory_order_relaxed);
+      break;
+    case KernelDispatchPolicy::Safe:
+      committed_backends_.store(
+          static_cast<uint32_t>(kAnalyticallyBoundedGQABackends),
+          std::memory_order_relaxed);
+      break;
+    case KernelDispatchPolicy::Auto:
+    case KernelDispatchPolicy::Latency:
+      break;
+  }
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+  ORT_THROW_IF_ERROR(ParseCudaGqaWorkspaceMaxTotalSequenceLength(
+      info.GetConfigOptions(), max_total_sequence_length_));
+#endif
 
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
   // XQA defaults on for fp16/bf16; ORT_ENABLE_XQA=0 disables it explicitly.
@@ -219,6 +244,7 @@ Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
   config.causal = is_unidirectional_ ? 1 : 0;
   config.local_window_size = local_window_size_;
   config.sliding_window_cache = sliding_window_cache_;
+  config.max_total_sequence_length = max_total_sequence_length_;
   config.do_rotary = do_rotary_;
   config.smooth_softmax = use_smooth_softmax_;
   config.softcap = softcap_;
@@ -240,12 +266,26 @@ Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
   config.enable_xqa = enable_xqa_;
   config.disable_flash_decode = disable_flash_decode_;
   config.head_sink_is_prepacked = xqa_head_sink_count_ == num_heads_;
+  config.dispatch_policy = dispatch_policy_;
 
   const auto estimate = EstimateGroupQueryAttentionWorkspace(
       config, input_shapes, GetDeviceProp(), *kernel_options_);
-  if (estimate.has_value()) {
-    SetGroupQueryAttentionWorkspaceRequirements(*estimate, requirements);
+  if (!estimate.has_value()) {
+    ORT_RETURN_IF(
+        dispatch_policy_ == KernelDispatchPolicy::Memory ||
+            dispatch_policy_ == KernelDispatchPolicy::Safe,
+        "GroupQueryAttention could not commit the '",
+        KernelDispatchPolicyName(dispatch_policy_),
+        "' dispatch policy from the declared shape/envelope and analytically bounded routes.");
+    return Status::OK();
   }
+
+  if (dispatch_policy_ != KernelDispatchPolicy::Auto) {
+    committed_backends_.store(
+        static_cast<uint32_t>(estimate->committed_backends),
+        std::memory_order_relaxed);
+  }
+  SetGroupQueryAttentionWorkspaceRequirements(*estimate, requirements);
   return Status::OK();
 }
 #endif
@@ -689,7 +729,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   const bool xqa_phase_ok = !parameters.is_first_prompt &&
                             parameters.sequence_length == 1 &&
                             parameters.kv_sequence_length > 0;  // Shared KV (kv_seq=0) has no new K/V to append
-  if (xqa_phase_ok && parameters.past_present_share_buffer && IsGQAXqaEligibleSeqFree<U>(xqa_inputs)) {
+  if (IsGQABackendPermitted(GQAReachableBackend::Xqa) &&
+      xqa_phase_ok && parameters.past_present_share_buffer &&
+      IsGQAXqaEligibleSeqFree<U>(xqa_inputs)) {
     data.use_xqa = true;
 
     if (data.use_xqa) {
@@ -773,6 +815,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // cuDNN handles grouped-query attention natively. Keep this path bias-free because an arbitrary
   // attention bias cannot be composed with cuDNN's fused bottom-right causal mask.
   bool use_cudnn_sdpa = !data.use_xqa &&
+                        IsGQABackendPermitted(GQAReachableBackend::Cudnn) &&
                         IsGQACudnnSdpaCoreEligibleSeqFree<T, U>(
                             has_attention_bias,
                             is_inputs_quantized,
@@ -795,16 +838,15 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   data.use_cudnn_sdpa = use_cudnn_sdpa;
 
 #if USE_FLASH_ATTENTION
-  bool use_flash_attention = !data.use_xqa &&
-                             !data.use_cudnn_sdpa &&
-                             IsGQAFlashEligibleSeqFree<T>(device_prop,
-                                                          has_attention_bias,
-                                                          disable_flash_attention_,
-                                                          parameters.head_size,
-                                                          parameters.num_heads,
-                                                          parameters.kv_num_heads);
-
-  data.use_flash_attention = use_flash_attention;
+  const bool flash_attention_eligible =
+      !data.use_xqa &&
+      !data.use_cudnn_sdpa &&
+      IsGQAFlashEligibleSeqFree<T>(device_prop,
+                                   has_attention_bias,
+                                   disable_flash_attention_,
+                                   parameters.head_size,
+                                   parameters.num_heads,
+                                   parameters.kv_num_heads);
   // The fast-decode path lets the flash kernel perform RoPE and KV-append internally, bypassing
   // PrepareQKV (and therefore the fused QK-Norm prologue). Disable it when q/k norm weights are
   // present so the regular FlashAttention path (which normalizes via PrepareQKV) is used instead.
@@ -813,7 +855,18 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // LaunchGetSequenceLengths to derive P = T - sequence_length.
   // It is also disabled for a windowed KV cache: the kernel derives both the absolute RoPE position
   // and the cache append offset from a single seqlens_k value, which those two no longer share.
-  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.sequence_length == 1 && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized && !parameters.use_qk_norm && !parameters.is_windowed_kv_cache;
+  data.use_flash_attention_fast_decode =
+      flash_attention_eligible &&
+      IsGQABackendPermitted(GQAReachableBackend::FlashFastDecode) &&
+      !disable_flash_decode_ && !parameters.is_first_prompt &&
+      parameters.sequence_length == 1 && parameters.kv_sequence_length > 0 &&
+      parameters.past_present_share_buffer && !is_inputs_quantized &&
+      !parameters.use_qk_norm && !parameters.is_windowed_kv_cache;
+  const bool use_flash_attention =
+      flash_attention_eligible &&
+      (data.use_flash_attention_fast_decode ||
+       IsGQABackendPermitted(GQAReachableBackend::Flash));
+  data.use_flash_attention = use_flash_attention;
 
   if (use_flash_attention) {
     // Flash-specific buffer sizes (softmax LSE and the optional split accumulators) come from the
@@ -918,6 +971,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     // the bias row length (total_sequence_length) — mismatched under past/present buffer sharing.
     // Bias-carrying nodes take the unfused fallback below instead.
     bool use_memory_efficient_attention =
+        IsGQABackendPermitted(GQAReachableBackend::MemoryEfficient) &&
         IsGQAMemoryEfficientEligible<T>(parameters, sm, disable_memory_efficient_attention_,
                                         is_inputs_quantized, has_attention_bias, head_sink != nullptr);
     data.use_memory_efficient_attention = use_memory_efficient_attention;
@@ -974,6 +1028,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // ---------------------------------------------------------------------
   IAllocatorUniquePtr<void> unfused_scratch;
   if (!data.use_xqa && !data.use_cudnn_sdpa && !data.use_flash_attention && !data.use_memory_efficient_attention &&
+      IsGQABackendPermitted(GQAReachableBackend::Unfused) &&
       !is_inputs_quantized && !parameters.use_smooth_softmax && head_sink == nullptr &&
       parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH) {
     data.use_unfused = true;
@@ -995,6 +1050,15 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + recipe.y_bnsh_offset_bytes);
     data.unfused_workspace = reinterpret_cast<void*>(base + recipe.qk_offset_bytes);
   }
+
+  ORT_RETURN_IF(
+      dispatch_policy_ != KernelDispatchPolicy::Auto &&
+          !data.use_xqa && !data.use_cudnn_sdpa &&
+          !data.use_flash_attention &&
+          !data.use_memory_efficient_attention && !data.use_unfused,
+      "GroupQueryAttention dispatch policy '",
+      KernelDispatchPolicyName(dispatch_policy_),
+      "' has no permitted route for the current runtime workload.");
 
   if (kernel_options_->AllowDebugInfo()) {
     AttentionKernelDebugInfo debug_info;

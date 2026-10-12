@@ -52,7 +52,7 @@ struct GQAWorkspaceEstimateConfig {
   // ep.cuda.gqa_workspace_max_total_sequence_length. It bounds non-windowed
   // estimation; zero means unspecified. This is not a runtime input limit.
   int64_t max_total_sequence_length = 0;
-  // Parsed intent only; all values currently leave sizing and dispatch unchanged.
+  // Resolved to a committed GQA route set shared by Level 1, Level 2, and runtime.
   KernelDispatchPolicy dispatch_policy = KernelDispatchPolicy::Auto;
 };
 

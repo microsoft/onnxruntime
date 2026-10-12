@@ -491,7 +491,8 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const AttentionKernelOptions& kernel_options) {
   const auto bounds = BuildBounds(config, input_shapes, device_prop, kernel_options);
   if (!bounds.has_value()) return std::nullopt;
-  const auto aggregate = GetGQAWorkspaceAggregateForBounds(*bounds);
+  const auto aggregate =
+      GetGQAWorkspaceAggregateForBounds(*bounds, config.dispatch_policy);
   return aggregate.status.IsOK()
              ? std::optional<GQAWorkspaceAggregate>{aggregate}
              : std::nullopt;

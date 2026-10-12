@@ -692,7 +692,7 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, PartialAliasPreservationAddsFullPas
             without.total_workspace_bytes + expected_copy);
 }
 
-TEST(GroupQueryAttentionWorkspaceEstimateTest, DispatchPolicyIsReaderOnlyForBothCacheModes) {
+TEST(GroupQueryAttentionWorkspaceEstimateTest, SingleProvenRouteHasSameBoundAcrossPolicies) {
   AttentionKernelOptions options;
   options.InitializeOnce(kMath, true);
   for (bool windowed : {false, true}) {
@@ -713,6 +713,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, DispatchPolicyIsReaderOnlyForBoth
       ASSERT_TRUE(estimate.has_value());
       EXPECT_EQ(estimate->total_workspace_bytes, baseline->total_workspace_bytes);
       EXPECT_EQ(estimate->sized_backends, baseline->sized_backends);
+      EXPECT_EQ(estimate->committed_backends, baseline->committed_backends);
     }
   }
 }
@@ -1134,8 +1135,98 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, CudnnReachabilityIsUnavailable) {
   bounds.reachable_backends =
       GQAReachableBackend::Unfused | GQAReachableBackend::Cudnn;
   EXPECT_FALSE(GetGQAWorkspaceAggregateForBounds(bounds).status.IsOK());
+
+  const auto safe = GetGQAWorkspaceAggregateForBounds(
+      bounds, KernelDispatchPolicy::Safe);
+  ASSERT_TRUE(safe.status.IsOK());
+  EXPECT_EQ(safe.committed_backends, GQAReachableBackend::Unfused);
+  EXPECT_EQ(safe.sized_backends, GQAReachableBackend::Unfused);
+
+  const auto memory = GetGQAWorkspaceAggregateForBounds(
+      bounds, KernelDispatchPolicy::Memory);
+  ASSERT_TRUE(memory.status.IsOK());
+  EXPECT_EQ(memory.committed_backends, GQAReachableBackend::Unfused);
+
+  bounds.reachable_backends = GQAReachableBackend::Cudnn;
+  EXPECT_FALSE(GetGQAWorkspaceAggregateForBounds(
+                   bounds, KernelDispatchPolicy::Safe)
+                   .status.IsOK());
+  EXPECT_FALSE(GetGQAWorkspaceAggregateForBounds(
+                   bounds, KernelDispatchPolicy::Memory)
+                   .status.IsOK());
+
   bounds.reachable_backends = GQAReachableBackend::Unfused;
   EXPECT_TRUE(GetGQAWorkspaceAggregateForBounds(bounds).status.IsOK());
+}
+
+TEST(GroupQueryAttentionWorkspaceBoundsTest,
+     LatencyPreservesPrioritySetAndMemoryChoosesSmallestDecodeRoute) {
+  auto bounds = Bounds();
+  bounds.prompt_reachable = false;
+  bounds.decode_reachable = true;
+  bounds.reachable_backends =
+      GQAReachableBackend::Xqa | GQAReachableBackend::Unfused;
+
+  const auto latency = GetGQAWorkspaceAggregateForBounds(
+      bounds, KernelDispatchPolicy::Latency);
+  ASSERT_TRUE(latency.status.IsOK());
+  EXPECT_EQ(latency.committed_backends, bounds.reachable_backends);
+
+  auto xqa_bounds = bounds;
+  xqa_bounds.reachable_backends = GQAReachableBackend::Xqa;
+  const auto xqa = GetGQAWorkspaceAggregateForBounds(xqa_bounds);
+  ASSERT_TRUE(xqa.status.IsOK());
+  auto unfused_bounds = bounds;
+  unfused_bounds.reachable_backends = GQAReachableBackend::Unfused;
+  const auto unfused = GetGQAWorkspaceAggregateForBounds(unfused_bounds);
+  ASSERT_TRUE(unfused.status.IsOK());
+
+  const auto memory = GetGQAWorkspaceAggregateForBounds(
+      bounds, KernelDispatchPolicy::Memory);
+  ASSERT_TRUE(memory.status.IsOK());
+  const GQAReachableBackend expected =
+      xqa.total_workspace_bytes <= unfused.total_workspace_bytes
+          ? GQAReachableBackend::Xqa
+          : GQAReachableBackend::Unfused;
+  EXPECT_EQ(memory.committed_backends, expected);
+  EXPECT_EQ(memory.sized_backends, expected);
+  EXPECT_EQ(memory.total_workspace_bytes,
+            std::min(xqa.total_workspace_bytes,
+                     unfused.total_workspace_bytes));
+  EXPECT_LE(memory.total_workspace_bytes, latency.total_workspace_bytes);
+}
+
+TEST(GroupQueryAttentionWorkspaceBoundsTest,
+     MemoryPolicyCoversPromptAndDecodeWithPhaseAwareUnion) {
+  auto bounds = Bounds();
+  bounds.present_kv_cache_capacity_bound = 4096;
+  bounds.reachable_backends =
+      GQAReachableBackend::Xqa | GQAReachableBackend::Unfused;
+
+  auto decode_xqa_bounds = bounds;
+  decode_xqa_bounds.prompt_reachable = false;
+  decode_xqa_bounds.reachable_backends = GQAReachableBackend::Xqa;
+  const auto decode_xqa =
+      GetGQAWorkspaceAggregateForBounds(decode_xqa_bounds);
+  ASSERT_TRUE(decode_xqa.status.IsOK());
+
+  auto decode_unfused_bounds = decode_xqa_bounds;
+  decode_unfused_bounds.reachable_backends =
+      GQAReachableBackend::Unfused;
+  const auto decode_unfused =
+      GetGQAWorkspaceAggregateForBounds(decode_unfused_bounds);
+  ASSERT_TRUE(decode_unfused.status.IsOK());
+  ASSERT_LT(decode_xqa.total_workspace_bytes,
+            decode_unfused.total_workspace_bytes);
+
+  const auto memory = GetGQAWorkspaceAggregateForBounds(
+      bounds, KernelDispatchPolicy::Memory);
+  ASSERT_TRUE(memory.status.IsOK());
+  EXPECT_TRUE(HasGQAReachableBackend(
+      memory.committed_backends, GQAReachableBackend::Xqa));
+  EXPECT_TRUE(HasGQAReachableBackend(
+      memory.committed_backends, GQAReachableBackend::Unfused));
+  EXPECT_EQ(memory.sized_backends, memory.committed_backends);
 }
 
 TEST(GroupQueryAttentionWorkspaceEstimateTest, DeclaresOneAlignedSlotAndOnlyWorkspaceAtLevel1) {
@@ -1237,6 +1328,61 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, KernelDeclaresPrepackedHeadSinkRo
   shapes[0] = WorkspaceInputShape::PresentWithoutShape();
   ASSERT_STATUS_OK(kernel->DeclareWorkspaceRequirements(
       gsl::make_span(shapes), requirements));
+  EXPECT_TRUE(requirements.empty());
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest,
+     KernelCommitsMemoryPolicyAndFailsClosedWithoutShapes) {
+  if (!HasCudaDevice()) {
+    GTEST_SKIP() << "A CUDA device is required to construct the CUDA kernel.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{{{"ORT_ENABLE_XQA", "1"}}};
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsKernelDispatchPolicy, "memory"));
+  InferenceSessionWrapper session(session_options, GetEnvironment());
+
+  CUDAExecutionProviderInfo provider_info;
+  provider_info.sdpa_kernel = kMath;
+  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(provider_info);
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+  const std::string model_bytes =
+      BuildGroupQueryAttentionKernelModel(/*with_head_sink=*/false);
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const Graph& graph = session.GetGraph();
+  const Node* node = FindNodeByOpType(graph, "GroupQueryAttention");
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(node->GetExecutionProviderType(), kCudaExecutionProvider);
+  const OpKernel* kernel = session.GetSessionState().GetKernel(node->Index());
+  ASSERT_NE(kernel, nullptr);
+
+  auto shapes = SeparateShapes();
+  auto memory_config = Config();
+  memory_config.dispatch_policy = KernelDispatchPolicy::Memory;
+  const auto expected = EstimateGroupQueryAttentionWorkspace(
+      memory_config, gsl::make_span(shapes), cuda_ep->GetDeviceProp(),
+      *cuda_ep->GetAttentionKernelOptions());
+  ASSERT_TRUE(expected.has_value());
+  const auto auto_estimate = EstimateGroupQueryAttentionWorkspace(
+      Config(), gsl::make_span(shapes), cuda_ep->GetDeviceProp(),
+      *cuda_ep->GetAttentionKernelOptions());
+  ASSERT_TRUE(auto_estimate.has_value());
+  EXPECT_LE(expected->total_workspace_bytes,
+            auto_estimate->total_workspace_bytes);
+
+  InlinedVector<WorkspaceRequirement> requirements;
+  ASSERT_STATUS_OK(kernel->DeclareWorkspaceRequirements(
+      gsl::make_span(shapes), requirements));
+  ASSERT_EQ(requirements.size(), 1U);
+  EXPECT_EQ(requirements[0].size_bytes, expected->total_workspace_bytes);
+
+  shapes[0] = WorkspaceInputShape::PresentWithoutShape();
+  const auto status = kernel->DeclareWorkspaceRequirements(
+      gsl::make_span(shapes), requirements);
+  EXPECT_FALSE(status.IsOK());
   EXPECT_TRUE(requirements.empty());
 }
 

@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "core/framework/kernel_dispatch_policy.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
 
 namespace onnxruntime {
@@ -28,10 +29,31 @@ constexpr GQAReachableBackend operator|(GQAReachableBackend left,
       static_cast<uint32_t>(left) | static_cast<uint32_t>(right));
 }
 
+constexpr GQAReachableBackend IntersectGQAReachableBackends(
+    GQAReachableBackend left, GQAReachableBackend right) noexcept {
+  return static_cast<GQAReachableBackend>(
+      static_cast<uint32_t>(left) & static_cast<uint32_t>(right));
+}
+
 constexpr bool HasGQAReachableBackend(GQAReachableBackend mask,
                                       GQAReachableBackend backend) noexcept {
   return (static_cast<uint32_t>(mask) & static_cast<uint32_t>(backend)) != 0;
 }
+
+constexpr GQAReachableBackend kAllGQAReachableBackends =
+    GQAReachableBackend::Xqa |
+    GQAReachableBackend::Flash |
+    GQAReachableBackend::FlashFastDecode |
+    GQAReachableBackend::MemoryEfficient |
+    GQAReachableBackend::Unfused |
+    GQAReachableBackend::Cudnn;
+
+constexpr GQAReachableBackend kAnalyticallyBoundedGQABackends =
+    GQAReachableBackend::Xqa |
+    GQAReachableBackend::Flash |
+    GQAReachableBackend::FlashFastDecode |
+    GQAReachableBackend::MemoryEfficient |
+    GQAReachableBackend::Unfused;
 
 // Graph-free upper bounds and immutable feature facts. Positive dimensions are
 // componentwise bounds, not a claim that their combination is one runtime shape.
@@ -85,13 +107,18 @@ struct GQAWorkspaceAggregate {
   size_t persistent_prepack_bytes = 0;
   size_t initialization_scratch_bytes = 0;
   GQAReachableBackend sized_backends = GQAReachableBackend::None;
+  GQAReachableBackend committed_backends = GQAReachableBackend::None;
 };
 
-// Computes a sound maximum over all complete routes reachable anywhere in the
-// bounded domain. cuDNN reachability makes the result unavailable because its
-// allocator-based workspace has no graph-free oracle.
+// Resolves the intent to a runtime-enforced route set and computes a sound
+// maximum over that set. Auto and Latency preserve the current route cascade.
+// Memory chooses the smallest proven route independently for general/prompt and
+// single-token decode execution, then commits their union. Safe commits every
+// analytically bounded reachable route. A committed cuDNN route makes the result
+// unavailable because its allocator-based workspace has no graph-free oracle.
 GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
-    const GQAWorkspaceBounds& bounds) noexcept;
+    const GQAWorkspaceBounds& bounds,
+    KernelDispatchPolicy policy = KernelDispatchPolicy::Auto) noexcept;
 
 }  // namespace cuda
 }  // namespace contrib

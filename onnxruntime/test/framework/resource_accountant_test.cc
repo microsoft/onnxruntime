@@ -857,7 +857,7 @@ TEST(RealAccountantTest, FactoryRetainsNarrowWorkspaceEstimatorConfig) {
             std::optional<std::string>{"memory"});
 }
 
-TEST(RealAccountantTest, FactoryRetainsKernelDispatchPolicyReader) {
+TEST(RealAccountantTest, FactoryRetainsKernelDispatchPolicyValue) {
   struct Case {
     const char* value;
   };
