@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cuda_runtime.h>
+#include <type_traits>
 #include "activations_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/unary_elementwise_impl.cuh"
@@ -65,10 +66,10 @@ struct OP_Sigmoid<half> : public CtxSigmoid {
 template <typename T>
 struct OP_Softplus : public CtxSoftplus {
   __device__ __inline__ T operator()(const T& a) const {
-    if (a > (T)0)
-      return a + _Log(_Exp(-a) + (T)1);
-    else
-      return _Log(_Exp(a) + (T)1);
+    using ComputeT = std::conditional_t<std::is_same_v<T, double>, double, float>;
+    const ComputeT value = static_cast<ComputeT>(a);
+    // Adding one before taking log erases small positive tails, especially in FP16/BF16.
+    return static_cast<T>(value > ComputeT(0) ? value + log1p(_Exp(-value)) : log1p(_Exp(value)));
   }
 };
 
