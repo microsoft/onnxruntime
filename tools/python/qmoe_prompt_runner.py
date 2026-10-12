@@ -72,12 +72,6 @@ def parse_args():
         default=0.9,
         help="MoE expert popularity counter decay coefficient.",
     )
-    parser.add_argument(
-        "--moe-expert-counter-beta",
-        type=float,
-        default=0.1,
-        help="MoE expert popularity counter increment.",
-    )
     return parser.parse_args()
 
 
@@ -160,7 +154,7 @@ def configure_provider(config, provider, cuda_sdpa_kernel):
             config.set_provider_option(provider, "sdpa_kernel", str(cuda_sdpa_kernel))
 
 
-def create_model(genai, model_path, provider, cuda_sdpa_kernel, cpu_offload_experts, counter_alpha, counter_beta):
+def create_model(genai, model_path, provider, cuda_sdpa_kernel, cpu_offload_experts, counter_alpha):
     config = genai.Config(str(model_path))
     configure_provider(config, provider, cuda_sdpa_kernel)
     config.overlay(
@@ -173,7 +167,6 @@ def create_model(genai, model_path, provider, cuda_sdpa_kernel, cpu_offload_expe
                             "session.enable_moe_expert_statistics": "1",
                             "session.moe_cpu_offload_experts": str(cpu_offload_experts),
                             "session.moe_expert_counter_alpha": str(counter_alpha),
-                            "session.moe_expert_counter_beta": str(counter_beta),
                         }
                     }
                 }
@@ -233,17 +226,8 @@ def main():
         raise ValueError("--cuda-sdpa-kernel must be non-negative.")
     if args.moe_cpu_offload_experts < 0:
         raise ValueError("--moe-cpu-offload-experts must be non-negative.")
-    if (
-        not math.isfinite(args.moe_expert_counter_alpha)
-        or args.moe_expert_counter_alpha < 0
-        or not math.isfinite(args.moe_expert_counter_beta)
-        or args.moe_expert_counter_beta < 0
-        or args.moe_expert_counter_alpha + args.moe_expert_counter_beta > 1
-    ):
-        raise ValueError(
-            "--moe-expert-counter-alpha and --moe-expert-counter-beta must be finite, "
-            "non-negative, and sum to at most 1."
-        )
+    if not math.isfinite(args.moe_expert_counter_alpha) or not 0 <= args.moe_expert_counter_alpha <= 1:
+        raise ValueError("--moe-expert-counter-alpha must be finite and in [0, 1].")
     if args.output.resolve() == args.counter_log.resolve():
         raise ValueError("--output and --counter-log must refer to different files.")
     prompts = load_prompts(args.prompts_file) if args.prompts_file else args.prompts
@@ -262,7 +246,6 @@ def main():
             args.cuda_sdpa_kernel,
             args.moe_cpu_offload_experts,
             args.moe_expert_counter_alpha,
-            args.moe_expert_counter_beta,
         )
         tokenizer = genai.Tokenizer(model)
         results = []

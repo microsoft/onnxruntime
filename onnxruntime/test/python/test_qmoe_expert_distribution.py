@@ -54,10 +54,7 @@ def _selected(expert_id, score, selected_rank, node_rank, global_position):
 
 
 def _trace(events):
-    session_options = (
-        "Session Options { config_options: { session.moe_expert_counter_beta: 0.1 "
-        "session.moe_expert_counter_alpha: 0.9 } }"
-    )
+    session_options = "Session Options { config_options: { session.moe_expert_counter_alpha: 0.9 } }"
     lines = [
         session_options,
         "[qmoe_prompt_runner] 1/1 prompt_start",
@@ -89,7 +86,6 @@ class TestQMoEExpertDistribution(unittest.TestCase):
             experts_per_node=2,
             thresholds=(2, 3),
             alpha=0.5,
-            beta=0.5,
             selected_expert_count=2,
         )
 
@@ -112,7 +108,6 @@ class TestQMoEExpertDistribution(unittest.TestCase):
             experts_per_node=2,
             thresholds=(2,),
             alpha=1.0,
-            beta=0.0,
             selected_expert_count=2,
         )
         self.assertEqual(alpha_one_results[0].cumulative_share, 0.5)
@@ -294,8 +289,7 @@ class TestQMoEExpertDistribution(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             log_path = Path(temp_dir) / "routing.log"
             log_path.write_text(
-                "session.moe_expert_counter_alpha: 0.9 session.moe_expert_counter_beta: 0.1\n"
-                "[qmoe_prompt_runner] 1/1 prompt_start\n",
+                "session.moe_expert_counter_alpha: 0.9\n[qmoe_prompt_runner] 1/1 prompt_start\n",
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(ValueError, "has no prompt_end"):

@@ -25,7 +25,6 @@ class ReplayEvent:
 @dataclass(frozen=True)
 class OptimizationResult:
     alpha: float
-    beta: float
     threshold: int
     selected_experts_at_or_above_threshold: int
     selected_expert_count: int
@@ -48,8 +47,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description=(
             "Replay an ORT MoE counter trace and grid-search alpha to minimize the cumulative share of selected "
-            "experts whose zero-based global position is at or above several thresholds. Beta is held fixed, except "
-            "that alpha=1 requires beta=0."
+            "experts whose zero-based global position is at or above several thresholds."
         )
     )
     parser.add_argument("log", type=Path, help="Log containing 'moe_expert_counters' JSON records.")
@@ -67,7 +65,6 @@ def parse_args():
         default=list(CUMULATIVE_GLOBAL_POSITION_THRESHOLDS),
         help="Zero-based global-position thresholds.",
     )
-    parser.add_argument("--beta", type=float, default=0.1, help="Beta value used for every alpha below 1.")
     parser.add_argument(
         "--layer-thresholds",
         type=int,
@@ -112,11 +109,10 @@ def evaluate_alpha(
     experts_per_node,
     thresholds,
     alpha,
-    beta,
     selected_expert_count=SELECTED_EXPERT_COUNT,
 ):
-    if not math.isfinite(beta) or beta < 0 or alpha + beta > 1:
-        raise ValueError("Beta must be finite and non-negative, with alpha + beta <= 1.")
+    if not math.isfinite(alpha) or not 0 <= alpha <= 1:
+        raise ValueError("Alpha must be finite and in [0, 1].")
     scores = [[0.0] * experts_per_node for _ in range(moe_count)]
     rankings = [
         [(0.0, node_index * experts_per_node + expert_id) for expert_id in range(experts_per_node)]
@@ -152,7 +148,7 @@ def evaluate_alpha(
 
         node_scores = [alpha * score for score in node_scores]
         for expert_id in event.selected_experts:
-            node_scores[expert_id] += beta
+            node_scores[expert_id] += 1.0 - alpha
         scores[event.node_index] = node_scores
         rankings[event.node_index] = sorted(
             (-score, event.node_index * experts_per_node + expert_id) for expert_id, score in enumerate(node_scores)
@@ -163,7 +159,6 @@ def evaluate_alpha(
     return [
         OptimizationResult(
             alpha=alpha,
-            beta=beta,
             threshold=threshold,
             selected_experts_at_or_above_threshold=selected_at_or_above_threshold[threshold],
             selected_expert_count=selected_total,
@@ -190,7 +185,6 @@ def write_results(path, results):
         writer.writerow(
             [
                 "alpha",
-                "beta",
                 "threshold",
                 "selected_experts_at_or_above_threshold",
                 "selected_expert_count",
@@ -204,7 +198,6 @@ def write_results(path, results):
             writer.writerow(
                 [
                     result.alpha,
-                    result.beta,
                     result.threshold,
                     result.selected_experts_at_or_above_threshold,
                     result.selected_expert_count,
@@ -276,7 +269,6 @@ def write_layer_impacts(csv_path, plot_path, results, identities, thresholds):
             [
                 "threshold",
                 "alpha",
-                "beta",
                 "layer_number",
                 "impacted_invocations",
                 "invocation_count",
@@ -291,7 +283,6 @@ def write_layer_impacts(csv_path, plot_path, results, identities, thresholds):
                     [
                         threshold,
                         result.alpha,
-                        result.beta,
                         layer_number(identity),
                         impacted,
                         invocation_count,
@@ -328,7 +319,7 @@ def write_layer_impacts(csv_path, plot_path, results, identities, thresholds):
     plt.close(figure)
 
 
-def average_all_experts_below_threshold(events, moe_count, experts_per_node, alpha, beta, thresholds):
+def average_all_experts_below_threshold(events, moe_count, experts_per_node, alpha, thresholds):
     scores = [[0.0] * experts_per_node for _ in range(moe_count)]
     totals = {threshold: [0] * moe_count for threshold in thresholds}
     iteration_count = 0
@@ -356,7 +347,7 @@ def average_all_experts_below_threshold(events, moe_count, experts_per_node, alp
 
         node_scores = [alpha * score for score in scores[event.node_index]]
         for expert_id in event.selected_experts:
-            node_scores[expert_id] += beta
+            node_scores[expert_id] += 1.0 - alpha
         scores[event.node_index] = node_scores
 
         if len(nodes_seen) == moe_count:
@@ -393,7 +384,6 @@ def write_layer_experts_below_threshold(
             moe_count,
             experts_per_node,
             result.alpha,
-            result.beta,
             [threshold],
         )[threshold]
 
@@ -403,7 +393,6 @@ def write_layer_experts_below_threshold(
             [
                 "threshold",
                 "alpha",
-                "beta",
                 "layer_number",
                 "average_experts_below_threshold",
             ]
@@ -414,7 +403,6 @@ def write_layer_experts_below_threshold(
                     [
                         threshold,
                         result.alpha,
-                        result.beta,
                         layer_number(identity),
                         averages[threshold][node_index],
                     ]
@@ -471,9 +459,8 @@ def main():
 
     results = []
     for alpha in validate_alpha_candidates(args.alphas):
-        beta = 0.0 if alpha == 1.0 else args.beta
-        print(f"evaluating alpha={alpha:.17g}, beta={beta:.17g}", flush=True)
-        alpha_results = evaluate_alpha(events, moe_count, experts_per_node, thresholds, alpha, beta)
+        print(f"evaluating alpha={alpha:.17g}", flush=True)
+        alpha_results = evaluate_alpha(events, moe_count, experts_per_node, thresholds, alpha)
         results.extend(alpha_results)
         print(
             "  "
@@ -513,10 +500,7 @@ def main():
             (result for result in results if result.threshold == threshold),
             key=lambda result: (result.cumulative_share, result.alpha),
         )
-        print(
-            f"threshold {threshold}: alpha={best.alpha:.17g}, beta={best.beta:.17g}, "
-            f"cumulative share={best.cumulative_share:.12g}"
-        )
+        print(f"threshold {threshold}: alpha={best.alpha:.17g}, cumulative share={best.cumulative_share:.12g}")
     print(csv_path)
     print(expert_plot_path)
     print(moe_plot_path)

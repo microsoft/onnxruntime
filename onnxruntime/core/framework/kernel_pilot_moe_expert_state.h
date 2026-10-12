@@ -44,9 +44,9 @@ class KernelPilotMoeExpertState {
   // ---------------
 
   // Configures the exponential counter update:
-  //   counter = alpha * counter + beta * selected
+  //   counter = alpha * counter + (1 - alpha) * selected
   // Must be called before registering any MoE kernels.
-  Status SetCounterParameters(double alpha, double beta);
+  Status SetCounterAlpha(double alpha);
 
   // Enables static CUDA placement and sets the global number of experts offloaded to CPU.
   // Must be called before FinalizeInitialization().
@@ -136,7 +136,6 @@ class KernelPilotMoeExpertState {
   const logging::Logger* logging_logger_{nullptr};
   std::atomic<size_t> logging_record_count_{0};
   double alpha_{0.9};
-  double beta_{0.1};
   size_t cpu_offload_expert_count_{0};
   double swap_epsilon_{0.0};
   bool cpu_offload_enabled_{false};

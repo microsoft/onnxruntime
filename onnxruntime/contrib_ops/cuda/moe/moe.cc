@@ -59,6 +59,29 @@ void LogSwigluFusionRemapOnce() {
                              "SwiGLU layout for backward compatibility.";
   });
 }
+
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+class ScopedCudaDevice {
+ public:
+  explicit ScopedCudaDevice(int device_id) {
+    CUDA_CALL_THROW(cudaGetDevice(&previous_device_id_));
+    if (previous_device_id_ != device_id) {
+      CUDA_CALL_THROW(cudaSetDevice(device_id));
+      restore_device_ = true;
+    }
+  }
+
+  ~ScopedCudaDevice() {
+    if (restore_device_) {
+      ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaSetDevice(previous_device_id_)));
+    }
+  }
+
+ private:
+  int previous_device_id_{-1};
+  bool restore_device_{false};
+};
+#endif
 }  // namespace
 
 #define REGISTER_KERNEL_TYPED(T)                    \
@@ -84,6 +107,7 @@ MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), Mo
     cpu_offload_enabled_ = cpu_offload_expert_count > 0;
     if (cpu_offload_enabled_) {
       device_id_ = GetDeviceId();
+      const ScopedCudaDevice device_guard(device_id_);
       const Status resource_status = [&]() -> Status {
         CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&input_copy_stream_, cudaStreamNonBlocking));
         CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&swap_d2h_stream_, cudaStreamNonBlocking));
@@ -177,7 +201,7 @@ Status MoE<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
   packed.cpu_data.resize(packed.bytes / sizeof(T));
   if (tensor.Location().device.Type() == OrtDevice::CPU) {
     std::memcpy(packed.cpu_data.data(), tensor.DataRaw(), packed.bytes);
-  } else if constexpr (std::is_same_v<T, BFloat16>) {
+  } else {
     CUDA_RETURN_IF_ERROR(cudaMemcpy(packed.cpu_data.data(), tensor.DataRaw(), packed.bytes, cudaMemcpyDeviceToHost));
   }
 

@@ -12,11 +12,10 @@ The default is `0`. Counting alone does not emit logs, enable profiling, change 
 Configure the update with:
 
 ```text
-session.moe_expert_counter_alpha=<finite non-negative value> # default: 0.9
-session.moe_expert_counter_beta=<finite non-negative value>  # default: 0.1
+session.moe_expert_counter_alpha=<finite value in [0, 1]> # default: 0.9
 ```
 
-The coefficients must satisfy `alpha + beta <= 1`; zero is allowed for either coefficient.
+The selected-expert increment is `1 - alpha`.
 
 It supports the CPU and built-in CUDA `MoE` and `QMoE` kernels. Minimal builds, the CUDA plugin EP, and CUDA graph
 capture are not supported when counting, counter-update logging, or CPU offload is enabled.
@@ -26,10 +25,10 @@ sources. They reject counter configuration except for explicitly disabling count
 Each node invocation updates every expert counter belonging to that node:
 
 ```text
-c(t+1) = alpha * c(t) + beta * (1 if used otherwise 0)
+c(t+1) = alpha * c(t) + (1 - alpha) * (1 if used otherwise 0)
 ```
 
-Selecting an expert for several token rows still contributes one `beta`. Unused experts still receive the decay term.
+Selecting an expert for several token rows still contributes one `1 - alpha`. Unused experts still receive the decay term.
 Counts persist across `Run()` calls. Only successful kernel invocations commit their collected usage.
 A failed run can retain updates from earlier successful kernels, including CUDA nodes whose
 expert computations were still in flight when their counters were updated. Updates are not transactional across an
