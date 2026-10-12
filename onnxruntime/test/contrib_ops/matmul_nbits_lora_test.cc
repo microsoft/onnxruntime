@@ -24,6 +24,24 @@ void RunLoraTest(int64_t rank, bool gpu = false, bool empty = false,
                  bool mismatched_rank = false, bool vector = false,
                  bool negative_weights = false, float alpha = 1.0f,
                  int64_t weight_prepacked = 0) {
+  std::unique_ptr<IExecutionProvider> gpu_provider;
+  SessionOptions gpu_options;
+  if (gpu) {
+#ifdef USE_WEBGPU
+    ConfigOptions config;
+    ASSERT_STATUS_OK(config.AddConfigEntry(webgpu::options::kEnableGraphCapture,
+                                           webgpu::options::kEnableGraphCapture_ON));
+    ASSERT_STATUS_OK(config.AddConfigEntry(webgpu::options::kValidationMode,
+                                           webgpu::options::kValidationMode_full));
+    gpu_provider = WebGpuExecutionProviderWithOptions(config);
+    if (!gpu_provider) {
+      GTEST_SKIP() << "WebGPU execution provider is unavailable.";
+    }
+    ASSERT_STATUS_OK(gpu_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+#else
+    GTEST_SKIP() << "WebGPU execution provider is not compiled.";
+#endif
+  }
   constexpr int64_t K = 35;
   constexpr int64_t N = 16;
   const int64_t rows = empty ? 0 : 3;
@@ -57,30 +75,15 @@ void RunLoraTest(int64_t rank, bool gpu = false, bool empty = false,
                                                           9.5f * static_cast<float>(rank) * 0.5f * alpha});
   test.AddOutput<T>("Y", output_shape, expected);
   if (gpu) {
-#ifdef USE_WEBGPU
-    ConfigOptions config;
-    ASSERT_STATUS_OK(config.AddConfigEntry(webgpu::options::kEnableGraphCapture,
-                                           webgpu::options::kEnableGraphCapture_ON));
-    ASSERT_STATUS_OK(config.AddConfigEntry(webgpu::options::kValidationMode,
-                                           webgpu::options::kValidationMode_full));
-    auto ep = WebGpuExecutionProviderWithOptions(config);
-    if (!ep) {
-      GTEST_SKIP() << "WebGPU execution provider is unavailable.";
-    }
-    SessionOptions options;
-    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
     if (weight_prepacked != 0) {
-      test.Config(options)
-          .ConfigEp(std::move(ep))
+      test.Config(gpu_options)
+          .ConfigEp(std::move(gpu_provider))
           .Config(OpTester::ExpectResult::kExpectFailure, "weight_prepacked=0")
           .RunWithConfig();
     } else {
-      test.RunWithBoundCapture<T>(std::move(ep), options, TensorShape(output_shape), expected);
+      test.RunWithBoundCapture<T>(std::move(gpu_provider), gpu_options, TensorShape(output_shape), expected);
     }
     return;
-#else
-    GTEST_SKIP() << "WebGPU execution provider is not compiled.";
-#endif
   }
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCpuExecutionProvider());
