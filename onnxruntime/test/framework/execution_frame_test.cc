@@ -848,5 +848,67 @@ TEST(ExecutionFrameTestInit, FetchFailsForEqualCountNonScalarShapeMismatch) {
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("pre-allocated"));
 }
 
+#ifdef ENABLE_STRIDED_TENSORS
+TEST_F(ExecutionFrameTest, ExactShapeReusesNonContiguousPreallocatedOutput) {
+  Model model("strided_output_test", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  TypeProto tensor_float;
+  tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  NodeArg input_def("X", &tensor_float), output_def("Y", &tensor_float);
+  Node* node = &graph.AddNode("node1", "Relu", "Relu operator",
+                              ArgMap{&input_def}, ArgMap{&output_def});
+  node->SetExecutionProviderType(kCpuExecutionProvider);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto cpu_xp = CreateCPUExecutionProvider();
+  auto xp_type = cpu_xp->Type();
+  ExecutionProviders execution_providers;
+  ASSERT_STATUS_OK(execution_providers.Add(xp_type, std::move(cpu_xp)));
+  KernelRegistryManager kernel_registry_manager;
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
+
+  DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
+  profiling::Profiler profiler;
+  SessionOptions options;
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
+                     DefaultLoggingManager().DefaultLogger(), profiler, options);
+  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+
+  int y_idx = -1;
+  ASSERT_STATUS_OK(state.GetOrtValueNameIdxMap().GetIdx("Y", y_idx));
+
+  const TensorShape shape({3, 2});
+  const TensorShapeVector strides{1, 3};
+  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+  OrtValue preallocated_output;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), shape, allocator,
+                       preallocated_output);
+  preallocated_output.GetMutable<Tensor>()->SetShapeAndStrides(shape, strides);
+  const void* buffer = preallocated_output.Get<Tensor>().DataRaw();
+  ASSERT_FALSE(preallocated_output.Get<Tensor>().IsContiguous());
+
+  std::vector<OrtValue> fetches{preallocated_output};
+  ExecutionFrame frame({}, {}, AsSpan({y_idx}), fetches, {},
+#ifdef ORT_ENABLE_STREAM
+                       {},
+#endif
+                       state);
+
+  const int output_arg_index = frame.GetNodeOffset(node->Index()) + 1;
+  OrtValue* output = nullptr;
+  ASSERT_STATUS_OK(frame.GetOrCreateNodeOutputMLValue(0, output_arg_index,
+                                                      &shape, output, *node));
+  ASSERT_NE(output, nullptr);
+  const Tensor& result = output->Get<Tensor>();
+  EXPECT_EQ(result.DataRaw(), buffer);
+  EXPECT_EQ(result.Shape(), shape);
+  EXPECT_THAT(result.Strides(), ::testing::ContainerEq(gsl::make_span(strides)));
+  EXPECT_FALSE(result.IsContiguous());
+}
+#endif  // ENABLE_STRIDED_TENSORS
+
 }  // namespace test
 }  // namespace onnxruntime
