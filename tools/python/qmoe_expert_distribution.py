@@ -356,11 +356,11 @@ def cumulative_threshold_counts(rows):
     return cumulative
 
 
-def cumulative_threshold_fractions(rows):
+def cumulative_threshold_fractions(rows, selected_expert_count=SELECTED_EXPERT_COUNT):
     cumulative = cumulative_threshold_counts(rows)
     selected_experts_by_iteration = Counter()
     for row in rows:
-        selected_experts_by_iteration[row.qmoe_time_index] += SELECTED_EXPERT_COUNT
+        selected_experts_by_iteration[row.qmoe_time_index] += selected_expert_count
 
     cumulative_selected_experts = {}
     running_total = 0
@@ -374,10 +374,42 @@ def cumulative_threshold_fractions(rows):
     }
 
 
+def cumulative_moe_counts_below_threshold(rows, thresholds=CUMULATIVE_GLOBAL_POSITION_THRESHOLDS):
+    counts = {threshold: Counter() for threshold in thresholds}
+    for row in rows:
+        for threshold in thresholds:
+            counts[threshold][row.qmoe_time_index] += row.global_position < threshold
+    cumulative_averages = {}
+    for threshold, iteration_counts in counts.items():
+        running_total = 0
+        values = []
+        for iteration, count in sorted(iteration_counts.items()):
+            running_total += count
+            values.append((iteration, running_total / iteration))
+        cumulative_averages[threshold] = values
+    return cumulative_averages
+
+
+def cumulative_moe_counts_at_or_above_threshold(rows, thresholds=CUMULATIVE_GLOBAL_POSITION_THRESHOLDS):
+    counts = {threshold: Counter() for threshold in thresholds}
+    for row in rows:
+        for threshold in thresholds:
+            counts[threshold][row.qmoe_time_index] += row.global_position >= threshold
+    cumulative_averages = {}
+    for threshold, iteration_counts in counts.items():
+        running_total = 0
+        values = []
+        for iteration, count in sorted(iteration_counts.items()):
+            running_total += count
+            values.append((iteration, running_total / iteration))
+        cumulative_averages[threshold] = values
+    return cumulative_averages
+
+
 def write_timeline_plots(path, rows, identities, moe_count, total_expert_count):
     import matplotlib.pyplot as plt  # noqa: PLC0415
     from matplotlib.backends.backend_pdf import PdfPages  # noqa: PLC0415
-    from matplotlib.ticker import PercentFormatter  # noqa: PLC0415
+    from matplotlib.ticker import MultipleLocator, PercentFormatter  # noqa: PLC0415
 
     rows_by_identity = defaultdict(list)
     for row in rows:
@@ -502,45 +534,110 @@ def write_timeline_plots(path, rows, identities, moe_count, total_expert_count):
             pdf.savefig(figure)
             plt.close(figure)
 
-        cumulative_fractions = cumulative_threshold_fractions(rows)
-        for logarithmic in (False, True):
-            figure, axis = plt.subplots(figsize=(13, 5))
-            for threshold, values in cumulative_fractions.items():
-                axis.plot(
-                    [iteration for iteration, _ in values],
-                    [fraction for _, fraction in values],
-                    linewidth=1,
-                    label=f"position >= {threshold}",
-                )
-            axis.set_xlabel("Decode iteration")
-            axis.set_ylabel("Cumulative share of selected experts")
-            axis.yaxis.set_major_formatter(PercentFormatter(xmax=1))
-            scale = "logarithmic" if logarithmic else "linear"
-            axis.set_title(
-                f"{moe_count} MoE nodes, {total_expert_count} experts total — cumulative share, {scale} scale"
+        fractions = cumulative_threshold_fractions(rows)
+        figure, axis = plt.subplots(figsize=(13, 5))
+        for threshold, values in fractions.items():
+            axis.plot(
+                [iteration for iteration, _ in values],
+                [fraction for _, fraction in values],
+                linewidth=1,
+                label=f"position >= {threshold}",
             )
-            if logarithmic:
-                axis.set_yscale("log", nonpositive="clip")
-            else:
-                axis.set_ylim(bottom=0)
-            axis.grid(True, alpha=0.3)
-            axis.legend()
-            for prompt_index, iteration in sorted(prompt_starts.items())[1:]:
-                axis.axvline(iteration, color="gray", linewidth=0.8, alpha=0.6)
-                axis.text(
-                    iteration,
-                    1,
-                    f"Prompt {prompt_index}",
-                    rotation=90,
-                    verticalalignment="top",
-                    horizontalalignment="right",
-                    transform=axis.get_xaxis_transform(),
-                    fontsize=8,
-                    color="gray",
-                )
-            figure.tight_layout()
-            pdf.savefig(figure)
-            plt.close(figure)
+        axis.set_xlabel("Decode iteration")
+        axis.set_ylabel("Cumulative share of selected experts")
+        axis.yaxis.set_major_formatter(PercentFormatter(xmax=1))
+        axis.set_title("Cumulative share among selected experts")
+        axis.set_ylim(bottom=0)
+        axis.grid(True, alpha=0.3)
+        axis.legend()
+        for prompt_index, iteration in sorted(prompt_starts.items())[1:]:
+            axis.axvline(iteration, color="gray", linewidth=0.8, alpha=0.6)
+            axis.text(
+                iteration,
+                1,
+                f"Prompt {prompt_index}",
+                rotation=90,
+                verticalalignment="top",
+                horizontalalignment="right",
+                transform=axis.get_xaxis_transform(),
+                fontsize=8,
+                color="gray",
+            )
+        figure.tight_layout()
+        pdf.savefig(figure)
+        plt.close(figure)
+
+        moe_below_threshold = cumulative_moe_counts_below_threshold(rows)
+        figure, axis = plt.subplots(figsize=(13, 5))
+        for threshold, values in moe_below_threshold.items():
+            axis.plot(
+                [iteration for iteration, _ in values],
+                [count for _, count in values],
+                linewidth=1,
+                label=f"all expert positions < {threshold}",
+            )
+        axis.set_xlabel("Decode iteration")
+        axis.set_ylabel("Cumulative average MoE node count")
+        axis.set_title("Cumulative average of MoE nodes whose selected expert positions are below the threshold")
+        maximum_count = max(count for values in moe_below_threshold.values() for _, count in values)
+        axis.set_ylim(-0.25, min(moe_count, math.ceil(maximum_count)) + 0.25)
+        axis.yaxis.set_major_locator(MultipleLocator(1))
+        axis.minorticks_on()
+        axis.grid(True, which="major", alpha=0.35)
+        axis.grid(True, which="minor", linestyle=":", alpha=0.15)
+        axis.legend()
+        for prompt_index, iteration in sorted(prompt_starts.items())[1:]:
+            axis.axvline(iteration, color="gray", linewidth=0.8, alpha=0.6)
+            axis.text(
+                iteration,
+                1,
+                f"Prompt {prompt_index}",
+                rotation=90,
+                verticalalignment="top",
+                horizontalalignment="right",
+                transform=axis.get_xaxis_transform(),
+                fontsize=8,
+                color="gray",
+            )
+        figure.tight_layout()
+        pdf.savefig(figure)
+        plt.close(figure)
+
+        moe_at_or_above_threshold = cumulative_moe_counts_at_or_above_threshold(rows)
+        figure, axis = plt.subplots(figsize=(13, 5))
+        for threshold, values in moe_at_or_above_threshold.items():
+            axis.plot(
+                [iteration for iteration, _ in values],
+                [count for _, count in values],
+                linewidth=1,
+                label=f"at least one expert position >= {threshold}",
+            )
+        axis.set_xlabel("Decode iteration")
+        axis.set_ylabel("Cumulative average MoE node count")
+        axis.set_title("Cumulative average of MoE nodes with an expert position at or above the threshold")
+        maximum_count = max(count for values in moe_at_or_above_threshold.values() for _, count in values)
+        axis.set_ylim(-0.25, min(moe_count, math.ceil(maximum_count)) + 0.25)
+        axis.yaxis.set_major_locator(MultipleLocator(1))
+        axis.minorticks_on()
+        axis.grid(True, which="major", alpha=0.35)
+        axis.grid(True, which="minor", linestyle=":", alpha=0.15)
+        axis.legend()
+        for prompt_index, iteration in sorted(prompt_starts.items())[1:]:
+            axis.axvline(iteration, color="gray", linewidth=0.8, alpha=0.6)
+            axis.text(
+                iteration,
+                1,
+                f"Prompt {prompt_index}",
+                rotation=90,
+                verticalalignment="top",
+                horizontalalignment="right",
+                transform=axis.get_xaxis_transform(),
+                fontsize=8,
+                color="gray",
+            )
+        figure.tight_layout()
+        pdf.savefig(figure)
+        plt.close(figure)
 
         first_prompt_indexes = sorted(prompt_starts)[:2]
         first_prompt_rows = [row for row in rows if row.prompt_index in first_prompt_indexes]

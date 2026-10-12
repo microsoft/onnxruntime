@@ -18,6 +18,8 @@ from qmoe_expert_distribution import (  # noqa: E402
     GLOBAL_POSITION_THRESHOLDS,
     aggregate_threshold_counts,
     build_timeline,
+    cumulative_moe_counts_at_or_above_threshold,
+    cumulative_moe_counts_below_threshold,
     cumulative_threshold_counts,
     cumulative_threshold_fractions,
     inspect_trace,
@@ -167,10 +169,54 @@ class TestQMoEExpertDistribution(unittest.TestCase):
             },
         )
         self.assertEqual(
-            cumulative_threshold_fractions(rows),
+            cumulative_threshold_fractions(rows, selected_expert_count=2),
             {
-                threshold: [(1, 0.25 if threshold == CUMULATIVE_GLOBAL_POSITION_THRESHOLDS[0] else 0.0)]
+                threshold: [(1, 1.0 if threshold == CUMULATIVE_GLOBAL_POSITION_THRESHOLDS[0] else 0.0)]
                 for threshold in CUMULATIVE_GLOBAL_POSITION_THRESHOLDS
+            },
+        )
+
+    def test_counts_moe_nodes_with_all_expert_positions_below_threshold(self):
+        events = [
+            _event(
+                1,
+                "/model/layers.0/moe/MoE",
+                [_selected(0, 0.2, 0, 0, 0), _selected(1, 0.1, 1, 1, 1)],
+            ),
+            _event(
+                2,
+                "/model/layers.1/moe/MoE",
+                [_selected(0, 0.2, 0, 0, 3), _selected(1, 0.1, 1, 1, 4)],
+            ),
+            _event(
+                1,
+                "/model/layers.0/moe/MoE",
+                [_selected(0, 0.2, 0, 0, 0), _selected(1, 0.1, 1, 1, 1)],
+            ),
+            _event(
+                2,
+                "/model/layers.1/moe/MoE",
+                [_selected(0, 0.2, 0, 0, 2), _selected(1, 0.1, 1, 1, 3)],
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            log_path = Path(temp_dir) / "routing.log"
+            log_path.write_text(_trace(events), encoding="utf-8")
+            summary, _, _, _, _ = inspect_trace(log_path)
+            rows = build_timeline(log_path, summary, selected_expert_count=2)
+
+        self.assertEqual(
+            cumulative_moe_counts_below_threshold(rows, thresholds=(4, 5)),
+            {
+                4: [(1, 1.0), (2, 1.5)],
+                5: [(1, 2), (2, 2)],
+            },
+        )
+        self.assertEqual(
+            cumulative_moe_counts_at_or_above_threshold(rows, thresholds=(4, 5)),
+            {
+                4: [(1, 1.0), (2, 0.5)],
+                5: [(1, 0), (2, 0)],
             },
         )
 
