@@ -312,8 +312,9 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   bounds.do_rotary = config.do_rotary;
   bounds.is_packed_qkv = packed;
   bounds.use_qk_norm = Present(shapes, kQNorm);
-  bounds.prompt_reachable = true;
+  bounds.prefill_reachable = true;
   bounds.decode_reachable = true;
+  bounds.chunked_prefill_reachable = sequence_bound > 1;
   bounds.device_major = device_prop.major;
   bounds.device_minor = device_prop.minor;
   bounds.multi_processor_count = device_prop.multiProcessorCount;

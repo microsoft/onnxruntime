@@ -114,8 +114,9 @@ GQAWorkspaceBounds Bounds() {
   bounds.kv_num_heads = 2;
   bounds.head_size_bound = 64;
   bounds.present_kv_cache_capacity_bound = 256;
-  bounds.prompt_reachable = true;
+  bounds.prefill_reachable = true;
   bounds.decode_reachable = true;
+  bounds.chunked_prefill_reachable = true;
   bounds.multi_processor_count = 108;
   return bounds;
 }
@@ -733,6 +734,23 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, DispatchPolicyDoesNotEnableUnspec
   }
 }
 
+TEST(GroupQueryAttentionWorkspaceEstimateTest,
+     SingleTokenShapeDoesNotAdmitChunkedPrefill) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  auto config = Config();
+  config.dispatch_policy = KernelDispatchPolicy::Safe;
+  const auto estimate = EstimateGroupQueryAttentionWorkspace(
+      config, SeparateShapes(/*sequence=*/1), Device(), options);
+  ASSERT_TRUE(estimate.has_value());
+  EXPECT_EQ(estimate->committed_backends.prefill,
+            GQAReachableBackend::Unfused);
+  EXPECT_EQ(estimate->committed_backends.decode,
+            GQAReachableBackend::Unfused);
+  EXPECT_EQ(estimate->committed_backends.chunked_prefill,
+            GQAReachableBackend::None);
+}
+
 TEST(GroupQueryAttentionWorkspaceEstimateTest, RejectsCacheCapacityDifferentFromWindow) {
   AttentionKernelOptions options;
   options.InitializeOnce(kMath, true);
@@ -893,14 +911,15 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, PromptDecodeAndWindowRoutesAreBound
   const auto mixed = GetGQAWorkspaceAggregateForBounds(bounds);
   ASSERT_TRUE(mixed.status.IsOK());
 
-  bounds.prompt_reachable = false;
+  bounds.prefill_reachable = false;
+  bounds.chunked_prefill_reachable = false;
   bounds.sequence_length_bound = 1;
   const auto decode = GetGQAWorkspaceAggregateForBounds(bounds);
   ASSERT_TRUE(decode.status.IsOK());
   EXPECT_GT(mixed.total_workspace_bytes, decode.total_workspace_bytes);
 
   bounds.decode_reachable = false;
-  bounds.prompt_reachable = true;
+  bounds.prefill_reachable = true;
   bounds.sequence_length_bound = 4;
   const auto prompt = GetGQAWorkspaceAggregateForBounds(bounds);
   EXPECT_TRUE(prompt.status.IsOK());
@@ -976,7 +995,8 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, WindowedBoundsUseFinalCapacityAndTr
   }
 
   bounds.sequence_length_bound = 1;
-  bounds.prompt_reachable = false;
+  bounds.prefill_reachable = false;
+  bounds.chunked_prefill_reachable = false;
   bounds.reachable_backends = GQAReachableBackend::Unfused;
   const auto decode = GetGQAWorkspaceAggregateForBounds(bounds);
   ASSERT_TRUE(decode.status.IsOK());
@@ -1012,7 +1032,8 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, FlashEnvelopeDominatesDiscontinuous
   bounds.num_heads = 2;
   bounds.kv_num_heads = 2;
   bounds.present_kv_cache_capacity_bound = 13830;
-  bounds.prompt_reachable = false;
+  bounds.prefill_reachable = false;
+  bounds.chunked_prefill_reachable = false;
   bounds.reachable_backends = GQAReachableBackend::Flash;
   const auto envelope = GetGQAWorkspaceAggregateForBounds(bounds);
   ASSERT_TRUE(envelope.status.IsOK());
@@ -1047,7 +1068,7 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, FlashEnvelopeDominatesDiscontinuous
   }
 }
 
-TEST(GroupQueryAttentionWorkspaceBoundsTest, FlashFastDecodeEnvelopeCoversEverySequenceLength) {
+TEST(GroupQueryAttentionWorkspaceBoundsTest, FlashFastDecodeEnvelopeCoversSingleTokenDecode) {
   auto bounds = Bounds();
   bounds.batch_size_bound = 1;
   bounds.sequence_length_bound = 130;
@@ -1057,41 +1078,39 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, FlashFastDecodeEnvelopeCoversEveryS
   bounds.present_kv_cache_capacity_bound = 1024;
   bounds.is_windowed_kv_cache = false;
   bounds.local_window_size = -1;
+  bounds.prefill_reachable = false;
+  bounds.chunked_prefill_reachable = false;
   bounds.reachable_backends = GQAReachableBackend::FlashFastDecode;
   const auto envelope = GetGQAWorkspaceAggregateForBounds(bounds);
   ASSERT_TRUE(envelope.status.IsOK()) << envelope.status.message;
 
-  for (int64_t sequence_length = 1;
-       sequence_length <= bounds.sequence_length_bound; ++sequence_length) {
-    GQAWorkspaceProblem problem;
-    problem.qkv_element_size = bounds.qkv_element_size;
-    problem.cache_element_size = bounds.cache_element_size;
-    problem.batch_size = bounds.batch_size_bound;
-    problem.sequence_length = sequence_length;
-    problem.num_heads = bounds.num_heads;
-    problem.kv_num_heads = bounds.kv_num_heads;
-    problem.head_size = bounds.head_size_bound;
-    problem.present_kv_cache_capacity = bounds.present_kv_cache_capacity_bound;
+  GQAWorkspaceProblem problem;
+  problem.qkv_element_size = bounds.qkv_element_size;
+  problem.cache_element_size = bounds.cache_element_size;
+  problem.batch_size = bounds.batch_size_bound;
+  problem.sequence_length = 1;
+  problem.num_heads = bounds.num_heads;
+  problem.kv_num_heads = bounds.kv_num_heads;
+  problem.head_size = bounds.head_size_bound;
+  problem.present_kv_cache_capacity = bounds.present_kv_cache_capacity_bound;
 
-    GQAConcreteRoute route;
-    route.backend = GQABackend::Flash;
-    route.preparation.preprocess_mode = GQAPreprocessMode::Flash;
-    route.preparation.use_flash_attention_fast_decode = true;
-    route.flash.total_sequence_length = bounds.present_kv_cache_capacity_bound;
-    route.flash.multi_processor_count = bounds.multi_processor_count;
-    route.flash.fast_decode = true;
-    const auto concrete = GetGQACompleteWorkspaceRecipe(problem, route);
-    ASSERT_TRUE(concrete.status.IsOK())
-        << sequence_length << ": " << concrete.status.message;
-    EXPECT_GE(envelope.total_workspace_bytes,
-              concrete.recipe.total_workspace_bytes)
-        << sequence_length << " selected splits "
-        << concrete.recipe.flash.selected_split_count;
-  }
+  GQAConcreteRoute route;
+  route.backend = GQABackend::Flash;
+  route.preparation.preprocess_mode = GQAPreprocessMode::Flash;
+  route.preparation.use_flash_attention_fast_decode = true;
+  route.flash.total_sequence_length = bounds.present_kv_cache_capacity_bound;
+  route.flash.multi_processor_count = bounds.multi_processor_count;
+  route.flash.fast_decode = true;
+  const auto concrete = GetGQACompleteWorkspaceRecipe(problem, route);
+  ASSERT_TRUE(concrete.status.IsOK()) << concrete.status.message;
+  EXPECT_GE(envelope.total_workspace_bytes,
+            concrete.recipe.total_workspace_bytes);
 }
 
 TEST(GroupQueryAttentionWorkspaceBoundsTest, AggregatesExclusiveRoutesWithMax) {
   auto xqa = Bounds();
+  xqa.prefill_reachable = false;
+  xqa.chunked_prefill_reachable = false;
   xqa.reachable_backends = GQAReachableBackend::Xqa;
   xqa.xqa_head_sink_storage = GQAXqaHeadSinkStorage::DynamicConversion;
   xqa.head_sink_may_be_prepacked = true;
@@ -1120,6 +1139,8 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, AggregatesExclusiveRoutesWithMax) {
 TEST(GroupQueryAttentionWorkspaceBoundsTest,
      ExactPrepackedStateImpliesPrepackLifetimes) {
   auto bounds = Bounds();
+  bounds.prefill_reachable = false;
+  bounds.chunked_prefill_reachable = false;
   bounds.reachable_backends = GQAReachableBackend::Xqa;
   bounds.xqa_head_sink_storage = GQAXqaHeadSinkStorage::PrepackedFp32;
   const auto aggregate = GetGQAWorkspaceAggregateForBounds(bounds);
@@ -1139,13 +1160,23 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, CudnnReachabilityIsUnavailable) {
   const auto safe = GetGQAWorkspaceAggregateForBounds(
       bounds, KernelDispatchPolicy::Safe);
   ASSERT_TRUE(safe.status.IsOK());
-  EXPECT_EQ(safe.committed_backends, GQAReachableBackend::Unfused);
+  EXPECT_EQ(safe.committed_backends.prefill,
+            GQAReachableBackend::Unfused);
+  EXPECT_EQ(safe.committed_backends.decode,
+            GQAReachableBackend::Unfused);
+  EXPECT_EQ(safe.committed_backends.chunked_prefill,
+            GQAReachableBackend::Unfused);
   EXPECT_EQ(safe.sized_backends, GQAReachableBackend::Unfused);
 
   const auto memory = GetGQAWorkspaceAggregateForBounds(
       bounds, KernelDispatchPolicy::Memory);
   ASSERT_TRUE(memory.status.IsOK());
-  EXPECT_EQ(memory.committed_backends, GQAReachableBackend::Unfused);
+  EXPECT_EQ(memory.committed_backends.prefill,
+            GQAReachableBackend::Unfused);
+  EXPECT_EQ(memory.committed_backends.decode,
+            GQAReachableBackend::Unfused);
+  EXPECT_EQ(memory.committed_backends.chunked_prefill,
+            GQAReachableBackend::Unfused);
 
   bounds.reachable_backends = GQAReachableBackend::Cudnn;
   EXPECT_FALSE(GetGQAWorkspaceAggregateForBounds(
@@ -1162,15 +1193,21 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, CudnnReachabilityIsUnavailable) {
 TEST(GroupQueryAttentionWorkspaceBoundsTest,
      LatencyPreservesPrioritySetAndMemoryChoosesSmallestDecodeRoute) {
   auto bounds = Bounds();
-  bounds.prompt_reachable = false;
+  bounds.prefill_reachable = false;
   bounds.decode_reachable = true;
+  bounds.chunked_prefill_reachable = false;
   bounds.reachable_backends =
       GQAReachableBackend::Xqa | GQAReachableBackend::Unfused;
 
   const auto latency = GetGQAWorkspaceAggregateForBounds(
       bounds, KernelDispatchPolicy::Latency);
   ASSERT_TRUE(latency.status.IsOK());
-  EXPECT_EQ(latency.committed_backends, bounds.reachable_backends);
+  EXPECT_EQ(latency.committed_backends.prefill,
+            GQAReachableBackend::None);
+  EXPECT_EQ(latency.committed_backends.decode,
+            bounds.reachable_backends);
+  EXPECT_EQ(latency.committed_backends.chunked_prefill,
+            GQAReachableBackend::None);
 
   auto xqa_bounds = bounds;
   xqa_bounds.reachable_backends = GQAReachableBackend::Xqa;
@@ -1188,7 +1225,7 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest,
       xqa.total_workspace_bytes <= unfused.total_workspace_bytes
           ? GQAReachableBackend::Xqa
           : GQAReachableBackend::Unfused;
-  EXPECT_EQ(memory.committed_backends, expected);
+  EXPECT_EQ(memory.committed_backends.decode, expected);
   EXPECT_EQ(memory.sized_backends, expected);
   EXPECT_EQ(memory.total_workspace_bytes,
             std::min(xqa.total_workspace_bytes,
@@ -1197,14 +1234,15 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest,
 }
 
 TEST(GroupQueryAttentionWorkspaceBoundsTest,
-     MemoryPolicyCoversPromptAndDecodeWithPhaseAwareUnion) {
+     MemoryPolicyKeepsGeneralRouteAsDecodeFallback) {
   auto bounds = Bounds();
   bounds.present_kv_cache_capacity_bound = 4096;
   bounds.reachable_backends =
       GQAReachableBackend::Xqa | GQAReachableBackend::Unfused;
 
   auto decode_xqa_bounds = bounds;
-  decode_xqa_bounds.prompt_reachable = false;
+  decode_xqa_bounds.prefill_reachable = false;
+  decode_xqa_bounds.chunked_prefill_reachable = false;
   decode_xqa_bounds.reachable_backends = GQAReachableBackend::Xqa;
   const auto decode_xqa =
       GetGQAWorkspaceAggregateForBounds(decode_xqa_bounds);
@@ -1222,11 +1260,71 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest,
   const auto memory = GetGQAWorkspaceAggregateForBounds(
       bounds, KernelDispatchPolicy::Memory);
   ASSERT_TRUE(memory.status.IsOK());
+  EXPECT_EQ(memory.committed_backends.prefill,
+            GQAReachableBackend::Unfused);
+  EXPECT_EQ(memory.committed_backends.chunked_prefill,
+            GQAReachableBackend::Unfused);
   EXPECT_TRUE(HasGQAReachableBackend(
-      memory.committed_backends, GQAReachableBackend::Xqa));
+      memory.committed_backends.decode, GQAReachableBackend::Xqa));
   EXPECT_TRUE(HasGQAReachableBackend(
-      memory.committed_backends, GQAReachableBackend::Unfused));
-  EXPECT_EQ(memory.sized_backends, memory.committed_backends);
+      memory.committed_backends.decode, GQAReachableBackend::Unfused));
+  EXPECT_EQ(memory.sized_backends,
+            memory.committed_backends.Union());
+}
+
+TEST(GroupQueryAttentionWorkspaceBoundsTest,
+     PhaseSpecificMasksExcludeDecodeOnlyRoutesFromGeneralPhases) {
+  auto bounds = Bounds();
+  bounds.reachable_backends =
+      GQAReachableBackend::Xqa | GQAReachableBackend::Flash |
+      GQAReachableBackend::FlashFastDecode;
+
+  const auto safe = GetGQAWorkspaceAggregateForBounds(
+      bounds, KernelDispatchPolicy::Safe);
+  ASSERT_TRUE(safe.status.IsOK()) << safe.status.message;
+  EXPECT_EQ(safe.committed_backends.prefill,
+            GQAReachableBackend::Flash);
+  EXPECT_EQ(safe.committed_backends.chunked_prefill,
+            GQAReachableBackend::Flash);
+  EXPECT_EQ(safe.committed_backends.decode,
+            bounds.reachable_backends);
+}
+
+TEST(GroupQueryAttentionWorkspaceBoundsTest,
+     WorkspaceIsMaximumAcrossAdmittedPhaseRouteSets) {
+  auto bounds = Bounds();
+  bounds.reachable_backends =
+      GQAReachableBackend::Xqa | GQAReachableBackend::Flash;
+
+  const auto all_phases = GetGQAWorkspaceAggregateForBounds(
+      bounds, KernelDispatchPolicy::Safe);
+  ASSERT_TRUE(all_phases.status.IsOK()) << all_phases.status.message;
+
+  auto prefill_bounds = bounds;
+  prefill_bounds.decode_reachable = false;
+  prefill_bounds.chunked_prefill_reachable = false;
+  const auto prefill = GetGQAWorkspaceAggregateForBounds(
+      prefill_bounds, KernelDispatchPolicy::Safe);
+  ASSERT_TRUE(prefill.status.IsOK()) << prefill.status.message;
+
+  auto decode_bounds = bounds;
+  decode_bounds.prefill_reachable = false;
+  decode_bounds.chunked_prefill_reachable = false;
+  const auto decode = GetGQAWorkspaceAggregateForBounds(
+      decode_bounds, KernelDispatchPolicy::Safe);
+  ASSERT_TRUE(decode.status.IsOK()) << decode.status.message;
+
+  auto chunked_bounds = bounds;
+  chunked_bounds.prefill_reachable = false;
+  chunked_bounds.decode_reachable = false;
+  const auto chunked = GetGQAWorkspaceAggregateForBounds(
+      chunked_bounds, KernelDispatchPolicy::Safe);
+  ASSERT_TRUE(chunked.status.IsOK()) << chunked.status.message;
+
+  EXPECT_EQ(all_phases.total_workspace_bytes,
+            std::max({prefill.total_workspace_bytes,
+                      decode.total_workspace_bytes,
+                      chunked.total_workspace_bytes}));
 }
 
 TEST(GroupQueryAttentionWorkspaceEstimateTest, DeclaresOneAlignedSlotAndOnlyWorkspaceAtLevel1) {

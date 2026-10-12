@@ -12,9 +12,12 @@
 namespace onnxruntime {
 namespace test {
 
+using contrib::cuda::ClassifyGQAExecutionPhase;
 using contrib::cuda::GetGQAEffectiveWorkspaceKvLength;
+using contrib::cuda::GQACommittedBackends;
 using contrib::cuda::GQACompleteWorkspaceRecipe;
 using contrib::cuda::GQAConcreteRoute;
+using contrib::cuda::GQAExecutionPhase;
 using contrib::cuda::GQAFlashWorkspaceRecipe;
 using contrib::cuda::GQAMemoryEfficientWorkspaceRecipe;
 using contrib::cuda::GQAPreparationRecipe;
@@ -31,6 +34,7 @@ using contrib::cuda::IsSupportedGQAXqaHeadSize;
 static_assert(std::is_trivially_copyable_v<GQAWorkspaceProblem>);
 static_assert(std::is_trivially_copyable_v<GQAWorkspaceBounds>);
 static_assert(std::is_trivially_copyable_v<GQAWorkspaceAggregate>);
+static_assert(std::is_trivially_copyable_v<GQACommittedBackends>);
 static_assert(std::is_trivially_copyable_v<GQAPreparationRoute>);
 static_assert(std::is_trivially_copyable_v<GQAPreparationRecipe>);
 static_assert(std::is_trivially_copyable_v<GQAConcreteRoute>);
@@ -47,6 +51,12 @@ static_assert(!IsSupportedGQAXqaGroupSize(5, true));
 static_assert(GetGQAEffectiveWorkspaceKvLength(257, 8, true) == 8);
 static_assert(GetGQAEffectiveWorkspaceKvLength(5, 8, true) == 5);
 static_assert(GetGQAEffectiveWorkspaceKvLength(257, 8, false) == 257);
+static_assert(ClassifyGQAExecutionPhase(true, 1) ==
+              GQAExecutionPhase::Prefill);
+static_assert(ClassifyGQAExecutionPhase(false, 1) ==
+              GQAExecutionPhase::Decode);
+static_assert(ClassifyGQAExecutionPhase(false, 2) ==
+              GQAExecutionPhase::ChunkedPrefill);
 
 void CompileGroupQueryAttentionWorkspaceHeaderInIsolation() {
   GQAWorkspaceProblem problem;

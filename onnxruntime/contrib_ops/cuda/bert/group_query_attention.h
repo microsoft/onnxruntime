@@ -62,13 +62,49 @@ class GroupQueryAttention final : public CudaKernel {
   int64_t max_total_sequence_length_ = 0;
 #endif
   KernelDispatchPolicy dispatch_policy_ = KernelDispatchPolicy::Auto;
-  mutable std::atomic<uint32_t> committed_backends_{
-      static_cast<uint32_t>(kAllGQAReachableBackends)};
+  mutable std::atomic<uint32_t> committed_prefill_backends_{
+      static_cast<uint32_t>(GetGQAReachableBackendsForPhase(
+          kAllGQAReachableBackends, GQAExecutionPhase::Prefill))};
+  mutable std::atomic<uint32_t> committed_decode_backends_{
+      static_cast<uint32_t>(GetGQAReachableBackendsForPhase(
+          kAllGQAReachableBackends, GQAExecutionPhase::Decode))};
+  mutable std::atomic<uint32_t> committed_chunked_prefill_backends_{
+      static_cast<uint32_t>(GetGQAReachableBackendsForPhase(
+          kAllGQAReachableBackends, GQAExecutionPhase::ChunkedPrefill))};
 
-  bool IsGQABackendPermitted(GQAReachableBackend backend) const noexcept {
+  void StoreCommittedBackends(
+      const GQACommittedBackends& committed_backends) const noexcept {
+    committed_prefill_backends_.store(
+        static_cast<uint32_t>(committed_backends.prefill),
+        std::memory_order_relaxed);
+    committed_decode_backends_.store(
+        static_cast<uint32_t>(committed_backends.decode),
+        std::memory_order_relaxed);
+    committed_chunked_prefill_backends_.store(
+        static_cast<uint32_t>(committed_backends.chunked_prefill),
+        std::memory_order_relaxed);
+  }
+
+  bool IsGQABackendPermitted(
+      GQAExecutionPhase phase,
+      GQAReachableBackend backend) const noexcept {
+    uint32_t committed = 0;
+    switch (phase) {
+      case GQAExecutionPhase::Prefill:
+        committed =
+            committed_prefill_backends_.load(std::memory_order_relaxed);
+        break;
+      case GQAExecutionPhase::Decode:
+        committed =
+            committed_decode_backends_.load(std::memory_order_relaxed);
+        break;
+      case GQAExecutionPhase::ChunkedPrefill:
+        committed =
+            committed_chunked_prefill_backends_.load(std::memory_order_relaxed);
+        break;
+    }
     return HasGQAReachableBackend(
-        static_cast<GQAReachableBackend>(
-            committed_backends_.load(std::memory_order_relaxed)),
+        static_cast<GQAReachableBackend>(committed),
         backend);
   }
 
