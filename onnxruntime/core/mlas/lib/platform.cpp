@@ -811,9 +811,11 @@ Return Value:
     const auto& cpuid_info = MLAS_CPUIDINFO::GetCPUIDInfo();
     const bool has_sme = cpuid_info.HasArm_SME() || cpuid_info.HasArm_SME2();
     if (has_sme) {
+#if !defined(MLAS_KLEIDIAI_OPS_AVAILABLE)
         this->MlasSGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
         this->MlasSGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
         this->MlasSGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
+#endif
         this->MlasDynamicQGemmBatchOverride = ArmKleidiAI::MlasDynamicQGemmBatch;
         this->MlasDynamicQGemmPackBSizeOverride = ArmKleidiAI::MlasDynamicQGemmPackBSize;
         this->MlasDynamicQGemmPackBOverride = ArmKleidiAI::MlasDynamicQGemmPackB;
@@ -845,6 +847,15 @@ Return Value:
         this->MlasHalfGemmPackBSizeOverride = ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize;
         this->MlasHalfGemmPackBOverride = ArmKleidiAI::MlasHalfGemmKleidiAIPackB;
     }
+#endif
+
+#if defined(MLAS_KLEIDIAI_OPS_AVAILABLE)
+    // The operator API performs its own runtime feature checks and can select
+    // either SVE or the A64/Neon comparison family. MlasGemmBatch retains the
+    // direct SME adapter as a fallback for unpacked calls that Ops declines.
+    this->MlasSGemmBatchOverride = ArmKleidiAI::MlasGemmBatchKleidiAIOps;
+    this->MlasSGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSizeKleidiAIOps;
+    this->MlasSGemmPackBOverride = ArmKleidiAI::MlasGemmPackBKleidiAIOps;
 #endif
 
 #if defined(MLAS_USE_SVE)

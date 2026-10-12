@@ -1,3 +1,9 @@
+//
+// SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
+//
+// SPDX-License-Identifier: MIT
+//
+
 /*++
 
 Copyright (c) Microsoft Corporation. All rights reserved.
@@ -15,7 +21,12 @@ Abstract:
 
 --*/
 
+#include <stdexcept>
+
 #include "mlasi.h"
+#if defined(MLAS_KLEIDIAI_OPS_AVAILABLE)
+#include "kleidiai/mlasi_kleidiai.h"
+#endif
 
 //
 // Define the number of rows from matrix A to transpose to a local buffer.
@@ -1529,14 +1540,61 @@ MlasGemmBatch(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 {
-    // Override
-    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+    const bool can_use_override =
+        (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSGemmBatchOverride != nullptr &&
-        // TODO: Remove once KAI supports transposing for A
-        TransA != CBLAS_TRANSPOSE::CblasTrans &&
-        GetMlasPlatform().MlasSGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
+        TransA != CBLAS_TRANSPOSE::CblasTrans;
+#if defined(MLAS_KLEIDIAI_OPS_AVAILABLE)
+    if (can_use_override && Data != nullptr && BatchSize > 1) {
+        bool has_ops_packed_b = false;
+        bool has_other_b = false;
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+            const bool is_ops_packed_b =
+                Data[batch].BIsPacked && ArmKleidiAI::MlasGemmPackedBIsKleidiAIOps(Data[batch].B);
+            has_ops_packed_b |= is_ops_packed_b;
+            has_other_b |= !is_ops_packed_b;
+        }
+        if (has_ops_packed_b && has_other_b) {
+            for (size_t batch = 0; batch < BatchSize; ++batch) {
+                MlasGemmBatch(
+                    TransA, TransB, M, N, K, &Data[batch], 1, ThreadPool,
+                    BackendKernelSelectorConfig
+                );
+            }
+            return;
+        }
+    }
+#endif
+
+    // Override
+    if (can_use_override &&
+        GetMlasPlatform().MlasSGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)) {
         return;
     }
+#if defined(MLAS_KLEIDIAI_OPS_AVAILABLE)
+    bool has_foreign_packed_b = false;
+    if (Data != nullptr) {
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+            if (Data[batch].BIsPacked &&
+                ArmKleidiAI::MlasGemmPackedBIsKleidiAIOps(Data[batch].B)) {
+                MLAS_THROW_EX(std::runtime_error, "KleidiAI operator API rejected its own FP32 PackedB buffer.");
+            }
+            has_foreign_packed_b |= Data[batch].BIsPacked;
+        }
+    }
+
+    // Ops only owns its self-describing PackedB format today. On SME systems,
+    // retain the former direct KleidiAI route for unpacked shapes that Ops
+    // declines. Never pass a generic MLAS PackedB to the legacy adapter: its
+    // opaque packing format is different.
+    if (can_use_override && Data != nullptr && !has_foreign_packed_b) {
+        const auto& cpuid_info = MLAS_CPUIDINFO::GetCPUIDInfo();
+        if ((cpuid_info.HasArm_SME() || cpuid_info.HasArm_SME2()) &&
+            ArmKleidiAI::MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)) {
+            return;
+        }
+    }
+#endif
     //
     // Compute the number of target threads given the complexity of the SGEMM
     // operation. Small requests should run using the single threaded path.
@@ -1632,7 +1690,7 @@ Return Value:
     // Compute the number of bytes required to hold the packed buffer.
     //
     // KleidiAI or other override
-    #if defined(USE_KLEIDIAI)
+#if defined(USE_KLEIDIAI)
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSGemmPackBSizeOverride != nullptr &&
         // TODO: Remove once KAI supports transposing for A
@@ -1644,7 +1702,7 @@ Return Value:
             return bytes_required;
         }
     }
-    #endif
+#endif
     MLAS_UNREFERENCED_PARAMETER(TransA);
     MLAS_UNREFERENCED_PARAMETER(TransB);
     MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);

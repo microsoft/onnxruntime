@@ -1,5 +1,5 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
-# SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
+# SPDX-FileCopyrightText: Copyright 2024-2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 # Licensed under the MIT License.
 
 # Minimum CMake required
@@ -712,6 +712,17 @@ if(onnxruntime_USE_KLEIDIAI)
     message(WARNING "onnxruntime_USE_KLEIDIAI was set but it is not supported. It will be disabled.")
     set(onnxruntime_USE_KLEIDIAI OFF)
   endif()
+endif()
+
+# KleidiAI Ops is the default GEMM implementation where the experimental
+# library currently supports the target toolchain. Other KleidiAI platforms keep
+# the legacy GEMM implementation without requiring a separate user option.
+set(onnxruntime_KLEIDIAI_OPS_AVAILABLE OFF)
+if(onnxruntime_USE_KLEIDIAI AND NOT MSVC AND
+   (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID))
+  set(onnxruntime_KLEIDIAI_OPS_AVAILABLE ON)
+elseif(onnxruntime_USE_KLEIDIAI)
+  message(WARNING "KleidiAI Ops is not supported with this target/toolchain; using the legacy KleidiAI GEMM adapter.")
 endif()
 
 #Dependencies begin

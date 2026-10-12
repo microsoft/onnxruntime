@@ -1,4 +1,5 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
+# SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 # Licensed under the MIT License.
 
 set(MLAS_ROOT ${ONNXRUNTIME_ROOT}/core/mlas)
@@ -367,18 +368,47 @@ function(setup_mlas_source_for_windows)
 endfunction()
 
 function(setup_kleidiai)
-  target_sources(onnxruntime_mlas PRIVATE
+  set(kleidiai_mlas_sources
     ${MLAS_SRC_DIR}/kleidiai/kai_ukernel_interface.cpp
-    ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/halfgemm_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/halfconv_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/sbgemm_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/convolve_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/qgemm_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/qnbitgemm_kleidiai.cpp
+    # Ops is the primary SGEMM adapter, but unpacked calls it declines retain
+    # the direct SME implementation as a runtime fallback.
+    ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp
   )
+  if(onnxruntime_KLEIDIAI_OPS_AVAILABLE)
+    list(APPEND kleidiai_mlas_sources ${MLAS_SRC_DIR}/kleidiai/ops_kleidiai.cpp)
+  endif()
+  target_sources(onnxruntime_mlas PRIVATE ${kleidiai_mlas_sources})
+
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
+  if(onnxruntime_KLEIDIAI_OPS_AVAILABLE)
+    if(NOT TARGET kleidiai_ops)
+      message(FATAL_ERROR "KleidiAI is enabled but the kleidiai_ops target was not created")
+    endif()
+    mlas_add_private_compile_definitions(MLAS_KLEIDIAI_OPS_AVAILABLE=1)
+    target_link_libraries(onnxruntime_mlas PRIVATE kleidiai_ops)
+    get_target_property(kleidiai_ops_source_dir kleidiai_ops SOURCE_DIR)
+    target_include_directories(onnxruntime_mlas PRIVATE ${kleidiai_ops_source_dir})
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+      set_source_files_properties(
+        ${MLAS_SRC_DIR}/kleidiai/ops_kleidiai.cpp
+        PROPERTIES COMPILE_OPTIONS "-Wno-shorten-64-to-32")
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      # The experimental operator API headers contain conditionally unused
+      # parameters. Keep warnings enabled elsewhere while allowing this adapter
+      # translation unit to build with ORT's -Werror configuration.
+      set_source_files_properties(
+        ${MLAS_SRC_DIR}/kleidiai/ops_kleidiai.cpp
+        PROPERTIES COMPILE_OPTIONS "-Wno-unused-parameter")
+    endif()
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai_ops)
+  endif()
   if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
           target_link_libraries(onnxruntime_mlas PRIVATE  kleidiai-qmx)
           target_compile_definitions(onnxruntime_mlas PRIVATE ENABLE_QMX_KERNELS=1)
@@ -401,6 +431,13 @@ function(setup_kleidiai)
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+    if(onnxruntime_KLEIDIAI_OPS_AVAILABLE)
+      install(TARGETS kleidiai_ops EXPORT ${PROJECT_NAME}Targets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+    endif()
   endif()
 
   if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)

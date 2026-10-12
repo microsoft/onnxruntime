@@ -254,6 +254,47 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     );
 
+// Experimental KleidiAI operator API adapters. Packed buffers created by
+// these functions contain the selected kernel configuration and cannot be
+// consumed by the regular MLAS or legacy KleidiAI paths.
+size_t
+    MLASCALL
+    MlasGemmPackBSizeKleidiAIOps(
+        CBLAS_TRANSPOSE TransA,
+        CBLAS_TRANSPOSE TransB,
+        size_t N,
+        size_t K
+    );
+
+bool
+    MLASCALL
+    MlasGemmPackBKleidiAIOps(
+        CBLAS_TRANSPOSE TransA,
+        CBLAS_TRANSPOSE TransB,
+        size_t N,
+        size_t K,
+        const float* B,
+        size_t ldb,
+        void* PackedB
+    );
+
+bool
+    MLASCALL
+    MlasGemmBatchKleidiAIOps(
+        CBLAS_TRANSPOSE TransA,
+        CBLAS_TRANSPOSE TransB,
+        size_t M,
+        size_t N,
+        size_t K,
+        const MLAS_SGEMM_DATA_PARAMS* Data,
+        size_t BatchSize,
+        MLAS_THREADPOOL* ThreadPool
+    );
+
+bool
+    MLASCALL
+    MlasGemmPackedBIsKleidiAIOps(const void* PackedB);
+
 #if defined(MLAS_SBGEMM_AVAILABLE)
 size_t
 MLASCALL
