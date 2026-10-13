@@ -238,6 +238,51 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
 
 #ifndef DISABLE_CONTRIB_OPS
 
+TEST(NchwcOptimizerTests, ConvWithZeroOutputChannelsIsNotTransformed) {
+  for (bool no_bias : {false, true}) {
+    SCOPED_TRACE(no_bias ? "without bias" : "with bias");
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({1, 8, 5, 5});
+      helper.AddConvNode(input_arg, helper.MakeOutput(), {0, 8, 1, 1}, no_bias);
+    };
+
+    auto check_nchwc_graph = [](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 0);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, 18);
+  }
+}
+
+TEST(NchwcOptimizerTests, ConvWithZeroInputChannelsIsNotTransformed) {
+  for (bool no_bias : {false, true}) {
+    SCOPED_TRACE(no_bias ? "without bias" : "with bias");
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({1, 0, 5, 5});
+      auto* weights_arg = helper.MakeInitializer<float>({8, 0, 1, 1}, {});
+      std::vector<NodeArg*> input_args{input_arg, weights_arg};
+      if (!no_bias) {
+        input_args.push_back(helper.Make1DInitializer<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}));
+      }
+      helper.AddNode("Conv", input_args, {helper.MakeOutput()});
+    };
+
+    auto check_nchwc_graph = [](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 0);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, 18);
+  }
+}
+
 TEST(NchwcOptimizerTests, BinaryInputsWithUnexpectedRankAreNotTransformed) {
   if (MlasNchwcGetBlockSize() <= 1) {
     return;
