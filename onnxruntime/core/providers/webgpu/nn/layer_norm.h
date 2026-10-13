@@ -12,13 +12,15 @@ namespace webgpu {
 class LayerNormProgram final : public Program<LayerNormProgram> {
  public:
   LayerNormProgram(bool has_bias, bool simplified, bool has_mean_output,
-                   bool has_inv_std_dev_output, bool split_norm_dim = false)
+                   bool has_inv_std_dev_output, bool split_norm_dim = false,
+                   bool fp32_normalization = false)
       : Program{"LayerNorm"},
         has_bias_{has_bias},
         simplified_{simplified},
         has_mean_output_{has_mean_output},
         has_inv_std_dev_output_{has_inv_std_dev_output},
-        split_norm_dim_{split_norm_dim} {}
+        split_norm_dim_{split_norm_dim},
+        fp32_normalization_{fp32_normalization} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -34,6 +36,7 @@ class LayerNormProgram final : public Program<LayerNormProgram> {
   bool has_mean_output_;
   bool has_inv_std_dev_output_;
   bool split_norm_dim_;
+  bool fp32_normalization_;
 };
 
 template <bool simplified>
@@ -60,6 +63,7 @@ class LayerNorm final : public WebGpuKernel {
 // (uniform variables, components, split_norm_dim heuristic, workgroup sizing) so callers
 // other than the LayerNorm kernel (e.g. fused MatMulNBits ops) do not need to duplicate it.
 // `bias`, `mean` and `inv_std_dev` may be nullptr.
+// `fp32_normalization` keeps normalization and affine arithmetic in f32 until the final output cast.
 Status RunLayerNormProgram(ComputeContext& context,
                            const Tensor* x,
                            const Tensor* scale,
@@ -70,7 +74,8 @@ Status RunLayerNormProgram(ComputeContext& context,
                            bool simplified,
                            Tensor* y,
                            Tensor* mean,
-                           Tensor* inv_std_dev);
+                           Tensor* inv_std_dev,
+                           bool fp32_normalization = false);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

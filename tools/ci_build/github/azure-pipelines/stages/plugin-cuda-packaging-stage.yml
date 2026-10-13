@@ -275,7 +275,7 @@ stages:
         - job: CreateZipPackages
           displayName: 'Create Foundry Local CUDA Plugin-EP Zip Packages'
           pool:
-            name: 'onnxruntime-Win-CPU-VS2022-Latest'
+            name: onnxruntime-Win-CPU-2022
             os: windows
           templateContext:
             outputs:

@@ -7,6 +7,8 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -27,6 +29,156 @@ const onnxruntime::RunOptions run_options = []() {
 const constexpr auto run_with_tunable_op = &run_options;
 
 }  // namespace
+
+TEST(MathOpTest, MatMulPackedFp16LongReductionUsesFloat32Accumulator) {
+  ConfigOptions provider_options;
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+
+  constexpr int64_t M = 3;
+  constexpr int64_t K = 900;
+  constexpr int64_t N = 4;
+  const MLFloat16 value{0.1f};
+  const MLFloat16 expected{value.ToFloat() * value.ToFloat() * static_cast<float>(K)};
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  OpTester test("MatMul", 14);
+  test.AddInput<MLFloat16>("A", {M, K}, std::vector<MLFloat16>(M * K, value));
+  test.AddInput<MLFloat16>("B", {K, N}, std::vector<MLFloat16>(K * N, value), /*is_initializer=*/true);
+  test.AddOutput<MLFloat16>("Y", {M, N}, std::vector<MLFloat16>(M * N, expected));
+  test.SetOutputAbsErr("Y", 0.01f);
+  test.Config(session_options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+
+TEST(MathOpTest, MatMulIntelEligibleFp16LongReductionCancellation) {
+  ConfigOptions provider_options;
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+
+  constexpr int64_t rows = 64;
+  constexpr int64_t reduction_size = 1024;
+  constexpr int64_t output_columns = 512;
+  std::vector<MLFloat16> weights(reduction_size * output_columns);
+  for (int64_t reduction_index = 0; reduction_index < reduction_size; ++reduction_index) {
+    const float value = reduction_index < reduction_size / 2 ? 512.0f : -512.0f;
+    for (int64_t column = 0; column < output_columns; ++column) {
+      weights[reduction_index * output_columns + column] = MLFloat16(value);
+    }
+  }
+  for (int64_t column = 0; column < output_columns; ++column) {
+    weights[column] = MLFloat16(513.0f);
+  }
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  session_options.session_log_severity_level = 0;
+  session_options.session_log_verbosity_level = 1;
+
+  OpTester test("MatMul", 14);
+  test.AddInput<MLFloat16>("A", {rows, reduction_size},
+                           std::vector<MLFloat16>(rows * reduction_size, MLFloat16(1.0f)));
+  test.AddInput<MLFloat16>("B", {reduction_size, output_columns}, weights, true);
+  test.AddOutput<MLFloat16>("Y", {rows, output_columns},
+                            std::vector<MLFloat16>(rows * output_columns, MLFloat16(1.0f)));
+  test.Config(session_options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+
+TEST(MathOpTest, MatMulPackedFp16SplitKEligibleCancellationKeepsFloat32Precision) {
+  constexpr int64_t rows = 3;
+  constexpr int64_t reduction_size = 1028;
+  constexpr int64_t output_columns = 4;
+  constexpr int64_t split_size = 256;
+  std::vector<MLFloat16> weights(reduction_size * output_columns, MLFloat16(0.0f));
+  for (int64_t reduction_index = 0; reduction_index < split_size; ++reduction_index) {
+    for (int64_t column = 0; column < output_columns; ++column) {
+      weights[reduction_index * output_columns + column] = MLFloat16(512.0f);
+      weights[(reduction_index + split_size) * output_columns + column] = MLFloat16(-512.0f);
+    }
+  }
+  for (int64_t column = 0; column < output_columns; ++column) {
+    weights[(reduction_size - 1) * output_columns + column] = MLFloat16(1.0f);
+  }
+
+  for (const bool deterministic : {false, true}) {
+    for (const int64_t batch_size : {1, 2}) {
+      for (const bool batched_weights : {false, true}) {
+        SCOPED_TRACE(deterministic);
+        SCOPED_TRACE(batch_size);
+        SCOPED_TRACE(batched_weights);
+        ConfigOptions provider_options;
+        ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1"));
+        auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
+        if (!webgpu_ep) {
+          GTEST_SKIP() << "WebGPU execution provider is not available";
+        }
+
+        std::vector<int64_t> a_shape{rows, reduction_size};
+        std::vector<int64_t> b_shape{reduction_size, output_columns};
+        std::vector<int64_t> y_shape{rows, output_columns};
+        if (batch_size > 1 || batched_weights) {
+          a_shape.insert(a_shape.begin(), batch_size);
+          y_shape.insert(y_shape.begin(), batch_size);
+        }
+        std::vector<MLFloat16> batched_b = weights;
+        if (batched_weights) {
+          b_shape.insert(b_shape.begin(), batch_size);
+          for (int64_t batch = 1; batch < batch_size; ++batch) {
+            batched_b.insert(batched_b.end(), weights.begin(), weights.end());
+          }
+        }
+
+        SessionOptions session_options;
+        session_options.use_deterministic_compute = deterministic;
+        ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+        OpTester test("MatMul", 14);
+        test.AddInput<MLFloat16>("A", a_shape,
+                                 std::vector<MLFloat16>(batch_size * rows * reduction_size, MLFloat16(1.0f)));
+        test.AddInput<MLFloat16>("B", b_shape, batched_b);
+        test.AddOutput<MLFloat16>("Y", y_shape,
+                                  std::vector<MLFloat16>(batch_size * rows * output_columns, MLFloat16(1.0f)));
+        test.Config(session_options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+      }
+    }
+  }
+}
+
+TEST(MathOpTest, MatMulPackedScalarFp16LongReductionUsesFloat32Accumulator) {
+  for (const auto& dimensions : {std::pair<int64_t, int64_t>{895, 4}, {896, 3}}) {
+    const auto [reduction_size, output_columns] = dimensions;
+    SCOPED_TRACE(reduction_size);
+    SCOPED_TRACE(output_columns);
+    ConfigOptions provider_options;
+    ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1"));
+    auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
+    if (!webgpu_ep) {
+      GTEST_SKIP() << "WebGPU execution provider is not available";
+    }
+
+    constexpr int64_t rows = 3;
+    const MLFloat16 value{0.1f};
+    const MLFloat16 expected{value.ToFloat() * value.ToFloat() * static_cast<float>(reduction_size)};
+
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+    OpTester test("MatMul", 14);
+    test.AddInput<MLFloat16>("A", {rows, reduction_size}, std::vector<MLFloat16>(rows * reduction_size, value));
+    test.AddInput<MLFloat16>("B", {reduction_size, output_columns},
+                             std::vector<MLFloat16>(reduction_size * output_columns, value));
+    test.AddOutput<MLFloat16>("Y", {rows, output_columns}, std::vector<MLFloat16>(rows * output_columns, expected));
+    test.SetOutputAbsErr("Y", 0.01f);
+    test.Config(session_options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+  }
+}
 
 // f16 MatMul cases that exercise the Intel 8x16x16 subgroup-matrix impl.
 // The host picks the tile shape adaptively (TileM in {8,16,32,64}, TileN in

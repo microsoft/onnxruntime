@@ -151,8 +151,8 @@ def run_subprocess(
 
 def get_onnx_backend_test_environment(_use_cuda):
     return {
-        "ALLOW_RELEASED_ONNX_OPSET_ONLY": "0",
-        "ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS": "1",
+        "ALLOW_RELEASED_ONNX_OPSET_ONLY": "1",
+        "ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS": "0",
     }
 
 
@@ -275,7 +275,7 @@ def generate_vcpkg_install_options(build_dir, args):
         vcpkg_install_options.append("--x-feature=webnn-ep")
     if args.use_xnnpack:
         vcpkg_install_options.append("--x-feature=xnnpack-ep")
-    if args.use_telemetry and not is_windows() and not args.android and not args.build_wasm:
+    if args.use_telemetry and not args.use_windows_telemetry and not args.android and not args.build_wasm:
         vcpkg_install_options.append("--x-feature=telemetry")
     overlay_triplets_dir = None
 
@@ -469,16 +469,18 @@ def generate_build_tree(
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
     disable_string_type = "string" in types_to_disable
-
     # VitisAI and OpenVINO providers currently only support the full protobuf option. Resolve this once: the
     # vcpkg triplets (which decide how the ONNX port is built) and the CMake configure must agree, otherwise
     # ONNX and ONNX Runtime end up with different protobuf runtimes in the same binary.
     use_full_protobuf = bool(
         args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc or args.enable_generic_interface
     )
+    # Select 1DS by default, including on Windows; TraceLogging requires explicit opt-in.
+    telemetry_backend = "WINDOWS" if args.use_windows_telemetry else "1DS"
 
-    # Telemetry uses ETW on Windows and 1DS on other supported native platforms.
     cmake_args.append("-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"))
+    cmake_args.append("-Donnxruntime_TELEMETRY_BACKEND=" + telemetry_backend)
+    cmake_args.append("-Donnxruntime_USE_WINDOWS_TELEMETRY=" + ("ON" if args.use_windows_telemetry else "OFF"))
     if is_windows():
         cmake_args += [
             "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
@@ -582,6 +584,10 @@ def generate_build_tree(
         "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
         "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
+        # The WebGPU EP library kind selects these. Emit them unconditionally, including the OFF case, so that
+        # reusing a build directory cannot leak a previous build's setting in via the CMake cache.
+        "-Donnxruntime_USE_EP_API_ADAPTERS=" + ("ON" if args.use_webgpu in ("shared_lib", "static_plugin") else "OFF"),
+        "-Donnxruntime_WEBGPU_STATIC_PLUGIN=" + ("ON" if args.use_webgpu == "static_plugin" else "OFF"),
         "-Donnxruntime_USE_EXTERNAL_DAWN=" + ("ON" if args.use_external_dawn else "OFF"),
         "-DDAWN_USE_AGILITY_SDK=" + ("ON" if args.use_dawn_agility_sdk else "OFF"),
         # Training related flags
@@ -998,7 +1004,6 @@ def generate_build_tree(
                 )
     elif args.use_webgpu == "shared_lib":
         # Shared library build (plugin EP)
-        cmake_args += ["-Donnxruntime_USE_EP_API_ADAPTERS=ON"]
         if args.build_wasm:
             raise BuildError("Only static library build of WebGPU EP is supported for WebAssembly build.")
 
@@ -1930,9 +1935,31 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     dll_path=dll_path,
                     python_path=python_path,
                 )
+            elif not args.skip_pip_install and args.use_cuda and is_linux() and not args.disable_contrib_ops:
+                # CUDA weight-packer parity tests also run without the transformers suite.
+                run_subprocess(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "install",
+                        "torch==2.10.0",
+                        "--index-url",
+                        "https://download.pytorch.org/whl/cpu",
+                    ],
+                    cwd=cwd,
+                    dll_path=dll_path,
+                    python_path=python_path,
+                )
 
             run_subprocess(
                 [sys.executable, "onnxruntime_test_python.py"], cwd=cwd, dll_path=dll_path, python_path=python_path
+            )
+            run_subprocess(
+                [sys.executable, "onnxruntime_test_python_fpa_intb_tune.py"],
+                cwd=cwd,
+                dll_path=dll_path,
+                python_path=python_path,
             )
 
             if not args.disable_contrib_ops:
@@ -1973,6 +2000,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 run_subprocess([sys.executable, "onnxruntime_test_python_iobinding.py"], cwd=cwd, dll_path=dll_path)
 
             if args.use_cuda:
+                log.info("Testing CUDA kernel execution")
+                run_subprocess([sys.executable, "onnxruntime_test_python_cuda_kernel.py"], cwd=cwd, dll_path=dll_path)
                 log.info("Testing CUDA Graph feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cudagraph.py"], cwd=cwd, dll_path=dll_path)
                 log.info("Testing running inference concurrently")

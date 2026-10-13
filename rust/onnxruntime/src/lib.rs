@@ -181,7 +181,7 @@ pub mod session;
 pub mod tensor;
 
 // Re-export
-pub use error::{OrtApiError, OrtError, Result};
+pub use error::{EpContextDataCallbackError, OrtApiError, OrtError, Result};
 use sys::OnnxEnumInt;
 
 // Re-export ndarray as it's part of the public API anyway
@@ -341,7 +341,7 @@ pub enum GraphOptimizationLevel {
 
 impl From<GraphOptimizationLevel> for sys::GraphOptimizationLevel {
     fn from(val: GraphOptimizationLevel) -> Self {
-        use GraphOptimizationLevel::{All, Basic, DisableAll, Extended};
+        use GraphOptimizationLevel::{All, Basic, DisableAll, Extended, Layout};
         match val {
             DisableAll => sys::GraphOptimizationLevel::ORT_DISABLE_ALL,
             Basic => sys::GraphOptimizationLevel::ORT_ENABLE_BASIC,
@@ -354,7 +354,7 @@ impl From<GraphOptimizationLevel> for sys::GraphOptimizationLevel {
 
 // FIXME: Use https://docs.rs/bindgen/0.54.1/bindgen/struct.Builder.html#method.rustified_enum
 // FIXME: Add tests to cover the commented out types
-/// Enum mapping ONNX Runtime's supported tensor types
+/// The subset of ONNX Runtime tensor types supported by this binding.
 #[derive(Debug)]
 #[cfg_attr(not(windows), repr(u32))]
 #[cfg_attr(windows, repr(i32))]
@@ -451,6 +451,8 @@ mod tensor_element_data_type_tests {
         for value in [
             sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL,
             sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3,
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2,
         ] {
             assert!(matches!(
                 TensorElementDataType::try_from(value),

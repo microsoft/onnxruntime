@@ -75,7 +75,10 @@ add_library(
   ${libPath}
   src/main/cpp/cpp-adapter.cpp
   ../cpp/JsiMain.cpp
+  ../cpp/EpContextDataReadCallback.cpp
+  ../cpp/EpContextDataReadPolicy.cpp
   ../cpp/InferenceSessionHostObject.cpp
+  ../cpp/LoadModelArgumentPolicy.cpp
   ../cpp/JsiUtils.cpp
   ../cpp/SessionUtils.cpp
   ../cpp/TensorUtils.cpp)
