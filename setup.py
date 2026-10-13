@@ -443,6 +443,14 @@ elif platform.system() == "Darwin":
     libs.extend(["libonnxruntime_providers_vitisai.dylib"])
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.dylib"])
+elif platform.system() == "FreeBSD":
+    libs = [
+        "onnxruntime_pybind11_state.so",
+        "libonnxruntime_providers_shared.so",
+        "libonnxruntime.so*",
+    ]
+    if nightly_build:
+        libs.extend(["libonnxruntime_pywrapper.so"])
 else:
     libs = [
         "onnxruntime_pybind11_state.pyd",
