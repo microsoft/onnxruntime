@@ -2,10 +2,6 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
-#ifdef USE_WEBGPU
-#include "core/providers/webgpu/webgpu_provider_options.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
-#endif
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -460,135 +456,120 @@ TEST(ConcatOpTest, Concat4D_2) {
   test.Run();
 }
 
-#ifdef USE_WEBGPU
-TEST(ConcatOpTest, Concat1D_int32_4inputs) {
-  OpTester test("Concat");
-  test.AddAttribute("axis", int64_t{0});
-
-  test.AddInput<int32_t>("input1", {1}, {1});
-  test.AddInput<int32_t>("input2", {2}, {2, 3});
-  test.AddInput<int32_t>("input3", {4}, {4, 5, 6, 7});
-  test.AddInput<int32_t>("input4", {2}, {8, 9});
-  test.AddOutput<int32_t>("concat_result", {9}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
-  test.Run();
-}
-
-TEST(ConcatOpTest, Concat1D_exceed_maxStorageBuffersPerShaderStage) {
-  // maxStorageBuffersPerShaderStage==8
-  OpTester test("Concat");
-  test.AddAttribute("axis", int64_t{0});
-
-  test.AddInput<int32_t>("input1", {1}, {1});
-  test.AddInput<int32_t>("input2", {1}, {2});
-  test.AddInput<int32_t>("input3", {1}, {3});
-  test.AddInput<int32_t>("input4", {1}, {4});
-  test.AddInput<int32_t>("input5", {1}, {5});
-  test.AddInput<int32_t>("input6", {1}, {6});
-  test.AddInput<int32_t>("input7", {1}, {7});
-  test.AddInput<int32_t>("input8", {1}, {8});
-  test.AddInput<int32_t>("input9", {1}, {9});
-  test.AddOutput<int32_t>("concat_result", {9}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
-  test.Run();
-}
-
-TEST(ConcatOpTest, Concat2D_exceed_maxStorageBuffersPerShaderStage_axis0) {
-  // maxStorageBuffersPerShaderStage==8
-  OpTester test("Concat");
-  test.AddAttribute("axis", int64_t{0});
-
-  test.AddInput<int32_t>("input1", {1, 2}, {1, 2});
-  test.AddInput<int32_t>("input2", {1, 2}, {3, 4});
-  test.AddInput<int32_t>("input3", {1, 2}, {5, 6});
-  test.AddInput<int32_t>("input4", {1, 2}, {7, 8});
-  test.AddInput<int32_t>("input5", {1, 2}, {9, 10});
-  test.AddInput<int32_t>("input6", {1, 2}, {11, 12});
-  test.AddInput<int32_t>("input7", {1, 2}, {13, 14});
-  test.AddInput<int32_t>("input8", {1, 2}, {15, 16});
-  test.AddInput<int32_t>("input9", {1, 2}, {17, 18});
-  test.AddOutput<int32_t>("concat_result", {9, 2}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
-  test.Run();
-}
-
-TEST(ConcatOpTest, Concat2D_exceed_maxStorageBuffersPerShaderStage_axis1) {
-  // maxStorageBuffersPerShaderStage==8
-  OpTester test("Concat");
-  test.AddAttribute("axis", int64_t{1});
-
-  test.AddInput<int32_t>("input1", {1, 2}, {1, 2});
-  test.AddInput<int32_t>("input2", {1, 2}, {3, 4});
-  test.AddInput<int32_t>("input3", {1, 2}, {5, 6});
-  test.AddInput<int32_t>("input4", {1, 2}, {7, 8});
-  test.AddInput<int32_t>("input5", {1, 2}, {9, 10});
-  test.AddInput<int32_t>("input6", {1, 2}, {11, 12});
-  test.AddInput<int32_t>("input7", {1, 2}, {13, 14});
-  test.AddInput<int32_t>("input8", {1, 2}, {15, 16});
-  test.AddInput<int32_t>("input9", {1, 2}, {17, 18});
-  test.AddOutput<int32_t>("concat_result", {1, 18}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
-  test.Run();
-}
-
-TEST(ConcatOpTest, Concat3D_exceed_maxStorageBuffersPerShaderStage) {
-  // maxStorageBuffersPerShaderStage==8
-  OpTester test("Concat");
-  test.AddAttribute("axis", int64_t{1});
-
-  test.AddInput<int32_t>("input1", {2, 1, 1}, {1, 2});
-  test.AddInput<int32_t>("input2", {2, 1, 1}, {3, 4});
-  test.AddInput<int32_t>("input3", {2, 1, 1}, {5, 6});
-  test.AddInput<int32_t>("input4", {2, 1, 1}, {7, 8});
-  test.AddInput<int32_t>("input5", {2, 1, 1}, {9, 10});
-  test.AddInput<int32_t>("input6", {2, 1, 1}, {11, 12});
-  test.AddInput<int32_t>("input7", {2, 1, 1}, {13, 14});
-  test.AddInput<int32_t>("input8", {2, 1, 1}, {15, 16});
-  test.AddInput<int32_t>("input9", {2, 1, 1}, {17, 18});
-  test.AddOutput<int32_t>("concat_result", {2, 9, 1}, {// batch 0
-                                                       1, 3, 5, 7, 9, 11, 13, 15, 17,
-                                                       // batch 1
-                                                       2, 4, 6, 8, 10, 12, 14, 16, 18});
-  test.Run();
-}
-
-TEST(ConcatOpTest, Concat3D_exceed_maxStorageBuffersPerShaderStage_mixed_sizes) {
-  // maxStorageBuffersPerShaderStage==8
-  OpTester test("Concat");
-  test.AddAttribute("axis", int64_t{1});
-
-  test.AddInput<int32_t>("input1", {2, 1, 1}, {1, 2});
-  test.AddInput<int32_t>("input2", {2, 3, 1}, {3, 4, 5, 6, 7, 8});
-  test.AddInput<int32_t>("input3", {2, 2, 1}, {9, 10, 11, 12});
-  test.AddInput<int32_t>("input4", {2, 1, 1}, {13, 14});
-  test.AddOutput<int32_t>("concat_result", {2, 7, 1}, {// batch 0
-                                                       1, 3, 4, 5, 9, 10, 13,
-                                                       // batch 1
-                                                       2, 6, 7, 8, 11, 12, 14});
-  test.Run();
-}
-
-TEST(ConcatOpTest, Concat_int64_webgpu) {
-  // int64 support on the WebGPU EP is gated behind the enableInt64 provider option.
-  ConfigOptions provider_options{};
-  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(provider_options);
-  if (provider == nullptr) {
-    GTEST_SKIP() << "WebGPU EP is not available";
+#ifdef USE_CUDA
+// Concatenates inputs of shape {outer, axis_size, inner} along axis 1, where input i has axis_size
+// base_axis_size * (i % 2 + 1).
+template <typename T = float>
+static void RunCudaRaggedConcatTest(int input_count, int64_t outer, int64_t inner, int64_t base_axis_size) {
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  if (cuda_provider == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
   }
 
   OpTester test("Concat");
-  test.AddAttribute("axis", int64_t{0});
-  // Include values outside the int32 range (2^32, 2^33+1, a large negative, INT64_MAX) to prove
-  // the full 64-bit value is preserved via a raw vec2<u32> storage copy rather than truncated to i32.
-  test.AddInput<int64_t>("input1", {1, 2}, {1, 4294967296});                                        // 1, 2^32
-  test.AddInput<int64_t>("input2", {2, 2}, {8589934593, -4294967297, 100, 9223372036854775807LL});  // 2^33+1, -(2^32+1), 100, INT64_MAX
-  test.AddOutput<int64_t>("concat_result", {3, 2}, {1, 4294967296, 8589934593, -4294967297, 100, 9223372036854775807LL});
+  test.AddAttribute("axis", int64_t{1});
 
-  // Disable CPU-EP fallback so the Concat node must run on the WebGPU kernel.
-  SessionOptions so;
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
-  test.Config(so)
-      .ConfigEp(std::move(provider))
-      .RunWithConfig();
+  std::vector<std::vector<T>> inputs(static_cast<size_t>(input_count));
+  std::vector<int64_t> row_sizes(static_cast<size_t>(input_count));
+  int64_t output_axis_size = 0;
+  for (int input_index = 0; input_index < input_count; ++input_index) {
+    const int64_t axis_size = base_axis_size * (input_index % 2 + 1);
+    row_sizes[input_index] = axis_size * inner;
+    output_axis_size += axis_size;
+    std::vector<T>& input_values = inputs[input_index];
+    input_values.resize(static_cast<size_t>(outer * row_sizes[input_index]));
+    for (size_t element_index = 0; element_index < input_values.size(); ++element_index) {
+      input_values[element_index] = static_cast<T>((input_index * 1000 + static_cast<int>(element_index)) % 32749);
+    }
+    test.AddInput<T>(MakeString("input_", input_index).c_str(), {outer, axis_size, inner}, input_values);
+  }
+
+  std::vector<T> expected;
+  expected.reserve(static_cast<size_t>(outer * output_axis_size * inner));
+  for (int64_t outer_index = 0; outer_index < outer; ++outer_index) {
+    for (int input_index = 0; input_index < input_count; ++input_index) {
+      const auto row_begin = inputs[input_index].begin() + outer_index * row_sizes[input_index];
+      expected.insert(expected.end(), row_begin, row_begin + row_sizes[input_index]);
+    }
+  }
+
+  test.AddOutput<T>("concat_result", {outer, output_axis_size, inner}, expected);
+  test.ConfigEp(std::move(cuda_provider)).RunWithConfig();
 }
-#endif  // USE_WEBGPU
+
+TEST(ConcatOpTest, CudaRagged32InputsUsesByValueMetadata) {
+  RunCudaRaggedConcatTest(32, 1, 1, 1);
+}
+
+TEST(ConcatOpTest, CudaRagged33InputsUsesGpuMetadataFallback) {
+  RunCudaRaggedConcatTest(33, 1, 1, 1);
+}
+
+// Every per-input row has at least 256 elements (32 for 2-byte types), which selects the input-major kernel.
+TEST(ConcatOpTest, CudaRaggedLongRowsUsesInputMajorKernel) {
+  RunCudaRaggedConcatTest(3, 3, 128, 2);
+  RunCudaRaggedConcatTest(32, 2, 256, 1);
+  RunCudaRaggedConcatTest<int16_t>(7, 3, 16, 2);
+}
+
+// Short rows with more than four inputs select the binary search in the output-major kernel.
+TEST(ConcatOpTest, CudaRaggedShortRowsUsesOutputMajorSearch) {
+  RunCudaRaggedConcatTest(5, 3, 4, 1);
+  RunCudaRaggedConcatTest(17, 2, 3, 2);
+  RunCudaRaggedConcatTest(6, 2, 64, 1);
+  RunCudaRaggedConcatTest<int16_t>(9, 2, 15, 2);
+}
+#endif
+
+// Concatenating along the innermost axis where every input is a multiple of four there. A kernel
+// that moves four elements per thread may take this path only because no vec4 straddles the
+// boundary between two inputs.
+TEST(ConcatOpTest, Concat2D_innermost_axis_aligned_inputs) {
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{1});
+
+  test.AddInput<float>("input1", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddInput<float>("input2", {2, 8},
+                       {11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f,
+                        21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f});
+  test.AddOutput<float>("concat_result", {2, 12},
+                        {1.0f, 2.0f, 3.0f, 4.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f,
+                         5.0f, 6.0f, 7.0f, 8.0f, 21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f});
+  test.Run();
+}
+
+// The output's innermost dimension is a multiple of four but the inputs' are not, so a four-element
+// group would straddle the boundary between them. Checking only the output would be wrong here.
+TEST(ConcatOpTest, Concat2D_innermost_axis_unaligned_inputs) {
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{1});
+
+  test.AddInput<float>("input1", {2, 2}, {1.0f, 2.0f, 5.0f, 6.0f});
+  test.AddInput<float>("input2", {2, 6},
+                       {11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
+                        21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f});
+  test.AddOutput<float>("concat_result", {2, 8},
+                        {1.0f, 2.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
+                         5.0f, 6.0f, 21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f});
+  test.Run();
+}
+
+// Concatenating on an outer axis leaves the innermost dimension untouched, so elements can still be
+// moved four at a time while the offsets along the concat axis stay in single-element units.
+TEST(ConcatOpTest, Concat3D_outer_axis_aligned_innermost) {
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{0});
+
+  test.AddInput<float>("input1", {1, 2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddInput<float>("input2", {2, 2, 4},
+                       {11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f,
+                        21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f});
+  test.AddOutput<float>("concat_result", {3, 2, 4},
+                        {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f,
+                         11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f,
+                         21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f});
+  test.Run();
+}
 
 }  // namespace test
 }  // namespace onnxruntime

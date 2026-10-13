@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/inference_session.h"
+#include "core/framework/resource_accountant.h"
 #include "core/graph/model.h"
 
 #include "test/unittest_util/framework_test_utils.h"
@@ -292,6 +293,125 @@ TEST_F(GraphTransformationTests, BiasSoftmaxDropoutFusion) {
   RunBiasSoftmaxDropoutFusionTest<MLFloat16>(true, true, 14, *logger_);
 }
 
+TEST_F(GraphTransformationTests, BiasSoftmaxDropoutFusionTransfersWorkspaceReservations) {
+  constexpr size_t kBiasSoftmaxReservationBytes = 11;
+  constexpr size_t kDropoutReservationBytes = 13;
+  constexpr size_t kDropoutGradReservationBytes = 17;
+  constexpr size_t kSoftmaxGradReservationBytes = 19;
+  NodeWorkspaceReservationMap reservations;
+
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3, 2, 3, 3, 3}});
+    auto* bias_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+    auto* ratio_arg = builder.MakeInitializer<float>({}, {0.5f});
+    auto* training_mode_arg =
+        builder.MakeInitializerBool({}, std::vector<bool>{true});
+    auto* dy_arg = builder.MakeInput<float>({{2, 3, 3, 3, 2, 3, 3, 3}});
+    auto* bias_softmax_out = builder.MakeIntermediate();
+    auto* dropout_mask_out = builder.MakeIntermediate();
+    auto* dropout_grad_out = builder.MakeIntermediate();
+    auto* dropout_out = builder.MakeOutput();
+    auto* dx_out = builder.MakeOutput();
+
+    Node& bias_softmax_node =
+        builder.AddNode("BiasSoftmax", {input_arg, bias_arg}, {bias_softmax_out}, kMSDomain);
+    bias_softmax_node.AddAttribute("axis", static_cast<int64_t>(6));
+    bias_softmax_node.AddAttribute("is_inner_broadcast", static_cast<int64_t>(0));
+    Node& dropout_node =
+        builder.AddNode("Dropout",
+                        {bias_softmax_out, ratio_arg, training_mode_arg},
+                        {dropout_out, dropout_mask_out},
+                        kOnnxDomain);
+    dropout_node.AddAttribute("seed", static_cast<int64_t>(42));
+    builder.AddNode(
+        "DropoutGrad",
+        {dy_arg, dropout_mask_out, ratio_arg, training_mode_arg},
+        {dropout_grad_out},
+        kMSDomain);
+    Node& softmax_grad_node =
+        builder.AddNode("SoftmaxGrad",
+                        {dropout_grad_out, bias_softmax_out},
+                        {dx_out},
+                        kMSDomain);
+    softmax_grad_node.AddAttribute("axis", static_cast<int64_t>(6));
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    for (auto& node : graph.Nodes()) {
+      size_t reservation_bytes = 0;
+      if (node.OpType() == "BiasSoftmax") {
+        reservation_bytes = kBiasSoftmaxReservationBytes;
+      } else if (node.OpType() == "Dropout") {
+        reservation_bytes = kDropoutReservationBytes;
+      } else if (node.OpType() == "DropoutGrad") {
+        reservation_bytes = kDropoutGradReservationBytes;
+      } else if (node.OpType() == "SoftmaxGrad") {
+        reservation_bytes = kSoftmaxGradReservationBytes;
+      } else {
+        continue;
+      }
+
+      node.SetExecutionProviderType(kCudaExecutionProvider);
+      reservations.insert_or_assign(
+          node.Index(),
+          WorkspaceEstimateSelection{
+              reservation_bytes, WorkspaceEstimateSource::kEstimator});
+    }
+
+    TEST_RETURN_IF_NOT(reservations.size() == 4);
+    graph.SetNodeReplacementCallback(
+        [&reservations](const Graph&,
+                        gsl::span<const NodeIndex> source_node_indices,
+                        NodeIndex destination_node_index) {
+          ConsolidateWorkspaceReservations(
+              reservations, source_node_indices, destination_node_index);
+        });
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    graph.SetNodeReplacementCallback({});
+
+    const Node* fused_forward_node = nullptr;
+    const Node* fused_gradient_node = nullptr;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "BiasSoftmaxDropout") {
+        fused_forward_node = &node;
+      } else if (node.OpType() == "SoftmaxDropoutGrad") {
+        fused_gradient_node = &node;
+      }
+    }
+
+    TEST_RETURN_IF_NOT(fused_forward_node != nullptr);
+    TEST_RETURN_IF_NOT(fused_gradient_node != nullptr);
+    TEST_RETURN_IF_NOT(reservations.size() == 2);
+
+    const auto forward_it = reservations.find(fused_forward_node->Index());
+    const auto gradient_it = reservations.find(fused_gradient_node->Index());
+    TEST_RETURN_IF_NOT(forward_it != reservations.end());
+    TEST_RETURN_IF_NOT(gradient_it != reservations.end());
+    TEST_RETURN_IF_NOT(
+        forward_it->second.bytes ==
+        kBiasSoftmaxReservationBytes + kDropoutReservationBytes);
+    TEST_RETURN_IF_NOT(
+        gradient_it->second.bytes ==
+        kDropoutGradReservationBytes + kSoftmaxGradReservationBytes);
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer =
+      std::make_unique<BiasSoftmaxDropoutFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case,
+      12,
+      *logger_,
+      std::move(transformer),
+      TransformerLevel::Level2,
+      1,
+      pre_graph_checker,
+      post_graph_checker));
+}
+
 template <typename T>
 void RunSceLossGradBiasFusionTest(bool has_reshape, bool is_add_op, bool is_bias_lhs_input, bool has_weight,
                                   bool has_ignore_index, const std::string& reduction, int opset_version,
@@ -392,6 +512,144 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion) {
   RunSceLossGradBiasFusionTestWrapper(12, *logger_);
   RunSceLossGradBiasFusionTestWrapper(13, *logger_);
   RunSceLossGradBiasFusionTestWrapper(14, *logger_);
+}
+
+TEST_F(GraphTransformationTests, SceLossGradBiasFusionTransfersWorkspaceReservations) {
+  constexpr size_t kSceGradReservationBytes = 11;
+  constexpr size_t kSumReservationBytes = 17;
+  constexpr size_t kReshapeReservationBytes = 23;
+
+  for (const bool has_reshape : {false, true}) {
+    SCOPED_TRACE(has_reshape);
+
+    NodeWorkspaceReservationMap reservations;
+    NodeIndex original_sce_grad_index = 0;
+    NodeIndex original_sum_index = 0;
+    NodeIndex original_reshape_index = 0;
+
+    auto build_test_case = [has_reshape](ModelTestBuilder& builder) {
+      auto* dY_arg = builder.MakeInput<float>(
+          std::optional<std::vector<int64_t>>{std::vector<int64_t>{}});
+      auto* log_prob_arg = builder.MakeInput<float>({{8, 2}});
+      auto* index_arg = builder.MakeInput<int64_t>({{8}});
+      auto* sce_grad_out = builder.MakeIntermediate();
+
+      builder
+          .AddNode(
+              "SoftmaxCrossEntropyLossInternalGrad",
+              {dY_arg, log_prob_arg, index_arg},
+              {sce_grad_out},
+              kMSDomain)
+          .AddAttribute("reduction", "sum");
+
+      auto* dx_out = builder.MakeOutput();
+      if (has_reshape) {
+        auto* shape_arg = builder.MakeInitializer<int64_t>({1}, {16});
+        auto* reshape_out = builder.MakeIntermediate<float>({{16}});
+        auto* bias_arg = builder.MakeInput<float>({{16}});
+        builder.AddNode("Reshape", {sce_grad_out, shape_arg}, {reshape_out});
+        builder.AddNode("Sum", {reshape_out, bias_arg}, {dx_out});
+      } else {
+        auto* bias_arg = builder.MakeInput<float>({{8, 2}});
+        builder.AddNode("Sum", {sce_grad_out, bias_arg}, {dx_out});
+      }
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      bool found_sce_grad = false;
+      bool found_sum = false;
+      bool found_reshape = !has_reshape;
+
+      for (auto& node : graph.Nodes()) {
+        size_t reservation_bytes = 0;
+        if (node.OpType() == "SoftmaxCrossEntropyLossInternalGrad") {
+          original_sce_grad_index = node.Index();
+          reservation_bytes = kSceGradReservationBytes;
+          found_sce_grad = true;
+        } else if (node.OpType() == "Sum") {
+          original_sum_index = node.Index();
+          reservation_bytes = kSumReservationBytes;
+          found_sum = true;
+        } else if (has_reshape && node.OpType() == "Reshape") {
+          original_reshape_index = node.Index();
+          reservation_bytes = kReshapeReservationBytes;
+          found_reshape = true;
+        } else {
+          continue;
+        }
+
+        node.SetExecutionProviderType(kCudaExecutionProvider);
+        reservations.insert_or_assign(
+            node.Index(),
+            WorkspaceEstimateSelection{
+                reservation_bytes, WorkspaceEstimateSource::kEstimator});
+      }
+
+      TEST_RETURN_IF_NOT(found_sce_grad);
+      TEST_RETURN_IF_NOT(found_sum);
+      TEST_RETURN_IF_NOT(found_reshape);
+
+      graph.SetNodeReplacementCallback(
+          [&reservations](const Graph&,
+                          gsl::span<const NodeIndex> source_node_indices,
+                          NodeIndex destination_node_index) {
+            ConsolidateWorkspaceReservations(
+                reservations, source_node_indices, destination_node_index);
+          });
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      graph.SetNodeReplacementCallback({});
+
+      const Node* fused_sce_grad_node = nullptr;
+      for (const auto& node : graph.Nodes()) {
+        if (node.OpType() == "SoftmaxCrossEntropyLossInternalGrad") {
+          fused_sce_grad_node = &node;
+          break;
+        }
+      }
+
+      TEST_RETURN_IF_NOT(fused_sce_grad_node != nullptr);
+      TEST_RETURN_IF_NOT(
+          fused_sce_grad_node->Index() != original_sce_grad_index);
+      TEST_RETURN_IF_NOT(
+          reservations.find(original_sce_grad_index) == reservations.end());
+      TEST_RETURN_IF_NOT(
+          reservations.find(original_sum_index) == reservations.end());
+
+      const auto fused_it = reservations.find(fused_sce_grad_node->Index());
+      TEST_RETURN_IF_NOT(fused_it != reservations.end());
+      TEST_RETURN_IF_NOT(
+          fused_it->second.bytes ==
+          kSceGradReservationBytes + kSumReservationBytes);
+
+      if (has_reshape) {
+        TEST_RETURN_IF_NOT(reservations.size() == 2);
+        TEST_RETURN_IF_NOT(graph.GetNode(original_reshape_index) != nullptr);
+        const auto reshape_it = reservations.find(original_reshape_index);
+        TEST_RETURN_IF_NOT(reshape_it != reservations.end());
+        TEST_RETURN_IF_NOT(
+            reshape_it->second.bytes == kReshapeReservationBytes);
+      } else {
+        TEST_RETURN_IF_NOT(reservations.size() == 1);
+      }
+
+      return Status::OK();
+    };
+
+    std::unique_ptr<GraphTransformer> transformer =
+        std::make_unique<SceLossGradBiasFusion>();
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        build_test_case,
+        14,
+        *logger_,
+        std::move(transformer),
+        TransformerLevel::Level2,
+        1,
+        pre_graph_checker,
+        post_graph_checker));
+  }
 }
 
 TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
@@ -1965,6 +2223,77 @@ TEST_F(GraphTransformationTests, TritonFusion) {
     ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
     ASSERT_TRUE(op_to_count["com.microsoft.TritonOp"] == 10);
   }
+}
+
+TEST_F(GraphTransformationTests, TritonFusionTransfersWorkspaceReservations) {
+  PathString model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  const char* config = R"(
+    {
+      "ops": {
+        "Add": { "versions": [13, 14] },
+        "Sub": { "versions": [13, 14] },
+        "Mul": { "versions": [13, 14] },
+        "Div": { "versions": [13, 14] },
+        "Cast": { "versions": [13] },
+        "Dropout": { "versions": [13] },
+        "Softmax": {
+          "versions": [13],
+          "conditions": { "axis": "-1" }
+        },
+        "LayerNormalization": {
+          "versions": [1],
+          "conditions": { "axis": "-1" }
+        }
+      },
+      "initializer": "scalar",
+      "min_nodes": 2
+    }
+  )";
+
+  NodeWorkspaceReservationMap reservations;
+  size_t expected_total_reserved_bytes = 0;
+  size_t next_reservation_bytes = 1;
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(kCudaExecutionProvider);
+    reservations.insert_or_assign(
+        node.Index(),
+        WorkspaceEstimateSelection{
+            next_reservation_bytes, WorkspaceEstimateSource::kEstimator});
+    expected_total_reserved_bytes += next_reservation_bytes;
+    ++next_reservation_bytes;
+  }
+
+  graph.SetNodeReplacementCallback(
+      [&reservations](const Graph&,
+                      gsl::span<const NodeIndex> source_node_indices,
+                      NodeIndex destination_node_index) {
+        ConsolidateWorkspaceReservations(
+            reservations, source_node_indices, destination_node_index);
+      });
+
+  std::unique_ptr<GraphTransformer> transformer =
+      std::make_unique<TritonFusion>(config);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::move(transformer), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(
+      graph, TransformerLevel::Level2, *logger_));
+  graph.SetNodeReplacementCallback({});
+
+  EXPECT_GT(CountOpsInGraph(graph)["com.microsoft.TritonOp"], 0);
+
+  size_t actual_total_reserved_bytes = 0;
+  for (const auto& [node_index, reservation] : reservations) {
+    ASSERT_NE(graph.GetNode(node_index), nullptr)
+        << "Workspace reservation was orphaned at node index " << node_index;
+    actual_total_reserved_bytes += reservation.bytes;
+  }
+
+  EXPECT_EQ(actual_total_reserved_bytes, expected_total_reserved_bytes);
 }
 #endif
 

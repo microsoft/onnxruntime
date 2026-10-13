@@ -37,6 +37,9 @@ namespace controlflow {
 class IControlFlowKernel : public OpKernel {
  public:
   explicit IControlFlowKernel(const OpKernelInfo& info) : OpKernel(info) {}
+
+  [[nodiscard]] bool IsControlFlowKernel() const final { return true; }
+
   /** Setup information that is re-used each time to execute the subgraph.
   @param session_state SessionState for graph containing the control flow node
   @param attribute_name Control flow node's attribute name that contained the subgraph

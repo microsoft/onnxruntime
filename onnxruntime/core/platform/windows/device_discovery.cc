@@ -13,6 +13,7 @@
 
 #include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
+#include "core/common/pci_vendor_ids.h"
 #include "core/platform/env.h"
 #include "core/session/abi_devices.h"
 
@@ -350,7 +351,8 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12(bool have_remote_dis
 
     // Microsoft Remote Display Adapter and Microsoft Hyper-V Video display adapters use the basic render driver
     // but don't set the DXGI_ADAPTER_FLAG_SOFTWARE flag. Filter them out by checking the vendor and device IDs.
-    const bool is_microsoft_basic_render_driver = desc.VendorId == 0x1414 && desc.DeviceId == 0x008c;
+    const bool is_microsoft_basic_render_driver =
+        desc.VendorId == pci_vendor_ids::kMicrosoft && desc.DeviceId == 0x008c;
     if ((desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0 ||
         (desc.Flags & DXGI_ADAPTER_FLAG_REMOTE) != 0 ||
         is_microsoft_basic_render_driver) {
@@ -449,7 +451,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
   }
 
   // Get all GPUs and NPUs by querying WDDM/MCDM.
-  wil::com_ptr<IDXCoreAdapterFactory> adapterFactory;
+  ComPtr<IDXCoreAdapterFactory> adapterFactory;
   if (FAILED(pfnDXCoreCreateAdapterFactory(IID_PPV_ARGS(&adapterFactory)))) {
     return device_info;
   }
@@ -468,14 +470,14 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
 
   // These attributes are not OR'd.  Have to query one at a time to get a full view.
   for (const auto& hwAttribute : allowedAttributes) {
-    wil::com_ptr<IDXCoreAdapterList> adapterList;
+    ComPtr<IDXCoreAdapterList> adapterList;
     if (FAILED(adapterFactory->CreateAdapterList(1, hwAttribute, IID_PPV_ARGS(&adapterList)))) {
       continue;
     }
 
     const uint32_t adapterCount{adapterList->GetAdapterCount()};
     for (uint32_t adapterIndex = 0; adapterIndex < adapterCount; adapterIndex++) {
-      wil::com_ptr<IDXCoreAdapter> adapter;
+      ComPtr<IDXCoreAdapter> adapter;
       if (FAILED(adapterList->GetAdapter(adapterIndex, IID_PPV_ARGS(&adapter)))) {
         continue;
       }

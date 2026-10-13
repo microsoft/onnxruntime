@@ -1,0 +1,269 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// CoreML can be built on non-Apple platforms to test model conversion. Such builds report Core ML 7 but cannot
+// execute models, even when device discovery finds GPUs. Require __APPLE__ so the factory cannot advertise those
+// GPUs. On Apple platforms, the factory accepts any discovered GPU regardless of vendor. GPU discovery currently
+// supports only Apple Silicon Macs. Support for iOS and Intel Macs remains TODO in
+// core/platform/apple/device_discovery.cc.
+#if defined(USE_COREML) && defined(__APPLE__)
+
+#include "core/session/plugin_ep/ep_factory_coreml.h"
+
+#include <algorithm>
+#include <array>
+
+#include <gsl/gsl>
+
+#include "core/common/common.h"
+#include "core/framework/error_code_helper.h"
+#include "core/framework/provider_options.h"
+#include "core/providers/coreml/coreml_provider_factory.h"
+#include "core/providers/coreml/coreml_provider_factory_creator.h"
+#include "core/providers/coreml/model/host_utils.h"
+#include "core/session/abi_devices.h"
+#include "core/session/abi_logger.h"
+#include "core/session/abi_session_options_impl.h"
+#include "core/session/plugin_ep/ep_api.h"
+#include "core/session/plugin_ep/ep_factory_internal.h"
+#include "core/session/ort_apis.h"
+
+namespace onnxruntime {
+namespace {
+
+// Returns whether the factory advertises an OrtEpDevice for the given hardware device type and Core ML version.
+// Nothing is advertised below Core ML 5 (MINIMUM_COREML_VERSION), because CoreMLExecutionProvider rejects earlier
+// versions during construction. Advertising a device there would make provider creation fail after selection
+// instead of allowing the policy to select another EP. NPU devices additionally require
+// MINIMUM_COREML_VERSION_FOR_NEURAL_ENGINE_SELECTION. CPU devices are never advertised.
+bool CanClaimDeviceType(OrtHardwareDeviceType device_type, int32_t coreml_version) {
+  if (coreml_version < MINIMUM_COREML_VERSION) {
+    return false;
+  }
+
+  switch (device_type) {
+    case OrtHardwareDeviceType::OrtHardwareDeviceType_GPU:
+      return true;
+
+    case OrtHardwareDeviceType::OrtHardwareDeviceType_NPU:
+      // The NPU is claimed only on Core ML 6 or later (iOS 16 / macOS 13): earlier Core ML has no MLComputeUnits
+      // mode that enables the Neural Engine without also enabling the GPU (CPUAndNeuralEngine requires Core ML 6),
+      // so an NPU selection could not be honored. Core ML can still use the ANE through ALL on those systems.
+      // The factory therefore does not advertise the NPU on Core ML 5 systems: iOS 15 devices with an ANE and
+      // Apple Silicon Macs running macOS 12.
+      return coreml_version >= MINIMUM_COREML_VERSION_FOR_NEURAL_ENGINE_SELECTION;
+
+    default:
+      // The CPU device is deliberately not claimed. DEFAULT and PREFER_CPU select a single preferred EP for the CPU
+      // device. The NPU- and GPU-preferring policies first select an EP for the accelerator and then use the same CPU
+      // selection as a fallback.
+      // If CoreML claimed the CPU, it would compete with the ORT CPU EP and other CPU-based EPs to be selected as the
+      // primary CPU EP.
+      // CoreML-on-CPU remains available through an explicit MLComputeUnits=CPUOnly option. Core ML may also use its
+      // internal CPU path for operations unsupported by the selected compute units.
+      return false;
+  }
+}
+
+// The factory advertises at most one NPU and one GPU (see SelectDevicesToClaim), so pointers to both the selected
+// hardware devices and the newly created OrtEpDevice instances fit in fixed-size arrays. GetSupportedDevices
+// therefore needs no dynamic allocation for local storage. CreateEpDevice reports failures through OrtStatus,
+// so GetSupportedDevices satisfies the base interface's noexcept requirement.
+constexpr size_t kMaxClaimedDevices = 2;
+
+struct ClaimedDevices {
+  std::array<const OrtHardwareDevice*, kMaxClaimedDevices> devices{};
+  size_t count = 0;
+};
+
+// Selects the hardware devices to advertise. The result contains only devices accepted by CanClaimDeviceType,
+// at most one device of each type, and no more than max_ep_devices devices in total.
+// MLComputeUnits selects device classes rather than specific physical devices, so CoreML cannot target a particular
+// GPU or NPU when multiple devices of that type exist. Apple device discovery currently reports at most one device
+// of each type. Additional same type devices are intentionally ignored.
+ClaimedDevices SelectDevicesToClaim(gsl::span<const OrtHardwareDevice* const> devices, int32_t coreml_version,
+                                    size_t max_ep_devices) {
+  ClaimedDevices selected;
+  bool npu_claimed = false;
+  bool gpu_claimed = false;
+
+  for (size_t i = 0; i < devices.size() && selected.count < max_ep_devices; ++i) {
+    const OrtHardwareDevice* device = devices[i];
+
+    // CanClaimDeviceType checks the Core ML version and excludes CPU devices.
+    if (!CanClaimDeviceType(device->type, coreml_version)) {
+      continue;
+    }
+
+    // CanClaimDeviceType accepts only NPU and GPU devices, so every accepted non-NPU device is a GPU.
+    // Only the first device of each type is selected. If CanClaimDeviceType is extended to accept another device type,
+    // update this selection logic as well.
+    const bool is_npu = device->type == OrtHardwareDeviceType::OrtHardwareDeviceType_NPU;
+    bool& claimed = is_npu ? npu_claimed : gpu_claimed;
+
+    if (claimed) {
+      continue;
+    }
+
+    claimed = true;
+
+    selected.devices[selected.count++] = device;
+  }
+
+  return selected;
+}
+
+// Validates that 'devices' contains exactly one NPU, one GPU, or one NPU plus one GPU. Otherwise, returns
+// ORT_INVALID_ARGUMENT. The CPU device is not valid because the factory does not advertise it.
+// If 'options' does not contain MLComputeUnits, derives a default from the selection:
+// CPUAndNeuralEngine for NPU, CPUAndGPU for GPU, and ALL for NPU plus GPU.
+// A caller-provided value may disable selected accelerators, as CPUOnly does, but it must not enable an
+// accelerator that was not selected. Unrecognized values are left for CoreMLOptions to validate during
+// provider creation.
+OrtStatus* ValidateDeviceSelectionAndResolveMLComputeUnits(const OrtHardwareDevice* const* devices,
+                                                           size_t num_devices, ProviderOptions& options) {
+  if (num_devices == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CoreML EP factory requires at least one device to be selected.");
+  }
+
+  if (devices == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "CoreML device list is null.");
+  }
+
+  size_t num_npu = 0;
+  size_t num_gpu = 0;
+  for (size_t i = 0; i < num_devices; ++i) {
+    if (devices[i] == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "CoreML device is null.");
+    }
+
+    switch (devices[i]->type) {
+      case OrtHardwareDeviceType::OrtHardwareDeviceType_NPU:
+        ++num_npu;
+        break;
+      case OrtHardwareDeviceType::OrtHardwareDeviceType_GPU:
+        ++num_gpu;
+        break;
+      default:
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "CoreML EP factory only supports NPU and GPU devices.");
+    }
+  }
+
+  // Reject multiple devices of the same type. Core ML's MLComputeUnits selects a device class, not a specific
+  // physical device, so the CoreML EP cannot honor a selection containing multiple NPUs or GPUs.
+  // With current device discovery, such entries can only be duplicates. Future discovery could expose multiple
+  // physical devices of one type.
+  if (num_npu > 1 || num_gpu > 1) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CoreML EP factory supports one NPU, one GPU, or one NPU plus one GPU. "
+                                 "At most one device of each type can be selected.");
+  }
+
+  // This helper does not recheck the Core ML version. CreateIExecutionProvider receives only devices previously
+  // advertised by GetSupportedDevices, which uses CanClaimDeviceType to enforce the version requirements.
+  // Therefore, a selected NPU implies Core ML 6 or later, so CPUAndNeuralEngine is available.
+  // MLComputeUnits is the only option derived from the selection. ModelFormat is not device-specific and changes
+  // only when the caller explicitly sets it.
+  const auto compute_units_it = options.find(kCoremlProviderOption_MLComputeUnits);
+  if (compute_units_it == options.end()) {
+    options[kCoremlProviderOption_MLComputeUnits] =
+        (num_npu > 0 && num_gpu > 0) ? kCoremlProviderOption_MLComputeUnits_ALL
+        : num_npu > 0                ? kCoremlProviderOption_MLComputeUnits_CPUAndNeuralEngine
+                                     : kCoremlProviderOption_MLComputeUnits_CPUAndGPU;
+    return nullptr;
+  }
+
+  // A user-provided MLComputeUnits value may disable selected accelerators (e.g. CPUOnly), but it must not enable
+  // an unselected accelerator. Otherwise, PREFER_NPU could be silently redirected to the GPU. This check only
+  // enforces compatibility with the selected devices. CoreMLOptions::ValidateAndParseProviderOption later validates
+  // the option value itself. If that method is extended to accept a new value that enables an accelerator, update
+  // the classification below accordingly.
+  const std::string& compute_units = compute_units_it->second;
+  const bool enables_npu =
+      compute_units == kCoremlProviderOption_MLComputeUnits_CPUAndNeuralEngine ||
+      compute_units == kCoremlProviderOption_MLComputeUnits_ALL;
+  const bool enables_gpu =
+      compute_units == kCoremlProviderOption_MLComputeUnits_CPUAndGPU ||
+      compute_units == kCoremlProviderOption_MLComputeUnits_ALL;
+
+  if ((enables_npu && num_npu == 0) || (enables_gpu && num_gpu == 0)) {
+    const std::string message = MakeString("MLComputeUnits value '", compute_units,
+                                           "' enables a device type that was not selected for the CoreML EP.");
+
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, message.c_str());
+  }
+
+  return nullptr;
+}
+
+}  // namespace
+
+OrtStatus* CoreMLEpFactory::GetSupportedDevices(EpFactoryInternal& ep_factory,
+                                                const OrtHardwareDevice* const* devices,
+                                                size_t num_devices,
+                                                OrtEpDevice** ep_devices,
+                                                size_t max_ep_devices,
+                                                size_t* p_num_ep_devices) noexcept {
+  const ClaimedDevices selected =
+      SelectDevicesToClaim(gsl::make_span(devices, num_devices), coreml::util::CoreMLVersion(), max_ep_devices);
+
+  // Do not attach MLComputeUnits to individual OrtEpDevice instances. Per-device defaults would assign different
+  // values to the NPU and GPU, creating a conflict when both are selected. CreateIExecutionProvider instead computes
+  // a single value from all selected devices. Any MLComputeUnits value already present in the session options was
+  // provided by the caller.
+  //
+  // Publish the OrtEpDevice instances only after all creations succeed. If a creation fails, release the devices
+  // created by earlier calls and leave ep_devices and p_num_ep_devices unchanged, following ORT's C API convention
+  // for failed calls. 'selected' contains no more than max_ep_devices entries, so publishing cannot exceed the
+  // capacity of ep_devices.
+  std::array<OrtEpDevice*, kMaxClaimedDevices> created{};
+  size_t num_created = 0;
+
+  for (size_t i = 0; i < selected.count; ++i) {
+    OrtEpDevice* ep_device = nullptr;
+    OrtStatus* status =
+        OrtExecutionProviderApi::CreateEpDevice(&ep_factory, selected.devices[i], nullptr, nullptr, &ep_device);
+    if (status != nullptr) {
+      for (size_t j = 0; j < num_created; ++j) {
+        OrtExecutionProviderApi::ReleaseEpDevice(created[j]);
+      }
+
+      return status;
+    }
+
+    created[num_created++] = ep_device;
+  }
+
+  std::copy_n(created.begin(), num_created, ep_devices);
+  *p_num_ep_devices = num_created;
+
+  return nullptr;
+}
+
+OrtStatus* CoreMLEpFactory::CreateIExecutionProvider(const OrtHardwareDevice* const* devices,
+                                                     const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
+                                                     size_t num_devices,
+                                                     const OrtSessionOptions* session_options,
+                                                     const OrtLogger* session_logger,
+                                                     std::unique_ptr<IExecutionProvider>* ep) {
+  *ep = nullptr;
+
+  ProviderOptions options = GetOptionsFromSessionOptions(session_options->value);
+
+  // OrtEpDevice instances carry no MLComputeUnits default, so any existing session option can only come from
+  // the caller. Validate the device selection, derive MLComputeUnits when absent, and reject recognized values
+  // that enable an unselected accelerator.
+  // CoreMLOptions performs the remaining option validation during provider creation.
+  ORT_API_RETURN_IF_ERROR(ValidateDeviceSelectionAndResolveMLComputeUnits(devices, num_devices, options));
+
+  const auto provider_factory = CoreMLProviderFactoryCreator::Create(options);
+  *ep = provider_factory->CreateProvider();
+  (*ep)->SetLogger(session_logger->ToInternal());
+
+  return nullptr;
+}
+
+}  // namespace onnxruntime
+
+#endif  // defined(USE_COREML) && defined(__APPLE__)

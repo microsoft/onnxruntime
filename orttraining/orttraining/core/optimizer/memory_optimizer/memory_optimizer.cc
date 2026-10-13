@@ -357,6 +357,7 @@ Status MemoryOptimizer::CreateRecomputeGraph(Graph& graph,
     recompute_node.SetExecutionProviderType(node_to_duplicate->GetExecutionProviderType());
     ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(recompute_node),
                       "Failed to set op schema for added recompute node.");
+    graph.NotifyNodeCloned(node_to_duplicate->Index(), recompute_node.Index());
 
     new_output_node_ptr = &recompute_node;
 

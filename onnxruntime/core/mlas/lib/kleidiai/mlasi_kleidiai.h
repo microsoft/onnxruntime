@@ -254,7 +254,7 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     );
 
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
 size_t
 MLASCALL
 MlasSBGemmPackBSize(
@@ -502,6 +502,11 @@ MlasHalfGemmKleidiAIPackB(
     size_t ldb,
     void* PackedB
     );
+
+#if defined(MLAS_ENABLE_TEST_HOOKS) && defined(USE_KLEIDIAI)
+const char* GetKleidiAIHalfGemmKernelNameForTesting();
+size_t GetKleidiAISve2p1HalfGemmNStepForTesting();
+#endif
 
 bool
 MLASCALL

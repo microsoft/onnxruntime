@@ -95,15 +95,10 @@ class FusedConv : public onnxruntime::cuda::CudaKernel {
     s_.w_data = reinterpret_cast<const CudaT*>(W->Data<T>());
 
     // set B
-    if (context->InputCount() >= 3) {
-      const Tensor* B = context->Input<Tensor>(2);
-      s_.b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
-    } else {
-      s_.b_data = nullptr;
-    }
+    const Tensor* B = context->InputCount() > 2 ? context->Input<Tensor>(2) : nullptr;
+    s_.b_data = B ? reinterpret_cast<const CudaT*>(B->Data<T>()) : nullptr;
     // set Z
-    if (context->InputCount() >= 4) {
-      const Tensor* Z = context->Input<Tensor>(3);
+    if (const Tensor* Z = context->InputCount() > 3 ? context->Input<Tensor>(3) : nullptr) {
       ORT_RETURN_IF_ERROR(s_.z_tensor.Set(Z->Shape().GetDims(),
                                           ::onnxruntime::cuda::CudnnTensor::GetDataType<CudaT>()));
       s_.z_data = reinterpret_cast<const CudaT*>(Z->Data<T>());
@@ -239,8 +234,7 @@ class FusedConv : public onnxruntime::cuda::CudaKernel {
                                            gsl::narrow_cast<int>(conv_attrs_.group), CUDNN_CROSS_CORRELATION,
                                            ::onnxruntime::cuda::CudnnTensor::GetDataType<CudaT>(), UseTF32()));
 
-      if (context->InputCount() >= 3) {
-        const Tensor* B = context->Input<Tensor>(2);
+      if (B != nullptr) {
         const auto& b_shape = B->Shape();
         ORT_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
         TensorShapeVector b_dims(2 + kernel_shape.size(), 1);

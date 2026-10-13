@@ -52,6 +52,13 @@ struct OrtSingletonData {
   // Get the ORT singleton objects. Returns nullptr if the singleton has been destroyed.
   static OrtObjects* GetOrtObjects();
 
+  // Keep the singleton alive while native work that uses it is in flight (e.g. asynchronous session
+  // construction, which may run while an environment cleanup hook fires). Every RetainOrtObjects()
+  // call must be paired with exactly one ReleaseOrtObjects() call. While a reference is held the
+  // singleton is never destroyed; it safely leaks instead, as described above.
+  static void RetainOrtObjects();
+  static void ReleaseOrtObjects();
+
  private:
   static void CleanupHook(void* arg);
 };

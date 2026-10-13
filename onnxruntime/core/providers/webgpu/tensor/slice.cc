@@ -262,10 +262,28 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
+  // The shader decomposes a full index per output element, one div and one mod per rank, so a
+  // scalar thread does a lot of arithmetic to move two bytes. When the innermost axis is taken
+  // as a contiguous, four-aligned run, four output elements come from four consecutive input
+  // elements and the whole thing can run in units of four - the index arithmetic is unchanged,
+  // it just operates on the reduced shapes. int64 stays scalar (it is stored as vec2<u32>).
+  const auto& in_shape = input_tensor->Shape();
+  const size_t last = input_rank - 1;
+  int components = 1;
+  if (input_rank > 0 && !input_tensor->IsDataType<int64_t>() &&
+      steps_reordered[last] == 1 && signs_reordered[last] > 0 &&
+      starts_reordered[last] % 4 == 0 && in_shape[last] % 4 == 0 && output_dims[last] % 4 == 0) {
+    components = 4;
+  }
+  if (components > 1) {
+    starts_reordered[last] /= components;
+    output_size /= components;
+  }
+
   SliceProgram program{};
   program
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutputs({output_tensor})
+      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components}})
+      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, components}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{output_size}, {starts_reordered}, {steps_reordered}, {signs_reordered}});
   return context.RunProgram(program);

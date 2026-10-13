@@ -10,8 +10,14 @@ The plugin EP ships as one package per RID and per CUDA major version, for examp
 This package provides the CUDA plugin EP only. Your project must separately reference an ONNX Runtime
 core package (e.g. `Microsoft.ML.OnnxRuntime`) of version `@min_onnxruntime_version@` or later.
 
-If the referenced ONNX Runtime is incompatible, the plugin EP will report an error when its library is
-registered.
+The minimum version does not guarantee compatibility for contributed operators. If the CUDA plugin implements
+contributed operators used by your model, the core and plugin must use the same contributed-operator schemas. Building
+both from the same ONNX Runtime revision is recommended; mismatched schemas may cause incorrect execution or a crash,
+and may not be detected when registering the plugin.
+
+Referencing an ONNX Runtime version at or above the minimum satisfies only the core-version requirement. For models
+using contributed operators implemented by the CUDA plugin, use an ONNX Runtime core built from the same revision as
+the plugin.
 
 ### Usage
 

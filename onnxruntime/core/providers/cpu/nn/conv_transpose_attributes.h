@@ -145,6 +145,10 @@ struct ConvTransposeAttributes : public ConvAttributes {
     ConvPadVector local_pads;
     local_pads.reserve(2 * (input_shape.NumDimensions()));
     if (dynamic_padding) {
+      if (Pads == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Dynamic pads tensor is required.");
+      }
       if (Pads->Shape().NumDimensions() != 1) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Dynamic pads tensor must be 1-D. Got rank: ", Pads->Shape().NumDimensions());
