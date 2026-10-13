@@ -178,9 +178,12 @@ static void CheckCudaQuickGeluPrecision() {
     SCOPED_TRACE(alpha);
     std::vector<T> input;
     std::vector<T> expected;
-    for (float value : {-32.0f, -24.0f, -20.0f, -16.0f, -12.0f, -8.0f, -4.0f,
+    // Include float exp's subnormal/underflow region while the fused product is representable.
+    for (float value : {-128.0f, -108.0f, -104.0f, -100.0f, -96.0f, -88.0f, -87.5f, -87.0f,
+                        -80.0f, -64.0f, -60.0f, -52.0f, -32.0f, -24.0f, -20.0f, -16.0f, -12.0f, -8.0f, -4.0f,
                         -1.0f, -0.125f, 0.0f, 0.125f, 1.0f, 4.0f, 8.0f,
-                        12.0f, 16.0f, 20.0f, 24.0f, 32.0f}) {
+                        12.0f, 16.0f, 20.0f, 24.0f, 32.0f, 52.0f, 60.0f, 64.0f, 80.0f,
+                        87.0f, 87.5f, 88.0f, 96.0f, 100.0f, 104.0f, 108.0f, 128.0f}) {
       input.emplace_back(value);
       const double scaled = static_cast<double>(value) * static_cast<double>(alpha);
       const double exponent = std::exp(-std::abs(scaled));
