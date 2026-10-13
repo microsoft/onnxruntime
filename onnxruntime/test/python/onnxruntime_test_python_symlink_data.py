@@ -25,6 +25,7 @@ class TestSymLinkOnnxModelExternalData(unittest.TestCase):
         #       data.bin   -> ../../blobs/guid2
 
         self.temp_dir = tempfile.mkdtemp()
+        sess = None
         try:
             blobs_dir = os.path.join(self.temp_dir, "blobs")
             os.makedirs(blobs_dir)
@@ -91,6 +92,7 @@ class TestSymLinkOnnxModelExternalData(unittest.TestCase):
             np.testing.assert_allclose(res[0], expected)
 
         finally:
+            sess = None
             shutil.rmtree(self.temp_dir)
 
     def test_symlink_with_data_in_model_sub_dir(self):
@@ -104,6 +106,7 @@ class TestSymLinkOnnxModelExternalData(unittest.TestCase):
         #       data.bin   -> ../../blobs/data/guid2
 
         self.temp_dir = tempfile.mkdtemp()
+        sess = None
         try:
             blobs_dir = os.path.join(self.temp_dir, "blobs")
             os.makedirs(blobs_dir)
@@ -172,6 +175,7 @@ class TestSymLinkOnnxModelExternalData(unittest.TestCase):
             np.testing.assert_allclose(res[0], expected)
 
         finally:
+            sess = None
             shutil.rmtree(self.temp_dir)
 
     def test_symlink_with_data_not_in_model_sub_dir(self):
