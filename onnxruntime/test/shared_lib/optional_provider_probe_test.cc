@@ -13,6 +13,16 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/file_util.h"
 
+// ProviderInfo_OpenVINO is declared at global scope by
+// include/onnxruntime/core/providers/openvino/openvino_provider_factory.h, which this
+// test does not include. The probe result is only compared, never dereferenced, so an
+// incomplete type is sufficient.
+struct ProviderInfo_OpenVINO;
+
+namespace onnxruntime {
+ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO();
+}
+
 namespace onnxruntime::test {
 
 class OptionalProviderProbeTest : public ::testing::Test {
