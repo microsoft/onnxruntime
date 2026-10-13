@@ -19,6 +19,11 @@ jobs:
     name: Build Linux CUDA x64 Release
     # Fork PR content must not run on self-hosted runners that carry an Azure managed identity.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
     # This job runs on a CPU node using the reusable build workflow
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
