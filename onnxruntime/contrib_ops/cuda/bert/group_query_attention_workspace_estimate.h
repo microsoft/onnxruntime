@@ -47,7 +47,16 @@ struct GQAWorkspaceEstimateConfig {
   bool head_sink_is_prepacked = false;
   // Level-1 possibility; true charges persistent and initialization lifetimes.
   bool head_sink_may_be_prepacked = false;
+  // Reserved, currently unconsumed total KV-length envelope from session option
+  // ep.cuda.gqa_workspace_max_total_sequence_length. Zero means unspecified;
+  // this field does not enforce a runtime input limit.
+  int64_t max_total_sequence_length = 0;
 };
+
+std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfig(
+    const Node& node,
+    bool head_sink_is_constant_initializer = false,
+    int64_t max_total_sequence_length = 0);
 
 std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const GQAWorkspaceEstimateConfig& config,
@@ -60,7 +69,8 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     gsl::span<const WorkspaceInputShape> input_shapes,
     const cudaDeviceProp& device_prop,
     const AttentionKernelOptions& kernel_options,
-    bool head_sink_is_constant_initializer = false);
+    bool head_sink_is_constant_initializer = false,
+    int64_t max_total_sequence_length = 0);
 
 void SetGroupQueryAttentionWorkspaceRequirements(
     const GQAWorkspaceAggregate& estimate,

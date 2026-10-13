@@ -986,6 +986,32 @@ class TestQMoENVFP4(unittest.TestCase):
         torch.testing.assert_close(packed, fallback, atol=tolerance, rtol=tolerance)
 
     @parameterized.expand(
+        [
+            (onnx_dtype, disable_prepacking)
+            for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
+            for disable_prepacking in (False, True)
+        ]
+    )
+    def test_nvfp4_offline_row_major_above_gemv_limit(self, onnx_dtype, disable_prepacking):
+        shape = dict(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=16,
+            top_k=10,
+            num_tokens=9,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="1",
+            disable_prepacking=disable_prepacking,
+            use_bias=True,
+            input_scale=0.1,
+        )
+        packed = self._run_nvfp4_moe_test(**shape, offline_prepacked=True)
+        legacy = self._run_nvfp4_moe_test(**shape)
+        tolerance = 0.03 if onnx_dtype == TensorProto.BFLOAT16 else 0.005
+        torch.testing.assert_close(packed, legacy, atol=tolerance, rtol=tolerance)
+
+    @parameterized.expand(
         [(onnx_dtype, disable_prepacking) for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
          for disable_prepacking in (False, True)]
     )

@@ -37,6 +37,8 @@ class DequantizeLinearOpBuilder : public BaseOpBuilder {
     return ANEURALNETWORKS_FEATURE_LEVEL_1;
   }
 
+  int GetMaxSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 27; }
+
   bool HasSupportedInputOutputsImpl(
       const GraphViewer& graph_viewer, const NodeUnit& node_unit,
       const OpSupportCheckParams& params) const override {
