@@ -59,11 +59,16 @@ tokenizer = og.Tokenizer(model)
 
 tokens = tokenizer.encode(prompt)
 
-params=og.GeneratorParams(model)
-params.set_search_options({"max_length":200})
-params.input_ids = tokens
+params = og.GeneratorParams(model)
+params.set_search_options(max_length=200)
 
-output_tokens=model.generate(params)[0]
+generator = og.Generator(model, params)
+generator.append_tokens(tokens)
+
+while not generator.is_done():
+    generator.generate_next_token()
+
+output_tokens = generator.get_sequence(0)
 
 text = tokenizer.decode(output_tokens)
 
@@ -83,12 +88,16 @@ prompts = [
 
 inputs = tokenizer.encode_batch(prompts)
 
-params=og.GeneratorParams(model)
-params.input_ids = tokens
+params = og.GeneratorParams(model)
+params.set_search_options(max_length=200)
 
-outputs = model.generate(params)[0]
+generator = og.Generator(model, params)
+generator.append_tokens(inputs)
 
-text = tokenizer.decode(output_tokens)
+while not generator.is_done():
+    generator.generate_next_token()
+
+outputs = [tokenizer.decode(generator.get_sequence(i)) for i in range(len(prompts))]
 ```
 
 ## Stream the output of the tokenizer
@@ -96,13 +105,17 @@ text = tokenizer.decode(output_tokens)
 If you are developing an application that requires tokens to be output to the user interface one at a time, you can use the streaming tokenizer.
 
 ```python
-generator=og.Generator(model, params)
-tokenizer_stream=tokenizer.create_stream()
+params = og.GeneratorParams(model)
+params.set_search_options(max_length=200, temperature=0.7, top_p=0.6)
+
+generator = og.Generator(model, params)
+generator.append_tokens(tokens)
+
+tokenizer_stream = tokenizer.create_stream()
 
 print(prompt, end='', flush=True)
 
 while not generator.is_done():
-    generator.compute_logits()
-    generator.generate_next_token_top_p(0.7, 0.6)
+    generator.generate_next_token()
     print(tokenizer_stream.decode(generator.get_next_tokens()[0]), end='', flush=True)
 ```
