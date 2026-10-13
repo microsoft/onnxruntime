@@ -32,13 +32,29 @@ Status KernelPilotMoeExpertState::BeginRun(std::string request_id, const logging
   return Status::OK();
 }
 
-Status KernelPilotMoeExpertState::EndRun() {
+Status KernelPilotMoeExpertState::EndRun(bool run_succeeded) {
+  ORT_UNUSED_PARAMETER(run_succeeded);
   std::lock_guard<std::mutex> lock(run_mutex_);
   ORT_RETURN_IF_NOT(run_active_, "MoE expert tracking is not active.");
+  Status status = Status::OK();
+  for (auto* pilot : deferred_usage_) {
+    const Status completion = pilot->CompleteMoeUsage();
+    if (status.IsOK() && !completion.IsOK()) {
+      status = completion;
+    }
+  }
+  deferred_usage_.clear();
+  for (auto& [kernel, state] : kernels_) {
+    ORT_UNUSED_PARAMETER(kernel);
+    const Status completion = state.pilot.CompleteMoeUsage();
+    if (status.IsOK() && !completion.IsOK()) {
+      status = completion;
+    }
+  }
   logging_request_id_.clear();
   logging_logger_ = nullptr;
   run_active_ = false;
-  return Status::OK();
+  return status;
 }
 
 Status KernelPilotMoeExpertState::SetCounterAlpha(double alpha) {
@@ -221,6 +237,7 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
   for (auto& [kernel, state] : kernels_) {
     ORT_UNUSED_PARAMETER(kernel);
     state.pilot.SetMoeCudaExperts(state.cuda_experts);
+    state.pilot.moe_counters_ = gsl::make_span(counters_).subspan(state.experts.begin, state.experts.count);
   }
 
   initialized_ = true;
@@ -232,21 +249,30 @@ KernelPilot* KernelPilotMoeExpertState::GetKernelPilot(const OpKernel* kernel) {
   return node != kernels_.end() ? &node->second.pilot : nullptr;
 }
 
-Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel) {
+Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel, gsl::span<const double> updated_counters) {
   ORT_RETURN_IF_NOT(initialized_, "MoE expert state is not initialized.");
   const auto node = kernels_.find(kernel);
   ORT_RETURN_IF(node == kernels_.end(), "Unknown MoE counter kernel.");
   const auto range = node->second.experts;
+  ORT_RETURN_IF_NOT(updated_counters.empty() ||
+                        (updated_counters.size() == range.count &&
+                         std::all_of(updated_counters.begin(), updated_counters.end(),
+                                     [](double value) { return std::isfinite(value) && value >= 0.0; })),
+                    "Invalid MoE GPU expert counters.");
   const auto& usage = node->second.pilot.Moe();
   ORT_RETURN_IF_NOT(usage.ExpertCount() == range.count, "MoE kernel usage expert count does not match registration.");
   gsl::span<const int> used_expert_ids;
   ORT_RETURN_IF_ERROR(usage.GetSelectedExperts(used_expert_ids));
   auto counters = gsl::make_span(counters_).subspan(range.begin, range.count);
-  for (auto& counter : counters) {
-    counter *= alpha_;
-  }
-  for (int expert : used_expert_ids) {
-    counters_[expert_ids_.at({kernel, expert})] += 1.0 - alpha_;
+  if (!updated_counters.empty()) {
+    std::copy(updated_counters.begin(), updated_counters.end(), counters.begin());
+  } else {
+    for (auto& counter : counters) {
+      counter *= alpha_;
+    }
+    for (int expert : used_expert_ids) {
+      counters_[expert_ids_.at({kernel, expert})] += 1.0 - alpha_;
+    }
   }
 
   if (logging_logger_ != nullptr &&

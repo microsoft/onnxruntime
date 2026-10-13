@@ -6,10 +6,13 @@
 #include "contrib_ops/cuda/moe/moe_base.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "core/common/common.h"
+#include "core/framework/kernel_pilot_moe_expert_usage.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
 #include <array>
+#include <condition_variable>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 namespace onnxruntime {
@@ -19,7 +22,12 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 
 template <typename T>
-class MoE final : public CudaKernel, public MoEBase {
+class MoE final : public CudaKernel, public MoEBase
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    ,
+                  public IKernelPilotMoeExpertUsage
+#endif
+{
  public:
   explicit MoE(const OpKernelInfo& op_kernel_info);
   ~MoE() override;
@@ -46,6 +54,17 @@ class MoE final : public CudaKernel, public MoEBase {
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   Status InitializeCudaExpertWeights(gsl::span<const int> cuda_experts);
+  struct CpuTask;
+  Status PrepareUsage(OpKernelContext* context, KernelPilot* pilot, size_t expert_count,
+                      size_t num_rows, size_t hidden_size, size_t inter_size, bool fused_swiglu,
+                      bool prepare_cpu_task) const;
+  Status ComputeCpuTask() const;
+  void RunCpuWorker() const;
+  static void CUDART_CB NotifyCpuWorker(void* context);
+  void ReleaseUsageResources() noexcept;
+  bool HasPendingUsage() const noexcept override { return usage_pending_; }
+  Status CompleteUsage(KernelPilotMoeExpertUsageSnapshot& snapshot) override;
+
 #endif
 
   mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler mGemmProfiler;
@@ -58,7 +77,23 @@ class MoE final : public CudaKernel, public MoEBase {
   IAllocatorUniquePtr<void> device_expert_map_;
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   cudaStream_t input_copy_stream_{nullptr};
+  int device_id_{0};
   mutable std::mutex input_copy_mutex_;
+  bool async_cpu_supported_{false};
+  mutable bool usage_pending_{false};
+  mutable bool usage_recorded_{false};
+  mutable cudaStream_t usage_stream_{nullptr};
+  cudaEvent_t usage_complete_event_{nullptr};
+  mutable IAllocatorUniquePtr<void> device_usage_;
+  mutable IAllocatorUniquePtr<void> host_usage_;
+  mutable std::unique_ptr<CpuTask> cpu_task_;
+  mutable std::thread cpu_worker_;
+  mutable std::mutex cpu_worker_mutex_;
+  mutable std::condition_variable cpu_worker_condition_;
+  mutable bool cpu_task_ready_{false};
+  mutable bool cpu_task_finished_{true};
+  mutable bool cpu_callback_scheduled_{false};
+  mutable bool stop_cpu_worker_{false};
 #endif
 };
 

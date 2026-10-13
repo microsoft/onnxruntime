@@ -4417,7 +4417,9 @@ void RunMoECudaStaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCountsUsage()
     const auto routing_events = ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
     ASSERT_EQ(routing_events.size(), 1U);
     EXPECT_EQ(routing_events[0]["selected_experts"], nlohmann::json({0, 1}));
-    EXPECT_EQ(routing_events[0]["counters"], nlohmann::json({0.1, 0.1}));
+    ASSERT_EQ(routing_events[0]["counters"].size(), 2U);
+    EXPECT_DOUBLE_EQ(routing_events[0]["counters"][0].get<double>(), 0.1);
+    EXPECT_DOUBLE_EQ(routing_events[0]["counters"][1].get<double>(), 0.1);
   }
 }
 

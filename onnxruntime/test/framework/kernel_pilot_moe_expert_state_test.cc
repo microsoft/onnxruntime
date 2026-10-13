@@ -75,6 +75,91 @@ class KernelPilotMoeExpertStateTest : public testing::Test {
   }
 };
 
+class DeferredMoeUsage final : public IKernelPilotMoeExpertUsage {
+ public:
+  bool HasPendingUsage() const noexcept override { return pending; }
+  Status CompleteUsage(KernelPilotMoeExpertUsageSnapshot& snapshot) override {
+    pending = false;
+    snapshot.counters = counters;
+    snapshot.selected_probabilities = probabilities;
+    snapshot.first_selected_routes = first_routes;
+    return completion_status;
+  }
+
+  bool pending{true};
+  InlinedVector<double> counters{0.25, 0.0, 0.25};
+  InlinedVector<float> probabilities{0.5f, -1.0f, 0.75f};
+  InlinedVector<int64_t> first_routes{1, -1, 0};
+  Status completion_status;
+};
+
+TEST_F(KernelPilotMoeExpertStateTest, DefersGpuUsageUntilEndRunAndPreservesSelectionOrder) {
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  auto* pilot = state.GetKernelPilot(kernels_[0]);
+  DeferredMoeUsage usage;
+  ASSERT_STATUS_OK(pilot->AttachMoeExpertUsage(&usage));
+  ASSERT_STATUS_OK(state.BeginRun("deferred", nullptr));
+  ASSERT_STATUS_OK(pilot->Moe().BeginInvocation(3));
+  ASSERT_STATUS_OK(pilot->RecordUsage());
+  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0.0, 0.0, 0.0}));
+  ASSERT_STATUS_OK(state.EndRun());
+  EXPECT_FALSE(usage.pending);
+  EXPECT_EQ(Counters(state, kernels_[0]), usage.counters);
+  gsl::span<const int> selected;
+  ASSERT_STATUS_OK(pilot->Moe().GetSelectedExperts(selected));
+  EXPECT_EQ((InlinedVector<int>{selected.begin(), selected.end()}), (InlinedVector<int>{2, 0}));
+  EXPECT_EQ(pilot->MoeExpertCounters()[0], 0.25);
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, DiscardsDeferredUsageForFailedKernel) {
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  auto* pilot = state.GetKernelPilot(kernels_[0]);
+  DeferredMoeUsage usage;
+  ASSERT_STATUS_OK(pilot->AttachMoeExpertUsage(&usage));
+  ASSERT_STATUS_OK(state.BeginRun("failed kernel", nullptr));
+  ASSERT_STATUS_OK(pilot->Moe().BeginInvocation(3));
+  ASSERT_STATUS_OK(state.EndRun(false));
+  EXPECT_FALSE(usage.pending);
+  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0.0, 0.0, 0.0}));
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, CommitsSuccessfulDeferredKernelWhenLaterRunWorkFails) {
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  auto* pilot = state.GetKernelPilot(kernels_[0]);
+  DeferredMoeUsage usage;
+  ASSERT_STATUS_OK(pilot->AttachMoeExpertUsage(&usage));
+  ASSERT_STATUS_OK(state.BeginRun("failed later work", nullptr));
+  ASSERT_STATUS_OK(pilot->Moe().BeginInvocation(3));
+  ASSERT_STATUS_OK(pilot->RecordUsage());
+  ASSERT_STATUS_OK(state.EndRun(false));
+  EXPECT_EQ(Counters(state, kernels_[0]), usage.counters);
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, PropagatesAsyncUsageFailureAndReleasesRun) {
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  auto* pilot = state.GetKernelPilot(kernels_[0]);
+  DeferredMoeUsage usage;
+  usage.completion_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "test CPU worker failure");
+  ASSERT_STATUS_OK(pilot->AttachMoeExpertUsage(&usage));
+  ASSERT_STATUS_OK(state.BeginRun("async failure", nullptr));
+  ASSERT_STATUS_OK(pilot->Moe().BeginInvocation(3));
+  ASSERT_STATUS_OK(pilot->RecordUsage());
+  const Status status = state.EndRun();
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_EQ(status.ErrorMessage(), "test CPU worker failure");
+  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0.0, 0.0, 0.0}));
+  ASSERT_STATUS_OK(state.BeginRun("next run", nullptr));
+  ASSERT_STATUS_OK(state.EndRun());
+}
+
 TEST_F(KernelPilotMoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSubgraphs) {
   KernelPilotMoeExpertState state;
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));

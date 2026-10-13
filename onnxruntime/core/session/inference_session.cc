@@ -3907,7 +3907,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
 #if !defined(ORT_MINIMAL_BUILD)
       if (moe_run_active) {
-        const Status moe_run_status = moe_expert_state->EndRun();
+        const Status moe_run_status = moe_expert_state->EndRun(retval.IsOK());
         moe_run_active = false;
         if (retval.IsOK() && !moe_run_status.IsOK()) {
           retval = moe_run_status;

@@ -200,6 +200,7 @@ void RunCountingModel(InferenceSession& session, bool subgraphs = false, bool co
 SessionOptions CountingOptions() {
   SessionOptions options;
   ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableMoeExpertCounting, "1"));
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.9"));
   options.graph_optimization_level = TransformerLevel::Default;
   options.intra_op_param.thread_pool_size = 1;
   return options;

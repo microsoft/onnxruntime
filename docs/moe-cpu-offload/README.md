@@ -92,6 +92,18 @@ count_{t+1}(e) = alpha * count_t(e) + (1 - alpha) * (1 if expert e was used, oth
 The used term is binary for one invocation. Selecting the same expert for several rows still contributes `1`, not the
 number of routed rows.
 
+CPU-offloaded CUDA nodes update their counters on the GPU. The pilot consumes counter snapshots and selected-expert
+metadata at the end of the run rather than waiting for routing on the host at every node.
+Only successful kernel invocations are committed, and asynchronous CPU execution errors are propagated by `EndRun`.
+Repeated invocations of the same node consume the preceding snapshot before reusing its buffers.
+
+On devices supporting CUDA stream memory operations, routing compacts only rows that select a CPU-resident expert.
+A short notification callback wakes a per-node CPU worker only for a nonempty compacted batch. That worker transfers
+the compacted activations and routing, executes MLAS, and uploads only those rows' contributions. CUDA expert kernels
+can run concurrently; the compute stream waits for the CPU result only before scattering and combining it.
+Single-row decode with no CPU routes releases that device-side wait directly on GPU, without waiting for the host
+notification. Devices without stream memory operations retain the synchronous CPU execution path.
+
 The policy exposes `alpha` in `[0, 1]` and non-negative `epsilon`. Counters are updated in place and remain bounded by
 the larger of their initial value and `1`. Their defaults and constraints are covered by option-parsing tests.
 
@@ -146,15 +158,15 @@ cpu_max > (1 + epsilon) * cuda_min
 Counter ties use expert ID order. The pilot evaluates placement only after the complete model inference and selects at
 most one exchange per node for that boundary. Exchanges are fully asynchronous with respect to the next inference.
 
-Each exchange uses a pinned host staging buffer and an extra CUDA staging slot so the published mapping remains usable
+Each exchange uses separate incoming and outgoing pinned host buffers and an extra CUDA staging slot so the published mapping remains usable
 until the complete exchange is ready:
 
 1. Record completion of all CUDA work that references the expert selected for CPU residency.
-2. Copy that CUDA expert to the pinned staging buffer, then commit it to its CPU allocation.
-3. Only after the device-to-host transfer completes, stage the selected CPU expert in pinned memory and copy it to the
-   extra CUDA slot.
+2. Transpose the outgoing matrix weights to MLAS layout on CUDA and copy them to the outgoing pinned buffer.
+3. Stage the selected CPU expert in incoming pinned memory. After the outgoing transfer finishes, upload the incoming
+   data and transpose it on CUDA into the extra CUDA slot.
 4. Record a transfer-completion event.
-5. Publish the new mapping atomically only after both directions have completed.
+5. Commit the outgoing expert to its CPU allocation and publish the new mapping only after both directions have completed.
 
 The CPU-bound transfer must always complete before the CPU-to-CUDA transfer starts. An exchange never overwrites the
 currently published CUDA slot. If the next inference reaches the same `MoE` or `QMoE` before the exchange completes,

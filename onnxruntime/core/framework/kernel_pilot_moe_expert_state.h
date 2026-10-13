@@ -38,7 +38,7 @@ class KernelPilotMoeExpertState {
   Status BeginRun(std::string request_id, const logging::Logger* logger);
 
   // Releases the active Run and its optional logging state.
-  Status EndRun();
+  Status EndRun(bool run_succeeded = true);
 
   // Expert counters
   // ---------------
@@ -106,7 +106,7 @@ class KernelPilotMoeExpertState {
 
  private:
   friend class KernelPilot;
-  Status RecordUsage(const OpKernel* kernel);
+  Status RecordUsage(const OpKernel* kernel, gsl::span<const double> updated_counters = {});
 
   using Key = std::pair<std::string, size_t>;
   struct ExpertRange {
@@ -124,6 +124,8 @@ class KernelPilotMoeExpertState {
   NodeHashMap<const OpKernel*, KernelState> kernels_;
   InlinedHashMap<std::pair<const OpKernel*, int>, size_t> expert_ids_;
   InlinedVector<double> counters_;
+  InlinedVector<KernelPilot*> deferred_usage_;
+  std::mutex counter_logging_mutex_;
   mutable std::mutex run_mutex_;
   bool run_active_{false};
   std::string logging_request_id_;
