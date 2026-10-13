@@ -123,8 +123,8 @@ RouteDescriptor {
 Workspace and latency are not scalar route attributes. Both depend on shape, phase, dtype, device,
 and feature flags. The first GQA policy implementation therefore uses analytical workspace
 functions but deliberately does **not** claim a calibrated latency model: `latency` reuses the
-current runtime priority order. Empirical timing can replace that ordering only after it is
-collected over the same enforced workload envelope.
+current runtime priority order. Empirical timing can replace that ordering after it is
+collected over the declared workload envelope; timing samples do not establish the envelope bounds.
 
 ### The three properties that make `P` the estimation object
 
@@ -230,10 +230,11 @@ changed so unfused cannot execute:
   this state"), or (b) a **bounded fallback route** (tiled attention, workspace ≤ fixed budget).
 - Only after that change is unfused out of `image(P)`, and only then may the `max` drop it.
 
-**The bounded fallback is a precondition for a total policy** — it is the ORT analog of cuDNN's
-guaranteed zero-workspace algorithm, which is *why* cuDNN/TensorRT can safely invert to
-"budget → route." ORT's current fallback is the *expensive* route, which is the inversion of what
-budget-driven selection needs.
+**A bounded fallback fills any coverage gap left by the remaining fast routes.** It is needed for
+successful service of those states, not for a fail-closed contract that explicitly rejects them.
+It is the ORT analog of cuDNN's zero-workspace algorithm. ORT's current fallback is the
+*expensive* route, so additional low-workspace coverage is useful but can be deferred while the
+framework plans against existing enforceable contracts.
 
 ---
 
@@ -437,8 +438,9 @@ memory  : minimize per-node workspace     → more resident nodes → less offlo
 safe    : maximize proven route coverage  → predictable route-local bound
 ```
 
-**`latency` is the zero-config default and the right choice for the common case** — a single
-interactive session whose model comfortably fits in VRAM. The reason the other two intents exist is
+**`auto` remains the zero-config default and preserves existing dispatch.** Explicit `latency`
+uses that priority and suits a single interactive session whose model comfortably fits in VRAM.
+The reason the other two intents exist is
 that this knob is **not only** about per-kernel speed: it changes how much workspace each node
 reserves, which changes how many nodes the capacity accountant keeps resident vs. offloads to CPU.
 CPU offload is **asymmetrically expensive** (PCIe round-trip + slow CPU matmul, often 10–100× the
@@ -452,9 +454,10 @@ GPU kernel), and that asymmetry is what flips the choice:
   resident) and **large-batch / long-context serving** (spend VRAM on batch/KV rather than scratch).
 - **Choose `safe` when a route-level proof is required.** It removes routes without a graph-free
   oracle (currently cuDNN) while retaining every proven fallback, including unfused when eligible.
-  A system-wide no-OOM guarantee additionally requires runtime enforcement of the query/KV
-  envelope, whole-graph peak/lifetime accounting, and explicit allocator/runtime reserve; those
-  are not supplied by a route policy alone. `safe` is also useful for reproducibility, debugging,
+  A system-wide no-OOM guarantee additionally requires guaranteed query/KV bounds, whole-graph
+  peak/lifetime accounting, and explicit allocator/runtime reserve; those are not supplied by a
+  route policy alone. Bounds may come from ORT validation or a caller's admission contract.
+  `safe` is also useful for reproducibility, debugging,
   and portability across devices with different fused-route availability.
 
 Users switch away from `latency` precisely when the **system-level** objective (fit, concurrency,
@@ -616,8 +619,9 @@ Policy P_GQA(x):
 ```
 
 Envelope: caller-declared query bound `P` (estimated from `max_shape_override`) and KV capacity `C`
-(from the GQA knob). Until runtime rejects query or KV values beyond those declarations, this is an
-estimation contract rather than a runtime-enforced no-OOM contract.
+(from the GQA knob). This is a conditional estimation contract unless the bounds are guaranteed by
+the caller or ORT admission/validation. Even guaranteed workload bounds require global accounting
+and allocator/runtime coverage before they imply a session no-OOM claim.
 
 ```
 prefill/chunk :  CompleteWorkspace(S_q=P, S_kv=C, Flash) = lse + lse_accum + out_accum
@@ -636,7 +640,7 @@ the heuristic at a point ("sound across its discontinuities"); preparation/QKV b
 `GQABufferRequirements`. Using `(S_q=P, S_kv=C)` for the *shape* axes still over-approximates any
 individual Run (first prefill has `S_kv=S_q`; a deep chunk has small `S_q`). If a policy branch
 switches route at an interior shape threshold, take the `max` **piecewise per route-region** (the max
-may sit at the switch boundary, not the envelope corner). Stage-4 profiling *validates* this bound; it
+may sit at the switch boundary, not the envelope corner). Later profiling *validates* this bound; it
 does not replace it with a sampled peak.
 
 ---
@@ -654,11 +658,12 @@ The effect that makes this non-local: a **compact-but-slower** GPU policy can be
 crossings couples neighboring placement decisions — it is a knapsack/assignment problem, not a set of
 independent choices.
 
-**Honest dependency:** comparability needs latency numbers as trustworthy as the workspace numbers,
-so it realistically lands *after* the Stage-4 envelope-profiling calibration; before that, latency
-ranks are heuristic. The recommendation is to **design the `(W_L1, cost)` interface now** — the
-estimator emits a cost alongside each policy's workspace — even though the optimizer that consumes it
-arrives later, so the estimator is not reworked.
+**Honest dependency:** a claim of minimum end-to-end latency needs comparable measured or calibrated
+costs, including CPU-boundary costs. However, framework budget selection need not wait for that
+calibration: an initial selector can choose feasible contracts using deterministic ordinal
+preferences and report that its performance objective is heuristic. Keep cost evidence explicitly
+tagged as measured, modeled, ordinal, or unavailable; never turn a route's ordinal rank into
+microseconds or add unrelated ranks as if they were calibrated times.
 
 ### Automatic selection is this comparison, run for the user
 
@@ -669,6 +674,249 @@ envelope, and picks the placement+policy that meets budget with the best objecti
 authors a dispatch table; the kernel author owns the menu, the framework owns the selection, and
 explicit `fused_only`-style overrides remain the expert escape hatch — each still run through the
 Initialize coverage check so even an override is verified *total*, not trusted.
+
+---
+
+## Framework-first implementation: session memory planning and budget selection
+
+This is the next implementation focus after the current policy/accounting stack. Workload-envelope
+enforcement and additional bounded fallback coverage remain explicit deferred items below; they
+are not prerequisites for building a planner whose result is conditional on declared workloads.
+No new kernel fallback or calibrated latency model is required for the first framework slice.
+
+### Responsibility boundary
+
+An EP owns route eligibility, complete workspace recipes, and lowering a selected contract to
+runtime dispatch gates. The framework owns allocation identities and lifetimes, session budget
+composition, placement, contract selection, and final verification. The framework must not learn
+CUDA-specific route names or reproduce kernel scratch formulas.
+
+Expose a small queryable menu of **already enforceable** contracts per candidate node or fused
+region. The following is a conceptual internal interface, not a new public API:
+
+```
+EnumerateContracts(node_or_region, workload, device, user_constraints)
+  -> [
+       contract_id,
+       admitted phase/domain description,
+       allocation requirements with resource/slot ID, device, size bound, alignment, and lifetime,
+       bound evidence and unresolved terms,
+       runtime coverage or explicit-failure conditions,
+       optional measured/model cost or ordinal preference
+     ]
+
+EvaluateSessionPlan(placement, selected_contracts, workload, execution_plan, budget)
+  -> initialization peak, Run backing peak, uncovered terms, allocation plan
+
+CommitContract(node_or_region, contract_id, plan_generation)
+  -> immutable kernel binding used by Level 2 and runtime
+```
+
+`Level1MemoryEstimate` is a useful compatibility adapter, but its one runtime-workspace scalar is
+not sufficient for lifetime-sensitive selection. Keep per-phase requirements and distinguish
+session-persistent prepack, initialization scratch, per-Run backing roots, and node-local scratch.
+For the existing GQA consumer, its EP-internal phase masks remain opaque to the framework.
+
+Each contract must include the maximum over **all** routes its runtime selector still permits.
+Unavailable analytical terms must remain unavailable, not become zero or inherit a sampled peak
+as a proof. Runtime explicit failure is a valid limitation of the first implementation; claiming
+successful coverage for every workload state requires stronger eligibility/coverage proof.
+
+Prune dominated candidates only when their entire memory/lifetime requirement vectors and coverage
+are comparable. Comparing just workspace bytes can incorrectly discard a contract with a better
+persistent-memory or initialization footprint.
+
+### One ledger of physical allocation roots
+
+Build a per-device ledger rather than summing per-node costs. Identify physical allocation roots
+and their aliases, owners, locations, and release events; charge each root once. Deduplicate only
+sharing established by planner alias metadata or allocation ownership, not matching tensor names
+or an assumption that prepacking will reuse storage. The relevant categories are:
+
+| Category | Lifetime and accounting |
+|---|---|
+| Initializers and packed weights | Include the original device copy until its actual last consumer releases it; packed destinations can coexist with it during Initialize. Shared initializers/prepack roots are charged once. |
+| Persistent workspace and capture buffers | Remain live across Runs; a persistent decode slot also overlaps prefill. Capture-retained addresses/pools cannot be released at the end of a host kernel call. |
+| KV cache, bound inputs, retained outputs | Include resident backing even when owned by the caller. Use allocation identity to avoid charging past/present aliases twice; retained outputs need an explicit release/retention assumption. |
+| Activations and cross-device copies | Producer-to-last-consumer lifetime, extended by asynchronous completion; count GPU-side staging and transfer buffers created by CPU/GPU placement. |
+| Node workspace and runtime preparation | Respect per-phase route bounds and declared coexistence. Lazy profiling scratch is separate from steady execution only when its non-overlap is established. |
+| Initialization scratch | Overlaps currently resident source/packed weights, constructor allocations, and any other concurrent initialization work. |
+| Allocator and EP overhead | Alignment, arena growth/retention, pool fragmentation allowance, handles/library allocations, and explicit reserve outside the managed pools. |
+
+Use `SequentialExecutionPlan` allocation/reuse information, release actions, stream assignment, and
+notifications to derive lifetimes. A topological node order or return from `Compute()` is not a GPU
+completion event. Reuse storage only when the execution plan and allocator establish happens-before;
+otherwise conservatively retain overlapping allocations.
+
+Control-flow runtime scratch uses branch maxima only for mutually exclusive execution, while
+weights materialized for both branches remain resident. Loop-carried state and retained scan outputs
+must be counted; an unbounded accumulated output makes the corresponding bound unavailable.
+
+### Budget physical backing, not only live tensor bytes
+
+The live-byte sum is a useful diagnostic lower bound for pool sizing, not the final VRAM budget.
+Memory-pattern roots and arena regions can remain physically allocated after their values are dead.
+Different shapes/phases may also leave multiple cached pools resident. Compute their retained
+backing footprint with the actual allocation strategy; do not replace that footprint with the
+largest observed live-byte peak.
+
+For fixed placement, contracts, and an explicitly declared number of active Runs:
+
+```
+InitPeak(device) = maximum physical resident backing during Initialize
+RunPeak(device)  = maximum retained/session and active-Run backing over admitted workloads
+SessionPeak     = max(InitPeak, RunPeak) + non-pool overhead/reserve
+
+SessionPeak(device) <= session-associated device budget
+```
+
+The session-associated budget covers both session-owned backing and caller-owned backing attributed
+to the session. The terms are disjoint: if weights or persistent slots occupy an arena root, they are
+included in that root, not added again outside it. For each reusable pool, assign aligned offsets from bounded
+lifetimes and use the resulting backing size, including alignment/fragmentation, in the budget.
+Reserve is an explicit allowance, not proof that every unknown allocation has been covered.
+
+A backing plan must drive allocation, not just report hypothetical reuse. Execution-frame/kernel
+workspace access resolves declared slots to the assigned roots/offsets. If an allocator or kernel
+cannot honor that layout, evaluate its actual allocation strategy instead; do not assume the
+planned sharing occurred. Undeclared allocation requests need budget-aware charging/rejection,
+not an untracked path to the default allocator.
+
+Distinguish the session cap from CUDA's existing `gpu_mem_limit`, which limits the BFC arena rather
+than all device allocations. The planner should derive consistent arena/pool caps from the session
+budget after accounting for allocations outside those pools; it must not silently reinterpret the
+existing provider option.
+
+Report the baseline used: a free-memory snapshot excludes allocations already resident when it is
+taken, whereas a full-session budget includes session-owned residents. Reconcile existing/shared
+allocations once rather than subtracting them twice. Other processes and shared allocators require
+an external reservation/admission mechanism for a device-wide guarantee.
+
+### Planning and commitment order
+
+Planning must finish before bulk device initializer copies, kernel-constructor scratch, and PrePack
+can spend the budget. Level-2 verification alone is too late to prevent initialization OOM.
+
+```
+Declared workload + device budget + constraints
+    -> query capability/contract menus without materializing device kernels
+    -> tentative placement, transfers, and execution/allocation plan
+    -> lifetime/backing evaluation and contract/placement selection
+    -> finalize transformations; invalidate/re-evaluate changed or fused regions
+    -> freeze placement, contract IDs, allocation strategy, and plan generation
+    -> allocate initializers, create kernels, PrePack
+    -> Level-2 verify exact requirements against the selected contracts and global plan
+    -> Run using the committed bindings and allocation plan
+```
+
+Capability queries must be provisional and side-effect-free with respect to resource commitment.
+Layout passes and fusion can change node identities and lifetimes, so a binding belongs to a graph
+revision and must be transferred only with validated equivalent metadata; orphaned bindings fail
+verification. A fused region requires its own contract, not the sum of constituent scratch peaks.
+Use bounded deterministic planning/refinement passes rather than allocating and trying to recover
+from OOM.
+
+Store selections with the finalized `SessionState`. Kernels must consume the selected contract ID
+and compatible descriptor version, rather than independently re-resolving the session intent to a
+different route set after placement. A change to route permissions, lifetime, capture state, or pool
+strategy invalidates the plan even when one node's workspace scalar is unchanged.
+
+L2 may tighten a requirement without broadening permissions. A larger requirement needs a verified
+new plan before allocation/use or an explicit Initialize error; a warning followed by dynamic growth
+cannot satisfy the opt-in hard-budget mode.
+
+### First budget selector: deterministic, not an optimal-latency claim
+
+Do not move the current greedy CUDA cutoff unchanged into a new class. Budget acceptance is a
+whole-plan property: changing one node affects shared weights, the transient peak, and transfer edges.
+Keep provider support and user-pinned routes/placement as hard constraints; enable this selector
+explicitly so default `auto` behavior and existing named-policy semantics remain unchanged.
+
+Start with a bounded search over the small contract menus:
+
+1. Build the GPU-supported placement with allowed preferred contracts and evaluate both peaks.
+2. If it does not fit, trial lower-memory contracts on the peak-driving nodes/regions. Recompute
+   the global backing footprint for each trial; use the actual peak reduction, not local bytes.
+   Include bounded bundles across tied peaks so zero immediate saving from one change does not
+   prematurely force CPU offload.
+3. Prefer feasible contract changes to creating CPU boundaries when the current ordinal objective
+   favors GPU residency. If contract changes cannot fit, trial supported CPU regions and include
+   their changed weight residency, activation copies, and boundary costs.
+4. Stop on a verified feasible plan or report that no feasible plan was found within the available
+   menus/search limits, with a byte breakdown. Do not claim infeasibility or optimality from a greedy
+   search. Optional upgrades consume remaining headroom only after re-evaluation.
+
+Use a deterministic tie-break and explicitly tagged preferences until comparable timing data
+exists. For example, assume 9 GiB of common planned backing/reserve and two sequential nodes whose
+preferred contracts each need a 2 GiB reusable scratch root. The peak is 11 GiB, not 13 GiB.
+Under a 10 GiB budget, switching just one node to a 0.5 GiB contract leaves the peak at 11 GiB;
+switching both permits a 0.5 GiB root and a 9.5 GiB plan without CPU offload. This saving depends
+on the allocator actually using the shared planned root.
+
+For a calibrated later optimizer:
+
+```
+minimize end-to-end cost(placement, contracts, CPU/GPU boundary edges, workload mix)
+subject to SessionPeak(device) <= budget(device)
+```
+
+The peak is over admitted workloads, not a frequency-weighted average. Phase frequencies can weight
+the performance objective only. Correlated phases across nodes must be guaranteed by the workload
+contract; otherwise enumerate or conservatively bound mixed per-node states rather than assuming
+every node enters decode together.
+
+### Integration and first deliverables
+
+Reuse existing machinery rather than introducing an unrelated executor or allocator:
+
+| Existing surface | Proposed responsibility |
+|---|---|
+| `resource_accountant.h/.cc`, partitioner bookkeeping | Preserve local estimate provenance and compatibility; introduce whole-plan evaluation alongside the additive baseline. |
+| `level1_memory_estimate.h`, EP estimators | Adapt existing scalar estimates; participating EPs additionally expose contract-specific lifetime requirements. |
+| `allocation_planner.cc`, `sequential_execution_plan.h` | Bound value sizes, deduplicate physical roots, derive release/stream constraints, and support provisional plans. |
+| `mem_pattern_planner.h`, `execution_frame.cc`, `bfc_arena.cc` | Translate liveness into aligned retained backing consistent with actual allocation and growth/reuse behavior. |
+| `session_state.cc`, `DeclareWorkspaceRequirements()` | Persist selected bindings/plans and reconcile L2 requirements, ownership, and lifetimes. |
+| CUDA `GetCapability()` | Report support and candidate contracts; let the opt-in framework selector own global acceptance instead of stopping at the first additive threshold. |
+
+Split the work into reviewable PRs:
+
+1. **Session GPU lifetime/backing report:** fixed placement and contracts, initialization plus Run
+   accounting, identity/alias deduplication, and explicit unknowns. No default placement changes.
+2. **Enforceable session budget plan:** pre-allocation feasibility gate, aligned reusable backing,
+   reserve/pool consistency, and L2 reconciliation. Begin with one active Run and a validated
+   single-stream plan, backed by caller-guaranteed serialization or framework Run admission;
+   model unsupported execution modes conservatively or reject the budget mode.
+3. **Budget-constrained contract selection:** generic EP contract menu and immutable per-node
+   bindings, with the deterministic selector above. Begin with a GQA adapter using #33316's existing
+   enforced masks, then add other kernels only when their committed routes are enforceable.
+4. **Placement selection:** add CPU-region alternatives and transfer-edge costs to the same planner,
+   then expand control flow, concurrent Runs, and shared-session/device admission.
+
+Per-Run workspace is reusable across sequential nodes, not automatically across concurrent Runs.
+An isolated one-Run report is not a shared-device guarantee. CUDA graph capture needs a declared
+retained-buffer model; unsupported capture modes must remain uncovered, not silently use the
+non-capture estimate.
+
+Targeted tests should cover sequential scratch reuse, asynchronous overlap, shared weights and KV
+aliases, source/destination prepack coexistence, persistent decode storage during prefill, allocator
+alignment/retention, initialization-dominated peaks, phase correlations, changed/fused bindings,
+and a contract change that avoids CPU offload. Synthetic framework plans can exercise these before
+GPU integration; observed device peaks subsequently validate the model rather than replace it.
+
+### Deferred correctness/coverage TODOs
+
+- [ ] **Workload-envelope enforcement/admission:** add optional ORT-side checks where caller
+  guarantees or existing validation do not suffice, or admission/rebudgeting before oversized
+  workloads execute. Query/chunk, batch, active KV, allocated cache, and concurrency bounds are
+  distinct; windowed caches do not require accumulated context to stay below resident capacity.
+- [ ] **Bounded fallback coverage:** add low-workspace fallback implementations or stronger
+  eligibility coverage so restrictive phase contracts can serve more states without an unaccounted
+  escape. Existing explicit failure remains the policy for uncovered runtime availability.
+
+These TODOs are deferred, not erased. Until workload, allocator/runtime, and ownership assumptions
+are guaranteed, publish the framework result as a **conditional session budget plan**, not an
+unconditional no-OOM promise. Caller admission guarantees can satisfy the workload condition without
+duplicating them inside every kernel.
 
 ---
 
@@ -695,35 +943,43 @@ Stage 3: Committed policy + enforcement.
          - Share that resolver across L1, L2, and runtime.
          - Runtime classifies prefill, decode, or chunked prefill and may fall back only inside
            that phase's committed mask; otherwise it fails explicitly.
-         - Follow-up: add a low-workspace fallback so stricter policies can remain total in Case B.
+         - Explicit failure is retained for uncovered runtime availability.
+         - Additional low-workspace fallback coverage is a deferred TODO, not a framework blocker.
 
-Stage 4: Envelope profiling Run to validate and calibrate.
-         - Exercise every relevant shape/route regime, including chunked prefill.
-         - Treat any observed allocation above W_L1 as a correctness failure.
-         - Never substitute the sampled peak for a proof bound in strict capacity placement.
+Stage 4 (next): Whole-session GPU lifetime/backing accounting and a budget plan.
+               - Account Initialize as well as Run, including physical pool retention and reserve.
+               - Deduplicate shared/aliased roots; reuse scratch only under proven non-overlap.
+               - Reuse existing execution/allocation planners and reconcile L2 before Run.
+               - Report conditional assumptions and unavailable terms explicitly.
 
-Stage 5: Whole-graph peak/lifetime accounting.
-         - Combine persistent residents, activation liveness, overlapping workspaces, and reserve.
-         - Reuse sequential scratch instead of summing every per-node maximum.
+Stage 5: Budget-constrained contract and placement selection.
+         - Enumerate EP-owned enforceable contracts and persist the selected bindings.
+         - Recompute whole-session backing for each contract/CPU-region alternative.
+         - Begin with deterministic preferences, without claiming optimal latency.
 
-Stage 6: Adaptive policy tuning from observed traffic, constrained by proven contracts.
+Stage 6 (later): Envelope profiling, comparable cost calibration, and adaptive policy tuning.
+                 - Exercise relevant shape/route regimes, including chunked prefill.
+                 - Treat observed allocation above its bound as a correctness failure.
+                 - Never substitute the sampled peak for a proof bound in strict placement.
+
+Deferred TODOs: optional workload-envelope enforcement/admission and bounded fallback coverage.
 ```
 
-The proof remains route-local until the workload envelope is runtime-enforced and Stage 5 accounts
-for global lifetimes and reserve. Before both land, neither a route-local bound nor an empirical peak
-is a complete no-OOM guarantee.
+The proof remains route-local until Stage 4 accounts for global lifetimes, backing, and reserve.
+A session-wide guarantee additionally requires workload bounds and ownership/concurrency assumptions
+to be guaranteed, either by ORT or the caller's admission contract. Neither a route-local bound nor
+an empirical peak is a complete no-OOM guarantee.
 
 ### Actionable now vs. forward-looking
 
-- **Actionable now** (opt-in flag, no default change): the contract triple with `W_L1` closed over
-  the permitted set, the GQA-first `latency`/`memory`/`safe` resolver shared by L1/L2/runtime, and
-  the L1/L2 requirement-vs-strategy split with the lifetime caveat.
-- **Forward-looking** (gate on the Stage-4 profiling that makes latency comparable): full policy
-  comparability including CPU-boundary cost, and the auto-optimizer that consumes it — but ship the
-  `(W_L1, cost)` interface early so it drops in without rework.
-- **Separate global dependency:** Stage 5 consumes proven per-node bounds but owns activation,
-  workspace, persistent-buffer, and allocator lifetimes. Tightening a node estimate does not by
-  itself prove the whole-session peak.
+- **Existing foundation:** route-aware L1 accounting and #33316's opt-in phase-aware GQA commitment
+  with `W_L1` closed over the permitted set. Default behavior remains unchanged.
+- **Next focus:** Stage 4's whole-session GPU backing report/budget plan and Stage 5's deterministic
+  contract/placement selector. Calibrated latency and new fallback implementations need not block them.
+- **Forward-looking:** calibrated end-to-end comparison including CPU-boundary costs and adaptive
+  tuning. Keep cost provenance in the contract interface so this can improve selection later.
+- **Global dependency:** a local estimate reduction helps only when it reduces the session's
+  peak-driving backing. Tightening a node estimate does not by itself prove the whole-session peak.
 - **The hard prerequisite for any Case B reduction:** runtime enforcement must land with the
   estimate that removes a currently reachable route. The GQA-first implementation gates every
   dispatch branch with the committed mask and fails when no permitted route serves the Run. A
@@ -749,7 +1005,9 @@ implementation in the source tree. Instead:
 5. **Profiles are evidence, not proof** — use empirical peaks to detect estimator bugs and calibrate
    cost models, never to replace an analytical upper bound required for strict placement.
 6. **Per-node proof is not global proof** — whole-graph liveness and allocator reserve determine the
-   session peak and remain separate accounting work.
+   session peak. The next focus is framework lifetime/backing accounting followed by
+   budget-constrained contract and placement selection.
 
-The bounded fallback is the linchpin: it is what lets a policy be total (Case B) and makes the
-route-level budget decision in the constrain-then-select model (cuDNN/TensorRT) sound.
+Bounded fallback coverage broadens the admitted workload, while envelope enforcement or caller
+admission establishes its bounds. Neither is a prerequisite for developing a framework planner
+that reports its assumptions honestly and never escapes the selected route contracts.
