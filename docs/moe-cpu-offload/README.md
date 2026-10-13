@@ -86,8 +86,10 @@ The global CUDA budget is:
 cuda_expert_count = total_expert_count - cpu_offload_expert_count
 ```
 
-One CUDA slot contains all weights required to execute one expert. CUDA slots contain copies only; moving an expert
-into or out of CUDA never removes or modifies its canonical CPU weights.
+One CUDA slot contains all weights required to execute one expert. CPU and CUDA storage contain disjoint expert
+subsets: CPU-resident experts use compact MLAS-layout storage, while CUDA-resident experts use compact CUDA storage.
+There is no permanent CPU copy of every CUDA expert. An exchange preserves both stores' capacities and moves the
+outgoing CUDA weights into the incoming expert's CPU slot only when publication is safe.
 
 ## Expert counters
 
@@ -114,6 +116,9 @@ On devices supporting CUDA stream memory operations, routing compacts only rows 
 A short notification callback wakes a per-node CPU worker only for a nonempty compacted batch. That worker transfers
 the compacted activations and routing, executes MLAS, and uploads only those rows' contributions. CUDA expert kernels
 can run concurrently; the compute stream waits for the CPU result only before scattering and combining it.
+At that boundary, the host must ensure the worker has enqueued its upload before inserting the CUDA upload event and
+stream-memory wait. A wait on a future, CUDA-invisible upload alone can deadlock during subgraph execution or tactic
+profiling. The upload dependency makes the producer visible to CUDA without moving the wait ahead of CUDA expert GEMMs.
 Single-row decode with no CPU routes releases that device-side wait directly on GPU, without waiting for the host
 notification. Devices without stream memory operations retain the synchronous CPU execution path.
 
@@ -184,8 +189,8 @@ Experts omitted from the file start at zero. When the setting is absent, all cou
 
 The first offload implementation uses loaded counters to select the highest-ranked experts globally. If all counters
 are zero, it distributes CUDA slots round-robin across eligible nodes and selects lower local expert IDs first. This
-placement remains fixed for the lifetime of the session and separates hybrid CPU/CUDA inference correctness from
-adaptive placement changes.
+placement remains fixed when adaptive swaps are disabled. With swaps enabled, each node retains its initial CUDA
+slot count, but the experts assigned to those slots can change after successful inference boundaries.
 
 ## Per-node placement update
 
@@ -221,8 +226,9 @@ CUDA staging slot so the published mapping remains usable until the complete exc
 4. Record a transfer-completion event.
 5. Commit the outgoing expert to its CPU allocation and publish the new mapping only after both directions have completed.
 
-The CPU-bound transfer must always complete before the CPU-to-CUDA transfer starts. An exchange never overwrites the
-currently published CUDA slot. If the next inference reaches the same `MoE` or `QMoE` before the exchange completes,
+The CPU-bound transfer completes before the CPU-to-CUDA transfer starts because both directions reuse the CUDA layout
+buffer; this is an implementation constraint, not a restriction imposed by NVIDIA copy engines. An exchange never
+overwrites the currently published CUDA slot. If the next inference reaches the same `MoE` before the exchange completes,
 the kernel uses the pre-exchange mapping and does not wait. A later invocation observes the new placement only after
 the pilot has published the completed exchange.
 
@@ -242,14 +248,15 @@ guarantee. The initial implementation therefore permits at most four in-flight e
 Separate pinned buffers, CUDA staging slots, and copy streams allow transfers from different exchanges to overlap.
 Within one exchange, the incoming transfer waits for the outgoing transfer before reusing the shared CUDA layout
 buffer. Publication waits for both directions. Hardware with one copy engine serializes the transfers without changing
-correctness. Additional exchanges remain queued for a later completion or inference boundary. Each node that has
-swapped retains two expert-sized pinned buffers and two expert-sized CUDA staging/layout buffers for reuse. The
-in-flight exchange limit does not bound these persistent allocations across nodes.
+correctness. Additional eligible exchanges are reconsidered at a later inference boundary, not retained in a queue.
+Each node that has swapped retains two expert-sized pinned buffers and two expert-sized CUDA staging/layout buffers
+for reuse. The in-flight exchange limit does not bound these persistent allocations across nodes.
 
-## End-of-inference redistribution
+## Planned end-of-inference redistribution
 
-After each complete model inference, the pilot first publishes completed exchanges, then recomputes how many CUDA
-experts belong to each `MoE` and `QMoE` node while preserving the global CUDA budget.
+Redistribution across nodes is not implemented. A future policy could recompute how many CUDA experts belong to each
+node after complete model inference, while preserving the global CUDA budget. Current adaptive swaps only exchange
+experts within a node and never transfer CUDA slots between nodes.
 
 The allocation objective is lexicographic:
 
@@ -260,14 +267,14 @@ The allocation objective is lexicographic:
 Within each node, keep the experts with the highest counters. Redistribution may transfer slot ownership between
 nodes, whereas a per-node exchange changes the expert stored in a slot without changing that node's slot count.
 
-Redistribution never drains or waits for pending exchanges. It schedules up to the available four-exchange concurrency
-limit and leaves additional non-conflicting exchanges queued. A node with an incomplete exchange continues using its
-published pre-exchange placement. Slot metadata changes only after both transfer directions complete.
+The future redistribution policy must not drain or wait for pending exchanges. A node with an incomplete exchange
+must continue using its published pre-exchange placement. Slot metadata must change only after both transfer directions
+complete.
 
 ## Operator integration
 
-The implementation extends `com.microsoft::MoE` and `com.microsoft::QMoE` without changing the exported ONNX model
-contract.
+Routing instrumentation covers `com.microsoft::MoE` and `com.microsoft::QMoE`. CPU offload and adaptive swaps currently
+cover only built-in CUDA FP16/BF16 `MoE`, without changing its exported schema or inserting a new graph operator.
 
 The graph node remains assigned to the CUDA execution provider. Its CUDA kernel:
 
@@ -276,11 +283,9 @@ The graph node remains assigned to the CUDA execution provider. Its CUDA kernel:
 - invokes shared CPU expert-compute helpers for CPU-resident experts;
 - submits counter updates and, once adaptive swaps are enabled, placement changes to the cache manager.
 
-The implementation must verify that initializer prepacking and memory planning can materialize each expert only on its
-assigned device. If the existing input-memory contract cannot support this without
-regressing the regular CUDA path, an internal graph transformer may insert an experimental `MoEWithCPUOffload`
-operator. That operator must reuse `MoE`/`QMoE` schema semantics and kernels and must not become part of the exported
-model contract.
+Session initialization uses the constant-weight prepacking path to materialize the CPU and CUDA subsets in their
+respective compact stores. Constant FC1/FC2 weights and any connected biases, enabled prepacking, and a statically known
+hidden dimension are required. With CPU offload disabled, the existing dynamic-weight CUDA path is unchanged.
 
 When `session.moe_cpu_offload_experts` is `0` or absent, CPU and CUDA `MoE`/`QMoE` behavior remains unchanged.
 
@@ -296,9 +301,11 @@ CPU and CUDA kernels obtain their session-owned `KernelPilot` through `OpKernelC
 The generic pilot in `core/framework` carries no kernel-specific logic; `KernelPilotMoeExpertSelection`, defined in
 `kernel_pilot_moe_expert_selection.h`, deduplicates selected expert IDs. CUDA-specific copies and events stay in a
 provider-side adapter.
-After successful kernel execution, the executor commits the collected usage through
-`KernelPilotMoeExpertState::RecordUsage()`, which owns the
-counter-update logic. These are internal C++ calls, not a public C API.
+After successful kernel execution, the executor records usage through
+`KernelPilotMoeExpertState::RecordUsage()`. CPU usage is committed directly; CUDA-offloaded usage is deferred until
+`EndRun` consumes the provider snapshot and updates the host mirror. Failed kernel invocations are drained without
+committing their counters, while earlier successful invocations still commit if later run work fails. Swaps are
+scheduled only when the overall run succeeds. These are internal C++ calls, not a public C API.
 Expert identity includes graph scope as well as node and expert IDs, so nodes in different
 subgraphs cannot collide. The state persists across `Run()` calls and is isolated from other sessions.
 
@@ -310,8 +317,8 @@ Each CUDA kernel cache owns device-specific resources and execution state:
 - CUDA completion events.
 
 Initialization builds an immutable dictionary from `(OpKernel pointer, local expert ID)` to a global expert index.
-Counters are ordinary values; their update path does not acquire a mutex. Counting and adaptive placement require
-non-overlapping `Run()` calls on a session, enforced at run entry. Distinct kernels may update disjoint expert ranges,
+Counters are ordinary values; their update path does not acquire a mutex when logging is disabled. Counting and adaptive
+placement require non-overlapping `Run()` calls on a session, enforced at run entry. Distinct kernels may update disjoint expert ranges,
 but a kernel cannot execute twice simultaneously. Global snapshots are read between runs.
 Each invocation captures a stable placement mapping, and a slot cannot be overwritten until all work using its
 previous contents has completed.
@@ -319,11 +326,11 @@ previous contents has completed.
 Errors are explicit. Invalid configuration, invalid initial state, allocation failures, copy failures, and event
 failures fail session initialization or execution rather than silently disabling offload or retaining stale placement.
 
-## Pull request plan
+## Implementation scope
 
-The session-global expert state and counters are already implemented. The remaining implementation is split into two
-steps so that hybrid inference is validated before placement starts changing at runtime. Each pull request includes
-the tests and documentation for its own scope.
+The combined implementation includes static hybrid inference and adaptive placement in one change. Static placement
+remains available by setting `session.moe_max_in_flight_swaps_per_device=0`; enabling swaps does not change the operator
+schema or the session-global CPU expert count.
 
 ### Step 1: static FP16/BF16 placement and hybrid inference
 
@@ -386,3 +393,41 @@ Measure:
 - token throughput;
 - peak CUDA memory;
 - peak CPU memory.
+
+### Reproducible warmed-decode protocol
+
+[`benchmark_moe_cpu_offload.py`](../../tools/python/benchmark_moe_cpu_offload.py) uses the existing GenAI environment
+and a source-built ORT runtime. On Linux, `ORT_PYTHON_ROOT` must expose an `onnxruntime` package whose `capi` directory
+contains the matching shared runtime and CUDA provider libraries, or symlinks to them. GenAI locates these libraries
+through the package found on `PYTHONPATH`; selecting the right Python executable alone does not select the right ORT
+binary. Verify the resolved `ORT_LIB_PATH` after importing GenAI and record the runtime/provider hashes.
+
+```bash
+CUDA_VISIBLE_DEVICES=5 PYTHONPATH="$ORT_PYTHON_ROOT:tools/python" \
+python tools/python/benchmark_moe_cpu_offload.py \
+  --name cpu1000-alpha0p9-epsilon0p1 \
+  --model "$MODEL_PATH" --prompts "$PROMPTS_PATH" \
+  --prompt-limit 5 --max-new-tokens 256 \
+  --cpu-offload-experts 1000 --counter-alpha 0.9 --swap-epsilon 0.1 \
+  --swap --no-counter-log --no-cuda-graph \
+  --output result.json --log result.log
+```
+
+Each fresh process runs five prompts, with counters and placement retained between prompts. Generation is greedy and
+has a fixed length of 256 tokens. `append_tokens()` is prefill and is timed separately. The first
+`generate_next_token()` uses those precomputed logits, so it is excluded from decode timing. Score only prompts 3-5:
+each contributes 255 actual decode inferences, or 765 calls per repetition. The reported repetition score is the mean
+of those three prompts' `decode.mean_ms` values, not the total generation duration or the best prompt.
+
+Run three independent repetitions per configuration and report their mean, sample standard deviation, and range.
+Run configurations serially on one otherwise idle GPU, interleaving configurations between repetitions to reduce
+temporal drift. Do not profile, build, or run other GPU tests during measurements. Memory is sampled every 50 ms;
+reported peaks include initialization and all five prompts. GPU memory is device-wide NVML usage, while CPU memory
+is process RSS.
+
+The parameter sweeps use alpha `{0.5, 0.75, 0.9, 0.95, 0.99}`, epsilon `{0, 0.01, 0.05, 0.1, 0.2, 0.5}`, and CPU
+expert counts `{0, 250, 500, 1000, 2000}`. Hold the other parameters at alpha `0.9`, epsilon `0.1`, and 1,000 CPU
+experts. These are benchmark reference values, not changed session defaults. The common reference is measured three
+times and reused in all three tables: 14 unique configurations and 42 fresh processes. Probability weighting remains
+at its default of zero and the swap concurrency limit is four. At zero CPU experts there is no offload, counter
+instrumentation, or applicable exchange; that row is the all-GPU reference, not a measurement of active swaps.
