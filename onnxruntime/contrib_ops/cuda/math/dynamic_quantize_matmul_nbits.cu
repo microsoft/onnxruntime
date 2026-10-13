@@ -273,37 +273,37 @@ __device__ __forceinline__ uint32_t DecodeWeight4(const uint8_t* blob, int64_t j
   return codes;
 }
 
-__device__ __forceinline__ uint32_t DecodePrepackedInt4(const uint8_t* blob, int quarter, bool upper) {
-  const int base = (quarter % 2) * 16 + quarter / 2 + (upper ? 2 : 0);
-  const int word = base / 8;
-  const int shift = (base % 8) * 4;
-  const auto* words = reinterpret_cast<const uint32_t*>(blob);
-  const uint32_t first = words[word] >> shift;
-  const uint32_t second = words[word + 1] >> shift;
-  const uint32_t codes = (first & 0xfu) | (((first >> 16) & 0xfu) << 8) |
-                         ((second & 0xfu) << 16) | (((second >> 16) & 0xfu) << 24);
-  return ((codes | 0x80808080u) - 0x08080808u) ^ 0x80808080u;
-}
-
-// Four consecutive centered codes of one B fragment register in the SM80 fpA_intB layout. `column` points at the
-// column's words inside one 64-element K tile; `tile_step` selects the 32-wide half of that tile.
+// Decode both B fragment registers from shared packed words in the SM80 fpA_intB layout.
+// `column` points at one column's words in a 64-element K tile; `tile_step` selects its 32-wide half.
 // The tile layout is the row permutation, column-major pair interleave and in-word pair interleave of
 // preprocess_weights_for_mixed_gemm_cuda.
 template <int Bits>
-__device__ __forceinline__ uint32_t DecodePrepacked(const uint32_t* column, int tile_step, int quarter, bool upper) {
+__device__ __forceinline__ uint2 DecodePrepackedPair(const uint32_t* column, int tile_step, int quarter) {
   static_assert(Bits == 2 || Bits == 4 || Bits == 8);
-  if constexpr (Bits == 4) {
-    return DecodePrepackedInt4(reinterpret_cast<const uint8_t*>(column + tile_step * 4), quarter, upper);
-  } else if constexpr (Bits == 8) {
-    const int word = (tile_step * 2 + (upper ? 1 : 0)) * 4 + (quarter % 2) * 2;
+  if constexpr (Bits == 8) {
+    const int word = tile_step * 8 + (quarter % 2) * 2;
     const uint32_t selector = 0x6420u + 0x1111u * (quarter / 2);
-    return __byte_perm(column[word], column[word + 1], selector) ^ 0x80808080u;
+    return make_uint2(__byte_perm(column[word], column[word + 1], selector) ^ 0x80808080u,
+                      __byte_perm(column[word + 4], column[word + 5], selector) ^ 0x80808080u);
   } else {
-    const int shift = 2 * (tile_step * 4 + (upper ? 2 : 0) + quarter / 2);
-    const uint32_t first = (column[(quarter % 2) * 2] >> shift) & 0x00030003u;
-    const uint32_t second = (column[(quarter % 2) * 2 + 1] >> shift) & 0x00030003u;
-    const uint32_t codes = __byte_perm(first, second, 0x6420u);
-    return ((codes | 0x80808080u) - 0x02020202u) ^ 0x80808080u;
+    uint32_t lower, upper;
+    if constexpr (Bits == 4) {
+      const int word = tile_step * 4 + (quarter % 2) * 2;
+      const int shift = (quarter / 2) * 4;
+      const uint32_t first = column[word] >> shift;
+      const uint32_t second = column[word + 1] >> shift;
+      lower = __byte_perm(first, second, 0x6420u) & 0x0f0f0f0fu;
+      upper = __byte_perm(first, second, 0x7531u) & 0x0f0f0f0fu;
+    } else {
+      const int word = (quarter % 2) * 2;
+      const int shift = 2 * (tile_step * 4 + quarter / 2);
+      const uint32_t codes = __byte_perm(column[word] >> shift, column[word + 1] >> shift, 0x6420u);
+      lower = codes & 0x03030303u;
+      upper = (codes >> 4) & 0x03030303u;
+    }
+    constexpr uint32_t midpoint = Bits == 4 ? 0x08080808u : 0x02020202u;
+    return make_uint2(((lower | 0x80808080u) - midpoint) ^ 0x80808080u,
+                      ((upper | 0x80808080u) - midpoint) ^ 0x80808080u);
   }
 }
 
@@ -509,8 +509,7 @@ __global__ void PrepackedMatMul(const int8_t* a, const float* a_scales, const ui
 #pragma unroll
     for (int step = 0; step < Steps; ++step) {
       const uint32_t* tile_words = column_words + (step / 2) * 32;
-      const uint32_t b0 = DecodePrepacked<Bits>(tile_words, step % 2, lane % 4, false);
-      const uint32_t b1 = DecodePrepacked<Bits>(tile_words, step % 2, lane % 4, true);
+      const uint2 decoded = DecodePrepackedPair<Bits>(tile_words, step % 2, lane % 4);
       if (step % StepsPerGroup == 0) {
 #pragma unroll
         for (int rf = 0; rf < RowFragments; ++rf) acc[rf][0] = acc[rf][1] = acc[rf][2] = acc[rf][3] = 0;
@@ -524,7 +523,7 @@ __global__ void PrepackedMatMul(const int8_t* a, const float* a_scales, const ui
         asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0, %1, %2, %3}, [%4];"
                      : "=r"(fragment_a[0]), "=r"(fragment_a[1]),
                        "=r"(fragment_a[2]), "=r"(fragment_a[3]) : "r"(a_address));
-        MmaInt8(acc[rf], fragment_a, b0, b1);
+        MmaInt8(acc[rf], fragment_a, decoded.x, decoded.y);
       }
       if (step % StepsPerGroup != StepsPerGroup - 1) continue;
 
@@ -1087,14 +1086,19 @@ Status NativeKernelAvailable(Kernel kernel, bool& available) {
   return Status::OK();
 }
 
-// Row fragments per CTA of the prepacked kernel. On A100 a decoded weight fragment serving 2-4 row fragments
-// raised M >= 128 throughput by up to 1.9x. Use the largest count that does not exceed the row count and still
-// leaves about a CTA per SM (96 on A100, 128 on RTX 4090), and at most two for INT4, whose nibble decode is the
-// costliest and which gained nothing from four. Other architectures keep one fragment until measured.
-int PrepackedRowFragments(int bits, int64_t rows, int64_t n, int compute_capability) {
-  if ((compute_capability != 80 && compute_capability != 89) || rows <= 16) return 1;
-  const int64_t minimum_ctas = compute_capability == 89 ? 128 : 96;
-  for (int fragments = bits == 4 ? 2 : 4; fragments > 1; fragments /= 2) {
+bool IsCompactConsumerGpu(int compute_capability, int sm_count) {
+  return (compute_capability == 86 || compute_capability == 120) && sm_count <= 48;
+}
+
+// Reuse decoded weights only while the grid supplies enough CTAs. Four W4 fragments help compact SM120,
+// whereas the measured SM80/SM86/SM89 paths prefer two. Keep larger devices' established dispatch unchanged.
+int PrepackedRowFragments(int bits, int64_t rows, int64_t n, int compute_capability, int sm_count) {
+  const bool compact = IsCompactConsumerGpu(compute_capability, sm_count);
+  if ((compute_capability != 80 && compute_capability != 89 && !compact) || rows <= 16) return 1;
+  const int64_t minimum_ctas = compact ? sm_count * 4 / 3 : compute_capability == 89 ? 128
+                                                                                     : 96;
+  const int max_fragments = bits == 4 && !(compact && compute_capability == 120) ? 2 : 4;
+  for (int fragments = max_fragments; fragments > 1; fragments /= 2) {
     const int64_t tile_rows = 16 * fragments;
     if (tile_rows <= rows && (rows + tile_rows - 1) / tile_rows * (n / 64) >= minimum_ctas) return fragments;
   }
@@ -1105,8 +1109,8 @@ template <typename T, typename ScaleT, int Bits>
 Status LaunchPrepacked(const int8_t* a, const float* a_scales, const uint8_t* b,
                        const void* b_scales, const void* bias, void* y,
                        bool per_tensor, int64_t rows, int64_t n, int64_t k,
-                       int compute_capability, cudaStream_t stream) {
-  const int fragments = PrepackedRowFragments(Bits, rows, n, compute_capability);
+                       int compute_capability, int sm_count, cudaStream_t stream) {
+  const int fragments = PrepackedRowFragments(Bits, rows, n, compute_capability, sm_count);
   auto kernel = rows == 8        ? PrepackedMatMul<T, ScaleT, Bits, 8>
                 : rows == 9      ? PrepackedMatMul<T, ScaleT, Bits, 9>
                 : fragments == 4 ? PrepackedMatMul<T, ScaleT, Bits, 0, 4>
@@ -1173,11 +1177,18 @@ static auto PickGroupedKernel(GroupedTile tile, bool k128) {
   return GroupedKernel<T, Bits, 32, Common128, 64, 3, 2, 64, RowGuard, Fine>();
 }
 
-// A100 and RTX 4090's fine-interval/small-M paths need about 1.5 CTAs per SM and few padded rows.
-// Keep the established coarse-interval tiling at M >= 32 on SM89; enlarging those tiles regresses W2.
-GroupedTile SelectGroupedTile(int64_t rows, int64_t column_tiles_64, int compute_capability, bool fine) {
-  if (compute_capability == 80 || (compute_capability == 89 && (fine || rows < 32))) {
-    const int64_t minimum_ctas = compute_capability == 89 ? 192 : 160;
+// Balance occupancy and padded rows. Compact SM86 retains the established M >= 32 tiling;
+// compact SM120's fine W4/W8 intervals benefit from larger row tiles sooner than W2.
+GroupedTile SelectGroupedTile(int64_t rows, int64_t column_tiles_64, int compute_capability,
+                              int sm_count, int bits, bool fine) {
+  const bool compact = IsCompactConsumerGpu(compute_capability, sm_count);
+  if (compute_capability == 80 || (compute_capability == 89 && (fine || rows < 32)) ||
+      (compact && (compute_capability == 120 || rows < 32))) {
+    const int64_t minimum_ctas = compute_capability == 80   ? 160
+                                 : compute_capability == 89 ? 192
+                                 : compute_capability == 86 ? sm_count * 3
+                                 : bits == 2 || rows < 64   ? sm_count * 2
+                                                            : sm_count;
     for (GroupedTile tile : {GroupedTile::k64x64, GroupedTile::k32x64, GroupedTile::k16x64}) {
       const int64_t tile_rows = GroupedTileRows(tile);
       const int64_t row_tiles = (rows + tile_rows - 1) / tile_rows;
@@ -1195,7 +1206,7 @@ Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
                     const void* b_scales, DynamicWeightScaleType scale_type, const void* bias, void* y,
                     bool per_tensor, int64_t rows, int64_t n, int64_t k, int64_t block_size,
                     int64_t activation_block_size, int64_t weight_prepacked,
-                    int compute_capability, cudaStream_t stream) {
+                    int compute_capability, int sm_count, cudaStream_t stream) {
   if (weight_prepacked != 0) {
     const int64_t prepacked_block = Bits == 2 ? 64 : 32;
     const bool supported = weight_prepacked == 1 && compute_capability >= 80 && rows >= 1 &&
@@ -1210,20 +1221,22 @@ Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
     switch (scale_type) {
       case DynamicWeightScaleType::Float:
         return LaunchPrepacked<T, float, Bits>(
-            a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, compute_capability, stream);
+            a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, compute_capability, sm_count, stream);
       case DynamicWeightScaleType::Half:
         return LaunchPrepacked<T, half, Bits>(
-            a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, compute_capability, stream);
+            a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, compute_capability, sm_count, stream);
       case DynamicWeightScaleType::BFloat16:
         return LaunchPrepacked<T, __nv_bfloat16, Bits>(
-            a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, compute_capability, stream);
+            a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k, compute_capability, sm_count, stream);
     }
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Unsupported prepacked DynamicQuantizeMatMulNBits geometry.");
   }
   // Whole 64-code intervals permit aligned asynchronous copies even for W2.
   // Keep address products wide, while bounding the fast path's loop counters.
-  // Consumer Blackwell's measured crossover is eight rows; A100 and RTX 4090 use one row.
-  const int64_t minimum_rows = compute_capability >= 120                              ? 8
+  // Compact consumer GPUs, A100, and RTX 4090 benefit from the pipeline even at one row.
+  const bool compact = IsCompactConsumerGpu(compute_capability, sm_count);
+  const int64_t minimum_rows = compact                                                ? 1
+                               : compute_capability >= 120                            ? 8
                                : compute_capability == 80 || compute_capability == 89 ? 1
                                                                                       : 32;
   const bool grouped_geometry =
@@ -1234,7 +1247,8 @@ Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
       (activation_block_size >= k || activation_block_size % 64 == 0);
   // 32-aligned intervals (block 32, activation blocks such as 96) promote after every MMA step.
   const bool fine_geometry =
-      (compute_capability == 80 || compute_capability == 89) && rows >= 1 && n >= 8 && k >= 64 && k % 64 == 0 &&
+      (compute_capability == 80 || compute_capability == 89 || compact) &&
+      rows >= 1 && n >= 8 && k >= 64 && k % 64 == 0 &&
       rows <= std::numeric_limits<int>::max() - 128 && n <= std::numeric_limits<int>::max() - 128 &&
       k <= std::numeric_limits<int>::max() - 128 && block_size <= std::numeric_limits<int>::max() &&
       activation_block_size <= std::numeric_limits<int>::max() && block_size % 32 == 0 &&
@@ -1277,7 +1291,8 @@ Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
   }
   if (grouped_geometry || fine_geometry) {
     const int64_t column_tiles_64 = n / 64 + (n % 64 != 0);
-    const GroupedTile tile = SelectGroupedTile(rows, column_tiles_64, compute_capability, fine_geometry);
+    const GroupedTile tile = SelectGroupedTile(rows, column_tiles_64, compute_capability,
+                                               sm_count, Bits, fine_geometry);
     const int tile_m = GroupedTileRows(tile);
     const int tile_n = GroupedTileColumns(tile);
     const int64_t column_tiles = n / tile_n + (n % tile_n != 0);
@@ -1456,13 +1471,14 @@ Status LaunchDynamicQuantizedMatMul(const int8_t* a, const float* a_scales,
                                     const void* bias, void* y, bool bf16, bool per_tensor,
                                     int64_t rows, int64_t n, int64_t k,
                                     int bits, int64_t block_size, int64_t activation_block_size,
-                                    int64_t weight_prepacked, int compute_capability, cudaStream_t stream) {
+                                    int64_t weight_prepacked, int compute_capability, int sm_count, cudaStream_t stream) {
 #define LAUNCH_DYNAMIC_MATMUL(Bits)                                                                                      \
   return bf16 ? LaunchMatMul<__nv_bfloat16, Bits>(a, a_scales, b, b_scales, scale_type, bias, y, per_tensor, rows, n, k, \
                                                   block_size, activation_block_size, weight_prepacked,                   \
-                                                  compute_capability, stream)                                            \
+                                                  compute_capability, sm_count, stream)                                  \
               : LaunchMatMul<half, Bits>(a, a_scales, b, b_scales, scale_type, bias, y, per_tensor, rows, n, k,          \
-                                         block_size, activation_block_size, weight_prepacked, compute_capability, stream)
+                                         block_size, activation_block_size, weight_prepacked,                            \
+                                         compute_capability, sm_count, stream)
   switch (bits) {
     case 8:
       LAUNCH_DYNAMIC_MATMUL(8);

@@ -68,7 +68,7 @@ Status LaunchDynamicQuantizedMatMul(const int8_t* a, const float* a_scales,
                                     int64_t rows, int64_t n, int64_t k,
                                     int bits, int64_t block_size, int64_t activation_block_size,
                                     int64_t weight_prepacked,
-                                    int compute_capability, cudaStream_t stream);
+                                    int compute_capability, int sm_count, cudaStream_t stream);
 Status LaunchDynamicQuantizedEmpty(void* y, const void* bias, bool bf16,
                                    int64_t count, int64_t n, cudaStream_t stream);
 

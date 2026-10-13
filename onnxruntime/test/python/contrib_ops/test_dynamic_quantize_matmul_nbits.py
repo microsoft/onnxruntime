@@ -252,6 +252,53 @@ class TestDynamicQuantizeMatMulNBits(unittest.TestCase):
                     result = session.run(None, {"A": a})[0]
                     np.testing.assert_array_equal(result.view(np.uint16), expected.view(np.uint16))
 
+    def test_standard_and_prepacked_row_tiles_capture_with_bias_match_exact_reference(self):
+        rng = np.random.default_rng(46)
+        k, n = 256, 4096
+        bias = rng.uniform(-0.02, 0.02, size=n).astype(np.float16)
+        for bits, block in ((2, 64), (4, 32), (8, 32)):
+            packed = rng.integers(0, 256, size=(n, k // block, block * bits // 8), dtype=np.uint8)
+            prepacked = prepack_sm80(packed, bits)
+            scales = rng.uniform(-0.02, 0.02, size=(n, k // block)).astype(np.float16)
+            for m in (1, 8, 9, 16, 32, 64, 65, 128, 129):
+                for mode in ("dynamic_per_token", "dynamic_per_tensor"):
+                    for weight_prepacked, weights in ((0, packed), (1, prepacked)):
+                        with self.subTest(bits=bits, m=m, mode=mode, prepacked=weight_prepacked):
+                            model = make_model(scales, bits=bits, m=m, k=k, n=n, block=block)
+                            model.graph.input.remove(model.graph.input[1])
+                            model.graph.initializer.extend(
+                                [numpy_helper.from_array(weights, "B"), numpy_helper.from_array(bias, "bias")]
+                            )
+                            model.graph.node[0].input.append("bias")
+                            model.graph.node[0].attribute.extend(
+                                [
+                                    helper.make_attribute("activation_quantization", mode),
+                                    helper.make_attribute("weight_prepacked", weight_prepacked),
+                                ]
+                            )
+                            try:
+                                session = make_session(model, capture=True)
+                            except ort_capi.Fail as error:
+                                if "SM80+" in str(error):
+                                    self.skipTest("SM80+ is required for prepacked DynamicQuantizeMatMulNBits")
+                                raise
+                            a = ort.OrtValue.ortvalue_from_shape_and_type((m, k), np.float16, "cuda", 0)
+                            y = ort.OrtValue.ortvalue_from_shape_and_type((m, n), np.float16, "cuda", 0)
+                            binding = session.io_binding()
+                            binding.bind_ortvalue_input("A", a)
+                            binding.bind_ortvalue_output("Y", y)
+                            for iteration in range(4):
+                                values = (rng.normal(size=(m, k)) * 4.0 ** (iteration - 1)).astype(np.float16)
+                                values[iteration % m] = 0
+                                a.update_inplace(values)
+                                session.run_with_iobinding(binding)
+                                binding.synchronize_outputs()
+                                expected = reference(
+                                    values, packed, scales, bits, block, mode, k, output_dtype=np.float32
+                                )
+                                expected = (expected + bias.astype(np.float32)).astype(np.float16)
+                                np.testing.assert_array_equal(y.numpy().view(np.uint16), expected.view(np.uint16))
+
     def test_bfloat16_standard_and_prepacked_tiles_match_exact_reference(self):
         rng = np.random.default_rng(45)
         m, k, n = 513, 128, 1024

@@ -248,7 +248,8 @@ Status DynamicQuantizeMatMulNBits::ComputeInternal(OpKernelContext* context) con
                                                        scales->DataRaw(), scale_type, bias_data, y_tile, bf16,
                                                        per_tensor, rows, n, k, static_cast<int>(bits_), block_size_, activation_block,
                                                        weight_prepacked_,
-                                                       GetDeviceProp().major * 10 + GetDeviceProp().minor, stream));
+                                                       GetDeviceProp().major * 10 + GetDeviceProp().minor,
+                                                       GetDeviceProp().multiProcessorCount, stream));
     }
     row += rows;
   }

@@ -520,13 +520,23 @@ kernel binary/PTX versions at least 80. All native kernels use signed INT8
   small-M and 32-aligned fine intervals use the four tile shapes above with
   a 192-CTA occupancy target. Coarse 64-aligned intervals at M >= 32 retain
   the established `32 x 64` / `64 x 64` selection.
+  Compact SM86 and SM120 devices with at most 48 SMs also accept positive M
+  and 32-aligned fine intervals (section 8.20). Compact SM86 small-M choices
+  target three CTAs per SM; M >= 32 retains the established coarse-path
+  tile selection. Compact SM120 uses all four shapes, balancing padded
+  rows against a target of two CTAs per SM for W2 or M < 64, and one CTA
+  per SM for W4/W8 at M >= 64.
 - SM80-prepacked W2 block-64 and W4/W8 block-32: two-stage asynchronous
   staging, direct register decoding, and typed weight scales fetched ahead.
   A CTA covers 64 columns and one 16-row fragment by default. SM80 and SM89
   reuse decoded weights across two row fragments, or four for W2/W8, when
   the row count and grid permit it. Multi-fragment selection targets at
-  least 96 CTAs on SM80 and 128 on SM89. The schema's prepacked-layout
-  eligibility checks still apply.
+  least 96 CTAs on SM80 and 128 on SM89. Compact SM86/SM120 instead target
+  `floor(4 * SM_count / 3)` CTAs, with up to four W2/W8 fragments, two W4
+  fragments on SM86, and four W4 fragments on SM120. W2/W4 decoding produces
+  both MMA registers from the same loaded word pair; W8 retains its original
+  byte permutation. The schema's prepacked-layout eligibility checks still
+  apply.
 - Other native W8A8/W4A8/W2A8: `32 x 64 x 64` CTA tile with direct shared-memory
   weight decoding. Requires M at least 32, N at least 8, K at least 32,
   and every interior activation/weight block boundary 32-aligned: each
@@ -539,7 +549,9 @@ intervals in the same ordered FP32 sequence.
 The single-interval M threshold was checked against DP4A on the measured
 H200 shapes, but is not universally tuned. Aligned pipeline tile choices
 were measured on H200; SM80 (A100), SM89 (RTX 4090), and SM120 have their own
-measured choices (sections 8.15, 8.16, and 8.18), and other architectures remain unverified.
+measured choices (sections 8.15, 8.16, and 8.18). Compact SM86 (RTX 3060)
+and SM120 (RTX 5060 Ti) measurements are in section 8.20; other architectures
+remain unverified.
 The remaining native geometry uses synchronous shared staging.
 
 Dispatch selects an implementation, never the activation-quantization mode.
@@ -2721,6 +2733,411 @@ and aggregation passed. The artifact-only launcher uses
 the four issue shapes, checks the final provider identity, and records
 the full commands, inputs/scales/weights hashes, raw trials, correctness
 checks, and quality flags.
+
+### 8.20 RTX 5060 Ti / RTX 3060 compact-GPU tuning
+
+Measured on 2026-10-12 against the pre-tuning branch kernel at commit
+`fdbddaf93c` (`perf(cuda): RTX 4090 tuning`). This section concerns only
+`DynamicQuantizeMatMulNBits`; no MoE kernels or MoE documentation are part
+of this tuning change.
+
+#### Environment and accepted changes
+
+| Item | Configuration |
+|------|---------------|
+| GPU 0 | RTX 5060 Ti, SM120, 36 SMs, 16 GB, WDDM |
+| GPU 1 | RTX 3060, SM86, 28 SMs, 12 GB, WDDM; also drives the desktop |
+| NVIDIA driver | 610.88 |
+| Build | Bundled CUDA EP, Release, VS2022, CUDA 13.0.88, cuDNN 9.13.0.50 |
+| CUDA targets | `86-real;120-real`; the build normalizes SM120 to `120a-real` |
+| Python/runtime | Python 3.12, ORT 1.32.0 freshly built from this branch, Torch 2.10.0+cu130 |
+| Other dependencies | NumPy 2.3.5, ONNX 1.22.0, ml_dtypes 0.6.0, onnx_ir 1.0.0 |
+| Build controls | Flash Attention OFF in both builds; dynamic-quantization flags `--ftz=false --prec-div=true --fmad=false` retained |
+
+The baseline is a fresh build, not the previously installed CPU-only ORT
+package or an older CUDA DLL. Two frozen Python-runtime directories share
+the same core runtime and differ only in the rebuilt CUDA provider DLL:
+
+| Provider | SHA256 of `onnxruntime_providers_cuda.dll` |
+|----------|------------------------------------------|
+| Before | `83335a36ada82348ad65342bfbd0362981ec4a14c8abd4df09e996b66f1d36f7` |
+| After | `0e0c5a60ef8f087fd7cb22431ba5601407ac21189e1123b079b207ebc2b3c120` |
+
+Accepted changes:
+
+1. Pair the two prepacked MMA B-register decodes. W2/W4 share two loaded
+   words and byte permutations rather than decode each register separately.
+   The byte-wise centering operation still prevents inter-byte borrows.
+   W8 keeps its original byte-permutation mapping.
+2. Gate new standard-layout dispatch and occupancy targets on SM86 or
+   SM120 with at most 48 SMs. Use the aligned asynchronous pipeline from
+   M=1 and enable the existing 32-aligned fine-interval path on these
+   compact devices. Compact SM86 retains its established M >= 32
+   `32 x 64` / `64 x 64` selection; compact SM120 selects among the four
+   existing tile shapes using its actual SM count and padded-row cost.
+3. Reuse prepacked weights across more row fragments when sufficient CTAs
+   remain. Compact devices target `floor(4 * SM_count / 3)` CTAs: 48 on
+   RTX 5060 Ti and 37 on RTX 3060. W2/W8 allow four fragments; W4 allows
+   four on compact SM120 and two on compact SM86. M <= 16 retains one
+   fragment, including the existing M=8/M=9 specializations.
+
+The activation quantizer, floating scale arithmetic, common-interval
+boundaries, accumulation order, bias semantics, and serialized weight
+layout are unchanged. The single-interval W8 path and unsupported-geometry
+fallbacks are preserved. Larger devices retain their established dispatch;
+paired prepacked decoding is shared by SM80+ kernels, but its performance
+was measured here only on the two listed GPUs. An experimental unused-row
+pruning change did not give a reliable benefit and was not retained.
+
+#### Methodology and timing quality
+
+The checked wrapper imports the supplied
+`D:\git\dev\scripts\dynamic_quantize_matmul_nbit\bench_prepacked.py` for
+model/session creation and the source `prepack_sm80` helper. Each GPU has
+48 cases: K x N = 4096 x 4096 and 5120 x 6144, M =
+1/8/9/16/32/64/128/512, and W2/W4/W8. W2 uses block-64; W4/W8 use block-32.
+Activations, weight scales, and outputs are FP16. Both dynamic layouts
+use `dynamic_per_token`, with no bias in the timing sweep. `MatMulNBits`
+uses the same prepacked weights as an unchanged weight-only control.
+
+All sessions use CUDA graphs and GPU IOBinding on the current Torch CUDA
+stream, with CPU EP fallback explicitly disabled. Each label receives at
+least 50 warmups and at least 250 ms of warming. There are 15 trials per
+label per pass. Baseline pass 1 chooses repeats for approximately 20 ms
+per trial, bounded to 5..1000; the same per-case/per-label repeat counts
+are frozen for all later baseline and optimized passes. The optimized
+fast paths can therefore have substantially shorter trials than 20 ms.
+
+Three baseline and three optimized passes were collected per GPU, with
+each pass ordered baseline then optimized and GPUs run sequentially.
+The table reports the **median of the three pass medians**, in
+microseconds per invocation. These CUDA-event intervals include Python/ORT
+submission and scheduling gaps between graph replays; they are not isolated
+kernel times. Synchronized host-wall medians and all raw trial times are
+retained in the JSON artifacts.
+
+Every pass verifies finite outputs, identical standard/prepacked FP16
+output bits, frozen input/weight/scale hashes, and exact dynamic output
+hashes against baseline pass 1. The third RTX 3060 baseline process stalled
+during shutdown after saving its complete result. Only that benchmark
+session was terminated; all 48 cases, all 15 trials per label, frozen
+repeat counts, and hashes in its saved JSON were independently verified
+before inclusion. The two third optimized passes then completed normally.
+
+`B` = before, `A` = after, `Gain` = B/A. `Q S/P` gives separate quality
+flags for standard/prepacked dynamic timing. `OK` requires **every**
+within-pass IQR/median <= 5% and pass-median spread
+`(max - min) / median` <= 3% in **both** phases; `!` means at least one
+threshold failed, not a numerical failure. No cases were discarded.
+
+| GPU | Standard geomean | Prepacked geomean | Standard OK | Prepacked OK | Control geomean B/A | Control OK |
+|-----|------------------|-------------------|-------------|--------------|--------------------|------------|
+| RTX 5060 Ti | 7.04x | 1.29x | 38/48 | 35/48 | 1.006x | 27/48 |
+| RTX 3060 | 10.87x | 1.37x | 26/48 | 16/48 | 1.006x | 18/48 |
+
+The quality-qualified subsets have standard/prepacked geomeans of
+7.38x/1.34x on RTX 5060 Ti and 8.76x/1.62x on RTX 3060. They contain
+different subsets and are not a like-for-like comparison between GPUs.
+
+#### RTX 5060 Ti, K=4096, N=4096
+
+| W | M | Std B | Std A | Gain | Pre B | Pre A | Gain | MNB B / A | Q S/P |
+|---|---|-------|-------|------|-------|-------|------|-----------|-------|
+| 2 | 1 | 257.38 | 41.48 | 6.20x | 31.11 | 28.80 | 1.08x | 23.19 / 23.29 | OK/! |
+| 2 | 8 | 58.41 | 42.66 | 1.37x | 32.00 | 28.28 | 1.13x | 32.46 / 32.30 | OK/! |
+| 2 | 9 | 58.59 | 43.01 | 1.36x | 32.21 | 29.66 | 1.09x | 31.55 / 30.95 | !/! |
+| 2 | 16 | 60.00 | 44.43 | 1.35x | 32.18 | 29.92 | 1.08x | 31.66 / 32.06 | OK/! |
+| 2 | 32 | 60.32 | 55.66 | 1.08x | 46.15 | 40.30 | 1.15x | 43.70 / 43.83 | !/! |
+| 2 | 64 | 81.89 | 81.29 | 1.01x | 72.46 | 49.57 | 1.46x | 68.69 / 68.21 | OK/! |
+| 2 | 128 | 156.88 | 156.11 | 1.00x | 119.92 | 80.72 | 1.49x | 115.09 / 113.85 | OK/OK |
+| 2 | 512 | 426.51 | 425.60 | 1.00x | 407.32 | 250.49 | 1.63x | 379.88 / 382.41 | OK/OK |
+| 4 | 1 | 494.62 | 58.17 | 8.50x | 39.50 | 35.41 | 1.12x | 23.85 / 24.24 | OK/OK |
+| 4 | 8 | 3497.88 | 61.35 | 57.01x | 38.81 | 35.14 | 1.10x | 34.41 / 33.62 | !/OK |
+| 4 | 9 | 3894.11 | 60.37 | 64.50x | 39.88 | 36.62 | 1.09x | 31.65 / 31.92 | OK/! |
+| 4 | 16 | 6926.60 | 62.07 | 111.60x | 39.83 | 36.22 | 1.10x | 31.95 / 31.79 | OK/OK |
+| 4 | 32 | 581.81 | 80.59 | 7.22x | 59.70 | 43.29 | 1.38x | 44.27 / 43.98 | OK/OK |
+| 4 | 64 | 622.80 | 123.35 | 5.05x | 100.08 | 60.50 | 1.65x | 72.78 / 71.46 | OK/OK |
+| 4 | 128 | 1163.99 | 228.79 | 5.09x | 170.35 | 106.24 | 1.60x | 117.35 / 116.38 | OK/OK |
+| 4 | 512 | 3191.52 | 641.30 | 4.98x | 600.46 | 352.24 | 1.70x | 388.32 / 388.49 | OK/OK |
+| 8 | 1 | 490.89 | 55.58 | 8.83x | 41.59 | 40.70 | 1.02x | 24.77 / 24.87 | !/OK |
+| 8 | 8 | 3479.89 | 58.96 | 59.02x | 39.80 | 39.03 | 1.02x | 33.57 / 32.80 | OK/OK |
+| 8 | 9 | 3914.36 | 59.82 | 65.44x | 41.83 | 41.22 | 1.01x | 33.55 / 32.80 | OK/! |
+| 8 | 16 | 6903.74 | 61.47 | 112.32x | 42.00 | 40.88 | 1.03x | 33.55 / 32.88 | OK/OK |
+| 8 | 32 | 561.31 | 79.34 | 7.07x | 64.54 | 47.43 | 1.36x | 45.85 / 45.38 | OK/OK |
+| 8 | 64 | 592.53 | 118.95 | 4.98x | 108.51 | 63.28 | 1.71x | 73.59 / 73.72 | OK/OK |
+| 8 | 128 | 1116.78 | 225.18 | 4.96x | 188.43 | 111.56 | 1.69x | 120.59 / 119.82 | OK/OK |
+| 8 | 512 | 3044.01 | 608.32 | 5.00x | 666.35 | 371.50 | 1.79x | 418.40 / 417.80 | OK/OK |
+
+#### RTX 5060 Ti, K=5120, N=6144
+
+| W | M | Std B | Std A | Gain | Pre B | Pre A | Gain | MNB B / A | Q S/P |
+|---|---|-------|-------|------|-------|-------|------|-----------|-------|
+| 2 | 1 | 452.24 | 72.47 | 6.24x | 43.68 | 39.24 | 1.11x | 25.64 / 25.53 | OK/! |
+| 2 | 8 | 82.89 | 72.51 | 1.14x | 42.47 | 38.89 | 1.09x | 47.19 / 46.68 | !/OK |
+| 2 | 9 | 83.23 | 72.52 | 1.15x | 45.78 | 41.13 | 1.11x | 42.74 / 43.77 | OK/! |
+| 2 | 16 | 83.22 | 57.18 | 1.46x | 46.10 | 41.19 | 1.12x | 43.16 / 43.30 | !/! |
+| 2 | 32 | 85.39 | 84.93 | 1.01x | 71.42 | 54.26 | 1.32x | 64.76 / 63.48 | OK/! |
+| 2 | 64 | 151.42 | 119.42 | 1.27x | 114.63 | 76.18 | 1.50x | 106.31 / 105.42 | !/! |
+| 2 | 128 | 223.08 | 221.98 | 1.00x | 208.12 | 138.28 | 1.51x | 190.36 / 189.69 | OK/OK |
+| 2 | 512 | 784.58 | 791.92 | 0.99x | 767.37 | 456.06 | 1.68x | 700.85 / 697.06 | OK/OK |
+| 4 | 1 | 881.34 | 106.36 | 8.29x | 58.38 | 51.26 | 1.14x | 26.54 / 26.12 | !/OK |
+| 4 | 8 | 6524.99 | 110.87 | 58.85x | 55.69 | 51.37 | 1.08x | 48.61 / 47.74 | OK/OK |
+| 4 | 9 | 7304.69 | 111.59 | 65.46x | 58.39 | 51.46 | 1.13x | 44.69 / 44.96 | OK/OK |
+| 4 | 16 | 12933.38 | 88.08 | 146.83x | 59.05 | 51.33 | 1.15x | 44.90 / 44.93 | OK/OK |
+| 4 | 32 | 743.96 | 121.50 | 6.12x | 96.97 | 65.80 | 1.47x | 63.76 / 63.90 | OK/OK |
+| 4 | 64 | 862.95 | 173.60 | 4.97x | 162.31 | 107.29 | 1.51x | 108.78 / 108.32 | OK/OK |
+| 4 | 128 | 1605.73 | 328.63 | 4.89x | 302.13 | 190.07 | 1.59x | 195.46 / 194.89 | OK/OK |
+| 4 | 512 | 5977.04 | 1172.38 | 5.10x | 1125.01 | 639.91 | 1.76x | 706.98 / 707.41 | OK/OK |
+| 8 | 1 | 882.75 | 105.91 | 8.33x | 62.42 | 61.80 | 1.01x | 35.07 / 33.28 | OK/OK |
+| 8 | 8 | 6522.72 | 112.44 | 58.01x | 62.15 | 61.53 | 1.01x | 45.89 / 45.50 | !/OK |
+| 8 | 9 | 7308.69 | 111.88 | 65.32x | 62.30 | 61.77 | 1.01x | 47.33 / 46.86 | !/OK |
+| 8 | 16 | 12958.60 | 96.01 | 134.98x | 64.30 | 63.95 | 1.01x | 47.76 / 47.43 | OK/OK |
+| 8 | 32 | 909.01 | 126.88 | 7.16x | 108.04 | 74.43 | 1.45x | 69.99 / 68.65 | OK/OK |
+| 8 | 64 | 953.92 | 176.26 | 5.41x | 180.22 | 117.83 | 1.53x | 119.95 / 119.00 | OK/OK |
+| 8 | 128 | 1830.95 | 326.13 | 5.61x | 336.72 | 205.98 | 1.63x | 214.00 / 213.26 | OK/OK |
+| 8 | 512 | 6187.07 | 1181.34 | 5.24x | 1278.22 | 711.63 | 1.80x | 771.60 / 765.60 | OK/OK |
+
+#### RTX 3060, K=4096, N=4096
+
+| W | M | Std B | Std A | Gain | Pre B | Pre A | Gain | MNB B / A | Q S/P |
+|---|---|-------|-------|------|-------|-------|------|-----------|-------|
+| 2 | 1 | 481.46 | 79.13 | 6.08x | 54.44 | 51.33 | 1.06x | 33.37 / 32.82 | OK/! |
+| 2 | 8 | 3457.83 | 81.37 | 42.50x | 52.59 | 48.53 | 1.08x | 48.54 / 48.60 | OK/! |
+| 2 | 9 | 3867.96 | 84.44 | 45.81x | 53.77 | 51.46 | 1.04x | 47.62 / 47.95 | OK/! |
+| 2 | 16 | 6811.79 | 86.07 | 79.15x | 55.43 | 52.35 | 1.06x | 48.56 / 48.64 | OK/! |
+| 2 | 32 | 133.16 | 133.62 | 1.00x | 78.26 | 61.42 | 1.27x | 70.98 / 69.72 | !/OK |
+| 2 | 64 | 222.31 | 221.66 | 1.00x | 132.08 | 96.44 | 1.37x | 114.92 / 112.53 | !/! |
+| 2 | 128 | 358.42 | 354.65 | 1.01x | 233.72 | 147.06 | 1.59x | 205.30 / 200.23 | !/! |
+| 2 | 512 | 1106.50 | 1103.10 | 1.00x | 854.80 | 495.97 | 1.72x | 695.64 / 696.21 | OK/! |
+| 4 | 1 | 933.90 | 109.42 | 8.53x | 73.12 | 63.46 | 1.15x | 46.33 / 46.20 | !/! |
+| 4 | 8 | 6779.23 | 110.53 | 61.33x | 70.25 | 61.15 | 1.15x | 52.51 / 52.44 | !/! |
+| 4 | 9 | 7559.60 | 119.56 | 63.23x | 78.95 | 63.91 | 1.24x | 52.93 / 52.40 | OK/! |
+| 4 | 16 | 13530.32 | 117.97 | 114.69x | 75.55 | 64.63 | 1.17x | 53.24 / 53.34 | !/! |
+| 4 | 32 | 786.47 | 184.25 | 4.27x | 111.90 | 78.91 | 1.42x | 74.56 / 73.94 | OK/! |
+| 4 | 64 | 1610.80 | 315.42 | 5.11x | 201.36 | 122.14 | 1.65x | 118.50 / 117.99 | !/! |
+| 4 | 128 | 2553.07 | 505.31 | 5.05x | 362.77 | 221.31 | 1.64x | 210.22 / 208.20 | !/! |
+| 4 | 512 | 8524.29 | 1657.93 | 5.14x | 1366.81 | 774.44 | 1.76x | 708.78 / 712.32 | !/! |
+| 8 | 1 | 954.68 | 111.80 | 8.54x | 85.32 | 84.73 | 1.01x | 73.24 / 73.07 | !/! |
+| 8 | 8 | 6893.31 | 114.89 | 60.00x | 85.05 | 84.02 | 1.01x | 77.05 / 77.61 | !/OK |
+| 8 | 9 | 7729.71 | 117.08 | 66.02x | 85.39 | 86.15 | 0.99x | 80.04 / 78.45 | !/! |
+| 8 | 16 | 13724.24 | 118.11 | 116.20x | 86.28 | 86.61 | 1.00x | 80.26 / 79.18 | !/! |
+| 8 | 32 | 902.14 | 186.15 | 4.85x | 128.54 | 101.31 | 1.27x | 88.29 / 88.08 | OK/! |
+| 8 | 64 | 1791.23 | 333.50 | 5.37x | 235.42 | 121.73 | 1.93x | 129.68 / 129.29 | OK/! |
+| 8 | 128 | 2750.52 | 512.18 | 5.37x | 452.22 | 191.75 | 2.36x | 230.40 / 227.34 | OK/OK |
+| 8 | 512 | 9297.17 | 1653.72 | 5.62x | 1779.41 | 670.28 | 2.65x | 785.49 / 781.51 | OK/OK |
+
+#### RTX 3060, K=5120, N=6144
+
+| W | M | Std B | Std A | Gain | Pre B | Pre A | Gain | MNB B / A | Q S/P |
+|---|---|-------|-------|------|-------|-------|------|-----------|-------|
+| 2 | 1 | 866.62 | 141.28 | 6.13x | 78.61 | 74.73 | 1.05x | 48.82 / 49.09 | !/! |
+| 2 | 8 | 6464.35 | 142.97 | 45.21x | 76.37 | 71.51 | 1.07x | 69.72 / 69.44 | !/OK |
+| 2 | 9 | 7237.53 | 150.33 | 48.14x | 78.62 | 75.47 | 1.04x | 69.89 / 69.38 | OK/! |
+| 2 | 16 | 12972.39 | 125.56 | 103.32x | 80.01 | 76.04 | 1.05x | 70.30 / 68.94 | !/! |
+| 2 | 32 | 185.01 | 186.06 | 0.99x | 121.64 | 95.41 | 1.27x | 107.58 / 107.80 | OK/! |
+| 2 | 64 | 314.18 | 314.81 | 1.00x | 219.29 | 145.32 | 1.51x | 188.21 / 186.90 | !/! |
+| 2 | 128 | 591.04 | 590.69 | 1.00x | 416.24 | 248.30 | 1.68x | 347.80 / 346.62 | OK/! |
+| 2 | 512 | 1967.20 | 1965.44 | 1.00x | 1582.51 | 914.39 | 1.73x | 1287.44 / 1296.87 | OK/OK |
+| 4 | 1 | 1697.86 | 209.20 | 8.12x | 116.42 | 99.89 | 1.17x | 71.85 / 72.19 | OK/OK |
+| 4 | 8 | 12805.13 | 209.42 | 61.15x | 111.21 | 96.36 | 1.15x | 80.19 / 78.41 | !/! |
+| 4 | 9 | 14337.38 | 224.47 | 63.87x | 119.10 | 101.19 | 1.18x | 78.39 / 78.37 | OK/! |
+| 4 | 16 | 25441.21 | 176.38 | 144.24x | 121.22 | 102.03 | 1.19x | 80.19 / 79.22 | OK/! |
+| 4 | 32 | 1119.21 | 260.58 | 4.30x | 186.92 | 126.56 | 1.48x | 114.59 / 114.60 | OK/OK |
+| 4 | 64 | 2222.14 | 477.43 | 4.65x | 343.02 | 205.73 | 1.67x | 193.68 / 192.70 | OK/OK |
+| 4 | 128 | 4401.80 | 900.58 | 4.89x | 663.71 | 386.29 | 1.72x | 353.46 / 351.44 | !/OK |
+| 4 | 512 | 15672.97 | 3016.12 | 5.20x | 2541.89 | 1448.32 | 1.76x | 1304.26 / 1297.98 | OK/OK |
+| 8 | 1 | 1719.11 | 216.49 | 7.94x | 155.51 | 154.66 | 1.01x | 119.68 / 119.10 | !/OK |
+| 8 | 8 | 12946.53 | 221.43 | 58.47x | 155.09 | 154.76 | 1.00x | 124.46 / 123.34 | OK/OK |
+| 8 | 9 | 14534.06 | 229.67 | 63.28x | 156.44 | 157.01 | 1.00x | 124.60 / 124.50 | !/! |
+| 8 | 16 | 25758.36 | 206.00 | 125.04x | 158.25 | 156.56 | 1.01x | 128.49 / 124.70 | !/! |
+| 8 | 32 | 1229.66 | 257.58 | 4.77x | 253.23 | 142.82 | 1.77x | 138.12 / 137.51 | OK/! |
+| 8 | 64 | 2435.23 | 478.10 | 5.09x | 448.44 | 189.99 | 2.36x | 212.08 / 210.72 | OK/OK |
+| 8 | 128 | 4826.07 | 917.02 | 5.26x | 870.48 | 330.16 | 2.64x | 383.75 / 382.32 | OK/OK |
+| 8 | 512 | 17153.68 | 2982.80 | 5.75x | 3356.11 | 1240.39 | 2.71x | 1395.58 / 1399.89 | OK/OK |
+
+#### Dispatch evidence
+
+Separate Nsight Systems 2026.3.2 captures used K=N=4096, W2/W4/W8,
+M=1/16/128, and both dynamic layouts. Each NVTX range contains ten graph
+replays after ten warmups; these profiler runs were not used for the timing
+tables above. SQLite exports retain demangled kernel names, register
+counts, launch geometry, and durations.
+
+Selected **matmul-only** median durations, excluding the activation
+quantizer and host gaps:
+
+| GPU | Case | Before kernel / grid CTAs | After kernel / grid CTAs | Before / after us |
+|-----|------|---------------------------|--------------------------|-------------------|
+| RTX 5060 Ti | W2 M1 standard | `IntegerMatMul` / 512 | aligned grouped, `16 x 32` / 128 | 239.357 / 26.992 |
+| RTX 5060 Ti | W4 M16 standard | `IntegerMatMul` / 8192 | fine aligned grouped, `16 x 32` / 128 | 6870.056 / 43.520 |
+| RTX 5060 Ti | W4 M128 standard | `NativeIntegerMatMul` / 256 | fine aligned grouped, `64 x 64` / 128 | 1137.220 / 210.558 |
+| RTX 5060 Ti | W4 M128 prepacked | one row fragment / 512 | four row fragments / 128 | 154.319 / 89.679 |
+| RTX 5060 Ti | W8 M128 prepacked | one row fragment / 512 | four row fragments / 128 | 170.174 / 94.703 |
+| RTX 3060 | W2 M16 standard | `IntegerMatMul` / 8192 | aligned grouped, `16 x 32` / 128 | 7300.236 / 67.663 |
+| RTX 3060 | W4 M128 standard | `NativeIntegerMatMul` / 256 | fine aligned grouped, `32 x 64` / 256 | 2431.588 / 511.997 |
+| RTX 3060 | W4 M128 prepacked | one row fragment / 512 | two row fragments / 256 | 316.014 / 201.343 |
+| RTX 3060 | W8 M128 prepacked | one row fragment / 512 | four row fragments / 128 | 418.094 / 170.783 |
+
+The aligned grouped launches resolve to
+`NativeAlignedGroupedMatMulCapped`; its final template flag selects the
+fine-interval variant for W4/W8 block-32. Prepacked launches resolve to
+`PrepackedMatMul` with the expected row-fragment template argument.
+All 18 cases on each GPU retained the same `QuantizeRowsVector` kernel
+name, grid, block size, and register count before/after. These captures
+verify routing and launch structure, not clock-independent performance.
+
+#### Correctness, build, and reproduction
+
+The full existing Python operator test module passed on both GPUs:
+**20 tests each, zero skips** (35.156 s on RTX 5060 Ti and 34.002 s on
+RTX 3060). The added regression compares exact FP16 reference bits for
+standard/prepacked W2/W4/W8, per-token/per-tensor quantization, bias,
+zero activation rows, and changed activations during CUDA graph
+capture/replay. Its M values 1/8/9/16/32/64/65/128/129 exercise row-fragment
+and grouped-tile boundaries. Existing tests retain coverage of the other
+operator modes, data types, scale policies, and unsupported geometry.
+All benchmark dynamic output hashes also match the frozen baseline.
+
+For the random benchmark inputs, relative RMS output difference against
+the weight-only control is 0.008056..0.010239 on RTX 5060 Ti and
+0.008058..0.010239 on RTX 3060. This is not a model-level accuracy
+evaluation: weight-only `MatMulNBits` has different numerical semantics
+and is neither an exact dynamic reference nor universally slower.
+
+The initial bundled build passed using the following command from a
+VS2022 x64 compiler environment with `D:\py312` activated:
+
+```powershell
+python tools\ci_build\build.py --cmake_generator "Visual Studio 17 2022" `
+  --config Release --build_dir build\sm120 --build_wheel --update --build `
+  --parallel 8 --nvcc_threads 1 --build_shared_lib --use_cuda --cuda_version 13.0 `
+  --cuda_home "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0" `
+  --cudnn_home "D:\cudnn\9.13.0.50_cuda13" --skip_tests --skip_submodule_sync `
+  --use_binskim_compliant_compile_flags `
+  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=86-real;120-real" `
+    onnxruntime_USE_FLASH_ATTENTION=OFF onnxruntime_BUILD_UNIT_TESTS=OFF
+```
+
+The incremental optimized build also passed:
+
+```powershell
+python tools\ci_build\build.py --config Release --build_dir build\sm120 `
+  --build --target onnxruntime_providers_cuda --parallel 8 --nvcc_threads 1 --skip_tests
+```
+
+The build retains an existing `LNK4098` runtime-library conflict warning.
+C++ unit-test binaries were not built; the full Python operator suite was
+run against the rebuilt CUDA provider. The plugin CUDA EP build was not
+validated by this measurement.
+
+Machine-local frozen runtimes, scripts, raw results, test/build logs,
+Nsight captures, and SQLite exports are retained under:
+
+```text
+C:\Users\tlwu\.copilot\session-state\9a51c884-e203-4804-b4d8-601a5df1ed64\files
+```
+
+The task-local virtual environment adds the existing
+`D:\py312\Lib\site-packages` dependency directory through a `.pth` file;
+only the missing `onnx_ir` package was installed into that isolated
+environment. No shared Python package was replaced.
+
+The benchmark defaults encode the full sweep above. After rebuilding and
+freezing matching before/after runtimes, use fresh output names rather
+than overwrite the evidence:
+
+```powershell
+$art = 'C:\Users\tlwu\.copilot\session-state\9a51c884-e203-4804-b4d8-601a5df1ed64\files'
+$py = "$art\bench_venv\Scripts\python.exe"
+$env:PATH = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0\bin;D:\cudnn\9.13.0.50_cuda13\bin;' + $env:PATH
+Set-Location D:\git\dev
+$env:CUDA_VISIBLE_DEVICES = '0' # '1' for RTX 3060
+$env:PYTHONPATH = "$art\baseline_rt"
+& $py "$art\bench_checked.py" --out "$art\rerun_baseline_5060_1.json"
+$env:PYTHONPATH = "$art\optimized_rt"
+& $py "$art\bench_checked.py" --plan "$art\rerun_baseline_5060_1.json" `
+  --reference "$art\rerun_baseline_5060_1.json" --out "$art\rerun_after_5060_1.json"
+```
+
+Recorded results: all original three-pass measurements contain 48 complete
+cases per GPU/phase/pass with exact dynamic bit/hash parity. Repeat both
+phases with the same `--plan` and `--reference` for passes 2 and 3.
+The original aggregation command passed:
+
+```powershell
+& $py "$art\summarize_results.py"
+```
+
+It reads `baseline_<gpu>_<pass>.json` / `after_<gpu>_<pass>.json` and
+writes `comparison.json` / `comparison.txt`. For reruns with different
+file prefixes, update the artifact-only aggregator's input names.
+
+The full unittest launcher imports Torch and the selected frozen ORT first,
+then loads the source test module by file path. Running from outside the
+repository avoids accidentally importing the source-only ORT package:
+
+```powershell
+Set-Location D:\git\dev
+$env:PYTHONPATH = "$art\optimized_rt"
+$env:CUDA_VISIBLE_DEVICES = '0'
+& $py "$art\run_operator_tests.py" # Passed: 20 tests, zero skips
+$env:CUDA_VISIBLE_DEVICES = '1'
+& $py "$art\run_operator_tests.py" # Passed: 20 tests, zero skips
+```
+
+Python `ruff check` and `ruff format --check` passed for the changed test
+module; clang-format 18.1.8 checks passed for the changed C++ line ranges.
+The exact Python checks are:
+
+```powershell
+D:\py312\Scripts\ruff.exe check onnxruntime\test\python\contrib_ops\test_dynamic_quantize_matmul_nbits.py
+D:\py312\Scripts\ruff.exe format --check onnxruntime\test\python\contrib_ops\test_dynamic_quantize_matmul_nbits.py
+```
+
+Run these lint commands from the repository root. For dispatch reproduction,
+set the selected runtime/GPU as above and run the following with a fresh
+output prefix; original captures and exports passed on both GPUs:
+
+```powershell
+$nsys = 'C:\Program Files\NVIDIA Corporation\Nsight Systems 2026.3.2\target-windows-x64\nsys.exe'
+& $nsys profile --trace=cuda,nvtx --sample=none --cpuctxsw=none `
+  --cuda-graph-trace=node -o "$art\rerun_profile_after_3060" `
+  $py "$art\profile_checked.py"
+& $nsys export --type=sqlite --output="$art\rerun_profile_after_3060.sqlite" `
+  "$art\rerun_profile_after_3060.nsys-rep"
+```
+
+`profile_report.py` aggregates the original `profile_<phase>_<gpu>.sqlite`
+files into `profile_comparison.json` and checks ten kernel samples per
+named range.
+
+#### Interpretation and limitations
+
+- The large standard-layout gains primarily eliminate poorly matched DP4A
+  or synchronous native dispatch, rather than speed up activation
+  quantization. Prepacked gains at larger M primarily come from reuse of
+  decoded weights across row fragments. W8 at M <= 16 is essentially
+  unchanged; modest small-M W2/W4 improvements are not equally stable on
+  both GPUs.
+- No dynamic median regression exceeds 1%. There are approximately 0.9%
+  and 0.6% slower standard W2 cases on RTX 5060 Ti / RTX 3060 respectively,
+  even with `OK` quality flags; these are retained in the tables. No claim
+  is made that every case improves. The small prepacked W8 regressions on
+  RTX 3060 fail the strict timing-quality criteria.
+- The unchanged weight-only control has geomean B/A approximately 1.006
+  on both devices. Individual control ratios range from 0.976 to 1.054 on
+  RTX 5060 Ti and 0.993 to 1.030 on RTX 3060; many control cases also fail
+  the strict quality thresholds. The control is a scheduling/clock-drift
+  check, not evidence of an optimization to `MatMulNBits`.
+- These are live Windows WDDM measurements with unlocked clocks. RTX 3060
+  also drives the desktop, and its before/after spread is appreciably less
+  stable. Our timing and profiling GPU workloads ran sequentially, but
+  desktop activity and other shared-machine effects were not eliminated.
+  `!` results should not be treated as precise speedup claims.
+- The sweep covers the listed block sizes, two K/N shapes, M <= 512,
+  FP16, and per-token activation quantization. Correctness tests cover
+  additional contracts; performance on other shapes, modes, larger GPUs,
+  and the plugin CUDA EP remains unmeasured here.
 
 ## 9. Delivery Plan and Acceptance
 
