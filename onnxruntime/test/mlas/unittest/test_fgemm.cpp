@@ -14,6 +14,10 @@
 #include <sstream>
 #include <vector>
 
+#if defined(MLAS_TARGET_ARM64) && (!defined(_MSC_VER) || defined(__clang__))
+#include "core/mlas/lib/kleidiai/sgemm_common.h"
+#endif
+
 #if defined(MLAS_KLEIDIAI_OPS_AVAILABLE)
 #include "core/mlas/lib/kleidiai/mlasi_kleidiai.h"
 #endif
@@ -22,6 +26,108 @@
 #include <linux/prctl.h>
 #include <sys/prctl.h>
 #include <thread>
+#endif
+
+#if defined(MLAS_TARGET_ARM64) && (!defined(_MSC_VER) || defined(__clang__))
+TEST(SGemmPostProcessTest, StridedAlphaBeta) {
+  ArmKleidiAI::MlasGemmApplyAlphaBetaStrided(nullptr, 0, 1.0f, 0.0f, nullptr, 1, true);
+  constexpr std::array<std::array<float, 2>, 4> scales = {{{1.0f, 0.0f}, {1.0f, 0.25f}, {-0.5f, 0.0f}, {-0.5f, 0.25f}}};
+  constexpr float sentinel = -123.0f;
+  for (size_t count : {1, 31, 32, 33}) {
+    std::vector<float> product(count);
+    for (size_t i = 0; i < count; ++i) {
+      product[i] = static_cast<float>(static_cast<int>(i % 7) - 3);
+    }
+    for (size_t stride : {1, 3}) {
+      for (bool allow_memcpy : {false, true}) {
+        for (const auto& scale : scales) {
+          const float alpha = scale[0];
+          const float beta = scale[1];
+          SCOPED_TRACE(testing::Message() << "count=" << count << " stride=" << stride
+                                          << " memcpy=" << allow_memcpy << " alpha=" << alpha << " beta=" << beta);
+          std::vector<float> output(count * stride + 2, sentinel);
+          float* destination = output.data() + 1;
+          for (size_t i = 0; i < count; ++i) {
+            destination[i * stride] = beta == 0.0f ? std::numeric_limits<float>::quiet_NaN() : 2.0f;
+          }
+          ArmKleidiAI::MlasGemmApplyAlphaBetaStrided(
+              product.data(), count, alpha, beta, destination, stride, allow_memcpy);
+          for (size_t i = 0; i < count; ++i) {
+            EXPECT_EQ(destination[i * stride], alpha * product[i] + beta * 2.0f);
+            for (size_t padding = 1; padding < stride; ++padding) {
+              EXPECT_EQ(destination[i * stride + padding], sentinel);
+            }
+          }
+          EXPECT_EQ(output.front(), sentinel);
+          EXPECT_EQ(output.back(), sentinel);
+        }
+      }
+    }
+  }
+}
+
+TEST(SGemmPostProcessTest, ContiguousAndPaddedAlphaBeta) {
+  ArmKleidiAI::MlasGemmApplyAlphaBeta(nullptr, 0, 33, 1.0f, 0.0f, nullptr, 33);
+  ArmKleidiAI::MlasGemmApplyAlphaBeta(nullptr, 3, 0, 1.0f, 0.0f, nullptr, 3);
+  constexpr size_t rows = 3;
+  constexpr float sentinel = -123.0f;
+  constexpr std::array<std::array<float, 2>, 4> scales = {{{1.0f, 0.0f}, {1.0f, 0.25f}, {-0.5f, 0.0f}, {-0.5f, 0.25f}}};
+  for (size_t columns : {11, 31, 32, 33}) {
+    std::vector<float> product(rows * columns);
+    for (size_t i = 0; i < product.size(); ++i) {
+      product[i] = static_cast<float>(static_cast<int>(i % 7) - 3);
+    }
+    constexpr std::array<std::array<size_t, 2>, 4> layouts = {{{0, 0}, {0, 1}, {3, 0}, {3, 1}}};
+    for (const auto& layout : layouts) {
+      const size_t ldc = columns + layout[0];
+      const bool flatten = layout[1] != 0;
+      for (const auto& scale : scales) {
+        const float alpha = scale[0];
+        const float beta = scale[1];
+        SCOPED_TRACE(testing::Message() << "columns=" << columns << " ldc=" << ldc << " flatten=" << flatten
+                                        << " alpha=" << alpha << " beta=" << beta);
+        std::vector<float> output(rows * ldc + 2, sentinel);
+        float* destination = output.data() + 1;
+        for (size_t row = 0; row < rows; ++row) {
+          std::fill_n(destination + row * ldc, columns,
+                      beta == 0.0f ? std::numeric_limits<float>::quiet_NaN() : 2.0f);
+        }
+        ArmKleidiAI::MlasGemmApplyAlphaBeta(product.data(), rows, columns, alpha, beta, destination, ldc, flatten);
+        for (size_t row = 0; row < rows; ++row) {
+          for (size_t column = 0; column < ldc; ++column) {
+            const float expected = column < columns ? alpha * product[row * columns + column] + beta * 2.0f : sentinel;
+            EXPECT_EQ(destination[row * ldc + column], expected) << "row=" << row << " column=" << column;
+          }
+        }
+        EXPECT_EQ(output.front(), sentinel);
+        EXPECT_EQ(output.back(), sentinel);
+      }
+    }
+  }
+}
+
+TEST(SGemmPostProcessTest, BetaOnly) {
+  ArmKleidiAI::MlasGemmApplyBeta(nullptr, 0, 33, 33, 0.0f);
+  ArmKleidiAI::MlasGemmApplyBeta(nullptr, 3, 0, 3, 0.0f);
+  constexpr size_t rows = 3;
+  constexpr size_t columns = 33;
+  constexpr size_t ldc = columns + 3;
+  constexpr float sentinel = -123.0f;
+  for (float beta : {0.0f, 1.0f, -0.5f}) {
+    SCOPED_TRACE(testing::Message() << "beta=" << beta);
+    std::vector<float> output(rows * ldc, sentinel);
+    for (size_t row = 0; row < rows; ++row) {
+      std::fill_n(output.data() + row * ldc, columns,
+                  beta == 0.0f ? std::numeric_limits<float>::quiet_NaN() : 2.0f);
+    }
+    ArmKleidiAI::MlasGemmApplyBeta(output.data(), rows, columns, ldc, beta);
+    for (size_t row = 0; row < rows; ++row) {
+      for (size_t column = 0; column < ldc; ++column) {
+        EXPECT_EQ(output[row * ldc + column], column < columns ? beta * 2.0f : sentinel);
+      }
+    }
+  }
+}
 #endif
 
 TEST(SGemmPackedModelShapesTest, M1BetaZeroAndBetaOne) {

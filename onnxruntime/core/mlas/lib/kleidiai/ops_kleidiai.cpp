@@ -4,8 +4,6 @@
 // SPDX-License-Identifier: MIT
 //
 
-#include <arm_neon.h>
-
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -23,6 +21,7 @@
 #include "common_internal/utils.hpp"
 #include "kai/ops/gemm/kai_ops.hpp"
 #include "mlasi_kleidiai.h"
+#include "sgemm_common.h"
 
 namespace
 {
@@ -101,107 +100,6 @@ GetThreadScratch()
 {
     thread_local ThreadScratch scratch;
     return scratch;
-}
-
-constexpr size_t kAlphaBetaNeonMinElements = 32;
-
-void
-ApplyAlphaBeta(
-    const float* product,
-    size_t rows,
-    size_t columns,
-    float alpha,
-    float beta,
-    float* output,
-    size_t output_ldc
-)
-{
-    if (rows == 0 || columns == 0) {
-        return;
-    }
-
-    const float32x4_t alpha_vector = vdupq_n_f32(alpha);
-    const float32x4_t beta_vector = vdupq_n_f32(beta);
-    for (size_t row = 0; row < rows; ++row) {
-        const float* source = product + row * columns;
-        float* destination = output + row * output_ldc;
-        if (alpha == 1.0f && beta == 0.0f) {
-            std::memcpy(destination, source, columns * sizeof(float));
-            continue;
-        }
-
-        size_t column = 0;
-        if (columns >= kAlphaBetaNeonMinElements) {
-            if (alpha == 1.0f) {
-                for (; column + 4 <= columns; column += 4) {
-                    const float32x4_t product_vector = vld1q_f32(source + column);
-                    const float32x4_t output_vector = vld1q_f32(destination + column);
-                    vst1q_f32(
-                        destination + column,
-                        vmlaq_f32(product_vector, beta_vector, output_vector)
-                    );
-                }
-            } else if (beta == 0.0f) {
-                for (; column + 4 <= columns; column += 4) {
-                    vst1q_f32(
-                        destination + column,
-                        vmulq_f32(alpha_vector, vld1q_f32(source + column))
-                    );
-                }
-            } else {
-                for (; column + 4 <= columns; column += 4) {
-                    const float32x4_t product_vector = vmulq_f32(
-                        alpha_vector, vld1q_f32(source + column)
-                    );
-                    const float32x4_t output_vector = vld1q_f32(destination + column);
-                    vst1q_f32(
-                        destination + column,
-                        vmlaq_f32(product_vector, beta_vector, output_vector)
-                    );
-                }
-            }
-        }
-
-        for (; column < columns; ++column) {
-            float value = alpha == 1.0f ? source[column] : alpha * source[column];
-            if (beta != 0.0f) {
-                value += beta * destination[column];
-            }
-            destination[column] = value;
-        }
-    }
-}
-
-void
-ApplyBeta(
-    float* output,
-    size_t rows,
-    size_t columns,
-    size_t output_ldc,
-    float beta
-)
-{
-    if (beta == 1.0f) {
-        return;
-    }
-    for (size_t row = 0; row < rows; ++row) {
-        float* destination = output + row * output_ldc;
-        if (beta == 0.0f) {
-            std::fill_n(destination, columns, 0.0f);
-            continue;
-        }
-        const float32x4_t beta_vector = vdupq_n_f32(beta);
-        size_t column = 0;
-        for (; column + 4 <= columns; column += 4) {
-            vst1q_f32(
-                destination + column,
-                vmulq_f32(beta_vector, vld1q_f32(destination + column))
-            );
-        }
-        for (; column < columns; ++column) {
-            destination[column] *= beta;
-        }
-    }
 }
 
 const CPUInfo&
@@ -984,7 +882,7 @@ bool
 
     const auto& params = *Data;
     if (params.alpha == 0.0f) {
-        ApplyBeta(params.C, M, N, params.ldc, params.beta);
+        ArmKleidiAI::MlasGemmApplyBeta(params.C, M, N, params.ldc, params.beta);
         return true;
     }
     const bool can_write_directly =
@@ -1017,9 +915,9 @@ bool
         )) {
         return false;
     }
-    ApplyAlphaBeta(
+    ArmKleidiAI::MlasGemmApplyAlphaBeta(
         scratch.fp32_output.data(), M, N,
-        params.alpha, params.beta, params.C, params.ldc
+        params.alpha, params.beta, params.C, params.ldc, false
     );
     return true;
 }
