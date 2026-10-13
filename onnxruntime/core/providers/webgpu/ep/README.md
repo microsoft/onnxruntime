@@ -103,6 +103,17 @@ error for checked completion; ordinary Flush/Run behavior is unchanged.
 For externally supplied devices, earlier errors captured by the caller's
 scopes or callbacks remain the caller's responsibility.
 
+`WebGpuContext::RunAndWaitChecked(buffer_manager, recording, enqueue)` extends
+that boundary to the supplied Status-returning callback. All three scopes are
+active before the callback creates, validates or encodes programs and remain
+active through flush/wait. The callback may enqueue multiple programs on the
+owning recording; it must stay on the calling thread. An enqueue failure or
+exception is reported alongside completion errors, and already-enqueued work
+is drained before all scopes are popped. Scope cleanup also runs on exception
+unwinding. Caller-owned scopes and external-device callbacks are not replaced.
+The ordinary `FlushAndWaitChecked` entry point uses the same implementation
+with an empty enqueue callback and retains its existing boundary.
+
 The helper polls `Device::GetLostFuture` after waiting, rather than treating
 a successful queue callback as proof of device health. This also detects loss
 of an external device without replacing its callbacks. A failed wait or
@@ -114,6 +125,7 @@ this is not a new stream or cross-provider API.
 
 Focused context tests cover empty, pending and submitted work, deferred
 dispatch, validation at Flush, scope cleanup after a failed wait,
+enqueue failure/exception cleanup, early shader errors on an external device,
 validation/OOM injection and external device loss. Dawn's existing InjectError
 API accepts validation and OOM only. Deterministic internal-error and
 non-success work-done callback injection is not available here; those branches
@@ -171,14 +183,15 @@ one uniform binding. Distinct Tensor wrappers are not deduplicated merely
 because their raw buffer handles match. Extents, uint32 indexing and device
 binding limits are checked before dispatch.
 
-The kernel enqueues one program, then calls
-`ComputeContextBase::FlushAndWaitChecked()` on the owning EP recording. The
-enqueue helper is separate from this fence so future internal callers can
-enqueue multiple descriptors and check completion once. A failing completion
-returns failure rather than publishing success; destination contents on
-failure are unspecified and must not be committed. As with the context
-helper, externally supplied devices retain responsibility for earlier
-encoding errors captured by their own scopes/callbacks.
+The kernel calls `ComputeContextBase::RunAndWaitChecked()` on the owning EP
+recording, with its enqueue helper inside the checked callback. This captures
+errors from shader/pipeline creation and binding/encoding as well as the
+subsequent flush/wait, including on externally supplied devices. The enqueue
+helper remains separate so future internal callers can enqueue multiple
+descriptors within one checked region and check completion once. A failing
+completion returns failure rather than publishing success; destination contents
+on failure are unspecified and must not be committed. As with the context helper,
+errors from before the checked region remain the external caller's responsibility.
 
 This milestone has no graph-capture support, convolution replay, batching,
 or external session integration. Tests cover all kept prefixes at capacities
@@ -193,6 +206,11 @@ runs with capture disabled. `RunCompletesBeforeReadback` checks the owning recor
 and polls queue completion with timeout zero immediately after Session::Run, before
 any tensor readback. The completion observation uses native Dawn context access and
 is not compiled for plugin EP, WASM or external-Dawn builds.
+`CheckedRegionReportsRunProgramBindingError` uses a validation-enabled external
+device without session/kernel scopes. A source buffer lacking Storage usage
+must report the original CreateBindGroup error through the replay call, not just
+the subsequent invalid-encoder error, while leaving the caller's outer scope
+empty. A valid replay before and after the rejected run verifies recovery.
 
 ### Missing parts
 

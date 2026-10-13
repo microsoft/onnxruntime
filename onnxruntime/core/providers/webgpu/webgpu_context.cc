@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include <gsl/util>
+
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
@@ -1134,6 +1136,12 @@ Status WebGpuContext::CheckDeviceStatus() const {
 
 Status WebGpuContext::FlushAndWaitChecked(const webgpu::BufferManager& buffer_mgr,
                                           CommandRecordingState& recording) {
+  return RunAndWaitChecked(buffer_mgr, recording, []() { return Status::OK(); });
+}
+
+Status WebGpuContext::RunAndWaitChecked(const webgpu::BufferManager& buffer_mgr,
+                                        CommandRecordingState& recording,
+                                        const std::function<Status()>& enqueue) {
   ORT_RETURN_IF_NOT(HasDevice(), "WebGPU checked completion requires a device.");
 
   PushErrorScope(wgpu::ErrorFilter::Internal);
@@ -1151,6 +1159,27 @@ Status WebGpuContext::FlushAndWaitChecked(const webgpu::BufferManager& buffer_mg
     }
     result = Status(result.Category(), result.Code(), result.ErrorMessage() + "; " + status.ErrorMessage());
   };
+
+  size_t scopes_to_pop = 3;
+  const auto pop_scopes = [&]() {
+    while (scopes_to_pop > 0) {
+      --scopes_to_pop;
+      record_failure(PopErrorScope());
+    }
+  };
+  const auto cleanup = gsl::finally(pop_scopes);
+
+  ORT_TRY {
+    record_failure(enqueue());
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      record_failure(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU checked enqueue failed: ", ex.what()));
+    });
+  }
+  ORT_CATCH(...) {
+    record_failure(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU checked enqueue failed: unknown exception."));
+  }
 
   ORT_TRY {
     record_failure(Flush(buffer_mgr, recording));
@@ -1184,9 +1213,7 @@ Status WebGpuContext::FlushAndWaitChecked(const webgpu::BufferManager& buffer_mg
   }
 
   // Do not return early: every scope must be popped even if flushing or waiting failed.
-  for (int i = 0; i < 3; ++i) {
-    record_failure(PopErrorScope());
-  }
+  pop_scopes();
   record_failure(CheckDeviceStatus());
   return result;
 }

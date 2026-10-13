@@ -26,6 +26,7 @@
 #if !defined(ORT_USE_EP_API_ADAPTERS) && !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
+#include "test/providers/webgpu/webgpu_context_test_helper.h"
 #endif
 #endif
 
@@ -260,6 +261,8 @@ class ReplayHarness {
 
   std::array<int64_t, 11>& Descriptor() { return desc_; }
 
+  const Tensor& SourceBacking() const { return source_value_.Get<Tensor>(); }
+
   Status RunWithAliasedDestination(size_t input_index) {
     OrtValue aliased_input;
     const auto& input = (input_index == 0 ? source_value_ : capsule_value_).Get<Tensor>();
@@ -367,6 +370,36 @@ TEST_F(GatedDeltaNetStateReplayTest, RunCompletesBeforeReadback) {
     ASSERT_EQ(*result, wgpu::QueueWorkDoneStatus::Success);
     ASSERT_NO_FATAL_FAILURE(harness.Verify());
   }
+}
+
+TEST_F(GatedDeltaNetStateReplayTest, CheckedRegionReportsRunProgramBindingError) {
+  RunWithExternalCompletionContext([](auto& context, auto&, const auto&, auto& provider) {
+    ReplayHarness harness;
+    ASSERT_STATUS_OK(harness.Initialize({5, 7, 11, 3, 4}, std::move(provider)));
+    ASSERT_STATUS_OK(harness.Prepare(2));
+    ASSERT_STATUS_OK(harness.Run());
+    ASSERT_STATUS_OK(harness.Prepare(2));
+
+    const auto& source = harness.SourceBacking();
+    wgpu::BufferDescriptor desc{};
+    desc.size = source.SizeInBytes();
+    desc.usage = wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+    auto buffer = context.Device().CreateBuffer(&desc);
+    OrtValue invalid_source;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), source.Shape(), buffer.Get(),
+                         source.Location(), invalid_source);
+
+    context.PushErrorScope();
+    const auto status = harness.Run(true, &invalid_source);
+    const auto outer_status = context.PopErrorScope();
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("expected usage"));
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("CreateBindGroup"));
+    EXPECT_TRUE(outer_status.IsOK()) << outer_status.ErrorMessage();
+    harness.VerifyDestinationUnchanged();
+    ASSERT_STATUS_OK(harness.Run());
+    harness.Verify();
+  });
 }
 #endif
 

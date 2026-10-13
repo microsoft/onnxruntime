@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <utility>
 
@@ -145,6 +146,10 @@ class ComputeContextBase {
 
   inline Status FlushAndWaitChecked() {
     return webgpu_context_.FlushAndWaitChecked(ep_.BufferManager(), ep_.Recording());
+  }
+
+  inline Status RunAndWaitChecked(const std::function<Status()>& enqueue) {
+    return webgpu_context_.RunAndWaitChecked(ep_.BufferManager(), ep_.Recording(), enqueue);
   }
 
  protected:

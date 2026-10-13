@@ -168,11 +168,12 @@ Status GatedDeltaNetStateReplay::ComputeInternal(onnxruntime::webgpu::ComputeCon
   ORT_RETURN_IF_NOT(output && output->MutableDataRaw() == destination->DataRaw(),
                     "GatedDeltaNetStateReplay output must be prebound to destination_backing.");
   // Do not bind destination_backing as a read-only shader input alongside its writable output.
-  ORT_RETURN_IF_ERROR(EnqueueReplay(context, *source, *capsule, *output, desc,
-                                    static_cast<uint32_t>(state_elements), static_cast<uint32_t>(decay_elements),
-                                    static_cast<uint32_t>(key_elements), static_cast<uint32_t>(delta_elements),
-                                    static_cast<uint32_t>(dispatch_x), static_cast<uint32_t>(dispatch_y)));
-  return context.FlushAndWaitChecked();
+  return context.RunAndWaitChecked([&]() {
+    return EnqueueReplay(context, *source, *capsule, *output, desc,
+                         static_cast<uint32_t>(state_elements), static_cast<uint32_t>(decay_elements),
+                         static_cast<uint32_t>(key_elements), static_cast<uint32_t>(delta_elements),
+                         static_cast<uint32_t>(dispatch_x), static_cast<uint32_t>(dispatch_y));
+  });
 }
 
 }  // namespace onnxruntime::contrib::webgpu
