@@ -186,7 +186,7 @@ To initiate build, run the below command
 |-----------|:------------:|:------------:|:------------:|:------------:|:-------:|:-------:| :------:|:-----:|
 |Windows    | YES          | YES          |  YES         | YES          | NO      | NO      | NO      | NO    |
 |Linux      | YES          | YES          |  YES         | YES          | YES     | YES     | NO      | YES   |
-|macOS      | NO           | YES          |  NO          | NO           | NO      | NO      | NO      | NO    |
+|macOS      | NO           | YES          |  NO          | YES          | NO      | NO      | NO      | NO    |
 |Android      | NO           | NO          |  YES          | YES           | NO      | NO      | NO     | NO    |
 |iOS      | NO           | NO          |  NO          | YES           | NO      | NO      |  NO     | NO    |
 |AIX        | NO           | NO          |  NO          | NO           | NO      | NO      |  YES     | NO    |
