@@ -3,14 +3,13 @@ set -e -x
 
 # This script invokes build.py
 
-mkdir -p /build/dist
-
 EXTRA_ARG=""
 # When true, build the native libraries only once and recompile only the CPython extension module
 # (onnxruntime_pybind11_state) for the remaining Python versions, then merge all the wheels into a
 # single wheel that carries all of them. The native libraries contain no CPython symbols, so one copy
 # serves every interpreter.
 MULTI_PYTHON_WHEEL="false"
+PYTHON_EXE_REQUESTED=false
 # Put 3.12 at the last because Ubuntu 24.04 use python 3.12 and we will upload the intermediate build files of this
 # config to Azure DevOps Artifacts and download them to a Ubuntu 24.04 machine to run the tests.
 PYTHON_EXES=(
@@ -34,6 +33,7 @@ p)
     exit 1
   else
     PYTHON_EXES=("${OPTARG}") # Use the provided argument for -p
+    PYTHON_EXE_REQUESTED=true
   fi
   ;;
 x) EXTRA_ARG=${OPTARG};;
@@ -44,6 +44,13 @@ m) MULTI_PYTHON_WHEEL="true";;
    exit 1;;
 esac
 done
+
+if [ "$PYTHON_EXE_REQUESTED" == true ] && { [ ! -f "${PYTHON_EXES[0]}" ] || [ ! -x "${PYTHON_EXES[0]}" ]; }; then
+  echo "ERROR: Requested Python executable '${PYTHON_EXES[0]}' does not exist or is not executable."
+  exit 1
+fi
+
+mkdir -p /build/dist
 
 BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--skip_submodule_sync" "--use_binskim_compliant_compile_flags" "--use_vcpkg" "--use_vcpkg_ms_internal_asset_cache")
 
@@ -163,7 +170,7 @@ do
     # Recompile the entire onnxruntime from scratch. Without -m this happens for every single Python
     # version, which is what makes the packaging pipelines slow.
     rm -rf /build/"$BUILD_CONFIG"
-    PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}" --update --build --build_wheel
+    PATH=$python3_dir:$PATH "${PYTHON_EXE}" /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}" --update --build --build_wheel
 
     if [ "$MULTI_PYTHON_WHEEL" = "true" ]; then
       # Keep the exact native libraries that were just built: they have to be byte identical in every
@@ -181,9 +188,9 @@ do
     # FindPython keeps the previous interpreter cached, which hides Python::Module and Python::NumPy.
     sed -i '/^_Python_/d' /build/"$BUILD_CONFIG"/CMakeCache.txt
     # Without --build_wheel, build.py would otherwise reconfigure with onnxruntime_ENABLE_PYTHON=OFF.
-    PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}" --update --build --enable_pybind --target onnxruntime_pybind11_state
+    PATH=$python3_dir:$PATH "${PYTHON_EXE}" /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}" --update --build --enable_pybind --target onnxruntime_pybind11_state
     cp -a "$NATIVE_LIB_BACKUP"/. "$PACKAGE_CAPI_DIR"/
-    PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}" --build --build_wheel --target onnxruntime_pybind11_state
+    PATH=$python3_dir:$PATH "${PYTHON_EXE}" /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}" --build --build_wheel --target onnxruntime_pybind11_state
   fi
 
   cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist
