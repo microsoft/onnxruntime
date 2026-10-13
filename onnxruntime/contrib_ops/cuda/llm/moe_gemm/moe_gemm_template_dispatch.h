@@ -833,7 +833,9 @@ void MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::dispatchToArch(
       // We allow both tma warp specialized and SM80 configurations to coexist because for some cases with small
       // numbers of tokens SM80 is faster. We check here to see which is selected
       if (inputs.gemm_config.sm_version >= 90) {
-        ORT_ENFORCE(inputs.gemm_config.sm_version == sm_, "Using SM %d configuration for SM %d device",
+        ORT_ENFORCE(inputs.gemm_config.sm_version == sm_ ||
+                        (inputs.gemm_config.sm_version == 120 && sm_ == 121),
+                    "Using SM %d configuration for SM %d device",
                     inputs.gemm_config.sm_version, sm_);
         ORT_ENFORCE(inputs.biases != nullptr || hopper_inputs.ptr_c == nullptr,
                     "Input biases and hopper input disagree if bias is enabled");

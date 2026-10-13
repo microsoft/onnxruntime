@@ -37,10 +37,11 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     SpaceToDepth<LAYOUT_NHWC>);
 #endif
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     SpaceToDepth,
     kOnnxDomain,
     13,
+    27,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T",
@@ -50,10 +51,11 @@ ONNX_OPERATOR_KERNEL_EX(
     SpaceToDepth<LAYOUT_NCHW>);
 
 #ifdef ENABLE_CUDA_NHWC_OPS
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     SpaceToDepth,
     kMSInternalNHWCDomain,
     13,
+    27,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T",

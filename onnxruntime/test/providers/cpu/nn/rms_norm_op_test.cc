@@ -9,6 +9,96 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
+#ifdef USE_CUDA
+template <typename InputType, typename OutputType>
+static void CheckCudaRmsNormTypes() {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP unavailable";
+  const auto as_double = [](auto value) {
+    if constexpr (std::is_same_v<decltype(value), MLFloat16> || std::is_same_v<decltype(value), BFloat16>) {
+      return static_cast<double>(value.ToFloat());
+    } else {
+      return static_cast<double>(value);
+    }
+  };
+  for (int width : {1, 7, 32, 512, 513}) {
+    SCOPED_TRACE(testing::Message() << "width=" << width);
+    std::vector<InputType> input(3 * width);
+    std::vector<OutputType> scale(input.size());
+    std::vector<OutputType> expected(input.size());
+    for (int row = 0; row < 3; ++row) {
+      double sum = 0.0;
+      for (int channel = 0; channel < width; ++channel) {
+        const int index = row * width + channel;
+        input[index] = InputType(static_cast<float>((channel % 7) - 3) * 0.25f + row);
+        scale[index] = OutputType(1.0f + row * 0.5f);
+        sum += as_double(input[index]) * as_double(input[index]);
+      }
+      for (int channel = 0; channel < width; ++channel) {
+        const int index = row * width + channel;
+        expected[index] = OutputType(static_cast<float>(as_double(input[index]) * as_double(scale[index]) /
+                                                        std::sqrt(sum / width + 1e-5)));
+      }
+    }
+    OpTester tester("RMSNormalization", 23);
+    tester.AddAttribute<float>("epsilon", 1e-5f);
+    tester.AddInput<InputType>("X", {1, 3, width}, input);
+    tester.AddInput<OutputType>("scale", {1, 3, width}, scale);
+    tester.AddOutput<OutputType>("Y", {1, 3, width}, expected);
+    const float tolerance = std::is_same_v<OutputType, BFloat16> ? 0.02f : std::is_same_v<OutputType, MLFloat16> ? 0.002f
+                                                                                                                 : 1e-5f;
+    tester.SetOutputAbsErr("Y", tolerance);
+    SessionOptions options;
+    ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+    for (const auto& value : tester.GetFetches()[0].Get<Tensor>().DataAsSpan<OutputType>()) {
+      ASSERT_TRUE(std::isfinite(as_double(value)));
+    }
+  }
+}
+
+// Check registered CUDA input/output types and row-dependent scales at odd and even widths.
+TEST(RMSNormalizationOpTest, CudaRegisteredTypesAndBroadcast) {
+  CheckCudaRmsNormTypes<float, float>();
+  CheckCudaRmsNormTypes<float, MLFloat16>();
+  CheckCudaRmsNormTypes<MLFloat16, MLFloat16>();
+  CheckCudaRmsNormTypes<MLFloat16, float>();
+  CheckCudaRmsNormTypes<BFloat16, BFloat16>();
+  CheckCudaRmsNormTypes<double, double>();
+}
+
+// Large, tiny, and zero FP16 inputs must stay finite in scalar and half2 output paths.
+TEST(RMSNormalizationOpTest, CudaFloat16FiniteRange) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP unavailable";
+  for (int width : {31, 32, 511, 512}) {
+    for (const auto& values : std::vector<std::pair<float, float>>{{1.0f, 2.0f}, {60000.0f, 2.0f}, {1e-4f, 1e-4f}, {0.0f, 2.0f}}) {
+      SCOPED_TRACE(testing::Message() << "width=" << width << " input=" << values.first
+                                      << " scale=" << values.second);
+      const MLFloat16 input(values.first);
+      const MLFloat16 scale(values.second);
+      const double input_value = input.ToFloat();
+      const float expected = static_cast<float>(scale.ToFloat() * input_value /
+                                                std::sqrt(input_value * input_value + 1e-5));
+      OpTester tester("RMSNormalization", 23);
+      tester.AddAttribute<float>("epsilon", 1e-5f);
+      tester.AddInput<MLFloat16>("X", {2, width}, std::vector<MLFloat16>(2 * width, input));
+      tester.AddInput<MLFloat16>("scale", {width}, std::vector<MLFloat16>(width, scale));
+      tester.AddOutput<MLFloat16>("Y", {2, width}, std::vector<MLFloat16>(2 * width, MLFloat16(expected)));
+      tester.SetOutputAbsErr("Y", expected == 0.0f ? 0.0f : std::max(6e-8f, std::abs(expected) * 0.001f));
+      SessionOptions options;
+      ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+      std::vector<std::unique_ptr<IExecutionProvider>> providers;
+      providers.push_back(DefaultCudaExecutionProvider());
+      tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+      for (const auto& value : tester.GetFetches()[0].Get<Tensor>().DataAsSpan<MLFloat16>()) {
+        ASSERT_TRUE(std::isfinite(value.ToFloat()));
+      }
+    }
+  }
+}
+#endif
+
 // All tests in this file are for the CPU provider and
 // CUDA provider
 
