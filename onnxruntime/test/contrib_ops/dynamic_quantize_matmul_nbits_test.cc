@@ -530,6 +530,19 @@ TEST(DynamicQuantizeMatMulNBitsTest, Sm80PrepackedMultiRowFragmentTiles) {
   }
 }
 
+TEST(DynamicQuantizeMatMulNBitsTest, Sm80PrepackedSharedWeightPipeline) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  for (int bits : {4, 8}) {
+    // K=128 drains the pipeline before a second real tile. N=6144 also selects larger row tiles on A100.
+    for (int64_t m : {1, 8, 9, 32, 65, 196, 197, 257}) {
+      RunCase<MLFloat16, MLFloat16>({m, 128}, 6144, bits, 32, "dynamic_per_token", 0,
+                                    true, false, true, {}, {}, false, true, 1);
+    }
+    RunCase<BFloat16, BFloat16>({257, 384}, 6144, bits, 32, "dynamic_per_tensor", 0,
+                                true, false, false, {}, {}, false, true, 1);
+  }
+}
+
 TEST(DynamicQuantizeMatMulNBitsTest, AmpereFineScaleIntervals) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP();
   for (int bits : {2, 4, 8}) {

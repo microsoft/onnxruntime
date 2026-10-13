@@ -415,10 +415,10 @@ __device__ __forceinline__ void CopyAsync16(void* destination, const void* sourc
 // INT4/INT8 and 64 for INT2, so each scale interval covers one or two 32-wide MMA steps. Each warp owns eight columns
 // and RowFragments 16-row fragments, so every decoded weight fragment feeds RowFragments MMAs. The scales of the
 // next K tile are loaded ahead into registers to keep their latency off the promotion path.
-template <typename T, typename ScaleT, int Bits, int FixedRows = 0, int RowFragments = 1>
-__global__ void PrepackedMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
-                                const void* b_scales, const T* bias, T* y,
-                                bool per_tensor, int rows, int n, int k) {
+template <typename T, typename ScaleT, int Bits, int FixedRows, int RowFragments, bool PadWeights>
+__device__ __forceinline__ void PrepackedMatMulBody(const int8_t* a, const float* a_scales, const uint8_t* b,
+                                                    const void* b_scales, const T* bias, T* y,
+                                                    bool per_tensor, int rows, int n, int k) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   constexpr int TileM = 16 * RowFragments;
   constexpr int TileN = 64;
@@ -428,12 +428,14 @@ __global__ void PrepackedMatMul(const int8_t* a, const float* a_scales, const ui
   constexpr int Interleave = 16 / Bits;
   constexpr int ColumnWords = 32 / Interleave;
   constexpr int ChunksPerColumnGroup = TileK / 64 * 8;
+  // Offset consecutive packed column groups by four banks without changing their global layout.
+  constexpr int SharedColumnGroupChunks = ChunksPerColumnGroup + (PadWeights ? 1 : 0);
   constexpr int BlockSize = Bits == 2 ? 64 : 32;
   constexpr int StepsPerGroup = BlockSize / 32;
   constexpr int Steps = TileK / 32;
   constexpr int GroupsPerTile = TileK / BlockSize;
   __shared__ __align__(16) uint32_t shared_a[Stages][TileM][AStride];
-  __shared__ __align__(16) uint4 shared_b[Stages][(TileN / Interleave) * ChunksPerColumnGroup];
+  __shared__ __align__(16) uint4 shared_b[Stages][(TileN / Interleave) * SharedColumnGroupChunks];
   const int lane = threadIdx.x % 32;
   const int warp = threadIdx.x / 32;
   const int column_tiles = n / TileN;
@@ -472,7 +474,8 @@ __global__ void PrepackedMatMul(const int8_t* a, const float* a_scales, const ui
       const int64_t global_column_group = tile_column / Interleave + column_group;
       const int64_t source_chunk = global_column_group * (k / 8) + (pos / 64) * 8 + chunk;
       const bool valid = pos < k;
-      CopyAsync16(&shared_b[stage][i],
+      const int shared_chunk = PadWeights ? column_group * SharedColumnGroupChunks + chunk : i;
+      CopyAsync16(&shared_b[stage][shared_chunk],
                   valid ? &reinterpret_cast<const uint4*>(b)[source_chunk] : reinterpret_cast<const uint4*>(b), valid);
     }
     asm volatile("cp.async.commit_group;" ::: "memory");
@@ -503,7 +506,7 @@ __global__ void PrepackedMatMul(const int8_t* a, const float* a_scales, const ui
 
     const int column = warp * 8 + lane / 4;
     const uint32_t* column_words = reinterpret_cast<const uint32_t*>(&shared_b[stage][0]) +
-                                   (column / Interleave) * (ChunksPerColumnGroup * 4) +
+                                   (column / Interleave) * (SharedColumnGroupChunks * 4) +
                                    (column % Interleave) * ColumnWords;
     int32_t acc[RowFragments][4];
 #pragma unroll
@@ -564,6 +567,24 @@ __global__ void PrepackedMatMul(const int8_t* a, const float* a_scales, const ui
     }
   }
 #endif
+}
+
+template <typename T, typename ScaleT, int Bits, int FixedRows = 0, int RowFragments = 1, bool PadWeights = false>
+__global__ void PrepackedMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
+                                const void* b_scales, const T* bias, T* y,
+                                bool per_tensor, int rows, int n, int k) {
+  PrepackedMatMulBody<T, ScaleT, Bits, FixedRows, RowFragments, PadWeights>(
+      a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k);
+}
+
+// Four W4 row fragments need a register budget that permits two resident CTAs on SM80.
+template <typename T, typename ScaleT, int Bits>
+__global__ void __launch_bounds__(256, 2)
+    PrepackedMatMulSm80(const int8_t* a, const float* a_scales, const uint8_t* b,
+                        const void* b_scales, const T* bias, T* y,
+                        bool per_tensor, int rows, int n, int k) {
+  PrepackedMatMulBody<T, ScaleT, Bits, 0, 4, true>(
+      a, a_scales, b, b_scales, bias, y, per_tensor, rows, n, k);
 }
 
 // One common interval permits keeping only INT32 fragments until the epilogue.
@@ -1090,13 +1111,17 @@ bool IsCompactConsumerGpu(int compute_capability, int sm_count) {
   return (compute_capability == 86 || compute_capability == 120) && sm_count <= 48;
 }
 
-// Reuse decoded weights only while the grid supplies enough CTAs. Four W4 fragments help compact SM120,
-// whereas the measured SM80/SM86/SM89 paths prefer two. Keep larger devices' established dispatch unchanged.
+// Reuse decoded weights only while the grid supplies enough CTAs. SM80's capped four-fragment W4 kernel
+// needs three CTAs per SM in the grid and at most 30% padded rows; compact SM120 also benefits from four.
 int PrepackedRowFragments(int bits, int64_t rows, int64_t n, int compute_capability, int sm_count) {
   const bool compact = IsCompactConsumerGpu(compute_capability, sm_count);
   if ((compute_capability != 80 && compute_capability != 89 && !compact) || rows <= 16) return 1;
   const int64_t minimum_ctas = compact ? sm_count * 4 / 3 : compute_capability == 89 ? 128
                                                                                      : 96;
+  if (compute_capability == 80 && bits == 4 && rows >= 64) {
+    const int64_t row_tiles = rows / 64 + (rows % 64 != 0);
+    if (row_tiles * (n / 64) >= int64_t{sm_count} * 3 && row_tiles * 64 * 100 <= rows * 130) return 4;
+  }
   const int max_fragments = bits == 4 && !(compact && compute_capability == 120) ? 2 : 4;
   for (int fragments = max_fragments; fragments > 1; fragments /= 2) {
     const int64_t tile_rows = 16 * fragments;
@@ -1111,11 +1136,23 @@ Status LaunchPrepacked(const int8_t* a, const float* a_scales, const uint8_t* b,
                        bool per_tensor, int64_t rows, int64_t n, int64_t k,
                        int compute_capability, int sm_count, cudaStream_t stream) {
   const int fragments = PrepackedRowFragments(Bits, rows, n, compute_capability, sm_count);
-  auto kernel = rows == 8        ? PrepackedMatMul<T, ScaleT, Bits, 8>
-                : rows == 9      ? PrepackedMatMul<T, ScaleT, Bits, 9>
-                : fragments == 4 ? PrepackedMatMul<T, ScaleT, Bits, 0, 4>
-                : fragments == 2 ? PrepackedMatMul<T, ScaleT, Bits, 0, 2>
-                                 : PrepackedMatMul<T, ScaleT, Bits, 0, 1>;
+  auto pick_kernel = [&](auto padded) {
+    constexpr bool PadWeights = decltype(padded)::value;
+    if constexpr (PadWeights) {
+      if (fragments == 4) return PrepackedMatMulSm80<T, ScaleT, Bits>;
+    }
+    return rows == 8        ? PrepackedMatMul<T, ScaleT, Bits, 8, 1, PadWeights>
+           : rows == 9      ? PrepackedMatMul<T, ScaleT, Bits, 9, 1, PadWeights>
+           : fragments == 4 ? PrepackedMatMul<T, ScaleT, Bits, 0, 4, PadWeights>
+           : fragments == 2 ? PrepackedMatMul<T, ScaleT, Bits, 0, 2, PadWeights>
+                            : PrepackedMatMul<T, ScaleT, Bits, 0, 1, PadWeights>;
+  };
+  auto kernel = pick_kernel(std::false_type{});
+  if constexpr (Bits == 4) {
+    if (compute_capability == 80 && (fragments == 4 || (fragments == 1 && rows != 8))) {
+      kernel = pick_kernel(std::true_type{});
+    }
+  }
   bool available;
   ORT_RETURN_IF_ERROR(NativeKernelAvailable(kernel, available));
   ORT_RETURN_IF_NOT(available, "The SM80+ integer MMA body is unavailable in the loaded CUDA image.");

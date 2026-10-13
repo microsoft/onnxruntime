@@ -531,7 +531,11 @@ kernel binary/PTX versions at least 80. All native kernels use signed INT8
   A CTA covers 64 columns and one 16-row fragment by default. SM80 and SM89
   reuse decoded weights across two row fragments, or four for W2/W8, when
   the row count and grid permit it. Multi-fragment selection targets at
-  least 96 CTAs on SM80 and 128 on SM89. Compact SM86/SM120 instead target
+  least 96 CTAs on SM80 and 128 on SM89. SM80 W4 additionally uses a
+  register-capped four-fragment kernel when its grid supplies at least
+  three CTAs per SM and wastes at most 30% padded rows. Its shared packed
+  column groups have a 16-byte pad, also used by the SM80 W4 single-fragment
+  kernels except fixed M=8 (section 8.17.3). Compact SM86/SM120 instead target
   `floor(4 * SM_count / 3)` CTAs, with up to four W2/W8 fragments, two W4
   fragments on SM86, and four W4 fragments on SM120. W2/W4 decoding produces
   both MMA registers from the same loaded word pair; W8 retains its original
@@ -2296,6 +2300,143 @@ and `test_row_counts_across_grouped_tile_selection_match_exact_reference`
 (extended with block-32 and 96-wide activation geometries) compare bitwise with
 the exact reference; an extended 1428-case sweep (28 row counts, 17 geometries,
 all tile choices forced during development) also matched exactly.
+
+#### 8.17.3 A100 rerun after the consumer-GPU updates
+
+Remeasured on 2026-10-13 after rebuilding commit `d5ac8d88c2`, including the
+RTX 4090, RTX 3060 and RTX 5060 Ti kernel updates. The build remains Release,
+CUDA 13.0, cuDNN 9.23, native `80-real`, CUDA plugin,
+`onnxruntime_USE_FPA_INTB_GEMM=ON`, and `onnxruntime_USE_FPA_INTB_GEMM_FULL=OFF`.
+The supplied `.env/cuda_130_plugin.sh` sets FPA INTB OFF; do not use that setting
+when comparing against prepacked MatMulNBits. The existing FPA-enabled cache
+was reused, and the rebuilt provider was synchronized into the Python package.
+
+The unmodified external `bench_prepacked.py` measured both shapes, all three
+widths, and M=1,8,9,16,32,64,128,256,512: 54 cases. Measurements used an idle
+A100-SXM4-80GB (108 SMs), FP16 per-token activations, CUDA Graph replay,
+2000 warmups, 100 repetitions and the median of nine trials. CUDA/cuDNN
+libraries were explicitly preloaded to avoid PyTorch's bundled libraries
+changing the runtime. The benchmark arguments were:
+
+```bash
+python bench_prepacked.py --ort-root /home/tianlei/git/onnxruntime \
+  --shapes 4096x4096,5120x6144 --m 1 8 9 16 32 64 128 256 512 \
+  --warmup 2000 --repeat 100 --trials 9 --out results.json
+```
+
+Run outside the repository root with the rebuilt Python package on
+`PYTHONPATH`; the source package otherwise shadows the built bindings.
+
+**Retained changes.** Only SM80 W4 prepacked dispatch is tuned further:
+
+- Add one `uint4` of shared-memory padding per packed column group. The
+  original W4 group stride repeats the same banks within a warp; shifting
+  successive groups by four banks removes that address overlap without
+  changing the serialized format. Single-fragment W4 uses the pad except
+  fixed M=8, which slightly regressed with padding.
+- Allow four row fragments (64 rows) when
+  `ceil(M / 64) * (N / 64) >= 3 * SM_count` and the padded row count is at
+  most 130% of M. The new wrapper uses `__launch_bounds__(256, 2)` so the
+  register budget permits two resident CTAs. For FP16 activations/scales it
+  compiles to 121 registers/thread, 27136 shared bytes, no stack/local
+  storage and no local-load/store instructions. The uncapped four-fragment
+  W4 variant used 132 registers; the established two-fragment variant uses
+  94. These are static resource measurements, not achieved occupancy.
+- Keep two-fragment W4 unpadded and unannotated. W2/W8 and other GPU
+  architectures retain their dispatch choices. The shared device body has
+  separate unannotated and capped wrappers, so the cap does not affect
+  established kernels.
+
+The CTA gate matters: four fragments did not improve M=256,N=4096 (256
+CTAs), but improved M=256,N=6144 (384 CTAs) and M=512 at both shapes. The
+final gate excludes the former case. Ordered per-interval FP32 promotion,
+the BF16 slow scaling path, bias handling, and the global weight layout
+are unchanged.
+
+**Paired W4 results**, complete-operator latency in microseconds. Before is
+the freshly rebuilt `d5ac8d88c2` provider, not the older section 8.17.2
+binary. Separate packages loaded baseline/final providers; submissions were
+serialized with three alternating A/B batches, extended to six for ambiguous
+cases. Each batch used the protocol above; the table reports the median of
+batch medians. Negative latency change is faster.
+
+| K x N | M | Before | Final | Latency change |
+|-------|---|--------|-------|----------------|
+| 4096x4096 | 1 | 48.31 | 46.11 | -4.55% |
+| 4096x4096 | 8 | 42.68 | 42.67 | -0.02% |
+| 4096x4096 | 9 | 48.41 | 47.24 | -2.41% |
+| 4096x4096 | 16 | 48.68 | 46.64 | -4.20% |
+| 4096x4096 | 32 | 59.41 | 57.84 | -2.65% |
+| 4096x4096 | 64 | 76.69 | 76.69 | +0.01% |
+| 4096x4096 | 128 | 114.53 | 114.32 | -0.19% |
+| 4096x4096 | 256 | 169.90 | 169.84 | -0.03% |
+| 4096x4096 | 512 | 307.38 | 263.41 | -14.31% |
+| 5120x6144 | 1 | 57.39 | 55.22 | -3.78% |
+| 5120x6144 | 8 | 50.91 | 50.87 | -0.08% |
+| 5120x6144 | 9 | 58.00 | 56.57 | -2.46% |
+| 5120x6144 | 16 | 58.28 | 55.97 | -3.96% |
+| 5120x6144 | 32 | 73.07 | 73.11 | +0.05% |
+| 5120x6144 | 64 | 94.87 | 94.92 | +0.06% |
+| 5120x6144 | 128 | 168.93 | 169.14 | +0.12% |
+| 5120x6144 | 256 | 315.06 | 268.92 | -14.64% |
+| 5120x6144 | 512 | 569.12 | 505.61 | -11.16% |
+
+W4 geometric-mean latency decreased 3.69% across its 18 cases; across all
+54 cases it decreased 1.26%. W2/W8 prepacked geometric means changed by
+-0.014%/-0.031%, effectively flat. All 15 matched unpadded FP16 kernel
+wrappers retained the baseline's register/shared/stack/local resource values.
+
+The separate unmodified final-script run still shows prepacked MatMulNBits
+faster. M=512, microseconds:
+
+| K x N | Weights | dyn_std | dyn_pre | mnb_pre |
+|-------|---------|---------|---------|---------|
+| 4096x4096 | W2 b64 | 457.36 | 189.92 | 109.29 |
+| 4096x4096 | W4 b32 | 775.48 | 263.54 | 112.95 |
+| 4096x4096 | W8 b32 | 774.00 | 260.39 | 118.01 |
+| 5120x6144 | W2 b64 | 832.50 | 347.36 | 174.15 |
+| 5120x6144 | W4 b32 | 1374.70 | 505.38 | 184.05 |
+| 5120x6144 | W8 b32 | 1366.95 | 491.49 | 188.93 |
+
+**Rejected experiments.** Blanket W4/W8 padding improved W4 about 3-4% but
+increased large-M W8 latency 19-34%. All-lane scale loads instead of scale
+shuffles recovered W8's register pressure but produced mixed, small gains
+and hurt W4 relative to padding alone. A three-stage copy pipeline raised
+register/shared-memory usage and made W4 about 2% slower overall. Capping
+W8's four-fragment kernel also regressed large-M latency about 3%. None of
+these W8 or pipeline changes is retained.
+
+**Validation and limits.** All 54 final cases had valid `mnb_pre` results
+and bit-exact `dyn_pre == dyn_std`. All 162 outputs matched bitwise between
+baseline/final providers. Relative RMSE against weight-only MatMulNBits
+remained 0.80-1.02%. The C++ command
+`./onnxruntime_provider_test --gtest_filter='DynamicQuantizeMatMulNBits*'`
+passed 35 tests and skipped the SM120-only test. The targeted Python command
+`python -m pytest /home/tianlei/git/onnxruntime/onnxruntime/test/python/contrib_ops/test_dynamic_quantize_matmul_nbits.py
+-q -p no:cacheprovider -k 'sm80_prepacked or grouped_packed or row_counts_across_grouped'`
+passed four tests and 480 subtests (16 tests deselected). New
+`Sm80PrepackedSharedWeightPipeline` cases cover a one-tile K loop, fixed
+M=8/9, the 196/197 padded-row dispatch boundary, partial row tiles, FP16/BF16
+scales and bias. Targeted lintrunner checks passed.
+
+The main run collected 2609 GPU-monitor samples with no foreign GPU
+processes. Some samples reported software power capping, so this is not a
+fully unthrottled-clock measurement. A fresh-process control recheck left
+one approximately 0.95% slower standard-layout W8 case (M=32,K=N=4096);
+aggregate standard-layout controls were near neutral, but a strict
+zero-regression claim is not supported. Non-SM80 timing was not revalidated
+on this A100-only machine. Nsight Systems attributed 98.04% of summed GPU
+kernel time to the prepacked matmul in the baseline W4 M=512,
+K=5120,N=6144 case; hardware-counter bottleneck attribution remains
+unavailable. The optimized dynamic operator is still slower than
+prepacked weight-only MatMulNBits in every measured case.
+
+Local raw data, paired trials, monitoring and preserved binaries are in the
+external benchmark directory
+`ab_sm80_final_20261013T104531Z/`: `raw_current/results.json`,
+`paired_measurements.json`, `analysis.json` and `manifest.json`. The final
+provider SHA-256 is
+`4ade1510685f8e741e8bd5feb979a007eb2a1c913804fdaf2abdffc39b79f045`.
 
 ### 8.18 RTX 4090 (SM89) dispatch and prepacked-kernel tuning
 
