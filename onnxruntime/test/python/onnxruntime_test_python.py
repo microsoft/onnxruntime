@@ -305,6 +305,20 @@ class TestInferenceSession(unittest.TestCase):
             # confirm only CPU Provider is registered now.
             self.assertEqual(["CPUExecutionProvider"], sess.get_providers())
 
+    @unittest.skipUnless(
+        "TensorrtExecutionProvider" in onnxrt.get_available_providers(),
+        "TensorRT execution provider is not available",
+    )
+    def test_tensorrt_inference_without_cpu_fallback(self):
+        session_options = onnxrt.SessionOptions()
+        session_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        sess = onnxrt.InferenceSession(
+            get_name("mul_1.onnx"),
+            sess_options=session_options,
+            providers=["TensorrtExecutionProvider"],
+        )
+        self.run_model(sess, None)
+
     def test_set_providers_with_options(self):
         if "TensorrtExecutionProvider" in onnxrt.get_available_providers():
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["TensorrtExecutionProvider"])
