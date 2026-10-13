@@ -302,7 +302,68 @@ class TelemetryPackageTest(unittest.TestCase):
     def test_vcpkg_telemetry_feature_installs_sdk(self):
         manifest = json.loads((_ROOT / "cmake" / "vcpkg.json").read_text(encoding="utf-8"))
         dependencies = manifest["features"]["telemetry"]["dependencies"]
-        self.assertEqual([dependency["name"] for dependency in dependencies], ["cpp-client-telemetry"])
+        self.assertEqual([dependency["name"] for dependency in dependencies], ["cpp-client-telemetry", "curl"])
+        sdk, curl = dependencies
+        self.assertFalse(sdk["default-features"])
+        self.assertFalse(curl["default-features"])
+        self.assertEqual(curl["features"], ["mbedtls"])
+        self.assertEqual(curl["platform"], "linux")
+
+    def test_vcpkg_android_java_transport_compile_flags(self):
+        overlay = _ROOT / "cmake" / "vcpkg-ports" / "cpp-client-telemetry" / "portfile.cmake"
+        with tempfile.TemporaryDirectory(prefix="ort-telemetry-overlay-") as temporary:
+            root = Path(temporary)
+            script = root / "overlay.cmake"
+            script.write_text(
+                textwrap.dedent(
+                    """
+                    cmake_minimum_required(VERSION 3.28)
+                    function(vcpkg_check_linkage)
+                    endfunction()
+                    function(vcpkg_from_github)
+                    endfunction()
+                    function(vcpkg_cmake_configure)
+                      cmake_parse_arguments(SDK "" "SOURCE_PATH" "OPTIONS" ${ARGN})
+                      foreach(flags VCPKG_C_FLAGS VCPKG_CXX_FLAGS)
+                        separate_arguments(definitions UNIX_COMMAND "${${flags}}")
+                        if(NOT "-DKEEP_CALLER_FLAG" IN_LIST definitions)
+                          message(FATAL_ERROR "The overlay must preserve caller flags")
+                        endif()
+                        if(VCPKG_TARGET_IS_ANDROID)
+                          if(NOT "-DANDROID" IN_LIST definitions OR
+                             NOT "-DANDROID_SUPPRESS_LOGCAT" IN_LIST definitions)
+                            message(FATAL_ERROR "The SDK's Java HTTP transport requires ANDROID")
+                          endif()
+                        elseif("-DANDROID" IN_LIST definitions OR
+                               "-DANDROID_SUPPRESS_LOGCAT" IN_LIST definitions)
+                          message(FATAL_ERROR "Android flags must not leak into host builds")
+                        endif()
+                      endforeach()
+                      if(NOT "-DMATSDK_ANDROID_HTTP_CLIENT=JAVA" IN_LIST SDK_OPTIONS)
+                        message(FATAL_ERROR "ORT must select the Java HTTP transport")
+                      endif()
+                    endfunction()
+                    function(vcpkg_cmake_install)
+                    endfunction()
+                    function(vcpkg_cmake_config_fixup)
+                    endfunction()
+                    function(vcpkg_install_copyright)
+                    endfunction()
+                    # Avoid install/cleanup side effects while exercising the overlay policy.
+                    function(file)
+                    endfunction()
+                    set(VCPKG_C_FLAGS "-DKEEP_CALLER_FLAG")
+                    set(VCPKG_CXX_FLAGS "-DKEEP_CALLER_FLAG")
+                    include("${OVERLAY}")
+                    """
+                ),
+                encoding="utf-8",
+            )
+            for android in ("OFF", "ON"):
+                with self.subTest(android=android):
+                    self._run(
+                        "cmake", f"-DVCPKG_TARGET_IS_ANDROID={android}", f"-DOVERLAY={overlay}", "-P", str(script)
+                    )
 
     def test_production_include_without_module_search_path(self):
         includes = [

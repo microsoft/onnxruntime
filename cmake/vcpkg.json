@@ -109,6 +109,13 @@
           "name": "cpp-client-telemetry",
           "default-features": false,
           "version>=": "3.10.281.1"
+        },
+        {
+          "$comment": "Select curl at the manifest root so vcpkg does not re-enable its default OpenSSL feature through the SDK's transitive dependency.",
+          "name": "curl",
+          "default-features": false,
+          "features": ["mbedtls"],
+          "platform": "linux"
         }
       ]
     }
