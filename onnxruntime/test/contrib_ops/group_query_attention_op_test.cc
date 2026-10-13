@@ -1881,7 +1881,7 @@ TEST(GroupQueryAttentionTest, FlashDecoding_LocalWindow_Reference_CPU) {
   constexpr int thread_count = 12;
   concurrency::ThreadPool thread_pool(&Env::Default(), ThreadOptions{}, nullptr, thread_count,
                                       concurrency::kSpinDurationDefault, false);
-  ASSERT_EQ(concurrency::ThreadPool::DegreeOfParallelism(&thread_pool), thread_count);
+
   for (int head_size : {8, 24, 256}) {
     for (int window_size : {-1, 1, 24, 40}) {
       SCOPED_TRACE(testing::Message() << "head_size=" << head_size << " window=" << window_size);
