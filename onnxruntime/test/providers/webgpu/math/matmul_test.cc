@@ -293,6 +293,24 @@ TEST(MathOpTest, MatMulSubgroupMatrix) {
     RunSubgroupMatrixMatMulTest(c.a_dims, c.K, c.N);
   }
 }
+
+TEST(MathOpTest, MatMulSmallMGemv) {
+  for (int64_t m = 1; m <= 8; ++m) {
+    SCOPED_TRACE(m);
+    RunSubgroupMatrixMatMulTest({m, 5120}, 5120, 48);
+  }
+  RunSubgroupMatrixMatMulTest({4, 2048}, 2048, 16);
+  RunSubgroupMatrixMatMulTest({4, 8192}, 8192, 64);
+  RunSubgroupMatrixMatMulTest({3, 2049}, 2049, 20);
+  RunSubgroupMatrixMatMulTest({2, 2, 5120}, 5120, 48);
+
+  RunSubgroupMatrixMatMulTest({9, 5120}, 5120, 48);
+  RunSubgroupMatrixMatMulTest({4, 2047}, 2047, 48);
+  RunSubgroupMatrixMatMulTest({4, 8193}, 8193, 48);
+  RunSubgroupMatrixMatMulTest({4, 5120}, 5120, 12);
+  RunSubgroupMatrixMatMulTest({4, 5120}, 5120, 68);
+  RunSubgroupMatrixMatMulTest({4, 5120}, 5120, 49);
+}
 #endif  // defined(USE_WEBGPU)
 #endif
 

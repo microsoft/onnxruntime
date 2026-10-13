@@ -306,9 +306,35 @@ static Status ApplyMatMulPacked(ComputeContext& context,
                                      ? output_shape.Slice(0, output_shape.NumDimensions() - 2)
                                      : TensorShape({});
   const int64_t batch_size = outer_dims.Size();
+<<<<<<< Updated upstream
   const uint32_t dim_a_outer = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 2]);
   const uint32_t dim_inner = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 1]);
   const uint32_t dim_b_outer = narrow<uint32_t>(b_shape[b_shape.NumDimensions() - 1]);
+=======
+
+  // Get dimensions for matrix multiplication from TensorShape
+  const uint32_t dim_a_outer = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 2]);  // left matrix second dimension
+  const uint32_t dim_inner = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 1]);    // left matrix first dimension
+  const uint32_t dim_b_outer = narrow<uint32_t>(b_shape[b_shape.NumDimensions() - 1]);  // right matrix first dimension
+
+  // For a few rows, stream B directly and reduce K within each workgroup in f32.
+  if (batch_size == 1 && dim_a_outer >= 1 && dim_a_outer <= 8 &&
+      dim_b_outer >= 16 && dim_b_outer <= 64 && dim_b_outer % 4 == 0 &&
+      dim_inner >= 2048 && dim_inner <= 8192 &&
+      !has_bias && activation.activation_kind_ == ActivationKind::None &&
+      a->IsDataType<MLFloat16>() && b->IsDataType<MLFloat16>() && output_tensor->IsDataType<MLFloat16>()) {
+    const uint32_t n_vec_count = dim_b_outer / 4;
+    MatMulGemvProgram program;
+    program.AddInputs({{a, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten},
+                       {b, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
+        .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
+        .AddUniformVariables({{dim_inner}, {dim_b_outer}})
+        .SetWorkgroupSize(MatMulGemvProgram::kWorkgroupSizeX, MatMulGemvProgram::kWorkgroupSizeY)
+        .SetDispatchGroupSize(CeilDiv(n_vec_count, MatMulGemvProgram::kWorkgroupSizeX) * dim_a_outer);
+    return context->RunProgram(program);
+  }
+
+>>>>>>> Stashed changes
   const bool is_vec4 = dim_inner % 4 == 0 && dim_b_outer % 4 == 0;
 
   ORT_RETURN_IF_NOT(IsMatMulPackedConfigurationValid(configuration, is_vec4, use_split_k),
