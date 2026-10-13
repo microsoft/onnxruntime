@@ -514,9 +514,19 @@ kernel binary/PTX versions at least 80. All native kernels use signed INT8
   SM80 (A100) instead accepts any M, chooses among `16 x 32`, `16 x 64`,
   `32 x 64` and `64 x 64` tiles by row count and CTA count, and stages
   128-code K tiles when K and the weight/activation blocks are multiples of
-  128 (section 8.16). On SM80 it also accepts weight blocks of 32 and
+  128 (section 8.16). On SM80 and SM89 it also accepts weight blocks of 32 and
   activation blocks that are multiples of 32, promoting after every 32-wide
-  MMA step (section 8.17).
+  MMA step (sections 8.17 and 8.18). SM89 (RTX 4090) accepts any positive M:
+  small-M and 32-aligned fine intervals use the four tile shapes above with
+  a 192-CTA occupancy target. Coarse 64-aligned intervals at M >= 32 retain
+  the established `32 x 64` / `64 x 64` selection.
+- SM80-prepacked W2 block-64 and W4/W8 block-32: two-stage asynchronous
+  staging, direct register decoding, and typed weight scales fetched ahead.
+  A CTA covers 64 columns and one 16-row fragment by default. SM80 and SM89
+  reuse decoded weights across two row fragments, or four for W2/W8, when
+  the row count and grid permit it. Multi-fragment selection targets at
+  least 96 CTAs on SM80 and 128 on SM89. The schema's prepacked-layout
+  eligibility checks still apply.
 - Other native W8A8/W4A8/W2A8: `32 x 64 x 64` CTA tile with direct shared-memory
   weight decoding. Requires M at least 32, N at least 8, K at least 32,
   and every interior activation/weight block boundary 32-aligned: each
@@ -528,8 +538,8 @@ intervals in the same ordered FP32 sequence.
 
 The single-interval M threshold was checked against DP4A on the measured
 H200 shapes, but is not universally tuned. Aligned pipeline tile choices
-were measured on H200; SM80 (A100) and SM120 have their own measured choices
-(sections 8.15 and 8.16), and other architectures remain unverified.
+were measured on H200; SM80 (A100), SM89 (RTX 4090), and SM120 have their own
+measured choices (sections 8.15, 8.16, and 8.18), and other architectures remain unverified.
 The remaining native geometry uses synchronous shared staging.
 
 Dispatch selects an implementation, never the activation-quantization mode.
@@ -2274,6 +2284,443 @@ and `test_row_counts_across_grouped_tile_selection_match_exact_reference`
 (extended with block-32 and 96-wide activation geometries) compare bitwise with
 the exact reference; an extended 1428-case sweep (28 row counts, 17 geometries,
 all tile choices forced during development) also matched exactly.
+
+### 8.18 RTX 4090 (SM89) dispatch and prepacked-kernel tuning
+
+Measured on 2026-10-12 with an NVIDIA GeForce RTX 4090 (128 SMs, 24 GiB),
+driver 610.60, Windows, Python 3.12.10, PyTorch 2.14.1+cu130, and ORT 1.32.0.
+The build uses CUDA 13.3, cuDNN 9.24.1.1, `89-real`, Release, and the compact
+INT2/INT4/INT8 FpA IntB kernel set. Flash Attention, memory-efficient attention,
+and FP4/FP8 QMoE were disabled identically in both binaries. The CUDA 13.3
+header's MSVC warning C4193 was suppressed with
+`CMAKE_CUDA_FLAGS=-Xcompiler=/wd4193`; no source workaround was added.
+Dynamic quantization retains `--ftz=false --prec-div=true --fmad=false`.
+
+#### Summary
+
+The baseline was commit `aec03d7e76e47ca27a52bd94cae5b041e9bb0bc3`.
+Its SM89 dispatch used DP4A below M=32, the synchronous native fallback for
+standard W4/W8 block-32 at larger M, and one prepacked row fragment at every M.
+The final changes enable existing aligned/fine MMA kernels on SM89 from M=1
+and reuse prepacked weight fragments across multiple row fragments.
+Quantization, integer-dot semantics, scale boundaries, and FP32 accumulation
+order are unchanged.
+
+Measured replay medians include:
+
+- Standard W4, K=5120/N=6144/M=16: **4011.01 -> 77.36 us (51.85x)**.
+- Standard W8, K=N=4096/M=128: **529.56 -> 131.40 us (4.03x)**.
+- Prepacked W8, K=5120/N=6144/M=512: **421.96 -> 227.91 us (1.85x)**.
+
+These are measured medians, not guaranteed speedups. This live Windows
+desktop has substantial timing variability, explicitly flagged below.
+
+#### Metrics and methodology
+
+The `bench_prepacked.py` was used in this test.
+An artifact-only wrapper retained every trial, input/output hashes, loaded
+DLL hashes, and CUDA provider settings. All inputs, scales, and outputs were
+FP16; activation quantization was `dynamic_per_token`, with CUDA graphs and
+GPU IOBinding on the current PyTorch CUDA stream. W2 uses block 64; W4/W8
+use block 32.
+
+For each case/label, a baseline pilot chose a repeat count targeting 20 ms
+per trial. That plan was frozen for every before/after run. Each label had
+50 warmups and 21 trials. Six complete, non-overlapping processes ran in
+the order B1/A1/B2/A2/B3/A3, with no concurrent build or profiling.
+Each table entry is the median of the three pass medians, in microseconds;
+speedup is before/after. The event interval includes GPU idle gaps and
+the cost of submitting/synchronizing ORT CUDA graph replays: it is not
+isolated kernel time.
+
+`std` is DynamicQuantizeMatMulNBits with standard blobs; `pre` is the same
+operator with `weight_prepacked=1`. `control` is prepacked MatMulNBits on
+the same weight bytes and scales, without activation quantization.
+Control output bits varied across independent sessions, so only the dynamic
+outputs are required to match the frozen baseline bit-for-bit. Control
+outputs must remain finite, with a positive finite reference norm and finite
+relative RMSE; the cause of the control bit variation was not established.
+
+Quality `S/P` refers to standard/prepacked timing. `OK` requires all three
+within-pass trial IQR/median ratios <= 5% and pass-median spread <= 3% in
+both phases; `!` means at least one condition failed. Only two of the 96
+dynamic timing comparisons meet this strict joint gate. The tables retain
+every case instead of dropping noisy results. Control median drift exceeds
+10% in three small-M cases, further limiting small-difference claims.
+
+| K x N | W | M | std B -> A us | std x | pre B -> A us | pre x | control B -> A us | S/P |
+|-------|---|---|---------------|-------|---------------|-------|-------------------|-----|
+| 4096x4096 | 2 | 1 | 105.02 -> 51.46 | 2.04 | 34.20 -> 31.90 | 1.07 | 23.91 -> 23.69 | !/! |
+| 4096x4096 | 2 | 8 | 593.30 -> 42.28 | 14.03 | 33.90 -> 33.60 | 1.01 | 30.62 -> 29.45 | !/! |
+| 4096x4096 | 2 | 9 | 652.41 -> 44.55 | 14.65 | 39.43 -> 33.70 | 1.17 | 31.91 -> 29.74 | !/! |
+| 4096x4096 | 2 | 16 | 1133.35 -> 50.23 | 22.56 | 34.03 -> 34.97 | 0.97 | 30.96 -> 31.21 | !/! |
+| 4096x4096 | 2 | 32 | 83.55 -> 82.91 | 1.01 | 37.18 -> 33.91 | 1.10 | 33.00 -> 31.94 | !/! |
+| 4096x4096 | 2 | 64 | 84.72 -> 85.63 | 0.99 | 40.91 -> 37.73 | 1.08 | 41.31 -> 38.00 | !/! |
+| 4096x4096 | 2 | 128 | 100.69 -> 93.50 | 1.08 | 56.98 -> 44.96 | 1.27 | 53.99 -> 51.36 | !/! |
+| 4096x4096 | 2 | 512 | 245.00 -> 243.57 | 1.01 | 156.75 -> 98.80 | 1.59 | 134.20 -> 133.04 | !/! |
+| 4096x4096 | 4 | 1 | 180.13 -> 69.24 | 2.60 | 43.09 -> 43.11 | 1.00 | 25.34 -> 22.96 | !/! |
+| 4096x4096 | 4 | 8 | 1128.78 -> 62.21 | 18.14 | 40.07 -> 39.85 | 1.01 | 29.36 -> 27.63 | !/! |
+| 4096x4096 | 4 | 9 | 1279.99 -> 67.75 | 18.89 | 42.15 -> 38.36 | 1.10 | 30.70 -> 33.33 | !/! |
+| 4096x4096 | 4 | 16 | 2155.02 -> 66.91 | 32.21 | 39.30 -> 40.64 | 0.97 | 31.79 -> 30.70 | !/! |
+| 4096x4096 | 4 | 32 | 468.03 -> 71.71 | 6.53 | 40.43 -> 41.33 | 0.98 | 31.99 -> 32.30 | !/! |
+| 4096x4096 | 4 | 64 | 487.19 -> 89.98 | 5.41 | 49.08 -> 48.27 | 1.02 | 37.93 -> 40.04 | !/! |
+| 4096x4096 | 4 | 128 | 494.44 -> 131.07 | 3.77 | 79.11 -> 56.53 | 1.40 | 51.69 -> 53.15 | !/! |
+| 4096x4096 | 4 | 512 | 1282.72 -> 390.05 | 3.29 | 236.70 -> 165.66 | 1.43 | 131.58 -> 133.44 | OK/! |
+| 4096x4096 | 8 | 1 | 173.92 -> 63.29 | 2.75 | 38.83 -> 39.24 | 0.99 | 23.29 -> 24.99 | !/! |
+| 4096x4096 | 8 | 8 | 1100.71 -> 61.05 | 18.03 | 37.34 -> 38.04 | 0.98 | 34.22 -> 29.70 | !/! |
+| 4096x4096 | 8 | 9 | 1250.40 -> 59.24 | 21.11 | 38.64 -> 38.02 | 1.02 | 29.93 -> 30.00 | !/! |
+| 4096x4096 | 8 | 16 | 2155.88 -> 63.12 | 34.16 | 38.43 -> 39.42 | 0.97 | 32.75 -> 32.63 | !/! |
+| 4096x4096 | 8 | 32 | 507.55 -> 68.36 | 7.42 | 41.07 -> 39.09 | 1.05 | 35.43 -> 33.15 | !/! |
+| 4096x4096 | 8 | 64 | 523.24 -> 89.37 | 5.85 | 47.36 -> 46.38 | 1.02 | 38.48 -> 40.27 | !/! |
+| 4096x4096 | 8 | 128 | 529.56 -> 131.40 | 4.03 | 84.09 -> 54.29 | 1.55 | 54.97 -> 54.65 | !/! |
+| 4096x4096 | 8 | 512 | 1280.84 -> 383.70 | 3.34 | 235.45 -> 127.94 | 1.84 | 134.21 -> 136.11 | !/! |
+| 5120x6144 | 2 | 1 | 165.24 -> 61.82 | 2.67 | 36.67 -> 39.26 | 0.93 | 24.53 -> 27.19 | !/! |
+| 5120x6144 | 2 | 8 | 1049.33 -> 58.12 | 18.06 | 37.66 -> 37.60 | 1.00 | 34.57 -> 34.10 | !/! |
+| 5120x6144 | 2 | 9 | 1176.04 -> 62.10 | 18.94 | 41.23 -> 42.26 | 0.98 | 34.29 -> 34.99 | !/! |
+| 5120x6144 | 2 | 16 | 2066.33 -> 60.99 | 33.88 | 36.62 -> 39.48 | 0.93 | 34.42 -> 35.83 | !/! |
+| 5120x6144 | 2 | 32 | 95.52 -> 99.30 | 0.96 | 45.84 -> 45.40 | 1.01 | 40.37 -> 40.47 | !/! |
+| 5120x6144 | 2 | 64 | 107.26 -> 111.53 | 0.96 | 52.51 -> 53.36 | 0.98 | 51.20 -> 52.12 | !/! |
+| 5120x6144 | 2 | 128 | 124.98 -> 126.52 | 0.99 | 81.66 -> 69.43 | 1.18 | 75.00 -> 81.18 | !/! |
+| 5120x6144 | 2 | 512 | 322.37 -> 325.42 | 0.99 | 266.61 -> 177.61 | 1.50 | 224.03 -> 229.89 | !/! |
+| 5120x6144 | 4 | 1 | 303.76 -> 82.94 | 3.66 | 49.50 -> 46.14 | 1.07 | 26.88 -> 31.20 | !/! |
+| 5120x6144 | 4 | 8 | 2049.77 -> 92.50 | 22.16 | 43.99 -> 44.28 | 0.99 | 33.25 -> 31.51 | !/! |
+| 5120x6144 | 4 | 9 | 2295.03 -> 93.19 | 24.63 | 43.46 -> 44.50 | 0.98 | 35.86 -> 35.75 | !/! |
+| 5120x6144 | 4 | 16 | 4011.01 -> 77.36 | 51.85 | 46.39 -> 46.80 | 0.99 | 32.86 -> 33.77 | !/! |
+| 5120x6144 | 4 | 32 | 590.33 -> 101.27 | 5.83 | 61.59 -> 57.70 | 1.07 | 39.99 -> 40.31 | !/! |
+| 5120x6144 | 4 | 64 | 665.04 -> 154.55 | 4.30 | 71.08 -> 68.53 | 1.04 | 53.48 -> 53.11 | OK/! |
+| 5120x6144 | 4 | 128 | 749.69 -> 241.17 | 3.11 | 120.68 -> 95.16 | 1.27 | 80.39 -> 80.95 | !/! |
+| 5120x6144 | 4 | 512 | 2382.30 -> 498.32 | 4.78 | 413.39 -> 290.97 | 1.42 | 228.79 -> 230.31 | !/! |
+| 5120x6144 | 8 | 1 | 306.44 -> 81.15 | 3.78 | 43.70 -> 48.11 | 0.91 | 27.54 -> 26.72 | !/! |
+| 5120x6144 | 8 | 8 | 2046.45 -> 75.03 | 27.28 | 41.82 -> 42.03 | 1.00 | 39.15 -> 37.10 | !/! |
+| 5120x6144 | 8 | 9 | 2293.69 -> 82.51 | 27.80 | 44.02 -> 44.24 | 1.00 | 36.13 -> 33.84 | !/! |
+| 5120x6144 | 8 | 16 | 3979.21 -> 80.47 | 49.45 | 44.11 -> 44.77 | 0.99 | 36.24 -> 35.74 | !/! |
+| 5120x6144 | 8 | 32 | 639.11 -> 121.10 | 5.28 | 55.79 -> 56.32 | 0.99 | 44.53 -> 41.33 | !/! |
+| 5120x6144 | 8 | 64 | 700.27 -> 155.40 | 4.51 | 74.94 -> 66.35 | 1.13 | 56.46 -> 59.79 | !/! |
+| 5120x6144 | 8 | 128 | 761.18 -> 231.47 | 3.29 | 131.17 -> 82.51 | 1.59 | 85.09 -> 84.89 | !/! |
+| 5120x6144 | 8 | 512 | 2339.49 -> 542.74 | 4.31 | 421.96 -> 227.91 | 1.85 | 240.04 -> 248.74 | !/! |
+
+#### Findings
+
+Nsight Systems 2026.3.2 verifies actual dispatch and isolates GPU kernel
+duration. These diagnostic captures have 50 warmups and 20 traced replays;
+they are separate from the unprofiled benchmark above.
+
+| FP16 W4, K=N=4096 | Baseline kernel | Final kernel | Median GPU us B -> A |
+|------------------|-----------------|--------------|---------------------|
+| Standard M=16 | `IntegerMatMul` / DP4A | `NativeAlignedGroupedMatMulCapped`, fine intervals | 2094.930 -> 50.016 |
+| Prepacked M=128 | `PrepackedMatMul`, one row fragment | `PrepackedMatMul`, two row fragments | 59.568 -> 39.216 |
+| Quantizer, standard M=16 | `QuantizeRowsVector` | Same variant | 2.080 -> 2.208 |
+| Quantizer, prepacked M=128 | `QuantizeRowsVector` | Same variant | 2.432 -> 2.400 |
+
+Matmul accounts for 99.9% of baseline standard-M16 GPU kernel time and
+95.7% after tuning. Thus this case is kernel/dispatch dominated, not
+quantizer dominated. The matmul kernel improves 41.89x in this trace;
+prepacked M128 improves 1.52x by sharing weight decoding across rows.
+Nsight Compute 2026.3.0 could not access counters (`ERR_NVGPUCTRPERM`).
+Compute/memory bandwidth, SOL, occupancy, and register-pressure bottlenecks
+are therefore not claimed. Stream-synchronization waits overlap GPU work
+and must not be added as independent host computation.
+
+An initial candidate also enlarged coarse-interval tiles on SM89. For
+standard W2, K=5120/N=6144/M=128, three paired passes showed
+128.43 -> 159.64 us, a 24.3% slowdown. That candidate was discarded.
+The final implementation retains the old coarse-interval selection at
+M >= 32; the final 124.98 -> 126.52 us result is mixed/marginal, not a
+claimed improvement. Other GPU architectures retain their previous rules.
+Prepacked M <= 32 also keeps one row fragment; its small timing differences
+are not claimed as kernel improvements.
+
+Every final pass has 48 cases and 144 positive finite timing series.
+All 576 dynamic output-hash comparisons match the frozen baseline, and
+standard/prepacked dynamic outputs match bit-for-bit in every pass.
+Relative RMSE against MatMulNBits is 0.806-1.024%. The final provider build
+and full Python session suite passed: **19 tests and 590 subtests**,
+including tile boundaries, all weight widths, all activation modes,
+FP16/BF16, all scale types, and CUDA graph replay.
+
+#### Reproduction and recommendations
+
+The original worktree switched branches during the first build, so the
+verified build is isolated at `D:\git\onnxruntime-dqmm-sm89`, based on the
+baseline commit above. Its Python package is at
+`build\sm89\Release\Release`. Measurement artifacts, wrapper, repeat plan,
+preserved baseline/final DLLs, all raw trials, and profiler reports remain at
+`D:\perf-artifacts\dqmm_session_20261012_134523`.
+`paired-final-comparison.json` and `.md` contain the complete comparison
+and quality flags; `profiling-evidence-readback.json` and
+`profiler-full-kernel-names.json` retain profiler provenance and routing.
+
+Baseline CUDA DLL SHA256:
+`63c186c68f85fc4dfdb1c2de4ffbe7859df4a28f43340c52c887968436874974`.
+Final CUDA DLL SHA256:
+`bcb7de0f6f34d9ae192c41a754b00d6c5918984a33c63eb21ac1c400ed963ddc`.
+
+With the build settings above, the incremental final build command was:
+
+```powershell
+& $env:ComSpec /c 'call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat" amd64 -vcvars_ver=14.51.36231 >nul && call D:\py312\Scripts\activate && "D:\py312\Lib\site-packages\cmake\data\bin\cmake.exe" --build D:\git\onnxruntime-dqmm-sm89\build\sm89\Release --config Release --target onnxruntime_providers_cuda --parallel 8 -- /p:BuildInParallel=true'
+```
+
+Result: passed; the edited `.cu` was recompiled and the CUDA DLL relinked.
+After staging the DLL into the package's `onnxruntime\capi` directory,
+the correctness command, run outside the source root, was:
+
+```powershell
+$env:PYTHONPATH = 'D:\git\onnxruntime-dqmm-sm89\build\sm89\Release\Release'
+$env:CUDA_VISIBLE_DEVICES = '0'
+Set-Location 'D:\perf-artifacts\dqmm_session_20261012_134523'
+& D:\py312\Scripts\python.exe -c "import torch,pytest; raise SystemExit(pytest.main(['-q',r'D:\git\onnxruntime-dqmm-sm89\onnxruntime\test\python\contrib_ops\test_dynamic_quantize_matmul_nbits.py']))"
+```
+
+Result: 19 passed, 590 subtests passed. Importing PyTorch first preloads
+the CUDA DLLs, matching the supplied benchmark. A run without that preload
+failed to load CUDA EP dependencies (Windows error 126), not a kernel
+correctness assertion. The only passing-run warning was missing build
+package metadata.
+
+The six final benchmark processes used this command for each phase/pass:
+
+```powershell
+$bin = 'D:\git\onnxruntime-dqmm-sm89\build\sm89\Release\Release'
+$artifacts = 'D:\perf-artifacts\dqmm_session_20261012_134523'
+$env:PYTHONPATH = $bin
+$env:CUDA_VISIBLE_DEVICES = '0'
+$env:PATH = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3\bin;D:\cudnn\9.24.1.1_cuda13\bin\x64;' + $env:PATH
+Set-Location $artifacts
+foreach ($i in 1..3) {
+  foreach ($phase in @('baseline', 'after')) {
+    $folder = if ($phase -eq 'baseline') { 'baseline-binaries' } else { 'final-binaries' }
+    $dll = Join-Path $artifacts "$folder\onnxruntime_providers_cuda.dll"
+    Copy-Item $dll -Destination $bin -Force
+    Copy-Item $dll -Destination (Join-Path $bin 'onnxruntime\capi') -Force
+    & D:\py312\Scripts\python.exe .\benchmark_wrapper.py --phase $phase --pass-id "final-$i" --quality robust --ort-root D:\git\onnxruntime-dqmm-sm89 --expected-ort-root $bin --warmup 50 --trials 21 --adaptive --target-trial-ms 20 --repeat-plan .\full-repeat-plan-v2.json --out ".\$phase-final-$i.json"
+    if ($LASTEXITCODE -ne 0) { throw "Benchmark failed: $phase pass $i" }
+  }
+}
+```
+
+Result: all six passes complete. Choose unused output names to rerun;
+the wrapper deliberately refuses to overwrite existing evidence.
+
+Recommendations: keep the measured SM89 gates rather than extending them
+to unmeasured architectures. Prepacking remains important, but W4 M=512
+still loses to weight-only MatMulNBits; activation quantization is not a
+universal speedup. Producer-side quantization fusion and deeper scale/
+decode scheduling are future work. Recheck those changes with the exact
+INT32-per-interval contract and quieter or clock-controlled measurements
+before claiming small improvements. TensorRT-LLM's local Ada blockwise
+FP8 kernels provide tiling/pipeline ideas, but are not a numerical drop-in
+for this operator's INT2/INT4/INT8 common-scale intervals; no external
+kernel source was copied.
+
+### 8.19 RTX 4090 large-M follow-up and the #33200 use case (2026-10-12)
+
+#### Summary
+
+The section 8.18 sweep was extended to **M=1024 and 1536**, using the same
+preserved before/after binaries and build configuration. Larger M changes
+the conclusion: prepacked W2/block64 is faster than the prepacked
+MatMulNBits control, W8/block32 has smaller and less stable advantages,
+and W4/block32 still loses. Increasing M alone does not make activation
+quantization a universal replacement for weight-only inference.
+
+[Issue #33200](https://github.com/microsoft/onnxruntime/issues/33200)
+requests a different regime: **per-token A8 and one W8 scale per output
+channel across all K**, with one INT32 dot and a final scaling epilogue.
+The original block32/block64 sweep does not test that premise. A separate
+synthetic benchmark below exercises its four shapes and both larger M
+values. It shows a useful but modest local niche, not a reproduction of
+the author's other GPUs or claimed model-level latency/accuracy result.
+No further kernel changes were made for this follow-up.
+
+#### Metrics: extended blockwise before/after sweep
+
+Protocol: B1/A1/B2/A2/B3/A3, 50 warmups, 21 trials, a new frozen adaptive
+repeat plan targeting 20 ms per trial, and median of three pass medians.
+The selection has 12 cases rather than 48. Inputs, weights, scales,
+repeat counts, and provider settings match across the six processes.
+Times below are **us per CUDA graph replay**, including activation
+quantization for the dynamic operator and submission-related GPU gaps;
+they are not isolated GEMM kernel times.
+
+`B / A` means baseline / optimized. The first two `x` columns are B/A.
+`MNB / Dyn` compares the optimized prepacked dynamic operator with the
+MatMulNBits control measured in the optimized passes; >1 favors dynamic.
+Quality S/P uses the same before/after gate as section 8.18: all three
+trial IQRs <=5% and pass-median spread <=3% in both phases. `!` is flagged,
+not a stability-certified improvement.
+
+| KxN | W/block | M | Standard B / A us | x | Prepacked B / A us | x | MNB B / A us | MNB / Dyn | Quality S/P |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|:---:|
+| 4096x4096 | 2/64 | 1024 | 368.58 / 370.15 | 1.00 | 277.99 / 174.87 | 1.59 | 231.07 / 231.26 | 1.32 | !/! |
+| 4096x4096 | 2/64 | 1536 | 511.19 / 513.51 | 1.00 | 412.54 / 255.20 | 1.62 | 337.94 / 339.73 | 1.33 | OK/OK |
+| 4096x4096 | 4/32 | 1024 | 2552.13 / 571.30 | 4.47 | 441.99 / 306.89 | 1.44 | 235.55 / 238.57 | 0.78 | !/OK |
+| 4096x4096 | 4/32 | 1536 | 3798.14 / 761.72 | 4.99 | 652.79 / 454.70 | 1.44 | 344.23 / 343.94 | 0.76 | !/OK |
+| 4096x4096 | 8/32 | 1024 | 2509.79 / 566.51 | 4.43 | 434.72 / 228.47 | 1.90 | 243.33 / 243.02 | 1.06 | !/! |
+| 4096x4096 | 8/32 | 1536 | 3736.75 / 763.58 | 4.89 | 638.28 / 330.87 | 1.93 | 357.83 / 356.03 | 1.08 | !/! |
+| 5120x6144 | 2/64 | 1024 | 620.87 / 621.99 | 1.00 | 512.90 / 321.41 | 1.60 | 419.50 / 415.31 | 1.29 | OK/! |
+| 5120x6144 | 2/64 | 1536 | 923.09 / 924.08 | 1.00 | 761.08 / 473.61 | 1.61 | 626.32 / 616.10 | 1.30 | OK/OK |
+| 5120x6144 | 4/32 | 1024 | 4843.33 / 936.77 | 5.17 | 813.31 / 573.23 | 1.42 | 426.28 / 433.87 | 0.76 | !/OK |
+| 5120x6144 | 4/32 | 1536 | 7247.10 / 1385.47 | 5.23 | 1219.64 / 848.60 | 1.44 | 635.05 / 635.81 | 0.75 | !/OK |
+| 5120x6144 | 8/32 | 1024 | 4730.88 / 963.63 | 4.91 | 823.51 / 422.04 | 1.95 | 444.85 / 446.54 | 1.06 | !/! |
+| 5120x6144 | 8/32 | 1536 | 7112.69 / 1407.16 | 5.05 | 1219.56 / 629.42 | 1.94 | 725.38 / 726.93 | 1.15 | !/! |
+
+All six passes completed: 216 timing series, **4,536 raw trials**, and
+**144 strict dynamic output-hash matches** to the frozen baseline.
+Standard/prepacked dynamic outputs remain bit-identical in every case.
+Relative RMSE versus MatMulNBits is **0.859-0.884%** on these inputs.
+Nine of 24 dynamic before/after comparisons meet the combined quality
+gate. Seven of 12 optimized prepacked/control comparisons meet their
+post-change gate; no control's aggregate before/after drift exceeds 10%.
+
+Prepacked W2 wins in all three optimized passes at every shape/M, with
+aggregate speedups of **1.29-1.33x** over MatMulNBits. W4 is approximately
+29-33% slower despite the tuning. W8's aggregate **1.06-1.15x** advantages
+need caution: all four comparisons are quality-flagged, and
+4096x4096/M1024 actually loses to the control in one of the three passes.
+The standard W2 coarse-interval dispatch is unchanged; its approximately
+1.00x before/after ratios are not optimization claims.
+
+#### Metrics: per-channel W8A8 matching the issue's arithmetic regime
+
+This independent sweep uses FP16 input/output, per-token activation
+scales, and standard W8 codes with **one FP16 weight scale per channel**.
+The dynamic block size is 2048 for K2048 and 8192 for K6144; the latter
+pads the last 2048 codes per channel with midpoint code128. Only the
+logical K6144 entries contribute to the dot product.
+
+The same logical codes and channel-scale values supply all three
+controls; weights are not independently requantized:
+
+- **MNB b128:** standard-layout W8/block128, replicating the channel scale
+  over K blocks. This matches the issue's reported comparison format,
+  but this local compact build does not include the W8/block128
+  fpA_intB specialization, so it uses the dequantize/GEMM fallback.
+- **Pre MNB b32:** SM80-prepacked W8/block32, again repeating the same
+  channel scale. This exercises the available compact mixed-GEMM path
+  rather than relying solely on the block128 fallback. It is not always
+  faster than that fallback at these shapes.
+- **Dense:** ordinary FP16 MatMul with the weights dequantized once to
+  FP16 outside timing. This is a practical latency control, but uses
+  larger persistent weight storage than either quantized operator.
+
+Three independent passes use 50 warmups and 21 trials with their own
+frozen adaptive repeat plan. Timing-label order rotates across passes.
+Values are medians of three pass medians, including dynamic quantization.
+Each `x` is control/dynamic. Quality b128/pre/dense requires both compared
+labels to satisfy all IQR <=5% and pass spread <=3% checks.
+
+| KxN | M | Dynamic us | MNB b128 us | x | Pre MNB b32 us | x | Dense us | x | RMSE vs b128 | Quality b128/pre/dense |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---:|
+| 2048x6144 | 1024 | 166.94 | 189.94 | 1.138 | 188.91 | 1.132 | 167.74 | 1.005 | 0.008293 | !/!/! |
+| 2048x6144 | 1536 | 242.94 | 275.75 | 1.135 | 306.82 | 1.263 | 258.95 | 1.066 | 0.008301 | !/!/! |
+| 6144x2048 | 1024 | 164.29 | 194.90 | 1.186 | 191.14 | 1.163 | 181.74 | 1.106 | 0.008869 | !/!/! |
+| 6144x2048 | 1536 | 230.91 | 276.47 | 1.197 | 354.19 | 1.534 | 265.74 | 1.151 | 0.008906 | !/!/! |
+| 2048x4096 | 1024 | 116.11 | 130.29 | 1.122 | 130.08 | 1.120 | 120.79 | 1.040 | 0.008275 | OK/OK/OK |
+| 2048x4096 | 1536 | 163.63 | 185.14 | 1.131 | 200.57 | 1.226 | 174.28 | 1.065 | 0.008237 | !/!/! |
+| 2048x2048 | 1024 | 75.54 | 71.13 | 0.942 | 71.73 | 0.950 | 66.17 | 0.876 | 0.008276 | !/!/! |
+| 2048x2048 | 1536 | 95.53 | 106.87 | 1.119 | 141.80 | 1.484 | 100.38 | 1.051 | 0.008257 | !/!/! |
+
+All 96 timing series and **2,016 raw trials** are positive and finite.
+All **24 full dynamic-output hashes** match the independent frozen plan.
+For each case/pass, 120 sampled FP16 outputs are bit-exact against a
+CPU INT64 full-K dot, independently computed NumPy FP32 activation
+quantization, and separate ordered FP32 scaling/conversion: **2,880
+reference elements checked**. This sample check is not a claim of
+full-output equality to the independent reference. The full outputs
+are finite; dynamic relative RMSE versus b128 is **0.824-0.891%**.
+No application-accuracy acceptance threshold was supplied or tested.
+
+#### Findings
+
+1. **The use case is credible, but narrower than a universal speedup.**
+   For the first three issue shapes, both M values win over b128 in all
+   three passes by more than 3%, with aggregate **1.12-1.20x** speedups.
+   Only 2048x4096/M1024 passes the full stability gate. The 2048x2048
+   results are mixed: M1024 loses in the aggregate, and M1536's aggregate
+   gain over b128 is not consistent across passes. Wins over prepacked
+   b32 reach 1.53x, but b128 or dense FP16 can be faster controls; do not
+   select the slowest control to claim a general deployment benefit.
+2. **Scale granularity matters as much as M.** A block32 W8 dot must
+   promote/scale INT32 partial sums every 32 K elements, versus one
+   promotion/epilogue for per-channel W8. The issue's integer-throughput
+   argument is therefore not contradicted by a slower fine-block
+   benchmark. Conversely, its one-scale result does not promise a gain
+   for blockwise W4. The exact interval-order contract forbids silently
+   merging equal adjacent scales to imitate the per-channel path.
+3. **These are operator-level replay timings, not a model result.**
+   The issue author's RTX4080 Laptop/GB10 measurements and approximately
+   25% classifier latency reduction were not reproduced. No counters
+   were collected for these new cases, and no compute-/memory-bound,
+   occupancy, bandwidth, or SOL conclusion is inferred from latency.
+   The earlier section 8.18 kernel traces remain evidence for the
+   previously profiled cases only.
+4. **W8A8 is an accuracy choice.** MatMulNBits retains FP16 activations;
+   this operator deliberately quantizes them. Synthetic RMSE and exact
+   implementation-reference checks do not establish unchanged task
+   accuracy. Per-token quantization keeps tokens independent, but does
+   not remove within-token feature outliers.
+
+#### Recommendations and reproduction
+
+Use this operator as a **per-node opt-in** for models validated for A8,
+especially large-M prefill/encoder W8 with per-channel weights, or the
+measured prepacked W2/block64 cases. Its purpose is native GPU dynamic
+activation quantization plus integer GEMM and fused output scaling, not
+additional persistent weight compression over MatMulNBits. Inputs and
+outputs remain FP16 here, and quantized activations are internal scratch,
+not an automatic reduction of the model's persistent activation storage.
+
+Keep weight-only MatMulNBits for the measured W4/block32 cases, small
+shapes without a demonstrated gain, and accuracy-sensitive/outlier-heavy
+nodes unless smoothing or another activation policy is model-validated.
+Select against the fastest applicable weight-only control, measure task
+accuracy and complete-model latency, and rerun modest gains under quieter
+GPU conditions before enabling them by default. Future per-channel
+pipeline/tile tuning is separate work; larger-M results alone do not
+justify changing another architecture's dispatch.
+
+The original artifact directory from section 8.18 retains the evidence:
+`large-m-repeat-plan-v2.json`, `large-m-baseline-[1..3].json`,
+`large-m-after-[1..3].json`, and `large-m-final-comparison.json` / `.md`.
+The corresponding per-channel files are
+`issue33200-channel-dense-repeat-plan.json`,
+`issue33200-channel-dense-[1..3].json`, and
+`issue33200-channel-dense-summary.json` / `.md`.
+The accepted final provider remains installed in both isolated build
+locations; its SHA256 is unchanged from section 8.18.
+
+For the larger-M extension, use the section 8.18 DLL-swap loop and
+environment with these arguments for each phase/pass:
+
+```powershell
+& D:\py312\Scripts\python.exe .\benchmark_wrapper.py --phase $phase --pass-id "large-m-v2-$i" --quality robust --ort-root D:\git\onnxruntime --expected-ort-root $bin --shapes 4096x4096,5120x6144 --m 1024 1536 --warmup 50 --trials 21 --adaptive --target-trial-ms 20 --repeat-plan .\large-m-repeat-plan-v2.json --out ".\large-m-$phase-$i.json"
+```
+
+Result: all six passes completed. On Windows PowerShell 5, redirect
+stdout/stderr through `cmd.exe` when recording logs, rather than treating
+the known package-metadata warning as a terminating native-command error.
+Use fresh output/plan names when rerunning; completed evidence is not
+overwritten. The CPU-only aggregation command was:
+
+```powershell
+& D:\py312\Scripts\python.exe .\compare_paired_large_m.py --repeat-plan large-m-repeat-plan-v2.json --baseline-prefix large-m-baseline --after-prefix large-m-after --candidate final --expected-after-provider-sha bcb7de0f6f34d9ae192c41a754b00d6c5918984a33c63eb21ac1c400ed963ddc --output-stem large-m-final-comparison
+```
+
+Result: passed all raw-trial, numerical, binary-identity, and interleaving
+checks. After restoring the final DLL, the separate issue-regime command
+was:
+
+```powershell
+& D:\perf-artifacts\dqmm_session_20261012_134523\run_issue33200.ps1 -IncludeDense -MaxSecondsPerPass 600
+```
+
+Result: the independent CPU reference self-check, all three GPU passes,
+and aggregation passed. The artifact-only launcher uses
+`bench_issue33200_per_channel.py` and `summarize_issue33200.py`; it fixes
+the four issue shapes, checks the final provider identity, and records
+the full commands, inputs/scales/weights hashes, raw trials, correctness
+checks, and quality flags.
 
 ## 9. Delivery Plan and Acceptance
 

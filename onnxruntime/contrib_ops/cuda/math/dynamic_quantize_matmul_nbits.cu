@@ -1089,14 +1089,14 @@ Status NativeKernelAvailable(Kernel kernel, bool& available) {
 
 // Row fragments per CTA of the prepacked kernel. On A100 a decoded weight fragment serving 2-4 row fragments
 // raised M >= 128 throughput by up to 1.9x. Use the largest count that does not exceed the row count and still
-// leaves a CTA per SM (96 of 108), and at most two for INT4, whose nibble decode is the costliest and which gained nothing from four. Other
-// architectures keep one fragment until measured.
+// leaves about a CTA per SM (96 on A100, 128 on RTX 4090), and at most two for INT4, whose nibble decode is the
+// costliest and which gained nothing from four. Other architectures keep one fragment until measured.
 int PrepackedRowFragments(int bits, int64_t rows, int64_t n, int compute_capability) {
-  if (compute_capability != 80 || rows <= 16) return 1;
-  constexpr int64_t kMinimumCtas = 96;
+  if ((compute_capability != 80 && compute_capability != 89) || rows <= 16) return 1;
+  const int64_t minimum_ctas = compute_capability == 89 ? 128 : 96;
   for (int fragments = bits == 4 ? 2 : 4; fragments > 1; fragments /= 2) {
     const int64_t tile_rows = 16 * fragments;
-    if (tile_rows <= rows && (rows + tile_rows - 1) / tile_rows * (n / 64) >= kMinimumCtas) return fragments;
+    if (tile_rows <= rows && (rows + tile_rows - 1) / tile_rows * (n / 64) >= minimum_ctas) return fragments;
   }
   return 1;
 }
@@ -1173,15 +1173,15 @@ static auto PickGroupedKernel(GroupedTile tile, bool k128) {
   return GroupedKernel<T, Bits, 32, Common128, 64, 3, 2, 64, RowGuard, Fine>();
 }
 
-// Ampere (SM80) selection measured on A100 (108 SMs): use the largest tile that wastes few padded rows and still
-// leaves about 1.5 CTAs per SM, otherwise the narrow 16x32 tile. Other architectures keep the H200 rule.
-GroupedTile SelectGroupedTile(int64_t rows, int64_t column_tiles_64, int compute_capability) {
-  if (compute_capability == 80) {
-    constexpr int64_t kMinimumCtas = 160;
+// A100 and RTX 4090's fine-interval/small-M paths need about 1.5 CTAs per SM and few padded rows.
+// Keep the established coarse-interval tiling at M >= 32 on SM89; enlarging those tiles regresses W2.
+GroupedTile SelectGroupedTile(int64_t rows, int64_t column_tiles_64, int compute_capability, bool fine) {
+  if (compute_capability == 80 || (compute_capability == 89 && (fine || rows < 32))) {
+    const int64_t minimum_ctas = compute_capability == 89 ? 192 : 160;
     for (GroupedTile tile : {GroupedTile::k64x64, GroupedTile::k32x64, GroupedTile::k16x64}) {
       const int64_t tile_rows = GroupedTileRows(tile);
       const int64_t row_tiles = (rows + tile_rows - 1) / tile_rows;
-      if (row_tiles * tile_rows * 10 <= rows * 13 && row_tiles * column_tiles_64 >= kMinimumCtas) return tile;
+      if (row_tiles * tile_rows * 10 <= rows * 13 && row_tiles * column_tiles_64 >= minimum_ctas) return tile;
     }
     return GroupedTile::k16x32;
   }
@@ -1222,18 +1222,19 @@ Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
   }
   // Whole 64-code intervals permit aligned asynchronous copies even for W2.
   // Keep address products wide, while bounding the fast path's loop counters.
-  // Consumer Blackwell's measured crossover is eight rows and A100's is one row; other architectures retain 32.
-  const int64_t minimum_rows = compute_capability >= 120 ? 8 : compute_capability == 80 ? 1
-                                                                                        : 32;
+  // Consumer Blackwell's measured crossover is eight rows; A100 and RTX 4090 use one row.
+  const int64_t minimum_rows = compute_capability >= 120                              ? 8
+                               : compute_capability == 80 || compute_capability == 89 ? 1
+                                                                                      : 32;
   const bool grouped_geometry =
       compute_capability >= 80 && rows >= minimum_rows && n >= 8 && k >= 64 && k % 64 == 0 &&
       rows <= std::numeric_limits<int>::max() - 128 && n <= std::numeric_limits<int>::max() - 128 &&
       k <= std::numeric_limits<int>::max() - 128 && block_size <= std::numeric_limits<int>::max() &&
       activation_block_size <= std::numeric_limits<int>::max() && block_size % 64 == 0 &&
       (activation_block_size >= k || activation_block_size % 64 == 0);
-  // 32-aligned intervals (block 32, activation blocks such as 96) promote after every MMA step. Only measured on A100.
+  // 32-aligned intervals (block 32, activation blocks such as 96) promote after every MMA step.
   const bool fine_geometry =
-      compute_capability == 80 && rows >= 1 && n >= 8 && k >= 64 && k % 64 == 0 &&
+      (compute_capability == 80 || compute_capability == 89) && rows >= 1 && n >= 8 && k >= 64 && k % 64 == 0 &&
       rows <= std::numeric_limits<int>::max() - 128 && n <= std::numeric_limits<int>::max() - 128 &&
       k <= std::numeric_limits<int>::max() - 128 && block_size <= std::numeric_limits<int>::max() &&
       activation_block_size <= std::numeric_limits<int>::max() && block_size % 32 == 0 &&
@@ -1276,7 +1277,7 @@ Status LaunchMatMul(const int8_t* a, const float* a_scales, const uint8_t* b,
   }
   if (grouped_geometry || fine_geometry) {
     const int64_t column_tiles_64 = n / 64 + (n % 64 != 0);
-    const GroupedTile tile = SelectGroupedTile(rows, column_tiles_64, compute_capability);
+    const GroupedTile tile = SelectGroupedTile(rows, column_tiles_64, compute_capability, fine_geometry);
     const int tile_m = GroupedTileRows(tile);
     const int tile_n = GroupedTileColumns(tile);
     const int64_t column_tiles = n / tile_n + (n % tile_n != 0);

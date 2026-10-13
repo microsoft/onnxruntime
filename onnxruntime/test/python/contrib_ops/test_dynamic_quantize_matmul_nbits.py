@@ -72,7 +72,7 @@ def constant_weight_model(m=33, k=144, n=136, block=512, runtime_scales=False, d
     return model
 
 
-def reference(a, packed, scales, bits, block, mode, activation_block):
+def reference(a, packed, scales, bits, block, mode, activation_block, output_dtype=np.float16):
     a = a.astype(np.float32)
     m, k = a.shape
     n = packed.shape[0]
@@ -98,7 +98,7 @@ def reference(a, packed, scales, bits, block, mode, activation_block):
         term = (acc.astype(np.float32) * a_scales[:, start, None]) * scales[:, start // block].astype(np.float32)
         output = term if output is None else output + term
         start = end
-    return (output + np.float32(0)).astype(np.float16)
+    return (output + np.float32(0)).astype(output_dtype)
 
 
 def prepack_sm80(packed, bits):
@@ -230,7 +230,7 @@ class TestDynamicQuantizeMatMulNBits(unittest.TestCase):
             packed = rng.integers(0, 256, size=(n, k // block, block * bits // 8), dtype=np.uint8)
             prepacked = prepack_sm80(packed, bits)
             scales = rng.uniform(-0.02, 0.02, size=(n, k // block)).astype(np.float16)
-            for m in (17, 200, 333, 400):
+            for m in (17, 63, 64, 65, 127, 128, 129, 200, 333, 400, 513):
                 with self.subTest(bits=bits, m=m):
                     a = rng.normal(size=(m, k)).astype(np.float16)
                     model = make_model(scales, bits=bits, m=m, k=k, n=n, block=block)
@@ -251,6 +251,47 @@ class TestDynamicQuantizeMatMulNBits(unittest.TestCase):
                         raise
                     result = session.run(None, {"A": a})[0]
                     np.testing.assert_array_equal(result.view(np.uint16), expected.view(np.uint16))
+
+    def test_bfloat16_standard_and_prepacked_tiles_match_exact_reference(self):
+        rng = np.random.default_rng(45)
+        m, k, n = 513, 128, 1024
+        a = rng.normal(size=(m, k)).astype(ml_dtypes.bfloat16)
+        a[0] = 0
+        a_value = ort.OrtValue.ortvalue_from_numpy_with_onnx_type(a.view(np.uint16), TensorProto.BFLOAT16)
+        for bits, block in ((2, 64), (4, 32), (8, 32)):
+            packed = rng.integers(0, 256, size=(n, k // block, block * bits // 8), dtype=np.uint8)
+            prepacked = prepack_sm80(packed, bits)
+            for scale_dtype in (np.float32, np.float16, ml_dtypes.bfloat16):
+                scales = rng.uniform(-0.02, 0.02, size=(n, k // block)).astype(scale_dtype)
+                for mode in ("dynamic_per_token", "dynamic_per_tensor"):
+                    expected = reference(a, packed, scales, bits, block, mode, k, ml_dtypes.bfloat16)
+                    for weight_prepacked, weights in ((0, packed), (1, prepacked)):
+                        with self.subTest(bits=bits, scales=scale_dtype, mode=mode, prepacked=weight_prepacked):
+                            model = make_model(scales, bits=bits, m=m, k=k, n=n, block=block)
+                            model.graph.input[0].type.tensor_type.elem_type = TensorProto.BFLOAT16
+                            model.graph.output[0].type.tensor_type.elem_type = TensorProto.BFLOAT16
+                            model.graph.input.remove(model.graph.input[1])
+                            model.graph.initializer.append(numpy_helper.from_array(weights, "B"))
+                            model.graph.node[0].attribute.extend(
+                                [
+                                    helper.make_attribute("activation_quantization", mode),
+                                    helper.make_attribute("weight_prepacked", weight_prepacked),
+                                ]
+                            )
+                            try:
+                                session = make_session(model)
+                            except ort_capi.Fail as error:
+                                if "SM80+" in str(error):
+                                    self.skipTest("SM80+ is required for prepacked DynamicQuantizeMatMulNBits")
+                                raise
+                            result = np.empty((m, n), dtype=np.uint16)
+                            y_value = ort.OrtValue.ortvalue_from_numpy_with_onnx_type(result, TensorProto.BFLOAT16)
+                            binding = session.io_binding()
+                            binding.bind_ortvalue_input("A", a_value)
+                            binding.bind_ortvalue_output("Y", y_value)
+                            session.run_with_iobinding(binding)
+                            binding.synchronize_outputs()
+                            np.testing.assert_array_equal(result, expected.view(np.uint16))
 
     def test_hopper_constant_weights_concurrent_dynamic_shapes(self):
         n = 512
@@ -322,7 +363,7 @@ class TestDynamicQuantizeMatMulNBits(unittest.TestCase):
             (384, 128, 32, "dynamic_per_block", 96),
             (384, 64, 128, "dynamic_per_block", 96),
         )
-        row_counts = (1, 9, 16, 33, 49, 65, 97, 129, 193, 257, 641)
+        row_counts = (1, 8, 9, 16, 31, 32, 33, 49, 63, 64, 65, 97, 129, 193, 257, 641)
         for k, n, block, mode, activation_block in geometries:
             groups = (k + block - 1) // block
             scales = rng.uniform(-0.01, 0.01, size=(n, groups)).astype(np.float32)
@@ -373,6 +414,10 @@ class TestDynamicQuantizeMatMulNBits(unittest.TestCase):
         rng = np.random.default_rng(7)
         # (bits, mode, m, k, n, block): Hopper W8 (both tiles), tensor-core W8/W4/W2, and per-block intervals.
         cases = (
+            (8, "dynamic_per_token", 8, 256, 128, 32),
+            (4, "dynamic_per_token", 9, 256, 128, 32),
+            (2, "dynamic_per_tensor", 1, 256, 128, 64),
+            (4, "dynamic_per_block", 65, 384, 128, 32),
             (8, "dynamic_per_token", 256, 1024, 1024, 1024),
             (8, "dynamic_per_tensor", 256, 1024, 1024, 1024),
             (8, "dynamic_per_token", 129, 272, 512, 512),
