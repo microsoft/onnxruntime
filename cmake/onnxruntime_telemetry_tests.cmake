@@ -47,7 +47,7 @@ add_library(onnxruntime_telemetry_sdk_test OBJECT
 target_include_directories(onnxruntime_telemetry_sdk_test PRIVATE $<TARGET_PROPERTY:mat,INCLUDE_DIRECTORIES>)
 target_compile_definitions(onnxruntime_telemetry_sdk_test PRIVATE $<TARGET_PROPERTY:mat,COMPILE_DEFINITIONS>)
 target_compile_options(onnxruntime_telemetry_sdk_test PRIVATE $<TARGET_PROPERTY:mat,COMPILE_OPTIONS>)
-target_link_libraries(onnxruntime_telemetry_sdk_test PRIVATE $<TARGET_PROPERTY:mat,LINK_LIBRARIES>)
+target_link_libraries(onnxruntime_telemetry_sdk_test PRIVATE mat)
 
 onnxruntime_add_executable(onnxruntime_telemetry_shutdown_test
   "${telemetry_test_dir}/telemetry_shutdown_test.cc"
