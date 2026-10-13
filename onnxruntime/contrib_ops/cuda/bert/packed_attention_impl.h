@@ -13,6 +13,12 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+Status ValidatePackedAttentionTokenOffset(
+    const int32_t* token_offset,
+    int32_t token_offset_count,
+    int32_t* validation_flag,
+    cudaStream_t stream);
+
 template <typename T>
 T* PackedAttentionWorkspaceAt(T* workspace, size_t offset_bytes) {
   if (offset_bytes == 0) {

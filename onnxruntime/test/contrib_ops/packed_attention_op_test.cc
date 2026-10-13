@@ -595,6 +595,51 @@ TEST(PackedAttentionTest, PackedBatchWithQKV) {
       qkv_sizes);
 }
 
+TEST(PackedAttentionTest, InvalidTokenOffset_Unfused_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "PackedAttention token offset validation requires a CUDA device.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
+
+  constexpr int kTokenCount = 1;
+  constexpr int kBatchSize = 1;
+  constexpr int kSequenceLength = 2;
+  constexpr int kHiddenSize = 8;
+
+  for (const std::vector<int32_t>& token_offset : {
+           std::vector<int32_t>{-1, 1},
+           std::vector<int32_t>{0, kBatchSize * kSequenceLength}}) {
+    SCOPED_TRACE(token_offset[0]);
+    SCOPED_TRACE(token_offset[1]);
+
+    OpTester tester("PackedAttention", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", 1);
+    tester.AddInput<float>("input", {kTokenCount, kHiddenSize},
+                           std::vector<float>(kTokenCount * kHiddenSize));
+    tester.AddInput<float>("weight", {kHiddenSize, 3 * kHiddenSize},
+                           std::vector<float>(3 * kHiddenSize * kHiddenSize));
+    tester.AddInput<float>("bias", {3 * kHiddenSize},
+                           std::vector<float>(3 * kHiddenSize));
+    tester.AddInput<int32_t>("token_offset", {kBatchSize, kSequenceLength}, token_offset);
+    tester.AddInput<int32_t>("cumulative_sequence_length", {kBatchSize + 1}, {0, kTokenCount});
+    tester.AddOutput<float>("output", {kTokenCount, kHiddenSize},
+                            std::vector<float>(kTokenCount * kHiddenSize));
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    tester.Run(
+        OpTester::ExpectResult::kExpectFailure,
+        "PackedAttention token_offset values must be in [0, B * S).",
+        {}, nullptr, &execution_providers);
+  }
+}
+
 static void RunModelWithRandomInput(
     int64_t batch_size,
     int64_t sequence_length,
