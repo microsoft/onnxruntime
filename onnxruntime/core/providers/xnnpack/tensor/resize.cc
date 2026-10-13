@@ -67,6 +67,14 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     if (scale_tensor) {
       const Initializer scale_val(graph_viewer.GetGraph(), *scale_tensor, node_unit.ModelPath());
       const auto scales = scale_val.DataAsSpan<float>();
+      // This checker only handles the rank-4 NCHW case (see the dim_size() != 4 check above), so
+      // `scales` must have exactly 4 elements. tf2onnx (opset 11) exports Resize with a zero-length
+      // `scales` initializer passed positionally alongside a real `sizes` input; without this guard
+      // the indexing below reads past the end of the span and std::terminate()s the process during
+      // graph partitioning (issue #32298). Anything else: let the node fall back to CPU.
+      if (scales.size() != 4) {
+        break;
+      }
       if (scales[1] != 1.0F) {
         break;
       }
@@ -91,7 +99,12 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
 
     if (size_tensor) {
       const Initializer size_val(graph_viewer.GetGraph(), *size_tensor, node_unit.ModelPath());
-      if (size_val.DataAsSpan<int64_t>()[1] != x_shape->dim(1).dim_value()) {
+      const auto sizes = size_val.DataAsSpan<int64_t>();
+      // As with `scales` above, `sizes` must be the rank-4 NCHW vector. ONNX requires
+      // len(sizes) == rank(X) so a valid model always satisfies this, but guard the length anyway:
+      // an out-of-range index here is an uncatchable std::terminate() rather than an error status
+      // (issue #32298). Defense in depth against a malformed model.
+      if (sizes.size() != 4 || sizes[1] != x_shape->dim(1).dim_value()) {
         break;
       }
     }
