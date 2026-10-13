@@ -9,7 +9,9 @@
 #
 # PIN-LOCK: these values MUST stay in lockstep with the CMake gate (cmake/onnxruntime_unittests.cmake,
 # which HARD-FATALs when the installed versions differ from its expected onnx/numpy pins) and with
-# the Python MIN pins. Bump here and in cmake/deps.txt + the numpy MIN pins together.
+# the CI NumPy pins. Bump ONNX here and in cmake/deps.txt together, and keep NumPy
+# pins aligned with the CI requirements. Runtime NumPy minimums are independent.
 onnx==1.23.2
 numpy==2.2.6; python_version < "3.11"
-numpy==2.4.2; python_version >= "3.11"
+numpy==2.4.2; python_version >= "3.11" and python_version < "3.15"
+numpy==2.5.4; python_version >= "3.15"

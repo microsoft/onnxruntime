@@ -2038,7 +2038,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     # legs install and that the ONNX corpus reproduction is validated under). Kept in sync with
     # tools/ci_build/github/linux/docker/scripts/requirements.txt (python-conditional):
     #   numpy==2.2.6 ; python_version <  "3.11"
-    #   numpy==2.4.2 ; python_version >= "3.11"
+    #   numpy==2.4.2 ; python_version >= "3.11" and python_version < "3.15"
+    #   numpy==2.5.4 ; python_version >= "3.15"
     # The version ASSERT (installed == pin) and the equivalence ctest's <=4-ULP output band are
     # SEPARATE guards: the assert catches env drift (wrong/unexpected numpy) at CONFIGURE time with
     # a clear, early message; the ULP band separately absorbs the residual float drift between the
@@ -2047,8 +2048,10 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     # --expected-numpy-version assert meaningful. Both import failure AND mismatch FAIL LOUD.
     if(Python_VERSION VERSION_LESS 3.11)
       set(_numpy_pinned_version 2.2.6)
-    else()
+    elseif(Python_VERSION VERSION_LESS 3.15)
       set(_numpy_pinned_version 2.4.2)
+    else()
+      set(_numpy_pinned_version 2.5.4)
     endif()
     execute_process(
       COMMAND ${Python_EXECUTABLE} -c "import numpy,sys; sys.stdout.write(numpy.__version__)"

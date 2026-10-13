@@ -25,6 +25,10 @@ steps:
         variables = {
           "PythonManylinuxDir": "/opt/python/cp314-cp314"
         }
+      elif version == "3.15":
+        variables = {
+          "PythonManylinuxDir": "/opt/python/cp315-cp315"
+        }
       else:
         raise ValueError("Unsupported Python version: '{}'".format(version))
 
