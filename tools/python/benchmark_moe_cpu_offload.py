@@ -14,13 +14,14 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import ClassVar
 
 from qmoe_prompt_runner import configure_provider, format_prompt, redirect_native_stderr
 
 
 class NvmlMemory:
     class Info(ctypes.Structure):
-        _fields_ = [
+        _fields_: ClassVar[list[tuple[str, type]]] = [
             ("total", ctypes.c_ulonglong),
             ("free", ctypes.c_ulonglong),
             ("used", ctypes.c_ulonglong),
