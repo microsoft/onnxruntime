@@ -4462,6 +4462,85 @@ TEST(MoETest, MoECudaBf16StaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCou
   RunMoECudaStaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCountsUsage<BFloat16>();
 }
 
+template <typename T>
+void RunMoECudaAdaptiveSwapPreservesNonSquareWeightsAndBiases() {
+  constexpr int min_cuda_arch = std::is_same_v<T, BFloat16> ? 800 : 700;
+  if (!HasCudaEnvironment(min_cuda_arch)) {
+    GTEST_SKIP() << "CUDA device does not support the test data type.";
+  }
+  auto probe = DefaultCudaExecutionProvider();
+  ASSERT_NE(probe, nullptr);
+  if (probe->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload requires the in-tree CUDA execution provider.";
+  }
+
+  constexpr int hidden = 32;
+  constexpr int inter = 48;
+  constexpr int experts = 2;
+  std::vector<float> input(hidden);
+  std::vector<float> fc1(experts * inter * hidden, 0.0f);
+  std::vector<float> fc2(experts * hidden * inter, 0.0f);
+  std::vector<float> bias1(experts * inter);
+  std::vector<float> bias2(experts * hidden);
+  for (int j = 0; j < hidden; ++j) {
+    input[j] = static_cast<float>(j + 1) / 32.0f;
+  }
+  for (int expert = 0; expert < experts; ++expert) {
+    for (int i = 0; i < inter; ++i) {
+      fc1[expert * inter * hidden + i * hidden + (i * 7 + 3) % hidden] =
+          static_cast<float>(expert + 1);
+      bias1[expert * inter + i] = static_cast<float>(i % 4) / 8.0f;
+    }
+    for (int j = 0; j < hidden; ++j) {
+      fc2[expert * hidden * inter + j * inter + (j * 5 + 2) % inter] = 0.5f;
+      bias2[expert * hidden + j] = static_cast<float>(j % 3) / 8.0f;
+    }
+  }
+  std::vector<float> expected(hidden);
+  for (int j = 0; j < hidden; ++j) {
+    const int i = (j * 5 + 2) % inter;
+    expected[j] = 0.5f * (2.0f * input[(i * 7 + 3) % hidden] + static_cast<float>(i % 4) / 8.0f) +
+                  static_cast<float>(j % 3) / 8.0f;
+  }
+  OpTester tester("MoE", 1, kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "relu");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddInput<T>("input", {1, hidden}, ToMoeCpuOffloadType<T>(input));
+  tester.AddInput<T>("router_probs", {1, experts}, ToMoeCpuOffloadType<T>({0.0f, 4.0f}));
+  tester.AddInput<T>("fc1_experts_weights", {experts, inter, hidden}, ToMoeCpuOffloadType<T>(fc1), true);
+  tester.AddInput<T>("fc1_experts_bias", {experts, inter}, ToMoeCpuOffloadType<T>(bias1), true);
+  tester.AddInput<T>("fc2_experts_weights", {experts, hidden, inter}, ToMoeCpuOffloadType<T>(fc2), true);
+  tester.AddInput<T>("fc2_experts_bias", {experts, hidden}, ToMoeCpuOffloadType<T>(bias2), true);
+  tester.AddOptionalInputEdge<T>();
+  tester.AddOptionalInputEdge<T>();
+  tester.AddOutput<T>("output", {1, hidden}, ToMoeCpuOffloadType<T>(expected));
+  tester.SetOutputTolerance(std::is_same_v<T, BFloat16> ? 0.02f : 0.01f);
+  tester.SetNumRunCalls(40);
+  SessionOptions options;
+  options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  testing::internal::CaptureStderr();
+  tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  const auto events = ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
+  ASSERT_EQ(events.size(), 40U);
+  ASSERT_EQ(events.front()["selected_experts"][0]["device"], "CPU");
+  EXPECT_EQ(events.back()["selected_experts"][0]["device"], "CUDA")
+      << "The test must exercise publication, not just the initial CPU placement.";
+}
+
+TEST(MoETest, MoECudaFp16AdaptiveSwapPreservesNonSquareWeightsAndBiases) {
+  RunMoECudaAdaptiveSwapPreservesNonSquareWeightsAndBiases<MLFloat16>();
+}
+
+TEST(MoETest, MoECudaBf16AdaptiveSwapPreservesNonSquareWeightsAndBiases) {
+  RunMoECudaAdaptiveSwapPreservesNonSquareWeightsAndBiases<BFloat16>();
+}
+
 TEST(MoETest, MoECudaFp16StaticCpuOffloadCombinesCpuAndCudaExpertsForOneToken) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";

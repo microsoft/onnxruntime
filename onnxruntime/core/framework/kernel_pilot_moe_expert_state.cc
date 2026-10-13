@@ -37,7 +37,21 @@ Status KernelPilotMoeExpertState::EndRun(bool run_succeeded) {
   std::lock_guard<std::mutex> lock(run_mutex_);
   ORT_RETURN_IF_NOT(run_active_, "MoE expert tracking is not active.");
   Status status = Status::OK();
-  if (run_succeeded && cpu_offload_enabled_) {
+  for (auto* pilot : deferred_usage_) {
+    const Status completion = pilot->CompleteMoeUsage();
+    if (status.IsOK() && !completion.IsOK()) {
+      status = completion;
+    }
+  }
+  deferred_usage_.clear();
+  for (auto& [kernel, state] : kernels_) {
+    ORT_UNUSED_PARAMETER(kernel);
+    const Status completion = state.pilot.CompleteMoeUsage();
+    if (status.IsOK() && !completion.IsOK()) {
+      status = completion;
+    }
+  }
+  if (run_succeeded && status.IsOK() && cpu_offload_enabled_) {
     status = ScheduleSwaps();
   }
   logging_request_id_.clear();
@@ -252,6 +266,7 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
   for (auto& [kernel, state] : kernels_) {
     ORT_UNUSED_PARAMETER(kernel);
     state.pilot.SetMoeCudaExperts(state.cuda_experts);
+    state.pilot.moe_counters_ = gsl::make_span(counters_).subspan(state.experts.begin, state.experts.count);
   }
 
   initialized_ = true;
@@ -387,11 +402,16 @@ Status KernelPilotMoeExpertState::ScheduleSwaps() {
   return Status::OK();
 }
 
-Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel) {
+Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel, gsl::span<const double> updated_counters) {
   ORT_RETURN_IF_NOT(initialized_, "MoE expert state is not initialized.");
   const auto node = kernels_.find(kernel);
   ORT_RETURN_IF(node == kernels_.end(), "Unknown MoE counter kernel.");
   const auto range = node->second.experts;
+  ORT_RETURN_IF_NOT(updated_counters.empty() ||
+                        (updated_counters.size() == range.count &&
+                         std::all_of(updated_counters.begin(), updated_counters.end(),
+                                     [](double value) { return std::isfinite(value) && value >= 0.0; })),
+                    "Invalid MoE GPU expert counters.");
   const auto& usage = node->second.pilot.Moe();
   ORT_RETURN_IF_NOT(usage.ExpertCount() == range.count, "MoE kernel usage expert count does not match registration.");
   gsl::span<const int> used_expert_ids;
@@ -455,15 +475,19 @@ Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel) {
       global_positions.emplace(expert, global_position);
     }
   }
-  for (auto& counter : counters) {
-    counter *= alpha_;
-  }
-  for (size_t i = 0; i < used_expert_ids.size(); ++i) {
-    const double contribution =
-        (1.0 - counter_probability_weight_) +
-        counter_probability_weight_ * static_cast<double>(routing_probabilities.empty() ? 1.0f
-                                                                                        : routing_probabilities[i]);
-    counters_[expert_ids_.at({kernel, used_expert_ids[i]})] += (1.0 - alpha_) * contribution;
+  if (!updated_counters.empty()) {
+    std::copy(updated_counters.begin(), updated_counters.end(), counters.begin());
+  } else {
+    for (auto& counter : counters) {
+      counter *= alpha_;
+    }
+    for (size_t i = 0; i < used_expert_ids.size(); ++i) {
+      const double contribution =
+          (1.0 - counter_probability_weight_) +
+          counter_probability_weight_ * static_cast<double>(routing_probabilities.empty() ? 1.0f
+                                                                                          : routing_probabilities[i]);
+      counters_[expert_ids_.at({kernel, used_expert_ids[i]})] += (1.0 - alpha_) * contribution;
+    }
   }
 
   if (log_counter_event) {

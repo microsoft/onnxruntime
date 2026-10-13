@@ -18,7 +18,9 @@
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
+#include <exception>
 #include <mutex>
 
 using namespace onnxruntime::cuda;
@@ -84,6 +86,50 @@ class ScopedCudaDevice {
 #endif
 }  // namespace
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+template <typename T>
+struct MoE<T>::CpuTask {
+  static_assert(sizeof(std::atomic<uint32_t>) == sizeof(uint32_t));
+  IAllocatorUniquePtr<void> device_buffer;
+  IAllocatorUniquePtr<T> host_input;
+  IAllocatorUniquePtr<T> host_output;
+  IAllocatorUniquePtr<int> host_ids;
+  IAllocatorUniquePtr<float> host_scales;
+  IAllocatorUniquePtr<uint32_t> host_count;
+  IAllocatorUniquePtr<void> completion_storage;
+  std::atomic<uint32_t>* completion{nullptr};
+  CUdeviceptr device_completion{0};
+  uint32_t* device_count{nullptr};
+  int* device_rows{nullptr};
+  int* device_ids{nullptr};
+  float* device_scales{nullptr};
+  T* device_input{nullptr};
+  T* device_output{nullptr};
+  cudaEvent_t routes_ready{nullptr};
+  cudaEvent_t input_ready{nullptr};
+  size_t capacity{0};
+  size_t num_rows{0};
+  size_t hidden_size{0};
+  size_t inter_size{0};
+  size_t num_experts{0};
+  size_t k{0};
+  ::onnxruntime::contrib::MoeCpuOffloadParameters parameters{};
+  concurrency::ThreadPool* thread_pool{nullptr};
+  Status status;
+
+  ~CpuTask() {
+    for (cudaEvent_t event : {routes_ready, input_ready}) {
+      if (event != nullptr) {
+        ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaEventDestroy(event)));
+      }
+    }
+    if (completion != nullptr) {
+      completion->~atomic();
+    }
+  }
+};
+#endif
+
 #define REGISTER_KERNEL_TYPED(T)                    \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                    \
       MoE, kMSDomain, 1, T, kCudaExecutionProvider, \
@@ -115,6 +161,18 @@ MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), Mo
         CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&last_expert_use_event_, cudaEventDisableTiming));
         CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&swap_cpu_ready_event_, cudaEventDisableTiming));
         CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&swap_transfer_complete_event_, cudaEventDisableTiming));
+        CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&usage_complete_event_, cudaEventDisableTiming));
+        // CUDA 11.7+ selects v2 memory operations, which do not use the deprecated v1 capability flag.
+        int supported = 1;
+#if CUDA_VERSION < 11070
+        CUdevice device;
+        ORT_RETURN_IF_ERROR(CU_CALL(cuDeviceGet(&device, device_id_)));
+        ORT_RETURN_IF_ERROR(CU_CALL(cuDeviceGetAttribute(&supported, CU_DEVICE_ATTRIBUTE_CAN_USE_STREAM_MEM_OPS, device)));
+#endif
+        async_cpu_supported_ = supported != 0;
+        if (!async_cpu_supported_) {
+          LOGS_DEFAULT(WARNING) << "CUDA stream memory operations are unavailable; MoE CPU offload uses host waits.";
+        }
         return CUDA_CALL(cudaEventCreateWithFlags(&swap_publication_complete_event_, cudaEventDisableTiming));
       }();
       if (!resource_status.IsOK()) {
@@ -130,6 +188,7 @@ MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), Mo
 template <typename T>
 MoE<T>::~MoE() {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  ReleaseUsageResources();
   ReleaseSwapResources();
 #endif
 }
@@ -151,9 +210,11 @@ void MoE<T>::ReleaseSwapResources() noexcept {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaEventSynchronize(swap_publication_complete_event_)));
   }
   swap_pinned_buffer_.reset();
+  swap_outgoing_pinned_buffer_.reset();
   swap_cuda_staging_.reset();
+  swap_cuda_layout_buffer_.reset();
   for (cudaEvent_t event : {last_expert_use_event_, swap_cpu_ready_event_,
-                            swap_transfer_complete_event_, swap_publication_complete_event_}) {
+                            swap_transfer_complete_event_, swap_publication_complete_event_, usage_complete_event_}) {
     if (event != nullptr) {
       ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaEventDestroy(event)));
     }
@@ -168,6 +229,7 @@ void MoE<T>::ReleaseSwapResources() noexcept {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(input_copy_stream_)));
   }
   swap_publication_complete_event_ = nullptr;
+  usage_complete_event_ = nullptr;
   swap_transfer_complete_event_ = nullptr;
   swap_cpu_ready_event_ = nullptr;
   last_expert_use_event_ = nullptr;
@@ -223,7 +285,273 @@ Status MoE<T>::InitializeKernelPilot(KernelPilot* pilot) {
   gsl::span<const int> cuda_experts;
   ORT_RETURN_IF_ERROR(pilot->GetMoeCudaExperts(cuda_experts));
   ORT_RETURN_IF_ERROR(InitializeCudaExpertWeights(cuda_experts));
+  ORT_RETURN_IF_ERROR(pilot->AttachMoeExpertUsage(this));
   return pilot->AttachMoeExpertCache(this);
+}
+
+template <typename T>
+Status MoE<T>::PrepareUsage(OpKernelContext* context, KernelPilot* pilot, size_t expert_count,
+                            size_t num_rows, size_t hidden_size, size_t inter_size, bool fused_swiglu,
+                            bool prepare_cpu_task) const {
+  ORT_RETURN_IF_ERROR(pilot->CompleteMoeUsage());
+  ORT_RETURN_IF_NOT(pilot->MoeExpertCounters().size() == expert_count, "MoE counters were not initialized.");
+  const size_t usage_bytes = SafeInt<size_t>(expert_count) * (sizeof(double) + sizeof(float) + sizeof(int64_t));
+  if (!host_usage_) {
+    auto host_usage = AllocateBufferOnCPUPinned<void>(usage_bytes);
+    auto device_usage = IAllocator::MakeUniquePtr<void>(cuda_allocator_, usage_bytes, true);
+    ORT_RETURN_IF_NOT(host_usage && device_usage, "Failed to allocate MoE GPU counter buffers.");
+    host_usage_ = std::move(host_usage);
+    device_usage_ = std::move(device_usage);
+  }
+  std::memcpy(host_usage_.get(), pilot->MoeExpertCounters().data(), expert_count * sizeof(double));
+  usage_stream_ = Stream(context);
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(device_usage_.get(), host_usage_.get(), expert_count * sizeof(double),
+                                       cudaMemcpyHostToDevice, usage_stream_));
+  usage_pending_ = true;
+  usage_recorded_ = false;
+  cpu_callback_scheduled_ = false;
+
+  if (!prepare_cpu_task) {
+    return Status::OK();
+  }
+  if (!cpu_task_) {
+    auto cpu_task = std::make_unique<CpuTask>();
+    auto& task = *cpu_task;
+    task.host_count = AllocateBufferOnCPUPinned<uint32_t>(1);
+    task.completion_storage = AllocateBufferOnCPUPinned<void>(sizeof(std::atomic<uint32_t>));
+    ORT_RETURN_IF_NOT(task.host_count && task.completion_storage, "Failed to allocate MoE CPU notification buffers.");
+    task.completion = new (task.completion_storage.get()) std::atomic<uint32_t>(0);
+    void* device_completion = nullptr;
+    CUDA_RETURN_IF_ERROR(cudaHostGetDevicePointer(&device_completion, task.completion_storage.get(), 0));
+    task.device_completion = reinterpret_cast<CUdeviceptr>(device_completion);
+    CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&task.routes_ready, cudaEventDisableTiming));
+    CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&task.input_ready, cudaEventDisableTiming));
+    cpu_task_ = std::move(cpu_task);
+  }
+  if (!cpu_worker_.joinable()) {
+    cpu_worker_ = std::thread([this]() { RunCpuWorker(); });
+  }
+  auto& task = *cpu_task_;
+  if (num_rows > task.capacity) {
+    const size_t expanded_rows = SafeInt<size_t>(num_rows) * k_;
+    const size_t elements = SafeInt<size_t>(num_rows) * hidden_size;
+    const size_t bytes = SafeInt<size_t>(sizeof(uint32_t)) + SafeInt<size_t>(num_rows) * sizeof(int) +
+                         SafeInt<size_t>(expanded_rows) * (sizeof(int) + sizeof(float)) +
+                         SafeInt<size_t>(elements) * sizeof(T) * 2;
+    auto device_buffer = IAllocator::MakeUniquePtr<void>(cuda_allocator_, bytes, true);
+    auto host_input = AllocateBufferOnCPUPinned<T>(elements);
+    auto host_output = AllocateBufferOnCPUPinned<T>(elements);
+    auto host_ids = AllocateBufferOnCPUPinned<int>(expanded_rows);
+    auto host_scales = AllocateBufferOnCPUPinned<float>(expanded_rows);
+    ORT_RETURN_IF_NOT(device_buffer && host_input && host_output && host_ids && host_scales,
+                      "Failed to allocate compact MoE CPU routing buffers.");
+    task.device_buffer = std::move(device_buffer);
+    task.host_input = std::move(host_input);
+    task.host_output = std::move(host_output);
+    task.host_ids = std::move(host_ids);
+    task.host_scales = std::move(host_scales);
+    auto* buffer = static_cast<char*>(task.device_buffer.get());
+    task.device_count = reinterpret_cast<uint32_t*>(buffer);
+    task.device_rows = reinterpret_cast<int*>(buffer + sizeof(uint32_t));
+    task.device_ids = task.device_rows + num_rows;
+    task.device_scales = reinterpret_cast<float*>(task.device_ids + expanded_rows);
+    task.device_input = reinterpret_cast<T*>(task.device_scales + expanded_rows);
+    task.device_output = task.device_input + elements;
+    task.capacity = num_rows;
+  }
+  task.num_rows = num_rows;
+  task.hidden_size = hidden_size;
+  task.inter_size = inter_size;
+  task.num_experts = expert_count;
+  task.k = static_cast<size_t>(k_);
+  task.thread_pool = context->GetOperatorThreadPool();
+  task.completion->store(0, std::memory_order_release);
+  task.status = Status::OK();
+  using CudaActivation = onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
+  using CpuActivation = ::onnxruntime::contrib::ActivationType;
+  CpuActivation activation = CpuActivation::Identity;
+  switch (activation_type_) {
+    case CudaActivation::Relu:
+      activation = CpuActivation::Relu;
+      break;
+    case CudaActivation::Gelu:
+      activation = CpuActivation::Gelu;
+      break;
+    case CudaActivation::Silu:
+      activation = CpuActivation::Silu;
+      break;
+    case CudaActivation::Swiglu:
+      activation = CpuActivation::SwiGLU;
+      break;
+    case CudaActivation::Identity:
+      break;
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Unsupported MoE CPU activation.");
+  }
+  task.parameters = {activation, activation_alpha_, activation_beta_, swiglu_limit_, fused_swiglu};
+  return Status::OK();
+}
+
+template <typename T>
+void CUDART_CB MoE<T>::NotifyCpuWorker(void* context) {
+  auto& owner = *static_cast<const MoE<T>*>(context);
+  {
+    std::lock_guard<std::mutex> lock(owner.cpu_worker_mutex_);
+    if (*owner.cpu_task_->host_count == 0) {
+      owner.cpu_task_->completion->store(1, std::memory_order_release);
+      owner.cpu_task_finished_ = true;
+    } else {
+      owner.cpu_task_ready_ = true;
+    }
+  }
+  owner.cpu_worker_condition_.notify_all();
+}
+
+template <typename T>
+Status MoE<T>::ComputeCpuTask() const {
+  auto& task = *cpu_task_;
+  const size_t rows = *task.host_count;
+  ORT_RETURN_IF(rows > task.num_rows, "Invalid compact MoE CPU row count.");
+  if (rows == 0) {
+    task.completion->store(1, std::memory_order_release);
+    return Status::OK();
+  }
+  const size_t elements = rows * task.hidden_size;
+  const size_t routes = rows * task.k;
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(task.host_input.get(), task.device_input, elements * sizeof(T),
+                                       cudaMemcpyDeviceToHost, input_copy_stream_));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(task.host_ids.get(), task.device_ids, routes * sizeof(int),
+                                       cudaMemcpyDeviceToHost, input_copy_stream_));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(task.host_scales.get(), task.device_scales, routes * sizeof(float),
+                                       cudaMemcpyDeviceToHost, input_copy_stream_));
+  CUDA_RETURN_IF_ERROR(cudaEventRecord(task.input_ready, input_copy_stream_));
+  CUDA_RETURN_IF_ERROR(cudaEventSynchronize(task.input_ready));
+  const auto bias = [&](int index) {
+    return gsl::make_span(packed_inputs_[static_cast<size_t>(index)].cpu_data);
+  };
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    const auto weights = [&](int index) {
+      return gsl::make_span(packed_inputs_[static_cast<size_t>(index)].cpu_gemm_data);
+    };
+    ORT_RETURN_IF_ERROR(::onnxruntime::contrib::ComputeMoeCpuOffloadedExpertsFp16(
+        gsl::make_span(task.host_input.get(), elements), gsl::make_span(task.host_ids.get(), routes),
+        gsl::make_span(task.host_scales.get(), routes), cpu_expert_map_,
+        weights(2), bias(3), weights(4), bias(5), rows, task.hidden_size, task.inter_size,
+        task.num_experts, task.k, task.parameters, gsl::make_span(task.host_output.get(), elements), task.thread_pool));
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
+    const auto weights = [&](int index) {
+      return gsl::make_span(packed_inputs_[static_cast<size_t>(index)].cpu_gemm_float_data);
+    };
+    ORT_RETURN_IF_ERROR(::onnxruntime::contrib::ComputeMoeCpuOffloadedExpertsBFloat16(
+        gsl::make_span(task.host_input.get(), elements), gsl::make_span(task.host_ids.get(), routes),
+        gsl::make_span(task.host_scales.get(), routes), cpu_expert_map_,
+        weights(2), bias(3), weights(4), bias(5), rows, task.hidden_size, task.inter_size,
+        task.num_experts, task.k, task.parameters, gsl::make_span(task.host_output.get(), elements), task.thread_pool));
+  }
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(task.device_output, task.host_output.get(), elements * sizeof(T),
+                                       cudaMemcpyHostToDevice, input_copy_stream_));
+  ORT_RETURN_IF_ERROR(CU_CALL(cuStreamWriteValue32(reinterpret_cast<CUstream>(input_copy_stream_),
+                                                   task.device_completion, 1, 0)));
+  return CUDA_CALL(cudaEventRecord(task.input_ready, input_copy_stream_));
+}
+
+template <typename T>
+void MoE<T>::RunCpuWorker() const {
+  const Status device_status = CUDA_CALL(cudaSetDevice(device_id_));
+  for (;;) {
+    {
+      std::unique_lock<std::mutex> lock(cpu_worker_mutex_);
+      cpu_worker_condition_.wait(lock, [&]() { return stop_cpu_worker_ || cpu_task_ready_; });
+      if (!cpu_task_ready_) {
+        return;
+      }
+      cpu_task_ready_ = false;
+    }
+    Status status = device_status;
+    ORT_TRY {
+      if (status.IsOK()) {
+        status = ComputeCpuTask();
+      }
+    }
+    ORT_CATCH(const std::exception& error) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Asynchronous MoE CPU execution: ", error.what());
+      });
+    }
+    ORT_CATCH(...) {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Unknown asynchronous MoE CPU execution exception.");
+    }
+    if (!status.IsOK()) {
+      // Release the device wait on failure; EndRun propagates the error, never a successful zero result.
+      cpu_task_->completion->store(2, std::memory_order_release);
+    }
+    {
+      std::lock_guard<std::mutex> lock(cpu_worker_mutex_);
+      cpu_task_->status = std::move(status);
+      cpu_task_finished_ = true;
+    }
+    cpu_worker_condition_.notify_all();
+  }
+}
+
+template <typename T>
+Status MoE<T>::CompleteUsage(KernelPilotMoeExpertUsageSnapshot& snapshot) {
+  CudaDeviceGuard device_guard;
+  ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
+  auto finish = gsl::finally([&]() { usage_pending_ = false; });
+  if (cpu_callback_scheduled_) {
+    std::unique_lock<std::mutex> lock(cpu_worker_mutex_);
+    cpu_worker_condition_.wait(lock, [&]() { return cpu_task_finished_; });
+  }
+  if (usage_recorded_) {
+    const cudaError_t ready = cudaEventQuery(usage_complete_event_);
+    if (ready == cudaErrorNotReady) {
+      CUDA_RETURN_IF_ERROR(cudaEventSynchronize(usage_complete_event_));
+    } else {
+      CUDA_RETURN_IF_ERROR(ready);
+    }
+  } else {
+    if (cpu_callback_scheduled_) {
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(input_copy_stream_));
+    }
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(usage_stream_));
+  }
+  if (cpu_callback_scheduled_) {
+    ORT_RETURN_IF_ERROR(cpu_task_->status);
+  }
+  const size_t experts = expert_map_.size();
+  snapshot.counters = gsl::make_span(static_cast<const double*>(host_usage_.get()), experts);
+  snapshot.selected_probabilities = gsl::make_span(
+      reinterpret_cast<const float*>(static_cast<const char*>(host_usage_.get()) +
+                                     experts * (sizeof(double) + sizeof(int64_t))),
+      experts);
+  snapshot.first_selected_routes = gsl::make_span(
+      reinterpret_cast<const int64_t*>(static_cast<const double*>(host_usage_.get()) + experts), experts);
+  return Status::OK();
+}
+
+template <typename T>
+void MoE<T>::ReleaseUsageResources() noexcept {
+  CudaDeviceGuard device_guard;
+  if (cpu_offload_enabled_) {
+    ORT_IGNORE_RETURN_VALUE(device_guard.SetDevice(device_id_));
+  }
+  if (usage_pending_) {
+    KernelPilotMoeExpertUsageSnapshot snapshot;
+    ORT_IGNORE_RETURN_VALUE(CompleteUsage(snapshot));
+  }
+  {
+    std::lock_guard<std::mutex> lock(cpu_worker_mutex_);
+    stop_cpu_worker_ = true;
+  }
+  cpu_worker_condition_.notify_all();
+  if (cpu_worker_.joinable()) {
+    cpu_worker_.join();
+  }
+  if (input_copy_stream_ != nullptr) {
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamSynchronize(input_copy_stream_)));
+  }
+  cpu_task_.reset();
 }
 
 template <typename T>
@@ -349,7 +677,6 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
       packed.gemm_output_size = output_size;
       if constexpr (std::is_same_v<T, MLFloat16>) {
         packed.cpu_gemm_data.resize(cpu_experts_.size() * expert_element_count);
-        packed.swap_cpu_data.resize(expert_element_count);
         for (size_t cpu_slot = 0; cpu_slot < cpu_experts_.size(); ++cpu_slot) {
           const size_t expert = static_cast<size_t>(cpu_experts_[cpu_slot]);
           const T* source = packed.cpu_data.data() + expert * expert_element_count;
@@ -362,7 +689,6 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
         }
       } else if constexpr (std::is_same_v<T, BFloat16>) {
         packed.cpu_gemm_float_data.resize(cpu_experts_.size() * expert_element_count);
-        packed.swap_cpu_float_data.resize(expert_element_count);
         for (size_t cpu_slot = 0; cpu_slot < cpu_experts_.size(); ++cpu_slot) {
           const size_t expert = static_cast<size_t>(cpu_experts_[cpu_slot]);
           const T* source = packed.cpu_data.data() + expert * expert_element_count;
@@ -384,7 +710,6 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
                     compact_cpu_data.data() + cpu_slot * expert_element_count);
       }
       packed.cpu_data.swap(compact_cpu_data);
-      packed.swap_cpu_data.resize(expert_element_count);
     }
   }
 
@@ -422,69 +747,29 @@ Status MoE<T>::ReclaimCompletedSwap() {
 }
 
 template <typename T>
-void CUDART_CB MoE<T>::PrepareIncomingExpertCallback(void* context) {
-  static_cast<MoE<T>*>(context)->PrepareIncomingExpert();
-}
-
-template <typename T>
-void MoE<T>::PrepareIncomingExpert() noexcept {
+void MoE<T>::StageIncomingExpert() noexcept {
   auto* staging = static_cast<char*>(swap_pinned_buffer_.get());
   for (int input_idx : {2, 3, 4, 5}) {
     auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
     if (!packed.present) {
       continue;
     }
-    const auto prepare_raw_data = [&]() {
-      std::memcpy(packed.swap_cpu_data.data(),
-                  staging + packed.swap_offset, packed.expert_bytes);
-      std::memcpy(staging + packed.swap_offset,
-                  packed.cpu_data.data() + swap_cpu_slot_ * (packed.expert_bytes / sizeof(T)),
-                  packed.expert_bytes);
-    };
+    const size_t expert_elements = packed.expert_bytes / sizeof(T);
+    auto* incoming = reinterpret_cast<T*>(staging + packed.swap_offset);
     if (!packed.cpu_gemm_data.empty()) {
-      const size_t expert_elements = packed.expert_bytes / sizeof(T);
-      const auto* outgoing = reinterpret_cast<const T*>(staging + packed.swap_offset);
-      auto* outgoing_cpu = packed.swap_cpu_data.data();
-      for (size_t output = 0; output < packed.gemm_output_size; ++output) {
-        for (size_t input = 0; input < packed.gemm_input_size; ++input) {
-          outgoing_cpu[input * packed.gemm_output_size + output] =
-              outgoing[output * packed.gemm_input_size + input];
-        }
-      }
-      const auto* incoming_cpu = packed.cpu_gemm_data.data() +
-                                 swap_cpu_slot_ * expert_elements;
-      auto* incoming = reinterpret_cast<T*>(staging + packed.swap_offset);
-      for (size_t output = 0; output < packed.gemm_output_size; ++output) {
-        for (size_t input = 0; input < packed.gemm_input_size; ++input) {
-          incoming[output * packed.gemm_input_size + input] =
-              incoming_cpu[input * packed.gemm_output_size + output];
-        }
-      }
+      std::memcpy(incoming, packed.cpu_gemm_data.data() + swap_cpu_slot_ * expert_elements,
+                  packed.expert_bytes);
     } else if constexpr (std::is_same_v<T, BFloat16>) {
       if (!packed.cpu_gemm_float_data.empty()) {
-        const size_t expert_elements = packed.expert_bytes / sizeof(T);
-        const auto* outgoing = reinterpret_cast<const T*>(staging + packed.swap_offset);
-        auto* outgoing_cpu = packed.swap_cpu_float_data.data();
-        for (size_t output = 0; output < packed.gemm_output_size; ++output) {
-          for (size_t input = 0; input < packed.gemm_input_size; ++input) {
-            outgoing_cpu[input * packed.gemm_output_size + output] =
-                outgoing[output * packed.gemm_input_size + input].ToFloat();
-          }
-        }
-        const auto* incoming_cpu = packed.cpu_gemm_float_data.data() +
-                                   swap_cpu_slot_ * expert_elements;
-        auto* incoming = reinterpret_cast<T*>(staging + packed.swap_offset);
-        for (size_t output = 0; output < packed.gemm_output_size; ++output) {
-          for (size_t input = 0; input < packed.gemm_input_size; ++input) {
-            incoming[output * packed.gemm_input_size + input] =
-                T(incoming_cpu[input * packed.gemm_output_size + output]);
-          }
+        const auto* source = packed.cpu_gemm_float_data.data() + swap_cpu_slot_ * expert_elements;
+        for (size_t i = 0; i < expert_elements; ++i) {
+          incoming[i] = T(source[i]);
         }
       } else {
-        prepare_raw_data();
+        std::memcpy(incoming, packed.cpu_data.data() + swap_cpu_slot_ * expert_elements, packed.expert_bytes);
       }
     } else {
-      prepare_raw_data();
+      std::memcpy(incoming, packed.cpu_data.data() + swap_cpu_slot_ * expert_elements, packed.expert_bytes);
     }
   }
 }
@@ -511,7 +796,15 @@ Status MoE<T>::StartSwap(int cuda_expert_id, int cpu_expert_id) {
     swap_cuda_staging_ =
         IAllocator::MakeUniquePtr<void>(cuda_allocator_, swap_staging_bytes_, true);
   }
-  ORT_RETURN_IF_NOT(swap_pinned_buffer_ && swap_cuda_staging_,
+  if (!swap_outgoing_pinned_buffer_) {
+    swap_outgoing_pinned_buffer_ = AllocateBufferOnCPUPinned<void>(swap_staging_bytes_);
+  }
+  if (!swap_cuda_layout_buffer_) {
+    swap_cuda_layout_buffer_ =
+        IAllocator::MakeUniquePtr<void>(cuda_allocator_, swap_staging_bytes_, true);
+  }
+  ORT_RETURN_IF_NOT(swap_pinned_buffer_ && swap_outgoing_pinned_buffer_ &&
+                        swap_cuda_staging_ && swap_cuda_layout_buffer_,
                     "Failed to allocate MoE expert swap staging buffers.");
   swap_cuda_expert_ = cuda_expert_id;
   swap_cpu_expert_ = cpu_expert_id;
@@ -520,19 +813,31 @@ Status MoE<T>::StartSwap(int cuda_expert_id, int cpu_expert_id) {
   swap_phase_ = SwapPhase::TransferInFlight;
 
   const auto schedule = [&]() -> Status {
+    // CUDA transposes both directions; no host callback blocks the copy streams
+    // while converting a complete expert between CUDA and MLAS layouts.
+    StageIncomingExpert();
     CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(swap_d2h_stream_, last_expert_use_event_, 0));
     for (int input_idx : {2, 3, 4, 5}) {
       const auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
       if (!packed.present) {
         continue;
       }
+      const void* outgoing =
+          static_cast<const char*>(packed.cuda_data.get()) + swap_cuda_slot_ * packed.expert_bytes;
+      if (packed.gemm_input_size != 0) {
+        using CudaT = typename OrtToCudaType<T>::type;
+        auto* layout = static_cast<char*>(swap_cuda_layout_buffer_.get()) + packed.swap_offset;
+        if constexpr (kCpuOffloadSupported) {
+          LaunchTransposeMoeExpertWeights(static_cast<const CudaT*>(outgoing),
+                                          reinterpret_cast<CudaT*>(layout),
+                                          packed.gemm_output_size, packed.gemm_input_size, swap_d2h_stream_);
+        }
+        outgoing = layout;
+      }
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-          static_cast<char*>(swap_pinned_buffer_.get()) + packed.swap_offset,
-          static_cast<const char*>(packed.cuda_data.get()) + swap_cuda_slot_ * packed.expert_bytes,
+          static_cast<char*>(swap_outgoing_pinned_buffer_.get()) + packed.swap_offset, outgoing,
           packed.expert_bytes, cudaMemcpyDeviceToHost, swap_d2h_stream_));
     }
-    CUDA_RETURN_IF_ERROR(
-        cudaLaunchHostFunc(swap_d2h_stream_, PrepareIncomingExpertCallback, this));
     CUDA_RETURN_IF_ERROR(cudaEventRecord(swap_cpu_ready_event_, swap_d2h_stream_));
     CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(swap_h2d_stream_, swap_cpu_ready_event_, 0));
     for (int input_idx : {2, 3, 4, 5}) {
@@ -540,10 +845,20 @@ Status MoE<T>::StartSwap(int cuda_expert_id, int cpu_expert_id) {
       if (!packed.present) {
         continue;
       }
+      auto* destination = static_cast<char*>(swap_cuda_staging_.get()) + packed.swap_offset;
+      auto* layout = static_cast<char*>(swap_cuda_layout_buffer_.get()) + packed.swap_offset;
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-          static_cast<char*>(swap_cuda_staging_.get()) + packed.swap_offset,
+          packed.gemm_input_size != 0 ? layout : destination,
           static_cast<const char*>(swap_pinned_buffer_.get()) + packed.swap_offset,
           packed.expert_bytes, cudaMemcpyHostToDevice, swap_h2d_stream_));
+      if (packed.gemm_input_size != 0) {
+        using CudaT = typename OrtToCudaType<T>::type;
+        if constexpr (kCpuOffloadSupported) {
+          LaunchTransposeMoeExpertWeights(reinterpret_cast<const CudaT*>(layout),
+                                          reinterpret_cast<CudaT*>(destination),
+                                          packed.gemm_input_size, packed.gemm_output_size, swap_h2d_stream_);
+        }
+      }
     }
     return CUDA_CALL(cudaEventRecord(swap_transfer_complete_event_, swap_h2d_stream_));
   };
@@ -583,14 +898,20 @@ Status MoE<T>::PrepareExpertSwapForInvocation(cudaStream_t stream, KernelPilot* 
       continue;
     }
     const size_t expert_elements = packed.expert_bytes / sizeof(T);
+    const auto* outgoing = reinterpret_cast<const T*>(
+        static_cast<const char*>(swap_outgoing_pinned_buffer_.get()) + packed.swap_offset);
     if (!packed.cpu_gemm_data.empty()) {
-      std::copy_n(packed.swap_cpu_data.data(), expert_elements,
+      std::copy_n(outgoing, expert_elements,
                   packed.cpu_gemm_data.data() + swap_cpu_slot_ * expert_elements);
     } else if (!packed.cpu_gemm_float_data.empty()) {
-      std::copy_n(packed.swap_cpu_float_data.data(), expert_elements,
-                  packed.cpu_gemm_float_data.data() + swap_cpu_slot_ * expert_elements);
+      if constexpr (std::is_same_v<T, BFloat16>) {
+        auto* destination = packed.cpu_gemm_float_data.data() + swap_cpu_slot_ * expert_elements;
+        for (size_t i = 0; i < expert_elements; ++i) {
+          destination[i] = outgoing[i].ToFloat();
+        }
+      }
     } else {
-      std::copy_n(packed.swap_cpu_data.data(), expert_elements,
+      std::copy_n(outgoing, expert_elements,
                   packed.cpu_data.data() + swap_cpu_slot_ * expert_elements);
     }
   }
@@ -676,6 +997,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     moe_pilot = context->GetKernelPilot();
     ORT_RETURN_IF_NOT(moe_pilot, "FP16/BF16 MoE CPU offload requires a KernelPilot.");
     use_probability_weighted_counters = moe_pilot->MoeExpertCounterProbabilityWeight() > 0.0;
+    ORT_RETURN_IF_ERROR(moe_pilot->CompleteMoeUsage());
     ORT_RETURN_IF_ERROR(PrepareExpertSwapForInvocation(stream, moe_pilot));
   }
 #endif
@@ -725,6 +1047,12 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   const bool run_cuda_experts = !cpu_offload_enabled_ || cuda_runner_num_experts > 0;
   const bool run_cpu_experts =
       cpu_offload_enabled_ && cuda_runner_num_experts < static_cast<int>(moe_params.num_experts);
+  bool compute_cpu_output = false;
+  bool async_cpu = false;
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  async_cpu = run_cpu_experts && async_cpu_supported_;
+#endif
+  const bool synchronous_cpu = run_cpu_experts && !async_cpu;
   const int workspace_num_experts =
       cpu_offload_enabled_
           ? std::max(static_cast<int>(k_), cuda_runner_num_experts)
@@ -843,7 +1171,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
                                             ? cudaEventSynchronize(routing_copy_ready)
                                             : cudaStreamSynchronize(stream)));
     }
-    if (run_cpu_experts && !input_copy_complete && input_copy_stream_ != nullptr) {
+    if (synchronous_cpu && !input_copy_complete && input_copy_stream_ != nullptr) {
       ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamSynchronize(input_copy_stream_)));
     }
     if (routing_copy_ready != nullptr) {
@@ -857,6 +1185,13 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     }
   });
   if (cpu_offload_enabled_) {
+    ORT_RETURN_IF_ERROR(PrepareUsage(context, moe_pilot, static_cast<size_t>(moe_params.num_experts),
+                                     static_cast<size_t>(moe_params.num_rows),
+                                     static_cast<size_t>(moe_params.hidden_size),
+                                     static_cast<size_t>(moe_params.inter_size), is_fused_swiglu, async_cpu));
+    ORT_RETURN_IF_ERROR(moe_pilot->Moe().BeginInvocation(static_cast<size_t>(moe_params.num_experts)));
+  }
+  if (synchronous_cpu) {
     host_expert_indices = AllocateBufferOnCPUPinned<int>(expanded_rows);
     ORT_RETURN_IF_NOT(host_expert_indices,
                       "Failed to allocate a pinned routing buffer for FP16/BF16 MoE CPU offload.");
@@ -969,17 +1304,47 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   if (cpu_offload_enabled_) {
     ORT_RETURN_IF_NOT(use_packed_weights && expert_map_.size() == static_cast<size_t>(moe_params.num_experts),
                       "FP16/BF16 MoE CPU offload weights were not initialized.");
-    ORT_RETURN_IF_ERROR(moe_pilot->Moe().BeginInvocation(static_cast<size_t>(moe_params.num_experts)));
-
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_expert_indices.get(), expert_indices,
-                                         indices_bytes, cudaMemcpyDeviceToHost, stream));
-    routing_copy_pending = true;
-    if (run_cpu_experts || use_probability_weighted_counters) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_expert_scales.get(), expert_scales,
-                                           scales_bytes, cudaMemcpyDeviceToHost, stream));
+    auto* device_counters = static_cast<double*>(device_usage_.get());
+    auto* first_routes = reinterpret_cast<int64_t*>(device_counters + moe_params.num_experts);
+    auto* probabilities = reinterpret_cast<float*>(first_routes + moe_params.num_experts);
+    LaunchUpdateMoeExpertCounters(expert_indices, expert_scales, expanded_rows, device_counters,
+                                  probabilities, first_routes, static_cast<size_t>(moe_params.num_experts),
+                                  moe_pilot->MoeExpertCounterAlpha(), moe_pilot->MoeExpertCounterProbabilityWeight(), stream);
+    if (async_cpu) {
+      auto& task = *cpu_task_;
+      if constexpr (kCpuOffloadSupported) {
+        LaunchPackMoeCpuRows(reinterpret_cast<const CudaT*>(input->DataRaw()), expert_indices, expert_scales,
+                             static_cast<const int*>(device_expert_map_.get()),
+                             reinterpret_cast<CudaT*>(task.device_input), task.device_ids, task.device_scales,
+                             task.device_rows, task.device_count, reinterpret_cast<uint32_t*>(task.device_completion),
+                             task.num_rows, task.hidden_size, task.k, stream);
+      }
+      CUDA_RETURN_IF_ERROR(cudaEventRecord(task.routes_ready, stream));
+      CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(input_copy_stream_, task.routes_ready, 0));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(task.host_count.get(), task.device_count, sizeof(uint32_t),
+                                           cudaMemcpyDeviceToHost, input_copy_stream_));
+      {
+        std::lock_guard<std::mutex> lock(cpu_worker_mutex_);
+        cpu_task_finished_ = false;
+      }
+      CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(input_copy_stream_, NotifyCpuWorker, const_cast<MoE<T>*>(this)));
+      cpu_callback_scheduled_ = true;
     }
-    CUDA_RETURN_IF_ERROR(cudaEventRecord(routing_copy_ready, stream));
-    routing_copy_recorded = true;
+    if (synchronous_cpu) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_expert_indices.get(), expert_indices,
+                                           indices_bytes, cudaMemcpyDeviceToHost, stream));
+      routing_copy_pending = true;
+      if (run_cpu_experts || use_probability_weighted_counters) {
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_expert_scales.get(), expert_scales,
+                                             scales_bytes, cudaMemcpyDeviceToHost, stream));
+      }
+      if (run_cpu_experts) {
+        // One event covers routing and the input DMA, including the MayInplace dependency.
+        CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(stream, input_copy_ready, 0));
+      }
+      CUDA_RETURN_IF_ERROR(cudaEventRecord(routing_copy_ready, stream));
+      routing_copy_recorded = true;
+    }
 
     if (!cuda_experts_.empty()) {
       remapped_expert_indices_buffer = GetScratchBuffer<void>(indices_bytes, stream_obj);
@@ -1067,12 +1432,6 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
             ? (packed_inputs_[5].present ? static_cast<const CudaT*>(packed_inputs_[5].cuda_data.get()) : nullptr)
             : (fc2_experts_bias_optional == nullptr ? nullptr : packed_cuda_data(5, fc2_experts_bias_optional));
 
-#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-    if (run_cpu_experts) {
-      // MayInplace(0, 0) lets the runner overwrite input while the separate stream copies it to the host.
-      CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(stream, input_copy_ready, 0));
-    }
-#endif
     moe_runner.runMoe(
         reinterpret_cast<const CudaT*>(input->template Data<T>()),
         nullptr,
@@ -1104,11 +1463,12 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  if (cpu_offload_enabled_) {
+  if (synchronous_cpu) {
     // The CUDA path is already enqueued above, so mixed execution overlaps its kernels with the host GEMMs.
     ORT_RETURN_IF_NOT(moe_pilot, "FP16/BF16 MoE CPU offload requires a KernelPilot.");
     CUDA_RETURN_IF_ERROR(cudaEventSynchronize(routing_copy_ready));
     routing_copy_complete = true;
+    input_copy_complete = run_cpu_experts;
     if (use_probability_weighted_counters) {
       ORT_RETURN_IF_ERROR(moe_pilot->Moe().CollectWeighted(
           gsl::make_span(host_expert_indices.get(), expanded_rows),
@@ -1119,9 +1479,10 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     }
 
     if (run_cpu_experts) {
-      CUDA_RETURN_IF_ERROR(cudaEventSynchronize(input_copy_ready));
-      input_copy_complete = true;
-
+      compute_cpu_output = std::any_of(host_expert_indices.get(), host_expert_indices.get() + expanded_rows,
+                                       [&](int expert) { return cpu_expert_map_[static_cast<size_t>(expert)] >= 0; });
+    }
+    if (compute_cpu_output) {
       auto cpu_activation_type = ::onnxruntime::contrib::ActivationType::Identity;
       switch (activation_type_) {
         case ActivationType::Relu:
@@ -1191,9 +1552,32 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       AddDeferredReleaseCPUPtr(host_cpu_output.release(), stream_obj);
     }
   }
+  if (async_cpu) {
+    const auto& task = *cpu_task_;
+    if (task.completion->load(std::memory_order_acquire) != 1U) {
+      std::unique_lock<std::mutex> lock(cpu_worker_mutex_);
+      cpu_worker_condition_.wait(lock, [&]() { return cpu_task_finished_; });
+      ORT_RETURN_IF_ERROR(task.status);
+      if (*task.host_count != 0) {
+        // The upload must be enqueued before expressing its CUDA-visible dependency.
+        CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(stream, task.input_ready, 0));
+      }
+    }
+    if (!run_cuda_experts) {
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output->MutableDataRaw(), 0, input->SizeInBytes(), stream));
+    }
+    ORT_RETURN_IF_ERROR(CU_CALL(cuStreamWaitValue32(
+        reinterpret_cast<CUstream>(stream), task.device_completion, 1, CU_STREAM_WAIT_VALUE_GEQ)));
+    if constexpr (kCpuOffloadSupported) {
+      LaunchScatterAddMoeCpuOutput(reinterpret_cast<const CudaT*>(task.device_output),
+                                   reinterpret_cast<CudaT*>(output->MutableDataRaw()), task.device_rows,
+                                   task.device_count, reinterpret_cast<const uint32_t*>(task.device_completion),
+                                   task.num_rows, task.hidden_size, stream);
+    }
+  }
 #endif
 
-  if (run_cpu_experts && !cuda_experts_.empty()) {
+  if (compute_cpu_output && !cuda_experts_.empty()) {
     if constexpr (std::is_same_v<T, MLFloat16>) {
       LaunchAddMoeFp16Output(
           reinterpret_cast<half*>(output->MutableDataRaw()),
@@ -1212,6 +1596,12 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
   }
   if (cpu_offload_enabled_) {
+    const size_t usage_bytes = SafeInt<size_t>(moe_params.num_experts) *
+                               (sizeof(double) + sizeof(int64_t) + sizeof(float));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_usage_.get(), device_usage_.get(), usage_bytes,
+                                         cudaMemcpyDeviceToHost, stream));
+    CUDA_RETURN_IF_ERROR(cudaEventRecord(usage_complete_event_, stream));
+    usage_recorded_ = true;
     CUDA_RETURN_IF_ERROR(cudaEventRecord(last_expert_use_event_, stream));
   }
 #endif

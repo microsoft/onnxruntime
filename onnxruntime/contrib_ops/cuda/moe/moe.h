@@ -7,10 +7,13 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "core/common/common.h"
 #include "core/framework/kernel_pilot_moe_expert_cache.h"
+#include "core/framework/kernel_pilot_moe_expert_usage.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
 #include <array>
+#include <condition_variable>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 namespace onnxruntime {
@@ -25,7 +28,8 @@ template <typename T>
 class MoE final : public CudaKernel, public MoEBase
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     ,
-                  public IKernelPilotMoeExpertCache
+                  public IKernelPilotMoeExpertCache,
+                  public IKernelPilotMoeExpertUsage
 #endif
 {
  public:
@@ -47,8 +51,6 @@ class MoE final : public CudaKernel, public MoEBase
     std::vector<T> cpu_data;
     std::vector<T> cpu_gemm_data;
     std::vector<float> cpu_gemm_float_data;
-    std::vector<T> swap_cpu_data;
-    std::vector<float> swap_cpu_float_data;
     IAllocatorUniquePtr<void> cuda_data;
     size_t bytes{0};
     size_t expert_bytes{0};
@@ -62,8 +64,17 @@ class MoE final : public CudaKernel, public MoEBase
   Status InitializeCudaExpertWeights(gsl::span<const int> cuda_experts);
   Status PrepareExpertSwapForInvocation(cudaStream_t stream, KernelPilot* pilot) const;
   void ReleaseSwapResources() noexcept;
-  void PrepareIncomingExpert() noexcept;
-  static void CUDART_CB PrepareIncomingExpertCallback(void* context);
+  void StageIncomingExpert() noexcept;
+  struct CpuTask;
+  Status PrepareUsage(OpKernelContext* context, KernelPilot* pilot, size_t expert_count,
+                      size_t num_rows, size_t hidden_size, size_t inter_size, bool fused_swiglu,
+                      bool prepare_cpu_task) const;
+  Status ComputeCpuTask() const;
+  void RunCpuWorker() const;
+  static void CUDART_CB NotifyCpuWorker(void* context);
+  void ReleaseUsageResources() noexcept;
+  bool HasPendingUsage() const noexcept override { return usage_pending_; }
+  Status CompleteUsage(KernelPilotMoeExpertUsageSnapshot& snapshot) override;
 
   int DeviceId() const noexcept override { return device_id_; }
   bool HasPendingSwap() const noexcept override;
@@ -102,8 +113,25 @@ class MoE final : public CudaKernel, public MoEBase
   size_t swap_staging_bytes_{0};
   int device_id_{0};
   mutable IAllocatorUniquePtr<void> swap_pinned_buffer_;
+  mutable IAllocatorUniquePtr<void> swap_outgoing_pinned_buffer_;
   mutable IAllocatorUniquePtr<void> swap_cuda_staging_;
+  mutable IAllocatorUniquePtr<void> swap_cuda_layout_buffer_;
   mutable std::mutex input_copy_mutex_;
+  bool async_cpu_supported_{false};
+  mutable bool usage_pending_{false};
+  mutable bool usage_recorded_{false};
+  mutable cudaStream_t usage_stream_{nullptr};
+  cudaEvent_t usage_complete_event_{nullptr};
+  mutable IAllocatorUniquePtr<void> device_usage_;
+  mutable IAllocatorUniquePtr<void> host_usage_;
+  mutable std::unique_ptr<CpuTask> cpu_task_;
+  mutable std::thread cpu_worker_;
+  mutable std::mutex cpu_worker_mutex_;
+  mutable std::condition_variable cpu_worker_condition_;
+  mutable bool cpu_task_ready_{false};
+  mutable bool cpu_task_finished_{true};
+  mutable bool cpu_callback_scheduled_{false};
+  mutable bool stop_cpu_worker_{false};
 #endif
 };
 
