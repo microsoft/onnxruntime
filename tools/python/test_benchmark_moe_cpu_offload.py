@@ -1,7 +1,9 @@
+import contextlib
+import io
 import unittest
 from types import SimpleNamespace
 
-from benchmark_moe_cpu_offload import decode_summary, model_session_options
+from benchmark_moe_cpu_offload import decode_summary, model_session_options, parse_args
 
 
 class TestMoeOffloadBenchmark(unittest.TestCase):
@@ -54,6 +56,40 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
     def test_decode_requires_actual_inference(self):
         with self.assertRaisesRegex(ValueError, "empty timing sample"):
             decode_summary([100])
+
+    def test_cli_rejects_invalid_measurement_options(self):
+        arguments = [
+            "--name",
+            "test",
+            "--model",
+            "model",
+            "--prompts",
+            "prompts.json",
+            "--output",
+            "result.json",
+            "--log",
+            "run.log",
+            "--cpu-offload-experts",
+            "1000",
+            "--swap",
+            "--no-counter-log",
+            "--no-cuda-graph",
+        ]
+        for option, value in [
+            ("--max-new-tokens", "1"),
+            ("--cpu-offload-experts", "-1"),
+            ("--counter-alpha", "nan"),
+            ("--counter-alpha", "1.1"),
+            ("--swap-epsilon", "inf"),
+            ("--swap-epsilon", "-0.1"),
+            ("--log", "result.json"),
+        ]:
+            with self.subTest(option=option, value=value):
+                error_output = io.StringIO()
+                with contextlib.redirect_stderr(error_output), self.assertRaises(SystemExit) as error:
+                    parse_args([*arguments, option, value])
+                self.assertEqual(error.exception.code, 2)
+                self.assertIn(option, error_output.getvalue())
 
 
 if __name__ == "__main__":

@@ -171,7 +171,7 @@ def decode_summary(iteration_seconds):
     return summarize(iteration_seconds[1:])
 
 
-def parse_args():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--name", required=True)
     parser.add_argument("--model", type=Path, required=True)
@@ -188,7 +188,9 @@ def parse_args():
     parser.add_argument("--swap", action=argparse.BooleanOptionalAction, required=True)
     parser.add_argument("--counter-log", action=argparse.BooleanOptionalAction, required=True)
     parser.add_argument("--cuda-graph", action=argparse.BooleanOptionalAction, required=True)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.output.resolve() == args.log.resolve():
+        parser.error("--output and --log must refer to different files.")
     if args.max_new_tokens < 2:
         parser.error("--max-new-tokens must be at least 2 to measure actual decode inference.")
     if args.cpu_offload_experts < 0:

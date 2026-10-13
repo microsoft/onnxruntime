@@ -9,9 +9,9 @@
 Implement adaptive expert placement for Qwen 3.6 and other Mixture-of-Experts (MoE) models whose expert weights do not
 all fit in GPU memory.
 
-CPU and CUDA each hold a disjoint, configurable subset of experts. Each `MoE` and `QMoE` node maintains one
-exponentially decayed counter per expert, uses those counters to rank experts, and exchanges experts between CPU and
-CUDA asynchronously.
+Each `MoE` and `QMoE` node can maintain one exponentially decayed counter per expert. Adaptive offloading currently
+uses those counters for built-in CUDA FP16/BF16 `MoE`: its kernel cache holds disjoint, configurable CPU and CUDA
+expert subsets and exchanges experts asynchronously. Quantized `QMoE` offloading remains outside the implemented scope.
 
 The placement policy has two levels, both evaluated by the pilot after a complete model inference:
 
@@ -86,10 +86,11 @@ The global CUDA budget is:
 cuda_expert_count = total_expert_count - cpu_offload_expert_count
 ```
 
-One CUDA slot contains all weights required to execute one expert. CPU and CUDA storage contain disjoint expert
-subsets: CPU-resident experts use compact MLAS-layout storage, while CUDA-resident experts use compact CUDA storage.
-There is no permanent CPU copy of every CUDA expert. An exchange preserves both stores' capacities and moves the
-outgoing CUDA weights into the incoming expert's CPU slot only when publication is safe.
+One CUDA slot contains all weights required to execute one expert. The kernel cache splits weights into disjoint
+expert subsets: CPU-resident experts use compact MLAS-layout storage, while CUDA-resident experts use compact CUDA
+storage. The cache does not retain a canonical CPU copy of every CUDA expert. An exchange preserves both stores'
+capacities and moves the outgoing CUDA weights into the incoming expert's CPU slot only when publication is safe.
+This describes the live expert cache, not a bound on total process RSS or temporary initialization/prepacking storage.
 
 ## Expert counters
 
@@ -234,7 +235,7 @@ the pilot has published the completed exchange.
 
 ```text
 inference t
-    -> every MoE/QMoE executes with immutable placement P
+    -> every offloaded MoE executes with immutable placement P
     -> counters are updated
     -> after Run() completes, the pilot selects and enqueues exchanges
 
@@ -318,8 +319,8 @@ Each CUDA kernel cache owns device-specific resources and execution state:
 
 Initialization builds an immutable dictionary from `(OpKernel pointer, local expert ID)` to a global expert index.
 Counters are ordinary values; their update path does not acquire a mutex when logging is disabled. Counting and adaptive
-placement require non-overlapping `Run()` calls on a session, enforced at run entry. Distinct kernels may update disjoint expert ranges,
-but a kernel cannot execute twice simultaneously. Global snapshots are read between runs.
+placement require non-overlapping `Run()` calls on a session, enforced at run entry. Distinct kernels may update disjoint
+expert ranges, but a kernel cannot execute twice simultaneously. Global snapshots are read between runs.
 Each invocation captures a stable placement mapping, and a slot cannot be overwritten until all work using its
 previous contents has completed.
 
@@ -379,12 +380,11 @@ Still planned:
 
 - Redistribute CUDA slot ownership across nodes without draining pending exchanges, while maximizing the number of
   completely CUDA-resident nodes.
-- Add end-to-end throughput and memory measurements for representative Qwen models.
+- Extend end-to-end throughput and memory measurements to other models and hardware.
 
-After these two implementation steps, the remaining work is end-to-end measurement. Run reproducible CPU-only,
-CUDA-only, and hybrid evaluations with identical models, prompts, and generation settings; sweep offload targets and
-policy parameters; and record the metrics listed below. Commit the evaluation scripts, aggregate results, and documented
-commands while keeping oversized raw traces outside the repository.
+This change includes the warmed CUDA-only and hybrid parameter measurements below, a reproducible timing script and
+aggregate results. Broader model-quality, CPU-only and multi-architecture evaluation remains future work. Oversized
+raw traces stay outside the repository.
 
 ## Performance evaluation
 
@@ -419,15 +419,82 @@ has a fixed length of 256 tokens. `append_tokens()` is prefill and is timed sepa
 each contributes 255 actual decode inferences, or 765 calls per repetition. The reported repetition score is the mean
 of those three prompts' `decode.mean_ms` values, not the total generation duration or the best prompt.
 
-Run three independent repetitions per configuration and report their mean, sample standard deviation, and range.
+Report the actual number of repetitions, mean, sample standard deviation, and range; standard deviation is unavailable
+for single-run configurations. The initial three-repetition plan was reduced to one above 1,024 CPU experts, then
+stopped early at the author's request to publish available results. The tables below include every completed in-grid
+measurement, with one or two repetitions per configuration; no three-repetition precision is claimed.
 Run configurations serially on one otherwise idle GPU, interleaving configurations between repetitions to reduce
 temporal drift. Do not profile, build, or run other GPU tests during measurements. Memory is sampled every 50 ms;
 reported peaks include initialization and all five prompts. GPU memory is device-wide NVML usage, while CPU memory
 is process RSS.
 
 The parameter sweeps use alpha `{0.5, 0.75, 0.9, 0.95, 0.99}`, epsilon `{0, 0.01, 0.05, 0.1, 0.2, 0.5}`, and CPU
-expert counts `{0, 250, 500, 1000, 2000}`. Hold the other parameters at alpha `0.9`, epsilon `0.1`, and 1,000 CPU
-experts. These are benchmark reference values, not changed session defaults. The common reference is measured three
-times and reused in all three tables: 14 unique configurations and 42 fresh processes. Probability weighting remains
-at its default of zero and the swap concurrency limit is four. At zero CPU experts there is no offload, counter
-instrumentation, or applicable exchange; that row is the all-GPU reference, not a measurement of active swaps.
+expert counts `{1, 100, 256, 512, 768, 1024, 1280, 1536, 1792, 2048}`, with `0` retained separately as an all-GPU
+reference. The multiples of 256 represent whole-layer-equivalent expert counts, not necessarily whole CPU-resident
+layers: the count is session-global and initial placement distributes slots across nodes. Hold the other parameters
+at alpha `0.9`, epsilon `0.1`, and 1,000 CPU experts. These are benchmark reference values, not changed session defaults.
+The alpha and epsilon tables share the same reference measurements. Including the separate all-GPU reference,
+there are 21 unique configurations and 33 completed in-grid runs. Higher-count second repetitions that had already
+finished before the repetition limit was requested are included and explicitly counted; no further runs were started.
+Probability weighting remains at its default of zero and the swap concurrency limit is four. At zero CPU experts there
+is no offload, counter instrumentation, or applicable exchange; that row is not a measurement of active swaps.
+
+### Available parameter measurements (2026-10-13)
+
+Measured source: `63148bd3b96a7c38a15b7b8f265df44b7f0e3a54`, incorporating target main `9036f076a2`.
+Hardware: one NVIDIA H200 (SM90, 143,771 MiB, driver 580.105.08), Intel Xeon Platinum 8480C, 96 physical cores,
+two sockets/NUMA nodes, no SMT. Software: Linux, Python 3.12, GenAI 0.15.2, ORT 1.32.0, ONNX 1.23.2, CUDA 13.3.73.
+Release build with native CUDA architecture, Flash/MEA enabled and quick build disabled. The model is the FP16
+Qwen3.5-35B-A3B export; the unchanged five-prompt input list comes from the earlier routing experiments.
+
+The tables report available fresh-process runs, not confidence intervals or a complete three-repeat sweep.
+The [CSV](parameter-benchmarks.csv) contains individual repetition scores, aggregate timings, post-load memory and
+sampled peaks. Empty repetition/standard-deviation fields mean unmeasured, not zero. No profiler was used; the GPU
+was empty before each process, and runtime/provider hashes were unchanged across measurement and publication.
+
+#### Alpha sweep: epsilon 0.1, 1,000 CPU experts
+
+| Alpha | Repetitions | Decode mean +/- sample SD (ms/token) | Run range (ms/token) | GPU after load (GiB) | Peak GPU / CPU RSS (GiB) |
+|---|---|---|---|---|---|
+| 0.5 | 1 | 19.270 +/- n/a | 19.270-19.270 | 61.03 | 62.91 / 61.27 |
+| 0.75 | 1 | 22.099 +/- n/a | 22.099-22.099 | 60.78 | 62.67 / 61.26 |
+| 0.9 | 2 | 21.557 +/- 0.706 | 21.058-22.056 | 60.78 | 62.67 / 61.26 |
+| 0.95 | 2 | 21.318 +/- 0.862 | 20.709-21.927 | 60.66 | 62.55 / 61.26 |
+| 0.99 | 1 | 20.607 +/- n/a | 20.607-20.607 | 61.03 | 62.91 / 61.27 |
+
+#### Epsilon sweep: alpha 0.9, 1,000 CPU experts
+
+| Epsilon | Repetitions | Decode mean +/- sample SD (ms/token) | Run range (ms/token) | GPU after load (GiB) | Peak GPU / CPU RSS (GiB) |
+|---|---|---|---|---|---|
+| 0 | 2 | 21.552 +/- 1.451 | 20.526-22.578 | 60.54 | 62.43 / 61.26 |
+| 0.01 | 1 | 22.544 +/- n/a | 22.544-22.544 | 61.03 | 62.91 / 61.27 |
+| 0.05 | 1 | 22.847 +/- n/a | 22.847-22.847 | 60.53 | 62.42 / 61.26 |
+| 0.1 | 2 | 21.557 +/- 0.706 | 21.058-22.056 | 60.78 | 62.67 / 61.26 |
+| 0.2 | 1 | 21.468 +/- n/a | 21.468-21.468 | 60.53 | 62.42 / 61.26 |
+| 0.5 | 2 | 20.233 +/- 0.523 | 19.863-20.602 | 60.65 | 62.54 / 61.26 |
+
+#### CPU expert-count sweep: alpha 0.9, epsilon 0.1
+
+| CPU experts | Repetitions | Decode mean +/- sample SD (ms/token) | Run range (ms/token) | GPU after load (GiB) | Peak GPU / CPU RSS (GiB) |
+|---|---|---|---|---|---|
+| 0 | 2 | 9.059 +/- 1.127 | 8.263-9.856 | 66.31 | 68.56 / 2.98 |
+| 1 | 2 | 9.370 +/- 0.141 | 9.270-9.469 | 66.67 | 68.94 / 61.27 |
+| 100 | 2 | 11.558 +/- 0.726 | 11.044-12.071 | 66.05 | 67.94 / 61.27 |
+| 256 | 2 | 13.781 +/- 1.045 | 13.042-14.520 | 65.13 | 67.03 / 61.26 |
+| 512 | 1 | 14.770 +/- n/a | 14.770-14.770 | 63.38 | 65.28 / 61.26 |
+| 768 | 1 | 19.895 +/- n/a | 19.895-19.895 | 62.39 | 64.28 / 61.27 |
+| 1024 | 2 | 20.870 +/- 0.727 | 20.355-21.384 | 60.51 | 62.40 / 61.26 |
+| 1280 | 2 | 26.078 +/- 1.672 | 24.896-27.261 | 59.01 | 60.90 / 61.26 |
+| 1536 | 1 | 28.509 +/- n/a | 28.509-28.509 | 57.64 | 59.53 / 61.26 |
+| 1792 | 2 | 44.844 +/- 2.725 | 42.917-46.770 | 56.02 | 57.91 / 61.26 |
+| 2048 | 2 | 84.472 +/- 5.616 | 80.502-88.443 | 54.51 | 56.26 / 61.26 |
+
+At 1,000 CPU experts, the reference averages 21.557 ms/token across two runs. Alpha 0.5 gives the lowest observed
+in-grid result, 19.270 ms/token, but has only one run; epsilon 0.5 averages 20.233 ms/token across two. These results
+do not demonstrate a stable 10 ms/token gain and are not a controlled comparison against a rebuilt pre-optimization
+baseline. The session defaults are unchanged.
+
+Increasing CPU residency saves GPU memory but raises latency sharply at the largest counts. Initialization/prepacking
+dominates the roughly 61 GiB CPU RSS peaks; at the 1,000-expert reference, post-load CPU RSS is about 6.51 GiB. Peak
+RSS is not the live compact expert-weight footprint. These measurements are not a model-quality evaluation, nor a
+guarantee for other GPUs or NUMA placement.
