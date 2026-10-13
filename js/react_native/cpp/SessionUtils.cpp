@@ -67,13 +67,19 @@ class ExtendedSessionOptions : public Ort::SessionOptions {
 };
 
 void parseSessionOptions(Runtime& runtime, const Value& optionsValue,
-                         Ort::SessionOptions& sessionOptions) {
+                         Ort::SessionOptions& sessionOptions,
+                         const std::shared_ptr<Env>& env,
+                         std::shared_ptr<EpContextDataReadCallback>& epContextDataRead) {
   if (!optionsValue.isObject())
     return;
 
   auto options = optionsValue.asObject(runtime);
 
   try {
+    // epContextDataRead
+    epContextDataRead = EpContextDataReadCallback::createAndRegister(
+        runtime, options, env, sessionOptions);
+
 #ifdef ORT_ENABLE_EXTENSIONS
     // ortExtLibPath
     if (options.hasProperty(runtime, "ortExtLibPath")) {

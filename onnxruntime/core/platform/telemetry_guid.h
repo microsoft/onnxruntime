@@ -7,8 +7,25 @@
 #include <cstdio>
 #include <random>
 #include <string>
+#include <string_view>
 
 namespace onnxruntime {
+
+inline bool IsValidGuid(std::string_view value) {
+  if (value.size() != 36) {
+    return false;
+  }
+  for (size_t i = 0; i < value.size(); ++i) {
+    if (i == 8 || i == 13 || i == 18 || i == 23) {
+      if (value[i] != '-') return false;
+    } else if (!((value[i] >= '0' && value[i] <= '9') ||
+                 (value[i] >= 'a' && value[i] <= 'f') ||
+                 (value[i] >= 'A' && value[i] <= 'F'))) {
+      return false;
+    }
+  }
+  return true;
+}
 
 // Generate a random RFC 4122 version-4 UUID formatted as
 // "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx" (36 lowercase-hex characters, hyphen-separated).

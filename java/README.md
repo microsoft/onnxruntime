@@ -14,7 +14,8 @@ Use the main project's [build instructions](https://www.onnxruntime.ai/docs/how-
 
 #### Requirements
 
-Java 11 or later is required to build the library. The compiled jar file will run on Java 8 or later.
+Java 11 or later is required to build the library. The API docs workflow uses Temurin 17.
+The compiled jar file will run on Java 8 or later.
 
 The [Gradle](https://gradle.org/) build system is used here to manage the Java project's dependency management, compilation, testing, and assembly.
 In particular, the Gradle [wrapper](https://docs.gradle.org/current/userguide/gradle_wrapper.html) at `java/gradlew[.bat]` is used, locking the Gradle version to the one specified in the `java/gradle/wrapper/gradle-wrapper.properties` configuration.

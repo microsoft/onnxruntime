@@ -137,6 +137,7 @@ class ShaderHelper final {
                                         uint32_t segments,
                                         std::string_view storage_name,
                                         uint32_t storage_offset_in_elements,
+                                        bool use_uniform_storage_offset,
                                         bool owns_storage_binding);
 
 #ifndef NDEBUG  // if debug build

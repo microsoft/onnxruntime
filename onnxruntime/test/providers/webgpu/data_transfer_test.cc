@@ -23,8 +23,8 @@ constexpr OrtDevice VendorGpu(OrtDevice::VendorId vendor_id) {
   return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, vendor_id, 0);
 }
 
-bool CanCopy(const OrtDevice& src, const OrtDevice& dst) {
-  return webgpu::DataTransfer::IsSupportedDevicePair(src, dst);
+bool CanCopy(const OrtDevice& src, const OrtDevice& dst, int context_id = 0) {
+  return webgpu::DataTransfer::IsSupportedDevicePair(src, dst, context_id);
 }
 
 }  // namespace
@@ -33,8 +33,22 @@ TEST(WebGpuDataTransferTest, AcceptsHostAndWebGpuEndpoints) {
   EXPECT_TRUE(CanCopy(Cpu(), WebGpu()));
   EXPECT_TRUE(CanCopy(WebGpu(), Cpu()));
   EXPECT_TRUE(CanCopy(WebGpu(), WebGpu()));
-  // The predicate ignores device id.
-  EXPECT_TRUE(CanCopy(WebGpu(1), WebGpu(0)));
+  EXPECT_FALSE(CanCopy(WebGpu(1), WebGpu(0)));
+}
+
+TEST(WebGpuDataTransferTest, RestrictsCopiesToOwningContext) {
+  for (const auto context_id : {OrtDevice::DeviceId{0}, OrtDevice::DeviceId{1}, OrtDevice::DeviceId{32767}}) {
+    const auto own = WebGpu(context_id);
+    const auto other = WebGpu(context_id == 0 ? 1 : 0);
+    EXPECT_TRUE(CanCopy(Cpu(), own, context_id));
+    EXPECT_TRUE(CanCopy(own, Cpu(), context_id));
+    EXPECT_TRUE(CanCopy(own, own, context_id));
+    EXPECT_FALSE(CanCopy(Cpu(), other, context_id));
+    EXPECT_FALSE(CanCopy(other, Cpu(), context_id));
+    EXPECT_FALSE(CanCopy(own, other, context_id));
+    EXPECT_FALSE(CanCopy(other, own, context_id));
+    EXPECT_FALSE(CanCopy(other, other, context_id));
+  }
 }
 
 TEST(WebGpuDataTransferTest, RejectsHostToHost) {

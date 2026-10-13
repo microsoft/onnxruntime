@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/allocation_planner.h"
+#include <charconv>
 #include <list>
 #include <algorithm>
 #include <deque>
@@ -2524,6 +2525,7 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
 #define EXIT_ON_ERR(warning)         \
   LOGS(logger_, WARNING) << warning; \
   node_names_by_stream_.clear();     \
+  device_types_.clear();             \
   if_stream.close();                 \
   return;
 
@@ -2593,19 +2595,46 @@ void DeviceBasedPartitioner::Initialize() {
   std::ifstream if_stream(config_file_);
   if (if_stream.is_open()) {
     ORT_TRY {
-      json json_config = json::parse(if_stream);
-      if (json_config["type"] != Type()) {
+      json json_config = json::parse(if_stream, nullptr, false);
+      if (json_config.is_discarded() || !json_config.is_object()) {
+        EXIT_ON_ERR("Invalid DeviceBasedPartitioner config JSON");
+      }
+      const auto type = json_config.find("type");
+      if (type == json_config.end() || !type->is_string() || *type != Type()) {
         EXIT_ON_ERR("Partitioner type is not DeviceBasedPartitioner");
       }
-      for (const auto& node_stream : json_config["streams"]) {
-        node_names_by_stream_.emplace_back();
-        for (const auto& node_name : node_stream) {
-          node_names_by_stream_.back().push_back(node_name);
+      const auto streams = json_config.find("streams");
+      const auto devices = json_config.find("devices");
+      if (streams != json_config.end() || devices != json_config.end()) {
+        if (streams == json_config.end() || !streams->is_array() ||
+            devices == json_config.end() || !devices->is_array() || streams->size() != devices->size()) {
+          EXIT_ON_ERR("Invalid DeviceBasedPartitioner streams or devices");
         }
-      }
-      for (const auto& device_type : json_config["devices"]) {
-        const std::string type_str = device_type;
-        device_types_.push_back(static_cast<OrtDevice::DeviceType>(std::atoi(type_str.c_str())));
+        for (const auto& node_stream : *streams) {
+          if (!node_stream.is_array()) {
+            EXIT_ON_ERR("Invalid DeviceBasedPartitioner stream");
+          }
+          node_names_by_stream_.emplace_back();
+          for (const auto& node_name : node_stream) {
+            if (!node_name.is_string()) {
+              EXIT_ON_ERR("Invalid DeviceBasedPartitioner node name");
+            }
+            node_names_by_stream_.back().push_back(node_name.get<std::string>());
+          }
+        }
+        for (const auto& device_type : *devices) {
+          if (!device_type.is_string()) {
+            EXIT_ON_ERR("Invalid DeviceBasedPartitioner device type");
+          }
+          const auto type_str = device_type.get<std::string>();
+          int value = 0;
+          const auto [end, error] = std::from_chars(type_str.data(), type_str.data() + type_str.size(), value);
+          if (error != std::errc{} || end != type_str.data() + type_str.size() ||
+              value < OrtDevice::CPU || value > OrtDevice::DML) {
+            EXIT_ON_ERR("Invalid DeviceBasedPartitioner device type");
+          }
+          device_types_.push_back(static_cast<OrtDevice::DeviceType>(value));
+        }
       }
     }
     ORT_CATCH(const std::exception& ex) {
@@ -2613,6 +2642,7 @@ void DeviceBasedPartitioner::Initialize() {
         LOGS(logger_, WARNING) << ex.what();
       });
       node_names_by_stream_.clear();
+      device_types_.clear();
       if_stream.close();
       return;
     }
@@ -2667,12 +2697,14 @@ std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(con
     std::ifstream f(config_file);
     if (f.is_open()) {
       ORT_TRY {
-        json json_config = json::parse(f);
-        if (json_config.contains("type")) {
-          auto type = json_config["type"];
-          if (type == "DeviceBasedPartitioner") {
+        json json_config = json::parse(f, nullptr, false);
+        if (json_config.is_object()) {
+          const auto type = json_config.find("type");
+          if (type != json_config.end() && type->is_string() && *type == "DeviceBasedPartitioner") {
             partitioner_type = IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition;
           }
+        } else {
+          LOGS(logger, WARNING) << "Invalid partition config JSON";
         }
       }
       ORT_CATCH(const std::exception& ex) {

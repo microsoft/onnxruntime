@@ -82,155 +82,155 @@ Status ApplyTemplate<"math/subgroup_matrix_gemm_8x16x16.wgsl.template">(ShaderHe
 //  57 | #use .setByOffset
 //  58 |
 //  59 | const kSgMatM: u32 = u32(sg_mat_m);              // Subgroup matrix M dimension (rows)
-ss << __str_2;
+ss << __str_28;
 ss << __param_sg_mat_m;
-ss << __str_3;
-//  60 | const kSgMatN: u32 = u32(sg_mat_n);              // Subgroup matrix N dimension (columns)
-ss << __str_4;
-ss << __param_sg_mat_n;
-ss << __str_3;
-//  61 | const kSgMatK: u32 = u32(sg_mat_k);              // Subgroup matrix K dimension (reduction)
-ss << __str_5;
-ss << __param_sg_mat_k;
-ss << __str_3;
-//  62 | const kSgMatCountM: u32 = u32(sg_mat_count_m);   // Number of subgroup matrices per tile along M
-ss << __str_6;
-ss << __param_sg_mat_count_m;
-ss << __str_3;
-//  63 | const kSgMatCountN: u32 = u32(sg_mat_count_n);   // Number of subgroup matrices per tile along N
-ss << __str_7;
-ss << __param_sg_mat_count_n;
-ss << __str_3;
-//  64 | const kTileM: u32 = kSgMatM * kSgMatCountM;      // Tile size along M (output rows per workgroup)
-ss << __str_8;
-//  65 | const kTileN: u32 = kSgMatN * kSgMatCountN;      // Tile size along N (output columns per workgroup)
-ss << __str_9;
-//  66 | const kSplitK: u32 = u32(split_k);               // Number of subgroups cooperating along K
-ss << __str_10;
-ss << __param_split_k;
-ss << __str_3;
-//  67 | const kSubgroupSize: u32 = 32;                   // Lanes per subgroup
-ss << __str_11;
-//  68 |
 ss << __str_12;
+//  60 | const kSgMatN: u32 = u32(sg_mat_n);              // Subgroup matrix N dimension (columns)
+ss << __str_29;
+ss << __param_sg_mat_n;
+ss << __str_12;
+//  61 | const kSgMatK: u32 = u32(sg_mat_k);              // Subgroup matrix K dimension (reduction)
+ss << __str_30;
+ss << __param_sg_mat_k;
+ss << __str_12;
+//  62 | const kSgMatCountM: u32 = u32(sg_mat_count_m);   // Number of subgroup matrices per tile along M
+ss << __str_31;
+ss << __param_sg_mat_count_m;
+ss << __str_12;
+//  63 | const kSgMatCountN: u32 = u32(sg_mat_count_n);   // Number of subgroup matrices per tile along N
+ss << __str_32;
+ss << __param_sg_mat_count_n;
+ss << __str_12;
+//  64 | const kTileM: u32 = kSgMatM * kSgMatCountM;      // Tile size along M (output rows per workgroup)
+ss << __str_33;
+//  65 | const kTileN: u32 = kSgMatN * kSgMatCountN;      // Tile size along N (output columns per workgroup)
+ss << __str_34;
+//  66 | const kSplitK: u32 = u32(split_k);               // Number of subgroups cooperating along K
+ss << __str_35;
+ss << __param_split_k;
+ss << __str_12;
+//  67 | const kSubgroupSize: u32 = 32;                   // Lanes per subgroup
+ss << __str_36;
+//  68 |
+ss << __str_5;
 //  69 | // Scratch space for kSplitK partial [kTileM, kTileN] tiles, row-major. Each
 //  70 | // split-K subgroup accumulates its slice of K into its own slot; the slots are
 //  71 | // summed during write-back. Storing here also lets us write to global memory
 //  72 | // with M/N bounds checks for dimensions that are not multiples of the tile size.
 //  73 | var<workgroup> scratch: array<f16, kTileM * kTileN * kSplitK>;
-ss << __str_13;
+ss << __str_37;
 //  74 |
-ss << __str_12;
+ss << __str_5;
 //  75 | $MAIN {
 MainFunctionStart();
-ss << __str_12;
+ss << __str_5;
 //  76 |     // Recover the logical (n_tile, m_tile) from the flattened workgroup index. The
-ss << __str_12;
+ss << __str_5;
 //  77 |     // host dispatches a num_n_tile x num_m_tile tile grid on (x, y), but that grid
 //  78 |     // may be normalized (reshaped across x/y/z to stay within per-dimension
 //  79 |     // limits), so workgroup_id.x/y cannot be used directly. workgroup_idx is the
 //  80 |     // true linear index, invariant under normalization, laid out as
 //  81 |     // m_tile * num_n_tile + n_tile.
 //  82 |     let num_n_tile = (uniforms.N + kTileN - 1u) / kTileN;
-ss << __str_14;
+ss << __str_38;
 //  83 |     let n_tile = workgroup_idx % num_n_tile;   // which kTileN-wide column tile
-ss << __str_15;
+ss << __str_39;
 //  84 |     let m_tile = workgroup_idx / num_n_tile;   // which kTileM-tall row tile
-ss << __str_16;
+ss << __str_40;
 //  85 |     let n_tile_start = n_tile * kTileN;
-ss << __str_17;
+ss << __str_41;
 //  86 |     let m_tile_start = m_tile * kTileM;
-ss << __str_18;
+ss << __str_42;
 //  87 |     // Shift a trailing partial tile back so its operand loads stay inside A and B.
-ss << __str_12;
+ss << __str_5;
 //  88 |     // The max() only guards the u32 subtraction; the host guarantees the tile fits.
 //  89 |     let global_base_n = min(n_tile_start, max(uniforms.N, kTileN) - kTileN);
-ss << __str_19;
+ss << __str_43;
 //  90 |     let m_base = min(m_tile_start, max(uniforms.M, kTileM) - kTileM);
-ss << __str_20;
+ss << __str_44;
 //  91 |     let k_blocks = uniforms.K / kSgMatK;
-ss << __str_21;
+ss << __str_45;
 //  92 |     let sg_index = local_idx / kSubgroupSize;          // which split-K subgroup (0..kSplitK-1)
-ss << __str_22;
+ss << __str_46;
 //  93 |     let sg_lane = local_idx % kSubgroupSize;           // lane within the subgroup (0..kSubgroupSize-1)
-ss << __str_23;
+ss << __str_47;
 //  94 |     let sg_scratch_base = sg_index * kTileM * kTileN;  // this subgroup's scratch slot
-ss << __str_24;
+ss << __str_48;
 //  95 |
-ss << __str_12;
+ss << __str_5;
 //  96 |     // Accumulators: kSgMatCountM M blocks x kSgMatCountN N blocks (sg_mat_c<mi>_<ni>).
 //  97 |     var sg_mat_c0_0: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_25;
+ss << __str_49;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 //  98 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 //  99 |     var sg_mat_c0_1: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_28;
+ss << __str_52;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 100 | #endif
 }
 // 101 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 102 |     var sg_mat_c0_2: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_29;
+ss << __str_53;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 103 | #endif
 }
 // 104 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 105 |     var sg_mat_c0_3: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_30;
+ss << __str_54;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 106 | #endif
 }
 // 107 | #if sg_mat_count_m >= 2
 if (__param_sg_mat_count_m >= 2) {
 // 108 |     var sg_mat_c1_0: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_31;
+ss << __str_55;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 109 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 110 |     var sg_mat_c1_1: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_32;
+ss << __str_56;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 111 | #endif
 }
 // 112 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 113 |     var sg_mat_c1_2: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_33;
+ss << __str_57;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 114 | #endif
 }
 // 115 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 116 |     var sg_mat_c1_3: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_34;
+ss << __str_58;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 117 | #endif
 }
 // 118 | #endif
@@ -238,39 +238,39 @@ ss << __str_27;
 // 119 | #if sg_mat_count_m >= 3
 if (__param_sg_mat_count_m >= 3) {
 // 120 |     var sg_mat_c2_0: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_35;
+ss << __str_59;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 121 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 122 |     var sg_mat_c2_1: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_36;
+ss << __str_60;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 123 | #endif
 }
 // 124 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 125 |     var sg_mat_c2_2: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_37;
+ss << __str_61;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 126 | #endif
 }
 // 127 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 128 |     var sg_mat_c2_3: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_38;
+ss << __str_62;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 129 | #endif
 }
 // 130 | #endif
@@ -278,39 +278,39 @@ ss << __str_27;
 // 131 | #if sg_mat_count_m >= 4
 if (__param_sg_mat_count_m >= 4) {
 // 132 |     var sg_mat_c3_0: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_39;
+ss << __str_63;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 133 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 134 |     var sg_mat_c3_1: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_40;
+ss << __str_64;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 135 | #endif
 }
 // 136 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 137 |     var sg_mat_c3_2: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_41;
+ss << __str_65;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 138 | #endif
 }
 // 139 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 140 |     var sg_mat_c3_3: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_42;
+ss << __str_66;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 141 | #endif
 }
 // 142 | #endif
@@ -318,39 +318,39 @@ ss << __str_27;
 // 143 | #if sg_mat_count_m >= 5
 if (__param_sg_mat_count_m >= 5) {
 // 144 |     var sg_mat_c4_0: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_43;
+ss << __str_67;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 145 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 146 |     var sg_mat_c4_1: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_44;
+ss << __str_68;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 147 | #endif
 }
 // 148 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 149 |     var sg_mat_c4_2: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_45;
+ss << __str_69;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 150 | #endif
 }
 // 151 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 152 |     var sg_mat_c4_3: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_46;
+ss << __str_70;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 153 | #endif
 }
 // 154 | #endif
@@ -358,39 +358,39 @@ ss << __str_27;
 // 155 | #if sg_mat_count_m >= 6
 if (__param_sg_mat_count_m >= 6) {
 // 156 |     var sg_mat_c5_0: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_47;
+ss << __str_71;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 157 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 158 |     var sg_mat_c5_1: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_48;
+ss << __str_72;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 159 | #endif
 }
 // 160 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 161 |     var sg_mat_c5_2: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_49;
+ss << __str_73;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 162 | #endif
 }
 // 163 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 164 |     var sg_mat_c5_3: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_50;
+ss << __str_74;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 165 | #endif
 }
 // 166 | #endif
@@ -398,39 +398,39 @@ ss << __str_27;
 // 167 | #if sg_mat_count_m >= 7
 if (__param_sg_mat_count_m >= 7) {
 // 168 |     var sg_mat_c6_0: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_51;
+ss << __str_75;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 169 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 170 |     var sg_mat_c6_1: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_52;
+ss << __str_76;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 171 | #endif
 }
 // 172 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 173 |     var sg_mat_c6_2: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_53;
+ss << __str_77;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 174 | #endif
 }
 // 175 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 176 |     var sg_mat_c6_3: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_54;
+ss << __str_78;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 177 | #endif
 }
 // 178 | #endif
@@ -438,194 +438,194 @@ ss << __str_27;
 // 179 | #if sg_mat_count_m >= 8
 if (__param_sg_mat_count_m >= 8) {
 // 180 |     var sg_mat_c7_0: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_55;
+ss << __str_79;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 181 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 182 |     var sg_mat_c7_1: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_56;
+ss << __str_80;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 183 | #endif
 }
 // 184 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 185 |     var sg_mat_c7_2: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_57;
+ss << __str_81;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 186 | #endif
 }
 // 187 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 188 |     var sg_mat_c7_3: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-ss << __str_58;
+ss << __str_82;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_27;
+ss << __str_51;
 // 189 | #endif
 }
 // 190 | #endif
 }
 // 191 |
 // 192 |     for (var kb: u32 = sg_index; kb < k_blocks; kb = kb + kSplitK) {
-ss << __str_59;
+ss << __str_83;
 // 193 |         let kb_k = kb * kSgMatK;
-ss << __str_60;
+ss << __str_84;
 // 194 |         // Load the B right tiles for this K block.
-ss << __str_12;
+ss << __str_5;
 // 195 | #if trans_b
 if (__param_trans_b) {
 // 196 |         // B stored [N, K] row-major: load column-major with stride K. The tile for
 // 197 |         // N block ni starts at logical element (n = global_base_n + ni*kSgMatN,
 // 198 |         // k = kb_k), i.e. flat offset (global_base_n + ni*kSgMatN) * K + kb_k.
 // 199 |         var sg_mat_b0: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-ss << __str_61;
+ss << __str_85;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_k;
-ss << __str_62;
+ss << __str_86;
 // 200 |             subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(
-ss << __str_63;
+ss << __str_87;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_k;
-ss << __str_64;
+ss << __str_88;
 // 201 |                 &input_b, (global_base_n + 0 * kSgMatN) * uniforms.K + kb_k, uniforms.K);
-ss << __str_65;
+ss << __str_89;
 // 202 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 203 |         var sg_mat_b1: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-ss << __str_66;
+ss << __str_90;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_k;
-ss << __str_62;
+ss << __str_86;
 // 204 |             subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(
-ss << __str_63;
+ss << __str_87;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_k;
-ss << __str_64;
+ss << __str_88;
 // 205 |                 &input_b, (global_base_n + 1 * kSgMatN) * uniforms.K + kb_k, uniforms.K);
-ss << __str_67;
+ss << __str_91;
 // 206 | #endif
 }
 // 207 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 208 |         var sg_mat_b2: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-ss << __str_68;
+ss << __str_92;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_k;
-ss << __str_62;
+ss << __str_86;
 // 209 |             subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(
-ss << __str_63;
+ss << __str_87;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_k;
-ss << __str_64;
+ss << __str_88;
 // 210 |                 &input_b, (global_base_n + 2 * kSgMatN) * uniforms.K + kb_k, uniforms.K);
-ss << __str_69;
+ss << __str_93;
 // 211 | #endif
 }
 // 212 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 213 |         var sg_mat_b3: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-ss << __str_70;
+ss << __str_94;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_k;
-ss << __str_62;
+ss << __str_86;
 // 214 |             subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(
-ss << __str_63;
+ss << __str_87;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_k;
-ss << __str_64;
+ss << __str_88;
 // 215 |                 &input_b, (global_base_n + 3 * kSgMatN) * uniforms.K + kb_k, uniforms.K);
-ss << __str_71;
+ss << __str_95;
 // 216 | #endif
 }
 // 217 | #else
 } else {
 // 218 |         // B stored [K, N] row-major: load row-major with stride N.
 // 219 |         let b_base = kb_k * uniforms.N + global_base_n;
-ss << __str_72;
+ss << __str_96;
 // 220 |         var sg_mat_b0: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-ss << __str_61;
+ss << __str_85;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_k;
-ss << __str_62;
+ss << __str_86;
 // 221 |             subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
-ss << __str_63;
+ss << __str_87;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_k;
-ss << __str_73;
+ss << __str_97;
 // 222 |                 &input_b, b_base + 0 * kSgMatN, uniforms.N);
-ss << __str_74;
+ss << __str_98;
 // 223 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 224 |         var sg_mat_b1: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-ss << __str_66;
+ss << __str_90;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_k;
-ss << __str_62;
+ss << __str_86;
 // 225 |             subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
-ss << __str_63;
+ss << __str_87;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_k;
-ss << __str_73;
+ss << __str_97;
 // 226 |                 &input_b, b_base + 1 * kSgMatN, uniforms.N);
-ss << __str_75;
+ss << __str_99;
 // 227 | #endif
 }
 // 228 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 229 |         var sg_mat_b2: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-ss << __str_68;
+ss << __str_92;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_k;
-ss << __str_62;
+ss << __str_86;
 // 230 |             subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
-ss << __str_63;
+ss << __str_87;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_k;
-ss << __str_73;
+ss << __str_97;
 // 231 |                 &input_b, b_base + 2 * kSgMatN, uniforms.N);
-ss << __str_76;
+ss << __str_100;
 // 232 | #endif
 }
 // 233 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 234 |         var sg_mat_b3: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-ss << __str_70;
+ss << __str_94;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_k;
-ss << __str_62;
+ss << __str_86;
 // 235 |             subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
-ss << __str_63;
+ss << __str_87;
 ss << __param_sg_mat_n;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_k;
-ss << __str_73;
+ss << __str_97;
 // 236 |                 &input_b, b_base + 3 * kSgMatN, uniforms.N);
-ss << __str_77;
+ss << __str_101;
 // 237 | #endif
 }
 // 238 | #endif
@@ -638,290 +638,290 @@ if (__param_trans_a) {
 // 243 |         // M block mi starts at logical element (m = m_base + mi*kSgMatM, k = kb_k),
 // 244 |         // i.e. flat offset kb_k * M + (m_base + mi*kSgMatM).
 // 245 |         let a_row = kb_k * uniforms.M;
-ss << __str_78;
+ss << __str_102;
 // 246 |         var sg_mat_a0: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-ss << __str_79;
+ss << __str_103;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_62;
+ss << __str_86;
 // 247 |             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, col_major>(
-ss << __str_80;
+ss << __str_104;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_64;
+ss << __str_88;
 // 248 |                 &input_a, a_row + (m_base + 0 * kSgMatM), uniforms.M);
-ss << __str_81;
+ss << __str_105;
 // 249 | #if sg_mat_count_m >= 2
 if (__param_sg_mat_count_m >= 2) {
 // 250 |         var sg_mat_a1: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-ss << __str_82;
+ss << __str_106;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_62;
+ss << __str_86;
 // 251 |             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, col_major>(
-ss << __str_80;
+ss << __str_104;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_64;
+ss << __str_88;
 // 252 |                 &input_a, a_row + (m_base + 1 * kSgMatM), uniforms.M);
-ss << __str_83;
+ss << __str_107;
 // 253 | #endif
 }
 // 254 | #if sg_mat_count_m >= 3
 if (__param_sg_mat_count_m >= 3) {
 // 255 |         var sg_mat_a2: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-ss << __str_84;
+ss << __str_108;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_62;
+ss << __str_86;
 // 256 |             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, col_major>(
-ss << __str_80;
+ss << __str_104;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_64;
+ss << __str_88;
 // 257 |                 &input_a, a_row + (m_base + 2 * kSgMatM), uniforms.M);
-ss << __str_85;
+ss << __str_109;
 // 258 | #endif
 }
 // 259 | #if sg_mat_count_m >= 4
 if (__param_sg_mat_count_m >= 4) {
 // 260 |         var sg_mat_a3: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
+ss << __str_110;
+ss << __param_sg_mat_k;
+ss << __str_50;
+ss << __param_sg_mat_m;
 ss << __str_86;
-ss << __param_sg_mat_k;
-ss << __str_26;
-ss << __param_sg_mat_m;
-ss << __str_62;
 // 261 |             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, col_major>(
-ss << __str_80;
+ss << __str_104;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_64;
+ss << __str_88;
 // 262 |                 &input_a, a_row + (m_base + 3 * kSgMatM), uniforms.M);
-ss << __str_87;
+ss << __str_111;
 // 263 | #endif
 }
 // 264 | #if sg_mat_count_m >= 5
 if (__param_sg_mat_count_m >= 5) {
 // 265 |         var sg_mat_a4: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-ss << __str_88;
+ss << __str_112;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_62;
+ss << __str_86;
 // 266 |             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, col_major>(
-ss << __str_80;
+ss << __str_104;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_64;
+ss << __str_88;
 // 267 |                 &input_a, a_row + (m_base + 4 * kSgMatM), uniforms.M);
-ss << __str_89;
+ss << __str_113;
 // 268 | #endif
 }
 // 269 | #if sg_mat_count_m >= 6
 if (__param_sg_mat_count_m >= 6) {
 // 270 |         var sg_mat_a5: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-ss << __str_90;
+ss << __str_114;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_62;
+ss << __str_86;
 // 271 |             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, col_major>(
-ss << __str_80;
+ss << __str_104;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_64;
+ss << __str_88;
 // 272 |                 &input_a, a_row + (m_base + 5 * kSgMatM), uniforms.M);
-ss << __str_91;
+ss << __str_115;
 // 273 | #endif
 }
 // 274 | #if sg_mat_count_m >= 7
 if (__param_sg_mat_count_m >= 7) {
 // 275 |         var sg_mat_a6: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-ss << __str_92;
+ss << __str_116;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_62;
+ss << __str_86;
 // 276 |             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, col_major>(
-ss << __str_80;
+ss << __str_104;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_64;
+ss << __str_88;
 // 277 |                 &input_a, a_row + (m_base + 6 * kSgMatM), uniforms.M);
-ss << __str_93;
+ss << __str_117;
 // 278 | #endif
 }
 // 279 | #if sg_mat_count_m >= 8
 if (__param_sg_mat_count_m >= 8) {
 // 280 |         var sg_mat_a7: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-ss << __str_94;
+ss << __str_118;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_62;
+ss << __str_86;
 // 281 |             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, col_major>(
-ss << __str_80;
+ss << __str_104;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_64;
+ss << __str_88;
 // 282 |                 &input_a, a_row + (m_base + 7 * kSgMatM), uniforms.M);
-ss << __str_95;
+ss << __str_119;
 // 283 | #endif
 }
 // 284 | #else
 } else {
 // 285 |         // A stored [M, K] row-major: load row-major with stride K.
 // 286 |         let a_col = kb_k;
-ss << __str_96;
+ss << __str_120;
 // 287 |         var sg_mat_a0: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-ss << __str_79;
+ss << __str_103;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_62;
+ss << __str_86;
 // 288 |             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-ss << __str_80;
+ss << __str_104;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_73;
-// 289 |                 &input_a, (m_base + 0 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 ss << __str_97;
+// 289 |                 &input_a, (m_base + 0 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+ss << __str_121;
 // 290 | #if sg_mat_count_m >= 2
 if (__param_sg_mat_count_m >= 2) {
 // 291 |         var sg_mat_a1: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-ss << __str_82;
+ss << __str_106;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_62;
+ss << __str_86;
 // 292 |             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-ss << __str_80;
+ss << __str_104;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_73;
+ss << __str_97;
 // 293 |                 &input_a, (m_base + 1 * kSgMatM) * uniforms.K + a_col, uniforms.K);
-ss << __str_98;
+ss << __str_122;
 // 294 | #endif
 }
 // 295 | #if sg_mat_count_m >= 3
 if (__param_sg_mat_count_m >= 3) {
 // 296 |         var sg_mat_a2: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-ss << __str_84;
+ss << __str_108;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_62;
+ss << __str_86;
 // 297 |             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-ss << __str_80;
+ss << __str_104;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_73;
+ss << __str_97;
 // 298 |                 &input_a, (m_base + 2 * kSgMatM) * uniforms.K + a_col, uniforms.K);
-ss << __str_99;
+ss << __str_123;
 // 299 | #endif
 }
 // 300 | #if sg_mat_count_m >= 4
 if (__param_sg_mat_count_m >= 4) {
 // 301 |         var sg_mat_a3: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
+ss << __str_110;
+ss << __param_sg_mat_k;
+ss << __str_50;
+ss << __param_sg_mat_m;
 ss << __str_86;
-ss << __param_sg_mat_k;
-ss << __str_26;
-ss << __param_sg_mat_m;
-ss << __str_62;
 // 302 |             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-ss << __str_80;
+ss << __str_104;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_73;
+ss << __str_97;
 // 303 |                 &input_a, (m_base + 3 * kSgMatM) * uniforms.K + a_col, uniforms.K);
-ss << __str_100;
+ss << __str_124;
 // 304 | #endif
 }
 // 305 | #if sg_mat_count_m >= 5
 if (__param_sg_mat_count_m >= 5) {
 // 306 |         var sg_mat_a4: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-ss << __str_88;
+ss << __str_112;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_62;
+ss << __str_86;
 // 307 |             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-ss << __str_80;
+ss << __str_104;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_73;
+ss << __str_97;
 // 308 |                 &input_a, (m_base + 4 * kSgMatM) * uniforms.K + a_col, uniforms.K);
-ss << __str_101;
+ss << __str_125;
 // 309 | #endif
 }
 // 310 | #if sg_mat_count_m >= 6
 if (__param_sg_mat_count_m >= 6) {
 // 311 |         var sg_mat_a5: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-ss << __str_90;
+ss << __str_114;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_62;
+ss << __str_86;
 // 312 |             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-ss << __str_80;
+ss << __str_104;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_73;
+ss << __str_97;
 // 313 |                 &input_a, (m_base + 5 * kSgMatM) * uniforms.K + a_col, uniforms.K);
-ss << __str_102;
+ss << __str_126;
 // 314 | #endif
 }
 // 315 | #if sg_mat_count_m >= 7
 if (__param_sg_mat_count_m >= 7) {
 // 316 |         var sg_mat_a6: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-ss << __str_92;
+ss << __str_116;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_62;
+ss << __str_86;
 // 317 |             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-ss << __str_80;
+ss << __str_104;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_73;
+ss << __str_97;
 // 318 |                 &input_a, (m_base + 6 * kSgMatM) * uniforms.K + a_col, uniforms.K);
-ss << __str_103;
+ss << __str_127;
 // 319 | #endif
 }
 // 320 | #if sg_mat_count_m >= 8
 if (__param_sg_mat_count_m >= 8) {
 // 321 |         var sg_mat_a7: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-ss << __str_94;
+ss << __str_118;
 ss << __param_sg_mat_k;
-ss << __str_26;
+ss << __str_50;
 ss << __param_sg_mat_m;
-ss << __str_62;
+ss << __str_86;
 // 322 |             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-ss << __str_80;
-ss << __param_sg_mat_k;
-ss << __str_26;
-ss << __param_sg_mat_m;
-ss << __str_73;
-// 323 |                 &input_a, (m_base + 7 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 ss << __str_104;
+ss << __param_sg_mat_k;
+ss << __str_50;
+ss << __param_sg_mat_m;
+ss << __str_97;
+// 323 |                 &input_a, (m_base + 7 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+ss << __str_128;
 // 324 | #endif
 }
 // 325 | #endif
@@ -929,45 +929,45 @@ ss << __str_104;
 // 326 |
 // 327 |         // Accumulate every (M block, N block) pair.
 // 328 |         sg_mat_c0_0 = subgroupMatrixMultiplyAccumulate(sg_mat_a0, sg_mat_b0, sg_mat_c0_0);
-ss << __str_105;
+ss << __str_129;
 // 329 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 330 |         sg_mat_c0_1 = subgroupMatrixMultiplyAccumulate(sg_mat_a0, sg_mat_b1, sg_mat_c0_1);
-ss << __str_106;
+ss << __str_130;
 // 331 | #endif
 }
 // 332 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 333 |         sg_mat_c0_2 = subgroupMatrixMultiplyAccumulate(sg_mat_a0, sg_mat_b2, sg_mat_c0_2);
-ss << __str_107;
+ss << __str_131;
 // 334 | #endif
 }
 // 335 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 336 |         sg_mat_c0_3 = subgroupMatrixMultiplyAccumulate(sg_mat_a0, sg_mat_b3, sg_mat_c0_3);
-ss << __str_108;
+ss << __str_132;
 // 337 | #endif
 }
 // 338 | #if sg_mat_count_m >= 2
 if (__param_sg_mat_count_m >= 2) {
 // 339 |         sg_mat_c1_0 = subgroupMatrixMultiplyAccumulate(sg_mat_a1, sg_mat_b0, sg_mat_c1_0);
-ss << __str_109;
+ss << __str_133;
 // 340 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 341 |         sg_mat_c1_1 = subgroupMatrixMultiplyAccumulate(sg_mat_a1, sg_mat_b1, sg_mat_c1_1);
-ss << __str_110;
+ss << __str_134;
 // 342 | #endif
 }
 // 343 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 344 |         sg_mat_c1_2 = subgroupMatrixMultiplyAccumulate(sg_mat_a1, sg_mat_b2, sg_mat_c1_2);
-ss << __str_111;
+ss << __str_135;
 // 345 | #endif
 }
 // 346 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 347 |         sg_mat_c1_3 = subgroupMatrixMultiplyAccumulate(sg_mat_a1, sg_mat_b3, sg_mat_c1_3);
-ss << __str_112;
+ss << __str_136;
 // 348 | #endif
 }
 // 349 | #endif
@@ -975,23 +975,23 @@ ss << __str_112;
 // 350 | #if sg_mat_count_m >= 3
 if (__param_sg_mat_count_m >= 3) {
 // 351 |         sg_mat_c2_0 = subgroupMatrixMultiplyAccumulate(sg_mat_a2, sg_mat_b0, sg_mat_c2_0);
-ss << __str_113;
+ss << __str_137;
 // 352 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 353 |         sg_mat_c2_1 = subgroupMatrixMultiplyAccumulate(sg_mat_a2, sg_mat_b1, sg_mat_c2_1);
-ss << __str_114;
+ss << __str_138;
 // 354 | #endif
 }
 // 355 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 356 |         sg_mat_c2_2 = subgroupMatrixMultiplyAccumulate(sg_mat_a2, sg_mat_b2, sg_mat_c2_2);
-ss << __str_115;
+ss << __str_139;
 // 357 | #endif
 }
 // 358 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 359 |         sg_mat_c2_3 = subgroupMatrixMultiplyAccumulate(sg_mat_a2, sg_mat_b3, sg_mat_c2_3);
-ss << __str_116;
+ss << __str_140;
 // 360 | #endif
 }
 // 361 | #endif
@@ -999,23 +999,23 @@ ss << __str_116;
 // 362 | #if sg_mat_count_m >= 4
 if (__param_sg_mat_count_m >= 4) {
 // 363 |         sg_mat_c3_0 = subgroupMatrixMultiplyAccumulate(sg_mat_a3, sg_mat_b0, sg_mat_c3_0);
-ss << __str_117;
+ss << __str_141;
 // 364 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 365 |         sg_mat_c3_1 = subgroupMatrixMultiplyAccumulate(sg_mat_a3, sg_mat_b1, sg_mat_c3_1);
-ss << __str_118;
+ss << __str_142;
 // 366 | #endif
 }
 // 367 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 368 |         sg_mat_c3_2 = subgroupMatrixMultiplyAccumulate(sg_mat_a3, sg_mat_b2, sg_mat_c3_2);
-ss << __str_119;
+ss << __str_143;
 // 369 | #endif
 }
 // 370 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 371 |         sg_mat_c3_3 = subgroupMatrixMultiplyAccumulate(sg_mat_a3, sg_mat_b3, sg_mat_c3_3);
-ss << __str_120;
+ss << __str_144;
 // 372 | #endif
 }
 // 373 | #endif
@@ -1023,23 +1023,23 @@ ss << __str_120;
 // 374 | #if sg_mat_count_m >= 5
 if (__param_sg_mat_count_m >= 5) {
 // 375 |         sg_mat_c4_0 = subgroupMatrixMultiplyAccumulate(sg_mat_a4, sg_mat_b0, sg_mat_c4_0);
-ss << __str_121;
+ss << __str_145;
 // 376 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 377 |         sg_mat_c4_1 = subgroupMatrixMultiplyAccumulate(sg_mat_a4, sg_mat_b1, sg_mat_c4_1);
-ss << __str_122;
+ss << __str_146;
 // 378 | #endif
 }
 // 379 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 380 |         sg_mat_c4_2 = subgroupMatrixMultiplyAccumulate(sg_mat_a4, sg_mat_b2, sg_mat_c4_2);
-ss << __str_123;
+ss << __str_147;
 // 381 | #endif
 }
 // 382 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 383 |         sg_mat_c4_3 = subgroupMatrixMultiplyAccumulate(sg_mat_a4, sg_mat_b3, sg_mat_c4_3);
-ss << __str_124;
+ss << __str_148;
 // 384 | #endif
 }
 // 385 | #endif
@@ -1047,23 +1047,23 @@ ss << __str_124;
 // 386 | #if sg_mat_count_m >= 6
 if (__param_sg_mat_count_m >= 6) {
 // 387 |         sg_mat_c5_0 = subgroupMatrixMultiplyAccumulate(sg_mat_a5, sg_mat_b0, sg_mat_c5_0);
-ss << __str_125;
+ss << __str_149;
 // 388 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 389 |         sg_mat_c5_1 = subgroupMatrixMultiplyAccumulate(sg_mat_a5, sg_mat_b1, sg_mat_c5_1);
-ss << __str_126;
+ss << __str_150;
 // 390 | #endif
 }
 // 391 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 392 |         sg_mat_c5_2 = subgroupMatrixMultiplyAccumulate(sg_mat_a5, sg_mat_b2, sg_mat_c5_2);
-ss << __str_127;
+ss << __str_151;
 // 393 | #endif
 }
 // 394 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 395 |         sg_mat_c5_3 = subgroupMatrixMultiplyAccumulate(sg_mat_a5, sg_mat_b3, sg_mat_c5_3);
-ss << __str_128;
+ss << __str_152;
 // 396 | #endif
 }
 // 397 | #endif
@@ -1071,23 +1071,23 @@ ss << __str_128;
 // 398 | #if sg_mat_count_m >= 7
 if (__param_sg_mat_count_m >= 7) {
 // 399 |         sg_mat_c6_0 = subgroupMatrixMultiplyAccumulate(sg_mat_a6, sg_mat_b0, sg_mat_c6_0);
-ss << __str_129;
+ss << __str_153;
 // 400 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 401 |         sg_mat_c6_1 = subgroupMatrixMultiplyAccumulate(sg_mat_a6, sg_mat_b1, sg_mat_c6_1);
-ss << __str_130;
+ss << __str_154;
 // 402 | #endif
 }
 // 403 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 404 |         sg_mat_c6_2 = subgroupMatrixMultiplyAccumulate(sg_mat_a6, sg_mat_b2, sg_mat_c6_2);
-ss << __str_131;
+ss << __str_155;
 // 405 | #endif
 }
 // 406 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 407 |         sg_mat_c6_3 = subgroupMatrixMultiplyAccumulate(sg_mat_a6, sg_mat_b3, sg_mat_c6_3);
-ss << __str_132;
+ss << __str_156;
 // 408 | #endif
 }
 // 409 | #endif
@@ -1095,74 +1095,74 @@ ss << __str_132;
 // 410 | #if sg_mat_count_m >= 8
 if (__param_sg_mat_count_m >= 8) {
 // 411 |         sg_mat_c7_0 = subgroupMatrixMultiplyAccumulate(sg_mat_a7, sg_mat_b0, sg_mat_c7_0);
-ss << __str_133;
+ss << __str_157;
 // 412 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 413 |         sg_mat_c7_1 = subgroupMatrixMultiplyAccumulate(sg_mat_a7, sg_mat_b1, sg_mat_c7_1);
-ss << __str_134;
+ss << __str_158;
 // 414 | #endif
 }
 // 415 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 416 |         sg_mat_c7_2 = subgroupMatrixMultiplyAccumulate(sg_mat_a7, sg_mat_b2, sg_mat_c7_2);
-ss << __str_135;
+ss << __str_159;
 // 417 | #endif
 }
 // 418 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 419 |         sg_mat_c7_3 = subgroupMatrixMultiplyAccumulate(sg_mat_a7, sg_mat_b3, sg_mat_c7_3);
-ss << __str_136;
+ss << __str_160;
 // 420 | #endif
 }
 // 421 | #endif
 }
 // 422 |     }
-ss << __str_137;
+ss << __str_15;
 // 423 |
-ss << __str_12;
+ss << __str_5;
 // 424 |     // Store this subgroup's partial results into its split-K slot of scratch,
 // 425 |     // laid out as kSplitK x [kTileM, kTileN] row-major. Offset of block (mi, ni)
 // 426 |     // within a slot = mi * kSgMatM * kTileN + ni * kSgMatN, stride kTileN.
 // 427 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 0 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c0_0, kTileN);
-ss << __str_138;
+ss << __str_161;
 // 428 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 429 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 0 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c0_1, kTileN);
-ss << __str_139;
+ss << __str_162;
 // 430 | #endif
 }
 // 431 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 432 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 0 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c0_2, kTileN);
-ss << __str_140;
+ss << __str_163;
 // 433 | #endif
 }
 // 434 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 435 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 0 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c0_3, kTileN);
-ss << __str_141;
+ss << __str_164;
 // 436 | #endif
 }
 // 437 | #if sg_mat_count_m >= 2
 if (__param_sg_mat_count_m >= 2) {
 // 438 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 1 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c1_0, kTileN);
-ss << __str_142;
+ss << __str_165;
 // 439 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 440 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 1 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c1_1, kTileN);
-ss << __str_143;
+ss << __str_166;
 // 441 | #endif
 }
 // 442 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 443 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 1 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c1_2, kTileN);
-ss << __str_144;
+ss << __str_167;
 // 444 | #endif
 }
 // 445 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 446 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 1 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c1_3, kTileN);
-ss << __str_145;
+ss << __str_168;
 // 447 | #endif
 }
 // 448 | #endif
@@ -1170,23 +1170,23 @@ ss << __str_145;
 // 449 | #if sg_mat_count_m >= 3
 if (__param_sg_mat_count_m >= 3) {
 // 450 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 2 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c2_0, kTileN);
-ss << __str_146;
+ss << __str_169;
 // 451 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 452 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 2 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c2_1, kTileN);
-ss << __str_147;
+ss << __str_170;
 // 453 | #endif
 }
 // 454 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 455 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 2 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c2_2, kTileN);
-ss << __str_148;
+ss << __str_171;
 // 456 | #endif
 }
 // 457 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 458 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 2 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c2_3, kTileN);
-ss << __str_149;
+ss << __str_172;
 // 459 | #endif
 }
 // 460 | #endif
@@ -1194,23 +1194,23 @@ ss << __str_149;
 // 461 | #if sg_mat_count_m >= 4
 if (__param_sg_mat_count_m >= 4) {
 // 462 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 3 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c3_0, kTileN);
-ss << __str_150;
+ss << __str_173;
 // 463 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 464 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 3 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c3_1, kTileN);
-ss << __str_151;
+ss << __str_174;
 // 465 | #endif
 }
 // 466 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 467 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 3 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c3_2, kTileN);
-ss << __str_152;
+ss << __str_175;
 // 468 | #endif
 }
 // 469 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 470 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 3 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c3_3, kTileN);
-ss << __str_153;
+ss << __str_176;
 // 471 | #endif
 }
 // 472 | #endif
@@ -1218,23 +1218,23 @@ ss << __str_153;
 // 473 | #if sg_mat_count_m >= 5
 if (__param_sg_mat_count_m >= 5) {
 // 474 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 4 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c4_0, kTileN);
-ss << __str_154;
+ss << __str_177;
 // 475 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 476 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 4 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c4_1, kTileN);
-ss << __str_155;
+ss << __str_178;
 // 477 | #endif
 }
 // 478 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 479 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 4 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c4_2, kTileN);
-ss << __str_156;
+ss << __str_179;
 // 480 | #endif
 }
 // 481 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 482 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 4 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c4_3, kTileN);
-ss << __str_157;
+ss << __str_180;
 // 483 | #endif
 }
 // 484 | #endif
@@ -1242,23 +1242,23 @@ ss << __str_157;
 // 485 | #if sg_mat_count_m >= 6
 if (__param_sg_mat_count_m >= 6) {
 // 486 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 5 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c5_0, kTileN);
-ss << __str_158;
+ss << __str_181;
 // 487 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 488 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 5 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c5_1, kTileN);
-ss << __str_159;
+ss << __str_182;
 // 489 | #endif
 }
 // 490 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 491 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 5 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c5_2, kTileN);
-ss << __str_160;
+ss << __str_183;
 // 492 | #endif
 }
 // 493 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 494 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 5 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c5_3, kTileN);
-ss << __str_161;
+ss << __str_184;
 // 495 | #endif
 }
 // 496 | #endif
@@ -1266,23 +1266,23 @@ ss << __str_161;
 // 497 | #if sg_mat_count_m >= 7
 if (__param_sg_mat_count_m >= 7) {
 // 498 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 6 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c6_0, kTileN);
-ss << __str_162;
+ss << __str_185;
 // 499 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 500 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 6 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c6_1, kTileN);
-ss << __str_163;
+ss << __str_186;
 // 501 | #endif
 }
 // 502 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 503 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 6 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c6_2, kTileN);
-ss << __str_164;
+ss << __str_187;
 // 504 | #endif
 }
 // 505 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 506 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 6 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c6_3, kTileN);
-ss << __str_165;
+ss << __str_188;
 // 507 | #endif
 }
 // 508 | #endif
@@ -1290,23 +1290,23 @@ ss << __str_165;
 // 509 | #if sg_mat_count_m >= 8
 if (__param_sg_mat_count_m >= 8) {
 // 510 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 7 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c7_0, kTileN);
-ss << __str_166;
+ss << __str_189;
 // 511 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 512 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 7 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c7_1, kTileN);
-ss << __str_167;
+ss << __str_190;
 // 513 | #endif
 }
 // 514 | #if sg_mat_count_n >= 3
 if (__param_sg_mat_count_n >= 3) {
 // 515 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 7 * kSgMatM * kTileN + 2 * kSgMatN, sg_mat_c7_2, kTileN);
-ss << __str_168;
+ss << __str_191;
 // 516 | #endif
 }
 // 517 | #if sg_mat_count_n >= 4
 if (__param_sg_mat_count_n >= 4) {
 // 518 |     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 7 * kSgMatM * kTileN + 3 * kSgMatN, sg_mat_c7_3, kTileN);
-ss << __str_169;
+ss << __str_192;
 // 519 | #endif
 }
 // 520 | #endif
@@ -1316,36 +1316,36 @@ ss << __str_169;
 if (__param_split_k >= 2) {
 // 523 |     // Make all subgroups' partial tiles visible before the reduction.
 // 524 |     workgroupBarrier();
-ss << __str_170;
+ss << __str_22;
 // 525 |
-ss << __str_12;
+ss << __str_5;
 // 526 |     // Sum pass: a single subgroup reduces the kSplitK partial [kTileM, kTileN]
 // 527 |     // tiles into slot 0 of scratch. Each lane owns a strided set of element
 // 528 |     // positions and sums that position across all kSplitK slots. Writing slot 0
 // 529 |     // is safe: a position is only overwritten by the same lane that already read
 // 530 |     // it as the slot-0 term of its own sum.
 // 531 |     if (sg_index == 0u) {
-ss << __str_171;
+ss << __str_193;
 // 532 |         for (var idx: u32 = sg_lane; idx < kTileM * kTileN; idx = idx + kSubgroupSize) {
-ss << __str_172;
+ss << __str_194;
 // 533 |             var acc: f16 = f16(0);
-ss << __str_173;
+ss << __str_195;
 // 534 |             for (var s: u32 = 0; s < kSplitK; s++) {
-ss << __str_174;
+ss << __str_196;
 // 535 |                 acc += scratch[s * kTileM * kTileN + idx];
-ss << __str_175;
+ss << __str_197;
 // 536 |             }
-ss << __str_176;
+ss << __str_198;
 // 537 |             scratch[idx] = acc;
-ss << __str_177;
+ss << __str_199;
 // 538 |         }
-ss << __str_178;
+ss << __str_200;
 // 539 |     }
-ss << __str_137;
+ss << __str_15;
 // 540 |     // Publish the summed tile (slot 0) to every subgroup for the write-out pass.
-ss << __str_12;
+ss << __str_5;
 // 541 |     workgroupBarrier();
-ss << __str_170;
+ss << __str_22;
 // 542 | #endif
 }
 // 543 |
@@ -1359,46 +1359,46 @@ ss << __str_170;
 // 551 |     // is scaled by alpha and, when has_c, has beta * C[m, n] added (C broadcast via
 // 552 |     // strides).
 // 553 |     let n_skip = n_tile_start - global_base_n;
-ss << __str_179;
+ss << __str_201;
 // 554 |     let n_count = min(kTileN, uniforms.N - global_base_n);
-ss << __str_180;
+ss << __str_202;
 // 555 |     for (var r: u32 = sg_index; r < kTileM; r = r + kSplitK) {
-ss << __str_181;
+ss << __str_203;
 // 556 |         let global_m = m_base + r;
-ss << __str_182;
+ss << __str_204;
 // 557 |         if (global_m >= m_tile_start && global_m < uniforms.M) {
-ss << __str_183;
+ss << __str_205;
 // 558 |             let scratch_base = r * kTileN;
-ss << __str_184;
+ss << __str_206;
 // 559 |             let out_base = global_m * uniforms.N + global_base_n;
-ss << __str_185;
+ss << __str_207;
 // 560 |             for (var i: u32 = sg_lane + n_skip; i < n_count; i = i + kSubgroupSize) {
-ss << __str_186;
+ss << __str_208;
 // 561 |                 var val = output_element_t(scratch[scratch_base + i]) * output_element_t(uniforms.alpha);
-ss << __str_187;
+ss << __str_209;
 // 562 | #if has_c
 if (__param_has_c) {
 // 563 |                 let global_n = global_base_n + i;
-ss << __str_188;
+ss << __str_210;
 // 564 |                 let c_offset = global_m * uniforms.c_stride_m + global_n * uniforms.c_stride_n;
-ss << __str_189;
+ss << __str_211;
 // 565 |                 val += output_element_t(uniforms.beta) * input_c[c_offset];
-ss << __str_190;
+ss << __str_212;
 // 566 | #endif
 }
 // 567 |                 output.setByOffset(out_base + i, val);
-ss << __str_191;
-ss << __var_output->SetByOffset(__str_0, __str_1);
-ss << __str_192;
+ss << __str_213;
+ss << __var_output->SetByOffset(__str_26, __str_27);
+ss << __str_25;
 // 568 |             }
-ss << __str_176;
+ss << __str_198;
 // 569 |         }
-ss << __str_178;
+ss << __str_200;
 // 570 |     }
-ss << __str_137;
+ss << __str_15;
 // 571 | }  // MAIN
 MainFunctionEnd();
-ss << __str_12;
+ss << __str_5;
 // 572 |
 
 

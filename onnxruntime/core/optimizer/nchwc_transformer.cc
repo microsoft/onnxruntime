@@ -672,8 +672,17 @@ void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
   // Test if all of the NCHWc inputs have an equal shape.
   bool all_shapes_match = true;
   auto* input_0_shape = input_defs[0]->Shape();
+  if (input_0_shape != nullptr && input_0_shape->dim_size() != kNchwcDims) {
+    return;
+  }
+
   for (size_t n = 1; n < input_defs_count; n++) {
     auto* nchwc_input_n = nchwc_inputs[n];
+    auto* input_n_shape = input_defs[n]->Shape();
+    if (input_n_shape != nullptr && input_n_shape->dim_size() != kNchwcDims) {
+      return;
+    }
+
     // Require that all inputs have the same logical number of channels.
     if (nchwc_input_n->channels_ != channels) {
       return;
@@ -682,7 +691,6 @@ void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
       // Test if this dimension is derived from the same NodeArg.
       if (!nchwc_input_0->shape_.IsDimEqual(nchwc_input_n->shape_, i)) {
         // Check if ONNX shape inferencing has computed a precise dimension value.
-        auto* input_n_shape = input_defs[n]->Shape();
         if ((input_0_shape == nullptr) || (input_n_shape == nullptr)) {
           all_shapes_match = false;
         } else {

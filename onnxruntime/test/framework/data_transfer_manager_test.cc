@@ -19,7 +19,12 @@ TEST(DataTransferManagerTest, PluginCopiesForwardStreams) {
   struct TestDataTransfer final : OrtDataTransferImpl {
     TestDataTransfer() : OrtDataTransferImpl{} {
       ort_version_supported = ORT_API_VERSION;
-      Release = [](OrtDataTransferImpl*) noexcept {};
+      Release = [](OrtDataTransferImpl* impl) noexcept {
+        delete static_cast<TestDataTransfer*>(impl);
+      };
+      CanCopy = [](const OrtDataTransferImpl*, const OrtMemoryDevice*, const OrtMemoryDevice*) noexcept {
+        return true;
+      };
       CopyTensors = [](OrtDataTransferImpl* impl, const OrtValue**, OrtValue**,
                        OrtSyncStream** streams, size_t num_tensors) noexcept -> OrtStatus* {
         auto& self = *static_cast<TestDataTransfer*>(impl);
@@ -33,9 +38,11 @@ TEST(DataTransferManagerTest, PluginCopiesForwardStreams) {
 
     size_t copied_tensors = 0;
     OrtSyncStream* last_stream = nullptr;
-  } impl;
+  };
 
-  plugin_ep::DataTransfer data_transfer{impl};
+  auto impl = std::make_unique<TestDataTransfer>();
+  auto* impl_ptr = impl.get();
+  plugin_ep::DataTransfer data_transfer{plugin_ep::OrtDataTransferImplUniquePtr{impl.release()}};
   auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   Tensor source{DataTypeImpl::GetType<float>(), TensorShape{4}, allocator};
   Tensor destination{DataTypeImpl::GetType<float>(), TensorShape{4}, allocator};
@@ -43,16 +50,16 @@ TEST(DataTransferManagerTest, PluginCopiesForwardStreams) {
   Stream stream{nullptr, device};
 
   ASSERT_STATUS_OK(data_transfer.CopyTensorAsync(source, destination, stream));
-  EXPECT_EQ(impl.copied_tensors, 1U);
-  EXPECT_EQ(impl.last_stream, reinterpret_cast<OrtSyncStream*>(&stream));
+  EXPECT_EQ(impl_ptr->copied_tensors, 1U);
+  EXPECT_EQ(impl_ptr->last_stream, reinterpret_cast<OrtSyncStream*>(&stream));
 
   ASSERT_STATUS_OK(data_transfer.CopyTensor(source, destination));
-  EXPECT_EQ(impl.copied_tensors, 2U);
-  EXPECT_EQ(impl.last_stream, nullptr);
+  EXPECT_EQ(impl_ptr->copied_tensors, 2U);
+  EXPECT_EQ(impl_ptr->last_stream, nullptr);
 
   ASSERT_STATUS_OK(data_transfer.CopyTensors({{source, destination, &stream}}));
-  EXPECT_EQ(impl.copied_tensors, 3U);
-  EXPECT_EQ(impl.last_stream, reinterpret_cast<OrtSyncStream*>(&stream));
+  EXPECT_EQ(impl_ptr->copied_tensors, 3U);
+  EXPECT_EQ(impl_ptr->last_stream, reinterpret_cast<OrtSyncStream*>(&stream));
 }
 
 // DataTransferManager::CopyTensors should validate sizes match before calling the IDataTransfer implementation
