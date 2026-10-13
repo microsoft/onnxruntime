@@ -7,9 +7,14 @@ vcpkg_from_gitlab(
     GITLAB_URL https://gitlab.com
     OUT_SOURCE_PATH SOURCE_PATH
     REPO libeigen/eigen
-    REF 1d8b82b0740839c0de7f1242a3585e3390ff5f33
-    SHA512 26a0d86ece9a28c93d64ee3e6ff96276b096a80e34fa2f3c474638824ffa2c56e582d9b2b9ffbb73b18a28b4828b827654b65a3471bc83505c48feab26fb836d
+    # Eigen 5.0.1 release tag; keep in sync with cmake/deps.txt.
+    REF bc3b39870ecb690a623a3f49149a358b95c5781d
+    SHA512 c8980bf2410b1501c664f8fe30b5f2f233a9faf716162008bc7ae505c40c00759d1947a71223eda7aaabd6f7f4d00d1f9670125377aacf8757b6bf8b1342c573
     HEAD_REF master
+    PATCHES
+        "${CMAKE_CURRENT_LIST_DIR}/../../patches/eigen/s390x-build-werror.patch"
+        # Backport of https://gitlab.com/libeigen/eigen/-/merge_requests/2831
+        "${CMAKE_CURRENT_LIST_DIR}/../../patches/eigen/sse2-pcmp-lt-int64-sign.patch"
 )
 
 vcpkg_cmake_configure(
@@ -26,7 +31,6 @@ vcpkg_cmake_configure(
 
 vcpkg_cmake_install()
 vcpkg_cmake_config_fixup()
-vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/share/eigen3/Eigen3Config.cmake" "if (NOT TARGET eigen)" "if (NOT TARGET Eigen3::Eigen)")
 endblock()
 
 if(NOT VCPKG_BUILD_TYPE)
@@ -38,4 +42,11 @@ file(GLOB INCLUDES "${CURRENT_PACKAGES_DIR}/include/eigen3/*")
 # Copy the eigen header files to conventional location for user-wide MSBuild integration
 file(COPY ${INCLUDES} DESTINATION "${CURRENT_PACKAGES_DIR}/include")
 
-vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/COPYING.README")
+vcpkg_install_copyright(
+    FILE_LIST
+        "${SOURCE_PATH}/COPYING.README"
+        "${SOURCE_PATH}/COPYING.APACHE"
+        "${SOURCE_PATH}/COPYING.BSD"
+        "${SOURCE_PATH}/COPYING.MINPACK"
+        "${SOURCE_PATH}/COPYING.MPL2"
+)
