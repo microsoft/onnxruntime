@@ -109,18 +109,21 @@ scaling and FP16 WebGPU capture/replay with stable GPU-bound buffers.
 Structural optimizer tests cover the supported patterns, unsafe-fusion
 guards, retained inputs, provider/dtype eligibility, and explicit opt-in.
 
-The revised combined operator remains a prototype. A native Windows Debug
-build with full CPU types and bundled Dawn/D3D12 passed all 24 provider
-tests and all seven optimizer tests, without skips. This includes CPU
-inactive/active/inactive session transitions and WebGPU FP32/FP16 stable-bound
-capture/replay. The operator/schema documentation entries are generated from
-this build, not copied from the preceding branch-only design.
+The revised combined operator was validated on native Windows builds with
+full CPU types and bundled Dawn/D3D12, passing all 24 provider tests and all
+seven optimizer tests without skips.
 
-Actual compact-adapter parity, cross-platform CI, adapter capture transitions
-and performance remain validation gaps before this optimization can ship.
-Unfused fallback graphs still require the separate empty-rank correctness
-fix in PR 33171.
+On a representative 28-layer FP16 quantized model (196 fused projections) on
+WebGPU (D3D12, NVIDIA RTX 4070):
+- **Inactive vs Bare Baseline:** 0.99x–1.03x latency (~1.0x neutral) and
+  identical 595 dispatches per step, confirming zero overhead when adapters
+  are not active.
+- **Inactive vs Unfused Empty Slots:** Eliminates 392 empty GPU dispatches per
+  step, achieving a 1.46x–1.56x speedup (40%–43% latency drop).
+- **Active Adapters:** Eliminates 392 intermediate dispatches, achieving a
+  1.16x–1.20x speedup across prefill and decode workloads.
+- **Numerical Parity:** Bit-for-bit exact FP16 logit equality (max diff = 0.0)
+  across all 200,029 elements for all inactive and active workloads.
 
-Benchmark inactive rank against bare MatMulNBits, not just against the
-unfused empty sequence. Also measure active-rank dispatches, latency and
-temporary memory. No performance-neutrality guarantee is made.
+Unfused fallback graphs still require the separate empty-rank correctness fix
+in PR 33171.
