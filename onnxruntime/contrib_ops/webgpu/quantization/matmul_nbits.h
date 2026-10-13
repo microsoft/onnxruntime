@@ -9,13 +9,19 @@
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
+// Adds an independent FP16 rank-32 down-projection branch to a 256-thread shader.
+void GenerateLoRADown(onnxruntime::webgpu::ShaderHelper& shader, const std::string& base_groups);
+
+// Adds the same FP32 GEMV reduction to standalone and fused 128-thread shaders.
+void GenerateLoRAGemv(onnxruntime::webgpu::ShaderHelper& shader, const std::string& base_groups,
+                      const std::string& x_value);
 
 using namespace onnxruntime::webgpu;
 
 class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgram> {
  public:
-  MatMulNBitsWideTileProgram(bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, uint32_t tile_m, uint32_t tile_n, uint32_t nbits, uint32_t subgroup_min_size, bool acc_f32)
-      : Program{"MatMulNBitsWideTile"}, has_zero_points_{has_zero_points}, has_bias_{has_bias}, has_weight_idx_{has_weight_idx}, has_weight_idx_indirect_{has_weight_idx_indirect}, tile_m_(tile_m), tile_n_(tile_n), nbits_(nbits), subgroup_min_size_(subgroup_min_size), acc_f32_(acc_f32) {}
+  MatMulNBitsWideTileProgram(bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, uint32_t tile_m, uint32_t tile_n, uint32_t nbits, uint32_t subgroup_min_size, bool acc_f32, bool has_lora_up = false, bool lora_transposed = false)
+      : Program{"MatMulNBitsWideTile"}, has_zero_points_{has_zero_points}, has_bias_{has_bias}, has_weight_idx_{has_weight_idx}, has_weight_idx_indirect_{has_weight_idx_indirect}, tile_m_(tile_m), tile_n_(tile_n), nbits_(nbits), subgroup_min_size_(subgroup_min_size), acc_f32_(acc_f32), has_lora_up_(has_lora_up), lora_transposed_(lora_transposed) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"Batch", ProgramUniformVariableDataType::Uint32},
@@ -39,12 +45,28 @@ class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgr
   uint32_t nbits_;
   uint32_t subgroup_min_size_;
   bool acc_f32_;
+  bool has_lora_up_;
+  bool lora_transposed_;
 };
 
 class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
  public:
-  MatMulNBitsProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights, uint32_t tile_size_k_vec = 16, bool broadcast_a_row = false, bool acc_f32 = false)
-      : Program{"MatMulNBits"}, tile_size_(tile_size), nbits_(nbits), has_zero_points_(has_zero_points), has_bias_(has_bias), has_weight_idx_{has_weight_idx}, has_weight_idx_indirect_{has_weight_idx_indirect}, single_scale_weights_(single_scale_weights), tile_size_k_vec_(tile_size_k_vec), broadcast_a_row_(broadcast_a_row), acc_f32_(acc_f32) {}
+  MatMulNBitsProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights, uint32_t tile_size_k_vec = 16, bool broadcast_a_row = false, bool acc_f32 = false, bool has_lora_up = false, bool has_lora_down = false, bool lora_transposed = false)
+      : Program{has_lora_down ? "MatMulNBitsLoRADown" : has_lora_up ? "MatMulNBitsLoRAUp"
+                                                                    : "MatMulNBits"},
+        tile_size_(tile_size),
+        nbits_(nbits),
+        has_zero_points_(has_zero_points),
+        has_bias_(has_bias),
+        has_weight_idx_{has_weight_idx},
+        has_weight_idx_indirect_{has_weight_idx_indirect},
+        single_scale_weights_(single_scale_weights),
+        tile_size_k_vec_(tile_size_k_vec),
+        broadcast_a_row_(broadcast_a_row),
+        acc_f32_(acc_f32),
+        has_lora_up_(has_lora_up),
+        has_lora_down_(has_lora_down),
+        lora_transposed_(lora_transposed) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"M", ProgramUniformVariableDataType::Uint32},
@@ -71,6 +93,9 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
   uint32_t tile_size_k_vec_;
   bool broadcast_a_row_;
   bool acc_f32_;
+  bool has_lora_up_;
+  bool has_lora_down_;
+  bool lora_transposed_;
 };
 
 class MatMulNBits final : public WebGpuKernel {
@@ -99,7 +124,11 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                         int64_t K_op, int64_t N_op, int64_t block_size_op, int64_t accuracy_level, int64_t bits_op,
                         onnxruntime::webgpu::ComputeContext& context, Tensor* y, const uint32_t weight_index = 0,
                         const Tensor* weight_index_indirect = nullptr,
-                        uint32_t override_M = 0);
+                        uint32_t override_M = 0,
+                        const Tensor* lora_t = nullptr, const Tensor* lora_b = nullptr,
+                        const Tensor* lora_a_transposed = nullptr, Tensor* lora_a_output = nullptr, bool lora_transposed = false);
+
+Status ApplyLoRAOutput(onnxruntime::webgpu::ComputeContext& context, const Tensor* base, const Tensor* t, const Tensor* b, Tensor* y, bool transposed = false);
 
 }  // namespace webgpu
 }  // namespace contrib

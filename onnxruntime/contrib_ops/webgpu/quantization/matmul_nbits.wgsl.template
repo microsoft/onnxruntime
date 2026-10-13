@@ -13,6 +13,8 @@
 #param tile_size_k_vec
 #param tile_size_k
 #param tile_size
+#param has_lora_up
+#param lora_transposed
 #param has_bias
 #param has_weight_idx
 #param has_weight_idx_indirect
@@ -264,7 +266,26 @@ $MAIN {
       output_value += acc_element_t(bias[b_global + b_bias_offset]);
 #endif
       // Downcast to the output type only at the final write.
+#if has_lora_up
+      var delta = output_element_t(0);
+#if lora_transposed
+      for (var r4 = 0u; r4 < 8u; r4++) {
+        let bv = lora_b[b_global * 8u + r4];
+        let tv = lora_t[(batch * uniforms.M + a_global) * 8u + r4];
+        delta = bv.x * tv.x + delta;
+        delta = bv.y * tv.y + delta;
+        delta = bv.z * tv.z + delta;
+        delta = bv.w * tv.w + delta;
+      }
+#else
+      for (var r = 0u; r < 32u; r++) {
+        delta = lora_b[r * uniforms.N + b_global] * lora_t[(batch * uniforms.M + a_global) * 32u + r] + delta;
+      }
+#endif
+      output.setByOffset(output_idx, output_element_t(output_value) + delta);
+#else
       output.setByOffset(output_idx, output_element_t(output_value));
+#endif
     }
   }
 }  // MAIN

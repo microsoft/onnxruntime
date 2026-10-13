@@ -4,6 +4,8 @@
 #param acc_f32
 #param block_size
 #param n_bits
+#param has_lora_up
+#param lora_transposed
 #param has_bias
 #param has_zero_points
 #param is_qualcomm
@@ -11,6 +13,35 @@
 #param has_weight_idx_indirect
 
 #use .getByOffset .setByOffset
+
+fn write_lora_output(offset: u32, value: vec4<output_element_t>) {
+#if has_lora_up
+  let row = (offset * 4u) / uniforms.N;
+  let col = (offset * 4u) % uniforms.N;
+  var delta = vec4<output_element_t>(0);
+#if lora_transposed
+  for (var r4 = 0u; r4 < 8u; r4++) {
+    let tv = lora_t[row * 8u + r4];
+    let b0 = lora_b[col * 8u + r4];
+    let b1 = lora_b[(col + 1u) * 8u + r4];
+    let b2 = lora_b[(col + 2u) * 8u + r4];
+    let b3 = lora_b[(col + 3u) * 8u + r4];
+    delta = vec4<output_element_t>(b0.x, b1.x, b2.x, b3.x) * tv.x + delta;
+    delta = vec4<output_element_t>(b0.y, b1.y, b2.y, b3.y) * tv.y + delta;
+    delta = vec4<output_element_t>(b0.z, b1.z, b2.z, b3.z) * tv.z + delta;
+    delta = vec4<output_element_t>(b0.w, b1.w, b2.w, b3.w) * tv.w + delta;
+  }
+#else
+  for (var r = 0u; r < 32u; r++) {
+    delta = vec4<output_element_t>(lora_b[r * uniforms.N + col], lora_b[r * uniforms.N + col + 1u], lora_b[r * uniforms.N + col + 2u], lora_b[r * uniforms.N + col + 3u]) * lora_t[row * 32u + r] + delta;
+  }
+#endif
+  output.setByOffset(offset, value + delta);
+#else
+  output.setByOffset(offset, value);
+#endif
+}
+
 
 #include "quantization/dp4a_matmul_common.wgsl.template"
 
@@ -467,15 +498,15 @@ $MAIN {
             acc_element_t(bias[b_global + 14 + b_bias_offset]),
             acc_element_t(bias[b_global + 15 + b_bias_offset])
         );
-        output.setByOffset(output_idx, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3]) + bias_vec1));
-        output.setByOffset(output_idx+1, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7]) + bias_vec2));
-        output.setByOffset(output_idx+2, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11]) + bias_vec3));
-        output.setByOffset(output_idx+3, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15]) + bias_vec4));
+        write_lora_output(output_idx, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3]) + bias_vec1));
+        write_lora_output(output_idx+1, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7]) + bias_vec2));
+        write_lora_output(output_idx+2, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11]) + bias_vec3));
+        write_lora_output(output_idx+3, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15]) + bias_vec4));
  #else
-        output.setByOffset(output_idx, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3])));
-        output.setByOffset(output_idx+1, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7])));
-        output.setByOffset(output_idx+2, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11])));
-        output.setByOffset(output_idx+3, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15])));
+        write_lora_output(output_idx, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3])));
+        write_lora_output(output_idx+1, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7])));
+        write_lora_output(output_idx+2, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11])));
+        write_lora_output(output_idx+3, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15])));
  #endif
 #else
  #if has_bias
@@ -506,15 +537,15 @@ $MAIN {
             acc_element_t(bias[b_global + 14 + b_bias_offset]),
             acc_element_t(bias[b_global + 15 + b_bias_offset])
         );
-        output.setByOffset(output_idx, vec4<output_element_t>(lane_output1 + bias_vec1));
-        output.setByOffset(output_idx+1, vec4<output_element_t>(lane_output2 + bias_vec2));
-        output.setByOffset(output_idx+2, vec4<output_element_t>(lane_output3 + bias_vec3));
-        output.setByOffset(output_idx+3, vec4<output_element_t>(lane_output4 + bias_vec4));
+        write_lora_output(output_idx, vec4<output_element_t>(lane_output1 + bias_vec1));
+        write_lora_output(output_idx+1, vec4<output_element_t>(lane_output2 + bias_vec2));
+        write_lora_output(output_idx+2, vec4<output_element_t>(lane_output3 + bias_vec3));
+        write_lora_output(output_idx+3, vec4<output_element_t>(lane_output4 + bias_vec4));
  #else
-        output.setByOffset(output_idx, vec4<output_element_t>(lane_output1));
-        output.setByOffset(output_idx+1, vec4<output_element_t>(lane_output2));
-        output.setByOffset(output_idx+2, vec4<output_element_t>(lane_output3));
-        output.setByOffset(output_idx+3, vec4<output_element_t>(lane_output4));
+        write_lora_output(output_idx, vec4<output_element_t>(lane_output1));
+        write_lora_output(output_idx+1, vec4<output_element_t>(lane_output2));
+        write_lora_output(output_idx+2, vec4<output_element_t>(lane_output3));
+        write_lora_output(output_idx+3, vec4<output_element_t>(lane_output4));
  #endif
 #endif
     }

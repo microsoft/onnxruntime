@@ -43,6 +43,10 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
   if (has_weight_idx_indirect_) {
     shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
+  if (has_lora_up_) {
+    shader.AddInput("lora_t", ShaderUsage::UseElementTypeAlias);
+    shader.AddInput("lora_b", ShaderUsage::UseElementTypeAlias);
+  }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
   const uint32_t workgroup_size = WorkgroupSizeX() * WorkgroupSizeY() * WorkgroupSizeZ();
@@ -53,9 +57,11 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
   return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_wide_tile.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
+                             WGSL_TEMPLATE_PARAMETER(has_lora_up, has_lora_up_),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect_),
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
+                             WGSL_TEMPLATE_PARAMETER(lora_transposed, lora_transposed_),
                              WGSL_TEMPLATE_PARAMETER(nbits, nbits_),
                              WGSL_TEMPLATE_PARAMETER(subgroup_min_size, subgroup_min_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_m, tile_m_),
@@ -80,7 +86,16 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_weight_idx_indirect_) {
     shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
+  if (has_lora_up_) {
+    shader.AddInput("lora_t", ShaderUsage::UseElementTypeAlias);
+    shader.AddInput("lora_b", ShaderUsage::UseElementTypeAlias);
+  }
+  if (has_lora_down_) shader.AddInput("lora_at");
   const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+  if (has_lora_down_) {
+    shader.AddOutput("lora_down", ShaderUsage::UseElementTypeAlias);
+    GenerateLoRAGemv(shader, "uniforms.num_N_tile", a.GetByOffset("k4"));
+  }
 
   const uint32_t components_a = a.NumComponents();
   const uint32_t components_b = b.NumComponents() / 4;  // b is stored as uint32 which includes 4 uint8.
@@ -98,9 +113,11 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(component_b, components_b),
                              WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
+                             WGSL_TEMPLATE_PARAMETER(has_lora_up, has_lora_up_),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect_),
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
+                             WGSL_TEMPLATE_PARAMETER(lora_transposed, lora_transposed_),
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
                              WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
@@ -186,11 +203,17 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                         Tensor* y,
                         const uint32_t weight_index,
                         const Tensor* weight_index_indirect,
-                        uint32_t override_M) {
+                        uint32_t override_M, const Tensor* lora_t, const Tensor* lora_b,
+                        const Tensor* lora_a_transposed, Tensor* lora_a_output, bool lora_transposed) {
   TensorShape b_shape({N_op, K_op});
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
 
+  const bool has_lora_up = lora_t != nullptr;
+  const bool has_lora_down = lora_a_transposed != nullptr;
+  ORT_RETURN_IF_NOT(!has_lora_down || (lora_a_output != nullptr && !has_lora_up && a->Shape().Size() == K_op &&
+                                       nbits == 4 && block_size_op == 32),
+                    "Unsupported joint LoRA projection.");
   const bool has_bias = bias != nullptr;
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
   const bool has_weight_idx = weight_index > 0 || has_weight_idx_indirect;
@@ -226,17 +249,25 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 
   // apple|intel - Experimental dawn support for subgroup matrix matmul.
   std::optional<SubgroupMatrixConfig> subgroup_matrix_config;
-  if (CanApplySubgroupMatrixMatMulNBits(context,
-                                        accuracy_level,
-                                        block_size,
-                                        batch_count,
-                                        N,
-                                        K,
-                                        static_cast<uint32_t>(nbits),
-                                        y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
-                                        subgroup_matrix_config,
-                                        M,
-                                        has_weight_idx_indirect)) {
+  if (!has_lora_down && CanApplySubgroupMatrixMatMulNBits(context,
+                                                          accuracy_level,
+                                                          block_size,
+                                                          batch_count,
+                                                          N,
+                                                          K,
+                                                          static_cast<uint32_t>(nbits),
+                                                          y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
+                                                          subgroup_matrix_config,
+                                                          M,
+                                                          has_weight_idx_indirect)) {
+    if (has_lora_up) {
+      auto base_output = context.CreateGPUTensor(y->DataType(), y->Shape());
+      ORT_RETURN_IF_ERROR(ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K,
+                                                         static_cast<uint32_t>(nbits), zero_blocks_per_col,
+                                                         *subgroup_matrix_config, context, &base_output, weight_index,
+                                                         weight_index_indirect));
+      return ApplyLoRAOutput(context, &base_output, lora_t, lora_b, y, lora_transposed);
+    }
     return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K,
                                           static_cast<uint32_t>(nbits), zero_blocks_per_col,
                                           *subgroup_matrix_config, context, y, weight_index,
@@ -245,20 +276,20 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 
   // On FP32 only GPUs and Qualcomm GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
   // DP4A Q2 path now supports custom zero points via a 1024-entry LUT (4 zero-point sections × 256 byte values).
-  if (CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, N, K, components_a,
-                                    M, has_weight_idx_indirect, y)) {
-    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, dispatch_M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index, weight_index_indirect);
+  if (!has_lora_down && CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, N, K, components_a,
+                                                      M, has_weight_idx_indirect, y)) {
+    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, dispatch_M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index, weight_index_indirect, lora_t, lora_b, nullptr, nullptr, lora_transposed);
   }
 
   // WideTileProgram
   // This program is optimized for Block32 prefill.
-  const bool use_wide_tile_program = CanApplyWideTileMatMulNBits(M,
-                                                                 K,
-                                                                 block_size,
-                                                                 nbits,
-                                                                 has_weight_idx_indirect,
-                                                                 components_a,
-                                                                 components_b);
+  const bool use_wide_tile_program = !has_lora_down && CanApplyWideTileMatMulNBits(M,
+                                                                                   K,
+                                                                                   block_size,
+                                                                                   nbits,
+                                                                                   has_weight_idx_indirect,
+                                                                                   components_a,
+                                                                                   components_b);
 
   const bool acc_f32 = context.EnableMatmulFp32Accumulation();
 
@@ -283,7 +314,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                            ? context.AdapterInfo().subgroupMinSize
                                            : 0u;
 
-    MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, tile_m, tile_n, static_cast<uint32_t>(nbits), subgroup_min_size, acc_f32};
+    MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, tile_m, tile_n, static_cast<uint32_t>(nbits), subgroup_min_size, acc_f32, has_lora_up, lora_transposed};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, num_M_tile, batch_count);
 
@@ -324,8 +355,12 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                  {num_N_tile},
                                  {num_M_tile},
                                  {weight_index}});
-    program.CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, subgroup_min_size, acc_f32);
+    program.CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, subgroup_min_size, acc_f32, has_lora_up, lora_transposed);
 
+    if (has_lora_up) {
+      program.AddInput({lora_t, ProgramTensorMetadataDependency::Type, lora_transposed ? 4 : 1});
+      program.AddInput({lora_b, ProgramTensorMetadataDependency::Type, lora_transposed ? 4 : 1});
+    }
     return context.RunProgram(program);
   }
 
@@ -339,10 +374,10 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   constexpr uint32_t kU32Components = 4;
   uint32_t components_b_with_u32 = components_b * kU32Components;
   uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
-  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, tile_size_k_vec, broadcast_a, acc_f32};
+  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, tile_size_k_vec, broadcast_a, acc_f32, has_lora_up, has_lora_down, lora_transposed};
   program.SetWorkgroupSize(workgroup_size);
   uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
-  program.SetDispatchGroupSize(num_N_tile, dispatch_M, batch_count);
+  program.SetDispatchGroupSize(num_N_tile + (has_lora_down ? 8 : 0), dispatch_M, batch_count);
   program
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
@@ -360,7 +395,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                             {batch_count},
                             {weight_index},
                             {dispatch_M}})
-      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, tile_size_k_vec, broadcast_a, acc_f32);
+      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, tile_size_k_vec, broadcast_a, acc_f32, has_lora_up, has_lora_down, lora_transposed);
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }
@@ -369,6 +404,15 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   }
   if (has_weight_idx_indirect) {
     program.AddInput({weight_index_indirect, ProgramTensorMetadataDependency::None});
+  }
+  if (has_lora_up) {
+    program.AddInput({lora_t, ProgramTensorMetadataDependency::Type, lora_transposed ? 4 : 1});
+    program.AddInput({lora_b, ProgramTensorMetadataDependency::Type, lora_transposed ? 4 : 1});
+  }
+  if (has_lora_down) {
+    ORT_RETURN_IF_NOT(components_a == 4, "Joint LoRA projection requires vec4 X.");
+    program.AddInput({lora_a_transposed, ProgramTensorMetadataDependency::Type, 4});
+    program.AddOutput({lora_a_output, ProgramTensorMetadataDependency::Type});
   }
   return context.RunProgram(program);
 }
