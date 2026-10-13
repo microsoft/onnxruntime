@@ -51,33 +51,15 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     MatMul);
 
-namespace {
-
-class MatMulGemvProgram final : public Program<MatMulGemvProgram> {
- public:
-  MatMulGemvProgram() : Program{"MatMulGemv"} {}
-
-  static constexpr uint32_t kWorkgroupSizeX = 1;
-  static constexpr uint32_t kWorkgroupSizeY = 128;
-  static_assert(kWorkgroupSizeY != 0 && (kWorkgroupSizeY & (kWorkgroupSizeY - 1)) == 0,
-                "MatMulGemvProgram requires kWorkgroupSizeY to be a non-zero power of two "
-                "because the WGSL reduction loop halves workgroup_size_y each iteration.");
-
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
-    const auto& a = shader.AddInput("a", ShaderUsage::None);
-    const auto& b = shader.AddInput("b", ShaderUsage::None);
-    const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
-    return WGSL_TEMPLATE_APPLY(shader, "math/matmul_gemv.wgsl.template",
-                               WGSL_TEMPLATE_VARIABLE(a, a),
-                               WGSL_TEMPLATE_VARIABLE(b, b),
-                               WGSL_TEMPLATE_VARIABLE(output, output));
-  }
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"K", ProgramUniformVariableDataType::Uint32},
-                                          {"N", ProgramUniformVariableDataType::Uint32});
-};
-
-}  // namespace
+Status MatMulGemvProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& a = shader.AddInput("a", ShaderUsage::None);
+  const auto& b = shader.AddInput("b", ShaderUsage::None);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
+  return WGSL_TEMPLATE_APPLY(shader, "math/matmul_gemv.wgsl.template",
+                             WGSL_TEMPLATE_VARIABLE(a, a),
+                             WGSL_TEMPLATE_VARIABLE(b, b),
+                             WGSL_TEMPLATE_VARIABLE(output, output));
+}
 
 static std::string CalcResult(int64_t components, int64_t a_components, int64_t output_number) {
   std::ostringstream oss;
@@ -263,7 +245,7 @@ static Status ApplyMatMulGemv(ComputeContext& context,
   program.AddInputs({{a, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten},
                      {b, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
-      .AddUniformVariables({{k}, {n}})
+      .AddUniformVariables({{k}, {n}, {m}})
       .SetWorkgroupSize(MatMulGemvProgram::kWorkgroupSizeX, MatMulGemvProgram::kWorkgroupSizeY)
       .SetDispatchGroupSize(CeilDiv(n_vec_count, MatMulGemvProgram::kWorkgroupSizeX) * m);
   return context.RunProgram(program);
