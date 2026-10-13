@@ -211,8 +211,8 @@ cpu_max > (1 + epsilon) * cuda_min
 Counter ties use expert ID order. The pilot evaluates placement only after the complete model inference and selects at
 most one exchange per node for that boundary. Exchanges are fully asynchronous with respect to the next inference.
 
-Each exchange uses separate incoming and outgoing pinned host buffers and an extra CUDA staging slot so the published mapping remains usable
-until the complete exchange is ready:
+Each exchange uses separate incoming and outgoing pinned host buffers, one shared CUDA layout buffer, and an extra
+CUDA staging slot so the published mapping remains usable until the complete exchange is ready:
 
 1. Record completion of all CUDA work that references the expert selected for CPU residency.
 2. Transpose the outgoing matrix weights to MLAS layout on CUDA and copy them to the outgoing pinned buffer.
@@ -239,13 +239,12 @@ inference t+1, node L
 
 CUDA devices expose their copy-engine count, but that value does not provide a portable expert-level concurrency
 guarantee. The initial implementation therefore permits at most four in-flight expert exchanges per CUDA device.
-Independent pinned buffers, CUDA staging slots, and device-to-host and host-to-device streams form a bidirectional
-pipeline. After exchange A finishes its device-to-host transfer, its host-to-device transfer may overlap the
-device-to-host transfer of another exchange. Events preserve the CPU-first ordering within each exchange; buffers and
-CUDA slots are never shared by transfers that overlap. Hardware with one copy engine serializes the transfers without
-changing correctness. Additional exchanges remain queued for a later completion or inference boundary. For the
-measured Qwen model, where one QMoE expert occupies 1,775,616 bytes, this limit requires about 6.8 MiB of pinned staging
-memory and 6.8 MiB of temporary CUDA storage.
+Separate pinned buffers, CUDA staging slots, and copy streams allow transfers from different exchanges to overlap.
+Within one exchange, the incoming transfer waits for the outgoing transfer before reusing the shared CUDA layout
+buffer. Publication waits for both directions. Hardware with one copy engine serializes the transfers without changing
+correctness. Additional exchanges remain queued for a later completion or inference boundary. Each node that has
+swapped retains two expert-sized pinned buffers and two expert-sized CUDA staging/layout buffers for reuse. The
+in-flight exchange limit does not bound these persistent allocations across nodes.
 
 ## End-of-inference redistribution
 
@@ -305,8 +304,8 @@ subgraphs cannot collide. The state persists across `Run()` calls and is isolate
 
 Each CUDA kernel cache owns device-specific resources and execution state:
 
-- CUDA slots, one reusable staging slot, and the current immutable mapping;
-- one reusable pinned host staging buffer;
+- CUDA slots, one reusable staging slot, one shared layout buffer, and the current immutable mapping;
+- separate reusable incoming and outgoing pinned host staging buffers;
 - at most one pending exchange;
 - CUDA completion events.
 
