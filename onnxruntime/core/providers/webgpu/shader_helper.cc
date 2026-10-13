@@ -88,6 +88,7 @@ Status ShaderHelper::Init() {
   if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
     body_ss_ << ",\n"
                 "        @builtin(subgroup_invocation_id) sg_id : u32,\n"
+                "        @builtin(subgroup_id) subgroup_index : u32,\n"
                 "        @builtin(subgroup_size) sg_size : u32";
   }
   // When using indirect dispatch, avoid @builtin(num_workgroups) to skip Dawn's validation

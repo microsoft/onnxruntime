@@ -39,6 +39,23 @@ std::pair<uint32_t, uint32_t> ChooseTileSize(uint32_t im2col_m, uint32_t im2col_
   return kTileSizes.back();
 }
 
+uint32_t GetFixedSubgroupSize(const ComputeContextBase& context) {
+  if (!context.HasFeature(wgpu::FeatureName::Subgroups) ||
+      !context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+    return 0;
+  }
+
+  // The subgroup path requires a fixed subgroup size >= tile_m (16 or 32). 32 is the best for both
+  // tilings.
+  constexpr uint32_t kFixedSubgroupSize = 32;
+  const auto& adapter_info = context.AdapterInfo();
+  if (adapter_info.subgroupMinSize <= kFixedSubgroupSize && kFixedSubgroupSize <= adapter_info.subgroupMaxSize) {
+    return kFixedSubgroupSize;
+  }
+
+  return 0;
+}
+
 // Add support for more devices.
 bool IsDeviceSupported(const ComputeContextBase& context) {
   const wgpu::AdapterInfo& adapter_info = context.AdapterInfo();
@@ -173,15 +190,14 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   const auto [tile_m, tile_n] = ChooseTileSize(im2col_m, im2col_n);
   const uint32_t workgroup_size = tile_n;
 
-  // Check the device's subgroup size before shader compilation to avoid potential performance penalties
-  // associated with conditional checks in the shader runtime.
-  //
-  // Ensure the subgroup size must be greater than or equal to `tile_m` to safely enable `use_subgroup`.
-  // If the status of this condition is uncertain, the feature must be disabled.
-  const bool use_subgroup = false;
+  const uint32_t subgroup_size = GetFixedSubgroupSize(context);
+  const bool use_subgroup = subgroup_size > 0;
   const uint32_t vec_size = channel_input % 4 == 0 ? 4 : (channel_input % 2 == 0 ? 2 : 1);
   Im2ColMatMulProgram im2col_mm_program{has_bias, tile_m, tile_n, vec_size, use_subgroup, activation};
   im2col_mm_program.SetWorkgroupSize(workgroup_size);
+  if (use_subgroup) {
+    im2col_mm_program.SetSubgroupSize(subgroup_size);
+  }
 
   const uint32_t M_tiles = CeilDiv(im2col_m, tile_m);
   const uint32_t N_tiles = CeilDiv(im2col_n, tile_n);

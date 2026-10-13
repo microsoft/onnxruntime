@@ -1311,6 +1311,21 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelExternalI
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelExternalInitializersBuffer(
+    const ORTCHAR_T* logical_file_name, size_t initializer_size_threshold, OrtAllocator* allocator,
+    void** output_buffer_ptr, size_t* output_buffer_size_ptr) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelExternalInitializersBuffer(
+      this->p_, logical_file_name, initializer_size_threshold, allocator, output_buffer_ptr, output_buffer_size_ptr));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelExternalInitializersAlignment(
+    size_t alignment, size_t minimum_size) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelExternalInitializersAlignment(
+      this->p_, alignment, minimum_size));
+  return *this;
+}
+
 inline ModelCompilationOptions&
 ModelCompilationOptions::SetOutputModelGetInitializerLocationFunc(
     OrtGetInitializerLocationFunc get_initializer_location_func, void* state) {
