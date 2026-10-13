@@ -4561,13 +4561,14 @@ ConvActivationBuilder SimpleActivation(const std::string& op_type,
 // Use fp16, group 1, NHWC, and a non-1x1 kernel to select Im2ColMatMulProgram.
 void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation,
                                      const std::string& expected_activation,
-                                     int opset_version) {
+                                     int opset_version,
+                                     int64_t input_channels = 4) {
   if (!DefaultWebGpuExecutionProvider()) {
     GTEST_SKIP() << "WebGPU EP unavailable in this build.";
   }
 
-  const std::vector<int64_t> input_shape{1, 4, 14, 14};
-  const std::vector<int64_t> weight_shape{8, 4, 3, 3};
+  const std::vector<int64_t> input_shape{1, input_channels, 14, 14};
+  const std::vector<int64_t> weight_shape{8, input_channels, 3, 3};
 
   auto to_fp16 = [](const std::vector<float>& values) {
     std::vector<MLFloat16> converted;
@@ -4588,8 +4589,10 @@ void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation
   };
 
   auto build_test_case = [&](ModelTestBuilder& builder) {
-    auto* input = builder.MakeInput<MLFloat16>(input_shape, to_fp16(ramp(1 * 4 * 14 * 14, -3.0f, 3.0f)));
-    auto* weight = builder.MakeInitializer<MLFloat16>(weight_shape, to_fp16(ramp(8 * 4 * 3 * 3, -0.5f, 0.5f)));
+    auto* input = builder.MakeInput<MLFloat16>(
+        input_shape, to_fp16(ramp(static_cast<size_t>(input_channels * 14 * 14), -3.0f, 3.0f)));
+    auto* weight = builder.MakeInitializer<MLFloat16>(
+        weight_shape, to_fp16(ramp(static_cast<size_t>(8 * input_channels * 3 * 3), -0.5f, 0.5f)));
     auto* bias = builder.MakeInitializer<MLFloat16>({weight_shape[0]}, to_fp16(ramp(8, -0.5f, 0.5f)));
     auto* conv_out = builder.MakeIntermediate();
     auto* output = builder.MakeOutput();
@@ -4644,10 +4647,11 @@ void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation
            "whether the im2col program was selected";
   };
 
-  RunWebGpuFusionTransformerTest(build_test_case, check_transformed_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset_version,
-                                 /*per_sample_tolerance=*/2e-2,
-                                 /*relative_per_sample_tolerance=*/2e-2,
-                                 /*transformer=*/nullptr, []() { return DefaultWebGpuExecutionProvider(); }, [](SessionOptions& session_options) {
+  RunWebGpuFusionTransformerTest(
+      build_test_case, check_transformed_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset_version,
+      /*per_sample_tolerance=*/2e-2,
+      /*relative_per_sample_tolerance=*/2e-2,
+      /*transformer=*/nullptr, []() { return DefaultWebGpuExecutionProvider(); }, [](SessionOptions& session_options) {
                                    session_options.enable_profiling = true;
                                    session_options.profile_file_prefix = ORT_TSTR("webgpu_im2col_activation"); });
 
@@ -4757,6 +4761,16 @@ TEST_F(GraphTransformationTests, WebGpuConvLeakyReluParityAcrossAlphaValues) {
 
 TEST_F(GraphTransformationTests, WebGpuIm2ColConvReluFusionMatchesUnfusedResults) {
   RunWebGpuIm2ColActivationParity(SimpleActivation("Relu"), "Relu", 17);
+}
+
+// Odd input channels give vec_size == 1, which takes the scalar path of the shader (including the
+// subgroup variant when subgroup-size control is available). 4 channels give vec_size == 4 and 2 give 2.
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvOddInputChannelsMatchesUnfusedResults) {
+  RunWebGpuIm2ColActivationParity(SimpleActivation("Relu"), "Relu", 17, /*input_channels=*/3);
+}
+
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvTwoInputChannelsMatchesUnfusedResults) {
+  RunWebGpuIm2ColActivationParity(SimpleActivation("Relu"), "Relu", 17, /*input_channels=*/2);
 }
 
 TEST_F(GraphTransformationTests, WebGpuIm2ColConvLeakyReluFusionMatchesUnfusedResults) {
@@ -7307,7 +7321,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionContiguousReshapesWithSharedShapeP
   };
 
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1, [](Graph&) { return Status::OK(); }, post_graph_checker));
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1, [](Graph&) { return Status::OK(); }, post_graph_checker));
 }
 
 // Full-session test of a Reshape chain whose first shape input is produced by a Where node.
