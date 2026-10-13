@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/util/math.h"
@@ -169,6 +171,111 @@ TEST(MathOpTest, ShrinkMLFloat16Type) {
        output_test_data_nondefault,
        {2, 2}});
   RunShrinkTest<MLFloat16>(test_cases, {kTensorrtExecutionProvider});
+}
+
+TEST(MathOpTest, ShrinkDoublePrecision) {
+  OpTester test("Shrink", 9);
+  test.AddAttribute("bias", 0.0f);
+  test.AddAttribute("lambd", 0.0f);
+  test.AddInput<double>("X", {4}, {16777217.0, -16777217.0, 1e40, -1e40});
+  test.AddOutput<double>("Y", {4}, {16777217.0, -16777217.0, 1e40, -1e40});
+  test.Run();
+}
+
+TEST(MathOpTest, ShrinkInt64Precision) {
+  OpTester test("Shrink", 9);
+  test.AddAttribute("bias", 0.0f);
+  test.AddAttribute("lambd", 0.0f);
+  test.AddInput<int64_t>("X", {4}, {16777217, 1000000000000, 9007199254740993, -9007199254740993});
+  test.AddOutput<int64_t>("Y", {4}, {16777217, 1000000000000, 9007199254740993, -9007199254740993});
+  test.Run();
+}
+
+TEST(MathOpTest, ShrinkUint64Precision) {
+  OpTester test("Shrink", 9);
+  test.AddAttribute("bias", 0.0f);
+  test.AddAttribute("lambd", 0.0f);
+  test.AddInput<uint64_t>("X", {4}, {16777217, 1000000000000, 9007199254740993, std::numeric_limits<uint64_t>::max()});
+  test.AddOutput<uint64_t>("Y", {4}, {16777217, 1000000000000, 9007199254740993, std::numeric_limits<uint64_t>::max()});
+  test.Run();
+}
+
+TEST(MathOpTest, ShrinkInt32LimitsAndPrecision) {
+  OpTester test("Shrink", 9);
+  test.AddAttribute("bias", 0.0f);
+  test.AddAttribute("lambd", 0.0f);
+  test.AddInput<int32_t>("X", {4}, {16777217, -16777217, std::numeric_limits<int32_t>::max(), std::numeric_limits<int32_t>::min()});
+  test.AddOutput<int32_t>("Y", {4}, {16777217, -16777217, std::numeric_limits<int32_t>::max(), std::numeric_limits<int32_t>::min()});
+  test.Run();
+}
+
+TEST(MathOpTest, ShrinkUint32LimitsAndPrecision) {
+  OpTester test("Shrink", 9);
+  test.AddAttribute("bias", 0.0f);
+  test.AddAttribute("lambd", 0.0f);
+  test.AddInput<uint32_t>("X", {2}, {16777217, std::numeric_limits<uint32_t>::max()});
+  test.AddOutput<uint32_t>("Y", {2}, {16777217, std::numeric_limits<uint32_t>::max()});
+  test.Run();
+}
+
+TEST(MathOpTest, ShrinkThresholdMisclassificationBoundary) {
+  // Test 2^24 boundary on int32
+  {
+    OpTester test("Shrink", 9);
+    test.AddAttribute("bias", 0.0f);
+    test.AddAttribute("lambd", 16777216.0f);
+    test.AddInput<int32_t>("X", {4}, {16777216, 16777217, -16777216, -16777217});
+    test.AddOutput<int32_t>("Y", {4}, {0, 16777217, 0, -16777217});
+    test.Run();
+  }
+  // Test 2^53 boundary on int64
+  {
+    OpTester test("Shrink", 9);
+    test.AddAttribute("bias", 0.0f);
+    test.AddAttribute("lambd", 9007199254740992.0f);
+    test.AddInput<int64_t>("X", {4}, {9007199254740992, 9007199254740993, -9007199254740992, -9007199254740993});
+    test.AddOutput<int64_t>("Y", {4}, {0, 9007199254740993, 0, -9007199254740993});
+    test.Run();
+  }
+}
+
+TEST(MathOpTest, ShrinkNegativeThresholdAndFractionalBias) {
+  // Negative threshold: lambd = -2.0f, bias = 10.0f
+  {
+    OpTester test("Shrink", 9);
+    test.AddAttribute("bias", 10.0f);
+    test.AddAttribute("lambd", -2.0f);
+    test.AddInput<int32_t>("X", {3}, {-3, 0, 3});
+    test.AddOutput<int32_t>("Y", {3}, {7, 10, -7});
+    test.Run();
+  }
+  // Fractional bias: lambd = 0.5f, bias = 1.5f
+  {
+    OpTester test("Shrink", 9);
+    test.AddAttribute("bias", 1.5f);
+    test.AddAttribute("lambd", 0.5f);
+    test.AddInput<int32_t>("X", {3}, {10, -10, 0});
+    test.AddOutput<int32_t>("Y", {3}, {8, -8, 0});
+    test.Run();
+  }
+  // NaN threshold returns zeros
+  {
+    OpTester test("Shrink", 9);
+    test.AddAttribute("bias", 10.0f);
+    test.AddAttribute("lambd", std::numeric_limits<float>::quiet_NaN());
+    test.AddInput<int32_t>("X", {3}, {-5, 0, 5});
+    test.AddOutput<int32_t>("Y", {3}, {0, 0, 0});
+    test.Run();
+  }
+}
+
+TEST(MathOpTest, ShrinkBFloat16Type) {
+  OpTester test("Shrink", 9);
+  test.AddAttribute("bias", 10.0f);
+  test.AddAttribute("lambd", 2.0f);
+  test.AddInput<BFloat16>("X", {4}, {BFloat16(-3.0f), BFloat16(-1.0f), BFloat16(1.0f), BFloat16(4.0f)});
+  test.AddOutput<BFloat16>("Y", {4}, {BFloat16(7.0f), BFloat16(0.0f), BFloat16(0.0f), BFloat16(-6.0f)});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test
