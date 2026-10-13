@@ -416,6 +416,27 @@ TEST_F(OpaqueReuseTest, GraphInputOutputAliasRequiresLinearUse) {
   EXPECT_EQ(TestPrng::copied.load(), 0);
 }
 
+TEST_F(OpaqueReuseTest, GraphInputOutputAliasRejectsPassThroughAndMutableOutputs) {
+  AddGenerate("s0", "v1", "s1");
+  auto session = Initialize({"s0", "s1"});
+  OrtValue state = PrngValue(42);
+  const NameMLValMap feeds{{"s0", state}};
+
+  for (const auto& outputs : {std::vector<std::string>{"s0", "s1"},
+                              std::vector<std::string>{"s1", "s0"}}) {
+    SCOPED_TRACE(outputs.front());
+    std::vector<OrtValue> fetches(2, state);
+
+    const auto status = session->Run(RunOptions{}, feeds, outputs, &fetches);
+
+    EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("aliases multiple model outputs"));
+    EXPECT_EQ(state.Get<TestPrng>().State(), 42u);
+    EXPECT_EQ(TestPrng::reused.load(), 0);
+    EXPECT_EQ(TestPrng::copied.load(), 0);
+  }
+}
+
 TEST_F(OpaqueReuseTest, MatchingTypeWithoutMayInplaceDoesNotReuse) {
   AddSeed();
   AddGenerate("s0", "v1", "s1", "GenerateCopy");

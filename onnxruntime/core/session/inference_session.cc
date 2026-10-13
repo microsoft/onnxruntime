@@ -3628,15 +3628,15 @@ common::Status InferenceSession::ValidateOpaqueInputOutputAliases(
     const auto& input_name = feed_names[feed_idx];
     const auto& output_name = output_names[output_idx];
 
-    // A graph value may be both an input and output without passing through a mutating kernel.
-    if (input_name == output_name) {
-      continue;
-    }
-
     if (!aliased_feed_indices.insert(feed_idx).second) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT, "Opaque input '", input_name,
           "' aliases multiple model outputs. A mutable opaque input must alias exactly one output.");
+    }
+
+    // A graph value may be both an input and output without passing through a mutating kernel.
+    if (input_name == output_name) {
+      continue;
     }
 
     InlinedVector<SessionState::NodeInfo> input_node_info;
