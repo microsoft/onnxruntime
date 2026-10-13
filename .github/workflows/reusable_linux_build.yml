@@ -74,6 +74,9 @@ on:
 
 jobs:
   build_test_pipeline:
+    # Called workflows inherit the caller's event context. Never execute fork-controlled source or
+    # Dockerfiles on self-hosted runners that may have a managed identity.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on:
       - self-hosted
       - "1ES.Pool=${{ inputs.pool_name }}"
