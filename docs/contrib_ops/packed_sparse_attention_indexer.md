@@ -19,6 +19,34 @@ Source:
 
 ---
 
+## Experimental CUDA warp-local QSA prefill scoring
+
+`ORT_PACKED_SPARSE_INDEXER_WARP_HEADS=1` enables a default-off scoring path for
+QSA packed prefill with more than 64 tokens, four query heads, head size 128,
+and compression ratio four. Set it before session creation; its value is
+cached per process. Other geometries and decode keep their existing dispatch.
+
+Each warp scores one state slot across all four heads, retaining query values
+and reusing the loaded key. It removes the shared head-score handoff and
+CTA-wide barriers while preserving the per-head warp reduction and ordered
+head sum. The path does not change state capacity, causal visibility, top-k
+selection, overflow handling, or workspace layout.
+
+FP16/FP32 flag-off/on regression tests cover random/tied scores, empty and
+partial state tiles, and 32768 live slots (128K-token-equivalent state).
+Fresh 64K/128K MTP-width-three full-model experiments reduced TTFT from about
+11.62 to 10.50 seconds and 27.52 to 22.90 seconds, respectively, in both
+control-first and candidate-first orders. These observations are not universal
+performance guarantees. The first comparison matched all six measured token
+streams; a reverse-order 128K control produced a different stream than both
+the earlier control and candidates. Full-model deterministic/quality
+equivalence across arbitrary tuned executions is therefore not established.
+A further 128K comparison with decoder/MTP GEMM autotuning disabled matched
+all three measured streams, with TTFT 27.52 to 22.94 seconds and essentially
+unchanged decode throughput. This supports exact parity on that controlled
+workload but does not establish the cause of the earlier mismatch or broad
+quality equivalence. Keep the option experimental and off by default.
+
 ## 1. Why a separate operator
 
 `SparseAttentionIndexer` uses dense `[batch_size, sequence_length, ...]` tensors, an explicit dense
