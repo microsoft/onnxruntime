@@ -8,6 +8,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "core/framework/allocator.h"
+#include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/space_depth_ops.h"
 #include "core/mlas/inc/mlas.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
@@ -319,26 +320,29 @@ TEST(TensorOpTest, SpaceToDepthOpset28ModesAndProviderRouting) {
         ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
         ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
         ASSERT_STATUS_OK(session.Initialize());
-        bool has_space_to_depth = false;
-        std::string space_to_depth_provider;
-        for (const auto& resolved_node : session.GetGraph().Nodes()) {
-          if (resolved_node.OpType() == "SpaceToDepth") {
-            has_space_to_depth = true;
-            space_to_depth_provider = resolved_node.GetExecutionProviderType();
-            break;
+        const bool falls_back_to_cpu =
+            opset == 28 && ((provider_type == kDmlExecutionProvider && mode == "CRD") ||
+                            provider_type == kOpenVINOExecutionProvider ||
+                            provider_type == kMIGraphXExecutionProvider ||
+                            provider_type == kCannExecutionProvider);
+        const bool uses_native_kernel = falls_back_to_cpu || provider_type == kCpuExecutionProvider ||
+                                        provider_type == kCudaExecutionProvider;
+        if (uses_native_kernel || provider_type == kDmlExecutionProvider ||
+            provider_type == kOpenVINOExecutionProvider) {
+          const std::string expected_provider = falls_back_to_cpu ? kCpuExecutionProvider : provider_type;
+          size_t compute_node_count = 0;
+          for (const auto& resolved_node : session.GetGraph().Nodes()) {
+            if (utils::IsMemcpyNode(resolved_node)) {
+              continue;
+            }
+            ++compute_node_count;
+            EXPECT_EQ(resolved_node.GetExecutionProviderType(), expected_provider);
+            // Graph EPs may replace supported operators with fused nodes.
+            if (uses_native_kernel) {
+              EXPECT_EQ(resolved_node.OpType(), "SpaceToDepth");
+            }
           }
-        }
-        EXPECT_TRUE(has_space_to_depth);
-        if (provider_type == kCpuExecutionProvider) {
-          EXPECT_EQ(space_to_depth_provider, kCpuExecutionProvider);
-        } else if (provider_type == kCudaExecutionProvider) {
-          EXPECT_EQ(space_to_depth_provider, kCudaExecutionProvider);
-        } else if (provider_type == kDmlExecutionProvider) {
-          if (opset == 28 && mode == "CRD") {
-            EXPECT_EQ(space_to_depth_provider, kCpuExecutionProvider);
-          } else {
-            EXPECT_EQ(space_to_depth_provider, kDmlExecutionProvider);
-          }
+          EXPECT_EQ(compute_node_count, 1u);
         }
 
         std::vector<OrtValue> fetches;
