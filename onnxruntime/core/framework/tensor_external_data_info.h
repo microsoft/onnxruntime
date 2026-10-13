@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <tuple>
 
 #include <core/common/inlined_containers_fwd.h>
@@ -41,6 +42,8 @@ class ExternalDataInfo {
   static common::Status Create(
       const ::google::protobuf::RepeatedPtrField<::ONNX_NAMESPACE::StringStringEntryProto>& input,
       std::unique_ptr<ExternalDataInfo>& out);
+
+  static PathString NormalizeFileName(std::basic_string_view<PathChar> file_name);
 
   static void SetExternalLocationToProto(const std::filesystem::path& external_file_path,
                                          int64_t offset,
