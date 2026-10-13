@@ -48,9 +48,7 @@ Status SparseQkvToContext(
     float* partial_out,
     float* partial_max,
     float* partial_sum,
-    int num_splits,
-    bool enable_grouped,
-    bool enable_grouped_vectorized);
+    int num_splits);
 
 }  // namespace cuda
 }  // namespace contrib

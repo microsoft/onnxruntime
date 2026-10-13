@@ -1027,16 +1027,26 @@ __device__ __forceinline__ float DecodeUE8M0(uint8_t code) {
 }
 
 __device__ __forceinline__ float DecodeFloat8E4M3FN(uint8_t code) {
-  const uint32_t sign = static_cast<uint32_t>(code & 0x80) << 24;
-  const uint32_t magnitude = code & 0x7F;
-  if (magnitude == 0x7F) {
+  // ONNX float8e4m3fn has no infinities. The only NaN payloads are 0x7F/0xFF;
+  // finite values, including the max finite code 0x7E, use the normal E4M3 formula.
+  const int sign = code & 0x80;
+  const int exponent = (code >> 3) & 0x0F;
+  const int mantissa = code & 0x07;
+
+  if ((code & 0x7F) == 0) {
+    return sign ? -0.0f : 0.0f;
+  }
+  if (exponent == 0x0F && mantissa == 0x07) {
     return __int_as_float(0x7fffffff);
   }
-  if (magnitude < 8) {
-    return __uint_as_float(sign | __float_as_uint(static_cast<float>(magnitude) * (1.0f / 512.0f)));
+
+  float value = 0.0f;
+  if (exponent == 0) {
+    value = ldexpf(static_cast<float>(mantissa), -9);
+  } else {
+    value = ldexpf(1.0f + static_cast<float>(mantissa) * 0.125f, exponent - 7);
   }
-  // Every normal E4M3FN value has an exact FP32 exponent/mantissa representation.
-  return __uint_as_float(sign | (((magnitude >> 3) + 120) << 23) | ((magnitude & 7) << 20));
+  return sign ? -value : value;
 }
 
 // Tile shape for QMoEDequantizeFp4WeightsVecKernel. kTileN = 64 rows is exactly 32 packed bytes,
@@ -1556,11 +1566,11 @@ __device__ __forceinline__ T QMoEFp8Weight(const QMoEFp8ProjectionParams& params
   const int scale_n = (source_n + params.block_size - 1) / params.block_size;
   const int scale_k = (params.k + params.block_size - 1) / params.block_size;
   const int64_t scale_index = (static_cast<int64_t>(expert) * scale_n + row / params.block_size) * scale_k +
-                              col / params.block_size;
+                             col / params.block_size;
   const int64_t weight_index = (static_cast<int64_t>(expert) * source_n + row) * params.k + col;
-  const float scale = scale_type == 0   ? static_cast<const float*>(scales)[scale_index]
-                      : scale_type == 1 ? __half2float(static_cast<const half*>(scales)[scale_index])
-                                        : __bfloat162float(static_cast<const __nv_bfloat16*>(scales)[scale_index]);
+  const float scale = scale_type == 0 ? static_cast<const float*>(scales)[scale_index]
+                     : scale_type == 1 ? __half2float(static_cast<const half*>(scales)[scale_index])
+                                       : __bfloat162float(static_cast<const __nv_bfloat16*>(scales)[scale_index]);
   return static_cast<T>(DecodeFloat8E4M3FN(weights[weight_index]) * scale);
 }
 
@@ -1594,7 +1604,7 @@ __global__ void QMoEFp8ExpertTilesKernel(const int64_t* expert_offsets, int* til
 }
 
 void LaunchQMoEFp8ExpertTiles(const int64_t* expert_offsets, int* tile_offsets,
-                              int num_experts, cudaStream_t stream) {
+                            int num_experts, cudaStream_t stream) {
   QMoEFp8ExpertTilesKernel<<<1, 1, 0, stream>>>(expert_offsets, tile_offsets, num_experts);
   CUDA_CALL_THROW(cudaGetLastError());
 }
@@ -1634,7 +1644,7 @@ __global__ void QMoEFp8GemmKernel(QMoEFp8ProjectionParams params, const T* input
       T value = static_cast<T>(0.0f);
       if (row < row_end && col < params.k) {
         const int input_row = params.row_to_unpermuted ? params.row_to_unpermuted[row] % params.num_rows
-                                                       : static_cast<int>(row);
+                                                     : static_cast<int>(row);
         value = input[static_cast<int64_t>(input_row) * params.k + col];
       }
       activation_tile[index] = value;
@@ -1670,7 +1680,7 @@ __global__ void QMoEFp8GemmKernel(QMoEFp8ProjectionParams params, const T* input
 
 template <typename T>
 void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
-                             const T* input, T* output, cudaStream_t stream) {
+                            const T* input, T* output, cudaStream_t stream) {
   if (params.tile_offsets) {
     const int tiles = std::min(params.expanded_rows,
                                std::min(params.num_experts, params.expanded_rows) + params.expanded_rows / 16);
@@ -1683,8 +1693,8 @@ void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
 
 template <typename T>
 __global__ void QMoEFp8ActivationKernel(const T* input, const T* bias, T* output,
-                                        const int* experts, int rows, int inter_size, int fusion,
-                                        float alpha, float beta, float limit) {
+                                      const int* experts, int rows, int inter_size, int fusion,
+                                      float alpha, float beta, float limit) {
   const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index >= static_cast<int64_t>(rows) * inter_size) {
     return;
@@ -1700,7 +1710,7 @@ __global__ void QMoEFp8ActivationKernel(const T* input, const T* bias, T* output
     gate += static_cast<float>(bias[static_cast<int64_t>(experts[row]) * n + bias_col]);
     if (fusion) {
       up += static_cast<float>(bias[static_cast<int64_t>(experts[row]) * n +
-                                    (fusion == 2 ? col + inter_size : gate_col + 1)]);
+                                   (fusion == 2 ? col + inter_size : gate_col + 1)]);
     }
   }
   if (fusion) {
@@ -1712,8 +1722,8 @@ __global__ void QMoEFp8ActivationKernel(const T* input, const T* bias, T* output
 
 template <typename T>
 void LaunchQMoEFp8Activation(const T* input, const T* bias, T* output,
-                             const int* experts, int rows, int inter_size, int fusion,
-                             float alpha, float beta, float limit, cudaStream_t stream) {
+                            const int* experts, int rows, int inter_size, int fusion,
+                            float alpha, float beta, float limit, cudaStream_t stream) {
   const int64_t count = static_cast<int64_t>(rows) * inter_size;
   QMoEFp8ActivationKernel<<<narrow<int>((count + 255) / 256), 256, 0, stream>>>(
       input, bias, output, experts, rows, inter_size, fusion, alpha, beta, limit);
@@ -1891,44 +1901,6 @@ __global__ void QMoEDequantizeNvfp4WeightsKernel(
 }
 
 template <typename T>
-__global__ void QMoEDequantizeNvfp4RowMajorWeightsVecKernel(
-    const uint8_t* __restrict__ packed_weights,
-    const uint8_t* __restrict__ block_scales,
-    const float* __restrict__ global_scales,
-    T* __restrict__ output,
-    int n, int k, const int* compact_to_expert,
-    const T* bias, T* output_bias) {
-  constexpr int kVecK = kQMoEDequantizeFp4VecK;
-  const int row = blockIdx.x;
-  const int k_base = (static_cast<int>(blockIdx.y) * blockDim.x + threadIdx.x) * kVecK;
-  if (k_base >= k) {
-    return;
-  }
-  const int output_expert = blockIdx.z;
-  const int expert = compact_to_expert ? compact_to_expert[output_expert] : output_expert;
-  if (expert < 0) {
-    return;
-  }
-  const int64_t source_row = static_cast<int64_t>(expert) * n + row;
-  const uint32_t packed = *reinterpret_cast<const uint32_t*>(packed_weights + source_row * (k / 2) + k_base / 2);
-  const float block_scale = DecodeFloat8E4M3FN(block_scales[source_row * (k / 16) + k_base / 16]);
-  const float global_scale = global_scales[expert];
-  uint4 staged;
-  T* values = reinterpret_cast<T*>(&staged);
-  static_assert(kVecK * sizeof(T) == sizeof(uint4));
-#pragma unroll
-  for (int j = 0; j < kVecK; ++j) {
-    // Keep the scalar path's multiplication order and final FP16/BF16 rounding.
-    values[j] = static_cast<T>(DecodeFp4E2M1(static_cast<uint8_t>((packed >> (4 * j)) & 0x0F)) *
-                               block_scale * global_scale);
-  }
-  *reinterpret_cast<uint4*>(output + (static_cast<int64_t>(output_expert) * n + row) * k + k_base) = staged;
-  if (bias && k_base == 0) {
-    output_bias[static_cast<int64_t>(output_expert) * n + row] = bias[source_row];
-  }
-}
-
-template <typename T>
 void LaunchQMoEDequantizeNvfp4WeightsImpl(
     const uint8_t* packed_weights,
     const uint8_t* block_scales,
@@ -1944,13 +1916,6 @@ void LaunchQMoEDequantizeNvfp4WeightsImpl(
     bool weights_row_major) {
   ORT_ENFORCE(bias == nullptr || output_bias != nullptr, "QMoE NVFP4 bias gathering requires an output buffer.");
   constexpr int block = 256;
-  if (weights_row_major && k % 16 == 0) {
-    const dim3 grid(n, (k + block * kQMoEDequantizeFp4VecK - 1) / (block * kQMoEDequantizeFp4VecK), num_experts);
-    QMoEDequantizeNvfp4RowMajorWeightsVecKernel<T><<<grid, block, 0, stream>>>(
-        packed_weights, block_scales, global_scales, output, n, k, compact_to_expert, bias, output_bias);
-    CUDA_CALL_THROW(cudaGetLastError());
-    return;
-  }
   if (!weights_row_major && !compact_to_expert && !bias && QMoEDequantizeFp4VecApplies<16>(num_experts, n, k)) {
     const dim3 tile_block(kQMoEDequantizeFp4TileK / kQMoEDequantizeFp4VecK, kQMoEDequantizeFp4TileN);
     const dim3 tile_grid((n + kQMoEDequantizeFp4TileN - 1) / kQMoEDequantizeFp4TileN,
