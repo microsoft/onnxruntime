@@ -44,8 +44,9 @@ static const char* const kOrtSessionOptionsConfigMoeExpertCounterAlpha =
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight =
     "session.moe_expert_counter_probability_weight";
 
-// Number of FP16/BF16 MoE experts to execute on CPU across the session. All expert weights remain in CPU memory, while
-// CUDA-resident copies are created for the remaining experts. The value must be a non-negative integer no greater
+// Number of FP16/BF16 MoE experts to execute on CPU across the session. CPU and CUDA experts use disjoint compact
+// weight stores; initialization does not copy the complete expert set into CPU staging storage.
+// The value must be a non-negative integer no greater
 // than the number of experts owned by CUDA MoE nodes. The default is 0, which disables CPU offloading.
 static const char* const kOrtSessionOptionsConfigMoeCpuOffloadExperts =
     "session.moe_cpu_offload_experts";

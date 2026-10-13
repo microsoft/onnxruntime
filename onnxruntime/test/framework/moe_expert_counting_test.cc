@@ -21,9 +21,11 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/scoped_env_vars.h"
+#include "test/util/include/file_util.h"
 
 #if defined(USE_CUDA)
 #include <cuda_runtime_api.h>
+#include "core/providers/cuda/cuda_provider_options.h"
 #endif
 
 namespace onnxruntime::test {
@@ -722,6 +724,74 @@ TEST(MoeExpertCountingTest, StaticCpuOffloadDistributesZeroCountersAcrossNodes) 
     int initializer_index = -1;
     ASSERT_STATUS_OK(session_state.GetOrtValueNameIdxMap().GetIdx(initializer_name, initializer_index));
     EXPECT_EQ(execution_plan->GetLocation(static_cast<size_t>(initializer_index)).Type(), OrtDevice::CPU);
+  }
+}
+
+TEST(MoeExpertCountingTest, CpuOffloadRetainsExternalInitializersUntilCompactStoresAreReady) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider || provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "Built-in CUDA execution provider is unavailable.";
+  }
+  ModelProto model;
+  ASSERT_TRUE(model.ParseFromString(MakeCountingModel(false, true)));
+  for (auto& node : *model.mutable_graph()->mutable_node()) {
+    auto* attribute = node.add_attribute();
+    attribute->set_name("normalize_routing_weights");
+    attribute->set_type(AttributeProto_AttributeType_INT);
+    attribute->set_i(1);
+  }
+  FILE* file = nullptr;
+  PathString path = ORT_TSTR("moe_external_weights_XXXXXX");
+  CreateTestFile(file, path);
+  ASSERT_NE(file, nullptr);
+  ScopedFileDeleter delete_file{path};
+  size_t offset = 0;
+  for (auto& tensor : *model.mutable_graph()->mutable_initializer()) {
+    std::vector<MLFloat16> weights(static_cast<size_t>(kExperts * kWidth * kWidth), MLFloat16(0.f));
+    for (int64_t expert = 0; expert < kExperts; ++expert) {
+      for (int64_t column = 0; column < kWidth; ++column) {
+        weights[static_cast<size_t>(expert * kWidth * kWidth + column * kWidth + column)] =
+            MLFloat16(tensor.name() == "w1" ? static_cast<float>(expert + 1) : 1.f);
+      }
+    }
+    const size_t bytes = weights.size() * sizeof(MLFloat16);
+    ASSERT_EQ(fwrite(weights.data(), 1, bytes, file), bytes);
+    tensor.clear_raw_data();
+    tensor.set_data_location(TensorProto_DataLocation_EXTERNAL);
+    for (const auto& [key, value] : {
+             std::pair{std::string{"location"}, ToUTF8String(path)},
+             std::pair{std::string{"offset"}, std::to_string(offset)},
+             std::pair{std::string{"length"}, std::to_string(bytes)}}) {
+      auto* entry = tensor.add_external_data();
+      entry->set_key(key);
+      entry->set_value(value);
+    }
+    offset += bytes;
+  }
+  ASSERT_EQ(fclose(file), 0);
+  const auto serialized = model.SerializeAsString();
+  for (size_t readers : {size_t{0}, size_t{4}}) {
+    SCOPED_TRACE(readers);
+    OrtCUDAProviderOptionsV2 cuda_options{};
+    cuda_options.external_data_loader_reading_threads = readers;
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Default;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "3"));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "0"));
+    InferenceSessionWrapper session(options, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(CudaExecutionProviderWithOptions(&cuda_options)));
+    ASSERT_STATUS_OK(session.Load(serialized.data(), static_cast<int>(serialized.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    std::vector<OrtValue> outputs;
+    ASSERT_STATUS_OK(ExecuteCountingModel(session, outputs));
+    ASSERT_EQ(outputs.size(), 1U);
+    const auto result = outputs[0].Get<Tensor>().DataAsSpan<MLFloat16>();
+    for (int64_t row = 0; row < 3; ++row) {
+      for (int64_t column = 0; column < kWidth; ++column) {
+        EXPECT_NEAR(result[static_cast<size_t>(row * kWidth + column)].ToFloat(), row == 2 ? 9.f : 1.f, 0.01f);
+      }
+    }
   }
 }
 

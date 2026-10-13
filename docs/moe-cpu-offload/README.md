@@ -288,6 +288,14 @@ Session initialization uses the constant-weight prepacking path to materialize t
 respective compact stores. Constant FC1/FC2 weights and any connected biases, enabled prepacking, and a statically known
 hidden dimension are required. With CPU offload disabled, the existing dynamic-weight CUDA path is unchanged.
 
+Prepacking retains the initializer's shared owner rather than copying every expert into a CPU vector. For external
+weights, this preserves a file-backed mapping without materializing the complete model on CPU. Each node's selected
+CUDA experts are gathered directly into their compact CUDA store through the existing external-data loader's two
+64 MiB pinned upload buffers. Only the CPU subset is converted into CPU GEMM layout, and the original initializer is
+released when that node's stores are ready. Disabling the CUDA external-data loader retains synchronous per-expert
+uploads without restoring a complete CPU staging copy. Inline or user-supplied weights keep their existing owner until
+initialization completes; this does not remove memory already occupied by the supplied model.
+
 When `session.moe_cpu_offload_experts` is `0` or absent, CPU and CUDA `MoE`/`QMoE` behavior remains unchanged.
 
 ## State ownership and concurrency
@@ -494,7 +502,25 @@ in-grid result, 19.270 ms/token, but has only one run; epsilon 0.5 averages 20.2
 do not demonstrate a stable 10 ms/token gain and are not a controlled comparison against a rebuilt pre-optimization
 baseline. The session defaults are unchanged.
 
-Increasing CPU residency saves GPU memory but raises latency sharply at the largest counts. Initialization/prepacking
-dominates the roughly 61 GiB CPU RSS peaks; at the 1,000-expert reference, post-load CPU RSS is about 6.51 GiB. Peak
-RSS is not the live compact expert-weight footprint. These measurements are not a model-quality evaluation, nor a
-guarantee for other GPUs or NUMA placement.
+Increasing CPU residency saves GPU memory but raises latency sharply at the largest counts. These tables were collected
+before the bounded-initialization update, when prepacking temporarily copied all expert weights to CPU and produced
+roughly 61 GiB CPU RSS peaks. They do not describe the updated initialization path. At the 1,000-expert reference,
+post-load CPU RSS was about 6.51 GiB. Peak RSS is not the live compact expert-weight footprint.
+These measurements are not a model-quality evaluation, nor a guarantee for other GPUs or NUMA placement.
+
+#### Bounded-initialization memory check
+
+A scaled external-weight reproducer contains 40 MoE nodes with 256 experts each, width 256, and 2.5 GiB of FP16
+weights. Each measurement initializes the same model in a fresh native C API process, with CPU EP fallback disabled
+and adaptive swaps disabled. These are single-run initialization measurements, not inference benchmarks.
+
+| Initialization path | CPU experts | Peak CPU RSS (GiB) | CPU RSS after load (GiB) | Initialization (seconds) |
+|---|---|---|---|---|
+| Before bounded initialization | 1 | 2.88504 | 0.358517 | 3.28443 |
+| Bounded initialization | 1 | 0.516357 | 0.361359 | 3.22083 |
+| Bounded initialization | 1000 | 0.758240 | 0.605530 | 3.64408 |
+
+The matched one-expert measurement reduces peak CPU RSS by about 82%, without changing the live CPU expert footprint.
+Mapped source pages, compact CPU weights, upload buffers, and runtime allocations still contribute to RSS; the two
+64 MiB buffers are not an absolute bound on process memory. The original 35B model's peak has not been remeasured
+after this change because insufficient free GPU memory was available.

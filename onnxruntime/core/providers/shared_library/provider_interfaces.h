@@ -1230,6 +1230,7 @@ struct ProviderHost {
   virtual const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept = 0;
   virtual const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) = 0;
   virtual bool OpKernelInfo__TryGetConstantInput(const OpKernelInfo* p, int input_index, const Tensor** constant_input_value) = 0;
+  virtual bool OpKernelInfo__TryGetConstantInputOrtValue(const OpKernelInfo* p, int input_index, const OrtValue** constant_input_value) = 0;
 
   virtual uint32_t OpKernelInfo__GetInputCount(const OpKernelInfo* p) = 0;
   virtual uint32_t OpKernelInfo__GetOutputCount(const OpKernelInfo* p) = 0;

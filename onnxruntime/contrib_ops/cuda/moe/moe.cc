@@ -10,6 +10,7 @@
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
 #include "contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
 #include "core/framework/kernel_pilot.h"
+#include "core/providers/cuda/cuda_external_data_loader.h"
 #endif
 #include "contrib_ops/cuda/moe/moe_kernels.h"
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
@@ -260,12 +261,14 @@ Status MoE<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
 
   ORT_RETURN_IF_NOT(packed.bytes % sizeof(T) == 0,
                     "FP16/BF16 MoE input ", input_idx, " has an invalid byte size.");
-  packed.cpu_data.resize(packed.bytes / sizeof(T));
-  if (tensor.Location().device.Type() == OrtDevice::CPU) {
-    std::memcpy(packed.cpu_data.data(), tensor.DataRaw(), packed.bytes);
-  } else {
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(packed.cpu_data.data(), tensor.DataRaw(), packed.bytes, cudaMemcpyDeviceToHost));
-  }
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  const OrtValue* initializer = nullptr;
+  ORT_RETURN_IF_NOT(tensor.Location().device.Type() == OrtDevice::CPU &&
+                        Info().TryGetConstantInput(input_idx, &initializer) && initializer != nullptr,
+                    "MoE CPU offload requires a CPU constant initializer for input ", input_idx, ".");
+  // Retain the mmap/initializer owner, not a complete CPU weight copy.
+  packed.initializer = *initializer;
+#endif
 
   is_packed = true;
   return Status::OK();
@@ -629,6 +632,8 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
     }
   }
 
+  const auto* provider = static_cast<const CUDAExecutionProvider*>(Info().GetExecutionProvider());
+  auto loader = provider->GetExternalDataLoader();
   for (int input_idx : {2, 3, 4, 5}) {
     auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
     if (!packed.present) {
@@ -643,26 +648,28 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
     packed.swap_offset = swap_staging_bytes_;
     swap_staging_bytes_ = SafeInt<size_t>(swap_staging_bytes_) + expert_bytes;
     const size_t cuda_bytes = SafeInt<size_t>(cuda_experts_.size()) * expert_bytes;
-    if (cuda_bytes == 0) {
-      continue;
-    }
-    packed.cuda_data = IAllocator::MakeUniquePtr<void>(cuda_allocator_, cuda_bytes, true);
-    ORT_RETURN_IF_NOT(packed.cuda_data, "Failed to allocate CUDA storage for MoE input ", input_idx, ".");
-    for (size_t index = 0; index < cuda_experts_.size(); ++index) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(
-          static_cast<char*>(packed.cuda_data.get()) + index * expert_bytes,
-          reinterpret_cast<const char*>(packed.cpu_data.data()) +
-              static_cast<size_t>(cuda_experts_[index]) * expert_bytes,
-          expert_bytes, cudaMemcpyHostToDevice));
-    }
-  }
-
-  for (int input_idx : {2, 3, 4, 5}) {
-    auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
-    if (!packed.present) {
-      continue;
+    const auto& source = packed.initializer.template Get<Tensor>();
+    if (cuda_bytes > 0) {
+      packed.cuda_data = IAllocator::MakeUniquePtr<void>(cuda_allocator_, cuda_bytes, true);
+      ORT_RETURN_IF_NOT(packed.cuda_data, "Failed to allocate CUDA storage for MoE input ", input_idx, ".");
+      if (loader) {
+        TensorShape compact_shape = packed.shape;
+        compact_shape[0] = static_cast<int64_t>(cuda_experts_.size());
+        auto compact = Tensor::Create(source.DataType(), compact_shape, packed.cuda_data.get(), cuda_allocator_->Info());
+        ORT_RETURN_IF_ERROR(static_cast<const onnxruntime::cuda::ExternalDataLoader*>(loader.get())
+                                ->LoadTensorFromHost(source, cuda_experts_, *compact));
+      } else {
+        for (size_t index = 0; index < cuda_experts_.size(); ++index) {
+          CUDA_RETURN_IF_ERROR(cudaMemcpy(
+              static_cast<char*>(packed.cuda_data.get()) + index * expert_bytes,
+              static_cast<const char*>(source.DataRaw()) +
+                  static_cast<size_t>(cuda_experts_[index]) * expert_bytes,
+              expert_bytes, cudaMemcpyHostToDevice));
+        }
+      }
     }
     const size_t expert_element_count = packed.expert_bytes / sizeof(T);
+    const T* source_data = source.template Data<T>();
     if (input_idx == 2 || input_idx == 4) {
       const size_t output_size = static_cast<size_t>(
           logical_output_sizes[static_cast<size_t>(input_idx)]);
@@ -679,7 +686,7 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
         packed.cpu_gemm_data.resize(cpu_experts_.size() * expert_element_count);
         for (size_t cpu_slot = 0; cpu_slot < cpu_experts_.size(); ++cpu_slot) {
           const size_t expert = static_cast<size_t>(cpu_experts_[cpu_slot]);
-          const T* source = packed.cpu_data.data() + expert * expert_element_count;
+          const T* source = source_data + expert * expert_element_count;
           T* destination = packed.cpu_gemm_data.data() + cpu_slot * expert_element_count;
           for (size_t output = 0; output < output_size; ++output) {
             for (size_t input = 0; input < input_size; ++input) {
@@ -691,7 +698,7 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
         packed.cpu_gemm_float_data.resize(cpu_experts_.size() * expert_element_count);
         for (size_t cpu_slot = 0; cpu_slot < cpu_experts_.size(); ++cpu_slot) {
           const size_t expert = static_cast<size_t>(cpu_experts_[cpu_slot]);
-          const T* source = packed.cpu_data.data() + expert * expert_element_count;
+          const T* source = source_data + expert * expert_element_count;
           float* destination = packed.cpu_gemm_float_data.data() + cpu_slot * expert_element_count;
           for (size_t output = 0; output < output_size; ++output) {
             for (size_t input = 0; input < input_size; ++input) {
@@ -700,17 +707,17 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
           }
         }
       }
-      std::vector<T>{}.swap(packed.cpu_data);
     } else {
       std::vector<T> compact_cpu_data(cpu_experts_.size() * expert_element_count);
       for (size_t cpu_slot = 0; cpu_slot < cpu_experts_.size(); ++cpu_slot) {
         const size_t expert = static_cast<size_t>(cpu_experts_[cpu_slot]);
-        std::copy_n(packed.cpu_data.data() + expert * expert_element_count,
+        std::copy_n(source_data + expert * expert_element_count,
                     expert_element_count,
                     compact_cpu_data.data() + cpu_slot * expert_element_count);
       }
       packed.cpu_data.swap(compact_cpu_data);
     }
+    packed.initializer = OrtValue{};
   }
 
   if (!cuda_experts_.empty()) {
@@ -1045,14 +1052,13 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   onnxruntime::llm::kernels::cutlass_kernels::MOEParallelismConfig parallelism_config{};
   const int cuda_runner_num_experts = static_cast<int>(cuda_experts_.size());
   const bool run_cuda_experts = !cpu_offload_enabled_ || cuda_runner_num_experts > 0;
+  bool compute_cpu_output = false;
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   const bool run_cpu_experts =
       cpu_offload_enabled_ && cuda_runner_num_experts < static_cast<int>(moe_params.num_experts);
-  bool compute_cpu_output = false;
-  bool async_cpu = false;
-#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  async_cpu = run_cpu_experts && async_cpu_supported_;
-#endif
+  const bool async_cpu = run_cpu_experts && async_cpu_supported_;
   const bool synchronous_cpu = run_cpu_experts && !async_cpu;
+#endif
   const int workspace_num_experts =
       cpu_offload_enabled_
           ? std::max(static_cast<int>(k_), cuda_runner_num_experts)

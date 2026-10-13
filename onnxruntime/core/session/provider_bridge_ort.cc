@@ -1700,6 +1700,7 @@ struct ProviderHostImpl : ProviderHost {
   const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept override { return p->GetDataTransferManager(); }
   const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) override { return p->GetKernelDef(); }
   bool OpKernelInfo__TryGetConstantInput(const OpKernelInfo* p, int input_index, const Tensor** constant_input_value) override { return p->TryGetConstantInput(input_index, constant_input_value); }
+  bool OpKernelInfo__TryGetConstantInputOrtValue(const OpKernelInfo* p, int input_index, const OrtValue** constant_input_value) override { return p->TryGetConstantInput(input_index, constant_input_value); }
 
   uint32_t OpKernelInfo__GetInputCount(const OpKernelInfo* p) override { return p->GetInputCount(); }
   uint32_t OpKernelInfo__GetOutputCount(const OpKernelInfo* p) override { return p->GetOutputCount(); }

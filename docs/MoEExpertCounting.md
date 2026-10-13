@@ -149,10 +149,13 @@ memory. All-zero counters distribute slots round-robin across eligible nodes; in
 descending value with deterministic ties. The offload count is global and must not exceed the number of experts in
 eligible CUDA nodes. The default is `0`, which disables CPU offloading.
 
-For nodes with CPU experts, the runtime keeps disjoint compact weight stores: CPU-resident experts have GEMM-layout
-weights on CPU, while CUDA-resident experts have CUTLASS-layout weights on CUDA. The temporary original host copy is
-released after the stores are initialized; there is no permanent CPU copy of every CUDA-resident expert in these
-nodes. All-CUDA nodes retain their original host weight representation.
+With CPU offload enabled, eligible nodes use disjoint compact weight stores: CPU-resident experts have GEMM-layout
+weights on CPU, while CUDA-resident experts have CUTLASS-layout weights on CUDA. Initialization retains ownership of
+the original initializers without copying their complete contents into per-kernel CPU vectors. External expert weights
+remain file-backed mappings until their node is initialized. The CUDA external-data loader gathers the selected CUDA
+experts through its two reusable 64 MiB pinned buffers; only CPU-resident experts are materialized in CPU GEMM layout.
+Each original initializer is released after its compact stores are ready, including for nodes with no CPU experts.
+There is no permanent CPU copy of every CUDA-resident expert and no complete model-sized CPU staging copy.
 
 During inference, CUDA experts run through the existing CUTLASS MoE path. CPU-resident FP16 experts use MLAS FP16
 GEMMs; CPU-resident BF16 experts use FP32 GEMM-layout weights and MLAS FP32 GEMMs.

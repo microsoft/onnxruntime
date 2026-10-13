@@ -8,6 +8,9 @@
 #include "core/common/common.h"
 #include "core/framework/kernel_pilot_moe_expert_cache.h"
 #include "core/framework/kernel_pilot_moe_expert_usage.h"
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/ort_value.h"
+#endif
 #include "core/providers/cuda/cuda_kernel.h"
 
 #include <array>
@@ -48,6 +51,9 @@ class MoE final : public CudaKernel, public MoEBase
 
   struct PackedTensor {
     TensorShape shape;
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    OrtValue initializer;
+#endif
     std::vector<T> cpu_data;
     std::vector<T> cpu_gemm_data;
     std::vector<float> cpu_gemm_float_data;

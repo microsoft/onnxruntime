@@ -221,6 +221,42 @@ TEST(CudaExternalDataLoaderTest, ReusesAlternatingBuffersAcrossRepeatedLoads) {
   VerifyLoad(2 * cuda::kExternalDataLoaderBufferSize + 1, 2);
 }
 
+TEST(CudaExternalDataLoaderTest, GathersHostExpertsAcrossUploadBufferBoundaries) {
+  auto provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(provider, nullptr);
+  auto loader = provider->GetExternalDataLoader();
+  ASSERT_NE(loader, nullptr);
+  auto allocators = provider->CreatePreferredAllocators();
+  const auto allocator = std::find_if(allocators.begin(), allocators.end(), [](const AllocatorPtr& candidate) {
+    return candidate->Info().device.Type() == OrtDevice::GPU &&
+           candidate->Info().mem_type == OrtMemTypeDefault;
+  });
+  ASSERT_NE(allocator, allocators.end());
+  constexpr int64_t expert_bytes = 17 * 1024 * 1024 + 3;
+  const TensorShape shape{4, expert_bytes};
+  Tensor source(DataTypeImpl::GetType<uint8_t>(), shape,
+                TestCPUExecutionProvider()->CreatePreferredAllocators()[0]);
+  Tensor destination(DataTypeImpl::GetType<uint8_t>(), shape, *allocator);
+  auto* input = source.MutableData<uint8_t>();
+  for (size_t i = 0; i < source.SizeInBytes(); ++i) {
+    input[i] = TestValue(i / expert_bytes, i % expert_bytes);
+  }
+  for (const auto& experts : {std::array{3, 1, 0, 2}, std::array{2, 0, 3, 1}}) {
+    ASSERT_STATUS_OK(LoadCudaExpertsFromHostForTest(loader.get(), &source, experts, &destination));
+    std::vector<uint8_t> output(destination.SizeInBytes());
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(output.data(), destination.DataRaw(), output.size(), cudaMemcpyDeviceToHost));
+    for (size_t i = 0; i < output.size(); ++i) {
+      ASSERT_EQ(output[i], TestValue(experts[i / expert_bytes], i % expert_bytes)) << "Byte " << i;
+    }
+  }
+  for (const auto& experts : {std::array{-1, 1, 0, 2}, std::array{4, 1, 0, 2}}) {
+    EXPECT_FALSE(LoadCudaExpertsFromHostForTest(loader.get(), &source, experts, &destination).IsOK());
+  }
+  const std::array<int, 1> one_expert{0};
+  EXPECT_FALSE(LoadCudaExpertsFromHostForTest(loader.get(), &source, one_expert, &destination).IsOK());
+  EXPECT_FALSE(LoadCudaExpertsFromHostForTest(loader.get(), &destination, one_expert, &destination).IsOK());
+}
+
 cudaError_t FailPinnedBufferAllocation(void**, size_t) {
   return cudaErrorMemoryAllocation;
 }
