@@ -1601,13 +1601,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::STRING,
               std::string("int"))
         .Attr("weights_prepacked",
-            "Expert-weight layout selector with quantization-specific meanings. For quant_type='int', "
-            "-1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. "
-            "0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. "
-            "For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; "
-            "1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. "
-            "NVFP4 block scales and global scales retain their original layouts and values. "
-            "Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.",
+              "Expert-weight layout selector with quantization-specific meanings. For quant_type='int', "
+              "-1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. "
+              "0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. "
+              "For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; "
+              "1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. "
+              "NVFP4 block scales and global scales retain their original layouts and values. "
+              "Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))
         .Input(0,
