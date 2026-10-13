@@ -27,6 +27,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/buffer_manager.h"
+#include "core/providers/webgpu/program_cache_key.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
@@ -371,15 +372,17 @@ Status StartPipelineCallbackTestBuild(webgpu::WebGpuContext& context, webgpu::Pe
                                       bool invalid_shader) {
   PipelineCallbackTestProgram program;
   program.SetWorkgroupSize(1);
+  program.CacheHint(invalid_shader);
   auto metadata = program.Metadata();
   const webgpu::ProgramConstant invalid_constant{"invalid identifier", uint32_t{0}};
   if (invalid_shader) {
     metadata.constants = {&invalid_constant, 1};
   }
   webgpu::ProgramManager manager{context};
+  const auto program_key = webgpu::CalculateProgramCacheKey(program, {}, {});
   build.name = program.Name();
   build.callback_context = std::make_shared<webgpu::PipelineCallbackContext>();
-  return manager.Build(program, metadata, {}, {}, program.Name(), 1, 1, 1,
+  return manager.Build(program, metadata, {}, {}, program_key, 1, 1, 1,
                        build.bind_group_layout, build.shape_uniform_ranks, build.future, build.callback_context);
 }
 
