@@ -18,6 +18,8 @@
 # SM-agnostic; the tests require SM80+ / CUDA / an ENABLE_FP4 + USE_FP4_QMOE build.
 # --------------------------------------------------------------------------
 
+import base64
+import json
 import os
 import subprocess
 import sys
@@ -1055,6 +1057,77 @@ class TestQMoENVFP4(unittest.TestCase):
             offline_prepacked=True,
             enable_cuda_graph=True,
         )
+
+    # Decode GEMV parity cases (row-major weights_prepacked=1, fused SwiGLU FC1) as (uses decode kernel, shape).
+    # The first three are the Qwen3.8 shapes (FC1 N=1280 K=2560 -> 8 K lanes, FC2 N=2560 K=640 -> 4 K lanes) at
+    # 10/20/60 expanded rows. The fourth has a partial last K tile (98 and 34 blocks); the last has K % 32 != 0,
+    # which the decode kernel declines in favor of the KPacked kernel.
+    _DECODE_GEMV_CASES = (
+        (True, dict(hidden_size=2560, inter_size=640, num_experts=16, top_k=10, num_tokens=1, use_bias=False)),
+        (True, dict(hidden_size=2560, inter_size=640, num_experts=16, top_k=10, num_tokens=2, use_bias=True)),
+        (True, dict(hidden_size=2560, inter_size=640, num_experts=16, top_k=10, num_tokens=6, use_bias=False)),
+        (True, dict(hidden_size=1568, inter_size=544, num_experts=12, top_k=6, num_tokens=1, use_bias=True)),
+        (False, dict(hidden_size=528, inter_size=656, num_experts=16, top_k=10, num_tokens=6, use_bias=True)),
+    )
+
+    _DECODE_GEMV_OPTOUT_SCRIPT = """
+import base64, json, sys
+import torch
+from torch.profiler import ProfilerActivity, profile
+from test_qmoe_nvfp4_cuda import TestQMoENVFP4
+
+test = TestQMoENVFP4()
+onnx_dtype = int(sys.argv[1])
+for case in json.loads(sys.argv[2]):
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        out = test._run_nvfp4_moe_test(onnx_dtype=onnx_dtype, gemv_mode="1", offline_prepacked=True, **case)
+    names = sorted({e.name for e in prof.events() if "MoeGemvFp4" in e.name})
+    payload = base64.b64encode(out.view(torch.int16).cpu().numpy().tobytes()).decode()
+    print("DECODE_GEMV_RESULT", json.dumps(names), payload, sep="\\t", flush=True)
+"""
+
+    @parameterized.expand([(TensorProto.FLOAT16,), (TensorProto.BFLOAT16,)])
+    def test_nvfp4_offline_row_major_decode_gemv_bit_exact(self, onnx_dtype):
+        # The decode GEMV reproduces MoeGemvFp4RawKPackedKernel's summation order, so the QMoE output must be
+        # bit-identical with ORT_FP4_GEMV_DECODE_KERNEL=0. The knob is latched in a function-local static, so
+        # the opt-out run happens in a fresh process; every run has also been checked against the PyTorch
+        # reference by _run_nvfp4_moe_test.
+        self._skip_if_no_fp4()
+        cases = [{"use_swiglu": True, "input_scale": 0.1, **case} for _, case in self._DECODE_GEMV_CASES]
+        env = dict(os.environ)
+        env["ORT_FP4_GEMV_DECODE_KERNEL"] = "0"
+        env.pop("ORT_NVFP4_FC1_EXPERT_REUSE", None)
+        proc = subprocess.run(
+            [sys.executable, "-c", self._DECODE_GEMV_OPTOUT_SCRIPT, str(int(onnx_dtype)), json.dumps(cases)],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, f"ORT_FP4_GEMV_DECODE_KERNEL=0 run failed:\n{proc.stdout}\n{proc.stderr}")
+        optout = [line.split("\t")[1:] for line in proc.stdout.splitlines() if line.startswith("DECODE_GEMV_RESULT\t")]
+        self.assertEqual(len(optout), len(cases))
+
+        from torch.profiler import ProfilerActivity, profile  # noqa: PLC0415
+
+        for (uses_decode, _), case, (optout_kernels, payload) in zip(
+            self._DECODE_GEMV_CASES, cases, optout, strict=True
+        ):
+            with profile(activities=[ProfilerActivity.CUDA]) as prof:
+                decode = self._run_nvfp4_moe_test(onnx_dtype=onnx_dtype, gemv_mode="1", offline_prepacked=True, **case)
+            kernels = {event.name for event in prof.events() if "MoeGemvFp4" in event.name}
+            self.assertTrue(any("MoeGemvFp4RawKPackedKernel" in name for name in json.loads(optout_kernels)), case)
+            self.assertFalse(any("MoeGemvFp4DecodeKernel" in name for name in json.loads(optout_kernels)), case)
+            if kernels:  # kernel events are only available when CUPTI works in this environment
+                self.assertEqual(
+                    any("MoeGemvFp4DecodeKernel" in name for name in kernels), uses_decode, (case, kernels)
+                )
+            expected = torch.frombuffer(bytearray(base64.b64decode(payload)), dtype=torch.int16).reshape(decode.shape)
+            self.assertTrue(
+                torch.equal(decode.view(torch.int16).cpu(), expected),
+                f"decode GEMV output differs bitwise from the KPacked kernel for {case}",
+            )
 
     def test_nvfp4_fp16_prepacking_disabled_uses_raw_fallback(self):
         self._run_nvfp4_moe_test(

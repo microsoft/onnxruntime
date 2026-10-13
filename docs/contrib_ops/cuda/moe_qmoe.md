@@ -830,6 +830,7 @@ debug switches.
 | `ORT_ENABLE_FP4_GEMV` | on | Fused MXFP4 GEMV decode kernel. Set to `0` to force the dequant-to-dense fallback (debugging/bisecting). Active in the SM80+ fallback regime, and as the decode arm when native CUTLASS prefill is enabled. |
 | `ORT_FP4_GEMV_AUTOTUNE` | `0` | Opt-in per-shape autotune of the GEMV CtaN/Threads tiling. Enabling it synchronizes the first uncached inference for each shape. |
 | `ORT_FP4_GEMV_AUTOTUNE_LOG` | `0` | Set to `1` to log the chosen GEMV configs per shape. |
+| `ORT_FP4_GEMV_DECODE_KERNEL` | `1` | NVFP4 offline K-packed (`weights_prepacked=1`) decode GEMV. Set to `0` to force `MoeGemvFp4RawKPackedKernel`; outputs are bit-identical either way. Read once per process. See [§9b.2](#9b2-fused-gemv-decode-group-16). |
 | `ORT_FP4_GEMV_INTERLEAVED` | `0` | **Experimental, opt-in.** Routes the MXFP4 decode GEMV through the `ColumnMajorInterleaved` weight layout (`kInterleave=4`, `kStepK=32`) with dtype-conditional accumulation. fp16 gets faster decode; bf16 stays accuracy-safe. Default off keeps the shipping `ColumnMajor` path byte-for-byte unchanged. See [§9.10](#910-interleaved-gemv-layout--dtype-conditional-accumulation). |
 | `ORT_FP4_GEMV_INTERLEAVED_HALFACC` | `0` | **Override.** When `ORT_FP4_GEMV_INTERLEAVED=1`, forces 16-bit accumulation for *both* fp16 and bf16, overriding the dtype-conditional policy; regresses bf16 accuracy, so it is off by default. |
 | `ORT_FP4_SM80_GEMM` | `1` | Routes SM80+ (including SM120/SM121) FP4 prefill through the fused-dequant grouped GEMM. Set to `0` to force dense fallback for debugging or comparison. Decode routes through the fused MXFP4 GEMV, reading the *same* pre-packed buffer as prefill. In this regime the raw e2m1 initializers are released after `PrePack`. See [§9.11](#911-single-copy-sm80-weights-prefill--decode-share-one-buffer). |
@@ -1095,6 +1096,32 @@ compile-time template (`static_assert((CtaK/kInterleave) % GroupSize == 0)`). NV
   The fused expert-map prologue supports `top_k ∈ {1, 2, 4, 6, 8, 10}` and up to 1022 experts.
   Qwen Flash (`hidden=2560`, `inter=640`, `top_k=10`) qualifies for one through six tokens
   with legacy storage, or one through eight tokens with offline K-packed storage.
+
+#### Decode kernel for offline K-packed storage
+
+For `weights_prepacked=1` (row-major `[E, N, K/2]`) the GEMV launcher first tries
+`MoeGemvFp4DecodeKernel` ([moe_gemv_fp4.cu](onnxruntime/contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.cu)),
+a decode-specialised replacement for `MoeGemvFp4RawKPackedKernel`. Each thread owns two adjacent
+output columns and the K-lane pair `(2j, 2j + 1)`, so one 128-bit load covers two 16-element blocks;
+several K tiles are kept in flight, FP4 is decoded in registers (table-free for scales below 4), and
+the activation row is staged once per CTA in shared memory as FP32.
+
+The kernel is **bit-identical** to `MoeGemvFp4RawKPackedKernel`: it keeps the same K-lane count
+(`KLanes = 4` for `K <= 1024`, else `8`), the same lane assignment (`lane = block % KLanes`), the same
+separate even/odd FP32 accumulators per lane, and the same `acc_even + acc_odd` followed by an xor tree
+over `KLanes / 2 .. 1`, so outputs do not depend on which of the two kernels runs. It is used for FP16 and
+BF16 on SM90+ when `K % 32 == 0`, `K <= 8192`, `N` is even, the weight/scale/activation pointers are
+16/2/16-byte aligned, and at most 80 expanded rows are processed; other shapes use
+`MoeGemvFp4RawKPackedKernel`. It steps aside when `ORT_NVFP4_FC1_EXPERT_REUSE=1` selects the two-row reuse
+kernel. Set `ORT_FP4_GEMV_DECODE_KERNEL=0` before the first GEMV invocation (the value is latched once) to
+force `MoeGemvFp4RawKPackedKernel`.
+
+On H200 (BF16, 10 expanded rows, 512-expert L2-cold layout, CUDA-graph average) the Qwen3.8 FC1
+(`N=1280`, `K=2560`, fused SwiGLU) and FC2 (`N=2560`, `K=640`) launches take 12.1 and 7.5 us instead of
+18.5 and 10.3 us. The table-free decode requires every block scale to stay below 4
+(`|global_scale| * 448 < 3.98`, true for real NVFP4 checkpoints: Qwen3.8 has at most 0.09). An expert with
+larger scales takes a generic `Fp4I2FConverter` decode that is bit-identical but about 30% slower than
+`MoeGemvFp4RawKPackedKernel`; set `ORT_FP4_GEMV_DECODE_KERNEL=0` for such a checkpoint.
 
 #### Raw-layout memory option
 
