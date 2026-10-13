@@ -306,6 +306,16 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Returns the device type associated with this memory info.
+        /// </summary>
+        /// <returns>The device type associated with this memory info.</returns>
+        public OrtMemoryInfoDeviceType GetDeviceType()
+        {
+            NativeMethods.OrtMemoryInfoGetDeviceType(handle, out OrtMemoryInfoDeviceType deviceType);
+            return deviceType;
+        }
+
+        /// <summary>
         /// Fetches vendor ID
         /// </summary>
         /// <returns>uint32_t</returns>

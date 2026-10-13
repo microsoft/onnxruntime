@@ -917,6 +917,40 @@ TEST(TransposeOpTest, SixDim) {
                 {kQnnExecutionProvider}, {7, 21});  // Error: Failed to finalize QNN graph.
 }
 
+TEST(TransposeOpTest, AdjacentAxisGroups) {
+  auto run = [](auto value) {
+    using T = decltype(value);
+    for (bool batched : {false, true}) {
+      const int64_t batches = batched ? 2 : 1;
+      std::vector<int64_t> shape{2, 3, 3, 5}, perm{2, 3, 0, 1}, output_shape{3, 5, 2, 3};
+      if (batched) {
+        shape.insert(shape.begin(), batches);
+        output_shape.insert(output_shape.begin(), batches);
+        perm = {0, 3, 4, 1, 2};
+      }
+      std::vector<T> input(batches * 90), expected(input.size());
+      for (size_t i = 0; i < input.size(); ++i) input[i] = T(static_cast<float>(i));
+      for (int64_t n = 0; n < batches; ++n) {
+        for (int64_t row = 0; row < 6; ++row) {
+          for (int64_t col = 0; col < 15; ++col) {
+            expected[(n * 15 + col) * 6 + row] = input[(n * 6 + row) * 15 + col];
+          }
+        }
+      }
+      OpTester test("Transpose", 13);
+      test.AddAttribute("perm", perm);
+      test.AddInput<T>("X", shape, input);
+      test.AddOutput<T>("Y", output_shape, expected);
+      std::vector<std::unique_ptr<IExecutionProvider>> providers;
+      providers.push_back(DefaultCpuExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+    }
+  };
+  run(uint8_t{});
+  run(MLFloat16{});
+  run(float{});
+}
+
 template <typename T>
 static void NumericNCHW2NHWC() {
   std::vector<int64_t> input_shape({1, 3, 2, 2});

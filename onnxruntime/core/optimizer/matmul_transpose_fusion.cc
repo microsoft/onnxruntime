@@ -139,6 +139,10 @@ static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
                                      std::deque<onnxruntime::NodeIndex>& removed_nodes,
                                      bool& is_trans, bool& is_trans_batch) {
   ORT_ENFORCE(cast != nullptr);
+  if (graph.NodeProducesGraphOutput(*cast)) {
+    return nullptr;
+  }
+
   auto transpose = GetTransposeNodeFromOutput(graph, *cast->MutableInputDefs()[0], is_trans, is_trans_batch);
   if (transpose == nullptr) {
     return nullptr;

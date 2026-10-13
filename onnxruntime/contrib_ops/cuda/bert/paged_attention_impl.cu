@@ -1415,7 +1415,8 @@ Status LaunchPagedLatentAttention(const T* query, const TCACHE* key_cache, const
 template <typename T, typename TCACHE>
 Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParameters& parameters,
                             PagedAttentionData<T, TCACHE>& data, const int max_threads_per_block,
-                            T** query_out) {
+                            T** query_out, T** key_out = nullptr, T** value_out = nullptr,
+                            int* key_stride_out = nullptr, int* value_stride_out = nullptr) {
   const int batch_size = parameters.batch_size;
   const int token_count = parameters.token_count;
   const int q_hidden_size = parameters.hidden_size;
@@ -1490,6 +1491,12 @@ Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParamete
   }
 
   *query_out = query;
+  if (key_out != nullptr) {
+    *key_out = key;
+    *value_out = value;
+    *key_stride_out = key_stride;
+    *value_stride_out = value_stride;
+  }
   return Status::OK();
 }
 
@@ -1859,8 +1866,7 @@ Status CudnnPagedAttention(
     const cudaDeviceProp& device_prop,
     Stream* ort_stream,
     contrib::PagedAttentionParameters& parameters,
-    PagedAttentionData<T, TCACHE>& data,
-    float scale) {
+    PagedAttentionData<T, TCACHE>& data) {
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
 
@@ -1878,6 +1884,7 @@ Status CudnnPagedAttention(
       parameters.batch_size, stream));
 
   cudnnHandle_t cudnn_handle = static_cast<cudnnHandle_t>(data.cudnn_handle);
+  bool cache_hit = false;
   const bool ok = onnxruntime::cudnn_sdpa::run_paged(
       /*output=*/reinterpret_cast<void*>(data.output),
       /*q=*/reinterpret_cast<void*>(query),
@@ -1893,11 +1900,15 @@ Status CudnnPagedAttention(
       parameters.num_blocks,
       parameters.block_size,
       parameters.max_num_blocks_per_seq,
-      scale,
+      data.cudnn_scale,
       std::is_same<T, BFloat16>::value,
       cudnn_handle,
       ort_stream,
-      data.cudnn_allocator);
+      data.cudnn_allocator,
+      &cache_hit);
+  if (data.cudnn_debug_info) {
+    printf("Operator=PagedAttention CudnnPagedGraphCacheHit=%d\n", cache_hit ? 1 : 0);
+  }
   if (!ok) {
     // The cuDNN paged graph was not available at dispatch time. PagedAttention runs a
     // try_build_paged_graph probe before selecting this backend, so a false here means either the
@@ -2090,6 +2101,22 @@ Status EfficientAttention(
 ////////// API Functions
 
 template <typename T, typename TCACHE>
+Status PreparePagedAttentionQueryAndCache(
+    const cudaDeviceProp& device_prop,
+    Stream* ort_stream,
+    contrib::PagedAttentionParameters& parameters,
+    PagedAttentionData<T, TCACHE>& data,
+    T** query,
+    T** key,
+    T** value,
+    int* key_stride,
+    int* value_stride) {
+  return PrepareQueryAndCache<T, TCACHE>(
+      static_cast<cudaStream_t>(ort_stream->GetHandle()), parameters, data,
+      device_prop.maxThreadsPerBlock, query, key, value, key_stride, value_stride);
+}
+
+template <typename T, typename TCACHE>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& /*cublas*/,
@@ -2111,7 +2138,7 @@ Status QkvToContext(
   }
 
   if (data.use_cudnn_paged) {
-    return CudnnPagedAttention(device_prop, ort_stream, parameters, data, scale);
+    return CudnnPagedAttention(device_prop, ort_stream, parameters, data);
   }
 
   if (data.use_paged_decode) {
@@ -2133,13 +2160,18 @@ Status QkvToContext(
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No PagedAttention kernel available for the current configuration.");
 }
 
-#define INSTANTIATE_PAGED_ATTENTION(T, TCACHE)       \
-  template struct PagedAttentionData<T, TCACHE>;     \
-  template Status QkvToContext<T, TCACHE>(           \
-      const cudaDeviceProp& device_prop,             \
-      cublasHandle_t& cublas,                        \
-      Stream* ort_stream,                            \
-      contrib::PagedAttentionParameters& parameters, \
+#define INSTANTIATE_PAGED_ATTENTION(T, TCACHE)                   \
+  template struct PagedAttentionData<T, TCACHE>;                 \
+  template Status PreparePagedAttentionQueryAndCache<T, TCACHE>( \
+      const cudaDeviceProp& device_prop, Stream* stream,         \
+      contrib::PagedAttentionParameters& parameters,             \
+      PagedAttentionData<T, TCACHE>& data, T** query, T** key,   \
+      T** value, int* key_stride, int* value_stride);            \
+  template Status QkvToContext<T, TCACHE>(                       \
+      const cudaDeviceProp& device_prop,                         \
+      cublasHandle_t& cublas,                                    \
+      Stream* ort_stream,                                        \
+      contrib::PagedAttentionParameters& parameters,             \
       PagedAttentionData<T, TCACHE>& data);
 
 INSTANTIATE_PAGED_ATTENTION(half, half)

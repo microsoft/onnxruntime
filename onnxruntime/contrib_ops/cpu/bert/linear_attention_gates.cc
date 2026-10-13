@@ -12,6 +12,8 @@
 namespace onnxruntime {
 namespace contrib {
 
+using namespace onnxruntime::contrib::linear_attention_gates_helper;
+
 #define REGISTER_KERNEL_TYPED(Op, T)                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
       Op,                                                              \

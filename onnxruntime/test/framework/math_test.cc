@@ -278,6 +278,131 @@ TEST(MathTest, Col2im2dLayouts) {
   }
 }
 
+TEST(MathTest, Col2imNdRowBounds) {
+  struct TestCase {
+    InlinedVector<int64_t> shape, kernel, stride, dilation, pads;
+  };
+  const TestCase cases[] = {
+      {{17}, {3}, {1}, {1}, {1, 1}},
+      {{2}, {5}, {3}, {1}, {4, 4}},
+      {{2, 3, 17}, {3, 2, 3}, {2, 1, 2}, {1, 2, 1}, {2, 1, 1, 2, 1, 1}},
+  };
+  auto& provider = CPUMathUtil::Instance();
+  for (const auto& c : cases) {
+    SCOPED_TRACE(testing::PrintToString(c.shape));
+    const auto rank = static_cast<ptrdiff_t>(c.shape.size());
+    InlinedVector<int64_t> blocks;
+    int64_t image_size = 2, channels_col = 2, block_size = 1;
+    for (ptrdiff_t d = 0; d < rank; ++d) {
+      const int64_t extent = c.dilation[d] * (c.kernel[d] - 1) + 1;
+      blocks.push_back((c.shape[d] + c.pads[d] + c.pads[d + rank] - extent) / c.stride[d] + 1);
+      image_size *= c.shape[d];
+      channels_col *= c.kernel[d];
+      block_size *= blocks.back();
+    }
+    InlinedVector<float> column(static_cast<size_t>(channels_col * block_size));
+    const float values[] = {16777216.0f, 1.0f, -16777216.0f, 0.25f, -0.25f};
+    for (size_t i = 0; i < column.size(); ++i) {
+      column[i] = values[i % std::size(values)];
+    }
+    InlinedVector<float> expected(static_cast<size_t>(image_size), 0.0f);
+    InlinedVector<float> actual(static_cast<size_t>(image_size) + 2, -12345.0f);
+    math::Im2col<float, StorageOrder::NCHW>()(
+        column.data(), c.shape.data(), blocks.data(), channels_col, c.kernel.data(),
+        c.stride.data(), c.dilation.data(), c.pads.data(), rank, expected.data(), true);
+    math::Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(
+        column.data(), c.shape.data(), blocks.data(), channels_col, image_size,
+        c.kernel.data(), c.stride.data(), c.dilation.data(), c.pads.data(), rank,
+        actual.data() + 1, &provider);
+    EXPECT_EQ(0, std::memcmp(expected.data(), actual.data() + 1, expected.size() * sizeof(float)));
+    EXPECT_EQ(actual.front(), -12345.0f);
+    EXPECT_EQ(actual.back(), -12345.0f);
+  }
+}
+
+TEST(MathTest, Im2colNdRows) {
+  const int64_t shape[] = {3, 3, 5}, blocks[] = {2, 2, 6}, kernel[] = {2, 2, 3};
+  const int64_t stride[] = {1, 2, 2}, dilation[] = {1, 1, 2}, pads[] = {0, 1, 5, 0, 1, 5};
+  auto check = [&](auto padding) {
+    using T = decltype(padding);
+    std::array<T, 90> image;
+    std::array<T, 576> expected;
+    std::array<T, 578> actual;
+    actual.fill(T(91));
+    for (size_t i = 0; i < image.size(); ++i) image[i] = static_cast<T>(i);
+    size_t index = 0;
+    for (int c = 0; c < 2; ++c)
+      for (int kz = 0; kz < 2; ++kz)
+        for (int ky = 0; ky < 2; ++ky)
+          for (int kx = 0; kx < 3; ++kx)
+            for (int z = 0; z < 2; ++z)
+              for (int y = 0; y < 2; ++y)
+                for (int x = 0; x < 6; ++x) {
+                  const int iy = 2 * y - 1 + ky, ix = 2 * x - 5 + 2 * kx;
+                  expected[index++] = iy >= 0 && iy < 3 && ix >= 0 && ix < 5
+                                          ? image[((c * 3 + z + kz) * 3 + iy) * 5 + ix]
+                                          : padding;
+                }
+    math::Im2col<T, StorageOrder::NCHW>()(
+        image.data(), shape, blocks, 24, kernel, stride, dilation, pads, 3, actual.data() + 1, false, padding);
+    EXPECT_EQ(0, std::memcmp(expected.data(), actual.data() + 1, sizeof(expected)));
+    EXPECT_EQ(actual.front(), T(91));
+    EXPECT_EQ(actual.back(), T(91));
+  };
+  check(-12345.0f);
+  check(int8_t{-113});
+  check(uint8_t{243});
+}
+
+TEST(MathTest, Im2colNdSpecialValues) {
+  const uint32_t bits[] = {0, 0x80000000, 1, 0x80000001, 0x7f7fffff, 0xff7fffff,
+                           0x7f800000, 0xff800000, 0x7fc00123, 0xffc00321, 0x7f800123};
+  float image[std::size(bits)];
+  std::memcpy(image, bits, sizeof(bits));
+  const int64_t shape[] = {11}, kernel[] = {3}, dilation[] = {1}, pads[] = {2, 2};
+  for (int64_t step : {1, 3}) {
+    SCOPED_TRACE(step);
+    const int64_t stride[] = {step}, blocks[] = {12 / step + 1};
+    InlinedVector<float> expected(static_cast<size_t>(3 * blocks[0]), 0.0f), actual(expected.size());
+    for (int64_t tap = 0; tap < 3; ++tap) {
+      for (int64_t x = 0; x < blocks[0]; ++x) {
+        const int64_t ix = x * step - 2 + tap;
+        if (ix >= 0 && ix < shape[0]) {
+          std::memcpy(&expected[tap * blocks[0] + x], &image[ix], sizeof(float));
+        }
+      }
+    }
+    math::Im2col<float, StorageOrder::NCHW>()(
+        image, shape, blocks, 3, kernel, stride, dilation, pads, 1, actual.data());
+    EXPECT_EQ(0, std::memcmp(expected.data(), actual.data(), expected.size() * sizeof(float)));
+  }
+}
+
+TEST(MathTest, Col2imNdSpecialValues) {
+  const int64_t blocks[] = {17}, kernel[] = {3}, one[] = {1}, pads[] = {1, 1};
+  const uint32_t bits[] = {0, 0x80000000, 1, 0x80000001, 0x7f7fffff, 0xff7fffff,
+                           0x7f800000, 0xff800000, 0x7fc00123, 0xffc00321, 0x7f800123};
+  for (int64_t step : {1, 3}) {
+    SCOPED_TRACE(step);
+    const int64_t width[] = {16 * step + 1}, stride[] = {step};
+    for (bool with_nan : {false, true}) {
+      SCOPED_TRACE(with_nan);
+      float column[51];
+      InlinedVector<float> expected(static_cast<size_t>(width[0]), 0.0f), actual(expected.size());
+      for (size_t i = 0; i < std::size(column); ++i) {
+        const uint32_t value = with_nan ? bits[i % std::size(bits)] : 0x7f800000;
+        std::memcpy(&column[i], &value, sizeof(float));
+      }
+      auto& provider = CPUMathUtil::Instance();
+      math::Im2col<float, StorageOrder::NCHW>()(
+          column, width, blocks, 3, kernel, stride, one, pads, 1, expected.data(), true);
+      math::Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(
+          column, width, blocks, 3, width[0], kernel, stride, one, pads, 1, actual.data(), &provider);
+      EXPECT_EQ(0, std::memcmp(expected.data(), actual.data(), expected.size() * sizeof(float)));
+    }
+  }
+}
+
 TEST(MathTest, Col2im2x2SpecialValues) {
   const float column[] = {-0.0f, 0.0f, std::numeric_limits<float>::infinity(),
                           -std::numeric_limits<float>::infinity(),

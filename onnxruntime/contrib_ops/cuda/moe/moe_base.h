@@ -15,6 +15,11 @@
 #include "contrib_ops/cpu/moe/moe_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/llm/moe_gemm/common.h"
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+#include <optional>
+#include "contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#endif
 #include <limits>
 
 #ifdef __GNUC__
@@ -28,6 +33,15 @@ namespace cuda {
 class MoEBase {
  protected:
   MoEBase(const OpKernelInfo& op_kernel_info, const cudaDeviceProp& device_prop) {
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    const auto& options = op_kernel_info.GetConfigOptions();
+    const bool enable_moe_expert_tracking =
+        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1" ||
+        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
+    if (enable_moe_expert_tracking) {
+      routing_snapshot_.emplace(op_kernel_info.GetAllocator(OrtMemTypeCPU));
+    }
+#endif
     ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_).IsOK());
 
     using onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
@@ -86,6 +100,10 @@ class MoEBase {
   float swiglu_limit_;  // Clamp limit for SwiGLU
   int64_t block_size_;
   int sm_;
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  // Constructed when counting or counter-update logging is enabled.
+  mutable std::optional<KernelPilotMoeExpertSelectionCuda> routing_snapshot_;
+#endif
 };
 
 }  // namespace cuda

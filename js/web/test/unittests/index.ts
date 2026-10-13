@@ -12,6 +12,9 @@ if (typeof window !== 'undefined') {
 }
 
 require('./backends/wasm/test-model-metadata');
+require('./backends/wasm/test-lora-adapter');
+
+require('./ep-context-data-read');
 
 require('./pool-output-shape');
 

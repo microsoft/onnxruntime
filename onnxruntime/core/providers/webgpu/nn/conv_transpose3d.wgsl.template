@@ -1,0 +1,115 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param has_bias
+#param is_channels_last
+#param is_prepacked
+#param components
+
+#use guardAgainstOutOfBoundsWorkgroupSizes getElementAt
+#use .rank .offsetToIndices .indicesGet .getByIndices .getByOffset .setByOffset
+
+#if components == 4
+alias Accumulator = vec4<f32>;
+#elif components == 2
+alias Accumulator = vec2<f32>;
+#else
+alias Accumulator = f32;
+#endif
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
+  let output_indices = output.offsetToIndices(global_idx);
+  let batch = output.indicesGet(output_indices, 0);
+#if is_channels_last
+  let output_channel = output.indicesGet(output_indices, 4);
+  let spatial_dim = 1u;
+#else
+  let output_channel = output.indicesGet(output_indices, 1);
+  let spatial_dim = 2u;
+#endif
+#if is_prepacked
+  let output_channels_per_group = getElementAt(uniforms.w_shape, 3, w.rank);
+  let kernel_shape = vec3<u32>(getElementAt(uniforms.w_shape, 0, w.rank),
+                               getElementAt(uniforms.w_shape, 1, w.rank),
+                               getElementAt(uniforms.w_shape, 2, w.rank));
+#else
+  let output_channels_per_group = getElementAt(uniforms.w_shape, 1, w.rank);
+  let kernel_shape = vec3<u32>(getElementAt(uniforms.w_shape, 2, w.rank),
+                               getElementAt(uniforms.w_shape, 3, w.rank),
+                               getElementAt(uniforms.w_shape, 4, w.rank));
+#endif
+  let group = output_channel / output_channels_per_group;
+  let w_channel = output_channel % output_channels_per_group;
+  let corner = vec3<i32>(
+      i32(output.indicesGet(output_indices, spatial_dim)),
+      i32(output.indicesGet(output_indices, spatial_dim + 1u)),
+      i32(output.indicesGet(output_indices, spatial_dim + 2u))) + vec3<i32>(uniforms.pads);
+  var value = Accumulator(0);
+
+  // Gather input positions using signed integer coordinates so padding and stride
+  // alignment remain exact even for float16 tensors with large spatial dimensions.
+  for (var kd = 0u; kd < kernel_shape.x; kd++) {
+    let pos_d = corner.x - i32(kd) * i32(uniforms.dilations.x);
+    if (pos_d < 0 || pos_d % i32(uniforms.strides.x) != 0) {
+      continue;
+    }
+    let id = u32(pos_d) / uniforms.strides.x;
+    if (id >= getElementAt(uniforms.x_shape, spatial_dim, x.rank)) {
+      continue;
+    }
+    for (var kh = 0u; kh < kernel_shape.y; kh++) {
+      let pos_h = corner.y - i32(kh) * i32(uniforms.dilations.y);
+      if (pos_h < 0 || pos_h % i32(uniforms.strides.y) != 0) {
+        continue;
+      }
+      let ih = u32(pos_h) / uniforms.strides.y;
+      if (ih >= getElementAt(uniforms.x_shape, spatial_dim + 1u, x.rank)) {
+        continue;
+      }
+      for (var kw = 0u; kw < kernel_shape.z; kw++) {
+        let pos_w = corner.z - i32(kw) * i32(uniforms.dilations.z);
+        if (pos_w < 0 || pos_w % i32(uniforms.strides.z) != 0) {
+          continue;
+        }
+        let iw = u32(pos_w) / uniforms.strides.z;
+        if (iw >= getElementAt(uniforms.x_shape, spatial_dim + 2u, x.rank)) {
+          continue;
+        }
+        for (var c = 0u; c < uniforms.input_channels_per_group; c += components) {
+          let input_channel = group * uniforms.input_channels_per_group + c;
+#if is_channels_last
+          let x_indices = x_indices_t(batch, id, ih, iw, input_channel / components);
+          let x_value = Accumulator(x.getByIndices(x_indices));
+#else
+#if components > 1
+          var x_value = Accumulator(0);
+          for (var lane = 0u; lane < components; lane++) {
+            let x_indices = x_indices_t(batch, input_channel + lane, id, ih, iw);
+            x_value[lane] = f32(x.getByIndices(x_indices));
+          }
+#else
+          let x_indices = x_indices_t(batch, input_channel, id, ih, iw);
+          let x_value = f32(x.getByIndices(x_indices));
+#endif
+#endif
+#if is_prepacked
+          let w_indices = w_indices_t(kd, kh, kw, w_channel, input_channel / components);
+#else
+          let w_indices = w_indices_t(input_channel, w_channel, kd, kh, kw);
+#endif
+          value += x_value * Accumulator(w.getByIndices(w_indices));
+        }
+      }
+    }
+  }
+#if components > 1
+  var result = dot(value, Accumulator(1));
+#else
+  var result = value;
+#endif
+#if has_bias
+  result += f32(bias.getByOffset(output_channel));
+#endif
+  output.setByOffset(global_idx, output_value_t(result));
+}

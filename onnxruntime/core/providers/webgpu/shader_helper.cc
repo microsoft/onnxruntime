@@ -88,6 +88,7 @@ Status ShaderHelper::Init() {
   if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
     body_ss_ << ",\n"
                 "        @builtin(subgroup_invocation_id) sg_id : u32,\n"
+                "        @builtin(subgroup_id) subgroup_index : u32,\n"
                 "        @builtin(subgroup_size) sg_size : u32";
   }
   // When using indirect dispatch, avoid @builtin(num_workgroups) to skip Dawn's validation
@@ -132,6 +133,7 @@ const ShaderVariableHelper& ShaderHelper::AddInput(const std::string& name, Shad
                          inputs_segments_[owner_index],
                          storage_name,
                          program_.Inputs()[input_index].buffer_offset_in_elements,
+                         program_.Inputs()[input_index].is_buffer_view,
                          owns_storage_binding);
 }
 
@@ -155,6 +157,7 @@ const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, Sha
                          outputs_segments_[owner_index],
                          storage_name,
                          program_.Outputs()[output_index].buffer_offset_in_elements,
+                         program_.Outputs()[output_index].is_buffer_view,
                          owns_storage_binding);
 }
 
@@ -341,6 +344,7 @@ ShaderVariableHelper& ShaderHelper::AddVariableImpl(bool is_input,
                                                     uint32_t segments,
                                                     std::string_view storage_name,
                                                     uint32_t storage_offset_in_elements,
+                                                    bool use_uniform_storage_offset,
                                                     bool owns_storage_binding) {
   // Add the segments for the new variable we're about to create
   if (owns_storage_binding) {
@@ -363,7 +367,7 @@ ShaderVariableHelper& ShaderHelper::AddVariableImpl(bool is_input,
     const auto& output = program_.Outputs()[vars.size()];
     type = output.var_type;
     if (segments > 1) {
-      usage |= ShaderUsage::UseSetByOffsetSegments;
+      usage |= ShaderUsage::UseGetByOffsetSegments | ShaderUsage::UseSetByOffsetSegments;
     }
   }
 
@@ -374,6 +378,7 @@ ShaderVariableHelper& ShaderHelper::AddVariableImpl(bool is_input,
                                                                              dims,
                                                                              segments,
                                                                              storage_offset_in_elements,
+                                                                             use_uniform_storage_offset,
                                                                              owns_storage_binding,
                                                                              limits_.maxStorageBufferBindingSize));
   return *var;
@@ -601,9 +606,15 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
     shape_uniform_ranks.push_back(use_uniform ? indices->rank_ : 0);
   }
 
-  if (use_any_shape_uniform || std::any_of(program_.UniformVariables().cbegin(),
-                                           program_.UniformVariables().cend(),
-                                           [](const ProgramUniformVariableValue& x) { return x.length > 0; })) {
+  const bool use_buffer_view_offsets =
+      std::any_of(program_.Inputs().cbegin(), program_.Inputs().cend(),
+                  [](const ProgramInput& input) { return input.is_buffer_view; }) ||
+      std::any_of(program_.Outputs().cbegin(), program_.Outputs().cend(),
+                  [](const ProgramOutput& output) { return output.is_buffer_view; });
+  if (use_any_shape_uniform || use_buffer_view_offsets ||
+      std::any_of(program_.UniformVariables().cbegin(),
+                  program_.UniformVariables().cend(),
+                  [](const ProgramUniformVariableValue& x) { return x.length > 0; })) {
     bool first = true;
     ss << "struct Uniforms {";
 
@@ -676,6 +687,19 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
         std::string stride = indices->name_ + "_stride";
         append_uniform(shape, ProgramUniformVariableDataType::Uint32, rank);
         append_uniform(stride, ProgramUniformVariableDataType::Uint32, rank - 1);
+      }
+    }
+
+    for (size_t i = 0; i < input_vars_.size(); ++i) {
+      if (program_.Inputs()[i].is_buffer_view) {
+        append_uniform(MakeString(input_vars_[i]->name_, "_offset"),
+                       ProgramUniformVariableDataType::Uint32, 1);
+      }
+    }
+    for (size_t i = 0; i < output_vars_.size(); ++i) {
+      if (program_.Outputs()[i].is_buffer_view) {
+        append_uniform(MakeString(output_vars_[i]->name_, "_offset"),
+                       ProgramUniformVariableDataType::Uint32, 1);
       }
     }
 

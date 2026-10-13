@@ -271,98 +271,107 @@ ss << "    for (var inner_k_idx = 0u; inner_k_idx < TILE_K_VEC_SIZE; inner_k_idx
 ss << "      let weight_data = weight_tile[inner_k_idx][local_idx];\n";
 // 127 | #if use_subgroup
 if (__param_use_subgroup) {
-// 128 |       let src_data = src_tile[inner_k_idx][sg_id];
-ss << "      let src_data = src_tile[inner_k_idx][sg_id];\n";
-// 129 |       for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {
+// 128 |       // The subgroup size is fixed at 32; wrap the index so the 16x64 tiling does not read out of bounds.
+// 129 |       let src_data = src_tile[inner_k_idx][sg_id % TILE_M_SIZE];
+ss << "      let src_data = src_tile[inner_k_idx][sg_id % TILE_M_SIZE];\n";
+// 130 |       for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {
 ss << "      for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {\n";
-// 130 |         results[m_idx] += output_element_t(dot(weight_data, subgroupShuffle(src_data, m_idx)));
-ss << "        results[m_idx] += output_element_t(dot(weight_data, subgroupShuffle(src_data, m_idx)));\n";
-// 131 |       }
-ss << "      }\n";
-// 132 | #else
-} else {
-// 133 |       for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {
-ss << "      for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {\n";
-// 134 | #if vec_size == 1
+// 131 | #if vec_size == 1
 if (__param_vec_size == 1) {
-// 135 |         results[m_idx] += output_element_t(weight_data * src_tile[inner_k_idx][m_idx]);
-ss << "        results[m_idx] += output_element_t(weight_data * src_tile[inner_k_idx][m_idx]);\n";
-// 136 | #else
+// 132 |         results[m_idx] += output_element_t(weight_data * subgroupShuffle(src_data, m_idx));
+ss << "        results[m_idx] += output_element_t(weight_data * subgroupShuffle(src_data, m_idx));\n";
+// 133 | #else
 } else {
-// 137 |         results[m_idx] += output_element_t(dot(weight_data, src_tile[inner_k_idx][m_idx]));
-ss << "        results[m_idx] += output_element_t(dot(weight_data, src_tile[inner_k_idx][m_idx]));\n";
-// 138 | #endif
+// 134 |         results[m_idx] += output_element_t(dot(weight_data, subgroupShuffle(src_data, m_idx)));
+ss << "        results[m_idx] += output_element_t(dot(weight_data, subgroupShuffle(src_data, m_idx)));\n";
+// 135 | #endif
 }
-// 139 |       }
+// 136 |       }
 ss << "      }\n";
-// 140 | #endif
-}
-// 141 |     }
-ss << "    }\n";
-// 142 |     workgroupBarrier();
-ss << "    workgroupBarrier();\n";
-// 143 |   }
-ss << "  }\n";
-// 144 |
-ss << "\n";
-// 145 |   let m_base = m_global_base;
-ss << "  let m_base = m_global_base;\n";
-// 146 |   let n_base = n_global_base + local_idx;
-ss << "  let n_base = n_global_base + local_idx;\n";
-// 147 |
-ss << "\n";
-// 148 |   let bias = load_bias(n_base);
-ss << "  let bias = load_bias(n_base);\n";
-// 149 |   for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {
-ss << "  for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {\n";
-// 150 |     var output_data = results[m_idx] + bias;
-ss << "    var output_data = results[m_idx] + bias;\n";
-// 151 | #if activation_kind == 1
-if (__param_activation_kind == 1) {
-// 152 |     output_data = max(output_data, output_element_t(0));
-ss << "    output_data = max(output_data, output_element_t(0));\n";
-// 153 | #elif activation_kind == 2
-} else if (__param_activation_kind == 2) {
-// 154 |     output_data = output_element_t(1) / (output_element_t(1) + exp(-output_data));
-ss << "    output_data = output_element_t(1) / (output_element_t(1) + exp(-output_data));\n";
-// 155 | #elif activation_kind == 3
-} else if (__param_activation_kind == 3) {
-// 156 |     output_data = clamp(output_data, output_element_t(uniforms.activation_param_0), output_element_t(uniforms.activation_param_1));
-ss << "    output_data = clamp(output_data, output_element_t(uniforms.activation_param_0), output_element_t(uniforms.activation_param_1));\n";
-// 157 | #elif activation_kind == 4
-} else if (__param_activation_kind == 4) {
-// 158 |     output_data = clamp(output_element_t(uniforms.activation_param_0) * output_data + output_element_t(uniforms.activation_param_1), output_element_t(0), output_element_t(1));
-ss << "    output_data = clamp(output_element_t(uniforms.activation_param_0) * output_data + output_element_t(uniforms.activation_param_1), output_element_t(0), output_element_t(1));\n";
-// 159 | #elif activation_kind == 5
-} else if (__param_activation_kind == 5) {
-// 160 |     output_data = select(output_element_t(uniforms.activation_param_0) * output_data, output_data, output_data >= output_element_t(0));
-ss << "    output_data = select(output_element_t(uniforms.activation_param_0) * output_data, output_data, output_data >= output_element_t(0));\n";
-// 161 | #elif activation_kind == 6
-} else if (__param_activation_kind == 6) {
-// 162 |     output_data = tanh(output_data);
-ss << "    output_data = tanh(output_data);\n";
-// 163 | #elif activation_kind == 7
-} else if (__param_activation_kind == 7) {
-// 164 | #if quick_gelu_unit_alpha
-if (__param_quick_gelu_unit_alpha) {
-// 165 |     output_data = output_data * (output_element_t(1) / (output_element_t(1) + exp(-output_data)));
-ss << "    output_data = output_data * (output_element_t(1) / (output_element_t(1) + exp(-output_data)));\n";
-// 166 | #else
+// 137 | #else
 } else {
-// 167 |     output_data = output_data * (output_element_t(1) / (output_element_t(1) + exp(-(output_element_t(uniforms.activation_param_0) * output_data))));
-ss << "    output_data = output_data * (output_element_t(1) / (output_element_t(1) + exp(-(output_element_t(uniforms.activation_param_0) * output_data))));\n";
-// 168 | #endif
+// 138 |       for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {
+ss << "      for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {\n";
+// 139 | #if vec_size == 1
+if (__param_vec_size == 1) {
+// 140 |         results[m_idx] += output_element_t(weight_data * src_tile[inner_k_idx][m_idx]);
+ss << "        results[m_idx] += output_element_t(weight_data * src_tile[inner_k_idx][m_idx]);\n";
+// 141 | #else
+} else {
+// 142 |         results[m_idx] += output_element_t(dot(weight_data, src_tile[inner_k_idx][m_idx]));
+ss << "        results[m_idx] += output_element_t(dot(weight_data, src_tile[inner_k_idx][m_idx]));\n";
+// 143 | #endif
 }
-// 169 | #endif
+// 144 |       }
+ss << "      }\n";
+// 145 | #endif
 }
-// 170 |     write_output(batch, m_base + m_idx, n_base, output_data);
-ss << "    write_output(batch, m_base + m_idx, n_base, output_data);\n";
-// 171 |   }
+// 146 |     }
+ss << "    }\n";
+// 147 |     workgroupBarrier();
+ss << "    workgroupBarrier();\n";
+// 148 |   }
 ss << "  }\n";
-// 172 | }  // MAIN
+// 149 |
+ss << "\n";
+// 150 |   let m_base = m_global_base;
+ss << "  let m_base = m_global_base;\n";
+// 151 |   let n_base = n_global_base + local_idx;
+ss << "  let n_base = n_global_base + local_idx;\n";
+// 152 |
+ss << "\n";
+// 153 |   let bias = load_bias(n_base);
+ss << "  let bias = load_bias(n_base);\n";
+// 154 |   for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {
+ss << "  for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {\n";
+// 155 |     var output_data = results[m_idx] + bias;
+ss << "    var output_data = results[m_idx] + bias;\n";
+// 156 | #if activation_kind == 1
+if (__param_activation_kind == 1) {
+// 157 |     output_data = max(output_data, output_element_t(0));
+ss << "    output_data = max(output_data, output_element_t(0));\n";
+// 158 | #elif activation_kind == 2
+} else if (__param_activation_kind == 2) {
+// 159 |     output_data = output_element_t(1) / (output_element_t(1) + exp(-output_data));
+ss << "    output_data = output_element_t(1) / (output_element_t(1) + exp(-output_data));\n";
+// 160 | #elif activation_kind == 3
+} else if (__param_activation_kind == 3) {
+// 161 |     output_data = clamp(output_data, output_element_t(uniforms.activation_param_0), output_element_t(uniforms.activation_param_1));
+ss << "    output_data = clamp(output_data, output_element_t(uniforms.activation_param_0), output_element_t(uniforms.activation_param_1));\n";
+// 162 | #elif activation_kind == 4
+} else if (__param_activation_kind == 4) {
+// 163 |     output_data = clamp(output_element_t(uniforms.activation_param_0) * output_data + output_element_t(uniforms.activation_param_1), output_element_t(0), output_element_t(1));
+ss << "    output_data = clamp(output_element_t(uniforms.activation_param_0) * output_data + output_element_t(uniforms.activation_param_1), output_element_t(0), output_element_t(1));\n";
+// 164 | #elif activation_kind == 5
+} else if (__param_activation_kind == 5) {
+// 165 |     output_data = select(output_element_t(uniforms.activation_param_0) * output_data, output_data, output_data >= output_element_t(0));
+ss << "    output_data = select(output_element_t(uniforms.activation_param_0) * output_data, output_data, output_data >= output_element_t(0));\n";
+// 166 | #elif activation_kind == 6
+} else if (__param_activation_kind == 6) {
+// 167 |     output_data = tanh(output_data);
+ss << "    output_data = tanh(output_data);\n";
+// 168 | #elif activation_kind == 7
+} else if (__param_activation_kind == 7) {
+// 169 | #if quick_gelu_unit_alpha
+if (__param_quick_gelu_unit_alpha) {
+// 170 |     output_data = output_data * (output_element_t(1) / (output_element_t(1) + exp(-output_data)));
+ss << "    output_data = output_data * (output_element_t(1) / (output_element_t(1) + exp(-output_data)));\n";
+// 171 | #else
+} else {
+// 172 |     output_data = output_data * (output_element_t(1) / (output_element_t(1) + exp(-(output_element_t(uniforms.activation_param_0) * output_data))));
+ss << "    output_data = output_data * (output_element_t(1) / (output_element_t(1) + exp(-(output_element_t(uniforms.activation_param_0) * output_data))));\n";
+// 173 | #endif
+}
+// 174 | #endif
+}
+// 175 |     write_output(batch, m_base + m_idx, n_base, output_data);
+ss << "    write_output(batch, m_base + m_idx, n_base, output_data);\n";
+// 176 |   }
+ss << "  }\n";
+// 177 | }  // MAIN
 MainFunctionEnd();
 ss << "\n";
-// 173 |
+// 178 |
 
 
   return Status::OK();
