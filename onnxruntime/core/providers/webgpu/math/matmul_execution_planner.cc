@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "core/common/safeint.h"
+#include "core/providers/webgpu/vendor/intel/math/gemm_subgroup.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -30,15 +31,18 @@ bool IsMatMulNaiveOutputSizeValid(const MatMulAlgorithmSelectionParams& params) 
   const uint64_t output_columns = static_cast<uint64_t>(params.n) / GetMaxComponents(params.n);
   uint64_t output_size = params.batch_size;
   for (const uint64_t factor : {output_rows, output_columns}) {
-    if (factor != 0 && output_size > kMaxUint32 / factor) {
+    uint64_t product{};
+    if (!SafeMultiply(output_size, factor, product) || product > kMaxUint32) {
       return false;
     }
-    output_size *= factor;
+    output_size = product;
   }
-  return output_size <= kMaxUint32;
+  return true;
 }
 
 bool IsDispatchGroupCountProductValid(uint32_t x, uint32_t y, uint32_t z) {
+  // ProgramManager normalizes device-specific per-axis limits. Plans only need to
+  // guarantee that ShaderHelper's flattened logical workgroup ID fits in uint32.
   uint32_t xy{};
   uint32_t xyz{};
   return SafeMultiply(x, y, xy) && SafeMultiply(xy, z, xyz);
@@ -236,6 +240,31 @@ Status MatMulExecutionPlanner::ValidateExecutionPlan(
       ORT_RETURN_IF_NOT(params.has_subgroup_capability && params.k > 0 && supported_size &&
                             configuration.subgroup_size == params.subgroup_size,
                         "MatMul algorithm subgroup does not support these inputs, configuration, or device.");
+
+      const bool can_fold_batch_into_m = params.packed_batch_size != params.batch_size;
+      const bool fold_batch_into_m = intel::ShouldFoldMatMulSubgroupBatch(
+          params.adapter_architecture, params.m, can_fold_batch_into_m);
+      const int64_t effective_m = fold_batch_into_m ? params.packed_m : params.m;
+      const uint64_t effective_batch_size = fold_batch_into_m ? params.packed_batch_size : params.batch_size;
+      ORT_RETURN_IF_NOT(effective_m > 0 && IsUint32Dimension(effective_m) &&
+                            params.n > 0 && IsUint32Dimension(params.n) &&
+                            IsUint32Dimension(params.k) &&
+                            effective_batch_size > 0 && effective_batch_size <= kMaxUint32,
+                        "MatMul subgroup dimensions must fit in uint32.");
+
+      const uint32_t elements_per_thread_y = static_cast<uint32_t>(
+          intel::MatMulSubgroupElementsPerThreadY(params.adapter_architecture,
+                                                  static_cast<uint32_t>(effective_m)));
+      const auto dispatch_x = TryGetMatMulPackedDispatchGroupCount(
+          static_cast<uint64_t>(params.n), intel::kSubgroupLogicalWorkGroupSizeX, 4);
+      const auto dispatch_y = TryGetMatMulPackedDispatchGroupCount(
+          static_cast<uint64_t>(effective_m), intel::kSubgroupLogicalWorkGroupSizeY,
+          elements_per_thread_y);
+      const auto dispatch_z = TryGetMatMulPackedDispatchGroupCount(
+          effective_batch_size, intel::kSubgroupLogicalWorkGroupSizeZ, 1);
+      ORT_RETURN_IF_NOT(dispatch_x.has_value() && dispatch_y.has_value() && dispatch_z.has_value() &&
+                            IsDispatchGroupCountProductValid(*dispatch_x, *dispatch_y, *dispatch_z),
+                        "MatMul subgroup dispatch group count exceeds uint32 limits.");
       break;
     }
     case MatMulAlgorithm::Packed:

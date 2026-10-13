@@ -341,6 +341,8 @@ TEST(MatMulAlgorithmConfigurationTest, PackedVec4RequiresSupportedCooperativeLoa
 TEST(MatMulAlgorithmConfigurationTest, SubgroupConfigurationCarriesSelectedSize) {
   MatMulExecutionPlanner planner;
   MatMulAlgorithmSelectionParams params{};
+  params.m = 1;
+  params.n = 1;
   params.k = 1;
   params.has_subgroup_capability = true;
   params.subgroup_size = 16;
@@ -817,6 +819,8 @@ TEST(MatMulExecutionPlanValidationTest, IntelCapabilityDoesNotIncludeAutomaticTh
 TEST(MatMulExecutionPlanValidationTest, SubgroupRejectsZeroContractionDimension) {
   MatMulExecutionPlanner planner;
   MatMulAlgorithmSelectionParams params{};
+  params.m = 1;
+  params.n = 1;
   params.has_subgroup_capability = true;
   params.subgroup_size = 16;
   MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
@@ -829,6 +833,8 @@ TEST(MatMulExecutionPlanValidationTest, SubgroupRejectsZeroContractionDimension)
 TEST(MatMulExecutionPlanValidationTest, SubgroupRejectsUnsupportedConfiguredSize) {
   MatMulExecutionPlanner planner;
   MatMulAlgorithmSelectionParams params{};
+  params.m = 1;
+  params.n = 1;
   params.has_subgroup_capability = true;
   params.k = 1;
   MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
@@ -840,6 +846,56 @@ TEST(MatMulExecutionPlanValidationTest, SubgroupRejectsUnsupportedConfiguredSize
 
   params.subgroup_size = 64;
   EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Subgroup, plan).IsOK());
+}
+
+TEST(MatMulExecutionPlanValidationTest, SubgroupRejectsDimensionsOutsideUint32Range) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) + 1;
+  params.packed_m = params.m;
+  params.n = 1;
+  params.k = 1;
+  params.has_subgroup_capability = true;
+  params.subgroup_size = 16;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Subgroup, plan).IsOK());
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Naive);
+  EXPECT_TRUE(std::holds_alternative<MatMulNaiveConfiguration>(plan.configuration));
+}
+
+TEST(MatMulExecutionPlanValidationTest, SubgroupRejectsCombinedDispatchOverflow) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 4194304;
+  params.packed_m = params.m;
+  params.n = 8388608;
+  params.k = 1;
+  params.has_subgroup_capability = true;
+  params.subgroup_size = 16;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Subgroup, plan).IsOK());
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Naive);
+  EXPECT_TRUE(std::holds_alternative<MatMulNaiveConfiguration>(plan.configuration));
+}
+
+TEST(MatMulExecutionPlanValidationTest, SubgroupRejectsFoldedBatchDispatchOverflow) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 2097152;
+  params.packed_m = 4194304;
+  params.n = 8388608;
+  params.k = 1;
+  params.batch_size = 2;
+  params.packed_batch_size = 1;
+  params.has_subgroup_capability = true;
+  params.subgroup_size = 16;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Subgroup, plan).IsOK());
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Naive);
+  EXPECT_TRUE(std::holds_alternative<MatMulNaiveConfiguration>(plan.configuration));
 }
 
 }  // namespace test
