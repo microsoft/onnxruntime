@@ -47,19 +47,20 @@ constexpr uint32_t kMaxConvScratchElems = 16384;
 constexpr uint32_t kMaxSgMatCountM = 8;
 constexpr uint32_t kMaxSgMatCountN = 4;
 
-// Returns the device config index for the fixed 8x16x16 F16 subgroup-matrix
-// config this kernel is implemented for, or -1 when the device does not report
-// it. Also requires subgroup-size control and the vendor tiling policy (Intel).
+// Returns the device's subgroup-matrix config for the fixed 8x16x16 F16 config
+// this kernel is implemented for, or nullopt when the device does not report it.
+// Also requires subgroup-size control and the vendor tiling policy (Intel).
 //
 // Single source of truth for device eligibility: CanApplySubgroupMatrixConv (which
 // Conv::PrePackInternal consults to skip prepacking) and CreateSubgroupMatrixConvImpl
 // both go through here, so the prepack decision and the runtime path can never
 // disagree about whether this device is served.
-int32_t GetSupportedConfigIndex(const ComputeContextBase& context) {
-  int32_t config_index = 0;
-  if (!IsSubgroupMatrixConfigSupported(context, /*is_fp16=*/true, config_index) ||
-      !supported_subgroup_matrix_configs[config_index].Is(8, 16, 16)) {
-    return -1;
+std::optional<SubgroupMatrixConfig> GetSupportedConfig(const ComputeContextBase& context) {
+  constexpr auto kF16 = wgpu::SubgroupMatrixComponentType::F16;
+  const std::optional<SubgroupMatrixConfig> config =
+      SelectSubgroupMatrixConfig(context, {{kF16, kF16, 8, 16, 16, 32, false}});
+  if (!config || !config->Is(8, 16, 16)) {
+    return std::nullopt;
   }
   // The adapters reporting that config expose a 16-32 subgroup size range, while the
   // kernel hard-codes kSubgroupMatrixSubgroupSize lanes per subgroup (sg_index =
@@ -68,12 +69,12 @@ int32_t GetSupportedConfigIndex(const ComputeContextBase& context) {
   // store the identical tile -- but it wastes about half the subgroup-matrix
   // throughput, so the size is pinned with subgroup-size control instead.
   if (!context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
-    return -1;
+    return std::nullopt;
   }
   if (context.AdapterInfo().vendor != std::string_view{"intel"}) {
-    return -1;
+    return std::nullopt;
   }
-  return config_index;
+  return config;
 }
 
 // The bias add and the fused activation are not template parameters: the template
@@ -109,9 +110,9 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
   using Base = typename ConvT::ConvOptImpl;
 
  public:
-  SubgroupMatrixConvImpl(const ConvT& parent, int32_t config_index,
+  SubgroupMatrixConvImpl(const ConvT& parent, SubgroupMatrixConfig config,
                          SubgroupMatrixTilingSelector tiling_selector)
-      : Base(parent), config_index_(config_index), tiling_selector_(std::move(tiling_selector)) {}
+      : Base(parent), config_(config), tiling_selector_(std::move(tiling_selector)) {}
 
   Status Compute(ComputeContext& context, /*out*/ bool& handled) override {
     handled = false;
@@ -269,7 +270,7 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
       ohwi_weight = &run_local_ohwi_weight;
     }
 
-    const auto& config = supported_subgroup_matrix_configs[config_index_];
+    const auto& config = config_;
     const uint32_t tile_m = tiling->tile_m;
     const uint32_t tile_n = tiling->tile_n;
     ORT_ENFORCE(tile_m % config.M == 0 && tile_n % config.N == 0,
@@ -304,14 +305,17 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
 
     const Tensor* bias = context.InputCount() > 2 ? context.Input<Tensor>(2) : nullptr;
     const bool has_bias = bias != nullptr;
-    SubgroupMatrixConvProgram program{has_bias, config_index_, sg_mat_count_m, sg_mat_count_n, split_k, vec_size,
+    SubgroupMatrixConvProgram program{has_bias, config, sg_mat_count_m, sg_mat_count_n, split_k, vec_size,
                                       activation};
     program.SetWorkgroupSize(kSubgroupMatrixSubgroupSize * split_k);
-    // Pin the lanes per subgroup the kernel assumes; GetSupportedConfigIndex has
+    // Pin the lanes per subgroup the kernel assumes; GetSupportedConfig has
     // already established that the device supports subgroup-size control.
     program.SetSubgroupSize(kSubgroupMatrixSubgroupSize);
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, batch);
-    program.CacheHint(has_bias, config_index_, sg_mat_count_m, sg_mat_count_n, split_k, vec_size,
+    program.CacheHint(has_bias, static_cast<uint32_t>(config.componentType),
+                      static_cast<uint32_t>(config.resultComponentType),
+                      config.M, config.N, config.K, config.subgroupSize,
+                      sg_mat_count_m, sg_mat_count_n, split_k, vec_size,
                       activation.CacheKey())
         .AddInputs({{src, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(vec_size)},
                     {ohwi_weight, ProgramTensorMetadataDependency::TypeAndRank, 1}})
@@ -363,7 +367,7 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
                                                  "Failed to transpose the subgroup-matrix Conv weight to OHWI.");
   }
 
-  const int32_t config_index_;
+  const SubgroupMatrixConfig config_;
   SubgroupMatrixTilingSelector tiling_selector_;
 
   // OIHW -> OHWI transposed constant weight, built once by EnsureTransposedKernel.
@@ -401,7 +405,7 @@ Status SubgroupMatrixConvProgram::GenerateShaderCode(ShaderHelper& shader) const
       << "  " << output.SetByOffset("output_offset", "value") << "\n"
       << "}\n";
 
-  const auto& config = supported_subgroup_matrix_configs[config_index_];
+  const auto& config = config_;
   if (config.Is(8, 16, 16)) {
     return GenerateShaderCode8x16x16(shader, input_src, sg_mat_count_m_, sg_mat_count_n_, split_k_, vec_size_);
   }
@@ -475,8 +479,8 @@ bool CanApplySubgroupMatrixConv(ComputeContextBase& context,
     return false;
   }
 
-  const int32_t config_index = GetSupportedConfigIndex(context);
-  if (config_index < 0) {
+  const std::optional<SubgroupMatrixConfig> config = GetSupportedConfig(context);
+  if (!config) {
     LOGS_DEFAULT(VERBOSE) << "SubgroupMatrixConv rejected: device does not report the required 8x16x16 F16"
                           << " subgroup-matrix config, lacks subgroup-size control, or vendor != intel."
                           << " vendor=\"" << std::string_view{context.AdapterInfo().vendor}
@@ -507,9 +511,9 @@ std::unique_ptr<typename Conv<is_channels_last, is_fused>::ConvOptImpl> CreateSu
   } else {
     // Only run on devices that report the fixed 8x16x16 F16 subgroup-matrix config
     // this kernel is implemented for, and for which a vendor tiling policy exists
-    // (Intel today - GetSupportedConfigIndex enforces both).
-    const int32_t config_index = GetSupportedConfigIndex(context);
-    if (config_index < 0) {
+    // (Intel today - GetSupportedConfig enforces both).
+    const std::optional<SubgroupMatrixConfig> config = GetSupportedConfig(context);
+    if (!config) {
       return nullptr;
     }
     // The Conv selector shares the autotuner hooks (tile override, device-arch
@@ -519,7 +523,7 @@ std::unique_ptr<typename Conv<is_channels_last, is_fused>::ConvOptImpl> CreateSu
     if (!tiling_selector) {
       return nullptr;
     }
-    return std::make_unique<SubgroupMatrixConvImpl<is_channels_last, is_fused>>(parent, config_index,
+    return std::make_unique<SubgroupMatrixConvImpl<is_channels_last, is_fused>>(parent, *config,
                                                                                std::move(tiling_selector));
   }
 }

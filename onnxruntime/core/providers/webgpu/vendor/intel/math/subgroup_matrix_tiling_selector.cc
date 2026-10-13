@@ -166,6 +166,72 @@ SubgroupMatrixTiling HeuristicTiling(std::string_view arch, uint32_t M, uint32_t
   return {tile_m, tile_n, split_k};
 }
 
+// Arch the sweep behind ConvHeuristicTiling (below) was measured on. Kept as a
+// plain literal, independent of ORT_WEBGPU_HAS_SGCONV_TREE / subgroup_matrix_conv_tuned.inc,
+// because this heuristic ships as checked-in source and must stay usable even in a
+// build that drops the generated tree.
+constexpr std::string_view kConvHeuristicArch = "xe-3lpg";
+
+// Restricted-candidate approximation of the generated Conv tree
+// (subgroup_matrix_conv_tuned.inc), fit to the same sweep but for kConvHeuristicArch
+// only -- SelectConvTiling uses it as the fallback when the tree is absent or its
+// prediction fails validation, never for another arch with no sweep data of its own.
+//
+// Picks among 6 (tile_m, tile_n, split_k) combos, each within 20% regret of the true
+// best tiling for its region; deliberately narrower than the tree, so some shapes get
+// a "good enough" pick here instead of the true optimum.
+//
+// batch is unused (not a useful splitting feature on the swept range). split_k is not
+// guaranteed to fit K's block count -- callers must run the result through
+// ClampSplitKToProblem, like a tuned-table/tree result.
+SubgroupMatrixTiling ConvHeuristicTiling(uint32_t M, uint32_t N, uint32_t K, uint32_t /*batch*/) {
+  if (M <= 512u) {
+    if (M <= 160u) {
+      if (N <= 96u) {
+        return {8, 32, 8};
+      } else {
+        if (M <= 32u) {
+          return {8, 32, 8};
+        } else {
+          return {8, 64, 8};
+        }
+      }
+    } else {
+      if (N <= 384u) {
+        if (K <= 1024u) {
+          return {8, 64, 4};
+        } else {
+          return {8, 64, 8};
+        }
+      } else {
+        return {16, 64, 2};
+      }
+    }
+  } else {
+    if (K <= 512u) {
+      if (N <= 48u) {
+        return {16, 32, 2};
+      } else {
+        return {16, 64, 2};
+      }
+    } else {
+      if (N <= 48u) {
+        if (M <= 2048u) {
+          return {8, 32, 8};
+        } else {
+          return {16, 32, 2};
+        }
+      } else {
+        if (M <= 896u) {
+          return {8, 64, 8};
+        } else {
+          return {16, 64, 2};
+        }
+      }
+    }
+  }
+}
+
 // Repairs a pretuned tiling to this problem by halving split_k until it fits both
 // K's block count and the scratch budget. The tuned trees are performance oracles
 // that never see K's block count (they are trained on the problem's log dims only),
@@ -307,7 +373,12 @@ SubgroupMatrixTiling SelectConvTiling(std::string_view arch, uint32_t M, uint32_
       return *tuned;
     }
   }
-  SubgroupMatrixTiling tiling = HeuristicTiling(arch, M, N, K, batch, kConvScratchNPad);
+  // ConvHeuristicTiling is fit to kConvHeuristicArch's sweep only; any other arch
+  // (no Conv sweep data) keeps using the arch-agnostic occupancy heuristic.
+  SubgroupMatrixTiling tiling = (arch == kConvHeuristicArch)
+                                     ? ConvHeuristicTiling(M, N, K, batch)
+                                     : HeuristicTiling(arch, M, N, K, batch, kConvScratchNPad);
+  ClampSplitKToProblem(tiling, K, kConvScratchNPad);
   ClampTileNToProblem(tiling, N);
   return tiling;
 }
