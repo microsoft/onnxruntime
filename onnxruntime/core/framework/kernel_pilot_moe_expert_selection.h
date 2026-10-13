@@ -48,14 +48,14 @@ class IKernelPilotMoeExpertSelection {
   // across calls, including calls made for separate routing tiles, and reject out-of-range IDs.
   virtual Status Collect(gsl::span<const int> expert_ids) = 0;
 
+  // Sets expert_ids to a view of the unique local expert IDs selected during this invocation.
+  // The view remains owned by the implementation and is valid until its next non-const operation.
+  virtual Status GetSelectedExperts(gsl::span<const int>& expert_ids) const = 0;
+
   // Adds local expert IDs and their routing probabilities. Repeated experts retain their maximum
   // probability, matching Collect's invocation-level deduplication.
   virtual Status CollectWeighted(gsl::span<const int> expert_ids,
                                  gsl::span<const float> routing_probabilities) = 0;
-
-  // Sets expert_ids to a view of the unique local expert IDs selected during this invocation.
-  // The view remains owned by the implementation and is valid until its next non-const operation.
-  virtual Status GetSelectedExperts(gsl::span<const int>& expert_ids) const = 0;
 
   // Returns probabilities aligned with GetSelectedExperts(), or an empty span if CollectWeighted()
   // was not used for this invocation.
