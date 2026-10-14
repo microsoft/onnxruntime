@@ -166,7 +166,7 @@ TEST(CUDA_EP_Unittest, QMoEFp8DequantizesOnlySelectedExpertsAndGathersBias) {
   }
 }
 
-float FiniteFp8Reference(int code) {
+[[maybe_unused]] float FiniteFp8Reference(int code) {
   const int exponent = (code >> 3) & 15;
   const int mantissa = code & 7;
   const float magnitude = exponent == 0 ? std::ldexp(static_cast<float>(mantissa), -9)
