@@ -3,7 +3,9 @@
 
 #include "gtest/gtest.h"
 
+#include <cstdint>
 #include <iterator>
+#include <limits>
 #include <vector>
 
 #include "core/providers/cpu/rnn/deep_cpu_lstm.h"
@@ -13,6 +15,54 @@
 using namespace std;
 namespace onnxruntime {
 namespace test {
+
+TEST(LSTMTest, StateElementCountUsesSizeTArithmetic) {
+  using rnn::detail::CalculateBufferElementCount;
+  EXPECT_EQ(CalculateBufferElementCount({std::numeric_limits<int>::max(), 1}),
+            static_cast<size_t>(std::numeric_limits<int>::max()));
+  EXPECT_EQ(CalculateBufferElementCount({std::numeric_limits<int>::max(), 2}),
+            static_cast<size_t>(std::numeric_limits<int>::max()) * 2);
+  EXPECT_EQ(CalculateBufferElementCount({65535, 65537}), static_cast<size_t>(4294967295ULL));
+#if SIZE_MAX > UINT32_MAX
+  EXPECT_EQ(CalculateBufferElementCount({65536, 65536}), static_cast<size_t>(4294967296ULL));
+  EXPECT_EQ(CalculateBufferElementCount({65536, 65537}), static_cast<size_t>(4295032832ULL));
+#elif !defined(ORT_NO_EXCEPTIONS)
+  EXPECT_THROW((void)CalculateBufferElementCount({65536, 65536}), OnnxRuntimeException);
+  EXPECT_THROW((void)CalculateBufferElementCount({65536, 65537}), OnnxRuntimeException);
+#endif
+}
+
+TEST(LSTMTest, RejectsUnrepresentableOutputStrideBeforeAllocation) {
+  // A zero-length sequence keeps input and expected output empty even for large batch dimensions.
+  for (const std::string direction : {"forward", "reverse", "bidirectional"}) {
+    for (const int hidden_size : {1, 2, 4}) {
+      SCOPED_TRACE(direction);
+      SCOPED_TRACE(hidden_size);
+      const int64_t batch_size = static_cast<int64_t>(std::numeric_limits<int>::max()) / 2 + 1;
+      if (direction != "bidirectional" && hidden_size == 1) {
+        continue;
+      }
+
+      const int num_directions = direction == "bidirectional" ? 2 : 1;
+      OpTester test("LSTM");
+      test.AddAttribute("direction", direction);
+      test.AddAttribute("hidden_size", static_cast<int64_t>(hidden_size));
+      test.AddInput<float>("X", {0, batch_size, 1}, {});
+      test.AddInput<float>("W", {num_directions, 4 * hidden_size, 1},
+                           std::vector<float>(num_directions * 4 * hidden_size, 0.0f));
+      test.AddInput<float>("R", {num_directions, 4 * hidden_size, hidden_size},
+                           std::vector<float>(num_directions * 4 * hidden_size * hidden_size, 0.0f));
+      test.AddOutput<float>("Y", {0, num_directions, batch_size, hidden_size}, {});
+      test.AddOptionalOutputEdge<float>();
+      test.AddOptionalOutputEdge<float>();
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCpuExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectFailure, "LSTM output stride exceeds the maximum supported int value",
+               {}, nullptr, &execution_providers);
+    }
+  }
+}
 
 // copy the contents of the container to the end so the original values are duplicated
 template <typename T>

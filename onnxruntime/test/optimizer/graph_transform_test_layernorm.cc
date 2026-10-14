@@ -11,6 +11,7 @@
 
 #include "gtest/gtest.h"
 
+#include "core/framework/resource_accountant.h"
 #include "core/graph/onnx_protobuf.h"
 
 #include "core/graph/graph_utils.h"
@@ -935,7 +936,8 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTestCudaEp) {
   }
 }
 
-static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int matmulnbits_count, int matmul_count, logging::Logger* logger) {
+static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int matmulnbits_count, int matmul_count,
+                          logging::Logger* logger, bool verify_workspace_reservations = false) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, *logger).IsOK());
   Graph& graph = p_model->MainGraph();
@@ -943,13 +945,48 @@ static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int mat
   onnxruntime::GraphTransformerManager graph_transformation_mgr{3};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GroupQueryAttentionFusion>(), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+
+  NodeWorkspaceReservationMap reservations;
+  size_t total_reserved_bytes = 0;
+  if (verify_workspace_reservations) {
+    for (const Node& node : graph.Nodes()) {
+      reservations.insert_or_assign(
+          node.Index(), WorkspaceEstimateSelection{10, WorkspaceEstimateSource::kFallback});
+      total_reserved_bytes += 10;
+    }
+    graph.SetNodeReplacementCallback(
+        [&reservations](const Graph&,
+                        gsl::span<const NodeIndex> source_node_indices,
+                        NodeIndex destination_node_index) {
+          ConsolidateWorkspaceReservations(
+              reservations, source_node_indices, destination_node_index);
+        });
+  }
+
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
+  graph.SetNodeReplacementCallback({});
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["com.microsoft.RotaryEmbedding"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.MatMulNBits"] == matmulnbits_count);
   ASSERT_TRUE(op_to_count["MatMul"] == matmul_count);
   ASSERT_TRUE(op_to_count["com.microsoft.GroupQueryAttention"] == 1);
+
+  if (verify_workspace_reservations) {
+    size_t consolidated_reserved_bytes = 0;
+    bool found_fused_projection_reservation = false;
+    for (const auto& [node_index, reservation] : reservations) {
+      const Node* node = graph.GetNode(node_index);
+      ASSERT_NE(node, nullptr) << "Workspace reservation was orphaned at node index " << node_index;
+      consolidated_reserved_bytes += reservation.bytes;
+      if ((node->OpType() == "MatMulNBits" || node->OpType() == "MatMul") &&
+          reservation.bytes > 10) {
+        found_fused_projection_reservation = true;
+      }
+    }
+    EXPECT_EQ(consolidated_reserved_bytes, total_reserved_bytes);
+    EXPECT_TRUE(found_fused_projection_reservation);
+  }
 }
 
 static void TestQuantizedGQAFusionRejectsInitializerShape(const std::string& initializer_name,
@@ -1171,6 +1208,72 @@ static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_pat
   ASSERT_TRUE(op_to_count["Cast"] == cast_count);
 }
 
+TEST_F(GraphTransformationTests, LayerNormFusionZeroNormalizedDimension) {
+  for (int opset : {10, 17, 18}) {
+    for (int64_t axis : {-1, 1}) {
+      for (const std::vector<int64_t>& shape : {std::vector<int64_t>{1, 0}, {0, 4}, {2, 4}, {2, -1}}) {
+        SCOPED_TRACE(MakeString("opset=", opset, " axis=", axis, " shape=", shape[0], ",", shape[1]));
+        const bool symbolic = shape[1] == -1;
+        const bool should_fuse = shape[1] != 0;
+        auto build_test_case = [&](ModelTestBuilder& builder) {
+          auto* input = symbolic ? builder.MakeInput<float>(shape)
+                                 : builder.MakeInput<float>(shape, -1.0f, 1.0f);
+          const int64_t hidden_size = symbolic ? 4 : shape[1];
+          auto* scale = builder.MakeInitializer<float>({hidden_size}, std::vector<float>(hidden_size, 1.0f));
+          auto* bias = builder.MakeInitializer<float>({hidden_size}, std::vector<float>(hidden_size, 0.0f));
+          auto* two = builder.MakeInitializer<float>({}, {2.0f});
+          auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+          auto* mean = builder.MakeIntermediate();
+          auto* centered = builder.MakeIntermediate();
+          auto* squared = builder.MakeIntermediate();
+          auto* variance = builder.MakeIntermediate();
+          auto* variance_epsilon = builder.MakeIntermediate();
+          auto* stddev = builder.MakeIntermediate();
+          auto* normalized = builder.MakeIntermediate();
+          auto* scaled = builder.MakeIntermediate();
+          auto* output = builder.MakeOutput();
+          auto add_reduce_mean = [&](NodeArg* in, NodeArg* out) {
+            if (opset >= 18) {
+              auto* axes = builder.MakeInitializer<int64_t>({1}, {axis});
+              builder.AddNode("ReduceMean", {in, axes}, {out});
+            } else {
+              builder.AddNode("ReduceMean", {in}, {out}).AddAttribute("axes", std::vector<int64_t>{axis});
+            }
+          };
+          add_reduce_mean(input, mean);
+          builder.AddNode("Sub", {input, mean}, {centered});
+          builder.AddNode("Pow", {centered, two}, {squared});
+          add_reduce_mean(squared, variance);
+          builder.AddNode("Add", {variance, epsilon}, {variance_epsilon});
+          builder.AddNode("Sqrt", {variance_epsilon}, {stddev});
+          builder.AddNode("Div", {centered, stddev}, {normalized});
+          builder.AddNode("Mul", {scale, normalized}, {scaled});
+          builder.AddNode("Add", {scaled, bias}, {output});
+        };
+        auto check_graph = [&](const Graph& graph) {
+          auto counts = CountOpsInGraph(graph);
+          TEST_RETURN_IF_NOT(counts["LayerNormalization"] == (should_fuse ? 1 : 0));
+          TEST_RETURN_IF_NOT(counts["ReduceMean"] == (should_fuse ? 0 : 2));
+          return Status::OK();
+        };
+        const auto level = opset >= 17 ? TransformerLevel::Level1 : TransformerLevel::Level2;
+        const InlinedHashSet<std::string_view> compatible_eps = {};
+        if (symbolic) {
+          ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_,
+                                                std::make_unique<LayerNormFusion>(compatible_eps, level),
+                                                level, 1, nullptr, check_graph));
+        } else {
+          auto check_session = [&](InferenceSessionWrapper& session) {
+            ASSERT_STATUS_OK(check_graph(session.GetGraph()));
+          };
+          TransformerTester(build_test_case, check_session, TransformerLevel::Default, level, opset,
+                            1e-5, 1e-5, std::make_unique<LayerNormFusion>(compatible_eps, level));
+        }
+      }
+    }
+  }
+}
+
 // Current-opset regression tests for LayerNorm and SkipLayerNorm fusions.
 // These construct minimal graphs at the current ONNX opset and verify the optimizer fires.
 
@@ -1328,7 +1431,9 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusion_3DGamma_NoFusion) {
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
-  TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", 1, 0, logger_.get());
+  TestGQAFusion(
+      MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", 1, 0, logger_.get(),
+      /*verify_workspace_reservations=*/true);
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_different_head_sizes.onnx", 0, 1, logger_.get());
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_different_head_sizes.onnx", 1, 0, logger_.get());
 }

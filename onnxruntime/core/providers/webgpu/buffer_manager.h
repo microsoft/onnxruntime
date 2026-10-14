@@ -4,17 +4,20 @@
 #pragma once
 
 #include <iosfwd>
+#include <mutex>
 #include <utility>
 #include <vector>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
+#include "core/common/inlined_containers.h"
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
 class WebGpuContext;
+struct CommandRecordingState;
 
 // For command capture and replay
 enum class GraphCaptureState {
@@ -47,6 +50,8 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode);
 class IBufferCacheManager {
  public:
   virtual ~IBufferCacheManager() = default;
+
+  virtual bool SupportsBufferReuse() const { return true; }
 
   // calculate actual buffer size to allocate based on the requested size.
   virtual size_t CalculateBufferSize(size_t request_size) = 0;
@@ -88,29 +93,35 @@ class IBufferCacheManager {
 class BufferManager {
  public:
   BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode);
-  void Upload(void* src, WGPUBuffer dst, size_t size) const;
-  void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const;
-  WGPUBuffer Create(size_t size, wgpu::BufferUsage usage, bool initialize_to_zero = false,
+  void Upload(CommandRecordingState& recording, void* src, WGPUBuffer dst, size_t size) const;
+  void MemCpy(CommandRecordingState& recording, WGPUBuffer src, WGPUBuffer dst, size_t size) const;
+  WGPUBuffer Create(CommandRecordingState& recording, size_t size, wgpu::BufferUsage usage,
+                    bool initialize_to_zero = false,
                     bool submit_zero_initialize = false) const;
   bool SupportsUMA() const;  // Check if CreateUMA is supported (i.e., the device has BufferMapExtendedUsages feature)
-  void Release(WGPUBuffer buffer) const;
-  void Download(WGPUBuffer src, void* dst, size_t size) const;
-  void RefreshPendingBuffers(GraphCaptureState graph_capture_state) const;
+  // A null recording releases directly to the cache (e.g., plugin Env allocations).
+  void Release(WGPUBuffer buffer, const CommandRecordingState* recording = nullptr) const;
+  void Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const;
+  void RefreshPendingBuffers(CommandRecordingState& recording, GraphCaptureState graph_capture_state) const;
+  // Drop retained references when a recording is abandoned instead of submitted.
+  void DiscardPendingBuffers(CommandRecordingState& recording) const;
 
-  // Direct access to the underlying cache managers. Used by SessionBufferPool to
-  // donate/seed buffers across per-graph BufferManager lifetimes.
-  IBufferCacheManager& StorageCache() { return *storage_cache_; }
-  IBufferCacheManager& UniformCache() { return *uniform_cache_; }
+  std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers(wgpu::BufferUsage usage);
+  void AbsorbCachedBuffers(wgpu::BufferUsage usage,
+                           std::vector<std::pair<size_t, WGPUBuffer>>&& buffers);
 
  private:
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;
   IBufferCacheManager& GetCacheManager(WGPUBuffer buffer) const;
-
   WebGpuContext& context_;
+  // Protects both the caches and pending_buffers_.
+  mutable std::mutex mutex_;
   std::unique_ptr<IBufferCacheManager> storage_cache_;
   std::unique_ptr<IBufferCacheManager> uniform_cache_;
   std::unique_ptr<IBufferCacheManager> query_resolve_cache_;
   std::unique_ptr<IBufferCacheManager> default_cache_;
+  // Created on release, only for reusable buffers waiting for this recording's submission.
+  mutable InlinedHashMap<const CommandRecordingState*, InlinedVector<wgpu::Buffer>> pending_buffers_;
 };
 
 class BufferManagerFactory {

@@ -163,7 +163,8 @@ steps:
         Set-Content $m2SettingsXmlPath
 
 
-      # gradle - inject 1ES feed repo into all projects/buildscripts. Auth using creds from maven settings.xml.
+      # gradle - inject 1ES feed repo into plugin management, all projects, and buildscripts.
+      # Auth using creds from maven settings.xml.
       # nb: see HACK note above.
       $gradleInitDir = if ($env:GRADLE_HOME_DIR) { $env:GRADLE_HOME_DIR } else { "~/.gradle" }
       if (!(Test-Path -Path "${gradleInitDir}/init.d")) {
@@ -181,6 +182,22 @@ steps:
         for (x in mavenSettingsServers()) {
           if (x."id".text() == "${env:central_maven_feed_name}") {
             return [username: x.username.text(), password: x.password.text()]
+          }
+        }
+      }
+
+      settingsEvaluated { settings ->
+        settings.pluginManagement {
+          repositories {
+            clear()
+            maven {
+              name "1ES Feed"
+              url uri("https://aiinfra.pkgs.visualstudio.com/_packaging/${env:central_maven_feed_name}/maven/v1")
+              credentials(PasswordCredentials) {
+                username oneEsFeedCredentials().username
+                password oneEsFeedCredentials().password
+              }
+            }
           }
         }
       }

@@ -11,6 +11,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/provider_options.h"
 #include "core/graph/constants.h"
+#include "core/platform/telemetry_strings.h"
 #include "core/providers/provider_factory_creators.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -137,15 +138,18 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   }
 
 #if defined(_WIN32) && defined(ONNXRUNTIME_ENABLE_INSTRUMENT)
+  size_t option_count = 0;
   for (const auto& config_pair : provider_options) {
+    if (option_count++ == telemetry_detail::kMaxTelemetryCollectionEntries) break;
+    telemetry_detail::TelemetryStrings strings;
     TraceLoggingWrite(
         telemetry_provider_handle,
         "ProviderOptionsAppendExecutionProvider",
         TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
         TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-        TraceLoggingString(provider_name, "ProviderName"),
-        TraceLoggingString(config_pair.first.c_str(), "Key"),
-        TraceLoggingString(config_pair.second.c_str(), "Value"));
+        TraceLoggingString(strings.Utf8(provider_name), "ProviderName"),
+        TraceLoggingString(strings.Utf8(config_pair.first), "Key"),
+        TraceLoggingString(strings.Utf8(config_pair.second), "Value"));
   }
 #endif
 

@@ -27,6 +27,7 @@
 #include "core/session/utils.h"
 #include "core/session/custom_ops.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_type_conversion.h"
 #include "core/session/ort_apis.h"
 #include "core/platform/threadpool.h"
 
@@ -120,7 +121,8 @@ struct OrtShapeInferContext {
       }
     }
     ONNX_NAMESPACE::updateOutputShape(ctx_, index, shape_proto);
-    ONNX_NAMESPACE::updateOutputElemType(ctx_, index, info->GetElementType());
+    ONNX_NAMESPACE::updateOutputElemType(
+        ctx_, index, onnxruntime::utils::ToTensorProtoElementType(info->GetElementType()));
     return onnxruntime::Status::OK();
   }
 
@@ -191,6 +193,23 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* 
     onnxruntime::TensorShape shape(dim_values, dim_count);
     auto* ctx = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
     *out = reinterpret_cast<OrtValue*>(ctx->OutputMLValue(onnxruntime::narrow<int>(index), shape));
+    return nullptr;
+  });
+};
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetPreallocatedOutput, _In_ const OrtKernelContext* context,
+                    _In_ size_t output_index, _Outptr_result_maybenull_ OrtValue** output) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
+    if (context == nullptr || output == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "context and output must not be null");
+    }
+
+    const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context);
+    if (output_index >= static_cast<size_t>(ctx->OutputCount())) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "output_index is out of range");
+    }
+
+    *output = reinterpret_cast<OrtValue*>(ctx->GetPreallocatedOutputMLValue(onnxruntime::narrow<int>(output_index)));
     return nullptr;
   });
 };
@@ -996,8 +1015,8 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
     if (input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
       def_builder.TypeConstraint(input_name, SUPPORTED_TENSOR_TYPES);
     } else {
-      def_builder.TypeConstraint(input_name,
-                                 DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(input_type))->AsTensorType());
+      const auto* tensor_type = DataTypeImpl::TensorTypeFromONNXEnum(utils::ToTensorProtoElementType(input_type));
+      def_builder.TypeConstraint(input_name, tensor_type->AsTensorType());
     }
   }
 
@@ -1007,8 +1026,8 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
     if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
       def_builder.TypeConstraint(output_name, SUPPORTED_TENSOR_TYPES);
     } else {
-      def_builder.TypeConstraint(output_name,
-                                 DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(output_type))->AsTensorType());
+      const auto* tensor_type = DataTypeImpl::TensorTypeFromONNXEnum(utils::ToTensorProtoElementType(output_type));
+      def_builder.TypeConstraint(output_name, tensor_type->AsTensorType());
     }
   }
 
@@ -1120,7 +1139,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
       std::vector<std::string> types;
       for (auto type : all_types) {
         const ONNX_NAMESPACE::TypeProto* type_proto =
-            DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(type))->GetTypeProto();
+            DataTypeImpl::TensorTypeFromONNXEnum(utils::ToTensorProtoElementType(type))->GetTypeProto();
         types.push_back(*ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto));
       }
       schema.TypeConstraint(name, types, "defined list of types");

@@ -53,6 +53,23 @@ class OpKernelContextInternal : public OpKernelContext {
     return session_state_.GetUseDeterministicCompute();
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  KernelPilot* GetKernelPilot() const override {
+    kernel_pilot_ = session_state_.GetKernelPilot(GetKernel());
+    return kernel_pilot_;
+  }
+
+  // Called by the executor only after successful Compute(). To commit usage, Compute() must obtain
+  // the pilot via GetKernelPilot(), then BeginInvocation() and collect its selection before returning.
+  // Without a lookup this is a no-op; KernelPilot::RecordUsage() also checks for a pending invocation.
+  Status RecordKernelUsage() const {
+    if (kernel_pilot_ == nullptr) {
+      return Status::OK();
+    }
+    return kernel_pilot_->RecordUsage();
+  }
+#endif
+
   const SessionState* SubgraphSessionState(const std::string& attribute_name) {
     return session_state_.GetSubgraphSessionState(GetNodeIndex(), attribute_name);
   }
@@ -63,6 +80,10 @@ class OpKernelContextInternal : public OpKernelContext {
 
   OrtValue* GetOutputMLValue(int index) {
     return OpKernelContext::GetOutputMLValue(index);
+  }
+
+  OrtValue* GetPreallocatedOutputMLValue(int index) const {
+    return OpKernelContext::GetPreallocatedOutputMLValue(index);
   }
 
 #ifdef ENABLE_ATEN
@@ -110,6 +131,8 @@ class OpKernelContextInternal : public OpKernelContext {
 
  private:
 #if !defined(ORT_MINIMAL_BUILD)
+  mutable KernelPilot* kernel_pilot_{nullptr};
+
   class AccountingAllocator : public IAllocator {
    public:
     AccountingAllocator(AllocatorPtr alloc) : IAllocator(alloc->Info()), allocator_(std::move(alloc)) {

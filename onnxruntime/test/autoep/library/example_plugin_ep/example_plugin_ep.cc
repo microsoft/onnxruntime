@@ -7,6 +7,8 @@
 
 #include "ep_factory.h"
 
+#include <cstring>
+
 // To make symbols visible on macOS/iOS
 #ifdef __APPLE__
 #define EXPORT_SYMBOL __attribute__((visibility("default")))
@@ -28,11 +30,17 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* registration_name, const 
   // Manual init for the C++ API
   Ort::InitApi(ort_api);
 
+  // Test hook used by AutoEP regression coverage. This keeps the default example EP behavior unchanged while allowing
+  // one test registration to expose multiple hardware devices backed by the same factory and custom-op domains.
+  const bool create_duplicate_virtual_devices =
+      std::strcmp(registration_name, "example_ep_duplicate_devices") == 0;
+
   // Factory could use registration_name or define its own EP name.
   std::unique_ptr<OrtEpFactory> factory = std::make_unique<ExampleEpFactory>(registration_name,
                                                                              ApiPtrs{*ort_api, *ep_api,
                                                                                      *model_editor_api},
-                                                                             *default_logger);
+                                                                             *default_logger,
+                                                                             create_duplicate_virtual_devices);
 
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,

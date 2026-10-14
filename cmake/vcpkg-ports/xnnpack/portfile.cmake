@@ -11,6 +11,7 @@ vcpkg_from_github(
     PATCHES
         fix-build.patch
         disable_gcc_warning.patch
+        "${CMAKE_CURRENT_LIST_DIR}/../../patches/xnnpack/release_cpuinfo_after_hardware_config.patch"
 )
 vcpkg_find_acquire_program(PYTHON3)
 

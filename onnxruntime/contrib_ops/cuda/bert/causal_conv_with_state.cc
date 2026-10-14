@@ -38,6 +38,10 @@ CausalConvWithState<T>::CausalConvWithState(const OpKernelInfo& info) : CudaKern
   ORT_ENFORCE(activation_ == "none" || activation_ == "silu" || activation_ == "swish",
               "activation must be one of: none, silu, swish");
 
+  ORT_THROW_IF_ERROR(causal_conv_with_state_helper::ParseDilation(info, dilation_));
+  ORT_THROW_IF_ERROR(causal_conv_with_state_helper::ParseChannelsLast(info, channels_last_));
+  ORT_ENFORCE(!channels_last_ || ndim_ == 1, "channels_last requires ndim = 1");
+
   // See LinearAttention: only the trailing per-position states are ever consumed, so a window
   // caps the allocation and the write traffic for long prompts. 0 keeps the plain single state.
   ORT_THROW_IF_ERROR(causal_conv_with_state_helper::ParseStateWindow(info, state_window_));
@@ -57,16 +61,26 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
   const auto& weight_shape = weight_tensor->Shape();
 
   // Validate input rank and weight rank
-  ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 3,
-                    "input must be rank 3 (batch, channels, length), got rank ", input_shape.NumDimensions());
+  if (channels_last_) {
+    // (batch_size, sequence_length, d_1, ..., d_n): any number of trailing channel axes, so a
+    // caller that keeps hyper-connections and hidden size separate needs no reshape.
+    ORT_RETURN_IF_NOT(input_shape.NumDimensions() >= 3,
+                      "input must have rank >= 3 (batch, length, ...channels) when "
+                      "channels_last = 1, got rank ",
+                      input_shape.NumDimensions());
+  } else {
+    ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 3,
+                      "input must be rank 3 (batch, channels, length), got rank ", input_shape.NumDimensions());
+  }
   ORT_RETURN_IF_NOT(weight_shape.NumDimensions() == 3,
                     "weight must be rank 3 (channels, 1, kernel_size), got rank ", weight_shape.NumDimensions());
 
   const int batch_size = static_cast<int>(input_shape[0]);
-  const int channels = static_cast<int>(input_shape[1]);
-  const int L = static_cast<int>(input_shape[2]);
+  const int channels = static_cast<int>(channels_last_ ? input_shape.SizeFromDimension(2)
+                                                       : input_shape[1]);
+  const int L = static_cast<int>(channels_last_ ? input_shape[1] : input_shape[2]);
   const int K = static_cast<int>(weight_shape[2]);
-  const int pad = K - 1;
+  const int pad = (K - 1) * dilation_;
 
   ORT_RETURN_IF_NOT(L > 0, "input length must be positive, got ", L);
 
@@ -83,13 +97,19 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
                       "bias must have shape (", channels, "), got ", bias_shape.ToString());
   }
 
-  // past_state / present_state are [B, C, K-1], or [W, B, C, K-1] when state_window_ = W > 0.
+  // past_state / present_state are [B, C, pad], or [W, B, C, pad] when state_window_ = W > 0,
+  // where pad = (K-1)*dilation.
   // Right-aligned: token t lands in slot t + W - L, so slot W-1 always holds the state after the
   // last token (and is the slot past_state is read from).
   const int state_slots = state_window_ > 0 ? state_window_ : 1;
   TensorShape state_shape;
-  ORT_RETURN_IF_ERROR(causal_conv_with_state_helper::CheckInputs(
-      state_window_, batch_size, channels, pad, past_state_tensor, state_shape, "CausalConvWithState"));
+  if (channels_last_) {
+    ORT_RETURN_IF_ERROR(causal_conv_with_state_helper::CheckInputsChannelsLast(
+        state_window_, input_shape, pad, past_state_tensor, state_shape, "CausalConvWithState"));
+  } else {
+    ORT_RETURN_IF_ERROR(causal_conv_with_state_helper::CheckInputs(
+        state_window_, batch_size, channels, pad, past_state_tensor, state_shape, "CausalConvWithState"));
+  }
 
   // Allocate outputs
   Tensor* output_tensor = context->Output(0, input_shape);
@@ -125,6 +145,9 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
       channels,
       L,
       K,
+      dilation_,
+      MakeCausalConvLayout(channels_last_, channels, L),
+      MakeCausalConvLayout(channels_last_, channels, pad),
       apply_silu,
       GetDeviceProp().maxThreadsPerBlock,
       state_slots);

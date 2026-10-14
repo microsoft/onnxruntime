@@ -46,11 +46,16 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
 
-  const size_t scale_input_index = op_type == "SkipSimplifiedLayerNormalization" ? 2 : 1;
+  // Skip normalization variants (Skip[Simplified]LayerNormalization) take input and skip as
+  // inputs 0 and 1, so their scale/bias inputs are shifted by one compared to the non-skip ops.
+  const bool is_skip_norm =
+      op_type == "SkipLayerNormalization" || op_type == "SkipSimplifiedLayerNormalization";
+
+  const size_t scale_input_index = is_skip_norm ? 2 : 1;
   emscripten::val scale = model_builder.GetOperand(input_defs[scale_input_index]->Name());
   options.set("scale", scale);
 
-  const size_t bias_input_index = op_type == "SkipSimplifiedLayerNormalization" ? 3 : 2;
+  const size_t bias_input_index = is_skip_norm ? 3 : 2;
   emscripten::val bias = emscripten::val::undefined();
   if (TensorExists(input_defs, bias_input_index)) {
     // Bias input exists.
@@ -59,7 +64,10 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
   }
 
   NodeAttrHelper helper(node);
-  const auto epsilon = helper.Get("epsilon", 1e-05f);
+  // The com.microsoft Skip[Simplified]LayerNormalization schema defaults epsilon to 1e-12f
+  // (kDefaultSkipLayerNormEpsilon), whereas the other normalization ops default to 1e-5f.
+  const float default_epsilon = is_skip_norm ? 1e-12f : 1e-05f;
+  const auto epsilon = helper.Get("epsilon", default_epsilon);
   options.set("epsilon", epsilon);
 
   emscripten::val output = emscripten::val::undefined();
@@ -69,6 +77,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     emscripten::val variance = model_builder.GetOperand(input_defs[4]->Name());
     output = model_builder.GetBuilder().call<emscripten::val>("batchNormalization", input, mean, variance, options);
   } else if (op_type == "LayerNormalization" ||
+             op_type == "SkipLayerNormalization" ||
              op_type == "SimplifiedLayerNormalization" ||
              op_type == "SkipSimplifiedLayerNormalization") {
     int64_t axis = helper.Get("axis", -1);
@@ -76,7 +85,34 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     std::vector<uint32_t> axes(rank - SafeInt<uint32_t>(axis));
     std::iota(axes.begin(), axes.end(), axis);
 
-    if (op_type == "LayerNormalization") {
+    if (op_type == "LayerNormalization" || op_type == "SkipLayerNormalization") {
+      /**
+      WebNN's layerNormalization already implements the full (non-simplified) layer normalization.
+      SkipLayerNormalization has no native WebNN op, but it is just a layerNormalization applied to
+      the residual sum, so we compute the residual first and reuse layerNormalization:
+          input_skip_bias_sum = X + skip + bias (bias is optional, input index 4)
+          output = layerNormalization(input_skip_bias_sum) with scale (gamma) and bias (beta).
+      */
+      if (op_type == "SkipLayerNormalization") {
+        emscripten::val common_options = emscripten::val::object();
+        emscripten::val skip = model_builder.GetOperand(input_defs[1]->Name());
+        common_options.set("label", node.Name() + "_add_skip");
+        input = model_builder.GetBuilder().call<emscripten::val>("add", input, skip, common_options);
+
+        // Optional pre-normalization bias (input index 4), added to the residual sum.
+        if (TensorExists(input_defs, 4)) {
+          emscripten::val pre_norm_bias = model_builder.GetOperand(input_defs[4]->Name());
+          common_options.set("label", node.Name() + "_add_bias");
+          input = model_builder.GetBuilder().call<emscripten::val>("add", input, pre_norm_bias, common_options);
+        }
+
+        // Optional output input_skip_bias_sum (output index 3). Now input equals to input_skip_bias_sum.
+        if (TensorExists(output_defs, 3)) {
+          emscripten::val input_skip_bias_sum = input;
+          model_builder.AddOperand(output_defs[3]->Name(), input_skip_bias_sum);
+        }
+      }
+
       options.set("axes", emscripten::val::array(axes));
       output = model_builder.GetBuilder().call<emscripten::val>("layerNormalization", input, options);
     } else {  // SimplifiedLayerNormalization or SkipSimplifiedLayerNormalization
@@ -145,8 +181,10 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       common_options.set("label", node.Name() + "_mul");
       output = model_builder.GetBuilder().call<emscripten::val>("mul", scale, div, common_options);
 
-      // Add (if bias exists)
-      if (!bias.isUndefined()) {
+      // Add (if bias exists).
+      // For SkipSimplifiedLayerNormalization the bias is the residual bias and has already been
+      // folded into input_skip_bias_sum above, so it must not be added again post-normalization.
+      if (!bias.isUndefined() && op_type != "SkipSimplifiedLayerNormalization") {
         common_options.set("label", node.Name() + "_add_bias");
         output = model_builder.GetBuilder().call<emscripten::val>("add", output, bias, common_options);
       }
@@ -218,14 +256,14 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const GraphViewer&,
   }
 
   const auto& output_defs = node.OutputDefs();
-  if (op_type == "SkipSimplifiedLayerNormalization") {
+  if (op_type == "SkipLayerNormalization" || op_type == "SkipSimplifiedLayerNormalization") {
     if (output_defs.size() > 4) {
-      LOGS(logger, VERBOSE) << "SkipSimplifiedLayerNormalization output count must not exceed 4.";
+      LOGS(logger, VERBOSE) << op_type << " output count must not exceed 4.";
       return false;
     }
     if (TensorExists(output_defs, 1) || TensorExists(output_defs, 2)) {
       // Output mean and inv_std_var are used for training mode, which is not supported.
-      LOGS(logger, VERBOSE) << "SkipSimplifiedLayerNormalization's output mean and inv_std_var are not supported.";
+      LOGS(logger, VERBOSE) << op_type << "'s output mean and inv_std_var are not supported.";
       return false;
     }
   } else {
@@ -274,10 +312,13 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const No
     return false;
   }
 
-  if (op_type == "SimplifiedLayerNormalization" || op_type == "SkipSimplifiedLayerNormalization") {
-    // SkipSimplifiedLayerNormalization and SimplifiedLayerNormalization are supported by decomposed WebNN ops.
+  if (op_type == "SkipLayerNormalization" ||
+      op_type == "SimplifiedLayerNormalization" ||
+      op_type == "SkipSimplifiedLayerNormalization") {
+    // These ops are supported by decomposed WebNN ops (see decomposed_op_map).
     // Check if the input data type is supported by each decomposed WebNN op.
-    // Decomposed ops include: "Add", "Div", "Mul", "Pow", "ReduceMean" and "Sqrt".
+    //   SkipLayerNormalization decomposes into: "Add", "LayerNormalization".
+    //   Simplified/SkipSimplifiedLayerNormalization: "Add", "Div", "Mul", "Pow", "ReduceMean", "Sqrt".
     for (const std::string_view decomposed_op_type : decomposed_op_map.at(op_type)) {
       const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
       const std::string_view webnn_input_name = GetWebNNOpFirstInputName(decomposed_op_type);
@@ -292,7 +333,12 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const No
       return false;
     }
     // It's complicated to check all the decomposed ops' input rank support.
-    // Ensure at least the first input rank is supported by the decomposed ops (pow and div accept the first input).
+    // Ensure at least the first input rank is supported by the ops that consume the (residual) input.
+    if (op_type == "SkipLayerNormalization") {
+      return IsRankSupportedByWebNNOp(wnn_limits, "add", "a", input_shape.size(), node.Name(), logger) &&
+             IsRankSupportedByWebNNOp(wnn_limits, "layerNormalization", "input", input_shape.size(),
+                                      node.Name(), logger);
+    }
     return IsRankSupportedByWebNNOp(wnn_limits, "pow", "a", input_shape.size(), node.Name(), logger) &&
            IsRankSupportedByWebNNOp(wnn_limits, "div", "a", input_shape.size(), node.Name(), logger);
   } else {
@@ -327,7 +373,9 @@ bool NormalizationOpBuilder::HasSupportedOutputsImpl(const Node& node,
     return false;
   }
 
-  if (op_type == "SimplifiedLayerNormalization" || op_type == "SkipSimplifiedLayerNormalization") {
+  if (op_type == "SkipLayerNormalization" ||
+      op_type == "SimplifiedLayerNormalization" ||
+      op_type == "SkipSimplifiedLayerNormalization") {
     // Check if the output data type is supported by every decomposed WebNN op.
     for (const std::string_view decomposed_op_type : decomposed_op_map.at(op_type)) {
       const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
@@ -365,6 +413,7 @@ void CreateNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrat
           "BatchNormalization",
           "InstanceNormalization",
           "LayerNormalization",
+          "SkipLayerNormalization",
           "SimplifiedLayerNormalization",
           "SkipSimplifiedLayerNormalization",
       };

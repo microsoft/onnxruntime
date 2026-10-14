@@ -210,6 +210,8 @@ ABSL_FLAG(std::string, filter_ep_devices, "",
           "Devices that match any of the key-value pair will be appended to the session. --select_ep_devices will take precedence over this option.\n"
           "[Example] --filter_ep_devices \"ov_device|NPU ov_device|CPU\" \n"
           "Above example will append npu device first if available, followed by cpu device.");
+ABSL_FLAG(bool, plugin_ep_force_cpu_allocator, DefaultPerformanceTestConfig().plugin_ep_force_cpu_allocator,
+          "Forces the use of the CPU allocator instead of a plugin EP's own allocator when running with plugin execution providers.\n");
 ABSL_FLAG(bool, compile_ep_context, DefaultPerformanceTestConfig().run_config.compile_ep_context, "Generate an EP context model");
 ABSL_FLAG(std::string, compile_model_path, "model_ctx.onnx", "The compiled model path for saving EP context model. Overwrites if already exists");
 ABSL_FLAG(bool, compile_binary_embed, DefaultPerformanceTestConfig().run_config.compile_binary_embed, "Embed binary blob within EP context node");
@@ -618,6 +620,9 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
       }
     }
   }
+
+  // --plugin_ep_force_cpu_allocator
+  test_config.plugin_ep_force_cpu_allocator = absl::GetFlag(FLAGS_plugin_ep_force_cpu_allocator);
 
   // --compile_ep_context
   test_config.run_config.compile_ep_context = absl::GetFlag(FLAGS_compile_ep_context);

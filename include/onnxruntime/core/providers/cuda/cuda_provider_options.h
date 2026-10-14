@@ -17,6 +17,8 @@
 /// User can only get the instance of OrtCUDAProviderOptionsV2 via CreateCUDAProviderOptions.
 /// </summary>
 struct OrtCUDAProviderOptionsV2 {
+  static constexpr size_t kMaxExternalDataLoaderReadingThreadCount = 64;
+
   int device_id = 0;                                                                                           // cuda device id.
   int has_user_compute_stream = 0;                                                                             // indicator of user specified CUDA compute stream.
   void* user_compute_stream = nullptr;                                                                         // user specified CUDA compute stream.
@@ -40,4 +42,5 @@ struct OrtCUDAProviderOptionsV2 {
   int use_tf32 = 1;                                                                                            // use TF32
   int fuse_conv_bias = 0;                                                                                      // Enable CUDNN Frontend kernel fusing, results in JIT compiles
   int sdpa_kernel = 0;                                                                                         // Scaled Dot Product Attention kernel option
+  size_t external_data_loader_reading_threads = 4;                                                             // Number of CPU read tasks per external-data staging buffer. 0 disables the loader; 1 disables parallel reads.
 };

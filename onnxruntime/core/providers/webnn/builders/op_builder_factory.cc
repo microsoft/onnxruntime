@@ -124,6 +124,12 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateGatherNDOpBuilder("GatherND", op_registrations);
   }
 
+  {  // GroupNorm
+    CreateGroupNormOpBuilder("GroupNormalization", op_registrations);
+    CreateGroupNormOpBuilder("GroupNorm", op_registrations);
+    CreateGroupNormOpBuilder("SkipGroupNorm", op_registrations);
+  }
+
   {  // GroupQueryAttention
     CreateGroupQueryAttentionOpBuilder("GroupQueryAttention", op_registrations);
   }
@@ -185,6 +191,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateNormalizationOpBuilder("BatchNormalization", op_registrations);
     CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
     CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
+    CreateNormalizationOpBuilder("SkipLayerNormalization", op_registrations);
     CreateNormalizationOpBuilder("SimplifiedLayerNormalization", op_registrations);
     CreateNormalizationOpBuilder("SkipSimplifiedLayerNormalization", op_registrations);
   }

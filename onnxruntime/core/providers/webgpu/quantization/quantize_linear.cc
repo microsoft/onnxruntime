@@ -175,10 +175,11 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
   int max_components = GetMaxComponents(x_size);
 
   // scaler - single scaler for all elements
-  bool per_layer = x_scale_rank == 0 || (x_scale_rank == 1 && x_scale->Shape()[0] == 1);
+  bool per_layer = block_size_ == 0 &&
+                   (x_scale_rank == 0 || (x_scale_rank == 1 && x_scale->Shape()[0] == 1));
 
   // 1D tensor - 1 scaler for per axis
-  bool per_axis = per_layer == false && x_scale_rank == 1;
+  bool per_axis = block_size_ == 0 && per_layer == false && x_scale_rank == 1;
 
   // Compute effective block_size. When block_size_ is 0 (default) but scale is 1D with
   // fewer elements than the input dimension on the axis, infer block_size from the ratio.
@@ -244,8 +245,8 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
       .AddInputs({{x, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, packed ? pack_factor : input_component}})
       .AddInputs({{x_scale, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutput(use_components
-                     ? ProgramOutput{output_tensor, ProgramTensorMetadataDependency::Rank, ProgramOutput::Flatten, components}
-                     : ProgramOutput{output_tensor, ProgramTensorMetadataDependency::Rank, components})
+                     ? ProgramOutput{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, ProgramOutput::Flatten, components}
+                     : ProgramOutput{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, components})
       .SetDispatchGroupSize((x_size / components + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(axis)}})
       .AddUniformVariables({{static_cast<uint32_t>(block_size)}})

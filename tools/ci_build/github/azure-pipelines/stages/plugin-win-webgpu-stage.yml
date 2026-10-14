@@ -39,7 +39,7 @@ stages:
           os: windows
           hostArchitecture: Arm64
         ${{ else }}:
-          name: onnxruntime-Win-CPU-VS2022-Latest
+          name: onnxruntime-Win-CPU-2022
           os: windows
       templateContext:
         sdl:
@@ -62,9 +62,7 @@ stages:
       - name: VSGenerator
         value: 'Visual Studio 17 2022'
       steps:
-      - checkout: self
-        clean: true
-        submodules: none
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/setup-build-tools.yml
         parameters:
@@ -143,11 +141,10 @@ stages:
             New-Item -Path $targetPath -ItemType Directory -Force
           }
 
-          Write-Host "Copying dxil.dll and dxcompiler.dll from $sourcePath to $targetPath"
-          Copy-Item -Path "$sourcePath\dxil.dll" -Destination $targetPath -Force
+          Write-Host "Copying dxcompiler.dll from $sourcePath to $targetPath"
           Copy-Item -Path "$sourcePath\dxcompiler.dll" -Destination $targetPath -Force
 
-          Write-Host "DXC DLLs successfully copied to the target directory"
+          Write-Host "DXC DLL successfully copied to the target directory"
         displayName: 'Download and Copy DXC Binaries'
 
       # Esrp signing
@@ -174,7 +171,6 @@ stages:
           Contents: |
             onnxruntime_providers_webgpu.dll
             onnxruntime_providers_webgpu.pdb
-            dxil.dll
             dxcompiler.dll
           TargetFolder: '$(Build.ArtifactStagingDirectory)\bin'
 
@@ -197,7 +193,7 @@ stages:
           os: windows
           hostArchitecture: Arm64
         ${{ else }}:
-          name: onnxruntime-Win-CPU-VS2022-Latest
+          name: onnxruntime-Win-CPU-2022
           os: windows
       templateContext:
         outputs:
@@ -207,9 +203,7 @@ stages:
       variables:
       - template: ../templates/common-variables.yml
       steps:
-      - checkout: self
-        clean: true
-        submodules: none
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/setup-build-tools.yml
         parameters:

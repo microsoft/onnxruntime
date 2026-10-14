@@ -631,7 +631,13 @@ namespace Dml
         {
         assert(!m_closed);
 
-        m_uploadHeap->BeginUploadToGpu(dstData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, AsByteSpan(srcData, static_cast<size_t>(srcDataSize)));
+        const auto checkedSrcDataSize = detail::TryConvertToUploadSize(srcDataSize);
+        ORT_THROW_HR_IF(E_INVALIDARG, !checkedSrcDataSize.has_value());
+        m_uploadHeap->BeginUploadToGpu(
+            dstData,
+            0,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            AsByteSpan(srcData, *checkedSrcDataSize));
         FlushUploadsIfReady();
 
         return S_OK;

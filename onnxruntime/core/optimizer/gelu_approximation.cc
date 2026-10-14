@@ -93,8 +93,11 @@ Status GeluApproximation::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
       fastgelu.SetExecutionProviderType(node.GetExecutionProviderType());
 
+      const NodeIndex removed_node_index = node.Index();
       graph_utils::RemoveNodeOutputEdges(graph, node);
-      graph.RemoveNode(node.Index());
+      graph.RemoveNode(removed_node_index);
+      graph.NotifyNodeReplacement(
+          gsl::span<const NodeIndex>{&removed_node_index, 1}, fastgelu.Index());
 
       count++;
     }

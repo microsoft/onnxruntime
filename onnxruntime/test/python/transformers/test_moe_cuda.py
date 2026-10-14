@@ -1734,18 +1734,25 @@ def create_sparse_mixer_onnx_graph(
         ],
     )
 
-    return helper.make_model(graph, producer_name="MoE_Model")
+    return helper.make_model(
+        graph,
+        producer_name="MoE_Model",
+        opset_imports=[helper.make_opsetid("", 27), helper.make_opsetid("com.microsoft", 1)],
+    )
 
 
 class TestSparseMixer(unittest.TestCase):
     @parameterized.expand(
         list(
             itertools.product(
-                [TensorProto.FLOAT16],
+                [TensorProto.FLOAT16, TensorProto.BFLOAT16],
             )
         )
     )
     def test_sparse_mixer_functional(self, onnx_dtype):
+        if onnx_dtype == TensorProto.BFLOAT16 and not has_bf16_moe():
+            self.skipTest("BF16 MoE requires CUDA compute capability 8.0 or later")
+
         # Basic regression test for Sparse Mixer integration.
         # k=2, experts=8 (supported size)
         num_rows = 128
@@ -1774,22 +1781,48 @@ class TestSparseMixer(unittest.TestCase):
             fc2_bias,
             onnx_dtype,
         )
+        opset_imports = {opset_import.domain: opset_import.version for opset_import in onnx_model.opset_import}
+        self.assertEqual(opset_imports, {"": 27, "com.microsoft": 1})
 
         sess_options = onnxruntime.SessionOptions()
         sess = onnxruntime.InferenceSession(onnx_model.SerializeToString(), sess_options, providers=get_ort_provider())
 
         inputs = {
-            "input": input_data.cpu().numpy(),
-            "router_probs": router_probs.cpu().numpy(),
-            "fc1_experts_weights": fc1_weight.transpose(1, 2).contiguous().cpu().numpy(),
-            "fc1_experts_bias": fc1_bias.cpu().numpy(),
-            "fc2_experts_weights": fc2_weight.transpose(1, 2).contiguous().cpu().numpy(),
-            "fc2_experts_bias": fc2_bias.cpu().numpy(),
+            "input": input_data,
+            "router_probs": router_probs,
+            "fc1_experts_weights": fc1_weight.transpose(1, 2).contiguous(),
+            "fc1_experts_bias": fc1_bias,
+            "fc2_experts_weights": fc2_weight.transpose(1, 2).contiguous(),
+            "fc2_experts_bias": fc2_bias,
         }
 
-        # Just ensure it runs without error
-        output = sess.run(None, inputs)
-        self.assertEqual(output[0].shape, (num_rows, hidden_size))
+        if onnx_dtype == TensorProto.BFLOAT16:
+            output = torch.empty(num_rows, hidden_size, dtype=torch_dtype, device=device)
+            io_binding = sess.io_binding()
+            for name, tensor in inputs.items():
+                io_binding.bind_input(
+                    name=name,
+                    device_type=tensor.device.type,
+                    device_id=tensor.device.index or 0,
+                    element_type=onnx_dtype,
+                    shape=tensor.shape,
+                    buffer_ptr=tensor.data_ptr(),
+                )
+            io_binding.bind_output(
+                name="output",
+                device_type=output.device.type,
+                device_id=output.device.index or 0,
+                element_type=onnx_dtype,
+                shape=output.shape,
+                buffer_ptr=output.data_ptr(),
+            )
+            io_binding.synchronize_inputs()
+            sess.run_with_iobinding(io_binding)
+            io_binding.synchronize_outputs()
+            self.assertEqual(tuple(output.shape), (num_rows, hidden_size))
+        else:
+            output = sess.run(None, {name: tensor.cpu().numpy() for name, tensor in inputs.items()})
+            self.assertEqual(output[0].shape, (num_rows, hidden_size))
 
     @unittest.skipIf(not use_cuda, "Sparse Mixer testing requires CUDAExecutionProvider")
     def test_sparse_mixer_parity(self):

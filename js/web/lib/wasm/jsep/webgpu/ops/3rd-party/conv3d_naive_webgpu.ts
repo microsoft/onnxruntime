@@ -348,11 +348,11 @@ export const createConv3DNaiveProgramInfo = (
 
     return `
             ${declareFunctions}
-            fn getX(d0 : u32, d1 : u32, d2 : u32, d3 : u32, d4 : u32) -> f32 {
+            fn getX(d0 : u32, d1 : u32, d2 : u32, d3 : u32, d4 : u32) -> ${t} {
               let aIndices = array<u32, 5>(d0, d1, d2, d3, d4);
               return ${x.getByIndices('aIndices')};
             }
-            fn getW(d0 : u32, d1 : u32, d2 : u32, d3 : u32, d4 : u32) -> f32 {
+            fn getW(d0 : u32, d1 : u32, d2 : u32, d3 : u32, d4 : u32) -> ${t} {
               let aIndices = array<u32, 5>(d0, d1, d2, d3, d4);
               return ${w.getByIndices('aIndices')};
             }
@@ -397,7 +397,7 @@ export const createConv3DNaiveProgramInfo = (
               let inputDepthNearestVec4 = (xShapeU / 4) * 4;
               let inputDepthVec4Remainder = xShapeU % 4;
 
-              var value = 0.0;
+              var value = ${t}(0);
               for (var wF = 0u; wF < uniforms.filter_dims[0]; wF++) {
                 let xF = xFCorner + wF * uniforms.dilations[0];
                 if (xF < 0 || xF >= xShapeY) {
@@ -419,20 +419,20 @@ export const createConv3DNaiveProgramInfo = (
                     for (var d1 = 0u; d1 < inputDepthNearestVec4; d1 += 4) {
                       ${
                         isChannelLast
-                          ? `let xValues = vec4<f32>(
+                          ? `let xValues = vec4<${t}>(
                                getX(batch, xF, xR, xC, d1),
                                getX(batch, xF, xR, xC, d1 + 1),
                                getX(batch, xF, xR, xC, d1 + 2),
                                getX(batch, xF, xR, xC, d1 + 3));
                             `
-                          : `let xValues = vec4<f32>(
+                          : `let xValues = vec4<${t}>(
                                getX(batch, d1, xF, xR, xC),
                                getX(batch, d1 + 1, xF, xR, xC),
                                getX(batch, d1 + 2, xF, xR, xC),
                                getX(batch, d1 + 3, xF, xR, xC));
                             `
                       }
-                            let wValues = vec4<f32>(
+                            let wValues = vec4<${t}>(
                               getW(d2, d1, wF, wR, wC),
                               getW(d2, d1 + 1, wF, wR, wC),
                               getW(d2, d1 + 2, wF, wR, wC),
@@ -450,34 +450,34 @@ export const createConv3DNaiveProgramInfo = (
                     } else if (inputDepthVec4Remainder == 2) {
                       ${
                         isChannelLast
-                          ? `let xValues = vec2<f32>(
+                          ? `let xValues = vec2<${t}>(
                         getX(batch, xF, xR, xC, inputDepthNearestVec4),
                         getX(batch, xF, xR, xC, inputDepthNearestVec4 + 1));
                       `
-                          : `let xValues = vec2<f32>(
+                          : `let xValues = vec2<${t}>(
                         getX(batch, inputDepthNearestVec4, xF, xR, xC),
                         getX(batch, inputDepthNearestVec4 + 1, xF, xR, xC));
                     `
                       }
-                    let wValues = vec2<f32>(
+                    let wValues = vec2<${t}>(
                       getW(d2, inputDepthNearestVec4, wF, wR, wC),
                       getW(d2, inputDepthNearestVec4 + 1, wF, wR, wC));
                       value += dot(xValues, wValues);
                     } else if (inputDepthVec4Remainder == 3) {
                       ${
                         isChannelLast
-                          ? `let xValues = vec3<f32>(
+                          ? `let xValues = vec3<${t}>(
                         getX(batch, xF, xR, xC, inputDepthNearestVec4),
                         getX(batch, xF, xR, xC, inputDepthNearestVec4 + 1),
                         getX(batch, xF, xR, xC, inputDepthNearestVec4 + 2));
                       `
-                          : `let xValues = vec3<f32>(
+                          : `let xValues = vec3<${t}>(
                         getX(batch, inputDepthNearestVec4, xF, xR, xC),
                         getX(batch, inputDepthNearestVec4 + 1, xF, xR, xC),
                         getX(batch, inputDepthNearestVec4 + 2, xF, xR, xC));
                     `
                       }
-                    let wValues = vec3<f32>(
+                    let wValues = vec3<${t}>(
                       getW(d2, inputDepthNearestVec4, wF, wR, wC),
                       getW(d2, inputDepthNearestVec4 + 1, wF, wR, wC),
                       getW(d2, inputDepthNearestVec4 + 2, wF, wR, wC));
@@ -488,7 +488,7 @@ export const createConv3DNaiveProgramInfo = (
               }
               ${hasBias ? 'value = value + getBiasByOutputCoords(coords)' : ''};
               ${applyActivation}
-              result[global_idx] = f32(value);
+              result[global_idx] = ${t}(value);
           }`;
   };
   return {
