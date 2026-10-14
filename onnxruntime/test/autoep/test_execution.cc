@@ -1014,6 +1014,84 @@ TEST(OrtEpLibrary, PluginEp_LoadEpContextModel_ExternalDataUsesReadCallback) {
   EXPECT_EQ(read_callback_state.read_file_name, write_callback_state.write_file_name);
 }
 
+TEST(OrtEpLibrary, PluginEp_ExecutableExternalContextRoundTrip) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+  auto options = [&]() {
+    Ort::SessionOptions result;
+    result.AddConfigEntry("ep.example.test_execute_ep_context", "1");
+    result.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, std::unordered_map<std::string, std::string>{});
+    return result;
+  };
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* compiled_model = nullptr;
+  size_t compiled_size = 0;
+  auto cleanup = gsl::finally([&]() { allocator.Free(compiled_model); });
+  EpContextDataCallbackState context;
+  {
+    auto session_options = options();
+    Ort::ModelCompilationOptions compilation(*ort_env, session_options);
+    compilation.SetInputModelPath(ORT_TSTR("testdata/encrypted_ep_context_mul.onnx"));
+    compilation.SetOutputModelBuffer(allocator, &compiled_model, &compiled_size);
+    compilation.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compilation.SetEpContextEmbedMode(true);
+    auto embedded_status = Ort::CompileModel(*ort_env, compilation);
+    ASSERT_FALSE(embedded_status.IsOK());
+    EXPECT_THAT(embedded_status.GetErrorMessage(), ::testing::HasSubstr("requires external EPContext data"));
+    ASSERT_EQ(compiled_model, nullptr);
+
+    compilation.SetEpContextEmbedMode(false);
+    ASSERT_NO_FATAL_FAILURE(SetEpContextDataWriteFunc(compilation, StoreEpContextDataCallback, &context));
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compilation));
+  }
+  ASSERT_TRUE(context.write_called);
+  ASSERT_EQ(std::string(context.payload.begin(), context.payload.end()), "ort-test-mul-float32-v1");
+  ONNX_NAMESPACE::ModelProto model;
+  ASSERT_TRUE(model.ParseFromArray(compiled_model, static_cast<int>(compiled_size)));
+  ASSERT_EQ(model.graph().node_size(), 1);
+  ASSERT_EQ(model.graph().node(0).op_type(), "EPContext");
+
+  {
+    auto session_options = options();
+    ASSERT_NO_FATAL_FAILURE(SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &context));
+    Ort::Session session(*ort_env, compiled_model, compiled_size, session_options);
+    ASSERT_TRUE(context.read_called);
+    EXPECT_EQ(context.read_file_name, context.write_file_name);
+    auto memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+    std::array<int64_t, 2> shape{3, 2};
+    std::array<float, 6> x{1, 2, 3, 4, 5, 6};
+    std::array<float, 6> y{2, -1, 0, 3, 2, 1};
+    std::array<Ort::Value, 2> inputs{
+        Ort::Value::CreateTensor<float>(memory, x.data(), x.size(), shape.data(), shape.size()),
+        Ort::Value::CreateTensor<float>(memory, y.data(), y.size(), shape.data(), shape.size())};
+    const std::array<const char*, 2> input_names{"x", "y"};
+    const std::array<const char*, 1> output_names{"z"};
+    for (int iteration = 0; iteration < 2; ++iteration) {
+      auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(), inputs.data(),
+                                 inputs.size(), output_names.data(), output_names.size());
+      ASSERT_EQ(outputs[0].GetTensorTypeAndShapeInfo().GetShape(), (std::vector<int64_t>{3, 2}));
+      const float* actual = outputs[0].GetTensorData<float>();
+      for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_EQ(actual[i], x[i] * y[i]);
+        x[i] = -x[i];
+      }
+    }
+  }
+  context.payload.assign({'i', 'n', 'v', 'a', 'l', 'i', 'd'});
+  context.read_called = false;
+  auto session_options = options();
+  ASSERT_NO_FATAL_FAILURE(SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &context));
+  try {
+    Ort::Session session(*ort_env, compiled_model, compiled_size, session_options);
+    FAIL() << "Invalid compiled context was accepted";
+  } catch (const Ort::Exception& error) {
+    EXPECT_THAT(error.what(), ::testing::HasSubstr("Invalid compiled test Mul payload"));
+  }
+  EXPECT_TRUE(context.read_called);
+}
+
 // Sandbox scenario for a compiling EP: no filesystem is needed to compile or to load the compiled model. The model,
 // external initializers and EPContext data all travel through caller-owned buffers.
 TEST(OrtEpLibrary, PluginEp_CompileAndLoadWithoutFilesystem_ExternalInitializersAndEpContextData) {
