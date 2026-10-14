@@ -4,7 +4,8 @@
 It is **not registered in the default optimization pipeline**, and introduces no
 session configuration switch or public C ABI. C++ callers may register it using
 `InferenceSession::RegisterGraphTransformer`, just like existing custom transformers.
-The example predicates are provider-independent and restrict types to float32.
+The example predicates are provider-independent and restrict relevant data bindings
+to float32, rather than scanning every matched value.
 The engine's generic partition policy defaults to CPU or unassigned graphs;
 allowing other EPs requires the caller to verify replacement kernel compatibility.
 
@@ -52,13 +53,9 @@ p.Attributes({AttributeMatcher::Equal("alpha", 1.0f / 6.0f),
               AttributeMatcher::Equal("beta", 0.5f)});
 p.Op("Mul", {h, x});
 auto guard = [](const Graph&, const Match& m) {
-  for (const NodeArg* value : m.values) {
-    const auto* type = value->TypeAsProto();
-    if (!type || !type->has_tensor_type() ||
-        type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT)
-      return false;
-  }
-  return true;
+  const auto* type = m.valueOf("x")->TypeAsProto();
+  return type && type->has_tensor_type() &&
+         type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
 };
 Replacement replacement("(x) => HardSwish(x)");
 Rule rule{
@@ -167,10 +164,27 @@ Pattern p(R"(
 )");
 ```
 
-Its guard only checks float32, since the pattern checks every fixed scalar.
+Its guard only checks that `x` is float32, since the pattern checks every fixed scalar.
 RMSNorm similarly uses `Pow(x, 2.0)` directly; epsilon remains a named binding
 because its value varies and is copied to the fused operator's attributes.
 MatMul division factors also remain variable for computed scaling attributes.
+
+The six example guards check types on these specific bindings:
+
+| Rule | Float32 bindings |
+|---|---|
+| HardSwish | `x` |
+| HardSigmoidMul | `x` |
+| MatMulDiv | `x`, `y`; `divisor` is checked as a float32 scalar initializer |
+| TransposeMatMul | `x`, `y` |
+| FusedMatMulDiv | `x`, `y`; `divisor` is checked as a float32 scalar initializer |
+| RmsNormalization | `x`, `scale`; `epsilon` is checked as a float32 scalar initializer |
+
+Resolved operator schemas establish the corresponding intermediate/output types.
+Guards do not impose a match-wide element type: independently typed operands such
+as a Pow exponent or shape/index values need their own semantic constraints.
+The supplied RMSNorm pattern still requires the float32 literal `2.0` exponent;
+that literal constraint is separate from the guard's data-type checks.
 
 Attributes use Python keyword syntax, after positional inputs:
 `h = HardSigmoid(x, alpha = 0.16666667, beta = 0.5)`.

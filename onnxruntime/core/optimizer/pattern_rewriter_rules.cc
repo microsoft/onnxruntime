@@ -19,14 +19,10 @@ ONNX_NAMESPACE::AttributeProto FloatAttribute(const char* name, float value) {
   return attr;
 }
 
-bool Float32(const Match& match) {
-  for (const NodeArg* value : match.values) {
-    const auto* type = value->TypeAsProto();
-    if (!type || !type->has_tensor_type() ||
-        type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT)
-      return false;
-  }
-  return true;
+bool IsFloat32(const NodeArg& value) {
+  const auto* type = value.TypeAsProto();
+  return type && type->has_tensor_type() &&
+         type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
 }
 
 std::optional<float> Scalar(const Graph& graph, const NodeArg& value) {
@@ -58,7 +54,7 @@ Rules MakeExampleRules() {
         mul = Mul(clip, x)
         return Div(mul, 6.0)
     )");
-    auto guard = [](const Graph&, const Match& m) { return Float32(m); };
+    auto guard = [](const Graph&, const Match& m) { return IsFloat32(*m.valueOf("x")); };
     Replacement replacement("(x) => HardSwish(x)");
     Rule rule{"HardSwish", p, {{kOnnxDomain, 14, 21}}, guard, replacement};
     rules.push_back(std::move(rule));
@@ -69,7 +65,7 @@ Rules MakeExampleRules() {
         sigmoid = HardSigmoid(x, alpha=0.16666667, beta=0.5)
         return Mul(sigmoid, x)
     )");
-    auto guard = [](const Graph&, const Match& m) { return Float32(m); };
+    auto guard = [](const Graph&, const Match& m) { return IsFloat32(*m.valueOf("x")); };
     Replacement replacement("(x) => HardSwish(x)");
     Rule rule{"HardSigmoidMul", p, {{kOnnxDomain, 14, 21}}, guard, replacement};
     rules.push_back(std::move(rule));
@@ -79,7 +75,8 @@ Rules MakeExampleRules() {
     Pattern p("(x, y, divisor) => mm = MatMul(x, y); return Div(mm, divisor)");
     auto guard = [](const Graph& graph, const Match& m) {
       auto scalar = Scalar(graph, *m.valueOf("divisor"));
-      return Float32(m) && scalar && *scalar != 0.0f && std::isfinite(1.0f / *scalar);
+      return IsFloat32(*m.valueOf("x")) && IsFloat32(*m.valueOf("y")) &&
+             scalar && *scalar != 0.0f && std::isfinite(1.0f / *scalar);
     };
     Replacement plan("(x, y, alpha) => com.microsoft.FusedMatMul(x, y, alpha=alpha)");
     auto replacement = [plan](const Graph& graph, const Match& m) {
@@ -92,7 +89,7 @@ Rules MakeExampleRules() {
   {
     Pattern p("(x, y) => transpose = Transpose(y); return MatMul(x, transpose)");
     auto guard = [](const Graph&, const Match& m) {
-      if (!Float32(m)) return false;
+      if (!IsFloat32(*m.valueOf("x")) || !IsFloat32(*m.valueOf("y"))) return false;
       const auto* shape = m.valueOf("y")->Shape();
       if (!shape || shape->dim_size() < 2) return false;
       auto it = m.nodes[0]->GetAttributes().find("perm");
@@ -118,7 +115,8 @@ Rules MakeExampleRules() {
       auto scalar = Scalar(graph, *m.valueOf("divisor"));
       auto it = m.nodes[0]->GetAttributes().find("alpha");
       float alpha = it == m.nodes[0]->GetAttributes().end() ? 1.0f : it->second.f();
-      return Float32(m) && scalar && *scalar != 0.0f && std::isfinite(alpha / *scalar);
+      return IsFloat32(*m.valueOf("x")) && IsFloat32(*m.valueOf("y")) &&
+             scalar && *scalar != 0.0f && std::isfinite(alpha / *scalar);
     };
     Replacement plan(R"(
       (x, y, alpha, transA, transB, transBatchA, transBatchB) =>
@@ -153,7 +151,7 @@ Rules MakeExampleRules() {
         return Mul(normalize, scale)
     )");
     auto guard = [](const Graph& graph, const Match& m) {
-      if (!Float32(m)) return false;
+      if (!IsFloat32(*m.valueOf("x")) || !IsFloat32(*m.valueOf("scale"))) return false;
       auto eps = Scalar(graph, *m.valueOf("epsilon"));
       const auto* shape = m.valueOf("x")->Shape();
       const auto* scale_shape = m.valueOf("scale")->Shape();

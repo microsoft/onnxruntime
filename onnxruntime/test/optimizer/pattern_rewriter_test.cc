@@ -1744,6 +1744,77 @@ TEST(PatternRewriterTests, DoubleTypeRejection) {
   EXPECT_EQ(stats.rewrites, 0u);
 }
 
+TEST(PatternRewriterTests, ExampleGuardsCheckRelevantBindings) {
+  auto examples = MakeExampleRules();
+  for (size_t index = 0; index < examples.size(); ++index) {
+    SCOPED_TRACE(examples[index].name);
+    TestGraph test;
+    auto& b = test.builder;
+    auto* non_float = b.MakeScalarInitializer<double>(2.0);
+    auto* integer = b.MakeScalarInitializer<int64_t>(2);
+    auto* unknown = b.MakeIntermediate();
+    b.AddNode("Identity", {non_float}, {b.MakeOutput()});
+    b.AddNode("Identity", {integer}, {b.MakeOutput()});
+    InlinedVector<std::string_view> bindings{"x"};
+    if (index == 0) {
+      BuildHardSwish(b);
+    } else if (index == 1) {
+      auto* x = b.MakeInput<float>({2, 4}, -1.0f, 1.0f);
+      auto* sigmoid = b.MakeIntermediate();
+      auto& node = b.AddNode("HardSigmoid", {x}, {sigmoid});
+      node.AddAttribute("alpha", 1.0f / 6.0f);
+      node.AddAttribute("beta", 0.5f);
+      b.AddNode("Mul", {sigmoid, x}, {b.MakeOutput()});
+    } else if (index == 5) {
+      auto* x = b.MakeInput<float>({2, 4}, -1.0f, 1.0f);
+      BuildRms(b, x, b.MakeOutput(), 4);
+      bindings.push_back("scale");
+      bindings.push_back("epsilon");
+    } else {
+      auto* x = b.MakeInput<float>({2, 4}, -1.0f, 1.0f);
+      auto* y = b.MakeInput<float>(index == 3 ? std::vector<int64_t>{3, 4}
+                                            : std::vector<int64_t>{4, 3},
+                                   -1.0f, 1.0f);
+      bindings.push_back("y");
+      if (index == 3) {
+        auto* transpose = b.MakeIntermediate();
+        b.AddNode("Transpose", {y}, {transpose}).AddAttribute("perm", std::vector<int64_t>{1, 0});
+        b.AddNode("MatMul", {x, transpose}, {b.MakeOutput()});
+      } else {
+        auto* mm = b.MakeIntermediate();
+        b.AddNode(index == 4 ? "FusedMatMul" : "MatMul", {x, y}, {mm},
+                  index == 4 ? kMSDomain : kOnnxDomain);
+        b.AddNode("Div", {mm, b.MakeScalarInitializer<float>(2.0f)}, {b.MakeOutput()});
+        bindings.push_back("divisor");
+      }
+    }
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    auto rule = examples[index];
+    auto guard = rule.guard;
+    size_t checked = 0;
+    rule.guard = [&](const Graph& graph, const Match& match) {
+      EXPECT_TRUE(guard(graph, match));
+      for (auto binding : bindings) {
+        SCOPED_TRACE(binding);
+        // Exercise the guard independently without making the resolved graph ill-typed.
+        for (const NodeArg* value : {non_float, integer, unknown}) {
+          Match changed = match;
+          changed.values[match.pattern->NamedValue(binding).handle] = value;
+          EXPECT_FALSE(guard(graph, changed));
+        }
+      }
+      ++checked;
+      return guard(graph, match);
+    };
+    Statistics stats;
+    ASSERT_STATUS_OK(PatternRewriter({std::move(rule)}).Run(test.graph, stats));
+    EXPECT_EQ(checked, 1u);
+    EXPECT_EQ(stats.rewrites, 1u);
+    ASSERT_STATUS_OK(test.graph.Resolve());
+  }
+}
+
 TEST(PatternRewriterTests, BranchedSharedNodeBindings) {
   for (bool external : {false, true}) {
     TestGraph test;
@@ -1813,6 +1884,37 @@ TEST(PatternRewriterTests, SubgraphsAndImplicitCaptureBoundary) {
 }
 
 #ifndef DISABLE_CONTRIB_OPS
+TEST(PatternRewriterTests, RmsGuardAllowsIntegerExponent) {
+  for (bool indexed : {false, true}) {
+    Rule rule = MakeExampleRules()[5];
+    rule.pattern = Pattern(R"(
+      (x, scale, epsilon) =>
+        square = Pow(x, 2)
+        mean = ReduceMean(square)
+        add = Add(mean, epsilon)
+        sqrt = Sqrt(add)
+        reciprocal = Reciprocal(sqrt)
+        normalize = Mul(x, reciprocal)
+        return Mul(normalize, scale)
+    )");
+    TransformerTester(
+        [](ModelTestBuilder& b) {
+          auto* x = b.MakeInput<float>({2, 4}, -1.0f, 1.0f);
+          BuildRms(b, x, b.MakeOutput(), 4);
+          auto* exponent = b.MakeScalarInitializer<int64_t>(2);
+          for (auto& node : b.graph_.Nodes()) {
+            if (node.OpType() == "Pow") node.MutableInputDefs()[1] = exponent;
+          }
+        },
+        [](InferenceSessionWrapper& session) {
+          EXPECT_EQ(Count(session.GetGraph(), "SimplifiedLayerNormalization"), 1u);
+          EXPECT_EQ(Count(session.GetGraph(), "Pow"), 0u);
+        },
+        TransformerLevel::Default, TransformerLevel::Level1, 17, 1e-6, 1e-5,
+        std::make_unique<PatternRewriter>(Rules{std::move(rule)}, Options{.indexed = indexed}));
+  }
+}
+
 TEST(PatternRewriterTests, MatMulConstantGuardsAndBroadcastRank) {
   for (int scenario = 0; scenario < 6; ++scenario) {
     TestGraph test;
