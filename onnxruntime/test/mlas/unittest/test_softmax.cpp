@@ -44,6 +44,9 @@ class MlasComputeExpTest : public MlasTestBase {
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 
   void TestFp16(size_t N, float MinimumValue, float MaximumValue) {
+    if (!MlasFp16AccelerationSupported()) {
+      return;
+    }
     MLAS_FP16* Input = BufferInputFp16.GetBuffer(N);
     MLAS_FP16* Output = BufferOutputFp16.GetBuffer(N);
 
@@ -70,6 +73,9 @@ class MlasComputeExpTest : public MlasTestBase {
   }
 
   void TestSumFp16(size_t N, float MinimumValue, float MaximumValue) {
+    if (!MlasFp16AccelerationSupported()) {
+      return;
+    }
     MLAS_FP16* Input = BufferInputFp16.GetBuffer(N);
     MLAS_FP16* Output = BufferOutputFp16.GetBuffer(N);
 
@@ -168,6 +174,9 @@ class MlasSoftmaxTest : public MlasTestBase {
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
   void TestReduceMaxFp16(size_t N, float MinimumValue, float MaximumValue) {
+    if (!MlasFp16AccelerationSupported()) {
+      return;
+    }
     MLAS_FP16* Input = BufferInputFp16.GetBuffer(N);
 
     std::default_random_engine generator(static_cast<unsigned>(N));
@@ -193,6 +202,9 @@ class MlasSoftmaxTest : public MlasTestBase {
   }
 
   void TestFp16(size_t N, size_t D, float MinimumValue, float MaximumValue, bool LogSoftmax, bool SmoothSoftmax) {
+    if (!MlasFp16AccelerationSupported()) {
+      return;
+    }
     MLAS_FP16* Input = BufferInputFp16.GetBuffer(N * D);
     MLAS_FP16* Output = BufferOutputFp16.GetBuffer(N * D);
     float* InputReference = BufferInput.GetBuffer(N * D);

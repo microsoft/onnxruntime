@@ -7,6 +7,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/providers/webgpu/allocator.h"
+#include "core/providers/webgpu/ep/runtime_compatibility.h"
 #include "core/providers/webgpu/ep/sync_stream.h"
 #include "core/providers/webgpu/webgpu_context.h"
 
@@ -21,6 +22,9 @@ void* GpuBufferAllocator::AllocOnStream(size_t size, Stream* stream) {
   }
   ORT_ENFORCE(&ep::GetWebGpuStreamCommandState(reinterpret_cast<OrtSyncStream*>(stream)) == &recording_getter_(),
               "WebGPU allocator and stream belong to different Sessions.");
+  if (ep::UseSerializedExecutionMode()) {
+    return Alloc(size);
+  }
   return Allocate(size, recording_getter_(), false);
 }
 

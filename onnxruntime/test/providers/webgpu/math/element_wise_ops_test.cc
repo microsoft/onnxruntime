@@ -149,6 +149,68 @@ TEST(MathOpTest, Add_Broadcast_WebGpu_UnequalRank_ShorterLhs) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+namespace {
+template <typename Base, typename Exponent>
+void TestPowBroadcast(const std::vector<int64_t>& base_shape, const std::vector<Base>& base,
+                      const std::vector<int64_t>& exponent_shape, const std::vector<Exponent>& exponent,
+                      const std::vector<int64_t>& output_shape, const std::vector<Base>& expected) {
+  for (bool exponent_is_initializer : {false, true}) {
+    SCOPED_TRACE(exponent_is_initializer);
+    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    if (!webgpu_ep) {
+      GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+    }
+    OpTester test("Pow", 15);
+    test.AddInput<Base>("X", base_shape, base);
+    test.AddInput<Exponent>("Y", exponent_shape, exponent, exponent_is_initializer);
+    test.AddOutput<Base>("Z", output_shape, expected);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+  }
+}
+}  // namespace
+
+TEST(MathOpTest, Pow_BroadcastExponent_WebGpu) {
+  // Issue #32842: a rank-4 singleton uses vectorized broadcasting rather than the scalar path.
+  const std::vector<int64_t> shape{3, 2, 64, 64};
+  std::vector<float> base(3 * 2 * 64 * 64);
+  std::vector<float> expected(base.size());
+  for (size_t i = 0; i < base.size(); ++i) {
+    base[i] = static_cast<float>(static_cast<int>(i % 5) - 2);
+    expected[i] = base[i] * base[i] * base[i];
+  }
+  TestPowBroadcast<float, float>(shape, base, {1, 1, 1, 1}, {3.0f}, shape, expected);
+}
+
+TEST(MathOpTest, Pow_BroadcastBase_WebGpu) {
+  TestPowBroadcast<float, float>({1, 1, 1, 1}, {2.0f}, {1, 1, 2, 4},
+                                 {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 3.0f, 2.0f, 1.0f},
+                                 {1, 1, 2, 4}, {1.0f, 2.0f, 4.0f, 8.0f, 16.0f, 8.0f, 4.0f, 2.0f});
+}
+
+TEST(MathOpTest, Pow_BroadcastExponent_MixedTypes_WebGpu) {
+  TestPowBroadcast<float, int32_t>({2, 4}, {-2.0f, -1.0f, 0.0f, 2.0f, -3.0f, -2.0f, 1.0f, 3.0f},
+                                   {2, 1}, {3, 2}, {2, 4}, {-8.0f, -1.0f, 0.0f, 8.0f, 9.0f, 4.0f, 1.0f, 9.0f});
+}
+
+TEST(MathOpTest, Pow_BroadcastBase_MixedTypes_WebGpu) {
+  TestPowBroadcast<int32_t, float>({2, 1}, {-2, 3}, {2, 4}, {0.0f, 1.0f, 2.0f, 3.0f, 0.0f, 1.0f, 2.0f, 3.0f},
+                                   {2, 4}, {1, -2, 4, -8, 1, 3, 9, 27});
+}
+
+TEST(MathOpTest, Pow_BroadcastExponent_Float16_WebGpu) {
+  TestPowBroadcast<MLFloat16, MLFloat16>({2, 4}, MakeMLFloat16({-2.0f, -1.0f, 0.0f, 2.0f, -3.0f, -2.0f, 1.0f, 3.0f}),
+                                         {2, 1}, MakeMLFloat16({3.0f, 2.0f}), {2, 4},
+                                         MakeMLFloat16({-8.0f, -1.0f, 0.0f, 8.0f, 9.0f, 4.0f, 1.0f, 9.0f}));
+}
+
+TEST(MathOpTest, Pow_BroadcastBase_Float16_WebGpu) {
+  TestPowBroadcast<MLFloat16, MLFloat16>({2, 1}, MakeMLFloat16({-2.0f, 3.0f}),
+                                         {2, 4}, MakeMLFloat16({0.0f, 1.0f, 2.0f, 3.0f, 0.0f, 1.0f, 2.0f, 3.0f}),
+                                         {2, 4}, MakeMLFloat16({1.0f, -2.0f, 4.0f, -8.0f, 1.0f, 3.0f, 9.0f, 27.0f}));
+}
+
 // WebGPU EP currently handles a special case for supporting Pow op:
 // A Pow followed by a Cast to int64 type.
 TEST(MathOpTest, Pow_float_sqrt) {

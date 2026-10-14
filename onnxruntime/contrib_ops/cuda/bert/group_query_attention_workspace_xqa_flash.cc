@@ -393,7 +393,7 @@ GQAXqaWorkspaceResult GetGQAXqaWorkspaceRecipe(
 
   if (problem.do_rotary) {
     // Retain the runtime's aligned RoPE Q/K bytes for exact allocation parity.
-    // GQABufferRequirements may later rebind data.qkv_buffer; changing that
+    // QKV preparation may later rebind data.qkv_buffer; changing that
     // runtime allocation is an optimization outside this recipe's scope.
     size_t q_bytes = 0;
     result.status = MultiplyMany(
