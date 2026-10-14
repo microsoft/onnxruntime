@@ -99,7 +99,8 @@ participate, and every operator must reach the root. Inputs to different named
 variables may alias; repeating one variable requires identical binding.
 `match.valueOf("x")` and `match.valueOf("clip")` return bound `const NodeArg*`
 values. Unknown names and unbound values raise explicit errors. Read-only
-`Pattern::NamedValue`, `Nodes`, `Constants`, `ValueCount`, and `IsInput`
+`Pattern::NamedValue`, `Nodes`, `Constants`, `Outputs`, `ValueCount`, `IsInput`,
+`IsOptional`, and `AttributeNames`
 are available for introspection.
 
 ### Optional input slots
@@ -483,8 +484,9 @@ A guard can use `return match.Reject("unsupported element type");` instead of
 bare `false` to supply a reason. This changes only diagnostics, not eligibility.
 Records own their strings and contain no graph pointers. Callbacks run
 synchronously, must not mutate the graph or reenter the rewriter, and may copy
-records for later inspection. No records or reason strings are allocated when
-diagnostics are disabled. Replacement validation status errors are reported and
+records for later inspection. No diagnostic records are constructed when
+diagnostics are disabled; `Reject` still stores an explicitly supplied guard
+message. Replacement validation status errors are reported and
 still propagated; exceptions from user callbacks or named lookups still propagate
 normally and are not converted to nonmatches.
 
