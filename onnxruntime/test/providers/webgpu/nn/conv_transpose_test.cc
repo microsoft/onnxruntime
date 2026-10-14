@@ -17,7 +17,7 @@ namespace onnxruntime {
 namespace test {
 namespace {
 
-struct ConvTranspose3DAttributes {
+struct ConvTransposeTestAttributes {
   std::vector<int64_t> strides;
   std::vector<int64_t> dilations;
   std::vector<int64_t> pads;
@@ -28,12 +28,13 @@ struct ConvTranspose3DAttributes {
 };
 
 // Layout, float16, initializer weights/bias, opset.
-class ConvTranspose3DWebGpuTest : public testing::TestWithParam<std::tuple<bool, bool, bool, int>> {
+class ConvTransposeWebGpuTestBase : public testing::TestWithParam<std::tuple<bool, bool, bool, int>> {
  protected:
-  void Run(const std::vector<int64_t>& input_shape,
-           const std::vector<int64_t>& weight_shape,
-           const std::vector<int64_t>& output_shape,
-           const ConvTranspose3DAttributes& attrs = {}, bool has_bias = false) {
+  void Run(const TensorShapeVector& input_shape,
+           const TensorShapeVector& weight_shape,
+           const TensorShapeVector& output_shape,
+           const ConvTransposeTestAttributes& attrs = {}, bool has_bias = false,
+           bool disable_prepacking = false) {
     const auto [is_nhwc, is_fp16, initializer, opset] = GetParam();
     auto ep = DefaultWebGpuExecutionProvider(is_nhwc);
     if (!ep) {
@@ -95,15 +96,147 @@ class ConvTranspose3DWebGpuTest : public testing::TestWithParam<std::tuple<bool,
     }
     SessionOptions options;
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    if (disable_prepacking) {
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, "1"));
+    }
     test.SetNumRunCalls(2);
     size_t prepacked_weights = 0;
     ASSERT_NO_FATAL_FAILURE(test.Config(options).ConfigEp(std::move(ep)).RunWithConfig(&prepacked_weights));
     if (testing::Test::IsSkipped()) {
       return;
     }
-    EXPECT_EQ(prepacked_weights, initializer ? 1U : 0U);
+    EXPECT_EQ(prepacked_weights, initializer && !disable_prepacking ? 1U : 0U);
   }
 };
+
+using ConvTranspose3DWebGpuTest = ConvTransposeWebGpuTestBase;
+
+class ConvTransposePrepackWebGpuTest : public ConvTransposeWebGpuTestBase {
+ protected:
+  void Run1DAnd2D(int64_t input_channels_per_group, int64_t output_channels_per_group,
+                  int64_t group = 1, bool has_bias = true, bool use_strides_and_dilations = false,
+                  bool disable_prepacking = false) {
+    for (int spatial_rank : {1, 2}) {
+      SCOPED_TRACE(spatial_rank);
+      ConvTransposeTestAttributes attrs;
+      attrs.group = group;
+      TensorShapeVector input_shape{2, group * input_channels_per_group, 3};
+      TensorShapeVector weight_shape{input_shape[1], output_channels_per_group, 3};
+      TensorShapeVector output_shape{2, group * output_channels_per_group, 5};
+      if (use_strides_and_dilations) {
+        attrs.strides = {2};
+        attrs.dilations = {2};
+        attrs.pads = {1, 0};
+        attrs.output_padding = {1};
+        output_shape[2] = 9;
+      }
+      if (spatial_rank == 2) {
+        input_shape.push_back(2);
+        weight_shape.push_back(2);
+        output_shape.push_back(use_strides_and_dilations ? 5 : 3);
+        if (use_strides_and_dilations) {
+          attrs.strides = {2, 3};
+          attrs.dilations = {2, 1};
+          attrs.pads = {1, 0, 0, 1};
+          attrs.output_padding = {1, 1};
+        }
+      }
+      Run(input_shape, weight_shape, output_shape, attrs, has_bias, disable_prepacking);
+    }
+  }
+};
+
+TEST_P(ConvTransposePrepackWebGpuTest, ScalarChannels) {
+  Run1DAnd2D(3, 3, 1, false);
+}
+
+TEST_P(ConvTransposePrepackWebGpuTest, GroupedVec2Channels) {
+  Run1DAnd2D(6, 6, 2);
+}
+
+TEST_P(ConvTransposePrepackWebGpuTest, GroupedVec4Channels) {
+  Run1DAnd2D(8, 4, 2);
+}
+
+TEST_P(ConvTransposePrepackWebGpuTest, Vec2InputVec4Output) {
+  Run1DAnd2D(2, 4, 2);
+}
+
+TEST_P(ConvTransposePrepackWebGpuTest, Vec4InputVec2Output) {
+  Run1DAnd2D(4, 2, 2);
+}
+
+TEST_P(ConvTransposePrepackWebGpuTest, SingleOutputChannel) {
+  // Cover both the vec2 dot path and the four-input-channel packing path.
+  Run1DAnd2D(2, 1, 2);
+  Run1DAnd2D(8, 1, 2);
+}
+
+TEST_P(ConvTransposePrepackWebGpuTest, SingleOutputChannelRemainders) {
+  for (int64_t channels : {5, 6, 7}) {
+    SCOPED_TRACE(channels);
+    Run1DAnd2D(channels, 1, 2);
+  }
+}
+
+TEST_P(ConvTransposePrepackWebGpuTest, Depthwise) {
+  Run1DAnd2D(1, 1, 3);
+}
+
+TEST_P(ConvTransposePrepackWebGpuTest, StridesDilationsAndPadding) {
+  Run1DAnd2D(4, 2, 2, true, true);
+}
+
+TEST_P(ConvTransposePrepackWebGpuTest, PrepackingDisabled) {
+  Run1DAnd2D(4, 2, 2, true, false, true);
+}
+
+TEST_P(ConvTransposePrepackWebGpuTest, HeightOne2DKernel) {
+  // This packs to the same shape as 1D weights, but must retain its 2D semantics.
+  Run({2, 8, 3, 4}, {8, 4, 1, 3}, {2, 4, 3, 6});
+}
+
+INSTANTIATE_TEST_SUITE_P(WebGPU, ConvTransposePrepackWebGpuTest,
+                         testing::Combine(testing::Bool(), testing::Bool(), testing::Bool(), testing::Values(10, 11)));
+
+TEST(ConvTransposeWebGpuTest, InputWeightRankMismatch) {
+  for (bool initializer : {false, true}) {
+    SCOPED_TRACE(initializer);
+    for (size_t input_rank : {3U, 4U, 5U}) {
+      SCOPED_TRACE(input_rank);
+      for (size_t weight_rank : {3U, 4U, 5U}) {
+        if (input_rank == weight_rank) {
+          continue;
+        }
+        SCOPED_TRACE(weight_rank);
+        auto ep = DefaultWebGpuExecutionProvider(false);
+        if (!ep) {
+          GTEST_SKIP() << "WebGPU execution provider is not available.";
+        }
+        TensorShapeVector input_shape{1, 2};
+        input_shape.insert(input_shape.end(), input_rank - 2, 1);
+        TensorShapeVector weight_shape{2, 3};
+        weight_shape.insert(weight_shape.end(), weight_rank - 2, 1);
+
+        OpTester test("ConvTranspose", 11);
+        // Leave ranks unknown to graph inference so the kernel validates them at runtime.
+        test.AddShapeToTensorData(false);
+        test.AddInput<float>("X", input_shape, {1.0f, 2.0f});
+        test.AddInput<float>("W", weight_shape, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}, initializer);
+        test.AddOutput<float>("Y", {1}, {0.0f});
+        SessionOptions options;
+        ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+        size_t prepacked_weights = 0;
+        ASSERT_NO_FATAL_FAILURE(test.Config(options)
+                                    .Config(OpTester::ExpectResult::kExpectFailure,
+                                            "X num_dims does not match W num_dims.")
+                                    .ConfigEp(std::move(ep))
+                                    .RunWithConfig(&prepacked_weights));
+        EXPECT_EQ(prepacked_weights, initializer ? 1U : 0U);
+      }
+    }
+  }
+}
 
 TEST(ConvTransposeWebGpuTest, UnsupportedSpatialRank) {
   auto ep = DefaultWebGpuExecutionProvider();
@@ -125,33 +258,33 @@ TEST_P(ConvTranspose3DWebGpuTest, DefaultAttributes) {
 }
 
 TEST_P(ConvTranspose3DWebGpuTest, GroupsAndBias) {
-  ConvTranspose3DAttributes attrs;
+  ConvTransposeTestAttributes attrs;
   attrs.group = 2;
   Run({2, 4, 2, 2, 3}, {4, 3, 2, 3, 1}, {2, 6, 3, 4, 3}, attrs, true);
 }
 
 TEST_P(ConvTranspose3DWebGpuTest, Depthwise) {
-  ConvTranspose3DAttributes attrs;
+  ConvTransposeTestAttributes attrs;
   attrs.group = 3;
   Run({1, 3, 2, 2, 2}, {3, 1, 2, 2, 2}, {1, 3, 3, 3, 3}, attrs, true);
 }
 
 TEST_P(ConvTranspose3DWebGpuTest, Vec4GroupsAndBias) {
-  ConvTranspose3DAttributes attrs;
+  ConvTransposeTestAttributes attrs;
   attrs.group = 2;
   // Eight channels per group exercises multiple vec4 loads and a nonzero group offset.
   Run({2, 16, 2, 2, 2}, {16, 3, 2, 1, 3}, {2, 6, 3, 2, 4}, attrs, true);
 }
 
 TEST_P(ConvTranspose3DWebGpuTest, Vec2GroupAlignment) {
-  ConvTranspose3DAttributes attrs;
+  ConvTransposeTestAttributes attrs;
   attrs.group = 2;
   // Total channels are divisible by four, but each group's six channels require vec2.
   Run({2, 12, 2, 2, 2}, {12, 3, 2, 1, 3}, {2, 6, 3, 2, 4}, attrs, true);
 }
 
 TEST_P(ConvTranspose3DWebGpuTest, StridesDilationsAndAsymmetricPadding) {
-  ConvTranspose3DAttributes attrs;
+  ConvTransposeTestAttributes attrs;
   attrs.strides = {2, 3, 2};
   attrs.dilations = {2, 1, 2};
   attrs.pads = {1, 0, 3, 0, 1, 1};
@@ -160,28 +293,28 @@ TEST_P(ConvTranspose3DWebGpuTest, StridesDilationsAndAsymmetricPadding) {
 }
 
 TEST_P(ConvTranspose3DWebGpuTest, SameUpper) {
-  ConvTranspose3DAttributes attrs;
+  ConvTransposeTestAttributes attrs;
   attrs.strides = {2, 2, 2};
   attrs.auto_pad = "SAME_UPPER";
   Run({1, 2, 2, 2, 2}, {2, 3, 3, 3, 3}, {1, 3, 4, 4, 4}, attrs);
 }
 
 TEST_P(ConvTranspose3DWebGpuTest, SameLower) {
-  ConvTranspose3DAttributes attrs;
+  ConvTransposeTestAttributes attrs;
   attrs.strides = {2, 2, 2};
   attrs.auto_pad = "SAME_LOWER";
   Run({1, 2, 2, 2, 2}, {2, 3, 3, 3, 3}, {1, 3, 4, 4, 4}, attrs, true);
 }
 
 TEST_P(ConvTranspose3DWebGpuTest, ExplicitOutputShape) {
-  ConvTranspose3DAttributes attrs;
+  ConvTransposeTestAttributes attrs;
   attrs.strides = {2, 2, 2};
   attrs.output_shape = {3, 3, 3};
   Run({1, 2, 2, 2, 2}, {2, 3, 3, 2, 2}, {1, 3, 3, 3, 3}, attrs);
 }
 
 TEST_P(ConvTranspose3DWebGpuTest, PaddingLargerThanKernel) {
-  ConvTranspose3DAttributes attrs;
+  ConvTransposeTestAttributes attrs;
   attrs.pads = {2, 1, 0, 0, 0, 0};
   Run({1, 1, 4, 3, 2}, {1, 1, 2, 2, 2}, {1, 1, 3, 3, 3}, attrs);
 }
