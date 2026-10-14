@@ -79,6 +79,10 @@ jobs:
               echo -e "\e[1m\e[36mYou can reproduce these results locally by using \`lintrunner\`. To set up lintrunner locally, see https://github.com/microsoft/onnxruntime/blob/main/docs/Coding_Conventions_and_Standards.md#linting .\e[0m"
               exit 1
           fi
+      - name: Check include-layering ratchet
+        run: |
+          python -m unittest discover -s tools/ci_build/tests -p test_check_layering.py -v
+          python tools/ci_build/check_layering.py --list
       - name: Produce SARIF
         if: always()
         run: |
