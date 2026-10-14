@@ -69,31 +69,49 @@ __device__ inline nv_bfloat162 AddHalf2(const nv_bfloat162 a, const nv_bfloat162
   return __hadd2(a, b);
 }
 
-struct KeyValuePairSum {
-  __device__ inline cub::KeyValuePair<float, float> operator()(const cub::KeyValuePair<float, float>& a,
-                                                               const cub::KeyValuePair<float, float>& b) {
-    return cub::KeyValuePair<float, float>(a.key + b.key, a.value + b.value);
+struct WelfordData {
+  float mean;
+  float m2;
+  int count;
+
+  __device__ inline void Update(float value) {
+    ++count;
+    const float delta = value - mean;
+    mean += delta / static_cast<float>(count);
+    m2 += delta * (value - mean);
+  }
+};
+
+struct WelfordCombine {
+  __device__ inline WelfordData operator()(const WelfordData& a, const WelfordData& b) const {
+    if (a.count == 0) return b;
+    if (b.count == 0) return a;
+
+    const int count = a.count + b.count;
+    const float delta = b.mean - a.mean;
+    const float b_weight = static_cast<float>(b.count) / static_cast<float>(count);
+    return {a.mean + delta * b_weight,
+            a.m2 + b.m2 + delta * delta * static_cast<float>(a.count) * b_weight,
+            count};
   }
 };
 
 template <typename T, int TPB>
 __device__ inline void LayerNorm(
-    const cub::KeyValuePair<float, float>& thread_data, const int ld, const int offset, const T* beta,
+    const WelfordData& thread_data, const float origin, const int ld, const int offset, const T* beta,
     const T* gamma, const float epsilon, T* output) {
-  // Assuming thread_data is already divided by ld
-  // Uses fp32 accumulation for mean/variance to avoid overflow in fp16/bf16.
+  // Statistics and centering stay relative to origin to retain small FP32 differences.
 
-  using BlockReduce = cub::BlockReduce<cub::KeyValuePair<float, float>, TPB>;
+  using BlockReduce = cub::BlockReduce<WelfordData, TPB>;
   __shared__ typename BlockReduce::TempStorage temp_storage;
   __shared__ float mu;      // mean
   __shared__ float rsigma;  // 1 / std.dev.
 
-  KeyValuePairSum pair_sum;
-  const auto sum_kv = BlockReduce(temp_storage).Reduce(thread_data, pair_sum);
+  const auto stats = BlockReduce(temp_storage).Reduce(thread_data, WelfordCombine{});
 
   if (threadIdx.x == 0) {
-    mu = sum_kv.key;
-    rsigma = rsqrtf(sum_kv.value - mu * mu + epsilon);
+    mu = stats.mean;
+    rsigma = rsqrtf(stats.m2 / static_cast<float>(stats.count) + epsilon);
   }
   __syncthreads();
 
@@ -102,7 +120,7 @@ __device__ inline void LayerNorm(
     const float val = static_cast<float>(output[idx]);
     const float g = static_cast<float>(gamma[i]);
     const float b = (nullptr == beta) ? 0.f : static_cast<float>(beta[i]);
-    output[idx] = static_cast<T>(g * (val - mu) * rsigma + b);
+    output[idx] = static_cast<T>(g * ((val - origin) - mu) * rsigma + b);
   }
 }
 
@@ -132,15 +150,12 @@ __device__ inline void SimplifiedLayerNorm(
 }
 
 template <typename T, int TPB, int ILP>
-__device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<float, float>& thread_data,
+__device__ inline void LayerNormSmall(const T* input_v, const WelfordData& thread_data, const float origin,
                                       const int ld, const int idx, const T* beta, const T* gamma,
                                       const float epsilon, T* output) {
-  // Assuming thread_data is already divided by ld
-  // Small settings: the block covers the leading dimension TPB >= ld. The input
-  // value is available in a register
-  // Uses fp32 accumulation for mean/variance to avoid overflow in fp16/bf16.
+  // Input values are in registers; statistics and centering are relative to origin.
   using VecT = aligned_vector<T, ILP>;
-  using BlockReduce = cub::BlockReduce<cub::KeyValuePair<float, float>, TPB>;
+  using BlockReduce = cub::BlockReduce<WelfordData, TPB>;
   __shared__ typename BlockReduce::TempStorage temp_storage;
   __shared__ float mu;      // mean
   __shared__ float rsigma;  // 1 / std.dev.
@@ -158,12 +173,11 @@ __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<
     *gamma_val = *reinterpret_cast<const VecT*>(&gamma[threadIdx.x * ILP]);
   }
 
-  KeyValuePairSum pair_sum;
-  const cub::KeyValuePair<float, float> sum_kv = BlockReduce(temp_storage).Reduce(thread_data, pair_sum);
+  const auto stats = BlockReduce(temp_storage).Reduce(thread_data, WelfordCombine{});
 
   if (threadIdx.x == 0) {
-    mu = sum_kv.key;
-    rsigma = rsqrtf(sum_kv.value - mu * mu + epsilon);
+    mu = stats.mean;
+    rsigma = rsqrtf(stats.m2 / static_cast<float>(stats.count) + epsilon);
   }
   __syncthreads();
 
@@ -173,7 +187,7 @@ __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<
       const float in_f = static_cast<float>(input_v[i]);
       const float g_f = static_cast<float>(gamma_v[i]);
       const float b_f = (beta != nullptr) ? static_cast<float>(beta_v[i]) : 0.f;
-      output_v[i] = static_cast<T>(g_f * (in_f - mu) * rsigma + b_f);
+      output_v[i] = static_cast<T>(g_f * ((in_f - origin) - mu) * rsigma + b_f);
     }
 
     VecT* output_val = reinterpret_cast<VecT*>(&output_v);

@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include <cmath>
+#include <type_traits>
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -10,6 +12,137 @@
 namespace onnxruntime {
 namespace test {
 constexpr float epsilon_ = 1e-12f;
+
+#if defined(USE_CUDA)
+TEST(SkipLayerNormTest, CudaEmptyHiddenDimension) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA EP unavailable";
+
+  OpTester tester("SkipLayerNormalization", 1, kMSDomain);
+  tester.AddAttribute("epsilon", 1e-5f);
+  tester.AddInput<float>("input", {1, 2, 0}, {});
+  tester.AddInput<float>("skip", {1, 2, 0}, {});
+  tester.AddInput<float>("gamma", {0}, {});
+  tester.AddInput<float>("beta", {0}, {});
+  tester.AddOutput<float>("output", {1, 2, 0}, {});
+  SessionOptions options;
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+template <typename T>
+static void CheckCudaHighOffsetVariance() {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA EP unavailable";
+
+  constexpr float epsilon = 1e-5f;
+  const auto native_value = [](float value) {
+    if constexpr (std::is_same_v<T, float>) {
+      return value;
+    } else {
+      return T(value).ToFloat();
+    }
+  };
+  // Cover scalar/vectorized dispatch, partial blocks, and multiple values per thread.
+  for (int hidden_size : {1, 3, 4, 5, 128, 129, 320, 768, 769, 8192, 8193}) {
+    SCOPED_TRACE(hidden_size);
+    for (bool has_bias : {false, true}) {
+      SCOPED_TRACE(has_bias);
+      const std::vector<int64_t> shape{1, 2, hidden_size};
+      const std::vector<int64_t> parameter_shape{hidden_size};
+      std::vector<float> pattern{1000.01f, 1000.02f, 999.99f, 1000.0f};
+      float skip_value = 256.0f;
+      if constexpr (std::is_same_v<T, MLFloat16>) {
+        pattern = {60000.0f, 60032.0f, 59968.0f, 60000.0f};
+        skip_value = -59872.0f;
+      } else if constexpr (std::is_same_v<T, BFloat16>) {
+        pattern = {1024.0f, 1032.0f, 1016.0f, 1024.0f};
+        skip_value = -896.0f;
+      }
+      std::vector<float> input(2 * hidden_size);
+      std::vector<float> skip(2 * hidden_size, has_bias ? skip_value : 0.0f);
+      std::vector<float> bias(hidden_size, 512.0f);
+      std::vector<float> gamma(hidden_size);
+      std::vector<float> beta(hidden_size);
+      std::vector<float> sum(2 * hidden_size);
+      std::vector<float> expected(2 * hidden_size);
+      for (int i = 0; i < hidden_size; ++i) {
+        input[i] = pattern[i % 4];
+        input[hidden_size + i] = std::is_same_v<T, float> ? -1000.0f : pattern[0];
+        // Small biases round before the low-precision residual cancellation.
+        if constexpr (std::is_same_v<T, MLFloat16>) {
+          bias[i] = i % 2 == 0 ? 0.25f : 0.5f;
+        } else if constexpr (std::is_same_v<T, BFloat16>) {
+          bias[i] = i % 2 == 0 ? 0.5f : 1.5f;
+        }
+        gamma[i] = i % 2 == 0 ? 0.5f : -1.25f;
+        beta[i] = i % 2 == 0 ? 0.25f : -0.75f;
+      }
+      for (int row = 0; row < 2; ++row) {
+        double mean = 0.0;
+        for (int i = 0; i < hidden_size; ++i) {
+          const int index = row * hidden_size + i;
+          float value = input[index];
+          if (has_bias) value = native_value(value + bias[i]);
+          value = native_value(value + skip[index]);
+          sum[index] = value;
+          mean += static_cast<double>(value);
+        }
+        mean /= hidden_size;
+        double variance = 0.0;
+        for (int i = 0; i < hidden_size; ++i) {
+          const double delta = static_cast<double>(sum[row * hidden_size + i]) - mean;
+          variance += delta * delta;
+        }
+        variance /= hidden_size;
+        const double inv_std = 1.0 / std::sqrt(variance + static_cast<double>(epsilon));
+        for (int i = 0; i < hidden_size; ++i) {
+          const int index = row * hidden_size + i;
+          expected[index] = static_cast<float>((static_cast<double>(sum[index]) - mean) *
+                                                   inv_std * gamma[i] +
+                                               beta[i]);
+        }
+      }
+
+      OpTester tester("SkipLayerNormalization", 1, kMSDomain);
+      tester.AddAttribute("epsilon", epsilon);
+      tester.AddInput<T>("input", shape, std::vector<T>(input.begin(), input.end()));
+      tester.AddInput<T>("skip", shape, std::vector<T>(skip.begin(), skip.end()));
+      tester.AddInput<T>("gamma", parameter_shape, std::vector<T>(gamma.begin(), gamma.end()));
+      tester.AddInput<T>("beta", parameter_shape, std::vector<T>(beta.begin(), beta.end()));
+      if (has_bias) tester.AddInput<T>("bias", parameter_shape, std::vector<T>(bias.begin(), bias.end()));
+      tester.AddOutput<T>("output", shape, std::vector<T>(expected.begin(), expected.end()));
+      tester.AddOptionalOutputEdge<float>();
+      tester.AddOptionalOutputEdge<float>();
+      tester.AddOutput<T>("sum", shape, std::vector<T>(sum.begin(), sum.end()));
+      if constexpr (std::is_same_v<T, float>) {
+        tester.SetOutputAbsErr("output", 1e-4f);
+        tester.SetOutputRelErr("output", 1e-4f);
+      }
+      tester.SetOutputAbsErr("sum", 0.0f);
+      tester.SetOutputRelErr("sum", 0.0f);
+      SessionOptions options;
+      ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+      std::vector<std::unique_ptr<IExecutionProvider>> providers;
+      providers.push_back(DefaultCudaExecutionProvider());
+      tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+    }
+  }
+}
+
+TEST(SkipLayerNormTest, CudaHighOffsetVariance) {
+  CheckCudaHighOffsetVariance<float>();
+}
+
+TEST(SkipLayerNormTest, CudaFloat16HighOffsetVariance) {
+  CheckCudaHighOffsetVariance<MLFloat16>();
+}
+
+TEST(SkipLayerNormTest, CudaBFloat16HighOffsetVariance) {
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA BF16 unavailable";
+  CheckCudaHighOffsetVariance<BFloat16>();
+}
+#endif
 
 static void RunOneTest(
     const std::vector<float>& input_data,

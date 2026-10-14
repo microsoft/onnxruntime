@@ -124,7 +124,7 @@ __global__ void EmbedLayerNormKernel(
     int hidden_size, const int* input_ids, const int* segment_ids, const T* beta, const T* gamma,
     const T* word_embedding, const T* position_embedding, const T* segment_embedding,
     float epsilon, T* output, T* embedding_sum, const int* position_ids, const bool broadcast_position_ids) {
-  KeyValuePairSum pair_sum;
+  if (hidden_size == 0) return;
   // 1. lookup word and segment of the block
   // blockIdx.x = position in the sequence
   // blockIdx.y = batch
@@ -133,8 +133,8 @@ __global__ void EmbedLayerNormKernel(
   __shared__ int word_id;
   __shared__ int segment_id;
   __shared__ int position_id;
+  __shared__ float origin;
 
-  const float rld = 1.f / hidden_size;
   const int sequence_position = blockIdx.y * gridDim.x + blockIdx.x;
   if (threadIdx.x == 0) {
     word_id = input_ids[sequence_position];
@@ -150,6 +150,10 @@ __global__ void EmbedLayerNormKernel(
     } else {
       position_id = position_ids[sequence_position];
     }
+    const T first_word = word_embedding[word_id * hidden_size];
+    const T first_segment = segment_embedding == nullptr ? T(0) : segment_embedding[segment_id * hidden_size];
+    const T first_position = position_embedding[position_id * hidden_size];
+    origin = static_cast<float>(first_word + first_segment + first_position);
   }
   __syncthreads();
 
@@ -162,7 +166,7 @@ __global__ void EmbedLayerNormKernel(
   // the output offset is given by b * (sequence_length * hidden_size) + s * hidden_size
   const int output_offset = sequence_position * hidden_size;
 
-  cub::KeyValuePair<float, float> thread_data(0.f, 0.f);
+  WelfordData thread_data{};
 
   for (int it = threadIdx.x; it < hidden_size; it += TPB) {
     const T w(word_embedding[word_offset + it]);
@@ -178,12 +182,11 @@ __global__ void EmbedLayerNormKernel(
     }
 
     const float val_f = static_cast<float>(val);
-    const float rldval = rld * val_f;
-    thread_data = pair_sum(thread_data, cub::KeyValuePair<float, float>(rldval, rldval * val_f));
+    thread_data.Update(val_f - origin);
   }
 
   // 3. layer norm on the sum
-  LayerNorm<T, TPB>(thread_data, hidden_size, output_offset, beta, gamma, epsilon, output);
+  LayerNorm<T, TPB>(thread_data, origin, hidden_size, output_offset, beta, gamma, epsilon, output);
 }
 
 template <typename T>

@@ -31,6 +31,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/skip_layer_norm_impl.h"
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
+#include <type_traits>
 
 namespace onnxruntime {
 namespace contrib {
@@ -68,20 +69,34 @@ bool CanVectorized(void* output, void* sum_output, const void* input, const void
          next_size / num_unroll >= kMinBlockSize &&
          next_size / num_unroll <= kMaxBlockSize;
 }
+
+template <typename T>
+__device__ inline float SkipLayerNormOrigin(
+    const T* input, const T* skip, const T* bias, int offset, int skip_size) {
+  __shared__ float origin;
+  if (threadIdx.x == 0) {
+    T value = input[offset];
+    if (bias != nullptr) value += bias[0];
+    value += skip[offset % skip_size];
+    origin = static_cast<float>(value);
+  }
+  // Read the origin before any thread writes the fused residual sum.
+  __syncthreads();
+  return origin;
+}
 }  // namespace
 
 template <typename T, unsigned TPB, bool Simplified>
 __global__ void SkipLayerNormKernel(
     T* output, T* sum_output, const T* input, const T* skip, const T* bias, const T* gamma, const T* beta,
     float epsilon, const int ld, int skip_size) {
+  if (ld == 0) return;
   const float reverse_ld = 1.f / ld;
   const int offset = blockIdx.x * ld;
   const bool has_bias = (bias != nullptr);
 
-  // Reduce sum of x and x^2, and the results are divided by ld.
-  // Uses fp32 accumulation to avoid overflow in fp16/bf16.
-  KeyValuePairSum pair_sum;
-  cub::KeyValuePair<float, float> thread_data(0.f, 0.f);
+  const float origin = Simplified ? 0.f : SkipLayerNormOrigin(input, skip, bias, offset, skip_size);
+  std::conditional_t<Simplified, float, WelfordData> thread_data{};
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
@@ -93,8 +108,12 @@ __global__ void SkipLayerNormKernel(
     val += skip[idx % skip_size];
 
     const float val_f = static_cast<float>(val);
-    const float rldval = reverse_ld * val_f;
-    thread_data = pair_sum(thread_data, cub::KeyValuePair<float, float>(rldval, rldval * val_f));
+    if constexpr (Simplified) {
+      const float rldval = reverse_ld * val_f;
+      thread_data += rldval * val_f;
+    } else {
+      thread_data.Update(val_f - origin);
+    }
 
     if (sum_output != nullptr) {
       sum_output[idx] = val;
@@ -103,11 +122,11 @@ __global__ void SkipLayerNormKernel(
     output[idx] = val;
   }
 
-  if (Simplified) {
-    SimplifiedLayerNorm<T, TPB>(thread_data.value, ld, offset, gamma, epsilon, output);
-    return;
+  if constexpr (Simplified) {
+    SimplifiedLayerNorm<T, TPB>(thread_data, ld, offset, gamma, epsilon, output);
+  } else {
+    LayerNorm<T, TPB>(thread_data, origin, ld, offset, beta, gamma, epsilon, output);
   }
-  LayerNorm<T, TPB>(thread_data, ld, offset, beta, gamma, epsilon, output);
 }
 
 // Vectorized kernel
@@ -115,13 +134,15 @@ template <typename T, unsigned TPB, int ILP, bool Simplified>
 __global__ void SkipLayerNormKernelSmall(
     T* output, T* sum_output, const T* input, const T* skip, const T* bias, const T* gamma, const T* beta,
     float epsilon, int ld, int skip_size) {
+  if (ld == 0) return;
   const float rld = 1.f / ld;
   const int idx = blockIdx.x * ld + threadIdx.x * ILP;
 
   using VecT = aligned_vector<T, ILP>;
   T sum_v[ILP];
 
-  cub::KeyValuePair<float, float> thread_data(0.f, 0.f);
+  const float origin = Simplified ? 0.f : SkipLayerNormOrigin(input, skip, bias, blockIdx.x * ld, skip_size);
+  std::conditional_t<Simplified, float, WelfordData> thread_data{};
 
   if (ILP * threadIdx.x < ld) {  // load data under this guard to avoid reading out-of-bounds
     T skip_v[ILP], bias_v[ILP];
@@ -139,8 +160,6 @@ __global__ void SkipLayerNormKernelSmall(
       *bias_val = *reinterpret_cast<const VecT*>(&bias[threadIdx.x * ILP]);
     }
 
-    float rldval_sum = 0.f;
-    float rldvalsq_sum = 0.f;
     const bool has_sum_output = (sum_output != nullptr);
 
 #pragma unroll
@@ -151,23 +170,24 @@ __global__ void SkipLayerNormKernelSmall(
       sum_v[i] += skip_v[i];
 
       const float val_f = static_cast<float>(sum_v[i]);
-      const float rldval = rld * val_f;
-      rldval_sum += rldval;
-      rldvalsq_sum += rldval * val_f;
+      if constexpr (Simplified) {
+        const float rldval = rld * val_f;
+        thread_data += rldval * val_f;
+      } else {
+        thread_data.Update(val_f - origin);
+      }
     }
 
     if (has_sum_output) {
       *(reinterpret_cast<VecT*>(&sum_output[idx])) = *reinterpret_cast<VecT*>(&sum_v);
     }
-
-    thread_data = cub::KeyValuePair<float, float>(rldval_sum, rldvalsq_sum);
   }
 
-  if (Simplified) {
-    SimplifiedLayerNormSmall<T, TPB, ILP>(sum_v, thread_data.value, ld, idx, gamma, epsilon, output);
-    return;
+  if constexpr (Simplified) {
+    SimplifiedLayerNormSmall<T, TPB, ILP>(sum_v, thread_data, ld, idx, gamma, epsilon, output);
+  } else {
+    LayerNormSmall<T, TPB, ILP>(sum_v, thread_data, origin, ld, idx, beta, gamma, epsilon, output);
   }
-  LayerNormSmall<T, TPB, ILP>(sum_v, thread_data, ld, idx, beta, gamma, epsilon, output);
 }
 
 template <typename T, bool Simplified>
