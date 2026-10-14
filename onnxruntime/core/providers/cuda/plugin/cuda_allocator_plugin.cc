@@ -28,15 +28,17 @@ void RestoreDeviceIfKnown(bool restore_prev_device, int prev_device) noexcept {
 // memory pool/arena is injected or configured by the application.
 // ---------------------------------------------------------------------------
 
-CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int device_id)
+CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int device_id, const OrtApi& api)
     : CudaAllocatorBase(CudaAllocatorKind::kDevice, memory_info),
-      device_id_(device_id) {
+      device_id_(device_id),
+      api_(api),
+      allocator_(static_cast<OrtDevice::DeviceId>(device_id), CUDA) {
   version = ORT_API_VERSION;
   Alloc = AllocImpl;
   Free = FreeImpl;
   Info = InfoImpl;
   Reserve = ReserveImpl;
-  GetStats = nullptr;
+  GetStats = GetStatsImpl;
   AllocOnStream = nullptr;
 }
 
@@ -52,11 +54,13 @@ CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int d
     RestoreDeviceIfKnown(restore_prev_device, prev_device);
     return nullptr;
   }
-  cudaError_t err = cudaMalloc(&p, size);
-  RestoreDeviceIfKnown(restore_prev_device, prev_device);
-  if (err != cudaSuccess) {
+  try {
+    p = alloc->allocator_.Alloc(size);
+  } catch (...) {
+    RestoreDeviceIfKnown(restore_prev_device, prev_device);
     return nullptr;
   }
+  RestoreDeviceIfKnown(restore_prev_device, prev_device);
   return p;
 }
 
@@ -70,7 +74,7 @@ CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int d
       return;
     }
 
-    static_cast<void>(cudaFree(p));
+    alloc->allocator_.Free(p);
     RestoreDeviceIfKnown(restore_prev_device, prev_device);
   }
 }
@@ -83,6 +87,24 @@ CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int d
 /*static*/ void* ORT_API_CALL CudaDeviceAllocator::ReserveImpl(OrtAllocator* this_ptr, size_t size) noexcept {
   // Reserve currently delegates to Alloc (no separate reservation pool).
   return AllocImpl(this_ptr, size);
+}
+
+/*static*/ OrtStatus* ORT_API_CALL CudaDeviceAllocator::GetStatsImpl(
+    const OrtAllocator* this_ptr, OrtKeyValuePairs** stats) noexcept {
+  const auto* allocator = static_cast<const CudaDeviceAllocator*>(this_ptr);
+  try {
+    const auto snapshot = GetCudaDeviceMemoryBudget(static_cast<OrtDevice::DeviceId>(allocator->device_id_))->GetStats();
+    allocator->api_.CreateKeyValuePairs(stats);
+    allocator->api_.AddKeyValuePair(*stats, "DeviceLimit", std::to_string(snapshot.limit).c_str());
+    allocator->api_.AddKeyValuePair(*stats, "DeviceCommitted", std::to_string(snapshot.committed).c_str());
+    allocator->api_.AddKeyValuePair(*stats, "DevicePending", std::to_string(snapshot.pending).c_str());
+    allocator->api_.AddKeyValuePair(*stats, "DevicePeak", std::to_string(snapshot.peak).c_str());
+    return nullptr;
+  } catch (const std::exception& error) {
+    return allocator->api_.CreateStatus(ORT_FAIL, error.what());
+  } catch (...) {
+    return allocator->api_.CreateStatus(ORT_FAIL, "Failed to read CUDA device memory budget");
+  }
 }
 
 // ---------------------------------------------------------------------------

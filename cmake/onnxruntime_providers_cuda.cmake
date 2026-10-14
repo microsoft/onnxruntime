@@ -59,6 +59,8 @@
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
   )
+  list(APPEND onnxruntime_cuda_contrib_ops_cc_srcs
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout.cc")
 
   if(onnxruntime_MINIMAL_BUILD)
     list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs

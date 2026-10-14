@@ -27,6 +27,175 @@ int Compute1DGridSize(int num_elements, int block_size) {
 
 constexpr float kTopKNormalizeEpsilon = onnxruntime::cuda::topk::kTopKNormalizeEpsilon;
 
+template <typename T>
+__global__ void QMoEOffloadGatherKernel(
+    const T* input, const int* route_ids, T* gathered, int hidden_size, int k) {
+  const size_t source_row = static_cast<size_t>(route_ids[blockIdx.x] / k);
+  const size_t target_row = blockIdx.x;
+  for (size_t column = threadIdx.x; column < static_cast<size_t>(hidden_size); column += blockDim.x) {
+    gathered[target_row * hidden_size + column] = input[source_row * hidden_size + column];
+  }
+}
+
+template <typename T>
+__global__ void QMoEOffloadScatterKernel(
+    const T* wave_output, const int* route_ids, T* contributions,
+    int hidden_size, int tile_rows, int k) {
+  const int route_id = route_ids[blockIdx.x];
+  const size_t target_row = static_cast<size_t>(route_id % k) * tile_rows + route_id / k;
+  const size_t source_row = blockIdx.x;
+  for (size_t column = threadIdx.x; column < static_cast<size_t>(hidden_size); column += blockDim.x) {
+    contributions[target_row * hidden_size + column] = wave_output[source_row * hidden_size + column];
+  }
+}
+
+__global__ void QMoEOffloadMetadataKernel(float* unit_scales, int* identity_permutation, int route_count) {
+  const size_t route = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (route < static_cast<size_t>(route_count)) {
+    unit_scales[route] = 1.0f;
+    identity_permutation[route] = static_cast<int>(route);
+  }
+}
+
+__global__ void QMoEOffloadSourceRowsKernel(int* source_rows, int route_count, int k) {
+  const int route = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+  if (route < route_count) {
+    source_rows[route] = route / k;
+  }
+}
+
+template <typename T>
+__global__ void QMoEOffloadScatterBiasKernel(
+    const T* wave_bias, const int* compact_experts, const int* route_ids, T* route_bias, int hidden_size) {
+  const size_t source_row = compact_experts[blockIdx.x];
+  const size_t target_row = route_ids[blockIdx.x];
+  for (size_t column = threadIdx.x; column < static_cast<size_t>(hidden_size); column += blockDim.x) {
+    route_bias[target_row * hidden_size + column] = wave_bias[source_row * hidden_size + column];
+  }
+}
+
+cudaError_t LaunchQMoEOffloadScatterBias(
+    const half* wave_bias, const int* compact_experts, const int* route_ids, half* route_bias,
+    int route_count, int hidden_size, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  QMoEOffloadScatterBiasKernel<<<route_count, 256, 0, stream>>>(
+      wave_bias, compact_experts, route_ids, route_bias, hidden_size);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadScatterBias(
+    const __nv_bfloat16* wave_bias, const int* compact_experts, const int* route_ids, __nv_bfloat16* route_bias,
+    int route_count, int hidden_size, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  QMoEOffloadScatterBiasKernel<<<route_count, 256, 0, stream>>>(
+      wave_bias, compact_experts, route_ids, route_bias, hidden_size);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadGather(
+    const half* input, const int* route_ids, half* gathered,
+    int route_count, int hidden_size, int k, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  QMoEOffloadGatherKernel<<<route_count, 256, 0, stream>>>(input, route_ids, gathered, hidden_size, k);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadGather(
+    const __nv_bfloat16* input, const int* route_ids, __nv_bfloat16* gathered,
+    int route_count, int hidden_size, int k, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  QMoEOffloadGatherKernel<<<route_count, 256, 0, stream>>>(input, route_ids, gathered, hidden_size, k);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadScatter(
+    const half* wave_output, const int* route_ids, half* contributions,
+    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  QMoEOffloadScatterKernel<<<route_count, 256, 0, stream>>>(
+      wave_output, route_ids, contributions, hidden_size, tile_rows, k);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadScatter(
+    const __nv_bfloat16* wave_output, const int* route_ids, __nv_bfloat16* contributions,
+    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  QMoEOffloadScatterKernel<<<route_count, 256, 0, stream>>>(
+      wave_output, route_ids, contributions, hidden_size, tile_rows, k);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadMetadata(
+    float* unit_scales, int* identity_permutation, int route_count, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  const int blocks = route_count / 256 + (route_count % 256 != 0);
+  QMoEOffloadMetadataKernel<<<blocks, 256, 0, stream>>>(
+      unit_scales, identity_permutation, route_count);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadSourceRows(
+    int* source_rows, int route_count, int k, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  const int blocks = route_count / 256 + (route_count % 256 != 0);
+  QMoEOffloadSourceRowsKernel<<<blocks, 256, 0, stream>>>(source_rows, route_count, k);
+  return cudaGetLastError();
+}
+
+__global__ void QMoEOffloadClassifyKernel(
+    const int* topk_indices, const int* expert_slot, int route_count, int row_count,
+    int* hit_ids, int* hit_compact, int* hit_flag, int dummy_slot) {
+  const int row = blockIdx.x * blockDim.x + threadIdx.x;
+  if (row >= row_count) return;
+  const int route = row < route_count ? row : 0;
+  const int slot = (row < route_count) ? expert_slot[topk_indices[route]] : -1;
+  hit_ids[row] = route;
+  hit_compact[row] = slot < 0 ? dummy_slot : slot;
+  if (row < route_count) hit_flag[row] = slot >= 0;
+}
+
+template <typename T>
+__global__ void QMoEOffloadMergeKernel(
+    const T* wave_output, const T* cpu_rows, const int* hit_flag, T* contributions,
+    int hidden_size, int tile_rows, int k) {
+  const int route = blockIdx.x;
+  const size_t target_row = static_cast<size_t>(route % k) * tile_rows + route / k;
+  const T* source = hit_flag[route] ? wave_output + static_cast<size_t>(route) * hidden_size
+                                    : cpu_rows + target_row * hidden_size;
+  for (size_t column = threadIdx.x; column < static_cast<size_t>(hidden_size); column += blockDim.x) {
+    contributions[target_row * hidden_size + column] = source[column];
+  }
+}
+
+cudaError_t LaunchQMoEOffloadClassify(
+    const int* topk_indices, const int* expert_slot, int route_count, int row_count,
+    int* hit_ids, int* hit_compact, int* hit_flag, cudaStream_t stream, int dummy_slot) {
+  if (row_count <= 0) return cudaSuccess;
+  const int blocks = row_count / 128 + (row_count % 128 != 0);
+  QMoEOffloadClassifyKernel<<<blocks, 128, 0, stream>>>(
+      topk_indices, expert_slot, route_count, row_count, hit_ids, hit_compact, hit_flag, dummy_slot);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadMerge(
+    const half* wave_output, const half* cpu_rows, const int* hit_flag, half* contributions,
+    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  QMoEOffloadMergeKernel<<<route_count, 256, 0, stream>>>(
+      wave_output, cpu_rows, hit_flag, contributions, hidden_size, tile_rows, k);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadMerge(
+    const __nv_bfloat16* wave_output, const __nv_bfloat16* cpu_rows, const int* hit_flag, __nv_bfloat16* contributions,
+    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  QMoEOffloadMergeKernel<<<route_count, 256, 0, stream>>>(
+      wave_output, cpu_rows, hit_flag, contributions, hidden_size, tile_rows, k);
+  return cudaGetLastError();
+}
+
 // Shared with the fused routing prologue in the LLM MoE runner (moe_kernels.cu); see
 // core/providers/cuda/cu_inc/topk_warp_sort.cuh for why these live in a header.
 using onnxruntime::cuda::topk::SafeInvSum;
@@ -1544,13 +1713,19 @@ __global__ void QMoEMarkActiveExpertsKernel(
 }
 
 __global__ void QMoECompactExpertMapKernel(
-    int* expert_to_compact, int* compact_to_expert, int num_experts, int expert_capacity) {
+    int* expert_to_compact, int* compact_to_expert, int num_experts, int expert_capacity, int pass_offset) {
   // Expert counts are small; a serial prefix preserves ascending expert order deterministically.
+  int active_index = 0;
   int slot = 0;
   for (int expert = 0; expert < num_experts; ++expert) {
     if (expert_to_compact[expert] == 0) {
-      expert_to_compact[expert] = slot;
-      compact_to_expert[slot++] = expert;
+      if (active_index >= pass_offset && slot < expert_capacity) {
+        expert_to_compact[expert] = slot;
+        compact_to_expert[slot++] = expert;
+      } else {
+        expert_to_compact[expert] = -1;
+      }
+      ++active_index;
     }
   }
   for (; slot < expert_capacity; ++slot) {
@@ -1574,9 +1749,11 @@ void LaunchQMoECompactExperts(
     int num_experts,
     int expert_capacity,
     int64_t num_routes,
-    cudaStream_t stream) {
+    cudaStream_t stream,
+    int pass_offset) {
   ORT_ENFORCE(num_experts > 0 && num_routes > 0 &&
-                  expert_capacity >= std::min<int64_t>(num_experts, num_routes) &&
+                  expert_capacity > 0 &&
+                  (pass_offset > 0 || expert_capacity >= std::min<int64_t>(num_experts, num_routes) || expert_capacity <= num_experts) &&
                   expert_capacity <= num_experts,
               "Invalid QMoE compact expert capacity.");
   CUDA_CALL_THROW(cudaMemsetAsync(expert_to_compact, 0xff, static_cast<size_t>(num_experts) * sizeof(int), stream));
@@ -1584,9 +1761,54 @@ void LaunchQMoECompactExperts(
   const int grid = onnxruntime::narrow<int>((num_routes - 1) / block + 1);
   QMoEMarkActiveExpertsKernel<<<grid, block, 0, stream>>>(expert_indices, expert_to_compact, num_routes);
   CUDA_CALL_THROW(cudaGetLastError());
-  QMoECompactExpertMapKernel<<<1, 1, 0, stream>>>(expert_to_compact, compact_to_expert, num_experts, expert_capacity);
+  QMoECompactExpertMapKernel<<<1, 1, 0, stream>>>(expert_to_compact, compact_to_expert, num_experts, expert_capacity, pass_offset);
   CUDA_CALL_THROW(cudaGetLastError());
   QMoERemapExpertsKernel<<<grid, block, 0, stream>>>(expert_indices, compact_indices, expert_to_compact, num_routes);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+template <typename T>
+__global__ void QMoEAccumulatePassOutputKernel(
+    float* __restrict__ accum,
+    const T* __restrict__ pass_output,
+    T* __restrict__ final_output,
+    int64_t count,
+    bool write_final) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx < count) {
+    const float sum = accum[idx] + static_cast<float>(pass_output[idx]);
+    accum[idx] = sum;
+    if (write_final) {
+      final_output[idx] = static_cast<T>(sum);
+    }
+  }
+}
+
+void LaunchQMoEAccumulatePassOutput(
+    float* accum,
+    const half* pass_output,
+    half* final_output,
+    int64_t count,
+    bool write_final,
+    cudaStream_t stream) {
+  if (count <= 0) return;
+  constexpr int block = 256;
+  const int grid = onnxruntime::narrow<int>((count + block - 1) / block);
+  QMoEAccumulatePassOutputKernel<half><<<grid, block, 0, stream>>>(accum, pass_output, final_output, count, write_final);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+void LaunchQMoEAccumulatePassOutput(
+    float* accum,
+    const __nv_bfloat16* pass_output,
+    __nv_bfloat16* final_output,
+    int64_t count,
+    bool write_final,
+    cudaStream_t stream) {
+  if (count <= 0) return;
+  constexpr int block = 256;
+  const int grid = onnxruntime::narrow<int>((count + block - 1) / block);
+  QMoEAccumulatePassOutputKernel<__nv_bfloat16><<<grid, block, 0, stream>>>(accum, pass_output, final_output, count, write_final);
   CUDA_CALL_THROW(cudaGetLastError());
 }
 

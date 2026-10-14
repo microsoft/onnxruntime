@@ -1324,9 +1324,21 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           effective_row_tile_size != qmoe::kDisabledRowTileSize && !use_fp4_gemv && !use_packed_int_gemv);
   const bool use_nvfp4_compaction = is_nvfp4 && !route_native_fp4 && !use_fp4_gemv;
   const bool use_expert_compaction = is_block_fp8 || use_nvfp4_compaction;
-  const int runner_num_experts =
+  const int full_active_experts =
       use_expert_compaction ? qmoe::MaxActiveExperts(row_tile_plan, narrow<int>(moe_params.num_experts), narrow<int>(k_))
                             : narrow<int>(moe_params.num_experts);
+  static const int max_compact_experts_env =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_MAX_COMPACT_EXPERTS", 0);
+  static const bool dequant_transient_env =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_DEQUANT_TRANSIENT", 0) != 0;
+  const int runner_num_experts =
+      (use_nvfp4_compaction && max_compact_experts_env > 0)
+          ? std::min(full_active_experts, max_compact_experts_env)
+          : full_active_experts;
+  const int num_compact_passes =
+      (use_nvfp4_compaction && runner_num_experts < full_active_experts)
+          ? (full_active_experts + runner_num_experts - 1) / runner_num_experts
+          : 1;
 
   // Profile and capture the best tactics under the profiler mutex, then release the mutex so
   // that scratch allocation, weight dequantization, scale prepping, softmax, and other
@@ -1381,7 +1393,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         std::optional<MoeConfig> config1 = deterministic_config;
         std::optional<MoeConfig> config2 = deterministic_config;
         if (is_nvfp4 && !use_fp4_gemv && !route_native_fp4) {
-          const double rows_per_expert = static_cast<double>(tile_rows) * static_cast<double>(k_) / runner_num_experts;
+          double rows_per_expert = static_cast<double>(tile_rows) * static_cast<double>(k_) / full_active_experts;
+          if (num_compact_passes > 1) {
+            rows_per_expert = std::min(rows_per_expert, 20.0);
+          }
           if (auto fc1 = PickPrefillTactic(tactics, false, rows_per_expert)) config1 = fc1;
           if (auto fc2 = PickPrefillTactic(tactics, true, rows_per_expert)) config2 = fc2;
         }
@@ -1498,7 +1513,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       qmoe::MakeScratchLayout(workspace_size, row_tile_plan, k_);
   const size_t total_scratch_bytes = scratch_layout.total_bytes;
 
-  auto work_space = GetScratchBuffer<void>(total_scratch_bytes, GetComputeStream(context));
+  auto work_space = (dequant_transient_env && !use_fp4_gemv && !use_packed_int)
+                        ? GetTransientScratchBuffer<void>(total_scratch_bytes)
+                        : GetScratchBuffer<void>(total_scratch_bytes, GetComputeStream(context));
   char* workspace_ptr = reinterpret_cast<char*>(work_space.get());
   float* expert_scales = reinterpret_cast<float*>(workspace_ptr + workspace_size);
   int* expert_indices =
@@ -2549,8 +2566,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     size_t fc1_bytes = SafeInt<size_t>(num_experts) * fc1_n * fc1_k * element_size;
     size_t fc2_bytes = SafeInt<size_t>(num_experts) * fc2_n * fc2_k * element_size;
     dequant_weight_bytes = SafeInt<size_t>(fc1_bytes) + fc2_bytes;
-    dequant_fc1_weights = GetScratchBuffer<void>(fc1_bytes, GetComputeStream(context));
-    dequant_fc2_weights = GetScratchBuffer<void>(fc2_bytes, GetComputeStream(context));
+    dequant_fc1_weights = dequant_transient_env
+                              ? GetTransientScratchBuffer<void>(fc1_bytes)
+                              : GetScratchBuffer<void>(fc1_bytes, GetComputeStream(context));
+    dequant_fc2_weights = dequant_transient_env
+                              ? GetTransientScratchBuffer<void>(fc2_bytes)
+                              : GetScratchBuffer<void>(fc2_bytes, GetComputeStream(context));
 
     ORT_RETURN_IF_NOT(fc1_experts_weights != nullptr && fc2_experts_weights != nullptr,
                       "QMoE FP4/NVFP4 dequant fallback requires valid raw expert-weight tensors.");
@@ -2636,18 +2657,28 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
   if (use_expert_compaction) {
     const size_t num_routes = SafeInt<size_t>(row_tile_plan.rows_per_tile) * k_;
-    compact_expert_indices = GetScratchBuffer<int>(num_routes, GetComputeStream(context));
-    expert_to_compact = GetScratchBuffer<int>(moe_params.num_experts, GetComputeStream(context));
-    compact_to_expert = GetScratchBuffer<int>(runner_num_experts, GetComputeStream(context));
+    compact_expert_indices = dequant_transient_env
+                                 ? GetTransientScratchBuffer<int>(num_routes)
+                                 : GetScratchBuffer<int>(num_routes, GetComputeStream(context));
+    expert_to_compact = dequant_transient_env
+                            ? GetTransientScratchBuffer<int>(moe_params.num_experts)
+                            : GetScratchBuffer<int>(moe_params.num_experts, GetComputeStream(context));
+    compact_to_expert = dequant_transient_env
+                            ? GetTransientScratchBuffer<int>(runner_num_experts)
+                            : GetScratchBuffer<int>(runner_num_experts, GetComputeStream(context));
     const size_t element_size = input->DataType()->Size();
     if (fc1_experts_bias_optional) {
       const size_t fc1_n = SafeInt<size_t>(moe_params.inter_size) * (is_fused_swiglu ? 2 : 1);
-      compact_fc1_bias = GetScratchBuffer<void>(
-          SafeInt<size_t>(runner_num_experts) * fc1_n * element_size, GetComputeStream(context));
+      compact_fc1_bias = dequant_transient_env
+                             ? GetTransientScratchBuffer<void>(SafeInt<size_t>(runner_num_experts) * fc1_n * element_size)
+                             : GetScratchBuffer<void>(
+                                   SafeInt<size_t>(runner_num_experts) * fc1_n * element_size, GetComputeStream(context));
     }
     if (fc2_experts_bias_optional) {
-      compact_fc2_bias = GetScratchBuffer<void>(
-          SafeInt<size_t>(runner_num_experts) * moe_params.hidden_size * element_size, GetComputeStream(context));
+      compact_fc2_bias = dequant_transient_env
+                             ? GetTransientScratchBuffer<void>(SafeInt<size_t>(runner_num_experts) * moe_params.hidden_size * element_size)
+                             : GetScratchBuffer<void>(
+                                   SafeInt<size_t>(runner_num_experts) * moe_params.hidden_size * element_size, GetComputeStream(context));
     }
   }
   if (dequantize_fp4 && !use_nvfp4_compaction) {
@@ -2703,6 +2734,19 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     activation_params.limit = std::numeric_limits<float>::infinity();
   }
 
+  IAllocatorUniquePtr<void> multi_pass_output_buf;
+  IAllocatorUniquePtr<float> multi_pass_accum_buf;
+  if (num_compact_passes > 1) {
+    const size_t max_tile_elems = SafeInt<size_t>(row_tile_plan.rows_per_tile) * moe_params.hidden_size;
+    const size_t pass_out_bytes = SafeInt<size_t>(max_tile_elems) * input->DataType()->Size();
+    multi_pass_output_buf = dequant_transient_env
+                                ? GetTransientScratchBuffer<void>(pass_out_bytes)
+                                : GetScratchBuffer<void>(pass_out_bytes, GetComputeStream(context));
+    multi_pass_accum_buf = dequant_transient_env
+                               ? GetTransientScratchBuffer<float>(max_tile_elems)
+                               : GetScratchBuffer<float>(max_tile_elems, GetComputeStream(context));
+  }
+
   // Route and execute each row tile in order on the same stream. The tile-local top-k metadata and
   // runner workspace are safe to reuse because the next tile's writes are ordered after all kernels
   // from the previous runMoe call. Tactic mutation remains serialized across concurrent QMoE calls.
@@ -2731,17 +2775,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       }
     }
 #endif
-    if (use_expert_compaction) {
-      LaunchQMoECompactExperts(expert_indices, compact_expert_indices.get(),
-                               expert_to_compact.get(), compact_to_expert.get(),
-                               narrow<int>(moe_params.num_experts), runner_num_experts,
-                               SafeInt<int64_t>(tile_rows) * k_, stream);
-      if (use_nvfp4_compaction) {
-        dequantize_fp4();
-      } else {
-        dequantize_fp8();
-      }
-    }
     const size_t input_element_offset =
         SafeInt<size_t>(row_offset) * SafeInt<size_t>(moe_params.hidden_size);
     const size_t input_byte_offset =
@@ -2753,38 +2786,105 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     void* tile_output =
         reinterpret_cast<char*>(output->MutableDataRaw()) + output_byte_offset;
 
-    std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
-    if (use_fp4_deep_gemm) {
-      active_runner->setFp4DeepGemmWeightScales(
-          static_cast<const float*>(fp4_deep_gemm_fc1_weight_scales_.get()),
-          static_cast<const float*>(fp4_deep_gemm_fc2_weight_scales_.get()));
+    if (num_compact_passes > 1) {
+      const int64_t tile_elems = SafeInt<int64_t>(tile_rows) * moe_params.hidden_size;
+      CUDA_CALL_THROW(cudaMemsetAsync(multi_pass_accum_buf.get(), 0,
+                                      static_cast<size_t>(tile_elems) * sizeof(float), stream));
+      for (int pass_idx = 0; pass_idx < num_compact_passes; ++pass_idx) {
+        LaunchQMoECompactExperts(expert_indices, compact_expert_indices.get(),
+                                 expert_to_compact.get(), compact_to_expert.get(),
+                                 narrow<int>(moe_params.num_experts), runner_num_experts,
+                                 SafeInt<int64_t>(tile_rows) * k_, stream,
+                                 pass_idx * runner_num_experts);
+        dequantize_fp4();
+        {
+          std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
+          active_runner->setTactic(tile_config->config1, tile_config->config2);
+          active_runner->runMoe(
+              tile_input,
+              nullptr,
+              compact_expert_indices.get(),
+              expert_scales,
+              fc1_weight_data,
+              compact_fc1_bias ? compact_fc1_bias.get()
+                               : (fc1_experts_bias_optional ? fc1_experts_bias_optional->DataRaw() : nullptr),
+              kernel_activation_type,
+              fc2_weight_data,
+              compact_fc2_bias ? compact_fc2_bias.get()
+                               : (fc2_experts_bias_optional ? fc2_experts_bias_optional->DataRaw() : nullptr),
+              quant_params,
+              tile_rows,
+              moe_params.hidden_size,
+              moe_params.inter_size,
+              runner_num_experts,
+              k_,
+              workspace_ptr,
+              multi_pass_output_buf.get(),
+              unpermuted_row_to_permuted_row,
+              parallelism_config,
+              activation_params,
+              fused_routing,
+              stream);
+        }
+        const bool is_last_pass = (pass_idx == num_compact_passes - 1);
+        if (is_fp16_) {
+          LaunchQMoEAccumulatePassOutput(multi_pass_accum_buf.get(),
+                                         static_cast<const half*>(multi_pass_output_buf.get()),
+                                         static_cast<half*>(tile_output),
+                                         tile_elems, is_last_pass, stream);
+        } else {
+          LaunchQMoEAccumulatePassOutput(multi_pass_accum_buf.get(),
+                                         static_cast<const __nv_bfloat16*>(multi_pass_output_buf.get()),
+                                         static_cast<__nv_bfloat16*>(tile_output),
+                                         tile_elems, is_last_pass, stream);
+        }
+      }
+    } else {
+      if (use_expert_compaction) {
+        LaunchQMoECompactExperts(expert_indices, compact_expert_indices.get(),
+                                 expert_to_compact.get(), compact_to_expert.get(),
+                                 narrow<int>(moe_params.num_experts), runner_num_experts,
+                                 SafeInt<int64_t>(tile_rows) * k_, stream);
+        if (use_nvfp4_compaction) {
+          dequantize_fp4();
+        } else {
+          dequantize_fp8();
+        }
+      }
+
+      std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
+      if (use_fp4_deep_gemm) {
+        active_runner->setFp4DeepGemmWeightScales(
+            static_cast<const float*>(fp4_deep_gemm_fc1_weight_scales_.get()),
+            static_cast<const float*>(fp4_deep_gemm_fc2_weight_scales_.get()));
+      }
+      active_runner->setTactic(tile_config->config1, tile_config->config2);
+      active_runner->runMoe(
+          tile_input,
+          nullptr,
+          use_expert_compaction ? compact_expert_indices.get() : expert_indices,
+          expert_scales,
+          fc1_weight_data,
+          compact_fc1_bias ? compact_fc1_bias.get()
+                           : (fc1_experts_bias_optional ? fc1_experts_bias_optional->DataRaw() : nullptr),
+          kernel_activation_type,
+          fc2_weight_data,
+          compact_fc2_bias ? compact_fc2_bias.get()
+                           : (fc2_experts_bias_optional ? fc2_experts_bias_optional->DataRaw() : nullptr),
+          quant_params,
+          tile_rows,
+          moe_params.hidden_size,
+          moe_params.inter_size,
+          runner_num_experts,
+          k_,
+          workspace_ptr,
+          tile_output,
+          unpermuted_row_to_permuted_row,
+          parallelism_config,
+          activation_params,
+          fused_routing,
+          stream);
     }
-    active_runner->setTactic(tile_config->config1, tile_config->config2);
-    active_runner->runMoe(
-        tile_input,
-        nullptr,
-        use_expert_compaction ? compact_expert_indices.get() : expert_indices,
-        expert_scales,
-        fc1_weight_data,
-        compact_fc1_bias ? compact_fc1_bias.get()
-                         : (fc1_experts_bias_optional ? fc1_experts_bias_optional->DataRaw() : nullptr),
-        kernel_activation_type,
-        fc2_weight_data,
-        compact_fc2_bias ? compact_fc2_bias.get()
-                         : (fc2_experts_bias_optional ? fc2_experts_bias_optional->DataRaw() : nullptr),
-        quant_params,
-        tile_rows,
-        moe_params.hidden_size,
-        moe_params.inter_size,
-        runner_num_experts,
-        k_,
-        workspace_ptr,
-        tile_output,
-        unpermuted_row_to_permuted_row,
-        parallelism_config,
-        activation_params,
-        fused_routing,
-        stream);
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     if (routing_snapshot_) {

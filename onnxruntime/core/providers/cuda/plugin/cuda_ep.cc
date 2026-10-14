@@ -151,8 +151,8 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
                         : nullptr;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
   IsConcurrentRunSupported = IsConcurrentRunSupportedImpl;
-  OnRunStart = config_.enable_cuda_graph ? OnRunStartImpl : nullptr;
-  OnRunEnd = config_.enable_cuda_graph ? OnRunEndImpl : nullptr;
+  OnRunStart = OnRunStartImpl;
+  OnRunEnd = OnRunEndImpl;
 
   // OrtEp::Sync is \since ORT 1.25. A runtime older than 1.25 does not know about this OrtEp field and
   // ignores it regardless of its value. We still gate it on the runtime version to keep the
@@ -222,6 +222,13 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
 }
 
 CudaEp::~CudaEp() {
+  if (EpImpl() != nullptr) {
+    auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
+        static_cast<const void*>(EpImpl()));
+    if (runtime_cfg && runtime_cfg->qmoe_controller) {
+      runtime_cfg->qmoe_controller->Shutdown();
+    }
+  }
   std::lock_guard<std::mutex> lock(per_thread_contexts_mutex_);
   for (const auto& cache_weak : per_thread_context_caches_) {
     auto cache = cache_weak.lock();
@@ -588,6 +595,16 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
   EXCEPTION_TO_STATUS_BEGIN
 
   auto* ep = static_cast<CudaEp*>(this_ptr);
+  if (ep->EpImpl() != nullptr) {
+    auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
+        static_cast<const void*>(ep->EpImpl()));
+    if (runtime_cfg && runtime_cfg->qmoe_controller && runtime_cfg->qmoe_controller->HasOffloadNodes()) {
+      auto st = runtime_cfg->qmoe_controller->OnRunStart();
+      if (!st.IsOK()) {
+        return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, st.ErrorMessage().c_str());
+      }
+    }
+  }
   if (!ep->config_.enable_cuda_graph) {
     return nullptr;
   }
@@ -626,6 +643,16 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
   EXCEPTION_TO_STATUS_BEGIN
 
   auto* ep = static_cast<CudaEp*>(this_ptr);
+  if (ep->EpImpl() != nullptr) {
+    auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
+        static_cast<const void*>(ep->EpImpl()));
+    if (runtime_cfg && runtime_cfg->qmoe_controller && runtime_cfg->qmoe_controller->HasOffloadNodes()) {
+      auto st = runtime_cfg->qmoe_controller->OnRunEnd(sync_stream, /*run_succeeded=*/true);
+      if (!st.IsOK()) {
+        return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, st.ErrorMessage().c_str());
+      }
+    }
+  }
   if (!ep->config_.enable_cuda_graph) {
     return nullptr;
   }

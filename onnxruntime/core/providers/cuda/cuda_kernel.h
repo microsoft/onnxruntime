@@ -9,6 +9,8 @@
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cudnn_loader.h"
 #include "core/providers/cuda/cuda_fwd.h"
+#include "core/providers/cuda/bounded_pinned_pool.h"
+#include "core/providers/cuda/qmoe_session_controller.h"
 #include <mutex>
 #include "core/providers/cuda/cuda_stream_handle.h"
 
@@ -118,6 +120,15 @@ class CudaKernel : public OpKernel {
     provider_->RetainBufferForGraphCapture(
         std::shared_ptr<void>(buffer.release(),
                               [deleter](void* p) { deleter(static_cast<T*>(p)); }));
+  }
+
+  inline std::shared_ptr<onnxruntime::cuda::QMoESessionController> GetQMoESessionController() const {
+    static std::mutex mutex;
+    static std::unordered_map<const CUDAExecutionProvider*, std::shared_ptr<onnxruntime::cuda::QMoESessionController>> controllers;
+    std::lock_guard<std::mutex> lock(mutex);
+    auto& ctrl = controllers[provider_];
+    if (!ctrl) ctrl = std::make_shared<onnxruntime::cuda::QMoESessionController>(provider_ ? provider_->GetDeviceId() : 0);
+    return ctrl;
   }
 
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }

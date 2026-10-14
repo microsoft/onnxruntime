@@ -157,6 +157,14 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(const CUDAAllocatorParam
   ORT_ENFORCE(cuda_allocator_params.external_alloc_info != nullptr,
               "CUDAAllocatorParams.external_alloc_info is nullptr.");
   const auto& external_allocator_info = *(cuda_allocator_params.external_alloc_info);
+  const bool device_budget_enabled =
+      GetCudaDeviceMemoryBudget(cuda_allocator_params.device_id)->GetStats().limit !=
+      std::numeric_limits<size_t>::max();
+  ORT_ENFORCE(!device_budget_enabled || !external_allocator_info.UseExternalAllocator(),
+              "gpu_device_mem_limit does not support external CUDA allocators");
+  ORT_ENFORCE(!device_budget_enabled || cuda_allocator_params.arena_cfg == nullptr ||
+                  cuda_allocator_params.arena_cfg->use_cuda_mempool != 1,
+              "gpu_device_mem_limit does not support CUDA memory pools");
   if (external_allocator_info.UseExternalAllocator()) {
     AllocatorCreationInfo default_memory_info(
         [external_allocator_info](OrtDevice::DeviceId id) {
@@ -348,6 +356,9 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
                                    info.device_id)},
       info_{info},
       tuning_context_(this, &info_.tunable_op) {
+  GetCudaDeviceMemoryBudget(info_.device_id, info_.gpu_device_mem_limit);
+  ORT_ENFORCE(info_.gpu_device_mem_limit == 0 || !info_.external_allocator_info.UseExternalAllocator(),
+              "gpu_device_mem_limit does not support external CUDA allocators");
 #ifndef ENABLE_CUDA_NHWC_OPS
   ORT_ENFORCE(info_.prefer_nhwc == 0, "This build does not support NHWC layout");
 #endif

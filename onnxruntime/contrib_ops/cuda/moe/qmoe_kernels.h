@@ -42,6 +42,45 @@ void LaunchSoftmaxTopK(
     bool normalize_scales,
     cudaStream_t stream);
 
+cudaError_t LaunchQMoEOffloadGather(
+    const half* input, const int* route_ids, half* gathered,
+    int route_count, int hidden_size, int k, cudaStream_t stream);
+cudaError_t LaunchQMoEOffloadGather(
+    const __nv_bfloat16* input, const int* route_ids, __nv_bfloat16* gathered,
+    int route_count, int hidden_size, int k, cudaStream_t stream);
+
+cudaError_t LaunchQMoEOffloadScatter(
+    const half* wave_output, const int* route_ids, half* contributions,
+    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream);
+cudaError_t LaunchQMoEOffloadScatter(
+    const __nv_bfloat16* wave_output, const int* route_ids, __nv_bfloat16* contributions,
+    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream);
+
+cudaError_t LaunchQMoEOffloadMetadata(
+    float* unit_scales, int* identity_permutation, int route_count, cudaStream_t stream);
+
+cudaError_t LaunchQMoEOffloadSourceRows(
+    int* source_rows, int route_count, int k, cudaStream_t stream);
+
+cudaError_t LaunchQMoEOffloadScatterBias(
+    const half* wave_bias, const int* compact_experts, const int* route_ids, half* route_bias,
+    int route_count, int hidden_size, cudaStream_t stream);
+cudaError_t LaunchQMoEOffloadScatterBias(
+    const __nv_bfloat16* wave_bias, const int* compact_experts, const int* route_ids, __nv_bfloat16* route_bias,
+    int route_count, int hidden_size, cudaStream_t stream);
+
+cudaError_t LaunchQMoEOffloadClassify(
+    const int* topk_indices, const int* expert_slot, int route_count, int row_count,
+    int* hit_ids, int* hit_compact, int* hit_flag, cudaStream_t stream,
+    int dummy_slot = 0);
+
+cudaError_t LaunchQMoEOffloadMerge(
+    const half* wave_output, const half* cpu_rows, const int* hit_flag, half* contributions,
+    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream);
+cudaError_t LaunchQMoEOffloadMerge(
+    const __nv_bfloat16* wave_output, const __nv_bfloat16* cpu_rows, const int* hit_flag, __nv_bfloat16* contributions,
+    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream);
+
 // Decode-only fused routing: softmax + top-k (bit-identical to LaunchSoftmaxTopK) and the (expert, token)-sorted expert
 // maps of fusedBuildExpertMapsSortFirstToken in one single-CTA launch. Returns false (nothing launched) outside its
 // envelope: 1..4 rows, exactly 512 experts, k in {1, 2, 4, 6, 8, 10}, 8-byte aligned logits.
@@ -279,6 +318,23 @@ void LaunchQMoECompactExperts(
     int num_experts,
     int expert_capacity,
     int64_t num_routes,
+    cudaStream_t stream,
+    int pass_offset = 0);
+
+void LaunchQMoEAccumulatePassOutput(
+    float* accum,
+    const half* pass_output,
+    half* final_output,
+    int64_t count,
+    bool write_final,
+    cudaStream_t stream);
+
+void LaunchQMoEAccumulatePassOutput(
+    float* accum,
+    const __nv_bfloat16* pass_output,
+    __nv_bfloat16* final_output,
+    int64_t count,
+    bool write_final,
     cudaStream_t stream);
 
 void LaunchQMoEDequantizeFp8Weights(

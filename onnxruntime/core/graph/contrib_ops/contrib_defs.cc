@@ -1762,6 +1762,178 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    QMoEOffload, 1,
+    OpSchema()
+        .SetDoc("Opt-in bounded eager CUDA W4A16/NVFP4 MoE with CPU expert offload and GPU resident cache/streaming.")
+        .Attr("activation_type", "Only swiglu is supported.", AttributeProto::STRING, std::string("swiglu"))
+        .Attr("k", "Number of experts selected per token, in [1,E].", AttributeProto::INT, int64_t{1})
+        .Attr("normalize_routing_weights", "Normalize the original full-pool top-k weights (0 or 1).",
+              AttributeProto::INT, int64_t{0})
+        .Attr("use_sparse_mixer", "Must be zero; sparse mixer is unsupported.", AttributeProto::INT, int64_t{0})
+        .Attr("expert_weight_bits", "Must be 4.", AttributeProto::INT, int64_t{4})
+        .Attr("fc1_expert_weight_bits", "Optional width override; must be 4.", AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("fc2_expert_weight_bits", "Optional width override; must be 4.", AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("fc3_expert_weight_bits", "Optional width override; must be 4.", AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("swiglu_fusion", "Must be 1: fused interleaved gate/up.", AttributeProto::INT, int64_t{1})
+        .Attr("swiglu_limit", "Optional nonnegative SwiGLU clamp limit.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("activation_alpha", "SwiGLU alpha.", AttributeProto::FLOAT, 1.0f)
+        .Attr("activation_beta", "SwiGLU beta.", AttributeProto::FLOAT, 0.0f)
+        .Attr("accuracy_level", "Must be zero; no CPU compute modes.", AttributeProto::INT, int64_t{0})
+        .Attr("block_size", "32 for symmetric INT4 or 16 for NVFP4.", AttributeProto::INT, int64_t{32})
+        .Attr("quant_type", "int or nvfp4.", AttributeProto::STRING, std::string("int"))
+        .Attr("weights_prepacked", "-1 or 1 accepts prepacked bytes; 0/raw is unsupported.",
+              AttributeProto::INT, int64_t{-1})
+        .Attr("packing_layout", "Packing identity.",
+              AttributeProto::STRING, std::string("cutlass_sm80_int4_v1"))
+        .Attr("layout_id", "Optional layout identity for v3 shared schema.",
+              AttributeProto::STRING, OPTIONAL_VALUE)
+        .Attr("token_tile_size", "Maximum tokens routed per tile; positive, independent of input token count.",
+              AttributeProto::INT, int64_t{32})
+        .Attr("max_sync_tile_tokens", "Optional sync tile token cap (v3 F7).",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("async_max_tokens", "Optional async execution token cap (v3 F7).",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("stream_min_tokens", "Optional GPU streaming token threshold (v3 F7).",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("prefill_chunk_tokens", "Optional prefill chunk token cap (v3 F7).",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("resident_slots", "Optional per-layer resident GPU expert capacity.",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("spare_slots", "Optional per-layer spare GPU physical slots.",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("stream_rows", "Optional prefill streaming tile row count.",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("stream_min_rows", "Optional minimum routed rows to stream a cold expert on GPU.",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("stream_wave", "Optional maximum cold experts per GPU streaming wave.",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("initial_experts", "Optional profile-seeded initial GPU-resident expert IDs for this layer.",
+              AttributeProto::INTS, OPTIONAL_VALUE)
+        .Attr("expert_wave_size", "Maximum staged experts per wave, in [1,E-1]. Larger selected unions use waves.",
+              AttributeProto::INT, int64_t{1})
+        .Attr("gpu_working_bytes",
+              "Upper bound on allocator-backed GPU scratch, excluding input/output tensors "
+              "and physical arena rounding. The shared device ledger enforces physical allocation limits.",
+              AttributeProto::INT, int64_t{64} << 20)
+        .Attr("pinned_staging_bytes",
+              "Upper bound on the single-slot pinned ring including route readback metadata, "
+              "per operator instance. Pageable CPU banks are not pinned.",
+              AttributeProto::INT, int64_t{8} << 20)
+        .Attr("expert_cache_bytes", "Must be zero for legacy streaming.",
+              AttributeProto::INT, int64_t{0})
+        .Attr("layout_version", "SharedExpertBlockV1 requires 1 and expert_blocks; omit for legacy banks.",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("hidden_size", "Required positive hidden dimension for shared expert blocks.",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("inter_size", "Required positive intermediate dimension for shared expert blocks.",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("layer_index", "Required namespace-local nonnegative layer index for shared mode.",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .Input(0, "input", "CUDA FP16/BF16 [tokens,H] or [batch,sequence,H].", "T")
+        .Input(1, "router_probs", "CUDA FP16/BF16 logits [flattened_tokens,E].", "T")
+        .Input(2, "fc1_experts_weights",
+               "CPU expert_blocks [E,stride] in v3 compact shared mode, or CPU FC1 weights in bank mode.",
+               "T1", OpSchema::Optional)
+        .Input(3, "fc1_scales",
+               "CUDA fc2_bias [E,H] in v3 compact shared mode, or CPU FC1 scales in bank mode.",
+               "T2", OpSchema::Optional)
+        .Input(4, "fc1_experts_bias",
+               "Optional CUDA int8 phase [T] in v3 compact shared mode, or CPU FC1 bias in bank mode.",
+               "T3", OpSchema::Optional)
+        .Input(5, "fc2_experts_weights", "CPU FC2 weights in bank mode; omit in shared mode.", "T1", OpSchema::Optional)
+        .Input(6, "fc2_scales", "CPU FC2 scales in bank mode.", "T2", OpSchema::Optional)
+        .Input(7, "fc2_experts_bias", "Optional FC2 bias [E,H].", "T", OpSchema::Optional)
+        .Input(8, "fc3_experts_weights", "Unsupported; must be omitted.", "T1", OpSchema::Optional)
+        .Input(9, "fc3_scales", "Unsupported; must be omitted.", "T2", OpSchema::Optional)
+        .Input(10, "fc3_experts_bias", "Unsupported; must be omitted.", "T", OpSchema::Optional)
+        .Input(11, "fc1_zero_points", "Unsupported; symmetric only.", "T1", OpSchema::Optional)
+        .Input(12, "fc2_zero_points", "Unsupported; symmetric only.", "T1", OpSchema::Optional)
+        .Input(13, "fc3_zero_points", "Unsupported; must be omitted.", "T1", OpSchema::Optional)
+        .Input(14, "router_weights", "Optional/ignored for NVFP4 compatibility; unsupported in INT4.", "T", OpSchema::Optional)
+        .Input(15, "fc1_global_scale", "CPU float [E] FC1 global scale for NVFP4; unsupported in INT4.", "T4", OpSchema::Optional)
+        .Input(16, "fc2_global_scale", "CPU float [E] FC2 global scale for NVFP4; unsupported in INT4.", "T4", OpSchema::Optional)
+        .Input(17, "fc1_act_scale", "Unsupported; must be omitted.", "T4", OpSchema::Optional)
+        .Input(18, "fc2_act_scale", "Unsupported; must be omitted.", "T4", OpSchema::Optional)
+        .Input(19, "fc1_act_block_scale", "Unsupported; must be omitted.", "T2", OpSchema::Optional)
+        .Input(20, "fc2_act_block_scale", "Unsupported; must be omitted.", "T2", OpSchema::Optional)
+        .Input(21, "expert_blocks", "Legacy slot 21 shared CPU uint8 [E,stride].", "T1", OpSchema::Optional)
+        .Input(22, "slab", "Optional CUDA uint8 per-bank resident slot arrays.", "T1", OpSchema::Optional)
+        .Input(23, "slot_tables", "Optional CUDA int32 namespace snapshot [L,E]; paired with slab.", "TI", OpSchema::Optional)
+        .Input(24, "fc2_bias", "Legacy slot 24 shared-mode CUDA FP16/BF16 bias [E,H].", "T", OpSchema::Optional)
+        .Input(25, "token_phase", "Optional CUDA int8 [T], phase values 0 through 4.", "TP", OpSchema::Optional)
+        .Output(0, "output", "CUDA FP16/BF16, same shape as input.", "T")
+        .Output(1, "route_rows", "Optional CPU int32 [5,E] logical route counts.", "TI", OpSchema::Optional)
+        .Output(2, "route_calls", "Optional CPU int32 [5,E] invocation-level expert activation indicators.", "TI", OpSchema::Optional)
+        .Output(3, "call_counts", "Optional CPU int32 [6]: tokens by phase and staged expert uploads.", "TI", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "FP16 or BF16 activations and router logits.")
+        .TypeConstraint("T1", {"tensor(uint8)"}, "Packed uint8 expert banks or blocks.")
+        .TypeConstraint("T2", {"tensor(float16)", "tensor(bfloat16)", "tensor(float8e4m3fn)"},
+                        "FP16/BF16 scales or fc2_bias, or Float8E4M3FN NVFP4 block scales.")
+        .TypeConstraint("T3", {"tensor(float16)", "tensor(bfloat16)", "tensor(int8)"},
+                        "FP16/BF16 FC1 bias or int8 token_phase in v3 compact shared mode.")
+        .TypeConstraint("T4", {"tensor(float)"}, "FP32 global scales.")
+        .TypeConstraint("TI", {"tensor(int32)"}, "Slot tables and routing statistics.")
+        .TypeConstraint("TP", {"tensor(int8)"}, "Packed token phases.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput(ctx);
+          const bool legacy_shared = ctx.getNumInputs() > 21 && ctx.getInputType(21) != nullptr;
+          const auto* layout_ver_attr = ctx.getAttribute("layout_version");
+          const bool v3_compact_shared =
+              !legacy_shared && layout_ver_attr != nullptr && ctx.getNumInputs() >= 3 && ctx.getNumInputs() <= 5 &&
+              ctx.getInputType(2) != nullptr;
+          const auto* quant_attr = ctx.getAttribute("quant_type");
+          const bool is_nvfp4 = quant_attr != nullptr && quant_attr->s() == "nvfp4";
+
+          if (legacy_shared) {
+            for (size_t index = 2; index <= 20; ++index) {
+              if (ctx.getInputType(index) != nullptr) fail_shape_inference("QMoEOffload cannot mix shared and legacy inputs.");
+            }
+            for (const auto* name : {"layout_version", "weights_prepacked"}) {
+              const auto* attribute = ctx.getAttribute(name);
+              if (attribute == nullptr || attribute->i() != 1) fail_shape_inference("QMoEOffload requires ", name, "=1.");
+            }
+            if (ctx.getNumInputs() <= 24 || ctx.getInputType(24) == nullptr) {
+              fail_shape_inference("QMoEOffload legacy shared mode requires fc2_bias.");
+            }
+            if ((ctx.getInputType(22) != nullptr) != (ctx.getInputType(23) != nullptr)) {
+              fail_shape_inference("QMoEOffload slab and slot_tables must be supplied together.");
+            }
+            if (ONNX_NAMESPACE::hasInputShape(ctx, 21) && ONNX_NAMESPACE::getInputShape(ctx, 21).dim_size() != 2) {
+              fail_shape_inference("QMoEOffload expert_blocks must have rank two.");
+            }
+          } else if (v3_compact_shared) {
+            for (const auto* name : {"layout_version", "weights_prepacked"}) {
+              const auto* attribute = ctx.getAttribute(name);
+              if (attribute == nullptr || attribute->i() != 1) fail_shape_inference("QMoEOffload requires ", name, "=1.");
+            }
+            if (ONNX_NAMESPACE::hasInputShape(ctx, 2) && ONNX_NAMESPACE::getInputShape(ctx, 2).dim_size() != 2) {
+              fail_shape_inference("QMoEOffload compact expert_blocks must have rank two.");
+            }
+          } else if (!is_nvfp4) {
+            if (layout_ver_attr != nullptr || ctx.getNumOutputs() > 1) {
+              fail_shape_inference("QMoEOffload shared attributes/outputs require expert_blocks.");
+            }
+            return;
+          }
+
+          const size_t expert_input_idx = legacy_shared ? 21 : 2;
+          for (size_t index = 1; index < ctx.getNumOutputs(); ++index) {
+            if (ctx.getOutputType(index) == nullptr) continue;
+            ONNX_NAMESPACE::updateOutputElemType(ctx, index, ONNX_NAMESPACE::TensorProto::INT32);
+            ONNX_NAMESPACE::TensorShapeProto statistics;
+            statistics.add_dim()->set_dim_value(index == 3 ? 6 : 5);
+            if (index < 3) {
+              auto* experts = statistics.add_dim();
+              if (ONNX_NAMESPACE::hasInputShape(ctx, expert_input_idx) &&
+                  ONNX_NAMESPACE::getInputShape(ctx, expert_input_idx).dim_size() >= 1) {
+                *experts = ONNX_NAMESPACE::getInputShape(ctx, expert_input_idx).dim(0);
+              }
+            }
+            ONNX_NAMESPACE::updateOutputShape(ctx, index, statistics);
+          }
+        }));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(SampleOp, 1,
                             OpSchema()
                                 .Input(0, "X", "input", "T")
