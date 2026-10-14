@@ -317,13 +317,16 @@ macro(setup_cuda_architectures)
   #    the only path for unquantized FP16/BF16 MoE on SM100 and SM12x. Keep them if any requested
   #    architecture, SASS or PTX, has at least that compute capability.
   #  * 90: sm_90a kernels, which run on compute capability 9.0 only.
-  #  * 100, 110, 120: architecture-specific kernels, compiled for the requested architectures of
-  #    that generation. Keep them if SASS for any of its compute capabilities is requested.
+  #  * 100, 110, 120: architecture- or family-specific kernels, compiled for the requested
+  #    architectures of that family. Keep them if SASS for any member of the family is requested.
+  #    Members per the family-specific compatibility table of the CUDA C++ Programming Guide:
+  #    compute_100f covers 10.0, 10.3 and 10.7, compute_110f covers 11.0, and compute_120f covers
+  #    12.0 and 12.1.
   onnxruntime_cuda_archs_have_code(_ort_keep_sm80 80 ${CMAKE_CUDA_ARCHITECTURES})
   onnxruntime_cuda_archs_have_code(_ort_keep_sm86 86 ${CMAKE_CUDA_ARCHITECTURES})
   onnxruntime_cuda_archs_have_code(_ort_keep_sm89 89 ${CMAKE_CUDA_ARCHITECTURES})
   set(_ort_keep_sm90 ${ORT_HAS_SM90})
-  onnxruntime_cuda_archs_have_sass(_ort_keep_sm100 100 100 ${CMAKE_CUDA_ARCHITECTURES})
+  onnxruntime_cuda_archs_have_sass(_ort_keep_sm100 100 107 ${CMAKE_CUDA_ARCHITECTURES})
   onnxruntime_cuda_archs_have_sass(_ort_keep_sm110 110 110 ${CMAKE_CUDA_ARCHITECTURES})
   set(_ort_keep_sm120 ${ORT_HAS_SM12X})
   foreach(_ort_sm IN ITEMS 80 86 89 90 100 110 120)
