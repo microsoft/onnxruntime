@@ -1726,7 +1726,8 @@ TEST(PatternRewriterTests, ExampleGuardsCheckRelevantBindings) {
     auto& b = test.builder;
     auto* non_float = b.MakeScalarInitializer<double>(2.0);
     auto* integer = b.MakeScalarInitializer<int64_t>(2);
-    auto* unknown = b.MakeIntermediate();
+    // Resolve removes unused untyped graph NodeArgs.
+    NodeArg unknown{"guard_unknown", nullptr};
     b.AddNode("Identity", {non_float}, {b.MakeOutput()});
     b.AddNode("Identity", {integer}, {b.MakeOutput()});
     InlinedVector<std::string_view> bindings{"x"};
@@ -1772,7 +1773,7 @@ TEST(PatternRewriterTests, ExampleGuardsCheckRelevantBindings) {
       for (auto binding : bindings) {
         SCOPED_TRACE(binding);
         // Exercise the guard independently without making the resolved graph ill-typed.
-        for (const NodeArg* value : {non_float, integer, unknown}) {
+        for (const NodeArg* value : {non_float, integer, &unknown}) {
           Match changed = match;
           changed.values[match.pattern->NamedValue(binding).handle] = value;
           EXPECT_FALSE(guard(graph, changed));
