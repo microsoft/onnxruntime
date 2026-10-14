@@ -173,10 +173,11 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
   int64_t axis = (axis_ >= 0) ? axis_ : axis_ + static_cast<int64_t>(x_shape.NumDimensions());
 
   // scaler - single scaler for all elements
-  bool per_layer = block_size_ == 0 && (x_scale_rank == 0 || (x_scale_rank == 1 && x_scale->Shape()[0] == 1));
+  bool per_layer = block_size_ == 0 &&
+                   (x_scale_rank == 0 || (x_scale_rank == 1 && x_scale->Shape()[0] == 1));
 
   // 1D tensor - 1 scaler for per axis
-  bool per_axis = per_layer == false && x_scale_rank == 1 && block_size_ == 0;
+  bool per_axis = block_size_ == 0 && per_layer == false && x_scale_rank == 1;
   ORT_RETURN_IF(!per_layer && (axis < 0 || axis >= static_cast<int64_t>(x_shape.NumDimensions())),
                 "axis must be within the input rank");
   ORT_RETURN_IF(!per_layer && !per_axis && x_scale_rank != static_cast<int64_t>(x_shape.NumDimensions()),

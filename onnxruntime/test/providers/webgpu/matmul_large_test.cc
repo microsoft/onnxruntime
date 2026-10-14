@@ -144,8 +144,9 @@ static std::optional<std::string> GetForcedAlgorithmUnsupportedReason(
               {device_configs.configs, device_configs.configCount},
               adapter_info.subgroupMinSize, adapter_info.subgroupMaxSize,
               context.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl),
-              {{kF16, kF16, 8, 16, 16, 32, false}})) {
-        return "subgroup_matrix requires an 8x16x16 F16 configuration with subgroup size 32.";
+              {{kF16, kF16, 8, 16, 16, 32, false},
+               {kF16, kF16, 16, 16, 16, 32, false}})) {
+        return "subgroup_matrix requires an 8x16x16 or 16x16x16 F16 configuration with subgroup size 32.";
       }
       break;
     }
@@ -480,6 +481,10 @@ TEST(WebGpuMatMulAlgorithmTest, ForcedPackedSplitKHandlesBatchedPartialSplit) {
 
 TEST(WebGpuMatMulAlgorithmTest, ForcedSubgroupMatrix) {
   RunTestTyped<MLFloat16>({32, 16}, {16, 32}, false, webgpu::MatMulAlgorithm::SubgroupMatrix);
+}
+
+TEST(WebGpuMatMulAlgorithmTest, ForcedSubgroupMatrixUnalignedConstantB) {
+  RunTestTyped<MLFloat16>({32, 16}, {16, 36}, true, webgpu::MatMulAlgorithm::SubgroupMatrix);
 }
 
 TEST(WebGpuMatMulAlgorithmTest, ForcedSubgroupMatrixRejectsFloatInputs) {

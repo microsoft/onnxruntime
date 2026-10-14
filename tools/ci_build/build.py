@@ -1935,9 +1935,31 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     dll_path=dll_path,
                     python_path=python_path,
                 )
+            elif not args.skip_pip_install and args.use_cuda and is_linux() and not args.disable_contrib_ops:
+                # CUDA weight-packer parity tests also run without the transformers suite.
+                run_subprocess(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "install",
+                        "torch==2.10.0",
+                        "--index-url",
+                        "https://download.pytorch.org/whl/cpu",
+                    ],
+                    cwd=cwd,
+                    dll_path=dll_path,
+                    python_path=python_path,
+                )
 
             run_subprocess(
                 [sys.executable, "onnxruntime_test_python.py"], cwd=cwd, dll_path=dll_path, python_path=python_path
+            )
+            run_subprocess(
+                [sys.executable, "onnxruntime_test_python_fpa_intb_tune.py"],
+                cwd=cwd,
+                dll_path=dll_path,
+                python_path=python_path,
             )
 
             if not args.disable_contrib_ops:
@@ -1978,6 +2000,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 run_subprocess([sys.executable, "onnxruntime_test_python_iobinding.py"], cwd=cwd, dll_path=dll_path)
 
             if args.use_cuda:
+                log.info("Testing CUDA kernel execution")
+                run_subprocess([sys.executable, "onnxruntime_test_python_cuda_kernel.py"], cwd=cwd, dll_path=dll_path)
                 log.info("Testing CUDA Graph feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cudagraph.py"], cwd=cwd, dll_path=dll_path)
                 log.info("Testing running inference concurrently")

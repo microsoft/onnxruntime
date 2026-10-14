@@ -88,6 +88,52 @@ class VendorSplitKThresholdPlanner final : public MatMulExecutionPlanner {
   }
 };
 
+class IncompatibleConfigurationPlanner final : public MatMulExecutionPlanner {
+ protected:
+  std::optional<MatMulAlgorithmConfiguration> SelectVendorConfiguration(
+      MatMulAlgorithm algorithm,
+      const MatMulAlgorithmSelectionParams& /*params*/) const override {
+    return algorithm == MatMulAlgorithm::Packed
+               ? std::optional<MatMulAlgorithmConfiguration>{MatMulGemvConfiguration{}}
+               : std::nullopt;
+  }
+};
+
+class InvalidPackedConfigurationPlanner final : public MatMulExecutionPlanner {
+ protected:
+  std::optional<MatMulAlgorithmConfiguration> SelectVendorConfiguration(
+      MatMulAlgorithm algorithm,
+      const MatMulAlgorithmSelectionParams& /*params*/) const override {
+    if (algorithm != MatMulAlgorithm::Packed) {
+      return std::nullopt;
+    }
+    MatMulPackedConfiguration configuration{};
+    configuration.workgroup_size[0] = 0;
+    return configuration;
+  }
+};
+
+class MismatchedSubgroupConfigurationPlanner final : public MatMulExecutionPlanner {
+ protected:
+  std::optional<MatMulAlgorithmConfiguration> SelectVendorConfiguration(
+      MatMulAlgorithm algorithm,
+      const MatMulAlgorithmSelectionParams& /*params*/) const override {
+    return algorithm == MatMulAlgorithm::Subgroup
+               ? std::optional<MatMulAlgorithmConfiguration>{MatMulSubgroupConfiguration{8}}
+               : std::nullopt;
+  }
+};
+
+MatMulExecutionPlan CreatePlan(
+    const MatMulExecutionPlanner& planner,
+    const MatMulAlgorithmSelectionParams& params,
+    std::optional<MatMulAlgorithm> forced_algorithm = std::nullopt) {
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+  const Status status = planner.CreateExecutionPlan(params, forced_algorithm, plan);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  return plan;
+}
+
 }  // namespace
 
 TEST(MatMulAlgorithmNameTest, ReturnsEveryAlgorithmName) {
@@ -159,13 +205,13 @@ TEST(MatMulExecutionPlannerTest, ReevaluatesSelectionForEachRuntimeShape) {
   params.n = 7;
   params.k = 7;
 
-  EXPECT_EQ(planner.CreateExecutionPlan(params).algorithm, MatMulAlgorithm::Naive);
+  EXPECT_EQ(CreatePlan(planner, params).algorithm, MatMulAlgorithm::Naive);
 
   params.m = 64;
   params.packed_m = 64;
   params.n = 64;
   params.k = 64;
-  EXPECT_EQ(planner.CreateExecutionPlan(params).algorithm, MatMulAlgorithm::Packed);
+  EXPECT_EQ(CreatePlan(planner, params).algorithm, MatMulAlgorithm::Packed);
 }
 
 TEST(MatMulExecutionPlannerTest, VendorCanTuneForcedAlgorithmConfiguration) {
@@ -174,9 +220,10 @@ TEST(MatMulExecutionPlannerTest, VendorCanTuneForcedAlgorithmConfiguration) {
   params.adapter_architecture = "test-architecture";
   params.a_data_type = 10;
   params.b_data_type = 10;
+  params.k = 64;
 
   const MatMulExecutionPlan plan =
-      planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed);
+      CreatePlan(planner, params, MatMulAlgorithm::Packed);
 
   EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Packed);
   const auto& configuration =
@@ -200,7 +247,7 @@ TEST(MatMulExecutionPlannerTest, VendorCanSetIndependentSplitKThresholds) {
   params.is_vec4 = true;
   params.is_channels_last = true;
 
-  const MatMulExecutionPlan plan = planner.CreateExecutionPlan(params);
+  const MatMulExecutionPlan plan = CreatePlan(planner, params);
   EXPECT_EQ(plan.algorithm, MatMulAlgorithm::PackedSplitK);
   EXPECT_EQ(std::get<MatMulPackedConfiguration>(plan.configuration).split_dim_inner, 128u);
 
@@ -218,7 +265,7 @@ TEST(MatMulExecutionPlannerTest, InjectedSplitKPolicyCreatesPackedSplitKPlan) {
   params.k = 1024;
   params.is_vec4 = true;
 
-  const MatMulExecutionPlan plan = planner.CreateExecutionPlan(params);
+  const MatMulExecutionPlan plan = CreatePlan(planner, params);
 
   EXPECT_EQ(plan.algorithm, MatMulAlgorithm::PackedSplitK);
   const auto& configuration =
@@ -234,7 +281,7 @@ TEST(MatMulExecutionPlannerTest, CommonPackedConfigurationPreservesCurrentTuning
   params.n = 64;
   params.k = 64;
 
-  const MatMulExecutionPlan small_m_plan = planner.CreateExecutionPlan(params);
+  const MatMulExecutionPlan small_m_plan = CreatePlan(planner, params);
   const auto& small_m_configuration =
       std::get<MatMulPackedConfiguration>(small_m_plan.configuration);
   EXPECT_EQ(small_m_configuration.workgroup_size,
@@ -245,7 +292,7 @@ TEST(MatMulExecutionPlannerTest, CommonPackedConfigurationPreservesCurrentTuning
 
   params.m = 9;
   params.packed_m = 9;
-  const MatMulExecutionPlan large_m_plan = planner.CreateExecutionPlan(params);
+  const MatMulExecutionPlan large_m_plan = CreatePlan(planner, params);
   const auto& large_m_configuration =
       std::get<MatMulPackedConfiguration>(large_m_plan.configuration);
   EXPECT_EQ(large_m_configuration.elements_per_thread,
@@ -294,9 +341,13 @@ TEST(MatMulAlgorithmConfigurationTest, PackedVec4RequiresSupportedCooperativeLoa
 TEST(MatMulAlgorithmConfigurationTest, SubgroupConfigurationCarriesSelectedSize) {
   MatMulExecutionPlanner planner;
   MatMulAlgorithmSelectionParams params{};
+  params.m = 1;
+  params.n = 1;
+  params.k = 1;
+  params.has_subgroup_capability = true;
   params.subgroup_size = 16;
 
-  const auto plan = planner.CreateExecutionPlan(params, MatMulAlgorithm::Subgroup);
+  const auto plan = CreatePlan(planner, params, MatMulAlgorithm::Subgroup);
   const auto* configuration = std::get_if<MatMulSubgroupConfiguration>(&plan.configuration);
   ASSERT_NE(configuration, nullptr);
   EXPECT_EQ(configuration->subgroup_size, 16u);
@@ -397,10 +448,9 @@ TEST(MatMulAlgorithmConfigurationTest, GemvUsesTypedEmptyConfiguration) {
   params.k = 5120;
   params.can_run_gemv = true;
 
-  const MatMulExecutionPlan plan = planner.CreateExecutionPlan(params);
+  const MatMulExecutionPlan plan = CreatePlan(planner, params);
   EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Gemv);
   EXPECT_TRUE(std::holds_alternative<MatMulGemvConfiguration>(plan.configuration));
-  EXPECT_TRUE(IsMatMulAlgorithmConfigurationCompatible(plan));
 }
 
 TEST(MatMulExecutionPlannerTest, VendorPolicyPrecedesCommonHeuristics) {
@@ -488,50 +538,258 @@ TEST(MatMulExecutionPlannerTest, SplitKPrecedesPackedFallback) {
   EXPECT_EQ(disabled_planner.SelectAlgorithm(params), MatMulAlgorithm::Packed);
 }
 
-TEST(MatMulAlgorithmPrerequisiteTest, SplitKRejectsEachHardConstraint) {
-  MatMulAlgorithmPrerequisites prerequisites{};
-  prerequisites.has_nonzero_k = true;
-  prerequisites.split_k_configured = true;
-  prerequisites.is_vec4 = true;
-  prerequisites.split_k_bias_layout_supported = true;
-  EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::PackedSplitK, prerequisites));
+TEST(MatMulExecutionPlanValidationTest, SplitKRejectsEachHardConstraint) {
+  MatMulExecutionPlanner planner{SplitKConfig{
+      /*max_batch_size=*/8,
+      /*split_dim_inner=*/128,
+      /*min_dim_inner_with_split_k=*/256,
+      {{4096, 16.0}}}};
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 32;
+  params.packed_m = 32;
+  params.n = 64;
+  params.k = 256;
+  params.is_vec4 = true;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
 
-  prerequisites.deterministic_compute = true;
-  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::PackedSplitK, prerequisites));
-  prerequisites.deterministic_compute = false;
+  EXPECT_TRUE(planner.CreateExecutionPlan(params, MatMulAlgorithm::PackedSplitK, plan).IsOK());
 
-  prerequisites.is_vec4 = false;
-  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::PackedSplitK, prerequisites));
-  prerequisites.is_vec4 = true;
+  params.deterministic_compute = true;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::PackedSplitK, plan).IsOK());
+  params.deterministic_compute = false;
 
-  prerequisites.has_fused_activation = true;
-  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::PackedSplitK, prerequisites));
-  prerequisites.has_fused_activation = false;
+  params.is_vec4 = false;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::PackedSplitK, plan).IsOK());
+  params.is_vec4 = true;
 
-  prerequisites.split_k_bias_layout_supported = false;
-  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::PackedSplitK, prerequisites));
+  params.has_fused_activation = true;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::PackedSplitK, plan).IsOK());
+  params.has_fused_activation = false;
+
+  params.has_bias = true;
+  params.is_channels_last = false;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::PackedSplitK, plan).IsOK());
 }
 
-TEST(MatMulAlgorithmPrerequisiteTest, GemvRequiresCompatibleInputs) {
-  MatMulAlgorithmPrerequisites prerequisites{};
-  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Gemv, prerequisites));
+TEST(MatMulExecutionPlanValidationTest, ForcedFailureDoesNotFallBackOrModifyOutput) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 1;
+  params.n = 48;
+  params.k = 5120;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
 
-  prerequisites.can_run_gemv = true;
-  EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Gemv, prerequisites));
+  const Status status = planner.CreateExecutionPlan(params, MatMulAlgorithm::Gemv, plan);
+
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Naive);
+  EXPECT_TRUE(std::holds_alternative<MatMulNaiveConfiguration>(plan.configuration));
 }
 
-TEST(MatMulAlgorithmPrerequisiteTest, PackedAlgorithmsRejectZeroContractionDimension) {
-  MatMulAlgorithmPrerequisites prerequisites{};
-  prerequisites.split_k_configured = true;
-  prerequisites.is_vec4 = true;
-  prerequisites.split_k_bias_layout_supported = true;
+TEST(MatMulExecutionPlanValidationTest, GemvRequiresCompatibleInputs) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 1;
+  params.n = 48;
+  params.k = 5120;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
 
-  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Packed, prerequisites));
-  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::PackedSplitK, prerequisites));
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Gemv, plan).IsOK());
+  params.can_run_gemv = true;
+  EXPECT_TRUE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Gemv, plan).IsOK());
+}
 
-  prerequisites.has_nonzero_k = true;
-  EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Packed, prerequisites));
-  EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::PackedSplitK, prerequisites));
+TEST(MatMulExecutionPlanValidationTest, GemvRejectsDimensionsOutsideUint32Range) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 1;
+  params.n = std::numeric_limits<uint32_t>::max() - 3;
+  params.k = std::numeric_limits<uint32_t>::max();
+  params.can_run_gemv = true;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+
+  EXPECT_TRUE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Gemv, plan).IsOK());
+
+  plan = {MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+  params.n = static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) + 1;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Gemv, plan).IsOK());
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Naive);
+  EXPECT_TRUE(std::holds_alternative<MatMulNaiveConfiguration>(plan.configuration));
+
+  params.n = 4;
+  params.k = static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) + 1;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Gemv, plan).IsOK());
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Naive);
+  EXPECT_TRUE(std::holds_alternative<MatMulNaiveConfiguration>(plan.configuration));
+}
+
+TEST(MatMulExecutionPlanValidationTest, NaiveRejectsDimensionsAndVectorizedOutputOutsideUint32Range) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = std::numeric_limits<uint32_t>::max();
+  params.n = 1;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Packed, MatMulPackedConfiguration{}};
+
+  EXPECT_TRUE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Naive, plan).IsOK());
+
+  plan = {MatMulAlgorithm::Packed, MatMulPackedConfiguration{}};
+  params.m = static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) + 1;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Naive, plan).IsOK());
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Packed);
+  EXPECT_TRUE(std::holds_alternative<MatMulPackedConfiguration>(plan.configuration));
+
+  params.m = 1;
+  params.n = static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) + 1;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Naive, plan).IsOK());
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Packed);
+  EXPECT_TRUE(std::holds_alternative<MatMulPackedConfiguration>(plan.configuration));
+
+  params.n = 1;
+  params.k = static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) + 1;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Naive, plan).IsOK());
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Packed);
+  EXPECT_TRUE(std::holds_alternative<MatMulPackedConfiguration>(plan.configuration));
+
+  params.k = 0;
+  params.m = std::numeric_limits<uint32_t>::max();
+  params.batch_size = 2;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Naive, plan).IsOK());
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Packed);
+  EXPECT_TRUE(std::holds_alternative<MatMulPackedConfiguration>(plan.configuration));
+}
+
+TEST(MatMulExecutionPlanValidationTest, PackedAlgorithmsRejectZeroContractionDimension) {
+  MatMulExecutionPlanner planner{SplitKConfig{
+      /*max_batch_size=*/8,
+      /*split_dim_inner=*/128,
+      /*min_dim_inner_with_split_k=*/256,
+      {{4096, 16.0}}}};
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 32;
+  params.packed_m = 32;
+  params.n = 64;
+  params.is_vec4 = true;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::PackedSplitK, plan).IsOK());
+
+  params.k = 256;
+  EXPECT_TRUE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
+  EXPECT_TRUE(planner.CreateExecutionPlan(params, MatMulAlgorithm::PackedSplitK, plan).IsOK());
+}
+
+TEST(MatMulExecutionPlanValidationTest, RejectsInvalidVendorConfigurations) {
+  MatMulAlgorithmSelectionParams params{};
+  params.k = 64;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+
+  IncompatibleConfigurationPlanner incompatible_planner;
+  EXPECT_FALSE(incompatible_planner.CreateExecutionPlan(
+                                       params, MatMulAlgorithm::Packed, plan)
+                   .IsOK());
+
+  InvalidPackedConfigurationPlanner invalid_packed_planner;
+  EXPECT_FALSE(invalid_packed_planner.CreateExecutionPlan(
+                                         params, MatMulAlgorithm::Packed, plan)
+                   .IsOK());
+
+  MismatchedSubgroupConfigurationPlanner mismatched_subgroup_planner;
+  params.has_subgroup_capability = true;
+  params.subgroup_size = 16;
+  EXPECT_FALSE(mismatched_subgroup_planner.CreateExecutionPlan(
+                                              params, MatMulAlgorithm::Subgroup, plan)
+                   .IsOK());
+}
+
+TEST(MatMulExecutionPlanValidationTest, RejectsPackedDimensionsOutsideUint32Range) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.packed_m = 32;
+  params.n = 64;
+  params.k = 64;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+  constexpr int64_t max_shader_dimension = std::numeric_limits<uint32_t>::max();
+
+  params.packed_m = max_shader_dimension;
+  EXPECT_TRUE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
+  params.packed_m = max_shader_dimension + 1;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
+
+  params.packed_m = 32;
+  params.n = max_shader_dimension;
+  EXPECT_TRUE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
+  params.n = max_shader_dimension + 1;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
+
+  params.n = 64;
+  params.k = max_shader_dimension;
+  EXPECT_TRUE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
+  params.k = max_shader_dimension + 1;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
+}
+
+TEST(MatMulExecutionPlanValidationTest, RejectsPackedDispatchOverflow) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.k = 64;
+  params.packed_batch_size = static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
+}
+
+TEST(MatMulExecutionPlanValidationTest, RejectsPackedCombinedDispatchOverflow) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.packed_m = 2097152;
+  params.n = 2097152;
+  params.k = 64;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Packed, plan).IsOK());
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Naive);
+  EXPECT_TRUE(std::holds_alternative<MatMulNaiveConfiguration>(plan.configuration));
+}
+
+TEST(MatMulExecutionPlanValidationTest, RejectsSplitKDispatchOverflow) {
+  MatMulExecutionPlanner planner{SplitKConfig{
+      /*max_batch_size=*/std::numeric_limits<uint32_t>::max(),
+      /*split_dim_inner=*/128,
+      /*min_dim_inner_with_split_k=*/256,
+      {{4096, 16.0}}}};
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 32;
+  params.packed_m = 32;
+  params.n = 64;
+  params.k = 256;
+  params.packed_batch_size = std::numeric_limits<uint32_t>::max();
+  params.is_vec4 = true;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+
+  EXPECT_FALSE(planner.CreateExecutionPlan(
+                          params, MatMulAlgorithm::PackedSplitK, plan)
+                   .IsOK());
+}
+
+TEST(MatMulExecutionPlanValidationTest, RejectsSplitKCombinedDispatchOverflow) {
+  MatMulExecutionPlanner planner{SplitKConfig{
+      /*max_batch_size=*/8,
+      /*split_dim_inner=*/128,
+      /*min_dim_inner_with_split_k=*/256,
+      {{4096, 16.0}}}};
+  MatMulAlgorithmSelectionParams params{};
+  params.packed_m = 1048576;
+  params.n = 2097152;
+  params.k = 256;
+  params.is_vec4 = true;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+
+  EXPECT_FALSE(planner.CreateExecutionPlan(
+                          params, MatMulAlgorithm::PackedSplitK, plan)
+                   .IsOK());
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Naive);
+  EXPECT_TRUE(std::holds_alternative<MatMulNaiveConfiguration>(plan.configuration));
 }
 
 TEST(MatMulAlgorithmPrerequisiteTest, IntelAVec4RequiresCompatibleRowsPerThread) {
@@ -542,45 +800,102 @@ TEST(MatMulAlgorithmPrerequisiteTest, IntelAVec4RequiresCompatibleRowsPerThread)
   EXPECT_FALSE(intel::CanUseAVec4CooperativeLoad(intel::gpu_arch::kXeLpg, 32, 4));
 }
 
-TEST(MatMulAlgorithmPrerequisiteTest, IntelCapabilityDoesNotIncludeAutomaticThresholds) {
-  MatMulAlgorithmPrerequisites prerequisites{};
-  prerequisites.has_subgroup_capability = true;
-  prerequisites.subgroup_size = 16;
-  prerequisites.has_nonzero_k = true;
-  EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Subgroup, prerequisites));
-
+TEST(MatMulExecutionPlanValidationTest, IntelCapabilityDoesNotIncludeAutomaticThresholds) {
   MatMulAlgorithmSelectionParams below_heuristic_threshold{};
   below_heuristic_threshold.m = 1;
   below_heuristic_threshold.n = 1;
   below_heuristic_threshold.k = 1;
   below_heuristic_threshold.has_subgroup_capability = true;
+  below_heuristic_threshold.subgroup_size = 16;
   intel::IntelMatMulExecutionPlanner planner;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+
+  EXPECT_TRUE(planner.CreateExecutionPlan(
+                         below_heuristic_threshold, MatMulAlgorithm::Subgroup, plan)
+                  .IsOK());
   EXPECT_NE(planner.SelectAlgorithm(below_heuristic_threshold), MatMulAlgorithm::Subgroup);
 }
 
-TEST(MatMulAlgorithmPrerequisiteTest, SubgroupRejectsZeroContractionDimension) {
-  MatMulAlgorithmPrerequisites prerequisites{};
-  prerequisites.has_subgroup_capability = true;
-  prerequisites.subgroup_size = 16;
+TEST(MatMulExecutionPlanValidationTest, SubgroupRejectsZeroContractionDimension) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 1;
+  params.n = 1;
+  params.has_subgroup_capability = true;
+  params.subgroup_size = 16;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
 
-  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Subgroup, prerequisites));
-
-  prerequisites.has_nonzero_k = true;
-  EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Subgroup, prerequisites));
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Subgroup, plan).IsOK());
+  params.k = 1;
+  EXPECT_TRUE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Subgroup, plan).IsOK());
 }
 
-TEST(MatMulAlgorithmPrerequisiteTest, SubgroupRejectsUnsupportedConfiguredSize) {
-  MatMulAlgorithmPrerequisites prerequisites{};
-  prerequisites.has_subgroup_capability = true;
-  prerequisites.has_nonzero_k = true;
+TEST(MatMulExecutionPlanValidationTest, SubgroupRejectsUnsupportedConfiguredSize) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 1;
+  params.n = 1;
+  params.has_subgroup_capability = true;
+  params.k = 1;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
 
   for (uint32_t subgroup_size : {8u, 16u, 32u}) {
-    prerequisites.subgroup_size = subgroup_size;
-    EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Subgroup, prerequisites));
+    params.subgroup_size = subgroup_size;
+    EXPECT_TRUE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Subgroup, plan).IsOK());
   }
 
-  prerequisites.subgroup_size = 64;
-  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Subgroup, prerequisites));
+  params.subgroup_size = 64;
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Subgroup, plan).IsOK());
+}
+
+TEST(MatMulExecutionPlanValidationTest, SubgroupRejectsDimensionsOutsideUint32Range) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) + 1;
+  params.packed_m = params.m;
+  params.n = 1;
+  params.k = 1;
+  params.has_subgroup_capability = true;
+  params.subgroup_size = 16;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Subgroup, plan).IsOK());
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Naive);
+  EXPECT_TRUE(std::holds_alternative<MatMulNaiveConfiguration>(plan.configuration));
+}
+
+TEST(MatMulExecutionPlanValidationTest, SubgroupRejectsCombinedDispatchOverflow) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 4194304;
+  params.packed_m = params.m;
+  params.n = 8388608;
+  params.k = 1;
+  params.has_subgroup_capability = true;
+  params.subgroup_size = 16;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Subgroup, plan).IsOK());
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Naive);
+  EXPECT_TRUE(std::holds_alternative<MatMulNaiveConfiguration>(plan.configuration));
+}
+
+TEST(MatMulExecutionPlanValidationTest, SubgroupRejectsFoldedBatchDispatchOverflow) {
+  MatMulExecutionPlanner planner;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 2097152;
+  params.packed_m = 4194304;
+  params.n = 8388608;
+  params.k = 1;
+  params.batch_size = 2;
+  params.packed_batch_size = 1;
+  params.has_subgroup_capability = true;
+  params.subgroup_size = 16;
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+
+  EXPECT_FALSE(planner.CreateExecutionPlan(params, MatMulAlgorithm::Subgroup, plan).IsOK());
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Naive);
+  EXPECT_TRUE(std::holds_alternative<MatMulNaiveConfiguration>(plan.configuration));
 }
 
 }  // namespace test
