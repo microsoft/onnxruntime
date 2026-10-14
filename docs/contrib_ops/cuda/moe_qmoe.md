@@ -191,16 +191,22 @@ The CUDA QMoE kernel participates in the session-global MoE placement policy whe
 `session.moe_cpu_offload_experts` selects the global number of eligible MoE/QMoE experts placed on CPU. Loaded
 popularity JSON, expert counters, and adaptive swap policy are shared with dense MoE.
 
-At initialization, QMoE retains canonical quantized CPU bytes, compacts the CUTLASS-packed CUDA weights and their
-scales/biases to the selected CUDA slots, and dequantizes CPU-resident experts once into MLAS GEMM layout. Runtime
+At initialization, QMoE compacts the CUTLASS-packed CUDA weights and their scales/biases to the selected CUDA slots.
+For blockwise INT4 with FP16 activations, fused interleaved SwiGLU, and the x86 MLAS Q4 FP32 backend, a CUDA kernel
+converts CUTLASS weights directly to the CPU MLAS packed INT4 layout before D2H transfer. The load-time GPU packing
+scratch is bounded to 64 MiB (or one expert if larger). Both FC1 and FC2 reduction dimensions must be divisible by
+their block size and by 64; CPU computation uses QNBit GEMM with FP32 accumulation, not dense FP16 expert weights.
+Other supported cases retain one-time CPU dequantization into the dense MLAS layout. Runtime
 routing uses reusable 256-row activation chunks. The compact row count is copied first, so tiles with no CPU route do
 not transfer activations or routing metadata. For non-empty tiles, a persistent worker copies only the packed rows,
 overlaps MLAS execution with CUDA expert kernels, and uploads the compact contribution before scatter-add. CUDA expert
 IDs are remapped to compact slot IDs. Mixed and all-CPU placement are supported.
 
 Adaptive swaps exchange the packed weight, scale, zero-point-bias, and explicit-bias slices as one expert payload.
-Dedicated D2H/H2D streams stage the packed payload asynchronously. A separate worker dequantizes the outgoing expert
-into MLAS layout, and the new map remains unpublished until both preparations complete.
+Dedicated D2H/H2D streams stage the packed payload asynchronously. The Q4 path GPU-packs the outgoing CUDA slot
+directly into CPU QNBit layout on the D2H stream, transfers compact INT4 bytes, and uses a worker only to stage
+scales/zero points/biases. There is no CPU weight prepacking or dense dequantization on this path. Other cases use
+the separate dequantization worker. The new map remains unpublished until all transfers and CPU metadata are ready.
 
 Unsupported offload modes are FP4/NVFP4/WFP4AFP8, FP8, INT2, mixed-width INT, `weights_prepacked=-1/1`, sparse mixer,
 and the CUDA plugin EP.

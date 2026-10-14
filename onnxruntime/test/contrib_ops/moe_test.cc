@@ -4530,9 +4530,25 @@ TEST(MoETest, MoECudaFp16StaticCpuOffloadProcessesMultipleActivationChunks) {
   tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
+struct QMoEOffloadTester : OpTester {
+  using OpTester::FillFeedsAndOutputNames;
+  using OpTester::OpTester;
+  using OpTester::SetTestFunctionCalled;
+};
+
 template <typename T>
 void RunQMoECudaStaticCpuOffload(int64_t weight_bits, int64_t num_rows,
-                                 bool verify_adaptive_swap = false) {
+                                 bool verify_adaptive_swap = false, bool qnbit_swiglu = false,
+                                 bool qnbit_zero_points = false) {
+  const auto original_severity = logging::LoggingManager::DefaultLogger().GetSeverity();
+  if (qnbit_swiglu) {
+    logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kINFO);
+  }
+  auto restore_logging = gsl::finally([original_severity, qnbit_swiglu] {
+    if (qnbit_swiglu) {
+      logging::LoggingManager::SetDefaultLoggerSeverity(original_severity);
+    }
+  });
   constexpr int min_cuda_arch = std::is_same_v<T, BFloat16> ? 800 : 750;
   if (!HasCudaEnvironment(min_cuda_arch)) {
     GTEST_SKIP() << "CUDA device does not support the test data type.";
@@ -4546,15 +4562,26 @@ void RunQMoECudaStaticCpuOffload(int64_t weight_bits, int64_t num_rows,
   constexpr int64_t num_experts = 2;
   constexpr int64_t hidden_size = kMoEMinCudaDim;
   constexpr int64_t inter_size = kMoEMinCudaDim;
+  const int64_t fc1_rows = qnbit_swiglu ? 2 * inter_size : inter_size;
+  const int64_t blocks = qnbit_swiglu ? hidden_size / 64 : 1;
+  if (qnbit_swiglu) {
+#if defined(MLAS_TARGET_AMD64_IX86)
+    if (!MlasIsQNBitGemmAvailable(4, 64, SQNBIT_CompFp32)) {
+      GTEST_SKIP() << "x86 MLAS Q4 FP32 kernel is unavailable.";
+    }
+#else
+    GTEST_SKIP() << "GPU CPU-packing requires the x86 MLAS Q4 FP32 layout.";
+#endif
+  }
   const int64_t pack = 8 / weight_bits;
-  const uint8_t zero_point = static_cast<uint8_t>(1u << (weight_bits - 1));
+  const uint8_t zero_point = qnbit_zero_points ? 9 : static_cast<uint8_t>(1u << (weight_bits - 1));
   uint8_t packed_zero_point = 0;
   for (int64_t lane = 0; lane < pack; ++lane) {
     packed_zero_point |= static_cast<uint8_t>(zero_point << (lane * weight_bits));
   }
 
   std::vector<uint8_t> fc1_weights(
-      static_cast<size_t>(num_experts * inter_size * (hidden_size / pack)),
+      static_cast<size_t>(num_experts * fc1_rows * (hidden_size / pack)),
       packed_zero_point);
   std::vector<uint8_t> fc2_weights(
       static_cast<size_t>(num_experts * hidden_size * (inter_size / pack)),
@@ -4576,8 +4603,12 @@ void RunQMoECudaStaticCpuOffload(int64_t weight_bits, int64_t num_rows,
         static_cast<uint8_t>(zero_point + expert + 1);
     const uint8_t fc2_value = static_cast<uint8_t>(zero_point + 1);
     for (int64_t column = 0; column < hidden_size; ++column) {
-      set_quantized(fc1_weights, expert, inter_size, hidden_size,
-                    column, column, fc1_value);
+      set_quantized(fc1_weights, expert, fc1_rows, hidden_size,
+                    qnbit_swiglu ? 2 * column : column, column, fc1_value);
+      if (qnbit_swiglu) {
+        set_quantized(fc1_weights, expert, fc1_rows, hidden_size,
+                      2 * column + 1, column, fc1_value);
+      }
       set_quantized(fc2_weights, expert, hidden_size, inter_size,
                     column, column, fc2_value);
     }
@@ -4594,11 +4625,30 @@ void RunQMoECudaStaticCpuOffload(int64_t weight_bits, int64_t num_rows,
         router_probs.end(),
         expert == 0 ? std::initializer_list<float>{4.0f, 0.0f}
                     : std::initializer_list<float>{0.0f, 4.0f});
-    expected.insert(expected.end(), hidden_size,
-                    static_cast<float>(expert + 1));
+    for (int64_t column = 0; column < hidden_size; ++column) {
+      const float value = static_cast<float>(expert + 1);
+      const float fc1_scale = 0.5f + 0.125f * static_cast<float>(column / 64) + 0.25f * expert;
+      const float fc2_scale = 0.75f + 0.125f * static_cast<float>(column / 64) + 0.25f * expert;
+      const float gate = value * fc1_scale;
+      expected.push_back(qnbit_swiglu ? gate * gate * fc2_scale / (1.0f + std::exp(-gate)) : value);
+    }
   }
-  const std::vector<float> scales(
-      static_cast<size_t>(num_experts * hidden_size), 1.0f);
+  std::vector<float> fc1_scales(static_cast<size_t>(num_experts * fc1_rows * blocks), 1.0f);
+  std::vector<float> fc2_scales(static_cast<size_t>(num_experts * hidden_size * blocks), 1.0f);
+  if (qnbit_swiglu) {
+    for (int64_t expert = 0; expert < num_experts; ++expert) {
+      for (int64_t block = 0; block < blocks; ++block) {
+        for (int64_t row = 0; row < fc1_rows; ++row) {
+          fc1_scales[static_cast<size_t>((expert * fc1_rows + row) * blocks + block)] =
+              0.5f + 0.125f * block + 0.25f * expert;
+        }
+        for (int64_t row = 0; row < hidden_size; ++row) {
+          fc2_scales[static_cast<size_t>((expert * hidden_size + row) * blocks + block)] =
+              0.75f + 0.125f * block + 0.25f * expert;
+        }
+      }
+    }
+  }
 
   const int64_t first_cpu_count = verify_adaptive_swap ? 1 : 0;
   const int64_t last_cpu_count = verify_adaptive_swap ? 1 : num_experts;
@@ -4606,9 +4656,13 @@ void RunQMoECudaStaticCpuOffload(int64_t weight_bits, int64_t num_rows,
        cpu_experts <= last_cpu_count; ++cpu_experts) {
     SCOPED_TRACE(MakeString("weight_bits=", weight_bits,
                             ", cpu_experts=", cpu_experts));
-    OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+    QMoEOffloadTester tester("QMoE", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("k", 1);
-    tester.AddAttribute<std::string>("activation_type", "relu");
+    tester.AddAttribute<std::string>("activation_type", qnbit_swiglu ? "swiglu" : "relu");
+    if (qnbit_swiglu) {
+      tester.AddAttribute<int64_t>("swiglu_fusion", 1);
+      tester.AddAttribute<int64_t>("block_size", 64);
+    }
     tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
     tester.AddAttribute<int64_t>("expert_weight_bits", weight_bits);
     tester.AddAttribute<std::string>("quant_type", "int");
@@ -4622,23 +4676,30 @@ void RunQMoECudaStaticCpuOffload(int64_t weight_bits, int64_t num_rows,
         ToMoeCpuOffloadType<T>(router_probs));
     tester.AddInput<uint8_t>(
         "fc1_experts_weights",
-        {num_experts, inter_size, hidden_size / pack},
+        {num_experts, fc1_rows, hidden_size / pack},
         fc1_weights, true);
     tester.AddInput<T>(
-        "fc1_scales", {num_experts, inter_size},
-        ToMoeCpuOffloadType<T>(scales), true);
+        "fc1_scales", qnbit_swiglu ? std::vector<int64_t>{num_experts, fc1_rows, blocks} : std::vector<int64_t>{num_experts, fc1_rows},
+        ToMoeCpuOffloadType<T>(fc1_scales), true);
     tester.AddOptionalInputEdge<T>();
     tester.AddInput<uint8_t>(
         "fc2_experts_weights",
         {num_experts, hidden_size, inter_size / pack},
         fc2_weights, true);
     tester.AddInput<T>(
-        "fc2_scales", {num_experts, hidden_size},
-        ToMoeCpuOffloadType<T>(scales), true);
+        "fc2_scales", qnbit_swiglu ? std::vector<int64_t>{num_experts, hidden_size, blocks} : std::vector<int64_t>{num_experts, hidden_size},
+        ToMoeCpuOffloadType<T>(fc2_scales), true);
     tester.AddOptionalInputEdge<T>();
     tester.AddOptionalInputEdge<uint8_t>();
     tester.AddOptionalInputEdge<T>();
     tester.AddOptionalInputEdge<T>();
+    if (qnbit_zero_points) {
+      const int64_t zero_stride = (blocks + 1) / 2;
+      tester.AddInput<uint8_t>("fc1_zeros", {num_experts, fc1_rows, zero_stride},
+                               std::vector<uint8_t>(static_cast<size_t>(num_experts * fc1_rows * zero_stride), 0x99), true);
+      tester.AddInput<uint8_t>("fc2_zeros", {num_experts, hidden_size, zero_stride},
+                               std::vector<uint8_t>(static_cast<size_t>(num_experts * hidden_size * zero_stride), 0x99), true);
+    }
     tester.AddOutput<T>(
         "output", {num_rows, hidden_size}, ToMoeCpuOffloadType<T>(expected));
     tester.SetOutputTolerance(0.01f);
@@ -4662,16 +4723,69 @@ void RunQMoECudaStaticCpuOffload(int64_t weight_bits, int64_t num_rows,
     providers.push_back(DefaultCudaExecutionProvider());
     if (verify_adaptive_swap) {
       testing::internal::CaptureStderr();
-      tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {},
-                 nullptr, &providers);
-      const auto events =
-          ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
-      ASSERT_EQ(events.size(), 40U);
+      bool capture_consumed = false;
+      auto finish_capture = gsl::finally([&capture_consumed] {
+        if (!capture_consumed) {
+          std::cerr << testing::internal::GetCapturedStderr();
+        }
+      });
+      if (qnbit_swiglu) {
+        tester.SetTestFunctionCalled();
+        std::string model_bytes;
+        auto& model = tester.BuildModel();
+        ASSERT_STATUS_OK(model.MainGraph().Resolve());
+        ASSERT_TRUE(model.ToProto().SerializeToString(&model_bytes));
+        InferenceSessionWrapper session(options, GetEnvironment());
+        ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(providers[0])));
+        ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+        ASSERT_STATUS_OK(session.Initialize());
+        NameMLValMap feeds;
+        std::vector<std::string> output_names;
+        tester.FillFeedsAndOutputNames(feeds, output_names);
+        for (int phase = 0; phase < 2; ++phase) {
+          auto* router = feeds.at("router_probs").GetMutable<Tensor>()->MutableData<T>();
+          router[0] = T(phase == 0 ? 0.0f : 4.0f);
+          router[1] = T(phase == 0 ? 4.0f : 0.0f);
+          const int64_t expert = phase == 0 ? 1 : 0;
+          for (int invocation = 0; invocation < 40; ++invocation) {
+            std::vector<OrtValue> fetches;
+            ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &fetches));
+            const auto& result = fetches[0].Get<Tensor>();
+            for (int64_t column = 0; column < hidden_size; ++column) {
+              const float value = static_cast<float>(expert + 1);
+              const float gate = value * (0.5f + 0.125f * static_cast<float>(column / 64) + 0.25f * expert);
+              const float fc2_scale = 0.75f + 0.125f * static_cast<float>(column / 64) + 0.25f * expert;
+              const float reference = gate * gate * fc2_scale / (1.0f + std::exp(-gate));
+              EXPECT_NEAR(result.Data<T>()[column].ToFloat(), reference, 0.01f);
+            }
+          }
+        }
+      } else {
+        tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {},
+                   nullptr, &providers);
+      }
+      const auto captured = testing::internal::GetCapturedStderr();
+      capture_consumed = true;
+      if (qnbit_swiglu) {
+        EXPECT_NE(captured.find("QMoE CPU offload: GPU-packed MLAS Q4 FP32 weights"), std::string::npos);
+      }
+      const auto events = ParseMoeCounterLogs(captured);
+      ASSERT_EQ(events.size(), qnbit_swiglu ? 80U : 40U);
       ASSERT_EQ(events.front()["selected_experts"][0]["device"], "CPU");
       EXPECT_EQ(events.back()["selected_experts"][0]["device"], "CUDA");
+      if (qnbit_swiglu) {
+        EXPECT_EQ(events[40]["selected_experts"][0]["device"], "CPU");
+      }
     } else {
+      if (qnbit_swiglu && cpu_experts > 0) {
+        testing::internal::CaptureStderr();
+      }
       tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {},
                  nullptr, &providers);
+      if (qnbit_swiglu && cpu_experts > 0) {
+        const auto captured = testing::internal::GetCapturedStderr();
+        EXPECT_NE(captured.find("QMoE CPU offload: GPU-packed MLAS Q4 FP32 weights"), std::string::npos);
+      }
     }
   }
 }
@@ -4694,6 +4808,22 @@ TEST(MoETest, QMoECudaInt4StaticCpuOffloadProcessesMultipleActivationChunks) {
 
 TEST(MoETest, QMoECudaInt4AdaptiveCpuOffloadSwapsExperts) {
   RunQMoECudaStaticCpuOffload<MLFloat16>(4, 1, true);
+}
+
+TEST(MoETest, QMoECudaInt4QnBitCpuOffloadDecode) {
+  RunQMoECudaStaticCpuOffload<MLFloat16>(4, 2, false, true);
+}
+
+TEST(MoETest, QMoECudaInt4QnBitCpuOffloadPrefill) {
+  RunQMoECudaStaticCpuOffload<MLFloat16>(4, 257, false, true);
+}
+
+TEST(MoETest, QMoECudaInt4QnBitCpuOffloadSwapsExperts) {
+  RunQMoECudaStaticCpuOffload<MLFloat16>(4, 1, true, true);
+}
+
+TEST(MoETest, QMoECudaInt4QnBitCpuOffloadZeroPoints) {
+  RunQMoECudaStaticCpuOffload<MLFloat16>(4, 2, false, true, true);
 }
 
 template <typename T>

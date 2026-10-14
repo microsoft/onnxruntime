@@ -42,6 +42,10 @@ void LaunchTransposeMoeExpertWeights(const half* input, half* output,
 void LaunchTransposeMoeExpertWeights(const __nv_bfloat16* input, __nv_bfloat16* output,
                                      size_t rows, size_t columns, cudaStream_t stream);
 
+void LaunchPackMlasQ4Weights(const uint8_t* input, uint8_t* output,
+                             size_t rows, size_t columns, size_t block_size,
+                             size_t sub_block_size, bool cutlass_layout, cudaStream_t stream);
+
 void LaunchRemapMoeExpertIndices(const int* expert_indices, int* remapped_expert_indices,
                                  const int* expert_map, size_t count, cudaStream_t stream);
 

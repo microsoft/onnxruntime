@@ -815,6 +815,44 @@ Status QMoE::InitializeCpuExpert(size_t cpu_slot, int expert_id) const {
   const CanonicalInput* fc2_bias =
       canonical_inputs_[7].present ? &canonical_inputs_[7] : nullptr;
 
+  if (cpu_qnbit_enabled_) {
+    auto copy_metadata = [&](const CanonicalInput& scale,
+                             const CanonicalInput* zero,
+                             size_t scale_count, size_t zero_bytes,
+                             auto& scales, auto& zero_points) {
+      const size_t scale_stride = narrow<size_t>(scale.shape.SizeFromDimension(1));
+      const auto* scale_data = reinterpret_cast<const MLFloat16*>(scale.data.data()) +
+                               static_cast<size_t>(expert_id) * scale_stride;
+      float* scale_output = scales.data() + cpu_slot * scale_count;
+      for (size_t index = 0; index < scale_count; ++index) {
+        scale_output[index] = scale_data[index].ToFloat();
+      }
+      const uint8_t* zero_data =
+          zero == nullptr ? nullptr
+                          : zero->data.data() + static_cast<size_t>(expert_id) * zero_bytes;
+      if (zero_data != nullptr) {
+        std::copy_n(zero_data, zero_bytes, zero_points.data() + cpu_slot * zero_bytes);
+      }
+    };
+    copy_metadata(fc1_scale, fc1_zero, cpu_fc1_scale_count_, cpu_fc1_zero_bytes_,
+                  cpu_fc1_qnbit_scales_, cpu_fc1_qnbit_zero_);
+    copy_metadata(fc2_scale, fc2_zero, cpu_fc2_scale_count_, cpu_fc2_zero_bytes_,
+                  cpu_fc2_qnbit_scales_, cpu_fc2_qnbit_zero_);
+    if (fc1_bias != nullptr) {
+      std::copy_n(reinterpret_cast<const MLFloat16*>(fc1_bias->data.data()) +
+                      static_cast<size_t>(expert_id) * cpu_fc1_output_size_,
+                  cpu_fc1_output_size_,
+                  cpu_fc1_bias_half_.data() + cpu_slot * cpu_fc1_output_size_);
+    }
+    if (fc2_bias != nullptr) {
+      std::copy_n(reinterpret_cast<const MLFloat16*>(fc2_bias->data.data()) +
+                      static_cast<size_t>(expert_id) * cpu_hidden_size_,
+                  cpu_hidden_size_,
+                  cpu_fc2_bias_half_.data() + cpu_slot * cpu_hidden_size_);
+    }
+    return Status::OK();
+  }
+
   auto dequantize = [&](const CanonicalInput& weight,
                         const CanonicalInput& scale,
                         const CanonicalInput* zero,
@@ -951,7 +989,78 @@ Status QMoE::InitializeCpuOffload(gsl::span<const int> cuda_experts) {
       static_cast<size_t>(SafeInt<int64_t>(cpu_fc1_output_size_) * cpu_hidden_size_);
   const size_t fc2_elements =
       static_cast<size_t>(SafeInt<int64_t>(cpu_hidden_size_) * cpu_inter_size_);
-  if (is_fp16_) {
+  cpu_qnbit_enabled_ =
+      is_fp16_ && expert_weight_bits_ == 4 &&
+      activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
+      cpu_fc1_output_size_ == 2 * cpu_inter_size_ &&
+      block_size_ >= 16 && cpu_hidden_size_ % block_size_ == 0 &&
+      cpu_inter_size_ % block_size_ == 0 && cpu_hidden_size_ % 64 == 0 &&
+      cpu_inter_size_ % 64 == 0 && cpu_fc1_output_size_ % 4 == 0 &&
+      canonical_inputs_[3].shape.NumDimensions() == 3 &&
+      canonical_inputs_[6].shape.NumDimensions() == 3 &&
+      canonical_inputs_[3].shape[1] == cpu_fc1_output_size_ &&
+      canonical_inputs_[3].shape[2] == cpu_hidden_size_ / block_size_ &&
+      canonical_inputs_[6].shape[1] == cpu_hidden_size_ &&
+      canonical_inputs_[6].shape[2] == cpu_inter_size_ / block_size_ &&
+      ::onnxruntime::contrib::MoeCpuOffloadQ4Available(
+          static_cast<size_t>(block_size_));
+  if (cpu_qnbit_enabled_) {
+    cpu_fc1_qnbit_bytes_ = ::onnxruntime::contrib::MoeCpuOffloadQ4PackSize(
+        static_cast<size_t>(cpu_fc1_output_size_), static_cast<size_t>(cpu_hidden_size_),
+        static_cast<size_t>(block_size_),
+        canonical_inputs_[11].present);
+    cpu_fc2_qnbit_bytes_ = ::onnxruntime::contrib::MoeCpuOffloadQ4PackSize(
+        static_cast<size_t>(cpu_hidden_size_), static_cast<size_t>(cpu_inter_size_),
+        static_cast<size_t>(block_size_),
+        canonical_inputs_[12].present);
+    cpu_qnbit_enabled_ = cpu_fc1_qnbit_bytes_ == fc1_elements / 2 &&
+                         cpu_fc2_qnbit_bytes_ == fc2_elements / 2;
+  }
+  if (cpu_qnbit_enabled_) {
+    cpu_fc1_scale_count_ =
+        SafeInt<size_t>(cpu_fc1_output_size_) * (cpu_hidden_size_ / block_size_);
+    cpu_fc2_scale_count_ =
+        SafeInt<size_t>(cpu_hidden_size_) * (cpu_inter_size_ / block_size_);
+    auto validate_metadata = [&](int scale_idx, int zero_idx, size_t n, size_t k,
+                                 size_t scale_count) -> Status {
+      const auto& scale = canonical_inputs_[scale_idx];
+      ORT_RETURN_IF_NOT(scale.shape[0] == cpu_num_experts_ &&
+                            scale.data.size() == SafeInt<size_t>(cpu_num_experts_) * scale_count * sizeof(MLFloat16),
+                        "Invalid QMoE QNBit blockwise scale shape or buffer size.");
+      const auto& zero = canonical_inputs_[zero_idx];
+      if (zero.present) {
+        const size_t zero_stride = (k / static_cast<size_t>(block_size_) + 1) / 2;
+        ORT_RETURN_IF_NOT(zero.shape.NumDimensions() == 3 && zero.shape[0] == cpu_num_experts_ &&
+                              zero.shape[1] == static_cast<int64_t>(n) &&
+                              zero.shape[2] == static_cast<int64_t>(zero_stride) &&
+                              zero.data.size() == SafeInt<size_t>(cpu_num_experts_) * n * zero_stride,
+                          "Invalid QMoE QNBit blockwise zero-point shape or buffer size.");
+      }
+      return Status::OK();
+    };
+    ORT_RETURN_IF_ERROR(validate_metadata(3, 11, static_cast<size_t>(cpu_fc1_output_size_),
+                                          static_cast<size_t>(cpu_hidden_size_), cpu_fc1_scale_count_));
+    ORT_RETURN_IF_ERROR(validate_metadata(6, 12, static_cast<size_t>(cpu_hidden_size_),
+                                          static_cast<size_t>(cpu_inter_size_), cpu_fc2_scale_count_));
+    cpu_fc1_zero_bytes_ = canonical_inputs_[11].present
+                              ? narrow<size_t>(canonical_inputs_[11].shape.SizeFromDimension(1))
+                              : 0;
+    cpu_fc2_zero_bytes_ = canonical_inputs_[12].present
+                              ? narrow<size_t>(canonical_inputs_[12].shape.SizeFromDimension(1))
+                              : 0;
+    cpu_fc1_qnbit_.resize(SafeInt<size_t>(cpu_storage_count) * cpu_fc1_qnbit_bytes_);
+    cpu_fc2_qnbit_.resize(SafeInt<size_t>(cpu_storage_count) * cpu_fc2_qnbit_bytes_);
+    cpu_fc1_qnbit_scales_.resize(SafeInt<size_t>(cpu_storage_count) * cpu_fc1_scale_count_);
+    cpu_fc2_qnbit_scales_.resize(SafeInt<size_t>(cpu_storage_count) * cpu_fc2_scale_count_);
+    cpu_fc1_qnbit_zero_.resize(SafeInt<size_t>(cpu_storage_count) * cpu_fc1_zero_bytes_);
+    cpu_fc2_qnbit_zero_.resize(SafeInt<size_t>(cpu_storage_count) * cpu_fc2_zero_bytes_);
+    if (canonical_inputs_[4].present) {
+      cpu_fc1_bias_half_.resize(cpu_storage_count * static_cast<size_t>(cpu_fc1_output_size_));
+    }
+    if (canonical_inputs_[7].present) {
+      cpu_fc2_bias_half_.resize(cpu_storage_count * static_cast<size_t>(cpu_hidden_size_));
+    }
+  } else if (is_fp16_) {
     cpu_fc1_half_.resize(cpu_storage_count * fc1_elements);
     cpu_fc2_half_.resize(cpu_storage_count * fc2_elements);
     if (canonical_inputs_[4].present) {
@@ -969,6 +1078,41 @@ Status QMoE::InitializeCpuOffload(gsl::span<const int> cuda_experts) {
     if (canonical_inputs_[7].present) {
       cpu_fc2_bias_bfloat_.resize(cpu_storage_count * static_cast<size_t>(cpu_hidden_size_));
     }
+  }
+  if (cpu_qnbit_enabled_ && cpu_count > 0) {
+    // Bound load-time scratch; pack selected experts on GPU before any CPU weight transfer.
+    const size_t max_expert_bytes = std::max(cpu_fc1_qnbit_bytes_, cpu_fc2_qnbit_bytes_);
+    constexpr size_t kPackingScratchBytes = 64 * 1024 * 1024;
+    const size_t batch_size = std::min(cpu_count, std::max(size_t{1}, kPackingScratchBytes / max_expert_bytes));
+    const size_t scratch_bytes = SafeInt<size_t>(batch_size) * max_expert_bytes;
+    auto device_packed = IAllocator::MakeUniquePtr<void>(cuda_allocator_, scratch_bytes, true);
+    auto host_packed = AllocateBufferOnCPUPinned<void>(scratch_bytes);
+    ORT_RETURN_IF_NOT(device_packed && host_packed, "Failed to allocate QMoE GPU QNBit packing scratch.");
+    auto pack_selected = [&](const IAllocatorUniquePtr<void>& weights, size_t n, size_t k,
+                             size_t expert_bytes, auto& cpu_weights) -> Status {
+      ORT_RETURN_IF_NOT(weights, "QMoE GPU QNBit packing requires CUDA-packed expert weights.");
+      const size_t sub_block_size = block_size_ == 16 ? 16 : (block_size_ == 32 ? 32 : 64);
+      for (size_t first = 0; first < cpu_count; first += batch_size) {
+        const size_t count = std::min(batch_size, cpu_count - first);
+        for (size_t index = 0; index < count; ++index) {
+          const size_t expert = static_cast<size_t>(cpu_experts_[first + index]);
+          LaunchPackMlasQ4Weights(
+              static_cast<const uint8_t*>(weights.get()) + expert * expert_bytes,
+              static_cast<uint8_t*>(device_packed.get()) + index * expert_bytes,
+              n, k, static_cast<size_t>(block_size_), sub_block_size, true, cpu_offload_stream_);
+        }
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+            host_packed.get(), device_packed.get(), count * expert_bytes,
+            cudaMemcpyDeviceToHost, cpu_offload_stream_));
+        CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cpu_offload_stream_));
+        std::memcpy(cpu_weights.data() + first * expert_bytes, host_packed.get(), count * expert_bytes);
+      }
+      return Status::OK();
+    };
+    ORT_RETURN_IF_ERROR(pack_selected(packed_fc1_weights_, static_cast<size_t>(cpu_fc1_output_size_),
+                                      static_cast<size_t>(cpu_hidden_size_), cpu_fc1_qnbit_bytes_, cpu_fc1_qnbit_));
+    ORT_RETURN_IF_ERROR(pack_selected(packed_fc2_weights_, static_cast<size_t>(cpu_hidden_size_),
+                                      static_cast<size_t>(cpu_inter_size_), cpu_fc2_qnbit_bytes_, cpu_fc2_qnbit_));
   }
   for (size_t slot = 0; slot < cpu_count; ++slot) {
     ORT_RETURN_IF_ERROR(InitializeCpuExpert(slot, cpu_experts_[slot]));
@@ -1068,6 +1212,12 @@ Status QMoE::InitializeCpuOffload(gsl::span<const int> cuda_experts) {
       4, ResidentTensorKind::Fc1Bias, packed_fc1_explicit_bias_));
   ORT_RETURN_IF_ERROR(compact_host_bias(
       7, ResidentTensorKind::Fc2Bias, packed_fc2_explicit_bias_));
+  if (cpu_qnbit_enabled_) {
+    std::vector<uint8_t>().swap(canonical_inputs_[2].data);
+    std::vector<uint8_t>().swap(canonical_inputs_[5].data);
+    LOGS_DEFAULT(INFO) << "QMoE CPU offload: GPU-packed MLAS Q4 FP32 weights for "
+                       << cpu_count << " CPU experts.";
+  }
 
   if (!cuda_experts_.empty()) {
     device_expert_map_ = IAllocator::MakeUniquePtr<void>(
@@ -1186,6 +1336,27 @@ Status QMoE::ComputeCpuOffloadChunk(
     return values.empty() ? gsl::span<const Value>{}
                           : gsl::make_span(values).first(count);
   };
+  if (cpu_qnbit_enabled_) {
+    return ::onnxruntime::contrib::ComputeMoeCpuOffloadedExpertsQnBitFp16(
+        gsl::make_span(static_cast<const MLFloat16*>(input), input_elements),
+        gsl::make_span(route_experts, routes),
+        gsl::make_span(route_scales, routes), cpu_expert_map_,
+        active_span(cpu_fc1_qnbit_, cpu_count * cpu_fc1_qnbit_bytes_),
+        active_span(cpu_fc1_qnbit_scales_, cpu_count * cpu_fc1_scale_count_),
+        active_span(cpu_fc1_qnbit_zero_, cpu_count * cpu_fc1_zero_bytes_),
+        active_span(cpu_fc1_bias_half_, fc1_bias_elements),
+        active_span(cpu_fc2_qnbit_, cpu_count * cpu_fc2_qnbit_bytes_),
+        active_span(cpu_fc2_qnbit_scales_, cpu_count * cpu_fc2_scale_count_),
+        active_span(cpu_fc2_qnbit_zero_, cpu_count * cpu_fc2_zero_bytes_),
+        active_span(cpu_fc2_bias_half_, fc2_bias_elements),
+        cpu_fc1_qnbit_bytes_, cpu_fc2_qnbit_bytes_,
+        cpu_fc1_scale_count_, cpu_fc2_scale_count_,
+        cpu_fc1_zero_bytes_, cpu_fc2_zero_bytes_, block_size_,
+        narrow<int64_t>(num_rows), narrow<int64_t>(hidden_size),
+        narrow<int64_t>(inter_size), cpu_num_experts_, k_, parameters,
+        gsl::make_span(static_cast<MLFloat16*>(output), input_elements),
+        thread_pool);
+  }
   if (is_fp16_) {
     return ::onnxruntime::contrib::ComputeMoeCpuOffloadedExpertsFp16(
         gsl::make_span(static_cast<const MLFloat16*>(input), input_elements),
@@ -1493,6 +1664,14 @@ Status QMoE::StartSwap(int cuda_expert_id, int cpu_expert_id) {
     swap_cuda_staging_ =
         IAllocator::MakeUniquePtr<void>(
             cuda_allocator_, swap_staging_bytes_, true);
+    if (cpu_qnbit_enabled_) {
+      swap_qnbit_output_ = IAllocator::MakeUniquePtr<void>(
+          cuda_allocator_, SafeInt<size_t>(cpu_fc1_qnbit_bytes_) + cpu_fc2_qnbit_bytes_, true);
+      swap_qnbit_fc1_pinned_ = AllocateBufferOnCPUPinned<void>(cpu_fc1_qnbit_bytes_);
+      swap_qnbit_fc2_pinned_ = AllocateBufferOnCPUPinned<void>(cpu_fc2_qnbit_bytes_);
+      ORT_RETURN_IF_NOT(swap_qnbit_output_ && swap_qnbit_fc1_pinned_ && swap_qnbit_fc2_pinned_,
+                        "Failed to allocate QMoE GPU QNBit swap packing buffers.");
+    }
   }
   ORT_RETURN_IF_NOT(swap_pinned_buffer_ && swap_outgoing_pinned_buffer_ &&
                         swap_cuda_staging_,
@@ -1511,6 +1690,25 @@ Status QMoE::StartSwap(int cuda_expert_id, int cpu_expert_id) {
 
   CUDA_RETURN_IF_ERROR(
       cudaStreamWaitEvent(swap_d2h_stream_, last_expert_use_event_, 0));
+  if (cpu_qnbit_enabled_) {
+    const size_t sub_block_size = block_size_ == 16 ? 16 : (block_size_ == 32 ? 32 : 64);
+    auto* packed_fc1 = static_cast<uint8_t*>(swap_qnbit_output_.get());
+    auto* packed_fc2 = packed_fc1 + cpu_fc1_qnbit_bytes_;
+    LaunchPackMlasQ4Weights(
+        static_cast<const uint8_t*>(packed_fc1_weights_.get()) + swap_cuda_slot_ * cpu_fc1_qnbit_bytes_,
+        packed_fc1, static_cast<size_t>(cpu_fc1_output_size_), static_cast<size_t>(cpu_hidden_size_),
+        static_cast<size_t>(block_size_), sub_block_size, true, swap_d2h_stream_);
+    LaunchPackMlasQ4Weights(
+        static_cast<const uint8_t*>(packed_fc2_weights_.get()) + swap_cuda_slot_ * cpu_fc2_qnbit_bytes_,
+        packed_fc2, static_cast<size_t>(cpu_hidden_size_), static_cast<size_t>(cpu_inter_size_),
+        static_cast<size_t>(block_size_), sub_block_size, true, swap_d2h_stream_);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+        swap_qnbit_fc1_pinned_.get(), packed_fc1, cpu_fc1_qnbit_bytes_,
+        cudaMemcpyDeviceToHost, swap_d2h_stream_));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+        swap_qnbit_fc2_pinned_.get(), packed_fc2, cpu_fc2_qnbit_bytes_,
+        cudaMemcpyDeviceToHost, swap_d2h_stream_));
+  }
   for (auto& resident : resident_tensors_) {
     auto& device = ResidentDeviceBuffer(resident.kind);
     std::memcpy(
@@ -1560,6 +1758,12 @@ Status QMoE::PrepareExpertSwapForInvocation(cudaStream_t stream) const {
   }
 
   const size_t staging_slot = cpu_experts_.size();
+  if (cpu_qnbit_enabled_) {
+    std::memcpy(cpu_fc1_qnbit_.data() + swap_cpu_slot_ * cpu_fc1_qnbit_bytes_,
+                swap_qnbit_fc1_pinned_.get(), cpu_fc1_qnbit_bytes_);
+    std::memcpy(cpu_fc2_qnbit_.data() + swap_cpu_slot_ * cpu_fc2_qnbit_bytes_,
+                swap_qnbit_fc2_pinned_.get(), cpu_fc2_qnbit_bytes_);
+  }
   auto publish_dense = [&](auto& values, size_t elements_per_expert) {
     if (!values.empty()) {
       std::copy_n(values.data() + staging_slot * elements_per_expert,
@@ -1587,6 +1791,10 @@ Status QMoE::PrepareExpertSwapForInvocation(cudaStream_t stream) const {
                 static_cast<size_t>(cpu_fc1_output_size_));
   publish_dense(cpu_fc2_bias_bfloat_,
                 static_cast<size_t>(cpu_hidden_size_));
+  publish_dense(cpu_fc1_qnbit_scales_, cpu_fc1_scale_count_);
+  publish_dense(cpu_fc2_qnbit_scales_, cpu_fc2_scale_count_);
+  publish_dense(cpu_fc1_qnbit_zero_, cpu_fc1_zero_bytes_);
+  publish_dense(cpu_fc2_qnbit_zero_, cpu_fc2_zero_bytes_);
   for (auto& resident : resident_tensors_) {
     auto& device = ResidentDeviceBuffer(resident.kind);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
@@ -1758,8 +1966,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     swiglu_fusion = 1;
   }
 
-  const Tensor* fc1_zeros = packed_fc1_bias_ ? nullptr : context->Input<Tensor>(11);
-  const Tensor* fc2_zeros = packed_fc2_bias_ ? nullptr : context->Input<Tensor>(12);
+  const Tensor* fc1_zeros = (all_cpu_offload || packed_fc1_bias_) ? nullptr : context->Input<Tensor>(11);
+  const Tensor* fc2_zeros = (all_cpu_offload || packed_fc2_bias_) ? nullptr : context->Input<Tensor>(12);
 
   auto check_weight_type = [](const Tensor* tensor, const char* name, bool expect_fp8) -> Status {
     ORT_RETURN_IF_NOT(tensor != nullptr, "Input '", name, "' is required.");

@@ -34,6 +34,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/mlas/inc/mlas_qnbit.h"
 #include "core/framework/TensorSeq.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_proto_serializer.h"
@@ -1670,6 +1671,43 @@ struct ProviderHostImpl : ProviderHost {
       const void* data, concurrency::ThreadPool* thread_pool) override {
     MlasHalfGemmBatch(M, N, K, batch_size,
                       static_cast<const MLAS_HALF_GEMM_DATA_PARAMS*>(data), thread_pool);
+  }
+  bool MlasQ4GemmFp32__IsAvailable(size_t block_size) override {
+#if defined(MLAS_TARGET_AMD64_IX86)
+    return MlasIsQNBitGemmAvailable(4, block_size, SQNBIT_CompFp32);
+#else
+    ORT_UNUSED_PARAMETER(block_size);
+    return false;
+#endif
+  }
+  size_t MlasQ4GemmFp32__PackBSize(size_t N, size_t K, size_t block_size,
+                                   bool has_zero_point) override {
+    return MlasQNBitGemmPackQuantBDataSize(
+        N, K, 4, block_size, has_zero_point, SQNBIT_CompFp32, nullptr);
+  }
+  size_t MlasQ4GemmFp32__WorkspaceSize(size_t M, size_t N, size_t K,
+                                       size_t block_size, bool has_zero_point) override {
+    return MlasQNBitGemmBatchWorkspaceSize(
+        M, N, K, 1, 4, block_size, has_zero_point, SQNBIT_CompFp32, nullptr);
+  }
+  void MlasQ4GemmFp32__Run(size_t M, size_t N, size_t K, size_t block_size,
+                           const float* A, const void* packed_b,
+                           const float* scales, const void* zero_points,
+                           const float* bias, float* C, void* workspace,
+                           concurrency::ThreadPool* thread_pool) override {
+    MLAS_QNBIT_GEMM_DATA_PARAMS<float> params{};
+    params.A = A;
+    params.lda = K;
+    params.QuantBDataWorkspace = packed_b;
+    params.PackedQuantBData = static_cast<const std::byte*>(packed_b);
+    params.QuantBScale = scales;
+    params.QuantBZeroPoint = static_cast<const uint8_t*>(zero_points);
+    params.Bias = bias;
+    params.C = C;
+    params.ldc = N;
+    MlasQNBitGemmBatch<float>(
+        M, N, K, 1, 4, block_size, SQNBIT_CompFp32, &params,
+        workspace, thread_pool, nullptr);
   }
   concurrency::ThreadPool* OpKernelContext__GetOperatorThreadPool(const OpKernelContext* p) override {
     return p->GetOperatorThreadPool();

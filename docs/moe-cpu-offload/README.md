@@ -32,10 +32,12 @@ Training, router changes, expert-weight quantization, and multiple CUDA devices 
 - Dense MoE exchanges hot CPU experts with cold CUDA experts asynchronously while preserving each node's CUDA slot
   count. Global slot redistribution across nodes remains future work.
 - CUDA INT4/INT8 `QMoE` compacts the CUTLASS-packed weights, scales, derived zero-point biases, and optional explicit
-  biases to the selected CUDA experts. CPU experts are dequantized once into the dense MLAS layout. QMoE copies only
+  biases to the selected CUDA experts. Blockwise INT4/FP16 fused SwiGLU on x86 uses GPU-produced MLAS Q4 packed weights
+  and CPU QNBit GEMM with FP32 accumulation; other supported cases retain the dense MLAS fallback. QMoE copies only
   the compact row count when no CPU route is selected; non-empty CPU work runs on a persistent worker and overlaps
   CUDA expert kernels. QMoE swaps move every packed expert tensor together on dedicated streams. The outgoing expert
-  is dequantized on a separate worker, and the new map is published only after both preparations complete.
+  is packed directly from the CUDA slot into CPU INT4 layout on the D2H stream for Q4, or dequantized on a separate
+  worker for the dense fallback. The new map is published only after transfers and CPU preparation complete.
 - Expert swaps transpose matrix weights between CUDA and MLAS layouts on their dedicated CUDA streams, rather than
   blocking the transfer pipeline with a CPU transposition callback. Incoming and outgoing experts use separate pinned
   buffers; publication waits for both transfers to finish before changing the CPU/CUDA maps.
@@ -92,9 +94,11 @@ cuda_expert_count = total_expert_count - cpu_offload_expert_count
 
 One CUDA slot contains all weights required to execute one expert. The kernel cache splits weights into disjoint
 expert subsets: CPU-resident experts use compact MLAS-layout storage, while CUDA-resident experts use compact CUDA
-storage. Dense MoE does not retain a canonical CPU copy of every CUDA expert. QMoE retains canonical quantized CPU
-bytes for every expert so an outgoing CUDA expert can be dequantized without reversing the CUTLASS layout; it also
-keeps packed host bytes for CPU-resident experts so an incoming expert can replace a CUDA slot directly. An exchange
+storage. Dense MoE does not retain a canonical CPU copy of every CUDA expert. The QMoE Q4 path reverses the SM80
+CUTLASS layout and packs MLAS INT4 weights on GPU, then releases the canonical host weight copies. Initial packing
+uses at most 64 MiB of GPU scratch (or one expert if larger); swaps use one expert's scratch. The dense QMoE fallback
+retains canonical quantized CPU bytes for dequantization. Both paths keep CUTLASS-packed host bytes for CPU-resident
+experts so an incoming expert can replace a CUDA slot directly. An exchange
 preserves both stores' capacities and publishes the mapping only when the replacement slot is ready. This describes
 the live expert cache, not a bound on total process RSS or temporary initialization/prepacking storage.
 
@@ -547,3 +551,31 @@ The matched one-expert measurement reduces peak CPU RSS by about 82%, without ch
 Mapped source pages, compact CPU weights, upload buffers, and runtime allocations still contribute to RSS; the two
 64 MiB buffers are not an absolute bound on process memory. The original 35B model's peak has not been remeasured
 after this change because insufficient free GPU memory was available.
+
+#### GPU-packed INT4 QMoE CPU compute
+
+Qwen3.5-35B-A3B INT4, H200 (physical GPU 0), Xeon Platinum 8480C, 1,000 CPU experts,
+alpha 0.9, epsilon 0.1, adaptive swaps enabled, CUDA Graph and counter logs disabled:
+
+| CPU expert implementation | Warm decode (ms/token) | Model load (s) | Peak CPU RSS (MiB) |
+|---|---:|---:|---:|
+| Dense FP16, three prompts x 128 tokens | 53.425 | 41.907 | 27,157.7 |
+| GPU-packed MLAS Q4 FP32, three prompts x 128 tokens | 14.208 | 19.877 | 18,703.5 |
+| Dense FP16, five prompts x 256 tokens | 26.294 | 41.944 | n/a |
+| GPU-packed MLAS Q4 FP32, five prompts x 256 tokens | 12.434 | 16.897 | n/a |
+
+These are single-process runs, not repeated averages. The three-prompt scores use prompts 2-3; the five-prompt
+scores use prompts 3-5. Model load, prefill, the generation call using prefill logits, and the first actual decode
+call are excluded. The three-prompt result improves by 3.76x; the five-prompt result improves by 2.11x.
+Prefill is still executed and measured separately: the Q4 three-prompt run took 1,302.2, 44.3, and 25.4 ms.
+Greedy generation is not replay of an identical routing trace, and this is not a model-quality evaluation.
+
+Both initial placement and outgoing swaps pack weights on GPU directly from the SM80 CUTLASS representation.
+The CPU consumes packed INT4 through MLAS QNBit, without CPU weight prepacking or dense FP16 dequantization.
+QNBit can dequantize temporary tiles internally for multi-row GEMMs; it does not retain dense expert matrices.
+A separate Nsight capture of the three-prompt workload recorded 4,402 GPU packing launches (31.55 ms total device
+execution) and CPU samples in `SQ4BitGemmM1Kernel_CompFp32`. No dense FP16 GEMM leaf samples were observed.
+The capture includes initialization and inference; its instrumented timings are not used in the table.
+The five-prompt protocol is reproducible with `tools/python/benchmark_moe_cpu_offload.py`,
+`docs/moe-cpu-offload/benchmark-prompts.json`, `--max-new-tokens 256 --cpu-offload-experts 1000
+--counter-alpha 0.9 --swap-epsilon 0.1 --swap --no-counter-log --no-cuda-graph`.

@@ -404,6 +404,19 @@ class QMoE final : public CudaKernel, public MoEBase
   mutable std::vector<MLFloat16> cpu_fc2_bias_half_;
   mutable std::vector<BFloat16> cpu_fc1_bias_bfloat_;
   mutable std::vector<BFloat16> cpu_fc2_bias_bfloat_;
+  bool cpu_qnbit_enabled_{false};
+  size_t cpu_fc1_qnbit_bytes_{0};
+  size_t cpu_fc2_qnbit_bytes_{0};
+  size_t cpu_fc1_scale_count_{0};
+  size_t cpu_fc2_scale_count_{0};
+  size_t cpu_fc1_zero_bytes_{0};
+  size_t cpu_fc2_zero_bytes_{0};
+  mutable std::vector<std::byte> cpu_fc1_qnbit_;
+  mutable std::vector<std::byte> cpu_fc2_qnbit_;
+  mutable std::vector<float> cpu_fc1_qnbit_scales_;
+  mutable std::vector<float> cpu_fc2_qnbit_scales_;
+  mutable std::vector<uint8_t> cpu_fc1_qnbit_zero_;
+  mutable std::vector<uint8_t> cpu_fc2_qnbit_zero_;
   int64_t cpu_num_experts_{0};
   int64_t cpu_hidden_size_{0};
   int64_t cpu_inter_size_{0};
@@ -413,6 +426,9 @@ class QMoE final : public CudaKernel, public MoEBase
   mutable cudaEvent_t swap_d2h_complete_event_{nullptr};
   mutable cudaEvent_t swap_transfer_complete_event_{nullptr};
   mutable cudaEvent_t swap_publication_complete_event_{nullptr};
+  mutable IAllocatorUniquePtr<void> swap_qnbit_output_;
+  mutable IAllocatorUniquePtr<void> swap_qnbit_fc1_pinned_;
+  mutable IAllocatorUniquePtr<void> swap_qnbit_fc2_pinned_;
   enum class SwapPhase {
     Idle,
     TransferInFlight,

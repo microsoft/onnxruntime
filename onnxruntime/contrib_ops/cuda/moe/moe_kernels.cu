@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/moe/moe_kernels.h"
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 
 #include <algorithm>
@@ -160,6 +161,38 @@ void TransposeMoeExpertWeights(const T* input, T* output, size_t rows, size_t co
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
+__device__ uint8_t ReadCutlassQ4(const uint8_t* input, size_t n, size_t k, size_t columns) {
+  // Undo SM80 row permutation, 64x4 column interleave and the final nibble-pair shuffle.
+  const size_t permuted_k = (k / 32) * 32 + ((k % 8) / 2) * 8 + ((k % 32) / 8) * 2 + k % 2;
+  const size_t offset = (n / 4) * columns * 4 + (permuted_k / 64) * 256 +
+                        (n % 4) * 64 + permuted_k % 64;
+  const size_t nibble = (offset % 8) / 2 + (offset % 2) * 4;
+  return (input[(offset / 8) * 4 + nibble / 2] >> ((nibble % 2) * 4)) & 0x0fU;
+}
+
+__global__ void PackMlasQ4WeightsKernel(const uint8_t* input, uint8_t* output,
+                                        size_t bytes, size_t columns, size_t sub_block_size,
+                                        bool cutlass_layout) {
+  for (size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       index < bytes; index += static_cast<size_t>(gridDim.x) * blockDim.x) {
+    const size_t n = index / (columns / 2);
+    const size_t packed_k = index % (columns / 2);
+    const size_t k = (packed_k / (sub_block_size / 2)) * sub_block_size +
+                     packed_k % (sub_block_size / 2);
+    uint8_t low;
+    uint8_t high;
+    if (cutlass_layout) {
+      low = ReadCutlassQ4(input, n, k, columns);
+      high = ReadCutlassQ4(input, n, k + sub_block_size / 2, columns);
+    } else {
+      low = (input[n * (columns / 2) + k / 2] >> ((k % 2) * 4)) & 0x0fU;
+      const size_t high_k = k + sub_block_size / 2;
+      high = (input[n * (columns / 2) + high_k / 2] >> ((high_k % 2) * 4)) & 0x0fU;
+    }
+    output[index] = static_cast<uint8_t>(low | (high << 4));
+  }
+}
+
 __global__ void RemapMoeExpertIndicesKernel(const int* expert_indices, int* remapped_expert_indices,
                                             const int* expert_map, size_t count) {
   const size_t index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -230,6 +263,27 @@ void LaunchTransposeMoeExpertWeights(const half* input, half* output,
 void LaunchTransposeMoeExpertWeights(const __nv_bfloat16* input, __nv_bfloat16* output,
                                      size_t rows, size_t columns, cudaStream_t stream) {
   TransposeMoeExpertWeights(input, output, rows, columns, stream);
+}
+
+void LaunchPackMlasQ4Weights(const uint8_t* input, uint8_t* output,
+                             size_t rows, size_t columns, size_t block_size,
+                             size_t sub_block_size, bool cutlass_layout, cudaStream_t stream) {
+  ORT_ENFORCE(block_size >= 16 && block_size % 16 == 0 &&
+                  columns % block_size == 0 &&
+                  (sub_block_size == 16 || sub_block_size == 32 || sub_block_size == 64) &&
+                  block_size % sub_block_size == 0,
+              "Unsupported MLAS Q4 packing dimensions.");
+  ORT_ENFORCE(!cutlass_layout || (rows % 4 == 0 && columns % 64 == 0),
+              "SM80 Q4 packing requires N divisible by 4 and K divisible by 64.");
+  const size_t bytes = SafeInt<size_t>(rows) * columns / 2;
+  if (bytes == 0) {
+    return;
+  }
+  constexpr size_t threads = 256;
+  const auto blocks = static_cast<unsigned int>(std::min<size_t>((bytes - 1) / threads + 1, 65535));
+  PackMlasQ4WeightsKernel<<<blocks, threads, 0, stream>>>(
+      input, output, bytes, columns, sub_block_size, cutlass_layout);
+  CUDA_CALL_THROW(cudaGetLastError());
 }
 
 void LaunchRemapMoeExpertIndices(const int* expert_indices, int* remapped_expert_indices,
