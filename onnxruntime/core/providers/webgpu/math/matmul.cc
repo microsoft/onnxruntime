@@ -53,6 +53,51 @@ ONNX_OPERATOR_KERNEL_EX(
 
 namespace {
 
+class MatMulZeroKProgram final : public Program<MatMulZeroKProgram> {
+ public:
+  MatMulZeroKProgram(const Activation& activation, bool has_bias,
+                     bool is_channels_last, bool bias_is_scalar)
+      : Program{"MatMulZeroK"},
+        activation_(activation),
+        has_bias_(has_bias),
+        is_channels_last_(is_channels_last),
+        bias_is_scalar_(bias_is_scalar) {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& output = shader.AddOutput(
+        "output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+    shader.AdditionalImplementation()
+        << GetActivationDeclaration(activation_, "output_value_t", "output_element_t");
+    if (has_bias_) {
+      shader.AddInput("bias", ShaderUsage::UseValueTypeAlias);
+    }
+    shader.MainFunctionBody()
+        << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+        << "var value = output_value_t(0);\n";
+    if (has_bias_) {
+      const char* index = bias_is_scalar_ ? "0" : is_channels_last_ ? "global_idx % uniforms.N"
+                                                                    : "(global_idx / uniforms.N) % uniforms.M";
+      shader.MainFunctionBody() << "value = output_value_t(bias[" << index << "]);\n";
+    }
+    shader.MainFunctionBody()
+        << GetActivationSnippet(activation_, "output_value_t", "output_element_t")
+        << output.SetByOffset("global_idx", "value");
+    return Status::OK();
+  }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"output_size", ProgramUniformVariableDataType::Uint32},
+      {"M", ProgramUniformVariableDataType::Uint32},
+      {"N", ProgramUniformVariableDataType::Uint32},
+      WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
+
+ private:
+  const Activation activation_;
+  const bool has_bias_;
+  const bool is_channels_last_;
+  const bool bias_is_scalar_;
+};
+
 class MatMulGemvProgram final : public Program<MatMulGemvProgram> {
  public:
   MatMulGemvProgram() : Program{"MatMulGemv"} {}
@@ -444,6 +489,37 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(logical_a_shape, logical_b_shape));
 
+  if (helper.OutputShape().Size() == 0) {
+    return Status::OK();
+  }
+  if (helper.K() == 0) {
+    if (const auto forced_algorithm = context.ForcedMatMulAlgorithm()) {
+      ORT_RETURN_IF_NOT(*forced_algorithm == MatMulAlgorithm::Naive,
+                        "MatMul algorithm ", MatMulAlgorithmName(*forced_algorithm),
+                        " does not support these inputs or this device.");
+    }
+    // Empty inputs have null GPU buffers and must not be bound to a MatMul shader.
+    const Tensor* bias = has_bias ? inputs[2] : nullptr;
+    const bool bias_is_scalar = bias && bias->Shape().Size() == 1;
+    if (bias) {
+      const int64_t expected_bias_size = is_channels_last ? helper.N() : helper.M();
+      ORT_RETURN_IF_NOT(bias_is_scalar || bias->Shape().Size() == expected_bias_size,
+                        "Zero-K MatMul bias must be scalar or match the output channel dimension.");
+    }
+    const uint32_t output_size = narrow<uint32_t>(helper.OutputShape().Size());
+    MatMulZeroKProgram program{activation, bias != nullptr, is_channels_last, bias_is_scalar};
+    program.CacheHint(activation.CacheKey(), bias != nullptr, is_channels_last, bias_is_scalar)
+        .AddOutput({output_tensor, ProgramTensorMetadataDependency::TypeAndRank, 1})
+        .AddUniformVariables(
+            {{output_size}, {narrow<uint32_t>(helper.M())}, {narrow<uint32_t>(helper.N())}})
+        .SetDispatchGroupSize(CeilDiv(output_size, static_cast<uint32_t>(WORKGROUP_SIZE)));
+    AppendActivationUniformsData(activation, program);
+    if (bias) {
+      program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, 1});
+    }
+    return context.RunProgram(program);
+  }
+
   Initialize(context);
   const bool requires_fp32_accumulation =
       context.EnableMatmulFp32Accumulation() && a->IsDataType<MLFloat16>();
@@ -496,31 +572,12 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
   selection_params.has_bias = has_bias;
   selection_params.is_channels_last = is_channels_last;
 
-  const MatMulExecutionPlan plan = planner_->CreateExecutionPlan(
-      selection_params, context.ForcedMatMulAlgorithm());
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+  ORT_RETURN_IF_ERROR(planner_->CreateExecutionPlan(
+      selection_params, context.ForcedMatMulAlgorithm(), plan));
   const MatMulAlgorithm algorithm = plan.algorithm;
-  ORT_RETURN_IF_NOT(IsMatMulAlgorithmConfigurationCompatible(plan),
-                    "MatMul algorithm ", MatMulAlgorithmName(algorithm),
-                    " received an incompatible vendor configuration.");
   const auto* packed_configuration = std::get_if<MatMulPackedConfiguration>(&plan.configuration);
   const auto* subgroup_configuration = std::get_if<MatMulSubgroupConfiguration>(&plan.configuration);
-
-  MatMulAlgorithmPrerequisites prerequisites{};
-  prerequisites.can_use_subgroup_matrix = can_use_subgroup_matrix;
-  prerequisites.can_run_gemv = can_run_gemv;
-  prerequisites.has_subgroup_capability = has_subgroup_capability;
-  prerequisites.subgroup_size =
-      subgroup_configuration != nullptr ? subgroup_configuration->subgroup_size : 0;
-  prerequisites.has_nonzero_k = helper.K() > 0;
-  prerequisites.split_k_configured =
-      packed_configuration != nullptr && packed_configuration->split_dim_inner > 1;
-  prerequisites.deterministic_compute = selection_params.deterministic_compute;
-  prerequisites.is_vec4 = selection_params.is_vec4;
-  prerequisites.has_fused_activation = selection_params.has_fused_activation;
-  prerequisites.split_k_bias_layout_supported = !has_bias || is_channels_last;
-  ORT_RETURN_IF_NOT(MeetsMatMulAlgorithmPrerequisites(algorithm, prerequisites),
-                    "MatMul algorithm ", MatMulAlgorithmName(algorithm),
-                    " does not support these inputs or this device.");
 
   switch (algorithm) {
     case MatMulAlgorithm::SubgroupMatrix:
