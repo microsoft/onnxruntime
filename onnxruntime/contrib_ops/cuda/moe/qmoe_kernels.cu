@@ -16,10 +16,28 @@
 #include "core/providers/cuda/cu_inc/cub.cuh"
 #include "core/providers/cuda/cu_inc/topk_warp_sort.cuh"
 #include "core/providers/cuda/cuda_common.h"
+#include "contrib_ops/cuda/moe/qmoe_fused_route.cuh"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+bool LaunchFusedRouteMaps(const half* logits, float* scales, int* indices, int* r2u, int* u2r,
+                         int* permuted_expert, int64_t* offsets, int rows, int experts, int k,
+                         bool normalize, cudaStream_t stream) {
+  const bool launched = LaunchFusedRouteMapsImpl(
+      logits, scales, indices, r2u, u2r, permuted_expert, offsets, rows, experts, k, normalize, stream);
+  if (launched) CUDA_CALL_THROW(cudaGetLastError());
+  return launched;
+}
+bool LaunchFusedRouteMaps(const __nv_bfloat16* logits, float* scales, int* indices, int* r2u, int* u2r,
+                         int* permuted_expert, int64_t* offsets, int rows, int experts, int k,
+                         bool normalize, cudaStream_t stream) {
+  const bool launched = LaunchFusedRouteMapsImpl(
+      logits, scales, indices, r2u, u2r, permuted_expert, offsets, rows, experts, k, normalize, stream);
+  if (launched) CUDA_CALL_THROW(cudaGetLastError());
+  return launched;
+}
 
 int Compute1DGridSize(int num_elements, int block_size) {
   return (num_elements + block_size - 1) / block_size;

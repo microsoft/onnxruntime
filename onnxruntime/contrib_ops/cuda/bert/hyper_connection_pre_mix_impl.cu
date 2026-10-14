@@ -6,9 +6,11 @@
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <limits>
+#include <type_traits>
 
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime::contrib::cuda {
 namespace {
@@ -47,6 +49,36 @@ __global__ void PreMixKernel(const T* streams, const void* pre_mix, int mix_type
   y[i] = from_float<T>(sum * reduction_scale);
 }
 
+constexpr int kVec = 8;
+
+// Preserve the scalar branch order and final rounding while loading eight 16-bit features.
+template <typename T>
+__global__ void PreMixVecKernel(const T* streams, const void* pre_mix, int mix_type, T* y,
+                               int64_t rows, int branches, int hidden, int gate_layout, float reduction_scale) {
+  const int vecs_per_row = hidden / kVec;
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index >= rows * vecs_per_row) return;
+  const int64_t row = index / vecs_per_row;
+  const int h = static_cast<int>(index - row * vecs_per_row) * kVec;
+  float sum[kVec];
+#pragma unroll
+  for (int j = 0; j < kVec; ++j) sum[j] = 0.0f;
+  for (int c = 0; c < branches; ++c) {
+    const uint4 raw = *reinterpret_cast<const uint4*>(streams + (row * branches + c) * hidden + h);
+    const T* values = reinterpret_cast<const T*>(&raw);
+#pragma unroll
+    for (int j = 0; j < kVec; ++j) {
+      sum[j] += to_float<T>(values[j]) *
+                LoadMix(pre_mix, GateIndex(gate_layout, row, c, h + j, branches, hidden), mix_type);
+    }
+  }
+  uint4 out;
+  T* values = reinterpret_cast<T*>(&out);
+#pragma unroll
+  for (int j = 0; j < kVec; ++j) values[j] = from_float<T>(sum[j] * reduction_scale);
+  *reinterpret_cast<uint4*>(y + row * hidden + h) = out;
+}
+
 }  // namespace
 
 template <typename T>
@@ -55,6 +87,21 @@ Status LaunchHyperConnectionPreMix(cudaStream_t stream, const T* streams,
                                    int64_t count, int branches, int hidden,
                                    int gate_layout, float reduction_scale) {
   if (count == 0) return Status::OK();
+  if constexpr (std::is_same_v<T, half>) {
+    static const bool enabled = ParseEnvironmentVariableWithDefault<bool>("ORT_HYPER_CONNECTION_VECTORIZE", false);
+    // FP32 gates can change contraction rounding; small vector launches lose occupancy.
+    if (enabled && mix_type == kFloat16 && hidden > 0 && hidden % kVec == 0 &&
+        count % hidden == 0 && count / hidden >= 256 &&
+        reinterpret_cast<uintptr_t>(streams) % alignof(uint4) == 0 &&
+        reinterpret_cast<uintptr_t>(y) % alignof(uint4) == 0) {
+      const int64_t rows = count / hidden;
+      const int64_t vec_blocks = (count / kVec - 1) / kThreads + 1;
+      ORT_RETURN_IF_NOT(vec_blocks <= std::numeric_limits<int>::max(), "CUDA launch requires too many blocks");
+      PreMixVecKernel<T><<<static_cast<int>(vec_blocks), kThreads, 0, stream>>>(
+          streams, pre_mix, mix_type, y, rows, branches, hidden, gate_layout, reduction_scale);
+      return CUDA_CALL(cudaGetLastError());
+    }
+  }
   const int64_t block_count = (count - 1) / kThreads + 1;
   ORT_RETURN_IF_NOT(block_count <= std::numeric_limits<int>::max(), "CUDA launch requires too many blocks");
   PreMixKernel<<<static_cast<int>(block_count), kThreads, 0, stream>>>(

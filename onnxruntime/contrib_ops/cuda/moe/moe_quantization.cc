@@ -2367,9 +2367,33 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     act_params.swiglu_fusion = swiglu_fusion;
     act_params.limit = swiglu_limit_;
 
-    const auto fused_routing = route_tile(0, num_rows);
-    ORT_ENFORCE(fused_routing.router_logits == nullptr,
-                "QMoE FP4 GEMV does not support fused routing.");
+    static const bool fused_decode_route =
+        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_NVFP4_DECODE_FUSED_ROUTING", 0) == 1;
+    bool fused_route_launched = false;
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    const bool snapshot_active = routing_snapshot_.has_value();
+#else
+    constexpr bool snapshot_active = false;
+#endif
+    if (fused_decode_route && use_raw_nvfp4_gemv && nvfp4_weights_row_major_ &&
+        sm_ >= 90 && !snapshot_active) {
+      if (is_fp16_) {
+        fused_route_launched = LaunchFusedRouteMaps(
+            static_cast<const half*>(router_probs->DataRaw()), expert_scales, expert_indices,
+            p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
+            static_cast<int>(num_rows), num_experts, static_cast<int>(k_), normalize_routing_weights_, stream);
+      } else {
+        fused_route_launched = LaunchFusedRouteMaps(
+            static_cast<const __nv_bfloat16*>(router_probs->DataRaw()), expert_scales, expert_indices,
+            p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
+            static_cast<int>(num_rows), num_experts, static_cast<int>(k_), normalize_routing_weights_, stream);
+      }
+    }
+    if (!fused_route_launched) {
+      const auto fused_routing = route_tile(0, num_rows);
+      ORT_ENFORCE(fused_routing.router_logits == nullptr,
+                  "QMoE FP4 GEMV does not support fused routing.");
+    }
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     if (routing_snapshot_) {
       ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(
@@ -2379,7 +2403,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     IAllocatorUniquePtr<int> blocked_expert_counts;
     IAllocatorUniquePtr<int> blocked_expert_counts_cumsum;
     IAllocatorUniquePtr<int> blocked_row_to_unpermuted_row;
-    if (!ck::fusedBuildExpertMapsSortFirstToken(
+    if (!fused_route_launched && !ck::fusedBuildExpertMapsSortFirstToken(
             expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
             num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream)) {
       const int64_t num_tokens_per_block = ck::computeNumTokensPerBlock(num_rows, num_experts);

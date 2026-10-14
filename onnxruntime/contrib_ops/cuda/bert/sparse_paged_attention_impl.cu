@@ -403,7 +403,7 @@ constexpr int kSparsePagedAttentionGqaHeads = 4;
 constexpr int kSparsePagedAttentionGqaTile = 64;
 constexpr int kSparsePagedAttentionGqaHeadSize = 256;
 
-template <typename T, int SharedStride>
+template <typename T, int SharedStride, bool AsyncKv = false>
 __device__ __forceinline__ void SparsePagedAttentionStageKv(
     T* tile, const T* current, const T* cache, const int64_t* candidate_refs,
     int tile_length, int load_rows, int kv_head, int kv_heads, int current_stride) {
@@ -423,7 +423,16 @@ __device__ __forceinline__ void SparsePagedAttentionStageKv(
     if (source == nullptr) {
       *reinterpret_cast<uint4*>(destination) = uint4{};
     } else if (reinterpret_cast<uintptr_t>(source) % sizeof(uint4) == 0) {
-      *reinterpret_cast<uint4*>(destination) = *reinterpret_cast<const uint4*>(source);
+#if __CUDA_ARCH__ >= 800
+      if constexpr (AsyncKv) {
+        const unsigned int address = static_cast<unsigned int>(__cvta_generic_to_shared(destination));
+        asm volatile("cp.async.cg.shared.global [%0], [%1], 16;\n"
+                     : : "r"(address), "l"(source) : "memory");
+      } else
+#endif
+      {
+        *reinterpret_cast<uint4*>(destination) = *reinterpret_cast<const uint4*>(source);
+      }
     } else {
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
@@ -431,10 +440,15 @@ __device__ __forceinline__ void SparsePagedAttentionStageKv(
       }
     }
   }
+#if __CUDA_ARCH__ >= 800
+  if constexpr (AsyncKv) {
+    asm volatile("cp.async.commit_group;\ncp.async.wait_group 0;\n" : : : "memory");
+  }
+#endif
 }
 
 template <typename T, int HeadsPerBlock = kSparsePagedAttentionGqaHeads, int DotRows = 1,
-          bool TensorCoreQk = false, bool TensorCorePv = false>
+          bool TensorCoreQk = false, bool TensorCorePv = false, bool AsyncKv = false>
 __global__ void SparsePagedAttentionGqaTiledKernel(
     const T* query, const T* current_key, const T* current_value,
     const T* key_cache, const T* value_cache, const int* cumulative_seqlens_q,
@@ -521,7 +535,7 @@ __global__ void SparsePagedAttentionGqaTiledKernel(
     __syncthreads();
     // Each K/V row is fetched once for query heads sharing the same KV head.
     if constexpr (HeadsPerBlock == 12) {
-      SparsePagedAttentionStageKv<T, shared_head_stride>(
+      SparsePagedAttentionStageKv<T, shared_head_stride, AsyncKv>(
           kv_tile, current_key, key_cache, candidate_refs, tile_length, TensorCoreQk ? tile_size : tile_length,
           kv_head_id, kv_num_heads, current_key_stride);
     } else {
@@ -650,7 +664,7 @@ __global__ void SparsePagedAttentionGqaTiledKernel(
     }
     // Reuse the key tile's storage after all warps have finished their dot products.
     if constexpr (HeadsPerBlock == 12) {
-      SparsePagedAttentionStageKv<T, shared_head_stride>(
+      SparsePagedAttentionStageKv<T, shared_head_stride, AsyncKv>(
           kv_tile, current_value, value_cache, candidate_refs, tile_length, TensorCorePv ? tile_size : tile_length,
           kv_head_id, kv_num_heads, current_value_stride);
     } else {
@@ -894,7 +908,13 @@ Status SparseQkvToContext(
           kSparsePagedAttentionGqaTile * kSparsePagedAttentionGqaHeadSize * sizeof(T) +
           kSparsePagedAttentionGqaTile * sizeof(int64_t) +
           6 * kSparsePagedAttentionGqaTile * sizeof(float);
-      const bool use_twelve_heads = parameters.token_count > 64 && num_splits == 1 &&
+      static const bool enable_mtp_grouped_heads =
+          ParseEnvironmentVariableWithDefault<bool>("ORT_SPARSE_MTP_GROUPED_HEADS", false);
+      static const bool enable_async_kv =
+          ParseEnvironmentVariableWithDefault<bool>("ORT_SPARSE_PREFILL_ASYNC_KV", false);
+      const bool mtp_twelve_heads = enable_mtp_grouped_heads &&
+                                   parameters.token_count <= 8 && device_prop.major >= 8;
+      const bool use_twelve_heads = ((parameters.token_count > 64 && num_splits == 1) || mtp_twelve_heads) &&
                                     (parameters.num_heads / parameters.kv_num_heads) % 12 == 0 &&
                                     twelve_head_shared_bytes <= device_prop.sharedMemPerBlock;
       const bool use_six_heads = parameters.token_count > 64 && num_splits == 1 &&
@@ -906,16 +926,19 @@ Status SparseQkvToContext(
           ParseEnvironmentVariableWithDefault<bool>("ORT_SPARSE_PREFILL_TENSOR_CORE_QK", false);
       static const bool enable_tensor_core_pv =
           ParseEnvironmentVariableWithDefault<bool>("ORT_SPARSE_PREFILL_TENSOR_CORE_PV", false);
-      const auto tensor_core_pv_kernel = [] {
+      const bool use_async_kv = enable_async_kv && parameters.token_count > 64 && device_prop.major >= 8;
+      const auto tensor_core_pv_kernel = [use_async_kv] {
         if constexpr (std::is_same<T, half>::value) {
-          return SparsePagedAttentionGqaTiledKernel<T, 12, 4, true, true>;
+          return use_async_kv ? SparsePagedAttentionGqaTiledKernel<T, 12, 4, true, true, true>
+                              : SparsePagedAttentionGqaTiledKernel<T, 12, 4, true, true>;
         } else {
           return SparsePagedAttentionGqaTiledKernel<T, 12, 4, true>;
         }
       }();
       bool use_tensor_core_qk = false;
       bool use_tensor_core_pv = false;
-      if (enable_tensor_core_qk && use_twelve_heads && device_prop.major >= 8) {
+      const bool enable_qk = !mtp_twelve_heads && enable_tensor_core_qk;
+      if (enable_qk && use_twelve_heads && device_prop.major >= 8) {
         cudaFuncAttributes attributes{};
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaFuncGetAttributes(&attributes, SparsePagedAttentionGqaTiledKernel<T, 12, 4, true>)));
         use_tensor_core_qk = attributes.ptxVersion >= 80 &&
@@ -927,8 +950,10 @@ Status SparseQkvToContext(
       }
       const auto tiled_kernel = use_twelve_heads
                                     ? (use_tensor_core_pv   ? tensor_core_pv_kernel
-                                       : use_tensor_core_qk ? SparsePagedAttentionGqaTiledKernel<T, 12, 4, true>
-                                                            : SparsePagedAttentionGqaTiledKernel<T, 12, 4>)
+                                       : use_tensor_core_qk ? (use_async_kv ? SparsePagedAttentionGqaTiledKernel<T, 12, 4, true, false, true>
+                                                                          : SparsePagedAttentionGqaTiledKernel<T, 12, 4, true>)
+                                                            : (use_async_kv ? SparsePagedAttentionGqaTiledKernel<T, 12, 4, false, false, true>
+                                                                            : SparsePagedAttentionGqaTiledKernel<T, 12, 4>))
                                     : (use_six_heads ? SparsePagedAttentionGqaTiledKernel<T, 6>
                                                      : SparsePagedAttentionGqaTiledKernel<T>);
       tiled_kernel<<<tiled_grid, (use_tensor_core_pv ? 4 : heads_per_block) * 32, 0,

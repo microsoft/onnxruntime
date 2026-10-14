@@ -12,6 +12,13 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+bool LaunchFusedRouteMaps(const half* logits, float* scales, int* indices, int* r2u, int* u2r,
+                         int* permuted_expert, int64_t* offsets, int rows, int experts, int k,
+                         bool normalize, cudaStream_t stream);
+bool LaunchFusedRouteMaps(const __nv_bfloat16* logits, float* scales, int* indices, int* r2u, int* u2r,
+                         int* permuted_expert, int64_t* offsets, int rows, int experts, int k,
+                         bool normalize, cudaStream_t stream);
+
 void LaunchSoftmaxTopK(
     const float* logits,
     float* topk_scales,

@@ -1594,7 +1594,8 @@ constexpr static int FINALIZE_MAX_STAGED_TOPK = FINALIZE_THREADS_PER_BLOCK;
 
 // Final kernel to unpermute and scale
 // This kernel unpermutes the original data, does the k-way reduction and performs the final skip connection.
-template <typename OutputType, class GemmOutputType, class ScaleBiasType, ScaleMode SCALE_MODE, bool STAGE_ROUTING>
+template <typename OutputType, class GemmOutputType, class ScaleBiasType, ScaleMode SCALE_MODE, bool STAGE_ROUTING,
+          bool BatchLoads = false>
 __global__ void finalizeMoeRoutingKernel(const GemmOutputType* expanded_permuted_rows,
                                          OutputType* reduced_unpermuted_output, const ScaleBiasType* bias, const float* scales,
                                          const int* unpermuted_row_to_permuted_row, const int* token_selected_experts, const int64_t orig_cols,
@@ -1609,7 +1610,7 @@ __global__ void finalizeMoeRoutingKernel(const GemmOutputType* expanded_permuted
   assert(orig_cols % FINALIZE_ELEM_PER_THREAD == 0);
 
   const int64_t start_offset = threadIdx.x;
-  const int64_t stride = FINALIZE_THREADS_PER_BLOCK;
+  const int64_t stride = blockDim.x;
   const int64_t num_elems_in_col = orig_cols / FINALIZE_ELEM_PER_THREAD;
 
   using BiasElem = cutlass::Array<ScaleBiasType, FINALIZE_ELEM_PER_THREAD>;
@@ -1644,6 +1645,16 @@ __global__ void finalizeMoeRoutingKernel(const GemmOutputType* expanded_permuted
   for (int elem_index = start_offset; elem_index < num_elems_in_col; elem_index += stride) {
     ComputeElem thread_output;
     thread_output.fill(0);
+    InputElem loaded[BatchLoads ? 16 : 1];
+    if constexpr (BatchLoads) {
+#pragma unroll
+      for (int k_idx = 0; k_idx < 16; ++k_idx) {
+        if (k_idx < experts_per_token && s_permuted_row[k_idx] >= 0) {
+          loaded[k_idx] = expanded_permuted_rows_v[static_cast<int64_t>(s_permuted_row[k_idx]) *
+                                                      num_elems_in_col + elem_index];
+        }
+      }
+    }
 #pragma unroll 4
     for (int k_idx = 0; k_idx < experts_per_token; ++k_idx) {
       int64_t expanded_permuted_row;
@@ -1668,7 +1679,8 @@ __global__ void finalizeMoeRoutingKernel(const GemmOutputType* expanded_permuted
 
       const auto* expanded_permuted_rows_row_ptr = expanded_permuted_rows_v + expanded_permuted_row * num_elems_in_col;
 
-      ComputeElem expert_result = arrayConvert<InputElem, ComputeElem>(expanded_permuted_rows_row_ptr[elem_index]);
+      ComputeElem expert_result = arrayConvert<InputElem, ComputeElem>(
+          BatchLoads ? loaded[k_idx] : expanded_permuted_rows_row_ptr[elem_index]);
       if (bias) {
         const auto* bias_ptr = bias_v + expert_id * num_elems_in_col;
         expert_result = expert_result + arrayConvert<BiasElem, ComputeElem>(bias_ptr[elem_index]);
@@ -1915,6 +1927,19 @@ void finalizeMoeRoutingKernelLauncher(const GemmOutputType* expanded_permuted_ro
       }
 #undef LAUNCH_FINALIZE_ONE_ROW
     } else if (experts_per_token <= FINALIZE_MAX_STAGED_TOPK) {
+      static const bool single_pass =
+          onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_NVFP4_DECODE_SINGLE_PASS_FINALIZE", 0) == 1;
+      if (single_pass && num_rows > 0 && num_rows <= 4 && experts_per_token == 10 && cols == 2560 &&
+          sizeof(OutputType) == 2 && sizeof(GemmOutputType) == 2) {
+        config.blockDim = 320;
+        auto func = final_scales
+            ? &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT, true, true>
+            : &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE, true, true>;
+        CUDA_CALL_THROW(cudaLaunchKernelEx(&config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
+                           unpermuted_row_to_permuted_row, token_selected_experts, cols, experts_per_token,
+                           num_experts_per_node_int, start_expert_id));
+        return;
+      }
       auto func = final_scales
                       ? &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT, true>
                       : &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE, true>;
