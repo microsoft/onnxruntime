@@ -505,7 +505,7 @@ TEST(PatternRewriterTests, ReplacementBranchesAndMultiOutputRoot) {
 
 TEST(PatternRewriterTests, ReplacementParsingCompilationAndRollback) {
   for (auto text : {"(x)=>Unknown(y)", "(x)=>a=Identity(x); Identity(x)", "(x)=>Add(x,1e999)",
-                    "(x)=>a=Identity(x);return Identity(a,axis=[0])", "(x)=>Identity(x);more",
+                    "(x)=>a=Identity(x);return Identity(a,axis=[0,])", "(x)=>Identity(x);more",
                     "(x)=>Identity(x,axis=0,axis=1)", "(x)=>Identity(x,mode='bad)",
                     "(x)=>a=Identity(a);return Identity(a)", "(x)=>a=Split(x);return Identity(b)",
                     "(x)=>a=Identity(x);return Identity(x)", "(x)=>return = Identity(x)",
@@ -1004,7 +1004,7 @@ TEST(PatternRewriterTests, ParsedAttributesMultiOutputsAndDomains) {
         "(x)=>a=Identity(x);return Add(a, 9223372036854775808)", "(x)=>a=Identity(x);return Add(a, 1.2.3)",
         "(x)=>a=Identity(x);return Identity(a, mode='bad)", "(x)=>a=Identity(x);return Identity(a, axis=1, axis=2)",
         "(x)=>a=Identity(x);return Add(axis=1, a)", "(x)=>a=Identity(x);return Identity(a,) ",
-        "(x)=>a=Identity(x);return Identity(a, axis=[1])", "(x,y)=>return Identity(x)",
+        "(x)=>a=Identity(x);return Identity(a, axis=[1,])", "(x,y)=>return Identity(x)",
         "(x)=>a=Identity(x);return Identity(x)", "(x)=>x=Identity(x);return Identity(x)",
         "(x)=>a=Identity(x);return Identity(a) ''", "(x)=>'return' Identity(x)", "(x)=>return Identity(x ')'"}) {
     try {
@@ -1053,6 +1053,169 @@ TEST(PatternRewriterTests, LiteralTypeAndRankMatching) {
   auto floating = p.Nodes()[1].inputs[1];
   EXPECT_TRUE(std::holds_alternative<int64_t>(p.Constants().at(integer)));
   EXPECT_TRUE(std::holds_alternative<float>(p.Constants().at(floating)));
+}
+
+TEST(PatternRewriterTests, VectorLiteralParsingAndErrors) {
+  Pattern pattern("(x)=>{a=Add(x,[1,2]);return Identity(a);}");
+  const auto& integers = std::get<InlinedVector<int64_t>>(pattern.Constants().begin()->second);
+  ASSERT_EQ(integers.size(), 2u);
+  EXPECT_EQ(integers[0], 1);
+  EXPECT_EQ(integers[1], 2);
+  Replacement plan("(x)=>Add(x,[1.0,2e0])");
+  const auto& values = std::get<InlinedVector<float>>(
+      std::get<Replacement::Scalar>(plan.Plan()->front().inputs[1]).value);
+  ASSERT_EQ(values.size(), 2u);
+  EXPECT_FLOAT_EQ(values[1], 2.0f);
+  for (auto text : {"(x)=>return Add(x,[1,2.0])", "(x)=>return Add(x,[[1]])",
+                    "(x)=>return Add(x,[1,])", "(x)=>return Add(x,[1)", "(x)=>return Add(x,[1e999])",
+                    "(x)=>return Add(x,[9223372036854775808])", "(x)=>return Add(x,[1 2])",
+                    "(x)=>return Identity(x,axes=[1,2.0])", "(x)=>return Identity(x,axes=[1,])"}) {
+    SCOPED_TRACE(text);
+    EXPECT_THROW((void)Pattern{text}, OnnxRuntimeException);
+    EXPECT_THROW((void)Replacement{text}, OnnxRuntimeException);
+  }
+  Pattern empty("(x)=>{a=Add(x,[]);return Identity(a);}");
+  EXPECT_TRUE(std::get<InlinedVector<int64_t>>(empty.Constants().begin()->second).empty());
+}
+
+TEST(PatternRewriterTests, VectorLiteralMatchingAndNumerics) {
+  for (bool indexed : {false, true}) {
+    for (int scenario = 0; scenario < 5; ++scenario) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = b.MakeInput<int64_t>({2}, 0, 5);
+      NodeArg* literal = scenario == 1   ? b.MakeInitializer<int64_t>({1, 2}, {1, 2})
+                         : scenario == 2 ? b.MakeInitializer<float>({2}, {1.0f, 2.0f})
+                                         : b.MakeInitializer<int64_t>({2}, {1, scenario == 3 ? 3 : 2});
+      if (scenario == 2) {
+        x = b.MakeInput<float>({2}, 0.0f, 5.0f);
+      }
+      auto* a = b.MakeIntermediate();
+      b.AddNode("Add", {x, literal}, {a});
+      b.AddNode("Identity", {a}, {b.MakeOutput()});
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      if (scenario == 4) {
+        auto inputs = test.graph.GetInputsIncludingInitializers();
+        inputs.push_back(literal);
+        test.graph.SetInputs(inputs);
+        ASSERT_STATUS_OK(test.graph.Resolve());
+      }
+      auto rule = IdentityPair();
+      rule.pattern = Pattern("(x)=>{a=Add(x,[1,2]);return Identity(a);}");
+      rule.replacement = Replacement("(x)=>Add(x,[1,2])");
+      auto rejected = rule;
+      rejected.pattern = Pattern("(x)=>{a=Add(x,[1,3]);return Identity(a);}");
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({rejected, rule}, {.indexed = indexed}).Run(test.graph, stats));
+      EXPECT_EQ(stats.rewrites, scenario == 0 ? 1u : 0u);
+      ASSERT_STATUS_OK(test.graph.Resolve());
+    }
+    for (bool floating : {false, true}) {
+      auto rule = IdentityPair();
+      rule.replacement = Replacement(floating ? "(x)=>Add(x,[0.0,0.0])" : "(x)=>Add(x,[0,0])");
+      TransformerTester(
+          [floating](ModelTestBuilder& b) {
+            auto* x = floating ? b.MakeInput<float>({2}, -1.0f, 1.0f) : b.MakeInput<int64_t>({2}, -5, 5);
+            auto* a = b.MakeIntermediate();
+            b.AddNode("Identity", {x}, {a});
+            b.AddNode("Identity", {a}, {b.MakeOutput()});
+          },
+          [](InferenceSessionWrapper& session) { EXPECT_EQ(Count(session.GetGraph(), "Add"), 1u); },
+          TransformerLevel::Default, TransformerLevel::Level1, 17, 0, 0,
+          std::make_unique<PatternRewriter>(Rules{rule}, Options{.indexed = indexed}));
+    }
+    for (auto text : {"(x)=>{a=Add(x,[0.0,0.0]);return Identity(a);}",
+                      "(x)=>{a=Add(x,[]);return Identity(a);}"}) {
+      TestGraph test;
+      const bool empty = std::string_view(text).find("[]") != std::string_view::npos;
+      auto* x = empty ? test.builder.MakeInput<int64_t>({0}, std::vector<int64_t>{})
+                      : test.builder.MakeInput<float>({2}, -1.0f, 1.0f);
+      auto* literal = empty ? test.builder.MakeInitializer<int64_t>({0}, std::vector<int64_t>{})
+                            : test.builder.MakeInitializer<float>({2}, {0.0f, 0.0f});
+      auto* a = test.builder.MakeIntermediate();
+      test.builder.AddNode("Add", {x, literal}, {a});
+      test.builder.AddNode("Identity", {a}, {test.builder.MakeOutput()});
+      test.builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      auto rule = IdentityPair();
+      rule.pattern = Pattern(text);
+      rule.replacement = Replacement(empty ? "(x)=>Add(x,[])" : "(x)=>Add(x,[0.0,0.0])");
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({rule}, {.indexed = indexed}).Run(test.graph, stats));
+      EXPECT_EQ(stats.rewrites, 1u);
+      ASSERT_STATUS_OK(test.graph.Resolve());
+    }
+    for (auto text : {"(x)=>{a=Add(x,[0,0]);return NoSuchOperator(a);}",
+                      "(x)=>{a=Add(x,[0.0,0.0]);return NoSuchOperator(a);}"}) {
+      TestGraph test;
+      BuildHardSwish(test.builder);
+      test.builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      auto count = test.graph.GetAllInitializedTensors().size();
+      auto rule = MakeExampleRules()[0];
+      rule.replacement = Replacement(text);
+      Statistics stats;
+      EXPECT_FALSE(PatternRewriter({rule}, {.indexed = indexed}).Run(test.graph, stats).IsOK());
+      EXPECT_EQ(test.graph.NumberOfNodes(), 4u);
+      EXPECT_EQ(test.graph.GetAllInitializedTensors().size(), count);
+      ASSERT_STATUS_OK(test.graph.Resolve());
+    }
+  }
+}
+
+TEST(PatternRewriterTests, ListAttributesAndDottedOperators) {
+  for (auto text : {"(x,y)=>{a=com.microsoft.FusedMatMul(x,y);return Identity(a);}",
+                    "(x,y)=>{a=com.microsoft::FusedMatMul(x,y);return Identity(a);}"}) {
+    Pattern pattern(text);
+    EXPECT_EQ(pattern.Nodes()[0].op.domain, kMSDomain);
+    EXPECT_EQ(pattern.Nodes()[0].op.name, "FusedMatMul");
+  }
+  for (auto text : {"(x)=>return ai.onnx.Identity(x)", "(x)=>return ai.onnx::Identity(x)"}) {
+    EXPECT_EQ(Pattern(text).Nodes()[0].op.domain, kOnnxDomain);
+    EXPECT_EQ(Replacement(text).Plan()->front().domain, kOnnxDomain);
+  }
+  for (bool indexed : {false, true}) {
+    auto rule = IdentityPair();
+    rule.pattern = Pattern("(x)=>{a=ai.onnx.Transpose(x,perm=[1,0]);return Identity(a);}");
+    rule.replacement = Replacement("(x)=>ai.onnx.Transpose(x,perm=[1,0])");
+    TransformerTester(
+        [](ModelTestBuilder& b) {
+          auto* x = b.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+          auto* a = b.MakeIntermediate();
+          b.AddNode("Transpose", {x}, {a}).AddAttribute("perm", std::vector<int64_t>{1, 0});
+          b.AddNode("Identity", {a}, {b.MakeOutput()});
+        },
+        [](InferenceSessionWrapper& session) { EXPECT_EQ(Count(session.GetGraph(), "Identity"), 0u); },
+        TransformerLevel::Default, TransformerLevel::Level1, 17, 0, 0,
+        std::make_unique<PatternRewriter>(Rules{rule}, Options{.indexed = indexed}));
+    for (auto text : {"(x)=>{a=Transpose(x,perm=[0,1]);return Identity(a);}",
+                      "(x)=>{a=Transpose(x,perm=[1]);return Identity(a);}",
+                      "(x)=>{a=Transpose(x,perm=[1.0,0.0]);return Identity(a);}"}) {
+      TestGraph test;
+      auto* x = test.builder.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+      auto* a = test.builder.MakeIntermediate();
+      test.builder.AddNode("Transpose", {x}, {a}).AddAttribute("perm", std::vector<int64_t>{1, 0});
+      test.builder.AddNode("Identity", {a}, {test.builder.MakeOutput()});
+      test.builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      rule.pattern = Pattern(text);
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+      EXPECT_EQ(stats.matches, 0u);
+    }
+  }
+  Pattern floats("(x)=>{a=Identity(x,coefficients=[1.0,2.0]);return Identity(a);}");
+  ONNX_NAMESPACE::AttributeProto attribute;
+  attribute.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOATS);
+  attribute.add_floats(1.0f);
+  attribute.add_floats(2.0f);
+  EXPECT_TRUE(floats.Nodes()[0].attributes[0].Matches(attribute));
+  attribute.set_floats(1, 3.0f);
+  EXPECT_FALSE(floats.Nodes()[0].attributes[0].Matches(attribute));
+  Replacement float_plan("(x)=>Identity(x,coefficients=[1.0,2.0])");
+  EXPECT_EQ(float_plan.Plan()->front().attributes.at("coefficients").type(),
+            ONNX_NAMESPACE::AttributeProto_AttributeType_FLOATS);
 }
 
 TEST(PatternRewriterTests, AttributeAndConstantPlansCannotAlias) {
@@ -2020,6 +2183,7 @@ TEST(PatternRewriterTests, NumericalFusedMatMulDivPreservesAttributes) {
         }
       };
       Rule rule = MakeExampleRules()[4];
+      rule.pattern = Pattern("(x,y,divisor)=>{mm=com.microsoft.FusedMatMul(x,y);return Div(mm,divisor);}");
       TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1, 17, 1e-6, 1e-5,
                         std::make_unique<PatternRewriter>(Rules{std::move(rule)}, Options{.indexed = indexed}));
     }

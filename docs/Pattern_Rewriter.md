@@ -81,16 +81,18 @@ A final call without an assignment, such as `return Div(product, 6.0)`, also des
 but does not give that output a lookup name. Replacements additionally accept
 a final call without the `return` keyword, as above.
 
-Use `domain::Operator(...)` for qualified operators:
+Use `domain.Operator(...)` (ONNX text-format notation) or
+`domain::Operator(...)` for qualified operators in patterns and replacements:
 
 ```cpp
-Pattern pattern("(x,y) => { mm = com.microsoft::FusedMatMul(x,y); return Identity(mm); }");
-Replacement replacement("(x,y) => com.microsoft::FusedMatMul(x,y)");
+Pattern pattern("(x,y) => { mm = com.microsoft.FusedMatMul(x,y); return Identity(mm); }");
+Replacement replacement("(x,y) => com.microsoft.FusedMatMul(x,y)");
 ```
 
 An unqualified operator uses the standard ONNX domain. `ai.onnx::Identity`
-is equivalent to `Identity`. Replacements also accept
-`com.microsoft.FusedMatMul(...)`; patterns use the `::` form.
+and `ai.onnx.Identity` are equivalent to `Identity`. Dotted qualification
+splits at the last dot, so `com.microsoft.FusedMatMul` has domain
+`com.microsoft` and operator name `FusedMatMul`.
 
 Names must be unique and defined before use. Every declared pattern input must
 participate, and every operator must reach the root. Inputs to different named
@@ -109,6 +111,21 @@ A singleton vector is not a scalar. External tensor data and overridable
 initializers do not satisfy these constraints. Constant operators require
 an earlier constant-folding pass.
 
+A bracketed positional literal is a **rank-one tensor**, not an attribute:
+
+```cpp
+Pattern pattern("(x) => { reshaped = Reshape(x,[2,3]); return Identity(reshaped); }");
+Replacement replacement("(x) => Reshape(x,[2,3])");
+```
+
+`[1,2]` is an int64 tensor of shape `[2]`; `[1.0,2.0]` is float32 of the same
+shape. `[1]` has shape `[1]` and does not match scalar `1` or a matrix `[[1]]`.
+Matching requires exact rank, length, element type, order, and values. Nested
+lists are not supported. All elements must have the same numeric type spelling:
+mixing integer and floating-point literals is rejected instead of silently
+converting them. Float elements must be finite. `[]` is an empty int64 tensor
+of shape `[0]`. Replacement tensor lists synthesize immutable initializers.
+
 Keyword arguments constrain attributes, not tensor inputs:
 
 ```cpp
@@ -121,13 +138,24 @@ Single- or double-quoted string attributes are supported; strings may escape
 quotes and backslashes. Other attributes are unconstrained. A listed attribute
 must be present in the resolved node's attribute map.
 
+In keyword positions the same numeric list syntax instead denotes an attribute:
+
+```cpp
+Pattern pattern("(x) => { t=Transpose(x,perm=[1,0]); return Identity(t); }");
+Replacement replacement("(x) => Transpose(x,perm=[1,0])");
+```
+
+Integer lists become `INTS` attributes; float lists become `FLOATS`.
+Matching compares the exact attribute type, length, order, and each value.
+`[]` denotes an empty `INTS` attribute. Scalar and list attributes are distinct.
 Pattern syntax supports scalar integer, float, and string attribute equality,
-not attribute lists or custom predicate syntax. Inspect `match.nodes` in the C++
-guard for ranges, list-valued attributes, shapes, or other semantic conditions.
+and numeric list equality, but not custom predicate syntax or string lists.
+Inspect `match.nodes` in the C++ guard for ranges, shapes, or other semantic conditions.
 Positional inputs must precede keyword attributes.
 
-Numeric literals in replacements synthesize rank-zero float32 or int64
-initializers. Replacement keyword literals set attributes on the new node.
+Scalar numeric literals in replacements synthesize rank-zero float32 or int64
+initializers; list literals synthesize rank-one tensors. Replacement keyword
+literals set scalar or list attributes on the new node.
 
 ### Branched patterns and multiple outputs
 

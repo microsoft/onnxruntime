@@ -46,6 +46,8 @@ struct Operator {
   std::string domain;
 };
 
+using Literal = std::variant<float, int64_t, InlinedVector<float>, InlinedVector<int64_t>>;
+
 struct OpsetRequirement {
   std::string domain;
   int min_version;
@@ -78,6 +80,7 @@ class Pattern {
   Value Input(std::string_view name);
   Value Constant(float value);
   Value Constant(int64_t value);
+  Value Constant(Literal value);
   void Name(Value value, std::string_view name);
   void Attributes(InlinedVector<AttributeMatcher, 1> matchers);
   InlinedVector<Value> MultiOp(Operator op, gsl::span<const Value> inputs, size_t output_count);
@@ -85,7 +88,7 @@ class Pattern {
   size_t value_count_ = 0;
   InlinedVector<NodePattern, 1> nodes_;
   InlinedVector<Value> values_;
-  InlinedHashMap<int, std::variant<float, int64_t>> constants_;
+  InlinedHashMap<int, Literal> constants_;
   Value AddValue(std::string_view name);
 };
 
@@ -108,7 +111,7 @@ struct Replacement {
     size_t slot = 0;
   };
   struct Scalar {
-    std::variant<float, int64_t> value;
+    Literal value;
   };
   using Input = std::variant<Value, Output, std::string, Scalar>;
   struct NodeRecipe {

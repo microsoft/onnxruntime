@@ -8,7 +8,9 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <optional>
 #include <sstream>
+#include <type_traits>
 
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
@@ -28,7 +30,17 @@ std::string Signature(const Pattern& pattern) {
     auto it = pattern.Constants().find(id);
     if (it == pattern.Constants().end()) continue;
     stream << 'c' << id << ':' << it->second.index() << ':';
-    std::visit([&](auto value) { stream << value; }, it->second);
+    std::visit([&](const auto& value) {
+      using T = std::decay_t<decltype(value)>;
+      if constexpr (std::is_arithmetic_v<T>) {
+        stream << value;
+      } else {
+        stream << value.size() << '[';
+        for (auto element : value) stream << element << ',';
+        stream << ']';
+      }
+    },
+               it->second);
     stream << ';';
   }
   for (const auto& node : pattern.Nodes()) {
@@ -98,18 +110,28 @@ bool MatchPattern(const Pattern& pattern, const Graph& graph, const Node& root, 
   }
   for (const auto& [handle, expected] : pattern.Constants()) {
     const auto* tensor = graph_utils::GetConstantInitializer(graph, match.values[handle]->Name());
-    if (!tensor || tensor->dims_size() != 0 ||
+    const bool vector = expected.index() >= 2;
+    if (!tensor || tensor->dims_size() != (vector ? 1 : 0) ||
         tensor->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL)
       return false;
-    const bool floating = std::holds_alternative<float>(expected);
+    const bool floating = std::holds_alternative<float>(expected) ||
+                          std::holds_alternative<InlinedVector<float>>(expected);
     if (tensor->data_type() !=
         (floating ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT : ONNX_NAMESPACE::TensorProto_DataType_INT64))
       return false;
     Initializer initializer(graph, *tensor, graph.ModelPath());
-    if (initializer.size() != 1) return false;
-    if (floating ? *initializer.data<float>() != std::get<float>(expected)
-                 : *initializer.data<int64_t>() != std::get<int64_t>(expected))
-      return false;
+    const bool equal = std::visit([&](const auto& value) {
+      using T = std::decay_t<decltype(value)>;
+      if constexpr (std::is_arithmetic_v<T>) {
+        return initializer.size() == 1 && *initializer.data<T>() == value;
+      } else {
+        using Element = typename T::value_type;
+        return tensor->dims(0) == static_cast<int64_t>(value.size()) && initializer.size() == value.size() &&
+               std::equal(value.begin(), value.end(), initializer.data<Element>());
+      }
+    },
+                                  expected);
+    if (!equal) return false;
   }
   for (size_t i = 0; i + 1 < match.nodes.size(); ++i) {
     const Node& node = *match.nodes[i];
@@ -197,16 +219,32 @@ Status Replace(Graph& graph, const Pattern& pattern, const Match& match, const R
       if (const auto* scalar = std::get_if<Replacement::Scalar>(&nodes[i].inputs[j])) {
         ONNX_NAMESPACE::TensorProto tensor;
         tensor.set_name(graph.GenerateNodeArgName("rewrite_literal"));
-        if (const auto* floating = std::get_if<float>(&scalar->value)) {
-          tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-          tensor.add_float_data(*floating);
-        } else {
-          tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-          tensor.add_int64_data(std::get<int64_t>(scalar->value));
-        }
+        std::visit([&](const auto& value) {
+          using T = std::decay_t<decltype(value)>;
+          if constexpr (std::is_arithmetic_v<T>) {
+            if constexpr (std::is_same_v<T, float>) {
+              tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+              tensor.add_float_data(value);
+            } else {
+              tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+              tensor.add_int64_data(value);
+            }
+          } else {
+            tensor.add_dims(static_cast<int64_t>(value.size()));
+            if constexpr (std::is_same_v<typename T::value_type, float>) {
+              tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+              for (auto element : value) tensor.add_float_data(element);
+            } else {
+              tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+              for (auto element : value) tensor.add_int64_data(element);
+            }
+          }
+        },
+                   scalar->value);
         ONNX_NAMESPACE::TypeProto type;
         type.mutable_tensor_type()->set_elem_type(tensor.data_type());
-        type.mutable_tensor_type()->mutable_shape();
+        auto* shape = type.mutable_tensor_type()->mutable_shape();
+        if (tensor.dims_size()) shape->add_dim()->set_dim_value(tensor.dims(0));
         inputs[j] = &graph.GetOrCreateNodeArg(tensor.name(), &type);
         initializers.push_back(tensor.name());
         graph.AddInitializedTensor(tensor);
@@ -338,6 +376,12 @@ Value Pattern::Constant(float constant) {
 Value Pattern::Constant(int64_t constant) {
   auto value = AddValue("");
   constants_.emplace(value.handle, constant);
+  return value;
+}
+
+Value Pattern::Constant(Literal constant) {
+  auto value = AddValue("");
+  constants_.emplace(value.handle, std::move(constant));
   return value;
 }
 
@@ -548,7 +592,7 @@ class PatternParser {
                (c == ':' && position_ < text_.size() && text_[position_] == ':')) {
       ++position_;
     } else {
-      ORT_RETURN_IF(std::string_view("(),=;{}").find(c) == std::string_view::npos, Error("unexpected character"));
+      ORT_RETURN_IF(std::string_view("(),=;{}[]").find(c) == std::string_view::npos, Error("unexpected character"));
     }
     token_ = text_.substr(token_start_, position_ - token_start_);
     return Status::OK();
@@ -586,6 +630,33 @@ class PatternParser {
     return Next();
   }
 
+  Status List(Literal& result) {
+    ORT_RETURN_IF_ERROR(Expect("["));
+    InlinedVector<int64_t> integers;
+    InlinedVector<float> floats;
+    std::optional<bool> floating;
+    while (token_ != "]") {
+      std::variant<float, int64_t> number;
+      ORT_RETURN_IF_ERROR(Number(number));
+      const bool is_float = std::holds_alternative<float>(number);
+      ORT_RETURN_IF(floating && *floating != is_float, Error("list elements must have the same numeric type"));
+      floating = is_float;
+      if (is_float)
+        floats.push_back(std::get<float>(number));
+      else
+        integers.push_back(std::get<int64_t>(number));
+      if (token_ != ",") break;
+      ORT_RETURN_IF_ERROR(Next());
+      ORT_RETURN_IF(token_ == "]", Error("expected list element after comma"));
+    }
+    ORT_RETURN_IF_ERROR(Expect("]"));
+    if (floating.value_or(false))
+      result = std::move(floats);
+    else
+      result = std::move(integers);
+    return Status::OK();
+  }
+
   Status Call(const InlinedVector<std::string>& names) {
     ORT_RETURN_IF(kind_ != Kind::Identifier || token_ == "return", Error("expected operator name"));
     Operator op{token_, ""};
@@ -596,7 +667,7 @@ class PatternParser {
       ORT_RETURN_IF(kind_ != Kind::Identifier, Error("expected qualified operator name"));
       op.name = token_;
       ORT_RETURN_IF_ERROR(Next());
-    } else if (replacement_attributes_) {
+    } else {
       auto dot = op.name.rfind('.');
       if (dot != std::string::npos) {
         op.domain = op.name.substr(0, dot);
@@ -634,6 +705,29 @@ class PatternParser {
               attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
               attr.set_s(token_);
               ORT_RETURN_IF_ERROR(Next());
+            } else if (token_ == "[") {
+              Literal list;
+              ORT_RETURN_IF_ERROR(List(list));
+              ONNX_NAMESPACE::AttributeProto attr;
+              attr.set_name(name);
+              if (const auto* values = std::get_if<InlinedVector<float>>(&list)) {
+                attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOATS);
+                for (auto value : *values) attr.add_floats(value);
+              } else {
+                attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
+                for (auto value : std::get<InlinedVector<int64_t>>(list)) attr.add_ints(value);
+              }
+              attributes.push_back({name, [attr](const auto& actual) {
+                                      if (actual.type() != attr.type()) return false;
+                                      if (attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_FLOATS) {
+                                        return actual.floats_size() == attr.floats_size() &&
+                                               std::equal(attr.floats().begin(), attr.floats().end(),
+                                                          actual.floats().begin());
+                                      }
+                                      return actual.ints_size() == attr.ints_size() &&
+                                             std::equal(attr.ints().begin(), attr.ints().end(), actual.ints().begin());
+                                    }});
+              literal_attributes.emplace(name, std::move(attr));
             } else {
               std::variant<float, int64_t> number;
               ORT_RETURN_IF_ERROR(Number(number));
@@ -657,10 +751,16 @@ class PatternParser {
           }
         } else {
           ORT_RETURN_IF(keyword, Error("positional input after attribute"));
-          std::variant<float, int64_t> number;
-          ORT_RETURN_IF_ERROR(Number(number));
           ORT_RETURN_IF(pattern_.ValueCount() >= 256, Error("too many values"));
-          inputs.push_back(std::visit([&](auto value) { return pattern_.Constant(value); }, number));
+          if (token_ == "[") {
+            Literal list;
+            ORT_RETURN_IF_ERROR(List(list));
+            inputs.push_back(pattern_.Constant(std::move(list)));
+          } else {
+            std::variant<float, int64_t> number;
+            ORT_RETURN_IF_ERROR(Number(number));
+            inputs.push_back(std::visit([&](auto value) { return pattern_.Constant(value); }, number));
+          }
         }
         ORT_RETURN_IF(inputs.size() > 64, Error("too many operator inputs"));
         if (token_ != ",") break;
