@@ -108,12 +108,19 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionNumerics) {
       SCOPED_TRACE(shape.k);
       SCOPED_TRACE(shape.n);
       SCOPED_TRACE(shape.batch);
+      // DP4A prefill quantizes X; subgroup decode changes the K reduction
+      // order. Keep exact comparisons for the other dispatch paths.
+      const bool approximate =
+          (shape.m >= 4 && std::string_view{mode} != "fuse_down") ||
+          (shape.m == 1 && shape.batch == 1 && shape.k >= 2048 && shape.k <= 8192 &&
+           std::string_view{mode} != "fuse_up");
       RunWebGpuFusionTransformerTest(
           [shape](ModelTestBuilder& b) {
             BuildQLoRA(b, shape.m, shape.k, shape.n, shape.batch, false, false, shape.zero_base);
           },
           [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckQLoRACount(s.GetGraph(), 1)); },
-          TransformerLevel::Level1, TransformerLevel::Level2, 21, 0.0, 0.0, std::make_unique<MatMulNBitsQLoRAFusion>(),
+          TransformerLevel::Level1, TransformerLevel::Level2, 21,
+          approximate ? 0.002 : 0.0, approximate ? 0.001 : 0.0, std::make_unique<MatMulNBitsQLoRAFusion>(),
           [] { return DefaultWebGpuExecutionProvider(); },
           [mode](SessionOptions& options) {
             if (mode[0])
@@ -133,10 +140,12 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionFp32Accumulation) {
   if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU unavailable.";
   for (int64_t m : {1, 2, 37}) {
     SCOPED_TRACE(m);
+    const bool approximate = m == 1 || m >= 4;
     RunWebGpuFusionTransformerTest(
         [m](ModelTestBuilder& b) { BuildQLoRA(b, m, 2048, 132, 1, false, false, true); },
         [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckQLoRACount(s.GetGraph(), 1)); },
-        TransformerLevel::Level1, TransformerLevel::Level2, 21, 0.0, 0.0, std::make_unique<MatMulNBitsQLoRAFusion>(),
+        TransformerLevel::Level1, TransformerLevel::Level2, 21,
+        approximate ? 0.002 : 0.0, approximate ? 0.001 : 0.0, std::make_unique<MatMulNBitsQLoRAFusion>(),
         [] {
           ConfigOptions options;
           ORT_THROW_IF_ERROR(options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation,

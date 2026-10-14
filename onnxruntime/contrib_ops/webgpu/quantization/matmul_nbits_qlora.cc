@@ -13,7 +13,52 @@
 
 namespace onnxruntime::contrib::webgpu {
 
-void GenerateQLoRADown(ShaderHelper& shader, const std::string& base_groups, const std::string& x_value, bool acc_f32) {
+void GenerateQLoRADown(ShaderHelper& shader, const std::string& base_groups, const std::string& x_value,
+                       bool acc_f32, bool use_subgroups) {
+  if (use_subgroups) {
+    shader.AdditionalImplementation() << "alias qlora_acc_t = " << (acc_f32 ? "f32" : "f16") << ";\n";
+    auto& body = shader.MainFunctionBody();
+    body << "let qlora_base_groups = " << base_groups << ";\n"
+         << R"(
+if (workgroup_idx >= qlora_base_groups) {
+  let rank_base = (workgroup_idx - qlora_base_groups) * 8u;
+  let lane = local_idx % 32u;
+  let rank_local = local_idx / 32u;
+  var partial0 = qlora_acc_t(0);
+  var partial1 = qlora_acc_t(0);
+  for (var k = lane * 16u; k < uniforms.K; k += 512u) {
+    var k4 = k / 4u;
+)";
+    // Keep each X vector in a register for both ranks assigned to this lane.
+    for (uint32_t i = 0; i < 4; ++i) {
+      body << "let x" << i << " = vec4<qlora_acc_t>(" << x_value << ");\n";
+      if (i != 3) body << "k4 += 1u;\n";
+    }
+    for (uint32_t r = 0; r < 2; ++r) {
+      body << "let rank" << r << " = rank_base + rank_local + " << r * 4 << "u;\n"
+           << "let packed" << r << " = lora_at[rank" << r << " * (uniforms.K / 16u) + k / 16u];\n"
+           << "let scale" << r << " = lora_a_scales[rank" << r << " * (uniforms.K / 32u) + k / 32u];\n"
+           << "var sum" << r << " = qlora_acc_t(0);\n";
+      for (uint32_t i = 0; i < 4; ++i) {
+        body << "sum" << r << " += dot(x" << i << ", vec4<qlora_acc_t>((vec4<f16>(unpack4xU8(packed"
+             << r << "[" << i << "])) - vec4<f16>(128)) * scale" << r << "));\n";
+      }
+      body << "partial" << r << " += sum" << r << ";\n";
+    }
+    // FP32 avoids half-precision rounding at each step of the subgroup tree.
+    body << R"(
+  }
+  let result0 = subgroupAdd(f32(partial0));
+  let result1 = subgroupAdd(f32(partial1));
+  if (lane == 0u) {
+    lora_down[rank_base + rank_local] = f16(result0);
+    lora_down[rank_base + rank_local + 4u] = f16(result1);
+  }
+  return;
+}
+)";
+    return;
+  }
   shader.AdditionalImplementation() << "alias qlora_acc_t = " << (acc_f32 ? "f32" : "f16") << ";\n"
                                     << R"(
 var<workgroup> qlora_x_tile: array<vec4<f16>, 128>;

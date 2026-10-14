@@ -53,9 +53,9 @@ class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgr
 
 class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
  public:
-  MatMulNBitsProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights, uint32_t tile_size_k_vec = 16, bool broadcast_a_row = false, bool acc_f32 = false, bool has_lora_up = false, bool has_lora_down = false, bool lora_transposed = false, bool lora_quantized = false)
-      : Program{has_lora_down ? (lora_quantized ? "MatMulNBitsQLoRADown" : "MatMulNBitsLoRADown") : has_lora_up ? (lora_quantized ? "MatMulNBitsQLoRAUp" : "MatMulNBitsLoRAUp")
-                                                                                                                : "MatMulNBits"},
+  MatMulNBitsProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights, uint32_t tile_size_k_vec = 16, bool broadcast_a_row = false, bool acc_f32 = false, bool has_lora_up = false, bool has_lora_down = false, bool lora_transposed = false, bool lora_quantized = false, bool qlora_down_subgroups = false)
+      : Program{has_lora_down ? (lora_quantized ? (qlora_down_subgroups ? "MatMulNBitsQLoRADownSubgroup" : "MatMulNBitsQLoRADown") : "MatMulNBitsLoRADown") : has_lora_up ? (lora_quantized ? "MatMulNBitsQLoRAUp" : "MatMulNBitsLoRAUp")
+                                                                                                                                                                          : "MatMulNBits"},
         tile_size_(tile_size),
         nbits_(nbits),
         has_zero_points_(has_zero_points),
@@ -69,7 +69,8 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
         has_lora_up_(has_lora_up),
         has_lora_down_(has_lora_down),
         lora_transposed_(lora_transposed),
-        lora_quantized_(lora_quantized) {}
+        lora_quantized_(lora_quantized),
+        qlora_down_subgroups_(qlora_down_subgroups) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"M", ProgramUniformVariableDataType::Uint32},
@@ -100,6 +101,7 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
   bool has_lora_down_;
   bool lora_transposed_;
   bool lora_quantized_;
+  bool qlora_down_subgroups_;
 };
 
 class MatMulNBits final : public WebGpuKernel {

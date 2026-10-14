@@ -7,6 +7,7 @@
 #if defined(USE_WEBGPU) && !defined(DISABLE_CONTRIB_OPS)
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #endif
 
 namespace onnxruntime::test {
@@ -170,6 +171,75 @@ TEST(MatMulNBitsQLoRA, NarrowSmallMReduction) {
     std::vector<std::unique_ptr<IExecutionProvider>> eps;
     eps.push_back(DefaultWebGpuExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+  }
+}
+
+TEST(MatMulNBitsQLoRA, DecodeSubgroupReduction) {
+  auto initial_ep = DefaultWebGpuExecutionProvider();
+  ASSERT_NE(initial_ep, nullptr);
+  auto& gpu = webgpu::WebGpuContextFactory::GetContext(initial_ep->GetDeviceId());
+  const auto& adapter = gpu.AdapterInfo();
+  if (!gpu.DeviceHasFeature(wgpu::FeatureName::Subgroups) ||
+      adapter.vendor != std::string_view{"nvidia"} ||
+      adapter.subgroupMinSize != 32 || adapter.subgroupMaxSize != 32) {
+    GTEST_SKIP() << "The decode specialization requires NVIDIA 32-lane subgroups.";
+  }
+  for (bool acc_f32 : {false, true}) {
+    for (const auto [k, n] : {std::pair<int64_t, int64_t>{2048, 36}, {4096, 132}, {8192, 64}}) {
+      SCOPED_TRACE(MakeString("K=", k, ", N=", n, ", acc_f32=", acc_f32));
+      std::vector<MLFloat16> x(k);
+      std::vector<uint8_t> aq(32 * k);
+      std::vector<MLFloat16> as(k);
+      std::vector<uint8_t> bq(n * 32, 128);
+      std::vector<MLFloat16> expected(n);
+      double base = 0;
+      for (int64_t col = 0; col < k; ++col) {
+        x[col] = MLFloat16((static_cast<int>(col % 17) - 8) / 64.0f);
+        base += x[col].ToFloat() * 0.03125;
+      }
+      std::vector<MLFloat16> t(32);
+      for (int64_t rank = 0; rank < 32; ++rank) {
+        for (int64_t block = 0; block < k / 32; ++block) {
+          as[rank * (k / 32) + block] = MLFloat16(0.001f * (1 + (rank + block) % 4));
+        }
+        double sum = 0;
+        for (int64_t col = 0; col < k; ++col) {
+          const int q = rank == 0 ? 0 : static_cast<int>((rank * 19 + col * 13) % 65) - 32;
+          aq[rank * k + col] = static_cast<uint8_t>(q + 128);
+          const auto weight = MLFloat16(q * as[rank * (k / 32) + col / 32].ToFloat());
+          sum += static_cast<double>(x[col].ToFloat()) * weight.ToFloat();
+        }
+        t[rank] = MLFloat16(static_cast<float>(sum));
+      }
+      // Identity rows expose all 32 T values; the nonzero base also exercises
+      // ordinary workgroups in the same dispatch and partial output tiles.
+      const auto rounded_base = MLFloat16(static_cast<float>(base));
+      for (int64_t col = 0; col < n; ++col) {
+        bq[col * 32 + col % 32] = 129;
+        expected[col] = MLFloat16(rounded_base.ToFloat() + t[col % 32].ToFloat());
+      }
+      OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
+      test.AddAttribute<int64_t>("K", k);
+      test.AddAttribute<int64_t>("N", n);
+      test.AddInput<MLFloat16>("X", {1, 1, k}, x);
+      test.AddInput<uint8_t>("W", {n, k / 32, 16}, std::vector<uint8_t>(n * k / 2, 0x99), true);
+      test.AddInput<MLFloat16>("S", {n, k / 32}, std::vector<MLFloat16>(n * k / 32, MLFloat16(0.03125f)), true);
+      test.AddInput<uint8_t>("AQ", {32, k / 32, 32}, aq);
+      test.AddInput<MLFloat16>("AS", {32, k / 32}, as);
+      test.AddInput<uint8_t>("BQ", {n, 1, 32}, bq);
+      test.AddInput<MLFloat16>("BS", {n, 1}, std::vector<MLFloat16>(n, MLFloat16(1.0f)));
+      test.AddOutput<MLFloat16>("Y", {1, 1, n}, expected);
+      test.SetOutputAbsErr("Y", 0.002f);
+      test.SetOutputRelErr("Y", 0.001f);
+      ConfigOptions options;
+      if (acc_f32) {
+        ASSERT_STATUS_OK(options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation,
+                                                webgpu::options::kEnableMatmulFp32Accumulation_ON));
+      }
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(WebGpuExecutionProviderWithOptions(options));
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+    }
   }
 }
 

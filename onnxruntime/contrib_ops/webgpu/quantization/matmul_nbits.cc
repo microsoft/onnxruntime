@@ -108,7 +108,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_lora_down_) {
     shader.AddOutput("lora_down", ShaderUsage::UseElementTypeAlias);
     if (lora_quantized_) {
-      GenerateQLoRADown(shader, "uniforms.num_N_tile", a.GetByOffset("k4"), acc_f32_);
+      GenerateQLoRADown(shader, "uniforms.num_N_tile", a.GetByOffset("k4"), acc_f32_, qlora_down_subgroups_);
     } else {
       GenerateLoRAGemv(shader, "uniforms.num_N_tile", a.GetByOffset("k4"));
     }
@@ -397,7 +397,13 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   constexpr uint32_t kU32Components = 4;
   uint32_t components_b_with_u32 = components_b * kU32Components;
   uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
-  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, tile_size_k_vec, broadcast_a, acc_f32, has_lora_up, has_lora_down, lora_transposed, lora_quantized};
+  // The decode reduction assigns one rank to each 32-lane subgroup.
+  const auto& adapter = context.AdapterInfo();
+  const bool qlora_down_subgroups = has_lora_down && lora_quantized &&
+                                    adapter.vendor == std::string_view{"nvidia"} &&
+                                    context.HasFeature(wgpu::FeatureName::Subgroups) &&
+                                    adapter.subgroupMinSize == 32 && adapter.subgroupMaxSize == 32;
+  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, tile_size_k_vec, broadcast_a, acc_f32, has_lora_up, has_lora_down, lora_transposed, lora_quantized, qlora_down_subgroups};
   program.SetWorkgroupSize(workgroup_size);
   uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
   program.SetDispatchGroupSize(num_N_tile + (has_lora_down ? (lora_quantized ? 4 : 8) : 0), dispatch_M, batch_count);
@@ -418,7 +424,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                             {batch_count},
                             {weight_index},
                             {dispatch_M}})
-      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, tile_size_k_vec, broadcast_a, acc_f32, has_lora_up, has_lora_down, lora_transposed, lora_quantized);
+      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, tile_size_k_vec, broadcast_a, acc_f32, has_lora_up, has_lora_down, lora_transposed, lora_quantized, qlora_down_subgroups);
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }
