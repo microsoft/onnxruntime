@@ -293,8 +293,10 @@ TEST(TensorOpTest, SpaceToDepthOpset28ModesAndProviderRouting) {
       InlinedVector<std::unique_ptr<IExecutionProvider>> providers;
       providers.push_back(DefaultCpuExecutionProvider());
       providers.push_back(DefaultCudaExecutionProvider());
+      const IExecutionProvider* cuda_nhwc_provider = nullptr;
 #ifdef ENABLE_CUDA_NHWC_OPS
       providers.push_back(DefaultCudaNHWCExecutionProvider());
+      cuda_nhwc_provider = providers.back().get();
 #endif
       providers.push_back(DefaultDmlExecutionProvider());
       providers.push_back(DefaultOpenVINOExecutionProvider());
@@ -311,7 +313,9 @@ TEST(TensorOpTest, SpaceToDepthOpset28ModesAndProviderRouting) {
           continue;
         }
         const std::string provider_type = provider->Type();
+        const bool is_cuda_nhwc = provider.get() == cuda_nhwc_provider;
         SCOPED_TRACE(provider_type);
+        SCOPED_TRACE(is_cuda_nhwc);
         SessionOptions options;
         options.graph_optimization_level = TransformerLevel::Default;
         options.enable_mem_pattern = false;
@@ -325,23 +329,31 @@ TEST(TensorOpTest, SpaceToDepthOpset28ModesAndProviderRouting) {
                             provider_type == kOpenVINOExecutionProvider ||
                             provider_type == kMIGraphXExecutionProvider ||
                             provider_type == kCannExecutionProvider);
-        const bool uses_native_kernel = falls_back_to_cpu || provider_type == kCpuExecutionProvider;
-        if (uses_native_kernel || provider_type == kCudaExecutionProvider ||
-            provider_type == kDmlExecutionProvider || provider_type == kOpenVINOExecutionProvider) {
+        const bool uses_native_kernel = falls_back_to_cpu || provider_type == kCpuExecutionProvider ||
+                                        provider_type == kCudaExecutionProvider;
+        if (uses_native_kernel || provider_type == kDmlExecutionProvider ||
+            provider_type == kOpenVINOExecutionProvider) {
           const std::string expected_provider = falls_back_to_cpu ? kCpuExecutionProvider : provider_type;
           size_t compute_node_count = 0;
+          size_t layout_transpose_count = 0;
           for (const auto& resolved_node : session.GetGraph().Nodes()) {
             if (utils::IsMemcpyNode(resolved_node)) {
               continue;
             }
-            ++compute_node_count;
             EXPECT_EQ(resolved_node.GetExecutionProviderType(), expected_provider);
+            // NHWC CUDA wraps the native kernel with NCHW/NHWC layout conversions.
+            if (is_cuda_nhwc && resolved_node.OpType() == "Transpose") {
+              ++layout_transpose_count;
+              continue;
+            }
+            ++compute_node_count;
             // Graph EPs may replace supported operators with fused nodes.
             if (uses_native_kernel) {
               EXPECT_EQ(resolved_node.OpType(), "SpaceToDepth");
             }
           }
           EXPECT_EQ(compute_node_count, 1u);
+          EXPECT_EQ(layout_transpose_count, is_cuda_nhwc ? 2u : 0u);
         }
 
         std::vector<OrtValue> fetches;
