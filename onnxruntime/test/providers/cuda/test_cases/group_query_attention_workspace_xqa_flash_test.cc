@@ -103,7 +103,7 @@ TEST(GroupQueryAttentionXqaWorkspaceTest, HandCalculatedMultiBlockLayoutAndExtra
   EXPECT_EQ(recipe.internal_scratch_bytes, 5248U);
 
   // Runtime retains these in the XQA allocation even though the separate
-  // GQABufferRequirements Q allocation is also requested for RoPE.
+  // QKV preparation Q allocation is also requested for RoPE.
   EXPECT_EQ(recipe.rotary_q_offset_bytes, 5248U);
   EXPECT_EQ(recipe.rotary_q_bytes, 1024U);
   EXPECT_EQ(recipe.rotary_k_offset_bytes, 6272U);
