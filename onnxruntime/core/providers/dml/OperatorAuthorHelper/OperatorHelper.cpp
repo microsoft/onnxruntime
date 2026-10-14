@@ -2521,13 +2521,18 @@ namespace OperatorHelper
                 }
                 if (!m_regionOfInterest.empty())
                 {
-                    std::vector<float> defaultRois(dimCount, 0.0f);
-                    defaultRois.resize(dimCount * 2, 1.0f);
-                    size_t numAxes = axes.size();
-                    for (size_t i = 0; i < axes.size(); i++)
+                    if (m_regionOfInterest.size() != dimCount * 2)
                     {
-                        defaultRois[axes[i]] = m_regionOfInterest[i];
-                        defaultRois[axes[i + dimCount]] = m_regionOfInterest[i + numAxes];
+                        ML_CHECK_VALID_ARGUMENT(m_regionOfInterest.size() == axes.size() * 2, "roi input length must be twice the input rank or the number of axes.");
+                        std::vector<float> defaultRois(dimCount, 0.0f);
+                        defaultRois.resize(dimCount * 2, 1.0f);
+                        size_t numAxes = axes.size();
+                        for (size_t i = 0; i < axes.size(); i++)
+                        {
+                            defaultRois[axes[i]] = m_regionOfInterest[i];
+                            defaultRois[axes[i] + dimCount] = m_regionOfInterest[i + numAxes];
+                        }
+                        m_regionOfInterest = std::move(defaultRois);
                     }
                 }
             }

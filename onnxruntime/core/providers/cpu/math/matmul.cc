@@ -179,9 +179,8 @@ Status MatMul<double>::Compute(OpKernelContext* ctx) const {
     return Status::OK();
 
   if (helper.K() == 0) {
-    EigenMatrixMapRowMajor<double> dest(y->MutableData<double>(),
-                                        narrow<Eigen::Index>(helper.M()), narrow<Eigen::Index>(helper.N()));
-    dest.setZero();
+    auto output_span = gsl::make_span(y->MutableData<double>(), narrow<size_t>(y->Shape().Size()));
+    std::fill(output_span.begin(), output_span.end(), double{});
     return Status::OK();
   }
 
@@ -210,7 +209,7 @@ Status MatMul<double>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
 bool GemmPackBBfloat16(AllocatorPtr& alloc,
                        const Tensor& tensor_b,
                        bool trans_a,
@@ -307,7 +306,7 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
   // only pack Matrix B
   if (input_idx == 1) {
     size_t packed_b_size;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
     TensorShape b_shape = tensor.Shape();
 
     if (CanPackBForFastMathModeSBGemm(b_shape)) {
@@ -476,9 +475,8 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   if (helper.K() == 0) {
     // When we have (M, 0, N) then the inputs are empty, but the output should
     // be filled out with zeros.
-    EigenMatrixMapRowMajor<float> dest(y->MutableData<float>(),
-                                       narrow<Eigen::Index>(helper.M()), narrow<Eigen::Index>(helper.N()));
-    dest.setZero();
+    auto output_span = gsl::make_span(y->MutableData<float>(), narrow<size_t>(y->Shape().Size()));
+    std::fill(output_span.begin(), output_span.end(), float{});
     return Status::OK();
   }
 
@@ -496,7 +494,7 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   // storage to avoid a per-Compute() heap allocation; larger batches use std::vector.
   // (Under DISABLE_ABSEIL, InlinedVector is std::vector, so this is a no-op.)
   constexpr size_t kInlineBatchCutoff = 2;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
   const bool can_use_fastmath_sbgemm = CanUseFastMathModeSBGemm(N, K);
   if (packed_b_) {
     const bool packed_b_can_use_fastmath_sbgemm = CanPackBForFastMathModeSBGemm(b_shape);

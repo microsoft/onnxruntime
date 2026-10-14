@@ -5,6 +5,7 @@
 #include <limits>
 #include <vector>
 
+#include "core/framework/resource_accountant.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/group_query_attention_pre_norm_fusion.h"
 #include "core/optimizer/utils.h"
@@ -264,6 +265,47 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesQwenPatter
   ASSERT_STATUS_OK(TestGraphTransformer(
       build, /*opset_version=*/21, *logger_, MakeCudaWebGpuTransformer(),
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionTransfersWorkspaceReservations) {
+  auto build = [](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, BuildOptions{}); };
+  NodeWorkspaceReservationMap reservations;
+  size_t total_reserved_bytes = 0;
+  auto install_reservation_callback = [&](Graph& graph) {
+    for (const Node& node : graph.Nodes()) {
+      reservations.insert_or_assign(
+          node.Index(), WorkspaceEstimateSelection{10, WorkspaceEstimateSource::kFallback});
+      total_reserved_bytes += 10;
+    }
+    graph.SetNodeReplacementCallback(
+        [&reservations](const Graph&,
+                        gsl::span<const NodeIndex> source_node_indices,
+                        NodeIndex destination_node_index) {
+          ConsolidateWorkspaceReservations(
+              reservations, source_node_indices, destination_node_index);
+        });
+    return Status::OK();
+  };
+  auto check_reservations = [&](Graph& graph) {
+    graph.SetNodeReplacementCallback({});
+    ORT_RETURN_IF_ERROR(CheckFusedGraph(graph));
+    ORT_RETURN_IF_NOT(reservations.size() == 1, "Expected one consolidated workspace reservation.");
+
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "GroupQueryAttention") {
+        ORT_RETURN_IF_NOT(
+            reservations.at(node.Index()).bytes == total_reserved_bytes,
+            "Fused GQA workspace reservation did not include all removed nodes.");
+        return Status::OK();
+      }
+    }
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Fused GQA node not found.");
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeCudaWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, install_reservation_callback, check_reservations));
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesCudaAssignedQwenPattern) {

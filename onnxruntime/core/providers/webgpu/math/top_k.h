@@ -82,7 +82,7 @@ class TopK final : public WebGpuKernel {
     info.GetAttrOrDefault<int64_t>("largest", &largest_, 1);
     info.GetAttrOrDefault<int64_t>("sorted", &sorted_, 1);
     if (opset_ <= 9) {
-      int64_t k_temp;
+      int64_t k_temp = 0;
       ORT_ENFORCE(info.GetAttr<int64_t>("k", &k_temp).IsOK());
       attr_k_ = k_temp;
     }

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/constants.h"
 
@@ -47,8 +49,10 @@ void RegisterCollectiveOps() {
           "Constrain to bool, float, float16, bfloat16 and double tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto group_size = getAttribute(ctx, "group_size", 1);
-        auto axis = getAttribute(ctx, "axis", 0);
-        assert(group_size >= static_cast<int64_t>(1));
+        auto axis = getAttribute(ctx, "axis", 1);
+        if (group_size < 1) {
+          fail_shape_inference("group_size must be greater than 0");
+        }
         // propagate type for output
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
@@ -58,8 +62,20 @@ void RegisterCollectiveOps() {
         auto input_type = ctx.getInputType(0);
         if (hasShape(*input_type)) {
           auto shape = input_type->tensor_type().shape();
-          auto dim = shape.dim(static_cast<int>(axis)) * group_size;
-          *shape.mutable_dim(static_cast<int>(axis)) = dim;
+          const int rank = shape.dim_size();
+          if (axis < 0 || axis >= rank) {
+            fail_shape_inference("axis must be in the range [0, ", rank, ")");
+          }
+
+          const int axis_index = static_cast<int>(axis);
+          const auto& input_dim = shape.dim(axis_index);
+          if (input_dim.has_dim_value() &&
+              input_dim.dim_value() > std::numeric_limits<int64_t>::max() / group_size) {
+            fail_shape_inference("AllGather output dimension is too large");
+          }
+
+          auto dim = input_dim * group_size;
+          *shape.mutable_dim(axis_index) = dim;
           *output_type->mutable_tensor_type()->mutable_shape() = shape;
         }
       });

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #if !defined(ORT_MINIMAL_BUILD)
+#include "core/common/narrow.h"
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph_utils.h"
@@ -57,6 +58,12 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
   }
 
   Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
+  // The NodeArg shape is the inferred type, which is not guaranteed to agree with the dims declared
+  // on the initializer itself. Verify the element count before reading the first element.
+  if (init_const.size() < 1) {
+    return false;
+  }
+
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     const float* val = init_const.data<float>();
@@ -110,7 +117,19 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
     return false;
   }
 
+  // GetConstantInitializer() returns nullptr when the NodeArg is not backed by a constant
+  // initializer, which a model is free to do for any input this helper inspects.
+  if (tensor_proto == nullptr) {
+    return false;
+  }
+
   Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
+  // The NodeArg shape is the inferred type, which is not guaranteed to agree with the dims declared
+  // on the initializer itself. Verify the element count before reading the first element.
+  if (init_const.size() < 1) {
+    return false;
+  }
+
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     const int64_t* val = init_const.data<int64_t>();
@@ -175,11 +194,11 @@ bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, I
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     const int64_t* val = init_const.data<int64_t>();
-    data.reserve(data.size() + gsl::narrow<size_t>(init_const.size()));
+    data.reserve(data.size() + narrow<size_t>(init_const.size()));
     data.insert(data.end(), val, val + init_const.size());
   } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     const int32_t* val = init_const.data<int32_t>();
-    data.reserve(data.size() + gsl::narrow<size_t>(init_const.size()));
+    data.reserve(data.size() + narrow<size_t>(init_const.size()));
     for (size_t i = 0; i < init_const.size(); i++) {
       data.push_back(static_cast<int64_t>(val[i]));
     }
@@ -525,6 +544,12 @@ bool GetScalarInitializerValue(const onnxruntime::Graph& graph, const onnxruntim
   }
 
   Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
+  // The NodeArg shape is the inferred type, which is not guaranteed to agree with the dims declared
+  // on the initializer itself. Verify the element count before reading the first element.
+  if (init_const.size() < 1) {
+    return false;
+  }
+
   const T* val = init_const.data<T>();
   value = *val;
 

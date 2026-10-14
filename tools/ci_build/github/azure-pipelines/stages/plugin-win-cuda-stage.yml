@@ -69,7 +69,7 @@ stages:
           os: windows
           hostArchitecture: Arm64
         ${{ else }}:
-          name: onnxruntime-Win-CPU-VS2022-Latest
+          name: onnxruntime-Win-CPU-2022
           os: windows
       templateContext:
         sdl:
@@ -364,7 +364,7 @@ stages:
           os: windows
           hostArchitecture: Arm64
         ${{ else }}:
-          name: onnxruntime-Win-CPU-VS2022-Latest
+          name: onnxruntime-Win-CPU-2022
           os: windows
       templateContext:
         outputs:

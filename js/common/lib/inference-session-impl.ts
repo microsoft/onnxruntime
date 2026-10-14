@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 import { resolveBackendAndExecutionProviders } from './backend-impl.js';
-import { InferenceSessionHandler } from './backend.js';
+import { Backend, InferenceSessionHandler, LoraAdapterHandler } from './backend.js';
 import { InferenceSession as InferenceSessionInterface } from './inference-session.js';
+import { LoraAdapter } from './lora-adapter-impl.js';
 import { OnnxValue } from './onnx-value.js';
 import { Tensor } from './tensor.js';
 import { TRACE_FUNC_BEGIN, TRACE_FUNC_END, TRACE_EVENT_BEGIN, TRACE_EVENT_END } from './trace.js';
@@ -15,8 +16,9 @@ type FetchesType = InferenceSessionInterface.FetchesType;
 type ReturnType = InferenceSessionInterface.ReturnType;
 
 export class InferenceSession implements InferenceSessionInterface {
-  private constructor(handler: InferenceSessionHandler) {
+  private constructor(handler: InferenceSessionHandler, backend: Backend) {
     this.handler = handler;
+    this.backend = backend;
   }
   run(feeds: FeedsType, options?: RunOptions): Promise<ReturnType>;
   run(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): Promise<ReturnType>;
@@ -107,9 +109,26 @@ export class InferenceSession implements InferenceSessionInterface {
       }
     }
 
+    // resolve handlers of the active LoRA adapters
+    let activeLoraAdapters: LoraAdapterHandler[] | undefined;
+    if (options.activeLoraAdapters !== undefined) {
+      if (!Array.isArray(options.activeLoraAdapters)) {
+        throw new TypeError("'activeLoraAdapters' must be an array.");
+      }
+      activeLoraAdapters = options.activeLoraAdapters.map((adapter) => {
+        if (!(adapter instanceof LoraAdapter)) {
+          throw new TypeError("'activeLoraAdapters' must be an array of LoraAdapter objects.");
+        }
+        if (adapter.backend !== this.backend) {
+          throw new Error('LoRA adapter was created by a different backend than the session.');
+        }
+        return adapter.handler;
+      });
+    }
+
     // feeds, fetches and options are prepared
 
-    const results = await this.handler.run(feeds, fetches, options);
+    const results = await this.handler.run(feeds, fetches, options, activeLoraAdapters);
     const returnValue: { [name: string]: OnnxValue } = {};
     for (const key in results) {
       if (Object.hasOwnProperty.call(results, key)) {
@@ -212,7 +231,7 @@ export class InferenceSession implements InferenceSessionInterface {
     const handler = await backend.createInferenceSessionHandler(filePathOrUint8Array, optionsWithValidatedEPs);
     TRACE_EVENT_END('InferenceSession.create');
     TRACE_FUNC_END();
-    return new InferenceSession(handler);
+    return new InferenceSession(handler, backend);
   }
 
   startProfiling(): void {
@@ -238,4 +257,5 @@ export class InferenceSession implements InferenceSessionInterface {
   }
 
   private handler: InferenceSessionHandler;
+  private backend: Backend;
 }

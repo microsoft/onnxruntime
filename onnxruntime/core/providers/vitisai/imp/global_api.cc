@@ -16,6 +16,7 @@
 #include "core/common/exceptions.h"
 #include "core/framework/error_code_helper.h"
 #include "core/providers/shared/common.h"
+#include "core/session/onnxruntime_type_conversion.h"
 
 #include "vaip/dll_safe.h"
 #include "vaip/vaip_ort_api.h"
@@ -393,7 +394,8 @@ void create_kernel_registry(const std::vector<OrtCustomOpDomain*>& domains) {
         if (input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
           def_builder->TypeConstraint(input_name.c_str(), DataTypeImpl::AllTensorTypes());
         } else {
-          def_builder->TypeConstraint(input_name.c_str(), DataTypeImpl::GetTensorTypeFromOnnxType(input_type));
+          const auto tensor_type = DataTypeImpl::GetTensorTypeFromOnnxType(utils::ToTensorProtoElementType(input_type));
+          def_builder->TypeConstraint(input_name.c_str(), tensor_type);
         }
       }
       for (size_t i = 0; i < output_count; i++) {
@@ -407,7 +409,8 @@ void create_kernel_registry(const std::vector<OrtCustomOpDomain*>& domains) {
         if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
           def_builder->TypeConstraint(output_name.c_str(), DataTypeImpl::AllTensorTypes());
         } else {
-          def_builder->TypeConstraint(output_name.c_str(), DataTypeImpl::GetTensorTypeFromOnnxType(output_type));
+          const auto tensor_type = DataTypeImpl::GetTensorTypeFromOnnxType(utils::ToTensorProtoElementType(output_type));
+          def_builder->TypeConstraint(output_name.c_str(), tensor_type);
         }
       }
       KernelCreateFn kernel_create_fn =
