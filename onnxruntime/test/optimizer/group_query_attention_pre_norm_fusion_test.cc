@@ -223,7 +223,7 @@ Status CheckFusedGraph(const Graph& graph) {
     const auto& attrs = node.GetAttributes();
     auto eps_it = attrs.find("qk_norm_epsilon");
     ORT_RETURN_IF_NOT(eps_it != attrs.end(), "qk_norm_epsilon attribute missing.");
-    ORT_RETURN_IF_NOT(std::abs(eps_it->second.f() - 1e-6f) < 1e-9f, "qk_norm_epsilon value mismatch.");
+    ORT_RETURN_IF_NOT(eps_it->second.f() == 1e-6f, "qk_norm_epsilon value mismatch.");
   }
   return Status::OK();
 }
@@ -402,6 +402,25 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsEpsilonM
   auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
   ASSERT_STATUS_OK(TestGraphTransformer(
       build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsSmallEpsilonMismatch) {
+  BuildOptions opts;
+  opts.q_epsilon = 1e-9f;
+  opts.k_epsilon = 1.9e-9f;
+  auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeCudaWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsAdjacentEpsilonMismatch) {
+  BuildOptions opts;
+  opts.k_epsilon = std::nextafter(opts.q_epsilon, 1.0f);
+  auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeCudaWebGpuTransformer(),
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
 }
 

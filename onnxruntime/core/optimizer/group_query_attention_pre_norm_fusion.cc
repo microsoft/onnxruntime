@@ -18,7 +18,6 @@ namespace onnxruntime {
 namespace {
 
 constexpr const char* kQkNormEpsilonAttrName = "qk_norm_epsilon";
-constexpr float kEpsilonTolerance = 1e-9f;
 
 bool HasInput(const Node& node, size_t index) {
   return index < node.InputDefs().size() && node.InputDefs()[index] != nullptr &&
@@ -297,7 +296,8 @@ Status GroupQueryAttentionPreNormFusion::ApplyImpl(Graph& graph,
       continue;
     }
 
-    if (std::fabs(q_epsilon - k_epsilon) > kEpsilonTolerance) {
+    // The fused operator uses a single epsilon for both Q and K normalization.
+    if (q_epsilon != k_epsilon) {
       continue;
     }
 
