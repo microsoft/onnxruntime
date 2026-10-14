@@ -228,9 +228,4 @@ def main():
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(f"\nFAILED: {e}", file=sys.stderr)
-        traceback.print_exc()
-        sys.exit(1)
+    main()
