@@ -558,6 +558,12 @@ static constexpr int kDecodeK4MinBlocks = 4;
 // Rows beyond this use the KPacked kernel, which amortizes less per-row work as the grid grows.
 static constexpr int64_t kDecodeMaxExpandedRows = 80;
 
+// Opt-out for the programmatic dependent launch of FC2 (env ORT_FP4_GEMV_PDL=0).
+static bool Fp4MoeGemvUsePdl() {
+  static const bool enabled = onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_PDL", 1) != 0;
+  return enabled;
+}
+
 // Table-free decode: place the three e2m1 magnitude bits (e1 e0 m) at the lowest exponent bits and the
 // top mantissa bit of T and the sign at bit 15. The result is fp4_value * 2^-126 for bf16 and
 // fp4_value * 2^-14 for fp16 (denormal for e == 0), so multiplying by block_scale * 2^126 (resp. 2^14)
@@ -747,6 +753,16 @@ __global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
   static_assert(KLanes == 4 || KLanes == 8);
   static_assert(Batch >= 1);
 
+  // Programmatic dependent launch (only active when launched with the PDL attribute, otherwise no-ops): let the next
+  // kernel of the MoE chain start its prologue while this one runs. FC2 reads only data of kernels that completed
+  // before FC1 passed its wait (expert maps, weights) before its own wait and the FC1 output after it.
+  // FC1 triggers only after its own wait (the routing kernel may be its primary grid), so FC2 and the finalize
+  // kernel, which read routing metadata before their waits, never launch before that metadata is complete.
+  if constexpr (FusedSwiGlu) {
+    asm volatile("griddepcontrol.wait;" ::: "memory");
+  }
+  asm volatile("griddepcontrol.launch_dependents;");
+
   const int row = static_cast<int>(blockIdx.x);
   int expert = permuted_row_to_expert != nullptr ? permuted_row_to_expert[row] : 0;
 #pragma unroll 1
@@ -797,6 +813,9 @@ __global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
   uint32_t scale_codes[Batch][kDecodeColsPerThread];
   load_batch(0, packed, scale_codes);
 
+  if constexpr (!FusedSwiGlu) {
+    asm volatile("griddepcontrol.wait;" ::: "memory");  // the activation row is the FC1 output
+  }
   // Stage the activation row as FP32, one padded 32-element unit per lane pair.
   extern __shared__ __align__(16) float act_smem[];
   {
@@ -874,7 +893,8 @@ void LaunchMoeGemvFp4RawNPacked(
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t expanded_num_rows, int64_t n, int64_t k, cutlass_kernels::ActivationParams activation_params,
     const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream, bool weights_row_major, int sm,
-    bool decode_scale_eligible = false, bool* decode_kernel_launched = nullptr) {
+    bool decode_scale_eligible = false, bool* decode_kernel_launched = nullptr,
+    bool programmatic_dependent_launch = false) {
   if (decode_kernel_launched != nullptr) {
     *decode_kernel_launched = false;
   }
@@ -941,12 +961,30 @@ void LaunchMoeGemvFp4RawNPacked(
           if (!available) {
             return false;
           }
-          MoeGemvFp4DecodeKernel<T, FusedSwiGlu, kEnableBias, kKLanes, kWarps, kBatch, kMinBlocks>
-              <<<decode_grid, kWarps * 32, decode_smem, stream>>>(
-                  act, weight, block_scales, global_scales, bias, out,
-                  expert_first_token_offset, permuted_row_to_expert, num_experts,
-                  weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k),
-                  activation_params, permuted_row_to_source_row, static_cast<int>(num_rows));
+          auto kernel = MoeGemvFp4DecodeKernel<T, FusedSwiGlu, kEnableBias, kKLanes, kWarps, kBatch, kMinBlocks>;
+          if (programmatic_dependent_launch && Fp4MoeGemvUsePdl()) {
+            cudaLaunchConfig_t config{};
+            config.gridDim = decode_grid;
+            config.blockDim = dim3(kWarps * 32);
+            config.dynamicSmemBytes = decode_smem;
+            config.stream = stream;
+            cudaLaunchAttribute attribute[1];
+            attribute[0].id = cudaLaunchAttributeProgrammaticStreamSerialization;
+            attribute[0].val.programmaticStreamSerializationAllowed = 1;
+            config.attrs = attribute;
+            config.numAttrs = 1;
+            const cudaError_t status = cudaLaunchKernelEx(
+                &config, kernel, act, weight, block_scales, global_scales, bias, out, expert_first_token_offset,
+                permuted_row_to_expert, num_experts, weight_expert_stride, scale_expert_stride, static_cast<int>(n),
+                static_cast<int>(k), activation_params, permuted_row_to_source_row, static_cast<int>(num_rows));
+            ORT_ENFORCE(status == cudaSuccess, "FP4 GEMV decode launch failed: ", cudaGetErrorString(status));
+            return true;
+          }
+          kernel<<<decode_grid, kWarps * 32, decode_smem, stream>>>(
+              act, weight, block_scales, global_scales, bias, out,
+              expert_first_token_offset, permuted_row_to_expert, num_experts,
+              weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k),
+              activation_params, permuted_row_to_source_row, static_cast<int>(num_rows));
           return true;
         };
         if (bias != nullptr) {
@@ -1131,7 +1169,7 @@ void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T*
                                    int num_experts, int64_t expanded_num_rows, int64_t n, int64_t k, int group_size,
                                    int sm, MoeGemvConfig config, bool sm80_pair_interleaved, bool raw_n_packed,
                                    cudaStream_t stream, bool weights_row_major, bool decode_scale_eligible,
-                                   bool* decode_kernel_launched) {
+                                   bool* decode_kernel_launched, bool programmatic_dependent_launch) {
   if (decode_kernel_launched != nullptr) {
     *decode_kernel_launched = false;
   }
@@ -1143,7 +1181,7 @@ void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T*
         act, weight, raw_block_scales, raw_global_scales, bias, out,
         expert_first_token_offset, permuted_row_to_expert, num_experts,
         expanded_num_rows, n, k, cutlass_kernels::ActivationParams{}, nullptr, expanded_num_rows, stream,
-        weights_row_major, sm, decode_scale_eligible, decode_kernel_launched);
+        weights_row_major, sm, decode_scale_eligible, decode_kernel_launched, programmatic_dependent_launch);
     return;
   }
   // Interleaved path: ColumnMajorInterleaved layout + dtype-conditional accumulation + smaller
@@ -1203,7 +1241,7 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
     cutlass_kernels::ActivationParams activation_params, MoeGemvConfig config, bool sm80_pair_interleaved,
     bool raw_n_packed,
     const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream, bool weights_row_major,
-    bool decode_scale_eligible, bool* decode_kernel_launched) {
+    bool decode_scale_eligible, bool* decode_kernel_launched, bool programmatic_dependent_launch) {
   if (decode_kernel_launched != nullptr) {
     *decode_kernel_launched = false;
   }
@@ -1215,7 +1253,7 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
         act, weight, raw_block_scales, raw_global_scales, bias, out,
         expert_first_token_offset, permuted_row_to_expert, num_experts,
         expanded_num_rows, inter_size * 2, k, activation_params, permuted_row_to_source_row, num_rows, stream,
-        weights_row_major, sm, decode_scale_eligible, decode_kernel_launched);
+        weights_row_major, sm, decode_scale_eligible, decode_kernel_launched, programmatic_dependent_launch);
     return;
   }
   // Interleaved path: ColumnMajorInterleaved layout + dtype-conditional accumulation + smaller
@@ -1271,23 +1309,23 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
 template void launch_moe_gemv_fp4_symmetric<half>(
     const half*, const uint8_t*, const half*, const uint8_t*, const float*, const half*, half*,
     const int64_t*, const int*, int,
-    int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool, bool, cudaStream_t, bool, bool, bool*);
+    int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool, bool, cudaStream_t, bool, bool, bool*, bool);
 template void launch_moe_gemv_fp4_symmetric_interleaved_swiglu<half>(
     const half*, const uint8_t*, const half*, const uint8_t*, const float*, const half*, half*,
     const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, MoeGemvConfig, bool, bool,
-    const int*, int64_t, cudaStream_t, bool, bool, bool*);
+    const int*, int64_t, cudaStream_t, bool, bool, bool*, bool);
 #ifdef ENABLE_BF16
 template void launch_moe_gemv_fp4_symmetric<__nv_bfloat16>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const uint8_t*, const float*,
     const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool, bool, cudaStream_t,
-    bool, bool, bool*);
+    bool, bool, bool*, bool);
 template void launch_moe_gemv_fp4_symmetric_interleaved_swiglu<__nv_bfloat16>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const uint8_t*, const float*,
     const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
-    MoeGemvConfig, bool, bool, const int*, int64_t, cudaStream_t, bool, bool, bool*);
+    MoeGemvConfig, bool, bool, const int*, int64_t, cudaStream_t, bool, bool, bool*, bool);
 #endif
 
 }  // namespace moe_gemv
