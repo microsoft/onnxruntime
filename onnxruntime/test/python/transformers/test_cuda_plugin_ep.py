@@ -2693,6 +2693,12 @@ class TestCudaPluginEP(unittest.TestCase):
                 os.dup2(captured.fileno(), 2)
                 try:
                     session = self._create_cuda_graph_session(model_path)
+                    assigned_nodes, assignment_info = _get_assigned_nodes(session, CUDA_PLUGIN_EP_NAME)
+                    self.assertTrue(
+                        assigned_nodes,
+                        f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                        f"Assignments: {_format_assignment_summary(assignment_info)}",
+                    )
                     io_binding, input_vals, _ = self._setup_cuda_graph_io(
                         session, {"X": [3, 4]}, {"Y": [3, 4]}, cuda_device_id
                     )
