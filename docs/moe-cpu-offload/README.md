@@ -250,9 +250,10 @@ correctness. Additional eligible exchanges are reconsidered at a later inference
 The two expert-sized pinned buffers and two expert-sized CUDA staging/layout buffers exist only while an exchange is
 pending and are released after its publication event completes.
 
-Asynchronous CPU routing is limited to at most 256 input rows. Its compact pinned-host and CUDA activation buffers are
-released when the invocation completes, so a long prefill cannot establish a full-row-count high-water allocation in
-every MoE node. Larger inputs use the synchronous CPU path; decode and small batches retain the asynchronous overlap.
+Asynchronous CPU routing processes at most 256 input rows per chunk. Each node retains and reuses compact pinned-host
+and CUDA activation buffers sized for one chunk, so long prefills do not establish a full-row-count high-water
+allocation in every MoE node. The first chunk overlaps the CUDA expert computation; subsequent chunks reuse the same
+bounded buffers.
 
 ## Planned end-of-inference redistribution
 
@@ -415,12 +416,19 @@ binary. Verify the resolved `ORT_LIB_PATH` after importing GenAI and record the 
 CUDA_VISIBLE_DEVICES=5 PYTHONPATH="$ORT_PYTHON_ROOT:tools/python" \
 python tools/python/benchmark_moe_cpu_offload.py \
   --name cpu1000-alpha0p9-epsilon0p1 \
-  --model "$MODEL_PATH" --prompts "$PROMPTS_PATH" \
+  --model "$MODEL_PATH" --prompts docs/moe-cpu-offload/benchmark-prompts.json \
   --prompt-limit 5 --max-new-tokens 256 \
   --cpu-offload-experts 1000 --counter-alpha 0.9 --swap-epsilon 0.1 \
   --swap --no-counter-log --no-cuda-graph \
   --output result.json --log result.log
 ```
+
+The bounded 256-row activation-chunk implementation was measured on 2026-10-14 with that exact command and one
+fresh process. The prompt 3-5 score was **20.870 ms/token** (individual prompt means: 21.075, 18.632, and
+22.901 ms/token), compared with **21.557 ms/token** for the earlier two-run reference. Model loading took 55.190 s;
+GPU memory was 60.53 GiB after loading and peaked at 61.86 GiB, while process RSS peaked at 7.64 GiB. The measured
+runtime and CUDA provider SHA-256 values were `29ee22201693e482fa798551dd61972827eb57bcf48b43102c365ff4e37d7a3a`
+and `14ce18c4b1d35d8c14c9198e7cfbf08372f7ce114200cc2b7ab9e25a51362831`, respectively.
 
 Each fresh process runs five prompts, with counters and placement retained between prompts. Generation is greedy and
 has a fixed length of 256 tokens. `append_tokens()` is prefill and is timed separately. The first

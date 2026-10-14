@@ -4462,6 +4462,74 @@ TEST(MoETest, MoECudaBf16StaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCou
   RunMoECudaStaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCountsUsage<BFloat16>();
 }
 
+TEST(MoETest, MoECudaFp16StaticCpuOffloadProcessesMultipleActivationChunks) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  auto provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(provider, nullptr);
+  if (provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  constexpr int num_rows = 257;
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = kMoEMinCudaDim;
+  constexpr int inter_size = kMoEMinCudaDim;
+  std::vector<float> fc1_weights(static_cast<size_t>(num_experts * inter_size * hidden_size), 0.0f);
+  std::vector<float> fc2_weights(static_cast<size_t>(num_experts * hidden_size * inter_size), 0.0f);
+  std::vector<float> fc1_bias(static_cast<size_t>(num_experts * inter_size));
+  std::vector<float> fc2_bias(static_cast<size_t>(num_experts * hidden_size));
+  for (int expert = 0; expert < num_experts; ++expert) {
+    std::fill_n(fc1_bias.begin() + expert * inter_size, inter_size,
+                0.5f * static_cast<float>(expert + 1));
+    std::fill_n(fc2_bias.begin() + expert * hidden_size, hidden_size,
+                0.25f * static_cast<float>(expert + 1));
+    for (int column = 0; column < hidden_size; ++column) {
+      fc1_weights[static_cast<size_t>(expert * inter_size * hidden_size +
+                                      column * hidden_size + column)] = 1.0f;
+      fc2_weights[static_cast<size_t>(expert * hidden_size * inter_size +
+                                      column * inter_size + column)] = static_cast<float>(expert + 1);
+    }
+  }
+
+  std::vector<float> router_probs;
+  std::vector<float> expected;
+  router_probs.reserve(num_rows * num_experts);
+  expected.reserve(num_rows * hidden_size);
+  for (int row = 0; row < num_rows; ++row) {
+    const bool route_to_cpu = row % 2 == 0;
+    router_probs.insert(router_probs.end(), route_to_cpu ? std::initializer_list<float>{0.0f, 4.0f}
+                                                         : std::initializer_list<float>{4.0f, 0.0f});
+    expected.insert(expected.end(), hidden_size, route_to_cpu ? 4.5f : 1.75f);
+  }
+
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "relu");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddInput<MLFloat16>("input", {num_rows, hidden_size},
+                             ToFloat16(std::vector<float>(num_rows * hidden_size, 1.0f)));
+  tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, ToFloat16(router_probs));
+  tester.AddInput<MLFloat16>("fc1_experts_weights", {num_experts, inter_size, hidden_size},
+                             ToFloat16(fc1_weights), true);
+  tester.AddInput<MLFloat16>("fc1_experts_bias", {num_experts, inter_size}, ToFloat16(fc1_bias), true);
+  tester.AddInput<MLFloat16>("fc2_experts_weights", {num_experts, hidden_size, inter_size},
+                             ToFloat16(fc2_weights), true);
+  tester.AddInput<MLFloat16>("fc2_experts_bias", {num_experts, hidden_size}, ToFloat16(fc2_bias), true);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected));
+  tester.SetOutputTolerance(0.01f);
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(provider));
+  tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
 template <typename T>
 void RunMoECudaAdaptiveSwapPreservesNonSquareWeightsAndBiases() {
   constexpr int min_cuda_arch = std::is_same_v<T, BFloat16> ? 800 : 700;

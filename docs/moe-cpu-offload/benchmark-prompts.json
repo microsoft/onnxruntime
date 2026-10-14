@@ -1,0 +1,7 @@
+[
+  "write a python function called hello that returns the string \"hello\"",
+  "write a python function called add that takes two numbers and returns their sum",
+  "write a python function called reverse_string that takes a string and returns it reversed",
+  "write a python function called find_max that takes a list of numbers and returns the maximum value",
+  "write a python function called is_prime that takes an integer and returns True if it is prime, False otherwise"
+]

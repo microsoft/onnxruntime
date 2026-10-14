@@ -84,10 +84,7 @@ __global__ void PackMoeCpuRowsKernel(const T* input, const int* ids, const float
 template <typename T>
 __global__ void ScatterAddMoeCpuOutputKernel(const T* contribution, T* output,
                                              const int* rows, const uint32_t* row_count,
-                                             const uint32_t* completion, size_t num_rows, size_t hidden_size) {
-  if (*completion != 1U) {
-    return;
-  }
+                                             size_t num_rows, size_t hidden_size) {
   const size_t count = static_cast<size_t>(*row_count) * hidden_size;
   for (size_t index = blockIdx.x * blockDim.x + threadIdx.x; index < count; index += gridDim.x * blockDim.x) {
     const size_t row = index / hidden_size;
@@ -118,13 +115,13 @@ void PackMoeCpuRows(const T* input, const int* ids, const float* scales, const i
 
 template <typename T>
 void ScatterAddMoeCpuOutput(const T* contribution, T* output, const int* rows, const uint32_t* row_count,
-                            const uint32_t* completion, size_t num_rows, size_t hidden_size, cudaStream_t stream) {
+                            size_t num_rows, size_t hidden_size, cudaStream_t stream) {
   const size_t blocks = (num_rows * hidden_size + 255) / 256;
   if (blocks == 0) {
     return;
   }
   ScatterAddMoeCpuOutputKernel<<<static_cast<unsigned int>(std::min<size_t>(blocks, 65535)), 256, 0, stream>>>(
-      contribution, output, rows, row_count, completion, num_rows, hidden_size);
+      contribution, output, rows, row_count, num_rows, hidden_size);
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
@@ -203,9 +200,9 @@ void LaunchUpdateMoeExpertCounters(const int* ids, const float* scales, size_t r
                    rows, row_count, completion, num_rows, hidden_size, k, stream);                                     \
   }                                                                                                                    \
   void LaunchScatterAddMoeCpuOutput(const T* contribution, T* output,                                                  \
-                                    const int* rows, const uint32_t* row_count, const uint32_t* completion,            \
-                                    size_t num_rows, size_t hidden_size, cudaStream_t stream) {                        \
-    ScatterAddMoeCpuOutput(contribution, output, rows, row_count, completion, num_rows, hidden_size, stream);          \
+                                    const int* rows, const uint32_t* row_count, size_t num_rows,                       \
+                                    size_t hidden_size, cudaStream_t stream) {                                         \
+    ScatterAddMoeCpuOutput(contribution, output, rows, row_count, num_rows, hidden_size, stream);                      \
   }
 
 DEFINE_MOE_CPU_ROUTING(half)

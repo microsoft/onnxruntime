@@ -27,11 +27,11 @@ void LaunchPackMoeCpuRows(const __nv_bfloat16* input, const int* ids, const floa
                           size_t k, cudaStream_t stream);
 
 void LaunchScatterAddMoeCpuOutput(const half* contribution, half* output,
-                                  const int* rows, const uint32_t* row_count, const uint32_t* completion,
-                                  size_t num_rows, size_t hidden_size, cudaStream_t stream);
+                                  const int* rows, const uint32_t* row_count, size_t num_rows,
+                                  size_t hidden_size, cudaStream_t stream);
 void LaunchScatterAddMoeCpuOutput(const __nv_bfloat16* contribution, __nv_bfloat16* output,
-                                  const int* rows, const uint32_t* row_count, const uint32_t* completion,
-                                  size_t num_rows, size_t hidden_size, cudaStream_t stream);
+                                  const int* rows, const uint32_t* row_count, size_t num_rows,
+                                  size_t hidden_size, cudaStream_t stream);
 
 void LaunchTransposeMoeExpertWeights(const half* input, half* output,
                                      size_t rows, size_t columns, cudaStream_t stream);

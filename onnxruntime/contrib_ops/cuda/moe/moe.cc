@@ -120,21 +120,6 @@ struct MoE<T>::CpuTask {
   concurrency::ThreadPool* thread_pool{nullptr};
   Status status;
 
-  void ReleaseRoutingBuffers() noexcept {
-    device_buffer.reset();
-    host_input.reset();
-    host_output.reset();
-    host_ids.reset();
-    host_scales.reset();
-    device_count = nullptr;
-    device_rows = nullptr;
-    device_ids = nullptr;
-    device_scales = nullptr;
-    device_input = nullptr;
-    device_output = nullptr;
-    capacity = 0;
-  }
-
   ~CpuTask() {
     for (cudaEvent_t event : {routes_ready, input_ready}) {
       if (event != nullptr) {
@@ -547,9 +532,6 @@ Status MoE<T>::CompleteUsage(KernelPilotMoeExpertUsageSnapshot& snapshot) {
       experts);
   snapshot.first_selected_routes = gsl::make_span(
       reinterpret_cast<const int64_t*>(static_cast<const double*>(host_usage_.get()) + experts), experts);
-  if (cpu_task_) {
-    cpu_task_->ReleaseRoutingBuffers();
-  }
   return Status::OK();
 }
 
@@ -1080,10 +1062,11 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   const bool run_cpu_experts =
       cpu_offload_enabled_ && cuda_runner_num_experts < static_cast<int>(moe_params.num_experts);
-  const bool async_cpu =
-      run_cpu_experts && async_cpu_supported_ &&
-      static_cast<size_t>(moe_params.num_rows) <= kMaxAsyncCpuRows;
+  const bool async_cpu = run_cpu_experts && async_cpu_supported_;
   const bool synchronous_cpu = run_cpu_experts && !async_cpu;
+  const size_t cpu_task_rows =
+      async_cpu ? std::min(static_cast<size_t>(moe_params.num_rows), kMaxAsyncCpuRows)
+                : static_cast<size_t>(moe_params.num_rows);
 #endif
   const int workspace_num_experts =
       cpu_offload_enabled_
@@ -1218,7 +1201,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   });
   if (cpu_offload_enabled_) {
     ORT_RETURN_IF_ERROR(PrepareUsage(context, moe_pilot, static_cast<size_t>(moe_params.num_experts),
-                                     static_cast<size_t>(moe_params.num_rows),
+                                     cpu_task_rows,
                                      static_cast<size_t>(moe_params.hidden_size),
                                      static_cast<size_t>(moe_params.inter_size), is_fused_swiglu, async_cpu));
     ORT_RETURN_IF_ERROR(moe_pilot->Moe().BeginInvocation(static_cast<size_t>(moe_params.num_experts)));
@@ -1333,6 +1316,53 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<void> cpu_output_device_buffer;
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  auto schedule_async_cpu_chunk = [&](size_t row_offset, size_t row_count) -> Status {
+    auto& task = *cpu_task_;
+    task.num_rows = row_count;
+    task.completion->store(0, std::memory_order_release);
+    task.status = Status::OK();
+    if constexpr (kCpuOffloadSupported) {
+      const size_t route_offset = row_offset * task.k;
+      LaunchPackMoeCpuRows(
+          reinterpret_cast<const CudaT*>(input->DataRaw()) + row_offset * task.hidden_size,
+          expert_indices + route_offset, expert_scales + route_offset,
+          static_cast<const int*>(device_expert_map_.get()),
+          reinterpret_cast<CudaT*>(task.device_input), task.device_ids, task.device_scales,
+          task.device_rows, task.device_count, reinterpret_cast<uint32_t*>(task.device_completion),
+          task.num_rows, task.hidden_size, task.k, stream);
+    }
+    CUDA_RETURN_IF_ERROR(cudaEventRecord(task.routes_ready, stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(input_copy_stream_, task.routes_ready, 0));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(task.host_count.get(), task.device_count, sizeof(uint32_t),
+                                         cudaMemcpyDeviceToHost, input_copy_stream_));
+    {
+      std::lock_guard<std::mutex> lock(cpu_worker_mutex_);
+      cpu_task_finished_ = false;
+    }
+    CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(input_copy_stream_, NotifyCpuWorker, const_cast<MoE<T>*>(this)));
+    cpu_callback_scheduled_ = true;
+    return Status::OK();
+  };
+
+  auto complete_async_cpu_chunk = [&](size_t row_offset) -> Status {
+    auto& task = *cpu_task_;
+    {
+      std::unique_lock<std::mutex> lock(cpu_worker_mutex_);
+      cpu_worker_condition_.wait(lock, [&]() { return cpu_task_finished_; });
+      ORT_RETURN_IF_ERROR(task.status);
+    }
+    if (*task.host_count != 0) {
+      CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(stream, task.input_ready, 0));
+    }
+    if constexpr (kCpuOffloadSupported) {
+      LaunchScatterAddMoeCpuOutput(
+          reinterpret_cast<const CudaT*>(task.device_output),
+          reinterpret_cast<CudaT*>(output->MutableDataRaw()) + row_offset * task.hidden_size,
+          task.device_rows, task.device_count, task.num_rows, task.hidden_size, stream);
+    }
+    return Status::OK();
+  };
+
   if (cpu_offload_enabled_) {
     ORT_RETURN_IF_NOT(use_packed_weights && expert_map_.size() == static_cast<size_t>(moe_params.num_experts),
                       "FP16/BF16 MoE CPU offload weights were not initialized.");
@@ -1343,24 +1373,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
                                   probabilities, first_routes, static_cast<size_t>(moe_params.num_experts),
                                   moe_pilot->MoeExpertCounterAlpha(), moe_pilot->MoeExpertCounterProbabilityWeight(), stream);
     if (async_cpu) {
-      auto& task = *cpu_task_;
-      if constexpr (kCpuOffloadSupported) {
-        LaunchPackMoeCpuRows(reinterpret_cast<const CudaT*>(input->DataRaw()), expert_indices, expert_scales,
-                             static_cast<const int*>(device_expert_map_.get()),
-                             reinterpret_cast<CudaT*>(task.device_input), task.device_ids, task.device_scales,
-                             task.device_rows, task.device_count, reinterpret_cast<uint32_t*>(task.device_completion),
-                             task.num_rows, task.hidden_size, task.k, stream);
-      }
-      CUDA_RETURN_IF_ERROR(cudaEventRecord(task.routes_ready, stream));
-      CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(input_copy_stream_, task.routes_ready, 0));
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(task.host_count.get(), task.device_count, sizeof(uint32_t),
-                                           cudaMemcpyDeviceToHost, input_copy_stream_));
-      {
-        std::lock_guard<std::mutex> lock(cpu_worker_mutex_);
-        cpu_task_finished_ = false;
-      }
-      CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(input_copy_stream_, NotifyCpuWorker, const_cast<MoE<T>*>(this)));
-      cpu_callback_scheduled_ = true;
+      ORT_RETURN_IF_ERROR(schedule_async_cpu_chunk(0, cpu_task_rows));
     }
     if (synchronous_cpu) {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_expert_indices.get(), expert_indices,
@@ -1585,26 +1598,18 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
   if (async_cpu) {
-    const auto& task = *cpu_task_;
-    if (task.completion->load(std::memory_order_acquire) != 1U) {
-      std::unique_lock<std::mutex> lock(cpu_worker_mutex_);
-      cpu_worker_condition_.wait(lock, [&]() { return cpu_task_finished_; });
-      ORT_RETURN_IF_ERROR(task.status);
-      if (*task.host_count != 0) {
-        // The upload must be enqueued before expressing its CUDA-visible dependency.
-        CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(stream, task.input_ready, 0));
-      }
-    }
     if (!run_cuda_experts) {
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output->MutableDataRaw(), 0, input->SizeInBytes(), stream));
     }
-    ORT_RETURN_IF_ERROR(CU_CALL(cuStreamWaitValue32(
-        reinterpret_cast<CUstream>(stream), task.device_completion, 1, CU_STREAM_WAIT_VALUE_GEQ)));
-    if constexpr (kCpuOffloadSupported) {
-      LaunchScatterAddMoeCpuOutput(reinterpret_cast<const CudaT*>(task.device_output),
-                                   reinterpret_cast<CudaT*>(output->MutableDataRaw()), task.device_rows,
-                                   task.device_count, reinterpret_cast<const uint32_t*>(task.device_completion),
-                                   task.num_rows, task.hidden_size, stream);
+    size_t row_offset = 0;
+    while (row_offset < static_cast<size_t>(moe_params.num_rows)) {
+      ORT_RETURN_IF_ERROR(complete_async_cpu_chunk(row_offset));
+      row_offset += cpu_task_->num_rows;
+      if (row_offset < static_cast<size_t>(moe_params.num_rows)) {
+        const size_t row_count =
+            std::min(static_cast<size_t>(moe_params.num_rows) - row_offset, kMaxAsyncCpuRows);
+        ORT_RETURN_IF_ERROR(schedule_async_cpu_chunk(row_offset, row_count));
+      }
     }
   }
 #endif
