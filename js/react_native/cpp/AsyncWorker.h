@@ -2,6 +2,7 @@
 
 #include "Env.h"
 #include <atomic>
+#include <exception>
 #include <jsi/jsi.h>
 #include <memory>
 #include <string>
@@ -50,21 +51,32 @@ class AsyncWorker : public HostObject, public std::enable_shared_from_this<Async
     auto promise = promiseCtor.callAsConstructor(
         rt, Function::createFromHostFunction(
                 rt, PropNameID::forAscii(rt, "executor"), 2,
-                [this](Runtime& rt, const Value& thisVal, const Value* args,
-                       size_t count) -> Value {
+                [this](Runtime& rt, const Value&, const Value* args,
+                       size_t) -> Value {
                   resolveFunc_ = std::make_shared<Value>(rt, args[0]);
                   rejectFunc_ = std::make_shared<Value>(rt, args[1]);
                   cancel_ = false;
-                  worker_ = std::thread([this]() {
-                    if (!cancel_) {
-                      try {
+                  worker_ = std::thread([this, weakSelf = weak_from_this()]() {
+                    std::exception_ptr failure;
+                    try {
+                      if (!cancel_) {
                         execute();
-                        dispatchResolve();
+                      }
+                    } catch (const std::exception&) {
+                      failure = std::current_exception();
+                    }
+                    // Publishing the promise can release its last JS owner before this thread returns.
+                    onFinished();
+                    if (auto self = weakSelf.lock(); self && !self->cancel_) {
+                      try {
+                        if (failure) {
+                          std::rethrow_exception(failure);
+                        }
+                        self->dispatchResolve();
                       } catch (const std::exception& e) {
-                        dispatchReject(e.what());
+                        self->dispatchReject(e.what());
                       }
                     }
-                    onFinished();
                   });
                   return Value::undefined();
                 }));

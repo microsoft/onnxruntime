@@ -60,6 +60,7 @@ const CHECK_NAMES = [
   'Callback bridge marshals sliced Uint8Array data on the JS thread',
   'Callback bridge rejects invalid callback results',
   'Queued/in-flight callback reads and Env teardown unblock workers',
+  'Native workers finish before publishing promise results',
 ];
 
 const styles = StyleSheet.create({
@@ -477,6 +478,50 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
     }
   };
 
+  runWorkerCompletionCheck = async (index: number): Promise<void> => {
+    this.updateTestResult(index, { status: 'running' });
+    try {
+      for (let iteration = 0; iteration < 32; iteration++) {
+        for (const shouldReject of [false, true]) {
+          const pendingRead = getOrtApi().__testEpContextDataReadCallback(
+            () => {
+              if (shouldReject) {
+                throw new Error('worker completion rejection');
+              }
+              return new Uint8Array([iteration]);
+            },
+            1,
+            'completion.bin',
+          );
+          let rejected = false;
+          try {
+            const result = await pendingRead;
+            if (result.length !== 1 || result[0] !== iteration) {
+              throw new Error('Unexpected completion bytes');
+            }
+          } catch (err) {
+            if (!shouldReject || !String(err).includes('worker completion rejection')) {
+              throw err;
+            }
+            rejected = true;
+          }
+          if (rejected !== shouldReject || !pendingRead.__testWorker.isFinished) {
+            throw new Error('Promise settled before its native worker finished');
+          }
+        }
+      }
+      this.updateTestResult(index, {
+        status: 'success',
+        message: 'All 64 resolve/reject publications observed completed native workers',
+      });
+    } catch (err) {
+      this.updateTestResult(index, {
+        status: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
   runAllTests = async (): Promise<void> => {
     this.setState({
       isRunning: true,
@@ -510,6 +555,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
       await this.runCallbackBridgeCheck(11);
       await this.runCallbackBridgeFailureCheck(12);
       await this.runCallbackBridgeCancellationCheck(13);
+      await this.runWorkerCompletionCheck(14);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error('Failed to run EPContext data read checks:', message);
