@@ -21,6 +21,8 @@
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include "core/optimizer/dq_matmulnbits_fusion.h"
+// QDQStripActivationsTransformer is only available in a full build as it depends on ConstantFolding.
+#include "core/optimizer/qdq_transformer/qdq_strip_activations_transformer.h"
 
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/attention_fusion.h"
@@ -331,6 +333,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       const bool enable_quant_qdq_cleanup =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
+      const bool qdq_strip_activations =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQStripActivations, "0") == "1";
 #if !defined(DISABLE_CONTRIB_OPS)
       const bool qdq_is_int8_allowed =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQIsInt8Allowed,
@@ -401,7 +405,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                                  SatApplyContextVariant{},
                                                                                  qdq_matmulnbits_accuracy_level,
                                                                                  intra_op_thread_pool,
-                                                                                 qdq_matmulnbits_block_size));
+                                                                                 qdq_matmulnbits_block_size,
+                                                                                 qdq_strip_activations));
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
@@ -494,6 +499,14 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (has_matmul_nbits_qkv_kernel) {
         transformers.emplace_back(std::make_unique<MatMulNBitsQkvFusion>(
             InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      }
+
+      if (qdq_strip_activations) {
+        transformers.emplace_back(std::make_unique<QDQStripActivationsTransformer>(qdq_matmulnbits_accuracy_level,
+                                                                                   intra_op_thread_pool,
+                                                                                   cpu_execution_provider,
+                                                                                   session_options.config_options,
+                                                                                   qdq_matmulnbits_block_size));
       }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
