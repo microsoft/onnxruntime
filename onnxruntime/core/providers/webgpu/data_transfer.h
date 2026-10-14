@@ -73,7 +73,7 @@ class DataTransferImpl {
 class DataTransfer : public IDataTransfer {
  public:
   DataTransfer(const BufferManager& buffer_manager, CommandRecordingState& recording, int context_id)
-      : impl_{buffer_manager, recording}, context_id_{context_id} {}
+      : impl_{buffer_manager, recording}, context_id_{context_id}, buffer_manager_{buffer_manager}, recording_{recording} {}
   ~DataTransfer() {};
 
   // Device-compatibility half of CanCopy, split out because it needs no BufferManager and so can
@@ -83,10 +83,13 @@ class DataTransfer : public IDataTransfer {
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
 
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const override;
+  common::Status CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) const override;
 
  private:
   DataTransferImpl impl_;
   int context_id_;
+  const BufferManager& buffer_manager_;
+  CommandRecordingState& recording_;
 };
 
 }  // namespace webgpu

@@ -94,6 +94,12 @@ class BufferManager {
  public:
   BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode);
   void Upload(CommandRecordingState& recording, void* src, WGPUBuffer dst, size_t size) const;
+  struct UploadInfo {
+    const void* source;
+    WGPUBuffer target;
+    size_t size;
+  };
+  void UploadBatch(CommandRecordingState& recording, gsl::span<const UploadInfo> uploads) const;
   void MemCpy(CommandRecordingState& recording, WGPUBuffer src, WGPUBuffer dst, size_t size) const;
   WGPUBuffer Create(CommandRecordingState& recording, size_t size, wgpu::BufferUsage usage,
                     bool initialize_to_zero = false,
