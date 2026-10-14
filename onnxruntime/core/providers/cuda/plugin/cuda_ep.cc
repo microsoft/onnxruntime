@@ -24,6 +24,7 @@
 
 #include "core/graph/constants.h"
 #include "core/providers/cuda/cuda_nhwc_ops.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -223,6 +224,9 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
 }
 
 CudaEp::~CudaEp() {
+  // The plugin build excludes cuda_execution_provider.cc, so persist staged fpA_intB tactics here.
+  onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCaches();
+
   std::lock_guard<std::mutex> lock(per_thread_contexts_mutex_);
   for (const auto& cache_weak : per_thread_context_caches_) {
     auto cache = cache_weak.lock();

@@ -39,19 +39,19 @@ The planner accepts immutable problem facts rather than mutable policy decisions
 
 ## Execution Configuration
 
-Algorithm selection and execution tuning are separate decisions. `SelectAlgorithm` returns only the selected enum and is useful when policy is the caller's concern. `CreateExecutionPlan` selects the enum and its typed configuration together, first asking the protected `SelectVendorConfiguration` hook for tuning and then using private common defaults when the vendor declines. The tuning hook runs for both automatic and forced algorithms, so the test-only factory options control the implementation path without disabling real device tuning.
+Algorithm selection and execution tuning are separate decisions. `SelectAlgorithm` returns only the selected enum and is useful when policy is the caller's concern. `CreateExecutionPlan` selects the enum and its typed configuration together, first asking the protected `SelectVendorConfiguration` hook for tuning and then using private common defaults when the vendor declines. It validates configuration compatibility, host-known algorithm prerequisites, and dispatch arithmetic before publishing the output plan. A failed request leaves the caller's plan unchanged. The tuning hook runs for both automatic and forced algorithms, so the test-only factory options control the implementation path without disabling real device tuning.
 
 The packed configuration initially contains workgroup size, elements per thread, inner tile size, and Split-K size. `ApplyMatMulPacked` consumes those values directly and includes shader-affecting values in its cache key. The common configuration preserves the existing `8x8x1` workgroup, `4x1x1` or `4x4x1` elements-per-thread rule, inner tile size 32, and adapter Split-K size. A vendor may replace any of these values without changing `MatMulComputeDispatcher` or the packed implementation.
 
-Packed tuning is validated at the execution boundary. The current shader requires both Z workgroup dimensions to remain one because Z identifies a batch or Split-K slice rather than a tiled output axis. Split-K sizes must be greater than one and aligned to the inner tile so adjacent workgroups cannot overlap their K ranges. Dispatch counts use widened, overflow-safe arithmetic and are range-checked before conversion to WebGPU's 32-bit dimensions.
+Packed tuning is validated while the execution plan is created. The current shader requires both Z workgroup dimensions to remain one because Z identifies a batch or Split-K slice rather than a tiled output axis. Split-K sizes must be greater than one and aligned to the inner tile so adjacent workgroups cannot overlap their K ranges. Dispatch counts use widened, overflow-safe arithmetic and are range-checked before conversion to WebGPU's 32-bit dimensions.
 
-Configuration is represented by an algorithm-specific variant rather than a bag of unrelated optional fields. The dispatcher rejects an algorithm/configuration type mismatch before execution. Empty configuration types reserve the same typed boundary for algorithms whose tuning remains inside their existing implementation. In particular, subgroup-matrix MatMul already receives a vendor-specific `SubgroupMatrixTilingSelector`; that existing selector continues to choose tile M, tile N, and split K without coupling the planner to device or shader classes.
+Configuration is represented by an algorithm-specific variant rather than a bag of unrelated optional fields. Plan creation rejects an algorithm/configuration type mismatch before returning success. Empty configuration types reserve the same typed boundary for algorithms whose tuning remains inside their existing implementation. In particular, subgroup-matrix MatMul already receives a vendor-specific `SubgroupMatrixTilingSelector`; that existing selector continues to choose tile M, tile N, and split K without coupling the planner to device or shader classes.
 
 ## Forced Test Selection
 
 `WebGpuExecutionProviderTestOptions` carries an optional `MatMulAlgorithm` through the internal `CreateForTesting` factory path. Production provider-option parsing cannot populate it. The selected value is stored in the execution provider and exposed read-only through `ComputeContextBase`.
 
-When set, the planner returns the requested enum before applying heuristic rules. The dispatcher then validates the algorithm's hard prerequisites. Unsupported device features, data types, layouts, deterministic-compute settings, or other correctness constraints produce a descriptive failure naming the forced algorithm; forced mode never silently falls back.
+When set, the planner chooses the requested enum before applying heuristic rules and validates its hard prerequisites before returning the plan. Unsupported device features, data types, layouts, deterministic-compute settings, or other correctness constraints produce a descriptive failure naming the forced algorithm; forced mode never silently falls back.
 
 Heuristic thresholds are not hard prerequisites. For example, forcing subgroup bypasses Intel's current `M/N/K` performance thresholds while still requiring subgroup support. Forcing GEMV bypasses its automatic `N/K` tuning window while retaining its single-row, FP16, vector-width, bias, and activation constraints. Forcing Split-K bypasses performance thresholds while still requiring a usable Split-K configuration, non-deterministic compute, compatible packing/activation, and supported bias layout.
 
@@ -59,9 +59,9 @@ Heuristic thresholds are not hard prerequisites. For example, forcing subgroup b
 
 Introduce `MatMulComputeDispatcher` as the single compute entry point below the MatMul, pointwise Conv, and contrib Attention kernels. Each kernel owns one dispatcher for its lifetime. The three concepts have distinct responsibilities:
 
-- `MatMulExecutionPlanner` is a pure policy object. It consumes immutable invocation facts and creates a plan without running device work.
+- `MatMulExecutionPlanner` is a pure policy object. It consumes immutable invocation facts and creates a host-validated plan without running device work.
 - `MatMulExecutionPlan` is an immutable per-invocation value containing the selected algorithm and its typed tuning configuration.
-- `MatMulComputeDispatcher` gathers runtime facts, asks the planner for a plan, validates hard prerequisites and configuration compatibility, and invokes the selected implementation.
+- `MatMulComputeDispatcher` gathers runtime facts, asks the planner for a plan, validates live device resources, and invokes the selected implementation.
 
 The dispatcher lazily creates adapter-dependent state from the first compute context and then owns:
 
@@ -70,7 +70,7 @@ The dispatcher lazily creates adapter-dependent state from the first compute con
 
 The dispatcher does not store a current or previously selected algorithm. Selection occurs for every invocation because shapes, input properties, activation, and bias can differ between calls. The session's forced-test configuration, when present, participates in each selection without becoming mutable dispatcher state. The resulting `MatMulExecutionPlan` is local to that invocation.
 
-For each call, `MatMulComputeDispatcher::Compute` computes shared shape and capability facts once, asks the planner for one execution plan, validates the selected algorithm's hard prerequisites and configuration type, and switches directly to the matching implementation. MatMul, pointwise Conv, and contrib Attention delegate through this same entry point rather than coordinating the planner and implementations themselves.
+For each call, `MatMulComputeDispatcher::Compute` computes shared shape and capability facts once, asks the planner for one validated execution plan, and switches directly to the matching implementation. MatMul, pointwise Conv, and contrib Attention delegate through this same entry point rather than coordinating the planner and implementations themselves.
 
 The planner remains pure policy: it creates plans but does not create device programs, cache tensor data, or execute kernels. `SubgroupMatrixMatMulImpl` is named for the implementation it owns and is reached only when the plan selects `SubgroupMatrix`; its applicability query is non-mutating, and its execution method does not communicate selection through a `handled` output. This removes trial execution as a dispatch mechanism.
 
