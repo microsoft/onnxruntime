@@ -4176,6 +4176,25 @@ INSTANTIATE_TEST_SUITE_P(CApiTensorRTTest, CApiTensorRTTest,
 
 #ifdef USE_CUDA
 
+TEST(CApiTest, TestCUDAArenaPointerOptions) {
+  Ort::CUDAProviderOptions cuda_options;
+  Ort::ArenaCfg arena_config(1024 * 1024, 1, -1, -1);
+  cuda_options.UpdateWithValue("default_memory_arena_cfg", arena_config);
+  ASSERT_EQ(cuda_options.GetOptionByName("default_memory_arena_cfg"),
+            static_cast<OrtArenaCfg*>(arena_config));
+  cuda_options.UpdateWithValue("default_memory_arena_cfg", nullptr);
+  ASSERT_EQ(cuda_options.GetOptionByName("default_memory_arena_cfg"), nullptr);
+  EXPECT_THROW(cuda_options.UpdateWithValue("unknown_pointer_option", nullptr), Ort::Exception);
+
+  Ort::SessionOptions session_options;
+  {
+    Ort::ArenaCfg temporary_config(1024 * 1024, 1, -1, -1);
+    cuda_options.UpdateWithValue("default_memory_arena_cfg", temporary_config);
+    session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
+  }
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+}
+
 // This test uses CreateCUDAProviderOptions/UpdateCUDAProviderOptions/UpdateCUDAProviderOptionsWithValue APIs to configure and create a CUDA Execution Provider instance
 TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   Ort::CUDAProviderOptions cuda_options;

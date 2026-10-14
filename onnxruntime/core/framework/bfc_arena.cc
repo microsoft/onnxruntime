@@ -375,8 +375,9 @@ BFCArena::Chunk* BFCArena::SplitFreeChunkFromBin(BFCArena::Bin::FreeChunkSet* fr
   // If we can break the size of the chunk into two reasonably large
   // pieces, do so.  In any case don't waste more than
   // max_dead_bytes_per_chunk bytes on padding this alloc.
-  if (chunk->size >= rounded_bytes * 2 ||
-      static_cast<int64_t>(chunk->size) - static_cast<int64_t>(rounded_bytes) >= max_dead_bytes_per_chunk_) {
+  if (chunk->size > rounded_bytes &&
+      (chunk->size >= rounded_bytes * 2 ||
+       static_cast<int64_t>(chunk->size) - static_cast<int64_t>(rounded_bytes) >= max_dead_bytes_per_chunk_)) {
     SplitChunk(h, rounded_bytes);
     chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
   }

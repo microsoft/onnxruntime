@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <limits>
+#include <memory>
 #include <string>
 
 #include "core/common/hash_combine.h"
@@ -59,6 +60,7 @@ struct CUDAExecutionProviderInfo {
   // For example, auxiliary allocators `CUDA_PINNED` and `CUDA_CPU` will not be configured using this
   // arena config.
   OrtArenaCfg* default_memory_arena_cfg{nullptr};
+  std::shared_ptr<OrtArenaCfg> owned_memory_arena_cfg;
   CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
 
   // By default, try to use as much as possible memory for algo search.
