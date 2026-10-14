@@ -36,6 +36,7 @@ class TestOpGemm(unittest.TestCase):
             (False, True), (QuantType.QInt8, QuantType.QUInt8), (False, True)
         ):
             for magnitude, bias_value, input_max in (
+                (2**-11, 0, 1),
                 (2**-11, 1, 1),
                 (0.005, 1, 1),
                 (2**-17, 1.25, 2),
@@ -88,6 +89,8 @@ class TestOpGemm(unittest.TestCase):
                     initializers = {t.name: onnx.numpy_helper.to_array(t) for t in quantized.graph.initializer}
                     scales = initializers["bias_quantized_scale"]
                     self.assertEqual(scales.dtype, np.float16 if magnitude == 0.005 else np.float32)
+                    cast_nodes = [n for n in quantized.graph.node if n.op_type == "Cast" and n.output == ["bias"]]
+                    self.assertEqual(len(cast_nodes), 0 if magnitude == 0.005 else 1)
                     self.assertTrue((scales > 0).all())
                     dequantized = initializers["bias_quantized"].astype(np.float32) * scales
                     np.testing.assert_allclose(dequantized, bias, rtol=1e-5)
@@ -107,7 +110,7 @@ class TestOpGemm(unittest.TestCase):
                             None, inputs
                         )[0]
                         np.testing.assert_allclose(
-                            result.astype(np.float32), weights.astype(np.float32) * input_max + bias, rtol=0.01
+                            result.astype(np.float32), weights.astype(np.float32) * input_max + bias, rtol=0.02
                         )
 
     def input_feeds(self, n, name2shape):

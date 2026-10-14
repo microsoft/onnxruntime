@@ -224,6 +224,7 @@ class BaseQuantizer:
                 if bias_scale.size == 1:
                     min_bias_scale = min_bias_scale.max()
                 bias_scale = np.maximum(bias_scale, min_bias_scale * 1.0001).astype(bias_scale_dtype)
+                bias_scale = np.where(bias_scale == 0, np.ones_like(bias_scale, dtype=bias_scale_dtype), bias_scale)
 
             # Quantize by dividing by bias_scale
             quantized_data = np.asarray(bias_data, dtype=np.float64) / np.asarray(bias_scale, dtype=np.float64)
