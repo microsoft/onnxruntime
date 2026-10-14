@@ -13,9 +13,11 @@
 
 #include "core/common/common.h"
 #include "core/framework/execution_provider.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
@@ -123,8 +125,12 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
                              const std::vector<T2>& output,
                              const std::vector<int64_t>& output_shape,
                              OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                             bool touch_on_device_data = false) {
+                             bool touch_on_device_data = false,
+                             bool require_cuda = false) {
   (void)touch_on_device_data;
+  if (require_cuda && !HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "Skipping CUDA GatherBlockQuantized test since CUDA is unavailable.";
+  }
   CheckDataAndShape<T1>(data, data_shape, "data in RunGatherBlockQuantized");
   CheckDataAndShape<Tind>(indices, indices_shape, "indices in RunGatherBlockQuantized");
   CheckDataAndShape<T2>(scales, scales_shape, "scales in RunGatherBlockQuantized");
@@ -149,6 +155,16 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
     }
 
     test.AddOutput<T2>("output", output_shape, output);
+
+    if (require_cuda) {
+      SessionOptions session_options;
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      test.Config(session_options);
+      test.ConfigEp(DefaultCudaExecutionProvider());
+      test.Config(expect_result, "");
+      test.RunWithConfig();
+      return;
+    }
 
     bool enable_cuda = HasCudaEnvironment(0);
     std::vector<std::unique_ptr<IExecutionProvider>> eps;
@@ -747,7 +763,8 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_4Bits_Cuda) {
 
   RunGatherBlockQuantized<uint8_t, float, int64_t>(
       data, {2, 16}, {0, 1}, {2}, scales, {2, 1}, {}, {},
-      0, 1, 32, 4, output, {2, 32});
+      0, 1, 32, 4, output, {2, 32},
+      OpTester::ExpectResult::kExpectSuccess, /*touch_on_device_data=*/false, /*require_cuda=*/true);
 }
 
 TEST(GatherBlockQuantizedOpTest, GatherAxis0WithZeroPoints_4Bits_OddBlockCount_Cuda) {
@@ -761,7 +778,8 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0WithZeroPoints_4Bits_OddBlockCount_C
 
   RunGatherBlockQuantized<uint8_t, float, int64_t>(
       data, {2, 18}, {0, 1}, {2}, scales, {2, 3}, zero_points, {2, 2},
-      0, 1, 16, 4, output, {2, 36});
+      0, 1, 16, 4, output, {2, 36},
+      OpTester::ExpectResult::kExpectSuccess, /*touch_on_device_data=*/false, /*require_cuda=*/true);
 }
 #endif
 
