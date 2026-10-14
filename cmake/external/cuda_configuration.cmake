@@ -251,7 +251,9 @@ macro(setup_cuda_architectures)
   unset(ORT_HAS_SM90_OR_LATER)
   unset(ORT_HAS_SM100_OR_LATER)
   unset(ORT_HAS_SM120_OR_LATER)
-  foreach(CUDA_ARCH IN LISTS CMAKE_CUDA_ARCHITECTURES_ORIG)
+  # Include the -virtual entry, which _ORIG omits: PTX for compute_<cc> is device code for <cc> too,
+  # and e.g. the XQA kernels rely on HAS_SM80_OR_LATER to emit their host stubs (xqa_impl_gen.cuh).
+  foreach(CUDA_ARCH IN LISTS CMAKE_CUDA_ARCHITECTURES_ORIG CMAKE_CUDA_ARCHITECTURES_LAST_VIRTUAL)
     if(CUDA_ARCH MATCHES "^([0-9]+)")
       if(CMAKE_MATCH_1 GREATER_EQUAL 80)
         set(ORT_HAS_SM80_OR_LATER ON)
