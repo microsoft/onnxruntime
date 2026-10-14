@@ -1520,6 +1520,26 @@ TEST(MatMul2Bits, Float32_2b_BlkLen32_Accuracy0) {
   TestMatMul2BitsTyped<float, 100, 288, 256, 32, 0>();
 }
 
+#ifdef USE_WEBGPU
+TEST(MatMulNBits, WebGpu_DP4A_NarrowN_Int2) {
+  for (int64_t n : {16, 32, 48, 64, 80}) {
+    for (bool has_zero_point : {false, true}) {
+      TestOptions2Bits opts{};
+      opts.M = 65;
+      opts.N = n;
+      opts.K = 256;
+      opts.accuracy_level = 4;
+      opts.has_zero_point = has_zero_point;
+      opts.has_bias = true;
+      opts.output_abs_error = 0.05f;
+      opts.output_rel_error = 0.02f;
+      RunTest2Bits<MLFloat16>(opts);
+      RunTest2Bits<float>(opts);
+    }
+  }
+}
+#endif
+
 #if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
 
 namespace {

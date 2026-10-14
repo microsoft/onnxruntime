@@ -61,5 +61,37 @@ TEST(MatMulNBitsQLoRA, RejectsUnsupportedAdapterShapeAndBits) {
   }
 }
 
+TEST(MatMulNBitsQLoRA, QuantizedPrefillAndReusedInput) {
+  for (int64_t m : {1, 3, 4, 65}) {
+    for (int64_t accuracy : {0, 4}) {
+      OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
+      constexpr int64_t k = 256;
+      constexpr int64_t n = 128;
+      constexpr int64_t batches = 2;
+      test.AddAttribute<int64_t>("K", k);
+      test.AddAttribute<int64_t>("N", n);
+      test.AddAttribute<int64_t>("accuracy_level", accuracy);
+      std::vector<MLFloat16> x(batches * m * k);
+      std::vector<MLFloat16> expected(batches * m * n);
+      for (int64_t row = 0; row < batches * m; ++row) {
+        const float value = row % 2 == 0 ? 0.5f : -0.25f;
+        std::fill_n(x.begin() + row * k, k, MLFloat16(value));
+        std::fill_n(expected.begin() + row * n, n, MLFloat16(value * 24.0f));
+      }
+      test.AddInput<MLFloat16>("X", {batches, m, k}, x);
+      test.AddInput<uint8_t>("W", {n, k / 32, 16}, std::vector<uint8_t>(n * k / 2, 0x99), true);
+      test.AddInput<MLFloat16>("S", {n, k / 32}, std::vector<MLFloat16>(n * k / 32, MLFloat16(0.03125f)), true);
+      test.AddInput<uint8_t>("AQ", {32, k / 32, 32}, std::vector<uint8_t>(32 * k, 129));
+      test.AddInput<MLFloat16>("AS", {32, k / 32}, std::vector<MLFloat16>(k, MLFloat16(0.03125f)));
+      test.AddInput<uint8_t>("BQ", {n, 1, 32}, std::vector<uint8_t>(n * 32, 129));
+      test.AddInput<MLFloat16>("BS", {n, 1}, std::vector<MLFloat16>(n, MLFloat16(0.0625f)));
+      test.AddOutput<MLFloat16>("Y", {batches, m, n}, expected);
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(DefaultWebGpuExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+    }
+  }
+}
+
 #endif
 }  // namespace onnxruntime::test

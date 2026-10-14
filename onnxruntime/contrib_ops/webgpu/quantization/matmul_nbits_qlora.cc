@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits_qlora.h"
+#include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/common/safeint.h"
@@ -57,7 +59,7 @@ if (workgroup_idx >= qlora_base_groups) {
 )";
 }
 
-void GenerateQLoRAUp(ShaderHelper& shader, bool acc_f32) {
+void GenerateQLoRAUp(ShaderHelper& shader, bool acc_f32, bool vector_output) {
   shader.AdditionalImplementation() << "alias qlora_acc_t = " << (acc_f32 ? "f32" : "f16") << ";\n"
                                     << R"(
 fn qlora_weight(col: u32, r4: u32) -> vec4<f16> {
@@ -89,6 +91,28 @@ fn qlora_delta(row: u32, col: u32) -> f16 {
   return f16(delta);
 }
 )";
+  if (vector_output) {
+    shader.AdditionalImplementation() << R"(
+fn qlora_delta4(row: u32, col: u32) -> vec4<f16> {
+  var delta = vec4<qlora_acc_t>(0);
+  for (var r4 = 0u; r4 < 8u; r4 += 2u) {
+    let a0 = vec4<qlora_acc_t>(lora_t[row * 8u + r4]);
+    let a1 = vec4<qlora_acc_t>(lora_t[row * 8u + r4 + 1u]);
+    delta += vec4<qlora_acc_t>(
+        dot(a0, vec4<qlora_acc_t>(qlora_weight(col, r4))),
+        dot(a0, vec4<qlora_acc_t>(qlora_weight(col + 1u, r4))),
+        dot(a0, vec4<qlora_acc_t>(qlora_weight(col + 2u, r4))),
+        dot(a0, vec4<qlora_acc_t>(qlora_weight(col + 3u, r4)))) +
+        vec4<qlora_acc_t>(
+        dot(a1, vec4<qlora_acc_t>(qlora_weight(col, r4 + 1u))),
+        dot(a1, vec4<qlora_acc_t>(qlora_weight(col + 1u, r4 + 1u))),
+        dot(a1, vec4<qlora_acc_t>(qlora_weight(col + 2u, r4 + 1u))),
+        dot(a1, vec4<qlora_acc_t>(qlora_weight(col + 3u, r4 + 1u))));
+  }
+  return vec4<f16>(delta);
+}
+)";
+  }
 }
 
 namespace {
@@ -212,17 +236,22 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
                                            nullptr, 0, nullptr, nullptr, aq, &t, true, nullptr, as));
       return ApplyQLoRAOutput(context, &base, &t, bq, bs, y);
     }
-    ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, aq, as, nullptr, nullptr, k_, 32, 32, 0, 8, context, &t));
+    // Allow activation quantization for prefill only when the model opts into it.
+    const auto down_accuracy = fuse_up && m >= kMinMForTileOptimization ? accuracy_level_ : 0;
+    DP4AQuantizedInput quantized_x;
+    ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, aq, as, nullptr, nullptr, k_, 32, 32, down_accuracy, 8, context, &t, 0,
+                                         nullptr, 0, nullptr, nullptr, nullptr, nullptr, false, nullptr, nullptr, &quantized_x));
     std::optional<SubgroupMatrixConfig> up_config;
     const bool subgroup_up =
         CanApplySubgroupMatrixMatMulNBits(context, 0, 32, narrow<uint32_t>(helper.OutputOffsets().size()),
                                           narrow<uint32_t>(n_), 32, 8, true, up_config, m);
     if (fuse_up && !subgroup_up) {
       return ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, y, 0, nullptr, 0, &t,
-                              bq, nullptr, nullptr, true, bs);
+                              bq, nullptr, nullptr, true, bs, nullptr, &quantized_x);
     }
     auto base = context.CreateGPUTensor(y->DataType(), y->Shape());
-    ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, &base));
+    ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, &base, 0,
+                                         nullptr, 0, nullptr, nullptr, nullptr, nullptr, false, nullptr, nullptr, &quantized_x));
     if (!subgroup_up) return ApplyQLoRAOutput(context, &base, &t, bq, bs, y);
     // Keep the original up kernel on devices with a different matrix-accumulation path.
     auto delta = context.CreateGPUTensor(y->DataType(), y->Shape());

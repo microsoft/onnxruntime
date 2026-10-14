@@ -4,6 +4,7 @@
 #pragma once
 
 #include <limits>
+#include <optional>
 
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
@@ -14,6 +15,12 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
+// Invocation-local workspace, reusable only by projections of the same input tensor.
+struct DP4AQuantizedInput {
+  std::optional<Tensor> values;
+  std::optional<Tensor> scales;
+};
+
 class DP4AMatMulQuantizeProgram final : public Program<DP4AMatMulQuantizeProgram> {
  public:
   DP4AMatMulQuantizeProgram() : Program{"DP4AMatMulQuantize"} {}
@@ -23,11 +30,14 @@ class DP4AMatMulQuantizeProgram final : public Program<DP4AMatMulQuantizeProgram
 
 class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
  public:
-  DP4AMatMulNBitsProgram(uint32_t block_size, uint32_t nbits,
+  DP4AMatMulNBitsProgram(uint32_t tile_size_m, uint32_t tile_size_n, uint32_t tile_size_k_vec, uint32_t block_size, uint32_t nbits,
                          bool has_zero_points, bool has_bias,
                          bool has_weight_idx, bool has_weight_idx_indirect, bool is_qualcomm,
                          bool acc_f32, bool has_lora_up = false, bool has_lora_down = false, bool lora_transposed = false, bool lora_quantized = false) : Program{has_lora_down ? (lora_quantized ? "DP4AMatMulNBitsQLoRADown" : "DP4AMatMulNBitsLoRADown") : has_lora_up ? (lora_quantized ? "DP4AMatMulNBitsQLoRAUp" : "DP4AMatMulNBitsLoRAUp")
                                                                                                                                                                                                                                                                           : "DP4AMatMulNBits"},
+                                                                                                                                                          tile_size_m_(tile_size_m),
+                                                                                                                                                          tile_size_n_(tile_size_n),
+                                                                                                                                                          tile_size_k_vec_(tile_size_k_vec),
                                                                                                                                                           block_size_(block_size),
                                                                                                                                                           nbits_(nbits),
                                                                                                                                                           has_bias_(has_bias),
@@ -54,6 +64,9 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
       {"weight_idx", ProgramUniformVariableDataType::Uint32});
 
  private:
+  uint32_t tile_size_m_;
+  uint32_t tile_size_n_;
+  uint32_t tile_size_k_vec_;
   uint32_t block_size_;
   uint32_t nbits_;
   bool has_bias_;
@@ -134,7 +147,8 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   const uint32_t weight_index,
                                   const Tensor* weight_index_indirect = nullptr,
                                   const Tensor* lora_t = nullptr, const Tensor* lora_b = nullptr,
-                                  const Tensor* lora_at = nullptr, Tensor* lora_down = nullptr, bool lora_transposed = false, const Tensor* lora_b_scales = nullptr);
+                                  const Tensor* lora_at = nullptr, Tensor* lora_down = nullptr, bool lora_transposed = false, const Tensor* lora_b_scales = nullptr,
+                                  DP4AQuantizedInput* quantized_input = nullptr);
 
 // The optional M / has_weight_idx_indirect / y arguments fold the original
 // dispatch-precondition (DP4A is preferred when M is large enough, or

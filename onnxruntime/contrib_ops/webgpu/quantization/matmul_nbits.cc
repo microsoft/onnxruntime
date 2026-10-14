@@ -223,7 +223,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                         const Tensor* weight_index_indirect,
                         uint32_t override_M, const Tensor* lora_t, const Tensor* lora_b,
                         const Tensor* lora_a_transposed, Tensor* lora_a_output, bool lora_transposed,
-                        const Tensor* lora_b_scales, const Tensor* lora_a_scales) {
+                        const Tensor* lora_b_scales, const Tensor* lora_a_scales,
+                        DP4AQuantizedInput* quantized_input) {
   TensorShape b_shape({N_op, K_op});
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
@@ -298,7 +299,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   // DP4A Q2 path now supports custom zero points via a 1024-entry LUT (4 zero-point sections × 256 byte values).
   if (!has_lora_down && CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, N, K, components_a,
                                                       M, has_weight_idx_indirect, y)) {
-    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, dispatch_M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index, weight_index_indirect, lora_t, lora_b, nullptr, nullptr, lora_transposed, lora_b_scales);
+    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, dispatch_M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index, weight_index_indirect, lora_t, lora_b, nullptr, nullptr, lora_transposed, lora_b_scales, quantized_input);
   }
 
   // WideTileProgram

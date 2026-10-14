@@ -452,6 +452,27 @@ TEST(MatMulNBits, Float32_4b_Accuracy0) {
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 0>();
 }
 
+#ifdef USE_WEBGPU
+TEST(MatMulNBits, WebGpu_DP4A_NarrowN_Int4) {
+  for (int64_t n : {16, 32, 48, 64, 80}) {
+    for (bool has_zero_point : {false, true}) {
+      TestOptions opts{};
+      opts.batch_count = 2;
+      opts.M = 65;
+      opts.N = n;
+      opts.K = 256;
+      opts.accuracy_level = 4;
+      opts.has_zero_point = has_zero_point;
+      opts.has_bias = true;
+      opts.output_abs_error = 0.05f;
+      opts.output_rel_error = 0.02f;
+      RunTest<MLFloat16>(opts);
+      RunTest<float>(opts);
+    }
+  }
+}
+#endif
+
 TEST(MatMulNBits, Float32_4b_Accuracy1) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 1>();
   TestMatMulNBitsTyped<float, 1, 288, 1024, 128, 1>();

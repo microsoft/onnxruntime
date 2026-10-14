@@ -9,6 +9,7 @@
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
+struct DP4AQuantizedInput;
 // Adds an independent FP16 rank-32 down-projection branch to a 256-thread shader.
 void GenerateLoRADown(onnxruntime::webgpu::ShaderHelper& shader, const std::string& base_groups);
 
@@ -130,7 +131,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                         uint32_t override_M = 0,
                         const Tensor* lora_t = nullptr, const Tensor* lora_b = nullptr,
                         const Tensor* lora_a_transposed = nullptr, Tensor* lora_a_output = nullptr, bool lora_transposed = false,
-                        const Tensor* lora_b_scales = nullptr, const Tensor* lora_a_scales = nullptr);
+                        const Tensor* lora_b_scales = nullptr, const Tensor* lora_a_scales = nullptr,
+                        DP4AQuantizedInput* quantized_input = nullptr);
 
 Status ApplyLoRAOutput(onnxruntime::webgpu::ComputeContext& context, const Tensor* base, const Tensor* t, const Tensor* b, Tensor* y, bool transposed = false, const Tensor* quantized_scales = nullptr);
 
