@@ -508,7 +508,9 @@ static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLengt
 /// CUDA GroupQueryAttention is the first enforcing consumer: "latency" preserves its current
 /// route priority per phase, "memory" commits the smallest analytically bounded prefill,
 /// decode, and chunked-prefill route sets, and "safe" permits only analytically bounded
-/// routes applicable to each phase. A non-auto policy fails closed when no committed route
+/// routes applicable to each phase. "memory" requires Level-2 workspace commitment and is
+/// rejected during GQA kernel initialization when unavailable, including CUDA plugin and
+/// CUDA-minimal builds. A non-auto policy fails closed when no committed route
 /// can serve a run. The option does not by itself enforce a workload envelope or memory
 /// budget or provide a no-OOM guarantee.
 static const char* const kOrtSessionOptionsKernelDispatchPolicy = "session.kernel_dispatch_policy";

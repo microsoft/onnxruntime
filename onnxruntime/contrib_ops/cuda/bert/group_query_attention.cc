@@ -138,6 +138,11 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
       info.GetConfigOptions()
           .GetConfigEntry(kOrtSessionOptionsKernelDispatchPolicy)
           .value_or(""));
+#if defined(USE_CUDA_MINIMAL) || defined(DISABLE_CONTRIB_OPS) || defined(BUILD_CUDA_EP_AS_PLUGIN)
+  ORT_ENFORCE(dispatch_policy_ != KernelDispatchPolicy::Memory,
+              "GroupQueryAttention (CUDA): session.kernel_dispatch_policy=memory requires Level-2 workspace commitment, "
+              "which is unavailable in this build. Use auto, latency, or safe instead.");
+#endif
   switch (dispatch_policy_) {
     case KernelDispatchPolicy::Memory: {
       StoreCommittedBackends({});

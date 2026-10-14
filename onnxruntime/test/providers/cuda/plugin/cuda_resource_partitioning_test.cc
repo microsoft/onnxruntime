@@ -12,9 +12,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <initializer_list>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -309,6 +311,100 @@ class CudaPluginPartitioningTest : public ::testing::Test {
   }
 };
 
+#if !defined(DISABLE_CONTRIB_OPS) && !defined(USE_CUDA_MINIMAL)
+TEST_F(CudaPluginPartitioningTest, GqaDispatchPolicyInitialization) {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* onnx_opset = model.add_opset_import();
+  onnx_opset->set_domain("");
+  onnx_opset->set_version(17);
+  auto* ms_opset = model.add_opset_import();
+  ms_opset->set_domain(kMSDomain);
+  ms_opset->set_version(1);
+
+  auto* graph = model.mutable_graph();
+  graph->set_name("gqa_plugin_dispatch_policy");
+  auto* node = graph->add_node();
+  node->set_name("gqa");
+  node->set_domain(kMSDomain);
+  node->set_op_type("GroupQueryAttention");
+  for (const char* input : {"query", "key", "value", "past_key", "past_value",
+                            "seqlens_k", "total_sequence_length"}) {
+    node->add_input(input);
+  }
+  for (const char* output : {"output", "present_key", "present_value"}) {
+    node->add_output(output);
+  }
+  const auto add_int_attribute = [node](const char* name, int64_t value) {
+    auto* attribute = node->add_attribute();
+    attribute->set_name(name);
+    attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    attribute->set_i(value);
+  };
+  add_int_attribute("num_heads", 8);
+  add_int_attribute("kv_num_heads", 2);
+  add_int_attribute("local_window_size", 256);
+  add_int_attribute("sliding_window_cache", 1);
+
+  const auto add_value_info = [graph](const char* name, int32_t element_type,
+                                      std::initializer_list<int64_t> dimensions, bool is_input) {
+    auto* value_info = is_input ? graph->add_input() : graph->add_output();
+    value_info->set_name(name);
+    auto* tensor_type = value_info->mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(element_type);
+    auto* shape = tensor_type->mutable_shape();
+    for (int64_t dimension : dimensions) {
+      shape->add_dim()->set_dim_value(dimension);
+    }
+  };
+  constexpr int32_t kFloat16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  constexpr int32_t kInt32 = ONNX_NAMESPACE::TensorProto_DataType_INT32;
+  add_value_info("query", kFloat16, {2, 4, 512}, true);
+  add_value_info("key", kFloat16, {2, 4, 128}, true);
+  add_value_info("value", kFloat16, {2, 4, 128}, true);
+  add_value_info("past_key", kFloat16, {2, 2, 256, 64}, true);
+  add_value_info("past_value", kFloat16, {2, 2, 256, 64}, true);
+  add_value_info("seqlens_k", kInt32, {2}, true);
+  add_value_info("total_sequence_length", kInt32, {}, true);
+  add_value_info("output", kFloat16, {2, 4, 512}, false);
+  add_value_info("present_key", kFloat16, {2, 2, 256, 64}, false);
+  add_value_info("present_value", kFloat16, {2, 2, 256, 64}, false);
+
+  std::string model_bytes;
+  ASSERT_TRUE(model.SerializeToString(&model_bytes));
+  for (const char* policy : {"", "auto", "latency", "memory", "safe", "unknown", "Memory", " memory "}) {
+    SCOPED_TRACE(policy);
+    OrtSessionOptions ort_options;
+    ASSERT_STATUS_OK(ort_options.value.config_options.AddConfigEntry(
+        kOrtSessionOptionsKernelDispatchPolicy, policy));
+
+    const OrtEpDevice* device_ptr = static_cast<const OrtEpDevice*>(cuda_device_);
+    std::unique_ptr<IExecutionProviderFactory> factory;
+    ASSERT_STATUS_OK(CreateIExecutionProviderFactoryForEpDevices(
+        GetOrtEnv().GetEnvironment(), gsl::make_span(&device_ptr, 1), factory));
+    ort_options.provider_factories.push_back(std::move(factory));
+
+    InferenceSessionWrapper session(ort_options.value, GetOrtEnv().GetEnvironment());
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    const auto status = ToStatusAndRelease(InitializeSession(&ort_options, session));
+    if (strcmp(policy, "memory") == 0) {
+      ASSERT_FALSE(status.IsOK());
+      EXPECT_NE(status.ErrorMessage().find(
+                    "GroupQueryAttention (CUDA): session.kernel_dispatch_policy=memory requires Level-2 workspace "
+                    "commitment, which is unavailable in this build."),
+                std::string::npos)
+          << status.ErrorMessage();
+      continue;
+    }
+
+    ASSERT_STATUS_OK(status);
+    ASSERT_EQ(session.GetGraph().NumberOfNodes(), 1u);
+    EXPECT_EQ(session.GetGraph().Nodes().begin()->GetExecutionProviderType(),
+              kCudaExecutionProviderPluginAlias);
+  }
+}
+#endif
+
 // With no resource budget, all CUDA-supported nodes should be assigned to the plugin EP.
 TEST_F(CudaPluginPartitioningTest, NoBudget_AllNodesCudaPlugin) {
   constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/mul_1.onnx");
@@ -495,6 +591,14 @@ class CudaResourcePartitioningTest : public ::testing::Test {
 TEST_F(CudaResourcePartitioningTest, NoBudget_SessionCreatesSuccessfully) {
   auto model_path = ORT_TSTR("testdata/mul_1.onnx");
   ASSERT_NO_THROW(CreateSessionWithBudget(model_path, 0));
+}
+
+TEST_F(CudaResourcePartitioningTest, MemoryDispatchPolicyAllowsOtherOperators) {
+  Ort::SessionOptions options;
+  options.AppendExecutionProvider_V2(*ort_env, {cuda_device_},
+                                     std::unordered_map<std::string, std::string>{});
+  options.AddConfigEntry(kOrtSessionOptionsKernelDispatchPolicy, "memory");
+  ASSERT_NO_THROW(Ort::Session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), options));
 }
 
 TEST_F(CudaResourcePartitioningTest, BudgetConstrained_ProducesValidOutput) {
