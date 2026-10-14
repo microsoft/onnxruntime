@@ -5,6 +5,7 @@
 import { gcm } from '@noble/ciphers/aes';
 import { Buffer } from 'buffer';
 import { InferenceSession, Tensor } from 'onnxruntime-react-native';
+import { Platform } from 'react-native';
 import RNFS from 'react-native-fs';
 
 interface TestApi {
@@ -23,9 +24,12 @@ export const runEncryptedEpContextWorkflow = async (): Promise<string> => {
   // This explicit configuration is provisioned by the device test runner, not by production applications.
   const documentConfig = `${RNFS.DocumentDirectoryPath}/ort-encryption-config.json`;
   const bundled = !(await RNFS.exists(documentConfig));
+  const androidAssets = bundled && Platform.OS === 'android';
   const bundleDirectory = `${RNFS.MainBundlePath}/ort-encryption`;
   const config: unknown = JSON.parse(
-    await RNFS.readFile(bundled ? `${bundleDirectory}/config.json` : documentConfig, 'utf8'),
+    await (androidAssets
+      ? RNFS.readFileAssets('ort-encryption/config.json', 'utf8')
+      : RNFS.readFile(bundled ? `${bundleDirectory}/config.json` : documentConfig, 'utf8')),
   );
   if (
     !config ||
@@ -43,8 +47,16 @@ export const runEncryptedEpContextWorkflow = async (): Promise<string> => {
   ) {
     throw new Error('Bundled encryption fixture paths must be filenames');
   }
-  const plugin = bundled ? `${bundleDirectory}/${config.plugin}` : config.plugin;
-  const sourceModel = bundled ? `${bundleDirectory}/${config.sourceModel}` : config.sourceModel;
+  // Android resolves packaged native libraries through the app's linker namespace, not writable app data.
+  const plugin = bundled && !androidAssets ? `${bundleDirectory}/${config.plugin}` : config.plugin;
+  const sourceModel = androidAssets
+    ? `${RNFS.DocumentDirectoryPath}/ort-encryption-source.onnx`
+    : bundled
+      ? `${bundleDirectory}/${config.sourceModel}`
+      : config.sourceModel;
+  if (androidAssets) {
+    await RNFS.copyFileAssets(`ort-encryption/${config.sourceModel}`, sourceModel);
+  }
   // Metro can defer installing the native API until the first session is created.
   const warmup = await InferenceSession.create(sourceModel);
   await warmup.release();

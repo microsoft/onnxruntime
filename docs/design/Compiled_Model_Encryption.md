@@ -113,7 +113,16 @@ from `js/react_native/e2e`. The Detox test asserts
 the exact success result after two numerical cases and all negative controls.
 Without this opt-in, it is explicitly skipped. Host Jest crypto/configuration
 tests and native-header syntax checks do **not** establish device coverage.
-The React Native CI iOS simulator job enables this opt-in automatically. Its build
+The React Native CI Android emulator and iOS simulator jobs enable this opt-in automatically.
+The Android build job cross-compiles the plugin for the emulator's x86_64 ABI using
+the same checkout as the ORT AAR. The app packages it in `jniLibs` and loads it by
+library name through Android's linker namespace, avoiding executable code in
+writable app data. The model/configuration are APK assets; the app copies the
+source model into its document directory before compilation. Gradle enables the
+native test hooks only when `ORT_RN_TEST_EP_CONTEXT=1`. Missing assets, plugin load
+errors, or unavailable hooks fail the mandatory Detox test rather than skip it.
+
+The iOS build
 job compiles the plugin for the same arm64 simulator architecture as the ORT pod,
 using only the runtime-supplied API pointers rather than linking another ORT
 runtime. The E2E job enables the native hooks at pod installation, bundles and
@@ -122,9 +131,8 @@ assertion. Missing provisioning, authentication failures, and inference failures
 fail the job instead of skipping the test. The app reads this bundle configuration
 only when no document-directory configuration was supplied.
 
-This establishes coverage only after the actual CI simulator test passes; Windows
-host checks are not a substitute. Android encrypted-workflow provisioning is not
-enabled by this iOS job, and physical-device coverage is not claimed.
+This establishes coverage only after the actual CI emulator/simulator test passes;
+Windows host checks are not a substitute. Physical-device coverage is not claimed.
 
 The portable React Native C++ policy tests can run on Windows:
 

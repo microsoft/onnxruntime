@@ -87,6 +87,7 @@ android {
     externalNativeBuild {
       cmake {
         cppFlags "-O2 -frtti -fexceptions -Wall -Wno-unused-variable -fstack-protector-all"
+        arguments "-DORT_RN_TEST_EP_CONTEXT=${System.getenv('ORT_RN_TEST_EP_CONTEXT') == '1' ? 'ON' : 'OFF'}"
         if (REACT_NATIVE_MAJOR_VERSION > 0 || REACT_NATIVE_MINOR_VERSION >= 71) {
           // fabricjni required c++_shared
           arguments "-DANDROID_STL=c++_shared",
