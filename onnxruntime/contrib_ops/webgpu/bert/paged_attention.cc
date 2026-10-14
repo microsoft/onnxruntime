@@ -833,10 +833,10 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
       query->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   const bool use_direct_paged_prefill =
       !has_local_window && head_sink == nullptr &&
-      ShouldRunFusedPagedPrefill(context, is_fp16_q,
-                                 static_cast<int>(max_seqlen_q),
-                                 parameters.head_size,
-                                 parameters.block_size);
+      CanApplyFlashAttentionPagedPrefill(context, is_fp16_q,
+                                         static_cast<int>(max_seqlen_q),
+                                         parameters.head_size,
+                                         parameters.block_size);
   const bool use_direct_paged_attention = use_direct_paged_decode || use_direct_paged_prefill;
   // Unpack/Repack fast paths (see full explanation below at the Q/output view
   // construction). skip_unpack_repack must be computed before the
@@ -945,7 +945,7 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   //       [token_count, 1, N, H] view and cumulative_seqlens_q. Only the
   //       fused paged-prefill shader knows how to consume this
   //       (q_varlen #param), so mode (b) is only safe when
-  //       ShouldRunFusedPagedPrefill would return true — which is exactly
+  //       CanApplyFlashAttentionPagedPrefill would return true — which is exactly
   //       use_direct_paged_prefill (see storage-binding block above).
   //
   // If neither mode applies, we fall back to Unpack + BSNH-padded scratch.
