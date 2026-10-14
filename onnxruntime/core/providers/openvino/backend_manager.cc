@@ -42,6 +42,39 @@ static bool ShouldExportEpContext(const SessionContext& session_context, const S
   return session_context.so_context_enable && (subgraph_context.is_ep_ctx_ovir_encapsulated || !subgraph_context.is_ep_ctx_graph);
 }
 
+static std::filesystem::path GetWeightlessSourceModelPathFromEpContext(
+    const SessionContext& session_context,
+    const GraphViewer& subgraph) {
+  if (!session_context.so_weightless_enabled ||
+      session_context.weightless_source_model_data != nullptr ||
+      !session_context.so_context_source_model_path.empty()) {
+    return {};
+  }
+
+  for (const auto& node : subgraph.Nodes()) {
+    if (node.OpType() != EPCONTEXT_OP) {
+      continue;
+    }
+
+    const auto& attributes = node.GetAttributes();
+    if (attributes.count(ONNX_MODEL_FILENAME) == 0) {
+      continue;
+    }
+
+    const std::filesystem::path source_model_filename =
+        ToPathString(attributes.at(ONNX_MODEL_FILENAME).s());
+    if (source_model_filename.empty()) {
+      continue;
+    }
+
+    ORT_THROW_IF_ERROR(
+        utils::ValidateExternalDataPath(session_context.onnx_model_path_name, source_model_filename));
+    return session_context.onnx_model_path_name.parent_path() / source_model_filename;
+  }
+
+  return {};
+}
+
 BackendManager::BackendManager(SessionContext& session_context,
                                SharedContext& shared_context,
                                const onnxruntime::Node& fused_node,
@@ -51,6 +84,10 @@ BackendManager::BackendManager(SessionContext& session_context,
                                                               session_context_(session_context),
                                                               shared_context_(shared_context) {
   subgraph_context_.is_ep_ctx_graph = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(subgraph);
+  if (subgraph_context_.is_ep_ctx_graph) {
+    subgraph_context_.weightless_source_model_path =
+        GetWeightlessSourceModelPathFromEpContext(session_context_, subgraph);
+  }
   // If the graph contains a OVIR wrapped node, we check if it has matching xml file name attribute
   subgraph_context_.is_ep_ctx_ovir_encapsulated = ep_ctx_handle_.CheckEPCacheContextAttribute(subgraph,
                                                                                               session_context_.onnx_model_path_name.filename().replace_extension("xml").string());
@@ -191,7 +228,11 @@ void BackendManager::TryExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVi
   auto status = ep_ctx_handle_.AddOVEPCtxNodeToGraph(graph_body_viewer,
                                                      subgraph_context_.subgraph_name,
                                                      session_context_.so_context_embed_mode,
-                                                     std::move(model_blob_str));
+                                                     std::move(model_blob_str),
+                                                     session_context_.so_weightless_enabled
+                                                         ? PathToUTF8String(
+                                                               session_context_.onnx_model_path_name.filename().native())
+                                                         : std::string{});
   if (!status.IsOK()) {
     ORT_THROW("[OpenVINO-EP] Failed to add OVEP EPContext node to the graph: " + status.ErrorMessage());
   }
