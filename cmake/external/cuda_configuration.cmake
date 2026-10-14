@@ -132,6 +132,26 @@ function(onnxruntime_cuda_archs_have_sass OUTPUT_VAR MIN_CC MAX_CC)
   set(${OUTPUT_VAR} ${_result} PARENT_SCOPE)
 endfunction()
 
+# Set OUTPUT_VAR to ON if any architecture in ARGN generates code, SASS or PTX, for a compute
+# capability of at least MIN_CC, and to OFF otherwise. Unlike onnxruntime_cuda_archs_have_sass,
+# -virtual entries count: the driver JIT-compiles PTX for compute_<cc> on GPUs of compute
+# capability <cc> or later (within the architecture or family for an "a" or "f" suffix), so
+# kernels that use no architecture-specific features are reachable from PTX as well.
+#
+# Usage:
+#   onnxruntime_cuda_archs_have_code(<output_var> <min_cc> <arch>...)
+function(onnxruntime_cuda_archs_have_code OUTPUT_VAR MIN_CC)
+  set(_result OFF)
+  foreach(_arch IN LISTS ARGN)
+    onnxruntime_parse_cuda_arch("${_arch}" _parsed)
+    if(NOT _parsed_CC STREQUAL "" AND _parsed_CC GREATER_EQUAL MIN_CC)
+      set(_result ON)
+      break()
+    endif()
+  endforeach()
+  set(${OUTPUT_VAR} ${_result} PARENT_SCOPE)
+endfunction()
+
 macro(setup_cuda_architectures)
   # cmake-format: off
   # Initialize and normalize CMAKE_CUDA_ARCHITECTURES before enabling CUDA.
@@ -253,32 +273,6 @@ macro(setup_cuda_architectures)
     add_definitions("-DHAS_SM120_OR_LATER")
   endif()
 
-  # ORT_HAS_SM12X: native code for SM120 or SM121 (compute capability 12.0/12.1) is requested,
-  # in any spelling ("120", "121a", "120f", "121a-real", ...). Gates the SM120 TMA grouped GEMM
-  # and block-scaled FP4 kernels, which are compiled for the requested 12.x architectures.
-  onnxruntime_cuda_archs_have_sass(ORT_HAS_SM12X 120 121 ${CMAKE_CUDA_ARCHITECTURES_ORIG})
-
-  # ORT_HAS_SM90: native code for SM90 (Hopper) itself is requested. The Hopper TMA/WGMMA kernels
-  # and DeepGEMM are compiled only for sm_90a, which runs on compute capability 9.0 and nothing
-  # else (not SM100/SM120), so they are dead code unless SM90 is targeted.
-  onnxruntime_cuda_archs_have_sass(ORT_HAS_SM90 90 90 ${CMAKE_CUDA_ARCHITECTURES_ORIG})
-
-  # EXCLUDE_SM_<arch> compiles out the kernels for <arch> when no requested architecture can run
-  # them. The SM120 kernels are compiled for whichever 12.x architectures are requested (see
-  # onnxruntime_filter_cuda_archs), so SM121 alone also keeps them.
-  set(ARCHITECTURES_WITH_KERNELS "80" "86" "89" "90" "100" "110" "120")
-  foreach(CUDA_ARCH IN LISTS ARCHITECTURES_WITH_KERNELS)
-    if(CUDA_ARCH STREQUAL "120")
-      set(HAS_CUDA_ARCH ${ORT_HAS_SM12X})
-    else()
-      onnxruntime_cuda_archs_have_sass(HAS_CUDA_ARCH ${CUDA_ARCH} ${CUDA_ARCH} ${CMAKE_CUDA_ARCHITECTURES_ORIG})
-    endif()
-    if(NOT HAS_CUDA_ARCH)
-      add_definitions("-DEXCLUDE_SM_${CUDA_ARCH}")
-      message(STATUS "Excluding SM ${CUDA_ARCH}")
-    endif()
-  endforeach()
-
   # Enable accelerated features (like WGMMA, TMA and setmaxnreg) for SM >= 90.
   set(ARCHITECTURES_WITH_ACCEL "90" "100" "103" "110" "120" "121")
   unset(CMAKE_CUDA_ARCHITECTURES_NORMALIZED)
@@ -298,6 +292,48 @@ macro(setup_cuda_architectures)
   endif()
 
   set(CMAKE_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES_NORMALIZED})
+
+  # The gates below are derived from the normalized list, in which every entry states what nvcc
+  # generates ("<cc>[a|f]-real": SASS, "<cc>[a|f]-virtual": PTX, "<cc>f": both). Unlike
+  # CMAKE_CUDA_ARCHITECTURES_ORIG, it also contains the -virtual entry.
+
+  # ORT_HAS_SM12X: native code for SM120 or SM121 (compute capability 12.0/12.1) is requested,
+  # in any spelling ("120", "121a", "120f", "121a-real", ...). Gates the SM120 TMA grouped GEMM
+  # and block-scaled FP4 kernels, which are compiled for the requested 12.x architectures.
+  onnxruntime_cuda_archs_have_sass(ORT_HAS_SM12X 120 121 ${CMAKE_CUDA_ARCHITECTURES})
+
+  # ORT_HAS_SM90: native code for SM90 (Hopper) itself is requested. The Hopper TMA/WGMMA kernels
+  # and DeepGEMM are compiled only for sm_90a, which runs on compute capability 9.0 and nothing
+  # else (not SM100/SM120), so they are dead code unless SM90 is targeted.
+  onnxruntime_cuda_archs_have_sass(ORT_HAS_SM90 90 90 ${CMAKE_CUDA_ARCHITECTURES})
+
+  # EXCLUDE_SM_<sm> compiles out the kernels instantiated for <sm> (the #ifndef EXCLUDE_SM_<sm>
+  # guards under contrib_ops/cuda/llm). It may only be defined when no GPU that this build has
+  # code for can dispatch to those kernels; otherwise the dispatcher throws at run time.
+  #  * 80, 86, 89: CUTLASS 2.x / CuTe SM80-style kernels (mma.sync, cp.async). They use no
+  #    architecture-specific features, are compiled for every requested architecture, and are
+  #    dispatched on every GPU of at least that compute capability: MoeGemmRunner::dispatchToArch
+  #    uses the SM80 fused MoE GEMM on SM80-SM89 and as the fallback on SM90 and later, which is
+  #    the only path for unquantized FP16/BF16 MoE on SM100 and SM12x. Keep them if any requested
+  #    architecture, SASS or PTX, has at least that compute capability.
+  #  * 90: sm_90a kernels, which run on compute capability 9.0 only.
+  #  * 100, 110, 120: architecture-specific kernels, compiled for the requested architectures of
+  #    that generation. Keep them if SASS for any of its compute capabilities is requested.
+  onnxruntime_cuda_archs_have_code(_ort_keep_sm80 80 ${CMAKE_CUDA_ARCHITECTURES})
+  onnxruntime_cuda_archs_have_code(_ort_keep_sm86 86 ${CMAKE_CUDA_ARCHITECTURES})
+  onnxruntime_cuda_archs_have_code(_ort_keep_sm89 89 ${CMAKE_CUDA_ARCHITECTURES})
+  set(_ort_keep_sm90 ${ORT_HAS_SM90})
+  onnxruntime_cuda_archs_have_sass(_ort_keep_sm100 100 100 ${CMAKE_CUDA_ARCHITECTURES})
+  onnxruntime_cuda_archs_have_sass(_ort_keep_sm110 110 110 ${CMAKE_CUDA_ARCHITECTURES})
+  set(_ort_keep_sm120 ${ORT_HAS_SM12X})
+  foreach(_ort_sm IN ITEMS 80 86 89 90 100 110 120)
+    if(NOT _ort_keep_sm${_ort_sm})
+      add_definitions("-DEXCLUDE_SM_${_ort_sm}")
+      message(STATUS "Excluding SM ${_ort_sm}")
+    endif()
+    unset(_ort_keep_sm${_ort_sm})
+  endforeach()
+  unset(_ort_sm)
 
   message(STATUS "CMAKE_CUDA_ARCHITECTURES: ${CMAKE_CUDA_ARCHITECTURES}")
 endmacro()
