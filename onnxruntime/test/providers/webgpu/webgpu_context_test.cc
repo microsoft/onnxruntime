@@ -758,7 +758,7 @@ TEST(WebGpuContextTest, IndependentClearPreservesPendingAndCapturedUniformBuffer
   constexpr auto storage_usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
                                  wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
 
-  std::vector<webgpu::CapturedCommandInfo> captured_commands;
+  std::vector<webgpu::CapturedCommand> captured_commands;
   context.CaptureBegin(&captured_commands, manager, session_recording);
   auto uniform_buffer = manager.Create(session_recording, 64, uniform_usage);
   wgpu::Buffer retained_uniform{uniform_buffer};
@@ -970,6 +970,42 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
   allocator.Free(allocation);
 }
 
+TEST(WebGpuContextTest, ReplaysCopyOnlyGraphAndRetainsBuffersUntilRelease) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Disabled,
+                                webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled,
+                                webgpu::BufferCacheMode::Disabled);
+  webgpu::CommandRecordingState recording;
+  constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+  std::array<uint32_t, 3> values{1, 2, 3};
+  auto source = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
+  auto intermediate = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
+  auto destination = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
+  manager.Upload(recording, values.data(), source.Get(), sizeof(values));
+
+  std::vector<webgpu::CapturedCommand> commands;
+  context.CaptureBegin(&commands, manager, recording);
+  manager.MemCpy(recording, source.Get(), intermediate.Get(), sizeof(values));
+  manager.MemCpy(recording, intermediate.Get(), destination.Get(), sizeof(values));
+  ASSERT_STATUS_OK(context.Flush(manager, recording));
+  context.CaptureEnd(recording);
+  ASSERT_EQ(commands.size(), 2u);
+  EXPECT_EQ(recording.num_pending_dispatches, 0u);
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder<3>(context, destination.Get()), values);
+
+  // Only the captured copies now own the intermediate; replay must keep it alive.
+  intermediate = nullptr;
+  values = {4, 5, 6};
+  manager.Upload(recording, values.data(), source.Get(), sizeof(values));
+  context.Replay(commands, manager, recording);
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder<3>(context, destination.Get()), values);
+  EXPECT_EQ(recording.num_pending_dispatches, 0u);
+  context.ReleaseGraphResources(commands);
+  EXPECT_TRUE(commands.empty());
+}
+
 TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
@@ -982,7 +1018,7 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
                                        webgpu::BufferCacheMode::Disabled,
                                        webgpu::BufferCacheMode::Disabled,
                                        webgpu::BufferCacheMode::Disabled);
-  std::vector<webgpu::CapturedCommandInfo> captured_commands;
+  std::vector<webgpu::CapturedCommand> captured_commands;
   webgpu::GpuBufferAllocator allocator(
       webgpu_ep->GetDeviceId(),
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },

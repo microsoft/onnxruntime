@@ -11,6 +11,7 @@
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
@@ -116,6 +117,17 @@ struct CapturedCommandInfo {
   std::optional<PendingKernelInfo> pending_kernel_info;
 };
 
+struct CapturedBufferCopy {
+  wgpu::Buffer source;
+  wgpu::Buffer destination;
+  uint64_t size;
+};
+
+// Copies retain both buffers and share dispatch ordering, but do not consume timestamp query slots.
+struct CapturedCommand {
+  std::variant<CapturedCommandInfo, CapturedBufferCopy> operation;
+};
+
 // A command recording timeline has one caller at a time. ORT serializes Run on a Session;
 // plugin streamless operations use independent encoders. BufferManager synchronizes buffer
 // releases from concurrent allocator callers separately from command recording.
@@ -136,7 +148,7 @@ struct CommandRecordingState {
   std::vector<CapturedCommandInfo> deferred_dispatches;
   std::vector<PendingKernelInfo> pending_kernels;
   GraphCaptureState graph_capture_state{GraphCaptureState::Default};
-  std::vector<CapturedCommandInfo>* external_captured_commands = nullptr;
+  std::vector<CapturedCommand>* external_captured_commands = nullptr;
 };
 
 struct WebGpuBufferCacheConfig {
@@ -311,14 +323,15 @@ class WebGpuContext final {
       recording.compute_pass_encoder = nullptr;
     }
   }
-  void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands,
+  void CopyBuffer(WGPUBuffer source, WGPUBuffer destination, uint64_t size, CommandRecordingState& recording);
+  void CaptureBegin(std::vector<webgpu::CapturedCommand>* captured_commands,
                     const webgpu::BufferManager& buffer_manager,
                     CommandRecordingState& recording);
   void CaptureEnd(CommandRecordingState& recording);
-  void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands,
+  void Replay(const std::vector<webgpu::CapturedCommand>& captured_commands,
               const webgpu::BufferManager& buffer_manager,
               CommandRecordingState& recording);
-  void ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands);
+  void ReleaseGraphResources(std::vector<webgpu::CapturedCommand>& captured_commands);
 
   Status Flush(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
 
@@ -536,7 +549,7 @@ class WebGpuContext final {
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
 
   // External vector to store captured commands, owned by EP
-  std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;
+  std::vector<webgpu::CapturedCommand>* external_captured_commands_ = nullptr;
 };
 
 #if !defined(__wasm__)
