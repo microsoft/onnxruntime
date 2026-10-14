@@ -171,6 +171,8 @@ struct Statistics {
   size_t guards = 0;
   size_t matches = 0;
   size_t rewrites = 0;
+  size_t iterations = 0;
+  bool iteration_limit_reached = false;
 };
 
 enum class FailureStage { Opset,
@@ -196,6 +198,7 @@ struct Options {
   InlinedHashSet<std::string> compatible_execution_providers{kCpuExecutionProvider};
   // Called synchronously. Records own their strings and contain no graph/match pointers.
   std::function<void(const MatchFailure&)> on_failure;
+  size_t max_iterations = 10;  // Positive upper bound on candidate batches; match-only uses one batch.
 };
 
 // Immutable compiled rules; statistics belong to a call, not this transformer.

@@ -1,7 +1,7 @@
 # Writing C++ graph rewrite rules
 
 The experimental `onnxruntime::rewrite::PatternRewriter` replaces connected
-operator patterns with smaller, semantically equivalent graphs. Include
+operator patterns with semantically equivalent graphs. Include
 `core/optimizer/pattern_rewriter.h`. Construct `Pattern` and `Replacement` from
 text; programmatic builders and mutable replacement recipes are not public APIs.
 Guards and replacement callbacks remain ordinary C++ functions.
@@ -429,17 +429,39 @@ passing guard. With `Options{.match_only=true}`, all passing guards are counted
 and replacements are not called. `indexed=false` selects the reference matching
 mode with the same eligibility and priority semantics.
 
-Every pattern must contain at least two nodes. A replacement must have a
-nonempty node sequence with **strictly fewer nodes** than the pattern, and its
-returned-value count must equal the pattern's returned-value count. Expansion and one-node
-rewrites are rejected. Each successful rewrite reduces live node count, so a
-graph with N nodes admits at most N-1 rewrites. This establishes termination,
-not a time bound for arbitrary callbacks or graph fanout.
+Every pattern and replacement must contain at least one node, and their
+returned-value counts must agree. Single-node patterns, same-size replacements,
+and expansion are supported. Zero-node replacements and returning leaf inputs
+remain unsupported; identity elimination is a separate transformation.
+
+`Options::max_iterations` is a positive upper bound, defaulting to 10.
+Each iteration processes a fixed candidate batch, initially all live nodes in
+topological order. Replacements and affected existing nodes are queued for the
+next batch, never appended to the current batch. An existing later candidate
+can still match an earlier replacement in the same batch. Processing stops
+when a batch performs no rewrites, there are no pending candidates, or the bound
+is reached. Match-only mode processes exactly one batch without mutation.
+
+```cpp
+Options options;
+options.max_iterations = 3;
+PatternRewriter rewriter(rules, options);
+```
+
+The iteration cap bounds repeated self-rewrites and rule cycles, even when
+node count grows. It does not prove convergence or semantic equivalence.
+`Statistics::iterations` counts processed batches;
+`iteration_limit_reached` is true if the final allowed batch rewrote nodes and
+left candidates pending. Reaching the limit returns success with the current
+valid rewrite result, not an error; the flag does not assert another match exists.
+Calling `Run` again starts a fresh budget. External transformer-manager passes
+also have their own budgets. Avoid expansion rules that multiply graph size
+unnecessarily: the iteration limit is not a memory bound or a bound on callbacks.
 
 After a rewrite, the engine updates edges and producer/consumer indexes,
 notifies node replacement, and requeues replacement nodes and affected
 descendants through a bounded invalidation walk. This permits newly enabled
-matches without retaining pointers to deleted nodes.
+matches in subsequent batches without retaining pointers to deleted nodes.
 
 Malformed definitions throw `OnnxRuntimeException` with parse-location
 diagnostics; exception-disabled builds follow ORT's abort behavior. Invalid rule

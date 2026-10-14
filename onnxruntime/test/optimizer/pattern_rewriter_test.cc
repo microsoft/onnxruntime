@@ -517,7 +517,7 @@ TEST(PatternRewriterTests, ReplacementParsingCompilationAndRollback) {
   invalid.replacement = Replacement("(a)=>Identity(a)");
   EXPECT_THROW(PatternRewriter({invalid}), OnnxRuntimeException);
   invalid.replacement = Replacement("(x)=>a=Identity(x);return Identity(a)");
-  EXPECT_THROW(PatternRewriter({invalid}), OnnxRuntimeException);
+  EXPECT_NO_THROW(PatternRewriter({invalid}));
   invalid.replacement = Replacement("(x)=>com.microsoft::FusedMatMul(x,x)");
   EXPECT_THROW(PatternRewriter({invalid}), OnnxRuntimeException);
   EXPECT_NO_THROW(Replacement("(Identity)=>Identity(Identity)"));
@@ -1352,11 +1352,118 @@ TEST(PatternRewriterTests, PriorityOverlapTerminationAndMatchOnly) {
   }
 }
 
+TEST(PatternRewriterTests, SingleNodeSameSizeAndExpansionNumerics) {
+  for (bool indexed : {false, true}) {
+    for (bool expand : {false, true}) {
+      auto rule = IdentityPair();
+      rule.pattern = Pattern("(x)=>return Neg(x)");
+      rule.replacement = Replacement(expand ? "(x)=>{a=Identity(x);return Neg(a);}" : "(x)=>Neg(x)");
+      auto numerical_rule = rule;
+      if (!expand) numerical_rule.replacement = Replacement("(x)=>Mul(x,-1.0)");
+      numerical_rule.guard = [](const Graph& graph, const Match& match) {
+        const Node* producer = graph.GetProducerNode(match.valueOf("x")->Name());
+        return !producer || producer->OpType() != "Identity";
+      };
+      TransformerTester(
+          [](ModelTestBuilder& b) {
+            auto* x = b.MakeInput<float>({4}, -1.0f, 1.0f);
+            b.AddNode("Neg", {x}, {b.MakeOutput()});
+          },
+          [expand](InferenceSessionWrapper& session) {
+            EXPECT_EQ(Count(session.GetGraph(), "Neg"), expand ? 1u : 0u);
+            EXPECT_EQ(Count(session.GetGraph(), "Mul"), expand ? 0u : 1u);
+            EXPECT_EQ(Count(session.GetGraph(), "Identity"), expand ? 1u : 0u);
+          },
+          TransformerLevel::Default, TransformerLevel::Level1, 17, 0.0, 0.0,
+          std::make_unique<PatternRewriter>(Rules{numerical_rule}, Options{.indexed = indexed, .max_iterations = 1}));
+      TestGraph test;
+      auto* x = test.builder.MakeInput<float>({4}, -1.0f, 1.0f);
+      auto* output = test.builder.MakeOutput();
+      test.builder.AddNode("Neg", {x}, {output});
+      test.builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({rule}, {.indexed = indexed, .max_iterations = 3}).Run(test.graph, stats));
+      EXPECT_EQ(stats.iterations, 3u);
+      EXPECT_TRUE(stats.iteration_limit_reached);
+      EXPECT_EQ(stats.rewrites, 3u);
+      EXPECT_EQ(Count(test.graph, "Identity"), expand ? 3u : 0u);
+      EXPECT_EQ(test.graph.GetProducerNode(output->Name())->OpType(), "Neg");
+      ASSERT_STATUS_OK(test.graph.Resolve());
+    }
+  }
+  EXPECT_THROW((void)Replacement{"(x)=>return x"}, OnnxRuntimeException);
+}
+
+TEST(PatternRewriterTests, BoundedCyclesPriorityAndMatchOnly) {
+  for (bool indexed : {false, true}) {
+    for (size_t limit : {1u, 2u, 5u}) {
+      TestGraph test;
+      auto* x = test.builder.MakeInput<float>({2}, -1.0f, 1.0f);
+      test.builder.AddNode("Identity", {x}, {test.builder.MakeOutput()});
+      test.builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      auto forward = IdentityPair("forward");
+      forward.pattern = Pattern("(x)=>return Identity(x)");
+      forward.replacement = Replacement("(x)=>Transpose(x,perm=[0])");
+      auto backward = IdentityPair("backward");
+      backward.pattern = Pattern("(x)=>return Transpose(x,perm=[0])");
+      backward.replacement = Replacement("(x)=>Identity(x)");
+      auto later = forward;
+      later.name = "later";
+      later.guard = [](const Graph&, const Match&) {
+        ADD_FAILURE() << "Lower priority rule selected.";
+        return true;
+      };
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({forward, later, backward},
+                                       {.indexed = indexed, .max_iterations = limit})
+                           .Run(test.graph, stats));
+      EXPECT_EQ(stats.rewrites, limit);
+      EXPECT_EQ(stats.iterations, limit);
+      EXPECT_TRUE(stats.iteration_limit_reached);
+      EXPECT_EQ(Count(test.graph, "Transpose"), limit % 2);
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      ASSERT_STATUS_OK(PatternRewriter({forward, backward},
+                                       {.match_only = true, .indexed = indexed, .max_iterations = limit})
+                           .Run(test.graph, stats));
+      EXPECT_EQ(stats.matches, 1u);
+      EXPECT_EQ(stats.rewrites, 0u);
+      EXPECT_EQ(stats.iterations, 1u);
+      EXPECT_FALSE(stats.iteration_limit_reached);
+    }
+  }
+}
+
+TEST(PatternRewriterTests, BoundedIterationsStopOnConvergence) {
+  for (bool indexed : {false, true}) {
+    TestGraph test;
+    auto* x = test.builder.MakeInput<float>({2}, -1.0f, 1.0f);
+    test.builder.AddNode("Identity", {x}, {test.builder.MakeOutput()});
+    test.builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    auto rule = IdentityPair();
+    rule.pattern = Pattern("(x)=>return Identity(x)");
+    rule.replacement = Replacement("(x)=>Transpose(x,perm=[0])");
+    Statistics stats;
+    ASSERT_STATUS_OK(PatternRewriter({rule}, {.indexed = indexed, .max_iterations = 5}).Run(test.graph, stats));
+    EXPECT_EQ(stats.rewrites, 1u);
+    EXPECT_EQ(stats.iterations, 2u);
+    EXPECT_FALSE(stats.iteration_limit_reached);
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    ASSERT_STATUS_OK(PatternRewriter({rule}, {.indexed = indexed}).Run(test.graph, stats));
+    EXPECT_EQ(stats.rewrites, 0u);
+    EXPECT_EQ(stats.iterations, 1u);
+    EXPECT_FALSE(stats.iteration_limit_reached);
+  }
+}
+
 TEST(PatternRewriterTests, InvalidRuleAndRecipe) {
   EXPECT_THROW(Pattern("(x)=>a=Identity(x);return Identity(x)"), OnnxRuntimeException);
   auto rule = IdentityPair();
   rule.pattern = Pattern("(x)=>return Identity(x)");
-  EXPECT_THROW(PatternRewriter({rule}), OnnxRuntimeException);
+  EXPECT_NO_THROW(PatternRewriter({rule}));
+  EXPECT_THROW((PatternRewriter({rule}, {.max_iterations = 0})), OnnxRuntimeException);
   TestGraph test;
   auto* input = test.builder.MakeInput<float>({1}, -1.0f, 1.0f);
   auto* a = test.builder.MakeIntermediate();

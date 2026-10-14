@@ -189,8 +189,7 @@ bool CanRewritePartition(const Match& match, const Options& options) {
 Status Replace(Graph& graph, const Pattern& pattern, const Match& match, const Replacement& recipe,
                Producers& producers, InlinedVector<NodeIndex>& added) {
   const auto& nodes = *recipe.Plan();
-  ORT_RETURN_IF(nodes.empty() || nodes.size() >= match.nodes.size(),
-                "Replacements must contain fewer nodes than the matched pattern.");
+  ORT_RETURN_IF(nodes.empty(), "Replacements must contain at least one node.");
   const Node& root = *match.nodes.back();
   ORT_RETURN_IF(recipe.Outputs().size() != pattern.Outputs().size(),
                 "Replacement return count must equal the pattern return count.");
@@ -1009,11 +1008,12 @@ bool Match::BindAttribute(std::string_view name, const ONNX_NAMESPACE::Attribute
 
 PatternRewriter::PatternRewriter(Rules rules, Options options)
     : GraphTransformer("PatternRewriter"), rules_(std::move(rules)), options_(options) {
+  ORT_ENFORCE(options_.max_iterations > 0, "PatternRewriter max_iterations must be positive.");
   InlinedHashMap<std::string, size_t> signatures;
   for (size_t i = 0; i < rules_.size(); ++i) {
     Rule& rule = rules_[i];
-    ORT_ENFORCE(!rule.name.empty() && rule.pattern.Nodes().size() >= 2 && rule.guard && rule.replacement,
-                "Rules need a name, at least two nodes, a guard and a recipe.");
+    ORT_ENFORCE(!rule.name.empty() && !rule.pattern.Nodes().empty() && rule.guard && rule.replacement,
+                "Rules need a name, at least one node, a guard and a recipe.");
     InlinedHashSet<std::string> domains;
     for (auto& requirement : rule.opsets) {
       if (requirement.domain == kOnnxDomainAlias) requirement.domain = kOnnxDomain;
@@ -1026,8 +1026,6 @@ PatternRewriter::PatternRewriter(Rules rules, Options options)
     }
     if (auto* recipe = rule.replacement.target<Replacement>(); recipe && recipe->plan_) {
       auto nodes = *recipe->plan_;
-      ORT_ENFORCE(nodes.size() < rule.pattern.Nodes().size(),
-                  "Replacements must contain fewer nodes than the matched pattern.");
       for (auto& node : nodes) {
         if (node.domain == kOnnxDomainAlias) node.domain = kOnnxDomain;
         ORT_ENFORCE(domains.count(node.domain), "Missing rule opset requirement for replacement domain: ", node.domain);
@@ -1119,106 +1117,115 @@ Status PatternRewriter::Run(Graph& graph, Statistics& statistics) const {
       if (output->Exists()) producers[output] = index;
     }
   }
-  // Nodes are revisited only after a strictly node-count-decreasing rewrite.
-  for (size_t cursor = 0; cursor < worklist.size(); ++cursor) {
-    queued.erase(worklist[cursor]);
-    const Node* root = graph.GetNode(worklist[cursor]);
-    if (!root) continue;
-    ++statistics.visited;
-    size_t winner = std::numeric_limits<size_t>::max();
-    Match winning_match;
-    const Pattern* winning_pattern = nullptr;
-    auto consider = [&](const Pattern& pattern, gsl::span<const size_t> rule_ids) {
-      statistics.candidates += rule_ids.size();
-      ++statistics.structural_checks;
-      Match match;
-      FailureStage stage = FailureStage::Structure;
-      std::string_view reason;
-      if (!MatchPattern(pattern, graph, *root, producers, match, stage, reason)) {
-        for (size_t id : rule_ids) report(id, root->Index(), stage, reason);
-        return;
-      }
-      if (!CanRewritePartition(match, options_)) {
-        for (size_t id : rule_ids)
-          report(id, root->Index(), FailureStage::ExecutionProvider, "Mixed or unsupported execution providers.");
-        return;
-      }
-      for (size_t id : rule_ids) {
-        if (!options_.match_only && id >= winner) break;
-        match.pattern = &rules_[id].pattern;
-        match.ClearUpdates();
-        ++statistics.guards;
-        if (!rules_[id].guard(graph, match)) {
-          report(id, root->Index(), FailureStage::Guard,
-                 match.RejectionReason().empty() ? std::string_view("Guard rejected match.") : match.RejectionReason());
-          continue;
+  for (size_t iteration = 0; iteration < options_.max_iterations && !worklist.empty(); ++iteration) {
+    ++statistics.iterations;
+    InlinedVector<NodeIndex> next_worklist;
+    queued.clear();
+    const size_t rewrites_before = statistics.rewrites;
+    // Each batch is immutable: revisits and new nodes wait until the next iteration.
+    for (size_t cursor = 0; cursor < worklist.size(); ++cursor) {
+      const Node* root = graph.GetNode(worklist[cursor]);
+      if (!root) continue;
+      ++statistics.visited;
+      size_t winner = std::numeric_limits<size_t>::max();
+      Match winning_match;
+      const Pattern* winning_pattern = nullptr;
+      auto consider = [&](const Pattern& pattern, gsl::span<const size_t> rule_ids) {
+        statistics.candidates += rule_ids.size();
+        ++statistics.structural_checks;
+        Match match;
+        FailureStage stage = FailureStage::Structure;
+        std::string_view reason;
+        if (!MatchPattern(pattern, graph, *root, producers, match, stage, reason)) {
+          for (size_t id : rule_ids) report(id, root->Index(), stage, reason);
+          return;
         }
-        if (options_.match_only) ++statistics.matches;
-        if (id < winner) {
-          winner = id;
-          winning_match = match;
-          winning_pattern = match.pattern;
+        if (!CanRewritePartition(match, options_)) {
+          for (size_t id : rule_ids)
+            report(id, root->Index(), FailureStage::ExecutionProvider, "Mixed or unsupported execution providers.");
+          return;
         }
-        if (!options_.match_only) break;
-      }
-    };
-    if (options_.indexed) {
-      auto it = roots_.find(Key(root->OpType(), root->Domain()));
-      if (it != roots_.end()) {
-        for (size_t id : it->second) {
-          const auto& group = groups_[id];
-          const auto& ids = applicable_groups[id];
-          if (ids.empty() || (!options_.match_only && ids.front() >= winner)) continue;
-          consider(group.pattern, ids);
+        for (size_t id : rule_ids) {
+          if (!options_.match_only && id >= winner) break;
+          match.pattern = &rules_[id].pattern;
+          match.ClearUpdates();
+          ++statistics.guards;
+          if (!rules_[id].guard(graph, match)) {
+            report(id, root->Index(), FailureStage::Guard,
+                   match.RejectionReason().empty() ? std::string_view("Guard rejected match.") : match.RejectionReason());
+            continue;
+          }
+          if (options_.match_only) ++statistics.matches;
+          if (id < winner) {
+            winner = id;
+            winning_match = match;
+            winning_pattern = match.pattern;
+          }
+          if (!options_.match_only) break;
+        }
+      };
+      if (options_.indexed) {
+        auto it = roots_.find(Key(root->OpType(), root->Domain()));
+        if (it != roots_.end()) {
+          for (size_t id : it->second) {
+            const auto& group = groups_[id];
+            const auto& ids = applicable_groups[id];
+            if (ids.empty() || (!options_.match_only && ids.front() >= winner)) continue;
+            consider(group.pattern, ids);
+          }
+        }
+      } else {
+        for (size_t id : applicable_rules) {
+          consider(rules_[id].pattern, gsl::span<const size_t>(&id, 1));
+          if (!options_.match_only && winner != std::numeric_limits<size_t>::max()) break;
         }
       }
-    } else {
-      for (size_t id : applicable_rules) {
-        consider(rules_[id].pattern, gsl::span<const size_t>(&id, 1));
-        if (!options_.match_only && winner != std::numeric_limits<size_t>::max()) break;
+      if (options_.match_only || !winning_pattern) continue;
+      ++statistics.matches;
+      InlinedVector<NodeIndex> affected;
+      for (int value = 0; value < static_cast<int>(winning_pattern->ValueCount()); ++value) {
+        if (!winning_pattern->IsInput(value)) continue;
+        auto it = producers.find(winning_match.values[value]);
+        if (it != producers.end()) affected.push_back(it->second);
       }
-    }
-    if (options_.match_only || !winning_pattern) continue;
-    ++statistics.matches;
-    InlinedVector<NodeIndex> affected;
-    for (int value = 0; value < static_cast<int>(winning_pattern->ValueCount()); ++value) {
-      if (!winning_pattern->IsInput(value)) continue;
-      auto it = producers.find(winning_match.values[value]);
-      if (it != producers.end()) affected.push_back(it->second);
-    }
-    InlinedVector<NodeIndex> added;
-    winning_match.ClearUpdates();
-    auto recipe = rules_[winner].replacement(graph, winning_match);
-    auto declared = [&](const std::string& node_domain) {
-      const auto& domain = node_domain == kOnnxDomainAlias ? kOnnxDomain : node_domain;
-      return std::any_of(rules_[winner].opsets.begin(), rules_[winner].opsets.end(),
-                         [&](const auto& requirement) { return requirement.domain == domain; });
-    };
-    auto replace = [&]() -> Status {
-      ORT_RETURN_IF(!recipe.Plan(), "Replacement has no parsed plan.");
-      for (const auto& node : *recipe.Plan())
-        ORT_RETURN_IF(!declared(node.domain), "Replacement domain has no rule opset requirement: ", node.domain);
-      return Replace(graph, *winning_pattern, winning_match, recipe, producers, added);
-    };
-    auto status = replace();
-    if (!status.IsOK()) {
-      report(winner, root->Index(), FailureStage::Replacement, status.ErrorMessage());
-      return status;
-    }
-    ++statistics.rewrites;
-    affected.insert(affected.end(), added.begin(), added.end());
-    // A changed producer or use count can affect a deeper pattern root, not just a direct consumer.
-    InlinedHashSet<NodeIndex> seen;
-    for (size_t depth = 0; depth <= invalidation_depth_ && !affected.empty(); ++depth) {
-      std::sort(affected.begin(), affected.end());
-      InlinedVector<NodeIndex> next;
-      for (NodeIndex index : affected) {
-        if (!seen.insert(index).second) continue;
-        const Node* node = graph.GetNode(index);
-        if (!node) continue;
-        if (queued.insert(index).second) worklist.push_back(index);
-        for (auto it = node->OutputEdgesBegin(); it != node->OutputEdgesEnd(); ++it) {
-          next.push_back(it->GetNode().Index());
+      InlinedVector<NodeIndex> added;
+      winning_match.ClearUpdates();
+      auto recipe = rules_[winner].replacement(graph, winning_match);
+      auto declared = [&](const std::string& node_domain) {
+        const auto& domain = node_domain == kOnnxDomainAlias ? kOnnxDomain : node_domain;
+        return std::any_of(rules_[winner].opsets.begin(), rules_[winner].opsets.end(),
+                           [&](const auto& requirement) { return requirement.domain == domain; });
+      };
+      auto replace = [&]() -> Status {
+        ORT_RETURN_IF(!recipe.Plan(), "Replacement has no parsed plan.");
+        for (const auto& node : *recipe.Plan())
+          ORT_RETURN_IF(!declared(node.domain), "Replacement domain has no rule opset requirement: ", node.domain);
+        return Replace(graph, *winning_pattern, winning_match, recipe, producers, added);
+      };
+      auto status = replace();
+      if (!status.IsOK()) {
+        report(winner, root->Index(), FailureStage::Replacement, status.ErrorMessage());
+        return status;
+      }
+      ++statistics.rewrites;
+      affected.insert(affected.end(), added.begin(), added.end());
+      // A changed producer or use count can affect a deeper pattern root, not just a direct consumer.
+      InlinedHashSet<NodeIndex> seen;
+      for (size_t depth = 0; depth <= invalidation_depth_ && !affected.empty(); ++depth) {
+        std::sort(affected.begin(), affected.end());
+        InlinedVector<NodeIndex> next;
+        for (NodeIndex index : affected) {
+          if (!seen.insert(index).second) continue;
+          const Node* node = graph.GetNode(index);
+          if (!node) continue;
+          if (queued.insert(index).second) next_worklist.push_back(index);
+          for (auto it = node->OutputEdgesBegin(); it != node->OutputEdgesEnd(); ++it) {
+            next.push_back(it->GetNode().Index());
+          }
+          if (options_.match_only || statistics.rewrites == rewrites_before) break;
+          worklist = std::move(next_worklist);
+          if (iteration + 1 == options_.max_iterations && !worklist.empty())
+            statistics.iteration_limit_reached = true;
         }
       }
       affected = std::move(next);
