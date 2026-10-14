@@ -112,14 +112,14 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
                        offsets, fc1_output, expanded, params.inter_size * 2,
                        params.hidden_size, params.fc1_weight_bits);
 
-  ActivationParams activation(ActivationType::Swiglu);
+  ActivationParams activation(params.activation_type);
   activation.alpha = params.alpha;
   activation.beta = params.beta;
   activation.limit = params.limit;
   activation.swiglu_fusion = 1;
   doActivation<ElementType, ElementType, ElementType>(
       activated_output, fc1_output, nullptr, static_cast<const ElementType*>(params.fc1_bias), true, offsets,
-      params.num_experts, params.inter_size, expanded, ActivationType::Swiglu,
+      params.num_experts, params.inter_size, expanded, params.activation_type,
       quant_params, false, nullptr, params.stream, activation);
 
   RunPackedGroupedGemm(params, activated_output, params.fc2_weights, params.fc2_scales,

@@ -90,6 +90,12 @@ void LaunchQMoEPrePackZP(
     int num_elements,
     cudaStream_t stream);
 
+// Fills a buffer with a constant value (used to build a per-block float zero-point from the scalar
+// fractional zero_point_offset for the dense int dequant path).
+void LaunchQMoEConstantFill(float* output, int num_elements, float value, cudaStream_t stream);
+void LaunchQMoEConstantFill(half* output, int num_elements, float value, cudaStream_t stream);
+void LaunchQMoEConstantFill(__nv_bfloat16* output, int num_elements, float value, cudaStream_t stream);
+
 void LaunchQMoEPrePackPacked4BitZPKernel(
     const uint8_t* packed_zp,
     const float* scales,

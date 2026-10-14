@@ -11,6 +11,8 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 
+#include <cmath>
+#include <limits>
 #include <mutex>
 #include <unordered_map>
 
@@ -108,6 +110,11 @@ class QMoE final : public CudaKernel, public MoEBase {
   // dequantize MXFP4 weights to FP16/BF16 and run the dense A16 MoE runner.
   bool use_wfp4afp8_dequant_fallback_ = false;
   std::string quant_type_;  // "int", "fp4", "nvfp4", "fp8", or "wfp4afp8"
+  // Fractional zero-point center for integer block-wise quant (CUDA only). NaN = unset (symmetric,
+  // centered on 2^(bits-1)). A finite value selects dequant = (code - zero_point_offset_) * scale,
+  // realized by passing the offset as a per-block float zero-point to the dense int dequant path.
+  // Motivating case: 2-bit weights with a non-integer center (e.g. 1.5) for balanced quantization.
+  float zero_point_offset_ = std::numeric_limits<float>::quiet_NaN();
   bool enable_kernel_debug_info_ = false;
   bool enable_int2_gemv_ = false;
   bool enable_int2_prefill_ = false;
