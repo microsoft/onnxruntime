@@ -422,8 +422,10 @@ class PatternParser {
     }
     ORT_RETURN_IF_ERROR(Expect(")"));
     ORT_RETURN_IF_ERROR(Expect("=>"));
+    const bool braced = token_ == "{";
+    if (braced) ORT_RETURN_IF_ERROR(Next());
     bool returned = false;
-    while (kind_ != Kind::End) {
+    while (kind_ != Kind::End && token_ != "}") {
       if (kind_ == Kind::Symbol && token_ == ";") {
         ORT_RETURN_IF_ERROR(Next());
         continue;
@@ -433,6 +435,7 @@ class PatternParser {
         returned = true;
         ORT_RETURN_IF_ERROR(Next());
       }
+      bool returned_values = false;
       {
         const size_t start = token_start_;
         do {
@@ -450,16 +453,31 @@ class PatternParser {
           names.clear();
           returned = true;
         } else {
-          for (const auto& name : names) ORT_RETURN_IF(symbols_.count(name), Error("duplicate assignment name"));
           ORT_RETURN_IF(std::any_of(names.begin(), names.end(),
                                     [](const auto& name) { return name.find('.') != std::string::npos; }),
                         Error("expected value identifier"));
-          ORT_RETURN_IF_ERROR(Expect("="));
+          if (returned) {
+            ORT_RETURN_IF(token_ == "=", Error("assign outputs before returning them"));
+            ORT_RETURN_IF(pattern_.Nodes().empty(), Error("return must identify the final operator outputs"));
+            const auto& outputs = pattern_.Nodes().back().outputs;
+            ORT_RETURN_IF(names.size() != outputs.size(), Error("return must preserve all final outputs in order"));
+            for (size_t i = 0; i < names.size(); ++i) {
+              auto found = symbols_.find(names[i]);
+              ORT_RETURN_IF(found == symbols_.end(), Error("undefined return value"));
+              ORT_RETURN_IF(found->second.handle != outputs[i].handle,
+                            Error("return must preserve all final outputs in order"));
+            }
+            returned_values = true;
+          } else {
+            for (const auto& name : names) ORT_RETURN_IF(symbols_.count(name), Error("duplicate assignment name"));
+            ORT_RETURN_IF_ERROR(Expect("="));
+          }
         }
       }
-      ORT_RETURN_IF_ERROR(Call(names));
+      if (!returned_values) ORT_RETURN_IF_ERROR(Call(names));
       if (returned) {
         if (kind_ == Kind::Symbol && token_ == ";") ORT_RETURN_IF_ERROR(Next());
+        if (braced) ORT_RETURN_IF_ERROR(Expect("}"));
         ORT_RETURN_IF(kind_ != Kind::End, Error("unexpected text after return"));
         break;
       }
@@ -530,7 +548,7 @@ class PatternParser {
                (c == ':' && position_ < text_.size() && text_[position_] == ':')) {
       ++position_;
     } else {
-      ORT_RETURN_IF(std::string_view("(),=;").find(c) == std::string_view::npos, Error("unexpected character"));
+      ORT_RETURN_IF(std::string_view("(),=;{}").find(c) == std::string_view::npos, Error("unexpected character"));
     }
     token_ = text_.substr(token_start_, position_ - token_start_);
     return Status::OK();

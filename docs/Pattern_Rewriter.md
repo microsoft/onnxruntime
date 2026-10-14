@@ -30,9 +30,10 @@ bool IsFloat32(const NodeArg& value) {
 
 Rule MakeHardSwishRule() {
   Pattern pattern(R"(
-    (x) =>
+    (x) => {
       sigmoid = HardSigmoid(x, alpha=0.16666667, beta=0.5)
       return Mul(sigmoid, x)
+    }
   )");
   auto guard = [](const Graph&, const Match& match) {
     return IsFloat32(*match.valueOf("x"));
@@ -54,31 +55,36 @@ change evaluation order; validate equivalence within the intended tolerance.
 
 ## Pattern and replacement syntax
 
-Definitions start with named inputs and `=>`. Assignments create named operator
-outputs; `return` identifies the final operator, called the root. Whitespace
-separates calls, and semicolons are optional separators. Comments are not supported
-inside definitions.
+Definitions start with named inputs and `=>`. Braces around the body are optional;
+use them to make multi-statement rules easier to read. Assignments create named
+operator outputs; `return` either calls the final operator (the root) or names all
+outputs of the final assignment. Whitespace separates calls, and semicolons are
+optional separators. A trailing semicolon before the closing brace is allowed.
+Nothing may follow the closing brace. Comments are not supported inside definitions.
 
 ```cpp
 Pattern pattern(R"(
-  (x) =>
+  (x) => {
     add = Add(x, 3.0)
     clip = Clip(add, 0.0, 6.0)
     product = Mul(clip, x)
-    return result = Div(product, 6.0)
+    result = Div(product, 6.0)
+    return result;
+  }
 )");
 Replacement replacement("(x) => HardSwish(x)");
 ```
 
-The example has one root output, named `result`. A final call without an
-assignment, such as `return Div(product, 6.0)`, also describes one output,
+The example assigns one root output, named `result`, then returns it. Assignment
+and return are separate statements: `return result = Div(...)` is rejected.
+A final call without an assignment, such as `return Div(product, 6.0)`, also describes one output,
 but does not give that output a lookup name. Replacements additionally accept
 a final call without the `return` keyword, as above.
 
 Use `domain::Operator(...)` for qualified operators:
 
 ```cpp
-Pattern pattern("(x,y) => mm = com.microsoft::FusedMatMul(x,y); return Identity(mm)");
+Pattern pattern("(x,y) => { mm = com.microsoft::FusedMatMul(x,y); return Identity(mm); }");
 Replacement replacement("(x,y) => com.microsoft::FusedMatMul(x,y)");
 ```
 
@@ -106,7 +112,7 @@ an earlier constant-folding pass.
 Keyword arguments constrain attributes, not tensor inputs:
 
 ```cpp
-Pattern pattern("(x) => h = HardSigmoid(x, alpha=0.25, beta=0.5); return Mul(h,x)");
+Pattern pattern("(x) => { h = HardSigmoid(x, alpha=0.25, beta=0.5); return Mul(h,x); }");
 ```
 
 Attribute equality compares the protobuf attribute type as well as its value.
@@ -129,10 +135,11 @@ Assignments can describe a DAG rather than only a chain:
 
 ```cpp
 Pattern pattern(R"(
-  (x,y) =>
+  (x,y) => {
     sum = Add(x,y)
     product = Mul(sum,x)
     return Add(sum,product)
+  }
 )");
 ```
 
@@ -142,23 +149,31 @@ for equivalent computations or reorder commutative inputs.
 Comma-separated assignment names declare the exact ordered output count:
 
 ```cpp
-Pattern pattern("(x) => first,second = Split(x,axis=0); return Concat(first,second,axis=0)");
+Pattern pattern("(x) => { first,second = Split(x,axis=0); return Concat(first,second,axis=0); }");
 Replacement replacement("(x) => Identity(x)");
 ```
 
-For a multi-output root, put the names on the final return assignment:
+For a multi-output root, assign its outputs first, then return their names:
 
 ```cpp
-Pattern pattern("(x) => copied = Identity(x); return left,right = Split(copied,axis=0)");
-Replacement replacement("(x) => return left,right = Split(x,axis=0)");
+Pattern pattern(R"(
+  (x) => {
+    copied = Identity(x);
+    left,right = Split(copied,axis=0);
+    return left,right;
+  }
+)");
+Replacement replacement("(x) => { left,right = Split(x,axis=0); return left,right; }");
 ```
 
 This replacement preserves the root's two original output `NodeArg`s in order,
 including their names, types, shapes, graph-output roles, and consumers.
 The replacement names are local labels, not new externally visible graph names.
 `return Split(x)` describes only one output and cannot replace a two-output root.
-Returning an existing value or a subset/reordering of an earlier operator's
-outputs is not supported; the return must define the final operator.
+A named return must list **all outputs of the final defined operator in their
+original order**. Returning a leaf input, an earlier operator's outputs, a subset,
+duplicate names, or reordered outputs is rejected. A named return does not create
+an additional operator or introduce output selection.
 
 Intermediate operators may have unused outputs, but **none** of their outputs
 may be exposed outside the matched deletion set.
@@ -191,7 +206,7 @@ std::optional<float> FloatScalar(const Graph& graph, const NodeArg& value) {
 }
 
 Rule MakeMatMulDivRule() {
-  Pattern pattern("(x,y,divisor) => mm = MatMul(x,y); return Div(mm,divisor)");
+  Pattern pattern("(x,y,divisor) => { mm = MatMul(x,y); return Div(mm,divisor); }");
   auto guard = [](const Graph& graph, const Match& match) {
     auto divisor = FloatScalar(graph, *match.valueOf("divisor"));
     return IsFloat32(*match.valueOf("x")) && IsFloat32(*match.valueOf("y")) &&

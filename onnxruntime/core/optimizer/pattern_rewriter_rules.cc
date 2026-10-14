@@ -48,11 +48,12 @@ Rules MakeExampleRules() {
   Rules rules;
   {
     Pattern p(R"(
-      (x) =>
+      (x) => {
         add = Add(x, 3.0)
         clip = Clip(add, 0.0, 6.0)
         mul = Mul(clip, x)
         return Div(mul, 6.0)
+      }
     )");
     auto guard = [](const Graph&, const Match& m) { return IsFloat32(*m.valueOf("x")); };
     Replacement replacement("(x) => HardSwish(x)");
@@ -61,9 +62,10 @@ Rules MakeExampleRules() {
   }
   {
     Pattern p(R"(
-      (x) =>
+      (x) => {
         sigmoid = HardSigmoid(x, alpha=0.16666667, beta=0.5)
         return Mul(sigmoid, x)
+      }
     )");
     auto guard = [](const Graph&, const Match& m) { return IsFloat32(*m.valueOf("x")); };
     Replacement replacement("(x) => HardSwish(x)");
@@ -72,7 +74,7 @@ Rules MakeExampleRules() {
   }
 #ifndef DISABLE_CONTRIB_OPS
   {
-    Pattern p("(x, y, divisor) => mm = MatMul(x, y); return Div(mm, divisor)");
+    Pattern p("(x, y, divisor) => { mm = MatMul(x, y); return Div(mm, divisor); }");
     auto guard = [](const Graph& graph, const Match& m) {
       auto scalar = Scalar(graph, *m.valueOf("divisor"));
       return IsFloat32(*m.valueOf("x")) && IsFloat32(*m.valueOf("y")) &&
@@ -87,7 +89,7 @@ Rules MakeExampleRules() {
     rules.push_back(std::move(rule));
   }
   {
-    Pattern p("(x, y) => transpose = Transpose(y); return MatMul(x, transpose)");
+    Pattern p("(x, y) => { transpose = Transpose(y); return MatMul(x, transpose); }");
     auto guard = [](const Graph&, const Match& m) {
       if (!IsFloat32(*m.valueOf("x")) || !IsFloat32(*m.valueOf("y"))) return false;
       const auto* shape = m.valueOf("y")->Shape();
@@ -110,7 +112,7 @@ Rules MakeExampleRules() {
     rules.push_back(std::move(rule));
   }
   {
-    Pattern p("(x, y, divisor) => mm = com.microsoft::FusedMatMul(x, y); return Div(mm, divisor)");
+    Pattern p("(x, y, divisor) => { mm = com.microsoft::FusedMatMul(x, y); return Div(mm, divisor); }");
     auto guard = [](const Graph& graph, const Match& m) {
       auto scalar = Scalar(graph, *m.valueOf("divisor"));
       auto it = m.nodes[0]->GetAttributes().find("alpha");
@@ -141,7 +143,7 @@ Rules MakeExampleRules() {
   }
   {
     Pattern p(R"(
-      (x, scale, epsilon) =>
+      (x, scale, epsilon) => {
         square = Pow(x, 2.0)
         mean = ReduceMean(square)
         add = Add(mean, epsilon)
@@ -149,6 +151,7 @@ Rules MakeExampleRules() {
         reciprocal = Reciprocal(sqrt)
         normalize = Mul(x, reciprocal)
         return Mul(normalize, scale)
+      }
     )");
     auto guard = [](const Graph& graph, const Match& m) {
       if (!IsFloat32(*m.valueOf("x")) || !IsFloat32(*m.valueOf("scale"))) return false;
