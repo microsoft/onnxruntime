@@ -64,6 +64,8 @@ void LogSwigluFusionRemapOnce() {
 }
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+constexpr size_t kMaxAsyncCpuRows = 256;
+
 class ScopedCudaDevice {
  public:
   explicit ScopedCudaDevice(int device_id) {
@@ -117,6 +119,21 @@ struct MoE<T>::CpuTask {
   ::onnxruntime::contrib::MoeCpuOffloadParameters parameters{};
   concurrency::ThreadPool* thread_pool{nullptr};
   Status status;
+
+  void ReleaseRoutingBuffers() noexcept {
+    device_buffer.reset();
+    host_input.reset();
+    host_output.reset();
+    host_ids.reset();
+    host_scales.reset();
+    device_count = nullptr;
+    device_rows = nullptr;
+    device_ids = nullptr;
+    device_scales = nullptr;
+    device_input = nullptr;
+    device_output = nullptr;
+    capacity = 0;
+  }
 
   ~CpuTask() {
     for (cudaEvent_t event : {routes_ready, input_ready}) {
@@ -530,6 +547,9 @@ Status MoE<T>::CompleteUsage(KernelPilotMoeExpertUsageSnapshot& snapshot) {
       experts);
   snapshot.first_selected_routes = gsl::make_span(
       reinterpret_cast<const int64_t*>(static_cast<const double*>(host_usage_.get()) + experts), experts);
+  if (cpu_task_) {
+    cpu_task_->ReleaseRoutingBuffers();
+  }
   return Status::OK();
 }
 
@@ -1060,7 +1080,9 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   const bool run_cpu_experts =
       cpu_offload_enabled_ && cuda_runner_num_experts < static_cast<int>(moe_params.num_experts);
-  const bool async_cpu = run_cpu_experts && async_cpu_supported_;
+  const bool async_cpu =
+      run_cpu_experts && async_cpu_supported_ &&
+      static_cast<size_t>(moe_params.num_rows) <= kMaxAsyncCpuRows;
   const bool synchronous_cpu = run_cpu_experts && !async_cpu;
 #endif
   const int workspace_num_experts =

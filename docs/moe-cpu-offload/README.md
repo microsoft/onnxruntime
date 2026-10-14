@@ -247,8 +247,12 @@ Separate pinned buffers, CUDA staging slots, and copy streams allow transfers fr
 Within one exchange, the incoming transfer waits for the outgoing transfer before reusing the shared CUDA layout
 buffer. Publication waits for both directions. Hardware with one copy engine serializes the transfers without changing
 correctness. Additional eligible exchanges are reconsidered at a later inference boundary, not retained in a queue.
-Each node that has swapped retains two expert-sized pinned buffers and two expert-sized CUDA staging/layout buffers
-for reuse. The in-flight exchange limit does not bound these persistent allocations across nodes.
+The two expert-sized pinned buffers and two expert-sized CUDA staging/layout buffers exist only while an exchange is
+pending and are released after its publication event completes.
+
+Asynchronous CPU routing is limited to at most 256 input rows. Its compact pinned-host and CUDA activation buffers are
+released when the invocation completes, so a long prefill cannot establish a full-row-count high-water allocation in
+every MoE node. Larger inputs use the synchronous CPU path; decode and small batches retain the asynchronous overlap.
 
 ## Planned end-of-inference redistribution
 
