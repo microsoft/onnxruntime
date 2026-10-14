@@ -57,8 +57,8 @@ change evaluation order; validate equivalence within the intended tolerance.
 
 Definitions start with named inputs and `=>`. Braces around the body are optional;
 use them to make multi-statement rules easier to read. Assignments create named
-operator outputs; `return` either calls the final operator (the root) or names all
-outputs of the final assignment. Whitespace separates calls, and semicolons are
+operator outputs; `return` either calls the final operator (the root) or names an
+ordered list of previously defined operator outputs. Whitespace separates calls, and semicolons are
 optional separators. A trailing semicolon before the closing brace is allowed.
 Nothing may follow the closing brace. Comments are not supported inside definitions.
 
@@ -101,6 +101,27 @@ variables may alias; repeating one variable requires identical binding.
 values. Unknown names and unbound values raise explicit errors. Read-only
 `Pattern::NamedValue`, `Nodes`, `Constants`, `ValueCount`, and `IsInput`
 are available for introspection.
+
+### Optional input slots
+
+Use `None` in an operator input position to require an absent input. It matches
+both an empty ONNX input name and an omitted trailing slot. Mark a header
+variable with `?` to allow either a present value or an absent slot:
+
+```cpp
+Pattern pattern("(x,low?,high?) => { a=Identity(x); return Clip(a,low,high); }");
+Replacement replacement("(x,low?,high?) => Clip(x,low,high)");
+Pattern absent_min("(x,high) => { a=Identity(x); return Clip(a,None,high); }");
+```
+
+An ordinary header variable requires a present input. Repeated optional variables
+must bind identically, including absence: `(x,v?) => Clip(x,v,v)` does not match
+one present and one absent slot. `match.valueOf("low")` returns `nullptr` when
+the optional binding is absent; guards must check it before dereferencing.
+Replacements preserve an absent binding as an empty input name. Explicit `None`
+is also supported in replacements. Schema validation still rejects missing
+required inputs. This is slot matching, not variadic matching: extra actual
+input slots are not accepted. `None` is reserved and cannot be a variable name.
 
 ### Constants and attributes
 
@@ -153,6 +174,23 @@ and numeric list equality, but not custom predicate syntax or string lists.
 Inspect `match.nodes` in the C++ guard for ranges, shapes, or other semantic conditions.
 Positional inputs must precede keyword attributes.
 
+Instead of a literal, a pattern keyword may capture an attribute by name:
+
+```cpp
+Pattern pattern("(x) => { t=Transpose(x,perm=axes); return Identity(t); }");
+Replacement replacement("(x,axes) => Transpose(x,perm=axes)");
+```
+
+The attribute must be present and concrete. `match.attributeOf("axes")` exposes
+the captured `AttributeProto` to guards and replacements without a callback.
+Capture names are separate from tensor values and cannot collide with them.
+Repeating a capture requires identical protobuf attribute content, ignoring the
+original attribute name and documentation string; type and list order matter.
+Captures can hold any concrete attribute type, but replacement schemas decide
+whether that type is valid. Captures are per match, survive clearing computed
+attributes, and cannot be overwritten with `match.update`. Missing attributes
+are not captured from schema defaults: only the resolved node's map is used.
+
 Scalar numeric literals in replacements synthesize rank-zero float32 or int64
 initializers; list literals synthesize rank-one tensors. Replacement keyword
 literals set scalar or list attributes on the new node.
@@ -194,17 +232,33 @@ Pattern pattern(R"(
 Replacement replacement("(x) => { left,right = Split(x,axis=0); return left,right; }");
 ```
 
-This replacement preserves the root's two original output `NodeArg`s in order,
+This replacement preserves the two explicitly returned original `NodeArg`s in order,
 including their names, types, shapes, graph-output roles, and consumers.
 The replacement names are local labels, not new externally visible graph names.
-`return Split(x)` describes only one output and cannot replace a two-output root.
-A named return must list **all outputs of the final defined operator in their
-original order**. Returning a leaf input, an earlier operator's outputs, a subset,
-duplicate names, or reordered outputs is rejected. A named return does not create
-an additional operator or introduce output selection.
+`return Split(x)` describes an operator with one declared output; use assignment
+names to describe its exact arity. Named returns may select and reorder outputs,
+including outputs from different nodes:
 
-Intermediate operators may have unused outputs, but **none** of their outputs
-may be exposed outside the matched deletion set.
+```cpp
+Pattern pattern("(x) => { a=Identity(x); y=Add(a,a); z=Mul(y,y); return y,z; }");
+Replacement replacement("(x) => { y=Add(x,x); z=Mul(y,y); return y,z; }");
+```
+
+The final operator remains the unique sink used to anchor backward matching.
+Every defined operator must reach it, independently of the returned-value order.
+Multiple independent sinks are rejected. Return position defines correspondence:
+the first replacement return inherits the first pattern return's `NodeArg`,
+and so on. The returned counts must match. Returning a leaf input, duplicate
+names, or undefined values is rejected.
+
+Only **explicitly returned** values may have graph-output roles, external
+consumers, or implicit subgraph captures. All other outputs, including unreturned
+sink outputs, must remain within the deletion set or be unused. Internally
+consumed returned values are correctly wired into the replacement graph.
+If an external consumer of a returned intermediate feeds a pattern input,
+the staged producer dependencies are checked for cycles before deletion.
+A replacement that introduces a cycle is rejected with a status and rolled
+back; a mapping that preserves an acyclic dependency graph is allowed.
 
 ## Computed attributes with a replacement callback
 
@@ -260,8 +314,8 @@ Use local bindings, attributes, and constants to establish applicability.
 
 `update` accepts a concrete `AttributeProto`, including list-valued attributes.
 It cannot overwrite a named pattern value or store a referenced/undefined
-attribute. Extra bindings are cleared before each replacement callback;
-`attributeOf` retrieves one and errors if it is missing. A replacement header
+attribute. Extra bindings are cleared before each replacement callback; captured attributes
+remain available. `attributeOf` retrieves either kind and errors if it is missing. A replacement header
 name cannot be used as both a tensor and an attribute. Attribute-only names need
 not appear in the pattern, but must be supplied by the callback. Reusing a parsed
 plan does not reuse a previous match's attributes.
@@ -275,19 +329,20 @@ must be connected to their final operator.
 
 Before calling a rule's guard, the matcher checks:
 
-- Exact operator name/domain, ordered input/output counts, and repeated binding
-  identity. Missing optional slots and variadic patterns are not supported.
+- Exact operator name/domain, ordered output counts and input slots, and repeated
+  binding identity. Omitted trailing inputs match only optional variables or
+  explicit `None`; variadic patterns are not supported.
 - Literal and listed attribute constraints. It does not otherwise infer semantic
   equivalence or check arbitrary shapes/types for the author.
 - Distinct matched nodes with the same layer annotation. Matched operators cannot
   own subgraphs or have implicit inputs.
 - Pattern input variables are outside the matched deletion set.
-- Every non-root output stays internal. A graph output, an external consumer, or
-  an implicit capture by an external subgraph prevents the rewrite.
+- Every unreturned output stays internal. A graph output, an external consumer, or
+  an implicit capture by an external subgraph of an unreturned value prevents the rewrite.
 - Execution-provider eligibility as described below.
 
-The root may have graph outputs or external consumers, because its complete
-output list is preserved. Even match-only mode applies deletion-boundary checks:
+Returned values may have graph outputs or external consumers because their
+identities are preserved. Even match-only mode applies deletion-boundary checks:
 it reports safe rewrite eligibility, not arbitrary structural occurrences.
 
 ### Types in the supplied examples
@@ -375,7 +430,7 @@ mode with the same eligibility and priority semantics.
 
 Every pattern must contain at least two nodes. A replacement must have a
 nonempty node sequence with **strictly fewer nodes** than the pattern, and its
-final output count must equal the root's output count. Expansion and one-node
+returned-value count must equal the pattern's returned-value count. Expansion and one-node
 rewrites are rejected. Each successful rewrite reduces live node count, so a
 graph with N nodes admits at most N-1 rewrites. This establishes termination,
 not a time bound for arbitrary callbacks or graph fanout.
@@ -404,11 +459,40 @@ candidates, structural checks, guard calls, successful matches, and completed
 rewrites. Match-only counts all passing guards; rewrite mode counts selected
 winners. These counters do not alter rule semantics.
 
+### Opt-in failure diagnostics
+
+Set `Options::on_failure` to receive structured `MatchFailure` records containing
+the rule name, candidate root index, `FailureStage`, and a reason string:
+
+```cpp
+Options options;
+options.on_failure = [](const MatchFailure& failure) {
+  std::cerr << failure.rule << ": " << failure.reason << '\n';
+};
+```
+
+Stages distinguish opset filtering, structure, constants, attributes, deletion
+boundaries, execution providers, guards, and replacement validation. An opset
+rejection is reported once per rule/graph with root index
+`std::numeric_limits<NodeIndex>::max()` because no candidate was inspected.
+Other failures are reported for attempted candidates; indexed mode skips
+unrelated root operators, so diagnostic counts need not match reference mode.
+Shared structural failures are attributed to each affected rule.
+
+A guard can use `return match.Reject("unsupported element type");` instead of
+bare `false` to supply a reason. This changes only diagnostics, not eligibility.
+Records own their strings and contain no graph pointers. Callbacks run
+synchronously, must not mutate the graph or reenter the rewriter, and may copy
+records for later inspection. No records or reason strings are allocated when
+diagnostics are disabled. Replacement validation status errors are reported and
+still propagated; exceptions from user callbacks or named lookups still propagate
+normally and are not converted to nonmatches.
+
 ## Limits and unsupported forms
 
 Definitions are limited to 64 nodes, 256 values, and 64 inputs/outputs per
 operator. They are connected acyclic graphs rooted at the final operator.
-There is no alternation, implicit commutation, optional/variadic matching,
+There is no alternation, implicit commutation, variadic matching,
 general tensor synthesis, domain-import editing, or model-local function
 rewriting. Control-flow operators are not matched, although their subgraphs can
 be rewritten through `Apply`.

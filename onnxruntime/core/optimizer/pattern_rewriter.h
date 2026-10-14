@@ -31,6 +31,7 @@ struct Value {
 struct AttributeMatcher {
   std::string name;
   std::function<bool(const ONNX_NAMESPACE::AttributeProto&)> predicate;
+  std::string capture;
   bool Matches(const ONNX_NAMESPACE::AttributeProto& value) const { return predicate(value); }
   static AttributeMatcher Equal(std::string name, int64_t value);
   static AttributeMatcher Equal(std::string name, int value) { return Equal(std::move(name), int64_t{value}); }
@@ -70,6 +71,9 @@ class Pattern {
   size_t ValueCount() const { return value_count_; }
   bool IsInput(Value value) const;
   const auto& Constants() const { return constants_; }
+  const auto& Outputs() const { return outputs_; }
+  bool IsOptional(Value value) const { return optional_inputs_.count(value.handle) != 0; }
+  const auto& AttributeNames() const { return attribute_names_; }
 
  private:
   friend class detail::PatternParser;
@@ -89,6 +93,9 @@ class Pattern {
   InlinedVector<NodePattern, 1> nodes_;
   InlinedVector<Value> values_;
   InlinedHashMap<int, Literal> constants_;
+  InlinedVector<Value> outputs_;
+  InlinedHashSet<int> optional_inputs_;
+  InlinedHashSet<std::string> attribute_names_;
   Value AddValue(std::string_view name);
 };
 
@@ -98,11 +105,22 @@ struct Match {
   const NodeArg* valueOf(std::string_view name) const;
   void update(std::string_view name, ONNX_NAMESPACE::AttributeProto value) const;
   const ONNX_NAMESPACE::AttributeProto& attributeOf(std::string_view name) const;
-  void ClearUpdates() const { extra_attributes_.clear(); }
+  void ClearUpdates() const {
+    extra_attributes_.clear();
+    rejection_reason_.clear();
+  }
+  bool BindAttribute(std::string_view name, const ONNX_NAMESPACE::AttributeProto& value);
+  bool Reject(std::string_view reason) const {
+    rejection_reason_ = reason;
+    return false;
+  }
+  const std::string& RejectionReason() const { return rejection_reason_; }
   const Pattern* pattern = nullptr;
 
  private:
+  NodeAttributes captured_attributes_;
   mutable NodeAttributes extra_attributes_;
+  mutable std::string rejection_reason_;
 };
 
 struct Replacement {
@@ -113,7 +131,7 @@ struct Replacement {
   struct Scalar {
     Literal value;
   };
-  using Input = std::variant<Value, Output, std::string, Scalar>;
+  using Input = std::variant<Value, Output, std::string, Scalar, std::monostate>;
   struct NodeRecipe {
     std::string op;
     std::string domain;
@@ -126,10 +144,12 @@ struct Replacement {
   // A parsed replacement is a reusable recipe callback; copying it shares the immutable plan.
   Replacement operator()(const Graph&, const Match&) const { return *this; }
   const auto& Plan() const { return plan_; }
+  const auto& Outputs() const { return outputs_; }
 
  private:
   friend class PatternRewriter;
   std::shared_ptr<const InlinedVector<NodeRecipe, 1>> plan_;
+  InlinedVector<Output> outputs_;
 };
 
 struct Rule {
@@ -153,11 +173,29 @@ struct Statistics {
   size_t rewrites = 0;
 };
 
+enum class FailureStage { Opset,
+                          Structure,
+                          Constant,
+                          Attribute,
+                          Boundary,
+                          ExecutionProvider,
+                          Guard,
+                          Replacement };
+
+struct MatchFailure {
+  std::string rule;
+  NodeIndex root;
+  FailureStage stage;
+  std::string reason;
+};
+
 struct Options {
   bool match_only = false;
   bool indexed = true;  // false is the rule-by-rule reference implementation.
   // Unassigned nodes are always eligible. Assigned nodes must share an allowed provider.
   InlinedHashSet<std::string> compatible_execution_providers{kCpuExecutionProvider};
+  // Called synchronously. Records own their strings and contain no graph/match pointers.
+  std::function<void(const MatchFailure&)> on_failure;
 };
 
 // Immutable compiled rules; statistics belong to a call, not this transformer.
