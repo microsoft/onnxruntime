@@ -2,11 +2,15 @@
 # Licensed under the MIT License.
 
 import pathlib
+import tempfile
 import unittest
+from unittest import mock
 
 import onnx
 from onnx import TensorProto, helper, shape_inference
 
+from .. import onnx_model_utils
+from ..make_dynamic_shape_fixed import make_dynamic_shape_fixed_helper
 from ..mobile_helpers.usability_checker import check_shapes
 from ..onnx_model_utils import (
     fix_output_shapes,
@@ -237,6 +241,65 @@ class TestDynamicDimReplacement(unittest.TestCase):
         self.assertFalse(is_fixed_size_tensor(model.graph.output[0]))
         fix_output_shapes(model)
         self.assertTrue(is_fixed_size_tensor(model.graph.output[0]))
+
+    def test_fix_output_shape_for_large_model(self):
+        """
+        A model of 2GB or more can't be serialized into a single protobuf, so shape inference has to go via
+        the path based onnx APIs. Drop the size limit rather than building a 2GB model to exercise that path.
+        """
+        model_path = ort_root / "onnxruntime" / "test" / "testdata" / "transform" / "fusion" / "bias_gelu_fusion.onnx"
+        model = onnx.load_model(str(model_path))
+
+        make_input_shape_fixed(model.graph, "A", [2, 2, 3072])
+
+        self.assertFalse(is_fixed_size_tensor(model.graph.output[0]))
+        with mock.patch.object(onnx_model_utils, "PROTOBUF_SIZE_LIMIT", 0):
+            fix_output_shapes(model)
+        self.assertTrue(is_fixed_size_tensor(model.graph.output[0]))
+
+    def test_make_dynamic_shape_fixed_with_external_data(self):
+        """
+        Check the command line tool can write the initializers to a separate file, which is the only way to
+        save a model of 2GB or more.
+        """
+        # raw data, because that is what the onnx external data writer moves out of the model file
+        weight_bytes = b"\x00\x00\x00\x3f" * (4 * 512)  # 0.5 as little endian float32
+        weight = helper.make_tensor("W", TensorProto.FLOAT, [4, 512], weight_bytes, raw=True)
+        node = helper.make_node("MatMul", ["input", "W"], ["output"])
+        graph = helper.make_graph(
+            [node],
+            "test",
+            [helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", 4])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, ["batch", 512])],
+            [weight],
+        )
+        model = helper.make_model(graph)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            input_model = temp_path / "dynamic.onnx"
+            output_model = temp_path / "fixed.onnx"
+            onnx.save_model(model, str(input_model))
+
+            args = [
+                "make_dynamic_shape_fixed",
+                "--input_name",
+                "input",
+                "--input_shape",
+                "2,4",
+                "--use_external_data_format",
+                str(input_model),
+                str(output_model),
+            ]
+            with mock.patch("sys.argv", args):
+                make_dynamic_shape_fixed_helper()
+
+            self.assertTrue(output_model.exists())
+            self.assertTrue(output_model.with_name("fixed.onnx.data").exists())
+
+            fixed = onnx.load_model(str(output_model))
+            self.assertTrue(is_fixed_size_tensor(fixed.graph.input[0]))
+            self.assertTrue(is_fixed_size_tensor(fixed.graph.output[0]))
 
     def test_invalid_replace_input_shape(self):
         model_path = ort_root / "onnxruntime" / "test" / "testdata" / "sklearn_bin_voting_classifier_soft.onnx"
