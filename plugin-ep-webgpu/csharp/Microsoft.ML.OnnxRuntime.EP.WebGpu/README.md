@@ -12,6 +12,13 @@ registered.
 
 On Linux, a system Vulkan loader (`libvulkan.so.1`) must be installed and available at runtime.
 
+On Windows, this package includes the pinned preview D3D12 Agility SDK runtime. Its `buildTransitive` target copies the
+SDK DLLs into a `D3D12` directory next to the WebGPU provider after build and publish. Activation requires a supported
+Windows version with the Agility SDK loader update, Windows Developer Mode because the SDK is a preview release, and a
+compatible GPU driver. See the ONNX Runtime
+[D3D12 Agility SDK guidance](https://github.com/microsoft/onnxruntime/blob/main/docs/BuildWithDawnAgilitySDK.md)
+for the detailed OS revisions, setup instructions, and driver requirements.
+
 ### Supported Platforms
 
 | Runtime Identifier (RID) |

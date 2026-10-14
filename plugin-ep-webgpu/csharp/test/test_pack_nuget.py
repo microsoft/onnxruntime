@@ -16,6 +16,42 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pack_nuget
 
 
+def get_dotnet_sdk_major():
+    dotnet = shutil.which("dotnet")
+    if not dotnet:
+        return None
+
+    try:
+        result = subprocess.run(
+            [dotnet, "--list-sdks"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    sdk_majors = []
+    for line in result.stdout.splitlines():
+        try:
+            sdk_majors.append(int(line.partition(".")[0]))
+        except ValueError:
+            continue
+    return max(sdk_majors, default=None)
+
+
+DOTNET_SDK_MAJOR = get_dotnet_sdk_major()
+DOTNET_SDK_REQUIRED = os.environ.get("ORT_WEBGPU_TEST_REQUIRE_DOTNET_SDK") == "1"
+
+
+def should_run_dotnet_sdk_test(sdk_major, sdk_required):
+    return sdk_required or (sdk_major is not None and sdk_major >= 8)
+
+
 class PackNugetTest(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -77,6 +113,37 @@ class PackNugetTest(unittest.TestCase):
                     argv.append("--require-agility-sdk")
                 with unittest.mock.patch.object(sys, "argv", argv):
                     self.assertEqual(pack_nuget.parse_args().require_agility_sdk, required)
+
+    def test_get_dotnet_sdk_major(self):
+        with (
+            unittest.mock.patch.object(shutil, "which", return_value="dotnet"),
+            unittest.mock.patch.object(
+                subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="7.0.410 [sdk-path]\n8.0.408 [sdk-path]\n", stderr=""
+                ),
+            ),
+        ):
+            self.assertEqual(get_dotnet_sdk_major(), 8)
+
+        with (
+            unittest.mock.patch.object(shutil, "which", return_value="dotnet"),
+            unittest.mock.patch.object(
+                subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+            ),
+        ):
+            self.assertIsNone(get_dotnet_sdk_major())
+
+        with unittest.mock.patch.object(shutil, "which", return_value=None):
+            self.assertIsNone(get_dotnet_sdk_major())
+
+        self.assertFalse(should_run_dotnet_sdk_test(None, False))
+        self.assertFalse(should_run_dotnet_sdk_test(7, False))
+        self.assertTrue(should_run_dotnet_sdk_test(8, False))
+        self.assertTrue(should_run_dotnet_sdk_test(None, True))
 
     def test_stage_binaries_agility_requirement(self):
         for platform in pack_nuget.PLATFORMS:
@@ -226,8 +293,13 @@ class PackNugetTest(unittest.TestCase):
                     pack_nuget.verify_package(package, self.staging)
                     pack_nuget.verify_package(package, self.staging, require_agility_sdk=True)
 
-    @unittest.skipUnless(shutil.which("dotnet"), "Requires the .NET SDK")
+    @unittest.skipUnless(
+        should_run_dotnet_sdk_test(DOTNET_SDK_MAJOR, DOTNET_SDK_REQUIRED), "Requires .NET SDK 8 or later"
+    )
     def test_sdk_layout_after_build_and_publish_with_rid_fallback(self):
+        self.assertIsNotNone(DOTNET_SDK_MAJOR, "Package CI requires an installed .NET SDK")
+        self.assertGreaterEqual(DOTNET_SDK_MAJOR, 8, "Package CI requires .NET SDK 8 or later")
+
         package_id = "Microsoft.ML.OnnxRuntime.EP.WebGpu"
         feed = self.root / "feed"
         feed.mkdir()
@@ -245,10 +317,6 @@ class PackNugetTest(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             return result.stdout.strip()
-
-        sdk_major = int(run_dotnet("--version").split(".")[0])
-        if sdk_major < 8:
-            self.skipTest("Requires .NET SDK 8 or later")
 
         manifest = ET.Element("package")
         metadata = ET.SubElement(manifest, "metadata")
@@ -274,7 +342,7 @@ class PackNugetTest(unittest.TestCase):
                 project = ET.Element("Project", Sdk="Microsoft.NET.Sdk")
                 properties = ET.SubElement(project, "PropertyGroup")
                 settings = {
-                    "TargetFramework": f"net{sdk_major}.0",
+                    "TargetFramework": f"net{DOTNET_SDK_MAJOR}.0",
                     "CopyLocalLockFileAssemblies": "true",
                     "UseRidGraph": "true",
                     "SelfContained": "false",
