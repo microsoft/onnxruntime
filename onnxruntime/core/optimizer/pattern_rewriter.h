@@ -3,11 +3,9 @@
 #pragma once
 
 #include <functional>
-#include <initializer_list>
 #include <memory>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <utility>
 #include <variant>
 
@@ -15,6 +13,10 @@
 
 namespace onnxruntime {
 namespace rewrite {
+
+namespace detail {
+class PatternParser;
+}
 
 struct Value {
   std::string name;
@@ -54,30 +56,8 @@ struct OpsetRequirement {
 // Reusing a Value requires exactly the same NodeArg, including for input variables.
 class Pattern {
  public:
-  Pattern() = default;
   explicit Pattern(std::string_view text);
-  Value Input(std::string_view name = "");
-  Value Constant(float value);
-  Value Constant(int64_t value);
-  Value Constant(int value) { return Constant(int64_t{value}); }
-  Value Constant(double value) { return Constant(static_cast<float>(value)); }
   Value NamedValue(std::string_view name) const;
-  void Name(Value value, std::string_view name);
-  void Attributes(std::initializer_list<AttributeMatcher> matchers);
-  void Attributes(InlinedVector<AttributeMatcher, 1> matchers);
-  Value Op(Operator op, std::initializer_list<Value> inputs);
-  template <typename Name, std::enable_if_t<std::is_convertible_v<Name, std::string_view>, int> = 0>
-  Value Op(Name&& name, std::initializer_list<Value> inputs, std::string_view domain = "") {
-    return Op(Operator{std::string(std::string_view(name)), std::string(domain)}, inputs);
-  }
-  InlinedVector<Value> MultiOp(Operator op, std::initializer_list<Value> inputs, size_t output_count);
-  InlinedVector<Value> MultiOp(Operator op, gsl::span<const Value> inputs, size_t output_count);
-  template <typename Name, std::enable_if_t<std::is_convertible_v<Name, std::string_view>, int> = 0>
-  InlinedVector<Value> MultiOp(Name&& name, std::initializer_list<Value> inputs, size_t output_count,
-                               std::string_view domain = "") {
-    return MultiOp(Operator{std::string(std::string_view(name)), std::string(domain)}, inputs, output_count);
-  }
-
   struct NodePattern {
     Operator op;
     InlinedVector<Value> inputs;
@@ -90,8 +70,18 @@ class Pattern {
   const auto& Constants() const { return constants_; }
 
  private:
+  friend class detail::PatternParser;
+  friend struct Replacement;
   friend struct Match;
   friend class PatternRewriter;
+  Pattern() = default;
+  Value Input(std::string_view name);
+  Value Constant(float value);
+  Value Constant(int64_t value);
+  void Name(Value value, std::string_view name);
+  void Attributes(InlinedVector<AttributeMatcher, 1> matchers);
+  InlinedVector<Value> MultiOp(Operator op, gsl::span<const Value> inputs, size_t output_count);
+
   size_t value_count_ = 0;
   InlinedVector<NodePattern, 1> nodes_;
   InlinedVector<Value> values_;
@@ -120,7 +110,7 @@ struct Replacement {
   struct Scalar {
     std::variant<float, int64_t> value;
   };
-  using Input = std::variant<Value, const NodeArg*, Output, std::string, Scalar>;
+  using Input = std::variant<Value, Output, std::string, Scalar>;
   struct NodeRecipe {
     std::string op;
     std::string domain;
@@ -129,21 +119,10 @@ struct Replacement {
     size_t output_count = 1;
     InlinedHashMap<std::string, std::string> attribute_bindings;
   };
-  Replacement() = default;
-  Replacement(std::string op_name, std::string op_domain, InlinedVector<Input> arguments, NodeAttributes attrs)
-      : op(std::move(op_name)),
-        domain(std::move(op_domain)),
-        inputs(std::move(arguments)),
-        attributes(std::move(attrs)) {}
   explicit Replacement(std::string_view text);
-  explicit Replacement(InlinedVector<NodeRecipe, 1> nodes);
   // A parsed replacement is a reusable recipe callback; copying it shares the immutable plan.
   Replacement operator()(const Graph&, const Match&) const { return *this; }
   const auto& Plan() const { return plan_; }
-  std::string op;
-  std::string domain;
-  InlinedVector<Input> inputs;
-  NodeAttributes attributes;
 
  private:
   friend class PatternRewriter;

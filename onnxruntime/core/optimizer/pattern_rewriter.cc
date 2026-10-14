@@ -130,15 +130,12 @@ bool CanRewritePartition(const Match& match, const Options& options) {
 
 Status Replace(Graph& graph, const Pattern& pattern, const Match& match, const Replacement& recipe,
                Producers& producers, InlinedVector<NodeIndex>& added) {
-  ORT_RETURN_IF(recipe.Plan() && (!recipe.op.empty() || !recipe.domain.empty() || !recipe.inputs.empty() ||
-                                  !recipe.attributes.empty()),
-                "A replacement plan cannot be combined with single-node recipe fields.");
-  InlinedVector<Replacement::NodeRecipe, 1> single;
-  if (!recipe.Plan()) single.push_back({recipe.op, recipe.domain, recipe.inputs, recipe.attributes, 1});
-  const auto& nodes = recipe.Plan() ? *recipe.Plan() : single;
+  const auto& nodes = *recipe.Plan();
   ORT_RETURN_IF(nodes.empty() || nodes.size() >= match.nodes.size(),
                 "Replacements must contain fewer nodes than the matched pattern.");
   const Node& root = *match.nodes.back();
+  ORT_RETURN_IF(nodes.back().output_count != root.OutputDefs().size(),
+                "The final replacement must preserve the root output count.");
   InlinedVector<InlinedVector<NodeArg*>> external_inputs;
   for (size_t i = 0; i < nodes.size(); ++i) {
     const auto& node = nodes[i];
@@ -169,14 +166,7 @@ Status Replace(Graph& graph, const Pattern& pattern, const Match& match, const R
       if (const auto* handle = std::get_if<Value>(&input)) {
         value = *handle;
       } else {
-        const auto* argument = std::holds_alternative<std::string>(input) ? match.valueOf(std::get<std::string>(input))
-                                                                          : std::get<const NodeArg*>(input);
-        for (int id = 0; id < static_cast<int>(match.values.size()); ++id) {
-          if (argument && match.values[id] == argument && pattern.IsInput(id)) {
-            value = id;
-            break;
-          }
-        }
+        value = pattern.NamedValue(std::get<std::string>(input));
       }
       ORT_RETURN_IF(
           value.handle < 0 || static_cast<size_t>(value.handle) >= match.values.size() || !pattern.IsInput(value),
@@ -372,10 +362,6 @@ void Pattern::Name(Value value, std::string_view name) {
   }
 }
 
-void Pattern::Attributes(std::initializer_list<AttributeMatcher> matchers) {
-  Attributes(InlinedVector<AttributeMatcher, 1>(matchers));
-}
-
 void Pattern::Attributes(InlinedVector<AttributeMatcher, 1> matchers) {
   ORT_ENFORCE(!nodes_.empty(), "Attribute matchers require a pattern node.");
   InlinedHashSet<std::string> names;
@@ -386,12 +372,6 @@ void Pattern::Attributes(InlinedVector<AttributeMatcher, 1> matchers) {
   }
   auto& target = nodes_.back().attributes;
   target.insert(target.end(), std::make_move_iterator(matchers.begin()), std::make_move_iterator(matchers.end()));
-}
-
-Value Pattern::Op(Operator op, std::initializer_list<Value> inputs) { return MultiOp(std::move(op), inputs, 1)[0]; }
-
-InlinedVector<Value> Pattern::MultiOp(Operator op, std::initializer_list<Value> inputs, size_t output_count) {
-  return MultiOp(std::move(op), gsl::span<const Value>(inputs.begin(), inputs.size()), output_count);
 }
 
 InlinedVector<Value> Pattern::MultiOp(Operator op, gsl::span<const Value> inputs, size_t output_count) {
@@ -419,7 +399,7 @@ bool Pattern::IsInput(Value value) const {
   });
 }
 
-namespace {
+namespace detail {
 class PatternParser {
  public:
   explicit PatternParser(std::string_view text, InlinedVector<NodeAttributes, 1>* attributes = nullptr,
@@ -452,17 +432,19 @@ class PatternParser {
       if (kind_ == Kind::Identifier && token_ == "return") {
         returned = true;
         ORT_RETURN_IF_ERROR(Next());
-      } else {
+      }
+      {
         const size_t start = token_start_;
         do {
           std::string name;
-          ORT_RETURN_IF_ERROR(Identifier(name, replacement_attributes_ && names.empty()));
+          ORT_RETURN_IF_ERROR(Identifier(name, names.empty()));
           ORT_RETURN_IF(std::find(names.begin(), names.end(), name) != names.end(), Error("duplicate assignment name"));
           names.push_back(std::move(name));
           if (token_ != ",") break;
           ORT_RETURN_IF_ERROR(Next());
         } while (true);
-        if (replacement_attributes_ && names.size() == 1 && (token_ == "(" || token_ == "::")) {
+        if (names.size() == 1 && (token_ == "(" || token_ == "::")) {
+          ORT_RETURN_IF(!returned && !replacement_attributes_, Error("expected assignment or return"));
           position_ = start;
           ORT_RETURN_IF_ERROR(Next());
           names.clear();
@@ -700,20 +682,15 @@ class PatternParser {
   InlinedVector<InlinedHashMap<std::string, std::string>, 1>* replacement_bindings_ = nullptr;
   InlinedHashSet<int> attribute_inputs_;
 };
-}  // namespace
+}  // namespace detail
 
-Pattern::Pattern(std::string_view text) { ORT_THROW_IF_ERROR(PatternParser(text).Parse(*this)); }
-
-Replacement::Replacement(InlinedVector<NodeRecipe, 1> nodes) {
-  ORT_ENFORCE(!nodes.empty() && nodes.size() <= 64, "Replacements need between 1 and 64 nodes.");
-  plan_ = std::make_shared<const InlinedVector<NodeRecipe, 1>>(std::move(nodes));
-}
+Pattern::Pattern(std::string_view text) { ORT_THROW_IF_ERROR(detail::PatternParser(text).Parse(*this)); }
 
 Replacement::Replacement(std::string_view text) {
   Pattern parsed;
   InlinedVector<NodeAttributes, 1> parsed_attributes;
   InlinedVector<InlinedHashMap<std::string, std::string>, 1> parsed_bindings;
-  ORT_THROW_IF_ERROR(PatternParser(text, &parsed_attributes, &parsed_bindings).Parse(parsed));
+  ORT_THROW_IF_ERROR(detail::PatternParser(text, &parsed_attributes, &parsed_bindings).Parse(parsed));
   InlinedHashMap<int, Output> outputs;
   InlinedVector<NodeRecipe, 1> nodes;
   InlinedHashSet<std::string> attribute_names;
@@ -934,17 +911,14 @@ Status PatternRewriter::Run(Graph& graph, Statistics& statistics) const {
     InlinedVector<NodeIndex> added;
     winning_match.ClearUpdates();
     auto recipe = rules_[winner].replacement(graph, winning_match);
+    ORT_RETURN_IF(!recipe.Plan(), "Replacement has no parsed plan.");
     auto declared = [&](const std::string& node_domain) {
       const auto& domain = node_domain == kOnnxDomainAlias ? kOnnxDomain : node_domain;
       return std::any_of(rules_[winner].opsets.begin(), rules_[winner].opsets.end(),
                          [&](const auto& requirement) { return requirement.domain == domain; });
     };
-    if (recipe.Plan()) {
-      for (const auto& node : *recipe.Plan())
-        ORT_RETURN_IF(!declared(node.domain), "Replacement domain has no rule opset requirement: ", node.domain);
-    } else {
-      ORT_RETURN_IF(!declared(recipe.domain), "Replacement domain has no rule opset requirement: ", recipe.domain);
-    }
+    for (const auto& node : *recipe.Plan())
+      ORT_RETURN_IF(!declared(node.domain), "Replacement domain has no rule opset requirement: ", node.domain);
     ORT_RETURN_IF_ERROR(Replace(graph, *winning_pattern, winning_match, recipe, producers, added));
     ++statistics.rewrites;
     affected.insert(affected.end(), added.begin(), added.end());

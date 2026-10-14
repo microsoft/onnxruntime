@@ -5,6 +5,7 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <type_traits>
 #include <unordered_map>
 
 #include "core/optimizer/pattern_rewriter.h"
@@ -76,21 +77,21 @@ size_t Count(const Graph& graph, const std::string& op) {
 Rule IdentityPair(const char* name = "identity", bool accept = true) {
   Pattern p("(x) => a = Identity(x); return Identity(a)");
   auto guard = [accept](const Graph&, const Match&) { return accept; };
-  auto replacement = [](const Graph&, const Match& m) {
-    return Replacement{"Identity", kOnnxDomain, {m.valueOf("x")}, {}};
-  };
+  Replacement replacement("(x) => Identity(x)");
   Rule rule{name, p, {{kOnnxDomain, 1, 21}}, guard, replacement};
   return rule;
 }
 
 Rule IdentitySplit() {
-  Pattern p;
-  auto x = p.Input();
-  auto first = p.Op("Identity", {x});
-  p.MultiOp("Split", {first}, 2);
+  Pattern p("(x) => first = Identity(x); return a, b = Split(first)");
   auto guard = [](const Graph&, const Match&) { return true; };
-  auto replacement = [x](const Graph&, const Match& match) {
-    return Replacement{"Split", kOnnxDomain, {x}, match.nodes.back()->GetAttributes()};
+  Replacement plan("(x, axis) => return a, b = Split(x, axis=axis)");
+  auto replacement = [plan](const Graph&, const Match& match) {
+    const auto& node = *match.nodes.back();
+    auto axis = node.GetAttributes().find("axis");
+    match.update("axis", axis == node.GetAttributes().end() ? node.Op()->attributes().at("axis").default_value
+                                                            : axis->second);
+    return plan;
   };
   Rule rule{"IdentitySplit", p, {{kOnnxDomain, 13, 17}}, guard, replacement};
   return rule;
@@ -104,9 +105,7 @@ Rule SplitConcat() {
     return (axis == split_attributes.end() || axis->second.i() == 0) &&
            match.nodes[1]->GetAttributes().at("axis").i() == 0;
   };
-  auto replacement = [](const Graph&, const Match& m) {
-    return Replacement{"Identity", kOnnxDomain, {m.valueOf("x")}, {}};
-  };
+  Replacement replacement("(x) => Identity(x)");
   Rule rule{"SplitConcat", p, {{kOnnxDomain, 13, 17}}, guard, replacement};
   return rule;
 }
@@ -130,18 +129,24 @@ Rule LayerNormBias() {
            width.dim_value() == bias_width.dim_value() &&
            (axis == match.nodes[0]->GetAttributes().end() || axis->second.i() == -1);
   };
-  auto replacement = [](const Graph&, const Match& match) {
-    return Replacement{"LayerNormalization",
-                       "",
-                       {match.valueOf("x"), match.valueOf("scale"), match.valueOf("bias")},
-                       match.nodes[0]->GetAttributes()};
+  Replacement plan(R"(
+    (x, scale, bias, axis, epsilon, stash_type) =>
+      LayerNormalization(x, scale, bias, axis=axis, epsilon=epsilon, stash_type=stash_type)
+  )");
+  auto replacement = [plan](const Graph&, const Match& match) {
+    const auto& node = *match.nodes[0];
+    for (const char* name : {"axis", "epsilon", "stash_type"}) {
+      auto attribute = node.GetAttributes().find(name);
+      match.update(name, attribute == node.GetAttributes().end() ? node.Op()->attributes().at(name).default_value
+                                                                 : attribute->second);
+    }
+    return plan;
   };
   Rule rule{"LayerNormBias", p, {{kOnnxDomain, 17, 17}}, guard, replacement};
   return rule;
 }
 
 // Small-weight eager decoder: B=1, Hq=4, Hkv=2, D=4. Cache length is 3.
-// See the design document for the model/export sources and deliberate simplifications.
 void BuildDecoder(ModelTestBuilder& b, size_t layers, int64_t sequence = 1) {
   constexpr int64_t width = 16, kv_width = 8, head = 4, past = 3;
   auto* x = b.MakeInput<float>({1, sequence, width}, -0.5f, 0.5f);
@@ -290,25 +295,19 @@ TEST(PatternRewriterTests, HardSigmoidAttributeGuard) {
   }
 }
 
-TEST(PatternRewriterTests, NamedValuesAndAttributePredicates) {
-  Pattern p;
-  auto x = p.Input("x");
-  auto first = p.Op("HardSigmoid", {x});
-  p.Name(first, "sigmoid");
-  p.Attributes({AttributeMatcher::Equal("alpha", 0.25f),
-                {"beta", [](const auto& attr) {
-                   return attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT && attr.f() > 0.4f;
-                 }}});
-  p.Op("Mul", {first, x});
+TEST(PatternRewriterTests, NamedValuesAndAttributeGuards) {
+  Pattern p("(x) => sigmoid = HardSigmoid(x, alpha=0.25); return Mul(sigmoid, x)");
+  auto x = p.NamedValue("x");
+  auto first = p.NamedValue("sigmoid");
   EXPECT_EQ(x.name, "x");
   EXPECT_EQ(x.handle, 0);
   EXPECT_EQ(p.NamedValue("sigmoid").handle, first.handle);
   EXPECT_EQ(p.Nodes()[0].outputs[0].name, "sigmoid");
   EXPECT_EQ(p.Nodes()[1].inputs[0].name, "sigmoid");
-  EXPECT_THROW(p.Input("x"), OnnxRuntimeException);
+  EXPECT_THROW(Pattern("(x,x) => return Identity(x)"), OnnxRuntimeException);
   EXPECT_THROW(p.NamedValue("missing"), OnnxRuntimeException);
-  EXPECT_THROW(p.Name(x, "sigmoid"), OnnxRuntimeException);
-  EXPECT_THROW(p.Op("Identity", {Value{-1}}), OnnxRuntimeException);
+  EXPECT_THROW(Pattern("(x) => x = Identity(x); return Identity(x)"), OnnxRuntimeException);
+  EXPECT_THROW(Pattern("(x) => return Identity(missing)"), OnnxRuntimeException);
   auto integer = AttributeMatcher::Equal("axis", int64_t{1});
   auto string = AttributeMatcher::Equal("mode", std::string("linear"));
   ONNX_NAMESPACE::AttributeProto attr;
@@ -333,6 +332,10 @@ TEST(PatternRewriterTests, NamedValuesAndAttributePredicates) {
       ASSERT_STATUS_OK(test.graph.Resolve());
       auto rule = IdentityPair();
       rule.pattern = p;
+      rule.guard = [](const Graph&, const Match& match) {
+        const auto& beta = match.nodes[0]->GetAttributes().at("beta");
+        return beta.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT && beta.f() > 0.4f;
+      };
       Statistics stats;
       ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
       EXPECT_EQ(stats.matches, scenario == 0 ? 1u : 0u);
@@ -357,7 +360,7 @@ TEST(PatternRewriterTests, NamedMatchLookupAndReplacementSafety) {
       test.builder.SetGraphOutputs();
       ASSERT_STATUS_OK(test.graph.Resolve());
       auto first = IdentityPair(), second = IdentityPair();
-      second.pattern = Pattern("(input) => middle = Identity(input); return Identity(middle)");
+      second.pattern = Pattern("(input) => middle = Identity(input); return root = Identity(middle)");
       first.guard = [=](const Graph&, const Match& m) {
         EXPECT_EQ(m.valueOf("x"), x);
         EXPECT_EQ(m.valueOf("a"), intermediate);
@@ -371,12 +374,11 @@ TEST(PatternRewriterTests, NamedMatchLookupAndReplacementSafety) {
         EXPECT_THROW(m.valueOf("x"), OnnxRuntimeException);
         return true;
       };
-      second.replacement = [scenario, output](const Graph&, const Match& m) {
-        const NodeArg* input = scenario == 0   ? m.valueOf("input")
-                               : scenario == 1 ? m.valueOf("middle")
-                               : scenario == 2 ? output
-                                               : nullptr;
-        return Replacement{"Identity", "", {input}, {}};
+      second.replacement = [scenario](const Graph&, const Match&) {
+        if (scenario == 1) return Replacement("(middle) => Identity(middle)");
+        if (scenario == 2) return Replacement("(root) => Identity(root)");
+        if (scenario == 3) return Replacement("(input) => Identity(input, invalid=0)");
+        return Replacement("(input) => Identity(input)");
       };
       PatternRewriter rewriter({first, second}, {.indexed = indexed});
       Statistics stats;
@@ -482,13 +484,8 @@ TEST(PatternRewriterTests, ReplacementBranchesAndMultiOutputRoot) {
       std::make_unique<PatternRewriter>(Rules{branched}));
 
   auto split = IdentitySplit();
-  Pattern p;
-  auto x = p.Input("x");
-  auto a = p.Op("Identity", {x});
-  auto b = p.Op("Identity", {a});
-  p.MultiOp("Split", {b}, 2);
-  split.pattern = p;
-  split.replacement = Replacement("(x) => a=Identity(x); return Split(a, axis=0)");
+  split.pattern = Pattern("(x) => a = Identity(x); b = Identity(a); return left, right = Split(b)");
+  split.replacement = Replacement("(x) => a=Identity(x); return left, right = Split(a, axis=0)");
   auto build_split = [](ModelTestBuilder& b) {
     auto* x = b.MakeInput<float>({4}, -1.0f, 1.0f);
     auto* a = b.MakeIntermediate();
@@ -509,7 +506,10 @@ TEST(PatternRewriterTests, ReplacementBranchesAndMultiOutputRoot) {
 TEST(PatternRewriterTests, ReplacementParsingCompilationAndRollback) {
   for (auto text : {"(x)=>Unknown(y)", "(x)=>a=Identity(x); Identity(x)", "(x)=>Add(x,1e999)",
                     "(x)=>a=Identity(x);return Identity(a,axis=[0])", "(x)=>Identity(x);more",
-                    "(x)=>Identity(x,axis=0,axis=1)", "(x)=>Identity(x,mode='bad)"})
+                    "(x)=>Identity(x,axis=0,axis=1)", "(x)=>Identity(x,mode='bad)",
+                    "(x)=>a=Identity(a);return Identity(a)", "(x)=>a=Split(x);return Identity(b)",
+                    "(x)=>a=Identity(x);return Identity(x)", "(x)=>return = Identity(x)",
+                    "(x)=>return a,a = Split(x)"})
     EXPECT_THROW(Replacement{text}, OnnxRuntimeException) << text;
   auto invalid = IdentityPair();
   invalid.replacement = Replacement("(missing)=>Identity(missing)");
@@ -522,42 +522,19 @@ TEST(PatternRewriterTests, ReplacementParsingCompilationAndRollback) {
   EXPECT_THROW(PatternRewriter({invalid}), OnnxRuntimeException);
   EXPECT_NO_THROW(Replacement("(Identity)=>Identity(Identity)"));
   for (bool indexed : {false, true}) {
-    for (int scenario = 0; scenario < 9; ++scenario) {
+    for (auto text : {"(x)=>a=Identity(x);return NoSuchReplacementOperator(a)",
+                      "(x)=>a=Identity(x);return Softmax(a,axis='wrong')",
+                      "(x)=>a=Identity(x);return com.microsoft::HardSwish(a)",
+                      "(x)=>a=Add(x,0.0);return NoSuchReplacementOperator(a)",
+                      "(x)=>HardSwish(x,invalid=0)"}) {
+      SCOPED_TRACE(text);
       TestGraph test;
       BuildHardSwish(test.builder);
       test.builder.SetGraphOutputs();
       ASSERT_STATUS_OK(test.graph.Resolve());
       auto initializer_count = test.graph.GetAllInitializedTensors().size();
       auto rule = MakeExampleRules()[0];
-      InlinedVector<Replacement::NodeRecipe, 1> nodes{{"Identity", "", {std::string("x")}, {}, 1},
-                                                      {"HardSwish", "", {Replacement::Output{0}}, {}, 1}};
-      if (scenario == 0) nodes[1].op = "NoSuchReplacementOperator";
-      if (scenario == 1) nodes[1].inputs = {Replacement::Output{1}};
-      if (scenario == 2) nodes[1].inputs = {Replacement::Output{0, 1}};
-      if (scenario == 3) nodes[1].inputs = {std::string("x")};
-      if (scenario == 4) {
-        ONNX_NAMESPACE::AttributeProto attr;
-        attr.set_name("axis");
-        attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
-        attr.set_s("wrong");
-        nodes[1].op = "Softmax";
-        nodes[1].attributes.emplace("axis", attr);
-      }
-      if (scenario == 5) nodes[1].domain = kMSDomain;
-      if (scenario == 6) nodes[0].output_count = 0;
-      if (scenario == 7) {
-        nodes[0].op = "Add";
-        nodes[0].inputs.push_back(Replacement::Scalar{0.0f});
-        nodes[1].op = "NoSuchReplacementOperator";
-      }
-      rule.replacement = [recipe = Replacement(std::move(nodes))](const Graph&, const Match&) { return recipe; };
-      if (scenario == 8) {
-        rule.replacement = [](const Graph&, const Match&) {
-          Replacement recipe("(x)=>HardSwish(x)");
-          recipe.op = "Identity";
-          return recipe;
-        };
-      }
+      rule.replacement = [recipe = Replacement(text)](const Graph&, const Match&) { return recipe; };
       Statistics stats;
       ASSERT_FALSE(PatternRewriter({rule}, {.indexed = indexed}).Run(test.graph, stats).IsOK());
       EXPECT_EQ(stats.rewrites, 0u);
@@ -572,7 +549,7 @@ TEST(PatternRewriterTests, ReplacementParsingCompilationAndRollback) {
   }
 }
 
-TEST(PatternRewriterTests, ReplacementScalarConstantsAndProgrammaticSequence) {
+TEST(PatternRewriterTests, ReplacementScalarConstantsAndParsedSequence) {
   auto rule = IdentityPair();
   rule.pattern = Pattern("(x)=>a=Identity(x);b=Identity(a);return Identity(b)");
   for (bool integer : {false, true}) {
@@ -599,8 +576,7 @@ TEST(PatternRewriterTests, ReplacementScalarConstantsAndProgrammaticSequence) {
         },
         TransformerLevel::Default, TransformerLevel::Level1, 17, 0, 0, std::make_unique<PatternRewriter>(Rules{rule}));
   }
-  rule.replacement = Replacement(InlinedVector<Replacement::NodeRecipe, 1>{
-      {"Identity", "", {std::string("x")}, {}, 1}, {"Identity", "", {Replacement::Output{0}}, {}, 1}});
+  rule.replacement = Replacement("(x)=>a=Identity(x);return Identity(a)");
   TestGraph test;
   auto* x = test.builder.MakeInput<float>({2}, -1.0f, 1.0f);
   auto* current = x;
@@ -1070,9 +1046,9 @@ TEST(PatternRewriterTests, LiteralTypeAndRankMatching) {
       EXPECT_EQ(stats.matches, 0u);
     }
   }
-  Pattern p;
-  auto integer = p.Constant(3);
-  auto floating = p.Constant(3.0);
+  Pattern p("(x)=>a=Add(x,3);return Add(a,3.0)");
+  auto integer = p.Nodes()[0].inputs[1];
+  auto floating = p.Nodes()[1].inputs[1];
   EXPECT_TRUE(std::holds_alternative<int64_t>(p.Constants().at(integer)));
   EXPECT_TRUE(std::holds_alternative<float>(p.Constants().at(floating)));
 }
@@ -1210,12 +1186,9 @@ TEST(PatternRewriterTests, PriorityOverlapTerminationAndMatchOnly) {
 }
 
 TEST(PatternRewriterTests, InvalidRuleAndRecipe) {
-  Pattern disconnected;
-  auto x = disconnected.Input();
-  disconnected.Op({"Identity", ""}, {x});
-  disconnected.Op({"Identity", ""}, {x});
+  EXPECT_THROW(Pattern("(x)=>a=Identity(x);return Identity(x)"), OnnxRuntimeException);
   auto rule = IdentityPair();
-  rule.pattern = disconnected;
+  rule.pattern = Pattern("(x)=>return Identity(x)");
   EXPECT_THROW(PatternRewriter({rule}), OnnxRuntimeException);
   TestGraph test;
   auto* input = test.builder.MakeInput<float>({1}, -1.0f, 1.0f);
@@ -1225,22 +1198,9 @@ TEST(PatternRewriterTests, InvalidRuleAndRecipe) {
   test.builder.SetGraphOutputs();
   ASSERT_STATUS_OK(test.graph.Resolve());
   rule = IdentityPair();
-  for (int scenario = 0; scenario < 5; ++scenario) {
-    rule.replacement = [scenario](const Graph&, const Match&) {
-      Replacement recipe{"Identity", "", {0}, {}};
-      if (scenario == 0) recipe.op = "NoSuchReplacementOperator";
-      if (scenario == 1) recipe.domain = "not.imported";
-      if (scenario == 2) recipe.inputs = {1};  // Deleted intermediate, not an external input.
-      if (scenario == 3) {
-        ONNX_NAMESPACE::AttributeProto attr;
-        attr.set_name("invalid");
-        attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
-        attr.set_i(1);
-        recipe.attributes.emplace("invalid", attr);
-      }
-      if (scenario == 4) recipe.domain = kMSDomain;  // Imported, but not declared by this rule.
-      return recipe;
-    };
+  for (auto text : {"(x)=>NoSuchReplacementOperator(x)", "(x)=>not.imported::Identity(x)",
+                    "(a)=>Identity(a)", "(x)=>Identity(x,invalid=1)", "(x)=>com.microsoft::Identity(x)"}) {
+    rule.replacement = [recipe = Replacement(text)](const Graph&, const Match&) { return recipe; };
     Statistics stats;
     EXPECT_FALSE(PatternRewriter({rule}).Run(test.graph, stats).IsOK());
     EXPECT_EQ(test.graph.NumberOfNodes(), 2);
@@ -1266,17 +1226,13 @@ TEST(PatternRewriterTests, RuleImportRangesAndAliases) {
   for (bool indexed : {false, true}) {
     auto rule = IdentityPair();
     rule.opsets = {{kOnnxDomainAlias, 14, 17}};
-    Pattern pattern;
-    auto input = pattern.Input();
-    auto first = pattern.Op({"Identity", kOnnxDomainAlias}, {input});
-    pattern.Op({"Identity", kOnnxDomainAlias}, {first});
-    rule.pattern = std::move(pattern);
+    rule.pattern = Pattern("(x)=>a=ai.onnx::Identity(x);return ai.onnx::Identity(a)");
     int guards = 0;
     rule.guard = [&guards](const Graph&, const Match&) {
       ++guards;
       return true;
     };
-    rule.replacement = [](const Graph&, const Match&) { return Replacement{"Identity", kOnnxDomainAlias, {0}, {}}; };
+    rule.replacement = Replacement("(x)=>ai.onnx::Identity(x)");
     // Reusing one compiled rule across models must not retain the first model's imports.
     PatternRewriter rewriter({rule}, {.indexed = indexed});
     for (int opset : {13, 14, 15, 16, 17, 18}) {
@@ -1404,13 +1360,9 @@ TEST(PatternRewriterTests, PriorityAcrossInterleavedStructuralGroups) {
     lower_priority.guard = [](const Graph& graph, const Match& m) {
       return graph.NodeProducesGraphOutput(*m.nodes.back());
     };
-    Pattern p;
-    auto input = p.Input();
-    auto first = p.Op({"Identity", ""}, {input});
-    auto second = p.Op({"Identity", ""}, {first});
-    p.Op({"Identity", ""}, {second});
+    Pattern p("(x)=>a=Identity(x);b=Identity(a);return Identity(b)");
     auto guard = [](const Graph&, const Match&) { return true; };
-    auto replacement = [input](const Graph&, const Match&) { return Replacement{"Identity", "", {input}, {}}; };
+    Replacement replacement("(x)=>Identity(x)");
     Rule higher_priority{"higher_priority", p, {{kOnnxDomain, 1, 21}}, guard, replacement};
     Statistics stats;
     ASSERT_STATUS_OK(
@@ -1457,10 +1409,7 @@ TEST(PatternRewriterTests, OutputCountMismatch) {
   b.AddNode("Dropout", {a}, {b.MakeOutput(), b.MakeOutput()});
   b.SetGraphOutputs();
   ASSERT_STATUS_OK(test.graph.Resolve());
-  Pattern p;
-  auto input = p.Input();
-  auto identity = p.Op({"Identity", ""}, {input});
-  p.Op({"Dropout", ""}, {identity});
+  Pattern p("(x)=>a=Identity(x);return Dropout(a)");
   auto rule = IdentityPair();
   rule.pattern = p;
   Statistics stats;
@@ -1468,13 +1417,19 @@ TEST(PatternRewriterTests, OutputCountMismatch) {
   EXPECT_EQ(stats.rewrites, 0u);
 }
 
-TEST(PatternRewriterTests, MultiOpDefinitionsAndOverloads) {
-  Pattern p;
-  auto x = p.Input();
-  std::string identity = "Identity";
-  auto a = p.Op(identity, {x});
-  auto b = p.Op(std::string_view(identity), {a}, kOnnxDomainAlias);
-  auto outputs = p.MultiOp({"Split", kOnnxDomainAlias}, {b}, 2);
+TEST(PatternRewriterTests, ParserOnlyConstruction) {
+  static_assert(!std::is_default_constructible_v<Pattern>);
+  static_assert(!std::is_default_constructible_v<Replacement>);
+  static_assert(!std::is_constructible_v<Replacement, InlinedVector<Replacement::NodeRecipe, 1>>);
+  static_assert(std::is_const_v<std::remove_reference_t<decltype(std::declval<Pattern>().Nodes())>>);
+  EXPECT_NO_THROW(Pattern("(x)=>a=Identity(x);return result=Identity(a)"));
+  EXPECT_NO_THROW(Replacement("(x)=>return result=Identity(x)"));
+}
+
+TEST(PatternRewriterTests, ParsedMultiOutputDefinitionsAndLimits) {
+  Pattern p("(x)=>a=Identity(x);b=ai.onnx::Identity(a);return left,right = ai.onnx::Split(b)");
+  auto x = p.NamedValue("x");
+  const auto& outputs = p.Nodes().back().outputs;
   EXPECT_EQ(outputs.size(), 2u);
   EXPECT_NE(outputs[0], outputs[1]);
   EXPECT_TRUE(p.IsInput(x));
@@ -1482,12 +1437,28 @@ TEST(PatternRewriterTests, MultiOpDefinitionsAndOverloads) {
   EXPECT_FALSE(p.IsInput(outputs[1]));
   EXPECT_EQ(p.Nodes().back().op.domain, kOnnxDomain);
   const auto count = p.ValueCount();
-  EXPECT_THROW(p.MultiOp("Split", {b}, 0), OnnxRuntimeException);
-  EXPECT_THROW(p.MultiOp("Split", {b}, 65), OnnxRuntimeException);
-  EXPECT_THROW(p.MultiOp("Split", {999}, 2), OnnxRuntimeException);
+  EXPECT_THROW(p = Pattern("(x)=>return = Split(x)"), OnnxRuntimeException);
+  EXPECT_THROW(p = Pattern("(x)=>return a,b = Split(missing)"), OnnxRuntimeException);
+  EXPECT_THROW(p = Pattern("(x)=>return left,left = Split(x)"), OnnxRuntimeException);
+  EXPECT_THROW(p = Pattern("(x)=>return x,right = Split(x)"), OnnxRuntimeException);
+  EXPECT_THROW(p = Pattern("(x)=>a,b=Split(x);return a,b"), OnnxRuntimeException);
   EXPECT_EQ(p.ValueCount(), count);
-  for (int i = 0; i < 3; ++i) p.MultiOp("Split", {b}, 64);
-  EXPECT_THROW(p.MultiOp("Split", {b}, 64), OnnxRuntimeException);
+  auto outputs_text = [](int node, int count) {
+    std::string text;
+    for (int slot = 0; slot < count; ++slot) {
+      if (slot) text += ',';
+      text += "v" + std::to_string(node) + "_" + std::to_string(slot);
+    }
+    return text;
+  };
+  EXPECT_THROW(Pattern("(x)=>return " + outputs_text(0, 65) + "=Split(x)"), OnnxRuntimeException);
+  std::string many_values = "(x)=>";
+  for (int node = 0; node < 3; ++node) {
+    const auto input = node == 0 ? "x" : "v" + std::to_string(node - 1) + "_0";
+    many_values += outputs_text(node, 64) + "=Split(" + input + ");";
+  }
+  EXPECT_NO_THROW(Pattern(many_values + "return Identity(v2_0)"));
+  EXPECT_THROW(Pattern(many_values + "return " + outputs_text(3, 64) + "=Split(v2_0)"), OnnxRuntimeException);
 }
 
 TEST(PatternRewriterTests, MultiOutputIntermediateBoundariesAndBindings) {
@@ -1529,10 +1500,7 @@ TEST(PatternRewriterTests, MultiOutputProducerReachedThroughSecondOutput) {
     test.builder.AddNode("Identity", {b}, {test.builder.MakeOutput()});
     test.builder.SetGraphOutputs();
     ASSERT_STATUS_OK(test.graph.Resolve());
-    Pattern pattern;
-    auto input = pattern.Input();
-    auto outputs = pattern.MultiOp("Split", {input}, 2);
-    pattern.Op("Identity", {outputs[1]});
+    Pattern pattern("(x)=>a,b=Split(x);return Identity(b)");
     auto rule = SplitConcat();
     rule.pattern = pattern;
     rule.guard = [](const Graph&, const Match&) { return true; };
@@ -1557,19 +1525,23 @@ TEST(PatternRewriterTests, MultiOutputRootEdgesAndInvalidRecipe) {
     test.builder.AddNode("Add", {b, b}, {test.builder.MakeOutput()});
     test.builder.SetGraphOutputs();
     ASSERT_STATUS_OK(test.graph.Resolve());
-    auto invalid = IdentitySplit();
-    invalid.replacement = [](const Graph&, const Match&) { return Replacement{"Identity", "", {0}, {}}; };
     Statistics stats;
-    EXPECT_FALSE(PatternRewriter({invalid}, {.indexed = indexed}).Run(test.graph, stats).IsOK());
-    EXPECT_EQ(test.graph.NumberOfNodes(), 4);
-    ASSERT_STATUS_OK(test.graph.Resolve());
+    for (auto text : {"(x)=>Identity(x)", "(x)=>Split(x)", "(x)=>return left,middle,right=Split(x)"}) {
+      auto invalid = IdentitySplit();
+      invalid.replacement = Replacement(text);
+      EXPECT_FALSE(PatternRewriter({invalid}, {.indexed = indexed}).Run(test.graph, stats).IsOK());
+      EXPECT_EQ(test.graph.NumberOfNodes(), 4);
+      ASSERT_STATUS_OK(test.graph.Resolve());
+    }
     auto wrong_count = IdentityPair("single_output_split");
-    Pattern single_output;
-    auto input = single_output.Input();
-    auto first = single_output.Op("Identity", {input});
-    single_output.Op("Split", {first});
-    wrong_count.pattern = single_output;
-    ASSERT_STATUS_OK(PatternRewriter({wrong_count, IdentitySplit()}, {.indexed = indexed}).Run(test.graph, stats));
+    wrong_count.pattern = Pattern("(x)=>a=Identity(x);return Split(a)");
+    auto valid = IdentitySplit();
+    valid.guard = [a, b](const Graph&, const Match& match) {
+      EXPECT_EQ(match.valueOf("a"), a);
+      EXPECT_EQ(match.valueOf("b"), b);
+      return true;
+    };
+    ASSERT_STATUS_OK(PatternRewriter({wrong_count, valid}, {.indexed = indexed}).Run(test.graph, stats));
     EXPECT_EQ(stats.rewrites, 1u);
     const Node* producer = test.graph.GetProducerNode(a->Name());
     ASSERT_NE(producer, nullptr);
@@ -1773,7 +1745,7 @@ TEST(PatternRewriterTests, ExampleGuardsCheckRelevantBindings) {
     } else {
       auto* x = b.MakeInput<float>({2, 4}, -1.0f, 1.0f);
       auto* y = b.MakeInput<float>(index == 3 ? std::vector<int64_t>{3, 4}
-                                            : std::vector<int64_t>{4, 3},
+                                              : std::vector<int64_t>{4, 3},
                                    -1.0f, 1.0f);
       bindings.push_back("y");
       if (index == 3) {
@@ -1829,13 +1801,9 @@ TEST(PatternRewriterTests, BranchedSharedNodeBindings) {
     if (external) b.AddNode("Identity", {sum}, {b.MakeOutput()});
     b.SetGraphOutputs();
     ASSERT_STATUS_OK(test.graph.Resolve());
-    Pattern p;
-    auto px = p.Input(), py = p.Input();
-    auto psum = p.Op({"Add", ""}, {px, py});
-    auto pproduct = p.Op({"Mul", ""}, {psum, px});
-    p.Op({"Add", ""}, {psum, pproduct});
+    Pattern p("(x,y)=>sum=Add(x,y);product=Mul(sum,x);return Add(sum,product)");
     auto guard = [](const Graph&, const Match&) { return true; };
-    auto replacement = [](const Graph&, const Match&) { return Replacement{"Identity", "", {0}, {}}; };
+    Replacement replacement("(x)=>Identity(x)");
     Rule rule{"diamond", p, {{kOnnxDomain, 7, 21}}, guard, replacement};
     Statistics stats;
     // Structural-only test: this deliberately has no semantically equivalent replacement.

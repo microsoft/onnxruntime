@@ -1,607 +1,376 @@
-# Experimental indexed C++ pattern rewriter
+# Writing C++ graph rewrite rules
 
-`onnxruntime/core/optimizer/pattern_rewriter.h` defines an opt-in `GraphTransformer`.
-It is **not registered in the default optimization pipeline**, and introduces no
-session configuration switch or public C ABI. C++ callers may register it using
-`InferenceSession::RegisterGraphTransformer`, just like existing custom transformers.
-The example predicates are provider-independent and restrict relevant data bindings
-to float32, rather than scanning every matched value.
-The engine's generic partition policy defaults to CPU or unassigned graphs;
-allowing other EPs requires the caller to verify replacement kernel compatibility.
+The experimental `onnxruntime::rewrite::PatternRewriter` replaces connected
+operator patterns with smaller, semantically equivalent graphs. Include
+`core/optimizer/pattern_rewriter.h`. Construct `Pattern` and `Replacement` from
+text; programmatic builders and mutable replacement recipes are not public APIs.
+Guards and replacement callbacks remain ordinary C++ functions.
 
-## Source investigation and supported examples
+A `Rule` combines a diagnostic name, a parsed pattern, domain/opset requirements,
+a semantic guard, and a parsed replacement or callback returning one. The matcher
+establishes structural and deletion safety. **The rule author must establish
+semantic equivalence, supported types, and kernel compatibility.**
 
-The ONNXScript reference revision is
-[`9ff5a7c7718ab99d2ee0fa9b5effee2c543f3e36`](https://github.com/microsoft/onnxscript/tree/9ff5a7c7718ab99d2ee0fa9b5effee2c543f3e36).
-The following files were examined, rather than assuming that Python syntax defines
-the right architecture for ORT:
+## Example: HardSigmoid followed by Mul
 
-| ONNXScript source at that revision | C++ adaptation |
-|---|---|
-| [`rewriter/_matcher.py`](https://github.com/microsoft/onnxscript/blob/9ff5a7c7718ab99d2ee0fa9b5effee2c543f3e36/onnxscript/rewriter/_matcher.py) | Backward DAG binding, repeated-value equality, distinct matched nodes, and removal boundary checks |
-| [`rewriter/_rewrite_rule.py`](https://github.com/microsoft/onnxscript/blob/9ff5a7c7718ab99d2ee0fa9b5effee2c543f3e36/onnxscript/rewriter/_rewrite_rule.py) | Separate structural patterns, semantic guards, replacement recipes, ordered priority, recursive subgraph handling |
-| [`rules/common/_fuse_hardswish.py`](https://github.com/microsoft/onnxscript/blob/9ff5a7c7718ab99d2ee0fa9b5effee2c543f3e36/onnxscript/rewriter/rules/common/_fuse_hardswish.py) | `Div(Mul(Clip(Add(x,3),0,6),x),6)` and `Mul(HardSigmoid(x),x)` to HardSwish |
-| [`ort_fusions/fused_matmul_rule_sets.py`](https://github.com/microsoft/onnxscript/blob/9ff5a7c7718ab99d2ee0fa9b5effee2c543f3e36/onnxscript/rewriter/ort_fusions/fused_matmul_rule_sets.py) | MatMul/scalar Div, FusedMatMul/scalar Div (preserving attributes), and last-two-dimension Transpose/MatMul |
-| [`ort_fusions/rms_normalization.py`](https://github.com/microsoft/onnxscript/blob/9ff5a7c7718ab99d2ee0fa9b5effee2c543f3e36/onnxscript/rewriter/ort_fusions/rms_normalization.py) | Float32 Pow/ReduceMean/Add/Sqrt/Reciprocal/Mul/Mul to SimplifiedLayerNormalization |
-| [`ort_fusions/softmax.py`](https://github.com/microsoft/onnxscript/blob/9ff5a7c7718ab99d2ee0fa9b5effee2c543f3e36/onnxscript/rewriter/ort_fusions/softmax.py) | Studied but deliberately not enabled: fp16 cast removal needs a separately verified precision/EP policy |
-| [`rules/fusion/_layer_norm.py`, `LayerNormBiasFusion`](https://github.com/microsoft/onnxscript/blob/9ff5a7c7718ab99d2ee0fa9b5effee2c543f3e36/onnxscript/rewriter/rules/fusion/_layer_norm.py) | Test-only adaptation matches all three LayerNormalization outputs, fuses a trailing bias Add, and rejects observable statistics |
-
-Existing ORT `SelectorActionRegistry` already dispatches selectors by root op/domain
-and version. `QuickGeluFusion` illustrates repeated inputs and provider restrictions,
-while `graph_utils::FinalizeNodeFusion` illustrates edge maintenance. The new
-transformer uses ORT's graph/node/edge APIs directly; it does not copy the graph to
-a parallel IR. Generic backward bindings and sharing identical structural plans
-are the additional capabilities over hand-written selectors.
-
-## Defining a rule
-
-The small DSL uses `Value {std::string name; int handle;}`. A name helps diagnose
-patterns; only the handle determines binding identity. An input introduces a variable;
-`Op` introduces one output, while `MultiOp` introduces an ordered output list.
-Reusing a handle requires the identical
-`NodeArg`, not merely the same shape or equivalent contents. Pattern operators
-specify only name and domain. **Model-imported opset ranges belong to the rule**,
-not to individual nodes or their schema since-versions.
+This complete rule recognizes the HardSwish decomposition with the exact
+HardSigmoid attributes shown:
 
 ```cpp
+#include "core/optimizer/pattern_rewriter.h"
+
+using namespace onnxruntime;
 using namespace onnxruntime::rewrite;
-Pattern p;
-auto x = p.Input("x");
-auto h = p.Op("HardSigmoid", {x});
-p.Name(h, "sigmoid");
-p.Attributes({AttributeMatcher::Equal("alpha", 1.0f / 6.0f),
-              AttributeMatcher::Equal("beta", 0.5f)});
-p.Op("Mul", {h, x});
-auto guard = [](const Graph&, const Match& m) {
-  const auto* type = m.valueOf("x")->TypeAsProto();
+
+bool IsFloat32(const NodeArg& value) {
+  const auto* type = value.TypeAsProto();
   return type && type->has_tensor_type() &&
          type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-};
-Replacement replacement("(x) => HardSwish(x)");
-Rule rule{
-    "HardSigmoidMul", p,
-    {{kOnnxDomain, 14, 21}},  // inclusive imported opset range
-    guard, replacement};
-auto transformer = std::make_unique<PatternRewriter>(Rules{rule});
-ORT_RETURN_IF_ERROR(session.RegisterGraphTransformer(std::move(transformer),
-                                                    TransformerLevel::Level1));
+}
+
+Rule MakeHardSwishRule() {
+  Pattern pattern(R"(
+    (x) =>
+      sigmoid = HardSigmoid(x, alpha=0.16666667, beta=0.5)
+      return Mul(sigmoid, x)
+  )");
+  auto guard = [](const Graph&, const Match& match) {
+    return IsFloat32(*match.valueOf("x"));
+  };
+  Replacement replacement("(x) => HardSwish(x)");
+  return Rule{"HardSigmoidMul", std::move(pattern),
+              {{kOnnxDomain, 14, 21}}, guard, replacement};
+}
 ```
 
-`pattern_rewriter_rules.cc` contains complete readable guard/recipe examples.
-Each example defines its pattern, guard and replacement separately, assembles a
-named `Rule rule`, and registers it with `rules.push_back(std::move(rule))`.
-`Op(name, inputs)` defaults to the standard ONNX domain; the optional third
-argument selects another domain, e.g. `p.Op("FusedMatMul", {x, y}, kMSDomain)`.
-The original `Op(Operator{name, domain}, inputs)` overload remains available.
-Name overloads accept literals, `std::string` and `std::string_view`; template
-deduction keeps the original braced operator form unambiguous.
+Both occurrences of `x` must bind the **same `NodeArg`**, not just tensors with
+equal shapes or contents. The guard checks the relevant data binding `x`;
+resolved schemas establish the corresponding intermediate and output types.
+It does not require every matched value to have the same element type.
 
-`p.NamedValue("sigmoid")` retrieves a named handle. Nonempty names must be unique.
-`p.Name(value, name)` updates the canonical name and existing node definitions;
-subsequent operators also use that canonical name. Previously returned `Value`
-copies are not renamed in place. `Value` converts to `int` for indexing
-`Match::values`; an unnamed value has an empty name, and a default value has
-invalid handle -1.
+These opset bounds are a conservative supported range for this example, not an
+automatic statement about every schema version. Floating-point rewrites can
+change evaluation order; validate equivalence within the intended tolerance.
 
-In guards and replacement recipes, `m.valueOf("x")` directly returns the matched
-`const NodeArg*`; there is no need to capture `p.NamedValue("x")` and index
-`m.values` separately. Lookup also supports named intermediate outputs.
-Unknown/empty names or unbound values throw an explicit error rather than
-returning null. Names come from the current rule, even when its structural plan
-is shared with a differently named pattern. Lookup scans the bounded pattern
-value table and does not allocate a name map for each candidate.
+## Pattern and replacement syntax
 
-`Replacement::inputs` accepts either `Value` handles or matched `const NodeArg*`
-bindings, so recipes can use `{m.valueOf("x"), m.valueOf("y")}` directly.
-Pointer inputs are validated against the match's external input bindings:
-intermediates, root outputs, nulls and unrelated graph values are rejected before
-mutation. Matches reference immutable compiled patterns; do not retain them or
-their pointers beyond a callback.
-
-### Attribute matchers and literal constants
-
-`p.Attributes(...)` attaches matchers to the most recently defined node.
-Each `AttributeMatcher` contains an attribute name and a boolean predicate on
-`const AttributeProto&`. Missing attributes fail the match; schema defaults are
-not synthesized. Equality factories check both attribute type and value:
-`Equal("axis", 1)` requires INT, `Equal("alpha", 0.5f)` requires FLOAT,
-and `Equal("mode", std::string("linear"))` requires STRING. Extra unmatched
-attributes are permitted. Arbitrary predicates are also supported:
+Definitions start with named inputs and `=>`. Assignments create named operator
+outputs; `return` identifies the final operator, called the root. Whitespace
+separates calls, and semicolons are optional separators. Comments are not supported
+inside definitions.
 
 ```cpp
-p.Attributes({{"axis", [](const ONNX_NAMESPACE::AttributeProto& value) {
-  return value.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_INT &&
-         value.i() < 0;
-}}});
-```
-
-Predicates are trusted, pure C++ callbacks, with the same locality and lifetime
-requirements as rule guards. Duplicate/empty attribute names, empty callbacks,
-or attachment before any node are errors.
-
-`p.Constant(3.0f)` introduces a float32 scalar initializer constraint;
-`p.Constant(int64_t{3})` introduces an int64 constraint. Integer literals in C++
-select int64; `double` arguments are converted to float32. Float constants must
-be finite. Matching requires an immutable rank-zero initializer of the exact
-type and value; a one-element vector, an overridable initializer, or external-data
-initializer does not match. These leaf handles can be used as replacement inputs,
-but matching never creates tensors.
-
-### Textual patterns
-
-The explicit `Pattern(std::string_view text)` constructor parses a textual pattern.
-The default constructor remains available for the programmatic builder.
-Malformed text throws `OnnxRuntimeException` with a byte-offset diagnostic
-(or aborts in exception-disabled builds, following ORT's throwing macros).
-The requested branched pattern can be written directly:
-
-```cpp
-Pattern p(R"(
-  (x, low, high, divisor) =>
-    add = Add(x, 3.0)
-    clip = Clip(add, low, high)
-    mul = Mul(clip, x)
-    return Div(mul, divisor)
-)");
-```
-
-The header declares named inputs. Assignment names label operator outputs.
-Reusing `x` enforces exact binding identity. Decimal/scientific literals become
-float32 scalar constants, while integer spellings become int64 constants.
-This text describes structure, **not a semantically complete HardSwish rule**:
-the rule guard must additionally establish float32, low=0, high=6 and divisor=6.
-The numerical test retains those checks before executing the replacement.
-
-The actual example rule eliminates those fixed bindings entirely:
-
-```cpp
-Pattern p(R"(
+Pattern pattern(R"(
   (x) =>
     add = Add(x, 3.0)
     clip = Clip(add, 0.0, 6.0)
-    mul = Mul(clip, x)
-    return Div(mul, 6.0)
+    product = Mul(clip, x)
+    return result = Div(product, 6.0)
 )");
-```
-
-Its guard only checks that `x` is float32, since the pattern checks every fixed scalar.
-RMSNorm similarly uses `Pow(x, 2.0)` directly; epsilon remains a named binding
-because its value varies and is copied to the fused operator's attributes.
-MatMul division factors also remain variable for computed scaling attributes.
-
-The six example guards check types on these specific bindings:
-
-| Rule | Float32 bindings |
-|---|---|
-| HardSwish | `x` |
-| HardSigmoidMul | `x` |
-| MatMulDiv | `x`, `y`; `divisor` is checked as a float32 scalar initializer |
-| TransposeMatMul | `x`, `y` |
-| FusedMatMulDiv | `x`, `y`; `divisor` is checked as a float32 scalar initializer |
-| RmsNormalization | `x`, `scale`; `epsilon` is checked as a float32 scalar initializer |
-
-Resolved operator schemas establish the corresponding intermediate/output types.
-Guards do not impose a match-wide element type: independently typed operands such
-as a Pow exponent or shape/index values need their own semantic constraints.
-The supplied RMSNorm pattern still requires the float32 literal `2.0` exponent;
-that literal constraint is separate from the guard's data-type checks.
-
-Attributes use Python keyword syntax, after positional inputs:
-`h = HardSigmoid(x, alpha = 0.16666667, beta = 0.5)`.
-Signed/scientific numbers and single/double-quoted string attributes are supported.
-Only escaped quotes and backslashes are supported in strings.
-The parsed spelling determines the attribute type: `axis=1` differs from `axis=1.0`.
-An empty quoted string is valid.
-
-Multiple-output assignments and qualified domains are supported:
-
-```text
-(x) => a, b = Split(x, axis=0); return Concat(a, b, axis=0)
-(x, y) => mm = com.microsoft::FusedMatMul(x, y, alpha=0.5); return Identity(mm)
-```
-
-Unqualified operators use the standard ONNX domain. Whitespace/newlines separate
-tokens; semicolons may separate assignments. Values are ASCII identifiers.
-Definitions must precede use; every input and node must reach the final operator.
-There must be a final `return Op(...)`, with no subsequent statements.
-All six example rules use the string constructor and retrieve bindings with
-`Match::valueOf` for their guards and dynamic replacement recipes; static
-replacement plans bind inputs once during compilation. Tests use the constructor for parsed
-patterns and test-only Identity, Split/Concat and LayerNorm-bias rules; builder
-tests and multi-output-root definitions retain the programmatic API.
-
-The parser checks duplicate names/attributes, undefined references, numeric range,
-disconnected definitions and the same 64-node/256-value/64-input-output limits as
-the C++ builder. Errors include a byte offset; `p = Pattern(text)` leaves `p`
-unchanged if construction fails.
-A one-node parsed pattern is valid, but cannot form a node-count-decreasing rule.
-
-The language intentionally excludes nested calls, lists/tensor literals, optional
-placeholders, booleans, comments, `return` of an existing value and multi-output
-`return` calls (use the C++ API for multi-output roots). It describes only matching:
-opset requirements and semantic guards remain explicit C++.
-
-### Reusable replacement plans
-
-`Replacement(std::string_view)` parses a reusable replacement definition, once:
-
-```cpp
 Replacement replacement("(x) => HardSwish(x)");
-Rule rule{"HardSwish", pattern, {{kOnnxDomain, 14, 21}}, guard, replacement};
 ```
 
-The final operator call may omit `return`. Multi-node definitions use the same
-assignment, domain and keyword-attribute syntax as patterns:
+The example has one root output, named `result`. A final call without an
+assignment, such as `return Div(product, 6.0)`, also describes one output,
+but does not give that output a lookup name. Replacements additionally accept
+a final call without the `return` keyword, as above.
+
+Use `domain::Operator(...)` for qualified operators:
 
 ```cpp
-Replacement replacement(R"(
-  (x) =>
-    h = HardSigmoid(x, alpha=0.16666667, beta=0.5)
-    return Mul(h, x)
+Pattern pattern("(x,y) => mm = com.microsoft::FusedMatMul(x,y); return Identity(mm)");
+Replacement replacement("(x,y) => com.microsoft::FusedMatMul(x,y)");
+```
+
+An unqualified operator uses the standard ONNX domain. `ai.onnx::Identity`
+is equivalent to `Identity`. Replacements also accept
+`com.microsoft.FusedMatMul(...)`; patterns use the `::` form.
+
+Names must be unique and defined before use. Every declared pattern input must
+participate, and every operator must reach the root. Inputs to different named
+variables may alias; repeating one variable requires identical binding.
+`match.valueOf("x")` and `match.valueOf("clip")` return bound `const NodeArg*`
+values. Unknown names and unbound values raise explicit errors. Read-only
+`Pattern::NamedValue`, `Nodes`, `Constants`, `ValueCount`, and `IsInput`
+are available for introspection.
+
+### Constants and attributes
+
+Positional numeric literals in patterns match **rank-zero constant initializers**
+of the exact value and element type: `3.0`, `3e0`, and `0.5` are float32;
+`3`, `-1`, and `0` are int64. Thus `2` and `2.0` are distinct constraints.
+A singleton vector is not a scalar. External tensor data and overridable
+initializers do not satisfy these constraints. Constant operators require
+an earlier constant-folding pass.
+
+Keyword arguments constrain attributes, not tensor inputs:
+
+```cpp
+Pattern pattern("(x) => h = HardSigmoid(x, alpha=0.25, beta=0.5); return Mul(h,x)");
+```
+
+Attribute equality compares the protobuf attribute type as well as its value.
+For example, `axis=-1` is an integer attribute, while `epsilon=1e-5` is a float.
+Single- or double-quoted string attributes are supported; strings may escape
+quotes and backslashes. Other attributes are unconstrained. A listed attribute
+must be present in the resolved node's attribute map.
+
+Pattern syntax supports scalar integer, float, and string attribute equality,
+not attribute lists or custom predicate syntax. Inspect `match.nodes` in the C++
+guard for ranges, list-valued attributes, shapes, or other semantic conditions.
+Positional inputs must precede keyword attributes.
+
+Numeric literals in replacements synthesize rank-zero float32 or int64
+initializers. Replacement keyword literals set attributes on the new node.
+
+### Branched patterns and multiple outputs
+
+Assignments can describe a DAG rather than only a chain:
+
+```cpp
+Pattern pattern(R"(
+  (x,y) =>
+    sum = Add(x,y)
+    product = Mul(sum,x)
+    return Add(sum,product)
 )");
 ```
 
-This defines a two-node replacement, not a callback that parses a string on every
-match. The constructor builds an immutable plan containing operator/domain names,
-literal attributes, external input names and indexed earlier-output references.
-Copies share that plan. When the plan is supplied directly as `Rule::replacement`,
-transformer construction binds its external names to the rule's input handles,
-and checks declared domains and node-count reduction. Binding is per rule, so
-reusing a plan across differently ordered input headers is safe.
+Here both uses of `sum` must have the same producer. The matcher does not search
+for equivalent computations or reorder commutative inputs.
 
-At runtime the callback returns a shared plan reference. There is no parsing,
-attribute-literal construction, or name lookup for these prebound inputs.
-The engine binds the external `NodeArg`s, allocates fresh intermediate values,
-creates nodes in definition order, and applies the stored attributes.
-Callbacks that need computed attributes can use extra bindings with a captured
-parsed plan (below), or return programmatic recipes. Do not construct
-`Replacement(text)` inside a per-match callback.
-
-Replacement headers may select a subset of the matched pattern's inputs.
-Tensor parameters cannot refer to matched intermediates. All declared replacement
-parameters must be used as tensor inputs or attribute bindings, and all nodes
-must reach the final operator. A multi-output assignment such as
-`a, b = Split(x, axis=0)` declares the exact internal arity.
-The final operator inherits **all matched root outputs in order**, including a
-multi-output root; its schema must accept that count. Intermediate outputs cannot
-be mapped independently to observable root slots yet.
-
-Numeric positional literals are synthesized as immutable rank-zero float32 or
-int64 initializers, using the same literal typing as patterns:
-`Replacement("(x) => Add(x, 0.0)")`. No Constant kernel or subsequent
-constant-folding pass is required. There is no general tensor/list synthesis.
-
-Programmatic sequences use `NodeRecipe` and `Output{node_index, output_slot}`:
+Comma-separated assignment names declare the exact ordered output count:
 
 ```cpp
-Replacement replacement(InlinedVector<Replacement::NodeRecipe, 1>{
-    {"HardSigmoid", kOnnxDomain, {std::string("x")}, sigmoid_attributes, 1},
-    {"Mul", kOnnxDomain, {Replacement::Output{0, 0}, std::string("x")}, {}, 1}});
+Pattern pattern("(x) => first,second = Split(x,axis=0); return Concat(first,second,axis=0)");
+Replacement replacement("(x) => Identity(x)");
 ```
 
-`NodeRecipe` contains op, domain, inputs, attributes and internal output count.
-It also has `attribute_bindings`, a map from target attribute names to extra
-binding names.
-Its inputs may be names, existing `Value` handles, matched `NodeArg*` bindings,
-earlier-output references or `Replacement::Scalar{...}` literals.
-The final node's output count is inherited from the root rather than this field.
-The original four-argument single-node constructor remains supported, including
-computed-attribute callbacks. Its public single-node fields cannot be combined
-with an immutable parsed/programmatic plan; mixed representations are rejected.
-
-#### Computed attributes through extra bindings
-
-Replacement keyword values may refer to names declared in its header.
-Tensor arguments come from the pattern match; extra attribute arguments come
-from `Match::update`, which accepts a concrete `AttributeProto`:
+For a multi-output root, put the names on the final return assignment:
 
 ```cpp
-Replacement plan("(x, y, alpha) => com.microsoft.FusedMatMul(x, y, alpha=alpha)");
-auto replacement = [plan](const Graph& graph, const Match& m) {
-  m.update("alpha", FloatAttribute("alpha",
-      1.0f / *Scalar(graph, *m.valueOf("divisor"))));
-  return plan;
-};
-Rule rule{"MatMulDiv", pattern, opsets, guard, replacement};
+Pattern pattern("(x) => copied = Identity(x); return left,right = Split(copied,axis=0)");
+Replacement replacement("(x) => return left,right = Split(x,axis=0)");
 ```
 
-Here `FloatAttribute` and `Scalar` are the helpers used by the example rules;
-the guard establishes float32 and a finite, nonzero scalar divisor.
-The plan is parsed **once when defining the rule**, not once per successful
-match. Capturing/returning it shares the immutable plan. Computed attributes
-are looked up and copied into the new nodes at rewrite time. Captured callback
-plans still resolve tensor names at runtime; only directly supplied plans have
-their tensor names prebound by transformer construction.
+This replacement preserves the root's two original output `NodeArg`s in order,
+including their names, types, shapes, graph-output roles, and consumers.
+The replacement names are local labels, not new externally visible graph names.
+`return Split(x)` describes only one output and cannot replace a two-output root.
+Returning an existing value or a subset/reordering of an earlier operator's
+outputs is not supported; the return must define the final operator.
 
-`com.microsoft.FusedMatMul` is accepted in replacement text, as is the existing
-`com.microsoft::FusedMatMul` spelling. Literal attributes and bound attributes
-can be mixed, e.g. `axis=-1, epsilon=fused_epsilon, stash_type=1`.
-Multiple nodes can share a binding, and target attribute names can differ from
-binding names. Attribute proto names are normalized to the target names.
-The proto carries the type, including list/tensor/string types not representable
-as text literals; imported operator schemas validate the resolved attributes.
+Intermediate operators may have unused outputs, but **none** of their outputs
+may be exposed outside the matched deletion set.
 
-Extra bindings are invocation-local state, separate from immutable matched
-graph values. `update` is callable on the callback's `const Match&`, because it
-changes only this extra state, not the graph or matched values. Repeated updates
-to an extra name replace its value. Guards must remain pure; the engine clears
-extra state between candidates and before invoking the winning recipe. No binding
-is retained between rewrites, graph runs or rules; match-only mode never invokes
-recipes. `attributeOf(name)` retrieves a previously set extra attribute.
+## Computed attributes with a replacement callback
 
-Empty names, undefined attribute types, reference attributes, missing bindings
-and attempts to shadow any named pattern value are explicit errors.
-A header name cannot be used both as a tensor argument and an attribute binding;
-attribute references must name header parameters, not intermediate outputs.
-All required extras are checked before graph mutation. Schema validation failures
-use the same staged-node rollback as literal attributes. As with other recipes,
-callbacks must establish semantic/type compatibility; extra bindings are not
-an automatic semantic guard or a general graph transaction.
+Reuse a parsed replacement plan when an attribute depends on each match.
+Declare the attribute binding in the replacement's input list, set it with
+`match.update`, and reference it as a keyword argument.
 
-The MatMulDiv and RMSNorm examples use captured plans with computed bindings.
-TransposeMatMul uses a literal parsed replacement. FusedMatMulDiv also captures
-a parsed plan, computing `alpha` and binding `transA`, `transB`, `transBatchA`
-and `transBatchB` from the original node. Missing transpose attributes use the
-imported schema's defaults; the replacement emits all five version-1 attributes
-explicitly, preserving their effective values. All six examples therefore use
-parsed replacements. Extra bindings describe individual attributes, not an
-attribute-map spread; a rule for a schema with other attributes must explicitly
-preserve those too.
-
-Every replacement must contain at least one node and **strictly fewer nodes
-than the matched pattern**. Equal-size rewrites and expansions are rejected,
-including dynamic recipes, retaining the node-count termination policy.
-All internal references must point backward to valid output slots; disconnected
-nodes and undeclared domains are errors. Limits remain 64 nodes and 64 inputs/
-outputs per node. Pattern parsing additionally bounds named values to 256.
-
-All replacement nodes are staged and their imported schemas/attributes checked
-before deleting matched nodes or rewiring edges. A schema failure removes every
-staged node and synthesized initializer, leaving the original live graph intact;
-unused staging `NodeArg`s and consumed unique-name IDs may remain. Final Resolve
-is still responsible for type/shape inference and validation; arbitrary computed
-recipes must establish semantic/type compatibility, and post-commit Resolve
-failure is not a general graph transaction rollback.
-All added nodes inherit root provider/layer metadata. Producer/consumer maps,
-internal edges and external root edges are updated; every added node seeds the
-invalidation worklist. Replacement notification attributes the removed pattern
-to the final node.
-
-### Multiple outputs
-
-`MultiOp(name, inputs, output_count, domain)` returns an ordered vector of distinct
-value handles. `domain` is optional, and an `Operator` overload is also available.
-For example:
+The following rule folds division by a finite float32 scalar into FusedMatMul's
+`alpha` attribute. It requires the Microsoft-domain opset to be imported already.
 
 ```cpp
-Pattern p;
-auto x = p.Input();
-auto pieces = p.MultiOp("Split", {x}, 2);
-p.Op("Concat", {pieces[0], pieces[1]});
+#include <cmath>
+#include <optional>
+#include "core/graph/graph_utils.h"
+#include "core/optimizer/initializer.h"
+
+std::optional<float> FloatScalar(const Graph& graph, const NodeArg& value) {
+  const auto* tensor = graph_utils::GetConstantInitializer(graph, value.Name());
+  if (!tensor || tensor->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+      tensor->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL ||
+      tensor->dims_size() != 0)
+    return std::nullopt;
+  Initializer initializer(graph, *tensor, graph.ModelPath());
+  if (initializer.size() != 1) return std::nullopt;
+  float scalar = *initializer.data<float>();
+  return std::isfinite(scalar) ? std::optional<float>(scalar) : std::nullopt;
+}
+
+Rule MakeMatMulDivRule() {
+  Pattern pattern("(x,y,divisor) => mm = MatMul(x,y); return Div(mm,divisor)");
+  auto guard = [](const Graph& graph, const Match& match) {
+    auto divisor = FloatScalar(graph, *match.valueOf("divisor"));
+    return IsFloat32(*match.valueOf("x")) && IsFloat32(*match.valueOf("y")) &&
+           divisor && *divisor != 0.0f && std::isfinite(1.0f / *divisor);
+  };
+  Replacement plan("(x,y,alpha) => com.microsoft::FusedMatMul(x,y,alpha=alpha)");
+  auto replacement = [plan](const Graph& graph, const Match& match) {
+    ONNX_NAMESPACE::AttributeProto alpha;
+    alpha.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
+    alpha.set_f(1.0f / *FloatScalar(graph, *match.valueOf("divisor")));
+    match.update("alpha", std::move(alpha));
+    return plan;
+  };
+  return Rule{"MatMulDiv", std::move(pattern),
+              {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}, guard, replacement};
+}
 ```
 
-The output count must match the node exactly. Matching can find a producer
-through any output, including its second or later output, and checks every
-bound output against its exact output slot. Unused outputs of a connected node
-are allowed in the definition, but cannot be graph outputs or have external
-consumers if the node is deleted. The tests include Split/Concat and a genuine
-ONNXScript LayerNorm-bias adaptation with unused mean/inverse-standard-deviation
-outputs; exposing either statistic prevents its deletion.
+This example uses `IsFloat32` from the first example. The callback is called only
+after its guard succeeds. Guards must be pure; neither guard nor callback may
+mutate the graph, retain match pointers, or rely on mutable global graph state.
+Use local bindings, attributes, and constants to establish applicability.
 
-A multi-output root is also supported. The final replacement node inherits
-**all root outputs in the original order**, including their names, types, shapes,
-graph-output status, and consumers. The recipe does not need an output list.
-Its schema must permit that output count. Identity/Split to Split tests execute
-both root outputs and downstream fanout, including repeated uses of output 1.
-This does not yet support mapping observable outputs from multiple matched nodes
-to arbitrary replacement slots, or matching omitted optional output placeholders.
+`update` accepts a concrete `AttributeProto`, including list-valued attributes.
+It cannot overwrite a named pattern value or store a referenced/undefined
+attribute. Extra bindings are cleared before each replacement callback;
+`attributeOf` retrieves one and errors if it is missing. A replacement header
+name cannot be used as both a tensor and an attribute. Attribute-only names need
+not appear in the pattern, but must be supplied by the callback. Reusing a parsed
+plan does not reuse a previous match's attributes.
 
-### Guards, applicability and integration
+Replacement tensor inputs may reference only pattern input variables, literal
+constants, or earlier outputs in the replacement itself. A matched intermediate
+is about to be deleted and cannot be a replacement input. Replacement sequences
+must be connected to their final operator.
 
-Guards and recipes are trusted C++ code: they must be pure, guards must depend on
-local bindings/attributes/constants rather than mutable global graph conditions,
-they must not retain match
-pointers, and must establish semantic equivalence and replacement type
-compatibility. The caller must establish kernel compatibility for its EP policy.
-The engine provides structural and deletion safety; it cannot prove
-an arbitrary callback's mathematical correctness. Guard false means an ordinary
-nonmatch; invalid patterns or recipes report explicit errors.
+## When a match succeeds or fails
 
-Each `OpsetRequirement` is `{domain, min_version, max_version}`, with inclusive,
-positive bounds. A rule must declare every domain used by its pattern or
-replacement; additional domain requirements are allowed. All requirements must
-be satisfied by the graph's import map. Missing imports or out-of-range versions
-make the whole rule inapplicable, before matching or guards. Duplicate domains
-(including `""`/`"ai.onnx"` aliases), reversed ranges and undeclared pattern
-domains are rejected when compiling rules.
+Before calling a rule's guard, the matcher checks:
 
-For example, MatMul/Div to FusedMatMul declares
-`{{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}`. The standard-domain nodes use the
-model's ONNX import; the replacement uses the existing Microsoft-domain import.
-Rule authors are responsible for equivalence throughout the declared ranges.
-The engine neither derives nor compares node schema since-versions. Replacement
-schemas are resolved normally from imports and validated before deletion.
+- Exact operator name/domain, ordered input/output counts, and repeated binding
+  identity. Missing optional slots and variadic patterns are not supported.
+- Literal and listed attribute constraints. It does not otherwise infer semantic
+  equivalence or check arbitrary shapes/types for the author.
+- Distinct matched nodes with the same layer annotation. Matched operators cannot
+  own subgraphs or have implicit inputs.
+- Pattern input variables are outside the matched deletion set.
+- Every non-root output stays internal. A graph output, an external consumer, or
+  an implicit capture by an external subgraph prevents the rewrite.
+- Execution-provider eligibility as described below.
 
-`Apply` recurses into subgraphs and resolves the graph through the normal ORT
-transformer wrapper. For per-call statistics and explicit graph resolution:
+The root may have graph outputs or external consumers, because its complete
+output list is preserved. Even match-only mode applies deletion-boundary checks:
+it reports safe rewrite eligibility, not arbitrary structural occurrences.
 
-```cpp
-PatternRewriter rewriter(MakeExampleRules());
-Statistics stats;
-ORT_RETURN_IF_ERROR(rewriter.Run(graph, stats));  // already-resolved graph, one graph only
-ORT_RETURN_IF_ERROR(graph.Resolve());            // required after rewriting
-```
+### Types in the supplied examples
 
-Callers must not concurrently mutate a graph. Compiled rules and options are
-immutable and per-call state/statistics are local.
+`MakeExampleRules()` supplies six rules when contrib operators are enabled:
 
-### Generic execution-provider policy
+| Rule | Explicit float32 checks |
+|---|---|
+| HardSwish and HardSigmoidMul | `x` |
+| MatMulDiv and FusedMatMulDiv | `x`, `y`; separate finite scalar initializer check on `divisor` |
+| TransposeMatMul | `x`, `y` |
+| RmsNormalization | `x`, `scale`; separate positive finite scalar initializer check on `epsilon` |
 
-Rules do not inspect EP assignments. After structural matching and before rule
-guards, the engine applies `CanRewritePartition`: all matched nodes must have
-the same assignment, and an assigned EP must belong to
-`Options::compatible_execution_providers`. Unassigned nodes are always eligible.
-The default allowed set contains only CPU, preserving the verified execution scope.
-Callers can opt into an EP (or clear the set for unassigned-only rewrites):
+There is no match-wide float32 restriction. Independently typed operands such
+as shape/index tensors or a Pow exponent require their own semantic constraints.
+The supplied RMS pattern specifically matches `Pow(x,2.0)`; the float32 exponent
+is a literal constraint, not a blanket guard check.
+
+The RMS example also requires last-axis reduction, keepdims, known positive
+width and a matching one-dimensional scale, with pre-opset-18 attribute axes.
+TransposeMatMul requires a known rank of at least two and exactly the last-two-axis
+swap. Division examples require a finite scaling result. Consult the rule
+definitions and correctness tests before extending their supported ranges.
+Contrib-disabled builds supply only the two HardSwish rules.
+
+## Opset and execution-provider applicability
+
+Each `OpsetRequirement` is `{domain, min_version, max_version}`, with positive,
+inclusive bounds. Declare every domain used by a pattern or replacement;
+additional requirements are allowed. `""` and `"ai.onnx"` denote the same domain.
+Duplicate domains, reversed ranges, and undeclared pattern domains are errors.
+
+All requirements are evaluated against each graph's `DomainToVersionMap()`,
+including independently for subgraphs. Missing imports or out-of-range versions
+make the rule inapplicable **before its guard runs**. The engine does not add
+imports, compare individual node schema since-versions, or rewrite model-local
+function bodies. Authors must establish correctness across their declared range.
+
+All matched nodes must have the same execution-provider assignment. Unassigned
+nodes are eligible; assigned nodes must belong to
+`Options::compatible_execution_providers`, which defaults to CPU only.
+Mixed assignments are rejected. This policy applies before the rule guard and
+also in match-only mode. To opt into another provider:
 
 ```cpp
 Options options;
 options.compatible_execution_providers.insert(kCudaExecutionProvider);
-PatternRewriter rewriter(MakeExampleRules(), options);
+PatternRewriter rewriter(Rules{MakeHardSwishRule()}, options);
 ```
 
-The replacement inherits the root's assignment. Allowing an EP is a caller assertion
-of kernel/precision compatibility, not automatic kernel discovery or evidence of
-GPU execution. Mixed assignments are rejected even if both EPs are allowed. This
-generic policy also applies in match-only mode, which measures safe rewrite
-eligibility rather than partition-independent structural matches.
+Allowing a provider is the caller's assertion of kernel and precision
+compatibility, not automatic kernel discovery. Clearing the allowed set permits
+only unassigned nodes. Replacements inherit the root's provider and layer
+annotation.
 
-## Compilation, matching, mutation, and termination
+## Applying rules, priority, and errors
 
-Construction validates connected acyclic definitions, used inputs, rule-level
-domain/opset requirements, and limits of 64 nodes, 256 values and 64 inputs/outputs per operator.
-It buckets groups by root op/domain and interns identical structural signatures,
-including ordered output handles, binding identities and scalar literal type/value
-constraints, but not diagnostic names or rule-level import ranges.
-Rules with identical topology and literal constraints can share one structural
-match even when their guards or applicability ranges differ. Patterns containing
-attribute predicates currently receive separate plans, including equality predicates:
-opaque `std::function` callbacks cannot safely be compared. This conservative
-choice preserves correctness at the cost of repeated matching for attribute-heavy
-rule sets; arbitrary callbacks also have no engine-imposed time bound.
-There is **no arbitrary-prefix trie**: different structural
-plans still match independently. This is intentionally a simpler, measurable
-starting point than a decision DAG compiler.
+Register the transformer through the normal session pipeline:
 
-Each call filters rules once against `Graph::DomainToVersionMap()`, retaining
-registration order within each structural group. No applicability state is cached
-across graphs; recursive subgraph calls use their own graph import context.
-Filtering costs the sum of rule requirement counts, outside the node traversal.
-If no rules apply, the call returns without traversing nodes. Model-local function
-rewriting remains unsupported; future function rewriting must use that function's
-imports, not the enclosing model's.
-
-The call then builds a producer index and topological worklist once. Matching walks
-the compiled node definitions backward without recursive search, alternation,
-commutative backtracking, or unbounded neighborhood exploration. Each node checks
-op/domain, exact input/output counts, repeated bindings and layer annotation
-agreement, plus any attribute predicates and scalar literal constraints.
-Provider eligibility is a separate generic check. All non-root outputs
-must be internal: graph outputs,
-external consumers (including implicit subgraph captures), and pattern inputs
-produced inside the deletion set prevent replacement.
-
-Registration order defines priority even across different structural groups.
-Match-only mode reports all passing rule guards; rewrite mode selects only the
-first passing rule. Replacements may consume **only matched input variables,
-new scalar literals or earlier replacement outputs**, retain the
-root's output `NodeArg`s (name/type/shape and external users), and inherit its
-execution provider and layer annotation. The replacement domain must be declared
-in the rule requirements and already imported for every added node. Replacement schema/attribute checks
-precede deletion. ORT edges and producer/consumer indexes are updated; removed
-nodes are reported via `NotifyNodeReplacement`. Final Resolve validates types and
-inferred shapes, rather than silently ignoring graph-validation errors.
-
-After mutation, all replacement nodes and surviving input producers seed a bounded
-forward invalidation walk. Descendant roots up to the maximum pattern size are
-requeued, since producer changes or reduced use counts can unlock deeper patterns.
-Queue deduplication avoids redundant pending entries; removed IDs are skipped.
-Traversal and rule priority are deterministic.
-
-Every rule replaces at least two nodes with a smaller nonempty node sequence. Thus every
-successful rewrite strictly decreases live node count, and a graph with N nodes
-admits at most N-1 rewrites. This is a termination policy, **not a runtime bound**:
-guards, fanout, structural checks, and worklist invalidation still cost time.
-Expansion rules and one-node rewrites are deliberately rejected.
-
-For match-only workloads, let U be the number of distinct structural plans in a
-root bucket and P the maximum pattern size. Structure work is bounded by the
-sum over visited roots of U times pattern/boundary checking cost, plus passing
-plan guard costs. Boundary checks include matched-node fanout; they are not
-constant-time. The reference mode performs the same checks per rule instead,
-with cheap root op/domain rejection before allocating binding buffers.
-Rewrite workloads additionally pay edge updates and bounded descendant walks;
-large fanout can make these expensive. Arbitrary trusted guards have no imposed
-time bound. These structural bounds do not provide mathematical worst-case runtime
-guarantees for arbitrary rules or models.
-
-`visited` counts live worklist roots, including revisits. `candidates` counts
-enumerated rule IDs (all rules in the reference mode, root-indexed rules in the
-indexed mode); `structural_checks` counts plan attempts, including cheap root
-rejections in the reference. `guards` counts semantic callback evaluations after
-structural and deletion-boundary checks. `matches` counts all passing guards in
-match-only mode, or selected winners in rewrite mode; `rewrites` counts completed
-mutations. Match-only therefore measures safe rewrite eligibility, not a search
-that ignores external consumers.
-
-## Intentional limitations and precision
-
-Matched and replacement nodes may have multiple outputs, but the final replacement
-node must preserve the root's complete ordered output list. Optional/missing
-inputs or outputs, variadic patterns,
-model-local function rewriting, general tensor synthesis, domain-import edits, alternative
-patterns and implicit commutation are unsupported. Control-flow nodes are not
-matched, but `Apply` rewrites inside their subgraphs. External tensor data and
-overridable initializers do not satisfy example constant guards; scalar constants
-must be finite float32 rank-zero initializers. Singleton vectors are deliberately
-not treated as scalars, since broadcasting can otherwise change the output rank.
-Constant nodes require an earlier constant-folding pass.
-
-The examples support a conservative subset, not every ONNXScript variant:
-RMSNorm requires the last axis, keepdims, positive finite epsilon, float32,
-known positive-width matching one-dimensional scale, and pre-opset-18 attribute
-axes. Transpose requires known rank >=2 and exactly the last-two-axis swap.
-RMSNorm declares ONNX opsets 7 through 17. MatMul Div requires a finite nonzero
-scalar and finite reciprocal. The FusedMatMul examples declare ONNX opsets 9
-through 21 and require an existing `com.microsoft` opset-1 import; they do not add
-one. The upper bounds are conservative supported ranges, not inferred schema
-version boundaries; extending them requires reviewing and testing semantics.
-HardSwish requires exact float32 constants/attributes and model opset 14 through
-21. The tested CPU build executes HardSwish by expanding its ONNX function body
-to HardSigmoid/Mul; RMSNorm and FusedMatMul execute native CPU kernels.
-Floating-point fusions change evaluation order; equivalence means tested
-tolerance, not bitwise identity. NaNs/infinities and every extreme finite input
-are not claimed to have bitwise-equivalent behavior.
-
-## Correctness tests
-
-The normal tests live in `onnxruntime/test/optimizer/pattern_rewriter_test.cc`.
-They include executed CPU equivalence and structural assertions, not only match
-counts. Use an isolated build directory and virtual environment:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe tools\ci_build\build.py --build_dir build\rewriter --config Release --update --parallel 4 --skip_tests --cmake_generator "Visual Studio 17 2022" --cmake_extra_defines FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER
-.\.venv\Scripts\python.exe tools\ci_build\build.py --build_dir build\rewriter --config Release --build --parallel 4 --target onnxruntime_test_all --skip_tests
-Set-Location build\rewriter\Release\Release
-.\onnxruntime_test_all.exe --gtest_filter="PatternRewriterTests.*"
+```cpp
+auto transformer = std::make_unique<PatternRewriter>(Rules{MakeHardSwishRule()});
+ORT_RETURN_IF_ERROR(session.RegisterGraphTransformer(
+    std::move(transformer), TransformerLevel::Level1));
 ```
 
-Ensure CMake is on PATH (for example, Visual Studio's bundled CMake).
-`FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER` avoids accidentally importing an
-incompatible installed dependency, such as a Debug-only protobuf installation
-while building Release. Dependencies are built inside this isolated
-build tree instead of modifying the shared installation.
+For one already-resolved graph, use `Run` and explicitly resolve afterwards:
 
-## Decoder correctness topology
+```cpp
+PatternRewriter rewriter(Rules{MakeHardSwishRule()});
+Statistics statistics;
+ORT_RETURN_IF_ERROR(rewriter.Run(graph, statistics));
+ORT_RETURN_IF_ERROR(graph.Resolve());
+```
 
-`BuildDecoder` is a **hand-constructed, model-derived eager Llama-style topology**,
-not an exported pretrained model or a claim of identical exporter node order.
-Sources at ORT base revision
-[`42518d89d7c5393baf97d69f8c2670668c40decf`](https://github.com/microsoft/onnxruntime/tree/42518d89d7c5393baf97d69f8c2670668c40decf)
-are `onnxruntime/python/tools/transformers/models/llama/convert_to_onnx.py`
-(eager decoder, dynamic past/present KV exports),
-`models/llama/llama_inputs.py` (cache layout),
-`onnxruntime/test/optimizer/group_query_attention_pre_norm_fusion_test.cc`
-(small Q/K/V/head/cache geometry), and ONNXScript's RMSNorm source above.
+`Run` handles one graph. The transformer's `Apply` path recurses into subgraphs
+and performs normal graph resolution. Callers must not concurrently mutate a
+graph. Options and compiled rules are immutable; match state and statistics are
+per call.
 
-Each block has two decomposed RMSNorms, Q/K/V projections, reshape/transposes,
-split-half RoPE via Slice/Neg/Concat and gathered sine/cosine position caches,
-past/current KV concatenation with per-layer graph outputs, grouped-head expansion,
-QK transpose/MatMul/scaling/causal-mask/Softmax/AV attention, output projection,
-two residual adds, and a SiLU-gated up/gate/down MLP. B=1, query heads=4,
-KV heads=2, head size=4, hidden width=16, MLP width=64, past length=3.
-Sine/cosine caches use standard paired frequencies; weights are tiny random
-float32 tensors. No tokenizer, embedding lookup, LM head, dynamic position/cache
-control flow, mixed precision, quantization or production tensor sizes are modeled.
-Both sequence=1 decode and sequence=4 causal prefill have executed equivalence tests.
+Rules have deterministic **registration-order priority**, including across
+different structural groups. At each eligible root, rewriting chooses the first
+passing guard. With `Options{.match_only=true}`, all passing guards are counted
+and replacements are not called. `indexed=false` selects the reference matching
+mode with the same eligibility and priority semantics.
+
+Every pattern must contain at least two nodes. A replacement must have a
+nonempty node sequence with **strictly fewer nodes** than the pattern, and its
+final output count must equal the root's output count. Expansion and one-node
+rewrites are rejected. Each successful rewrite reduces live node count, so a
+graph with N nodes admits at most N-1 rewrites. This establishes termination,
+not a time bound for arbitrary callbacks or graph fanout.
+
+After a rewrite, the engine updates edges and producer/consumer indexes,
+notifies node replacement, and requeues replacement nodes and affected
+descendants through a bounded invalidation walk. This permits newly enabled
+matches without retaining pointers to deleted nodes.
+
+Malformed definitions throw `OnnxRuntimeException` with parse-location
+diagnostics; exception-disabled builds follow ORT's abort behavior. Invalid rule
+configuration raises an explicit error when the rewriter is constructed.
+Direct parsed replacements are checked against their rule during construction;
+callback-generated replacements also undergo runtime validation. Guard false
+is an ordinary nonmatch.
+
+Replacement schemas and attributes are validated before matched nodes are
+deleted. Failed staging rolls back the staged nodes and literal initializers;
+there is no whole-call transaction undoing earlier successful rewrites.
+Errors propagate as statuses or ORT exceptions rather than being treated as
+nonmatches. Final graph resolution checks types and inferred shapes; a rule
+author must not rely on schema staging alone to prove type correctness.
+
+`Statistics` exposes live roots visited (including revisits), enumerated
+candidates, structural checks, guard calls, successful matches, and completed
+rewrites. Match-only counts all passing guards; rewrite mode counts selected
+winners. These counters do not alter rule semantics.
+
+## Limits and unsupported forms
+
+Definitions are limited to 64 nodes, 256 values, and 64 inputs/outputs per
+operator. They are connected acyclic graphs rooted at the final operator.
+There is no alternation, implicit commutation, optional/variadic matching,
+general tensor synthesis, domain-import editing, or model-local function
+rewriting. Control-flow operators are not matched, although their subgraphs can
+be rewritten through `Apply`.
+
+Tests in `onnxruntime/test/optimizer/pattern_rewriter_test.cc` cover parsing,
+guards, boundaries, multi-output rewrites, rule priority, and numerical CPU
+equivalence, including small decoder prefill/decode graphs. Add structural and
+executed equivalence tests when writing or extending a rule.
