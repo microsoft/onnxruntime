@@ -1436,8 +1436,8 @@ TEST(PatternRewriterTests, BracedBodiesAndNamedReturns) {
                     "(x)=>left,right=Split(x);return left,right",
                     "(x)=>{left,right=ai.onnx::Split(x);return left,right;}"}) {
     SCOPED_TRACE(text);
-    EXPECT_NO_THROW(Pattern(text));
-    EXPECT_NO_THROW(Replacement(text));
+    EXPECT_NO_THROW((void)Pattern{text});
+    EXPECT_NO_THROW((void)Replacement{text});
   }
   EXPECT_NO_THROW(Replacement("(x)=>{Identity(x);}"));
   EXPECT_NO_THROW(Replacement("(x)=>Identity(x)"));
@@ -1452,8 +1452,8 @@ TEST(PatternRewriterTests, BracedBodiesAndNamedReturns) {
                     "(x)=>{return a=Identity(x);}", "(x)=>return left,right=Split(x)",
                     "(x)=>{a=Identity(x);return a;;}", "(x)=>{return Identity(x);};"}) {
     SCOPED_TRACE(text);
-    EXPECT_THROW(Pattern(text), OnnxRuntimeException);
-    EXPECT_THROW(Replacement(text), OnnxRuntimeException);
+    EXPECT_THROW((void)Pattern{text}, OnnxRuntimeException);
+    EXPECT_THROW((void)Replacement{text}, OnnxRuntimeException);
   }
   Pattern direct("(x)=>{a=Identity(x);return Identity(a);}");
   Pattern named("(x)=>{a=Identity(x);result=Identity(a);return result;}");
