@@ -157,7 +157,7 @@ Status FusedQKRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) c
         << "    let q_v = f32(" << q_input.GetByOffset("q_head_base + c") << ");\n"
         << "    q_sumsq = q_sumsq + q_v * q_v;\n"
         << "  }\n"
-        << "  let q_inv_rms = q_input_element_t(inverseSqrt(q_sumsq / f32(uniforms.head_size) + uniforms.qk_norm_epsilon));\n"
+        << "  let q_inv_rms = q_input_element_t(inverseSqrt(q_sumsq / f32(uniforms.head_size) + uniforms.q_norm_epsilon));\n"
         << "  let k_head_base = bsnh[0] * uniforms.k_input_output_stride[0]\n"
         << "                  + bsnh[1] * uniforms.k_input_output_stride[1]\n"
         << "                  + bsnh[2] * uniforms.k_input_output_stride[2];\n"
@@ -168,7 +168,7 @@ Status FusedQKRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) c
         << "      let k_v = f32(" << k_input.GetByOffset("k_head_base + c") << ");\n"
         << "      k_sumsq = k_sumsq + k_v * k_v;\n"
         << "    }\n"
-        << "    k_inv_rms = k_input_element_t(inverseSqrt(k_sumsq / f32(uniforms.head_size) + uniforms.qk_norm_epsilon));\n"
+        << "    k_inv_rms = k_input_element_t(inverseSqrt(k_sumsq / f32(uniforms.head_size) + uniforms.k_norm_epsilon));\n"
         << "  }\n";
   }
 

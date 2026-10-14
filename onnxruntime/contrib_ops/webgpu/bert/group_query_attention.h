@@ -75,7 +75,9 @@ class GroupQueryAttention final : public WebGpuKernel {
     ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 0,
                 "GroupQueryAttention (WebGPU): sliding_window_cache=1 is not implemented.");
 
-    qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
+    const float qk_norm_epsilon = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
+    q_norm_epsilon_ = info.GetAttrOrDefault<float>("q_norm_epsilon", qk_norm_epsilon);
+    k_norm_epsilon_ = info.GetAttrOrDefault<float>("k_norm_epsilon", qk_norm_epsilon);
   }
 
   int num_heads_;     // number of attention heads of Q
@@ -90,7 +92,8 @@ class GroupQueryAttention final : public WebGpuKernel {
   // Epsilon used by per-head RMSNorm when q_norm_weight / k_norm_weight (inputs 14 / 15) are
   // provided. Consumed whenever those optional norm inputs are used (decode fast path or
   // prefill fallback), and ignored otherwise.
-  float qk_norm_epsilon_;
+  float q_norm_epsilon_;
+  float k_norm_epsilon_;
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 };
 

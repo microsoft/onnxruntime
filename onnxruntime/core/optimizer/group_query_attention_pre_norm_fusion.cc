@@ -296,16 +296,11 @@ Status GroupQueryAttentionPreNormFusion::ApplyImpl(Graph& graph,
       continue;
     }
 
-    // The fused operator uses a single epsilon for both Q and K normalization.
-    if (q_epsilon != k_epsilon) {
-      continue;
-    }
-
     LOGS(logger, VERBOSE) << "GroupQueryAttentionPreNormFusion: matched gqa='" << node.Name()
                           << "' q_sln='" << q_sln->Name() << "' k_sln='" << k_sln->Name()
                           << "' head_size=" << head_size
                           << " num_heads=" << num_heads << " kv_num_heads=" << kv_num_heads
-                          << " epsilon=" << q_epsilon;
+                          << " q_epsilon=" << q_epsilon << " k_epsilon=" << k_epsilon;
 
     // Build new GQA inputs: copy existing inputs, replace 0/1 with projection outputs,
     // pad up to slot 13 with empty NodeArgs, then add q/k norm weights at 14/15.
@@ -336,9 +331,15 @@ Status GroupQueryAttentionPreNormFusion::ApplyImpl(Graph& graph,
       new_outputs.push_back(const_cast<NodeArg*>(out));
     }
 
-    // Copy attributes and add qk_norm_epsilon.
+    // Preserve the shared attribute for equal epsilons and override each side when they differ.
     NodeAttributes new_attrs = node.GetAttributes();
     utils::SetNodeAttribute(utils::MakeAttribute(std::string(kQkNormEpsilonAttrName), q_epsilon), new_attrs);
+    new_attrs.erase("q_norm_epsilon");
+    new_attrs.erase("k_norm_epsilon");
+    if (q_epsilon != k_epsilon) {
+      utils::SetNodeAttribute(utils::MakeAttribute("q_norm_epsilon", q_epsilon), new_attrs);
+      utils::SetNodeAttribute(utils::MakeAttribute("k_norm_epsilon", k_epsilon), new_attrs);
+    }
 
     const std::string original_name = node.Name();
     const std::string original_ep = node.GetExecutionProviderType();
