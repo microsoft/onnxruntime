@@ -5,8 +5,10 @@
 #include "test/util/include/default_providers.h"
 
 #if defined(USE_WEBGPU) && !defined(DISABLE_CONTRIB_OPS)
+#if !defined(ORT_USE_EP_API_ADAPTERS)
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#endif
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #endif
 
@@ -100,6 +102,9 @@ TEST(MatMulNBitsQLoRA, QuantizedPrefillAndReusedInput) {
 }
 
 TEST(MatMulNBitsQLoRA, NarrowSmallMReduction) {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  GTEST_SKIP() << "Hardware-specific specialization checks require direct adapter capability inspection.";
+#else
   auto initial_ep = DefaultWebGpuExecutionProvider();
   ASSERT_NE(initial_ep, nullptr);
   auto& gpu = webgpu::WebGpuContextFactory::GetContext(initial_ep->GetDeviceId());
@@ -107,6 +112,7 @@ TEST(MatMulNBitsQLoRA, NarrowSmallMReduction) {
       gpu.AdapterInfo().vendor != std::string_view{"nvidia"}) {
     GTEST_SKIP() << "The narrow small-M projection is selected on NVIDIA DP4A devices.";
   }
+#endif
   struct Shape {
     int64_t m;
     int64_t k;
@@ -175,6 +181,9 @@ TEST(MatMulNBitsQLoRA, NarrowSmallMReduction) {
 }
 
 TEST(MatMulNBitsQLoRA, DecodeSubgroupReduction) {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  GTEST_SKIP() << "Hardware-specific specialization checks require direct adapter capability inspection.";
+#else
   auto initial_ep = DefaultWebGpuExecutionProvider();
   ASSERT_NE(initial_ep, nullptr);
   auto& gpu = webgpu::WebGpuContextFactory::GetContext(initial_ep->GetDeviceId());
@@ -184,6 +193,7 @@ TEST(MatMulNBitsQLoRA, DecodeSubgroupReduction) {
       adapter.subgroupMinSize != 32 || adapter.subgroupMaxSize != 32) {
     GTEST_SKIP() << "The decode specialization requires NVIDIA 32-lane subgroups.";
   }
+#endif
   for (bool acc_f32 : {false, true}) {
     for (const auto [k, n] : {std::pair<int64_t, int64_t>{2048, 36}, {4096, 132}, {8192, 64}}) {
       SCOPED_TRACE(MakeString("K=", k, ", N=", n, ", acc_f32=", acc_f32));

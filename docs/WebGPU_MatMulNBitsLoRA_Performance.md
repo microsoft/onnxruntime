@@ -104,7 +104,7 @@ before the final decode register-reuse/subgroup-reduction change. Adapter-on
 arithmetic is not bitwise equivalent to the original model. Six prompts are
 limited quality coverage, and larger quality evaluation remains necessary.
 
-Final validation passed seven operator tests, eight graph-fusion tests, and
+Initial optimization validation passed seven operator tests, eight graph-fusion tests, and
 two WGSL smoke tests. The decode regression checks against a dense
 double-precision reference at K=2048/4096/8192, with mixed signs, varying INT8
 scales, a zero rank, tail columns, and both accumulation options. Quantized
@@ -114,3 +114,72 @@ The input-upload change also has a regression test for chunking and reuse.
 
 See [FP16 LoRA usage](WebGPU_MatMulNBitsLoRA_Prototype.md) and
 [QLoRA format, dispatch, and test commands](WebGPU_MatMulNBitsQLoRA_Prototype.md).
+
+## CI integration verification
+
+The CI integration merges main at `a5e205be24` and updates the FP16 original-layout
+fallback to the current `MatMulComputeDispatcher` API. Adapter weights remain
+nonconstant so that replacement cannot reuse a stale transformed weight. It also
+uses explicit `size_t` shape indices for wasm32 and removes plugin-test linkage
+to built-in-only capability-inspection symbols. The optimized LoRA/QLoRA shader
+code and workgroup sizes are unchanged by these fixes.
+
+### Performance against the pre-fix optimization
+
+The following measurements compare the previously tested optimization with the
+merged/fixed build, using the same models, native benchmark, GenAI DLL, and DXC.
+This includes upstream main changes, not just the compatibility edit. Hardware
+and settings match the measurement method above. All other build, test, and
+profiling work was stopped during measurement, with idle checks before each cell.
+There were two rounds in reversed order, three warmups and five measured
+requests per round: 200 measured requests in total. Values are medians of ten
+requests. Every before/after generated token sequence matches.
+
+| Model layout | Prompt tokens | Adapter | Before TTFT ms | Fixed TTFT ms | TTFT change | Before decode tok/s | Fixed decode tok/s | Decode change |
+|---|---:|---|---:|---:|---:|---:|---:|---:|
+| Packed INT8 | 128 | Off | 31.43 | 31.39 | -0.13% | 228.07 | 226.45 | -0.71% |
+| Packed INT8 | 128 | A | 40.63 | 40.28 | -0.88% | 197.45 | 198.80 | +0.68% |
+| Packed INT8 | 128 | B | 40.36 | 40.54 | +0.44% | 197.33 | 196.49 | -0.43% |
+| Packed INT8 | 1024 | Off | 163.28 | 163.32 | +0.03% | 224.57 | 223.77 | -0.36% |
+| Packed INT8 | 1024 | A | 173.95 | 173.51 | -0.25% | 196.29 | 196.00 | -0.15% |
+| Packed INT8 | 1024 | B | 174.23 | 173.57 | -0.38% | 195.98 | 194.35 | -0.83% |
+| FP16 original | 128 | Off | 31.94 | 31.95 | +0.01% | 225.84 | 221.95 | -1.73% |
+| FP16 original | 128 | A | 94.74 | 96.33 | +1.68% | 138.70 | 137.97 | -0.53% |
+| FP16 original | 1024 | Off | 163.72 | 163.79 | +0.04% | 222.65 | 222.52 | -0.06% |
+| FP16 original | 1024 | A | 230.97 | 230.88 | -0.04% | 137.42 | 138.36 | +0.69% |
+
+Positive TTFT change is slower; positive decode change is faster. QLoRA changes
+are all within 0.9%. The initial FP16 128-token results warranted an independent,
+longer confirmation: four rounds with alternating order, three warmups and eight
+measured requests per cell (32 requests per variant/adapter; 128 requests total).
+These additional requests use the same settings and also match token-for-token.
+
+| FP16, 128 tokens | Before TTFT ms | Fixed TTFT ms | TTFT change | Before decode tok/s | Fixed decode tok/s | Decode change |
+|---|---:|---:|---:|---:|---:|---:|
+| Off | 31.82 | 31.82 | -0.00% | 222.76 | 223.70 | +0.42% |
+| A | 94.78 | 95.26 | +0.51% | 138.78 | 138.44 | -0.25% |
+
+In this confirmation, adapter-on TTFT ranges overlap: 94.10-100.15 ms before and
+93.68-101.22 ms after. Adapter-off decode ranges also overlap: 218.36-228.44 and
+219.64-228.64 tok/s. These measurements show no material performance regression
+on this GPU, with residual sub-1% median differences in the confirmation and
+QLoRA matrix. They do not establish zero change or results on other devices.
+
+### Build and correctness coverage
+
+- Built-in and dynamic-plugin Release builds and test binaries compile and link.
+- Built-in: 8 operator/upload tests and 19 graph-fusion tests pass, with no skips.
+- Plugin: 5 operator tests and 19 graph-fusion tests pass. Two hardware-specific
+  specialization checks explicitly skip because the plugin test binary cannot
+  inspect internal device capabilities. Both checks run and pass in built-in
+  mode; general plugin operator/fusion tests remain active.
+- Two WGSL smoke tests pass. Six changed WebGPU translation units also pass
+  wasm32 syntax compilation with Emscripten 4.0.23 and narrowing warnings treated
+  as errors. This is not a full linked WebAssembly build.
+- Full-model QLoRA checks against the pre-fix runtime are bitwise exact for
+  adapter off and on: 6/6 responses and all 72 forced-prefix logit rows per state.
+  Built-in/plugin, capture on/off, and generation after rewind also match exactly
+  in the 12-case matrix. This verifies the CI fixes preserve the optimized
+  runtime's outputs; it does not change the original-model numerical limits above.
+- Formatting and whitespace checks pass. Generated contrib documentation now
+  includes both new operator schemas. Remote CI must validate other build targets.

@@ -251,9 +251,10 @@ class MatMulNBitsLoRA final : public WebGpuKernel {
     ORT_RETURN_IF_NOT(x->Shape().NumDimensions() >= 2 && a->Shape().NumDimensions() == 2 &&
                           b->Shape().NumDimensions() == 2,
                       "Invalid LoRA input ranks.");
-    ORT_RETURN_IF_NOT(a->Shape()[transposed_] == k_ && b->Shape()[1 - transposed_] == n_, "Invalid LoRA K/N dimensions.");
-    const int64_t rank_a = a->Shape()[1 - transposed_];
-    const int64_t rank_b = b->Shape()[transposed_];
+    const auto adapter_axis = static_cast<size_t>(transposed_);
+    ORT_RETURN_IF_NOT(a->Shape()[adapter_axis] == k_ && b->Shape()[1 - adapter_axis] == n_, "Invalid LoRA K/N dimensions.");
+    const int64_t rank_a = a->Shape()[1 - adapter_axis];
+    const int64_t rank_b = b->Shape()[adapter_axis];
     ORT_RETURN_IF_NOT((rank_a == 0 || rank_a == 32) && (rank_b == 0 || rank_b == 32),
                       "MatMulNBitsLoRA currently supports rank 32 or an empty adapter.");
     ORT_RETURN_IF_NOT(weight->Shape() == TensorShape({n_, k_ / 32, 16}) &&
@@ -277,7 +278,8 @@ class MatMulNBitsLoRA final : public WebGpuKernel {
     ORT_RETURN_IF_ERROR(lora_helper.Compute(x->Shape(), a->Shape()));
     auto t = context.CreateGPUTensor(x->DataType(), lora_helper.OutputShape());
     std::vector<const Tensor*> inputs{x, a};
-    ORT_RETURN_IF_ERROR(ComputeMatMul(&context, Activation(), inputs, &t, true, cache_, false));
+    ORT_RETURN_IF_ERROR(compute_dispatcher_.Compute(context, Activation(), inputs, &t,
+                                                    /*is_channels_last=*/true, /*b_is_constant=*/false));
     return ApplyMatMulNBits(x, weight, scales, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4,
                             context, y, 0, nullptr, 0, &t, b);
   }
@@ -292,7 +294,7 @@ class MatMulNBitsLoRA final : public WebGpuKernel {
   int64_t accuracy_level_;
   int64_t transposed_;
   LoRAFusionMode fusion_mode_;
-  mutable MatMulOptImplCache cache_;
+  mutable MatMulComputeDispatcher compute_dispatcher_;
 };
 
 ONNX_OPERATOR_KERNEL_EX(

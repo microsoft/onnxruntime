@@ -69,7 +69,9 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulInteger16">com.microsoft.MatMulInteger16</a>
   * <a href="#com.microsoft.MatMulIntegerToFloat">com.microsoft.MatMulIntegerToFloat</a>
   * <a href="#com.microsoft.MatMulNBits">com.microsoft.MatMulNBits</a>
+  * <a href="#com.microsoft.MatMulNBitsLoRA">com.microsoft.MatMulNBitsLoRA</a>
   * <a href="#com.microsoft.MatMulNBitsMlp">com.microsoft.MatMulNBitsMlp</a>
+  * <a href="#com.microsoft.MatMulNBitsQLoRA">com.microsoft.MatMulNBitsQLoRA</a>
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
@@ -4104,6 +4106,63 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.MatMulNBitsLoRA"></a><a name="com.microsoft.matmulnbitslora">**com.microsoft.MatMulNBitsLoRA**</a>
+
+  Computes MatMulNBits(X, W, scales) + MatMul(MatMul(X, lora_A), lora_B). With adapter_transposed=1, transposes both stored adapter inputs in this formula. The adapter remains replaceable. A zero rank in either adapter input disables the adapter. Intermediate results are rounded to the input type before addition. This prototype supports FP16, rank 32, INT4 block size 32, implicit zero point 8, and no bias.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Input feature dimension; a positive multiple of 32.</dd>
+<dt><tt>N</tt> : int (required)</dt>
+<dd>Output feature dimension; a positive multiple of 4.</dd>
+<dt><tt>accuracy_level</tt> : int</dt>
+<dd>MatMulNBits base accumulation policy.</dd>
+<dt><tt>adapter_transposed</tt> : int</dt>
+<dd>Whether adapters are stored as [R_A,K] and [N,R_B].</dd>
+<dt><tt>bits</tt> : int</dt>
+<dd>Base weight bit width; must be 4.</dd>
+<dt><tt>block_size</tt> : int</dt>
+<dd>Base weight block size; must be 32.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input with rank at least two and last dimension K.</dd>
+<dt><tt>W</tt> : TQ</dt>
+<dd>INT4 packed weights of shape [N, K/32, 16].</dd>
+<dt><tt>scales</tt> : T</dt>
+<dd>FP16 block scales containing N * K/32 elements; may be flattened.</dd>
+<dt><tt>lora_A</tt> : T</dt>
+<dd>Adapter of shape [K, R_A], or [R_A, K] if adapter_transposed=1; R_A is 0 or 32.</dd>
+<dt><tt>lora_B</tt> : T</dt>
+<dd>Adapter of shape [R_B, N], or [N, R_B] if adapter_transposed=1; R_B is 0 or 32.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Input shape with last dimension replaced by N.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16)</dt>
+<dd>FP16 activations and adapter weights.</dd>
+<dt><tt>TQ</tt> : tensor(uint8)</dt>
+<dd>Packed quantized base weights.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.MatMulNBitsMlp"></a><a name="com.microsoft.matmulnbitsmlp">**com.microsoft.MatMulNBitsMlp**</a>
 
   MatMulNBitsMlp fuses two MatMulNBits projections that share the same input and computes
@@ -4200,6 +4259,69 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Constrain quantized weight types to uint8.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulNBitsQLoRA"></a><a name="com.microsoft.matmulnbitsqlora">**com.microsoft.MatMulNBitsQLoRA**</a>
+
+  Computes MatMulNBits(X,W,scales) + MatMulNBits(MatMulNBits(X,lora_A,lora_A_scales),lora_B,lora_B_scales). The base uses INT4 block-32 weights with implicit zero point 8. Adapters use INT8 block-32 weights stored as unsigned bytes with implicit zero point 128 and FP16 block scales. Eligible adapter down projections may quantize activations according to accuracy_level. Rank is 32; an empty rank dimension in either packed adapter disables the adapter. Intermediate projections are rounded to FP16 before the final addition. Adapters remain replaceable.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Input feature dimension; a positive multiple of 32.</dd>
+<dt><tt>N</tt> : int (required)</dt>
+<dd>Output feature dimension; a positive multiple of 4.</dd>
+<dt><tt>accuracy_level</tt> : int</dt>
+<dd>Accuracy policy for the base and eligible adapter down projections.</dd>
+<dt><tt>bits</tt> : int</dt>
+<dd>Base weight bit width; must be 4.</dd>
+<dt><tt>block_size</tt> : int</dt>
+<dd>Base weight block size; must be 32.</dd>
+<dt><tt>lora_bits</tt> : int</dt>
+<dd>Adapter weight bit width; must be 8.</dd>
+<dt><tt>lora_block_size</tt> : int</dt>
+<dd>Adapter weight block size; must be 32.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input of rank at least two, with last dimension K.</dd>
+<dt><tt>W</tt> : TQ</dt>
+<dd>Packed INT4 base weights [N,K/32,16].</dd>
+<dt><tt>scales</tt> : T</dt>
+<dd>Base block scales with N*K/32 elements; may be flattened.</dd>
+<dt><tt>lora_A</tt> : TQ</dt>
+<dd>Packed INT8 down weights [R_A,K/32,32], R_A=0 or 32.</dd>
+<dt><tt>lora_A_scales</tt> : T</dt>
+<dd>Down block scales [32,K/32]; retained even when the adapter is empty.</dd>
+<dt><tt>lora_B</tt> : TQ</dt>
+<dd>Packed INT8 up weights [N,R_B/32,32], R_B=0 or 32.</dd>
+<dt><tt>lora_B_scales</tt> : T</dt>
+<dd>Up block scales [N,1]; retained even when the adapter is empty.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Input shape with the last dimension replaced by N.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16)</dt>
+<dd>FP16 activations and block scales.</dd>
+<dt><tt>TQ</tt> : tensor(uint8)</dt>
+<dd>Packed quantized weights.</dd>
 </dl>
 
 

@@ -270,7 +270,7 @@ class MlasNeonGeluFP16Test : public MlasTestBase {
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
-  if (is_short_execute) {
+  if (is_short_execute && MlasFp16AccelerationSupported()) {
     count += MlasDirectShortExecuteTests<MlasNeonErfFP16Test>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasNeonGeluFP16Test>::RegisterShortExecute();
   }
