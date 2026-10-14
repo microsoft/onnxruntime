@@ -29,9 +29,9 @@ This document explains how to use the WebGPU execution provider in ONNX Runtime 
 
 WebGPU is a new web standard for general purpose GPU compute and graphics. It is designed to be a low-level API, based on D3D12, Vulkan and Metal, and is designed to be used in the browser. It is designed to be more efficient and performant than WebGL, and is designed to be used for machine learning, graphics, and other compute tasks.
 
-WebGPU is available out-of-box in latest versions of Chrome and Edge on Windows, macOS, Android and ChromeOS. It is also available in Firefox behind a flag and Safari Technology Preview. Check [WebGPU status](https://webgpu.io/status/) for the latest information.
+WebGPU is available in current releases of major browsers, with support varying by operating system and device. Check [WebGPU status](https://webgpu.io/status/) for the latest information.
 
-If you are using ONNX Runtime Web for inferencing very lightweight models in you web application, and you want to have a small binary size, you can keep using the default WebAssembly (WASM) execution provider. If you want to run more compute intensive models, or you want to take advantage of the GPU in the client's device, you can use the WebGPU execution provider.
+If you are using ONNX Runtime Web for inferencing very lightweight models in your web application, and you want to have a small binary size, you can keep using the default WebAssembly (WASM) execution provider. If you want to run more compute intensive models, or you want to take advantage of the GPU in the client's device, you can use the WebGPU execution provider.
 
 ### How to use WebGPU EP in ONNX Runtime Web
 
