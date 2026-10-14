@@ -162,6 +162,8 @@ macro(setup_cuda_architectures)
   #  * For `-virtual` architectures, the last one is kept as it is, and the others are ignored.
   #  * `-real` suffix is automatically added for other cases.
   #  * Always use accelerated (`-a` suffix) target for supported real architectures.
+  #  * An explicit `a` or `f` suffix is kept. Family-specific (`f`) entries are kept as given:
+  #    `<cc>f` generates SASS and PTX, `<cc>f-real` SASS only.
   # cmake-format: on
 
   # Allow override via CUDAARCHS environment variable (standard CMake variable)
@@ -225,7 +227,11 @@ macro(setup_cuda_architectures)
 
     if(CUDA_ARCH MATCHES "^([1-9])([0-9])+[af]?-virtual$")
       set(CMAKE_CUDA_ARCHITECTURES_LAST_VIRTUAL ${CUDA_ARCH})
-    elseif(CUDA_ARCH MATCHES "^(([1-9])([0-9])+)[af]?-real$")
+    elseif(CUDA_ARCH MATCHES "^[1-9][0-9]+f-real$")
+      # Family-specific SASS only. Keep it verbatim: without the "f" it would become "<cc>a-real"
+      # below, and sm_120a code runs only on 12.0, while sm_120f code runs on 12.0 and 12.1.
+      list(APPEND CMAKE_CUDA_ARCHITECTURES_CLEAN ${CUDA_ARCH})
+    elseif(CUDA_ARCH MATCHES "^(([1-9])([0-9])+[af]?)-real$")
       list(APPEND CMAKE_CUDA_ARCHITECTURES_CLEAN ${CMAKE_MATCH_1})
     elseif(CUDA_ARCH MATCHES "^(([1-9])([0-9])+)([af]?)$")
       list(APPEND CMAKE_CUDA_ARCHITECTURES_CLEAN ${CMAKE_MATCH_1}${CMAKE_MATCH_4})
@@ -237,6 +243,7 @@ macro(setup_cuda_architectures)
   set(CMAKE_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES_CLEAN})
 
   # CMAKE_CUDA_ARCHITECTURES_ORIG contains all architectures enabled, without automatically added -real or -a suffix.
+  # A "<cc>f-real" entry keeps its -real suffix to tell it apart from "<cc>f" (SASS and PTX).
   set(CMAKE_CUDA_ARCHITECTURES_ORIG "${CMAKE_CUDA_ARCHITECTURES}")
   message(STATUS "GPU architectures: ${CMAKE_CUDA_ARCHITECTURES_ORIG}")
 
@@ -277,8 +284,8 @@ macro(setup_cuda_architectures)
   set(ARCHITECTURES_WITH_ACCEL "90" "100" "103" "110" "120" "121")
   unset(CMAKE_CUDA_ARCHITECTURES_NORMALIZED)
   foreach(CUDA_ARCH IN LISTS CMAKE_CUDA_ARCHITECTURES)
-    if(CUDA_ARCH MATCHES "^([0-9]+)f$")
-      # Family code, no -real suffix
+    if(CUDA_ARCH MATCHES "^([0-9]+)f(-real)?$")
+      # Family code, kept as given: "<cc>f" (SASS and PTX) or "<cc>f-real" (SASS only)
       list(APPEND CMAKE_CUDA_ARCHITECTURES_NORMALIZED "${CUDA_ARCH}")
     elseif("${CUDA_ARCH}" IN_LIST ARCHITECTURES_WITH_ACCEL)
       list(APPEND CMAKE_CUDA_ARCHITECTURES_NORMALIZED "${CUDA_ARCH}a-real")
@@ -290,6 +297,8 @@ macro(setup_cuda_architectures)
   if(DEFINED CMAKE_CUDA_ARCHITECTURES_LAST_VIRTUAL)
     list(APPEND CMAKE_CUDA_ARCHITECTURES_NORMALIZED "${CMAKE_CUDA_ARCHITECTURES_LAST_VIRTUAL}")
   endif()
+
+  list(REMOVE_DUPLICATES CMAKE_CUDA_ARCHITECTURES_NORMALIZED)
 
   set(CMAKE_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES_NORMALIZED})
 
