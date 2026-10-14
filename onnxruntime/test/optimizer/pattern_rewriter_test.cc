@@ -1080,7 +1080,9 @@ TEST(PatternRewriterTests, VectorLiteralParsingAndErrors) {
 
 TEST(PatternRewriterTests, VectorLiteralMatchingAndNumerics) {
   for (bool indexed : {false, true}) {
+    SCOPED_TRACE(indexed);
     for (int scenario = 0; scenario < 5; ++scenario) {
+      SCOPED_TRACE(scenario);
       TestGraph test;
       auto& b = test.builder;
       auto* x = b.MakeInput<int64_t>({2}, 0, 5);
@@ -1105,7 +1107,7 @@ TEST(PatternRewriterTests, VectorLiteralMatchingAndNumerics) {
       rule.pattern = Pattern("(x)=>{a=Add(x,[1,2]);return Identity(a);}");
       rule.replacement = Replacement("(x)=>Add(x,[1,2])");
       auto rejected = rule;
-      rejected.pattern = Pattern("(x)=>{a=Add(x,[1,3]);return Identity(a);}");
+      rejected.pattern = Pattern("(x)=>{a=Add(x,[4,5]);return Identity(a);}");
       Statistics stats;
       ASSERT_STATUS_OK(PatternRewriter({rejected, rule}, {.indexed = indexed}).Run(test.graph, stats));
       EXPECT_EQ(stats.rewrites, scenario == 0 ? 1u : 0u);
