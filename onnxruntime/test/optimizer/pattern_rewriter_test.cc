@@ -731,9 +731,11 @@ TEST(PatternRewriterTests, ReplacementExtraAttributeBindings) {
         alpha_value.set_f(1.0f / 6.0f);
         m.update("alpha", alpha_value);
         if (scenario == 4) {
-          auto malformed = plan;
-          malformed.attributes.emplace("extra", beta);
-          return malformed;
+          return Replacement(R"(
+            (x,alpha,beta) =>
+              h=HardSigmoid(x,alpha=alpha,beta=beta,extra=0.0)
+              return Mul(h,x)
+          )");
         }
         return plan;
       };
