@@ -1247,6 +1247,53 @@ class ReduceAggregatorL2 : public ReduceAggregator<T, T> {
   double double_accumulator_ = 0.0;
   double kahan_compensation_ = 0.0;  // Kahan compensation term for int64+
 
+  // For float and double, use the scaled sum-of-squares algorithm used by
+  // stable norm implementations. This avoids overflowing or underflowing the
+  // intermediate square when the final norm is representable.
+  double floating_scale_ = 0.0;
+  double floating_scaled_sum_squares_ = 0.0;
+  bool floating_has_infinity_ = false;
+  bool floating_has_nan_ = false;
+
+  static constexpr bool kUseScaledSumSquares = std::is_same_v<T, float> || std::is_same_v<T, double>;
+
+  inline void update_scaled_sum_squares(const T& v) {
+    const double magnitude = std::abs(static_cast<double>(v));
+    if (std::isnan(magnitude)) {
+      floating_has_nan_ = true;
+      return;
+    }
+    if (std::isinf(magnitude)) {
+      floating_has_infinity_ = true;
+      return;
+    }
+    if (magnitude == 0.0) {
+      return;
+    }
+
+    if (floating_scale_ < magnitude) {
+      const double ratio = floating_scale_ / magnitude;
+      floating_scaled_sum_squares_ = 1.0 + floating_scaled_sum_squares_ * ratio * ratio;
+      floating_scale_ = magnitude;
+    } else {
+      const double ratio = magnitude / floating_scale_;
+      floating_scaled_sum_squares_ += ratio * ratio;
+    }
+  }
+
+  inline T get_scaled_sum_squares_value() const {
+    if (floating_has_nan_) {
+      return std::numeric_limits<T>::quiet_NaN();
+    }
+    if (floating_has_infinity_) {
+      return std::numeric_limits<T>::infinity();
+    }
+    if (floating_scale_ == 0.0) {
+      return static_cast<T>(0);
+    }
+    return static_cast<T>(floating_scale_ * std::sqrt(floating_scaled_sum_squares_));
+  }
+
  public:
   inline ReduceAggregatorL2(int64_t N, const T&) : ReduceAggregator<T, T>(N, 0) {}
   inline T aggall(const T* from_data) {
@@ -1273,6 +1320,11 @@ class ReduceAggregatorL2 : public ReduceAggregator<T, T> {
       constexpr double max_val = static_cast<double>(std::numeric_limits<T>::max());
       if (result >= max_val) return std::numeric_limits<T>::max();
       return static_cast<T>(result);
+    } else if constexpr (kUseScaledSumSquares) {
+      for (size_t i = 0, n = onnxruntime::narrow<size_t>(this->N_); i < n; ++i) {
+        update_scaled_sum_squares(from_data[i]);
+      }
+      return get_scaled_sum_squares_value();
     } else {
       return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(this->N_)).norm();
     }
@@ -1289,6 +1341,8 @@ class ReduceAggregatorL2 : public ReduceAggregator<T, T> {
       } else {
         double_accumulator_ += dv * dv;
       }
+    } else if constexpr (kUseScaledSumSquares) {
+      update_scaled_sum_squares(v);
     } else {
       this->accumulator_ += v * v;
     }
@@ -1300,6 +1354,8 @@ class ReduceAggregatorL2 : public ReduceAggregator<T, T> {
       constexpr double max_val = static_cast<double>(std::numeric_limits<T>::max());
       if (result >= max_val) return std::numeric_limits<T>::max();
       return static_cast<T>(result);
+    } else if constexpr (kUseScaledSumSquares) {
+      return get_scaled_sum_squares_value();
     } else {
       return reduce_sqrt<T>(this->accumulator_);
     }
