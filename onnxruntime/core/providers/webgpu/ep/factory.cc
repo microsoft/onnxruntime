@@ -4,11 +4,13 @@
 #include "factory.h"
 #include "allocator.h"
 #include "ep.h"
+#include "runtime_compatibility.h"
 
 #include "core/framework/error_code_helper.h"
 #include "core/graph/constants.h"
 
 #include <algorithm>
+#include <functional>
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/config_options.h"
@@ -215,14 +217,16 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   // needs a device, and such a session stops before finalization and never allocates.
   const bool device_free = !WebGpuContextFactory::GetContext(context_id).HasDevice();
   // These implementations belong to this Session, not the Env shared allocator below.
-  // Plain writable Alloc must submit cached clears even during Run: a subsequent copy may
-  // use a different recording. Only a matching AllocOnStream may defer those clears.
+  // Serialized-mode callers serialize all operations; internal Run allocations can defer their clears.
   auto device_alloc = webgpu::CreateWebGpuAllocator(
       context_id,
       device_free,
       [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
       [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
-      false);
+      false,
+      UseSerializedExecutionMode()
+          ? std::function<bool()>{[webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); }}
+          : std::function<bool()>{});
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // also retained by the EP adapter as the kernel temp-space allocator
@@ -288,7 +292,7 @@ OrtStatus* ORT_API_CALL Factory::CreateDataTransferImpl(
     OrtEpFactory* /*this_ptr*/,
     OrtDataTransferImpl** data_transfer) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  *data_transfer = OrtWebGpuCreateDataTransfer();  // TODO(fs-eire): pass context id if needed
+  *data_transfer = OrtWebGpuCreateDataTransfer();
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
