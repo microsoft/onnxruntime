@@ -1481,3 +1481,88 @@ TEST(ModelEditorAPITest, SetGraph_RejectsAlreadyOwnedPointer) {
   EXPECT_NE(outputs[0], nullptr);  // ownership not transferred on failure
   // graph still owns the pointer; Graph destructor releases it.
 }
+
+TEST(ModelEditorAPITest, MultipleSymbolicDimensions) {
+  std::vector<int64_t> dims{-1, -1, 3};
+  std::vector<std::string> symbolic_dims{"batch", "seq", ""};
+  TensorTypeAndShapeInfo tensor_info(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dims, &symbolic_dims);
+  auto type_info = TypeInfo::CreateTensorInfo(tensor_info.GetConst());
+
+  std::vector<ValueInfo> graph_inputs;
+  std::vector<ValueInfo> graph_outputs;
+  graph_inputs.emplace_back("X", type_info.GetConst());
+  graph_outputs.emplace_back("Y", type_info.GetConst());
+
+  Graph graph;
+  graph.SetInputs(graph_inputs);
+  graph.SetOutputs(graph_outputs);
+
+  Node node("Identity", onnxruntime::kOnnxDomain, "Identity1", {"X"}, {"Y"});
+  graph.AddNode(node);
+
+  std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}};
+  Model model(opsets);
+  model.AddGraph(graph);
+
+  auto session = CreateSession(*ort_env, model);
+
+  auto input_type_info = session.GetInputTypeInfo(0);
+  auto input_info = input_type_info.GetTensorTypeAndShapeInfo();
+  EXPECT_EQ(input_info.GetShape(), dims);
+  auto input_symbolic_dims = input_info.GetSymbolicDimensions();
+  ASSERT_EQ(input_symbolic_dims.size(), size_t(3));
+  EXPECT_STREQ(input_symbolic_dims[0], "batch");
+  EXPECT_STREQ(input_symbolic_dims[1], "seq");
+  EXPECT_STREQ(input_symbolic_dims[2], "");
+}
+
+namespace {
+void ModelEditorCustomNeg(const Ort::Custom::Tensor<float>& x, Ort::Custom::Tensor<float>& y) {
+  const float* x_data = x.Data();
+  float* y_data = y.Allocate(x.Shape());
+  for (int64_t i = 0; i < x.NumberOfElement(); ++i) {
+    y_data[i] = -x_data[i];
+  }
+}
+}  // namespace
+
+// Custom op domains registered on the session options must be available when loading an OrtModel.
+TEST(ModelEditorAPITest, CreateSessionFromModel_CustomOpDomain) {
+  constexpr const char* kCustomDomain = "test.model_editor";
+  std::unique_ptr<Ort::Custom::OrtLiteCustomOp> custom_op{
+      Ort::Custom::CreateLiteCustomOp("CustomNeg", "CPUExecutionProvider", ModelEditorCustomNeg)};
+  Ort::CustomOpDomain custom_domain{kCustomDomain};
+  custom_domain.Add(custom_op.get());
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_domain);
+
+  std::vector<int64_t> dims{2, 3};
+  TensorTypeAndShapeInfo tensor_info(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dims);
+  auto type_info = TypeInfo::CreateTensorInfo(tensor_info.GetConst());
+
+  std::vector<ValueInfo> graph_inputs;
+  std::vector<ValueInfo> graph_outputs;
+  graph_inputs.emplace_back("X", type_info.GetConst());
+  graph_outputs.emplace_back("Y", type_info.GetConst());
+
+  Graph graph;
+  graph.SetInputs(graph_inputs);
+  graph.SetOutputs(graph_outputs);
+
+  Node node("CustomNeg", kCustomDomain, "CustomNeg1", {"X"}, {"Y"});
+  graph.AddNode(node);
+
+  std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}, {kCustomDomain, 1}};
+  Model model(opsets);
+  model.AddGraph(graph);
+
+  auto session = CreateSession(*ort_env, model, &session_options);
+
+  std::vector<Input<float>> inputs(1);
+  inputs[0].name = "X";
+  inputs[0].dims = dims;
+  inputs[0].values = {1.f, -2.f, 3.f, -4.f, 5.f, -6.f};
+
+  TestInference<float>(session, inputs, "Y", dims, {-1.f, 2.f, -3.f, 4.f, -5.f, 6.f});
+}

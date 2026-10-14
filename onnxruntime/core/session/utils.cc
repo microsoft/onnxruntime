@@ -468,6 +468,15 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
+                                     _In_ const OrtEnv* env,
+                                     _In_ const OrtModel* model,
+                                     std::unique_ptr<onnxruntime::InferenceSession>& sess) {
+  return CreateSessionAndLoadModelImpl(options, env->GetEnvironment(), model, sess);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD)
 static const char* GetCompatibilityStatusString(OrtCompiledModelCompatibility status) {
   switch (status) {
     case OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL:

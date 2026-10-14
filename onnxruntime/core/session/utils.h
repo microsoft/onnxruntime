@@ -46,6 +46,14 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
                              _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr);
 
 #if !defined(ORT_MINIMAL_BUILD)
+// Creates an InferenceSession and loads a model created with the Model Editor API.
+OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
+                                     _In_ const OrtEnv* env,
+                                     _In_ const OrtModel* model,
+                                     std::unique_ptr<onnxruntime::InferenceSession>& sess);
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD)
 namespace onnxruntime {
 
 /// <summary>
