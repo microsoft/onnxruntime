@@ -46,7 +46,27 @@ else()
   #image on an aarch64 machine with an aarch64 Ubuntu host OS, in the docker instance cmake may still report
   # CMAKE_SYSTEM_PROCESSOR as aarch64 by default. Given compiling this code may need more than 2GB memory, we do not
   # support compiling for ARM32 natively(only support cross-compiling), we will ignore this issue for now.
-  if(NOT CMAKE_SYSTEM_PROCESSOR)
+
+  # When cross-compiling, detect target architecture from the compiler's target triple
+  # since CMAKE_SYSTEM_PROCESSOR may incorrectly reflect the build host.
+  if(CMAKE_CROSSCOMPILING AND ("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" OR "${CMAKE_C_COMPILER_ID}" STREQUAL "Clang"))
+    execute_process(
+        COMMAND "${CMAKE_C_COMPILER}" -dumpmachine
+        OUTPUT_VARIABLE GCC_DUMP_MACHINE_OUT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_VARIABLE _err
+        RESULT_VARIABLE _res
+    )
+    if(_res EQUAL 0)
+      string(REPLACE "-" ";" GCC_DUMP_MACHINE_OUT_LIST "${GCC_DUMP_MACHINE_OUT}")
+      list(LENGTH GCC_DUMP_MACHINE_OUT_LIST GCC_TRIPLET_LEN)
+      if(GCC_TRIPLET_LEN GREATER_EQUAL 1)
+        list(GET GCC_DUMP_MACHINE_OUT_LIST 0 _detected_arch)
+        message(STATUS "Cross-compiling: detected target architecture '${_detected_arch}' from compiler")
+        set(CMAKE_SYSTEM_PROCESSOR ${_detected_arch})
+      endif()
+    endif()
+  elseif(NOT CMAKE_SYSTEM_PROCESSOR)
     message(WARNING "CMAKE_SYSTEM_PROCESSOR is not set. Please set it in your toolchain cmake file.")
     # Try to detect it
     if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" OR "${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
