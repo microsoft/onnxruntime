@@ -12,18 +12,18 @@ namespace {
 
 __global__ void UpdateMoeExpertCountersKernel(const int* ids, const float* scales, size_t route_count,
                                               double* counters, float* selected_probabilities, int64_t* first_routes,
-                                              size_t expert_count,
+                                              size_t expert_count, size_t route_offset, bool finalize,
                                               double alpha, double probability_weight) {
   const size_t expert = blockIdx.x * blockDim.x + threadIdx.x;
   if (expert >= expert_count) {
     return;
   }
-  float probability = -1.0f;
-  int64_t first_route = -1;
+  float probability = route_offset == 0 ? -1.0f : selected_probabilities[expert];
+  int64_t first_route = route_offset == 0 ? -1 : first_routes[expert];
   for (size_t route = 0; route < route_count; ++route) {
     if (ids[route] == static_cast<int>(expert)) {
       if (first_route < 0) {
-        first_route = static_cast<int64_t>(route);
+        first_route = static_cast<int64_t>(route_offset + route);
       }
       if (probability_weight > 0.0 && (!isfinite(scales[route]) || scales[route] < 0.0f || scales[route] > 1.0f)) {
         probability = nanf("");
@@ -35,6 +35,9 @@ __global__ void UpdateMoeExpertCountersKernel(const int* ids, const float* scale
   }
   selected_probabilities[expert] = probability;
   first_routes[expert] = first_route;
+  if (!finalize) {
+    return;
+  }
   const double decayed = __dmul_rn(counters[expert], alpha);
   const double contribution = probability >= 0.0f
                                   ? __dadd_rn(1.0 - probability_weight,
@@ -186,8 +189,18 @@ void LaunchUpdateMoeExpertCounters(const int* ids, const float* scales, size_t r
                                    double* counters, float* selected_probabilities, int64_t* first_routes,
                                    size_t expert_count,
                                    double alpha, double probability_weight, cudaStream_t stream) {
+  LaunchUpdateMoeExpertCounters(ids, scales, route_count, counters, selected_probabilities,
+                                first_routes, expert_count, 0, true, alpha,
+                                probability_weight, stream);
+}
+
+void LaunchUpdateMoeExpertCounters(const int* ids, const float* scales, size_t route_count,
+                                   double* counters, float* selected_probabilities, int64_t* first_routes,
+                                   size_t expert_count, size_t route_offset, bool finalize,
+                                   double alpha, double probability_weight, cudaStream_t stream) {
   UpdateMoeExpertCountersKernel<<<static_cast<unsigned int>((expert_count + 255) / 256), 256, 0, stream>>>(
-      ids, scales, route_count, counters, selected_probabilities, first_routes, expert_count, alpha, probability_weight);
+      ids, scales, route_count, counters, selected_probabilities, first_routes, expert_count,
+      route_offset, finalize, alpha, probability_weight);
   CUDA_CALL_THROW(cudaGetLastError());
 }
 

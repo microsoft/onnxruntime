@@ -193,11 +193,14 @@ popularity JSON, expert counters, and adaptive swap policy are shared with dense
 
 At initialization, QMoE retains canonical quantized CPU bytes, compacts the CUTLASS-packed CUDA weights and their
 scales/biases to the selected CUDA slots, and dequantizes CPU-resident experts once into MLAS GEMM layout. Runtime
-routing uses reusable 256-row activation chunks. Rows selecting CPU experts execute with MLAS and are scattered into
-the CUDA output; CUDA expert IDs are remapped to compact slot IDs. Mixed and all-CPU placement are supported.
+routing uses reusable 256-row activation chunks. The compact row count is copied first, so tiles with no CPU route do
+not transfer activations or routing metadata. For non-empty tiles, a persistent worker copies only the packed rows,
+overlaps MLAS execution with CUDA expert kernels, and uploads the compact contribution before scatter-add. CUDA expert
+IDs are remapped to compact slot IDs. Mixed and all-CPU placement are supported.
 
 Adaptive swaps exchange the packed weight, scale, zero-point-bias, and explicit-bias slices as one expert payload.
-The current QMoE transfer and CPU activation path is synchronous; dense MoE retains its asynchronous overlap.
+Dedicated D2H/H2D streams stage the packed payload asynchronously. A separate worker dequantizes the outgoing expert
+into MLAS layout, and the new map remains unpublished until both preparations complete.
 
 Unsupported offload modes are FP4/NVFP4/WFP4AFP8, FP8, INT2, mixed-width INT, `weights_prepacked=-1/1`, sparse mixer,
 and the CUDA plugin EP.

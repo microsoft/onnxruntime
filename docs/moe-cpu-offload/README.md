@@ -32,8 +32,10 @@ Training, router changes, expert-weight quantization, and multiple CUDA devices 
 - Dense MoE exchanges hot CPU experts with cold CUDA experts asynchronously while preserving each node's CUDA slot
   count. Global slot redistribution across nodes remains future work.
 - CUDA INT4/INT8 `QMoE` compacts the CUTLASS-packed weights, scales, derived zero-point biases, and optional explicit
-  biases to the selected CUDA experts. CPU experts are dequantized once into the dense MLAS layout. QMoE swaps move
-  every packed expert tensor together and publish the new map only after the transfer completes.
+  biases to the selected CUDA experts. CPU experts are dequantized once into the dense MLAS layout. QMoE copies only
+  the compact row count when no CPU route is selected; non-empty CPU work runs on a persistent worker and overlaps
+  CUDA expert kernels. QMoE swaps move every packed expert tensor together on dedicated streams. The outgoing expert
+  is dequantized on a separate worker, and the new map is published only after both preparations complete.
 - Expert swaps transpose matrix weights between CUDA and MLAS layouts on their dedicated CUDA streams, rather than
   blocking the transfer pipeline with a CPU transposition callback. Incoming and outgoing experts use separate pinned
   buffers; publication waits for both transfers to finish before changing the CPU/CUDA maps.

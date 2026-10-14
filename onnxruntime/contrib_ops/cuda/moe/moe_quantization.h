@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/kernel_pilot_moe_expert_cache.h"
+#include "core/framework/kernel_pilot_moe_expert_usage.h"
 #include "core/framework/ort_value.h"
 #endif
 #include "core/providers/cuda/cuda_kernel.h"
@@ -16,7 +17,10 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 
 #include <array>
+#include <atomic>
+#include <condition_variable>
 #include <mutex>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -35,7 +39,8 @@ constexpr const char* kQMoEIntDequantMaxScratchBytesConfig = "ep.cuda.qmoe_int_d
 class QMoE final : public CudaKernel, public MoEBase
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     ,
-                   public IKernelPilotMoeExpertCache
+                   public IKernelPilotMoeExpertCache,
+                   public IKernelPilotMoeExpertUsage
 #endif
 {
  public:
@@ -76,16 +81,29 @@ class QMoE final : public CudaKernel, public MoEBase
   };
 
   Status InitializeCpuOffload(gsl::span<const int> cuda_experts);
-  Status InitializeCpuExpert(size_t cpu_slot, int expert_id);
+  Status InitializeCpuExpert(size_t cpu_slot, int expert_id) const;
   Status ComputeCpuOffloadChunk(
       const void* input, const int* route_experts, const float* route_scales,
       size_t num_rows, size_t hidden_size, size_t inter_size,
       void* output, concurrency::ThreadPool* thread_pool) const;
+  Status PrepareCpuTask(OpKernelContext* context, size_t num_rows, size_t hidden_size,
+                        size_t inter_size) const;
+  Status ComputeCpuTask() const;
+  void RunCpuWorker() const;
+  static void CUDART_CB NotifyCpuWorker(void* context);
+  void ReleaseCpuResources() noexcept;
+  Status PrepareUsage(OpKernelContext* context, KernelPilot* pilot, size_t expert_count) const;
+  bool HasPendingUsage() const noexcept override { return usage_pending_; }
+  Status CompleteUsage(KernelPilotMoeExpertUsageSnapshot& snapshot) override;
   IAllocatorUniquePtr<void>& ResidentDeviceBuffer(ResidentTensorKind kind);
   const IAllocatorUniquePtr<void>& ResidentDeviceBuffer(ResidentTensorKind kind) const;
+  Status PrepareExpertSwapForInvocation(cudaStream_t stream) const;
+  void InitializeSwapCpuExpert(int expert_id) const;
+  void RunSwapWorker() const;
+  void ReleaseSwapResources() noexcept;
   int DeviceId() const noexcept override { return device_id_; }
-  bool HasPendingSwap() const noexcept override { return false; }
-  Status ReclaimCompletedSwap() override { return Status::OK(); }
+  bool HasPendingSwap() const noexcept override;
+  Status ReclaimCompletedSwap() override;
   Status StartSwap(int cuda_expert_id, int cpu_expert_id) override;
 #endif
 
@@ -339,34 +357,79 @@ class QMoE final : public CudaKernel, public MoEBase
   mutable InlinedVector<int> cpu_experts_;
   mutable InlinedVector<int> cpu_expert_map_;
   IAllocatorUniquePtr<void> device_expert_map_;
-  std::vector<ResidentTensor> resident_tensors_;
+  mutable std::vector<ResidentTensor> resident_tensors_;
   size_t swap_staging_bytes_{0};
   IAllocatorUniquePtr<void> swap_pinned_buffer_;
   IAllocatorUniquePtr<void> swap_outgoing_pinned_buffer_;
+  IAllocatorUniquePtr<void> swap_cuda_staging_;
   mutable IAllocatorUniquePtr<void> cpu_device_input_;
   mutable IAllocatorUniquePtr<void> cpu_device_output_;
   mutable IAllocatorUniquePtr<int> cpu_device_rows_;
   mutable IAllocatorUniquePtr<int> cpu_device_ids_;
   mutable IAllocatorUniquePtr<float> cpu_device_scales_;
   mutable IAllocatorUniquePtr<uint32_t> cpu_device_count_;
-  mutable IAllocatorUniquePtr<uint32_t> cpu_device_completion_;
+  mutable IAllocatorUniquePtr<void> cpu_completion_storage_;
+  mutable std::atomic<uint32_t>* cpu_completion_{nullptr};
+  mutable CUdeviceptr cpu_device_completion_{0};
   mutable IAllocatorUniquePtr<void> cpu_host_input_;
   mutable IAllocatorUniquePtr<void> cpu_host_output_;
   mutable IAllocatorUniquePtr<int> cpu_host_ids_;
   mutable IAllocatorUniquePtr<float> cpu_host_scales_;
   mutable IAllocatorUniquePtr<uint32_t> cpu_host_count_;
-  std::vector<MLFloat16> cpu_fc1_half_;
-  std::vector<MLFloat16> cpu_fc2_half_;
-  std::vector<float> cpu_fc1_float_;
-  std::vector<float> cpu_fc2_float_;
-  std::vector<MLFloat16> cpu_fc1_bias_half_;
-  std::vector<MLFloat16> cpu_fc2_bias_half_;
-  std::vector<BFloat16> cpu_fc1_bias_bfloat_;
-  std::vector<BFloat16> cpu_fc2_bias_bfloat_;
+  mutable cudaEvent_t cpu_routes_ready_event_{nullptr};
+  mutable cudaEvent_t cpu_input_ready_event_{nullptr};
+  mutable std::thread cpu_worker_;
+  mutable std::mutex cpu_worker_mutex_;
+  mutable std::condition_variable cpu_worker_condition_;
+  mutable bool cpu_task_ready_{false};
+  mutable bool cpu_task_finished_{true};
+  mutable bool cpu_callback_scheduled_{false};
+  mutable bool stop_cpu_worker_{false};
+  mutable Status cpu_task_status_;
+  mutable size_t cpu_task_num_rows_{0};
+  mutable size_t cpu_task_hidden_size_{0};
+  mutable size_t cpu_task_inter_size_{0};
+  mutable concurrency::ThreadPool* cpu_task_thread_pool_{nullptr};
+  mutable bool usage_pending_{false};
+  mutable bool usage_recorded_{false};
+  mutable cudaStream_t usage_stream_{nullptr};
+  mutable cudaEvent_t usage_complete_event_{nullptr};
+  mutable IAllocatorUniquePtr<void> device_usage_;
+  mutable IAllocatorUniquePtr<void> host_usage_;
+  mutable std::vector<MLFloat16> cpu_fc1_half_;
+  mutable std::vector<MLFloat16> cpu_fc2_half_;
+  mutable std::vector<float> cpu_fc1_float_;
+  mutable std::vector<float> cpu_fc2_float_;
+  mutable std::vector<MLFloat16> cpu_fc1_bias_half_;
+  mutable std::vector<MLFloat16> cpu_fc2_bias_half_;
+  mutable std::vector<BFloat16> cpu_fc1_bias_bfloat_;
+  mutable std::vector<BFloat16> cpu_fc2_bias_bfloat_;
   int64_t cpu_num_experts_{0};
   int64_t cpu_hidden_size_{0};
   int64_t cpu_inter_size_{0};
   int64_t cpu_fc1_output_size_{0};
+  mutable cudaStream_t swap_d2h_stream_{nullptr};
+  mutable cudaStream_t swap_h2d_stream_{nullptr};
+  mutable cudaEvent_t swap_d2h_complete_event_{nullptr};
+  mutable cudaEvent_t swap_transfer_complete_event_{nullptr};
+  mutable cudaEvent_t swap_publication_complete_event_{nullptr};
+  enum class SwapPhase {
+    Idle,
+    TransferInFlight,
+    PublicationInFlight,
+  };
+  mutable SwapPhase swap_phase_{SwapPhase::Idle};
+  mutable int swap_cuda_expert_{-1};
+  mutable int swap_cpu_expert_{-1};
+  mutable size_t swap_cuda_slot_{0};
+  mutable size_t swap_cpu_slot_{0};
+  mutable std::thread swap_worker_;
+  mutable std::mutex swap_worker_mutex_;
+  mutable std::condition_variable swap_worker_condition_;
+  mutable bool swap_task_ready_{false};
+  mutable bool swap_task_finished_{true};
+  mutable bool stop_swap_worker_{false};
+  mutable Status swap_task_status_;
 #endif
 
   struct Fp4GemvTuneKey {

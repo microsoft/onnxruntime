@@ -16,6 +16,10 @@ namespace onnxruntime::contrib::cuda {
 void LaunchUpdateMoeExpertCounters(const int* ids, const float* scales, size_t route_count,
                                    double* counters, float* selected_probabilities, int64_t* first_routes, size_t expert_count,
                                    double alpha, double probability_weight, cudaStream_t stream);
+void LaunchUpdateMoeExpertCounters(const int* ids, const float* scales, size_t route_count,
+                                   double* counters, float* selected_probabilities, int64_t* first_routes,
+                                   size_t expert_count, size_t route_offset, bool finalize,
+                                   double alpha, double probability_weight, cudaStream_t stream);
 
 void LaunchPackMoeCpuRows(const half* input, const int* ids, const float* scales, const int* expert_map,
                           half* packed_input, int* packed_ids, float* packed_scales,
