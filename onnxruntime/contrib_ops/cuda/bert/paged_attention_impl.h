@@ -22,6 +22,18 @@ Status QkvToContext(
     contrib::PagedAttentionParameters& parameters,
     PagedAttentionData<T, TCACHE>& data);
 
+template <typename T, typename TCACHE>
+Status PreparePagedAttentionQueryAndCache(
+    const cudaDeviceProp& device_prop,
+    Stream* stream,
+    contrib::PagedAttentionParameters& parameters,
+    PagedAttentionData<T, TCACHE>& data,
+    T** query,
+    T** key,
+    T** value,
+    int* key_stride,
+    int* value_stride);
+
 template <typename T>
 Status LaunchUnpackQKVCumulative(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unpacked_v, const int num_heads,
                                  const int kv_num_heads, const int head_size, const int token_count, cudaStream_t stream,
@@ -31,6 +43,16 @@ Status LaunchUnpackQKVCumulative(const T* packed_qkv, T* unpacked_q, T* unpacked
 // dispatch paths (producer hoisted out of FlashAttention/UnfusedAttention in impl.cu).
 Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
                                     const int32_t* past_seqlens, const int batch_size, cudaStream_t stream);
+
+// Produces per-batch KV lengths seqlens_kv[i] = past_seqlens[i] + (cumulative_seqlens_q[i+1] -
+// cumulative_seqlens_q[i]) for the cuDNN paged SDPA backend's padding-mask input. Deriving the
+// query count from cumulative_seqlens_q keeps the kernel correct if a caller ever routes a
+// multi-token step through this path -- the cuDNN paged tier is decode-only today, so
+// cumulative_seqlens_q[i+1] - cumulative_seqlens_q[i] is 1 for every eligible step, but the
+// derivation avoids baking that invariant into a magic constant.
+Status LaunchGetSeqlensKV(int32_t* seqlens_kv, const int32_t* past_seqlens,
+                          const int32_t* cumulative_seqlens_q,
+                          const int batch_size, cudaStream_t stream);
 
 // Paged decode backend sizing helpers, used by paged_attention.cc to test eligibility (the kernel
 // needs more dynamic shared memory than the device provides for very wide heads) and to size the

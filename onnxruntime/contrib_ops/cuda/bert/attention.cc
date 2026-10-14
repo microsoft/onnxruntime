@@ -298,9 +298,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  if (cudnn_sdpa_supported ||
+      (use_memory_efficient_attention &&
+       parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START)) {
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&data.allocator));
+  }
   if (cudnn_sdpa_supported) {
     data.kernel_type = AttentionKernelType::AttentionKernel_CudnnFlashAttention;
-    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&data.allocator));
   }
   if (softmax_lse_buffer != nullptr) {
     data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());

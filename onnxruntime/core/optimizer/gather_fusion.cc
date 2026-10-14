@@ -28,6 +28,8 @@ static bool GetScalarInt64Initializer(const Graph& graph, const NodeArg& node_ar
   const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node_arg.Name());
   if (!tensor_proto || tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto::INT64) return false;
   Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
+  // The NodeArg shape is the inferred type and need not agree with the dims on the initializer.
+  if (init_const.size() < 1) return false;
   value = *(init_const.data<int64_t>());
   rank = tensor_proto->dims_size();
   return true;
@@ -284,10 +286,14 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     split_node.AddAttribute("axis", axis);
     split_node.SetExecutionProviderType(nodes_to_fuse[0].get().GetExecutionProviderType());
 
+    InlinedVector<NodeIndex> source_node_indices;
+    source_node_indices.reserve(nodes_to_fuse.size());
     for (Node& node : nodes_to_fuse) {
+      source_node_indices.push_back(node.Index());
       graph_utils::RemoveNodeOutputEdges(graph, node);
       graph.RemoveNode(node.Index());
     }
+    graph.NotifyNodeReplacement(source_node_indices, split_node.Index());
 
     modified = true;
   }
@@ -312,7 +318,8 @@ Status GatherToSliceFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Range", {11, 27}) ||
-        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) || node.GetOutputEdgesCount() != 1) {
+        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) || node.GetOutputEdgesCount() != 1 ||
+        graph.NodeProducesGraphOutput(node)) {
       continue;
     }
 
@@ -398,10 +405,14 @@ Status GatherToSliceFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
                                      {gather_node.MutableOutputDefs()[0]});
     slice_node.SetExecutionProviderType(gather_node.GetExecutionProviderType());
 
+    InlinedVector<NodeIndex> source_node_indices;
+    source_node_indices.reserve(nodes_to_fuse.size());
     for (Node& n : nodes_to_fuse) {
+      source_node_indices.push_back(n.Index());
       graph_utils::RemoveNodeOutputEdges(graph, n);
       graph.RemoveNode(n.Index());
     }
+    graph.NotifyNodeReplacement(source_node_indices, slice_node.Index());
 
     modified = true;
   }

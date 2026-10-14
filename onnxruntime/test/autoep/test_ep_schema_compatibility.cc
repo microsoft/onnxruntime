@@ -25,6 +25,7 @@
 #include "onnx/defs/schema.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/scoped_env_vars.h"
 
 namespace onnxruntime::test {
 namespace {
@@ -279,6 +280,16 @@ TEST(PluginEpSchemaCompatibilityTest, MissingCallbackIsPermissiveDuringTransitio
 
   EXPECT_FALSE(compatibility->IsNegotiated());
   EXPECT_TRUE(compatibility->IsCompatible(kMSDomain, "GroupQueryAttention", 999));
+
+  {
+    ScopedEnvironmentVariables strict_env{
+        EnvVarMap{{"ORT_PLUGIN_EP_REQUIRE_SCHEMA_COMPATIBILITY", "1"}}};
+    ASSERT_STATUS_OK(PluginEpSchemaCompatibility::Create(
+        factory.api, DefaultLoggingManager().DefaultLogger(), compatibility));
+    EXPECT_TRUE(compatibility->IsNegotiated());
+    EXPECT_FALSE(compatibility->IsCompatible(kMSDomain, "GroupQueryAttention", 1));
+    EXPECT_TRUE(compatibility->IsCompatible(kOnnxDomain, "Add", 14));
+  }
 }
 
 #if !defined(DISABLE_CONTRIB_OPS)

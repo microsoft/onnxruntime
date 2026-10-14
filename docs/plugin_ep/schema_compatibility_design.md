@@ -982,6 +982,35 @@ Rejected for ORT-owned domains. Core performs model validation, shape inference,
 optimization, memory planning, and fallback using its own schemas. Two authoritative
 definitions in one process would make those stages inconsistent.
 
+### Encode the version in the operator name (e.g., `GroupQueryAttention_v2`)
+
+Historically, when `com.microsoft` operators were internal to a single monolithic ORT
+binary, creating a new operator name was considered as an alternative to bumping the
+domain opset. With separately shipped plugin EPs and external model producers, that
+approach has significant drawbacks:
+
+- **Pros**: Avoids advancing the `com.microsoft` opset version in `opset_import`.
+- **Cons**: Fragments the operator identity across model exporters, graph
+  optimizers, quantization tools, and EP kernel tables; requires every consumer and
+  fusion pass to match a growing family of operator names (`Op`, `Op_v2`, `Op_v3`);
+  and still does not prevent accidental in-place edits to an existing operator's
+  schema unless paired with the per-operator manifest digest check introduced here.
+
+### Add a `version` attribute to the operator
+
+Another historical idea was to keep `since_version 1` and add an integer `version`
+attribute that kernels inspect at runtime:
+
+- **Pros**: Allows a single `OpSchema` name and `since_version` to carry minor
+  behavioral switches when the input/output signature is unchanged.
+- **Cons**: Cannot safely represent changes to input/output counts, optionality, or
+  type constraints in `OpSchema` without mutating the v1 schema in place. When core
+  and a plugin EP were built at different commits, graph validation, shape inference,
+  and optimizer rewrites run before any kernel inspects the attribute, so an old core
+  or old plugin still misinterprets the node's positional inputs/outputs. Using standard
+  ONNX `since_version` ranges plus per-operator schema ABI digests catches signature
+  and attribute-contract changes before partitioning and optimization.
+
 ## Decision checklist for future contrib changes
 
 Before merging a contrib-op contract change:

@@ -765,10 +765,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   common::Status InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers);
 
   /** This function takes externally provided files in memory for initializers with external
-   *    data and replaces main graph initializers with its content.
+   *    data and replaces initializers in this graph with their content. Subgraphs are not processed.
    */
   common::Status InjectExternalInitializersFromFilesInMemory(
-      const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files);
+      const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files,
+      bool use_buffers_directly = false);
 #endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -1201,6 +1202,26 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   */
   bool RemoveNode(NodeIndex node_index);
 
+  using NodeReplacementCallback =
+      std::function<void(const Graph&, gsl::span<const NodeIndex>, NodeIndex)>;
+  using NodeRemovalCallback =
+      std::function<void(const Graph&, gsl::span<const NodeIndex>)>;
+#ifdef ENABLE_TRAINING
+  using NodeCloneCallback =
+      std::function<void(const Graph&, NodeIndex, NodeIndex)>;
+#endif
+
+  void SetNodeReplacementCallback(NodeReplacementCallback callback);
+  void NotifyNodeReplacement(
+      gsl::span<const NodeIndex> source_node_indices,
+      NodeIndex destination_node_index) const;
+  void SetNodeRemovalCallback(NodeRemovalCallback callback);
+  void NotifyNodesRemoved(gsl::span<const NodeIndex> node_indices) const;
+#ifdef ENABLE_TRAINING
+  void SetNodeCloneCallback(NodeCloneCallback callback);
+  void NotifyNodeCloned(NodeIndex source_node_index, NodeIndex cloned_node_index) const;
+#endif
+
   /** Add an edge between two Nodes.
   @param src_node_index NodeIndex of source Node that is providing output to the destination Node.
   @param dst_node_index NodeIndex of destination Node that is receiving input from the source Node.
@@ -1359,6 +1380,22 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                   const std::filesystem::path& model_file_path,
                                                                   const ModelSavingOptions& model_saving_options) const;
+
+  /** Serializes this graph while writing externalized initializer data to a caller-provided stream.
+  Initializers are externalized according to model_saving_options, including configured alignment and subgraph
+  handling.
+  @param external_file_path Non-empty relative logical file path recorded in each externalized initializer's
+  TensorProto. This path does not identify the physical stream destination.
+  @param model_saving_options Initializer size threshold and external-data alignment settings.
+  @param external_stream Open caller-owned output stream that receives the external initializer bytes. The caller
+  retains ownership.
+  @param graph_proto Output parameter set to the serialized GraphProto.
+  @returns A status indicating success or an error writing to the stream.
+  */
+  common::Status ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
+                                                      const ModelSavingOptions& model_saving_options,
+                                                      std::ostream& external_stream,
+                                                      ONNX_NAMESPACE::GraphProto& graph_proto) const;
 
   /// <summary>
   /// Serialize the Graph to a onnx::GraphProto. Caller provides a function that determines where each initializer
@@ -2146,6 +2183,14 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   Graph* parent_graph_;
   // the node containing the graph if parent_graph_ is not nullptr
   const Node* parent_node_;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  NodeReplacementCallback node_replacement_callback_;
+  NodeRemovalCallback node_removal_callback_;
+#ifdef ENABLE_TRAINING
+  NodeCloneCallback node_clone_callback_;
+#endif
+#endif
 
   // NodeArgs that come from outer scope. Used when building a graph so that
   // these don't get recorded as graph inputs in the GraphProto.

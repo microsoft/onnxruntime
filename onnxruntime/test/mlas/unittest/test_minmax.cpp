@@ -43,6 +43,15 @@ class MlasFindMinMaxElementsTest : public MlasTestBase {
     for (size_t n = 1; n < 128; n++) {
       Test(n, -10.f, 10.f);
     }
+
+    // Lengths that span several vectors of the widest kernels, with tails of
+    // every alignment: an RVV e32m4 group holds 128 floats at VLEN=1024, so
+    // nothing below 128 crosses a group boundary there, and the accumulator
+    // carry and the tail-undisturbed final group would go untested.
+    for (size_t n : {128, 129, 255, 256, 257, 383, 1000, 1024, 1025, 4097}) {
+      Test(n, -10.f, 10.f);
+      Test(n, 0.f, 1.f);
+    }
   }
 };
 

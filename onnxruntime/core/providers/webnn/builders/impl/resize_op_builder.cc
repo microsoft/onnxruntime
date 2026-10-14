@@ -39,6 +39,39 @@ class ResizeOpBuilder : public BaseOpBuilder {
 };
 
 // Helper functions
+
+// Given the indices of the (up to 4) input dims that Resize actually changes,
+// determine the two axes WebNN's resample2d should operate on.
+// resample2d always resamples exactly 2 axes (its scales/sizes/axes are length-2 lists),
+// so at most two dims may change. WebNN spec allows those two axes to be any two
+// distinct dims of the input.
+// Returns false only if more than two dims change, which resample2d cannot express.
+bool GetResample2dAxes(const std::vector<int64_t>& changed_axes,
+                       std::vector<int64_t>& axes,
+                       const logging::Logger& logger) {
+  // changed_axes is expected to be sorted ascending (built by scanning dims 0..3).
+  if (changed_axes.size() > 2) {
+    LOGS(logger, VERBOSE) << "Resize: WebNN resample2d can resample at most 2 axes, but "
+                          << changed_axes.size() << " dims are being resized";
+    return false;
+  }
+
+  if (changed_axes.size() == 2) {
+    axes = changed_axes;
+  } else if (changed_axes.size() == 1) {
+    // Only one dim is scaled; pad with an adjacent axis so axes has the required length 2.
+    // Resampling an axis whose scale is 1 / size is unchanged is a no-op, so the partner is
+    // arbitrary; an adjacent one keeps the common single-spatial-axis case on the trailing axes.
+    const int64_t a = changed_axes[0];
+    axes = (a < 3) ? std::vector<int64_t>{a, a + 1} : std::vector<int64_t>{a - 1, a};
+  } else {
+    // No dim changes (identity resize); default to the trailing spatial axes.
+    axes = {2, 3};
+  }
+
+  return true;
+}
+
 bool GetResizeScalesAndAxes(const GraphViewer& graph_viewer,
                             const Node& node,
                             std::vector<float>& scales,
@@ -80,17 +113,21 @@ bool GetResizeScalesAndAxes(const GraphViewer& graph_viewer,
     scales = std::vector<float>{scales_data, scales_data + 2};
   } else {
     // Before opset 18, 'scales' should have 4 elements.
-    // Make sure 'scales' is not trying to scale on N/C channels here.
+    // Infer the two axes to resample from whichever dims are actually scaled (scale != 1),
+    // so that both NCHW ([1,1,sh,sw]) and NHWC ([1,sh,sw,1]) layouts are supported.
     std::vector<float> onnx_scales{scales_data, scales_data + 4};
-    if (onnx_scales[0] != 1.0f || onnx_scales[1] != 1.0f) {
-      LOGS(logger, VERBOSE) << "Scales of N/C channel should be 1"
-                            << "Scales of N/C channels are not supported"
-                            << ", scale_n, " << onnx_scales[0] << ", scale_c, " << onnx_scales[1];
+    std::vector<int64_t> changed_axes;
+    for (size_t i = 0; i < 4; ++i) {
+      if (onnx_scales[i] != 1.0f) {
+        changed_axes.push_back(static_cast<int64_t>(i));
+      }
+    }
+
+    if (!GetResample2dAxes(changed_axes, axes, logger)) {
       return false;
     }
 
-    scales = {onnx_scales[2], onnx_scales[3]};
-    axes = {2, 3};
+    scales = {onnx_scales[static_cast<size_t>(axes[0])], onnx_scales[static_cast<size_t>(axes[1])]};
   }
 
   return true;
@@ -137,17 +174,23 @@ bool GetResizeSizesAndAxes(const GraphViewer& graph_viewer,
     sizes = std::vector<int64_t>{sizes_data, sizes_data + 2};
   } else {
     // Before opset 18, 'sizes' should have 4 elements.
-    // Make sure 'sizes' is not trying to resize on N/C channels here.
+    // Infer the two axes to resample from whichever dims actually change size,
+    // so that both NCHW and NHWC layouts are supported.
     std::vector<int64_t> onnx_sizes{sizes_data, sizes_data + 4};
-    if (onnx_sizes[0] != input_shape[0] || onnx_sizes[1] != input_shape[1]) {
-      LOGS(logger, VERBOSE) << "Output sizes of N/C chanel should match the input sizes, "
-                            << "Resize of N/C channels are not supported"
-                            << ", input_size_n, " << input_shape[0] << ", output_size_n, " << onnx_sizes[0]
-                            << ". input_size_c, " << input_shape[1] << ", output_size_c, " << onnx_sizes[1];
+    std::vector<int64_t> changed_axes;
+    for (size_t i = 0; i < 4; ++i) {
+      // input_shape[i] may be -1 for a dynamic dim; such a dim is treated as changed
+      // since we can't prove it stays the same.
+      if (onnx_sizes[i] != input_shape[i]) {
+        changed_axes.push_back(static_cast<int64_t>(i));
+      }
+    }
+
+    if (!GetResample2dAxes(changed_axes, axes, logger)) {
       return false;
     }
-    sizes = {onnx_sizes[2], onnx_sizes[3]};
-    axes = {2, 3};
+
+    sizes = {onnx_sizes[static_cast<size_t>(axes[0])], onnx_sizes[static_cast<size_t>(axes[1])]};
   }
 
   return true;

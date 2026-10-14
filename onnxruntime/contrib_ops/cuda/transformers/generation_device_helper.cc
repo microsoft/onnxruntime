@@ -1380,6 +1380,9 @@ Status ExpandBuffer(Stream* ort_stream,
   bool is_kv_cache = input_shape.NumDimensions() == 4;
   if (max_sequence_length > 0 && is_kv_cache) {
     sequence_length = input_shape[2];
+    ORT_RETURN_IF(sequence_length > max_sequence_length,
+                  "Input sequence length (", sequence_length,
+                  ") exceeds max sequence length (", max_sequence_length, ").");
     dims[2] = max_sequence_length;
   }
   TensorShape expanded_shape(&dims[0], input_shape.NumDimensions());
@@ -1638,6 +1641,10 @@ Status UpdateDecoderCrossQK(
     float* cross_qk_buffer_data,
     int max_length,
     AllocatorPtr allocator) {
+  if (cross_qk_layer_head_pair_count == 0) {
+    return Status::OK();
+  }
+
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   if (qk_layer_pointers.get() == nullptr) {
@@ -1690,6 +1697,10 @@ Status FinalizeDecoderCrossQK(
     int num_return_sequences,
     const int* cache_indir_data,
     gsl::span<const int32_t> beam_indices_gpu) {
+  if (cross_qk_layer_head_pair_count == 0) {
+    return Status::OK();
+  }
+
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   cuda::LaunchFinalizeCrossQK(

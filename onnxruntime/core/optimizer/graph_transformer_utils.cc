@@ -227,6 +227,46 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
              KernelRegistryManager::HasImplementationOf(*kernel_registry_manager, node, provider_type, logger);
     };
   }
+
+  // Filters an EP allowlist for a fusion that emits a com.microsoft operator so a plugin EP
+  // whose kernel for that operator was quarantined by schema compatibility negotiation cannot
+  // be targeted by the fusion. EPs that are not registered in the current session are kept so
+  // standalone optimizer unit tests that pre-assign provider names without registering the EP
+  // continue to work.
+  const auto filter_eps_for_contrib_op =
+      [kernel_registry_manager, execution_providers, &logger](
+          const InlinedHashSet<std::string_view>& eps,
+          std::string_view op_type,
+          int since_version = 1) -> InlinedHashSet<std::string_view> {
+    if (kernel_registry_manager == nullptr || execution_providers == nullptr) {
+      return eps;
+    }
+    const KernelRegistry::TypeConstraintMap no_type_constraints;
+    InlinedHashSet<std::string_view> supported_eps;
+    for (std::string_view ep : eps) {
+      const std::string ep_str(ep);
+      if (execution_providers->Get(ep_str) == nullptr) {
+        supported_eps.insert(ep);
+        continue;
+      }
+      const auto registries = kernel_registry_manager->GetKernelRegistriesByProviderType(ep_str);
+      if (registries.empty()) {
+        supported_eps.insert(ep);
+        continue;
+      }
+      for (const auto& registry : registries) {
+        const KernelCreateInfo* kernel = nullptr;
+        if (registry->TryFindKernel(ep_str, op_type, kMSDomain, since_version,
+                                    no_type_constraints, logger, &kernel)
+                .IsOK() &&
+            kernel != nullptr) {
+          supported_eps.insert(ep);
+          break;
+        }
+      }
+    }
+    return supported_eps;
+  };
 #endif
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
@@ -416,37 +456,50 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                                  qdq_matmulnbits_block_size));
       }
 
-      transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
-      transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_dml_acl_eps));
-      transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_acl_eps));
+      transformers.emplace_back(
+          std::make_unique<GemmActivationFusion>(filter_eps_for_contrib_op(cpu_ep, "FusedGemm")));
+      transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(
+          filter_eps_for_contrib_op(cpu_dml_acl_eps, "MatMulIntegerToFloat")));
+      transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(
+          filter_eps_for_contrib_op(cpu_acl_eps, "DynamicQuantizeMatMul")));
 
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_acl_js_webgpu_eps));
+      transformers.emplace_back(
+          std::make_unique<ConvActivationFusion>(filter_eps_for_contrib_op(cpu_acl_js_webgpu_eps, "FusedConv")));
 
-      transformers.emplace_back(std::make_unique<GeluFusion>(cpu_acl_cuda_dml_webgpu_eps, level));
-      transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_acl_cuda_dml_eps, level));
+      transformers.emplace_back(
+          std::make_unique<GeluFusion>(filter_eps_for_contrib_op(cpu_acl_cuda_dml_webgpu_eps, "Gelu"), level));
+      transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_acl_cuda_dml_webgpu_eps, level));
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_eps));
-      transformers.emplace_back(std::make_unique<AttentionFusion>(cpu_acl_cuda_dml_eps));
-      transformers.emplace_back(std::make_unique<EmbedLayerNormFusion>(cpu_acl_cuda_dml_eps));
+      transformers.emplace_back(
+          std::make_unique<AttentionFusion>(filter_eps_for_contrib_op(cpu_acl_cuda_dml_eps, "Attention")));
+      transformers.emplace_back(std::make_unique<EmbedLayerNormFusion>(
+          filter_eps_for_contrib_op(cpu_acl_cuda_dml_eps, "EmbedLayerNormalization")));
       transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<GatherToSliceFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_eps));
-      transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_acl_cuda_dml_webgpu_eps));
+      transformers.emplace_back(
+          std::make_unique<BiasGeluFusion>(filter_eps_for_contrib_op(cpu_acl_cuda_dml_webgpu_eps, "BiasGelu")));
       transformers.emplace_back(
           std::make_unique<GroupQueryAttentionFusion>(cuda_eps, node_kernel_support_checker));
       // Run MatMulAddFusion again after *AttentionFusion transforms with `preserve_attention_pattern = false`,
       // to cleanup the remaining MatMul-Add that were part of the attention pattern but not detected or fused.
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(no_limit_empty_ep_list, false));
-      transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
-      transformers.emplace_back(std::make_unique<BiasSkipLayerNormFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
+      transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(
+          filter_eps_for_contrib_op(cpu_acl_cuda_dml_js_webgpu_eps, "SkipLayerNormalization")));
+      transformers.emplace_back(std::make_unique<BiasSkipLayerNormFusion>(
+          filter_eps_for_contrib_op(cpu_acl_cuda_dml_js_webgpu_eps, "SkipLayerNormalization")));
       // Expose pre-opset-20 tanh GELU to ConvActivationFusion on WebGPU.
-      transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_webgpu_eps));
-      transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
+      transformers.emplace_back(
+          std::make_unique<FastGeluFusion>(filter_eps_for_contrib_op(cpu_cuda_dml_webgpu_eps, "FastGelu")));
+      transformers.emplace_back(
+          std::make_unique<QuickGeluFusion>(filter_eps_for_contrib_op(cpu_acl_cuda_dml_js_webgpu_eps, "QuickGelu")));
 
       // GeluApproximation has side effects which may change results. It needs to be manually enabled,
       // or alternatively the model can be updated offline using a model conversion script
       //   e.g. fusion_gelu_approximation function used by onnxruntime/python/tools/transformers/onnx_model_bert.py
       if (enable_gelu_approximation) {
-        transformers.emplace_back(std::make_unique<GeluApproximation>(cpu_cuda_eps));
+        transformers.emplace_back(
+            std::make_unique<GeluApproximation>(filter_eps_for_contrib_op(cpu_cuda_eps, "FastGelu")));
       }
 
 #ifdef ENABLE_TRITON
@@ -457,16 +510,20 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 #endif  // ENABLE_TRITON
 
-      transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(cpu_cuda_eps));
-      transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_eps));
+      transformers.emplace_back(
+          std::make_unique<BiasSoftmaxFusion>(filter_eps_for_contrib_op(cpu_cuda_eps, "BiasSoftmax")));
+      transformers.emplace_back(
+          std::make_unique<BiasDropoutFusion>(filter_eps_for_contrib_op(cuda_eps, "BiasDropout")));
 #ifdef ENABLE_TRAINING
       transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_eps));
       transformers.emplace_back(std::make_unique<BiasSoftmaxDropoutFusion>(cuda_eps));
       transformers.emplace_back(std::make_unique<SceLossGradBiasFusion>(cpu_cuda_eps));
 #endif
 
-      transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_acl_cuda_dml_eps));
-      transformers.emplace_back(std::make_unique<MatMulActivationFusion>(dml_ep));
+      transformers.emplace_back(
+          std::make_unique<MatMulScaleFusion>(filter_eps_for_contrib_op(cpu_acl_cuda_dml_eps, "FusedMatMul")));
+      transformers.emplace_back(
+          std::make_unique<MatMulActivationFusion>(filter_eps_for_contrib_op(dml_ep, "FusedMatMul")));
 
 #ifdef MLAS_TARGET_AMD64_IX86
       if (avx2_precision_mode) {
@@ -474,7 +531,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 #endif
 
-      transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_cuda_eps));
+      transformers.emplace_back(
+          std::make_unique<MatMulNBitsFusion>(filter_eps_for_contrib_op(cpu_cuda_eps, "MatMulNBits")));
       transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
           InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider,
                                            onnxruntime::kWebGpuExecutionProvider},

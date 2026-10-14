@@ -104,6 +104,17 @@ TEST(BeamSearchParametersTest, AcceptsValidWhisperBeginningTimestampTokenId) {
   EXPECT_NO_THROW(parameters.ValidateWhisperTimestampTokenId());
 }
 
+TEST(BeamSearchParametersTest, ValidatesWhisperCrossQKPairCountWithoutRequiringUniquePairs) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.num_layers = 1;
+  parameters.num_heads = 1;
+
+  EXPECT_NO_THROW(parameters.ValidateWhisperCrossQKPairCount(0));
+  EXPECT_NO_THROW(parameters.ValidateWhisperCrossQKPairCount(2));
+  EXPECT_THROW(parameters.ValidateWhisperCrossQKPairCount(-1), OnnxRuntimeException);
+  EXPECT_THROW(parameters.ValidateWhisperCrossQKPairCount(65536), OnnxRuntimeException);
+}
+
 TEST(BeamSearchTest, ExpandBufferSupportsRankGreaterThanFour) {
   AllocatorPtr allocator = CPUAllocator::DefaultInstance();
   OrtValue input;
@@ -114,6 +125,19 @@ TEST(BeamSearchTest, ExpandBufferSupportsRankGreaterThanFour) {
       nullptr, input, 2, allocator, expanded, true, 0));
 
   EXPECT_EQ(expanded.Get<Tensor>().Shape(), TensorShape({2, 2, 3, 4, 5}));
+}
+
+TEST(BeamSearchTest, ExpandBufferRejectsSequenceLengthExceedingMaximum) {
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  OrtValue input;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({1, 1, 5, 1}), allocator, input);
+
+  OrtValue expanded;
+  const Status status = contrib::GenerationCpuDeviceHelper::ExpandBuffer<float>(
+      nullptr, input, 2, allocator, expanded, false, 4);
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Input sequence length (5) exceeds max sequence length (4)"));
 }
 
 namespace {

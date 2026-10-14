@@ -8,6 +8,7 @@
 #include "core/common/logging/logging.h"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <queue>
 #include <string>
@@ -302,6 +303,7 @@ static bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
 
 /** Removes a node with a single incoming node and connects the incoming node with the output node/s.*/
 static bool RemoveNodeWithSingleNodeInSingleUsedOutput(Graph& graph, Node& node) {
+  const NodeIndex node_index = node.Index();
   // Store info for input and output edges.
   std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
 
@@ -321,7 +323,8 @@ static bool RemoveNodeWithSingleNodeInSingleUsedOutput(Graph& graph, Node& node)
     ReplaceDownstreamNodeInput(graph, node, src_idx, incoming_node, input_edge.GetSrcArgIndex());
   }
 
-  graph.RemoveNode(node.Index());
+  graph.RemoveNode(node_index);
+  graph.NotifyNodesRemoved(gsl::span<const NodeIndex>{&node_index, 1});
 
   return true;
 }
@@ -848,12 +851,14 @@ bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const s
 }
 
 bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement) {
+  const NodeIndex node_index = node.Index();
   // We have to remove the output edges before we create replacement ones, so save the current output edge information
   std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
 
   // Remove the output edges of the node and then the node (this will remove any input edges).
   RemoveNodeOutputEdges(graph, node);
-  graph.RemoveNode(node.Index());
+  graph.RemoveNode(node_index);
+  graph.NotifyNodesRemoved(gsl::span<const NodeIndex>{&node_index, 1});
 
   // Re-create the output edges using 'replacement' as the source NodeArg (input) to the destination node/s
   for (auto& output_edge : output_edges) {
@@ -1043,16 +1048,25 @@ void SetOptionalNodeInput(Graph& graph, Node& target, size_t target_input_idx, N
 }
 
 void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node) {
+  const std::array<NodeIndex, 2> source_node_indices{first_node.Index(), second_node.Index()};
+
   // move the outputs from second_node to first_node
   RemoveNodeOutputEdges(graph, first_node);
   MoveAllNodeOutputs(graph, second_node, first_node);
 
   // second node now has no output edges and can be removed
   graph.RemoveNode(second_node.Index());
+  graph.NotifyNodeReplacement(source_node_indices, first_node.Index());
 }
 
 void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrapper<Node>> nodes, Node& replacement_node_start,
                         Node& replacement_node_end) {
+  std::vector<NodeIndex> source_node_indices;
+  source_node_indices.reserve(nodes.size());
+  for (const Node& node : nodes) {
+    source_node_indices.push_back(node.Index());
+  }
+
   MoveAllNodeInputEdges(graph, *nodes.begin(), replacement_node_start);
   MoveAllNodeOutputs(graph, nodes.back(), replacement_node_end);
 
@@ -1060,6 +1074,8 @@ void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrapper<Nod
     RemoveNodeOutputEdges(graph, node);
     graph.RemoveNode(node.Index());
   }
+
+  graph.NotifyNodeReplacement(source_node_indices, replacement_node_start.Index());
 }
 
 const Node* GetInputNode(const Node& node, int arg_index) {
@@ -1152,9 +1168,11 @@ bool FindPath(Graph& graph, const Node& node, bool is_input_edge, gsl::span<cons
   return true;
 }
 
-bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
+bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node,
+                                      std::vector<NodeIndex>* removed_node_indices) {
   std::queue<NodeIndex> q;
   InlinedHashSet<NodeIndex> removed_nodes;
+  std::vector<NodeIndex> removed_node_indices_local;
 
   NodeIndex start_node_index = start_node.Index();
   q.push(start_node_index);
@@ -1194,12 +1212,20 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
       graph.RemoveNode(cur_node_index);
 
       removed_nodes.insert(cur_node_index);
+      removed_node_indices_local.push_back(cur_node_index);
     }
   }
 
-  if (removed_nodes.size() == 0) {
+  if (removed_node_indices_local.empty()) {
     // Nothing to remove
     return false;
+  }
+
+  if (removed_node_indices != nullptr) {
+    removed_node_indices->insert(removed_node_indices->end(),
+                                 removed_node_indices_local.cbegin(), removed_node_indices_local.cend());
+  } else {
+    graph.NotifyNodesRemoved(removed_node_indices_local);
   }
 
   return true;

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/platform/posix/telemetry_sha256.h"
+#include "core/platform/telemetry_sha256.h"
 
 namespace onnxruntime {
 

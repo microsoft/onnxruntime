@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <random>
+#include <type_traits>
+#include <utility>
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/unittest_util/framework_test_utils.h"
@@ -731,11 +734,12 @@ TEST(GroupNormTest, GroupNorm_128) {
   int min_cuda_architecture = 530;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
   bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get());
+  bool enable_webgpu = (nullptr != DefaultWebGpuExecutionProvider().get());
 
   std::array<int, 3> channels_last_values = {-1, 0, 1};
 
   for (const int channels_last : channels_last_values) {
-    if (enable_cuda || enable_dml) {
+    if (enable_cuda || enable_dml || enable_webgpu) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       if (enable_cuda && channels_last != 0) {
         execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -743,6 +747,11 @@ TEST(GroupNormTest, GroupNorm_128) {
 
       if (enable_dml) {
         execution_providers.push_back(DefaultDmlExecutionProvider());
+      }
+
+      // WebGPU only supports the channels_last layout
+      if (enable_webgpu && channels_last != 0) {
+        execution_providers.push_back(DefaultWebGpuExecutionProvider());
       }
 
       // Don't run the test if no providers are supported
@@ -781,7 +790,7 @@ TEST(GroupNormTest, GroupNorm_128) {
 
     // Test float32, with activation
     enable_cuda = HasCudaEnvironment(0);
-    if (enable_cuda || enable_dml) {
+    if (enable_cuda || enable_dml || enable_webgpu) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       if (enable_cuda && channels_last != 0) {
         execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -789,6 +798,11 @@ TEST(GroupNormTest, GroupNorm_128) {
 
       if (enable_dml) {
         execution_providers.push_back(DefaultDmlExecutionProvider());
+      }
+
+      // WebGPU only supports the channels_last layout
+      if (enable_webgpu && channels_last != 0) {
+        execution_providers.push_back(DefaultWebGpuExecutionProvider());
       }
 
       // Don't run the test if no providers are supported
@@ -823,6 +837,113 @@ TEST(GroupNormTest, GroupNorm_128) {
       test.AddInput<float>("gamma", {C}, gamma_data);
       test.AddInput<float>("beta", {C}, beta_data);
       test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+  }
+}
+
+namespace {
+
+// Double-precision GroupNorm reference in NHWC layout with per-channel gamma/beta.
+std::vector<float> GroupNormReference(const std::vector<float>& x, const std::vector<float>& gamma,
+                                      const std::vector<float>& beta, int64_t batch, int64_t hw,
+                                      int64_t channels, int64_t groups, float epsilon, bool silu) {
+  const int64_t channels_per_group = channels / groups;
+  std::vector<float> y(x.size());
+  for (int64_t n = 0; n < batch; ++n) {
+    for (int64_t g = 0; g < groups; ++g) {
+      double sum = 0.0;
+      double squared_sum = 0.0;
+      for (int64_t p = 0; p < hw; ++p) {
+        for (int64_t k = 0; k < channels_per_group; ++k) {
+          const double v = x[(n * hw + p) * channels + g * channels_per_group + k];
+          sum += v;
+          squared_sum += v * v;
+        }
+      }
+      const double count = static_cast<double>(hw * channels_per_group);
+      const double mean = sum / count;
+      const double inv_std = 1.0 / std::sqrt(squared_sum / count - mean * mean + epsilon);
+      for (int64_t p = 0; p < hw; ++p) {
+        for (int64_t k = 0; k < channels_per_group; ++k) {
+          const int64_t c = g * channels_per_group + k;
+          const int64_t idx = (n * hw + p) * channels + c;
+          double v = (x[idx] - mean) * inv_std * gamma[c] + beta[c];
+          if (silu) {
+            v = v / (1.0 + std::exp(-v));
+          }
+          y[idx] = static_cast<float>(v);
+        }
+      }
+    }
+  }
+  return y;
+}
+
+// Rounds values through the storage type T so the reference sees exactly what the kernel reads.
+template <typename T>
+std::vector<float> RoundTripThrough(const std::vector<float>& values) {
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    std::vector<float> result;
+    result.reserve(values.size());
+    for (float v : values) {
+      result.push_back(MLFloat16(v).ToFloat());
+    }
+    return result;
+  } else {
+    return values;
+  }
+}
+
+// TX: type of X and Y (schema type T). TM: type of gamma and beta (schema type M).
+template <typename TX, typename TM>
+void RunGroupNormWebGpu(int64_t channels, int64_t groups, bool silu) {
+  constexpr int64_t B = 2;
+  constexpr int64_t H = 3;
+  constexpr int64_t W = 2;
+  constexpr float epsilon = 1e-5f;
+  const std::vector<int64_t> dims{B, H, W, channels};
+  const std::vector<int64_t> channel_dims{channels};
+
+  RandomValueGenerator random{1234};
+  const auto x = RoundTripThrough<TX>(random.Uniform<float>(dims, -1.0f, 1.0f));
+  const auto gamma = RoundTripThrough<TM>(random.Uniform<float>(channel_dims, 0.5f, 1.5f));
+  const auto beta = RoundTripThrough<TM>(random.Uniform<float>(channel_dims, -0.5f, 0.5f));
+  const auto y = GroupNormReference(x, gamma, beta, B, H * W, channels, groups, epsilon, silu);
+
+  OpTester test("GroupNorm", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", epsilon);
+  test.AddAttribute<int64_t>("groups", groups);
+  test.AddAttribute<int64_t>("activation", silu ? 1 : 0);
+  test.AddAttribute<int64_t>("channels_last", 1);
+  test.AddInput<TX>("X", dims, GetTypedArray<TX>(x));
+  test.AddInput<TM>("gamma", channel_dims, GetTypedArray<TM>(gamma));
+  test.AddInput<TM>("beta", channel_dims, GetTypedArray<TM>(beta));
+
+  constexpr float rel_error = 0.0f;
+  constexpr float abs_error = std::is_same_v<TX, MLFloat16> ? 0.02f : 1e-4f;
+  test.AddOutput<TX>("Y", dims, GetTypedArray<TX>(y), false, rel_error, abs_error);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+}  // namespace
+
+// Covers the vec2 (channels_per_group == 2) and scalar (channels_per_group == 1) variants,
+// fp16 gamma/beta (type M), and all four T/M combinations, with and without SiLU.
+TEST(GroupNormTest, GroupNorm_WebGpu_SmallChannelsPerGroup) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+
+  const std::vector<std::pair<int64_t, int64_t>> configs = {{6, 3}, {4, 4}};
+  for (const auto& [channels, groups] : configs) {
+    for (const bool silu : {false, true}) {
+      RunGroupNormWebGpu<float, float>(channels, groups, silu);
+      RunGroupNormWebGpu<float, MLFloat16>(channels, groups, silu);
+      RunGroupNormWebGpu<MLFloat16, float>(channels, groups, silu);
+      RunGroupNormWebGpu<MLFloat16, MLFloat16>(channels, groups, silu);
     }
   }
 }

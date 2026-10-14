@@ -1,9 +1,36 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # pylint: disable=C0114,C0115,C0116,W0212
+import contextlib
+import io
 import unittest
+from unittest import mock
 
 import onnxruntime
+
+
+class TestPreloadDlls(unittest.TestCase):
+    def test_optional_cuda_libraries_do_not_report_load_failures(self):
+        cases = [
+            ("Linux", ("libnvrtc.so.12", "libcufft.so.11"), "libcublas.so.12"),
+            ("Windows", ("cufft64_11.dll",), "cublas64_12.dll"),
+        ]
+
+        for system, optional_filenames, required_filename in cases:
+            with self.subTest(system=system):
+                output = io.StringIO()
+                with (
+                    mock.patch.object(onnxruntime, "cuda_version", "12.4"),
+                    mock.patch("platform.system", return_value=system),
+                    mock.patch("ctypes.CDLL", side_effect=OSError("not found")),
+                    mock.patch.object(onnxruntime, "_register_bundled_cuda_plugin_ep"),
+                    contextlib.redirect_stdout(output),
+                ):
+                    onnxruntime.preload_dlls(cuda=True, cudnn=False, msvc=False, directory="")
+
+                for filename in optional_filenames:
+                    self.assertNotIn(f"Failed to load {filename}", output.getvalue())
+                self.assertIn(f"Failed to load {required_filename}", output.getvalue())
 
 
 class TestGetNvidiaDllPaths(unittest.TestCase):

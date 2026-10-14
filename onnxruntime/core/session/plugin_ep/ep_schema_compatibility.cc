@@ -12,6 +12,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/graph/schema_abi_digest.h"
+#include "core/platform/env_var_utils.h"
 #include "onnx/defs/schema.h"
 
 namespace onnxruntime {
@@ -21,12 +22,25 @@ Status PluginEpSchemaCompatibility::Create(
     std::shared_ptr<const PluginEpSchemaCompatibility>& result) {
   auto compatibility = std::make_shared<PluginEpSchemaCompatibility>();
 
-  // Missing metadata remains permissive during the transition. API 30 is the
-  // first ABI version containing GetOperatorCompatibilityInfo.
+  // Missing metadata remains permissive during the transition unless strict mode is
+  // explicitly enabled via ORT_PLUGIN_EP_REQUIRE_SCHEMA_COMPATIBILITY=1. Shipping
+  // in-tree plugin EPs (e.g. CUDA) enforce MIN_ONNXRUNTIME_VERSION >= 1.30.0 and
+  // publish GetOperatorCompatibilityInfo, while SchemaAbiDigestTest freezes v1
+  // com.microsoft schemas so post-API-30 changes require a new since_version.
   if (factory.ort_version_supported < 30 || factory.GetOperatorCompatibilityInfo == nullptr) {
-    LOGS(logger, WARNING) << "Plugin EP factory '" << factory.GetName(&factory)
-                          << "' does not publish operator schema compatibility information. "
-                             "com.microsoft kernels remain enabled under the temporary legacy policy.";
+    const bool require_compatibility =
+        ParseEnvironmentVariableWithDefault<bool>("ORT_PLUGIN_EP_REQUIRE_SCHEMA_COMPATIBILITY", false);
+    if (require_compatibility) {
+      compatibility->is_negotiated_ = true;
+      LOGS(logger, WARNING) << "Plugin EP factory '" << factory.GetName(&factory)
+                            << "' does not publish operator schema compatibility information. "
+                               "Quarantining com.microsoft kernels because "
+                               "ORT_PLUGIN_EP_REQUIRE_SCHEMA_COMPATIBILITY=1.";
+    } else {
+      LOGS(logger, WARNING) << "Plugin EP factory '" << factory.GetName(&factory)
+                            << "' does not publish operator schema compatibility information. "
+                               "com.microsoft kernels remain enabled under the temporary legacy policy.";
+    }
     result = std::move(compatibility);
     return Status::OK();
   }

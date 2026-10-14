@@ -37,12 +37,16 @@ struct kernel_type_traits;
 
 KERNEL_TYPE_TRAITS_REGISTRY(KernelType::FP16Int8Groupwise, true, false);
 KERNEL_TYPE_TRAITS_REGISTRY(KernelType::FP16Int4Groupwise, true, true);
+KERNEL_TYPE_TRAITS_REGISTRY(KernelType::FP16Int2Groupwise, true, false);
 KERNEL_TYPE_TRAITS_REGISTRY(KernelType::FP16Int8PerChannel, false, false);
 KERNEL_TYPE_TRAITS_REGISTRY(KernelType::FP16Int4PerChannel, false, true);
+KERNEL_TYPE_TRAITS_REGISTRY(KernelType::FP16Int2PerChannel, false, false);
 KERNEL_TYPE_TRAITS_REGISTRY(KernelType::BF16Int8Groupwise, true, false);
 KERNEL_TYPE_TRAITS_REGISTRY(KernelType::BF16Int4Groupwise, true, true);
+KERNEL_TYPE_TRAITS_REGISTRY(KernelType::BF16Int2Groupwise, true, false);
 KERNEL_TYPE_TRAITS_REGISTRY(KernelType::BF16Int8PerChannel, false, false);
 KERNEL_TYPE_TRAITS_REGISTRY(KernelType::BF16Int4PerChannel, false, true);
+KERNEL_TYPE_TRAITS_REGISTRY(KernelType::BF16Int2PerChannel, false, false);
 #undef KERNEL_TYPE_TRAITS_REGISTRY
 
 // A generic memory iterator used for coalesced global memory access with optional enablement.
@@ -133,6 +137,10 @@ struct Int8DetailsW {
 
 struct Int4DetailsW {
   static constexpr int kElemBits = 4;
+};
+
+struct Int2DetailsW {
+  static constexpr int kElemBits = 2;
 };
 
 struct Fp4DetailsW {
@@ -234,9 +242,10 @@ struct I2FConverter;
 template <typename AType, int WElemBits>
 struct I2FConverter<AType, WElemBits, true> {
   static_assert(std::is_same_v<AType, half> || std::is_same_v<AType, __nv_bfloat16>);
-  static_assert(WElemBits == 4 || WElemBits == 8);
+  static_assert(WElemBits == 2 || WElemBits == 4 || WElemBits == 8);
   using CutlassAType = std::conditional_t<std::is_same_v<AType, half>, cutlass::half_t, cutlass::bfloat16_t>;
-  using CutlassWType = std::conditional_t<WElemBits == 4, cutlass::uint4b_t, uint8_t>;
+  using CutlassWType = std::conditional_t<WElemBits == 2, cutlass::uint2b_t,
+                                          std::conditional_t<WElemBits == 4, cutlass::uint4b_t, uint8_t>>;
   static constexpr int kConvertCount = 32 / WElemBits;
   using Converter = cutlass::FastInterleavedAndBiasedNumericArrayConverter<CutlassAType, CutlassWType, kConvertCount>;
   using CvtSrcType = typename Converter::source_type;
@@ -284,8 +293,8 @@ struct I2FConverter<AType, WElemBits, false> {
 //            bias). This is the layout the SM80 grouped GEMM consumes, so reading it here lets a
 //            single pre-packed weight buffer serve both the grouped-GEMM prefill and the fused
 //            GEMV decode instead of keeping two full copies of the expert weights.
-// The un-permutation is a compile-time index remap of the same eight ``decode`` calls, so it
-// costs no extra registers, branches or ALU work.
+// On device each 32-bit word is restored to linear order with a short prmt/shift sequence and then
+// decoded by the same packed table lookup as the linear path.
 template <typename AType, bool PairInterleaved = false>
 struct Fp4I2FConverter {
   static_assert(std::is_same_v<AType, half> || std::is_same_v<AType, __nv_bfloat16>);
@@ -410,10 +419,24 @@ struct Fp4I2FConverter {
         }
       }
     } else {
-      uint8_t const* s = reinterpret_cast<uint8_t const*>(src);
-      AType* d = reinterpret_cast<AType*>(dst);
       // The pair-interleave permutes whole 32-bit words, so N must cover complete words.
       static_assert(N % 8 == 0, "Pair-interleaved FP4 decode needs a multiple of 8 elements");
+#if defined(__CUDA_ARCH__)
+      // Restore linear nibble order, then reuse the packed decode. Same 4-byte alignment
+      // requirement as the linear packed path above.
+      uint32_t const* sw = reinterpret_cast<uint32_t const*>(src);
+      uint32_t* dw = reinterpret_cast<uint32_t*>(dst);
+#pragma unroll
+      for (int i = 0; i < N / 8; ++i) {
+        uint32_t const w = cutlass::detail::fp4_e2m1x8_uninterleave(sw[i]);
+        uint32_t const mag = w & 0x77777777u;
+        uint32_t const sgn = (w >> 3) & 0x11111111u;
+        decode_quad(mag, sgn, dw[i * 4 + 0], dw[i * 4 + 1]);
+        decode_quad(mag >> 16, sgn >> 16, dw[i * 4 + 2], dw[i * 4 + 3]);
+      }
+#else
+      uint8_t const* s = reinterpret_cast<uint8_t const*>(src);
+      AType* d = reinterpret_cast<AType*>(dst);
       // Packing writes element i to nibble slot (i even ? i/2 : (i - 1)/2 + 4), so logical
       // element i is read back from slot kSlot[i]. Nibble slot j lives in byte j/2, low nibble
       // for even j. kSlot is constexpr and the loops are unrolled, so every index below folds
@@ -428,6 +451,7 @@ struct Fp4I2FConverter {
           d[w * 8 + i] = decode(static_cast<uint8_t>((byte >> ((kSlot[i] & 1) * 4)) & 0x0F));
         }
       }
+#endif
     }
   }
 };

@@ -107,7 +107,7 @@ void Q8Q4GEMM(benchmark::State& state, MLAS_BLK_QUANT_TYPE qtype) {
   }
 }
 
-static void GemmSizeProducts(benchmark::internal::Benchmark* b) {
+static void GemmSizeProducts(benchmark::Benchmark* b) {
   b->ArgNames(q4gemm_bench_arg_names);
   b->ArgsProduct({{1, 1024, 2048}, {4096}, {4096}, {8}});
 }

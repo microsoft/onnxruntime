@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <memory>
 #include <vector>
 
 #include "core/framework/tensor_shape.h"
@@ -25,13 +26,13 @@ class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
                       uint32_t tile_n,
                       uint32_t vec_size,
                       bool use_subgroup,
-                      ActivationKind activation_kind) : Program("Im2ColMatMul"),
-                                                        has_bias_(has_bias),
-                                                        tile_m_(tile_m),
-                                                        tile_n_(tile_n),
-                                                        vec_size_(vec_size),
-                                                        use_subgroup_(use_subgroup),
-                                                        activation_kind_(activation_kind) {}
+                      const Activation& activation) : Program("Im2ColMatMul"),
+                                                      has_bias_(has_bias),
+                                                      tile_m_(tile_m),
+                                                      tile_n_(tile_n),
+                                                      vec_size_(vec_size),
+                                                      use_subgroup_(use_subgroup),
+                                                      activation_(activation) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
 
@@ -62,7 +63,7 @@ class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
   uint32_t tile_n_;
   uint32_t vec_size_;
   bool use_subgroup_;
-  ActivationKind activation_kind_;
+  const Activation& activation_;
 };
 
 bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
@@ -72,12 +73,23 @@ bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
                                  const uint32_t group,
                                  const MLDataType data_type);
 
+// Transposes the OIHW weight into the OHWI layout expected by Im2ColMatMulProgram.
+// Called from Conv::PrePackInternal so the transpose runs once at session
+// initialization instead of on every inference.
+Status PrePackIm2ColMatMulWeight(ComputeContextBase& context,
+                                 const Tensor& weight,
+                                 AllocatorPtr alloc,
+                                 /*out*/ std::unique_ptr<Tensor>& packed_weight);
+
+// `packed_weight` is the OHWI weight produced by PrePackIm2ColMatMulWeight. When it
+// is nullptr, the OIHW weight is read from input 1 and transposed on the fly.
 Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                 const bool is_channels_last,
                                 const Activation& activation,
                                 const std::vector<uint32_t>& dilations,
                                 const std::vector<uint32_t>& pads,
                                 const std::vector<uint32_t>& strides,
+                                const Tensor* packed_weight,
                                 Tensor* output);
 
 }  // namespace webgpu

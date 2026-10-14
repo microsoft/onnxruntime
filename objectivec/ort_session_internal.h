@@ -11,6 +11,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (Ort::SessionOptions&)CXXAPIOrtSessionOptions;
 
+- (nullable id)epContextDataReadRegistrationSnapshot;
+
 @end
 
 @interface ORTRunOptions ()

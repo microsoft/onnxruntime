@@ -9,6 +9,9 @@
 #include "core/framework/allocator.h"
 #include "core/providers/cpu/tensor/space_depth_ops.h"
 #include "core/mlas/inc/mlas.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
+#include "test/util/include/default_providers.h"
+#include "test/util/include/inference_session_wrapper.h"
 
 namespace onnxruntime {
 namespace test {
@@ -121,6 +124,88 @@ TEST(TensorOpTest, SpaceToDepthTest_1_double) {
   test.AddOutput<double>("output", {N, C * blocksize * blocksize, H / blocksize, W / blocksize}, result);
   test.Run();
 }
+
+TEST(TensorOpTest, SpaceToDepthOpset28ModesAndProviderRouting) {
+  const std::vector<float> input{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  const std::vector<float> dcr{0, 2, 8, 10, 1, 3, 9, 11, 4, 6, 12, 14, 5, 7, 13, 15};
+  const std::vector<float> crd{0, 2, 1, 3, 4, 6, 5, 7, 8, 10, 9, 11, 12, 14, 13, 15};
+  for (int opset : {13, 27, 28}) {
+    for (const std::string mode : {"", "DCR", "CRD"}) {
+      if (opset < 28 && !mode.empty()) {
+        continue;
+      }
+      SCOPED_TRACE(opset);
+      SCOPED_TRACE(mode);
+      Model model("SpaceToDepthRouting", false, ModelMetaData(), PathString(),
+                  IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, opset}}, {},
+                  DefaultLoggingManager().DefaultLogger());
+      ModelTestBuilder builder(model.MainGraph());
+      auto* x = builder.MakeInput<float>({1, 2, 2, 4}, input);
+      auto* z = builder.MakeOutput();
+      auto& node = builder.AddNode("SpaceToDepth", {x}, {z});
+      node.AddAttribute("blocksize", int64_t{2});
+      if (!mode.empty()) {
+        node.AddAttribute("mode", mode);
+      }
+      builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(model.MainGraph().Resolve());
+      std::string model_data;
+      ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
+
+      InlinedVector<std::unique_ptr<IExecutionProvider>> providers;
+      providers.push_back(DefaultCpuExecutionProvider());
+      providers.push_back(DefaultCudaExecutionProvider());
+#ifdef ENABLE_CUDA_NHWC_OPS
+      providers.push_back(DefaultCudaNHWCExecutionProvider());
+#endif
+      providers.push_back(DefaultDmlExecutionProvider());
+      providers.push_back(DefaultOpenVINOExecutionProvider());
+      providers.push_back(DefaultMIGraphXExecutionProvider());
+#ifdef USE_CANN
+      OrtCANNProviderOptions cann_options{};
+      cann_options.enable_cann_graph = 1;
+      auto cann_factory = CannProviderFactoryCreator::Create(&cann_options);
+      ASSERT_NE(cann_factory, nullptr);
+      providers.push_back(cann_factory->CreateProvider());
+#endif
+      for (auto& provider : providers) {
+        if (!provider) {
+          continue;
+        }
+        const std::string provider_type = provider->Type();
+        SCOPED_TRACE(provider_type);
+        SessionOptions options;
+        options.graph_optimization_level = TransformerLevel::Default;
+        options.enable_mem_pattern = false;
+        options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+        InferenceSessionWrapper session{options, GetEnvironment()};
+        ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+        ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+        ASSERT_STATUS_OK(session.Initialize());
+        bool has_space_to_depth = false;
+        for (const auto& resolved_node : session.GetGraph().Nodes()) {
+          has_space_to_depth |= resolved_node.OpType() == "SpaceToDepth";
+        }
+        if (opset == 28 && (mode == "CRD" || provider_type == kCpuExecutionProvider ||
+                            provider_type == kCudaExecutionProvider)) {
+          EXPECT_FALSE(has_space_to_depth);
+        } else if (opset < 28 && provider_type == kCpuExecutionProvider) {
+          EXPECT_TRUE(has_space_to_depth);
+        }
+
+        std::vector<OrtValue> fetches;
+        ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &fetches));
+        ASSERT_EQ(fetches.size(), 1u);
+        const auto& tensor = fetches[0].Get<Tensor>();
+        EXPECT_EQ(tensor.Shape(), TensorShape({1, 8, 1, 2}));
+        const auto& expected = mode == "CRD" ? crd : dcr;
+        const auto* actual = tensor.Data<float>();
+        EXPECT_EQ(std::vector<float>(actual, actual + tensor.Shape().Size()), expected);
+      }
+    }
+  }
+}
+
 TEST(TensorOpTest, SpaceToDepthTest_2) {
   OpTester test("SpaceToDepth");
   constexpr int64_t blocksize = 3;
@@ -736,112 +821,6 @@ TEST(TensorOpTest, DepthToSpaceTest_CRD_Batched) {
   result.insert(result.end(), result.rbegin(), result.rend());
 
   test.AddOutput<float>("output", {2, 1, 4, 6}, result);
-  test.Run();
-}
-
-TEST(TensorOpTest, DepthToSpaceTest_WebGPU_DefaultMode1) {
-  OpTester test("DepthToSpace", 11);
-  constexpr int64_t blocksize = 2;
-  test.AddAttribute("blocksize", blocksize);
-
-  constexpr int64_t N = 1, C = 8, H = 1, W = 1;
-  std::vector<float> X = {0, 9, 18, 27, 36, 45, 54, 63};
-
-  test.AddInput<float>("input", {N, C, H, W}, X);
-
-  std::vector<float> result = {0, 18, 36, 54, 9, 27, 45, 63};
-
-  test.AddOutput<float>("output", {1, 2, 2, 2}, result);
-  test.Run();
-}
-
-TEST(TensorOpTest, DepthToSpaceTest_WebGPU_DefaultMode2) {
-  OpTester test("DepthToSpace", 11);
-  constexpr int64_t blocksize = 2;
-  test.AddAttribute("blocksize", blocksize);
-
-  constexpr int64_t N = 2, C = 8, H = 1, W = 2;
-  std::vector<float> X = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
-                          29, 30, 31};
-
-  test.AddInput<float>("input", {N, C, H, W}, X);
-
-  std::vector<float> result = {0, 4, 1, 5, 8, 12, 9, 13, 2, 6, 3, 7, 10, 14, 11, 15, 16, 20, 17, 21, 24, 28, 25, 29, 18, 22, 19, 23, 26,
-                               30, 27, 31};
-
-  test.AddOutput<float>("output", {2, 2, 2, 4}, result);
-  test.Run();
-}
-
-TEST(TensorOpTest, DepthToSpaceTest_WebGPU_DCR1) {
-  OpTester test("DepthToSpace", 11);
-  constexpr int64_t blocksize = 2;
-  test.AddAttribute("blocksize", blocksize);
-  test.AddAttribute("mode", "DCR");
-
-  constexpr int64_t N = 1, C = 8, H = 1, W = 1;
-  std::vector<float> X = {0, 9, 18, 27, 36, 45, 54, 63};
-
-  test.AddInput<float>("input", {N, C, H, W}, X);
-
-  std::vector<float> result = {0, 18, 36, 54, 9, 27, 45, 63};
-
-  test.AddOutput<float>("output", {1, 2, 2, 2}, result);
-  test.Run();
-}
-
-TEST(TensorOpTest, DepthToSpaceTest_WebGPU_DCR2) {
-  OpTester test("DepthToSpace", 11);
-  constexpr int64_t blocksize = 2;
-  test.AddAttribute("blocksize", blocksize);
-  test.AddAttribute("mode", "DCR");
-
-  constexpr int64_t N = 2, C = 8, H = 1, W = 2;
-  std::vector<float> X = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
-                          29, 30, 31};
-
-  test.AddInput<float>("input", {N, C, H, W}, X);
-
-  std::vector<float> result = {0, 4, 1, 5, 8, 12, 9, 13, 2, 6, 3, 7, 10, 14, 11, 15, 16, 20, 17, 21, 24, 28, 25, 29, 18, 22, 19, 23, 26,
-                               30, 27, 31};
-
-  test.AddOutput<float>("output", {2, 2, 2, 4}, result);
-  test.Run();
-}
-
-TEST(TensorOpTest, DepthToSpaceTest_WebGPU_CRD1) {
-  OpTester test("DepthToSpace", 11);
-  constexpr int64_t blocksize = 2;
-  test.AddAttribute("blocksize", blocksize);
-  test.AddAttribute("mode", "CRD");
-
-  constexpr int64_t N = 1, C = 8, H = 1, W = 1;
-  std::vector<float> X = {0, 9, 18, 27, 36, 45, 54, 63};
-
-  test.AddInput<float>("input", {N, C, H, W}, X);
-
-  std::vector<float> result = {0, 9, 18, 27, 36, 45, 54, 63};
-
-  test.AddOutput<float>("output", {1, 2, 2, 2}, result);
-  test.Run();
-}
-
-TEST(TensorOpTest, DepthToSpaceTest_WebGPU_CRD2) {
-  OpTester test("DepthToSpace", 11);
-  constexpr int64_t blocksize = 2;
-  test.AddAttribute("blocksize", blocksize);
-  test.AddAttribute("mode", "CRD");
-
-  constexpr int64_t N = 2, C = 8, H = 1, W = 2;
-  std::vector<float> X = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
-                          29, 30, 31};
-
-  test.AddInput<float>("input", {N, C, H, W}, X);
-
-  std::vector<float> result = {0, 2, 1, 3, 4, 6, 5, 7, 8, 10, 9, 11, 12, 14, 13, 15, 16, 18, 17, 19, 20, 22, 21, 23, 24, 26, 25, 27, 28,
-                               30, 29, 31};
-
-  test.AddOutput<float>("output", {2, 2, 2, 4}, result);
   test.Run();
 }
 

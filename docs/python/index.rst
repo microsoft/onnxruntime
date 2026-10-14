@@ -12,18 +12,3 @@ or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 
     tutorial
     api_summary
-
-.. toctree::
-   :maxdepth: 1
-   :caption: LARGE MODEL TRAINING
-
-   ortmodule/overview
-   ortmodule/api
-
-.. toctree::
-   :maxdepth: 1
-   :caption: ON-DEVICE TRAINING
-
-   on_device_training/overview
-   on_device_training/training_artifacts
-   on_device_training/training_api
