@@ -52,8 +52,9 @@ struct Celu<MLFloat16> : public ElementWiseRangedTransform<MLFloat16> {
     const float typed_alpha = MLFloat16(alpha).ToFloat();
     for (auto i = first; i < last; ++i) {
       const float x = this->input[i].ToFloat();
-      this->output[i] = MLFloat16(std::max(0.0f, x) +
-                                  std::min(0.0f, typed_alpha * (std::exp(x / typed_alpha) - 1.0f)));
+      this->output[i] = std::isnan(x) ? this->input[i]
+                                      : MLFloat16(std::max(0.0f, x) +
+                                                  std::min(0.0f, typed_alpha * (std::exp(x / typed_alpha) - 1.0f)));
     }
   }
 };
@@ -76,8 +77,9 @@ struct Celu<BFloat16> : public ElementWiseRangedTransform<BFloat16> {
     const float typed_alpha = BFloat16(alpha).ToFloat();
     for (auto i = first; i < last; ++i) {
       const float x = this->input[i].ToFloat();
-      this->output[i] = BFloat16(std::max(0.0f, x) +
-                                 std::min(0.0f, typed_alpha * (std::exp(x / typed_alpha) - 1.0f)));
+      this->output[i] = std::isnan(x) ? this->input[i]
+                                      : BFloat16(std::max(0.0f, x) +
+                                                 std::min(0.0f, typed_alpha * (std::exp(x / typed_alpha) - 1.0f)));
     }
   }
 };

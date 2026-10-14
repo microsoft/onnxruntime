@@ -462,6 +462,22 @@ TEST_F(ActivationOpTest, CeluOpset28NewTypes) {
       {{"alpha", alpha}}, {}, false, 28);
 }
 
+TEST_F(ActivationOpTest, CeluOpset28Float16NaNPropagation) {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  OpTester test("Celu", 28);
+  test.AddInput<MLFloat16>("X", {5}, FloatsToMLFloat16s({-1.0f, nan, 0.0f, -nan, 1.0f}));
+  test.AddOutput<MLFloat16>("Y", {5}, FloatsToMLFloat16s({std::exp(-1.0f) - 1.0f, nan, 0.0f, -nan, 1.0f}));
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST_F(ActivationOpTest, CeluOpset28BFloat16NaNPropagation) {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  OpTester test("Celu", 28);
+  test.AddInput<BFloat16>("X", {5}, FloatsToBFloat16s({-1.0f, nan, 0.0f, -nan, 1.0f}));
+  test.AddOutput<BFloat16>("Y", {5}, FloatsToBFloat16s({std::exp(-1.0f) - 1.0f, nan, 0.0f, -nan, 1.0f}));
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
 TEST_F(ActivationOpTest, CeluOpset28BFloat16CastsAlpha) {
   OpTester test("Celu", 28);
   test.AddAttribute("alpha", 0.5001f);
