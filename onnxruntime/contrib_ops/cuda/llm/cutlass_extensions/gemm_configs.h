@@ -364,7 +364,7 @@ struct CutlassGemmConfig {
   EpilogueScheduleType epilogue_schedule = EpilogueScheduleType::AUTO;
   ClusterShape cluster_shape = ClusterShape::ClusterShape_1x1x1;
   bool enableCudaKernel = false;
-  // CUDA GEMV variant when enableCudaKernel is set: 0 = default, 1 = paired-K fp16 kernel.
+  // CUDA GEMV variant: 0 = default, 1 = paired-K fp16, 2..7 = profiled INT4 decode geometries.
   int cudaKernelVariant = 0;
   int sm_version = 80;  // Use 80 as a catch all for <90
   bool is_tma_warp_specialized = false;
