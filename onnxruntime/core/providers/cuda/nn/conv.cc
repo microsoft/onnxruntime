@@ -237,7 +237,6 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
 
   try {
     CUDNN_FE_CALL_THROW(plan->graph->validate());
-    CUDNN_FE_CALL_THROW(plan->graph->build_operation_graph(handle));
   } catch (const std::exception& ex) {
     std::string message = MakeString("Failed to initialize CUDNN Frontend: ", ex.what(),
                                      " with the cudnn frontend json:\n", plan->graph->print());
@@ -245,6 +244,7 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
   }
 
   try {
+    CUDNN_FE_CALL_THROW(plan->graph->build_operation_graph(handle));
     CUDNN_FE_CALL_THROW(plan->graph->create_execution_plans({heur_mode}));
     if (!use_tf32) plan->graph->deselect_numeric_notes({cudnn_frontend::NumericalNote_t::TENSOR_CORE});
     CUDNN_FE_CALL_THROW(plan->graph->check_support(handle));

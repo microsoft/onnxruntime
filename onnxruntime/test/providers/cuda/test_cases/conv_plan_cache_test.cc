@@ -372,11 +372,7 @@ TYPED_TEST(ConvPlanCacheTest, FailedInitializationDoesNotPoisonCache) {
   ASSERT_NO_FATAL_FAILURE(this->Initialize());
   ASSERT_NO_FATAL_FAILURE(this->Run(1));
   const auto first_plan = this->state_->conv_plan;
-  if constexpr (std::is_same_v<TypeParam, BFloat16>) {
-    ASSERT_NO_FATAL_FAILURE(this->Run(1, 4, false, kChannels, kChannels - 1));
-  } else {
-    ASSERT_NO_FATAL_FAILURE(this->Run(1, 4, false, kChannels - 1));
-  }
+  ASSERT_NO_FATAL_FAILURE(this->Run(1, 4, false, kChannels - 1, kChannels - 1));
   EXPECT_EQ(this->state_->cached_plan_count, 1u);
   ASSERT_NO_FATAL_FAILURE(this->Run(1));
   EXPECT_EQ(this->state_->conv_plan, first_plan);
