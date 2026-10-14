@@ -1530,6 +1530,36 @@ class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
     def test_numeric_negative_indices_backward(self):
         self.check_slice_of_concat(["M"], "-one", "-ten", "-one", 9)
 
+    def test_numeric_out_of_range_indices(self):
+        # (dim, start, end, step, expected output dim), checked against onnxruntime.
+        cases = [
+            (3, -1, -1000, -1, 3),
+            (4, 4, 1, -2, 1),
+            (5, 2, -6, -1, 3),
+            (5, 0, -7, 1, 0),
+            (5, 3, -(2**40), -1, 4),
+            (5, 0, -(2**40), 1, 0),
+            (5, -1, 2**40, -1, 0),
+            (0, -1, -(2**40), -1, 0),
+        ]
+        for dim, start, end, step, expected in cases:
+            with self.subTest(dim=dim, start=start, end=end, step=step):
+                initializers = [
+                    onnx.helper.make_tensor(name, TensorProto.INT64, [1], [value])
+                    for name, value in [("starts", start), ("ends", end), ("axes", 1), ("steps", step)]
+                ]
+                graph_def = onnx.helper.make_graph(
+                    [onnx.helper.make_node("Slice", ["input", "starts", "ends", "axes", "steps"], ["output"])],
+                    "graph",
+                    [onnx.helper.make_tensor_value_info("input", TensorProto.FLOAT, ["B", dim])],
+                    [onnx.helper.make_tensor_value_info("output", TensorProto.FLOAT, None)],
+                    initializer=initializers,
+                )
+                model = SymbolicShapeInference.infer_shapes(onnx.helper.make_model(graph_def))
+                output = unique_element(model.graph.output)
+                shape = [d.dim_param if d.dim_param else d.dim_value for d in output.type.tensor_type.shape.dim]
+                self.assertEqual(shape, ["B", expected])
+
     def test_symbolic_end_index(self):
         self.check_slice_of_concat(["M", "N"], "zero", "M", "one", "M")
 

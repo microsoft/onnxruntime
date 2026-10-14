@@ -1960,13 +1960,16 @@ class SymbolicShapeInference:
                 e = handle_negative_index(e, new_sympy_shape[i])  # noqa: PLW2901
                 if is_literal(e):
                     if e >= self.int_max_:
-                        e = new_sympy_shape[i]  # noqa: PLW2901
+                        e = new_sympy_shape[i] if t > 0 else new_sympy_shape[i] - 1  # noqa: PLW2901
                     elif e <= -self.int_max_:
-                        e = 0 if s > 0 else -1  # noqa: PLW2901
+                        e = 0 if t > 0 else -1  # noqa: PLW2901
                     elif is_literal(new_sympy_shape[i]):
-                        if e < 0:
-                            e = max(0, e + new_sympy_shape[i])  # noqa: PLW2901
-                        e = min(e, new_sympy_shape[i])  # noqa: PLW2901
+                        # e is already normalized, so only clamp it: to [0, dim] for positive steps
+                        # and to [-1, dim - 1] for negative steps.
+                        if t > 0:
+                            e = max(0, min(e, new_sympy_shape[i]))  # noqa: PLW2901
+                        else:
+                            e = max(-1, min(e, new_sympy_shape[i] - 1))  # noqa: PLW2901
                     else:
                         if e > 0:
                             e = (  # noqa: PLW2901
@@ -1985,9 +1988,10 @@ class SymbolicShapeInference:
 
                 s = handle_negative_index(s, new_sympy_shape[i])  # noqa: PLW2901
                 if is_literal(new_sympy_shape[i]) and is_literal(s):
-                    s = max(0, min(s, new_sympy_shape[i]))  # noqa: PLW2901
+                    s = min(max(s, 0), new_sympy_shape[i] if t > 0 else new_sympy_shape[i] - 1)  # noqa: PLW2901
 
-                new_sympy_shape[i] = sympy.simplify((e - s + t + (-1 if t > 0 else 1)) // t)
+                new_dim = sympy.simplify((e - s + t + (-1 if t > 0 else 1)) // t)
+                new_sympy_shape[i] = max(0, new_dim) if is_literal(new_dim) else new_dim
 
             self._update_computed_dims(new_sympy_shape)
 
