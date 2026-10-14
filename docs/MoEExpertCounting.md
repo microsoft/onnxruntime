@@ -53,6 +53,10 @@ dictionary directly, without atomic counters, graph-name lookup, or per-invocati
 the same method emits one `moe_expert_counters` JSON record containing the request ID, node identity, deduplicated
 selected experts, and the updated counters. The node identity includes its graph scope so equal node indices in
 different subgraphs remain distinguishable.
+Records include `expert_offset`, the beginning of the node's range in the runtime's global expert array.
+Counter replay uses this offset for deterministic tie-breaking, independently of layer names or execution order.
+Legacy main-graph traces without offsets use resolved node-index registration order; replay rejects legacy subgraph
+traces without offsets rather than guessing their global order.
 Logging is limited to 1024 counter records per `Run()`, shared across all nodes and subgraphs.
 On the first omitted record, a single WARNING `moe_expert_counters_truncated` JSON marker reports
 `request_id` and `max_records`. Later records are omitted without formatting their JSON.
@@ -130,7 +134,8 @@ is enabled. `KernelPilotMoeExpertSelection` resets the
 current invocation's selected-expert set while reusing its storage. The CUDA adapter also reuses its pinned host
 buffer and copy event. Buffer capacity grows only when needed for a larger invocation.
 
-Both counting and counter-update logging options are cached at kernel construction. With their default values (`0`), the
+Counting, counter-update logging, and a non-empty popularity output path enable tracking at kernel construction.
+With both flags disabled and no output path, the
 kernel skips collector construction, collection calls, and statistics-only size calculations.
 There are no statistics allocations, host transfers, or stream synchronizations on that path; only cached flag checks
 remain. Enabling these diagnostics adds overhead.
@@ -214,5 +219,6 @@ logs an error.
 
 Pass the resulting file back through `session.moe_expert_counter_state_file` or the benchmark's `--state` option to
 restore the popularities, `alpha`, and `epsilon`. Values from the JSON replace explicitly configured alpha and epsilon.
+The loaded alpha also replaces the coefficient cached by every CUDA pilot before the first inference.
 Omitted experts start at zero. Out-of-range or duplicate expert records, invalid values, malformed JSON, and file-access
 errors fail session initialization. Use the same model and graph-optimization configuration when loading a state file.

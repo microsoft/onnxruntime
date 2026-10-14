@@ -37,7 +37,8 @@ class MoEBase {
     const auto& options = op_kernel_info.GetConfigOptions();
     const bool enable_moe_expert_tracking =
         options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1" ||
-        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
+        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1" ||
+        !options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertPopularityFile, "").empty();
     if (enable_moe_expert_tracking) {
       routing_snapshot_.emplace(op_kernel_info.GetAllocator(OrtMemTypeCPU));
     }

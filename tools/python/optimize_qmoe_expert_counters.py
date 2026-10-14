@@ -12,6 +12,7 @@ from qmoe_expert_distribution import (
     SELECTED_EXPERT_COUNT,
     inspect_trace,
     node_identity,
+    node_sort_key,
     parse_counter_trace,
 )
 
@@ -95,17 +96,39 @@ def load_replay_trace(log_path):
     experts_per_node = total_expert_count // moe_count
     identity_to_index = {identity: index for index, identity in enumerate(identities)}
     events = []
+    expert_offsets = {}
 
     def append_event(_, event):
+        identity = node_identity(event)
+        if "expert_offset" in event:
+            offset = event["expert_offset"]
+            if type(offset) is not int or not 0 <= offset < total_expert_count or offset % experts_per_node:
+                raise ValueError(f"Invalid runtime expert offset for {identity}: {offset}.")
+            if identity in expert_offsets and expert_offsets[identity] != offset:
+                raise ValueError(f"Inconsistent runtime expert offsets for {identity}.")
+            expert_offsets[identity] = offset
         selected_experts = tuple(selected_expert["expert_id"] for selected_expert in event["selected_experts"])
         if any(not 0 <= expert_id < experts_per_node for expert_id in selected_experts):
             raise ValueError(f"Trace contains an expert ID outside [0, {experts_per_node}): {selected_experts}.")
-        events.append(ReplayEvent(identity_to_index[node_identity(event)], selected_experts))
+        events.append(ReplayEvent(identity_to_index[identity], selected_experts))
 
     parsed_summary = parse_counter_trace(log_path, append_event)
     if parsed_summary != summary:
         raise ValueError("Trace changed while it was being loaded.")
-    return events, identities, moe_count, experts_per_node
+    if expert_offsets:
+        if len(expert_offsets) != moe_count or sorted(expert_offsets.values()) != list(
+            range(0, total_expert_count, experts_per_node)
+        ):
+            raise ValueError("Trace must contain a complete, non-overlapping set of runtime expert offsets.")
+        runtime_identities = sorted(identities, key=expert_offsets.__getitem__)
+    else:
+        if any(identity[0] != "main" for identity in identities):
+            raise ValueError("Replay of subgraphs requires counter records with runtime expert_offset metadata.")
+        # Legacy main-graph kernels are registered by resolved node index, not layer name or execution order.
+        runtime_identities = sorted(identities, key=lambda identity: identity[1])
+    runtime_indices = {identity: index for index, identity in enumerate(runtime_identities)}
+    events = [ReplayEvent(runtime_indices[identities[event.node_index]], event.selected_experts) for event in events]
+    return events, runtime_identities, moe_count, experts_per_node
 
 
 def evaluate_alpha(
@@ -281,7 +304,7 @@ def write_layer_impacts(csv_path, plot_path, results, identities, thresholds):
             ]
         )
         for threshold, result in best_results.items():
-            for node_index, identity in enumerate(identities):
+            for node_index, identity in sorted(enumerate(identities), key=lambda item: node_sort_key(item[1])):
                 impacted = result.impacted_invocations_by_node[node_index]
                 invocation_count = result.invocations_by_node[node_index]
                 writer.writerow(
@@ -403,7 +426,7 @@ def write_layer_experts_below_threshold(
             ]
         )
         for threshold, result in best_results.items():
-            for node_index, identity in enumerate(identities):
+            for node_index, identity in sorted(enumerate(identities), key=lambda item: node_sort_key(item[1])):
                 writer.writerow(
                     [
                         threshold,

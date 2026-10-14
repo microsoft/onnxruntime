@@ -312,6 +312,7 @@ TEST_F(KernelPilotMoeExpertStateTest, LogsCounterUpdateAsStructuredJson) {
   EXPECT_EQ(event["node_type"], "MoE");
   EXPECT_EQ(event["moe_count"], 1);
   EXPECT_EQ(event["total_expert_count"], 3);
+  EXPECT_EQ(event["expert_offset"], 0);
   EXPECT_EQ(event["selected_experts"],
             nlohmann::json({
                 {
@@ -752,6 +753,7 @@ TEST_F(KernelPilotMoeExpertStateTest, LoadedJsonParametersOverrideConfiguredValu
         R"({"alpha":0.4,"epsilon":0.2,"experts":[{"moe":0,"expert":0,"popularity":0.75}]})");
     ASSERT_STATUS_OK(state.Load(input));
     ASSERT_STATUS_OK(state.FinalizeInitialization());
+    EXPECT_DOUBLE_EQ(state.GetKernelPilot(kernels_[0])->MoeExpertCounterAlpha(), 0.4);
     ASSERT_STATUS_OK(state.SetPopularityOutputFile(output_path.string()));
   }
 
@@ -787,6 +789,7 @@ TEST_F(KernelPilotMoeExpertStateTest, LoadsJsonStateAndValidatesAtomically) {
     EXPECT_EQ(counters, (InlinedVector<double>{0, 2.5, 0}));
   }
   ASSERT_STATUS_OK(state.FinalizeInitialization());
+  EXPECT_DOUBLE_EQ(state.GetKernelPilot(kernels_[0])->MoeExpertCounterAlpha(), 0.5);
   const int selected[] = {1, 1};
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
   ASSERT_STATUS_OK(state.GetCounters(kernels_[0], counters));

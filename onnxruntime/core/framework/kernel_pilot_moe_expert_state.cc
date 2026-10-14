@@ -314,6 +314,7 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
 
   for (auto& [kernel, state] : kernels_) {
     ORT_UNUSED_PARAMETER(kernel);
+    state.pilot.moe_expert_counter_alpha_ = alpha_;
     state.pilot.SetMoeCudaExperts(state.cuda_experts);
     state.pilot.moe_counters_ = gsl::make_span(counters_).subspan(state.experts.begin, state.experts.count);
   }
@@ -568,7 +569,8 @@ Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel, gsl::span<
           << ",\"node_type\":";
     common::WriteJsonString(event, kernel->Node().OpType());
     event << ",\"moe_count\":" << kernels_.size()
-          << ",\"total_expert_count\":" << counters_.size();
+          << ",\"total_expert_count\":" << counters_.size()
+          << ",\"expert_offset\":" << range.begin;
 
     gsl::span<const int> cuda_experts;
     ORT_RETURN_IF_ERROR(node->second.pilot.GetMoeCudaExperts(cuda_experts));
