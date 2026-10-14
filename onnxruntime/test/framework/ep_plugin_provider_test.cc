@@ -2059,7 +2059,7 @@ TEST(PluginExecutionProviderTest, GetCapability_CudaGqaRequiresProvenEstimate) {
     if (decline_gqa && !fuse_nodes) {
       ASSERT_EQ(capabilities[0]->sub_graph->nodes.size(), 1u);
       EXPECT_EQ(graph.GetNode(capabilities[0]->sub_graph->nodes[0])->OpType(), "Identity");
-      EXPECT_EQ(capabilities[0]->sub_graph->resource_accountant, accountant);
+      EXPECT_TRUE(capabilities[0]->sub_graph->IsAccountingEnabled());
     }
     EXPECT_FALSE(accountant->IsStopIssued());
   };
