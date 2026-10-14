@@ -169,9 +169,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
     SessionOptions session_options;
     session_options.graph_optimization_level = transformer ? baseline_level : level;
     // Mirror the model build's shape/type-inference strictness onto the session so that
-    // loading the serialized model applies the same options. (allow_released_opsets_only is
-    // passed explicitly to Load below, since the byte/proto Load overloads don't read it
-    // from the config options.)
+    // loading the serialized model applies the same options.
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
         kOrtSessionOptionsConfigStrictShapeTypeInference,
         model_options.strict_shape_type_inference ? "1" : "0"));
@@ -187,8 +185,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
       ASSERT_STATUS_OK(session.RegisterExecutionProvider(ep_shared));
     }
 
-    // Load via an istream so the under-development opset flag can be honored: the istream Load
-    // overload takes allow_released_opsets_only explicitly (the byte/proto overloads hardcode it).
+    // Load via an istream so the under-development opset flag can be passed explicitly.
     // This lets models built at an unreleased ONNX opset (e.g. opset 27 in ONNX 1.22) load on
     // strict (ALLOW_RELEASED_ONNX_OPSET_ONLY default) CI legs.
     std::istringstream model_istream(model_data);
