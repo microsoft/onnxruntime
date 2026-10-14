@@ -444,7 +444,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                                   GetMlasThreadPool(), nullptr);
     }
 
-    CallGemm(M, N, K,
+    CallGemm(M, N, K, /* BatchN */ 1,
              A, /* lda */ K,
              QuantBData, PackedQuantBDataWorkspace, QuantBScale, QuantBZeroPoint,
              Bias,
@@ -452,12 +452,13 @@ class MlasSQNBitGemmTest : public MlasTestBase {
              Workspace,
              SQNBIT_CompInt8,
              Threadpool,
+             nullptr,
              nullptr);
 
     // reference: same integer arithmetic as the kernels, accumulated in double
     int8_t* QuantAData = BufferQuantAData.GetBuffer(M * BlockCountK * BlkLen);
     float* QuantAScale = BufferQuantAScale.GetBuffer(M * BlockCountK);
-    QuantizeA(M, K, A, QuantAData, QuantAScale);
+    QuantizeA(M, K, A, /* lda */ K, QuantAData, QuantAScale);
 
     for (size_t m = 0; m < M; ++m) {
       for (size_t n = 0; n < N; ++n) {
