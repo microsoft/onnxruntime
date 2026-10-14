@@ -966,6 +966,61 @@ TEST(DynamicSparseAttentionTest, SelectedOnlyBFloat16_CUDA) {
       MakeSingleTokenSelectedValueCase(), std::move(cuda_ep));
 }
 
+TEST(DynamicSparseAttentionTest, SelectedOnlyPrefillBFloat16_CUDA) {
+  auto cuda_ep_check = DefaultCudaExecutionProvider();
+  if (!cuda_ep_check) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (!CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  }
+
+  constexpr int64_t sequence_length = 8;
+  constexpr int64_t num_heads = 4;
+  constexpr int64_t kv_num_heads = 1;
+  constexpr int64_t head_size = 256;
+  constexpr int64_t max_selected = 4;
+
+  DynamicSparseAttentionCase c;
+  c.sequence_length = sequence_length;
+  c.num_heads = num_heads;
+  c.kv_num_heads = kv_num_heads;
+  c.head_size = head_size;
+  c.cache_sequence_length = sequence_length;
+  c.max_selected = max_selected;
+  c.total_sequence_length = sequence_length;
+  c.scale = 1.0f;
+  c.query.assign(sequence_length * num_heads * head_size, 0.0f);
+  c.key.assign(sequence_length * kv_num_heads * head_size, 0.0f);
+  c.value.resize(sequence_length * kv_num_heads * head_size);
+  c.past_key.assign(sequence_length * kv_num_heads * head_size, 0.0f);
+  c.past_value.assign(sequence_length * kv_num_heads * head_size, 0.0f);
+  c.selected_indices.assign(sequence_length * max_selected, -1);
+  c.selected_counts.resize(sequence_length);
+  c.seqlens_k = {static_cast<int32_t>(sequence_length - 1)};
+  c.expected_output.resize(sequence_length * num_heads * head_size);
+
+  for (int64_t s = 0; s < sequence_length; ++s) {
+    const float token_val = static_cast<float>(s + 1);
+    std::fill_n(c.value.begin() + s * head_size, head_size, token_val);
+    c.selected_indices[s * max_selected] = 0;
+    c.selected_indices[s * max_selected + 1] = static_cast<int32_t>(s);
+    c.selected_counts[s] = s == 0 ? 1 : 2;
+    const float expected = s == 0 ? 1.0f : 0.5f * (1.0f + token_val);
+    std::fill_n(c.expected_output.begin() + s * num_heads * head_size,
+                num_heads * head_size, expected);
+  }
+  c.expected_present_key = c.key;
+  c.expected_present_value = c.value;
+
+  for (const char* prefill_env : {"1", "0"}) {
+    SCOPED_TRACE(prefill_env);
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{{"ORT_DSA_PREFILL_KERNEL", prefill_env}}};
+    RunDynamicSparseAttentionCase<BFloat16>(c, DefaultCudaExecutionProvider());
+  }
+}
+
 TEST(DynamicSparseAttentionTest, QkRmsNormPartialInterleavedRotary_CUDA) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {

@@ -76,23 +76,23 @@ struct SplitLd {
 // ---------------------------------------------------------------------------
 // K1 shared memory
 // ---------------------------------------------------------------------------
-template <int DK, int DV, int BT>
+template <typename T, int DK, int DV, int BT>
 struct PrepSmem {
-  __half* k_h;   // [BT][kKh]
-  __half* q_h;   // [BT][kKh]
-  __half* v_h;   // [BT][kVh]  beta v, then Uv
-  __half* m_h;   // [BT][kMh]  M, then N (BuildTriInverse is done with M by then)
-  __half* db_h;  // [BT][kMh]
-  __half* ti_h;  // [BT][kMh]  (I+M)^-1
-  float* t_f;    // [BT][kF1]
-  float* gc;     // [BT]
-  float* beta;   // [BT]
+  T* k_h;       // [BT][kKh]
+  T* q_h;       // [BT][kKh]
+  T* v_h;       // [BT][kVh]  beta v, then Uv
+  T* m_h;       // [BT][kMh]  M, then N (BuildTriInverse is done with M by then)
+  T* db_h;      // [BT][kMh]
+  T* ti_h;      // [BT][kMh]  (I+M)^-1
+  float* t_f;   // [BT][kF1]
+  float* gc;    // [BT]
+  float* beta;  // [BT]
 };
 
-template <int DK, int DV, int BT>
-__device__ __forceinline__ PrepSmem<DK, DV, BT> CarvePrep(char* raw) {
+template <typename T, int DK, int DV, int BT>
+__device__ __forceinline__ PrepSmem<T, DK, DV, BT> CarvePrep(char* raw) {
   using L = SplitLd<DK, DV, BT, 64>;
-  PrepSmem<DK, DV, BT> s;
+  PrepSmem<T, DK, DV, BT> s;
   float* f = reinterpret_cast<float*>(raw);
   s.t_f = f;
   f += BT * L::kF1;
@@ -100,7 +100,7 @@ __device__ __forceinline__ PrepSmem<DK, DV, BT> CarvePrep(char* raw) {
   f += BT;
   s.beta = f;
   f += BT;
-  __half* h = reinterpret_cast<__half*>(f);
+  T* h = reinterpret_cast<T*>(f);
   s.k_h = h;
   h += BT * L::kKh;
   s.q_h = h;
@@ -115,7 +115,7 @@ __device__ __forceinline__ PrepSmem<DK, DV, BT> CarvePrep(char* raw) {
   return s;
 }
 
-// Layout of one chunk's K1 output, in units of __half. Chunks are indexed
+// Layout of one chunk's K1 output, in units of 16-bit elements. Chunks are indexed
 // ((b * Hv + hv) * chunks_per_pass + c), so K2's walk over c is a unit stride. W and Qg are
 // adjacent so K2 can multiply both by the state in a single [2 BT x DK] GEMM.
 template <int DK, int DV, int BT>
@@ -134,12 +134,12 @@ struct PrepTile {
 // ---------------------------------------------------------------------------
 template <typename T, int DK, int DV, int BT>
 __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
-    VariantPack<T> pack, KernelParams p, __half* tiles, float* decays, int chunk_base,
+    VariantPack<T> pack, KernelParams p, T* tiles, float* decays, int chunk_base,
     int chunks_per_pass) {
   using L = SplitLd<DK, DV, BT, 64>;
   using Tile = PrepTile<DK, DV, BT>;
   extern __shared__ char smem_raw[];
-  const PrepSmem<DK, DV, BT> s = CarvePrep<DK, DV, BT>(smem_raw);
+  const PrepSmem<T, DK, DV, BT> s = CarvePrep<T, DK, DV, BT>(smem_raw);
 
   const int b = blockIdx.x, hv = blockIdx.y, c_local = blockIdx.z;
   const int tid = threadIdx.x, warp_id = tid >> 5, lane = tid & 31;
@@ -167,17 +167,15 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
     const int t = idx / DK, d = idx % DK;
     const int64_t tok = tok_base + chunk0 + t;
     s.k_h[t * L::kKh + d] =
-        (t < len) ? __float2half((float)pack.key[tok * k_stride + hk * DK + d]) : __float2half(0.f);
+        (t < len) ? pack.key[tok * k_stride + hk * DK + d] : FloatToElem<T>(0.f);
     s.q_h[t * L::kKh + d] =
-        (t < len) ? __float2half((float)pack.query[tok * q_stride + hq * DK + d])
-                  : __float2half(0.f);
+        (t < len) ? pack.query[tok * q_stride + hq * DK + d] : FloatToElem<T>(0.f);
   }
   for (int idx = tid; idx < BT * DV; idx += kChunkedThreads) {
     const int t = idx / DV, d = idx % DV;
     const int64_t tok = tok_base + chunk0 + t;
     s.v_h[t * L::kVh + d] =
-        (t < len) ? __float2half((float)pack.value[tok * v_stride + hv * DV + d])
-                  : __float2half(0.f);
+        (t < len) ? pack.value[tok * v_stride + hv * DV + d] : FloatToElem<T>(0.f);
   }
   if (tid < BT) {
     const int64_t tok = tok_base + chunk0 + tid;
@@ -198,8 +196,8 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
     for (int t = warp_id; t < BT; t += kChunkedWarps) {
       float sq = 0.0f, sk = 0.0f;
       for (int d = lane; d < DK; d += 32) {
-        const float qv = __half2float(s.q_h[t * L::kKh + d]);
-        const float kv = __half2float(s.k_h[t * L::kKh + d]);
+        const float qv = ElemToFloat(s.q_h[t * L::kKh + d]);
+        const float kv = ElemToFloat(s.k_h[t * L::kKh + d]);
         sq += qv * qv;
         sk += kv * kv;
       }
@@ -210,8 +208,8 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
       }
       const float rq = rsqrtf(sq + 1e-12f), rk = rsqrtf(sk + 1e-12f);
       for (int d = lane; d < DK; d += 32) {
-        s.q_h[t * L::kKh + d] = __float2half(__half2float(s.q_h[t * L::kKh + d]) * rq);
-        s.k_h[t * L::kKh + d] = __float2half(__half2float(s.k_h[t * L::kKh + d]) * rk);
+        s.q_h[t * L::kKh + d] = FloatToElem<T>(ElemToFloat(s.q_h[t * L::kKh + d]) * rq);
+        s.k_h[t * L::kKh + d] = FloatToElem<T>(ElemToFloat(s.k_h[t * L::kKh + d]) * rk);
       }
     }
     __syncthreads();
@@ -230,7 +228,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
     const float m = (sc < t && needs_retrieval)
                         ? s.beta[t] * s.t_f[t * L::kF1 + sc] * __expf(s.gc[t] - s.gc[sc])
                         : 0.0f;
-    s.m_h[t * L::kMh + sc] = __float2half(m);
+    s.m_h[t * L::kMh + sc] = FloatToElem<T>(m);
   }
   __syncthreads();
 
@@ -241,32 +239,32 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
 
   const int64_t tile_base =
       (static_cast<int64_t>(b) * p.num_heads_v + hv) * chunks_per_pass + c_local;
-  __half* out = tiles + tile_base * Tile::kHalves;
-  __half* w_out = out;
-  __half* qg_out = w_out + Tile::kW;
-  __half* uv_out = qg_out + Tile::kQg;
-  __half* p_out = uv_out + Tile::kUv;
-  __half* kd_out = p_out + Tile::kP;
+  T* out = tiles + tile_base * Tile::kHalves;
+  T* w_out = out;
+  T* qg_out = w_out + Tile::kW;
+  T* uv_out = qg_out + Tile::kQg;
+  T* p_out = uv_out + Tile::kUv;
+  T* kd_out = p_out + Tile::kP;
 
   // Uv = (I+M)^-1 (beta v). v_h holds v; scale it in place, then overwrite with Uv.
   for (int idx = tid; idx < BT * DV; idx += kChunkedThreads) {
     const int t = idx / DV, d = idx % DV;
-    s.v_h[t * L::kVh + d] = __hmul(s.v_h[t * L::kVh + d], __float2half(s.beta[t]));
+    s.v_h[t * L::kVh + d] = MulElem(s.v_h[t * L::kVh + d], FloatToElem<T>(s.beta[t]));
   }
   __syncthreads();
   SmemGemm<BT, DV, BT, false, false, false>(s.t_f, L::kF1, s.ti_h, L::kMh, s.v_h, L::kVh, warp_id,
                                             lane);
   __syncthreads();
   for (int idx = tid; idx < BT * DV; idx += kChunkedThreads) {
-    uv_out[idx] = __float2half(s.t_f[(idx / DV) * L::kF1 + idx % DV]);
+    uv_out[idx] = FloatToElem<T>(s.t_f[(idx / DV) * L::kF1 + idx % DV]);
   }
 
   // Kd and Qg are just row scalings of k and q, so emit them before k is overwritten by the
   // row scaling W needs.
   for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
     const int t = idx / DK, d = idx % DK;
-    kd_out[idx] = __hmul(s.k_h[t * L::kKh + d], __float2half(__expf(g_total - s.gc[t])));
-    qg_out[idx] = __hmul(s.q_h[t * L::kKh + d], __float2half(__expf(s.gc[t])));
+    kd_out[idx] = MulElem(s.k_h[t * L::kKh + d], FloatToElem<T>(__expf(g_total - s.gc[t])));
+    qg_out[idx] = MulElem(s.q_h[t * L::kKh + d], FloatToElem<T>(__expf(s.gc[t])));
   }
   __syncthreads();
 
@@ -276,13 +274,13 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
   __syncthreads();
   for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
     const int t = idx / BT, sc = idx % BT;
-    p_out[idx] = __float2half(
+    p_out[idx] = FloatToElem<T>(
         (sc <= t && t < len) ? s.t_f[t * L::kF1 + sc] * __expf(s.gc[t] - s.gc[sc]) : 0.0f);
   }
   for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
     const int t = idx / DK, d = idx % DK;
     const float bw = needs_retrieval ? s.beta[t] * __expf(s.gc[t]) : 0.0f;
-    s.k_h[t * L::kKh + d] = __float2half(__half2float(s.k_h[t * L::kKh + d]) * bw);
+    s.k_h[t * L::kKh + d] = FloatToElem<T>(ElemToFloat(s.k_h[t * L::kKh + d]) * bw);
   }
   __syncthreads();
   // W = (I+M)^-1 diag(beta exp(gc)) k, with the row scaling folded into k in place.
@@ -290,34 +288,34 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
                                             lane);
   __syncthreads();
   for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
-    w_out[idx] = __float2half(s.t_f[(idx / DK) * L::kF1 + idx % DK]);
+    w_out[idx] = FloatToElem<T>(s.t_f[(idx / DK) * L::kF1 + idx % DK]);
   }
 
   if (tid == 0) decays[tile_base] = __expf(g_total);
 }
 
 // ---------------------------------------------------------------------------
-// K2 shared memory. The state lives here in fp16 for the whole walk.
+// K2 shared memory. The state lives here in 16-bit for the whole walk.
 // ---------------------------------------------------------------------------
-template <int DK, int DV, int BT, int DVB>
+template <typename T, int DK, int DV, int BT, int DVB>
 struct ScanSmem {
-  __half* s_h;   // [DK][kSh]    recurrent state
-  __half* wq_h;  // [2 BT][kKh]  W stacked on Qg
-  __half* u_h;   // [BT][kBh]    Uv, then U in place
-  __half* p_h;   // [BT][kMh]
-  __half* kd_h;  // [BT][kKh]
-  float* t_f;    // [DK][kF2], and DK == 2 BT holds both halves of the stacked GEMM
+  T* s_h;      // [DK][kSh]    recurrent state
+  T* wq_h;     // [2 BT][kKh]  W stacked on Qg
+  T* u_h;      // [BT][kBh]    Uv, then U in place
+  T* p_h;      // [BT][kMh]
+  T* kd_h;     // [BT][kKh]
+  float* t_f;  // [DK][kF2], and DK == 2 BT holds both halves of the stacked GEMM
 };
 
-template <int DK, int DV, int BT, int DVB>
-__device__ __forceinline__ ScanSmem<DK, DV, BT, DVB> CarveScan(char* raw) {
+template <typename T, int DK, int DV, int BT, int DVB>
+__device__ __forceinline__ ScanSmem<T, DK, DV, BT, DVB> CarveScan(char* raw) {
   using L = SplitLd<DK, DV, BT, DVB>;
   static_assert(DK == 2 * BT, "t_f must cover both halves of the stacked [2 BT x DVB] GEMM");
-  ScanSmem<DK, DV, BT, DVB> s;
+  ScanSmem<T, DK, DV, BT, DVB> s;
   float* f = reinterpret_cast<float*>(raw);
   s.t_f = f;
   f += DK * L::kF2;
-  __half* h = reinterpret_cast<__half*>(f);
+  T* h = reinterpret_cast<T*>(f);
   s.s_h = h;
   h += DK * L::kSh;
   s.wq_h = h;
@@ -335,12 +333,12 @@ __device__ __forceinline__ ScanSmem<DK, DV, BT, DVB> CarveScan(char* raw) {
 // ---------------------------------------------------------------------------
 template <typename T, int DK, int DV, int BT, int DVB>
 __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
-    VariantPack<T> pack, KernelParams p, const __half* tiles, const float* decays, float* carry,
+    VariantPack<T> pack, KernelParams p, const T* tiles, const float* decays, float* carry,
     int chunk_base, int chunks_per_pass, int n_chunks, bool first_pass, bool last_pass) {
   using L = SplitLd<DK, DV, BT, DVB>;
   using Tile = PrepTile<DK, DV, BT>;
   extern __shared__ char smem_raw[];
-  const ScanSmem<DK, DV, BT, DVB> s = CarveScan<DK, DV, BT, DVB>(smem_raw);
+  const ScanSmem<T, DK, DV, BT, DVB> s = CarveScan<T, DK, DV, BT, DVB>(smem_raw);
 
   const int b = blockIdx.x, hv = blockIdx.y, v0 = blockIdx.z * DVB;
   const int tid = threadIdx.x, warp_id = tid >> 5, lane = tid & 31;
@@ -359,8 +357,8 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
     const int r = idx / DVB, c = idx % DVB;
     s.s_h[r * L::kSh + c] =
         seed != nullptr
-            ? __float2half(seed[st_off + static_cast<int64_t>(v0 + c) * DK + r])
-            : __float2half(0.f);
+            ? FloatToElem<T>(seed[st_off + static_cast<int64_t>(v0 + c) * DK + r])
+            : FloatToElem<T>(0.f);
   }
   __syncthreads();
 
@@ -372,11 +370,11 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
     if (chunk0 >= seq_len) break;
     const int len = min(BT, seq_len - chunk0);
 
-    const __half* in = tiles + (head_base + c_local) * Tile::kHalves;
-    const __half* wq_in = in;
-    const __half* uv_in = wq_in + Tile::kW + Tile::kQg;
-    const __half* p_in = uv_in + Tile::kUv;
-    const __half* kd_in = p_in + Tile::kP;
+    const T* in = tiles + (head_base + c_local) * Tile::kHalves;
+    const T* wq_in = in;
+    const T* uv_in = wq_in + Tile::kW + Tile::kQg;
+    const T* p_in = uv_in + Tile::kUv;
+    const T* kd_in = p_in + Tile::kP;
 
     for (int idx = tid; idx < 2 * BT * DK; idx += kChunkedThreads) {
       s.wq_h[(idx / DK) * L::kKh + idx % DK] = wq_in[idx];
@@ -400,7 +398,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
     for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
       const int t = idx / DVB, c = idx % DVB;
       s.u_h[t * L::kBh + c] =
-          __float2half(__half2float(s.u_h[t * L::kBh + c]) - s.t_f[t * L::kF2 + c]);
+          FloatToElem<T>(ElemToFloat(s.u_h[t * L::kBh + c]) - s.t_f[t * L::kF2 + c]);
     }
     __syncthreads();
 
@@ -418,12 +416,12 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
       }
     }
 
-    // S = decay S + Kd^T U, straight into the fp16 state: the mma accumulator is float
+    // S = decay S + Kd^T U, straight into the 16-bit state: the mma accumulator is float
     // either way, so this is the same single rounding as staging it through t_f, and it
     // needs no barrier against the output epilogue above, which only reads t_f.
-    SmemGemm<DK, DVB, BT, true, false, true, __half>(s.s_h, L::kSh, s.kd_h, L::kKh, s.u_h,
-                                                     L::kBh, warp_id, lane,
-                                                     decays[head_base + c_local]);
+    SmemGemm<DK, DVB, BT, true, false, true, T>(s.s_h, L::kSh, s.kd_h, L::kKh, s.u_h,
+                                                L::kBh, warp_id, lane,
+                                                decays[head_base + c_local]);
     __syncthreads();
   }
 
@@ -431,7 +429,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
   for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
     const int r = idx / DVB, c = idx % DVB;
     const int64_t off = st_off + static_cast<int64_t>(v0 + c) * DK + r;
-    const float v = __half2float(s.s_h[r * L::kSh + c]);
+    const float v = ElemToFloat(s.s_h[r * L::kSh + c]);
     if (carry != nullptr) carry[off] = v;
     if (last_pass && pack.final_state != nullptr) pack.final_state[off] = v;
   }
@@ -466,7 +464,7 @@ Status LaunchGatedDeltaNetSplit(const Descriptor& desc, const Plan& plan,
 
   const int64_t tiles_per_pass =
       static_cast<int64_t>(desc.batch) * desc.num_heads_v * chunks_per_pass;
-  __half* tiles = reinterpret_cast<__half*>(pack.workspace);
+  T* tiles = reinterpret_cast<T*>(pack.workspace);
   float* decays = reinterpret_cast<float*>(
       tiles + tiles_per_pass * PrepTile<DK, DV, BT>::kHalves);
   // Reserved by SelectPlan only when the sequence takes more than one pass.
@@ -513,21 +511,16 @@ Status LaunchGatedDeltaNetSplit(const Descriptor& desc, const Plan& plan,
 
 template Status LaunchGatedDeltaNetSplit<half>(const Descriptor&, const Plan&,
                                                const VariantPack<half>&, float, cudaStream_t);
+template Status LaunchGatedDeltaNetSplit<__nv_bfloat16>(
+    const Descriptor&, const Plan&, const VariantPack<__nv_bfloat16>&, float, cudaStream_t);
 
-// The GEMM operands are fp16 mma fragments, so SelectPlan never routes float here; the
+// The GEMM operands are 16-bit mma fragments, so SelectPlan never routes float here; the
 // definition exists only to close the float instantiation of LaunchGatedDeltaNet.
 template <>
 Status LaunchGatedDeltaNetSplit<float>(const Descriptor&, const Plan&, const VariantPack<float>&,
                                        float, cudaStream_t) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                         "GatedDeltaNet: the split engine requires float16 input");
-}
-
-template <>
-Status LaunchGatedDeltaNetSplit<__nv_bfloat16>(
-    const Descriptor&, const Plan&, const VariantPack<__nv_bfloat16>&, float, cudaStream_t) {
-  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                         "GatedDeltaNet: the split engine requires float16 input");
+                         "GatedDeltaNet: the split engine requires float16 or bfloat16 input");
 }
 
 }  // namespace gated_delta_net

@@ -1900,6 +1900,83 @@ __global__ void QMoEDequantizeNvfp4WeightsKernel(
   }
 }
 
+// Float8E4M3FN decode built from float bits; returns exactly the values of DecodeFloat8E4M3FN.
+__device__ __forceinline__ float DecodeFloat8E4M3FNFast(uint32_t code) {
+  const uint32_t exponent = (code >> 3) & 0x0Fu;
+  const uint32_t mantissa = code & 0x07u;
+  float value;
+  if (exponent == 0u) {
+    value = static_cast<float>(mantissa) * 0.001953125f;  // 2^-9
+  } else if (exponent == 0x0Fu && mantissa == 0x07u) {
+    return __int_as_float(0x7fffffff);
+  } else {
+    value = __uint_as_float(((exponent + 120u) << 23) | (mantissa << 20));
+  }
+  return (code & 0x80u) ? -value : value;
+}
+
+// Row-major NVFP4 dequantization, [E, n, k/2] packed bytes (low nibble = even column) and
+// [E, n, k/16] block scales. One thread converts 32 consecutive columns of one row: a 16-byte load,
+// two scale bytes and 64 bytes of output, so loads and stores are fully coalesced (the scalar kernel
+// above issues one byte load and one 2-byte store per element with a 64-bit div/mod each).
+// Values are computed in the same order as the scalar kernel, (e2m1 * e4m3) * global, so the output is bit identical.
+template <typename T>
+__global__ void QMoEDequantizeNvfp4RowMajorKernel(
+    const uint8_t* __restrict__ packed_weights,
+    const uint8_t* __restrict__ block_scales,
+    const float* __restrict__ global_scales,
+    T* __restrict__ output,
+    int num_experts,
+    int n,
+    int k,
+    const int* __restrict__ compact_to_expert,
+    const T* __restrict__ bias,
+    T* __restrict__ output_bias) {
+  const int groups_per_row = k >> 5;
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t total = static_cast<int64_t>(num_experts) * n * groups_per_row;
+  if (index >= total) {
+    return;
+  }
+  const int64_t global_row = index / groups_per_row;
+  const int group = static_cast<int>(index - global_row * groups_per_row);
+  const int output_expert = static_cast<int>(global_row / n);
+  const int row = static_cast<int>(global_row - static_cast<int64_t>(output_expert) * n);
+  const int expert = compact_to_expert ? compact_to_expert[output_expert] : output_expert;
+  if (expert < 0) {
+    return;
+  }
+  const int64_t source_row = static_cast<int64_t>(expert) * n + row;
+  const uint4 packed = *reinterpret_cast<const uint4*>(packed_weights + source_row * (k >> 1) + (static_cast<int64_t>(group) << 4));
+  const uint16_t scale_pair = *reinterpret_cast<const uint16_t*>(block_scales + source_row * (k >> 4) + (group << 1));
+  const float global_scale = global_scales[expert];
+  const uint32_t words[4] = {packed.x, packed.y, packed.z, packed.w};
+
+  uint4 staged[4];
+  T* values = reinterpret_cast<T*>(staged);
+#pragma unroll
+  for (int half_block = 0; half_block < 2; ++half_block) {
+    const float block_scale = DecodeFloat8E4M3FNFast((scale_pair >> (8 * half_block)) & 0xFFu);
+#pragma unroll
+    for (int w = 0; w < 2; ++w) {
+      const uint32_t word = words[half_block * 2 + w];
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const float fp4 = DecodeFp4E2M1(static_cast<uint8_t>((word >> (4 * j)) & 0x0Fu));
+        values[half_block * 16 + w * 8 + j] = static_cast<T>((fp4 * block_scale) * global_scale);
+      }
+    }
+  }
+  uint4* dst = reinterpret_cast<uint4*>(output + global_row * k + (static_cast<int64_t>(group) << 5));
+#pragma unroll
+  for (int v = 0; v < 4; ++v) {
+    dst[v] = staged[v];
+  }
+  if (bias && group == 0) {
+    output_bias[global_row] = bias[source_row];
+  }
+}
+
 template <typename T>
 void LaunchQMoEDequantizeNvfp4WeightsImpl(
     const uint8_t* packed_weights,
@@ -1922,6 +1999,14 @@ void LaunchQMoEDequantizeNvfp4WeightsImpl(
                          k / kQMoEDequantizeFp4TileK, num_experts);
     QMoEDequantizeFp4WeightsVecKernel<T, 16, true><<<tile_grid, tile_block, 0, stream>>>(
         packed_weights, block_scales, global_scales, output, n, k);
+    CUDA_CALL_THROW(cudaGetLastError());
+    return;
+  }
+  if (weights_row_major && (k % 32) == 0) {
+    const int64_t threads = static_cast<int64_t>(num_experts) * n * (k / 32);
+    const int64_t blocks = (threads + block - 1) / block;
+    QMoEDequantizeNvfp4RowMajorKernel<T><<<onnxruntime::narrow<int>(blocks), block, 0, stream>>>(
+        packed_weights, block_scales, global_scales, output, num_experts, n, k, compact_to_expert, bias, output_bias);
     CUDA_CALL_THROW(cudaGetLastError());
     return;
   }

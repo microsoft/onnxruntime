@@ -117,27 +117,27 @@ struct Ld {
   static constexpr int kVf = (kDVB > BT ? kDVB : BT) + 4;
 };
 
-template <int DK, int BT>
+template <typename T, int DK, int BT>
 struct ChunkedSmem {
-  __half* k_h;   // [BT][LdKh]  k, scaled in place to Kd late in the chunk
-  __half* q_h;   // [BT][LdKh]  q, scaled in place to Qg late in the chunk
-  __half* v_h;   // [BT][LdVh]
-  __half* u_h;   // [BT][LdVh]  R, then U
-  __half* m_h;   // [BT][LdMh]  M, then P
-  __half* s_h;   // [DK][LdVh]  fp16 operand copy of the state
-  __half* db_h;  // [BT][LdMh]  block-diagonal inverse of (I+M)
-  __half* nb_h;  // [BT][LdMh]  N = Dinv M with the diagonal blocks zeroed
-  __half* ti_h;  // [BT][LdMh]  Neumann iterate, finally (I+M)^-1
-  float* s_f;    // [DK][LdVf]  fp32 state
-  float* t_f;    // [BT][LdVf]  gemm scratch, also used as [BT][BT]
-  float* gc;     // [BT]
-  float* beta;   // [BT]
+  T* k_h;       // [BT][LdKh]  k, scaled in place to Kd late in the chunk
+  T* q_h;       // [BT][LdKh]  q, scaled in place to Qg late in the chunk
+  T* v_h;       // [BT][LdVh]
+  T* u_h;       // [BT][LdVh]  R, then U
+  T* m_h;       // [BT][LdMh]  M, then P
+  T* s_h;       // [DK][LdVh]  16-bit operand copy of the state
+  T* db_h;      // [BT][LdMh]  block-diagonal inverse of (I+M)
+  T* nb_h;      // [BT][LdMh]  N = Dinv M with the diagonal blocks zeroed
+  T* ti_h;      // [BT][LdMh]  Neumann iterate, finally (I+M)^-1
+  float* s_f;   // [DK][LdVf]  fp32 state
+  float* t_f;   // [BT][LdVf]  gemm scratch, also used as [BT][BT]
+  float* gc;    // [BT]
+  float* beta;  // [BT]
 };
 
-template <int DK, int BT>
-__device__ __forceinline__ ChunkedSmem<DK, BT> CarveChunked(char* raw) {
+template <typename T, int DK, int BT>
+__device__ __forceinline__ ChunkedSmem<T, DK, BT> CarveChunked(char* raw) {
   using L = Ld<DK, BT>;
-  ChunkedSmem<DK, BT> s;
+  ChunkedSmem<T, DK, BT> s;
   float* f = reinterpret_cast<float*>(raw);
   s.s_f = f;
   f += DK * L::kVf;
@@ -147,7 +147,7 @@ __device__ __forceinline__ ChunkedSmem<DK, BT> CarveChunked(char* raw) {
   f += BT;
   s.beta = f;
   f += BT;
-  __half* h = reinterpret_cast<__half*>(f);
+  T* h = reinterpret_cast<T*>(f);
   s.k_h = h;
   h += BT * L::kKh;
   s.q_h = h;
@@ -177,7 +177,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     VariantPack<T> pack, KernelParams p) {
   using L = Ld<DK, BT>;
   extern __shared__ char smem_raw[];
-  const ChunkedSmem<DK, BT> s = CarveChunked<DK, BT>(smem_raw);
+  const ChunkedSmem<T, DK, BT> s = CarveChunked<T, DK, BT>(smem_raw);
 
   const int b = blockIdx.x, hv = blockIdx.y, v0 = blockIdx.z * kDVB;
   const int tid = threadIdx.x, warp_id = tid >> 5, lane = tid & 31;
@@ -215,22 +215,22 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
 
     for (int idx = tid; idx < DK * kDVB; idx += kChunkedThreads) {
       const int r = idx / kDVB, c = idx % kDVB;
-      s.s_h[r * L::kVh + c] = __float2half(s.s_f[r * L::kVf + c]);
+      s.s_h[r * L::kVh + c] = FloatToElem<T>(s.s_f[r * L::kVf + c]);
     }
     for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
       const int t = idx / DK, d = idx % DK;
       const int64_t tok = tok_base + chunk0 + t;
       s.k_h[t * L::kKh + d] =
-          (t < len) ? __float2half((float)pack.key[tok * k_stride + hk * DK + d]) : __float2half(0.f);
+          (t < len) ? pack.key[tok * k_stride + hk * DK + d] : FloatToElem<T>(0.f);
       s.q_h[t * L::kKh + d] =
-          (t < len) ? __float2half((float)pack.query[tok * q_stride + hq * DK + d]) : __float2half(0.f);
+          (t < len) ? pack.query[tok * q_stride + hq * DK + d] : FloatToElem<T>(0.f);
     }
     for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
       const int t = idx / kDVB, d = idx % kDVB;
       const int64_t tok = tok_base + chunk0 + t;
       s.v_h[t * L::kVh + d] =
-          (t < len) ? __float2half((float)pack.value[tok * v_stride + hv * DV + v0 + d])
-                    : __float2half(0.f);
+          (t < len) ? pack.value[tok * v_stride + hv * DV + v0 + d]
+                    : FloatToElem<T>(0.f);
     }
     if (tid < BT) {
       const int64_t tok = tok_base + chunk0 + tid;
@@ -252,8 +252,8 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
       for (int t = warp_id; t < BT; t += kChunkedWarps) {
         float sq = 0.0f, sk = 0.0f;
         for (int d = lane; d < DK; d += 32) {
-          const float qv = __half2float(s.q_h[t * L::kKh + d]);
-          const float kv = __half2float(s.k_h[t * L::kKh + d]);
+          const float qv = ElemToFloat(s.q_h[t * L::kKh + d]);
+          const float kv = ElemToFloat(s.k_h[t * L::kKh + d]);
           sq += qv * qv;
           sk += kv * kv;
         }
@@ -264,8 +264,8 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
         }
         const float rq = rsqrtf(sq + 1e-12f), rk = rsqrtf(sk + 1e-12f);
         for (int d = lane; d < DK; d += 32) {
-          s.q_h[t * L::kKh + d] = __float2half(__half2float(s.q_h[t * L::kKh + d]) * rq);
-          s.k_h[t * L::kKh + d] = __float2half(__half2float(s.k_h[t * L::kKh + d]) * rk);
+          s.q_h[t * L::kKh + d] = FloatToElem<T>(ElemToFloat(s.q_h[t * L::kKh + d]) * rq);
+          s.k_h[t * L::kKh + d] = FloatToElem<T>(ElemToFloat(s.k_h[t * L::kKh + d]) * rk);
         }
       }
       __syncthreads();
@@ -283,7 +283,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
       const float m = (sc < t && needs_retrieval)
                           ? s.beta[t] * s.t_f[t * L::kVf + sc] * __expf(s.gc[t] - s.gc[sc])
                           : 0.0f;
-      s.m_h[t * L::kMh + sc] = __float2half(m);
+      s.m_h[t * L::kMh + sc] = FloatToElem<T>(m);
     }
     __syncthreads();
 
@@ -295,9 +295,9 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     __syncthreads();
     for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
       const int t = idx / kDVB, c = idx % kDVB;
-      const float vv = __half2float(s.v_h[t * L::kVh + c]);
+      const float vv = ElemToFloat(s.v_h[t * L::kVh + c]);
       const float r = needs_retrieval ? vv - __expf(s.gc[t]) * s.t_f[t * L::kVf + c] : vv;
-      s.u_h[t * L::kVh + c] = __float2half(s.beta[t] * r);
+      s.u_h[t * L::kVh + c] = FloatToElem<T>(s.beta[t] * r);
     }
     __syncthreads();
     SmemGemm<BT, kDVB, BT, false, false, false>(s.t_f, L::kVf, s.ti_h, L::kMh, s.u_h, L::kVh,
@@ -305,7 +305,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     __syncthreads();
     for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
       const int t = idx / kDVB, c = idx % kDVB;
-      s.u_h[t * L::kVh + c] = __float2half(s.t_f[t * L::kVf + c]);
+      s.u_h[t * L::kVh + c] = FloatToElem<T>(s.t_f[t * L::kVf + c]);
     }
     __syncthreads();
 
@@ -314,14 +314,14 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     __syncthreads();
     for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
       const int t = idx / BT, sc = idx % BT;
-      s.m_h[t * L::kMh + sc] = __float2half(
+      s.m_h[t * L::kMh + sc] = FloatToElem<T>(
           (sc <= t && t < len) ? s.t_f[t * L::kVf + sc] * __expf(s.gc[t] - s.gc[sc]) : 0.0f);
     }
     for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
       const int t = idx / DK, d = idx % DK;
       s.k_h[t * L::kKh + d] =
-          __hmul(s.k_h[t * L::kKh + d], __float2half(__expf(g_total - s.gc[t])));
-      s.q_h[t * L::kKh + d] = __hmul(s.q_h[t * L::kKh + d], __float2half(__expf(s.gc[t])));
+          MulElem(s.k_h[t * L::kKh + d], FloatToElem<T>(__expf(g_total - s.gc[t])));
+      s.q_h[t * L::kKh + d] = MulElem(s.q_h[t * L::kKh + d], FloatToElem<T>(__expf(s.gc[t])));
     }
     __syncthreads();
 
@@ -741,11 +741,11 @@ Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const Varia
   }
 
   if (plan.engine == Engine::kChunked) {
-    // SelectPlan only routes float16 here, so instantiating the mma kernels for the other
-    // element types would emit cubin that can never launch.
-    if constexpr (!std::is_same_v<T, half>) {
+    // SelectPlan only routes float16 and bfloat16 here, so instantiating the mma kernels for
+    // float would emit cubin that can never launch.
+    if constexpr (!std::is_same_v<T, half> && !std::is_same_v<T, __nv_bfloat16>) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "GatedDeltaNet: the chunked engine requires float16 input");
+                             "GatedDeltaNet: the chunked engine requires float16 or bfloat16 input");
     } else {
       p.state_update_tail_pass = plan.state_update_tail_pass;
       p.short_row_tail_pass = plan.short_row_tail_pass;
