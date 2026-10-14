@@ -496,31 +496,12 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
   selection_params.has_bias = has_bias;
   selection_params.is_channels_last = is_channels_last;
 
-  const MatMulExecutionPlan plan = planner_->CreateExecutionPlan(
-      selection_params, context.ForcedMatMulAlgorithm());
+  MatMulExecutionPlan plan{MatMulAlgorithm::Naive, MatMulNaiveConfiguration{}};
+  ORT_RETURN_IF_ERROR(planner_->CreateExecutionPlan(
+      selection_params, context.ForcedMatMulAlgorithm(), plan));
   const MatMulAlgorithm algorithm = plan.algorithm;
-  ORT_RETURN_IF_NOT(IsMatMulAlgorithmConfigurationCompatible(plan),
-                    "MatMul algorithm ", MatMulAlgorithmName(algorithm),
-                    " received an incompatible vendor configuration.");
   const auto* packed_configuration = std::get_if<MatMulPackedConfiguration>(&plan.configuration);
   const auto* subgroup_configuration = std::get_if<MatMulSubgroupConfiguration>(&plan.configuration);
-
-  MatMulAlgorithmPrerequisites prerequisites{};
-  prerequisites.can_use_subgroup_matrix = can_use_subgroup_matrix;
-  prerequisites.can_run_gemv = can_run_gemv;
-  prerequisites.has_subgroup_capability = has_subgroup_capability;
-  prerequisites.subgroup_size =
-      subgroup_configuration != nullptr ? subgroup_configuration->subgroup_size : 0;
-  prerequisites.has_nonzero_k = helper.K() > 0;
-  prerequisites.split_k_configured =
-      packed_configuration != nullptr && packed_configuration->split_dim_inner > 1;
-  prerequisites.deterministic_compute = selection_params.deterministic_compute;
-  prerequisites.is_vec4 = selection_params.is_vec4;
-  prerequisites.has_fused_activation = selection_params.has_fused_activation;
-  prerequisites.split_k_bias_layout_supported = !has_bias || is_channels_last;
-  ORT_RETURN_IF_NOT(MeetsMatMulAlgorithmPrerequisites(algorithm, prerequisites),
-                    "MatMul algorithm ", MatMulAlgorithmName(algorithm),
-                    " does not support these inputs or this device.");
 
   switch (algorithm) {
     case MatMulAlgorithm::SubgroupMatrix:
