@@ -10,6 +10,7 @@
 #param broadcast_a_row
 #param has_zero_points
 #param has_lora_up
+#param lora_quantized
 #param lora_transposed
 #param has_bias
 #param has_weight_idx
@@ -22,7 +23,9 @@ fn write_lora_output(offset: u32, value: output_element_t) {
   let row = (offset * 1u) / uniforms.N;
   let col = (offset * 1u) % uniforms.N;
   var delta = output_element_t(0);
-#if lora_transposed
+#if lora_quantized
+  delta = qlora_delta(row, col);
+#elif lora_transposed
   for (var r4 = 0u; r4 < 8u; r4++) {
     let bv = lora_b[col * 8u + r4];
     let tv = lora_t[row * 8u + r4];

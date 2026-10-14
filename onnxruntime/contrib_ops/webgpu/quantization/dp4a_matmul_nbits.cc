@@ -4,6 +4,7 @@
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits_qlora.h"
 #include "core/providers/webgpu/shader_helper.h"
 
 namespace onnxruntime {
@@ -37,6 +38,10 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_lora_up_) {
     shader.AddInput("lora_t");
     shader.AddInput("lora_b");
+    if (lora_quantized_) {
+      shader.AddInput("lora_b_scales");
+      GenerateQLoRAUp(shader, acc_f32_);
+    }
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   if (has_lora_down_) {
@@ -51,6 +56,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect_),
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
                              WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
+                             WGSL_TEMPLATE_PARAMETER(lora_quantized, lora_quantized_),
                              WGSL_TEMPLATE_PARAMETER(lora_transposed, lora_transposed_),
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, true),
@@ -79,6 +85,10 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   if (has_lora_up_) {
     shader.AddInput("lora_t");
     shader.AddInput("lora_b");
+    if (lora_quantized_) {
+      shader.AddInput("lora_b_scales");
+      GenerateQLoRAUp(shader, acc_f32_);
+    }
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
@@ -94,6 +104,7 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect_),
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
+                             WGSL_TEMPLATE_PARAMETER(lora_quantized, lora_quantized_),
                              WGSL_TEMPLATE_PARAMETER(lora_transposed, lora_transposed_),
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, true),
@@ -123,8 +134,9 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   Tensor* y,
                                   const uint32_t weight_index,
                                   const Tensor* weight_index_indirect, const Tensor* lora_t, const Tensor* lora_b,
-                                  const Tensor* lora_at, Tensor* lora_down, bool lora_transposed) {
+                                  const Tensor* lora_at, Tensor* lora_down, bool lora_transposed, const Tensor* lora_b_scales) {
   const bool has_lora_down = lora_at != nullptr;
+  const bool lora_quantized = lora_b_scales != nullptr;
   ORT_RETURN_IF_NOT(!has_lora_down || (lora_down && !lora_t && !weight_index_indirect && M >= min_M_for_tile_optimization),
                     "Unsupported joint DP4A LoRA projection.");
   constexpr uint32_t kVec4Components = 4;
@@ -159,7 +171,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
     const uint32_t b_components = (nbits == 2 ? kVec2Components : kVec4Components);
     const bool broadcast_a = dispatch_M > M;
     const bool acc_f32 = context.EnableMatmulFp32Accumulation();
-    DP4AMatMulNBitsSmallMProgram mul_program{tile_size_k_vec, tile_size_n, nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, broadcast_a, acc_f32, has_lora_up, lora_transposed};
+    DP4AMatMulNBitsSmallMProgram mul_program{tile_size_k_vec, tile_size_n, nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, broadcast_a, acc_f32, has_lora_up, lora_transposed, lora_quantized};
     uint32_t num_N_tile = (N + tile_size_n - 1) / tile_size_n;
     mul_program.SetWorkgroupSize(128);
     mul_program.SetDispatchGroupSize(batch_count * dispatch_M * num_N_tile);
@@ -169,7 +181,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                            {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
         .AddUniformVariables({batch_count, M, N, K, K / 16, K / 32, block_size, num_N_tile, zero_blocks_per_col, weight_index, dispatch_M})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 1})
-        .CacheHint(nbits, tile_size_k_vec, tile_size_n, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, broadcast_a, acc_f32, has_lora_up, lora_transposed);
+        .CacheHint(nbits, tile_size_k_vec, tile_size_n, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, broadcast_a, acc_f32, has_lora_up, lora_transposed, lora_quantized);
     if (has_zero_points) {
       mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
     }
@@ -181,7 +193,9 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
     }
     if (has_lora_up) {
       mul_program.AddInput({lora_t, ProgramTensorMetadataDependency::Type, lora_transposed ? 4 : 1});
-      mul_program.AddInput({lora_b, ProgramTensorMetadataDependency::Type, lora_transposed ? 4 : 1});
+      mul_program.AddInput({lora_b, ProgramTensorMetadataDependency::Type, lora_quantized ? 16 : lora_transposed ? 4
+                                                                                                                 : 1});
+      if (lora_quantized) mul_program.AddInput({lora_b_scales, ProgramTensorMetadataDependency::Type});
     }
     return context.RunProgram(mul_program);
   }
@@ -192,7 +206,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   uint32_t num_N_tile = (N + kTileSize - 1) / kTileSize;
   bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
   const bool acc_f32 = context.EnableMatmulFp32Accumulation();
-  DP4AMatMulNBitsProgram mul_program{block_size, nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, is_qualcomm, acc_f32, has_lora_up, has_lora_down, lora_transposed};
+  DP4AMatMulNBitsProgram mul_program{block_size, nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, is_qualcomm, acc_f32, has_lora_up, has_lora_down, lora_transposed, lora_quantized};
   mul_program.SetWorkgroupSize(256);
   mul_program.SetDispatchGroupSize(batch_count * num_M_tile * num_N_tile + (has_lora_down ? CeilDiv(batch_count * M, 32u) : 0));
   mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
@@ -210,7 +224,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                             {zero_blocks_per_col},
                             {weight_index}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(kVec4Components)})
-      .CacheHint("Block" + std::to_string(block_size), nbits, has_zero_points, is_qualcomm, has_bias, has_weight_idx, has_weight_idx_indirect, acc_f32, has_lora_up, has_lora_down, lora_transposed);
+      .CacheHint("Block" + std::to_string(block_size), nbits, has_zero_points, is_qualcomm, has_bias, has_weight_idx, has_weight_idx_indirect, acc_f32, has_lora_up, has_lora_down, lora_transposed, lora_quantized);
   if (has_zero_points) {
     mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }
@@ -222,7 +236,9 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   }
   if (has_lora_up) {
     mul_program.AddInput({lora_t, ProgramTensorMetadataDependency::Type, lora_transposed ? 4 : 1});
-    mul_program.AddInput({lora_b, ProgramTensorMetadataDependency::Type, lora_transposed ? 4 : 1});
+    mul_program.AddInput({lora_b, ProgramTensorMetadataDependency::Type, lora_quantized ? 16 : lora_transposed ? 4
+                                                                                                               : 1});
+    if (lora_quantized) mul_program.AddInput({lora_b_scales, ProgramTensorMetadataDependency::Type});
   }
   if (has_lora_down) {
     mul_program.AddInput({a, ProgramTensorMetadataDependency::Type, 4});

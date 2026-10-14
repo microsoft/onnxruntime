@@ -3,6 +3,7 @@
 
 #param has_zero_points
 #param has_lora_up
+#param lora_quantized
 #param lora_transposed
 #param has_bias
 #param has_weight_idx
@@ -117,7 +118,9 @@ fn write_output(batch : u32, row : u32, col : u32, value : output_element_t) {
     let offset = batch * uniforms.M * uniforms.N + row * uniforms.N + col;
 #if has_lora_up
     var delta = output_element_t(0);
-#if lora_transposed
+#if lora_quantized
+    delta = qlora_delta(batch * uniforms.M + row, col);
+#elif lora_transposed
     for (var r4 = 0u; r4 < 8u; r4++) {
       let bv = lora_b[col * 8u + r4];
       let tv = lora_t[(batch * uniforms.M + row) * 8u + r4];

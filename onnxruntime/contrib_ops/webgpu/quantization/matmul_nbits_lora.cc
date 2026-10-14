@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits_qlora.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/common/safeint.h"
 #include "core/providers/webgpu/math/matmul.h"
@@ -152,7 +153,8 @@ class LoRAOutputProgram final : public Program<LoRAOutputProgram> {
   bool transposed_;
 };
 
-Status ApplyLoRAOutput(onnxruntime::webgpu::ComputeContext& context, const Tensor* base, const Tensor* t, const Tensor* b, Tensor* y, bool transposed) {
+Status ApplyLoRAOutput(onnxruntime::webgpu::ComputeContext& context, const Tensor* base, const Tensor* t, const Tensor* b, Tensor* y, bool transposed, const Tensor* quantized_scales) {
+  if (quantized_scales) return ApplyQLoRAOutput(context, base, t, b, quantized_scales, y);
   const auto size = narrow<uint32_t>(y->Shape().Size());
   LoRAOutputProgram program(transposed);
   program.AddInputs({{base, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten},

@@ -14,6 +14,7 @@
 #param tile_size_k
 #param tile_size
 #param has_lora_up
+#param lora_quantized
 #param lora_transposed
 #param has_bias
 #param has_weight_idx
@@ -268,7 +269,9 @@ $MAIN {
       // Downcast to the output type only at the final write.
 #if has_lora_up
       var delta = output_element_t(0);
-#if lora_transposed
+#if lora_quantized
+    delta = qlora_delta(batch * uniforms.M + a_global, b_global);
+#elif lora_transposed
       for (var r4 = 0u; r4 < 8u; r4++) {
         let bv = lora_b[b_global * 8u + r4];
         let tv = lora_t[(batch * uniforms.M + a_global) * 8u + r4];

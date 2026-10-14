@@ -5,6 +5,7 @@
 #param block_size
 #param n_bits
 #param has_lora_up
+#param lora_quantized
 #param lora_transposed
 #param has_bias
 #param has_zero_points
@@ -19,7 +20,9 @@ fn write_lora_output(offset: u32, value: vec4<output_element_t>) {
   let row = (offset * 4u) / uniforms.N;
   let col = (offset * 4u) % uniforms.N;
   var delta = vec4<output_element_t>(0);
-#if lora_transposed
+#if lora_quantized
+    delta = vec4<output_element_t>(qlora_delta(row, col), qlora_delta(row, col + 1u), qlora_delta(row, col + 2u), qlora_delta(row, col + 3u));
+#elif lora_transposed
   for (var r4 = 0u; r4 < 8u; r4++) {
     let tv = lora_t[row * 8u + r4];
     let b0 = lora_b[col * 8u + r4];
