@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <type_traits>
 #include <vector>
 
 #include <gsl/gsl>
@@ -78,6 +79,73 @@ struct MoeCpuOffloadParameters {
   float swiglu_limit;
   bool fused_swiglu;
 };
+
+template <typename T>
+inline float MoeCpuOffloadToFloat(T value) {
+  if constexpr (std::is_same_v<T, float>) {
+    return value;
+  } else {
+    return value.ToFloat();
+  }
+}
+
+// Converts one canonical QMoE expert from [N, K / pack] into the KxN layout
+// consumed by the dense CPU offload GEMMs.
+template <typename TScale, typename TDense>
+inline Status DequantizeMoeCpuOffloadExpert(
+    gsl::span<const uint8_t> weights,
+    gsl::span<const TScale> scales,
+    gsl::span<const uint8_t> zero_points,
+    int64_t weight_bits,
+    int64_t block_size,
+    int64_t output_size,
+    int64_t input_size,
+    gsl::span<TDense> dense_weights) {
+  ORT_RETURN_IF_NOT(weight_bits == 4 || weight_bits == 8,
+                    "QMoE CPU offload supports only INT4 and INT8 weights.");
+  const int64_t pack = 8 / weight_bits;
+  const int64_t packed_input_size = (input_size + pack - 1) / pack;
+  const int64_t blocks_per_row =
+      block_size > 0 ? (input_size + block_size - 1) / block_size : 1;
+  ORT_RETURN_IF_NOT(
+      weights.size() == static_cast<size_t>(SafeInt<int64_t>(output_size) * packed_input_size) &&
+          scales.size() == static_cast<size_t>(SafeInt<int64_t>(output_size) * blocks_per_row) &&
+          dense_weights.size() == static_cast<size_t>(
+                                      SafeInt<int64_t>(output_size) * input_size),
+      "Invalid QMoE CPU-offload expert buffer sizes.");
+
+  const size_t zero_points_per_row =
+      zero_points.empty() ? 0 : static_cast<size_t>((blocks_per_row + pack - 1) / pack);
+  ORT_RETURN_IF_NOT(
+      zero_points.empty() ||
+          zero_points.size() == static_cast<size_t>(output_size) * zero_points_per_row,
+      "Invalid QMoE CPU-offload zero-point buffer size.");
+
+  const uint8_t value_mask = static_cast<uint8_t>((1u << weight_bits) - 1u);
+  const uint8_t default_zero_point = static_cast<uint8_t>(1u << (weight_bits - 1));
+  for (int64_t output = 0; output < output_size; ++output) {
+    for (int64_t input = 0; input < input_size; ++input) {
+      const int64_t packed_index =
+          output * packed_input_size + input / pack;
+      const int shift = static_cast<int>((input % pack) * weight_bits);
+      const uint8_t value =
+          static_cast<uint8_t>((weights[static_cast<size_t>(packed_index)] >> shift) & value_mask);
+      const int64_t block = block_size > 0 ? input / block_size : 0;
+      uint8_t zero_point = default_zero_point;
+      if (!zero_points.empty()) {
+        const size_t zp_index =
+            static_cast<size_t>(output) * zero_points_per_row + static_cast<size_t>(block / pack);
+        const int zp_shift = static_cast<int>((block % pack) * weight_bits);
+        zero_point = static_cast<uint8_t>((zero_points[zp_index] >> zp_shift) & value_mask);
+      }
+      const float scale =
+          MoeCpuOffloadToFloat(scales[static_cast<size_t>(output * blocks_per_row + block)]);
+      dense_weights[static_cast<size_t>(input * output_size + output)] =
+          TDense((static_cast<float>(value) - static_cast<float>(zero_point)) * scale);
+    }
+  }
+  return Status::OK();
+}
 
 inline Status ComputeMoeCpuOffloadedExpertsFp16(
     gsl::span<const MLFloat16> input,

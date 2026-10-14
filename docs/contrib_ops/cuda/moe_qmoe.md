@@ -15,6 +15,7 @@ and have been significantly modified for ONNX Runtime — see
 1. [Overview & Operator Set](#1-overview--operator-set)
 2. [Operator Schema](#2-operator-schema)
 3. [Quantization Modes](#3-quantization-modes)
+  - [3.1 INT4/INT8 CPU Expert Offload](#31-int4int8-cpu-expert-offload)
 4. [Architecture Dispatch & Kernel Paths](#4-architecture-dispatch--kernel-paths)
 5. [PrePack Transformations](#5-prepack-transformations)
 6. [Weight Formats](#6-weight-formats)
@@ -177,6 +178,29 @@ if (quant_type_ == "nvfp4")    use_fp4_dequant_fallback_      = !enable_nvfp4_cu
 if (quant_type_ == "wfp4afp8") use_wfp4afp8_dequant_fallback_ = (sm_ < 100);
 if (quant_type_ == "fp8")      use_fp8_dequant_fallback_      = (sm_ < 90 || block_size_ > 0);
 ```
+
+### 3.1 INT4/INT8 CPU Expert Offload
+
+The CUDA QMoE kernel participates in the session-global MoE placement policy when all of these conditions hold:
+
+- `quant_type="int"`;
+- `expert_weight_bits` is 4 or 8 and FC1/FC2 use that same width;
+- `weights_prepacked=0`, so canonical `[E,N,K/pack]` initializers are available;
+- the activation and scale type is FP16 or BF16.
+
+`session.moe_cpu_offload_experts` selects the global number of eligible MoE/QMoE experts placed on CPU. Loaded
+popularity JSON, expert counters, and adaptive swap policy are shared with dense MoE.
+
+At initialization, QMoE retains canonical quantized CPU bytes, compacts the CUTLASS-packed CUDA weights and their
+scales/biases to the selected CUDA slots, and dequantizes CPU-resident experts once into MLAS GEMM layout. Runtime
+routing uses reusable 256-row activation chunks. Rows selecting CPU experts execute with MLAS and are scattered into
+the CUDA output; CUDA expert IDs are remapped to compact slot IDs. Mixed and all-CPU placement are supported.
+
+Adaptive swaps exchange the packed weight, scale, zero-point-bias, and explicit-bias slices as one expert payload.
+The current QMoE transfer and CPU activation path is synchronous; dense MoE retains its asynchronous overlap.
+
+Unsupported offload modes are FP4/NVFP4/WFP4AFP8, FP8, INT2, mixed-width INT, `weights_prepacked=-1/1`, sparse mixer,
+and the CUDA plugin EP.
 
 `expert_weight_bits` validation:
 - `int` → 4 or 8

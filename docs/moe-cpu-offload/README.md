@@ -9,9 +9,10 @@
 Implement adaptive expert placement for Qwen 3.6 and other Mixture-of-Experts (MoE) models whose expert weights do not
 all fit in GPU memory.
 
-Each `MoE` and `QMoE` node can maintain one exponentially decayed counter per expert. Adaptive offloading currently
-uses those counters for built-in CUDA FP16/BF16 `MoE`: its kernel cache holds disjoint, configurable CPU and CUDA
-expert subsets and exchanges experts asynchronously. Quantized `QMoE` offloading remains outside the implemented scope.
+Each `MoE` and `QMoE` node can maintain one exponentially decayed counter per expert. Adaptive offloading supports
+built-in CUDA FP16/BF16 `MoE` and uniform INT4/INT8 `QMoE` with canonical
+`weights_prepacked=0` initializers. Each kernel cache holds disjoint, configurable CPU and CUDA expert subsets.
+FP4-family, FP8, INT2, mixed-width, and externally prepacked QMoE weights remain outside the implemented scope.
 
 After a complete model inference, the pilot exchanges hot CPU experts with cold CUDA experts within each node when
 their counter differences exceed a configurable threshold. Each node retains its configured CUDA slot count; global
@@ -28,8 +29,11 @@ Training, router changes, expert-weight quantization, and multiple CUDA devices 
   swaps, or redistribution.
 - [#33039](https://github.com/microsoft/onnxruntime/pull/33039) added static FP16/BF16 CUDA `MoE` placement, hybrid
   CPU/CUDA execution, and compact CUDA expert storage.
-- The adaptive-swap implementation exchanges hot CPU experts with cold CUDA experts asynchronously while preserving
-  each node's CUDA slot count. Global slot redistribution across nodes remains future work.
+- Dense MoE exchanges hot CPU experts with cold CUDA experts asynchronously while preserving each node's CUDA slot
+  count. Global slot redistribution across nodes remains future work.
+- CUDA INT4/INT8 `QMoE` compacts the CUTLASS-packed weights, scales, derived zero-point biases, and optional explicit
+  biases to the selected CUDA experts. CPU experts are dequantized once into the dense MLAS layout. QMoE swaps move
+  every packed expert tensor together and publish the new map only after the transfer completes.
 - Expert swaps transpose matrix weights between CUDA and MLAS layouts on their dedicated CUDA streams, rather than
   blocking the transfer pipeline with a CPU transposition callback. Incoming and outgoing experts use separate pinned
   buffers; publication waits for both transfers to finish before changing the CPU/CUDA maps.
@@ -74,8 +78,8 @@ The optional `session.moe_expert_counter_state_file` path is configured separate
 The CPU offload count has the following meaning:
 
 - A non-negative integer is the total number of experts to offload to CPU.
-- Negative values, non-integer values, and counts larger than the total number of eligible CUDA FP16/BF16 `MoE` experts
-  are invalid.
+- Negative values, non-integer values, and counts larger than the total number of eligible CUDA FP16/BF16 `MoE` plus
+  supported INT4/INT8 `QMoE` experts are invalid.
 - Zero disables expert offloading.
 
 The global CUDA budget is:
@@ -86,9 +90,11 @@ cuda_expert_count = total_expert_count - cpu_offload_expert_count
 
 One CUDA slot contains all weights required to execute one expert. The kernel cache splits weights into disjoint
 expert subsets: CPU-resident experts use compact MLAS-layout storage, while CUDA-resident experts use compact CUDA
-storage. The cache does not retain a canonical CPU copy of every CUDA expert. An exchange preserves both stores'
-capacities and moves the outgoing CUDA weights into the incoming expert's CPU slot only when publication is safe.
-This describes the live expert cache, not a bound on total process RSS or temporary initialization/prepacking storage.
+storage. Dense MoE does not retain a canonical CPU copy of every CUDA expert. QMoE retains canonical quantized CPU
+bytes for every expert so an outgoing CUDA expert can be dequantized without reversing the CUTLASS layout; it also
+keeps packed host bytes for CPU-resident experts so an incoming expert can replace a CUDA slot directly. An exchange
+preserves both stores' capacities and publishes the mapping only when the replacement slot is ready. This describes
+the live expert cache, not a bound on total process RSS or temporary initialization/prepacking storage.
 
 ## Expert counters
 
@@ -111,7 +117,8 @@ metadata at the end of the run, before scheduling swaps, rather than waiting for
 Only successful kernel invocations are committed, and asynchronous CPU execution errors are propagated by `EndRun`.
 Repeated invocations of the same node consume the preceding snapshot before reusing its buffers.
 
-On devices supporting CUDA stream memory operations, routing compacts only rows that select a CPU-resident expert.
+For dense MoE on devices supporting CUDA stream memory operations, routing compacts only rows that select a
+CPU-resident expert.
 A short notification callback wakes a per-node CPU worker only for a nonempty compacted batch. That worker transfers
 the compacted activations and routing, executes MLAS, and uploads only those rows' contributions. CUDA expert kernels
 can run concurrently; the compute stream waits for the CPU result only before scattering and combining it.
@@ -120,6 +127,10 @@ stream-memory wait. A wait on a future, CUDA-invisible upload alone can deadlock
 profiling. The upload dependency makes the producer visible to CUDA without moving the wait ahead of CUDA expert GEMMs.
 Single-row decode with no CPU routes releases that device-side wait directly on GPU, without waiting for the host
 notification. Devices without stream memory operations retain the synchronous CPU execution path.
+
+INT4/INT8 QMoE uses the same bounded row compaction and scatter kernels, but currently completes each compact CPU
+chunk synchronously before launching that tile's CUDA expert work. This preserves bounded memory and correctness for
+mixed and all-CPU placement; overlapping QMoE CPU execution with CUDA expert GEMMs is future optimization work.
 
 The policy exposes `alpha` in `[0, 1]` and non-negative `epsilon`. Counters are updated in place and remain bounded by
 the larger of their initial value and `1`. Their defaults and constraints are covered by option-parsing tests.
@@ -247,13 +258,14 @@ Separate pinned buffers, CUDA staging slots, and copy streams allow transfers fr
 Within one exchange, the incoming transfer waits for the outgoing transfer before reusing the shared CUDA layout
 buffer. Publication waits for both directions. Hardware with one copy engine serializes the transfers without changing
 correctness. Additional eligible exchanges are reconsidered at a later inference boundary, not retained in a queue.
-The two expert-sized pinned buffers and two expert-sized CUDA staging/layout buffers exist only while an exchange is
-pending and are released after its publication event completes.
+For dense MoE, the two expert-sized pinned buffers and two expert-sized CUDA staging/layout buffers exist only while
+an exchange is pending and are released after its publication event completes. QMoE currently performs the packed
+expert exchange synchronously at the inference boundary with two reusable pinned staging buffers.
 
-Asynchronous CPU routing processes at most 256 input rows per chunk. Each node retains and reuses compact pinned-host
-and CUDA activation buffers sized for one chunk, so long prefills do not establish a full-row-count high-water
-allocation in every MoE node. The first chunk overlaps the CUDA expert computation; subsequent chunks reuse the same
-bounded buffers.
+CPU routing processes at most 256 input rows per chunk. Each node retains and reuses compact pinned-host and CUDA
+activation buffers sized for one chunk, so long prefills do not establish a full-row-count high-water allocation in
+every MoE node. Dense MoE overlaps the first chunk with CUDA expert computation; QMoE currently processes its chunks
+synchronously.
 
 ## Planned end-of-inference redistribution
 

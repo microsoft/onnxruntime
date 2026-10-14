@@ -4,6 +4,10 @@
 #pragma once
 
 #include "core/common/common.h"
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/kernel_pilot_moe_expert_cache.h"
+#include "core/framework/ort_value.h"
+#endif
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/moe/moe_base.h"
 #include "contrib_ops/cuda/moe/qmoe_row_tiling.h"
@@ -11,8 +15,10 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 
+#include <array>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
 
 namespace onnxruntime {
 namespace contrib {
@@ -26,14 +32,63 @@ constexpr const char* kQMoERowTileSizeConfig = "ep.cuda.qmoe_row_tile_size";
 constexpr const char* kQMoEIntDequantMaxScratchBytes = "ORT_QMOE_INT_DEQUANT_MAX_SCRATCH_BYTES";
 constexpr const char* kQMoEIntDequantMaxScratchBytesConfig = "ep.cuda.qmoe_int_dequant_max_scratch_bytes";
 
-class QMoE final : public CudaKernel, public MoEBase {
+class QMoE final : public CudaKernel, public MoEBase
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    ,
+                   public IKernelPilotMoeExpertCache
+#endif
+{
  public:
   explicit QMoE(const OpKernelInfo& op_kernel_info);
+  ~QMoE() override;
   Status ComputeInternal(OpKernelContext* ctx) const override;
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  Status InitializeKernelPilot(KernelPilot* pilot) override;
+#endif
 
  private:
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  struct CanonicalInput {
+    TensorShape shape;
+    std::vector<uint8_t> data;
+    int32_t element_type{ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED};
+    bool present{false};
+  };
+
+  enum class ResidentTensorKind {
+    Fc1Weights,
+    Fc2Weights,
+    Fc1Scales,
+    Fc2Scales,
+    Fc1QuantBias,
+    Fc2QuantBias,
+    Fc1Bias,
+    Fc2Bias,
+  };
+
+  struct ResidentTensor {
+    ResidentTensorKind kind;
+    size_t expert_bytes{0};
+    size_t swap_offset{0};
+    std::vector<uint8_t> cpu_data;
+  };
+
+  Status InitializeCpuOffload(gsl::span<const int> cuda_experts);
+  Status InitializeCpuExpert(size_t cpu_slot, int expert_id);
+  Status ComputeCpuOffloadChunk(
+      const void* input, const int* route_experts, const float* route_scales,
+      size_t num_rows, size_t hidden_size, size_t inter_size,
+      void* output, concurrency::ThreadPool* thread_pool) const;
+  IAllocatorUniquePtr<void>& ResidentDeviceBuffer(ResidentTensorKind kind);
+  const IAllocatorUniquePtr<void>& ResidentDeviceBuffer(ResidentTensorKind kind) const;
+  int DeviceId() const noexcept override { return device_id_; }
+  bool HasPendingSwap() const noexcept override { return false; }
+  Status ReclaimCompletedSwap() override { return Status::OK(); }
+  Status StartSwap(int cuda_expert_id, int cpu_expert_id) override;
+#endif
+
   // PrePack helpers - each handles one category of input tensor.
   void PrePackTransposeAndPack(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
@@ -141,6 +196,8 @@ class QMoE final : public CudaKernel, public MoEBase {
   IAllocatorUniquePtr<void> packed_fc1_bias_;
   IAllocatorUniquePtr<void> packed_fc2_scales_;
   IAllocatorUniquePtr<void> packed_fc2_bias_;
+  IAllocatorUniquePtr<void> packed_fc1_explicit_bias_;
+  IAllocatorUniquePtr<void> packed_fc2_explicit_bias_;
   // Decode-only [E, K_blocks, N] scale caches for INT2/mixed-width packed GEMV.
   // The canonical initializer inputs remain live for validation and dense prefill fallback.
   IAllocatorUniquePtr<void> gemv_int_fc1_scales_;
@@ -267,6 +324,50 @@ class QMoE final : public CudaKernel, public MoEBase {
 
   mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler mGemmProfiler;
   mutable std::mutex mGemmProfilerMutex;
+
+  bool cpu_offload_enabled_{false};
+  static constexpr size_t kCpuActivationChunkRows = 256;
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  KernelPilot* moe_pilot_{nullptr};
+  int device_id_{0};
+  AllocatorPtr cuda_allocator_;
+  cudaStream_t cpu_offload_stream_{nullptr};
+  cudaEvent_t last_expert_use_event_{nullptr};
+  mutable std::array<CanonicalInput, 19> canonical_inputs_;
+  mutable InlinedVector<int> cuda_experts_;
+  mutable InlinedVector<int> expert_map_;
+  mutable InlinedVector<int> cpu_experts_;
+  mutable InlinedVector<int> cpu_expert_map_;
+  IAllocatorUniquePtr<void> device_expert_map_;
+  std::vector<ResidentTensor> resident_tensors_;
+  size_t swap_staging_bytes_{0};
+  IAllocatorUniquePtr<void> swap_pinned_buffer_;
+  IAllocatorUniquePtr<void> swap_outgoing_pinned_buffer_;
+  mutable IAllocatorUniquePtr<void> cpu_device_input_;
+  mutable IAllocatorUniquePtr<void> cpu_device_output_;
+  mutable IAllocatorUniquePtr<int> cpu_device_rows_;
+  mutable IAllocatorUniquePtr<int> cpu_device_ids_;
+  mutable IAllocatorUniquePtr<float> cpu_device_scales_;
+  mutable IAllocatorUniquePtr<uint32_t> cpu_device_count_;
+  mutable IAllocatorUniquePtr<uint32_t> cpu_device_completion_;
+  mutable IAllocatorUniquePtr<void> cpu_host_input_;
+  mutable IAllocatorUniquePtr<void> cpu_host_output_;
+  mutable IAllocatorUniquePtr<int> cpu_host_ids_;
+  mutable IAllocatorUniquePtr<float> cpu_host_scales_;
+  mutable IAllocatorUniquePtr<uint32_t> cpu_host_count_;
+  std::vector<MLFloat16> cpu_fc1_half_;
+  std::vector<MLFloat16> cpu_fc2_half_;
+  std::vector<float> cpu_fc1_float_;
+  std::vector<float> cpu_fc2_float_;
+  std::vector<MLFloat16> cpu_fc1_bias_half_;
+  std::vector<MLFloat16> cpu_fc2_bias_half_;
+  std::vector<BFloat16> cpu_fc1_bias_bfloat_;
+  std::vector<BFloat16> cpu_fc2_bias_bfloat_;
+  int64_t cpu_num_experts_{0};
+  int64_t cpu_hidden_size_{0};
+  int64_t cpu_inter_size_{0};
+  int64_t cpu_fc1_output_size_{0};
+#endif
 
   struct Fp4GemvTuneKey {
     bool is_fp16 = false;

@@ -228,8 +228,27 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
           input_type != nullptr && input_type->has_tensor_type()
               ? input_type->tensor_type().elem_type()
               : ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+      const auto& node = kernel->Node();
+      const auto& attributes = node.GetAttributes();
+      const auto get_int_attribute = [&](std::string_view name, int64_t default_value) {
+        const auto attribute = attributes.find(std::string(name));
+        return attribute == attributes.end() ? default_value : attribute->second.i();
+      };
+      const auto get_string_attribute = [&](std::string_view name, std::string_view default_value) {
+        const auto attribute = attributes.find(std::string(name));
+        return attribute == attributes.end() ? std::string(default_value) : attribute->second.s();
+      };
+      const int64_t qmoe_bits = get_int_attribute("expert_weight_bits", 0);
+      const bool supported_qmoe =
+          node.OpType() == "QMoE" &&
+          get_string_attribute("quant_type", "int") == "int" &&
+          (qmoe_bits == 4 || qmoe_bits == 8) &&
+          get_int_attribute("fc1_expert_weight_bits", qmoe_bits) == qmoe_bits &&
+          get_int_attribute("fc2_expert_weight_bits", qmoe_bits) == qmoe_bits &&
+          get_int_attribute("weights_prepacked", -1) == 0;
       if (kernel->Node().GetExecutionProviderType() == kCudaExecutionProvider &&
-          kernel->Node().Domain() == kMSDomain && kernel->Node().OpType() == "MoE" &&
+          kernel->Node().Domain() == kMSDomain &&
+          (kernel->Node().OpType() == "MoE" || supported_qmoe) &&
           (element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
            element_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16)) {
         cuda_kernels.push_back(&state);
@@ -238,7 +257,8 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
     }
     ORT_RETURN_IF(cpu_offload_expert_count_ > cuda_eligible_expert_count,
                   "session.moe_cpu_offload_experts is ", cpu_offload_expert_count_,
-                  ", but CUDA FP16/BF16 MoE nodes contain only ", cuda_eligible_expert_count, " experts.");
+                  ", but supported CUDA FP16/BF16 MoE/QMoE nodes contain only ",
+                  cuda_eligible_expert_count, " experts.");
     const size_t cuda_expert_count = cuda_eligible_expert_count - cpu_offload_expert_count_;
 
     std::sort(cuda_kernels.begin(), cuda_kernels.end(), [](const KernelState* lhs, const KernelState* rhs) {
