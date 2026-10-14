@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
+#include "contrib_ops/cuda/moe/qmoe_fused_route.cuh"
 
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
@@ -388,6 +389,50 @@ __global__ void SoftmaxTopKWarpMergeKernel(const T* logits, float* topk_scales, 
     topk_scales[static_cast<size_t>(row) * k + i] = normalize_scales ? (prob / denom) : prob;
     topk_indices[static_cast<size_t>(row) * k + i] = s_indices[i];
   }
+}
+
+template <typename T>
+bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indices,
+                           int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
+                           int* permuted_expert, int64_t* expert_first_token_offset, int num_rows,
+                           int num_experts, int k, bool normalize_scales, bool pdl, cudaStream_t stream) {
+  // k is limited to the values the single-CTA radix-rank map builder supports (1, 2, 4, 6, 8, 10): the fused path then
+  // replaces exactly the launches it is bit-identical to; other k keep the generic route.
+  const bool supported_k = k == 1 || k == 2 || k == 4 || k == 6 || k == 8 || k == 10;
+  if (num_rows < 1 || num_rows > kFusedRouteMaxRows || num_experts != kFusedRouteExperts || !supported_k ||
+      reinterpret_cast<uintptr_t>(logits) % 8 != 0) {
+    return false;
+  }
+  cudaLaunchConfig_t config{};
+  config.gridDim = dim3(1);
+  config.blockDim = dim3(kFusedRouteThreads);
+  config.dynamicSmemBytes = 0;
+  config.stream = stream;
+  cudaLaunchAttribute attribute[1];
+  attribute[0].id = cudaLaunchAttributeProgrammaticStreamSerialization;
+  attribute[0].val.programmaticStreamSerializationAllowed = pdl ? 1 : 0;
+  config.attrs = attribute;
+  config.numAttrs = 1;
+  const auto kernel = k == 10 ? FusedSoftmaxTopKMapsKernel<T, 10> : FusedSoftmaxTopKMapsKernel<T, 0>;
+  const cudaError_t status = cudaLaunchKernelEx(
+      &config, kernel, logits, topk_scales, topk_indices, permuted_row_to_unpermuted_row,
+      unpermuted_row_to_permuted_row, permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales);
+  ORT_ENFORCE(status == cudaSuccess, "fused QMoE routing launch failed: ", cudaGetErrorString(status));
+  return true;
+}
+
+bool LaunchFusedRouteMaps(const half* logits, float* topk_scales, int* topk_indices, int* r2u, int* u2r, int* expert,
+                          int64_t* offsets, int num_rows, int num_experts, int k, bool normalize_scales, bool pdl,
+                          cudaStream_t stream) {
+  return LaunchFusedRouteMapsT<half>(logits, topk_scales, topk_indices, r2u, u2r, expert, offsets, num_rows,
+                                     num_experts, k, normalize_scales, pdl, stream);
+}
+
+bool LaunchFusedRouteMaps(const __nv_bfloat16* logits, float* topk_scales, int* topk_indices, int* r2u, int* u2r,
+                          int* expert, int64_t* offsets, int num_rows, int num_experts, int k, bool normalize_scales,
+                          bool pdl, cudaStream_t stream) {
+  return LaunchFusedRouteMapsT<__nv_bfloat16>(logits, topk_scales, topk_indices, r2u, u2r, expert, offsets, num_rows,
+                                              num_experts, k, normalize_scales, pdl, stream);
 }
 
 template <typename T>

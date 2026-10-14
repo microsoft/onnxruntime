@@ -2268,32 +2268,62 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     act_params.swiglu_fusion = swiglu_fusion;
     act_params.limit = swiglu_limit_;
 
-    const auto fused_routing = route_tile(0, num_rows);
-    ORT_ENFORCE(fused_routing.router_logits == nullptr,
-                "QMoE FP4 GEMV does not support fused routing.");
+    // Decode routing (softmax + top-k + expert maps) in one single-CTA launch for the raw row-major NVFP4 GEMV route;
+    // bit-identical to LaunchSoftmaxTopK + fusedBuildExpertMapsSortFirstToken (env ORT_FP4_GEMV_FUSED_ROUTE=0 disables).
+    static const bool fp4_gemv_pdl =
+        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_PDL", 1) != 0;
+    static const bool fp4_gemv_fused_route =
+        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_FUSED_ROUTE", 1) != 0;
+    static const bool fp4_gemv_fc1_pdl =
+        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_FC1_PDL", 0) != 0;
+    bool fused_route_launched = false;
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-    if (routing_snapshot_) {
-      ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(
-          expert_indices, SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_), stream));
-    }
+    const bool routing_snapshot_active = routing_snapshot_.has_value();
+#else
+    constexpr bool routing_snapshot_active = false;
 #endif
+    if (fp4_gemv_fused_route && use_raw_nvfp4_gemv && nvfp4_weights_row_major_ && sm_ >= 90 &&
+        !routing_snapshot_active && (is_fp16 || is_bf16)) {
+      if (is_fp16) {
+        fused_route_launched = LaunchFusedRouteMaps(
+            static_cast<const half*>(router_probs->DataRaw()), expert_scales, expert_indices, p_r2u,
+            unpermuted_row_to_permuted_row, p_exp, p_efto, static_cast<int>(num_rows), num_experts,
+            static_cast<int>(k_), normalize_routing_weights_, fp4_gemv_pdl, stream);
+      } else {
+        fused_route_launched = LaunchFusedRouteMaps(
+            static_cast<const __nv_bfloat16*>(router_probs->DataRaw()), expert_scales, expert_indices, p_r2u,
+            unpermuted_row_to_permuted_row, p_exp, p_efto, static_cast<int>(num_rows), num_experts,
+            static_cast<int>(k_), normalize_routing_weights_, fp4_gemv_pdl, stream);
+      }
+    }
     IAllocatorUniquePtr<int> blocked_expert_counts;
     IAllocatorUniquePtr<int> blocked_expert_counts_cumsum;
     IAllocatorUniquePtr<int> blocked_row_to_unpermuted_row;
-    if (!ck::fusedBuildExpertMapsSortFirstToken(
-            expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
-            num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream)) {
-      const int64_t num_tokens_per_block = ck::computeNumTokensPerBlock(num_rows, num_experts);
-      const int64_t num_blocks_per_seq = onnxruntime::llm::common::ceilDiv(num_rows, num_tokens_per_block);
-      const size_t num_counts = SafeInt<size_t>(num_experts) * num_blocks_per_seq;
-      blocked_expert_counts = GetScratchBuffer<int>(num_counts, GetComputeStream(context));
-      blocked_expert_counts_cumsum = GetScratchBuffer<int>(num_counts, GetComputeStream(context));
-      blocked_row_to_unpermuted_row = GetScratchBuffer<int>(
-          SafeInt<size_t>(num_experts) * num_rows, GetComputeStream(context));
-      ck::threeStepBuildExpertMapsSortFirstToken(
-          expert_indices, p_exp, p_r2u, unpermuted_row_to_permuted_row, p_efto,
-          blocked_expert_counts.get(), blocked_expert_counts_cumsum.get(),
-          blocked_row_to_unpermuted_row.get(), num_rows, num_experts, k_, 0, stream);
+    if (!fused_route_launched) {
+      const auto fused_routing = route_tile(0, num_rows);
+      ORT_ENFORCE(fused_routing.router_logits == nullptr,
+                  "QMoE FP4 GEMV does not support fused routing.");
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+      if (routing_snapshot_) {
+        ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(
+            expert_indices, SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_), stream));
+      }
+#endif
+      if (!ck::fusedBuildExpertMapsSortFirstToken(
+              expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
+              num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream)) {
+        const int64_t num_tokens_per_block = ck::computeNumTokensPerBlock(num_rows, num_experts);
+        const int64_t num_blocks_per_seq = onnxruntime::llm::common::ceilDiv(num_rows, num_tokens_per_block);
+        const size_t num_counts = SafeInt<size_t>(num_experts) * num_blocks_per_seq;
+        blocked_expert_counts = GetScratchBuffer<int>(num_counts, GetComputeStream(context));
+        blocked_expert_counts_cumsum = GetScratchBuffer<int>(num_counts, GetComputeStream(context));
+        blocked_row_to_unpermuted_row = GetScratchBuffer<int>(
+            SafeInt<size_t>(num_experts) * num_rows, GetComputeStream(context));
+        ck::threeStepBuildExpertMapsSortFirstToken(
+            expert_indices, p_exp, p_r2u, unpermuted_row_to_permuted_row, p_efto,
+            blocked_expert_counts.get(), blocked_expert_counts_cumsum.get(),
+            blocked_row_to_unpermuted_row.get(), num_rows, num_experts, k_, 0, stream);
+      }
     }
 
     const void* fc1_bias = fc1_experts_bias_optional ? fc1_experts_bias_optional->DataRaw() : nullptr;
@@ -2334,6 +2364,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     const bool is_capturing = capture_status != cudaStreamCaptureStatusNone;
     const bool do_tune = enable_fp4_gemv_autotune_ && !have_tune && !is_capturing;
 
+    // FC1 -> FC2 -> finalize overlap through programmatic dependent launch (row-major NVFP4 decode kernels only):
+    // FC2 prefetches its weights and finalize its routing metadata while the previous kernel finishes.
+    const bool fc2_finalize_pdl = fp4_gemv_pdl && use_raw_nvfp4_gemv && nvfp4_weights_row_major_;
     auto run_fused = [&](auto* t_ptr) {
       using T = std::remove_pointer_t<decltype(t_ptr)>;
       const bool skip_expand = fp4_gemv_skip_expand_;
@@ -2353,7 +2386,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             static_cast<const T*>(fc1_bias), static_cast<T*>(p_fc1_buf.get()),
             p_efto, p_exp, num_experts, expanded, inter, hidden, gemv_group_size, sm_, act_params, cfg,
             fc1_gemv_sm80_layout, use_raw_nvfp4_gemv, skip_expand ? p_r2u : nullptr, num_rows, stream,
-            nvfp4_weights_row_major_);
+            nvfp4_weights_row_major_, fused_route_launched && skip_expand && fp4_gemv_fc1_pdl);
       };
       auto launch_fc2 = [&](MoeGemvConfig cfg) {
         gemv::launch_moe_gemv_fp4_symmetric<T>(
@@ -2363,7 +2396,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             gemv_fc2_raw_global_scales,
             static_cast<const T*>(fc2_bias), static_cast<T*>(p_fc2_buf.get()),
             p_efto, p_exp, num_experts, expanded, hidden, inter, gemv_group_size, sm_, cfg,
-            fc2_gemv_sm80_layout, use_raw_nvfp4_gemv, stream, nvfp4_weights_row_major_);
+            fc2_gemv_sm80_layout, use_raw_nvfp4_gemv, stream, nvfp4_weights_row_major_, fc2_finalize_pdl);
       };
 
       if (do_tune) {
@@ -2454,7 +2487,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           static_cast<const T*>(p_fc2_buf.get()), static_cast<T*>(output->MutableDataRaw()),
           nullptr, expert_scales, unpermuted_row_to_permuted_row, p_r2u, expert_indices,
           p_efto, num_rows, hidden, static_cast<int64_t>(k_), num_experts,
-          parallelism_config, false, stream);
+          parallelism_config, false, stream, fc2_finalize_pdl);
     };
 
     if (is_fp16_) {
