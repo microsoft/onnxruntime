@@ -933,9 +933,9 @@ Status ComputeFlashAttentionPagedDecodeVxReduce(onnxruntime::webgpu::ComputeCont
 
 namespace {
 
-bool CanApplyFlashAttentionDensePrefill(const Tensor* Q, const WebgpuAttentionParameters& parameters,
-                                        onnxruntime::webgpu::ComputeContext& context,
-                                        const Tensor* block_table, uint32_t kv_cache_quantization_bits) {
+bool CanApplyDensePrefill(const Tensor* Q, const WebgpuAttentionParameters& parameters,
+                          onnxruntime::webgpu::ComputeContext& context,
+                          const Tensor* block_table, uint32_t kv_cache_quantization_bits) {
   if (block_table != nullptr || parameters.sequence_length_ < 32) {
     return false;
   }
@@ -948,11 +948,11 @@ bool CanApplyFlashAttentionDensePrefill(const Tensor* Q, const WebgpuAttentionPa
       is_apple ? 128u : 64u, context.DeviceLimits().maxComputeWorkgroupStorageSize);
 }
 
-bool CanApplyFlashAttentionFusedPagedPrefill(const Tensor* Q, const WebgpuAttentionParameters& parameters,
-                                             onnxruntime::webgpu::ComputeContext& context,
-                                             const Tensor* block_table, uint32_t block_size,
-                                             uint32_t kv_cache_quantization_bits, const Tensor* attention_bias,
-                                             const Tensor* head_sink, const Tensor* seqlen_k, const Tensor* seqlens_q) {
+bool CanApplyFusedPagedPrefill(const Tensor* Q, const WebgpuAttentionParameters& parameters,
+                               onnxruntime::webgpu::ComputeContext& context,
+                               const Tensor* block_table, uint32_t block_size,
+                               uint32_t kv_cache_quantization_bits, const Tensor* attention_bias,
+                               const Tensor* head_sink, const Tensor* seqlen_k, const Tensor* seqlens_q) {
   return block_table != nullptr && kv_cache_quantization_bits == 0 &&
          attention_bias == nullptr && head_sink == nullptr && parameters.qkv_format_ == Q_K_V_BSNH &&
          seqlen_k != nullptr && seqlens_q != nullptr &&
@@ -961,26 +961,26 @@ bool CanApplyFlashAttentionFusedPagedPrefill(const Tensor* Q, const WebgpuAttent
                                             parameters.sequence_length_, parameters.head_size_, static_cast<int>(block_size));
 }
 
-bool CanApplyFlashAttentionSplitReduce(const Tensor* Q, const WebgpuAttentionParameters& parameters,
-                                       onnxruntime::webgpu::ComputeContext& context,
-                                       const Tensor* block_table, uint32_t kv_cache_quantization_bits) {
+bool CanApplySplitReduce(const Tensor* Q, const WebgpuAttentionParameters& parameters,
+                         onnxruntime::webgpu::ComputeContext& context,
+                         const Tensor* block_table, uint32_t kv_cache_quantization_bits) {
   // Short queries favor split-reduce; dense prefill also falls back when storage does not fit.
   return parameters.sequence_length_ < 32 ||
          (block_table == nullptr &&
-          !CanApplyFlashAttentionDensePrefill(Q, parameters, context, block_table, kv_cache_quantization_bits));
+          !CanApplyDensePrefill(Q, parameters, context, block_table, kv_cache_quantization_bits));
 }
 
-bool CanApplyFlashAttentionPagedDecode(const Tensor* block_table, uint32_t kv_cache_quantization_bits) {
+bool CanApplyPagedDecode(const Tensor* block_table, uint32_t kv_cache_quantization_bits) {
   return block_table != nullptr && kv_cache_quantization_bits == 0;
 }
 
-Status ApplyFlashAttentionDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_value,
-                                       const Tensor* attention_bias, Tensor* attn_output,
-                                       const WebgpuAttentionParameters& parameters,
-                                       onnxruntime::webgpu::ComputeContext& context,
-                                       const Tensor* seqlen_k, const Tensor* seqlens_q, const Tensor* head_sink,
-                                       uint32_t present_sequence_length, uint32_t kv_cache_quantization_bits,
-                                       int compressed_head_size_u32, int local_window_size) {
+Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_value,
+                         const Tensor* attention_bias, Tensor* attn_output,
+                         const WebgpuAttentionParameters& parameters,
+                         onnxruntime::webgpu::ComputeContext& context,
+                         const Tensor* seqlen_k, const Tensor* seqlens_q, const Tensor* head_sink,
+                         uint32_t present_sequence_length, uint32_t kv_cache_quantization_bits,
+                         int compressed_head_size_u32, int local_window_size) {
   constexpr uint32_t tile_size = 64;
   const bool use_seqlen_k = seqlen_k != nullptr;
   const bool use_seqlens_q = seqlens_q != nullptr;
@@ -1069,16 +1069,16 @@ Status ApplyFlashAttentionDensePrefill(const Tensor* Q, Tensor* present_key, Ten
   return context.RunProgram(program);
 }
 
-Status ApplyFlashAttentionSplitReduce(const Tensor* Q, Tensor* present_key, Tensor* present_value,
-                                      const Tensor* attention_bias, Tensor* attn_output,
-                                      const WebgpuAttentionParameters& parameters,
-                                      onnxruntime::webgpu::ComputeContext& context,
-                                      const Tensor* seqlen_k, const Tensor* seqlens_q, const Tensor* head_sink,
-                                      uint32_t present_sequence_length, uint32_t kv_cache_quantization_bits,
-                                      int compressed_head_size_u32, int local_window_size, const Tensor* block_table,
-                                      uint32_t block_size, uint32_t max_num_blocks_per_seq,
-                                      Tensor* indirect_buffer_ptr, uint32_t m_tile,
-                                      const Tensor* total_seqlen) {
+Status ApplySplitReduce(const Tensor* Q, Tensor* present_key, Tensor* present_value,
+                        const Tensor* attention_bias, Tensor* attn_output,
+                        const WebgpuAttentionParameters& parameters,
+                        onnxruntime::webgpu::ComputeContext& context,
+                        const Tensor* seqlen_k, const Tensor* seqlens_q, const Tensor* head_sink,
+                        uint32_t present_sequence_length, uint32_t kv_cache_quantization_bits,
+                        int compressed_head_size_u32, int local_window_size, const Tensor* block_table,
+                        uint32_t block_size, uint32_t max_num_blocks_per_seq,
+                        Tensor* indirect_buffer_ptr, uint32_t m_tile,
+                        const Tensor* total_seqlen) {
   constexpr uint32_t tile_size = 64;
   const bool use_seqlen_k = seqlen_k != nullptr;
   const bool use_seqlens_q = seqlens_q != nullptr;
@@ -1098,7 +1098,7 @@ Status ApplyFlashAttentionSplitReduce(const Tensor* Q, Tensor* present_key, Tens
   const TensorShape out_split_vx_shape(out_split_vx_dims);
   Tensor out_split_vx = context.CreateGPUTensor(Q->DataType(), out_split_vx_shape);
 
-  if (CanApplyFlashAttentionPagedDecode(block_table, kv_cache_quantization_bits)) {
+  if (CanApplyPagedDecode(block_table, kv_cache_quantization_bits)) {
     ORT_RETURN_IF_ERROR(ComputeFlashAttentionPagedDecodeQKV(context, Q, attention_bias, &out_split_vx, present_key, present_value,
                                                             &metadata, seqlen_k, block_table,
                                                             parameters, indirect_buffer_ptr, num_total_seq_length_tile,
@@ -1431,24 +1431,24 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   Tensor* attention_key = kv_cache_quantization_enabled ? quantized_present_key : present_key;
   Tensor* attention_value = kv_cache_quantization_enabled ? quantized_present_value : present_value;
 
-  if (CanApplyFlashAttentionFusedPagedPrefill(Q, parameters, context, block_table, block_size,
-                                              kv_cache_quantization_bits, attention_bias, head_sink, seqlen_k, seqlens_q)) {
+  if (CanApplyFusedPagedPrefill(Q, parameters, context, block_table, block_size,
+                                kv_cache_quantization_bits, attention_bias, head_sink, seqlen_k, seqlens_q)) {
     ORT_RETURN_IF_ERROR(ApplyFlashAttentionPagedPrefill(context, Q, attention_key, attention_value,
                                                         block_table, attn_output, seqlen_k, seqlens_q,
                                                         parameters, block_size, max_num_blocks_per_seq,
                                                         cumulative_seqlens_q));
-  } else if (CanApplyFlashAttentionDensePrefill(Q, parameters, context, block_table, kv_cache_quantization_bits)) {
-    ORT_RETURN_IF_ERROR(ApplyFlashAttentionDensePrefill(Q, attention_key, attention_value, attention_bias,
-                                                        attn_output, parameters, context, seqlen_k, seqlens_q,
-                                                        head_sink, present_sequence_length, kv_cache_quantization_bits,
-                                                        compressed_head_size_u32, local_window_size));
-  } else if (CanApplyFlashAttentionSplitReduce(Q, parameters, context, block_table, kv_cache_quantization_bits)) {
-    ORT_RETURN_IF_ERROR(ApplyFlashAttentionSplitReduce(Q, attention_key, attention_value, attention_bias,
-                                                       attn_output, parameters, context, seqlen_k, seqlens_q,
-                                                       head_sink, present_sequence_length, kv_cache_quantization_bits,
-                                                       compressed_head_size_u32, local_window_size, block_table,
-                                                       block_size, max_num_blocks_per_seq, indirect_buffer_ptr,
-                                                       m_tile, total_seqlen));
+  } else if (CanApplyDensePrefill(Q, parameters, context, block_table, kv_cache_quantization_bits)) {
+    ORT_RETURN_IF_ERROR(ApplyDensePrefill(Q, attention_key, attention_value, attention_bias,
+                                          attn_output, parameters, context, seqlen_k, seqlens_q,
+                                          head_sink, present_sequence_length, kv_cache_quantization_bits,
+                                          compressed_head_size_u32, local_window_size));
+  } else if (CanApplySplitReduce(Q, parameters, context, block_table, kv_cache_quantization_bits)) {
+    ORT_RETURN_IF_ERROR(ApplySplitReduce(Q, attention_key, attention_value, attention_bias,
+                                         attn_output, parameters, context, seqlen_k, seqlens_q,
+                                         head_sink, present_sequence_length, kv_cache_quantization_bits,
+                                         compressed_head_size_u32, local_window_size, block_table,
+                                         block_size, max_num_blocks_per_seq, indirect_buffer_ptr,
+                                         m_tile, total_seqlen));
   } else {
     // A paged cache must never fall through to a shader that assumes dense BNSH storage.
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
