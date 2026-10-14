@@ -5,6 +5,7 @@
 import unittest
 from pathlib import Path
 
+import yaml
 from packaging.markers import default_environment
 from packaging.requirements import Requirement
 
@@ -68,6 +69,53 @@ class PythonPackagingRequirementsTest(unittest.TestCase):
                         if req.marker is None or req.marker.evaluate(marker_environment(version))
                     }
                     self.assertEqual(active & excluded, excluded if version != "3.15" else set())
+
+
+class PythonPackagingCpuJobsTest(unittest.TestCase):
+    def test_windows_matrix_includes_unconditional_python315_for_both_architectures(self):
+        path = ROOT / "tools/ci_build/github/azure-pipelines/templates/py-win-cpu.yml"
+        template = yaml.load(path.read_text(), Loader=yaml.BaseLoader)
+        self.assertEqual(
+            [p["name"] for p in template["parameters"]],
+            ["architecture", "build_py_parameters", "cmake_build_type"],
+        )
+        matrix = template["jobs"][0]["strategy"]["matrix"]
+        self.assertEqual(
+            list(matrix), [f"Python{v}_${{{{parameters.architecture}}}}" for v in (311, 312, 313, 314, 315)]
+        )
+        for architecture in ("x64", "arm64"):
+            with self.subTest(architecture=architecture):
+                expanded = {
+                    key.replace("${{parameters.architecture}}", architecture): value for key, value in matrix.items()
+                }
+                self.assertEqual(expanded[f"Python315_{architecture}"], {"PythonVersion": "3.15"})
+
+    def test_macos_python315_is_inside_existing_platform_switch(self):
+        path = ROOT / "tools/ci_build/github/azure-pipelines/stages/py-cpu-packaging-stage.yml"
+        template = yaml.load(path.read_text(), Loader=yaml.BaseLoader)
+        self.assertEqual(
+            [p["name"] for p in template["parameters"]],
+            [
+                "build_py_parameters",
+                "enable_linux_cpu",
+                "enable_windows_cpu",
+                "enable_mac_cpu",
+                "enable_linux_arm",
+                "cmake_build_type",
+            ],
+        )
+        self.assertEqual(
+            [next(iter(branch)) for branch in template["stages"]],
+            [
+                f"${{{{ if eq(parameters.{name}, true) }}}}"
+                for name in ("enable_windows_cpu", "enable_mac_cpu", "enable_linux_arm", "enable_linux_cpu")
+            ],
+        )
+        mac = template["stages"][1]["${{ if eq(parameters.enable_mac_cpu, true) }}"][0]
+        self.assertEqual(
+            [job["parameters"]["python_version"] for job in mac["jobs"]], ["3.11", "3.12", "3.13", "3.14", "3.15"]
+        )
+        self.assertTrue(all(job["parameters"]["arch"] == "arm64" for job in mac["jobs"]))
 
 
 if __name__ == "__main__":

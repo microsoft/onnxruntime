@@ -13,6 +13,7 @@ PYTHON_EXES=(
   "/opt/python/cp313-cp313t/bin/python3.13"
   "/opt/python/cp314-cp314/bin/python3.14"
   "/opt/python/cp314-cp314t/bin/python3.14"
+  "/opt/python/cp315-cp315/bin/python3.15"
   "/opt/python/cp312-cp312/bin/python3.12"
   )
 
