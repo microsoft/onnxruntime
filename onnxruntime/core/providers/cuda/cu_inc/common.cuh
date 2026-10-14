@@ -509,6 +509,40 @@ __device__ __inline__ T _Mod(T a, T b) {
   return r;
 }
 
+template <>
+__device__ __inline__ float _Mod(float a, float b) {
+  float r = fmodf(a, b);
+  if (r == 0.0f) {
+    return copysignf(0.0f, b);
+  }
+  if ((r > 0.0f && b < 0.0f) || (r < 0.0f && b > 0.0f)) {
+    r += b;
+  }
+  return r;
+}
+
+template <>
+__device__ __inline__ double _Mod(double a, double b) {
+  double r = fmod(a, b);
+  if (r == 0.0) {
+    return copysign(0.0, b);
+  }
+  if ((r > 0.0 && b < 0.0) || (r < 0.0 && b > 0.0)) {
+    r += b;
+  }
+  return r;
+}
+
+template <>
+__device__ __inline__ half _Mod(half a, half b) {
+  return half(_Mod(static_cast<float>(a), static_cast<float>(b)));
+}
+
+template <>
+__device__ __inline__ BFloat16 _Mod(BFloat16 a, BFloat16 b) {
+  return BFloat16(_Mod(static_cast<float>(a), static_cast<float>(b)));
+}
+
 template <typename T>
 __device__ __inline__ T _Fmod(T a, T b) {
   return a % b;
