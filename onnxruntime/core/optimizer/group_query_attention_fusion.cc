@@ -440,6 +440,16 @@ Status GroupQueryAttentionFusion::ApplyImpl(
       continue;
     }
 
+    // The fusion rewrites the GQA node's inputs to a fixed 9-element list (up to sin_cache, input #8).
+    // Any extra input slots, including empty optional placeholders, would be dropped while the
+    // input-arg-count array retains its old entries, producing an invalid graph at resolve time.
+    // Bound inputs beyond sin_cache would also lose their semantics, so skip fusion in either case.
+    const auto& node_input_defs = node.InputDefs();
+    if (node_input_defs.size() > 9) {
+      DEBUG_LOG("Skipping GroupQueryAttention fusion because the node has input slots beyond sin_cache.");
+      continue;
+    }
+
     const TensorProto* k_proj_tensor = nullptr;
     const TensorProto* k_scale_tensor = nullptr;
     const TensorProto* k_zero_points_tensor = nullptr;
