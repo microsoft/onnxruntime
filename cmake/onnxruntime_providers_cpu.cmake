@@ -215,6 +215,7 @@ set_target_properties(${onnxruntime_providers_target} PROPERTIES LINKER_LANGUAGE
 set_target_properties(${onnxruntime_providers_target} PROPERTIES FOLDER "ONNXRuntime")
 
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
+                                  AND onnxruntime_BUILD_SHARED_LIB
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS"
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
