@@ -105,7 +105,7 @@ struct PendingPipelineBuild {
 //
 // A command with both fields empty is therefore valid only in state 3 before deferred pipeline
 // resolution. DispatchCommand() requires compute_pipeline to be set.
-struct CapturedCommandInfo {
+struct DispatchCommandInfo {
   std::string program_key;
   std::optional<PendingPipelineBuild> pending_build;
   std::optional<wgpu::ComputePipeline> compute_pipeline;
@@ -125,7 +125,7 @@ struct CapturedBufferCopy {
 
 // Copies retain both buffers and share dispatch ordering, but do not consume timestamp query slots.
 struct CapturedCommand {
-  std::variant<CapturedCommandInfo, CapturedBufferCopy> operation;
+  std::variant<DispatchCommandInfo, CapturedBufferCopy> operation;
 };
 
 // A command recording timeline has one caller at a time. ORT serializes Run on a Session;
@@ -145,7 +145,7 @@ struct CommandRecordingState {
   std::mutex pending_release_callbacks_mutex;
   std::vector<std::function<void()>> pending_release_callbacks;
 #endif
-  std::vector<CapturedCommandInfo> deferred_dispatches;
+  std::vector<DispatchCommandInfo> deferred_dispatches;
   std::vector<PendingKernelInfo> pending_kernels;
   GraphCaptureState graph_capture_state{GraphCaptureState::Default};
   std::vector<CapturedCommand>* external_captured_commands = nullptr;
@@ -451,7 +451,7 @@ class WebGpuContext final {
                                   const std::vector<uint32_t>& bind_buffers_segments,
                                   const wgpu::BindGroupLayout& bind_group_layout,
                                   std::string_view label) const;
-  void DispatchCommand(const webgpu::CapturedCommandInfo& command, CommandRecordingState& recording);
+  void DispatchCommand(const webgpu::DispatchCommandInfo& command, CommandRecordingState& recording);
   Status EncodeDeferredDispatches(CommandRecordingState& recording);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;

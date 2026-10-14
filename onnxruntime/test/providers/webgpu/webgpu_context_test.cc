@@ -230,7 +230,7 @@ void TestCopyAfterDeferredDispatch(bool upload, bool checked_completion = false)
   bind_group_desc.layout = pipeline.GetBindGroupLayout(0);
   bind_group_desc.entryCount = entries.size();
   bind_group_desc.entries = entries.data();
-  webgpu::CapturedCommandInfo dispatch;
+  webgpu::DispatchCommandInfo dispatch;
   dispatch.compute_pipeline = pipeline;
   dispatch.bind_group = context.Device().CreateBindGroup(&bind_group_desc);
   recording.deferred_dispatches.push_back(std::move(dispatch));
@@ -343,7 +343,7 @@ TEST(WebGpuContextTest, CheckedCompletionDrainsAfterDeferredDispatchFailure) {
   auto& webgpu_ep = static_cast<WebGpuExecutionProvider&>(*ep);
   auto& context = webgpu::WebGpuContextFactory::GetContext(0);
   auto& recording = webgpu_ep.Recording();
-  webgpu::CapturedCommandInfo invalid_dispatch;
+  webgpu::DispatchCommandInfo invalid_dispatch;
   invalid_dispatch.program_key = "checked-completion-missing-pipeline";
   recording.deferred_dispatches.push_back(std::move(invalid_dispatch));
   recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);
@@ -448,7 +448,7 @@ TEST(WebGpuContextTest, FailedPipelineWaitRetainsCallbackUntilDelivery) {
   RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&) {
     // Invalid WGSL makes the pipeline event ready synchronously, but WaitAnyOnly defers delivery.
     context.PushErrorScope();
-    webgpu::CapturedCommandInfo dispatch;
+    webgpu::DispatchCommandInfo dispatch;
     dispatch.program_key = "failed-wait-pipeline-callback";
     auto& build = dispatch.pending_build.emplace();
     ASSERT_STATUS_OK(StartPipelineCallbackTestBuild(context, build, true));
@@ -495,7 +495,7 @@ TEST(WebGpuContextTest, FailedPipelineWaitRetainsCallbackAfterContextDestruction
   std::weak_ptr<webgpu::PipelineCallbackContext> weak_context;
   RunWithExternalCompletionContext([&](auto& context, auto& ep, const auto&) {
     context.PushErrorScope();
-    webgpu::CapturedCommandInfo dispatch;
+    webgpu::DispatchCommandInfo dispatch;
     dispatch.program_key = "post-context-pipeline-callback";
     auto& build = dispatch.pending_build.emplace();
     ASSERT_STATUS_OK(StartPipelineCallbackTestBuild(context, build, true));
@@ -886,7 +886,7 @@ TEST(WebGpuContextTest, FailedFlushDiscardsPendingBuffersFromBothManagers) {
     auto shared_released = shared_manager.Create(recording, 64, usage);
     wgpu::Buffer retained{released};
     wgpu::Buffer shared_retained{shared_released};
-    webgpu::CapturedCommandInfo dispatch;
+    webgpu::DispatchCommandInfo dispatch;
     dispatch.program_key = "missing_pipeline_for_failed_flush_test";
     recording.deferred_dispatches.push_back(std::move(dispatch));
     recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);

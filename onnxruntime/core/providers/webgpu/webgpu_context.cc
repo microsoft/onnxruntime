@@ -957,7 +957,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   // Record the ready bind group and return. The deferred drain only needs to wait for the pipeline
   // and encode the dispatch commands.
-  webgpu::CapturedCommandInfo command;
+  webgpu::DispatchCommandInfo command;
   command.program_key = key;
   if (program_artifact != nullptr) {
     command.compute_pipeline = program_artifact->compute_pipeline;
@@ -1521,7 +1521,7 @@ wgpu::BindGroup WebGpuContext::CreateBindGroup(const std::vector<WGPUBuffer>& bi
   return wgpu::BindGroup::Acquire(bind_group);
 }
 
-void WebGpuContext::DispatchCommand(const webgpu::CapturedCommandInfo& command,
+void WebGpuContext::DispatchCommand(const webgpu::DispatchCommandInfo& command,
                                     CommandRecordingState& recording) {
   ORT_ENFORCE(command.compute_pipeline.has_value());
   ORT_ENFORCE(command.bind_group != nullptr);
@@ -1587,7 +1587,7 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommand>& captured_
       CopyBuffer(copy->source.Get(), copy->destination.Get(), copy->size, recording);
       continue;
     }
-    const auto& command = std::get<CapturedCommandInfo>(operation);
+    const auto& command = std::get<DispatchCommandInfo>(operation);
     // Restore profiling info when profiling is enabled. All commands are expected
     // to have profiling data in this mode to keep pending_kernels_ consistent
     // with num_pending_dispatches_.
