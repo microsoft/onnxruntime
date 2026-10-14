@@ -28,6 +28,34 @@ For Expo managed/prebuild workflows, add the config plugin to your `app.json`/`a
 
 Then run `npx expo prebuild` to apply the native changes.
 
+#### Pinning native package versions
+
+By default, Android and iOS resolve the latest available ONNX Runtime native package. To make native dependency
+resolution reproducible, add `onnxruntimeVersion` to your app's root `package.json`:
+
+```json
+{
+  "onnxruntimeVersion": "1.30.0"
+}
+```
+
+This version is used for `onnxruntime-android` (or `onnxruntime-android-qnn`) on Android and `onnxruntime-c` on iOS.
+The selected version must be available from Maven Central and CocoaPods for the platforms you build. QNN package
+versions may differ from the standard Android package, so verify that the selected version of
+`onnxruntime-android-qnn` is available when `onnxruntimeUseQnn` is enabled.
+
+ONNX Runtime Extensions has an independent release version. If extensions are enabled, pin it separately:
+
+```json
+{
+  "onnxruntimeExtensionsEnabled": "true",
+  "onnxruntimeExtensionsVersion": "0.14.0"
+}
+```
+
+After changing an iOS version, run `pod update onnxruntime-c` from the `ios` directory. Include
+`onnxruntime-extensions-c` in that command when extensions are enabled.
+
 ### Usage
 
 ```js
