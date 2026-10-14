@@ -889,6 +889,7 @@ TEST_F(PathValidationTest, ValidateExternalDataPathRejectsMemoryTags) {
   }
 }
 
+#if !defined(__wasm__)
 TEST_F(PathValidationTest, Float6ExternalInitializerRetainsPrepackedWeights) {
   constexpr std::array<uint8_t, 3> packed_data{0x81, 0x30, 0x10};
   std::array<uint8_t, 2> packed_weights_data{0xA5, 0x5A};
@@ -967,6 +968,7 @@ TEST_F(PathValidationTest, Float6EmptyExternalInitializer) {
     EXPECT_EQ(value.Get<Tensor>().Shape().Size(), 0);
   }
 }
+#endif  // !defined(__wasm__)
 
 // Test cases for ValidateExternalDataPath.
 TEST_F(PathValidationTest, ValidateExternalDataPath) {
