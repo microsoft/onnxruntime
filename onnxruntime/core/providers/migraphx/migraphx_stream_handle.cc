@@ -48,8 +48,10 @@ struct MIGraphXNotification : synchronize::Notification {
 MIGraphXStream::MIGraphXStream(hipStream_t stream,
                                const OrtDevice& device,
                                AllocatorPtr cpu_allocator,
-                               bool release_cpu_buffer_on_migraphx_stream)
+                               bool release_cpu_buffer_on_migraphx_stream,
+                               bool own_flag)
     : Stream(stream, device),
+      own_stream_(own_flag),
       cpu_allocator_(std::move(cpu_allocator)),
       release_cpu_buffer_on_migraphx_stream_(release_cpu_buffer_on_migraphx_stream) {
 }
@@ -169,9 +171,14 @@ void RegisterMIGraphXStreamHandles(IStreamCommandHandleRegistry& stream_handle_r
     stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator,
                                                                 release_cpu_buffer_on_migraphx_stream,
                                                                 external_stream](const OrtDevice& device) {
-      return std::make_unique<MIGraphXStream>(external_stream, device, cpu_allocator, release_cpu_buffer_on_migraphx_stream);
+      HIP_CALL_THROW(hipSetDevice(device.Id()));
+      // the external stream is owned by the user: it must not be destroyed or synchronised by the MIGraphXStream
+      return std::make_unique<MIGraphXStream>(external_stream, device, cpu_allocator, release_cpu_buffer_on_migraphx_stream, false);
     });
   }
+  // select the device of the stream on every thread that executes the session, not only on the thread that created
+  // the execution provider or the stream
+  stream_handle_registry.RegisterSetDeviceFn(device_type, [](OrtDevice::DeviceId id) { HIP_CALL_THROW(hipSetDevice(id)); });
 }
 
 }  // namespace onnxruntime

@@ -58,6 +58,14 @@ MIGraphXExecutionProviderInfo::MIGraphXExecutionProviderInfo(const ProviderOptio
                 return Status::OK();
               })
           .AddValueParser(
+              migraphx_provider_option::kUserComputeStream,
+              [this](const std::string& value_str) -> Status {
+                std::uintptr_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                user_compute_stream = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddValueParser(
               migraphx_provider_option::kModelCacheDir,
               [this](const std::string& value_str) -> Status {
                 model_cache_dir = ToPathString(value_str);
@@ -72,7 +80,11 @@ MIGraphXExecutionProviderInfo::MIGraphXExecutionProviderInfo(const ProviderOptio
           .AddAssignmentToReference(migraphx_provider_option::kExhaustiveTune, exhaustive_tune)
           .AddAssignmentToReference(migraphx_provider_option::kMemLimit, mem_limit)
           .AddAssignmentToEnumReference(migraphx_provider_option::kArenaExtendStrategy, arena_extend_strategy_mapping, arena_extend_strategy)
+          .AddAssignmentToReference(migraphx_provider_option::kHasUserComputeStream, has_user_compute_stream)
           .Parse(options));
+
+  // a user compute stream is used if and only if one is provided, like in the CUDA execution provider
+  has_user_compute_stream = (user_compute_stream != nullptr);
 }
 
 MIGraphXExecutionProviderInfo::MIGraphXExecutionProviderInfo(const OrtMIGraphXProviderOptions& options) noexcept
@@ -101,6 +113,8 @@ ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions() const {
       {std::string{migraphx_provider_option::kGpuExternalFree}, MakeStringWithClassicLocale(external_free)},
       {std::string{migraphx_provider_option::kGpuExternalEmptyCache}, MakeStringWithClassicLocale(external_empty_cache)},
       {std::string{migraphx_provider_option::kModelCacheDir}, MakeStringWithClassicLocale(model_cache_dir)},
+      {std::string{migraphx_provider_option::kHasUserComputeStream}, MakeStringWithClassicLocale(has_user_compute_stream)},
+      {std::string{migraphx_provider_option::kUserComputeStream}, MakeStringWithClassicLocale(reinterpret_cast<std::uintptr_t>(user_compute_stream))},
   };
 }
 

@@ -34,6 +34,8 @@ constexpr auto kGpuExternalAlloc = "migraphx_external_alloc"sv;
 constexpr auto kGpuExternalFree = "migraphx_external_free"sv;
 constexpr auto kGpuExternalEmptyCache = "migraphx_external_empty_cache"sv;
 constexpr auto kModelCacheDir = "migraphx_model_cache_dir"sv;
+constexpr auto kHasUserComputeStream = "has_user_compute_stream"sv;
+constexpr auto kUserComputeStream = "user_compute_stream"sv;
 }  // namespace migraphx_provider_option
 
 extern const EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping;
@@ -60,6 +62,11 @@ struct MIGraphXExecutionProviderInfo {
   void* external_free{nullptr};
   void* external_empty_cache{nullptr};
 
+  // HIP stream provided by the user, used by the execution provider instead of creating its own streams.
+  // The stream is not owned by the execution provider, and must remain valid for the lifetime of the session.
+  bool has_user_compute_stream{false};
+  void* user_compute_stream{nullptr};
+
   bool UseExternalAlloc() const {
     return external_alloc != nullptr && external_free != nullptr;
   }
@@ -85,7 +92,8 @@ struct std::hash<::onnxruntime::MIGraphXExecutionProviderInfo> {
                   (static_cast<size_t>(info.int8_enable) << 19) ^
                   (static_cast<size_t>(info.int8_use_native_calibration_table) << 20) ^
                   (static_cast<size_t>(info.exhaustive_tune) << 21) ^
-                  (static_cast<size_t>(info.bf16_enable) << 22);
+                  (static_cast<size_t>(info.bf16_enable) << 22) ^
+                  (static_cast<size_t>(info.has_user_compute_stream) << 23);
 
     onnxruntime::HashCombine(data, value);
 
@@ -99,6 +107,7 @@ struct std::hash<::onnxruntime::MIGraphXExecutionProviderInfo> {
     onnxruntime::HashCombine(reinterpret_cast<size_t>(info.external_alloc), value);
     onnxruntime::HashCombine(reinterpret_cast<size_t>(info.external_free), value);
     onnxruntime::HashCombine(reinterpret_cast<size_t>(info.external_empty_cache), value);
+    onnxruntime::HashCombine(reinterpret_cast<size_t>(info.user_compute_stream), value);
 
     // The default memory arena cfg is not used in hashing right now.
     return value;

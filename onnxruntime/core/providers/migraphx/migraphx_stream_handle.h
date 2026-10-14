@@ -16,7 +16,8 @@ struct MIGraphXStream : Stream {
   MIGraphXStream(hipStream_t stream,
                  const OrtDevice& device,
                  AllocatorPtr cpu_allocator,
-                 bool release_cpu_buffer_on_migraphx_stream);
+                 bool release_cpu_buffer_on_migraphx_stream,
+                 bool own_flag = true);
 
   ~MIGraphXStream() override;
 
