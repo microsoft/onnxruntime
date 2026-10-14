@@ -13,11 +13,9 @@ Each `MoE` and `QMoE` node can maintain one exponentially decayed counter per ex
 uses those counters for built-in CUDA FP16/BF16 `MoE`: its kernel cache holds disjoint, configurable CPU and CUDA
 expert subsets and exchanges experts asynchronously. Quantized `QMoE` offloading remains outside the implemented scope.
 
-The placement policy has two levels, both evaluated by the pilot after a complete model inference:
-
-- Exchange hot CPU experts with cold CUDA experts when their counter differences exceed a configurable threshold.
-- Redistribute the global CUDA expert budget across nodes while maximizing the number of nodes that can run entirely
-  on CUDA.
+After a complete model inference, the pilot exchanges hot CPU experts with cold CUDA experts within each node when
+their counter differences exceed a configurable threshold. Each node retains its configured CUDA slot count; global
+CUDA slot redistribution across nodes remains future work.
 
 Training, router changes, expert-weight quantization, and multiple CUDA devices are outside this implementation.
 

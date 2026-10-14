@@ -749,6 +749,10 @@ Status MoE<T>::ReclaimCompletedSwap() {
   CUDA_RETURN_IF_ERROR(result);
   swap_cuda_expert_ = -1;
   swap_cpu_expert_ = -1;
+  swap_pinned_buffer_.reset();
+  swap_outgoing_pinned_buffer_.reset();
+  swap_cuda_staging_.reset();
+  swap_cuda_layout_buffer_.reset();
   swap_phase_ = SwapPhase::Idle;
   return Status::OK();
 }

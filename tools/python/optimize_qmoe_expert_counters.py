@@ -82,6 +82,11 @@ def parse_args():
 
 def load_replay_trace(log_path):
     summary, identities, _, moe_count, total_expert_count = inspect_trace(log_path)
+    if len(identities) != moe_count:
+        raise ValueError(
+            f"Optimization requires an event from every declared MoE node: "
+            f"observed {len(identities)} of {moe_count} nodes."
+        )
     if total_expert_count % moe_count:
         raise ValueError(
             f"Optimization requires the same expert count for every MoE node: "
