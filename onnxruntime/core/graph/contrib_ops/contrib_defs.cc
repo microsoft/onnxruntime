@@ -1488,13 +1488,15 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       A positive block_size selects square block scaling with float32, float16, or bfloat16 fc*_scales tensors shaped
       [num_experts, ceil(N / block_size), ceil(K / block_size)]:
         dequantized_weight[e, n, k] = float(weight[e, n, k]) * scale[e, n / block_size, k / block_size]
-      Partial edge blocks are allowed. No zero points or activation scales are used.
+      Partial edge blocks are allowed. No zero points or activation scales are accepted.
       Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
       Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
       On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM by default.
       These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
       Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
       Other activation types and unsupported routing sizes retain the fallback.
+      The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
+      that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
 
       Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
       Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
@@ -1576,7 +1578,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("block_size",
               "For integer quantization, size of each quantization block along the K (input feature) dimension. "
               "Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). "
-              "Both hidden_size and inter_size must be divisible by the block size. "
+              "For integer and FP4 quantization, both hidden_size and inter_size must be divisible by "
+              "the block size. FP8 with block_size=128 supports partial 128x128 tiles. "
               "The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 "
               "and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. "
               "For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, "
@@ -1598,13 +1601,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::STRING,
               std::string("int"))
         .Attr("weights_prepacked",
-            "Expert-weight layout selector with quantization-specific meanings. For quant_type='int', "
-            "-1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. "
-            "0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. "
-            "For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; "
-            "1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. "
-            "NVFP4 block scales and global scales retain their original layouts and values. "
-            "Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.",
+              "Expert-weight layout selector with quantization-specific meanings. For quant_type='int', "
+              "-1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. "
+              "0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. "
+              "For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; "
+              "1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. "
+              "NVFP4 block scales and global scales retain their original layouts and values. "
+              "Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))
         .Input(0,

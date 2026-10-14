@@ -2561,8 +2561,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     fc2_weight_data = dequant_fc2_weights.get();
   }
   // FP4 (W4A16) and WFP4AFP8 (W4A8) share the MXFP4 weight format (Float8E8M0 block scales, block 32).
-  // NVFP4 (W4A16) uses Float8E4M3FN block scales with block 16 and always runs the dequant fallback.
-  // When the native CUTLASS path is unavailable on the current SM (always for NVFP4), or when native
+  // NVFP4 (W4A16) uses Float8E4M3FN block scales with block 16.
+  // When the native CUTLASS path is unavailable on the current SM, or when native
   // FP4 routes this call to the dense fallback for the large per-expert-M regime, dequantize the E2M1
   // weights to FP16/BF16 and run the dense A16 runner.
   if (!use_fp4_deep_gemm &&
@@ -2570,16 +2570,18 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       !fp4_sm80_prefill) {
     // The dequant kernel expects raw [E, n, k_blocks] block scales. When native FP4 is enabled
     // (this is the large per-expert-M fallback), packed_fp4_*_block_scales_ holds the TMA-swizzled
-    // layout, so use the raw copy kept in gemv_fp4_*_block_raw_ instead. NVFP4 and the SM<90
-    // dequant-only build have no raw copy, so packed_fp4_*_block_scales_ already holds the raw scales.
-    const void* p_fc1_block_scales = gemv_fp4_fc1_block_raw_ ? gemv_fp4_fc1_block_raw_.get()
-                                                             : (packed_fp4_fc1_block_scales_ ? packed_fp4_fc1_block_scales_.get()
-                                                                                             : (fp4_fc1_block_scales ? fp4_fc1_block_scales->DataRaw() : nullptr));
+    // layout, so use the raw copy kept in gemv_fp4_*_block_raw_ instead. NVFP4 retains its raw
+    // scale inputs; prefer those even when native prepacking also created swizzled scales.
+    const void* p_fc1_block_scales = is_nvfp4 && fp4_fc1_block_scales ? fp4_fc1_block_scales->DataRaw()
+                                     : gemv_fp4_fc1_block_raw_        ? gemv_fp4_fc1_block_raw_.get()
+                                                                      : (packed_fp4_fc1_block_scales_ ? packed_fp4_fc1_block_scales_.get()
+                                                                                                      : (fp4_fc1_block_scales ? fp4_fc1_block_scales->DataRaw() : nullptr));
     const void* p_fc1_global_scale = packed_fc1_global_scale_ ? packed_fc1_global_scale_.get()
                                                               : (fc1_global_scale ? fc1_global_scale->DataRaw() : nullptr);
-    const void* p_fc2_block_scales = gemv_fp4_fc2_block_raw_ ? gemv_fp4_fc2_block_raw_.get()
-                                                             : (packed_fp4_fc2_block_scales_ ? packed_fp4_fc2_block_scales_.get()
-                                                                                             : (fp4_fc2_block_scales ? fp4_fc2_block_scales->DataRaw() : nullptr));
+    const void* p_fc2_block_scales = is_nvfp4 && fp4_fc2_block_scales ? fp4_fc2_block_scales->DataRaw()
+                                     : gemv_fp4_fc2_block_raw_        ? gemv_fp4_fc2_block_raw_.get()
+                                                                      : (packed_fp4_fc2_block_scales_ ? packed_fp4_fc2_block_scales_.get()
+                                                                                                      : (fp4_fc2_block_scales ? fp4_fc2_block_scales->DataRaw() : nullptr));
     const void* p_fc2_global_scale = packed_fc2_global_scale_ ? packed_fc2_global_scale_.get()
                                                               : (fc2_global_scale ? fc2_global_scale->DataRaw() : nullptr);
     ORT_RETURN_IF_NOT(p_fc1_block_scales && p_fc1_global_scale && p_fc2_block_scales && p_fc2_global_scale,

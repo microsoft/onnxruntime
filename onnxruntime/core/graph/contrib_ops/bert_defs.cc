@@ -5189,9 +5189,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Default 0.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("chunk_size",
-              "Tuning hint for the chunk-parallel prefill algorithm. 32 pins the narrow chunk; "
-              "any other value lets the implementation take the widest chunk the device can "
-              "hold. Default 64.",
+              "Tuning hint for the chunk-parallel prefill algorithm. On CUDA, 32 pins the narrow "
+              "chunk and any other value lets the implementation select the widest chunk the device "
+              "can hold. On WebGPU, 16 opts into the chunkwise prefill route on supported Apple silicon; "
+              "default 64 retains recurrent execution. Default 64.",
               AttributeProto::INT, static_cast<int64_t>(64))
         .Attr("state_update_capacity",
               "Capacity C for compact contiguous-prefix transition capture, in [0, 8]. "
