@@ -2,6 +2,14 @@
 
 package onnxruntime
 
+/*
+#include <stdint.h>
+
+static void* ort_pointer_from_uintptr(uintptr_t value) {
+    return (void*)value;
+}
+*/
+import "C"
 import (
 	"fmt"
 	"syscall"
@@ -33,7 +41,8 @@ func loadLibrary(path string) (unsafe.Pointer, libHandle, error) {
 		return nil, nil, fmt.Errorf("FindProc OrtGetApiBase: %w", err)
 	}
 
-	return unsafe.Pointer(proc.Addr()), libHandle(dll), nil
+	// Proc.Addr is a native code address, not a Go-managed pointer.
+	return C.ort_pointer_from_uintptr(C.uintptr_t(proc.Addr())), libHandle(dll), nil
 }
 
 // closeLibrary unloads a library previously returned by loadLibrary.
