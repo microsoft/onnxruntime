@@ -228,7 +228,8 @@ Status RunLayerNormProgram(ComputeContext& context,
   LayerNormProgram program{bias != nullptr, simplified, mean != nullptr, inv_std_dev != nullptr,
                            split_norm_dim, fp32_normalization};
 
-  program.CacheHint(components, simplified, split_norm_dim, fp32_normalization)
+  // Output count alone cannot distinguish mean-only from inverse-standard-deviation-only.
+  program.CacheHint(components, simplified, split_norm_dim, fp32_normalization, mean != nullptr)
       .AddInputs({{x, ProgramTensorMetadataDependency::Type, GetOverrideShape(x->Shape(), components), components}})
       .AddInputs(
           {{scale, ProgramTensorMetadataDependency::Type, GetOverrideShape(scale->Shape(), components), components}})
