@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 // https://github.com/onnx/onnx/blob/main/docs/Operators.md#Scatter
+#include <algorithm>
 #include <atomic>
 #include <type_traits>
 #include <core/common/safeint.h>
@@ -235,17 +236,49 @@ struct Func_Max<BFloat16> {
   }
 };
 
+// Reads indices straight out of the input tensor, widening and normalizing on the way.
+// Keeping the element type here rather than in ScatterData's template arguments avoids
+// instantiating the whole scatter twice; the branch is loop-invariant in practice and costs
+// far less than the int64_t buffer it replaces.
+struct ScatterIndices {
+  const int32_t* as_int32{nullptr};
+  const int64_t* as_int64{nullptr};
+  int64_t axis_dim_limit{0};
+
+  static ScatterIndices Create(const Tensor& indices_input, int64_t axis_dim_limit) {
+    ScatterIndices indices;
+    indices.axis_dim_limit = axis_dim_limit;
+    if (indices_input.GetElementType() == utils::ToTensorProtoElementType<int32_t>()) {
+      indices.as_int32 = indices_input.Data<int32_t>();
+    } else {
+      indices.as_int64 = indices_input.Data<int64_t>();
+    }
+    return indices;
+  }
+
+  // Raw value, for comparing two indices without caring what they normalize to.
+  int64_t Raw(int64_t i) const {
+    return as_int32 != nullptr ? static_cast<int64_t>(as_int32[i]) : as_int64[i];
+  }
+
+  // Only valid once ValidateIndices has accepted the tensor.
+  int64_t operator[](int64_t i) const {
+    const int64_t idx = Raw(i);
+    return idx < 0 ? idx + axis_dim_limit : idx;
+  }
+};
+
+// Checks every index against the axis bound. The normalized values are not stored: the scatter
+// reads the indices tensor directly and normalizes as it goes, which avoids allocating and
+// filling an int64_t per element before any real work starts.
 template <class TIndex>
-Status GetIndices(
+Status ValidateIndices(
     const Tensor& data_input, const Tensor& indices_input, int64_t axis,
-    concurrency::ThreadPool* tp,
-    std::vector<int64_t>& indices_data) {
+    concurrency::ThreadPool* tp) {
   const auto& input_data_shape = data_input.Shape();
   const auto* indices_data_raw = indices_input.Data<TIndex>();
   const auto num_indices = indices_input.Shape().Size();
   const auto axis_dim_limit = input_data_shape[narrow<size_t>(axis)];
-
-  indices_data.resize(narrow<size_t>(num_indices));
 
   // When multiple indices are out-of-bounds, the reported index is nondeterministic
   // (whichever thread wins the CAS). This is acceptable—we only need to report that
@@ -265,7 +298,6 @@ Status GetIndices(
             }
             return;
           }
-          indices_data[narrow<size_t>(i)] = idx < 0 ? idx + axis_dim_limit : idx;
         }
       });
 
@@ -279,10 +311,74 @@ Status GetIndices(
   return Status::OK();
 }
 
+// True when, inside every slice of `inner_size` consecutive indices, all of them are equal.
+// That is the layout an Expand of an [N, 1] index tensor to [N, C] produces, and it means the
+// scatter can move whole contiguous runs instead of individual strided elements.
+// Each worker stops as soon as it sees a mismatch, and other workers stop at their next slice
+// boundary, so indices that are not row-broadcast are rejected after a small amount of work
+// rather than after a full pass.
+inline bool IndicesAreConstantAlongInner(const ScatterIndices& indices, int64_t num_indices,
+                                         int64_t inner_size, concurrency::ThreadPool* tp) {
+  const int64_t num_slices = num_indices / inner_size;
+
+  std::atomic<bool> constant{true};
+  concurrency::ThreadPool::TryParallelFor(
+      tp, narrow<std::ptrdiff_t>(num_slices), static_cast<double>(inner_size),
+      [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+        for (std::ptrdiff_t slice = first; slice < last; ++slice) {
+          if (!constant.load(std::memory_order_relaxed)) {
+            return;
+          }
+          const int64_t base = static_cast<int64_t>(slice) * inner_size;
+          const int64_t first_index = indices.Raw(base);
+          for (int64_t i = 1; i < inner_size; ++i) {
+            if (indices.Raw(base + i) != first_index) {
+              constant.store(false, std::memory_order_relaxed);
+              return;
+            }
+          }
+        }
+      });
+
+  return constant.load(std::memory_order_relaxed);
+}
+
+// Copies the data input over to the output before the updates are applied. This runs before any
+// scatter work and covers the whole tensor, so on a large tensor a single-threaded memcpy leaves
+// the operator thread pool idle through what is often the most expensive part of the node.
+// Small tensors stay on a plain memcpy, where splitting the work would cost more than it saves.
+inline void CopyDataToOutput(void* dst, const void* src, size_t bytes, concurrency::ThreadPool* tp) {
+  constexpr size_t kMinBytesToParallelize = 1 << 20;
+  constexpr size_t kMinBytesPerShard = 256 * 1024;
+
+  const int degree = concurrency::ThreadPool::DegreeOfParallelism(tp);
+  if (tp == nullptr || degree <= 1 || bytes < kMinBytesToParallelize) {
+    memcpy(dst, src, bytes);
+    return;
+  }
+
+  const std::ptrdiff_t num_shards =
+      std::min<std::ptrdiff_t>(degree, narrow<std::ptrdiff_t>(bytes / kMinBytesPerShard));
+  if (num_shards <= 1) {
+    memcpy(dst, src, bytes);
+    return;
+  }
+
+  auto* dst_bytes = static_cast<char*>(dst);
+  const auto* src_bytes = static_cast<const char*>(src);
+  concurrency::ThreadPool::TrySimpleParallelFor(
+      tp, num_shards, [&](std::ptrdiff_t shard) {
+        const auto work =
+            concurrency::ThreadPool::PartitionWork(shard, num_shards, narrow<std::ptrdiff_t>(bytes));
+        memcpy(dst_bytes + work.start, src_bytes + work.start,
+               static_cast<size_t>(work.end - work.start));
+      });
+}
+
 template <class Tdata, typename FuncT>
 Status ScatterData(
     const FuncT& func,
-    const Tensor* data_input, const std::vector<int64_t>& indices_data, const Tensor* updates_input, int64_t axis,
+    const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input, int64_t axis,
     concurrency::ThreadPool* tp,
     Tensor* data_output) {
   const TensorShape& input_data_shape = data_input->Shape();
@@ -290,7 +386,7 @@ Status ScatterData(
   const auto input_elements = input_data_shape.Size();
   const auto total_input_bytes = data_input->SizeInBytes();
 
-  const auto num_indices = narrow<int64_t>(indices_data.size());
+  const auto num_indices = indices_input->Shape().Size();
 
   const auto* src_base = static_cast<const Tdata*>(data_input->DataRaw());
   auto* dst_base = static_cast<Tdata*>(data_output->MutableDataRaw());
@@ -304,7 +400,8 @@ Status ScatterData(
       auto* dst = data_output->MutableData<std::string>();
       std::copy(str_begin, str_end, dst);
     } else {
-      memcpy(static_cast<void*>(dst_base), static_cast<const void*>(src_base), total_input_bytes);
+      CopyDataToOutput(static_cast<void*>(dst_base), static_cast<const void*>(src_base),
+                       total_input_bytes, tp);
     }
   }
 
@@ -355,9 +452,86 @@ Status ScatterData(
   }
 
   const int64_t total_work_units = outer_size * inner_size;
+  const int64_t axis_dim_limit = input_data_shape[narrow<size_t>(axis)];
+  const ScatterIndices indices_data = ScatterIndices::Create(*indices_input, axis_dim_limit);
   const int64_t input_axis_stride = input_strides[narrow<size_t>(axis)];
   const int64_t upd_axis_stride = upd_strides[narrow<size_t>(axis)];
 
+  // Fast path for indices that are constant across the dimensions after the axis.
+  //
+  // The generic loop below gives each work unit a single inner index, so it walks one column of
+  // the updates with a stride of inner_size. When the indices within a slice are all equal, the
+  // whole slice lands on one contiguous run of the output instead, which turns that strided walk
+  // into a sequential one the compiler can vectorize.
+  //
+  // The run is only contiguous if the updates and the data agree on every dimension after the
+  // axis; ScatterElements permits the updates to be smaller there, in which case an inner
+  // coordinate does not map to the same offset in both tensors and this path does not apply.
+  bool inner_dims_match = true;
+  for (size_t d = narrow<size_t>(axis) + 1; d < num_dims; ++d) {
+    if (upd_shape[d] != input_data_shape[d]) {
+      inner_dims_match = false;
+      break;
+    }
+  }
+
+  // Below roughly a cache line the strided access the generic loop performs is already local,
+  // so restricting the fast path keeps it from trading away parallelism for nothing.
+  constexpr int64_t kMinContiguousRun = 8;
+
+  if (inner_dims_match && inner_size >= kMinContiguousRun &&
+      IndicesAreConstantAlongInner(indices_data, num_indices, inner_size, tp)) {
+    // Split the contiguous run into blocks so the work still spreads across threads. Blocks are
+    // kept reasonably wide so each one is worth vectorizing.
+    constexpr int64_t kMinBlockElements = 16;
+    const int64_t max_blocks = std::max<int64_t>(1, inner_size / kMinBlockElements);
+    const int64_t degree = std::max<int64_t>(1, concurrency::ThreadPool::DegreeOfParallelism(tp));
+    const int64_t num_blocks = std::min(degree, max_blocks);
+    const int64_t blocked_work_units = outer_size * num_blocks;
+
+    // Every work unit owns a distinct (outer, inner-range) region of the output, so no two of
+    // them touch the same element. Within a unit the axis is walked in ascending order, which is
+    // the order the generic loop applies updates in, so a destination that receives several
+    // updates still accumulates them in the same sequence.
+    concurrency::ThreadPool::TryParallelFor(
+        tp, narrow<std::ptrdiff_t>(blocked_work_units), static_cast<double>(axis_size * inner_size / num_blocks),
+        [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+          for (std::ptrdiff_t work_idx = first; work_idx < last; ++work_idx) {
+            const int64_t outer_idx = static_cast<int64_t>(work_idx) / num_blocks;
+            const int64_t block_idx = static_cast<int64_t>(work_idx) % num_blocks;
+            const auto block =
+                concurrency::ThreadPool::PartitionWork(narrow<std::ptrdiff_t>(block_idx),
+                                                       narrow<std::ptrdiff_t>(num_blocks),
+                                                       narrow<std::ptrdiff_t>(inner_size));
+
+            // Offsets contributed by the dimensions before the axis. The dimensions after it
+            // contribute the position within the run, which is identical in both tensors because
+            // inner_dims_match was checked above.
+            int64_t dst_base_offset = 0;
+            int64_t upd_base_offset = 0;
+            int64_t outer_remain = outer_idx;
+            for (int64_t d = axis - 1; d >= 0; --d) {
+              const auto dim_size = upd_shape[narrow<size_t>(d)];
+              const auto coord = outer_remain % dim_size;
+              outer_remain /= dim_size;
+              dst_base_offset += coord * input_strides[narrow<size_t>(d)];
+              upd_base_offset += coord * upd_strides[narrow<size_t>(d)];
+            }
+
+            for (int64_t a = 0; a < axis_size; ++a) {
+              const int64_t upd_row = upd_base_offset + a * upd_axis_stride;
+              // Constant across the run, so the first element speaks for all of them.
+              const int64_t axis_idx = indices_data[upd_row + block.start];
+              const int64_t dst_row = dst_base_offset + axis_idx * input_axis_stride;
+              for (std::ptrdiff_t k = block.start; k < block.end; ++k) {
+                func(dst_base + dst_row + k, update_data + upd_row + k);
+              }
+            }
+          }
+        });
+
+    return Status::OK();
+  }
   // Parallelize over independent work units.
   // Each work unit processes axis_size elements along the scatter axis.
   // Cost per unit is proportional to axis_size (number of scatter ops per work unit).
@@ -408,7 +582,7 @@ Status ScatterData(
           // Process axis_size elements along the axis
           for (int64_t a = 0; a < axis_size; ++a) {
             const int64_t upd_flat_idx = upd_base_offset + a * upd_axis_stride;
-            const int64_t axis_idx = indices_data[narrow<size_t>(upd_flat_idx)];
+            const int64_t axis_idx = indices_data[upd_flat_idx];
             const int64_t dst_offset = dst_base_offset + axis_idx * input_axis_stride;
             func(dst_base + dst_offset, update_data + upd_flat_idx);
           }
@@ -420,23 +594,23 @@ Status ScatterData(
 
 template <typename TData>
 struct ScatterDataDispatchTarget {
-  Status operator()(const Tensor* data_input, const std::vector<int64_t>& indices_data, const Tensor* updates_input, int64_t axis,
+  Status operator()(const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input, int64_t axis,
                     const std::string& reduction, concurrency::ThreadPool* tp, Tensor* data_output) const {
     if (reduction == "add")
       return ScatterData<TData>(
-          Func_Add<TData>(), data_input, indices_data, updates_input, axis, tp, data_output);
+          Func_Add<TData>(), data_input, indices_input, updates_input, axis, tp, data_output);
     else if (reduction == "mul")
       return ScatterData<TData>(
-          Func_Mul<TData>(), data_input, indices_data, updates_input, axis, tp, data_output);
+          Func_Mul<TData>(), data_input, indices_input, updates_input, axis, tp, data_output);
     else if (reduction == "min")
       return ScatterData<TData>(
-          Func_Min<TData>(), data_input, indices_data, updates_input, axis, tp, data_output);
+          Func_Min<TData>(), data_input, indices_input, updates_input, axis, tp, data_output);
     else if (reduction == "max")
       return ScatterData<TData>(
-          Func_Max<TData>(), data_input, indices_data, updates_input, axis, tp, data_output);
+          Func_Max<TData>(), data_input, indices_input, updates_input, axis, tp, data_output);
     else  // if (reduction == "none")
       return ScatterData<TData>(
-          Func_Assignment<TData>(), data_input, indices_data, updates_input, axis, tp, data_output);
+          Func_Assignment<TData>(), data_input, indices_input, updates_input, axis, tp, data_output);
   }
 };
 
@@ -487,13 +661,13 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
 
   Status status{};
   const auto index_type = indices_input->GetElementType();
-  std::vector<int64_t> indices_data{};
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
 
+  // Validate up front so an out-of-range index is reported before the output is touched.
   if (index_type == utils::ToTensorProtoElementType<int32_t>()) {
-    status = GetIndices<int32_t>(*data_input, *indices_input, axis, tp, indices_data);
+    status = ValidateIndices<int32_t>(*data_input, *indices_input, axis, tp);
   } else if (index_type == utils::ToTensorProtoElementType<int64_t>()) {
-    status = GetIndices<int64_t>(*data_input, *indices_input, axis, tp, indices_data);
+    status = ValidateIndices<int64_t>(*data_input, *indices_input, axis, tp);
   } else {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Indices type is not supported.");
   }
@@ -507,7 +681,7 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
 
   utils::MLTypeCallDispatcherFromTypeList<EnabledDataTypes> dispatcher{data_type};
   status = dispatcher.template InvokeRet<Status, ScatterDataDispatchTarget>(
-      data_input, indices_data, updates_input, axis, this->reduction_, tp, data_output);
+      data_input, indices_input, updates_input, axis, this->reduction_, tp, data_output);
 
   return status;
 }
@@ -526,9 +700,9 @@ struct Func_Add {
 template <class Tin, class Tdata>
 Status GatherElementsGradImpl(const Tensor* indices_input, const Tensor* updates_input,
                               const int64_t axis, Tensor* data_output) {
-  std::vector<int64_t> indices_data{};
-  ORT_RETURN_IF_ERROR(GetIndices<Tin>(*data_output, *indices_input, axis, nullptr, indices_data));
-  return ScatterData<Tdata>(Func_Add<Tdata>(), data_output, indices_data, updates_input, axis, nullptr, data_output);
+  ORT_RETURN_IF_ERROR(ValidateIndices<Tin>(*data_output, *indices_input, axis, nullptr));
+  return ScatterData<Tdata>(Func_Add<Tdata>(), data_output, indices_input, updates_input, axis, nullptr,
+                            data_output);
 }
 
 #define GATHER_ELEMENTS_GRAD_IMPL_SPECIALIZED(Tin, Tdata) \
