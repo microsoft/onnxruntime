@@ -364,6 +364,8 @@ Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
     LOGS_DEFAULT(VERBOSE) << "Found " << wsl_gpu_infos.size()
                           << " GPU(s) via WSL D3DKMT adapter enumeration.";
 
+    // Every Microsoft-vendor GPU is dropped rather than a specific device id: D3DKMT
+    // enumeration can only succeed inside a GPU-PV guest, which has no real Microsoft GPU.
     gpu_devices.erase(std::remove_if(gpu_devices.begin(), gpu_devices.end(),
                                      [](const OrtHardwareDevice& gpu_device) {
                                        return gpu_device.vendor_id == kMicrosoftPciVendorId;

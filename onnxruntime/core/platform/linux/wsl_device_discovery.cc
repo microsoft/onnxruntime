@@ -3,6 +3,7 @@
 
 #include "core/platform/linux/wsl_device_discovery.h"
 
+#include <cstddef>
 #include <filesystem>
 #include <system_error>
 
@@ -78,6 +79,27 @@ struct D3DKMT_QUERY_DEVICE_IDS {
 struct D3DKMT_CLOSEADAPTER {
   D3DKMT_HANDLE hAdapter;
 };
+
+// libdxcore.so marshals these by offset, so pin the layouts against the kernel's
+// uapi/misc/d3dkmthk.h. The implicit padding before each pointer matches the explicit
+// reserved field the kernel header spells out.
+static_assert(sizeof(D3DKMT_ADAPTERINFO) == 20);
+static_assert(offsetof(D3DKMT_ADAPTERINFO, AdapterLuid) == 4);
+static_assert(offsetof(D3DKMT_ADAPTERINFO, NumOfSources) == 12);
+
+static_assert(sizeof(D3DKMT_ENUMADAPTERS2) == 16);
+static_assert(offsetof(D3DKMT_ENUMADAPTERS2, pAdapters) == 8);
+
+static_assert(sizeof(D3DKMT_ENUMADAPTERS3) == 24);
+static_assert(offsetof(D3DKMT_ENUMADAPTERS3, NumAdapters) == 8);
+static_assert(offsetof(D3DKMT_ENUMADAPTERS3, pAdapters) == 16);
+
+static_assert(sizeof(D3DKMT_QUERYADAPTERINFO) == 24);
+static_assert(offsetof(D3DKMT_QUERYADAPTERINFO, pPrivateDriverData) == 8);
+static_assert(offsetof(D3DKMT_QUERYADAPTERINFO, PrivateDriverDataSize) == 16);
+
+static_assert(sizeof(D3DKMT_QUERY_DEVICE_IDS) == 28);
+static_assert(offsetof(D3DKMT_QUERY_DEVICE_IDS, DeviceIds) == 4);
 
 // KMTQUERYADAPTERINFOTYPE value.
 constexpr uint32_t kQueryTypePhysicalAdapterDeviceIds = 31;
