@@ -21,10 +21,6 @@ parameters:
    - RelWithDebInfo
    - MinSizeRel
 
-- name: enable_python315
-  type: boolean
-  default: false
-
 jobs:
 - job: Windows_py_Wheels_${{parameters.architecture}}
   ${{ if eq(parameters.architecture, 'arm64') }}:
@@ -68,9 +64,8 @@ jobs:
         PythonVersion: '3.13'
       Python314_${{parameters.architecture}}:
         PythonVersion: '3.14'
-      ${{ if eq(parameters.enable_python315, true) }}:
-        Python315_${{parameters.architecture}}:
-          PythonVersion: '3.15'
+      Python315_${{parameters.architecture}}:
+        PythonVersion: '3.15'
   variables:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     ExtraParam: ${{ parameters.build_py_parameters }}

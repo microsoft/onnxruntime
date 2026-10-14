@@ -25,10 +25,6 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_python315
-  type: boolean
-  default: false
-
 - name: cmake_build_type
   type: string
   displayName: 'Linux packages cmake build type. Linux Only.'
@@ -47,14 +43,12 @@ stages:
     - template: ../templates/py-win-cpu.yml
       parameters:
         architecture: 'x64'
-        enable_python315: ${{ parameters.enable_python315 }}
         build_py_parameters: ${{ parameters.build_py_parameters }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: ../templates/py-win-cpu.yml
       parameters:
         architecture: 'arm64'
-        enable_python315: ${{ parameters.enable_python315 }}
         build_py_parameters: ${{ parameters.build_py_parameters }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
@@ -90,13 +84,12 @@ stages:
           cmake_build_type: ${{ parameters.cmake_build_type }}
           python_version: '3.14'
 
-      - ${{ if eq(parameters.enable_python315, true) }}:
-        - template: ../templates/py-macos.yml
-          parameters:
-            arch: 'arm64'
-            extra_build_arg: ${{ parameters.build_py_parameters }}
-            cmake_build_type: ${{ parameters.cmake_build_type }}
-            python_version: '3.15'
+      - template: ../templates/py-macos.yml
+        parameters:
+          arch: 'arm64'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          python_version: '3.15'
 
 - ${{ if eq(parameters.enable_linux_arm, true) }}:
   - stage: Python_Packaging_Linux_ARM
