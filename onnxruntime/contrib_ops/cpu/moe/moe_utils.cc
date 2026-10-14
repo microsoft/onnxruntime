@@ -56,5 +56,27 @@ void ApplySwiGLUActivation(const float* input_data, float* output_data, int64_t 
   }
 }
 
+void ApplyGeGLUActivation(const float* input_data, float* output_data, int64_t inter_size, bool is_interleaved_format,
+                          float activation_alpha, float activation_beta, float clamp_limit) {
+  if (is_interleaved_format) {
+    for (int64_t i = 0; i < inter_size; ++i) {
+      float gate_val = input_data[2 * i];
+      float linear_val = input_data[2 * i + 1];
+
+      gate_val = std::min(gate_val, clamp_limit);
+      linear_val = std::clamp(linear_val, -clamp_limit, clamp_limit);
+
+      // gelu (tanh approximation), matching HF gelu_pytorch_tanh and the Gelu case in
+      // ApplyActivation above. activation_alpha scales the gate pre-activation (default 1).
+      const float g = activation_alpha * gate_val;
+      const float gelu_out = 0.5f * g * (1.0f + std::tanh(0.7978845608f * (g + 0.044715f * g * g * g)));
+
+      output_data[i] = gelu_out * (linear_val + activation_beta);
+    }
+  } else {
+    ORT_NOT_IMPLEMENTED("Non-interleaved format not supported for GeGLU activation");
+  }
+}
+
 }  // namespace contrib
 }  // namespace onnxruntime
