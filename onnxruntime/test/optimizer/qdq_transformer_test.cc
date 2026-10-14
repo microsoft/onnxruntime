@@ -4115,7 +4115,7 @@ TEST(QDQTransformerTests, SoftmaxSaturatesOutputWithoutOverflow) {
         SCOPED_TRACE(testing::Message() << "opset=" << opset << " width=" << width
                                         << " output_scale=" << output_scale);
         auto build_test_case = [&](ModelTestBuilder& builder) {
-          auto* input = builder.MakeInput<uint8_t>({1, width}, 127, 127);
+          auto* input = builder.MakeInput<uint8_t>({1, width}, std::vector<uint8_t>(static_cast<size_t>(width), 127));
           auto* dq_output = builder.MakeIntermediate();
           builder.AddDequantizeLinearNode<uint8_t>(input, 0.105f, 127, dq_output);
           auto* softmax_output = builder.MakeIntermediate();
