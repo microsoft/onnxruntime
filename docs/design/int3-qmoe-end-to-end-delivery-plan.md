@@ -217,6 +217,7 @@ Every heading in this section uses a **proposed label**, not an actual PR number
 
 - Freeze the unsigned codes, offset-4 semantics, row-local LSB-first raw bytes, scale/zero-point rules, FC ordering, and portable tail definitions in Section 2 with exporter/runtime-owner review.
 - Add machine-readable golden fixtures and two independent pack/unpack implementations covering every code, byte/block crossings, row/expert boundaries, tails, zero groups, and malformed inputs.
+- Add byte-for-byte interoperability checks against the Pack/Unpack proposal revision recorded in Section 7.3, covering weights with `count=K` and explicit zero points with `count=B`. Establish an executable standard-operator unpack/dequantization reference for small fixtures; do not defer this reference until P8 or depend on an unreleased opset.
 - Audit Olive's INT3 checkpoint representation and identify explicit canonical conversion requirements; unknown or Q3_K/IQ3 packing is not interchangeable with this format.
 - Exit gate: byte-for-byte agreement and agreed mathematical semantics. This establishes a proposed portable contract, not current ORT tail support, approved ONNX datatypes, or runtime execution.
 
@@ -231,6 +232,7 @@ Every heading in this section uses a **proposed label**, not an actual PR number
 ### PR 2: CUDA Correctness and Bounded Fallback - Proposed (P2)
 
 - Depends on PR 1 and shared fixtures; implement an independent scalar FP32 oracle and separate FP16/BF16 numerical references.
+- Compare the scalar oracle and CUDA results with Section 7.3's unpack/dequantization reference on small fixtures. Cast unsigned codes before zero-point subtraction, expand scales/zero points by logical K-block indexing, and verify omitted/explicit zero-point equivalence independently for FC1 and FC2.
 - Provide bounded expert/block dequantization and CUDA correctness execution for both decode and prefill for `(3,4)`, `(3,3)`, and `(4,3)`, preserving routing, gate/up interleaving, SwiGLU, bias, and FC2 orientation. Decode INT3 or INT4 independently in each projection.
 - Test synthetic and reduced Qwen cases, invalid inputs, tails only where schema-approved, and fallback scratch bounds; prohibit unbounded full-expert dequantization.
 - Exit gate: oracle parity within agreed tolerances and builds/tests for the actual provider targets. Independent harness results do not qualify legacy/plugin integration or untested providers.
@@ -281,6 +283,7 @@ Every heading in this section uses a **proposed label**, not an actual PR number
 - Olive scope: qualify native INT3 checkpoint capability, classify expert/non-expert tensors, provide recipes for `(3,4)`, `(3,3)`, and `(4,3)`, convert checkpoint packing explicitly to canonical raw bytes for either INT3 projection, and emit a reproducible manifest with quantization/rounding/clipping, scale dtype, widths, shapes, block size, and source/tool revisions.
 - Mobius scope: construct native fused QMoE graphs, bind gate/up-interleaved FC1 and correctly oriented FC2 initializers, manage external data, and explicitly emit `quant_type='int'`, `weights_prepacked=0`, block size, and effective widths.
 - Reject schema-unapproved tails/dtype combinations and validate graph/initializer/external-data bindings against shared fixtures; native INT3 linear support does not establish fused QMoE export support.
+- Demonstrate numerical equivalence between the native fused QMoE export and a small standard-operator MoE reference using the same packed INT3 initializers and Section 7.3's decoding semantics. Include routing, gate/up ordering, bias, activation, and FC2 orientation. Automatic detection/fusion of the standard graph remains follow-up work, not a first-export dependency.
 - Exit gate: checkpoint-to-ONNX-to-ORT numerical parity and reproducibility for all three required combinations. Automatic dense-graph fusion, unknown checkpoint-byte reuse, and native packed prefill are not dependencies or implied deliverables.
 
 ### PR 6: CPU Reference and Cross-Provider Parity - Proposed (P6)
@@ -351,6 +354,31 @@ Until then, PR 0/1/5 establish the portable packed contract and its ORT/export i
 ### 7.2 Open Decisions for the Current Proposal
 
 Open approval questions include whether the schema upgrade needs a new contrib version; acceptance of the initial symmetric-only profile, block32/64/128 set, and tail rules; explicit zero-point extension strategy; scale-dtype constraints; specification name/identifier; reference decomposition and shape inference; and diagnostics for older exporters and unsupported providers. Do not claim an ONNX standard is frozen before review resolves these questions.
+
+### 7.3 Alignment with the ONNX Pack/Unpack Proposal
+
+The review comments on [standard-operator representation](https://github.com/microsoft/onnxruntime/pull/32657#issuecomment-6071269333) and the [Pack/Unpack proposal](https://github.com/microsoft/onnxruntime/pull/32657#issuecomment-6133943493) request a portable interpretation of packed weights that can be expressed using standard ONNX operations. [ONNX PR #8576](https://github.com/onnx/onnx/pull/8576), reviewed here at revision `0a15c0c82254ffabf2f5675005cc5cfc8086d9b8` on 2026-10-14, proposes Pack/Unpack with unsigned `uint8` codes, row-local last-axis LSB-first packing, and an explicit scalar int64 `count` input to Unpack. The PR is open and unmerged at this review date; its proposed opset is not an approved or installed runtime dependency. Recheck the final schema and record the tested revision before adopting it.
+
+Section 2's INT3 weight bitstream already matches this proposal, including `[0,1,2,3,4,5,6,7] -> [0x88,0xc6,0xfa]`. No weight-byte redesign or native INT3 datatype is required for that alignment. Explicit INT3 zero points use the same last-axis packing with `count=B`, not `count=K`. Unpack returns unsigned codes only; offset-4 interpretation, quantization, block indexing, scale application, and MoE semantics remain separate operations.
+
+The reference decoding path for an INT3 projection is:
+
+```text
+P: uint8 [E,N,ceil(3*K/8)]
+  -> Unpack(bits=3, count=K): uint8 [E,N,K]
+  -> Cast to the reference floating-point dtype
+  -> Sub(block-expanded zero point, or scalar 4 when omitted)
+  -> Mul(block-expanded scales)
+  -> W_dequant [E,N,K]
+```
+
+Cast codes before subtraction to avoid unsigned wraparound. For explicit zero points, unpack `Z` with `count=B`, cast, and gather the block value at `floor(k/block_size)` along the last axis. Expand scales using the same logical indices, including the final partial block only where the reference/profile permits it. Reference dtype and rounding must match the agreed numerical oracle; the standard graph does not by itself promise bit-identical CUDA accumulation.
+
+Until Pack/Unpack is approved and supported, implement the reference unpack stage using an equivalent graph of existing standard operators (bit shifts/masks, indexing, casts, and shape operations), and compare with the proposal's independent reference decoder. Do not label a model using the draft operator/opset as supported by released ONNX or ORT. A three-bit byte tensor still cannot be fed directly to DequantizeLinear: unpacking must occur first, followed by correctly defined quantization semantics.
+
+The proposal's Pack writes zero high padding bits; its Unpack ignores them. Sections 2.2/2.5 deliberately require canonical zero padding and reject nonzero padding for this INT3 QMoE profile. Keep that stricter validation at the exporter/QMoE-profile boundary, not as a claimed requirement of generic Unpack. Tests must distinguish generic unpack behavior from profile rejection for both weights and zero points.
+
+P0/P2 establish executable decoding references and interoperability before P8. P5 additionally proves the fused export matches a standard-operator MoE reference on small fixtures. These reference graphs are semantic oracles, not a requirement to materialize all experts' floating-point weights in production. Backend fusion and session-time conversion to Section 3's provider-private 2+1 layout remain valid optimization strategies, with bounded memory and unchanged portable bytes. Standardization of Pack/Unpack does not automatically standardize fused QMoE or supply its kernels.
 
 ## 8. Initial Execution Checklist
 
