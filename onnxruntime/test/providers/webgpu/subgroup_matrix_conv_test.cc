@@ -215,8 +215,8 @@ TEST(SubgroupMatrixConv, PartialTiles) {
 //   31  -> odd, largest overhang below the next block
 //   33  -> odd, just past two blocks
 //   50  -> if the selector picks tile_n 64 the clamp cuts it to 48, i.e. three
-//          subgroup matrices along N, a count neither the candidate list nor the
-//          tuned tree produces on its own
+//          subgroup matrices along N, a count the candidate list never produces
+//          on its own
 //
 // Odd values also cover the removal of the old N % 2 == 0 restriction: unlike the
 // MatMul kernel, this one needs no even N because its weight is column-major with

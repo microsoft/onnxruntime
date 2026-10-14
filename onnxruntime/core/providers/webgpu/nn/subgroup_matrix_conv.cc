@@ -41,9 +41,8 @@ constexpr uint32_t kMaxConvScratchElems = 16384;
 // accumulators sg_mat_c<mi>_<ni> for mi < 8 and ni < 4. A tiling above these would be
 // accepted by the selector but silently mis-computed -- the kernel would accumulate
 // only the blocks it generated while the write-out still covers the whole tile. The
-// tile candidates the selector picks from stay inside this, but the Conv pretuned tree
-// is a generated file dropped into the build after a sweep, so enforce rather than
-// assume.
+// tile candidates the selector picks from stay inside this, so this is enforced as a
+// safety net rather than something expected to fire.
 constexpr uint32_t kMaxSgMatCountM = 8;
 constexpr uint32_t kMaxSgMatCountN = 4;
 
@@ -209,7 +208,7 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
 
     // Pick the per-problem output tiling from the vendor policy (Intel). The GEMM
     // dims map directly: A [M, K] x B [K, N] with one z-slice per conv batch. The
-    // Conv selector uses the Conv scratch budget and Conv-specific pretuned data.
+    // Conv selector uses the Conv scratch budget and the Conv-specific heuristic.
     const std::optional<SubgroupMatrixTiling> tiling = tiling_selector_(context, M, N, K, batch);
     if (!tiling) {
       return Status::OK();
@@ -285,8 +284,8 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
 
     // Safety net: the Conv selector already enforces the Conv scratch budget
     // (output tiles + im2col A staging), so this clamp normally does nothing; it
-    // guards against a stray oversized split-K (e.g. a hand-edited pretuned entry).
-    // Only split_k is clamped, not the tile area: the largest candidate tile needs
+    // guards against a stray oversized split-K from the selector. Only split_k is
+    // clamped, not the tile area: the largest candidate tile needs
     // 64 * (64 + 16) = 5120 elements at split_k 1, well inside the budget.
     uint32_t split_k = tiling->split_k;
     while (split_k > 1 &&
@@ -516,9 +515,9 @@ std::unique_ptr<typename Conv<is_channels_last, is_fused>::ConvOptImpl> CreateSu
     if (!config) {
       return nullptr;
     }
-    // The Conv selector shares the autotuner hooks (tile override, device-arch
-    // capture) with MatMul, but budgets the extra im2col staging the Conv kernel
-    // keeps in workgroup memory and consults the Conv-specific pretuned data.
+    // The Conv selector shares the tile candidates with MatMul, but budgets the
+    // extra im2col staging the Conv kernel keeps in workgroup memory and uses the
+    // Conv-specific heuristic.
     SubgroupMatrixTilingSelector tiling_selector = intel::CreateSubgroupMatrixConvTilingSelector(context);
     if (!tiling_selector) {
       return nullptr;

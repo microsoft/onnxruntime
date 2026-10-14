@@ -24,30 +24,6 @@ namespace onnxruntime {
 namespace webgpu {
 namespace intel {
 
-// Optional Conv-specific pretuned decision tree, emitted by
-// tools/python/gen_sgmm_tree.py --mode conv from an on-device Conv sweep. When the
-// .inc is present it defines sgconv_tree::<arch>::{kArch, PredictTilingTree} and is
-// consulted before the Conv heuristic (see LookupConvTree / SelectConvTiling); when
-// absent the heuristic is used. The file is dropped in after a sweep, so the build
-// must not depend on it existing.
-//
-// One such tree is checked in, so the guard looks redundant at first glance. It is
-// not: the tree is measured data, not source, and the include has to keep working
-// both ways -- a build that deletes it (a fork with no interest in shipping Intel
-// tuning data, or a size-constrained target) must still compile, and a new arch's
-// tree must be droppable in without touching the build files. The heuristic is a
-// complete fallback, so the only cost of absence is tiling quality.
-//
-// Included here, inside the namespace, because the generated code names
-// SubgroupMatrixTiling unqualified: it is an oracle over that type and carries no
-// includes or namespace boilerplate of its own.
-#if defined(__has_include)
-#if __has_include("core/providers/webgpu/vendor/intel/nn/subgroup_matrix_conv_tuned.inc")
-#include "core/providers/webgpu/vendor/intel/nn/subgroup_matrix_conv_tuned.inc"
-#define ORT_WEBGPU_HAS_SGCONV_TREE 1
-#endif
-#endif
-
 namespace {
 
 // Subgroup matrix configuration used by this implementation (Intel Xe2/Xe3, F16).
@@ -166,78 +142,82 @@ SubgroupMatrixTiling HeuristicTiling(std::string_view arch, uint32_t M, uint32_t
   return {tile_m, tile_n, split_k};
 }
 
-// Arch the sweep behind ConvHeuristicTiling (below) was measured on. Kept as a
-// plain literal, independent of ORT_WEBGPU_HAS_SGCONV_TREE / subgroup_matrix_conv_tuned.inc,
-// because this heuristic ships as checked-in source and must stay usable even in a
-// build that drops the generated tree.
+// Arch the sweep behind ConvHeuristicTiling (below) was measured on.
 constexpr std::string_view kConvHeuristicArch = "xe-3lpg";
 
-// Restricted-candidate approximation of the generated Conv tree
-// (subgroup_matrix_conv_tuned.inc), fit to the same sweep but for kConvHeuristicArch
-// only -- SelectConvTiling uses it as the fallback when the tree is absent or its
-// prediction fails validation, never for another arch with no sweep data of its own.
-//
-// Picks among 6 (tile_m, tile_n, split_k) combos, each within 20% regret of the true
-// best tiling for its region; deliberately narrower than the tree, so some shapes get
-// a "good enough" pick here instead of the true optimum.
-//
-// batch is unused (not a useful splitting feature on the swept range). split_k is not
-// guaranteed to fit K's block count -- callers must run the result through
-// ClampSplitKToProblem, like a tuned-table/tree result.
-SubgroupMatrixTiling ConvHeuristicTiling(uint32_t M, uint32_t N, uint32_t K, uint32_t /*batch*/) {
-  if (M <= 512u) {
-    if (M <= 160u) {
-      if (N <= 96u) {
-        return {8, 32, 8};
-      } else {
-        if (M <= 32u) {
-          return {8, 32, 8};
+// Same decisions as ConvHeuristicTilingV3, verified against all 16,535 shapes to
+// produce identical predictions (0 mismatches): every M/N/K threshold slid to the
+// nearest multiple of 16 (or 8 where no multiple of 16 fits) that stays strictly
+// between the same two real data values the original threshold separated, so no
+// shape crosses leaves. batch's threshold (6) has no such multiple in its gap
+// (4, 8) -- rounding it to 8 would pull real batch=8 shapes into the wrong leaf --
+// so it is left as-is. Used by SelectConvTiling for kConvHeuristicArch.
+SubgroupMatrixTiling ConvHeuristicTiling(uint32_t M, uint32_t N, uint32_t K, uint32_t batch) {
+  if (K <= 2016u) {
+    if (N <= 112u) {
+      if (N <= 24u) {
+        if (M <= 224u) {
+          return {8, 16, 8};
         } else {
-          return {8, 64, 8};
+          if (K <= 416u) {
+            return {16, 16, 2};
+          } else {
+            if (batch <= 6u) {
+              if (M <= 896u) {
+                return {8, 16, 8};
+              } else {
+                return {16, 16, 4};
+              }
+            } else {
+              return {16, 16, 4};
+            }
+          }
+        }
+      } else {
+        if (M <= 512u) {
+          if (batch <= 6u) {
+            return {8, 32, 8};
+          } else {
+            return {8, 32, 4};
+          }
+        } else {
+          if (K <= 512u) {
+            return {8, 32, 1};
+          } else {
+            return {16, 32, 4};
+          }
         }
       }
     } else {
-      if (N <= 384u) {
-        if (K <= 1024u) {
-          return {8, 64, 4};
-        } else {
-          return {8, 64, 8};
-        }
-      } else {
-        return {16, 64, 2};
-      }
+      return {8, 64, 2};
     }
   } else {
-    if (K <= 512u) {
-      if (N <= 48u) {
-        return {16, 32, 2};
+    if (N <= 112u) {
+      if (N <= 24u) {
+        if (M <= 224u) {
+          return {8, 16, 8};
+        } else {
+          return {16, 16, 8};
+        }
       } else {
-        return {16, 64, 2};
-      }
-    } else {
-      if (N <= 48u) {
-        if (M <= 2048u) {
+        if (M <= 512u) {
           return {8, 32, 8};
         } else {
-          return {16, 32, 2};
-        }
-      } else {
-        if (M <= 896u) {
-          return {8, 64, 8};
-        } else {
-          return {16, 64, 2};
+          return {16, 32, 4};
         }
       }
+    } else {
+      return {8, 64, 8};
     }
   }
 }
 
-// Repairs a pretuned tiling to this problem by halving split_k until it fits both
-// K's block count and the scratch budget. The tuned trees are performance oracles
-// that never see K's block count (they are trained on the problem's log dims only),
-// so they can propose split_k > K / kSubgroupMatrixK on a problem outside the swept
-// envelope. Clamping keeps the tuned tile shape -- the part that carries most of the
-// win -- instead of discarding the prediction and falling back to the heuristic.
+// Repairs a predicted tiling to this problem by halving split_k until it fits both
+// K's block count and the scratch budget. ConvHeuristicTiling is a performance oracle
+// that never sees K's block count (it is trained on the problem's log dims only), so it
+// can propose split_k > K / kSubgroupMatrixK on a problem outside its swept envelope.
+// Clamping keeps the predicted tile shape -- the part that carries most of the win --
+// instead of discarding the prediction and falling back to the arch-agnostic heuristic.
 void ClampSplitKToProblem(SubgroupMatrixTiling& t, uint32_t K, uint32_t scratch_n_pad) {
   const uint32_t k_blocks = K / kSubgroupMatrixK;
   while (t.split_k > 1 && (t.split_k > k_blocks || ScratchElems(t, scratch_n_pad) > kMaxScratchElems)) {
@@ -251,8 +231,8 @@ void ClampSplitKToProblem(SubgroupMatrixTiling& t, uint32_t K, uint32_t scratch_
 // from the weight buffer, and subgroupMatrixLoad is not bounds-checked, so a trailing
 // partial N tile is shifted back to N - tile_n. That shift only exists when
 // tile_n <= N. Neither source guarantees it -- HeuristicTiling only skips candidates
-// larger than N for all but the smallest one, and the tuned trees are unconstrained
-// oracles -- so the cap is applied to both. Shrinking tile_n keeps it a multiple of
+// larger than N for all but the smallest one, and ConvHeuristicTiling is an
+// unconstrained oracle -- so the cap is applied to both. Shrinking tile_n keeps it a multiple of
 // kSubgroupMatrixN and only lowers ScratchElems, so it cannot invalidate a tiling
 // that was already valid.
 //
@@ -299,34 +279,15 @@ std::optional<SubgroupMatrixTiling> LookupPretunedTiling(std::string_view arch, 
   return std::nullopt;
 }
 
-// Looks up the Conv-specific pretuned decision tree for this arch. One `if` per
-// tuned arch; each generated tree carries its own kArch, so the arch spelling lives
-// with the data instead of being duplicated here. Returns nullopt when the arch has
-// not been swept (or no tree was dropped into the build), in which case the caller
-// uses the Conv heuristic.
-std::optional<SubgroupMatrixTiling> LookupConvTree([[maybe_unused]] std::string_view arch,
-                                                   [[maybe_unused]] uint32_t M,
-                                                   [[maybe_unused]] uint32_t N,
-                                                   [[maybe_unused]] uint32_t K,
-                                                   [[maybe_unused]] uint32_t batch) {
-#ifdef ORT_WEBGPU_HAS_SGCONV_TREE
-  if (arch == sgconv_tree::xe3lpg::kArch) {
-    return sgconv_tree::xe3lpg::PredictTilingTree(M, N, K, batch);
-  }
-#endif
-  return std::nullopt;
-}
-
 // Batch slices are dispatched on z as independent output-tile grids, so batch is
 // a pure occupancy multiplier. The pretuned table and heuristic pick tile shape
 // for a single (M, N, K) slice; once batch fills the machine, split-K's
 // cooperative subgroups are redundant. Retire split-K factors whose batch-scaled
 // occupancy would exceed ~2x hardware.
 //
-// Only for batch-blind sources. The Conv tree takes batch as a training feature and
-// was fitted on measurements at batch 1/2/4/8, so its split-K already prices batch in;
-// applying this on top of it double-counts occupancy. Measured over the xe-3lpg sweep,
-// doing so overrode 41% of the tuned picks and raised mean regret from 3.1% to 7.2%.
+// Only for the batch-blind MatMul pretuned table: SelectConvTiling's ConvHeuristicTiling
+// already takes batch into account when picking split-K, so applying this on top of it
+// would double-count occupancy.
 void ClampSplitKForBatch(SubgroupMatrixTiling& t, uint32_t M, uint32_t N, uint32_t batch, uint32_t hw) {
   auto tile_count = [](uint32_t dim, uint32_t tile) { return (dim + tile - 1) / tile; };
   const uint32_t eff_tiles = batch * tile_count(M, t.tile_m) * tile_count(N, t.tile_n);
@@ -352,27 +313,11 @@ SubgroupMatrixTiling SelectTiling(std::string_view arch, uint32_t M, uint32_t N,
   return HeuristicTiling(arch, M, N, K, batch, kMatMulScratchNPad);
 }
 
-// Conv counterpart of SelectTiling. Consults the Conv-specific pretuned tree (when
-// one was dropped in for this arch) before falling back to the Conv heuristic; both
-// use the Conv scratch budget. There is no MatMul-table lookup here: the Conv
-// kernel's cost profile (the im2col gather) differs, and its scratch budget is
-// stricter, so it must not reuse the MatMul-tuned entries.
+// Conv counterpart of SelectTiling: uses the Conv heuristic (kConvHeuristicArch) or the
+// arch-agnostic occupancy heuristic, both under the Conv scratch budget. There is no
+// MatMul-table lookup here: the Conv kernel's cost profile (the im2col gather) differs,
+// and its scratch budget is stricter, so it must not reuse the MatMul-tuned entries.
 SubgroupMatrixTiling SelectConvTiling(std::string_view arch, uint32_t M, uint32_t N, uint32_t K, uint32_t batch) {
-  if (std::optional<SubgroupMatrixTiling> tuned = LookupConvTree(arch, M, N, K, batch)) {
-    // Unlike the MatMul table this prediction already accounts for batch (it is a
-    // model input), so it is taken as-is apart from the correctness clamp -- no
-    // ClampSplitKForBatch, which would second-guess the measured choice.
-    //
-    // The tree only ever violates split_k (every leaf fits the Conv scratch budget by
-    // construction), so clamp rather than discard, then re-check. On the swept
-    // envelope the clamp is a no-op; it only bites for a K smaller than anything
-    // swept.
-    ClampSplitKToProblem(*tuned, K, kConvScratchNPad);
-    if (IsTilingValid(*tuned, K, kConvScratchNPad)) {
-      ClampTileNToProblem(*tuned, N);
-      return *tuned;
-    }
-  }
   // ConvHeuristicTiling is fit to kConvHeuristicArch's sweep only; any other arch
   // (no Conv sweep data) keeps using the arch-agnostic occupancy heuristic.
   SubgroupMatrixTiling tiling = (arch == kConvHeuristicArch)
@@ -412,10 +357,9 @@ SubgroupMatrixTilingSelector CreateSubgroupMatrixConvTilingSelector(
   }
   // Conv tiling policy for the 8x16x16 subgroup-matrix Conv kernel: same tile
   // candidates as MatMul, but selection uses the Conv scratch budget (which also
-  // stages the im2col A tile) and the Conv-specific pretuned tree / heuristic.
+  // stages the im2col A tile) and the Conv-specific heuristic.
   return [](const ComputeContext& context, uint32_t M, uint32_t N,
             uint32_t K, uint32_t batch) -> std::optional<SubgroupMatrixTiling> {
-    const std::string_view arch = std::string_view{context.AdapterInfo().architecture};
     // K must align to the subgroup tiling, and N must hold at least one whole
     // subgroup-matrix N block: the Conv kernel loads B unchecked from the weight
     // buffer and shifts a trailing partial N tile back to N - tile_n, which is
@@ -429,6 +373,7 @@ SubgroupMatrixTilingSelector CreateSubgroupMatrixConvTilingSelector(
     if (K % kSubgroupMatrixK != 0 || N < kSubgroupMatrixN) {
       return std::nullopt;
     }
+    const std::string_view arch = std::string_view{context.AdapterInfo().architecture};
     return SelectConvTiling(arch, M, N, K, batch);
   };
 }
