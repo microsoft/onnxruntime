@@ -6,6 +6,7 @@
 #include "core/optimizer/utils.h"
 #include "float.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <deque>
 
@@ -15,8 +16,6 @@ namespace onnxruntime {
 
 // LayerNorm supports limited data types.
 static constexpr std::array<std::string_view, 4> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"};
-// Default epsilon
-static constexpr float DEFAULT_LAYERNORM_EPSILON = 1e-5f;
 
 static bool IsSupportedDataType(const Node& node, int first_n_inputs = -1) {
   int input_index = 0;
@@ -132,9 +131,46 @@ static bool TryGetScalarInitializerAsDouble(const Graph& graph, const NodeArg& n
   }
 }
 
+static bool TryGetLayerNormEpsilon(const Graph& graph, const Node& reduce_mean_node,
+                                   const NodeArg& epsilon_input, float& epsilon) {
+  double value = 0.0;
+  if (!TryGetScalarInitializerAsDouble(graph, epsilon_input, value)) {
+    const Node* cast = graph.GetProducerNode(epsilon_input.Name());
+    if (cast == nullptr ||
+        !graph_utils::IsSupportedOptypeVersionAndDomain(*cast, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}) ||
+        epsilon_input.Type() == nullptr || *epsilon_input.Type() != "tensor(float)" ||
+        cast->InputDefs().empty() || cast->InputDefs()[0] == nullptr ||
+        !IsSupportedDataType(*cast, 1) ||
+        !TryGetScalarInitializerAsDouble(graph, *cast->InputDefs()[0], value)) {
+      return false;
+    }
+    value = static_cast<double>(static_cast<float>(value));
+  }
+
+  // The fused operator stores epsilon as a float attribute, even for double inputs.
+  epsilon = static_cast<float>(value);
+  if (static_cast<double>(epsilon) != value && !std::isnan(value)) {
+    return false;
+  }
+
+  // A singleton tensor must not introduce dimensions through broadcasting.
+  const auto* epsilon_shape = epsilon_input.Shape();
+  const auto* variance_shape = reduce_mean_node.OutputDefs()[0]->Shape();
+  return epsilon_shape != nullptr &&
+         (epsilon_shape->dim_size() == 0 ||
+          (variance_shape != nullptr && epsilon_shape->dim_size() <= variance_shape->dim_size()));
+}
+
 static bool IsPowExponentTwo(const Graph& graph, const Node& pow_node) {
   const auto& pow_inputs = pow_node.InputDefs();
   if (pow_inputs.size() < 2 || pow_inputs[1] == nullptr) {
+    return false;
+  }
+
+  const auto* base_shape = pow_inputs[0]->Shape();
+  const auto* exponent_shape = pow_inputs[1]->Shape();
+  if (exponent_shape != nullptr && exponent_shape->dim_size() > 0 &&
+      (base_shape == nullptr || exponent_shape->dim_size() > base_shape->dim_size())) {
     return false;
   }
 
@@ -432,12 +468,19 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
     nodes_to_remove.push_back(reduce_mean2_node);
 
+    // LayerNormalization stores epsilon as an attribute, so a runtime or non-scalar value cannot be preserved.
+    const NodeArg* epsilon_input = GetOtherAddInput(add2_node, *reduce_mean2_node.OutputDefs()[0]);
+    float epsilon = 0.0f;
+    if (epsilon_input == nullptr || !TryGetLayerNormEpsilon(graph, reduce_mean2_node, *epsilon_input, epsilon)) {
+      continue;
+    }
+
     // Traceback the reduceMean node to find pow --> reduceMean
     Node& pow_node = *graph.GetNode(reduce_mean2_node.InputNodesBegin()->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13, 15}) ||
         pow_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, pow_node, 1) ||
-        !IsSupportedDataType(pow_node)) {
+        !IsSupportedDataType(pow_node) || !IsPowExponentTwo(graph, pow_node)) {
       continue;
     }
     nodes_to_remove.push_back(pow_node);
@@ -579,13 +622,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                           layer_norm_input_defs,
                                           {}, mul_node, nullptr, kOnnxDomain);
 
-    // Get constant "epsilon" from "Add2" node if available. Else, default value will be used.
-    double epsilon = 0.0;
-    if (TryGetScalarInitializerAsDouble(graph, *add2_node.MutableInputDefs()[1], epsilon)) {
-      layer_norm_node.AddAttribute("epsilon", static_cast<float>(epsilon));
-    } else {
-      layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
-    }
+    layer_norm_node.AddAttribute("epsilon", epsilon);
 
     // The axis definition of layer_norm is ranging from axis to the last dim
     layer_norm_node.AddAttribute("axis", static_cast<int64_t>(axes_values[0]));
@@ -689,7 +726,8 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     nodes_to_remove.push_back(add_node);
 
     const NodeArg* epsilon_input = GetOtherAddInput(add_node, *reduce_mean_node.MutableOutputDefs()[0]);
-    if (epsilon_input == nullptr) {
+    float epsilon = 0.0f;
+    if (epsilon_input == nullptr || !TryGetLayerNormEpsilon(graph, reduce_mean_node, *epsilon_input, epsilon)) {
       continue;
     }
 
@@ -829,20 +867,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
         graph.AddNode(graph.GenerateNodeName(mul_node.Name() + "/SimplifiedLayerNormFusion/"), "SimplifiedLayerNormalization",
                       "fused LayerNorm subgraphs ", layer_norm_input_defs, {}, mul_node, nullptr, kOnnxDomain);
 
-    // Get constant "epsilon" from "Add" node if available. Else, default value will be used.
-    const ONNX_NAMESPACE::TensorProto* tensor_proto =
-        graph_utils::GetConstantInitializer(graph, epsilon_input->Name());
-    if (tensor_proto != nullptr && tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      Initializer initializer{graph, *tensor_proto, graph.ModelPath()};
-      // epsilon must be a scalar/1-element tensor; fall back to default otherwise.
-      if (initializer.size() == 1) {
-        layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
-      } else {
-        layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
-      }
-    } else {
-      layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
-    }
+    layer_norm_node.AddAttribute("epsilon", epsilon);
 
     // Set stash_type to double if any input is double, default value if float.
     if (x_input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE ||
