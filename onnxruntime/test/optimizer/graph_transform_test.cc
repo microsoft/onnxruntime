@@ -2398,108 +2398,257 @@ TEST_F(GraphTransformationTests, FusePadWithNoPadsConv) {
   }
 }
 
-TEST_F(GraphTransformationTests, FusePadWithMaxPool) {
+struct PadMaxPoolFusionTestConfig {
+  std::vector<int64_t> pad_pads{0, 0, 1, 0, 0, 0};
+  std::vector<int64_t> max_pool_pads{0, 1};
+  std::vector<int64_t> strides{};
+  int64_t ceil_mode{0};
+  bool use_explicit_pad_value{true};
+};
+
+template <typename PadType, typename PoolType = PadType>
+void RunPadMaxPoolFusionTest(const std::vector<PadType>& input_values, bool expect_fusion,
+                             PadMaxPoolFusionTestConfig config = {}) {
+  constexpr bool add_cast = !std::is_same_v<PadType, PoolType>;
+
+  auto build_test_case = [&input_values, &config](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<PadType>({1, 1, 2}, input_values);
+    auto* pads = builder.Make1DInitializer<int64_t>(config.pad_pads);
+    auto* pad_output = builder.MakeIntermediate<PadType>(std::nullopt);
+    if (config.use_explicit_pad_value) {
+      auto* pad_value = builder.MakeScalarInitializer<PadType>(PadType{0});
+      builder.AddNode("Pad", {input, pads, pad_value}, {pad_output});
+    } else {
+      builder.AddNode("Pad", {input, pads}, {pad_output});
+    }
+
+    NodeArg* pool_input = pad_output;
+    if constexpr (add_cast) {
+      auto* cast_output = builder.MakeIntermediate<PoolType>(std::nullopt);
+      builder.AddNode("Cast", {pad_output}, {cast_output})
+          .AddAttribute("to", static_cast<int64_t>(utils::ToTensorProtoElementType<PoolType>()));
+      pool_input = cast_output;
+    }
+
+    auto* output = builder.MakeOutput<PoolType>(std::nullopt);
+    auto& max_pool = builder.AddNode("MaxPool", {pool_input}, {output});
+    max_pool.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+    max_pool.AddAttribute("pads", config.max_pool_pads);
+    if (!config.strides.empty()) {
+      max_pool.AddAttribute("strides", config.strides);
+    }
+    if (config.ceil_mode != 0) {
+      max_pool.AddAttribute("ceil_mode", config.ceil_mode);
+    }
+  };
+
+  auto check_transformed_graph = [expect_fusion, &config](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const auto pad_count = op_to_count.find("Pad");
+    ASSERT_EQ(op_to_count.at("MaxPool"), 1);
+    ASSERT_EQ(pad_count == op_to_count.end() ? 0 : pad_count->second, expect_fusion ? 0 : 1);
+    for (const auto& node : session.GetGraph().Nodes()) {
+      if (node.OpType() == "MaxPool") {
+        const auto& pads = node.GetAttributes().at("pads").ints();
+        ASSERT_EQ(pads.size(), 2);
+        ASSERT_EQ(pads[0], config.max_pool_pads[0] + (expect_fusion ? config.pad_pads[2] : 0));
+        ASSERT_EQ(pads[1], config.max_pool_pads[1] + (expect_fusion ? config.pad_pads[5] : 0));
+      }
+    }
+    if constexpr (add_cast) {
+      ASSERT_EQ(op_to_count.at("Cast"), 1);
+      for (const auto& node : session.GetGraph().Nodes()) {
+        if (node.OpType() == "Cast") {
+          const auto* cast_output_shape = node.OutputDefs()[0]->Shape();
+          ASSERT_NE(cast_output_shape, nullptr);
+          ASSERT_EQ(cast_output_shape->dim_size(), 3);
+          ASSERT_EQ(cast_output_shape->dim(0).dim_value(), 1);
+          ASSERT_EQ(cast_output_shape->dim(1).dim_value(), 1);
+          const int64_t expected_width = expect_fusion ? 2 : 2 + config.pad_pads[2] + config.pad_pads[5];
+          ASSERT_EQ(cast_output_shape->dim(2).dim_value(), expected_width);
+        }
+      }
+    }
+  };
+
+  auto rule_transformer_l1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_l1->Register(std::make_unique<PadFusion>()));
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    13,
+                    0.0,
+                    0.0,
+                    std::move(rule_transformer_l1));
+}
+
+TEST_F(GraphTransformationTests, PadMaxPoolFusionSkipsFloat) {
+  PadMaxPoolFusionTestConfig config;
+  config.use_explicit_pad_value = false;
+  RunPadMaxPoolFusionTest<float>({-1.0f, -2.0f}, false, config);
+}
+
+TEST_F(GraphTransformationTests, PadMaxPoolFusionSkipsInt8) {
+  RunPadMaxPoolFusionTest<int8_t>({-1, -2}, false);
+}
+
+TEST_F(GraphTransformationTests, PadMaxPoolFusionPreservesUint8) {
+  RunPadMaxPoolFusionTest<uint8_t>({1, 2}, true);
+}
+
+TEST_F(GraphTransformationTests, PadCastMaxPoolFusionSkipsDouble) {
+  RunPadMaxPoolFusionTest<float, double>({-1.0f, -2.0f}, false);
+}
+
+TEST_F(GraphTransformationTests, PadCastMaxPoolFusionPreservesUint8) {
+  RunPadMaxPoolFusionTest<float, uint8_t>({1.0f, 2.0f}, true);
+}
+
+TEST_F(GraphTransformationTests, PadCastMaxPoolFusionHandlesMissingInputShape) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::nullopt);
+    auto* pads = builder.Make1DInitializer<int64_t>({0, 0, 1, 0, 0, 0});
+    auto* pad_output = builder.MakeIntermediate<float>(std::nullopt);
+    builder.AddNode("Pad", {input, pads}, {pad_output});
+
+    auto* cast_output = builder.MakeIntermediate<uint8_t>(std::nullopt);
+    builder.AddNode("Cast", {pad_output}, {cast_output})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8));
+
+    auto* output = builder.MakeOutput<uint8_t>(std::nullopt);
+    auto& max_pool = builder.AddNode("MaxPool", {cast_output}, {output});
+    max_pool.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+    max_pool.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    ORT_RETURN_IF_NOT(op_to_count.find("Pad") == op_to_count.end(), "Pad should be fused away");
+    ORT_RETURN_IF_NOT(op_to_count.at("Cast") == 1, "Cast should remain");
+    ORT_RETURN_IF_NOT(op_to_count.at("MaxPool") == 1, "MaxPool should remain");
+
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Cast") {
+        ORT_RETURN_IF_NOT(node.OutputDefs()[0]->Shape() == nullptr,
+                          "Cast output shape should remain unknown after fusion");
+      }
+    }
+
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<PadFusion>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case,
+                                        13,
+                                        *logger_,
+                                        std::move(rule_transformer),
+                                        TransformerLevel::Level1,
+                                        1,
+                                        nullptr,
+                                        post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, PadMaxPoolFusionSkipsCeilModeWithTrailingPad) {
+  PadMaxPoolFusionTestConfig config;
+  config.pad_pads = {0, 0, 0, 0, 0, 1};
+  config.max_pool_pads = {0, 0};
+  config.strides = {2};
+  config.ceil_mode = 1;
+  RunPadMaxPoolFusionTest<uint8_t>({1, 2}, false, config);
+}
+
+TEST_F(GraphTransformationTests, PadMaxPoolFusionSkipsFusedPadNotSmallerThanKernel) {
+  PadMaxPoolFusionTestConfig config;
+  config.max_pool_pads = {1, 0};
+  RunPadMaxPoolFusionTest<uint8_t>({1, 2}, false, config);
+}
+
+TEST_F(GraphTransformationTests, PadMaxPoolFusionSkipsFloatModel) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-pad-maxpool.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
 
-  std::vector<int64_t> expected_pads;
-  GraphViewer graphViewer(graph);
-  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
-    auto& node = *graph.GetNode(node_index);
-    if (node.OpType() == "Pad") {
-      const auto* pads_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
-      Initializer pads{graph, *pads_proto, graph.ModelPath()};
-      gsl::span<const int64_t> pads_values = pads.DataAsSpan<int64_t>();
-      expected_pads.resize(pads_values.size() - 4);
-
-      for (uint32_t pads_index = 2, index = 0; pads_index < pads_values.size() / 2; pads_index++, index++) {
-        expected_pads[index] = pads_values[pads_index];
-        expected_pads[index + (expected_pads.size() / 2)] = pads_values[pads_index + (pads_values.size() / 2)];
-      }
-    } else if (node.OpType() == "MaxPool") {
-      auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
-      for (uint32_t index = 0; index < expected_pads.size(); index++) {
-        expected_pads[index] += child_pads->Get(index);
-      }
-    }
-  }
-
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
-  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<PadFusion>()));
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
-
+  auto rule_transformer_l1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_l1->Register(std::make_unique<PadFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_l1), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Pad"], 0);
-  ASSERT_EQ(op_to_count["MaxPool"], 1);
-
-  for (auto& node : graph.Nodes()) {
-    if (node.OpType() == "MaxPool") {
-      auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
-      ASSERT_EQ(child_pads->size(), static_cast<int32_t>(expected_pads.size()))
-          << "fusion should produce the same size of pads integer as the MaxPool node";
-      for (uint32_t index = 0; index < expected_pads.size(); index++) {
-        ASSERT_EQ(expected_pads[index], child_pads->Get(index))
-            << "fusion does not produce correct padding value";
-      }
-    }
-  }
+  const auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count.at("Pad"), 1);
+  ASSERT_EQ(op_to_count.at("MaxPool"), 1);
 }
 
-TEST_F(GraphTransformationTests, FusePadWithMaxPoolOpsetLessThan11) {
+TEST_F(GraphTransformationTests, PadMaxPoolFusionSkipsFloatModelOpsetLessThan11) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-pad-maxpool-opset8.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
 
-  std::vector<int64_t> expected_pads;
-  GraphViewer graphViewer(graph);
-  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
-    auto& node = *graph.GetNode(node_index);
-    if (node.OpType() == "Pad") {
-      gsl::span<const int64_t> pads_values = node.GetAttributes().at("pads").ints();
-      expected_pads.resize(pads_values.size() - 4);
-
-      for (uint32_t pads_index = 2, index = 0; pads_index < pads_values.size() / 2; pads_index++, index++) {
-        expected_pads[index] = pads_values[pads_index];
-        expected_pads[index + (expected_pads.size() / 2)] = pads_values[pads_index + (pads_values.size() / 2)];
-      }
-    } else if (node.OpType() == "MaxPool") {
-      auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
-      for (uint32_t index = 0; index < expected_pads.size(); index++) {
-        expected_pads[index] += child_pads->Get(index);
-      }
-    }
-  }
-
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
-  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<PadFusion>()));
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
-
+  auto rule_transformer_l1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_l1->Register(std::make_unique<PadFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_l1), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Pad"], 0);
-  ASSERT_EQ(op_to_count["MaxPool"], 1);
+  const auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count.at("Pad"), 1);
+  ASSERT_EQ(op_to_count.at("MaxPool"), 1);
+}
 
-  for (auto& node : graph.Nodes()) {
-    if (node.OpType() == "MaxPool") {
-      auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
-      ASSERT_EQ(child_pads->size(), static_cast<int32_t>(expected_pads.size()))
-          << "fusion should produce the same size of pads integer as the MaxPool node";
-      for (uint32_t index = 0; index < expected_pads.size(); index++) {
-        ASSERT_EQ(expected_pads[index], child_pads->Get(index))
-            << "fusion does not produce correct padding value";
+TEST_F(GraphTransformationTests, PadAveragePoolFusionPreservesCeilModeDivisor) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 1, 2}, {2.0f, 4.0f});
+    auto* pads = builder.Make1DInitializer<int64_t>({0, 0, 1, 0, 0, 0});
+    auto* pad_output = builder.MakeIntermediate<float>(std::nullopt);
+    builder.AddNode("Pad", {input, pads}, {pad_output});
+
+    auto* output = builder.MakeOutput<float>(std::nullopt);
+    auto& average_pool = builder.AddNode("AveragePool", {pad_output}, {output});
+    average_pool.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+    average_pool.AddAttribute("strides", std::vector<int64_t>{2});
+    average_pool.AddAttribute("pads", std::vector<int64_t>{0, 0});
+    average_pool.AddAttribute("ceil_mode", static_cast<int64_t>(1));
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const auto pad_count = op_to_count.find("Pad");
+    ASSERT_EQ(pad_count == op_to_count.end() ? 0 : pad_count->second, 0);
+    ASSERT_EQ(op_to_count.at("AveragePool"), 1);
+
+    for (const auto& node : session.GetGraph().Nodes()) {
+      if (node.OpType() == "AveragePool") {
+        const auto& attributes = node.GetAttributes();
+        const auto& pads = attributes.at("pads").ints();
+        ASSERT_EQ(pads.size(), 2);
+        ASSERT_EQ(pads[0], 1);
+        ASSERT_EQ(pads[1], 0);
+        ASSERT_EQ(attributes.at("count_include_pad").i(), 1);
       }
     }
-  }
+  };
+
+  auto rule_transformer_l1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_l1->Register(std::make_unique<PadFusion>()));
+
+  // Before fusion the explicit zero is a real input value, while the extra cell created by
+  // ceil_mode is outside the padded tensor. The expected output is [1, 4]: only the former is
+  // included in an average. TransformerTester verifies that the fused graph preserves this
+  // distinction when it changes the explicit Pad to count_include_pad=1.
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    13,
+                    0.0,
+                    0.0,
+                    std::move(rule_transformer_l1));
 }
 
 TEST_F(GraphTransformationTests, FusePadWithAvgPool) {
@@ -4412,13 +4561,14 @@ ConvActivationBuilder SimpleActivation(const std::string& op_type,
 // Use fp16, group 1, NHWC, and a non-1x1 kernel to select Im2ColMatMulProgram.
 void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation,
                                      const std::string& expected_activation,
-                                     int opset_version) {
+                                     int opset_version,
+                                     int64_t input_channels = 4) {
   if (!DefaultWebGpuExecutionProvider()) {
     GTEST_SKIP() << "WebGPU EP unavailable in this build.";
   }
 
-  const std::vector<int64_t> input_shape{1, 4, 14, 14};
-  const std::vector<int64_t> weight_shape{8, 4, 3, 3};
+  const std::vector<int64_t> input_shape{1, input_channels, 14, 14};
+  const std::vector<int64_t> weight_shape{8, input_channels, 3, 3};
 
   auto to_fp16 = [](const std::vector<float>& values) {
     std::vector<MLFloat16> converted;
@@ -4439,8 +4589,10 @@ void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation
   };
 
   auto build_test_case = [&](ModelTestBuilder& builder) {
-    auto* input = builder.MakeInput<MLFloat16>(input_shape, to_fp16(ramp(1 * 4 * 14 * 14, -3.0f, 3.0f)));
-    auto* weight = builder.MakeInitializer<MLFloat16>(weight_shape, to_fp16(ramp(8 * 4 * 3 * 3, -0.5f, 0.5f)));
+    auto* input = builder.MakeInput<MLFloat16>(
+        input_shape, to_fp16(ramp(static_cast<size_t>(input_channels * 14 * 14), -3.0f, 3.0f)));
+    auto* weight = builder.MakeInitializer<MLFloat16>(
+        weight_shape, to_fp16(ramp(static_cast<size_t>(8 * input_channels * 3 * 3), -0.5f, 0.5f)));
     auto* bias = builder.MakeInitializer<MLFloat16>({weight_shape[0]}, to_fp16(ramp(8, -0.5f, 0.5f)));
     auto* conv_out = builder.MakeIntermediate();
     auto* output = builder.MakeOutput();
@@ -4495,10 +4647,11 @@ void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation
            "whether the im2col program was selected";
   };
 
-  RunWebGpuFusionTransformerTest(build_test_case, check_transformed_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset_version,
-                                 /*per_sample_tolerance=*/2e-2,
-                                 /*relative_per_sample_tolerance=*/2e-2,
-                                 /*transformer=*/nullptr, []() { return DefaultWebGpuExecutionProvider(); }, [](SessionOptions& session_options) {
+  RunWebGpuFusionTransformerTest(
+      build_test_case, check_transformed_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset_version,
+      /*per_sample_tolerance=*/2e-2,
+      /*relative_per_sample_tolerance=*/2e-2,
+      /*transformer=*/nullptr, []() { return DefaultWebGpuExecutionProvider(); }, [](SessionOptions& session_options) {
                                    session_options.enable_profiling = true;
                                    session_options.profile_file_prefix = ORT_TSTR("webgpu_im2col_activation"); });
 
@@ -4608,6 +4761,16 @@ TEST_F(GraphTransformationTests, WebGpuConvLeakyReluParityAcrossAlphaValues) {
 
 TEST_F(GraphTransformationTests, WebGpuIm2ColConvReluFusionMatchesUnfusedResults) {
   RunWebGpuIm2ColActivationParity(SimpleActivation("Relu"), "Relu", 17);
+}
+
+// Odd input channels give vec_size == 1, which takes the scalar path of the shader (including the
+// subgroup variant when subgroup-size control is available). 4 channels give vec_size == 4 and 2 give 2.
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvOddInputChannelsMatchesUnfusedResults) {
+  RunWebGpuIm2ColActivationParity(SimpleActivation("Relu"), "Relu", 17, /*input_channels=*/3);
+}
+
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvTwoInputChannelsMatchesUnfusedResults) {
+  RunWebGpuIm2ColActivationParity(SimpleActivation("Relu"), "Relu", 17, /*input_channels=*/2);
 }
 
 TEST_F(GraphTransformationTests, WebGpuIm2ColConvLeakyReluFusionMatchesUnfusedResults) {
@@ -7158,7 +7321,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionContiguousReshapesWithSharedShapeP
   };
 
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1, [](Graph&) { return Status::OK(); }, post_graph_checker));
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1, [](Graph&) { return Status::OK(); }, post_graph_checker));
 }
 
 // Full-session test of a Reshape chain whose first shape input is produced by a Where node.
@@ -7653,6 +7817,12 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionTest) {
   auto check_transformed_graph = [get_op_count](InferenceSessionWrapper& session) {
     const Graph& graph = session.GetGraph();
     const auto op_to_count = CountOpsInGraph(graph);
+    if (graph.DomainToVersionMap().at(kOnnxDomain) >= 28) {
+      ASSERT_EQ(get_op_count(op_to_count, "Slice"), 4);
+      ASSERT_EQ(get_op_count(op_to_count, "Concat"), 1);
+      ASSERT_EQ(get_op_count(op_to_count, "SpaceToDepth"), 0);
+      return;
+    }
     ASSERT_TRUE(op_to_count.count("Slice") == 0 || op_to_count.at("Slice") == 0);
     ASSERT_TRUE(op_to_count.count("Concat") == 0 || op_to_count.at("Concat") == 0);
     ASSERT_EQ(get_op_count(op_to_count, "SpaceToDepth"), 1);
@@ -7665,14 +7835,17 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionTest) {
     }
   };
 
-  TransformerTester(build_test_case,
-                    check_transformed_graph,
-                    TransformerLevel::Default,
-                    TransformerLevel::Level1,
-                    13,
-                    0.0,
-                    0.0,
-                    std::make_unique<SliceConcatToSpaceToDepthFusion>());
+  for (int opset : {13, 27, 28}) {
+    SCOPED_TRACE(opset);
+    TransformerTester(build_test_case,
+                      check_transformed_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      opset,
+                      0.0,
+                      0.0,
+                      std::make_unique<SliceConcatToSpaceToDepthFusion>());
+  }
 }
 
 TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithConstantNodesTest) {
@@ -8071,6 +8244,166 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForR
   auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
                                         1, pre_graph_checker, post_graph_checker));
+}
+
+namespace {
+
+// Builds the initializers shared by the chained-Slice focus tests below.
+struct ChainedSliceInitializers {
+  NodeArg* axis_h;
+  NodeArg* axis_w;
+  NodeArg* step2;
+  NodeArg* start0;
+  NodeArg* start1;
+  NodeArg* end_full;
+};
+
+ChainedSliceInitializers MakeChainedSliceInitializers(ModelTestBuilder& builder, int64_t extent) {
+  return {builder.Make1DInitializer<int64_t>({2}),
+          builder.Make1DInitializer<int64_t>({3}),
+          builder.Make1DInitializer<int64_t>({2}),
+          builder.Make1DInitializer<int64_t>({0}),
+          builder.Make1DInitializer<int64_t>({1}),
+          builder.Make1DInitializer<int64_t>({extent})};
+}
+
+int GetOpCountOrZero(const OpCountMap& op_to_count, std::string_view op_type) {
+  const auto it = op_to_count.find(std::string(op_type));
+  return it == op_to_count.end() ? 0 : it->second;
+}
+
+}  // namespace
+
+// A focus layer is commonly exported as two chained Slice nodes per branch, one
+// striding height and one striding width, rather than a single Slice striding
+// both axes. The composed phase is still a blocksize=2 space-to-depth, so the
+// chain must fuse.
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionChainedSlicesTest) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+    const auto init = MakeChainedSliceInitializers(builder, 8);
+
+    auto slice_height_then_width = [&](NodeArg* h_start, NodeArg* w_start) {
+      auto* h_out = builder.MakeIntermediate();
+      auto* w_out = builder.MakeIntermediate();
+      builder.AddNode("Slice", {input, h_start, init.end_full, init.axis_h, init.step2}, {h_out});
+      builder.AddNode("Slice", {h_out, w_start, init.end_full, init.axis_w, init.step2}, {w_out});
+      return w_out;
+    };
+
+    // Canonical block order, so no channel permutation is required.
+    auto* branch00 = slice_height_then_width(init.start0, init.start0);
+    auto* branch01 = slice_height_then_width(init.start0, init.start1);
+    auto* branch10 = slice_height_then_width(init.start1, init.start0);
+    auto* branch11 = slice_height_then_width(init.start1, init.start1);
+
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Concat", {branch00, branch01, branch10, branch11}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "Slice"), 0);
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "Concat"), 0);
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "SpaceToDepth"), 1);
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "Gather"), 0);
+  };
+
+  TransformerTester(build_test_case, check_transformed_graph, TransformerLevel::Default,
+                    TransformerLevel::Level1, 13, 0.0, 0.0,
+                    std::make_unique<SliceConcatToSpaceToDepthFusion>());
+}
+
+// The height Slice is normally shared by two width branches, so the graph holds
+// six Slice nodes rather than eight and the upstream node has two consumers.
+// This is the shape a YOLO focus layer actually exports, including its
+// non-canonical (0,0) (1,0) (0,1) (1,1) block order, which needs a Gather to
+// restore the channel order that Concat produced.
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionSharedHeightSliceTest) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+    const auto init = MakeChainedSliceInitializers(builder, 8);
+
+    auto slice_height = [&](NodeArg* h_start) {
+      auto* h_out = builder.MakeIntermediate();
+      builder.AddNode("Slice", {input, h_start, init.end_full, init.axis_h, init.step2}, {h_out});
+      return h_out;
+    };
+    auto slice_width = [&](NodeArg* h_out, NodeArg* w_start) {
+      auto* w_out = builder.MakeIntermediate();
+      builder.AddNode("Slice", {h_out, w_start, init.end_full, init.axis_w, init.step2}, {w_out});
+      return w_out;
+    };
+
+    auto* top = slice_height(init.start0);
+    auto* bottom = slice_height(init.start1);
+
+    auto* top_left = slice_width(top, init.start0);
+    auto* top_right = slice_width(top, init.start1);
+    auto* bottom_left = slice_width(bottom, init.start0);
+    auto* bottom_right = slice_width(bottom, init.start1);
+
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Concat", {top_left, bottom_left, top_right, bottom_right}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    // Both the width Slices and the shared height Slices must be gone.
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "Slice"), 0);
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "Concat"), 0);
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "SpaceToDepth"), 1);
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "Gather"), 1);
+  };
+
+  TransformerTester(build_test_case, check_transformed_graph, TransformerLevel::Default,
+                    TransformerLevel::Level1, 13, 0.0, 0.0,
+                    std::make_unique<SliceConcatToSpaceToDepthFusion>());
+}
+
+// A chain that strides the same axis twice is a 4x height decimation, not a
+// space-to-depth, and must be left alone.
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForRepeatedAxisChainTest) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+    const auto init = MakeChainedSliceInitializers(builder, 8);
+
+    auto slice_height_twice = [&](NodeArg* first_start, NodeArg* second_start) {
+      auto* first_out = builder.MakeIntermediate();
+      auto* second_out = builder.MakeIntermediate();
+      builder.AddNode("Slice", {input, first_start, init.end_full, init.axis_h, init.step2}, {first_out});
+      builder.AddNode("Slice", {first_out, second_start, init.end_full, init.axis_h, init.step2}, {second_out});
+      return second_out;
+    };
+
+    auto* branch00 = slice_height_twice(init.start0, init.start0);
+    auto* branch01 = slice_height_twice(init.start0, init.start1);
+    auto* branch10 = slice_height_twice(init.start1, init.start0);
+    auto* branch11 = slice_height_twice(init.start1, init.start1);
+
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Concat", {branch00, branch01, branch10, branch11}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "Slice"), 8);
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "Concat"), 1);
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "SpaceToDepth"), 0);
+  };
+
+  TransformerTester(build_test_case, check_transformed_graph, TransformerLevel::Default,
+                    TransformerLevel::Level1, 13, 0.0, 0.0,
+                    std::make_unique<SliceConcatToSpaceToDepthFusion>());
 }
 
 TEST_F(GraphTransformationTests, ExpandElimination) {

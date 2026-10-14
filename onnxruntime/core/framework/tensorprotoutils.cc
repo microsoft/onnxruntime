@@ -1958,7 +1958,12 @@ Status LoadPrepackedWeightsFromExternalData(const Env& env,
 Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
                                           const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                           const IExternalDataLoader& ext_data_loader,
+                                          const AllocatorPtr& allocator,
                                           Tensor& tensor) {
+#if !defined(ENABLE_D3D12_FILE_LOADING)
+  ORT_UNUSED_PARAMETER(allocator);
+#endif
+
   ORT_ENFORCE(HasExternalData(tensor_proto));
   // Defense-in-depth path validation for callers reaching this function outside Graph::Resolve.
   // In-memory markers are passed through; rejected explicitly below as unsupported for this path.
@@ -1980,6 +1985,13 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
   ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag || external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
                 "Memory address tag is not supported by custom external data loader.");
 
+#if defined(ENABLE_D3D12_FILE_LOADING)
+  if (ext_data_loader.CreatesTensorForDevice(tensor.Location().device)) {
+    return ext_data_loader.LoadTensor(env, external_data_file_path, tensor_proto.name(), file_offset,
+                                      raw_data_safe_len, allocator, tensor);
+  }
+#endif
+
 #if defined(__wasm__)
   return ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len, tensor);
 #else
@@ -1989,6 +2001,41 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
   return ext_data_loader.LoadTensor(*external_data_file, file_offset, raw_data_safe_len, tensor);
 #endif
 }
+
+#if defined(ENABLE_D3D12_FILE_LOADING)
+Status RegisterExternalDataLoadCandidateFromTensorProto(
+    const Env& env, const std::filesystem::path& model_path,
+    const ONNX_NAMESPACE::TensorProto& tensor_proto,
+    const IExternalDataLoader& ext_data_loader) {
+  ORT_ENFORCE(HasExternalData(tensor_proto));
+
+  std::basic_string<ORTCHAR_T> tensor_proto_dir;
+  if (!model_path.empty()) {
+    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
+  }
+
+  std::basic_string<ORTCHAR_T> external_data_file_path;
+  FileOffsetType file_offset;
+  SafeInt<size_t> raw_data_safe_len = 0;
+  ORT_RETURN_IF_ERROR(
+      GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset, raw_data_safe_len));
+  ORT_RETURN_IF_ERROR(ValidateExternalFilePathForTensor(tensor_proto, model_path));
+
+  size_t tensor_byte_size = 0;
+  ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
+  ORT_RETURN_IF(file_offset < 0 || raw_data_safe_len != tensor_byte_size,
+                "External initializer: ", tensor_proto.name(), " offset: ", file_offset,
+                " size to read: ", static_cast<size_t>(raw_data_safe_len),
+                " does not match the tensor size: ", tensor_byte_size);
+  ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag ||
+                    external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
+                "Memory address tag is not supported by custom external data loader.");
+
+  return ext_data_loader.RegisterLoadCandidate(
+      env, external_data_file_path, tensor_proto.name(), file_offset,
+      raw_data_safe_len);
+}
+#endif
 
 #define CASE_PROTO(X, Y)                                                                                            \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                              \
@@ -2190,6 +2237,8 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
 #if !defined(DISABLE_FLOAT4_TYPES)
     CASE_TYPE(FLOAT4E2M1)
 #endif
+    CASE_TYPE(FLOAT6E2M3)
+    CASE_TYPE(FLOAT6E3M2)
 
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
@@ -2663,6 +2712,25 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   if (type == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ",
                            ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  }
+
+  // CopySparseData also validates the type, but it runs after allocating the dense buffer
+  // and is skipped entirely for an empty dense tensor. Validate here so unsupported types
+  // are rejected before either path.
+  if (indices.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8 &&
+      indices.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT16 &&
+      indices.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT32 &&
+      indices.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_GRAPH,
+        "Sparse tensor: ", name,
+        " indices. Should be one of the following types: int8, int16, int32 or int64");
+  }
+
+  // Validate embedded indices before allocating the dense zero-filled buffer so malformed
+  // inline data is rejected before a large representable dense allocation is attempted.
+  if (!HasExternalData(indices)) {
+    ORT_RETURN_IF_ERROR(ValidateEmbeddedTensorProtoDataSizeAndShape(indices));
   }
 
   if (dense_elements == 0) {

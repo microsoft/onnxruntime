@@ -11,7 +11,7 @@
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
-#include "core/providers/webgpu/math/matmul.h"
+#include "core/providers/webgpu/math/matmul_compute_dispatcher.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 
 namespace onnxruntime {
@@ -86,7 +86,7 @@ class Conv : public WebGpuKernel {
   // Layout of the tensor ComputeInternal ends up consuming -- `prepacked_kernel_` when it
   // is set, otherwise input 1. Stays `OIHW` while `prepacked_kernel_` is null.
   KernelLayout kernel_layout_{KernelLayout::OIHW};
-  mutable MatMulOptImplCache matmul_compute_cache_;
+  mutable MatMulComputeDispatcher matmul_compute_dispatcher_;
 
   bool w_is_constant_ = false;  // whether the weight input (index 1) is a constant initializer
 
@@ -111,7 +111,6 @@ class Conv : public WebGpuKernel {
     std::once_flag init_flag_;
     std::unique_ptr<ConvOptImpl> impl_;
   };
-
   mutable ConvOptImplCache opt_impl_cache_;
 };
 
