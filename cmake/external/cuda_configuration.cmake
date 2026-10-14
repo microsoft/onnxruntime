@@ -90,6 +90,48 @@ function(ort_patch_cuda_12_9_clusterlaunchcontrol_header src dst)
   endif()
 endfunction()
 
+# Parse one CUDA architecture entry of the form <cc>[a|f][-real|-virtual] (for example "121a",
+# "120f-real" or "90-virtual") and set, in the caller's scope:
+#   <PREFIX>_CC       the numeric compute capability (e.g. "121"), or "" if ARCH is not of that form
+#   <PREFIX>_SUFFIX   "a" (arch-specific), "f" (family-specific) or ""
+#   <PREFIX>_VIRTUAL  TRUE for a -virtual entry (PTX only, no SASS), FALSE otherwise
+function(onnxruntime_parse_cuda_arch ARCH PREFIX)
+  if(ARCH MATCHES "^([1-9][0-9]+)([af]?)(-real|-virtual)?$")
+    set(${PREFIX}_CC "${CMAKE_MATCH_1}" PARENT_SCOPE)
+    set(${PREFIX}_SUFFIX "${CMAKE_MATCH_2}" PARENT_SCOPE)
+    if(CMAKE_MATCH_3 STREQUAL "-virtual")
+      set(${PREFIX}_VIRTUAL TRUE PARENT_SCOPE)
+    else()
+      set(${PREFIX}_VIRTUAL FALSE PARENT_SCOPE)
+    endif()
+  else()
+    set(${PREFIX}_CC "" PARENT_SCOPE)
+    set(${PREFIX}_SUFFIX "" PARENT_SCOPE)
+    set(${PREFIX}_VIRTUAL FALSE PARENT_SCOPE)
+  endif()
+endfunction()
+
+# Set OUTPUT_VAR to ON if any architecture in ARGN generates SASS for a compute capability in
+# [MIN_CC, MAX_CC], and to OFF otherwise. Architectures are compared by compute capability, so
+# every spelling of one matches: "121", "121a", "121f", "121-real", "121a-real" and "121f-real".
+# -virtual entries never match: they embed only PTX, which provides no native kernels, and the
+# features gated on this (TMA/WGMMA, block-scaled MMA) need arch- or family-specific SASS.
+#
+# Usage:
+#   onnxruntime_cuda_archs_have_sass(<output_var> <min_cc> <max_cc> <arch>...)
+function(onnxruntime_cuda_archs_have_sass OUTPUT_VAR MIN_CC MAX_CC)
+  set(_result OFF)
+  foreach(_arch IN LISTS ARGN)
+    onnxruntime_parse_cuda_arch("${_arch}" _parsed)
+    if(NOT _parsed_CC STREQUAL "" AND NOT _parsed_VIRTUAL AND
+       _parsed_CC GREATER_EQUAL MIN_CC AND _parsed_CC LESS_EQUAL MAX_CC)
+      set(_result ON)
+      break()
+    endif()
+  endforeach()
+  set(${OUTPUT_VAR} ${_result} PARENT_SCOPE)
+endfunction()
+
 macro(setup_cuda_architectures)
   # cmake-format: off
   # Initialize and normalize CMAKE_CUDA_ARCHITECTURES before enabling CUDA.
@@ -211,15 +253,21 @@ macro(setup_cuda_architectures)
     add_definitions("-DHAS_SM120_OR_LATER")
   endif()
 
+  # ORT_HAS_SM12X: native code for SM120 or SM121 (compute capability 12.0/12.1) is requested,
+  # in any spelling ("120", "121a", "120f", "121a-real", ...). Gates the SM120 TMA grouped GEMM
+  # and block-scaled FP4 kernels, which are compiled for the requested 12.x architectures.
+  onnxruntime_cuda_archs_have_sass(ORT_HAS_SM12X 120 121 ${CMAKE_CUDA_ARCHITECTURES_ORIG})
+
+  # EXCLUDE_SM_<arch> compiles out the kernels for <arch> when no requested architecture can run
+  # them. The SM120 kernels are compiled for whichever 12.x architectures are requested (see
+  # onnxruntime_filter_cuda_archs), so SM121 alone also keeps them.
   set(ARCHITECTURES_WITH_KERNELS "80" "86" "89" "90" "100" "110" "120")
   foreach(CUDA_ARCH IN LISTS ARCHITECTURES_WITH_KERNELS)
-    unset(HAS_CUDA_ARCH)
-    foreach(CUDA_ARCH_ORIG IN LISTS CMAKE_CUDA_ARCHITECTURES_ORIG)
-      if(CUDA_ARCH_ORIG MATCHES "^${CUDA_ARCH}([af])?$")
-        set(HAS_CUDA_ARCH ON)
-        break()
-      endif()
-    endforeach()
+    if(CUDA_ARCH STREQUAL "120")
+      set(HAS_CUDA_ARCH ${ORT_HAS_SM12X})
+    else()
+      onnxruntime_cuda_archs_have_sass(HAS_CUDA_ARCH ${CUDA_ARCH} ${CUDA_ARCH} ${CMAKE_CUDA_ARCHITECTURES_ORIG})
+    endif()
     if(NOT HAS_CUDA_ARCH)
       add_definitions("-DEXCLUDE_SM_${CUDA_ARCH}")
       message(STATUS "Excluding SM ${CUDA_ARCH}")

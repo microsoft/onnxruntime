@@ -324,8 +324,7 @@ if(ORT_HAS_SM90_OR_LATER)
     target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
   endif()
 endif()
-if(("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG) AND
-   (NOT MSVC OR onnxruntime_USE_FP4_QMOE))
+if(ORT_HAS_SM12X AND (NOT MSVC OR onnxruntime_USE_FP4_QMOE))
   target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
 endif()
 

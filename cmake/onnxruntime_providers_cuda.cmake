@@ -439,8 +439,7 @@
       endif()
     endif()
 
-    if(("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG) AND
-       (NOT MSVC OR onnxruntime_USE_FP4_QMOE))
+    if(ORT_HAS_SM12X AND (NOT MSVC OR onnxruntime_USE_FP4_QMOE))
       target_compile_definitions(${target} PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
     endif()
 
