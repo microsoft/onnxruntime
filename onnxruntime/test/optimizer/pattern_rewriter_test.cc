@@ -648,7 +648,7 @@ TEST(PatternRewriterTests, ReplacementPlanBindingAndSequenceInvalidation) {
     }
     auto invalid = second;
     invalid.replacement = [](const Graph&, const Match&) {
-      return Replacement("(second)=>a=Identity(second);b=Identity(a);c=Identity(b);return Identity(c)");
+      return Replacement("(second)=>a=Identity(second);b=Identity(a);c=Identity(b);return Identity(c,invalid=1)");
     };
     TestGraph test;
     auto* x = test.builder.MakeInput<float>({2}, -1.0f, 1.0f);
@@ -662,6 +662,7 @@ TEST(PatternRewriterTests, ReplacementPlanBindingAndSequenceInvalidation) {
     ASSERT_STATUS_OK(test.graph.Resolve());
     Statistics stats;
     EXPECT_FALSE(PatternRewriter({invalid}, {.indexed = indexed}).Run(test.graph, stats).IsOK());
+    EXPECT_EQ(stats.rewrites, 0u);
     EXPECT_EQ(test.graph.NumberOfNodes(), 4u);
     ASSERT_STATUS_OK(test.graph.Resolve());
   }
