@@ -1222,14 +1222,14 @@ Status PatternRewriter::Run(Graph& graph, Statistics& statistics) const {
           for (auto it = node->OutputEdgesBegin(); it != node->OutputEdgesEnd(); ++it) {
             next.push_back(it->GetNode().Index());
           }
-          if (options_.match_only || statistics.rewrites == rewrites_before) break;
-          worklist = std::move(next_worklist);
-          if (iteration + 1 == options_.max_iterations && !worklist.empty())
-            statistics.iteration_limit_reached = true;
         }
+        affected = std::move(next);
       }
-      affected = std::move(next);
     }
+    if (options_.match_only || statistics.rewrites == rewrites_before) break;
+    worklist = std::move(next_worklist);
+    if (iteration + 1 == options_.max_iterations && !worklist.empty())
+      statistics.iteration_limit_reached = true;
   }
   return Status::OK();
 }
