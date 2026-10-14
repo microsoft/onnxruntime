@@ -325,10 +325,9 @@ TEST(TensorOpTest, SpaceToDepthOpset28ModesAndProviderRouting) {
                             provider_type == kOpenVINOExecutionProvider ||
                             provider_type == kMIGraphXExecutionProvider ||
                             provider_type == kCannExecutionProvider);
-        const bool uses_native_kernel = falls_back_to_cpu || provider_type == kCpuExecutionProvider ||
-                                        provider_type == kCudaExecutionProvider;
-        if (uses_native_kernel || provider_type == kDmlExecutionProvider ||
-            provider_type == kOpenVINOExecutionProvider) {
+        const bool uses_native_kernel = falls_back_to_cpu || provider_type == kCpuExecutionProvider;
+        if (uses_native_kernel || provider_type == kCudaExecutionProvider ||
+            provider_type == kDmlExecutionProvider || provider_type == kOpenVINOExecutionProvider) {
           const std::string expected_provider = falls_back_to_cpu ? kCpuExecutionProvider : provider_type;
           size_t compute_node_count = 0;
           for (const auto& resolved_node : session.GetGraph().Nodes()) {
