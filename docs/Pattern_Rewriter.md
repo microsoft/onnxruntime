@@ -525,3 +525,44 @@ Tests in `onnxruntime/test/optimizer/pattern_rewriter_test.cc` cover parsing,
 guards, boundaries, multi-output rewrites, rule priority, and numerical CPU
 equivalence, including small decoder prefill/decode graphs. Add structural and
 executed equivalence tests when writing or extending a rule.
+
+## Matching algorithm outline
+
+A single match is a **backward traversal from a candidate sink node**, without
+backtracking. Starting with the pattern's final operator bound to that model
+node, the matcher visits pattern operators in reverse definition order and
+follows bound values to their producers through a value-to-producer dictionary.
+Each input/output slot binds to one exact model value; repeated bindings must
+agree. Independent DAG branches need not have the same node ordering in the
+model, but operand order and data dependencies must match. A mismatch rejects
+the candidate rather than trying other producers or operand permutations.
+Constants, attributes, deletion boundaries, and EP eligibility are checked
+before the rule's semantic guard.
+
+Multiple rules are handled **node-first**, inside an outer bounded retry loop:
+
+```text
+filter rules by this graph's opset imports
+for each iteration, up to max_iterations (default 10):
+    for each still-live node in the current candidate batch:
+        find candidate rule groups by the node's (domain, operator name)
+        match their patterns and evaluate eligible guards
+        apply the passing rule with earliest registration priority
+        queue replacement nodes and affected nodes for the next batch
+    stop if no rewrite occurred or no candidates remain
+```
+
+The first batch contains all model nodes in topological order; later batches
+contain only queued candidates. New nodes and revisits wait for the next batch,
+although a later node already in the current batch sees earlier graph changes.
+The retry loop is therefore **outside** the node loop, not a separate ten-retry
+loop at each node.
+
+By default, a hash map indexed by `(domain, operator name)` selects candidate
+groups using the model node as the prospective pattern root. Structurally
+identical patterns can share a traversal, followed by their rule-specific guards;
+patterns with attribute predicates are kept separate. The earliest passing
+rule wins even across groups, and lower-priority work is skipped when possible.
+With `indexed=false`, the reference mode instead tries all opset-applicable
+rules in registration order at each node. Match-only mode processes one batch,
+counts all passing rules, and never applies replacements.
