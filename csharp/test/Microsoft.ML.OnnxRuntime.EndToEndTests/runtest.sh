@@ -57,13 +57,27 @@ if [ "$RunTestCsharp" = "true" ]; then
 
   if [ "$PACKAGENAME" = "Microsoft.ML.OnnxRuntime.Gpu" ] || [ "$PACKAGENAME" = "Microsoft.ML.OnnxRuntime.Gpu.Linux" ]; then
     export TESTONGPU=ON
-    if ! dotnet test -p:DefineConstants=USE_CUDA "$BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj" --no-restore --verbosity detailed; then
+    dotnet build -p:DefineConstants=USE_CUDA "$BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj" --no-restore
+    native_lib=$(find "$BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/bin" \( -name "libonnxruntime.so*" -o -name "libonnxruntime.dylib" \) | head -1)
+    if [ -z "$native_lib" ]; then
+      echo "Error: libonnxruntime not found in output directory after build"
+      exit 1
+    fi
+    echo "Found native library: $native_lib"
+    if ! dotnet test -p:DefineConstants=USE_CUDA "$BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj" --no-restore --no-build --verbosity detailed; then
       echo "Failed to build or execute the end-to-end test"
       exit 1
     fi
     dotnet test -p:DefineConstants=USE_TENSORRT "$BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj" --no-restore --verbosity detailed
   else
-    dotnet test "$BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj" --no-restore --verbosity detailed
+    dotnet build "$BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj" --no-restore
+    native_lib=$(find "$BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/bin" \( -name "libonnxruntime.so*" -o -name "libonnxruntime.dylib" \) | head -1)
+    if [ -z "$native_lib" ]; then
+      echo "Error: libonnxruntime not found in output directory after build"
+      exit 1
+    fi
+    echo "Found native library: $native_lib"
+    dotnet test "$BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj" --no-restore --no-build --verbosity detailed
   fi
   # shellcheck disable=SC2181  # $? here is the exit of the last dotnet test in the if/else above
   # (USE_TENSORRT in the GPU branch, or the default run in the else branch); it spans two branches,
@@ -73,4 +87,3 @@ if [ "$RunTestCsharp" = "true" ]; then
     exit 1
   fi
 fi
-

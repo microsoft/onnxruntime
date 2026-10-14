@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!-- ========================================================= -->
+  <!-- Native include path -->
+  <!-- ========================================================= -->
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>
+        $(MSBuildThisFileDirectory)include;
+        %(AdditionalIncludeDirectories)
+      </AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <!-- ========================================================= -->
+  <!-- Windows native linking -->
+  <!-- ========================================================= -->
+  <ItemDefinitionGroup Condition="'$(OS)' == 'Windows_NT' AND '$(PlatformTarget)' == 'x64'">
+    <Link>
+      <AdditionalDependencies>
+        $(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.lib;
+        %(AdditionalDependencies)
+      </AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(OS)' == 'Windows_NT' AND '$(PlatformTarget)' == 'ARM64'">
+    <Link>
+      <AdditionalDependencies>
+        $(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime.lib;
+        %(AdditionalDependencies)
+      </AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  </Project>
