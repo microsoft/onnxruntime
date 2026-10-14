@@ -1,9 +1,12 @@
 import contextlib
 import io
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
-from benchmark_moe_cpu_offload import decode_summary, model_session_options, parse_args
+from benchmark_moe_cpu_offload import decode_summary, effective_counter_parameters, model_session_options, parse_args
 
 
 class TestMoeOffloadBenchmark(unittest.TestCase):
@@ -15,6 +18,7 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
             "swap": True,
             "counter_log": False,
             "state": None,
+            "popularity_output": None,
         }
         values.update(overrides)
         return model_session_options(SimpleNamespace(**values))
@@ -45,6 +49,22 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
 
     def test_zero_epsilon_is_preserved(self):
         self.assertEqual(self.options(swap_epsilon=0)["session.moe_expert_swap_epsilon"], "0")
+
+    def test_popularity_output_is_forwarded_to_session(self):
+        self.assertEqual(
+            self.options(popularity_output="popularities.json")["session.moe_expert_popularity_file"],
+            "popularities.json",
+        )
+
+    def test_state_parameters_override_cli_values(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            state_path = Path(temporary_directory) / "state.json"
+            state_path.write_text(json.dumps({"alpha": 0.4, "epsilon": 0.2, "experts": []}), encoding="utf-8")
+            args = SimpleNamespace(state=state_path, counter_alpha=0.9, swap_epsilon=0.1)
+            self.assertEqual(effective_counter_parameters(args), (0.4, 0.2))
+            options = self.options(state=state_path)
+            self.assertNotIn("session.moe_expert_counter_alpha", options)
+            self.assertNotIn("session.moe_expert_swap_epsilon", options)
 
     def test_decode_excludes_generation_call_using_prefill_logits(self):
         summary = decode_summary([100, 0.01, 0.03])

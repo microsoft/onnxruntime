@@ -29,6 +29,7 @@ class KernelPilotMoeExpertState {
   // ----------------------
 
   KernelPilotMoeExpertState() = default;
+  ~KernelPilotMoeExpertState();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelPilotMoeExpertState);
 
   static constexpr size_t kMaxCounterLogRecordsPerRun = 1024;
@@ -65,31 +66,18 @@ class KernelPilotMoeExpertState {
   // Must be called before registering any MoE kernels. Zero disables adaptive swaps.
   Status SetMaxInFlightSwapsPerDevice(size_t max_in_flight_swaps_per_device);
 
+  // Writes the final expert popularities as JSON when this session-owned state is destroyed.
+  Status SetPopularityOutputFile(std::string output_file);
+
   // Registers one resolved MoE kernel and allocates its contiguous counter range and
   // provider-independent KernelPilot. Registration closes after initialization.
   Status RegisterNode(const OpKernel* kernel, std::string_view graph_scope, size_t node_index,
                       std::string_view node_type, size_t expert_count);
 
-  // Loads initial counters after node registration and before FinalizeInitialization().
-  // UTF-8 text format: the first line must be exactly "moe_expert_state 1", followed by
-  // one whitespace-separated record per line:
-  //   "graph_scope" node_index node_type expert_id counter_value
-  // Example:
-  //   moe_expert_state 1
-  //   "main" 0 MoE 2 12
-  //   "main/4/11:then_branch" 0 QMoE 1 3.5
-  //
-  // graph_scope uses std::quoted escaping for quotes/backslashes; unquoted scopes without
-  // whitespace are also accepted. The root scope is "main"; subgraphs append
-  // /<parent-node-index>/<attribute-name-length>:<attribute-name> (length in bytes).
-  // node_index identifies the registered node in the resolved, optimized graph.
-  // node_type must match its registered type ("MoE" or "QMoE"). expert_id is a zero-based
-  // index local to that node, not a global expert index or kernel pointer.
-  // counter_value is parsed in the classic locale and must be finite and non-negative.
-  //
-  // Omitted experts retain their current values (zero after registration). Blank lines,
-  // comments, extra fields, duplicate expert records, unknown nodes, and invalid IDs or
-  // values are rejected. A malformed record or stream read error leaves all counters unchanged.
+  // Loads alpha, epsilon, and initial counters from the JSON produced by SavePopularity().
+  // Nodes use their stable zero-based ordinal after sorting by graph scope and node index.
+  // Omitted experts retain their current values. Invalid or duplicate records leave all
+  // parameters and counters unchanged.
   Status Load(std::istream& input);
 
   // Closes registration and loading. Run-time counter updates require finalized state.
@@ -121,6 +109,7 @@ class KernelPilotMoeExpertState {
   friend class KernelPilot;
   Status RecordUsage(const OpKernel* kernel, gsl::span<const double> updated_counters = {});
   Status ScheduleSwaps();
+  Status SavePopularity() const;
 
   using Key = std::pair<std::string, size_t>;
   struct ExpertRange {
@@ -147,6 +136,7 @@ class KernelPilotMoeExpertState {
   std::atomic<size_t> logging_record_count_{0};
   double alpha_{0.75};
   double counter_probability_weight_{0.0};
+  std::string popularity_output_file_;
   size_t cpu_offload_expert_count_{0};
   double swap_epsilon_{0.01};
   size_t max_in_flight_swaps_per_device_{4};

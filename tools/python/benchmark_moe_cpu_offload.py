@@ -126,15 +126,25 @@ def model_session_options(args):
         "log_severity_level": 1 if args.counter_log else 3,
         "session.enable_moe_expert_statistics": "1" if args.counter_log else "0",
     }
-    if args.counter_log or args.cpu_offload_experts > 0:
+    if args.state is None and (args.counter_log or args.cpu_offload_experts > 0):
         session_options["session.moe_expert_counter_alpha"] = str(args.counter_alpha)
     if args.state is not None:
         session_options["session.moe_expert_counter_state_file"] = str(args.state)
+    if args.popularity_output is not None:
+        session_options["session.moe_expert_popularity_file"] = str(args.popularity_output)
     if args.cpu_offload_experts > 0:
         session_options["session.moe_cpu_offload_experts"] = str(args.cpu_offload_experts)
-        session_options["session.moe_expert_swap_epsilon"] = str(args.swap_epsilon)
+        if args.state is None:
+            session_options["session.moe_expert_swap_epsilon"] = str(args.swap_epsilon)
         session_options["session.moe_max_in_flight_swaps_per_device"] = "4" if args.swap else "0"
     return session_options
+
+
+def effective_counter_parameters(args):
+    if args.state is None:
+        return args.counter_alpha, args.swap_epsilon
+    state = json.loads(args.state.read_text(encoding="utf-8"))
+    return state["alpha"], state["epsilon"]
 
 
 def create_model(genai, args):
@@ -178,6 +188,7 @@ def parse_args(argv=None):
     parser.add_argument("--model", type=Path, required=True)
     parser.add_argument("--prompts", type=Path, required=True)
     parser.add_argument("--state", type=Path)
+    parser.add_argument("--popularity-output", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--log", type=Path, required=True)
     parser.add_argument("--max-new-tokens", type=int, default=256)
@@ -192,6 +203,9 @@ def parse_args(argv=None):
     args = parser.parse_args(argv)
     if args.output.resolve() == args.log.resolve():
         parser.error("--output and --log must refer to different files.")
+    paths = [path.resolve() for path in (args.output, args.log, args.state, args.popularity_output) if path is not None]
+    if len(paths) != len(set(paths)):
+        parser.error("--output, --log, --state, and --popularity-output must refer to different files.")
     if args.max_new_tokens < 2:
         parser.error("--max-new-tokens must be at least 2 to measure actual decode inference.")
     if args.cpu_offload_experts < 0:
@@ -205,12 +219,15 @@ def parse_args(argv=None):
 
 def main():
     args = parse_args()
+    counter_alpha, swap_epsilon = effective_counter_parameters(args)
     prompts = load_prompts(args.prompts)
     if args.prompt_limit is not None:
         if args.prompt_limit <= 0 or args.prompt_limit > len(prompts):
             raise ValueError("--prompt-limit must be between 1 and the number of available prompts.")
         prompts = prompts[: args.prompt_limit]
     args.output.parent.mkdir(parents=True, exist_ok=True)
+    if args.popularity_output is not None:
+        args.popularity_output.parent.mkdir(parents=True, exist_ok=True)
     visible_gpu = os.environ.get("CUDA_VISIBLE_DEVICES", "")
     if not visible_gpu.isdigit():
         raise ValueError("CUDA_VISIBLE_DEVICES must contain one physical GPU index.")
@@ -274,8 +291,8 @@ def main():
         "provider": args.provider,
         "model_load_seconds": model_load_seconds,
         "cpu_offload_experts": args.cpu_offload_experts,
-        "counter_alpha": args.counter_alpha,
-        "swap_epsilon": args.swap_epsilon,
+        "counter_alpha": counter_alpha,
+        "swap_epsilon": swap_epsilon,
         "swap": args.swap,
         "swaps_applicable": args.swap and args.cpu_offload_experts > 0,
         "counter_log": args.counter_log,

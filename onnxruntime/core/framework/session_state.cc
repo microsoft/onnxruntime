@@ -1692,6 +1692,9 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
       sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1";
   const bool enable_moe_expert_statistics =
       sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
+  const auto popularity_output_file =
+      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertPopularityFile, "");
+  const bool enable_moe_popularity_output = !popularity_output_file.empty();
   const auto cpu_offload_expert_count_value =
       sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0");
   int64_t cpu_offload_expert_count = -1;
@@ -1701,7 +1704,8 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
                     " must be a non-negative integer. Received: \"",
                     cpu_offload_expert_count_value, "\".");
   const bool enable_moe_cpu_offload = cpu_offload_expert_count > 0;
-  if (enable_moe_expert_counting || enable_moe_expert_statistics || enable_moe_cpu_offload) {
+  if (enable_moe_expert_counting || enable_moe_expert_statistics ||
+      enable_moe_cpu_offload || enable_moe_popularity_output) {
     double alpha = 0.0;
     double counter_probability_weight = 0.0;
     double swap_epsilon = 0.0;
@@ -1747,6 +1751,9 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
     }
     ORT_RETURN_IF_ERROR(moe_expert_state_->FinalizeInitialization());
     ORT_RETURN_IF_ERROR(InitializeKernelPilots());
+    if (enable_moe_popularity_output) {
+      ORT_RETURN_IF_ERROR(moe_expert_state_->SetPopularityOutputFile(popularity_output_file));
+    }
   }
 #endif
   return status;

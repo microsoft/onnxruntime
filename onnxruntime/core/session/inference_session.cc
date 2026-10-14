@@ -2785,6 +2785,7 @@ common::Status InferenceSession::Initialize() {
           (option == kOrtSessionOptionsConfigMoeCpuOffloadExperts &&
            (value.empty() || value.find_first_not_of('0') != std::string::npos)) ||
           option == kOrtSessionOptionsConfigMoeExpertCounterStateFile ||
+          option == kOrtSessionOptionsConfigMoeExpertPopularityFile ||
           option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
           option == kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight ||
           option == kOrtSessionOptionsConfigMoeExpertSwapEpsilon ||
@@ -2816,6 +2817,13 @@ common::Status InferenceSession::Initialize() {
         kOrtSessionOptionsConfigMoeCpuOffloadExperts,
         " must be a non-negative integer. Received: \"", moe_cpu_offload_experts, "\".");
     const bool enable_moe_cpu_offload = moe_cpu_offload_expert_count > 0;
+    const auto moe_popularity_file =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertPopularityFile);
+    if (moe_popularity_file) {
+      ORT_RETURN_IF(moe_popularity_file->empty(),
+                    kOrtSessionOptionsConfigMoeExpertPopularityFile, " must not be empty.");
+    }
+    const bool enable_moe_popularity_output = moe_popularity_file.has_value();
     const auto moe_counter_probability_weight =
         session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight);
     if (moe_counter_probability_weight) {
@@ -2856,18 +2864,20 @@ common::Status InferenceSession::Initialize() {
     const auto moe_counter_state_file =
         session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterStateFile);
     if (moe_counter_state_file) {
-      ORT_RETURN_IF_NOT(enable_moe_expert_counting || enable_moe_expert_statistics || enable_moe_cpu_offload,
+      ORT_RETURN_IF_NOT(enable_moe_expert_counting || enable_moe_expert_statistics ||
+                            enable_moe_cpu_offload || enable_moe_popularity_output,
                         kOrtSessionOptionsConfigMoeExpertCounterStateFile,
-                        " requires expert counting, statistics logging, or MoE CPU offload to be enabled.");
+                        " requires expert counting, statistics logging, popularity output, or MoE CPU offload.");
       ORT_RETURN_IF(moe_counter_state_file->empty(),
                     kOrtSessionOptionsConfigMoeExpertCounterStateFile, " must not be empty.");
     }
     for (const char* key : {kOrtSessionOptionsConfigMoeExpertCounterAlpha}) {
       ORT_RETURN_IF(session_options_.config_options.GetConfigEntry(key).has_value() &&
-                        !enable_moe_expert_counting && !enable_moe_expert_statistics && !enable_moe_cpu_offload,
-                    key, " requires expert counting, statistics logging, or MoE CPU offload to be enabled.");
+                        !enable_moe_expert_counting && !enable_moe_expert_statistics &&
+                        !enable_moe_cpu_offload && !enable_moe_popularity_output,
+                    key, " requires expert counting, statistics logging, popularity output, or MoE CPU offload.");
     }
-    if (enable_moe_expert_counting || enable_moe_cpu_offload) {
+    if (enable_moe_expert_counting || enable_moe_cpu_offload || enable_moe_popularity_output) {
       for (const auto& execution_provider : execution_providers_) {
         ORT_RETURN_IF(execution_provider->Type() == kCudaExecutionProvider &&
                           execution_provider->GetOrtEp() != nullptr,

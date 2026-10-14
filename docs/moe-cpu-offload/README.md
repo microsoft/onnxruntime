@@ -169,22 +169,21 @@ the node, the outgoing CUDA expert, the incoming CPU expert, and their counter s
 
 ## Initial counter state
 
-An optional session setting names a UTF-8 text file containing initial counter values:
+An optional session setting names a UTF-8 JSON file containing initial counter values and parameters:
 
 ```text
-session.moe_expert_counter_state_file=<path>
+session.moe_expert_counter_state_file=<path-to-popularity.json>
 ```
 
-The file starts with a format-version line and contains one line per
-`(graph_scope, node_index, node_type, expert_id, counter_value)` record. Loading validates:
+The file uses the same `{alpha, epsilon, experts}` format produced by `session.moe_expert_popularity_file`. Loading
+restores both parameters and each `{moe, expert, popularity}` record. JSON values replace explicit alpha and epsilon
+session settings. Loading validates MoE and expert bounds, record uniqueness, and finite non-negative popularities.
+Experts omitted from the file start at zero.
 
-- the format version;
-- graph scope, node identity, and operator type;
-- expert index bounds;
-- uniqueness of every expert record;
-- finite, non-negative counter values.
-
-Experts omitted from the file start at zero. When the setting is absent, all counters start at zero.
+Set `session.moe_expert_popularity_file=<path>` to write the final popularity counters as JSON when the session is
+destroyed. The file includes `alpha`, `epsilon`, and one `{moe, expert, popularity}` record per expert. `moe` is the
+stable zero-based ordinal obtained by sorting resolved nodes by graph scope and node index. The benchmark wrapper
+exposes the same setting as `--popularity-output`.
 
 The first offload implementation uses loaded counters to select the highest-ranked experts globally. If all counters
 are zero, it distributes CUDA slots round-robin across eligible nodes and selects lower local expert IDs first. This

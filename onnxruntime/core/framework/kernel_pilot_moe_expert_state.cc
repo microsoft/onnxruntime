@@ -5,23 +5,34 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <limits>
 #include <locale>
 #include <map>
 #include <numeric>
-#include <set>
 #include <sstream>
-#include <tuple>
 
+#include "nlohmann/json.hpp"
 #include "core/common/json_utils.h"
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "core/graph/graph.h"
 #include "core/graph/constants.h"
+#include "core/platform/path_lib.h"
 
 namespace onnxruntime {
+
+KernelPilotMoeExpertState::~KernelPilotMoeExpertState() {
+  if (!popularity_output_file_.empty()) {
+    const Status status = SavePopularity();
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+    }
+  }
+}
 
 Status KernelPilotMoeExpertState::BeginRun(std::string request_id, const logging::Logger* logger) {
   std::lock_guard<std::mutex> lock(run_mutex_);
@@ -102,6 +113,13 @@ Status KernelPilotMoeExpertState::SetMaxInFlightSwapsPerDevice(size_t max_in_fli
   return Status::OK();
 }
 
+Status KernelPilotMoeExpertState::SetPopularityOutputFile(std::string output_file) {
+  ORT_RETURN_IF(output_file.empty(), "MoE expert popularity output file must not be empty.");
+  ORT_RETURN_IF(!popularity_output_file_.empty(), "MoE expert popularity output file is already configured.");
+  popularity_output_file_ = std::move(output_file);
+  return Status::OK();
+}
+
 Status KernelPilotMoeExpertState::RegisterNode(const OpKernel* kernel, std::string_view graph_scope, size_t node_index,
                                                std::string_view node_type, size_t expert_count) {
   ORT_RETURN_IF(initialized_, "MoE expert registration is closed.");
@@ -131,50 +149,61 @@ Status KernelPilotMoeExpertState::RegisterNode(const OpKernel* kernel, std::stri
 
 Status KernelPilotMoeExpertState::Load(std::istream& input) {
   ORT_RETURN_IF(initialized_, "MoE expert initial state cannot change after initialization.");
-  std::string line;
-  ORT_RETURN_IF_NOT(std::getline(input, line), "Missing initial expert counter state header.");
-  if (!line.empty() && line.back() == '\r') {
-    line.pop_back();
-  }
-  ORT_RETURN_IF_NOT(line == "moe_expert_state 1",
-                    "Expected initial counter state header: moe_expert_state 1");
+  const auto document = nlohmann::json::parse(input, nullptr, false);
+  ORT_RETURN_IF(document.is_discarded() || !document.is_object(),
+                "MoE expert initial state must be a JSON object.");
+  const auto alpha = document.find("alpha");
+  const auto epsilon = document.find("epsilon");
+  const auto experts = document.find("experts");
+  ORT_RETURN_IF_NOT(alpha != document.end() && alpha->is_number() &&
+                        epsilon != document.end() && epsilon->is_number() &&
+                        experts != document.end() && experts->is_array(),
+                    "MoE expert initial state requires numeric alpha and epsilon fields and an experts array.");
+  const double loaded_alpha = alpha->get<double>();
+  const double loaded_epsilon = epsilon->get<double>();
+  ORT_RETURN_IF_NOT(std::isfinite(loaded_alpha) && loaded_alpha >= 0.0 && loaded_alpha <= 1.0,
+                    "MoE expert initial state alpha must be finite and in [0, 1].");
+  ORT_RETURN_IF_NOT(std::isfinite(loaded_epsilon) && loaded_epsilon >= 0.0,
+                    "MoE expert initial state epsilon must be finite and non-negative.");
 
-  // Validate into a flat copy so a malformed file cannot partially overwrite the state.
-  // Build a local graph-identity index from kernels_'s stored keys, just for resolving this
-  // file's records; KernelPilotMoeExpertState itself only ever looks kernels up by pointer.
-  std::map<Key, const OpKernel*> nodes;
+  InlinedVector<const KernelState*> states;
+  states.reserve(kernels_.size());
   for (const auto& [kernel, state] : kernels_) {
-    nodes.emplace(state.key, kernel);
+    ORT_UNUSED_PARAMETER(kernel);
+    states.push_back(&state);
   }
+  std::sort(states.begin(), states.end(),
+            [](const KernelState* lhs, const KernelState* rhs) { return lhs->key < rhs->key; });
+
   auto loaded_counters = counters_;
-  std::set<std::tuple<std::string, size_t, size_t>> seen;
-  size_t line_number = 1;
-  while (std::getline(input, line)) {
-    ++line_number;
-    std::istringstream record(line);
-    record.imbue(std::locale::classic());
-    std::string scope, type;
-    int64_t node_index = -1, expert_id = -1;
-    double value = 0;
-    ORT_RETURN_IF_NOT(record >> std::quoted(scope) >> node_index >> type >> expert_id >> value,
-                      "Malformed expert counter record at line ", line_number);
-    record >> std::ws;
-    ORT_RETURN_IF_NOT(record.eof() && node_index >= 0 && expert_id >= 0 &&
-                          static_cast<uint64_t>(node_index) <= std::numeric_limits<size_t>::max() &&
-                          static_cast<uint64_t>(expert_id) <= std::numeric_limits<size_t>::max() &&
-                          std::isfinite(value) && value >= 0,
-                      "Invalid expert counter record at line ", line_number);
-    const auto node = nodes.find({scope, static_cast<size_t>(node_index)});
-    ORT_RETURN_IF(node == nodes.end(), "Unknown MoE counter node at line ", line_number);
-    const auto& kernel_state = kernels_.at(node->second);
-    ORT_RETURN_IF_NOT(node->second->Node().OpType() == type &&
-                          static_cast<size_t>(expert_id) < kernel_state.experts.count,
-                      "MoE counter type or expert index mismatch at line ", line_number);
-    ORT_RETURN_IF_NOT(seen.emplace(scope, static_cast<size_t>(node_index), static_cast<size_t>(expert_id)).second,
-                      "Duplicate expert counter at line ", line_number);
-    loaded_counters[kernel_state.experts.begin + static_cast<size_t>(expert_id)] = value;
+  InlinedVector<bool> seen(counters_.size(), false);
+  for (size_t record_index = 0; record_index < experts->size(); ++record_index) {
+    const auto& record = (*experts)[record_index];
+    ORT_RETURN_IF_NOT(record.is_object(), "MoE expert record ", record_index, " must be an object.");
+    const auto moe = record.find("moe");
+    const auto expert = record.find("expert");
+    const auto popularity = record.find("popularity");
+    ORT_RETURN_IF_NOT(moe != record.end() && moe->is_number_unsigned() &&
+                          expert != record.end() && expert->is_number_unsigned() &&
+                          popularity != record.end() && popularity->is_number(),
+                      "MoE expert record ", record_index,
+                      " requires non-negative integer moe and expert fields and numeric popularity.");
+    const uint64_t moe_index = moe->get<uint64_t>();
+    const uint64_t expert_index = expert->get<uint64_t>();
+    const double value = popularity->get<double>();
+    ORT_RETURN_IF_NOT(moe_index < states.size() &&
+                          expert_index < states[static_cast<size_t>(moe_index)]->experts.count &&
+                          std::isfinite(value) && value >= 0.0,
+                      "MoE expert record ", record_index, " is out of range or has invalid popularity.");
+    const size_t counter_index =
+        states[static_cast<size_t>(moe_index)]->experts.begin + static_cast<size_t>(expert_index);
+    ORT_RETURN_IF(seen[counter_index], "Duplicate MoE expert record ", record_index, ".");
+    seen[counter_index] = true;
+    loaded_counters[counter_index] = value;
   }
-  ORT_RETURN_IF(input.bad() || !input.eof(), "Failed to read initial expert counter state.");
+
+  alpha_ = loaded_alpha;
+  swap_epsilon_ = loaded_epsilon;
   counters_ = std::move(loaded_counters);
   return Status::OK();
 }
@@ -582,6 +611,40 @@ InlinedVector<KernelPilotMoeExpertState::ExpertStat> KernelPilotMoeExpertState::
     }
   }
   return stats;
+}
+
+Status KernelPilotMoeExpertState::SavePopularity() const {
+  std::ofstream output{std::filesystem::path(ToPathString(popularity_output_file_))};
+  ORT_RETURN_IF_NOT(output.is_open(), "Unable to open MoE expert popularity file: ", popularity_output_file_);
+
+  InlinedVector<const KernelState*> states;
+  states.reserve(kernels_.size());
+  for (const auto& [kernel, state] : kernels_) {
+    ORT_UNUSED_PARAMETER(kernel);
+    states.push_back(&state);
+  }
+  std::sort(states.begin(), states.end(),
+            [](const KernelState* lhs, const KernelState* rhs) { return lhs->key < rhs->key; });
+
+  output.imbue(std::locale::classic());
+  output << "{\"alpha\":" << std::setprecision(std::numeric_limits<double>::max_digits10) << alpha_
+         << ",\"epsilon\":" << swap_epsilon_ << ",\"experts\":[";
+  bool first = true;
+  for (size_t moe = 0; moe < states.size(); ++moe) {
+    const auto& state = *states[moe];
+    for (size_t expert = 0; expert < state.experts.count; ++expert) {
+      if (!first) {
+        output << ",";
+      }
+      first = false;
+      output << "{\"moe\":" << moe
+             << ",\"expert\":" << expert
+             << ",\"popularity\":" << counters_[state.experts.begin + expert] << "}";
+    }
+  }
+  output << "]}\n";
+  ORT_RETURN_IF_NOT(output.good(), "Unable to write MoE expert popularity file: ", popularity_output_file_);
+  return Status::OK();
 }
 
 }  // namespace onnxruntime

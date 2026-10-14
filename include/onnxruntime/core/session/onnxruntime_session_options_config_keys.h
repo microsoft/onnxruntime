@@ -31,9 +31,15 @@ static const char* const kOrtSessionOptionsConfigEnableMoeExpertStatistics =
 // Overlapping Run() calls on the same session are rejected while enabled.
 static const char* const kOrtSessionOptionsConfigEnableMoeExpertCounting =
     "session.enable_moe_expert_counting";
-// Optional UTF-8 initial counter-state file. Requires expert counting or statistics logging to be enabled.
+// Optional UTF-8 JSON counter-state file produced by session.moe_expert_popularity_file.
+// Restores alpha, epsilon, and per-expert popularities; JSON parameters override separately configured values.
+// Requires expert counting, statistics logging, popularity output, or CPU offload to be enabled.
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterStateFile =
     "session.moe_expert_counter_state_file";
+// Optional UTF-8 JSON output file for final per-expert popularity counters.
+// The file is written when the session is destroyed and includes the configured alpha and epsilon values.
+static const char* const kOrtSessionOptionsConfigMoeExpertPopularityFile =
+    "session.moe_expert_popularity_file";
 // Exponential decay applied to every expert counter after each invocation of its MoE/QMoE node.
 // Must be finite and in [0, 1]. A selected expert receives an increment of 1 - alpha. The default is 0.75.
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterAlpha =

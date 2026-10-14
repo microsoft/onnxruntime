@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -519,10 +521,10 @@ TEST_F(KernelPilotMoeExpertStateTest, AppliesExponentialUpdateToEveryExpert) {
   ASSERT_STATUS_OK(state.SetCounterAlpha(0.5));
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));
   std::istringstream initial(
-      "moe_expert_state 1\n"
-      "\"main\" 0 Identity 0 4\n"
-      "\"main\" 0 Identity 1 2\n"
-      "\"main\" 0 Identity 2 1\n");
+      R"({"alpha":0.5,"epsilon":0.01,"experts":[)"
+      R"({"moe":0,"expert":0,"popularity":4},)"
+      R"({"moe":0,"expert":1,"popularity":2},)"
+      R"({"moe":0,"expert":2,"popularity":1}]})");
   ASSERT_STATUS_OK(state.Load(initial));
   ASSERT_STATUS_OK(state.FinalizeInitialization());
   const int selected[] = {2, 0, 2};
@@ -711,25 +713,73 @@ TEST_F(KernelPilotMoeExpertStateTest, ValidatesSwapEpsilon) {
   EXPECT_FALSE(state.SetMaxInFlightSwapsPerDevice(2).IsOK());
 }
 
-TEST_F(KernelPilotMoeExpertStateTest, LoadsPartialStateAndValidatesAtomically) {
+TEST_F(KernelPilotMoeExpertStateTest, WritesFinalPopularityJsonOnDestruction) {
+  const std::filesystem::path output_path{"moe_expert_popularity_test.json"};
+  auto cleanup = gsl::finally([&output_path]() { std::filesystem::remove(output_path); });
+  {
+    KernelPilotMoeExpertState state;
+    ASSERT_STATUS_OK(state.SetCounterAlpha(0.5));
+    ASSERT_STATUS_OK(state.SetSwapEpsilon(0.125));
+    ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 20, "MoE", 2));
+    ASSERT_STATUS_OK(state.RegisterNode(kernels_[1], "main", 10, "MoE", 2));
+    ASSERT_STATUS_OK(state.FinalizeInitialization());
+    ASSERT_STATUS_OK(state.SetPopularityOutputFile(output_path.string()));
+    const int selected[] = {1};
+    ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
+  }
+
+  std::ifstream input{output_path};
+  ASSERT_TRUE(input.is_open());
+  const auto output = nlohmann::json::parse(input);
+  EXPECT_DOUBLE_EQ(output["alpha"], 0.5);
+  EXPECT_DOUBLE_EQ(output["epsilon"], 0.125);
+  ASSERT_EQ(output["experts"].size(), 4U);
+  EXPECT_EQ(output["experts"][0], nlohmann::json({{"moe", 0}, {"expert", 0}, {"popularity", 0.0}}));
+  EXPECT_EQ(output["experts"][1], nlohmann::json({{"moe", 0}, {"expert", 1}, {"popularity", 0.0}}));
+  EXPECT_EQ(output["experts"][2], nlohmann::json({{"moe", 1}, {"expert", 0}, {"popularity", 0.0}}));
+  EXPECT_EQ(output["experts"][3], nlohmann::json({{"moe", 1}, {"expert", 1}, {"popularity", 0.5}}));
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, LoadedJsonParametersOverrideConfiguredValues) {
+  const std::filesystem::path output_path{"moe_expert_loaded_parameters_test.json"};
+  auto cleanup = gsl::finally([&output_path]() { std::filesystem::remove(output_path); });
+  {
+    KernelPilotMoeExpertState state;
+    ASSERT_STATUS_OK(state.SetCounterAlpha(0.9));
+    ASSERT_STATUS_OK(state.SetSwapEpsilon(0.9));
+    ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 1));
+    std::istringstream input(
+        R"({"alpha":0.4,"epsilon":0.2,"experts":[{"moe":0,"expert":0,"popularity":0.75}]})");
+    ASSERT_STATUS_OK(state.Load(input));
+    ASSERT_STATUS_OK(state.FinalizeInitialization());
+    ASSERT_STATUS_OK(state.SetPopularityOutputFile(output_path.string()));
+  }
+
+  std::ifstream input{output_path};
+  ASSERT_TRUE(input.is_open());
+  const auto output = nlohmann::json::parse(input);
+  EXPECT_DOUBLE_EQ(output["alpha"], 0.4);
+  EXPECT_DOUBLE_EQ(output["epsilon"], 0.2);
+  ASSERT_EQ(output["experts"].size(), 1U);
+  EXPECT_DOUBLE_EQ(output["experts"][0]["popularity"], 0.75);
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, LoadsJsonStateAndValidatesAtomically) {
   KernelPilotMoeExpertState state;
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 2, "QMoE", 3));
-  std::istringstream valid("moe_expert_state 1\n\"main\" 2 Identity 1 2.5\n");
+  std::istringstream valid(
+      R"({"alpha":0.5,"epsilon":0.2,"experts":[{"moe":0,"expert":1,"popularity":2.5}]})");
   ASSERT_STATUS_OK(state.Load(valid));
   InlinedVector<double> counters;
   for (const auto* invalid : {
-           "moe_expert_state 2\n",
-           "moe_expert_state 1\n\"main\" 2 Identity 0 1\n\"main\" 2 Identity 0 2\n",
-           "moe_expert_state 1\n\"main\" 2 Identity 0 1\n\"unknown\" 2 Identity 0 1\n",
-           "moe_expert_state 1\n\"main\" 3 Identity 0 1\n",
-           "moe_expert_state 1\n\"main\" 2 MoE 0 1\n",
-           "moe_expert_state 1\n\"main\" 2 Identity -1 1\n",
-           "moe_expert_state 1\n\"main\" 2 Identity 3 1\n",
-           "moe_expert_state 1\n\"main\" 2 Identity 0 -1\n",
-           "moe_expert_state 1\n\"main\" 2 Identity 0 nan\n",
-           "moe_expert_state 1\n\"main\" 2 Identity 0 inf\n",
-           "moe_expert_state 1\n\"main\" 2 Identity 0 1 extra\n",
-           "moe_expert_state 1\nincomplete\n"}) {
+           "",
+           R"({"alpha":-1,"epsilon":0.2,"experts":[]})",
+           R"({"alpha":0.5,"epsilon":-1,"experts":[]})",
+           R"({"alpha":0.5,"epsilon":0.2,"experts":[{"moe":1,"expert":0,"popularity":1}]})",
+           R"({"alpha":0.5,"epsilon":0.2,"experts":[{"moe":0,"expert":3,"popularity":1}]})",
+           R"({"alpha":0.5,"epsilon":0.2,"experts":[{"moe":0,"expert":0,"popularity":-1}]})",
+           R"({"alpha":0.5,"epsilon":0.2,"experts":[{"moe":0,"expert":0,"popularity":1},{"moe":0,"expert":0,"popularity":2}]})",
+           R"({"alpha":0.5,"experts":[]})"}) {
     SCOPED_TRACE(invalid);
     std::istringstream input(invalid);
     EXPECT_FALSE(state.Load(input).IsOK());
@@ -742,7 +792,7 @@ TEST_F(KernelPilotMoeExpertStateTest, LoadsPartialStateAndValidatesAtomically) {
   ASSERT_STATUS_OK(state.GetCounters(kernels_[0], counters));
   ASSERT_EQ(counters.size(), 3U);
   EXPECT_DOUBLE_EQ(counters[0], 0);
-  EXPECT_DOUBLE_EQ(counters[1], kDefaultCounterAlpha * 2.5 + (1.0 - kDefaultCounterAlpha));
+  EXPECT_DOUBLE_EQ(counters[1], 0.5 * 2.5 + 0.5);
   EXPECT_DOUBLE_EQ(counters[2], 0);
 }
 
@@ -759,7 +809,7 @@ TEST_F(KernelPilotMoeExpertStateTest, RejectsInvalidRegistrationAndUpdates) {
   EXPECT_FALSE(state.GetKernelPilot(kernels_[0])->RecordUsage().IsOK());
   ASSERT_STATUS_OK(state.FinalizeInitialization());
   EXPECT_FALSE(state.RegisterNode(kernels_[1], "main", 1, "MoE", 2).IsOK());
-  std::istringstream initial("moe_expert_state 1\n");
+  std::istringstream initial(R"({"alpha":0.5,"epsilon":0.1,"experts":[]})");
   EXPECT_FALSE(state.Load(initial).IsOK());
   EXPECT_FALSE(state.FinalizeInitialization().IsOK());
   const int out_of_bounds[] = {0, 2};
@@ -788,10 +838,13 @@ TEST_F(KernelPilotMoeExpertStateTest, ValidCoefficientsKeepCountersBounded) {
       KernelPilotMoeExpertState state;
       ASSERT_STATUS_OK(state.SetCounterAlpha(alpha));
       ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 2));
-      std::stringstream initial;
-      initial << std::setprecision(std::numeric_limits<double>::max_digits10)
-              << "moe_expert_state 1\n\"main\" 0 Identity 0 " << initial_value
-              << "\n\"main\" 0 Identity 1 " << initial_value << "\n";
+      nlohmann::json initial_json{
+          {"alpha", alpha},
+          {"epsilon", 0.01},
+          {"experts",
+           {{{"moe", 0}, {"expert", 0}, {"popularity", initial_value}},
+            {{"moe", 0}, {"expert", 1}, {"popularity", initial_value}}}}};
+      std::istringstream initial(initial_json.dump());
       ASSERT_STATUS_OK(state.Load(initial));
       ASSERT_STATUS_OK(state.FinalizeInitialization());
       const int selected[] = {0, 0};

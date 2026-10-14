@@ -672,11 +672,11 @@ TEST(MoeExpertCountingTest, AppliesConfiguredExponentialCounters) {
 }
 
 TEST(MoeExpertCountingTest, LoadsInitialStateFile) {
-  const char* path = "moe_expert_counting_initial_state.txt";
+  const char* path = "moe_expert_counting_initial_state.json";
   auto cleanup = gsl::finally([path]() { std::remove(path); });
   {
     std::ofstream file(path);
-    file << "moe_expert_state 1\n\"main\" 0 MoE 0 3.5\n";
+    file << R"({"alpha":0.9,"epsilon":0.01,"experts":[{"moe":0,"expert":0,"popularity":3.5}]})";
     ASSERT_TRUE(file.good());
   }
   auto options = CountingOptions();
@@ -980,15 +980,15 @@ TEST(MoeExpertCountingTest, StaticCpuOffloadRunsNodeWithAllCudaExperts) {
     GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
   }
 
-  const char* path = "moe_static_cpu_offload_all_cuda_node_state.txt";
+  const char* path = "moe_static_cpu_offload_all_cuda_node_state.json";
   auto cleanup = gsl::finally([path]() { std::remove(path); });
   {
     std::ofstream file(path);
-    file << "moe_expert_state 1\n"
-            "\"main\" 0 MoE 0 10\n"
-            "\"main\" 0 MoE 1 9\n"
-            "\"main\" 0 MoE 2 8\n"
-            "\"main\" 0 MoE 3 7\n";
+    file << R"({"alpha":0.75,"epsilon":0.01,"experts":[)"
+            R"({"moe":0,"expert":0,"popularity":10},)"
+            R"({"moe":0,"expert":1,"popularity":9},)"
+            R"({"moe":0,"expert":2,"popularity":8},)"
+            R"({"moe":0,"expert":3,"popularity":7}]})";
     ASSERT_TRUE(file.good());
   }
 
@@ -1018,16 +1018,16 @@ TEST(MoeExpertCountingTest, StaticCpuOffloadRanksLoadedCountersAcrossNodes) {
     GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
   }
 
-  const char* path = "moe_static_cpu_offload_initial_state.txt";
+  const char* path = "moe_static_cpu_offload_initial_state.json";
   auto cleanup = gsl::finally([path]() { std::remove(path); });
   {
     std::ofstream file(path);
-    file << "moe_expert_state 1\n"
-            "\"main\" 0 MoE 3 10\n"
-            "\"main\" 1 MoE 2 9\n"
-            "\"main\" 1 MoE 0 8\n"
-            "\"main\" 0 MoE 1 7\n"
-            "\"main\" 1 MoE 3 6\n";
+    file << R"({"alpha":0.75,"epsilon":0.01,"experts":[)"
+            R"({"moe":0,"expert":3,"popularity":10},)"
+            R"({"moe":1,"expert":2,"popularity":9},)"
+            R"({"moe":1,"expert":0,"popularity":8},)"
+            R"({"moe":0,"expert":1,"popularity":7},)"
+            R"({"moe":1,"expert":3,"popularity":6}]})";
     ASSERT_TRUE(file.good());
   }
 

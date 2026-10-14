@@ -186,30 +186,33 @@ Separate FC3 weights, sparse mixer routing, dynamic expert weights, QMoE, FP32, 
 minimal builds are not supported by this option. See [MoE CPU offload](moe-cpu-offload/README.md) for exchange details
 and benchmark results.
 
-## Initial counter file
+## Popularity state file
 
-Optionally set:
-
-```text
-session.moe_expert_counter_state_file=/path/to/counters.txt
-```
-
-This requires counting, counter-update logging, or CPU offload to be enabled. The UTF-8 text file begins with
-`moe_expert_state 1`, followed by whitespace-separated records:
+Set an output path to write the final state when the session is destroyed:
 
 ```text
-moe_expert_state 1
-"main" 0 MoE 2 12
-"main" 1 QMoE 0 3.5
-"main/4/11:then_branch" 0 MoE 1 7
+session.moe_expert_popularity_file=/path/to/popularity.json
 ```
 
-Each record contains a quoted graph scope, node index, operator type, expert ID, and initial counter value. The root
-scope is `main`. A subgraph appends `/<parent-node-index>/<attribute-name-length>:<attribute-name>` to its parent's
-scope. This distinguishes nodes with the same index in different subgraphs. Node indices refer to the resolved,
-optimized graph, not necessarily the original serialized graph.
+The option enables counting by itself. The benchmark wrapper exposes it as `--popularity-output`. The UTF-8 JSON file
+contains the configured decay coefficient (`alpha`), swap threshold (`epsilon`), and one record per expert:
 
-Values must be finite and non-negative. Omitted experts start at zero. Without a file, all experts start at zero.
-Unknown nodes, mismatched operator types, out-of-range expert IDs, duplicate records, malformed files, and file-access
-errors fail session initialization. Use the same model and graph-optimization configuration when preparing and loading
-a counter file.
+```json
+{
+  "alpha": 0.9,
+  "epsilon": 0.1,
+  "experts": [
+    {"moe": 0, "expert": 0, "popularity": 0.42},
+    {"moe": 0, "expert": 1, "popularity": 0.17}
+  ]
+}
+```
+
+`moe` is a stable zero-based ordinal obtained by sorting resolved nodes by graph scope and node index. `expert` is the
+zero-based expert index local to that MoE node. If the file cannot be written during session destruction, ONNX Runtime
+logs an error.
+
+Pass the resulting file back through `session.moe_expert_counter_state_file` or the benchmark's `--state` option to
+restore the popularities, `alpha`, and `epsilon`. Values from the JSON replace explicitly configured alpha and epsilon.
+Omitted experts start at zero. Out-of-range or duplicate expert records, invalid values, malformed JSON, and file-access
+errors fail session initialization. Use the same model and graph-optimization configuration when loading a state file.
