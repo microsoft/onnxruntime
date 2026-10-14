@@ -82,3 +82,5 @@ extends:
             docker_python_exe_path: '/opt/python/cp314-cp314/bin/python3.14'
           - python_version: '3.14t'
             docker_python_exe_path: '/opt/python/cp314-cp314t/bin/python3.14'
+          - python_version: '3.15'
+            docker_python_exe_path: '/opt/python/cp315-cp315/bin/python3.15'
