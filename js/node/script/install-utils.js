@@ -10,79 +10,103 @@ const path = require('path');
 const os = require('os');
 const AdmZip = require('adm-zip'); // Use adm-zip instead of spawn
 
-async function downloadFile(url, dest) {
+
+async function downloadFile(url, dest, maxRedirects = 5) {
   return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(dest);
-    https
-      .get(url, (res) => {
-        if (res.statusCode !== 200) {
-          file.close();
-          fs.unlinkSync(dest);
-          reject(new Error(`Failed to download from ${url}. HTTP status code = ${res.statusCode}`));
-          return;
-        }
-
-        res.pipe(file);
-        file.on('finish', () => {
-          file.close();
-          resolve();
-        });
-        file.on('error', (err) => {
-          fs.unlinkSync(dest);
-          reject(err);
-        });
-      })
-      .on('error', (err) => {
-        fs.unlinkSync(dest);
-        reject(err);
-      });
-  });
-}
-
-async function downloadJson(url) {
-  return new Promise((resolve, reject) => {
-    https
-      .get(url, (res) => {
-        const { statusCode } = res;
-        const contentType = res.headers['content-type'];
-
-        if (!statusCode) {
-          reject(new Error('No response statud code from server.'));
-          return;
-        }
-        if (statusCode >= 400 && statusCode < 500) {
-          resolve(null);
-          return;
-        } else if (statusCode !== 200) {
-          reject(new Error(`Failed to download build list. HTTP status code = ${statusCode}`));
-          return;
-        }
-        if (!contentType || !/^application\/json/.test(contentType)) {
-          reject(new Error(`unexpected content type: ${contentType}`));
-          return;
-        }
-        res.setEncoding('utf8');
-        let rawData = '';
-        res.on('data', (chunk) => {
-          rawData += chunk;
-        });
-        res.on('end', () => {
-          try {
-            resolve(JSON.parse(rawData));
-          } catch (e) {
-            reject(e);
+    const doRequest = (currUrl, redirectsLeft) => {
+      const file = fs.createWriteStream(dest);
+      https
+        .get(currUrl, (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            // Handle 3xx redirect
+            file.close();
+            fs.unlinkSync(dest);
+            if (redirectsLeft <= 0) {
+              return reject(new Error(`Too many redirects while downloading ${currUrl}`));
+            }
+            // Absolute or relative Location
+            const redirectUrl = new URL(res.headers.location, currUrl).href;
+            return doRequest(redirectUrl, redirectsLeft - 1);
+          } else if (res.statusCode !== 200) {
+            file.close();
+            fs.unlinkSync(dest);
+            reject(new Error(`Failed to download from ${currUrl}. HTTP status code = ${res.statusCode}`));
+            return;
           }
-        });
-        res.on('error', (err) => {
+          res.pipe(file);
+          file.on('finish', () => {
+            file.close();
+            resolve();
+          });
+          file.on('error', (err) => {
+            fs.unlinkSync(dest);
+            reject(err);
+          });
+        })
+        .on('error', (err) => {
+          fs.unlinkSync(dest);
           reject(err);
         });
-      })
-      .on('error', (err) => {
-        reject(err);
-      });
+    };
+    doRequest(url, maxRedirects);
   });
 }
 
+async function downloadJson(url, maxRedirects = 5) {
+  return new Promise((resolve, reject) => {
+    const doRequest = (currUrl, redirectsLeft) => {
+      https
+        .get(currUrl, (res) => {
+          const { statusCode } = res;
+          const contentType = res.headers['content-type'];
+          if (statusCode >= 300 && statusCode < 400 && res.headers.location) {
+            // Handle 3xx redirect
+            if (redirectsLeft <= 0) {
+              return reject(new Error(`Too many redirects while downloading JSON from ${currUrl}`));
+            }
+            const redirectUrl = new URL(res.headers.location, currUrl).href;
+            res.resume(); // consume response and free up memory
+            return doRequest(redirectUrl, redirectsLeft - 1);
+          }
+
+          if (!statusCode) {
+            reject(new Error('No response status code from server.'));
+            return;
+          }
+          if (statusCode >= 400 && statusCode < 500) {
+            resolve(null);
+            return;
+          } else if (statusCode !== 200) {
+            reject(new Error(`Failed to download build list. HTTP status code = ${statusCode}`));
+            return;
+          }
+          if (!contentType || !/^application\/json/.test(contentType)) {
+            reject(new Error(`unexpected content type: ${contentType}`));
+            return;
+          }
+          res.setEncoding('utf8');
+          let rawData = '';
+          res.on('data', (chunk) => {
+            rawData += chunk;
+          });
+          res.on('end', () => {
+            try {
+              resolve(JSON.parse(rawData));
+            } catch (e) {
+              reject(e);
+            }
+          });
+          res.on('error', (err) => {
+            reject(err);
+          });
+        })
+        .on('error', (err) => {
+          reject(err);
+        });
+    };
+    doRequest(url, maxRedirects);
+  });
+}
 async function installPackages(packages, manifests, feeds) {
   // Step.1: resolve packages
   const resolvedPackages = new Map();
