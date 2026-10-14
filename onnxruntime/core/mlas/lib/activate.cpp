@@ -490,12 +490,19 @@ Return Value:
 --*/
 {
 #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
-    // The platform routine covers the element-wise kinds and returns false for the
-    // rest, which fall through to the switch below.
-
-    if (GetMlasPlatform().ActivationRoutine != nullptr &&
-        GetMlasPlatform().ActivationRoutine(Activation, Buffer, Bias, M, N, ldc)) {
-        return;
+    const auto activation_routine = GetMlasPlatform().ActivationRoutine;
+    if (activation_routine != nullptr) {
+#if !defined(FORCE_GENERIC_ALGORITHMS)
+        // Short rows do not amortize the specialized vector setup cost.
+        if (N >= 32 && (Activation->ActivationKind != MlasIdentityActivation || Bias != nullptr) &&
+            MlasFusedActivationRvv(Activation, Buffer, Bias, M, N, ldc)) {
+            return;
+        }
+#endif
+        // Keep the existing RVV routine for short rows and unsupported kinds.
+        if (activation_routine(Activation, Buffer, Bias, M, N, ldc)) {
+            return;
+        }
     }
 #endif
 
