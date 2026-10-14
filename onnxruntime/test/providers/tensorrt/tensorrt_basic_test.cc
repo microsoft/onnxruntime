@@ -764,6 +764,158 @@ TEST(TensorrtExecutionProviderTest, DDSOutputTest) {
   ASSERT_TRUE(status.IsOK());
 }
 
+void RunWithOneSessionMultiProfiles(bool multi_thread) {
+  const PathString model_name = multi_thread
+                                    ? ORT_TSTR("trt_execution_provider_multi_profile_multithread_test.onnx")
+                                    : ORT_TSTR("trt_execution_provider_multi_profile_test.onnx");
+  const std::string context_model_name_string = multi_thread
+                                                    ? "trt_execution_provider_multi_profile_multithread_ctx.onnx"
+                                                    : "trt_execution_provider_multi_profile_ctx.onnx";
+  const std::string cache_directory = multi_thread
+                                          ? "trt_execution_provider_multi_profile_multithread_cache"
+                                          : "trt_execution_provider_multi_profile_cache";
+  const PathString context_model_name = ToPathString(context_model_name_string);
+  std::filesystem::remove(model_name);
+  std::filesystem::remove(context_model_name);
+  std::filesystem::remove_all(cache_directory);
+  CreateBaseModel(model_name, "multi_profile_test", {1, -1, -1});
+
+  SessionOptions so;
+  so.session_logid = multi_thread
+                         ? "TensorrtExecutionProviderMultiProfileMultiThreadTest"
+                         : "TensorrtExecutionProviderMultiProfileTest";
+  InferenceSession session_object{so, GetEnvironment()};
+
+  OrtTensorRTProviderOptionsV2 params;
+  // Create two optimization profiles with fixed input shapes of 1x2x2 and 1x4x4.
+  params.trt_profile_min_shapes =
+      "X:1x2x2,X:1x4x4,Y:1x2x2,Y:1x4x4,Z:1x2x2,Z:1x4x4";
+  params.trt_profile_opt_shapes =
+      "X:1x2x2,X:1x4x4,Y:1x2x2,Y:1x4x4,Z:1x2x2,Z:1x4x4";
+  params.trt_profile_max_shapes =
+      "X:1x2x2,X:1x4x4,Y:1x2x2,Y:1x4x4,Z:1x2x2,Z:1x4x4";
+  params.trt_dump_ep_context_model = 1;
+  params.trt_ep_context_embed_mode = 1;
+  params.trt_ep_context_file_path = context_model_name_string.c_str();
+  params.trt_engine_cache_enable = 1;
+  params.trt_engine_cache_path = cache_directory.c_str();
+  params.trt_engine_cache_prefix = "multi_profile";
+
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
+  ASSERT_STATUS_OK(session_object.Load(model_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_TRUE(std::filesystem::exists(context_model_name));
+
+  bool has_trt_node = false;
+  for (const auto& node : session_object.GetSessionState().GetGraphViewer().Nodes()) {
+    has_trt_node |= node.GetExecutionProviderType() == kTensorrtExecutionProvider;
+  }
+  ASSERT_TRUE(has_trt_node);
+
+  auto cpu_allocator = CPUAllocator::DefaultInstance();
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  const std::vector<std::string> output_names{"M"};
+
+  const auto run_and_verify = [&](InferenceSession& session, const std::vector<int64_t>& input_shape) {
+    const size_t element_count = narrow<size_t>(TensorShape(input_shape).Size());
+    const std::vector<float> input_values(element_count, 1.0f);
+    OrtValue input_x;
+    OrtValue input_y;
+    OrtValue input_z;
+    CreateMLValue<float>(cpu_allocator, input_shape, input_values, &input_x);
+    CreateMLValue<float>(cpu_allocator, input_shape, input_values, &input_y);
+    CreateMLValue<float>(cpu_allocator, input_shape, input_values, &input_z);
+
+    NameMLValMap feeds;
+    feeds.emplace("X", input_x);
+    feeds.emplace("Y", input_y);
+    feeds.emplace("Z", input_z);
+
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &fetches));
+    VerifyOutputs(fetches, input_shape, std::vector<float>(element_count, 3.0f));
+  };
+
+  const auto run_profiles = [&](InferenceSession& session) {
+    if (multi_thread) {
+      std::vector<std::thread> threads;
+      for (int i = 0; i < 4; ++i) {
+        threads.emplace_back(run_and_verify, std::ref(session),
+                             i % 2 == 0 ? std::vector<int64_t>{1, 2, 2} : std::vector<int64_t>{1, 4, 4});
+      }
+      for (auto& thread : threads) {
+        thread.join();
+      }
+      return;
+    }
+
+    run_and_verify(session, {1, 2, 2});
+    run_and_verify(session, {1, 4, 4});
+    run_and_verify(session, {1, 4, 4});
+    run_and_verify(session, {1, 2, 2});
+  };
+
+  run_profiles(session_object);
+
+  const auto engine_cache_files = GetCachesByType(cache_directory, ".engine");
+  const auto profile_cache_files = GetCachesByType(cache_directory, ".profile");
+  ASSERT_EQ(engine_cache_files.size(), 1);
+  ASSERT_EQ(profile_cache_files.size(), 1);
+  const auto engine_cache = ReadFileFromDisk(engine_cache_files[0]);
+  const auto profile_cache = ReadFileFromDisk(profile_cache_files[0]);
+
+  InferenceSession cache_session{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 cache_params;
+  cache_params.trt_engine_cache_enable = 1;
+  cache_params.trt_engine_cache_path = cache_directory.c_str();
+  cache_params.trt_engine_cache_prefix = "multi_profile";
+  ASSERT_STATUS_OK(cache_session.RegisterExecutionProvider(
+      TensorrtExecutionProviderWithOptions(&cache_params)));
+  ASSERT_STATUS_OK(cache_session.Load(model_name));
+  ASSERT_STATUS_OK(cache_session.Initialize());
+
+  run_profiles(cache_session);
+  EXPECT_EQ(ReadFileFromDisk(engine_cache_files[0]), engine_cache);
+  EXPECT_EQ(ReadFileFromDisk(profile_cache_files[0]), profile_cache);
+
+  InferenceSession context_session{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 context_params;
+  context_params.trt_ep_context_embed_mode = 1;
+  ASSERT_STATUS_OK(context_session.RegisterExecutionProvider(
+      TensorrtExecutionProviderWithOptions(&context_params)));
+  ASSERT_STATUS_OK(context_session.Load(context_model_name));
+  ASSERT_STATUS_OK(context_session.Initialize());
+
+  run_profiles(context_session);
+
+  const std::vector<int64_t> unmatched_shape{1, 3, 3};
+  const std::vector<float> unmatched_values(9, 1.0f);
+  OrtValue unmatched_input;
+  CreateMLValue<float>(cpu_allocator, unmatched_shape, unmatched_values, &unmatched_input);
+  NameMLValMap unmatched_feeds;
+  unmatched_feeds.emplace("X", unmatched_input);
+  unmatched_feeds.emplace("Y", unmatched_input);
+  unmatched_feeds.emplace("Z", unmatched_input);
+
+  std::vector<OrtValue> fetches;
+  const auto status = context_session.Run(run_options, unmatched_feeds, output_names, &fetches);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("could not find an optimization profile"), std::string::npos);
+
+  std::filesystem::remove(model_name);
+  std::filesystem::remove(context_model_name);
+  std::filesystem::remove_all(cache_directory);
+}
+
+TEST(TensorrtExecutionProviderTest, MultiProfilesSingleThread) {
+  RunWithOneSessionMultiProfiles(false);
+}
+
+TEST(TensorrtExecutionProviderTest, MultiProfilesMultiThread) {
+  RunWithOneSessionMultiProfiles(true);
+}
+
 TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   // GetParam() returns the parameter of following format:
   // ##cache type##_##input shape type##
