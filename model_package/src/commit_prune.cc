@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-/// \file commit_prune_validate.cc
-/// \brief Commit, prune, and validate implementation.
+/// \file commit_prune.cc
+/// \brief Commit and prune implementation.
 
 #include "model_package.h"
 
@@ -73,7 +73,7 @@ ModelPackageStatus* FsyncPath(const fs::path& p, bool is_dir) {
     int err = errno;
     ::close(fd);
     return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                      std::string("fsync '") + p.string() + "' failed: " + std::strerror(err));
+                      std::string("fsync '") + p.u8string() + "' failed: " + std::strerror(err));
   }
   ::close(fd);
   return nullptr;
@@ -87,12 +87,12 @@ ModelPackageStatus* WriteFileAtomic(const fs::path& final_path, const std::strin
     std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
     if (!f) {
       return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                        "Cannot open '" + tmp.string() + "' for writing.");
+                        "Cannot open '" + tmp.u8string() + "' for writing.");
     }
     f.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
     if (!f) {
       return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                        "Write to '" + tmp.string() + "' failed.");
+                        "Write to '" + tmp.u8string() + "' failed.");
     }
   }
   if (auto* s = FsyncPath(tmp, /*is_dir=*/false)) return s;
@@ -101,7 +101,7 @@ ModelPackageStatus* WriteFileAtomic(const fs::path& final_path, const std::strin
   if (ec) {
     fs::remove(tmp, ec);
     return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                      "Rename '" + tmp.string() + "' -> '" + final_path.string() +
+                      "Rename '" + tmp.u8string() + "' -> '" + final_path.u8string() +
                           "' failed: " + ec.message());
   }
   if (auto* s = FsyncPath(final_path.parent_path(), /*is_dir=*/true)) return s;
@@ -115,33 +115,33 @@ ModelPackageStatus* CopyTreeNoFollow(const fs::path& src, const fs::path& dst) {
   std::error_code ec;
   fs::create_directories(dst, ec);
   if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                            "mkdir '" + dst.string() + "': " + ec.message());
+                            "mkdir '" + dst.u8string() + "': " + ec.message());
   for (fs::recursive_directory_iterator it(src, fs::directory_options::none, ec), end;
        it != end; it.increment(ec)) {
     if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                              "iterate '" + src.string() + "': " + ec.message());
+                              "iterate '" + src.u8string() + "': " + ec.message());
     const auto& entry = *it;
     fs::path rel = fs::relative(entry.path(), src, ec);
     fs::path target = dst / rel;
     if (entry.is_symlink()) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                        "shared asset source contains a symlink: '" + entry.path().string() + "'.");
+                        "shared asset source contains a symlink: '" + entry.path().u8string() + "'.");
     }
     if (entry.is_directory()) {
       fs::create_directories(target, ec);
       if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                                "mkdir '" + target.string() + "': " + ec.message());
+                                "mkdir '" + target.u8string() + "': " + ec.message());
     } else if (entry.is_regular_file()) {
       fs::create_directories(target.parent_path(), ec);
       fs::copy_file(entry.path(), target, fs::copy_options::overwrite_existing, ec);
       if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                                "copy '" + entry.path().string() + "' -> '" +
-                                    target.string() + "': " + ec.message());
+                                "copy '" + entry.path().u8string() + "' -> '" +
+                                    target.u8string() + "': " + ec.message());
       if (auto* s = FsyncPath(target, /*is_dir=*/false)) return s;
     } else {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         "unsupported file kind in shared asset source: '" +
-                            entry.path().string() + "'.");
+                            entry.path().u8string() + "'.");
     }
   }
   if (auto* s = FsyncPath(dst, /*is_dir=*/true)) return s;
@@ -160,17 +160,17 @@ ModelPackageStatus* CheckPortableConfinement(const fs::path& root,
     // An empty relative path, or one whose first component is "..", escapes the root.
     // (Checking only the first character would wrongly reject in-root dot-prefixed names
     // such as ".hidden/component.json".)
-    if (ec || rel.empty() || rel.begin()->string() == "..") {
+    if (ec || rel.empty() || *rel.begin() == "..") {
       return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
-                        where + ": absolute path '" + c.string() +
-                            "' escapes package_root '" + r.string() + "' (portable layout).");
+                        where + ": absolute path '" + c.u8string() +
+                            "' escapes package_root '" + r.u8string() + "' (portable layout).");
     }
   } else {
     // Relative: a leading ".." escapes.
     auto first = c.begin();
-    if (first != c.end() && first->string() == "..") {
+    if (first != c.end() && *first == "..") {
       return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
-                        where + ": relative path '" + c.string() +
+                        where + ": relative path '" + c.u8string() +
                             "' escapes package_root (portable layout).");
     }
   }
@@ -251,8 +251,8 @@ ModelPackageStatus* CommitSharedAssetsCopyIn(ModelPackage* pkg, const fs::path& 
     if (ec) {
       fs::remove_all(stage_dir, ec);
       return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                        "Rename shared asset dir '" + stage_dir.string() + "' -> '" +
-                            final_dir.string() + "' failed: " + ec.message());
+                        "Rename shared asset dir '" + stage_dir.u8string() + "' -> '" +
+                            final_dir.u8string() + "' failed: " + ec.message());
     }
     if (auto* s = FsyncPath(assets_root, /*is_dir=*/true)) return s;
   }
@@ -285,7 +285,7 @@ ModelPackageStatus* CommitInPlace(ModelPackage* pkg, ModelPackageWriteMode mode)
     fs::create_directories(pkg->package_root, ec);
     if (ec) {
       return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                        "Cannot create package_root '" + pkg->package_root.string() +
+                        "Cannot create package_root '" + pkg->package_root.u8string() +
                             "': " + ec.message());
     }
   }
@@ -343,17 +343,17 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
   if (fs::exists(dest_root, ec)) {
     if (!fs::is_directory(dest_root, ec)) {
       return MakeStatus(MODEL_PACKAGE_ERR_STATE,
-                        "Commit dest_root '" + dest_root.string() + "' exists and is not a directory.");
+                        "Commit dest_root '" + dest_root.u8string() + "' exists and is not a directory.");
     }
     if (!fs::is_empty(dest_root, ec)) {
       return MakeStatus(MODEL_PACKAGE_ERR_STATE,
-                        "Commit dest_root '" + dest_root.string() + "' is not empty.");
+                        "Commit dest_root '" + dest_root.u8string() + "' is not empty.");
     }
   } else {
     fs::create_directories(dest_root, ec);
     if (ec) {
       return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                        "Cannot create dest_root '" + dest_root.string() + "': " + ec.message());
+                        "Cannot create dest_root '" + dest_root.u8string() + "': " + ec.message());
     }
   }
 
@@ -401,7 +401,7 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
   for (const auto& [uri, src] : to_copy) {
     if (!fs::is_directory(src, ec)) {
       return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
-                        "Commit dest_root: shared asset source '" + src.string() +
+                        "Commit dest_root: shared asset source '" + src.u8string() +
                             "' for " + uri + " is not a directory.");
     }
     std::string dir_name = mp::DefaultSharedAssetDirName(uri);
@@ -440,23 +440,23 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
     if (comps_it != manifest.end() && comps_it->is_object()) {
       for (auto e = comps_it->begin(); e != comps_it->end(); ++e) {
         if (!e->is_string()) continue;
-        fs::path p(e->get<std::string>());
+        fs::path p = fs::u8path(e->get<std::string>());
         fs::path target;
         if (p.is_absolute()) {
           if (pkg->layout == "portable") {
             return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
                               "dest_root commit (portable): component '" + e.key() +
-                                  "' has absolute path '" + p.string() + "'.");
+                                  "' has absolute path '" + p.u8string() + "'.");
           }
           target = p;
         } else {
           target = dest_root / p;
           std::error_code ec2;
           fs::path normalized = target.lexically_normal();
-          if (normalized.string().find(dest_root.lexically_normal().string()) != 0) {
+          if (normalized.native().find(dest_root.lexically_normal().native()) != 0) {
             return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
                               "dest_root commit (portable): component '" + e.key() +
-                                  "' relative path '" + p.string() + "' escapes dest_root.");
+                                  "' relative path '" + p.u8string() + "' escapes dest_root.");
           }
           target = normalized;
         }
@@ -519,7 +519,7 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
 constexpr std::chrono::seconds kPruneGrace{60};
 
 bool IsTmpName(const fs::path& p) {
-  std::string name = p.filename().string();
+  std::string name = p.filename().u8string();
   return name.find(".tmp.") != std::string::npos;
 }
 
@@ -533,8 +533,8 @@ bool IsOldEnough(const fs::path& p) {
 
 bool IsAncestorOrEqual(const fs::path& ancestor, const fs::path& descendant) {
   // ancestor == descendant, or descendant lives under ancestor (boundary aware).
-  auto a = ancestor.lexically_normal().generic_string();
-  auto d = descendant.lexically_normal().generic_string();
+  auto a = ancestor.lexically_normal().generic_u8string();
+  auto d = descendant.lexically_normal().generic_u8string();
   if (d.size() < a.size()) return false;
   if (d.compare(0, a.size(), a) != 0) return false;
   return d.size() == a.size() || d[a.size()] == '/';
@@ -609,15 +609,17 @@ extern "C" {
 
 ModelPackageStatus* ModelPackage_Commit(ModelPackage* pkg,
                                         const char* dest_root_or_null,
-                                        ModelPackageWriteMode mode) {
+                                        ModelPackageWriteMode mode) try {
   if (!pkg) return NullArg("pkg");
   if (dest_root_or_null) {
-    return CommitToDestRoot(pkg, fs::path(dest_root_or_null), mode);
+    return CommitToDestRoot(pkg, fs::u8path(dest_root_or_null), mode);
   }
   return CommitInPlace(pkg, mode);
+} catch (const std::system_error& error) {
+  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
 
-ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) {
+ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) try {
   if (!pkg) return NullArg("pkg");
   if (pkg->package_root.empty()) return nullptr;
 
@@ -650,120 +652,8 @@ ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) {
   SweepOrphanDirs(pkg, &pkg->pending_orphan_variant_dirs, live_dirs);
 
   return nullptr;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Validate
-// ─────────────────────────────────────────────────────────────────────────────
-
-namespace {
-
-void AddFinding(ordered_json* arr, const std::string& code, const std::string& msg) {
-  ordered_json e = ordered_json::object();
-  e["code"] = code;
-  e["message"] = msg;
-  arr->push_back(e);
-}
-
-}  // namespace
-
-ModelPackageStatus* ModelPackage_Validate(ModelPackage* pkg, int flags,
-                                          const char** out_report_json) {
-  if (!pkg) return NullArg("pkg");
-  if (!out_report_json) return NullArg("out_report_json");
-  *out_report_json = nullptr;
-  ordered_json report = ordered_json::object();
-  report["errors"] = ordered_json::array();
-  report["warnings"] = ordered_json::array();
-  ordered_json* errors = &report["errors"];
-  ordered_json* warnings = &report["warnings"];
-
-  std::error_code ec;
-
-  // SCHEMA: re-validate the in-memory manifest by serializing then re-parsing
-  // into a scratch ModelPackage with strict mode. Validates schema for both
-  // committed and uncommitted state.
-  if (flags & MODEL_PACKAGE_VALIDATE_SCHEMA) {
-    // Re-run each component/variant through the parser to confirm shape.
-    for (const auto& comp : pkg->components) {
-      mp::ComponentRecord scratch;
-      auto opts = mp::PathOptionsFor(pkg);
-      if (auto* s = mp::ParseComponentBody(pkg->package_root, opts,
-                                           /*strict=*/true,
-                                           comp->name, comp->body,
-                                           comp->component_dir, &scratch)) {
-        AddFinding(errors, "SCHEMA", std::string("component '") + comp->name + "': " + ModelPackageStatus_Message(s));
-        ModelPackageStatus_Release(s);
-      }
-    }
-  }
-
-  // PATHS: each external component's path on disk; each shared-asset resolved_path exists.
-  if (flags & MODEL_PACKAGE_VALIDATE_PATHS) {
-    for (const auto& comp : pkg->components) {
-      if (comp->storage == mp::ComponentStorage::kExternal) {
-        if (!fs::exists(comp->external_path, ec)) {
-          AddFinding(warnings, "PATHS",
-                     "component '" + comp->name + "' external file does not exist: " +
-                         comp->external_path.string());
-        }
-      }
-    }
-    for (const auto& rec : pkg->shared_assets) {
-      if (!fs::is_directory(rec->resolved_path, ec)) {
-        AddFinding(warnings, "PATHS",
-                   "shared asset " + rec->uri + " resolved path is not a directory: " +
-                       rec->resolved_path.string());
-      }
-    }
-  }
-
-  // ASSET_REHASH: re-hash each on-disk shared asset and compare to its URI.
-  if (flags & MODEL_PACKAGE_VALIDATE_ASSET_REHASH) {
-    for (const auto& rec : pkg->shared_assets) {
-      if (!fs::is_directory(rec->resolved_path, ec)) continue;  // PATHS / REACH covers this.
-      std::string computed;
-      if (auto* s = mp::ComputeDirectoryAssetUri(rec->resolved_path, &computed)) {
-        AddFinding(errors, "ASSET_REHASH",
-                   "shared asset " + rec->uri + ": hashing failed: " +
-                       ModelPackageStatus_Message(s));
-        ModelPackageStatus_Release(s);
-        continue;
-      }
-      if (computed != rec->uri) {
-        AddFinding(errors, "ASSET_REHASH",
-                   "shared asset " + rec->uri + " on-disk hash differs: " + computed);
-      }
-    }
-  }
-
-  // UNKNOWN_FIELDS: re-run with strict=true (only flags top-level / known scopes).
-  if (flags & MODEL_PACKAGE_VALIDATE_UNKNOWN_FIELDS) {
-    static const char* kKnown[] = {
-        "schema_version", "package_name", "package_version", "description",
-        "layout", "components", "shared_assets", "additional_metadata"};
-    for (auto it = pkg->manifest.begin(); it != pkg->manifest.end(); ++it) {
-      bool found = false;
-      for (auto* k : kKnown)
-        if (it.key() == k) {
-          found = true;
-          break;
-        }
-      if (!found) {
-        AddFinding(warnings, "UNKNOWN_FIELDS",
-                   "manifest contains unknown field '" + it.key() + "'.");
-      }
-    }
-  }
-
-  pkg->last_validate_report = report.dump(2);
-  *out_report_json = pkg->last_validate_report->c_str();
-  if (!errors->empty()) {
-    return MakeStatus(MODEL_PACKAGE_ERR_STATE,
-                      "ModelPackage_Validate: " + std::to_string(errors->size()) +
-                          " error(s) found. See out_report_json for details.");
-  }
-  return nullptr;
+} catch (const std::system_error& error) {
+  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
 
 }  // extern "C"

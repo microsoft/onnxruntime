@@ -404,7 +404,9 @@ TEST_F(GatedDeltaNetStateReplayTest, CheckedRegionReportsRunProgramBindingError)
 #endif
 
 TEST_F(GatedDeltaNetStateReplayTest, SegmentedBackingViews) {
-  auto provider = WebGpuExecutionProviderWithTestStorageBufferBindingSize(65536);
+  WebGpuExecutionProviderTestOptions test_options{};
+  test_options.max_storage_buffer_binding_size = 65536;
+  auto provider = WebGpuExecutionProviderWithTestOptions(test_options);
   if (!provider) {
     GTEST_SKIP() << "Artificially small storage binding limits require the native test factory.";
   }
@@ -420,7 +422,9 @@ TEST_F(GatedDeltaNetStateReplayTest, SharedSourceCapsuleBindingOwner) {
   constexpr uint64_t kSegmentBytes = 65536;
   ConfigOptions options;
   ASSERT_STATUS_OK(options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, "8"));
-  auto provider = WebGpuExecutionProviderWithTestStorageBufferBindingSize(options, kSegmentBytes);
+  WebGpuExecutionProviderTestOptions test_options{};
+  test_options.max_storage_buffer_binding_size = kSegmentBytes;
+  auto provider = WebGpuExecutionProviderWithTestOptions(options, test_options);
   if (!provider) {
     GTEST_SKIP() << "Artificially small storage binding limits require the native test factory.";
   }
