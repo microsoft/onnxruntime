@@ -43,8 +43,9 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << (components == 4 ? "vec4<norm_element_t>" : (components == 2 ? "vec2<norm_element_t>" : "norm_element_t"))
       << ";\n";
 
-  std::string simpl1 = (simplified_) ? "" : "- mean * mean ";
-  std::string simpl2 = (simplified_) ? "" : "- norm_element_t(mean) ";
+  // Shift full LayerNorm before summation so large constant rows have an exact zero mean offset.
+  const std::string simpl2 = simplified_ ? "" : "- norm_element_t(shift) - norm_element_t(mean) ";
+  const std::string mean_expression = simplified_ ? "mean" : "mean + shift";
 
   const auto output_expression = [&](const std::string& input, const std::string& scale_offset) {
     const std::string normalized =
@@ -63,6 +64,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "var<workgroup> sum_squared_shared : array<f32, workgroup_size_x>;\n";
 
     shader.MainFunctionBody()
+        << (simplified_ ? "" : "  let shift = f32(" + x.GetByOffset("0") + ".x);\n")
         << "  var sum_vec4 = vec4<f32>(0);\n"
         << "  var sum_squared_vec4 = vec4<f32>(0);\n"
         << "  var cur_input = x_value_t(0);\n"
@@ -72,9 +74,9 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "    if (i == workgroup_idx) {\n"
         << "      cur_input = input_value;\n"
         << "    }\n"
-        << "    let f32_value = vec4<f32>(input_value);\n"
+        << "    let f32_value = vec4<f32>(input_value)" << (simplified_ ? "" : " - shift") << ";\n"
         << "    sum_vec4 += f32_value;\n"
-        << "    sum_squared_vec4 += f32_value * f32_value;\n"
+        << (simplified_ ? "    sum_squared_vec4 += f32_value * f32_value;\n" : "")
         << "  }\n"
         << "  var sum = " << SumVector("sum_vec4", 4) << ";\n"
         << "  var sum_squared = " << SumVector("sum_squared_vec4", 4) << ";\n"
@@ -86,19 +88,41 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "    reduce_size = curr_size + (reduce_size & 1);\n"
         << "    if (local_idx < curr_size) {\n"
         << "      sum_shared[local_idx] += sum_shared[local_idx + reduce_size];\n"
-        << "      sum_squared_shared[local_idx] += sum_squared_shared[local_idx + reduce_size];\n"
+        << (simplified_ ? "      sum_squared_shared[local_idx] += sum_squared_shared[local_idx + reduce_size];\n" : "")
         << "    }\n"
         << "    workgroupBarrier();\n"
         << "  }\n"
-        << "  let mean = sum_shared[0] / f32(uniforms.norm_size);\n"
-        << "  let inv_std_dev = inverseSqrt(sum_squared_shared[0] / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
+        << "  let mean = sum_shared[0] / f32(uniforms.norm_size);\n";
+
+    if (!simplified_) {
+      // Sum centered squares to avoid cancellation in E[x^2] - E[x]^2.
+      shader.MainFunctionBody()
+          << "  for (var i: u32 = 0; i < uniforms.norm_size / (workgroup_size_x * 4); i++) {\n"
+          << "    let input_offset = i * workgroup_size_x + local_idx;\n"
+          << "    let deviation = vec4<f32>(" << x.GetByOffset("input_offset") << ") - shift - mean;\n"
+          << "    sum_squared_vec4 += deviation * deviation;\n"
+          << "  }\n"
+          << "  sum_squared_shared[local_idx] = " << SumVector("sum_squared_vec4", 4) << ";\n"
+          << "  workgroupBarrier();\n"
+          << "  reduce_size = workgroup_size_x;\n"
+          << "  for (var curr_size = reduce_size >> 1; curr_size > 0; curr_size = reduce_size >> 1) {\n"
+          << "    reduce_size = curr_size + (reduce_size & 1);\n"
+          << "    if (local_idx < curr_size) {\n"
+          << "      sum_squared_shared[local_idx] += sum_squared_shared[local_idx + reduce_size];\n"
+          << "    }\n"
+          << "    workgroupBarrier();\n"
+          << "  }\n";
+    }
+
+    shader.MainFunctionBody()
+        << "  let inv_std_dev = inverseSqrt(sum_squared_shared[0] / f32(uniforms.norm_size) + uniforms.epsilon);\n"
         << "  let offset = workgroup_idx * workgroup_size_x + local_idx;\n"
         << "  let output_value = " << output_expression("cur_input", "offset") << ";\n"
         << "  " << y.SetByOffset("offset", "output_value") << "\n";
 
     if (has_mean_output_) {
       shader.MainFunctionBody() << "  if (local_idx == 0 && workgroup_idx == 0) {\n"
-                                << "    " << mean_output->SetByOffset("global_idx / uniforms.norm_size", "mean") << "\n"
+                                << "    " << mean_output->SetByOffset("global_idx / uniforms.norm_size", mean_expression) << "\n"
                                 << "  }\n";
     }
     if (has_inv_std_dev_output_) {
@@ -117,6 +141,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let iy = workgroup_idx;\n"
         << (fp32_normalization_ ? "if (iy >= uniforms.norm_count) { return; }\n" : "")
         << "let norm_size_vectorized: u32 = uniforms.norm_size / uniforms.components;\n"
+        << (simplified_ ? "" : "let shift = f32(" + x.GetByOffset("iy * norm_size_vectorized") + (components > 1 ? ".x" : "") + ");\n")
         << "var stride = norm_size_vectorized / workgroup_size_x;\n"
         << "let offset = ix * stride + iy * norm_size_vectorized;\n"
         << "let offset1d = stride * ix;\n"
@@ -127,9 +152,9 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "}\n"
         << "for (var i: u32 = 0; i < stride; i++) {\n"
         << " let input_value = " << x.GetByOffset("offset + i") << ";\n"
-        << " let f32_value = f32_val_t(input_value);\n"
+        << " let f32_value = f32_val_t(input_value)" << (simplified_ ? "" : " - shift") << ";\n"
         << " sum_shared[ix] += f32_value;\n"
-        << " sum_squared_shared[ix] += f32_value * f32_value;\n"
+        << (simplified_ ? " sum_squared_shared[ix] += f32_value * f32_value;\n" : "")
         << "}\n"
         << "workgroupBarrier();\n"
         << "var reduce_size : u32 = workgroup_size_x;\n"
@@ -137,14 +162,33 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << " reduce_size = curr_size + (reduce_size & 1);\n"
         << " if (ix < curr_size) {\n"
         << "  sum_shared[ix] += sum_shared[ix + reduce_size];\n"
-        << "  sum_squared_shared[ix] += sum_squared_shared[ix + reduce_size];\n"
+        << (simplified_ ? "  sum_squared_shared[ix] += sum_squared_shared[ix + reduce_size];\n" : "")
         << " }\n"
         << " workgroupBarrier();\n"
         << "}\n"
         << "let sum = sum_shared[0];\n"
+        << "let mean = " << SumVector("sum", components) << " / f32(uniforms.norm_size);\n";
+
+    if (!simplified_) {
+      shader.MainFunctionBody()
+          << "for (var i: u32 = 0; i < stride; i++) {\n"
+          << " let deviation = f32_val_t(" << x.GetByOffset("offset + i") << ") - shift - mean;\n"
+          << " sum_squared_shared[ix] += deviation * deviation;\n"
+          << "}\n"
+          << "workgroupBarrier();\n"
+          << "reduce_size = workgroup_size_x;\n"
+          << "for (var curr_size = reduce_size >> 1; curr_size > 0; curr_size = reduce_size >> 1) {\n"
+          << " reduce_size = curr_size + (reduce_size & 1);\n"
+          << " if (ix < curr_size) {\n"
+          << "  sum_squared_shared[ix] += sum_squared_shared[ix + reduce_size];\n"
+          << " }\n"
+          << " workgroupBarrier();\n"
+          << "}\n";
+    }
+
+    shader.MainFunctionBody()
         << "let square_sum = sum_squared_shared[0];\n"
-        << "let mean = " << SumVector("sum", components) << " / f32(uniforms.norm_size);\n"
-        << "let inv_std_dev = inverseSqrt(" << SumVector("square_sum", components) << " / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
+        << "let inv_std_dev = inverseSqrt(" << SumVector("square_sum", components) << " / f32(uniforms.norm_size) + uniforms.epsilon);\n"
         << "for (var i: u32 = 0; i < stride; i++) {\n"
         << " let output_value = " << output_expression(x.GetByOffset("offset + i"), "offset1d + i") << ";\n"
         << " " << y.SetByOffset("offset + i", "output_value") << "\n"
@@ -152,7 +196,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
     if (has_mean_output_) {
       shader.MainFunctionBody() << "if (ix == 0) {\n"
-                                << "  " << mean_output->SetByOffset("iy", "mean") << "\n"
+                                << "  " << mean_output->SetByOffset("iy", mean_expression) << "\n"
                                 << "}\n";
     }
     if (has_inv_std_dev_output_) {
