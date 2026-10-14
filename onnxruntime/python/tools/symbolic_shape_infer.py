@@ -2069,7 +2069,34 @@ class SymbolicShapeInference:
         self._infer_Split_Common(node, helper.make_tensor_value_info)
 
     def _infer_SplitToSequence(self, node):  # noqa: N802
-        self._infer_Split_Common(node, helper.make_sequence_value_info)
+        output_shape = list(self._get_shape(node, 0))
+        axis = handle_negative_axis(get_attribute(node, "axis", 0), len(output_shape))
+        if len(node.input) > 1 and node.input[1]:
+            split = self._try_get_value(node, 1)
+            chunk = None
+            if split is not None and np.ndim(split) == 0:
+                # A scalar split gives chunks of that size, the last one may be smaller.
+                split = as_scalar(split)
+                if is_literal(split) and is_literal(output_shape[axis]) and int(output_shape[axis]) % int(split) == 0:
+                    chunk = int(split)
+            elif split is not None and len(set(as_list(split, keep_none=False))) == 1:
+                chunk = as_list(split, keep_none=False)[0]
+                chunk = int(chunk) if is_literal(chunk) else str(chunk)
+            if chunk is None:
+                # The chunks can have different sizes, so their dim along axis is unknown.
+                chunk = str(self._new_symbolic_dim_from_output(node, 0, axis))
+            output_shape[axis] = chunk
+        elif get_attribute(node, "keepdims", 1):
+            output_shape[axis] = 1
+        else:
+            del output_shape[axis]
+
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_sequence_value_info(
+                node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, output_shape
+            )
+        )
 
     def _infer_Squeeze(self, node):  # noqa: N802
         input_shape = self._get_shape(node, 0)
