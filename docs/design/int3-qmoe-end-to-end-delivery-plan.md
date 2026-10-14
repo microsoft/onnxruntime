@@ -160,6 +160,28 @@ bytes: [0x24,0x49,0x92]
 
 Provide machine-readable fixtures containing logical shape, width, block size, codes, scales, zero points, expected raw bytes, explicit dequantized weights, and QMoE outputs. Cover every code, byte and block crossings, multiple rows/experts, tails, zero groups, truncation, and invalid padding. At least two independent pack/unpack implementations must agree byte-for-byte. Do not use the same potentially faulty helper to produce both expected and actual values.
 
+### 2.7 Generic Packed-Code Foundation and INT5/INT6 Extensibility
+
+P0/P1 must establish a width-parameterized packed-code foundation rather than an INT3-only byte utility. Separate three contracts:
+
+| Layer | Shared contract | Width-specific responsibility |
+| --- | --- | --- |
+| Packed-code representation | Unsigned codes in a `uint8` container, last-axis row-local LSB-first packing, explicit logical count, checked sizes/offsets, canonical zero padding | `bits`, representable code range, and any reviewed format version |
+| Quantization profile | Explicit interpretation of codes, scales, zero points, grouping, rounding, and projection ordering | Supported signed mapping, zero-point policy, scale dtypes, quantizer rules, and schema-approved shapes |
+| Execution capability | Per-projection dispatch, bounded fallback, versioned provider-private layouts, and explicit unsupported diagnostics | Qualified widths, combinations, providers, architectures, and optimized eligibility |
+
+For a reviewed width `w`, the generic packed layer uses `row_bytes=ceil(count*w/8)`, starting bit `k*w`, and mask `(1<<w)-1`. Size calculations must use overflow-safe arithmetic; cross-byte reads must remain inside the row. Use `count=K` for weights and `count=B` for packed block zero points. Generic helpers take width and logical count explicitly: do not scatter INT3 constants such as `3*k` or `&7`, use integer `8/bits` packing formulas, or infer logical lengths from bytes. Validate the supported bit range before shifts and arithmetic. Reference helpers should cover widths 1..8 to match the reviewed Pack/Unpack proposal; that utility range is not the QMoE operator's accepted-width set.
+
+Keep offset-binary interpretation outside the packing layer. INT3 retains Section 2.1's `q=u-4`. If future symmetric INT5/INT6 profiles adopt the same convention, their candidate mappings are `q=u-16` in `[-16,15]` and `q=u-32` in `[-32,31]`; these require their own profile/schema approval. Neither packing nor Unpack implies that convention, an implicit zero point, a quantization algorithm, or support for arbitrary asymmetric zero points. Parameterize profile-driven reference dequantization without silently generalizing INT3's restrictions to existing or future models.
+
+The exporter and shared validator must resolve each FC's effective width and reviewed profile independently, then select its byte counts, code interpretation, scales/zero points, and execution support. Preserve existing INT2/4/8 model bytes and numerical semantics; migration to shared helpers must pass old-width golden regressions and must not reinterpret old formats. Existing INT3 baseline combinations remain unchanged. A generic helper that can encode five or six bits is not permission for QMoE to accept effective width 5 or 6: reject those widths until their schema and provider capabilities are delivered.
+
+P0's generic format fixtures must explicitly cover 3/5/6-bit codes, cross-byte positions, row/expert boundaries, logical tails, zero-length rows, packed zero points, truncation, overflow, and padding behavior. Require two independent decoders and recorded Pack/Unpack-reference interoperability. Keep code round trips separate from numerical-profile tests: test INT3's approved profile now, and qualify INT5/INT6 numerical semantics when those profiles are reviewed. Generic Unpack's padding behavior and stricter QMoE-profile validation remain distinct as described in Section 7.3.
+
+Provider caches/descriptors must distinguish effective width, numerical profile/format version, layout version, architecture, logical shape, and padding, with relevant metadata included in cache identity. Section 3's 2+1 planes are an INT3 candidate, not a universal layout. Future INT5/INT6 kernels may evaluate other plane decompositions or direct bitstream loads based on measurements; do not expose an INT3-specific layout as the portable ABI or infer kernel performance from shared packing semantics.
+
+INT3 is the first execution profile in this plan. INT5/INT6 delivery should reuse the format utilities, reference graphs, fixture framework, and stage gates, but separately review schemas, quantizers/export, both projections, bounded execution, prepack, numerical quality, and model performance. No INT5/INT6 kernel, mixed-width combination, native datatype, or production qualification is added to the current baseline by establishing this foundation.
+
 ## 3. CUDA Internal Layout: A 2+1 Bit-Plane Candidate
 
 **Models still use the contiguous bitstream in Section 2.** CUDA may convert it during session initialization into a low-two-bit plane and a high-one-bit plane:
@@ -217,6 +239,7 @@ Every heading in this section uses a **proposed label**, not an actual PR number
 
 - Freeze the unsigned codes, offset-4 semantics, row-local LSB-first raw bytes, scale/zero-point rules, FC ordering, and portable tail definitions in Section 2 with exporter/runtime-owner review.
 - Add machine-readable golden fixtures and two independent pack/unpack implementations covering every code, byte/block crossings, row/expert boundaries, tails, zero groups, and malformed inputs.
+- Establish Section 2.7's generic packed-code utilities and 3/5/6-bit format fixtures, separately from INT3 numerical-profile fixtures. Utility coverage does not enable INT5/INT6 QMoE execution.
 - Add byte-for-byte interoperability checks against the Pack/Unpack proposal revision recorded in Section 7.3, covering weights with `count=K` and explicit zero points with `count=B`. Establish an executable standard-operator unpack/dequantization reference for small fixtures; do not defer this reference until P8 or depend on an unreleased opset.
 - Audit Olive's INT3 checkpoint representation and identify explicit canonical conversion requirements; unknown or Q3_K/IQ3 packing is not interchangeable with this format.
 - Exit gate: byte-for-byte agreement and agreed mathematical semantics. This establishes a proposed portable contract, not current ORT tail support, approved ONNX datatypes, or runtime execution.
@@ -225,6 +248,7 @@ Every heading in this section uses a **proposed label**, not an actual PR number
 
 - Depends on PR 0's frozen contract/fixtures; review the schema revision permitting effective width 3 and its version/format-identifier requirements.
 - Implement shared ceil-bit shape/stride calculations with overflow checks, shape inference, raw `uint8` validation, explicit INT3 zero-point checks, and clear unsupported-provider diagnostics.
+- Separate generic packed-code validation from profile/schema/provider support under Section 2.7. Resolve those contracts per projection; preserve INT2/4/8 byte semantics and reject unapproved INT5/INT6 widths even when shared utilities can pack them.
 - Preserve default `expert_weight_bits=4`, independent FC override inheritance, fused FC3/FC1 agreement, and byte/numerical compatibility for INT2/4/8.
 - Gate tail allowance through schema review; keep the first ORT model's H/I divisibility constraints and reject unapproved tail models at export. Enforce the initial matching FP16/BF16 activation/FC-scale execution profile.
 - Exit gate: valid `(3,4)`, `(3,3)`, and `(4,3)` models validate and invalid models reject before computation, with old-model regression tests. Cover width-specific FC1/FC2 shapes and zero points independently. Schema acceptance alone is not provider execution support.
