@@ -301,7 +301,7 @@ endif()
 
 include(cudnn_frontend)
 include(cutlass)
-if(ORT_HAS_SM90_OR_LATER AND NOT WIN32 AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+if(ORT_HAS_SM90 AND NOT WIN32 AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
   include(deep_gemm)
   target_include_directories(onnxruntime_providers_cuda_plugin PRIVATE ${deep_gemm_SOURCE_DIR}/deep_gemm/include)
   target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE USE_DEEP_GEMM)
@@ -312,7 +312,7 @@ if(ORT_HAS_SM90_OR_LATER)
   list(APPEND _cuda_plugin_shared_compile_options
     "$<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>"
     "$<$<COMPILE_LANGUAGE:CUDA>:-DCUTLASS_ENABLE_GDC_FOR_SM90=1>")
-  if(NOT MSVC)
+  if(NOT MSVC AND ORT_HAS_SM90)
     # The native SM90 (Hopper) TMA/WGMMA launchers pass CUTLASS TMA descriptor types through
     # NVCC-generated host stubs. With CUDA 13 + MSVC those stubs contain 128-byte over-aligned
     # by-value formal parameters, which triggers MSVC C2719 ("formal parameter with requested
@@ -384,11 +384,12 @@ endif()
 
 if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   # SM90 TMA warp-specialized files use SM90-specific collective operations.
+  # sm_90a code runs only on SM90, so skip the library unless SM90 is targeted.
   # Also includes fpA_intB SM90 launchers (guarded by #ifndef EXCLUDE_SM_90).
   if(_cuda_plugin_sm90_tma_srcs OR _cuda_plugin_llm_sm90_srcs)
     set(_plugin_sm90_all_srcs ${_cuda_plugin_sm90_tma_srcs} ${_cuda_plugin_llm_sm90_srcs})
     onnxruntime_filter_cuda_archs(_plugin_sm90_check MIN_SM 90)
-    if(_plugin_sm90_check)
+    if(_plugin_sm90_check AND ORT_HAS_SM90)
       onnxruntime_add_cuda_plugin_object_library(
         NAME onnxruntime_providers_cuda_plugin_sm90_tma
         PARENT onnxruntime_providers_cuda_plugin

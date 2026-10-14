@@ -258,6 +258,11 @@ macro(setup_cuda_architectures)
   # and block-scaled FP4 kernels, which are compiled for the requested 12.x architectures.
   onnxruntime_cuda_archs_have_sass(ORT_HAS_SM12X 120 121 ${CMAKE_CUDA_ARCHITECTURES_ORIG})
 
+  # ORT_HAS_SM90: native code for SM90 (Hopper) itself is requested. The Hopper TMA/WGMMA kernels
+  # and DeepGEMM are compiled only for sm_90a, which runs on compute capability 9.0 and nothing
+  # else (not SM100/SM120), so they are dead code unless SM90 is targeted.
+  onnxruntime_cuda_archs_have_sass(ORT_HAS_SM90 90 90 ${CMAKE_CUDA_ARCHITECTURES_ORIG})
+
   # EXCLUDE_SM_<arch> compiles out the kernels for <arch> when no requested architecture can run
   # them. The SM120 kernels are compiled for whichever 12.x architectures are requested (see
   # onnxruntime_filter_cuda_archs), so SM121 alone also keeps them.
