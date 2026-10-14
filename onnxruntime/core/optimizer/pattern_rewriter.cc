@@ -879,7 +879,7 @@ Status PatternRewriter::Run(Graph& graph, Statistics& statistics) const {
         if (id < winner) {
           winner = id;
           winning_match = match;
-          winning_pattern = &pattern;
+          winning_pattern = match.pattern;
         }
         if (!options_.match_only) break;
       }
