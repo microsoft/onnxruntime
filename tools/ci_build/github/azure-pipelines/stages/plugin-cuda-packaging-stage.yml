@@ -96,7 +96,7 @@ parameters:
 - name: cmake_linux_aarch64_cuda_archs
   type: string
   displayName: 'CMAKE_CUDA_ARCHITECTURES for Linux aarch64'
-  default: '89-real;90-real;100-real;103-real;120-real;121-real'
+  default: '89-real;90-real;100-real;103-real;110-real;120-real;121-real'
 
 - name: python_version
   type: string
