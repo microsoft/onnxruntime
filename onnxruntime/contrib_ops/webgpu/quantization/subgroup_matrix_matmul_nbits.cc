@@ -218,11 +218,12 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
     }
   } else if (config.Is(16, 16, 16)) {
     if (config.subgroupSize == 64) {
-      // A wave64 subgroup computes a 64x64 micro-tile. A wide tile keeps both waves useful for
-      // small M. Tall tiles share each dequantized B tile across row waves.
+      // A wave64 subgroup computes a 64x64 micro-tile. Small M distributes waves along N;
+      // tall tiles share each dequantized B tile across row waves.
       if (M <= 64) {
         tile_m = 64;
-        tile_n = 128;
+        // Avoid a fully padded second column wave when N is exactly 64.
+        tile_n = N == 64 ? 64 : 128;
         tile_size_k = 64;
       } else {
         // Use four waves when that does not add M padding over a two-wave tile and M is large

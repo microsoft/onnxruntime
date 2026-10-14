@@ -117,13 +117,21 @@ void RunMatMulNBitsTileTests(int64_t bits) {
       RunMatMulNBitsTileTest(bits, 400, 64, 128, has_zero_points, has_bias);
       RunMatMulNBitsTileTest(bits, 640, 64, 128, has_zero_points, has_bias);
 
-      // Retain the wide tile's partially populated N edge.
+      // N=64 needs only one column wave; N=192 retains the wide tile's partial N edge.
       RunMatMulNBitsTileTest(bits, 32, 64, 64, has_zero_points, has_bias);
+      RunMatMulNBitsTileTest(bits, 32, 192, 64, has_zero_points, has_bias);
 
       // Initial BK=128 does not divide K: reduce it to 64 for K=192 and
       // to 32 for K=96 so no iteration reads beyond the prepacked K dimension.
       RunMatMulNBitsTileTest(bits, 400, 64, 192, has_zero_points, has_bias);
       RunMatMulNBitsTileTest(bits, 400, 64, 96, has_zero_points, has_bias);
+
+      // Two-wave BK=128 and wide BK=32, both with partial 16-row prepack blocks.
+      RunMatMulNBitsTileTest(bits, 257, 64, 128, has_zero_points, has_bias);
+      RunMatMulNBitsTileTest(bits, 33, 128, 32, has_zero_points, has_bias);
+
+      // The single-wave tile must also handle reduced BK with a partial prepack block.
+      RunMatMulNBitsTileTest(bits, 33, 64, 32, has_zero_points, has_bias);
     }
   }
 }

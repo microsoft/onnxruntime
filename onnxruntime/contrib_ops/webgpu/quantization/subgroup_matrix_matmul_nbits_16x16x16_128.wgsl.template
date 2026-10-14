@@ -7,8 +7,8 @@
 // A: prepacked layout (from PrepackProgram) - elements arranged for subgroupMatrixLoad
 // B: 4-bit or 8-bit quantized, dequantized into SLM (buf_b) with padded stride
 //
-// Workgroup: 4 wave32 subgroups for a 128x128 tile, or 2/4 wave64 subgroups for a
-// 64x128 / 128x64 / 256x64 tile.
+// Workgroup: 4 wave32 subgroups for a 128x128 tile, or 1/2/4 wave64 subgroups for a
+// 64x64 / 64x128 / 128x64 / 256x64 tile.
 // Each subgroup handles WM(64) x WN(64) = 4x4 = 16 coopmat tiles of 16x16
 // K dimension iterated in configurable BK blocks
 //
