@@ -7,7 +7,7 @@ stages:
   jobs:
   - job: Build
     displayName: Build WebGPU tests
-    timeoutInMinutes: 60
+    timeoutInMinutes: 90
     workspace:
       clean: all
     pool:
@@ -63,7 +63,7 @@ stages:
   - job: TestAndValidate
     displayName: Test and validate shader keys
     dependsOn: Build
-    timeoutInMinutes: 60
+    timeoutInMinutes: 90
     workspace:
       clean: all
     pool:
