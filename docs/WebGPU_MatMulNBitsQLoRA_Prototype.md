@@ -12,6 +12,12 @@ Both built-in and plugin WebGPU are supported; plugin use requires the host
 and provider library from this branch. Disable the option for a comparison
 with the original graph.
 
+The transformer matches packed INT8 MatMulNBits adapter projections, not
+arbitrary DequantizeLinear/Cast/MatMul graphs. Those graphs require an offline
+conversion to the weight format below. A model exported with explicit
+MatMulNBitsQLoRA nodes does not need the transformer enabled, and disabling
+the transformer does not undo those explicit nodes.
+
 ## Weight format and arithmetic
 
 The operator takes `X, W, scales, lora_A, lora_A_scales, lora_B, lora_B_scales`.
@@ -39,10 +45,14 @@ Y       = FP16(MatMulNBits(X,W,scales) + delta)
 ```
 
 Base quantization stays INT4 with block size 32 and implicit zero point 8.
-The adapter projections retain accuracy level 0 and their original dot-product
-grouping, accumulation policy, and FP16 intermediate rounding. The provider's
-`enableMatmulFp32Accumulation` option applies to adapter accumulation as it does
-to the original INT8 MatMulNBits kernels.
+The equations describe the weight interpretation and mathematical projections;
+the optimized kernels can change reduction order and activation precision.
+Eligible prefill down projections use DP4A activation quantization when the
+model's `accuracy_level` permits it. Decode and up projections do not add
+activation quantization. The provider's `enableMatmulFp32Accumulation` option
+controls floating-point lane accumulation. Intermediate T remains FP16;
+the specialized decode kernel performs its final subgroup reduction in FP32.
+These paths are not claimed to be bitwise equivalent to the unfused graph.
 
 The input layout is already transposed and block packed. The fusion does not
 insert a transpose or materialize a complete dequantized adapter.
@@ -54,18 +64,25 @@ dimension of X; a one-token prompt follows the decode selection.
 
 | Phase | Selected mode | NVIDIA implementation |
 |---|---|---|
-| Prefill, M > 1 | `fuse_up` | Original INT8 down projection, then base with INT8 up projection and addition |
+| Prefill, M > 1 | `fuse_up` | INT8 down projection, then base with INT8 up projection and addition; eligible DP4A paths share quantized X |
 | Decode, M = 1 | `fuse_down` | Base and INT8 down projection in one dispatch, then INT8 up projection and addition |
 
 The joint decode kernel supports one total input row and K from 2048 through
 8192. It retains 128 threads per workgroup and adds four workgroups for the
-32 down-projection outputs. Its reduction matches the original generic INT8
-kernel. `QLoRAOutputVec4` uses 64 threads and one output per thread, loading
-packed weights as `vec4<u32>` and T as `vec4<f16>` along rank.
+32 down-projection outputs. On devices with fixed 32-lane subgroups, each lane
+loads X into registers and reuses it for two rank outputs, then reduces lane
+partials with FP32 subgroup sums. The previous workgroup-memory reduction
+remains the fallback. `QLoRAOutputVec4` uses 64 threads and one output per
+thread, loading packed weights as `vec4<u32>` and T as `vec4<f16>` along rank.
 
-DP4A prefill retains the base activation quantization dispatch, making three
-dispatches per adapted projection. Explicit `fuse_down` and `fuse_up` remain
-available. Shapes outside the joint decode specialization calculate T
+DP4A prefill quantizes X once and shares the quantized tensor and scales
+between the down projection and base projection, making three dispatches per
+adapted projection. For eligible NVIDIA inputs with K >= 2048 and M <= 4096,
+the rank-32 down projection uses the small-M DP4A reduction with a 32-column
+tile. This narrow output remains underutilized by the general tiled kernel
+even at larger M. The general DP4A kernel also uses 32-column tiles when N < 64.
+Explicit `fuse_down` and `fuse_up` remain available. Shapes outside the joint
+decode specialization calculate T
 separately. Devices that select subgroup matrix arithmetic for the original
 INT8 up projection retain that kernel and a separate Add to preserve arithmetic.
 
@@ -99,10 +116,18 @@ onnxruntime_provider_test.exe --gtest_filter=MatMulNBitsQLoRA.*:MatMulNBitsLoRA.
 onnxruntime_test_all.exe --gtest_filter=GraphTransformationTests.MatMulNBits*LoRA*
 ```
 
-The quantized tests check original-versus-fused results with zero tolerance,
-FP32 accumulation, batched and partial-tile shapes, empty adapters, partial
-overrides, nonzero/shared defaults, unsupported shapes and attributes, and
+The quantized tests check original-versus-fused results, FP32 accumulation,
+batched and partial-tile shapes, empty adapters, partial overrides,
+nonzero/shared defaults, unsupported shapes and attributes, and
 patterns that must remain unfused. Full-model evaluation must separately
 compare fusion equivalence against the original INT8 model and quantization
 differences against FP16. Performance runs should use no profiling and record
 the actual runtime libraries, provider, capture setting, and adapter state.
+
+Quantized-prefill and reordered-decode fusion comparisons use 0.002 absolute
+and 0.001 relative tolerances; unaffected paths retain zero tolerance. A dense
+reference test separately checks the specialized decode reduction.
+See [the performance evaluation](WebGPU_MatMulNBitsLoRA_Performance.md) for model-level
+accuracy limits and the main-versus-optimized performance comparison. WebGPU
+also batches CPU-to-GPU input uploads to amortize per-tensor adapter transfer
+cost; this is independent of the shader fusion.

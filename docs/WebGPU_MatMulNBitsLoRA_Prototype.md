@@ -8,8 +8,8 @@ model file.
 
 The current matcher supports FP16 rank-32 adapters, INT4 base weights with block
 size 32, an implicit zero point, no base bias, and no separate adapter scaling
-node. Both MatMuls must use the same activation as the base projection, and
-their intermediate outputs must have no other consumers or graph outputs.
+node. The down projection must use the same activation as the base projection,
+and intermediate outputs must have no other consumers or graph outputs.
 
 ## Enable in native GenAI
 

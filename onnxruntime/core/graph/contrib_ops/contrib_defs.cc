@@ -3997,14 +3997,16 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
       .SetDoc(
           "Computes MatMulNBits(X,W,scales) + MatMulNBits(MatMulNBits(X,lora_A,lora_A_scales),lora_B,lora_B_scales). "
           "The base uses INT4 block-32 weights with implicit zero point 8. Adapters use INT8 block-32 weights "
-          "stored as unsigned bytes with implicit zero point 128 and FP16 block scales. Adapter projections use "
-          "accuracy level 0. Rank is 32; an empty rank dimension in either packed adapter disables the adapter. "
+          "stored as unsigned bytes with implicit zero point 128 and FP16 block scales. Eligible adapter down "
+          "projections may quantize activations according to accuracy_level. Rank is 32; an empty rank dimension "
+          "in either packed adapter disables the adapter. "
           "Intermediate projections are rounded to FP16 before the final addition. Adapters remain replaceable.")
       .Attr("K", "Input feature dimension; a positive multiple of 32.", AttributeProto::INT)
       .Attr("N", "Output feature dimension; a positive multiple of 4.", AttributeProto::INT)
       .Attr("bits", "Base weight bit width; must be 4.", AttributeProto::INT, int64_t{4})
       .Attr("block_size", "Base weight block size; must be 32.", AttributeProto::INT, int64_t{32})
-      .Attr("accuracy_level", "Base MatMulNBits accumulation policy.", AttributeProto::INT, int64_t{0})
+      .Attr("accuracy_level", "Accuracy policy for the base and eligible adapter down projections.", AttributeProto::INT,
+            int64_t{0})
       .Attr("lora_bits", "Adapter weight bit width; must be 8.", AttributeProto::INT, int64_t{8})
       .Attr("lora_block_size", "Adapter weight block size; must be 32.", AttributeProto::INT, int64_t{32})
       .Input(0, "X", "Input of rank at least two, with last dimension K.", "T")
