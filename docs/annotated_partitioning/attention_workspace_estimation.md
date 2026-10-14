@@ -263,6 +263,12 @@ fallback remains available to unrelated operators, and profile data cannot
 substitute for the missing GQA proof. Level 2 emits no requirement when its
 estimate is unavailable.
 
+The CUDA plugin's host-side accounting path does not yet receive analytical
+estimates, so capacity-aware placement declines new GQA assignments there even
+when an envelope is declared. A fused group containing such a node is declined
+as a whole. Placement without a resource accountant, previously accounted
+assignments, and unrelated operators or plugin EPs retain their existing behavior.
+
 Unlike the log-only PA/PMHA Level-1 probe, a successful GQA Level-1 estimate is
 passed to the #31962 resource accountant as `runtime_workspace_bytes` and can
 affect CUDA partition acceptance.
