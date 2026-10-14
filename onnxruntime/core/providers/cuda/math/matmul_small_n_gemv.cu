@@ -17,7 +17,7 @@ constexpr int kMaxN = 1024;
 constexpr int kMinK = 128;
 constexpr int kThreads = 256;
 constexpr int kTx = 32;  // one warp-wide column tile -> fully coalesced B reads
-constexpr int kMaxSplitK = 32;
+constexpr int kMaxSplitK = 64;
 
 template <typename T>
 struct ElementTraits;
@@ -243,7 +243,7 @@ Status Launch(cudaStream_t stream, const T* a, const T* b, T* c, int n, int k,
 int VecSplitK(int n, int k) {
   const int tiles = (n + kVecCols - 1) / kVecCols;
   int split_k = 1;
-  while (split_k < kMaxSplitK && split_k * tiles < 128) split_k <<= 1;
+  while (split_k < kMaxSplitK && split_k * tiles < 256) split_k <<= 1;
   // Every slice must give each warp at least one K step.
   while (split_k > 1 && k / split_k < kVecWarps * kVecKStep) split_k >>= 1;
   return split_k;
