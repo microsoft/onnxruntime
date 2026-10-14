@@ -46,6 +46,18 @@ void CreatePciDrmCard(const fs::path& card_path, std::string_view vendor_id, std
   uevent << "DRIVER=" << driver << "\n";
 }
 
+void SetDeviceTreeCompatible(const fs::path& card_path, std::string_view compatible) {
+  fs::create_directories(card_path / "device" / "of_node");
+  std::ofstream file(card_path / "device" / "of_node" / "compatible", std::ios::binary);
+  file << compatible << '\0';
+}
+
+// Directory iteration order is unspecified, so sort the detected paths by card index before checking them.
+void SortByCardIdx(std::vector<drm_device_discovery::GpuSysfsPathInfo>& gpu_paths) {
+  std::sort(gpu_paths.begin(), gpu_paths.end(),
+            [](const auto& a, const auto& b) { return a.card_idx < b.card_idx; });
+}
+
 }  // namespace
 
 TEST_F(DrmDeviceDiscoveryTest, DetectsJetsonGpuAndSkipsOtherPlatformCards) {
@@ -78,6 +90,7 @@ TEST_F(DrmDeviceDiscoveryTest, SkipsJetsonThorDisplayControllerWhenNvidiaPciGpuP
   CreatePlatformDrmCard(temp_dir_ / "card0", "drm");
   CreatePciDrmCard(temp_dir_ / "card1", "0x10de", "nvidia");
   CreatePlatformDrmCard(temp_dir_ / "card2", "nv_platform");
+  SetDeviceTreeCompatible(temp_dir_ / "card2", "nvidia,tegra264-display");
 
   std::vector<drm_device_discovery::GpuSysfsPathInfo> gpu_paths;
   ASSERT_STATUS_OK(drm_device_discovery::DetectGpuSysfsPaths(temp_dir_, gpu_paths));
@@ -87,17 +100,61 @@ TEST_F(DrmDeviceDiscoveryTest, SkipsJetsonThorDisplayControllerWhenNvidiaPciGpuP
   EXPECT_FALSE(gpu_paths[0].is_nvidia_platform_gpu);
 }
 
-TEST_F(DrmDeviceDiscoveryTest, KeepsNvidiaPlatformGpuWhenPciGpuIsNotNvidia) {
-  CreatePciDrmCard(temp_dir_ / "card0", "0x1002", "amdgpu");
-  CreatePlatformDrmCard(temp_dir_ / "card1", "nvgpu");
+TEST_F(DrmDeviceDiscoveryTest, SkipsJetsonThorDisplayControllerWithLowerCardIndexThanPciGpu) {
+  CreatePlatformDrmCard(temp_dir_ / "card0", "nv_platform");
+  SetDeviceTreeCompatible(temp_dir_ / "card0", "nvidia,tegra264-display");
+  CreatePciDrmCard(temp_dir_ / "card1", "0x10de", "nvidia");
 
   std::vector<drm_device_discovery::GpuSysfsPathInfo> gpu_paths;
   ASSERT_STATUS_OK(drm_device_discovery::DetectGpuSysfsPaths(temp_dir_, gpu_paths));
 
+  ASSERT_EQ(gpu_paths.size(), 1u);
+  EXPECT_EQ(gpu_paths[0].card_idx, 1u);
+  EXPECT_FALSE(gpu_paths[0].is_nvidia_platform_gpu);
+}
+
+TEST_F(DrmDeviceDiscoveryTest, KeepsJetsonOrinPlatformGpuWhenNvidiaPciGpuPresent) {
+  // Jetson Orin with a discrete NVIDIA GPU, e.g. IGX Orin.
+  CreatePciDrmCard(temp_dir_ / "card0", "0x10de", "nvidia");
+  CreatePlatformDrmCard(temp_dir_ / "card1", "nv_platform");
+  SetDeviceTreeCompatible(temp_dir_ / "card1", "nvidia,tegra234-display");
+
+  std::vector<drm_device_discovery::GpuSysfsPathInfo> gpu_paths;
+  ASSERT_STATUS_OK(drm_device_discovery::DetectGpuSysfsPaths(temp_dir_, gpu_paths));
+  SortByCardIdx(gpu_paths);
+
   ASSERT_EQ(gpu_paths.size(), 2u);
-  const auto platform_gpu_count = std::count_if(gpu_paths.begin(), gpu_paths.end(),
-                                                [](const auto& path_info) { return path_info.is_nvidia_platform_gpu; });
-  EXPECT_EQ(platform_gpu_count, 1);
+  EXPECT_EQ(gpu_paths[0].card_idx, 0u);
+  EXPECT_FALSE(gpu_paths[0].is_nvidia_platform_gpu);
+  EXPECT_EQ(gpu_paths[1].card_idx, 1u);
+  EXPECT_TRUE(gpu_paths[1].is_nvidia_platform_gpu);
+}
+
+TEST_F(DrmDeviceDiscoveryTest, KeepsNvidiaPlatformGpuWhenPciGpuIsNotNvidia) {
+  CreatePciDrmCard(temp_dir_ / "card0", "0x1002", "amdgpu");
+  CreatePlatformDrmCard(temp_dir_ / "card1", "nv_platform");
+  SetDeviceTreeCompatible(temp_dir_ / "card1", "nvidia,tegra264-display");
+
+  std::vector<drm_device_discovery::GpuSysfsPathInfo> gpu_paths;
+  ASSERT_STATUS_OK(drm_device_discovery::DetectGpuSysfsPaths(temp_dir_, gpu_paths));
+  SortByCardIdx(gpu_paths);
+
+  ASSERT_EQ(gpu_paths.size(), 2u);
+  EXPECT_EQ(gpu_paths[0].card_idx, 0u);
+  EXPECT_FALSE(gpu_paths[0].is_nvidia_platform_gpu);
+  EXPECT_EQ(gpu_paths[1].card_idx, 1u);
+  EXPECT_TRUE(gpu_paths[1].is_nvidia_platform_gpu);
+}
+
+TEST_F(DrmDeviceDiscoveryTest, KeepsNvidiaPciGpuWithoutPlatformCards) {
+  CreatePciDrmCard(temp_dir_ / "card0", "0x10de", "nvidia");
+
+  std::vector<drm_device_discovery::GpuSysfsPathInfo> gpu_paths;
+  ASSERT_STATUS_OK(drm_device_discovery::DetectGpuSysfsPaths(temp_dir_, gpu_paths));
+
+  ASSERT_EQ(gpu_paths.size(), 1u);
+  EXPECT_EQ(gpu_paths[0].card_idx, 0u);
+  EXPECT_FALSE(gpu_paths[0].is_nvidia_platform_gpu);
 }
 
 TEST_F(DrmDeviceDiscoveryTest, CreatesIntegratedNvidiaDeviceForJetsonGpu) {
