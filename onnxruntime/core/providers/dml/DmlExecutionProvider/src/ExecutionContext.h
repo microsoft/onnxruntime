@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <atomic>
+#include <mutex>
 #include "GpuEvent.h"
 #include "ICommandRecorder.h"
 #include "DmlCommandRecorder.h"
@@ -87,9 +89,11 @@ namespace Dml
 
         D3D12_COMMAND_LIST_TYPE GetCommandListTypeForQueue() const;
         bool CpuSyncSpinningEnabled() const { return m_cpuSyncSpinningEnabled; }
-        bool IsClosed() const { return m_closed; }
+        bool IsClosed() const { return m_closed.load(std::memory_order_acquire); }
 
     private:
+        mutable std::recursive_mutex m_mutex;
+
         Microsoft::WRL::ComPtr<ID3D12Device> m_d3dDevice;
 
         void SetCommandRecorder(ICommandRecorder* newRecorder);
@@ -101,7 +105,7 @@ namespace Dml
         // Up to one of these is active at a time
         DmlCommandRecorder m_dmlRecorder;
 
-        bool m_closed = false;
+        std::atomic<bool> m_closed{false};
         bool m_cpuSyncSpinningEnabled = false;
 
         // The python API has a global state used for I/O binding where the execution context is shared between session,
