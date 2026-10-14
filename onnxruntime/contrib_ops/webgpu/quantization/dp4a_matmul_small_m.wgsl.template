@@ -95,7 +95,7 @@ fn loadSHMA(batch: u32, a_global: u32, kidx_v: u32, col: u32)
     }
 
     tile_A[col] = a.getByOffset(batch*uniforms.M*uniforms.K16+a_global*uniforms.K16+k_offset);
-    if (col < scale_a_size_in_tile_a)
+    if (col < scale_a_size_in_tile_a && kidx_v/8 + col < uniforms.K16/8)
     {
     // kidx_v - covers 16 values of k in input_a
     scale_A[col] = scales_a.getByOffset(batch*uniforms.M*(uniforms.K/128) + a_global*(uniforms.K/128) + kidx_v/8 + col);

@@ -4,6 +4,11 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
+#if defined(USE_WEBGPU) && !defined(DISABLE_CONTRIB_OPS)
+#include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
+#include "core/providers/webgpu/webgpu_context.h"
+#endif
+
 namespace onnxruntime::test {
 #if defined(USE_WEBGPU) && !defined(DISABLE_CONTRIB_OPS)
 
@@ -90,6 +95,81 @@ TEST(MatMulNBitsQLoRA, QuantizedPrefillAndReusedInput) {
       eps.push_back(DefaultWebGpuExecutionProvider());
       test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
     }
+  }
+}
+
+TEST(MatMulNBitsQLoRA, NarrowSmallMReduction) {
+  auto initial_ep = DefaultWebGpuExecutionProvider();
+  ASSERT_NE(initial_ep, nullptr);
+  auto& gpu = webgpu::WebGpuContextFactory::GetContext(initial_ep->GetDeviceId());
+  if (!contrib::webgpu::HasDP4ADeviceSupport(initial_ep->GetDeviceId()) ||
+      gpu.AdapterInfo().vendor != std::string_view{"nvidia"}) {
+    GTEST_SKIP() << "The narrow small-M projection is selected on NVIDIA DP4A devices.";
+  }
+  struct Shape {
+    int64_t m;
+    int64_t k;
+    int64_t batch;
+  };
+  for (const auto shape : {Shape{4, 2048, 1}, Shape{37, 2176, 2}, Shape{128, 3072, 1}, Shape{65, 8192, 1}}) {
+    const auto [m, k, batch] = shape;
+    SCOPED_TRACE(MakeString("M=", m, ", K=", k, ", batch=", batch));
+    constexpr int64_t n = 64;
+    std::vector<MLFloat16> x(batch * m * k);
+    std::vector<uint8_t> aq(32 * k);
+    std::vector<MLFloat16> as(k);
+    std::vector<uint8_t> bq(n * 32, 128);
+    std::vector<MLFloat16> bs(n, MLFloat16(1.0f));
+    std::vector<MLFloat16> expected(batch * m * n);
+    for (int64_t row = 0; row < batch * m; ++row) {
+      for (int64_t col = 0; col < k; ++col) {
+        // The maximum in every 128-element block is 127 * scale, so DP4A's
+        // input quantization preserves these signed integer values exactly.
+        const float scale = 1.0f / static_cast<float>(1 << (7 + (row + col / 128) % 4));
+        const int value = col % 128 == 0 ? 127 : static_cast<int>((row * 19 + col * 11) % 255) - 127;
+        x[row * k + col] = MLFloat16(row % 7 == 0 ? 0.0f : value * scale);
+      }
+    }
+    for (int64_t r = 0; r < 32; ++r) {
+      for (int64_t col = 0; col < k; ++col) {
+        aq[r * k + col] = static_cast<uint8_t>((r * 17 + col * 13) % 256);
+      }
+      for (int64_t block = 0; block < k / 32; ++block) {
+        as[r * (k / 32) + block] = MLFloat16(1.0f / static_cast<float>(1 << (8 + (r + block) % 4)));
+      }
+    }
+    // A zero base and an identity up projection expose every element of T.
+    // Compute the reference as a dense dequantized dot product in double.
+    for (int64_t col = 0; col < n; ++col) {
+      bq[col * 32 + col % 32] = 129;
+    }
+    for (int64_t row = 0; row < batch * m; ++row) {
+      for (int64_t r = 0; r < 32; ++r) {
+        double sum = 0;
+        for (int64_t col = 0; col < k; ++col) {
+          sum += static_cast<double>(x[row * k + col].ToFloat()) *
+                 (static_cast<int>(aq[r * k + col]) - 128) * as[r * (k / 32) + col / 32].ToFloat();
+        }
+        expected[row * n + r] = expected[row * n + r + 32] = MLFloat16(static_cast<float>(sum));
+      }
+    }
+    OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
+    test.AddAttribute<int64_t>("K", k);
+    test.AddAttribute<int64_t>("N", n);
+    test.AddAttribute<int64_t>("accuracy_level", 4);
+    test.AddInput<MLFloat16>("X", {batch, m, k}, x);
+    test.AddInput<uint8_t>("W", {n, k / 32, 16}, std::vector<uint8_t>(n * k / 2, 0x88), true);
+    test.AddInput<MLFloat16>("S", {n, k / 32}, std::vector<MLFloat16>(n * k / 32, MLFloat16(1.0f)), true);
+    test.AddInput<uint8_t>("AQ", {32, k / 32, 32}, aq);
+    test.AddInput<MLFloat16>("AS", {32, k / 32}, as);
+    test.AddInput<uint8_t>("BQ", {n, 1, 32}, bq);
+    test.AddInput<MLFloat16>("BS", {n, 1}, bs);
+    test.AddOutput<MLFloat16>("Y", {batch, m, n}, expected);
+    test.SetOutputAbsErr("Y", 0.002f);
+    test.SetOutputRelErr("Y", 0.001f);
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultWebGpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
   }
 }
 

@@ -239,8 +239,20 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     // Allow activation quantization for prefill only when the model opts into it.
     const auto down_accuracy = fuse_up && m >= kMinMForTileOptimization ? accuracy_level_ : 0;
     DP4AQuantizedInput quantized_x;
-    ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, aq, as, nullptr, nullptr, k_, 32, 32, down_accuracy, 8, context, &t, 0,
-                                         nullptr, 0, nullptr, nullptr, nullptr, nullptr, false, nullptr, nullptr, &quantized_x));
+    // Rank 32 exposes too few output tiles for the tiled DP4A kernel at these sizes.
+    const bool small_m_down = fuse_up && m <= 4096 && k_ >= 2048 &&
+                              context.AdapterInfo().vendor == std::string_view{"nvidia"} &&
+                              CanApplyDP4AMatrixMatMulNBits(context, down_accuracy, 32, 32,
+                                                            narrow<uint32_t>(k_), 4, m, false, &t);
+    if (small_m_down) {
+      ORT_RETURN_IF_ERROR(ApplyDP4AMatrixMatMulNBits(
+          x, aq, as, nullptr, nullptr, narrow<uint32_t>(x->Shape().Size() / k_ / m), m, m, 32,
+          narrow<uint32_t>(k_), 32, narrow<uint32_t>(k_ / 32), kMinMForTileOptimization, 8, context, &t, 0,
+          nullptr, nullptr, nullptr, nullptr, nullptr, false, nullptr, &quantized_x, 32));
+    } else {
+      ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, aq, as, nullptr, nullptr, k_, 32, 32, down_accuracy, 8, context, &t, 0,
+                                           nullptr, 0, nullptr, nullptr, nullptr, nullptr, false, nullptr, nullptr, &quantized_x));
+    }
     std::optional<SubgroupMatrixConfig> up_config;
     const bool subgroup_up =
         CanApplySubgroupMatrixMatMulNBits(context, 0, 32, narrow<uint32_t>(helper.OutputOffsets().size()),

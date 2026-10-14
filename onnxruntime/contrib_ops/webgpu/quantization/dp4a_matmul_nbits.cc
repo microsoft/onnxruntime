@@ -139,9 +139,13 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   const uint32_t weight_index,
                                   const Tensor* weight_index_indirect, const Tensor* lora_t, const Tensor* lora_b,
                                   const Tensor* lora_at, Tensor* lora_down, bool lora_transposed, const Tensor* lora_b_scales,
-                                  DP4AQuantizedInput* quantized_input) {
+                                  DP4AQuantizedInput* quantized_input, uint32_t small_m_tile_n) {
   const bool has_lora_down = lora_at != nullptr;
   const bool lora_quantized = lora_b_scales != nullptr;
+  ORT_RETURN_IF_NOT(small_m_tile_n == 0 ||
+                        (nbits == 8 && N == 32 && small_m_tile_n <= 32 && small_m_tile_n % 4 == 0 &&
+                         !zero_points && !bias && !weight_index && !weight_index_indirect && !lora_t && !lora_at),
+                    "Small-M override requires a plain rank-32 INT8 projection.");
   ORT_RETURN_IF_NOT(!has_lora_down || (lora_down && !lora_t && !weight_index_indirect && M >= min_M_for_tile_optimization),
                     "Unsupported joint DP4A LoRA projection.");
   constexpr uint32_t kVec4Components = 4;
@@ -177,13 +181,15 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
   const bool has_weight_idx = weight_index != 0 || has_weight_idx_indirect;
   const bool single_scale_weights = (block_size == K * N);
-  if (has_weight_idx_indirect || M < min_M_for_tile_optimization) {
+  if (small_m_tile_n || has_weight_idx_indirect || M < min_M_for_tile_optimization) {
     uint32_t tile_size_k_vec = 32;
-    uint32_t tile_size_n = 4;
+    uint32_t tile_size_n = small_m_tile_n ? small_m_tile_n : 4;
 
     const uint32_t b_components = (nbits == 2 ? kVec2Components : kVec4Components);
     const bool broadcast_a = dispatch_M > M;
-    const bool acc_f32 = context.EnableMatmulFp32Accumulation();
+    // The narrow projection changes the K reduction order. Keep partial sums
+    // and the final reduction in FP32, then cast T once when storing it.
+    const bool acc_f32 = small_m_tile_n != 0 || context.EnableMatmulFp32Accumulation();
     DP4AMatMulNBitsSmallMProgram mul_program{tile_size_k_vec, tile_size_n, nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, broadcast_a, acc_f32, has_lora_up, lora_transposed, lora_quantized};
     uint32_t num_N_tile = (N + tile_size_n - 1) / tile_size_n;
     mul_program.SetWorkgroupSize(128);

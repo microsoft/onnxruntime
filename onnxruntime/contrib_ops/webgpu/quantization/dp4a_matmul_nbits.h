@@ -148,7 +148,9 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   const Tensor* weight_index_indirect = nullptr,
                                   const Tensor* lora_t = nullptr, const Tensor* lora_b = nullptr,
                                   const Tensor* lora_at = nullptr, Tensor* lora_down = nullptr, bool lora_transposed = false, const Tensor* lora_b_scales = nullptr,
-                                  DP4AQuantizedInput* quantized_input = nullptr);
+                                  DP4AQuantizedInput* quantized_input = nullptr,
+                                  // Nonzero selects the K-parallel kernel for a rank-32 INT8 projection.
+                                  uint32_t small_m_tile_n = 0);
 
 // The optional M / has_weight_idx_indirect / y arguments fold the original
 // dispatch-precondition (DP4A is preferred when M is large enough, or
