@@ -1379,12 +1379,17 @@ def test_nvfp4_kpacked_mtp_qwen38_official_shape(onnx_dtype, num_tokens, capfd, 
     assert "DequantWeightBytes=" not in diagnostics
 
 
+def _enable_nvfp4_packed_prefill(monkeypatch):
+    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "1")
+    monkeypatch.setenv("ORT_ENABLE_NVFP4_CUTLASS_GEMM", "0")
+
+
 @pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="Requires CUDA NVFP4 QMoE")
 @pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT16, TensorProto.BFLOAT16])
 @pytest.mark.parametrize("num_tokens", [17, 65, 257])
 @pytest.mark.parametrize("hidden_size,inter_size", [(128, 64), (64, 128)])
 def test_nvfp4_packed_prefill_reference(onnx_dtype, num_tokens, hidden_size, inter_size, capfd, monkeypatch):
-    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "1")
+    _enable_nvfp4_packed_prefill(monkeypatch)
     monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
     shape = dict(
         hidden_size=hidden_size,
@@ -1411,7 +1416,7 @@ def test_nvfp4_packed_prefill_reference(onnx_dtype, num_tokens, hidden_size, int
 @pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="Requires CUDA NVFP4 QMoE")
 @pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT16, TensorProto.BFLOAT16])
 def test_nvfp4_packed_prefill_qwen_dimensions(onnx_dtype, capfd, monkeypatch):
-    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "1")
+    _enable_nvfp4_packed_prefill(monkeypatch)
     monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
     shape = dict(
         hidden_size=2560,
@@ -1439,7 +1444,7 @@ def test_nvfp4_packed_prefill_qwen_dimensions(onnx_dtype, capfd, monkeypatch):
 @pytest.mark.parametrize("reuse_scratch", ["0", "1"])
 @pytest.mark.parametrize("tiled_down", ["0", "1"])
 def test_nvfp4_packed_prefill_empty_experts(fused, reuse_scratch, tiled_down, capfd, monkeypatch):
-    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "1")
+    _enable_nvfp4_packed_prefill(monkeypatch)
     monkeypatch.setenv("ORT_QMOE_NVFP4_FUSED_SWIGLU", fused)
     monkeypatch.setenv("ORT_QMOE_NVFP4_REUSE_ROUTING_SCRATCH", reuse_scratch)
     monkeypatch.setenv("ORT_QMOE_NVFP4_TILED_DOWN_OUTPUT", tiled_down)
@@ -1484,7 +1489,7 @@ def test_nvfp4_packed_prefill_empty_experts(fused, reuse_scratch, tiled_down, ca
 def test_nvfp4_packed_prefill_fused_swiglu(
     onnx_dtype, num_tokens, hidden_size, inter_size, use_bias, swiglu_params, capfd, monkeypatch
 ):
-    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "1")
+    _enable_nvfp4_packed_prefill(monkeypatch)
     monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
     shape = dict(
         hidden_size=hidden_size,
@@ -1532,7 +1537,7 @@ def test_nvfp4_packed_prefill_fused_swiglu(
 def test_nvfp4_packed_prefill_reuse_routing_scratch(
     onnx_dtype, fused, row_tile_size, hidden_size, inter_size, num_experts, top_k, capfd, monkeypatch
 ):
-    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "1")
+    _enable_nvfp4_packed_prefill(monkeypatch)
     monkeypatch.setenv("ORT_QMOE_NVFP4_FUSED_SWIGLU", fused)
     monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
     shape = dict(
@@ -1591,7 +1596,7 @@ def test_nvfp4_packed_prefill_reuse_routing_scratch(
 def test_nvfp4_packed_prefill_tiled_down(
     onnx_dtype, hidden_size, inter_size, num_experts, top_k, row_tile_size, reuse_scratch, capfd, monkeypatch
 ):
-    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "1")
+    _enable_nvfp4_packed_prefill(monkeypatch)
     monkeypatch.setenv("ORT_QMOE_NVFP4_FUSED_SWIGLU", "1")
     monkeypatch.setenv("ORT_QMOE_NVFP4_REUSE_ROUTING_SCRATCH", reuse_scratch)
     monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
@@ -1638,7 +1643,7 @@ def test_nvfp4_packed_prefill_tiled_down(
 @pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="Requires CUDA NVFP4 QMoE")
 @pytest.mark.parametrize("mode", ["raw_layout", "unsupported_shape", "decode"])
 def test_nvfp4_packed_prefill_fallback(mode, capfd, monkeypatch):
-    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "1")
+    _enable_nvfp4_packed_prefill(monkeypatch)
     monkeypatch.setenv("ORT_QMOE_NVFP4_FUSED_SWIGLU", "1")
     monkeypatch.setenv("ORT_QMOE_NVFP4_REUSE_ROUTING_SCRATCH", "1")
     monkeypatch.setenv("ORT_QMOE_NVFP4_TILED_DOWN_OUTPUT", "1")

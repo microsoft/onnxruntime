@@ -849,8 +849,11 @@ builds, and requires CUDA graphs disabled. Each named node writes at
 most sixteen invocations with at least sixteen rows, keeping the first
 128 rows. Other quantization types are unaffected. Files are never
 intentionally overwritten; missing directories, invalid shapes and I/O
-failures are explicit errors. The binary format is five int64 values
-`[version=1, rows, hidden, experts, ONNX_activation_dtype]`, followed by
+failures are explicit errors. File names contain an encoded node name,
+process ID, QMoE instance ID, and invocation index so concurrent sessions
+do not collide; destination files are created exclusively. The binary
+format is five int64 values `[version=1, rows, hidden, experts,
+ONNX_activation_dtype]`, followed by
 row-major input and router tensors in their original FP16/BF16 storage.
 Capture synchronizes the stream and is **not suitable for performance
 measurement**. Captured activations are local model data; keep them in

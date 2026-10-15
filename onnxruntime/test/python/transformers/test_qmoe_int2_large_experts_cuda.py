@@ -3,9 +3,17 @@
 
 import numpy as np
 import pytest
+import torch
 from onnx import TensorProto, helper, numpy_helper
 
 import onnxruntime as ort
+
+pytestmark = pytest.mark.skipif(
+    "CUDAExecutionProvider" not in ort.get_available_providers()
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability()[0] < 8,
+    reason="CUDA SM80+ required",
+)
 
 
 @pytest.mark.skipif("CUDAExecutionProvider" not in ort.get_available_providers(), reason="CUDA required")

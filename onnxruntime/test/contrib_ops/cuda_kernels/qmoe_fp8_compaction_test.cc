@@ -307,11 +307,18 @@ void TestFp8ProjectionScaleBlocks(int fusion, int block_size, int k, bool graph,
 }
 
 TEST(CUDA_EP_Unittest, QMoEFp8ProjectionPreservesScaleBlocksLayoutsAndGraphReplay) {
+  int device = 0;
+  cudaDeviceProp properties{};
+  ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
+  ASSERT_EQ(cudaGetDeviceProperties(&properties, device), cudaSuccess);
   for (int fusion : {0, 1, 2}) {
     for (int block_size : {64, 128}) {
       for (int k : {127, 128, 257}) {
         for (bool graph : {false, true}) {
           for (bool gemm : {false, true}) {
+            if (gemm && properties.major < 8) {
+              continue;
+            }
             SCOPED_TRACE(::testing::Message() << "fusion=" << fusion << " block=" << block_size
                                               << " k=" << k << " graph=" << graph << " gemm=" << gemm);
             TestFp8ProjectionScaleBlocks<half, float>(fusion, block_size, k, graph, gemm);

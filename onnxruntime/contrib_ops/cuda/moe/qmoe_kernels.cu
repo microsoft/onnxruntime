@@ -1978,8 +1978,11 @@ void LaunchQMoEDequantizeNvfp4WeightsImpl(
     bool weights_row_major) {
   ORT_ENFORCE(bias == nullptr || output_bias != nullptr, "QMoE NVFP4 bias gathering requires an output buffer.");
   constexpr int block = 256;
-  if (weights_row_major && k % 16 == 0) {
-    const dim3 grid(n, (k + block * kQMoEDequantizeFp4VecK - 1) / (block * kQMoEDequantizeFp4VecK), num_experts);
+  const int64_t row_major_grid_y =
+      (static_cast<int64_t>(k) + block * kQMoEDequantizeFp4VecK - 1) /
+      (block * kQMoEDequantizeFp4VecK);
+  if (weights_row_major && k % 16 == 0 && row_major_grid_y <= 65535 && num_experts <= 65535) {
+    const dim3 grid(n, onnxruntime::narrow<unsigned int>(row_major_grid_y), num_experts);
     QMoEDequantizeNvfp4RowMajorWeightsVecKernel<T><<<grid, block, 0, stream>>>(
         packed_weights, block_scales, global_scales, output, n, k, compact_to_expert, bias, output_bias);
     CUDA_CALL_THROW(cudaGetLastError());

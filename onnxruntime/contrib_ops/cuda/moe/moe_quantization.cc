@@ -35,16 +35,30 @@
 
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
+#include "core/platform/env.h"
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <cerrno>
+#include <cstdio>
 #include <cstring>
-#include <functional>
 #include <filesystem>
-#include <fstream>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <mutex>
+
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include <share.h>
+#include <sys/stat.h>
+#else
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -52,6 +66,73 @@ using namespace ONNX_NAMESPACE;
 
 namespace {
 constexpr size_t kMinH200GlobalMemoryBytes = size_t{120} << 30;
+
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+std::string EncodeCalibrationCaptureName(const std::string& name) {
+  constexpr char kHex[] = "0123456789ABCDEF";
+  std::string encoded;
+  encoded.reserve(name.size());
+  for (const unsigned char character : name) {
+    if ((character >= 'a' && character <= 'z') ||
+        (character >= 'A' && character <= 'Z') ||
+        (character >= '0' && character <= '9')) {
+      encoded.push_back(static_cast<char>(character));
+    } else {
+      encoded.push_back('_');
+      encoded.push_back(kHex[character >> 4]);
+      encoded.push_back(kHex[character & 0x0F]);
+    }
+  }
+  return encoded;
+}
+
+Status WriteCalibrationCapture(
+    const std::filesystem::path& path,
+    const std::array<int64_t, 5>& header,
+    const std::vector<char>& inputs,
+    const std::vector<char>& routers) {
+  int fd = -1;
+#ifdef _WIN32
+  const errno_t open_error = _wsopen_s(
+      &fd, path.c_str(), _O_CREAT | _O_EXCL | _O_BINARY | _O_WRONLY,
+      _SH_DENYRW, _S_IREAD | _S_IWRITE);
+  if (open_error != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot exclusively create calibration capture: ",
+                           path.string(), " (error ", open_error, ")");
+  }
+  FILE* output = _fdopen(fd, "wb");
+#else
+  fd = open(path.c_str(), O_CREAT | O_EXCL | O_WRONLY, 0644);
+  if (fd < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot exclusively create calibration capture: ",
+                           path.string(), " (error ", errno, ")");
+  }
+  FILE* output = fdopen(fd, "wb");
+#endif
+  if (output == nullptr) {
+#ifdef _WIN32
+    _close(fd);
+#else
+    close(fd);
+#endif
+    std::error_code remove_error;
+    std::filesystem::remove(path, remove_error);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot open calibration capture stream: ", path.string());
+  }
+
+  const bool write_succeeded =
+      std::fwrite(header.data(), sizeof(header), 1, output) == 1 &&
+      std::fwrite(inputs.data(), 1, inputs.size(), output) == inputs.size() &&
+      std::fwrite(routers.data(), 1, routers.size(), output) == routers.size();
+  const bool close_succeeded = std::fclose(output) == 0;
+  if (!write_succeeded || !close_succeeded) {
+    std::error_code remove_error;
+    std::filesystem::remove(path, remove_error);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to write calibration capture: ", path.string());
+  }
+  return Status::OK();
+}
+#endif
 
 void LogQMoESwigluFusionRemapOnce() {
   static std::once_flag log_warning;
@@ -410,15 +491,13 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   if (!calibration_capture_directory_.empty() && quant_type_ == "nvfp4") {
     ORT_ENFORCE(std::filesystem::is_directory(calibration_capture_directory_),
                 "QMoE calibration capture directory must already exist.");
-    calibration_capture_name_ = op_kernel_info.node().Name();
-    ORT_ENFORCE(!calibration_capture_name_.empty(), "QMoE calibration capture requires named nodes.");
-    for (char& character : calibration_capture_name_) {
-      if (!(character >= 'a' && character <= 'z') &&
-          !(character >= 'A' && character <= 'Z') &&
-          !(character >= '0' && character <= '9')) {
-        character = '_';
-      }
-    }
+    const std::string& node_name = op_kernel_info.node().Name();
+    ORT_ENFORCE(!node_name.empty(), "QMoE calibration capture requires named nodes.");
+    static std::atomic<uint64_t> next_capture_instance{0};
+    calibration_capture_name_ =
+        EncodeCalibrationCaptureName(node_name) + "_p" +
+        std::to_string(Env::Default().GetSelfPid()) + "_i" +
+        std::to_string(next_capture_instance.fetch_add(1, std::memory_order_relaxed));
     LOGS_DEFAULT(WARNING) << "QMoE calibration capture enabled for " << op_kernel_info.node().Name()
                           << "; synchronous diagnostic capture, not suitable for performance measurements.";
   } else {
@@ -793,15 +872,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       CUDA_CALL_THROW(cudaStreamSynchronize(capture_stream));
       const auto path = std::filesystem::path(calibration_capture_directory_) /
                         (calibration_capture_name_ + "_" + std::to_string(calibration_capture_count_) + ".bin");
-      ORT_RETURN_IF_NOT(!std::filesystem::exists(path), "Refusing to overwrite calibration capture: ", path.string());
-      std::ofstream output(path, std::ios::binary);
-      ORT_RETURN_IF_NOT(output.is_open(), "Cannot open calibration capture: ", path.string());
       const std::array<int64_t, 5> header{1, captured_rows, hidden, experts, is_fp16_ ? 10 : 16};
-      output.write(reinterpret_cast<const char*>(header.data()), sizeof(header));
-      output.write(inputs.data(), static_cast<std::streamsize>(input_bytes));
-      output.write(routers.data(), static_cast<std::streamsize>(router_bytes));
-      output.close();
-      ORT_RETURN_IF_NOT(output.good(), "Failed to write calibration capture: ", path.string());
+      ORT_RETURN_IF_ERROR(WriteCalibrationCapture(path, header, inputs, routers));
       ++calibration_capture_count_;
     }
   }
