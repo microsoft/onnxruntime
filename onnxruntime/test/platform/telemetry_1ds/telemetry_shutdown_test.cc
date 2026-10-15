@@ -12,8 +12,12 @@
 
 #include "core/platform/env.h"
 #include "DebugEvents.hpp"
+#include "IHttpClient.hpp"
+#include "ILogConfiguration.hpp"
+#include "ILogManager.hpp"
 #include "ITaskDispatcher.hpp"
 #include "pal/PAL.hpp"
+#include "telemetry_test_registry.h"
 
 namespace {
 
@@ -42,6 +46,17 @@ bool worker_joined = false;
   std::fprintf(stderr, "FAIL: %s\n", message);
   std::_Exit(exit_code);
 }
+
+class NoNetworkHttpClient final : public sdk::IHttpClient {
+ public:
+  sdk::IHttpRequest* CreateRequest() override { return new sdk::SimpleHttpRequest("no-network"); }
+
+  void SendRequestAsync(sdk::IHttpRequest*, sdk::IHttpResponseCallback*) override {
+    Fail(32, "mutex-order test unexpectedly attempted an upload");
+  }
+
+  void CancelRequestAsync(const std::string&) override {}
+};
 
 class MutexLifetime {
  public:
@@ -165,7 +180,19 @@ extern "C" void OrtTelemetryWorkerJoined(void* value) {
   }
 }
 
+namespace onnxruntime {
+void OrtTelemetryTestConfigure(sdk::ILogConfiguration& config) {
+  config[sdk::CFG_BOOL_ENABLE_NET_DETECT] = false;
+  config.AddModule(sdk::CFG_MODULE_HTTP_CLIENT, std::make_shared<NoNetworkHttpClient>());
+}
+
+void OrtTelemetryTestReady(sdk::ILogManager&) {}
+}  // namespace onnxruntime
+
 int main(int argc, char* argv[]) {
+#if defined(_WIN32)
+  static onnxruntime::test::TelemetryTestRegistry registry;
+#endif
   if (argc != 2) {
     Fail(32, "expected a telemetry shutdown test mode");
   }

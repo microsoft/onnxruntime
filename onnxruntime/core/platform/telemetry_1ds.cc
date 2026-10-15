@@ -425,7 +425,7 @@ void OneDsTelemetry::Initialize() {
   // System SQLite is shared with other libraries; let it manage its own lifetime.
   config["skipSqliteInitAndShutdown"] = "true";
 #endif
-  // Persist pending events without blocking process teardown on uploads.
+  // Skip the teardown upload budget; cancellation and worker draining still run.
   config[CFG_INT_MAX_TEARDOWN_TIME] = 0;
   config[CFG_INT_RAM_QUEUE_SIZE] = 512 * 1024;
 #if defined(ORT_TELEMETRY_USES_STATIC_CURL)
