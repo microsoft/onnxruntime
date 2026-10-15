@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -49,6 +50,20 @@ struct Operator {
 
 using Literal = std::variant<float, int64_t, InlinedVector<float>, InlinedVector<int64_t>>;
 
+using Dimension = std::variant<std::monostate, int64_t, std::string>;
+
+struct TypeConstraint {
+  std::string value_name;
+  std::string spelling;
+  int32_t element_type = 0;  // Zero means unconstrained.
+  std::string element_variable;
+  InlinedVector<Dimension> dimensions;
+  bool any_rank = false;
+  bool prefix = false;
+  int32_t attribute_type = 0;  // Scalar/list attribute interpretation, when applicable.
+  bool tensor_type = true;
+};
+
 struct OpsetRequirement {
   std::string domain;
   int min_version;
@@ -74,6 +89,8 @@ class Pattern {
   const auto& Outputs() const { return outputs_; }
   bool IsOptional(Value value) const { return optional_inputs_.count(value.handle) != 0; }
   const auto& AttributeNames() const { return attribute_names_; }
+  const auto& TypeConstraints() const { return type_constraints_; }
+  bool IsAttribute(Value value) const { return attribute_inputs_.count(value.handle) != 0; }
 
  private:
   friend class detail::PatternParser;
@@ -96,6 +113,8 @@ class Pattern {
   InlinedVector<Value> outputs_;
   InlinedHashSet<int> optional_inputs_;
   InlinedHashSet<std::string> attribute_names_;
+  InlinedHashMap<int, TypeConstraint> type_constraints_;
+  InlinedHashSet<int> attribute_inputs_;
   Value AddValue(std::string_view name);
 };
 
@@ -105,11 +124,15 @@ struct Match {
   const NodeArg* valueOf(std::string_view name) const;
   void update(std::string_view name, ONNX_NAMESPACE::AttributeProto value) const;
   const ONNX_NAMESPACE::AttributeProto& attributeOf(std::string_view name) const;
+  const Dimension& dimensionOf(std::string_view name) const;
+  std::optional<int32_t> elementTypeOf(std::string_view name) const;
   void ClearUpdates() const {
     extra_attributes_.clear();
     rejection_reason_.clear();
   }
   bool BindAttribute(std::string_view name, const ONNX_NAMESPACE::AttributeProto& value);
+  bool BindDimension(std::string_view name, Dimension value);
+  bool BindElementType(std::string_view name, int32_t value);
   bool Reject(std::string_view reason) const {
     rejection_reason_ = reason;
     return false;
@@ -119,6 +142,8 @@ struct Match {
 
  private:
   NodeAttributes captured_attributes_;
+  InlinedHashMap<std::string, Dimension> dimensions_;
+  InlinedHashMap<std::string, int32_t> element_types_;
   mutable NodeAttributes extra_attributes_;
   mutable std::string rejection_reason_;
 };
@@ -177,6 +202,7 @@ struct Statistics {
 
 enum class FailureStage { Opset,
                           Structure,
+                          TypeShape,
                           Constant,
                           Attribute,
                           Boundary,

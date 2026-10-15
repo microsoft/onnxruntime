@@ -103,6 +103,84 @@ values. Unknown names and unbound values raise explicit errors. Read-only
 `IsOptional`, and `AttributeNames`
 are available for introspection.
 
+### Optional type and shape annotations
+
+Pattern header variables and assigned outputs may carry `: type` annotations.
+Unannotated variables retain their existing unconstrained behavior:
+
+```cpp
+Pattern pattern(R"(
+  (x:float[M,N], y:float[N,K]) => {
+    product:float[M,K] = MatMul(x,y);
+    return Identity(product);
+  }
+)");
+```
+
+Dimension names such as `M`, `N`, and `K` are **declared implicitly** by their
+first appearance in an annotation. Do not list them as separate header inputs.
+They cannot collide with tensor, attribute, or element-type variable names.
+
+| Annotation | Constraint |
+|---|---|
+| `float` | Rank-zero float32 tensor (known scalar shape) |
+| `float[]` or `float[...]` | Float32 tensor of any rank, including unknown rank |
+| `float[M,N]` | Known rank 2, with named dimension bindings |
+| `float[2,3]` | Known rank 2 and exact static dimensions 2 and 3 |
+| `float[M,...]` | Known rank at least 1, binding its first dimension |
+| `float[_,N]` | Known rank 2; first dimension unconstrained and unnamed |
+| `tensor[M,N]` | Known rank 2, without an element-type constraint |
+| `tensor<T>[M,N]` | Known rank 2, with shared element-type variable `T` |
+| `tensor<T>[]` | Any rank, with shared element-type variable `T` |
+
+Tensor element names follow ONNX, for example `float`, `double`, `float16`,
+`bfloat16`, `int64`, `int32`, `uint8`, `bool`, and `string`. Only tensor types
+are supported; sequences, maps, and optional ONNX value types are not annotations.
+`?` still describes an absent operator slot, not an ONNX optional value type:
+`(x:float[], low?:float, high?:float)` allows absent scalar Clip bounds.
+An absent slot satisfies its annotation without binding any dimensions or type.
+
+The matcher uses the model's existing metadata; it does not infer shapes or
+solve equations. Rank-specific constraints reject unknown rank, and fixed
+dimensions require known equal integers. A named dimension binds to an integer
+for a static dimension or a nonempty string for a symbolic dimension. Repeated
+known bindings must agree exactly: integer 2 differs from symbolic `"batch"`,
+and `"batch"` differs from `"other"`. An anonymous unknown dimension leaves
+the variable unbound and does not conflict with a later known binding.
+Consequently, repeated names do **not** prove runtime equality when occurrences
+are unknown; guards requiring that proof must reject unknown metadata.
+Likewise, a missing element type leaves `T` unbound, while a concrete annotation
+such as `float` requires a known matching element type.
+
+In a guard or replacement callback, `match.dimensionOf("M")` returns a
+`Dimension` (`std::variant<std::monostate, int64_t, std::string>`), and
+`match.elementTypeOf("T")` returns an optional ONNX element-type enum value
+represented as `int32_t`. Unknown declared bindings are empty; undeclared names
+raise an error. These bindings are local to each match, cannot be overwritten
+with computed attributes, and survive clearing computed attributes.
+`Pattern::TypeConstraints()` and `IsAttribute()` expose read-only introspection.
+
+Attribute captures can be declared and annotated in the header:
+
+```cpp
+Pattern pattern("(x:float[M,N], axes:ints) => { t=Transpose(x,perm=axes); return Identity(t); }");
+Replacement replacement("(x,axes) => Transpose(x,perm=axes)");
+```
+
+A header name used in keyword position denotes an attribute, not a tensor.
+Attribute annotations are `int`, `float`, `string`, `ints`, `floats`, `strings`,
+or `tensor`, matching the corresponding concrete `AttributeProto` type.
+For example, `float` means a FLOAT attribute in keyword position but a scalar
+float32 tensor in tensor position; use `int64` for an integer tensor and `int`
+for an INT attribute. Attribute variables cannot also be tensor inputs, carry
+shapes, or be marked optional. Undeclared captures remain supported and untyped.
+
+Annotations are constraints on **patterns only**; replacements continue to use
+unannotated inputs and derive types/shapes from preserved outputs and schema
+inference. Annotations on returns or replacements are rejected rather than
+silently ignored. Each annotation allows at most 64 dimensions, with at most
+256 distinct implicit dimension/element-type variables per pattern.
+
 ### Optional input slots
 
 Use `None` in an operator input position to require an absent input. It matches
@@ -184,7 +262,8 @@ Replacement replacement("(x,axes) => Transpose(x,perm=axes)");
 
 The attribute must be present and concrete. `match.attributeOf("axes")` exposes
 the captured `AttributeProto` to guards and replacements without a callback.
-Capture names are separate from tensor values and cannot collide with them.
+Capture names are separate from tensor values and cannot collide with them;
+declared header captures are classified as attributes rather than tensor inputs.
 Repeating a capture requires identical protobuf attribute content, ignoring the
 original attribute name and documentation string; type and list order matter.
 Captures can hold any concrete attribute type, but replacement schemas decide
@@ -494,7 +573,7 @@ options.on_failure = [](const MatchFailure& failure) {
 };
 ```
 
-Stages distinguish opset filtering, structure, constants, attributes, deletion
+Stages distinguish opset filtering, structure, type/shape constraints, constants, attributes, deletion
 boundaries, execution providers, guards, and replacement validation. An opset
 rejection is reported once per rule/graph with root index
 `std::numeric_limits<NodeIndex>::max()` because no candidate was inspected.
@@ -561,7 +640,7 @@ loop at each node.
 By default, a hash map indexed by `(domain, operator name)` selects candidate
 groups using the model node as the prospective pattern root. Structurally
 identical patterns can share a traversal, followed by their rule-specific guards;
-patterns with attribute predicates are kept separate. The earliest passing
+patterns with attribute predicates or type/shape annotations are kept separate. The earliest passing
 rule wins even across groups, and lower-priority work is skipped when possible.
 With `indexed=false`, the reference mode instead tries all opset-applicable
 rules in registration order at each node. Match-only mode processes one batch,

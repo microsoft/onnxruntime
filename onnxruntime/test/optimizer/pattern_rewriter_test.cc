@@ -701,7 +701,7 @@ TEST(PatternRewriterTests, ReplacementExtraAttributeBindings) {
                     "(x)=>a=Identity(x);return HardSigmoid(a,alpha=a)",
                     "(x,a)=>HardSigmoid(x,alpha=a,alpha=0.5)"})
     EXPECT_THROW(Replacement{text}, OnnxRuntimeException);
-  EXPECT_THROW(Pattern{"(x,a)=>return HardSigmoid(x,alpha=a)"}, OnnxRuntimeException);
+  EXPECT_NO_THROW(Pattern{"(x,a)=>return HardSigmoid(x,alpha=a)"});
   Replacement dotted("(x,alpha)=>com.microsoft.FusedMatMul(x,x,alpha=alpha)");
   EXPECT_EQ(dotted.Plan()->front().domain, kMSDomain);
   EXPECT_EQ(dotted.Plan()->front().op, "FusedMatMul");
@@ -2160,6 +2160,233 @@ TEST(PatternRewriterTests, StructuredFailureDiagnostics) {
       if (scenario == 0) EXPECT_EQ(found->reason, "unsupported dtype");
       ASSERT_STATUS_OK(test.graph.Resolve());
       EXPECT_EQ(test.graph.NumberOfNodes(), 2);
+    }
+  }
+}
+
+TEST(PatternRewriterTests, TypeShapeAnnotationParsing) {
+  for (auto text : {
+           "(x:float[M,N])=>return Identity(x)",
+           "(x:float[])=>return Identity(x)",
+           "(x:float[...])=>return Identity(x)",
+           "(x:float)=>return Identity(x)",
+           "(x:tensor[M,0])=>return Identity(x)",
+           "(x:tensor<T>[M,...],y:tensor<T>[M,_])=>return CastLike(x,y)",
+           "(x?:int64[...])=>return Identity(x)",
+           "(x:float[M,N])=>{y:float[M,N]=Identity(x);return y;}",
+           "(x:float[M,N])=>{a:float[M,N],b:float[M,N]=Split(x);return a,b;}",
+           "(x:float[],axis:int)=>return Softmax(x,axis=axis)",
+           "(x:float[],p:ints)=>return Transpose(x,perm=p)",
+           "(x,a:float,b:float)=>return HardSigmoid(x,alpha=a,beta=b)",
+           "(x,s:string)=>return Identity(x,mode=s)",
+           "(x,t:tensor)=>return Identity(x,value=t)",
+           "(x,f:floats,s:strings)=>return Identity(x,f=f,s=s)"}) {
+    SCOPED_TRACE(text);
+    EXPECT_NO_THROW((void)Pattern{text});
+    EXPECT_THROW((void)Replacement{text}, OnnxRuntimeException);
+  }
+  for (auto text : {
+           "(x:bogus)=>return Identity(x)", "(x:undefined)=>return Identity(x)",
+           "(x:float[-1])=>return Identity(x)", "(x:float[1.0])=>return Identity(x)",
+           "(x:float[M,])=>return Identity(x)", "(x:float[...,M])=>return Identity(x)",
+           "(x:float[M,...,N])=>return Identity(x)", "(x:float[M)=>return Identity(x)",
+           "(x:float<T>[M])=>return Identity(x)", "(x:tensor<>[M])=>return Identity(x)",
+           "(x:tensor<T[M])=>return Identity(x)", "(x:float[M,N])=>return x",
+           "(M,x:float[M])=>return Identity(x)", "(x:float[x])=>return Identity(x)",
+           "(x:tensor<x>[M])=>return Identity(x)", "(x:tensor<T>[T])=>return Identity(x)",
+           "(x:float[M],M:int)=>return Softmax(x,axis=M)",
+           "(x:float[...],p:float[M])=>return Transpose(x,perm=p)",
+           "(x:int)=>return Identity(x)", "(x,axis?:int)=>return Softmax(x,axis=axis)",
+           "(x,axis:int)=>return Add(x,axis)", "(x,axis:int)=>return Identity(x)",
+           "(x)=>{y:float=Identity(x);return y:float;}"}) {
+    SCOPED_TRACE(text);
+    EXPECT_THROW((void)Pattern{text}, OnnxRuntimeException);
+  }
+  Match empty;
+  EXPECT_THROW(empty.dimensionOf("M"), OnnxRuntimeException);
+  EXPECT_THROW(empty.elementTypeOf("T"), OnnxRuntimeException);
+}
+
+TEST(PatternRewriterTests, TypeShapeAnnotationRankAndDtype) {
+  for (bool indexed : {false, true}) {
+    for (int scenario = 0; scenario < 5; ++scenario) {
+      SCOPED_TRACE(scenario);
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = scenario == 0   ? b.MakeInput<float>({}, -1.0f, 1.0f)
+                : scenario == 1 ? b.MakeInput<float>({2}, -1.0f, 1.0f)
+                : scenario == 2 ? b.MakeInput<float>({2, 3}, -1.0f, 1.0f)
+                : scenario == 3 ? b.MakeInput<int64_t>({2, 3}, -1, 1)
+                                : b.MakeInput<float>({2, 3, 4}, -1.0f, 1.0f);
+      auto* output = b.MakeOutput();
+      b.AddNode("Identity", {x}, {output});
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      const std::pair<const char*, bool> cases[] = {
+          {"float", scenario == 0},
+          {"float[]", scenario != 3},
+          {"float[...]", scenario != 3},
+          {"float[M,N]", scenario == 2},
+          {"float[2,3]", scenario == 2},
+          {"float[M,...]", scenario != 0 && scenario != 3},
+          {"tensor[M,N]", scenario == 2 || scenario == 3},
+          {"tensor<T>[...]", true},
+          {"int64[2,3]", scenario == 3},
+          {"float[_,_]", scenario == 2}};
+      for (const auto& [type, expected] : cases) {
+        SCOPED_TRACE(type);
+        auto rule = IdentityPair();
+        rule.pattern = Pattern("(x:" + std::string(type) + ")=>return Identity(x)");
+        Statistics stats;
+        ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+        EXPECT_EQ(stats.matches, expected ? 1u : 0u);
+      }
+      x->ClearShape();
+      auto rule = IdentityPair();
+      rule.pattern = Pattern("(x:float[])=>return Identity(x)");
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+      EXPECT_EQ(stats.matches, scenario == 3 ? 0u : 1u);
+      rule.pattern = Pattern("(x:float[M,...])=>return Identity(x)");
+      ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+      EXPECT_EQ(stats.matches, 0u);
+    }
+  }
+}
+
+TEST(PatternRewriterTests, SharedDimensionAndElementBindings) {
+  for (bool indexed : {false, true}) {
+    for (int scenario = 0; scenario < 7; ++scenario) {
+      SCOPED_TRACE(scenario);
+      TestGraph test;
+      auto& b = test.builder;
+      using Shape = std::vector<std::variant<int64_t, std::string>>;
+      Shape sx{int64_t{2}, int64_t{3}}, sy = sx;
+      if (scenario == 1) sy[0] = int64_t{4};
+      if (scenario >= 2 && scenario <= 4) {
+        sx[0] = std::string("batch");
+        sy[0] = scenario == 3 ? std::string("other") : std::string("batch");
+        if (scenario == 4) sy[0] = int64_t{2};
+      }
+      if (scenario == 5) sx[0] = sy[0] = std::string{};
+      auto* x = b.MakeSymbolicInput<float>(sx);
+      auto* y = scenario == 6 ? b.MakeSymbolicInput<int64_t>(sy) : b.MakeSymbolicInput<float>(sy);
+      auto* a = b.MakeIntermediate();
+      b.AddNode("Identity", {x}, {a});
+      b.AddNode("CastLike", {a, y}, {b.MakeOutput()});
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      auto rule = IdentityPair();
+      rule.pattern = Pattern("(x:tensor<T>[M,N],y:tensor<T>[M,N])=>{a=Identity(x);return CastLike(a,y);}");
+      int guards = 0;
+      rule.guard = [scenario, &guards](const Graph&, const Match& match) {
+        ++guards;
+        EXPECT_EQ(match.elementTypeOf("T"), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+        EXPECT_EQ(std::get<int64_t>(match.dimensionOf("N")), 3);
+        if (scenario == 0) EXPECT_EQ(std::get<int64_t>(match.dimensionOf("M")), 2);
+        if (scenario == 2) EXPECT_EQ(std::get<std::string>(match.dimensionOf("M")), "batch");
+        if (scenario == 5) EXPECT_TRUE(std::holds_alternative<std::monostate>(match.dimensionOf("M")));
+        EXPECT_THROW(match.dimensionOf("missing"), OnnxRuntimeException);
+        EXPECT_THROW(match.elementTypeOf("missing"), OnnxRuntimeException);
+        ONNX_NAMESPACE::AttributeProto attribute;
+        attribute.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+        attribute.set_i(1);
+        EXPECT_THROW(match.update("M", attribute), OnnxRuntimeException);
+        EXPECT_THROW(match.update("T", attribute), OnnxRuntimeException);
+        return true;
+      };
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+      const bool expected = scenario == 0 || scenario == 2 || scenario == 5;
+      EXPECT_EQ(stats.matches, expected ? 1u : 0u);
+      EXPECT_EQ(guards, expected ? 1 : 0);
+    }
+  }
+}
+
+TEST(PatternRewriterTests, TypedAttributeCapturesAndNumerics) {
+  for (bool indexed : {false, true}) {
+    for (int scenario = 0; scenario < 3; ++scenario) {
+      const bool accepted = scenario == 0;
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = b.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+      auto* t = b.MakeIntermediate();
+      b.AddNode("Transpose", {x}, {t}).AddAttribute("perm", std::vector<int64_t>{1, 0});
+      b.AddNode("Identity", {t}, {b.MakeOutput()});
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      auto rule = IdentityPair();
+      rule.pattern = Pattern(accepted
+                                 ? "(x:float[M,N],axes:ints)=>{t:float[N,M]=Transpose(x,perm=axes);return Identity(t);}"
+                             : scenario == 1
+                                 ? "(x:float[M,N],axes:floats)=>{t=Transpose(x,perm=axes);return Identity(t);}"
+                                 : "(x:float[M,N],axes:ints)=>{t:float[M,N]=Transpose(x,perm=axes);return Identity(t);}");
+      rule.replacement = Replacement("(x,axes)=>Transpose(x,perm=axes)");
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({rule}, {.indexed = indexed}).Run(test.graph, stats));
+      EXPECT_EQ(stats.rewrites, accepted ? 1u : 0u);
+      ASSERT_STATUS_OK(test.graph.Resolve());
+    }
+    auto rule = IdentityPair();
+    rule.pattern = Pattern("(x:float[M,N],axes:ints)=>{t:float[N,M]=Transpose(x,perm=axes);return Identity(t);}");
+    rule.replacement = Replacement("(x,axes)=>Transpose(x,perm=axes)");
+    TransformerTester(
+        [](ModelTestBuilder& b) {
+          auto* x = b.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+          auto* t = b.MakeIntermediate();
+          b.AddNode("Transpose", {x}, {t}).AddAttribute("perm", std::vector<int64_t>{1, 0});
+          b.AddNode("Identity", {t}, {b.MakeOutput()});
+        },
+        [](InferenceSessionWrapper& session) {
+          EXPECT_EQ(Count(session.GetGraph(), "Identity"), 0u);
+          EXPECT_EQ(Count(session.GetGraph(), "Transpose"), 1u);
+        },
+        TransformerLevel::Default, TransformerLevel::Level1, 17, 0.0, 0.0,
+        std::make_unique<PatternRewriter>(Rules{rule}, Options{.indexed = indexed}));
+  }
+}
+
+TEST(PatternRewriterTests, AnnotatedOptionalValuesAndRuleIsolation) {
+  for (bool indexed : {false, true}) {
+    for (int scenario = 0; scenario < 3; ++scenario) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = b.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+      auto* clipped = b.MakeIntermediate();
+      b.AddNode("Clip", {x}, {clipped});
+      b.AddNode("Identity", {clipped}, {b.MakeOutput()});
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      auto first = IdentityPair("reject"), second = IdentityPair("accept");
+      first.pattern = Pattern("(x:float[2,4],lo?:float,hi?:float)=>{a=Clip(x,lo,hi);return Identity(a);}");
+      second.pattern = Pattern(
+          "(input:tensor<T>[M,N],low?:tensor<U>,high?:float)=>"
+          "{a:tensor<T>[M,N]=Clip(input,low,high);return Identity(a);}");
+      second.replacement = Replacement("(input)=>Clip(input)");
+      second.guard = [](const Graph&, const Match& match) {
+        EXPECT_EQ(match.valueOf("low"), nullptr);
+        EXPECT_FALSE(match.elementTypeOf("U").has_value());
+        EXPECT_EQ(std::get<int64_t>(match.dimensionOf("M")), 2);
+        return true;
+      };
+      if (scenario == 1) first.pattern = Pattern(
+                             "(x:float[2,3],lo?:float,hi?:float)=>"
+                             "{a=Clip(x,lo,hi);return Identity(a);}");
+      if (scenario == 1) first.guard = [](const Graph&, const Match&) { return false; };
+      if (scenario == 2) second.pattern = Pattern(
+                             "(input:tensor<T>[M,M],low?:tensor<U>,high?:float)=>"
+                             "{a=Clip(input,low,high);return Identity(a);}");
+      InlinedVector<MatchFailure> failures;
+      Options options{.indexed = indexed};
+      options.on_failure = [&failures](const MatchFailure& failure) { failures.push_back(failure); };
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({first, second}, options).Run(test.graph, stats));
+      EXPECT_EQ(stats.rewrites, scenario == 2 ? 0u : 1u);
+      EXPECT_TRUE(std::any_of(failures.begin(), failures.end(),
+                              [](const auto& failure) { return failure.stage == FailureStage::TypeShape; }) ||
+                  scenario == 1);
+      ASSERT_STATUS_OK(test.graph.Resolve());
     }
   }
 }
