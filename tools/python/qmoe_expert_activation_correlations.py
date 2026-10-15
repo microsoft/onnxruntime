@@ -328,8 +328,6 @@ def write_correlation_plots(
     path,
     same_qmoe_previous_token,
     previous_qmoe_same_token,
-    pairs_per_tail,
-    min_activations,
 ):
     import matplotlib.pyplot as plt  # noqa: PLC0415
     from matplotlib.backends.backend_pdf import PdfPages  # noqa: PLC0415
@@ -339,13 +337,12 @@ def write_correlation_plots(
     with PdfPages(path) as pdf:
         for same_correlation in same_qmoe_previous_token:
             previous_correlation = previous_by_current.get(same_correlation.current_identity)
-            columns = 2 if previous_correlation is not None else 1
-            figure, axes = plt.subplots(2, columns, figsize=(7 * columns, 10), squeeze=False)
-            panels = [(0, same_correlation, "Same QMoE, previous token")]
+            panels = [(same_correlation, "Same QMoE, previous token")]
             if previous_correlation is not None:
-                panels.append((1, previous_correlation, "Previous-layer QMoE, same token"))
-            for column, correlation, title in panels:
-                heatmap_axis = axes[0, column]
+                panels.append((previous_correlation, "Previous-layer QMoE, same token"))
+
+            for correlation, title in panels:
+                figure, heatmap_axis = plt.subplots(figsize=(12, 10))
                 image = heatmap_axis.imshow(
                     correlation.values,
                     cmap="coolwarm",
@@ -354,38 +351,35 @@ def write_correlation_plots(
                     vmax=1,
                     origin="lower",
                 )
-                heatmap_axis.set_title(f"{title}\n{correlation.samples} samples")
+                heatmap_axis.set_title(
+                    f"{node_display_name(same_correlation.current_identity)}\n{title} — {correlation.samples} samples"
+                )
                 heatmap_axis.set_xlabel("Context expert ID")
                 heatmap_axis.set_ylabel("Current expert ID")
-                figure.colorbar(
-                    image,
-                    ax=heatmap_axis,
-                    label="Pearson correlation",
-                )
+                figure.colorbar(image, ax=heatmap_axis, label="Pearson correlation")
+                figure.tight_layout()
+                pdf.savefig(figure)
+                plt.close(figure)
 
-                tail_axis = axes[1, column]
-                tails = _correlation_tails(correlation, pairs_per_tail, min_activations)
-                for tail, color in (("highest", "tab:red"), ("lowest", "tab:blue")):
-                    values = [(rank, value) for name, rank, _, _, value in tails if name == tail]
-                    tail_axis.plot(
-                        [rank for rank, _ in values],
-                        [value for _, value in values],
-                        marker="o",
-                        markersize=3,
-                        color=color,
-                        label=tail,
-                    )
-                tail_axis.axhline(0, color="black", linewidth=0.6)
-                tail_axis.set_xlim(1, max(1, pairs_per_tail))
-                tail_axis.set_ylim(-1, 1)
-                tail_axis.set_xlabel("Rank")
-                tail_axis.set_ylabel("Pearson correlation")
-                tail_axis.set_title(
-                    f"Highest and lowest correlations\nminimum {min_activations} activations per expert"
+            figure, sorted_axis = plt.subplots(figsize=(14, 8))
+            for correlation, title in panels:
+                values = np.sort(correlation.values[np.isfinite(correlation.values)])
+                sorted_axis.plot(
+                    np.arange(1, values.size + 1),
+                    values,
+                    linewidth=0.8,
+                    label=f"{title} ({values.size:,} finite values)",
                 )
-                tail_axis.grid(True, alpha=0.3)
-                tail_axis.legend()
-            figure.suptitle(node_display_name(same_correlation.current_identity))
+            sorted_axis.axhline(0, color="black", linewidth=0.6)
+            sorted_axis.set_ylim(-1, 1)
+            sorted_axis.set_xlabel("Correlation rank")
+            sorted_axis.set_ylabel("Pearson correlation")
+            sorted_axis.set_title(
+                f"{node_display_name(same_correlation.current_identity)}\n"
+                "All finite expert-pair correlations in ascending order"
+            )
+            sorted_axis.grid(True, alpha=0.3)
+            sorted_axis.legend()
             figure.tight_layout()
             pdf.savefig(figure)
             plt.close(figure)
@@ -414,8 +408,6 @@ def main():
         plot_path,
         same_qmoe_previous_token,
         previous_qmoe_same_token,
-        args.pairs_per_tail,
-        args.min_activations,
     )
 
     print(f"prompts: {len(trace.prompt_activations)}")
