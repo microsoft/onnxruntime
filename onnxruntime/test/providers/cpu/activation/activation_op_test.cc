@@ -177,7 +177,7 @@ TEST_F(ActivationOpTest, Relu) {
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 }
 
-#if defined(USE_CUDA) || defined(USE_COREML) || defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#if defined(USE_CUDA) || defined(USE_COREML)
 TEST_F(ActivationOpTest, Sigmoid_fp16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -209,7 +209,9 @@ TEST_F(ActivationOpTest, Sigmoid_fp16) {
   test.AddOutput<MLFloat16>("Y", dims, f_Y);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
+#endif
 
+#if defined(USE_CUDA) || defined(USE_COREML) || defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 TEST_F(ActivationOpTest, Tanh_fp16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
