@@ -3,6 +3,12 @@
 
 #pragma once
 
+#include <cmath>
+#include <limits>
+#include <type_traits>
+
+#include <gsl/span>
+
 #include "core/common/common.h"
 #include "core/common/float16.h"
 #include "core/common/safeint.h"
@@ -50,8 +56,70 @@ inline int64_t PackedByteCount(int64_t logical_element_count, int64_t bits) {
 }
 
 inline int64_t PackedByteCountWithPadding(int64_t logical_element_count, int64_t bits) {
-  const int64_t bit_count = SafeInt<int64_t>(logical_element_count) * bits;
-  return (SafeInt<int64_t>(bit_count) + 7) / 8;
+  ORT_ENFORCE(logical_element_count >= 0, "Logical element count must be nonnegative.");
+  ORT_ENFORCE(bits >= 1 && bits <= 8, "Packed code bits must be between 1 and 8.");
+  return SafeInt<int64_t>(logical_element_count / 8) * bits +
+         ((logical_element_count % 8) * bits + 7) / 8;
+}
+
+template <typename ScaleT>
+Status ValidateInt3ProjectionContent(gsl::span<const uint8_t> weights,
+                                    gsl::span<const ScaleT> scales,
+                                    gsl::span<const uint8_t> zero_points,
+                                    bool has_zero_points,
+                                    gsl::span<const int64_t> logical_shape,
+                                    int64_t block_size) {
+  static_assert(std::is_same_v<ScaleT, MLFloat16> || std::is_same_v<ScaleT, BFloat16>);
+  ORT_RETURN_IF_NOT(logical_shape.size() == 3, "INT3 logical projection shape must have rank 3 [E,N,K].");
+  ORT_RETURN_IF_NOT(block_size == 32 || block_size == 64 || block_size == 128,
+                    "INT3 block_size must be 32, 64, or 128.");
+  for (int64_t dimension : logical_shape) {
+    ORT_RETURN_IF_NOT(dimension > 0, "INT3 logical dimensions must be positive.");
+  }
+  const int64_t experts = logical_shape[0];
+  const int64_t outputs = logical_shape[1];
+  const int64_t logical_count = logical_shape[2];
+  ORT_RETURN_IF_NOT(outputs % block_size == 0 && logical_count % block_size == 0,
+                    "INT3 N and K must be block aligned.");
+  const int64_t blocks = logical_count / block_size;
+  const int64_t weight_bytes = PackedByteCountWithPadding(logical_count, 3);
+  const int64_t zp_bytes = PackedByteCountWithPadding(blocks, 3);
+  const uint64_t max_count = std::numeric_limits<int64_t>::max();
+  ORT_RETURN_IF_NOT(static_cast<uint64_t>(experts) <= max_count / outputs, "INT3 row count overflow.");
+  const uint64_t rows = static_cast<uint64_t>(experts) * outputs;
+  for (int64_t stride : {weight_bytes, blocks, zp_bytes}) {
+    ORT_RETURN_IF_NOT(rows <= max_count / stride &&
+                          rows <= std::numeric_limits<size_t>::max() / stride,
+                      "INT3 buffer count overflow.");
+  }
+  ORT_RETURN_IF_NOT(weights.size() == rows * weight_bytes, "INT3 weight byte count mismatch.");
+  ORT_RETURN_IF_NOT(scales.size() == rows * blocks, "INT3 scale count mismatch.");
+  ORT_RETURN_IF_NOT(has_zero_points ? zero_points.size() == rows * zp_bytes : zero_points.empty(),
+                    "INT3 zero-point presence or byte count mismatch.");
+  for (const auto& scale : scales) {
+    const float value = scale.ToFloat();
+    ORT_RETURN_IF_NOT(std::isfinite(value) && value >= 0, "INT3 scales must be finite and nonnegative.");
+  }
+  const int weight_tail_bits = static_cast<int>((logical_count % 8) * 3 % 8);
+  for (size_t row = 0; row < rows; ++row) {
+    ORT_RETURN_IF_NOT(weight_tail_bits == 0 ||
+                          (weights[(row + 1) * weight_bytes - 1] >> weight_tail_bits) == 0,
+                      "INT3 weight padding must be zero.");
+    if (has_zero_points) {
+      for (int64_t byte = 0; byte < zp_bytes; ++byte) {
+        uint8_t expected = 0;
+        for (int bit = 0; bit < 8; ++bit) {
+          const int64_t position = byte * 8 + bit;
+          if (position / 3 < blocks && position % 3 == 2) {
+            expected |= static_cast<uint8_t>(1u << bit);
+          }
+        }
+        ORT_RETURN_IF_NOT(zero_points[row * zp_bytes + byte] == expected,
+                          "INT3 zero points must all be 4 with zero padding.");
+      }
+    }
+  }
+  return Status::OK();
 }
 
 inline MoEWeightBits WeightBitsFromPackSize(int64_t pack_size) {
