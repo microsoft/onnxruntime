@@ -54,7 +54,13 @@ def parse_args():
         default=1,
         help="CUDA attention backend bitmask. Defaults to Flash Attention to keep MoE benchmarks independent of cuDNN.",
     )
-    parser.add_argument("--max-new-tokens", type=int, default=256)
+    generation_limit = parser.add_mutually_exclusive_group()
+    generation_limit.add_argument("--max-new-tokens", type=int, default=256)
+    generation_limit.add_argument(
+        "--until-eos",
+        action="store_true",
+        help="Generate until EOS without an artificial token limit; the model context length remains the hard limit.",
+    )
     parser.add_argument(
         "--raw-prompts",
         action="store_true",
@@ -211,14 +217,18 @@ def format_prompt(tokenizer, prompt, raw_prompt):
     )
 
 
+def generation_search_options(prompt_token_count, max_new_tokens):
+    options = {"do_sample": False}
+    if max_new_tokens is not None:
+        options["max_length"] = prompt_token_count + max_new_tokens
+    return options
+
+
 def generate(genai, model, tokenizer, prompt, max_new_tokens, raw_prompt):
     formatted_prompt = format_prompt(tokenizer, prompt, raw_prompt)
     prompt_tokens = tokenizer.encode(formatted_prompt)
     params = genai.GeneratorParams(model)
-    params.set_search_options(
-        max_length=len(prompt_tokens) + max_new_tokens,
-        do_sample=False,
-    )
+    params.set_search_options(**generation_search_options(len(prompt_tokens), max_new_tokens))
     generator = genai.Generator(model, params)
     generator.append_tokens(prompt_tokens)
 
@@ -245,7 +255,7 @@ def count_counter_records(path):
 
 def main():
     args = parse_args()
-    if args.max_new_tokens <= 0:
+    if not args.until_eos and args.max_new_tokens <= 0:
         raise ValueError("--max-new-tokens must be positive.")
     if args.cuda_sdpa_kernel < 0:
         raise ValueError("--cuda-sdpa-kernel must be non-negative.")
@@ -294,7 +304,7 @@ def main():
                 model,
                 tokenizer,
                 prompt,
-                args.max_new_tokens,
+                None if args.until_eos else args.max_new_tokens,
                 args.raw_prompts,
             )
             results.append(

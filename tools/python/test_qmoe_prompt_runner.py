@@ -1,6 +1,11 @@
 import unittest
 
-from qmoe_prompt_runner import configure_provider, first_free_gpu_index, parse_free_gpu_indices
+from qmoe_prompt_runner import (
+    configure_provider,
+    first_free_gpu_index,
+    generation_search_options,
+    parse_free_gpu_indices,
+)
 
 
 class RecordingConfig:
@@ -62,6 +67,20 @@ class TestConfigureProvider(unittest.TestCase):
         configure_provider(config, "follow_config", 1)
         self.assertEqual(config.providers, ["configured"])
         self.assertEqual(config.provider_options, {})
+
+
+class TestGenerationSearchOptions(unittest.TestCase):
+    def test_limits_new_tokens_relative_to_prompt(self):
+        self.assertEqual(
+            generation_search_options(prompt_token_count=17, max_new_tokens=256),
+            {"do_sample": False, "max_length": 273},
+        )
+
+    def test_until_eos_uses_model_context_limit(self):
+        self.assertEqual(
+            generation_search_options(prompt_token_count=17, max_new_tokens=None),
+            {"do_sample": False},
+        )
 
 
 if __name__ == "__main__":

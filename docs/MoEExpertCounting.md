@@ -83,6 +83,9 @@ python tools/python/qmoe_expert_activation_correlations.py counter.log \
   --output-prefix counter-expert-activation-correlations
 ```
 
+`qmoe_prompt_runner.py --until-eos` omits its usual artificial new-token limit and lets generation stop on EOS. The
+model context length remains the unavoidable hard limit.
+
 After each successful CPU-offload `Run()`, INFO logging also emits one `moe_expert_swaps` JSON record. It reports
 `in_flight` swaps and `blocked_candidates` per CUDA device, plus session-wide totals. Its `scheduled_swaps` array
 identifies each exchange started by that run with the graph scope, node index, device, outgoing CUDA expert, incoming
