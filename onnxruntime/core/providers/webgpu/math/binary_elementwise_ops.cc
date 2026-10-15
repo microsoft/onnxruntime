@@ -273,12 +273,13 @@ Status RunBinaryProgram(ComputeContext& context,
       program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::Type});
     }
     // Mode Vectorize broadcast
-    // cache hint: "V{a_rank};{b_rank};{output_rank}"
+    // Boolx4 storage does not distinguish vector reads from lane broadcasts.
     program
         .AddIndices(std::move(reshaped_output_shape))
         .AddIndices(std::move(reshaped_lhs_shape))
         .AddIndices(std::move(reshaped_rhs_shape))
-        .CacheHint("V");
+        .CacheHint("V", is_lhs_bool && (shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4),
+                   is_rhs_bool && (shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4));
   } else {
     // Mode Broadcast
     // cache hint: "B"
@@ -467,7 +468,7 @@ std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
   return SS_GET(s);
 }
 
-WEBGPU_BINARY_IMPL(Pow, "pow_v(a, b)", GetPowImpl)
+WEBGPU_BINARY_IMPL(Pow, "pow_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", GetPowImpl)
 WEBGPU_BINARY_IMPL(PRelu, "select(b * a, a, a >= vec4<input_a_element_t>(0))")
 WEBGPU_BINARY_IMPL(Equal, "vec4<u32>(vec4<input_a_element_t>(a) == vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_IMPL(Greater, "vec4<u32>(vec4<input_a_element_t>(a) > vec4<input_b_element_t>(b))")

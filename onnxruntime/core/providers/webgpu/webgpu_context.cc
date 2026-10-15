@@ -3,10 +3,22 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
+
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+#include <d3d12.h>
+#include <dxgi1_6.h>
+#include <wrl/client.h>
+
+#include "core/providers/webgpu/d3d12_external_data_loader.h"
+#if !defined(USE_EXTERNAL_DAWN)
+#include "dawn/native/D3D12Backend.h"
+#endif
+#endif
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -42,8 +54,24 @@
 namespace onnxruntime {
 namespace webgpu {
 
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+namespace {
+
+struct RequestAdapterOptionsLuid : wgpu::ChainedStruct {
+  RequestAdapterOptionsLuid() {
+    sType = static_cast<wgpu::SType>(WGPUSType_RequestAdapterOptionsLUID);
+  }
+
+  LUID adapter_luid{};
+};
+
+}  // namespace
+#endif
+
+WebGpuContext::~WebGpuContext() = default;
+
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
-  std::call_once(init_flag_, [this, &config]() {
+  std::call_once(init_flag_, [this, config]() {
     max_num_pending_dispatches_ = config.max_num_pending_dispatches;
     enable_robustness_ = config.enable_robustness;
     adapter_index_ = config.adapter_index;
@@ -52,11 +80,11 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
 
     ORT_ENFORCE(!config.adapter_index || config.device == nullptr,
                 "adapterIndex cannot be used with an externally supplied WebGPU device.");
-
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
     ORT_ENFORCE(!config.adapter_index,
                 "adapterIndex requires a native Dawn build with adapter enumeration support.");
 #endif
+    weight_load_acceleration_mode_ = config.weight_load_acceleration_mode;
 
     // Three easily-conflated concepts, at three layers (a pipeline, not the same flag):
     //   * allow_virtual_devices (env)     -- selectability: surface a virtual GPU OrtEpDevice so WebGPU is
@@ -66,8 +94,6 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     // compile_only alone is valid (device-free even with a real GPU); a virtual device without compile_only is
     // rejected at factory CreateEp -- it would try to build a real Dawn device with no hardware.
     if (config.compile_only) {
-      // Device-free: skip Dawn adapter/device creation. Such a context only transforms the graph; the session
-      // stops before finalization and never executes kernels or allocates.
       LOGS_DEFAULT(INFO) << "WebGPU EP context created device-free (compile-only session, no Dawn device).";
       return;
     }
@@ -86,6 +112,105 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       adapter_toggles_desc.enabledToggles = enabled_adapter_toggles.data();
 
       req_adapter_options.nextInChain = &adapter_toggles_desc;
+#endif
+
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+      const auto* ordinary_adapter_options_chain =
+          req_adapter_options.nextInChain;
+      RequestAdapterOptionsLuid luid_options{};
+      const bool preselect_weight_loading_adapter =
+          IsWeightLoadAccelerationEnabled(weight_load_acceleration_mode_) &&
+          static_cast<wgpu::BackendType>(config.backend_type) ==
+              wgpu::BackendType::D3D12 &&
+          !config.adapter_index;
+      if (preselect_weight_loading_adapter) {
+        LUID selected_luid{};
+        const auto selection_start = std::chrono::steady_clock::now();
+        const auto selection_status = [&]() -> common::Status {
+          Microsoft::WRL::ComPtr<IDXGIFactory6> dxgi_factory;
+          HRESULT result =
+              CreateDXGIFactory2(0, IID_PPV_ARGS(&dxgi_factory));
+          ORT_RETURN_IF_ERROR(
+              FAILED(result)
+                  ? ORT_MAKE_STATUS(
+                        ONNXRUNTIME, FAIL,
+                        "Accelerated weight loading failed to create the DXGI factory "
+                        "with HRESULT 0x",
+                        std::hex, static_cast<uint32_t>(result), ".")
+                  : common::Status::OK());
+
+          DXGI_GPU_PREFERENCE gpu_preference =
+              DXGI_GPU_PREFERENCE_UNSPECIFIED;
+          if (req_adapter_options.powerPreference ==
+              wgpu::PowerPreference::HighPerformance) {
+            gpu_preference = DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE;
+          } else if (req_adapter_options.powerPreference ==
+                     wgpu::PowerPreference::LowPower) {
+            gpu_preference = DXGI_GPU_PREFERENCE_MINIMUM_POWER;
+          }
+
+          for (uint32_t adapter_index = 0;; ++adapter_index) {
+            Microsoft::WRL::ComPtr<IDXGIAdapter1> dxgi_adapter;
+            result = dxgi_factory->EnumAdapterByGpuPreference(
+                adapter_index, gpu_preference,
+                IID_PPV_ARGS(&dxgi_adapter));
+            if (result == DXGI_ERROR_NOT_FOUND) {
+              break;
+            }
+            ORT_RETURN_IF(
+                FAILED(result),
+                "Accelerated weight loading failed to enumerate DXGI adapters with "
+                "HRESULT 0x",
+                std::hex, static_cast<uint32_t>(result), ".");
+
+            DXGI_ADAPTER_DESC1 adapter_description{};
+            result = dxgi_adapter->GetDesc1(&adapter_description);
+            if (FAILED(result) ||
+                (adapter_description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0) {
+              continue;
+            }
+
+            Microsoft::WRL::ComPtr<ID3D12Device> candidate_device;
+            result = D3D12CreateDevice(
+                dxgi_adapter.Get(), D3D_FEATURE_LEVEL_11_0,
+                IID_PPV_ARGS(&candidate_device));
+            if (SUCCEEDED(result)) {
+              selected_luid = adapter_description.AdapterLuid;
+              weight_loading_d3d12_device_ = std::move(candidate_device);
+              return common::Status::OK();
+            }
+          }
+          return ORT_MAKE_STATUS(
+              ONNXRUNTIME, FAIL,
+              "Accelerated weight loading did not find a hardware D3D12 adapter.");
+        }();
+
+        if (!selection_status.IsOK()) {
+          if (IsWeightLoadAccelerationRequired(
+                  weight_load_acceleration_mode_)) {
+            ORT_THROW(selection_status.ErrorMessage());
+          }
+          LOGS_DEFAULT(WARNING)
+              << selection_status.ErrorMessage()
+              << " Continuing with ordinary Dawn adapter selection without "
+                 "accelerated weight loading.";
+          weight_loading_d3d12_device_.Reset();
+        }
+        if (weight_loading_d3d12_device_) {
+          luid_options.adapter_luid = selected_luid;
+#if !defined(__wasm__)
+          luid_options.nextInChain = &adapter_toggles_desc;
+#endif
+          req_adapter_options.nextInChain = &luid_options;
+
+          LOGS_DEFAULT(INFO)
+              << "WebGPU D3D12 weight-loading GPU selection: "
+              << std::chrono::duration<double, std::milli>(
+                     std::chrono::steady_clock::now() - selection_start)
+                     .count()
+              << " ms.";
+        }
+      }
 #endif
 
       wgpu::Adapter adapter;
@@ -111,27 +236,54 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
           wgpu::Adapter adapter;
           std::string message;
         };
-        RequestAdapterResult adapter_result;
-        ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(instance_.RequestAdapter(
-                                                                       &req_adapter_options,
-                                                                       wgpu::CallbackMode::WaitAnyOnly,
-                                                                       [](wgpu::RequestAdapterStatus status, wgpu::Adapter requested_adapter, wgpu::StringView message,
-                                                                          RequestAdapterResult* result) noexcept {
-                                                                         result->status = status;
-                                                                         if (status == wgpu::RequestAdapterStatus::Success) {
-                                                                           result->adapter = std::move(requested_adapter);
-                                                                         } else {
-                                                                           result->message = std::string{message};
-                                                                         }
-                                                                       },
-                                                                       &adapter_result),
-                                                                   UINT64_MAX));
+        const auto request_adapter = [&]() {
+          RequestAdapterResult result;
+          ORT_ENFORCE(wgpu::WaitStatus::Success ==
+                      instance_.WaitAny(instance_.RequestAdapter(
+                                            &req_adapter_options,
+                                            wgpu::CallbackMode::WaitAnyOnly,
+                                            [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter,
+                                               wgpu::StringView message,
+                                               RequestAdapterResult* result) noexcept {
+                                              result->status = status;
+                                              if (status == wgpu::RequestAdapterStatus::Success) {
+                                                result->adapter = std::move(adapter);
+                                              } else {
+                                                result->message = std::string{message};
+                                              }
+                                            },
+                                            &result),
+                                        UINT64_MAX));
+          return result;
+        };
+        RequestAdapterResult adapter_result = request_adapter();
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+        if (adapter_result.status != wgpu::RequestAdapterStatus::Success &&
+            weight_loading_d3d12_device_ &&
+            !IsWeightLoadAccelerationRequired(
+                weight_load_acceleration_mode_)) {
+          LOGS_DEFAULT(WARNING)
+              << "Dawn rejected the adapter selected for accelerated weight "
+                 "loading: "
+              << adapter_result.message
+              << " Retrying ordinary Dawn adapter selection without "
+                 "accelerated weight loading.";
+          weight_loading_d3d12_device_.Reset();
+          req_adapter_options.nextInChain = ordinary_adapter_options_chain;
+          adapter_result = request_adapter();
+        }
+#endif
         ORT_ENFORCE(adapter_result.status == wgpu::RequestAdapterStatus::Success,
                     "Failed to get a WebGPU adapter: ", adapter_result.message);
         adapter = std::move(adapter_result.adapter);
       }
       ORT_ENFORCE(adapter != nullptr, "Failed to get a WebGPU adapter.");
 
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+      d3d12_shared_resource_features_available_ =
+          adapter.HasFeature(wgpu::FeatureName::SharedBufferMemoryD3D12Resource) &&
+          adapter.HasFeature(wgpu::FeatureName::SharedFenceDXGISharedHandle);
+#endif
       // Create wgpu::Device
       wgpu::DeviceDescriptor device_desc = {};
 
@@ -219,6 +371,24 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       ORT_ENFORCE(device_ != nullptr, "Failed to get a WebGPU device.");
     }
 
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+    if (config.device != nullptr) {
+      wgpu::SupportedFeatures supported_features;
+      device_.GetFeatures(&supported_features);
+      bool has_shared_buffer_memory = false;
+      bool has_shared_fence = false;
+      for (size_t i = 0; i < supported_features.featureCount; ++i) {
+        has_shared_buffer_memory |=
+            supported_features.features[i] ==
+            wgpu::FeatureName::SharedBufferMemoryD3D12Resource;
+        has_shared_fence |=
+            supported_features.features[i] ==
+            wgpu::FeatureName::SharedFenceDXGISharedHandle;
+      }
+      d3d12_shared_resource_features_available_ =
+          has_shared_buffer_memory && has_shared_fence;
+    }
+#endif
     LOGS_DEFAULT(VERBOSE) << "WebGPU EP Context is created for: Instance=" << instance_.Get() << ", Device=" << device_.Get() << ".";
 
     // cache device queue
@@ -246,22 +416,25 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     for (size_t i = 0; i < supported_features.featureCount; i++) {
       device_features_.insert(supported_features.features[i]);
     }
+    // cache adapter info
 #if !defined(__wasm__)
-    // Dawn native advertises this software feature on all adapters, and ORT requests it when
-    // creating a device. An externally supplied device must have requested it too: per-session
-    // encoders do not protect shared device entry points such as buffer creation and Queue::Submit.
+    // Native sessions share device entry points outside their per-session command recordings.
     ORT_ENFORCE(DeviceHasFeature(wgpu::FeatureName::ImplicitDeviceSynchronization),
                 config.device != nullptr
                     ? "WebGPU: an externally supplied native device must enable ImplicitDeviceSynchronization "
                       "in DeviceDescriptor.requiredFeatures when it is created."
                     : "WebGPU: the internally created native device is missing the required "
                       "ImplicitDeviceSynchronization feature.");
-#endif
-    // cache adapter info
     if (DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
       adapter_info_.nextInChain = &subgroup_matrix_configs_;
     }
+#endif
     ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_) == wgpu::Status::Success);
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+    // Use the backend selected by Dawn rather than the requested backend. The
+    // request can be Undefined when Dawn performs automatic adapter selection.
+    selected_backend_type_ = adapter_info_.backendType;
+#endif
 
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this,
@@ -269,6 +442,8 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
                                                config.buffer_cache_config.uniform.mode,
                                                config.buffer_cache_config.query_resolve.mode,
                                                config.buffer_cache_config.default_entry.mode);
+
+    // create initializer buffer manager.
     initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
                                                            BufferCacheMode::LazyRelease,
                                                            BufferCacheMode::LazyRelease,
@@ -279,7 +454,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     program_mgr_ = std::make_unique<ProgramManager>(*this);
 
     // create split-k config
-    split_k_config_ = std::make_unique<SplitKConfig>(adapter_info_);
+    split_k_config_ = std::make_unique<SplitKConfig>(CreateSplitKConfig(adapter_info_));
 
     // set query type
 #if !defined(__wasm__)
@@ -293,6 +468,16 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       query_type_ = TimestampQueryType::None;
     }
   });
+
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING) && !defined(USE_EXTERNAL_DAWN)
+  if (IsWeightLoadAccelerationEnabled(config.weight_load_acceleration_mode) &&
+      selected_backend_type_ == wgpu::BackendType::D3D12 &&
+      device_ != nullptr &&
+      weight_loading_d3d12_device_ == nullptr) {
+    weight_loading_d3d12_device_ =
+        dawn::native::d3d12::GetD3D12Device(device_.Get());
+  }
+#endif
 
   if (max_num_pending_dispatches_ != config.max_num_pending_dispatches) {
     LOGS_DEFAULT(WARNING)
@@ -330,6 +515,12 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     }
   }
 }
+
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+ID3D12Device* WebGpuContext::WeightLoadingD3D12Device() const {
+  return weight_loading_d3d12_device_.Get();
+}
+#endif
 
 Status WebGpuContext::Wait(wgpu::Future f) {
   auto status = instance_.WaitAny(f, UINT64_MAX);
@@ -434,7 +625,7 @@ Status WebGpuContext::EncodeDeferredDispatches(CommandRecordingState& recording)
     DispatchCommand(dispatch, recording);
     if (recording.graph_capture_state == GraphCaptureState::Capturing) {
       ORT_ENFORCE(recording.external_captured_commands != nullptr);
-      recording.external_captured_commands->push_back(std::move(dispatch));
+      recording.external_captured_commands->push_back({std::move(dispatch)});
     }
   }
 
@@ -766,7 +957,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   // Record the ready bind group and return. The deferred drain only needs to wait for the pipeline
   // and encode the dispatch commands.
-  webgpu::CapturedCommandInfo command;
+  webgpu::DispatchCommandInfo command;
   command.program_key = key;
   if (program_artifact != nullptr) {
     command.compute_pipeline = program_artifact->compute_pipeline;
@@ -922,6 +1113,27 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
       required_features.push_back(feature);
     }
   }
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  constexpr wgpu::FeatureName d3d12_import_features[]{
+      wgpu::FeatureName::SharedBufferMemoryD3D12Resource,
+      wgpu::FeatureName::SharedFenceDXGISharedHandle,
+  };
+  // The default context can outlive the provider that first initialized it
+  // (for example, through the shared Env allocator). Request supported import
+  // features up front so a later provider can enable accelerated loading on
+  // that same Dawn device.
+  for (auto feature : d3d12_import_features) {
+    if (adapter.HasFeature(feature)) {
+      required_features.push_back(feature);
+    } else {
+      ORT_ENFORCE(!IsWeightLoadAccelerationRequired(
+                      weight_load_acceleration_mode_),
+                  "The selected Dawn D3D12 adapter does not support a feature required by "
+                  "weightLoadAcceleration: ",
+                  static_cast<uint32_t>(feature));
+    }
+  }
+#endif
   return required_features;
 }
 
@@ -1251,6 +1463,17 @@ Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
   auto command_buffer = recording.command_encoder.Finish();
   device_queue_.Submit(1, &command_buffer);
   refresh_pending_buffers();
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  std::vector<std::function<void()>> pending_release_callbacks;
+  {
+    std::lock_guard<std::mutex> callbacks_lock{
+        recording.pending_release_callbacks_mutex};
+    pending_release_callbacks.swap(recording.pending_release_callbacks);
+  }
+  for (auto& release : pending_release_callbacks) {
+    release();
+  }
+#endif
   recording.command_encoder = nullptr;
   recording.num_pending_dispatches = 0;
   return status;
@@ -1298,7 +1521,7 @@ wgpu::BindGroup WebGpuContext::CreateBindGroup(const std::vector<WGPUBuffer>& bi
   return wgpu::BindGroup::Acquire(bind_group);
 }
 
-void WebGpuContext::DispatchCommand(const webgpu::CapturedCommandInfo& command,
+void WebGpuContext::DispatchCommand(const webgpu::DispatchCommandInfo& command,
                                     CommandRecordingState& recording) {
   ORT_ENFORCE(command.compute_pipeline.has_value());
   ORT_ENFORCE(command.bind_group != nullptr);
@@ -1322,7 +1545,20 @@ void WebGpuContext::DispatchCommand(const webgpu::CapturedCommandInfo& command,
   }
 }
 
-void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands,
+void WebGpuContext::CopyBuffer(WGPUBuffer source, WGPUBuffer destination, uint64_t size,
+                               CommandRecordingState& recording) {
+  // Materialize earlier deferred dispatches before inserting the copy into either command sequence.
+  ORT_THROW_IF_ERROR(EncodeDeferredDispatches(recording));
+  EndComputePass(recording);
+  GetCommandEncoder(recording).CopyBufferToBuffer(source, 0, destination, 0, size);
+  if (recording.graph_capture_state == GraphCaptureState::Capturing) {
+    ORT_ENFORCE(recording.external_captured_commands != nullptr);
+    recording.external_captured_commands->push_back(
+        {CapturedBufferCopy{wgpu::Buffer{source}, wgpu::Buffer{destination}, size}});
+  }
+}
+
+void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommand>* captured_commands,
                                  const webgpu::BufferManager& buffer_manager,
                                  CommandRecordingState& recording) {
   LOGS_DEFAULT(VERBOSE) << "CaptureBegin with external storage";
@@ -1338,7 +1574,7 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
   recording.graph_capture_state = GraphCaptureState::Capturing;
 }
 
-void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands,
+void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommand>& captured_commands,
                            const webgpu::BufferManager& buffer_manager,
                            CommandRecordingState& recording) {
   LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
@@ -1346,7 +1582,12 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
   // Replay all captured commands from the provided vector
   const size_t command_count = captured_commands.size();
   for (size_t i = 0; i < command_count; ++i) {
-    auto& command = captured_commands[i];
+    const auto& operation = captured_commands[i].operation;
+    if (const auto* copy = std::get_if<CapturedBufferCopy>(&operation)) {
+      CopyBuffer(copy->source.Get(), copy->destination.Get(), copy->size, recording);
+      continue;
+    }
+    const auto& command = std::get<DispatchCommandInfo>(operation);
     // Restore profiling info when profiling is enabled. All commands are expected
     // to have profiling data in this mode to keep pending_kernels_ consistent
     // with num_pending_dispatches_.
@@ -1377,12 +1618,10 @@ void WebGpuContext::CaptureEnd(CommandRecordingState& recording) {
   recording.external_captured_commands = nullptr;
 }
 
-void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands) {
+void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommand>& captured_commands) {
   LOGS_DEFAULT(VERBOSE) << "ReleaseGraphResources: Releasing " << captured_commands.size() << " captured command resources";
 
-  for (auto& command : captured_commands) {
-    command.bind_group = nullptr;
-  }
+  captured_commands.clear();
 }
 
 std::mutex WebGpuContextFactory::mutex_;
@@ -1438,9 +1677,8 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
   }
 
   if (context_id == 0) {
-    // context ID is preserved for the default context. User cannot use context ID 0 as a custom context.
     ORT_ENFORCE(instance == nullptr && device == nullptr,
-                "WebGPU EP default context (contextId=0) must not have custom WebGPU instance or device.");
+                "WebGPU EP default contexts must not have custom WebGPU instance or device.");
 
     instance = default_instance_;
   } else {
