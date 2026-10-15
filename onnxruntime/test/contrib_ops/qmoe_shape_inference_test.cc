@@ -203,6 +203,66 @@ TEST(QMoEShapeInferenceTest, Version2HasNoCpuKernel) {
   }
 }
 
+TEST(QMoEShapeInferenceTest, LegacyInt4RequiresExplicitMicrosoftVersion1ImportForCpu) {
+  QMoEShapeCase spec;
+  spec.version = 1;
+  spec.activation_type = TensorProto::FLOAT;
+  spec.fc1_bits.reset();
+  spec.fc2_bits.reset();
+  spec.fc3_bits.reset();
+  spec.prepacked.reset();
+  spec.block.reset();
+  spec.quant_type.reset();
+  ONNX_NAMESPACE::ModelProto proto;
+  proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* onnx_import = proto.add_opset_import();
+  onnx_import->set_domain(kOnnxDomain);
+  onnx_import->set_version(17);
+  auto* graph_proto = proto.mutable_graph();
+  graph_proto->set_name("legacy_int4_opset_import");
+  ASSERT_STATUS_OK(ResolveQMoE(spec, [&](const Node& node, const NodeArg& output) {
+    node.ToProto(*graph_proto->add_node());
+    for (const auto* input : node.InputDefs()) {
+      if (!input->Exists()) continue;
+      auto* value = graph_proto->add_input();
+      value->set_name(input->Name());
+      *value->mutable_type() = *input->TypeAsProto();
+    }
+    auto* value = graph_proto->add_output();
+    value->set_name(output.Name());
+    *value->mutable_type() = *output.TypeAsProto();
+  }));
+
+  CPUExecutionProvider provider(CPUExecutionProviderInfo{});
+  auto registry = provider.GetKernelRegistry();
+  ASSERT_NE(registry, nullptr);
+  const KernelRegistry::TypeConstraintMap types{
+      {"T", DataTypeImpl::GetTensorType<float>()},
+      {"T1", DataTypeImpl::GetTensorType<uint8_t>()},
+      {"T2", DataTypeImpl::GetTensorType<float>()}};
+  for (bool explicit_import : {false, true}) {
+    SCOPED_TRACE(explicit_import);
+    if (explicit_import) {
+      auto* ms_import = proto.add_opset_import();
+      ms_import->set_domain(kMSDomain);
+      ms_import->set_version(1);
+    }
+    Model model(proto, nullptr, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+    ASSERT_STATUS_OK(graph.Resolve());
+    const auto& node = *graph.Nodes().begin();
+    EXPECT_EQ(graph.DomainToVersionMap().at(kMSDomain), explicit_import ? 1 : 2);
+    EXPECT_EQ(graph.DomainToVersionMap().at(kOnnxDomain), 17);
+    EXPECT_EQ(node.SinceVersion(), explicit_import ? 1 : 2);
+    const KernelCreateInfo* kernel = nullptr;
+    auto status = registry->TryFindKernel(kCpuExecutionProvider, node.OpType(), node.Domain(),
+                                          node.SinceVersion(), types,
+                                          DefaultLoggingManager().DefaultLogger(), &kernel);
+    EXPECT_EQ(status.IsOK(), explicit_import) << status.ErrorMessage();
+    EXPECT_EQ(kernel != nullptr, explicit_import);
+  }
+}
+
 TEST(QMoEShapeInferenceTest, OtherMicrosoftOperatorsStillResolveToVersion1) {
   const std::unordered_map<std::string, int> versions{{kOnnxDomain, 17}, {kMSDomain, 2}};
   Model model("legacy_ms_schema", false, ModelMetaData(), PathString(),
