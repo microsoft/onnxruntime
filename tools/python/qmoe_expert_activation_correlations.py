@@ -16,6 +16,8 @@ from qmoe_expert_distribution import (
     parse_counter_trace,
 )
 
+PLOT_EXTREME_COUNT = 1000
+
 
 @dataclass(frozen=True)
 class ActivationTrace:
@@ -274,6 +276,13 @@ def _correlation_tails(correlation, pairs_per_tail, min_activations):
     return highest + lowest
 
 
+def _positive_and_negative_extremes(values, count):
+    finite_values = values[np.isfinite(values)]
+    positive = np.sort(finite_values[finite_values > 0])[-count:][::-1]
+    negative = np.sort(finite_values[finite_values < 0])[:count]
+    return positive, negative
+
+
 def write_correlation_summary(path, correlations, pairs_per_tail, min_activations):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as stream:
@@ -360,6 +369,41 @@ def write_correlation_plots(
                 figure.tight_layout()
                 pdf.savefig(figure)
                 plt.close(figure)
+
+            figure, extremes_axis = plt.subplots(figsize=(14, 8))
+            colors = ("tab:blue", "tab:orange")
+            for index, (correlation, title) in enumerate(panels):
+                color = colors[index]
+                positive, negative = _positive_and_negative_extremes(correlation.values, PLOT_EXTREME_COUNT)
+                extremes_axis.plot(
+                    np.arange(1, positive.size + 1),
+                    positive,
+                    color=color,
+                    linewidth=1,
+                    label=f"{title} — positive",
+                )
+                extremes_axis.plot(
+                    np.arange(1, negative.size + 1),
+                    negative,
+                    color=color,
+                    linestyle="--",
+                    linewidth=1,
+                    label=f"{title} — negative",
+                )
+            extremes_axis.axhline(0, color="black", linewidth=0.6)
+            extremes_axis.set_xlim(1, PLOT_EXTREME_COUNT)
+            extremes_axis.set_ylim(-1, 1)
+            extremes_axis.set_xlabel("Rank")
+            extremes_axis.set_ylabel("Pearson correlation")
+            extremes_axis.set_title(
+                f"{node_display_name(same_correlation.current_identity)}\n"
+                f"{PLOT_EXTREME_COUNT} strongest positive and negative correlations"
+            )
+            extremes_axis.grid(True, alpha=0.3)
+            extremes_axis.legend()
+            figure.tight_layout()
+            pdf.savefig(figure)
+            plt.close(figure)
 
             figure, sorted_axis = plt.subplots(figsize=(14, 8))
             for correlation, title in panels:

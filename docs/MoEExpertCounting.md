@@ -73,7 +73,8 @@ previous-token pairs never cross prompt boundaries. The output contains compress
 pairs and their activation counts, a PDF of heatmaps, and a CSV listing the 20 highest and 20 lowest sufficiently
 supported correlations from each matrix. The PDF uses the full Pearson scale from `-1` to `1` and plots both ranked
 matrices as full-page heatmaps. One additional graph per MoE node plots every finite correlation in sorted order,
-with the previous-token and previous-layer series on the same axes:
+with the previous-token and previous-layer series on the same axes. A second linear graph shows the 1,000 strongest
+positive and 1,000 strongest negative correlations for both relations:
 
 ```bash
 python tools/python/qmoe_expert_activation_correlations.py counter.log \

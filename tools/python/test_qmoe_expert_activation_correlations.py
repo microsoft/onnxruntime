@@ -7,13 +7,24 @@ from qmoe_expert_activation_correlations import (
     ActivationTrace,
     CorrelationMatrix,
     _correlation_tails,
+    _positive_and_negative_extremes,
     binary_activation_correlation,
     compute_activation_correlations,
     write_correlation_archive,
+    write_correlation_plots,
 )
 
 
 class TestQMoEExpertActivationCorrelations(unittest.TestCase):
+    def test_selects_positive_and_negative_extremes(self):
+        positive, negative = _positive_and_negative_extremes(
+            np.array([[0.1, -0.8, np.nan], [0.7, -0.2, 0.4]]),
+            count=2,
+        )
+
+        np.testing.assert_allclose(positive, [0.7, 0.4])
+        np.testing.assert_allclose(negative, [-0.8, -0.2])
+
     def test_selects_highest_and_lowest_correlations(self):
         identity = ("main", 1, "QMoE", "/model/layers.0/moe/QMoE")
         correlation = CorrelationMatrix(
@@ -95,6 +106,9 @@ class TestQMoEExpertActivationCorrelations(unittest.TestCase):
                 self.assertEqual(archive["same_qmoe_previous_token"].shape, (1, 2, 2))
                 self.assertEqual(archive["previous_qmoe_same_token"].shape, (0, 2, 2))
                 self.assertEqual(archive["previous_qmoe_current_activation_counts"].shape, (0, 2))
+            plot_path = Path(temporary_directory) / "correlations.pdf"
+            write_correlation_plots(plot_path, same_qmoe, previous_qmoe)
+            self.assertGreater(plot_path.stat().st_size, 0)
 
 
 if __name__ == "__main__":
