@@ -54,6 +54,7 @@ onnxruntime_add_executable(onnxruntime_telemetry_mutex_lifetime_test
   "${telemetry_test_dir}/telemetry_shutdown_test.cc"
   $<TARGET_OBJECTS:onnxruntime_telemetry_sdk_test>)
 target_include_directories(onnxruntime_telemetry_mutex_lifetime_test PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}
+  $<TARGET_PROPERTY:onnxruntime_common,INCLUDE_DIRECTORIES>
   "${cpp_client_telemetry_SOURCE_DIR}/lib" "${cpp_client_telemetry_SOURCE_DIR}/lib/include"
   "${cpp_client_telemetry_SOURCE_DIR}/lib/include/mat")
 target_compile_definitions(onnxruntime_telemetry_mutex_lifetime_test PRIVATE $<TARGET_PROPERTY:mat,COMPILE_DEFINITIONS>)

@@ -22,6 +22,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/platform/env.h"
 #include "core/platform/telemetry_1ds.h"
+#include "core/platform/telemetry_environment.h"
 #include "mat/config.h"
 #include "http/HttpClientFactory.hpp"
 #include "IHttpClient.hpp"
@@ -167,9 +168,9 @@ void VerifyExit() {
 void Run(std::string_view mode) {
   observation.suppressed = mode == "disabled" || mode == "unit-disabled" || mode == "ci-disabled";
   observation.pending = mode == "pending";
-  const char* url = std::getenv("ORT_TEST_TELEMETRY_COLLECTOR");
-  Check(url != nullptr, "missing loopback collector URL");
-  collector_url = url;
+  const auto url = onnxruntime::telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_COLLECTOR");
+  Check(url.has_value() && !url->empty(), "missing or unreadable loopback collector URL");
+  collector_url = *url;
   constexpr std::string_view prefix = "http://127.0.0.1:";
   constexpr std::string_view suffix = "/collect";
   Check(collector_url.starts_with(prefix) && collector_url.ends_with(suffix),
