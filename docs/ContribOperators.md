@@ -63,6 +63,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
   * <a href="#com.microsoft.MRotaryEmbedding">com.microsoft.MRotaryEmbedding</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
+  * <a href="#com.microsoft.MatMulGGMLIQ2XXS">com.microsoft.MatMulGGMLIQ2XXS</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
   * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
   * <a href="#com.microsoft.MatMulFpQ4">com.microsoft.MatMulFpQ4</a>
@@ -3750,6 +3751,67 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain E4M3 weight scales to uint8.</dd>
 <dt><tt>T3</tt> : tensor(float)</dt>
 <dd>Constrain scalar scales to FP32.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulGGMLIQ2XXS"></a><a name="com.microsoft.matmulggmliq2xxs">**com.microsoft.MatMulGGMLIQ2XXS**</a>
+
+  Weight-only matrix multiplication with serialized GGML IQ2_XXS weights.
+  `A` has shape `[..., K]`; raw UINT8 `B` has shape `[N, K/256, 66]`.
+  There are no attributes, padding, affine zero points, or external scales.
+
+  Each 66-byte superblock contains a little-endian FP16 scale followed by eight
+  8-byte records. Each record contains four indices into the canonical 256-by-8
+  magnitude grid and a little-endian uint32 containing four 7-bit sign indices
+  in bits 0..27 and a local scale in bits 28..31. The eighth sign bit is the
+  parity of the seven stored sign bits. Each weight is
+  `d * (0.5 + local_scale) * 0.25 * grid[index, j] * sign[j]`.
+  Grid vectors use little-endian byte order, not printed hexadecimal digit order.
+  This format is not equivalent to affine INT2.
+
+  Computes `Y = A @ dequantize(B).T + bias`. Weight decoding, multiplication,
+  accumulation and bias addition are FP32; only the final output is cast to the
+  activation type. Summation order is unspecified. N and K derive from B.
+  Empty dimensions, including K=0 (empty sum plus bias), are supported.
+
+  CUDA reads packed blocks directly for both decode and prefill, without a
+  persistent expanded weight or full-matrix dequantization buffer. This primitive
+  does not perform routing, expert selection, or an activation function.
+
+  Canonical layout and decoding:
+  [GGML source](https://github.com/ggml-org/llama.cpp/blob/b76b13379d3b7d67ab0bc424516bb6fd2522bd8e/ggml/src/ggml-quants.c#L2489-L2514).
+  The fixed magnitude grid is MIT-licensed by the ggml authors; its full notice is
+  retained in `onnxruntime/contrib_ops/cuda/quantization/iq2_xxs_grid.h`.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs (2 - 3)
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>Activation tensor with rank at least one and shape [..., K].</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Raw GGML IQ2_XXS blocks of shape [N, K/256, 66]. K must equal 256 times B's second dimension.</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Bias of shape [N], added in FP32 before the final cast.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output of shape [..., N] with the same element type as A.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Activation, optional bias, and output element type.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Raw serialized weights.</dd>
 </dl>
 
 

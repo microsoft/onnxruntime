@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include "core/graph/onnx_protobuf.h"
 
 #include "onnx/defs/shape_inference.h"
@@ -3168,6 +3169,77 @@ The output columns `N` and the contraction dimension `K` are derived from the we
           }
           *output_shape.add_dim() = b_shape.dim(0);
           updateOutputShape(ctx, 0, output_shape);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MatMulGGMLIQ2XXS, 1,
+    OpSchema()
+        .SetDoc(R"DOC(Weight-only matrix multiplication with serialized GGML IQ2_XXS weights.
+
+A has shape [..., K]. B has shape [N, K/256, 66], with no padding or transposition:
+each 66-byte block contains a little-endian FP16 superblock scale followed by eight
+8-byte records. Each record contains four byte indices into the canonical 256x8
+IQ2_XXS magnitude grid and a little-endian uint32 containing four 7-bit sign indices
+in bits 0..27 and a 4-bit local scale in bits 28..31. The eighth sign bit is the
+parity of the seven stored sign bits. A decoded element is
+d * (0.5 + local_scale) * 0.25 * grid[index, j] * sign[j].
+The grid is fixed by GGML IQ2_XXS; this is not affine integer quantization.
+
+The operator computes Y = A @ dequantize(B).T + bias. Weight decoding,
+multiplication, accumulation and optional bias addition use FP32. Only the final
+result is cast to A's element type. The summation order is unspecified.
+K must equal 256 times B's second dimension. N and K are derived from B.
+The output has shape [..., N]. Empty dimensions, including K=0, are supported.
+The CUDA kernel reads packed blocks directly without a persistent expanded
+weight or full-matrix dequantization buffer.
+
+Format reference:
+https://github.com/ggml-org/llama.cpp/blob/b76b13379d3b7d67ab0bc424516bb6fd2522bd8e/ggml/src/ggml-quants.c#L2489-L2514
+)DOC")
+        .Input(0, "A", "Activation tensor with rank at least one and shape [..., K].", "T")
+        .Input(1, "B", "Raw serialized GGML IQ2_XXS blocks of shape [N, K/256, 66].", "T1")
+        .Input(2, "bias", "Optional bias of shape [N].", "T", OpSchema::Optional)
+        .Output(0, "Y", "Output tensor of shape [..., N], with the same type as A.", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Activation, bias and output element types.")
+        .TypeConstraint("T1", {"tensor(uint8)"}, "Serialized weight bytes.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim_size() < 1) {
+            fail_shape_inference("A must have rank at least 1.");
+          }
+          if (!hasInputShape(ctx, 1)) {
+            return;
+          }
+          const auto& b_shape = getInputShape(ctx, 1);
+          if (b_shape.dim_size() != 3 ||
+              (b_shape.dim(2).has_dim_value() && b_shape.dim(2).dim_value() != 66)) {
+            fail_shape_inference("B must have shape [N, K/256, 66].");
+          }
+          if (hasInputShape(ctx, 2)) {
+            const auto& bias_shape = getInputShape(ctx, 2);
+            if (bias_shape.dim_size() != 1 ||
+                (bias_shape.dim(0).has_dim_value() && b_shape.dim(0).has_dim_value() &&
+                 bias_shape.dim(0).dim_value() != b_shape.dim(0).dim_value())) {
+              fail_shape_inference("bias must have shape [N].");
+            }
+          }
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          const auto& a_shape = getInputShape(ctx, 0);
+          const auto& a_k = a_shape.dim(a_shape.dim_size() - 1);
+          if (b_shape.dim(1).has_dim_value()) {
+            const auto k_blocks = b_shape.dim(1).dim_value();
+            if (k_blocks < 0 || k_blocks > std::numeric_limits<int64_t>::max() / 256 ||
+                (a_k.has_dim_value() && a_k.dim_value() != k_blocks * 256)) {
+              fail_shape_inference("A's last dimension must equal 256 times B's block count.");
+            }
+          }
+          for (int i = 0; i < a_shape.dim_size() - 1; ++i) {
+            appendSingleDimCopiedFromInputTypeToOutputType(ctx, 0, 0, i);
+          }
+          appendSingleDimCopiedFromInputTypeToOutputType(ctx, 1, 0, 0);
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
