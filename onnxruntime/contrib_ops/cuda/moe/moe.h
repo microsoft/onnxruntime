@@ -9,6 +9,7 @@
 #include "core/framework/kernel_pilot_moe_expert_cache.h"
 #include "core/framework/kernel_pilot_moe_expert_usage.h"
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/kernel_pilot.h"
 #include "core/framework/ort_value.h"
 #endif
 #include "core/providers/cuda/cuda_kernel.h"
@@ -42,7 +43,7 @@ class MoE final : public CudaKernel, public MoEBase
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  Status InitializeKernelPilot(KernelPilot* pilot) override;
+  Status InitializeKernelPilot(KernelPilot* pilot);
 #endif
 
  private:
@@ -99,6 +100,7 @@ class MoE final : public CudaKernel, public MoEBase
   mutable InlinedVector<int> cpu_expert_map_;
   IAllocatorUniquePtr<void> device_expert_map_;
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  KernelPilotInitializer kernel_pilot_initializer_;
   cudaStream_t input_copy_stream_{nullptr};
   cudaStream_t swap_d2h_stream_{nullptr};
   cudaStream_t swap_h2d_stream_{nullptr};

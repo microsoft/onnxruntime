@@ -4,6 +4,7 @@
 #pragma once
 
 #include <algorithm>
+#include <functional>
 
 #include "core/framework/kernel_pilot_moe_expert_cache.h"
 #include "core/framework/kernel_pilot_moe_expert_selection.h"
@@ -12,7 +13,26 @@
 namespace onnxruntime {
 
 class KernelPilotMoeExpertState;
+class KernelPilot;
 class OpKernel;
+
+// Registers an in-tree kernel callback that runs after session-global piloting state is finalized.
+// Keeping this callback outside OpKernel preserves the shared-provider OpKernel vtable.
+class KernelPilotInitializer {
+ public:
+  using Callback = std::function<Status(KernelPilot*)>;
+
+  KernelPilotInitializer() = default;
+  ~KernelPilotInitializer();
+
+  void Register(const OpKernel* kernel, Callback callback);
+  static Status Run(const OpKernel* kernel, KernelPilot* pilot);
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelPilotInitializer);
+
+ private:
+  const OpKernel* kernel_{nullptr};
+};
 
 // Per-kernel piloting state: information a kernel implementation needs from, or reports back
 // to, the session between invocations, beyond its normal tensor inputs/outputs. A session owns

@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/kernel_pilot.h"
 #include "core/framework/kernel_pilot_moe_expert_cache.h"
 #include "core/framework/kernel_pilot_moe_expert_usage.h"
 #include "core/framework/ort_value.h"
@@ -50,7 +51,7 @@ class QMoE final : public CudaKernel, public MoEBase
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  Status InitializeKernelPilot(KernelPilot* pilot) override;
+  Status InitializeKernelPilot(KernelPilot* pilot);
 #endif
 
  private:
@@ -346,6 +347,7 @@ class QMoE final : public CudaKernel, public MoEBase
   bool cpu_offload_enabled_{false};
   static constexpr size_t kCpuActivationChunkRows = 256;
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  KernelPilotInitializer kernel_pilot_initializer_;
   KernelPilot* moe_pilot_{nullptr};
   int device_id_{0};
   AllocatorPtr cuda_allocator_;

@@ -4,10 +4,59 @@
 #include "core/framework/kernel_pilot.h"
 
 #include <cmath>
+#include <mutex>
 
+#include "core/common/inlined_containers.h"
 #include "core/framework/kernel_pilot_moe_expert_state.h"
 
 namespace onnxruntime {
+namespace {
+
+struct KernelPilotInitializerRegistry {
+  std::mutex mutex;
+  InlinedHashMap<const OpKernel*, KernelPilotInitializer::Callback> callbacks;
+};
+
+KernelPilotInitializerRegistry& GetKernelPilotInitializerRegistry() {
+  static KernelPilotInitializerRegistry registry;
+  return registry;
+}
+
+}  // namespace
+
+KernelPilotInitializer::~KernelPilotInitializer() {
+  if (kernel_ == nullptr) {
+    return;
+  }
+  auto& registry = GetKernelPilotInitializerRegistry();
+  std::lock_guard<std::mutex> lock(registry.mutex);
+  registry.callbacks.erase(kernel_);
+}
+
+void KernelPilotInitializer::Register(const OpKernel* kernel, Callback callback) {
+  ORT_ENFORCE(kernel_ == nullptr && kernel != nullptr && callback,
+              "Invalid duplicate KernelPilot initializer registration.");
+  auto& registry = GetKernelPilotInitializerRegistry();
+  std::lock_guard<std::mutex> lock(registry.mutex);
+  const auto [unused, inserted] = registry.callbacks.emplace(kernel, std::move(callback));
+  ORT_UNUSED_PARAMETER(unused);
+  ORT_ENFORCE(inserted, "A KernelPilot initializer is already registered for this kernel.");
+  kernel_ = kernel;
+}
+
+Status KernelPilotInitializer::Run(const OpKernel* kernel, KernelPilot* pilot) {
+  Callback callback;
+  {
+    auto& registry = GetKernelPilotInitializerRegistry();
+    std::lock_guard<std::mutex> lock(registry.mutex);
+    const auto it = registry.callbacks.find(kernel);
+    if (it == registry.callbacks.end()) {
+      return Status::OK();
+    }
+    callback = it->second;
+  }
+  return callback(pilot);
+}
 
 KernelPilot::KernelPilot(KernelPilotMoeExpertState& moe_expert_state, const OpKernel* kernel)
     : moe_expert_state_(moe_expert_state),

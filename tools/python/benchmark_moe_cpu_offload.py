@@ -136,7 +136,9 @@ def model_session_options(args):
         session_options["session.moe_cpu_offload_experts"] = str(args.cpu_offload_experts)
         if args.state is None:
             session_options["session.moe_expert_swap_epsilon"] = str(args.swap_epsilon)
-        session_options["session.moe_max_in_flight_swaps_per_device"] = "4" if args.swap else "0"
+        session_options["session.moe_max_in_flight_swaps_per_device"] = (
+            str(args.max_in_flight_swaps_per_device) if args.swap else "0"
+        )
     return session_options
 
 
@@ -197,6 +199,7 @@ def parse_args(argv=None):
     parser.add_argument("--cpu-offload-experts", type=int, required=True)
     parser.add_argument("--counter-alpha", type=float, default=0.9)
     parser.add_argument("--swap-epsilon", type=float, default=0.1)
+    parser.add_argument("--max-in-flight-swaps-per-device", type=int, default=4)
     parser.add_argument("--swap", action=argparse.BooleanOptionalAction, required=True)
     parser.add_argument("--counter-log", action=argparse.BooleanOptionalAction, required=True)
     parser.add_argument("--cuda-graph", action=argparse.BooleanOptionalAction, required=True)
@@ -214,6 +217,8 @@ def parse_args(argv=None):
         parser.error("--counter-alpha must be finite and in [0, 1].")
     if not math.isfinite(args.swap_epsilon) or args.swap_epsilon < 0:
         parser.error("--swap-epsilon must be finite and non-negative.")
+    if args.max_in_flight_swaps_per_device < 0:
+        parser.error("--max-in-flight-swaps-per-device must be non-negative.")
     return args
 
 
@@ -294,6 +299,7 @@ def main():
         "counter_alpha": counter_alpha,
         "swap_epsilon": swap_epsilon,
         "swap": args.swap,
+        "max_in_flight_swaps_per_device": args.max_in_flight_swaps_per_device,
         "swaps_applicable": args.swap and args.cpu_offload_experts > 0,
         "counter_log": args.counter_log,
         "cuda_graph": args.cuda_graph,

@@ -1636,7 +1636,7 @@ Status SessionState::InitializeKernelPilots() {
   for (const auto& node : graph_.Nodes()) {
     auto* kernel = GetMutableKernel(node.Index());
     if (kernel != nullptr) {
-      ORT_RETURN_IF_ERROR(kernel->InitializeKernelPilot(GetKernelPilot(kernel)));
+      ORT_RETURN_IF_ERROR(KernelPilotInitializer::Run(kernel, GetKernelPilot(kernel)));
     }
   }
   for (auto& [node_index, subgraphs] : subgraph_session_states_) {

@@ -155,6 +155,8 @@ MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), Mo
                 " must be a non-negative integer. Received: \"", cpu_offload_experts, "\".");
     cpu_offload_enabled_ = cpu_offload_expert_count > 0;
     if (cpu_offload_enabled_) {
+      kernel_pilot_initializer_.Register(
+          this, [this](KernelPilot* pilot) { return InitializeKernelPilot(pilot); });
       device_id_ = GetDeviceId();
       const ScopedCudaDevice device_guard(device_id_);
       const Status resource_status = [&]() -> Status {
@@ -1598,11 +1600,15 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
   if (async_cpu) {
-    if (!run_cuda_experts) {
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output->MutableDataRaw(), 0, input->SizeInBytes(), stream));
-    }
     size_t row_offset = 0;
     while (row_offset < static_cast<size_t>(moe_params.num_rows)) {
+      if (!run_cuda_experts) {
+        const size_t chunk_bytes =
+            SafeInt<size_t>(cpu_task_->num_rows) * cpu_task_->hidden_size * sizeof(T);
+        auto* chunk_output = reinterpret_cast<CudaT*>(output->MutableDataRaw()) +
+                             row_offset * cpu_task_->hidden_size;
+        CUDA_RETURN_IF_ERROR(cudaMemsetAsync(chunk_output, 0, chunk_bytes, stream));
+      }
       ORT_RETURN_IF_ERROR(complete_async_cpu_chunk(row_offset));
       row_offset += cpu_task_->num_rows;
       if (row_offset < static_cast<size_t>(moe_params.num_rows)) {

@@ -301,6 +301,8 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
               " must be a non-negative integer. Received: \"", cpu_offload_experts, "\".");
   cpu_offload_enabled_ = cpu_offload_expert_count > 0;
   if (cpu_offload_enabled_) {
+    kernel_pilot_initializer_.Register(
+        this, [this](KernelPilot* pilot) { return InitializeKernelPilot(pilot); });
     device_id_ = GetDeviceId();
     cuda_allocator_ = op_kernel_info.GetAllocator(OrtMemTypeDefault);
     if (!routing_snapshot_) {
