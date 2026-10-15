@@ -35,23 +35,12 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-# Platform name -> (RID, list of native binary filenames expected in the source dir).
-WINDOWS_BINARIES = (
-    "onnxruntime_providers_webgpu.dll",
-    "dxcompiler.dll",
-)
-
-WINDOWS_AGILITY_SDK_BINARIES = (
-    "D3D12/D3D12Core.dll",
-    "D3D12/d3d12SDKLayers.dll",
-)
-
-PLATFORMS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "win_x64": ("win-x64", WINDOWS_BINARIES),
-    "win_arm64": ("win-arm64", WINDOWS_BINARIES),
-    "linux_x64": ("linux-x64", ("libonnxruntime_providers_webgpu.so",)),
-    "linux_aarch64": ("linux-arm64", ("libonnxruntime_providers_webgpu.so",)),
-    "macos_arm64": ("osx-arm64", ("libonnxruntime_providers_webgpu.dylib",)),
+PLATFORM_TARGETS: dict[str, tuple[str, str]] = {
+    "win_x64": ("win-x64", "Windows"),
+    "win_arm64": ("win-arm64", "Windows"),
+    "linux_x64": ("linux-x64", "Linux"),
+    "linux_aarch64": ("linux-arm64", "Linux"),
+    "macos_arm64": ("osx-arm64", "Darwin"),
 }
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -66,7 +55,34 @@ LICENSE_FILES: tuple[Path, ...] = (REPO_ROOT / "LICENSE", REPO_ROOT / "ThirdPart
 
 # Import the shared template helper from _packaging_utils.py in the parent directory.
 sys.path.insert(0, str(SCRIPT_DIR.parent))
-from _packaging_utils import gen_file_from_template  # noqa: E402  (path setup must precede import)
+from _packaging_utils import WINDOWS_AGILITY_SDK_BINARIES as _WINDOWS_AGILITY_SDK_BINARIES  # noqa: E402
+from _packaging_utils import (  # noqa: E402  (path setup must precede import)
+    gen_file_from_template,
+    get_plugin_binaries,
+    get_windows_agility_sdk_state,
+)
+
+WINDOWS_BINARIES = tuple(path.as_posix() for path in get_plugin_binaries("Windows"))
+WINDOWS_AGILITY_SDK_BINARIES = tuple(path.as_posix() for path in _WINDOWS_AGILITY_SDK_BINARIES)
+
+
+def get_platforms(*, include_agility_sdk_files: bool = False) -> dict[str, tuple[str, tuple[str, ...]]]:
+    return {
+        name: (
+            rid,
+            tuple(
+                path.as_posix()
+                for path in get_plugin_binaries(
+                    target_platform,
+                    include_agility_sdk_files=include_agility_sdk_files and target_platform == "Windows",
+                )
+            ),
+        )
+        for name, (rid, target_platform) in PLATFORM_TARGETS.items()
+    }
+
+
+PLATFORMS = get_platforms()
 
 
 class PackError(RuntimeError):
@@ -211,7 +227,7 @@ def stage_binaries(
 ) -> None:
     staged: set[str] = set()
 
-    for name, (rid, files) in PLATFORMS.items():
+    for name, (rid, _) in PLATFORMS.items():
         binary_dir_override: Path | None = getattr(args, f"binary_dir_{name}")
         is_required = name in required_platforms
         source_dir = resolve_platform_source(name, binary_dir_override, args.artifacts_dir, is_required)
@@ -221,12 +237,14 @@ def stage_binaries(
         if not source_dir.is_dir():
             raise PackError(f"binary directory does not exist: {source_dir}")
 
-        platform_files = list(files)
-        if rid.startswith("win-") and (
-            args.require_agility_sdk
-            or any((source_dir / filename).is_file() for filename in WINDOWS_AGILITY_SDK_BINARIES)
-        ):
-            platform_files.extend(WINDOWS_AGILITY_SDK_BINARIES)
+        include_agility_sdk_files = False
+        if rid.startswith("win-"):
+            has_agility_sdk_files, missing_agility_sdk_files = get_windows_agility_sdk_state(source_dir)
+            if missing_agility_sdk_files:
+                missing_text = ", ".join(path.as_posix() for path in missing_agility_sdk_files)
+                raise PackError(f"partial Agility SDK input in {source_dir}: missing {missing_text}")
+            include_agility_sdk_files = args.require_agility_sdk or has_agility_sdk_files
+        platform_files = list(get_platforms(include_agility_sdk_files=include_agility_sdk_files)[name][1])
 
         target_dir = staging_dir / "runtimes" / rid / "native"
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -291,12 +309,13 @@ def verify_package(package: Path, staging_dir: Path, *, require_agility_sdk: boo
     with zipfile.ZipFile(package) as archive:
         actual = set(archive.namelist())
     expected = set()
+    has_windows_runtime = False
     for rid, files in PLATFORMS.values():
         native_dir = Path("runtimes") / rid / "native"
         if (staging_dir / native_dir).is_dir():
             expected.update((native_dir / filename).as_posix() for filename in files)
             if rid.startswith("win-"):
-                expected.add("buildTransitive/Microsoft.ML.OnnxRuntime.EP.WebGpu.targets")
+                has_windows_runtime = True
                 sdk_entries = {(native_dir / filename).as_posix() for filename in WINDOWS_AGILITY_SDK_BINARIES}
                 if (
                     require_agility_sdk
@@ -304,6 +323,8 @@ def verify_package(package: Path, staging_dir: Path, *, require_agility_sdk: boo
                     or any((staging_dir / entry).is_file() for entry in sdk_entries)
                 ):
                     expected.update(sdk_entries)
+    if has_windows_runtime:
+        expected.add("buildTransitive/Microsoft.ML.OnnxRuntime.EP.WebGpu.targets")
     missing = expected.difference(actual)
     if missing:
         raise PackError(f"missing package entries in {package}: {', '.join(sorted(missing))}")

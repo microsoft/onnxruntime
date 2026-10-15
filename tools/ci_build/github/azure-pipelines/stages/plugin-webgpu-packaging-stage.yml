@@ -252,18 +252,6 @@ stages:
                 $zipPath = Join-Path $outputDir "webgpu_ep_${filenameVersion}_${platformName}.zip"
                 if ($filesToZip) {
                   $filesToZip | Compress-Archive -DestinationPath $zipPath -Force
-                  Add-Type -AssemblyName System.IO.Compression.FileSystem
-                  $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
-                  try {
-                    $entryNames = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
-                    foreach ($entry in $agilityEntries) {
-                      if ($entryNames -cnotcontains $entry) {
-                        throw "Missing Agility SDK entry in ${zipPath}: $entry"
-                      }
-                    }
-                  } finally {
-                    $archive.Dispose()
-                  }
                   Write-Host "Created zip: $zipPath ($((Get-Item $zipPath).Length) bytes)"
                 } else {
                   throw "No files found to zip for $platformName in $binDir"

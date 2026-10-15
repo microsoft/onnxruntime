@@ -25,14 +25,12 @@ MIN_ONNXRUNTIME_VERSION_FILE = SCRIPT_DIR.parent / "MIN_ONNXRUNTIME_VERSION"
 
 # Import the shared template helper from _packaging_utils.py in the parent directory.
 sys.path.insert(0, str(SCRIPT_DIR.parent))
-from _packaging_utils import gen_file_from_template  # noqa: E402, I001  (path setup must precede import)
-
-
-REQUIRED_BINARIES = {
-    "Windows": ("onnxruntime_providers_webgpu.dll", "dxcompiler.dll"),
-    "Linux": ("libonnxruntime_providers_webgpu.so",),
-    "Darwin": ("libonnxruntime_providers_webgpu.dylib",),
-}
+from _packaging_utils import WINDOWS_AGILITY_SDK_BINARIES  # noqa: E402, I001
+from _packaging_utils import (  # noqa: E402, I001  (path setup must precede import)
+    gen_file_from_template,
+    get_plugin_binaries,
+    get_windows_agility_sdk_state,
+)
 
 OPTIONAL_BINARIES = {
     "Windows": ("webgpu_dawn.dll",),
@@ -45,27 +43,24 @@ AUDITWHEEL_EXCLUDE = [
     "libvulkan.so.1",
 ]
 
-WINDOWS_AGILITY_SDK_BINARIES = [
-    Path("D3D12/D3D12Core.dll"),
-    Path("D3D12/d3d12SDKLayers.dll"),
-]
-
 
 def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str, *, require_agility_sdk: bool = False):
     """Copy the package source tree into staging_dir, copy binaries, and stamp the version."""
     target_platform = platform.system()
-    if target_platform not in REQUIRED_BINARIES:
+    if target_platform not in OPTIONAL_BINARIES:
         raise ValueError(f"Unsupported wheel platform: {target_platform}")
     if require_agility_sdk and target_platform != "Windows":
         raise ValueError("--require-agility-sdk is only supported for Windows wheels")
 
-    required_binaries = [Path(filename) for filename in REQUIRED_BINARIES[target_platform]]
-    optional_binaries = [Path(filename) for filename in OPTIONAL_BINARIES[target_platform]]
+    include_agility_sdk_files = False
     if target_platform == "Windows":
-        if require_agility_sdk or any(
-            (binary_dir / relative_path).is_file() for relative_path in WINDOWS_AGILITY_SDK_BINARIES
-        ):
-            required_binaries.extend(WINDOWS_AGILITY_SDK_BINARIES)
+        has_agility_sdk_files, missing_agility_sdk_files = get_windows_agility_sdk_state(binary_dir)
+        if missing_agility_sdk_files:
+            missing_text = ", ".join(path.as_posix() for path in missing_agility_sdk_files)
+            raise FileNotFoundError(f"Partial Windows Agility SDK input in {binary_dir}: missing {missing_text}")
+        include_agility_sdk_files = require_agility_sdk or has_agility_sdk_files
+    required_binaries = list(get_plugin_binaries(target_platform, include_agility_sdk_files=include_agility_sdk_files))
+    optional_binaries = [Path(filename) for filename in OPTIONAL_BINARIES[target_platform]]
 
     missing_binaries = [
         str(relative_path) for relative_path in required_binaries if not (binary_dir / relative_path).is_file()

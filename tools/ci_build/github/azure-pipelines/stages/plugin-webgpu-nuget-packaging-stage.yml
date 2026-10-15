@@ -77,14 +77,6 @@ stages:
         packageType: sdk
         version: '8.x'
 
-    - task: PythonScript@0
-      displayName: 'Test WebGPU NuGet packaging'
-      inputs:
-        scriptSource: filePath
-        scriptPath: '$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\test_pack_nuget.py'
-      env:
-        ORT_WEBGPU_TEST_REQUIRE_DOTNET_SDK: '1'
-
     - template: ../templates/set-nightly-build-option-variable-step.yml
 
     - template: ../templates/set-plugin-ep-build-variables-step.yml

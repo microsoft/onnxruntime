@@ -1,9 +1,13 @@
 <Project>
+  <PropertyGroup>
+    <_OrtWebGpuPackageId>Microsoft.ML.OnnxRuntime.EP.WebGpu</_OrtWebGpuPackageId>
+  </PropertyGroup>
+
   <Target Name="_OrtWebGpuCopyAgilitySdkToOutput"
           AfterTargets="CopyFilesToOutputDirectory">
     <ItemGroup>
       <_OrtWebGpuOutputProvider Include="@(ReferenceCopyLocalPaths)"
-                               Condition="'%(ReferenceCopyLocalPaths.NuGetPackageId)' == 'Microsoft.ML.OnnxRuntime.EP.WebGpu' and '%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension)' == 'onnxruntime_providers_webgpu.dll'" />
+                               Condition="'%(ReferenceCopyLocalPaths.NuGetPackageId)' == '$(_OrtWebGpuPackageId)' and '%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension)' == 'onnxruntime_providers_webgpu.dll'" />
       <_OrtWebGpuAgilitySdkDll Include="%(_OrtWebGpuOutputProvider.RootDir)%(_OrtWebGpuOutputProvider.Directory)D3D12\*.dll">
         <SdkDestinationDirectory>$(TargetDir)%(_OrtWebGpuOutputProvider.DestinationSubDirectory)D3D12\</SdkDestinationDirectory>
       </_OrtWebGpuAgilitySdkDll>
@@ -17,7 +21,7 @@
           AfterTargets="Publish">
     <ItemGroup>
       <_OrtWebGpuPublishProvider Include="@(ResolvedFileToPublish)"
-                                Condition="'%(ResolvedFileToPublish.NuGetPackageId)' == 'Microsoft.ML.OnnxRuntime.EP.WebGpu' and '%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'onnxruntime_providers_webgpu.dll'" />
+                                Condition="'%(ResolvedFileToPublish.NuGetPackageId)' == '$(_OrtWebGpuPackageId)' and '%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'onnxruntime_providers_webgpu.dll'" />
       <_OrtWebGpuAgilitySdkPublishDll Include="%(_OrtWebGpuPublishProvider.RootDir)%(_OrtWebGpuPublishProvider.Directory)D3D12\*.dll">
         <SdkDestinationDirectory>$(PublishDir)$([System.IO.Path]::GetDirectoryName('%(_OrtWebGpuPublishProvider.RelativePath)'))\D3D12\</SdkDestinationDirectory>
       </_OrtWebGpuAgilitySdkPublishDll>

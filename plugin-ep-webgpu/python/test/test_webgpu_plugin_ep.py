@@ -32,10 +32,15 @@ from onnx import TensorProto, helper
 
 import onnxruntime as ort
 
-VERBOSE = os.environ.get("ORT_TEST_VERBOSE", "").strip().lower() in ("1", "true", "yes")
-REQUIRE_EP_DEVICE = os.environ.get("ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE", "").strip().lower() in ("1", "true", "yes")
-REQUIRE_AGILITY_SDK = os.environ.get("ORT_WEBGPU_TEST_REQUIRE_AGILITY_SDK", "").strip().lower() in ("1", "true", "yes")
-TEST_PROVIDER_NAME = os.environ.get("ORT_WEBGPU_TEST_PROVIDER_NAME", "").strip().lower() in ("1", "true", "yes")
+
+def read_bool_environment_variable(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
+
+
+VERBOSE = read_bool_environment_variable("ORT_TEST_VERBOSE")
+REQUIRE_EP_DEVICE = read_bool_environment_variable("ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE")
+REQUIRE_AGILITY_SDK = read_bool_environment_variable("ORT_WEBGPU_TEST_REQUIRE_AGILITY_SDK")
+TEST_PROVIDER_NAME = read_bool_environment_variable("ORT_WEBGPU_TEST_PROVIDER_NAME")
 
 
 def debug_print(*args, **kwargs):
