@@ -15,6 +15,20 @@ done
 
 EXIT_CODE=1
 
+fix_exported_cmake_package_paths() {
+    local package_dir=$1
+    local cmake_dir="$package_dir/lib/cmake"
+
+    if [[ ! -d "$cmake_dir" ]]
+    then
+        return
+    fi
+
+    find "$cmake_dir" -type f -name "*.cmake" -print0 | xargs -0 -r sed -i \
+        -e 's#${_IMPORT_PREFIX}/include/onnxruntime#${_IMPORT_PREFIX}/include#g' \
+        -e 's#${_IMPORT_PREFIX}/lib64/#${_IMPORT_PREFIX}/lib/#g'
+}
+
 uname -a
 cd "$BINARY_DIR"
 mv installed/usr/local $ARTIFACT_NAME
@@ -44,6 +58,8 @@ else
    # Linux
    mv $ARTIFACT_NAME/lib64 $ARTIFACT_NAME/lib
 fi
+
+fix_exported_cmake_package_paths "$BINARY_DIR/$ARTIFACT_NAME"
 
 # copy the README, licence and TPN
 cp $SOURCE_DIR/README.md $BINARY_DIR/$ARTIFACT_NAME/README.md
