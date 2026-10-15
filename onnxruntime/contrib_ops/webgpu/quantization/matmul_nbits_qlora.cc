@@ -14,8 +14,8 @@
 
 namespace onnxruntime::contrib::webgpu {
 
-void GenerateQLoRADown(ShaderHelper& shader, const std::string& base_groups, const std::string& x_value,
-                       bool acc_f32, bool use_subgroups) {
+void GenerateQLoRADown(ShaderHelper& shader, const std::string& base_groups, const std::string& x_value, bool acc_f32,
+                       bool use_subgroups) {
   if (use_subgroups) {
     shader.AdditionalImplementation() << "alias qlora_acc_t = " << (acc_f32 ? "f32" : "output_element_t") << ";\n";
     auto& body = shader.MainFunctionBody();
@@ -41,8 +41,8 @@ if (workgroup_idx >= qlora_base_groups) {
            << "let scale" << r << " = lora_a_scales[rank" << r << " * (uniforms.K / 32u) + k / 32u];\n"
            << "var sum" << r << " = qlora_acc_t(0);\n";
       for (uint32_t i = 0; i < 4; ++i) {
-        body << "sum" << r << " += dot(x" << i << ", vec4<qlora_acc_t>((vec4<output_element_t>(unpack4xU8(packed"
-             << r << "[" << i << "])) - vec4<output_element_t>(128)) * scale" << r << "));\n";
+        body << "sum" << r << " += dot(x" << i << ", vec4<qlora_acc_t>((vec4<output_element_t>(unpack4xU8(packed" << r
+             << "[" << i << "])) - vec4<output_element_t>(128)) * scale" << r << "));\n";
       }
       body << "partial" << r << " += sum" << r << ";\n";
     }
@@ -282,10 +282,9 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
         context.AdapterInfo().vendor == std::string_view{"nvidia"}) {
       auto base = context.CreateGPUTensor(y->DataType(), y->Shape());
       ORT_RETURN_IF_ERROR(ApplyDP4AMatrixMatMulNBits(
-          x, w, s, nullptr, nullptr, narrow<uint32_t>(x->Shape().Size() / k_), 1, 1,
-          narrow<uint32_t>(n_), narrow<uint32_t>(k_), 32, narrow<uint32_t>(k_ / 32),
-          kMinMForTileOptimization, 4, context, &base, 0,
-          nullptr, nullptr, nullptr, aq, &t, true, nullptr, nullptr, 0, as));
+          x, w, s, nullptr, nullptr, narrow<uint32_t>(x->Shape().Size() / k_), 1, 1, narrow<uint32_t>(n_),
+          narrow<uint32_t>(k_), 32, narrow<uint32_t>(k_ / 32), kMinMForTileOptimization, 4, context, &base, 0, nullptr,
+          nullptr, nullptr, aq, &t, nullptr, nullptr, 0, as));
       return ApplyQLoRAOutput(context, &base, &t, bq, bs, y);
     }
     const bool joint_down = !fuse_up && x->Shape().Size() == k_ && k_ >= 2048 && k_ <= 8192 &&
@@ -293,25 +292,25 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     if (joint_down) {
       auto base = context.CreateGPUTensor(y->DataType(), y->Shape());
       ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, &base, 0,
-                                           nullptr, 0, nullptr, nullptr, aq, &t, true, nullptr, as));
+                                           nullptr, 0, nullptr, nullptr, aq, &t, nullptr, as));
       return ApplyQLoRAOutput(context, &base, &t, bq, bs, y);
     }
     // Allow activation quantization for prefill only when the model opts into it.
     const auto down_accuracy = fuse_up && m >= kMinMForTileOptimization ? accuracy_level_ : 0;
     DP4AQuantizedInput quantized_x;
     // Rank 32 exposes too few output tiles for the tiled DP4A kernel at these sizes.
-    const bool small_m_down = fuse_up && m <= 4096 && k_ >= 2048 &&
-                              context.AdapterInfo().vendor == std::string_view{"nvidia"} &&
-                              CanApplyDP4AMatrixMatMulNBits(context, down_accuracy, 32, 32,
-                                                            narrow<uint32_t>(k_), 4, m, false, &t);
+    const bool small_m_down =
+        fuse_up && m <= 4096 && k_ >= 2048 && context.AdapterInfo().vendor == std::string_view{"nvidia"} &&
+        CanApplyDP4AMatrixMatMulNBits(context, down_accuracy, 32, 32, narrow<uint32_t>(k_), 4, m, false, &t);
     if (small_m_down) {
       ORT_RETURN_IF_ERROR(ApplyDP4AMatrixMatMulNBits(
-          x, aq, as, nullptr, nullptr, narrow<uint32_t>(x->Shape().Size() / k_ / m), m, m, 32,
-          narrow<uint32_t>(k_), 32, narrow<uint32_t>(k_ / 32), kMinMForTileOptimization, 8, context, &t, 0,
-          nullptr, nullptr, nullptr, nullptr, nullptr, false, nullptr, &quantized_x, 32));
+          x, aq, as, nullptr, nullptr, narrow<uint32_t>(x->Shape().Size() / k_ / m), m, m, 32, narrow<uint32_t>(k_), 32,
+          narrow<uint32_t>(k_ / 32), kMinMForTileOptimization, 8, context, &t, 0, nullptr, nullptr, nullptr, nullptr,
+          nullptr, nullptr, &quantized_x, 32));
     } else {
       ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, aq, as, nullptr, nullptr, k_, 32, 32, down_accuracy, 8, context, &t, 0,
-                                           nullptr, 0, nullptr, nullptr, nullptr, nullptr, false, nullptr, nullptr, &quantized_x));
+                                           nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                                           &quantized_x));
     }
     std::optional<SubgroupMatrixConfig> up_config;
     const bool subgroup_up =
@@ -319,11 +318,12 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
                                           narrow<uint32_t>(n_), 32, 8, x->IsDataType<MLFloat16>(), up_config, m);
     if (fuse_up && !subgroup_up) {
       return ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, y, 0, nullptr, 0, &t,
-                              bq, nullptr, nullptr, true, bs, nullptr, &quantized_x);
+                              bq, nullptr, nullptr, bs, nullptr, &quantized_x);
     }
     auto base = context.CreateGPUTensor(y->DataType(), y->Shape());
     ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, &base, 0,
-                                         nullptr, 0, nullptr, nullptr, nullptr, nullptr, false, nullptr, nullptr, &quantized_x));
+                                         nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                                         &quantized_x));
     if (!subgroup_up) return ApplyQLoRAOutput(context, &base, &t, bq, bs, y);
     // Keep the original up kernel on devices with a different matrix-accumulation path.
     auto delta = context.CreateGPUTensor(y->DataType(), y->Shape());

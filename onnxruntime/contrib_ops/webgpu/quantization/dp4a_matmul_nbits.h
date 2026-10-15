@@ -30,37 +30,28 @@ class DP4AMatMulQuantizeProgram final : public Program<DP4AMatMulQuantizeProgram
 
 class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
  public:
-  DP4AMatMulNBitsProgram(uint32_t tile_size_m, uint32_t tile_size_n, uint32_t tile_size_k_vec, uint32_t block_size, uint32_t nbits,
-                         bool has_zero_points, bool has_bias,
-                         bool has_weight_idx, bool has_weight_idx_indirect, bool is_qualcomm,
-                         bool acc_f32, bool has_lora_up = false, bool has_lora_down = false, bool lora_transposed = false, bool lora_quantized = false, bool lora_shared_b = false) : Program{has_lora_down ? (lora_quantized ? "DP4AMatMulNBitsQLoRADown" : "DP4AMatMulNBitsLoRADown") : has_lora_up ? (lora_quantized ? "DP4AMatMulNBitsQLoRAUp" : "DP4AMatMulNBitsLoRAUp")
-                                                                                                                                                                                                                                                                                                      : "DP4AMatMulNBits"},
-                                                                                                                                                                                      tile_size_m_(tile_size_m),
-                                                                                                                                                                                      tile_size_n_(tile_size_n),
-                                                                                                                                                                                      tile_size_k_vec_(tile_size_k_vec),
-                                                                                                                                                                                      block_size_(block_size),
-                                                                                                                                                                                      nbits_(nbits),
-                                                                                                                                                                                      has_bias_(has_bias),
-                                                                                                                                                                                      has_zero_points_(has_zero_points),
-                                                                                                                                                                                      has_weight_idx_(has_weight_idx),
-                                                                                                                                                                                      has_weight_idx_indirect_(has_weight_idx_indirect),
-                                                                                                                                                                                      is_qualcomm_(is_qualcomm),
-                                                                                                                                                                                      acc_f32_(acc_f32),
-                                                                                                                                                                                      has_lora_up_(has_lora_up),
-                                                                                                                                                                                      has_lora_down_(has_lora_down),
-                                                                                                                                                                                      lora_transposed_(lora_transposed),
-                                                                                                                                                                                      lora_quantized_(lora_quantized),
-                                                                                                                                                                                      lora_shared_b_(lora_shared_b) {}
+  DP4AMatMulNBitsProgram(uint32_t tile_size_m, uint32_t tile_size_n, uint32_t tile_size_k_vec, uint32_t block_size,
+                         uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx,
+                         bool has_weight_idx_indirect, bool is_qualcomm, bool acc_f32, bool has_qlora_up = false)
+      : Program{has_qlora_up ? "DP4AMatMulNBitsQLoRAUp" : "DP4AMatMulNBits"},
+        tile_size_m_(tile_size_m),
+        tile_size_n_(tile_size_n),
+        tile_size_k_vec_(tile_size_k_vec),
+        block_size_(block_size),
+        nbits_(nbits),
+        has_bias_(has_bias),
+        has_zero_points_(has_zero_points),
+        has_weight_idx_(has_weight_idx),
+        has_weight_idx_indirect_(has_weight_idx_indirect),
+        is_qualcomm_(is_qualcomm),
+        acc_f32_(acc_f32),
+        has_qlora_up_(has_qlora_up) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_count", ProgramUniformVariableDataType::Uint32},
-      {"M", ProgramUniformVariableDataType::Uint32},
-      {"N", ProgramUniformVariableDataType::Uint32},
-      {"K", ProgramUniformVariableDataType::Uint32},
-      {"K8", ProgramUniformVariableDataType::Uint32},
-      {"K16", ProgramUniformVariableDataType::Uint32},
-      {"num_M_tile", ProgramUniformVariableDataType::Uint32},
-      {"num_N_tile", ProgramUniformVariableDataType::Uint32},
+      {"batch_count", ProgramUniformVariableDataType::Uint32}, {"M", ProgramUniformVariableDataType::Uint32},
+      {"N", ProgramUniformVariableDataType::Uint32}, {"K", ProgramUniformVariableDataType::Uint32},
+      {"K8", ProgramUniformVariableDataType::Uint32}, {"K16", ProgramUniformVariableDataType::Uint32},
+      {"num_M_tile", ProgramUniformVariableDataType::Uint32}, {"num_N_tile", ProgramUniformVariableDataType::Uint32},
       {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
       {"weight_idx", ProgramUniformVariableDataType::Uint32});
 
@@ -76,51 +67,38 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
   bool has_weight_idx_indirect_;
   bool is_qualcomm_;
   bool acc_f32_;
-  bool has_lora_up_;
-  bool has_lora_down_;
-  bool lora_transposed_;
-  bool lora_quantized_;
-  bool lora_shared_b_;
+  bool has_qlora_up_;
 };
 
 class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMProgram> {
  public:
-  DP4AMatMulNBitsSmallMProgram(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits,
-                               bool has_zero_points, bool has_bias,
-                               bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights,
-                               bool broadcast_a_row = false,
-                               bool acc_f32 = false, bool has_lora_up = false, bool lora_transposed = false, bool lora_quantized = false,
-                               bool has_qlora_down = false, bool has_lora_down = false) : Program{has_lora_down ? "DP4AMatMulNBitsLoRADownSmallM" : has_qlora_down ? "DP4AMatMulNBitsQLoRADownSmallM"
-                                                                                                                                                : lora_quantized   ? "DP4AMatMulNBitsQLoRAUpSmallM"
-                                                                                                                                                                   : "DP4AMatMulNBitsSmallMProgram"},
-                                                                                          tile_size_k_vec_(tile_size_k_vec),
-                                                                                          tile_size_(tile_size),
-                                                                                          nbits_(nbits),
-                                                                                          has_bias_(has_bias),
-                                                                                          has_zero_points_(has_zero_points),
-                                                                                          has_weight_idx_(has_weight_idx),
-                                                                                          has_weight_idx_indirect_(has_weight_idx_indirect),
-                                                                                          single_scale_weights_(single_scale_weights),
-                                                                                          broadcast_a_row_(broadcast_a_row),
-                                                                                          acc_f32_(acc_f32),
-                                                                                          has_lora_up_(has_lora_up),
-                                                                                          lora_transposed_(lora_transposed),
-                                                                                          lora_quantized_(lora_quantized),
-                                                                                          has_qlora_down_(has_qlora_down),
-                                                                                          has_lora_down_(has_lora_down) {}
+  DP4AMatMulNBitsSmallMProgram(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits, bool has_zero_points,
+                               bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect,
+                               bool single_scale_weights, bool broadcast_a_row = false, bool acc_f32 = false,
+                               bool has_qlora_up = false, bool has_qlora_down = false)
+      : Program{has_qlora_down ? "DP4AMatMulNBitsQLoRADownSmallM"
+                : has_qlora_up ? "DP4AMatMulNBitsQLoRAUpSmallM"
+                               : "DP4AMatMulNBitsSmallMProgram"},
+        tile_size_k_vec_(tile_size_k_vec),
+        tile_size_(tile_size),
+        nbits_(nbits),
+        has_bias_(has_bias),
+        has_zero_points_(has_zero_points),
+        has_weight_idx_(has_weight_idx),
+        has_weight_idx_indirect_(has_weight_idx_indirect),
+        single_scale_weights_(single_scale_weights),
+        broadcast_a_row_(broadcast_a_row),
+        acc_f32_(acc_f32),
+        has_qlora_up_(has_qlora_up),
+        has_qlora_down_(has_qlora_down) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_count", ProgramUniformVariableDataType::Uint32},
-      {"M", ProgramUniformVariableDataType::Uint32},
-      {"N", ProgramUniformVariableDataType::Uint32},
-      {"K", ProgramUniformVariableDataType::Uint32},
-      {"K16", ProgramUniformVariableDataType::Uint32},
-      {"K32", ProgramUniformVariableDataType::Uint32},
-      {"block_size", ProgramUniformVariableDataType::Uint32},
-      {"num_N_tile", ProgramUniformVariableDataType::Uint32},
+      {"batch_count", ProgramUniformVariableDataType::Uint32}, {"M", ProgramUniformVariableDataType::Uint32},
+      {"N", ProgramUniformVariableDataType::Uint32}, {"K", ProgramUniformVariableDataType::Uint32},
+      {"K16", ProgramUniformVariableDataType::Uint32}, {"K32", ProgramUniformVariableDataType::Uint32},
+      {"block_size", ProgramUniformVariableDataType::Uint32}, {"num_N_tile", ProgramUniformVariableDataType::Uint32},
       {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
-      {"weight_idx", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_M", ProgramUniformVariableDataType::Uint32});
+      {"weight_idx", ProgramUniformVariableDataType::Uint32}, {"dispatch_M", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t tile_size_k_vec_;
@@ -133,49 +111,31 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
   bool single_scale_weights_;
   bool broadcast_a_row_;
   bool acc_f32_;
-  bool has_lora_up_;
-  bool lora_transposed_;
-  bool lora_quantized_;
+  bool has_qlora_up_;
   bool has_qlora_down_;
-  bool has_lora_down_;
 };
 
-Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
-                                  const Tensor* zero_points, const Tensor* bias,
-                                  uint32_t batch_count,
-                                  uint32_t M,
-                                  uint32_t dispatch_M,
-                                  uint32_t N,
-                                  uint32_t K,
-                                  uint32_t block_size,
-                                  uint32_t zero_blocks_per_col,
-                                  uint32_t min_M_for_tile_optimization,
-                                  uint32_t nbits,
-                                  onnxruntime::webgpu::ComputeContext& context,
-                                  Tensor* y,
-                                  const uint32_t weight_index,
-                                  const Tensor* weight_index_indirect = nullptr,
-                                  const Tensor* lora_t = nullptr, const Tensor* lora_b = nullptr,
-                                  const Tensor* lora_at = nullptr, Tensor* lora_down = nullptr, bool lora_transposed = false, const Tensor* lora_b_scales = nullptr,
+Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, const Tensor* zero_points,
+                                  const Tensor* bias, uint32_t batch_count, uint32_t M, uint32_t dispatch_M, uint32_t N,
+                                  uint32_t K, uint32_t block_size, uint32_t zero_blocks_per_col,
+                                  uint32_t min_M_for_tile_optimization, uint32_t nbits,
+                                  onnxruntime::webgpu::ComputeContext& context, Tensor* y, const uint32_t weight_index,
+                                  const Tensor* weight_index_indirect = nullptr, const Tensor* lora_t = nullptr,
+                                  const Tensor* lora_b = nullptr, const Tensor* lora_at = nullptr,
+                                  Tensor* lora_down = nullptr, const Tensor* lora_b_scales = nullptr,
                                   DP4AQuantizedInput* quantized_input = nullptr,
                                   // Nonzero selects the K-parallel kernel for a rank-32 INT8 projection.
-                                  uint32_t small_m_tile_n = 0,
-                                  const Tensor* lora_a_scales = nullptr);
+                                  uint32_t small_m_tile_n = 0, const Tensor* lora_a_scales = nullptr);
 
 // The optional M / has_weight_idx_indirect / y arguments fold the original
 // dispatch-precondition (DP4A is preferred when M is large enough, or
 // unconditionally on FP32 outputs and Qualcomm GPUs) into the feasibility check
 // so callers don't need a separate wrapper. Defaults make the precondition
 // trivially satisfied for callers that only want the feasibility check.
-bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
-                                   uint64_t accuracy_level,
-                                   uint32_t block_size,
-                                   uint32_t N,
-                                   uint32_t K,
-                                   uint32_t components_k,
+bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context, uint64_t accuracy_level,
+                                   uint32_t block_size, uint32_t N, uint32_t K, uint32_t components_k,
                                    uint32_t M = std::numeric_limits<uint32_t>::max(),
-                                   bool has_weight_idx_indirect = false,
-                                   const Tensor* y = nullptr);
+                                   bool has_weight_idx_indirect = false, const Tensor* y = nullptr);
 
 }  // namespace webgpu
 }  // namespace contrib

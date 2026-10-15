@@ -19,17 +19,13 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-ONNX_OPERATOR_KERNEL_EX(
-    MatMulNBits,
-    kMSDomain,
-    1,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", WebGpuSupportedFloatTypes())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
-    MatMulNBits);
+ONNX_OPERATOR_KERNEL_EX(MatMulNBits, kMSDomain, 1, kWebGpuExecutionProvider,
+                        (*KernelDefBuilder::Create())
+                            .TypeConstraint("T1", WebGpuSupportedFloatTypes())
+                            .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+                            .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
+                            .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+                        MatMulNBits);
 
 Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -44,13 +40,11 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
   if (has_weight_idx_indirect_) {
     shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
-  if (has_lora_up_) {
+  if (has_qlora_up_) {
     shader.AddInput("lora_t", ShaderUsage::UseElementTypeAlias);
     shader.AddInput("lora_b", ShaderUsage::UseElementTypeAlias);
-    if (lora_quantized_) {
-      shader.AddInput("lora_b_scales");
-      GenerateQLoRAUp(shader, acc_f32_);
-    }
+    shader.AddInput("lora_b_scales");
+    GenerateQLoRAUp(shader, acc_f32_);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
@@ -59,23 +53,15 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
   ORT_ENFORCE(tile_m_ % (workgroup_size / 8) == 0, "tile_m must be a multiple of workgroup_size / 8.");
   ORT_ENFORCE(nbits_ == 4 || nbits_ == 8, "Only 4/8 bits are supported for webgpu matmulnbits.");
 
-  return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_wide_tile.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
-                             WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
-                             WGSL_TEMPLATE_PARAMETER(has_lora_up, has_lora_up_),
-                             WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
-                             WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect_),
-                             WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
-                             WGSL_TEMPLATE_PARAMETER(lora_quantized, lora_quantized_),
-                             WGSL_TEMPLATE_PARAMETER(lora_transposed, lora_transposed_),
-                             WGSL_TEMPLATE_PARAMETER(nbits, nbits_),
-                             WGSL_TEMPLATE_PARAMETER(subgroup_min_size, subgroup_min_size_),
-                             WGSL_TEMPLATE_PARAMETER(tile_m, tile_m_),
-                             WGSL_TEMPLATE_PARAMETER(tile_n, tile_n_),
-                             WGSL_TEMPLATE_VARIABLE(a, a),
-                             WGSL_TEMPLATE_VARIABLE(b, b),
-                             WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(scales, scales));
+  return WGSL_TEMPLATE_APPLY(
+      shader, "quantization/matmul_nbits_wide_tile.wgsl.template", WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
+      WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_), WGSL_TEMPLATE_PARAMETER(has_qlora_up, has_qlora_up_),
+      WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
+      WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect_),
+      WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_), WGSL_TEMPLATE_PARAMETER(nbits, nbits_),
+      WGSL_TEMPLATE_PARAMETER(subgroup_min_size, subgroup_min_size_), WGSL_TEMPLATE_PARAMETER(tile_m, tile_m_),
+      WGSL_TEMPLATE_PARAMETER(tile_n, tile_n_), WGSL_TEMPLATE_VARIABLE(a, a), WGSL_TEMPLATE_VARIABLE(b, b),
+      WGSL_TEMPLATE_VARIABLE(output, output), WGSL_TEMPLATE_VARIABLE(scales, scales));
 }
 
 // Apply similar idea with DP4AMatMulNBitsSmallMProgram algorithm.
@@ -92,26 +78,20 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_weight_idx_indirect_) {
     shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
-  if (has_lora_up_) {
+  if (has_qlora_up_) {
     shader.AddInput("lora_t", ShaderUsage::UseElementTypeAlias);
     shader.AddInput("lora_b", ShaderUsage::UseElementTypeAlias);
-    if (lora_quantized_) {
-      shader.AddInput("lora_b_scales");
-      GenerateQLoRAUp(shader, acc_f32_);
-    }
+    shader.AddInput("lora_b_scales");
+    GenerateQLoRAUp(shader, acc_f32_);
   }
-  if (has_lora_down_) {
+  if (has_qlora_down_) {
     shader.AddInput("lora_at");
-    if (lora_quantized_) shader.AddInput("lora_a_scales");
+    shader.AddInput("lora_a_scales");
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
-  if (has_lora_down_) {
+  if (has_qlora_down_) {
     shader.AddOutput("lora_down", ShaderUsage::UseElementTypeAlias);
-    if (lora_quantized_) {
-      GenerateQLoRADown(shader, "uniforms.num_N_tile", a.GetByOffset("k4"), acc_f32_, qlora_down_subgroups_);
-    } else {
-      GenerateLoRAGemv(shader, "uniforms.num_N_tile", a.GetByOffset("k4"));
-    }
+    GenerateQLoRADown(shader, "uniforms.num_N_tile", a.GetByOffset("k4"), acc_f32_, qlora_down_subgroups_);
   }
 
   const uint32_t components_a = a.NumComponents();
@@ -122,31 +102,20 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const uint32_t a_length_per_tile = tile_size_k / components_a;
   uint32_t sub_tile_count = WorkgroupSizeX() / tile_size_k_vec;
 
-  return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
-                             WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
-                             WGSL_TEMPLATE_PARAMETER(broadcast_a_row, broadcast_a_row_),
-                             WGSL_TEMPLATE_PARAMETER(component_a, components_a),
-                             WGSL_TEMPLATE_PARAMETER(component_b, components_b),
-                             WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b),
-                             WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
-                             WGSL_TEMPLATE_PARAMETER(has_lora_up, has_lora_up_),
-                             WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
-                             WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect_),
-                             WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
-                             WGSL_TEMPLATE_PARAMETER(lora_quantized, lora_quantized_),
-                             WGSL_TEMPLATE_PARAMETER(lora_transposed, lora_transposed_),
-                             WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
-                             WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
-                             WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
-                             WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
-                             WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
-                             WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
-                             WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
-                             WGSL_TEMPLATE_VARIABLE(a, a),
-                             WGSL_TEMPLATE_VARIABLE(b, b),
-                             WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
+  return WGSL_TEMPLATE_APPLY(
+      shader, "quantization/matmul_nbits.wgsl.template", WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
+      WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_), WGSL_TEMPLATE_PARAMETER(broadcast_a_row, broadcast_a_row_),
+      WGSL_TEMPLATE_PARAMETER(component_a, components_a), WGSL_TEMPLATE_PARAMETER(component_b, components_b),
+      WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b), WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
+      WGSL_TEMPLATE_PARAMETER(has_qlora_up, has_qlora_up_), WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
+      WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect_),
+      WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_), WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
+      WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
+      WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
+      WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count), WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
+      WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k), WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
+      WGSL_TEMPLATE_VARIABLE(a, a), WGSL_TEMPLATE_VARIABLE(b, b), WGSL_TEMPLATE_VARIABLE(output, output),
+      WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
 
 Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
@@ -161,7 +130,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
 
   const bool has_zero_points = zero_points != nullptr;
   if (has_zero_points) {
-    ORT_ENFORCE(zero_points->DataType() == DataTypeImpl::GetType<uint8_t>(), "Currently, only uint8 is supported for zero points, but got ", zero_points->DataType());
+    ORT_ENFORCE(zero_points->DataType() == DataTypeImpl::GetType<uint8_t>(),
+                "Currently, only uint8 is supported for zero points, but got ", zero_points->DataType());
   }
 
   MatMulComputeHelper helper;
@@ -194,7 +164,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
  * @param zero_points    Pointer to the zero-point tensor for quantization; must be of type uint8 if provided.
  *                       weight_index > 0 is only supported when zero_points is nullptr.
  * @param bias           Pointer to the bias tensor; optional.
- * @param K_op           The K dimension of the operation (number of columns in 'a' and rows in 'b' before quantization).
+ * @param K_op           The K dimension of the operation (number of columns in 'a' and rows in 'b' before
+ * quantization).
  * @param N_op           The N dimension of the operation (number of columns in 'b').
  * @param block_size_op  The block size used for quantization partitioning.
  * @param accuracy_level Accuracy level influencing the choice of optimized kernel.
@@ -211,36 +182,29 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
  *       - A wide tile program is used when block size, component count, and other criteria are met.
  *       - Otherwise, a default matmul program is used.
  */
-Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, const Tensor* zero_points, const Tensor* bias,
-                        int64_t K_op,
-                        int64_t N_op,
-                        int64_t block_size_op,
-                        int64_t accuracy_level,
-                        int64_t nbits,
-                        onnxruntime::webgpu::ComputeContext& context,
-                        Tensor* y,
-                        const uint32_t weight_index,
-                        const Tensor* weight_index_indirect,
-                        uint32_t override_M, const Tensor* lora_t, const Tensor* lora_b,
-                        const Tensor* lora_a_transposed, Tensor* lora_a_output, bool lora_transposed,
-                        const Tensor* lora_b_scales, const Tensor* lora_a_scales,
+Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, const Tensor* zero_points,
+                        const Tensor* bias, int64_t K_op, int64_t N_op, int64_t block_size_op, int64_t accuracy_level,
+                        int64_t nbits, onnxruntime::webgpu::ComputeContext& context, Tensor* y,
+                        const uint32_t weight_index, const Tensor* weight_index_indirect, uint32_t override_M,
+                        const Tensor* lora_t, const Tensor* lora_b, const Tensor* lora_a_transposed,
+                        Tensor* lora_a_output, const Tensor* lora_b_scales, const Tensor* lora_a_scales,
                         DP4AQuantizedInput* quantized_input) {
   TensorShape b_shape({N_op, K_op});
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
 
-  const bool has_lora_up = lora_t != nullptr;
-  const bool has_lora_down = lora_a_transposed != nullptr;
-  const bool lora_quantized = lora_b_scales != nullptr || lora_a_scales != nullptr;
-  ORT_RETURN_IF_NOT(!has_lora_down || (lora_a_output != nullptr && !has_lora_up && a->Shape().Size() == K_op &&
-                                       nbits == 4 && block_size_op == 32),
-                    "Unsupported joint LoRA projection.");
+  const bool has_qlora_up = lora_t != nullptr;
+  const bool has_qlora_down = lora_a_transposed != nullptr;
+  ORT_RETURN_IF_NOT(!has_qlora_down || (lora_a_output != nullptr && lora_a_scales != nullptr && !has_qlora_up &&
+                                        a->Shape().Size() == K_op && nbits == 4 && block_size_op == 32),
+                    "Unsupported joint QLoRA projection.");
   const bool has_bias = bias != nullptr;
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
   const bool has_weight_idx = weight_index > 0 || has_weight_idx_indirect;
   const bool has_zero_points = zero_points != nullptr;
   if (has_zero_points) {
-    ORT_ENFORCE(zero_points->DataType() == DataTypeImpl::GetType<uint8_t>(), "Currently, only uint8 is supported for zero points, but got ", zero_points->DataType());
+    ORT_ENFORCE(zero_points->DataType() == DataTypeImpl::GetType<uint8_t>(),
+                "Currently, only uint8 is supported for zero points, but got ", zero_points->DataType());
   }
 
   const uint32_t batch_count = onnxruntime::narrow<uint32_t>(helper.OutputOffsets().size());
@@ -266,51 +230,43 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   // n_blocks_per_col up to the next multiple of (8/nbits) — the number of zero point
   // values per byte — so that the linear stride correctly skips byte-boundary padding.
   const uint32_t zp_elements_per_byte = 8 / static_cast<uint32_t>(nbits);
-  uint32_t zero_blocks_per_col = (n_blocks_per_col + zp_elements_per_byte - 1) / zp_elements_per_byte * zp_elements_per_byte;
+  uint32_t zero_blocks_per_col =
+      (n_blocks_per_col + zp_elements_per_byte - 1) / zp_elements_per_byte * zp_elements_per_byte;
 
   // apple|intel - Experimental dawn support for subgroup matrix matmul.
   std::optional<SubgroupMatrixConfig> subgroup_matrix_config;
-  if (!has_lora_down && CanApplySubgroupMatrixMatMulNBits(context,
-                                                          accuracy_level,
-                                                          block_size,
-                                                          batch_count,
-                                                          N,
-                                                          K,
-                                                          static_cast<uint32_t>(nbits),
-                                                          y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
-                                                          subgroup_matrix_config,
-                                                          M,
-                                                          has_weight_idx_indirect)) {
-    if (has_lora_up) {
+  if (!has_qlora_down && CanApplySubgroupMatrixMatMulNBits(context, accuracy_level, block_size, batch_count, N, K,
+                                                           static_cast<uint32_t>(nbits),
+                                                           y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
+                                                           subgroup_matrix_config, M, has_weight_idx_indirect)) {
+    if (has_qlora_up) {
       auto base_output = context.CreateGPUTensor(y->DataType(), y->Shape());
-      ORT_RETURN_IF_ERROR(ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K,
-                                                         static_cast<uint32_t>(nbits), zero_blocks_per_col,
-                                                         *subgroup_matrix_config, context, &base_output, weight_index,
-                                                         weight_index_indirect));
-      return ApplyLoRAOutput(context, &base_output, lora_t, lora_b, y, lora_transposed, lora_b_scales);
+      ORT_RETURN_IF_ERROR(ApplySubgroupMatrixMatMulNBits(
+          a, b, scales, zero_points, bias, M, N, K, static_cast<uint32_t>(nbits), zero_blocks_per_col,
+          *subgroup_matrix_config, context, &base_output, weight_index, weight_index_indirect));
+      return ApplyQLoRAOutput(context, &base_output, lora_t, lora_b, lora_b_scales, y);
     }
-    return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K,
-                                          static_cast<uint32_t>(nbits), zero_blocks_per_col,
-                                          *subgroup_matrix_config, context, y, weight_index,
+    return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K, static_cast<uint32_t>(nbits),
+                                          zero_blocks_per_col, *subgroup_matrix_config, context, y, weight_index,
                                           weight_index_indirect);
   }
 
-  // On FP32 only GPUs and Qualcomm GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
-  // DP4A Q2 path now supports custom zero points via a 1024-entry LUT (4 zero-point sections × 256 byte values).
-  if (!has_lora_down && CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, N, K, components_a,
-                                                      M, has_weight_idx_indirect, y)) {
-    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, dispatch_M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index, weight_index_indirect, lora_t, lora_b, nullptr, nullptr, lora_transposed, lora_b_scales, quantized_input);
+  // On FP32 only GPUs and Qualcomm GPUs, integer math is faster than FP32 therefore always use DP4A independent of
+  // length of M. DP4A Q2 path now supports custom zero points via a 1024-entry LUT (4 zero-point sections × 256 byte
+  // values).
+  if (!has_qlora_down && CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, N, K, components_a, M,
+                                                       has_weight_idx_indirect, y)) {
+    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, dispatch_M, N, K, block_size,
+                                      zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits),
+                                      context, y, weight_index, weight_index_indirect, lora_t, lora_b, nullptr, nullptr,
+                                      lora_b_scales, quantized_input);
   }
 
   // WideTileProgram
   // This program is optimized for Block32 prefill.
-  const bool use_wide_tile_program = !has_lora_down && CanApplyWideTileMatMulNBits(M,
-                                                                                   K,
-                                                                                   block_size,
-                                                                                   nbits,
-                                                                                   has_weight_idx_indirect,
-                                                                                   components_a,
-                                                                                   components_b);
+  const bool use_wide_tile_program =
+      !has_qlora_down &&
+      CanApplyWideTileMatMulNBits(M, K, block_size, nbits, has_weight_idx_indirect, components_a, components_b);
 
   const bool acc_f32 = context.EnableMatmulFp32Accumulation();
 
@@ -331,11 +287,19 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
     // width it supports; otherwise (including when Subgroups isn't supported) it falls
     // back to a direct reduction.
     // NOTE: NVIDIA GPUs prefer direct reduction.
-    const uint32_t subgroup_min_size = (context.HasFeature(wgpu::FeatureName::Subgroups) && !is_nvidia)
-                                           ? context.AdapterInfo().subgroupMinSize
-                                           : 0u;
+    const uint32_t subgroup_min_size =
+        (context.HasFeature(wgpu::FeatureName::Subgroups) && !is_nvidia) ? context.AdapterInfo().subgroupMinSize : 0u;
 
-    MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, tile_m, tile_n, static_cast<uint32_t>(nbits), subgroup_min_size, acc_f32, has_lora_up, lora_transposed, lora_quantized};
+    MatMulNBitsWideTileProgram program{has_zero_points,
+                                       has_bias,
+                                       has_weight_idx,
+                                       has_weight_idx_indirect,
+                                       tile_m,
+                                       tile_n,
+                                       static_cast<uint32_t>(nbits),
+                                       subgroup_min_size,
+                                       acc_f32,
+                                       has_qlora_up};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, num_M_tile, batch_count);
 
@@ -344,12 +308,9 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
     const uint32_t K_of_b = n_blocks_per_col * blob_size / components_b_with_u32;
     const uint32_t K_of_a = K / components_a;
 
-    program.AddInput({a,
-                      ProgramTensorMetadataDependency::TypeAndRank,
-                      onnxruntime::narrow<int>(components_a)});
-    program.AddInput({b,
-                      ProgramTensorMetadataDependency::TypeAndRank,
-                      onnxruntime::narrow<int>(components_b_with_u32)});
+    program.AddInput({a, ProgramTensorMetadataDependency::TypeAndRank, onnxruntime::narrow<int>(components_a)});
+    program.AddInput(
+        {b, ProgramTensorMetadataDependency::TypeAndRank, onnxruntime::narrow<int>(components_b_with_u32)});
     program.AddInput({scales, ProgramTensorMetadataDependency::TypeAndRank});
     if (has_zero_points) {
       program.AddInput({zero_points,
@@ -363,9 +324,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
     if (has_weight_idx_indirect) {
       program.AddInput({weight_index_indirect, ProgramTensorMetadataDependency::None});
     }
-    program.AddOutput({y,
-                       ProgramTensorMetadataDependency::TypeAndRank,
-                       onnxruntime::narrow<int>(components)});
+    program.AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, onnxruntime::narrow<int>(components)});
     program.AddUniformVariables({{batch_count},
                                  {dispatch_M},
                                  {N},
@@ -376,21 +335,20 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                  {num_N_tile},
                                  {num_M_tile},
                                  {weight_index}});
-    program.CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, subgroup_min_size, acc_f32, has_lora_up, lora_transposed, lora_quantized);
+    program.CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, subgroup_min_size,
+                      acc_f32, has_qlora_up);
 
-    if (has_lora_up) {
-      program.AddInput({lora_t, ProgramTensorMetadataDependency::Type, lora_transposed ? 4 : 1});
-      program.AddInput({lora_b, ProgramTensorMetadataDependency::Type, lora_quantized ? 16 : lora_transposed ? 4
-                                                                                                             : 1});
-      if (lora_quantized) program.AddInput({lora_b_scales, ProgramTensorMetadataDependency::Type});
+    if (has_qlora_up) {
+      program.AddInput({lora_t, ProgramTensorMetadataDependency::Type, 4});
+      program.AddInput({lora_b, ProgramTensorMetadataDependency::Type, 16});
+      program.AddInput({lora_b_scales, ProgramTensorMetadataDependency::Type});
     }
     return context.RunProgram(program);
   }
 
   // Use tile_size_k_vec=32 by default for better K-dimension parallelism.
   // Intel devices use 16 as they have different subgroup/cache characteristics.
-  const uint32_t tile_size_k_vec =
-      (context.AdapterInfo().vendor == std::string_view{"intel"}) ? 16u : 32u;
+  const uint32_t tile_size_k_vec = (context.AdapterInfo().vendor == std::string_view{"intel"}) ? 16u : 32u;
 
   constexpr uint32_t workgroup_size = 128;
   constexpr uint32_t tile_size = 8;
@@ -399,14 +357,25 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
   // The decode reduction assigns one rank to each 32-lane subgroup.
   const auto& adapter = context.AdapterInfo();
-  const bool qlora_down_subgroups = has_lora_down && lora_quantized &&
-                                    adapter.vendor == std::string_view{"nvidia"} &&
-                                    context.HasFeature(wgpu::FeatureName::Subgroups) &&
-                                    adapter.subgroupMinSize == 32 && adapter.subgroupMaxSize == 32;
-  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, tile_size_k_vec, broadcast_a, acc_f32, has_lora_up, has_lora_down, lora_transposed, lora_quantized, qlora_down_subgroups};
+  const bool qlora_down_subgroups = has_qlora_down && adapter.vendor == std::string_view{"nvidia"} &&
+                                    context.HasFeature(wgpu::FeatureName::Subgroups) && adapter.subgroupMinSize == 32 &&
+                                    adapter.subgroupMaxSize == 32;
+  MatMulNBitsProgram program{tile_size,
+                             static_cast<uint32_t>(nbits),
+                             has_zero_points,
+                             has_bias,
+                             has_weight_idx,
+                             has_weight_idx_indirect,
+                             single_scale_weights,
+                             tile_size_k_vec,
+                             broadcast_a,
+                             acc_f32,
+                             has_qlora_up,
+                             has_qlora_down,
+                             qlora_down_subgroups};
   program.SetWorkgroupSize(workgroup_size);
   uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
-  program.SetDispatchGroupSize(num_N_tile + (has_lora_down ? (lora_quantized ? 4 : 8) : 0), dispatch_M, batch_count);
+  program.SetDispatchGroupSize(num_N_tile + (has_qlora_down ? 4 : 0), dispatch_M, batch_count);
   program
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
@@ -424,7 +393,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                             {batch_count},
                             {weight_index},
                             {dispatch_M}})
-      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, tile_size_k_vec, broadcast_a, acc_f32, has_lora_up, has_lora_down, lora_transposed, lora_quantized, qlora_down_subgroups);
+      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect,
+                 tile_size_k_vec, broadcast_a, acc_f32, has_qlora_up, has_qlora_down, qlora_down_subgroups);
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }
@@ -434,16 +404,15 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   if (has_weight_idx_indirect) {
     program.AddInput({weight_index_indirect, ProgramTensorMetadataDependency::None});
   }
-  if (has_lora_up) {
-    program.AddInput({lora_t, ProgramTensorMetadataDependency::Type, lora_transposed ? 4 : 1});
-    program.AddInput({lora_b, ProgramTensorMetadataDependency::Type, lora_quantized ? 16 : lora_transposed ? 4
-                                                                                                           : 1});
-    if (lora_quantized) program.AddInput({lora_b_scales, ProgramTensorMetadataDependency::Type});
+  if (has_qlora_up) {
+    program.AddInput({lora_t, ProgramTensorMetadataDependency::Type, 4});
+    program.AddInput({lora_b, ProgramTensorMetadataDependency::Type, 16});
+    program.AddInput({lora_b_scales, ProgramTensorMetadataDependency::Type});
   }
-  if (has_lora_down) {
-    ORT_RETURN_IF_NOT(components_a == 4, "Joint LoRA projection requires vec4 X.");
-    program.AddInput({lora_a_transposed, ProgramTensorMetadataDependency::Type, lora_quantized ? 16 : 4});
-    if (lora_quantized) program.AddInput({lora_a_scales, ProgramTensorMetadataDependency::Type});
+  if (has_qlora_down) {
+    ORT_RETURN_IF_NOT(components_a == 4, "Joint QLoRA projection requires vec4 X.");
+    program.AddInput({lora_a_transposed, ProgramTensorMetadataDependency::Type, 16});
+    program.AddInput({lora_a_scales, ProgramTensorMetadataDependency::Type});
     program.AddOutput({lora_a_output, ProgramTensorMetadataDependency::Type});
   }
   return context.RunProgram(program);

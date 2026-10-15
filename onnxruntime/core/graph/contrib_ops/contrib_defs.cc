@@ -3941,56 +3941,6 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
         }
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsLoRA)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(
-          "Computes MatMulNBits(X, W, scales) + MatMul(MatMul(X, lora_A), lora_B). "
-          "With adapter_transposed=1, transposes both stored adapter inputs in this formula. "
-          "The adapter remains replaceable. A zero rank in either adapter input disables the adapter. "
-          "Intermediate results are rounded to the input type before addition. "
-          "Supports FP16 or FP32, rank 32, INT4 block size 32, implicit zero point 8, and no bias.")
-      .Attr("K", "Input feature dimension; a positive multiple of 32.", AttributeProto::INT)
-      .Attr("N", "Output feature dimension; a positive multiple of 4.", AttributeProto::INT)
-      .Attr("bits", "Base weight bit width; must be 4.", AttributeProto::INT, int64_t{4})
-      .Attr("block_size", "Base weight block size; must be 32.", AttributeProto::INT, int64_t{32})
-      .Attr("accuracy_level", "MatMulNBits base accumulation policy.", AttributeProto::INT, int64_t{0})
-      .Attr("adapter_transposed", "Whether adapters are stored as [R_A,K] and [N,R_B].", AttributeProto::INT, int64_t{0})
-      .Input(0, "X", "Input with rank at least two and last dimension K.", "T")
-      .Input(1, "W", "INT4 packed weights of shape [N, K/32, 16].", "TQ")
-      .Input(2, "scales", "Block scales containing N * K/32 elements; may be flattened.", "T")
-      .Input(3, "lora_A", "Adapter of shape [K, R_A], or [R_A, K] if adapter_transposed=1; R_A is 0 or 32.", "T")
-      .Input(4, "lora_B", "Adapter of shape [R_B, N], or [N, R_B] if adapter_transposed=1; R_B is 0 or 32.", "T")
-      .Output(0, "Y", "Input shape with last dimension replaced by N.", "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "FP16 or FP32 activations, block scales, and adapter weights.")
-      .TypeConstraint("TQ", {"tensor(uint8)"}, "Packed quantized base weights.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        const auto k = getAttribute(ctx, "K", -1);
-        const auto n = getAttribute(ctx, "N", -1);
-        const auto transposed = getAttribute(ctx, "adapter_transposed", 0);
-        if ((transposed != 0 && transposed != 1) || k <= 0 || k % 32 != 0 || n <= 0 || n % 4 != 0 ||
-            getAttribute(ctx, "bits", 4) != 4 || getAttribute(ctx, "block_size", 32) != 32) {
-          fail_shape_inference("Unsupported MatMulNBitsLoRA attributes.");
-        }
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim_size() < 2) {
-          fail_shape_inference("X must have rank at least two.");
-        }
-        MatmulWithQuantWeightShapeInference(ctx, k, n, true);
-        for (size_t i : {size_t{3}, size_t{4}}) {
-          if (!hasInputShape(ctx, i)) continue;
-          const auto& s = getInputShape(ctx, i);
-          if (s.dim_size() != 2) fail_shape_inference("Adapter inputs must have rank two.");
-          const int feature_axis = (i == 3 ? 0 : 1) ^ static_cast<int>(transposed);
-          const auto& feature = s.dim(feature_axis);
-          const auto& rank = s.dim(1 - feature_axis);
-          if ((feature.has_dim_value() && feature.dim_value() != (i == 3 ? k : n)) ||
-              (rank.has_dim_value() && rank.dim_value() != 0 && rank.dim_value() != 32)) {
-            fail_shape_inference("Invalid adapter dimensions.");
-          }
-        }
-      });
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsQLoRA)
       .SetDomain(kMSDomain)
       .SinceVersion(1)

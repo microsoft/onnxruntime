@@ -4,10 +4,7 @@
 #param acc_f32
 #param block_size
 #param n_bits
-#param has_lora_up
-#param lora_quantized
-#param lora_transposed
-#param lora_shared_b
+#param has_qlora_up
 #param has_bias
 #param has_zero_points
 #param is_qualcomm
@@ -20,42 +17,12 @@
 
 #use .getByOffset .setByOffset
 
-#if lora_shared_b
-var<workgroup> lora_b_tile: array<vec4<output_element_t>, tile_size_n * 8>;
-#endif
 
-fn write_lora_output(offset: u32, value: vec4<output_element_t>) {
-#if has_lora_up
+fn write_qlora_output(offset: u32, value: vec4<output_element_t>) {
+#if has_qlora_up
   let row = (offset * 4u) / uniforms.N;
   let col = (offset * 4u) % uniforms.N;
-  var delta = vec4<output_element_t>(0);
-#if lora_quantized
-  delta = qlora_delta4(row, col);
-#elif lora_transposed
-  for (var r4 = 0u; r4 < 8u; r4++) {
-    let tv = lora_t[row * 8u + r4];
-#if lora_shared_b
-    let local_col = col % tile_size_n;
-    let b0 = lora_b_tile[local_col * 8u + r4];
-    let b1 = lora_b_tile[(local_col + 1u) * 8u + r4];
-    let b2 = lora_b_tile[(local_col + 2u) * 8u + r4];
-    let b3 = lora_b_tile[(local_col + 3u) * 8u + r4];
-#else
-    let b0 = lora_b[col * 8u + r4];
-    let b1 = lora_b[(col + 1u) * 8u + r4];
-    let b2 = lora_b[(col + 2u) * 8u + r4];
-    let b3 = lora_b[(col + 3u) * 8u + r4];
-#endif
-    delta = vec4<output_element_t>(b0.x, b1.x, b2.x, b3.x) * tv.x + delta;
-    delta = vec4<output_element_t>(b0.y, b1.y, b2.y, b3.y) * tv.y + delta;
-    delta = vec4<output_element_t>(b0.z, b1.z, b2.z, b3.z) * tv.z + delta;
-    delta = vec4<output_element_t>(b0.w, b1.w, b2.w, b3.w) * tv.w + delta;
-  }
-#else
-  for (var r = 0u; r < 32u; r++) {
-    delta = vec4<output_element_t>(lora_b[r * uniforms.N + col], lora_b[r * uniforms.N + col + 1u], lora_b[r * uniforms.N + col + 2u], lora_b[r * uniforms.N + col + 3u]) * lora_t[row * 32u + r] + delta;
-  }
-#endif
+  let delta = qlora_delta4(row, col);
   output.setByOffset(offset, value + delta);
 #else
   output.setByOffset(offset, value);
@@ -450,13 +417,6 @@ $MAIN {
         workgroupBarrier();
     }
 
-#if lora_shared_b
-    for (var i = local_idx; i < tile_size_n * 8u; i += workgroup_size) {
-        let col = b_global_base + i / 8u;
-        if (col < uniforms.N) { lora_b_tile[i] = lora_b[col * 8u + i % 8u]; }
-    }
-    workgroupBarrier();
-#endif
     let a_global = a_global_base + base_A + a_idx;
     let b_global = b_global_base + base_B;
     let output_idx = (batch * uniforms.M * uniforms.N + a_global * uniforms.N + b_global)/4;
@@ -503,15 +463,15 @@ $MAIN {
             acc_element_t(bias[b_global + 14 + b_bias_offset]),
             acc_element_t(bias[b_global + 15 + b_bias_offset])
         );
-        write_lora_output(output_idx, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3]) + bias_vec1));
-        write_lora_output(output_idx+1, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7]) + bias_vec2));
-        write_lora_output(output_idx+2, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11]) + bias_vec3));
-        write_lora_output(output_idx+3, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15]) + bias_vec4));
+        write_qlora_output(output_idx, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3]) + bias_vec1));
+        write_qlora_output(output_idx+1, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7]) + bias_vec2));
+        write_qlora_output(output_idx+2, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11]) + bias_vec3));
+        write_qlora_output(output_idx+3, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15]) + bias_vec4));
  #else
-        write_lora_output(output_idx, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3])));
-        write_lora_output(output_idx+1, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7])));
-        write_lora_output(output_idx+2, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11])));
-        write_lora_output(output_idx+3, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15])));
+        write_qlora_output(output_idx, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3])));
+        write_qlora_output(output_idx+1, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7])));
+        write_qlora_output(output_idx+2, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11])));
+        write_qlora_output(output_idx+3, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15])));
  #endif
 #else
  #if has_bias
@@ -542,15 +502,15 @@ $MAIN {
             acc_element_t(bias[b_global + 14 + b_bias_offset]),
             acc_element_t(bias[b_global + 15 + b_bias_offset])
         );
-        write_lora_output(output_idx, vec4<output_element_t>(lane_output1 + bias_vec1));
-        write_lora_output(output_idx+1, vec4<output_element_t>(lane_output2 + bias_vec2));
-        write_lora_output(output_idx+2, vec4<output_element_t>(lane_output3 + bias_vec3));
-        write_lora_output(output_idx+3, vec4<output_element_t>(lane_output4 + bias_vec4));
+        write_qlora_output(output_idx, vec4<output_element_t>(lane_output1 + bias_vec1));
+        write_qlora_output(output_idx+1, vec4<output_element_t>(lane_output2 + bias_vec2));
+        write_qlora_output(output_idx+2, vec4<output_element_t>(lane_output3 + bias_vec3));
+        write_qlora_output(output_idx+3, vec4<output_element_t>(lane_output4 + bias_vec4));
  #else
-        write_lora_output(output_idx, vec4<output_element_t>(lane_output1));
-        write_lora_output(output_idx+1, vec4<output_element_t>(lane_output2));
-        write_lora_output(output_idx+2, vec4<output_element_t>(lane_output3));
-        write_lora_output(output_idx+3, vec4<output_element_t>(lane_output4));
+        write_qlora_output(output_idx, vec4<output_element_t>(lane_output1));
+        write_qlora_output(output_idx+1, vec4<output_element_t>(lane_output2));
+        write_qlora_output(output_idx+2, vec4<output_element_t>(lane_output3));
+        write_qlora_output(output_idx+3, vec4<output_element_t>(lane_output4));
  #endif
 #endif
     }

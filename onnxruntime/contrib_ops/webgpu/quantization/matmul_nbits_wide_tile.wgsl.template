@@ -2,9 +2,7 @@
 // Licensed under the MIT License.
 
 #param has_zero_points
-#param has_lora_up
-#param lora_quantized
-#param lora_transposed
+#param has_qlora_up
 #param has_bias
 #param has_weight_idx
 #param has_weight_idx_indirect
@@ -116,24 +114,8 @@ fn load_scale(row : u32, block_idx : u32) -> output_element_t {
 fn write_output(batch : u32, row : u32, col : u32, value : output_element_t) {
   if (batch < uniforms.Batch && row < uniforms.M && col < uniforms.N) {
     let offset = batch * uniforms.M * uniforms.N + row * uniforms.N + col;
-#if has_lora_up
-    var delta = output_element_t(0);
-#if lora_quantized
-    delta = qlora_delta(batch * uniforms.M + row, col);
-#elif lora_transposed
-    for (var r4 = 0u; r4 < 8u; r4++) {
-      let bv = lora_b[col * 8u + r4];
-      let tv = lora_t[(batch * uniforms.M + row) * 8u + r4];
-      delta = bv.x * tv.x + delta;
-      delta = bv.y * tv.y + delta;
-      delta = bv.z * tv.z + delta;
-      delta = bv.w * tv.w + delta;
-    }
-#else
-    for (var r = 0u; r < 32u; r++) {
-      delta = lora_b[r * uniforms.N + col] * lora_t[(batch * uniforms.M + row) * 32u + r] + delta;
-    }
-#endif
+#if has_qlora_up
+    let delta = qlora_delta(batch * uniforms.M + row, col);
     output.setByOffset(offset, value + delta);
 #else
     output.setByOffset(offset, value);

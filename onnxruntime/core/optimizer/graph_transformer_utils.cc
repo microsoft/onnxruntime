@@ -60,7 +60,6 @@
 #include "core/optimizer/group_query_attention_pre_norm_fusion.h"
 #include "core/optimizer/matmul_nbits_qkv_fusion.h"
 #include "core/optimizer/matmul_nbits_mlp_fusion.h"
-#include "core/optimizer/matmul_nbits_lora_fusion.h"
 #include "core/optimizer/matmul_nbits_qlora_fusion.h"
 #include "core/optimizer/matmul_bn_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
@@ -467,7 +466,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
           InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider,
                                            onnxruntime::kWebGpuExecutionProvider}));
-      bool has_matmul_nbits_lora_kernel = false;
       bool has_matmul_nbits_qlora_kernel = false;
       bool has_matmul_nbits_mlp_kernel = false;
       bool has_matmul_nbits_qkv_kernel = false;
@@ -486,16 +484,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                              nullptr)
                   .IsOK();
             };
-            has_matmul_nbits_lora_kernel = has_webgpu_kernel("MatMulNBitsLoRA");
             has_matmul_nbits_qlora_kernel = has_webgpu_kernel("MatMulNBitsQLoRA");
             has_matmul_nbits_mlp_kernel = has_webgpu_kernel("MatMulNBitsMlp");
             has_matmul_nbits_qkv_kernel = has_webgpu_kernel("MatMulNBitsQkv");
           }
         }
-      }
-      if (has_matmul_nbits_lora_kernel &&
-          session_options.config_options.GetConfigOrDefault("session.enable_matmul_nbits_lora_fusion", "0") == "1") {
-        transformers.emplace_back(std::make_unique<MatMulNBitsLoRAFusion>());
       }
       if (has_matmul_nbits_qlora_kernel &&
           session_options.config_options.GetConfigOrDefault("session.enable_matmul_nbits_lora_fusion", "0") == "1") {

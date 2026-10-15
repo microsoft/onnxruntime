@@ -5,9 +5,19 @@ projections, and their residual Add. Adapter weights remain replaceable. This
 is an inference operator for quantized adapters; it does not merge adapter
 weights into the base or perform adapter training.
 
-Enable it with `session.enable_matmul_nbits_lora_fusion=1` in the native GenAI
-decoder session options, as described in [the LoRA prototype](WebGPU_MatMulNBitsLoRA_Prototype.md).
-The same option selects the appropriate transformer for floating-point or INT8 adapters.
+Enable graph matching with `session.enable_matmul_nbits_lora_fusion=1` in
+the decoder session options. For native GenAI, merge these entries into
+the model's existing `model.decoder.session_options` object:
+
+```json
+{
+  "session.enable_matmul_nbits_lora_fusion": "1",
+  "session.webgpu.lora_fusion_mode": "auto"
+}
+```
+
+This transformer handles packed INT8 adapters. An explicitly exported
+`MatMulNBitsQLoRA` node does not require the graph-matching option.
 Both built-in and plugin WebGPU are supported; plugin use requires the host
 and provider library from this branch. Disable the option for a comparison
 with the original graph.
@@ -117,7 +127,7 @@ Empty A rank or empty B rank selects the ordinary base kernel before adapter
 allocation or dispatch. Nonzero and shared packed defaults retain their data.
 Input names and the adapter file stay unchanged.
 
-Like the LoRA prototype, eliding a zero branch assumes finite activations,
+Eliding a zero branch assumes finite activations,
 adapter scales, and adapter intermediates. NaN/Inf propagation through zero multiplication can differ;
 the transformer remains opt-in. GenAI builds without adapter-aware capture
 identity require separate generators when changing the adapter selection.
@@ -156,7 +166,7 @@ packed graph input as dynamic, so a rank-32 adapter can override its empty
 initializer. Either empty packed weight disables the adapter. Scale-only and
 single-weight overrides therefore continue to produce the base result; supplying
 both packed weights uses the supplied scales or their retained defaults.
-Saving a graph after offline LoRA fusion also produces this representation.
+Saving a graph after offline QLoRA fusion also produces this representation.
 
 This compact export requires a runtime with the custom operator. Disabling
 fusion does not convert it to a portable fallback graph. Do not place empty
@@ -185,9 +195,9 @@ initializer defaults would not handle later adapter overrides.
 
 Adapter-off execution skips the adapter projections but calls a standalone
 base MatMulNBits. The current QKV/MLP transformers do not compose with the
-LoRA operators, so this can lose the throughput benefit of those base fusions.
+QLoRA operator, so this can lose the throughput benefit of those base fusions.
 Empty defaults alone do not resolve that difference. A follow-up composed
-QKV/MLP+LoRA implementation should dispatch the existing fused base kernels
+QKV/MLP+QLoRA implementation should dispatch the existing fused base kernels
 when every relevant adapter is empty, and preserve per-projection adapter
 semantics when any adapter is active. Merely reordering the transformers does
 not provide both behaviors.
@@ -197,8 +207,8 @@ not provide both behaviors.
 Run from the native build output directory:
 
 ```text
-onnxruntime_provider_test.exe --gtest_filter=MatMulNBitsQLoRA.*:MatMulNBitsLoRA.*
-onnxruntime_test_all.exe --gtest_filter=GraphTransformationTests.MatMulNBits*LoRA*
+onnxruntime_provider_test.exe --gtest_filter=MatMulNBitsQLoRA.*
+onnxruntime_test_all.exe --gtest_filter=GraphTransformationTests.MatMulNBitsQLoRAFusion*
 ```
 
 The quantized tests check original-versus-fused FP16 and FP32 results, FP32 accumulation,
@@ -220,15 +230,14 @@ FP32 comparisons use 1e-5 absolute/relative bounds. A dense reference test
 separately checks the specialized decode reduction.
 That reference test allows 0.003 absolute error for K=8192 with FP16 lane
 accumulation; shorter K and FP32 accumulation retain 0.002. Its relative
-tolerance stays 0.001. FP16 LoRA fusion comparisons use a 0.0001 absolute
-floor plus two FP16 epsilons of relative tolerance; deliberately exact
-switching and cancellation checks remain exact. A serialization regression
+tolerance stays 0.001. Deliberately exact switching checks remain exact.
+A serialization regression
 checks that empty packed defaults have no payload and that a reloaded explicit
-operator accepts full and partial overrides without a load-time LoRA transform.
+operator accepts full and partial overrides without a load-time QLoRA transform.
 It also captures adapter-off and adapter-on under separate IDs and alternates
 replay with sentinel-filled outputs, checking that both captures execute and
 produce the correct results with CPU fallback disabled.
-See [the performance evaluation](WebGPU_MatMulNBitsLoRA_Performance.md) for model-level
+See [the performance evaluation](WebGPU_MatMulNBitsQLoRA_Performance.md) for model-level
 accuracy limits and the main-versus-optimized performance comparison. WebGPU
 also batches CPU-to-GPU input uploads to amortize per-tensor adapter transfer
 cost; this is independent of the shader fusion.

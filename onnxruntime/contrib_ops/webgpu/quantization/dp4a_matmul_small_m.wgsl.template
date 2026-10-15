@@ -9,9 +9,7 @@
 #param n_bits
 #param broadcast_a_row
 #param has_zero_points
-#param has_lora_up
-#param lora_quantized
-#param lora_transposed
+#param has_qlora_up
 #param has_bias
 #param has_weight_idx
 #param has_weight_idx_indirect
@@ -19,27 +17,11 @@
 
 #use .getByOffset .setByOffset
 
-fn write_lora_output(offset: u32, value: output_element_t) {
-#if has_lora_up
+fn write_qlora_output(offset: u32, value: output_element_t) {
+#if has_qlora_up
   let row = (offset * 1u) / uniforms.N;
   let col = (offset * 1u) % uniforms.N;
-  var delta = output_element_t(0);
-#if lora_quantized
-  delta = qlora_delta(row, col);
-#elif lora_transposed
-  for (var r4 = 0u; r4 < 8u; r4++) {
-    let bv = lora_b[col * 8u + r4];
-    let tv = lora_t[row * 8u + r4];
-    delta = bv.x * tv.x + delta;
-    delta = bv.y * tv.y + delta;
-    delta = bv.z * tv.z + delta;
-    delta = bv.w * tv.w + delta;
-  }
-#else
-  for (var r = 0u; r < 32u; r++) {
-    delta = lora_b[r * uniforms.N + col] * lora_t[row * 32u + r] + delta;
-  }
-#endif
+  let delta = qlora_delta(row, col);
   output.setByOffset(offset, value + delta);
 #else
   output.setByOffset(offset, value);
@@ -292,9 +274,9 @@ $MAIN {
 #if has_bias
         let bias_value = acc_element_t(bias[b_global + b_bias_offset]);
         // Downcast to the output element type only at the final store.
-        write_lora_output(output_idx, output_element_t(output_value + bias_value));
+        write_qlora_output(output_idx, output_element_t(output_value + bias_value));
 #else
-        write_lora_output(output_idx, output_element_t(output_value));
+        write_qlora_output(output_idx, output_element_t(output_value));
 #endif
       }
     }

@@ -10,32 +10,33 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 struct DP4AQuantizedInput;
-// Adds an independent FP16 rank-32 down-projection branch to a 256-thread shader.
-void GenerateLoRADown(onnxruntime::webgpu::ShaderHelper& shader, const std::string& base_groups);
-void GenerateLoRADecode(onnxruntime::webgpu::ShaderHelper& shader, const std::string& base_groups);
-
-// Adds the same FP32 GEMV reduction to standalone and fused 128-thread shaders.
-void GenerateLoRAGemv(onnxruntime::webgpu::ShaderHelper& shader, const std::string& base_groups,
-                      const std::string& x_value);
-
 using namespace onnxruntime::webgpu;
 
 class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgram> {
  public:
-  MatMulNBitsWideTileProgram(bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, uint32_t tile_m, uint32_t tile_n, uint32_t nbits, uint32_t subgroup_min_size, bool acc_f32, bool has_lora_up = false, bool lora_transposed = false, bool lora_quantized = false)
-      : Program{lora_quantized ? "MatMulNBitsQLoRAUpWideTile" : "MatMulNBitsWideTile"}, has_zero_points_{has_zero_points}, has_bias_{has_bias}, has_weight_idx_{has_weight_idx}, has_weight_idx_indirect_{has_weight_idx_indirect}, tile_m_(tile_m), tile_n_(tile_n), nbits_(nbits), subgroup_min_size_(subgroup_min_size), acc_f32_(acc_f32), has_lora_up_(has_lora_up), lora_transposed_(lora_transposed), lora_quantized_(lora_quantized) {}
+  MatMulNBitsWideTileProgram(bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect,
+                             uint32_t tile_m, uint32_t tile_n, uint32_t nbits, uint32_t subgroup_min_size, bool acc_f32,
+                             bool has_qlora_up = false)
+      : Program{has_qlora_up ? "MatMulNBitsQLoRAUpWideTile" : "MatMulNBitsWideTile"},
+        has_zero_points_{has_zero_points},
+        has_bias_{has_bias},
+        has_weight_idx_{has_weight_idx},
+        has_weight_idx_indirect_{has_weight_idx_indirect},
+        tile_m_(tile_m),
+        tile_n_(tile_n),
+        nbits_(nbits),
+        subgroup_min_size_(subgroup_min_size),
+        acc_f32_(acc_f32),
+        has_qlora_up_(has_qlora_up) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"Batch", ProgramUniformVariableDataType::Uint32},
-                                          {"M", ProgramUniformVariableDataType::Uint32},
-                                          {"N", ProgramUniformVariableDataType::Uint32},
-                                          {"K_of_a", ProgramUniformVariableDataType::Uint32},
-                                          {"K_of_b", ProgramUniformVariableDataType::Uint32},
-                                          {"n_blocks_per_col", ProgramUniformVariableDataType::Uint32},
-                                          {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
-                                          {"num_N_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"num_M_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"weight_idx", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"Batch", ProgramUniformVariableDataType::Uint32}, {"M", ProgramUniformVariableDataType::Uint32},
+      {"N", ProgramUniformVariableDataType::Uint32}, {"K_of_a", ProgramUniformVariableDataType::Uint32},
+      {"K_of_b", ProgramUniformVariableDataType::Uint32}, {"n_blocks_per_col", ProgramUniformVariableDataType::Uint32},
+      {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
+      {"num_N_tile", ProgramUniformVariableDataType::Uint32}, {"num_M_tile", ProgramUniformVariableDataType::Uint32},
+      {"weight_idx", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_zero_points_;
@@ -47,16 +48,18 @@ class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgr
   uint32_t nbits_;
   uint32_t subgroup_min_size_;
   bool acc_f32_;
-  bool has_lora_up_;
-  bool lora_transposed_;
-  bool lora_quantized_;
+  bool has_qlora_up_;
 };
 
 class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
  public:
-  MatMulNBitsProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights, uint32_t tile_size_k_vec = 16, bool broadcast_a_row = false, bool acc_f32 = false, bool has_lora_up = false, bool has_lora_down = false, bool lora_transposed = false, bool lora_quantized = false, bool qlora_down_subgroups = false)
-      : Program{has_lora_down ? (lora_quantized ? (qlora_down_subgroups ? "MatMulNBitsQLoRADownSubgroup" : "MatMulNBitsQLoRADown") : "MatMulNBitsLoRADown") : has_lora_up ? (lora_quantized ? "MatMulNBitsQLoRAUp" : "MatMulNBitsLoRAUp")
-                                                                                                                                                                          : "MatMulNBits"},
+  MatMulNBitsProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx,
+                     bool has_weight_idx_indirect, bool single_scale_weights, uint32_t tile_size_k_vec = 16,
+                     bool broadcast_a_row = false, bool acc_f32 = false, bool has_qlora_up = false,
+                     bool has_qlora_down = false, bool qlora_down_subgroups = false)
+      : Program{has_qlora_down ? (qlora_down_subgroups ? "MatMulNBitsQLoRADownSubgroup" : "MatMulNBitsQLoRADown")
+                : has_qlora_up ? "MatMulNBitsQLoRAUp"
+                               : "MatMulNBits"},
         tile_size_(tile_size),
         nbits_(nbits),
         has_zero_points_(has_zero_points),
@@ -67,25 +70,18 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
         tile_size_k_vec_(tile_size_k_vec),
         broadcast_a_row_(broadcast_a_row),
         acc_f32_(acc_f32),
-        has_lora_up_(has_lora_up),
-        has_lora_down_(has_lora_down),
-        lora_transposed_(lora_transposed),
-        lora_quantized_(lora_quantized),
+        has_qlora_up_(has_qlora_up),
+        has_qlora_down_(has_qlora_down),
         qlora_down_subgroups_(qlora_down_subgroups) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"M", ProgramUniformVariableDataType::Uint32},
-      {"N", ProgramUniformVariableDataType::Uint32},
-      {"K", ProgramUniformVariableDataType::Uint32},
-      {"K_of_a", ProgramUniformVariableDataType::Uint32},
-      {"K_of_b", ProgramUniformVariableDataType::Uint32},
-      {"block_size", ProgramUniformVariableDataType::Uint32},
+      {"M", ProgramUniformVariableDataType::Uint32}, {"N", ProgramUniformVariableDataType::Uint32},
+      {"K", ProgramUniformVariableDataType::Uint32}, {"K_of_a", ProgramUniformVariableDataType::Uint32},
+      {"K_of_b", ProgramUniformVariableDataType::Uint32}, {"block_size", ProgramUniformVariableDataType::Uint32},
       {"blocks_per_col", ProgramUniformVariableDataType::Uint32},
       {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
-      {"num_N_tile", ProgramUniformVariableDataType::Uint32},
-      {"batch_count", ProgramUniformVariableDataType::Uint32},
-      {"weight_idx", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_M", ProgramUniformVariableDataType::Uint32});
+      {"num_N_tile", ProgramUniformVariableDataType::Uint32}, {"batch_count", ProgramUniformVariableDataType::Uint32},
+      {"weight_idx", ProgramUniformVariableDataType::Uint32}, {"dispatch_M", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t tile_size_;
@@ -98,10 +94,8 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
   uint32_t tile_size_k_vec_;
   bool broadcast_a_row_;
   bool acc_f32_;
-  bool has_lora_up_;
-  bool has_lora_down_;
-  bool lora_transposed_;
-  bool lora_quantized_;
+  bool has_qlora_up_;
+  bool has_qlora_down_;
   bool qlora_down_subgroups_;
 };
 
@@ -127,17 +121,14 @@ class MatMulNBits final : public WebGpuKernel {
   int64_t bits_;
 };
 
-Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, const Tensor* zero_points, const Tensor* bias,
-                        int64_t K_op, int64_t N_op, int64_t block_size_op, int64_t accuracy_level, int64_t bits_op,
-                        onnxruntime::webgpu::ComputeContext& context, Tensor* y, const uint32_t weight_index = 0,
-                        const Tensor* weight_index_indirect = nullptr,
-                        uint32_t override_M = 0,
-                        const Tensor* lora_t = nullptr, const Tensor* lora_b = nullptr,
-                        const Tensor* lora_a_transposed = nullptr, Tensor* lora_a_output = nullptr, bool lora_transposed = false,
+Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, const Tensor* zero_points,
+                        const Tensor* bias, int64_t K_op, int64_t N_op, int64_t block_size_op, int64_t accuracy_level,
+                        int64_t bits_op, onnxruntime::webgpu::ComputeContext& context, Tensor* y,
+                        const uint32_t weight_index = 0, const Tensor* weight_index_indirect = nullptr,
+                        uint32_t override_M = 0, const Tensor* lora_t = nullptr, const Tensor* lora_b = nullptr,
+                        const Tensor* lora_a_transposed = nullptr, Tensor* lora_a_output = nullptr,
                         const Tensor* lora_b_scales = nullptr, const Tensor* lora_a_scales = nullptr,
                         DP4AQuantizedInput* quantized_input = nullptr);
-
-Status ApplyLoRAOutput(onnxruntime::webgpu::ComputeContext& context, const Tensor* base, const Tensor* t, const Tensor* b, Tensor* y, bool transposed = false, const Tensor* quantized_scales = nullptr);
 
 }  // namespace webgpu
 }  // namespace contrib

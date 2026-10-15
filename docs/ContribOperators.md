@@ -69,7 +69,6 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulInteger16">com.microsoft.MatMulInteger16</a>
   * <a href="#com.microsoft.MatMulIntegerToFloat">com.microsoft.MatMulIntegerToFloat</a>
   * <a href="#com.microsoft.MatMulNBits">com.microsoft.MatMulNBits</a>
-  * <a href="#com.microsoft.MatMulNBitsLoRA">com.microsoft.MatMulNBitsLoRA</a>
   * <a href="#com.microsoft.MatMulNBitsMlp">com.microsoft.MatMulNBitsMlp</a>
   * <a href="#com.microsoft.MatMulNBitsQLoRA">com.microsoft.MatMulNBitsQLoRA</a>
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
@@ -4103,63 +4102,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain quantized zero point types to uint8 or float tensors.</dd>
 <dt><tt>T4</tt> : tensor(int32)</dt>
 <dd>the index tensor.</dd>
-</dl>
-
-
-### <a name="com.microsoft.MatMulNBitsLoRA"></a><a name="com.microsoft.matmulnbitslora">**com.microsoft.MatMulNBitsLoRA**</a>
-
-  Computes MatMulNBits(X, W, scales) + MatMul(MatMul(X, lora_A), lora_B). With adapter_transposed=1, transposes both stored adapter inputs in this formula. The adapter remains replaceable. A zero rank in either adapter input disables the adapter. Intermediate results are rounded to the input type before addition. Supports FP16 or FP32, rank 32, INT4 block size 32, implicit zero point 8, and no bias.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>K</tt> : int (required)</dt>
-<dd>Input feature dimension; a positive multiple of 32.</dd>
-<dt><tt>N</tt> : int (required)</dt>
-<dd>Output feature dimension; a positive multiple of 4.</dd>
-<dt><tt>accuracy_level</tt> : int</dt>
-<dd>MatMulNBits base accumulation policy.</dd>
-<dt><tt>adapter_transposed</tt> : int</dt>
-<dd>Whether adapters are stored as [R_A,K] and [N,R_B].</dd>
-<dt><tt>bits</tt> : int</dt>
-<dd>Base weight bit width; must be 4.</dd>
-<dt><tt>block_size</tt> : int</dt>
-<dd>Base weight block size; must be 32.</dd>
-</dl>
-
-#### Inputs
-
-<dl>
-<dt><tt>X</tt> : T</dt>
-<dd>Input with rank at least two and last dimension K.</dd>
-<dt><tt>W</tt> : TQ</dt>
-<dd>INT4 packed weights of shape [N, K/32, 16].</dd>
-<dt><tt>scales</tt> : T</dt>
-<dd>Block scales containing N * K/32 elements; may be flattened.</dd>
-<dt><tt>lora_A</tt> : T</dt>
-<dd>Adapter of shape [K, R_A], or [R_A, K] if adapter_transposed=1; R_A is 0 or 32.</dd>
-<dt><tt>lora_B</tt> : T</dt>
-<dd>Adapter of shape [R_B, N], or [N, R_B] if adapter_transposed=1; R_B is 0 or 32.</dd>
-</dl>
-
-#### Outputs
-
-<dl>
-<dt><tt>Y</tt> : T</dt>
-<dd>Input shape with last dimension replaced by N.</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
-<dd>FP16 or FP32 activations, block scales, and adapter weights.</dd>
-<dt><tt>TQ</tt> : tensor(uint8)</dt>
-<dd>Packed quantized base weights.</dd>
 </dl>
 
 
