@@ -1,3 +1,4 @@
+import csv
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,10 +13,29 @@ from qmoe_expert_activation_correlations import (
     compute_activation_correlations,
     write_correlation_archive,
     write_correlation_plots,
+    write_selected_experts,
 )
 
 
 class TestQMoEExpertActivationCorrelations(unittest.TestCase):
+    def test_writes_selected_expert_table(self):
+        rows = ((1, 0, 12, 34), (1, 0, 56, 78), (2, 1, 90, 123))
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "selected.csv"
+            write_selected_experts(path, rows)
+            with path.open(newline="", encoding="utf-8") as stream:
+                csv_rows = list(csv.reader(stream))
+
+        self.assertEqual(
+            csv_rows,
+            [
+                ["iteration", "qmoe_number", "expert_number", "position"],
+                ["1", "0", "12", "34"],
+                ["1", "0", "56", "78"],
+                ["2", "1", "90", "123"],
+            ],
+        )
+
     def test_selects_positive_and_negative_extremes(self):
         positive, negative = _positive_and_negative_extremes(
             np.array([[0.1, -0.8, np.nan], [0.7, -0.2, 0.4]]),

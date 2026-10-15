@@ -24,6 +24,7 @@ class ActivationTrace:
     identities: tuple[tuple[str, int, str, str], ...]
     prompt_activations: tuple[np.ndarray, ...]
     expert_count: int
+    selected_expert_rows: tuple[tuple[int, int, int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -84,15 +85,28 @@ def load_activation_trace(log_path, selected_expert_count=SELECTED_EXPERT_COUNT)
     identities = tuple(sorted(identities, key=node_sort_key))
     identity_to_index = {identity: index for index, identity in enumerate(identities)}
     selected_by_prompt = defaultdict(lambda: [[] for _ in identities])
+    decode_iterations = [0] * len(identities)
+    selected_expert_rows = []
 
     def append_event(prompt_index, event):
         selected_experts = event["selected_experts"]
         if len(selected_experts) != selected_expert_count:
             return
+        node_index = identity_to_index[node_identity(event)]
         expert_ids = tuple(selected_expert["expert_id"] for selected_expert in selected_experts)
         if any(not 0 <= expert_id < expert_count for expert_id in expert_ids):
             raise ValueError(f"Trace contains an expert ID outside [0, {expert_count}): {expert_ids}.")
-        selected_by_prompt[prompt_index][identity_to_index[node_identity(event)]].append(expert_ids)
+        selected_by_prompt[prompt_index][node_index].append(expert_ids)
+        decode_iterations[node_index] += 1
+        selected_expert_rows.extend(
+            (
+                decode_iterations[node_index],
+                node_index,
+                selected_expert["expert_id"],
+                selected_expert["global_position"],
+            )
+            for selected_expert in selected_experts
+        )
 
     parsed_summary = parse_counter_trace(log_path, append_event)
     if parsed_summary != summary:
@@ -115,7 +129,12 @@ def load_activation_trace(log_path, selected_expert_count=SELECTED_EXPERT_COUNT)
                 activations[token_index, node_index, list(expert_ids)] = 1
         prompt_activations.append(activations)
 
-    return ActivationTrace(identities, tuple(prompt_activations), expert_count)
+    return ActivationTrace(
+        identities,
+        tuple(prompt_activations),
+        expert_count,
+        tuple(selected_expert_rows),
+    )
 
 
 def binary_activation_correlation(current, context):
@@ -333,6 +352,14 @@ def write_correlation_summary(path, correlations, pairs_per_tail, min_activation
                 )
 
 
+def write_selected_experts(path, rows):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["iteration", "qmoe_number", "expert_number", "position"])
+        writer.writerows(rows)
+
+
 def write_correlation_plots(
     path,
     same_qmoe_previous_token,
@@ -440,6 +467,7 @@ def main():
     same_qmoe_previous_token, previous_qmoe_same_token = compute_activation_correlations(trace)
     archive_path = Path(f"{output_prefix}.npz")
     summary_path = Path(f"{output_prefix}.csv")
+    selected_experts_path = Path(f"{output_prefix}-selected-experts.csv")
     plot_path = Path(f"{output_prefix}.pdf")
     write_correlation_archive(archive_path, same_qmoe_previous_token, previous_qmoe_same_token)
     write_correlation_summary(
@@ -448,6 +476,7 @@ def main():
         args.pairs_per_tail,
         args.min_activations,
     )
+    write_selected_experts(selected_experts_path, trace.selected_expert_rows)
     write_correlation_plots(
         plot_path,
         same_qmoe_previous_token,
@@ -462,6 +491,7 @@ def main():
         print(f"previous-QMoE same-token samples: {previous_qmoe_same_token[0].samples}")
     print(archive_path)
     print(summary_path)
+    print(selected_experts_path)
     print(plot_path)
 
 

@@ -74,7 +74,9 @@ pairs and their activation counts, a PDF of heatmaps, and a CSV listing the 20 h
 supported correlations from each matrix. The PDF uses the full Pearson scale from `-1` to `1` and plots both ranked
 matrices as full-page heatmaps. One additional graph per MoE node plots every finite correlation in sorted order,
 with the previous-token and previous-layer series on the same axes. A second linear graph shows the 1,000 strongest
-positive and 1,000 strongest negative correlations for both relations:
+positive and 1,000 strongest negative correlations for both relations. The analyzer also exports
+`<output-prefix>-selected-experts.csv` with one decode selection per row: the cumulative one-based decode iteration,
+the zero-based layer-sorted MoE number, the local expert number, and its zero-based global position:
 
 ```bash
 python tools/python/qmoe_expert_activation_correlations.py counter.log \
