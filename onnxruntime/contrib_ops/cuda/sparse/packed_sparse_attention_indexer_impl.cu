@@ -193,7 +193,9 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
     if (threadIdx.x == 0) {
       present_state_lengths[b * 2 + psai::kKeyStateLength] = old_key_len + new_block_count;
       present_state_lengths[b * 2 + psai::kBufferLength] = new_buf_len;
-      overflow_flags[b] = rejected ? 1 : 0;
+      overflow_flags[b] = invalid_metadata ? psai::kStateStatusInvalidMetadata
+                          : rejected       ? psai::kStateStatusCapacityOverflow
+                                           : psai::kStateStatusOk;
     }
 
     for (int t = static_cast<int>(threadIdx.x); t < capture_count; t += static_cast<int>(blockDim.x)) {
@@ -942,7 +944,9 @@ __global__ void CsaUpdateStateKernel(const T* key, const T* gate, const T* key_n
     if (threadIdx.x == 0) {
       present_state_lengths[b * 2 + psai::kKeyStateLength] = old_key_len + new_window_count;
       present_state_lengths[b * 2 + psai::kBufferLength] = present_buffer_length;
-      overflow_flags[b] = rejected ? 1 : 0;
+      overflow_flags[b] = invalid_metadata ? psai::kStateStatusInvalidMetadata
+                          : rejected       ? psai::kStateStatusCapacityOverflow
+                                           : psai::kStateStatusOk;
     }
 
     for (int k = 0; k < new_window_count; ++k) {

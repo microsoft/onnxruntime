@@ -5031,7 +5031,8 @@ This version of the operator has been available since version 1 of the 'com.micr
     * uses a single generic set of state slots (past_key_state / past_kv_buffer / past_gate_buffer /
       past_state_lengths) for both policy_mode values, each with a shape that is fixed across calls
       (state never grows and is never concatenated); a step that would overflow the fixed capacity is
-      rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory;
+      rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory
+      (the optional state_status output reports which requests were rejected and why);
     * additionally emits selected_counts, the exact number of active (non -1) entries per query, so
       that no downstream consumer needs to scan selected_indices for its query's true count.
   
@@ -5164,7 +5165,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Merged device status [N].</dd>
 </dl>
 
-#### Outputs (6 - 8)
+#### Outputs (6 - 9)
 
 <dl>
 <dt><tt>selected_indices</tt> : M</dt>
@@ -5183,6 +5184,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'qsa': compact transition payloads with shape (batch_size, state_update_capacity, head_size). A token that completes a compression block stores the prepared block representative; any other captured token stores its raw key. Inactive and unused slots are zero.</dd>
 <dt><tt>indexshare_status</tt> (optional) : M</dt>
 <dd>Selection status [N], forwarded on reuse and zero on refresh.</dd>
+<dt><tt>state_status</tt> (optional) : M</dt>
+<dd>Device-side per-request state update status with shape (batch_size). 0: the request's state update was applied (or intentionally held by IndexShare reuse); 1: invalid device metadata (cumulative_sequence_lengths, past_sequence_lengths or past_state_lengths are inconsistent); 2: the update would exceed state_capacity. A non-zero request leaves its state unchanged and emits an empty selection (selected_counts is 0 and selected_indices is -1). Intended for CUDA graph replay, where the host checks it after the replay instead of synchronizing inside the operator. Currently supported by the CUDA provider only.</dd>
 </dl>
 
 #### Type Constraints

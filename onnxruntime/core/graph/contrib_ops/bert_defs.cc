@@ -2872,7 +2872,7 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   }
 
   if (ctx.getNumOutputs() < static_cast<size_t>(psai::kFixedOutputCount) ||
-      ctx.getNumOutputs() > static_cast<size_t>(has_indexshare ? psai::kOutputCount : psai::kStateUpdate + 1)) {
+      ctx.getNumOutputs() > static_cast<size_t>(psai::kOutputCount)) {
     fail_shape_inference("PackedSparseAttentionIndexer: expected ", psai::kFixedOutputCount, " or ",
                          psai::kOutputCount, " declared outputs, got ", ctx.getNumOutputs());
   }
@@ -2885,6 +2885,10 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   updateOutputElemType(ctx, psai::kSelectedCounts, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   if (has_indexshare) updateOutputElemType(ctx, psai::kIndexShareStatus, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   updateOutputElemType(ctx, psai::kPresentStateLengths, ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  const bool has_state_status_output = ctx.hasOutput(psai::kStateStatus);
+  if (has_state_status_output) {
+    updateOutputElemType(ctx, psai::kStateStatus, ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  }
   propagateElemTypeFromInputToOutput(ctx, psai::kPastKeyState, psai::kPresentKeyState);
   propagateElemTypeFromInputToOutput(ctx, psai::kPastKvBuffer, psai::kPresentKvBuffer);
   if (!is_qsa) {
@@ -3135,6 +3139,11 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     *state_update_shape.add_dim() = key_state_shape->dim(2);
     updateOutputShape(ctx, psai::kStateUpdate, state_update_shape);
   }
+  if (has_state_status_output && key_state_shape != nullptr) {
+    ONNX_NAMESPACE::TensorShapeProto state_status_shape;
+    *state_status_shape.add_dim() = key_state_shape->dim(0);
+    updateOutputShape(ctx, psai::kStateStatus, state_status_shape);
+  }
 }
 
 constexpr const char* PackedSparseAttentionIndexer_ver1_doc = R"DOC(
@@ -3151,7 +3160,8 @@ Unlike SparseAttentionIndexer, this operator:
   * uses a single generic set of state slots (past_key_state / past_kv_buffer / past_gate_buffer /
     past_state_lengths) for both policy_mode values, each with a shape that is fixed across calls
     (state never grows and is never concatenated); a step that would overflow the fixed capacity is
-    rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory;
+    rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory
+    (the optional state_status output reports which requests were rejected and why);
   * additionally emits selected_counts, the exact number of active (non -1) entries per query, so
     that no downstream consumer needs to scan selected_indices for its query's true count.
 
@@ -3397,6 +3407,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 OpSchema::Optional)
         .Output(7, "indexshare_status", "Selection status [N], forwarded on reuse and zero on refresh.",
                 "M", OpSchema::Optional)
+        .Output(8,
+                "state_status",
+                "Device-side per-request state update status with shape (batch_size). 0: the request's state "
+                "update was applied (or intentionally held by IndexShare reuse); 1: invalid device metadata "
+                "(cumulative_sequence_lengths, past_sequence_lengths or past_state_lengths are inconsistent); "
+                "2: the update would exceed state_capacity. A non-zero request leaves its state unchanged "
+                "and emits an empty selection (selected_counts is 0 and selected_indices is -1). "
+                "Intended for CUDA graph replay, where the host checks it after the replay instead of "
+                "synchronizing inside the operator. Currently supported by the CUDA provider only.",
+                "M",
+                OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain floating point tensors to float, float16 and bfloat16.")
