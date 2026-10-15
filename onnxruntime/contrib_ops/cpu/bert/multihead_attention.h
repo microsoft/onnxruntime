@@ -16,7 +16,8 @@ class MultiHeadAttention final : public OpKernel, public AttentionCPUBase {
   Status Compute(OpKernelContext* context) const override;
 
  protected:
-  int num_heads_;  // number of attention heads
+  int num_heads_;     // number of attention heads
+  int kv_num_heads_;  // number of attention heads for key and value
   float mask_filter_value_;
   bool is_unidirectional_;
   bool disable_flash_;
