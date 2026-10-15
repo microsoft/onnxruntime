@@ -209,7 +209,6 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
     beta = onnxruntime::MLFloat16::Zero;
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
-  using _mlas_fp16 = uint16_t;
   if (MlasHGemmSupported(trans_a, trans_b)) {
     bool bias_ok = false;
     if (c_data == nullptr) {
@@ -255,8 +254,8 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
       data.ldb = ldb;
       data.C = reinterpret_cast<MLAS_FP16*>(y_data);
       data.ldc = static_cast<size_t>(N);
-      data.alpha = *reinterpret_cast<const _mlas_fp16*>(&alpha);
-      data.beta = *reinterpret_cast<const _mlas_fp16*>(&beta);
+      data.alpha = alpha.val;
+      data.beta = beta.val;
 
       MlasGemmBatch(trans_a, trans_b,
                     static_cast<size_t>(M),
