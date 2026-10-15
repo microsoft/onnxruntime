@@ -6,8 +6,7 @@ validation of finite scales, canonical padding, or all-4 explicit zero points.
 """
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, checker, helper, numpy_helper
 from reference import block_count, checked_integer, checked_shape, checked_width, row_bytes
 
 
@@ -33,7 +32,7 @@ class _Graph:
             self.initializers,
         )
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)], producer_name="p0_reference")
-        onnx.checker.check_model(model, full_check=True)
+        checker.check_model(model, full_check=True)
         return model
 
 

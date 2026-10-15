@@ -11,9 +11,8 @@ import subprocess
 from pathlib import Path
 
 import numpy as np
-import onnx
 import pytest
-from onnx import TensorProto
+from onnx import TensorProto, checker, load_from_string
 from onnx.reference import ReferenceEvaluator
 from onnx_reference import build_int3_decode_model, build_unpack_model
 from reference import (
@@ -195,6 +194,17 @@ def test_rtn_zeros_underflow_and_block_tail(dtype):
     assert np.all(codes == 4)
 
 
+@pytest.mark.parametrize("dtype", [np.float32, np.float16])
+def test_rtn_float64_subnormal_underflow(dtype):
+    smallest = np.nextafter(np.float64(0), np.float64(1))
+    weights = np.array([[[smallest]], [[-smallest]], [[0]]], dtype=np.float64)
+    result = quantize_int3_rtn(weights, 32, dtype)
+    np.testing.assert_array_equal(result.underflow_blocks, [[[True]], [[True]], [[False]]])
+    np.testing.assert_array_equal(result.scales, np.zeros((3, 1, 1)))
+    np.testing.assert_array_equal(unpack(result.packed, 3, 1), np.full((3, 1, 1), 4))
+    np.testing.assert_array_equal(result.max_abs_error, np.abs(weights))
+
+
 @pytest.mark.parametrize("shape", [(0, 2, 3), (2, 0, 3), (2, 3, 0)])
 def test_empty_profile_and_rtn(shape):
     result = quantize_int3_rtn(np.zeros(shape, dtype=np.float32), 32)
@@ -358,10 +368,10 @@ def test_tiny_moe_gate_up_and_fc2():
 
 
 def evaluate(model, **feeds):
-    onnx.checker.check_model(model, full_check=True)
+    checker.check_model(model, full_check=True)
     assert [(entry.domain, entry.version) for entry in model.opset_import] == [("", 18)]
     assert all(node.domain == "" and node.op_type not in ("Pack", "Unpack") for node in model.graph.node)
-    restored = onnx.load_from_string(model.SerializeToString())
+    restored = load_from_string(model.SerializeToString())
     return ReferenceEvaluator(restored).run(None, feeds)[0]
 
 

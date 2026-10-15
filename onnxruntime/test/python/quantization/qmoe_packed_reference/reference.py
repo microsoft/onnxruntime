@@ -227,7 +227,7 @@ def quantize_int3_rtn(weights, block_size, scale_dtype=np.float32):
             raise ValueError("scale overflows the requested storage dtype")
         scales[..., block] = stored
         rounded = stored.astype(np.float64)
-        underflow[..., block] = (raw_scale > 0) & (rounded == 0)
+        underflow[..., block] = np.any(group != 0, axis=-1) & (rounded == 0)
         normalized = np.divide(group, rounded[..., None], out=np.zeros_like(group), where=rounded[..., None] != 0)
         signed = np.clip(np.rint(normalized), -4, 3)
         codes[..., start:stop] = (signed + 4).astype(np.uint8)
