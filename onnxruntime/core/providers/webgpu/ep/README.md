@@ -112,6 +112,12 @@ and synchronize writes before another Session consumes a shared tensor. BufferMa
 releases for reusable buffers, grouped by recording and protected by its cache lock. Submission
 returns only that recording's buffers to the pool; caches without reuse need no such tracking.
 Pending lists are created only when buffers are released, with no buffer-manager registration per dispatch.
+`WebGpuContext::Flush(recording)` retires the default and initializer pools without a caller-selected
+manager. Capture-enabled Run and replay boundaries bind an execution-local pool to the recording,
+and that association survives intermediate submissions. Allocations and dispatches never change it.
+The execution-local pool follows capture policy; context-owned pools use the default refresh policy.
+Replay still retires recording-level releases and clears the unsubmitted-work flag, but skips
+the execution-local cache refresh.
 CommandRecordingState exposes an atomic unsubmitted-work flag so concurrent frees after submission can
 return buffers directly to the cache. Submission and abandonment clear that flag under the cache lock,
 preventing concurrent releases from missing cleanup. Context-shared program caches retain their locks.
@@ -131,7 +137,7 @@ not guarantee that GPU execution has completed.
 
 ### Internal checked completion
 
-`WebGpuContext::FlushAndWaitChecked(buffer_manager, recording)` is an opt-in,
+`WebGpuContext::FlushAndWaitChecked(recording)` is an opt-in,
 Status-returning host barrier. It uses ordinary `Flush` to encode deferred work
 and submit the owning recording, then waits for the same queue's
 `OnSubmittedWorkDone` future through the context's existing Instance/WaitAny

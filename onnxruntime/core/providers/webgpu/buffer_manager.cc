@@ -497,7 +497,6 @@ BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buf
 WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, wgpu::BufferUsage usage,
                                  bool initialize_to_zero,
                                  bool submit_zero_initialize) const {
-  recording.pending_buffer_manager.store(this, std::memory_order_relaxed);
   size_t buffer_size;
   WGPUBuffer buffer;
   {
@@ -516,7 +515,7 @@ WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, 
       context_.EndComputePass(recording);
       context_.GetCommandEncoder(recording).ClearBuffer(buffer, 0, buffer_size);
       if (submit_zero_initialize) {
-        ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
+        ORT_THROW_IF_ERROR(context_.Flush(recording));
       }
       return buffer_guard.MoveToCHandle();
     }

@@ -133,6 +133,7 @@ struct CapturedCommand {
 // releases from concurrent allocator callers separately from command recording.
 struct CommandRecordingState {
   CommandRecordingState() = default;
+  explicit CommandRecordingState(const BufferManager& manager) : buffer_manager{&manager} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CommandRecordingState);
 
   wgpu::CommandEncoder command_encoder;
@@ -141,9 +142,9 @@ struct CommandRecordingState {
   // Concurrent allocator frees inspect only this flag, never the encoders or deferred dispatches.
   // BufferManager clears it under its cache lock after submission or abandonment.
   std::atomic<bool> has_unsubmitted_work{false};
-  // Allocation/dispatch owners select the cache policy for the next submission.
-  // The manager must outlive that submission; Flush clears this association.
-  std::atomic<const BufferManager*> pending_buffer_manager{nullptr};
+  // Optional execution-local pool, bound at Run/replay boundaries and preserved across submissions.
+  // Context-owned pools are always retired by Flush. This manager must outlive its association.
+  const BufferManager* buffer_manager = nullptr;
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
   std::mutex pending_release_callbacks_mutex;
   std::vector<std::function<void()>> pending_release_callbacks;
@@ -328,23 +329,17 @@ class WebGpuContext final {
   }
   void CopyBuffer(WGPUBuffer source, WGPUBuffer destination, uint64_t size, CommandRecordingState& recording);
   void CaptureBegin(std::vector<webgpu::CapturedCommand>* captured_commands,
-                    const webgpu::BufferManager& buffer_manager,
                     CommandRecordingState& recording);
   void CaptureEnd(CommandRecordingState& recording);
   void Replay(const std::vector<webgpu::CapturedCommand>& captured_commands,
-              const webgpu::BufferManager& buffer_manager,
               CommandRecordingState& recording);
   void ReleaseGraphResources(std::vector<webgpu::CapturedCommand>& captured_commands);
 
   Status Flush(CommandRecordingState& recording);
-  Status Flush(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording) {
-    recording.pending_buffer_manager.store(&buffer_mgr, std::memory_order_relaxed);
-    return Flush(recording);
-  }
 
   // Unlike Flush, waits for submitted queue work and checks scoped errors and device loss.
   // Serialize with other operations on this recording. Scopes cover flushing, not earlier encoding.
-  Status FlushAndWaitChecked(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
+  Status FlushAndWaitChecked(CommandRecordingState& recording);
 
   // Context-level managers are shared by sessions and synchronize their buffer caches internally.
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }

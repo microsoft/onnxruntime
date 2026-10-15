@@ -626,7 +626,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
         if (webgpu::ep::UseSerializedExecutionMode()) {
           // Old hosts can drop the stream on framework copies. Submit the active Session first.
           if (auto* active_recording = context.ActiveSerializedRecording()) {
-            ORT_THROW_IF_ERROR(context.Flush(context.BufferManager(), *active_recording));
+            ORT_THROW_IF_ERROR(context.Flush(*active_recording));
           }
         }
 #endif
@@ -634,7 +634,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
         DataTransferImpl data_transfer{context, recording};
         status = data_transfer.CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size);
         if (status.IsOK() && src_is_gpu && dst_is_gpu) {
-          ORT_THROW_IF_ERROR(context.Flush(context.BufferManager(), recording));
+          ORT_THROW_IF_ERROR(context.Flush(recording));
         }
       }
       if (!status.IsOK()) {

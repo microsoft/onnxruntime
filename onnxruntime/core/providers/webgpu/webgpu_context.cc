@@ -643,7 +643,6 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   const webgpu::BufferManager& buffer_mgr = ComputeContextBase::BufferManagerAccessor::Get(context);
   CommandRecordingState& recording = ComputeContextBase::BufferManagerAccessor::GetRecording(context);
-  recording.pending_buffer_manager.store(&buffer_mgr, std::memory_order_relaxed);
 
   // validate inputs and outputs are on WebGPU buffers
   if (ValidationMode() >= ValidationMode::Basic) {
@@ -987,7 +986,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   // windows are encoded and submitted by the caller at its execution boundary.
   if (static_cast<size_t>(recording.num_pending_dispatches) + recording.deferred_dispatches.size() >=
       max_num_pending_dispatches_) {
-    ORT_RETURN_IF_ERROR(Flush(buffer_mgr, recording));
+    ORT_RETURN_IF_ERROR(Flush(recording));
   }
   return Status::OK();
 }
@@ -1341,8 +1340,7 @@ Status WebGpuContext::CheckDeviceStatus() const {
   return device_error_state_->status;
 }
 
-Status WebGpuContext::FlushAndWaitChecked(const webgpu::BufferManager& buffer_mgr,
-                                          CommandRecordingState& recording) {
+Status WebGpuContext::FlushAndWaitChecked(CommandRecordingState& recording) {
   ORT_RETURN_IF_NOT(HasDevice(), "WebGPU checked completion requires a device.");
 
   PushErrorScope(wgpu::ErrorFilter::Internal);
@@ -1362,7 +1360,7 @@ Status WebGpuContext::FlushAndWaitChecked(const webgpu::BufferManager& buffer_mg
   };
 
   ORT_TRY {
-    record_failure(Flush(buffer_mgr, recording));
+    record_failure(Flush(recording));
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -1401,15 +1399,17 @@ Status WebGpuContext::FlushAndWaitChecked(const webgpu::BufferManager& buffer_mg
 }
 
 Status WebGpuContext::Flush(CommandRecordingState& recording) {
-  const auto* pending_buffer_manager = recording.pending_buffer_manager.load(std::memory_order_relaxed);
-  const auto& buffer_mgr = pending_buffer_manager ? *pending_buffer_manager : *buffer_mgr_;
-  // Graph runs and prepacking can release allocator/uniform buffers into the shared manager.
-  // Retire this recording in both managers, keeping graph cache policy local to the active one.
+  const auto* execution_buffer_manager = recording.buffer_manager;
+  // Submission retires all context-owned pools and the execution-local pool, if any.
+  // Only the execution-local pool follows capture policy.
   const auto refresh_pending_buffers = [&]() {
-    buffer_mgr.RefreshPendingBuffers(recording, recording.graph_capture_state);
-    if (&buffer_mgr != buffer_mgr_.get()) {
-      buffer_mgr_->RefreshPendingBuffers(recording, GraphCaptureState::Default);
+    if (execution_buffer_manager != nullptr &&
+        execution_buffer_manager != buffer_mgr_.get() &&
+        execution_buffer_manager != initializer_buffer_mgr_.get()) {
+      execution_buffer_manager->RefreshPendingBuffers(recording, recording.graph_capture_state);
     }
+    buffer_mgr_->RefreshPendingBuffers(recording, GraphCaptureState::Default);
+    initializer_buffer_mgr_->RefreshPendingBuffers(recording, GraphCaptureState::Default);
   };
 
   Status status = EncodeDeferredDispatches(recording);
@@ -1417,12 +1417,14 @@ Status WebGpuContext::Flush(CommandRecordingState& recording) {
     if (status.IsOK()) {
       refresh_pending_buffers();
     } else {
-      buffer_mgr.DiscardPendingBuffers(recording);
-      if (&buffer_mgr != buffer_mgr_.get()) {
-        buffer_mgr_->DiscardPendingBuffers(recording);
+      if (execution_buffer_manager != nullptr &&
+          execution_buffer_manager != buffer_mgr_.get() &&
+          execution_buffer_manager != initializer_buffer_mgr_.get()) {
+        execution_buffer_manager->DiscardPendingBuffers(recording);
       }
+      buffer_mgr_->DiscardPendingBuffers(recording);
+      initializer_buffer_mgr_->DiscardPendingBuffers(recording);
     }
-    recording.pending_buffer_manager.store(nullptr, std::memory_order_relaxed);
     return status;
   }
 
@@ -1479,7 +1481,6 @@ Status WebGpuContext::Flush(CommandRecordingState& recording) {
 #endif
   recording.command_encoder = nullptr;
   recording.num_pending_dispatches = 0;
-  recording.pending_buffer_manager.store(nullptr, std::memory_order_relaxed);
   return status;
 }
 
@@ -1563,12 +1564,10 @@ void WebGpuContext::CopyBuffer(WGPUBuffer source, WGPUBuffer destination, uint64
 }
 
 void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommand>* captured_commands,
-                                 const webgpu::BufferManager& buffer_manager,
                                  CommandRecordingState& recording) {
   LOGS_DEFAULT(VERBOSE) << "CaptureBegin with external storage";
   // Flush any pending commands before we change the status
-  ORT_THROW_IF_ERROR(Flush(buffer_manager, recording));
-  recording.pending_buffer_manager.store(&buffer_manager, std::memory_order_relaxed);
+  ORT_THROW_IF_ERROR(Flush(recording));
   recording.external_captured_commands = captured_commands;
 
   // Make sure the external vector is empty before we start capturing
@@ -1580,11 +1579,12 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommand>* captured_
 }
 
 void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommand>& captured_commands,
-                           const webgpu::BufferManager& buffer_manager,
                            CommandRecordingState& recording) {
   LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
   recording.graph_capture_state = GraphCaptureState::Replaying;
-  recording.pending_buffer_manager.store(&buffer_manager, std::memory_order_relaxed);
+  auto end_replay = gsl::finally([&] {
+    recording.graph_capture_state = GraphCaptureState::Default;
+  });
   // Replay all captured commands from the provided vector
   const size_t command_count = captured_commands.size();
   for (size_t i = 0; i < command_count; ++i) {
@@ -1607,14 +1607,12 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommand>& captured_
 
     DispatchCommand(command, recording);
     if (recording.num_pending_dispatches >= max_num_pending_dispatches_) {
-      ORT_THROW_IF_ERROR(Flush(buffer_manager, recording));
+      ORT_THROW_IF_ERROR(Flush(recording));
     }
   }
 
   // Flush any remaining commands
-  ORT_THROW_IF_ERROR(Flush(buffer_manager, recording));
-
-  recording.graph_capture_state = GraphCaptureState::Default;
+  ORT_THROW_IF_ERROR(Flush(recording));
 }
 
 void WebGpuContext::CaptureEnd(CommandRecordingState& recording) {

@@ -457,9 +457,7 @@ TEST_F(WebGpuConcurrentContextTest, IndependentDataTransfersMultiThreadCopy) {
   constexpr int kIters = 30;
   constexpr size_t kElements = 4096;
   auto& context = webgpu::WebGpuContextFactory::GetContext(0);
-  webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Bucket,
-                                webgpu::BufferCacheMode::Simple, webgpu::BufferCacheMode::Disabled,
-                                webgpu::BufferCacheMode::Disabled);
+  auto& manager = context.BufferManager();
 
   std::array<webgpu::CommandRecordingState, kThreads> recordings;
   std::array<std::unique_ptr<webgpu::DataTransferImpl>, kThreads> data_transfers;

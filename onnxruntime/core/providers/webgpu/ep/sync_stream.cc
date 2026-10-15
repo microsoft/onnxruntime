@@ -34,7 +34,7 @@ struct WebGpuSyncStream final : OrtSyncStreamImpl {
     auto& context = WebGpuContextFactory::GetContext(ep.GetDeviceId());
     // Submit before streamless readbacks (e.g., node dumps) use a different recording.
     // Readbacks wait for completion; GPU consumers rely on ordering on the shared queue.
-    ORT_THROW_IF_ERROR(context.Flush(ep.BufferManager(), ep.Recording()));
+    ORT_THROW_IF_ERROR(context.Flush(ep.Recording()));
     return nullptr;
     EXCEPTION_TO_RETURNED_STATUS_END
   }
