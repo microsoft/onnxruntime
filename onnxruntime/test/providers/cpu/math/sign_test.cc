@@ -151,7 +151,8 @@ TEST(MathOpTest, Sign_int64_above_int32_max) {
   std::vector<int64_t> input_dims{2};
   test.AddInput<int64_t>("input", input_dims, {2147483649, 2147483649});
   test.AddOutput<int64_t>("output", input_dims, {1, 1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+  // QNN EP narrows int64 to int32, which wraps values above INT32_MAX.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(MathOpTest, Sign_float) {
