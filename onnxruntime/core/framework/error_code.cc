@@ -80,7 +80,28 @@ _Ret_notnull_ OrtStatus* ToOrtStatus(const Status& st) {
   OrtStatus* p = NewStatus(clen);
   if (p == nullptr)
     return nullptr;
-  p->code = static_cast<OrtErrorCode>(st.Code());
+
+  // Map the status' code to an OrtErrorCode based on its category.
+  // A SYSTEM-category status carries a raw OS errno (unrelated to the StatusCode/OrtErrorCode numbering), so it must
+  // be translated rather than cast directly.
+  // ONNXRUNTIME-category codes map 1:1 onto OrtErrorCode.
+  // NONE is only valid for an OK status, which was handled above.
+  common::StatusCode status_code;
+  switch (st.Category()) {
+    case common::SYSTEM:
+      status_code = common::StatusCodeFromSystemErrno(st.Code());
+      break;
+    case common::ONNXRUNTIME:
+      status_code = static_cast<common::StatusCode>(st.Code());
+      break;
+    default:
+      // Unexpected category. Don't throw across the C API boundary; fall back to a generic failure.
+      assert(false && "Unexpected StatusCategory in ToOrtStatus");
+      status_code = common::StatusCode::FAIL;
+      break;
+  }
+  p->code = static_cast<OrtErrorCode>(status_code);
+
   memcpy(p->msg, st.ErrorMessage().c_str(), clen);
   p->msg[clen] = '\0';
   return p;
