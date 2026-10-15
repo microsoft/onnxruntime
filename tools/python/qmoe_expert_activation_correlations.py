@@ -324,44 +324,67 @@ def write_correlation_summary(path, correlations, pairs_per_tail, min_activation
                 )
 
 
-def write_correlation_plots(path, same_qmoe_previous_token, previous_qmoe_same_token):
+def write_correlation_plots(
+    path,
+    same_qmoe_previous_token,
+    previous_qmoe_same_token,
+    pairs_per_tail,
+    min_activations,
+):
     import matplotlib.pyplot as plt  # noqa: PLC0415
     from matplotlib.backends.backend_pdf import PdfPages  # noqa: PLC0415
 
     previous_by_current = {correlation.current_identity: correlation for correlation in previous_qmoe_same_token}
-    all_finite_values = np.concatenate(
-        [
-            np.abs(correlation.values[np.isfinite(correlation.values)])
-            for correlation in (*same_qmoe_previous_token, *previous_qmoe_same_token)
-        ]
-    )
-    color_limit = np.percentile(all_finite_values, 99.5) if all_finite_values.size else 1.0
 
     with PdfPages(path) as pdf:
         for same_correlation in same_qmoe_previous_token:
             previous_correlation = previous_by_current.get(same_correlation.current_identity)
             columns = 2 if previous_correlation is not None else 1
-            figure, axes = plt.subplots(1, columns, figsize=(7 * columns, 6), squeeze=False)
-            panels = [(axes[0, 0], same_correlation, "Same QMoE, previous token")]
+            figure, axes = plt.subplots(2, columns, figsize=(7 * columns, 10), squeeze=False)
+            panels = [(0, same_correlation, "Same QMoE, previous token")]
             if previous_correlation is not None:
-                panels.append((axes[0, 1], previous_correlation, "Previous-layer QMoE, same token"))
-            for axis, correlation, title in panels:
-                image = axis.imshow(
+                panels.append((1, previous_correlation, "Previous-layer QMoE, same token"))
+            for column, correlation, title in panels:
+                heatmap_axis = axes[0, column]
+                image = heatmap_axis.imshow(
                     correlation.values,
                     cmap="coolwarm",
                     interpolation="nearest",
-                    vmin=-color_limit,
-                    vmax=color_limit,
+                    vmin=-1,
+                    vmax=1,
                     origin="lower",
                 )
-                axis.set_title(f"{title}\n{correlation.samples} samples")
-                axis.set_xlabel("Context expert ID")
-                axis.set_ylabel("Current expert ID")
+                heatmap_axis.set_title(f"{title}\n{correlation.samples} samples")
+                heatmap_axis.set_xlabel("Context expert ID")
+                heatmap_axis.set_ylabel("Current expert ID")
                 figure.colorbar(
                     image,
-                    ax=axis,
-                    label=f"Pearson correlation (colors clipped at +/-{color_limit:.3f})",
+                    ax=heatmap_axis,
+                    label="Pearson correlation",
                 )
+
+                tail_axis = axes[1, column]
+                tails = _correlation_tails(correlation, pairs_per_tail, min_activations)
+                for tail, color in (("highest", "tab:red"), ("lowest", "tab:blue")):
+                    values = [(rank, value) for name, rank, _, _, value in tails if name == tail]
+                    tail_axis.plot(
+                        [rank for rank, _ in values],
+                        [value for _, value in values],
+                        marker="o",
+                        markersize=3,
+                        color=color,
+                        label=tail,
+                    )
+                tail_axis.axhline(0, color="black", linewidth=0.6)
+                tail_axis.set_xlim(1, max(1, pairs_per_tail))
+                tail_axis.set_ylim(-1, 1)
+                tail_axis.set_xlabel("Rank")
+                tail_axis.set_ylabel("Pearson correlation")
+                tail_axis.set_title(
+                    f"Highest and lowest correlations\nminimum {min_activations} activations per expert"
+                )
+                tail_axis.grid(True, alpha=0.3)
+                tail_axis.legend()
             figure.suptitle(node_display_name(same_correlation.current_identity))
             figure.tight_layout()
             pdf.savefig(figure)
@@ -387,7 +410,13 @@ def main():
         args.pairs_per_tail,
         args.min_activations,
     )
-    write_correlation_plots(plot_path, same_qmoe_previous_token, previous_qmoe_same_token)
+    write_correlation_plots(
+        plot_path,
+        same_qmoe_previous_token,
+        previous_qmoe_same_token,
+        args.pairs_per_tail,
+        args.min_activations,
+    )
 
     print(f"prompts: {len(trace.prompt_activations)}")
     print(f"MoE nodes: {len(trace.identities)}")

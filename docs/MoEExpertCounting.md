@@ -71,7 +71,8 @@ previous decode token. For every layer after the first, it also computes the mat
 the same token. Prefill records are excluded, decode invocations are aligned independently within each prompt, and
 previous-token pairs never cross prompt boundaries. The output contains compressed NumPy matrices for all expert
 pairs and their activation counts, a PDF of heatmaps, and a CSV listing the 20 highest and 20 lowest sufficiently
-supported correlations from each matrix:
+supported correlations from each matrix. The PDF uses the full Pearson scale from `-1` to `1` and plots both ranked
+tails below each heatmap:
 
 ```bash
 python tools/python/qmoe_expert_activation_correlations.py counter.log \
