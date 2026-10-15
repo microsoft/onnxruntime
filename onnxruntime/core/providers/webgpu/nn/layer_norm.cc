@@ -45,7 +45,9 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // Shift full LayerNorm before summation so large constant rows have an exact zero mean offset.
   const std::string simpl2 = simplified_ ? "" : "- norm_element_t(shift) - norm_element_t(mean) ";
-  const std::string mean_expression = simplified_ ? "mean" : "mean + shift";
+  // An unshifted sum preserves small residuals in the optional Mean output for mixed-sign rows.
+  const bool compute_unshifted_mean = has_mean_output_ && !simplified_;
+  const std::string mean_expression = simplified_ ? "mean" : "unshifted_mean";
 
   const auto output_expression = [&](const std::string& input, const std::string& scale_offset) {
     const std::string normalized =
@@ -59,13 +61,16 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   };
 
   if (split_norm_dim_) {
+    // Keep unshifted adjacent-pair sums separate through reduction; reassociating all four lanes can lose residuals.
     shader.AdditionalImplementation()
         << "var<workgroup> sum_shared : array<f32, workgroup_size_x>;\n"
+        << (compute_unshifted_mean ? "var<workgroup> unshifted_sum_shared : array<vec2<f32>, workgroup_size_x>;\n" : "")
         << "var<workgroup> sum_squared_shared : array<f32, workgroup_size_x>;\n";
 
     shader.MainFunctionBody()
         << (simplified_ ? "" : "  let shift = f32(" + x.GetByOffset("0") + ".x);\n")
         << "  var sum_vec4 = vec4<f32>(0);\n"
+        << (compute_unshifted_mean ? "  var unshifted_sum_vec2 = vec2<f32>(0);\n" : "")
         << "  var sum_squared_vec4 = vec4<f32>(0);\n"
         << "  var cur_input = x_value_t(0);\n"
         << "  for (var i: u32 = 0; i < uniforms.norm_size / (workgroup_size_x * 4); i++) {\n"
@@ -76,11 +81,16 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "    }\n"
         << "    let f32_value = vec4<f32>(input_value)" << (simplified_ ? "" : " - shift") << ";\n"
         << "    sum_vec4 += f32_value;\n"
+        << (compute_unshifted_mean ? "    let unshifted_value = vec4<f32>(input_value);\n"
+                                     "    unshifted_sum_vec2 += vec2<f32>(unshifted_value.x + unshifted_value.y,\n"
+                                     "                                    unshifted_value.z + unshifted_value.w);\n"
+                                   : "")
         << (simplified_ ? "    sum_squared_vec4 += f32_value * f32_value;\n" : "")
         << "  }\n"
         << "  var sum = " << SumVector("sum_vec4", 4) << ";\n"
         << "  var sum_squared = " << SumVector("sum_squared_vec4", 4) << ";\n"
         << "  sum_shared[local_idx] = sum;\n"
+        << (compute_unshifted_mean ? "  unshifted_sum_shared[local_idx] = unshifted_sum_vec2;\n" : "")
         << "  sum_squared_shared[local_idx] = sum_squared;\n"
         << "  workgroupBarrier();\n"
         << "  var reduce_size : u32 = workgroup_size_x;\n"
@@ -88,11 +98,15 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "    reduce_size = curr_size + (reduce_size & 1);\n"
         << "    if (local_idx < curr_size) {\n"
         << "      sum_shared[local_idx] += sum_shared[local_idx + reduce_size];\n"
+        << (compute_unshifted_mean ? "      unshifted_sum_shared[local_idx] += unshifted_sum_shared[local_idx + reduce_size];\n" : "")
         << (simplified_ ? "      sum_squared_shared[local_idx] += sum_squared_shared[local_idx + reduce_size];\n" : "")
         << "    }\n"
         << "    workgroupBarrier();\n"
         << "  }\n"
-        << "  let mean = sum_shared[0] / f32(uniforms.norm_size);\n";
+        << "  let mean = sum_shared[0] / f32(uniforms.norm_size);\n"
+        << (compute_unshifted_mean ? "  let unshifted_sum = unshifted_sum_shared[0];\n"
+                                     "  let unshifted_mean = (unshifted_sum.x + unshifted_sum.y) / f32(uniforms.norm_size);\n"
+                                   : "");
 
     if (!simplified_) {
       // Sum centered squares to avoid cancellation in E[x^2] - E[x]^2.
@@ -134,6 +148,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.AdditionalImplementation()
         << "alias f32_val_t = " << (components == 4 ? "vec4<f32>" : (components == 2 ? "vec2<f32>" : "f32")) << ";\n"
         << "var<workgroup> sum_shared : array<f32_val_t, workgroup_size_x>;\n"
+        << (compute_unshifted_mean ? "var<workgroup> unshifted_sum_shared : array<f32_val_t, workgroup_size_x>;\n" : "")
         << "var<workgroup> sum_squared_shared : array<f32_val_t, workgroup_size_x>;\n";
 
     shader.MainFunctionBody()
@@ -146,6 +161,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let offset = ix * stride + iy * norm_size_vectorized;\n"
         << "let offset1d = stride * ix;\n"
         << "sum_shared[ix] = f32_val_t(0);\n"
+        << (compute_unshifted_mean ? "unshifted_sum_shared[ix] = f32_val_t(0);\n" : "")
         << "sum_squared_shared[ix] = f32_val_t(0);\n"
         << "if (ix == workgroup_size_x - 1) {\n"
         << " stride = norm_size_vectorized - stride * ix;\n"
@@ -154,6 +170,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << " let input_value = " << x.GetByOffset("offset + i") << ";\n"
         << " let f32_value = f32_val_t(input_value)" << (simplified_ ? "" : " - shift") << ";\n"
         << " sum_shared[ix] += f32_value;\n"
+        << (compute_unshifted_mean ? " unshifted_sum_shared[ix] += f32_val_t(input_value);\n" : "")
         << (simplified_ ? " sum_squared_shared[ix] += f32_value * f32_value;\n" : "")
         << "}\n"
         << "workgroupBarrier();\n"
@@ -162,12 +179,16 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << " reduce_size = curr_size + (reduce_size & 1);\n"
         << " if (ix < curr_size) {\n"
         << "  sum_shared[ix] += sum_shared[ix + reduce_size];\n"
+        << (compute_unshifted_mean ? "  unshifted_sum_shared[ix] += unshifted_sum_shared[ix + reduce_size];\n" : "")
         << (simplified_ ? "  sum_squared_shared[ix] += sum_squared_shared[ix + reduce_size];\n" : "")
         << " }\n"
         << " workgroupBarrier();\n"
         << "}\n"
         << "let sum = sum_shared[0];\n"
-        << "let mean = " << SumVector("sum", components) << " / f32(uniforms.norm_size);\n";
+        << "let mean = " << SumVector("sum", components) << " / f32(uniforms.norm_size);\n"
+        << (compute_unshifted_mean ? "let unshifted_sum = unshifted_sum_shared[0];\nlet unshifted_mean = " +
+                                         SumVector("unshifted_sum", components) + " / f32(uniforms.norm_size);\n"
+                                   : "");
 
     if (!simplified_) {
       shader.MainFunctionBody()

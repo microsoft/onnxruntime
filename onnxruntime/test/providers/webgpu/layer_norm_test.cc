@@ -178,6 +178,55 @@ void RunLayerNormLargeOffsetTest(bool constant) {
   }
 }
 
+void RunLayerNormMixedSignMeanTest(int64_t norm_size) {
+  for (int opset : {15, 17}) {
+    for (float residual : {1.0f, -1.0f}) {
+      for (bool has_inv_std_dev : {false, true}) {
+        SCOPED_TRACE(MakeString("norm_size=", norm_size, ", opset=", opset, ", residual=", residual,
+                                ", inv_std_dev=", has_inv_std_dev));
+        auto webgpu_ep = DefaultWebGpuExecutionProvider();
+        if (!webgpu_ep) {
+          GTEST_SKIP() << "WebGPU execution provider is not available.";
+        }
+
+        constexpr float epsilon = 1e-5f;
+        InlinedVector<float> input(static_cast<size_t>(norm_size), residual);
+        input[0] = 1e8f;
+        input[1] = -1e8f;
+        const double mean = static_cast<double>(residual) * (norm_size - 2) / norm_size;
+        double squared_deviation = 0.0;
+        for (float value : input) {
+          const double deviation = static_cast<double>(value) - mean;
+          squared_deviation += deviation * deviation;
+        }
+        const double inv_std_dev = 1.0 / std::sqrt(squared_deviation / norm_size + epsilon);
+        InlinedVector<float> expected;
+        expected.reserve(norm_size);
+        for (float value : input) {
+          expected.push_back(static_cast<float>((static_cast<double>(value) - mean) * inv_std_dev));
+        }
+
+        OpTester test("LayerNormalization", opset);
+        test.AddAttribute("epsilon", epsilon);
+        test.AddInput<float>("X", {1, norm_size}, input.data(), input.size());
+        const InlinedVector<float> scale(static_cast<size_t>(norm_size), 1.0f);
+        test.AddInput<float>("Scale", {norm_size}, scale.data(), scale.size(), true);
+        test.AddOutput<float>("Y", {1, norm_size}, expected.data(), expected.size());
+        test.AddOutput<float>("Mean", {1, 1}, {static_cast<float>(mean)});
+        test.SetOutputAbsErr("Mean", 1e-6f);
+        test.SetOutputRelErr("Mean", 1e-6f);
+        if (has_inv_std_dev) {
+          test.AddOutput<float>("InvStdDev", {1, 1}, {static_cast<float>(inv_std_dev)});
+        }
+        SessionOptions session_options;
+        ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+        test.Config(session_options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+        ASSERT_EQ(test.GetFetches().size(), has_inv_std_dev ? 3u : 2u);
+      }
+    }
+  }
+}
+
 template <typename V, typename U>
 void CheckLayerNormKernelTypes(const KernelRegistry& kernel_registry, bool simplified, bool expect_supported) {
   SCOPED_TRACE(MakeString("simplified=", simplified, ", V=", DataTypeImpl::ToString(DataTypeImpl::GetTensorType<V>()),
@@ -259,6 +308,15 @@ TEST(LayerNorm_WebGPU, NearlyConstantFloat32) {
 
 TEST(LayerNorm_WebGPU, NearlyConstantFloat16) {
   RunLayerNormLargeOffsetTest<MLFloat16>(false);
+}
+
+TEST(LayerNorm_WebGPU, MixedSignMean) {
+  RunLayerNormMixedSignMeanTest(4);
+}
+
+TEST(LayerNorm_WebGPU, MixedSignMeanSplit) {
+  RunLayerNormMixedSignMeanTest(512);
+  RunLayerNormMixedSignMeanTest(1024);
 }
 
 }  // namespace test
