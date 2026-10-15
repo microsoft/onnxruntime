@@ -268,3 +268,119 @@ approximately 10% adapter-off gap versus a graph with QKV/MLP base fusion.
   parameterizations; its CUDA variants were not run locally.
 - Formatting and whitespace checks pass. Wider device/build validation remains
   the responsibility of fresh CI and hardware testing.
+
+## FP16 and FP32 support verification (2026-10-15)
+
+Both `MatMulNBitsLoRA` and `MatMulNBitsQLoRA` now accept FP16 and FP32 models.
+All floating inputs to an operator share one type, including base scales,
+adapter scales or floating adapter weights, intermediate T, and output.
+LoRA stores floating adapter weights; QLoRA stores packed INT8 adapter weights.
+Cross-type adapter loading is not implicit. Rank 32 and INT4 block-32 base
+restrictions remain. FP32 decode preserves the ordinary base DP4A policy even
+when the adapter is active.
+
+### Validation
+
+- Built-in Release: 28 provider/empty-tensor and 24 fusion tests pass.
+- Plugin Release: 10 provider and 24 fusion tests pass; 2 hardware-inspection
+  tests skip in plugin mode and pass with the built-in provider.
+- FP32 dense FP64-reference tests cover prefill/decode, batching, partial N,
+  K through 8192, accuracy levels 0/4, and all fusion modes, with 1e-5
+  absolute/relative bounds on inputs exactly representable by DP4A.
+- Both original and transposed LoRA layouts, empty/full/partial adapters,
+  QLoRA serialization/reload and distinct on/off capture replay are tested.
+- The two changed kernel files pass wasm32 syntax checks. Formatting and
+  whitespace checks pass. This is not a full linked WebAssembly build.
+
+### FP32 full-model numerical checks
+
+Two adapters, three prompts each, up to 64 greedy tokens, and 12 forced-prefix
+full-vocabulary logit rows per prompt were compared against the original
+unfused package. The converted base data is unchanged; both conversions
+preserve the original effective FP32 adapter weights exactly.
+
+| FP32 path | Adapter | Max logit difference | Max per-case RMSE | Top-1 rows match | Greedy outputs match |
+| --- | --- | --- | --- | --- | --- |
+| LORA | Off | 0 | 0 | 72/72 | 6/6 |
+| LORA | On | 0.68059158 | 0.079206155 | 70/72 | 2/6 |
+| QLORA | Off | 0 | 0 | 72/72 | 6/6 |
+| QLORA | On | 1.3800392 | 0.12060427 | 71/72 | 3/6 |
+
+These are the default `accuracy_level=4` results. Adapter-off logits match
+exactly. Adapter-on differences include reduction-order changes and DP4A
+activation quantization; they are not a bitwise-equivalence claim. QLoRA
+`fuse_down`, which avoids quantizing the adapter down input, still differs by
+up to 0.918821, with 71/72 top-1 rows and 5/6 greedy outputs matching, because
+the base path still uses DP4A. The difference must not be attributed solely
+to the new adapter down projection.
+
+To isolate floating arithmetic, diagnostic copies set `accuracy_level=0`
+for both reference and fused models:
+
+| FP32 path, accuracy=0 | Max logit difference | Max per-case RMSE | Top-1 rows match | Greedy outputs match |
+| --- | --- | --- | --- | --- |
+| LORA | 3.0517578e-05 | 3.3701491e-06 | 72/72 | 6/6 |
+| QLORA | 2.3409724e-05 | 2.7866782e-06 | 72/72 | 6/6 |
+
+Built-in capture off/on and plugin capture on produce exactly equal logits
+for each fused representation. Rewind/repeat generation is identical.
+These checks use the GenAI adapter capture-identity fix from #2740.
+This small prompt set is a numerical regression check, not a broad quality
+evaluation.
+
+### FP32 throughput
+
+Native GenAI C++, built-in WebGPU, Windows D3D12, NVIDIA RTX 5080. Batch 1,
+fixed identical prompt IDs, 128 generated tokens, maximum length 4096,
+graph capture, generator reuse and token readback. Each cell uses three
+warmups and five measured requests; values are medians. No builds, tests,
+profiling or other GPU workloads run during timing. The unfused baseline
+uses the same updated runtime; this is not a new upstream-main comparison.
+
+| Prompt tokens | Adapter | FP32 path | TTFT ms | Decode tok/s |
+| --- | --- | --- | --- | --- |
+| 128 | Off | Unfused | 31.48 | 174.42 |
+| 128 | Off | LoRA | 29.56 | 201.51 |
+| 128 | Off | QLoRA | 29.67 | 200.70 |
+| 128 | A | Unfused | 77.99 | 37.62 |
+| 128 | A | LoRA | 123.84 | 142.93 |
+| 128 | A | QLoRA | 43.46 | 133.93 |
+| 128 | B | Unfused | 77.59 | 37.68 |
+| 128 | B | LoRA | 123.56 | 143.19 |
+| 128 | B | QLoRA | 43.57 | 133.50 |
+| 1024 | Off | Unfused | 174.11 | 171.00 |
+| 1024 | Off | LoRA | 162.04 | 198.04 |
+| 1024 | Off | QLoRA | 162.34 | 199.26 |
+| 1024 | A | Unfused | 227.59 | 37.52 |
+| 1024 | A | LoRA | 270.12 | 142.24 |
+| 1024 | A | QLoRA | 192.25 | 131.47 |
+| 1024 | B | Unfused | 227.28 | 37.69 |
+| 1024 | B | LoRA | 270.76 | 141.47 |
+| 1024 | B | QLoRA | 192.22 | 132.22 |
+
+FP32 QLoRA improves both prefill and decode over this unfused package. FP32
+LoRA improves decode but its current floating down-projection shader makes
+prefill slower than the original package; this support change does not solve
+that performance limitation. The two representations use different shaders
+and need not have identical speed or floating-point reduction order.
+
+### FP16 before/after regression check
+
+The previous validated PR runtime and this update use the same fixed GenAI
+runtime and the same converted FP16 models. Token IDs match between revisions
+in every measured cell.
+
+| FP16 adapter | Prompt tokens | Adapter | TTFT ms before → after | Change | Decode tok/s before → after | Change |
+| --- | --- | --- | --- | --- | --- | --- |
+| LORA | 128 | Off | 31.24 → 31.22 | -0.06% | 237.29 → 235.36 | -0.82% |
+| LORA | 128 | A | 81.33 → 81.42 | +0.12% | 205.54 → 204.45 | -0.53% |
+| LORA | 1024 | Off | 162.74 → 162.58 | -0.10% | 234.15 → 233.27 | -0.38% |
+| LORA | 1024 | A | 223.72 → 223.39 | -0.15% | 204.52 → 205.28 | +0.37% |
+| QLORA | 128 | Off | 31.33 → 31.32 | -0.03% | 235.81 → 236.37 | +0.24% |
+| QLORA | 128 | A | 40.86 → 40.35 | -1.26% | 204.94 → 202.06 | -1.41% |
+| QLORA | 1024 | Off | 162.93 → 162.60 | -0.21% | 233.84 → 234.40 | +0.24% |
+| QLORA | 1024 | A | 172.54 → 172.80 | +0.15% | 204.50 → 204.34 | -0.08% |
+
+Across these measured cells, the largest TTFT increase is 0.15% and the
+largest decode decrease is 1.41%. No large FP16 regression appears in this
+single-round check; smaller changes remain within typical run variation.

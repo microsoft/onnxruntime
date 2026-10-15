@@ -3949,7 +3949,7 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
           "With adapter_transposed=1, transposes both stored adapter inputs in this formula. "
           "The adapter remains replaceable. A zero rank in either adapter input disables the adapter. "
           "Intermediate results are rounded to the input type before addition. "
-          "This prototype supports FP16, rank 32, INT4 block size 32, implicit zero point 8, and no bias.")
+          "Supports FP16 or FP32, rank 32, INT4 block size 32, implicit zero point 8, and no bias.")
       .Attr("K", "Input feature dimension; a positive multiple of 32.", AttributeProto::INT)
       .Attr("N", "Output feature dimension; a positive multiple of 4.", AttributeProto::INT)
       .Attr("bits", "Base weight bit width; must be 4.", AttributeProto::INT, int64_t{4})
@@ -3958,11 +3958,11 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
       .Attr("adapter_transposed", "Whether adapters are stored as [R_A,K] and [N,R_B].", AttributeProto::INT, int64_t{0})
       .Input(0, "X", "Input with rank at least two and last dimension K.", "T")
       .Input(1, "W", "INT4 packed weights of shape [N, K/32, 16].", "TQ")
-      .Input(2, "scales", "FP16 block scales containing N * K/32 elements; may be flattened.", "T")
+      .Input(2, "scales", "Block scales containing N * K/32 elements; may be flattened.", "T")
       .Input(3, "lora_A", "Adapter of shape [K, R_A], or [R_A, K] if adapter_transposed=1; R_A is 0 or 32.", "T")
       .Input(4, "lora_B", "Adapter of shape [R_B, N], or [N, R_B] if adapter_transposed=1; R_B is 0 or 32.", "T")
       .Output(0, "Y", "Input shape with last dimension replaced by N.", "T")
-      .TypeConstraint("T", {"tensor(float16)"}, "FP16 activations and adapter weights.")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "FP16 or FP32 activations, block scales, and adapter weights.")
       .TypeConstraint("TQ", {"tensor(uint8)"}, "Packed quantized base weights.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         const auto k = getAttribute(ctx, "K", -1);
@@ -3997,10 +3997,10 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
       .SetDoc(
           "Computes MatMulNBits(X,W,scales) + MatMulNBits(MatMulNBits(X,lora_A,lora_A_scales),lora_B,lora_B_scales). "
           "The base uses INT4 block-32 weights with implicit zero point 8. Adapters use INT8 block-32 weights "
-          "stored as unsigned bytes with implicit zero point 128 and FP16 block scales. Eligible adapter down "
+          "stored as unsigned bytes with implicit zero point 128 and block scales matching the activation type. Eligible adapter down "
           "projections may quantize activations according to accuracy_level. Rank is 32; an empty rank dimension "
           "in either packed adapter disables the adapter. "
-          "Intermediate projections are rounded to FP16 before the final addition. Adapters remain replaceable.")
+          "Intermediate projections use the activation type (FP16 or FP32) before the final addition. Adapters remain replaceable.")
       .Attr("K", "Input feature dimension; a positive multiple of 32.", AttributeProto::INT)
       .Attr("N", "Output feature dimension; a positive multiple of 4.", AttributeProto::INT)
       .Attr("bits", "Base weight bit width; must be 4.", AttributeProto::INT, int64_t{4})
@@ -4017,7 +4017,7 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
       .Input(5, "lora_B", "Packed INT8 up weights [N,R_B/32,32], R_B=0 or 32.", "TQ")
       .Input(6, "lora_B_scales", "Up block scales [N,1]; retained even when the adapter is empty.", "T")
       .Output(0, "Y", "Input shape with the last dimension replaced by N.", "T")
-      .TypeConstraint("T", {"tensor(float16)"}, "FP16 activations and block scales.")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "FP16 or FP32 activations and block scales.")
       .TypeConstraint("TQ", {"tensor(uint8)"}, "Packed quantized weights.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         const auto k = getAttribute(ctx, "K", -1);

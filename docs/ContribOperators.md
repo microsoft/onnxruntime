@@ -4108,7 +4108,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.MatMulNBitsLoRA"></a><a name="com.microsoft.matmulnbitslora">**com.microsoft.MatMulNBitsLoRA**</a>
 
-  Computes MatMulNBits(X, W, scales) + MatMul(MatMul(X, lora_A), lora_B). With adapter_transposed=1, transposes both stored adapter inputs in this formula. The adapter remains replaceable. A zero rank in either adapter input disables the adapter. Intermediate results are rounded to the input type before addition. This prototype supports FP16, rank 32, INT4 block size 32, implicit zero point 8, and no bias.
+  Computes MatMulNBits(X, W, scales) + MatMul(MatMul(X, lora_A), lora_B). With adapter_transposed=1, transposes both stored adapter inputs in this formula. The adapter remains replaceable. A zero rank in either adapter input disables the adapter. Intermediate results are rounded to the input type before addition. Supports FP16 or FP32, rank 32, INT4 block size 32, implicit zero point 8, and no bias.
 
 #### Version
 
@@ -4139,7 +4139,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>W</tt> : TQ</dt>
 <dd>INT4 packed weights of shape [N, K/32, 16].</dd>
 <dt><tt>scales</tt> : T</dt>
-<dd>FP16 block scales containing N * K/32 elements; may be flattened.</dd>
+<dd>Block scales containing N * K/32 elements; may be flattened.</dd>
 <dt><tt>lora_A</tt> : T</dt>
 <dd>Adapter of shape [K, R_A], or [R_A, K] if adapter_transposed=1; R_A is 0 or 32.</dd>
 <dt><tt>lora_B</tt> : T</dt>
@@ -4156,8 +4156,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float16)</dt>
-<dd>FP16 activations and adapter weights.</dd>
+<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
+<dd>FP16 or FP32 activations, block scales, and adapter weights.</dd>
 <dt><tt>TQ</tt> : tensor(uint8)</dt>
 <dd>Packed quantized base weights.</dd>
 </dl>
@@ -4264,7 +4264,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.MatMulNBitsQLoRA"></a><a name="com.microsoft.matmulnbitsqlora">**com.microsoft.MatMulNBitsQLoRA**</a>
 
-  Computes MatMulNBits(X,W,scales) + MatMulNBits(MatMulNBits(X,lora_A,lora_A_scales),lora_B,lora_B_scales). The base uses INT4 block-32 weights with implicit zero point 8. Adapters use INT8 block-32 weights stored as unsigned bytes with implicit zero point 128 and FP16 block scales. Eligible adapter down projections may quantize activations according to accuracy_level. Rank is 32; an empty rank dimension in either packed adapter disables the adapter. Intermediate projections are rounded to FP16 before the final addition. Adapters remain replaceable.
+  Computes MatMulNBits(X,W,scales) + MatMulNBits(MatMulNBits(X,lora_A,lora_A_scales),lora_B,lora_B_scales). The base uses INT4 block-32 weights with implicit zero point 8. Adapters use INT8 block-32 weights stored as unsigned bytes with implicit zero point 128 and block scales matching the activation type. Eligible adapter down projections may quantize activations according to accuracy_level. Rank is 32; an empty rank dimension in either packed adapter disables the adapter. Intermediate projections use the activation type (FP16 or FP32) before the final addition. Adapters remain replaceable.
 
 #### Version
 
@@ -4318,8 +4318,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float16)</dt>
-<dd>FP16 activations and block scales.</dd>
+<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
+<dd>FP16 or FP32 activations and block scales.</dd>
 <dt><tt>TQ</tt> : tensor(uint8)</dt>
 <dd>Packed quantized weights.</dd>
 </dl>

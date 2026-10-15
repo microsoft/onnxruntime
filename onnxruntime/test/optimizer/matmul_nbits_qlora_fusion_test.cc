@@ -13,21 +13,22 @@ namespace onnxruntime::test {
 #ifndef DISABLE_CONTRIB_OPS
 namespace {
 
+template <typename T = MLFloat16>
 void BuildQLoRA(ModelTestBuilder& builder, int64_t m = 1, int64_t k = 2048, int64_t n = 128, int64_t batch = 1,
                 bool expose = false, bool different_x = false, bool zero_base = false, int64_t adapter_accuracy = 0) {
-  auto* x = builder.MakeInput<MLFloat16>({batch, m, k}, MLFloat16(-0.5f), MLFloat16(0.5f));
+  auto* x = builder.MakeInput<T>({batch, m, k}, T(-0.5f), T(0.5f));
   auto* w = builder.MakeInitializer<uint8_t>({n, k / 32, 16}, zero_base ? uint8_t{0x88} : uint8_t{0},
                                              zero_base ? uint8_t{0x88} : uint8_t{255});
-  auto* s = builder.MakeInitializer<MLFloat16>({n, k / 32}, MLFloat16(0.03125f), MLFloat16(0.0625f));
+  auto* s = builder.MakeInitializer<T>({n, k / 32}, T(0.03125f), T(0.0625f));
   auto* aq = builder.MakeInput<uint8_t>({32, k / 32, 32}, uint8_t{100}, uint8_t{156});
-  auto* as = builder.MakeInput<MLFloat16>({32, k / 32}, MLFloat16(0.001f), MLFloat16(0.002f));
+  auto* as = builder.MakeInput<T>({32, k / 32}, T(0.001f), T(0.002f));
   auto* bq = builder.MakeInput<uint8_t>({n, 1, 32}, uint8_t{100}, uint8_t{156});
-  auto* bs = builder.MakeInput<MLFloat16>({n, 1}, MLFloat16(0.001f), MLFloat16(0.002f));
+  auto* bs = builder.MakeInput<T>({n, 1}, T(0.001f), T(0.002f));
   for (auto* arg : {aq, as, bq, bs}) {
     ONNX_NAMESPACE::TensorProto init;
     init.set_name(arg->Name());
     const bool packed = arg == aq || arg == bq;
-    init.set_data_type(packed ? ONNX_NAMESPACE::TensorProto::UINT8 : ONNX_NAMESPACE::TensorProto::FLOAT16);
+    init.set_data_type(packed ? ONNX_NAMESPACE::TensorProto::UINT8 : utils::ToTensorProtoElementType<T>());
     int64_t count = 1;
     for (const auto& dim : arg->Shape()->dim()) {
       init.add_dims(dim.dim_value());
@@ -36,17 +37,17 @@ void BuildQLoRA(ModelTestBuilder& builder, int64_t m = 1, int64_t k = 2048, int6
     if (packed) {
       init.set_raw_data(std::string(static_cast<size_t>(count), static_cast<char>(128)));
     } else {
-      const std::vector<MLFloat16> ones(static_cast<size_t>(count), MLFloat16(1.0f));
-      init.set_raw_data(ones.data(), ones.size() * sizeof(MLFloat16));
+      const std::vector<T> ones(static_cast<size_t>(count), T(1.0f));
+      init.set_raw_data(ones.data(), ones.size() * sizeof(T));
     }
     builder.graph_.AddInitializedTensor(init);
   }
-  auto* base = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{batch, m, n});
-  auto* t = expose ? builder.MakeOutput<MLFloat16>(std::vector<int64_t>{batch, m, 32})
-                   : builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{batch, m, 32});
-  auto* delta = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{batch, m, n});
-  auto* y = builder.MakeOutput<MLFloat16>(std::vector<int64_t>{batch, m, n});
-  auto* adapter_x = different_x ? builder.MakeInput<MLFloat16>({batch, m, k}, MLFloat16(-0.5f), MLFloat16(0.5f)) : x;
+  auto* base = builder.MakeIntermediate<T>(std::vector<int64_t>{batch, m, n});
+  auto* t = expose ? builder.MakeOutput<T>(std::vector<int64_t>{batch, m, 32})
+                   : builder.MakeIntermediate<T>(std::vector<int64_t>{batch, m, 32});
+  auto* delta = builder.MakeIntermediate<T>(std::vector<int64_t>{batch, m, n});
+  auto* y = builder.MakeOutput<T>(std::vector<int64_t>{batch, m, n});
+  auto* adapter_x = different_x ? builder.MakeInput<T>({batch, m, k}, T(-0.5f), T(0.5f)) : x;
   if (different_x) {
     builder.graph_.SetInputs({x, aq, as, bq, bs, adapter_x});
   } else {
@@ -127,6 +128,25 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionNumerics) {
           [mode](SessionOptions& options) {
             if (mode[0])
               ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.webgpu.lora_fusion_mode", mode));
+          });
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionFp32Numerics) {
+  if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU unavailable.";
+  for (const char* mode : {"auto", "fuse_down", "fuse_up"}) {
+    for (const auto& [m, n] : {std::pair<int64_t, int64_t>{1, 128}, {1, 132}, {2, 128}, {37, 132}}) {
+      SCOPED_TRACE(MakeString(mode, ", M=", m, ", N=", n));
+      const bool quantized_down = m >= 4 && std::string_view{mode} != "fuse_down";
+      RunWebGpuFusionTransformerTest(
+          [m, n](ModelTestBuilder& b) { BuildQLoRA<float>(b, m, 2048, n); },
+          [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckQLoRACount(s.GetGraph(), 1)); },
+          TransformerLevel::Level1, TransformerLevel::Level2, 21,
+          quantized_down ? 0.002 : 0.00001, quantized_down ? 0.001 : 0.00001,
+          std::make_unique<MatMulNBitsQLoRAFusion>(), [] { return DefaultWebGpuExecutionProvider(); },
+          [mode](SessionOptions& options) {
+            ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.webgpu.lora_fusion_mode", mode));
           });
     }
   }
@@ -253,15 +273,16 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionPartialOverrides) {
   }
 }
 
-TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionSerializedEmptyDefaults) {
+template <typename T>
+void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger) {
   if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU unavailable.";
   for (int64_t m : {1, 37}) {
     SCOPED_TRACE(m);
     Model model("quantized LoRA empty defaults", false, ModelMetaData(), PathString(),
-                IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, *logger_);
+                IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, logger);
     auto& graph = model.MainGraph();
     ModelTestBuilder builder(graph);
-    BuildQLoRA(builder, m, 64);
+    BuildQLoRA<T>(builder, m, 64);
     builder.SetGraphOutputs();
     ASSERT_STATUS_OK(graph.Resolve());
     const auto adapters = graph.GetOverridableInitializers();
@@ -275,9 +296,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionSerializedEmptyDefaults) 
         std::fill(bytes.begin(), bytes.end(), uint8_t{129});
         (tensor->Shape()[0] == 32 ? a_name : b_name) = name;
       } else {
-        auto values = tensor->MutableDataAsSpan<MLFloat16>();
+        auto values = tensor->MutableDataAsSpan<T>();
         const float fill = tensor->Shape().NumDimensions() == 3 ? 0.25f : 0.03125f;
-        std::fill(values.begin(), values.end(), MLFloat16(fill));
+        std::fill(values.begin(), values.end(), T(fill));
       }
     }
     ASSERT_FALSE(a_name.empty());
@@ -286,7 +307,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionSerializedEmptyDefaults) 
     for (bool fused : {false, true}) {
       if (fused) {
         bool modified = false;
-        ASSERT_STATUS_OK(MatMulNBitsQLoRAFusion().Apply(graph, modified, *logger_));
+        ASSERT_STATUS_OK(MatMulNBitsQLoRAFusion().Apply(graph, modified, logger));
         ASSERT_TRUE(modified);
         ASSERT_STATUS_OK(graph.Resolve());
       }
@@ -386,8 +407,8 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionSerializedEmptyDefaults) 
     for (int state : {0, 0, 0, 1, 1, 1, 0, 1, 0, 1}) {
       SCOPED_TRACE(MakeString("capture state=", state));
       auto* cpu_output = actual.GetMutable<Tensor>();
-      auto values = cpu_output->MutableDataAsSpan<MLFloat16>();
-      std::fill(values.begin(), values.end(), MLFloat16(-99.0f));
+      auto values = cpu_output->MutableDataAsSpan<T>();
+      std::fill(values.begin(), values.end(), T(-99.0f));
       ASSERT_STATUS_OK(session.GetDataTransferManager().CopyTensor(*cpu_output, *outputs[state].GetMutable<Tensor>()));
       RunOptions run_options;
       ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation,
@@ -401,6 +422,14 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionSerializedEmptyDefaults) 
     EXPECT_TRUE(capture_provider->IsGraphCaptured(1));
     EXPECT_TRUE(capture_provider->IsGraphCaptured(2));
   }
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionSerializedEmptyDefaults) {
+  RunQLoRASerializedEmptyDefaults<MLFloat16>(*logger_);
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionSerializedEmptyDefaultsFp32) {
+  RunQLoRASerializedEmptyDefaults<float>(*logger_);
 }
 
 #endif

@@ -110,8 +110,19 @@ Status MatMulNBitsLoRAFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
         GetIntAttr(*base, "weight_prepacked", 0) != 0 || HasInput(*base, 3) || HasInput(*base, 4) ||
         HasInput(*base, 5) || !MatrixShape(*down->InputDefs()[1], k, rank) ||
         !MatrixShape(*up->InputDefs()[1], rank, n) ||
-        down->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto::FLOAT16 ||
         !base->InputDefs()[0]->Shape() || base->InputDefs()[0]->Shape()->dim_size() < 2) continue;
+
+    const auto* x_type = base->InputDefs()[0]->TypeAsProto();
+    if (!x_type || !x_type->has_tensor_type()) continue;
+    const auto float_type = x_type->tensor_type().elem_type();
+    if (float_type != ONNX_NAMESPACE::TensorProto::FLOAT16 && float_type != ONNX_NAMESPACE::TensorProto::FLOAT)
+      continue;
+    bool types_ok = true;
+    for (const auto* arg : {base->InputDefs()[2], down->InputDefs()[1], up->InputDefs()[1]}) {
+      const auto* type = arg->TypeAsProto();
+      types_ok &= type && type->has_tensor_type() && type->tensor_type().elem_type() == float_type;
+    }
+    if (!types_ok) continue;
 
     // MatMulNBits also accepts legacy flattened weights. Leave those graphs
     // alone until the fused kernel supports that representation.

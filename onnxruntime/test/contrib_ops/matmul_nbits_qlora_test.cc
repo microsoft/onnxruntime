@@ -15,7 +15,8 @@
 namespace onnxruntime::test {
 #if defined(USE_WEBGPU) && !defined(DISABLE_CONTRIB_OPS)
 
-TEST(MatMulNBitsQLoRA, EmptyAndActiveAdapters) {
+template <typename T>
+void RunEmptyAndActiveAdapters() {
   for (const char* mode : {"auto", "fuse_down", "fuse_up"}) {
     for (int64_t m : {1, 37}) {
       for (auto ranks : {std::pair{0, 0}, {0, 1}, {32, 0}, {32, 1}}) {
@@ -24,15 +25,15 @@ TEST(MatMulNBitsQLoRA, EmptyAndActiveAdapters) {
         OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
         test.AddAttribute<int64_t>("K", 64);
         test.AddAttribute<int64_t>("N", 128);
-        test.AddInput<MLFloat16>("X", {1, m, 64}, std::vector<MLFloat16>(m * 64, MLFloat16(0.5f)));
+        test.AddInput<T>("X", {1, m, 64}, std::vector<T>(m * 64, T(0.5f)));
         test.AddInput<uint8_t>("W", {128, 2, 16}, std::vector<uint8_t>(4096, 0x99), true);
-        test.AddInput<MLFloat16>("S", {128, 2}, std::vector<MLFloat16>(256, MLFloat16(0.03125f)), true);
+        test.AddInput<T>("S", {128, 2}, std::vector<T>(256, T(0.03125f)), true);
         test.AddInput<uint8_t>("AQ", {ranks.first, 2, 32}, std::vector<uint8_t>(ranks.first * 64, 129));
-        test.AddInput<MLFloat16>("AS", {32, 2}, std::vector<MLFloat16>(64, MLFloat16(0.03125f)));
+        test.AddInput<T>("AS", {32, 2}, std::vector<T>(64, T(0.03125f)));
         test.AddInput<uint8_t>("BQ", {128, ranks.second, 32}, std::vector<uint8_t>(128 * ranks.second * 32, 129));
-        test.AddInput<MLFloat16>("BS", {128, 1}, std::vector<MLFloat16>(128, MLFloat16(0.0625f)));
+        test.AddInput<T>("BS", {128, 1}, std::vector<T>(128, T(0.0625f)));
         const float expected = ranks.first && ranks.second ? 3.0f : 1.0f;
-        test.AddOutput<MLFloat16>("Y", {1, m, 128}, std::vector<MLFloat16>(m * 128, MLFloat16(expected)));
+        test.AddOutput<T>("Y", {1, m, 128}, std::vector<T>(m * 128, T(expected)));
         SessionOptions options;
         ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.webgpu.lora_fusion_mode", mode));
         test.Config(options);
@@ -43,6 +44,9 @@ TEST(MatMulNBitsQLoRA, EmptyAndActiveAdapters) {
     }
   }
 }
+
+TEST(MatMulNBitsQLoRA, EmptyAndActiveAdapters) { RunEmptyAndActiveAdapters<MLFloat16>(); }
+TEST(MatMulNBitsQLoRA, EmptyAndActiveAdaptersFp32) { RunEmptyAndActiveAdapters<float>(); }
 
 TEST(MatMulNBitsQLoRA, RejectsUnsupportedAdapterShapeAndBits) {
   for (bool wrong_bits : {false, true}) {
@@ -69,7 +73,8 @@ TEST(MatMulNBitsQLoRA, RejectsUnsupportedAdapterShapeAndBits) {
   }
 }
 
-TEST(MatMulNBitsQLoRA, QuantizedPrefillAndReusedInput) {
+template <typename T>
+void RunQuantizedPrefillAndReusedInput() {
   for (int64_t m : {1, 3, 4, 65}) {
     for (int64_t accuracy : {0, 4}) {
       OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
@@ -79,24 +84,106 @@ TEST(MatMulNBitsQLoRA, QuantizedPrefillAndReusedInput) {
       test.AddAttribute<int64_t>("K", k);
       test.AddAttribute<int64_t>("N", n);
       test.AddAttribute<int64_t>("accuracy_level", accuracy);
-      std::vector<MLFloat16> x(batches * m * k);
-      std::vector<MLFloat16> expected(batches * m * n);
+      std::vector<T> x(batches * m * k);
+      std::vector<T> expected(batches * m * n);
       for (int64_t row = 0; row < batches * m; ++row) {
         const float value = row % 2 == 0 ? 0.5f : -0.25f;
-        std::fill_n(x.begin() + row * k, k, MLFloat16(value));
-        std::fill_n(expected.begin() + row * n, n, MLFloat16(value * 24.0f));
+        std::fill_n(x.begin() + row * k, k, T(value));
+        std::fill_n(expected.begin() + row * n, n, T(value * 24.0f));
       }
-      test.AddInput<MLFloat16>("X", {batches, m, k}, x);
+      test.AddInput<T>("X", {batches, m, k}, x);
       test.AddInput<uint8_t>("W", {n, k / 32, 16}, std::vector<uint8_t>(n * k / 2, 0x99), true);
-      test.AddInput<MLFloat16>("S", {n, k / 32}, std::vector<MLFloat16>(n * k / 32, MLFloat16(0.03125f)), true);
+      test.AddInput<T>("S", {n, k / 32}, std::vector<T>(n * k / 32, T(0.03125f)), true);
       test.AddInput<uint8_t>("AQ", {32, k / 32, 32}, std::vector<uint8_t>(32 * k, 129));
-      test.AddInput<MLFloat16>("AS", {32, k / 32}, std::vector<MLFloat16>(k, MLFloat16(0.03125f)));
+      test.AddInput<T>("AS", {32, k / 32}, std::vector<T>(k, T(0.03125f)));
       test.AddInput<uint8_t>("BQ", {n, 1, 32}, std::vector<uint8_t>(n * 32, 129));
-      test.AddInput<MLFloat16>("BS", {n, 1}, std::vector<MLFloat16>(n, MLFloat16(0.0625f)));
-      test.AddOutput<MLFloat16>("Y", {batches, m, n}, expected);
+      test.AddInput<T>("BS", {n, 1}, std::vector<T>(n, T(0.0625f)));
+      test.AddOutput<T>("Y", {batches, m, n}, expected);
       std::vector<std::unique_ptr<IExecutionProvider>> eps;
       eps.push_back(DefaultWebGpuExecutionProvider());
       test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+    }
+  }
+}
+
+TEST(MatMulNBitsQLoRA, QuantizedPrefillAndReusedInput) { RunQuantizedPrefillAndReusedInput<MLFloat16>(); }
+TEST(MatMulNBitsQLoRA, QuantizedPrefillAndReusedInputFp32) { RunQuantizedPrefillAndReusedInput<float>(); }
+
+TEST(MatMulNBitsQLoRA, Fp32Numerics) {
+  struct Shape {
+    int64_t m, k, n, batch;
+  };
+  for (const auto shape : {Shape{1, 64, 128, 1}, Shape{1, 2048, 36, 1}, Shape{1, 2048, 64, 1}, Shape{1, 8192, 132, 1},
+                           Shape{2, 2048, 36, 2}, Shape{37, 2048, 132, 2}, Shape{128, 3072, 64, 1}}) {
+    const auto [m, k, n, batch] = shape;
+    SCOPED_TRACE(MakeString("M=", m, ", K=", k, ", N=", n, ", batch=", batch));
+    std::vector<float> x(batch * m * k), as(k), bs(n), expected(batch * m * n);
+    std::vector<uint8_t> aq(32 * k), bq(n * 32);
+    for (int64_t row = 0; row < batch * m; ++row) {
+      for (int64_t col = 0; col < k; ++col) {
+        // Exactly representable by DP4A quantization, including zero rows.
+        const int value = col % 128 == 0 ? 127 : static_cast<int>((row * 19 + col * 11) % 255) - 127;
+        x[row * k + col] = row % 7 == 6 ? 0.0f : value / 128.0f;
+      }
+    }
+    for (int64_t r = 0; r < 32; ++r) {
+      for (int64_t col = 0; col < k; ++col)
+        aq[r * k + col] = static_cast<uint8_t>(96 + (r * 17 + col * 13) % 65);
+      for (int64_t block = 0; block < k / 32; ++block)
+        as[r * (k / 32) + block] = 0.001234567f * (1 + (r + block) % 4);
+    }
+    for (int64_t col = 0; col < n; ++col) {
+      bs[col] = 0.002345678f * (1 + col % 3);
+      for (int64_t r = 0; r < 32; ++r)
+        bq[col * 32 + r] = static_cast<uint8_t>(112 + (col * 7 + r * 3) % 33);
+    }
+    // Independent dense FP64 reference, rounding weights and intermediate T
+    // to FP32. Non-half-representable scales detect accidental FP16 arithmetic.
+    for (int64_t row = 0; row < batch * m; ++row) {
+      double base = 0;
+      for (int64_t col = 0; col < k; ++col) base += x[row * k + col] * 0.03125;
+      std::vector<float> t(32);
+      for (int64_t r = 0; r < 32; ++r) {
+        double sum = 0;
+        for (int64_t col = 0; col < k; ++col) {
+          const float weight = (static_cast<int>(aq[r * k + col]) - 128) * as[r * (k / 32) + col / 32];
+          sum += static_cast<double>(x[row * k + col]) * weight;
+        }
+        t[r] = static_cast<float>(sum);
+      }
+      for (int64_t col = 0; col < n; ++col) {
+        double delta = 0;
+        for (int64_t r = 0; r < 32; ++r) {
+          const float weight = (static_cast<int>(bq[col * 32 + r]) - 128) * bs[col];
+          delta += static_cast<double>(t[r]) * weight;
+        }
+        expected[row * n + col] = static_cast<float>(base) + static_cast<float>(delta);
+      }
+    }
+    for (const char* mode : {"auto", "fuse_down", "fuse_up"}) {
+      for (int64_t accuracy : {0, 4}) {
+        SCOPED_TRACE(MakeString(mode, ", accuracy=", accuracy));
+        OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
+        test.AddAttribute<int64_t>("K", k);
+        test.AddAttribute<int64_t>("N", n);
+        test.AddAttribute<int64_t>("accuracy_level", accuracy);
+        test.AddInput<float>("X", {batch, m, k}, x);
+        test.AddInput<uint8_t>("W", {n, k / 32, 16}, std::vector<uint8_t>(n * k / 2, 0x99), true);
+        test.AddInput<float>("S", {n, k / 32}, std::vector<float>(n * k / 32, 0.03125f), true);
+        test.AddInput<uint8_t>("AQ", {32, k / 32, 32}, aq);
+        test.AddInput<float>("AS", {32, k / 32}, as);
+        test.AddInput<uint8_t>("BQ", {n, 1, 32}, bq);
+        test.AddInput<float>("BS", {n, 1}, bs);
+        test.AddOutput<float>("Y", {batch, m, n}, expected);
+        test.SetOutputAbsErr("Y", 0.00001f);
+        test.SetOutputRelErr("Y", 0.00001f);
+        SessionOptions options;
+        ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.webgpu.lora_fusion_mode", mode));
+        test.Config(options);
+        std::vector<std::unique_ptr<IExecutionProvider>> eps;
+        eps.push_back(DefaultWebGpuExecutionProvider());
+        test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+      }
     }
   }
 }

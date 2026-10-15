@@ -9,6 +9,7 @@
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/webgpu_supported_types.h"
 
 namespace onnxruntime::contrib::webgpu {
 
@@ -17,8 +18,8 @@ void GenerateLoRADown(ShaderHelper& shader, const std::string& base_groups) {
   shader.AddInput("lora_at");
   shader.AddOutput("lora_down", ShaderUsage::UseValueTypeAlias);
   shader.AdditionalImplementation() << R"(
-var<workgroup> lora_x_tile: array<vec4<f16>, 256>;
-var<workgroup> lora_a_tile: array<vec4<f16>, 256>;
+var<workgroup> lora_x_tile: array<lora_down_value_t, 256>;
+var<workgroup> lora_a_tile: array<lora_down_value_t, 256>;
 )";
   shader.MainFunctionBody() << "let lora_base_groups = " << base_groups << ";\n"
                             << R"(
@@ -28,9 +29,9 @@ if (workgroup_idx >= lora_base_groups) {
   let k4_local = local_idx % 8u;
   let row = group * 32u + row_local;
   let rank_base = k4_local * 4u;
-  var acc = vec4<f16>(0);
+  var acc = lora_down_value_t(0);
   for (var start = 0u; start < uniforms.K / 4u; start += 8u) {
-    var xv = vec4<f16>(0);
+    var xv = lora_down_value_t(0);
     if (row < uniforms.M * uniforms.batch_count) {
       xv = lora_x[row * (uniforms.K / 4u) + start + k4_local];
     }
@@ -43,10 +44,10 @@ if (workgroup_idx >= lora_base_groups) {
       let a1 = lora_a_tile[(rank_base + 1u) * 8u + kk];
       let a2 = lora_a_tile[(rank_base + 2u) * 8u + kk];
       let a3 = lora_a_tile[(rank_base + 3u) * 8u + kk];
-      acc = vec4<f16>(a0.x, a1.x, a2.x, a3.x) * x.x + acc;
-      acc = vec4<f16>(a0.y, a1.y, a2.y, a3.y) * x.y + acc;
-      acc = vec4<f16>(a0.z, a1.z, a2.z, a3.z) * x.z + acc;
-      acc = vec4<f16>(a0.w, a1.w, a2.w, a3.w) * x.w + acc;
+      acc = lora_down_value_t(a0.x, a1.x, a2.x, a3.x) * x.x + acc;
+      acc = lora_down_value_t(a0.y, a1.y, a2.y, a3.y) * x.y + acc;
+      acc = lora_down_value_t(a0.z, a1.z, a2.z, a3.z) * x.z + acc;
+      acc = lora_down_value_t(a0.w, a1.w, a2.w, a3.w) * x.w + acc;
     }
     workgroupBarrier();
   }
@@ -176,7 +177,7 @@ Status ApplyTransposedLoRA(onnxruntime::webgpu::ComputeContext& context, const T
   auto down_shape = x->Shape().AsShapeVector();
   down_shape.back() = 32;
   auto t = context.CreateGPUTensor(x->DataType(), TensorShape(down_shape));
-  if (fuse_up) {
+  const auto compute_down = [&]() -> Status {
     if (use_gemv) {
       LoRAGemvProgram down;
       down.AddInputs({{x, ProgramTensorMetadataDependency::Type, 4},
@@ -196,31 +197,31 @@ Status ApplyTransposedLoRA(onnxruntime::webgpu::ComputeContext& context, const T
           .AddUniformVariables({{rows}, {narrow<uint32_t>(k)}, {1u}});
       ORT_RETURN_IF_ERROR(context.RunProgram(down));
     }
+    return Status::OK();
+  };
+  if (fuse_up) {
+    ORT_RETURN_IF_ERROR(compute_down());
     return ApplyMatMulNBits(x, weight, scales, nullptr, nullptr, k, n, 32, accuracy_level, 4,
                             context, y, 0, nullptr, 0, &t, bt, nullptr, nullptr, true);
   }
   auto base = context.CreateGPUTensor(y->DataType(), y->Shape());
-  if (use_gemv) {
+  // FP32 can select DP4A even at M=1. Keep that base policy when the
+  // floating joint down kernel would otherwise replace it.
+  const bool base_dp4a = CanApplyDP4AMatrixMatMulNBits(
+      context, accuracy_level, 32, narrow<uint32_t>(n), narrow<uint32_t>(k), 4, m, false, y);
+  if (use_gemv && !base_dp4a) {
     ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, weight, scales, nullptr, nullptr, k, n, 32, accuracy_level, 4,
                                          context, &base, 0, nullptr, 0, nullptr, nullptr, at, &t));
   } else if (m >= kMinMForTileOptimization && context.AdapterInfo().vendor == std::string_view{"nvidia"} &&
-             CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, 32, narrow<uint32_t>(n), narrow<uint32_t>(k),
-                                           4, m, false, y)) {
-    // Preserve DP4A's activation quantization and compute T from original FP16 X
+             base_dp4a) {
+    // Preserve DP4A's activation quantization and compute T from original X
     // in extra workgroups of the base dispatch.
     ORT_RETURN_IF_ERROR(ApplyDP4AMatrixMatMulNBits(x, weight, scales, nullptr, nullptr, rows / m, m, m,
                                                    narrow<uint32_t>(n), narrow<uint32_t>(k), 32, 0,
                                                    kMinMForTileOptimization, 4, context, &base, 0,
                                                    nullptr, nullptr, nullptr, at, &t));
   } else {
-    LoRADownProgram down;
-    down.AddInputs({{x, ProgramTensorMetadataDependency::Type, 4},
-                    {at, ProgramTensorMetadataDependency::Type, 4}})
-        .AddOutput({&t, ProgramTensorMetadataDependency::Type, 4})
-        .SetWorkgroupSize(256)
-        .SetDispatchGroupSize(CeilDiv(rows, 32u))
-        .AddUniformVariables({{rows}, {narrow<uint32_t>(k)}, {1u}});
-    ORT_RETURN_IF_ERROR(context.RunProgram(down));
+    ORT_RETURN_IF_ERROR(compute_down());
     ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, weight, scales, nullptr, nullptr, k, n, 32, accuracy_level, 4,
                                          context, &base));
   }
@@ -300,7 +301,7 @@ class MatMulNBitsLoRA final : public WebGpuKernel {
 ONNX_OPERATOR_KERNEL_EX(
     MatMulNBitsLoRA, kMSDomain, 1, kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>())
+        .TypeConstraint("T", WebGpuSupportedFloatTypes())
         .TypeConstraint("TQ", DataTypeImpl::GetTensorType<uint8_t>()),
     MatMulNBitsLoRA);
 

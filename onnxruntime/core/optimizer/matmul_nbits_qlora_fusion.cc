@@ -52,9 +52,13 @@ bool ZeroDefault(const Graph& graph, const NodeArg& q, const NodeArg& scales) {
   Initializer qdata(graph, *qp, graph.ModelPath());
   Initializer sdata(graph, *sp, graph.ModelPath());
   const auto bytes = qdata.DataAsByteSpan();
+  if (!std::all_of(bytes.begin(), bytes.end(), [](uint8_t value) { return value == 128; })) return false;
+  if (sp->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
+    const auto values = sdata.DataAsSpan<float>();
+    return std::all_of(values.begin(), values.end(), [](float value) { return std::isfinite(value); });
+  }
   const auto values = sdata.DataAsSpan<MLFloat16>();
-  return std::all_of(bytes.begin(), bytes.end(), [](uint8_t value) { return value == 128; }) &&
-         std::all_of(values.begin(), values.end(), [](MLFloat16 value) { return std::isfinite(value.ToFloat()); });
+  return std::all_of(values.begin(), values.end(), [](MLFloat16 value) { return std::isfinite(value.ToFloat()); });
 }
 
 void EmptyDefault(Graph& graph, NodeArg& arg, int axis) {
@@ -103,11 +107,16 @@ Status MatMulNBitsQLoRAFusion::ApplyImpl(Graph& graph, bool& modified, int graph
         const_cast<NodeArg*>(base->InputDefs()[2]), const_cast<NodeArg*>(down->InputDefs()[1]),
         const_cast<NodeArg*>(down->InputDefs()[2]), const_cast<NodeArg*>(up->InputDefs()[1]),
         const_cast<NodeArg*>(up->InputDefs()[2])};
+    const auto* x_type = inputs[0]->TypeAsProto();
+    if (!x_type || !x_type->has_tensor_type()) continue;
+    const auto float_type = x_type->tensor_type().elem_type();
+    if (float_type != ONNX_NAMESPACE::TensorProto::FLOAT16 && float_type != ONNX_NAMESPACE::TensorProto::FLOAT)
+      continue;
     bool types_ok = true;
     for (size_t i = 0; i < inputs.size(); ++i) {
       const auto* type = inputs[i]->TypeAsProto();
       const auto expected =
-          (i == 1 || i == 3 || i == 5) ? ONNX_NAMESPACE::TensorProto::UINT8 : ONNX_NAMESPACE::TensorProto::FLOAT16;
+          (i == 1 || i == 3 || i == 5) ? ONNX_NAMESPACE::TensorProto::UINT8 : float_type;
       types_ok &= type && type->has_tensor_type() && type->tensor_type().elem_type() == expected;
     }
     if (!types_ok || !inputs[0]->Shape() || inputs[0]->Shape()->dim_size() < 2 || !Shape(*inputs[1], {n, k / 32, 16}) ||

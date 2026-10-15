@@ -2,14 +2,20 @@
 
 This opt-in prototype replaces `MatMulNBits(X, W) + MatMul(MatMul(X, A), B)` with
 one `com.microsoft.MatMulNBitsLoRA` node during session optimization. It retains
-the packed base weights and the replaceable FP16 adapter inputs. It does not
+the packed base weights and the replaceable FP16 or FP32 adapter inputs. It does not
 merge or requantize the adapter into the base weights, or change the source
 model file.
 
-The current matcher supports FP16 rank-32 adapters, INT4 base weights with block
+The current matcher supports FP16 and FP32 rank-32 adapters, INT4 base weights with block
 size 32, an implicit zero point, no base bias, and no separate adapter scaling
 node. The down projection must use the same activation as the base projection,
 and intermediate outputs must have no other consumers or graph outputs.
+
+All floating tensors in one operator share a type: FP16 models use FP16 adapter
+weights and base scales; FP32 models use FP32 adapter weights and base scales.
+There are no implicit casts between those types. `MatMulNBitsQLoRA` has the same
+floating-type contract but stores adapter weights as INT8 with scales matching
+the model type. Both operators support adapter on/off and prefill/decode.
 
 ## Enable in native GenAI
 
@@ -38,8 +44,8 @@ graph for a matched comparison.
 
 With an adapter, the kernel computes `T = X * A`, then incorporates `T * B`
 and the addition into the base kernel's output computation. The small
-intermediate `T` remains FP16. The base result and adapter result are rounded
-separately before addition. Decode uses two GPU dispatches per projection.
+intermediate `T` uses the model type. The base result and adapter result are rounded
+separately before addition. FP16 NVIDIA decode uses two GPU dispatches per projection.
 DP4A prefill retains the existing activation quantization dispatch, so it uses
 three. Subgroup matrix base kernels use a separate output epilogue fallback.
 
@@ -61,14 +67,17 @@ chooses between the two existing implementations; it adds no shader or GPU
 dispatch. Explicit `fuse_down` and `fuse_up` settings force that path for all
 input sizes and remain available for comparisons.
 
-On NVIDIA decode (one input row, K from 2048 through 8192), `fuse_down` uses
+On NVIDIA decode (one input row, K from 2048 through 8192), when the base uses
+floating arithmetic, `fuse_down` uses
 `MatMulNBitsLoRADown` with eight additional workgroups that calculate T once,
 followed by `LoRAOutputVec4`. `fuse_up` uses `LoRADownGemv`, followed by
-`MatMulNBitsLoRAUp`. Both use the same FP32 GEMV reduction and FP16 T, with
+`MatMulNBitsLoRAUp`. Both use the same FP32 GEMV reduction and model-type T, with
 128 threads per producer workgroup. The standalone output shader retains
 64 threads and one output per thread. Both output implementations load Bt and
 T as vec4 along rank, preserving scalar rank accumulation order and separate
-FP16 rounding before the base/adapter addition.
+model-type rounding before the base/adapter addition. FP32 decode can select
+DP4A for the base even at M=1. That case keeps the ordinary base DP4A dispatch
+and computes T separately, preserving the base activation-quantization policy.
 
 DP4A prefill retains its activation quantization dispatch. `fuse_down` adds
 the tiled down projection to the base dispatch; `fuse_up` runs that same down

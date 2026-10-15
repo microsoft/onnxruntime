@@ -10,13 +10,14 @@
 #include "core/common/safeint.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/webgpu_supported_types.h"
 
 namespace onnxruntime::contrib::webgpu {
 
 void GenerateQLoRADown(ShaderHelper& shader, const std::string& base_groups, const std::string& x_value,
                        bool acc_f32, bool use_subgroups) {
   if (use_subgroups) {
-    shader.AdditionalImplementation() << "alias qlora_acc_t = " << (acc_f32 ? "f32" : "f16") << ";\n";
+    shader.AdditionalImplementation() << "alias qlora_acc_t = " << (acc_f32 ? "f32" : "output_element_t") << ";\n";
     auto& body = shader.MainFunctionBody();
     body << "let qlora_base_groups = " << base_groups << ";\n"
          << R"(
@@ -40,8 +41,8 @@ if (workgroup_idx >= qlora_base_groups) {
            << "let scale" << r << " = lora_a_scales[rank" << r << " * (uniforms.K / 32u) + k / 32u];\n"
            << "var sum" << r << " = qlora_acc_t(0);\n";
       for (uint32_t i = 0; i < 4; ++i) {
-        body << "sum" << r << " += dot(x" << i << ", vec4<qlora_acc_t>((vec4<f16>(unpack4xU8(packed"
-             << r << "[" << i << "])) - vec4<f16>(128)) * scale" << r << "));\n";
+        body << "sum" << r << " += dot(x" << i << ", vec4<qlora_acc_t>((vec4<output_element_t>(unpack4xU8(packed"
+             << r << "[" << i << "])) - vec4<output_element_t>(128)) * scale" << r << "));\n";
       }
       body << "partial" << r << " += sum" << r << ";\n";
     }
@@ -51,17 +52,17 @@ if (workgroup_idx >= qlora_base_groups) {
   let result0 = subgroupAdd(f32(partial0));
   let result1 = subgroupAdd(f32(partial1));
   if (lane == 0u) {
-    lora_down[rank_base + rank_local] = f16(result0);
-    lora_down[rank_base + rank_local + 4u] = f16(result1);
+    lora_down[rank_base + rank_local] = output_element_t(result0);
+    lora_down[rank_base + rank_local + 4u] = output_element_t(result1);
   }
   return;
 }
 )";
     return;
   }
-  shader.AdditionalImplementation() << "alias qlora_acc_t = " << (acc_f32 ? "f32" : "f16") << ";\n"
+  shader.AdditionalImplementation() << "alias qlora_acc_t = " << (acc_f32 ? "f32" : "output_element_t") << ";\n"
                                     << R"(
-var<workgroup> qlora_x_tile: array<vec4<f16>, 128>;
+var<workgroup> qlora_x_tile: array<vec4<output_element_t>, 128>;
 var<workgroup> qlora_partials: array<array<qlora_acc_t, 32>, 8>;
 )";
   shader.MainFunctionBody() << "let qlora_base_groups = " << base_groups << ";\n"
@@ -73,7 +74,7 @@ if (workgroup_idx >= qlora_base_groups) {
   // Match the generic INT8 MatMulNBits tile, dot grouping and reduction order.
   for (var start = 0u; start < uniforms.K; start += 512u) {
     let k4 = start / 4u + local_idx;
-    var xv = vec4<f16>(0);
+    var xv = vec4<output_element_t>(0);
     if (k4 < uniforms.K / 4u) { xv = )"
                             << x_value << R"(; }
     qlora_x_tile[local_idx] = xv;
@@ -86,7 +87,7 @@ if (workgroup_idx >= qlora_base_groups) {
         let scale = lora_a_scales[rank * (uniforms.K / 32u) + k / 32u];
         var sum = qlora_acc_t(0);
         for (var i = 0u; i < 4u; i++) {
-          let bv = (vec4<f16>(unpack4xU8(packed[i])) - vec4<f16>(128)) * scale;
+          let bv = (vec4<output_element_t>(unpack4xU8(packed[i])) - vec4<output_element_t>(128)) * scale;
           sum += dot(vec4<qlora_acc_t>(qlora_x_tile[lane * 4u + i]), vec4<qlora_acc_t>(bv));
         }
         qlora_partials[rank_offset + rank_local][lane] += sum;
@@ -97,7 +98,7 @@ if (workgroup_idx >= qlora_base_groups) {
   if (local_idx < 8u) {
     var value = qlora_acc_t(0);
     for (var i = 0u; i < 32u; i++) { value += qlora_partials[local_idx][i]; }
-    lora_down[rank_base + local_idx] = f16(value);
+    lora_down[rank_base + local_idx] = output_element_t(value);
   }
   return;
 }
@@ -105,13 +106,13 @@ if (workgroup_idx >= qlora_base_groups) {
 }
 
 void GenerateQLoRAUp(ShaderHelper& shader, bool acc_f32, bool vector_output) {
-  shader.AdditionalImplementation() << "alias qlora_acc_t = " << (acc_f32 ? "f32" : "f16") << ";\n"
+  shader.AdditionalImplementation() << "alias qlora_acc_t = " << (acc_f32 ? "f32" : "output_element_t") << ";\n"
                                     << R"(
-fn qlora_weight(col: u32, r4: u32) -> vec4<f16> {
+fn qlora_weight(col: u32, r4: u32) -> vec4<output_element_t> {
   let packed = lora_b[col * 2u + r4 / 4u][r4 % 4u];
-  return (vec4<f16>(unpack4xU8(packed)) - vec4<f16>(128)) * lora_b_scales[col];
+  return (vec4<output_element_t>(unpack4xU8(packed)) - vec4<output_element_t>(128)) * lora_b_scales[col];
 }
-fn qlora_delta(row: u32, col: u32) -> f16 {
+fn qlora_delta(row: u32, col: u32) -> output_element_t {
   var delta = qlora_acc_t(0);
   // The original K=32 INT8 up projection uses wide tiles at M>=4.
   if (uniforms.M >= 4u) {
@@ -133,12 +134,12 @@ fn qlora_delta(row: u32, col: u32) -> f16 {
     // The remaining generic-kernel partials are zero, including their sign.
     delta += qlora_acc_t(0);
   }
-  return f16(delta);
+  return output_element_t(delta);
 }
 )";
   if (vector_output) {
     shader.AdditionalImplementation() << R"(
-fn qlora_delta4(row: u32, col: u32) -> vec4<f16> {
+fn qlora_delta4(row: u32, col: u32) -> vec4<output_element_t> {
   var delta = vec4<qlora_acc_t>(0);
   for (var r4 = 0u; r4 < 8u; r4 += 2u) {
     let a0 = vec4<qlora_acc_t>(lora_t[row * 8u + r4]);
@@ -154,7 +155,7 @@ fn qlora_delta4(row: u32, col: u32) -> vec4<f16> {
         dot(a1, vec4<qlora_acc_t>(qlora_weight(col + 2u, r4 + 1u))),
         dot(a1, vec4<qlora_acc_t>(qlora_weight(col + 3u, r4 + 1u))));
   }
-  return vec4<f16>(delta);
+  return vec4<output_element_t>(delta);
 }
 )";
   }
@@ -174,7 +175,7 @@ class QLoRAOutputProgram final : public Program<QLoRAOutputProgram> {
     shader.AddInput("lora_t");
     shader.AddInput("lora_b");
     shader.AddInput("lora_b_scales");
-    shader.AddOutput("output");
+    shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
     GenerateQLoRAUp(shader, acc_f32_);
     shader.MainFunctionBody()
         << "if (global_idx >= uniforms.size) { return; }\n"
@@ -273,8 +274,12 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     auto t = context.CreateGPUTensor(x->DataType(), TensorShape(t_shape));
     const auto m = narrow<uint32_t>(x->Shape()[x->Shape().NumDimensions() - 2]);
     const bool fuse_up = fuse_up_ || (automatic_ && m > 1);
+    // FP32 may select DP4A even for M=1. The joint floating-point down
+    // shader must not replace that base projection's activation quantization.
+    const bool base_dp4a = CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, 32, narrow<uint32_t>(n_),
+                                                         narrow<uint32_t>(k_), 4, m, false, y);
     const bool joint_down = !fuse_up && x->Shape().Size() == k_ && k_ >= 2048 && k_ <= 8192 &&
-                            context.AdapterInfo().vendor == std::string_view{"nvidia"};
+                            context.AdapterInfo().vendor == std::string_view{"nvidia"} && !base_dp4a;
     if (joint_down) {
       auto base = context.CreateGPUTensor(y->DataType(), y->Shape());
       ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, &base, 0,
@@ -301,7 +306,7 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     std::optional<SubgroupMatrixConfig> up_config;
     const bool subgroup_up =
         CanApplySubgroupMatrixMatMulNBits(context, 0, 32, narrow<uint32_t>(helper.OutputOffsets().size()),
-                                          narrow<uint32_t>(n_), 32, 8, true, up_config, m);
+                                          narrow<uint32_t>(n_), 32, 8, x->IsDataType<MLFloat16>(), up_config, m);
     if (fuse_up && !subgroup_up) {
       return ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, y, 0, nullptr, 0, &t,
                               bq, nullptr, nullptr, true, bs, nullptr, &quantized_x);
@@ -334,7 +339,7 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
 
 ONNX_OPERATOR_KERNEL_EX(MatMulNBitsQLoRA, kMSDomain, 1, kWebGpuExecutionProvider,
                         (*KernelDefBuilder::Create())
-                            .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>())
+                            .TypeConstraint("T", WebGpuSupportedFloatTypes())
                             .TypeConstraint("TQ", DataTypeImpl::GetTensorType<uint8_t>()),
                         MatMulNBitsQLoRA);
 

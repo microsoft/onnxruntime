@@ -16,56 +16,57 @@ namespace {
 constexpr double kFp16FusionAbsTolerance = 1e-4;
 constexpr double kFp16FusionRelTolerance = 2.0 / 1024.0;
 
+template <typename T = MLFloat16>
 void BuildLoRA(ModelTestBuilder& builder, int64_t m = 1, bool zeros = false,
                bool expose_intermediate = false, bool different_x = false, int64_t rank = 32,
                bool flattened_weights = false, bool transposed = false, int64_t n = 128,
                int isolate = 0, int64_t k_override = 0, int64_t batch = 1) {
   const int64_t k = k_override ? k_override : transposed ? 2048
                                                          : 128;
-  auto* x = builder.MakeInput<MLFloat16>({batch, m, k}, MLFloat16(-0.5f), MLFloat16(0.5f));
+  auto* x = builder.MakeInput<T>({batch, m, k}, T(-0.5f), T(0.5f));
   auto weight_shape = flattened_weights ? std::vector<int64_t>{n * k / 2} : std::vector<int64_t>{n, k / 32, 16};
   auto* w = builder.MakeInitializer<uint8_t>(weight_shape, isolate ? uint8_t{0x88} : uint8_t{0}, isolate ? uint8_t{0x89} : uint8_t{255});
-  auto* scales = builder.MakeInitializer<MLFloat16>({n, k / 32}, MLFloat16(0.03125f), MLFloat16(0.0625f));
-  auto* a = builder.MakeInput<MLFloat16>(transposed ? std::vector<int64_t>{rank, k} : std::vector<int64_t>{k, rank}, MLFloat16(-0.0625f), MLFloat16(0.0625f));
-  auto* b = builder.MakeInput<MLFloat16>(transposed ? std::vector<int64_t>{n, rank} : std::vector<int64_t>{rank, n}, MLFloat16(-0.0625f), MLFloat16(0.0625f));
+  auto* scales = builder.MakeInitializer<T>({n, k / 32}, T(0.03125f), T(0.0625f));
+  auto* a = builder.MakeInput<T>(transposed ? std::vector<int64_t>{rank, k} : std::vector<int64_t>{k, rank}, T(-0.0625f), T(0.0625f));
+  auto* b = builder.MakeInput<T>(transposed ? std::vector<int64_t>{n, rank} : std::vector<int64_t>{rank, n}, T(-0.0625f), T(0.0625f));
   if (isolate == 1 || isolate == 2 || isolate == 4) {
     auto* arg = isolate == 2 ? a : b;
-    auto values = builder.feeds_.at(arg->Name()).GetMutable<Tensor>()->MutableDataAsSpan<MLFloat16>();
-    std::fill(values.begin(), values.end(), MLFloat16(0.0f));
+    auto values = builder.feeds_.at(arg->Name()).GetMutable<Tensor>()->MutableDataAsSpan<T>();
+    std::fill(values.begin(), values.end(), T(0.0f));
     const int64_t cols = arg->Shape()->dim(1).dim_value();
-    for (int64_t r = 0; r < rank; ++r) values[r * cols + r] = MLFloat16(1.0f);
+    for (int64_t r = 0; r < rank; ++r) values[r * cols + r] = T(1.0f);
   }
   if (isolate == 4) {
-    auto xv = builder.feeds_.at(x->Name()).GetMutable<Tensor>()->MutableDataAsSpan<MLFloat16>();
-    auto av = builder.feeds_.at(a->Name()).GetMutable<Tensor>()->MutableDataAsSpan<MLFloat16>();
-    std::fill(xv.begin(), xv.end(), MLFloat16(0.0f));
-    std::fill(av.begin(), av.end(), MLFloat16(0.0f));
-    xv[0] = MLFloat16(10000.0f);
-    xv[1] = MLFloat16(0.001f);
-    xv[2] = MLFloat16(-10000.0f);
-    xv[3] = MLFloat16(0.001f);
-    for (int i = 0; i < 4; ++i) av[i] = MLFloat16(1.0f);
+    auto xv = builder.feeds_.at(x->Name()).GetMutable<Tensor>()->MutableDataAsSpan<T>();
+    auto av = builder.feeds_.at(a->Name()).GetMutable<Tensor>()->MutableDataAsSpan<T>();
+    std::fill(xv.begin(), xv.end(), T(0.0f));
+    std::fill(av.begin(), av.end(), T(0.0f));
+    xv[0] = T(10000.0f);
+    xv[1] = T(0.001f);
+    xv[2] = T(-10000.0f);
+    xv[3] = T(0.001f);
+    for (int i = 0; i < 4; ++i) av[i] = T(1.0f);
   }
   if (zeros) {
     for (auto* arg : {a, b}) {
       ONNX_NAMESPACE::TensorProto init;
       init.set_name(arg->Name());
-      init.set_data_type(ONNX_NAMESPACE::TensorProto::FLOAT16);
+      init.set_data_type(utils::ToTensorProtoElementType<T>());
       int64_t count = 1;
       for (const auto& dim : arg->Shape()->dim()) {
         init.add_dims(dim.dim_value());
         count *= dim.dim_value();
       }
-      init.set_raw_data(std::string(static_cast<size_t>(count) * sizeof(MLFloat16), '\0'));
+      init.set_raw_data(std::string(static_cast<size_t>(count) * sizeof(T), '\0'));
       builder.graph_.AddInitializedTensor(init);
     }
     builder.graph_.SetInputs({x, a, b});
   }
-  auto* base = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{batch, m, n});
-  auto* t = expose_intermediate ? builder.MakeOutput<MLFloat16>(std::vector<int64_t>{batch, m, rank})
-                                : builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{batch, m, rank});
-  auto* delta = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{batch, m, n});
-  auto* y = builder.MakeOutput<MLFloat16>(std::vector<int64_t>{batch, m, n});
+  auto* base = builder.MakeIntermediate<T>(std::vector<int64_t>{batch, m, n});
+  auto* t = expose_intermediate ? builder.MakeOutput<T>(std::vector<int64_t>{batch, m, rank})
+                                : builder.MakeIntermediate<T>(std::vector<int64_t>{batch, m, rank});
+  auto* delta = builder.MakeIntermediate<T>(std::vector<int64_t>{batch, m, n});
+  auto* y = builder.MakeOutput<T>(std::vector<int64_t>{batch, m, n});
   NodeAttributes attrs;
   for (auto [name, value] : {std::pair{"K", k}, {"N", n}, {"bits", int64_t{4}}, {"block_size", int64_t{32}}}) {
     utils::SetNodeAttribute(utils::MakeAttribute(name, value), attrs);
@@ -73,12 +74,12 @@ void BuildLoRA(ModelTestBuilder& builder, int64_t m = 1, bool zeros = false,
   auto& base_node = builder.AddNode("MatMulNBits", {x, w, scales}, {base}, kMSDomain);
   for (const auto& [name, attr] : attrs) base_node.AddAttributeProto(attr);
   base_node.AddAttribute("accuracy_level", int64_t{4});
-  auto* lora_x = different_x ? builder.MakeInput<MLFloat16>({batch, m, k}, MLFloat16(0.0f), MLFloat16(1.0f)) : x;
+  auto* lora_x = different_x ? builder.MakeInput<T>({batch, m, k}, T(0.0f), T(1.0f)) : x;
   auto* matmul_a = a;
   auto* matmul_b = b;
   if (transposed) {
-    matmul_a = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{k, rank});
-    matmul_b = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{rank, n});
+    matmul_a = builder.MakeIntermediate<T>(std::vector<int64_t>{k, rank});
+    matmul_b = builder.MakeIntermediate<T>(std::vector<int64_t>{rank, n});
     auto& ta = builder.AddNode("Transpose", {a}, {matmul_a});
     auto& tb = builder.AddNode("Transpose", {b}, {matmul_b});
     for (auto* node : {&ta, &tb}) {
@@ -249,13 +250,14 @@ TEST_F(GraphTransformationTests, MatMulNBitsLoRAFusionMatchesWebGpuDecodeAndPref
   }
 }
 
-TEST_F(GraphTransformationTests, MatMulNBitsLoRAFusionSwitchesFeedsAndDefaults) {
+template <typename T>
+void RunLoRASwitchesFeedsAndDefaults(const logging::Logger& logger) {
   if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU unavailable.";
   Model model("LoRA switching", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-              {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, *logger_);
+              {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, logger);
   auto& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
-  BuildLoRA(helper, 1, true);
+  BuildLoRA<T>(helper, 1, true);
   helper.SetGraphOutputs();
   ASSERT_STATUS_OK(graph.Resolve());
   const auto adapters = graph.GetOverridableInitializers();
@@ -283,8 +285,8 @@ TEST_F(GraphTransformationTests, MatMulNBitsLoRAFusionSwitchesFeedsAndDefaults) 
           feeds.erase(name);
         } else {
           auto* tensor = feeds.at(name).GetMutable<Tensor>();
-          auto values = tensor->MutableDataAsSpan<MLFloat16>();
-          std::fill(values.begin(), values.end(), MLFloat16(state == 2 ? -0.03125f : 0.0625f));
+          auto values = tensor->MutableDataAsSpan<T>();
+          std::fill(values.begin(), values.end(), T(state == 2 ? -0.03125f : 0.0625f));
         }
       }
       std::vector<OrtValue> outputs;
@@ -295,6 +297,36 @@ TEST_F(GraphTransformationTests, MatMulNBitsLoRAFusionSwitchesFeedsAndDefaults) 
         EXPECT_EQ(result.first, COMPARE_RESULT::SUCCESS) << "state=" << state << " " << result.second;
       } else {
         expected.push_back(std::move(outputs[0]));
+      }
+    }
+  }
+}
+TEST_F(GraphTransformationTests, MatMulNBitsLoRAFusionSwitchesFeedsAndDefaults) {
+  RunLoRASwitchesFeedsAndDefaults<MLFloat16>(*logger_);
+}
+TEST_F(GraphTransformationTests, MatMulNBitsLoRAFusionSwitchesFeedsAndDefaultsFp32) {
+  RunLoRASwitchesFeedsAndDefaults<float>(*logger_);
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsLoRAFusionFp32Numerics) {
+  if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU unavailable.";
+  for (bool transposed : {false, true}) {
+    for (const char* mode : {"auto", "fuse_down", "fuse_up"}) {
+      for (int64_t m : {1, 2, 37}) {
+        for (int64_t n : {128, 132}) {
+          for (int64_t batch : {1, 2}) {
+            SCOPED_TRACE(MakeString("transposed=", transposed, ", mode=", mode, ", M=", m,
+                                    ", N=", n, ", batch=", batch));
+            RunWebGpuFusionTransformerTest(
+                [=](ModelTestBuilder& b) { BuildLoRA<float>(b, m, true, false, false, 32, false, transposed, n, 0, 2048, batch); },
+                [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckCount(s.GetGraph(), 1)); },
+                TransformerLevel::Level1, TransformerLevel::Level2, 21, 1e-5, 1e-5,
+                std::make_unique<MatMulNBitsLoRAFusion>(), [] { return DefaultWebGpuExecutionProvider(); },
+                [mode](SessionOptions& options) {
+                  ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.webgpu.lora_fusion_mode", mode));
+                });
+          }
+        }
       }
     }
   }
