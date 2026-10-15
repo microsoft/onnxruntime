@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include "core/graph/onnx_protobuf.h"
 
 #include "onnx/defs/shape_inference.h"
@@ -1514,10 +1515,209 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
       )DOC";
 
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    QMoE, 1,
-    OpSchema()
-        .SetDoc(qMoE_ver1_doc)
+static void QMoETypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool allow_int3) {
+  using namespace ONNX_NAMESPACE;
+  const int64_t root_bits = getAttribute(ctx, "expert_weight_bits", 4);
+  const int64_t fc1_bits = getAttribute(ctx, "fc1_expert_weight_bits", root_bits);
+  const int64_t fc2_bits = getAttribute(ctx, "fc2_expert_weight_bits", root_bits);
+  const int64_t fc3_bits = getAttribute(ctx, "fc3_expert_weight_bits", root_bits);
+  for (int64_t bits : {root_bits, fc1_bits, fc2_bits, fc3_bits}) {
+    if (!allow_int3 && bits == 3) {
+      fail_shape_inference("QMoE version 1 does not support INT3; use QMoE version 2.");
+    }
+    if (allow_int3 && bits != 2 && bits != 3 && bits != 4 && bits != 8) {
+      fail_shape_inference("QMoE version 2 supports only expert weight widths 2, 3, 4, and 8.");
+    }
+  }
+  propagateShapeAndTypeFromFirstInput(ctx);
+  if (!allow_int3 || (fc1_bits != 3 && fc2_bits != 3 && fc3_bits != 3)) {
+    return;
+  }
+
+  const auto* quant_type = ctx.getAttribute("quant_type");
+  if (!quant_type || quant_type->s() != "int" || getAttribute(ctx, "weights_prepacked", -1) != 0) {
+    fail_shape_inference("QMoE INT3 requires quant_type='int' and explicit weights_prepacked=0 (raw weights).");
+  }
+  if (getAttribute(ctx, "swiglu_fusion", 0) != 1 || fc3_bits != fc1_bits) {
+    fail_shape_inference("QMoE INT3 requires swiglu_fusion=1 and equal effective FC1/FC3 widths after inheritance.");
+  }
+  const int64_t block_size = getAttribute(ctx, "block_size", 0);
+  if (block_size != 32 && block_size != 64 && block_size != 128) {
+    fail_shape_inference("QMoE INT3 requires block_size 32, 64, or 128.");
+  }
+  auto input_type = [&](size_t index) -> const TypeProto* {
+    return index < ctx.getNumInputs() ? ctx.getInputType(index) : nullptr;
+  };
+  for (size_t index : {8, 9, 10, 13, 15, 16, 17, 18, 19, 20}) {
+    if (input_type(index)) {
+      fail_shape_inference("QMoE INT3 fused raw profile does not accept input ", index, ".");
+    }
+  }
+  const auto* activation = input_type(0);
+  const int activation_type = activation && activation->has_tensor_type() ? activation->tensor_type().elem_type() : 0;
+  if (activation_type && activation_type != TensorProto::FLOAT16 && activation_type != TensorProto::BFLOAT16) {
+    fail_type_inference("QMoE INT3 requires FP16 or BF16 activations.");
+  }
+  auto check_type = [&](size_t index, int expected, bool required) {
+    const auto* type = input_type(index);
+    if (!type) {
+      if (required) {
+        fail_type_inference("QMoE INT3 requires input ", index, ".");
+      }
+      return;
+    }
+    if (!type->has_tensor_type() ||
+        (expected && type->tensor_type().elem_type() && type->tensor_type().elem_type() != expected)) {
+      fail_type_inference("QMoE INT3 input ", index, " has an incompatible tensor element type.");
+    }
+  };
+  for (size_t index : {2, 5, 11, 12}) {
+    check_type(index, TensorProto::UINT8, index == 2 || index == 5);
+  }
+  for (size_t index : {1, 3, 4, 6, 7, 14}) {
+    check_type(index, activation_type, index == 1 || index == 3 || index == 6);
+  }
+  auto shape = [&](size_t index, int rank) -> const TensorShapeProto* {
+    if (!input_type(index) || !hasInputShape(ctx, index)) {
+      return nullptr;
+    }
+    const auto& result = getInputShape(ctx, index);
+    if (result.dim_size() != rank) {
+      fail_shape_inference("QMoE INT3 input ", index, " must have rank ", rank, ".");
+    }
+    for (const auto& dimension : result.dim()) {
+      if (dimension.has_dim_value() && dimension.dim_value() < 0) {
+        fail_shape_inference("QMoE INT3 dimensions must be nonnegative.");
+      }
+    }
+    return &result;
+  };
+  const TensorShapeProto* activation_shape = nullptr;
+  if (hasInputShape(ctx, 0)) {
+    const auto& candidate = getInputShape(ctx, 0);
+    if (candidate.dim_size() != 2 && candidate.dim_size() != 3) {
+      fail_shape_inference("QMoE INT3 input must have rank 2 or 3.");
+    }
+    activation_shape = shape(0, candidate.dim_size());
+  }
+  const auto* fc1 = shape(2, 3);
+  const auto* fc2 = shape(5, 3);
+  using Dimension = TensorShapeProto::Dimension;
+  const Dimension* hidden = activation_shape ? &activation_shape->dim(activation_shape->dim_size() - 1) : nullptr;
+  Dimension experts;
+  if (fc1) experts = fc1->dim(0);
+  Dimension intermediate;
+  if (fc1 && fc1->dim(1).has_dim_value()) {
+    if (fc1->dim(1).dim_value() % 2 != 0) {
+      fail_shape_inference("QMoE INT3 fused FC1 row count must be even.");
+    }
+    intermediate.set_dim_value(fc1->dim(1).dim_value() / 2);
+  }
+  for (const auto* dimension : {hidden, static_cast<const Dimension*>(&intermediate),
+                                static_cast<const Dimension*>(&experts)}) {
+    if (dimension && dimension->has_dim_value() && dimension->dim_value() <= 0) {
+      fail_shape_inference("QMoE INT3 hidden, intermediate, and expert dimensions must be positive.");
+    }
+  }
+  for (const auto* dimension : {hidden, static_cast<const Dimension*>(&intermediate)}) {
+    if (dimension && dimension->has_dim_value() && dimension->dim_value() % block_size != 0) {
+      fail_shape_inference("QMoE INT3 hidden and intermediate sizes must be divisible by block_size.");
+    }
+  }
+  auto match = [](const Dimension& actual, const Dimension* expected, const char* name) {
+    if (expected && expected->has_dim_value() && actual.has_dim_value() &&
+        actual.dim_value() != expected->dim_value()) {
+      fail_shape_inference("QMoE INT3 incompatible ", name, " dimension.");
+    }
+  };
+  auto packed_bytes = [](int64_t count, int64_t bits) {
+    return (count / 8) * bits + ((count % 8) * bits + 7) / 8;
+  };
+  auto match_experts = [&](const Dimension& actual) {
+    match(actual, &experts, "expert count");
+    if (actual.has_dim_value()) {
+      if (actual.dim_value() <= 0) {
+        fail_shape_inference("QMoE INT3 expert count must be positive.");
+      }
+      experts = actual;
+    }
+  };
+  auto projection = [&](const TensorShapeProto* weights, size_t scale_index, size_t zp_index,
+                        size_t bias_index, const Dimension* rows, const Dimension* reduction, int64_t bits) {
+    const auto* scales = shape(scale_index, 3);
+    const auto* zero_points = shape(zp_index, 3);
+    const auto* bias = shape(bias_index, 2);
+    for (const auto* tensor : {weights, scales, zero_points, bias}) {
+      if (tensor) {
+        match_experts(tensor->dim(0));
+        match(tensor->dim(1), rows, "output rows");
+        if (weights) match(tensor->dim(1), &weights->dim(1), "projection metadata rows");
+      }
+    }
+    if (reduction && reduction->has_dim_value()) {
+      Dimension expected;
+      expected.set_dim_value(packed_bytes(reduction->dim_value(), bits));
+      if (weights) match(weights->dim(2), &expected, "packed weight bytes");
+      const int64_t blocks = reduction->dim_value() / block_size;
+      expected.set_dim_value(blocks);
+      if (scales) match(scales->dim(2), &expected, "scale blocks");
+      expected.set_dim_value(packed_bytes(blocks, bits));
+      if (zero_points) match(zero_points->dim(2), &expected, "packed zero-point bytes");
+    }
+  };
+  projection(fc1, 3, 11, 4, fc1 ? &fc1->dim(1) : nullptr, hidden, fc1_bits);
+  projection(fc2, 6, 12, 7, hidden, &intermediate, fc2_bits);
+  const auto* router = shape(1, 2);
+  const auto* router_weights = shape(14, 2);
+  Dimension tokens;
+  if (activation_shape) {
+    if (activation_shape->dim_size() == 2) {
+      tokens = activation_shape->dim(0);
+    } else if (activation_shape->dim(0).has_dim_value() && activation_shape->dim(1).has_dim_value()) {
+      const int64_t batch = activation_shape->dim(0).dim_value();
+      const int64_t sequence = activation_shape->dim(1).dim_value();
+      if (sequence != 0 && batch > std::numeric_limits<int64_t>::max() / sequence) {
+        fail_shape_inference("QMoE INT3 flattened token count overflows int64.");
+      }
+      tokens.set_dim_value(batch * sequence);
+    }
+  }
+  for (const auto* tensor : {router, router_weights}) {
+    if (tensor) {
+      match_experts(tensor->dim(1));
+      match(tensor->dim(0), &tokens, "token count");
+      if (router) match(tensor->dim(0), &router->dim(0), "router token count");
+    }
+  }
+}
+
+static OpSchema QMoESchema(bool allow_int3) {
+  constexpr const char* quant_type_doc =
+      "Quantization type: 'int' for integer quantization (default without INT3), 'fp4' for MXFP4 quantization, "
+      "'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, "
+      "or 'wfp4afp8' for MXFP4 weight with FP8 activation. "
+      "When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), "
+      "fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. "
+      "'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales "
+      "with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, "
+      "float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale. "
+      "The version 2 INT3 profile requires an explicit 'int' value.";
+  auto schema = OpSchema()
+        .SetDoc(allow_int3 ? std::string(qMoE_ver1_doc) + R"DOC(
+      Version 2 adds a raw INT3 profile; it does not register execution kernels.
+      For INT3, the requirements below supersede the legacy format descriptions above.
+      Effective widths are 2, 3, 4, or 8. Models without INT3 retain the legacy format contracts.
+      With INT3, explicitly set quant_type='int', weights_prepacked=0, swiglu_fusion=1,
+      and block_size=32, 64, or 128. Effective FC3 must equal FC1 after independent inheritance.
+      H comes from input and I from half the FC1 row count; both must be divisible by block_size.
+      Weights are uint8 [E,N,ceil(K*bits/8)], row-local LSB-first bitstreams, without per-block padding.
+      Scales are required [E,N,K/block_size], matching FP16/BF16 activations.
+      INT3 codes dequantize as (u-4)*scale; scales must be finite and nonnegative.
+      Optional INT3 zero points are uint8 [E,N,ceil(3*(K/block_size)/8)], with every code 4.
+      Unused high padding bits must be zero. INT2/4/8 projections retain their zero-point semantics.
+      FC1 rows are interleaved gate/up; FC2 is [E,H,ceil(I*fc2_bits/8)].
+      Separate FC3, global scales, and activation scales are not accepted by the INT3 profile.
+      )DOC" : qMoE_ver1_doc)
         .Attr("activation_type",
               "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu",
               AttributeProto::STRING,
@@ -1535,7 +1735,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT,
               static_cast<int64_t>(0))
         .Attr("expert_weight_bits",
-              "Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits",
+            allow_int3 ? "Number of bits used in quantized weights: 2, 3, 4, or 8. Default is 4 bits."
+               : "Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits",
               AttributeProto::INT,
               static_cast<int64_t>(4))
         .Attr("fc1_expert_weight_bits",
@@ -1585,17 +1786,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "and a whole column shares one scaling factor. ",
               AttributeProto::INT,
               OPTIONAL_VALUE)
-        .Attr("quant_type",
-              "Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, "
-              "'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, "
-              "or 'wfp4afp8' for MXFP4 weight with FP8 activation. "
-              "When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), "
-              "fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. "
-              "'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales "
-              "with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, "
-              "float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale.",
-              AttributeProto::STRING,
-              std::string("int"))
         .Attr("weights_prepacked",
               "Only meaningful when quant_type='int'. Tri-state control over the layout of the "
               "int4/int8 fc1/fc2 weight initializers. The concrete prepacked layouts selected by "
@@ -1760,7 +1950,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         "Constrain scale types. Float tensors are used for integer quantization and FP8 square-block scales. "
                         "Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.")
         .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
-        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+        .TypeAndShapeInferenceFunction([allow_int3](ONNX_NAMESPACE::InferenceContext& ctx) {
+          QMoETypeAndShapeInference(ctx, allow_int3);
+        });
+  if (allow_int3) {
+    schema.Attr("quant_type", quant_type_doc, AttributeProto::STRING, OPTIONAL_VALUE);
+  } else {
+    schema.Attr("quant_type", quant_type_doc, AttributeProto::STRING, std::string("int"));
+  }
+  return schema;
+}
+
+      ONNX_MS_OPERATOR_SET_SCHEMA(QMoE, 1, QMoESchema(false));
+      ONNX_MS_OPERATOR_SET_SCHEMA(QMoE, 2, QMoESchema(true));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(SampleOp, 1,
                             OpSchema()
