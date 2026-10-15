@@ -384,3 +384,48 @@ in every measured cell.
 Across these measured cells, the largest TTFT increase is 0.15% and the
 largest decode decrease is 1.41%. No large FP16 regression appears in this
 single-round check; smaller changes remain within typical run variation.
+
+## Joint DP4A FP32 QLoRA decode (2026-10-15)
+
+Eligible NVIDIA FP32 decode now uses three dispatches: quantize X once,
+jointly compute the INT4 base and INT8 down projections, then apply the
+vectorized INT8 up projection and addition. This replaces the separate
+floating-input down projection in the previous four-dispatch implementation.
+The base workgroup size remains 128. Eight extra workgroups per input row
+compute rank 32 from the shared quantized activation and scale buffers.
+
+The baseline is the preceding FP16/FP32 support implementation, not upstream
+main. These native C++ measurements use built-in WebGPU/D3D12 on RTX 5080,
+batch 1, accuracy level 4, capture and generator reuse, 128 generated tokens,
+three warmups, and five measured requests. Values are medians. Timing runs
+were isolated from builds, tests, profiling, and verbose diagnostics.
+
+| Prompt | Adapter | TTFT before → after (ms) | Decode before → after (tok/s) | Decode change |
+|---:|---|---:|---:|---:|
+| 128 | Off | 29.61 → 29.60 | 203.20 → 203.10 | -0.05% |
+| 128 | A | 43.64 → 43.42 | 134.55 → 180.44 | +34.11% |
+| 1024 | Off | 161.88 → 162.15 | 199.03 → 199.29 | +0.13% |
+| 1024 | A | 192.12 → 195.07 | 129.82 → 174.29 | +34.26% |
+
+The adapter-on throughput deficit relative to adapter-off is now 11.2% and
+12.5%, respectively. Control measurements of FP16 QLoRA, FP16 LoRA, and
+FP32 LoRA at both prompt lengths show absolute decode changes below 0.9%
+and TTFT changes below 0.9%. Across all measured cells the largest TTFT
+increase is 1.53%; TTFT includes the first generated token.
+
+Both adapters were checked on six full-model cases against the previous
+FP32 QLoRA runtime. All six generated sequences and 72 forced-prefix next-token
+choices match. Adapter-on decode logits are approximate: maximum absolute
+difference 0.822086 and largest per-case RMSE 0.087801. This follows from
+using quantized X in the down projection; it is not a bitwise-equivalence
+claim or a broad quality evaluation. Adapter-off logits, prefill logits,
+and capture OFF/ON logits are identical. All 12 before/after benchmark
+output sequences also match.
+
+Validation includes the provider/empty-tensor suite, expanded FP32 numerical
+coverage, an independent dense reference on a known activation quantization
+grid, and all 12 QLoRA fusion tests. The new cases cover batched decode,
+zero rows, K tails, the full INT8 byte range, and distinct adapter-on/off
+capture IDs with replay. Separate dispatch logging confirms quantize →
+joint base/down → up/add. Both changed kernel translation units pass WASM32
+syntax checks. Only the built-in EP was tested for this experiment.

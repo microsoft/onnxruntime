@@ -49,8 +49,10 @@ Base quantization stays INT4 with block size 32 and implicit zero point 8.
 The equations describe the weight interpretation and mathematical projections;
 the optimized kernels can change reduction order and activation precision.
 Eligible prefill down projections use DP4A activation quantization when the
-model's `accuracy_level` permits it. Decode and up projections do not add
-activation quantization. The provider's `enableMatmulFp32Accumulation` option
+model's `accuracy_level` permits it. Eligible FP32 DP4A decode also shares the
+base projection's quantized X with the down projection. Other decode down
+projections and all up projections retain floating-point activations.
+The provider's `enableMatmulFp32Accumulation` option
 controls floating-point lane accumulation for FP16 inputs. FP32 inputs always
 use FP32 floating-point accumulation. Intermediate T uses the activation type;
 the specialized decode kernel performs its final subgroup reduction in FP32.
@@ -71,8 +73,17 @@ dimension of X; a one-token prompt follows the decode selection.
 
 The joint decode kernel supports one total input row and K from 2048 through
 8192, when the base projection does not select DP4A. FP32 base projections
-can select DP4A even at M=1; those retain the original base kernel and compute
-the adapter down projection separately. The joint kernel retains 128 threads
+can select DP4A even at M=1. On NVIDIA, eligible FP32 inputs with K from 2048
+through 8192 use three dispatches: quantize X once, jointly compute the INT4
+base and INT8 down projections, then perform the INT8 up projection and addition.
+The joint DP4A shader retains the base's 128-thread workgroups and adds eight
+workgroups per input row for rank 32, with four ranks per workgroup. Both
+projections read the same quantized activation buffer and scales; each writes
+its own output. The next dispatch provides synchronization. The existing DP4A
+eligibility checks, including `accuracy_level=4`, still apply. Adapter-off,
+FP16 decode, and prefill selection are unchanged.
+
+The floating-input joint kernel retains 128 threads
 per workgroup and adds four workgroups for the
 32 down-projection outputs. On devices with fixed 32-lane subgroups, each lane
 loads X into registers and reuses it for two rank outputs, then reduces lane

@@ -278,6 +278,16 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     // shader must not replace that base projection's activation quantization.
     const bool base_dp4a = CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, 32, narrow<uint32_t>(n_),
                                                          narrow<uint32_t>(k_), 4, m, false, y);
+    if (!fuse_up && m == 1 && x->IsDataType<float>() && base_dp4a && k_ >= 2048 && k_ <= 8192 &&
+        context.AdapterInfo().vendor == std::string_view{"nvidia"}) {
+      auto base = context.CreateGPUTensor(y->DataType(), y->Shape());
+      ORT_RETURN_IF_ERROR(ApplyDP4AMatrixMatMulNBits(
+          x, w, s, nullptr, nullptr, narrow<uint32_t>(x->Shape().Size() / k_), 1, 1,
+          narrow<uint32_t>(n_), narrow<uint32_t>(k_), 32, narrow<uint32_t>(k_ / 32),
+          kMinMForTileOptimization, 4, context, &base, 0,
+          nullptr, nullptr, nullptr, aq, &t, true, nullptr, nullptr, 0, as));
+      return ApplyQLoRAOutput(context, &base, &t, bq, bs, y);
+    }
     const bool joint_down = !fuse_up && x->Shape().Size() == k_ && k_ >= 2048 && k_ <= 8192 &&
                             context.AdapterInfo().vendor == std::string_view{"nvidia"} && !base_dp4a;
     if (joint_down) {

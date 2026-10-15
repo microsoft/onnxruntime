@@ -138,7 +138,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionFp32Numerics) {
   for (const char* mode : {"auto", "fuse_down", "fuse_up"}) {
     for (const auto& [m, n] : {std::pair<int64_t, int64_t>{1, 128}, {1, 132}, {2, 128}, {37, 132}}) {
       SCOPED_TRACE(MakeString(mode, ", M=", m, ", N=", n));
-      const bool quantized_down = m >= 4 && std::string_view{mode} != "fuse_down";
+      // Eligible FP32 decode shares the base projection's quantized X.
+      const bool quantized_down = (m >= 4 && std::string_view{mode} != "fuse_down") ||
+                                  (m == 1 && n % 16 == 0 && std::string_view{mode} != "fuse_up");
       RunWebGpuFusionTransformerTest(
           [m, n](ModelTestBuilder& b) { BuildQLoRA<float>(b, m, 2048, n); },
           [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckQLoRACount(s.GetGraph(), 1)); },
@@ -274,7 +276,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionPartialOverrides) {
 }
 
 template <typename T>
-void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger) {
+void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 64) {
   if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU unavailable.";
   for (int64_t m : {1, 37}) {
     SCOPED_TRACE(m);
@@ -282,7 +284,7 @@ void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger) {
                 IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, logger);
     auto& graph = model.MainGraph();
     ModelTestBuilder builder(graph);
-    BuildQLoRA<T>(builder, m, 64);
+    BuildQLoRA<T>(builder, m, k);
     builder.SetGraphOutputs();
     ASSERT_STATUS_OK(graph.Resolve());
     const auto adapters = graph.GetOverridableInitializers();
@@ -430,6 +432,10 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionSerializedEmptyDefaults) 
 
 TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionSerializedEmptyDefaultsFp32) {
   RunQLoRASerializedEmptyDefaults<float>(*logger_);
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionJointDP4ACapture) {
+  RunQLoRASerializedEmptyDefaults<float>(*logger_, 2048);
 }
 
 #endif

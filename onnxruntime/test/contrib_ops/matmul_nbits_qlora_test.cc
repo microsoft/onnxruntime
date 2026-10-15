@@ -114,6 +114,7 @@ TEST(MatMulNBitsQLoRA, Fp32Numerics) {
     int64_t m, k, n, batch;
   };
   for (const auto shape : {Shape{1, 64, 128, 1}, Shape{1, 2048, 36, 1}, Shape{1, 2048, 64, 1}, Shape{1, 8192, 132, 1},
+                           Shape{1, 2176, 64, 7}, Shape{1, 8192, 64, 1},
                            Shape{2, 2048, 36, 2}, Shape{37, 2048, 132, 2}, Shape{128, 3072, 64, 1}}) {
     const auto [m, k, n, batch] = shape;
     SCOPED_TRACE(MakeString("M=", m, ", K=", k, ", N=", n, ", batch=", batch));
@@ -185,6 +186,76 @@ TEST(MatMulNBitsQLoRA, Fp32Numerics) {
         test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
       }
     }
+  }
+}
+
+TEST(MatMulNBitsQLoRA, DecodeJointDP4AQuantization) {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  GTEST_SKIP() << "Hardware-specific specialization checks require direct adapter capability inspection.";
+#else
+  auto initial_ep = DefaultWebGpuExecutionProvider();
+  ASSERT_NE(initial_ep, nullptr);
+  auto& gpu = webgpu::WebGpuContextFactory::GetContext(initial_ep->GetDeviceId());
+  if (!contrib::webgpu::HasDP4ADeviceSupport(initial_ep->GetDeviceId()) ||
+      gpu.AdapterInfo().vendor != std::string_view{"nvidia"}) {
+    GTEST_SKIP() << "The joint DP4A decode projection is selected on NVIDIA DP4A devices.";
+  }
+#endif
+  constexpr int64_t k = 2176, n = 64, batch = 3;
+  std::vector<float> x(batch * k), quantized_x(batch * k), as(k), expected(batch * n);
+  std::vector<uint8_t> aq(32 * k), bq(n * 32, 128);
+  for (int64_t row = 0; row < batch; ++row) {
+    for (int64_t col = 0; col < k; ++col) {
+      const float scale = 1.0f / static_cast<float>(1 << (8 + (row + col / 128) % 3));
+      const int value = col % 128 == 0 ? 127 : static_cast<int>((row * 19 + col * 11) % 255) - 127;
+      quantized_x[row * k + col] = row == 1 ? 0.0f : value * scale;
+      // Stay inside the rounding interval of the known quantization grid.
+      const float offset = value == 127 || value == -127 ? 0.0f : 0.2f;
+      x[row * k + col] = row == 1 ? 0.0f : (value + offset) * scale;
+    }
+  }
+  for (int64_t r = 0; r < 32; ++r) {
+    for (int64_t col = 0; col < k; ++col)
+      aq[r * k + col] = static_cast<uint8_t>((r * 17 + col * 13) % 256);
+    for (int64_t block = 0; block < k / 32; ++block)
+      as[r * (k / 32) + block] = (1 + (r + block) % 4) / 2048.0f;
+  }
+  for (int64_t col = 0; col < n; ++col) bq[col * 32 + col % 32] = 129;
+  // An identity up projection exposes every T value. The reference uses
+  // dense FP64 products on the known grid, including a zero row and a K tail.
+  for (int64_t row = 0; row < batch; ++row) {
+    double base = 0;
+    for (int64_t col = 0; col < k; ++col) base += quantized_x[row * k + col] * 0.03125;
+    for (int64_t r = 0; r < 32; ++r) {
+      double sum = 0;
+      for (int64_t col = 0; col < k; ++col)
+        sum += static_cast<double>(quantized_x[row * k + col]) *
+               (static_cast<int>(aq[r * k + col]) - 128) * as[r * (k / 32) + col / 32];
+      expected[row * n + r] = expected[row * n + r + 32] = static_cast<float>(base) + static_cast<float>(sum);
+    }
+  }
+  for (const char* mode : {"auto", "fuse_down"}) {
+    SCOPED_TRACE(mode);
+    OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
+    test.AddAttribute<int64_t>("K", k);
+    test.AddAttribute<int64_t>("N", n);
+    test.AddAttribute<int64_t>("accuracy_level", 4);
+    test.AddInput<float>("X", {batch, 1, k}, x);
+    test.AddInput<uint8_t>("W", {n, k / 32, 16}, std::vector<uint8_t>(n * k / 2, 0x99), true);
+    test.AddInput<float>("S", {n, k / 32}, std::vector<float>(n * k / 32, 0.03125f), true);
+    test.AddInput<uint8_t>("AQ", {32, k / 32, 32}, aq);
+    test.AddInput<float>("AS", {32, k / 32}, as);
+    test.AddInput<uint8_t>("BQ", {n, 1, 32}, bq);
+    test.AddInput<float>("BS", {n, 1}, std::vector<float>(n, 1.0f));
+    test.AddOutput<float>("Y", {batch, 1, n}, expected);
+    test.SetOutputAbsErr("Y", 0.00001f);
+    test.SetOutputRelErr("Y", 0.00001f);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.webgpu.lora_fusion_mode", mode));
+    test.Config(options);
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultWebGpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
   }
 }
 
