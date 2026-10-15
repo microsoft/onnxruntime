@@ -1064,8 +1064,7 @@ void MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::moeGemmBiasAct(
       runGemm<cutlass_extensions::EpilogueOpDefaultSilu>(inputs, hopper_inputs);
       break;
     case ActivationType::Relu2:
-      runGemm<cutlass_extensions::EpilogueOpDefaultReLU>(inputs, hopper_inputs);
-      break;
+      ORT_THROW("Relu2 requires a separate squared-ReLU activation kernel.");
     case ActivationType::InvalidType:
       ORT_THROW("Activation type for fpA_intB must be valid.");
       break;
