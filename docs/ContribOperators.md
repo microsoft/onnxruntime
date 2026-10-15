@@ -65,6 +65,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
   * <a href="#com.microsoft.MatMulGGMLIQ2XXS">com.microsoft.MatMulGGMLIQ2XXS</a>
   * <a href="#com.microsoft.MatMulGGMLQ8_0">com.microsoft.MatMulGGMLQ8_0</a>
+  * <a href="#com.microsoft.MatMulNVFP4A16">com.microsoft.MatMulNVFP4A16</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
   * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
   * <a href="#com.microsoft.MatMulFpQ4">com.microsoft.MatMulFpQ4</a>
@@ -3754,6 +3755,70 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain scalar scales to FP32.</dd>
 </dl>
 
+
+### <a name="com.microsoft.MatMulNVFP4A16"></a><a name="com.microsoft.matmulnvfp4a16">**com.microsoft.MatMulNVFP4A16**</a>
+
+  NVFP4 weight-only multiplication with **FP32 global scaling after accumulation**.
+  This is a separate arithmetic contract, not a change to
+  `MatMulBlockQuantizedFp4Weight` or its defaults.
+
+  `A` is FP16/BF16 `[..., K]`, rank at least one; `B` is UINT8 `[N, K/2]`
+  holding E2M1 values, low nibble first. K must be divisible by 16.
+  `weight_scale` is UINT8 `[N, K/16]` holding **raw E4M3 bytes**.
+  `weight_scale_2` is a one-element FP32 global multiplier.
+  There are no attributes, fused bias, reciprocal scales or activation quantization.
+
+  Local operands are `round_T(e2m1(B) * e4m3(weight_scale))`, **excluding the
+  global scale**. For finite scales the local product is exactly representable
+  in both FP16 and BF16. Products and accumulation use FP32. Multiply the FP32
+  accumulator by the FP32 global scale, then round the output once:
+  `Y = round_T((A @ local_weight.T) * weight_scale_2)`.
+  Do not round the matmul output before global scaling, or fold global scaling
+  into native-type weights. This ordering holds for all M, including general
+  prefill; summation order is unspecified. Add bias separately in native type.
+  BF16 ordering follows the b12x NVFP4 A16 contract; FP16 is the analogous extension.
+
+  CUDA reuses direct packed execution for small M. General M uses a temporary
+  local FP16/BF16 weight matrix, FP32 GEMM accumulators and a global-scale epilogue.
+  Weights are not persistently expanded, but **general-M execution does use
+  per-call dense scratch**. This is not hardware FP4-by-FP4 execution or a
+  complete-model memory/performance claim. CUDA 12.8 or newer is required.
+  N and K derive from B; empty dimensions and K=0 are supported.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs (4)
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>FP16/BF16 activation [..., K], rank at least one.</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Packed E2M1 bytes [N, K/2], low nibble first.</dd>
+<dt><tt>weight_scale</tt> : T1</dt>
+<dd>Raw E4M3 bytes [N, K/16].</dd>
+<dt><tt>weight_scale_2</tt> : T2</dt>
+<dd>One-element FP32 global multiplier applied after accumulation.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output [..., N] with the same element type as A.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Activation and output type.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Packed weights and raw local-scale bytes.</dd>
+<dt><tt>T2</tt> : tensor(float)</dt>
+<dd>Global scale.</dd>
+</dl>
 
 ### <a name="com.microsoft.MatMulGGMLQ8_0"></a><a name="com.microsoft.matmulggmlq8_0">**com.microsoft.MatMulGGMLQ8_0**</a>
 

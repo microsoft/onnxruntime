@@ -3172,6 +3172,97 @@ The output columns `N` and the contraction dimension `K` are derived from the we
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
+    MatMulNVFP4A16, 1,
+    OpSchema()
+        .SetDoc(R"DOC(NVFP4 weight-only matrix multiplication with FP32 global scaling in the epilogue.
+
+A has shape [..., K], rank at least one, with FP16 or BF16 elements. B is UINT8
+[N, K/2], containing low-nibble-first E2M1 pairs. K must be divisible by 16.
+weight_scale is UINT8 [N, K/16] containing raw E4M3 scale bytes; weight_scale_2
+is a one-element FP32 global scale tensor. N and K derive from B.
+
+Let round_T denote round-to-nearest-even to A's element type. Local weight
+operands are round_T(e2m1(B) * e4m3(weight_scale)), without the global scale.
+Products and accumulation use FP32. The global scale multiplies the FP32
+accumulator before the only output rounding:
+Y = round_T((A @ local_weight.T) * weight_scale_2).
+This ordering applies for every M, including general prefill. The summation
+order is unspecified. The output has shape [..., N]. Empty dimensions and
+K=0 (empty FP32 sum times the global scale) are supported.
+
+There are no attributes, activation quantization, reciprocal scale semantics,
+or fused bias. Add bias separately in the native output type when required.
+CUDA uses direct packed execution for small M; general M uses temporary local
+FP16/BF16 weights and FP32 accumulators, never persistent expanded weights.
+This is not native FP4-by-FP4 tensor-core execution or a full-model memory claim.
+It does not change the defaults or arithmetic of MatMulBlockQuantizedFp4Weight.
+)DOC")
+        .Input(0, "A", "FP16/BF16 activation with rank at least one and shape [..., K].", "T")
+        .Input(1, "B", "Packed E2M1 bytes [N, K/2], low nibble first.", "T1")
+        .Input(2, "weight_scale", "Raw E4M3 scale bytes [N, K/16].", "T1")
+        .Input(3, "weight_scale_2", "One-element FP32 global multiplier applied after accumulation.", "T2")
+        .Output(0, "Y", "Output [..., N] with the same element type as A.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Activation and output type.")
+        .TypeConstraint("T1", {"tensor(uint8)"}, "Packed E2M1 weights and E4M3 scale bytes.")
+        .TypeConstraint("T2", {"tensor(float)"}, "Global FP32 scale.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim_size() < 1) {
+            fail_shape_inference("A must have rank at least 1.");
+          }
+          if (hasInputShape(ctx, 2) && getInputShape(ctx, 2).dim_size() != 2) {
+            fail_shape_inference("weight_scale must have shape [N, K/16].");
+          }
+          if (hasInputShape(ctx, 3)) {
+            for (const auto& dim : getInputShape(ctx, 3).dim()) {
+              if (dim.has_dim_value() && dim.dim_value() != 1) {
+                fail_shape_inference("weight_scale_2 must contain one element.");
+              }
+            }
+          }
+          if (!hasInputShape(ctx, 1)) {
+            return;
+          }
+          const auto& b_shape = getInputShape(ctx, 1);
+          if (b_shape.dim_size() != 2) {
+            fail_shape_inference("B must have shape [N, K/2].");
+          }
+          if (hasInputShape(ctx, 2)) {
+            const auto& scale_shape = getInputShape(ctx, 2);
+            if (scale_shape.dim(0).has_dim_value() && b_shape.dim(0).has_dim_value() &&
+                scale_shape.dim(0).dim_value() != b_shape.dim(0).dim_value()) {
+              fail_shape_inference("weight_scale must have shape [N, K/16].");
+            }
+          }
+          if (b_shape.dim(1).has_dim_value()) {
+            const int64_t half_k = b_shape.dim(1).dim_value();
+            if (half_k < 0 || half_k > std::numeric_limits<int64_t>::max() / 2 || half_k % 8 != 0) {
+              fail_shape_inference("K must be divisible by 16.");
+            }
+            if (hasInputShape(ctx, 2)) {
+              const auto& scales_k = getInputShape(ctx, 2).dim(1);
+              if (scales_k.has_dim_value() && scales_k.dim_value() != half_k / 8) {
+                fail_shape_inference("weight_scale must have shape [N, K/16].");
+              }
+            }
+            if (hasInputShape(ctx, 0)) {
+              const auto& a_shape = getInputShape(ctx, 0);
+              const auto& a_k = a_shape.dim(a_shape.dim_size() - 1);
+              if (a_k.has_dim_value() && a_k.dim_value() != half_k * 2) {
+                fail_shape_inference("A's last dimension must equal K.");
+              }
+            }
+          }
+          if (hasInputShape(ctx, 0)) {
+            const auto& a_shape = getInputShape(ctx, 0);
+            for (int i = 0; i < a_shape.dim_size() - 1; ++i) {
+              appendSingleDimCopiedFromInputTypeToOutputType(ctx, 0, 0, i);
+            }
+            appendSingleDimCopiedFromInputTypeToOutputType(ctx, 1, 0, 0);
+          }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
     MatMulGGMLQ8_0, 1,
     OpSchema()
         .SetDoc(R"DOC(Weight-only matrix multiplication with raw serialized GGML Q8_0 blocks.

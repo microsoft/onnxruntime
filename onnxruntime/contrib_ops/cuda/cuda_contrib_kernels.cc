@@ -236,6 +236,7 @@ class CUDA_MS_OP_CLASS_NAME(1, Inverse);
 class CUDA_MS_OP_CLASS_NAME(1, MatMulBlockQuantizedFp4Weight);
 class CUDA_MS_OP_CLASS_NAME(1, MatMulGGMLIQ2XXS);
 class CUDA_MS_OP_CLASS_NAME(1, MatMulGGMLQ8_0);
+class CUDA_MS_OP_CLASS_NAME(1, MatMulNVFP4A16);
 #if !defined(DISABLE_FLOAT8_TYPES)
 class CUDA_MS_OP_CLASS_NAME(1, MatMulBlockQuantizedFp8Weight);
 #endif
@@ -601,6 +602,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MatMulBlockQuantizedFp4Weight)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MatMulGGMLIQ2XXS)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MatMulGGMLQ8_0)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MatMulNVFP4A16)>,
 #if !defined(DISABLE_FLOAT8_TYPES)
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MatMulBlockQuantizedFp8Weight)>,
 #endif
