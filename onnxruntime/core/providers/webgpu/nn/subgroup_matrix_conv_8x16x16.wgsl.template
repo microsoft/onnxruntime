@@ -47,8 +47,9 @@
 // selector clamps tile_n and the impl re-checks it) so a trailing partial N tile can be
 // shifted back far enough for its weight loads to stay in bounds. N itself may be odd --
 // B is column-major with stride K, so the load alignment comes from K, not N. M may be
-// any size; partial tiles are handled by the shift, by bounds-checked stores and by the
-// im2col gather returning zero for out-of-range pixels.
+// any size: a partial M tile just wastes a few a_scratch rows (its im2col reads stay
+// in-bounds even past out_h/out_w, see load_im2col_vec), and the write-out bounds-checks
+// M so those rows are never stored.
 
 #param sg_mat_k
 #param sg_mat_m

@@ -2,9 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/nn/conv.h"
-
-#include <mutex>
-
 #include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/nn/conv3d_naive.h"
 #include "core/providers/webgpu/nn/im2col_matmul.h"
@@ -43,11 +40,11 @@ Conv<is_channels_last, is_fused>::ConvOptImplCache::GetOrCreate(
 
 template <bool is_channels_last, bool is_fused>
 Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context) const {
-  // Preferred fast path on devices with the subgroup-matrix config: implicit-GEMM
-  // Conv (fused im2col) via subgroupMatrixMultiplyAccumulate. Created once on first
-  // use (it needs a device query), then it decides inside Compute whether the
-  // kernel/attrs qualify. It declines (handled=false, allocating nothing) otherwise
-  // and we fall through to the normal path order below.
+  // Preferred fast path on devices with a vendor subgroup-matrix tiling policy (see
+  // subgroup_matrix_conv.h). Created once on first use (it needs a device query), then
+  // it decides inside Compute whether the kernel/attrs qualify. It declines
+  // (handled=false, allocating nothing) otherwise and we fall through to the normal
+  // path order below.
   if (ConvOptImpl* opt_impl = opt_impl_cache_.GetOrCreate(*this, context); opt_impl != nullptr) {
     bool handled = false;
     ORT_RETURN_IF_ERROR(opt_impl->Compute(context, handled));
@@ -360,19 +357,11 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
   // first, SubgroupMatrixConvImpl::Compute would see a non-null prepacked_kernel_ and
   // decline on every constant-weight Conv -- i.e. the path would silently never run.
   //
-  // Placed before the auto_pad check below for the same reason the im2col branch is:
-  // CanApplySubgroupMatrixConv() only looks at the adapter, dtype, layout, group and
-  // the weight shape -- never at pads -- so its answer cannot change at runtime, and
-  // ComputeInternal tests it before every pads-dependent branch.
-  //
-  // Skipping the prepack is always safe: is_packed stays false, so ORT keeps input 1
-  // in OIHW and every fallback path can still transpose it at runtime if the
-  // subgroup-matrix path ends up declining. Once CanApplySubgroupMatrixConv has said
-  // yes, the only things Compute can still decline on are the ones the weight alone
-  // cannot show: a degenerate empty batch/M/N, or fewer than two spatial entries in
-  // dilations/pads/strides. Its other two decline paths are unreachable from here --
-  // the vendor selector's K and N conditions are exactly the ones checked above, and
-  // its tile_n > N guard cannot fire because the selector clamps tile_n to N.
+  // Placed before the auto_pad check below for the same pads-independence reason as
+  // the im2col branch (see the comment there). Skipping the prepack here is always
+  // safe even if Compute() later declines for another reason: is_packed stays false,
+  // so input 1 stays in OIHW and every fallback path can still transpose it at
+  // runtime.
   if (CanApplySubgroupMatrixConv(context, is_channels_last, kernel_shape,
                                  onnxruntime::narrow<uint32_t>(conv_attrs_.group), tensor.DataType())) {
     return Status::OK();

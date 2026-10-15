@@ -91,18 +91,16 @@ class SubgroupMatrixConvProgram final : public Program<SubgroupMatrixConvProgram
 // (16) wide so that a trailing partial N tile can be shifted back far enough for its
 // unchecked weight loads to stay in bounds. Above that, N needs no parity or
 // block-multiple (the OHWI weight is column-major with stride K, so load alignment
-// comes from K); M = out_h * out_w is unconstrained. Callers fall back to the default
-// conv paths when this returns false.
+// comes from K); M = out_h * out_w is unconstrained.
 //
 // The fused activation is deliberately not part of the test: the write-out epilogue
-// is generated from GetActivationSnippet, so every ActivationKind is handled and
-// there is nothing to reject. Unlike CanApplyIm2ColMatMulProgram, this does not need
-// an IsActivationSupported() companion.
+// is generated from GetActivationSnippet, so every ActivationKind is already handled --
+// unlike CanApplyIm2ColMatMulProgram, this needs no IsActivationSupported() companion.
 //
-// This is the shape/device-level eligibility test, decided from the weight shape
-// alone: SubgroupMatrixConvImpl calls it from Compute, and Conv::PrePackInternal
-// calls it to skip prepacking for a weight this path will consume in its original
-// OIHW layout.
+// This is a shape/device-level test, decided from the weight shape alone: callers fall
+// back to the default conv paths when it returns false. SubgroupMatrixConvImpl calls it
+// from Compute; Conv::PrePackInternal calls it to skip prepacking for a weight this path
+// will consume in its original OIHW layout.
 bool CanApplySubgroupMatrixConv(ComputeContextBase& context,
                                 bool is_channels_last,
                                 const TensorShape& kernel_shape,

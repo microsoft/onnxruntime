@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/nn/subgroup_matrix_conv.h"
-
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
@@ -17,6 +15,7 @@
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/nn/conv.h"
+#include "core/providers/webgpu/nn/subgroup_matrix_conv.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/vendor/intel/math/subgroup_matrix_tiling_selector.h"
@@ -33,9 +32,9 @@ constexpr uint32_t kSubgroupMatrixSubgroupSize = 32;
 // Combined workgroup-memory (SLM) budget in f16 elements for the two scratch
 // buffers the conv kernel uses: the split-K output tiles
 // (split_k * tile_m * tile_n) plus the per-subgroup im2col A staging
-// (split_k * tile_m * sg_mat_k). 16384 f16 == 32 KB, the common WebGPU
-// maxComputeWorkgroupStorageSize. split_k is clamped to fit this.
-constexpr uint32_t kMaxConvScratchElems = 16384;
+// (split_k * tile_m * sg_mat_k). split_k is clamped to fit this. Shares
+// intel::kMaxScratchElems rather than hardcoding a second copy of the same
+// budget the selector already sizes tilings against.
 
 // Largest per-tile subgroup-matrix counts the WGSL template unrolls: it generates the
 // accumulators sg_mat_c<mi>_<ni> for mi < 8 and ni < 4. A tiling above these would be
@@ -246,18 +245,16 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     //
     // TODO: prepack the constant case, which would drop the cache and the first-Run
     // dispatch too. The layout is not the obstacle -- KernelLayout::OHWI is exactly
-    // what PrePackIm2ColMatMulWeight already produces, with the same {0, 2, 3, 1}
-    // perm. What blocks it is the fallback: PrePackInternal has to commit from the
-    // weight alone, while Compute can still decline at runtime (empty batch/M/N, or
-    // fewer than two spatial entries in dilations/pads/strides), and an OHWI weight is
-    // only readable by the im2col path that ComputeInternal ORT_ENFORCEs on. Since
-    // CanApplyIm2ColMatMulProgram is not implied by CanApplySubgroupMatrixConv (it
-    // gates on an arch-string whitelist and a fixed list of activation kinds, this one
-    // on the reported subgroup-matrix config and all of fuse_utils), a decline could
-    // land on a path that cannot read OHWI. Prepacking therefore means dropping the
-    // early return in Conv::PrePackInternal so the im2col branch below it prepacks
-    // when *both* predicates hold, and accepting a prepacked OHWI weight here instead
-    // of declining on it above.
+    // what PrePackIm2ColMatMulWeight already produces, with the same {0, 2, 3, 1} perm.
+    // The blocker is the fallback: PrePackInternal must commit from the weight alone,
+    // while Compute can still decline at runtime (empty batch/M/N, or fewer than two
+    // spatial entries in dilations/pads/strides) onto a path that only reads OHWI via
+    // im2col -- and CanApplyIm2ColMatMulProgram is not implied by
+    // CanApplySubgroupMatrixConv (different gates: arch/activation whitelist vs
+    // subgroup-matrix config/fuse_utils), so a decline could land where OHWI can't be
+    // read. Prepacking therefore means dropping PrePackInternal's early return so the
+    // im2col branch prepacks when *both* predicates hold, and accepting a prepacked
+    // OHWI weight here instead of declining on it.
     Tensor run_local_ohwi_weight;
     const Tensor* ohwi_weight = nullptr;
     if (parent.IsWeightConstant()) {
@@ -289,7 +286,7 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     // 64 * (64 + 16) = 5120 elements at split_k 1, well inside the budget.
     uint32_t split_k = tiling->split_k;
     while (split_k > 1 &&
-           split_k * tile_m * (tile_n + config.K) > kMaxConvScratchElems) {
+           split_k * tile_m * (tile_n + config.K) > intel::kMaxScratchElems) {
       split_k /= 2;
     }
 
@@ -386,11 +383,8 @@ Status SubgroupMatrixConvProgram::GenerateShaderCode(ShaderHelper& shader) const
       "output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
   // Write-out epilogue the template calls once per output element: bias add, then the
-  // fused activation. The activation body comes from fuse_utils
-  // (GetActivationDeclaration emits whatever module-scope helper the snippet needs,
-  // e.g. fused_act_erf), so every ActivationKind those cover is supported without the
-  // template having to enumerate them -- and any kind added there is picked up here
-  // for free. Mirrors SubgroupMatrixMatMulProgram::GenerateShaderCode.
+  // fused activation (see the class doc in subgroup_matrix_conv.h for why this needs no
+  // per-ActivationKind handling). Mirrors SubgroupMatrixMatMulProgram::GenerateShaderCode.
   auto& additional_implementation = shader.AdditionalImplementation();
   additional_implementation
       << GetActivationDeclaration(activation_, "output_value_t", "output_element_t")

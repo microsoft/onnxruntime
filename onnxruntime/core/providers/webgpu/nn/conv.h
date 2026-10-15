@@ -32,7 +32,7 @@ class Conv : public WebGpuKernel {
  public:
   // Abstract base class for alternative optimized Conv implementations (currently the
   // subgroup-matrix path). Implementations hold the parent Conv and read
-  // conv_attrs/activation/... from it, mirroring MatMul::MatMulOptImpl.
+  // conv_attrs/activation/... from it, mirroring Gemm::GemmOptImpl.
   class ConvOptImpl {
    public:
     explicit ConvOptImpl(const Conv& parent) : parent_(parent) {}
@@ -91,20 +91,19 @@ class Conv : public WebGpuKernel {
   bool w_is_constant_ = false;  // whether the weight input (index 1) is a constant initializer
 
  private:
-  // Owns the alternative optimized implementation and builds it on first use,
-  // mirroring MatMulOptImplCache. The impl cannot be built in the ctor because it
-  // needs the device capabilities, which are only reachable through a compute
-  // context; and the same Conv kernel can see concurrent Compute calls, so creation
-  // is guarded by call_once. A null return after initialization means this device
-  // has no optimized path. Nested rather than a free class like MatMulOptImplCache
-  // only because ConvOptImpl is itself nested in this template.
+  // Owns the alternative optimized implementation and builds it lazily: the impl
+  // needs device capabilities only reachable through a compute context (not the
+  // ctor), and the same Conv kernel can see concurrent Compute calls, so creation is
+  // guarded by call_once -- mirroring MatMulComputeDispatcher, except nested here
+  // because ConvOptImpl is itself nested in this template. A null impl after
+  // initialization means this device has no optimized path.
   class ConvOptImplCache {
    public:
     ConvOptImplCache() = default;
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConvOptImplCache);
 
-    // Defined in conv.cc: the factory it calls is declared in subgroup_matrix_conv.h,
-    // which includes this header.
+    // Defined in conv.cc, not here: it calls into subgroup_matrix_conv.h, which
+    // includes this header, so the include can't go the other way.
     ConvOptImpl* GetOrCreate(const Conv& parent, const ComputeContextBase& context);
 
    private:
