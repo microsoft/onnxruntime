@@ -20,7 +20,6 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-import dxil_migration
 import patch_dawn
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -139,7 +138,9 @@ def dependency_diff(old: dict, new: dict) -> dict:
 def refresh_manifest(manifest: dict, source: Source, tag: str | None, deps: dict, report: dict) -> dict:
     updated = copy.deepcopy(manifest)
     root = validator._find_git_registration(updated, validator.DAWN_REPOSITORY_URL)
-    previous = cg.parse_dawn_deps(Source(root["component"]["git"]["commitHash"], source.cache).read("DEPS"))
+    manifest_commit = root["component"]["git"]["commitHash"]
+    report["previousManifestCommit"] = manifest_commit
+    previous = cg.parse_dawn_deps(Source(manifest_commit, source.cache).read("DEPS"))
     identities = {cg._repository_identity(dep["repositoryUrl"]) for dep in deps.values()}
     previous_identities = {cg._repository_identity(dep["repositoryUrl"]) for dep in previous.values()}
     removed = []
@@ -161,19 +162,24 @@ def refresh_manifest(manifest: dict, source: Source, tag: str | None, deps: dict
     report["removedDevelopmentRegistrations"] = removed
     updated = cg.update_manifest(updated, source.commit, tag, deps)
     registered = {
-        cg._repository_identity(r["component"]["git"]["repositoryUrl"])
+        (cg._repository_identity(r["component"]["git"]["repositoryUrl"]), r["component"]["git"]["commitHash"])
         for r in updated["registrations"]
         if "Dawn DEPS" in r.get("comments", "")
     }
     required = required_paths(source.read(FETCHER))
     report["requiredPaths"] = required
-    missing = [
-        p for p in required if p not in deps or cg._repository_identity(deps[p]["repositoryUrl"]) not in registered
-    ]
+
+    def is_registered(dependency: dict) -> bool:
+        return (cg._repository_identity(dependency["repositoryUrl"]), dependency["commitHash"]) in registered
+
+    missing = [p for p in required if p not in deps or not is_registered(deps[p])]
     if missing:
         report["blockers"].append(f"Review new or nested fetched dependencies and their classifications: {missing}")
-    report["unregisteredGitDependencies"] = {
-        p: d for p, d in deps.items() if cg._repository_identity(d["repositoryUrl"]) not in registered
+    report["unregisteredGitDependencies"] = {p: d for p, d in deps.items() if not is_registered(d)}
+    report["inventoryCounts"] = {
+        "declaredGitDependencies": len(deps),
+        "fetcherPaths": len(required),
+        "registeredDawnDependencies": sum("Dawn DEPS" in r.get("comments", "") for r in updated["registrations"]),
     }
     report["conditionChanges"] = dependency_diff(previous, deps)["changed"]
     report["conditionChanges"] = {
@@ -182,6 +188,63 @@ def refresh_manifest(manifest: dict, source: Source, tag: str | None, deps: dict
         if d["old"]["condition"] != d["new"]["condition"]
     }
     return updated
+
+
+def format_report(report: dict) -> str:
+    """Render the prepared edits and review decisions without implying build validation."""
+    lines = [
+        "# Dawn upgrade report",
+        "",
+        f"- Current pin: `{report['oldRevision']}` (`{report['oldCommit']}`)",
+        f"- Requested pin: `{report['revision']}` (`{report['commit']}`)",
+        f"- Archive: {report['archiveUrl']}",
+        f"- Archive SHA1: `{report['archiveSHA1']}`",
+        "",
+    ]
+    if report.get("previousManifestCommit", report["oldCommit"]) != report["oldCommit"]:
+        lines += [
+            f"The existing manifest root `{report['previousManifestCommit']}` differs from the current pin.",
+            "The plan also repairs that drift using the requested revision's DEPS.",
+            "",
+        ]
+    lines += ["## Required review", ""]
+    lines += [f"- {message}" for message in report["blockers"]] or ["No metadata or patch blockers found."]
+    lines += ["", "## Prepared files", ""]
+    lines += [f"- `{path}`" for path in report["changedFiles"]] or ["No tracked changes needed."]
+    counts = report.get("inventoryCounts")
+    if counts:
+        lines += [
+            "",
+            (
+                f"Git paths in DEPS: {counts['declaredGitDependencies']}; fetcher paths: "
+                f"{counts['fetcherPaths']}; reviewed Dawn registrations: {counts['registeredDawnDependencies']}. "
+                "These inventories have different scopes."
+            ),
+        ]
+    lines += ["", "## Dependency changes", ""]
+    for category, changes in report["dependencyChanges"].items():
+        lines += [f"### {category.capitalize()} ({len(changes)})", ""]
+        for path, entry in changes.items():
+            if category == "changed":
+                before, after = entry["old"], entry["new"]
+                lines.append(f"- `{path}`: `{before['commitHash']}` -> `{after['commitHash']}`")
+                if before["repositoryUrl"] != after["repositoryUrl"]:
+                    lines.append(f"  Repository: {before['repositoryUrl']} -> {after['repositoryUrl']}")
+                if before["condition"] != after["condition"]:
+                    lines.append(f"  Condition: `{before['condition']}` -> `{after['condition']}`")
+            else:
+                lines.append(f"- `{path}`: {entry['repositoryUrl']} at `{entry['commitHash']}`")
+        if not changes:
+            lines.append("None.")
+        lines.append("")
+    lines += ["## Patch checks", "", "| Patch | Result | Context fuzz |", "| --- | --- | --- |"]
+    for patch in report.get("patches", []):
+        lines.append(f"| `{patch['path']}` | {patch['status']} | {patch.get('contextFuzz', False)} |")
+    lines += ["", "Review refreshed patch context in `changes.patch`; detailed patch output is in `report.json`."]
+    lines += ["", "## Validation still required", ""]
+    lines += [f"- {note}" for note in report["notes"]]
+    lines += ["", "This report prepares source edits; it does not certify a build, package, or GPU run.", ""]
+    return "\n".join(lines)
 
 
 class Plan:
@@ -236,7 +299,7 @@ class Plan:
             raise
 
 
-def make_plan(root: Path, revision: str | None, cache: Path, drop_dxil: bool, patch_executable: str) -> Plan:
+def make_plan(root: Path, revision: str | None, cache: Path, patch_executable: str) -> Plan:
     plan = Plan(root)
     old_field, old_pin = validator._dawn_pin_from_deps_txt(root / DEPS_FILE)
     old_commit = cg._resolve_dawn_commit(old_field, old_pin)
@@ -278,8 +341,10 @@ def make_plan(root: Path, revision: str | None, cache: Path, drop_dxil: bool, pa
             raise ValueError("expected one SwiftShader commit in the WebGPU Dockerfile")
         plan.edit(SWIFTSHADER_DOCKERFILE, text)
 
-    patch_dawn.refresh_patches(plan, source, EXTERNAL_CMAKE, patch_executable)
-    dxil_migration.plan_migration(plan, source, drop_dxil)
+    try:
+        patch_dawn.refresh_patches(plan, source, EXTERNAL_CMAKE, patch_executable)
+    except ValueError as error:
+        plan.report["blockers"].append(f"Review the Dawn patch stack: {error}")
     if not re.search(r"if\s*\(FALSE\)\s*(?:#[^\n]*\n\s*)*find_package\(dawn REQUIRED\)", plan.read(EXTERNAL_CMAKE)):
         plan.report["blockers"].append(
             "The Dawn vcpkg integration changed; review its pin, archive checksum and patch stack before rolling."
@@ -301,11 +366,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--revision", help="exact Dawn tag or full Git commit; defaults to the current pin")
     parser.add_argument("--repo-root", type=Path, default=REPO_ROOT, help="ORT checkout to inspect/update")
     parser.add_argument("--cache-dir", type=Path, help="download cache; defaults to <repo>/build/dawn-upgrade/cache")
-    parser.add_argument("--output-dir", type=Path, help="report.json and changes.patch destination")
+    parser.add_argument("--output-dir", type=Path, help="report.md, report.json and changes.patch destination")
     parser.add_argument("--patch-executable", default="patch", help="GNU patch executable")
-    parser.add_argument(
-        "--drop-dxil", action="store_true", help="apply the reviewed DXC internal-validator packaging migration"
-    )
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--apply", action="store_true", help="apply prepared changes; default is a read-only plan")
     modes.add_argument("--check", action="store_true", help="fail if tracked files need changes")
@@ -314,13 +376,14 @@ def main(argv: list[str] | None = None) -> int:
     output = args.output_dir or root / "build/dawn-upgrade"
     cache = args.cache_dir or root / "build/dawn-upgrade/cache"
     try:
-        plan = make_plan(root, args.revision, cache, args.drop_dxil, args.patch_executable)
+        plan = make_plan(root, args.revision, cache, args.patch_executable)
         output.mkdir(parents=True, exist_ok=True)
         (output / "report.json").write_text(json.dumps(plan.report, indent=2) + "\n", encoding="utf-8")
+        (output / "report.md").write_text(format_report(plan.report), encoding="utf-8")
         (output / "changes.patch").write_text(plan.diff(), encoding="utf-8")
         print(f"Dawn: {plan.report['oldRevision']} -> {plan.report['revision']} ({plan.report['commit']})")
         print(
-            f"{len(plan.changes)} changed files; {len(plan.report['blockers'])} blockers. Report: {output / 'report.json'}"
+            f"{len(plan.changes)} changed files; {len(plan.report['blockers'])} blockers. Report: {output / 'report.md'}"
         )
         for blocker in plan.report["blockers"]:
             print(f"REVIEW: {blocker}", file=sys.stderr)

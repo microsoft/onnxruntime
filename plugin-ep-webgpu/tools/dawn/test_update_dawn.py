@@ -12,7 +12,6 @@ from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-import dxil_migration
 import patch_dawn
 import update_dawn as updater
 
@@ -56,8 +55,6 @@ class FakeSource:
         self.files = {
             "DEPS": deps_text(CHILD),
             updater.FETCHER: "def main():\n    required_submodules = ['third_party/kept']\n",
-            "src/dawn/native/CMakeLists.txt": "copy_dxil_dll",
-            "third_party/CMakeLists.txt": "",
         }
         if files:
             self.files.update(files)
@@ -172,6 +169,21 @@ class MetadataTests(TempTest):
             updater.refresh_manifest(manifest(), source, None, updater.cg.parse_dawn_deps(source.read("DEPS")), report)
         self.assertIn("third_party/new", report["blockers"][0])
 
+    def test_same_repository_at_a_different_revision_requires_registration(self):
+        source = FakeSource(
+            files={
+                "DEPS": deps_text(CHILD).replace(
+                    "deps = {", f"deps = {{'third_party/other': {{'url': '{DEP}@{NEW}'}},"
+                ),
+                updater.FETCHER: "required_submodules = ['third_party/kept', 'third_party/other']",
+            }
+        )
+        report = {"blockers": []}
+        with patch.object(updater, "Source", return_value=source):
+            updater.refresh_manifest(manifest(), source, None, updater.cg.parse_dawn_deps(source.read("DEPS")), report)
+        self.assertIn("third_party/other", report["blockers"][0])
+        self.assertIn("third_party/other", report["unregisteredGitDependencies"])
+
     def test_archive_reads_only_requested_file_and_rejects_ambiguous_paths(self):
         archive = self.root / "source.zip"
         with zipfile.ZipFile(archive, "w") as output:
@@ -237,80 +249,6 @@ class MetadataTests(TempTest):
             self.assertRaisesRegex(ValueError, "does not match the resolved commit"),
         ):
             updater.archive_for_revision(NEW, self.root)
-
-
-class MigrationTests(TempTest):
-    def test_known_packaging_forms_and_repeat_run(self):
-        cases = {
-            "setup.py": ('libs.extend(["dxcompiler.dll", "dxil.dll"])\n', 'libs.extend(["dxcompiler.dll"])\n'),
-            "pack.py": (
-                '"x": ("rid", ("provider.dll", "dxil.dll", "dxcompiler.dll")),\n',
-                '"x": ("rid", ("provider.dll", "dxcompiler.dll")),\n',
-            ),
-            "copy.cc": ('fs::copy_file(L"dxil.dll", dlls_folder / L"dxil.dll");\nkeep();\n', "keep();\n"),
-            "copy.cmake": ('list(APPEND DLL_DEPS "$<TARGET_FILE_DIR:dxcompiler>/dxil.dll")\nkeep()\n', "keep()\n"),
-            "readme.md": ("runtime (`dxil.dll`, `dxcompiler.dll`)\n", "runtime (`dxcompiler.dll`)\n"),
-        }
-        for path, (before, after) in cases.items():
-            with self.subTest(path=path):
-                self.assertEqual(dxil_migration.remove_dxil(path, before), after)
-                self.assertEqual(dxil_migration.remove_dxil(path, after), after)
-
-    def test_unknown_or_mixed_statement_needs_review(self):
-        for text in ['custom("dxil.dll");\n', "add_dependencies(provider copy_dxil_dll another_target)\n"]:
-            with self.subTest(text=text), self.assertRaisesRegex(ValueError, "unrecognized"):
-                dxil_migration.remove_dxil("code.cc", text)
-
-    def migration_plan(self, release="v1.8.2502"):
-        for path in dxil_migration.FILES:
-            self.write(path, "")
-        self.write("setup.py", 'libs.extend(["dxcompiler.dll", "dxil.dll"])\n')
-        for name in ["plugin-win-webgpu-stage.yml", "nodejs-win-packaging-stage.yml"]:
-            self.write(
-                dxil_migration.AZURE + "stages/" + name,
-                f'$dxcZipUrl = "https://github.com/microsoft/DirectXShaderCompiler/releases/download/{release}/dxc.zip"\n',
-            )
-        source = FakeSource(
-            files={
-                "src/dawn/native/CMakeLists.txt": "",
-                "src/dawn/native/d3d12/PlatformFunctionsD3D12.cpp": 'Load("dxcompiler.dll")',
-                "src/dawn/native/d3d12/BackendD3D12.cpp": "dxcCreateInstance(CLSID_DxcValidator, validator)",
-            }
-        )
-        return updater.Plan(self.root), source
-
-    def test_requires_explicit_migration_and_verified_release(self):
-        plan, source = self.migration_plan()
-        dxil_migration.plan_migration(plan, source, False)
-        self.assertTrue(plan.report["blockers"])
-        self.assertFalse(plan.changes)
-        plan, source = self.migration_plan("unverified-release")
-        dxil_migration.plan_migration(plan, source, True)
-        self.assertTrue(plan.report["blockers"])
-        self.assertFalse(plan.changes)
-
-    def test_migration_checks_both_upstream_target_and_loader_contract(self):
-        for file, text in [
-            ("src/dawn/native/CMakeLists.txt", "copy_dxil_dll"),
-            ("src/dawn/native/d3d12/PlatformFunctionsD3D12.cpp", 'Load("dxil.dll")'),
-        ]:
-            with self.subTest(file=file):
-                plan, source = self.migration_plan()
-                source.files[file] = text
-                dxil_migration.plan_migration(plan, source, True)
-                self.assertTrue(plan.report["blockers"])
-                self.assertFalse(plan.changes)
-
-    def test_migration_reports_references_in_unrecognized_files(self):
-        plan, source = self.migration_plan()
-        with patch.object(dxil_migration.subprocess, "run") as run:
-            run.return_value.returncode = 0
-            run.return_value.stdout = "setup.py\nnew/packager.py\ncmake/vcpkg-ports/dawn/old.patch\n"
-            dxil_migration.plan_migration(plan, source, True)
-        self.assertIn("new/packager.py", plan.report["blockers"][0])
-        self.assertNotIn("old.patch", plan.report["blockers"][0])
-        with self.assertRaises(ValueError):
-            plan.apply()
 
 
 @unittest.skipUnless(shutil.which("patch"), "GNU patch is required")
@@ -381,7 +319,7 @@ class CommandTests(TempTest):
             )
         )
         self.contexts.enter_context(patch.object(updater, "Source", return_value=self.source))
-        self.contexts.enter_context(patch.object(patch_dawn, "refresh_patches"))
+        self.refresh_patches = self.contexts.enter_context(patch.object(patch_dawn, "refresh_patches"))
         self.contexts.enter_context(redirect_stdout(io.StringIO()))
         self.contexts.enter_context(redirect_stderr(io.StringIO()))
         self.args = ["--repo-root", str(self.root), "--revision", NEW]
@@ -390,6 +328,10 @@ class CommandTests(TempTest):
         before = (self.root / updater.DEPS_FILE).read_bytes()
         self.assertEqual(updater.main(self.args), 0)
         self.assertEqual((self.root / updater.DEPS_FILE).read_bytes(), before)
+        report_text = (self.root / "build/dawn-upgrade/report.md").read_text()
+        self.assertIn(updater.DEPS_FILE, report_text)
+        self.assertIn("### Changed (0)", report_text)
+        self.assertIn("it does not certify a build", report_text)
         self.assertEqual(updater.main([*self.args, "--check"]), 1)
         self.assertEqual(updater.main([*self.args, "--apply"]), 0)
         self.assertEqual(updater.main([*self.args, "--check"]), 0)
@@ -404,6 +346,32 @@ class CommandTests(TempTest):
         self.assertEqual(updater.main([*self.args, "--apply"]), 2)
         self.assertEqual((self.root / updater.DEPS_FILE).read_bytes(), before)
         self.assertTrue(json.loads((self.root / "build/dawn-upgrade/report.json").read_text())["blockers"])
+        self.assertIn("unknown", (self.root / "build/dawn-upgrade/report.md").read_text())
+
+    def test_roll_does_not_read_or_change_runtime_packaging(self):
+        self.write("setup.py", 'runtime_libraries = ["dxil.dll", "dxcompiler.dll"]\n')
+        before = (self.root / "setup.py").read_bytes()
+        self.assertEqual(updater.main([*self.args, "--apply"]), 0)
+        self.assertEqual((self.root / "setup.py").read_bytes(), before)
+        report = json.loads((self.root / "build/dawn-upgrade/report.json").read_text())
+        self.assertEqual(
+            set(report["changedFiles"]), {updater.DEPS_FILE, updater.MANIFEST, updater.SWIFTSHADER_DOCKERFILE}
+        )
+
+    def test_invalid_patch_metadata_is_reported_without_writes(self):
+        self.refresh_patches.side_effect = ValueError("upstream removed a patched file")
+        before = (self.root / updater.DEPS_FILE).read_bytes()
+        self.assertEqual(updater.main([*self.args, "--apply"]), 2)
+        self.assertEqual((self.root / updater.DEPS_FILE).read_bytes(), before)
+        self.assertIn("upstream removed a patched file", (self.root / "build/dawn-upgrade/report.md").read_text())
+
+    def test_report_distinguishes_stale_manifest_from_current_pin(self):
+        original = manifest()
+        original["registrations"][0]["component"]["git"]["commitHash"] = CHILD
+        self.write(updater.MANIFEST, json.dumps(original))
+        self.assertEqual(updater.main(self.args), 0)
+        report = (self.root / "build/dawn-upgrade/report.md").read_text()
+        self.assertIn(f"manifest root `{CHILD}` differs from the current pin", report)
 
     def test_reenabled_dawn_vcpkg_path_requires_review(self):
         self.write(updater.EXTERNAL_CMAKE, "find_package(dawn REQUIRED)\n")

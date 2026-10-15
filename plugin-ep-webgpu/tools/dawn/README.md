@@ -12,15 +12,15 @@ On Windows, Git for Windows supplies `patch.exe` in its `usr/bin` directory;
 add that directory to `PATH` or pass `--patch-executable PATH`.
 
 ```powershell
-python plugin-ep-webgpu/tools/dawn/update_dawn.py --revision v20260916.214021
+python plugin-ep-webgpu/tools/dawn/update_dawn.py --revision v20261013.193955
 ```
 
-The default mode changes no tracked files. It writes `report.json` and
+The default mode changes no tracked files. It writes `report.md`, `report.json`, and
 `changes.patch` under `build/dawn-upgrade/`. Review these files, resolve any
 reported compatibility decisions, then apply the prepared roll:
 
 ```powershell
-python plugin-ep-webgpu/tools/dawn/update_dawn.py --revision v20260916.214021 --apply
+python plugin-ep-webgpu/tools/dawn/update_dawn.py --revision v20261013.193955 --apply
 ```
 
 `--revision` accepts an exact tag or a full commit hash. Omitting it checks the
@@ -54,40 +54,21 @@ Normal builds continue using CMake's existing download and patch mechanisms.
    refreshed patches subsequently apply without fuzz or offsets. Conflicts or
    already-applied patches need manual resolution. The report includes the
    final patched-file hashes for comparing patch stacks.
-6. Detects the supported DXIL migration described below. It reports other
-   compatibility work and leaves build/package verification to the existing
-   build and test workflows.
+6. Writes a review report with the resolved revisions, archive checksum,
+   dependency changes, manifest drift, patch results, and unresolved decisions.
+   Build/package verification uses the existing build and test workflows.
 
 All edits are prepared before application. A blocker prevents all tracked-file
 writes. The script checks for concurrent input changes and restores files if
 an ordinary filesystem error interrupts application. It does not create Git
 commits, push, open PRs, run CI, or publish packages.
 
-## DXC internal-validator migration
+## Scope
 
-Some Dawn revisions remove the `copy_dxil_dll` target and use DXC's internal
-validator. A version upgrade alone does not establish that every redistributed
-compiler supports this behavior. The default mode reports the compatibility
-decision rather than automatically changing package contents.
-
-For the migration used by ORT PR #32686, run:
-
-```powershell
-python plugin-ep-webgpu/tools/dawn/update_dawn.py --revision v20260916.214021 --drop-dxil
-python plugin-ep-webgpu/tools/dawn/update_dawn.py --revision v20260916.214021 --drop-dxil --apply
-```
-
-`--drop-dxil` explicitly selects the migration. The recipe checks that Dawn no
-longer has `copy_dxil_dll`, its D3D12 loader loads `dxcompiler.dll` without
-`dxil.dll`, and the backend creates the internal validator. It currently
-supports the redistributed DXC release `v1.8.2502`, which includes
-[DXC #6853](https://github.com/microsoft/DirectXShaderCompiler/pull/6853).
-Other releases require validation before extending the recipe.
-
-The recipe updates known CMake, Java, Python, NuGet, Node, delay-load test,
-documentation, and pipeline artifact references. Unrecognized forms or new
-tracked files containing DXIL references block application. This is a supported
-compatibility recipe, not a general-purpose source-code migration engine.
+The script automates recurring metadata and patch maintenance. It does not
+rewrite runtime code, package DLL lists, or build options. The one-time DXIL
+removal in [#32686](https://github.com/microsoft/onnxruntime/pull/32686) is already
+complete upstream and is intentionally outside this tool.
 
 The disabled Dawn vcpkg port is explicitly excluded: its older pin and patch
 stack need separate maintenance before that path is enabled again. Its
@@ -120,11 +101,8 @@ Before submitting a roll:
 - Run actual WebGPU EP browser tests from `web.yml`, including the affected
   browser when changing an Emscripten/browser patch.
 - Build and smoke-test final packages using the plugin packaging/test pipelines.
-  For the DXIL migration, verify shader compilation and device creation with
-  the actual redistributed DXC and without `dxil.dll` available.
 
-The current plugin build excludes some provider implementation tests; do not
-infer full suite coverage from a successful plugin build. Source API changes,
+A successful build does not prove that every relevant test executed. Source API changes,
 new upstream CMake contracts, package policy, and GPU regressions still need
 engineering review. These checks can also be invoked by CI; this change does
 not add or dispatch a workflow.
@@ -137,5 +115,37 @@ python -m pytest plugin-ep-webgpu/tools/dawn/test_update_dawn.py cgmanifests/web
 
 Tests use temporary files and mocked downloads, with real GNU patch for patch
 ordering and refresh tests. They cover dry runs, checks, idempotence, corrupt
-archives, moved tags, metadata preservation, removal policy, migration guards,
-unknown references, conflicts, concurrent edits, and failed-write recovery.
+archives, moved tags, metadata preservation, removal policy, distinct revisions
+of the same repository, patch conflicts, concurrent edits, and failed-write
+recovery. Package files are left untouched.
+
+## Relationship to component inventories
+
+The roll command updates the checked-in, reviewed manifest. It preserves
+runtime/development classifications and the independently redistributed DXC
+release registration. It reports newly fetched dependencies for classification
+rather than guessing whether they ship in a package. Matching a registration
+requires the repository identity **and** revision; a second checkout of the same
+repository at a different revision is a separate input.
+
+The [build-input inventory generator](../../../../cgmanifests/webgpu/BUILD-INVENTORY.md)
+serves a different purpose: after CMake fetches dependencies, it records their
+actual checkout commits for component scanning. It does not replace the roll
+command or the reviewed manifest. Neither inventory alone describes a package's
+final linked/redistributed contents.
+
+## Upgrade examples used to validate the tool
+
+- [#32686](https://github.com/microsoft/onnxruntime/pull/32686), Dawn
+  `v20260916.214021`: archive checksum, dependency commits and roots, SwiftShader,
+  and active patch stack. Its one-time package migration and manual explanatory
+  comments are not automated.
+- [#33390](https://github.com/microsoft/onnxruntime/pull/33390), Dawn
+  `v20261013.193955`: the routine `cmake/deps.txt` and manifest updates. A roll
+  also checks SwiftShader and retained patches even if they were not edited in
+  the example PR.
+
+A routine roll can be prepared with the commands above, reviewed through
+`report.md` and `changes.patch`, applied with `--apply`, then checked again with
+`--check`. A clean check means the metadata and patch plan is stable; API and
+runtime compatibility still need the build/test steps above.

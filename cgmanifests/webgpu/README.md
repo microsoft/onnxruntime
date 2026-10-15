@@ -6,7 +6,7 @@ Dawn-derived dependency graph used when building the WebGPU Execution Provider.
 There are two complementary workflows:
 
 - The [Dawn upgrade tool](../../plugin-ep-webgpu/tools/dawn/README.md) maintains the reviewed manifest below while
-  coordinating archive pins, dependency hashes, patches, and supported packaging migrations.
+  coordinating archive pins, dependency hashes, patches, and the SwiftShader test dependency.
 - WebGPU plugin pipelines [generate a build-input inventory](BUILD-INVENTORY.md) from the actual fetched Dawn
   dependencies and scan that generated artifact. This includes fetched build/test inputs and does not replace
   the reviewed runtime/development classifications in the maintained manifest.
@@ -37,7 +37,7 @@ registration and explain the packaging path in `comments` and `detectedComponent
 When rolling Dawn or changing WebGPU packaging:
 
 For a complete Dawn roll, use the [Dawn upgrade tool](../../plugin-ep-webgpu/tools/dawn/README.md).
-It coordinates the archive pin/checksum, this manifest, SwiftShader, active patches, and supported packaging migrations.
+It coordinates the archive pin/checksum, this manifest, SwiftShader, and active patches.
 The commands below remain useful for manifest-only maintenance.
 
 1. After updating the `dawn` entry in `cmake/deps.txt`, refresh the registered Git commit hashes:
