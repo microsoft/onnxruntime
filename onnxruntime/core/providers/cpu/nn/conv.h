@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #pragma once
@@ -62,7 +63,8 @@ class Conv<float> : public OpKernel {
                                         size_t filter_count_per_group,
                                         size_t input_channels_per_group,
                                         const TensorShapeVector& kernel_shape,
-                                        const TensorShapeVector& dilations) const;
+                                        const TensorShapeVector& dilations,
+                                        bool is_depthwise) const;
 
   const Tensor* constant_filter_tensor_{nullptr};
   const Tensor* constant_bias_tensor_{nullptr};
