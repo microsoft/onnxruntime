@@ -65,6 +65,19 @@ The Python analyzer rejects any trace containing this marker, even with an other
 When INFO output is disabled, counter records are neither formatted nor charged against the logging budget.
 Only logging-budget reservation uses an atomic; counting-only updates remain unsynchronized across disjoint kernel ranges.
 
+`tools/python/qmoe_expert_activation_correlations.py` analyzes complete counter traces as binary expert activations.
+For every MoE node, it computes the full expert-by-expert Pearson correlation matrix against the same node at the
+previous decode token. For every layer after the first, it also computes the matrix against the preceding layer at
+the same token. Prefill records are excluded, decode invocations are aligned independently within each prompt, and
+previous-token pairs never cross prompt boundaries. The output contains compressed NumPy matrices for all expert
+pairs and their activation counts, a PDF of heatmaps, and a CSV listing the strongest sufficiently supported pairs
+from each matrix:
+
+```bash
+python tools/python/qmoe_expert_activation_correlations.py counter.log \
+  --output-prefix counter-expert-activation-correlations
+```
+
 After each successful CPU-offload `Run()`, INFO logging also emits one `moe_expert_swaps` JSON record. It reports
 `in_flight` swaps and `blocked_candidates` per CUDA device, plus session-wide totals. Its `scheduled_swaps` array
 identifies each exchange started by that run with the graph scope, node index, device, outgoing CUDA expert, incoming
