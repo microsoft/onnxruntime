@@ -2,9 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/matmul_bn_fusion.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
+
+#include <algorithm>
 
 namespace onnxruntime {
 
@@ -13,6 +16,70 @@ const std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorS
     {"Reshape", {1, 5, 13, 14, 19, 21, 23, 24, 25}},
     {"Transpose", {1, 13, 21, 23, 24, 25}}};
 const std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>> dest = {"BatchNormalization", {1, 6, 7, 9, 14, 15}};
+
+bool DimsAfterAxisAreOne(const ONNX_NAMESPACE::TensorShapeProto& shape, int axis) {
+  for (int i = axis + 1; i < shape.dim_size(); ++i) {
+    if (!utils::HasDimValue(shape.dim(i)) || shape.dim(i).dim_value() != 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Checks that column j of the MatMul output ends up in channel j (axis 1) of the BatchNormalization
+// input. Otherwise the in-between nodes move the columns to another axis or mix them with other
+// dimensions, e.g. MatMul [2, 4] -> Reshape [1, 4, 2, 1], and the fusion would scale the wrong values.
+bool MatMulColumnsAreBNChannels(const Graph& graph, const Node& matmul_node, const Node& batch_norm_node) {
+  const ONNX_NAMESPACE::TensorShapeProto* shape = matmul_node.OutputDefs()[0]->Shape();
+  if (shape == nullptr || shape->dim_size() != 2 || !utils::HasDimValue(shape->dim(1))) {
+    return false;
+  }
+  const int64_t num_columns = shape->dim(1).dim_value();
+  int column_axis = 1;
+
+  const Node* node = graph.GetNode(matmul_node.OutputNodesBegin()->Index());
+  while (node->Index() != batch_norm_node.Index()) {
+    const ONNX_NAMESPACE::TensorShapeProto* output_shape = node->OutputDefs()[0]->Shape();
+    if (output_shape == nullptr) {
+      return false;
+    }
+
+    if (node->OpType() == "Transpose") {
+      const auto* perm_attr = graph_utils::GetNodeAttribute(*node, "perm");
+      if (perm_attr == nullptr) {
+        // The default perm reverses the dimensions.
+        column_axis = shape->dim_size() - 1 - column_axis;
+      } else {
+        const auto& perm = perm_attr->ints();
+        const auto it = std::find(perm.begin(), perm.end(), column_axis);
+        if (it == perm.end()) {
+          return false;
+        }
+        column_axis = static_cast<int>(it - perm.begin());
+      }
+    } else {
+      // Reshape keeps the row-major order, so the columns stay on one axis only if every axis
+      // after it has size 1, both before and after the Reshape.
+      if (!DimsAfterAxisAreOne(*shape, column_axis)) {
+        return false;
+      }
+      column_axis = output_shape->dim_size() - 1;
+      while (num_columns != 1 && column_axis > 0 && utils::HasDimValue(output_shape->dim(column_axis)) &&
+             output_shape->dim(column_axis).dim_value() == 1) {
+        --column_axis;
+      }
+      if (column_axis < 0 || !utils::HasDimValue(output_shape->dim(column_axis)) ||
+          output_shape->dim(column_axis).dim_value() != num_columns) {
+        return false;
+      }
+    }
+
+    shape = output_shape;
+    node = graph.GetNode(node->OutputNodesBegin()->Index());
+  }
+
+  return column_axis == 1;
+}
 }  // namespace
 
 bool NodeIsIgnorable(const Graph& graph, const Node& root_node, NodeIndex curr_node_index) {
@@ -78,6 +145,7 @@ std::optional<NodeIndex> MatchPath(const Graph& graph, const Node& root_node, No
  *   - B tensor of MatMul should be constant.
  *   - scale, B, mean, var tensors of BatchNormalization should be constant.
  *   - Every node in the path, except the BatchNormalization, should have only 1 output edge.
+ *   - The in-between nodes should keep the MatMul columns as the BatchNormalization channels (axis 1).
  */
 bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {1, 9, 13}) ||
@@ -120,6 +188,10 @@ bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, cons
   }
   if (shape_a->dim_size() != 2) {
     // Gemm only supports 2D tensors.
+    return false;
+  }
+
+  if (!MatMulColumnsAreBNChannels(graph, node, *batch_norm_node)) {
     return false;
   }
 
