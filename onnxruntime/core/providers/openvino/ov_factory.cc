@@ -9,9 +9,13 @@
 #include <ranges>
 #include <format>
 
+#ifdef ONNXRUNTIME_OPENVINO_TEST
+#include "onnxruntime_cxx_api.h"
+#else
 #define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
 #undef ORT_API_MANUAL_INIT
+#endif
 
 #include "onnxruntime_c_api.h"
 #include "ov_factory.h"
@@ -21,6 +25,7 @@
 using namespace onnxruntime::openvino_ep;
 using ov_core_singleton = onnxruntime::openvino_ep::WeakSingleton<ov::Core>;
 
+#ifndef ONNXRUNTIME_OPENVINO_TEST
 static void InitCxxApi(const OrtApiBase& ort_api_base) {
   static std::once_flag init_api;
   std::call_once(init_api, [&]() {
@@ -28,6 +33,7 @@ static void InitCxxApi(const OrtApiBase& ort_api_base) {
     Ort::InitApi(ort_api);
   });
 }
+#endif
 
 OpenVINOEpPluginFactory::OpenVINOEpPluginFactory(ApiPtrs apis, const std::string& ov_metadevice_name, std::shared_ptr<ov::Core> core)
     : ApiPtrs{apis},
@@ -89,15 +95,15 @@ OrtStatus* OpenVINOEpPluginFactory::GetSupportedDevices(const OrtHardwareDevice*
 
   for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
     const OrtHardwareDevice& device = *devices[i];
-    if (ort_api.HardwareDevice_VendorId(&device) != vendor_id_) {
-      // Not an Intel Device.
-      continue;
-    }
-
     auto device_type = ort_api.HardwareDevice_Type(&device);
     auto device_it = ort_to_ov_device_name.find(device_type);
     if (device_it == ort_to_ov_device_name.end()) {
       // We don't know about this device type
+      continue;
+    }
+
+    if (!IsHardwareDeviceEligible(device_type, ort_api.HardwareDevice_VendorId(&device))) {
+      // Only Intel devices are supported for OpenVINO GPU and NPU devices.
       continue;
     }
 
@@ -159,7 +165,11 @@ extern "C" {
 OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
                              const OrtLogger* /*default_logger*/,
                              OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
+#ifndef ONNXRUNTIME_OPENVINO_TEST
   InitCxxApi(*ort_api_base);
+#else
+  (void)ort_api_base;
+#endif
   const ApiPtrs api_ptrs{Ort::GetApi(), Ort::GetEpApi(), Ort::GetModelEditorApi()};
 
   // Get available devices from OpenVINO
