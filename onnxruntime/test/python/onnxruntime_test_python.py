@@ -1678,6 +1678,30 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(ortvalue_src.data_ptr(), ortvalue_dst.data_ptr())
 
     @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_from_dlpack_rejects_invalid_capsules(self):
+        error = "from_dlpack expected a valid DLPack capsule named 'dltensor'"
+
+        with self.assertRaisesRegex(TypeError, error):
+            onnxrt.OrtValue.from_dlpack(None)
+        with self.assertRaisesRegex(TypeError, error):
+            onnxrt.OrtValue.from_dlpack(object())
+        with self.assertRaisesRegex(TypeError, error):
+            C.OrtValue.from_dlpack(None, False)
+
+        class InvalidDlpackProvider:
+            def __dlpack__(self):
+                return object()
+
+        with self.assertRaisesRegex(TypeError, error):
+            onnxrt.OrtValue.from_dlpack(InvalidDlpackProvider())
+
+        source = onnxrt.OrtValue.ortvalue_from_numpy(np.array([1.0], dtype=np.float32))
+        capsule = source._ortvalue.to_dlpack()
+        C.OrtValue.from_dlpack(capsule, False)
+        with self.assertRaisesRegex(TypeError, error):
+            C.OrtValue.from_dlpack(capsule, False)
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
     def test_ort_value_from_dlpack_bool(self):
         """Test that from_dlpack auto-detects boolean tensors."""
         bool_arr = np.array([True, False, True, False], dtype=np.bool_)

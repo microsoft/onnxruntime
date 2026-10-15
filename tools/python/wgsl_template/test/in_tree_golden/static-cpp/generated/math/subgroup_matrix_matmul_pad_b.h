@@ -18,40 +18,40 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul_pad_b.wgsl.template">(ShaderHe
 //  3 |
 //  4 | // Copies a row-major f16 weight B [K, N] into a column-padded [K, N_b] buffer
 //  5 | // (N_b >= N), zero-filling columns [N, N_b). One thread per padded-output element.
-//  6 | // Gives B an even row stride so the subgroup-matrix f16 load's 4-byte row-start
-//  7 | // alignment holds for odd N. See EnsurePaddedB in subgroup_matrix_matmul.cc.
+//  6 | // Gives B an aligned row stride so the subgroup-matrix f16 load's row-start
+//  7 | // alignment holds for any N. See EnsurePaddedB in subgroup_matrix_matmul.cc.
 //  8 |
 //  9 | #use guardAgainstOutOfBoundsWorkgroupSizes
 // 10 | #use .getByOffset .setByOffset
 // 11 |
 // 12 | $MAIN {
 MainFunctionStart();
-ss << __str_12;
+ss << __str_5;
 // 13 |   guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
-ss << __str_216;
-ss << shader_helper.GuardAgainstOutOfBoundsWorkgroupSizes(__str_212);
-ss << __str_192;
+ss << __str_237;
+ss << shader_helper.GuardAgainstOutOfBoundsWorkgroupSizes(__str_233);
+ss << __str_25;
 // 14 |   let r = global_idx / uniforms.N_b;                 // padded-output row
-ss << __str_217;
+ss << __str_238;
 // 15 |   let c = global_idx % uniforms.N_b;                 // padded-output column
-ss << __str_218;
+ss << __str_239;
 // 16 |   var v = output_value_t(0);
-ss << __str_219;
+ss << __str_240;
 // 17 |   if (c < uniforms.N) {                              // real column -> copy; else zero pad
-ss << __str_220;
+ss << __str_241;
 // 18 |     v = output_value_t(input_b.getByOffset(r * uniforms.N + c));
-ss << __str_221;
-ss << __var_input_b->GetByOffset(__str_213);
-ss << __str_3;
+ss << __str_242;
+ss << __var_input_b->GetByOffset(__str_234);
+ss << __str_12;
 // 19 |   }
-ss << __str_222;
+ss << __str_16;
 // 20 |   output.setByOffset(global_idx, v);
-ss << __str_216;
-ss << __var_output->SetByOffset(__str_214, __str_215);
-ss << __str_192;
+ss << __str_237;
+ss << __var_output->SetByOffset(__str_235, __str_236);
+ss << __str_25;
 // 21 | }  // MAIN
 MainFunctionEnd();
-ss << __str_12;
+ss << __str_5;
 // 22 |
 
 

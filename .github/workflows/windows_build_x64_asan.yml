@@ -43,6 +43,12 @@ jobs:
         with:
           architecture: x64
 
+      - name: Setup VCPKG Cache
+        uses: ./.github/actions/setup-vcpkg-cache
+        with:
+          key: windows-x64-build-asan-debug
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+
       - name: Write shared build options
         shell: pwsh
         run: |

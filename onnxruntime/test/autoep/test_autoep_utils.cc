@@ -92,6 +92,8 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
   hooks.get_preallocated_output_bad_index_rejected =
       reinterpret_cast<ExampleEpHooks::GetPreallocatedOutputBadIndexRejectedFn>(
           GetProcAddress(lib, "ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected"));
+  hooks.set_create_data_transfer_failure = reinterpret_cast<ExampleEpHooks::SetCreateDataTransferFailureFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_SetCreateDataTransferFailure"));
 #else
   void* lib = dlopen(ep_info.library_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
   ASSERT_NE(lib, nullptr);
@@ -108,6 +110,8 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
   hooks.get_preallocated_output_bad_index_rejected =
       reinterpret_cast<Utils::ExampleEpHooks::GetPreallocatedOutputBadIndexRejectedFn>(
           dlsym(lib, "ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected"));
+  hooks.set_create_data_transfer_failure = reinterpret_cast<Utils::ExampleEpHooks::SetCreateDataTransferFailureFn>(
+      dlsym(lib, "ExampleEpTestHooks_SetCreateDataTransferFailure"));
 #endif
 
   example_ep_hooks = LoadExampleEpHooksPtr(

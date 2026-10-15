@@ -3,11 +3,9 @@ vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 vcpkg_from_git(
     OUT_SOURCE_PATH SOURCE_PATH
     URL https://github.com/microsoft/cpp_client_telemetry.git
-    REF e71bdaafdb263c09f280474f2e241613529f33f2
+    REF 88defca71f0f0afe406a892b32e61e0cf6d915fe
     FETCH_REF v${VERSION}
     HEAD_REF main
-    PATCHES
-        "${CMAKE_CURRENT_LIST_DIR}/../../patches/cpp_client_telemetry/cpp_client_telemetry.patch"
 )
 
 set(MATSDK_BUILD_APPLE_HTTP OFF)

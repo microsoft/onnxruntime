@@ -3,8 +3,6 @@
 
 #include "sync_stream.h"
 
-#include <mutex>
-
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
@@ -34,7 +32,6 @@ struct WebGpuSyncStream final : OrtSyncStreamImpl {
     EXCEPTION_TO_RETURNED_STATUS_BEGIN
     auto& ep = static_cast<WebGpuSyncStream*>(stream)->ep_;
     auto& context = WebGpuContextFactory::GetContext(ep.GetDeviceId());
-    std::lock_guard<std::recursive_mutex> lock{ep.Recording().mutex};
     // Submit before streamless readbacks (e.g., node dumps) use a different recording.
     // Readbacks wait for completion; GPU consumers rely on ordering on the shared queue.
     ORT_THROW_IF_ERROR(context.Flush(ep.BufferManager(), ep.Recording()));

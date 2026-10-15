@@ -68,6 +68,10 @@ const ExternalInitializerFileInfo* ModelGenOptions::TryGetExternalInitializerFil
   return std::get_if<ExternalInitializerFileInfo>(&initializers_location);
 }
 
+const ExternalInitializerBufferInfo* ModelGenOptions::TryGetExternalInitializerBufferInfo() const {
+  return std::get_if<ExternalInitializerBufferInfo>(&initializers_location);
+}
+
 const InitializerHandler* ModelGenOptions::TryGetInitializerHandler() const {
   return std::get_if<InitializerHandler>(&initializers_location);
 }
