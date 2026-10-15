@@ -42,6 +42,9 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(kCpuExecutionProvider, kOnnxD
                                                    int16_t, uint16_t, int8_t, uint8_t, MLFloat16);
 
 // Pow
+// MLFloat16 is only enabled where the other fp16 CPU kernels are, so fp16 subgraphs elsewhere keep
+// falling back to fp32 as a whole instead of leaving Pow behind in fp16.
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0, float, double,
                                         MLFloat16);
 
@@ -52,6 +55,17 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow,
                                         Input, 0, int32_t, int64_t, float, double, MLFloat16);
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 12,
                                         Input, 1, int32_t, int64_t, float, double, MLFloat16);
+#else
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0, float, double);
+
+// Pow 12 and later has separate Base and Exponent types.
+// To reduce templatization we choose to support a subset of types for the base and exponent.
+// This gives us 16 permutations.
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 12,
+                                        Input, 0, int32_t, int64_t, float, double);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 12,
+                                        Input, 1, int32_t, int64_t, float, double);
+#endif
 }  // namespace op_kernel_type_control
 
 //

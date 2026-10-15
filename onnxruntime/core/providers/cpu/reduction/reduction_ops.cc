@@ -1158,13 +1158,13 @@ Status ReduceMean<MLFloat16>::Compute(OpKernelContext* ctx) const {
   MlasConvertHalfToFloatBuffer(input->Data<MLFloat16>(), input_float.MutableData<float>(), in_size);
   ResultsNoTransposePrepareForReduce last_results;
   NoTransposeReduce1Loop<ReduceAggregatorMean<float>>(&output_float, input_shape, input_float, axes,
-                                                       ctx->GetOperatorThreadPool(), last_results);
+                                                      ctx->GetOperatorThreadPool(), last_results);
   MlasConvertFloatToHalfBuffer(output_float.Data<float>(), output->MutableData<MLFloat16>(), out_size);
   return Status::OK();
 }
 
 // Must come after the Compute specialization above.
-#define REGISTER_REDUCE_MEAN_FP16_VERSIONED(startVer, endVer)                            \
+#define REGISTER_REDUCE_MEAN_FP16_VERSIONED(startVer, endVer)                           \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                             \
       ReduceMean, startVer, endVer, MLFloat16,                                          \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()), \

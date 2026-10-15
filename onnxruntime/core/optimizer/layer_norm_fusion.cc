@@ -840,7 +840,15 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     NodeArg* x_input = has_leading_cast ? graph.GetNode(p_pow_input_node->Index())->MutableInputDefs()[0]
                                         : pow_node.MutableInputDefs()[0];
 
-    // CPU only has T == V kernels.
+    // CPU only has T == V kernels. If absorbing the leading Cast would mix types, fuse the post-Cast
+    // subgraph instead and leave the Cast in place.
+    const auto scale_type = scale->TypeAsProto()->tensor_type().elem_type();
+    if (is_cpu_ep && has_leading_cast && x_input->TypeAsProto()->tensor_type().elem_type() != scale_type &&
+        pow_node.MutableInputDefs()[0]->TypeAsProto()->tensor_type().elem_type() == scale_type) {
+      nodes_to_remove.erase(nodes_to_remove.begin());
+      has_leading_cast = false;
+      x_input = pow_node.MutableInputDefs()[0];
+    }
     if (is_cpu_ep &&
         x_input->TypeAsProto()->tensor_type().elem_type() != scale->TypeAsProto()->tensor_type().elem_type()) {
       continue;
