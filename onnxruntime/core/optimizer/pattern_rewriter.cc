@@ -1133,25 +1133,25 @@ class PatternParser {
 };
 }  // namespace detail
 
-Rule::Rule(std::string name, Pattern pattern, ReplacementFunction replacement, Guard guard,
+Rule::Rule(std::string name, Pattern pattern, ReplacementFunction replacement, CheckAndBind check_and_bind,
            InlinedVector<OpsetRequirement, 1> opsets)
     : name(std::move(name)),
       pattern(std::move(pattern)),
       replacement(std::move(replacement)),
-      guard(std::move(guard)),
+      check_and_bind(std::move(check_and_bind)),
       opsets(std::move(opsets)) {}
 
-Rule::Rule(std::string name, std::string_view pattern, ReplacementFunction replacement, Guard guard,
+Rule::Rule(std::string name, std::string_view pattern, ReplacementFunction replacement, CheckAndBind check_and_bind,
            InlinedVector<OpsetRequirement, 1> opsets)
-    : Rule(std::move(name), Pattern(pattern), std::move(replacement), std::move(guard), std::move(opsets)) {}
+    : Rule(std::move(name), Pattern(pattern), std::move(replacement), std::move(check_and_bind), std::move(opsets)) {}
 
-Rule::Rule(std::string name, Pattern pattern, std::string_view replacement, Guard guard,
+Rule::Rule(std::string name, Pattern pattern, std::string_view replacement, CheckAndBind check_and_bind,
            InlinedVector<OpsetRequirement, 1> opsets)
-    : Rule(std::move(name), std::move(pattern), Replacement(replacement), std::move(guard), std::move(opsets)) {}
+    : Rule(std::move(name), std::move(pattern), Replacement(replacement), std::move(check_and_bind), std::move(opsets)) {}
 
-Rule::Rule(std::string name, std::string_view pattern, std::string_view replacement, Guard guard,
+Rule::Rule(std::string name, std::string_view pattern, std::string_view replacement, CheckAndBind check_and_bind,
            InlinedVector<OpsetRequirement, 1> opsets)
-    : Rule(std::move(name), Pattern(pattern), Replacement(replacement), std::move(guard), std::move(opsets)) {}
+    : Rule(std::move(name), Pattern(pattern), Replacement(replacement), std::move(check_and_bind), std::move(opsets)) {}
 
 Pattern::Pattern(std::string_view text) { ORT_THROW_IF_ERROR(detail::PatternParser(text).Parse(*this)); }
 
@@ -1207,7 +1207,7 @@ const NodeArg* Match::valueOf(std::string_view name) const {
   return values[value->handle];
 }
 
-void Match::update(std::string_view name, ONNX_NAMESPACE::AttributeProto value) const {
+void Match::update(std::string_view name, ONNX_NAMESPACE::AttributeProto value) {
   ORT_ENFORCE(!name.empty() && value.type() != ONNX_NAMESPACE::AttributeProto_AttributeType_UNDEFINED &&
                   !value.has_ref_attr_name(),
               "Extra bindings require a name and a concrete attribute value.");
@@ -1280,8 +1280,8 @@ PatternRewriter::PatternRewriter(Rules rules, Options options)
   InlinedHashMap<std::string, size_t> signatures;
   for (size_t i = 0; i < rules_.size(); ++i) {
     Rule& rule = rules_[i];
-    ORT_ENFORCE(!rule.name.empty() && !rule.pattern.Nodes().empty() && rule.guard && rule.replacement,
-                "Rules need a name, at least one node, a guard and a recipe.");
+    ORT_ENFORCE(!rule.name.empty() && !rule.pattern.Nodes().empty() && rule.check_and_bind && rule.replacement,
+                "Rules need a name, at least one node, a check_and_bind and a recipe.");
     InlinedHashSet<std::string> domains;
     for (auto& requirement : rule.opsets) {
       if (requirement.domain == kOnnxDomainAlias) requirement.domain = kOnnxDomain;
@@ -1420,19 +1420,20 @@ Status PatternRewriter::Run(Graph& graph, Statistics& statistics) const {
         }
         for (size_t id : rule_ids) {
           if (!options_.match_only && id >= winner) break;
-          match.pattern = &rules_[id].pattern;
-          match.ClearUpdates();
-          ++statistics.guards;
-          if (!rules_[id].guard(graph, match)) {
-            report(id, root->Index(), FailureStage::Guard,
-                   match.RejectionReason().empty() ? std::string_view("Guard rejected match.") : match.RejectionReason());
+          Match rule_match = match;
+          rule_match.pattern = &rules_[id].pattern;
+          ++statistics.check_and_bind_calls;
+          if (!rules_[id].check_and_bind(graph, rule_match)) {
+            report(id, root->Index(), FailureStage::CheckAndBind,
+                   rule_match.RejectionReason().empty() ? std::string_view("Check-and-bind rejected match.")
+                                                        : rule_match.RejectionReason());
             continue;
           }
           if (options_.match_only) ++statistics.matches;
           if (id < winner) {
             winner = id;
-            winning_match = match;
-            winning_pattern = match.pattern;
+            winning_match = std::move(rule_match);
+            winning_pattern = winning_match.pattern;
           }
           if (!options_.match_only) break;
         }
@@ -1462,7 +1463,6 @@ Status PatternRewriter::Run(Graph& graph, Statistics& statistics) const {
         if (it != producers.end()) affected.push_back(it->second);
       }
       InlinedVector<NodeIndex> added;
-      winning_match.ClearUpdates();
       auto recipe = rules_[winner].replacement(graph, winning_match);
       auto declared = [&](const std::string& node_domain) {
         const auto& domain = node_domain == kOnnxDomainAlias ? kOnnxDomain : node_domain;

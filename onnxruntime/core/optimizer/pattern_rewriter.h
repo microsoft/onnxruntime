@@ -122,18 +122,18 @@ struct Match {
   InlinedVector<const Node*> nodes;
   InlinedVector<const NodeArg*> values;
   const NodeArg* valueOf(std::string_view name) const;
-  void update(std::string_view name, ONNX_NAMESPACE::AttributeProto value) const;
+  void update(std::string_view name, ONNX_NAMESPACE::AttributeProto value);
   const ONNX_NAMESPACE::AttributeProto& attributeOf(std::string_view name) const;
   const Dimension& dimensionOf(std::string_view name) const;
   std::optional<int32_t> elementTypeOf(std::string_view name) const;
-  void ClearUpdates() const {
+  void ClearUpdates() {
     extra_attributes_.clear();
     rejection_reason_.clear();
   }
   bool BindAttribute(std::string_view name, const ONNX_NAMESPACE::AttributeProto& value);
   bool BindDimension(std::string_view name, Dimension value);
   bool BindElementType(std::string_view name, int32_t value);
-  bool Reject(std::string_view reason) const {
+  bool Reject(std::string_view reason) {
     rejection_reason_ = reason;
     return false;
   }
@@ -144,8 +144,8 @@ struct Match {
   NodeAttributes captured_attributes_;
   InlinedHashMap<std::string, Dimension> dimensions_;
   InlinedHashMap<std::string, int32_t> element_types_;
-  mutable NodeAttributes extra_attributes_;
-  mutable std::string rejection_reason_;
+  NodeAttributes extra_attributes_;
+  std::string rejection_reason_;
 };
 
 struct Replacement {
@@ -178,24 +178,24 @@ struct Replacement {
 };
 
 struct Rule {
-  using Guard = std::function<bool(const Graph&, const Match&)>;
+  using CheckAndBind = std::function<bool(const Graph&, Match&)>;
   using ReplacementFunction = std::function<Replacement(const Graph&, const Match&)>;
 
-  Rule(std::string name, Pattern pattern, ReplacementFunction replacement, Guard guard,
+  Rule(std::string name, Pattern pattern, ReplacementFunction replacement, CheckAndBind check_and_bind,
        InlinedVector<OpsetRequirement, 1> opsets);
-  Rule(std::string name, std::string_view pattern, ReplacementFunction replacement, Guard guard,
+  Rule(std::string name, std::string_view pattern, ReplacementFunction replacement, CheckAndBind check_and_bind,
        InlinedVector<OpsetRequirement, 1> opsets);
-  Rule(std::string name, Pattern pattern, std::string_view replacement, Guard guard,
+  Rule(std::string name, Pattern pattern, std::string_view replacement, CheckAndBind check_and_bind,
        InlinedVector<OpsetRequirement, 1> opsets);
-  Rule(std::string name, std::string_view pattern, std::string_view replacement, Guard guard,
+  Rule(std::string name, std::string_view pattern, std::string_view replacement, CheckAndBind check_and_bind,
        InlinedVector<OpsetRequirement, 1> opsets);
 
   std::string name;
   Pattern pattern;
-  // Guards must be pure. Recipes may set extra attribute bindings, but must not mutate the graph
-  // or retain pointers into a Match.
+  // Check-and-bind callbacks may prepare match-local attributes. Neither callback may mutate the graph
+  // or retain pointers into a Match; replacement callbacks receive a read-only match.
   ReplacementFunction replacement;
-  Guard guard;
+  CheckAndBind check_and_bind;
   InlinedVector<OpsetRequirement, 1> opsets;
 };
 
@@ -205,7 +205,7 @@ struct Statistics {
   size_t visited = 0;
   size_t candidates = 0;
   size_t structural_checks = 0;
-  size_t guards = 0;
+  size_t check_and_bind_calls = 0;
   size_t matches = 0;
   size_t rewrites = 0;
   size_t iterations = 0;
@@ -219,7 +219,7 @@ enum class FailureStage { Opset,
                           Attribute,
                           Boundary,
                           ExecutionProvider,
-                          Guard,
+                          CheckAndBind,
                           Replacement };
 
 struct MatchFailure {

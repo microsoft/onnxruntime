@@ -4,9 +4,9 @@ The experimental `onnxruntime::rewrite::PatternRewriter` replaces connected
 operator patterns with semantically equivalent graphs. Include
 `core/optimizer/pattern_rewriter.h`. Construct `Pattern` and `Replacement` from
 text; programmatic builders and mutable replacement recipes are not public APIs.
-Guards and replacement callbacks remain ordinary C++ functions.
+Check-and-bind callbacks and replacement callbacks remain ordinary C++ functions.
 
-A `Rule` takes `(name, pattern, replacement, guard, opset_requirements)`.
+A `Rule` takes `(name, pattern, replacement, check_and_bind, opset_requirements)`.
 The pattern may be text or a parsed `Pattern`; the replacement may be text,
 a parsed `Replacement`, or a callback returning one. Text accepts string literals,
 `std::string`, and `std::string_view` and is parsed once during rule construction;
@@ -39,16 +39,16 @@ Rule MakeHardSwishRule() {
       return Mul(sigmoid, x)
     }
   )";
-  auto guard = [](const Graph&, const Match& match) {
+  auto check_and_bind = [](const Graph&, Match& match) {
     return IsFloat32(*match.valueOf("x"));
   };
   const auto* replacement = "(x) => HardSwish(x)";
-  return Rule{"HardSigmoidMul", pattern, replacement, guard, {{kOnnxDomain, 14, 21}}};
+  return Rule{"HardSigmoidMul", pattern, replacement, check_and_bind, {{kOnnxDomain, 14, 21}}};
 }
 ```
 
 Both occurrences of `x` must bind the **same `NodeArg`**, not just tensors with
-equal shapes or contents. The guard checks the relevant data binding `x`;
+equal shapes or contents. The check-and-bind callback checks the relevant data binding `x`;
 resolved schemas establish the corresponding intermediate and output types.
 It does not require every matched value to have the same element type.
 
@@ -152,11 +152,11 @@ known bindings must agree exactly: integer 2 differs from symbolic `"batch"`,
 and `"batch"` differs from `"other"`. An anonymous unknown dimension leaves
 the variable unbound and does not conflict with a later known binding.
 Consequently, repeated names do **not** prove runtime equality when occurrences
-are unknown; guards requiring that proof must reject unknown metadata.
+are unknown; check-and-bind callbacks requiring that proof must reject unknown metadata.
 Likewise, a missing element type leaves `T` unbound, while a concrete annotation
 such as `float` requires a known matching element type.
 
-In a guard or replacement callback, `match.dimensionOf("M")` returns a
+In a check-and-bind or replacement callback, `match.dimensionOf("M")` returns a
 `Dimension` (`std::variant<std::monostate, int64_t, std::string>`), and
 `match.elementTypeOf("T")` returns an optional ONNX element-type enum value
 represented as `int32_t`. Unknown declared bindings are empty; undeclared names
@@ -199,8 +199,8 @@ definition order. Matching finds the first **globally consistent** combination:
 if a later constraint conflicts with a tentative dimension or element-type
 binding, earlier annotation alternatives are reconsidered. Failed alternatives
 leave no bindings behind. Variables mentioned only in unchosen alternatives
-remain unbound. Guards run once after a consistent combination is selected;
-guard rejection does not trigger another combination.
+remain unbound. Check-and-bind callbacks run once after a consistent combination is selected;
+Callback rejection does not trigger another combination.
 
 This bounded search applies only to type/shape annotations, not graph structure:
 there is still no search over producers or operand permutations. The product
@@ -226,7 +226,7 @@ Pattern absent_min("(x,high) => { a=Identity(x); return Clip(a,None,high); }");
 An ordinary header variable requires a present input. Repeated optional variables
 must bind identically, including absence: `(x,v:tensor[...] | None) => Clip(x,v,v)` does not match
 one present and one absent slot. `match.valueOf("low")` returns `nullptr` when
-the optional binding is absent; guards must check it before dereferencing.
+the optional binding is absent; check-and-bind callbacks must check it before dereferencing.
 Replacements preserve an absent binding as an empty input name. Explicit `None`
 is also supported in replacements. Schema validation still rejects missing
 required inputs. This is slot matching, not variadic matching: extra actual
@@ -280,7 +280,7 @@ Matching compares the exact attribute type, length, order, and each value.
 `[]` denotes an empty `INTS` attribute. Scalar and list attributes are distinct.
 Pattern syntax supports scalar integer, float, and string attribute equality,
 and numeric list equality, but not custom predicate syntax or string lists.
-Inspect `match.nodes` in the C++ guard for ranges, shapes, or other semantic conditions.
+Inspect `match.nodes` in the C++ check-and-bind callback for ranges, shapes, or other semantic conditions.
 Positional inputs must precede keyword attributes.
 
 Instead of a literal, a pattern keyword may capture an attribute by name:
@@ -291,7 +291,7 @@ Replacement replacement("(x,axes) => Transpose(x,perm=axes)");
 ```
 
 The attribute must be present and concrete. `match.attributeOf("axes")` exposes
-the captured `AttributeProto` to guards and replacements without a callback.
+the captured `AttributeProto` to check-and-bind callbacks and text replacements without extra preparation.
 Capture names are separate from tensor values and cannot collide with them;
 declared header captures are classified as attributes rather than tensor inputs.
 Repeating a capture requires identical protobuf attribute content, ignoring the
@@ -370,12 +370,14 @@ the staged producer dependencies are checked for cycles before deletion.
 A replacement that introduces a cycle is rejected with a status and rolled
 back; a mapping that preserves an acyclic dependency graph is allowed.
 
-## Computed attributes with a replacement callback
+## Checking applicability and preparing bindings
 
-Reuse a parsed replacement plan when an attribute depends on each match.
+`Rule::CheckAndBind` is `std::function<bool(const Graph&, Match&)>`.
+It checks semantic applicability and can prepare match-local bindings before
+returning `true`. Return `false` (or `match.Reject(reason)`) to reject the rule.
 Declare the attribute binding in the replacement's input list, set it with
-`match.update`, and reference it as a keyword argument. Parse the plan outside
-the callback so matching does not parse it again.
+`match.update`, and reference it as a keyword argument in a text replacement.
+No replacement lambda is needed just to prepare attributes.
 
 The following rule folds division by a finite float32 scalar into FusedMatMul's
 `alpha` attribute. It requires the Microsoft-domain opset to be imported already.
@@ -400,35 +402,44 @@ std::optional<float> FloatScalar(const Graph& graph, const NodeArg& value) {
 
 Rule MakeMatMulDivRule() {
   const auto* pattern = "(x,y,divisor) => { mm = MatMul(x,y); return Div(mm,divisor); }";
-  auto guard = [](const Graph& graph, const Match& match) {
+  auto check_and_bind = [](const Graph& graph, Match& match) {
     auto divisor = FloatScalar(graph, *match.valueOf("divisor"));
-    return IsFloat32(*match.valueOf("x")) && IsFloat32(*match.valueOf("y")) &&
-           divisor && *divisor != 0.0f && std::isfinite(1.0f / *divisor);
-  };
-  Replacement plan("(x,y,alpha) => com.microsoft::FusedMatMul(x,y,alpha=alpha)");
-  auto replacement = [plan](const Graph& graph, const Match& match) {
+    if (!IsFloat32(*match.valueOf("x")) || !IsFloat32(*match.valueOf("y")) ||
+        !divisor || *divisor == 0.0f || !std::isfinite(1.0f / *divisor))
+      return false;
     ONNX_NAMESPACE::AttributeProto alpha;
     alpha.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
-    alpha.set_f(1.0f / *FloatScalar(graph, *match.valueOf("divisor")));
+    alpha.set_f(1.0f / *divisor);
     match.update("alpha", std::move(alpha));
-    return plan;
+    return true;
   };
-  return Rule{"MatMulDiv", pattern, replacement, guard, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}};
+  const auto* replacement = "(x,y,alpha) => com.microsoft::FusedMatMul(x,y,alpha=alpha)";
+  return Rule{"MatMulDiv", pattern, replacement, check_and_bind, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}};
 }
 ```
 
-This example uses `IsFloat32` from the first example. The callback is called only
-after its guard succeeds. Guards must be pure; neither guard nor callback may
-mutate the graph, retain match pointers, or rely on mutable global graph state.
-Use local bindings, attributes, and constants to establish applicability.
+This example uses `IsFloat32` from the first example. Only the selected rule's
+replacement runs, with the bindings prepared by its successful check-and-bind
+callback. Replacement callbacks remain supported for choosing a parsed recipe;
+they receive `const Match&` and cannot update it. Parse any such recipes outside
+the callback to avoid per-match parsing.
 
-`update` accepts a concrete `AttributeProto`, including list-valued attributes.
+Each rule gets a separate copy of the structural match. Rejected rules and
+other candidates cannot leak prepared attributes, captured bindings, or rejection
+reasons. Match-only mode also runs check-and-bind callbacks, but never replacements
+or graph mutations. Neither callback may mutate the graph or retain match
+pointers; callbacks should have no externally visible side effects.
+
+`update` is non-const and accepts a concrete `AttributeProto`, including
+list-valued and tensor-valued attributes. A tensor binding can be used as a
+`Constant` node's `value` attribute; it is not a new arbitrary tensor-input binding API.
 It cannot overwrite a named pattern value or store a referenced/undefined
-attribute. Extra bindings are cleared before each replacement callback; captured attributes
-remain available. `attributeOf` retrieves either kind and errors if it is missing. A replacement header
+attribute. Prepared and captured attributes remain available to the replacement.
+`attributeOf` retrieves either kind through a read-only lookup and errors if it is missing. A replacement header
 name cannot be used as both a tensor and an attribute. Attribute-only names need
 not appear in the pattern, but must be supplied by the callback. Reusing a parsed
-plan does not reuse a previous match's attributes.
+plan does not reuse a previous match's attributes. `ClearUpdates` and `Reject`
+are also non-const; there is no mutable storage behind a const match.
 
 Replacement tensor inputs may reference only pattern input variables, literal
 constants, or earlier outputs in the replacement itself. A matched intermediate
@@ -437,7 +448,7 @@ must be connected to their final operator.
 
 ## When a match succeeds or fails
 
-Before calling a rule's guard, the matcher checks:
+Before calling a rule's check-and-bind callback, the matcher checks:
 
 - Exact operator name/domain, ordered output counts and input slots, and repeated
   binding identity. Omitted trailing inputs match only optional variables or
@@ -469,7 +480,7 @@ it reports safe rewrite eligibility, not arbitrary structural occurrences.
 There is no match-wide float32 restriction. Independently typed operands such
 as shape/index tensors or a Pow exponent require their own semantic constraints.
 The supplied RMS pattern specifically matches `Pow(x,2.0)`; the float32 exponent
-is a literal constraint, not a blanket guard check.
+is a literal constraint, not a blanket callback check.
 
 The RMS example also requires last-axis reduction, keepdims, known positive
 width and a matching one-dimensional scale, with pre-opset-18 attribute axes.
@@ -487,14 +498,14 @@ Duplicate domains, reversed ranges, and undeclared pattern domains are errors.
 
 All requirements are evaluated against each graph's `DomainToVersionMap()`,
 including independently for subgraphs. Missing imports or out-of-range versions
-make the rule inapplicable **before its guard runs**. The engine does not add
+make the rule inapplicable **before its check-and-bind callback runs**. The engine does not add
 imports, compare individual node schema since-versions, or rewrite model-local
 function bodies. Authors must establish correctness across their declared range.
 
 All matched nodes must have the same execution-provider assignment. Unassigned
 nodes are eligible; assigned nodes must belong to
 `Options::compatible_execution_providers`, which defaults to CPU only.
-Mixed assignments are rejected. This policy applies before the rule guard and
+Mixed assignments are rejected. This policy applies before the rule callback and
 also in match-only mode. To opt into another provider:
 
 ```cpp
@@ -534,7 +545,7 @@ per call.
 
 Rules have deterministic **registration-order priority**, including across
 different structural groups. At each eligible root, rewriting chooses the first
-passing guard. With `Options{.match_only=true}`, all passing guards are counted
+passing check-and-bind callback. With `Options{.match_only=true}`, all passing callbacks are counted
 and replacements are not called. `indexed=false` selects the reference matching
 mode with the same eligibility and priority semantics.
 
@@ -576,7 +587,7 @@ Malformed definitions throw `OnnxRuntimeException` with parse-location
 diagnostics; exception-disabled builds follow ORT's abort behavior. Invalid rule
 configuration raises an explicit error when the rewriter is constructed.
 Direct parsed replacements are checked against their rule during construction;
-callback-generated replacements also undergo runtime validation. Guard false
+callback-generated replacements also undergo runtime validation. Returning false from check-and-bind
 is an ordinary nonmatch.
 
 Replacement schemas and attributes are validated before matched nodes are
@@ -587,8 +598,8 @@ nonmatches. Final graph resolution checks types and inferred shapes; a rule
 author must not rely on schema staging alone to prove type correctness.
 
 `Statistics` exposes live roots visited (including revisits), enumerated
-candidates, structural checks, guard calls, successful matches, and completed
-rewrites. Match-only counts all passing guards; rewrite mode counts selected
+candidates, structural checks, `check_and_bind_calls`, successful matches, and completed
+rewrites. Match-only counts all passing check-and-bind callbacks; rewrite mode counts selected
 winners. These counters do not alter rule semantics.
 
 ### Opt-in failure diagnostics
@@ -604,19 +615,19 @@ options.on_failure = [](const MatchFailure& failure) {
 ```
 
 Stages distinguish opset filtering, structure, type/shape constraints, constants, attributes, deletion
-boundaries, execution providers, guards, and replacement validation. An opset
+boundaries, execution providers, check-and-bind callbacks, and replacement validation. An opset
 rejection is reported once per rule/graph with root index
 `std::numeric_limits<NodeIndex>::max()` because no candidate was inspected.
 Other failures are reported for attempted candidates; indexed mode skips
 unrelated root operators, so diagnostic counts need not match reference mode.
 Shared structural failures are attributed to each affected rule.
 
-A guard can use `return match.Reject("unsupported element type");` instead of
+A check-and-bind callback can use `return match.Reject("unsupported element type");` instead of
 bare `false` to supply a reason. This changes only diagnostics, not eligibility.
 Records own their strings and contain no graph pointers. Callbacks run
 synchronously, must not mutate the graph or reenter the rewriter, and may copy
 records for later inspection. No diagnostic records are constructed when
-diagnostics are disabled; `Reject` still stores an explicitly supplied guard
+diagnostics are disabled; `Reject` still stores an explicitly supplied callback
 message. Replacement validation status errors are reported and
 still propagated; exceptions from user callbacks or named lookups still propagate
 normally and are not converted to nonmatches.
@@ -631,7 +642,7 @@ rewriting. Control-flow operators are not matched, although their subgraphs can
 be rewritten through `Apply`.
 
 Tests in `onnxruntime/test/optimizer/pattern_rewriter_test.cc` cover parsing,
-guards, boundaries, multi-output rewrites, rule priority, and numerical CPU
+check-and-bind callbacks, boundaries, multi-output rewrites, rule priority, and numerical CPU
 equivalence, including small decoder prefill/decode graphs. Add structural and
 executed equivalence tests when writing or extending a rule.
 
@@ -646,7 +657,7 @@ agree. Independent DAG branches need not have the same node ordering in the
 model, but operand order and data dependencies must match. A mismatch rejects
 the candidate rather than trying other producers or operand permutations.
 Constants, attributes, deletion boundaries, and EP eligibility are checked
-before the rule's semantic guard. Type unions use the separate bounded
+before the rule's check-and-bind callback. Type unions use the separate bounded
 annotation-choice search described above.
 
 Multiple rules are handled **node-first**, inside an outer bounded retry loop:
@@ -656,7 +667,7 @@ filter rules by this graph's opset imports
 for each iteration, up to max_iterations (default 10):
     for each still-live node in the current candidate batch:
         find candidate rule groups by the node's (domain, operator name)
-        match their patterns and evaluate eligible guards
+        match their patterns and evaluate eligible check-and-bind callbacks
         apply the passing rule with earliest registration priority
         queue replacement nodes and affected nodes for the next batch
     stop if no rewrite occurred or no candidates remain
@@ -670,7 +681,7 @@ loop at each node.
 
 By default, a hash map indexed by `(domain, operator name)` selects candidate
 groups using the model node as the prospective pattern root. Structurally
-identical patterns can share a traversal, followed by their rule-specific guards;
+identical patterns can share a traversal, followed by their rule-specific check-and-bind callbacks;
 patterns with attribute predicates or type/shape annotations are kept separate. The earliest passing
 rule wins even across groups, and lower-priority work is skipped when possible.
 With `indexed=false`, the reference mode instead tries all opset-applicable

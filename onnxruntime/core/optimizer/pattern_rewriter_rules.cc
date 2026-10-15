@@ -55,9 +55,9 @@ Rules MakeExampleRules() {
         return Div(mul, 6.0)
       }
     )";
-    auto guard = [](const Graph&, const Match& m) { return IsFloat32(*m.valueOf("x")); };
+    auto check_and_bind = [](const Graph&, Match& m) { return IsFloat32(*m.valueOf("x")); };
     const auto* replacement = "(x) => HardSwish(x)";
-    Rule rule{"HardSwish", pattern, replacement, guard, {{kOnnxDomain, 14, 21}}};
+    Rule rule{"HardSwish", pattern, replacement, check_and_bind, {{kOnnxDomain, 14, 21}}};
     rules.push_back(std::move(rule));
   }
   {
@@ -67,30 +67,29 @@ Rules MakeExampleRules() {
         return Mul(sigmoid, x)
       }
     )";
-    auto guard = [](const Graph&, const Match& m) { return IsFloat32(*m.valueOf("x")); };
+    auto check_and_bind = [](const Graph&, Match& m) { return IsFloat32(*m.valueOf("x")); };
     const auto* replacement = "(x) => HardSwish(x)";
-    Rule rule{"HardSigmoidMul", pattern, replacement, guard, {{kOnnxDomain, 14, 21}}};
+    Rule rule{"HardSigmoidMul", pattern, replacement, check_and_bind, {{kOnnxDomain, 14, 21}}};
     rules.push_back(std::move(rule));
   }
 #ifndef DISABLE_CONTRIB_OPS
   {
     const auto* pattern = "(x, y, divisor) => { mm = MatMul(x, y); return Div(mm, divisor); }";
-    auto guard = [](const Graph& graph, const Match& m) {
+    auto check_and_bind = [](const Graph& graph, Match& m) {
       auto scalar = Scalar(graph, *m.valueOf("divisor"));
-      return IsFloat32(*m.valueOf("x")) && IsFloat32(*m.valueOf("y")) &&
-             scalar && *scalar != 0.0f && std::isfinite(1.0f / *scalar);
+      if (!IsFloat32(*m.valueOf("x")) || !IsFloat32(*m.valueOf("y")) ||
+          !scalar || *scalar == 0.0f || !std::isfinite(1.0f / *scalar))
+        return false;
+      m.update("alpha", FloatAttribute("alpha", 1.0f / *scalar));
+      return true;
     };
-    Replacement plan("(x, y, alpha) => com.microsoft.FusedMatMul(x, y, alpha=alpha)");
-    auto replacement = [plan](const Graph& graph, const Match& m) {
-      m.update("alpha", FloatAttribute("alpha", 1.0f / *Scalar(graph, *m.valueOf("divisor"))));
-      return plan;
-    };
-    Rule rule{"MatMulDiv", pattern, replacement, guard, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}};
+    const auto* replacement = "(x, y, alpha) => com.microsoft.FusedMatMul(x, y, alpha=alpha)";
+    Rule rule{"MatMulDiv", pattern, replacement, check_and_bind, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}};
     rules.push_back(std::move(rule));
   }
   {
     const auto* pattern = "(x, y) => { transpose = Transpose(y); return MatMul(x, transpose); }";
-    auto guard = [](const Graph&, const Match& m) {
+    auto check_and_bind = [](const Graph&, Match& m) {
       if (!IsFloat32(*m.valueOf("x")) || !IsFloat32(*m.valueOf("y"))) return false;
       const auto* shape = m.valueOf("y")->Shape();
       if (!shape || shape->dim_size() < 2) return false;
@@ -108,37 +107,34 @@ Rules MakeExampleRules() {
       return true;
     };
     const auto* replacement = "(x,y) => com.microsoft.FusedMatMul(x,y,transB=1)";
-    Rule rule{"TransposeMatMul", pattern, replacement, guard, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}};
+    Rule rule{"TransposeMatMul", pattern, replacement, check_and_bind, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}};
     rules.push_back(std::move(rule));
   }
   {
     const auto* pattern = "(x, y, divisor) => { mm = com.microsoft::FusedMatMul(x, y); return Div(mm, divisor); }";
-    auto guard = [](const Graph& graph, const Match& m) {
+    auto check_and_bind = [](const Graph& graph, Match& m) {
       auto scalar = Scalar(graph, *m.valueOf("divisor"));
-      auto it = m.nodes[0]->GetAttributes().find("alpha");
-      float alpha = it == m.nodes[0]->GetAttributes().end() ? 1.0f : it->second.f();
-      return IsFloat32(*m.valueOf("x")) && IsFloat32(*m.valueOf("y")) &&
-             scalar && *scalar != 0.0f && std::isfinite(alpha / *scalar);
-    };
-    Replacement plan(R"(
-      (x, y, alpha, transA, transB, transBatchA, transBatchB) =>
-        com.microsoft.FusedMatMul(x, y, alpha=alpha, transA=transA, transB=transB,
-                                 transBatchA=transBatchA, transBatchB=transBatchB)
-    )");
-    auto replacement = [plan](const Graph& graph, const Match& m) {
       const auto& node = *m.nodes[0];
       const auto& attributes = node.GetAttributes();
       auto it = attributes.find("alpha");
       float alpha = it == attributes.end() ? 1.0f : it->second.f();
-      m.update("alpha", FloatAttribute("alpha", alpha / *Scalar(graph, *m.valueOf("divisor"))));
+      if (!IsFloat32(*m.valueOf("x")) || !IsFloat32(*m.valueOf("y")) ||
+          !scalar || *scalar == 0.0f || !std::isfinite(alpha / *scalar))
+        return false;
+      m.update("alpha", FloatAttribute("alpha", alpha / *scalar));
       for (const char* name : {"transA", "transB", "transBatchA", "transBatchB"}) {
         auto attribute = attributes.find(name);
         m.update(name, attribute == attributes.end() ? node.Op()->attributes().at(name).default_value
                                                      : attribute->second);
       }
-      return plan;
+      return true;
     };
-    Rule rule{"FusedMatMulDiv", pattern, replacement, guard, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}};
+    const auto* replacement = R"(
+      (x, y, alpha, transA, transB, transBatchA, transBatchB) =>
+        com.microsoft.FusedMatMul(x, y, alpha=alpha, transA=transA, transB=transB,
+                                 transBatchA=transBatchA, transBatchB=transBatchB)
+    )";
+    Rule rule{"FusedMatMulDiv", pattern, replacement, check_and_bind, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}};
     rules.push_back(std::move(rule));
   }
   {
@@ -153,7 +149,7 @@ Rules MakeExampleRules() {
         return Mul(normalize, scale)
       }
     )";
-    auto guard = [](const Graph& graph, const Match& m) {
+    auto check_and_bind = [](const Graph& graph, Match& m) {
       if (!IsFloat32(*m.valueOf("x")) || !IsFloat32(*m.valueOf("scale"))) return false;
       auto eps = Scalar(graph, *m.valueOf("epsilon"));
       const auto* shape = m.valueOf("x")->Shape();
@@ -167,19 +163,18 @@ Rules MakeExampleRules() {
         return false;
       const auto& mean_node = *m.nodes[1];
       auto axes = mean_node.GetAttributes().find("axes");
-      return Integer(mean_node, "keepdims", 1) && axes != mean_node.GetAttributes().end() &&
-             axes->second.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_INTS &&
-             axes->second.ints_size() == 1 && axes->second.ints(0) == -1;
+      if (!Integer(mean_node, "keepdims", 1) || axes == mean_node.GetAttributes().end() ||
+          axes->second.type() != ONNX_NAMESPACE::AttributeProto_AttributeType_INTS ||
+          axes->second.ints_size() != 1 || axes->second.ints(0) != -1)
+        return false;
+      m.update("fused_epsilon", FloatAttribute("epsilon", *eps));
+      return true;
     };
-    Replacement plan(R"(
+    const auto* replacement = R"(
       (x, scale, fused_epsilon) =>
         SimplifiedLayerNormalization(x, scale, axis=-1, epsilon=fused_epsilon, stash_type=1)
-    )");
-    auto replacement = [plan](const Graph& graph, const Match& m) {
-      m.update("fused_epsilon", FloatAttribute("epsilon", *Scalar(graph, *m.valueOf("epsilon"))));
-      return plan;
-    };
-    Rule rule{"RmsNormalization", pattern, replacement, guard, {{kOnnxDomain, 7, 17}}};
+    )";
+    Rule rule{"RmsNormalization", pattern, replacement, check_and_bind, {{kOnnxDomain, 7, 17}}};
     rules.push_back(std::move(rule));
   }
 #endif
