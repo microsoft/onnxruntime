@@ -35,14 +35,30 @@
 
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
+#include "core/platform/env.h"
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <cerrno>
+#include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <functional>
 #include <iostream>
 #include <limits>
 #include <mutex>
+
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include <share.h>
+#include <sys/stat.h>
+#else
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -50,6 +66,73 @@ using namespace ONNX_NAMESPACE;
 
 namespace {
 constexpr size_t kMinH200GlobalMemoryBytes = size_t{120} << 30;
+
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+std::string EncodeCalibrationCaptureName(const std::string& name) {
+  constexpr char kHex[] = "0123456789ABCDEF";
+  std::string encoded;
+  encoded.reserve(name.size());
+  for (const unsigned char character : name) {
+    if ((character >= 'a' && character <= 'z') ||
+        (character >= 'A' && character <= 'Z') ||
+        (character >= '0' && character <= '9')) {
+      encoded.push_back(static_cast<char>(character));
+    } else {
+      encoded.push_back('_');
+      encoded.push_back(kHex[character >> 4]);
+      encoded.push_back(kHex[character & 0x0F]);
+    }
+  }
+  return encoded;
+}
+
+Status WriteCalibrationCapture(
+    const std::filesystem::path& path,
+    const std::array<int64_t, 5>& header,
+    const std::vector<char>& inputs,
+    const std::vector<char>& routers) {
+  int fd = -1;
+#ifdef _WIN32
+  const errno_t open_error = _wsopen_s(
+      &fd, path.c_str(), _O_CREAT | _O_EXCL | _O_BINARY | _O_WRONLY,
+      _SH_DENYRW, _S_IREAD | _S_IWRITE);
+  if (open_error != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot exclusively create calibration capture: ",
+                           path.string(), " (error ", open_error, ")");
+  }
+  FILE* output = _fdopen(fd, "wb");
+#else
+  fd = open(path.c_str(), O_CREAT | O_EXCL | O_WRONLY, 0600);
+  if (fd < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot exclusively create calibration capture: ",
+                           path.string(), " (error ", errno, ")");
+  }
+  FILE* output = fdopen(fd, "wb");
+#endif
+  if (output == nullptr) {
+#ifdef _WIN32
+    _close(fd);
+#else
+    close(fd);
+#endif
+    std::error_code remove_error;
+    std::filesystem::remove(path, remove_error);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot open calibration capture stream: ", path.string());
+  }
+
+  const bool write_succeeded =
+      std::fwrite(header.data(), sizeof(header), 1, output) == 1 &&
+      std::fwrite(inputs.data(), 1, inputs.size(), output) == inputs.size() &&
+      std::fwrite(routers.data(), 1, routers.size(), output) == routers.size();
+  const bool close_succeeded = std::fclose(output) == 0;
+  if (!write_succeeded || !close_succeeded) {
+    std::error_code remove_error;
+    std::filesystem::remove(path, remove_error);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to write calibration capture: ", path.string());
+  }
+  return Status::OK();
+}
+#endif
 
 void LogQMoESwigluFusionRemapOnce() {
   static std::once_flag log_warning;
@@ -402,12 +485,41 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   bool is_fp16 = input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
 #endif
   is_fp16_ = is_fp16;
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  calibration_capture_directory_ =
+      onnxruntime::ParseEnvironmentVariableWithDefault<std::string>("ORT_QMOE_CALIBRATION_CAPTURE_DIR", "");
+  if (!calibration_capture_directory_.empty() && quant_type_ == "nvfp4") {
+    ORT_ENFORCE(std::filesystem::is_directory(calibration_capture_directory_),
+                "QMoE calibration capture directory must already exist.");
+    const std::string& node_name = op_kernel_info.node().Name();
+    ORT_ENFORCE(!node_name.empty(), "QMoE calibration capture requires named nodes.");
+    static std::atomic<uint64_t> next_capture_instance{0};
+    calibration_capture_name_ =
+        EncodeCalibrationCaptureName(node_name) + "_p" +
+        std::to_string(Env::Default().GetSelfPid()) + "_i" +
+        std::to_string(next_capture_instance.fetch_add(1, std::memory_order_relaxed));
+    LOGS_DEFAULT(WARNING) << "QMoE calibration capture enabled for " << op_kernel_info.node().Name()
+                          << "; synchronous diagnostic capture, not suitable for performance measurements.";
+  } else {
+    calibration_capture_directory_.clear();
+  }
+#endif
   enable_int2_prefill_ = quant_type_ == "int" && sm_ >= 80 &&
                          (block_size_ == 32 || block_size_ == 64 || block_size_ == 128) &&
                          (fc1_expert_weight_bits_ == 2 || fc1_expert_weight_bits_ == 4) &&
                          (fc2_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 4) &&
                          (fc1_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 2) &&
                          onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_QMOE_INT2_PREFILL", 1) != 0;
+  enable_int2_large_experts_ =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT2_LARGE_EXPERTS", 0) == 1;
+  const int fake_int4_activations =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT2_FAKE_INT4_ACTIVATIONS", 0);
+  ORT_ENFORCE(fake_int4_activations == 0 || fake_int4_activations == 1,
+              "ORT_QMOE_INT2_FAKE_INT4_ACTIVATIONS must be 0 or 1.");
+  int2_fake_int4_activations_ = fake_int4_activations == 1 && quant_type_ == "int" &&
+                                (fc1_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 2);
+  ORT_ENFORCE(!int2_fake_int4_activations_ || enable_int2_prefill_,
+              "INT4 activation simulation requires ORT_ENABLE_QMOE_INT2_PREFILL=1 and a supported INT2/mixed-width configuration.");
 
   fp4_deep_gemm_num_experts_ = StaticFp4DeepGemmNumExperts(op_kernel_info);
   enable_fp4_deep_gemm_ =
@@ -729,6 +841,43 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool uses_global_weight_scales = is_fp4_family || (is_fp8 && !is_block_fp8) || is_wfp4afp8;
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  if (!calibration_capture_directory_.empty()) {
+    std::lock_guard<std::mutex> lock(calibration_capture_mutex_);
+    ORT_RETURN_IF_NOT(input && router_probs && input->Shape().NumDimensions() > 0 &&
+                          router_probs->Shape().NumDimensions() > 0,
+                      "QMoE calibration capture requires nonempty input and router shapes.");
+    const int64_t hidden = input->Shape().GetDims().back();
+    ORT_RETURN_IF_NOT(hidden > 0, "QMoE calibration capture requires positive hidden size.");
+    const int64_t rows = input->Shape().Size() / hidden;
+    if (rows >= 16 && calibration_capture_count_ < 16) {
+      cudaStream_t capture_stream = Stream(context);
+      cudaStreamCaptureStatus capture_status;
+      CUDA_CALL_THROW(cudaStreamIsCapturing(capture_stream, &capture_status));
+      ORT_RETURN_IF_NOT(capture_status == cudaStreamCaptureStatusNone,
+                        "QMoE calibration capture requires CUDA graphs disabled.");
+      ORT_RETURN_IF_NOT(input->DataType()->Size() == 2 && router_probs->DataType()->Size() == 2,
+                        "QMoE calibration capture requires FP16/BF16 input and router.");
+      const int64_t experts = router_probs->Shape().GetDims().back();
+      const int64_t captured_rows = std::min<int64_t>(rows, 128);
+      ORT_RETURN_IF_NOT(experts > 0 && router_probs->Shape().Size() >= captured_rows * experts,
+                        "QMoE calibration router shape does not cover the captured rows.");
+      const size_t input_bytes = SafeInt<size_t>(captured_rows) * hidden * 2;
+      const size_t router_bytes = SafeInt<size_t>(captured_rows) * experts * 2;
+      std::vector<char> inputs(input_bytes), routers(router_bytes);
+      CUDA_CALL_THROW(cudaMemcpyAsync(inputs.data(), input->DataRaw(), input_bytes,
+                                      cudaMemcpyDeviceToHost, capture_stream));
+      CUDA_CALL_THROW(cudaMemcpyAsync(routers.data(), router_probs->DataRaw(), router_bytes,
+                                      cudaMemcpyDeviceToHost, capture_stream));
+      CUDA_CALL_THROW(cudaStreamSynchronize(capture_stream));
+      const auto path = std::filesystem::path(calibration_capture_directory_) /
+                        (calibration_capture_name_ + "_" + std::to_string(calibration_capture_count_) + ".bin");
+      const std::array<int64_t, 5> header{1, captured_rows, hidden, experts, is_fp16_ ? 10 : 16};
+      ORT_RETURN_IF_ERROR(WriteCalibrationCapture(path, header, inputs, routers));
+      ++calibration_capture_count_;
+    }
+  }
+#endif
   // When PrePack consumed the int4/int8 expert-weight initializers
   // (``weights_prepacked == false`` opt-in path), the original tensors
   // were freed; ``context->Input<Tensor>(2)/(5)`` would return nothing.
@@ -1200,6 +1349,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                         gemv_group_size, gemv::MoeGemvConfig::kDefault,
                                         fc2_gemv_sm80_layout, use_raw_nvfp4_gemv, nvfp4_weights_row_major_);
   }
+  const bool run_fp4_gemv = !use_fp4_deep_gemm && use_fp4_gemv;
 
   bool use_packed_int_gemv = false;
   const int64_t packed_int_expanded = moe_params.num_rows * static_cast<int64_t>(k_);
@@ -1212,7 +1362,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool packed_int_routing_supported =
       moe_params.num_rows <= 256 && moe_params.num_experts <= 256 &&
       (k_ == 1 || k_ == 2 || k_ == 4 || k_ == 6 || k_ == 8);
-  if (enable_int2_gemv_ && !has_any_zero_point && is_fused_swiglu && swiglu_fusion == 1 &&
+  if (enable_int2_gemv_ && !int2_fake_int4_activations_ && !has_any_zero_point && is_fused_swiglu && swiglu_fusion == 1 &&
       (block_size_ == 64 || block_size_ == 128) && packed_fc1_weights_ != nullptr &&
       packed_fc2_weights_ != nullptr) {
     use_packed_int_gemv = packed_int_fc1_shape_supported && packed_int_fc2_shape_supported &&
@@ -1239,22 +1389,45 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       moe_params.hidden_size > 0 && moe_params.hidden_size <= std::numeric_limits<int>::max() &&
       moe_params.hidden_size % 64 == 0 && moe_params.inter_size > 0 &&
       moe_params.inter_size <= std::numeric_limits<int>::max() / 2 && moe_params.inter_size % 64 == 0 &&
-      moe_params.num_experts > 0 && moe_params.num_experts <= 256;
+      moe_params.num_experts > 0 &&
+      moe_params.num_experts <= (enable_int2_large_experts_ ? 512 : 256);
+  ORT_RETURN_IF_NOT(!int2_fake_int4_activations_ || use_packed_int_prefill,
+                    "INT4 activation simulation requires the packed INT2 grouped path; refusing an unquantized fallback.");
+  const bool use_nvfp4_packed_prefill =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_NVFP4_PACKED_PREFILL", 0) == 1 &&
+      is_nvfp4 && nvfp4_weights_row_major_ && use_fp4_dequant_fallback_ && !run_fp4_gemv &&
+      is_fused_swiglu && swiglu_fusion == 1 && sm_ >= 80 &&
+      moe_params.hidden_size > 0 && moe_params.hidden_size <= std::numeric_limits<int>::max() &&
+      moe_params.hidden_size % 64 == 0 && moe_params.inter_size > 0 &&
+      moe_params.inter_size <= std::numeric_limits<int>::max() / 2 && moe_params.inter_size % 64 == 0 &&
+      moe_params.num_experts > 0 && moe_params.num_experts <= std::numeric_limits<int>::max() &&
+      moe_params.num_rows > 0 && SafeInt<int64_t>(moe_params.num_rows) * k_ <= std::numeric_limits<int>::max() - moe_params.num_experts;
   int64_t effective_row_tile_size = row_tile_size_;
+  const bool fuse_nvfp4_swiglu = use_nvfp4_packed_prefill &&
+                                 onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_NVFP4_FUSED_SWIGLU", 0) == 1;
+  const bool reuse_nvfp4_routing_scratch = use_nvfp4_packed_prefill &&
+                                           onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_NVFP4_REUSE_ROUTING_SCRATCH", 0) == 1;
+  const bool tile_nvfp4_down_output = use_nvfp4_packed_prefill && fuse_nvfp4_swiglu &&
+                                      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_NVFP4_TILED_DOWN_OUTPUT", 0) == 1;
   size_t packed_prefill_workspace_bytes = 0;
-  if (use_packed_int_prefill) {
+  if (use_packed_int_prefill || use_nvfp4_packed_prefill) {
     namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
-    constexpr size_t kMaxPackedPrefillScratchBytes = 256 * 1024 * 1024;
+    const size_t kMaxPackedPrefillScratchBytes =
+        (use_nvfp4_packed_prefill ? 384 : 256) * 1024 * 1024;
     ck::Int2MoePrefillParams sizing_params;
+    sizing_params.is_nvfp4 = use_nvfp4_packed_prefill;
+    sizing_params.fuse_nvfp4_swiglu = fuse_nvfp4_swiglu;
+    sizing_params.reuse_nvfp4_routing_scratch = reuse_nvfp4_routing_scratch;
+    sizing_params.tile_nvfp4_down_output = tile_nvfp4_down_output;
     sizing_params.hidden_size = static_cast<int>(moe_params.hidden_size);
     sizing_params.inter_size = static_cast<int>(moe_params.inter_size);
     sizing_params.num_experts = static_cast<int>(moe_params.num_experts);
     sizing_params.top_k = static_cast<int>(k_);
     size_t scale_scratch_bytes = 0;
-    if (!gemv_int_fc1_scales_ && fc1_scales) {
+    if (!use_nvfp4_packed_prefill && !gemv_int_fc1_scales_ && fc1_scales) {
       scale_scratch_bytes = SafeInt<size_t>(scale_scratch_bytes) + fc1_scales->SizeInBytes();
     }
-    if (!gemv_int_fc2_scales_ && fc2_scales) {
+    if (!use_nvfp4_packed_prefill && !gemv_int_fc2_scales_ && fc2_scales) {
       scale_scratch_bytes = SafeInt<size_t>(scale_scratch_bytes) + fc2_scales->SizeInBytes();
     }
     effective_row_tile_size = row_tile_size_ == qmoe::kDisabledRowTileSize
@@ -1324,9 +1497,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   std::array<RunnerTileConfig, 2> runner_tile_configs{};
   size_t runner_tile_config_count = 0;
   size_t workspace_size = 0;
-  const bool skip_direct_nvfp4_profiling =
-      skip_nvfp4_gemv_profiling_ && is_nvfp4 && use_fp4_gemv && !use_fp4_deep_gemm;
-  if (!use_fp8_fused && !use_packed_int && !skip_direct_nvfp4_profiling) {
+  // Standalone FP4 GEMV returns before runMoe and does not consume grouped-GEMM tactics or workspace.
+  if (!use_fp8_fused && !use_packed_int && !use_nvfp4_packed_prefill && !run_fp4_gemv) {
     std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
 
     // Profiling launches grouped-GEMM kernels, records/synchronizes CUDA events, and
@@ -1882,7 +2054,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     }
   };
 
-  if (!use_int_dequant_fallback || use_packed_int) {
+  if ((!use_int_dequant_fallback || use_packed_int) && !use_nvfp4_packed_prefill) {
     const auto& fc1_prepared_scales = use_packed_int ? gemv_int_fc1_scales_ : packed_fc1_scales_;
     const auto& fc2_prepared_scales = use_packed_int ? gemv_int_fc2_scales_ : packed_fc2_scales_;
     prepare_scale_zp(fc1_scales, fc1_zeros, fc1_prepared_scales, packed_fc1_bias_,
@@ -2039,14 +2211,23 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // block_size_ attribute is unset (-1) for fp4, so it is not part of the gate.
   // When native CUTLASS WFP4A16 is enabled, GEMV serves only the decode regime
   // (num_rows < fp4_prefill_min_tokens_); prefill (M >= threshold) falls through to native.
-  if (use_packed_int_prefill) {
+  if (use_packed_int_prefill || use_nvfp4_packed_prefill) {
     namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
     ck::Int2MoePrefillParams params;
     params.is_bf16 = !is_fp16_;
-    params.fc1_weights = static_cast<const uint8_t*>(packed_fc1_weights_.get());
-    params.fc2_weights = static_cast<const uint8_t*>(packed_fc2_weights_.get());
-    params.fc1_scales = p_fc1_scales;
-    params.fc2_scales = p_fc2_scales;
+    params.fake_int4_activations = int2_fake_int4_activations_;
+    params.is_nvfp4 = use_nvfp4_packed_prefill;
+    params.fuse_nvfp4_swiglu = fuse_nvfp4_swiglu;
+    params.reuse_nvfp4_routing_scratch = reuse_nvfp4_routing_scratch;
+    params.tile_nvfp4_down_output = tile_nvfp4_down_output;
+    params.fc1_weights = static_cast<const uint8_t*>(
+        use_nvfp4_packed_prefill ? fc1_experts_weights->DataRaw() : packed_fc1_weights_.get());
+    params.fc2_weights = static_cast<const uint8_t*>(
+        use_nvfp4_packed_prefill ? fc2_experts_weights->DataRaw() : packed_fc2_weights_.get());
+    params.fc1_scales = use_nvfp4_packed_prefill ? fp4_fc1_block_scales->DataRaw() : p_fc1_scales;
+    params.fc2_scales = use_nvfp4_packed_prefill ? fp4_fc2_block_scales->DataRaw() : p_fc2_scales;
+    params.fc1_global_scales = use_nvfp4_packed_prefill ? fc1_global_scale->Data<float>() : nullptr;
+    params.fc2_global_scales = use_nvfp4_packed_prefill ? fc2_global_scale->Data<float>() : nullptr;
     params.fc1_bias = fc1_experts_bias_optional ? fc1_experts_bias_optional->DataRaw() : nullptr;
     params.fc2_bias = fc2_experts_bias_optional ? fc2_experts_bias_optional->DataRaw() : nullptr;
     params.selected_experts = expert_indices;
@@ -2093,7 +2274,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 #endif
     }
     if (enable_kernel_debug_info_) {
-      PrintQMoEKernelDebugInfo("packed_int_prefill", moe_params.num_rows, row_tile_plan.rows_per_tile,
+      PrintQMoEKernelDebugInfo(use_nvfp4_packed_prefill ? "packed_nvfp4_prefill" : "packed_int_prefill",
+                               moe_params.num_rows, row_tile_plan.rows_per_tile,
                                final_tile_rows, row_tile_plan.rows_per_tile * k_, final_tile_rows * k_,
                                prefill_bytes, SafeInt<size_t>(total_scratch_bytes) + prefill_bytes);
     }
@@ -2202,7 +2384,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   }
 
   // The FP4 DeepGEMM path, when eligible, outranks the GEMV for the same shapes.
-  if (!use_fp4_deep_gemm && use_fp4_gemv) {
+  if (run_fp4_gemv) {
     namespace gemv = onnxruntime::llm::kernels::moe_gemv;
     namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
     const int num_experts = static_cast<int>(moe_params.num_experts);
@@ -2906,7 +3088,8 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     }
 
     const int64_t reduction_size = shape[2] * pack_factor;
-    if (enable_int2_prefill_ && shape[0] > 0 && shape[0] <= 256 &&
+    if (enable_int2_prefill_ && shape[0] > 0 &&
+        shape[0] <= (enable_int2_large_experts_ ? 512 : 256) &&
         shape[1] > 0 && shape[1] <= std::numeric_limits<int>::max() && shape[1] % 64 == 0 &&
         reduction_size > 0 && reduction_size <= std::numeric_limits<int>::max() && reduction_size % 64 == 0) {
       return true;

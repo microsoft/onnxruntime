@@ -1,4 +1,4 @@
-# PackedSparseAttentionIndexer — Operator Documentation
+ — Operator Documentation
 
 This document describes the `com.microsoft::PackedSparseAttentionIndexer` contrib operator: the
 packed/variable-length counterpart of `com.microsoft::SparseAttentionIndexer`, built for
@@ -18,6 +18,34 @@ Source:
 (WebGPU, see also [the WebGPU note](webgpu/packed_sparse_attention_indexer.md)).
 
 ---
+
+## Experimental CUDA warp-local QSA prefill scoring
+
+`ORT_PACKED_SPARSE_INDEXER_WARP_HEADS=1` enables a default-off scoring path for
+QSA packed prefill with more than 64 tokens, four query heads, head size 128,
+and compression ratio four. Set it before session creation; its value is
+cached per process. Other geometries and decode keep their existing dispatch.
+
+Each warp scores one state slot across all four heads, retaining query values
+and reusing the loaded key. It removes the shared head-score handoff and
+CTA-wide barriers while preserving the per-head warp reduction and ordered
+head sum. The path does not change state capacity, causal visibility, top-k
+selection, overflow handling, or workspace layout.
+
+FP16/FP32 flag-off/on regression tests cover random/tied scores, empty and
+partial state tiles, and 32768 live slots (128K-token-equivalent state).
+Fresh 64K/128K MTP-width-three full-model experiments reduced TTFT from about
+11.62 to 10.50 seconds and 27.52 to 22.90 seconds, respectively, in both
+control-first and candidate-first orders. These observations are not universal
+performance guarantees. The first comparison matched all six measured token
+streams; a reverse-order 128K control produced a different stream than both
+the earlier control and candidates. Full-model deterministic/quality
+equivalence across arbitrary tuned executions is therefore not established.
+A further 128K comparison with decoder/MTP GEMM autotuning disabled matched
+all three measured streams, with TTFT 27.52 to 22.94 seconds and essentially
+unchanged decode throughput. This supports exact parity on that controlled
+workload but does not establish the cause of the earlier mismatch or broad
+quality equivalence. Keep the option experimental and off by default.
 
 ## 1. Why a separate operator
 
@@ -276,11 +304,18 @@ mechanics with no packed equivalent):
 ## 10. Known limitations and follow-ups
 
 - The reference CUDA/WebGPU kernels prioritize correctness over throughput (see the top-of-file
-  comments in the `.cu`/`.cc` implementations). CUDA QSA fuses query rotation into scoring, uses
-  the shared-memory TopK path for up to 32 selected blocks, bounded partial TopK for 33–512 blocks,
-  and a hierarchical TopK path for common long-context Qwen shapes. Values above 512 that do not
-  match the hierarchical specialization retain the correctness-first repeated-scan fallback.
+  comments in the `.cu`/`.cc` implementations). CUDA QSA fuses query rotation into scoring and
+  uses a single-read deterministic block TopK for up to 32 selected blocks. Eligible short QSA
+  calls with four 128-channel heads, compression ratio four and up to 512 selected blocks use
+  hierarchical scoring/selection. Other bounded cases use radix selection.
+- Experimental CUDA flag `ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK=1` replaces the eligible short-QSA
+  merge tree with live-key radix selection and a bounded sort. It preserves the scored keys,
+  ascending-index tie ordering, selected counts and state update semantics; no host readback is
+  introduced. The default is off and preserves hierarchical merging. Set the flag before the
+  first eligible call in a process; dispatch is cached. Long-context performance is not
+  established, so this is not a general throughput recommendation.
 - OgaEngine / Model Builder integration (declaring `past_key_state` etc. as Engine-managed,
   per-request fixed-size state, analogous to a paged auxiliary cache) is out of scope for this
   operator definition and is expected in a follow-up to `microsoft/onnxruntime-genai`.
 - No CPU kernel is provided.
+# PackedSparseAttentionIndexer
