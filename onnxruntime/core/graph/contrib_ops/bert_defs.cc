@@ -370,14 +370,10 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
                                                       : past_dims[2].dim_value();
           present_shape.add_dim()->set_dim_value(present_sequence_length);
         } else {
-          // Cannot compute exact present_sequence_length.
-          if (ctx.getNumInputs() > 6 && past_dims[2].has_dim_value() && past_dims[2].dim_value() == 0) {
-            // If total_sequence_length is provided and past_key has 0 length, present_key will grow.
-            // Leave the dimension as dynamic to avoid "Error merging shape info" warning.
-            present_shape.add_dim();
-          } else {
-            *present_shape.add_dim() = past_dims[2];
-          }
+          // total_sequence_length is a runtime input here, so neither a symbolic nor a fixed past
+          // length bounds present. Copying the past dimension would let the allocation planner give
+          // present a past-sized buffer ("Shape mismatch attempting to re-use buffer").
+          present_shape.add_dim();
         }
         *present_shape.add_dim() = past_dims[3];  // head_size
 
@@ -5270,9 +5266,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Default 0.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("chunk_size",
-              "Tuning hint for the chunk-parallel prefill algorithm. 32 pins the narrow chunk; "
-              "any other value lets the implementation take the widest chunk the device can "
-              "hold. Default 64.",
+              "Tuning hint for the chunk-parallel prefill algorithm. On CUDA, 32 pins the narrow "
+              "chunk and any other value lets the implementation select the widest chunk the device "
+              "can hold. On WebGPU, 16 opts into the chunkwise prefill route on supported Apple silicon; "
+              "default 64 retains recurrent execution. Default 64.",
               AttributeProto::INT, static_cast<int64_t>(64))
         .Attr("state_update_capacity",
               "Capacity C for compact contiguous-prefix transition capture, in [0, 8]. "

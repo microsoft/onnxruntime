@@ -1,7 +1,7 @@
 resources:
   pipelines:
   - pipeline: build
-    source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
+    source: 'Nuget - Packaging - CUDA13'
     trigger: true
     branch: main
   repositories:

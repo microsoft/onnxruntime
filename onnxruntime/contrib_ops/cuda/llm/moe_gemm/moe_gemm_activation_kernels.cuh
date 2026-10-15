@@ -33,6 +33,14 @@ constexpr static int ACTIVATION_THREADS_PER_BLOCK = 256;
 
 struct QuantParams;
 
+template <class T>
+struct ReluSquared {
+  CUTLASS_HOST_DEVICE T operator()(const T& value) const {
+    const T positive = cutlass::epilogue::thread::ReLu<T>{}(value);
+    return positive * positive;
+  }
+};
+
 template <class ActivationOutputType, class GemmOutputType, template <class> class ActFn>
 __global__ void doGatedActivationKernel(ActivationOutputType* output, const GemmOutputType* gemm_result,
                                         const int64_t* num_valid_tokens_ptr, int64_t inter_size,
@@ -129,8 +137,9 @@ void doGatedActivation(ActivationOutputType* output, const GemmOutputType* gemm_
       case ActivationType::Gelu:
         return &doGatedActivationKernel<ActivationOutputType, GemmOutputType, GELU>;
       case ActivationType::Relu:
-      case ActivationType::Relu2:
         return &doGatedActivationKernel<ActivationOutputType, GemmOutputType, ReLu>;
+      case ActivationType::Relu2:
+        return &doGatedActivationKernel<ActivationOutputType, GemmOutputType, ReluSquared>;
       case ActivationType::Identity:
       default:
         return &doGatedActivationKernel<ActivationOutputType, GemmOutputType, Identity>;
@@ -384,8 +393,9 @@ void doActivation(T* output, const GemmOutputType* gemm_result, const float* fp8
         case ActivationType::Geglu:
           return &doActivationKernel<T, GemmOutputType, ScaleBiasType, GELU, decltype(block_scaling_type)::value>;
         case ActivationType::Relu:
-        case ActivationType::Relu2:
           return &doActivationKernel<T, GemmOutputType, ScaleBiasType, ReLu, decltype(block_scaling_type)::value>;
+        case ActivationType::Relu2:
+          return &doActivationKernel<T, GemmOutputType, ScaleBiasType, ReluSquared, decltype(block_scaling_type)::value>;
         case ActivationType::Silu:
         case ActivationType::Swiglu:
         case ActivationType::SwigluBias:
