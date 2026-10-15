@@ -713,10 +713,23 @@ __global__ void MatMulBlockScaledFp8MmaGemvKernel(ORT_FP8_MMA_GEMV_PARAMS) {
   Fp8MmaGemvBody<KSplit, MTiles, AType>(ORT_FP8_MMA_GEMV_ARGS);
 }
 
+// The residency hint below only pays off on SM89+ (see `Fp8MmaGemvPinsResidency`), where 3 blocks
+// of 32 * KSplit = 512 threads fit the 1536 max resident threads/SM. Pre-Ada targets are never
+// dispatched to this entry point, but nvcc still codegens it for every requested arch, and 1536
+// exceeds Turing's 1024-thread/SM cap, so ptxas rejects the min-blocks hint there. Drop the hint
+// to 1 outside SM89+ so those dead codegen passes stay valid.
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 890
+#define ORT_FP8_GEMV_PINNED_MIN_BLOCKS 1
+#else
+#define ORT_FP8_GEMV_PINNED_MIN_BLOCKS 3
+#endif
+
 template <int KSplit, int MTiles, typename AType>
-__global__ __launch_bounds__(32 * KSplit, 3) void MatMulBlockScaledFp8MmaGemvKernelPinned(ORT_FP8_MMA_GEMV_PARAMS) {
+__global__ __launch_bounds__(32 * KSplit, ORT_FP8_GEMV_PINNED_MIN_BLOCKS) void MatMulBlockScaledFp8MmaGemvKernelPinned(ORT_FP8_MMA_GEMV_PARAMS) {
   Fp8MmaGemvBody<KSplit, MTiles, AType>(ORT_FP8_MMA_GEMV_ARGS);
 }
+
+#undef ORT_FP8_GEMV_PINNED_MIN_BLOCKS
 
 #undef ORT_FP8_MMA_GEMV_ARGS
 #undef ORT_FP8_MMA_GEMV_PARAMS
