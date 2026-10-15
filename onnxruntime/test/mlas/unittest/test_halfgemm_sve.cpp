@@ -144,6 +144,7 @@ class MlasSveHalfGemmTest : public MlasTestBase {
   MatrixGuardBuffer<MLAS_FP16> BufferA;
   MatrixGuardBuffer<MLAS_FP16> BufferB;
   MatrixGuardBuffer<MLAS_FP16> BufferC;
+  MatrixGuardBuffer<uint8_t> BufferPackedB;
   MatrixGuardBuffer<float> BufferCReference;
   std::mt19937 gen_{13572468};
 
@@ -155,7 +156,7 @@ class MlasSveHalfGemmTest : public MlasTestBase {
  public:
   static const char* GetTestSuiteName() { return "SveHalfGemm"; }
 
-  void Test(size_t M, size_t N, size_t K, bool transA, bool transB, float alpha, float beta) {
+  void Test(size_t M, size_t N, size_t K, bool transA, bool transB, float alpha, float beta, bool packB) {
     if (!SveAvailable()) {
       GTEST_SKIP() << "SVE not available on this CPU.";
     }
@@ -196,12 +197,32 @@ class MlasSveHalfGemmTest : public MlasTestBase {
       }
     }
 
-    MlasGemm(transA ? CblasTrans : CblasNoTrans,
-             transB ? CblasTrans : CblasNoTrans,
-             M, N, K,
-             A, lda, B, ldb, C, ldc,
-             MLFp16(alpha).val, MLFp16(beta).val,
-             nullptr);
+    if (packB) {
+      const size_t PackedBSize = MlasHGemmPackBSize(transB ? CblasTrans : CblasNoTrans, N, K);
+      ASSERT_GT(PackedBSize, size_t(0));
+      uint8_t* PackedB = BufferPackedB.GetBuffer(PackedBSize, /*ZeroFill*/ true);
+      MlasHGemmPackB(transB ? CblasTrans : CblasNoTrans, N, K, B, ldb, PackedB);
+
+      MLAS_HGEMM_DATA_PARAMS Data;
+      Data.A = A;
+      Data.lda = lda;
+      Data.B = reinterpret_cast<const MLAS_FP16*>(PackedB);
+      Data.ldb = 0;
+      Data.C = C;
+      Data.ldc = ldc;
+      Data.alpha = MLFp16(alpha).val;
+      Data.beta = MLFp16(beta).val;
+      Data.BIsPacked = true;
+      MlasGemmBatch(transA ? CblasTrans : CblasNoTrans, CblasNoTrans, M, N, K, &Data, 1,
+                    GetMlasThreadPool());
+    } else {
+      MlasGemm(transA ? CblasTrans : CblasNoTrans,
+               transB ? CblasTrans : CblasNoTrans,
+               M, N, K,
+               A, lda, B, ldb, C, ldc,
+               MLFp16(alpha).val, MLFp16(beta).val,
+               nullptr);
+    }
 
     // fp16 accumulation error grows with K.
     const float rtol = 0.03f;
@@ -214,7 +235,7 @@ class MlasSveHalfGemmTest : public MlasTestBase {
             << "GEMM mismatch @[" << i << "," << j << "] got=" << got << " ref=" << ref
             << " M=" << M << " N=" << N << " K=" << K
             << " transA=" << transA << " transB=" << transB
-            << " alpha=" << alpha << " beta=" << beta;
+            << " alpha=" << alpha << " beta=" << beta << " packB=" << packB;
       }
     }
   }
@@ -223,17 +244,17 @@ class MlasSveHalfGemmTest : public MlasTestBase {
 class SveHalfGemmShortExecuteTest : public MlasTestFixture<MlasSveHalfGemmTest> {
  public:
   explicit SveHalfGemmShortExecuteTest(size_t M, size_t N, size_t K, bool transA, bool transB,
-                                       float alpha, float beta)
-      : M_(M), N_(N), K_(K), transA_(transA), transB_(transB), alpha_(alpha), beta_(beta) {}
+                                       float alpha, float beta, bool packB)
+      : M_(M), N_(N), K_(K), transA_(transA), transB_(transB), alpha_(alpha), beta_(beta), packB_(packB) {}
 
   void TestBody() override {
-    MlasTestFixture<MlasSveHalfGemmTest>::mlas_tester->Test(M_, N_, K_, transA_, transB_, alpha_, beta_);
+    MlasTestFixture<MlasSveHalfGemmTest>::mlas_tester->Test(M_, N_, K_, transA_, transB_, alpha_, beta_, packB_);
   }
 
   static size_t RegisterSingleTest(size_t M, size_t N, size_t K, bool transA, bool transB,
-                                    float alpha, float beta) {
+                                   float alpha, float beta, bool packB = false) {
     std::stringstream ss;
-    ss << (transA ? "TA" : "NA") << (transB ? "TB" : "NB")
+    ss << (packB ? "PackedB/" : "") << (transA ? "TA" : "NA") << (transB ? "TB" : "NB")
        << "/M" << M << "xN" << N << "xK" << K
        << "/alpha" << alpha << "_beta" << beta;
     auto test_name = ss.str();
@@ -246,7 +267,7 @@ class SveHalfGemmShortExecuteTest : public MlasTestFixture<MlasSveHalfGemmTest> 
         __FILE__,
         __LINE__,
         [=]() -> MlasTestFixture<MlasSveHalfGemmTest>* {
-          return new SveHalfGemmShortExecuteTest(M, N, K, transA, transB, alpha, beta);
+          return new SveHalfGemmShortExecuteTest(M, N, K, transA, transB, alpha, beta, packB);
         });
     return 1;
   }
@@ -272,6 +293,13 @@ class SveHalfGemmShortExecuteTest : public MlasTestFixture<MlasSveHalfGemmTest> 
         count += RegisterSingleTest(33, 65, 96, tA, tB, 1.0f, 0.0f);
         count += RegisterSingleTest(64, 64, 512, tA, tB, 1.0f, 0.0f);
         count += RegisterSingleTest(129, 130, 257, tA, tB, 1.0f, 0.0f);
+
+        // Packed B: N and K span several packing tiles and end in partial ones.
+        count += RegisterSingleTest(1, 17, 9, tA, tB, 1.0f, 0.0f, true);
+        count += RegisterSingleTest(2, 300, 257, tA, tB, 1.0f, 0.0f, true);
+        count += RegisterSingleTest(13, 161, 300, tA, tB, 0.5f, 1.0f, true);
+        count += RegisterSingleTest(64, 520, 129, tA, tB, 1.0f, 0.0f, true);
+        count += RegisterSingleTest(129, 290, 385, tA, tB, 1.5f, 0.5f, true);
       }
     }
     return count;
@@ -281,6 +309,7 @@ class SveHalfGemmShortExecuteTest : public MlasTestFixture<MlasSveHalfGemmTest> 
   size_t M_, N_, K_;
   bool transA_, transB_;
   float alpha_, beta_;
+  bool packB_;
 };
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
