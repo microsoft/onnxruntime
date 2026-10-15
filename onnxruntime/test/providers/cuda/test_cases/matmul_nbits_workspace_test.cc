@@ -147,11 +147,19 @@ TEST(MatMulNBitsWorkspace, DeterministicTacticsUseSupportedStages) {
       ASSERT_TRUE(config.has_value());
       EXPECT_FALSE(config->enableCudaKernel);
       EXPECT_EQ(config->split_k_style, SplitKStyle::NO_SPLIT_K);
-      EXPECT_EQ(config->split_k_factor, 1);
-      if (arch < 89) {
-        EXPECT_EQ(config->stages, 2);
+      if (config->is_tma_warp_specialized) {
+        EXPECT_EQ(arch, 90);
+        EXPECT_EQ(config->sm_version, 90);
+        EXPECT_NE(config->tile_config_sm90, CutlassTileConfigSM90::Undefined);
+        EXPECT_NE(config->tile_config_sm90, CutlassTileConfigSM90::ChooseWithHeuristic);
+        // Native SM90 tactics do not use the legacy split-K factor or pipeline-stage count.
+        EXPECT_EQ(config->split_k_factor, -1);
+        EXPECT_EQ(config->stages, -1);
       } else {
-        EXPECT_NE(config->stages, 2);
+        EXPECT_LT(config->sm_version, 90);
+        EXPECT_EQ(config->split_k_factor, 1);
+        EXPECT_GE(config->stages, arch < 89 ? 2 : 3);
+        EXPECT_LE(config->stages, arch < 80 ? 2 : 4);
       }
     }
   }
