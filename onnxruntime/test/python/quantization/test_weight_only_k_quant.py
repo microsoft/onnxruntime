@@ -92,11 +92,19 @@ class TestWeightOnlyKQuant(unittest.TestCase):
                 np.testing.assert_array_equal(scaled[2], zero_point)
                 np.testing.assert_array_equal(scaled[1], scale * 2.0**exponent)
 
-    def test_quant_tensor_k_quant_cpu_quantizes_subnormal_group_as_zeros(self):
-        data = np.tile(np.float32([3.2e-39, -3.2e-39]), (1, GROUP_SIZE // 2))
-        q_weight, scale, zero_point = quant_tensor_k_quant_cpu(data, 4, GROUP_SIZE)
-        self.assertTrue(np.all(scale >= np.finfo(np.float32).tiny))
-        np.testing.assert_array_equal(dequantize(q_weight, scale, zero_point), 0)
+    def test_quant_tensor_k_quant_cpu_quantizes_groups_too_small_for_a_normal_scale_as_zeros(self):
+        tiny = np.finfo(np.float32).tiny
+        # Subnormal weights, normal weights too small for a normal scale, and normal weights big enough for one.
+        data = np.stack(
+            [np.tile([3.2e-39, -3.2e-39], GROUP_SIZE // 2), np.full(GROUP_SIZE, tiny), np.full(GROUP_SIZE, 512 * tiny)]
+        ).astype(np.float32)
+        for num_bits in (4, 8):
+            with self.subTest(num_bits=num_bits):
+                q_weight, scale, zero_point = quant_tensor_k_quant_cpu(data, num_bits, GROUP_SIZE)
+                self.assertTrue(np.all(scale.astype(np.float32) >= tiny))
+                dequantized = dequantize(q_weight, scale, zero_point)
+                np.testing.assert_array_equal(dequantized[:2], 0)
+                np.testing.assert_allclose(dequantized[2], data[2], rtol=1e-6)
 
     @unittest.skipUnless(find_spec("cupy") and find_spec("torch"), "requires cupy and torch")
     def test_quant_tensor_k_quant_cuda_matches_cpu(self):

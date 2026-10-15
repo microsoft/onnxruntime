@@ -266,7 +266,13 @@ def _quant_tensor_k_quant(xp, data, num_bits, group_size):
         scale[idx_to_replace] = this_scale[idx_to_replace]
         zero_point[idx_to_replace] = this_zero_point[idx_to_replace]
 
-    return quant_data.astype(xp.float64), xp.ldexp(scale.astype(xp.float64), exponent), zero_point.astype("uint8")
+    scale = xp.ldexp(scale.astype(xp.float64), exponent)  # (nb, 1)
+    # Groups too small for a normal float32 scale count as zeros as well, so no scale is stored subnormal.
+    too_small = scale[:, 0] < xp.finfo(xp.float32).tiny  # (nb,)
+    quant_data[too_small] = 0
+    zero_point[too_small] = 0
+    scale[too_small] = 1 / maxq
+    return quant_data.astype(xp.float64), scale, zero_point.astype("uint8")
 
 
 def quant_tensor_k_quant_cpu(data, num_bits=4, group_size=32):
