@@ -4377,7 +4377,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_beta</tt> : float</dt>
 <dd>Beta parameter used in activation function.</dd>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
+<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu</dd>
 <dt><tt>k</tt> : int</dt>
 <dd>Number of top experts to select from expert pool</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
@@ -5022,7 +5022,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   [total_tokens, ...] axis instead of a dense [batch_size, sequence_length, ...] axis. It selects, for
   every packed query token, the sparse-attention candidates that a following SparsePagedAttention (or
   similar) operator is allowed to read.
-
+  
   Unlike SparseAttentionIndexer, this operator:
     * takes packed query/key tensors plus cumulative_sequence_lengths (request boundaries) and
       past_sequence_lengths (per-request past length) instead of a dense batch and a dense mask;
@@ -5033,10 +5033,10 @@ This version of the operator has been available since version 1 of the 'com.micr
       rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory;
     * additionally emits selected_counts, the exact number of active (non -1) entries per query, so
       that no downstream consumer needs to scan selected_indices for its query's true count.
-
+  
   Both policy_mode values keep the semantics of SparseAttentionIndexer, applied independently to each
   request's own packed token range and fixed-capacity state slice:
-
+  
     policy_mode = "qsa" ("query sparse attention" token indexer)
       Processes each request's new tokens sequentially: appends raw indexer keys to the generic
       pending buffer, and whenever it reaches compress_ratio tokens, mean-pools it, applies RMSNorm
@@ -5048,7 +5048,7 @@ This version of the operator has been available since version 1 of the 'com.micr
       past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
       incomplete block. QSA positions are the request-local logical cache positions derived from
       past_sequence_lengths and cumulative_sequence_lengths; position_ids must be omitted.
-
+  
     policy_mode = "csa" ("compressed sparse attention" block indexer)
       Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window
       count) independently per request, using that request's own buffer_length and new token count;
@@ -5056,7 +5056,7 @@ This version of the operator has been available since version 1 of the 'com.micr
       rotated and appended to key_state. Queries are scored against every causally visible compressed
       entry with sum_h w_h * ReLU(q_h . k) and the index_topk highest scoring entry indices are
       emitted.
-
+  
   Common contract:
     * selected_indices is int32 with a fixed capacity that only depends on attributes:
       token_budget + compress_ratio - 1 for "qsa" (values are request-local token positions into the
@@ -5077,7 +5077,7 @@ This version of the operator has been available since version 1 of the 'com.micr
     * cumulative_sequence_lengths, past_sequence_lengths and past_state_lengths are read directly by
       the device kernel; a zero-token request row (a repeated cumulative offset) is valid and simply
       contributes no query rows for that request.
-
+  
   OgaEngine integration note: this operator only defines the ORT contrib op; wiring
   past_key_state / past_kv_buffer / past_gate_buffer / past_state_lengths as Engine-managed,
   per-request fixed-size state (analogous to a paged auxiliary cache) is expected to happen in the
@@ -6162,7 +6162,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_beta</tt> : float</dt>
 <dd>Beta parameter used in activation function.</dd>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
+<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu</dd>
 <dt><tt>block_size</tt> : int</dt>
 <dd>For integer quantization, size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). For integer and FP4 quantization, both hidden_size and inter_size must be divisible by the block size. FP8 with block_size=128 supports partial 128x128 tiles. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. Without a positive value, FP8 uses per-expert global scales. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
@@ -8628,3 +8628,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
+
