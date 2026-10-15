@@ -52,7 +52,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     Gelu<MLFloat16>);
-}
+}  // namespace contrib
 #endif
 
 template <typename T>

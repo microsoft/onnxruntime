@@ -211,7 +211,6 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
   using _mlas_fp16 = uint16_t;
   if (MlasHGemmSupported(trans_a, trans_b)) {
-
     bool bias_ok = false;
     if (c_data == nullptr) {
       bias_ok = true;
