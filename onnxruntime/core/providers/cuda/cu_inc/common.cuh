@@ -501,6 +501,9 @@ __device__ __inline__ half _Gelu(half a) {
 
 template <typename T>
 __device__ __inline__ T _Mod(T a, T b) {
+  if (b == T(0)) {
+    return T(0);
+  }
   T r = a % b;
   T zero = T(0);
   if ((r > zero && b < zero) || (r < zero && b > zero)) {
@@ -545,6 +548,9 @@ __device__ __inline__ BFloat16 _Mod(BFloat16 a, BFloat16 b) {
 
 template <typename T>
 __device__ __inline__ T _Fmod(T a, T b) {
+  if (b == T(0)) {
+    return T(0);
+  }
   return a % b;
 }
 
