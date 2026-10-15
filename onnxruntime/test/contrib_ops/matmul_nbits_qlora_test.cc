@@ -195,7 +195,7 @@ TEST(MatMulNBitsQLoRA, DecodeSubgroupReduction) {
   }
 #endif
   for (bool acc_f32 : {false, true}) {
-    for (const auto [k, n] : {std::pair<int64_t, int64_t>{2048, 36}, {4096, 132}, {8192, 64}}) {
+    for (const auto& [k, n] : {std::pair<int64_t, int64_t>{2048, 36}, {4096, 132}, {8192, 64}}) {
       SCOPED_TRACE(MakeString("K=", k, ", N=", n, ", acc_f32=", acc_f32));
       std::vector<MLFloat16> x(k);
       std::vector<uint8_t> aq(32 * k);
