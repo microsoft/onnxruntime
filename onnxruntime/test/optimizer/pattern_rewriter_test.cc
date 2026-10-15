@@ -1674,7 +1674,7 @@ TEST(PatternRewriterTests, RuleConstructorOwnsParsedTextAndReusesPlans) {
   EXPECT_EQ(rule.pattern.Nodes().size(), 2u);
   const auto* compiled = rule.replacement.target<Replacement>();
   ASSERT_NE(compiled, nullptr);
-  const auto* plan = &compiled->Plan();
+  const auto* plan = compiled->Plan().get();
   auto copied = rule;
   auto moved = std::move(copied);
   copied = moved;
@@ -1683,7 +1683,7 @@ TEST(PatternRewriterTests, RuleConstructorOwnsParsedTextAndReusesPlans) {
   Match match;
   for (int i = 0; i < 3; ++i) {
     auto result = copied.replacement(test.graph, match);
-    EXPECT_EQ(&result.Plan(), plan);
+    EXPECT_EQ(result.Plan().get(), plan);
   }
   size_t calls = 0;
   auto callback = [recipe = *compiled, &calls](const Graph&, const Match&) {
@@ -1694,7 +1694,7 @@ TEST(PatternRewriterTests, RuleConstructorOwnsParsedTextAndReusesPlans) {
   EXPECT_EQ(calls, 0u);
   for (int i = 0; i < 3; ++i) {
     auto result = computed.replacement(test.graph, match);
-    EXPECT_EQ(&result.Plan(), plan);
+    EXPECT_EQ(result.Plan().get(), plan);
   }
   EXPECT_EQ(calls, 3u);
 }
