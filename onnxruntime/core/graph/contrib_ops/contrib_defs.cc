@@ -1780,8 +1780,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("activation_alpha", "SwiGLU alpha.", AttributeProto::FLOAT, 1.0f)
         .Attr("activation_beta", "SwiGLU beta.", AttributeProto::FLOAT, 0.0f)
         .Attr("accuracy_level", "Must be zero; no CPU compute modes.", AttributeProto::INT, int64_t{0})
-        .Attr("block_size", "32 for symmetric INT4 or 16 for NVFP4.", AttributeProto::INT, int64_t{32})
-        .Attr("quant_type", "int or nvfp4.", AttributeProto::STRING, std::string("int"))
+        .Attr("block_size", "32 for symmetric INT4 or MXFP4, or 16 for NVFP4.", AttributeProto::INT, int64_t{32})
+        .Attr("quant_type", "int, nvfp4, or mxfp4 (fp4).", AttributeProto::STRING, std::string("int"))
         .Attr("weights_prepacked", "-1 or 1 accepts prepacked bytes; 0/raw is unsupported.",
               AttributeProto::INT, int64_t{-1})
         .Attr("packing_layout", "Packing identity.",
@@ -1868,8 +1868,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(3, "call_counts", "Optional CPU int32 [6]: tokens by phase and staged expert uploads.", "TI", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "FP16 or BF16 activations and router logits.")
         .TypeConstraint("T1", {"tensor(uint8)"}, "Packed uint8 expert banks or blocks.")
-        .TypeConstraint("T2", {"tensor(float16)", "tensor(bfloat16)", "tensor(float8e4m3fn)"},
-                        "FP16/BF16 scales or fc2_bias, or Float8E4M3FN NVFP4 block scales.")
+        .TypeConstraint("T2", {"tensor(float16)", "tensor(bfloat16)", "tensor(float8e8m0)", "tensor(float8e4m3fn)"},
+                        "FP16/BF16 scales or fc2_bias, Float8E8M0 MXFP4 block scales, or Float8E4M3FN NVFP4 block scales.")
         .TypeConstraint("T3", {"tensor(float16)", "tensor(bfloat16)", "tensor(int8)"},
                         "FP16/BF16 FC1 bias or int8 token_phase in v3 compact shared mode.")
         .TypeConstraint("T4", {"tensor(float)"}, "FP32 global scales.")
@@ -1883,7 +1883,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               !legacy_shared && layout_ver_attr != nullptr && ctx.getNumInputs() >= 3 && ctx.getNumInputs() <= 5 &&
               ctx.getInputType(2) != nullptr;
           const auto* quant_attr = ctx.getAttribute("quant_type");
-          const bool is_nvfp4 = quant_attr != nullptr && quant_attr->s() == "nvfp4";
+          const bool is_fp4 = quant_attr != nullptr &&
+                              (quant_attr->s() == "nvfp4" || quant_attr->s() == "mxfp4" || quant_attr->s() == "fp4");
 
           if (legacy_shared) {
             for (size_t index = 2; index <= 20; ++index) {
@@ -1910,7 +1911,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             if (ONNX_NAMESPACE::hasInputShape(ctx, 2) && ONNX_NAMESPACE::getInputShape(ctx, 2).dim_size() != 2) {
               fail_shape_inference("QMoEOffload compact expert_blocks must have rank two.");
             }
-          } else if (!is_nvfp4) {
+          } else if (!is_fp4) {
             if (layout_ver_attr != nullptr || ctx.getNumOutputs() > 1) {
               fail_shape_inference("QMoEOffload shared attributes/outputs require expert_blocks.");
             }

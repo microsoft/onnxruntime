@@ -139,6 +139,7 @@ int main() {
 """
 
 
+@unittest.skipIf(sys.platform == "win32", "TestQMoEOffloadHost requires POSIX C++ toolchain and shared library conventions.")
 class TestQMoEOffloadHost(unittest.TestCase):
     def test_private_plugin_alias_requires_identical_bytes(self):
         with tempfile.TemporaryDirectory(prefix="qmoe_plugin_alias_") as temporary:
@@ -896,6 +897,10 @@ class TestHyperConnectionGateActivationGPU(unittest.TestCase):
         if not GPU_CONFIG.gpu_tests:
             raise unittest.SkipTest("GPU execution requires explicit parent-coordinated --gpu-tests.")
         cls.module, cls.device = register_private_plugin(GPU_CONFIG.runtime, GPU_CONFIG.plugin, GPU_CONFIG.device_index)
+        schemas = importlib.import_module("onnxruntime.capi._pybind_state").get_all_operator_schema()
+        hc = next((s for s in schemas if s.name == "HyperConnectionPostMix" and s.domain == "com.microsoft"), None)
+        if hc is None or "gate_activation" not in hc.attributes:
+            raise unittest.SkipTest("HyperConnectionPostMix.gate_activation is not registered on this branch.")
 
     @staticmethod
     def build(proto_type, fused):
@@ -988,6 +993,10 @@ class TestScaledSiLUGatedGPU(unittest.TestCase):
         if not GPU_CONFIG.gpu_tests:
             raise unittest.SkipTest("GPU execution requires explicit parent-coordinated --gpu-tests.")
         cls.module, cls.device = register_private_plugin(GPU_CONFIG.runtime, GPU_CONFIG.plugin, GPU_CONFIG.device_index)
+        schemas = importlib.import_module("onnxruntime.capi._pybind_state").get_all_operator_schema()
+        ss = next((s for s in schemas if s.name == "ScaledSiLU" and s.domain == "com.microsoft"), None)
+        if ss is None or "gated" not in ss.attributes:
+            raise unittest.SkipTest("ScaledSiLU.gated is not registered on this branch.")
 
     @staticmethod
     def build(proto_type, fused, shape):
@@ -1057,6 +1066,7 @@ def register_private_plugin(runtime, plugin, device_index=0):
         for device in module.get_ep_devices()
         if device.ep_name == "CUDAExecutionProvider" and device.device.type == module.OrtHardwareDeviceType.GPU
     ]
+    devices.sort(key=lambda d: int(d.ep_options.get("device_id", d.ep_metadata.get("cuda_device_id", "0"))))
     if device_index < 0 or device_index >= len(devices):
         raise RuntimeError("Private CUDA plugin did not expose the requested device; fallback is not allowed.")
     if str(library) not in Path("/proc/self/maps").read_text():

@@ -1329,11 +1329,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                             : narrow<int>(moe_params.num_experts);
   static const int max_compact_experts_env =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_MAX_COMPACT_EXPERTS", 0);
+  const int dynamic_compact_experts =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_CURRENT_MAX_COMPACT_EXPERTS", max_compact_experts_env);
   static const bool dequant_transient_env =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_DEQUANT_TRANSIENT", 0) != 0;
   const int runner_num_experts =
-      (use_nvfp4_compaction && max_compact_experts_env > 0)
-          ? std::min(full_active_experts, max_compact_experts_env)
+      (use_nvfp4_compaction && dynamic_compact_experts > 0)
+          ? std::min(full_active_experts, dynamic_compact_experts)
           : full_active_experts;
   const int num_compact_passes =
       (use_nvfp4_compaction && runner_num_experts < full_active_experts)
@@ -2575,17 +2577,42 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
     ORT_RETURN_IF_NOT(fc1_experts_weights != nullptr && fc2_experts_weights != nullptr,
                       "QMoE FP4/NVFP4 dequant fallback requires valid raw expert-weight tensors.");
+    QMoEResidentLayerSlabView resident_view{};
+    if (is_nvfp4 && nvfp4_weights_row_major_) {
+      const std::string& node_name = Info().node().Name();
+      const size_t lpos = node_name.find("layers.");
+      if (lpos != std::string::npos) {
+        size_t idx = lpos + 7;
+        int64_t parsed_layer = 0;
+        bool has_digits = false;
+        while (idx < node_name.size() && node_name[idx] >= '0' && node_name[idx] <= '9') {
+          parsed_layer = parsed_layer * 10 + (node_name[idx] - '0');
+          has_digits = true;
+          ++idx;
+        }
+        if (has_digits) {
+          int dev_id = 0;
+          static_cast<void>(cudaGetDevice(&dev_id));
+          static_cast<void>(TryGetQMoEResidentLayerSlabView(
+              dev_id, parsed_layer, narrow<int>(moe_params.num_experts),
+              narrow<int>(moe_params.hidden_size), narrow<int>(moe_params.inter_size), &resident_view));
+        }
+      }
+    }
     dequantize_fp4 = [&, fc1_n, fc1_k, fc2_n, fc2_k, num_experts,
-                      p_fc1_block_scales, p_fc1_global_scale, p_fc2_block_scales, p_fc2_global_scale]() {
+                      p_fc1_block_scales, p_fc1_global_scale, p_fc2_block_scales, p_fc2_global_scale,
+                      resident_view]() {
       // Choose the FP4 (MXFP4 / E8M0, block 32) or NVFP4 (E4M3, block 16) dequant launcher.
       auto dequant = [&](const uint8_t* weights, const uint8_t* block_scales, const float* global_scale,
-                         void* out, int n, int k, const Tensor* bias, void* output_bias) {
+                         void* out, int n, int k, const Tensor* bias, void* output_bias,
+                         const uint8_t* res_w, const uint8_t* res_s) {
         if (is_fp16_) {
           half* out_h = static_cast<half*>(out);
           if (is_nvfp4) {
             LaunchQMoEDequantizeNvfp4Weights(weights, block_scales, global_scale, out_h, num_experts, n, k, stream,
                                              compact_to_expert.get(), bias ? static_cast<const half*>(bias->DataRaw()) : nullptr,
-                                             static_cast<half*>(output_bias), nvfp4_weights_row_major_);
+                                             static_cast<half*>(output_bias), nvfp4_weights_row_major_,
+                                             res_w, res_s, resident_view.slot_table_dev);
           } else {
             LaunchQMoEDequantizeFp4Weights(weights, block_scales, global_scale, out_h, num_experts, n, k, stream);
           }
@@ -2594,7 +2621,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           if (is_nvfp4) {
             LaunchQMoEDequantizeNvfp4Weights(weights, block_scales, global_scale, out_b, num_experts, n, k, stream,
                                              compact_to_expert.get(), bias ? static_cast<const __nv_bfloat16*>(bias->DataRaw()) : nullptr,
-                                             static_cast<__nv_bfloat16*>(output_bias), nvfp4_weights_row_major_);
+                                             static_cast<__nv_bfloat16*>(output_bias), nvfp4_weights_row_major_,
+                                             res_w, res_s, resident_view.slot_table_dev);
           } else {
             LaunchQMoEDequantizeFp4Weights(weights, block_scales, global_scale, out_b, num_experts, n, k, stream);
           }
@@ -2603,11 +2631,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       dequant(static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()),
               static_cast<const uint8_t*>(p_fc1_block_scales),
               static_cast<const float*>(p_fc1_global_scale),
-              dequant_fc1_weights.get(), fc1_n, fc1_k, fc1_experts_bias_optional, compact_fc1_bias.get());
+              dequant_fc1_weights.get(), fc1_n, fc1_k, fc1_experts_bias_optional, compact_fc1_bias.get(),
+              resident_view.fc1_weights, resident_view.fc1_scales);
       dequant(static_cast<const uint8_t*>(fc2_experts_weights->DataRaw()),
               static_cast<const uint8_t*>(p_fc2_block_scales),
               static_cast<const float*>(p_fc2_global_scale),
-              dequant_fc2_weights.get(), fc2_n, fc2_k, fc2_experts_bias_optional, compact_fc2_bias.get());
+              dequant_fc2_weights.get(), fc2_n, fc2_k, fc2_experts_bias_optional, compact_fc2_bias.get(),
+              resident_view.fc2_weights, resident_view.fc2_scales);
     };
     fc1_weight_data = dequant_fc1_weights.get();
     fc2_weight_data = dequant_fc2_weights.get();

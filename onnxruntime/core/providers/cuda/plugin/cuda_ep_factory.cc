@@ -1180,5 +1180,23 @@ void CudaEpFactory::AbandonDeviceArena(int device_id) noexcept {
   }
 }
 
+void CudaEpFactory::ShrinkEligibleDeviceArenas(int device_id) noexcept {
+  ORT_TRY {
+    DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinal(device_id);
+    if (!entry) return;
+    std::lock_guard<std::mutex> arena_lock{entry->arena_mutex};
+    for (auto& arena : entry->device_arenas) {
+      if (!arena.abandoned && !arena.has_quarantine && arena.allocator && arena.allocator->IsShrinkEnabled()) {
+        OrtStatus* st = arena.allocator->Shrink(arena.allocator.get());
+        if (st != nullptr) {
+          ort_api_.ReleaseStatus(st);
+        }
+      }
+    }
+  }
+  ORT_CATCH(...) {
+  }
+}
+
 }  // namespace cuda_plugin
 }  // namespace onnxruntime

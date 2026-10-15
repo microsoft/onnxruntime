@@ -177,10 +177,17 @@ __device__ __forceinline__ float DecodeE4M3Fn(uint8_t code) {
   return sign ? -value : value;
 }
 
-// NVFP4 schema weights are [E, K, N/2], with adjacent output columns in the two nibbles of
-// each byte. Transpose an N16/K1024 tile in shared memory so 64 independent K groups can
-// reuse each block scale for 16 values. Padding distributes compute-time reads across banks.
-template <typename T, bool FusedSwiGlu, bool EnableBias, bool WeightsRowMajor>
+__device__ __forceinline__ float DecodeE8M0(uint8_t code) {
+  if (code == 0xff) {
+    return __int_as_float(0x7fffffff);
+  }
+  return ldexpf(1.0f, static_cast<int>(code) - 127);
+}
+
+// NVFP4/MXFP4 schema weights are [E, K, N/2] (or row-major [E, N, K/2] when WeightsRowMajor is true).
+// Transpose an N16/K1024 tile in shared memory so 64 independent K groups can
+// reuse each block scale for 16 values (or 32 values for MXFP4). Padding distributes compute-time reads across banks.
+template <typename T, bool FusedSwiGlu, bool EnableBias, bool WeightsRowMajor, bool IsMxfp4 = false>
 __global__ void MoeGemvFp4RawNPackedKernel(
     const T* act, const uint8_t* weight, const uint8_t* block_scales, const float* global_scales,
     const T* bias, T* out,
@@ -308,12 +315,21 @@ __global__ void MoeGemvFp4RawNPackedKernel(
       alignas(4) T scales[kColsPerThread];
 #pragma unroll
       for (int col = 0; col < kColsPerThread; ++col) {
-        scales[col] = n_base + col < n
-                          ? static_cast<T>(DecodeE4M3Fn(expert_scales[static_cast<int64_t>(n_base + col) *
-                                                                          (k / 16) +
-                                                                      k_base / 16]) *
-                                           global_scale)
-                          : static_cast<T>(0.0f);
+        if constexpr (IsMxfp4) {
+          scales[col] = n_base + col < n
+                            ? static_cast<T>(DecodeE8M0(expert_scales[static_cast<int64_t>(n_base + col) *
+                                                                          (k / 32) +
+                                                                      k_base / 32]) *
+                                             global_scale)
+                            : static_cast<T>(0.0f);
+        } else {
+          scales[col] = n_base + col < n
+                            ? static_cast<T>(DecodeE4M3Fn(expert_scales[static_cast<int64_t>(n_base + col) *
+                                                                            (k / 16) +
+                                                                        k_base / 16]) *
+                                             global_scale)
+                            : static_cast<T>(0.0f);
+        }
       }
       alignas(16) T activations[16];
       reinterpret_cast<uint4*>(activations)[0] = reinterpret_cast<const uint4*>(row_act + k_base)[0];
@@ -837,12 +853,12 @@ void LaunchMoeGemvFp4RawNPacked(
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t expanded_num_rows, int64_t n, int64_t k, cutlass_kernels::ActivationParams activation_params,
     const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream, bool weights_row_major,
-    bool programmatic_dependent_launch = false) {
+    bool programmatic_dependent_launch = false, int group_size = 16) {
   constexpr int kThreads = 128;
   constexpr int kColsPerBlock = 16;
   const int64_t weight_expert_stride = n * k / 2;
-  const int64_t scale_expert_stride = n * (k / 16);
-  if (weights_row_major && Fp4MoeGemvUseDecodeKernel() && k % 32 == 0 && k <= kDecodeMaxK &&
+  const int64_t scale_expert_stride = n * (k / group_size);
+  if (group_size == 16 && weights_row_major && Fp4MoeGemvUseDecodeKernel() && k % 32 == 0 && k <= kDecodeMaxK &&
       reinterpret_cast<uintptr_t>(weight) % 16 == 0 && reinterpret_cast<uintptr_t>(block_scales) % 2 == 0 &&
       reinterpret_cast<uintptr_t>(act) % 16 == 0) {
     const size_t decode_smem = static_cast<size_t>(k / 32) * kDecodeActUnitStride * sizeof(float);
@@ -909,16 +925,17 @@ void LaunchMoeGemvFp4RawNPacked(
     }
   }
   const dim3 grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>((n + kColsPerBlock - 1) / kColsPerBlock));
-  const auto launch = [&](auto row_major_tag) {
+  const auto launch = [&](auto row_major_tag, auto mxfp4_tag) {
     constexpr bool kWeightsRowMajor = decltype(row_major_tag)::value;
+    constexpr bool kIsMxfp4 = decltype(mxfp4_tag)::value;
     if (bias != nullptr) {
-      MoeGemvFp4RawNPackedKernel<T, FusedSwiGlu, true, kWeightsRowMajor><<<grid, kThreads, 0, stream>>>(
+      MoeGemvFp4RawNPackedKernel<T, FusedSwiGlu, true, kWeightsRowMajor, kIsMxfp4><<<grid, kThreads, 0, stream>>>(
         act, weight, block_scales, global_scales, bias, out,
         expert_first_token_offset, permuted_row_to_expert, num_experts,
         weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
         permuted_row_to_source_row, static_cast<int>(num_rows));
     } else {
-      MoeGemvFp4RawNPackedKernel<T, FusedSwiGlu, false, kWeightsRowMajor><<<grid, kThreads, 0, stream>>>(
+      MoeGemvFp4RawNPackedKernel<T, FusedSwiGlu, false, kWeightsRowMajor, kIsMxfp4><<<grid, kThreads, 0, stream>>>(
         act, weight, block_scales, global_scales, bias, out,
         expert_first_token_offset, permuted_row_to_expert, num_experts,
         weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
@@ -926,9 +943,17 @@ void LaunchMoeGemvFp4RawNPacked(
     }
   };
   if (weights_row_major) {
-    launch(std::true_type{});
+    if (group_size == 32) {
+      launch(std::true_type{}, std::true_type{});
+    } else {
+      launch(std::true_type{}, std::false_type{});
+    }
   } else {
-    launch(std::false_type{});
+    if (group_size == 32) {
+      launch(std::false_type{}, std::true_type{});
+    } else {
+      launch(std::false_type{}, std::false_type{});
+    }
   }
 }
 
@@ -1019,14 +1044,14 @@ void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T*
                                    cudaStream_t stream, bool weights_row_major, bool programmatic_dependent_launch) {
   ORT_UNUSED_PARAMETER(sm);
   if (raw_n_packed) {
-    ORT_ENFORCE(group_size == 16, "Raw N-packed FP4 GEMV is NVFP4-only.");
+    ORT_ENFORCE(group_size == 16 || group_size == 32, "Raw FP4 GEMV requires group_size 16 (NVFP4) or 32 (MXFP4).");
     ORT_ENFORCE(raw_block_scales != nullptr && raw_global_scales != nullptr,
-                "Raw N-packed NVFP4 GEMV requires block and global scales.");
+                "Raw FP4 GEMV requires block and global scales.");
     LaunchMoeGemvFp4RawNPacked<T, false>(
         act, weight, raw_block_scales, raw_global_scales, bias, out,
         expert_first_token_offset, permuted_row_to_expert, num_experts,
         expanded_num_rows, n, k, cutlass_kernels::ActivationParams{}, nullptr, expanded_num_rows, stream,
-        weights_row_major, programmatic_dependent_launch);
+        weights_row_major, programmatic_dependent_launch, group_size);
     return;
   }
   // Interleaved path: ColumnMajorInterleaved layout + dtype-conditional accumulation + smaller
@@ -1089,14 +1114,14 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
     bool programmatic_dependent_launch) {
   ORT_UNUSED_PARAMETER(sm);
   if (raw_n_packed) {
-    ORT_ENFORCE(group_size == 16, "Raw N-packed FP4 GEMV is NVFP4-only.");
+    ORT_ENFORCE(group_size == 16 || group_size == 32, "Raw FP4 GEMV requires group_size 16 (NVFP4) or 32 (MXFP4).");
     ORT_ENFORCE(raw_block_scales != nullptr && raw_global_scales != nullptr,
-                "Raw N-packed NVFP4 GEMV requires block and global scales.");
+                "Raw FP4 GEMV requires block and global scales.");
     LaunchMoeGemvFp4RawNPacked<T, true>(
         act, weight, raw_block_scales, raw_global_scales, bias, out,
         expert_first_token_offset, permuted_row_to_expert, num_experts,
         expanded_num_rows, inter_size * 2, k, activation_params, permuted_row_to_source_row, num_rows, stream,
-        weights_row_major, programmatic_dependent_launch);
+        weights_row_major, programmatic_dependent_launch, group_size);
     return;
   }
   // Interleaved path: ColumnMajorInterleaved layout + dtype-conditional accumulation + smaller

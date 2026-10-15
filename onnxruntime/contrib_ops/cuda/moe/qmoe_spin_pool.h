@@ -13,6 +13,10 @@
 #include <thread>
 #include <vector>
 
+#if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))
+#include <intrin.h>
+#endif
+
 namespace onnxruntime::contrib::cuda::qmoe {
 
 inline size_t SpinPoolBatchSize(size_t count, size_t threads, size_t requested) {
@@ -99,8 +103,12 @@ class SpinPool final {
   }
 
   static void Pause() {
-#if defined(__x86_64__)
+#if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))
+    _mm_pause();
+#elif defined(__x86_64__) || defined(__i386__)
     __builtin_ia32_pause();
+#elif defined(__aarch64__) && defined(__GNUC__)
+    __asm__ __volatile__("yield" ::: "memory");
 #endif
   }
 

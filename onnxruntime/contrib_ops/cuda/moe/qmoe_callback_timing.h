@@ -314,8 +314,10 @@ class CallbackTiming final {
     uint64_t ns = 0;
     uint64_t detail = 0;
   };
-  static unsigned long long U(uint64_t value) noexcept { return static_cast<unsigned long long>(value); }
-  static void HashWord(uint64_t& checksum, uint64_t value) noexcept {
+  [[maybe_unused]] static unsigned long long U(uint64_t value) noexcept {
+    return static_cast<unsigned long long>(value);
+  }
+  [[maybe_unused]] static void HashWord(uint64_t& checksum, uint64_t value) noexcept {
     for (int byte = 0; byte < 8; ++byte) {
       checksum = (checksum ^ (value & 0xff)) * 1099511628211ULL;
       value >>= 8;

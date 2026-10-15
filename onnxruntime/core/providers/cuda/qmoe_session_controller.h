@@ -41,6 +41,8 @@ struct QMoEInvocationRecord {
   std::function<void()> commit_observation;
   // Optional drain callback invoked during OnRunEnd if the invocation is still in flight.
   std::function<common::Status()> drain_device;
+  cudaStream_t main_stream = nullptr;
+  bool has_main_stream = false;
 
   void MarkFailed(std::string msg) {
     std::lock_guard<std::mutex> lock(mutex);
@@ -270,8 +272,14 @@ class QMoESessionController {
     }
 
     common::Status first_error = common::Status::OK();
+    cudaStream_t last_main_stream = nullptr;
+    bool sync_last_main = false;
     for (auto& inv : invocations) {
       if (!inv) continue;
+      if (inv->has_main_stream) {
+        last_main_stream = inv->main_stream;
+        sync_last_main = true;
+      }
       if (inv->drain_device) {
         common::Status drain_st = inv->drain_device();
         if (!drain_st.IsOK() && first_error.IsOK()) {
@@ -283,6 +291,13 @@ class QMoESessionController {
         first_error = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                       "QMoEOffload invocation failed on node '", inv->node_name,
                                       "' (layer ", inv->layer_index, "): ", inv->error_message);
+      }
+    }
+    if (sync_last_main) {
+      cudaError_t err = cudaStreamSynchronize(last_main_stream);
+      if (err != cudaSuccess && first_error.IsOK()) {
+        first_error = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                      "QMoEOffload compute stream sync failed: ", cudaGetErrorString(err));
       }
     }
 

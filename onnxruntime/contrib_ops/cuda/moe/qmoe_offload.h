@@ -18,11 +18,15 @@
 
 namespace onnxruntime::contrib::cuda {
 
+struct QMoEResidentLayerSlabView;
+
 class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
  public:
   explicit QMoEOffload(const OpKernelInfo& info);
   ~QMoEOffload() override;
   Status ComputeInternal(OpKernelContext* context) const override;
+  friend bool TryGetQMoEResidentLayerSlabView(int device_id, int64_t layer_index, int num_experts,
+                                              int hidden_size, int inter_size, QMoEResidentLayerSlabView* out_view);
 
  private:
   enum Buffer : size_t {
@@ -78,9 +82,10 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   bool shared_mode_ = false;
   bool v3_compact_shared_ = false;
   bool nvfp4_mode_ = false;
+  bool mxfp4_mode_ = false;
   bool is_bf16_ = false;
   const Tensor* expert_blocks_ = nullptr;
-  // NVFP4 multi-bank CPU tensors (when nvfp4_mode_ && !expert_blocks_)
+  // NVFP4 / MXFP4 multi-bank CPU tensors (when nvfp4_mode_ && !expert_blocks_)
   const Tensor* nvfp4_fc1_w_ = nullptr;
   const Tensor* nvfp4_fc1_s_ = nullptr;
   const Tensor* nvfp4_fc1_g_ = nullptr;
@@ -89,6 +94,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   const Tensor* nvfp4_fc2_s_ = nullptr;
   const Tensor* nvfp4_fc2_g_ = nullptr;
   const Tensor* nvfp4_fc2_b_ = nullptr;
+  std::vector<float> default_global_scales_;
   ResidentSlab fc2_bias_gpu_;
   size_t fc2_bias_gpu_bytes_ = 0;
 
@@ -113,6 +119,15 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   mutable cudaStream_t aux_stream_ = nullptr;
   mutable cudaEvent_t fork_event_ = nullptr;
   mutable cudaEvent_t join_event_ = nullptr;
+  mutable cudaStream_t promo_stream_ = nullptr;
+  mutable cudaEvent_t promo_ready_ = nullptr;
+  struct PendingPromotion {
+    int candidate = -1;
+    int target_slot = -1;
+    int victim_slot = -1;
+    int evicted_expert = -1;
+  };
+  mutable std::vector<PendingPromotion> pending_promotions_;
   mutable bool slot_table_dirty_ = true;
   int cpu_threads_ = 0;
   int pool_task_batch_ = 1;

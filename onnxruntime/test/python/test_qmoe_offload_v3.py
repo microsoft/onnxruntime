@@ -41,6 +41,7 @@ def make_plugin_session(model_or_path, device_limit_bytes: int = 0) -> ort.Infer
     ep_name = ensure_plugin_registered()
     devices = [d for d in ort.get_ep_devices() if d.ep_name == ep_name and d.device.type == ort.OrtHardwareDeviceType.GPU]
     assert devices, f"No GPU devices found for {ep_name}"
+    devices.sort(key=lambda d: int(d.ep_options.get("device_id", d.ep_metadata.get("cuda_device_id", "0"))))
     opts = ort.SessionOptions()
     opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
     opts.add_session_config_entry("ep.cuda.enable_cuda_graph", "0")
@@ -64,6 +65,7 @@ def bf16_uint16_to_float32(arr: np.ndarray) -> np.ndarray:
     return u32.view(np.float32)
 
 
+@unittest.skipIf(sys.platform == "win32", "TestQMoEOffloadV3 requires POSIX g++ toolchain and Linux plugin library.")
 class TestQMoEOffloadV3(unittest.TestCase):
     def test_f12_checked_arithmetic_and_alignment_lease(self):
         """Verifies F12 standalone checked arithmetic and lease alignment tracking in qmoe_shared_layout."""
@@ -454,6 +456,158 @@ int main() {
                             os.environ[k] = v
         del ref_sess
         gc.collect()
+
+    def test_mxfp4_qmoe_offload_matches_cpu_and_gpu_across_modes(self):
+        """Verifies MXFP4 (block_size=32, Float8E8M0 scales) QMoEOffload across CPU, resident hybrid, async, and streaming modes."""
+        rng = np.random.default_rng(2027)
+        experts, hidden, inter, top_k = 16, 256, 128, 4
+        fc1_w = rng.integers(0, 256, size=(experts, hidden, inter), dtype=np.uint8)
+        fc1_s = rng.integers(123, 127, size=(experts, 2 * inter, hidden // 32), dtype=np.uint8)
+        fc2_w = rng.integers(0, 256, size=(experts, inter, hidden // 2), dtype=np.uint8)
+        fc2_s = rng.integers(123, 127, size=(experts, hidden, inter // 32), dtype=np.uint8)
+        fc1_g = rng.uniform(0.5, 1.5, size=(experts,)).astype(np.float32)
+        fc2_g = rng.uniform(0.5, 1.5, size=(experts,)).astype(np.float32)
+
+        inputs = [
+            "X",
+            "R",
+            "fc1_w",
+            "fc1_s",
+            "",
+            "fc2_w",
+            "fc2_s",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "fc1_g",
+            "fc2_g",
+        ]
+        node = helper.make_node(
+            "QMoEOffload",
+            inputs=inputs,
+            outputs=["Y"],
+            domain="com.microsoft",
+            activation_type="swiglu",
+            normalize_routing_weights=1,
+            k=top_k,
+            expert_weight_bits=4,
+            block_size=32,
+            swiglu_fusion=1,
+            quant_type="mxfp4",
+            weights_prepacked=1,
+            layer_index=0,
+            hidden_size=hidden,
+            inter_size=inter,
+            token_tile_size=8,
+            gpu_working_bytes=64 << 20,
+            pinned_staging_bytes=8 << 20,
+        )
+        inits = [
+            numpy_helper.from_array(fc1_w, name="fc1_w"),
+            helper.make_tensor("fc1_s", TensorProto.FLOAT8E8M0, fc1_s.shape, fc1_s.tobytes(), raw=True),
+            numpy_helper.from_array(fc2_w, name="fc2_w"),
+            helper.make_tensor("fc2_s", TensorProto.FLOAT8E8M0, fc2_s.shape, fc2_s.tobytes(), raw=True),
+            numpy_helper.from_array(fc1_g, name="fc1_g"),
+            numpy_helper.from_array(fc2_g, name="fc2_g"),
+        ]
+        graph = helper.make_graph(
+            [node],
+            "QMoEOffload_mxfp4",
+            [
+                helper.make_tensor_value_info("X", TensorProto.BFLOAT16, [1, "S", hidden]),
+                helper.make_tensor_value_info("R", TensorProto.BFLOAT16, ["S", experts]),
+            ],
+            [helper.make_tensor_value_info("Y", TensorProto.BFLOAT16, [1, "S", hidden])],
+            inits,
+        )
+        off_model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_opsetid("", 18), helper.make_opsetid("com.microsoft", 1)],
+        )
+
+        S = 3
+        x_f32 = (rng.standard_normal((1, S, hidden)) * 0.5).astype(np.float32)
+        r_f32 = rng.standard_normal((S, experts)).astype(np.float32)
+        x_bf16 = float32_to_bf16_uint16(x_f32)
+        r_bf16 = float32_to_bf16_uint16(r_f32)
+        ort_x = ort.OrtValue.ortvalue_from_numpy_with_onnx_type(x_bf16, TensorProto.BFLOAT16)
+        ort_r = ort.OrtValue.ortvalue_from_numpy_with_onnx_type(r_bf16, TensorProto.BFLOAT16)
+
+        configs = [
+            (
+                "all_gpu_resident",
+                {
+                    "ORT_QMOE_SHARED_RESIDENT_SLOTS": "16",
+                    "ORT_QMOE_SHARED_SPARE_SLOTS": "0",
+                    "ORT_QMOE_SHARED_ASYNC": "0",
+                    "ORT_QMOE_SHARED_STREAM_ROWS": "0",
+                },
+            ),
+            (
+                "zero_cache_cpu",
+                {
+                    "ORT_QMOE_SHARED_RESIDENT_SLOTS": "0",
+                    "ORT_QMOE_SHARED_SPARE_SLOTS": "0",
+                    "ORT_QMOE_SHARED_ASYNC": "0",
+                    "ORT_QMOE_SHARED_STREAM_ROWS": "0",
+                },
+            ),
+            (
+                "resident_async_aux",
+                {
+                    "ORT_QMOE_SHARED_RESIDENT_SLOTS": "6",
+                    "ORT_QMOE_SHARED_SPARE_SLOTS": "2",
+                    "ORT_QMOE_SHARED_ASYNC": "1",
+                    "ORT_QMOE_SHARED_PINNED_REUSE": "1",
+                    "ORT_QMOE_SHARED_AUX_STREAM": "1",
+                    "ORT_QMOE_SHARED_STREAM_ROWS": "0",
+                },
+            ),
+            (
+                "stream_prefill",
+                {
+                    "ORT_QMOE_SHARED_RESIDENT_SLOTS": "4",
+                    "ORT_QMOE_SHARED_PIN_EXPERTS": "1",
+                    "ORT_QMOE_SHARED_STREAM_ROWS": "16",
+                    "ORT_QMOE_SHARED_STREAM_MIN_ROWS": "1",
+                    "ORT_QMOE_SHARED_STREAM_WAVE": "4",
+                    "ORT_QMOE_SHARED_STREAM_PROMOTION_REUSE": "1",
+                    "ORT_QMOE_SHARED_ASYNC": "0",
+                },
+            ),
+        ]
+        outputs = {}
+        for name, env_vars in configs:
+            saved = {k: os.environ.get(k) for k in env_vars}
+            sess = None
+            try:
+                os.environ.update(env_vars)
+                sess = make_plugin_session(off_model)
+                out_ort = sess.run_with_ort_values(["Y"], {"X": ort_x, "R": ort_r})[0]
+                outputs[name] = bf16_uint16_to_float32(
+                    np.frombuffer(
+                        ctypes.string_at(out_ort.data_ptr(), x_bf16.size * 2), dtype=np.uint16
+                    ).reshape(x_bf16.shape)
+                )
+            finally:
+                if sess is not None:
+                    del sess
+                    gc.collect()
+                for k, v in saved.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
+
+        ref_out = outputs["all_gpu_resident"]
+        for name in ("zero_cache_cpu", "resident_async_aux", "stream_prefill"):
+            rel_l2 = np.linalg.norm(outputs[name] - ref_out) / np.linalg.norm(ref_out)
+            self.assertLess(rel_l2, 5e-4, msg=f"MXFP4 mode={name} rel_l2={rel_l2}")
 
 
 if __name__ == "__main__":

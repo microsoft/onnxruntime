@@ -47,6 +47,9 @@ class CudaEpFactory : public OrtEpFactory {
   /// Abandon every device arena of a device when chunk-level detachment cannot be guaranteed.
   void AbandonDeviceArena(int device_id) noexcept;
 
+  /// Shrink any device arena on the specified device that has had Shrink() enabled via RunOptions.
+  void ShrinkEligibleDeviceArenas(int device_id) noexcept;
+
   /// Get or create the shared kernel registry for this factory.
   /// Lazily created on first call; subsequent calls return the cached instance.
   /// Thread-safe: protected by registry_mutex_.

@@ -2008,7 +2008,10 @@ __global__ void QMoEDequantizeNvfp4RowMajorKernel(
     int k,
     const int* __restrict__ compact_to_expert,
     const T* __restrict__ bias,
-    T* __restrict__ output_bias) {
+    T* __restrict__ output_bias,
+    const uint8_t* __restrict__ resident_packed_weights = nullptr,
+    const uint8_t* __restrict__ resident_block_scales = nullptr,
+    const int* __restrict__ resident_expert_to_slot = nullptr) {
   const int groups_per_row = k >> 5;
   const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   const int64_t total = static_cast<int64_t>(num_experts) * n * groups_per_row;
@@ -2023,9 +2026,14 @@ __global__ void QMoEDequantizeNvfp4RowMajorKernel(
   if (expert < 0) {
     return;
   }
-  const int64_t source_row = static_cast<int64_t>(expert) * n + row;
-  const uint4 packed = *reinterpret_cast<const uint4*>(packed_weights + source_row * (k >> 1) + (static_cast<int64_t>(group) << 4));
-  const uint16_t scale_pair = *reinterpret_cast<const uint16_t*>(block_scales + source_row * (k >> 4) + (group << 1));
+  const int resident_slot = (resident_expert_to_slot != nullptr) ? resident_expert_to_slot[expert] : -1;
+  const bool use_resident = (resident_slot >= 0 && resident_packed_weights != nullptr && resident_block_scales != nullptr);
+  const uint8_t* w_base = use_resident ? resident_packed_weights : packed_weights;
+  const uint8_t* s_base = use_resident ? resident_block_scales : block_scales;
+  const int64_t w_source_row = static_cast<int64_t>(use_resident ? resident_slot : expert) * n + row;
+  const int64_t orig_source_row = static_cast<int64_t>(expert) * n + row;
+  const uint4 packed = *reinterpret_cast<const uint4*>(w_base + w_source_row * (k >> 1) + (static_cast<int64_t>(group) << 4));
+  const uint16_t scale_pair = *reinterpret_cast<const uint16_t*>(s_base + w_source_row * (k >> 4) + (group << 1));
   const float global_scale = global_scales[expert];
   const uint32_t words[4] = {packed.x, packed.y, packed.z, packed.w};
 
@@ -2050,7 +2058,7 @@ __global__ void QMoEDequantizeNvfp4RowMajorKernel(
     dst[v] = staged[v];
   }
   if (bias && group == 0) {
-    output_bias[global_row] = bias[source_row];
+    output_bias[global_row] = bias[orig_source_row];
   }
 }
 
@@ -2067,7 +2075,10 @@ void LaunchQMoEDequantizeNvfp4WeightsImpl(
     const int* compact_to_expert,
     const T* bias,
     T* output_bias,
-    bool weights_row_major) {
+    bool weights_row_major,
+    const uint8_t* resident_packed_weights = nullptr,
+    const uint8_t* resident_block_scales = nullptr,
+    const int* resident_expert_to_slot = nullptr) {
   ORT_ENFORCE(bias == nullptr || output_bias != nullptr, "QMoE NVFP4 bias gathering requires an output buffer.");
   constexpr int block = 256;
   if (!weights_row_major && !compact_to_expert && !bias && QMoEDequantizeFp4VecApplies<16>(num_experts, n, k)) {
@@ -2083,7 +2094,8 @@ void LaunchQMoEDequantizeNvfp4WeightsImpl(
     const int64_t threads = static_cast<int64_t>(num_experts) * n * (k / 32);
     const int64_t blocks = (threads + block - 1) / block;
     QMoEDequantizeNvfp4RowMajorKernel<T><<<onnxruntime::narrow<int>(blocks), block, 0, stream>>>(
-        packed_weights, block_scales, global_scales, output, num_experts, n, k, compact_to_expert, bias, output_bias);
+        packed_weights, block_scales, global_scales, output, num_experts, n, k, compact_to_expert, bias, output_bias,
+        resident_packed_weights, resident_block_scales, resident_expert_to_slot);
     CUDA_CALL_THROW(cudaGetLastError());
     return;
   }
@@ -2107,9 +2119,13 @@ void LaunchQMoEDequantizeNvfp4Weights(
     const int* compact_to_expert,
     const half* bias,
     half* output_bias,
-    bool weights_row_major) {
+    bool weights_row_major,
+    const uint8_t* resident_packed_weights,
+    const uint8_t* resident_block_scales,
+    const int* resident_expert_to_slot) {
   LaunchQMoEDequantizeNvfp4WeightsImpl(packed_weights, block_scales, global_scales, output, num_experts, n, k,
-                                       stream, compact_to_expert, bias, output_bias, weights_row_major);
+                                       stream, compact_to_expert, bias, output_bias, weights_row_major,
+                                       resident_packed_weights, resident_block_scales, resident_expert_to_slot);
 }
 
 void LaunchQMoEDequantizeNvfp4Weights(
@@ -2124,9 +2140,13 @@ void LaunchQMoEDequantizeNvfp4Weights(
     const int* compact_to_expert,
     const __nv_bfloat16* bias,
     __nv_bfloat16* output_bias,
-    bool weights_row_major) {
+    bool weights_row_major,
+    const uint8_t* resident_packed_weights,
+    const uint8_t* resident_block_scales,
+    const int* resident_expert_to_slot) {
   LaunchQMoEDequantizeNvfp4WeightsImpl(packed_weights, block_scales, global_scales, output, num_experts, n, k,
-                                       stream, compact_to_expert, bias, output_bias, weights_row_major);
+                                       stream, compact_to_expert, bias, output_bias, weights_row_major,
+                                       resident_packed_weights, resident_block_scales, resident_expert_to_slot);
 }
 
 // NVFP4 counterpart of QMoECombineFp4ScalesForGemvKernel. Identical [E, n, k_blocks] ->

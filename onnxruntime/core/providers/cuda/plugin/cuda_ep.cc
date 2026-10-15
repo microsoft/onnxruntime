@@ -595,6 +595,9 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
   EXCEPTION_TO_STATUS_BEGIN
 
   auto* ep = static_cast<CudaEp*>(this_ptr);
+  if (!ep->config_.enable_cuda_graph) {
+    ep->factory_.ShrinkEligibleDeviceArenas(ep->config_.device_id);
+  }
   if (ep->EpImpl() != nullptr) {
     auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
         static_cast<const void*>(ep->EpImpl()));

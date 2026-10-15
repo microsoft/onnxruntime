@@ -8,16 +8,51 @@
 
 #include "core/session/onnxruntime_float16.h"
 
-#if defined(__GNUC__) && defined(__x86_64__)
-#include <immintrin.h>
-#define QMOE_SHARED_HAS_X86 1
+#if defined(QMOE_SHARED_USE_MLAS)
+#include "core/mlas/inc/mlas.h"
+#endif
+
+#if !defined(QMOE_COMPILER_SUPPORTS_AVX512)
+#if defined(__AVX512F__) || (defined(__GNUC__) && defined(__x86_64__))
+#define QMOE_COMPILER_SUPPORTS_AVX512 1
 #else
-#define QMOE_SHARED_HAS_X86 0
+#define QMOE_COMPILER_SUPPORTS_AVX512 0
+#endif
+#endif
+
+#if (defined(_M_AMD64) && !defined(_M_ARM64EC)) || defined(__x86_64__)
+#define QMOE_SHARED_ARCH_X86_64 1
+#if defined(_MSC_VER)
+#include <intrin.h>
+#elif defined(__GNUC__)
+#include <cpuid.h>
+#endif
+#else
+#define QMOE_SHARED_ARCH_X86_64 0
 #endif
 
 namespace onnxruntime {
 namespace contrib {
 namespace qmoe_shared {
+
+#if QMOE_COMPILER_SUPPORTS_AVX512
+namespace detail {
+void Avx512GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias, int64_t n_total, int64_t k,
+                     const float* a, int64_t m, float* out, int64_t out_stride, int64_t n_begin, int64_t n_end);
+void Avx512Nvfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, float global_scale,
+                          const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
+                          const float* a_reordered, int64_t m, float* out, int64_t out_stride,
+                          int64_t n_begin, int64_t n_end, bool round_scale_bf16);
+void Avx512Mxfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, float global_scale,
+                          const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
+                          const float* a_reordered, int64_t m, float* out, int64_t out_stride,
+                          int64_t n_begin, int64_t n_end, bool round_scale_bf16);
+void Avx512HalfBitsToFloatRow(const uint16_t* src, float* dst, int64_t count);
+void Avx512FloatToHalfBitsRow(const float* src, uint16_t* dst, int64_t count);
+void Avx512BFloat16BitsToFloatRow(const uint16_t* src, float* dst, int64_t count);
+void Avx512FloatToBFloat16BitsRow(const float* src, uint16_t* dst, int64_t count);
+}  // namespace detail
+#endif
 
 namespace {
 
@@ -73,6 +108,22 @@ const std::array<float, 256>& GetE4M3LookupTable() {
         std::memcpy(&val, &bits, sizeof(val));
       }
       t[code] = (code & 0x80) ? -val : val;
+    }
+    return t;
+  }();
+  return table;
+}
+
+const std::array<float, 256>& GetE8M0LookupTable() {
+  static const std::array<float, 256> table = []() {
+    std::array<float, 256> t{};
+    for (int code = 0; code < 256; ++code) {
+      if (code == 255) {
+        uint32_t nan_bits = 0x7fffffffu;
+        std::memcpy(&t[code], &nan_bits, sizeof(float));
+      } else {
+        t[code] = std::ldexp(1.0f, code - 127);
+      }
     }
     return t;
   }();
@@ -162,203 +213,109 @@ void ScalarNvfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, f
   }
 }
 
-#if QMOE_SHARED_HAS_X86
-
-template <int RT>
-__attribute__((target("avx512f,avx512bw,avx512vl,f16c"))) void Group4Avx512(
-    const uint8_t* group, const uint8_t* next_group, const uint16_t* scales, int64_t n_total, int64_t n0, int64_t k,
-    const float* a, float (&result)[4][RT]) {
-  const int64_t blocks = k / kBlockSize;
-  const __m128i mask = _mm_set1_epi8(0x0F);
-  const __m512i eight = _mm512_set1_epi32(8);
-  __m512 acc[4][RT];
-  for (int c = 0; c < 4; ++c)
-    for (int r = 0; r < RT; ++r) acc[c][r] = _mm512_setzero_ps();
-
-  for (int64_t kb = 0; kb < blocks; ++kb) {
-    const uint8_t* tile = group + (kb >> 1) * 128 + (kb & 1) * 16;
-    const uint16_t* sc = scales + kb * n_total + n0;
-    if (next_group != nullptr) _mm_prefetch(reinterpret_cast<const char*>(next_group + kb * 64), _MM_HINT_T0);
-    __m512 al[RT];
-    __m512 ah[RT];
-    for (int r = 0; r < RT; ++r) {
-      al[r] = _mm512_loadu_ps(a + r * k + kb * kBlockSize);
-      ah[r] = _mm512_loadu_ps(a + r * k + kb * kBlockSize + 16);
-    }
-    for (int c = 0; c < 4; ++c) {
-      const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(tile + c * 32));
-      const __m128i lo = _mm_and_si128(x, mask);
-      const __m128i hi = _mm_and_si128(_mm_srli_epi16(x, 4), mask);
-      const __m512 wl = _mm512_cvtepi32_ps(_mm512_sub_epi32(_mm512_cvtepu8_epi32(lo), eight));
-      const __m512 wh = _mm512_cvtepi32_ps(_mm512_sub_epi32(_mm512_cvtepu8_epi32(hi), eight));
-      const __m512 s = _mm512_set1_ps(_cvtsh_ss(sc[c]));
-      for (int r = 0; r < RT; ++r) {
-        const __m512 prod = _mm512_fmadd_ps(wl, al[r], _mm512_mul_ps(wh, ah[r]));
-        acc[c][r] = _mm512_fmadd_ps(prod, s, acc[c][r]);
-      }
-    }
-  }
-  for (int c = 0; c < 4; ++c)
-    for (int r = 0; r < RT; ++r) result[c][r] = _mm512_reduce_add_ps(acc[c][r]);
-}
-
-template <int RT>
-__attribute__((target("avx512f,avx512bw,avx512vl,f16c"))) void RowTileAvx512(
-    const uint8_t* weights, const uint16_t* scales, const uint16_t* bias, int64_t n_total, int64_t k,
-    const float* a, float* out, int64_t out_stride, int64_t n_begin, int64_t n_end) {
-  for (int64_t n0 = n_begin; n0 < n_end; n0 += kColumnsInterleaved) {
-    const uint8_t* group = weights + (n0 / kColumnsInterleaved) * (kColumnsInterleaved * k / 2);
-    float result[4][RT];
-    const uint8_t* next_group = (n0 + kColumnsInterleaved < n_end) ? group + kColumnsInterleaved * k / 2 : nullptr;
-    Group4Avx512<RT>(group, next_group, scales, n_total, n0, k, a, result);
-    for (int c = 0; c < 4; ++c) {
-      const float b = bias != nullptr ? _cvtsh_ss(bias[n0 + c]) : 0.0f;
-      for (int r = 0; r < RT; ++r) out[r * out_stride + (n0 + c - n_begin)] = result[c][r] + b;
-    }
-  }
-}
-
-__attribute__((target("avx512f,avx512bw,avx512vl,f16c"))) void Avx512GemmRange(
-    const uint8_t* weights, const uint16_t* scales, const uint16_t* bias, int64_t n_total, int64_t k,
-    const float* a, int64_t m, float* out, int64_t out_stride, int64_t n_begin, int64_t n_end) {
-  int64_t r = 0;
-  while (r < m) {
-    const int64_t left = m - r;
-    const float* ar = a + r * k;
-    float* orow = out + r * out_stride;
-    if (left >= 4) {
-      RowTileAvx512<4>(weights, scales, bias, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 4;
-    } else if (left == 3) {
-      RowTileAvx512<3>(weights, scales, bias, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 3;
-    } else if (left == 2) {
-      RowTileAvx512<2>(weights, scales, bias, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 2;
-    } else {
-      RowTileAvx512<1>(weights, scales, bias, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 1;
-    }
-  }
-}
-
-template <int RT>
-__attribute__((target("avx512f,avx512bw,avx512vl,f16c"))) void Nvfp4Group4Avx512(
-    const uint8_t* w_base, const uint8_t* s_base, const float (&scaled_lut)[256], int64_t k,
-    const float* a_reordered, float (&result)[4][RT]) {
+void ScalarMxfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, float global_scale,
+                          const uint16_t* bias, bool bias_is_bf16, int64_t /*n_total*/, int64_t k,
+                          const float* a_reordered, int64_t m, float* out, int64_t out_stride,
+                          int64_t n_begin, int64_t n_end, bool round_scale_bf16) {
+  const auto& e8m0_lut = GetE8M0LookupTable();
   const int64_t k_pairs = k / 32;
-  const int64_t w_stride = k / 2;
-  const int64_t s_stride = k / 16;
-  const __m128i mask = _mm_set1_epi8(0x0F);
-  const __m512 fp4_lut = _mm512_load_ps(kFp4E2M1Table);
-
-  __m512 acc[4][RT];
-  for (int c = 0; c < 4; ++c)
-    for (int r = 0; r < RT; ++r) acc[c][r] = _mm512_setzero_ps();
-
-  const uint8_t* w_rows[4] = {w_base, w_base + w_stride, w_base + 2 * w_stride, w_base + 3 * w_stride};
-  const uint8_t* s_rows[4] = {s_base, s_base + s_stride, s_base + 2 * s_stride, s_base + 3 * s_stride};
-
-  for (int64_t kp = 0; kp < k_pairs; ++kp) {
-    __m512 al[RT];
-    __m512 ah[RT];
-    for (int r = 0; r < RT; ++r) {
-      al[r] = _mm512_loadu_ps(a_reordered + r * k + kp * 32);
-      ah[r] = _mm512_loadu_ps(a_reordered + r * k + kp * 32 + 16);
-    }
-    for (int c = 0; c < 4; ++c) {
-      const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(w_rows[c] + kp * 16));
-      const __m128i lo = _mm_and_si128(x, mask);
-      const __m128i hi = _mm_and_si128(_mm_srli_epi16(x, 4), mask);
-      const __m512 wl = _mm512_permutexvar_ps(_mm512_cvtepu8_epi32(lo), fp4_lut);
-      const __m512 wh = _mm512_permutexvar_ps(_mm512_cvtepu8_epi32(hi), fp4_lut);
-
-      const uint8_t sc0 = s_rows[c][kp * 2];
-      const uint8_t sc1 = s_rows[c][kp * 2 + 1];
-      const __m512 s = _mm512_mask_broadcastss_ps(_mm512_set1_ps(scaled_lut[sc0]), static_cast<__mmask16>(0xFF00u),
-                                                  _mm_set_ss(scaled_lut[sc1]));
-
-      for (int r = 0; r < RT; ++r) {
-        const __m512 prod = _mm512_fmadd_ps(wl, al[r], _mm512_mul_ps(wh, ah[r]));
-        acc[c][r] = _mm512_fmadd_ps(prod, s, acc[c][r]);
+  const int64_t weight_row_stride = k / 2;
+  const int64_t scale_row_stride = k / 32;
+  for (int64_t n = n_begin; n < n_end; ++n) {
+    const uint8_t* w_row = weights + n * weight_row_stride;
+    const uint8_t* s_row = block_scales + n * scale_row_stride;
+    const float b_val = (bias != nullptr)
+                            ? (bias_is_bf16 ? BoundaryBFloat16::FromBits(bias[n]) : HalfToFloat(bias[n]))
+                            : 0.0f;
+    for (int64_t r = 0; r < m; ++r) {
+      const float* ar = a_reordered + r * k;
+      float acc = 0.0f;
+      for (int64_t kp = 0; kp < k_pairs; ++kp) {
+        const uint8_t* bytes = w_row + kp * 16;
+        const float raw_s = e8m0_lut[s_row[kp]] * global_scale;
+        const float s = round_scale_bf16 ? BoundaryBFloat16::Round(raw_s) : BoundaryFloat16::Round(raw_s);
+        const float* al = ar + kp * 32;
+        const float* ah = al + 16;
+        float sum0 = 0.0f;
+        float sum1 = 0.0f;
+        for (int b = 0; b < 8; ++b) {
+          const float wl0 = round_scale_bf16 ? RoundBf16Fast(kFp4E2M1Table[bytes[b] & 0x0F] * s)
+                                             : BoundaryFloat16::Round(kFp4E2M1Table[bytes[b] & 0x0F] * s);
+          const float wh0 = round_scale_bf16 ? RoundBf16Fast(kFp4E2M1Table[bytes[b] >> 4] * s)
+                                             : BoundaryFloat16::Round(kFp4E2M1Table[bytes[b] >> 4] * s);
+          const float wl1 = round_scale_bf16 ? RoundBf16Fast(kFp4E2M1Table[bytes[b + 8] & 0x0F] * s)
+                                             : BoundaryFloat16::Round(kFp4E2M1Table[bytes[b + 8] & 0x0F] * s);
+          const float wh1 = round_scale_bf16 ? RoundBf16Fast(kFp4E2M1Table[bytes[b + 8] >> 4] * s)
+                                             : BoundaryFloat16::Round(kFp4E2M1Table[bytes[b + 8] >> 4] * s);
+          sum0 += wl0 * al[b] + wh0 * ah[b];
+          sum1 += wl1 * al[b + 8] + wh1 * ah[b + 8];
+        }
+        acc += sum0 + sum1;
       }
-    }
-  }
-  for (int c = 0; c < 4; ++c)
-    for (int r = 0; r < RT; ++r) result[c][r] = _mm512_reduce_add_ps(acc[c][r]);
-}
-
-template <int RT>
-__attribute__((target("avx512f,avx512bw,avx512vl,f16c"))) void Nvfp4RowTileAvx512(
-    const uint8_t* weights, const uint8_t* block_scales, float global_scale, const float (&scaled_lut)[256],
-    const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
-    const float* a_reordered, float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
-    bool round_scale_bf16) {
-  const int64_t w_stride = k / 2;
-  const int64_t s_stride = k / 16;
-  int64_t n0 = n_begin;
-  for (; n0 + 4 <= n_end; n0 += 4) {
-    float result[4][RT];
-    Nvfp4Group4Avx512<RT>(weights + n0 * w_stride, block_scales + n0 * s_stride, scaled_lut, k,
-                          a_reordered, result);
-    for (int c = 0; c < 4; ++c) {
-      const float b = (bias != nullptr)
-                          ? (bias_is_bf16 ? BoundaryBFloat16::FromBits(bias[n0 + c]) : _cvtsh_ss(bias[n0 + c]))
-                          : 0.0f;
-      for (int r = 0; r < RT; ++r) out[r * out_stride + (n0 + c - n_begin)] = result[c][r] + b;
-    }
-  }
-  if (n0 < n_end) {
-    ScalarNvfp4GemmRange(weights, block_scales, global_scale, bias, bias_is_bf16, n_total, k,
-                         a_reordered, RT, out + (n0 - n_begin), out_stride, n0, n_end, round_scale_bf16);
-  }
-}
-
-__attribute__((target("avx512f,avx512bw,avx512vl,f16c"))) void Avx512Nvfp4GemmRange(
-    const uint8_t* weights, const uint8_t* block_scales, float global_scale,
-    const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
-    const float* a_reordered, int64_t m, float* out, int64_t out_stride,
-    int64_t n_begin, int64_t n_end, bool round_scale_bf16) {
-  const auto* e4m3_lut = GetE4M3LookupTable().data();
-  float scaled_lut[256];
-  if (round_scale_bf16) {
-    for (int i = 0; i < 256; ++i) scaled_lut[i] = RoundBf16Fast(e4m3_lut[i] * global_scale);
-  } else {
-    for (int i = 0; i < 256; ++i) scaled_lut[i] = _cvtsh_ss(_cvtss_sh(e4m3_lut[i] * global_scale, _MM_FROUND_TO_NEAREST_INT));
-  }
-  int64_t r = 0;
-  while (r < m) {
-    const int64_t left = m - r;
-    const float* ar = a_reordered + r * k;
-    float* orow = out + r * out_stride;
-    if (left >= 4) {
-      Nvfp4RowTileAvx512<4>(weights, block_scales, global_scale, scaled_lut, bias, bias_is_bf16, n_total, k,
-                            ar, orow, out_stride, n_begin, n_end, round_scale_bf16);
-      r += 4;
-    } else if (left == 3) {
-      Nvfp4RowTileAvx512<3>(weights, block_scales, global_scale, scaled_lut, bias, bias_is_bf16, n_total, k,
-                            ar, orow, out_stride, n_begin, n_end, round_scale_bf16);
-      r += 3;
-    } else if (left == 2) {
-      Nvfp4RowTileAvx512<2>(weights, block_scales, global_scale, scaled_lut, bias, bias_is_bf16, n_total, k,
-                            ar, orow, out_stride, n_begin, n_end, round_scale_bf16);
-      r += 2;
-    } else {
-      Nvfp4RowTileAvx512<1>(weights, block_scales, global_scale, scaled_lut, bias, bias_is_bf16, n_total, k,
-                            ar, orow, out_stride, n_begin, n_end, round_scale_bf16);
-      r += 1;
+      out[r * out_stride + (n - n_begin)] = acc + b_val;
     }
   }
 }
 
-#endif  // QMOE_SHARED_HAS_X86
+#if QMOE_SHARED_ARCH_X86_64 && !defined(QMOE_SHARED_USE_MLAS)
+bool DetectRuntimeAvx512CpuSupport() noexcept {
+  unsigned cpuid1[4]{0, 0, 0, 0};
+  unsigned cpuid0[4]{0, 0, 0, 0};
+#if defined(_MSC_VER)
+  __cpuid(reinterpret_cast<int*>(cpuid0), 0);
+  if (cpuid0[0] < 7u) return false;
+  __cpuid(reinterpret_cast<int*>(cpuid1), 1);
+#else
+  __cpuid(0, cpuid0[0], cpuid0[1], cpuid0[2], cpuid0[3]);
+  if (cpuid0[0] < 7u) return false;
+  __cpuid(1, cpuid1[0], cpuid1[1], cpuid1[2], cpuid1[3]);
+#endif
+  // Require OSXSAVE (bit 27), AVX (bit 28), FMA (bit 12), and F16C (bit 29).
+  constexpr unsigned kLeaf1EcxMask = (1u << 27) | (1u << 28) | (1u << 12) | (1u << 29);
+  if ((cpuid1[2] & kLeaf1EcxMask) != kLeaf1EcxMask) return false;
+
+  uint64_t xcr0 = 0;
+#if defined(_MSC_VER)
+  xcr0 = _xgetbv(0);
+#else
+  uint32_t eax = 0, edx = 0;
+  __asm__ volatile("xgetbv" : "=a"(eax), "=d"(edx) : "c"(0));
+  xcr0 = (static_cast<uint64_t>(edx) << 32) | eax;
+#endif
+  // Require OS XSAVE state for XMM/YMM (0x6) and AVX-512 opmask + ZMM (0xE0).
+  if ((xcr0 & 0xE6u) != 0xE6u) return false;
+
+  unsigned cpuid7[4]{0, 0, 0, 0};
+#if defined(_MSC_VER)
+  __cpuidex(reinterpret_cast<int*>(cpuid7), 7, 0);
+#else
+  __cpuid_count(7, 0, cpuid7[0], cpuid7[1], cpuid7[2], cpuid7[3]);
+#endif
+  // Require AVX2 (bit 5), AVX512F (bit 16), AVX512DQ (bit 17), AVX512BW (bit 30), AVX512VL (bit 31).
+  constexpr unsigned kLeaf7EbxMask = (1u << 5) | (1u << 16) | (1u << 17) | (1u << 30) | (1u << 31);
+  return (cpuid7[1] & kLeaf7EbxMask) == kLeaf7EbxMask;
+}
+#endif
 
 }  // namespace
 
+bool CompilerHasAvx512() noexcept {
+#if QMOE_COMPILER_SUPPORTS_AVX512
+  return true;
+#else
+  return false;
+#endif
+}
+
 bool CpuHasAvx512() {
-#if QMOE_SHARED_HAS_X86
-  static const bool has = __builtin_cpu_supports("avx512f") && __builtin_cpu_supports("avx512bw") &&
-                          __builtin_cpu_supports("avx512vl") && __builtin_cpu_supports("f16c");
+#if QMOE_COMPILER_SUPPORTS_AVX512 && QMOE_SHARED_ARCH_X86_64
+  static const bool has = []() {
+#if defined(QMOE_SHARED_USE_MLAS)
+    return MlasPlatformAvx512Supported();
+#else
+    return DetectRuntimeAvx512CpuSupport();
+#endif
+  }();
   return has;
 #else
   return false;
@@ -371,6 +328,10 @@ bool IsAcceptedPrepackContract(int64_t weights_prepacked, int64_t block_size) {
 
 bool IsAcceptedNvfp4PrepackContract(int64_t weights_prepacked, int64_t block_size) {
   return weights_prepacked == kRequiredWeightsPrepacked && block_size == kNvfp4BlockSize;
+}
+
+bool IsAcceptedMxfp4PrepackContract(int64_t weights_prepacked, int64_t block_size) {
+  return weights_prepacked == kRequiredWeightsPrepacked && block_size == kMxfp4BlockSize;
 }
 
 size_t ComputePointerAlignment(const void* ptr) noexcept {
@@ -495,6 +456,43 @@ bool MakeNvfp4ExpertBlockLayout(int64_t hidden, int64_t inter, Nvfp4ExpertBlockL
   return true;
 }
 
+bool MakeMxfp4ExpertBlockLayout(int64_t hidden, int64_t inter, Nvfp4ExpertBlockLayout* layout) {
+  if (layout == nullptr || hidden <= 0 || inter <= 0) return false;
+  if (hidden > static_cast<int64_t>(std::numeric_limits<int>::max()) ||
+      inter > static_cast<int64_t>(std::numeric_limits<int>::max() / 2)) {
+    return false;
+  }
+  if (hidden % 32 != 0 || inter % 32 != 0) return false;
+  const size_t h = static_cast<size_t>(hidden);
+  const size_t i = static_cast<size_t>(inter);
+  size_t n1 = 0;
+  if (!CheckedMulSize(2, i, &n1)) return false;
+
+  auto add_bank = [](size_t current_off, size_t raw_bytes, size_t* bank_off, size_t* next_off) -> bool {
+    *bank_off = current_off;
+    size_t aligned = 0;
+    if (!CheckedAlignUp(raw_bytes, kBankAlignment, &aligned)) return false;
+    return CheckedAddSize(current_off, aligned, next_off);
+  };
+
+  Nvfp4ExpertBlockLayout l;
+  l.hidden = hidden;
+  l.inter = inter;
+  size_t off = 0;
+  size_t bytes = 0;
+
+  if (!CheckedMulSize(n1, h / 2, &bytes) || !add_bank(off, bytes, &l.fc1_weights, &off)) return false;
+  if (!CheckedMulSize(n1, h / 32, &bytes) || !add_bank(off, bytes, &l.fc1_scales, &off)) return false;
+  if (!add_bank(off, sizeof(float), &l.fc1_global_scale, &off)) return false;
+  if (!CheckedMulSize(h, i / 2, &bytes) || !add_bank(off, bytes, &l.fc2_weights, &off)) return false;
+  if (!CheckedMulSize(h, i / 32, &bytes) || !add_bank(off, bytes, &l.fc2_scales, &off)) return false;
+  if (!add_bank(off, sizeof(float), &l.fc2_global_scale, &off)) return false;
+
+  l.stride = off;
+  *layout = l;
+  return true;
+}
+
 int ReorderedPosition(int k_offset_in_block) {
   for (int b = 0; b < 16; ++b) {
     const int lo = LowNibbleK(b);
@@ -574,13 +572,58 @@ float BFloat16ToFloat(uint16_t b) { return BoundaryBFloat16::FromBits(b); }
 uint16_t FloatToBFloat16(float f) { return BoundaryBFloat16::ToBits(f); }
 float DecodeFp4E2M1(uint8_t code) { return kFp4E2M1Table[code & 0x0F]; }
 float DecodeFloat8E4M3FN(uint8_t code) { return GetE4M3LookupTable()[code]; }
+float DecodeFloat8E8M0(uint8_t code) { return GetE8M0LookupTable()[code]; }
+
+void HalfBitsToFloatRow(const uint16_t* src, float* dst, int64_t count, bool force_scalar) {
+#if QMOE_COMPILER_SUPPORTS_AVX512
+  if (!force_scalar && CpuHasAvx512()) {
+    detail::Avx512HalfBitsToFloatRow(src, dst, count);
+    return;
+  }
+#endif
+  (void)force_scalar;
+  for (int64_t i = 0; i < count; ++i) dst[i] = HalfToFloat(src[i]);
+}
+
+void FloatToHalfBitsRow(const float* src, uint16_t* dst, int64_t count, bool force_scalar) {
+#if QMOE_COMPILER_SUPPORTS_AVX512
+  if (!force_scalar && CpuHasAvx512()) {
+    detail::Avx512FloatToHalfBitsRow(src, dst, count);
+    return;
+  }
+#endif
+  (void)force_scalar;
+  for (int64_t i = 0; i < count; ++i) dst[i] = FloatToHalf(src[i]);
+}
+
+void BFloat16BitsToFloatRow(const uint16_t* src, float* dst, int64_t count, bool force_scalar) {
+#if QMOE_COMPILER_SUPPORTS_AVX512
+  if (!force_scalar && CpuHasAvx512()) {
+    detail::Avx512BFloat16BitsToFloatRow(src, dst, count);
+    return;
+  }
+#endif
+  (void)force_scalar;
+  for (int64_t i = 0; i < count; ++i) dst[i] = BFloat16ToFloat(src[i]);
+}
+
+void FloatToBFloat16BitsRow(const float* src, uint16_t* dst, int64_t count, bool force_scalar) {
+#if QMOE_COMPILER_SUPPORTS_AVX512
+  if (!force_scalar && CpuHasAvx512()) {
+    detail::Avx512FloatToBFloat16BitsRow(src, dst, count);
+    return;
+  }
+#endif
+  (void)force_scalar;
+  for (int64_t i = 0; i < count; ++i) dst[i] = FloatToBFloat16(src[i]);
+}
 
 void GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias, int64_t n_total,
                int64_t k, const float* a, int64_t m, float* out, int64_t out_stride, int64_t n_begin,
                int64_t n_end, bool force_scalar) {
-#if QMOE_SHARED_HAS_X86
+#if QMOE_COMPILER_SUPPORTS_AVX512
   if (!force_scalar && CpuHasAvx512()) {
-    Avx512GemmRange(weights, scales, bias, n_total, k, a, m, out, out_stride, n_begin, n_end);
+    detail::Avx512GemmRange(weights, scales, bias, n_total, k, a, m, out, out_stride, n_begin, n_end);
     return;
   }
 #endif
@@ -639,15 +682,31 @@ void Nvfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, float g
                     const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
                     const float* a_reordered, int64_t m, float* out, int64_t out_stride,
                     int64_t n_begin, int64_t n_end, bool force_scalar, bool round_scale_bf16) {
-#if QMOE_SHARED_HAS_X86
+#if QMOE_COMPILER_SUPPORTS_AVX512
   if (!force_scalar && CpuHasAvx512()) {
-    Avx512Nvfp4GemmRange(weights, block_scales, global_scale, bias, bias_is_bf16, n_total, k,
-                         a_reordered, m, out, out_stride, n_begin, n_end, round_scale_bf16);
+    detail::Avx512Nvfp4GemmRange(weights, block_scales, global_scale, bias, bias_is_bf16, n_total, k,
+                                 a_reordered, m, out, out_stride, n_begin, n_end, round_scale_bf16);
     return;
   }
 #endif
   (void)force_scalar;
   ScalarNvfp4GemmRange(weights, block_scales, global_scale, bias, bias_is_bf16, n_total, k,
+                       a_reordered, m, out, out_stride, n_begin, n_end, round_scale_bf16);
+}
+
+void Mxfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, float global_scale,
+                    const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
+                    const float* a_reordered, int64_t m, float* out, int64_t out_stride,
+                    int64_t n_begin, int64_t n_end, bool force_scalar, bool round_scale_bf16) {
+#if QMOE_COMPILER_SUPPORTS_AVX512
+  if (!force_scalar && CpuHasAvx512()) {
+    detail::Avx512Mxfp4GemmRange(weights, block_scales, global_scale, bias, bias_is_bf16, n_total, k,
+                                 a_reordered, m, out, out_stride, n_begin, n_end, round_scale_bf16);
+    return;
+  }
+#endif
+  (void)force_scalar;
+  ScalarMxfp4GemmRange(weights, block_scales, global_scale, bias, bias_is_bf16, n_total, k,
                        a_reordered, m, out, out_stride, n_begin, n_end, round_scale_bf16);
 }
 
@@ -661,9 +720,15 @@ void Nvfp4Fc1SwiGluRange(int64_t hidden, int64_t inter, const Nvfp4ExpertView& v
   const bool round_scale_bf16 = !fp16_boundaries;
   for (int64_t nb = n_begin; nb < n_end; nb += kChunk) {
     const int64_t ne = std::min(nb + kChunk, n_end);
-    Nvfp4GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_global_scale,
-                   view.fc1_bias, view.bias_is_bf16, n_total, hidden, x_reordered, m,
-                   tmp, kChunk, nb, ne, force_scalar, round_scale_bf16);
+    if (view.is_mxfp4) {
+      Mxfp4GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_global_scale,
+                     view.fc1_bias, view.bias_is_bf16, n_total, hidden, x_reordered, m,
+                     tmp, kChunk, nb, ne, force_scalar, round_scale_bf16);
+    } else {
+      Nvfp4GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_global_scale,
+                     view.fc1_bias, view.bias_is_bf16, n_total, hidden, x_reordered, m,
+                     tmp, kChunk, nb, ne, force_scalar, round_scale_bf16);
+    }
     for (int64_t n = nb; n < ne; n += 2) {
       const int64_t j = n / 2;
       const int pos = Nvfp4ReorderedPosition(static_cast<int>(j % 32));
@@ -690,10 +755,17 @@ void Nvfp4Fc2Range(int64_t hidden, int64_t inter, const Nvfp4ExpertView& view,
                    const float* inter_reordered, int64_t m, float* out,
                    int64_t n_begin, int64_t n_end, bool force_scalar,
                    bool apply_bias, bool round_scale_bf16) {
-  Nvfp4GemmRange(view.fc2_weights, view.fc2_scales, view.fc2_global_scale,
-                 apply_bias ? view.fc2_bias : nullptr, view.bias_is_bf16,
-                 hidden, inter, inter_reordered, m, out + n_begin, hidden,
-                 n_begin, n_end, force_scalar, round_scale_bf16);
+  if (view.is_mxfp4) {
+    Mxfp4GemmRange(view.fc2_weights, view.fc2_scales, view.fc2_global_scale,
+                   apply_bias ? view.fc2_bias : nullptr, view.bias_is_bf16,
+                   hidden, inter, inter_reordered, m, out + n_begin, hidden,
+                   n_begin, n_end, force_scalar, round_scale_bf16);
+  } else {
+    Nvfp4GemmRange(view.fc2_weights, view.fc2_scales, view.fc2_global_scale,
+                   apply_bias ? view.fc2_bias : nullptr, view.bias_is_bf16,
+                   hidden, inter, inter_reordered, m, out + n_begin, hidden,
+                   n_begin, n_end, force_scalar, round_scale_bf16);
+  }
 }
 
 bool Nvfp4ExpertForward(int64_t hidden, int64_t inter, const Nvfp4ExpertView& view,
@@ -790,4 +862,34 @@ int64_t qmoe_nvfp4_block_bytes(int64_t hidden, int64_t inter) {
   Nvfp4ExpertBlockLayout layout;
   return MakeNvfp4ExpertBlockLayout(hidden, inter, &layout) ? static_cast<int64_t>(layout.stride) : -1;
 }
+
+int qmoe_mxfp4_expert_contribution_bf16(const uint8_t* fc1_w, const uint8_t* fc1_s, float fc1_g,
+                                        const uint8_t* fc2_w, const uint8_t* fc2_s, float fc2_g,
+                                        int64_t hidden, int64_t inter, const float* x, int64_t m,
+                                        float* out, float alpha, float beta, float limit,
+                                        int force_scalar) {
+  Nvfp4ExpertView view{};
+  view.fc1_weights = fc1_w;
+  view.fc1_scales = fc1_s;
+  view.fc1_global_scale = fc1_g;
+  view.fc2_weights = fc2_w;
+  view.fc2_scales = fc2_s;
+  view.fc2_global_scale = fc2_g;
+  view.bias_is_bf16 = true;
+  view.is_mxfp4 = true;
+  SwiGluParams params{alpha, beta, limit};
+  return Nvfp4ExpertForward(hidden, inter, view, x, m, params, out, force_scalar != 0,
+                            /*apply_fc2_bias=*/false, /*bf16_boundaries=*/true, /*fp16_boundaries=*/false)
+             ? 1
+             : 0;
 }
+
+int64_t qmoe_mxfp4_block_bytes(int64_t hidden, int64_t inter) {
+  Nvfp4ExpertBlockLayout layout;
+  return MakeMxfp4ExpertBlockLayout(hidden, inter, &layout) ? static_cast<int64_t>(layout.stride) : -1;
+}
+}
+
+#if !defined(QMOE_SHARED_SEPARATE_AVX512_TU) && QMOE_COMPILER_SUPPORTS_AVX512
+#include "contrib_ops/cpu/moe/qmoe_shared_layout_avx512.cc"
+#endif

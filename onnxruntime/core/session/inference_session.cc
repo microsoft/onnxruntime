@@ -4595,10 +4595,21 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
     // Shrink if it is an arena allocator.
     // Both in-tree arenas (BFCArena) and plugin EP arenas (IArenaImplWrappingOrtAllocator)
     // inherit IArena, so AsArena() returns non-null for both.
+    bool found_arena = false;
     for (const auto& [device, allocator_ptr] : session_state_->GetAllocators()) {
       if (device.Type() == device_type && device.MemType() == memory_type && device.Id() == device_id) {
         if (allocator_ptr->AsArena() != nullptr) {
           arenas_to_shrink.push_back(allocator_ptr);
+          found_arena = true;
+          break;
+        }
+      }
+    }
+    if (!found_arena && device_type == OrtDevice::GPU) {
+      for (const auto& [device, allocator_ptr] : session_state_->GetAllocators()) {
+        if (device.Type() == device_type && device.MemType() == memory_type && allocator_ptr->AsArena() != nullptr) {
+          arenas_to_shrink.push_back(allocator_ptr);
+          found_arena = true;
           break;
         }
       }

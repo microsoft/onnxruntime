@@ -96,6 +96,7 @@ def run_cpu(lib, block, hidden, inter, x, force_scalar, swiglu=(1.0, 0.0, float(
     return out
 
 
+@unittest.skipIf(sys.platform == "win32", "SharedLayoutTest requires POSIX g++ toolchain to build shared test library.")
 class SharedLayoutTest(unittest.TestCase):
     def test_fp16_boundaries_match_explicit_reference(self):
         rng = np.random.default_rng(20261009)

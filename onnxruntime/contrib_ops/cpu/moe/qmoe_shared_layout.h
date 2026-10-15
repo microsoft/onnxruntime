@@ -13,6 +13,7 @@ namespace qmoe_shared {
 
 constexpr int64_t kBlockSize = 32;          // K values per FP16 scale (SharedExpertBlockV1 INT4)
 constexpr int64_t kNvfp4BlockSize = 16;     // K values per Float8E4M3FN scale (NVFP4)
+constexpr int64_t kMxfp4BlockSize = 32;     // K values per Float8E8M0 scale (MXFP4)
 constexpr int64_t kColumnsInterleaved = 4;  // ColumnMajorTileInterleave<64,4>
 constexpr int64_t kRowsPerTile = 64;        // K values per interleave tile
 constexpr size_t kBankAlignment = 256;
@@ -22,9 +23,12 @@ constexpr int64_t kRequiredWeightsPrepacked = 1;
 constexpr const char* kSharedLayoutId = "ort.qmoe.w4a16.block32.shared.v1";
 constexpr const char* kNvfp4RowMajorLayoutId = "ort.qmoe.nvfp4.block16.rowmajor.v1";
 constexpr const char* kNvfp4SharedLayoutId = "ort.qmoe.nvfp4.block16.shared.v1";
+constexpr const char* kMxfp4RowMajorLayoutId = "ort.qmoe.mxfp4.block32.rowmajor.v1";
+constexpr const char* kMxfp4SharedLayoutId = "ort.qmoe.mxfp4.block32.shared.v1";
 
 bool IsAcceptedPrepackContract(int64_t weights_prepacked, int64_t block_size);
 bool IsAcceptedNvfp4PrepackContract(int64_t weights_prepacked, int64_t block_size);
+bool IsAcceptedMxfp4PrepackContract(int64_t weights_prepacked, int64_t block_size);
 
 // Standalone checked arithmetic helpers (F12).
 inline bool CheckedMulSize(size_t a, size_t b, size_t* out) noexcept {
@@ -96,18 +100,20 @@ struct Nvfp4ExpertBlockLayout {
 };
 
 bool MakeNvfp4ExpertBlockLayout(int64_t hidden, int64_t inter, Nvfp4ExpertBlockLayout* layout);
+bool MakeMxfp4ExpertBlockLayout(int64_t hidden, int64_t inter, Nvfp4ExpertBlockLayout* layout);
 
-// Zero-copy view of one NVFP4 expert (works with either separate bank tensors or a contiguous block).
+// Zero-copy view of one NVFP4 or MXFP4 expert (works with either separate bank tensors or a contiguous block).
 struct Nvfp4ExpertView {
   const uint8_t* fc1_weights = nullptr;  // [2*inter, hidden/2]
-  const uint8_t* fc1_scales = nullptr;   // [2*inter, hidden/16] E4M3
+  const uint8_t* fc1_scales = nullptr;   // [2*inter, hidden/16] E4M3 (NVFP4) or [2*inter, hidden/32] E8M0 (MXFP4)
   float fc1_global_scale = 1.0f;
   const uint16_t* fc1_bias = nullptr;    // optional [2*inter] in BF16 or FP16
   const uint8_t* fc2_weights = nullptr;  // [hidden, inter/2]
-  const uint8_t* fc2_scales = nullptr;   // [hidden, inter/16] E4M3
+  const uint8_t* fc2_scales = nullptr;   // [hidden, inter/16] E4M3 (NVFP4) or [hidden, inter/32] E8M0 (MXFP4)
   float fc2_global_scale = 1.0f;
   const uint16_t* fc2_bias = nullptr;    // optional [hidden] in BF16 or FP16
   bool bias_is_bf16 = true;
+  bool is_mxfp4 = false;
 };
 
 // Original K offset (0..31) of the low nibble of byte b (0..15) of a 32-K block; the high nibble
@@ -146,6 +152,12 @@ float BFloat16ToFloat(uint16_t b);
 uint16_t FloatToBFloat16(float f);
 float DecodeFp4E2M1(uint8_t code);
 float DecodeFloat8E4M3FN(uint8_t code);
+float DecodeFloat8E8M0(uint8_t code);
+
+void HalfBitsToFloatRow(const uint16_t* src, float* dst, int64_t count, bool force_scalar = false);
+void FloatToHalfBitsRow(const float* src, uint16_t* dst, int64_t count, bool force_scalar = false);
+void BFloat16BitsToFloatRow(const uint16_t* src, float* dst, int64_t count, bool force_scalar = false);
+void FloatToBFloat16BitsRow(const float* src, uint16_t* dst, int64_t count, bool force_scalar = false);
 
 void GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias, int64_t n_total,
                int64_t k, const float* a, int64_t m, float* out, int64_t out_stride, int64_t n_begin,
@@ -163,8 +175,14 @@ bool ExpertForward(const ExpertBlockLayout& layout, const uint8_t* block, const 
                    const SwiGluParams& swiglu, float* out, bool force_scalar = false, bool apply_fc2_bias = true,
                    bool fp16_boundaries = false);
 
-// NVFP4 row-major CPU kernels (supports both BF16 and FP16 scale/boundary rounding).
+// NVFP4 and MXFP4 row-major CPU kernels (supports both BF16 and FP16 scale/boundary rounding).
 void Nvfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, float global_scale,
+                    const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
+                    const float* a_reordered, int64_t m, float* out, int64_t out_stride,
+                    int64_t n_begin, int64_t n_end, bool force_scalar = false,
+                    bool round_scale_bf16 = true);
+
+void Mxfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, float global_scale,
                     const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
                     const float* a_reordered, int64_t m, float* out, int64_t out_stride,
                     int64_t n_begin, int64_t n_end, bool force_scalar = false,
@@ -186,6 +204,7 @@ bool Nvfp4ExpertForward(int64_t hidden, int64_t inter, const Nvfp4ExpertView& vi
                         bool force_scalar = false, bool apply_fc2_bias = false,
                         bool bf16_boundaries = true, bool fp16_boundaries = false);
 
+bool CompilerHasAvx512() noexcept;
 bool CpuHasAvx512();
 
 }  // namespace qmoe_shared
@@ -213,4 +232,10 @@ int qmoe_nvfp4_expert_contribution_bf16(const uint8_t* fc1_w, const uint8_t* fc1
                                         float* out, float alpha, float beta, float limit,
                                         int force_scalar);
 int64_t qmoe_nvfp4_block_bytes(int64_t hidden, int64_t inter);
+int qmoe_mxfp4_expert_contribution_bf16(const uint8_t* fc1_w, const uint8_t* fc1_s, float fc1_g,
+                                        const uint8_t* fc2_w, const uint8_t* fc2_s, float fc2_g,
+                                        int64_t hidden, int64_t inter, const float* x, int64_t m,
+                                        float* out, float alpha, float beta, float limit,
+                                        int force_scalar);
+int64_t qmoe_mxfp4_block_bytes(int64_t hidden, int64_t inter);
 }

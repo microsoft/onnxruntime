@@ -432,6 +432,7 @@ OrtStatus* ArenaImpl::Shrink() {
   if (abandoned_) {
     return nullptr;
   }
+  shrink_enabled_.store(true, std::memory_order_release);
 
   // Note: Reserved memory (via Reserve()) is allocated directly through the device
   // allocator and stored in reserved_chunks_, bypassing the region/chunk system.
