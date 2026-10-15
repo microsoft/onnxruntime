@@ -432,7 +432,7 @@ pointers; callbacks should have no externally visible side effects.
 
 `update` is non-const and accepts a concrete `AttributeProto`, including
 list-valued and tensor-valued attributes. A tensor binding can be used as a
-`Constant` node's `value` attribute; it is not a new arbitrary tensor-input binding API.
+`ConstantOfShape` node's `value` attribute; it is not a new arbitrary tensor-input binding API.
 It cannot overwrite a named pattern value or store a referenced/undefined
 attribute. Prepared and captured attributes remain available to the replacement.
 `attributeOf` retrieves either kind through a read-only lookup and errors if it is missing. A replacement header

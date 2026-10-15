@@ -836,13 +836,14 @@ TEST(PatternRewriterTests, CheckAndBindTensorAttributeToTextReplacement) {
       zero.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
       auto* tensor = zero.mutable_t();
       tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      tensor->add_dims(1);
       tensor->add_float_data(0.0f);
       match.update("zero", std::move(zero));
       return true;
     };
     Rule rule{"prepared_tensor",
-              "(x)=>{a=Identity(x);return Identity(a);}",
-              "(x,zero)=>{z=Constant(value=zero);return Add(x,z);}",
+              "(x:float[2,3])=>{a=Identity(x);return Identity(a);}",
+              "(x,zero)=>{z=ConstantOfShape([2,3],value=zero);return Add(x,z);}",
               check_and_bind,
               {{kOnnxDomain, 13, 17}}};
     TransformerTester(
@@ -856,12 +857,13 @@ TEST(PatternRewriterTests, CheckAndBindTensorAttributeToTextReplacement) {
           const auto& graph = session.GetGraph();
           EXPECT_EQ(Count(graph, "Identity"), 0u);
           EXPECT_EQ(Count(graph, "Add"), 1u);
-          EXPECT_EQ(Count(graph, "Constant"), 1u);
+          EXPECT_EQ(Count(graph, "ConstantOfShape"), 1u);
           for (const auto& node : graph.Nodes()) {
-            if (node.OpType() == "Constant") {
+            if (node.OpType() == "ConstantOfShape") {
               const auto& tensor = node.GetAttributes().at("value").t();
               EXPECT_EQ(tensor.data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-              EXPECT_EQ(tensor.dims_size(), 0);
+              ASSERT_EQ(tensor.dims_size(), 1);
+              EXPECT_EQ(tensor.dims(0), 1);
               ASSERT_EQ(tensor.float_data_size(), 1);
               EXPECT_FLOAT_EQ(tensor.float_data(0), 0.0f);
             }
@@ -2835,10 +2837,10 @@ TEST(PatternRewriterTests, MultiOutputRootEdgesAndInvalidRecipe) {
     auto wrong_count = IdentityPair("single_output_split");
     wrong_count.pattern = Pattern("(x)=>a=Identity(x);return Split(a)");
     auto valid = IdentitySplit();
-    valid.check_and_bind = [a, b](const Graph&, Match& match) {
+    valid.check_and_bind = [a, b, prepare = valid.check_and_bind](const Graph& graph, Match& match) {
       EXPECT_EQ(match.valueOf("a"), a);
       EXPECT_EQ(match.valueOf("b"), b);
-      return true;
+      return prepare(graph, match);
     };
     ASSERT_STATUS_OK(PatternRewriter({wrong_count, valid}, {.indexed = indexed}).Run(test.graph, stats));
     EXPECT_EQ(stats.rewrites, 1u);
