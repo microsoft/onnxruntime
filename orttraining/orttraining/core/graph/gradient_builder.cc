@@ -2317,5 +2317,62 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMaxGradient) {
   return result;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetSumGradient) {
+  // Determine if at least one input requires a gradient
+  const size_t num_src_node_inputs = static_cast<size_t>(GetSrcNodeInputSize());
+  bool has_gradient_required = false;
+  for (size_t i = 0; i < num_src_node_inputs; ++i) {
+    if (IsGradientRequiredForSrcNodeInput(i)) {
+      has_gradient_required = true;
+      break;
+    }
+  }
+  if (!has_gradient_required) {
+    return std::vector<NodeDef>{};
+  }
+
+  if (num_src_node_inputs == 1) {
+    return std::vector<NodeDef>{NodeDef("Identity", {GO(0)}, {GI(0)})};
+  }
+
+  std::vector<NodeDef> result;
+  // 'y' represents the output of the Sum operation
+  const ArgDef y = O(0);
+  std::vector<Dimension> y_shape;
+  bool has_y_shape = GetShape(y, y_shape).IsOK();
+
+  // For each input of Sum that requires a gradient
+  for (size_t i = 0; i < num_src_node_inputs; ++i) {
+    if (IsGradientRequiredForSrcNodeInput(i)) {
+      const ArgDef x = I(i);
+      // Start by copying GO(0) to an intermediate variable
+      ArgDef pre_reduce_grad = IA("PreReduceGrad_" + std::to_string(i), OType(0));
+      result.emplace_back(NodeDef("Identity", {GO(0)}, {pre_reduce_grad}));
+
+      // Handling broadcasting: if the shape of x differs from that of y
+      std::vector<Dimension> x_shape;
+      if (has_y_shape && GetShape(x, x_shape).IsOK()) {
+        std::vector<int64_t> x_axes;
+        ComputeBroadcastBackwardAxes(x_shape, y_shape, &x_axes, nullptr, NodeName());
+        if (!x_axes.empty()) {
+          // The gradient must be reduced over the broadcasted axes
+          HandleBroadcasting(pre_reduce_grad, x, GI(i), x_axes, result);
+        } else {
+          // No broadcasting: pass the gradient directly
+          result.emplace_back(NodeDef("Identity", {pre_reduce_grad}, {GI(i)}));
+        }
+      } else {
+        // Dynamic case: shape not known at compile time
+        ArgDef x_axes_def = IA("ReduceAxes_" + x.name);
+        ArgDef x_shape_def = IA("Shape_" + x.name);
+        ArgDef y_shape_def = IA("Shape_" + y.name + std::to_string(i));
+        ComputeBroadcastBackwardAxesDynamic(x, y, x_shape_def, y_shape_def, &x_axes_def, nullptr, result);
+        HandleBroadcastingDynamic(pre_reduce_grad, x, x_shape_def, GI(i), x_axes_def, result);
+      }
+    }
+  }
+  return result;
+}
+
 }  // namespace training
 }  // namespace onnxruntime
