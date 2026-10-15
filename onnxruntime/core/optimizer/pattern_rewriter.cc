@@ -59,44 +59,64 @@ std::string Signature(const Pattern& pattern) {
 
 using Producers = InlinedHashMap<const NodeArg*, NodeIndex>;
 
-bool MatchTypes(const Pattern& pattern, Match& match) {
-  for (const auto& [handle, constraint] : pattern.TypeConstraints()) {
-    if (!constraint.element_variable.empty() && !match.BindElementType(constraint.element_variable, 0)) return false;
-    for (const auto& dim : constraint.dimensions)
-      if (const auto* name = std::get_if<std::string>(&dim))
-        if (!match.BindDimension(*name, std::monostate{})) return false;
-    if (pattern.IsAttribute(handle)) {
-      if (match.attributeOf(constraint.value_name).type() != constraint.attribute_type) return false;
-      continue;
-    }
-    const NodeArg* value = match.values[handle];
-    if (!value) continue;  // An absent optional slot has no tensor metadata to constrain.
-    const auto* type = value->TypeAsProto();
-    if (!type || !type->has_tensor_type()) return false;
-    const int32_t element = type->tensor_type().elem_type();
-    if (constraint.element_type && constraint.element_type != element) return false;
-    if (!constraint.element_variable.empty() && !match.BindElementType(constraint.element_variable, element)) return false;
-    if (constraint.any_rank) continue;
-    const auto* shape = value->Shape();
-    if (!shape || shape->dim_size() < static_cast<int>(constraint.dimensions.size()) ||
-        (!constraint.prefix && shape->dim_size() != static_cast<int>(constraint.dimensions.size())))
-      return false;
-    for (size_t i = 0; i < constraint.dimensions.size(); ++i) {
-      const auto& expected = constraint.dimensions[i];
-      const auto& actual = shape->dim(static_cast<int>(i));
-      if (const auto* fixed = std::get_if<int64_t>(&expected)) {
-        if (!actual.has_dim_value() || actual.dim_value() != *fixed) return false;
-      } else if (const auto* name = std::get_if<std::string>(&expected)) {
-        Dimension binding;
-        if (actual.has_dim_value())
-          binding = actual.dim_value();
-        else if (actual.has_dim_param() && !actual.dim_param().empty())
-          binding = actual.dim_param();
-        if (!match.BindDimension(*name, std::move(binding))) return false;
-      }
+bool MatchType(const Pattern& pattern, int handle, const TypeConstraint& constraint, Match& match) {
+  if (pattern.IsAttribute(handle)) {
+    return match.attributeOf(constraint.value_name).type() == constraint.attribute_type;
+  }
+  const NodeArg* value = match.values[handle];
+  if (constraint.absent) return !value;
+  if (!value) return false;
+  const auto* type = value->TypeAsProto();
+  if (!type || !type->has_tensor_type()) return false;
+  const int32_t element = type->tensor_type().elem_type();
+  if (constraint.element_type && constraint.element_type != element) return false;
+  if (!constraint.element_variable.empty() && !match.BindElementType(constraint.element_variable, element)) return false;
+  if (constraint.any_rank) return true;
+  const auto* shape = value->Shape();
+  if (!shape || shape->dim_size() < static_cast<int>(constraint.dimensions.size()) ||
+      (!constraint.prefix && shape->dim_size() != static_cast<int>(constraint.dimensions.size())))
+    return false;
+  for (size_t i = 0; i < constraint.dimensions.size(); ++i) {
+    const auto& expected = constraint.dimensions[i];
+    const auto& actual = shape->dim(static_cast<int>(i));
+    if (const auto* fixed = std::get_if<int64_t>(&expected)) {
+      if (!actual.has_dim_value() || actual.dim_value() != *fixed) return false;
+    } else if (const auto* name = std::get_if<std::string>(&expected)) {
+      Dimension binding;
+      if (actual.has_dim_value())
+        binding = actual.dim_value();
+      else if (actual.has_dim_param() && !actual.dim_param().empty())
+        binding = actual.dim_param();
+      if (!match.BindDimension(*name, std::move(binding))) return false;
     }
   }
   return true;
+}
+
+bool MatchTypes(const Pattern& pattern, Match& match) {
+  InlinedVector<int> handles;
+  for (const auto& [handle, alternatives] : pattern.TypeConstraints()) {
+    handles.push_back(handle);
+    for (const auto& constraint : alternatives) {
+      if (!constraint.element_variable.empty()) match.BindElementType(constraint.element_variable, 0);
+      for (const auto& dim : constraint.dimensions)
+        if (const auto* name = std::get_if<std::string>(&dim)) match.BindDimension(*name, std::monostate{});
+    }
+  }
+  std::sort(handles.begin(), handles.end());
+  std::function<bool(size_t, Match&)> search = [&](size_t index, Match& state) {
+    if (index == handles.size()) return true;
+    const int handle = handles[index];
+    for (const auto& constraint : pattern.TypeConstraints().at(handle)) {
+      Match candidate = state;
+      if (MatchType(pattern, handle, constraint, candidate) && search(index + 1, candidate)) {
+        state = std::move(candidate);
+        return true;
+      }
+    }
+    return false;
+  };
+  return search(0, match);
 }
 
 bool MatchPattern(const Pattern& pattern, const Graph& graph, const Node& root, const Producers& producers,
@@ -602,14 +622,12 @@ class PatternParser {
         ORT_RETURN_IF(pattern_.ValueCount() >= 256, Error("too many values"));
         Value input = pattern_.Input(name);
         symbols_.emplace(name, input);
-        if (token_ == "?") {
-          pattern_.optional_inputs_.insert(input.handle);
-          ORT_RETURN_IF_ERROR(Next());
-        }
         if (token_ == ":") {
-          TypeConstraint constraint;
-          ORT_RETURN_IF_ERROR(Annotation(name, constraint));
-          pattern_.type_constraints_.emplace(input.handle, std::move(constraint));
+          InlinedVector<TypeConstraint, 1> alternatives;
+          ORT_RETURN_IF_ERROR(Annotation(name, alternatives));
+          if (std::any_of(alternatives.begin(), alternatives.end(), [](const auto& type) { return type.absent; }))
+            pattern_.optional_inputs_.insert(input.handle);
+          pattern_.type_constraints_.emplace(input.handle, std::move(alternatives));
         }
         if (token_ != ",") break;
         ORT_RETURN_IF_ERROR(Next());
@@ -626,7 +644,7 @@ class PatternParser {
         continue;
       }
       InlinedVector<std::string> names;
-      InlinedHashMap<std::string, TypeConstraint> annotations;
+      InlinedHashMap<std::string, InlinedVector<TypeConstraint, 1>> annotations;
       if (kind_ == Kind::Identifier && token_ == "return") {
         returned = true;
         ORT_RETURN_IF_ERROR(Next());
@@ -641,9 +659,11 @@ class PatternParser {
           names.push_back(std::move(name));
           if (token_ == ":") {
             ORT_RETURN_IF(returned, Error("annotate the definition, not the return"));
-            TypeConstraint constraint;
-            ORT_RETURN_IF_ERROR(Annotation(names.back(), constraint));
-            annotations.emplace(names.back(), std::move(constraint));
+            InlinedVector<TypeConstraint, 1> alternatives;
+            ORT_RETURN_IF_ERROR(Annotation(names.back(), alternatives));
+            ORT_RETURN_IF(std::any_of(alternatives.begin(), alternatives.end(), [](const auto& type) { return type.absent; }),
+                          Error("operator outputs cannot be optional"));
+            annotations.emplace(names.back(), std::move(alternatives));
           }
           if (token_ != ",") break;
           ORT_RETURN_IF_ERROR(Next());
@@ -692,16 +712,21 @@ class PatternParser {
     ORT_RETURN_IF(!returned, Error("missing return"));
     InlinedHashSet<std::string> dimension_names;
     InlinedHashSet<std::string> element_names;
-    for (const auto& [handle, constraint] : pattern_.type_constraints_) {
-      if (pattern_.IsAttribute(handle)) {
-        ORT_RETURN_IF(!constraint.attribute_type || pattern_.IsOptional(handle),
-                      Error("invalid attribute annotation or optional attribute"));
-      } else {
-        ORT_RETURN_IF(!constraint.tensor_type, Error("annotation requires an attribute variable"));
+    size_t combinations = 1;
+    for (const auto& [handle, alternatives] : pattern_.type_constraints_) {
+      ORT_RETURN_IF(combinations > 64 / alternatives.size(), Error("type alternatives exceed 64 combinations"));
+      combinations *= alternatives.size();
+      for (const auto& constraint : alternatives) {
+        if (pattern_.IsAttribute(handle)) {
+          ORT_RETURN_IF(alternatives.size() != 1 || !constraint.attribute_type || pattern_.IsOptional(handle),
+                        Error("invalid attribute annotation or optional attribute"));
+        } else {
+          ORT_RETURN_IF(!constraint.tensor_type, Error("annotation requires an attribute variable"));
+        }
+        if (!constraint.element_variable.empty()) element_names.insert(constraint.element_variable);
+        for (const auto& dim : constraint.dimensions)
+          if (const auto* name = std::get_if<std::string>(&dim)) dimension_names.insert(*name);
       }
-      if (!constraint.element_variable.empty()) element_names.insert(constraint.element_variable);
-      for (const auto& dim : constraint.dimensions)
-        if (const auto* name = std::get_if<std::string>(&dim)) dimension_names.insert(*name);
     }
     ORT_RETURN_IF(dimension_names.size() + element_names.size() > 256, Error("too many annotation variables"));
     for (const auto& name : dimension_names)
@@ -781,7 +806,7 @@ class PatternParser {
                (c == ':' && position_ < text_.size() && text_[position_] == ':')) {
       ++position_;
     } else {
-      ORT_RETURN_IF(std::string_view("(),=;{}[]?:<>").find(c) == std::string_view::npos, Error("unexpected character"));
+      ORT_RETURN_IF(std::string_view("(),=;{}[]:<>|").find(c) == std::string_view::npos, Error("unexpected character"));
     }
     token_ = text_.substr(token_start_, position_ - token_start_);
     return Status::OK();
@@ -800,11 +825,35 @@ class PatternParser {
     return Next();
   }
 
-  Status Annotation(const std::string& name, TypeConstraint& constraint) {
+  Status Annotation(const std::string& name, InlinedVector<TypeConstraint, 1>& alternatives) {
     ORT_RETURN_IF(replacement_attributes_, Error("type annotations are supported in patterns only"));
-    const size_t start = token_start_;
-    constraint.value_name = name;
     ORT_RETURN_IF_ERROR(Expect(":"));
+    do {
+      TypeConstraint constraint;
+      constraint.value_name = name;
+      if (token_ == "None") {
+        constraint.absent = true;
+        ORT_RETURN_IF_ERROR(Next());
+      } else {
+        ORT_RETURN_IF_ERROR(AnnotationType(constraint));
+      }
+      auto equivalent = [&](const TypeConstraint& other) {
+        return other.absent == constraint.absent && other.element_type == constraint.element_type &&
+               other.element_variable == constraint.element_variable && other.dimensions == constraint.dimensions &&
+               other.any_rank == constraint.any_rank && (constraint.any_rank || other.prefix == constraint.prefix) &&
+               other.attribute_type == constraint.attribute_type && other.tensor_type == constraint.tensor_type;
+      };
+      ORT_RETURN_IF(std::any_of(alternatives.begin(), alternatives.end(), equivalent), Error("duplicate type alternative"));
+      alternatives.push_back(std::move(constraint));
+      ORT_RETURN_IF(alternatives.size() > 64, Error("too many type alternatives"));
+      if (token_ != "|") break;
+      ORT_RETURN_IF_ERROR(Next());
+    } while (true);
+    ORT_RETURN_IF(alternatives.size() == 1 && alternatives.front().absent, Error("None requires a tensor alternative"));
+    return Status::OK();
+  }
+
+  Status AnnotationType(TypeConstraint& constraint) {
     std::string type;
     ORT_RETURN_IF_ERROR(Identifier(type));
     if (type == "int" || type == "ints" || type == "floats" || type == "strings") {
@@ -870,7 +919,6 @@ class PatternParser {
       }
       ORT_RETURN_IF_ERROR(Expect("]"));
     }
-    constraint.spelling = std::string(text_.substr(start, token_start_ - start));
     return Status::OK();
   }
 

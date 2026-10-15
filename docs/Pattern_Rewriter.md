@@ -136,9 +136,10 @@ They cannot collide with tensor, attribute, or element-type variable names.
 Tensor element names follow ONNX, for example `float`, `double`, `float16`,
 `bfloat16`, `int64`, `int32`, `uint8`, `bool`, and `string`. Only tensor types
 are supported; sequences, maps, and optional ONNX value types are not annotations.
-`?` still describes an absent operator slot, not an ONNX optional value type:
-`(x:float[], low?:float, high?:float)` allows absent scalar Clip bounds.
-An absent slot satisfies its annotation without binding any dimensions or type.
+`None` in a type union describes an absent operator slot, not an ONNX optional
+value type: `(x:float[], low:float | None, high:float | None)` allows absent
+scalar Clip bounds. An absent slot matches only its `None` alternative, without
+binding any dimensions or element type.
 
 The matcher uses the model's existing metadata; it does not infer shapes or
 solve equations. Rank-specific constraints reject unknown rank, and fixed
@@ -173,7 +174,7 @@ or `tensor`, matching the corresponding concrete `AttributeProto` type.
 For example, `float` means a FLOAT attribute in keyword position but a scalar
 float32 tensor in tensor position; use `int64` for an integer tensor and `int`
 for an INT attribute. Attribute variables cannot also be tensor inputs, carry
-shapes, or be marked optional. Undeclared captures remain supported and untyped.
+shapes, or use type unions (including `None`). Undeclared captures remain supported and untyped.
 
 Annotations are constraints on **patterns only**; replacements continue to use
 unannotated inputs and derive types/shapes from preserved outputs and schema
@@ -181,20 +182,46 @@ inference. Annotations on returns or replacements are rejected rather than
 silently ignored. Each annotation allows at most 64 dimensions, with at most
 256 distinct implicit dimension/element-type variables per pattern.
 
+### Type alternatives
+
+Use `|` for a disjunction of tensor constraints:
+
+```cpp
+Pattern pattern("(x:float[M] | float[M,N]) => return Identity(x)");
+Pattern optional("(x,low:float | None) => return Clip(x,low)");
+```
+
+Alternatives are tried left to right, with annotated variables processed in
+definition order. Matching finds the first **globally consistent** combination:
+if a later constraint conflicts with a tentative dimension or element-type
+binding, earlier annotation alternatives are reconsidered. Failed alternatives
+leave no bindings behind. Variables mentioned only in unchosen alternatives
+remain unbound. Guards run once after a consistent combination is selected;
+guard rejection does not trigger another combination.
+
+This bounded search applies only to type/shape annotations, not graph structure:
+there is still no search over producers or operand permutations. The product
+of alternative counts across annotations is limited to 64 at parse time.
+Empty branches, duplicate constraints, and `None` alone are rejected.
+`None | float[M]` is also accepted, but `None` is permitted only for header tensor
+inputs, not assigned outputs or attribute captures. Replacements remain untyped.
+The former experimental `x?` syntax is removed; use `x:tensor[...] | None` for
+an unconstrained optional tensor slot.
+
 ### Optional input slots
 
 Use `None` in an operator input position to require an absent input. It matches
 both an empty ONNX input name and an omitted trailing slot. Mark a header
-variable with `?` to allow either a present value or an absent slot:
+variable with a tensor type union including `None` to allow either a present value or an absent slot:
 
 ```cpp
-Pattern pattern("(x,low?,high?) => { a=Identity(x); return Clip(a,low,high); }");
-Replacement replacement("(x,low?,high?) => Clip(x,low,high)");
+Pattern pattern("(x,low:tensor[...] | None,high:tensor[...] | None) => { a=Identity(x); return Clip(a,low,high); }");
+Replacement replacement("(x,low,high) => Clip(x,low,high)");
 Pattern absent_min("(x,high) => { a=Identity(x); return Clip(a,None,high); }");
 ```
 
 An ordinary header variable requires a present input. Repeated optional variables
-must bind identically, including absence: `(x,v?) => Clip(x,v,v)` does not match
+must bind identically, including absence: `(x,v:tensor[...] | None) => Clip(x,v,v)` does not match
 one present and one absent slot. `match.valueOf("low")` returns `nullptr` when
 the optional binding is absent; guards must check it before dereferencing.
 Replacements preserve an absent binding as an empty input name. Explicit `None`
@@ -595,7 +622,7 @@ normally and are not converted to nonmatches.
 
 Definitions are limited to 64 nodes, 256 values, and 64 inputs/outputs per
 operator. They are connected acyclic graphs rooted at the final operator.
-There is no alternation, implicit commutation, variadic matching,
+There is no operator/subgraph alternation, implicit commutation, variadic matching,
 general tensor synthesis, domain-import editing, or model-local function
 rewriting. Control-flow operators are not matched, although their subgraphs can
 be rewritten through `Apply`.
@@ -608,7 +635,7 @@ executed equivalence tests when writing or extending a rule.
 ## Matching algorithm outline
 
 A single match is a **backward traversal from a candidate sink node**, without
-backtracking. Starting with the pattern's final operator bound to that model
+structural backtracking. Starting with the pattern's final operator bound to that model
 node, the matcher visits pattern operators in reverse definition order and
 follows bound values to their producers through a value-to-producer dictionary.
 Each input/output slot binds to one exact model value; repeated bindings must
@@ -616,7 +643,8 @@ agree. Independent DAG branches need not have the same node ordering in the
 model, but operand order and data dependencies must match. A mismatch rejects
 the candidate rather than trying other producers or operand permutations.
 Constants, attributes, deletion boundaries, and EP eligibility are checked
-before the rule's semantic guard.
+before the rule's semantic guard. Type unions use the separate bounded
+annotation-choice search described above.
 
 Multiple rules are handled **node-first**, inside an outer bounded retry loop:
 

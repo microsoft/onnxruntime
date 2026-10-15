@@ -54,7 +54,6 @@ using Dimension = std::variant<std::monostate, int64_t, std::string>;
 
 struct TypeConstraint {
   std::string value_name;
-  std::string spelling;
   int32_t element_type = 0;  // Zero means unconstrained.
   std::string element_variable;
   InlinedVector<Dimension> dimensions;
@@ -62,6 +61,7 @@ struct TypeConstraint {
   bool prefix = false;
   int32_t attribute_type = 0;  // Scalar/list attribute interpretation, when applicable.
   bool tensor_type = true;
+  bool absent = false;
 };
 
 struct OpsetRequirement {
@@ -113,7 +113,7 @@ class Pattern {
   InlinedVector<Value> outputs_;
   InlinedHashSet<int> optional_inputs_;
   InlinedHashSet<std::string> attribute_names_;
-  InlinedHashMap<int, TypeConstraint> type_constraints_;
+  InlinedHashMap<int, InlinedVector<TypeConstraint, 1>> type_constraints_;
   InlinedHashSet<int> attribute_inputs_;
   Value AddValue(std::string_view name);
 };

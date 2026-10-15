@@ -1973,11 +1973,14 @@ TEST(PatternRewriterTests, NamedAttributeCaptures) {
 }
 
 TEST(PatternRewriterTests, OptionalInputSlotsAndNumerics) {
-  for (auto text : {"(x,low?,high?)=>{a=Identity(x);return Clip(a,low,high);}",
+  for (auto text : {"(x,low:tensor[...] | None,high:tensor[...] | None)=>{a=Identity(x);return Clip(a,low,high);}",
                     "(x,high)=>{a=Identity(x);return Clip(a,None,high);}",
                     "(x)=>{a=Identity(x);return Clip(a,None,None);}"}) {
     EXPECT_NO_THROW((void)Pattern{text});
-    EXPECT_NO_THROW((void)Replacement{text});
+    if (std::string_view(text).find(':') != std::string_view::npos)
+      EXPECT_THROW((void)Replacement{text}, OnnxRuntimeException);
+    else
+      EXPECT_NO_THROW((void)Replacement{text});
   }
   for (auto text : {"(None)=>return Identity(None)", "(x??)=>return Identity(x)",
                     "(x)=>{a=Identity(x);return Clip(a,missing);}",
@@ -1987,8 +1990,8 @@ TEST(PatternRewriterTests, OptionalInputSlotsAndNumerics) {
     for (int scenario = 0; scenario < 5; ++scenario) {
       SCOPED_TRACE(scenario);
       auto rule = IdentityPair();
-      rule.pattern = Pattern("(x,low?,high?)=>{a=Identity(x);return Clip(a,low,high);}");
-      rule.replacement = Replacement("(x,low?,high?)=>Clip(x,low,high)");
+      rule.pattern = Pattern("(x,low:tensor[...] | None,high:tensor[...] | None)=>{a=Identity(x);return Clip(a,low,high);}");
+      rule.replacement = Replacement("(x,low,high)=>Clip(x,low,high)");
       auto build = [scenario](ModelTestBuilder& b) {
         auto* x = b.MakeInput<float>({4}, -2.0f, 2.0f);
         auto* a = b.MakeIntermediate();
@@ -2103,7 +2106,7 @@ TEST(PatternRewriterTests, OptionalInputConstraintsAndAbsentRepetition) {
       ASSERT_STATUS_OK(test.graph.Resolve());
       for (int constraint = 0; constraint < 3; ++constraint) {
         auto rule = IdentityPair();
-        rule.pattern = Pattern(constraint == 0   ? "(x,v?)=>{a=Identity(x);return Clip(a,v,v);}"
+        rule.pattern = Pattern(constraint == 0   ? "(x,v:tensor[...] | None)=>{a=Identity(x);return Clip(a,v,v);}"
                                : constraint == 1 ? "(x)=>{a=Identity(x);return Clip(a,None,None);}"
                                                  : "(x,lo,hi)=>{a=Identity(x);return Clip(a,lo,hi);}");
         Statistics stats;
@@ -2172,7 +2175,7 @@ TEST(PatternRewriterTests, TypeShapeAnnotationParsing) {
            "(x:float)=>return Identity(x)",
            "(x:tensor[M,0])=>return Identity(x)",
            "(x:tensor<T>[M,...],y:tensor<T>[M,_])=>return CastLike(x,y)",
-           "(x?:int64[...])=>return Identity(x)",
+           "(x:int64[...] | None)=>return Identity(x)",
            "(x:float[M,N])=>{y:float[M,N]=Identity(x);return y;}",
            "(x:float[M,N])=>{a:float[M,N],b:float[M,N]=Split(x);return a,b;}",
            "(x:float[],axis:int)=>return Softmax(x,axis=axis)",
@@ -2359,9 +2362,9 @@ TEST(PatternRewriterTests, AnnotatedOptionalValuesAndRuleIsolation) {
       b.SetGraphOutputs();
       ASSERT_STATUS_OK(test.graph.Resolve());
       auto first = IdentityPair("reject"), second = IdentityPair("accept");
-      first.pattern = Pattern("(x:float[2,4],lo?:float,hi?:float)=>{a=Clip(x,lo,hi);return Identity(a);}");
+      first.pattern = Pattern("(x:float[2,4],lo:float | None,hi:float | None)=>{a=Clip(x,lo,hi);return Identity(a);}");
       second.pattern = Pattern(
-          "(input:tensor<T>[M,N],low?:tensor<U>,high?:float)=>"
+          "(input:tensor<T>[M,N],low:tensor<U> | None,high:float | None)=>"
           "{a:tensor<T>[M,N]=Clip(input,low,high);return Identity(a);}");
       second.replacement = Replacement("(input)=>Clip(input)");
       second.guard = [](const Graph&, const Match& match) {
@@ -2371,11 +2374,11 @@ TEST(PatternRewriterTests, AnnotatedOptionalValuesAndRuleIsolation) {
         return true;
       };
       if (scenario == 1) first.pattern = Pattern(
-                             "(x:float[2,3],lo?:float,hi?:float)=>"
+                             "(x:float[2,3],lo:float | None,hi:float | None)=>"
                              "{a=Clip(x,lo,hi);return Identity(a);}");
       if (scenario == 1) first.guard = [](const Graph&, const Match&) { return false; };
       if (scenario == 2) second.pattern = Pattern(
-                             "(input:tensor<T>[M,M],low?:tensor<U>,high?:float)=>"
+                             "(input:tensor<T>[M,M],low:tensor<U> | None,high:float | None)=>"
                              "{a=Clip(input,low,high);return Identity(a);}");
       InlinedVector<MatchFailure> failures;
       Options options{.indexed = indexed};
@@ -2388,6 +2391,145 @@ TEST(PatternRewriterTests, AnnotatedOptionalValuesAndRuleIsolation) {
                   scenario == 1);
       ASSERT_STATUS_OK(test.graph.Resolve());
     }
+  }
+}
+
+TEST(PatternRewriterTests, TypeUnionParsingAndBounds) {
+  for (auto text : {"(x:float[M] | float[M,N])=>return Identity(x)",
+                    "(x:float[M] | None)=>return Identity(x)",
+                    "(x:None | tensor<T>[...])=>return Identity(x)",
+                    "(x)=>{y:float[M] | float[M,N]=Identity(x);return y;}"}) {
+    EXPECT_NO_THROW((void)Pattern{text});
+    EXPECT_THROW((void)Replacement{text}, OnnxRuntimeException);
+  }
+  for (auto text : {"(x:|float[M])=>return Identity(x)", "(x:float[M]|)=>return Identity(x)",
+                    "(x:float[M]||None)=>return Identity(x)", "(x:None)=>return Identity(x)",
+                    "(x:None|None)=>return Identity(x)", "(x:float[M]|float[M])=>return Identity(x)",
+                    "(x:float[]|float[...])=>return Identity(x)",
+                    "(x?)=>return Identity(x)", "(x?:float[])=>return Identity(x)",
+                    "(x:float[]?)=>return Identity(x)",
+                    "(x,p:ints|floats)=>return Identity(x,perm=p)",
+                    "(x,p:int|None)=>return Identity(x,axis=p)",
+                    "(x)=>{y:float[]|None=Identity(x);return y;}"}) {
+    SCOPED_TRACE(text);
+    EXPECT_THROW((void)Pattern{text}, OnnxRuntimeException);
+  }
+  auto make_text = [](int count) {
+    std::string text = "(";
+    for (int i = 0; i < count; ++i) {
+      if (i) text += ',';
+      text += "x" + std::to_string(i) + ":float[]|int64[]";
+    }
+    text += ")=>return Concat(";
+    for (int i = 0; i < count; ++i) {
+      if (i) text += ',';
+      text += "x" + std::to_string(i);
+    }
+    return text + ",axis=0)";
+  };
+  EXPECT_NO_THROW((void)Pattern{make_text(6)});
+  EXPECT_THROW((void)Pattern{make_text(7)}, OnnxRuntimeException);
+}
+
+TEST(PatternRewriterTests, TypeUnionRanksAndNone) {
+  for (bool indexed : {false, true}) {
+    for (int scenario = 0; scenario < 5; ++scenario) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = scenario == 0   ? b.MakeInput<float>({2}, -1.0f, 1.0f)
+                : scenario == 1 ? b.MakeInput<float>({2, 3}, -1.0f, 1.0f)
+                : scenario == 2 ? b.MakeInput<float>({}, -1.0f, 1.0f)
+                : scenario == 3 ? b.MakeInput<float>({2, 3, 4}, -1.0f, 1.0f)
+                                : b.MakeInput<int64_t>({2}, -1, 1);
+      b.AddNode("Identity", {x}, {b.MakeOutput()});
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      auto rule = IdentityPair();
+      rule.pattern = Pattern("(x:float[M] | float[M,N])=>return Identity(x)");
+      rule.guard = [scenario](const Graph&, const Match& match) {
+        EXPECT_EQ(std::get<int64_t>(match.dimensionOf("M")), 2);
+        if (scenario == 0)
+          EXPECT_TRUE(std::holds_alternative<std::monostate>(match.dimensionOf("N")));
+        else
+          EXPECT_EQ(std::get<int64_t>(match.dimensionOf("N")), 3);
+        return true;
+      };
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+      EXPECT_EQ(stats.matches, scenario < 2 ? 1u : 0u);
+    }
+    for (int scenario = 0; scenario < 4; ++scenario) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = b.MakeInput<float>({2}, -1.0f, 1.0f);
+      std::vector<NodeArg*> inputs{x};
+      if (scenario == 1) inputs.push_back(b.MakeOptionalTensor());
+      if (scenario == 2) inputs.push_back(b.MakeScalarInitializer<float>(0.0f));
+      if (scenario == 3) inputs.push_back(b.MakeInput<float>({2}, -1.0f, 1.0f));
+      b.AddNode("Clip", inputs, {b.MakeOutput()});
+      b.SetGraphOutputs();
+      // A vector bound is schema-valid but cannot satisfy the scalar annotation.
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      auto rule = IdentityPair();
+      rule.pattern = Pattern("(x:float[M],low:float | None)=>return Clip(x,low)");
+      rule.guard = [scenario](const Graph&, const Match& match) {
+        EXPECT_EQ(match.valueOf("low") == nullptr, scenario < 2);
+        return true;
+      };
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+      EXPECT_EQ(stats.matches, scenario < 3 ? 1u : 0u);
+    }
+  }
+}
+
+TEST(PatternRewriterTests, TypeUnionGlobalBindingsAndRollback) {
+  for (bool indexed : {false, true}) {
+    for (int scenario = 0; scenario < 4; ++scenario) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = b.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+      auto* y = b.MakeInput<float>({scenario == 2 ? 4 : 3}, -1.0f, 1.0f);
+      b.AddNode("CastLike", {x, y}, {b.MakeOutput()});
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      auto rule = IdentityPair();
+      rule.pattern = Pattern(scenario == 0
+                                 ? "(x:float[M,9] | float[2,M],y:float[M])=>return CastLike(x,y)"
+                             : scenario == 1 || scenario == 2
+                                 ? "(x:float[M,_] | float[_,M],y:float[M])=>return CastLike(x,y)"
+                                 : "(x:tensor<T>[M,_] | tensor<U>[_,M],y:tensor<U>[M])=>return CastLike(x,y)");
+      rule.guard = [scenario](const Graph&, const Match& match) {
+        EXPECT_EQ(std::get<int64_t>(match.dimensionOf("M")), 3);
+        if (scenario == 3) {
+          EXPECT_FALSE(match.elementTypeOf("T").has_value());
+          EXPECT_EQ(match.elementTypeOf("U"), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+        }
+        return true;
+      };
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+      EXPECT_EQ(stats.matches, scenario == 2 ? 0u : 1u);
+    }
+    TestGraph test;
+    auto& b = test.builder;
+    auto* x = b.MakeInput<float>({2}, -1.0f, 1.0f);
+    b.AddNode("Clip", {x}, {b.MakeOutput()});
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    auto rule = IdentityPair();
+    rule.pattern = Pattern("(x,lo:tensor<T>[D] | None)=>return Clip(x,lo)");
+    rule.guard = [](const Graph&, const Match& match) {
+      EXPECT_EQ(match.valueOf("lo"), nullptr);
+      EXPECT_TRUE(std::holds_alternative<std::monostate>(match.dimensionOf("D")));
+      EXPECT_FALSE(match.elementTypeOf("T").has_value());
+      return true;
+    };
+    rule.replacement = Replacement("(x,lo)=>Clip(x,lo)");
+    Statistics stats;
+    ASSERT_STATUS_OK(PatternRewriter({rule}, {.indexed = indexed, .max_iterations = 1}).Run(test.graph, stats));
+    EXPECT_EQ(stats.rewrites, 1u);
+    ASSERT_STATUS_OK(test.graph.Resolve());
   }
 }
 
