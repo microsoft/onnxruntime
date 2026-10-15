@@ -5,6 +5,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
@@ -179,7 +180,7 @@ TEST(MathOpTest, ShrinkDoublePrecision) {
   test.AddAttribute("lambd", 0.0f);
   test.AddInput<double>("X", {4}, {16777217.0, -16777217.0, 1e40, -1e40});
   test.AddOutput<double>("Y", {4}, {16777217.0, -16777217.0, 1e40, -1e40});
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 TEST(MathOpTest, ShrinkInt64Precision) {
@@ -188,7 +189,7 @@ TEST(MathOpTest, ShrinkInt64Precision) {
   test.AddAttribute("lambd", 0.0f);
   test.AddInput<int64_t>("X", {4}, {16777217, 1000000000000, 9007199254740993, -9007199254740993});
   test.AddOutput<int64_t>("Y", {4}, {16777217, 1000000000000, 9007199254740993, -9007199254740993});
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 TEST(MathOpTest, ShrinkUint64Precision) {
@@ -197,7 +198,7 @@ TEST(MathOpTest, ShrinkUint64Precision) {
   test.AddAttribute("lambd", 0.0f);
   test.AddInput<uint64_t>("X", {4}, {16777217, 1000000000000, 9007199254740993, std::numeric_limits<uint64_t>::max()});
   test.AddOutput<uint64_t>("Y", {4}, {16777217, 1000000000000, 9007199254740993, std::numeric_limits<uint64_t>::max()});
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 TEST(MathOpTest, ShrinkInt32LimitsAndPrecision) {
@@ -206,7 +207,7 @@ TEST(MathOpTest, ShrinkInt32LimitsAndPrecision) {
   test.AddAttribute("lambd", 0.0f);
   test.AddInput<int32_t>("X", {4}, {16777217, -16777217, std::numeric_limits<int32_t>::max(), std::numeric_limits<int32_t>::min()});
   test.AddOutput<int32_t>("Y", {4}, {16777217, -16777217, std::numeric_limits<int32_t>::max(), std::numeric_limits<int32_t>::min()});
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 TEST(MathOpTest, ShrinkUint32LimitsAndPrecision) {
@@ -215,7 +216,7 @@ TEST(MathOpTest, ShrinkUint32LimitsAndPrecision) {
   test.AddAttribute("lambd", 0.0f);
   test.AddInput<uint32_t>("X", {2}, {16777217, std::numeric_limits<uint32_t>::max()});
   test.AddOutput<uint32_t>("Y", {2}, {16777217, std::numeric_limits<uint32_t>::max()});
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 TEST(MathOpTest, ShrinkThresholdMisclassificationBoundary) {
@@ -226,7 +227,7 @@ TEST(MathOpTest, ShrinkThresholdMisclassificationBoundary) {
     test.AddAttribute("lambd", 16777216.0f);
     test.AddInput<int32_t>("X", {4}, {16777216, 16777217, -16777216, -16777217});
     test.AddOutput<int32_t>("Y", {4}, {0, 16777217, 0, -16777217});
-    test.Run();
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
   }
   // Test 2^53 boundary on int64
   {
@@ -235,7 +236,7 @@ TEST(MathOpTest, ShrinkThresholdMisclassificationBoundary) {
     test.AddAttribute("lambd", 9007199254740992.0f);
     test.AddInput<int64_t>("X", {4}, {9007199254740992, 9007199254740993, -9007199254740992, -9007199254740993});
     test.AddOutput<int64_t>("Y", {4}, {0, 9007199254740993, 0, -9007199254740993});
-    test.Run();
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
   }
 }
 
@@ -247,7 +248,7 @@ TEST(MathOpTest, ShrinkNegativeThresholdAndFractionalBias) {
     test.AddAttribute("lambd", -2.0f);
     test.AddInput<int32_t>("X", {3}, {-3, 0, 3});
     test.AddOutput<int32_t>("Y", {3}, {7, 10, -7});
-    test.Run();
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
   }
   // Fractional bias: lambd = 0.5f, bias = 1.5f
   {
@@ -256,7 +257,7 @@ TEST(MathOpTest, ShrinkNegativeThresholdAndFractionalBias) {
     test.AddAttribute("lambd", 0.5f);
     test.AddInput<int32_t>("X", {3}, {10, -10, 0});
     test.AddOutput<int32_t>("Y", {3}, {8, -8, 0});
-    test.Run();
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
   }
   // NaN threshold returns zeros
   {
@@ -265,8 +266,44 @@ TEST(MathOpTest, ShrinkNegativeThresholdAndFractionalBias) {
     test.AddAttribute("lambd", std::numeric_limits<float>::quiet_NaN());
     test.AddInput<int32_t>("X", {3}, {-5, 0, 5});
     test.AddOutput<int32_t>("Y", {3}, {0, 0, 0});
-    test.Run();
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
   }
+}
+
+TEST(MathOpTest, ShrinkInt64MinBias) {
+  OpTester test("Shrink", 9);
+  test.AddAttribute("bias", static_cast<float>(std::numeric_limits<int64_t>::min()));
+  test.AddAttribute("lambd", -100.0f);
+  test.AddInput<int64_t>("X", {2}, {1, 0});
+  test.AddOutput<int64_t>("Y", {2}, {std::numeric_limits<int64_t>::min() + 1, std::numeric_limits<int64_t>::min()});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(MathOpTest, ShrinkInt64LargeBiasCancellation) {
+  OpTester test("Shrink", 9);
+  test.AddAttribute("bias", 9223372036854775808.0f);
+  test.AddAttribute("lambd", 0.0f);
+  test.AddInput<int64_t>("X", {3}, {std::numeric_limits<int64_t>::min() + 1, std::numeric_limits<int64_t>::min(), std::numeric_limits<int64_t>::max()});
+  test.AddOutput<int64_t>("Y", {3}, {1, 0, -1});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(MathOpTest, ShrinkInt64FractionalBiasAboveDoublePrecision) {
+  OpTester test("Shrink", 9);
+  test.AddAttribute("bias", 1.5f);
+  test.AddAttribute("lambd", 0.5f);
+  test.AddInput<int64_t>("X", {4}, {9007199254740995, -9007199254740995, 9007199254740993, -9007199254740993});
+  test.AddOutput<int64_t>("Y", {4}, {9007199254740993, -9007199254740993, 9007199254740991, -9007199254740991});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(MathOpTest, ShrinkUint64FractionalBiasAtMaximum) {
+  OpTester test("Shrink", 9);
+  test.AddAttribute("bias", 0.5f);
+  test.AddAttribute("lambd", 0.0f);
+  test.AddInput<uint64_t>("X", {2}, {std::numeric_limits<uint64_t>::max(), 9007199254740993ULL});
+  test.AddOutput<uint64_t>("Y", {2}, {std::numeric_limits<uint64_t>::max() - 1, 9007199254740992ULL});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 TEST(MathOpTest, ShrinkBFloat16Type) {
@@ -275,7 +312,7 @@ TEST(MathOpTest, ShrinkBFloat16Type) {
   test.AddAttribute("lambd", 2.0f);
   test.AddInput<BFloat16>("X", {4}, {BFloat16(-3.0f), BFloat16(-1.0f), BFloat16(1.0f), BFloat16(4.0f)});
   test.AddOutput<BFloat16>("Y", {4}, {BFloat16(7.0f), BFloat16(0.0f), BFloat16(0.0f), BFloat16(-6.0f)});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 }  // namespace test

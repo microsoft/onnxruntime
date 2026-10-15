@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <type_traits>
 
@@ -39,20 +40,67 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 namespace shrink_internal {
 
-template <typename IntT>
-inline IntT SafeFloatToInteger(double val) {
-  if (std::isnan(val)) {
-    return static_cast<IntT>(0);
+template <typename T>
+T ClampIntegerMagnitude(uint64_t magnitude, bool negative) {
+  if constexpr (std::is_signed_v<T>) {
+    if (negative) {
+      const uint64_t limit = uint64_t{0} - static_cast<uint64_t>(std::numeric_limits<T>::lowest());
+      if (magnitude >= limit) {
+        return std::numeric_limits<T>::lowest();
+      }
+      return static_cast<T>(-static_cast<int64_t>(magnitude));
+    }
+  } else if (negative) {
+    return 0;
   }
-  constexpr double kMax = static_cast<double>(std::numeric_limits<IntT>::max());
-  constexpr double kMin = static_cast<double>(std::numeric_limits<IntT>::lowest());
-  if (val >= kMax) {
-    return std::numeric_limits<IntT>::max();
+
+  if (magnitude > static_cast<uint64_t>(std::numeric_limits<T>::max())) {
+    return std::numeric_limits<T>::max();
   }
-  if (val <= kMin) {
-    return std::numeric_limits<IntT>::lowest();
+  return static_cast<T>(magnitude);
+}
+
+template <typename T>
+T ApplyIntegerBias(T value, float bias, bool add_bias) {
+  const double offset = add_bias ? static_cast<double>(bias) : -static_cast<double>(bias);
+  if (std::isnan(offset)) {
+    return 0;
   }
-  return static_cast<IntT>(val);
+
+  const bool offset_negative = std::signbit(offset);
+  const double offset_magnitude = std::fabs(offset);
+  constexpr double kUint64MaxExclusive = 18446744073709551616.0;  // 2^64
+  if (offset_magnitude >= kUint64MaxExclusive) {
+    return ClampIntegerMagnitude<T>(std::numeric_limits<uint64_t>::max(), offset_negative);
+  }
+
+  double integral_part;
+  const bool has_fraction = std::modf(offset_magnitude, &integral_part) != 0.0;
+  const uint64_t offset_integer = static_cast<uint64_t>(integral_part);
+  uint64_t value_magnitude = static_cast<uint64_t>(value);
+  bool value_negative = false;
+  if constexpr (std::is_signed_v<T>) {
+    if (value < 0) {
+      value_negative = true;
+      value_magnitude = uint64_t{0} - value_magnitude;
+    }
+  }
+
+  // Keep the integer and fractional parts separate so values above 2^53 stay exact.
+  if (value_negative == offset_negative) {
+    if (offset_integer > std::numeric_limits<uint64_t>::max() - value_magnitude) {
+      return ClampIntegerMagnitude<T>(std::numeric_limits<uint64_t>::max(), value_negative);
+    }
+    return ClampIntegerMagnitude<T>(value_magnitude + offset_integer, value_negative);
+  }
+
+  if (value_magnitude > offset_integer) {
+    return ClampIntegerMagnitude<T>(value_magnitude - offset_integer - static_cast<uint64_t>(has_fraction), value_negative);
+  }
+  if (value_magnitude < offset_integer) {
+    return ClampIntegerMagnitude<T>(offset_integer - value_magnitude, offset_negative);
+  }
+  return 0;
 }
 
 template <class T>
@@ -100,17 +148,8 @@ inline T ShrinkCore(const T& t_val, float bias, float lambd) {
       c1 = (static_cast<int64_t>(t_val) < static_cast<int64_t>(d_ceil));
     }
 
-    const double d_bias = static_cast<double>(bias);
-    const bool is_int_bias = (d_bias >= -kMaxSigned && d_bias < kMaxSigned && d_bias == std::floor(d_bias));
     if (c1) {
-      if (is_int_bias) {
-        const int64_t b = static_cast<int64_t>(d_bias);
-        const uint64_t u_val = static_cast<uint64_t>(static_cast<int64_t>(t_val));
-        const uint64_t res = (b >= 0) ? (u_val + static_cast<uint64_t>(b))
-                                      : (u_val - static_cast<uint64_t>(-b));
-        return static_cast<T>(static_cast<int64_t>(res));
-      }
-      return SafeFloatToInteger<T>(static_cast<double>(t_val) + d_bias);
+      return ApplyIntegerBias(t_val, bias, true);
     }
 
     const double d_lambd = static_cast<double>(lambd);
@@ -125,14 +164,7 @@ inline T ShrinkCore(const T& t_val, float bias, float lambd) {
     }
 
     if (c2) {
-      if (is_int_bias) {
-        const int64_t b = static_cast<int64_t>(d_bias);
-        const uint64_t u_val = static_cast<uint64_t>(static_cast<int64_t>(t_val));
-        const uint64_t res = (b >= 0) ? (u_val - static_cast<uint64_t>(b))
-                                      : (u_val + static_cast<uint64_t>(-b));
-        return static_cast<T>(static_cast<int64_t>(res));
-      }
-      return SafeFloatToInteger<T>(static_cast<double>(t_val) - d_bias);
+      return ApplyIntegerBias(t_val, bias, false);
     }
 
     return static_cast<T>(0);
@@ -152,16 +184,8 @@ inline T ShrinkCore(const T& t_val, float bias, float lambd) {
       }
     }
 
-    const double d_bias = static_cast<double>(bias);
-    const bool is_int_bias = (d_bias > -kMaxUnsigned && d_bias < kMaxUnsigned && d_bias == std::floor(d_bias));
     if (c1) {
-      if (is_int_bias) {
-        const uint64_t u_val = static_cast<uint64_t>(t_val);
-        const uint64_t res = (d_bias >= 0.0) ? (u_val + static_cast<uint64_t>(d_bias))
-                                             : (u_val - static_cast<uint64_t>(-d_bias));
-        return static_cast<T>(res);
-      }
-      return SafeFloatToInteger<T>(static_cast<double>(t_val) + d_bias);
+      return ApplyIntegerBias(t_val, bias, true);
     }
 
     const double d_lambd = static_cast<double>(lambd);
@@ -178,13 +202,7 @@ inline T ShrinkCore(const T& t_val, float bias, float lambd) {
     }
 
     if (c2) {
-      if (is_int_bias) {
-        const uint64_t u_val = static_cast<uint64_t>(t_val);
-        const uint64_t res = (d_bias >= 0.0) ? (u_val - static_cast<uint64_t>(d_bias))
-                                             : (u_val + static_cast<uint64_t>(-d_bias));
-        return static_cast<T>(res);
-      }
-      return SafeFloatToInteger<T>(static_cast<double>(t_val) - d_bias);
+      return ApplyIntegerBias(t_val, bias, false);
     }
 
     return static_cast<T>(0);
