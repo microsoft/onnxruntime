@@ -62,11 +62,7 @@ DEFAULT_CFLAGS = (
     "--param=stack-clash-protection-guard-size=12",
 )
 
-DEFAULT_COPYRIGHT = (
-    "Copyright (c) Microsoft Corporation. All rights reserved.\n"
-    "\n"
-    "Licensed under the MIT License."
-)
+DEFAULT_COPYRIGHT = "Copyright (c) Microsoft Corporation. All rights reserved.\n\nLicensed under the MIT License."
 
 
 def run(cmd):
@@ -180,13 +176,12 @@ def compiler_version(cxx):
     try:
         out = subprocess.run([cxx, "--version"], capture_output=True, text=True, check=True)
         return out.stdout.splitlines()[0].strip()
-    except Exception as exc:  # noqa: BLE001 - provenance is best effort
+    except Exception as exc:
         return f"{cxx} (version unavailable: {exc})"
 
 
 def emit(functions, symbols, module, src, out_path, copyright, provenance):
-    lines = [HEADER.format(module=module, src=src, copyright=copyright,
-                           provenance=provenance)]
+    lines = [HEADER.format(module=module, src=src, copyright=copyright, provenance=provenance)]
     for sym in symbols:
         lines.append("")
         lines.append("    KAI_ASM_ALIGN")
@@ -225,8 +220,7 @@ def main():
     ap.add_argument(
         "--copyright",
         default=DEFAULT_COPYRIGHT,
-        help="copyright/licence block for the generated file. Should match the "
-        "intrinsics source it is frozen from.",
+        help="copyright/licence block for the generated file. Should match the intrinsics source it is frozen from.",
     )
     ap.add_argument(
         "--cflag",
@@ -270,10 +264,7 @@ def main():
             # form is specific to whoever ran the generator, so leave it out of
             # the provenance block.
             implied_include = f"-I{os.path.dirname(os.path.abspath(src))}"
-            compile_flags = [
-                a for a in cmd[1:]
-                if a not in ("-c", "-o", obj, src, implied_include)
-            ]
+            compile_flags = [a for a in cmd[1:] if a not in ("-c", "-o", obj, src, implied_include)]
             run(cmd)
             wanted = [s for s in symbols if s not in functions]
             check_relocations(obj, wanted)
@@ -282,8 +273,7 @@ def main():
     if missing:
         sys.exit(f"symbols not found in any object: {missing}")
     provenance = "\n".join(
-        ["      compiler: " + compiler_version(args.cxx),
-         "      flags:    " + " ".join(compile_flags)]
+        ["      compiler: " + compiler_version(args.cxx), "      flags:    " + " ".join(compile_flags)]
     )
     emit(functions, symbols, args.module, ", ".join(args.src), args.out, args.copyright, provenance)
 
