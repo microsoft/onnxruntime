@@ -175,3 +175,13 @@ MlasSveGeluFP16Kernel(
     size_t N,
     MLAS_GELU_ALGORITHM Algo
     );
+
+
+//
+// SGEMM SVE compute and packing kernels. The prototypes live in their own
+// header because sve/gen_sve_asm.py compiles sgemm_sve.cpp on its own, with no
+// ONNX Runtime include path, in order to freeze it into
+// aarch64/sgemm_sve_asm.S; that translation unit therefore cannot reach this
+// header. sgemm.cpp gets the same prototypes either way.
+//
+#include "sgemm_sve.h"
