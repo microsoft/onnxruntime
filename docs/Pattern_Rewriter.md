@@ -6,9 +6,13 @@ operator patterns with semantically equivalent graphs. Include
 text; programmatic builders and mutable replacement recipes are not public APIs.
 Guards and replacement callbacks remain ordinary C++ functions.
 
-A `Rule` combines a diagnostic name, a parsed pattern, domain/opset requirements,
-a semantic guard, and a parsed replacement or callback returning one. The matcher
-establishes structural and deletion safety. **The rule author must establish
+A `Rule` takes `(name, pattern, replacement, guard, opset_requirements)`.
+The pattern may be text or a parsed `Pattern`; the replacement may be text,
+a parsed `Replacement`, or a callback returning one. Text accepts string literals,
+`std::string`, and `std::string_view` and is parsed once during rule construction;
+syntax errors are reported immediately. Parsed definitions own their data, so
+the original text need not outlive the rule. Rules remain copyable and movable.
+The matcher establishes structural and deletion safety. **The rule author must establish
 semantic equivalence, supported types, and kernel compatibility.**
 
 ## Example: HardSigmoid followed by Mul
@@ -29,18 +33,17 @@ bool IsFloat32(const NodeArg& value) {
 }
 
 Rule MakeHardSwishRule() {
-  Pattern pattern(R"(
+  const auto* pattern = R"(
     (x) => {
       sigmoid = HardSigmoid(x, alpha=0.16666667, beta=0.5)
       return Mul(sigmoid, x)
     }
-  )");
+  )";
   auto guard = [](const Graph&, const Match& match) {
     return IsFloat32(*match.valueOf("x"));
   };
-  Replacement replacement("(x) => HardSwish(x)");
-  return Rule{"HardSigmoidMul", std::move(pattern),
-              {{kOnnxDomain, 14, 21}}, guard, replacement};
+  const auto* replacement = "(x) => HardSwish(x)";
+  return Rule{"HardSigmoidMul", pattern, replacement, guard, {{kOnnxDomain, 14, 21}}};
 }
 ```
 
@@ -371,7 +374,8 @@ back; a mapping that preserves an acyclic dependency graph is allowed.
 
 Reuse a parsed replacement plan when an attribute depends on each match.
 Declare the attribute binding in the replacement's input list, set it with
-`match.update`, and reference it as a keyword argument.
+`match.update`, and reference it as a keyword argument. Parse the plan outside
+the callback so matching does not parse it again.
 
 The following rule folds division by a finite float32 scalar into FusedMatMul's
 `alpha` attribute. It requires the Microsoft-domain opset to be imported already.
@@ -395,7 +399,7 @@ std::optional<float> FloatScalar(const Graph& graph, const NodeArg& value) {
 }
 
 Rule MakeMatMulDivRule() {
-  Pattern pattern("(x,y,divisor) => { mm = MatMul(x,y); return Div(mm,divisor); }");
+  const auto* pattern = "(x,y,divisor) => { mm = MatMul(x,y); return Div(mm,divisor); }";
   auto guard = [](const Graph& graph, const Match& match) {
     auto divisor = FloatScalar(graph, *match.valueOf("divisor"));
     return IsFloat32(*match.valueOf("x")) && IsFloat32(*match.valueOf("y")) &&
@@ -409,8 +413,7 @@ Rule MakeMatMulDivRule() {
     match.update("alpha", std::move(alpha));
     return plan;
   };
-  return Rule{"MatMulDiv", std::move(pattern),
-              {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}, guard, replacement};
+  return Rule{"MatMulDiv", pattern, replacement, guard, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}};
 }
 ```
 

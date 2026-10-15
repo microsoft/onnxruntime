@@ -178,13 +178,25 @@ struct Replacement {
 };
 
 struct Rule {
+  using Guard = std::function<bool(const Graph&, const Match&)>;
+  using ReplacementFunction = std::function<Replacement(const Graph&, const Match&)>;
+
+  Rule(std::string name, Pattern pattern, ReplacementFunction replacement, Guard guard,
+       InlinedVector<OpsetRequirement, 1> opsets);
+  Rule(std::string name, std::string_view pattern, ReplacementFunction replacement, Guard guard,
+       InlinedVector<OpsetRequirement, 1> opsets);
+  Rule(std::string name, Pattern pattern, std::string_view replacement, Guard guard,
+       InlinedVector<OpsetRequirement, 1> opsets);
+  Rule(std::string name, std::string_view pattern, std::string_view replacement, Guard guard,
+       InlinedVector<OpsetRequirement, 1> opsets);
+
   std::string name;
   Pattern pattern;
-  InlinedVector<OpsetRequirement, 1> opsets;
   // Guards must be pure. Recipes may set extra attribute bindings, but must not mutate the graph
   // or retain pointers into a Match.
-  std::function<bool(const Graph&, const Match&)> guard;
-  std::function<Replacement(const Graph&, const Match&)> replacement;
+  ReplacementFunction replacement;
+  Guard guard;
+  InlinedVector<OpsetRequirement, 1> opsets;
 };
 
 using Rules = InlinedVector<Rule, 1>;

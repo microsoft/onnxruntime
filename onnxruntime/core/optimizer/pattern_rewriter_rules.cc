@@ -47,34 +47,34 @@ bool Integer(const Node& node, const char* name, int64_t value) {
 Rules MakeExampleRules() {
   Rules rules;
   {
-    Pattern p(R"(
+    const auto* pattern = R"(
       (x) => {
         add = Add(x, 3.0)
         clip = Clip(add, 0.0, 6.0)
         mul = Mul(clip, x)
         return Div(mul, 6.0)
       }
-    )");
+    )";
     auto guard = [](const Graph&, const Match& m) { return IsFloat32(*m.valueOf("x")); };
-    Replacement replacement("(x) => HardSwish(x)");
-    Rule rule{"HardSwish", p, {{kOnnxDomain, 14, 21}}, guard, replacement};
+    const auto* replacement = "(x) => HardSwish(x)";
+    Rule rule{"HardSwish", pattern, replacement, guard, {{kOnnxDomain, 14, 21}}};
     rules.push_back(std::move(rule));
   }
   {
-    Pattern p(R"(
+    const auto* pattern = R"(
       (x) => {
         sigmoid = HardSigmoid(x, alpha=0.16666667, beta=0.5)
         return Mul(sigmoid, x)
       }
-    )");
+    )";
     auto guard = [](const Graph&, const Match& m) { return IsFloat32(*m.valueOf("x")); };
-    Replacement replacement("(x) => HardSwish(x)");
-    Rule rule{"HardSigmoidMul", p, {{kOnnxDomain, 14, 21}}, guard, replacement};
+    const auto* replacement = "(x) => HardSwish(x)";
+    Rule rule{"HardSigmoidMul", pattern, replacement, guard, {{kOnnxDomain, 14, 21}}};
     rules.push_back(std::move(rule));
   }
 #ifndef DISABLE_CONTRIB_OPS
   {
-    Pattern p("(x, y, divisor) => { mm = MatMul(x, y); return Div(mm, divisor); }");
+    const auto* pattern = "(x, y, divisor) => { mm = MatMul(x, y); return Div(mm, divisor); }";
     auto guard = [](const Graph& graph, const Match& m) {
       auto scalar = Scalar(graph, *m.valueOf("divisor"));
       return IsFloat32(*m.valueOf("x")) && IsFloat32(*m.valueOf("y")) &&
@@ -85,11 +85,11 @@ Rules MakeExampleRules() {
       m.update("alpha", FloatAttribute("alpha", 1.0f / *Scalar(graph, *m.valueOf("divisor"))));
       return plan;
     };
-    Rule rule{"MatMulDiv", p, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}, guard, replacement};
+    Rule rule{"MatMulDiv", pattern, replacement, guard, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}};
     rules.push_back(std::move(rule));
   }
   {
-    Pattern p("(x, y) => { transpose = Transpose(y); return MatMul(x, transpose); }");
+    const auto* pattern = "(x, y) => { transpose = Transpose(y); return MatMul(x, transpose); }";
     auto guard = [](const Graph&, const Match& m) {
       if (!IsFloat32(*m.valueOf("x")) || !IsFloat32(*m.valueOf("y"))) return false;
       const auto* shape = m.valueOf("y")->Shape();
@@ -107,12 +107,12 @@ Rules MakeExampleRules() {
       }
       return true;
     };
-    Replacement replacement("(x,y) => com.microsoft.FusedMatMul(x,y,transB=1)");
-    Rule rule{"TransposeMatMul", p, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}, guard, replacement};
+    const auto* replacement = "(x,y) => com.microsoft.FusedMatMul(x,y,transB=1)";
+    Rule rule{"TransposeMatMul", pattern, replacement, guard, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}};
     rules.push_back(std::move(rule));
   }
   {
-    Pattern p("(x, y, divisor) => { mm = com.microsoft::FusedMatMul(x, y); return Div(mm, divisor); }");
+    const auto* pattern = "(x, y, divisor) => { mm = com.microsoft::FusedMatMul(x, y); return Div(mm, divisor); }";
     auto guard = [](const Graph& graph, const Match& m) {
       auto scalar = Scalar(graph, *m.valueOf("divisor"));
       auto it = m.nodes[0]->GetAttributes().find("alpha");
@@ -138,11 +138,11 @@ Rules MakeExampleRules() {
       }
       return plan;
     };
-    Rule rule{"FusedMatMulDiv", p, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}, guard, replacement};
+    Rule rule{"FusedMatMulDiv", pattern, replacement, guard, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}};
     rules.push_back(std::move(rule));
   }
   {
-    Pattern p(R"(
+    const auto* pattern = R"(
       (x, scale, epsilon) => {
         square = Pow(x, 2.0)
         mean = ReduceMean(square)
@@ -152,7 +152,7 @@ Rules MakeExampleRules() {
         normalize = Mul(x, reciprocal)
         return Mul(normalize, scale)
       }
-    )");
+    )";
     auto guard = [](const Graph& graph, const Match& m) {
       if (!IsFloat32(*m.valueOf("x")) || !IsFloat32(*m.valueOf("scale"))) return false;
       auto eps = Scalar(graph, *m.valueOf("epsilon"));
@@ -179,7 +179,7 @@ Rules MakeExampleRules() {
       m.update("fused_epsilon", FloatAttribute("epsilon", *Scalar(graph, *m.valueOf("epsilon"))));
       return plan;
     };
-    Rule rule{"RmsNormalization", p, {{kOnnxDomain, 7, 17}}, guard, replacement};
+    Rule rule{"RmsNormalization", pattern, replacement, guard, {{kOnnxDomain, 7, 17}}};
     rules.push_back(std::move(rule));
   }
 #endif

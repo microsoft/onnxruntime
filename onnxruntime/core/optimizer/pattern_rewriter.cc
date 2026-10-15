@@ -1133,6 +1133,26 @@ class PatternParser {
 };
 }  // namespace detail
 
+Rule::Rule(std::string name, Pattern pattern, ReplacementFunction replacement, Guard guard,
+           InlinedVector<OpsetRequirement, 1> opsets)
+    : name(std::move(name)),
+      pattern(std::move(pattern)),
+      replacement(std::move(replacement)),
+      guard(std::move(guard)),
+      opsets(std::move(opsets)) {}
+
+Rule::Rule(std::string name, std::string_view pattern, ReplacementFunction replacement, Guard guard,
+           InlinedVector<OpsetRequirement, 1> opsets)
+    : Rule(std::move(name), Pattern(pattern), std::move(replacement), std::move(guard), std::move(opsets)) {}
+
+Rule::Rule(std::string name, Pattern pattern, std::string_view replacement, Guard guard,
+           InlinedVector<OpsetRequirement, 1> opsets)
+    : Rule(std::move(name), std::move(pattern), Replacement(replacement), std::move(guard), std::move(opsets)) {}
+
+Rule::Rule(std::string name, std::string_view pattern, std::string_view replacement, Guard guard,
+           InlinedVector<OpsetRequirement, 1> opsets)
+    : Rule(std::move(name), Pattern(pattern), Replacement(replacement), std::move(guard), std::move(opsets)) {}
+
 Pattern::Pattern(std::string_view text) { ORT_THROW_IF_ERROR(detail::PatternParser(text).Parse(*this)); }
 
 Replacement::Replacement(std::string_view text) {

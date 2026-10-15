@@ -75,15 +75,15 @@ size_t Count(const Graph& graph, const std::string& op) {
 }
 
 Rule IdentityPair(const char* name = "identity", bool accept = true) {
-  Pattern p("(x) => a = Identity(x); return Identity(a)");
+  const auto* pattern = "(x) => a = Identity(x); return Identity(a)";
   auto guard = [accept](const Graph&, const Match&) { return accept; };
-  Replacement replacement("(x) => Identity(x)");
-  Rule rule{name, p, {{kOnnxDomain, 1, 21}}, guard, replacement};
+  const auto* replacement = "(x) => Identity(x)";
+  Rule rule{name, pattern, replacement, guard, {{kOnnxDomain, 1, 21}}};
   return rule;
 }
 
 Rule IdentitySplit() {
-  Pattern p("(x) => { first = Identity(x); a, b = Split(first); return a, b; }");
+  const auto* pattern = "(x) => { first = Identity(x); a, b = Split(first); return a, b; }";
   auto guard = [](const Graph&, const Match&) { return true; };
   Replacement plan("(x, axis) => { a, b = Split(x, axis=axis); return a, b; }");
   auto replacement = [plan](const Graph&, const Match& match) {
@@ -93,26 +93,26 @@ Rule IdentitySplit() {
                                                             : axis->second);
     return plan;
   };
-  Rule rule{"IdentitySplit", p, {{kOnnxDomain, 13, 17}}, guard, replacement};
+  Rule rule{"IdentitySplit", pattern, replacement, guard, {{kOnnxDomain, 13, 17}}};
   return rule;
 }
 
 Rule SplitConcat() {
-  Pattern p("(x) => a, b = Split(x); return Concat(a, b)");
+  const auto* pattern = "(x) => a, b = Split(x); return Concat(a, b)";
   auto guard = [](const Graph&, const Match& match) {
     const auto& split_attributes = match.nodes[0]->GetAttributes();
     auto axis = split_attributes.find("axis");
     return (axis == split_attributes.end() || axis->second.i() == 0) &&
            match.nodes[1]->GetAttributes().at("axis").i() == 0;
   };
-  Replacement replacement("(x) => Identity(x)");
-  Rule rule{"SplitConcat", p, {{kOnnxDomain, 13, 17}}, guard, replacement};
+  const auto* replacement = "(x) => Identity(x)";
+  Rule rule{"SplitConcat", pattern, replacement, guard, {{kOnnxDomain, 13, 17}}};
   return rule;
 }
 
 // Multi-output adaptation of ONNXScript's LayerNormBiasFusion; unused statistics may be removed.
 Rule LayerNormBias() {
-  Pattern p("(x, scale, bias) => y, mean, inv_std = LayerNormalization(x, scale); return Add(y, bias)");
+  const auto* pattern = "(x, scale, bias) => y, mean, inv_std = LayerNormalization(x, scale); return Add(y, bias)";
   auto guard = [](const Graph&, const Match& match) {
     const auto* shape = match.valueOf("x")->Shape();
     const auto* scale_shape = match.valueOf("scale")->Shape();
@@ -142,7 +142,7 @@ Rule LayerNormBias() {
     }
     return plan;
   };
-  Rule rule{"LayerNormBias", p, {{kOnnxDomain, 17, 17}}, guard, replacement};
+  Rule rule{"LayerNormBias", pattern, replacement, guard, {{kOnnxDomain, 17, 17}}};
   return rule;
 }
 
@@ -1618,6 +1618,102 @@ TEST(PatternRewriterTests, ExampleRuleImportBoundaries) {
   }
 }
 
+TEST(PatternRewriterTests, RuleConstructorTextAndParsedForms) {
+  static_assert(std::is_copy_constructible_v<Rule> && std::is_copy_assignable_v<Rule>);
+  static_assert(std::is_move_constructible_v<Rule> && std::is_move_assignable_v<Rule>);
+  const auto* pattern_text = "(x)=>{a=Identity(x);return Identity(a);}";
+  const auto* replacement_text = "(x)=>Identity(x)";
+  auto check = [](const auto& pattern_text, const auto& replacement_text) {
+    Pattern parsed_pattern(pattern_text);
+    Replacement parsed_replacement(replacement_text);
+    auto guard = [](const Graph&, const Match&) { return true; };
+    size_t calls = 0;
+    auto replacement = [parsed_replacement, &calls](const Graph&, const Match&) {
+      ++calls;
+      return parsed_replacement;
+    };
+    Rules rules{
+        {"literal", "(x)=>{a=Identity(x);return Identity(a);}", "(x)=>Identity(x)", guard, {{kOnnxDomain, 1, 21}}},
+        {"text", pattern_text, replacement_text, guard, {{kOnnxDomain, 1, 21}}},
+        {"parsed", parsed_pattern, parsed_replacement, guard, {{kOnnxDomain, 1, 21}}},
+        {"parsed_pattern", parsed_pattern, replacement_text, guard, {{kOnnxDomain, 1, 21}}},
+        {"parsed_replacement", pattern_text, parsed_replacement, guard, {{kOnnxDomain, 1, 21}}},
+        {"callback", pattern_text, replacement, guard, {{kOnnxDomain, 1, 21}}},
+        {"parsed_callback", parsed_pattern, replacement, guard, {{kOnnxDomain, 1, 21}}}};
+    for (bool indexed : {false, true}) {
+      for (const auto& rule : rules) {
+        TestGraph test;
+        auto& b = test.builder;
+        auto* x = b.MakeInput<float>({2}, -1.0f, 1.0f);
+        auto* middle = b.MakeIntermediate();
+        b.AddNode("Identity", {x}, {middle});
+        b.AddNode("Identity", {middle}, {b.MakeOutput()});
+        b.SetGraphOutputs();
+        ASSERT_STATUS_OK(test.graph.Resolve());
+        Statistics stats;
+        ASSERT_STATUS_OK(PatternRewriter({rule}, {.indexed = indexed}).Run(test.graph, stats));
+        EXPECT_EQ(stats.rewrites, 1u);
+        EXPECT_EQ(test.graph.NumberOfNodes(), 1);
+        ASSERT_STATUS_OK(test.graph.Resolve());
+      }
+    }
+    EXPECT_EQ(calls, 4u);
+  };
+  check(pattern_text, replacement_text);
+  check(std::string(pattern_text), std::string(replacement_text));
+  check(std::string_view(pattern_text), std::string_view(replacement_text));
+}
+
+TEST(PatternRewriterTests, RuleConstructorOwnsParsedTextAndReusesPlans) {
+  std::string pattern = "(x)=>{a=Identity(x);return Identity(a);}";
+  std::string replacement = "(x)=>Identity(x)";
+  auto guard = [](const Graph&, const Match&) { return true; };
+  Rule rule{"owned", pattern, replacement, guard, {{kOnnxDomain, 1, 21}}};
+  pattern.assign("not a pattern");
+  replacement.assign("not a replacement");
+  EXPECT_EQ(rule.pattern.Nodes().size(), 2u);
+  const auto* compiled = rule.replacement.target<Replacement>();
+  ASSERT_NE(compiled, nullptr);
+  const auto* plan = &compiled->Plan();
+  auto copied = rule;
+  auto moved = std::move(copied);
+  copied = moved;
+  copied = std::move(moved);
+  TestGraph test;
+  Match match;
+  for (int i = 0; i < 3; ++i) {
+    auto result = copied.replacement(test.graph, match);
+    EXPECT_EQ(&result.Plan(), plan);
+  }
+  size_t calls = 0;
+  auto callback = [recipe = *compiled, &calls](const Graph&, const Match&) {
+    ++calls;
+    return recipe;
+  };
+  Rule computed{"computed", rule.pattern, callback, guard, rule.opsets};
+  EXPECT_EQ(calls, 0u);
+  for (int i = 0; i < 3; ++i) {
+    auto result = computed.replacement(test.graph, match);
+    EXPECT_EQ(&result.Plan(), plan);
+  }
+  EXPECT_EQ(calls, 3u);
+}
+
+TEST(PatternRewriterTests, RuleConstructorRejectsMalformedText) {
+  const auto* pattern = "(x)=>{a=Identity(x);return Identity(a);}";
+  const auto* replacement = "(x)=>Identity(x)";
+  auto guard = [](const Graph&, const Match&) { return true; };
+  auto make_rule = [&](auto pattern, auto replacement) {
+    return Rule{"bad", pattern, replacement, guard, {{kOnnxDomain, 1, 21}}};
+  };
+  EXPECT_THROW(make_rule("not a pattern", replacement), OnnxRuntimeException);
+  EXPECT_THROW(make_rule(pattern, "not a replacement"), OnnxRuntimeException);
+  EXPECT_THROW(make_rule(Pattern(pattern), "not a replacement"), OnnxRuntimeException);
+  EXPECT_THROW(make_rule("not a pattern", Replacement(replacement)), OnnxRuntimeException);
+  auto callback = [plan = Replacement(replacement)](const Graph&, const Match&) { return plan; };
+  EXPECT_THROW(make_rule("not a pattern", callback), OnnxRuntimeException);
+}
+
 TEST(PatternRewriterTests, PriorityAcrossInterleavedStructuralGroups) {
   for (bool indexed : {false, true}) {
     TestGraph test;
@@ -1635,10 +1731,10 @@ TEST(PatternRewriterTests, PriorityAcrossInterleavedStructuralGroups) {
     lower_priority.guard = [](const Graph& graph, const Match& m) {
       return graph.NodeProducesGraphOutput(*m.nodes.back());
     };
-    Pattern p("(x)=>a=Identity(x);b=Identity(a);return Identity(b)");
+    const auto* pattern = "(x)=>a=Identity(x);b=Identity(a);return Identity(b)";
     auto guard = [](const Graph&, const Match&) { return true; };
-    Replacement replacement("(x)=>Identity(x)");
-    Rule higher_priority{"higher_priority", p, {{kOnnxDomain, 1, 21}}, guard, replacement};
+    const auto* replacement = "(x)=>Identity(x)";
+    Rule higher_priority{"higher_priority", pattern, replacement, guard, {{kOnnxDomain, 1, 21}}};
     Statistics stats;
     ASSERT_STATUS_OK(
         PatternRewriter({rejected, higher_priority, lower_priority}, {.indexed = indexed}).Run(test.graph, stats));
@@ -2912,10 +3008,10 @@ TEST(PatternRewriterTests, BranchedSharedNodeBindings) {
     if (external) b.AddNode("Identity", {sum}, {b.MakeOutput()});
     b.SetGraphOutputs();
     ASSERT_STATUS_OK(test.graph.Resolve());
-    Pattern p("(x,y)=>sum=Add(x,y);product=Mul(sum,x);return Add(sum,product)");
+    const auto* pattern = "(x,y)=>sum=Add(x,y);product=Mul(sum,x);return Add(sum,product)";
     auto guard = [](const Graph&, const Match&) { return true; };
-    Replacement replacement("(x)=>Identity(x)");
-    Rule rule{"diamond", p, {{kOnnxDomain, 7, 21}}, guard, replacement};
+    const auto* replacement = "(x)=>Identity(x)";
+    Rule rule{"diamond", pattern, replacement, guard, {{kOnnxDomain, 7, 21}}};
     Statistics stats;
     // Structural-only test: this deliberately has no semantically equivalent replacement.
     ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true}).Run(test.graph, stats));
