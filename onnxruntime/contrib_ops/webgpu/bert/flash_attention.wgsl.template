@@ -13,6 +13,7 @@
 #param use_seqlen_k
 #param use_seqlens_q
 #param use_shm_path
+#param unroll_shm_inner
 #param max_k_step_param
 
 const head_size : u32 = qkv_head_size;
@@ -387,10 +388,14 @@ $MAIN {
     workgroupBarrier();
 
     for (var k = 0u; k < max_k_step; k++) {
+#if unroll_shm_inner
+      var score = flash_qk_unrolled(k);
+#else
       var score = qk_precision(0);
       for (var i = 0u; i < head_size_vec; i++) {
         score += dot(vec4<qk_precision>(q_tile[i]), vec4<qk_precision>(k_tile[k][i]));
       }
+#endif
  #if has_attention_bias
       score += loadAttentionBias(batch_idx, q_idx_global, k_start + k, head_idx, total_sequence_length);
  #endif
@@ -425,10 +430,14 @@ $MAIN {
     let o_ratio = q_element_t(dleft / safe_d);
 
     for (var i : u32 = 0; i < head_size_vec; i++) {
+#if unroll_shm_inner
+      var acc = flash_pv_unrolled(i);
+#else
       var acc = q_value_t(0);
       for (var k = 0u; k < max_k_step; k++) {
         acc += v_tile[k][i] * q_element_t(qk_scores[k]);
       }
+#endif
       o_tile[i] = o_tile[i] * q_element_t(o_ratio) + acc;
     }
   }
