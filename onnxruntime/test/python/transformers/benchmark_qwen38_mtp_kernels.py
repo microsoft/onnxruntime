@@ -90,7 +90,7 @@ def compile_qsa(source, element_type, paired=False):
 def qsa_score_grid(source, rows, tiles):
     if "const int token = static_cast<int>(blockIdx.y)" in source:
         return (min(tiles, 128), rows)
-    return (rows * tiles,)
+    return (rows * tiles, 1)
 
 
 def compile_qsa_emit(source):
