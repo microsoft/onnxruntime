@@ -46,7 +46,9 @@ __global__ void MatMulIQ2XXSKernel(const T* a, const uint8_t* b, const T* bias, 
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
         const float magnitude = static_cast<float>((grid >> (8 * j)) & 255);
-        const float weight = scale * magnitude * ((signs & (1u << j)) ? -1.0f : 1.0f);
+        // Reconstruct in FP32, then round the complete weight (not its block scale).
+        const float weight = to_float<T>(
+            from_float<T>(scale * magnitude * ((signs & (1u << j)) ? -1.0f : 1.0f)));
         sum = fmaf(to_float<T>(a[a_base + j]), weight, sum);
       }
     }
@@ -54,10 +56,12 @@ __global__ void MatMulIQ2XXSKernel(const T* a, const uint8_t* b, const T* bias, 
       sum += __shfl_down_sync(0xffffffff, sum, offset);
     }
     if (lane == 0) {
+      const T rounded = from_float<T>(sum);
       if (bias != nullptr) {
-        sum += to_float<T>(bias[col]);
+        y[output] = from_float<T>(to_float<T>(rounded) + to_float<T>(bias[col]));
+      } else {
+        y[output] = rounded;
       }
-      y[output] = from_float<T>(sum);
     }
   }
 }

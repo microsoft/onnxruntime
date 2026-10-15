@@ -64,6 +64,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MRotaryEmbedding">com.microsoft.MRotaryEmbedding</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
   * <a href="#com.microsoft.MatMulGGMLIQ2XXS">com.microsoft.MatMulGGMLIQ2XXS</a>
+  * <a href="#com.microsoft.MatMulGGMLQ8_0">com.microsoft.MatMulGGMLQ8_0</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
   * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
   * <a href="#com.microsoft.MatMulFpQ4">com.microsoft.MatMulFpQ4</a>
@@ -3754,6 +3755,59 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.MatMulGGMLQ8_0"></a><a name="com.microsoft.matmulggmlq8_0">**com.microsoft.MatMulGGMLQ8_0**</a>
+
+  Weight-only matrix multiplication with raw serialized GGML Q8_0 blocks.
+  `A` has shape `[..., K]`; UINT8 `B` has shape `[N, K/32, 34]`.
+  Each 34-byte block holds a little-endian FP16 scale `d` followed by 32 signed
+  two's-complement INT8 values `q`, in K order. Decode `d*q` in FP32, then round
+  the **complete weight** to the activation type T. Do not round the scale alone.
+  There are no attributes, zero points, external scales, padding or prepacking.
+
+  Products and accumulation use FP32. With `round_T` denoting round-to-nearest-even,
+  `Y = round_T(round_T(A @ round_T(dequantize(B)).T) + bias)`.
+  Round the matmul output before optional bias addition, then round to T again.
+  Without bias only matmul output rounding applies; for FLOAT rounding is the
+  identity. Summation order is unspecified. N and K derive from B.
+  Empty dimensions, including K=0 (empty sum plus bias), are supported.
+
+  CUDA reads packed bytes directly for decode and prefill, without persistent
+  expanded weights or a full-matrix dequantization buffer. This is a separate
+  packed-format contract; it does not change `MatMulNBits` semantics.
+  BF16 reconstructed operands and post-output-rounding bias correspond to the
+  b12x Q8_0 A16 path. FLOAT and FLOAT16 are dtype-generic extensions.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs (2 - 3)
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>Activation tensor with rank at least one and shape [..., K].</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Raw serialized GGML Q8_0 blocks of shape [N, K/32, 34].</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Bias [N], added after rounding the matmul output to T, then rounded to T again.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output of shape [..., N] with the same element type as A.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Activation, optional bias, and output element type.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Raw serialized weight bytes.</dd>
+</dl>
+
 ### <a name="com.microsoft.MatMulGGMLIQ2XXS"></a><a name="com.microsoft.matmulggmliq2xxs">**com.microsoft.MatMulGGMLIQ2XXS**</a>
 
   Weight-only matrix multiplication with serialized GGML IQ2_XXS weights.
@@ -3769,9 +3823,15 @@ This version of the operator has been available since version 1 of the 'com.micr
   Grid vectors use little-endian byte order, not printed hexadecimal digit order.
   This format is not equivalent to affine INT2.
 
-  Computes `Y = A @ dequantize(B).T + bias`. Weight decoding, multiplication,
-  accumulation and bias addition are FP32; only the final output is cast to the
-  activation type. Summation order is unspecified. N and K derive from B.
+  Let `round_T` mean round-to-nearest-even to the activation type. Decode each
+  weight in FP32, then round the **complete reconstructed weight** to T before
+  FP32 multiplication and accumulation. Round the matmul output to T before
+  optional bias addition: `Y = round_T(round_T(A @ round_T(dequantize(B)).T) + bias)`.
+  Bias addition uses FP32 followed by `round_T`. Without bias only the matmul
+  output rounding applies. FLOAT rounding is the identity. Summation order is
+  unspecified. N and K derive from B. Rounding only the block scale is not equivalent.
+  BF16 reconstructed operands and post-output-rounding bias correspond to the
+  b12x IQ2_XXS A16 path. FLOAT and FLOAT16 are dtype-generic extensions.
   Empty dimensions, including K=0 (empty sum plus bias), are supported.
 
   CUDA reads packed blocks directly for both decode and prefill, without a
@@ -3795,7 +3855,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>B</tt> : T1</dt>
 <dd>Raw GGML IQ2_XXS blocks of shape [N, K/256, 66]. K must equal 256 times B's second dimension.</dd>
 <dt><tt>bias</tt> (optional) : T</dt>
-<dd>Bias of shape [N], added in FP32 before the final cast.</dd>
+<dd>Bias of shape [N], added after rounding the matmul output to T, then rounded to T again.</dd>
 </dl>
 
 #### Outputs

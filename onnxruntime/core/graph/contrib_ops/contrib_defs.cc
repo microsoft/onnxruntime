@@ -3172,6 +3172,72 @@ The output columns `N` and the contraction dimension `K` are derived from the we
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
+    MatMulGGMLQ8_0, 1,
+    OpSchema()
+        .SetDoc(R"DOC(Weight-only matrix multiplication with raw serialized GGML Q8_0 blocks.
+
+A has shape [..., K], rank at least one. B is UINT8 of shape [N, K/32, 34].
+Each 34-byte block contains a little-endian FP16 scale d followed by 32 signed
+two's-complement INT8 values q, in K order. Decode d*q in FP32, then round each
+complete reconstructed weight to A's element type T, not the scale alone.
+There are no attributes, zero points, padding, external scales or prepacking.
+
+Let round_T denote round-to-nearest-even to T. Products and accumulation use
+FP32. Round the matmul result to T before optional bias addition:
+Y = round_T(round_T(A @ round_T(dequantize(B)).T) + bias).
+Bias addition uses FP32 followed by round_T; without bias only the matmul output
+rounding applies. For FLOAT round_T is the identity. Summation order is unspecified.
+N and K derive from B; K must equal 32 times B's second dimension. The output has
+shape [..., N]. Empty dimensions, including K=0, are supported.
+CUDA reads packed bytes directly, without a persistent expanded weight or
+full-matrix dequantization buffer. This does not change MatMulNBits semantics.
+)DOC")
+        .Input(0, "A", "Activation tensor with rank at least one and shape [..., K].", "T")
+        .Input(1, "B", "Raw serialized GGML Q8_0 blocks of shape [N, K/32, 34].", "T1")
+        .Input(2, "bias", "Optional bias [N], added after rounding the matmul output to T.", "T", OpSchema::Optional)
+        .Output(0, "Y", "Output of shape [..., N] with the same type as A.", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Activation, bias and output element types.")
+        .TypeConstraint("T1", {"tensor(uint8)"}, "Raw serialized weight bytes.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim_size() < 1) {
+            fail_shape_inference("A must have rank at least 1.");
+          }
+          if (!hasInputShape(ctx, 1)) {
+            return;
+          }
+          const auto& b_shape = getInputShape(ctx, 1);
+          if (b_shape.dim_size() != 3 || (b_shape.dim(2).has_dim_value() && b_shape.dim(2).dim_value() != 34)) {
+            fail_shape_inference("B must have shape [N, K/32, 34].");
+          }
+          if (ctx.hasInput(2) && hasInputShape(ctx, 2)) {
+            const auto& bias_shape = getInputShape(ctx, 2);
+            if (bias_shape.dim_size() != 1 ||
+                (bias_shape.dim(0).has_dim_value() && b_shape.dim(0).has_dim_value() &&
+                 bias_shape.dim(0).dim_value() != b_shape.dim(0).dim_value())) {
+              fail_shape_inference("bias must have shape [N].");
+            }
+          }
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          const auto& a_shape = getInputShape(ctx, 0);
+          const auto& last = a_shape.dim(a_shape.dim_size() - 1);
+          if (last.has_dim_value() && b_shape.dim(1).has_dim_value()) {
+            const int64_t blocks = b_shape.dim(1).dim_value();
+            if (blocks < 0 || blocks > std::numeric_limits<int64_t>::max() / 32 ||
+                last.dim_value() != blocks * 32) {
+              fail_shape_inference("A's last dimension must equal 32 times B's block count.");
+            }
+          }
+          for (int i = 0; i < a_shape.dim_size() - 1; ++i) {
+            appendSingleDimCopiedFromInputTypeToOutputType(ctx, 0, 0, i);
+          }
+          appendSingleDimCopiedFromInputTypeToOutputType(ctx, 1, 0, 0);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
     MatMulGGMLIQ2XXS, 1,
     OpSchema()
         .SetDoc(R"DOC(Weight-only matrix multiplication with serialized GGML IQ2_XXS weights.
@@ -3185,9 +3251,13 @@ parity of the seven stored sign bits. A decoded element is
 d * (0.5 + local_scale) * 0.25 * grid[index, j] * sign[j].
 The grid is fixed by GGML IQ2_XXS; this is not affine integer quantization.
 
-The operator computes Y = A @ dequantize(B).T + bias. Weight decoding,
-multiplication, accumulation and optional bias addition use FP32. Only the final
-result is cast to A's element type. The summation order is unspecified.
+Let round_T denote round-to-nearest-even to A's element type. Weight decoding
+uses FP32, then each complete reconstructed weight is rounded to T before
+FP32 multiplication and accumulation. The matmul result is rounded to T before
+optional bias addition: Y = round_T(round_T(A @ round_T(dequantize(B)).T) + bias).
+The bias addition uses FP32 followed by round_T. Without bias, there is only
+the matmul output rounding. For FLOAT, round_T is the identity. The summation
+order is unspecified. This ordering preserves native BF16 reconstructed operands.
 K must equal 256 times B's second dimension. N and K are derived from B.
 The output has shape [..., N]. Empty dimensions, including K=0, are supported.
 The CUDA kernel reads packed blocks directly without a persistent expanded
@@ -3198,7 +3268,7 @@ https://github.com/ggml-org/llama.cpp/blob/b76b13379d3b7d67ab0bc424516bb6fd2522b
 )DOC")
         .Input(0, "A", "Activation tensor with rank at least one and shape [..., K].", "T")
         .Input(1, "B", "Raw serialized GGML IQ2_XXS blocks of shape [N, K/256, 66].", "T1")
-        .Input(2, "bias", "Optional bias of shape [N].", "T", OpSchema::Optional)
+        .Input(2, "bias", "Optional bias of shape [N], added after rounding the matmul output to T.", "T", OpSchema::Optional)
         .Output(0, "Y", "Output tensor of shape [..., N], with the same type as A.", "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Activation, bias and output element types.")

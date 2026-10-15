@@ -97,9 +97,11 @@ void RunCase(const std::vector<int64_t>& shape, int64_t n, int64_t k_blocks, boo
       float sum = 0;
       for (int64_t kk = 0; kk < k; ++kk) {
         sum = std::fma(static_cast<float>(a[static_cast<size_t>(row * k + kk)]),
-                       weights[static_cast<size_t>(col * k + kk)], sum);
+                       static_cast<float>(T(weights[static_cast<size_t>(col * k + kk)])), sum);
       }
-      expected.emplace_back(sum + (use_bias ? static_cast<float>(bias[static_cast<size_t>(col)]) : 0));
+      const T rounded(sum);
+      expected.emplace_back(use_bias ? static_cast<float>(rounded) + static_cast<float>(bias[static_cast<size_t>(col)])
+                                     : static_cast<float>(rounded));
     }
   }
   OpTester test("MatMulGGMLIQ2XXS", 1, kMSDomain);
@@ -171,6 +173,12 @@ TEST(MatMulGGMLIQ2XXS, EmptyDimensionsAndEmptyContraction) {
   RunCase<float>({0, 256}, 3, 1, false);
   RunCase<float>({2, 256}, 0, 1, false);
   RunCase<float>({3, 0}, 5, 0, true);
+  RunCase<MLFloat16>({0, 256}, 3, 1, true);
+  RunCase<MLFloat16>({2, 256}, 0, 1, false);
+  RunCase<MLFloat16>({3, 0}, 5, 0, true);
+  RunCase<BFloat16>({0, 256}, 3, 1, true);
+  RunCase<BFloat16>({2, 256}, 0, 1, false);
+  RunCase<BFloat16>({3, 0}, 5, 0, true);
 }
 
 TEST(MatMulGGMLIQ2XXS, EveryGridElementInCanonicalOrder) {
@@ -199,7 +207,7 @@ TEST(MatMulGGMLIQ2XXS, EveryGridElementInCanonicalOrder) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
-TEST(MatMulGGMLIQ2XXS, NoPrematureFloat16OrBFloat16WeightRounding) {
+TEST(MatMulGGMLIQ2XXS, RoundsReconstructedWeightsBeforeMultiplication) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA SM80 or newer is required.";
   }
@@ -207,8 +215,7 @@ TEST(MatMulGGMLIQ2XXS, NoPrematureFloat16OrBFloat16WeightRounding) {
   bytes[0] = 0x55;
   bytes[1] = 0x35;  // d=0.333251953125
   bytes[2] = 14;    // First vector is [8,43,25,25,8,8,8,8].
-  // 25*(43*d/8) - 43*(25*d/8) cancels exactly in FP32, but not when
-  // decoded weights are rounded individually to FP16 or BF16 before multiplication.
+  // The FP32 weights cancel exactly; native reconstructed weights must not.
   const auto run = [&]<typename T>() {
     std::vector<T> a(256, T(0.0f));
     a[1] = T(25.0f);
@@ -216,14 +223,46 @@ TEST(MatMulGGMLIQ2XXS, NoPrematureFloat16OrBFloat16WeightRounding) {
     OpTester test("MatMulGGMLIQ2XXS", 1, kMSDomain);
     test.AddInput<T>("A", {1, 256}, a);
     test.AddInput<uint8_t>("B", {1, 1, 66}, bytes);
+    const T expected(25.0f * static_cast<float>(T(43.0f * 0.333251953125f / 8.0f)) -
+                     43.0f * static_cast<float>(T(25.0f * 0.333251953125f / 8.0f)));
+    if constexpr (!std::is_same_v<T, float>) {
+      ASSERT_NE(static_cast<float>(expected), 0.0f);
+    }
+    test.AddOutput<T>("Y", {1, 1}, {expected});
+    test.SetOutputTolerance(0, 0);
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  };
+  run.template operator()<float>();
+  run.template operator()<MLFloat16>();
+  run.template operator()<BFloat16>();
+}
+
+TEST(MatMulGGMLIQ2XXS, RoundsMatMulOutputBeforeBias) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA SM80 or newer is required.";
+  }
+  // d=1 and grid0=8 produce exactly unit weights.
+  std::vector<uint8_t> bytes(66, 0);
+  bytes[1] = 0x3c;
+  const auto run = [&]<typename T>(float half_ulp) {
+    std::vector<T> a(256, T(0.0f));
+    a[0] = T(1.0f);
+    a[8] = T(half_ulp);
+    OpTester test("MatMulGGMLIQ2XXS", 1, kMSDomain);
+    test.AddInput<T>("A", {1, 256}, a);
+    test.AddInput<uint8_t>("B", {1, 1, 66}, bytes);
+    test.AddInput<T>("bias", {1}, {T(-1.0f)});
     test.AddOutput<T>("Y", {1, 1}, {T(0.0f)});
     test.SetOutputTolerance(0, 0);
     std::vector<std::unique_ptr<IExecutionProvider>> providers;
     providers.push_back(DefaultCudaExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
   };
-  run.template operator()<MLFloat16>();
-  run.template operator()<BFloat16>();
+  run.template operator()<float>(0x1p-24f);
+  run.template operator()<MLFloat16>(0x1p-11f);
+  run.template operator()<BFloat16>(0x1p-8f);
 }
 
 TEST(MatMulGGMLIQ2XXS, RejectsInvalidShapes) {
