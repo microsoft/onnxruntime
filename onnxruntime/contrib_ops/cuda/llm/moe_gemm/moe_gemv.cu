@@ -13,6 +13,126 @@
 // avoids redefining CREATE_MESSAGE / LOGS_CATEGORY (which would fail under -Werror).
 #include "core/platform/env_var_utils.h"
 
+namespace onnxruntime::llm::kernels::fpA_intB_gemv {
+
+template <typename Details>
+struct Int8ActivationDetails : Details {};
+
+template <typename Details>
+struct UsesInt8Activation : std::false_type {};
+
+template <typename Details>
+struct UsesInt8Activation<Int8ActivationDetails<Details>> : std::true_type {};
+
+template <typename Details>
+using DecodeWeight = std::conditional_t<UsesInt8Activation<Details>::value, int32_t,
+                                      typename Details::TypeDetailsA::Type>;
+
+template <typename Details, int StepK>
+inline constexpr int DecodeWeightElements = UsesInt8Activation<Details>::value ? StepK / 4 : StepK;
+
+template <typename Details, int StepK>
+__device__ __forceinline__ void moe_pack_weights(void* destination, void* source, int column) {
+  if constexpr (UsesInt8Activation<Details>::value) {
+#pragma unroll
+    for (int group = 0; group < StepK / 4; ++group) {
+      reinterpret_cast<int32_t*>(destination)[column * (StepK / 4) + group] =
+          reinterpret_cast<const int32_t*>(source)[group];
+    }
+  } else {
+    pack_to_vec2<Details, StepK>(destination, source, column);
+  }
+}
+
+template <typename Details, int StepK>
+__device__ __forceinline__ void moe_decode_weights(void* weights, void* packed, void* scales) {
+  if constexpr (UsesInt8Activation<Details>::value) {
+    static_assert(StepK == 64 && Details::kInterleave == 8 && Details::LayoutDetails::kTileSize == 64);
+    const auto* words = reinterpret_cast<const uint32_t*>(packed);
+    const uint32_t even_bytes = __byte_perm(words[0], words[1], 0x6420);
+    const uint32_t odd_bytes = __byte_perm(words[2], words[3], 0x6420);
+    const uint32_t even_high_bytes = __byte_perm(words[0], words[1], 0x7531);
+    const uint32_t odd_high_bytes = __byte_perm(words[2], words[3], 0x7531);
+#pragma unroll
+    for (int group = 0; group < StepK / 4; ++group) {
+      const uint32_t gathered = group < 8
+                                    ? (group % 2 == 0 ? even_bytes : odd_bytes)
+                                    : (group % 2 == 0 ? even_high_bytes : odd_high_bytes);
+      const int shift = (group / 2) % 4 * 2;
+      const uint32_t codes = (gathered >> shift) & 0x03030303u;
+      reinterpret_cast<int32_t*>(weights)[group] = static_cast<int32_t>(__vsub4(codes, 0x02020202u));
+    }
+  } else {
+    dequantize<Details, 1, StepK, false, false>(weights, packed, scales, nullptr, 1.0f);
+  }
+}
+
+template <typename Details, int CtaN, int StepK, typename AccT>
+__device__ __forceinline__ void moe_decode_dot(AccT* accumulator, void* weights, void* activation, void* scales,
+                                              const int8_t* quantized_input = nullptr,
+                                              const float* input_scales = nullptr) {
+  if constexpr (UsesInt8Activation<Details>::value) {
+    static_assert(std::is_same_v<AccT, float>);
+    using Type = typename Details::TypeDetailsA::Type;
+    auto* values = reinterpret_cast<Type*>(activation);
+    auto* weight_values = reinterpret_cast<const int32_t*>(weights);
+    auto* weight_scales = reinterpret_cast<Type*>(scales);
+    constexpr int QuantTile = 16;
+    static_assert(StepK % QuantTile == 0);
+    float scaled_dot[CtaN];
+#pragma unroll
+    for (int column = 0; column < CtaN; ++column) {
+      scaled_dot[column] = 0.f;
+    }
+#pragma unroll
+    for (int offset = 0; offset < StepK; offset += QuantTile) {
+      float maximum = 0.f;
+      if (quantized_input == nullptr) {
+#pragma unroll
+        for (int element = 0; element < QuantTile; ++element) {
+          maximum = fmaxf(maximum, fabsf(static_cast<float>(values[offset + element])));
+        }
+      }
+      float scale = quantized_input != nullptr ? input_scales[offset / QuantTile] : maximum / 127.f;
+      float inverse_scale = maximum > 0.f ? 127.f / maximum : 0.f;
+      int packed_activations[QuantTile / 4];
+#pragma unroll
+      for (int group = 0; group < QuantTile / 4; ++group) {
+        if (quantized_input != nullptr) {
+          packed_activations[group] = reinterpret_cast<const int32_t*>(quantized_input)[offset / 4 + group];
+        } else {
+          unsigned int packed_value = 0;
+#pragma unroll
+          for (int lane = 0; lane < 4; ++lane) {
+            int quantized = __float2int_rn(static_cast<float>(values[offset + group * 4 + lane]) * inverse_scale);
+            quantized = max(-127, min(127, quantized));
+            packed_value |= static_cast<unsigned int>(static_cast<uint8_t>(quantized)) << (lane * 8);
+          }
+          packed_activations[group] = static_cast<int>(packed_value);
+        }
+      }
+#pragma unroll
+      for (int column = 0; column < CtaN; ++column) {
+        int dot = 0;
+#pragma unroll
+        for (int group = 0; group < QuantTile / 4; ++group) {
+          dot = __dp4a(packed_activations[group],
+                       weight_values[column * (StepK / 4) + offset / 4 + group], dot);
+        }
+        scaled_dot[column] += static_cast<float>(dot) * scale;
+      }
+    }
+#pragma unroll
+    for (int column = 0; column < CtaN; ++column) {
+      accumulator[column] += scaled_dot[column] * static_cast<float>(weight_scales[column]);
+    }
+  } else {
+    mma<Details, 1, CtaN, StepK, AccT>(accumulator, weights, activation);
+  }
+}
+
+}
+
 namespace onnxruntime::llm {
 namespace kernels {
 namespace fpA_intB_gemv {
@@ -40,11 +160,13 @@ __device__ __forceinline__ int act_source_row(const int* permuted_row_to_source_
 // Mirrors the dense fpA_intB_gemv `kernel<>` body for GroupSize=0 (per-channel),
 // EnableActScale=false, EnableZero=false, ApplyAlphaInAdvance=false.
 template <typename Details, int CtaN, int Threads, int GroupSize, bool EnableBias,
-          typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA>
+          typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA, bool Prequantized = false>
 __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
                                 const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
                                 int num_experts,
-                                int64_t weight_expert_stride, int64_t scale_expert_stride, int n, int k) {
+                                int64_t weight_expert_stride, int64_t scale_expert_stride, int n, int k,
+                                const int8_t* quantized_input = nullptr, const float* input_scales = nullptr,
+                                const int* input_rows = nullptr) {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   using AccessTypeA = typename Details::AccessTypeA;
   using AccessTypeW = typename Details::AccessTypeW;
@@ -117,7 +239,9 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
   }
 
   for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
-    TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
+    TypeA tile_a[StepK];
+    DecodeWeight<Details> tile_w[DecodeWeightElements<Details, StepK>],
+      tile_w_pack2[CtaN * DecodeWeightElements<Details, StepK>];
     uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
     if constexpr (GroupSize != 0) {
 #pragma unroll
@@ -128,13 +252,22 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
 #pragma unroll
     for (int i = 0; i < CtaN; ++i) {
       weight_iterator.load(tile_w_quantized, iter, i);
-      dequantize<Details, 1, StepK, false, false>(tile_w, tile_w_quantized, vec_scale + i, nullptr, 1.0f);
-      pack_to_vec2<Details, StepK>(tile_w_pack2, tile_w, i);
+      moe_decode_weights<Details, StepK>(tile_w, tile_w_quantized, vec_scale + i);
+      moe_pack_weights<Details, StepK>(tile_w_pack2, tile_w, i);
     }
 #pragma unroll
     for (int i = 0; i < CtaM; ++i) {
-      act_iterator.load(tile_a, iter, i);
-      mma<Details, 1, CtaN, StepK, AccT>(tile_acc + i * CtaN, tile_w_pack2, tile_a);
+      if constexpr (Prequantized) {
+        const int input_row = input_rows != nullptr ? input_rows[row] : offset_m;
+        const int input_offset = real_offset_k + iter * (CtaK / Details::kInterleave);
+        moe_decode_dot<Details, CtaN, StepK, AccT>(
+            tile_acc + i * CtaN, tile_w_pack2, nullptr, vec_scale,
+            quantized_input + input_row * origin_k + input_offset,
+            input_scales + input_row * (origin_k / 16) + input_offset / 16);
+      } else {
+        act_iterator.load(tile_a, iter, i);
+        moe_decode_dot<Details, CtaN, StepK, AccT>(tile_acc + i * CtaN, tile_w_pack2, tile_a, vec_scale);
+      }
     }
   }
   epilogue<Details, CtaM, CtaN, Threads, EnableBias, false, AccT>(out, n, tile_acc, bias, 1.0f);
@@ -282,7 +415,9 @@ __global__ void moe_gemv_fused_finalize_kernel(
     }
 
     for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
-      TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
+      TypeA tile_a[StepK];
+        DecodeWeight<Details> tile_w[DecodeWeightElements<Details, StepK>],
+          tile_w_pack2[CtaN * DecodeWeightElements<Details, StepK>];
       uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
       if constexpr (GroupSize != 0) {
 #pragma unroll
@@ -293,11 +428,11 @@ __global__ void moe_gemv_fused_finalize_kernel(
 #pragma unroll
       for (int i = 0; i < CtaN; ++i) {
         weight_iterator.load(tile_w_quantized, iter, i);
-        dequantize<Details, 1, StepK, false, false>(tile_w, tile_w_quantized, vec_scale + i, nullptr, 1.0f);
-        pack_to_vec2<Details, StepK>(tile_w_pack2, tile_w, i);
+        moe_decode_weights<Details, StepK>(tile_w, tile_w_quantized, vec_scale + i);
+        moe_pack_weights<Details, StepK>(tile_w_pack2, tile_w, i);
       }
       act_iterator.load(tile_a, iter, 0);
-      mma<Details, 1, CtaN, StepK, AccT>(tile_acc, tile_w_pack2, tile_a);
+      moe_decode_dot<Details, CtaN, StepK, AccT>(tile_acc, tile_w_pack2, tile_a, vec_scale);
     }
 
     const float row_scale = final_scales != nullptr ? final_scales[token * experts_per_token + k_idx] : 1.0f;
@@ -480,8 +615,8 @@ __global__ void moe_gemv_splitk_partials_kernel(
       continue;
     }
     TypeA tile_a[StepK];
-    TypeA tile_w[StepK];
-    TypeA tile_w_pack2[CtaN * StepK];
+    DecodeWeight<Details> tile_w[DecodeWeightElements<Details, StepK>];
+    DecodeWeight<Details> tile_w_pack2[CtaN * DecodeWeightElements<Details, StepK>];
     uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
     if constexpr (GroupSize != 0) {
 #pragma unroll
@@ -492,11 +627,11 @@ __global__ void moe_gemv_splitk_partials_kernel(
 #pragma unroll
     for (int i = 0; i < CtaN; ++i) {
       weight_iterator.load(tile_w_quantized, iter, i);
-      dequantize<Details, 1, StepK, false, false>(tile_w, tile_w_quantized, vec_scale + i, nullptr, 1.0f);
-      pack_to_vec2<Details, StepK>(tile_w_pack2, tile_w, i);
+      moe_decode_weights<Details, StepK>(tile_w, tile_w_quantized, vec_scale + i);
+      moe_pack_weights<Details, StepK>(tile_w_pack2, tile_w, i);
     }
     act_iterator.load(tile_a, iter, 0);
-    mma<Details, 1, CtaN, StepK, AccT>(tile_acc, tile_w_pack2, tile_a);
+    moe_decode_dot<Details, CtaN, StepK, AccT>(tile_acc, tile_w_pack2, tile_a, vec_scale);
   }
   partial_epilogue<Details, CtaM, CtaN, Threads, AccT>(partials, tile_acc);
 #endif
@@ -565,13 +700,14 @@ __global__ void moe_gemv_splitk_reduce_swiglu_kernel(
 }
 
 template <typename Details, int CtaN, int Threads, int GroupSize, bool EnableBias,
-          typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA>
+          typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA, bool Prequantized = false>
 __global__ void moe_gemv_interleaved_swiglu_kernel(
     TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t weight_expert_stride, int64_t scale_expert_stride, int inter_size, int k,
     cutlass_kernels::ActivationParams activation_params,
-    const int* permuted_row_to_source_row, int num_rows) {
+    const int* permuted_row_to_source_row, int num_rows,
+    const int8_t* quantized_input = nullptr, const float* input_scales = nullptr) {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   using AccessTypeA = typename Details::AccessTypeA;
   using AccessTypeW = typename Details::AccessTypeW;
@@ -652,7 +788,9 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
   }
 
   for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
-    TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
+    TypeA tile_a[StepK];
+    DecodeWeight<Details> tile_w[DecodeWeightElements<Details, StepK>],
+      tile_w_pack2[CtaN * DecodeWeightElements<Details, StepK>];
     uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
     if constexpr (GroupSize != 0) {
 #pragma unroll
@@ -663,13 +801,22 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
 #pragma unroll
     for (int i = 0; i < CtaN; ++i) {
       weight_iterator.load(tile_w_quantized, iter, i);
-      dequantize<Details, 1, StepK, false, false>(tile_w, tile_w_quantized, vec_scale + i, nullptr, 1.0f);
-      pack_to_vec2<Details, StepK>(tile_w_pack2, tile_w, i);
+      moe_decode_weights<Details, StepK>(tile_w, tile_w_quantized, vec_scale + i);
+      moe_pack_weights<Details, StepK>(tile_w_pack2, tile_w, i);
     }
 #pragma unroll
     for (int i = 0; i < CtaM; ++i) {
-      act_iterator.load(tile_a, iter, i);
-      mma<Details, 1, CtaN, StepK, AccT>(tile_acc + i * CtaN, tile_w_pack2, tile_a);
+      if constexpr (Prequantized) {
+        const int source = act_source_row<CtaM>(permuted_row_to_source_row, num_rows, row, offset_m);
+        const int input_offset = real_offset_k + iter * (CtaK / Details::kInterleave);
+        moe_decode_dot<Details, CtaN, StepK, AccT>(
+            tile_acc + i * CtaN, tile_w_pack2, nullptr, vec_scale,
+            quantized_input + source * origin_k + input_offset,
+            input_scales + source * (origin_k / 16) + input_offset / 16);
+      } else {
+        act_iterator.load(tile_a, iter, i);
+        moe_decode_dot<Details, CtaN, StepK, AccT>(tile_acc + i * CtaN, tile_w_pack2, tile_a, vec_scale);
+      }
     }
   }
   swiglu_epilogue<Details, CtaM, CtaN, Threads, EnableBias, TypeA, AccT>(out, tile_acc, bias, activation_params);
@@ -1061,6 +1208,86 @@ struct DetailsForTAndWeight<__nv_bfloat16, uint8_t> {
 };
 #endif
 
+__global__ void quantize_moe_input16(const half* input, int8_t* output, float* scales, int tiles) {
+  const int tile = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tile >= tiles) {
+    return;
+  }
+  float maximum = 0.f;
+#pragma unroll
+  for (int element = 0; element < 16; ++element) {
+    maximum = fmaxf(maximum, fabsf(__half2float(input[tile * 16 + element])));
+  }
+  const float inverse_scale = maximum > 0.f ? 127.f / maximum : 0.f;
+  scales[tile] = maximum / 127.f;
+#pragma unroll
+  for (int element = 0; element < 16; ++element) {
+    const int quantized = __float2int_rn(__half2float(input[tile * 16 + element]) * inverse_scale);
+    output[tile * 16 + element] = static_cast<int8_t>(max(-127, min(127, quantized)));
+  }
+}
+
+void launch_moe_quantize_input16_experiment(const half* input, int8_t* output, float* scales,
+                                           int input_rows, int depth, cudaStream_t stream) {
+  ORT_ENFORCE(input_rows > 0 && depth > 0 && depth % 16 == 0);
+  const int tiles = input_rows * (depth / 16);
+  quantize_moe_input16<<<(tiles + 127) / 128, 128, 0, stream>>>(input, output, scales, tiles);
+}
+
+void launch_moe_prequantized_int2_experiment(const int8_t* input, const float* input_scales,
+                                            const uint8_t* weight, const half* scales, half* output,
+                                            const int* experts, const int* input_rows, int num_experts,
+                                            int expanded_rows, int columns, int depth, int group_size,
+                                            cudaStream_t stream) {
+  using Details = fiv::Int8ActivationDetails<typename DetailsForTAndWeight<half, cutlass::uint2b_t>::Details>;
+  constexpr int ColumnsPerTile = CtaNForWeight<cutlass::uint2b_t>::value;
+  ORT_ENFORCE(expanded_rows > 0 && depth % kTileSizeK == 0 &&
+              columns % (ColumnsPerTile * Details::kInterleave) == 0);
+  ORT_ENFORCE(group_size == 64 || group_size == 128);
+  const dim3 grid(expanded_rows, columns / (ColumnsPerTile * Details::kInterleave));
+  auto launch = [&](auto group_tag) {
+    constexpr int Group = decltype(group_tag)::value;
+    fiv::moe_gemv_kernel<Details, ColumnsPerTile, kThreads, Group, false, half, float, true>
+        <<<grid, kThreads, 0, stream>>>(
+            nullptr, const_cast<uint8_t*>(weight), const_cast<half*>(scales), nullptr, output,
+            nullptr, experts, num_experts, static_cast<int64_t>(columns) * depth / 4,
+            static_cast<int64_t>(depth / Group) * columns, columns, depth, input, input_scales, input_rows);
+  };
+  if (group_size == 64) {
+    launch(std::integral_constant<int, 64>{});
+  } else {
+    launch(std::integral_constant<int, 128>{});
+  }
+}
+
+void launch_moe_prequantized_int2_swiglu_experiment(
+    const int8_t* input, const float* input_scales, const uint8_t* weight, const half* scales,
+    half* output, const int* experts, const int* source_rows, int num_experts,
+    int expanded_rows, int num_rows, int inter_size, int depth, int group_size,
+    cutlass_kernels::ActivationParams activation_params, cudaStream_t stream) {
+  using Details = fiv::Int8ActivationDetails<typename DetailsForTAndWeight<half, cutlass::uint2b_t>::Details>;
+  constexpr int ColumnsPerTile = CtaNForWeight<cutlass::uint2b_t>::value;
+  const int columns = inter_size * 2;
+  ORT_ENFORCE(expanded_rows > 0 && num_rows > 0 && depth > 0 && depth % kTileSizeK == 0 &&
+              columns > 0 && columns % (ColumnsPerTile * Details::kInterleave) == 0);
+  ORT_ENFORCE(group_size == 64 || group_size == 128);
+  const dim3 grid(expanded_rows, columns / (ColumnsPerTile * Details::kInterleave));
+  auto launch = [&](auto group_tag) {
+    constexpr int Group = decltype(group_tag)::value;
+    fiv::moe_gemv_interleaved_swiglu_kernel<Details, ColumnsPerTile, kThreads, Group, false, half, float, true>
+        <<<grid, kThreads, 0, stream>>>(
+            nullptr, const_cast<uint8_t*>(weight), const_cast<half*>(scales), nullptr, output,
+            nullptr, experts, num_experts, static_cast<int64_t>(columns) * depth / 4,
+            static_cast<int64_t>(depth / Group) * columns, inter_size, depth,
+            activation_params, source_rows, num_rows, input, input_scales);
+  };
+  if (group_size == 64) {
+    launch(std::integral_constant<int, 64>{});
+  } else {
+    launch(std::integral_constant<int, 128>{});
+  }
+}
+
 template <typename T, typename WeightType>
 void launch_moe_gemv_int_symmetric(const T* act, const WeightType* weight, const T* scales, const T* bias, T* out,
                                    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
@@ -1074,9 +1301,10 @@ void launch_moe_gemv_int_symmetric(const T* act, const WeightType* weight, const
   // restores the previous fp32 accumulation path; bf16 always uses fp32.
   const bool use_fp32_accum = std::is_same_v<WeightType, cutlass::uint2b_t> ||
                               !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
-  auto launch = [&](auto acc_tag) {
+  auto launch = [&](auto acc_tag, auto details_tag) {
     using AccT = typename decltype(acc_tag)::type;
-    fiv::dispatch_moe_gemv_group_size<Details, CtaNForWeight<WeightType>::value, kThreads, TypeA, AccT>(
+    using SelectedDetails = typename decltype(details_tag)::type;
+    fiv::dispatch_moe_gemv_group_size<SelectedDetails, CtaNForWeight<WeightType>::value, kThreads, TypeA, AccT>(
         const_cast<TypeA*>(reinterpret_cast<const TypeA*>(act)),
         const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(weight)),
         const_cast<TypeA*>(reinterpret_cast<const TypeA*>(scales)),
@@ -1084,10 +1312,16 @@ void launch_moe_gemv_int_symmetric(const T* act, const WeightType* weight, const
         reinterpret_cast<TypeA*>(out),
         expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size, stream);
   };
+  if constexpr (std::is_same_v<WeightType, cutlass::uint2b_t>) {
+    if (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT2_INT8_ACTIVATIONS", 0) == 1) {
+      launch(TypeTag<float>{}, TypeTag<fiv::Int8ActivationDetails<Details>>{});
+      return;
+    }
+  }
   if (use_fp32_accum) {
-    launch(TypeTag<float>{});
+    launch(TypeTag<float>{}, TypeTag<Details>{});
   } else {
-    launch(TypeTag<TypeA>{});
+    launch(TypeTag<TypeA>{}, TypeTag<Details>{});
   }
 }
 
@@ -1103,9 +1337,10 @@ void launch_moe_gemv_int_symmetric_fused_finalize(
   // Accumulation policy matches launch_moe_gemv_int_symmetric.
   const bool use_fp32_accum = std::is_same_v<WeightType, cutlass::uint2b_t> ||
                               !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
-  auto launch = [&](auto acc_tag) {
+  auto launch = [&](auto acc_tag, auto details_tag) {
     using AccT = typename decltype(acc_tag)::type;
-    fiv::dispatch_moe_gemv_fused_finalize_group_size<Details, kFusedFinalizeCtaN, kThreads, TypeA, AccT>(
+    using SelectedDetails = typename decltype(details_tag)::type;
+    fiv::dispatch_moe_gemv_fused_finalize_group_size<SelectedDetails, kFusedFinalizeCtaN, kThreads, TypeA, AccT>(
         const_cast<TypeA*>(reinterpret_cast<const TypeA*>(act)),
         const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(weight)),
         const_cast<TypeA*>(reinterpret_cast<const TypeA*>(scales)),
@@ -1114,10 +1349,16 @@ void launch_moe_gemv_int_symmetric_fused_finalize(
         unpermuted_row_to_permuted_row, permuted_row_to_expert, final_scales, num_experts, num_rows,
         experts_per_token, n, k, group_size, stream);
   };
+  if constexpr (std::is_same_v<WeightType, cutlass::uint2b_t>) {
+    if (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT2_INT8_ACTIVATIONS", 0) == 1) {
+      launch(TypeTag<float>{}, TypeTag<fiv::Int8ActivationDetails<Details>>{});
+      return;
+    }
+  }
   if (use_fp32_accum) {
-    launch(TypeTag<float>{});
+    launch(TypeTag<float>{}, TypeTag<Details>{});
   } else {
-    launch(TypeTag<TypeA>{});
+    launch(TypeTag<TypeA>{}, TypeTag<Details>{});
   }
 }
 
@@ -1134,10 +1375,12 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
   // Accumulation policy matches launch_moe_gemv_int_symmetric.
   const bool use_fp32_accum = std::is_same_v<WeightType, cutlass::uint2b_t> ||
                               !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
+  const bool use_int8_activations = std::is_same_v<WeightType, cutlass::uint2b_t> &&
+                                  ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT2_INT8_ACTIVATIONS", 0) == 1;
   // The split-K2 two-pass path always reduces FP32 partials, so it is only valid under fp32
   // accumulation. When ORT_MOE_GEMV_FP16_ACCUM=1 requests 16-bit accumulation, fall back to the
   // single-kernel path below so that env knob continues to behave as documented.
-  if (splitk_partials != nullptr && use_fp32_accum) {
+  if (splitk_partials != nullptr && use_fp32_accum && !use_int8_activations) {
     if constexpr (std::is_same_v<T, half>) {
       fiv::dispatch_moe_gemv_splitk_twopass_swiglu_group_size<Details, CtaNForWeight<WeightType>::value, kThreads, 2, TypeA>(
           const_cast<TypeA*>(reinterpret_cast<const TypeA*>(act)),
@@ -1151,9 +1394,26 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
     }
   }
 
-  auto launch = [&](auto acc_tag) {
+  auto launch = [&](auto acc_tag, auto details_tag) {
     using AccT = typename decltype(acc_tag)::type;
-    fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<Details, CtaNForWeight<WeightType>::value, kThreads, TypeA, AccT>(
+    using SelectedDetails = typename decltype(details_tag)::type;
+    if constexpr (std::is_same_v<T, half> && std::is_same_v<WeightType, cutlass::uint2b_t> &&
+                  std::is_same_v<SelectedDetails, Details>) {
+        if (sm == 80 && num_rows == 1 && expanded_num_rows == 8 && inter_size == 768 && k == 2048 &&
+          bias == nullptr && (group_size == 64 || group_size == 128) &&
+          ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT2_FP16_FC1_CTA8", 0) == 1) {
+        fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<SelectedDetails, 8, kThreads, TypeA, AccT>(
+            const_cast<TypeA*>(reinterpret_cast<const TypeA*>(act)),
+            const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(weight)),
+            const_cast<TypeA*>(reinterpret_cast<const TypeA*>(scales)),
+            const_cast<TypeA*>(reinterpret_cast<const TypeA*>(bias)),
+            reinterpret_cast<TypeA*>(out),
+            expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size, k, group_size,
+            activation_params, permuted_row_to_source_row, num_rows, stream);
+        return;
+      }
+    }
+    fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<SelectedDetails, CtaNForWeight<WeightType>::value, kThreads, TypeA, AccT>(
         const_cast<TypeA*>(reinterpret_cast<const TypeA*>(act)),
         const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(weight)),
         const_cast<TypeA*>(reinterpret_cast<const TypeA*>(scales)),
@@ -1162,10 +1422,16 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
         expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size, k, group_size,
         activation_params, permuted_row_to_source_row, num_rows, stream);
   };
+  if constexpr (std::is_same_v<WeightType, cutlass::uint2b_t>) {
+    if (use_int8_activations) {
+      launch(TypeTag<float>{}, TypeTag<fiv::Int8ActivationDetails<Details>>{});
+      return;
+    }
+  }
   if (use_fp32_accum) {
-    launch(TypeTag<float>{});
+    launch(TypeTag<float>{}, TypeTag<Details>{});
   } else {
-    launch(TypeTag<TypeA>{});
+    launch(TypeTag<TypeA>{}, TypeTag<Details>{});
   }
 }
 

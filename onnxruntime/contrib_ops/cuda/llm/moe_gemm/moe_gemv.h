@@ -10,6 +10,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
 #include "contrib_ops/cuda/llm/moe_gemm/common.h"
@@ -79,6 +80,15 @@ void launch_moe_gemv_int_symmetric_fused_finalize(
 // the *unexpanded* activation buffer of shape [num_rows, k]; the kernel then reads row
 // `permuted_row_to_source_row[permuted_row] % num_rows`, which lets the caller skip the expansion
 // kernel entirely.
+void launch_moe_quantize_input16_experiment(const half* input, int8_t* output, float* scales,
+                                           int input_rows, int depth, cudaStream_t stream);
+
+void launch_moe_prequantized_int2_swiglu_experiment(
+    const int8_t* input, const float* input_scales, const uint8_t* weight, const half* scales,
+    half* output, const int* experts, const int* source_rows, int num_experts,
+    int expanded_rows, int num_rows, int inter_size, int depth, int group_size,
+    cutlass_kernels::ActivationParams activation_params, cudaStream_t stream);
+
 template <typename T, typename WeightType>
 void launch_moe_gemv_int_symmetric_interleaved_swiglu(
     const T* act, const WeightType* weight, const T* scales, const T* bias, T* out,
