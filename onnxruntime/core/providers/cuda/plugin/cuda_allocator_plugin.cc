@@ -93,12 +93,23 @@ CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int d
     const OrtAllocator* this_ptr, OrtKeyValuePairs** stats) noexcept {
   const auto* allocator = static_cast<const CudaDeviceAllocator*>(this_ptr);
   try {
-    const auto snapshot = GetCudaDeviceMemoryBudget(static_cast<OrtDevice::DeviceId>(allocator->device_id_))->GetStats();
+    const auto phys_snapshot = allocator->allocator_.GetPhysicalStats();
+    const auto sess_snapshot = allocator->allocator_.GetAccountStats();
+    const size_t eff_limit = std::min(phys_snapshot.limit, sess_snapshot.limit);
     allocator->api_.CreateKeyValuePairs(stats);
-    allocator->api_.AddKeyValuePair(*stats, "DeviceLimit", std::to_string(snapshot.limit).c_str());
-    allocator->api_.AddKeyValuePair(*stats, "DeviceCommitted", std::to_string(snapshot.committed).c_str());
-    allocator->api_.AddKeyValuePair(*stats, "DevicePending", std::to_string(snapshot.pending).c_str());
-    allocator->api_.AddKeyValuePair(*stats, "DevicePeak", std::to_string(snapshot.peak).c_str());
+    allocator->api_.AddKeyValuePair(*stats, "DeviceLimit", std::to_string(eff_limit).c_str());
+    allocator->api_.AddKeyValuePair(*stats, "DeviceCommitted", std::to_string(phys_snapshot.committed).c_str());
+    allocator->api_.AddKeyValuePair(*stats, "DevicePending", std::to_string(phys_snapshot.pending).c_str());
+    allocator->api_.AddKeyValuePair(*stats, "DevicePeak", std::to_string(phys_snapshot.peak).c_str());
+    allocator->api_.AddKeyValuePair(*stats, "DeviceFreeing", std::to_string(phys_snapshot.freeing).c_str());
+    allocator->api_.AddKeyValuePair(*stats, "DeviceQuarantined", std::to_string(phys_snapshot.quarantined).c_str());
+    allocator->api_.AddKeyValuePair(*stats, "SessionLimit", std::to_string(sess_snapshot.limit).c_str());
+    allocator->api_.AddKeyValuePair(*stats, "SessionCommitted", std::to_string(sess_snapshot.committed).c_str());
+    allocator->api_.AddKeyValuePair(*stats, "SessionPending", std::to_string(sess_snapshot.pending).c_str());
+    allocator->api_.AddKeyValuePair(*stats, "SessionPeak", std::to_string(sess_snapshot.peak).c_str());
+    allocator->api_.AddKeyValuePair(*stats, "PhysicalLimit", std::to_string(phys_snapshot.limit).c_str());
+    allocator->api_.AddKeyValuePair(*stats, "PhysicalCommitted", std::to_string(phys_snapshot.committed).c_str());
+    allocator->api_.AddKeyValuePair(*stats, "PhysicalPeak", std::to_string(phys_snapshot.peak).c_str());
     return nullptr;
   } catch (const std::exception& error) {
     return allocator->api_.CreateStatus(ORT_FAIL, error.what());

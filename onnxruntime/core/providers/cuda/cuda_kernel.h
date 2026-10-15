@@ -123,12 +123,7 @@ class CudaKernel : public OpKernel {
   }
 
   inline std::shared_ptr<onnxruntime::cuda::QMoESessionController> GetQMoESessionController() const {
-    static std::mutex mutex;
-    static std::unordered_map<const CUDAExecutionProvider*, std::shared_ptr<onnxruntime::cuda::QMoESessionController>> controllers;
-    std::lock_guard<std::mutex> lock(mutex);
-    auto& ctrl = controllers[provider_];
-    if (!ctrl) ctrl = std::make_shared<onnxruntime::cuda::QMoESessionController>(provider_ ? provider_->GetDeviceId() : 0);
-    return ctrl;
+    return provider_ ? provider_->GetQMoESessionController() : nullptr;
   }
 
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }

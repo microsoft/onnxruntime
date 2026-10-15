@@ -8,13 +8,7 @@
 namespace onnxruntime {
 
 std::shared_ptr<CudaDeviceMemoryBudget> GetCudaDeviceMemoryBudget(OrtDevice::DeviceId device_id, size_t limit) {
-  static std::mutex registry_mutex;
-  static InlinedHashMap<OrtDevice::DeviceId, std::shared_ptr<CudaDeviceMemoryBudget>> budgets;
-  std::lock_guard<std::mutex> lock(registry_mutex);
-  auto& budget = budgets[device_id];
-  if (!budget) budget = std::make_shared<CudaDeviceMemoryBudget>();
-  budget->Configure(limit);
-  return budget;
+  return GetCudaDeviceMemoryBudgetByOrdinal(static_cast<int>(device_id), limit);
 }
 
 CUDAAllocator::CUDAAllocator(OrtDevice::DeviceId device_id, const char* name,
@@ -25,7 +19,13 @@ CUDAAllocator::CUDAAllocator(OrtDevice::DeviceId device_id, const char* name,
                                OrtMemTypeDefault)),
       budget_(GetCudaDeviceMemoryBudget(device_id)),
       account_(std::move(account)) {
-  if (budget_) budget_->AddOwner();
+  if (budget_) {
+    budget_->AddOwner();
+    if (!account_) {
+      const size_t pending_limit = budget_->ConsumePendingSessionLimit();
+      account_ = std::make_shared<SessionBudgetAccount>(budget_, pending_limit);
+    }
+  }
 }
 
 CUDAAllocator::~CUDAAllocator() {

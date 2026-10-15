@@ -1810,6 +1810,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, OPTIONAL_VALUE)
         .Attr("initial_experts", "Optional profile-seeded initial GPU-resident expert IDs for this layer.",
               AttributeProto::INTS, OPTIONAL_VALUE)
+        .Attr("deterministic_replay", "Optional deterministic replay mode (0 or 1).",
+              AttributeProto::INT, OPTIONAL_VALUE)
         .Attr("expert_wave_size", "Maximum staged experts per wave, in [1,E-1]. Larger selected unions use waves.",
               AttributeProto::INT, int64_t{1})
         .Attr("gpu_working_bytes",

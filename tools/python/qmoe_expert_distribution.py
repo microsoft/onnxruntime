@@ -688,6 +688,83 @@ def write_global_csv(path, counts, num_experts):
         writer.writerows(distribution_rows(counts, num_experts))
 
 
+def compute_nonuniform_layer_capacities(
+    layer_expert_counts: dict[int, dict[int, float] | list[float]],
+    total_slots: int,
+    num_experts: int = 512,
+    min_slots_per_layer: int = 32,
+    max_slots_per_layer: int = 512,
+) -> tuple[dict[int, int], dict[int, list[int]], float, float]:
+    """Allocates a fixed total resident slot budget greedily by marginal hit-rate gain across layers (v3 Section 8.3 / P2).
+
+    Returns:
+      - capacities: {layer_idx: slot_count} with sum(slot_count) == total_slots
+      - initial_experts: {layer_idx: top_expert_ids[:slot_count]}
+      - uniform_hit_rate: expected hit rate on the trace under uniform slot allocation
+      - nonuniform_hit_rate: expected hit rate on the trace under the optimized nonuniform allocation
+    """
+    layers = sorted(layer_expert_counts.keys())
+    if not layers:
+        raise ValueError("layer_expert_counts must not be empty")
+    num_layers = len(layers)
+    min_floor = max(0, min(min_slots_per_layer, max_slots_per_layer, num_experts))
+    max_cap = max(min_floor, min(max_slots_per_layer, num_experts))
+    if total_slots < num_layers * min_floor or total_slots > num_layers * max_cap:
+        raise ValueError(
+            f"total_slots={total_slots} outside feasible range [{num_layers * min_floor}, {num_layers * max_cap}]"
+        )
+
+    sorted_experts_by_layer: dict[int, list[tuple[int, float]]] = {}
+    layer_totals: dict[int, float] = {}
+    for l_idx in layers:
+        raw = layer_expert_counts[l_idx]
+        if isinstance(raw, dict):
+            pairs = [(e, float(raw.get(e, 0.0))) for e in range(num_experts)]
+        else:
+            pairs = [(e, float(raw[e]) if e < len(raw) else 0.0) for e in range(num_experts)]
+        pairs.sort(key=lambda item: (-item[1], item[0]))
+        sorted_experts_by_layer[l_idx] = pairs
+        layer_totals[l_idx] = max(sum(v for _, v in pairs), 1.0)
+
+    capacities = {l_idx: min_floor for l_idx in layers}
+    remaining = total_slots - num_layers * min_floor
+
+    # Greedy marginal value allocation: each additional slot in layer l saves pairs[c][1] cold routes.
+    import heapq
+
+    heap: list[tuple[float, int]] = []
+    for l_idx in layers:
+        c = capacities[l_idx]
+        if c < max_cap:
+            gain = sorted_experts_by_layer[l_idx][c][1] / layer_totals[l_idx]
+            heapq.heappush(heap, (-gain, l_idx))
+
+    while remaining > 0 and heap:
+        neg_gain, l_idx = heapq.heappop(heap)
+        capacities[l_idx] += 1
+        remaining -= 1
+        c = capacities[l_idx]
+        if c < max_cap:
+            gain = sorted_experts_by_layer[l_idx][c][1] / layer_totals[l_idx]
+            heapq.heappush(heap, (-gain, l_idx))
+
+    initial_experts = {
+        l_idx: [e for e, _ in sorted_experts_by_layer[l_idx][: capacities[l_idx]]] for l_idx in layers
+    }
+
+    uniform_base = total_slots // num_layers
+    uniform_rem = total_slots % num_layers
+    uniform_hits = 0.0
+    nonuniform_hits = 0.0
+    grand_total = sum(layer_totals.values())
+    for idx, l_idx in enumerate(layers):
+        u_cap = uniform_base + (1 if idx < uniform_rem else 0)
+        uniform_hits += sum(v for _, v in sorted_experts_by_layer[l_idx][:u_cap])
+        nonuniform_hits += sum(v for _, v in sorted_experts_by_layer[l_idx][: capacities[l_idx]])
+
+    return capacities, initial_experts, uniform_hits / grand_total, nonuniform_hits / grand_total
+
+
 def main():
     args = parse_args()
     benchmark_json = args.benchmark_json or args.log.with_suffix(".json")

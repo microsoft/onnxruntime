@@ -3853,9 +3853,22 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         providers_stopped = true;
         const bool synchronize_execution_providers =
             run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
+        const bool run_succeeded = retval.IsOK() && !run_options.terminate && (std::uncaught_exceptions() == 0);
+        RunOptions failed_run_options;
+        const RunOptions* effective_run_options = &run_options;
+        if (!run_succeeded) {
+          ORT_TRY {
+            failed_run_options = run_options;
+            ORT_IGNORE_RETURN_VALUE(failed_run_options.config_options.AddConfigEntry("__ort.run_outcome", "failed"));
+            effective_run_options = &failed_run_options;
+          }
+          ORT_CATCH(...) {
+            effective_run_options = &run_options;
+          }
+        }
         for (auto* xp : exec_providers_to_stop) {
           ORT_TRY {
-            auto status = xp->OnRunEnd(synchronize_execution_providers, run_options);
+            auto status = xp->OnRunEnd(synchronize_execution_providers, *effective_run_options);
             ORT_CHECK_AND_SET_RETVAL(status);
           }
           ORT_CATCH(const std::exception& ex) {

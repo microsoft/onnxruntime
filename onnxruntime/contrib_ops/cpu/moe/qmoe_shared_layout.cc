@@ -354,6 +354,59 @@ bool MakeExpertBlockLease(const void* ptr, size_t length, size_t min_required_al
   return true;
 }
 
+bool TensorExpertStore::Initialize(const void* base_ptr, size_t total_bytes, int64_t num_experts, size_t expert_stride,
+                                   size_t min_required_alignment, uint64_t model_content_id) noexcept {
+  size_t expected_total = 0;
+  if (!ValidateExpertStorageRange(num_experts, expert_stride, 0, total_bytes, &expected_total)) {
+    return false;
+  }
+  ExpertBlockLease lease{};
+  if (!MakeExpertBlockLease(base_ptr, expected_total, min_required_alignment, &lease)) {
+    return false;
+  }
+  // Compute a fast deterministic content fingerprint over representative slices if model_content_id == 0.
+  if (model_content_id == 0 && expected_total > 0) {
+    uint64_t hash = 14695981039346656037ULL;
+    const size_t step = std::max<size_t>(1, expected_total / 64);
+    for (size_t off = 0; off < expected_total; off += step) {
+      hash ^= static_cast<uint64_t>(lease.data[off]);
+      hash *= 1099511628211ULL;
+    }
+    model_content_id = hash ^ static_cast<uint64_t>(expected_total);
+  }
+  lease.content_id = model_content_id;
+  store_lease_ = lease;
+  num_experts_ = num_experts;
+  expert_stride_ = expert_stride;
+  min_alignment_ = min_required_alignment;
+  model_content_id_ = model_content_id;
+  return true;
+}
+
+bool TensorExpertStore::AcquireReady(int32_t expert_id, ExpertBlockLease* out_lease) const noexcept {
+  if (out_lease == nullptr || store_lease_.data == nullptr || expert_id < 0 ||
+      static_cast<int64_t>(expert_id) >= num_experts_) {
+    return false;
+  }
+  size_t offset = 0;
+  if (!CheckedMulSize(static_cast<size_t>(expert_id), expert_stride_, &offset)) {
+    return false;
+  }
+  if (!MakeExpertBlockLease(store_lease_.data + offset, expert_stride_, min_alignment_, out_lease)) {
+    return false;
+  }
+  out_lease->content_id = model_content_id_;
+  return true;
+}
+
+bool TensorExpertStore::Prefetch(const int32_t* expert_ids, size_t count, uint64_t /*generation*/) const noexcept {
+  if (store_lease_.data == nullptr || (count > 0 && expert_ids == nullptr)) return false;
+  for (size_t i = 0; i < count; ++i) {
+    if (expert_ids[i] < 0 || static_cast<int64_t>(expert_ids[i]) >= num_experts_) return false;
+  }
+  return true;
+}
+
 bool ValidateExpertStorageRange(int64_t num_experts, size_t stride, uint64_t external_offset,
                                 uint64_t external_length, size_t* total_bytes) noexcept {
   if (num_experts <= 0 || num_experts > static_cast<int64_t>(std::numeric_limits<int>::max()) || stride == 0) {

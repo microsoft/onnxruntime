@@ -13,6 +13,7 @@
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_graph.h"
 #include "core/providers/cuda/cuda_pch.h"
+#include "core/providers/cuda/qmoe_session_controller.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/tunable/cuda_tuning_context.h"
@@ -130,9 +131,14 @@ class CUDAExecutionProvider : public IExecutionProvider {
   // by a later run.  Held until the provider is destroyed.
   void RetainBufferForGraphCapture(std::shared_ptr<void> buffer) const;
 
+  const std::shared_ptr<onnxruntime::cuda::QMoESessionController>& GetQMoESessionController() const {
+    return qmoe_controller_;
+  }
+
  private:
   mutable std::mutex captured_host_buffers_mutex_;
   mutable std::vector<std::shared_ptr<void>> captured_host_buffers_;
+  std::shared_ptr<onnxruntime::cuda::QMoESessionController> qmoe_controller_;
 
   CUDAExecutionProviderInfo info_;
   cudaDeviceProp device_prop_;

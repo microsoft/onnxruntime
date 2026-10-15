@@ -602,6 +602,16 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
     auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
         static_cast<const void*>(ep->EpImpl()));
     if (runtime_cfg && runtime_cfg->qmoe_controller && runtime_cfg->qmoe_controller->HasOffloadNodes()) {
+      const char* strict_env = std::getenv("ORT_QMOE_REJECT_DISABLE_SYNC");
+      if (strict_env != nullptr && std::strcmp(strict_env, "1") == 0 && run_options != nullptr) {
+        const char* no_sync =
+            ep->factory_.GetOrtApi().GetRunConfigEntry(run_options, "disable_synchronize_execution_providers");
+        if (no_sync != nullptr && std::strcmp(no_sync, "1") == 0) {
+          return ep->factory_.GetOrtApi().CreateStatus(
+              ORT_INVALID_ARGUMENT,
+              "QMoEOffload does not support disable_synchronize_execution_providers=1; required completion sync cannot be skipped.");
+        }
+      }
       auto st = runtime_cfg->qmoe_controller->OnRunStart();
       if (!st.IsOK()) {
         return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, st.ErrorMessage().c_str());
@@ -650,7 +660,14 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
     auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
         static_cast<const void*>(ep->EpImpl()));
     if (runtime_cfg && runtime_cfg->qmoe_controller && runtime_cfg->qmoe_controller->HasOffloadNodes()) {
-      auto st = runtime_cfg->qmoe_controller->OnRunEnd(sync_stream, /*run_succeeded=*/true);
+      bool run_succeeded = true;
+      if (run_options != nullptr) {
+        const char* outcome = ep->factory_.GetOrtApi().GetRunConfigEntry(run_options, "__ort.run_outcome");
+        if (outcome != nullptr && std::strcmp(outcome, "ok") != 0) {
+          run_succeeded = false;
+        }
+      }
+      auto st = runtime_cfg->qmoe_controller->OnRunEnd(sync_stream, run_succeeded);
       if (!st.IsOK()) {
         return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, st.ErrorMessage().c_str());
       }

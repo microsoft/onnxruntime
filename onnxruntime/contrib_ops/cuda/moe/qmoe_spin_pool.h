@@ -46,6 +46,10 @@ class SpinPool final {
     spin_us_.store(std::max(0, spin_us), std::memory_order_relaxed);
   }
 
+  int SpinDurationUs() const noexcept {
+    return spin_us_.load(std::memory_order_relaxed);
+  }
+
   int ThreadCount() const noexcept {
     return static_cast<int>(workers_.size()) + 1;
   }
@@ -145,6 +149,46 @@ class SpinPool final {
   uint64_t generation_ = 0;
   void (*function_)(void*, size_t) = nullptr;
   void* data_ = nullptr;
+};
+
+// Host CPU budget group coordinating SpinPool spin policy across prefill/embedding/Engram and decode phases (v3 Section 8.3 / F9).
+class CpuBudgetGroup final {
+ public:
+  enum class Phase : int {
+    kDecode = 0,
+    kPrefillOrAux = 1,
+  };
+
+  static CpuBudgetGroup& Default() {
+    static CpuBudgetGroup instance;
+    return instance;
+  }
+
+  void ConfigureDecodeSpinUs(int spin_us) noexcept {
+    decode_spin_us_.store(std::max(0, spin_us), std::memory_order_relaxed);
+  }
+
+  void EnterPrefillOrAuxPhase(SpinPool* pool) noexcept {
+    active_phase_.store(static_cast<int>(Phase::kPrefillOrAux), std::memory_order_release);
+    if (pool) {
+      pool->SetSpinDurationUs(0);
+    }
+  }
+
+  void EnterDecodePhase(SpinPool* pool) noexcept {
+    active_phase_.store(static_cast<int>(Phase::kDecode), std::memory_order_release);
+    if (pool) {
+      pool->SetSpinDurationUs(decode_spin_us_.load(std::memory_order_relaxed));
+    }
+  }
+
+  Phase CurrentPhase() const noexcept {
+    return static_cast<Phase>(active_phase_.load(std::memory_order_acquire));
+  }
+
+ private:
+  std::atomic<int> decode_spin_us_{2000};
+  std::atomic<int> active_phase_{static_cast<int>(Phase::kDecode)};
 };
 
 }  // namespace onnxruntime::contrib::cuda::qmoe

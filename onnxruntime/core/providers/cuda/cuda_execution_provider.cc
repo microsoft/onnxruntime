@@ -354,6 +354,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
     : IExecutionProvider{onnxruntime::kCudaExecutionProvider,
                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
                                    info.device_id)},
+      qmoe_controller_{std::make_shared<onnxruntime::cuda::QMoESessionController>(info.device_id)},
       info_{info},
       tuning_context_(this, &info_.tunable_op) {
   GetCudaDeviceMemoryBudget(info_.device_id, info_.gpu_device_mem_limit);
@@ -424,6 +425,9 @@ std::optional<bool> CUDAExecutionProvider::ShouldConvertDataLayoutForOp([[maybe_
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
+  if (qmoe_controller_) {
+    qmoe_controller_->Shutdown();
+  }
   // clean up thread local context caches
   {
     std::lock_guard<std::mutex> lock(context_state_.mutex);
@@ -521,6 +525,16 @@ Status CUDAExecutionProvider::Sync() const {
 }
 
 Status CUDAExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+  if (qmoe_controller_ && qmoe_controller_->HasOffloadNodes()) {
+    const char* strict_env = std::getenv("ORT_QMOE_REJECT_DISABLE_SYNC");
+    if (strict_env != nullptr && std::strcmp(strict_env, "1") == 0 &&
+        run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "1") {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          "QMoEOffload does not support disable_synchronize_execution_providers=1; required completion sync cannot be skipped.");
+    }
+    ORT_RETURN_IF_ERROR(qmoe_controller_->OnRunStart());
+  }
   CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCudaGraphAnnotationId(run_options);
   if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id) &&
       GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {
@@ -531,6 +545,12 @@ Status CUDAExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_opti
 }
 
 Status CUDAExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) {
+  if (qmoe_controller_ && qmoe_controller_->HasOffloadNodes()) {
+    const bool run_succeeded =
+        !run_options.terminate &&
+        run_options.config_options.GetConfigOrDefault("__ort.run_outcome", "ok") == "ok";
+    ORT_RETURN_IF_ERROR(qmoe_controller_->OnRunEnd(sync_stream, run_succeeded));
+  }
   CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCudaGraphAnnotationId(run_options);
   if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
     if (GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {

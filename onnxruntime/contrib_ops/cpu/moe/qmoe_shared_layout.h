@@ -57,11 +57,49 @@ inline bool CheckedAlignUp(size_t v, size_t alignment, size_t* out) noexcept {
 bool ValidateExpertStorageRange(int64_t num_experts, size_t stride, uint64_t external_offset,
                                 uint64_t external_length, size_t* total_bytes = nullptr) noexcept;
 
-// Lease descriptor recording actual pointer alignment alongside length (F12).
+// Lease descriptor recording actual pointer alignment alongside length and optional owner (F12 & Section 6).
 struct ExpertBlockLease {
   const uint8_t* data = nullptr;
   size_t length = 0;
   size_t alignment = 0;
+  uint64_t content_id = 0;
+};
+
+struct ExpertKey {
+  uint64_t model_content_id = 0;
+  int64_t layer_index = 0;
+  int32_t expert_id = 0;
+  int64_t layout_version = 1;
+  uint64_t weight_revision = 0;
+};
+
+// Zero-copy tensor-backed ExpertStore seam (v3 Section 6).
+class TensorExpertStore {
+ public:
+  TensorExpertStore() = default;
+  bool Initialize(const void* base_ptr, size_t total_bytes, int64_t num_experts, size_t expert_stride,
+                  size_t min_required_alignment = 2, uint64_t model_content_id = 0) noexcept;
+
+  bool AcquireReady(int32_t expert_id, ExpertBlockLease* out_lease) const noexcept;
+  bool AcquireReady(const ExpertKey& key, ExpertBlockLease* out_lease) const noexcept {
+    if (key.model_content_id != 0 && model_content_id_ != 0 && key.model_content_id != model_content_id_) {
+      return false;
+    }
+    return AcquireReady(key.expert_id, out_lease);
+  }
+  bool Prefetch(const int32_t* expert_ids, size_t count, uint64_t generation) const noexcept;
+
+  const ExpertBlockLease& FullStoreLease() const noexcept { return store_lease_; }
+  int64_t NumExperts() const noexcept { return num_experts_; }
+  size_t ExpertStride() const noexcept { return expert_stride_; }
+  uint64_t ContentId() const noexcept { return model_content_id_; }
+
+ private:
+  ExpertBlockLease store_lease_{};
+  int64_t num_experts_ = 0;
+  size_t expert_stride_ = 0;
+  size_t min_alignment_ = 2;
+  uint64_t model_content_id_ = 0;
 };
 
 size_t ComputePointerAlignment(const void* ptr) noexcept;

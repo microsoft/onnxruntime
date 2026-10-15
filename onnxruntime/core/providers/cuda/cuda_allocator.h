@@ -22,6 +22,13 @@ class CUDAAllocator : public IAllocator {
   void* Alloc(size_t size) override;
   void Free(void* p) override;
 
+  CudaDeviceMemoryBudget::Stats GetAccountStats() const {
+    return account_ ? account_->GetAccountStats() : budget_->GetStats();
+  }
+  CudaDeviceMemoryBudget::Stats GetPhysicalStats() const {
+    return budget_ ? budget_->GetStats() : CudaDeviceMemoryBudget::Stats{};
+  }
+
  private:
   enum class AllocationState : uint8_t {
     kCommitted = 0,

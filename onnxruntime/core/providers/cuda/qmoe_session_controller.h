@@ -20,6 +20,7 @@
 #include <cuda_runtime.h>
 
 #include "core/common/status.h"
+#include "core/providers/cuda/cuda_device_memory_budget.h"
 
 namespace onnxruntime::cuda {
 
@@ -132,12 +133,18 @@ struct QMoESessionLandingRing {
       copy_stream = nullptr;
     }
     if (pinned) {
-      static_cast<void>(cudaFreeHost(pinned));
+      auto pinned_budget = GetCudaHostPinnedMemoryBudget();
+      if (pinned_budget && pinned_bytes > 0) pinned_budget->BeginFreeAllocated(pinned_bytes);
+      const bool ok = (cudaFreeHost(pinned) == cudaSuccess);
+      if (pinned_budget && pinned_bytes > 0) pinned_budget->FinishFreeAllocated(pinned_bytes, ok);
       pinned = nullptr;
       pinned_bytes = 0;
     }
     if (landing) {
-      static_cast<void>(cudaFree(landing));
+      auto dev_budget = (device_id >= 0) ? GetCudaDeviceMemoryBudgetByOrdinal(device_id) : nullptr;
+      if (dev_budget && landing_bytes > 0) dev_budget->BeginFree(landing_bytes);
+      const bool ok = (cudaFree(landing) == cudaSuccess);
+      if (dev_budget && landing_bytes > 0) dev_budget->FinishFree(landing_bytes, ok);
       landing = nullptr;
       landing_bytes = 0;
     }
@@ -173,23 +180,47 @@ struct QMoESessionLandingRing {
         bank_has_gemm[b] = false;
         bank_has_promotion[b] = false;
       }
+      auto dev_budget = GetCudaDeviceMemoryBudgetByOrdinal(dev_id);
+      CudaDeviceMemoryBudget::Reservation res;
+      try {
+        if (dev_budget) res = dev_budget->Reserve(landing_needed);
+      } catch (const std::exception& ex) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QMoEOffload landing budget reservation failed: ", ex.what());
+      }
       uint8_t* new_landing = nullptr;
       cudaError_t err = cudaMalloc(reinterpret_cast<void**>(&new_landing), landing_needed);
       if (err != cudaSuccess) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QMoEOffload landing cudaMalloc failed: ", cudaGetErrorString(err));
       }
-      if (landing) static_cast<void>(cudaFree(landing));
+      if (res.Active()) res.Commit();
+      if (landing) {
+        if (dev_budget && landing_bytes > 0) dev_budget->BeginFree(landing_bytes);
+        const bool ok = (cudaFree(landing) == cudaSuccess);
+        if (dev_budget && landing_bytes > 0) dev_budget->FinishFree(landing_bytes, ok);
+      }
       landing = new_landing;
       landing_bytes = landing_needed;
     }
     if (pinned_needed > pinned_bytes) {
       if (copy_stream) static_cast<void>(cudaStreamSynchronize(copy_stream));
+      auto pinned_budget = GetCudaHostPinnedMemoryBudget();
+      CudaDeviceMemoryBudget::Reservation res;
+      try {
+        if (pinned_budget) res = pinned_budget->ReserveAllocated(pinned_needed);
+      } catch (const std::exception& ex) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QMoEOffload landing pinned budget reservation failed: ", ex.what());
+      }
       uint8_t* new_pinned = nullptr;
       cudaError_t err = cudaHostAlloc(reinterpret_cast<void**>(&new_pinned), pinned_needed, cudaHostAllocDefault);
       if (err != cudaSuccess) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QMoEOffload landing cudaHostAlloc failed: ", cudaGetErrorString(err));
       }
-      if (pinned) static_cast<void>(cudaFreeHost(pinned));
+      if (res.Active()) res.Commit();
+      if (pinned) {
+        if (pinned_budget && pinned_bytes > 0) pinned_budget->BeginFreeAllocated(pinned_bytes);
+        const bool ok = (cudaFreeHost(pinned) == cudaSuccess);
+        if (pinned_budget && pinned_bytes > 0) pinned_budget->FinishFreeAllocated(pinned_bytes, ok);
+      }
       pinned = new_pinned;
       pinned_bytes = pinned_needed;
     }
@@ -259,11 +290,13 @@ class QMoESessionController {
     active_invocations_.push_back(std::move(inv));
   }
 
-  common::Status OnRunEnd(bool /*sync_stream*/, bool run_succeeded = true) {
+  common::Status OnRunEnd(bool sync_stream, bool run_succeeded = true) {
     std::vector<std::shared_ptr<QMoEInvocationRecord>> invocations;
+    bool had_offload_nodes = false;
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      if (registered_nodes_ == 0 && !run_in_flight_) {
+      had_offload_nodes = (registered_nodes_ > 0);
+      if (!had_offload_nodes && !run_in_flight_) {
         return common::Status::OK();
       }
       run_in_flight_ = false;
@@ -272,6 +305,14 @@ class QMoESessionController {
     }
 
     common::Status first_error = common::Status::OK();
+    if (had_offload_nodes && !sync_stream) {
+      const char* strict_env = std::getenv("ORT_QMOE_REJECT_DISABLE_SYNC");
+      if (strict_env != nullptr && std::string(strict_env) == "1") {
+        first_error = ORT_MAKE_STATUS(
+            ONNXRUNTIME, INVALID_ARGUMENT,
+            "QMoEOffload does not support disable_synchronize_execution_providers=1; required completion sync cannot be skipped.");
+      }
+    }
     cudaStream_t last_main_stream = nullptr;
     bool sync_last_main = false;
     for (auto& inv : invocations) {

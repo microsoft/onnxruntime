@@ -609,6 +609,531 @@ int main() {
             rel_l2 = np.linalg.norm(outputs[name] - ref_out) / np.linalg.norm(ref_out)
             self.assertLess(rel_l2, 5e-4, msg=f"MXFP4 mode={name} rel_l2={rel_l2}")
 
+    def test_phase1_run_outcome_and_disable_sync_rejection(self):
+        """Verifies Phase 1: disable_synchronize_execution_providers=1 is rejected when offload is active."""
+        sys.path.insert(0, str(ORT_ROOT / "onnxruntime/test/python/transformers"))
+        import qmoe_shared_layout_ref as ref
+
+        rng = np.random.default_rng(101)
+        experts, hidden, inter, top_k = 8, 128, 64, 2
+        blocks_list, biases_list = [], []
+        for _ in range(experts):
+            w1 = rng.integers(0, 16, size=(2 * inter, hidden), dtype=np.uint8)
+            s1 = (rng.uniform(0.01, 0.05, size=(2 * inter, hidden // 32))).astype(np.float16)
+            b1 = np.zeros((2 * inter,), dtype=np.float16)
+            w2 = rng.integers(0, 16, size=(hidden, inter), dtype=np.uint8)
+            s2 = (rng.uniform(0.01, 0.05, size=(hidden, inter // 32))).astype(np.float16)
+            b2 = np.zeros((hidden,), dtype=np.float16)
+            blocks_list.append(ref.assemble_block(hidden, inter, w1, s1, b1, w2, s2, b2))
+            biases_list.append(b2)
+        blocks = np.stack(blocks_list, axis=0)
+        bias = np.stack(biases_list, axis=0)
+
+        node = helper.make_node(
+            "QMoEOffload",
+            inputs=["X", "R", "expert_blocks", "fc2_bias"],
+            outputs=["Y"],
+            domain="com.microsoft",
+            k=top_k,
+            normalize_routing_weights=1,
+            layout_version=1,
+            layout_id="ort.qmoe.w4a16.block32.shared.v1",
+            weights_prepacked=1,
+            hidden_size=hidden,
+            inter_size=inter,
+            layer_index=0,
+        )
+        graph = helper.make_graph(
+            [node],
+            "p1_graph",
+            [
+                helper.make_tensor_value_info("X", TensorProto.FLOAT16, ["T", hidden]),
+                helper.make_tensor_value_info("R", TensorProto.FLOAT16, ["T", experts]),
+            ],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT16, ["T", hidden])],
+            [
+                numpy_helper.from_array(blocks, name="expert_blocks"),
+                numpy_helper.from_array(bias, name="fc2_bias"),
+            ],
+        )
+        model = helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 18), helper.make_opsetid("com.microsoft", 1)]
+        )
+        sess = make_plugin_session(model)
+        x = rng.standard_normal((2, hidden)).astype(np.float16)
+        r = rng.standard_normal((2, experts)).astype(np.float16)
+
+        ro = ort.RunOptions()
+        ro.add_run_config_entry("disable_synchronize_execution_providers", "1")
+        old_strict = os.environ.get("ORT_QMOE_REJECT_DISABLE_SYNC")
+        try:
+            os.environ["ORT_QMOE_REJECT_DISABLE_SYNC"] = "1"
+            with self.assertRaises(Exception) as ctx:
+                sess.run(None, {"X": x, "R": r}, run_options=ro)
+            self.assertIn("disable_synchronize_execution_providers", str(ctx.exception))
+        finally:
+            if old_strict is None:
+                os.environ.pop("ORT_QMOE_REJECT_DISABLE_SYNC", None)
+            else:
+                os.environ["ORT_QMOE_REJECT_DISABLE_SYNC"] = old_strict
+        del sess
+        gc.collect()
+
+    def test_phase2_budget_group_pinned_ledger_and_concurrent_unequal_sessions(self):
+        """Verifies Phase 2: BudgetGroup, HostPinnedBudgetLedger deduplication, and concurrent unequal session limits."""
+        cpp_src = r"""
+#include <cassert>
+#include <cstdint>
+#include <memory>
+#include <vector>
+#include "core/providers/cuda/cuda_device_memory_budget.h"
+#include "contrib_ops/cpu/moe/qmoe_shared_layout.h"
+using namespace onnxruntime;
+using namespace onnxruntime::contrib::qmoe_shared;
+int main() {
+    auto phys = std::make_shared<CudaDeviceMemoryBudget>();
+    phys->ConfigurePhysicalCeiling(8192);
+    auto grp = std::make_shared<BudgetGroup>(phys, 4096);
+    SessionBudgetAccount target_acc(phys, 3072, grp);
+    SessionBudgetAccount head_acc(phys, 2048, grp);
+
+    auto r1 = target_acc.Reserve(2500);
+    r1.Commit();
+    // Group limit is 4096 (1596 remaining), so head_acc cannot reserve 1700 even though its own session limit is 2048!
+    bool group_blocked = false;
+    try {
+        auto r2 = head_acc.Reserve(1700);
+    } catch (const std::runtime_error&) {
+        group_blocked = true;
+    }
+    assert(group_blocked);
+    auto r2 = head_acc.Reserve(1500);
+    r2.Commit();
+    assert(grp->GetGroupStats().committed == 4000);
+    assert(phys->GetStats().committed == 4000);
+
+    target_acc.BeginFree(2500);
+    target_acc.FinishFree(2500, true);
+    head_acc.BeginFree(1500);
+    head_acc.FinishFree(1500, true);
+
+    // HostPinnedBudgetLedger deduplicates shared pointer ranges across target and head sessions.
+    auto pinned = GetCudaHostPinnedMemoryBudget();
+    const size_t base_committed = pinned->GetStats().committed;
+    alignas(256) uint8_t fake_weights[4096]{};
+    assert(pinned->RegisterHostRange(fake_weights, sizeof(fake_weights)));
+    assert(pinned->GetStats().committed == base_committed + sizeof(fake_weights));
+    // Second registration of the same pointer increments refcount without double-charging!
+    assert(!pinned->RegisterHostRange(fake_weights, sizeof(fake_weights)));
+    assert(pinned->GetStats().committed == base_committed + sizeof(fake_weights));
+    assert(!pinned->UnregisterHostRange(fake_weights, true));
+    assert(pinned->GetStats().committed == base_committed + sizeof(fake_weights));
+    assert(pinned->UnregisterHostRange(fake_weights, true));
+    assert(pinned->GetStats().committed == base_committed);
+
+    // TensorExpertStore lease verification.
+    ExpertBlockLayout layout{};
+    assert(MakeExpertBlockLayout(128, 64, &layout));
+    std::vector<uint8_t> store_buf(4 * layout.stride, 7);
+    TensorExpertStore store;
+    assert(store.Initialize(store_buf.data(), store_buf.size(), 4, layout.stride, 2));
+    assert(store.ContentId() != 0);
+    ExpertBlockLease l0{};
+    assert(store.AcquireReady(0, &l0));
+    assert(l0.data == store_buf.data() && l0.length == layout.stride);
+    assert(!store.AcquireReady(4, &l0));
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            bin_path = Path(tmp) / "test_p2"
+            subprocess.run(
+                [
+                    "g++",
+                    "-O2",
+                    "-std=c++20",
+                    f"-I{ORT_ROOT / 'onnxruntime'}",
+                    f"-I{ORT_ROOT / 'include/onnxruntime'}",
+                    "-x",
+                    "c++",
+                    "-",
+                    str(ORT_ROOT / "onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout.cc"),
+                    "-o",
+                    str(bin_path),
+                ],
+                input=cpp_src.encode(),
+                check=True,
+            )
+            subprocess.run([str(bin_path)], check=True)
+
+        # Also test two concurrent plugin sessions on the same GPU with unequal gpu_device_mem_limit values!
+        rng = np.random.default_rng(202)
+        experts, hidden, inter, top_k = 16, 256, 128, 4
+        fc1_w = rng.integers(0, 256, size=(experts, hidden, inter), dtype=np.uint8)
+        fc1_s = rng.integers(0x34, 0x44, size=(experts, 2 * inter, hidden // 16), dtype=np.uint8)
+        fc2_w = rng.integers(0, 256, size=(experts, inter, hidden // 2), dtype=np.uint8)
+        fc2_s = rng.integers(0x34, 0x44, size=(experts, hidden, inter // 16), dtype=np.uint8)
+        fc1_g = np.ones((experts,), dtype=np.float32)
+        fc2_g = np.ones((experts,), dtype=np.float32)
+
+        inputs = ["X", "R", "fc1_w", "fc1_s", "", "fc2_w", "fc2_s", "", "", "", "", "", "", "", "", "fc1_g", "fc2_g"]
+        node = helper.make_node(
+            "QMoEOffload",
+            inputs=inputs,
+            outputs=["Y"],
+            domain="com.microsoft",
+            activation_type="swiglu",
+            normalize_routing_weights=1,
+            k=top_k,
+            expert_weight_bits=4,
+            block_size=16,
+            swiglu_fusion=1,
+            quant_type="nvfp4",
+            weights_prepacked=1,
+            layer_index=0,
+            hidden_size=hidden,
+            inter_size=inter,
+            resident_slots=4,
+            token_tile_size=4,
+            gpu_working_bytes=16 << 20,
+            pinned_staging_bytes=4 << 20,
+        )
+        inits = [
+            numpy_helper.from_array(fc1_w, name="fc1_w"),
+            helper.make_tensor("fc1_s", TensorProto.FLOAT8E4M3FN, fc1_s.shape, fc1_s.tobytes(), raw=True),
+            numpy_helper.from_array(fc2_w, name="fc2_w"),
+            helper.make_tensor("fc2_s", TensorProto.FLOAT8E4M3FN, fc2_s.shape, fc2_s.tobytes(), raw=True),
+            numpy_helper.from_array(fc1_g, name="fc1_g"),
+            numpy_helper.from_array(fc2_g, name="fc2_g"),
+        ]
+        graph = helper.make_graph(
+            [node],
+            "p2_concurrent",
+            [
+                helper.make_tensor_value_info("X", TensorProto.BFLOAT16, [1, "S", hidden]),
+                helper.make_tensor_value_info("R", TensorProto.BFLOAT16, ["S", experts]),
+            ],
+            [helper.make_tensor_value_info("Y", TensorProto.BFLOAT16, [1, "S", hidden])],
+            inits,
+        )
+        model = helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 18), helper.make_opsetid("com.microsoft", 1)]
+        )
+
+        # Concurrent sessions on the same GPU with different limits (64 MiB and 96 MiB) both succeed!
+        sess_a = make_plugin_session(model, device_limit_bytes=64 << 20)
+        sess_b = make_plugin_session(model, device_limit_bytes=96 << 20)
+        del sess_a, sess_b
+        gc.collect()
+
+    def test_phase3_fast_paths_and_deterministic_replay(self):
+        """Verifies Phase 3: statically full (active_residents == E) and empty (active_residents == 0) fast paths + deterministic replay."""
+        rng = np.random.default_rng(303)
+        experts, hidden, inter, top_k = 8, 256, 128, 2
+        fc1_w = rng.integers(0, 256, size=(experts, hidden, inter), dtype=np.uint8)
+        fc1_s = rng.integers(0x34, 0x44, size=(experts, 2 * inter, hidden // 16), dtype=np.uint8)
+        fc2_w = rng.integers(0, 256, size=(experts, inter, hidden // 2), dtype=np.uint8)
+        fc2_s = rng.integers(0x34, 0x44, size=(experts, hidden, inter // 16), dtype=np.uint8)
+        fc1_g = rng.uniform(0.01, 0.03, size=(experts,)).astype(np.float32)
+        fc2_g = rng.uniform(0.01, 0.03, size=(experts,)).astype(np.float32)
+
+        inputs = ["X", "R", "fc1_w", "fc1_s", "", "fc2_w", "fc2_s", "", "", "", "", "", "", "", "", "fc1_g", "fc2_g"]
+        node = helper.make_node(
+            "QMoEOffload",
+            inputs=inputs,
+            outputs=["Y"],
+            domain="com.microsoft",
+            activation_type="swiglu",
+            normalize_routing_weights=1,
+            k=top_k,
+            expert_weight_bits=4,
+            block_size=16,
+            swiglu_fusion=1,
+            quant_type="nvfp4",
+            weights_prepacked=1,
+            layer_index=0,
+            hidden_size=hidden,
+            inter_size=inter,
+            token_tile_size=4,
+            gpu_working_bytes=32 << 20,
+            pinned_staging_bytes=8 << 20,
+        )
+        inits = [
+            numpy_helper.from_array(fc1_w, name="fc1_w"),
+            helper.make_tensor("fc1_s", TensorProto.FLOAT8E4M3FN, fc1_s.shape, fc1_s.tobytes(), raw=True),
+            numpy_helper.from_array(fc2_w, name="fc2_w"),
+            helper.make_tensor("fc2_s", TensorProto.FLOAT8E4M3FN, fc2_s.shape, fc2_s.tobytes(), raw=True),
+            numpy_helper.from_array(fc1_g, name="fc1_g"),
+            numpy_helper.from_array(fc2_g, name="fc2_g"),
+        ]
+        graph = helper.make_graph(
+            [node],
+            "p3_fastpath",
+            [
+                helper.make_tensor_value_info("X", TensorProto.BFLOAT16, [1, "S", hidden]),
+                helper.make_tensor_value_info("R", TensorProto.BFLOAT16, ["S", experts]),
+            ],
+            [helper.make_tensor_value_info("Y", TensorProto.BFLOAT16, [1, "S", hidden])],
+            inits,
+        )
+        model = helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 18), helper.make_opsetid("com.microsoft", 1)]
+        )
+
+        x_bf16 = float32_to_bf16_uint16((rng.standard_normal((1, 2, hidden)) * 0.5).astype(np.float32))
+        r_bf16 = float32_to_bf16_uint16(rng.standard_normal((2, experts)).astype(np.float32))
+        ort_x = ort.OrtValue.ortvalue_from_numpy_with_onnx_type(x_bf16, TensorProto.BFLOAT16)
+        ort_r = ort.OrtValue.ortvalue_from_numpy_with_onnx_type(r_bf16, TensorProto.BFLOAT16)
+
+        env_keys = (
+            "ORT_QMOE_SHARED_ASYNC",
+            "ORT_QMOE_SHARED_PINNED_REUSE",
+            "ORT_QMOE_SHARED_RESIDENT_SLOTS",
+            "ORT_QMOE_SHARED_PREPOPULATE",
+            "ORT_QMOE_DETERMINISTIC_REPLAY",
+            "ORT_QMOE_SHARED_RESIDENT_PROMOTIONS",
+        )
+        saved = {k: os.environ.get(k) for k in env_keys}
+        try:
+            # 1) Statically full async fast path (all 8 experts resident, no CPU callback)
+            os.environ.update(
+                ORT_QMOE_SHARED_ASYNC="1",
+                ORT_QMOE_SHARED_PINNED_REUSE="1",
+                ORT_QMOE_SHARED_RESIDENT_SLOTS=str(experts),
+                ORT_QMOE_SHARED_PREPOPULATE="1",
+                ORT_QMOE_DETERMINISTIC_REPLAY="1",
+            )
+            sess_full = make_plugin_session(model)
+            out_full_ort = sess_full.run_with_ort_values(["Y"], {"X": ort_x, "R": ort_r})[0]
+            out_full = bf16_uint16_to_float32(
+                np.frombuffer(ctypes.string_at(out_full_ort.data_ptr(), x_bf16.size * 2), dtype=np.uint16).reshape(
+                    x_bf16.shape
+                )
+            )
+            del sess_full
+            gc.collect()
+
+            # 2) Host-known empty async fast path (resident_slots=4, prepopulate=0, promotions=0)
+            os.environ.update(
+                ORT_QMOE_SHARED_ASYNC="1",
+                ORT_QMOE_SHARED_PINNED_REUSE="1",
+                ORT_QMOE_SHARED_RESIDENT_SLOTS="4",
+                ORT_QMOE_SHARED_PREPOPULATE="0",
+                ORT_QMOE_DETERMINISTIC_REPLAY="1",
+                ORT_QMOE_SHARED_RESIDENT_PROMOTIONS="0",
+            )
+            sess_empty = make_plugin_session(model)
+            out_empty_ort1 = sess_empty.run_with_ort_values(["Y"], {"X": ort_x, "R": ort_r})[0]
+            out_empty1 = bf16_uint16_to_float32(
+                np.frombuffer(ctypes.string_at(out_empty_ort1.data_ptr(), x_bf16.size * 2), dtype=np.uint16).reshape(
+                    x_bf16.shape
+                )
+            )
+            out_empty_ort2 = sess_empty.run_with_ort_values(["Y"], {"X": ort_x, "R": ort_r})[0]
+            out_empty2 = bf16_uint16_to_float32(
+                np.frombuffer(ctypes.string_at(out_empty_ort2.data_ptr(), x_bf16.size * 2), dtype=np.uint16).reshape(
+                    x_bf16.shape
+                )
+            )
+            del sess_empty
+            gc.collect()
+
+            np.testing.assert_array_equal(out_empty1, out_empty2)
+            rel_l2 = np.linalg.norm(out_full - out_empty1) / np.linalg.norm(out_full)
+            self.assertLess(rel_l2, 5e-4)
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
+    def test_phase4_zero_copy_migration_tool_and_inblock_bias_validation(self):
+        """Verifies Phase 4: migrate_qmoe_offload_v3.py zero-copy 26->5 migration and in-block fc2_bias check."""
+        sys.path.insert(0, str(ORT_ROOT / "onnxruntime/test/python/transformers"))
+        sys.path.insert(0, str(ORT_ROOT / "tools/python"))
+        import migrate_qmoe_offload_v3 as mig
+        import qmoe_shared_layout_ref as ref
+
+        rng = np.random.default_rng(404)
+        experts, hidden, inter, top_k = 4, 128, 64, 2
+        blocks_list, biases_list = [], []
+        for _ in range(experts):
+            w1 = rng.integers(0, 16, size=(2 * inter, hidden), dtype=np.uint8)
+            s1 = (rng.uniform(0.01, 0.05, size=(2 * inter, hidden // 32))).astype(np.float16)
+            b1 = (rng.uniform(-0.02, 0.02, size=(2 * inter,))).astype(np.float16)
+            w2 = rng.integers(0, 16, size=(hidden, inter), dtype=np.uint8)
+            s2 = (rng.uniform(0.01, 0.05, size=(hidden, inter // 32))).astype(np.float16)
+            b2 = (rng.uniform(-0.02, 0.02, size=(hidden,))).astype(np.float16)
+            blocks_list.append(ref.assemble_block(hidden, inter, w1, s1, b1, w2, s2, b2))
+            biases_list.append(b2)
+        blocks = np.stack(blocks_list, axis=0)
+        bias = np.stack(biases_list, axis=0)
+
+        legacy_inputs = ["X", "R"] + [""] * 19 + ["expert_blocks", "", "", "fc2_bias", "phase"]
+        legacy_node = helper.make_node(
+            "QMoEOffload",
+            inputs=legacy_inputs,
+            outputs=["Y", "rows", "calls", "counts"],
+            domain="com.microsoft",
+            name="legacy_qmoe",
+            k=top_k,
+            normalize_routing_weights=1,
+            layout_version=1,
+            weights_prepacked=1,
+            hidden_size=hidden,
+            inter_size=inter,
+            layer_index=0,
+        )
+        legacy_graph = helper.make_graph(
+            [legacy_node],
+            "legacy_graph",
+            [
+                helper.make_tensor_value_info("X", TensorProto.FLOAT16, ["T", hidden]),
+                helper.make_tensor_value_info("R", TensorProto.FLOAT16, ["T", experts]),
+                helper.make_tensor_value_info("phase", TensorProto.INT8, ["T"]),
+            ],
+            [
+                helper.make_tensor_value_info("Y", TensorProto.FLOAT16, ["T", hidden]),
+                helper.make_tensor_value_info("rows", TensorProto.INT32, [5, experts]),
+                helper.make_tensor_value_info("calls", TensorProto.INT32, [5, experts]),
+                helper.make_tensor_value_info("counts", TensorProto.INT32, [6]),
+            ],
+            [
+                numpy_helper.from_array(blocks, name="expert_blocks"),
+                numpy_helper.from_array(bias, name="fc2_bias"),
+            ],
+        )
+        legacy_model = helper.make_model(
+            legacy_graph, opset_imports=[helper.make_opsetid("", 18), helper.make_opsetid("com.microsoft", 1)]
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            legacy_path = Path(tmp) / "legacy.onnx"
+            migrated_path = Path(tmp) / "sub" / "migrated_v3.onnx"
+            onnx.save_model(
+                legacy_model,
+                str(legacy_path),
+                save_as_external_data=True,
+                all_tensors_to_one_file=True,
+                location="weights.bin",
+                size_threshold=0,
+            )
+            _, manifest = mig.migrate_qmoe_offload_model(
+                legacy_path,
+                migrated_path,
+                strip_diagnostics=True,
+                drop_phase_input=True,
+            )
+            self.assertEqual(manifest["migrated_nodes"], 1)
+            self.assertGreater(manifest["verified_bias_slices"], 0)
+            self.assertEqual(manifest["nodes"][0]["inputs"], ["X", "R", "expert_blocks", "fc2_bias"])
+            self.assertEqual(manifest["nodes"][0]["outputs"], ["Y"])
+
+            sess_v3 = make_plugin_session(migrated_path)
+            x = rng.standard_normal((3, hidden)).astype(np.float16)
+            r = rng.standard_normal((3, experts)).astype(np.float16)
+            y_v3 = sess_v3.run(None, {"X": x, "R": r})[0]
+            self.assertEqual(y_v3.shape, (3, hidden))
+            del sess_v3
+            gc.collect()
+
+        # Verify that corrupting in-block fc2_bias to a non-zero mismatch against separate fc2_bias is rejected!
+        bad_bias = bias.copy()
+        bad_bias[0, 0] += np.float16(0.5)
+        bad_node = helper.make_node(
+            "QMoEOffload",
+            inputs=["X", "R", "expert_blocks", "fc2_bias"],
+            outputs=["Y"],
+            domain="com.microsoft",
+            k=top_k,
+            normalize_routing_weights=1,
+            layout_version=1,
+            layout_id="ort.qmoe.w4a16.block32.shared.v1",
+            weights_prepacked=1,
+            hidden_size=hidden,
+            inter_size=inter,
+            layer_index=0,
+        )
+        bad_graph = helper.make_graph(
+            [bad_node],
+            "bad_bias_graph",
+            [
+                helper.make_tensor_value_info("X", TensorProto.FLOAT16, ["T", hidden]),
+                helper.make_tensor_value_info("R", TensorProto.FLOAT16, ["T", experts]),
+            ],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT16, ["T", hidden])],
+            [
+                numpy_helper.from_array(blocks, name="expert_blocks"),
+                numpy_helper.from_array(bad_bias, name="fc2_bias"),
+            ],
+        )
+        bad_model = helper.make_model(
+            bad_graph, opset_imports=[helper.make_opsetid("", 18), helper.make_opsetid("com.microsoft", 1)]
+        )
+        with self.assertRaises(Exception) as ctx:
+            make_plugin_session(bad_model)
+        self.assertIn("in-block fc2_bias disagrees", str(ctx.exception))
+
+    def test_phase5_cpu_budget_group_and_nonuniform_layer_capacities(self):
+        """Verifies Phase 5: CpuBudgetGroup phase spin suppression and nonuniform per-layer slot allocation."""
+        cpp_src = r"""
+#include <cassert>
+#include "contrib_ops/cuda/moe/qmoe_spin_pool.h"
+using namespace onnxruntime::contrib::cuda::qmoe;
+int main() {
+    SpinPool pool(4, 2000);
+    auto& group = CpuBudgetGroup::Default();
+    group.ConfigureDecodeSpinUs(2000);
+    assert(pool.SpinDurationUs() == 2000);
+    group.EnterPrefillOrAuxPhase(&pool);
+    assert(pool.SpinDurationUs() == 0);
+    assert(group.CurrentPhase() == CpuBudgetGroup::Phase::kPrefillOrAux);
+    group.EnterDecodePhase(&pool);
+    assert(pool.SpinDurationUs() == 2000);
+    assert(group.CurrentPhase() == CpuBudgetGroup::Phase::kDecode);
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            bin_path = Path(tmp) / "test_p5"
+            subprocess.run(
+                [
+                    "g++",
+                    "-O2",
+                    "-std=c++20",
+                    "-pthread",
+                    f"-I{ORT_ROOT / 'onnxruntime'}",
+                    "-x",
+                    "c++",
+                    "-",
+                    "-o",
+                    str(bin_path),
+                ],
+                input=cpp_src.encode(),
+                check=True,
+            )
+            subprocess.run([str(bin_path)], check=True)
+
+        sys.path.insert(0, str(ORT_ROOT / "tools/python"))
+        import qmoe_expert_distribution as dist
+
+        # Layer 0 has highly concentrated routing (top 2 experts take 90%), Layer 1 has flatter routing over 6 experts.
+        trace = {
+            0: [450.0, 450.0] + [100.0 / 14.0] * 14,
+            1: [150.0] * 6 + [10.0] * 10,
+        }
+        caps, init_exps, u_hit, nu_hit = dist.compute_nonuniform_layer_capacities(
+            trace, total_slots=8, num_experts=16, min_slots_per_layer=2, max_slots_per_layer=16
+        )
+        self.assertEqual(sum(caps.values()), 8)
+        self.assertEqual(caps[0], 2)
+        self.assertEqual(caps[1], 6)
+        self.assertGreater(nu_hit, u_hit)
+        self.assertEqual(len(init_exps[0]), 2)
+        self.assertEqual(len(init_exps[1]), 6)
+
 
 if __name__ == "__main__":
     unittest.main()
+

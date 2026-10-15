@@ -120,10 +120,13 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   onnxruntime::contrib::qmoe_shared::ExpertBlockLayout shared_layout_;
   onnxruntime::contrib::qmoe_shared::Nvfp4ExpertBlockLayout nvfp4_layout_;
   onnxruntime::contrib::qmoe_shared::ExpertBlockLease expert_lease_;
+  onnxruntime::contrib::qmoe_shared::TensorExpertStore expert_store_;
   int64_t layer_index_ = 0;
   size_t shared_gpu_limit_ = 0;
   size_t shared_pinned_limit_ = 0;
+  size_t stream_pinned_limit_ = 0;
   int group_calls_ = 1;
+  bool deterministic_replay_ = false;
 
   // Decoupled dispatch controls (v3 Section 8.1 / F7).
   int max_sync_tile_tokens_ = 32;
@@ -138,6 +141,10 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   mutable cudaStream_t aux_stream_ = nullptr;
   mutable cudaEvent_t fork_event_ = nullptr;
   mutable cudaEvent_t join_event_ = nullptr;
+  mutable cudaEvent_t final_device_done_ = nullptr;
+  mutable std::atomic<bool> final_device_done_recorded_{false};
+  mutable cudaEvent_t slot_reader_done_ = nullptr;
+  mutable bool slot_reader_done_recorded_ = false;
   mutable cudaStream_t promo_stream_ = nullptr;
   mutable cudaEvent_t promo_ready_ = nullptr;
   struct PendingPromotion {
@@ -179,10 +186,17 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   size_t stream_workspace_bytes_ = 0;
   mutable ResidentSlab resident_slab_;
   ResidentSlab slot_table_dev_;
+  int* CurrentSlotTableDev() const noexcept {
+    if (!slot_table_dev_) return nullptr;
+    return reinterpret_cast<int*>(slot_table_dev_.get()) +
+           static_cast<size_t>(placement_epoch_ & 1) * static_cast<size_t>(num_experts_);
+  }
   mutable InlinedVector<int> slot_expert_;
   mutable InlinedVector<int> expert_slot_;
   mutable InlinedVector<float> expert_score_;
   mutable InlinedVector<float> decode_score_;
+  mutable InlinedVector<float> expert_presence_ema_;
+  mutable InlinedVector<InlinedVector<int>> last_cold_routes_;
   mutable std::array<int, 2> phase_routes_since_decay_{};
   mutable std::array<uint64_t, 5> phase_hit_routes_{};
   mutable std::array<uint64_t, 5> phase_total_routes_{};

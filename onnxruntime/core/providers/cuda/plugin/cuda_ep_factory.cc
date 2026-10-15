@@ -809,7 +809,8 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   }
 
   const OrtLogger& ep_logger = logger ? *logger : factory->default_logger_;
-  const auto budget = GetCudaDeviceMemoryBudget(static_cast<OrtDevice::DeviceId>(config.device_id), device_limit_bytes);
+  const auto budget = GetCudaDeviceMemoryBudget(static_cast<OrtDevice::DeviceId>(config.device_id));
+  budget->Configure(device_limit_bytes);
   if (budget->GetStats().limit != std::numeric_limits<size_t>::max() &&
       (config.external_alloc != nullptr || config.external_free != nullptr)) {
     return factory->ort_api_.CreateStatus(ORT_INVALID_ARGUMENT,
