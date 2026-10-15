@@ -102,7 +102,7 @@ Status WriteCalibrationCapture(
   }
   FILE* output = _fdopen(fd, "wb");
 #else
-  fd = open(path.c_str(), O_CREAT | O_EXCL | O_WRONLY, 0644);
+  fd = open(path.c_str(), O_CREAT | O_EXCL | O_WRONLY, 0600);
   if (fd < 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot exclusively create calibration capture: ",
                            path.string(), " (error ", errno, ")");
