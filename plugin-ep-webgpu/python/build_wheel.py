@@ -25,8 +25,7 @@ MIN_ONNXRUNTIME_VERSION_FILE = SCRIPT_DIR.parent / "MIN_ONNXRUNTIME_VERSION"
 
 # Import the shared template helper from _packaging_utils.py in the parent directory.
 sys.path.insert(0, str(SCRIPT_DIR.parent))
-from _packaging_utils import WINDOWS_AGILITY_SDK_BINARIES  # noqa: E402, I001
-from _packaging_utils import (  # noqa: E402, I001  (path setup must precede import)
+from _packaging_utils import (  # noqa: E402  (path setup must precede import)
     gen_file_from_template,
     get_plugin_binaries,
     get_windows_agility_sdk_state,

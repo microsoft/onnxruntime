@@ -48,7 +48,9 @@ def get_windows_agility_sdk_state(binary_dir: Path) -> tuple[bool, tuple[Path, .
         return True, ()
     if any(present):
         missing = tuple(
-            relative_path for relative_path, is_present in zip(WINDOWS_AGILITY_SDK_BINARIES, present) if not is_present
+            relative_path
+            for relative_path, is_present in zip(WINDOWS_AGILITY_SDK_BINARIES, present, strict=False)
+            if not is_present
         )
         return False, missing
     return False, ()
