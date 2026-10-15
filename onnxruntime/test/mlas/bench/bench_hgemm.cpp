@@ -87,3 +87,10 @@ static void GemmLLMSizeProducts(benchmark::Benchmark* b) {
 }
 BENCHMARK_CAPTURE(HGEMM, LLM_TransB, false, true)->Apply(GemmLLMSizeProducts)->UseRealTime();
 BENCHMARK_CAPTURE(HGEMM, LLM_B, false, false)->Apply(GemmLLMSizeProducts)->UseRealTime();
+
+BENCHMARK_CAPTURE(HGEMM, GEMV_TransA_TransB, true, true)->Apply(GemmSizeWithOne)->UseRealTime();
+BENCHMARK_CAPTURE(HGEMM, GEMV_TransA_B, true, false)->Apply(GemmSizeWithOne)->UseRealTime();
+BENCHMARK_CAPTURE(HGEMM, NORMAL_TransA_TransB, true, true)->Apply(GemmSizeProducts)->UseRealTime();
+BENCHMARK_CAPTURE(HGEMM, NORMAL_TransA_B, true, false)->Apply(GemmSizeProducts)->UseRealTime();
+BENCHMARK_CAPTURE(HGEMM, LLM_TransA_TransB, true, true)->Apply(GemmLLMSizeProducts)->UseRealTime();
+BENCHMARK_CAPTURE(HGEMM, LLM_TransA_B, true, false)->Apply(GemmLLMSizeProducts)->UseRealTime();
