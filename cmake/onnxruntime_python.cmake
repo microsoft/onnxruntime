@@ -213,7 +213,7 @@ set(onnxruntime_pybind11_state_static_providers
 if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_qnn)
 endif()
-if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
+if(onnxruntime_WEBGPU_LINKED_INTO_HOST)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_webgpu)
 endif()
 if(WIN32)
@@ -348,6 +348,9 @@ if (onnxruntime_USE_CUDA AND NOT WIN32 AND onnxruntime_BUILD_CUDA_QUANT_PREPROCE
     ${cutlass_SOURCE_DIR}/tools/util/include
   )
   target_compile_definitions(onnxruntime_cuda_quant_preprocess PRIVATE USE_CUDA)
+  # Offline packing must honor force_arch=90 even when the build excludes SM90 GEMM kernels.
+  # Otherwise get_arch_for_mixed_gemm_weight_preprocess silently substitutes the SM80 layout.
+  target_compile_options(onnxruntime_cuda_quant_preprocess PRIVATE "-UEXCLUDE_SM_90")
   target_link_libraries(onnxruntime_cuda_quant_preprocess PRIVATE
     onnxruntime_common
     Boost::mp11
@@ -1253,7 +1256,6 @@ if (onnxruntime_USE_WEBGPU)
       add_custom_command(
         TARGET onnxruntime_pybind11_state POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
-            $<TARGET_FILE:Microsoft::DXIL>
             $<TARGET_FILE:Microsoft::DirectXShaderCompiler>
             $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
       )
@@ -1261,7 +1263,6 @@ if (onnxruntime_USE_WEBGPU)
       add_custom_command(
         TARGET onnxruntime_pybind11_state POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
-            $<TARGET_FILE_DIR:dxcompiler>/dxil.dll
             $<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll
             $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
       )

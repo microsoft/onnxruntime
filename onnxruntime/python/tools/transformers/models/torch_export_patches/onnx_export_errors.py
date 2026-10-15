@@ -72,6 +72,8 @@ def _register_cache_serialization(verbose: int = 0) -> dict[str, bool]:
     import packaging.version as pv  # noqa: PLC0415
     import torch  # noqa: PLC0415
 
+    from .cache_helper import get_dynamic_cache_key_value  # noqa: PLC0415
+
     try:
         from transformers.cache_utils import DynamicCache  # noqa: PLC0415
     except ImportError:
@@ -83,16 +85,19 @@ def _register_cache_serialization(verbose: int = 0) -> dict[str, bool]:
         MambaCache = None
 
     # MambaCache
-    unregistered_mamba_cache = True
-    if MambaCache is not None and MambaCache in torch.utils._pytree.SUPPORTED_NODES:
+    unregistered_mamba_cache = False
+    if MambaCache is None:
+        if verbose > 1:
+            print("[_register_cache_serialization] MambaCache is unavailable")
+    elif MambaCache in torch.utils._pytree.SUPPORTED_NODES:
         if verbose > 1:
             print(f"[_register_cache_serialization] {MambaCache} already registered")
         # It is already registered because bypass_export_some_errors was called
         # within a section already calling bypass_export_some_errors or transformers
         # has updated its code to do it.
         # No need to register and unregister then.
-        unregistered_mamba_cache = False
     else:
+        unregistered_mamba_cache = True
         if verbose:
             print("[_register_cache_serialization] register MambaCache")
         torch.utils._pytree.register_pytree_node(
@@ -129,7 +134,7 @@ def _register_cache_serialization(verbose: int = 0) -> dict[str, bool]:
             serialized_type_name=f"{DynamicCache.__module__}.{DynamicCache.__name__}",
             flatten_with_keys_fn=flatten_with_keys_dynamic_cache,
         )
-        torch.fx._pytree.register_pytree_flatten_spec(DynamicCache, lambda x, _: [x.key_cache, x.value_cache])
+        torch.fx._pytree.register_pytree_flatten_spec(DynamicCache, lambda x, _: list(get_dynamic_cache_key_value(x)))
 
         # check
         from .cache_helper import make_dynamic_cache  # noqa: PLC0415
@@ -138,7 +143,8 @@ def _register_cache_serialization(verbose: int = 0) -> dict[str, bool]:
         values, spec = torch.utils._pytree.tree_flatten(cache)
         cache2 = torch.utils._pytree.tree_unflatten(values, spec)
         # torch.fx._pytree.tree_flatten(cache)
-        assert len(cache2.key_cache) == 1
+        key_cache, _ = get_dynamic_cache_key_value(cache2)
+        assert len(key_cache) == 1
 
     return dict(DynamicCache=unregistered_dynamic_cache, MambaCache=unregistered_mamba_cache)
 
@@ -155,7 +161,8 @@ def _unregister(cls: type, verbose: int = 0):
     if hasattr(torch.utils._pytree, "_deregister_pytree_node"):
         # torch >= 2.7
         torch.utils._pytree._deregister_pytree_node(cls)
-    optree.unregister_pytree_node(cls, namespace="torch")
+    with contextlib.suppress(ValueError):
+        optree.unregister_pytree_node(cls, namespace="torch")
     if cls in torch.utils._pytree.SUPPORTED_NODES:
         import packaging.version as pv  # noqa: PLC0415
 
@@ -350,13 +357,13 @@ def bypass_export_some_errors(
                 print("[bypass_export_some_errors] modifies shape constraints")
             f_produce_guards_and_solve_constraints = torch._export.non_strict_utils.produce_guards_and_solve_constraints
             f__check_input_constraints_for_graph = torch._export.utils._check_input_constraints_for_graph
-            torch._export.non_strict_utils.produce_guards_and_solve_constraints = (
-                lambda *args, **kwargs: _catch_produce_guards_and_solve_constraints(
+            torch._export.non_strict_utils.produce_guards_and_solve_constraints = lambda *args, **kwargs: (
+                _catch_produce_guards_and_solve_constraints(
                     f_produce_guards_and_solve_constraints, *args, verbose=verbose, **kwargs
                 )
             )
-            torch._export.utils._check_input_constraints_for_graph = (
-                lambda *args, **kwargs: patch__check_input_constraints_for_graph(
+            torch._export.utils._check_input_constraints_for_graph = lambda *args, **kwargs: (
+                patch__check_input_constraints_for_graph(
                     f__check_input_constraints_for_graph, *args, verbose=verbose, **kwargs
                 )
             )

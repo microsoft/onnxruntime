@@ -151,7 +151,8 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
 
 Status TurboQuantFusedRotaryProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& packed_qkv = shader.AddInput("packed_qkv", ShaderUsage::UseUniform);
-  const auto& cos_cache = shader.AddInput("cos_cache", ShaderUsage::UseUniform);
+  const auto& cos_cache = shader.AddInput(
+      "cos_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
 
   if (use_seqlen_k_) {
@@ -233,7 +234,7 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
 
   program.AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank});
   program.AddInputs({
-      {cos_cache, ProgramTensorMetadataDependency::Rank},
+      {cos_cache, ProgramTensorMetadataDependency::TypeAndRank},
       {sin_cache, ProgramTensorMetadataDependency::Rank},
   });
 

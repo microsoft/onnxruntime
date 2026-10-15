@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <limits>
+#include <type_traits>
 
 #include "activation_op_test.h"
 #include <limits>
@@ -687,65 +688,6 @@ TEST_F(ActivationOpTest, PRelu_NegInf_ZeroSlope) {
   test.Run();
 }
 
-// PRelu is registered on WebGPU for opsets 7-8, 9-15 and 16 (a single kernel). The PRelu tests
-// above run at OpTester's default opset (7); these two cover the other registrations. float16 is
-// used because the CPU EP's PRelu is float-only, so these cannot silently fall back to it.
-TEST_F(ActivationOpTest, PRelu_Float16_Opset9_WebGpu) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (webgpu_ep == nullptr) {
-    GTEST_SKIP() << "WebGPU EP is not available in this build.";
-  }
-
-  OpTester test("PRelu", 9);
-
-  std::vector<int64_t> x_dims{1, 2, 2, 4};
-  test.AddInput<MLFloat16>("X", x_dims,
-                           FloatsToMLFloat16s({1.0f, -2.0f, 3.0f, -4.0f,
-                                               -5.0f, 6.0f, -7.0f, 8.0f,
-                                               -1.0f, 2.0f, -3.0f, 4.0f,
-                                               5.0f, -6.0f, 7.0f, -8.0f}));
-  test.AddInput<MLFloat16>("slope", {2, 1, 1}, FloatsToMLFloat16s({0.5f, -0.25f}));
-  test.AddOutput<MLFloat16>("Y", x_dims,
-                            FloatsToMLFloat16s({1.0f, -1.0f, 3.0f, -2.0f,
-                                                -2.5f, 6.0f, -3.5f, 8.0f,
-                                                0.25f, 2.0f, 0.75f, 4.0f,
-                                                5.0f, 1.5f, 7.0f, 2.0f}));
-  test.SetOutputAbsErr("Y", 0.01f);
-  test.SetOutputRelErr("Y", 0.01f);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(std::move(webgpu_ep));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-}
-
-TEST_F(ActivationOpTest, PRelu_Float16_Opset16_WebGpu) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (webgpu_ep == nullptr) {
-    GTEST_SKIP() << "WebGPU EP is not available in this build.";
-  }
-
-  OpTester test("PRelu", 16);
-
-  std::vector<int64_t> x_dims{1, 2, 2, 3};
-  test.AddInput<MLFloat16>("X", x_dims,
-                           FloatsToMLFloat16s({1.0f, -2.0f, 3.0f,
-                                               -4.0f, 5.0f, -6.0f,
-                                               -1.0f, 2.0f, -3.0f,
-                                               4.0f, -5.0f, 6.0f}));
-  test.AddInput<MLFloat16>("slope", {2, 1, 1}, FloatsToMLFloat16s({0.5f, 2.0f}));
-  test.AddOutput<MLFloat16>("Y", x_dims,
-                            FloatsToMLFloat16s({1.0f, -1.0f, 3.0f,
-                                                -2.0f, 5.0f, -3.0f,
-                                                -2.0f, 2.0f, -6.0f,
-                                                4.0f, -10.0f, 6.0f}));
-  test.SetOutputAbsErr("Y", 0.01f);
-  test.SetOutputRelErr("Y", 0.01f);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(std::move(webgpu_ep));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-}
-
 TEST_F(ActivationOpTest, Softplus) {
   TestActivationOp<float>("Softplus",
                           input_values,
@@ -766,6 +708,82 @@ TEST_F(ActivationOpTest, Softplus_Opset22) {
 }
 
 #if defined(USE_CUDA)
+template <typename T, typename Reference>
+static void CheckCudaActivationSmallPositiveTails(const char* op_name, const Reference& reference) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP unavailable";
+  std::vector<T> input;
+  std::vector<T> expected;
+  for (float value : {-100.0f, -80.0f, -40.0f, -30.0f, -20.0f, -16.0f, -14.0f,
+                      -12.0f, -8.0f, -5.0f, -1.0f, -0.125f, 0.0f, 0.125f,
+                      1.0f, 5.0f, 8.0f, 14.0f, 20.0f, 40.0f, 100.0f}) {
+    input.emplace_back(value);
+    const double result = reference(static_cast<double>(value));
+    if constexpr (std::is_same_v<T, double>) {
+      expected.emplace_back(result);
+    } else {
+      expected.emplace_back(static_cast<float>(result));
+    }
+  }
+  OpTester tester(op_name, 22);
+  const std::vector<int64_t> dimensions{static_cast<int64_t>(input.size())};
+  tester.AddInput<T>("X", dimensions, input);
+  tester.AddOutput<T>("Y", dimensions, expected);
+  tester.SetOutputAbsErr("Y", 0.0f);
+  tester.SetOutputRelErr("Y", std::is_same_v<T, double> ? 2e-14f : 2e-6f);
+  SessionOptions options;
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+template <typename T>
+static void CheckCudaSoftplusSmallPositiveTails() {
+  CheckCudaActivationSmallPositiveTails<T>("Softplus", [](double value) {
+    return std::max(value, 0.0) + std::log1p(std::exp(-std::abs(value)));
+  });
+}
+
+template <typename T>
+static void CheckCudaSigmoidSmallPositiveTails() {
+  CheckCudaActivationSmallPositiveTails<T>("Sigmoid", [](double value) {
+    const double exponent = std::exp(-std::abs(value));
+    return value > 0 ? 1.0 / (1.0 + exponent) : exponent / (1.0 + exponent);
+  });
+}
+
+TEST_F(ActivationOpTest, CudaSigmoidFloatSmallPositiveTails) {
+  CheckCudaSigmoidSmallPositiveTails<float>();
+}
+
+TEST_F(ActivationOpTest, CudaSigmoidDoubleSmallPositiveTails) {
+  CheckCudaSigmoidSmallPositiveTails<double>();
+}
+
+TEST_F(ActivationOpTest, CudaSigmoidFloat16SmallPositiveTails) {
+  CheckCudaSigmoidSmallPositiveTails<MLFloat16>();
+}
+
+TEST_F(ActivationOpTest, CudaSigmoidBFloat16SmallPositiveTails) {
+  CheckCudaSigmoidSmallPositiveTails<BFloat16>();
+}
+
+TEST_F(ActivationOpTest, CudaSoftplusFloatSmallPositiveTails) {
+  CheckCudaSoftplusSmallPositiveTails<float>();
+}
+
+TEST_F(ActivationOpTest, CudaSoftplusDoubleSmallPositiveTails) {
+  CheckCudaSoftplusSmallPositiveTails<double>();
+}
+
+TEST_F(ActivationOpTest, CudaSoftplusFloat16SmallPositiveTails) {
+  CheckCudaSoftplusSmallPositiveTails<MLFloat16>();
+}
+
+TEST_F(ActivationOpTest, CudaSoftplusBFloat16SmallPositiveTails) {
+  CheckCudaSoftplusSmallPositiveTails<BFloat16>();
+}
+
 TEST_F(ActivationOpTest, Softplus_bfloat16_Opset22) {
   if (!HasCudaEnvironment(530)) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";

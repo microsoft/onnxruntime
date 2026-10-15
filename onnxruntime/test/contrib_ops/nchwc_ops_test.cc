@@ -13,6 +13,26 @@ namespace onnxruntime {
 namespace test {
 namespace {
 
+TEST(NchwcOpsTest, ReorderOutputRejectsUnalignedInputChannels) {
+  const int64_t block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
+  if (block_size <= 1) {
+    GTEST_SKIP() << "NCHWc blocking is not enabled on this platform.";
+  }
+
+  const int64_t input_channels = block_size - 1;
+  OpTester test("ReorderOutput", 1, kMSNchwcDomain);
+  test.AddAttribute("channels", int64_t{1});
+  test.AddAttribute("channels_last", int64_t{0});
+  test.AddInput<float>("X", {1, input_channels, 2, 2},
+                       std::vector<float>(static_cast<size_t>(input_channels) * 4, 0.0f));
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {0.0f, 0.0f, 0.0f, 0.0f});
+
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Input channels must match the NCHWc block-aligned channel count.")
+      .ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
+}
+
 void RunInvalidNchwcConvTest(const std::vector<int64_t>& input_shape,
                              const std::vector<int64_t>& filter_shape,
                              const std::vector<int64_t>* bias_shape,
@@ -37,6 +57,27 @@ void RunInvalidNchwcConvTest(const std::vector<int64_t>& input_shape,
       .RunWithConfig();
 }
 
+TEST(NchwcOpsTest, ReorderOutputRejectsExtraChannelBlock) {
+  const int64_t block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
+  if (block_size <= 1) {
+    GTEST_SKIP() << "NCHWc blocking is not enabled on this platform.";
+  }
+
+  const int64_t input_channels = 2 * block_size;
+  OpTester test("ReorderOutput", 1, kMSNchwcDomain);
+  test.AddAttribute("channels", block_size);
+  test.AddAttribute("channels_last", int64_t{0});
+  test.AddInput<float>("X", {1, input_channels, 2, 2},
+                       std::vector<float>(static_cast<size_t>(input_channels) * 4, 0.0f));
+  test.AddOutput<float>("Y", {1, block_size, 2, 2},
+                        std::vector<float>(static_cast<size_t>(block_size) * 4, 0.0f));
+
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Input channels must match the NCHWc block-aligned channel count.")
+      .ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
+}
+
 }  // namespace
 
 TEST(NchwcOpsTest, ConvRejectsUnalignedOutputChannels) {
@@ -44,7 +85,6 @@ TEST(NchwcOpsTest, ConvRejectsUnalignedOutputChannels) {
   if (block_size <= 1) {
     GTEST_SKIP() << "NCHWc blocking is not enabled on this platform.";
   }
-
   RunInvalidNchwcConvTest({0, 1, 1, 1}, {block_size - 1, 1, 1, 1}, nullptr, 1,
                           "NCHWc Conv input and filter shapes do not match a supported blocked layout.");
 }

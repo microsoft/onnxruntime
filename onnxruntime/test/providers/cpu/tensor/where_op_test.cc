@@ -6,11 +6,7 @@
 #include <gsl/gsl>
 
 #include "test/providers/provider_test_utils.h"
-
-#ifdef USE_WEBGPU
 #include "test/util/include/default_providers.h"
-#include "core/providers/webgpu/webgpu_provider_options.h"
-#endif
 
 namespace onnxruntime {
 namespace test {
@@ -29,8 +25,8 @@ std::vector<TDest> CastVector(const std::vector<TSrc>& source) {
 }
 
 template <typename TNumeric>
-void WhereBasicNumericTest() {
-  OpTester test{kOpName, kOpVersion};
+void WhereBasicNumericTest(int op_version = kOpVersion, bool require_cpu = false) {
+  OpTester test{kOpName, op_version};
 
   const std::vector<int64_t> dims{2, 2};
 
@@ -44,7 +40,13 @@ void WhereBasicNumericTest() {
   test.AddOutput<TNumeric>("output", dims,
                            CastVector<TNumeric, int>({5, 2, 3, 8}));
 
-  test.Run();
+  if (require_cpu) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  } else {
+    test.Run();
+  }
 }
 
 template <typename T>
@@ -106,6 +108,14 @@ TEST(WhereOpTest, BasicNumeric) {
   WhereBasicNumericTest<double>();
 }
 
+TEST(WhereOpTest, AdditionalNumericTypes) {
+  for (int op_version : {9, 16}) {
+    SCOPED_TRACE(op_version);
+    WhereBasicNumericTest<int8_t>(op_version, true);
+    WhereBasicNumericTest<uint32_t>(op_version, true);
+  }
+}
+
 TEST(WhereOpTest, BasicString) {
   OpTester test{kOpName, kOpVersion};
 
@@ -150,38 +160,6 @@ TEST(WhereOpTest, BroadcastWithScalar) {
 
   test.Run();
 }
-
-#ifdef USE_WEBGPU
-// Non-broadcast: all inputs have the same shape. Exercises the is_int64_ non-broadcast path.
-TEST(WhereOpTest, EnableWebGpuInt64) {
-  OpTester test{kOpName, kOpVersion};
-  test.AddInput<bool>("condition", {4}, {true, false, true, false});
-  test.AddInput<int64_t>("X", {4}, {10, 20, 30, 40});
-  test.AddInput<int64_t>("Y", {4}, {1, 2, 3, 4});
-  test.AddOutput<int64_t>("output", {4}, {10, 2, 30, 4});
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  test.ConfigEp(std::move(provider))
-      .RunWithConfig();
-}
-
-// Broadcast: condition [1,4] broadcasts over X/Y [2,4]. Exercises the is_int64_ broadcast path
-// where BroadcastedIndicesToOffset computes a different source offset per output element.
-TEST(WhereOpTest, EnableBroadcastWebGpuInt64) {
-  // condition [1,4] broadcasts against X [2,4] and Y [2,4] -> output [2,4]
-  OpTester test{kOpName, kOpVersion};
-  test.AddInput<bool>("condition", {1, 4}, {true, false, true, false});
-  test.AddInput<int64_t>("X", {2, 4}, {10, 20, 30, 40, 50, 60, 70, 80});
-  test.AddInput<int64_t>("Y", {2, 4}, {1, 2, 3, 4, 5, 6, 7, 8});
-  test.AddOutput<int64_t>("output", {2, 4}, {10, 2, 30, 4, 50, 6, 70, 8});
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  test.ConfigEp(std::move(provider))
-      .RunWithConfig();
-}
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

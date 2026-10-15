@@ -68,6 +68,7 @@ class PagedAttention final : public CudaKernel {
   // 1 = it fits. Resolved once per node because it only depends on head_size / group size.
   mutable std::atomic<int> xqa_shared_memory_ok_{-1};
   mutable std::atomic<int> xqa_spec_dec_shared_memory_ok_{-1};
+  int xqa_shared_memory_limit_for_test_;
   // No node-scalar latch for cuDNN paged: the graph cache in cudnn_flash_attention.cc is
   // thread_local and keyed on the full PagedGraphParams (shape + handle), so buildability is a
   // per-(thread, shape) property, not a per-node one. ComputeInternal calls try_build_paged_graph

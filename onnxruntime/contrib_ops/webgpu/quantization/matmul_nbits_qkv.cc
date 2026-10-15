@@ -190,7 +190,7 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   ORT_ENFORCE(norm_scale->Shape().Size() == K_, "norm_scale must have shape [K].");
 
   const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_);
-  int32_t subgroup_matrix_config_index = -1;
+  std::optional<SubgroupMatrixConfig> subgroup_matrix_config;
   const bool would_use_subgroup_unfused =
       CanApplySubgroupMatrixMatMulNBits(context,
                                         accuracy_level_,
@@ -200,7 +200,7 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                         K,
                                         static_cast<uint32_t>(bits_),
                                         q_output->DataType() == DataTypeImpl::GetType<MLFloat16>(),
-                                        subgroup_matrix_config_index,
+                                        subgroup_matrix_config,
                                         M);
   const bool would_use_dp4a_unfused =
       !would_use_subgroup_unfused &&

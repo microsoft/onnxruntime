@@ -1,0 +1,41 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+//
+// SparsePagedAttention — scatter the current K/V into the paged main cache
+// through the scheduler-provided slot_mapping.
+//
+// slot_mapping[token] is a flat cache slot (physical_block * block_size +
+// slot_in_block). A negative entry suppresses the write for that token; an
+// entry beyond the cache is suppressed too. The i32 value is range-checked
+// before it is converted to u32, so a hostile or stale mapping can never turn
+// into a huge unsigned offset.
+//
+// Layout:
+//   key / value             : (token_count, kv_num_heads * head_size)
+//   key_cache / value_cache : (num_blocks, block_size, kv_num_heads, head_size)
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .getByOffset .setByOffset
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.dispatch_size);
+
+  // global_idx enumerates (token_idx, kv_head_idx, dim_idx) in row-major order.
+  let dim_idx = global_idx % uniforms.head_size;
+  let kv_head_idx = (global_idx / uniforms.head_size) % uniforms.kv_num_heads;
+  let token_idx = global_idx / (uniforms.kv_num_heads * uniforms.head_size);
+
+  let slot = slot_mapping.getByOffset(token_idx);
+  if (slot < 0) {
+    return;
+  }
+  let slot_index = u32(slot);
+  if (slot_index >= uniforms.cache_slot_count) {
+    return;
+  }
+
+  let src_offset = (token_idx * uniforms.kv_num_heads + kv_head_idx) * uniforms.head_size + dim_idx;
+  let dst_offset = (slot_index * uniforms.kv_num_heads + kv_head_idx) * uniforms.head_size + dim_idx;
+  key_cache.setByOffset(dst_offset, key.getByOffset(src_offset));
+  value_cache.setByOffset(dst_offset, value.getByOffset(src_offset));
+}

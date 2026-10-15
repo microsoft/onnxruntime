@@ -44,25 +44,35 @@ class ORTBertPretrainTest(unittest.TestCase):
     def _create_allgather_ut_model(
         self,
         shape,
-        axis,
+        axis=None,
         # Element type for AllGather's input and output.
         elem_type: TensorProto.DataType = TensorProto.FLOAT,
         # Element type for Model's input and output.
         communication_elem_type: TensorProto.DataType = TensorProto.FLOAT,
+        group_size=None,
     ):
         X = helper.make_tensor_value_info("X", elem_type, shape)  # noqa: N806
-        _, group_size = self._get_rank_size()
-        output_shape = [s * group_size if axis_index == axis else s for axis_index, s in enumerate(shape)]
+        if group_size is None:
+            _, group_size = self._get_rank_size()
+        effective_axis = 1 if axis is None else axis
+        output_shape = [
+            size * group_size if axis_index == effective_axis else size for axis_index, size in enumerate(shape)
+        ]
         Y = helper.make_tensor_value_info("Y", elem_type, output_shape)  # noqa: N806
+
+        def make_allgather_node(input_name, output_name):
+            attributes = {"domain": "com.microsoft", "group_size": group_size}
+            if axis is not None:
+                attributes["axis"] = axis
+            return helper.make_node("AllGather", [input_name], [output_name], **attributes)
+
         if elem_type != communication_elem_type:
             # With elem_type and external_element_type, we use the pattern
             #   model input type -> Cast -> elem_type -> AllGather -> elem_type -> Cast -> model output type
             # so that we can test boolean tensors and other special types.
             node_defs = [
                 helper.make_node("Cast", ["X"], ["X_casted"], to=communication_elem_type),
-                helper.make_node(
-                    "AllGather", ["X_casted"], ["Y_casted"], domain="com.microsoft", group_size=group_size, axis=axis
-                ),
+                make_allgather_node("X_casted", "Y_casted"),
                 helper.make_node("Cast", ["Y_casted"], ["Y"], to=elem_type),
             ]
         else:
@@ -71,7 +81,7 @@ class ORTBertPretrainTest(unittest.TestCase):
             # is reduced to
             #   model input type -> AllGather -> model output type
             node_defs = [
-                helper.make_node("AllGather", ["X"], ["Y"], domain="com.microsoft", group_size=group_size, axis=axis),
+                make_allgather_node("X", "Y"),
             ]
         graph_def = helper.make_graph(
             node_defs,
@@ -271,6 +281,63 @@ class ORTBertPretrainTest(unittest.TestCase):
             expected_output = np.concatenate((expected_output, np.ones((128, 128), dtype=np.float32) * (_ + 1)), axis=1)
 
         np.testing.assert_allclose(outputs[0], expected_output, err_msg=f"{rank}: AllGather (axis1): results mismatch")
+
+    @unittest.skipIf(not ort.has_collective_ops(), reason="onnx not compiled with mpi support")
+    def test_all_gather_default_axis(self):
+        model = self._create_allgather_ut_model((8, 8))
+        all_gather_node = next(node for node in model.graph.node if node.op_type == "AllGather")
+        self.assertNotIn("axis", {attribute.name for attribute in all_gather_node.attribute})
+
+        rank, size = self._get_rank_size()
+        ort_sess = ort.InferenceSession(
+            model.SerializeToString(),
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            provider_options=[{"device_id": str(rank)}, {}],
+        )
+
+        input = np.full((8, 8), rank, dtype=np.float32)
+        output = ort_sess.run(None, {"X": input})[0]
+        expected_output = np.concatenate([np.full_like(input, peer_rank) for peer_rank in range(size)], axis=1)
+        np.testing.assert_allclose(
+            output, expected_output, err_msg=f"{rank}: AllGather (default axis): results mismatch"
+        )
+
+    @unittest.skipIf(not ort.has_collective_ops(), reason="onnx not compiled with mpi support")
+    def test_all_gather_group_size_mismatch(self):
+        rank, size = self._get_rank_size()
+        model = self._create_allgather_ut_model((1,), 0, group_size=size + 1)
+        ort_sess = ort.InferenceSession(
+            model.SerializeToString(),
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            provider_options=[{"device_id": str(rank)}, {}],
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "group_size must match the NCCL communicator size"):
+            ort_sess.run(None, {"X": np.array([rank], dtype=np.float32)})
+
+    @unittest.skipIf(not ort.has_collective_ops(), reason="onnx not compiled with mpi support")
+    def test_all_gather_invalid_axis_unknown_rank(self):
+        rank, size = self._get_rank_size()
+        input_value_info = helper.make_tensor_value_info("X", TensorProto.FLOAT, None)
+        output_value_info = helper.make_tensor_value_info("Y", TensorProto.FLOAT, None)
+        node = helper.make_node(
+            "AllGather",
+            ["X"],
+            ["Y"],
+            domain="com.microsoft",
+            axis=2,
+            group_size=size,
+        )
+        graph = helper.make_graph([node], "", [input_value_info], [output_value_info])
+        model = self._create_model_with_opsets(graph)
+        ort_sess = ort.InferenceSession(
+            model.SerializeToString(),
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            provider_options=[{"device_id": str(rank)}, {}],
+        )
+
+        with self.assertRaisesRegex(RuntimeError, r"axis must be in the range \[0, 2\)"):
+            ort_sess.run(None, {"X": np.ones((2, 2), dtype=np.float32)})
 
     @unittest.skipIf(not ort.has_collective_ops(), reason="onnx not compiled with mpi support")
     @parameterized.expand(

@@ -263,17 +263,23 @@ if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
 endif()
 
 if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
-  # CUDA 13 diagnoses qualified friend declarations in Abseil and Protobuf as 970-D,
-  # and Protobuf's always_inline template redeclaration as 2189-D.
+  # CUDA 13 diagnoses Protobuf's intentional signed enum pointer-mask conversion as 68-D,
+  # qualified friend declarations in Abseil and Protobuf as 970-D, and Protobuf's
+  # always_inline template redeclaration as 2189-D.
   list(APPEND _cuda_plugin_shared_compile_options
+      "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=68>"
       "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=970>"
       "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2189>"
   )
 
   if (MSVC)
-    # Suppress unrecognized __pragma warnings emitted from CUDA headers in device code.
+    # Suppress diagnostics from CUDA 13 headers: unrecognized __pragma in device code,
+    # cuda_fp4.hpp's unused parameter, and CCCL's unmatched #pragma warning(pop)
+    # in the MSVC host compiler.
     list(APPEND _cuda_plugin_shared_compile_options
         "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4100>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4193>"
     )
   endif()
 endif()
@@ -328,6 +334,11 @@ target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
   ${_cuda_plugin_shared_compile_options}
   "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">"
 )
+
+if(MSVC)
+  # NVCC emits CodeView references to a host compiler PDB that it does not retain.
+  target_link_options(onnxruntime_providers_cuda_plugin PRIVATE "/IGNORE:4099")
+endif()
 
 # SM-specific OBJECT libraries — compiled with restricted CUDA architectures.
 # SM90/SM120 TMA and LLM contain MoE and MatMulNBits kernels (contrib ops only).
@@ -416,11 +427,18 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   endif()
 
   # LLM OBJECT library: SM75+ (backward compatible with fpA_intB_gemv/gemm which support SM75).
-  # FP4 QMoE sources are compiled separately at native SM120 below. Keep the broad LLM target
-  # on virtual SM120 PTX under MSVC to avoid CCCL tcgen05 host-compile failures.
+  # FP4 QMoE sources are compiled separately at native SM120 below. Under MSVC, keep virtual
+  # SM120 PTX and add non-"a" native SASS to avoid CCCL tcgen05 host-compile failures.
   if(_cuda_plugin_llm_srcs)
+    set(_plugin_llm_extra_compile_options)
     if(MSVC)
       onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75 REPLACE_SM120_REAL_WITH_VIRTUAL)
+      if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR "120a" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+        # Virtual compute_120 PTX alone needs a driver as new as the toolkit to JIT; add native non-"a" SASS
+        # (no tcgen05 path) so the ordinary LLM kernels (fpA_intB GEMV/GEMM) run without JIT.
+        list(APPEND _plugin_llm_extra_compile_options
+             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-gencode=arch=compute_120,code=sm_120>")
+      endif()
     else()
       onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75)
     endif()
@@ -430,7 +448,7 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
         PARENT onnxruntime_providers_cuda_plugin
         CUDA_ARCHITECTURES "${_plugin_llm_cuda_architectures}"
         NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
-        COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+        COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options} ${_plugin_llm_extra_compile_options}
         SOURCES ${_cuda_plugin_llm_srcs})
     endif()
   endif()

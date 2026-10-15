@@ -130,6 +130,8 @@ MlasNeonErfFP16Kernel(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N)
         erf_approx = MlasMinimumFloat16(erf_approx, vone);
         erf_approx = MlasMaximumFloat16(erf_approx, vneg_one);
         MLAS_FLOAT16X8 result = MlasSelectFloat16(use_mask, erf_approx, sign);
+        MLAS_UINT16X8 not_nan_mask = MlasCompareEqualFloat16(x, x);
+        result = MlasSelectFloat16(not_nan_mask, result, x);
         MlasStoreFloat16x8(&output[i], result);
     }
 

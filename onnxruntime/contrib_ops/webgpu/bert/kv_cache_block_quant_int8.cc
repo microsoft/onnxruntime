@@ -142,7 +142,8 @@ Status BlockQuantInt8CopyToKvCache(onnxruntime::webgpu::ComputeContext& context,
 
 Status KvCacheBlockQuantInt8FusedRotaryProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& packed_qkv = shader.AddInput("packed_qkv", ShaderUsage::UseUniform);
-  const auto& cos_cache = shader.AddInput("cos_cache", ShaderUsage::UseUniform);
+  const auto& cos_cache = shader.AddInput(
+      "cos_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
 
   if (use_seqlen_k_) {
@@ -221,7 +222,7 @@ Status BlockQuantInt8ApplyRotaryAndCopyToKvCache(
       multi_rotary_cache_concat_offset};
   program.AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank});
   program.AddInputs({
-      {cos_cache, ProgramTensorMetadataDependency::Rank},
+      {cos_cache, ProgramTensorMetadataDependency::TypeAndRank},
       {sin_cache, ProgramTensorMetadataDependency::Rank},
   });
   if (use_seqlen_k) {

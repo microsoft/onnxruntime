@@ -94,7 +94,7 @@ extends:
           enabled: false
           justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
     pool:
-      name: 'onnxruntime-Win-CPU-VS2022-Latest'
+      name: onnxruntime-Win-CPU-2022
       os: windows
 
     stages:
@@ -106,7 +106,7 @@ extends:
         - job: Validate
           displayName: 'Validate parameter combinations'
           pool:
-            name: 'onnxruntime-Win-CPU-VS2022-Latest'
+            name: onnxruntime-Win-CPU-2022
             os: windows
           steps:
           - checkout: none
@@ -135,4 +135,4 @@ extends:
           cmake_windows_x64_cuda_archs: '75-real;80-real;86-real;89-real;120-real'
           cmake_windows_arm64_cuda_archs: '120-real;121-real'
           cmake_linux_x64_cuda_archs: '75-real;80-real;86-real;89-real;90-real;120-real'
-          cmake_linux_aarch64_cuda_archs: '89-real;90-real;120-real;121-real'
+          cmake_linux_aarch64_cuda_archs: '87-real;89-real;90-real;100-real;110-real;120-real;121-real'

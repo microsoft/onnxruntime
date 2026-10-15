@@ -24,6 +24,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+using namespace onnxruntime::contrib::linear_attention_gates_helper;
+
 namespace {
 
 // Matches OP_Sigmoid in core/providers/cuda/activation/activations_impl.cu: the branch keeps the

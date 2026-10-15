@@ -82,6 +82,16 @@ class GeneratorBasicTest(unittest.TestCase):
         self.assertIn("MainFunctionStart();", out)
         self.assertIn("MainFunctionEnd();", out)
 
+    def test_source_references_have_no_trailing_whitespace(self) -> None:
+        for generator in ("static-cpp", "static-cpp-literal"):
+            with self.subTest(generator=generator):
+                out = _gen("\n \t\nlet value = 1; \t\n", generator=generator, preserve=True)
+                references = [line for line in out.splitlines() if line.startswith("// ")]
+                self.assertTrue(references)
+                self.assertTrue(any(line.endswith("|") for line in references))
+                self.assertTrue(any(line.endswith("let value = 1;") for line in references))
+                self.assertTrue(all(line == line.rstrip() for line in out.splitlines()))
+
 
 class GeneratorIfTest(unittest.TestCase):
     def test_if_else(self) -> None:

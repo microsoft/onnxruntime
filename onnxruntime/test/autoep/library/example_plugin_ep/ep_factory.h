@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <array>
 #include <mutex>
 
 #include "ep_arena.h"
@@ -17,7 +18,9 @@
 /// </summary>
 class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
  public:
-  ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger);
+  ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger,
+                   bool create_duplicate_virtual_devices = false);
+  ~ExampleEpFactory();
 
   OrtDataTransferImpl* GetDataTransfer() const {
     return data_transfer_impl_.get();
@@ -119,6 +122,8 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   const std::string vendor_{"Contoso"};    // EP vendor name
   const uint32_t vendor_id_{0xB357};       // EP vendor ID
   const std::string ep_version_{"0.1.0"};  // EP version
+  const bool create_duplicate_virtual_devices_{false};
+  std::array<OrtHardwareDevice*, 2> virtual_hardware_devices_{};
 
   // CPU allocator so we can control the arena behavior. optional as ORT always provides a CPU allocator if needed.
   Ort::MemoryInfo default_memory_info_;

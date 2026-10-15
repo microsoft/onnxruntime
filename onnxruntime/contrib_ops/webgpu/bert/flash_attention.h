@@ -58,6 +58,7 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"copy_size", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"tile_size", ProgramUniformVariableDataType::Uint32},
                                           {"num_heads", ProgramUniformVariableDataType::Uint32},
                                           {"batch_size", ProgramUniformVariableDataType::Uint32},
@@ -82,7 +83,8 @@ class PrepareIndirectDispatchProgram final : public Program<PrepareIndirectDispa
       {"tile_size", ProgramUniformVariableDataType::Uint32},
       {"num_heads", ProgramUniformVariableDataType::Uint32},
       {"num_q_tiles", ProgramUniformVariableDataType::Uint32},
-      {"batch_size", ProgramUniformVariableDataType::Uint32});
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"present_sequence_length", ProgramUniformVariableDataType::Uint32});
 };
 
 class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
@@ -190,18 +192,18 @@ class FlashAttentionPagedPrefillProgram final : public Program<FlashAttentionPag
   bool q_varlen_;
 };
 
-Status ComputeFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
-                                         const Tensor* q,
-                                         const Tensor* key_cache,
-                                         const Tensor* value_cache,
-                                         const Tensor* block_table,
-                                         Tensor* output,
-                                         const Tensor* seqlen_k,
-                                         const Tensor* seqlens_q,
-                                         const WebgpuAttentionParameters& parameters,
-                                         uint32_t block_size,
-                                         uint32_t max_num_blocks_per_seq,
-                                         const Tensor* cumulative_seqlens_q = nullptr);
+Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
+                                       const Tensor* q,
+                                       const Tensor* key_cache,
+                                       const Tensor* value_cache,
+                                       const Tensor* block_table,
+                                       Tensor* output,
+                                       const Tensor* seqlen_k,
+                                       const Tensor* seqlens_q,
+                                       const WebgpuAttentionParameters& parameters,
+                                       uint32_t block_size,
+                                       uint32_t max_num_blocks_per_seq,
+                                       const Tensor* cumulative_seqlens_q = nullptr);
 
 class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecodeQKVProgram> {
  public:
@@ -260,6 +262,7 @@ class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionD
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"head_size_vec", ProgramUniformVariableDataType::Uint32},
                                           {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"num_head_size_tile", ProgramUniformVariableDataType::Uint32},
                                           {"batch_heads", ProgramUniformVariableDataType::Uint32},
                                           {"new_sequence_length", ProgramUniformVariableDataType::Uint32},
@@ -377,11 +380,11 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 //
 // The shader uses only shared-memory algorithms (no subgroup intrinsics), so
 // it runs correctly on every WebGPU adapter — no adapter-class gate.
-bool ShouldRunFusedPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
-                                bool is_fp16,
-                                int max_seqlen_q,
-                                int head_size,
-                                int block_size);
+bool CanApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
+                                        bool is_fp16,
+                                        int max_seqlen_q,
+                                        int head_size,
+                                        int block_size);
 
 bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
 
