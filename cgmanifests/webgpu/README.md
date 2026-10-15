@@ -1,11 +1,22 @@
-# WebGPU Component Governance manifest
+# WebGPU Component Governance workflows
 
 This directory contains the WebGPU-specific Component Governance manifest for ONNX Runtime. It covers Dawn and the
 Dawn-derived dependency graph used when building the WebGPU Execution Provider.
 
+There are two complementary workflows:
+
+- The [Dawn upgrade tool](../../plugin-ep-webgpu/tools/dawn/README.md) maintains the reviewed manifest below while
+  coordinating archive pins, dependency hashes, patches, and supported packaging migrations.
+- WebGPU plugin pipelines [generate a build-input inventory](BUILD-INVENTORY.md) from the actual fetched Dawn
+  dependencies and scan that generated artifact. This includes fetched build/test inputs and does not replace
+  the reviewed runtime/development classifications in the maintained manifest.
+
+## Maintained manifest
+
 The manifest is named `cgmanifest.webgpu.json`, not `cgmanifest.json`, so default whole-repository Component
-Governance scans do not pick it up automatically. WebGPU packaging and NOTICE-generation pipelines should stage or copy
-this file as `cgmanifest.json` in the source directory that they scan for WebGPU package notices.
+Governance scans do not pick it up automatically. The plugin packaging pipelines scan the generated build-input
+inventory described above. Consumers of this reviewed manifest must explicitly stage it as `cgmanifest.json`;
+package license/NOTICE contents still require review against the components actually redistributed.
 
 ## Classification policy
 
