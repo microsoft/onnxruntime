@@ -13,6 +13,7 @@
 #include <numeric>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -2375,6 +2376,44 @@ TEST(PagedAttention, WebGpu_OmittedCacheOutputs_IOBinding) {
     GTEST_SKIP() << "WebGPU EP not available.";
   }
   RunIoBindingCase(DefaultWebGpuExecutionProvider(), kWebGpuExecutionProvider, false, true);
+}
+
+TEST(PagedAttention, WebGpu_RejectsUnsupportedCacheTransforms) {
+  for (const char* feature : {"qk_rotation", "v_rotation", "key_scale_cache", "value_scale_cache"}) {
+    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    if (webgpu_ep == nullptr) {
+      GTEST_SKIP() << "WebGPU EP not available.";
+    }
+    SCOPED_TRACE(feature);
+    const bool is_rotation = std::string_view(feature) == "qk_rotation" || std::string_view(feature) == "v_rotation";
+    OpTester test("PagedAttention", 1, kMSDomain);
+    test.AddAttribute<int64_t>("num_heads", 1);
+    test.AddAttribute<int64_t>("kv_num_heads", 1);
+    if (is_rotation) {
+      test.AddAttribute<std::string>(feature, "HADAMARD");
+    }
+    test.AddInput<MLFloat16>("query", {1, 16}, std::vector<MLFloat16>(16));
+    test.AddInput<MLFloat16>("key", {1, 16}, std::vector<MLFloat16>(16));
+    test.AddInput<MLFloat16>("value", {1, 16}, std::vector<MLFloat16>(16));
+    test.AddInput<MLFloat16>("key_cache", {1, 16, 1, 16}, std::vector<MLFloat16>(256));
+    test.AddInput<MLFloat16>("value_cache", {1, 16, 1, 16}, std::vector<MLFloat16>(256));
+    test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+    test.AddInput<int32_t>("past_seqlens", {1}, {0});
+    test.AddInput<int32_t>("block_table", {1, 1}, {0});
+    if (!is_rotation) {
+      const int input_index = std::string_view(feature) == "key_scale_cache" ? 17 : 18;
+      for (int i = 8; i < input_index; ++i) {
+        test.AddOptionalInputEdge<MLFloat16>();
+      }
+      test.AddInput<MLFloat16>(feature, {1, 16, 1}, std::vector<MLFloat16>(16, MLFloat16(1.0f)));
+    }
+    test.AddOutput<MLFloat16>("output", {1, 16}, std::vector<MLFloat16>(16));
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(std::move(webgpu_ep));
+    test.Run(OpTester::ExpectResult::kExpectFailure,
+             is_rotation ? "Hadamard rotation is not supported" : "per-token scale caches are not supported",
+             {}, nullptr, &execution_providers);
+  }
 }
 
 TEST(PagedAttention, WebGpu_RejectsShortRotaryCache) {
