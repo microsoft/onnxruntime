@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <limits>
 #include <optional>
 
 namespace onnxruntime {
@@ -538,6 +539,29 @@ static Status LoadNodeAllocationStats(
   return Status::OK();
 }
 
+Status ParseCudaGqaWorkspaceMaxTotalSequenceLength(
+    const ConfigOptions& config_options,
+    int64_t& max_total_sequence_length) {
+  const auto knob =
+      config_options.GetConfigEntry(kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength);
+  if (!knob.has_value()) {
+    max_total_sequence_length = 0;
+    return Status::OK();
+  }
+
+  int64_t parsed = 0;
+  if (!TryParseStringWithClassicLocale(*knob, parsed) || parsed < 0 ||
+      parsed > std::numeric_limits<int32_t>::max()) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength,
+        " must be a decimal integer in [0, INT32_MAX], but got: '", *knob, "'");
+  }
+
+  max_total_sequence_length = parsed;
+  return Status::OK();
+}
+
 Status CreateAccountants(
     const ConfigOptions& config_options,
     const std::filesystem::path& model_path,
@@ -545,17 +569,8 @@ Status CreateAccountants(
   WorkspaceEstimatorConfig estimator_config{
       config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
       config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM)};
-  if (const auto knob =
-          config_options.GetConfigEntry(kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength);
-      knob.has_value()) {
-    auto& length = estimator_config.cuda_gqa_workspace_max_total_sequence_length;
-    if (!TryParseStringWithClassicLocale(*knob, length) || length < 0) {
-      return ORT_MAKE_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT,
-          kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength,
-          " must be a nonnegative decimal int64 value, but got: '", *knob, "'");
-    }
-  }
+  ORT_RETURN_IF_ERROR(ParseCudaGqaWorkspaceMaxTotalSequenceLength(
+      config_options, estimator_config.cuda_gqa_workspace_max_total_sequence_length));
 
   std::optional<ResourceAccountantMap> result;
   // Check if CUDA partitioning settings are provided

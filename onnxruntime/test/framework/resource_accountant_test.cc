@@ -833,7 +833,7 @@ TEST(RealAccountantTest, FactoryParsesGqaWorkspaceEnvelope) {
   };
   for (const auto& test_case : {
            Case{nullptr, 0}, Case{"0", 0}, Case{"4096", 4096},
-           Case{"9223372036854775807", std::numeric_limits<int64_t>::max()}}) {
+           Case{"2147483647", std::numeric_limits<int32_t>::max()}}) {
     SCOPED_TRACE(test_case.value != nullptr ? test_case.value : "<unset>");
     ConfigOptions config;
     ASSERT_STATUS_OK(config.AddConfigEntry(
@@ -856,7 +856,8 @@ TEST(RealAccountantTest, FactoryRejectsInvalidGqaWorkspaceEnvelope) {
   for (bool enable_partitioning : {false, true}) {
     SCOPED_TRACE(enable_partitioning);
     for (const char* value : {"-1", "", "malformed", "4096x", "+4096",
-                              " 4096", "4096 ", "9223372036854775808"}) {
+                              " 4096", "4096 ", "2147483648",
+                              "9223372036854775807", "9223372036854775808"}) {
       SCOPED_TRACE(value);
       ConfigOptions config;
       if (enable_partitioning) {
