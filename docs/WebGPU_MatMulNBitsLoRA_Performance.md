@@ -16,6 +16,10 @@ which rejects dispatch size `(0, 1, 1)`. Main's **Off*** values below therefore
 use a separately pruned base-only graph. Optimized Off uses the actual
 optional-adapter graph with empty adapters. These are different off baselines.
 
+This failure describes the recorded main revision below. Newer main includes
+the empty-rank MatMul/DequantizeLinear fix (#33171), now merged into this branch.
+The historical table has not been relabeled as measurements of that newer main.
+
 | Prompt tokens | Adapter | Main TTFT ms | Optimized TTFT ms | TTFT reduction | Main decode tok/s | Optimized decode tok/s | Decode gain |
 |---:|---|---:|---:|---:|---:|---:|---:|
 | 128 | Off* | 29.86 | 31.18 | -4.4% | 261.49 | 236.06 | -9.7% |
@@ -183,3 +187,84 @@ QLoRA matrix. They do not establish zero change or results on other devices.
   runtime's outputs; it does not change the original-model numerical limits above.
 - Formatting and whitespace checks pass. Generated contrib documentation now
   includes both new operator schemas. Remote CI must validate other build targets.
+
+## Review-feedback verification (2026-10-15)
+
+Merged main at `9cdf0f11fde12c171eceb4e4ca3b31be8777e7f0`, including the
+empty-rank MatMul/DequantizeLinear fix (#33171) and graph-capture buffer-copy
+fix (#33362). The LoRA review-feedback patch changes tests and documentation;
+it does not change LoRA shaders or workgroup sizes.
+
+The following comparison uses the previously validated PR runtime snapshot
+(`7e7079934a`) as Before. Updated uses the merged ORT build and GenAI
+`b4023152` (adapter-aware capture identity, based on GenAI main `bdfadcf4`).
+These are update-regression measurements, not a new main-versus-fusion study.
+
+Native C++ benchmark, built-in WebGPU / Windows D3D12 / NVIDIA RTX 5080:
+batch 1, fixed prompt IDs, 128 generated tokens, maximum length 4096, greedy
+decoding, capture, generator reuse, and token readback. Profiling and competing
+build/test work were stopped throughout measurement. Each cell has two rounds
+of three warmups and five measured requests, with reversed order in round two.
+The table reports medians over ten individual requests per runtime/cell.
+All 160 measured requests completed and generated identical sequences across
+the two runtimes for each case.
+
+| Model layout | Prompt tokens | Adapter | Before TTFT ms | Updated TTFT ms | TTFT change | Before decode tok/s | Updated decode tok/s | Decode change |
+|---|---:|---|---:|---:|---:|---:|---:|---:|
+| Packed INT8 | 128 | Off | 31.48 | 31.43 | -0.17% | 228.69 | 233.12 | +1.94% |
+| Packed INT8 | 128 | On | 40.17 | 40.31 | +0.34% | 205.68 | 205.60 | -0.04% |
+| Packed INT8 | 1024 | Off | 162.62 | 162.52 | -0.06% | 233.16 | 233.74 | +0.25% |
+| Packed INT8 | 1024 | On | 172.67 | 174.30 | +0.95% | 204.11 | 197.54 | -3.22% |
+| FP16 original | 128 | Off | 31.95 | 31.90 | -0.17% | 229.53 | 229.59 | +0.03% |
+| FP16 original | 128 | On | 97.34 | 96.19 | -1.18% | 140.95 | 141.15 | +0.14% |
+| FP16 original | 1024 | Off | 163.49 | 163.97 | +0.29% | 226.22 | 219.26 | -3.07% |
+| FP16 original | 1024 | On | 232.54 | 233.87 | +0.57% | 137.72 | 138.31 | +0.43% |
+
+Positive TTFT change means slower; positive decode change means faster.
+The two approximately 3% decode slowdowns prompted a longer, independent
+confirmation separating the ORT merge from the GenAI update. This used two
+rounds with reversed order, six warmups and eight measured requests each:
+16 measurements per runtime/case, 96 measured requests total. All sequences
+matched across the three runtimes.
+
+| 1024-token case | Runtime | TTFT ms | Decode tok/s | Decode range tok/s |
+|---|---|---:|---:|---:|
+| FP16, off | Previous | 164.59 | 219.34 | 217.18-221.37 |
+| FP16, off | Merged ORT / previous GenAI | 163.76 | 218.64 | 214.75-221.01 |
+| FP16, off | Merged ORT / fixed GenAI | 163.91 | 219.66 | 216.30-224.18 |
+| Packed INT8, on | Previous | 175.74 | 198.31 | 197.07-199.59 |
+| Packed INT8, on | Merged ORT / previous GenAI | 176.12 | 198.22 | 195.54-199.43 |
+| Packed INT8, on | Merged ORT / fixed GenAI | 176.00 | 197.80 | 195.55-198.86 |
+
+In this confirmation, final versus previous decode changes are +0.14% for
+FP16 adapter-off and -0.25% for packed INT8 adapter-on. TTFT changes are -0.41%
+and +0.15%, respectively. The earlier decode slowdowns did not repeat. These
+results show no repeatable regression on the tested GPU; they do not establish
+zero change or performance on other devices. The initial measurements remain
+above rather than being discarded. This does not resolve the pre-existing
+approximately 10% adapter-off gap versus a graph with QKV/MLP base fusion.
+
+### Correctness and capture
+
+- Built-in and plugin Release builds pass. Built-in provider/empty-tensor tests:
+  23 passed; fusion tests: 20 passed; graph-capture buffer-copy tests: 6 passed.
+- Plugin provider tests: 5 passed, with 2 expected hardware-inspection skips;
+  fusion tests: 20 passed. Both skipped specializations pass in built-in mode.
+- Empty-default serialization/reload tests cover decode and prefill, full and
+  partial overrides, and separate on/off capture IDs. Both actual captures are
+  asserted; alternating replay overwrites sentinel outputs correctly with CPU
+  fallback disabled. Empty packed defaults have no serialized payload.
+- Reported RTX 4070 tolerance failures are addressed with narrowly scoped
+  tolerances: K=8192 FP16 lane accumulation allows 0.003 absolute error; FP16
+  fusion comparisons allow 0.0001 absolute plus two FP16 epsilons relative.
+  Shorter K, FP32 accumulation, and deliberately exact switching/cancellation
+  checks keep their previous bounds. RTX 4070 was not available locally.
+- GenAI previously reused a base capture after late adapter activation. In a
+  full-model forced-prefix reproduction, capture-off results matched a fresh
+  active generator exactly, while captured decode differed by up to 2.82764.
+  With [GenAI #2740](https://github.com/microsoft/onnxruntime-genai/pull/2740),
+  all six full-vocabulary logit rows match exactly for built-in capture off/on
+  and plugin capture on. The added Python regression passes both WebGPU
+  parameterizations; its CUDA variants were not run locally.
+- Formatting and whitespace checks pass. Wider device/build validation remains
+  the responsibility of fresh CI and hardware testing.

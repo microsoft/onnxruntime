@@ -239,7 +239,10 @@ TEST(MatMulNBitsQLoRA, DecodeSubgroupReduction) {
       test.AddInput<uint8_t>("BQ", {n, 1, 32}, bq);
       test.AddInput<MLFloat16>("BS", {n, 1}, std::vector<MLFloat16>(n, MLFloat16(1.0f)));
       test.AddOutput<MLFloat16>("Y", {1, 1, n}, expected);
-      test.SetOutputAbsErr("Y", 0.002f);
+      // The long-K half-precision lane accumulation can drift before the
+      // FP32 subgroup reduction (up to 0.00238 on RTX 4070 at K=8192).
+      // Keep the tighter bound for shorter reductions and FP32 accumulation.
+      test.SetOutputAbsErr("Y", !acc_f32 && k == 8192 ? 0.003f : 0.002f);
       test.SetOutputRelErr("Y", 0.001f);
       ConfigOptions options;
       if (acc_f32) {

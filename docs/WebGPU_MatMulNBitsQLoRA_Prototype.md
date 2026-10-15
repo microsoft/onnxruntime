@@ -103,9 +103,72 @@ Input names and the adapter file stay unchanged.
 
 Like the FP16 prototype, eliding a zero branch assumes finite activations,
 adapter scales, and adapter intermediates. NaN/Inf propagation through zero multiplication can differ;
-the transformer remains opt-in. Use separate GenAI generators when switching
-adapters or their on/off state with graph capture, and rewind only while
-retaining the same generator's adapter selection.
+the transformer remains opt-in. GenAI builds without adapter-aware capture
+identity require separate generators when changing the adapter selection.
+[GenAI #2740](https://github.com/microsoft/onnxruntime-genai/pull/2740) assigns
+separate capture IDs after additive adapter activation. Activation does not
+recompute an existing KV cache: rewind to zero and append the prompt again
+if the adapter should apply to the earlier tokens. This does not add an
+adapter-deactivation API; use a new base generator to return to adapter-off.
+
+Graph replay does not re-evaluate the empty-rank branch. Native callers must
+use distinct `gpu_graph_id` run options for adapter-off and adapter-on captures,
+with stable GPU bindings and buffer lifetimes for each ID. Captures also depend
+on tensor shapes and execution mode; prefill and decode cannot share an ID
+when their dispatches differ. The provider does not automatically derive an
+ID from adapter state. Release and recapture an ID before changing the execution
+path or bindings associated with it. Replacing active adapter values in place
+is a separate case: the captured path can remain valid only when its shapes,
+layout, and bound buffers stay compatible.
+
+### Compact model packaging
+
+An explicitly exported `MatMulNBitsQLoRA` node accepts empty packed defaults
+directly in the serialized model. Full-size buffers filled with 128 are only
+needed by the current three-MatMulNBits fusion pattern, not by the fused operator.
+For an adapter-off default, export overridable initializers as follows:
+
+| Initializer | Default shape | Default payload |
+|---|---|---|
+| lora_A | [0, K/32, 32] | Empty |
+| lora_B | [N, 0, 32] | Empty |
+| lora_A_scales | [32, K/32] | Retain the scale defaults |
+| lora_B_scales | [N, 1] | Retain the scale defaults |
+
+Keep these tensors in the graph inputs. Declare the rank dimension of each
+packed graph input as dynamic, so a rank-32 adapter can override its empty
+initializer. Either empty packed weight disables the adapter. Scale-only and
+single-weight overrides therefore continue to produce the base result; supplying
+both packed weights uses the supplied scales or their retained defaults.
+Saving a graph after offline LoRA fusion also produces this representation.
+
+This compact export requires a runtime with the custom operator. Disabling
+fusion does not convert it to a portable fallback graph. Do not place empty
+packed weights into the existing fixed-rank MatMulNBits chain: its N/K
+attributes still require nonempty rank-32 projections. For an unfused fallback,
+retain the original empty-default DequantizeLinear/MatMul graph. WebGPU's
+empty-tensor handling supports that graph, but this transformer does not yet
+match it. Empty DequantizeLinear outputs avoid dequantization work; a zero-K
+MatMul with a nonempty output still initializes that output, and the residual
+Add remains.
+
+### FP32 packages and composed base fusions
+
+The current schema and kernel require FP16 activations, base scales, adapter
+scales, and outputs. FP32 accumulation is an arithmetic option, not FP32 input
+support. Sharing one adapter between FP16 and FP32 model packages will require
+FP32 kernel support and a scale-type contract that permits the same adapter
+scale tensors in both packages. Casting only initializer defaults at fusion
+time would not handle later adapter overrides.
+
+Adapter-off execution skips the adapter projections but calls a standalone
+base MatMulNBits. The current QKV/MLP transformers do not compose with the
+LoRA operators, so this can lose the throughput benefit of those base fusions.
+Empty defaults alone do not resolve that difference. A follow-up composed
+QKV/MLP+LoRA implementation should dispatch the existing fused base kernels
+when every relevant adapter is empty, and preserve per-projection adapter
+semantics when any adapter is active. Merely reordering the transformers does
+not provide both behaviors.
 
 ## Validation
 
@@ -127,6 +190,16 @@ the actual runtime libraries, provider, capture setting, and adapter state.
 Quantized-prefill and reordered-decode fusion comparisons use 0.002 absolute
 and 0.001 relative tolerances; unaffected paths retain zero tolerance. A dense
 reference test separately checks the specialized decode reduction.
+That reference test allows 0.003 absolute error for K=8192 with FP16 lane
+accumulation; shorter K and FP32 accumulation retain 0.002. Its relative
+tolerance stays 0.001. FP16 LoRA fusion comparisons use a 0.0001 absolute
+floor plus two FP16 epsilons of relative tolerance; deliberately exact
+switching and cancellation checks remain exact. A serialization regression
+checks that empty packed defaults have no payload and that a reloaded explicit
+operator accepts full and partial overrides without a load-time LoRA transform.
+It also captures adapter-off and adapter-on under separate IDs and alternates
+replay with sentinel-filled outputs, checking that both captures execute and
+produce the correct results with CPU fallback disabled.
 See [the performance evaluation](WebGPU_MatMulNBitsLoRA_Performance.md) for model-level
 accuracy limits and the main-versus-optimized performance comparison. WebGPU
 also batches CPU-to-GPU input uploads to amortize per-tensor adapter transfer

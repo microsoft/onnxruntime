@@ -3,6 +3,8 @@
 
 #include "core/optimizer/matmul_nbits_qlora_fusion.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
+#include "core/session/IOBinding.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/optimizer/webgpu_fusion_test_util.h"
 #include "test/util/include/default_providers.h"
@@ -248,6 +250,156 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionPartialOverrides) {
         EXPECT_EQ(comparison.first, COMPARE_RESULT::SUCCESS) << "state=" << state << " " << comparison.second;
       }
     }
+  }
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionSerializedEmptyDefaults) {
+  if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU unavailable.";
+  for (int64_t m : {1, 37}) {
+    SCOPED_TRACE(m);
+    Model model("quantized LoRA empty defaults", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, *logger_);
+    auto& graph = model.MainGraph();
+    ModelTestBuilder builder(graph);
+    BuildQLoRA(builder, m, 64);
+    builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(graph.Resolve());
+    const auto adapters = graph.GetOverridableInitializers();
+    ASSERT_EQ(adapters.size(), 4u);
+    std::string a_name, b_name;
+    // Dyadic inputs keep the switching checks exact on all reduction paths.
+    for (auto& [name, value] : builder.feeds_) {
+      auto* tensor = value.GetMutable<Tensor>();
+      if (tensor->IsDataType<uint8_t>()) {
+        auto bytes = tensor->MutableDataAsSpan<uint8_t>();
+        std::fill(bytes.begin(), bytes.end(), uint8_t{129});
+        (tensor->Shape()[0] == 32 ? a_name : b_name) = name;
+      } else {
+        auto values = tensor->MutableDataAsSpan<MLFloat16>();
+        const float fill = tensor->Shape().NumDimensions() == 3 ? 0.25f : 0.03125f;
+        std::fill(values.begin(), values.end(), MLFloat16(fill));
+      }
+    }
+    ASSERT_FALSE(a_name.empty());
+    ASSERT_FALSE(b_name.empty());
+    std::vector<OrtValue> expected;
+    for (bool fused : {false, true}) {
+      if (fused) {
+        bool modified = false;
+        ASSERT_STATUS_OK(MatMulNBitsQLoRAFusion().Apply(graph, modified, *logger_));
+        ASSERT_TRUE(modified);
+        ASSERT_STATUS_OK(graph.Resolve());
+      }
+      const auto proto = model.ToProto();
+      if (fused) {
+        ASSERT_EQ(proto.graph().node_size(), 1);
+        ASSERT_EQ(proto.graph().node(0).op_type(), "MatMulNBitsQLoRA");
+        int empty_count = 0;
+        for (const auto& init : proto.graph().initializer()) {
+          if (init.name() != a_name && init.name() != b_name) continue;
+          ++empty_count;
+          ASSERT_EQ(init.dims_size(), 3);
+          EXPECT_EQ(init.dims(init.name() == a_name ? 0 : 1), 0);
+          EXPECT_TRUE(init.raw_data().empty());
+          EXPECT_EQ(init.int32_data_size(), 0);
+          EXPECT_EQ(init.external_data_size(), 0);
+        }
+        ASSERT_EQ(empty_count, 2);
+      }
+      std::string data;
+      ASSERT_TRUE(proto.SerializeToString(&data));
+      SessionOptions options;
+      options.graph_optimization_level = TransformerLevel::Level1;
+      InferenceSessionWrapper session(options, GetEnvironment());
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
+      // No LoRA transformer is registered at load time: the serialized model
+      // itself must retain empty defaults and accept nonempty rank-32 overrides.
+      ASSERT_STATUS_OK(session.Load(data.data(), static_cast<int>(data.size())));
+      ASSERT_STATUS_OK(session.Initialize());
+      ASSERT_STATUS_OK(CheckQLoRACount(session.GetGraph(), fused ? 1 : 0));
+      // Off, A only, B only, scales only, packed weights only, all, off again.
+      for (int state = 0; state < 7; ++state) {
+        SCOPED_TRACE(state);
+        auto feeds = builder.feeds_;
+        for (const auto* input : adapters) {
+          const auto& name = input->Name();
+          const bool packed = name == a_name || name == b_name;
+          const bool supply = (state == 1 && name == a_name) || (state == 2 && name == b_name) ||
+                              (state == 3 && !packed) || (state == 4 && packed) || state == 5;
+          if (!supply) feeds.erase(name);
+        }
+        std::vector<OrtValue> output;
+        ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, builder.output_names_, &output));
+        ASSERT_EQ(output.size(), 1u);
+        if (!fused) {
+          expected.push_back(std::move(output[0]));
+        } else {
+          const auto comparison = CompareOrtValue(output[0], expected[state], 0.0, 0.0, false);
+          EXPECT_EQ(comparison.first, COMPARE_RESULT::SUCCESS) << comparison.second;
+        }
+      }
+    }
+    EXPECT_NE(CompareOrtValue(expected[0], expected[5], 0.0, 0.0, false).first, COMPARE_RESULT::SUCCESS);
+
+    ConfigOptions config;
+    ASSERT_STATUS_OK(config.AddConfigEntry(webgpu::options::kEnableGraphCapture,
+                                           webgpu::options::kEnableGraphCapture_ON));
+    auto ep = WebGpuExecutionProviderWithOptions(config);
+    ASSERT_NE(ep, nullptr);
+    auto* capture_provider = ep.get();
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Level1;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+    InferenceSession session(options, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
+    const auto data = model.ToProto().SerializeAsString();
+    ASSERT_STATUS_OK(session.Load(data.data(), static_cast<int>(data.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    const auto allocators = capture_provider->CreatePreferredAllocators();
+    ASSERT_FALSE(allocators.empty());
+    const auto allocator = allocators.back();
+    ASSERT_NE(allocator->Info().device.Type(), OrtDevice::CPU);
+    std::unique_ptr<IOBinding> bindings[2];
+    OrtValue outputs[2];
+    for (int state : {0, 1}) {
+      ASSERT_STATUS_OK(session.NewIOBinding(&bindings[state]));
+      for (const auto& [name, value] : builder.feeds_) {
+        const bool adapter = std::any_of(adapters.begin(), adapters.end(),
+                                         [&name](const NodeArg* arg) { return arg->Name() == name; });
+        if (state == 0 && adapter) continue;
+        const auto& source = value.Get<Tensor>();
+        OrtValue input;
+        Tensor::InitOrtValue(source.DataType(), source.Shape(), allocator, input);
+        ASSERT_STATUS_OK(session.GetDataTransferManager().CopyTensor(source, *input.GetMutable<Tensor>()));
+        ASSERT_STATUS_OK(bindings[state]->BindInput(name, input));
+      }
+      const auto& reference = expected[state == 0 ? 0 : 5].Get<Tensor>();
+      Tensor::InitOrtValue(reference.DataType(), reference.Shape(), allocator, outputs[state]);
+      ASSERT_STATUS_OK(bindings[state]->BindOutput(builder.output_names_[0], outputs[state]));
+      ASSERT_STATUS_OK(bindings[state]->SynchronizeInputs());
+    }
+    OrtValue actual;
+    const auto& reference = expected[0].Get<Tensor>();
+    Tensor::InitOrtValue(reference.DataType(), reference.Shape(), CPUAllocator::DefaultInstance(), actual);
+    // Each adapter state owns a capture ID and stable GPU bindings. Replay
+    // skips branch selection, so one ID cannot be reused across on/off states.
+    for (int state : {0, 0, 0, 1, 1, 1, 0, 1, 0, 1}) {
+      SCOPED_TRACE(MakeString("capture state=", state));
+      auto* cpu_output = actual.GetMutable<Tensor>();
+      auto values = cpu_output->MutableDataAsSpan<MLFloat16>();
+      std::fill(values.begin(), values.end(), MLFloat16(-99.0f));
+      ASSERT_STATUS_OK(session.GetDataTransferManager().CopyTensor(*cpu_output, *outputs[state].GetMutable<Tensor>()));
+      RunOptions run_options;
+      ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation,
+                                                                 state == 0 ? "1" : "2"));
+      ASSERT_STATUS_OK(session.Run(run_options, *bindings[state]));
+      ASSERT_STATUS_OK(bindings[state]->SynchronizeOutputs());
+      ASSERT_STATUS_OK(session.GetDataTransferManager().CopyTensor(outputs[state].Get<Tensor>(), *cpu_output));
+      const auto comparison = CompareOrtValue(actual, expected[state == 0 ? 0 : 5], 0.0, 0.0, false);
+      EXPECT_EQ(comparison.first, COMPARE_RESULT::SUCCESS) << comparison.second;
+    }
+    EXPECT_TRUE(capture_provider->IsGraphCaptured(1));
+    EXPECT_TRUE(capture_provider->IsGraphCaptured(2));
   }
 }
 

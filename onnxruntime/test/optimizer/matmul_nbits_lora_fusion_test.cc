@@ -11,6 +11,11 @@ namespace onnxruntime::test {
 #ifndef DISABLE_CONTRIB_OPS
 namespace {
 
+// Fused FP16 reductions can differ by a few ULPs across GPU architectures.
+// Use two FP16 epsilons plus a small floor for values near cancellation.
+constexpr double kFp16FusionAbsTolerance = 1e-4;
+constexpr double kFp16FusionRelTolerance = 2.0 / 1024.0;
+
 void BuildLoRA(ModelTestBuilder& builder, int64_t m = 1, bool zeros = false,
                bool expose_intermediate = false, bool different_x = false, int64_t rank = 32,
                bool flattened_weights = false, bool transposed = false, int64_t n = 128,
@@ -140,7 +145,8 @@ TEST_F(GraphTransformationTests, MatMulNBitsLoRAFusionTransposedNumerics) {
         RunWebGpuFusionTransformerTest(
             [m, n](ModelTestBuilder& b) { BuildLoRA(b, m, true, false, false, 32, false, true, n); },
             [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckCount(s.GetGraph(), 1)); },
-            TransformerLevel::Level1, TransformerLevel::Level2, 21, 0.0, 0.0,
+            TransformerLevel::Level1, TransformerLevel::Level2, 21,
+            kFp16FusionAbsTolerance, kFp16FusionRelTolerance,
             std::make_unique<MatMulNBitsLoRAFusion>(), [] { return DefaultWebGpuExecutionProvider(); },
             [mode](SessionOptions& options) {
               if (mode[0]) {
@@ -165,7 +171,8 @@ TEST_F(GraphTransformationTests, MatMulNBitsLoRAFusionTransposedProjectionNumeri
         RunWebGpuFusionTransformerTest(
             [isolate, k](ModelTestBuilder& b) { BuildLoRA(b, 1, true, false, false, 32, false, true, 2048, isolate, k); },
             [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckCount(s.GetGraph(), 1)); },
-            TransformerLevel::Level1, TransformerLevel::Level2, 21, 0.0, 0.0,
+            TransformerLevel::Level1, TransformerLevel::Level2, 21,
+            isolate == 4 ? 0.0 : kFp16FusionAbsTolerance, isolate == 4 ? 0.0 : kFp16FusionRelTolerance,
             std::make_unique<MatMulNBitsLoRAFusion>(), [] { return DefaultWebGpuExecutionProvider(); },
             [mode](SessionOptions& options) {
               if (mode[0]) {
@@ -188,7 +195,8 @@ TEST_F(GraphTransformationTests, MatMulNBitsLoRAFusionTransposedBatchedNumerics)
         RunWebGpuFusionTransformerTest(
             [batch, m](ModelTestBuilder& b) { BuildLoRA(b, m, true, false, false, 32, false, true, 128, 0, 0, batch); },
             [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckCount(s.GetGraph(), 1)); },
-            TransformerLevel::Level1, TransformerLevel::Level2, 21, 0.0, 0.0,
+            TransformerLevel::Level1, TransformerLevel::Level2, 21,
+            kFp16FusionAbsTolerance, kFp16FusionRelTolerance,
             std::make_unique<MatMulNBitsLoRAFusion>(), [] { return DefaultWebGpuExecutionProvider(); },
             [mode](SessionOptions& options) {
               if (mode[0]) {
@@ -235,7 +243,8 @@ TEST_F(GraphTransformationTests, MatMulNBitsLoRAFusionMatchesWebGpuDecodeAndPref
     RunWebGpuFusionTransformerTest(
         [m](ModelTestBuilder& b) { BuildLoRA(b, m, true); },
         [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckCount(s.GetGraph(), 1)); },
-        TransformerLevel::Level1, TransformerLevel::Level2, 21, 0.0, 0.0,
+        TransformerLevel::Level1, TransformerLevel::Level2, 21,
+        kFp16FusionAbsTolerance, kFp16FusionRelTolerance,
         std::make_unique<MatMulNBitsLoRAFusion>(), [] { return DefaultWebGpuExecutionProvider(); });
   }
 }
