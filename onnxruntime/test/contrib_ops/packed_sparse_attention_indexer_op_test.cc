@@ -1098,7 +1098,7 @@ TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalPairedVerification) {
     QsaPackedProblem problem;
     problem.batch_size = 1;
     problem.cumulative_sequence_lengths = {0, tokens};
-    problem.past_sequence_lengths = {4101};
+    problem.past_sequence_lengths = {4098};
     problem.head_size = 128;
     problem.num_heads = 4;
     problem.rotary_width = 64;
@@ -1107,7 +1107,10 @@ TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalPairedVerification) {
     problem.state_capacity = 4099;
     problem = MakeQsaPackedProblem(std::move(problem));
     std::fill(problem.query.begin(), problem.query.end(), 1.0f);
+    std::fill(problem.key.begin(), problem.key.end(), 1.0f);
     std::fill(problem.query_norm_weight.begin(), problem.query_norm_weight.end(), 1.0f);
+    std::fill(problem.key_norm_weight.begin(), problem.key_norm_weight.end(), 1.0f);
+    std::fill(problem.past_kv_buffer.begin(), problem.past_kv_buffer.end(), 1.0f);
     std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
     std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
     for (int block = 0; block < problem.state_capacity; ++block) {
