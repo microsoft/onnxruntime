@@ -11,6 +11,7 @@ import unittest.mock
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
+from typing import cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pack_nuget
@@ -298,7 +299,8 @@ class PackNugetTest(unittest.TestCase):
     )
     def test_sdk_layout_after_build_and_publish_with_rid_fallback(self):
         self.assertIsNotNone(DOTNET_SDK_MAJOR, "Package CI requires an installed .NET SDK")
-        self.assertGreaterEqual(DOTNET_SDK_MAJOR, 8, "Package CI requires .NET SDK 8 or later")
+        sdk_major = cast(int, DOTNET_SDK_MAJOR)
+        self.assertGreaterEqual(sdk_major, 8, "Package CI requires .NET SDK 8 or later")
 
         package_id = "Microsoft.ML.OnnxRuntime.EP.WebGpu"
         feed = self.root / "feed"
@@ -342,7 +344,8 @@ class PackNugetTest(unittest.TestCase):
                 project = ET.Element("Project", Sdk="Microsoft.NET.Sdk")
                 properties = ET.SubElement(project, "PropertyGroup")
                 settings = {
-                    "TargetFramework": f"net{DOTNET_SDK_MAJOR}.0",
+                    "TargetFramework": f"net{sdk_major}.0",
+                    "PlatformTarget": "AnyCPU",
                     "CopyLocalLockFileAssemblies": "true",
                     "UseRidGraph": "true",
                     "SelfContained": "false",
