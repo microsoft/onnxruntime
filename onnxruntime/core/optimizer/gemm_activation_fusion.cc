@@ -75,6 +75,11 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         !functors::IsFp16FusableActivation(next_node.OpType())) {
       continue;
     }
+#else
+    // FusedGemm<MLFloat16> is only registered when MLAS_F16VEC_INTRINSICS_SUPPORTED is defined.
+    if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      continue;
+    }
 #endif
 
     if (graph.NodeProducesGraphOutput(node)) {

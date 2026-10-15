@@ -228,8 +228,9 @@ Status BiasGelu<MLFloat16, true>::Compute(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(1);
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+  // The bias path also stores input + bias, so it needs twice the scratch.
   BufferUniquePtr buffer = BufferUniquePtr(
-      alloc->Alloc(SafeInt<size_t>(sizeof(MLFloat16)) * elem_count * 2),
+      alloc->Alloc(SafeInt<size_t>(sizeof(MLFloat16)) * elem_count * (bias == nullptr ? 1 : 2)),
       BufferDeleter(alloc));
   MLFloat16* tmp_data = static_cast<MLFloat16*>(buffer.get());
 
