@@ -49,10 +49,12 @@ def parse_args():
         help="Output prefix (defaults to <log stem>-expert-activation-correlations).",
     )
     parser.add_argument(
+        "--pairs-per-tail",
         "--top-pairs",
+        dest="pairs_per_tail",
         type=int,
-        default=25,
-        help="Number of strongest absolute correlations to write per matrix to the summary CSV.",
+        default=20,
+        help="Number of highest and lowest correlations to write per matrix to the summary CSV.",
     )
     parser.add_argument(
         "--min-activations",
@@ -249,29 +251,38 @@ def write_correlation_archive(path, same_qmoe_previous_token, previous_qmoe_same
     )
 
 
-def _strongest_pairs(correlation, top_pairs, min_activations):
+def _correlation_tails(correlation, pairs_per_tail, min_activations):
     supported = (
         (correlation.current_activation_counts[:, None] >= min_activations)
         & (correlation.context_activation_counts[None, :] >= min_activations)
         & np.isfinite(correlation.values)
     )
     finite_indexes = np.flatnonzero(supported)
-    if top_pairs <= 0 or finite_indexes.size == 0:
+    if pairs_per_tail <= 0 or finite_indexes.size == 0:
         return []
-    top_pairs = min(top_pairs, finite_indexes.size)
+    pairs_per_tail = min(pairs_per_tail, finite_indexes.size)
     flat_values = correlation.values.ravel()
-    candidate_indexes = finite_indexes[np.argpartition(np.abs(flat_values[finite_indexes]), -top_pairs)[-top_pairs:]]
-    pairs = [(*np.unravel_index(index, correlation.values.shape), flat_values[index]) for index in candidate_indexes]
-    return sorted(pairs, key=lambda pair: (-abs(pair[2]), -pair[2], pair[0], pair[1]))
+    ordered_indexes = finite_indexes[np.argsort(flat_values[finite_indexes], kind="stable")]
+    lowest = [
+        ("lowest", rank, *np.unravel_index(index, correlation.values.shape), flat_values[index])
+        for rank, index in enumerate(ordered_indexes[:pairs_per_tail], start=1)
+    ]
+    highest = [
+        ("highest", rank, *np.unravel_index(index, correlation.values.shape), flat_values[index])
+        for rank, index in enumerate(reversed(ordered_indexes[-pairs_per_tail:]), start=1)
+    ]
+    return highest + lowest
 
 
-def write_correlation_summary(path, correlations, top_pairs, min_activations):
+def write_correlation_summary(path, correlations, pairs_per_tail, min_activations):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
         writer.writerow(
             [
                 "relation",
+                "tail",
+                "rank",
                 "current_graph_scope",
                 "current_node_index",
                 "current_node_name",
@@ -288,10 +299,14 @@ def write_correlation_summary(path, correlations, top_pairs, min_activations):
             ]
         )
         for correlation in correlations:
-            for current_expert, context_expert, value in _strongest_pairs(correlation, top_pairs, min_activations):
+            for tail, rank, current_expert, context_expert, value in _correlation_tails(
+                correlation, pairs_per_tail, min_activations
+            ):
                 writer.writerow(
                     [
                         correlation.relation,
+                        tail,
+                        rank,
                         correlation.current_identity[0],
                         correlation.current_identity[1],
                         correlation.current_identity[3],
@@ -355,8 +370,8 @@ def write_correlation_plots(path, same_qmoe_previous_token, previous_qmoe_same_t
 
 def main():
     args = parse_args()
-    if args.top_pairs < 0:
-        raise ValueError("--top-pairs must be non-negative.")
+    if args.pairs_per_tail < 0:
+        raise ValueError("--pairs-per-tail must be non-negative.")
     if args.min_activations < 1:
         raise ValueError("--min-activations must be positive.")
     output_prefix = args.output_prefix or args.log.with_name(f"{args.log.stem}-expert-activation-correlations")
@@ -369,7 +384,7 @@ def main():
     write_correlation_summary(
         summary_path,
         (*same_qmoe_previous_token, *previous_qmoe_same_token),
-        args.top_pairs,
+        args.pairs_per_tail,
         args.min_activations,
     )
     write_correlation_plots(plot_path, same_qmoe_previous_token, previous_qmoe_same_token)

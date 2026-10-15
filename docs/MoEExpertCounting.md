@@ -70,8 +70,8 @@ For every MoE node, it computes the full expert-by-expert Pearson correlation ma
 previous decode token. For every layer after the first, it also computes the matrix against the preceding layer at
 the same token. Prefill records are excluded, decode invocations are aligned independently within each prompt, and
 previous-token pairs never cross prompt boundaries. The output contains compressed NumPy matrices for all expert
-pairs and their activation counts, a PDF of heatmaps, and a CSV listing the strongest sufficiently supported pairs
-from each matrix:
+pairs and their activation counts, a PDF of heatmaps, and a CSV listing the 20 highest and 20 lowest sufficiently
+supported correlations from each matrix:
 
 ```bash
 python tools/python/qmoe_expert_activation_correlations.py counter.log \

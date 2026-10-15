@@ -5,6 +5,8 @@ from pathlib import Path
 import numpy as np
 from qmoe_expert_activation_correlations import (
     ActivationTrace,
+    CorrelationMatrix,
+    _correlation_tails,
     binary_activation_correlation,
     compute_activation_correlations,
     write_correlation_archive,
@@ -12,6 +14,25 @@ from qmoe_expert_activation_correlations import (
 
 
 class TestQMoEExpertActivationCorrelations(unittest.TestCase):
+    def test_selects_highest_and_lowest_correlations(self):
+        identity = ("main", 1, "QMoE", "/model/layers.0/moe/QMoE")
+        correlation = CorrelationMatrix(
+            "same_qmoe_previous_token",
+            identity,
+            identity,
+            np.array([[0.1, -0.8], [0.7, -0.2]]),
+            np.array([20, 20]),
+            np.array([20, 20]),
+            100,
+        )
+
+        tails = _correlation_tails(correlation, pairs_per_tail=2, min_activations=10)
+
+        self.assertEqual(tails[0], ("highest", 1, 1, 0, 0.7))
+        self.assertEqual(tails[1], ("highest", 2, 0, 0, 0.1))
+        self.assertEqual(tails[2], ("lowest", 1, 0, 1, -0.8))
+        self.assertEqual(tails[3], ("lowest", 2, 1, 1, -0.2))
+
     def test_binary_activation_correlation(self):
         activations = np.array(
             [
