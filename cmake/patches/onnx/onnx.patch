@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 791e24b..5f861a1 100644
+index 6f1d56949..7e6331dec 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -46,6 +46,7 @@ option(ONNX_DISABLE_EXCEPTIONS "Disable exception handling." OFF)
+@@ -53,6 +53,7 @@ option(ONNX_DISABLE_EXCEPTIONS "Disable exception handling." OFF)
  option(ONNX_DISABLE_STATIC_REGISTRATION "Disable static registration for ONNX operator schemas." OFF)
  option(ONNX_USE_UNITY_BUILD "Enable Unity (Jumbo) build for" OFF)
  option(ONNX_PYODIDE_BUILD "Build ONNX for Pyodide/Emscripten (wasm32)." OFF)
@@ -10,7 +10,7 @@ index 791e24b..5f861a1 100644
  option(ONNX_INSTALL "Install ONNX targets, headers, and CMake config files" ON)
  if(WIN32)
    option(ONNX_USE_MSVC_STATIC_RUNTIME "Build with MSVC static runtime. Ignored if CMAKE_MSVC_RUNTIME_LIBRARY is defined." OFF)
-@@ -515,7 +516,22 @@ add_dependencies(onnx_proto onnx_proto_gen)
+@@ -562,7 +563,23 @@ add_dependencies(onnx_proto onnx_proto_headers)
  # Core library. Hand-written sources come from target_sources(onnx ...) in the
  # subdirectories; the protobuf objects are pulled in from onnx_proto.
  add_library(onnx $<TARGET_OBJECTS:onnx_proto>)
@@ -22,6 +22,7 @@ index 791e24b..5f861a1 100644
 +    # the full operator/schema sources via add_subdirectory(onnx).
 +    target_sources(onnx PRIVATE
 +        "${ONNX_ROOT}/onnx/defs/data_type_utils.cc"
++        "${ONNX_ROOT}/onnx/defs/doc_strings.cc"
 +    )
 +    # Ensure ONNX_ML is treated as ON for minimal build consistency with ORT's file
 +    set(ONNX_ML ON CACHE BOOL "Enable traditional ML API." FORCE)
@@ -34,11 +35,37 @@ index 791e24b..5f861a1 100644
  add_dependencies(onnx onnx_proto)
  set_target_properties(onnx PROPERTIES CXX_VISIBILITY_PRESET hidden)
  add_onnx_global_defines(onnx)
+diff --git a/onnx/defs/doc_strings.cc b/onnx/defs/doc_strings.cc
+index 976280392..8c22e55ff 100644
+--- a/onnx/defs/doc_strings.cc
++++ b/onnx/defs/doc_strings.cc
+@@ -1705,6 +1705,8 @@ const char kDoc_DequantizeLinear_ver24[] = "";
+ const char kDoc_RandomNormal_ver1[] = "";
+ const char kDoc_Round_ver11[] = "";
+ const char kDoc_SpaceToDepth_ver1[] = "";
++const char kDoc_SpaceToDepth_ver28[] = "";
++const char kDoc_DepthToSpace_ver28[] = "";
+ const char kDoc_InstanceNormalization_ver6[] = "";
+ const char kDoc_ThresholdedRelu_ver10[] = "";
+ const char kDoc_Acosh_ver9[] = "";
+diff --git a/onnx/defs/nn/defs.cc b/onnx/defs/nn/defs.cc
+index 4b58256e6..1a8103e7c 100644
+--- a/onnx/defs/nn/defs.cc
++++ b/onnx/defs/nn/defs.cc
+@@ -2692,7 +2692,7 @@ ONNX_OPERATOR_SET_SCHEMA(
+             // positive value.
+             axis += input_ndim;
+           }
+-          if (axis < 0) {
++          if (axis < 0 || axis >= input_ndim) {
+             fail_shape_inference(
+                 "Unexpected axis value (",
+                 axis,
 diff --git a/onnx/defs/nn/old.cc b/onnx/defs/nn/old.cc
-index 3887169..8432613 100644
+index cbb1532c0..6597a2ef9 100644
 --- a/onnx/defs/nn/old.cc
 +++ b/onnx/defs/nn/old.cc
-@@ -4078,7 +4078,6 @@ ONNX_OPERATOR_SET_SCHEMA(
+@@ -4118,7 +4118,6 @@ ONNX_OPERATOR_SET_SCHEMA(
      GroupNormalization,
      18,
      OpSchema()
@@ -46,16 +73,40 @@ index 3887169..8432613 100644
          .SetDoc(GroupNormalization_ver18_doc)
          .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
          .Attr(
-diff --git a/onnx/defs/nn/defs.cc b/onnx/defs/nn/defs.cc
-index 0c271d5..6d64da7 100644
---- a/onnx/defs/nn/defs.cc
-+++ b/onnx/defs/nn/defs.cc
-@@ -2670,7 +2670,7 @@ ONNX_OPERATOR_SET_SCHEMA(
-                               // positive value.
-                               axis += input_ndim;
-                          }
--          if (axis < 0) {
-+          if (axis < 0 || axis >= input_ndim) {
-                               fail_shape_inference(
-                                         "Unexpected axis value (",
-                                         axis,
+diff --git a/onnx/defs/printer.cc b/onnx/defs/printer.cc
+index 1d43bccb0..b6beed6f3 100644
+--- a/onnx/defs/printer.cc
++++ b/onnx/defs/printer.cc
+@@ -9,6 +9,9 @@
+ #include <cmath>
+ #include <cstdint>
+ #include <iomanip>
++#include <limits>
++#include <locale>
++#include <sstream>
+ #include <string>
+ #include <type_traits>
+ #include <vector>
+@@ -31,6 +34,14 @@ std::vector<Widened> ParseRawIntData(const TensorProto& tensor) {
+ // point, the shortest form that round-trips through the parser.
+ template <typename T>
+ void PrintNumber(std::ostream& os, T value) {
++#if defined(__APPLE__) && defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__) && \
++    __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__ < 160300
++  // std::to_chars is unavailable when targeting iOS releases before 16.3.
++  std::ostringstream value_stream;
++  value_stream.imbue(std::locale::classic());
++  value_stream << std::setprecision(std::numeric_limits<T>::max_digits10) << value;
++  os << value_stream.str();
++#else
+   if constexpr (std::is_floating_point_v<T>) {
+     // Normalize NaN: MSVC's to_chars emits payload forms like "nan(ind)"
+     // that the parser does not accept.
+@@ -42,6 +53,7 @@ void PrintNumber(std::ostream& os, T value) {
+   std::array<char, 32> buf{};
+   const auto res = std::to_chars(buf.data(), buf.data() + buf.size(), value);
+   os.write(buf.data(), res.ptr - buf.data());
++#endif
+ }
+ 
+ bool IsValidIdentifier(const std::string& str) {

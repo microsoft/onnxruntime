@@ -295,22 +295,12 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
 
   // set B
   // Always in NCHW format
-  const Tensor* B = nullptr;
-  if (context->InputCount() >= 3) {
-    B = context->Input<Tensor>(2);
-    s_.b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
-  } else {
-    s_.b_data = nullptr;
-  }
+  const Tensor* B = context->InputCount() > 2 ? context->Input<Tensor>(2) : nullptr;
+  s_.b_data = B ? reinterpret_cast<const CudaT*>(B->Data<T>()) : nullptr;
 
   // set Z
-  const Tensor* Z = nullptr;
-  if (context->InputCount() >= 4) {
-    Z = context->Input<Tensor>(3);
-    s_.z_data = reinterpret_cast<const CudaT*>(Z->Data<T>());
-  } else {
-    s_.z_data = nullptr;
-  }
+  const Tensor* Z = context->InputCount() > 3 ? context->Input<Tensor>(3) : nullptr;
+  s_.z_data = Z ? reinterpret_cast<const CudaT*>(Z->Data<T>()) : nullptr;
   bool input_dims_changed = (s_.last_x_dims != x_dims);
   bool w_dims_changed = (s_.last_w_dims != w_dims);
   if (input_dims_changed || w_dims_changed) {

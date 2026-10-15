@@ -371,6 +371,8 @@ export interface OrtInferenceAPIs {
     dimsLength: number,
   ): number;
   _OrtReleaseTensor(tensorHandle: number): number;
+  _OrtCreateLoraAdapter(dataOffset: number, dataLength: number): number;
+  _OrtReleaseLoraAdapter(adapterHandle: number): number;
   _OrtCreateBinding(sessionHandle: number): number;
   _OrtBindInput(bindingHandle: number, nameOffset: number, tensorHandle: number): Promise<number>;
   _OrtBindOutput(bindingHandle: number, nameOffset: number, tensorHandle: number, location: number): number;
@@ -413,12 +415,23 @@ export interface OrtInferenceAPIs {
     providerOptionsValues: number,
     numKeys: number,
   ): Promise<number>;
+  _OrtAppendExecutionProviderV2(
+    sessionOptionsHandle: number,
+    epDevices: number,
+    numEpDevices: number,
+    providerOptionsKeys: number,
+    providerOptionsValues: number,
+    numKeys: number,
+  ): Promise<number>;
+  _OrtGetEpDevices(epDevices: number, numEpDevices: number): number;
+  _OrtEpDevice_EpName(epDevice: number): number;
   _OrtAddFreeDimensionOverride(sessionOptionsHandle: number, name: number, dim: number): number;
   _OrtAddSessionConfigEntry(sessionOptionsHandle: number, configKey: number, configValue: number): number;
   _OrtReleaseSessionOptions(sessionOptionsHandle: number): number;
 
   _OrtCreateRunOptions(logSeverityLevel: number, logVerbosityLevel: number, terminate: boolean, tag: number): number;
   _OrtAddRunConfigEntry(runOptionsHandle: number, configKey: number, configValue: number): number;
+  _OrtRunOptionsAddActiveLoraAdapter(runOptionsHandle: number, adapterHandle: number): number;
   _OrtReleaseRunOptions(runOptionsHandle: number): number;
 
   _OrtEndProfiling(sessionHandle: number): number;
