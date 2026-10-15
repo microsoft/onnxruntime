@@ -324,7 +324,7 @@ Return Value:
             MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
             MlasStoreNeon4Lane(D, b);
 #else
-            MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);            
+            MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
             MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
             MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&b[4]);
             MLAS_FLOAT32X4 t2 = MlasLoadFloat32x4(&b[8]);
@@ -1751,7 +1751,7 @@ MlasGemmBatch(
 
     MlasTrySimpleParallel(ThreadPool,
         ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize),
-        [=](ptrdiff_t tid) 
+        [=](ptrdiff_t tid)
     {
         ptrdiff_t GemmIdx = tid / ThreadsPerGemm;
         ptrdiff_t ThreadIdx = tid % ThreadsPerGemm;
@@ -1872,7 +1872,7 @@ Return Value:
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSGemmPackBOverride != nullptr  &&
         // TODO: Remove once KAI supports transposing for A
-        TransA != CBLAS_TRANSPOSE::CblasTrans   &&
+        TransA != CBLAS_TRANSPOSE::CblasTrans    &&
         GetMlasPlatform().MlasSGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
          return;
     }

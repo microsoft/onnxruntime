@@ -340,7 +340,7 @@ MlasFlashAttentionGQAThreaded(
                 static_cast<size_t>(head_size),     // ldb
                 ir == 0 ? 0.0f : 1.0f,              // beta (accumulate after first block)
                 temp_output,                        // C (accumulated output)
-                static_cast<size_t>(head_size),      // ldc
+                static_cast<size_t>(head_size),     // ldc
                 args->BackendKernelSelectorConfig
             );
         }

@@ -81,7 +81,7 @@ processrows_8(
     float alpha,
     size_t vl
 )
-{    
+{
     svfloat32_t zero_vec = MlasSveBroadcastFloat32(0.f);
     size_t col = 0;
     for (; col + 2 * vl <= n; col += 2 * vl) {
