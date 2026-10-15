@@ -4946,17 +4946,17 @@ KAI_ASM_FUNCTION_LABEL(MlasHgemmCopyPackB_sve)
     KAI_ASM_INST(0x8b011929)  // add	x9, x9, x1, lsl #6
     KAI_ASM_INST(0x8b0e00c6)  // add	x6, x6, x14
     KAI_ASM_INST(0xb40002c7)  // cbz	x7, 100 <MlasHgemmCopyPackB_sve+0x100>
-    KAI_ASM_INST(0xd37ff9e2)  // lsl	x2, x15, #1
+    KAI_ASM_INST(0xd37ff9e3)  // lsl	x3, x15, #1
+    KAI_ASM_INST(0xd2800402)  // mov	x2, #0x20
     KAI_ASM_INST(0x0460e3e1)  // cnth	x1
-    KAI_ASM_INST(0x2518e3e1)  // ptrue	p1.b
     KAI_ASM_INST(0x2578c001)  // mov	z1.h, #0
     KAI_ASM_INST(0xd2800000)  // mov	x0, #0x0
-    KAI_ASM_INST(0xe4a044c1)  // st1h	{z1.h}, p1, [x6, x0, lsl #1]
+    KAI_ASM_INST(0x25621c00)  // whilelo	p0.h, x0, x2
+    KAI_ASM_INST(0xe4a040c1)  // st1h	{z1.h}, p0, [x6, x0, lsl #1]
     KAI_ASM_INST(0x8b010000)  // add	x0, x0, x1
     KAI_ASM_INST(0xf1007c1f)  // cmp	x0, #0x1f
-    KAI_ASM_INST(0x54ffffa9)  // b.ls	c0 <MlasHgemmCopyPackB_sve+0xc0>
+    KAI_ASM_INST(0x54ffff89)  // b.ls	c0 <MlasHgemmCopyPackB_sve+0xc0>
     KAI_ASM_INST(0xd2800000)  // mov	x0, #0x0
-    KAI_ASM_INST(0xd503201f)  // nop
     KAI_ASM_INST(0x25671c00)  // whilelo	p0.h, x0, x7
     KAI_ASM_INST(0xa4a04120)  // ld1h	{z0.h}, p0/z, [x9, x0, lsl #1]
     KAI_ASM_INST(0xe4a040c0)  // st1h	{z0.h}, p0, [x6, x0, lsl #1]
@@ -4964,7 +4964,7 @@ KAI_ASM_FUNCTION_LABEL(MlasHgemmCopyPackB_sve)
     KAI_ASM_INST(0xeb07001f)  // cmp	x0, x7
     KAI_ASM_INST(0x54ffff63)  // b.cc	d8 <MlasHgemmCopyPackB_sve+0xd8>
     KAI_ASM_INST(0x910100c6)  // add	x6, x6, #0x40
-    KAI_ASM_INST(0x8b020129)  // add	x9, x9, x2
+    KAI_ASM_INST(0x8b030129)  // add	x9, x9, x3
     KAI_ASM_INST(0xf10005ad)  // subs	x13, x13, #0x1
     KAI_ASM_INST(0x54fffe01)  // b.ne	bc <MlasHgemmCopyPackB_sve+0xbc>
     KAI_ASM_INST(0xd65f03c0)  // ret

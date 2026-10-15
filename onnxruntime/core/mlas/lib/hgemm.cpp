@@ -787,6 +787,10 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     )
 {
+    if (BatchSize == 0) {
+        return;
+    }
+
     if (!MlasHgemmUseSve()) {
         MlasHgemmNeonBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
         return;

@@ -935,7 +935,8 @@ MlasHgemmCopyPackB_sve(
         size_t y = CountY;
         do {
             for (size_t i = 0; i < PACKED_B_BLOCK_WIDTH_FP16; i += vl) {
-                svst1_f16(svptrue_b16(), (__fp16*)D + i, svdup_n_f16((__fp16)0.f));
+                svbool_t pg = svwhilelt_b16(i, (size_t)PACKED_B_BLOCK_WIDTH_FP16);
+                svst1_f16(pg, (__fp16*)D + i, svdup_n_f16((__fp16)0.f));
             }
             for (size_t i = 0; i < CountX; i += vl) {
                 svbool_t pg = svwhilelt_b16(i, CountX);

@@ -1874,8 +1874,8 @@ MlasGemmBatch(
  * @brief  half precision matrix/matrix multiply operation (HGEMM)
  *         C = alpha * op(A) * op(B) + beta * C
  *
- * @param TransA  Supplies the transpose operation for matrix A. Supports CblasNoTrans and CblasTrans.
- * @param TransB  Supplies the transpose operation for matrix B. Supports CblasNoTrans and CblasTrans.
+ * @param TransA  Supplies the transpose operation for matrix A. Use only combinations reported by MlasHGemmSupported.
+ * @param TransB  Supplies the transpose operation for matrix B. Use only combinations reported by MlasHGemmSupported.
  * @param M       Supplies the number of rows of matrix A and matrix C.
  * @param N       Supplies the number of columns of matrix B and matrix C.
  * @param K       Supplies the number of columns of matrix A and the number of rows of matrix B.
