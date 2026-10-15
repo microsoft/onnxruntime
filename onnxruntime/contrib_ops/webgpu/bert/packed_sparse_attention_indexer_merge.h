@@ -11,7 +11,7 @@ using onnxruntime::webgpu::ComputeContext;
 
 class PackedSparseAttentionIndexerMergeProgram final : public Program<PackedSparseAttentionIndexerMergeProgram> {
  public:
-  explicit PackedSparseAttentionIndexerMergeProgram(int32_t hash_capacity)
+  explicit PackedSparseAttentionIndexerMergeProgram(int64_t hash_capacity)
       : Program{"PackedSparseAttentionIndexerMerge"}, hash_capacity_(hash_capacity) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"rows", ProgramUniformVariableDataType::Uint32},
@@ -20,7 +20,7 @@ class PackedSparseAttentionIndexerMergeProgram final : public Program<PackedSpar
                                           {"capacity", ProgramUniformVariableDataType::Uint32});
 
  private:
-  int32_t hash_capacity_;
+  int64_t hash_capacity_;
 };
 
 class PackedSparseAttentionIndexerMerge final : public WebGpuKernel {

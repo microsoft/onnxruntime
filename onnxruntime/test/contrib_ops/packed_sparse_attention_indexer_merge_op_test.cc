@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "contrib_ops/cpu/sparse/packed_sparse_attention_indexer_merge_common.h"
 #include "core/graph/constants.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -51,6 +52,43 @@ TEST(PackedSparseAttentionIndexerMerge, StableOverlapAndSharedRows) {
            {1, 0, 0}, {5, 1, 10}, {8, 5, 12},
            {6, 2, 7, 5, -1, -1, -1, 9, 1, 3, 2, 4, -1, -1, 9, 1, 3, 10, 11, -1, -1},
            {4, 5, 5}, {0, 0, 0});
+}
+
+TEST(PackedSparseAttentionIndexerMerge, HashCapacityUsesInsertionBound) {
+  using contrib::indexer_merge::HashCapacity;
+  EXPECT_EQ(HashCapacity(int64_t{1} << 30, 3), 8);
+  EXPECT_EQ(HashCapacity(8, 8), 16);
+  EXPECT_EQ(HashCapacity(4, INT32_MAX), 16);
+  EXPECT_EQ(HashCapacity(int64_t{1} << 30, INT32_MAX), int64_t{1} << 32);
+  EXPECT_EQ(HashCapacity(8, 0), 1);
+}
+
+TEST(PackedSparseAttentionIndexerMerge, PowerOfTwoCapacityAndDuplicatePrefixes) {
+  RunMerge(1, 4, 4, {0, 1, 2, 3}, {4}, {0}, {0}, {4}, {0, 1, 2, 3}, {4}, {0});
+  RunMerge(1, 8, 2, {1, 1, 1, 1, 2, 2, 2, 2}, {8}, {0}, {1}, {3}, {1, 2}, {2}, {0});
+  RunMerge(1, 8, 2, {1, 1, 2, 2, 3, 3, 4, 4}, {8}, {0}, {0}, {0}, {-1, -1}, {0}, {2});
+  RunMerge(1, 513, 2, std::vector<int32_t>(513, 7), {513}, {0}, {7}, {9}, {7, 8}, {2}, {0});
+}
+
+TEST(PackedSparseAttentionIndexerMerge, AppendIndicesDuplicateChunks) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider) GTEST_SKIP() << "Requires CUDA";
+  OpTester test("PackedSparseAttentionIndexerMerge", 1, kMSDomain);
+  test.AddAttribute("policy_mode", std::string("append_indices"));
+  test.AddAttribute("max_output_entries", int64_t{2});
+  test.AddInput<int32_t>("base", {1, 257}, std::vector<int32_t>(257, 7));
+  test.AddInput<int32_t>("counts", {1}, {257});
+  test.AddInput<int32_t>("rows", {1}, {0});
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<int32_t>("additional", {1, 256}, std::vector<int32_t>(256, 8));
+  test.AddInput<int32_t>("additional_counts", {1}, {256});
+  test.AddOutput<int32_t>("selected", {1, 2}, {7, 8});
+  test.AddOutput<int32_t>("selected_counts", {1}, {2});
+  test.AddOutput<int32_t>("status", {1}, {0});
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(provider));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
 TEST(PackedSparseAttentionIndexerMerge, InvalidMetadataAndOverflow) {

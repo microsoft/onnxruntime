@@ -907,6 +907,7 @@ __global__ void CsaUpdateStateKernel(const T* key, const T* gate, const T* key_n
         cumulative_sequence_lengths[params.batch_size] != params.total_tokens ||
         req_start < 0 || req_end < req_start || req_end > params.total_tokens ||
         (params.state_only && (req_start != b || req_end != b + 1)) ||
+        (params.state_only && overflow_flags[b] != 0) ||
         past_sequence_lengths[b] < 0 || raw_key_len < 0 || raw_key_len > params.state_capacity ||
         raw_buf_len < 0 || raw_buf_len > params.buffer_capacity;
     const int req_len = invalid_metadata ? 0 : req_end - req_start;
@@ -1210,25 +1211,46 @@ __global__ void CsaSelectKernel(const float* scores, const int32_t* cumulative_s
 
 namespace {
 __global__ void ValidatePackedReuseKernel(const int32_t* cumulative_lengths, int32_t* indices,
-                                          int32_t* counts, int32_t* status, int capacity, const int32_t* overflow_flags) {
+                                          int32_t* counts, int32_t* status, int capacity, int32_t* overflow_flags,
+                                          const int32_t* past_sequence_lengths, const int32_t* past_state_lengths,
+                                          int batch_size, int state_capacity, int compress_ratio, bool is_qsa) {
   const int row = blockIdx.x;
-  if (cumulative_lengths[row] == row && cumulative_lengths[row + 1] == row + 1 &&
-      (overflow_flags == nullptr || overflow_flags[row] == 0)) return;
-  for (int column = threadIdx.x; column < capacity; column += blockDim.x) {
+  __shared__ bool valid;
+  if (threadIdx.x == 0) {
+    const int past = past_sequence_lengths[row];
+    const int64_t state_offset = static_cast<int64_t>(row) * 2;
+    const int key_length = past_state_lengths[state_offset];
+    const int buffer_length = past_state_lengths[state_offset + 1];
+    valid = cumulative_lengths[0] == 0 && cumulative_lengths[batch_size] == batch_size &&
+            cumulative_lengths[row] == row && cumulative_lengths[row + 1] == row + 1 &&
+            status[row] == 0 && counts[row] >= 0 && counts[row] <= capacity &&
+            past >= 0 && key_length >= 0 && key_length <= state_capacity &&
+            buffer_length >= 0 && buffer_length < (is_qsa ? compress_ratio : int64_t{2} * compress_ratio) &&
+            (!is_qsa || (key_length == past / compress_ratio && buffer_length == past % compress_ratio)) &&
+            (overflow_flags == nullptr || overflow_flags[row] == 0);
+  }
+  __syncthreads();
+  if (valid) return;
+  for (int64_t column = threadIdx.x; column < capacity; column += blockDim.x) {
     indices[static_cast<int64_t>(row) * capacity + column] = -1;
   }
   if (threadIdx.x == 0) {
     counts[row] = 0;
     if (status[row] == 0) status[row] = 1;
+    if (overflow_flags != nullptr) overflow_flags[row] = 1;
   }
 }
 }  // namespace
 
 Status LaunchValidatePackedIndexerReuse(cudaStream_t stream, const int32_t* cumulative_lengths,
+                                        const int32_t* past_sequence_lengths, const int32_t* past_state_lengths,
                                         int32_t* indices, int32_t* counts, int32_t* status,
-                                        int batch_size, int capacity, const int32_t* overflow_flags) {
+                                        int batch_size, int capacity, int state_capacity, int compress_ratio,
+                                        bool is_qsa, int32_t* overflow_flags) {
   if (batch_size == 0) return Status::OK();
-  ValidatePackedReuseKernel<<<batch_size, kThreads, 0, stream>>>(cumulative_lengths, indices, counts, status, capacity, overflow_flags);
+  ValidatePackedReuseKernel<<<batch_size, kThreads, 0, stream>>>(
+      cumulative_lengths, indices, counts, status, capacity, overflow_flags, past_sequence_lengths,
+      past_state_lengths, batch_size, state_capacity, compress_ratio, is_qsa);
   return CUDA_CALL(cudaGetLastError());
 }
 

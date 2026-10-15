@@ -5199,7 +5199,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.PackedSparseAttentionIndexerMerge"></a><a name="com.microsoft.packedsparseattentionindexermerge">**com.microsoft.PackedSparseAttentionIndexerMerge**</a>
 
-  Stable union of a mapped base selection and [range_start, range_end). Valid prefixes contain nonnegative indices. Padding is ignored. Outputs preserve first-occurrence order and are padded with -1. Status is 0 for success, 1 for invalid device metadata, or 2 for capacity overflow; failures return count 0 and all -1. The caller supplies a common index namespace and guarantees causal visibility.
+  Stable union of a mapped base selection and either [range_start, range_end) or an additional selection prefix. Valid prefixes contain nonnegative indices. Padding is ignored. Outputs preserve first-occurrence order and are padded with -1. Status is 0 for success, 1 for invalid device metadata, or 2 for capacity overflow; failures return count 0 and all -1. The caller supplies a common index namespace and guarantees causal visibility.
 
 #### Version
 
@@ -5228,9 +5228,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>range_ends</tt> (optional) : T</dt>
 <dd>Exclusive ends not less than starts, shape (N).</dd>
 <dt><tt>additional_indices</tt> (optional) : T</dt>
-<dd>Reserved; must be absent for append_range.</dd>
+<dd>Required for append_indices: selections of shape (N, A); absent for append_range.</dd>
 <dt><tt>additional_counts</tt> (optional) : T</dt>
-<dd>Reserved; must be absent for append_range.</dd>
+<dd>Required for append_indices: valid prefix lengths of shape (N); absent for append_range.</dd>
 </dl>
 
 #### Outputs
