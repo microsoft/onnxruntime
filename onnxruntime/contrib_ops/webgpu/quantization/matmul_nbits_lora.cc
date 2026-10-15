@@ -120,6 +120,84 @@ class LoRADownProgram final : public Program<LoRADownProgram> {
   }
 };
 
+static void GenerateLoRAParallel(ShaderHelper& shader, const std::string& base_groups, uint32_t tile_rows) {
+  shader.AddInput("lora_x");
+  shader.AddInput("lora_at");
+  shader.AddOutput("lora_down", ShaderUsage::UseElementTypeAlias);
+  auto& body = shader.MainFunctionBody();
+  body << "let lora_base_groups = " << base_groups << ";\n"
+       << "if (workgroup_idx >= lora_base_groups) {\n"
+       << "let group = workgroup_idx - lora_base_groups;\n"
+       << "let row = (group / 8u) * " << tile_rows << "u;\n"
+       << R"(
+  let rank = (group % 8u) * 4u + local_idx / 32u;
+  let lane = local_idx % 32u;
+)";
+  // Reuse each contiguous weight vector across prompt rows. FP32 partials
+  // avoid accumulating FP16 rounding error over the long K dimension.
+  for (uint32_t row = 0; row < tile_rows; ++row) body << "var acc" << row << " = vec4<f32>(0);\n";
+  body << "for (var k4 = lane; k4 < uniforms.K / 4u; k4 += 32u) {\n"
+       << "let av = vec4<f32>(lora_at[rank * (uniforms.K / 4u) + k4]);\n";
+  for (uint32_t row = 0; row < tile_rows; ++row) {
+    body << "if (row + " << row << "u < uniforms.M * uniforms.batch_count) {\n"
+         << "acc" << row << " = fma(vec4<f32>(lora_x[(row + " << row
+         << "u) * (uniforms.K / 4u) + k4]), av, acc" << row << ");\n}\n";
+  }
+  body << "}\n";
+  for (uint32_t row = 0; row < tile_rows; ++row) {
+    body << "let sum" << row << " = subgroupAdd((acc" << row << ".x + acc" << row << ".z) + (acc"
+         << row << ".y + acc" << row << ".w));\n"
+         << "if (lane == 0u && row + " << row << "u < uniforms.M * uniforms.batch_count) {\n"
+         << "lora_down[(row + " << row << "u) * 32u + rank] = lora_down_element_t(sum" << row << ");\n}\n";
+  }
+  body << "return;\n}\n";
+}
+
+void GenerateLoRADecode(ShaderHelper& shader, const std::string& base_groups) {
+  // One workgroup per rank exposes more parallelism than four ranks per
+  // workgroup; the four subgroup partials need only one workgroup barrier.
+  shader.AddInput("lora_x");
+  shader.AddInput("lora_at");
+  shader.AddOutput("lora_down", ShaderUsage::UseElementTypeAlias);
+  shader.AdditionalImplementation() << "var<workgroup> lora_sums: array<f32, 4>;\n";
+  shader.MainFunctionBody() << "let lora_base_groups = " << base_groups << ";\n"
+                            << R"(
+if (workgroup_idx >= lora_base_groups) {
+  let group = workgroup_idx - lora_base_groups;
+  let row = group / 32u;
+  let rank = group % 32u;
+  var acc = vec4<f32>(0);
+  for (var k4 = local_idx; k4 < uniforms.K / 4u; k4 += 128u) {
+    acc = fma(vec4<f32>(lora_x[row * (uniforms.K / 4u) + k4]),
+              vec4<f32>(lora_at[rank * (uniforms.K / 4u) + k4]), acc);
+  }
+  let sum = subgroupAdd((acc.x + acc.z) + (acc.y + acc.w));
+  if (local_idx % 32u == 0u) { lora_sums[local_idx / 32u] = sum; }
+  workgroupBarrier();
+  if (local_idx == 0u) {
+    lora_down[row * 32u + rank] = lora_down_element_t((lora_sums[0] + lora_sums[2]) + (lora_sums[1] + lora_sums[3]));
+  }
+  return;
+}
+)";
+}
+
+class LoRADownParallelProgram final : public Program<LoRADownParallelProgram> {
+ public:
+  explicit LoRADownParallelProgram(uint32_t tile_rows) : Program{"LoRADownParallel"}, tile_rows_(tile_rows) {}
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LoRADownParallelProgram);
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"K", ProgramUniformVariableDataType::Uint32},
+                                          {"M", ProgramUniformVariableDataType::Uint32},
+                                          {"batch_count", ProgramUniformVariableDataType::Uint32});
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    GenerateLoRAParallel(shader, "0u", tile_rows_);
+    return Status::OK();
+  }
+
+ private:
+  uint32_t tile_rows_;
+};
+
 // Fallback epilogue for base kernels without an integrated adapter output path.
 class LoRAOutputProgram final : public Program<LoRAOutputProgram> {
  public:
@@ -178,7 +256,21 @@ Status ApplyTransposedLoRA(onnxruntime::webgpu::ComputeContext& context, const T
   down_shape.back() = 32;
   auto t = context.CreateGPUTensor(x->DataType(), TensorShape(down_shape));
   const auto compute_down = [&]() -> Status {
-    if (use_gemv) {
+    const auto& adapter = context.AdapterInfo();
+    if (rows > 1 && adapter.vendor == std::string_view{"nvidia"} &&
+        context.HasFeature(wgpu::FeatureName::Subgroups) &&
+        adapter.subgroupMinSize == 32 && adapter.subgroupMaxSize == 32) {
+      constexpr uint32_t tile_rows = 4;
+      LoRADownParallelProgram down(tile_rows);
+      down.AddInputs({{x, ProgramTensorMetadataDependency::Type, 4},
+                      {at, ProgramTensorMetadataDependency::Type, 4}})
+          .AddOutput({&t, ProgramTensorMetadataDependency::Type})
+          .SetWorkgroupSize(128)
+          .SetDispatchGroupSize(CeilDiv(rows, tile_rows) * 8)
+          .AddUniformVariables({{narrow<uint32_t>(k)}, {rows}, {1u}})
+          .CacheHint(tile_rows);
+      ORT_RETURN_IF_ERROR(context.RunProgram(down));
+    } else if (use_gemv) {
       LoRAGemvProgram down;
       down.AddInputs({{x, ProgramTensorMetadataDependency::Type, 4},
                       {at, ProgramTensorMetadataDependency::Type, 4}})
@@ -209,7 +301,17 @@ Status ApplyTransposedLoRA(onnxruntime::webgpu::ComputeContext& context, const T
   // floating joint down kernel would otherwise replace it.
   const bool base_dp4a = CanApplyDP4AMatrixMatMulNBits(
       context, accuracy_level, 32, narrow<uint32_t>(n), narrow<uint32_t>(k), 4, m, false, y);
-  if (use_gemv && !base_dp4a) {
+  const auto& adapter = context.AdapterInfo();
+  if (m == 1 && k >= 2048 && k <= 8192 && base_dp4a && x->IsDataType<float>() &&
+      adapter.vendor == std::string_view{"nvidia"} && context.HasFeature(wgpu::FeatureName::Subgroups) &&
+      adapter.subgroupMinSize == 32 && adapter.subgroupMaxSize == 32) {
+    // Quantize only the base's X. The appended floating down projection
+    // reads original X and writes T for the subsequent up/add dispatch.
+    ORT_RETURN_IF_ERROR(ApplyDP4AMatrixMatMulNBits(x, weight, scales, nullptr, nullptr, rows, m, m,
+                                                   narrow<uint32_t>(n), narrow<uint32_t>(k), 32, 0,
+                                                   kMinMForTileOptimization, 4, context, &base, 0,
+                                                   nullptr, nullptr, nullptr, at, &t));
+  } else if (use_gemv && !base_dp4a) {
     ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, weight, scales, nullptr, nullptr, k, n, 32, accuracy_level, 4,
                                          context, &base, 0, nullptr, 0, nullptr, nullptr, at, &t));
   } else if (m >= kMinMForTileOptimization && context.AdapterInfo().vendor == std::string_view{"nvidia"} &&

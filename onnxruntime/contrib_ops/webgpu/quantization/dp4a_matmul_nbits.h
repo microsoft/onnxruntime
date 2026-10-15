@@ -33,23 +33,24 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
   DP4AMatMulNBitsProgram(uint32_t tile_size_m, uint32_t tile_size_n, uint32_t tile_size_k_vec, uint32_t block_size, uint32_t nbits,
                          bool has_zero_points, bool has_bias,
                          bool has_weight_idx, bool has_weight_idx_indirect, bool is_qualcomm,
-                         bool acc_f32, bool has_lora_up = false, bool has_lora_down = false, bool lora_transposed = false, bool lora_quantized = false) : Program{has_lora_down ? (lora_quantized ? "DP4AMatMulNBitsQLoRADown" : "DP4AMatMulNBitsLoRADown") : has_lora_up ? (lora_quantized ? "DP4AMatMulNBitsQLoRAUp" : "DP4AMatMulNBitsLoRAUp")
-                                                                                                                                                                                                                                                                          : "DP4AMatMulNBits"},
-                                                                                                                                                          tile_size_m_(tile_size_m),
-                                                                                                                                                          tile_size_n_(tile_size_n),
-                                                                                                                                                          tile_size_k_vec_(tile_size_k_vec),
-                                                                                                                                                          block_size_(block_size),
-                                                                                                                                                          nbits_(nbits),
-                                                                                                                                                          has_bias_(has_bias),
-                                                                                                                                                          has_zero_points_(has_zero_points),
-                                                                                                                                                          has_weight_idx_(has_weight_idx),
-                                                                                                                                                          has_weight_idx_indirect_(has_weight_idx_indirect),
-                                                                                                                                                          is_qualcomm_(is_qualcomm),
-                                                                                                                                                          acc_f32_(acc_f32),
-                                                                                                                                                          has_lora_up_(has_lora_up),
-                                                                                                                                                          has_lora_down_(has_lora_down),
-                                                                                                                                                          lora_transposed_(lora_transposed),
-                                                                                                                                                          lora_quantized_(lora_quantized) {}
+                         bool acc_f32, bool has_lora_up = false, bool has_lora_down = false, bool lora_transposed = false, bool lora_quantized = false, bool lora_shared_b = false) : Program{has_lora_down ? (lora_quantized ? "DP4AMatMulNBitsQLoRADown" : "DP4AMatMulNBitsLoRADown") : has_lora_up ? (lora_quantized ? "DP4AMatMulNBitsQLoRAUp" : "DP4AMatMulNBitsLoRAUp")
+                                                                                                                                                                                                                                                                                                      : "DP4AMatMulNBits"},
+                                                                                                                                                                                      tile_size_m_(tile_size_m),
+                                                                                                                                                                                      tile_size_n_(tile_size_n),
+                                                                                                                                                                                      tile_size_k_vec_(tile_size_k_vec),
+                                                                                                                                                                                      block_size_(block_size),
+                                                                                                                                                                                      nbits_(nbits),
+                                                                                                                                                                                      has_bias_(has_bias),
+                                                                                                                                                                                      has_zero_points_(has_zero_points),
+                                                                                                                                                                                      has_weight_idx_(has_weight_idx),
+                                                                                                                                                                                      has_weight_idx_indirect_(has_weight_idx_indirect),
+                                                                                                                                                                                      is_qualcomm_(is_qualcomm),
+                                                                                                                                                                                      acc_f32_(acc_f32),
+                                                                                                                                                                                      has_lora_up_(has_lora_up),
+                                                                                                                                                                                      has_lora_down_(has_lora_down),
+                                                                                                                                                                                      lora_transposed_(lora_transposed),
+                                                                                                                                                                                      lora_quantized_(lora_quantized),
+                                                                                                                                                                                      lora_shared_b_(lora_shared_b) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_count", ProgramUniformVariableDataType::Uint32},
@@ -79,6 +80,7 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
   bool has_lora_down_;
   bool lora_transposed_;
   bool lora_quantized_;
+  bool lora_shared_b_;
 };
 
 class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMProgram> {
@@ -88,22 +90,24 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
                                bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights,
                                bool broadcast_a_row = false,
                                bool acc_f32 = false, bool has_lora_up = false, bool lora_transposed = false, bool lora_quantized = false,
-                               bool has_qlora_down = false) : Program{has_qlora_down ? "DP4AMatMulNBitsQLoRADownSmallM" : lora_quantized ? "DP4AMatMulNBitsQLoRAUpSmallM"
-                                                                                                                                         : "DP4AMatMulNBitsSmallMProgram"},
-                                                              tile_size_k_vec_(tile_size_k_vec),
-                                                              tile_size_(tile_size),
-                                                              nbits_(nbits),
-                                                              has_bias_(has_bias),
-                                                              has_zero_points_(has_zero_points),
-                                                              has_weight_idx_(has_weight_idx),
-                                                              has_weight_idx_indirect_(has_weight_idx_indirect),
-                                                              single_scale_weights_(single_scale_weights),
-                                                              broadcast_a_row_(broadcast_a_row),
-                                                              acc_f32_(acc_f32),
-                                                              has_lora_up_(has_lora_up),
-                                                              lora_transposed_(lora_transposed),
-                                                              lora_quantized_(lora_quantized),
-                                                              has_qlora_down_(has_qlora_down) {}
+                               bool has_qlora_down = false, bool has_lora_down = false) : Program{has_lora_down ? "DP4AMatMulNBitsLoRADownSmallM" : has_qlora_down ? "DP4AMatMulNBitsQLoRADownSmallM"
+                                                                                                                                                : lora_quantized   ? "DP4AMatMulNBitsQLoRAUpSmallM"
+                                                                                                                                                                   : "DP4AMatMulNBitsSmallMProgram"},
+                                                                                          tile_size_k_vec_(tile_size_k_vec),
+                                                                                          tile_size_(tile_size),
+                                                                                          nbits_(nbits),
+                                                                                          has_bias_(has_bias),
+                                                                                          has_zero_points_(has_zero_points),
+                                                                                          has_weight_idx_(has_weight_idx),
+                                                                                          has_weight_idx_indirect_(has_weight_idx_indirect),
+                                                                                          single_scale_weights_(single_scale_weights),
+                                                                                          broadcast_a_row_(broadcast_a_row),
+                                                                                          acc_f32_(acc_f32),
+                                                                                          has_lora_up_(has_lora_up),
+                                                                                          lora_transposed_(lora_transposed),
+                                                                                          lora_quantized_(lora_quantized),
+                                                                                          has_qlora_down_(has_qlora_down),
+                                                                                          has_lora_down_(has_lora_down) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_count", ProgramUniformVariableDataType::Uint32},
@@ -133,6 +137,7 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
   bool lora_transposed_;
   bool lora_quantized_;
   bool has_qlora_down_;
+  bool has_lora_down_;
 };
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,

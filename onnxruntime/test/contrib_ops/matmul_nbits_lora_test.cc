@@ -134,6 +134,68 @@ TEST(MatMulNBitsLoRA, Fp32Numerics) {
   }
 }
 
+template <typename T>
+void RunParallelDownNumerics() {
+  struct Shape {
+    int64_t batch, m, k, n;
+  };
+  for (const auto shape : {Shape{1, 1, 2048, 64}, Shape{2, 1, 8192, 64}, Shape{2, 33, 2176, 64},
+                           Shape{1, 128, 4096, 64}, Shape{1, 1024, 2048, 16}}) {
+    const auto [batch, m, k, n] = shape;
+    SCOPED_TRACE(MakeString("batch=", batch, ", M=", m, ", K=", k, ", N=", n));
+    std::vector<T> x(batch * m * k), a(32 * k), b(n * 32), expected(batch * m * n);
+    for (int64_t row = 0; row < batch * m; ++row) {
+      for (int64_t col = 0; col < k; ++col) {
+        // Off-grid floating X detects accidental reuse of the base's INT8 X.
+        x[row * k + col] = T(row % 7 == 6 ? 0.0f : (static_cast<int>((row * 19 + col * 11) % 255) - 127) * 0.00712345f);
+      }
+    }
+    for (int64_t r = 0; r < 32; ++r) {
+      for (int64_t col = 0; col < k; ++col)
+        a[r * k + col] = T((static_cast<int>((r * 17 + col * 13) % 65) - 32) * 0.001234567f);
+    }
+    for (int64_t col = 0; col < n; ++col)
+      for (int64_t r = 0; r < 32; ++r)
+        b[col * 32 + r] = T((static_cast<int>((col * 7 + r * 3) % 33) - 16) * 0.002345678f);
+    // Dense FP64 reference with exactly one cast at each MatMul boundary.
+    // A zero base isolates adapter arithmetic from activation quantization.
+    for (int64_t row = 0; row < batch * m; ++row) {
+      std::vector<T> t(32);
+      for (int64_t r = 0; r < 32; ++r) {
+        double sum = 0;
+        for (int64_t col = 0; col < k; ++col)
+          sum += static_cast<double>(static_cast<float>(x[row * k + col])) * static_cast<float>(a[r * k + col]);
+        t[r] = T(static_cast<float>(sum));
+      }
+      for (int64_t col = 0; col < n; ++col) {
+        double sum = 0;
+        for (int64_t r = 0; r < 32; ++r)
+          sum += static_cast<double>(static_cast<float>(t[r])) * static_cast<float>(b[col * 32 + r]);
+        expected[row * n + col] = T(static_cast<float>(sum));
+      }
+    }
+    OpTester test("MatMulNBitsLoRA", 1, kMSDomain);
+    test.AddAttribute<int64_t>("K", k);
+    test.AddAttribute<int64_t>("N", n);
+    test.AddAttribute<int64_t>("accuracy_level", 4);
+    test.AddAttribute<int64_t>("adapter_transposed", 1);
+    test.AddInput<T>("X", {batch, m, k}, x);
+    test.AddInput<uint8_t>("W", {n, k / 32, 16}, std::vector<uint8_t>(n * k / 2, 0x88), true);
+    test.AddInput<T>("S", {n, k / 32}, std::vector<T>(n * k / 32, T(0.03125f)), true);
+    test.AddInput<T>("A", {32, k}, a);
+    test.AddInput<T>("B", {n, 32}, b);
+    test.AddOutput<T>("Y", {batch, m, n}, expected);
+    test.SetOutputAbsErr("Y", std::is_same_v<T, float> ? 2e-6f : 1e-4f);
+    test.SetOutputRelErr("Y", std::is_same_v<T, float> ? 2e-5f : 0.003f);
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultWebGpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+  }
+}
+
+TEST(MatMulNBitsLoRA, ParallelDownNumericsFp16) { RunParallelDownNumerics<MLFloat16>(); }
+TEST(MatMulNBitsLoRA, ParallelDownNumericsFp32) { RunParallelDownNumerics<float>(); }
+
 TEST(MatMulNBitsLoRA, RejectInvalidAdapterShape) {
   auto ep = DefaultWebGpuExecutionProvider();
   ASSERT_NE(ep, nullptr);

@@ -15,6 +15,10 @@ namespace {
 // Use two FP16 epsilons plus a small floor for values near cancellation.
 constexpr double kFp16FusionAbsTolerance = 1e-4;
 constexpr double kFp16FusionRelTolerance = 2.0 / 1024.0;
+// The K-parallel down projection uses FP32 partials instead of the unfused
+// sequential FP16 sum over K=2048. Allow its accumulated rounding difference
+// only for affected cases; ParallelDownNumerics checks a dense FP64 reference.
+constexpr double kFp16ParallelDownAbsTolerance = 4.0 / 1024.0;
 
 template <typename T = MLFloat16>
 void BuildLoRA(ModelTestBuilder& builder, int64_t m = 1, bool zeros = false,
@@ -143,11 +147,12 @@ TEST_F(GraphTransformationTests, MatMulNBitsLoRAFusionTransposedNumerics) {
       for (int64_t n : {128, 132}) {
         SCOPED_TRACE(m);
         SCOPED_TRACE(n);
+        const bool parallel_down = m > 1 && (std::string_view(mode) != "fuse_down" || m < 4 || n % 16 != 0);
         RunWebGpuFusionTransformerTest(
             [m, n](ModelTestBuilder& b) { BuildLoRA(b, m, true, false, false, 32, false, true, n); },
             [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckCount(s.GetGraph(), 1)); },
             TransformerLevel::Level1, TransformerLevel::Level2, 21,
-            kFp16FusionAbsTolerance, kFp16FusionRelTolerance,
+            parallel_down ? kFp16ParallelDownAbsTolerance : kFp16FusionAbsTolerance, kFp16FusionRelTolerance,
             std::make_unique<MatMulNBitsLoRAFusion>(), [] { return DefaultWebGpuExecutionProvider(); },
             [mode](SessionOptions& options) {
               if (mode[0]) {
@@ -193,11 +198,12 @@ TEST_F(GraphTransformationTests, MatMulNBitsLoRAFusionTransposedBatchedNumerics)
       for (int64_t m : {1, 3, 37}) {
         SCOPED_TRACE(batch);
         SCOPED_TRACE(m);
+        const bool parallel_down = std::string_view(mode) != "fuse_down" || m < 4;
         RunWebGpuFusionTransformerTest(
             [batch, m](ModelTestBuilder& b) { BuildLoRA(b, m, true, false, false, 32, false, true, 128, 0, 0, batch); },
             [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckCount(s.GetGraph(), 1)); },
             TransformerLevel::Level1, TransformerLevel::Level2, 21,
-            kFp16FusionAbsTolerance, kFp16FusionRelTolerance,
+            parallel_down ? kFp16ParallelDownAbsTolerance : kFp16FusionAbsTolerance, kFp16FusionRelTolerance,
             std::make_unique<MatMulNBitsLoRAFusion>(), [] { return DefaultWebGpuExecutionProvider(); },
             [mode](SessionOptions& options) {
               if (mode[0]) {

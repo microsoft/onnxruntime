@@ -12,6 +12,7 @@ namespace webgpu {
 struct DP4AQuantizedInput;
 // Adds an independent FP16 rank-32 down-projection branch to a 256-thread shader.
 void GenerateLoRADown(onnxruntime::webgpu::ShaderHelper& shader, const std::string& base_groups);
+void GenerateLoRADecode(onnxruntime::webgpu::ShaderHelper& shader, const std::string& base_groups);
 
 // Adds the same FP32 GEMV reduction to standalone and fused 128-thread shaders.
 void GenerateLoRAGemv(onnxruntime::webgpu::ShaderHelper& shader, const std::string& base_groups,

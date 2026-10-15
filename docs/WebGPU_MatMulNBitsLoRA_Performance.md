@@ -429,3 +429,72 @@ zero rows, K tails, the full INT8 byte range, and distinct adapter-on/off
 capture IDs with replay. Separate dispatch logging confirms quantize →
 joint base/down → up/add. Both changed kernel translation units pass WASM32
 syntax checks. Only the built-in EP was tested for this experiment.
+
+## Floating LoRA prefill and decode follow-up
+
+The baseline for this experiment includes the three-dispatch QLoRA change above.
+The same optional graphs and floating adapters were used before and after. The
+native built-in WebGPU measurements use batch 1, 128 generated tokens, fixed
+prompt IDs, capacity 4096, capture/reuse and token readback, three warmups and
+five measured requests. Values are medians on RTX 5080/D3D12. Timing ran alone;
+profiling and correctness checks ran separately. A reversed runtime ordering
+confirmed the baseline after the candidate measurements.
+
+| Type | Prompt | Off TTFT (ms) | LoRA TTFT before → after (ms) | QLoRA TTFT (ms) | LoRA decode before → after (tok/s) | QLoRA decode (tok/s) |
+|---|---:|---:|---:|---:|---:|---:|
+| FP16 | 128 | 31.30 | 83.72 → 46.74 | 40.56 | 200.04 → 197.53 | 195.13 |
+| FP16 | 1024 | 162.84 | 225.95 → 190.35 | 172.53 | 197.64 → 195.02 | 195.08 |
+| FP32 | 128 | 29.77 | 123.51 → 59.69 | 45.18 | 138.98 → 165.35 | 170.26 |
+| FP32 | 1024 | 162.09 | 270.70 → 220.47 | 192.53 | 136.07 → 162.33 | 167.47 |
+
+FP16 adapter-off decode measured 225.01/223.75 tok/s, and FP32 measured
+195.75/192.21 tok/s. The floating LoRA decode deficit is now 12–16%, close
+to QLoRA's 11–13% on its separately measured adapter-off controls. FP16
+batch-one decode uses its existing algorithm; its measured change was -1.3%.
+Adapter-off controls changed by at most 1.3% in decode and 0.6% in TTFT.
+QLoRA controls showed no regression above 1.7% in TTFT or 1% in decode.
+These control differences are timing variation, not claimed improvements.
+
+The retained changes are:
+
+- A K-parallel floating down projection for NVIDIA devices with fixed
+  32-lane subgroups. A 128-thread workgroup computes four ranks for four
+  rows, reusing each vec4 weight across rows. FP32 partials are reduced
+  with subgroup operations and cast once to T's model dtype.
+- Shared transposed B tiles in the FP16 prefill DP4A base/up epilogue.
+  This preserves the existing workgroup size and arithmetic order.
+  The FP32 shared-tile candidate did not help and is not enabled.
+- FP32 decode uses quantize X → joint base/down → up/add. Each floating
+  rank gets one 128-thread workgroup, four subgroup reductions, and one
+  workgroup barrier. The down projection reads original floating X;
+  only the base projection uses quantized X. Eligibility retains ordinary
+  DP4A checks and additionally requires NVIDIA, fixed 32-lane subgroups,
+  M=1, and K=2048–8192. Explicit `fuse_up` retains its existing routing.
+
+Prefill down-projection GPU time fell from 36.97/37.39 ms to 4.63/12.01 ms
+for FP16 at 128/1024 tokens, and from 68.64/71.11 ms to 4.39/17.17 ms for
+FP32. These are hardware timestamp sums from separate uncaptured profiles,
+not end-to-end latencies. Full floating prefill still trails QLoRA. A
+private diagnostic that moved identical adapter values into initializers
+saved about 11 ms (FP16) and 21 ms (FP32) on short prompts, showing substantial
+per-request input/upload cost outside the shader timestamps. Persistent
+device adapter storage remains separate work requiring correct ownership,
+device identity, unload, and capture invalidation handling.
+
+Validation passed 15 provider tests and 25 fusion tests, including new dense
+FP64 references for both floating types, off-grid X, zero rows, batched
+decode, K tails, and 128/1024-row prefill. Two affected FP16 fusion
+comparisons use a scoped 4/1024 absolute bound for changing a sequential
+FP16 reduction to FP32 partial sums; independent dense-reference tests
+retain tighter bounds. Native build, lint, and WASM32 syntax checks passed.
+
+With adapters A/B on six full-model cases per dtype, five of six generated
+answers were unchanged for each dtype; the changed answers retained their
+facts with different wording. Forced-prefix next-token agreement was
+72/72 for FP16 and 70/72 for FP32. Maximum logit differences were 0.689453
+and 0.911110, with largest per-case RMSE 0.071453 and 0.111359. Adapter-off
+logits and capture OFF/ON logits were exactly equal, and rewind checks passed.
+In an additional FP32 diagnostic with base activation quantization disabled,
+the maximum logit difference dropped to 0.0000253 and all 72/72 choices
+matched. This supports DP4A threshold amplification of small upstream
+rounding changes. The checks are not a broad model-quality evaluation.

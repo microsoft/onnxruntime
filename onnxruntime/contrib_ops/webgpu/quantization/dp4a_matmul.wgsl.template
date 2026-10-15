@@ -7,6 +7,7 @@
 #param has_lora_up
 #param lora_quantized
 #param lora_transposed
+#param lora_shared_b
 #param has_bias
 #param has_zero_points
 #param is_qualcomm
@@ -19,6 +20,10 @@
 
 #use .getByOffset .setByOffset
 
+#if lora_shared_b
+var<workgroup> lora_b_tile: array<vec4<output_element_t>, tile_size_n * 8>;
+#endif
+
 fn write_lora_output(offset: u32, value: vec4<output_element_t>) {
 #if has_lora_up
   let row = (offset * 4u) / uniforms.N;
@@ -29,10 +34,18 @@ fn write_lora_output(offset: u32, value: vec4<output_element_t>) {
 #elif lora_transposed
   for (var r4 = 0u; r4 < 8u; r4++) {
     let tv = lora_t[row * 8u + r4];
+#if lora_shared_b
+    let local_col = col % tile_size_n;
+    let b0 = lora_b_tile[local_col * 8u + r4];
+    let b1 = lora_b_tile[(local_col + 1u) * 8u + r4];
+    let b2 = lora_b_tile[(local_col + 2u) * 8u + r4];
+    let b3 = lora_b_tile[(local_col + 3u) * 8u + r4];
+#else
     let b0 = lora_b[col * 8u + r4];
     let b1 = lora_b[(col + 1u) * 8u + r4];
     let b2 = lora_b[(col + 2u) * 8u + r4];
     let b3 = lora_b[(col + 3u) * 8u + r4];
+#endif
     delta = vec4<output_element_t>(b0.x, b1.x, b2.x, b3.x) * tv.x + delta;
     delta = vec4<output_element_t>(b0.y, b1.y, b2.y, b3.y) * tv.y + delta;
     delta = vec4<output_element_t>(b0.z, b1.z, b2.z, b3.z) * tv.z + delta;
@@ -437,6 +450,13 @@ $MAIN {
         workgroupBarrier();
     }
 
+#if lora_shared_b
+    for (var i = local_idx; i < tile_size_n * 8u; i += workgroup_size) {
+        let col = b_global_base + i / 8u;
+        if (col < uniforms.N) { lora_b_tile[i] = lora_b[col * 8u + i % 8u]; }
+    }
+    workgroupBarrier();
+#endif
     let a_global = a_global_base + base_A + a_idx;
     let b_global = b_global_base + base_B;
     let output_idx = (batch * uniforms.M * uniforms.N + a_global * uniforms.N + b_global)/4;
