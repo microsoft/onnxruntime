@@ -145,12 +145,15 @@ cudaError_t LaunchQMoEOffloadSourceRows(
 
 __global__ void QMoEOffloadClassifyKernel(
     const int* topk_indices, const int* expert_slot, int route_count, int row_count,
-    int* hit_ids, int* hit_compact, int* hit_flag, int dummy_slot) {
+    int* hit_ids, int* hit_compact, int* hit_flag, int dummy_slot,
+    float* unit_scales, int* identity_permutation, int k_for_source_rows) {
   const int row = blockIdx.x * blockDim.x + threadIdx.x;
   if (row >= row_count) return;
+  if (unit_scales != nullptr) unit_scales[row] = 1.0f;
+  if (identity_permutation != nullptr) identity_permutation[row] = row;
   const int route = row < route_count ? row : 0;
   const int slot = (row < route_count) ? expert_slot[topk_indices[route]] : -1;
-  hit_ids[row] = route;
+  hit_ids[row] = (k_for_source_rows > 0 && row < route_count) ? (route / k_for_source_rows) : route;
   hit_compact[row] = slot < 0 ? dummy_slot : slot;
   if (row < route_count) hit_flag[row] = slot >= 0;
 }
@@ -170,11 +173,13 @@ __global__ void QMoEOffloadMergeKernel(
 
 cudaError_t LaunchQMoEOffloadClassify(
     const int* topk_indices, const int* expert_slot, int route_count, int row_count,
-    int* hit_ids, int* hit_compact, int* hit_flag, cudaStream_t stream, int dummy_slot) {
+    int* hit_ids, int* hit_compact, int* hit_flag, cudaStream_t stream, int dummy_slot,
+    float* unit_scales, int* identity_permutation, int k_for_source_rows) {
   if (row_count <= 0) return cudaSuccess;
   const int blocks = row_count / 128 + (row_count % 128 != 0);
   QMoEOffloadClassifyKernel<<<blocks, 128, 0, stream>>>(
-      topk_indices, expert_slot, route_count, row_count, hit_ids, hit_compact, hit_flag, dummy_slot);
+      topk_indices, expert_slot, route_count, row_count, hit_ids, hit_compact, hit_flag, dummy_slot,
+      unit_scales, identity_permutation, k_for_source_rows);
   return cudaGetLastError();
 }
 
@@ -1767,6 +1772,90 @@ void LaunchQMoECompactExperts(
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
+__global__ void QMoERemapExpertRangeKernel(
+    const int* __restrict__ expert_indices,
+    int* __restrict__ compact_indices,
+    int64_t num_routes,
+    int pass_start,
+    int expert_capacity) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < num_routes) {
+    const int e = expert_indices[index];
+    compact_indices[index] = (e >= pass_start && e < pass_start + expert_capacity) ? (e - pass_start) : -1;
+  }
+}
+
+__global__ void QMoEAccumulateExpertHistogramKernel(
+    const int* __restrict__ expert_indices,
+    int64_t num_routes,
+    int num_experts,
+    int* __restrict__ global_hist) {
+  __shared__ int smem_hist[1024];
+  const int capped = num_experts <= 1024 ? num_experts : 1024;
+  for (int i = threadIdx.x; i < capped; i += blockDim.x) {
+    smem_hist[i] = 0;
+  }
+  __syncthreads();
+  for (int64_t r = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       r < num_routes;
+       r += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    const int e = expert_indices[r];
+    if (e >= 0 && e < capped) {
+      atomicAdd(&smem_hist[e], 1);
+    }
+  }
+  __syncthreads();
+  for (int i = threadIdx.x; i < capped; i += blockDim.x) {
+    const int c = smem_hist[i];
+    if (c > 0) {
+      atomicAdd(&global_hist[i], c);
+    }
+  }
+}
+
+void LaunchQMoEMarkActiveExperts(
+    const int* expert_indices,
+    int* expert_active_mask,
+    int num_experts,
+    int64_t num_routes,
+    cudaStream_t stream) {
+  if (num_experts <= 0 || num_routes <= 0) return;
+  CUDA_CALL_THROW(cudaMemsetAsync(expert_active_mask, 0xff, static_cast<size_t>(num_experts) * sizeof(int), stream));
+  constexpr int block = 256;
+  const int grid = onnxruntime::narrow<int>((num_routes - 1) / block + 1);
+  QMoEMarkActiveExpertsKernel<<<grid, block, 0, stream>>>(expert_indices, expert_active_mask, num_routes);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+void LaunchQMoERemapExpertRange(
+    const int* expert_indices,
+    int* compact_indices,
+    int64_t num_routes,
+    int pass_start,
+    int expert_capacity,
+    cudaStream_t stream) {
+  if (num_routes <= 0) return;
+  constexpr int block = 256;
+  const int grid = onnxruntime::narrow<int>((num_routes - 1) / block + 1);
+  QMoERemapExpertRangeKernel<<<grid, block, 0, stream>>>(
+      expert_indices, compact_indices, num_routes, pass_start, expert_capacity);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+void LaunchQMoEAccumulateExpertHistogram(
+    const int* expert_indices,
+    int64_t num_routes,
+    int num_experts,
+    int* global_hist,
+    cudaStream_t stream) {
+  if (num_routes <= 0 || num_experts <= 0 || global_hist == nullptr) return;
+  constexpr int block = 256;
+  const int grid = std::min<int>(onnxruntime::narrow<int>((num_routes + block - 1) / block), 32);
+  QMoEAccumulateExpertHistogramKernel<<<grid, block, 0, stream>>>(
+      expert_indices, num_routes, num_experts, global_hist);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
 template <typename T>
 __global__ void QMoEAccumulatePassOutputKernel(
     float* __restrict__ accum,
@@ -2011,7 +2100,9 @@ __global__ void QMoEDequantizeNvfp4RowMajorKernel(
     T* __restrict__ output_bias,
     const uint8_t* __restrict__ resident_packed_weights = nullptr,
     const uint8_t* __restrict__ resident_block_scales = nullptr,
-    const int* __restrict__ resident_expert_to_slot = nullptr) {
+    const int* __restrict__ resident_expert_to_slot = nullptr,
+    int pass_start_expert = -1,
+    const int* __restrict__ expert_active_mask = nullptr) {
   const int groups_per_row = k >> 5;
   const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   const int64_t total = static_cast<int64_t>(num_experts) * n * groups_per_row;
@@ -2022,15 +2113,18 @@ __global__ void QMoEDequantizeNvfp4RowMajorKernel(
   const int group = static_cast<int>(index - global_row * groups_per_row);
   const int output_expert = static_cast<int>(global_row / n);
   const int row = static_cast<int>(global_row - static_cast<int64_t>(output_expert) * n);
-  const int expert = compact_to_expert ? compact_to_expert[output_expert] : output_expert;
-  if (expert < 0) {
+  const int expert = (pass_start_expert >= 0)
+                         ? (pass_start_expert + output_expert)
+                         : (compact_to_expert ? compact_to_expert[output_expert] : output_expert);
+  if (expert < 0 || (expert_active_mask != nullptr && expert_active_mask[expert] < 0)) {
     return;
   }
   const int resident_slot = (resident_expert_to_slot != nullptr) ? resident_expert_to_slot[expert] : -1;
   const bool use_resident = (resident_slot >= 0 && resident_packed_weights != nullptr && resident_block_scales != nullptr);
   const uint8_t* w_base = use_resident ? resident_packed_weights : packed_weights;
   const uint8_t* s_base = use_resident ? resident_block_scales : block_scales;
-  const int64_t w_source_row = static_cast<int64_t>(use_resident ? resident_slot : expert) * n + row;
+  const int cold_index = (pass_start_expert >= 0) ? output_expert : expert;
+  const int64_t w_source_row = static_cast<int64_t>(use_resident ? resident_slot : cold_index) * n + row;
   const int64_t orig_source_row = static_cast<int64_t>(expert) * n + row;
   const uint4 packed = *reinterpret_cast<const uint4*>(w_base + w_source_row * (k >> 1) + (static_cast<int64_t>(group) << 4));
   const uint16_t scale_pair = *reinterpret_cast<const uint16_t*>(s_base + w_source_row * (k >> 4) + (group << 1));
@@ -2078,10 +2172,12 @@ void LaunchQMoEDequantizeNvfp4WeightsImpl(
     bool weights_row_major,
     const uint8_t* resident_packed_weights = nullptr,
     const uint8_t* resident_block_scales = nullptr,
-    const int* resident_expert_to_slot = nullptr) {
+    const int* resident_expert_to_slot = nullptr,
+    int pass_start_expert = -1,
+    const int* expert_active_mask = nullptr) {
   ORT_ENFORCE(bias == nullptr || output_bias != nullptr, "QMoE NVFP4 bias gathering requires an output buffer.");
   constexpr int block = 256;
-  if (!weights_row_major && !compact_to_expert && !bias && QMoEDequantizeFp4VecApplies<16>(num_experts, n, k)) {
+  if (!weights_row_major && !compact_to_expert && pass_start_expert < 0 && !bias && QMoEDequantizeFp4VecApplies<16>(num_experts, n, k)) {
     const dim3 tile_block(kQMoEDequantizeFp4TileK / kQMoEDequantizeFp4VecK, kQMoEDequantizeFp4TileN);
     const dim3 tile_grid((n + kQMoEDequantizeFp4TileN - 1) / kQMoEDequantizeFp4TileN,
                          k / kQMoEDequantizeFp4TileK, num_experts);
@@ -2095,7 +2191,7 @@ void LaunchQMoEDequantizeNvfp4WeightsImpl(
     const int64_t blocks = (threads + block - 1) / block;
     QMoEDequantizeNvfp4RowMajorKernel<T><<<onnxruntime::narrow<int>(blocks), block, 0, stream>>>(
         packed_weights, block_scales, global_scales, output, num_experts, n, k, compact_to_expert, bias, output_bias,
-        resident_packed_weights, resident_block_scales, resident_expert_to_slot);
+        resident_packed_weights, resident_block_scales, resident_expert_to_slot, pass_start_expert, expert_active_mask);
     CUDA_CALL_THROW(cudaGetLastError());
     return;
   }
@@ -2122,10 +2218,13 @@ void LaunchQMoEDequantizeNvfp4Weights(
     bool weights_row_major,
     const uint8_t* resident_packed_weights,
     const uint8_t* resident_block_scales,
-    const int* resident_expert_to_slot) {
+    const int* resident_expert_to_slot,
+    int pass_start_expert,
+    const int* expert_active_mask) {
   LaunchQMoEDequantizeNvfp4WeightsImpl(packed_weights, block_scales, global_scales, output, num_experts, n, k,
                                        stream, compact_to_expert, bias, output_bias, weights_row_major,
-                                       resident_packed_weights, resident_block_scales, resident_expert_to_slot);
+                                       resident_packed_weights, resident_block_scales, resident_expert_to_slot,
+                                       pass_start_expert, expert_active_mask);
 }
 
 void LaunchQMoEDequantizeNvfp4Weights(
@@ -2143,10 +2242,13 @@ void LaunchQMoEDequantizeNvfp4Weights(
     bool weights_row_major,
     const uint8_t* resident_packed_weights,
     const uint8_t* resident_block_scales,
-    const int* resident_expert_to_slot) {
+    const int* resident_expert_to_slot,
+    int pass_start_expert,
+    const int* expert_active_mask) {
   LaunchQMoEDequantizeNvfp4WeightsImpl(packed_weights, block_scales, global_scales, output, num_experts, n, k,
                                        stream, compact_to_expert, bias, output_bias, weights_row_major,
-                                       resident_packed_weights, resident_block_scales, resident_expert_to_slot);
+                                       resident_packed_weights, resident_block_scales, resident_expert_to_slot,
+                                       pass_start_expert, expert_active_mask);
 }
 
 // NVFP4 counterpart of QMoECombineFp4ScalesForGemvKernel. Identical [E, n, k_blocks] ->

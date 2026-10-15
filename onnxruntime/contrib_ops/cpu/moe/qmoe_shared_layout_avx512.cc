@@ -210,6 +210,62 @@ const __m512 (&GetScaleFp4Lut2D(float global_scale, bool round_scale_bf16))[256]
 }
 
 template <int RT, bool IsMxfp4>
+void Fp4Group8Avx512(const uint8_t* w_base, const uint8_t* s_base, const __m512 (&lut_2d)[256], int64_t k,
+                     const float* a_reordered, float (&result)[8][RT]) {
+  const int64_t k_pairs = k / 32;
+  const int64_t w_stride = k / 2;
+  const int64_t s_stride = IsMxfp4 ? (k / 32) : (k / 16);
+  const __m128i mask128 = _mm_set1_epi8(0x0F);
+  const __m128i hi_blk = _mm_set_epi64x(0x1010101010101010ULL, 0ULL);
+
+  __m512 acc[8][RT];
+  for (int c = 0; c < 8; ++c) {
+    for (int r = 0; r < RT; ++r) {
+      acc[c][r] = _mm512_setzero_ps();
+    }
+  }
+
+  const uint8_t* w_rows[8];
+  const uint8_t* s_rows[8];
+  for (int c = 0; c < 8; ++c) {
+    w_rows[c] = w_base + c * w_stride;
+    s_rows[c] = s_base + c * s_stride;
+  }
+
+  for (int64_t kp = 0; kp < k_pairs; ++kp) {
+    __m512 al[RT], ah[RT];
+    for (int r = 0; r < RT; ++r) {
+      al[r] = _mm512_loadu_ps(a_reordered + r * k + kp * 32);
+      ah[r] = _mm512_loadu_ps(a_reordered + r * k + kp * 32 + 16);
+    }
+    for (int c = 0; c < 8; ++c) {
+      const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(w_rows[c] + kp * 16));
+      __m512 wls, whs;
+      if constexpr (IsMxfp4) {
+        const __m128i lo = _mm_and_si128(x, mask128);
+        const __m128i hi = _mm_and_si128(_mm_srli_epi16(x, 4), mask128);
+        const __m512 lut = lut_2d[s_rows[c][kp]];
+        wls = _mm512_permutexvar_ps(_mm512_cvtepu8_epi32(lo), lut);
+        whs = _mm512_permutexvar_ps(_mm512_cvtepu8_epi32(hi), lut);
+      } else {
+        const __m128i lo = _mm_or_si128(_mm_and_si128(x, mask128), hi_blk);
+        const __m128i hi = _mm_or_si128(_mm_and_si128(_mm_srli_epi16(x, 4), mask128), hi_blk);
+        const __m512 lut0 = lut_2d[s_rows[c][kp * 2]];
+        const __m512 lut1 = lut_2d[s_rows[c][kp * 2 + 1]];
+        wls = _mm512_permutex2var_ps(lut0, _mm512_cvtepu8_epi32(lo), lut1);
+        whs = _mm512_permutex2var_ps(lut0, _mm512_cvtepu8_epi32(hi), lut1);
+      }
+      for (int r = 0; r < RT; ++r) {
+        acc[c][r] = _mm512_fmadd_ps(wls, al[r], _mm512_fmadd_ps(whs, ah[r], acc[c][r]));
+      }
+    }
+  }
+  for (int c = 0; c < 8; ++c)
+    for (int r = 0; r < RT; ++r)
+      result[c][r] = _mm512_reduce_add_ps(acc[c][r]);
+}
+
+template <int RT, bool IsMxfp4>
 void Fp4Group4Avx512(const uint8_t* w_base, const uint8_t* s_base, const __m512 (&lut_2d)[256], int64_t k,
                      const float* a_reordered, float (&result)[4][RT]) {
   const int64_t k_pairs = k / 32;
@@ -269,6 +325,19 @@ void Fp4RowTileAvx512(const uint8_t* weights, const uint8_t* block_scales, float
   const int64_t w_stride = k / 2;
   const int64_t s_stride = IsMxfp4 ? (k / 32) : (k / 16);
   int64_t n0 = n_begin;
+  if constexpr (RT <= 2) {
+    for (; n0 + 8 <= n_end; n0 += 8) {
+      float result8[8][RT];
+      Fp4Group8Avx512<RT, IsMxfp4>(weights + n0 * w_stride, block_scales + n0 * s_stride, lut_2d, k, a_reordered,
+                                   result8);
+      for (int c = 0; c < 8; ++c) {
+        const float b = (bias != nullptr)
+                            ? (bias_is_bf16 ? BFloat16ToFloat(bias[n0 + c]) : Avx512HalfBitsToFloat(bias[n0 + c]))
+                            : 0.0f;
+        for (int r = 0; r < RT; ++r) out[r * out_stride + (n0 + c - n_begin)] = result8[c][r] + b;
+      }
+    }
+  }
   for (; n0 + 4 <= n_end; n0 += 4) {
     float result[4][RT];
     Fp4Group4Avx512<RT, IsMxfp4>(weights + n0 * w_stride, block_scales + n0 * s_stride, lut_2d, k, a_reordered,

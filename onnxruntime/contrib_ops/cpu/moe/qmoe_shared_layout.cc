@@ -731,7 +731,7 @@ void Nvfp4Fc1SwiGluRange(int64_t hidden, int64_t inter, const Nvfp4ExpertView& v
     }
     for (int64_t n = nb; n < ne; n += 2) {
       const int64_t j = n / 2;
-      const int pos = Nvfp4ReorderedPosition(static_cast<int>(j % 32));
+      const int pos = Nvfp4ReorderedPosition(static_cast<int>(j & 31));
       for (int64_t r = 0; r < m; ++r) {
         const float gate_projection = tmp[r * kChunk + (n - nb)];
         const float up_projection = tmp[r * kChunk + (n - nb) + 1];
@@ -742,10 +742,10 @@ void Nvfp4Fc1SwiGluRange(int64_t hidden, int64_t inter, const Nvfp4ExpertView& v
           value = std::clamp(value, -swiglu.limit, swiglu.limit);
         }
         const float act = gate / (1.0f + std::exp(-swiglu.alpha * gate)) * (value + swiglu.beta);
-        const float rounded_act = bf16_boundaries   ? BoundaryBFloat16::Round(act)
+        const float rounded_act = bf16_boundaries   ? RoundBf16Fast(act)
                                   : fp16_boundaries ? BoundaryFloat16::Round(act)
                                                     : act;
-        inter_reordered[r * inter + (j / 32) * 32 + pos] = rounded_act;
+        inter_reordered[r * inter + (j & ~int64_t{31}) + pos] = rounded_act;
       }
     }
   }

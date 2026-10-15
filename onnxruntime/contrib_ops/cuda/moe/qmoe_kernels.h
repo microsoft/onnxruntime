@@ -72,7 +72,8 @@ cudaError_t LaunchQMoEOffloadScatterBias(
 cudaError_t LaunchQMoEOffloadClassify(
     const int* topk_indices, const int* expert_slot, int route_count, int row_count,
     int* hit_ids, int* hit_compact, int* hit_flag, cudaStream_t stream,
-    int dummy_slot = 0);
+    int dummy_slot = 0, float* unit_scales = nullptr, int* identity_permutation = nullptr,
+    int k_for_source_rows = 0);
 
 cudaError_t LaunchQMoEOffloadMerge(
     const half* wave_output, const half* cpu_rows, const int* hit_flag, half* contributions,
@@ -321,6 +322,28 @@ void LaunchQMoECompactExperts(
     cudaStream_t stream,
     int pass_offset = 0);
 
+void LaunchQMoEMarkActiveExperts(
+    const int* expert_indices,
+    int* expert_active_mask,
+    int num_experts,
+    int64_t num_routes,
+    cudaStream_t stream);
+
+void LaunchQMoERemapExpertRange(
+    const int* expert_indices,
+    int* compact_indices,
+    int64_t num_routes,
+    int pass_start,
+    int expert_capacity,
+    cudaStream_t stream);
+
+void LaunchQMoEAccumulateExpertHistogram(
+    const int* expert_indices,
+    int64_t num_routes,
+    int num_experts,
+    int* global_hist,
+    cudaStream_t stream);
+
 void LaunchQMoEAccumulatePassOutput(
     float* accum,
     const half* pass_output,
@@ -375,6 +398,23 @@ struct QMoEResidentLayerSlabView {
   const int* slot_table_dev = nullptr;
 };
 
+struct QMoEPrefillPassDmaView {
+  void* dequant_fc1_weights = nullptr;
+  void* dequant_fc2_weights = nullptr;
+  const uint8_t* staging_fc1_weights = nullptr;
+  const uint8_t* staging_fc1_scales = nullptr;
+  const float* staging_fc1_global_scales = nullptr;
+  const uint8_t* staging_fc2_weights = nullptr;
+  const uint8_t* staging_fc2_scales = nullptr;
+  const float* staging_fc2_global_scales = nullptr;
+  const uint8_t* resident_fc1_weights = nullptr;
+  const uint8_t* resident_fc1_scales = nullptr;
+  const uint8_t* resident_fc2_weights = nullptr;
+  const uint8_t* resident_fc2_scales = nullptr;
+  const int* slot_table_dev = nullptr;
+  int* prefill_layer_hist_dev = nullptr;
+};
+
 bool TryGetQMoEResidentLayerSlabView(
     int device_id,
     int64_t layer_index,
@@ -382,6 +422,28 @@ bool TryGetQMoEResidentLayerSlabView(
     int hidden_size,
     int inter_size,
     QMoEResidentLayerSlabView* out_view);
+
+void RegisterQMoEDenseLayerHostWeights(
+    int device_id, int64_t layer_index, int num_experts, int hidden_size, int inter_size,
+    const uint8_t* fc1_w, const uint8_t* fc1_s, const float* fc1_g,
+    const uint8_t* fc2_w, const uint8_t* fc2_s, const float* fc2_g);
+
+bool TryPrepareQMoEPrefillDmaLayer(
+    int device_id, int64_t layer_index, int num_experts, int hidden_size, int inter_size,
+    int runner_num_experts, int64_t tile_rows, size_t elem_size,
+    const uint8_t* fc1_w, const uint8_t* fc1_s, const float* fc1_g,
+    const uint8_t* fc2_w, const uint8_t* fc2_s, const float* fc2_g,
+    cudaStream_t exec_stream, QMoEPrefillPassDmaView* out_view);
+
+bool BeginQMoEPrefillDmaPass(
+    int device_id, int64_t layer_index, int pass_idx, int num_passes, int runner_num_experts,
+    cudaStream_t exec_stream, QMoEPrefillPassDmaView* out_view);
+
+void EndQMoEPrefillDmaPassDequant(
+    int device_id, int pass_idx, cudaStream_t exec_stream);
+
+void OnQMoEDeviceArenasShrunk(int device_id);
+void FinalizeQMoEPrefillAndSeedDecode(int device_id, cudaStream_t stream = nullptr);
 
 // NVFP4 weight dequantization: E2M1 4-bit weights with Float8E4M3FN block scales
 // (block size 16) and per-expert float32 global scales. Weight layout [E, K, N/2],
@@ -401,7 +463,9 @@ void LaunchQMoEDequantizeNvfp4Weights(
     bool weights_row_major = false,
     const uint8_t* resident_packed_weights = nullptr,
     const uint8_t* resident_block_scales = nullptr,
-    const int* resident_expert_to_slot = nullptr);
+    const int* resident_expert_to_slot = nullptr,
+    int pass_start_expert = -1,
+    const int* expert_active_mask = nullptr);
 
 void LaunchQMoEDequantizeNvfp4Weights(
     const uint8_t* packed_weights,
@@ -418,7 +482,9 @@ void LaunchQMoEDequantizeNvfp4Weights(
     bool weights_row_major = false,
     const uint8_t* resident_packed_weights = nullptr,
     const uint8_t* resident_block_scales = nullptr,
-    const int* resident_expert_to_slot = nullptr);
+    const int* resident_expert_to_slot = nullptr,
+    int pass_start_expert = -1,
+    const int* expert_active_mask = nullptr);
 
 // Repack column-major FP4 packed weights to row-major layout on GPU.
 // Input shape interpretation: [experts, k, n/2] (col-major packed),

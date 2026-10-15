@@ -19,14 +19,26 @@
 namespace onnxruntime::contrib::cuda {
 
 struct QMoEResidentLayerSlabView;
+struct QMoEPrefillPassDmaView;
 
 class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
  public:
   explicit QMoEOffload(const OpKernelInfo& info);
   ~QMoEOffload() override;
   Status ComputeInternal(OpKernelContext* context) const override;
+  struct SharedLayerCache;
   friend bool TryGetQMoEResidentLayerSlabView(int device_id, int64_t layer_index, int num_experts,
                                               int hidden_size, int inter_size, QMoEResidentLayerSlabView* out_view);
+  friend bool TryPrepareQMoEPrefillDmaLayer(
+      int device_id, int64_t layer_index, int num_experts, int hidden_size, int inter_size,
+      int runner_num_experts, int64_t tile_rows, size_t elem_size,
+      const uint8_t* fc1_w, const uint8_t* fc1_s, const float* fc1_g,
+      const uint8_t* fc2_w, const uint8_t* fc2_s, const float* fc2_g,
+      cudaStream_t exec_stream, QMoEPrefillPassDmaView* out_view);
+  friend bool BeginQMoEPrefillDmaPass(
+      int device_id, int64_t layer_index, int pass_idx, int num_passes, int runner_num_experts,
+      cudaStream_t exec_stream, QMoEPrefillPassDmaView* out_view);
+  friend void FinalizeQMoEPrefillAndSeedDecode(int device_id, cudaStream_t stream);
 
  private:
   enum Buffer : size_t {
@@ -56,6 +68,14 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   using ResidentSlab = decltype(std::declval<const onnxruntime::cuda::CudaKernel&>()
                                     .GetScratchBuffer<uint8_t>(0, nullptr));
 
+  ResidentSlab AllocateReservedDeviceSlab(size_t bytes) const {
+    return ::onnxruntime::IAllocator::MakeUniquePtr<uint8_t>(
+        Info().GetAllocator(OrtMemType::OrtMemTypeDefault), bytes, /*use_reserve*/ true);
+  }
+  size_t LendResidentSlab() const;
+  void CopyExpertToResidentSlot(int expert, int slot, cudaStream_t stream) const;
+  void RestoreAndSeedResidentSlab(const int* prompt_hist, int total_prompt_routes,
+                                  bool enable_seeding, cudaStream_t stream) const;
   void StageExperts(const int* experts, int count) const;
   void InitializeShared(const OpKernelInfo& info);
   void InitializeNvfp4Offload(const OpKernelInfo& info);
@@ -69,7 +89,6 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
 
   struct CpuWork;
   struct AsyncTile;
-  struct SharedLayerCache;
   template <typename ActT, typename ParallelRunner>
   int RunColdExperts(CpuWork& work, int group_calls, const ActT* host_input, int tile_rows, ActT* host_result,
                      int* host_cpu_ids, bool compact, ParallelRunner&& run_parallel,
@@ -154,9 +173,11 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   mutable bool resident_decode_active_ = false;
   std::array<size_t, 6> resident_bank_bytes_{};
   std::array<size_t, 6> resident_bank_offsets_{};
+  size_t resident_slab_bytes_ = 0;
+  std::vector<int> initial_experts_;
   size_t resident_workspace_bytes_ = 0;
   size_t stream_workspace_bytes_ = 0;
-  ResidentSlab resident_slab_;
+  mutable ResidentSlab resident_slab_;
   ResidentSlab slot_table_dev_;
   mutable InlinedVector<int> slot_expert_;
   mutable InlinedVector<int> expert_slot_;
