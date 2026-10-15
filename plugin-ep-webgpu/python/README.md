@@ -59,7 +59,9 @@ To also test plugin selection through `InferenceSession(..., providers=[("WebGpu
 a host wheel built from this checkout with `--use_webgpu shared_lib --build_wheel` and set
 `ORT_WEBGPU_TEST_PROVIDER_NAME=1`. The Windows WebGPU plugin PR job runs this check in its existing `Run tests` step,
 using the locally built host and plugin wheels and reusing the dependencies installed for the job.
-The minimum-runtime package tests leave it disabled.
+Provider-option reporting is also checked only in this mode, as older hosts such as ORT 1.24.4 return an empty
+options map for plugin EPs. The minimum-runtime package tests leave it disabled and still verify plugin inference
+with CPU fallback disabled.
 Set `ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE=1` to fail instead of skipping inference when no WebGPU device is available.
 
 ## Versioning

@@ -15,8 +15,8 @@ The inference test is skipped gracefully if no WebGPU device is available
 (e.g., on CPU-only build agents), unless ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE is enabled.
 
 Set ORT_WEBGPU_TEST_PROVIDER_NAME=1 when testing a host built from this checkout
-with --use_webgpu shared_lib to also exercise provider-name selection. The minimum
-supported runtime only needs to support the device-selection API.
+with --use_webgpu shared_lib to also exercise provider-name selection and provider-option
+reporting. The minimum supported runtime only needs to support the device-selection API.
 """
 
 import os
@@ -173,7 +173,9 @@ def test_registration_and_inference():
             expected = x * y
 
             try:
-                assert sess.get_provider_options()[ep_name] == provider_options
+                if TEST_PROVIDER_NAME:
+                    # Older hosts such as ORT 1.24.4 do not report plugin provider options.
+                    assert sess.get_provider_options()[ep_name] == provider_options
                 outputs = sess.run(None, {"x": x, "y": y})
                 result = outputs[0]
 
