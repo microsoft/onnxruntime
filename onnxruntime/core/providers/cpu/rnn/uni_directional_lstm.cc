@@ -582,7 +582,15 @@ void UniDirectionalLstm<T>::GateComputations(
     float* pC_prev_clipped = SafeRawPointer<T>(C_prev_clipped + b * hidden_size_, C_prev_clipped_end, hidden_size_);
 #endif
 
-    activation_h_.func(pC_cur, pC_prev_clipped, po, pH, hidden_size_, activation_h_.alpha, activation_h_.beta);
+    // Clip Ct before applying h activation function (per ONNX spec)
+    // Copy Ct to temporary buffer and apply clipping
+    for (int i = 0; i < hidden_size_; ++i) {
+      pC_prev_clipped[i] = pC_cur[i];
+    }
+    // Ct clipping should not add bias; always use clip_ignore_bias.
+    deepcpu::clip_ignore_bias(clip_, nullptr, pC_prev_clipped, hidden_size_);
+
+    activation_h_.func(pC_prev_clipped, pC_prev_clipped, po, pH, hidden_size_, activation_h_.alpha, activation_h_.beta);
 
     // DumpMatrix("H" + row_str, pH, 1, hidden_size_);
   }
