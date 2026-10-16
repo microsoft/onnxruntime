@@ -5,20 +5,16 @@
 #param is_unidirectional
 #param kv_step_param
 #param q_BNSH
-#param qk_is_fp16
+#param qk_f32
 #param qkv_head_size
 #param qkv_num_heads
+#param shuffle_chunk_param
 #param use_seqlen_k
 #param use_seqlens_q
 
-// Bare, single-path flash-attention prefill. One workgroup per (batch, head,
-// query tile); workgroup_size_x threads (host-tunable, 128 or 256), each owning
-// one query row. The K/V sequence streams in tiles of kv_step columns broadcast
-// across the subgroup via subgroupShuffle, and an online (streaming) softmax
-// keeps the full score matrix from ever materializing.
-//
-// The V tile is loaded only just before the PV matmul (deferred V load) so the
-// QK^T + softmax compute overlaps V's global-memory fetch.
+// One query row per thread, with full-head K staging and late V staging in
+// slices of up to 16 vec4 values. Shuffle bands fit the adapter's guaranteed
+// minimum subgroup size; below 8, use direct shared-memory reads.
 
 const head_size : u32 = qkv_head_size;
 const num_heads : u32 = qkv_num_heads;
@@ -35,14 +31,14 @@ fn get_total_sequence_length(batch_idx: u32) -> u32 {
 }
 #endif
 
-// Default to f32 scores and online-softmax statistics to avoid fp16 overflow
-// with high-magnitude inputs, independently of the Q/K/V storage type.
-#if qk_is_fp16
-alias qk_precision = f16;
-const min_value = qk_precision(-65504.0);
-#else
+// Accumulate scores and softmax statistics in f32 to avoid fp16 overflow.
+// Individual dot products retain the Q/K storage precision.
+#if qk_f32
 alias qk_precision = f32;
 const min_value = qk_precision(-3.4028234663852886e+38f);
+#else
+alias qk_precision = q_element_t;
+const min_value = q_element_t(-65504.0);
 #endif
 
 // Local (sliding) attention window: key k_idx is attended to only when
@@ -51,24 +47,19 @@ fn is_key_visible(k_idx: u32, local_window_start: u32, causal_end: u32) -> bool 
   return k_idx >= local_window_start && k_idx < causal_end;
 }
 
-// Max K/V columns handled per iteration (one per subgroup lane); the host picks
-// 8 or 16 to fit the adapter's guaranteed minimum subgroup size. The head
-// dimension is expressed in vec4 units.
 const kv_step : u32 = kv_step_param;
+#if shuffle_chunk_param >= 8
+const shuffle_chunk : u32 = shuffle_chunk_param;
+#endif
 const vec_factor : u32 = 4u;
 const head_size_vec : u32 = head_size / vec_factor;
-// Score vec4 lanes per tile: kv_step columns packed 4 per vec4.
 const num_qk_vec : u32 = kv_step / vec_factor;
+const k_head_vec_step : u32 = head_size_vec;
+const v_head_vec_step : u32 = min(16u, head_size_vec);
 
-// K/V tiles shared and shuffled across the subgroup so each lane contributes the
-// column it loaded. Stored as [head_size_vec][kv_step] so the subgroup column
-// (kv_step) is the inner/fastest dimension: adjacent subgroup lanes hit adjacent
-// addresses, avoiding shared-memory bank conflicts.
-var<workgroup> k_tile : array<array<q_value_t, kv_step>, head_size_vec>;
-var<workgroup> v_tile : array<array<q_value_t, kv_step>, head_size_vec>;
-
-// Per-thread query row and output accumulator live as local vars in $MAIN
-// (o_tile is zero-initialized).
+// Adjacent subgroup lanes access adjacent workgroup-memory addresses.
+var<workgroup> k_tile : array<array<q_value_t, kv_step>, k_head_vec_step>;
+var<workgroup> v_tile : array<array<q_value_t, kv_step>, v_head_vec_step>;
 
 // Cooperatively load k_step key columns starting at k_start into shared memory.
 // Columns past total_seq are zeroed so out-of-range lanes contribute nothing.
@@ -82,14 +73,16 @@ fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32, tot
   }
 }
 
-// Same as loadk, for the value columns.
-fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, v_step : u32, total_seq : u32) {
-  let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
-               v_start * head_size_vec;
-  for (var idx : u32 = local_idx; idx < head_size_vec * v_step; idx += workgroup_size_x) {
-    let slot = u32(idx / head_size_vec);
-    let val = select(q_value_t(0), present_value[offset + idx], v_start + slot < total_seq);
-    v_tile[idx % head_size_vec][slot] = val;
+fn loadv_head(k_start: u32, head_start: u32, batch_head_idx: u32,
+              local_idx: u32, total_seq: u32) {
+  let base = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec;
+  for (var idx = local_idx; idx < v_head_vec_step * kv_step; idx += workgroup_size_x) {
+    let slot = idx / v_head_vec_step;
+    let h = idx % v_head_vec_step;
+    let val = select(q_value_t(0),
+                     present_value[base + (k_start + slot) * head_size_vec + head_start + h],
+                     k_start + slot < total_seq && head_start + h < head_size_vec);
+    v_tile[h][slot] = val;
   }
 }
 
@@ -204,38 +197,41 @@ $MAIN {
   // are never visible, so skip straight to the first tile the window can reach.
   let aligned_window_start = (first_query_window_start / kv_step) * kv_step;
 
-  // sg_size >= kv_step is guaranteed by the host gate, so each iteration advances
-  // by a full kv_step and no step cap is needed. sg_size may still exceed kv_step
-  // (e.g. 32): the QK/PV loads index k_tile/v_tile with the raw sg_id, so lanes
-  // >= kv_step read past kv_step (relies on WGSL bounds clamping), but their
-  // k_local is never read by the 0..kv_step-1 shuffles.
-
-  // Stream the K/V sequence one tile at a time.
   for (var k_start = aligned_window_start; k_start < loop_bound; k_start += kv_step) {
-    // Load only K here; V is deferred until just before the PV matmul so the
-    // QK^T + softmax compute overlaps V's global-memory fetch. The prior
-    // iteration's trailing barrier (after loadv) still guards k_tile from being
-    // overwritten while its readers are in flight, so no leading barrier is needed.
+    // The previous iteration's PV barriers protect K reads before this overwrite.
     loadk(k_start, batch_head_idx, local_idx, kv_step, total_sequence_length);
     workgroupBarrier();
 
-    // Scores for this tile, held as num_qk_vec vec4 lanes (kv_step columns);
-    // qk[j / 4u][j % 4u] is this query's score against column j. The inner loops
-    // iterate over the compile-time const kv_step so the compiler unrolls them
-    // and each subgroupShuffle lane index folds to a constant. Requires
-    // sg_size >= kv_step, which the host guarantees before selecting this shader
-    // (subgroup_min_size_ge_8 gate; kv_step is 8 or 16 to match).
     var qk : array<vec4<qk_precision>, num_qk_vec>;
 
-    // 1. QK^T. Each lane owns one K column of this tile; subgroup shuffles let
-    //    every thread read all columns and accumulate the dot products. Native
-    //    precision vec4 dots are converted to qk_precision before accumulation.
+    // 1. QK^T. Native-precision dots are widened before score accumulation.
     for (var i = 0u; i < head_size_vec; i++) {
       let q_own = q_tile[i];
-      let k_local = k_tile[i][sg_id];
-      for (var j = 0u; j < kv_step; j++) {
-        qk[j / 4u][j % 4u] += qk_precision(dot(q_own, subgroupShuffle(k_local, j)));
+#if shuffle_chunk_param >= 8
+      for (var band = 0u; band < kv_step / shuffle_chunk; band++) {
+        let k_local = k_tile[i][band * shuffle_chunk + (sg_id % shuffle_chunk)];
+        for (var m = 0u; m < shuffle_chunk / 4u; m++) {
+          let j = m * 4u;
+          qk[band * (shuffle_chunk / 4u) + m] += vec4<qk_precision>(
+            qk_precision(dot(q_own, subgroupShuffle(k_local, j))),
+            qk_precision(dot(q_own, subgroupShuffle(k_local, j + 1u))),
+            qk_precision(dot(q_own, subgroupShuffle(k_local, j + 2u))),
+            qk_precision(dot(q_own, subgroupShuffle(k_local, j + 3u)))
+          );
+        }
       }
+#else
+      // Read four K columns directly from shared memory per update.
+      for (var m = 0u; m < num_qk_vec; m++) {
+        let j = m * 4u;
+        qk[m] += vec4<qk_precision>(
+          qk_precision(dot(q_own, k_tile[i][j])),
+          qk_precision(dot(q_own, k_tile[i][j + 1u])),
+          qk_precision(dot(q_own, k_tile[i][j + 2u])),
+          qk_precision(dot(q_own, k_tile[i][j + 3u]))
+        );
+      }
+#endif
     }
 
     // 2. Add attention bias, then mask columns outside the causal/window boundary.
@@ -252,20 +248,22 @@ $MAIN {
     let local_max = max(max(local_max_vec.x, local_max_vec.y), max(local_max_vec.z, local_max_vec.w));
     let new_max = max(previous_max, local_max);
 
-    // Exponentiate against the new max in qk_precision and accumulate
+    // Exponentiate against the new max (in f32 for stability) and accumulate
     // this tile's denominator contribution.
     var sum_vec = vec4<qk_precision>(0);
     for (var m = 0u; m < num_qk_vec; m++) {
-      qk[m] = exp(qk[m] - new_max);
+      qk[m] = vec4<qk_precision>(exp(vec4<f32>(qk[m]) - f32(new_max)));
       sum_vec += qk[m];
     }
     let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
 
     // Rescale the carried-over denominator to the new max, then fold in the
     // tile. Guard against a zero denominator.
-    let dleft = previous_denom * exp(previous_max - new_max);
+    let dleft = previous_denom * qk_precision(exp(f32(previous_max) - f32(new_max)));
     var d = dleft + sum;
     d = select(d, qk_precision(0.0000001), d == 0);
+    // Only the normalized probabilities are cast to q_element_t, right before
+    // the PV matmul consumes them below.
     var qk_normalized : array<vec4<q_element_t>, num_qk_vec>;
     for (var m = 0u; m < num_qk_vec; m++) {
       qk_normalized[m] = q_value_t(qk[m] / d);
@@ -274,20 +272,30 @@ $MAIN {
     previous_denom = d;
     // Factor to rescale the already-accumulated output for the new denominator.
     let o_ratio = q_element_t(dleft / d);
-
-    // Deferred V load: fetch this tile's V now, right before it is consumed.
-    loadv(k_start, batch_head_idx, local_idx, kv_step, total_sequence_length);
-    workgroupBarrier();
-
     // 4. Accumulate softmax(qk) * V into the output tile, rescaling the prior
     //    partial sum by o_ratio.
-    for (var i = 0u; i < head_size_vec; i++) {
-      let v_local = v_tile[i][sg_id];
-      var acc = q_value_t(0);
-      for (var j = 0u; j < kv_step; j++) {
-        acc += subgroupShuffle(v_local, j) * qk_normalized[j / 4u][j % 4u];
+    for (var head_start = 0u; head_start < head_size_vec; head_start += v_head_vec_step) {
+      loadv_head(k_start, head_start, batch_head_idx, local_idx, total_sequence_length);
+      workgroupBarrier();
+      for (var i = 0u; i < v_head_vec_step; i++) {
+        var acc = q_value_t(0);
+#if shuffle_chunk_param >= 8
+        for (var band = 0u; band < kv_step / shuffle_chunk; band++) {
+          let v_local = v_tile[i][band * shuffle_chunk + (sg_id % shuffle_chunk)];
+          for (var j = 0u; j < shuffle_chunk; j++) {
+            let col = band * shuffle_chunk + j;
+            acc += subgroupShuffle(v_local, j) * qk_normalized[col / 4u][col % 4u];
+          }
+        }
+#else
+        for (var j = 0u; j < kv_step; j++) {
+          acc += v_tile[i][j] * qk_normalized[j / 4u][j % 4u];
+        }
+#endif
+        o_tile[head_start + i] = o_tile[head_start + i] * o_ratio + acc;
       }
-      o_tile[i] = o_tile[i] * o_ratio + acc;
+      // Protect V reads before the next head slice or K/V tile.
+      workgroupBarrier();
     }
   }
 
