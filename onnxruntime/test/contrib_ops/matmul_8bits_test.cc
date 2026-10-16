@@ -1059,7 +1059,7 @@ TEST(MatMulNBits, BFloat16_Int8_SmallMFallback) {
 
 #if defined(USE_WEBGPU)
 TEST(MatMulNBits, WebGpu_DP4A_NarrowN_Int8) {
-  for (int64_t m : {4, 65}) {
+  for (int64_t m : {3, 4, 65}) {
     for (int64_t n : {16, 32, 48, 64, 80}) {
       for (bool has_zero_point : {false, true}) {
         TestOptions8Bits opts{};

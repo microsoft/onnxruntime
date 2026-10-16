@@ -55,7 +55,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 // scale_A components = 1, b components = 4, output components = 1
-Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status DP4AMatMulNBitsKParallelProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform);
   const auto& scales_a = shader.AddInput("scales_a", ShaderUsage::UseUniform);
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform);
@@ -89,7 +89,7 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   }
 
   return WGSL_TEMPLATE_APPLY(
-      shader, "quantization/dp4a_matmul_small_m.wgsl.template", WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
+      shader, "quantization/dp4a_matmul_k_parallel.wgsl.template", WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
       WGSL_TEMPLATE_PARAMETER(broadcast_a_row, broadcast_a_row_), WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
       WGSL_TEMPLATE_PARAMETER(has_qlora_down, has_qlora_down_), WGSL_TEMPLATE_PARAMETER(has_qlora_up, has_qlora_up_),
       WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
@@ -110,15 +110,10 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   onnxruntime::webgpu::ComputeContext& context, Tensor* y, const uint32_t weight_index,
                                   const Tensor* weight_index_indirect, const Tensor* lora_t, const Tensor* lora_b,
                                   const Tensor* lora_at, Tensor* lora_down, const Tensor* lora_b_scales,
-                                  DP4AQuantizedInput* quantized_input, uint32_t small_m_tile_n,
-                                  const Tensor* lora_a_scales) {
+                                  DP4AQuantizedInput* quantized_input, const Tensor* lora_a_scales) {
   const bool has_qlora_down = lora_at != nullptr;
-  ORT_RETURN_IF_NOT(
-      small_m_tile_n == 0 || (nbits == 8 && N == 32 && small_m_tile_n <= 32 && small_m_tile_n % 4 == 0 &&
-                              !zero_points && !bias && !weight_index && !weight_index_indirect && !lora_t && !lora_at),
-      "Small-M override requires a plain rank-32 INT8 projection.");
   ORT_RETURN_IF_NOT(!has_qlora_down || (lora_a_scales && lora_down && a->IsDataType<float>() && nbits == 4 &&
-                                        block_size == 32 && M == 1 && dispatch_M == 1 && !small_m_tile_n &&
+                                        block_size == 32 && M == 1 && dispatch_M == 1 &&
                                         !weight_index && !weight_index_indirect && !zero_points && !bias && !lora_t),
                     "Unsupported joint DP4A QLoRA decode projection.");
   constexpr uint32_t kVec4Components = 4;
@@ -154,16 +149,23 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
   const bool has_weight_idx = weight_index != 0 || has_weight_idx_indirect;
   const bool single_scale_weights = (block_size == K * N);
-  if (small_m_tile_n || has_weight_idx_indirect || M < min_M_for_tile_optimization) {
-    uint32_t tile_size_k_vec = 32;
-    uint32_t tile_size_n = small_m_tile_n ? small_m_tile_n : 4;
+  const bool small_n = N <= 32;
+  // Each K-parallel iteration covers 32 lanes * 32 elements = 1024 K values.
+  // For narrow N, conservatively require two iterations to amortize reduction
+  // overhead; shorter K benefits more from the tiled kernel's reuse across M.
+  const bool use_k_parallel = M < min_M_for_tile_optimization || (small_n && K >= 2048);
+  // Indirect expert weights can differ by row, so they also require the row-wise kernel.
+  if (use_k_parallel || has_weight_idx_indirect) {
+    const uint32_t tile_size_k_vec = 32;
+    // Keep more workgroups available when there are only a few input rows.
+    const uint32_t tile_size_n = small_n && M >= min_M_for_tile_optimization ? N : 4;
 
     const uint32_t b_components = (nbits == 2 ? kVec2Components : kVec4Components);
     const bool broadcast_a = dispatch_M > M;
     // The narrow projection changes the K reduction order. Keep partial sums
-    // and the final reduction in FP32, then cast T once when storing it.
-    const bool acc_f32 = small_m_tile_n != 0 || context.EnableMatmulFp32Accumulation();
-    DP4AMatMulNBitsSmallMProgram mul_program{
+    // and the final reduction in FP32, then cast once when storing the output.
+    const bool acc_f32 = small_n || context.EnableMatmulFp32Accumulation();
+    DP4AMatMulNBitsKParallelProgram mul_program{
         tile_size_k_vec, tile_size_n, nbits, has_zero_points, has_bias, has_weight_idx,
         has_weight_idx_indirect, single_scale_weights, broadcast_a, acc_f32, has_qlora_up, has_qlora_down};
     uint32_t num_N_tile = (N + tile_size_n - 1) / tile_size_n;

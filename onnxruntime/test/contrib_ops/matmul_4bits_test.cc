@@ -1289,7 +1289,7 @@ TEST(MatMulNBits, Float16_LargeK_AccumulatorOverflow) {
 //   accuracy_level 4, M = 8 -> dp4a_matmul.wgsl.template (where the adapter supports it)
 // CanApplyDP4AMatrixMatMulNBits also needs subgroups, a non-Apple vendor and M >= 4
 // (kMinMForTileOptimization) for an fp16 output, so the M = 2 case below only reaches
-// dp4a_matmul_small_m on an fp32-output or Qualcomm adapter; elsewhere it lands on the generic
+// dp4a_matmul_k_parallel on an fp32-output or Qualcomm adapter; elsewhere it lands on the generic
 // kernel and is one more shape for it rather than dp4a coverage.
 // With the option on and an adapter that has subgroup matrices, the subgroup-matrix path declines
 // itself (its cooperative-matrix result type is f16 and cannot honour the request) and the dispatch

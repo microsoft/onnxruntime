@@ -70,15 +70,15 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
   bool has_qlora_up_;
 };
 
-class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMProgram> {
+class DP4AMatMulNBitsKParallelProgram final : public Program<DP4AMatMulNBitsKParallelProgram> {
  public:
-  DP4AMatMulNBitsSmallMProgram(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits, bool has_zero_points,
-                               bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect,
-                               bool single_scale_weights, bool broadcast_a_row = false, bool acc_f32 = false,
-                               bool has_qlora_up = false, bool has_qlora_down = false)
-      : Program{has_qlora_down ? "DP4AMatMulNBitsQLoRADownSmallM"
-                : has_qlora_up ? "DP4AMatMulNBitsQLoRAUpSmallM"
-                               : "DP4AMatMulNBitsSmallMProgram"},
+  DP4AMatMulNBitsKParallelProgram(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits, bool has_zero_points,
+                                  bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect,
+                                  bool single_scale_weights, bool broadcast_a_row = false, bool acc_f32 = false,
+                                  bool has_qlora_up = false, bool has_qlora_down = false)
+      : Program{has_qlora_down ? "DP4AMatMulNBitsQLoRADownKParallel"
+                : has_qlora_up ? "DP4AMatMulNBitsQLoRAUpKParallel"
+                               : "DP4AMatMulNBitsKParallelProgram"},
         tile_size_k_vec_(tile_size_k_vec),
         tile_size_(tile_size),
         nbits_(nbits),
@@ -124,8 +124,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   const Tensor* lora_b = nullptr, const Tensor* lora_at = nullptr,
                                   Tensor* lora_down = nullptr, const Tensor* lora_b_scales = nullptr,
                                   DP4AQuantizedInput* quantized_input = nullptr,
-                                  // Nonzero selects the K-parallel kernel for a rank-32 INT8 projection.
-                                  uint32_t small_m_tile_n = 0, const Tensor* lora_a_scales = nullptr);
+                                  const Tensor* lora_a_scales = nullptr);
 
 // The optional M / has_weight_idx_indirect / y arguments fold the original
 // dispatch-precondition (DP4A is preferred when M is large enough, or

@@ -63,8 +63,9 @@ model's `accuracy_level` permits it. Eligible FP32 DP4A decode also shares the
 base projection's quantized X with the down projection. Other decode down
 projections and all up projections retain floating-point activations.
 The provider's `enableMatmulFp32Accumulation` option
-controls floating-point lane accumulation for FP16 inputs. FP32 inputs always
-use FP32 floating-point accumulation. Intermediate T uses the activation type;
+controls floating-point lane accumulation for FP16 inputs, except that the
+K-parallel DP4A kernel always accumulates in FP32 when N <= 32. FP32 inputs
+always use FP32 floating-point accumulation. Intermediate T uses the activation type;
 the specialized decode kernel performs its final subgroup reduction in FP32.
 These paths are not claimed to be bitwise equivalent to the unfused graph.
 
@@ -103,10 +104,19 @@ thread, loading packed weights as `vec4<u32>` and T as `vec4<F>` along rank.
 
 DP4A prefill quantizes X once and shares the quantized tensor and scales
 between the down projection and base projection, making three dispatches per
-adapted projection. For eligible NVIDIA inputs with K >= 2048 and M <= 4096,
-the rank-32 down projection uses the small-M DP4A reduction with a 32-column
-tile. This narrow output remains underutilized by the general tiled kernel
-even at larger M. The general DP4A kernel also uses 32-column tiles when N < 64.
+adapted projection. Within the shared DP4A implementation,
+`DP4AMatMulNBitsKParallelProgram` handles M below
+`min_M_for_tile_optimization` (currently 4), or N <= 32 with K >= 2048.
+Indirect expert weights also retain this row-wise path. Small M retains four
+output columns per tile; otherwise narrow projections use an N-column tile.
+This kernel uses FP32 accumulation for N <= 32. The rank-32 down projection
+uses this shared selection without a QLoRA-specific override. Each K-parallel iteration covers 1024
+elements; requiring two full iterations for narrow N conservatively amortizes
+reduction overhead, while shorter K retains tiled reuse across M. This is an
+initial policy, not a universal performance crossover. Existing DP4A
+eligibility checks and subgroup-matrix preference still apply. Other DP4A
+projections use the general tiled kernel, with 32-column tiles when N < 64
+and 64-column tiles otherwise.
 Explicit `fuse_down` and `fuse_up` remain available. Shapes outside the joint
 decode specialization calculate T
 separately. Devices that select subgroup matrix arithmetic for the original

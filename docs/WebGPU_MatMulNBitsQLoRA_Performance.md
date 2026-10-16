@@ -75,8 +75,12 @@ Skipping adapter arithmetic does not recover those composed base fusions.
 
 - Prefill defaults to `fuse_up`: compute T, then combine the base projection
   with the INT8 up projection and Add. Eligible DP4A projections share one
-  quantized X allocation. The narrow down projection reuses the small-M DP4A
-  kernel with 32 output columns.
+  quantized X allocation. The narrow down projection reuses the shared
+  K-parallel DP4A kernel with 32 output columns. Within eligible DP4A paths,
+  this kernel handles M < 4 or (N <= 32 and K >= 2048), as well as indirect
+  expert weights. The narrow-N threshold requires two full K-parallel
+  iterations to amortize reduction overhead; shorter K retains tiled reuse
+  across M.
 - Eligible FP16 decode defaults to `fuse_down`: one dispatch computes the base
   and down projections in independent workgroups, followed by up/Add. Packed
   adapter weights are dequantized as needed; X stays floating point.

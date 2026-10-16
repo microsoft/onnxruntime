@@ -259,16 +259,14 @@ TEST(MatMulNBitsQLoRA, DecodeJointDP4AQuantization) {
   }
 }
 
-TEST(MatMulNBitsQLoRA, NarrowSmallMReduction) {
+TEST(MatMulNBitsQLoRA, NarrowKParallelReduction) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
   GTEST_SKIP() << "Hardware-specific specialization checks require direct adapter capability inspection.";
 #else
   auto initial_ep = DefaultWebGpuExecutionProvider();
   ASSERT_NE(initial_ep, nullptr);
-  auto& gpu = webgpu::WebGpuContextFactory::GetContext(initial_ep->GetDeviceId());
-  if (!contrib::webgpu::HasDP4ADeviceSupport(initial_ep->GetDeviceId()) ||
-      gpu.AdapterInfo().vendor != std::string_view{"nvidia"}) {
-    GTEST_SKIP() << "The narrow small-M projection is selected on NVIDIA DP4A devices.";
+  if (!contrib::webgpu::HasDP4ADeviceSupport(initial_ep->GetDeviceId())) {
+    GTEST_SKIP() << "Requires a device that selects DP4A for the rank-32 down projection.";
   }
 #endif
   struct Shape {
@@ -276,7 +274,9 @@ TEST(MatMulNBitsQLoRA, NarrowSmallMReduction) {
     int64_t k;
     int64_t batch;
   };
-  for (const auto shape : {Shape{4, 2048, 1}, Shape{37, 2176, 2}, Shape{128, 3072, 1}, Shape{65, 8192, 1}}) {
+  for (const auto shape : {Shape{4, 128, 1}, Shape{3, 1920, 1}, Shape{4, 1920, 1}, Shape{4, 2048, 1},
+                           Shape{37, 2176, 2}, Shape{128, 3072, 1},
+                           Shape{65, 8192, 1}, Shape{4097, 128, 1}}) {
     const auto [m, k, batch] = shape;
     SCOPED_TRACE(MakeString("M=", m, ", K=", k, ", batch=", batch));
     constexpr int64_t n = 64;
@@ -332,8 +332,15 @@ TEST(MatMulNBitsQLoRA, NarrowSmallMReduction) {
     test.AddOutput<MLFloat16>("Y", {batch, m, n}, expected);
     test.SetOutputAbsErr("Y", 0.002f);
     test.SetOutputRelErr("Y", 0.001f);
+    ConfigOptions options;
+    // Short-K fallbacks do not force FP32 accumulation like the narrow DP4A
+    // kernel. Enable it explicitly for this tight dense-reference comparison.
+    if (k < 2048) {
+      ASSERT_STATUS_OK(options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation,
+                                              webgpu::options::kEnableMatmulFp32Accumulation_ON));
+    }
     std::vector<std::unique_ptr<IExecutionProvider>> eps;
-    eps.push_back(DefaultWebGpuExecutionProvider());
+    eps.push_back(WebGpuExecutionProviderWithOptions(options));
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
   }
 }
