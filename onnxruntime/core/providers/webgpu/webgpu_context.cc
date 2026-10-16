@@ -118,8 +118,10 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       const auto* ordinary_adapter_options_chain =
           req_adapter_options.nextInChain;
       RequestAdapterOptionsLuid luid_options{};
+      // Retain the selected adapter's native device even when the first session
+      // disables acceleration. Later sessions reuse this context and cannot
+      // repeat adapter selection.
       const bool preselect_weight_loading_adapter =
-          IsWeightLoadAccelerationEnabled(weight_load_acceleration_mode_) &&
           static_cast<wgpu::BackendType>(config.backend_type) ==
               wgpu::BackendType::D3D12 &&
           !config.adapter_index;
@@ -434,6 +436,13 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     // Use the backend selected by Dawn rather than the requested backend. The
     // request can be Undefined when Dawn performs automatic adapter selection.
     selected_backend_type_ = adapter_info_.backendType;
+#if !defined(USE_EXTERNAL_DAWN)
+    if (selected_backend_type_ == wgpu::BackendType::D3D12 &&
+        weight_loading_d3d12_device_ == nullptr) {
+      weight_loading_d3d12_device_ =
+          dawn::native::d3d12::GetD3D12Device(device_.Get());
+    }
+#endif
 #endif
 
     // create buffer manager
@@ -468,16 +477,6 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       query_type_ = TimestampQueryType::None;
     }
   });
-
-#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING) && !defined(USE_EXTERNAL_DAWN)
-  if (IsWeightLoadAccelerationEnabled(config.weight_load_acceleration_mode) &&
-      selected_backend_type_ == wgpu::BackendType::D3D12 &&
-      device_ != nullptr &&
-      weight_loading_d3d12_device_ == nullptr) {
-    weight_loading_d3d12_device_ =
-        dawn::native::d3d12::GetD3D12Device(device_.Get());
-  }
-#endif
 
   if (max_num_pending_dispatches_ != config.max_num_pending_dispatches) {
     LOGS_DEFAULT(WARNING)
