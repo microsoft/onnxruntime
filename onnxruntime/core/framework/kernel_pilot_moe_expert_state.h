@@ -64,6 +64,9 @@ class KernelPilotMoeExpertState {
   // Target GPU fraction per layer for layered placement, before preserving the exact global budget.
   Status SetCpuOffloadGpuRatio(double gpu_ratio);
 
+  // Layer priority for GPU placement with basic/layered: first, last, or center-outward.
+  Status SetCpuOffloadLayerOrder(std::string_view layer_order);
+
   // Sets the relative margin required before replacing a CUDA-resident expert.
   // Must be called before registering any MoE kernels.
   Status SetSwapEpsilon(double epsilon);
@@ -154,6 +157,10 @@ class KernelPilotMoeExpertState {
                                   Layered };
   CpuOffloadStrategy cpu_offload_strategy_{CpuOffloadStrategy::Adaptive};
   double cpu_offload_gpu_ratio_{0.8};
+  enum class CpuOffloadLayerOrder { First,
+                                    Last,
+                                    Middle };
+  CpuOffloadLayerOrder cpu_offload_layer_order_{CpuOffloadLayerOrder::First};
   bool initialized_{false};
 };
 

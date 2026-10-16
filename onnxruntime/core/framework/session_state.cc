@@ -1724,6 +1724,9 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
     int64_t max_in_flight_swaps_per_device = -1;
     auto state = std::make_shared<KernelPilotMoeExpertState>();
     ORT_RETURN_IF_ERROR(state->SetCpuOffloadStrategy(cpu_offload_strategy));
+    const auto layer_order =
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder, "first");
+    ORT_RETURN_IF_ERROR(state->SetCpuOffloadLayerOrder(layer_order));
     const auto gpu_ratio_value =
         sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio, "0.8");
     double gpu_ratio = 0.0;

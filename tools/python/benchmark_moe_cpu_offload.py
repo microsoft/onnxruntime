@@ -142,6 +142,8 @@ def model_session_options(args):
     if args.cpu_offload_experts > 0:
         session_options["session.moe_cpu_offload_experts"] = str(args.cpu_offload_experts)
         session_options["session.moe_cpu_offload_strategy"] = args.strategy
+        if args.strategy in ("basic", "layered"):
+            session_options["session.moe_cpu_offload_layer_order"] = args.layer_order
         if args.strategy == "layered":
             session_options["session.moe_cpu_offload_gpu_ratio"] = str(args.gpu_ratio)
         if args.state is None:
@@ -228,6 +230,7 @@ def parse_args(argv=None):
     parser.add_argument("--cpu-offload-experts", type=int, required=True)
     parser.add_argument("--strategy", choices=("adaptive", "basic", "layered"), default="adaptive")
     parser.add_argument("--gpu-ratio", type=float, default=0.8)
+    parser.add_argument("--layer-order", choices=("first", "last", "middle"), default="first")
     parser.add_argument("--counter-alpha", type=float, default=0.9)
     parser.add_argument("--swap-epsilon", type=float, default=0.1)
     parser.add_argument("--max-in-flight-swaps-per-device", type=int, default=4)
@@ -246,6 +249,8 @@ def parse_args(argv=None):
         parser.error("--cpu-offload-experts must be non-negative.")
     if not math.isfinite(args.gpu_ratio) or not 0 < args.gpu_ratio <= 1:
         parser.error("--gpu-ratio must be finite and in (0, 1].")
+    if args.layer_order != "first" and args.strategy == "adaptive":
+        parser.error("--layer-order requires --strategy basic or layered.")
     if not math.isfinite(args.counter_alpha) or not 0 <= args.counter_alpha <= 1:
         parser.error("--counter-alpha must be finite and in [0, 1].")
     if not math.isfinite(args.swap_epsilon) or args.swap_epsilon < 0:
@@ -333,6 +338,7 @@ def main():
         "cpu_offload_experts": args.cpu_offload_experts,
         "strategy": args.strategy,
         "gpu_ratio": args.gpu_ratio,
+        "layer_order": args.layer_order,
         "counter_alpha": counter_alpha,
         "swap_epsilon": swap_epsilon,
         "swap": args.swap,

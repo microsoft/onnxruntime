@@ -58,18 +58,25 @@ static const char* const kOrtSessionOptionsConfigMoeCpuOffloadExperts =
     "session.moe_cpu_offload_experts";
 
 // CPU expert placement strategy: "adaptive" (default) uses popularity and permits swaps.
-// "basic" supports CUDA QMoE only: fill earlier nodes in topological order with CUDA experts,
+// "basic" supports CUDA QMoE only: fill nodes in the selected layer order with CUDA experts,
 // then place the remaining experts on CPU. A boundary node may be split. Placement never changes.
-// "layered" is QMoE-only: fill earlier nodes up to moe_cpu_offload_gpu_ratio using popularity,
-// then leave later nodes on CPU. Popularity-driven swaps stay within nodes with CUDA experts.
+// "layered" is QMoE-only: fill chosen nodes up to moe_cpu_offload_gpu_ratio using popularity,
+// then leave the rest on CPU. Popularity-driven swaps stay within nodes with CUDA experts.
 static const char* const kOrtSessionOptionsConfigMoeCpuOffloadStrategy =
     "session.moe_cpu_offload_strategy";
 
 // Target CUDA fraction per QMoE node for "layered", rounded down to whole experts. Default: 0.8.
 // Must be finite and in (0, 1]. If the global CUDA budget exceeds the sum of these targets,
-// raise the earliest nodes' capacities only as needed to preserve the exact CPU expert count.
+// raise capacities in the selected layer order only as needed to preserve the exact CPU expert count.
 static const char* const kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio =
     "session.moe_cpu_offload_gpu_ratio";
+
+// GPU layer priority for "basic" and "layered": "first" (default), "last", or "middle".
+// Eligible QMoE nodes are sorted by graph scope, then topological order. "last" reverses that list;
+// "middle" starts at the left center and alternates right/left outward (8 nodes: 3,4,2,5,1,6,0,7).
+// This changes placement only, not graph execution order or saved popularity record numbering.
+static const char* const kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder =
+    "session.moe_cpu_offload_layer_order";
 
 // Relative margin required before an adaptive MoE swap replaces a CUDA-resident expert.
 // The value must be finite and non-negative. The default is 0.01.

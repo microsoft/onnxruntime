@@ -2790,6 +2790,7 @@ common::Status InferenceSession::Initialize() {
           option == kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight ||
           option == kOrtSessionOptionsConfigMoeCpuOffloadStrategy ||
           option == kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio ||
+          option == kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder ||
           option == kOrtSessionOptionsConfigMoeExpertSwapEpsilon ||
           option == kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice) {
         return ORT_MAKE_STATUS(
@@ -2827,6 +2828,15 @@ common::Status InferenceSession::Initialize() {
                       " must be adaptive, basic or layered. Received: ", moe_cpu_offload_strategy);
     const auto moe_gpu_ratio =
         session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio);
+    const auto moe_layer_order =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder);
+    if (moe_layer_order) {
+      ORT_RETURN_IF_NOT(moe_cpu_offload_strategy == "basic" || moe_cpu_offload_strategy == "layered",
+                        kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder, " requires the basic or layered strategy.");
+      ORT_RETURN_IF_NOT(*moe_layer_order == "first" || *moe_layer_order == "last" || *moe_layer_order == "middle",
+                        kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder,
+                        " must be first, last or middle. Received: ", *moe_layer_order);
+    }
     if (moe_gpu_ratio) {
       double gpu_ratio = 0.0;
       ORT_RETURN_IF_NOT(moe_cpu_offload_strategy == "layered",

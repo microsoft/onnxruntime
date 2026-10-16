@@ -8,14 +8,18 @@ CPU offload happens inside the built-in CUDA kernels, not through CPU execution-
 | Strategy | Placement |
 |---|---|
 | `adaptive` (default, MoE/QMoE) | Put popular experts on GPU and exchange hot CPU experts with cold GPU experts. Without saved counters, distribute GPU slots round-robin across nodes. |
-| `basic` (QMoE only) | Fill earlier QMoE nodes on GPU, then put the rest on CPU. Placement never changes and ignores popularity. |
-| `layered` (QMoE only) | Fill earlier layers up to a configurable GPU fraction (default 80%), then leave the rest on CPU. Use popularity and swaps within GPU-resident layers, including the boundary layer. |
+| `basic` (QMoE only) | Fill chosen QMoE layers on GPU, then put the rest on CPU. Placement never changes and ignores popularity. |
+| `layered` (QMoE only) | Fill chosen layers up to a configurable GPU fraction (default 80%), then leave the rest on CPU. Use popularity and swaps within GPU-resident layers, including the boundary layer. |
 
 `K` is global across eligible nodes. Basic uses topological order within each graph; a boundary node may be split
 to preserve the exact count, keeping its lower expert IDs on GPU. `K=0` disables offload.
 
+For basic/layered, `session.moe_cpu_offload_layer_order=first|last|middle` chooses GPU layers.
+`first` (default) follows graph-scope/topological order, `last` reverses it, and `middle` expands outward:
+for 8 layers, `3, 4, 2, 5, 1, 6, 0, 7`. Execution order and saved counter numbering do not change.
+
 Layered uses the same ordering and rounds each layer's GPU target down to whole experts.
-If the budget exceeds all layer targets combined, only the necessary excess is added to the earliest layers,
+If the budget exceeds all layer targets combined, only the necessary excess is added in the chosen layer order,
 preserving exactly `K` CPU experts.
 
 Adaptive and layered track selection with `counter = alpha * counter + (1 - alpha) * selected`.
@@ -32,6 +36,7 @@ options = ort.SessionOptions()
 options.add_session_config_entry("session.moe_cpu_offload_experts", "4096")
 options.add_session_config_entry("session.moe_cpu_offload_strategy", "layered")  # Or adaptive/basic.
 options.add_session_config_entry("session.moe_cpu_offload_gpu_ratio", "0.8")  # Layered only; (0, 1].
+options.add_session_config_entry("session.moe_cpu_offload_layer_order", "first")  # Basic/layered: first/last/middle.
 options.add_session_config_entry("session.moe_expert_counter_alpha", "0.9")
 options.add_session_config_entry("session.moe_expert_swap_epsilon", "0.1")
 options.add_session_config_entry("session.moe_max_in_flight_swaps_per_device", "5")
@@ -54,6 +59,7 @@ Details: [operator support](../contrib_ops/cuda/moe_qmoe.md) and
 **Qwen3.5-35B-A3B INT4**, 40 QMoE nodes x 256 experts = 10,240 experts, top-k 8.
 Alpha **0.9**, epsilon **0.1**, probability weight **0**, swap limit **5** (ignored by basic).
 At `K=10240`, all experts are on CPU, but other model operations still use CUDA.
+All published basic/layered measurements use `layer_order=first`.
 
 All strategies use the **same H200 GPU 1**. Adaptive/basic alternate for each K using the same binaries;
 layered was measured separately after fixing profiling when a boundary layer has fewer GPU experts than top-k.
@@ -194,3 +200,4 @@ done
 ```
 
 For the 70% series, use `--strategy layered --gpu-ratio 0.7` with a separate output directory.
+Use `--layer-order last` or `--layer-order middle` to change GPU layer selection for basic/layered.

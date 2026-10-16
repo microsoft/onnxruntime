@@ -134,6 +134,17 @@ Status KernelPilotMoeExpertState::SetMaxInFlightSwapsPerDevice(size_t max_in_fli
   return Status::OK();
 }
 
+Status KernelPilotMoeExpertState::SetCpuOffloadLayerOrder(std::string_view layer_order) {
+  ORT_RETURN_IF(initialized_ || !kernels_.empty(),
+                "MoE CPU offload layer order cannot change after node registration.");
+  ORT_RETURN_IF_NOT(layer_order == "first" || layer_order == "last" || layer_order == "middle",
+                    "MoE CPU offload layer order must be first, last or middle. Received: ", layer_order);
+  cpu_offload_layer_order_ = layer_order == "last"     ? CpuOffloadLayerOrder::Last
+                             : layer_order == "middle" ? CpuOffloadLayerOrder::Middle
+                                                       : CpuOffloadLayerOrder::First;
+  return Status::OK();
+}
+
 Status KernelPilotMoeExpertState::SetPopularityOutputFile(std::string output_file) {
   ORT_RETURN_IF(output_file.empty(), "MoE expert popularity output file must not be empty.");
   ORT_RETURN_IF(!popularity_output_file_.empty(), "MoE expert popularity output file is already configured.");
@@ -302,6 +313,18 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
     }
 
     if (cpu_offload_strategy_ != CpuOffloadStrategy::Adaptive) {
+      if (cpu_offload_layer_order_ == CpuOffloadLayerOrder::Last) {
+        std::reverse(cuda_kernels.begin(), cuda_kernels.end());
+      } else if (cpu_offload_layer_order_ == CpuOffloadLayerOrder::Middle && !cuda_kernels.empty()) {
+        InlinedVector<KernelState*> ordered;
+        ordered.reserve(cuda_kernels.size());
+        const size_t middle = (cuda_kernels.size() - 1) / 2;
+        for (size_t i = 0; i < cuda_kernels.size(); ++i) {
+          const size_t index = i % 2 == 0 ? middle - i / 2 : middle + 1 + i / 2;
+          ordered.push_back(cuda_kernels[index]);
+        }
+        cuda_kernels = std::move(ordered);
+      }
       size_t target_capacity = 0;
       if (cpu_offload_strategy_ == CpuOffloadStrategy::Layered) {
         for (const auto* state : cuda_kernels) {

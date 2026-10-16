@@ -184,6 +184,18 @@ TEST_F(KernelPilotMoeExpertStateTest, ValidatesAndFreezesCpuOffloadGpuRatio) {
   EXPECT_FALSE(state.SetCpuOffloadGpuRatio(0.8).IsOK());
 }
 
+TEST_F(KernelPilotMoeExpertStateTest, ValidatesAndFreezesCpuOffloadLayerOrder) {
+  KernelPilotMoeExpertState state;
+  EXPECT_FALSE(state.SetCpuOffloadLayerOrder("unknown").IsOK());
+  for (const char* order : {"first", "last", "middle"}) {
+    ASSERT_STATUS_OK(state.SetCpuOffloadLayerOrder(order));
+  }
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "QMoE", 3));
+  EXPECT_FALSE(state.SetCpuOffloadLayerOrder("first").IsOK());
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  EXPECT_FALSE(state.SetCpuOffloadLayerOrder("last").IsOK());
+}
+
 TEST_F(KernelPilotMoeExpertStateTest, DiscardsDeferredUsageForFailedKernel) {
   KernelPilotMoeExpertState state;
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));
@@ -295,44 +307,80 @@ TEST_F(KernelPilotMoeExpertStateTest, LayeredPlacementUsesConfiguredRatioAndGrap
   }
 }
 
+TEST_F(KernelPilotMoeExpertStateTest, LayerOrderControlsLayeredOverflowAndBoundary) {
+  const std::array<size_t, 3> expert_counts{3, 5, 4};
+  const std::array<size_t, 7> cpu_counts{1, 2, 5, 6, 8, 10, 12};
+  const std::array<std::array<size_t, 3>, 7> last_counts{{{2, 5, 4}, {2, 4, 4}, {0, 4, 3}, {0, 3, 3}, {0, 1, 3}, {0, 0, 2}, {0, 0, 0}}};
+  const std::array<std::array<size_t, 3>, 7> middle_counts{{{2, 5, 4}, {2, 5, 3}, {0, 4, 3}, {0, 4, 2}, {0, 4, 0}, {0, 2, 0}, {0, 0, 0}}};
+  for (const char* order : {"last", "middle"}) {
+    for (size_t budget = 0; budget < cpu_counts.size(); ++budget) {
+      SCOPED_TRACE(MakeString("order=", order, ", cpu_count=", cpu_counts[budget]));
+      KernelPilotMoeExpertState state;
+      ASSERT_STATUS_OK(state.SetCpuOffloadStrategy("layered"));
+      ASSERT_STATUS_OK(state.SetCpuOffloadLayerOrder(order));
+      ASSERT_STATUS_OK(state.SetCpuOffloadExpertCount(cpu_counts[budget]));
+      for (size_t i = 0; i < expert_counts.size(); ++i) {
+        MakeEligibleForCudaQMoEPlacement(kernels_[i]);
+        ASSERT_STATUS_OK(state.RegisterNode(kernels_[i], "main", 20 - i * 10, "QMoE", expert_counts[i], i));
+      }
+      ASSERT_STATUS_OK(state.FinalizeInitialization());
+      const auto& expected = std::string_view(order) == "last" ? last_counts[budget] : middle_counts[budget];
+      for (size_t i = 0; i < expert_counts.size(); ++i) {
+        gsl::span<const int> experts;
+        ASSERT_STATUS_OK(state.GetKernelPilot(kernels_[i])->GetMoeCudaExperts(experts));
+        EXPECT_EQ(experts.size(), expected[i]);
+      }
+    }
+  }
+}
+
 TEST_F(KernelPilotMoeExpertStateTest, LayeredPopularityAndSwapsStayWithinGpuLayersIncludingBoundary) {
-  for (size_t swap_limit : {0U, 1U, 5U}) {
-    SCOPED_TRACE(swap_limit);
-    KernelPilotMoeExpertState state;
-    ASSERT_STATUS_OK(state.SetCpuOffloadStrategy("layered"));
-    ASSERT_STATUS_OK(state.SetCpuOffloadExpertCount(7));
-    ASSERT_STATUS_OK(state.SetMaxInFlightSwapsPerDevice(swap_limit));
-    for (size_t i = 0; i < 3; ++i) {
-      MakeEligibleForCudaQMoEPlacement(kernels_[i]);
-      ASSERT_STATUS_OK(state.RegisterNode(kernels_[i], "main", i, "QMoE", 4, i));
-    }
-    std::istringstream initial(
-        R"({"alpha":0,"epsilon":0,"experts":[)"
-        R"({"moe":0,"expert":3,"popularity":100},)"
-        R"({"moe":1,"expert":3,"popularity":100},)"
-        R"({"moe":2,"expert":3,"popularity":10000}]})");
-    ASSERT_STATUS_OK(state.Load(initial));
-    ASSERT_STATUS_OK(state.FinalizeInitialization());
-    const std::array<InlinedVector<int>, 3> expected{{{0, 1, 3}, {0, 3}, {}}};
-    std::array<FakeMoeExpertCache, 3> caches;
-    for (size_t i = 0; i < 3; ++i) {
-      auto* pilot = state.GetKernelPilot(kernels_[i]);
-      gsl::span<const int> experts;
-      ASSERT_STATUS_OK(pilot->GetMoeCudaExperts(experts));
-      EXPECT_EQ((InlinedVector<int>{experts.begin(), experts.end()}), expected[i]);
-      ASSERT_STATUS_OK(pilot->AttachMoeExpertCache(&caches[i]));
-    }
-    ASSERT_STATUS_OK(state.BeginRun("", nullptr));
-    const int selected[] = {2};
-    for (const auto* kernel : kernels_) {
-      ASSERT_STATUS_OK(CollectAndRecord(state, kernel, selected));
-    }
-    ASSERT_STATUS_OK(state.EndRun());
-    for (size_t i = 0; i < caches.size(); ++i) {
-      if (i < std::min(swap_limit, size_t{2})) {
-        EXPECT_EQ(caches[i].Swaps(), (InlinedVector<std::pair<int, int>>{{0, 2}}));
-      } else {
-        EXPECT_TRUE(caches[i].Swaps().empty());
+  for (const char* order : {"first", "last", "middle"}) {
+    for (size_t swap_limit : {0U, 1U, 5U}) {
+      SCOPED_TRACE(swap_limit);
+      SCOPED_TRACE(order);
+      KernelPilotMoeExpertState state;
+      ASSERT_STATUS_OK(state.SetCpuOffloadStrategy("layered"));
+      ASSERT_STATUS_OK(state.SetCpuOffloadLayerOrder(order));
+      ASSERT_STATUS_OK(state.SetCpuOffloadExpertCount(7));
+      ASSERT_STATUS_OK(state.SetMaxInFlightSwapsPerDevice(swap_limit));
+      for (size_t i = 0; i < 3; ++i) {
+        MakeEligibleForCudaQMoEPlacement(kernels_[i]);
+        ASSERT_STATUS_OK(state.RegisterNode(kernels_[i], "main", i, "QMoE", 4, i));
+      }
+      std::istringstream initial(
+          R"({"alpha":0,"epsilon":0,"experts":[)"
+          R"({"moe":0,"expert":3,"popularity":100},)"
+          R"({"moe":1,"expert":3,"popularity":100},)"
+          R"({"moe":2,"expert":3,"popularity":10000}]})");
+      ASSERT_STATUS_OK(state.Load(initial));
+      ASSERT_STATUS_OK(state.FinalizeInitialization());
+      const std::array<InlinedVector<int>, 3> expected =
+          std::string_view(order) == "first"  ? std::array<InlinedVector<int>, 3>{{{0, 1, 3}, {0, 3}, {}}}
+          : std::string_view(order) == "last" ? std::array<InlinedVector<int>, 3>{{{}, {0, 3}, {0, 1, 3}}}
+                                              : std::array<InlinedVector<int>, 3>{{{}, {0, 1, 3}, {0, 3}}};
+      std::array<FakeMoeExpertCache, 3> caches;
+      for (size_t i = 0; i < 3; ++i) {
+        auto* pilot = state.GetKernelPilot(kernels_[i]);
+        gsl::span<const int> experts;
+        ASSERT_STATUS_OK(pilot->GetMoeCudaExperts(experts));
+        EXPECT_EQ((InlinedVector<int>{experts.begin(), experts.end()}), expected[i]);
+        ASSERT_STATUS_OK(pilot->AttachMoeExpertCache(&caches[i]));
+      }
+      ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+      const int selected[] = {2};
+      for (const auto* kernel : kernels_) {
+        ASSERT_STATUS_OK(CollectAndRecord(state, kernel, selected));
+      }
+      ASSERT_STATUS_OK(state.EndRun());
+      size_t swaps = 0;
+      for (size_t i = 0; i < caches.size(); ++i) {
+        if (!expected[i].empty() && swaps < swap_limit) {
+          EXPECT_EQ(caches[i].Swaps(), (InlinedVector<std::pair<int, int>>{{0, 2}}));
+          ++swaps;
+        } else {
+          EXPECT_TRUE(caches[i].Swaps().empty());
+        }
       }
     }
   }

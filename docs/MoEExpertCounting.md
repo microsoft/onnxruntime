@@ -87,13 +87,17 @@ python tools/python/qmoe_expert_activation_correlations.py counter.log \
 model context length remains the unavoidable hard limit.
 
 The CPU-offload strategy is selected with `session.moe_cpu_offload_strategy=adaptive|basic|layered` (default `adaptive`).
-The QMoE-only `basic` strategy fills earlier nodes' GPU expert slots in topological order, then places the remaining
+The QMoE-only `basic` strategy fills the chosen nodes' GPU expert slots, then places the remaining
 experts on CPU, with an optionally split boundary node. Placement ignores saved popularities and never swaps,
 regardless of the configured swap limit; usage counters remain available.
-The QMoE-only `layered` strategy fills earlier layers up to `session.moe_cpu_offload_gpu_ratio` (default `0.8`),
-then leaves later layers on CPU. Within each GPU-resident layer, including a partially filled boundary layer,
-placement and swaps use popularity. The target is rounded down; if necessary, the earliest layers exceed it
-only enough to preserve exactly `K` CPU experts. See
+The QMoE-only `layered` strategy fills chosen layers up to `session.moe_cpu_offload_gpu_ratio` (default `0.8`),
+then leaves the rest on CPU. Within each GPU-resident layer, including a partially filled boundary layer,
+placement and swaps use popularity. The target is rounded down; if necessary, layers exceed it in the chosen order
+only enough to preserve exactly `K` CPU experts.
+Both strategies accept `session.moe_cpu_offload_layer_order=first|last|middle` (default `first`):
+start from the beginning, end, or center of the graph-scope/topological layer list.
+Middle alternates outward from the left center (`3,4,2,5,1,6,0,7` for 8 layers).
+Graph execution order and saved popularity record numbering are unchanged. See
 [CPU offload strategies](moe-cpu-offload/README.md#initial-placement-and-ownership) for ordering and restrictions.
 
 After each successful CPU-offload `Run()` using `adaptive` or `layered`, INFO logging also emits one `moe_expert_swaps` JSON record. It reports

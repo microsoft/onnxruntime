@@ -21,6 +21,7 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
             "cpu_offload_experts": 1000,
             "strategy": "adaptive",
             "gpu_ratio": 0.8,
+            "layer_order": "first",
             "counter_alpha": 0.9,
             "swap_epsilon": 0.1,
             "max_in_flight_swaps_per_device": 4,
@@ -76,6 +77,18 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
         self.assertEqual(
             self.options(max_in_flight_swaps_per_device=16)["session.moe_max_in_flight_swaps_per_device"],
             "16",
+        )
+
+    def test_layer_order_is_forwarded_only_for_basic_and_layered(self):
+        for strategy in ("basic", "layered"):
+            for order in ("first", "last", "middle"):
+                with self.subTest(strategy=strategy, order=order):
+                    options = self.options(strategy=strategy, layer_order=order)
+                    self.assertEqual(options["session.moe_cpu_offload_layer_order"], order)
+        self.assertNotIn("session.moe_cpu_offload_layer_order", self.options())
+        self.assertNotIn(
+            "session.moe_cpu_offload_layer_order",
+            self.options(strategy="layered", layer_order="last", cpu_offload_experts=0),
         )
 
     def test_zero_epsilon_is_preserved(self):
@@ -163,6 +176,9 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
             ("--swap-epsilon", "-0.1"),
             ("--max-in-flight-swaps-per-device", "-1"),
             ("--strategy", "invalid"),
+            ("--layer-order", "invalid"),
+            ("--layer-order", "last"),
+            ("--layer-order", "middle"),
             ("--gpu-ratio", "0"),
             ("--gpu-ratio", "-0.1"),
             ("--gpu-ratio", "1.1"),
