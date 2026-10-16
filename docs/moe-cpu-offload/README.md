@@ -9,11 +9,16 @@ CPU offload happens inside the built-in CUDA kernels, not through CPU execution-
 |---|---|
 | `adaptive` (default, MoE/QMoE) | Put popular experts on GPU and exchange hot CPU experts with cold GPU experts. Without saved counters, distribute GPU slots round-robin across nodes. |
 | `basic` (QMoE only) | Fill earlier QMoE nodes on GPU, then put the rest on CPU. Placement never changes and ignores popularity. |
+| `layered` (QMoE only) | Fill earlier layers up to a configurable GPU fraction (default 80%), then leave the rest on CPU. Use popularity and swaps within GPU-resident layers, including the boundary layer. |
 
 `K` is global across eligible nodes. Basic uses topological order within each graph; a boundary node may be split
 to preserve the exact count, keeping its lower expert IDs on GPU. `K=0` disables offload.
 
-Adaptive tracks selection with `counter = alpha * counter + (1 - alpha) * selected`.
+Layered uses the same ordering and rounds each layer's GPU target down to whole experts.
+If the budget exceeds all layer targets combined, only the necessary excess is added to the earliest layers,
+preserving exactly `K` CPU experts.
+
+Adaptive and layered track selection with `counter = alpha * counter + (1 - alpha) * selected`.
 A swap requires `hottest_CPU > (1 + epsilon) * coldest_GPU`. Each node keeps its initial GPU capacity.
 CPU/GPU weights occupy separate compact stores; computation overlaps and completed swaps are published safely.
 Supported INT4 SwiGLU configurations use packed MLAS Q4 weights on CPU; other QMoE cases use a dense fallback.
@@ -25,7 +30,8 @@ import onnxruntime as ort
 
 options = ort.SessionOptions()
 options.add_session_config_entry("session.moe_cpu_offload_experts", "4096")
-options.add_session_config_entry("session.moe_cpu_offload_strategy", "basic")  # Or adaptive.
+options.add_session_config_entry("session.moe_cpu_offload_strategy", "layered")  # Or adaptive/basic.
+options.add_session_config_entry("session.moe_cpu_offload_gpu_ratio", "0.8")  # Layered only; (0, 1].
 options.add_session_config_entry("session.moe_expert_counter_alpha", "0.9")
 options.add_session_config_entry("session.moe_expert_swap_epsilon", "0.1")
 options.add_session_config_entry("session.moe_max_in_flight_swaps_per_device", "5")
@@ -33,7 +39,7 @@ session = ort.InferenceSession("model.onnx", options, providers=["CUDAExecutionP
 ```
 
 Defaults: `K=0`, strategy `adaptive`, alpha `0.75`, epsilon `0.01`, swap limit `4`.
-Basic never swaps; for adaptive, a zero swap limit freezes placement.
+Basic never swaps; for adaptive/layered, a zero swap limit freezes placement.
 
 Supported: FP16/BF16 MoE weights and uniform INT4/INT8 QMoE (`quant_type="int"`, `weights_prepacked=0`).
 Both require FP16/BF16 activations, constant weights and connected biases, a static hidden dimension, and prepacking.
@@ -130,3 +136,5 @@ for scenario in k0-nograph k0-graph k1024 k2048 k3072 k4096 k5120 k6144 k7168 k8
   done
 done
 ```
+
+Use `--strategy layered --gpu-ratio 0.8` to run the third strategy with the same protocol.

@@ -58,8 +58,11 @@ class KernelPilotMoeExpertState {
   // Must be called before FinalizeInitialization().
   Status SetCpuOffloadExpertCount(size_t cpu_offload_expert_count);
 
-  // Basic placement is QMoE-only and ignores popularity for placement and swapping.
+  // Basic and layered placement are QMoE-only; basic never swaps.
   Status SetCpuOffloadStrategy(std::string_view strategy);
+
+  // Target GPU fraction per layer for layered placement, before preserving the exact global budget.
+  Status SetCpuOffloadGpuRatio(double gpu_ratio);
 
   // Sets the relative margin required before replacing a CUDA-resident expert.
   // Must be called before registering any MoE kernels.
@@ -146,7 +149,11 @@ class KernelPilotMoeExpertState {
   double swap_epsilon_{0.01};
   size_t max_in_flight_swaps_per_device_{4};
   bool cpu_offload_enabled_{false};
-  bool basic_cpu_offload_{false};
+  enum class CpuOffloadStrategy { Adaptive,
+                                  Basic,
+                                  Layered };
+  CpuOffloadStrategy cpu_offload_strategy_{CpuOffloadStrategy::Adaptive};
+  double cpu_offload_gpu_ratio_{0.8};
   bool initialized_{false};
 };
 

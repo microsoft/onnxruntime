@@ -62,7 +62,8 @@ Status KernelPilotMoeExpertState::EndRun(bool run_succeeded) {
       status = completion;
     }
   }
-  if (run_succeeded && status.IsOK() && cpu_offload_enabled_ && !basic_cpu_offload_) {
+  if (run_succeeded && status.IsOK() && cpu_offload_enabled_ &&
+      cpu_offload_strategy_ != CpuOffloadStrategy::Basic) {
     status = ScheduleSwaps();
   }
   logging_request_id_.clear();
@@ -109,9 +110,20 @@ Status KernelPilotMoeExpertState::SetSwapEpsilon(double epsilon) {
 Status KernelPilotMoeExpertState::SetCpuOffloadStrategy(std::string_view strategy) {
   ORT_RETURN_IF(initialized_ || !kernels_.empty(),
                 "MoE CPU offload strategy cannot change after node registration.");
-  ORT_RETURN_IF_NOT(strategy == "adaptive" || strategy == "basic",
-                    "MoE CPU offload strategy must be adaptive or basic. Received: ", strategy);
-  basic_cpu_offload_ = strategy == "basic";
+  ORT_RETURN_IF_NOT(strategy == "adaptive" || strategy == "basic" || strategy == "layered",
+                    "MoE CPU offload strategy must be adaptive, basic or layered. Received: ", strategy);
+  cpu_offload_strategy_ = strategy == "basic"     ? CpuOffloadStrategy::Basic
+                          : strategy == "layered" ? CpuOffloadStrategy::Layered
+                                                  : CpuOffloadStrategy::Adaptive;
+  return Status::OK();
+}
+
+Status KernelPilotMoeExpertState::SetCpuOffloadGpuRatio(double gpu_ratio) {
+  ORT_RETURN_IF(initialized_ || !kernels_.empty(),
+                "MoE CPU offload GPU ratio cannot change after node registration.");
+  ORT_RETURN_IF_NOT(std::isfinite(gpu_ratio) && gpu_ratio > 0.0 && gpu_ratio <= 1.0,
+                    "MoE CPU offload GPU ratio must be finite and in (0, 1].");
+  cpu_offload_gpu_ratio_ = gpu_ratio;
   return Status::OK();
 }
 
@@ -238,9 +250,10 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
               ? input_type->tensor_type().elem_type()
               : ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
       const auto& node = kernel->Node();
-      ORT_RETURN_IF(basic_cpu_offload_ && node.OpType() == "MoE" &&
+      ORT_RETURN_IF(cpu_offload_strategy_ != CpuOffloadStrategy::Adaptive && node.OpType() == "MoE" &&
                         node.GetExecutionProviderType() == kCudaExecutionProvider,
-                    "The basic CPU offload strategy supports QMoE only, not CUDA MoE.");
+                    "The ", cpu_offload_strategy_ == CpuOffloadStrategy::Basic ? "basic" : "layered",
+                    " CPU offload strategy supports QMoE only, not CUDA MoE.");
       const auto& attributes = node.GetAttributes();
       const auto get_int_attribute = [&](std::string_view name, int64_t default_value) {
         const auto attribute = attributes.find(std::string(name));
@@ -274,7 +287,7 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
     const size_t cuda_expert_count = cuda_eligible_expert_count - cpu_offload_expert_count_;
 
     std::sort(cuda_kernels.begin(), cuda_kernels.end(), [this](const KernelState* lhs, const KernelState* rhs) {
-      if (basic_cpu_offload_ && lhs->key.first == rhs->key.first &&
+      if (cpu_offload_strategy_ != CpuOffloadStrategy::Adaptive && lhs->key.first == rhs->key.first &&
           lhs->topological_order != rhs->topological_order) {
         return lhs->topological_order < rhs->topological_order;
       }
@@ -288,16 +301,43 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
       }
     }
 
-    if (basic_cpu_offload_) {
+    if (cpu_offload_strategy_ != CpuOffloadStrategy::Adaptive) {
+      size_t target_capacity = 0;
+      if (cpu_offload_strategy_ == CpuOffloadStrategy::Layered) {
+        for (const auto* state : cuda_kernels) {
+          target_capacity += static_cast<size_t>(cpu_offload_gpu_ratio_ * state->experts.count);
+        }
+      }
+      // Exceed the per-layer target only when needed to keep exactly K experts on CPU.
+      size_t excess = cuda_expert_count > target_capacity ? cuda_expert_count - target_capacity : 0;
       size_t remaining = cuda_expert_count;
       for (auto* state : cuda_kernels) {
-        const size_t count = std::min(remaining, state->experts.count);
-        state->cuda_experts.reserve(count);
-        for (size_t expert = 0; expert < count; ++expert) {
-          state->cuda_experts.push_back(static_cast<int>(expert));
+        size_t capacity = state->experts.count;
+        if (cpu_offload_strategy_ == CpuOffloadStrategy::Layered) {
+          capacity = static_cast<size_t>(cpu_offload_gpu_ratio_ * state->experts.count);
+          const size_t extra = std::min(excess, state->experts.count - capacity);
+          capacity += extra;
+          excess -= extra;
         }
+        const size_t count = std::min(remaining, capacity);
+        InlinedVector<int> experts;
+        experts.reserve(state->experts.count);
+        for (size_t expert = 0; expert < state->experts.count; ++expert) {
+          experts.push_back(static_cast<int>(expert));
+        }
+        if (cpu_offload_strategy_ == CpuOffloadStrategy::Layered) {
+          std::sort(experts.begin(), experts.end(), [&](int lhs, int rhs) {
+            const double lhs_counter = counters_[state->experts.begin + static_cast<size_t>(lhs)];
+            const double rhs_counter = counters_[state->experts.begin + static_cast<size_t>(rhs)];
+            return lhs_counter != rhs_counter ? lhs_counter > rhs_counter : lhs < rhs;
+          });
+        }
+        state->cuda_experts.reserve(count);
+        state->cuda_experts.insert(state->cuda_experts.end(), experts.begin(), experts.begin() + count);
+        std::sort(state->cuda_experts.begin(), state->cuda_experts.end());
         remaining -= count;
       }
+      ORT_ENFORCE(remaining == 0);
     } else if (all_zero) {
       size_t selected = 0;
       for (size_t expert = 0; selected < cuda_expert_count; ++expert) {

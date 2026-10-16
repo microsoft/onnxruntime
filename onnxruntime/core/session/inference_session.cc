@@ -2789,6 +2789,7 @@ common::Status InferenceSession::Initialize() {
           option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
           option == kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight ||
           option == kOrtSessionOptionsConfigMoeCpuOffloadStrategy ||
+          option == kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio ||
           option == kOrtSessionOptionsConfigMoeExpertSwapEpsilon ||
           option == kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice) {
         return ORT_MAKE_STATUS(
@@ -2820,9 +2821,21 @@ common::Status InferenceSession::Initialize() {
     const bool enable_moe_cpu_offload = moe_cpu_offload_expert_count > 0;
     const auto moe_cpu_offload_strategy = session_options_.config_options.GetConfigOrDefault(
         kOrtSessionOptionsConfigMoeCpuOffloadStrategy, "adaptive");
-    ORT_RETURN_IF_NOT(moe_cpu_offload_strategy == "adaptive" || moe_cpu_offload_strategy == "basic",
+    ORT_RETURN_IF_NOT(moe_cpu_offload_strategy == "adaptive" || moe_cpu_offload_strategy == "basic" ||
+                          moe_cpu_offload_strategy == "layered",
                       kOrtSessionOptionsConfigMoeCpuOffloadStrategy,
-                      " must be adaptive or basic. Received: ", moe_cpu_offload_strategy);
+                      " must be adaptive, basic or layered. Received: ", moe_cpu_offload_strategy);
+    const auto moe_gpu_ratio =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio);
+    if (moe_gpu_ratio) {
+      double gpu_ratio = 0.0;
+      ORT_RETURN_IF_NOT(moe_cpu_offload_strategy == "layered",
+                        kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio, " requires the layered strategy.");
+      ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(*moe_gpu_ratio, gpu_ratio) &&
+                            std::isfinite(gpu_ratio) && gpu_ratio > 0.0 && gpu_ratio <= 1.0,
+                        kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio,
+                        " must be finite and in (0, 1]. Received: \"", *moe_gpu_ratio, "\".");
+    }
     const auto moe_popularity_file =
         session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertPopularityFile);
     if (moe_popularity_file) {

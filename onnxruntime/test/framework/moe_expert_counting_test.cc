@@ -937,21 +937,86 @@ TEST(MoeExpertCountingTest, BasicQMoEOffloadFillsEarlierNodesAndNeverSwaps) {
   }
 }
 
-TEST(MoeExpertCountingTest, BasicCpuOffloadRejectsDenseMoE) {
+TEST(MoeExpertCountingTest, LayeredQMoEOffloadSwapsInEarlyAndBoundaryNodesOnly) {
   auto provider = DefaultCudaExecutionProvider();
   if (!provider || provider->GetOrtEp() != nullptr) {
     GTEST_SKIP() << "Built-in CUDA execution provider is unavailable.";
   }
-  auto options = CountingOptions();
-  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadStrategy, "basic"));
-  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "3"));
-  InferenceSessionWrapper session(options, GetEnvironment());
-  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
-  const auto model = MakeCountingModel(false, true);
-  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
-  const auto status = session.Initialize();
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_NE(status.ErrorMessage().find("supports QMoE only"), std::string::npos);
+  const char* path = "qmoe_layered_cpu_offload_initial_state.json";
+  auto cleanup = gsl::finally([path]() { std::remove(path); });
+  {
+    std::ofstream file(path);
+    file << R"({"alpha":0,"epsilon":0,"experts":[)"
+            R"({"moe":0,"expert":3,"popularity":100},)"
+            R"({"moe":1,"expert":3,"popularity":100}]})";
+    ASSERT_TRUE(file.good());
+  }
+  for (bool reverse_node_indices : {false, true}) {
+    for (size_t cpu_count : {3U, 5U}) {
+      SCOPED_TRACE(MakeString("reverse=", reverse_node_indices, ", cpu_count=", cpu_count));
+      auto options = CountingOptions();
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadStrategy, "layered"));
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio, "0.8"));
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+                                                             std::to_string(cpu_count).c_str()));
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "5"));
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterStateFile, path));
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      ModelProto model;
+      ASSERT_TRUE(model.ParseFromString(MakeCountingModel(true, true)));
+      for (auto& node : *model.mutable_graph()->mutable_node()) {
+        for (const auto& [name, value] :
+             {std::pair{"expert_weight_bits", int64_t{4}}, std::pair{"weights_prepacked", int64_t{0}}}) {
+          auto* attribute = node.add_attribute();
+          attribute->set_name(name);
+          attribute->set_type(AttributeProto_AttributeType_INT);
+          attribute->set_i(value);
+        }
+      }
+      if (reverse_node_indices) {
+        model.mutable_graph()->mutable_node()->SwapElements(0, 1);
+      }
+      InferenceSessionWrapper session(options, GetEnvironment());
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+      const auto serialized = model.SerializeAsString();
+      ASSERT_STATUS_OK(session.Load(serialized.data(), static_cast<int>(serialized.size())));
+      ASSERT_STATUS_OK(session.Initialize());
+      auto* state = session.GetSessionState().GetMoeExpertState();
+      ASSERT_NE(state, nullptr);
+      const auto* first = session.GetSessionState().GetKernel(reverse_node_indices ? 1 : 0);
+      const auto* last = session.GetSessionState().GetKernel(reverse_node_indices ? 0 : 1);
+      EXPECT_EQ(first->Node().GetExecutionProviderType(), kCudaExecutionProvider);
+      EXPECT_EQ(last->Node().GetExecutionProviderType(), kCudaExecutionProvider);
+      EXPECT_EQ(CudaExperts(*state, first), (InlinedVector<int>{0, 1, 3}));
+      EXPECT_EQ(CudaExperts(*state, last), cpu_count == 3 ? (InlinedVector<int>{0, 3}) : InlinedVector<int>{});
+      for (int run = 0; run < 3; ++run) {
+        RunCountingModel(session);
+        ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+      }
+      EXPECT_EQ(CudaExperts(*state, first), (InlinedVector<int>{0, 2, 3}));
+      EXPECT_EQ(CudaExperts(*state, last), cpu_count == 3 ? (InlinedVector<int>{0, 2}) : InlinedVector<int>{});
+    }
+  }
+}
+
+TEST(MoeExpertCountingTest, QMoEOnlyCpuOffloadStrategiesRejectDenseMoE) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider || provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "Built-in CUDA execution provider is unavailable.";
+  }
+  for (const char* strategy : {"basic", "layered"}) {
+    SCOPED_TRACE(strategy);
+    auto options = CountingOptions();
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadStrategy, strategy));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "3"));
+    InferenceSessionWrapper session(options, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+    const auto model = MakeCountingModel(false, true);
+    ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+    const auto status = session.Initialize();
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_NE(status.ErrorMessage().find("supports QMoE only"), std::string::npos);
+  }
 }
 
 TEST(MoeExpertCountingTest, StaticCpuOffloadDistributesZeroCountersAcrossNodes) {
@@ -1598,6 +1663,7 @@ TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {
            std::pair{kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "2"},
            std::pair{kOrtSessionOptionsConfigMoeCpuOffloadExperts, "-1"},
            std::pair{kOrtSessionOptionsConfigMoeCpuOffloadStrategy, "invalid"},
+           std::pair{kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio, "0.8"},
            std::pair{kOrtSessionOptionsConfigMoeCpuOffloadExperts, "invalid"}}) {
     SessionOptions options;
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(entry.first, entry.second));
@@ -1606,6 +1672,7 @@ TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {
     ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
     EXPECT_FALSE(session.Initialize().IsOK());
   }
+
   for (const char* path : {"", "missing_moe_expert_counter_state.txt"}) {
     auto options = CountingOptions();
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterStateFile, path));
@@ -1631,6 +1698,18 @@ TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {
     const auto model = MakeCountingModel();
     ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
     EXPECT_FALSE(session.Initialize().IsOK());
+  }
+}
+TEST(MoeExpertCountingTest, LayeredGpuRatioConfigurationIsValidatedWithoutTracking) {
+  for (const char* ratio : {"0", "-0.1", "1.1", "nan", "inf", "invalid", "", "0.8", "1"}) {
+    SCOPED_TRACE(ratio);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadStrategy, "layered"));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio, ratio));
+    InferenceSessionWrapper session(options, GetEnvironment());
+    const auto model = MakeCountingModel();
+    ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+    EXPECT_EQ(session.Initialize().IsOK(), std::string_view(ratio) == "0.8" || std::string_view(ratio) == "1");
   }
 }
 #endif

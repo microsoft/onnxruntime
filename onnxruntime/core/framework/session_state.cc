@@ -1712,9 +1712,10 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   const bool enable_moe_cpu_offload = cpu_offload_expert_count > 0;
   const auto cpu_offload_strategy =
       sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeCpuOffloadStrategy, "adaptive");
-  ORT_RETURN_IF_NOT(cpu_offload_strategy == "adaptive" || cpu_offload_strategy == "basic",
+  ORT_RETURN_IF_NOT(cpu_offload_strategy == "adaptive" || cpu_offload_strategy == "basic" ||
+                        cpu_offload_strategy == "layered",
                     kOrtSessionOptionsConfigMoeCpuOffloadStrategy,
-                    " must be adaptive or basic. Received: ", cpu_offload_strategy);
+                    " must be adaptive, basic or layered. Received: ", cpu_offload_strategy);
   if (enable_moe_expert_counting || enable_moe_expert_statistics ||
       enable_moe_cpu_offload || enable_moe_popularity_output) {
     double alpha = 0.0;
@@ -1723,6 +1724,12 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
     int64_t max_in_flight_swaps_per_device = -1;
     auto state = std::make_shared<KernelPilotMoeExpertState>();
     ORT_RETURN_IF_ERROR(state->SetCpuOffloadStrategy(cpu_offload_strategy));
+    const auto gpu_ratio_value =
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio, "0.8");
+    double gpu_ratio = 0.0;
+    ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(gpu_ratio_value, gpu_ratio),
+                      "Invalid ", kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio, " value: ", gpu_ratio_value);
+    ORT_RETURN_IF_ERROR(state->SetCpuOffloadGpuRatio(gpu_ratio));
     const auto alpha_value =
         sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.75");
     const auto counter_probability_weight_value = sess_options_.config_options.GetConfigOrDefault(
