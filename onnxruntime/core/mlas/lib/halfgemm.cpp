@@ -156,6 +156,11 @@ MlasHalfGemmBatch(
                 std::runtime_error,
                 "backend-native halfgemm packed B is not supported by generic MLAS halfgemm");
         }
+        if (DataParams[gemm_i].BIsTransposed) {
+            MLAS_THROW_EX(
+                std::runtime_error,
+                "transposed unpacked B is not supported by generic MLAS halfgemm");
+        }
     }
 
     const MLAS_HALFGEMM_DISPATCH* dispatch = MlasHalfGemmGetDispatch();

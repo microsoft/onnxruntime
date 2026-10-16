@@ -123,18 +123,20 @@ class ComputeContextBase {
     return ep_.EnableMatmulFp32Accumulation();
   }
 
+  inline std::optional<MatMulAlgorithm> ForcedMatMulAlgorithm() const {
+    return ep_.ForcedMatMulAlgorithm();
+  }
+
   //
   // Get the logger.
   //
+  inline const auto& Logger() const {
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  inline const onnxruntime::ep::adapter::Logger& Logger() const {
     return ep_.GetEpLogger();
-  }
 #else
-  inline const logging::Logger& Logger() const {
     return *ep_.GetLogger();
-  }
 #endif
+  }
 
   //
   // Run a compute shader program.

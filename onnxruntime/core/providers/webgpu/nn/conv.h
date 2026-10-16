@@ -8,7 +8,7 @@
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
-#include "core/providers/webgpu/math/matmul.h"
+#include "core/providers/webgpu/math/matmul_compute_dispatcher.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 
 namespace onnxruntime {
@@ -29,7 +29,8 @@ class Conv : public WebGpuKernel {
  public:
   Conv(const OpKernelInfo& info) : WebGpuKernel(info), conv_attrs_(info) {
     if (is_fused) {
-      ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
+      // Throw the Status, not the expression: the message names the activation ORT_ENFORCE would drop.
+      ORT_THROW_IF_ERROR(GetFusedActivationAttr(info, activation_));
     }
   }
   Status ComputeInternal(ComputeContext& context) const override;
@@ -49,7 +50,7 @@ class Conv : public WebGpuKernel {
   // Layout of the tensor ComputeInternal ends up consuming -- `prepacked_kernel_` when it
   // is set, otherwise input 1. Stays `OIHW` while `prepacked_kernel_` is null.
   KernelLayout kernel_layout_{KernelLayout::OIHW};
-  mutable MatMulOptImplCache matmul_compute_cache_;
+  mutable MatMulComputeDispatcher matmul_compute_dispatcher_;
 };
 
 Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const TensorShape& kernel_shape, Tensor* transposed_kernel, const InlinedVector<size_t>& perm);

@@ -4377,7 +4377,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_beta</tt> : float</dt>
 <dd>Beta parameter used in activation function.</dd>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
+<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu</dd>
 <dt><tt>k</tt> : int</dt>
 <dd>Number of top experts to select from expert pool</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
@@ -6121,6 +6121,10 @@ This version of the operator has been available since version 1 of the 'com.micr
         Partial edge blocks are allowed. No zero points or activation scales are accepted.
         Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
         Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
+        On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM by default.
+        These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
+        Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
+        Other activation types and unsupported routing sizes retain the fallback.
         The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
         that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
   
@@ -6158,7 +6162,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_beta</tt> : float</dt>
 <dd>Beta parameter used in activation function.</dd>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
+<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu</dd>
 <dt><tt>block_size</tt> : int</dt>
 <dd>For integer quantization, size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). For integer and FP4 quantization, both hidden_size and inter_size must be divisible by the block size. FP8 with block_size=128 supports partial 128x128 tiles. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. Without a positive value, FP8 uses per-expert global scales. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
@@ -6182,7 +6186,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>use_sparse_mixer</tt> : int</dt>
 <dd>Whether to use sparse mixer</dd>
 <dt><tt>weights_prepacked</tt> : int</dt>
-<dd>Only meaningful when quant_type='int'. Tri-state control over the layout of the int4/int8 fc1/fc2 weight initializers. The concrete prepacked layouts selected by -1 and 1 are determined by the execution provider. 0: the initializers are raw, un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits. Defaults to -1.</dd>
+<dd>Expert-weight layout selector with quantization-specific meanings. For quant_type='int', -1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. 0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; 1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. NVFP4 block scales and global scales retain their original layouts and values. Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.</dd>
 </dl>
 
 #### Inputs (6 - 21)
@@ -8624,3 +8628,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
+
