@@ -55,6 +55,7 @@ class CacheTestProfiler : public onnxruntime::llm::kernels::weight_only::WeightO
   size_t launches = 0;
 
  protected:
+  bool hasRunnerContext() const override { return true; }
   void runTactic(int, int, int, const CutlassGemmConfig&, char*, const cudaStream_t&) override { ++launches; }
   size_t computeTmpSize(size_t, size_t, size_t) override { return 0; }
   std::vector<CutlassGemmConfig> getTactics(int, int, int) const override { return {CutlassGemmConfig{}}; }
@@ -990,12 +991,17 @@ TEST(GemmTacticCacheTest, ParseCacheAccessAndFlag) {
 TEST(GemmTacticCacheTest, ResolveFilePathSidecar) {
   const auto sig = MakeSignature("NVIDIA H200", 90);
   const std::string suffix = ".matmulnbits_fpa_intb.tsv";
-  EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("", "", sig, "/models/m.onnx"), "/models/m.onnx" + suffix);
+  const std::filesystem::path abs_model_path =
+      std::filesystem::temp_directory_path() / "models" / "m.onnx";
+  ASSERT_TRUE(abs_model_path.is_absolute());
+  const auto abs_model_u8 = abs_model_path.u8string();
+  const std::string abs_model(abs_model_u8.begin(), abs_model_u8.end());
+  EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("", "", sig, abs_model), abs_model + suffix);
   const auto rel_resolved = gc::MatMulNBitsTacticCache::ResolveFilePath("", "", sig, "models/m.onnx");
   EXPECT_TRUE(std::filesystem::path(rel_resolved).is_absolute());
   // Explicit session locations win over the sidecar.
-  EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("", "/tmp/p", sig, "/models/m.onnx"), "/tmp/p" + suffix);
-  EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("/tmp/dir", "", sig, "/models/m.onnx"),
+  EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("", "/tmp/p", sig, abs_model), "/tmp/p" + suffix);
+  EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("/tmp/dir", "", sig, abs_model),
             "/tmp/dir/NVIDIA_H200_sm90" + suffix);
 }
 
@@ -1207,6 +1213,25 @@ TEST(GemmTacticCacheTest, NormalRetuneNormalKeepsRetunedTacticWithoutChangingLiv
   ASSERT_TRUE(first_normal->getBestConfig(1, id).has_value());
   ExpectConfigEqual(*first_normal->getBestConfig(1, id), MakeSm80Config());
 
+  // Lazily growing the first session's map with a new M bucket must publish only the newly
+  // selected bucket (64 -> A), preserving within-session sharing while keeping the retuned
+  // tactic (1 -> B) persisted.
+  const size_t launches_before_lazy = first_normal->launches;
+  const auto lazy_config = first_normal->getBestConfigOrProfile(64, id);
+  ASSERT_TRUE(lazy_config.has_value());
+  ExpectConfigEqual(*lazy_config, MakeSm80Config());
+  EXPECT_GT(first_normal->launches, launches_before_lazy);
+
+  const auto shared_lazy_config = first_normal_dup->getBestConfigOrProfile(64, id);
+  ASSERT_TRUE(shared_lazy_config.has_value());
+  ExpectConfigEqual(*shared_lazy_config, MakeSm80Config());
+  EXPECT_EQ(first_normal_dup->launches, 0u);
+  ASSERT_TRUE(cache->Flush().IsOK());
+  ASSERT_TRUE(cache->Get(MakeKey(), 1).has_value() && cache->Get(MakeKey(), 1)->has_value());
+  ExpectConfigEqual(**cache->Get(MakeKey(), 1), MakeSm90Config());
+  ASSERT_TRUE(cache->Get(MakeKey(), 64).has_value() && cache->Get(MakeKey(), 64)->has_value());
+  ExpectConfigEqual(**cache->Get(MakeKey(), 64), MakeSm80Config());
+
   // 3. The next normal session must load tactic B from the cache without re-profiling or overwriting B with A.
   auto second_normal = manager.createGemmPluginProfiler(false);
   configure_profiler(*second_normal, 80, *load_save_access, &session_3);
@@ -1220,6 +1245,8 @@ TEST(GemmTacticCacheTest, NormalRetuneNormalKeepsRetunedTacticWithoutChangingLiv
   ASSERT_TRUE(verify.Load().IsOK());
   ASSERT_TRUE(verify.Get(MakeKey(), 1).has_value() && verify.Get(MakeKey(), 1)->has_value());
   ExpectConfigEqual(**verify.Get(MakeKey(), 1), MakeSm90Config());
+  ASSERT_TRUE(verify.Get(MakeKey(), 64).has_value() && verify.Get(MakeKey(), 64)->has_value());
+  ExpectConfigEqual(**verify.Get(MakeKey(), 64), MakeSm80Config());
 
   CleanUp(file);
 }

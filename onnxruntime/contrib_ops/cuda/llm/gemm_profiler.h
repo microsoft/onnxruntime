@@ -32,6 +32,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -225,6 +226,18 @@ class GemmPluginProfiler {
       }
       return iter->second;
     }
+
+    std::mutex stagedMutex;
+    std::unordered_map<const void*, std::unordered_map<GemmIdType, std::unordered_set<int>, GemmIdHashType>>
+        stagedCacheBuckets;
+
+    bool markCacheBucketStaged(const void* cache_id, GemmIdType const& id, int m) {
+      if (cache_id == nullptr) {
+        return true;
+      }
+      std::lock_guard<std::mutex> lock(stagedMutex);
+      return stagedCacheBuckets[cache_id][id].insert(m).second;
+    }
   };
 
   using MNKProfileMapPtr = std::shared_ptr<MNKProfileMap>;
@@ -243,6 +256,9 @@ class GemmPluginProfiler {
 
   void setSelectionTactics(MNKProfileMapPtr const& map) {
     mMNKProfileMap = map;
+    std::lock_guard<std::mutex> staged_lock(mStagedBucketsMutex);
+    mStagedBuckets.clear();
+    mStagedBucketCount.store(0, std::memory_order_release);
   }
 
   void setSkip(bool skip) {
@@ -336,17 +352,42 @@ class GemmPluginProfiler {
   virtual void stagePersistentCache(GemmIdType const& /*gemmId*/, MProfileMap const& /*map*/,
                                     bool /*hasWeightOnlyCudaKernel*/) {}
 
+  virtual bool hasRunnerContext() const {
+    return mRunner != nullptr;
+  }
+
+  bool markCacheBucketStaged(const void* cache_id, GemmIdType const& gemmId, int m) {
+    return mMNKProfileMap == nullptr || mMNKProfileMap->markCacheBucketStaged(cache_id, gemmId, m);
+  }
+
  private:
   void stageNewPersistentBuckets(GemmIdType const& gemmId, MProfileMap const& map) {
     // Profile maps only grow. A shared-map addition is staged once per attached profiler,
-    // including exact and rounded hits discovered by a different session.
-    if (mStagedBucketCount.load(std::memory_order_relaxed) != map.size()) {
-      stagePersistentCache(gemmId, map, mHasWeightOnlyCudaKernel);
-      mStagedBucketCount.store(map.size(), std::memory_order_relaxed);
+    // including exact and rounded hits discovered by a different session. Only newly
+    // selected buckets are published so previously staged buckets cannot overwrite later
+    // retuned choices in a shared persistent cache.
+    if (mStagedBucketCount.load(std::memory_order_acquire) == map.size()) {
+      return;
+    }
+    std::lock_guard<std::mutex> staged_lock(mStagedBucketsMutex);
+    auto& staged = mStagedBuckets[gemmId];
+    MProfileMap new_buckets;
+    for (auto const& [m, config] : map) {
+      if (staged.insert(m).second) {
+        new_buckets.emplace(m, config);
+      }
+    }
+    if (!new_buckets.empty()) {
+      stagePersistentCache(gemmId, new_buckets, mHasWeightOnlyCudaKernel);
+    }
+    if (mStagedBuckets.size() == 1) {
+      mStagedBucketCount.store(staged.size(), std::memory_order_release);
     }
   }
 
   std::atomic<size_t> mStagedBucketCount{0};
+  std::mutex mStagedBucketsMutex;
+  std::unordered_map<GemmIdType, std::unordered_set<int>, GemmIdHashType> mStagedBuckets;
 
   std::optional<Config> profileTacticsForProblem(int m, int n, int k, std::vector<Config> const& tactics,
                                                  char* workspace, cudaStream_t stream);
@@ -603,7 +644,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
   }
 
   // We can only profile lazily if the profiling context from construction is available.
-  if (mRunner == nullptr || mAllocator == nullptr || !mDims.isInitialized()) {
+  if (!hasRunnerContext() || mAllocator == nullptr || !mDims.isInitialized()) {
     ORT_LLM_LOG_WARNING("Cannot lazily profile an unprofiled M bucket: profiler context is unavailable.");
     return std::nullopt;
   }
