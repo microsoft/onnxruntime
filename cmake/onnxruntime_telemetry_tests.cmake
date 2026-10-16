@@ -167,7 +167,13 @@ add_test(NAME onnxruntime_telemetry_transport_runner_test
   COMMAND "${Python_EXECUTABLE}" "${telemetry_test_dir}/telemetry-transport-runner-test.py")
 set_tests_properties(onnxruntime_telemetry_transport_runner_test PROPERTIES TIMEOUT 10)
 
-foreach(mode upload threaded retry pending disabled unit-disabled ci-disabled reload)
+set(telemetry_transport_modes upload threaded retry pending disabled unit-disabled ci-disabled)
+# The Objective-C runtime retains the Apple transport's image after dlclose, so
+# loading it again cannot provide the fresh static state required by this test.
+if(NOT APPLE)
+  list(APPEND telemetry_transport_modes reload)
+endif()
+foreach(mode IN LISTS telemetry_transport_modes)
   add_test(NAME onnxruntime_telemetry_transport_${mode}_test
     COMMAND "${Python_EXECUTABLE}" "${telemetry_test_dir}/telemetry-transport-test.py"
       --executable $<TARGET_FILE:onnxruntime_telemetry_transport_test>

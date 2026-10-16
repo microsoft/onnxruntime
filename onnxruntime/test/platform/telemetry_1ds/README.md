@@ -27,7 +27,7 @@ The observations do not change the production SDK objects.
 
 ## Real native transport
 
-The eight `onnxruntime_telemetry_transport_*` tests use the actual SDK HTTP factory:
+The `onnxruntime_telemetry_transport_*` tests use the actual SDK HTTP factory:
 WinHTTP on Windows and curl on Linux. Apple builds use their selected SDK
 transport. A forwarding `IHttpClient` module observes terminal callbacks and
 forces every request URL to the parent-owned IPv4 loopback collector; it does not
@@ -58,7 +58,13 @@ or forced termination.
 | `disabled` | Environment opt-out creates no SDK transport, files, or requests. |
 | `unit-disabled` | Unit-test suppression creates no SDK transport, files, or requests. |
 | `ci-disabled` | CI suppression creates no SDK transport, files, or requests. |
-| `reload` | A DLL/shared-library fixture constructs and explicitly destroys a real provider before unload, then repeats after reload. |
+| `reload` (Windows/Linux) | A DLL/shared-library fixture constructs and explicitly destroys a real provider before unload, then repeats after reload. |
+
+Apple builds run all seven subprocess transport modes, but do not register the
+reload test. The SDK's Apple transport registers Objective-C classes, and its
+image remains resident after `dlclose`; a second `dlopen` reuses its static state
+instead of exercising an unload/reload. Loading another SDK copy also registers
+duplicate Objective-C classes. This fixture does not support that lifecycle.
 
 The reload fixture shuts its provider down and exits its calling thread
 **before** entering the loader lock, allowing thread-local destructors to run.
