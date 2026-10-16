@@ -291,33 +291,47 @@ W_L1 = max over p ∈ AdmittedPhases and r ∈ P(p):
 
 At runtime the GQA kernel uses the same partition: `is_first_prompt` selects prefill, a non-first
 single-token step selects decode, and any other multi-token step selects chunked prefill. When
-`total_sequence_length` resides on the GPU and the helper cannot distinguish the first prompt from
-a later chunk, the existing runtime behavior reports the multi-token step as non-first, so policy
-enforcement conservatively uses the chunked-prefill mask. L1 has already admitted and sized both
-general phases.
+`total_sequence_length` resides on the GPU, `CheckInputs` cannot read it during graph capture and
+leaves both prompt flags false. A single-token first prompt therefore uses the **decode** policy mask,
+and a multi-token first prompt uses the **chunked-prefill** mask. These are runtime dispatch classes,
+not proof of the semantic prompt stage. L1 must admit and size every class this classifier can select:
+prefill and decode for a positive query-length bound, plus chunked prefill when the bound exceeds one.
+The current #33316 adapter already admits those classes without requiring a device-to-host scalar read.
 
 Everything L1 needs is static:
 
 | Ingredient | Source |
 |---|---|
-| which phases are admissible | graph structure: node has `past_key`/`present_key` edges ⇒ autoregressive ⇒ `{prefill, chunk, decode}`; no `past` input ⇒ prefill-only |
+| which phases are admissible | runtime-classifier reachability under the query-length bound, including GPU-resident total-length behavior; graph edge presence alone does not prove prefill-only execution |
 | query bound `P` | `max_shape_override` on `input_ids` |
 | KV capacity `C` | overridden `past_key` seq dim / GQA capacity knob |
 | routes per phase `P(p)` | the committed policy, evaluated symbolically |
 | route eligibility | seq-free static predicates (dtype, device_prop, head_size, heads, flags) |
 
+The current `BuildBounds` requires both `past_key` and `past_value` shapes for cache geometry/capacity
+and declines a no-past input configuration. It does not implement a no-past prefill-only estimate.
+Future no-past support must establish its own allocation bound and cover the actual runtime classifier,
+or enforce an explicit phase-admission condition before execution; it must not simply omit decode/chunk
+from the mask based on absent graph inputs.
+
 ### `max`, not `sum` — and the one caveat
 
-In ORT today a single Run is **single-phase**: GQA rejects mixed regimes with
+One GQA invocation selects one policy phase and one backend route. Those alternatives are mutually
+exclusive, so its workspace bound is their **max**, not their sum. Sequential Runs can reuse backing
+under the declared serialization/allocator assumptions. This does not establish that every GQA node
+in an entire Run has the same phase.
+
+For CPU-resident `total_sequence_length`, GQA checks
 `batch_size must be 1 when sequence_length > 1 and past context is given`
-(`group_query_attention_helper.h`). Phases occur in *different* Runs and the arena is reused across
-Runs, so the reservation is the **max across phases**, not the sum — dominated by the linear prefill
-term.
+in `group_query_attention_helper.h`. The GPU-resident branch skips that prompt-type block, including
+the batch-size guard. Do not use this guard as a universal proof of single-phase batching or
+cross-node phase correlation; size the actual batch bound for the reachable dispatch class.
 
 > **Caveat:** if ORT ever adopts vLLM-style **continuous batching / mixed chunked-prefill + decode
 > in one forward** (ragged batch), prefill and decode routes become simultaneously live in one Run,
-> and that Run's estimate must **sum** the coexisting `(phase → route)` workspaces. The batch=1
-> guard is what currently protects the `max` model.
+> the plan must account for overlapping `(phase → route)` workspaces according to their real
+> allocation identities/lifetimes. A maximum over mutually exclusive routes does not cover such
+> simultaneous execution.
 
 ---
 
@@ -825,6 +839,26 @@ L2 may tighten a requirement without broadening permissions. A larger requiremen
 new plan before allocation/use or an explicit Initialize error; a warning followed by dynamic growth
 cannot satisfy the opt-in hard-budget mode.
 
+**Current reconciliation gaps, not implemented guarantees:** the invariants above are Stage 4/5
+requirements, not properties already supplied by the existing post-partition callbacks:
+
+- `SetNodeReplacementCallback` calls `ConsolidateWorkspaceReservations`, which sums source runtime
+  reservation bytes and persistent/prepack bytes and takes the maximum initialization scratch.
+  This preserves bookkeeping; it neither queries the replacement implementation nor creates its
+  contract. A fused node may need more or less than that aggregate.
+- `SetNodeRemovalCallback` erases removed-node reservations before finalization checks for orphaned
+  entries. The orphan check therefore sees only surviving records; it cannot detect a binding
+  obligation already erased by the callback. Track explicit retirement, validated transfer, or
+  invalidation/re-estimation so a legitimate removal is distinguished from lost ownership.
+- If `DeclareWorkspaceRequirements()` succeeds with an empty list for a node with a nonzero L1
+  reservation, current finalization increments `missing_declaration` and continues without setting
+  `strict_verification_failed`. Empty/unsupported declarations are not proof of zero workspace.
+  The proposed strict mode must reject unresolved nonzero reservations, or require explicit evidence
+  of a valid zero-workspace replacement, rather than treating the diagnostic counter as enforcement.
+
+Preserve legacy behavior outside the new opt-in contract/budget mode. Its verification must audit
+transformation provenance and unresolved obligations, not merely inspect the final reservation map.
+
 ### First budget selector: deterministic, not an optimal-latency claim
 
 Do not move the current greedy CUDA cutoff unchanged into a new class. Budget acceptance is a
@@ -872,10 +906,11 @@ Reuse existing machinery rather than introducing an unrelated executor or alloca
 | Existing surface | Proposed responsibility |
 |---|---|
 | `resource_accountant.h/.cc`, partitioner bookkeeping | Preserve local estimate provenance and compatibility; introduce whole-plan evaluation alongside the additive baseline. |
+| `TransformGraph` replacement/removal callbacks | Replace source-sum-only reconciliation with target-recipe requirements; explicitly record retirement/transfer/invalidation so erased entries cannot hide unresolved bindings. |
 | `level1_memory_estimate.h`, EP estimators | Adapt existing scalar estimates; participating EPs additionally expose contract-specific lifetime requirements. |
 | `allocation_planner.cc`, `sequential_execution_plan.h` | Bound value sizes, deduplicate physical roots, derive release/stream constraints, and support provisional plans. |
 | `mem_pattern_planner.h`, `execution_frame.cc`, `bfc_arena.cc` | Translate liveness into aligned retained backing consistent with actual allocation and growth/reuse behavior. |
-| `session_state.cc`, `DeclareWorkspaceRequirements()` | Persist selected bindings/plans and reconcile L2 requirements, ownership, and lifetimes. |
+| `session_state.cc`, `DeclareWorkspaceRequirements()` | Persist selected bindings/plans and reconcile L2 requirements, ownership, and lifetimes. Close the current strict-verification gap for empty declarations with nonzero reservations; distinguish proven zero from unsupported/missing coverage. |
 | CUDA `GetCapability()` | Report support and candidate contracts; let the opt-in framework selector own global acceptance instead of stopping at the first additive threshold. |
 
 Split the work into reviewable PRs:
@@ -900,8 +935,10 @@ non-capture estimate.
 Targeted tests should cover sequential scratch reuse, asynchronous overlap, shared weights and KV
 aliases, source/destination prepack coexistence, persistent decode storage during prefill, allocator
 alignment/retention, initialization-dominated peaks, phase correlations, changed/fused bindings,
-and a contract change that avoids CPU offload. Synthetic framework plans can exercise these before
-GPU integration; observed device peaks subsequently validate the model rather than replace it.
+replacement requirements larger than source sums, removed bindings erased before orphan checking,
+empty L2 declarations with nonzero reservations, proven-zero replacements, and a contract change
+that avoids CPU offload. Synthetic framework plans can exercise these before GPU integration;
+observed device peaks subsequently validate the model rather than replace it.
 
 ### Deferred correctness/coverage TODOs
 
@@ -950,10 +987,16 @@ Stage 4 (next): Whole-session GPU lifetime/backing accounting and a budget plan.
                - Account Initialize as well as Run, including physical pool retention and reserve.
                - Deduplicate shared/aliased roots; reuse scratch only under proven non-overlap.
                - Reuse existing execution/allocation planners and reconcile L2 before Run.
+               - Audit reservation retirement/transfer through transformations; final-map orphan
+                 checks alone miss obligations erased by removal callbacks.
+               - Fail closed on unresolved nonzero reservations with empty/missing L2 declarations;
+                 the current missing_declaration counter does not itself enforce strict failure.
                - Report conditional assumptions and unavailable terms explicitly.
 
 Stage 5: Budget-constrained contract and placement selection.
          - Enumerate EP-owned enforceable contracts and persist the selected bindings.
+         - Bind fused/replaced implementations to their own requirements and graph revisions;
+           source reservation sums are bookkeeping, not replacement contracts.
          - Recompute whole-session backing for each contract/CPU-region alternative.
          - Begin with deterministic preferences, without claiming optimal latency.
 
