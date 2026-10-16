@@ -88,7 +88,7 @@ jobs:
       - name: Get vcpkg tool info
         id: vcpkg-tool-info
         uses: ./.github/actions/get-vcpkg-tool-info
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@d19341fb036c43a947a2c0e4a53ad4d15e10bc5c # v0.0.9
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           vcpkg-version: ${{ steps.vcpkg-tool-info.outputs.release_tag }}
           vcpkg-hash: ${{ steps.vcpkg-tool-info.outputs.sha512 }}
@@ -139,7 +139,7 @@ jobs:
       - name: Get vcpkg tool info
         id: vcpkg-tool-info
         uses: ./.github/actions/get-vcpkg-tool-info
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@d19341fb036c43a947a2c0e4a53ad4d15e10bc5c # v0.0.9
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           vcpkg-version: ${{ steps.vcpkg-tool-info.outputs.release_tag }}
           vcpkg-hash: ${{ steps.vcpkg-tool-info.outputs.sha512 }}
