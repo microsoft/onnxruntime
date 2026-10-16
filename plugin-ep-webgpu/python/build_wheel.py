@@ -28,14 +28,7 @@ sys.path.insert(0, str(SCRIPT_DIR.parent))
 from _packaging_utils import (  # noqa: E402  (path setup must precede import)
     gen_file_from_template,
     get_plugin_binaries,
-    get_windows_agility_sdk_state,
 )
-
-OPTIONAL_BINARIES = {
-    "Windows": ("webgpu_dawn.dll",),
-    "Linux": ("libwebgpu_dawn.so",),
-    "Darwin": ("libwebgpu_dawn.dylib",),
-}
 
 # Libraries to exclude from auditwheel bundling (user-provided drivers)
 AUDITWHEEL_EXCLUDE = [
@@ -43,31 +36,18 @@ AUDITWHEEL_EXCLUDE = [
 ]
 
 
-def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str, *, require_agility_sdk: bool = False):
+def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str, *, use_dawn_agility_sdk: bool = False):
     """Copy the package source tree into staging_dir, copy binaries, and stamp the version."""
     target_platform = platform.system()
-    if target_platform not in OPTIONAL_BINARIES:
+    if target_platform not in ("Windows", "Linux", "Darwin"):
         raise ValueError(f"Unsupported wheel platform: {target_platform}")
-    if require_agility_sdk and target_platform != "Windows":
-        raise ValueError("--require-agility-sdk is only supported for Windows wheels")
+    if use_dawn_agility_sdk and target_platform != "Windows":
+        raise ValueError("--use-dawn-agility-sdk is only supported for Windows wheels")
 
-    include_agility_sdk_files = False
-    if target_platform == "Windows":
-        has_agility_sdk_files, missing_agility_sdk_files = get_windows_agility_sdk_state(binary_dir)
-        if missing_agility_sdk_files:
-            missing_text = ", ".join(path.as_posix() for path in missing_agility_sdk_files)
-            raise FileNotFoundError(f"Partial Windows Agility SDK input in {binary_dir}: missing {missing_text}")
-        include_agility_sdk_files = require_agility_sdk or has_agility_sdk_files
-    required_binaries = list(get_plugin_binaries(target_platform, include_agility_sdk_files=include_agility_sdk_files))
-    optional_binaries = [Path(filename) for filename in OPTIONAL_BINARIES[target_platform]]
-
-    missing_binaries = [
-        str(relative_path) for relative_path in required_binaries if not (binary_dir / relative_path).is_file()
-    ]
-    if missing_binaries:
-        raise FileNotFoundError(
-            f"Missing required {target_platform} wheel binaries from {binary_dir}: {', '.join(missing_binaries)}"
-        )
+    required_binaries = get_plugin_binaries(
+        target_platform,
+        include_agility_sdk_files=use_dawn_agility_sdk,
+    )
 
     staging_dir.mkdir(parents=True, exist_ok=True)
 
@@ -85,10 +65,7 @@ def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str, *, re
         shutil.copy2(src, staging_dir / license_filename)
 
     package_dir = staging_dir / "onnxruntime_ep_webgpu"
-    binaries = required_binaries + [
-        relative_path for relative_path in optional_binaries if (binary_dir / relative_path).is_file()
-    ]
-    for relative_path in binaries:
+    for relative_path in required_binaries:
         src = binary_dir / relative_path
         dst = package_dir / relative_path
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -185,7 +162,7 @@ def main():
     parser.add_argument("--version", required=True, help="Package version string (PEP 440 format)")
     parser.add_argument("--output_dir", required=True, type=Path, help="Directory to place the built wheel")
     parser.add_argument(
-        "--require-agility-sdk",
+        "--use-dawn-agility-sdk",
         action="store_true",
         help="Require both D3D12 Agility SDK DLLs in the pre-built input (used by Windows release pipelines).",
     )
@@ -198,7 +175,12 @@ def main():
         staging_dir = Path(tmp) / "package"
         wheel_dir = Path(tmp) / "wheels"
 
-        prepare_staging_dir(staging_dir, args.binary_dir, args.version, require_agility_sdk=args.require_agility_sdk)
+        prepare_staging_dir(
+            staging_dir,
+            args.binary_dir,
+            args.version,
+            use_dawn_agility_sdk=args.use_dawn_agility_sdk,
+        )
         build_wheel(staging_dir, wheel_dir)
         auditwheel_repair(wheel_dir)
         collect_wheels(wheel_dir, args.output_dir)

@@ -32,9 +32,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import zipfile
 from pathlib import Path
 
+# Packaging platform key -> (NuGet runtime identifier, target platform name).
 PLATFORM_TARGETS: dict[str, tuple[str, str]] = {
     "win_x64": ("win-x64", "Windows"),
     "win_arm64": ("win-arm64", "Windows"),
@@ -59,7 +59,6 @@ from _packaging_utils import WINDOWS_AGILITY_SDK_BINARIES as _WINDOWS_AGILITY_SD
 from _packaging_utils import (  # noqa: E402  (path setup must precede import)
     gen_file_from_template,
     get_plugin_binaries,
-    get_windows_agility_sdk_state,
 )
 
 WINDOWS_BINARIES = tuple(path.as_posix() for path in get_plugin_binaries("Windows"))
@@ -82,7 +81,7 @@ def get_platforms(*, include_agility_sdk_files: bool = False) -> dict[str, tuple
     }
 
 
-PLATFORMS = get_platforms()
+PLATFORM_NAMES = tuple(PLATFORM_TARGETS)
 
 
 class PackError(RuntimeError):
@@ -107,9 +106,9 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--configuration", default="Release", help="Build configuration (default: Release).")
     p.add_argument(
-        "--require-agility-sdk",
+        "--use-dawn-agility-sdk",
         action="store_true",
-        help="Require both Agility SDK DLLs for each Windows platform, including in --pack-only mode.",
+        help="Include and require both Agility SDK DLLs for each Windows platform.",
     )
 
     # CI mode: a single root containing per-platform subdirectories.
@@ -121,7 +120,7 @@ def parse_args() -> argparse.Namespace:
 
     # Local mode: explicit per-platform binary directories. Each takes precedence over
     # --artifacts-dir for that platform.
-    for name in PLATFORMS:
+    for name in PLATFORM_NAMES:
         flag = f"--binary-dir-{name.replace('_', '-')}"
         p.add_argument(flag, type=_absolute_path, dest=f"binary_dir_{name}", help=f"Path to {name} native binaries.")
 
@@ -164,10 +163,10 @@ def parse_args() -> argparse.Namespace:
 
 def parse_required_platforms(value: str) -> list[str]:
     names = [tok.strip() for tok in value.split(",") if tok.strip()]
-    invalid = [n for n in names if n not in PLATFORMS]
+    invalid = [n for n in names if n not in PLATFORM_NAMES]
     if invalid:
         raise PackError(
-            f"unknown platform(s) in --required-platforms: {', '.join(invalid)}. valid: {', '.join(PLATFORMS)}."
+            f"unknown platform(s) in --required-platforms: {', '.join(invalid)}. valid: {', '.join(PLATFORM_NAMES)}."
         )
     return names
 
@@ -226,8 +225,9 @@ def stage_binaries(
     required_platforms: list[str],
 ) -> None:
     staged: set[str] = set()
+    platforms = get_platforms(include_agility_sdk_files=args.use_dawn_agility_sdk)
 
-    for name, (rid, _) in PLATFORMS.items():
+    for name, (rid, platform_files) in platforms.items():
         binary_dir_override: Path | None = getattr(args, f"binary_dir_{name}")
         is_required = name in required_platforms
         source_dir = resolve_platform_source(name, binary_dir_override, args.artifacts_dir, is_required)
@@ -236,15 +236,6 @@ def stage_binaries(
             continue
         if not source_dir.is_dir():
             raise PackError(f"binary directory does not exist: {source_dir}")
-
-        include_agility_sdk_files = False
-        if rid.startswith("win-"):
-            has_agility_sdk_files, missing_agility_sdk_files = get_windows_agility_sdk_state(source_dir)
-            if missing_agility_sdk_files:
-                missing_text = ", ".join(path.as_posix() for path in missing_agility_sdk_files)
-                raise PackError(f"partial Agility SDK input in {source_dir}: missing {missing_text}")
-            include_agility_sdk_files = args.require_agility_sdk or has_agility_sdk_files
-        platform_files = list(get_platforms(include_agility_sdk_files=include_agility_sdk_files)[name][1])
 
         target_dir = staging_dir / "runtimes" / rid / "native"
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -305,31 +296,6 @@ def do_build(staged_csproj: Path, staging_dir: Path, args: argparse.Namespace) -
     print("Staging directory preserved for subsequent --pack-only invocation.")
 
 
-def verify_package(package: Path, staging_dir: Path, *, require_agility_sdk: bool = False) -> None:
-    with zipfile.ZipFile(package) as archive:
-        actual = set(archive.namelist())
-    expected = set()
-    has_windows_runtime = False
-    for rid, files in PLATFORMS.values():
-        native_dir = Path("runtimes") / rid / "native"
-        if (staging_dir / native_dir).is_dir():
-            expected.update((native_dir / filename).as_posix() for filename in files)
-            if rid.startswith("win-"):
-                has_windows_runtime = True
-                sdk_entries = {(native_dir / filename).as_posix() for filename in WINDOWS_AGILITY_SDK_BINARIES}
-                if (
-                    require_agility_sdk
-                    or sdk_entries.intersection(actual)
-                    or any((staging_dir / entry).is_file() for entry in sdk_entries)
-                ):
-                    expected.update(sdk_entries)
-    if has_windows_runtime:
-        expected.add("buildTransitive/Microsoft.ML.OnnxRuntime.EP.WebGpu.targets")
-    missing = expected.difference(actual)
-    if missing:
-        raise PackError(f"missing package entries in {package}: {', '.join(sorted(missing))}")
-
-
 def do_pack(
     staged_csproj: Path,
     output_dir: Path,
@@ -355,8 +321,6 @@ def do_pack(
         nupkgs = sorted(pack_output_dir.glob("*.nupkg"))
         if not nupkgs:
             raise PackError(f"no .nupkg files found in {pack_output_dir}")
-        for pkg in nupkgs:
-            verify_package(pkg, staged_csproj.parent, require_agility_sdk=args.require_agility_sdk)
 
         output_dir.mkdir(parents=True, exist_ok=True)
         for pkg in nupkgs + sorted(pack_output_dir.glob("*.snupkg")):

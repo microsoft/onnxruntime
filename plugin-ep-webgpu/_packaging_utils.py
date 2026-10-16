@@ -36,26 +36,6 @@ def get_plugin_binaries(target_platform: str, *, include_agility_sdk_files: bool
     return tuple(binaries)
 
 
-def get_windows_agility_sdk_state(binary_dir: Path) -> tuple[bool, tuple[Path, ...]]:
-    """Return whether the full Agility SDK pair is present and which files are missing.
-
-    If neither file is present, returns ``(False, ())``.
-    If both files are present, returns ``(True, ())``.
-    If only a subset is present, returns ``(False, missing_files)`` so callers can fail loudly.
-    """
-    present = tuple((binary_dir / relative_path).is_file() for relative_path in WINDOWS_AGILITY_SDK_BINARIES)
-    if all(present):
-        return True, ()
-    if any(present):
-        missing = tuple(
-            relative_path
-            for relative_path, is_present in zip(WINDOWS_AGILITY_SDK_BINARIES, present, strict=False)
-            if not is_present
-        )
-        return False, missing
-    return False, ()
-
-
 def gen_file_from_template(
     template_file: Path, output_file: Path, variable_substitutions: dict[str, str], strict: bool = True
 ) -> None:

@@ -38,9 +38,9 @@ D3D12/
   d3d12SDKLayers.dll
 ```
 
-The SDK DLLs are optional as a pair unless `--require-agility-sdk` is specified. If either DLL is present, both are
-required. Use this option when packaging an Agility-enabled plugin. In a two-phase workflow, pass it to both
-`--build-only` and `--pack-only`.
+Use `--use-dawn-agility-sdk` to include and require both SDK DLLs when packaging an Agility-enabled plugin. Without this
+option, the SDK DLLs are not staged. In a two-phase workflow, pass it to `--build-only`; the resulting staging directory
+is reused by `--pack-only`.
 
 ## Building the NuGet Package
 
@@ -65,7 +65,7 @@ For an Agility-enabled input, require the SDK explicitly:
 ```powershell
 python pack_nuget.py --version 0.1.0-dev `
   --binary-dir-win-x64 <path-to-win-x64-binaries> `
-  --require-agility-sdk
+  --use-dawn-agility-sdk
 ```
 
 ### Pack multiple platforms

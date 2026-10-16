@@ -18,7 +18,7 @@ python tools\ci_build\build.py `
 python plugin-ep-webgpu\python\build_wheel.py `
   --binary_dir build\WebGpuPlugin\Release\Release `
   --version 0.1.0.devYYYYMMDD `
-  --require-agility-sdk `
+  --use-dawn-agility-sdk `
   --output_dir dist
 ```
 

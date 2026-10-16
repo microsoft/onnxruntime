@@ -60,9 +60,10 @@ class PackNugetTest(unittest.TestCase):
         self.root = Path(temporary.name)
         self.staging = self.root / "staging"
 
-    def stage_platform(self, platform, missing=None, *, include_agility_sdk=True, require_agility_sdk=False):
+    def stage_platform(self, platform, missing=None, *, include_agility_sdk=True, use_dawn_agility_sdk=False):
         source = Path(tempfile.mkdtemp(dir=self.root))
-        files = list(pack_nuget.PLATFORMS[platform][1])
+        platforms = pack_nuget.get_platforms()
+        files = list(platforms[platform][1])
         if platform.startswith("win_") and include_agility_sdk:
             files.extend(pack_nuget.WINDOWS_AGILITY_SDK_BINARIES)
         for filename in files:
@@ -72,8 +73,8 @@ class PackNugetTest(unittest.TestCase):
                 path.write_bytes(filename.encode())
         args = argparse.Namespace(
             artifacts_dir=None,
-            require_agility_sdk=require_agility_sdk,
-            **{f"binary_dir_{name}": source if name == platform else None for name in pack_nuget.PLATFORMS},
+            use_dawn_agility_sdk=use_dawn_agility_sdk,
+            **{f"binary_dir_{name}": source if name == platform else None for name in pack_nuget.PLATFORM_NAMES},
         )
         with contextlib.redirect_stdout(io.StringIO()):
             pack_nuget.stage_binaries(self.staging, args, [platform])
@@ -86,11 +87,12 @@ class PackNugetTest(unittest.TestCase):
             archive.writestr("buildTransitive/Microsoft.ML.OnnxRuntime.EP.WebGpu.targets", b"test")
 
     def test_stage_binaries_preserves_layout(self):
-        for platform, (rid, files) in pack_nuget.PLATFORMS.items():
+        for platform, (rid, files) in pack_nuget.get_platforms().items():
             with self.subTest(platform=platform):
-                self.stage_platform(platform)
+                use_dawn_agility_sdk = rid.startswith("win-")
+                self.stage_platform(platform, use_dawn_agility_sdk=use_dawn_agility_sdk)
                 expected_files = list(files)
-                if rid.startswith("win-"):
+                if use_dawn_agility_sdk:
                     expected_files.extend(pack_nuget.WINDOWS_AGILITY_SDK_BINARIES)
                 for filename in expected_files:
                     destination = self.staging / "runtimes" / rid / "native" / filename
@@ -99,21 +101,17 @@ class PackNugetTest(unittest.TestCase):
     def test_stage_binaries_rejects_missing_agility_dll(self):
         for platform in ("win_x64", "win_arm64"):
             for missing in pack_nuget.WINDOWS_AGILITY_SDK_BINARIES:
-                for required in (False, True):
-                    with (
-                        self.subTest(platform=platform, missing=missing, required=required),
-                        self.assertRaises(pack_nuget.PackError),
-                    ):
-                        self.stage_platform(platform, missing, require_agility_sdk=required)
+                with self.subTest(platform=platform, missing=missing), self.assertRaises(pack_nuget.PackError):
+                    self.stage_platform(platform, missing, use_dawn_agility_sdk=True)
 
     def test_parse_agility_requirement(self):
         for required in (False, True):
             with self.subTest(required=required):
                 argv = ["pack_nuget.py", "--version", "0.1.0"]
                 if required:
-                    argv.append("--require-agility-sdk")
+                    argv.append("--use-dawn-agility-sdk")
                 with unittest.mock.patch.object(sys, "argv", argv):
-                    self.assertEqual(pack_nuget.parse_args().require_agility_sdk, required)
+                    self.assertEqual(pack_nuget.parse_args().use_dawn_agility_sdk, required)
 
     def test_get_dotnet_sdk_major(self):
         with (
@@ -147,72 +145,25 @@ class PackNugetTest(unittest.TestCase):
         self.assertTrue(should_run_dotnet_sdk_test(None, True))
 
     def test_stage_binaries_agility_requirement(self):
-        for platform in pack_nuget.PLATFORMS:
+        platforms = pack_nuget.get_platforms()
+        for platform in platforms:
             for include_sdk in (False, True):
                 for required in (False, True):
                     with self.subTest(platform=platform, include_sdk=include_sdk, required=required):
                         self.staging = self.root / f"{platform}-{include_sdk}-{required}"
                         if platform.startswith("win_") and required and not include_sdk:
                             with self.assertRaises(pack_nuget.PackError):
-                                self.stage_platform(platform, include_agility_sdk=False, require_agility_sdk=True)
+                                self.stage_platform(platform, include_agility_sdk=False, use_dawn_agility_sdk=True)
                         else:
-                            self.stage_platform(platform, include_agility_sdk=include_sdk, require_agility_sdk=required)
-                            rid = pack_nuget.PLATFORMS[platform][0]
+                            self.stage_platform(
+                                platform, include_agility_sdk=include_sdk, use_dawn_agility_sdk=required
+                            )
+                            rid = platforms[platform][0]
                             sdk_dir = self.staging / "runtimes" / rid / "native" / "D3D12"
-                            self.assertEqual(sdk_dir.is_dir(), platform.startswith("win_") and include_sdk)
-
-    def test_verify_package_allows_no_sdk_but_rejects_partial_sdk(self):
-        for platform in ("win_x64", "win_arm64"):
-            self.stage_platform(platform, include_agility_sdk=False)
-        entries = {path.relative_to(self.staging).as_posix() for path in self.staging.rglob("*") if path.is_file()}
-        entries.add("buildTransitive/Microsoft.ML.OnnxRuntime.EP.WebGpu.targets")
-        package = self.root / "test.nupkg"
-        for rid in ("win-x64", "win-arm64"):
-            for sdk_file in (None, *pack_nuget.WINDOWS_AGILITY_SDK_BINARIES):
-                with self.subTest(rid=rid, sdk_file=sdk_file):
-                    with zipfile.ZipFile(package, "w") as archive:
-                        for entry in entries:
-                            archive.writestr(entry, b"test")
-                        if sdk_file:
-                            archive.writestr(f"runtimes/{rid}/native/{sdk_file}", b"test")
-                    if sdk_file:
-                        with self.assertRaises(pack_nuget.PackError):
-                            pack_nuget.verify_package(package, self.staging)
-                    else:
-                        pack_nuget.verify_package(package, self.staging)
-                    with self.assertRaises(pack_nuget.PackError):
-                        pack_nuget.verify_package(package, self.staging, require_agility_sdk=True)
-
-    def test_pack_only_enforces_agility_requirement(self):
-        self.stage_platform("win_x64", include_agility_sdk=False)
-
-        def produce_package(command, *, check):
-            self.assertTrue(check)
-            output = Path(command[command.index("--output") + 1])
-            self.write_staged_package(output / "test.nupkg")
-
-        for required in (False, True):
-            with self.subTest(required=required):
-                args = argparse.Namespace(
-                    version="0.1.0",
-                    configuration="Release",
-                    nuget_config=None,
-                    pack_only=True,
-                    require_agility_sdk=required,
-                )
-                with (
-                    unittest.mock.patch.object(pack_nuget.subprocess, "run", side_effect=produce_package) as run,
-                    contextlib.redirect_stdout(io.StringIO()),
-                ):
-                    if required:
-                        with self.assertRaises(pack_nuget.PackError):
-                            pack_nuget.do_pack(self.staging / "test.csproj", self.root, args)
-                    else:
-                        pack_nuget.do_pack(self.staging / "test.csproj", self.root, args)
-                    self.assertIn("--no-build", run.call_args.args[0])
+                            self.assertEqual(sdk_dir.is_dir(), platform.startswith("win_") and include_sdk and required)
 
     def test_pack_preserves_history_and_replaces_only_current_packages(self):
-        self.stage_platform("win_x64")
+        self.stage_platform("win_x64", use_dawn_agility_sdk=True)
         output = self.root / "output"
         output.mkdir()
         package_id = "Microsoft.ML.OnnxRuntime.EP.WebGpu"
@@ -235,7 +186,7 @@ class PackNugetTest(unittest.TestCase):
             configuration="Release",
             nuget_config=None,
             pack_only=True,
-            require_agility_sdk=True,
+            use_dawn_agility_sdk=True,
         )
         log = io.StringIO()
         with (
@@ -244,7 +195,8 @@ class PackNugetTest(unittest.TestCase):
         ):
             pack_nuget.do_pack(self.staging / "test.csproj", output, args)
 
-        pack_nuget.verify_package(current_package, self.staging, require_agility_sdk=True)
+        with zipfile.ZipFile(current_package) as archive:
+            self.assertIn("runtimes/win-x64/native/D3D12/D3D12Core.dll", archive.namelist())
         self.assertEqual(current_symbols.read_bytes(), b"current symbols")
         self.assertEqual(old_package.read_bytes(), b"previous build")
         self.assertEqual(old_symbols.read_bytes(), b"previous build")
@@ -254,7 +206,7 @@ class PackNugetTest(unittest.TestCase):
         self.assertIn(f"Produced: {current_symbols.name}", log.getvalue())
 
     def test_pack_does_not_accept_stale_package_when_nothing_is_produced(self):
-        self.stage_platform("win_x64")
+        self.stage_platform("win_x64", use_dawn_agility_sdk=True)
         package = self.root / "Microsoft.ML.OnnxRuntime.EP.WebGpu.0.2.0.nupkg"
         self.write_staged_package(package)
         original = package.read_bytes()
@@ -263,7 +215,7 @@ class PackNugetTest(unittest.TestCase):
             configuration="Release",
             nuget_config=None,
             pack_only=True,
-            require_agility_sdk=True,
+            use_dawn_agility_sdk=True,
         )
         with (
             unittest.mock.patch.object(pack_nuget.subprocess, "run"),
@@ -272,27 +224,6 @@ class PackNugetTest(unittest.TestCase):
         ):
             pack_nuget.do_pack(self.staging / "test.csproj", self.root, args)
         self.assertEqual(package.read_bytes(), original)
-
-    def test_verify_package_checks_sdk_layout_and_targets(self):
-        for platform in ("win_x64", "win_arm64"):
-            self.stage_platform(platform)
-        entries = {path.relative_to(self.staging).as_posix() for path in self.staging.rglob("*") if path.is_file()}
-        entries.add("buildTransitive/Microsoft.ML.OnnxRuntime.EP.WebGpu.targets")
-        package = self.root / "test.nupkg"
-        for missing in (None, *sorted(entries)):
-            with self.subTest(missing=missing):
-                with zipfile.ZipFile(package, "w") as archive:
-                    for entry in entries:
-                        if entry != missing:
-                            archive.writestr(entry, b"test")
-                    if missing:
-                        archive.writestr(Path(missing).name, b"flattened")
-                if missing:
-                    with self.assertRaises(pack_nuget.PackError):
-                        pack_nuget.verify_package(package, self.staging)
-                else:
-                    pack_nuget.verify_package(package, self.staging)
-                    pack_nuget.verify_package(package, self.staging, require_agility_sdk=True)
 
     @unittest.skipUnless(
         should_run_dotnet_sdk_test(DOTNET_SDK_MAJOR, DOTNET_SDK_REQUIRED), "Requires .NET SDK 8 or later"

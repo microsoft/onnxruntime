@@ -42,9 +42,6 @@ The following files are required under `--binary_dir` for each platform:
 | Linux | `libonnxruntime_providers_webgpu.so` |
 | macOS | `libonnxruntime_providers_webgpu.dylib` |
 
-For plugins built with shared Dawn, also include the platform's Dawn library (`webgpu_dawn.dll`,
-`libwebgpu_dawn.so`, or `libwebgpu_dawn.dylib`).
-
 ### Windows Agility SDK inputs
 
 Local non-Agility builds may omit the SDK DLLs. For Agility-enabled builds, place both files under `--binary_dir`:
@@ -52,13 +49,13 @@ Local non-Agility builds may omit the SDK DLLs. For Agility-enabled builds, plac
 - `D3D12/D3D12Core.dll`
 - `D3D12/d3d12SDKLayers.dll`
 
-If either file is present, both are required. Use `--require-agility-sdk` to reject inputs without the pair:
+Use `--use-dawn-agility-sdk` to include and require both files:
 
 ```bash
-python build_wheel.py --binary_dir ./build/Release --version 0.1.0.devYYYYMMDD --output_dir ./dist --require-agility-sdk
+python build_wheel.py --binary_dir ./build/Release --version 0.1.0.devYYYYMMDD --output_dir ./dist --use-dawn-agility-sdk
 ```
 
-The flag is supported only for Windows wheels and validates the files; it does not enable Agility in the plugin.
+The flag is supported only for Windows wheels; it does not enable Agility in the plugin.
 
 ## Testing
 
