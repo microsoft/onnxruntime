@@ -740,3 +740,45 @@ verified breakpoint hits on both executable kernel-body lines, and exited
 normally. This establishes a possible source-line measurement workflow, not
 coverage of stateful production kernels. Those kernels still require their own
 complete line mapping and unit-test hit evidence.
+
+## Appendix B. M02 internal SessionLoop contract
+
+M02 implements native `SessionLoop` definitions and `SessionLoopExecution`
+contexts. It does not publish the C API or implement token sampling, KV
+management, or SessionChain.
+
+- Definitions reference an initialized caller-owned InferenceSession. Executions
+  retain the immutable definition; the Session must outlive both.
+- Options explicitly select outputs, finite input names, optional output-to-input
+  feedback, and typed exits. At least one selected output and one exit are
+  required. The initial implementation accepts dense non-string tensors.
+- Initial feeds contain invariant inputs and initial feedback values. Finite
+  batches contain exactly the named finite inputs. Model names, types, ranks,
+  and known dimensions are validated before execution.
+- EndOfInputs treats an empty generic finite sequence as immediate completion.
+  Configuring a `nonempty_input` additionally rejects an empty sequence or tensor,
+  including when the iteration limit is zero, for prefill-style inputs.
+- EOS/token-limit testing uses an explicitly named scalar int64 model output:
+  one produced token per successful iteration. This is not a substitute for the
+  sampler/native generation policy in M05.
+- Conditions combine with OR semantics; simultaneous reasons appear in
+  `LoopExitKind` order: EndOfInputs, MaxIterations, MaxGeneratedTokens, Eos,
+  BooleanOutput. Model-output checks occur after the producing invocation;
+  finite-source exhaustion and zero budgets also allow immediate completion.
+- Step performs at most one invocation. Run repeatedly calls Step and returns
+  its final result. Completed calls report `executed == false`, with counters/
+  reasons preserved and no duplicate output emission.
+- M02 deliberately fetches dense outputs to CPU through IOBinding and snapshots
+  them into CPU-owned storage. This includes control/feedback outputs needed for
+  correctness, even when not selected for caller observation. This copy-based
+  baseline is explicit; M04/M08 provide device-native cache management later.
+- Returned results retain read-only snapshots across subsequent steps/reset.
+  Caller-owned input buffers still require their ordinary ORT lifetime. Reset
+  clears progress/feedback/cancellation and reuses the execution's original feeds.
+- Cancel is the only operation permitted concurrently with execution. It posts
+  an atomic request observed before/after a Session invocation; it does not
+  preempt that invocation. Do not cross-thread-write ORT's existing non-atomic
+  RunOptions termination flag. Cancelled or potentially mutated failed execution
+  requires Reset; completed successful steps are not rolled back.
+- Status failures preserve the caller's result. Exceptions propagate under the
+  usual internal ORT convention while leaving the context requiring Reset.

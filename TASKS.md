@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved by the user on 2026-10-15; M01 complete in [PR #11](https://github.com/onnxruntime/ort-state/pull/11).
+**Status:** Approved; M01 complete in [PR #11](https://github.com/onnxruntime/ort-state/pull/11), M02 in progress.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
 **Working memory:** [Shared scratchpad](SCRATCHPAD.md).
 
@@ -15,7 +15,7 @@
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01 is complete; all subsequent milestones are pending. Check tasks when their
+M01 is complete; M02 is in progress; M03-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -92,7 +92,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01 is **complete**; M02-M24 are **pending**.
+M01 is **complete**; M02 is **in progress**; M03-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -275,12 +275,14 @@ runtime production implementation; M02 is the next pending milestone.
 ### M02 - Execution context and SessionLoop
 
 **Outcome:** Internal sequential stateful execution with explicit control.
+**Status:** Validated, pending commit/PR, authorized 2026-10-16; branch `state/m02-context-loop`
+stacks on `state/m01-contracts-fixtures`.
 
-- [ ] Implement reusable loop definition plus isolated retained execution state.
-- [ ] Implement Step/Next and Run-until-exit on the same stepping path.
-- [ ] Implement explicit EndOfInputs, EOS, iteration/token limits, and scalar
+- [x] Implement reusable loop definition plus isolated retained execution state.
+- [x] Implement Step/Next and Run-until-exit on the same stepping path.
+- [x] Implement explicit EndOfInputs, EOS, iteration/token limits, and scalar
   boolean-output exits with OR semantics and documented simultaneous reasons.
-- [ ] Implement output access/lifetimes, counters, reset, cancellation, and
+- [x] Implement output access/lifetimes, counters, reset, cancellation, and
   explicit requires-Reset failure state. No custom predicates.
 
 **CPU test plan:** Exact iteration counts; input exhaustion; empty prefill;
@@ -292,6 +294,82 @@ failure injection and refusal to reuse potentially corrupted state.
 tests around a CUDA-backed Session. Cache and sampler native overrides are not
 prerequisites for these generic loop tests.
 **Completion gate:** Shared rules and 100% new context/loop-line coverage pass.
+
+**Execution evidence:**
+
+- Internal native implementation and focused test target
+  `onnxruntime_session_loop_test` added. No public ABI changes.
+- CPU focused suite: **15/15 tests passed**, no failures/skips.
+- CPU stateless/package regression suite: **21/21 passed**, no failures/skips.
+- Final LLVM coverage: **315/315 new executable production lines** (312 in
+  `session_loop.cc`, three in the header), measured after the final rebuild.
+  Final focused CPU tests remain **15/15 passed**.
+- Detailed LLVM diagnostics list 14 other-function profile-map warnings and no
+  mismatches affecting SessionLoop functions.
+- CUDA compilation initially encountered use of a protected initialization query.
+  The implementation now uses the existing `NewIOBinding` status contract to
+  validate initialized Sessions; CPU compilation/testing passed with this fix.
+  The corrected CUDA build and test suites passed.
+- Cancellation posts an atomic request before/after Session invocation, rather
+  than cross-thread-writing the existing non-atomic ORT termination flag.
+  A deterministic in-flight cancellation test exercises this contract.
+- Stable result snapshots use existing CPUDataTransfer, including handling of
+  supported strided tensors; M02 deliberately fetches/snapshots on CPU.
+- Concrete limits, ownership, supported dense-tensor inputs, reset and copy
+  semantics are documented in SPEC Appendix B.
+- CUDA focused suite: **29/29 passed**, including 14 native-CUDA cases and the
+  CPU cases; CUDA stateless/package regressions: **26/26 passed**. No skips.
+  Tests assert all compute nodes are assigned to the requested CUDA EP.
+- Compute Sanitizer memcheck on the CUDA retention/reset and in-flight
+  cancellation cases: **2/2 passed, zero memory errors**.
+- Final clang-format, 120-column, whitespace, and document checks passed.
+
+- [x] Collect final CPU test and 100% new-line coverage evidence.
+- [x] Collect CUDA test evidence and stateless/package regression results.
+- [ ] Complete style/document checks, commit, and publish the stacked M02 PR.
+
+Reproducible final validation commands (reuse the M01 CPU/CUDA configurations;
+the initial M02 regeneration changed the target to `onnxruntime_session_loop_test`):
+
+```bash
+LLVM_PROFILE_FILE=/dev/null cmake --build build/state-cpu/RelWithDebInfo \
+  --parallel 8 --target onnxruntime_session_loop_test onnxruntime_autoep_test
+cd build/state-cpu/RelWithDebInfo
+mkdir -p coverage/m02/final
+LLVM_PROFILE_FILE="$PWD/coverage/m02/final/%m-%p.profraw" \
+  ./onnxruntime_session_loop_test \
+  --gtest_output=xml:coverage/m02/final/tests.xml
+LLVM_PROFILE_FILE=/dev/null ./onnxruntime_autoep_test \
+  --gtest_filter='*StatefulExecutionBaselineTest.*:ModelPackageApiTest.*' \
+  --gtest_output=xml:coverage/m02/regressions.xml
+llvm-profdata merge -sparse coverage/m02/final/*.profraw \
+  -o coverage/m02/final/m02.profdata
+llvm-cov report ./onnxruntime_session_loop_test \
+  -instr-profile=coverage/m02/final/m02.profdata \
+  ../../../onnxruntime/core/session/session_loop.cc \
+  ../../../onnxruntime/core/session/session_loop.h
+```
+
+From the repository root, with the same CUDA 13.1 environment as M01:
+
+```bash
+cmake --build build/state-cuda-baseline-13.1/RelWithDebInfo --parallel 8 \
+  --target onnxruntime_session_loop_test onnxruntime_autoep_test
+cd build/state-cuda-baseline-13.1/RelWithDebInfo
+export CUDA_VISIBLE_DEVICES=0
+export LD_LIBRARY_PATH="$PWD:$CUDNN_HOME/lib:$CUDA_HOME/lib64"
+./onnxruntime_session_loop_test --gtest_output=xml:m02-tests.xml
+./onnxruntime_autoep_test \
+  --gtest_filter='*StatefulExecutionBaselineTest.*:ModelPackageApiTest.*' \
+  --gtest_output=xml:m02-regressions.xml
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --error-exitcode 99 \
+  ./onnxruntime_session_loop_test \
+  --gtest_filter='Cuda/SessionLoopTest.RetentionResetCompletionAndRunParity/*:Cuda/SessionLoopTest.CancellationBeforeAndDuringRun/*'
+```
+
+All commands above passed. This milestone adds no CUDA device production code;
+the 100% new-production-line gate is the measured host implementation/header,
+not a claim of device-line coverage for unchanged kernels.
 
 ### M03 - SessionChain and tensor/state bindings
 

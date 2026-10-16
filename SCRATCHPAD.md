@@ -179,3 +179,42 @@ Compressed project memory. This is not the execution plan.
   `1988019b6e` and `state/m01-contracts-fixtures`. PR #11 targets `ort-state`.
 - Throwaway CUDA probe source/binary were removed; feasibility log retained.
 - Next: M02 (context/SessionLoop); no M02 implementation has started.
+
+## M02
+
+- 2026-10-16: User approved moving forward. Created
+  `state/m02-context-loop` from M01; M02 in progress.
+- Keep implementation internal; no public ABI or sampler/cache-manager work.
+- Use native InferenceSession/IOBinding; generic feedback and finite inputs,
+  explicit typed exits, CPU-owned stable result snapshots.
+- Existing ORT termination is a non-atomic bool. Do not introduce a cross-thread
+  write/read race through it: use an atomic loop cancellation request, checked
+  before/after Session Run. A running kernel/Session need not be preempted.
+- Added internal `session_loop.h/.cc`, focused `framework/session_loop_test.cc`
+  and `onnxruntime_session_loop_test` CMake target. SPEC Appendix B records
+  supported inputs, outputs, counters, exit ordering and atomic cancellation.
+- CPU tests: 15/15 focused cases passed; 21/21 M01/package regressions passed.
+  Initial production coverage 313/313 lines (310 .cc + 3 header), no mismatches
+  for new functions. Fourteen unchanged-function LLVM warnings documented.
+- After final wrapping to satisfy 120-column style, rebuild/rerun and collect
+  final coverage. Done: **315/315 production lines**, 312 .cc plus three header,
+  final focused tests 15/15 passed, zero skips. Final profiles/LCOV/XML are under
+  `coverage/m02/final` in CPU output. Final detailed diagnostics still list
+  14 unchanged-function warnings, no SessionLoop mismatch.
+- Initial builds failed because `InferenceSession::IsInitialized` is protected;
+  now validate via existing NewIOBinding status API instead of changing Session.
+- Current CUDA rebuild: shell `m02-cuda-rebuild`; log `m02-cuda-build.log` in
+  session files. Uses verified CUDA 13.1/A100 configuration from M01.
+- Runtime inputs use dense non-string tensors; token exits observe explicitly
+  configured scalar int64 output (sampler/native generation remains M05).
+- No agents launched, M02 commits/push/PR still pending.
+- Source encoding/whitespace/120-column and clang-format checks passed.
+- Current CUDA rebuild continues compiling existing provider kernels; no CUDA
+  test results were available at that checkpoint.
+- CUDA rebuild completed. All 29 focused tests passed (14 native-CUDA cases,
+  14 CPU cases plus one CPU-only type/initialization case), zero skips.
+- CUDA stateless/package regressions: 26/26 passed, zero skips.
+- Compute Sanitizer memcheck: two representative native-CUDA lifetime/reset and
+  in-flight cancellation tests passed, zero errors.
+- M02 validated; commit and stacked PR next. No new device production code, so
+  measured host 315/315 coverage is the applicable new-code gate.
