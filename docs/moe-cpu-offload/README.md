@@ -23,11 +23,34 @@ If the budget exceeds all layer targets combined, only the necessary excess is a
 preserving exactly `K` CPU experts.
 
 Adaptive and layered track selection with `counter = alpha * counter + (1 - alpha) * selected`.
-A swap requires `hottest_CPU > (1 + epsilon) * coldest_GPU`. Each node keeps its initial GPU capacity.
+A background swap requires `hottest_CPU > (1 + epsilon) * coldest_GPU`. Each node keeps its initial GPU capacity.
 CPU/GPU weights occupy separate compact stores; computation overlaps and completed swaps are published safely.
 Supported INT4 SwiGLU configurations use packed MLAS Q4 weights on CPU; other QMoE cases use a dense fallback.
 
 ## Configuration
+
+Session keys below use the `session.` prefix. Defaults are runtime defaults; the benchmark defaults to
+alpha `0.9` and epsilon `0.1` and requires an explicit `--cpu-offload-experts` value.
+
+| Session key | Benchmark option | Default | Description |
+|---|---|---|---|
+| `moe_cpu_offload_experts` | `--cpu-offload-experts K` | `0` | Exact number of CPU-resident experts across eligible nodes. `0` disables offload. |
+| `moe_cpu_offload_strategy` | `--strategy` | `adaptive` | Placement policy: `adaptive`, `basic`, or `layered`, as described above. Basic never swaps. |
+| `moe_cpu_offload_gpu_ratio` | `--gpu-ratio` | `0.8` | Per-layer GPU target in `(0, 1]`, for layered placement only. Exceeded only as needed to preserve exactly `K`. |
+| `moe_cpu_offload_layer_order` | `--layer-order` | `first` | GPU layer priority for basic/layered: `first`, `last`, or `middle`. Does not change execution order. |
+| **`moe_cpu_offload_on_demand_threshold`** | **`--on-demand-threshold N`** | **`0`** | Synchronously swap required CPU experts onto GPU if at most `N` are missing and all selected experts fit existing GPU capacity. CUDA QMoE adaptive/layered only; `0` disables it. |
+| `moe_expert_counter_alpha` | `--counter-alpha` | `0.75` | Popularity decay coefficient in `[0, 1]`; larger values retain longer history. |
+| `moe_expert_counter_probability_weight` | Not exposed | `0` | Weight in `[0, 1]` blending binary expert selection with routing probability when updating offload counters. |
+| `moe_expert_swap_epsilon` | `--swap-epsilon` | `0.01` | Non-negative relative popularity margin required for background exchanges. Does not gate on-demand swaps. |
+| `moe_max_in_flight_swaps_per_device` | `--max-in-flight-swaps-per-device` | `4` | Maximum concurrent background exchanges per CUDA device. `0` disables background swaps, not on-demand swaps. |
+| `enable_moe_expert_counting` | Not exposed | `0` | Enable persistent counters without logging or changing placement. Offload maintains counters independently of this flag. |
+| `enable_moe_expert_statistics` | `--counter-log` / `--no-counter-log` | `0` | Emit counter updates at INFO severity; also enables counting. The benchmark raises the logger level with `--counter-log`. |
+| `moe_expert_counter_state_file` | `--state` | Unset | Load saved popularities, alpha, and epsilon instead of starting with zero counters. |
+| `moe_expert_popularity_file` | `--popularity-output` | Unset | Save final popularities and counter parameters when the session is destroyed. |
+
+The benchmark requires `--swap` or `--no-swap` to enable or disable background swaps.
+`--no-swap` sets their concurrency limit to `0` without disabling on-demand swaps.
+When `--state` is supplied, its alpha and epsilon replace the benchmark's corresponding CLI values.
 
 ```python
 import onnxruntime as ort
@@ -37,14 +60,12 @@ options.add_session_config_entry("session.moe_cpu_offload_experts", "4096")
 options.add_session_config_entry("session.moe_cpu_offload_strategy", "layered")  # Or adaptive/basic.
 options.add_session_config_entry("session.moe_cpu_offload_gpu_ratio", "0.8")  # Layered only; (0, 1].
 options.add_session_config_entry("session.moe_cpu_offload_layer_order", "first")  # Basic/layered: first/last/middle.
+options.add_session_config_entry("session.moe_cpu_offload_on_demand_threshold", "2")  # Optional; 0 disables it.
 options.add_session_config_entry("session.moe_expert_counter_alpha", "0.9")
 options.add_session_config_entry("session.moe_expert_swap_epsilon", "0.1")
 options.add_session_config_entry("session.moe_max_in_flight_swaps_per_device", "5")
 session = ort.InferenceSession("model.onnx", options, providers=["CUDAExecutionProvider"])
 ```
-
-Defaults: `K=0`, strategy `adaptive`, alpha `0.75`, epsilon `0.01`, swap limit `4`.
-Basic never swaps. A zero swap limit disables background swaps.
 
 For CUDA QMoE with `adaptive` or `layered`, set
 `session.moe_cpu_offload_on_demand_threshold=N` (default `0`, disabled), or use the benchmark's
