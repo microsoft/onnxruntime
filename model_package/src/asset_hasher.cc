@@ -50,11 +50,8 @@ ModelPackageStatus* ComputeDirectoryAssetUri(const fs::path& source_dir,
                       "ComputeDirectoryAssetUri: cannot iterate '" + source_dir.u8string() +
                           "': " + ec.message());
   }
-  for (; walker != fs::recursive_directory_iterator(); walker.increment(ec)) {
-    if (ec) {
-      return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                        "ComputeDirectoryAssetUri: iteration error: " + ec.message());
-    }
+  std::error_code iter_ec;
+  for (; !iter_ec && walker != fs::recursive_directory_iterator(); walker.increment(iter_ec)) {
     const fs::directory_entry& de = *walker;
     if (de.is_symlink(ec)) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
@@ -72,6 +69,10 @@ ModelPackageStatus* ComputeDirectoryAssetUri(const fs::path& source_dir,
                         "ComputeDirectoryAssetUri: unsupported file kind: '" +
                             de.path().u8string() + "' (only regular files and directories allowed).");
     }
+  }
+  if (iter_ec) {
+    return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                      "ComputeDirectoryAssetUri: iteration error: " + iter_ec.message());
   }
 
   std::sort(entries.begin(), entries.end(),

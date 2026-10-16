@@ -315,7 +315,9 @@ ModelPackageStatus* LoadComponentForEntry(const fs::path& manifest_dir,
     std::error_code ec;
     if (fs::is_directory(resolved, ec)) {
       resolved /= kComponentFileName;
-      if (!fs::exists(resolved)) {
+      bool has_component = fs::exists(resolved, ec);
+      if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO, "component '" + name + "': " + ec.message());
+      if (!has_component) {
         return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
                           "component '" + name + "': directory has no '" +
                               kComponentFileName + "'.");
@@ -385,8 +387,9 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
   std::error_code ec;
   if (!pkg->package_root.empty() && fs::is_directory(assets_root, ec)) {
     std::vector<std::string> discovered;
-    for (const auto& entry : fs::directory_iterator(assets_root, ec)) {
-      if (ec) break;
+    std::error_code iter_ec;
+    for (fs::directory_iterator it(assets_root, iter_ec), end; !iter_ec && it != end; it.increment(iter_ec)) {
+      const auto& entry = *it;
       if (!entry.is_directory(ec)) continue;
       std::string name = entry.path().filename().u8string();
       std::string uri = SharedAssetUriFromDirName(name);
@@ -394,6 +397,7 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
       if (!seen.insert(uri).second) continue;
       discovered.push_back(std::move(uri));
     }
+    if (iter_ec) return MakeStatus(MODEL_PACKAGE_ERR_IO, "iterate '" + assets_root.u8string() + "': " + iter_ec.message());
     std::sort(discovered.begin(), discovered.end());
     for (auto& uri : discovered) ordered_uris.push_back(std::move(uri));
   }
