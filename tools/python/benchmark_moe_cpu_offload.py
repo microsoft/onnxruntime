@@ -71,12 +71,17 @@ class MemorySampler:
         self.peak_gpu_used_mib = self.baseline_gpu_used_mib
         self.phase = "model_load"
         self.phase_peaks = {}
+        self.sample_lock = threading.Lock()
         self.error = None
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
     def _sample(self):
+        with self.sample_lock:
+            self._sample_locked()
+
+    def _sample_locked(self):
         cpu_rss_mib = current_rss_mib()
         gpu_used_mib = self.nvml.used_mib()
         self.peak_cpu_rss_mib = max(self.peak_cpu_rss_mib, cpu_rss_mib)
@@ -94,8 +99,10 @@ class MemorySampler:
             self.error = error
 
     def set_phase(self, phase):
-        self.phase = phase
-        self._sample()
+        with self.sample_lock:
+            self._sample_locked()
+            self.phase = phase
+            self._sample_locked()
 
     def snapshot(self):
         return {"cpu_rss_mib": current_rss_mib(), "gpu_used_mib": self.nvml.used_mib()}
@@ -183,6 +190,25 @@ def summarize(values):
 def decode_summary(iteration_seconds):
     # The first generation call uses logits already computed by append_tokens(), not another inference.
     return summarize(iteration_seconds[1:])
+
+
+def summarize_measurements(prompts):
+    if not prompts:
+        raise ValueError("At least one measured prompt is required.")
+    if any(prompt["generated_tokens"] <= 2 for prompt in prompts):
+        raise ValueError("Measured prompts require steady-state decode tokens.")
+    decode_tokens = sum(prompt["generated_tokens"] - 2 for prompt in prompts)
+    decode_seconds = sum(
+        (prompt["generated_tokens"] - 2) * prompt["steady_decode"]["mean_ms"] / 1000 for prompt in prompts
+    )
+    return {
+        "prompt_indices": [prompt["prompt_index"] for prompt in prompts],
+        "prefill_ms": statistics.mean(prompt["prefill_ms"] for prompt in prompts),
+        "decoded_tokens": decode_tokens,
+        "decoded_tokens_per_second": decode_tokens / decode_seconds,
+        "peak_gpu_used_mib": max(prompt["memory"]["gpu_used_mib"] for prompt in prompts),
+        "peak_cpu_rss_mib": max(prompt["memory"]["cpu_rss_mib"] for prompt in prompts),
+    }
 
 
 def parse_args(argv=None):
@@ -277,6 +303,7 @@ def main():
                 generated_tokens.extend(generator.get_next_tokens().tolist())
                 print(f"[qmoe_prompt_suite] iteration_end {prompt_index} {iteration}", file=sys.stderr, flush=True)
             print(f"[qmoe_prompt_suite] prompt_end {prompt_index}", file=sys.stderr, flush=True)
+            memory_sampler.set_phase("between_prompts")
             if len(iteration_seconds) != args.max_new_tokens or len(generated_tokens) != args.max_new_tokens:
                 raise RuntimeError(f"Prompt {prompt_index} did not produce {args.max_new_tokens} tokens.")
             results.append(
@@ -290,6 +317,7 @@ def main():
                     "decode": decode_summary(iteration_seconds),
                     "steady_decode": summarize(iteration_seconds[2:]) if len(iteration_seconds) > 2 else None,
                     "total_generation_seconds": prefill_seconds + sum(iteration_seconds),
+                    "memory": dict(memory_sampler.phase_peaks[f"prompt_{prompt_index}"]),
                 }
             )
 
@@ -310,6 +338,7 @@ def main():
         "memory_after_model_load": memory_after_model_load,
         "memory": memory_sampler.stop(),
         "prompts": results,
+        "measurements": summarize_measurements(results[2:5]) if len(results) > 2 else None,
     }
     args.output.write_text(json.dumps(output, indent=2) + "\n", encoding="utf-8")
 

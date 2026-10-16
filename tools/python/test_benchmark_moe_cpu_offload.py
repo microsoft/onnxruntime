@@ -6,7 +6,13 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from benchmark_moe_cpu_offload import decode_summary, effective_counter_parameters, model_session_options, parse_args
+from benchmark_moe_cpu_offload import (
+    decode_summary,
+    effective_counter_parameters,
+    model_session_options,
+    parse_args,
+    summarize_measurements,
+)
 
 
 class TestMoeOffloadBenchmark(unittest.TestCase):
@@ -90,6 +96,34 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
     def test_decode_requires_actual_inference(self):
         with self.assertRaisesRegex(ValueError, "empty timing sample"):
             decode_summary([100])
+
+    def test_measurements_use_only_selected_prompt_timings_and_memory(self):
+        prompts = [
+            {
+                "prompt_index": index,
+                "generated_tokens": 256,
+                "prefill_ms": 1000 if index <= 2 else index,
+                "steady_decode": {"mean_ms": 1000 if index <= 2 else 10},
+                "memory": {
+                    "gpu_used_mib": 10000 if index <= 2 else index * 100,
+                    "cpu_rss_mib": 20000 if index <= 2 else index * 10,
+                },
+            }
+            for index in range(1, 6)
+        ]
+        result = summarize_measurements(prompts[2:5])
+        self.assertEqual(result["prompt_indices"], [3, 4, 5])
+        self.assertEqual(result["prefill_ms"], 4)
+        self.assertEqual(result["decoded_tokens"], 762)
+        self.assertAlmostEqual(result["decoded_tokens_per_second"], 100)
+        self.assertEqual(result["peak_gpu_used_mib"], 500)
+        self.assertEqual(result["peak_cpu_rss_mib"], 50)
+
+    def test_measurements_reject_missing_samples(self):
+        with self.assertRaisesRegex(ValueError, "At least one"):
+            summarize_measurements([])
+        with self.assertRaisesRegex(ValueError, "steady-state"):
+            summarize_measurements([{"generated_tokens": 2}])
 
     def test_cli_rejects_invalid_measurement_options(self):
         arguments = [
