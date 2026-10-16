@@ -1,7 +1,7 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M03 complete; M04 in progress.
-M03: [PR #13](https://github.com/onnxruntime/ort-state/pull/13).
+**Status:** Approved; M01-M04 complete.
+M04: [PR #14](https://github.com/onnxruntime/ort-state/pull/14).
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
 **Working memory:** [Shared scratchpad](SCRATCHPAD.md).
 
@@ -16,7 +16,7 @@ M03: [PR #13](https://github.com/onnxruntime/ort-state/pull/13).
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M03 are complete; M04 is in progress; M05-M24 are pending. Check tasks when their
+M01-M04 are complete; M05-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -93,14 +93,14 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M03 are **complete**; M04 is **in progress**; M05-M24 are **pending**.
+M01-M04 are **complete**; M05-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
 | [x] | M01 | Contracts, deterministic fixtures, coverage readiness / `contracts-fixtures` | Approved plan |
 | [x] | M02 | Stateful context and explicit SessionLoop / `context-loop` | M01 |
 | [x] | M03 | SessionChain and tensor/state bindings / `chain-bindings` | M02 |
-| [ ] | M04 | CPU KV cache management / `cpu-kv-cache` | M03 |
+| [x] | M04 | CPU KV cache management / `cpu-kv-cache` | M03 |
 | [ ] | M05 | CPU greedy sampling and decode iteration / `cpu-greedy` | M04 |
 | [ ] | M06 | Public C API and C++ wrappers / `public-api` | M02, M03, M04, M05 |
 | [ ] | M07 | Built-in/plugin EP capability contracts / `ep-stateful-hooks` | M04, M05, M06 |
@@ -480,8 +480,9 @@ management, real-model qualification, or branch-complete coverage is made.
 ### M04 - CPU KVCacheManager
 
 **Outcome:** Safe contiguous caches shared across stages of one execution.
-**Status:** Validated, pending commit/PR, authorized 2026-10-16; `state/m04-cpu-kv-cache`
-stacks on `state/m03-chain-bindings`.
+**Status:** Complete; [PR #14](https://github.com/onnxruntime/ort-state/pull/14)
+is ready for review. Branch `state/m04-cpu-kv-cache` stacks on
+`state/m03-chain-bindings`. Implementation commit: `fffa292875`.
 
 - [x] Implement CPU cache initialization, model-declared layout/type/shape
   validation, logical length/capacity, append/update, retention, and reset.
@@ -533,7 +534,7 @@ is observable; shared rules and 100% new cache-line coverage pass.
   executable-line gate is measured for the Linux inference configuration.
 
 - [x] Finalize CPU/CUDA tests, coverage counts and style/document checks.
-- [ ] Commit and publish the ready-for-review PR stacked on M03.
+- [x] Commit and publish the ready-for-review PR stacked on M03.
 
 Final build/test commands, reusing the established inference configurations:
 

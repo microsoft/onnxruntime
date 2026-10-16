@@ -13,7 +13,7 @@ Compressed project memory. This is not the execution plan.
   M01. `SPEC.md` and the execution plan are approved.
 - M01 is complete and published as ready-for-review PR #11:
   https://github.com/onnxruntime/ort-state/pull/11
-- No agents launched. M01-M03 are complete; M04-M24 remain pending.
+- No agents launched. M01-M04 are complete; M05-M24 remain pending.
   Runtime production code starts with M02.
 - Future tracking: keep `TASKS.md` checklist current and record compressed
   discoveries/agent learnings here.
@@ -87,7 +87,7 @@ Compressed project memory. This is not the execution plan.
   standalone package; ORT loading; DDIM; Python; Phi-3 demo; diffusion demo;
   C#; Java; common JS/Node; Web/WASM; Go; Rust; Objective-C; React Native;
   integrated qualification/measurements.
-- M01-M03 complete after explicit approval; M04-M24 remain pending.
+- M01-M04 complete after explicit approval; M05-M24 remain pending.
 - Each milestone includes intended outcome, tasks, CPU/CUDA test plan and gate.
   Actual prerequisites are listed separately from mechanical stack ordering.
 - M01 verifies concrete contracts, small fixtures and coverage readiness.
@@ -297,7 +297,7 @@ Compressed project memory. This is not the execution plan.
   Lifetime counters count manager data-buffer operations, not Session snapshots.
 - Additional final tests release producing Sessions and exercise last-axis
   packing. Need final CPU rebuild/profiles and CUDA rebuild/test pass.
-- M04 no commits/push/PR yet; no agents used.
+- M04 implementation committed as `fffa292875`; no agents used.
 - Final validation passed: CPU 42/42 focused + 21/21 regressions; CUDA build
   76/76 focused + 26/26 regressions, no skips. Six new native-CUDA Session
   integration cases still use the explicitly CPU-resident cache manager.
@@ -307,4 +307,7 @@ Compressed project memory. This is not the execution plan.
 - Compute Sanitizer: five CPU-cache/CUDA-Session integration cases passed,
   zero errors. Producer Session release and all three axis positions tested.
 - All ten files pass formatting/whitespace/120-column/document checks.
-  M04 validated, ready for commit/stacked PR publication.
+  M04 complete in ready-for-review PR #14:
+  https://github.com/onnxruntime/ort-state/pull/14
+  Base `state/m03-chain-bindings`, head `state/m04-cpu-kv-cache`.
+- M05 (CPU greedy sampling and decode integration) is next, not started.
