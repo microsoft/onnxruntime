@@ -763,7 +763,15 @@ class PatternParser {
   static bool Digit(char c) { return c >= '0' && c <= '9'; }
 
   Status Next() {
-    while (position_ < text_.size() && std::isspace(static_cast<unsigned char>(text_[position_]))) ++position_;
+    while (position_ < text_.size()) {
+      if (std::isspace(static_cast<unsigned char>(text_[position_]))) {
+        ++position_;
+      } else if (text_[position_] == '#') {
+        while (position_ < text_.size() && text_[position_] != '\n' && text_[position_] != '\r') ++position_;
+      } else {
+        break;
+      }
+    }
     token_start_ = position_;
     token_.clear();
     kind_ = Kind::End;

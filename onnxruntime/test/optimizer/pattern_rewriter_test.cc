@@ -1883,6 +1883,86 @@ TEST(PatternRewriterTests, OutputCountMismatch) {
   EXPECT_EQ(stats.rewrites, 0u);
 }
 
+TEST(PatternRewriterTests, LineCommentParsingAndQuotedHashes) {
+  for (const auto* newline : {"\n", "\r\n", "\r"}) {
+    SCOPED_TRACE(newline);
+    std::string text = "# before header";
+    for (const auto* line : {
+             "(# input", "x# name", ")# header", "=># arrow", "{# body",
+             "a# output", "=# assignment", "Identity# operator", "(# argument", "x# input", ")# call",
+             "return# result", "Identity(a)# final call", "}# EOF comment"}) {
+      text += newline;
+      text += line;
+    }
+    Pattern pattern(text);
+    Replacement replacement(text);
+    EXPECT_EQ(pattern.Nodes().size(), 2u);
+    ASSERT_TRUE(replacement.Plan());
+    EXPECT_EQ(replacement.Plan()->size(), 2u);
+  }
+  Pattern annotated("(x:# type\nfloat[# dimension\nM] |# alternative\nfloat[M,N])=>return Identity(x)#EOF");
+  EXPECT_EQ(annotated.TypeConstraints().at(0).size(), 2u);
+  Replacement lists("(x)=>Transpose(x,perm=[1,# next element\n0])#EOF");
+  EXPECT_EQ(lists.Plan()->front().attributes.at("perm").ints(1), 0);
+  for (auto text : {R"((x)=>return Identity(x,label='left#right')# trailing)",
+                    R"((x)=>return Identity(x,label="left#right")# trailing)",
+                    R"((x)=>return Identity(x,label="left\"#right")# trailing)"}) {
+    Replacement replacement(text);
+    const auto& value = replacement.Plan()->front().attributes.at("label");
+    EXPECT_NE(value.s().find('#'), std::string::npos);
+    Pattern pattern(text);
+    ASSERT_EQ(pattern.Nodes().front().attributes.size(), 1u);
+    EXPECT_TRUE(pattern.Nodes().front().attributes.front().Matches(value));
+    auto different = value;
+    different.set_s("left");
+    EXPECT_FALSE(pattern.Nodes().front().attributes.front().Matches(different));
+  }
+}
+
+TEST(PatternRewriterTests, LineCommentsDoNotRepairMalformedTokens) {
+  for (auto text : {"# no definition",
+                    "(x)=>return Iden# split identifier\ntity(x)",
+                    "(x)=# split arrow\n>return Identity(x)",
+                    "(x)=>return Add(x,1# split number\n.0)",
+                    "(x)=>return Add(x,1e# split exponent\n2)",
+                    "(x)=>return com.microsoft:# split qualifier\n:FusedMatMul(x,x)",
+                    "(x)=>return Identity(x# closing delimiter swallowed)",
+                    "(x)=>{return Identity(x)# closing brace swallowed}",
+                    "(x)=>return Identity(x,label='unterminated# not a comment)",
+                    "(x)=>return Identity(x)# comment\nunexpected"}) {
+    SCOPED_TRACE(text);
+    EXPECT_THROW((void)Pattern{text}, OnnxRuntimeException);
+    EXPECT_THROW((void)Replacement{text}, OnnxRuntimeException);
+  }
+}
+
+TEST(PatternRewriterTests, CommentedRuleNumerics) {
+  for (bool indexed : {false, true}) {
+    auto check_and_bind = [](const Graph&, Match&) { return true; };
+    Rule rule{"commented",
+              R"(# pattern
+                (x:float[# dimensions
+                  M,N]) => { a=Identity(x) # intermediate
+                  return Identity(a) # root
+                } # end)",
+              R"(# replacement
+                (x) => { return Identity(# argument
+                  x) } # end)",
+              check_and_bind,
+              {{kOnnxDomain, 13, 17}}};
+    TransformerTester(
+        [](ModelTestBuilder& b) {
+          auto* x = b.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+          auto* a = b.MakeIntermediate();
+          b.AddNode("Identity", {x}, {a});
+          b.AddNode("Identity", {a}, {b.MakeOutput()});
+        },
+        [](InferenceSessionWrapper& session) { EXPECT_EQ(Count(session.GetGraph(), "Identity"), 1u); },
+        TransformerLevel::Default, TransformerLevel::Level1, 17, 0.0, 0.0,
+        std::make_unique<PatternRewriter>(Rules{rule}, Options{.indexed = indexed}));
+  }
+}
+
 TEST(PatternRewriterTests, ParserOnlyConstruction) {
   static_assert(!std::is_default_constructible_v<Pattern>);
   static_assert(!std::is_default_constructible_v<Replacement>);

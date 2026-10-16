@@ -63,7 +63,19 @@ use them to make multi-statement rules easier to read. Assignments create named
 operator outputs; `return` either calls the final operator (the root) or names an
 ordered list of previously defined operator outputs. Whitespace separates calls, and semicolons are
 optional separators. A trailing semicolon before the closing brace is allowed.
-Nothing may follow the closing brace. Comments are not supported inside definitions.
+Only whitespace and comments may follow the closing brace. In both patterns and
+replacements, `#` starts a comment through the end of the line (or end of text).
+Comments act as whitespace between tokens, including in headers and bodies;
+they cannot split an identifier, number, or multi-character token.
+Hashes inside single- or double-quoted attribute strings remain literal:
+
+```text
+# A complete line comment
+(x) => {
+  a = Identity(x) # An inline comment
+  return Identity(a)
+} # A trailing comment
+```
 
 ```cpp
 Pattern pattern(R"(
