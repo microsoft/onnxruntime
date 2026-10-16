@@ -55,16 +55,17 @@ Status MatMulNVFP4A16::ComputeImpl(OpKernelContext* context) const {
                                   count, is_bf16, Stream(context));
   }
 
-  // This packed path already keeps global scaling after FP32 reduction. No fused bias.
+  // Only the tensor-core sub-path preserves FP32 products. The generic scalar GEMV
+  // multiplies A by E2M1 in the activation type before applying the local scale.
   const int gemv_max_m = MatMulBlockQuantizedFp4WeightGemvMaxM(k_i, GetDeviceProp());
-  if (m_i <= gemv_max_m && k_i % 32 == 0) {
+  if (m_i <= gemv_max_m && CanUseMatMulBlockQuantizedFp4WeightMma(k_i, GetDeviceProp())) {
     return LaunchMatMulBlockQuantizedFp4WeightGemv(
         y->MutableDataRaw(), a->DataRaw(), b->DataRaw(), scales->DataRaw(),
         global_scale->Data<float>(), nullptr, m_i, n_i, k_i, 16, is_bf16,
         GetDeviceProp(), Stream(context));
   }
 
-  // Larger M uses GEMM, not repeated small-M launches. The temporary weight excludes
+  // Other shapes and disabled tensor-core GEMV use GEMM. The temporary weight excludes
   // the global scale; keep GEMM's output FP32 until the separate global-scale epilogue.
   auto local_weight = GetScratchBuffer<CudaT>(SafeInt<size_t>(n) * k, GetComputeStream(context));
   auto accumulator = GetScratchBuffer<float>(SafeInt<size_t>(count), GetComputeStream(context));

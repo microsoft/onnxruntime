@@ -3,9 +3,11 @@
 
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <numeric>
+#include <string_view>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -85,6 +87,20 @@ void RunCase(const std::vector<int64_t>& shape, int64_t n) {
   Check(shape, n, a, packed, scales, global, expected);
 }
 
+template <typename T>
+void CheckProductPrecision(int64_t k, float large_activation, float activation_ulp, bool overflow) {
+  std::vector<T> a(static_cast<size_t>(k), T(0.0f));
+  std::vector<uint8_t> packed(static_cast<size_t>(k / 2), 0);
+  a[0] = T(overflow ? large_activation : 1.0f + activation_ulp);
+  packed[0] = overflow ? 0x07 : 0x77;
+  if (!overflow) a[1] = T(-1.0f);
+  // E2M1 6 times E4M3 0.125 is exactly 0.75 in both activation types.
+  // Multiplying A by 6 first can overflow or lose the residual before scaling.
+  const T expected(0.75f * (overflow ? large_activation : activation_ulp));
+  Check<T>({1, k}, 1, a, packed, std::vector<uint8_t>(static_cast<size_t>(k / 16), 0x20),
+           1.0f, {expected});
+}
+
 }  // namespace
 
 TEST(MatMulNVFP4A16, BFloat16DecodeAndGeneralPrefill) {
@@ -102,6 +118,36 @@ TEST(MatMulNVFP4A16, Float16DecodeAndGeneralPrefill) {
   RunCase<MLFloat16>({1, 16}, 3);
   RunCase<MLFloat16>({15, 16}, 3);
   RunCase<MLFloat16>({3, 5, 128}, 9);
+}
+
+TEST(MatMulNVFP4A16, SmallKProductsAvoidActivationTypeOverflow) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 or newer is required.";
+  for (int64_t k : {32, 64, 96}) {
+    CheckProductPrecision<MLFloat16>(k, 16384.0f, 0x1p-10f, true);
+    CheckProductPrecision<BFloat16>(k, 0x1p126f, 0x1p-7f, true);
+  }
+}
+
+TEST(MatMulNVFP4A16, SmallKProductsAvoidActivationTypeRounding) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 or newer is required.";
+  for (int64_t k : {32, 64, 96}) {
+    CheckProductPrecision<MLFloat16>(k, 16384.0f, 0x1p-10f, false);
+    CheckProductPrecision<BFloat16>(k, 0x1p126f, 0x1p-7f, false);
+  }
+}
+
+TEST(MatMulNVFP4A16, ProductsStayFP32WhenMmaDisabled) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 or newer is required.";
+  // The selector is process-cached. Run this test in a fresh process with the
+  // override already set, rather than mutating it after another test dispatched.
+  const char* mma = std::getenv("ORT_FP4_GEMV_MMA");
+  if (mma == nullptr || std::string_view(mma) != "0") {
+    GTEST_SKIP() << "Run in a fresh process with ORT_FP4_GEMV_MMA=0.";
+  }
+  for (bool overflow : {false, true}) {
+    CheckProductPrecision<MLFloat16>(128, 16384.0f, 0x1p-10f, overflow);
+    CheckProductPrecision<BFloat16>(128, 0x1p126f, 0x1p-7f, overflow);
+  }
 }
 
 TEST(MatMulNVFP4A16, LocalScaleIncludesSubnormalZeroAndNegative) {

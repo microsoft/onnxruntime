@@ -3192,8 +3192,9 @@ K=0 (empty FP32 sum times the global scale) are supported.
 
 There are no attributes, activation quantization, reciprocal scale semantics,
 or fused bias. Add bias separately in the native output type when required.
-CUDA uses direct packed execution for small M; general M uses temporary local
-FP16/BF16 weights and FP32 accumulators, never persistent expanded weights.
+CUDA uses direct packed execution for small M only when the tensor-core GEMV
+sub-path is available and enabled. Other cases use temporary local FP16/BF16
+weights and FP32 accumulators, never persistent expanded weights.
 This is not native FP4-by-FP4 tensor-core execution or a full-model memory claim.
 It does not change the defaults or arithmetic of MatMulBlockQuantizedFp4Weight.
 )DOC")
