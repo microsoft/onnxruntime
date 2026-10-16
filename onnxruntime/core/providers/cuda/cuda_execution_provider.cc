@@ -3698,7 +3698,10 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         KernelDispatchPolicy kernel_dispatch_policy = KernelDispatchPolicy::Auto;
         if (const auto& policy = estimator_config.kernel_dispatch_policy;
             policy.has_value()) {
-          kernel_dispatch_policy = ParseKernelDispatchPolicy(*policy);
+          ORT_ENFORCE(
+              TryParseKernelDispatchPolicy(*policy, kernel_dispatch_policy),
+              "Invalid ", kOrtSessionOptionsKernelDispatchPolicy,
+              " in WorkspaceEstimatorConfig: '", *policy, "'");
         }
         const auto ws = contrib::cuda::EstimateGroupQueryAttentionWorkspace(
             *node, gsl::make_span(input_shapes), GetDeviceProp(),

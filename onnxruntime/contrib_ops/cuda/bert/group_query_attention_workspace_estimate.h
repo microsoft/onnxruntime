@@ -59,7 +59,8 @@ struct GQAWorkspaceEstimateConfig {
 std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfig(
     const Node& node,
     bool head_sink_is_constant_initializer = false,
-    int64_t max_total_sequence_length = 0);
+    int64_t max_total_sequence_length = 0,
+    KernelDispatchPolicy dispatch_policy = KernelDispatchPolicy::Auto);
 
 std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const GQAWorkspaceEstimateConfig& config,
