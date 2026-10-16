@@ -11,6 +11,11 @@
 #include "common.h"
 #include "session_options_helper.h"
 #include "tensor_helper.h"
+#ifdef ORT_NODEJS_TEST_EP_CONTEXT
+#include <algorithm>
+
+#include "ort_singleton_data.h"
+#endif
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_options.h"
 #endif
@@ -206,6 +211,21 @@ void IterateExtraOptions(const std::string& prefix, const Napi::Object& obj, Ort
 
 void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessionOptions,
                          std::vector<std::vector<char>>* externalDataBuffers) {
+#ifdef ORT_NODEJS_TEST_EP_CONTEXT
+  if (options.Has("__testEpContextProvider")) {
+    auto nameValue = options.Get("__testEpContextProvider");
+    ORT_NAPI_THROW_TYPEERROR_IF(!nameValue.IsString(), options.Env(), "Expected a test EP name.");
+    auto name = nameValue.As<Napi::String>().Utf8Value();
+    auto& env = OrtSingletonData::GetOrtObjects()->env;
+    auto devices = env.GetEpDevices();
+    auto device = std::find_if(devices.begin(), devices.end(), [&](const auto& candidate) {
+      return name == candidate.EpName();
+    });
+    ORT_NAPI_THROW_ERROR_IF(device == devices.end(), options.Env(), "Test EP device was not found.");
+    sessionOptions.AddConfigEntry("ep.example.test_execute_ep_context", "1");
+    sessionOptions.AppendExecutionProvider_V2(env, {*device}, {});
+  }
+#endif
   // Execution provider
   if (options.Has("executionProviders")) {
     auto epsValue = options.Get("executionProviders");
