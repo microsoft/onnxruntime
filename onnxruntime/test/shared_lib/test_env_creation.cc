@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstdlib>
+
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
@@ -187,3 +189,35 @@ TEST(EnvCreation, SetPerSessionThreadPoolCallbacks) {
   ortenv_setup();
 }
 #endif  // ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+
+#if GTEST_HAS_DEATH_TEST && !defined(__wasm__)
+namespace {
+struct EarlierRegisteredEnvCleanup {
+  Ort::Env env{nullptr};
+
+  EarlierRegisteredEnvCleanup() {}
+
+  ~EarlierRegisteredEnvCleanup() {
+    if (static_cast<OrtEnv*>(env) != nullptr) {
+      env = Ort::Env{nullptr};
+      std::_Exit(EXIT_SUCCESS);
+    }
+  }
+};
+
+// Constructed during dynamic initialization before main() / ortenv_setup() creates the first OrtEnv.
+// Any function-local static with a normal destructor initialized inside main() is destroyed before
+// ~EarlierRegisteredEnvCleanup() runs during std::exit().
+EarlierRegisteredEnvCleanup g_earlier_registered_env_cleanup;
+}  // namespace
+
+TEST(EnvCreation, ReleaseEnvFromEarlierRegisteredCleanupAtShutdown) {
+  EXPECT_EXIT(
+      {
+        g_earlier_registered_env_cleanup.env =
+            Ort::Env(ORT_LOGGING_LEVEL_WARNING, "ReleaseEnvFromEarlierRegisteredCleanupAtShutdown");
+        std::exit(EXIT_FAILURE);
+      },
+      ::testing::ExitedWithCode(EXIT_SUCCESS), "");
+}
+#endif  // GTEST_HAS_DEATH_TEST && !defined(__wasm__)

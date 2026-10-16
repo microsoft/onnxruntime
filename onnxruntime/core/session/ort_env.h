@@ -84,7 +84,8 @@ struct OrtEnv {
   // may call an OrtEnv API (e.g. OrtEpApi::GetEnvConfigEntries) from OrtEpFactory::GetSupportedDevices, which
   // re-enters TryGetInstance(). No other code path requires recursive locking, so this can revert to std::mutex if
   // static plugin EPs are no longer registered here.
-  // Defined as a function-local static to avoid a dynamic initializer (.CRT$XCU) at module load time.
+  // Lazily initialized in non-destructing storage to avoid a module-load dynamic initializer (.CRT$XCU) while
+  // remaining valid through process shutdown.
   static std::recursive_mutex& Mutex();
   static int ref_count_;
 

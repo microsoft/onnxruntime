@@ -4,6 +4,8 @@
 // this file contains implementations of the C API
 
 #include <cassert>
+#include <cstddef>
+#include <new>
 #include <utility>
 
 #include "ort_env.h"
@@ -33,15 +35,19 @@ int OrtEnv::ref_count_ = 0;
 
 /*static*/
 std::recursive_mutex& OrtEnv::Mutex() {
+  // Use non-destructing static storage so the mutex is lazily initialized on first use (avoiding a
+  // module-load .CRT$XCU dynamic initializer) and remains valid during process shutdown if an
+  // earlier-registered global or atexit handler calls OrtEnv::Release().
+  alignas(std::recursive_mutex) static std::byte mutex_storage[sizeof(std::recursive_mutex)];
 #ifdef _MSC_VER
 #pragma warning(push)
-#pragma warning(disable : 26426)
+#pragma warning(disable : 26409 26426)
 #endif
-  static std::recursive_mutex m;
+  static std::recursive_mutex* const mutex = new (mutex_storage) std::recursive_mutex();
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-  return m;
+  return *mutex;
 }
 
 OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)
