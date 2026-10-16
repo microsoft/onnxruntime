@@ -88,15 +88,26 @@ size_t AddSlab(size_t bytes, size_t& total) {
 std::atomic<qmoe::SpinPool*> g_shared_spin_pool_ptr{nullptr};
 
 qmoe::SpinPool& SharedSpinPool(int threads) {
-  const int default_spin_us = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_POOL_SPIN_US", 2000);
-  qmoe::CpuBudgetGroup::Default().ConfigureDecodeSpinUs(default_spin_us);
-  static qmoe::SpinPool pool(threads, default_spin_us);
-  g_shared_spin_pool_ptr.store(&pool, std::memory_order_release);
+  static qmoe::SpinPool pool = [threads]() {
+    const int default_spin_us = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_POOL_SPIN_US", 2000);
+    qmoe::CpuBudgetGroup::Default().ConfigureDecodeSpinUs(default_spin_us);
+    return qmoe::SpinPool(threads, default_spin_us);
+  }();
+  static const bool registered = []() {
+    g_shared_spin_pool_ptr.store(&pool, std::memory_order_release);
+    return true;
+  }();
+  (void)registered;
   return pool;
 }
 
 bool IsStickyCudaContextError(cudaError_t err) noexcept {
   return err != cudaSuccess && err != cudaErrorNotReady && err != cudaErrorCudartUnloading;
+}
+
+inline bool IsInQMoEWarmup() noexcept {
+  const char* v = std::getenv("ORT_QMOE_IN_WARMUP");
+  return v != nullptr && v[0] == '1';
 }
 
 class StreamDrain final {
@@ -498,7 +509,9 @@ bool TryPrepareQMoEPrefillDmaLayer(
   }
 
   if (layer_index == 0) {
-    qmoe::CpuBudgetGroup::Default().EnterPrefillOrAuxPhase(g_shared_spin_pool_ptr.load(std::memory_order_acquire));
+    if (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SUPPRESS_PREFILL_SPIN", 0) == 1) {
+      qmoe::CpuBudgetGroup::Default().EnterPrefillOrAuxPhase(g_shared_spin_pool_ptr.load(std::memory_order_acquire));
+    }
     const bool new_turn = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PREFILL_NEW_TURN", 0) == 1;
     if (new_turn || !state.prefill_active) {
 #if !defined(_WIN32)
@@ -1505,6 +1518,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
   cpu_threads_ = std::clamp(ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_CPU_THREADS", 40), 1, 256);
   unified_cpu_service_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_UNIFIED_CPU_SERVICE", 1) == 1;
   continuous_decay_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_CONTINUOUS_DECAY", 1) == 1;
+  bg_promo_stream_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_BG_PROMO_STREAM", 1) == 1;
   cpu_fp16_boundaries_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_CPU_FP16_BOUNDARIES", 0) == 1;
   const int default_stream_rows = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_ROWS", 0);
   stream_rows_ = std::clamp(
@@ -1797,6 +1811,7 @@ void QMoEOffload::InitializeShared(const OpKernelInfo& info) {
   cpu_fp16_boundaries_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_CPU_FP16_BOUNDARIES", 0) == 1;
   unified_cpu_service_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_UNIFIED_CPU_SERVICE", 0) == 1;
   continuous_decay_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_CONTINUOUS_DECAY", 0) == 1;
+  bg_promo_stream_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_BG_PROMO_STREAM", 1) == 1;
   stream_rows_ = std::clamp(ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_ROWS", 0), 0, 8192);
   prefill_chunk_tokens_ = static_cast<int>(
       info.GetAttrOrDefault<int64_t>("prefill_chunk_tokens",
@@ -2211,7 +2226,8 @@ void QMoEOffload::CommitInvocationObservation(const std::array<int, 5>& phase_ro
     for (auto& s : decode_score_) s *= d;
   }
   // Also update invocation-presence EMA (half-life = 32 invocations) when phase_expert_rows is populated (v3 Section 8.2).
-  if (static_cast<int>(expert_presence_ema_.size()) == num_experts_ && total_delta_routes > 0) {
+  if (static_cast<int>(expert_presence_ema_.size()) == num_experts_ && total_delta_routes > 0 &&
+      !phase_expert_rows[0].empty()) {
     const float d_inv = std::exp2(-1.0f / 32.0f);
     for (int e = 0; e < num_experts_; ++e) {
       bool present = false;
@@ -2228,11 +2244,13 @@ void QMoEOffload::CommitInvocationObservation(const std::array<int, 5>& phase_ro
 
 Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<InlinedVector<int>>& cold_routes,
                                     int max_promotions, const int* streamed_experts, int streamed_count) const {
+  const int promotion_limit = max_promotions > 0 ? max_promotions : resident_promotions_;
+  if (pending_promotions_.empty() && promotion_limit <= 0) return Status::OK();
   constexpr float kMinScore = 2.0f;
   constexpr float kMargin = 2.0f;
   const auto& scores = resident_phase_scores_ && resident_decode_active_ ? decode_score_ : expert_score_;
-  const bool use_bg_promo = async_ && spare_slots_ > 0 && max_promotions == 0 && streamed_experts == nullptr &&
-                            ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_BG_PROMO_STREAM", 1) == 1;
+  const bool use_bg_promo =
+      async_ && spare_slots_ > 0 && max_promotions == 0 && streamed_experts == nullptr && bg_promo_stream_;
 
   // Step 1: Poll and publish any completed background promotions (v3 Section 7.5 / F3).
   if (!pending_promotions_.empty()) {
@@ -2263,7 +2281,6 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
     }
   }
 
-  const int promotion_limit = max_promotions > 0 ? max_promotions : resident_promotions_;
   if (promotion_limit <= 0) return Status::OK();
 
   // Count currently active logical residents.
@@ -2770,10 +2787,12 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
   CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture));
   ORT_RETURN_IF(capture != cudaStreamCaptureStatusNone, "QMoEOffload shared CPU execution cannot be captured.");
   if (rows == 0) return Status::OK();
-  if (rows > async_max_tokens_) {
-    qmoe::CpuBudgetGroup::Default().EnterPrefillOrAuxPhase(g_shared_spin_pool_ptr.load(std::memory_order_acquire));
-  } else {
-    qmoe::CpuBudgetGroup::Default().EnterDecodePhase(g_shared_spin_pool_ptr.load(std::memory_order_acquire));
+  if (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SUPPRESS_PREFILL_SPIN", 0) == 1) {
+    if (rows > async_max_tokens_) {
+      qmoe::CpuBudgetGroup::Default().EnterPrefillOrAuxPhase(g_shared_spin_pool_ptr.load(std::memory_order_acquire));
+    } else {
+      qmoe::CpuBudgetGroup::Default().EnterDecodePhase(g_shared_spin_pool_ptr.load(std::memory_order_acquire));
+    }
   }
   if (async_ && rows <= async_max_tokens_) {
     return ComputeSharedAsync(context, input, router, bias, phase, output, route_rows, route_calls, counts,
@@ -3333,6 +3352,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
 
     if (resident_slots_ > 0) {
       last_cold_routes_ = expert_routes;
+      sync_routes_pending_ = true;
       if (!resident_phase_scores_ && !continuous_decay_) {
         routes_since_decay_ += routes;
         if (routes_since_decay_ >= resident_decay_routes_) {
@@ -3388,14 +3408,8 @@ void QMoEOffload::RunAsyncCpu(AsyncTile& tile) const {
   std::string err_msg;
   std::array<int, 5> obs_phase_rows{};
   std::array<std::vector<int>, 5> obs_phase_expert_rows{};
-  std::array<std::vector<uint8_t>, 5> obs_phase_hits{};
-  if (resident_slots_ > 0) {
-    for (int p = 0; p < 5; ++p) {
-      obs_phase_expert_rows[p].assign(num_experts_, 0);
-      obs_phase_hits[p].assign(num_experts_, 0);
-    }
-  }
 
+  // Pass 1: Validate all token phases and routed expert indices before mutating any state or statistics.
   for (int token = 0; token < tile.tile_rows && valid; ++token) {
     const int token_phase = tile.has_phases ? static_cast<int>(tile.host_phases[token]) : 1;
     if (token_phase < 0 || token_phase >= 5) {
@@ -3403,8 +3417,6 @@ void QMoEOffload::RunAsyncCpu(AsyncTile& tile) const {
       err_msg = "Invalid token_phase=" + std::to_string(token_phase) + " at token " + std::to_string(token);
       break;
     }
-    if (tile.counts) ++tile.counts[token_phase];
-    ++obs_phase_rows[token_phase];
     for (int rank = 0; rank < k_ && valid; ++rank) {
       const int route = token * static_cast<int>(k_) + rank;
       const int expert = tile.host_indices[route];
@@ -3420,18 +3432,6 @@ void QMoEOffload::RunAsyncCpu(AsyncTile& tile) const {
         err_msg = "Duplicate routed expert=" + std::to_string(expert) + " at token " + std::to_string(token);
         break;
       }
-      const size_t statistic = static_cast<size_t>(token_phase) * num_experts_ + expert;
-      if (tile.route_rows) ++tile.route_rows[statistic];
-      if (tile.route_calls) tile.route_calls[statistic] = 1;
-      if (resident_slots_ > 0) {
-        const bool is_hit = expert_slot_[expert] >= 0;
-        ++obs_phase_expert_rows[token_phase][expert];
-        if (is_hit) {
-          ++obs_phase_hits[token_phase][expert];
-          continue;
-        }
-      }
-      work.expert_routes[expert].push_back(route);
     }
   }
   if (!valid) {
@@ -3439,6 +3439,27 @@ void QMoEOffload::RunAsyncCpu(AsyncTile& tile) const {
     async_failed_.store(true, std::memory_order_release);
     if (tile.invocation) tile.invocation->MarkFailed(err_msg);
     return;
+  }
+
+  // Pass 2: Record validated routes and classify cold misses on the callback thread (overlapped with GPU GEMV).
+  for (int token = 0; token < tile.tile_rows; ++token) {
+    const int token_phase = tile.has_phases ? static_cast<int>(tile.host_phases[token]) : 1;
+    if (tile.counts) ++tile.counts[token_phase];
+    ++obs_phase_rows[token_phase];
+    for (int rank = 0; rank < k_; ++rank) {
+      const int route = token * static_cast<int>(k_) + rank;
+      const int expert = tile.host_indices[route];
+      const size_t statistic = static_cast<size_t>(token_phase) * num_experts_ + expert;
+      if (tile.route_rows) ++tile.route_rows[statistic];
+      if (tile.route_calls) tile.route_calls[statistic] = 1;
+      if (resident_slots_ > 0) {
+        RecordResidentRoute(token_phase, expert, expert_slot_[expert] >= 0);
+        if (expert_slot_[expert] >= 0) {
+          continue;
+        }
+      }
+      work.expert_routes[expert].push_back(route);
+    }
   }
   const int threads = cpu_threads_;
   std::chrono::steady_clock::time_point classified;
@@ -3474,35 +3495,14 @@ void QMoEOffload::RunAsyncCpu(AsyncTile& tile) const {
     g_last_end_ns.store(std::chrono::duration_cast<std::chrono::nanoseconds>(end.time_since_epoch()).count());
   }
   if (resident_slots_ > 0) {
-    const int tile_rows_val = tile.tile_rows;
-    auto staged_cold = work.expert_routes;
-    auto apply_obs = [this, obs_phase_rows, obs_phase_expert_rows, obs_phase_hits, tile_rows_val,
-                      staged_cold = std::move(staged_cold)]() mutable {
-      for (int p = 0; p < 5; ++p) {
-        if (obs_phase_rows[p] <= 0) continue;
-        for (int e = 0; e < num_experts_; ++e) {
-          const int cnt = obs_phase_expert_rows[p][e];
-          const int hits = obs_phase_hits[p][e];
-          for (int c = 0; c < cnt; ++c) {
-            RecordResidentRoute(p, e, c < hits);
-          }
-        }
+    if (continuous_decay_) {
+      CommitInvocationObservation(obs_phase_rows, obs_phase_expert_rows);
+    } else if (!resident_phase_scores_) {
+      routes_since_decay_ += tile.tile_rows * static_cast<int>(k_);
+      if (routes_since_decay_ >= resident_decay_routes_) {
+        for (auto& score : expert_score_) score *= 0.5f;
+        routes_since_decay_ = 0;
       }
-      if (continuous_decay_) {
-        CommitInvocationObservation(obs_phase_rows, obs_phase_expert_rows);
-      } else if (!resident_phase_scores_) {
-        routes_since_decay_ += tile_rows_val * static_cast<int>(k_);
-        if (routes_since_decay_ >= resident_decay_routes_) {
-          for (auto& score : expert_score_) score *= 0.5f;
-          routes_since_decay_ = 0;
-        }
-      }
-      last_cold_routes_ = std::move(staged_cold);
-    };
-    if (tile.invocation) {
-      tile.invocation->commit_observation = std::move(apply_obs);
-    } else {
-      apply_obs();
     }
   }
   if (tile.invocation) tile.invocation->MarkCpuDone();
@@ -3551,8 +3551,10 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
     static_cast<void>(cudaGetDevice(&dev_id));
     FinalizeQMoEPrefillAndSeedDecode(dev_id, stream);
   }
-  if (resident_slots_ > 0 && ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_IN_WARMUP", 0) == 0) {
-    ORT_RETURN_IF_ERROR(PromoteResident(stream, last_cold_routes_));
+  if (resident_slots_ > 0 && !IsInQMoEWarmup()) {
+    const auto& prev_routes = sync_routes_pending_ ? last_cold_routes_ : async_work_->expert_routes;
+    ORT_RETURN_IF_ERROR(PromoteResident(stream, prev_routes));
+    sync_routes_pending_ = false;
     if (slot_table_dirty_) {
       int* dst_table = CurrentSlotTableDev();
       if (owned_layer_cache_) {
@@ -3566,17 +3568,24 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
     }
   }
 
-  // Count currently published resident experts to select host-known empty (active_residents == 0)
-  // or statically full (active_residents == num_experts_) fast paths (v3 Section 7.3 / F6).
-  int active_residents = 0;
+  // O(1) check on common partial-resident decode path; full scan only when resident_slots_ == num_experts_ or slot 0 is empty.
+  bool has_any_resident = false;
+  bool all_experts_resident = false;
   if (resident_slots_ > 0 && resident_slab_ != nullptr) {
-    for (int idx = 0; idx < resident_slots_ + spare_slots_; ++idx) {
-      if (slot_expert_[idx] >= 0) ++active_residents;
+    if (resident_slots_ < num_experts_ && !slot_expert_.empty() && slot_expert_[0] >= 0) {
+      has_any_resident = true;
+    } else {
+      int active_residents = 0;
+      for (int idx = 0; idx < resident_slots_ + spare_slots_; ++idx) {
+        if (slot_expert_[idx] >= 0) ++active_residents;
+      }
+      has_any_resident = (active_residents > 0);
+      all_experts_resident = (active_residents == num_experts_);
     }
   }
   const bool has_diag_outputs = (route_rows != nullptr || route_calls != nullptr || counts != nullptr);
-  const bool resident = (active_residents > 0) && (resident_slab_ != nullptr);
-  const bool static_full_resident = resident && (active_residents == num_experts_) &&
+  const bool resident = has_any_resident;
+  const bool static_full_resident = all_experts_resident &&
                                     pending_promotions_.empty() && !slot_table_dirty_ &&
                                     !has_diag_outputs && !trace_call && (phase == nullptr);
   const bool aux = async_aux_ && resident && !static_full_resident;
@@ -3728,18 +3737,20 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
   };
 
   auto record_slot_and_final_events = [&]() -> Status {
-    if (resident) {
-      if (!slot_reader_done_) {
-        CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&slot_reader_done_, cudaEventDisableTiming));
+    if (!session_controller_) {
+      if (resident && resident_promotions_ > 0 && spare_slots_ > 0) {
+        if (!slot_reader_done_) {
+          CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&slot_reader_done_, cudaEventDisableTiming));
+        }
+        CUDA_RETURN_IF_ERROR(cudaEventRecord(slot_reader_done_, stream));
+        slot_reader_done_recorded_ = true;
       }
-      CUDA_RETURN_IF_ERROR(cudaEventRecord(slot_reader_done_, stream));
-      slot_reader_done_recorded_ = true;
+      if (!final_device_done_) {
+        CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&final_device_done_, cudaEventDisableTiming));
+      }
+      CUDA_RETURN_IF_ERROR(cudaEventRecord(final_device_done_, stream));
+      final_device_done_recorded_.store(true, std::memory_order_release);
     }
-    if (!final_device_done_) {
-      CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&final_device_done_, cudaEventDisableTiming));
-    }
-    CUDA_RETURN_IF_ERROR(cudaEventRecord(final_device_done_, stream));
-    final_device_done_recorded_.store(true, std::memory_order_release);
     return Status::OK();
   };
 

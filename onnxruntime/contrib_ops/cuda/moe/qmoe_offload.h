@@ -177,6 +177,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   int resident_margin_percent_ = 100;
   bool resident_phase_scores_ = false;
   bool continuous_decay_ = false;
+  bool bg_promo_stream_ = true;
   mutable bool resident_decode_active_ = false;
   std::array<size_t, 6> resident_bank_bytes_{};
   std::array<size_t, 6> resident_bank_offsets_{};
@@ -188,8 +189,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   ResidentSlab slot_table_dev_;
   int* CurrentSlotTableDev() const noexcept {
     if (!slot_table_dev_) return nullptr;
-    return reinterpret_cast<int*>(slot_table_dev_.get()) +
-           static_cast<size_t>(placement_epoch_ & 1) * static_cast<size_t>(num_experts_);
+    return reinterpret_cast<int*>(slot_table_dev_.get());
   }
   mutable InlinedVector<int> slot_expert_;
   mutable InlinedVector<int> expert_slot_;
@@ -197,6 +197,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   mutable InlinedVector<float> decode_score_;
   mutable InlinedVector<float> expert_presence_ema_;
   mutable InlinedVector<InlinedVector<int>> last_cold_routes_;
+  mutable bool sync_routes_pending_ = false;
   mutable std::array<int, 2> phase_routes_since_decay_{};
   mutable std::array<uint64_t, 5> phase_hit_routes_{};
   mutable std::array<uint64_t, 5> phase_total_routes_{};
