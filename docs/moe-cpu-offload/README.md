@@ -75,6 +75,25 @@ Linux, ORT 1.32.0, GenAI CUDA 0.15.2, CUDA 13.3.73, driver 580.105.08,
 Xeon Platinum 8480C (96 physical cores). Release build, native CUDA architecture, Flash/MEA enabled.
 These are single-run observations on a shared host, not statistical estimates or quality tests.
 
+### Summary: decode throughput (tokens/s)
+
+Highest observed rate per row in **bold**. Prefill times and memory peaks are detailed below.
+
+| K | CUDA Graph | Adaptive | Basic | Layered 80% | Layered 70% |
+|---:|:---:|---:|---:|---:|---:|
+| 0 | Off | 129.930 | 132.550 | **132.599** | 130.596 |
+| 0 | On | 169.841 | 168.622 | 169.083 | **176.596** |
+| 1024 | Off | 79.855 | 85.967 | **93.633** | 91.353 |
+| 2048 | Off | 57.834 | 70.539 | 55.676 | **78.171** |
+| 3072 | Off | 39.793 | **59.878** | 47.379 | 39.392 |
+| 4096 | Off | 37.036 | 46.850 | **47.085** | 35.276 |
+| 5120 | Off | 33.336 | 44.232 | 44.921 | **50.620** |
+| 6144 | Off | 30.664 | 39.411 | **39.614** | 38.230 |
+| 7168 | Off | 29.203 | 36.474 | **37.084** | 34.966 |
+| 8192 | Off | 27.003 | 33.758 | 31.864 | **34.234** |
+| 9216 | Off | 25.696 | 29.513 | **31.617** | 30.098 |
+| 10240 | Off | 27.032 | 27.746 | **29.069** | 28.232 |
+
 ### Adaptive
 
 | K: CPU experts | CUDA Graph | Prefill (ms) | Decode (tokens/s) | Peak GPU (GiB) | Peak CPU RSS (GiB) |
