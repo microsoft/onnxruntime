@@ -11,6 +11,30 @@ from pathlib import Path
 # Matches "@var@" template variables.
 _TEMPLATE_VARIABLE_PATTERN = re.compile(r"@(\w+)@")
 
+PLUGIN_BINARIES = {
+    "Windows": (Path("onnxruntime_providers_webgpu.dll"), Path("dxcompiler.dll")),
+    "Linux": (Path("libonnxruntime_providers_webgpu.so"),),
+    "Darwin": (Path("libonnxruntime_providers_webgpu.dylib"),),
+}
+
+WINDOWS_AGILITY_SDK_BINARIES = (Path("D3D12/D3D12Core.dll"), Path("D3D12/d3d12SDKLayers.dll"))
+
+
+def get_plugin_binaries(target_platform: str, *, include_agility_sdk_files: bool = False) -> tuple[Path, ...]:
+    """Return the required plugin binaries for a target platform.
+
+    `target_platform` uses `platform.system()` names such as "Windows", "Linux", and "Darwin".
+    """
+    try:
+        binaries = list(PLUGIN_BINARIES[target_platform])
+    except KeyError as e:
+        raise ValueError(f"Unsupported WebGPU packaging platform: {target_platform}") from e
+
+    if target_platform == "Windows" and include_agility_sdk_files:
+        binaries.extend(WINDOWS_AGILITY_SDK_BINARIES)
+
+    return tuple(binaries)
+
 
 def gen_file_from_template(
     template_file: Path, output_file: Path, variable_substitutions: dict[str, str], strict: bool = True

@@ -12,6 +12,10 @@ registered.
 
 On Linux, a system Vulkan loader (`libvulkan.so.1`) must be installed and available at runtime.
 
+On Windows, wheels built with the D3D12 Agility SDK should include the SDK runtime used by Dawn. Locally built wheels
+may use a plugin built without Agility and omit the SDK runtime. Actual feature availability depends on the plugin
+build, GPU, and driver.
+
 ## Supported Platforms
 
 | Platform |

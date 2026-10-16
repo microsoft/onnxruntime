@@ -99,6 +99,13 @@ jobs:
         with:
           dotnet-version: "8.x"
 
+      - name: Test WebGPU NuGet packaging
+        run: python -m unittest plugin-ep-webgpu\csharp\test\test_pack_nuget.py -v
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+        env:
+          ORT_WEBGPU_TEST_REQUIRE_DOTNET_SDK: "1"
+
       - name: Use Nuget 6.x
         uses: nuget/setup-nuget@d105a947828025cd7a980103c35ba2bfae586d0f # v2.0.2
         with:
