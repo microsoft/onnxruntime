@@ -30,6 +30,10 @@
 #include "ILogManager.hpp"
 #include "telemetry_test_registry.h"
 
+#if defined(ORT_TELEMETRY_TRANSPORT_LIBRARY) && defined(HAVE_MAT_CURL_HTTP_CLIENT)
+#include <curl/curl.h>
+#endif
+
 namespace {
 namespace sdk = Microsoft::Applications::Events;
 using namespace std::chrono_literals;
@@ -245,6 +249,11 @@ void Run(std::string_view mode) {
 #if defined(ORT_TELEMETRY_TRANSPORT_LIBRARY)
   owned_provider.reset();
   VerifyExit();
+#if defined(HAVE_MAT_CURL_HTTP_CLIENT)
+  // This isolated host owns every curl user in the fixture. Release its global
+  // allocations before unloading a private static curl image.
+  curl_global_cleanup();
+#endif
 #endif
 }
 }  // namespace

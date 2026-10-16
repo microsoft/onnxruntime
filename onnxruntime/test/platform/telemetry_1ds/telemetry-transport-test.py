@@ -7,6 +7,7 @@ import argparse
 import http.server
 import os
 import pathlib
+import socketserver
 import subprocess
 import tempfile
 import threading
@@ -18,6 +19,11 @@ if os.name == "nt":
 
 class Collector(http.server.ThreadingHTTPServer):
     daemon_threads = True
+
+    def server_bind(self):
+        # HTTPServer resolves a hostname here; this numeric-only fixture needs no DNS.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address
 
     def __init__(self, mode):
         super().__init__(("127.0.0.1", 0), Handler)

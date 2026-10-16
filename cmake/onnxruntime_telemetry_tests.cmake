@@ -163,6 +163,10 @@ elseif(UNIX AND NOT APPLE)
   target_link_options(onnxruntime_telemetry_transport_fixture PRIVATE "-Wl,--exclude-libs,ALL" "-Wl,-Bsymbolic")
 endif()
 
+add_test(NAME onnxruntime_telemetry_transport_runner_test
+  COMMAND "${Python_EXECUTABLE}" "${telemetry_test_dir}/telemetry-transport-runner-test.py")
+set_tests_properties(onnxruntime_telemetry_transport_runner_test PROPERTIES TIMEOUT 10)
+
 foreach(mode upload threaded retry pending disabled unit-disabled ci-disabled reload)
   add_test(NAME onnxruntime_telemetry_transport_${mode}_test
     COMMAND "${Python_EXECUTABLE}" "${telemetry_test_dir}/telemetry-transport-test.py"
