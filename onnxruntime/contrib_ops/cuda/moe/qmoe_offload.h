@@ -89,6 +89,15 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
 
   struct CpuWork;
   struct AsyncTile;
+  struct PersistentDecodeState;
+  class DoorbellService;
+  friend class DoorbellService;
+  void InitializeComplementMode();
+  void InitializeSsdStore();
+  Status EnsurePersistentDecodeState(OpKernelContext* context, size_t min_gpu_bytes,
+                                     size_t min_host_bytes, cudaStream_t stream) const;
+  Status StepBetweenRuns(cudaStream_t stream) const;
+  void ServiceDoorbell() const;
   template <typename ActT, typename ParallelRunner>
   int RunColdExperts(CpuWork& work, int group_calls, const ActT* host_input, int tile_rows, ActT* host_result,
                      int* host_cpu_ids, bool compact, ParallelRunner&& run_parallel,
@@ -121,12 +130,27 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   onnxruntime::contrib::qmoe_shared::Nvfp4ExpertBlockLayout nvfp4_layout_;
   onnxruntime::contrib::qmoe_shared::ExpertBlockLease expert_lease_;
   onnxruntime::contrib::qmoe_shared::TensorExpertStore expert_store_;
+  mutable onnxruntime::contrib::qmoe_shared::FileExpertStore file_expert_store_;
+  int ssd_cache_slots_ = 0;
+  std::string ssd_store_path_;
+  std::string ssd_temp_file_;
+  mutable uint64_t ssd_prefetch_gen_ = 0;
+  bool host_complement_mode_ = false;
+  int complement_slots_ = 0;
+  size_t complement_stride_ = 0;
+  mutable PinnedBuffer complement_host_slab_;
+  mutable InlinedVector<int> expert_host_slot_;
+  mutable InlinedVector<int> host_slot_expert_;
+  mutable uint64_t complement_eviction_writebacks_ = 0;
   int64_t layer_index_ = 0;
   size_t shared_gpu_limit_ = 0;
   size_t shared_pinned_limit_ = 0;
   size_t stream_pinned_limit_ = 0;
   int group_calls_ = 1;
   bool deterministic_replay_ = false;
+  bool allow_cuda_graph_ = false;
+  bool doorbell_enabled_ = false;
+  mutable std::unique_ptr<PersistentDecodeState> decode_state_;
 
   // Decoupled dispatch controls (v3 Section 8.1 / F7).
   int max_sync_tile_tokens_ = 32;
@@ -152,6 +176,8 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
     int target_slot = -1;
     int victim_slot = -1;
     int evicted_expert = -1;
+    int host_evict_slot = -1;
+    int host_cand_slot = -1;
   };
   mutable std::vector<PendingPromotion> pending_promotions_;
   mutable bool slot_table_dirty_ = true;
@@ -186,6 +212,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   size_t resident_workspace_bytes_ = 0;
   size_t stream_workspace_bytes_ = 0;
   mutable ResidentSlab resident_slab_;
+  mutable const uint8_t* last_slab_ptr_ = nullptr;
   ResidentSlab slot_table_dev_;
   int* CurrentSlotTableDev() const noexcept {
     if (!slot_table_dev_) return nullptr;

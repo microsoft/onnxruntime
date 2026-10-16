@@ -1133,6 +1133,305 @@ int main() {
         self.assertEqual(len(init_exps[0]), 2)
         self.assertEqual(len(init_exps[1]), 6)
 
+    def _make_nvfp4_test_model(
+        self,
+        rng,
+        experts=8,
+        hidden=128,
+        inter=64,
+        top_k=2,
+        resident_slots=0,
+        spare_slots=0,
+        initial_experts=None,
+        extra_attrs=None,
+        banks=None,
+    ):
+        if banks is None:
+            fc1_w = rng.integers(0, 256, size=(experts, hidden, inter), dtype=np.uint8)
+            fc1_s = rng.integers(0x34, 0x44, size=(experts, 2 * inter, hidden // 16), dtype=np.uint8)
+            fc2_w = rng.integers(0, 256, size=(experts, inter, hidden // 2), dtype=np.uint8)
+            fc2_s = rng.integers(0x34, 0x44, size=(experts, hidden, inter // 16), dtype=np.uint8)
+            fc1_g = rng.uniform(0.01, 0.03, size=(experts,)).astype(np.float32)
+            fc2_g = rng.uniform(0.01, 0.03, size=(experts,)).astype(np.float32)
+            banks = (fc1_w, fc1_s, fc1_g, fc2_w, fc2_s, fc2_g)
+        else:
+            fc1_w, fc1_s, fc1_g, fc2_w, fc2_s, fc2_g = banks
+        inputs = ["X", "R", "fc1_w", "fc1_s", "", "fc2_w", "fc2_s", "", "", "", "", "", "", "", "", "fc1_g", "fc2_g"]
+        kwargs = dict(
+            activation_type="swiglu",
+            normalize_routing_weights=1,
+            k=top_k,
+            expert_weight_bits=4,
+            block_size=16,
+            swiglu_fusion=1,
+            quant_type="nvfp4",
+            weights_prepacked=1,
+            layer_index=0,
+            hidden_size=hidden,
+            inter_size=inter,
+            token_tile_size=8,
+            gpu_working_bytes=64 << 20,
+            pinned_staging_bytes=16 << 20,
+            resident_slots=resident_slots,
+            spare_slots=spare_slots,
+        )
+        if initial_experts is not None:
+            kwargs["initial_experts"] = initial_experts
+        if extra_attrs:
+            kwargs.update(extra_attrs)
+        node = helper.make_node("QMoEOffload", inputs=inputs, outputs=["Y"], domain="com.microsoft", **kwargs)
+        inits = [
+            numpy_helper.from_array(fc1_w, name="fc1_w"),
+            helper.make_tensor("fc1_s", TensorProto.FLOAT8E4M3FN, fc1_s.shape, fc1_s.tobytes(), raw=True),
+            numpy_helper.from_array(fc2_w, name="fc2_w"),
+            helper.make_tensor("fc2_s", TensorProto.FLOAT8E4M3FN, fc2_s.shape, fc2_s.tobytes(), raw=True),
+            numpy_helper.from_array(fc1_g, name="fc1_g"),
+            numpy_helper.from_array(fc2_g, name="fc2_g"),
+        ]
+        graph = helper.make_graph(
+            [node],
+            "qmoe_nvfp4_test",
+            [
+                helper.make_tensor_value_info("X", TensorProto.BFLOAT16, [1, "S", hidden]),
+                helper.make_tensor_value_info("R", TensorProto.BFLOAT16, ["S", experts]),
+            ],
+            [helper.make_tensor_value_info("Y", TensorProto.BFLOAT16, [1, "S", hidden])],
+            inits,
+        )
+        return (
+            helper.make_model(
+                graph, opset_imports=[helper.make_opsetid("", 18), helper.make_opsetid("com.microsoft", 1)]
+            ),
+            banks,
+        )
+
+    @staticmethod
+    def _run_bf16_session(sess, x_bf16, r_bf16):
+        ort_x = ort.OrtValue.ortvalue_from_numpy_with_onnx_type(x_bf16, TensorProto.BFLOAT16)
+        ort_r = ort.OrtValue.ortvalue_from_numpy_with_onnx_type(r_bf16, TensorProto.BFLOAT16)
+        out_ort = sess.run_with_ort_values(["Y"], {"X": ort_x, "R": ort_r})[0]
+        return bf16_uint16_to_float32(
+            np.frombuffer(ctypes.string_at(out_ort.data_ptr(), x_bf16.size * 2), dtype=np.uint16).reshape(x_bf16.shape)
+        )
+
+    def test_numa_striping_and_worker_pinning(self):
+        """Verifies NUMA page striping (ApplyNumaInterleavePolicy) and SpinPool socket-balanced worker pinning."""
+        cpp_src = r"""
+#include <cassert>
+#include <thread>
+#include <vector>
+#include "contrib_ops/cuda/moe/qmoe_spin_pool.h"
+using namespace onnxruntime::contrib::cuda::qmoe;
+int main() {
+    std::vector<uint8_t> buf(1 << 20, 0);
+    // ApplyNumaInterleavePolicy safely succeeds on multi-node Linux hosts and never crashes.
+    (void)ApplyNumaInterleavePolicy(buf.data(), buf.size());
+    SpinPool pool(8, 1000);
+    if (pool.NumaNodeCount() > 0) {
+        while (pool.PinnedWorkerCount() < 7) {
+            std::this_thread::yield();
+        }
+        assert(pool.PinnedWorkerCount() == 7);
+    }
+    std::atomic<int> sum{0};
+    auto fn = [&](ptrdiff_t idx) { sum.fetch_add(static_cast<int>(idx + 1)); };
+    pool.ParallelFor(16, fn, 1);
+    assert(sum.load() == 16 * 17 / 2);
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            bin_path = Path(tmp) / "test_numa"
+            subprocess.run(
+                [
+                    "g++",
+                    "-O2",
+                    "-std=c++20",
+                    "-pthread",
+                    f"-I{ORT_ROOT / 'onnxruntime'}",
+                    "-x",
+                    "c++",
+                    "-",
+                    "-o",
+                    str(bin_path),
+                ],
+                input=cpp_src.encode(),
+                check=True,
+            )
+            subprocess.run([str(bin_path)], check=True)
+
+    def test_multi_row_rt1_to_rt4_cpu_reuse(self):
+        """Verifies RT=1..4 contiguous token zero-copy activation reuse and Fp4Group8Avx512<RT> accuracy."""
+        rng = np.random.default_rng(701)
+        experts, hidden, inter, top_k = 8, 128, 64, 2
+        m_cpu, banks = self._make_nvfp4_test_model(rng, experts, hidden, inter, top_k, resident_slots=0)
+        m_gpu, _ = self._make_nvfp4_test_model(
+            rng, experts, hidden, inter, top_k, resident_slots=experts, initial_experts=list(range(experts)), banks=banks
+        )
+        old_env = os.environ.get("ORT_QMOE_SHARED_ASYNC")
+        try:
+            os.environ["ORT_QMOE_SHARED_ASYNC"] = "1"
+            sess_cpu = make_plugin_session(m_cpu)
+            sess_gpu = make_plugin_session(m_gpu)
+            for rt in (1, 2, 3, 4):
+                x_f32 = rng.standard_normal((1, rt, hidden)).astype(np.float32) * 0.25
+                # Route all rt tokens to the same top-2 experts (0 and 1) so cnt == rt triggers Fp4RowTileAvx512<rt>!
+                r_f32 = np.full((rt, experts), -5.0, dtype=np.float32)
+                r_f32[:, 0] = 4.0
+                r_f32[:, 1] = 3.0
+                x_bf16 = float32_to_bf16_uint16(x_f32)
+                r_bf16 = float32_to_bf16_uint16(r_f32)
+                y_cpu = self._run_bf16_session(sess_cpu, x_bf16, r_bf16)
+                y_gpu = self._run_bf16_session(sess_gpu, x_bf16, r_bf16)
+                np.testing.assert_allclose(y_cpu, y_gpu, rtol=2e-2, atol=2e-2)
+            del sess_cpu, sess_gpu
+            gc.collect()
+        finally:
+            if old_env is None:
+                os.environ.pop("ORT_QMOE_SHARED_ASYNC", None)
+            else:
+                os.environ["ORT_QMOE_SHARED_ASYNC"] = old_env
+
+    def test_doorbell_and_cuda_graph_capture(self):
+        """Verifies Device-Doorbell Host Worker Protocol and CUDA Graph Capture/Replay on QMoEOffload."""
+        rng = np.random.default_rng(702)
+        experts, hidden, inter, top_k = 8, 128, 64, 2
+        m_ref, banks = self._make_nvfp4_test_model(
+            rng, experts, hidden, inter, top_k, resident_slots=4, spare_slots=2, initial_experts=[0, 1, 2, 3]
+        )
+        m_doorbell, _ = self._make_nvfp4_test_model(
+            rng,
+            experts,
+            hidden,
+            inter,
+            top_k,
+            resident_slots=4,
+            spare_slots=2,
+            initial_experts=[0, 1, 2, 3],
+            extra_attrs={"allow_cuda_graph": 1},
+            banks=banks,
+        )
+
+        x_f32 = rng.standard_normal((1, 2, hidden)).astype(np.float32) * 0.25
+        r_f32 = rng.standard_normal((2, experts)).astype(np.float32)
+        x_bf16 = float32_to_bf16_uint16(x_f32)
+        r_bf16 = float32_to_bf16_uint16(r_f32)
+
+        old_doorbell = os.environ.get("ORT_QMOE_DOORBELL")
+        old_allow_cg = os.environ.get("ORT_QMOE_ALLOW_CUDA_GRAPH")
+        try:
+            os.environ["ORT_QMOE_DOORBELL"] = "0"
+            sess_ref = make_plugin_session(m_ref)
+            y_ref = self._run_bf16_session(sess_ref, x_bf16, r_bf16)
+            del sess_ref
+            gc.collect()
+
+            os.environ["ORT_QMOE_DOORBELL"] = "1"
+            os.environ["ORT_QMOE_ALLOW_CUDA_GRAPH"] = "1"
+            ep_name = ensure_plugin_registered()
+            devices = [
+                d for d in ort.get_ep_devices() if d.ep_name == ep_name and d.device.type == ort.OrtHardwareDeviceType.GPU
+            ]
+            devices.sort(key=lambda d: int(d.ep_options.get("device_id", d.ep_metadata.get("cuda_device_id", "0"))))
+            opts = ort.SessionOptions()
+            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+            opts.add_provider_for_devices(
+                [devices[0]], {"enable_cuda_graph": "1", "min_num_runs_before_cuda_graph_capture": "2"}
+            )
+            # Build a model with Cast(BFLOAT16 -> FLOAT) output so OrtValue(..., "cuda", 0) and .numpy() work directly on GPU!
+            cast_out = helper.make_node("Cast", inputs=["Y"], outputs=["Y_f32"], to=TensorProto.FLOAT)
+            m_doorbell.graph.node.append(cast_out)
+            del m_doorbell.graph.output[:]
+            m_doorbell.graph.output.append(helper.make_tensor_value_info("Y_f32", TensorProto.FLOAT, [1, "S", hidden]))
+            cast_in_x = helper.make_node("Cast", inputs=["X_f32"], outputs=["X"], to=TensorProto.BFLOAT16)
+            cast_in_r = helper.make_node("Cast", inputs=["R_f32"], outputs=["R"], to=TensorProto.BFLOAT16)
+            m_doorbell.graph.node.insert(0, cast_in_r)
+            m_doorbell.graph.node.insert(0, cast_in_x)
+            del m_doorbell.graph.input[:]
+            m_doorbell.graph.input.extend(
+                [
+                    helper.make_tensor_value_info("X_f32", TensorProto.FLOAT, [1, "S", hidden]),
+                    helper.make_tensor_value_info("R_f32", TensorProto.FLOAT, ["S", experts]),
+                ]
+            )
+
+            sess_cg = ort.InferenceSession(m_doorbell.SerializeToString(), sess_options=opts)
+            io_binding = sess_cg.io_binding()
+            io_binding.bind_cpu_input("X_f32", x_f32)
+            io_binding.bind_cpu_input("R_f32", r_f32)
+            io_binding.bind_output("Y_f32", "cuda", 0)
+            # Run 6 times: runs 1-2 eager warmup with Device-Doorbell, run 3 capture + replay, runs 4-6 CUDA Graph replay!
+            for _ in range(6):
+                io_binding.synchronize_inputs()
+                sess_cg.run_with_iobinding(io_binding)
+                y_cg = io_binding.copy_outputs_to_cpu()[0]
+                np.testing.assert_allclose(y_cg, y_ref, rtol=1e-3, atol=1e-3)
+            del sess_cg
+            gc.collect()
+        finally:
+            if old_doorbell is None:
+                os.environ.pop("ORT_QMOE_DOORBELL", None)
+            else:
+                os.environ["ORT_QMOE_DOORBELL"] = old_doorbell
+            if old_allow_cg is None:
+                os.environ.pop("ORT_QMOE_ALLOW_CUDA_GRAPH", None)
+            else:
+                os.environ["ORT_QMOE_ALLOW_CUDA_GRAPH"] = old_allow_cg
+
+    def test_disjoint_host_complement_mode_and_ssd_tier(self):
+        """Verifies Disjoint Host Complement Mode (D2H eviction writeback) and SSD FileExpertStore tier."""
+        rng = np.random.default_rng(703)
+        experts, hidden, inter, top_k = 8, 128, 64, 2
+        m_ref, banks = self._make_nvfp4_test_model(rng, experts, hidden, inter, top_k, resident_slots=0)
+        m_comp, _ = self._make_nvfp4_test_model(
+            rng,
+            experts,
+            hidden,
+            inter,
+            top_k,
+            resident_slots=3,
+            spare_slots=1,
+            initial_experts=[0, 1, 2],
+            extra_attrs={"host_complement_mode": 1},
+            banks=banks,
+        )
+        m_ssd, _ = self._make_nvfp4_test_model(
+            rng,
+            experts,
+            hidden,
+            inter,
+            top_k,
+            resident_slots=2,
+            spare_slots=1,
+            initial_experts=[0, 1],
+            extra_attrs={"ssd_cache_slots": 3},
+            banks=banks,
+        )
+
+        sess_ref = make_plugin_session(m_ref)
+        sess_comp = make_plugin_session(m_comp)
+        sess_ssd = make_plugin_session(m_ssd)
+        try:
+            # Cycle routes across cold experts (3..7) and previously resident experts (0..2) to trigger
+            # D2H eviction writebacks and subsequent CPU execution of evicted experts from complement_host_slab_!
+            for step in range(8):
+                x_f32 = rng.standard_normal((1, 2, hidden)).astype(np.float32) * 0.25
+                r_f32 = np.full((2, experts), -5.0, dtype=np.float32)
+                e0 = (3 + step) % experts
+                e1 = (4 + step) % experts
+                r_f32[:, e0] = 5.0
+                r_f32[:, e1] = 4.0
+                x_bf16 = float32_to_bf16_uint16(x_f32)
+                r_bf16 = float32_to_bf16_uint16(r_f32)
+                y_ref = self._run_bf16_session(sess_ref, x_bf16, r_bf16)
+                y_comp = self._run_bf16_session(sess_comp, x_bf16, r_bf16)
+                y_ssd = self._run_bf16_session(sess_ssd, x_bf16, r_bf16)
+                np.testing.assert_allclose(y_comp, y_ref, rtol=2e-2, atol=2e-2)
+                np.testing.assert_allclose(y_ssd, y_ref, rtol=2e-2, atol=2e-2)
+        finally:
+            del sess_ref, sess_comp, sess_ssd
+            gc.collect()
+
 
 if __name__ == "__main__":
     unittest.main()

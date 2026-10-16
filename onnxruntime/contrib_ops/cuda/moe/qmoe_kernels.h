@@ -73,14 +73,19 @@ cudaError_t LaunchQMoEOffloadClassify(
     const int* topk_indices, const int* expert_slot, int route_count, int row_count,
     int* hit_ids, int* hit_compact, int* hit_flag, cudaStream_t stream,
     int dummy_slot = 0, float* unit_scales = nullptr, int* identity_permutation = nullptr,
-    int k_for_source_rows = 0);
+    int k_for_source_rows = 0, int* host_indices_out = nullptr,
+    const void* input_dev = nullptr, void* host_input_out = nullptr, int input_vec4_count = 0,
+    uint64_t* doorbell_seq_dev = nullptr, volatile uint64_t* doorbell_req_host = nullptr,
+    volatile int32_t* doorbell_tile_rows_host = nullptr, int tile_rows = 0);
 
 cudaError_t LaunchQMoEOffloadMerge(
     const half* wave_output, const half* cpu_rows, const int* hit_flag, half* contributions,
-    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream);
+    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream,
+    const uint64_t* doorbell_seq_dev = nullptr, const volatile uint64_t* doorbell_done_host = nullptr);
 cudaError_t LaunchQMoEOffloadMerge(
     const __nv_bfloat16* wave_output, const __nv_bfloat16* cpu_rows, const int* hit_flag, __nv_bfloat16* contributions,
-    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream);
+    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream,
+    const uint64_t* doorbell_seq_dev = nullptr, const volatile uint64_t* doorbell_done_host = nullptr);
 
 // Decode-only fused routing: softmax + top-k (bit-identical to LaunchSoftmaxTopK) and the (expert, token)-sorted expert
 // maps of fusedBuildExpertMapsSortFirstToken in one single-CTA launch. Returns false (nothing launched) outside its

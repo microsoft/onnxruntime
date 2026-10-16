@@ -17,7 +17,129 @@
 #include <intrin.h>
 #endif
 
+#if defined(__linux__)
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <pthread.h>
+#include <sched.h>
+#include <string>
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
+
 namespace onnxruntime::contrib::cuda::qmoe {
+
+#if defined(__linux__)
+inline void ParseLinuxCpuRangeList(const std::string& text, std::vector<int>* out) {
+  size_t pos = 0;
+  while (pos < text.size()) {
+    while (pos < text.size() && (text[pos] == ' ' || text[pos] == '\t' || text[pos] == '\n' || text[pos] == ',')) {
+      ++pos;
+    }
+    if (pos >= text.size()) break;
+    size_t end = pos;
+    while (end < text.size() && text[end] != ',' && text[end] != '\n') ++end;
+    const std::string token = text.substr(pos, end - pos);
+    const size_t dash = token.find('-');
+    try {
+      if (dash == std::string::npos) {
+        out->push_back(std::stoi(token));
+      } else {
+        const int lo = std::stoi(token.substr(0, dash));
+        const int hi = std::stoi(token.substr(dash + 1));
+        for (int v = lo; v <= hi; ++v) out->push_back(v);
+      }
+    } catch (...) {
+    }
+    pos = end + 1;
+  }
+}
+
+inline std::vector<int> DiscoverLinuxMemoryNodes() {
+  std::vector<int> nodes;
+  std::ifstream in("/sys/devices/system/node/has_memory");
+  if (!in) in.open("/sys/devices/system/node/online");
+  if (in) {
+    std::string line;
+    std::getline(in, line);
+    ParseLinuxCpuRangeList(line, &nodes);
+  }
+  return nodes;
+}
+
+inline std::vector<cpu_set_t> DiscoverAllowedNumaNodeCpuSets() {
+  std::vector<cpu_set_t> node_sets;
+  cpu_set_t allowed;
+  CPU_ZERO(&allowed);
+  if (sched_getaffinity(0, sizeof(cpu_set_t), &allowed) != 0) {
+    return node_sets;
+  }
+  const std::vector<int> nodes = DiscoverLinuxMemoryNodes();
+  for (int node : nodes) {
+    std::ifstream in("/sys/devices/system/node/node" + std::to_string(node) + "/cpulist");
+    if (!in) continue;
+    std::string line;
+    std::getline(in, line);
+    std::vector<int> cpus;
+    ParseLinuxCpuRangeList(line, &cpus);
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    int count = 0;
+    for (int cpu : cpus) {
+      if (cpu >= 0 && cpu < CPU_SETSIZE && CPU_ISSET(cpu, &allowed)) {
+        CPU_SET(cpu, &mask);
+        ++count;
+      }
+    }
+    if (count > 0) {
+      node_sets.push_back(mask);
+    }
+  }
+  return node_sets;
+}
+#endif
+
+// Applies MPOL_INTERLEAVE page striping across online NUMA memory nodes on Linux so dual-socket
+// DDR5 channels are balanced regardless of which socket first faults the expert weight pages.
+inline bool ApplyNumaInterleavePolicy(const void* addr, size_t bytes) noexcept {
+#if defined(__linux__) && defined(__NR_mbind)
+  if (addr == nullptr || bytes == 0) return false;
+  if (const char* env = std::getenv("ORT_QMOE_NUMA_INTERLEAVE"); env != nullptr && std::strcmp(env, "0") == 0) {
+    return false;
+  }
+  static const unsigned long kNodeMask = []() -> unsigned long {
+    unsigned long mask = 0;
+    const auto nodes = DiscoverLinuxMemoryNodes();
+    if (nodes.size() < 2) return 0;
+    for (int n : nodes) {
+      if (n >= 0 && static_cast<size_t>(n) < sizeof(unsigned long) * 8) {
+        mask |= (1UL << n);
+      }
+    }
+    return mask;
+  }();
+  if (kNodeMask == 0) return false;
+  const size_t page_size = 4096;
+  const uintptr_t raw = reinterpret_cast<uintptr_t>(addr);
+  const uintptr_t aligned_start = raw & ~(static_cast<uintptr_t>(page_size) - 1);
+  const size_t aligned_len = ((raw + bytes - aligned_start) + page_size - 1) & ~(page_size - 1);
+  constexpr int kMpolInterleave = 3;
+  constexpr unsigned kMpolMfMove = (1u << 1);
+  const unsigned long maxnode = sizeof(unsigned long) * 8;
+  long rc = syscall(__NR_mbind, reinterpret_cast<void*>(aligned_start), static_cast<unsigned long>(aligned_len),
+                    kMpolInterleave, &kNodeMask, maxnode, 0u);
+  if (rc != 0) {
+    rc = syscall(__NR_mbind, reinterpret_cast<void*>(aligned_start), static_cast<unsigned long>(aligned_len),
+                 kMpolInterleave, &kNodeMask, maxnode, kMpolMfMove);
+  }
+  return rc == 0;
+#else
+  (void)addr;
+  (void)bytes;
+  return false;
+#endif
+}
 
 inline size_t SpinPoolBatchSize(size_t count, size_t threads, size_t requested) {
   return std::min(requested, std::max(size_t{1}, count / threads));
@@ -30,7 +152,17 @@ class SpinPool final {
  public:
   explicit SpinPool(int threads, int spin_us = 2000) : spin_us_(spin_us) {
     if (threads < 1) throw std::invalid_argument("QMoE pool threads must be positive.");
-    for (int worker = 1; worker < threads; ++worker) workers_.emplace_back([this] { Loop(); });
+#if defined(__linux__)
+    const char* pin_env = std::getenv("ORT_QMOE_NUMA_PIN_WORKERS");
+    const bool enable_pin = (pin_env == nullptr || std::strcmp(pin_env, "0") != 0);
+    if (enable_pin) {
+      node_masks_ = DiscoverAllowedNumaNodeCpuSets();
+    }
+    numa_node_count_ = static_cast<int>(node_masks_.size());
+#endif
+    for (int worker = 1; worker < threads; ++worker) {
+      workers_.emplace_back([this, worker] { Loop(worker); });
+    }
   }
 
   ~SpinPool() {
@@ -52,6 +184,14 @@ class SpinPool final {
 
   int ThreadCount() const noexcept {
     return static_cast<int>(workers_.size()) + 1;
+  }
+
+  int NumaNodeCount() const noexcept {
+    return numa_node_count_;
+  }
+
+  int PinnedWorkerCount() const noexcept {
+    return pinned_workers_.load(std::memory_order_acquire);
   }
 
   template <typename Function>
@@ -116,7 +256,17 @@ class SpinPool final {
 #endif
   }
 
-  void Loop() {
+  void Loop(int worker_idx) {
+#if defined(__linux__)
+    if (!node_masks_.empty()) {
+      const size_t node_slot = static_cast<size_t>(worker_idx) % node_masks_.size();
+      if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &node_masks_[node_slot]) == 0) {
+        pinned_workers_.fetch_add(1, std::memory_order_release);
+      }
+    }
+#else
+    (void)worker_idx;
+#endif
     while (!stop_.load(std::memory_order_relaxed)) {
       RunTasks();
       auto idle_since = std::chrono::steady_clock::now();
@@ -137,6 +287,11 @@ class SpinPool final {
   }
 
   std::atomic<int> spin_us_{2000};
+  int numa_node_count_{0};
+  std::atomic<int> pinned_workers_{0};
+#if defined(__linux__)
+  std::vector<cpu_set_t> node_masks_;
+#endif
   std::vector<std::thread> workers_;
   std::atomic<bool> stop_{false};
   std::atomic<uint64_t> ticket_{0};

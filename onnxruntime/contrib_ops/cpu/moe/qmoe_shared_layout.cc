@@ -2,9 +2,22 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
+#include <condition_variable>
+#include <cstdlib>
 #include <cstring>
+#include <deque>
+#include <fstream>
+#include <mutex>
+#include <string>
+#include <thread>
 #include <vector>
+
+#if !defined(_WIN32)
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 #include "core/session/onnxruntime_float16.h"
 
@@ -405,6 +418,408 @@ bool TensorExpertStore::Prefetch(const int32_t* expert_ids, size_t count, uint64
     if (expert_ids[i] < 0 || static_cast<int64_t>(expert_ids[i]) >= num_experts_) return false;
   }
   return true;
+}
+
+struct FileExpertStore::Impl {
+  enum SlotState : uint8_t {
+    kEmpty = 0,
+    kLoading = 1,
+    kReady = 2,
+  };
+  struct PrefetchReq {
+    int32_t expert_id = -1;
+    uint64_t generation = 0;
+  };
+
+#if !defined(_WIN32)
+  int fd = -1;
+#endif
+  std::string file_path;
+  uint64_t file_offset = 0;
+  int64_t num_experts = 0;
+  size_t expert_stride = 0;
+  size_t cache_slots = 0;
+  size_t min_alignment = 256;
+  uint64_t content_id = 0;
+
+  uint8_t* raw_alloc = nullptr;
+  uint8_t* aligned_base = nullptr;
+
+  mutable std::mutex mutex;
+  std::condition_variable cv;
+  std::condition_variable worker_cv;
+  std::vector<int32_t> expert_to_slot;
+  std::vector<int32_t> slot_expert;
+  std::vector<SlotState> slot_state;
+  std::vector<uint32_t> slot_pins;
+  std::vector<uint64_t> slot_lru;
+  std::vector<uint8_t> slot_prefetched;
+  uint64_t lru_clock = 0;
+
+  std::deque<PrefetchReq> prefetch_queue;
+  uint64_t latest_generation = 0;
+  bool worker_busy = false;
+  bool stop_worker = false;
+  std::thread worker_thread;
+
+  std::atomic<uint64_t> cache_hits{0};
+  std::atomic<uint64_t> prefetch_hits{0};
+  std::atomic<uint64_t> ssd_misses{0};
+  std::atomic<uint64_t> bytes_read{0};
+
+  bool ReadExpertFromDisk(int32_t expert_id, uint8_t* dst) noexcept {
+    const uint64_t offset = file_offset + static_cast<uint64_t>(expert_id) * expert_stride;
+#if !defined(_WIN32)
+    if (fd >= 0) {
+      size_t done = 0;
+      while (done < expert_stride) {
+        const ssize_t r = pread(fd, dst + done, expert_stride - done, static_cast<off_t>(offset + done));
+        if (r <= 0) return false;
+        done += static_cast<size_t>(r);
+      }
+      bytes_read.fetch_add(expert_stride, std::memory_order_relaxed);
+      return true;
+    }
+#endif
+    std::ifstream in(file_path, std::ios::binary);
+    if (!in) return false;
+    in.seekg(static_cast<std::streamoff>(offset));
+    if (!in.read(reinterpret_cast<char*>(dst), static_cast<std::streamsize>(expert_stride))) return false;
+    bytes_read.fetch_add(expert_stride, std::memory_order_relaxed);
+    return true;
+  }
+
+  int SelectVictimSlotLocked() noexcept {
+    // Prefer an empty slot first.
+    for (size_t s = 0; s < cache_slots; ++s) {
+      if (slot_state[s] == kEmpty && slot_pins[s] == 0) {
+        return static_cast<int>(s);
+      }
+    }
+    // Otherwise pick the unpinned Ready slot with minimum LRU timestamp.
+    int best_slot = -1;
+    uint64_t best_lru = std::numeric_limits<uint64_t>::max();
+    for (size_t s = 0; s < cache_slots; ++s) {
+      if (slot_state[s] == kReady && slot_pins[s] == 0 && slot_lru[s] < best_lru) {
+        best_lru = slot_lru[s];
+        best_slot = static_cast<int>(s);
+      }
+    }
+    if (best_slot >= 0) {
+      const int32_t old_exp = slot_expert[best_slot];
+      if (old_exp >= 0 && static_cast<int64_t>(old_exp) < num_experts) {
+        expert_to_slot[old_exp] = -1;
+      }
+      slot_expert[best_slot] = -1;
+      slot_state[best_slot] = kEmpty;
+      slot_prefetched[best_slot] = 0;
+    }
+    return best_slot;
+  }
+
+  void WorkerLoop() {
+    std::unique_lock<std::mutex> lock(mutex);
+    while (!stop_worker) {
+      if (prefetch_queue.empty()) {
+        worker_busy = false;
+        cv.notify_all();
+        worker_cv.wait(lock, [this] { return stop_worker || !prefetch_queue.empty(); });
+        continue;
+      }
+      worker_busy = true;
+      const PrefetchReq req = prefetch_queue.front();
+      prefetch_queue.pop_front();
+      if (req.generation < latest_generation || req.expert_id < 0 ||
+          static_cast<int64_t>(req.expert_id) >= num_experts) {
+        continue;
+      }
+      if (expert_to_slot[req.expert_id] >= 0) {
+        continue;
+      }
+      const int victim = SelectVictimSlotLocked();
+      if (victim < 0) {
+        continue;
+      }
+      expert_to_slot[req.expert_id] = victim;
+      slot_expert[victim] = req.expert_id;
+      slot_state[victim] = kLoading;
+      slot_prefetched[victim] = 1;
+      uint8_t* dst = aligned_base + static_cast<size_t>(victim) * expert_stride;
+      lock.unlock();
+      const bool ok = ReadExpertFromDisk(req.expert_id, dst);
+      lock.lock();
+      if (ok && slot_expert[victim] == req.expert_id) {
+        slot_state[victim] = kReady;
+        slot_lru[victim] = ++lru_clock;
+      } else {
+        if (slot_expert[victim] == req.expert_id) {
+          expert_to_slot[req.expert_id] = -1;
+          slot_expert[victim] = -1;
+          slot_state[victim] = kEmpty;
+          slot_prefetched[victim] = 0;
+        }
+      }
+      cv.notify_all();
+    }
+    worker_busy = false;
+    cv.notify_all();
+  }
+};
+
+FileExpertStore::~FileExpertStore() noexcept {
+  Shutdown();
+}
+
+void FileExpertStore::Shutdown() noexcept {
+  if (!impl_) return;
+  {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    impl_->stop_worker = true;
+    impl_->prefetch_queue.clear();
+  }
+  impl_->worker_cv.notify_all();
+  if (impl_->worker_thread.joinable()) {
+    impl_->worker_thread.join();
+  }
+#if !defined(_WIN32)
+  if (impl_->fd >= 0) {
+    close(impl_->fd);
+    impl_->fd = -1;
+  }
+#endif
+  if (impl_->raw_alloc) {
+    std::free(impl_->raw_alloc);
+    impl_->raw_alloc = nullptr;
+    impl_->aligned_base = nullptr;
+  }
+  delete impl_;
+  impl_ = nullptr;
+  initialized_ = false;
+}
+
+bool FileExpertStore::Initialize(const char* file_path, uint64_t file_offset, int64_t num_experts,
+                                 size_t expert_stride, size_t cache_slots, size_t min_required_alignment,
+                                 uint64_t model_content_id) noexcept {
+  Shutdown();
+  if (file_path == nullptr || num_experts <= 0 || expert_stride == 0 || cache_slots == 0 ||
+      min_required_alignment == 0 || (min_required_alignment & (min_required_alignment - 1)) != 0) {
+    return false;
+  }
+  size_t total_expert_bytes = 0;
+  if (!ValidateExpertStorageRange(num_experts, expert_stride, file_offset, 0, &total_expert_bytes)) {
+    return false;
+  }
+  if (file_offset > std::numeric_limits<uint64_t>::max() - static_cast<uint64_t>(total_expert_bytes)) {
+    return false;
+  }
+  const size_t eff_slots = std::min<size_t>(cache_slots, static_cast<size_t>(num_experts));
+  size_t cache_bytes = 0;
+  if (!CheckedMulSize(eff_slots, expert_stride, &cache_bytes)) {
+    return false;
+  }
+  const size_t align = std::max<size_t>(min_required_alignment, kBankAlignment);
+  if ((expert_stride % min_required_alignment) != 0) {
+    return false;
+  }
+  size_t alloc_bytes = 0;
+  if (!CheckedAddSize(cache_bytes, align, &alloc_bytes)) {
+    return false;
+  }
+
+#if !defined(_WIN32)
+  const int fd = open(file_path, O_RDONLY);
+  if (fd < 0) return false;
+  const off_t file_len = lseek(fd, 0, SEEK_END);
+  if (file_len < 0 || static_cast<uint64_t>(file_len) < file_offset + static_cast<uint64_t>(total_expert_bytes)) {
+    close(fd);
+    return false;
+  }
+#else
+  std::ifstream check_in(file_path, std::ios::binary | std::ios::ate);
+  if (!check_in) return false;
+  const auto file_len = check_in.tellg();
+  if (file_len < 0 || static_cast<uint64_t>(file_len) < file_offset + static_cast<uint64_t>(total_expert_bytes)) {
+    return false;
+  }
+#endif
+
+  uint8_t* raw = static_cast<uint8_t*>(std::malloc(alloc_bytes));
+  if (!raw) {
+#if !defined(_WIN32)
+    close(fd);
+#endif
+    return false;
+  }
+  const uintptr_t raw_addr = reinterpret_cast<uintptr_t>(raw);
+  const uintptr_t aligned_addr = (raw_addr + align - 1) & ~(static_cast<uintptr_t>(align) - 1);
+
+  Impl* impl = new (std::nothrow) Impl();
+  if (!impl) {
+    std::free(raw);
+#if !defined(_WIN32)
+    close(fd);
+#endif
+    return false;
+  }
+#if !defined(_WIN32)
+  impl->fd = fd;
+#endif
+  impl->file_path = file_path;
+  impl->file_offset = file_offset;
+  impl->num_experts = num_experts;
+  impl->expert_stride = expert_stride;
+  impl->cache_slots = eff_slots;
+  impl->min_alignment = min_required_alignment;
+  impl->raw_alloc = raw;
+  impl->aligned_base = reinterpret_cast<uint8_t*>(aligned_addr);
+  try {
+    impl->expert_to_slot.assign(static_cast<size_t>(num_experts), -1);
+    impl->slot_expert.assign(eff_slots, -1);
+    impl->slot_state.assign(eff_slots, Impl::kEmpty);
+    impl->slot_pins.assign(eff_slots, 0);
+    impl->slot_lru.assign(eff_slots, 0);
+    impl->slot_prefetched.assign(eff_slots, 0);
+    if (model_content_id == 0) {
+      uint64_t h = 14695981039346656037ULL;
+      for (char c : impl->file_path) {
+        h ^= static_cast<uint64_t>(static_cast<uint8_t>(c));
+        h *= 1099511628211ULL;
+      }
+      model_content_id = h ^ static_cast<uint64_t>(total_expert_bytes) ^ file_offset;
+    }
+    impl->content_id = model_content_id;
+    impl->worker_thread = std::thread([impl] { impl->WorkerLoop(); });
+  } catch (...) {
+#if !defined(_WIN32)
+    if (impl->fd >= 0) close(impl->fd);
+#endif
+    std::free(raw);
+    delete impl;
+    return false;
+  }
+
+  impl_ = impl;
+  initialized_ = true;
+  num_experts_ = num_experts;
+  expert_stride_ = expert_stride;
+  cache_slots_ = eff_slots;
+  model_content_id_ = model_content_id;
+  return true;
+}
+
+bool FileExpertStore::AcquireReady(int32_t expert_id, ExpertBlockLease* out_lease) noexcept {
+  if (!initialized_ || !impl_ || out_lease == nullptr || expert_id < 0 ||
+      static_cast<int64_t>(expert_id) >= num_experts_) {
+    return false;
+  }
+  std::unique_lock<std::mutex> lock(impl_->mutex);
+  while (true) {
+    const int slot = impl_->expert_to_slot[expert_id];
+    if (slot >= 0) {
+      if (impl_->slot_state[slot] == Impl::kReady) {
+        if (impl_->slot_prefetched[slot]) {
+          impl_->prefetch_hits.fetch_add(1, std::memory_order_relaxed);
+          impl_->slot_prefetched[slot] = 0;
+        } else {
+          impl_->cache_hits.fetch_add(1, std::memory_order_relaxed);
+        }
+        ++impl_->slot_pins[slot];
+        impl_->slot_lru[slot] = ++impl_->lru_clock;
+        const uint8_t* ptr = impl_->aligned_base + static_cast<size_t>(slot) * expert_stride_;
+        if (!MakeExpertBlockLease(ptr, expert_stride_, impl_->min_alignment, out_lease)) {
+          --impl_->slot_pins[slot];
+          return false;
+        }
+        out_lease->content_id = model_content_id_;
+        return true;
+      }
+      // Currently loading by prefetch or another thread: wait for completion.
+      impl_->cv.wait(lock);
+      continue;
+    }
+
+    // Cold SSD miss: allocate a victim slot in the RAM cache.
+    const int victim = impl_->SelectVictimSlotLocked();
+    if (victim < 0) {
+      return false;
+    }
+    impl_->ssd_misses.fetch_add(1, std::memory_order_relaxed);
+    impl_->expert_to_slot[expert_id] = victim;
+    impl_->slot_expert[victim] = expert_id;
+    impl_->slot_state[victim] = Impl::kLoading;
+    impl_->slot_pins[victim] = 1;
+    impl_->slot_prefetched[victim] = 0;
+    uint8_t* dst = impl_->aligned_base + static_cast<size_t>(victim) * expert_stride_;
+    lock.unlock();
+    const bool ok = impl_->ReadExpertFromDisk(expert_id, dst);
+    lock.lock();
+    if (!ok) {
+      impl_->expert_to_slot[expert_id] = -1;
+      impl_->slot_expert[victim] = -1;
+      impl_->slot_state[victim] = Impl::kEmpty;
+      impl_->slot_pins[victim] = 0;
+      impl_->cv.notify_all();
+      return false;
+    }
+    impl_->slot_state[victim] = Impl::kReady;
+    impl_->slot_lru[victim] = ++impl_->lru_clock;
+    impl_->cv.notify_all();
+    if (!MakeExpertBlockLease(dst, expert_stride_, impl_->min_alignment, out_lease)) {
+      --impl_->slot_pins[victim];
+      return false;
+    }
+    out_lease->content_id = model_content_id_;
+    return true;
+  }
+}
+
+void FileExpertStore::ReleaseLease(int32_t expert_id) noexcept {
+  if (!initialized_ || !impl_ || expert_id < 0 || static_cast<int64_t>(expert_id) >= num_experts_) return;
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  const int slot = impl_->expert_to_slot[expert_id];
+  if (slot >= 0 && impl_->slot_pins[slot] > 0) {
+    --impl_->slot_pins[slot];
+  }
+}
+
+bool FileExpertStore::Prefetch(const int32_t* expert_ids, size_t count, uint64_t generation) noexcept {
+  if (!initialized_ || !impl_ || (count > 0 && expert_ids == nullptr)) return false;
+  for (size_t i = 0; i < count; ++i) {
+    if (expert_ids[i] < 0 || static_cast<int64_t>(expert_ids[i]) >= num_experts_) return false;
+  }
+  {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    if (generation > impl_->latest_generation) {
+      impl_->latest_generation = generation;
+    }
+    for (size_t i = 0; i < count; ++i) {
+      const int32_t e = expert_ids[i];
+      if (impl_->expert_to_slot[e] < 0) {
+        impl_->prefetch_queue.push_back({e, generation});
+      }
+    }
+  }
+  impl_->worker_cv.notify_one();
+  return true;
+}
+
+void FileExpertStore::WaitPrefetchIdle() noexcept {
+  if (!initialized_ || !impl_) return;
+  std::unique_lock<std::mutex> lock(impl_->mutex);
+  impl_->cv.wait(lock, [this] { return impl_->prefetch_queue.empty() && !impl_->worker_busy; });
+}
+
+uint64_t FileExpertStore::CacheHits() const noexcept {
+  return impl_ ? impl_->cache_hits.load(std::memory_order_relaxed) : 0;
+}
+uint64_t FileExpertStore::PrefetchHits() const noexcept {
+  return impl_ ? impl_->prefetch_hits.load(std::memory_order_relaxed) : 0;
+}
+uint64_t FileExpertStore::SsdMisses() const noexcept {
+  return impl_ ? impl_->ssd_misses.load(std::memory_order_relaxed) : 0;
+}
+uint64_t FileExpertStore::BytesReadFromSsd() const noexcept {
+  return impl_ ? impl_->bytes_read.load(std::memory_order_relaxed) : 0;
 }
 
 bool ValidateExpertStorageRange(int64_t num_experts, size_t stride, uint64_t external_offset,

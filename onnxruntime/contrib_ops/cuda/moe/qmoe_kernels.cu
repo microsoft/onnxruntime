@@ -146,58 +146,153 @@ cudaError_t LaunchQMoEOffloadSourceRows(
 __global__ void QMoEOffloadClassifyKernel(
     const int* topk_indices, const int* expert_slot, int route_count, int row_count,
     int* hit_ids, int* hit_compact, int* hit_flag, int dummy_slot,
-    float* unit_scales, int* identity_permutation, int k_for_source_rows) {
+    float* unit_scales, int* identity_permutation, int k_for_source_rows,
+    int* host_indices_out, const uint4* input_dev, uint4* host_input_out, int input_vec4_count,
+    uint64_t* doorbell_seq_dev, volatile uint64_t* doorbell_req_host,
+    volatile int32_t* doorbell_tile_rows_host, int tile_rows) {
   const int row = blockIdx.x * blockDim.x + threadIdx.x;
-  if (row >= row_count) return;
-  if (unit_scales != nullptr) unit_scales[row] = 1.0f;
-  if (identity_permutation != nullptr) identity_permutation[row] = row;
-  const int route = row < route_count ? row : 0;
-  const int slot = (row < route_count) ? expert_slot[topk_indices[route]] : -1;
-  hit_ids[row] = (k_for_source_rows > 0 && row < route_count) ? (route / k_for_source_rows) : route;
-  hit_compact[row] = slot < 0 ? dummy_slot : slot;
-  if (row < route_count) hit_flag[row] = slot >= 0;
+  if (row < row_count) {
+    if (unit_scales != nullptr) unit_scales[row] = 1.0f;
+    if (identity_permutation != nullptr) identity_permutation[row] = row;
+    const int route = row < route_count ? row : 0;
+    const int exp = topk_indices[route];
+    const int slot = (row < route_count) ? expert_slot[exp] : -1;
+    hit_ids[row] = (k_for_source_rows > 0 && row < route_count) ? (route / k_for_source_rows) : route;
+    hit_compact[row] = slot < 0 ? dummy_slot : slot;
+    if (row < route_count) {
+      hit_flag[row] = slot >= 0;
+      if (host_indices_out != nullptr) {
+        host_indices_out[row] = exp;
+      }
+    }
+  }
+  if (input_dev != nullptr && host_input_out != nullptr) {
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < input_vec4_count; i += gridDim.x * blockDim.x) {
+      host_input_out[i] = input_dev[i];
+    }
+  }
+  if (doorbell_seq_dev != nullptr && doorbell_req_host != nullptr && gridDim.x == 1) {
+    __syncthreads();
+    if (threadIdx.x == 0) {
+      if (doorbell_tile_rows_host != nullptr) {
+        *doorbell_tile_rows_host = tile_rows;
+      }
+      __threadfence_system();
+      const uint64_t next_seq = *doorbell_seq_dev + 1;
+      *doorbell_seq_dev = next_seq;
+      *doorbell_req_host = next_seq;
+      __threadfence_system();
+    }
+  }
 }
 
 template <typename T>
 __global__ void QMoEOffloadMergeKernel(
     const T* wave_output, const T* cpu_rows, const int* hit_flag, T* contributions,
-    int hidden_size, int tile_rows, int k) {
+    int hidden_size, int tile_rows, int k,
+    const uint64_t* doorbell_seq_dev, const volatile uint64_t* doorbell_done_host) {
   const int route = blockIdx.x;
   const size_t target_row = static_cast<size_t>(route % k) * tile_rows + route / k;
-  const T* source = hit_flag[route] ? wave_output + static_cast<size_t>(route) * hidden_size
-                                    : cpu_rows + target_row * hidden_size;
-  for (size_t column = threadIdx.x; column < static_cast<size_t>(hidden_size); column += blockDim.x) {
-    contributions[target_row * hidden_size + column] = source[column];
+  const int is_hit = hit_flag[route];
+  T* dst = contributions + target_row * hidden_size;
+  if (is_hit) {
+    const T* source = wave_output + static_cast<size_t>(route) * hidden_size;
+    if ((hidden_size & 7) == 0) {
+      const uint4* src4 = reinterpret_cast<const uint4*>(source);
+      uint4* dst4 = reinterpret_cast<uint4*>(dst);
+      const size_t vec_count = static_cast<size_t>(hidden_size) >> 3;
+      for (size_t i = threadIdx.x; i < vec_count; i += blockDim.x) {
+        dst4[i] = src4[i];
+      }
+    } else {
+      for (size_t column = threadIdx.x; column < static_cast<size_t>(hidden_size); column += blockDim.x) {
+        dst[column] = source[column];
+      }
+    }
+    if (route == 0 && doorbell_seq_dev != nullptr && doorbell_done_host != nullptr && threadIdx.x == 0) {
+      const uint64_t expected = *doorbell_seq_dev;
+      while (*doorbell_done_host < expected) {
+#if __CUDA_ARCH__ >= 700
+        __nanosleep(100);
+#endif
+      }
+      __threadfence_system();
+    }
+  } else {
+    if (doorbell_seq_dev != nullptr && doorbell_done_host != nullptr) {
+      if (threadIdx.x == 0) {
+        const uint64_t expected = *doorbell_seq_dev;
+        while (*doorbell_done_host < expected) {
+#if __CUDA_ARCH__ >= 700
+          __nanosleep(100);
+#endif
+        }
+        __threadfence_system();
+      }
+      __syncthreads();
+    }
+    const T* source = cpu_rows + target_row * hidden_size;
+    if ((hidden_size & 7) == 0) {
+      const uint4* src4 = reinterpret_cast<const uint4*>(source);
+      uint4* dst4 = reinterpret_cast<uint4*>(dst);
+      const size_t vec_count = static_cast<size_t>(hidden_size) >> 3;
+      for (size_t i = threadIdx.x; i < vec_count; i += blockDim.x) {
+        dst4[i] = src4[i];
+      }
+    } else {
+      for (size_t column = threadIdx.x; column < static_cast<size_t>(hidden_size); column += blockDim.x) {
+        dst[column] = source[column];
+      }
+    }
   }
 }
 
 cudaError_t LaunchQMoEOffloadClassify(
     const int* topk_indices, const int* expert_slot, int route_count, int row_count,
     int* hit_ids, int* hit_compact, int* hit_flag, cudaStream_t stream, int dummy_slot,
-    float* unit_scales, int* identity_permutation, int k_for_source_rows) {
+    float* unit_scales, int* identity_permutation, int k_for_source_rows,
+    int* host_indices_out, const void* input_dev, void* host_input_out, int input_vec4_count,
+    uint64_t* doorbell_seq_dev, volatile uint64_t* doorbell_req_host,
+    volatile int32_t* doorbell_tile_rows_host, int tile_rows) {
   if (row_count <= 0) return cudaSuccess;
+  if (doorbell_seq_dev != nullptr && doorbell_req_host != nullptr && row_count <= 256) {
+    QMoEOffloadClassifyKernel<<<1, 256, 0, stream>>>(
+        topk_indices, expert_slot, route_count, row_count, hit_ids, hit_compact, hit_flag, dummy_slot,
+        unit_scales, identity_permutation, k_for_source_rows,
+        host_indices_out, reinterpret_cast<const uint4*>(input_dev),
+        reinterpret_cast<uint4*>(host_input_out), input_vec4_count,
+        doorbell_seq_dev, doorbell_req_host, doorbell_tile_rows_host, tile_rows);
+    return cudaGetLastError();
+  }
   const int blocks = row_count / 128 + (row_count % 128 != 0);
   QMoEOffloadClassifyKernel<<<blocks, 128, 0, stream>>>(
       topk_indices, expert_slot, route_count, row_count, hit_ids, hit_compact, hit_flag, dummy_slot,
-      unit_scales, identity_permutation, k_for_source_rows);
+      unit_scales, identity_permutation, k_for_source_rows,
+      host_indices_out, reinterpret_cast<const uint4*>(input_dev),
+      reinterpret_cast<uint4*>(host_input_out), input_vec4_count,
+      nullptr, nullptr, nullptr, tile_rows);
   return cudaGetLastError();
 }
 
 cudaError_t LaunchQMoEOffloadMerge(
     const half* wave_output, const half* cpu_rows, const int* hit_flag, half* contributions,
-    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream) {
+    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream,
+    const uint64_t* doorbell_seq_dev, const volatile uint64_t* doorbell_done_host) {
   if (route_count <= 0) return cudaSuccess;
   QMoEOffloadMergeKernel<<<route_count, 256, 0, stream>>>(
-      wave_output, cpu_rows, hit_flag, contributions, hidden_size, tile_rows, k);
+      wave_output, cpu_rows, hit_flag, contributions, hidden_size, tile_rows, k,
+      doorbell_seq_dev, doorbell_done_host);
   return cudaGetLastError();
 }
 
 cudaError_t LaunchQMoEOffloadMerge(
     const __nv_bfloat16* wave_output, const __nv_bfloat16* cpu_rows, const int* hit_flag, __nv_bfloat16* contributions,
-    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream) {
+    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream,
+    const uint64_t* doorbell_seq_dev, const volatile uint64_t* doorbell_done_host) {
   if (route_count <= 0) return cudaSuccess;
   QMoEOffloadMergeKernel<<<route_count, 256, 0, stream>>>(
-      wave_output, cpu_rows, hit_flag, contributions, hidden_size, tile_rows, k);
+      wave_output, cpu_rows, hit_flag, contributions, hidden_size, tile_rows, k,
+      doorbell_seq_dev, doorbell_done_host);
   return cudaGetLastError();
 }
 

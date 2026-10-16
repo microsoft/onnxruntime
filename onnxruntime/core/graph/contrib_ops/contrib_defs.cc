@@ -1832,6 +1832,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, OPTIONAL_VALUE)
         .Attr("layer_index", "Required namespace-local nonnegative layer index for shared mode.",
               AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("allow_cuda_graph", "Allow CUDA graph capture on async decode path when 1.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("host_complement_mode", "Keep only non-resident experts in host RAM with D2H eviction writeback when 1.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("ssd_cache_slots", "Bounded host RAM cache slots when backing cold experts from SSD (0 = disabled).",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("ssd_store_path", "Optional file path for SSD-backed cold expert storage.",
+              AttributeProto::STRING, std::string())
         .Input(0, "input", "CUDA FP16/BF16 [tokens,H] or [batch,sequence,H].", "T")
         .Input(1, "router_probs", "CUDA FP16/BF16 logits [flattened_tokens,E].", "T")
         .Input(2, "fc1_experts_weights",

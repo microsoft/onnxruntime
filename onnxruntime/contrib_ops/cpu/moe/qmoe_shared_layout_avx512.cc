@@ -325,7 +325,7 @@ void Fp4RowTileAvx512(const uint8_t* weights, const uint8_t* block_scales, float
   const int64_t w_stride = k / 2;
   const int64_t s_stride = IsMxfp4 ? (k / 32) : (k / 16);
   int64_t n0 = n_begin;
-  if constexpr (RT <= 2) {
+  if constexpr (RT <= 4) {
     for (; n0 + 8 <= n_end; n0 += 8) {
       float result8[8][RT];
       Fp4Group8Avx512<RT, IsMxfp4>(weights + n0 * w_stride, block_scales + n0 * s_stride, lut_2d, k, a_reordered,

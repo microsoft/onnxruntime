@@ -102,6 +102,51 @@ class TensorExpertStore {
   uint64_t model_content_id_ = 0;
 };
 
+// Asynchronous SSD-backed ExpertStore with bounded host RAM LRU cache, pin-counted leases,
+// and background generation-tagged prefetch worker (v3 Section 6, Section 10 & P3).
+class FileExpertStore {
+ public:
+  FileExpertStore() = default;
+  ~FileExpertStore() noexcept;
+  FileExpertStore(const FileExpertStore&) = delete;
+  FileExpertStore& operator=(const FileExpertStore&) = delete;
+
+  bool Initialize(const char* file_path, uint64_t file_offset, int64_t num_experts, size_t expert_stride,
+                  size_t cache_slots, size_t min_required_alignment = 256,
+                  uint64_t model_content_id = 0) noexcept;
+  void Shutdown() noexcept;
+
+  bool AcquireReady(int32_t expert_id, ExpertBlockLease* out_lease) noexcept;
+  bool AcquireReady(const ExpertKey& key, ExpertBlockLease* out_lease) noexcept {
+    if (key.model_content_id != 0 && model_content_id_ != 0 && key.model_content_id != model_content_id_) {
+      return false;
+    }
+    return AcquireReady(key.expert_id, out_lease);
+  }
+  void ReleaseLease(int32_t expert_id) noexcept;
+  bool Prefetch(const int32_t* expert_ids, size_t count, uint64_t generation) noexcept;
+  void WaitPrefetchIdle() noexcept;
+
+  bool IsInitialized() const noexcept { return initialized_; }
+  int64_t NumExperts() const noexcept { return num_experts_; }
+  size_t ExpertStride() const noexcept { return expert_stride_; }
+  size_t CacheSlots() const noexcept { return cache_slots_; }
+  uint64_t ContentId() const noexcept { return model_content_id_; }
+  uint64_t CacheHits() const noexcept;
+  uint64_t PrefetchHits() const noexcept;
+  uint64_t SsdMisses() const noexcept;
+  uint64_t BytesReadFromSsd() const noexcept;
+
+ private:
+  struct Impl;
+  Impl* impl_ = nullptr;
+  bool initialized_ = false;
+  int64_t num_experts_ = 0;
+  size_t expert_stride_ = 0;
+  size_t cache_slots_ = 0;
+  uint64_t model_content_id_ = 0;
+};
+
 size_t ComputePointerAlignment(const void* ptr) noexcept;
 bool MakeExpertBlockLease(const void* ptr, size_t length, size_t min_required_alignment,
                           ExpertBlockLease* lease) noexcept;

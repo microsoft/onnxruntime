@@ -243,6 +243,12 @@ struct QMoESessionLandingRing {
 
 class QMoESessionController {
  public:
+  struct GraphReplayNodeHook {
+    const void* owner = nullptr;
+    std::function<common::Status(cudaStream_t)> before_replay;
+    std::function<common::Status(cudaStream_t, bool)> after_replay;
+  };
+
   explicit QMoESessionController(int device_id = 0)
       : device_id_(device_id),
         landing_ring_(std::make_shared<QMoESessionLandingRing>()) {}
@@ -254,6 +260,80 @@ class QMoESessionController {
   void RegisterOffloadNode() {
     std::lock_guard<std::mutex> lock(mutex_);
     ++registered_nodes_;
+  }
+
+  void RegisterGraphReplayHook(const void* owner,
+                               std::function<common::Status(cudaStream_t)> before_replay,
+                               std::function<common::Status(cudaStream_t, bool)> after_replay = nullptr) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (auto& h : graph_replay_hooks_) {
+      if (h.owner == owner) {
+        h.before_replay = std::move(before_replay);
+        h.after_replay = std::move(after_replay);
+        return;
+      }
+    }
+    graph_replay_hooks_.push_back({owner, std::move(before_replay), std::move(after_replay)});
+  }
+
+  void UnregisterOffloadNode(const void* owner) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (auto it = graph_replay_hooks_.begin(); it != graph_replay_hooks_.end();) {
+      if (it->owner == owner) {
+        it = graph_replay_hooks_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    if (registered_nodes_ > 0) --registered_nodes_;
+  }
+
+  void BumpGraphGeneration() noexcept {
+    graph_generation_.fetch_add(1, std::memory_order_acq_rel);
+  }
+
+  uint64_t GraphGeneration() const noexcept {
+    return graph_generation_.load(std::memory_order_acquire);
+  }
+
+  common::Status OnBeforeGraphReplay(cudaStream_t stream) {
+    std::vector<GraphReplayNodeHook> hooks;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (shutting_down_.load(std::memory_order_acquire)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QMoEOffload session controller is shutting down.");
+      }
+      hooks = graph_replay_hooks_;
+    }
+    for (auto& h : hooks) {
+      if (h.before_replay) {
+        common::Status st = h.before_replay(stream);
+        if (!st.IsOK()) return st;
+      }
+    }
+    return common::Status::OK();
+  }
+
+  common::Status OnAfterGraphReplay(cudaStream_t stream, bool sync_stream) {
+    std::vector<GraphReplayNodeHook> hooks;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      hooks = graph_replay_hooks_;
+    }
+    common::Status first_err = common::Status::OK();
+    for (auto& h : hooks) {
+      if (h.after_replay) {
+        common::Status st = h.after_replay(stream, sync_stream);
+        if (!st.IsOK() && first_err.IsOK()) first_err = st;
+      }
+    }
+    if (sync_stream && stream != nullptr) {
+      cudaError_t err = cudaStreamSynchronize(stream);
+      if (err != cudaSuccess && first_err.IsOK()) {
+        first_err = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QMoEOffload graph replay stream sync failed: ", cudaGetErrorString(err));
+      }
+    }
+    return first_err;
   }
 
   bool HasOffloadNodes() const {
@@ -379,12 +459,14 @@ class QMoESessionController {
  private:
   int device_id_ = 0;
   std::atomic<bool> shutting_down_{false};
+  std::atomic<uint64_t> graph_generation_{0};
   mutable std::mutex mutex_;
   size_t registered_nodes_ = 0;
   bool run_in_flight_ = false;
   uint64_t current_run_id_ = 0;
   uint64_t next_invocation_id_ = 0;
   std::vector<std::shared_ptr<QMoEInvocationRecord>> active_invocations_;
+  std::vector<GraphReplayNodeHook> graph_replay_hooks_;
   std::shared_ptr<QMoESessionLandingRing> landing_ring_;
 };
 

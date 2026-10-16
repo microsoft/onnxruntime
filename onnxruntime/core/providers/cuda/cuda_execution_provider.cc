@@ -545,22 +545,25 @@ Status CUDAExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_opti
 }
 
 Status CUDAExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) {
-  if (qmoe_controller_ && qmoe_controller_->HasOffloadNodes()) {
-    const bool run_succeeded =
-        !run_options.terminate &&
-        run_options.config_options.GetConfigOrDefault("__ort.run_outcome", "ok") == "ok";
-    ORT_RETURN_IF_ERROR(qmoe_controller_->OnRunEnd(sync_stream, run_succeeded));
-  }
   CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCudaGraphAnnotationId(run_options);
   if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
     if (GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {
       GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
+      if (qmoe_controller_ && qmoe_controller_->HasOffloadNodes()) {
+        ORT_RETURN_IF_ERROR(qmoe_controller_->OnBeforeGraphReplay(static_cast<cudaStream_t>(stream_)));
+      }
       // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
       // so run the captured graph here to actually execute the work.
       ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_stream));
     } else {
       GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture(cuda_graph_annotation_id);
     }
+  }
+  if (qmoe_controller_ && qmoe_controller_->HasOffloadNodes()) {
+    const bool run_succeeded =
+        !run_options.terminate &&
+        run_options.config_options.GetConfigOrDefault("__ort.run_outcome", "ok") == "ok";
+    ORT_RETURN_IF_ERROR(qmoe_controller_->OnRunEnd(sync_stream, run_succeeded));
   }
 
   if (sync_stream) {
