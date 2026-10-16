@@ -56,10 +56,11 @@ struct AlignedByteBuffer {
 
     bool Resize(size_t size)
     {
-        if (size > std::numeric_limits<size_t>::max() - (kPackedAlignment - 1)) {
+        size_t allocation_size = 0;
+        if (MlasAddOverflowsSizeT(size, kPackedAlignment - 1, &allocation_size)) {
             return false;
         }
-        storage.resize(size + kPackedAlignment - 1);
+        storage.resize(allocation_size);
         return true;
     }
 
@@ -113,33 +114,6 @@ GetCPUInfo()
 }
 
 bool
-IsRuntimeSupported()
-{
-#if defined(__APPLE__)
-    // KleidiAI Ops v1.30 can build its A64 GEMM path on Darwin, but its kernels
-    // are not supported there. In particular, execution can report success
-    // without writing the output, including on Apple CPUs that advertise SME.
-    // Decline Ops before PackB sizing so MLAS creates and consumes its native
-    // packed format instead.
-    return false;
-#else
-    return true;
-#endif
-}
-
-bool
-AddOverflows(size_t lhs, size_t rhs)
-{
-    return lhs > std::numeric_limits<size_t>::max() - rhs;
-}
-
-bool
-FitsInUnsigned(size_t value)
-{
-    return value <= static_cast<size_t>(std::numeric_limits<unsigned int>::max());
-}
-
-bool
 FitsInInt(size_t value)
 {
     return value <= static_cast<size_t>(std::numeric_limits<int>::max());
@@ -151,7 +125,7 @@ FitsOpsMatrixSpan(size_t rows, size_t columns, size_t stride)
     size_t offset = 0;
     return rows != 0 && stride >= columns && FitsInInt(stride) &&
            !MlasMultiplyOverflowsSizeT(rows - 1, stride, &offset) &&
-           !AddOverflows(offset, columns) && FitsInInt(offset + columns);
+           !MlasAddOverflowsSizeT(offset, columns, &offset) && FitsInInt(offset);
 }
 
 std::string
@@ -250,13 +224,14 @@ constexpr size_t kPayloadOffset =
 size_t
 MaximumPackedSize(size_t payload_size)
 {
-    if (AddOverflows(kPayloadOffset, payload_size) ||
-        AddOverflows(kPayloadOffset + payload_size, kPackedAlignment - 1)) {
+    size_t aligned_size = 0;
+    if (MlasAddOverflowsSizeT(kPayloadOffset, payload_size, &aligned_size) ||
+        MlasAddOverflowsSizeT(aligned_size, kPackedAlignment - 1, &aligned_size)) {
         return 0;
     }
     // Relative offsets and aligned lengths survive shared-pack copies and
     // concatenated allocations without depending on the allocation address.
-    return (kPayloadOffset + payload_size + kPackedAlignment - 1) & ~(kPackedAlignment - 1);
+    return aligned_size & ~(kPackedAlignment - 1);
 }
 
 kai::ops::GemmArgs
@@ -350,9 +325,10 @@ IsPackedPayloadCompatible(
         return false;
     }
     size_t additional_size = 0;
+    size_t expected_size = 0;
     return !MlasMultiplyOverflowsSizeT(m - 1, sizeof(const void*), &additional_size) &&
-           !AddOverflows(packed_size, additional_size) &&
-           runtime_size == packed_size + additional_size;
+           !MlasAddOverflowsSizeT(packed_size, additional_size, &expected_size) &&
+           runtime_size == expected_size;
 }
 
 template <typename Lhs, typename Rhs, typename Output>
@@ -374,7 +350,7 @@ SelectPackedGemm(
     // and its packing parameters for every subsequent use of this buffer.
     // Full-width N blocking keeps interleaved packing identical when Ops
     // switches between row-only and 2D scheduling at execution time.
-    if (!FitsInUnsigned(n)) {
+    if (!FitsInInt(n)) {
         return false;
     }
     constraints.outer_block_size = static_cast<unsigned int>(n);
@@ -791,7 +767,7 @@ size_t
     }
     // A zero header marks native-only packs, even when Ops is disabled or the
     // input layout is unsupported. Execution can always inspect that header.
-    if (!UseOps || !IsRuntimeSupported() || TransA != CblasNoTrans || TransB != CblasNoTrans) {
+    if (!UseOps || TransA != CblasNoTrans || TransB != CblasNoTrans) {
         return kPayloadOffset;
     }
     kai::ops::GemmConfig config;
@@ -821,8 +797,7 @@ bool
     }
     const size_t size = MlasGemmPackBExtensionSizeKleidiAIOps(TransA, TransB, N, K, UseOps);
     std::memset(Extension, 0, size);
-    return UseOps && IsRuntimeSupported() &&
-           TransA == CblasNoTrans && TransB == CblasNoTrans &&
+    return UseOps && TransA == CblasNoTrans && TransB == CblasNoTrans &&
            PackB<float, float, float>(PackedDataType::Fp32, N, K, B, ldb, false, Extension);
 }
 
@@ -831,7 +806,7 @@ bool
     ArmKleidiAI::MlasGemmPackedBIsKleidiAIOps(const void* PackedB, size_t N, size_t K)
 {
     return PackedB != nullptr && N != 0 && K != 0 &&
-           IsPackedType(static_cast<const std::byte*>(PackedB) + MlasGemmNativePackBSize(N, K), PackedDataType::Fp32);
+           IsPackedType(static_cast<const std::byte*>(PackedB) + MlasSgemmNativePackBSize(N, K), PackedDataType::Fp32);
 }
 
 bool
@@ -847,9 +822,6 @@ bool
         MLAS_THREADPOOL* ThreadPool
     )
 {
-    if (!IsRuntimeSupported()) {
-        return false;
-    }
     if (M == 0 || N == 0 || BatchSize == 0) {
         return true;
     }
@@ -864,7 +836,7 @@ bool
         return false;
     }
     ScratchLease lease(scratch);
-    const auto* extension = reinterpret_cast<const std::byte*>(Data->B) + MlasGemmNativePackBSize(N, K);
+    const auto* extension = reinterpret_cast<const std::byte*>(Data->B) + MlasSgemmNativePackBSize(N, K);
     PackedHeader header{};
     if (!ReadHeader(extension, PackedDataType::Fp32, N, K, header) ||
         header.trans_b != static_cast<uint32_t>(CblasNoTrans) ||

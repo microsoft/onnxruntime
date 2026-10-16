@@ -854,6 +854,9 @@ Return Value:
     // retains native MLAS weights alongside an optional Ops representation.
     // All other datatypes retain their existing KleidiAI overrides.
     this->MlasSGemmBatchOverride = ArmKleidiAI::MlasGemmBatchKleidiAIOps;
+    this->MlasSGemmPackBExtensionSizeOverride = ArmKleidiAI::MlasGemmPackBExtensionSizeKleidiAIOps;
+    this->MlasSGemmPackBExtensionOverride = ArmKleidiAI::MlasGemmPackBExtensionKleidiAIOps;
+    this->MlasSGemmPackedBHasExtensionOverride = ArmKleidiAI::MlasGemmPackedBIsKleidiAIOps;
 #endif
 
 #if defined(MLAS_USE_SVE)

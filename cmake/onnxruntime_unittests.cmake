@@ -1,4 +1,5 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
+# SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 # Licensed under the MIT License.
 if (IOS)
   find_package(XCTest REQUIRED)
@@ -2609,8 +2610,12 @@ endif()
     target_link_libraries(onnxruntime_mlas_test PRIVATE Threads::Threads)
     set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
     if (onnxruntime_RUN_MLAS_TESTS)
-      # The full suite is too slow for per-PR ARM64 CI, so focus on architecture-specific activation and FP16 paths.
+      # The full suite is too slow for per-PR ARM64 CI, so select focused architecture-specific coverage.
       set(onnxruntime_mlas_test_args "--gtest_filter=*FP16*:*Fp16*:Exp.*:Softmax*:Activation*")
+      if(onnxruntime_KLEIDIAI_OPS_AVAILABLE)
+        string(APPEND onnxruntime_mlas_test_args
+          ":SGemmPostProcessTest.*:SGemmPackedModelShapesTest.*:SGemmKleidiAIOps*")
+      endif()
       if (onnxruntime_GENERATE_TEST_REPORTS)
         list(APPEND onnxruntime_mlas_test_args
           "--gtest_output=xml:$<SHELL_PATH:$<TARGET_FILE:onnxruntime_mlas_test>.$<CONFIG>.results.xml>")

@@ -254,11 +254,6 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     );
 
-// FP32 packs start with the generic MLAS representation, followed by an
-// initialized optional Ops extension. Reserve the extension header even when
-// Ops is disabled so execution can inspect it within the public allocation.
-size_t MlasGemmNativePackBSize(size_t N, size_t K);
-
 size_t
     MLASCALL
     MlasGemmPackBExtensionSizeKleidiAIOps(

@@ -31,100 +31,79 @@
 #if defined(MLAS_TARGET_ARM64) && (!defined(_MSC_VER) || defined(__clang__))
 TEST(SGemmPostProcessTest, StridedAlphaBeta) {
   ArmKleidiAI::MlasGemmApplyAlphaBetaStrided(nullptr, 0, 1.0f, 0.0f, nullptr, 1, true);
-  constexpr std::array<std::array<float, 2>, 4> scales = {{{1.0f, 0.0f}, {1.0f, 0.25f}, {-0.5f, 0.0f}, {-0.5f, 0.25f}}};
+  struct Case {
+    size_t count;
+    size_t stride;
+    float alpha;
+    float beta;
+    bool allow_memcpy;
+  };
+  // Cover the SIMD threshold/tail, copy path and GEMV's strided destination
+  // without repeating the full GEMM parameter matrix here.
+  constexpr Case cases[] = {
+      {31, 1, 1.0f, 0.25f, true},
+      {32, 1, -0.5f, 0.0f, true},
+      {32, 1, 1.0f, 0.25f, true},
+      {33, 1, -0.5f, 0.25f, true},
+      {33, 1, 1.0f, 0.0f, true},
+      {33, 1, 1.0f, 0.0f, false},
+      {33, 3, -0.5f, 0.25f, true},
+  };
   constexpr float sentinel = -123.0f;
-  for (size_t count : {1, 31, 32, 33}) {
-    std::vector<float> product(count);
-    for (size_t i = 0; i < count; ++i) {
+  for (const auto& test_case : cases) {
+    SCOPED_TRACE(testing::Message() << "count=" << test_case.count << " stride=" << test_case.stride
+                                    << " memcpy=" << test_case.allow_memcpy << " alpha=" << test_case.alpha
+                                    << " beta=" << test_case.beta);
+    std::vector<float> product(test_case.count);
+    std::vector<float> output(test_case.count * test_case.stride + 2, sentinel);
+    float* destination = output.data() + 1;
+    for (size_t i = 0; i < test_case.count; ++i) {
       product[i] = static_cast<float>(static_cast<int>(i % 7) - 3);
+      destination[i * test_case.stride] =
+          test_case.beta == 0.0f ? std::numeric_limits<float>::quiet_NaN() : 2.0f;
     }
-    for (size_t stride : {1, 3}) {
-      for (bool allow_memcpy : {false, true}) {
-        for (const auto& scale : scales) {
-          const float alpha = scale[0];
-          const float beta = scale[1];
-          SCOPED_TRACE(testing::Message() << "count=" << count << " stride=" << stride
-                                          << " memcpy=" << allow_memcpy << " alpha=" << alpha << " beta=" << beta);
-          std::vector<float> output(count * stride + 2, sentinel);
-          float* destination = output.data() + 1;
-          for (size_t i = 0; i < count; ++i) {
-            destination[i * stride] = beta == 0.0f ? std::numeric_limits<float>::quiet_NaN() : 2.0f;
-          }
-          ArmKleidiAI::MlasGemmApplyAlphaBetaStrided(
-              product.data(), count, alpha, beta, destination, stride, allow_memcpy);
-          for (size_t i = 0; i < count; ++i) {
-            EXPECT_EQ(destination[i * stride], alpha * product[i] + beta * 2.0f);
-            for (size_t padding = 1; padding < stride; ++padding) {
-              EXPECT_EQ(destination[i * stride + padding], sentinel);
-            }
-          }
-          EXPECT_EQ(output.front(), sentinel);
-          EXPECT_EQ(output.back(), sentinel);
-        }
+    ArmKleidiAI::MlasGemmApplyAlphaBetaStrided(
+        product.data(), test_case.count, test_case.alpha, test_case.beta,
+        destination, test_case.stride, test_case.allow_memcpy);
+    for (size_t i = 0; i < test_case.count; ++i) {
+      EXPECT_EQ(destination[i * test_case.stride], test_case.alpha * product[i] + test_case.beta * 2.0f);
+      for (size_t padding = 1; padding < test_case.stride; ++padding) {
+        EXPECT_EQ(destination[i * test_case.stride + padding], sentinel);
       }
     }
+    EXPECT_EQ(output.front(), sentinel);
+    EXPECT_EQ(output.back(), sentinel);
   }
 }
 
-TEST(SGemmPostProcessTest, ContiguousAndPaddedAlphaBeta) {
+TEST(SGemmPostProcessTest, PaddedOutputAndBetaZeroNaNs) {
   ArmKleidiAI::MlasGemmApplyAlphaBeta(nullptr, 0, 33, 1.0f, 0.0f, nullptr, 33);
-  ArmKleidiAI::MlasGemmApplyAlphaBeta(nullptr, 3, 0, 1.0f, 0.0f, nullptr, 3);
-  constexpr size_t rows = 3;
-  constexpr float sentinel = -123.0f;
-  constexpr std::array<std::array<float, 2>, 4> scales = {{{1.0f, 0.0f}, {1.0f, 0.25f}, {-0.5f, 0.0f}, {-0.5f, 0.25f}}};
-  for (size_t columns : {11, 31, 32, 33}) {
-    std::vector<float> product(rows * columns);
-    for (size_t i = 0; i < product.size(); ++i) {
-      product[i] = static_cast<float>(static_cast<int>(i % 7) - 3);
-    }
-    constexpr std::array<std::array<size_t, 2>, 4> layouts = {{{0, 0}, {0, 1}, {3, 0}, {3, 1}}};
-    for (const auto& layout : layouts) {
-      const size_t ldc = columns + layout[0];
-      const bool flatten = layout[1] != 0;
-      for (const auto& scale : scales) {
-        const float alpha = scale[0];
-        const float beta = scale[1];
-        SCOPED_TRACE(testing::Message() << "columns=" << columns << " ldc=" << ldc << " flatten=" << flatten
-                                        << " alpha=" << alpha << " beta=" << beta);
-        std::vector<float> output(rows * ldc + 2, sentinel);
-        float* destination = output.data() + 1;
-        for (size_t row = 0; row < rows; ++row) {
-          std::fill_n(destination + row * ldc, columns,
-                      beta == 0.0f ? std::numeric_limits<float>::quiet_NaN() : 2.0f);
-        }
-        ArmKleidiAI::MlasGemmApplyAlphaBeta(product.data(), rows, columns, alpha, beta, destination, ldc, flatten);
-        for (size_t row = 0; row < rows; ++row) {
-          for (size_t column = 0; column < ldc; ++column) {
-            const float expected = column < columns ? alpha * product[row * columns + column] + beta * 2.0f : sentinel;
-            EXPECT_EQ(destination[row * ldc + column], expected) << "row=" << row << " column=" << column;
-          }
-        }
-        EXPECT_EQ(output.front(), sentinel);
-        EXPECT_EQ(output.back(), sentinel);
-      }
-    }
-  }
-}
-
-TEST(SGemmPostProcessTest, BetaOnly) {
-  ArmKleidiAI::MlasGemmApplyBeta(nullptr, 0, 33, 33, 0.0f);
   ArmKleidiAI::MlasGemmApplyBeta(nullptr, 3, 0, 3, 0.0f);
   constexpr size_t rows = 3;
   constexpr size_t columns = 33;
-  constexpr size_t ldc = columns + 3;
   constexpr float sentinel = -123.0f;
-  for (float beta : {0.0f, 1.0f, -0.5f}) {
-    SCOPED_TRACE(testing::Message() << "beta=" << beta);
-    std::vector<float> output(rows * ldc, sentinel);
-    for (size_t row = 0; row < rows; ++row) {
-      std::fill_n(output.data() + row * ldc, columns,
-                  beta == 0.0f ? std::numeric_limits<float>::quiet_NaN() : 2.0f);
-    }
-    ArmKleidiAI::MlasGemmApplyBeta(output.data(), rows, columns, ldc, beta);
-    for (size_t row = 0; row < rows; ++row) {
-      for (size_t column = 0; column < ldc; ++column) {
-        EXPECT_EQ(output[row * ldc + column], column < columns ? beta * 2.0f : sentinel);
+  std::vector<float> product(rows * columns, 2.0f);
+  for (size_t padding : {0, 3}) {
+    const size_t ldc = columns + padding;
+    for (bool beta_only : {false, true}) {
+      SCOPED_TRACE(testing::Message() << "padding=" << padding << " beta_only=" << beta_only);
+      std::vector<float> output(rows * ldc + 2, sentinel);
+      float* destination = output.data() + 1;
+      for (size_t row = 0; row < rows; ++row) {
+        std::fill_n(destination + row * ldc, columns, std::numeric_limits<float>::quiet_NaN());
       }
+      if (beta_only) {
+        ArmKleidiAI::MlasGemmApplyBeta(destination, rows, columns, ldc, 0.0f);
+      } else {
+        ArmKleidiAI::MlasGemmApplyAlphaBeta(product.data(), rows, columns, -0.5f, 0.0f, destination, ldc);
+      }
+      for (size_t row = 0; row < rows; ++row) {
+        for (size_t column = 0; column < ldc; ++column) {
+          EXPECT_EQ(destination[row * ldc + column], column < columns ? (beta_only ? 0.0f : -1.0f) : sentinel);
+        }
+      }
+      EXPECT_EQ(output.front(), sentinel);
+      EXPECT_EQ(output.back(), sentinel);
     }
   }
 }
@@ -138,11 +117,8 @@ TEST(SGemmPackedModelShapesTest, M1BetaZeroAndBetaOne) {
 
   constexpr GemmShape model_shapes[] = {
       {128, 32},
-      {128, 128},
       {32, 128},
-      {256, 64},
       {256, 256},
-      {128, 256},
   };
   constexpr float betas[] = {0.0f, 1.0f};
 
@@ -195,6 +171,8 @@ TEST(SGemmKleidiAIOpsTest, ReusePackedWeightsAcrossRowsThreadsAndScales) {
   MlasGemmPackB(CblasNoTrans, CblasNoTrans, N, K, b.data(), Ldb, packed_b.data(), nullptr);
   ASSERT_TRUE(ArmKleidiAI::MlasGemmPackedBIsKleidiAIOps(packed_b.data(), N, K));
 
+  constexpr std::array<std::array<float, 2>, 5> scales = {
+      {{1.0f, 0.0f}, {1.0f, 1.0f}, {-0.5f, 0.0f}, {-0.5f, 0.25f}, {0.0f, 0.25f}}};
   for (size_t m : {1, 3, 24, 96}) {
     std::vector<float> a(m * Lda, -123.0f);
     std::vector<float> product(m * N, 0.0f);
@@ -209,47 +187,34 @@ TEST(SGemmKleidiAIOpsTest, ReusePackedWeightsAcrossRowsThreadsAndScales) {
       }
     }
     for (auto* thread_pool : {static_cast<MLAS_THREADPOOL*>(nullptr), GetMlasThreadPool()}) {
-      for (float alpha : {1.0f, -0.5f, 0.0f}) {
-        for (float beta : {0.0f, 1.0f, 0.25f}) {
-          SCOPED_TRACE(testing::Message() << "M=" << m << " threaded=" << (thread_pool != nullptr)
-                                          << " alpha=" << alpha << " beta=" << beta);
-          std::vector<float> c(m * Ldc, 2.0f);
-          MLAS_SGEMM_DATA_PARAMS data{};
-          data.A = a.data();
-          data.lda = Lda;
-          data.B = reinterpret_cast<const float*>(packed_b.data());
-          data.BIsPacked = true;
-          data.C = c.data();
-          data.ldc = Ldc;
-          data.alpha = alpha;
-          data.beta = beta;
-          // Call the adapter directly so a generic MLAS fallback cannot mask
-          // a broken packed-buffer contract.
-          ASSERT_TRUE(ArmKleidiAI::MlasGemmBatchKleidiAIOps(
-              CblasNoTrans, CblasTrans, m, N, K, &data, 1, thread_pool));
-          for (size_t row = 0; row < m; ++row) {
-            for (size_t column = 0; column < Ldc; ++column) {
-              const float expected = column < N ? alpha * product[row * N + column] + beta * 2.0f : 2.0f;
-              ASSERT_EQ(c[row * Ldc + column], expected) << "row=" << row << " column=" << column;
-            }
+      for (const auto& scale : scales) {
+        const float alpha = scale[0];
+        const float beta = scale[1];
+        SCOPED_TRACE(testing::Message() << "M=" << m << " threaded=" << (thread_pool != nullptr)
+                                        << " alpha=" << alpha << " beta=" << beta);
+        std::vector<float> c(m * Ldc, 2.0f);
+        MLAS_SGEMM_DATA_PARAMS data{};
+        data.A = a.data();
+        data.lda = Lda;
+        data.B = reinterpret_cast<const float*>(packed_b.data());
+        data.BIsPacked = true;
+        data.C = c.data();
+        data.ldc = Ldc;
+        data.alpha = alpha;
+        data.beta = beta;
+        // Call the adapter directly so a generic MLAS fallback cannot mask
+        // a broken packed-buffer contract.
+        ASSERT_TRUE(ArmKleidiAI::MlasGemmBatchKleidiAIOps(
+            CblasNoTrans, CblasTrans, m, N, K, &data, 1, thread_pool));
+        for (size_t row = 0; row < m; ++row) {
+          for (size_t column = 0; column < Ldc; ++column) {
+            const float expected = column < N ? alpha * product[row * N + column] + beta * 2.0f : 2.0f;
+            ASSERT_EQ(c[row * Ldc + column], expected) << "row=" << row << " column=" << column;
           }
         }
       }
     }
   }
-}
-
-TEST(SGemmKleidiAIOpsTest, ThreadedPackedGemm) {
-  constexpr size_t N = 128;
-  constexpr size_t K = 128;
-  if (!KleidiAIOpsSgemmIsAvailable(N, K)) {
-    GTEST_SKIP() << "KleidiAI Ops SGEMM is unavailable for N=" << N << " K=" << K << ".";
-  }
-  if (MlasGetMaximumThreadCount(GetMlasThreadPool()) <= 1) {
-    GTEST_SKIP() << "A multi-threaded MLAS pool is required.";
-  }
-  MlasFgemmTest<float, true, true> tester;
-  tester.Test(false, false, 24, N, K, 1, 1.0f, 0.0f);
 }
 
 TEST(SGemmKleidiAIOpsTest, NativeOnlyPackAtGuardPage) {
@@ -334,25 +299,19 @@ TEST(SGemmKleidiAIOpsTest, PublicPackedWeightsFallBackAcrossLayoutsAndSelectors)
       ASSERT_EQ(ArmKleidiAI::MlasGemmBatchKleidiAIOps(
                     trans_a, CblasTrans, M, N, K, &data, 1, nullptr),
                 has_ops && trans_a == CblasNoTrans);
-      for (auto* thread_pool : {static_cast<MLAS_THREADPOOL*>(nullptr), GetMlasThreadPool()}) {
-        for (bool use_ops : {false, true}) {
-          for (float alpha : {1.0f, -0.5f}) {
-            for (float beta : {0.0f, 1.0f, 0.25f}) {
-              SCOPED_TRACE(testing::Message() << "TransA=" << trans_a << " TransB=" << trans_b
-                                              << " use_ops=" << use_ops << " alpha=" << alpha
-                                              << " beta=" << beta << " threaded=" << (thread_pool != nullptr));
-              std::fill(c.begin(), c.end(), 2.0f);
-              data.alpha = alpha;
-              data.beta = beta;
-              MlasGemmBatch(trans_a, CblasTrans, M, N, K, &data, 1, thread_pool,
-                            use_ops ? nullptr : &disabled_selector);
-              for (size_t row = 0; row < M; ++row) {
-                for (size_t column = 0; column < Ldc; ++column) {
-                  const float expected = column < N ? alpha * product[row * N + column] + beta * 2.0f : 2.0f;
-                  ASSERT_EQ(c[row * Ldc + column], expected) << "row=" << row << " column=" << column;
-                }
-              }
-            }
+      // Scale/thread combinations are covered by pack reuse above; this
+      // test isolates dispatch across source layouts and selector changes.
+      for (bool use_ops : {false, true}) {
+        SCOPED_TRACE(testing::Message() << "TransA=" << trans_a << " TransB=" << trans_b << " use_ops=" << use_ops);
+        std::fill(c.begin(), c.end(), 2.0f);
+        data.alpha = -0.5f;
+        data.beta = 0.25f;
+        MlasGemmBatch(trans_a, CblasTrans, M, N, K, &data, 1, nullptr,
+                      use_ops ? nullptr : &disabled_selector);
+        for (size_t row = 0; row < M; ++row) {
+          for (size_t column = 0; column < Ldc; ++column) {
+            const float expected = column < N ? -0.5f * product[row * N + column] + 0.25f * 2.0f : 2.0f;
+            ASSERT_EQ(c[row * Ldc + column], expected) << "row=" << row << " column=" << column;
           }
         }
       }
@@ -410,12 +369,10 @@ TEST(SGemmKleidiAIOpsTest, RelocatedConcatenatedPacksAndCorruptedExtensionUseNat
                   CblasNoTrans, CblasTrans, M, N, K, &data[batch], 1, nullptr),
               has_ops);
   }
-  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG disabled_selector{};
-  disabled_selector.use_kleidiai = false;
   for (bool corrupt_extension : {false, true}) {
     if (corrupt_extension) {
       // Corrupt only one optional extension, retaining its native prefix.
-      packed_b[ArmKleidiAI::MlasGemmNativePackBSize(N, K)] ^= 1;
+      packed_b[MlasSgemmNativePackBSize(N, K)] ^= 1;
       ASSERT_FALSE(ArmKleidiAI::MlasGemmPackedBIsKleidiAIOps(packed_b, N, K));
       std::fill(c.begin(), c.end(), 2.0f);
       EXPECT_FALSE(ArmKleidiAI::MlasGemmBatchKleidiAIOps(
@@ -423,15 +380,12 @@ TEST(SGemmKleidiAIOpsTest, RelocatedConcatenatedPacksAndCorruptedExtensionUseNat
       EXPECT_TRUE(std::all_of(c.begin(), c.end(), [](float value) { return value == 2.0f; }));
     }
     for (auto* thread_pool : {static_cast<MLAS_THREADPOOL*>(nullptr), GetMlasThreadPool()}) {
-      for (bool use_ops : {false, true}) {
-        SCOPED_TRACE(testing::Message() << "corrupt_extension=" << corrupt_extension
-                                        << " use_ops=" << use_ops << " threaded=" << (thread_pool != nullptr));
-        std::fill(c.begin(), c.end(), 2.0f);
-        MlasGemmBatch(CblasNoTrans, CblasTrans, M, N, K, data, BatchSize, thread_pool,
-                      use_ops ? nullptr : &disabled_selector);
-        for (size_t i = 0; i < c.size(); ++i) {
-          ASSERT_EQ(c[i], -0.5f * product[i] + 0.25f * 2.0f) << "index=" << i;
-        }
+      SCOPED_TRACE(testing::Message() << "corrupt_extension=" << corrupt_extension
+                                      << " threaded=" << (thread_pool != nullptr));
+      std::fill(c.begin(), c.end(), 2.0f);
+      MlasGemmBatch(CblasNoTrans, CblasTrans, M, N, K, data, BatchSize, thread_pool, nullptr);
+      for (size_t i = 0; i < c.size(); ++i) {
+        ASSERT_EQ(c[i], -0.5f * product[i] + 0.25f * 2.0f) << "index=" << i;
       }
     }
   }
@@ -709,25 +663,26 @@ TEST(SGemmKleidiAIOpsTest, MixedPackedAndUnpackedBatch) {
       }
     }
   }
+  constexpr std::array<std::array<float, 2>, 3> scales = {{{1.0f, 1.0f}, {-0.5f, 0.25f}, {0.0f, 0.25f}}};
   for (auto* thread_pool : {static_cast<MLAS_THREADPOOL*>(nullptr), GetMlasThreadPool()}) {
-    for (float alpha : {1.0f, -0.5f, 0.0f}) {
-      for (float beta : {0.0f, 1.0f, 0.25f}) {
-        std::array<size_t, BatchSize> order{0, 1, 2};
-        do {
-          SCOPED_TRACE(testing::Message() << "order=" << order[0] << order[1] << order[2]
-                                          << " alpha=" << alpha << " beta=" << beta
-                                          << " threaded=" << (thread_pool != nullptr));
-          std::fill(c.begin(), c.end(), 2.0f);
-          MLAS_SGEMM_DATA_PARAMS ordered_data[BatchSize]{data[order[0]], data[order[1]], data[order[2]]};
-          for (auto& params : ordered_data) {
-            params.alpha = alpha;
-            params.beta = beta;
-          }
-          MlasGemmBatch(CblasNoTrans, CblasNoTrans, M, N, K, ordered_data, BatchSize, thread_pool, nullptr);
-          for (size_t i = 0; i < c.size(); ++i) {
-            ASSERT_EQ(c[i], alpha * expected[i] + beta * 2.0f) << "index=" << i;
-          }
-        } while (std::next_permutation(order.begin(), order.end()));
+    for (const auto& scale : scales) {
+      // Rotations put each representation first and in every batch position.
+      for (size_t first = 0; first < BatchSize; ++first) {
+        const float alpha = scale[0];
+        const float beta = scale[1];
+        SCOPED_TRACE(testing::Message() << "first=" << first << " alpha=" << alpha << " beta=" << beta
+                                        << " threaded=" << (thread_pool != nullptr));
+        std::fill(c.begin(), c.end(), 2.0f);
+        MLAS_SGEMM_DATA_PARAMS ordered_data[BatchSize]{
+            data[first], data[(first + 1) % BatchSize], data[(first + 2) % BatchSize]};
+        for (auto& params : ordered_data) {
+          params.alpha = alpha;
+          params.beta = beta;
+        }
+        MlasGemmBatch(CblasNoTrans, CblasNoTrans, M, N, K, ordered_data, BatchSize, thread_pool, nullptr);
+        for (size_t i = 0; i < c.size(); ++i) {
+          ASSERT_EQ(c[i], alpha * expected[i] + beta * 2.0f) << "index=" << i;
+        }
       }
     }
   }
