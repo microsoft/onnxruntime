@@ -616,14 +616,56 @@ static ptrdiff_t CalculateParallelForBlock(const ptrdiff_t n, const Eigen::Tenso
   return block_size;
 }
 
+// Scales the cost estimate used only for the go/no-go parallelization decision.
+//
+// Eigen's cost model charges a flat kStartupCycles = 100000 cycles (~30 us at
+// current clocks) before a loop is considered worth splitting. That is far more
+// than this pool's measured fork-join cost, so loops that would benefit from
+// two or three threads are kept on the calling thread instead. Keeping them
+// serial is not free: profiling short CNN graphs shows the ops that stay on the
+// calling thread running ~80% slower once the pool has four threads, because
+// their inputs were just scattered across the other cores' private caches by
+// the neighbouring parallel ops. Lowering the threshold lets those ops recover
+// that cost.
+//
+// Block sizing deliberately continues to use the unscaled cost, so this only
+// changes whether a loop is split, never how finely.
+#if !defined(ORT_DEFAULT_PARALLEL_COST_SCALE)
+#define ORT_DEFAULT_PARALLEL_COST_SCALE 8.0
+#endif
+
+static double ParallelForCostScale() {
+  static const double kScale = []() {
+    double value = ORT_DEFAULT_PARALLEL_COST_SCALE;
+#if defined(_MSC_VER)
+    char* buffer = nullptr;
+    size_t buffer_size = 0;
+    if (_dupenv_s(&buffer, &buffer_size, "ORT_PARALLEL_COST_SCALE") == 0 && buffer != nullptr) {
+      value = atof(buffer);
+      free(buffer);
+    }
+#else
+    if (const char* env = getenv("ORT_PARALLEL_COST_SCALE")) {
+      value = atof(env);
+    }
+#endif
+    return value > 0.0 ? value : 1.0;
+  }();
+  return kScale;
+}
+
 void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& f) {
   ORT_ENFORCE(n >= 0);
   Eigen::TensorOpCost cost{c.bytes_loaded, c.bytes_stored, c.compute_cycles};
   auto d_of_p = DegreeOfParallelism(this);
+  const double cost_scale = ParallelForCostScale();
+  Eigen::TensorOpCost decision_cost{c.bytes_loaded * cost_scale,
+                                    c.bytes_stored * cost_scale,
+                                    c.compute_cycles * cost_scale};
   // Compute small problems directly in the caller thread.
   if ((!ShouldParallelizeLoop(n)) ||
-      CostModel::numThreads(static_cast<double>(n), cost, d_of_p) == 1) {
+      CostModel::numThreads(static_cast<double>(n), decision_cost, d_of_p) == 1) {
     f(0, n);
     return;
   }
