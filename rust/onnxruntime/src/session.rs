@@ -1566,6 +1566,374 @@ mod tests {
             .unwrap();
         unsafe { test_environment().env().api().ReleaseSession.unwrap()(session_ptr) };
     }
+
+    mod encrypted_ep_context {
+        use super::*;
+        use ring::{
+            aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM},
+            rand::{SecureRandom, SystemRandom},
+        };
+        use std::{fs, path::PathBuf};
+
+        const REGISTRATION: &[u8] = b"rust_encryption_test\0";
+        const PAYLOAD: &[u8] = b"ort-test-mul-float32-v1";
+
+        struct Compilation(
+            *mut sys::OrtModelCompilationOptions,
+            *const sys::OrtCompileApi,
+        );
+
+        impl Drop for Compilation {
+            fn drop(&mut self) {
+                unsafe { (*self.1).ReleaseModelCompilationOptions.unwrap()(self.0) };
+            }
+        }
+
+        struct ModelBuffer(*mut c_void, *mut sys::OrtAllocator);
+
+        impl Drop for ModelBuffer {
+            fn drop(&mut self) {
+                if !self.0.is_null() {
+                    unsafe { (*self.1).Free.unwrap()(self.1, self.0) };
+                }
+            }
+        }
+
+        struct Fixture {
+            directory: PathBuf,
+            api: sys::OrtApi,
+            env: *mut sys::OrtEnv,
+        }
+
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                unsafe {
+                    status_to_result_with_api(
+                        self.api.UnregisterExecutionProviderLibrary.unwrap()(
+                            self.env,
+                            REGISTRATION.as_ptr().cast(),
+                        ),
+                        &self.api,
+                    )
+                    .unwrap();
+                }
+                fs::remove_dir_all(&self.directory).unwrap();
+            }
+        }
+
+        #[derive(Default)]
+        struct Context {
+            name: String,
+            bytes: Vec<u8>,
+        }
+
+        extern_system_fn! {
+            unsafe fn write_context(
+                state: *mut c_void,
+                name: *const c_char,
+                data: *const c_void,
+                size: usize,
+            ) -> *mut sys::OrtStatus {
+                let result = catch_unwind(AssertUnwindSafe(|| {
+                    let context = &mut *state.cast::<Context>();
+                    assert!(context.name.is_empty(), "Expected exactly one context write");
+                    context.name = CStr::from_ptr(name).to_str().unwrap().to_owned();
+                    context.bytes = std::slice::from_raw_parts(data.cast::<u8>(), size).to_vec();
+                }));
+                if result.is_err() {
+                    let api = test_environment().env().api();
+                    api.CreateStatus.unwrap()(
+                        sys::OrtErrorCode::ORT_FAIL,
+                        b"Rust test context writer failed\0".as_ptr().cast(),
+                    )
+                } else {
+                    ptr::null_mut()
+                }
+            }
+        }
+
+        #[cfg(target_family = "windows")]
+        fn path_chars(path: &Path) -> Vec<u16> {
+            path.as_os_str().encode_wide().chain(Some(0)).collect()
+        }
+
+        #[cfg(not(target_family = "windows"))]
+        fn path_chars(path: &Path) -> Vec<c_char> {
+            path.as_os_str()
+                .as_bytes()
+                .iter()
+                .map(|value| *value as c_char)
+                .chain(Some(0))
+                .collect()
+        }
+
+        fn builder() -> SessionBuilder<'static> {
+            let builder = test_environment().new_session_builder().unwrap();
+            let environment = test_environment().env();
+            let api = unsafe { environment.api() };
+            unsafe {
+                status_to_result_with_api(
+                    api.AddSessionConfigEntry.unwrap()(
+                        builder.session_options_ptr,
+                        b"ep.example.test_execute_ep_context\0".as_ptr().cast(),
+                        b"1\0".as_ptr().cast(),
+                    ),
+                    &api,
+                )
+                .unwrap();
+                let mut devices = ptr::null();
+                let mut count = 0;
+                status_to_result_with_api(
+                    api.GetEpDevices.unwrap()(environment.env_ptr, &mut devices, &mut count),
+                    &api,
+                )
+                .unwrap();
+                let device = std::slice::from_raw_parts(devices, count)
+                    .iter()
+                    .copied()
+                    .find(|device| {
+                        CStr::from_ptr(api.EpDevice_EpName.unwrap()(*device)).to_bytes_with_nul()
+                            == REGISTRATION
+                    })
+                    .expect("Registered example EP device not found");
+                status_to_result_with_api(
+                    api.SessionOptionsAppendExecutionProvider_V2.unwrap()(
+                        builder.session_options_ptr,
+                        environment.env_ptr,
+                        &device,
+                        1,
+                        ptr::null(),
+                        ptr::null(),
+                        0,
+                    ),
+                    &api,
+                )
+                .unwrap();
+            }
+            builder
+        }
+
+        fn encrypt(key: &[u8], data: &[u8], name: &str) -> Vec<u8> {
+            let key = LessSafeKey::new(UnboundKey::new(&AES_256_GCM, key).unwrap());
+            let mut nonce = [0; 12];
+            SystemRandom::new().fill(&mut nonce).unwrap();
+            let mut encrypted = data.to_vec();
+            key.seal_in_place_append_tag(
+                Nonce::assume_unique_for_key(nonce),
+                Aad::from(name),
+                &mut encrypted,
+            )
+            .unwrap();
+            [nonce.as_slice(), encrypted.as_slice()].concat()
+        }
+
+        fn decrypt(
+            key: &[u8],
+            record: &[u8],
+            name: &str,
+        ) -> std::result::Result<Vec<u8>, EpContextDataCallbackError> {
+            let key = LessSafeKey::new(UnboundKey::new(&AES_256_GCM, key).unwrap());
+            let mut nonce = [0; 12];
+            nonce.copy_from_slice(&record[..12]);
+            let mut encrypted = record[12..].to_vec();
+            let plaintext = key
+                .open_in_place(
+                    Nonce::assume_unique_for_key(nonce),
+                    Aad::from(name),
+                    &mut encrypted,
+                )
+                .map_err(|_| {
+                    EpContextDataCallbackError::Fail("AES-GCM authentication failed".to_owned())
+                })?;
+            Ok(plaintext.to_vec())
+        }
+
+        #[test]
+        #[ignore = "requires ORT_ENCRYPTION_PLUGIN_LIBRARY and an ONNX Runtime 1.31 library"]
+        fn persisted_encrypted_compiled_context_runs_inference() {
+            let plugin = PathBuf::from(
+                var("ORT_ENCRYPTION_PLUGIN_LIBRARY").expect("Set ORT_ENCRYPTION_PLUGIN_LIBRARY"),
+            );
+            let environment = test_environment().env();
+            let api = unsafe { environment.api() };
+            let env_ptr = environment.env_ptr;
+            drop(environment);
+            let mut random = [0; 16];
+            SystemRandom::new().fill(&mut random).unwrap();
+            let directory = std::env::temp_dir().join(format!(
+                "ort-rust-encrypted-{:x}",
+                u128::from_le_bytes(random)
+            ));
+            fs::create_dir(&directory).unwrap();
+            unsafe {
+                let status = api.RegisterExecutionProviderLibrary.unwrap()(
+                    env_ptr,
+                    REGISTRATION.as_ptr().cast(),
+                    path_chars(&plugin).as_ptr(),
+                );
+                if let Err(error) = status_to_result_with_api(status, &api) {
+                    fs::remove_dir_all(&directory).unwrap();
+                    panic!("Failed to register example EP: {}", error);
+                }
+            }
+            let fixture = Fixture {
+                directory,
+                api,
+                env: env_ptr,
+            };
+            let key = {
+                let mut key = [0; 32];
+                SystemRandom::new().fill(&mut key).unwrap();
+                key
+            };
+            let model_name = "compiled.onnx";
+            let context_name;
+            {
+                let builder = builder();
+                let compile_api = unsafe { &*api.GetCompileApi.unwrap()() };
+                let mut options = ptr::null_mut();
+                unsafe {
+                    status_to_result_with_api(
+                        compile_api
+                            .CreateModelCompilationOptionsFromSessionOptions
+                            .unwrap()(
+                            env_ptr, builder.session_options_ptr, &mut options
+                        ),
+                        &api,
+                    )
+                    .unwrap();
+                }
+                let options = Compilation(options, compile_api);
+                let source = include_bytes!(
+                    "../../../onnxruntime/test/testdata/encrypted_ep_context_mul.onnx"
+                );
+                let mut context = Context::default();
+                let mut model = ModelBuffer(ptr::null_mut(), default_allocator());
+                let mut model_size = 0;
+                let directory = path_chars(&fixture.directory.join(""));
+                let output_name = path_chars(Path::new(model_name));
+                unsafe {
+                    let check = |status| status_to_result_with_api(status, &api).unwrap();
+                    check(compile_api
+                        .ModelCompilationOptions_SetInputModelFromBuffer
+                        .unwrap()(
+                        options.0, source.as_ptr().cast(), source.len()
+                    ));
+                    check(compile_api
+                        .ModelCompilationOptions_SetEpContextEmbedMode
+                        .unwrap()(options.0, false));
+                    check(compile_api
+                        .ModelCompilationOptions_SetEpContextBinaryInformation
+                        .unwrap()(
+                        options.0, directory.as_ptr(), output_name.as_ptr()
+                    ));
+                    check(compile_api.ModelCompilationOptions_SetFlags.unwrap()(
+                        options.0,
+                        sys::OrtCompileApiFlags::OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED
+                            as u32,
+                    ));
+                    check(compile_api
+                        .ModelCompilationOptions_SetEpContextDataWriteFunc
+                        .unwrap()(
+                        options.0,
+                        Some(write_context),
+                        (&mut context as *mut Context).cast(),
+                    ));
+                    check(compile_api
+                        .ModelCompilationOptions_SetOutputModelBuffer
+                        .unwrap()(
+                        options.0, model.1, &mut model.0, &mut model_size
+                    ));
+                    status_to_result_with_api(
+                        compile_api.CompileModel.unwrap()(env_ptr, options.0),
+                        &api,
+                    )
+                    .unwrap();
+                    assert!(!model.0.is_null());
+                    assert_eq!(context.bytes, PAYLOAD);
+                    fs::write(
+                        fixture.directory.join("model.enc"),
+                        encrypt(
+                            &key,
+                            std::slice::from_raw_parts(model.0.cast::<u8>(), model_size),
+                            model_name,
+                        ),
+                    )
+                    .unwrap();
+                }
+                fs::write(
+                    fixture.directory.join("context.enc"),
+                    encrypt(&key, &context.bytes, &context.name),
+                )
+                .unwrap();
+                context_name = context.name;
+            }
+            assert_eq!(fs::read_dir(&fixture.directory).unwrap().count(), 2);
+            let model_record = fs::read(fixture.directory.join("model.enc")).unwrap();
+            let context_record = fs::read(fixture.directory.join("context.enc")).unwrap();
+            let mut wrong_key = key;
+            wrong_key[0] ^= 1;
+            assert!(decrypt(&wrong_key, &model_record, model_name).is_err());
+            assert!(decrypt(&wrong_key, &context_record, &context_name).is_err());
+            assert!(decrypt(&key, &context_record, "wrong-name").is_err());
+            let mut altered_model = model_record.clone();
+            *altered_model.last_mut().unwrap() ^= 1;
+            assert!(decrypt(&key, &altered_model, model_name).is_err());
+            let mut altered_context = context_record.clone();
+            *altered_context.last_mut().unwrap() ^= 1;
+            assert!(decrypt(&key, &altered_context, &context_name).is_err());
+            let model = decrypt(&key, &model_record, model_name).unwrap();
+            let calls = Arc::new(AtomicUsize::new(0));
+            let read_calls = calls.clone();
+            let encrypted_context = context_record.clone();
+            let expected_name = context_name.clone();
+            let session = builder()
+                .with_ep_context_data_read_callback(1024, move |name| {
+                    assert_eq!(name, expected_name);
+                    read_calls.fetch_add(1, Ordering::SeqCst);
+                    decrypt(&key, &encrypted_context, name)
+                })
+                .unwrap()
+                .with_model_from_memory(&model)
+                .unwrap();
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            for (x, y) in [
+                ([1., 2., 3., 4., 5., 6.], [2., -1., 0., 3., 2., 1.]),
+                ([-1., 0., 1., 2., 3., 4.], [4., 3., 2., 1., 0., -1.]),
+            ] {
+                let x = ndarray::Array::from_shape_vec((3, 2), x.to_vec()).unwrap();
+                let y = ndarray::Array::from_shape_vec((3, 2), y.to_vec()).unwrap();
+                let inputs: Vec<Box<dyn ConstructTensor>> =
+                    vec![Box::new(x.clone()), Box::new(y.clone())];
+                let outputs = session.run(inputs).unwrap();
+                match &outputs[0] {
+                    OrtOutput::Float(output) => assert_eq!(output.view(), (&x * &y).into_dyn()),
+                    _ => panic!("Expected float output"),
+                }
+            }
+            drop(session);
+            let error = builder().with_model_from_memory(&model).unwrap_err();
+            assert!(error.to_string().contains("requires a model path"));
+            for (record, read_key) in [(altered_context, key), (context_record, wrong_key)] {
+                let error = builder()
+                    .with_ep_context_data_read_callback(1024, move |name| {
+                        decrypt(&read_key, &record, name)
+                    })
+                    .unwrap()
+                    .with_model_from_memory(&model)
+                    .unwrap_err();
+                assert!(error.to_string().contains("AES-GCM authentication failed"));
+            }
+            let error = builder()
+                .with_ep_context_data_read_callback(1024, |_| {
+                    Ok(b"invalid compiled payload".to_vec())
+                })
+                .unwrap()
+                .with_model_from_memory(&model)
+                .unwrap_err();
+            assert!(error.to_string().contains("payload"));
+        }
+    }
 }
 
 /// This module contains dangerous functions working on raw pointers.
