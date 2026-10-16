@@ -115,12 +115,16 @@ class SequentialPlannerTestContext : public ISequentialPlannerContext {
   SequentialPlannerTestContext(ShapeMap* shape_map) : shape_map_(shape_map) {}
 
   TensorShapeProto* GetShape(const onnxruntime::NodeArg& arg) const override {
+    ++shape_queries_;
     auto iter = shape_map_->find(&arg);
     return (shape_map_->end() != iter) ? iter->second : nullptr;
   }
 
+  size_t GetShapeQueryCount() const { return shape_queries_; }
+
  private:
   ShapeMap* shape_map_;
+  mutable size_t shape_queries_ = 0;
 };
 
 class ParallelPlannerTestContext : public SequentialPlannerTestContext {
@@ -165,6 +169,7 @@ class PlannerTest : public ::testing::Test {
   std::unique_ptr<SessionState> state_;
   ShapeMap shape_map_;
   std::optional<SequentialExecutionPlan> plan_;
+  size_t shape_queries_ = 0;
 
  public:
   PlannerTest()
@@ -206,6 +211,11 @@ class PlannerTest : public ::testing::Test {
     auto iter = name_to_arg_.find(name);
     if (name_to_arg_.end() != iter) return iter->second;
     return (name_to_arg_[name] = &graph_.GetOrCreateNodeArg(name, &float_type_.value));
+  }
+
+  template <typename T>
+  void SetTensorType(const std::string& name) {
+    name_to_arg_[name] = &graph_.GetOrCreateNodeArg(name, DataTypeImpl::GetTensorType<T>()->GetTypeProto());
   }
 
   onnxruntime::Node* AddNode(::onnxruntime::KernelDef& kernel_def, std::string& input, std::string& output) {
@@ -349,6 +359,7 @@ class PlannerTest : public ::testing::Test {
           plan_);
 
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+      shape_queries_ = test_context.GetShapeQueryCount();
       // AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
     }
   }
@@ -357,6 +368,13 @@ class PlannerTest : public ::testing::Test {
     int id;
     index(name, id);
     EXPECT_EQ(plan_->allocation_plan[id].alloc_kind, kind) << "Error in allocation kind for " << name;
+  }
+
+  void CheckReusedBuffer(const std::string& name, const std::string& expected) {
+    int id, expected_id;
+    index(name, id);
+    index(expected, expected_id);
+    EXPECT_EQ(plan_->allocation_plan[id].reused_buffer, expected_id);
   }
 
   void CheckFreed(int step_number, std::initializer_list<std::string> freed_items) {
@@ -382,6 +400,26 @@ class PlannerTest : public ::testing::Test {
 
  protected:
   Graph& GetGraph() { return graph_; }
+  size_t GetShapeQueryCount() const { return shape_queries_; }
+  template <typename T>
+  void CheckStorageSizedReuse(AllocKind expected) {
+    std::string input = "input", a = "a", b = "b", c = "c", output = "output";
+    SetTensorType<T>(b);
+    SetTensorType<T>(c);
+    SetTensorType<T>(output);
+    AddNormalNode(input, a);
+    auto cast_kernel = KernelDefBuilder().SetName("Cast").Provider(kCpuExecutionProvider).SinceVersion(9).Build();
+    AddNode(*cast_kernel, a, b)->AddAttribute("to", static_cast<int64_t>(utils::ToTensorProtoElementType<T>()));
+    AddNormalNode(b, c);
+    AddNormalNode(c, output);
+    Shape compatible{"batch", "width"}, different{"batch", "other"};
+    SetShape({{a, &compatible.value}, {b, &different.value}, {c, &compatible.value}});
+
+    CreatePlan();
+
+    CheckAllocKind(c, expected);
+    if (expected == AllocKind::kReuse) CheckReusedBuffer(c, a);
+  }
   const SequentialExecutionPlan& GetPlan() const { return *plan_; }
   const SessionState& GetState() const { return *state_; }
   ExecutionProviders& GetExecutionProviders() { return execution_providers_; }
@@ -714,6 +752,120 @@ TEST_F(PlannerTest, InPlaceSizeMismatchTest) {
   CheckFreed(1, {});
   CheckFreed(2, {X3});
   CheckFreed(3, {X2});
+}
+
+TEST_F(PlannerTest, ReuseIndexPreservesMostRecentlyFreedCompatibleBuffer) {
+  std::string input = "input", a = "a", b = "b", c = "c";
+  std::string joined = "joined", reused = "reused", output = "output";
+  AddNormalNode(input, a);
+  AddNormalNode(input, b);
+  AddNormalNode(input, c);
+  auto sum_kernel = KernelDefBuilder().SetName("Sum").Provider(kCpuExecutionProvider).SinceVersion(8).Build();
+  std::string sum_name = "sum";
+  std::vector<NodeArg*> inputs{Arg(a), Arg(b), Arg(c)}, outputs{Arg(joined)};
+  AddNode(*sum_kernel, sum_name, inputs, outputs);
+  AddNormalNode(joined, reused);
+  AddNormalNode(reused, output);
+  Shape compatible{"batch", "width"}, incompatible{"batch", "other"}, join_shape{"batch", "joined"};
+  SetShape({{a, &compatible.value}, {b, &compatible.value}, {c, &incompatible.value}, {joined, &join_shape.value}, {reused, &compatible.value}, {output, &compatible.value}});
+
+  CreatePlan();
+
+  // Sum frees a, b, then c. Skip the newer incompatible c, but prefer b to a.
+  CheckAllocKind(reused, AllocKind::kReuse);
+  CheckReusedBuffer(reused, b);
+  CheckAllocKind(output, AllocKind::kAllocateOutput);
+}
+
+TEST_F(PlannerTest, ReuseIndexPreservesEmptyAndUnknownShapeEligibility) {
+  std::string input = "input", a = "a", b = "b", c = "c", output = "output";
+  AddNormalNode(input, a);
+  AddNormalNode(a, b);
+  AddNormalNode(b, c);
+  AddNormalNode(c, output);
+  Shape empty_symbol{""}, different{"other"};
+  SetShape({{a, &empty_symbol.value}, {b, &different.value}, {c, &empty_symbol.value}});
+
+  CreatePlan();
+
+  CheckAllocKind(a, AllocKind::kAllocate);
+  CheckAllocKind(b, AllocKind::kAllocate);
+  CheckAllocKind(c, AllocKind::kAllocate);
+  CheckAllocKind(output, AllocKind::kAllocateOutput);
+}
+
+TEST_F(PlannerTest, ReuseIndexAllowsZeroSizedTensors) {
+  std::string input = "input", a = "a", b = "b", c = "c", output = "output";
+  AddNormalNode(input, a);
+  AddNormalNode(a, b);
+  AddNormalNode(b, c);
+  AddNormalNode(c, output);
+  Shape empty{0, 8}, different{1, 8};
+  SetShape({{a, &empty.value}, {b, &different.value}, {c, &empty.value}});
+
+  CreatePlan();
+
+  CheckAllocKind(c, AllocKind::kReuse);
+  CheckReusedBuffer(c, a);
+}
+
+TEST_F(PlannerTest, ReuseIndexDoesNotReuseScalarBuffers) {
+  std::string input = "input", a = "a", b = "b", c = "c", output = "output";
+  AddNormalNode(input, a);
+  AddNormalNode(a, b);
+  AddNormalNode(b, c);
+  AddNormalNode(c, output);
+  Shape scalar(std::initializer_list<int>{}), different{1};
+  SetShape({{a, &scalar.value}, {b, &different.value}, {c, &scalar.value}});
+
+  CreatePlan();
+
+  CheckAllocKind(c, AllocKind::kAllocate);
+}
+
+TEST_F(PlannerTest, ReuseIndexAllowsEqualWidthDifferentElementTypes) {
+  CheckStorageSizedReuse<int32_t>(AllocKind::kReuse);
+}
+
+TEST_F(PlannerTest, ReuseIndexRejectsDifferentElementWidths) {
+  CheckStorageSizedReuse<int64_t>(AllocKind::kAllocate);
+}
+
+TEST_F(PlannerTest, ReuseIndexDoesNotReuseStringBuffers) {
+  std::string input = "input", a = "a", b = "b", c = "c", output = "output";
+  for (const auto& name : {input, a, b, c, output}) SetTensorType<std::string>(name);
+  AddNormalNode(input, a);
+  AddNormalNode(a, b);
+  AddNormalNode(b, c);
+  AddNormalNode(c, output);
+  Shape shape{"batch", "width"};
+  SetShape({{a, &shape.value}, {b, &shape.value}, {c, &shape.value}});
+
+  CreatePlan();
+
+  CheckAllocKind(c, AllocKind::kAllocate);
+}
+
+TEST_F(PlannerTest, ReuseIndexAvoidsQuadraticShapeQueries) {
+  constexpr int node_count = 512;
+  InlinedVector<std::string> names;
+  InlinedVector<Shape> shapes;
+  names.reserve(node_count + 1);
+  shapes.reserve(node_count + 1);
+  for (int i = 0; i <= node_count; ++i) {
+    names.push_back("value_" + std::to_string(i));
+    shapes.emplace_back(std::initializer_list<int>{i + 1});
+    SetShape(names.back(), &shapes.back().value);
+    if (i > 0) AddNormalNode(names[i - 1], names[i]);
+  }
+
+  CreatePlan();
+
+  // Count existing shape-context queries instead of relying on wall-clock time.
+  // Every freed buffer has a distinct shape, so no full-list scans are needed.
+  RecordProperty("shape_queries", std::to_string(GetShapeQueryCount()));
+  EXPECT_LE(GetShapeQueryCount(), 3U * node_count);
+  for (int i = 1; i < node_count; ++i) CheckAllocKind(names[i], AllocKind::kAllocate);
 }
 
 // Test operator<< to output details of an allocation & execution plan.

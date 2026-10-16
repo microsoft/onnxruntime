@@ -10,7 +10,9 @@
 #include <ctime>
 #include <iomanip>
 #include <iterator>
+#include <optional>
 #include "core/common/exceptions.h"
+#include "core/common/hash_combine.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/safeint.h"
 #include "core/platform/env.h"
@@ -228,9 +230,9 @@ class PlannerImpl {
         : ml_value(ort_value), deallocate_point(dealloc_point) {}
   };
 
-  // freelist_ : a list of ml-values whose buffers are free to be reused, sorted by when
-  // they became free (more recently freed earlier in the list).
-  std::list<FreeBufferInfo> freelist_;
+  // Compatible buffers have the same hash. Each bucket retains most-recently-freed
+  // ordering; hash collisions are checked with the original compatibility predicate.
+  InlinedHashMap<size_t, std::list<FreeBufferInfo>> freelists_;
 
   OrtValueIndex Index(const OrtValueName& name) {
     OrtValueIndex result;
@@ -578,16 +580,56 @@ class PlannerImpl {
     return SameSize(*p_shape1, arg1, *p_shape2, arg2);
   }
 
-  // Find if freelist contains a buffer of the same size as output_arg
+  std::optional<size_t> GetReuseKey(const NodeArg& arg, const TensorShapeProto& shape) {
+    if (shape.dim_size() == 0) return std::nullopt;
+    const auto* element_type = GetPrimitiveElementType(arg.Type());
+    if (element_type == DataTypeImpl::GetType<std::string>()) return std::nullopt;
+
+    size_t key = AllocPlan(arg.Name()).location.Hash();
+    HashCombine(element_type->Size(), key);
+    HashCombine(GetSubElemCount(arg.Type()), key);
+    HashCombine(shape.dim_size(), key);
+    for (const auto& dim : shape.dim()) {
+      if (utils::HasDimValue(dim)) {
+        HashCombine(false, key);
+        HashCombine(dim.dim_value(), key);
+      } else if (utils::HasDimParam(dim) && !dim.dim_param().empty()) {
+        HashCombine(true, key);
+        HashCombine(dim.dim_param(), key);
+      } else {
+        // SameShape cannot match an anonymous or empty symbolic dimension.
+        return std::nullopt;
+      }
+    }
+    return key;
+  }
+
+  void AddFreeBuffer(OrtValueIndex value, size_t program_counter) {
+    if (!context_->GetEnableMemoryReuse()) return;
+    const auto* arg = ort_value_info_[value].p_def_site;
+    if (!arg || IsNonTensor(*arg)) return;
+    const auto* shape = context_->GetShape(*arg);
+    if (!shape) return;
+    if (auto key = GetReuseKey(*arg, *shape)) {
+      freelists_[*key].emplace_front(value, program_counter);
+    }
+  }
+
+  // Find a compatible buffer without scanning unrelated shapes, types, or devices.
   bool FindReusableTensor(const onnxruntime::NodeArg& output_arg, OrtValueIndex* reusable_tensor) {
     if (!context_->GetEnableMemoryReuse()) {
       return false;
     }
     auto p_required_buffer_shape = context_->GetShape(output_arg);
     if (nullptr == p_required_buffer_shape || p_required_buffer_shape->dim_size() == 0) return false;
+    auto key = GetReuseKey(output_arg, *p_required_buffer_shape);
+    if (!key) return false;
+    auto bucket = freelists_.find(*key);
+    if (bucket == freelists_.end()) return false;
+    auto& freelist = bucket->second;
     auto& required_memory_info = AllocPlan(output_arg.Name()).location;
 
-    for (auto it = freelist_.begin(); it != freelist_.end(); ++it) {
+    for (auto it = freelist.begin(); it != freelist.end(); ++it) {
       size_t reusable = static_cast<size_t>(it->ml_value);
       const onnxruntime::NodeArg* p_node_arg = ort_value_info_.at(reusable).p_def_site;
       if (!p_node_arg) {
@@ -611,7 +653,8 @@ class PlannerImpl {
         if (SameSize(*p_available_buffer_shape, *p_node_arg,
                      *p_required_buffer_shape, output_arg)) {
           *reusable_tensor = it->ml_value;
-          freelist_.erase(it);
+          freelist.erase(it);
+          if (freelist.empty()) freelists_.erase(bucket);
           return true;
         }
       }
@@ -1540,7 +1583,7 @@ class PlannerImpl {
 #endif
       ORT_RETURN_IF_ERROR(ComputeSingleStreamReusePlan(i));
       ClearUseCount();
-      freelist_.clear();  // DONOT share freelist across streams
+      freelists_.clear();  // DONOT share free buffers across streams
     }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     CalculateLifetime(ort_value_usecount);
@@ -1674,7 +1717,7 @@ class PlannerImpl {
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original))) {
-            freelist_.push_front(FreeBufferInfo(original, program_counter));
+            AddFreeBuffer(original, program_counter);
           }
         }
       }
@@ -1694,7 +1737,7 @@ class PlannerImpl {
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original))) {
-            freelist_.push_front(FreeBufferInfo(original, program_counter));
+            AddFreeBuffer(original, program_counter);
           }
         }
       }
@@ -1708,7 +1751,7 @@ class PlannerImpl {
             // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
             // See comments in the OrtValueInfo definition.
             if (0 == DecrementUseCount(original)) {
-              freelist_.push_front(FreeBufferInfo(original, program_counter));
+              AddFreeBuffer(original, program_counter);
             }
           }
         }
@@ -2427,7 +2470,7 @@ Status PlannerImpl::CreatePlan(
   ORT_RETURN_IF_ERROR(ComputeAllocationOrder());
 #endif
 
-  // convert information in the freelist_ into a deallocation plan in required format
+  // convert buffer lifetime information into a deallocation plan in required format
   ORT_RETURN_IF_ERROR(GenerateDeallocationPlan());
 
   // generate program counter
