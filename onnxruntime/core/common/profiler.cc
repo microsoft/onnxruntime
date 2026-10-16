@@ -63,7 +63,7 @@ void Profiler::StartProfiling(const logging::Logger* custom_logger) {
 template <typename T>
 void Profiler::StartProfiling(const std::basic_string<T>& file_name) {
   enabled_ = true;
-#if !defined(__wasm__)
+#if !defined(__EMSCRIPTEN__)
   profile_stream_.open(file_name, std::ios::out | std::ios::trunc);
 #endif
   profile_stream_file_ = ToUTF8String(file_name);
@@ -270,7 +270,7 @@ std::string Profiler::EndProfiling() {
     }
   }
   profile_stream_ << "]\n";
-#if !defined(__wasm__)
+#if !defined(__EMSCRIPTEN__)
   profile_stream_.close();
 #endif
   enabled_ = false;  // will not collect profile after writing.

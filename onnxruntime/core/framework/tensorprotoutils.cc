@@ -8,7 +8,7 @@
 #include <limits>
 #include <string>
 #include <filesystem>
-#if defined(__wasm__)
+#if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
 #endif
 
@@ -433,9 +433,9 @@ Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
   // requires a drive letter).
   ORT_RETURN_IF(!external_data_path.root_path().empty(), "Absolute path not allowed for external data location");
 
-#if defined(__wasm__)
-  // Step 4 (WASM only): If we can't access the current working directory, assume the WASM environment
-  // does not have a virtual filesystem and defer validation to an ExternalDataLoader for the WASM EP.
+#if defined(__EMSCRIPTEN__)
+  // Step 4 (Emscripten only): If we can't access the current working directory, assume the environment
+  // does not have a virtual filesystem and defer validation to an ExternalDataLoader for the JS/WebGPU EP.
   std::error_code error_code;
   std::filesystem::current_path(error_code);
   if (error_code) {
@@ -1679,7 +1679,7 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
 #pragma warning(disable : 26409)
 #endif
 
-#if !defined(__wasm__)
+#if !defined(__EMSCRIPTEN__)
 static Status GetFileContent(const RandomAccessFile& file, FileOffsetType offset,
                              size_t length, IAllocatorUniquePtr<void>& external_data) {
   // query length if it is 0
@@ -1733,7 +1733,7 @@ static Status ValidateExternalFilePathForTensor(const ONNX_NAMESPACE::TensorProt
   return utils::ValidateExternalDataPath(model_path, external_data_info->GetRelPath());
 }
 
-#if !defined(__wasm__)
+#if !defined(__EMSCRIPTEN__)
 static Status LoadPrepackedWeightsFromFile(const RandomAccessFile& file,
                                            std::uintmax_t file_length,
                                            const ExternalDataInfo::PrepackedInfos& prepacked_infos,
@@ -1838,7 +1838,7 @@ Status GetExtDataFromTensorProto(const Env& env,
       Tensor::InitOrtValue(std::move(tensor), ort_value);
     }
   } else {
-#if defined(__wasm__)
+#if defined(__EMSCRIPTEN__)
     ORT_RETURN_IF(file_offset < 0 || file_offset + raw_data_safe_len >= 4294967296,
                   "External initializer: ", tensor_proto.name(), " offset: ", file_offset,
                   " size to read: ", static_cast<size_t>(raw_data_safe_len),
@@ -1940,7 +1940,7 @@ Status LoadPrepackedWeightsFromExternalData(const Env& env,
     return Status::OK();
   }
 
-#if defined(__wasm__)
+#if defined(__EMSCRIPTEN__)
   return Status::OK();
 #else
   ORT_RETURN_IF(external_data_file_path == kTensorProtoNativeEndianMemoryAddressTag ||
@@ -1992,7 +1992,7 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
   }
 #endif
 
-#if defined(__wasm__)
+#if defined(__EMSCRIPTEN__)
   return ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len, tensor);
 #else
   std::unique_ptr<RandomAccessFile> external_data_file;
