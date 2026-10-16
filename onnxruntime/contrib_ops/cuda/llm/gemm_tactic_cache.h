@@ -204,15 +204,34 @@ class MatMulNBitsTacticCache {
   // Parses a complete snapshot. No rows are accepted if the stream reports a read error.
   onnxruntime::common::Status Load(std::istream& in);
 
-  // Loads again if the file changed on disk since the last Load() or Flush(), so a new session
-  // sees rows written by other processes. Rows already in memory win.
+  // Loads again if the file changed on disk since the last Load() or Flush(), refreshing clean
+  // rows from disk while preserving locally pending updates.
   onnxruntime::common::Status ReloadIfChanged();
 
   // Atomically merges locally changed rows with the current on-disk file and writes
   // it back. No-op (OK) if there is nothing to persist.
   onnxruntime::common::Status Flush();
 
+  // Non-blocking variant of Flush() for shutdown/unload paths where waiting on a mutex or file
+  // lock held by a stopped worker thread could hang the process.
+  onnxruntime::common::Status TryFlush();
+
+  // Test hook used to simulate a worker thread stopped while holding the cache mutex.
+  std::unique_lock<std::mutex> LockMutexForTesting() const {
+    return std::unique_lock<std::mutex>(mutex_);
+  }
+
  private:
+  struct DirtyRow {
+    std::optional<CutlassGemmConfig> config;
+    uint64_t generation = 0;
+  };
+  using DirtyBucketMap = std::map<int, DirtyRow>;
+
+  bool IsDirtyLocked(const MatMulNBitsKey& key, int m_bucket) const;
+
+  onnxruntime::common::Status FlushImpl(bool allow_blocking);
+
   // Last write time and size of the file, or std::nullopt if it does not exist.
   using FileStamp = std::pair<std::filesystem::file_time_type, uintmax_t>;
   std::optional<FileStamp> CurrentFileStamp() const;
@@ -226,7 +245,8 @@ class MatMulNBitsTacticCache {
   mutable std::mutex mutex_;
   std::unordered_map<MatMulNBitsKey, BucketMap, MatMulNBitsKeyHash> table_;
   // Only locally changed rows participate in a flush; loaded rows must not undo another writer's update.
-  std::unordered_map<MatMulNBitsKey, BucketMap, MatMulNBitsKeyHash> dirty_rows_;
+  uint64_t next_dirty_generation_ = 0;
+  std::unordered_map<MatMulNBitsKey, DirtyBucketMap, MatMulNBitsKeyHash> dirty_rows_;
   std::optional<FileStamp> known_stamp_;
 };
 

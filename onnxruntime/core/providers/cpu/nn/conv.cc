@@ -310,6 +310,9 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   }
 
   if (C == 0) {
+    if (Sum != nullptr) {
+      ORT_RETURN_IF_NOT(Sum->Shape() == Y->Shape(), "output and sum shape must match");
+    }
     const size_t output_size = narrow<size_t>(Y->Shape().Size());
     const size_t spatial_size = narrow<size_t>(output_shape.Size());
     const size_t batch_count = narrow<size_t>(N);

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>  // NOLINT(build/c++17)
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -12,6 +13,14 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <corecrt_startup.h>
+#endif
 
 #include "core/common/status.h"
 #include "core/common/float16.h"
@@ -136,12 +145,31 @@ GlobalTacticCacheRegistry& GetGlobalTacticCacheRegistry() {
   return *registry;
 }
 
-void FlushAllTacticCaches(bool log_failures) {
+bool IsWindowsDllShutdownInProgress() {
+#if defined(_WIN32)
+  using RtlDllShutdownInProgressFn = BOOLEAN(NTAPI*)();
+  static const auto rtl_dll_shutdown_in_progress = reinterpret_cast<RtlDllShutdownInProgressFn>(
+      ::GetProcAddress(::GetModuleHandleW(L"ntdll.dll"), "RtlDllShutdownInProgress"));
+  return rtl_dll_shutdown_in_progress != nullptr && rtl_dll_shutdown_in_progress() != 0;
+#else
+  return false;
+#endif
+}
+
+void FlushAllTacticCaches(bool log_failures, bool allow_blocking) {
+  if (IsWindowsDllShutdownInProgress()) {
+    return;
+  }
   try {
     auto& registry = GetGlobalTacticCacheRegistry();
     std::vector<std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache>> caches;
     {
-      std::lock_guard<std::mutex> lock(registry.mutex);
+      std::unique_lock<std::mutex> lock(registry.mutex, std::defer_lock);
+      if (allow_blocking) {
+        lock.lock();
+      } else if (!lock.try_lock()) {
+        return;
+      }
       caches.reserve(registry.caches.size());
       for (const auto& entry : registry.caches) {
         caches.push_back(entry.second);
@@ -152,8 +180,11 @@ void FlushAllTacticCaches(bool log_failures) {
       if (cache == nullptr) {
         continue;
       }
+      if (IsWindowsDllShutdownInProgress()) {
+        return;
+      }
       try {
-        auto status = cache->Flush();
+        auto status = allow_blocking ? cache->Flush() : cache->TryFlush();
         if (!status.IsOK() && log_failures) {
           ORT_LLM_LOG_WARNING("Failed to flush MatMulNBits gemm tactic cache: " + status.ErrorMessage());
         }
@@ -166,9 +197,32 @@ void FlushAllTacticCaches(bool log_failures) {
   }
 }
 
-// Saves tactics of sessions still alive at process exit. Does not log: the default logger may be gone.
+void OnProcessExitFlushTacticCaches() {
+  FlushAllTacticCaches(/*log_failures*/ false, /*allow_blocking*/ false);
+}
+
+void RegisterProcessExitTacticCacheFlusher() {
+#if defined(_WIN32)
+  // Static destructors in a Windows DLL run during DLL_PROCESS_DETACH, after ExitProcess has
+  // already stopped worker threads (which may still hold a registry or cache mutex). Register a
+  // process-wide CRT exit callback instead so live sessions save during exit() before worker
+  // threads are stopped, and pin the DLL so the callback address stays valid if the provider is
+  // unloaded earlier.
+  static std::once_flag once;
+  std::call_once(once, []() {
+    HMODULE module = nullptr;
+    if (::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+                             reinterpret_cast<LPCWSTR>(&OnProcessExitFlushTacticCaches), &module)) {
+      _crt_atexit(&OnProcessExitFlushTacticCaches);
+    }
+  });
+#endif
+}
+
+// Saves tactics of sessions still alive at process exit / module unload without blocking during
+// Windows DLL shutdown. Does not log: the default logger may be gone.
 struct ExitTacticCacheFlusher {
-  ~ExitTacticCacheFlusher() { FlushAllTacticCaches(/*log_failures*/ false); }
+  ~ExitTacticCacheFlusher() { FlushAllTacticCaches(/*log_failures*/ false, /*allow_blocking*/ false); }
 };
 ExitTacticCacheFlusher s_exit_tactic_cache_flusher;
 }  // namespace
@@ -198,6 +252,7 @@ static std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> Get
     return it->second;
   }
 
+  RegisterProcessExitTacticCacheFlusher();
   auto cache = std::make_shared<MatMulNBitsTacticCache>(file_path, std::move(signature));
   auto status = cache->Load();
   static_cast<void>(status);  // A missing/mismatched file simply yields an empty cache.
@@ -211,7 +266,20 @@ static std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> Get
 // teardown is cheap even when several sessions share the process. Safe to call from a destructor:
 // never throws.
 void FlushMatMulNBitsTacticCaches() {
-  FlushAllTacticCaches(/*log_failures*/ true);
+  FlushAllTacticCaches(/*log_failures*/ true, /*allow_blocking*/ true);
+}
+
+void FlushMatMulNBitsTacticCachesForShutdown() {
+  FlushAllTacticCaches(/*log_failures*/ false, /*allow_blocking*/ false);
+}
+
+std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> GetGlobalMatMulNBitsTacticCacheForTesting(
+    std::string file_path, onnxruntime::llm::gemm_cache::HardwareSignature signature, bool load) {
+  return GetGlobalMatMulNBitsTacticCache(std::move(file_path), std::move(signature), load);
+}
+
+std::unique_lock<std::mutex> LockMatMulNBitsTacticCacheRegistryForTesting() {
+  return std::unique_lock<std::mutex>(GetGlobalTacticCacheRegistry().mutex);
 }
 
 constexpr auto kScaleAndZeros = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS;
@@ -635,8 +703,16 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   std::string sidecar_prefix;
   if (*use_sidecar) {
     // Empty for models loaded from bytes, in which case the other locations still apply.
-    const auto model_path = this->GetSessionModelPath().u8string();
-    sidecar_prefix.assign(model_path.begin(), model_path.end());
+    std::filesystem::path model_path = this->GetSessionModelPath();
+    if (!model_path.empty() && model_path.is_relative()) {
+      std::error_code ec;
+      std::filesystem::path abs_path = std::filesystem::absolute(model_path, ec);
+      if (!ec && !abs_path.empty()) {
+        model_path = std::move(abs_path);
+      }
+    }
+    const auto model_path_u8 = model_path.u8string();
+    sidecar_prefix.assign(model_path_u8.begin(), model_path_u8.end());
   }
 
   const auto& device_prop = this->GetDeviceProp();
@@ -758,12 +834,13 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   gemmProfiler_->setDecodeInterleave(weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90 ? 1 : 4);
 
   if (!cache_file_path.empty()) {
-    // A save-mode session must re-profile instead of reusing tactics that earlier sessions left in the
-    // process-global profile map, so it gets a profile map of its own.
+    // Persisted sessions use a session-local profile map so they deduplicate identical shapes
+    // within the session while loading new or retuned tactics from the persistent cache rather
+    // than reusing stale entries from the process-global map.
     gemmProfiler_->setPersistentCache(
         GetGlobalMatMulNBitsTacticCache(std::move(cache_file_path), cache_signature, cache_access.load),
         cache_access,
-        cache_access.load ? nullptr : s_profilerManager.getSessionProfileMap(this->GetSessionKey()));
+        s_profilerManager.getSessionProfileMap(this->GetSessionKey()));
   }
   const std::string tuning_results_prefix =
       info.GetConfigOptions().GetConfigOrDefault(gc::kSessionConfigTuningResultsPrefix, "");

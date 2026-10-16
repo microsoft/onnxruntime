@@ -5,6 +5,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
+#include "core/common/common.h"
 #include "core/providers/cuda/plugin/provider_api_shims.h"
 #endif
 
@@ -150,19 +151,21 @@ int CurrentProcessId() {
 // RAII cross-process advisory lock on "<path>.lock".
 class ScopedFileLock {
  public:
-  explicit ScopedFileLock(const std::string& path) : lock_path_(Utf8Path(path + ".lock")) {
+  explicit ScopedFileLock(const std::string& path, bool try_only = false) : lock_path_(Utf8Path(path + ".lock")) {
 #if defined(_WIN32)
     handle_ = ::CreateFileW(lock_path_.c_str(), GENERIC_READ | GENERIC_WRITE,
                             FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
                             OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (handle_ != INVALID_HANDLE_VALUE) {
       OVERLAPPED ov{};
-      locked_ = ::LockFileEx(handle_, LOCKFILE_EXCLUSIVE_LOCK, 0, MAXDWORD, MAXDWORD, &ov) != 0;
+      const DWORD flags = LOCKFILE_EXCLUSIVE_LOCK | (try_only ? LOCKFILE_FAIL_IMMEDIATELY : 0);
+      locked_ = ::LockFileEx(handle_, flags, 0, MAXDWORD, MAXDWORD, &ov) != 0;
     }
 #else
     fd_ = ::open(lock_path_.c_str(), O_CREAT | O_RDWR, 0644);
     if (fd_ != -1) {
-      locked_ = ::flock(fd_, LOCK_EX) == 0;
+      const int operation = LOCK_EX | (try_only ? LOCK_NB : 0);
+      locked_ = ::flock(fd_, operation) == 0;
     }
 #endif
   }
@@ -450,8 +453,17 @@ std::string MatMulNBitsTacticCache::ResolveFilePath(const std::string& config_di
   std::string prefix = config_prefix;
   std::string dir = config_dir;
   // Any session-config location overrides the env vars, so an env prefix cannot shadow a session dir.
-  if (prefix.empty() && dir.empty()) {
-    prefix = sidecar_prefix;
+  if (prefix.empty() && dir.empty() && !sidecar_prefix.empty()) {
+    std::error_code ec;
+    const std::filesystem::path sidecar_path = Utf8Path(sidecar_prefix);
+    const std::filesystem::path abs_sidecar =
+        sidecar_path.is_relative() ? std::filesystem::absolute(sidecar_path, ec) : sidecar_path;
+    if (!ec && !abs_sidecar.empty()) {
+      const auto abs_u8 = abs_sidecar.u8string();
+      prefix.assign(abs_u8.begin(), abs_u8.end());
+    } else {
+      prefix = sidecar_prefix;
+    }
   }
   if (prefix.empty() && dir.empty()) {
     prefix = GetEnvironmentVar(kEnvCachePrefix);
@@ -505,6 +517,11 @@ MatMulNBitsTacticCache::BucketMap MatMulNBitsTacticCache::GetAll(const MatMulNBi
   return it->second;
 }
 
+bool MatMulNBitsTacticCache::IsDirtyLocked(const MatMulNBitsKey& key, int m_bucket) const {
+  auto key_it = dirty_rows_.find(key);
+  return key_it != dirty_rows_.end() && key_it->second.find(m_bucket) != key_it->second.end();
+}
+
 void MatMulNBitsTacticCache::Put(const MatMulNBitsKey& key, int m_bucket,
                                  const std::optional<CutlassGemmConfig>& config) {
   if (!config.has_value()) {
@@ -512,7 +529,7 @@ void MatMulNBitsTacticCache::Put(const MatMulNBitsKey& key, int m_bucket,
   }
   std::lock_guard<std::mutex> guard(mutex_);
   table_[key][m_bucket] = config;
-  dirty_rows_[key][m_bucket] = config;
+  dirty_rows_[key][m_bucket] = DirtyRow{config, ++next_dirty_generation_};
 }
 
 onnxruntime::common::Status MatMulNBitsTacticCache::Load() {
@@ -669,7 +686,9 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Load(std::istream& in) {
   for (auto& [key, buckets] : loaded) {
     auto& dest = table_[key];
     for (auto& [m, cfg] : buckets) {
-      dest.emplace(m, cfg);  // Do not clobber entries already set in-process.
+      if (!IsDirtyLocked(key, m)) {
+        dest[m] = cfg;  // Refresh clean entries from disk while preserving locally pending updates.
+      }
     }
   }
   return onnxruntime::common::Status::OK();
@@ -785,8 +804,21 @@ onnxruntime::common::Status MatMulNBitsTacticCache::WriteAllLocked(
 }
 
 onnxruntime::common::Status MatMulNBitsTacticCache::Flush() {
+  return FlushImpl(/*allow_blocking*/ true);
+}
+
+onnxruntime::common::Status MatMulNBitsTacticCache::TryFlush() {
+  return FlushImpl(/*allow_blocking*/ false);
+}
+
+onnxruntime::common::Status MatMulNBitsTacticCache::FlushImpl(bool allow_blocking) {
   {
-    std::lock_guard<std::mutex> guard(mutex_);
+    std::unique_lock<std::mutex> guard(mutex_, std::defer_lock);
+    if (allow_blocking) {
+      guard.lock();
+    } else if (!guard.try_lock()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Gemm tactic cache mutex is busy: ", file_path_);
+    }
     if (dirty_rows_.empty()) {
       return onnxruntime::common::Status::OK();
     }
@@ -804,7 +836,7 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Flush() {
 
   // Without the lock two writers could load the same snapshot and the last rename would drop the
   // other's rows, so fail the flush (the rows stay dirty and are retried at the next flush point).
-  ScopedFileLock lock(file_path_);
+  ScopedFileLock lock(file_path_, /*try_only*/ !allow_blocking);
   if (!lock.locked()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to acquire the gemm tactic cache file lock: ", file_path_, ".lock");
   }
@@ -821,48 +853,64 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Flush() {
   }
   decltype(dirty_rows_) pending;
   {
-    std::lock_guard<std::mutex> guard(mutex_);
+    std::unique_lock<std::mutex> guard(mutex_, std::defer_lock);
+    if (allow_blocking) {
+      guard.lock();
+    } else if (!guard.try_lock()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Gemm tactic cache mutex is busy: ", file_path_);
+    }
     if (dirty_rows_.empty()) {
       return onnxruntime::common::Status::OK();
     }
+    // Keep pending rows in dirty_rows_ while WriteAllLocked runs so a concurrent Load() or
+    // ReloadIfChanged() treats the in-flight flush as locally pending and does not overwrite it
+    // with the pre-rename file contents.
     pending = dirty_rows_;
     for (const auto& [key, buckets] : pending) {
       auto& dest = merged[key];
-      for (const auto& [m, cfg] : buckets) {
-        dest[m] = cfg;
+      for (const auto& [m, dirty] : buckets) {
+        dest[m] = dirty.config;
       }
     }
-    dirty_rows_.clear();
   }
 
-  auto restore_pending = [&]() {
-    std::lock_guard<std::mutex> guard(mutex_);
-    for (const auto& [key, buckets] : pending) {
-      for (const auto& [m, cfg] : buckets) {
-        dirty_rows_[key].emplace(m, cfg);  // Keep newer changes made while the write was in flight.
-      }
-    }
-  };
-  onnxruntime::common::Status status;
-  try {
-    status = WriteAllLocked(merged);
-  } catch (...) {
-    restore_pending();
-    throw;
-  }
+  onnxruntime::common::Status status = WriteAllLocked(merged);
   if (!status.IsOK()) {
-    restore_pending();
     return status;
   }
 
   const auto stamp = CurrentFileStamp();
-  std::lock_guard<std::mutex> guard(mutex_);
+  std::unique_lock<std::mutex> guard(mutex_, std::defer_lock);
+  if (allow_blocking) {
+    guard.lock();
+  } else if (!guard.try_lock()) {
+    return status;
+  }
+  for (const auto& [key, buckets] : pending) {
+    auto dirty_key_it = dirty_rows_.find(key);
+    if (dirty_key_it == dirty_rows_.end()) {
+      continue;
+    }
+    for (const auto& [m, flushed] : buckets) {
+      auto dirty_it = dirty_key_it->second.find(m);
+      if (dirty_it != dirty_key_it->second.end() && dirty_it->second.generation == flushed.generation) {
+        dirty_key_it->second.erase(dirty_it);
+      }
+    }
+    if (dirty_key_it->second.empty()) {
+      dirty_rows_.erase(dirty_key_it);
+    }
+  }
   known_stamp_ = stamp;
-  // Adopt rows other writers added, since known_stamp_ now hides them from ReloadIfChanged().
+  // Adopt rows from the merged snapshot (including updates to existing clean buckets from other
+  // writers), since known_stamp_ now hides them from ReloadIfChanged(). Preserve any row dirtied
+  // while the write was in flight.
   for (const auto& [key, buckets] : merged) {
     auto& dest = table_[key];
     for (const auto& [m, cfg] : buckets) {
-      dest.emplace(m, cfg);
+      if (!IsDirtyLocked(key, m)) {
+        dest[m] = cfg;
+      }
     }
   }
   return status;

@@ -120,8 +120,8 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
 
   // Attaches the process-global persistent tactic cache. A nullptr keeps the
   // in-process-only behavior (no disk reads/writes). A non-null `session_profile_map` replaces the
-  // process-global profile map, so this profiler neither reuses tactics selected by other sessions nor
-  // shares its own with them (used to re-tune).
+  // process-global profile map so this profiler deduplicates shapes within its own session while
+  // using `cache` for cross-session persistence (and re-tuning without mutating live sessions).
   void setPersistentCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache,
                           onnxruntime::llm::gemm_cache::CacheAccess access = {},
                           MNKProfileMapPtr session_profile_map = nullptr) {

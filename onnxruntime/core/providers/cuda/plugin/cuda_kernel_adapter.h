@@ -551,6 +551,13 @@ struct CudaKernelAdapterRuntimeConfig {
 
   // Path of the model the EP partitioned (recorded in GetCapability); empty if loaded from bytes.
   void SetModelPath(std::filesystem::path path) {
+    if (!path.empty() && path.is_relative()) {
+      std::error_code ec;
+      std::filesystem::path abs_path = std::filesystem::absolute(path, ec);
+      if (!ec && !abs_path.empty()) {
+        path = std::move(abs_path);
+      }
+    }
     std::lock_guard<std::mutex> lock(model_path_mutex);
     model_path = std::move(path);
   }

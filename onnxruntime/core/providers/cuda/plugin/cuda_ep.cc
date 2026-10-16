@@ -260,8 +260,11 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
   }
 
   if (auto model_path = graph.GetModelPath(); !model_path.empty()) {
+    std::error_code ec;
+    std::filesystem::path path(model_path);
+    std::filesystem::path abs_path = std::filesystem::absolute(path, ec);
     onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(static_cast<const void*>(ep->EpImpl()))
-        ->SetModelPath(std::filesystem::path(model_path));
+        ->SetModelPath((!ec && !abs_path.empty()) ? std::move(abs_path) : std::move(path));
   }
 
   // Three-phase filtering determines which graph nodes run on this EP:

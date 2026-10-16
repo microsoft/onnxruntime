@@ -133,6 +133,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   // Path of the model this provider partitioned, recorded in GetCapability. Empty for models loaded
   // from bytes, or before partitioning.
+  void SetSessionModelPath(std::filesystem::path path) const;
   std::filesystem::path GetSessionModelPath() const;
 
  private:
