@@ -16,6 +16,7 @@
 
 #include "core/common/float16.h"
 #include "core/platform/env_var_utils.h"
+#include "contrib_ops/cuda/bert/group_query_attention_eligibility.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 
@@ -402,6 +403,55 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   if (cudnn_reachable) {
     bounds.reachable_backends =
         bounds.reachable_backends | GQAReachableBackend::Cudnn;
+  }
+
+  for (GQAExecutionPhase phase : {GQAExecutionPhase::Prefill,
+                                  GQAExecutionPhase::Decode,
+                                  GQAExecutionPhase::ChunkedPrefill}) {
+    auto covering = IntersectGQAReachableBackends(
+        bounds.reachable_backends, GQAReachableBackend::Unfused);
+#if USE_FLASH_ATTENTION || USE_MEMORY_EFFICIENT_ATTENTION
+    bool flash_covers = false;
+    bool mea_covers = false;
+#if USE_FLASH_ATTENTION
+    flash_covers = flash_reachable &&
+                   head_bound <= static_cast<int64_t>(onnxruntime::flash::kFlashAttentionMaxHeadSize);
+#endif
+#if USE_MEMORY_EFFICIENT_ATTENTION
+    mea_covers = mea_reachable && head_bound <= kEfficientAttentionMaxHeadSize;
+    GroupQueryAttentionParameters parameters{};
+    parameters.is_first_prompt = phase == GQAExecutionPhase::Prefill;
+    // Eligibility distinguishes phase classes, not lengths within a class.
+    parameters.sequence_length = phase == GQAExecutionPhase::Decode ? 1 : 2;
+    parameters.num_heads = static_cast<int>(config.num_heads);
+    parameters.kv_num_heads = static_cast<int>(config.kv_num_heads);
+    parameters.use_smooth_softmax = config.smooth_softmax;
+    parameters.past_kv_format = AttentionQkvFormat::Q_K_V_BNSH;
+#endif
+    for (int64_t head = 8; (flash_covers || mea_covers) && head <= head_bound; head += 8) {
+#if USE_FLASH_ATTENTION
+      flash_covers = flash_covers &&
+                     IsGQAFlashEligibleSeqFree<MLFloat16>(
+                         device_prop, has_bias, !kernel_options.UseFlashAttention(),
+                         head, config.num_heads, config.kv_num_heads);
+#endif
+#if USE_MEMORY_EFFICIENT_ATTENTION
+      parameters.head_size = static_cast<int>(head);
+      const auto supports_mea = [&](auto element) {
+        return IsGQAMemoryEfficientEligible<decltype(element)>(
+            parameters, device_prop.major * 10 + device_prop.minor,
+            !kernel_options.UseEfficientAttention(), k_quantized, has_bias, has_sink);
+      };
+      mea_covers = mea_covers &&
+                   (config.is_bf16 ? supports_mea(BFloat16{}) : supports_mea(MLFloat16{}));
+#endif
+    }
+    if (flash_covers) covering = covering | GQAReachableBackend::Flash;
+    if (mea_covers) covering = covering | GQAReachableBackend::MemoryEfficient;
+#endif
+    // XQA and Flash fast decode require runtime buffer aliasing, so neither
+    // can be the sole covering route even when all head geometries are supported.
+    bounds.covering_backends.Set(phase, covering);
   }
   return bounds;
 }

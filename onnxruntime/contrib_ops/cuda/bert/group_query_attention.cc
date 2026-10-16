@@ -4,7 +4,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <iostream>
 #include <limits>
+#include <sstream>
 #include <vector>
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -16,7 +18,7 @@
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
 #include "contrib_ops/cuda/bert/group_query_attention_eligibility.h"
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
-#include "core/framework/resource_accountant.h"
+#include "core/framework/cuda_gqa_workspace_config.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
 #endif
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
@@ -138,7 +140,8 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
       info.GetConfigOptions()
           .GetConfigEntry(kOrtSessionOptionsKernelDispatchPolicy)
           .value_or(""));
-#if defined(USE_CUDA_MINIMAL) || defined(DISABLE_CONTRIB_OPS) || defined(BUILD_CUDA_EP_AS_PLUGIN)
+#if defined(ORT_MINIMAL_BUILD) || defined(USE_CUDA_MINIMAL) || defined(DISABLE_CONTRIB_OPS) || \
+    defined(BUILD_CUDA_EP_AS_PLUGIN)
   ORT_ENFORCE(dispatch_policy_ != KernelDispatchPolicy::Memory,
               "GroupQueryAttention (CUDA): session.kernel_dispatch_policy=memory requires Level-2 workspace commitment, "
               "which is unavailable in this build. Use auto, latency, or safe instead.");
@@ -164,8 +167,12 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
       break;
   }
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
-  ORT_THROW_IF_ERROR(ParseCudaGqaWorkspaceMaxTotalSequenceLength(
-      info.GetConfigOptions(), max_total_sequence_length_));
+  if (const auto envelope = info.GetConfigOptions().GetConfigEntry(
+          kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength);
+      envelope.has_value()) {
+    ORT_THROW_IF_ERROR(ParseCudaGqaWorkspaceMaxTotalSequenceLength(
+        *envelope, max_total_sequence_length_));
+  }
 #endif
 
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
@@ -1064,6 +1071,31 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     data.unfused_q_bnsh = reinterpret_cast<CudaT*>(base + recipe.q_bnsh_offset_bytes);
     data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + recipe.y_bnsh_offset_bytes);
     data.unfused_workspace = reinterpret_cast<void*>(base + recipe.qk_offset_bytes);
+  }
+
+  if (kernel_options_->AllowDebugInfo()) {
+    const char* selected_backend = "none";
+    if (data.use_xqa) {
+      selected_backend = "xqa";
+    } else if (data.use_cudnn_sdpa) {
+      selected_backend = "cudnn";
+    } else if (data.use_flash_attention_fast_decode) {
+      selected_backend = "flash_fast_decode";
+    } else if (data.use_flash_attention) {
+      selected_backend = "flash";
+    } else if (data.use_memory_efficient_attention) {
+      selected_backend = "memory_efficient";
+    } else if (data.use_unfused) {
+      selected_backend = "unfused";
+    }
+    std::ostringstream dispatch_info;
+    dispatch_info << "GroupQueryAttentionDispatch Node=" << this->Node().Name()
+                  << " Policy=" << KernelDispatchPolicyName(dispatch_policy_)
+                  << " Phase=" << GQAExecutionPhaseName(execution_phase)
+                  << " PermittedBackends=" << static_cast<uint32_t>(GetGQAPermittedBackends(execution_phase))
+                  << " PastPresentShareBuffer=" << parameters.past_present_share_buffer
+                  << " SelectedBackend=" << selected_backend;
+    std::cout << dispatch_info.str() << std::endl;
   }
 
   ORT_RETURN_IF(

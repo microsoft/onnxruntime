@@ -507,12 +507,15 @@ static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLengt
 /// Unset, empty, or unrecognized values map to "auto"; matching is case-sensitive.
 /// CUDA GroupQueryAttention is the first enforcing consumer: "latency" preserves its current
 /// route priority per phase, "memory" commits the smallest analytically bounded prefill,
-/// decode, and chunked-prefill route sets, and "safe" permits only analytically bounded
+/// decode, and chunked-prefill route sets with a fallback proven to cover the admitted
+/// geometry and runtime eligibility outcomes, and "safe" permits only analytically bounded
 /// routes applicable to each phase. "memory" requires Level-2 workspace commitment and is
 /// rejected during GQA kernel initialization when unavailable, including CUDA plugin and
-/// CUDA-minimal builds. A non-auto policy fails closed when no committed route
+/// CUDA-minimal or ORT-minimal builds. A non-auto policy fails closed when no committed route
 /// can serve a run. The option does not by itself enforce a workload envelope or memory
 /// budget or provide a no-OOM guarantee.
+/// ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO=1 reports the policy, phase, permitted backend
+/// mask, cache-buffer sharing, and selected route for each GQA dispatch.
 static const char* const kOrtSessionOptionsKernelDispatchPolicy = "session.kernel_dispatch_policy";
 
 /// Maximum number of rows of input A per CUDA MatMulNBits fpA_intB GEMM launch. Values below 8192 are

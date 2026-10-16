@@ -405,7 +405,7 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForPermittedPhase(
 
 struct GQAMinimumRoute {
   GQAWorkspaceStatus status;
-  GQAReachableBackend backend = GQAReachableBackend::None;
+  GQAReachableBackend backends = GQAReachableBackend::None;
   size_t workspace_bytes = 0;
 };
 
@@ -416,24 +416,40 @@ GQAMinimumRoute SelectMinimumWorkspaceRoute(
     GQAExecutionPhase phase) noexcept {
   GQAMinimumRoute selected;
   selected.status = Unavailable("No analytically bounded GQA route covers the execution phase.");
+  const auto reachable = GetGQAReachableBackendsForPhase(bounds.reachable_backends, phase);
+  const auto covering = IntersectGQAReachableBackends(
+      reachable, bounds.covering_backends.Get(phase));
+  const auto consider = [&](GQAReachableBackend backends, GQAMinimumRoute& minimum) {
+    const auto estimate =
+        GetGQAWorkspaceAggregateForPermittedPhase(bounds, phase, backends);
+    if (!estimate.status.IsOK()) return;
+    if (minimum.backends != GQAReachableBackend::None &&
+        estimate.total_workspace_bytes >= minimum.workspace_bytes) {
+      return;
+    }
+
+    minimum.status = {};
+    minimum.backends = backends;
+    minimum.workspace_bytes = estimate.total_workspace_bytes;
+  };
+
+  GQAMinimumRoute fallback;
+  fallback.status = Unavailable(
+      "No analytically bounded GQA route covers every admitted geometry and runtime eligibility outcome.");
+  for (GQAReachableBackend candidate : candidates) {
+    if (HasGQAReachableBackend(covering, candidate)) {
+      consider(candidate, fallback);
+    }
+  }
+  if (!fallback.status.IsOK()) return fallback;
 
   for (GQAReachableBackend candidate : candidates) {
-    if (!HasGQAReachableBackend(
-            GetGQAReachableBackendsForPhase(bounds.reachable_backends, phase),
-            candidate)) {
-      continue;
-    }
-    const auto estimate =
-        GetGQAWorkspaceAggregateForPermittedPhase(bounds, phase, candidate);
-    if (!estimate.status.IsOK()) continue;
-    if (selected.backend != GQAReachableBackend::None &&
-        estimate.total_workspace_bytes >= selected.workspace_bytes) {
-      continue;
-    }
-
-    selected.status = {};
-    selected.backend = candidate;
-    selected.workspace_bytes = estimate.total_workspace_bytes;
+    if (!HasGQAReachableBackend(reachable, candidate)) continue;
+    const auto backends =
+        HasGQAReachableBackend(covering, candidate)
+            ? candidate
+            : candidate | fallback.backends;
+    consider(backends, selected);
   }
 
   return selected;
@@ -539,9 +555,9 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
           aggregate.status = selected.status;
           return aggregate;
         }
-        committed_backends.Set(phase, selected.backend);
+        committed_backends.Set(phase, selected.backends);
         selected_general_backends =
-            selected_general_backends | selected.backend;
+            selected_general_backends | selected.backends;
       }
       if (bounds.decode_reachable) {
         const auto selected =
@@ -558,7 +574,7 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
             GetGQAReachableBackendsForPhase(
                 bounds.reachable_backends, GQAExecutionPhase::Decode));
         committed_backends.decode =
-            selected.backend | decode_fallbacks;
+            selected.backends | decode_fallbacks;
       }
       break;
     }

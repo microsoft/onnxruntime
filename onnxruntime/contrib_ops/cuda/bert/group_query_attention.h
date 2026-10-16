@@ -85,9 +85,8 @@ class GroupQueryAttention final : public CudaKernel {
         std::memory_order_relaxed);
   }
 
-  bool IsGQABackendPermitted(
-      GQAExecutionPhase phase,
-      GQAReachableBackend backend) const noexcept {
+  GQAReachableBackend GetGQAPermittedBackends(
+      GQAExecutionPhase phase) const noexcept {
     uint32_t committed = 0;
     switch (phase) {
       case GQAExecutionPhase::Prefill:
@@ -103,9 +102,13 @@ class GroupQueryAttention final : public CudaKernel {
             committed_chunked_prefill_backends_.load(std::memory_order_relaxed);
         break;
     }
-    return HasGQAReachableBackend(
-        static_cast<GQAReachableBackend>(committed),
-        backend);
+    return static_cast<GQAReachableBackend>(committed);
+  }
+
+  bool IsGQABackendPermitted(
+      GQAExecutionPhase phase,
+      GQAReachableBackend backend) const noexcept {
+    return HasGQAReachableBackend(GetGQAPermittedBackends(phase), backend);
   }
 
   static constexpr int kZerosCount = 256;  // In prompt case we create a zero buffer of size 256 for seqlen (assume batch_size <= 256)

@@ -184,6 +184,10 @@ struct GQAWorkspaceBounds {
   bool chunked_prefill_reachable = false;
 
   GQAReachableBackend reachable_backends = GQAReachableBackend::None;
+  // Separate full-domain eligibility proof from existential reachability.
+  // Each listed route must cover every admitted geometry and runtime-only
+  // eligibility outcome for its phase, including non-aliasing cache buffers.
+  GQACommittedBackends covering_backends;
   int64_t device_major = 0;
   int64_t device_minor = 0;
   int64_t multi_processor_count = 0;
@@ -221,9 +225,9 @@ struct GQAWorkspaceAggregate {
 
 // Resolves the intent to runtime-enforced phase-specific route sets and computes
 // the maximum over admitted phases and their permitted routes. Auto and Latency
-// preserve the phase-applicable route cascade. Memory chooses the smallest proven
-// route independently for prefill, decode, and chunked prefill; decode also retains
-// the selected general-phase routes as bounded fallbacks. Safe commits every
+// preserve the phase-applicable route cascade. Memory minimizes complete route
+// sets per phase, retaining a proven covering fallback for partial-coverage routes;
+// decode also retains the selected general-phase routes. Safe commits every
 // analytically bounded route applicable to each phase. A committed cuDNN route
 // makes the result unavailable because its allocator-based workspace has no
 // graph-free oracle.
