@@ -35,8 +35,9 @@ CUDA uses one cooperative block per query with invocation-local scratch for
 stable duplicate removal. Hash scratch is bounded by the candidate width and
 the output capacity plus one overflow-detection entry, rather than the output
 capacity alone. Successful rows use at most half of the hash slots.
-WebGPU uses one invocation per query, with a workgroup hash table of up to
-4096 slots and an output-prefix scan when more slots would be needed.
+WebGPU uses one cooperative workgroup per query. Parallel first-occurrence
+checks and ordered chunk compaction preserve stable output order without a
+capacity-dependent workgroup hash table or a serial large-capacity fallback.
 Neither kernel modifies the base tensors or retains a
 selection between runs.
 

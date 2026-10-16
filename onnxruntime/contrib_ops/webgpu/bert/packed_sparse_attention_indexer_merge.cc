@@ -19,69 +19,100 @@ Status PackedSparseAttentionIndexerMergeProgram::GenerateShaderCode(ShaderHelper
   const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
   const auto& output_counts = shader.AddOutput("output_counts", ShaderUsage::UseValueTypeAlias);
   const auto& status = shader.AddOutput("status", ShaderUsage::UseValueTypeAlias);
-  const bool use_hash = hash_capacity_ <= 4096;
-  if (use_hash) {
-    shader.AdditionalImplementation() << "var<workgroup> keys: array<i32, " << hash_capacity_ << ">;\n";
-  }
+  shader.AdditionalImplementation()
+      << "var<workgroup> positions: array<u32, 256>;\n"
+      << "var<workgroup> base_offset_shared: u32;\n"
+      << "var<workgroup> count_shared: u32;\n"
+      << "var<workgroup> start_shared: i32;\n"
+      << "var<workgroup> end_shared: i32;\n"
+      << "var<workgroup> result_shared: u32;\n"
+      << "var<workgroup> emitted_shared: u32;\n"
+      << "var<workgroup> overlap_shared: atomic<u32>;\n"
+      << "var<workgroup> invalid_shared: atomic<u32>;\n";
   auto& body = shader.MainFunctionBody();
-  body << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.queries")
-       << "let offset = global_idx * uniforms.capacity;\n"
-       << output_counts.SetByOffset("global_idx", "0") << status.SetByOffset("global_idx", "0")
-       << "for (var column = 0u; column < uniforms.capacity; column++) {\n"
+  body << "if (workgroup_idx >= uniforms.queries) { return; }\n"
+       << "let offset = workgroup_idx * uniforms.capacity;\n"
+       << "for (var column = local_idx; column < uniforms.capacity; column += workgroup_size_x) {\n"
        << output.SetByOffset("offset + column", "-1") << "}\n"
-       << "let row = " << rows.GetByOffset("global_idx") << ";\n"
-       << "let start = " << starts.GetByOffset("global_idx") << ";\n"
-       << "let end = " << ends.GetByOffset("global_idx") << ";\n"
+       << "storageBarrier();\n"
+       << "if (local_idx == 0u) {\n"
+       << output_counts.SetByOffset("workgroup_idx", "0") << status.SetByOffset("workgroup_idx", "0")
+       << "let row = " << rows.GetByOffset("workgroup_idx") << ";\n"
+       << "let start = " << starts.GetByOffset("workgroup_idx") << ";\n"
+       << "let end = " << ends.GetByOffset("workgroup_idx") << ";\n"
        << "if (row < 0 || u32(row) >= uniforms.rows || start < 0 || end < start) {\n"
-       << status.SetByOffset("global_idx", "1") << "return; }\n"
+       << "result_shared = 1u;\n"
+       << "} else {\n"
        << "let count = " << counts.GetByOffset("u32(row)") << ";\n"
        << "if (count < 0 || u32(count) > uniforms.base_capacity) {\n"
-       << status.SetByOffset("global_idx", "1") << "return; }\n"
-       << "let base_offset = u32(row) * uniforms.base_capacity;\n"
-       << "for (var column = 0u; column < u32(count); column++) { if ("
-       << base.GetByOffset("base_offset + column") << " < 0) {\n"
-       << status.SetByOffset("global_idx", "1") << "return; }}\n";
-  if (use_hash) {
-    body << "for (var slot = 0u; slot < " << hash_capacity_ << "u; slot++) { keys[slot] = -1; }\n";
-  }
-  body << "var emitted = 0u; var overlap = 0u; var overflow = false;\n"
-       << "for (var column = 0u; column < u32(count); column++) {\n"
-       << "let value = " << base.GetByOffset("base_offset + column") << ";\n"
-       << "var duplicate = false;\n";
-  if (use_hash) {
-    body << "var slot = (u32(value) * 2654435761u) & " << hash_capacity_ - 1 << "u;\n"
-         << "for (var probe = 0u; probe < " << hash_capacity_ << "u; probe++) {\n"
-         << "if (keys[slot] == value) { duplicate = true; break; }\n"
-         << "if (keys[slot] == -1) { keys[slot] = value; break; }\n"
-         << "slot = (slot + 1u) & " << hash_capacity_ - 1 << "u; }\n";
-  } else {
-    body << "for (var previous = 0u; previous < emitted; previous++) { if ("
-         << output.GetByOffset("offset + previous") << " == value) { duplicate = true; break; }}\n";
-  }
-  body << "if (!duplicate) { if (emitted == uniforms.capacity) { overflow = true; break; }\n"
-       << output.SetByOffset("offset + emitted", "value")
-       << "emitted++; if (value >= start && value < end) { overlap++; }} }\n"
-       << "if (overflow || u32(end - start) - overlap > uniforms.capacity - emitted) {\n"
-       << "for (var column = 0u; column < uniforms.capacity; column++) {\n"
+       << "result_shared = 1u;\n"
+       << "} else {\n"
+       << "base_offset_shared = u32(row) * uniforms.base_capacity;\n"
+       << "count_shared = u32(count); start_shared = start; end_shared = end;\n"
+       << "}}}\n"
+       << "if (workgroupUniformLoad(&result_shared) != 0u) {\n"
+       << "if (local_idx == 0u) { " << status.SetByOffset("workgroup_idx", "1") << "} return; }\n"
+       << "let base_offset = workgroupUniformLoad(&base_offset_shared);\n"
+       << "let count = workgroupUniformLoad(&count_shared);\n"
+       << "let start = workgroupUniformLoad(&start_shared);\n"
+       << "let end = workgroupUniformLoad(&end_shared);\n"
+       << "for (var column = local_idx; column < count; column += workgroup_size_x) { if ("
+       << base.GetByOffset("base_offset + column") << " < 0) { atomicOr(&invalid_shared, 1u); }}\n"
+       << "workgroupBarrier();\n"
+       << "if (local_idx == 0u) { result_shared = atomicLoad(&invalid_shared); }\n"
+       << "if (workgroupUniformLoad(&result_shared) != 0u) {\n"
+       << "if (local_idx == 0u) { " << status.SetByOffset("workgroup_idx", "1") << "} return; }\n";
+
+  // Each chunk is compacted in input order; storage barriers publish its output to range membership scans.
+  auto emit_compaction = [&](bool base_phase) {
+    body << "positions[local_idx] = select(0u, 1u, keep);\n"
+         << "workgroupBarrier();\n"
+         << "if (local_idx == 0u) {\n"
+         << "var emitted = emitted_shared;\n"
+         << "for (var lane = 0u; lane < workgroup_size_x; lane++) {\n"
+         << "let flag = positions[lane]; positions[lane] = emitted; emitted += flag; }\n"
+         << "emitted_shared = emitted; }\n"
+         << "workgroupBarrier();\n"
+         << "if (keep && positions[local_idx] < uniforms.capacity) {\n"
+         << output.SetByOffset("offset + positions[local_idx]", "value");
+    if (base_phase) {
+      body << "if (value >= start && value < end) { atomicAdd(&overlap_shared, 1u); }\n";
+    }
+    body << "}\n"
+         << "storageBarrier();\n"
+         << "workgroupBarrier();\n";
+  };
+
+  body << "for (var chunk = 0u; chunk < count; chunk += workgroup_size_x) {\n"
+       << "let column = chunk + local_idx;\n"
+       << "var value = 0i; var keep = column < count;\n"
+       << "if (keep) {\n"
+       << "value = " << base.GetByOffset("base_offset + column") << ";\n"
+       << "for (var previous = 0u; previous < column; previous++) { if ("
+       << base.GetByOffset("base_offset + previous") << " == value) { keep = false; break; }}}\n";
+  emit_compaction(true);
+  body << "if (workgroupUniformLoad(&emitted_shared) > uniforms.capacity) { break; }}\n"
+       << "let base_emitted = workgroupUniformLoad(&emitted_shared);\n"
+       << "if (local_idx == 0u) {\n"
+       << "if (base_emitted > uniforms.capacity || "
+          "u32(end - start) - atomicLoad(&overlap_shared) > uniforms.capacity - base_emitted) {\n"
+       << "result_shared = 2u; }}\n"
+       << "if (workgroupUniformLoad(&result_shared) != 0u) {\n"
+       << "for (var column = local_idx; column < uniforms.capacity; column += workgroup_size_x) {\n"
        << output.SetByOffset("offset + column", "-1") << "}\n"
-       << status.SetByOffset("global_idx", "2") << "return; }\n"
-       << "let base_emitted = emitted;\n"
-       << "for (var value = start; value < end; value++) {\n"
-       << "var duplicate = false;\n";
-  if (use_hash) {
-    body << "var slot = (u32(value) * 2654435761u) & " << hash_capacity_ - 1 << "u;\n"
-         << "for (var probe = 0u; probe < " << hash_capacity_ << "u; probe++) {\n"
-         << "if (keys[slot] == value) { duplicate = true; break; }\n"
-         << "if (keys[slot] == -1) { break; }\n"
-         << "slot = (slot + 1u) & " << hash_capacity_ - 1 << "u; }\n";
-  } else {
-    body << "for (var previous = 0u; previous < base_emitted; previous++) { if ("
-         << output.GetByOffset("offset + previous") << " == value) { duplicate = true; break; }}\n";
-  }
-  body << "if (!duplicate) {\n"
-       << output.SetByOffset("offset + emitted", "value")
-       << "emitted++; }}\n"
-       << output_counts.SetByOffset("global_idx", "i32(emitted)");
+       << "if (local_idx == 0u) { " << status.SetByOffset("workgroup_idx", "2") << "} return; }\n"
+       << "let range_length = u32(end - start);\n"
+       << "for (var chunk = 0u; chunk < range_length; chunk += workgroup_size_x) {\n"
+       << "let column = chunk + local_idx;\n"
+       << "var value = 0i; var keep = column < range_length;\n"
+       << "if (keep) {\n"
+       << "value = start + i32(column);\n"
+       << "for (var previous = 0u; previous < base_emitted; previous++) { if ("
+       << output.GetByOffset("offset + previous") << " == value) { keep = false; break; }}}\n";
+  emit_compaction(false);
+  body << "}\n"
+       << "if (local_idx == 0u) {\n"
+       << output_counts.SetByOffset("workgroup_idx", "i32(emitted_shared)") << "}\n";
   return Status::OK();
 }
 
@@ -106,10 +137,9 @@ Status PackedSparseAttentionIndexerMerge::ComputeInternal(ComputeContext& contex
   }
   const auto* base_binding = base->Shape().Size() == 0 ? &empty_binding.value() : base;
   const auto* counts_binding = counts->Shape().Size() == 0 ? &empty_binding.value() : counts;
-  PackedSparseAttentionIndexerMergeProgram program(dimensions.hash_capacity);
-  program.SetWorkgroupSize(1)
+  PackedSparseAttentionIndexerMergeProgram program;
+  program.SetWorkgroupSize(256)
       .SetDispatchGroupSize(dimensions.queries)
-      .CacheHint(std::to_string(dimensions.hash_capacity))
       .AddInputs({{base_binding, ProgramTensorMetadataDependency::Type},
                   {counts_binding, ProgramTensorMetadataDependency::Type},
                   {rows, ProgramTensorMetadataDependency::Type},

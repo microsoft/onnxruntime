@@ -142,12 +142,28 @@ TEST(PackedSparseAttentionIndexerMerge, QwenCapacity) {
   RunMerge(1, 2051, 2058, base, {2051}, {0}, {2051}, {2058}, expected, {2058}, {0});
 }
 
-TEST(PackedSparseAttentionIndexerMerge, LargeCapacityFallback) {
+TEST(PackedSparseAttentionIndexerMerge, LargeOutputCapacityWithSmallBase) {
   std::vector<int32_t> expected(4097, -1);
   expected[0] = 7;
   expected[1] = 5;
   expected[2] = 6;
   RunMerge(1, 5, 4097, {7, 7, 5, 5, -1}, {4}, {0}, {5}, {8}, expected, {3}, {0});
+}
+
+TEST(PackedSparseAttentionIndexerMerge, StableCompactionAcrossWorkgroupChunks) {
+  std::vector<int32_t> base(513);
+  for (int32_t column = 0; column < 513; ++column) base[column] = (column * 37) % 257;
+  std::vector<int32_t> expected(base.begin(), base.begin() + 257);
+  for (int32_t value = 257; value < 265; ++value) expected.push_back(value);
+  expected.resize(270, -1);
+  expected.insert(expected.end(), base.begin(), base.begin() + 257);
+  expected.resize(540, -1);
+  expected.resize(810, -1);
+  RunMerge(1, 513, 270, base, {513}, {0, 0, 0}, {250, 0, 0}, {265, 0, 300},
+           expected, {265, 257, 0}, {0, 0, 2});
+
+  base.back() = -1;
+  RunMerge(1, 513, 2, base, {513}, {0}, {0}, {0}, {-1, -1}, {0}, {1});
 }
 
 #ifndef ORT_NO_EXCEPTIONS
