@@ -607,9 +607,20 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
       if (!lazy_profile_scratch.has_value()) {
         return std::nullopt;
       }
-      // Lazy profiling occurs during Run() before the ordinary GEMM. The two allocations do not
-      // overlap, so the accountant peaks them rather than summing them.
-      estimate->runtime_transient_bytes = *lazy_profile_scratch;
+      SafeInt<size_t> runtime_preparation_peak = *lazy_profile_scratch;
+      const bool can_chunk =
+          m_chunk_size > 0 &&
+          (!m.has_value() ||
+           MatMulNBitsFpAIntBRowsPerLaunch(
+               *m, m_chunk_size, m_chunk_min_rows, force_chunked) < *m);
+      if (can_chunk) {
+        if (!estimate->runtime_workspace_bytes.has_value()) {
+          return std::nullopt;
+        }
+        // A partial tail can profile while the preceding GEMM's workspace is still retained.
+        runtime_preparation_peak += *estimate->runtime_workspace_bytes;
+      }
+      estimate->runtime_transient_bytes = static_cast<size_t>(runtime_preparation_peak);
     }
 
     return estimate;

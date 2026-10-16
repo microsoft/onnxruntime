@@ -472,6 +472,13 @@ drops to ~0.86 GiB; the remainder is the weight-sized and scale buffers, which d
 not depend on `M`. Prefer a power of two so trailing chunks round to an
 already-profiled bucket.
 
+Capacity-aware placement reserves a complete runtime-preparation peak. If a
+partial tail can lazily profile, its profiling scratch is added to the reusable
+GEMM workspace retained from earlier chunks. The accountant takes the maximum of
+that preparation peak and ordinary runtime workspace, rather than charging the
+same workspace twice. This is a requested-buffer bound, not a measurement of
+allocator-reserved memory or device VRAM usage.
+
 Measured on H200 for that LM-head node alone (FP16, fpA_intB SM80 kernel,
 `arena_extend_strategy=kSameAsRequested`, NVML sampled from a separate process):
 

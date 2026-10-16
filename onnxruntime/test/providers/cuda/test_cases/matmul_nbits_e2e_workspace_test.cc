@@ -28,7 +28,7 @@
 
 #include "gtest/gtest.h"
 
-#if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM) && USE_FPA_INTB_GEMM
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)
 
 #include <algorithm>
 #include <array>
@@ -79,7 +79,9 @@ constexpr int64_t kE2eK = 1024;
 constexpr int64_t kE2eM = 256;
 constexpr int64_t kE2eBlockSize = 32;
 constexpr int64_t kE2eBits = 4;
+#if USE_FPA_INTB_GEMM
 constexpr int64_t kWeightPrepackedSm80 = 1;
+#endif
 constexpr uint16_t kHalfOne = 0x3C00;  // 1.0 in IEEE-754 half precision.
 
 // Builds a minimal single-node MatMulNBits model and returns its serialized ModelProto bytes.
@@ -211,6 +213,7 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
   return bytes;
 }
 
+#if USE_FPA_INTB_GEMM
 // Builds a trivial single-node fp32 Add model (X + Y -> Z, all [kAddM, kAddN]) and returns its
 // serialized ModelProto bytes. Used by Test E as a control: Add does NOT override
 // DeclareWorkspaceRequirements, so it must hit the OpKernel base-class no-op.
@@ -258,6 +261,8 @@ std::string BuildAddModelBytes() {
   return bytes;
 }
 
+#endif  // USE_FPA_INTB_GEMM
+
 // fpA_intB eligibility requires compute capability >= 7.5 (see CheckFpAIntBEligibility in
 // matmul_nbits.cc). Returns the compute capability (major*10+minor) of CUDA device 0, or -1 when no
 // device is present. Tests that exercise the fpA_intB-eligible path must skip on older GPUs (rather
@@ -274,8 +279,10 @@ int CudaDeviceComputeCapabilityOrNegative() {
   return prop.major * 10 + prop.minor;
 }
 
+#if USE_FPA_INTB_GEMM
 // Minimum compute capability for the fpA_intB path (mirrors the production eligibility gate).
 constexpr int kMinFpAIntBSm = 75;
+#endif
 
 // Returns the first node in `graph` whose op type matches `op_type`, or nullptr if none.
 const Node* FindNodeByOpType(const Graph& graph, const std::string& op_type) {
@@ -287,8 +294,9 @@ const Node* FindNodeByOpType(const Graph& graph, const std::string& op_type) {
   return nullptr;
 }
 
-std::optional<size_t> EstimateWorkspaceFromGraphProtoShape(
-    gsl::span<const int64_t> input_a_shape) {
+std::optional<Level1MemoryEstimate> EstimateMemoryFromGraphProtoShape(
+    gsl::span<const int64_t> input_a_shape,
+    contrib::cuda::MatMulNBitsMemoryEstimateOptions options = {}) {
   ONNX_NAMESPACE::TypeProto input_type;
   auto* tensor_type = input_type.mutable_tensor_type();
   tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
@@ -318,12 +326,21 @@ std::optional<size_t> EstimateWorkspaceFromGraphProtoShape(
   cudaDeviceProp device_prop{};
   device_prop.major = 8;
   device_prop.minor = 0;
-  device_prop.multiProcessorCount = 100;
-  return EstimateMatMulNBitsWorkspaceForTest(&node, device_prop);
+  device_prop.multiProcessorCount = 108;
+  return EstimateMatMulNBitsMemoryForTest(&node, device_prop, options);
 }
+
+#if USE_FPA_INTB_GEMM
+std::optional<size_t> EstimateWorkspaceFromGraphProtoShape(
+    gsl::span<const int64_t> input_a_shape) {
+  const auto estimate = EstimateMemoryFromGraphProtoShape(input_a_shape);
+  return estimate.has_value() ? estimate->runtime_workspace_bytes : std::nullopt;
+}
+#endif
 
 }  // namespace
 
+#if USE_FPA_INTB_GEMM
 // Charge lazy prefill scratch without adding decode's constructor-only rotating buffers.
 TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
   const int device_sm = CudaDeviceComputeCapabilityOrNegative();
@@ -426,6 +443,22 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
   }
 }
 
+#endif  // USE_FPA_INTB_GEMM
+
+TEST(MatMulNBitsWorkspace, LegacyLevel1EstimateRemainsAvailableWithoutFpA) {
+  ScopedEnvironmentVariables scoped_env(
+      EnvVarMap{{"ORT_MATMULNBITS_FORCE_CHUNKED", optional<std::string>{"0"}}});
+  const std::array<int64_t, 2> shape{kE2eM, kE2eK};
+  const auto estimate = EstimateMemoryFromGraphProtoShape(
+      shape, {/*fpa_intb_gemm=*/std::string_view{"0"}});
+  ASSERT_TRUE(estimate.has_value());
+  EXPECT_EQ(estimate->runtime_workspace_bytes,
+            std::optional<size_t>{kE2eN * kE2eK * sizeof(MLFloat16)});
+  EXPECT_EQ(estimate->runtime_transient_bytes, 0U);
+  EXPECT_EQ(estimate->persistent_prepack_bytes, 0U);
+  EXPECT_EQ(estimate->initialization_scratch_bytes, 0U);
+}
+
 TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLegacyDequantWorkspace) {
   if (CudaDeviceComputeCapabilityOrNegative() < 0) {
     GTEST_SKIP() << "No CUDA device available; skipping budget integration test.";
@@ -493,6 +526,45 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLegacyDequantWorkspace) {
     ASSERT_NE(node, nullptr);
     EXPECT_NE(node->GetExecutionProviderType(),
               kCudaExecutionProvider);
+  }
+}
+
+#if USE_FPA_INTB_GEMM
+
+TEST(MatMulNBitsWorkspace, RuntimeTransientPeakCoversRetainedWorkspaceDuringLazyTailProfiling) {
+  ScopedEnvironmentVariables scoped_env(
+      EnvVarMap{{"ORT_MATMULNBITS_FORCE_CHUNKED", optional<std::string>{"1"}}});
+  struct TestCase {
+    int64_t m;
+    const char* chunk_size;
+    const char* profile_m;
+    size_t workspace_bytes;
+    size_t preparation_peak_bytes;
+  };
+  const TestCase cases[]{
+      // The 4096-row GEMM retains 28,672 bytes while the 2048-row tail profiles with 5,421,568 bytes.
+      {6144, "4096", "1,4096", 28672, 5450240},
+      {384, "256", "1,256", 1792, 494720},
+      // Dynamic M can also encounter an unprofiled partial tail.
+      {-1, "4096", "1,4096", 28672, 5450240},
+      // A single launch profiles before allocating its ordinary workspace.
+      {2048, "4096", "1,4096", 14336, 5421568},
+      {384, "256", "1,2,4,8,16,32,64,128,256", 1792, 0},
+  };
+  for (const auto& test_case : cases) {
+    SCOPED_TRACE(MakeString("M=", test_case.m, ", chunk_size=", test_case.chunk_size,
+                            ", profile_m=", test_case.profile_m));
+    const std::array<int64_t, 2> shape{test_case.m, kE2eK};
+    const auto estimate = EstimateMemoryFromGraphProtoShape(
+        shape,
+        {/*fpa_intb_gemm=*/std::string_view{"1"},
+         /*profile_m=*/std::string_view{test_case.profile_m},
+         /*input_shape_is_upper_bound=*/false,
+         /*m_chunk_size=*/std::string_view{test_case.chunk_size}});
+    ASSERT_TRUE(estimate.has_value());
+    EXPECT_EQ(estimate->runtime_workspace_bytes,
+              std::optional<size_t>{test_case.workspace_bytes});
+    EXPECT_EQ(estimate->runtime_transient_bytes, test_case.preparation_peak_bytes);
   }
 }
 
@@ -1276,7 +1348,9 @@ TEST(MatMulNBitsWorkspace, NonMatMulNBitsKernelDeclaresNoWorkspace) {
       << "A kernel that does not override DeclareWorkspaceRequirements must report no workspace.";
 }
 
+#endif  // USE_FPA_INTB_GEMM
+
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif  // !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
+#endif  // !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)

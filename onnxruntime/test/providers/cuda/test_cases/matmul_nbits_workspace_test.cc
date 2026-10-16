@@ -25,7 +25,7 @@
 
 #include "gtest/gtest.h"
 
-#if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM) && USE_FPA_INTB_GEMM
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)
 
 #include <cstring>
 #include <limits>
@@ -35,16 +35,20 @@
 // (ONNX_NAMESPACE::TensorProto_DataType / AttributeProto_AttributeType). Including the real ONNX
 // protobuf headers as well would redefine those enums and fail to compile. The enum constants used
 // below (TensorProto_DataType_FLOAT16 etc.) come from provider_api.h via matmul_nbits.h.
+#if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
+#endif
 #include "contrib_ops/cuda/quantization/matmul_nbits.h"
 #include "test/providers/cuda/test_cases/matmul_nbits_workspace_test_probe.h"
 
 namespace onnxruntime {
 namespace test {
 
+using onnxruntime::contrib::cuda::ComputeMatMulNBitsLegacyWorkspacePlan;
+
+#if USE_FPA_INTB_GEMM
 using onnxruntime::contrib::cuda::CheckFpAIntBEligibility;
 using onnxruntime::contrib::cuda::ComputeMatMulNBitsFpAIntBChunkMinRows;
-using onnxruntime::contrib::cuda::ComputeMatMulNBitsLegacyWorkspacePlan;
 using onnxruntime::contrib::cuda::ComputeMatMulNBitsPrepackMemoryEstimate;
 using onnxruntime::contrib::cuda::EffectiveFpAIntBWorkspaceSm;
 using onnxruntime::contrib::cuda::FpAIntBProfileSafeMCap;
@@ -144,6 +148,8 @@ TEST(MatMulNBitsWorkspace, FormulaReturnsNulloptOnInvalidNegativeDim) {
 #endif
 }
 
+#endif  // USE_FPA_INTB_GEMM
+
 TEST(MatMulNBitsWorkspace, LegacyWorkspacePlanMatchesRuntimeChunkPolicy) {
   const auto full = ComputeMatMulNBitsLegacyWorkspacePlan(
       /*n=*/256, /*k=*/1024, /*block_size=*/32,
@@ -181,6 +187,8 @@ TEST(MatMulNBitsWorkspace, LegacyWorkspacePlanMatchesRuntimeChunkPolicy) {
                    /*chunk_target_rows=*/64)
                    .has_value());
 }
+
+#if USE_FPA_INTB_GEMM
 
 TEST(MatMulNBitsWorkspace, FpAIntBWorkspaceRowsHonorChunkPolicy) {
   EXPECT_EQ(MatMulNBitsFpAIntBRowsPerLaunch(
@@ -465,7 +473,9 @@ size_t GetMatMulNBitsLastComputeWorkspaceBytes(const OpKernel* kernel) {
   return mm_kernel->LastComputeWorkspaceBytes();
 }
 
+#endif  // USE_FPA_INTB_GEMM
+
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif  // !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
+#endif  // !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)

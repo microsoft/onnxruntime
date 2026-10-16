@@ -34,7 +34,7 @@ std::optional<contrib::cuda::PackedAttentionWorkspaceAggregate> EstimatePackedAt
 }
 #endif
 
-#if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM) && USE_FPA_INTB_GEMM
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)
 std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryForTest(
     const void* node, const cudaDeviceProp& device_prop,
     contrib::cuda::MatMulNBitsMemoryEstimateOptions options) {
