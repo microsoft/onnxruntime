@@ -268,6 +268,33 @@ There is no consistent decode gain. K=0 and K=10240 perform no swaps and provide
 | 9216 | Off | 438.548 | 30.717 | 30.168 | -1.8% | 24.406 | 36.031 |
 | 10240 | Off | 624.423 | 28.832 | 27.640 | -4.1% | 22.660 | 39.537 |
 
+### Logged diagnostics: 60% last, swap limit 16
+
+Ten additional runs at `1777beeef6`, same binaries and prompts, with `--counter-log`.
+Below: prompts 3-5, **762 steady decode tokens**. Each token selects 8 experts in each of 40 layers:
+**243,840 expert-token executions**, classified using each counter record's `device`.
+These count repeated executions, not distinct experts. Prefill logs deduplicate IDs and cannot provide that token-level count.
+Logged timings do not replace the unlogged benchmarks above.
+
+| K | Swaps started | Completed/reclaimed | Swaps/token | Peak in flight | Blocked observations | CPU expert executions | CPU share |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1024 | 5157 | 5169 | 6.768 | 10 | 0 | 7325 | 3.00% |
+| 2048 | 6966 | 6995 | 9.142 | 16 | 49 | 8728 | 3.58% |
+| 3072 | 8707 | 8731 | 11.427 | 16 | 758 | 10625 | 4.36% |
+| 4096 | 10703 | 10711 | 14.046 | 16 | 3323 | 13632 | 5.59% |
+| 5120 | 5224 | 5255 | 6.856 | 16 | 154 | 41602 | 17.06% |
+| 6144 | 3960 | 3989 | 5.197 | 16 | 68 | 82882 | 33.99% |
+| 7168 | 3373 | 3413 | 4.427 | 16 | 20 | 121533 | 49.84% |
+| 8192 | 659 | 698 | 0.865 | 11 | 0 | 159167 | 65.28% |
+| 9216 | 163 | 180 | 0.214 | 7 | 0 | 201280 | 82.55% |
+| 10240 | 0 | 0 | 0.000 | 0 | 0 | 243840 | 100.00% |
+
+Completed/reclaimed = previous in-flight + new starts - current in-flight at each `Run()` boundary.
+This can exceed starts within the measured windows because earlier exchanges finish there; pending tail exchanges are excluded.
+In-flight includes publication, not just PCIe copying. Blocked observations can count the same candidate repeatedly.
+Only mixed CPU/GPU layers can swap: at K=1024 there are 10; at K=9216 there are 7.
+At K=4096, the limit of 16 is reached on 451/762 decode boundaries; 40% CPU-resident experts account for only 5.59% of executions.
+
 ## Reproduce
 
 Put a matching source build on `PYTHONPATH` and run outside the source package directory:
@@ -303,3 +330,4 @@ For the six-way position sweep, use `--strategy layered`, ratios `0.6`/`0.8`, an
 with separate output directories and serial runs.
 For the 16-swap comparison, use `--strategy layered --gpu-ratio 0.6 --layer-order last`
 and `--max-in-flight-swaps-per-device 16`.
+Add `--counter-log` for swap and expert-device diagnostics; use separate output files.
