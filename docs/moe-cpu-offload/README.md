@@ -57,6 +57,7 @@ At `K=10240`, all experts are on CPU, but other model operations still use CUDA.
 
 All strategies use the **same H200 GPU 1**. Adaptive/basic alternate for each K using the same binaries;
 layered was measured separately after fixing profiling when a boundary layer has fewer GPU experts than top-k.
+The 80% and 70% layered series use identical binaries; the default remains 80%.
 Each configuration uses a fresh process and the same [five prompts](benchmark-prompts.json), with 256 greedy
 tokens per prompt. **Prompts 1-2 are warmup; all four metrics use prompts 3-5 only:**
 
@@ -69,7 +70,7 @@ tokens per prompt. **Prompts 1-2 are warmup; all four metrics use prompts 3-5 on
 Loading and warmup peaks are excluded; allocations still resident during prompts 3-5 are included.
 Published values come from the JSON `measurements` summary, not the whole-process `memory` peaks.
 
-Measured 2026-10-16 at `358cb402b1` (adaptive/basic) and `408fcd0ba2` (layered):
+Measured 2026-10-16 at `358cb402b1` (adaptive/basic), `408fcd0ba2` (layered 80%) and `7c50cd1982` (layered 70%):
 Linux, ORT 1.32.0, GenAI CUDA 0.15.2, CUDA 13.3.73, driver 580.105.08,
 Xeon Platinum 8480C (96 physical cores). Release build, native CUDA architecture, Flash/MEA enabled.
 These are single-run observations on a shared host, not statistical estimates or quality tests.
@@ -127,6 +128,23 @@ Each 1,024-expert step moves four more trailing QMoE nodes to CPU.
 | 9216 | Off | 624.173 | 31.617 | 24.414 | 36.032 |
 | 10240 | Off | 652.343 | 29.069 | 22.660 | 39.536 |
 
+### Layered (70% GPU target per layer)
+
+| K: CPU experts | CUDA Graph | Prefill (ms) | Decode (tokens/s) | Peak GPU (GiB) | Peak CPU RSS (GiB) |
+|---:|:---:|---:|---:|---:|---:|
+| 0 | Off | 20.923 | 130.596 | 39.517 | 1.577 |
+| 0 | On | 21.694 | 176.596 | 39.486 | 1.646 |
+| 1024 | Off | 30.333 | 91.353 | 38.012 | 7.426 |
+| 2048 | Off | 36.109 | 78.171 | 36.420 | 11.035 |
+| 3072 | Off | 156.260 | 39.392 | 34.799 | 14.586 |
+| 4096 | Off | 204.432 | 35.276 | 32.096 | 18.129 |
+| 5120 | Off | 210.089 | 50.620 | 31.486 | 21.737 |
+| 6144 | Off | 274.308 | 38.230 | 29.611 | 25.308 |
+| 7168 | Off | 367.447 | 34.966 | 26.945 | 28.852 |
+| 8192 | Off | 444.187 | 34.234 | 26.138 | 32.457 |
+| 9216 | Off | 568.924 | 30.098 | 24.465 | 36.033 |
+| 10240 | Off | 717.923 | 28.232 | 21.722 | 39.507 |
+
 ## Reproduce
 
 Put a matching source build on `PYTHONPATH` and run outside the source package directory:
@@ -155,3 +173,5 @@ for scenario in k0-nograph k0-graph k1024 k2048 k3072 k4096 k5120 k6144 k7168 k8
   done
 done
 ```
+
+For the 70% series, use `--strategy layered --gpu-ratio 0.7` with a separate output directory.
