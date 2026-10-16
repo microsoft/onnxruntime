@@ -976,7 +976,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     }
 #endif
   });
-  // When capturing, flushing creates the replay-ready CapturedCommandInfo entries before
+  // When capturing, flushing creates the replay-ready dispatch entries before
   // CaptureEnd() detaches their external storage.
   Status flush_status = context_.Flush(BufferManager(), *recording_);
 

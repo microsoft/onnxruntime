@@ -13,10 +13,6 @@ Tests:
 
 The inference test is skipped gracefully if no WebGPU device is available
 (e.g., on CPU-only build agents), unless ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE is enabled.
-
-Set ORT_WEBGPU_TEST_PROVIDER_NAME=1 when testing a host built from this checkout
-with --use_webgpu shared_lib to also exercise provider-name selection. The minimum
-supported runtime only needs to support the device-selection API.
 """
 
 import os
@@ -147,11 +143,11 @@ def test_registration_and_inference():
             print_ep_devices(all_ep_devices)
 
         webgpu_ep_devices = [
-            d
-            for d in all_ep_devices
-            if d.ep_name == ep_name
-            and d.ep_metadata.get("library_path")
-            and Path(d.ep_metadata["library_path"]).resolve() == Path(lib_path).resolve()
+            device
+            for device in all_ep_devices
+            if device.ep_name == ep_name
+            and device.ep_metadata.get("library_path")
+            and Path(device.ep_metadata["library_path"]).resolve() == Path(lib_path).resolve()
         ]
         print(f"Found {len(webgpu_ep_devices)} WebGPU plugin EP device(s)")
 
@@ -204,7 +200,6 @@ def test_registration_and_inference():
                 )
                 try:
                     assert ep_name in named_session.get_providers(), "Registered WebGPU provider was not selected"
-                    # Verify that the plugin receives the options supplied through the provider-name API.
                     assert named_session.get_provider_options()[ep_name] == provider_options, (
                         "Provider-name selection did not use the WebGPU plugin with its requested options"
                     )
