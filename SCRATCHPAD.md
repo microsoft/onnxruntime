@@ -369,8 +369,7 @@ Compressed project memory. This is not the execution plan.
   generation-to-session include dependency; no helper duplication or logic change.
 - Session/loop/chain interfaces stay in `core/session`. Source discovery includes
   the new generation directory in the existing session library target.
-- Updated includes and documented source/coverage paths. Refreshing PR #15 is
-  pending publication; no M06 work.
+- Updated includes and documented source/coverage paths; no M06 work.
 - CPU rebuilt and passed 55/55 focused + 21/21 regressions, zero skips.
   `coverage/m05/layout` confirms generation/framework paths in the actual
   instrumented artifacts and no old source mappings. Coverage stays 100%:
@@ -379,4 +378,6 @@ Compressed project memory. This is not the execution plan.
   generation memcheck scenarios passed with zero errors.
 - M05's new-line gate remains 369/369 (same functions, new source paths).
   Verified that PR #15 has no concurrent body/branch edits before refreshing it.
-- Layout refactor validated; commit/push and PR evidence refresh are next.
+- Layout refactor complete in commit `417832d919`, pushed to the existing M05
+  branch. PR #15 retains its template and now documents the new layout and
+  post-refactor validation. No behavior, namespace or library-target changes.

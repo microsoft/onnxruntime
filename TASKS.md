@@ -2,7 +2,7 @@
 
 **Status:** Approved; M01-M05 complete.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
-M05's requested generation-folder layout follow-up is validated, pending publication.
+M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
 **Working memory:** [Shared scratchpad](SCRATCHPAD.md).
 
@@ -658,7 +658,8 @@ focused tests and **21/21** regressions passed, no skips. New source mappings
 preserve **1295/1295** unique runtime locations (**1310/1310** LLVM aggregate).
 CUDA **97/97** focused tests and **26/26** regressions passed, no skips;
 all five memory-check scenarios passed with zero errors. M05's original
-**369/369** new-line gate is unchanged. Refreshing the existing PR is pending.
+**369/369** new-line gate is unchanged. Layout commit `417832d919` is published;
+the existing PR's description and source/validation paths are refreshed.
 
 Validation commands (reuse the established instrumented CPU and CUDA 13.1 builds;
 regenerate CMake when first adding the native generation source files):
