@@ -255,6 +255,18 @@ void RunTest2Bits(const TestOptions2Bits& opts) {
     test.ConfigEps(std::move(execution_providers));
     test.RunWithConfig();
   }
+#ifdef USE_WEBGPU
+  if constexpr (std::is_same<T1, MLFloat16>::value) {
+    // FP16 WebGPU cases must execute too; an unused OpTester traps in Debug
+    // and silently omits coverage in Release.
+    execution_providers.push_back(DefaultWebGpuExecutionProvider());
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(session_options);
+    test.ConfigEps(std::move(execution_providers));
+    test.RunWithConfig();
+  }
+#endif
 }
 
 template <typename AType, int M, int N, int K, int block_size, int accuracy_level = 0>

@@ -109,18 +109,15 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionNumerics) {
     SCOPED_TRACE(shape.k);
     SCOPED_TRACE(shape.n);
     SCOPED_TRACE(shape.batch);
-    // DP4A prefill quantizes X; subgroup decode changes the K reduction
-    // order. Keep exact comparisons for the other dispatch paths.
-    const bool approximate =
-        shape.m >= 4 ||
-        (shape.m == 1 && shape.batch == 1 && shape.k >= 2048 && shape.k <= 8192);
+    // FP16 fusion can change rounding on Metal even without DP4A or subgroup
+    // reduction. Use the FP16 error budget for every dispatch path.
     RunWebGpuFusionTransformerTest(
         [shape](ModelTestBuilder& b) {
           BuildQLoRA(b, shape.m, shape.k, shape.n, shape.batch, false, false, shape.zero_base);
         },
         [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckQLoRACount(s.GetGraph(), 1)); },
         TransformerLevel::Level1, TransformerLevel::Level2, 21,
-        approximate ? 0.002 : 0.0, approximate ? 0.001 : 0.0, std::make_unique<MatMulNBitsQLoRAFusion>(),
+        0.002, 0.001, std::make_unique<MatMulNBitsQLoRAFusion>(),
         [] { return DefaultWebGpuExecutionProvider(); });
   }
 }
@@ -150,12 +147,13 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionFp32Accumulation) {
   if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU unavailable.";
   for (int64_t m : {1, 2, 37}) {
     SCOPED_TRACE(m);
-    const bool approximate = m == 1 || m >= 4;
+    // FP32 accumulation still produces FP16 intermediates and output, so
+    // fused and unfused execution need not be bitwise identical.
     RunWebGpuFusionTransformerTest(
         [m](ModelTestBuilder& b) { BuildQLoRA(b, m, 2048, 132, 1, false, false, true); },
         [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckQLoRACount(s.GetGraph(), 1)); },
         TransformerLevel::Level1, TransformerLevel::Level2, 21,
-        approximate ? 0.002 : 0.0, approximate ? 0.001 : 0.0, std::make_unique<MatMulNBitsQLoRAFusion>(),
+        0.002, 0.001, std::make_unique<MatMulNBitsQLoRAFusion>(),
         [] {
           ConfigOptions options;
           ORT_THROW_IF_ERROR(options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation,
@@ -228,6 +226,20 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionPartialOverrides) {
   ASSERT_STATUS_OK(graph.Resolve());
   const auto adapters = graph.GetOverridableInitializers();
   ASSERT_EQ(adapters.size(), 4u);
+  // Keep this state-transition test exact across backends. With X=1/4 and
+  // unit packed weights, the adapter delta is 512 with default scales and
+  // 1/2 with supplied scales; random-data roundoff is covered by Numerics.
+  for (auto& [name, value] : builder.feeds_) {
+    auto* tensor = value.GetMutable<Tensor>();
+    if (tensor->IsDataType<uint8_t>()) {
+      auto bytes = tensor->MutableDataAsSpan<uint8_t>();
+      std::fill(bytes.begin(), bytes.end(), uint8_t{129});
+    } else {
+      auto values = tensor->MutableDataAsSpan<MLFloat16>();
+      const float fill = tensor->Shape().NumDimensions() == 3 ? 0.25f : 0.03125f;
+      std::fill(values.begin(), values.end(), MLFloat16(fill));
+    }
+  }
   std::string data;
   model.ToProto().SerializeToString(&data);
   std::vector<OrtValue> expected;
@@ -241,6 +253,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionPartialOverrides) {
       ASSERT_STATUS_OK(
           session.RegisterGraphTransformer(std::make_unique<MatMulNBitsQLoRAFusion>(), TransformerLevel::Level2));
     ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(CheckQLoRACount(session.GetGraph(), fused ? 1 : 0));
     // Off, packed weights only, scales only, all parameters, then off again.
     for (int state = 0; state < 5; ++state) {
       auto feeds = builder.feeds_;
@@ -256,6 +269,12 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionPartialOverrides) {
       } else {
         const auto comparison = CompareOrtValue(output[0], expected[state], 0.0, 0.0, false);
         EXPECT_EQ(comparison.first, COMPARE_RESULT::SUCCESS) << "state=" << state << " " << comparison.second;
+        const auto base = expected[0].Get<Tensor>().DataAsSpan<MLFloat16>();
+        const auto actual = output[0].Get<Tensor>().DataAsSpan<MLFloat16>();
+        const float delta = state == 1 ? 512.0f : (state == 3 ? 0.5f : 0.0f);
+        for (size_t i = 0; i < actual.size(); ++i) {
+          EXPECT_EQ(actual[i], MLFloat16(base[i].ToFloat() + delta)) << "state=" << state << ", i=" << i;
+        }
       }
     }
   }
