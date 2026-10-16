@@ -292,7 +292,7 @@ void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 
     std::string a_name, b_name;
     // Dyadic inputs keep the switching checks exact on all reduction paths.
     for (auto& [name, value] : builder.feeds_) {
-      auto* tensor = value.GetMutable<Tensor>();
+      Tensor* tensor = value.template GetMutable<Tensor>();
       if (tensor->IsDataType<uint8_t>()) {
         auto bytes = tensor->MutableDataAsSpan<uint8_t>();
         std::fill(bytes.begin(), bytes.end(), uint8_t{129});
@@ -390,7 +390,7 @@ void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 
         const bool adapter = std::any_of(adapters.begin(), adapters.end(),
                                          [&name](const NodeArg* arg) { return arg->Name() == name; });
         if (state == 0 && adapter) continue;
-        const auto& source = value.Get<Tensor>();
+        const Tensor& source = value.template Get<Tensor>();
         OrtValue input;
         Tensor::InitOrtValue(source.DataType(), source.Shape(), allocator, input);
         ASSERT_STATUS_OK(session.GetDataTransferManager().CopyTensor(source, *input.GetMutable<Tensor>()));
