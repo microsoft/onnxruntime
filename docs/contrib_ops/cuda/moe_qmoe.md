@@ -1110,11 +1110,14 @@ The kernel is **bit-identical** to `MoeGemvFp4RawKPackedKernel`: it keeps the sa
 (`KLanes = 4` for `K <= 1024`, else `8`), the same lane assignment (`lane = block % KLanes`), the same
 separate even/odd FP32 accumulators per lane, and the same `acc_even + acc_odd` followed by an xor tree
 over `KLanes / 2 .. 1`, so outputs do not depend on which of the two kernels runs. It is used for FP16 and
-BF16 on SM90+ when `K % 32 == 0`, `K <= 8192`, `N` is even, the weight/scale/activation pointers are
+BF16 on SM90+ with a selected CUDA image compiled for SM90 or newer, when `K % 32 == 0`, `K <= 8192`,
+`N` is even, the weight/scale/activation pointers are
 16/2/16-byte aligned, and at most 80 expanded rows are processed; other shapes use
 `MoeGemvFp4RawKPackedKernel`. It steps aside when `ORT_NVFP4_FC1_EXPERT_REUSE=1` selects the two-row reuse
 kernel. Set `ORT_FP4_GEMV_DECODE_KERNEL=0` before the first GEMV invocation (the value is latched once) to
 force `MoeGemvFp4RawKPackedKernel`.
+Forward-compatible builds using pre-SM90 PTX (for example, `CMAKE_CUDA_ARCHITECTURES=80`)
+also use `MoeGemvFp4RawKPackedKernel`, even on SM90+ hardware.
 
 On H200 (BF16, 10 expanded rows, 512-expert L2-cold layout, CUDA-graph average) the Qwen3.8 FC1
 (`N=1280`, `K=2560`, fused SwiGLU) and FC2 (`N=2560`, `K=640`) launches take 12.1 and 7.5 us instead of
@@ -1293,6 +1296,9 @@ Positive `block_size=B` selects square-block FP8, including the official
 - On SM80-or-newer GPUs, SiLU/SwiGLU block FP8 uses fused weight-only GEMV/GEMM
   by default for supported routing sizes. These kernels decode FP8 tiles and
   apply square-block scales on chip, without full FP16/BF16 weight buffers.
+  SiLU without FC3 retains FC1 accumulators in FP32 through bias and activation,
+  then narrows to the activation dtype, matching the dense epilogue. Gated
+  projections retain their existing FP16/BF16 intermediate rounding.
   Set `ORT_ENABLE_FP8_FUSED=0` before session creation to select the compact
   dense-dequant fallback. Other activation types and unsupported routing sizes
   also retain this fallback. The legacy native FP8 epilogue supports only one

@@ -876,27 +876,45 @@ void LaunchMoeGemvFp4RawNPacked(
                                static_cast<unsigned>((n + kBlockCols - 1) / kBlockCols));
         const auto launch_bias = [&](auto bias_tag) {
           constexpr bool kEnableBias = decltype(bias_tag)::value;
+          // PTX compiled below SM90 has an empty decode body, even when JIT-loaded on SM90+.
+          // Image selection depends on the device SM; refresh when a thread switches architectures.
+          static thread_local int cached_sm = -1;
+          static thread_local bool available = false;
+          if (cached_sm != sm) {
+            cudaFuncAttributes attributes{};
+            CUDA_CALL_THROW(cudaFuncGetAttributes(
+                &attributes, MoeGemvFp4DecodeKernel<T, FusedSwiGlu, kEnableBias, kKLanes, kWarps, kBatch, kMinBlocks>));
+            available = attributes.ptxVersion >= 90;
+            cached_sm = sm;
+          }
+          if (!available) {
+            return false;
+          }
           MoeGemvFp4DecodeKernel<T, FusedSwiGlu, kEnableBias, kKLanes, kWarps, kBatch, kMinBlocks>
               <<<decode_grid, kWarps * 32, decode_smem, stream>>>(
                   act, weight, block_scales, global_scales, bias, out,
                   expert_first_token_offset, permuted_row_to_expert, num_experts,
                   weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k),
                   activation_params, permuted_row_to_source_row, static_cast<int>(num_rows));
+          return true;
         };
         if (bias != nullptr) {
-          launch_bias(std::true_type{});
+          return launch_bias(std::true_type{});
         } else {
-          launch_bias(std::false_type{});
+          return launch_bias(std::false_type{});
         }
       };
+      bool launched;
       if (k <= 1024) {
-        launch_decode(std::integral_constant<int, 4>{}, std::integral_constant<int, kDecodeK4Warps>{},
-                      std::integral_constant<int, kDecodeK4Batch>{}, std::integral_constant<int, kDecodeK4MinBlocks>{});
+        launched = launch_decode(std::integral_constant<int, 4>{}, std::integral_constant<int, kDecodeK4Warps>{},
+                                 std::integral_constant<int, kDecodeK4Batch>{}, std::integral_constant<int, kDecodeK4MinBlocks>{});
       } else {
-        launch_decode(std::integral_constant<int, 8>{}, std::integral_constant<int, kDecodeK8Warps>{},
-                      std::integral_constant<int, kDecodeK8Batch>{}, std::integral_constant<int, kDecodeK8MinBlocks>{});
+        launched = launch_decode(std::integral_constant<int, 8>{}, std::integral_constant<int, kDecodeK8Warps>{},
+                                 std::integral_constant<int, kDecodeK8Batch>{}, std::integral_constant<int, kDecodeK8MinBlocks>{});
       }
-      return;
+      if (launched) {
+        return;
+      }
     }
     const auto launch_k_packed = [&](auto k_lanes, auto reuse_rows) {
       constexpr int kKLanes = decltype(k_lanes)::value;

@@ -1111,17 +1111,21 @@ for case in json.loads(sys.argv[2]):
 
         from torch.profiler import ProfilerActivity, profile  # noqa: PLC0415
 
-        for (uses_decode, _), case, (optout_kernels, payload) in zip(
+        for (uses_decode, _), case, (optout_kernel_json, payload) in zip(
             self._DECODE_GEMV_CASES, cases, optout, strict=True
         ):
             with profile(activities=[ProfilerActivity.CUDA]) as prof:
                 decode = self._run_nvfp4_moe_test(onnx_dtype=onnx_dtype, gemv_mode="1", offline_prepacked=True, **case)
             kernels = {event.name for event in prof.events() if "MoeGemvFp4" in event.name}
-            self.assertTrue(any("MoeGemvFp4RawKPackedKernel" in name for name in json.loads(optout_kernels)), case)
-            self.assertFalse(any("MoeGemvFp4DecodeKernel" in name for name in json.loads(optout_kernels)), case)
+            optout_kernels = json.loads(optout_kernel_json)
+            if optout_kernels:
+                self.assertTrue(any("MoeGemvFp4RawKPackedKernel" in name for name in optout_kernels), case)
+                self.assertFalse(any("MoeGemvFp4DecodeKernel" in name for name in optout_kernels), case)
             if kernels:  # kernel events are only available when CUPTI works in this environment
                 self.assertEqual(
-                    any("MoeGemvFp4DecodeKernel" in name for name in kernels), uses_decode, (case, kernels)
+                    any("MoeGemvFp4DecodeKernel" in name for name in kernels),
+                    uses_decode and _cuda_sm() >= 90,
+                    (case, kernels),
                 )
             expected = torch.frombuffer(bytearray(base64.b64decode(payload)), dtype=torch.int16).reshape(decode.shape)
             self.assertTrue(

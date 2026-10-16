@@ -1533,11 +1533,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     const int fc1_n = inter * (fusion ? 2 : 1);
     const int max_routes = narrow<int>(row_tile_plan.rows_per_tile * k_);
     const size_t element_size = input->DataType()->Size();
+    const size_t projection_element_size = fusion ? element_size : sizeof(float);
     auto row_map = GetScratchBuffer<int>(max_routes, GetComputeStream(context));
     auto sorted_experts = GetScratchBuffer<int>(max_routes, GetComputeStream(context));
     auto expert_offsets = GetScratchBuffer<int64_t>(num_experts + 1, GetComputeStream(context));
     auto tile_offsets = GetScratchBuffer<int>(num_experts + 1, GetComputeStream(context));
-    auto projection = GetScratchBuffer<void>(SafeInt<size_t>(max_routes) * fc1_n * element_size, GetComputeStream(context));
+    const size_t projection_bytes = SafeInt<size_t>(max_routes) * fc1_n * projection_element_size;
+    auto projection = GetScratchBuffer<void>(projection_bytes, GetComputeStream(context));
     auto activation = GetScratchBuffer<void>(SafeInt<size_t>(max_routes) * inter * element_size, GetComputeStream(context));
     auto result = GetScratchBuffer<void>(SafeInt<size_t>(max_routes) * hidden * element_size, GetComputeStream(context));
     auto scale_type = [](const Tensor* tensor) {
@@ -1596,13 +1598,21 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         params.block_size = narrow<int>(block_size_);
         params.fusion = fusion;
         const auto* tile_input = static_cast<const T*>(input->DataRaw()) + row_offset * hidden;
-        LaunchQMoEFp8Projection(params, tile_input, static_cast<T*>(projection.get()), stream);
         const auto* fc1_bias = fc1_experts_bias_optional ? static_cast<const T*>(fc1_experts_bias_optional->DataRaw()) : nullptr;
-        LaunchQMoEFp8Activation(static_cast<const T*>(projection.get()), fc1_bias, static_cast<T*>(activation.get()),
-                                sorted_experts.get(), routes, inter, fusion,
-                                split_fp8_fc1 || !fusion ? 1.0f : activation_alpha_,
-                                split_fp8_fc1 ? 0.0f : activation_beta_,
-                                split_fp8_fc1 ? std::numeric_limits<float>::infinity() : swiglu_limit_, stream);
+        auto project_and_activate = [&](auto* projected) {
+          LaunchQMoEFp8Projection(params, tile_input, projected, stream);
+          LaunchQMoEFp8Activation(projected, fc1_bias, static_cast<T*>(activation.get()),
+                                  sorted_experts.get(), routes, inter, fusion,
+                                  split_fp8_fc1 || !fusion ? 1.0f : activation_alpha_,
+                                  split_fp8_fc1 ? 0.0f : activation_beta_,
+                                  split_fp8_fc1 ? std::numeric_limits<float>::infinity() : swiglu_limit_, stream);
+        };
+        if (fusion) {
+          project_and_activate(static_cast<T*>(projection.get()));
+        } else {
+          // Match the dense SiLU epilogue: narrow only after bias and activation.
+          project_and_activate(static_cast<float*>(projection.get()));
+        }
         params.weights = static_cast<const uint8_t*>(fc2_experts_weights->DataRaw());
         params.scales = fc2_scale_tensor->DataRaw();
         params.scale_type = scale_type(fc2_scale_tensor);
@@ -1631,7 +1641,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 #endif
     }
     if (enable_kernel_debug_info_) {
-      const size_t activation_bytes = SafeInt<size_t>(max_routes) * (fc1_n + inter + hidden) * element_size;
+      const size_t activation_bytes = SafeInt<size_t>(projection_bytes) +
+                                      SafeInt<size_t>(max_routes) * (inter + hidden) * element_size;
       PrintQMoEKernelDebugInfo(row_tile_plan.rows_per_tile > 8 ? "fp8_fused_gemm" : "fp8_fused_gemv",
                                moe_params.num_rows, row_tile_plan.rows_per_tile, final_tile_rows,
                                max_routes, final_tile_rows * k_, 0, total_scratch_bytes + activation_bytes);
