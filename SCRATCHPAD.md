@@ -10,9 +10,11 @@ Compressed project memory. This is not the execution plan.
 - 2026-10-15: User answered "1" to the specification review: approved `SPEC.md`
   and authorized preparing `TASKS.md` for separate review.
 - 2026-10-15: User approved `TASKS.md` without changes and authorized beginning
-  M01. `SPEC.md` and the execution plan are approved; M01 is in progress.
-- No agents launched; no runtime production changes, commits, pushes, or PRs yet.
-  CPU and CUDA baseline builds/tests passed; M01 PR publication is next.
+  M01. `SPEC.md` and the execution plan are approved.
+- M01 is complete and published as ready-for-review PR #11:
+  https://github.com/onnxruntime/ort-state/pull/11
+- No agents launched and no runtime production code changed. CPU and CUDA
+  baseline builds/tests passed; M02-M24 remain pending.
 - Future tracking: keep `TASKS.md` checklist current and record compressed
   discoveries/agent learnings here.
 
@@ -85,7 +87,7 @@ Compressed project memory. This is not the execution plan.
   standalone package; ORT loading; DDIM; Python; Phi-3 demo; diffusion demo;
   C#; Java; common JS/Node; Web/WASM; Go; Rust; Objective-C; React Native;
   integrated qualification/measurements.
-- M01 in progress after explicit plan approval; M02-M24 remain pending.
+- M01 complete after explicit plan approval; M02-M24 remain pending.
 - Each milestone includes intended outcome, tasks, CPU/CUDA test plan and gate.
   Actual prerequisites are listed separately from mechanical stack ordering.
 - M01 verifies concrete contracts, small fixtures and coverage readiness.
@@ -170,9 +172,10 @@ Compressed project memory. This is not the execution plan.
   26/26 tests passed: five CPU, five native-CUDA, 16 existing package API cases.
   Zero failures/errors/skips; all CUDA nodes assigned as expected, fallback off.
 - Final C++ format/120-column/whitespace and document/93-requirement mapping
-  checks passed. M01 validated; commit/PR tracking still pending.
+  checks passed. M01 commit `64aa026b94` and ready-for-review PR #11 published.
 - Available language tools: .NET SDK 8.0.422, Java 17, Node 24, Go 1.26.4,
   Cargo 1.96.1. Apple/mobile runners and real-model assets still unprovided.
-- GitHub access verified. Remote default is `main`; no remote `ort-state` yet.
-  Local `main` and `ort-state` both start at `1988019b6e`. Publish that unchanged
-  baseline branch for the agreed first-PR target after M01 gates pass.
+- Remote default is `main`; published the unchanged `ort-state` baseline at
+  `1988019b6e` and `state/m01-contracts-fixtures`. PR #11 targets `ort-state`.
+- Throwaway CUDA probe source/binary were removed; feasibility log retained.
+- Next: M02 (context/SessionLoop); no M02 implementation has started.

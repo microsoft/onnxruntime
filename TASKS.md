@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved by the user on 2026-10-15; M01 is validated, pending PR publication.
+**Status:** Approved by the user on 2026-10-15; M01 complete in [PR #11](https://github.com/onnxruntime/ort-state/pull/11).
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
 **Working memory:** [Shared scratchpad](SCRATCHPAD.md).
 
@@ -15,7 +15,7 @@
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01 is validated, pending PR publication; all subsequent milestones are pending. Check tasks when their
+M01 is complete; all subsequent milestones are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -92,11 +92,11 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01 is **validated, pending PR publication**; M02-M24 are **pending**.
+M01 is **complete**; M02-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
-| [ ] | M01 | Contracts, deterministic fixtures, coverage readiness / `contracts-fixtures` | Approved plan |
+| [x] | M01 | Contracts, deterministic fixtures, coverage readiness / `contracts-fixtures` | Approved plan |
 | [ ] | M02 | Stateful context and explicit SessionLoop / `context-loop` | M01 |
 | [ ] | M03 | SessionChain and tensor/state bindings / `chain-bindings` | M02 |
 | [ ] | M04 | CPU KV cache management / `cpu-kv-cache` | M03 |
@@ -130,7 +130,8 @@ all binding, provider, coverage, and qualification gates remain part of delivery
 
 **Outcome:** Concrete interface decisions and a reproducible validation baseline,
 without prematurely publishing an ABI or starting a different product scope.
-**Status:** CPU/CUDA validation complete; commit and PR publication pending.
+**Status:** Complete; [PR #11](https://github.com/onnxruntime/ort-state/pull/11)
+is ready for review, targeting `ort-state`.
 
 - [x] Inventory existing Session/I/O binding, allocator, cancellation, provider,
   sampling, scheduler, package, and binding helpers before adding alternatives.
@@ -237,7 +238,7 @@ llvm-cov report ./onnxruntime_autoep_test -object ./libonnxruntime.so \
   CPU fallback.
 - Formatting (`clang-format --dry-run --Werror`), 120-column/source whitespace
   checks, planning-document checks, and 93-requirement traceability checks passed.
-- [ ] Record final validation evidence, complete document/style checks, commit,
+- [x] Record final validation evidence, complete document/style checks, commit,
   and open the ready-for-review M01 PR.
 
 Passing CUDA build/test commands, with `CUDA_HOME` and `CUDNN_HOME` set to the
@@ -266,9 +267,10 @@ CUDA_VISIBLE_DEVICES=0 \
   --gtest_output=xml:m01-tests.xml
 ```
 
-The remote currently has `main` but no `ort-state` branch. Both local baseline
-branches identify the same starting commit. Publish the unchanged `ort-state`
-base when opening the agreed first PR; do not silently retarget the stack.
+Published the unchanged `ort-state` baseline branch and
+`state/m01-contracts-fixtures`; the first PR targets the agreed `ort-state` base,
+not `main`. Implementation commit: `64aa026b94`. The PR contains no stateful
+runtime production implementation; M02 is the next pending milestone.
 
 ### M02 - Execution context and SessionLoop
 
