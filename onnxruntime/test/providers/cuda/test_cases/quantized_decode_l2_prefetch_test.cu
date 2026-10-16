@@ -53,13 +53,13 @@ void CheckDecodePrefetchParity() {
       const T* scale = thrust::raw_pointer_cast(device_scales.data());
       const uint8_t* b = thrust::raw_pointer_cast(device_b.data());
       if constexpr (Bits == 2) {
-        MatMulFloat2bKernelM1<T, block_size, false><<<grid, threads, shared_bytes>>>(
+        MatMulFloat2bKernelM1<T, block_size, false><<<grid, threads, shared_bytes, nullptr>>>(
             output, a, b, scale, nullptr, n, k, blocks_per_k, enabled);
       } else if constexpr (Bits == 4) {
-        MatMulFloat4BitsKernelM1<T, block_size, false><<<grid, threads, shared_bytes>>>(
+        MatMulFloat4BitsKernelM1<T, block_size, false><<<grid, threads, shared_bytes, nullptr>>>(
             output, a, b, scale, nullptr, 1, n, k, blocks_per_k, enabled);
       } else {
-        MatMulFloat8bKernelM1<T, block_size, false><<<grid, threads, shared_bytes>>>(
+        MatMulFloat8bKernelM1<T, block_size, false><<<grid, threads, shared_bytes, nullptr>>>(
             output, a, b, scale, nullptr, n, k, blocks_per_k, enabled);
       }
       CUDA_CALL_THROW(cudaGetLastError());
