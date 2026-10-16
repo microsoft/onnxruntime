@@ -62,7 +62,7 @@ Status KernelPilotMoeExpertState::EndRun(bool run_succeeded) {
       status = completion;
     }
   }
-  if (run_succeeded && status.IsOK() && cpu_offload_enabled_) {
+  if (run_succeeded && status.IsOK() && cpu_offload_enabled_ && !basic_cpu_offload_) {
     status = ScheduleSwaps();
   }
   logging_request_id_.clear();
@@ -106,6 +106,15 @@ Status KernelPilotMoeExpertState::SetSwapEpsilon(double epsilon) {
   return Status::OK();
 }
 
+Status KernelPilotMoeExpertState::SetCpuOffloadStrategy(std::string_view strategy) {
+  ORT_RETURN_IF(initialized_ || !kernels_.empty(),
+                "MoE CPU offload strategy cannot change after node registration.");
+  ORT_RETURN_IF_NOT(strategy == "adaptive" || strategy == "basic",
+                    "MoE CPU offload strategy must be adaptive or basic. Received: ", strategy);
+  basic_cpu_offload_ = strategy == "basic";
+  return Status::OK();
+}
+
 Status KernelPilotMoeExpertState::SetMaxInFlightSwapsPerDevice(size_t max_in_flight_swaps_per_device) {
   ORT_RETURN_IF(initialized_ || !kernels_.empty(),
                 "MoE maximum in-flight swaps per device cannot change after node registration.");
@@ -121,7 +130,7 @@ Status KernelPilotMoeExpertState::SetPopularityOutputFile(std::string output_fil
 }
 
 Status KernelPilotMoeExpertState::RegisterNode(const OpKernel* kernel, std::string_view graph_scope, size_t node_index,
-                                               std::string_view node_type, size_t expert_count) {
+                                               std::string_view node_type, size_t expert_count, size_t topological_order) {
   ORT_RETURN_IF(initialized_, "MoE expert registration is closed.");
   ORT_RETURN_IF_NOT(kernel, "MoE expert registration requires a kernel.");
   ORT_RETURN_IF_NOT(node_type == "MoE" || node_type == "QMoE", "Unsupported expert counter node type: ", node_type);
@@ -140,7 +149,7 @@ Status KernelPilotMoeExpertState::RegisterNode(const OpKernel* kernel, std::stri
     expert_ids_.emplace(std::make_pair(kernel, static_cast<int>(expert)), counters_.size());
     counters_.push_back(0.0);
   }
-  auto [entry, inserted] = kernels_.try_emplace(kernel, key, range, *this, kernel);
+  auto [entry, inserted] = kernels_.try_emplace(kernel, key, range, *this, kernel, topological_order);
   ORT_ENFORCE(inserted);
   ORT_RETURN_IF_ERROR(entry->second.pilot.Moe().BeginInvocation(expert_count));
   entry->second.pilot.FinishRegistration();
@@ -229,6 +238,9 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
               ? input_type->tensor_type().elem_type()
               : ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
       const auto& node = kernel->Node();
+      ORT_RETURN_IF(basic_cpu_offload_ && node.OpType() == "MoE" &&
+                        node.GetExecutionProviderType() == kCudaExecutionProvider,
+                    "The basic CPU offload strategy supports QMoE only, not CUDA MoE.");
       const auto& attributes = node.GetAttributes();
       const auto get_int_attribute = [&](std::string_view name, int64_t default_value) {
         const auto attribute = attributes.find(std::string(name));
@@ -261,7 +273,11 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
                   cuda_eligible_expert_count, " experts.");
     const size_t cuda_expert_count = cuda_eligible_expert_count - cpu_offload_expert_count_;
 
-    std::sort(cuda_kernels.begin(), cuda_kernels.end(), [](const KernelState* lhs, const KernelState* rhs) {
+    std::sort(cuda_kernels.begin(), cuda_kernels.end(), [this](const KernelState* lhs, const KernelState* rhs) {
+      if (basic_cpu_offload_ && lhs->key.first == rhs->key.first &&
+          lhs->topological_order != rhs->topological_order) {
+        return lhs->topological_order < rhs->topological_order;
+      }
       return lhs->key < rhs->key;
     });
 
@@ -272,7 +288,17 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
       }
     }
 
-    if (all_zero) {
+    if (basic_cpu_offload_) {
+      size_t remaining = cuda_expert_count;
+      for (auto* state : cuda_kernels) {
+        const size_t count = std::min(remaining, state->experts.count);
+        state->cuda_experts.reserve(count);
+        for (size_t expert = 0; expert < count; ++expert) {
+          state->cuda_experts.push_back(static_cast<int>(expert));
+        }
+        remaining -= count;
+      }
+    } else if (all_zero) {
       size_t selected = 0;
       for (size_t expert = 0; selected < cuda_expert_count; ++expert) {
         bool made_progress = false;

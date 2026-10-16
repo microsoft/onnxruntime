@@ -134,6 +134,7 @@ def model_session_options(args):
         session_options["session.moe_expert_popularity_file"] = str(args.popularity_output)
     if args.cpu_offload_experts > 0:
         session_options["session.moe_cpu_offload_experts"] = str(args.cpu_offload_experts)
+        session_options["session.moe_cpu_offload_strategy"] = args.strategy
         if args.state is None:
             session_options["session.moe_expert_swap_epsilon"] = str(args.swap_epsilon)
         session_options["session.moe_max_in_flight_swaps_per_device"] = (
@@ -197,6 +198,7 @@ def parse_args(argv=None):
     parser.add_argument("--prompt-limit", type=int)
     parser.add_argument("--provider", choices=("cpu", "cuda"), default="cuda")
     parser.add_argument("--cpu-offload-experts", type=int, required=True)
+    parser.add_argument("--strategy", choices=("adaptive", "basic"), default="adaptive")
     parser.add_argument("--counter-alpha", type=float, default=0.9)
     parser.add_argument("--swap-epsilon", type=float, default=0.1)
     parser.add_argument("--max-in-flight-swaps-per-device", type=int, default=4)
@@ -296,11 +298,12 @@ def main():
         "provider": args.provider,
         "model_load_seconds": model_load_seconds,
         "cpu_offload_experts": args.cpu_offload_experts,
+        "strategy": args.strategy,
         "counter_alpha": counter_alpha,
         "swap_epsilon": swap_epsilon,
         "swap": args.swap,
         "max_in_flight_swaps_per_device": args.max_in_flight_swaps_per_device,
-        "swaps_applicable": args.swap and args.cpu_offload_experts > 0,
+        "swaps_applicable": args.strategy == "adaptive" and args.swap and args.cpu_offload_experts > 0,
         "counter_log": args.counter_log,
         "cuda_graph": args.cuda_graph,
         "max_new_tokens": args.max_new_tokens,

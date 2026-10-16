@@ -1608,6 +1608,11 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
 Status SessionState::InitializeMoeExpertState(std::shared_ptr<KernelPilotMoeExpertState> state,
                                               std::string graph_scope) {
   moe_expert_state_ = std::move(state);
+  const auto& topological_order = GetGraphViewer().GetNodesInTopologicalOrder();
+  InlinedHashMap<NodeIndex, size_t> node_order;
+  for (size_t i = 0; i < topological_order.size(); ++i) {
+    node_order.emplace(topological_order[i], i);
+  }
   for (const auto& node : graph_.Nodes()) {
     if (node.Domain() != kMSDomain || (node.OpType() != "MoE" && node.OpType() != "QMoE")) {
       continue;
@@ -1620,7 +1625,8 @@ Status SessionState::InitializeMoeExpertState(std::shared_ptr<KernelPilotMoeExpe
                           shape->dim(1).dim_value() > 0,
                       "MoE expert counting requires a static positive expert dimension for ", node.Name());
     ORT_RETURN_IF_ERROR(moe_expert_state_->RegisterNode(
-        GetKernel(node.Index()), graph_scope, node.Index(), node.OpType(), static_cast<size_t>(shape->dim(1).dim_value())));
+        GetKernel(node.Index()), graph_scope, node.Index(), node.OpType(), static_cast<size_t>(shape->dim(1).dim_value()),
+        node_order.at(node.Index())));
   }
   for (auto& [node_index, subgraphs] : subgraph_session_states_) {
     for (auto& [attribute, subgraph] : subgraphs) {
@@ -1704,6 +1710,11 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
                     " must be a non-negative integer. Received: \"",
                     cpu_offload_expert_count_value, "\".");
   const bool enable_moe_cpu_offload = cpu_offload_expert_count > 0;
+  const auto cpu_offload_strategy =
+      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeCpuOffloadStrategy, "adaptive");
+  ORT_RETURN_IF_NOT(cpu_offload_strategy == "adaptive" || cpu_offload_strategy == "basic",
+                    kOrtSessionOptionsConfigMoeCpuOffloadStrategy,
+                    " must be adaptive or basic. Received: ", cpu_offload_strategy);
   if (enable_moe_expert_counting || enable_moe_expert_statistics ||
       enable_moe_cpu_offload || enable_moe_popularity_output) {
     double alpha = 0.0;
@@ -1711,6 +1722,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
     double swap_epsilon = 0.0;
     int64_t max_in_flight_swaps_per_device = -1;
     auto state = std::make_shared<KernelPilotMoeExpertState>();
+    ORT_RETURN_IF_ERROR(state->SetCpuOffloadStrategy(cpu_offload_strategy));
     const auto alpha_value =
         sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.75");
     const auto counter_probability_weight_value = sess_options_.config_options.GetConfigOrDefault(

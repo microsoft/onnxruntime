@@ -2788,6 +2788,7 @@ common::Status InferenceSession::Initialize() {
           option == kOrtSessionOptionsConfigMoeExpertPopularityFile ||
           option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
           option == kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight ||
+          option == kOrtSessionOptionsConfigMoeCpuOffloadStrategy ||
           option == kOrtSessionOptionsConfigMoeExpertSwapEpsilon ||
           option == kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice) {
         return ORT_MAKE_STATUS(
@@ -2817,6 +2818,11 @@ common::Status InferenceSession::Initialize() {
         kOrtSessionOptionsConfigMoeCpuOffloadExperts,
         " must be a non-negative integer. Received: \"", moe_cpu_offload_experts, "\".");
     const bool enable_moe_cpu_offload = moe_cpu_offload_expert_count > 0;
+    const auto moe_cpu_offload_strategy = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsConfigMoeCpuOffloadStrategy, "adaptive");
+    ORT_RETURN_IF_NOT(moe_cpu_offload_strategy == "adaptive" || moe_cpu_offload_strategy == "basic",
+                      kOrtSessionOptionsConfigMoeCpuOffloadStrategy,
+                      " must be adaptive or basic. Received: ", moe_cpu_offload_strategy);
     const auto moe_popularity_file =
         session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertPopularityFile);
     if (moe_popularity_file) {

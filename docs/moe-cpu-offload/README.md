@@ -29,6 +29,7 @@ implemented. These restrictions concern CPU offload, not the operators' ordinary
 | Session option | Default | Meaning |
 |---|---|---|
 | `session.moe_cpu_offload_experts` | `0` | Global CPU-resident expert count; integer from zero through the number of eligible experts. |
+| `session.moe_cpu_offload_strategy` | `adaptive` | `adaptive` retains popularity-based placement and exchanges. QMoE-only `basic` fills earlier nodes on GPU and fixes placement. |
 | `session.moe_expert_counter_alpha` | `0.75` | Finite counter decay coefficient in `[0, 1]`. |
 | `session.moe_expert_counter_probability_weight` | `0` | Finite blend in `[0, 1]` between binary selection and routing probability. |
 | `session.moe_expert_swap_epsilon` | `0.01` | Finite, non-negative relative margin required for an exchange. |
@@ -63,10 +64,19 @@ After registration and optional state loading, it assigns:
 CUDA expert count = eligible expert count - configured CPU expert count
 ```
 
-With nonzero saved counters, the highest-ranked eligible experts receive CUDA slots. Ties use local expert ID,
+With the default `adaptive` strategy and nonzero saved counters, the highest-ranked eligible experts receive CUDA slots. Ties use local expert ID,
 then graph scope and node index. If all scores are zero, CUDA slots are distributed round-robin across eligible
 nodes, selecting lower local expert IDs first. Each node then retains that initial CUDA slot count throughout the
 session; adaptive exchanges change expert identities, not capacities.
+
+The QMoE-only `basic` strategy instead fills CUDA slots in graph topological order: all experts of earlier QMoE
+nodes are on GPU until the GPU expert budget is exhausted, and later nodes are on CPU. If the boundary cuts through
+a node, its lower local expert IDs stay on GPU, preserving the exact requested global CPU count. Graph scopes
+are ordered lexicographically, with nodes ordered topologically within each scope. This strategy rejects sessions
+containing CUDA dense `MoE` nodes when offload is enabled. Saved popularities do not affect placement, and no
+adaptive exchanges are scheduled, even with a nonzero swap limit. Counters can still be collected.
+Select it with `options.add_session_config_entry("session.moe_cpu_offload_strategy", "basic")`, or pass
+`--strategy basic` to the benchmark runner. A zero CPU expert count leaves the ordinary all-GPU path unchanged.
 
 The saved state uses `{alpha, epsilon, experts}`, with `{moe, expert, popularity}` records. `moe` is the zero-based
 node ordinal after sorting by graph scope and node index. Loading validates bounds, uniqueness, and finite,

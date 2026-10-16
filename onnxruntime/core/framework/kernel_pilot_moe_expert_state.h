@@ -58,6 +58,9 @@ class KernelPilotMoeExpertState {
   // Must be called before FinalizeInitialization().
   Status SetCpuOffloadExpertCount(size_t cpu_offload_expert_count);
 
+  // Basic placement is QMoE-only and ignores popularity for placement and swapping.
+  Status SetCpuOffloadStrategy(std::string_view strategy);
+
   // Sets the relative margin required before replacing a CUDA-resident expert.
   // Must be called before registering any MoE kernels.
   Status SetSwapEpsilon(double epsilon);
@@ -72,7 +75,7 @@ class KernelPilotMoeExpertState {
   // Registers one resolved MoE kernel and allocates its contiguous counter range and
   // provider-independent KernelPilot. Registration closes after initialization.
   Status RegisterNode(const OpKernel* kernel, std::string_view graph_scope, size_t node_index,
-                      std::string_view node_type, size_t expert_count);
+                      std::string_view node_type, size_t expert_count, size_t topological_order = 0);
 
   // Loads alpha, epsilon, and initial counters from the JSON produced by SavePopularity().
   // Nodes use their stable zero-based ordinal after sorting by graph scope and node index.
@@ -117,12 +120,14 @@ class KernelPilotMoeExpertState {
     size_t count;
   };
   struct KernelState {
-    KernelState(Key key, ExpertRange range, KernelPilotMoeExpertState& owner, const OpKernel* kernel)
-        : key(std::move(key)), experts(range), pilot(owner, kernel) {}
+    KernelState(Key key, ExpertRange range, KernelPilotMoeExpertState& owner, const OpKernel* kernel,
+                size_t topological_order)
+        : key(std::move(key)), experts(range), pilot(owner, kernel), topological_order(topological_order) {}
     Key key;
     ExpertRange experts;
     KernelPilot pilot;
     InlinedVector<int> cuda_experts;
+    size_t topological_order;
   };
   NodeHashMap<const OpKernel*, KernelState> kernels_;
   InlinedHashMap<std::pair<const OpKernel*, int>, size_t> expert_ids_;
@@ -141,6 +146,7 @@ class KernelPilotMoeExpertState {
   double swap_epsilon_{0.01};
   size_t max_in_flight_swaps_per_device_{4};
   bool cpu_offload_enabled_{false};
+  bool basic_cpu_offload_{false};
   bool initialized_{false};
 };
 

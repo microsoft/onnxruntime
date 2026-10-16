@@ -157,6 +157,17 @@ TEST_F(KernelPilotMoeExpertStateTest, DefersGpuUsageUntilEndRunAndPreservesSelec
   EXPECT_EQ(pilot->MoeExpertCounters()[0], 0.25);
 }
 
+TEST_F(KernelPilotMoeExpertStateTest, ValidatesAndFreezesCpuOffloadStrategy) {
+  KernelPilotMoeExpertState state;
+  EXPECT_FALSE(state.SetCpuOffloadStrategy("unknown").IsOK());
+  ASSERT_STATUS_OK(state.SetCpuOffloadStrategy("adaptive"));
+  ASSERT_STATUS_OK(state.SetCpuOffloadStrategy("basic"));
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "QMoE", 3));
+  EXPECT_FALSE(state.SetCpuOffloadStrategy("adaptive").IsOK());
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  EXPECT_FALSE(state.SetCpuOffloadStrategy("basic").IsOK());
+}
+
 TEST_F(KernelPilotMoeExpertStateTest, DiscardsDeferredUsageForFailedKernel) {
   KernelPilotMoeExpertState state;
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));

@@ -86,7 +86,13 @@ python tools/python/qmoe_expert_activation_correlations.py counter.log \
 `qmoe_prompt_runner.py --until-eos` omits its usual artificial new-token limit and lets generation stop on EOS. The
 model context length remains the unavoidable hard limit.
 
-After each successful CPU-offload `Run()`, INFO logging also emits one `moe_expert_swaps` JSON record. It reports
+The CPU-offload strategy is selected with `session.moe_cpu_offload_strategy=adaptive|basic` (default `adaptive`).
+The QMoE-only `basic` strategy fills earlier nodes' GPU expert slots in topological order, then places the remaining
+experts on CPU, with an optionally split boundary node. Placement ignores saved popularities and never swaps,
+regardless of the configured swap limit; usage counters remain available. See
+[CPU offload strategies](moe-cpu-offload/README.md#initial-placement-and-ownership) for ordering and restrictions.
+
+After each successful CPU-offload `Run()` using `adaptive`, INFO logging also emits one `moe_expert_swaps` JSON record. It reports
 `in_flight` swaps and `blocked_candidates` per CUDA device, plus session-wide totals. Its `scheduled_swaps` array
 identifies each exchange started by that run with the graph scope, node index, device, outgoing CUDA expert, incoming
 CPU expert, and both pre-swap scores. A blocked candidate is currently eligible for a swap but was not started because

@@ -13,6 +13,7 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
     def options(self, **overrides):
         values = {
             "cpu_offload_experts": 1000,
+            "strategy": "adaptive",
             "counter_alpha": 0.9,
             "swap_epsilon": 0.1,
             "max_in_flight_swaps_per_device": 4,
@@ -31,6 +32,7 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
                 "log_severity_level": 3,
                 "session.enable_moe_expert_statistics": "0",
                 "session.moe_cpu_offload_experts": "1000",
+                "session.moe_cpu_offload_strategy": "adaptive",
                 "session.moe_expert_counter_alpha": "0.9",
                 "session.moe_expert_swap_epsilon": "0.1",
                 "session.moe_max_in_flight_swaps_per_device": "4",
@@ -47,6 +49,11 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
         options = self.options(swap=False)
         self.assertEqual(options["session.moe_cpu_offload_experts"], "1000")
         self.assertEqual(options["session.moe_max_in_flight_swaps_per_device"], "0")
+
+    def test_basic_strategy_is_forwarded_with_nonzero_swap_limit(self):
+        options = self.options(strategy="basic")
+        self.assertEqual(options["session.moe_cpu_offload_strategy"], "basic")
+        self.assertEqual(options["session.moe_max_in_flight_swaps_per_device"], "4")
 
     def test_swap_limit_is_forwarded_to_session(self):
         self.assertEqual(
@@ -110,6 +117,7 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
             ("--swap-epsilon", "inf"),
             ("--swap-epsilon", "-0.1"),
             ("--max-in-flight-swaps-per-device", "-1"),
+            ("--strategy", "invalid"),
             ("--log", "result.json"),
         ]:
             with self.subTest(option=option, value=value):

@@ -57,6 +57,12 @@ static const char* const kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeig
 static const char* const kOrtSessionOptionsConfigMoeCpuOffloadExperts =
     "session.moe_cpu_offload_experts";
 
+// CPU expert placement strategy: "adaptive" (default) uses popularity and permits swaps.
+// "basic" supports CUDA QMoE only: fill earlier nodes in topological order with CUDA experts,
+// then place the remaining experts on CPU. A boundary node may be split. Placement never changes.
+static const char* const kOrtSessionOptionsConfigMoeCpuOffloadStrategy =
+    "session.moe_cpu_offload_strategy";
+
 // Relative margin required before an adaptive MoE swap replaces a CUDA-resident expert.
 // The value must be finite and non-negative. The default is 0.01.
 static const char* const kOrtSessionOptionsConfigMoeExpertSwapEpsilon =
