@@ -1,3 +1,4 @@
 onnx==1.23.2
 pytest
 onnx-ir
+cryptography

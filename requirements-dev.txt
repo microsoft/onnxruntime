@@ -1,5 +1,6 @@
 -r requirements-lintrunner.txt
 cerberus
+cryptography>=44.0.0
 flatbuffers
 jinja2
 markupsafe
