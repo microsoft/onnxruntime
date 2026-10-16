@@ -222,3 +222,44 @@ Compressed project memory. This is not the execution plan.
   No new device production code, so
   measured host 315/315 coverage is the applicable new-code gate.
 - Next pending milestone is M03 (SessionChain and bindings); not started.
+
+## M03
+
+- 2026-10-16: User authorized M03. Created `state/m03-chain-bindings` stacked
+  on M02. No work on the read-only attached planning snapshot.
+- Reuse SessionLoop execution for both loops and plain one-invocation Sessions,
+  including snapshots, input validation, errors and cancellation boundaries.
+- Explicit source namespaces: external tensor, external finite tensor sequence,
+  earlier component output, retained named state. No positional feed forwarding.
+- Retain all component model outputs internally for downstream ports/state.
+  Chain Step must execute no more than one model invocation; zero-iteration
+  component bookkeeping may advance without extra model execution.
+- Keep M02's explicit CPU snapshot boundary. Validate host inputs; supported
+  CPU/CUDA Sessions perform their declared IOBinding transfers. Device-native
+  cache sharing remains M04/M08, not an implicit M03 claim.
+- Added `session_chain.h/.cc`, shared `stateful_execution_utils.h` extracted
+  from loop validation, and `framework/session_chain_test.cc`. Reuse existing
+  `onnxruntime_session_loop_test` binary for chain + loop tests.
+- SPEC Appendix C documents source namespaces, finite sequences, zero-iteration
+  stages, state snapshots, host staging, lifetime/reset and failure semantics.
+- CPU tests passed: 30/30 focused (15 chain + 15 loop/type); 21/21 stateless/
+  package regressions. No skips.
+- Coverage all affected runtime files is 100%: LLVM aggregate 621/621; LCOV
+  unique physical executable locations 615/615 cumulative, 354/354 new M03.
+  All 18 profile-map warnings are unrelated to chain/loop/shared-helper functions.
+- Initial builds failed strict aggregate warnings for omitted LoopExitCondition
+  fields; fixed using full initializer. Current CUDA rebuild `m03-cuda-rebuild`
+  continues using established CUDA 13.1/A100 configuration.
+- Final test-source formatting fixes (trailing commas to prevent >120-column
+  initializer collapse) require one final focused rebuild/test. Production
+  source already passed CPU tests and coverage; no production changes after that.
+- M03 commits/push/PR pending. No agents used.
+- Final CPU suite 30/30 and final coverage rechecked: 354/354 new unique
+  executable source locations, 615/615 cumulative; LLVM aggregate 621/621.
+- CUDA build/tests passed: 58/58 focused, 26/26 regressions, no skips.
+  Fourteen native-CUDA chain cases + 14 native-CUDA loop cases actually executed
+  with graph node assignment checks.
+- Compute Sanitizer memcheck: four chain state/reset/cancellation/host-staging/
+  dynamic-cache tests passed, zero errors.
+- Final clang-format and 120-column checks passed. M03 validated, ready for
+  commit and stacked PR publication. No new device code or public API.

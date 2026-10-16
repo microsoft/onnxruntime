@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01 and M02 complete.
+**Status:** Approved; M01 and M02 complete; M03 in progress.
 M02: [PR #12](https://github.com/onnxruntime/ort-state/pull/12).
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
 **Working memory:** [Shared scratchpad](SCRATCHPAD.md).
@@ -16,7 +16,7 @@ M02: [PR #12](https://github.com/onnxruntime/ort-state/pull/12).
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01 and M02 are complete; M03-M24 are pending. Check tasks when their
+M01 and M02 are complete; M03 is in progress; M04-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -93,7 +93,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01 and M02 are **complete**; M03-M24 are **pending**.
+M01 and M02 are **complete**; M03 is **in progress**; M04-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -376,11 +376,13 @@ not a claim of device-line coverage for unchanged kernels.
 ### M03 - SessionChain and tensor/state bindings
 
 **Outcome:** Internal linear composition without a manifest state machine.
+**Status:** Validated, pending commit/PR, authorized 2026-10-16; `state/m03-chain-bindings`
+stacks on `state/m02-context-loop`.
 
-- [ ] Implement ordered Session/SessionLoop composition and external/result ports.
-- [ ] Implement renamed tensor mapping, iteration feedback, retained-state slots,
+- [x] Implement ordered Session/SessionLoop composition and external/result ports.
+- [x] Implement renamed tensor mapping, iteration feedback, retained-state slots,
   output selection, and staged handoff.
-- [ ] Validate static/dynamic binding constraints and propagate component errors.
+- [x] Validate static/dynamic binding constraints and propagate component errors.
   Expose loop progress through the agreed chain interface without hidden resets.
 
 **CPU test plan:** Session->Session, Session->Loop, Loop->Session, and Loop->Loop;
@@ -390,6 +392,89 @@ failure prevents downstream execution; chain reset and Step/Run equivalence.
 **CUDA test plan:** Representative CUDA chain with device-value lifetime checks;
 test declared transfers and explicit rejection of unsupported combinations.
 **Completion gate:** Shared rules and 100% new chain/binding-line coverage pass.
+
+**Execution evidence:**
+
+- Added immutable chain definitions and independent execution contexts. Plain
+  Sessions reuse a one-invocation SessionLoop; configured loops retain their
+  iteration/exit policies. No public API changes.
+- Explicit external tensor/finite sequence, previous component output, and state
+  namespaces; typed/known-shape validation and dynamic handoff validation.
+- All component outputs remain available for downstream binding and observation,
+  including outputs not selected by the original loop definition.
+- State is committed per successful invocation, with Step/Run parity, isolated
+  contexts, reset, stable snapshots, cancellation and downstream failure stopping.
+- M02 tensor validation was extracted into a shared internal header rather than
+  duplicated. Existing loop behavior is covered in the same focused suite.
+- CPU focused suite: **30/30 passed**, including 15 chain and 15 loop/type cases;
+  stateless/package regressions: **21/21 passed**, no skipped tests.
+- LLVM reports **100% affected runtime line coverage**: 621/621 aggregate line
+  entries across chain, shared helpers and retained loop code. LCOV's unique
+  physical executable-source-line accounting is **354/354 incremental new
+  locations** and **615/615 cumulative locations**; all are covered. The different
+  LLVM aggregate/LCOV denominators reflect coverage mapping, not missed lines.
+- Eighteen profile-map warnings concern other functions. No chain, loop, or
+  shared-helper function is mismatched.
+- Initial strict builds rejected a partially initialized exit-condition
+  aggregate. Explicitly initializing all fields fixed that diagnostic.
+- Final CPU rebuild/testing passed after the test-source style fixes.
+- CUDA build: **58/58 focused tests passed**, including 14 native-CUDA chain
+  cases and 14 native-CUDA loop cases. Stateless/package regressions:
+  **26/26 passed**. No skipped tests. CUDA node assignment is asserted.
+- Compute Sanitizer memcheck: **4/4 passed, zero errors**, covering chain state/
+  reset/isolation, cancellation, mixed CPU/CUDA staging and dynamic cache tensors.
+- Final source formatting, 120-column, document and whitespace checks passed.
+
+- [x] Finalize CPU/CUDA evidence and style/document checks.
+- [ ] Commit and publish the ready-for-review PR stacked on M02.
+
+Validation commands, using the established M01/M02 configurations:
+
+```bash
+source .venv/bin/activate
+LLVM_PROFILE_FILE=/dev/null cmake -S cmake -B build/state-cpu/RelWithDebInfo
+LLVM_PROFILE_FILE=/dev/null cmake --build build/state-cpu/RelWithDebInfo \
+  --parallel 8 --target onnxruntime_session_loop_test onnxruntime_autoep_test
+cd build/state-cpu/RelWithDebInfo
+mkdir -p coverage/m03/final
+LLVM_PROFILE_FILE="$PWD/coverage/m03/final/%m-%p.profraw" \
+  ./onnxruntime_session_loop_test --gtest_output=xml:coverage/m03/final/tests.xml
+LLVM_PROFILE_FILE=/dev/null ./onnxruntime_autoep_test \
+  --gtest_filter='*StatefulExecutionBaselineTest.*:ModelPackageApiTest.*' \
+  --gtest_output=xml:coverage/m03/regressions.xml
+llvm-profdata merge -sparse coverage/m03/final/*.profraw \
+  -o coverage/m03/final/m03.profdata
+llvm-cov report ./onnxruntime_session_loop_test \
+  -instr-profile=coverage/m03/final/m03.profdata \
+  ../../../onnxruntime/core/session/session_chain.cc \
+  ../../../onnxruntime/core/session/session_chain.h \
+  ../../../onnxruntime/core/session/stateful_execution_utils.h \
+  ../../../onnxruntime/core/session/session_loop.cc \
+  ../../../onnxruntime/core/session/session_loop.h
+```
+
+From the repository root, with the same matching CUDA 13.1/cuDNN environment:
+
+```bash
+PATH="$CUDA_HOME/bin:$PATH" cmake -S cmake \
+  -B build/state-cuda-baseline-13.1/RelWithDebInfo
+cmake --build build/state-cuda-baseline-13.1/RelWithDebInfo --parallel 8 \
+  --target onnxruntime_session_loop_test onnxruntime_autoep_test
+cd build/state-cuda-baseline-13.1/RelWithDebInfo
+export CUDA_VISIBLE_DEVICES=0
+export LD_LIBRARY_PATH="$PWD:$CUDNN_HOME/lib:$CUDA_HOME/lib64"
+./onnxruntime_session_loop_test --gtest_output=xml:m03-tests.xml
+./onnxruntime_autoep_test \
+  --gtest_filter='*StatefulExecutionBaselineTest.*:ModelPackageApiTest.*' \
+  --gtest_output=xml:m03-regressions.xml
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --error-exitcode 99 \
+  ./onnxruntime_session_loop_test \
+  --gtest_filter='Cuda/SessionChainTest.RetainedStateStepRunIsolationAndReset/*:Cuda/SessionChainTest.CancellationBeforeAndDuringComponent/*:Cuda/SessionChainTest.CpuCudaHostStagingAndRetainedTensorLifetimes/*:Cuda/SessionChainTest.DynamicCacheTensorsAndLogitsPassBetweenStages/*'
+```
+
+All final commands passed. New device production code: none; host instrumentation
+is the applicable new-line coverage gate. No claim of device-native cache
+management, real-model qualification, or branch-complete coverage is made.
 
 ### M04 - CPU KVCacheManager
 

@@ -12,24 +12,12 @@
 #include "core/graph/graph.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
+#include "core/session/stateful_execution_utils.h"
 
 namespace onnxruntime {
+using namespace stateful_execution;
+
 namespace {
-
-const NodeArg* FindArgument(gsl::span<const NodeArg* const> arguments, std::string_view name) {
-  auto it = std::find_if(arguments.begin(), arguments.end(),
-                         [&](const NodeArg* arg) { return arg->Name() == name; });
-  return it == arguments.end() ? nullptr : *it;
-}
-
-Status CheckTensorType(const NodeArg& arg) {
-  const auto* type = arg.TypeAsProto();
-  ORT_RETURN_IF_NOT(type && type->has_tensor_type() &&
-                        type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING,
-                    "SessionLoop supports only dense, non-string tensors: ", arg.Name());
-  return Status::OK();
-}
-
 Status CheckScalar(const NodeArg& arg, int element_type) {
   ORT_RETURN_IF_ERROR(CheckTensorType(arg));
   const auto& type = arg.TypeAsProto()->tensor_type();
@@ -37,28 +25,6 @@ Status CheckScalar(const NodeArg& arg, int element_type) {
                         (!type.has_shape() || type.shape().dim_size() == 0),
                     "SessionLoop condition requires a scalar of the configured type: ", arg.Name());
   return Status::OK();
-}
-
-Status CheckInput(const NodeArg& arg, const OrtValue& value) {
-  ORT_RETURN_IF_NOT(value.IsTensor(), "SessionLoop input is not a tensor: ", arg.Name());
-  const Tensor& tensor = value.Get<Tensor>();
-  const auto& type = arg.TypeAsProto()->tensor_type();
-  ORT_RETURN_IF_NOT(tensor.GetElementType() == type.elem_type(),
-                    "SessionLoop input dtype mismatch: ", arg.Name());
-  if (type.has_shape()) {
-    ORT_RETURN_IF_NOT(tensor.Shape().NumDimensions() == static_cast<size_t>(type.shape().dim_size()),
-                      "SessionLoop input rank mismatch: ", arg.Name());
-    for (int i = 0; i < type.shape().dim_size(); ++i) {
-      const auto& dimension = type.shape().dim(i);
-      ORT_RETURN_IF(dimension.has_dim_value() && dimension.dim_value() != tensor.Shape()[i],
-                    "SessionLoop input dimension mismatch: ", arg.Name());
-    }
-  }
-  return Status::OK();
-}
-
-size_t FindOutput(gsl::span<const std::string> names, std::string_view name) {
-  return static_cast<size_t>(std::find(names.begin(), names.end(), name) - names.begin());
 }
 
 }  // namespace
@@ -108,22 +74,7 @@ Status SessionLoop::Create(InferenceSession& session, SessionLoopOptions options
     const auto* output = FindArgument(outputs, binding.output_name);
     ORT_RETURN_IF_NOT(input && output && destinations.insert(binding.input_name).second,
                       "Invalid or conflicting feedback binding: ", binding.input_name);
-    ORT_RETURN_IF_ERROR(CheckTensorType(*output));
-    ORT_RETURN_IF_NOT(input->TypeAsProto()->tensor_type().elem_type() ==
-                          output->TypeAsProto()->tensor_type().elem_type(),
-                      "Feedback dtype mismatch: ", binding.input_name);
-    const auto* input_shape = input->Shape();
-    const auto* output_shape = output->Shape();
-    if (input_shape && output_shape) {
-      ORT_RETURN_IF(input_shape->dim_size() != output_shape->dim_size(),
-                    "Feedback rank mismatch: ", binding.input_name);
-      for (int i = 0; i < input_shape->dim_size(); ++i) {
-        const auto& from = output_shape->dim(i);
-        const auto& to = input_shape->dim(i);
-        ORT_RETURN_IF(from.has_dim_value() && to.has_dim_value() && from.dim_value() != to.dim_value(),
-                      "Feedback dimension mismatch: ", binding.input_name);
-      }
-    }
+    ORT_RETURN_IF_ERROR(CheckCompatibleTypes(*output, *input));
   }
   InlinedHashSet<std::string> selected;
   for (const auto& name : options.output_names) {
