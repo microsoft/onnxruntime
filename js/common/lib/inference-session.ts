@@ -682,6 +682,38 @@ export interface InferenceSession {
 
   // #endregion
 
+  // #region runSync()
+
+  /**
+   * Execute the model synchronously with the given feeds and options.
+   *
+   * This blocks the calling thread (and, in Node.js, the event loop) until inference completes. Prefer `run()`
+   * unless blocking behavior is required. Only supported by backends that implement it (currently onnxruntime-node);
+   * otherwise it throws.
+   *
+   * @param feeds - Representation of the model input. See type description of `InferenceSession.InputType` for detail.
+   * @param options - Optional. A set of options that controls the behavior of model inference.
+   * @returns A map, which uses output names as keys and OnnxValue as corresponding values.
+   */
+  runSync(feeds: InferenceSession.FeedsType, options?: InferenceSession.RunOptions): InferenceSession.ReturnType;
+
+  /**
+   * Execute the model synchronously with the given feeds, fetches and options. See the other overload for details.
+   *
+   * @param feeds - Representation of the model input. See type description of `InferenceSession.InputType` for detail.
+   * @param fetches - Representation of the model output. See type description of `InferenceSession.OutputType` for
+   * detail.
+   * @param options - Optional. A set of options that controls the behavior of model inference.
+   * @returns A map, which uses output names as keys and OnnxValue as corresponding values.
+   */
+  runSync(
+    feeds: InferenceSession.FeedsType,
+    fetches: InferenceSession.FetchesType,
+    options?: InferenceSession.RunOptions,
+  ): InferenceSession.ReturnType;
+
+  // #endregion
+
   // #region release()
 
   /**
