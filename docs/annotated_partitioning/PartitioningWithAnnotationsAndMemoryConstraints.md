@@ -11,6 +11,10 @@ Large models may exceed the memory capacity of a single accelerator (e.g., a CUD
 
 Together, these form a two-phase workflow: profile the model once to collect memory data, then partition it in production using that data and a memory limit.
 
+The sections below document implemented features. The final
+[proposed automatic placement design](#proposed-automatic-region-aware-cpugpu-placement) describes a future,
+opt-in framework planner; the existing settings do not enable that design.
+
 ## Layer Assignment Annotations
 
 ### Concept
@@ -115,6 +119,33 @@ for node in model.graph.node:
 ```
 
 The annotated model is now ready for use with the ORT session options described below.
+
+### Choosing Block-Instance Annotations
+
+The Olive example above groups nodes by operation category. An annotation such as `attention_layer`
+can identify attention nodes across many transformer blocks, but does not identify an individual block
+or provide an ordered sequence of placement boundaries.
+
+For block-level placement, label each block instance separately and include its attention, MLP,
+normalization, and residual-path nodes as appropriate. For example, an exporter whose node names contain
+`/layers.0/`, `/layers.1/`, and `/layers.2/` could use this `layer_annotations` mapping:
+
+```json
+{
+  "decoder.block.0": ["/layers.0/"],
+  "decoder.block.1": ["/layers.1/"],
+  "decoder.block.2": ["/layers.2/"]
+}
+```
+
+Inspect the exported graph to verify membership and dependency edges; a name match alone does not
+establish a complete block. Delimited name patterns avoid accidentally matching block 1 with block 10.
+For annotation-based device rules, use exact matches such as `=decoder.block.1` when that distinction
+matters. Embeddings, output heads, shared nodes, and unannotated nodes need separate placement treatment.
+
+These labels already support manual device assignment. They do **not** make the current partitioner
+infer block order, guarantee atomic block placement, or automatically search for a fitting boundary.
+The proposed planner below would validate and use such groups as candidate-generation metadata.
 
 ### Configuring Layer Assignment at Runtime
 
@@ -373,3 +404,389 @@ opts.add_session_config_entry(
 session = ort.InferenceSession("model.onnx", opts,
                                providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
 ```
+
+## Proposed: Automatic Region-Aware CPU/GPU Placement
+
+> **Status: proposed, not implemented.** This section describes an opt-in extension, not additional
+> semantics of `session.resource_cuda_partitioning_settings` or the layer-assignment options.
+> The current additive cutoff is not a whole-session physical GPU memory guarantee.
+
+The goal is to select a static CPU/GPU placement and enforceable dispatch contracts under a declared
+GPU memory budget **before** materializing device weights and kernels. CPU offloading here means CPU
+execution of selected regions with their required weights on the host, not CPU-resident weights that
+are repeatedly streamed to GPU kernels during `Run()`.
+
+This section owns region discovery, fusion-aware execution candidates, candidate boundaries, and
+partitioner integration through final placement commitment. Dispatch-contract semantics and whole-session
+lifetime/backing accounting are defined in the companion
+[policy/workspace design proposal (PR #32944)](https://github.com/microsoft/onnxruntime/pull/32944),
+which proposes `policy_based_workspace_estimation.md`. The
+[constrained-environment roadmap](future_directions_constrained_env.md) provides broader context.
+This is pre-commit selection, not late rollback of already materialized layers or retry after OOM.
+
+### Initial Scope and Compatibility
+
+Start with CUDA plus CPU, bounded planning shapes, at most one concurrently active `Run()` per session,
+and a validated single-stream execution plan. Planning does not require running inference or a warm-up.
+Keep the workload envelope fixed: reducing context length, batch size, or cache capacity is not a
+placement alternative. Caller-guaranteed workload bounds and serialization can satisfy these conditions;
+additional ORT-side workload enforcement and bounded kernel fallback coverage remain deferred work in
+the companion proposal.
+
+Existing provider priority, support checks, and annotation/name-based preferences remain unchanged
+outside the opt-in mode. The new mode must distinguish preferences from explicit hard constraints;
+hard-pinned placement and dispatch contracts restrict the search, and unsupported pins fail with a
+diagnostic. Preserve CUDA's CPU-preferred shape-computation subgraphs. A CPU alternative is valid only
+when every moved node has CPU support for its actual operator, opset, and data type, and the resulting
+host-memory requirements are acceptable. A GPU-supported fp16/bf16 region is not automatically CPU-supported.
+
+The initial selector can use a deterministic ordinal preference, such as avoiding additional offload
+when a fitting contract change preserves GPU placement. It must not claim an optimal latency without
+comparable performance evidence. Concurrent Runs, capture-retained pools, control flow, and compiling
+EPs require additional models or explicit rejection of unsupported budget-planning modes.
+
+### Discover Placement Regions Separately from EP Capabilities
+
+ORT has no universal semantic layer unit. A **placement region** is a validated group used to generate
+alternatives; an EP capability describes nodes an EP can execute, possibly as a fused or compiled region.
+The two need not have the same boundaries. CUDA commonly claims individual nodes, while another EP may
+require a multi-node capability to remain indivisible.
+
+Use the following discovery hierarchy:
+
+1. Prefer per-block-instance `layer_ann` metadata, with exporter-supplied structure where available.
+2. Otherwise use configured, validated node-name grouping. Do not guess a block index from arbitrary
+   numeric substrings or assume exporter naming conventions are universal.
+3. Optionally generate a bounded set of graph-frontier candidates when structure is unavailable.
+   These are graph-based heuristics, not recovered semantic layers; otherwise retain fixed-placement
+   contract selection and report that automatic block-boundary search is unavailable.
+
+Maintain stable region identity and membership through supported transformations. Order regions from
+graph dependencies, using explicit block indices as validated hints rather than ordering names
+lexicographically. Check that contracting proposed groups does not introduce dependency cycles; reject
+or merge incompatible groups. Respect mandatory fusion/compilation and QDQ constraints, and do not cut
+an accepted indivisible capability. Potential optional fusion does not by itself make a group a no-cut
+region. Shared nodes, embeddings, output heads, and nodes outside groups must have explicit treatment
+in every complete candidate.
+
+The existing `LayeringIndex` maps device rules to node membership and filters EP graph views. It is
+useful for applying a selected placement, but is not itself a region-discovery or boundary-search engine,
+and does not establish semantic block order.
+
+### Discover Fusion-Aware Execution Candidates
+
+Planning must discover implementations before deciding their placement, including implementations
+that fuse native ONNX operators. Extend the planning-safe `GetCapability()` path to describe executable
+candidates, not just whether individual nodes are supported or whether an arbitrary set could fuse.
+A candidate may use standalone kernels, a registered fused kernel, or a compiled subgraph; it need not
+correspond to one device kernel. An EP may support a pattern only as a fused region without supporting
+its constituent nodes separately.
+
+Each EP returns only candidates it owns. ORT combines CUDA candidates with independently discovered
+CPU candidates; the CUDA EP does not propose CPU EP assignments. Planning queries identify the graph
+revision, workload bounds, device/configuration, and user constraints. The following information is
+conceptual planning metadata, not an existing `ComputeCapability` payload or a finalized public API:
+
+| Information | Purpose |
+|:------------|:--------|
+| Candidate and alternative-view identity | Identify compatible sets of capabilities and alternatives that must not be accepted together. |
+| Source membership and boundaries | Identify covered nodes, required inputs/outputs, and indivisible execution units. |
+| Optimization/lowering recipe | Identify the reproducible transformations and target implementation, including a handle for later application. |
+| Resulting graph/interface description | Expose created/removed tensors, shapes/types, aliases, and other planning-relevant effects; provide a planning graph when a summary cannot describe them sufficiently. |
+| Enforceable contract menu | Identify supported runtime choices, workload coverage, and explicit-failure conditions for that implementation. |
+| Allocation requirements and bound status | Describe implementation-owned persistent/prepack storage, initialization scratch, and runtime workspace, with resource identity, location, size bound, alignment, lifetime, sharing relationships, and unresolved terms. |
+
+A conceptual internal representation is:
+
+```text
+ComputeCapability
+|-- sub_graph
+|   `-- source-node membership and supplied/derived boundary inputs/outputs
+`-- planning (optional)
+    |-- candidate_id + graph_revision
+    |-- alternative_view_ids + compatibility_constraints
+    |-- implementation_recipe
+    |   |-- standalone kernel, fused-kernel, or compiled-region lowering
+    |   |-- application_handle / recipe_state
+    |   `-- planning_graph or graph_effects_description
+    `-- contracts[]
+        |-- contract_id
+        |-- eligibility / workload coverage / explicit-failure conditions
+        |-- allocation_requirements[]
+        `-- bound_status / unresolved_terms
+```
+
+The optional payload preserves legacy capabilities outside budget-planned mode. A missing payload is
+not a zero-cost estimate or sufficient evidence for strict-budget admission without a proven adapter.
+Boundary information can be supplied or derived from the graph; the sketch does not imply that every
+boundary field already exists on `IndexedSubGraph`.
+
+The corresponding planning query could look like:
+
+```text
+GetCapability(graph_view, kernel_lookup, optimizer_registry, query_context)
+    -> execution_candidates[]
+
+query_context:
+    mode = Planning
+    graph_revision
+    workload_bounds
+    device/configuration
+    user_constraints
+```
+
+These are illustrative internal planning interfaces, not the current `GetCapability()` signature or
+finalized C++/C API layouts. Existing discovery/accountant integration needs adaptation; plugin ABI
+support must provide equivalent semantics through versioned C-compatible interfaces, not export these
+C++ objects directly.
+
+Returned requirements are evaluated for that query context and selected recipe/contract, not universal
+per-node estimates. Changes to the graph revision, placement boundaries, workload, configuration, or
+constraints require invalidating/re-querying affected descriptors unless their reuse is proven valid.
+
+The recipe and requirement query must describe the same implementation. The implementation owner
+supplies kernel-private sizing, preferably reusing runtime sizing helpers. ORT accounts for graph
+tensors, transfers, and global backing/lifetimes; a shared framework optimizer must describe storage
+its rewrite creates without duplicating the target kernel's scratch formulas. A workspace scalar alone
+does not describe the transformed execution plan or whole-session peak.
+
+For an initial implementation, an EP can expose a standalone view and a preferred optimized view of a
+queried tentative region, where supported:
+
+```text
+standalone view:         {A}, {B}, {C}
+preferred optimized view: {A, B fused}, {C}
+```
+
+These are alternative sets of capabilities, not necessarily two `ComputeCapability` objects. ORT
+selects a non-overlapping, complete cover across EPs that respects each view's compatibility constraints.
+The preferred view is not "all possible fusion": patterns can overlap, and a standalone view is valid
+only where standalone execution is supported. Two views are a bounded starting point, not a claim of
+optimality or a proof that no fitting implementation exists.
+
+A placement boundary may prevent optional fusion. Re-query/refine the affected region and account for
+the unfused intermediates, implementation requirements, and transfers instead of retaining the fused
+estimate. Once selected, an indivisible fused/compiled candidate must be accepted wholly or rejected.
+Already-fused input nodes remain atomic unless supported expansion or rebuilding is available.
+
+### Select Placement-Sensitive Optimizations through EP Recipes
+
+In budget-planned mode, the EP selects its execution recipe; ORT schedules its application and verifies
+the result. Gate unplanned placement-sensitive transformations, rather than banning optimizers because
+their implementation lives in the framework. EPs can reuse shared implementations through
+`GraphOptimizerRegistry`; they do not need to duplicate those optimizers.
+
+Separate **describing/selecting L2+ effects** from **applying graph rewrites**. A complete recipe
+provides implementation requirements and enough logical graph effects for ORT to evaluate the result
+without executing the transformation. Query kernel-private bounds from the workload, configuration,
+and selected implementation/contract; build the provisional execution/backing plan from the described
+tensors, aliases, and boundaries. Do not use graph mutation as the normal way to discover each
+candidate's requirements.
+
+Assignment-dependent selectors can use a tentative EP-ownership view or an isolated candidate graph.
+This supplies same-EP eligibility context without finalizing assignments. Evaluate placement, L2+
+recipes, and dispatch contracts jointly: moving a boundary can change which recipes are eligible and
+requires refreshing affected descriptions. L2+ planning therefore precedes final placement, while
+concrete rewriting normally occurs only when finalizing a provisional winner.
+
+Common normalization can run before discovery and establish the planning graph revision. Optional
+post-partition fusion/layout optimizations must participate through selected recipes or be disabled in
+this mode. Required casts, copies, and correctness transformations remain framework responsibilities,
+but their execution and memory effects must be included before final budget acceptance. Any later
+transformation that changes the selected implementation or backing assumptions requires re-evaluation.
+Here, L2 graph optimization is distinct from the companion proposal's Level-2 kernel requirement
+verification.
+
+The existing `ComputeCapability::nodes_to_optimize` and `optimization_func` are application hooks,
+not pre-assignment requirement descriptions. Extend their planning integration so ORT can evaluate the
+recipe without invoking its mutating callback. After selecting a provisional winner, apply only its
+selected callbacks with tentative EP ownership established, then reconcile and verify before final
+commitment. Each callback must apply the described recipe and update the capability consistently;
+it must not independently select a different fusion or implementation.
+
+If a recipe cannot describe its effects sufficiently, it may use temporary metadata-only lowering or
+an isolated planning-graph transformation to produce that description. This is an implementation
+fallback, not a requirement to run the existing L2+ pipeline for every trial. Unknown requirements
+remain unresolved. Neither this fallback nor ordinary discovery, provisional rewriting, and verification
+may execute inference or bulk-materialize device weights or kernels.
+
+### Generate a Small Family of Boundaries
+
+For a validated ordered chain of `L` blocks, start with a CPU prefix and GPU suffix:
+
+```text
+cut k: block[0 .. k-1] on CPU | block[k .. L-1] on GPU
+k = 0 .. L
+```
+
+This defines at most `L + 1` cuts, rather than `2^L` independent block assignments. Fixed nodes, provider
+support, and indivisible regions can exclude cuts or create unavoidable device islands. Generate cuts
+on demand near the current boundary instead of storing a full node-placement copy for every cut.
+
+A boundary is a graph frontier, not just the output of block `k-1`. Identify **every** tensor edge
+crossing devices, including residual/skip connections, shared consumers, and graph I/O. Include
+necessary copies, staging backing, casts/layout conversions, and synchronization in the provisional
+plan; deduplicate physical allocations separately from edge enumeration.
+
+Moving a region to CPU does not necessarily release all of its apparent GPU bytes: a shared initializer
+may still have a GPU consumer, and transfers can create new backing or prolong lifetimes. Do not assume
+memory is monotonic in the number of CPU blocks. Interpolation or binary search is appropriate only
+after validating that property for the candidate family; otherwise use a bounded, deterministic search.
+Additional families, such as explicitly identified expert regions, can be added later without attempting
+all node-placement combinations.
+
+### Evaluate Candidates with a Provisional Session Plan
+
+`GetCapability()` can see connectivity and shape metadata, but not the finalized placement, transfer
+nodes, execution schedule, allocation reuse, and requirements across all EPs. Its local node estimates
+cannot by themselves decide which placement has the lowest whole-session backing.
+
+The framework should use this loop:
+
+```text
+discover support, regions, recipe descriptions, and small EP-authored contract menus
+    -> evaluate the preferred logical plan for tentative placement/recipes/contracts
+    -> diagnose the initialization or Run peak and generate targeted alternatives
+    -> cheap-score alternatives; build logical execution/backing plans for a bounded shortlist
+    -> choose a provisional winner under the configured objective
+    -> apply its selected recipes on a candidate graph with tentative EP ownership
+    -> reconcile transformations and verify the resulting execution/backing plan
+    -> commit the verified final placement/contracts/backing plan
+    -> materialize within the accepted initialization plan
+```
+
+First try lower-memory, already enforceable contracts on peak-driving nodes when the objective prefers
+retaining GPU placement. Include bounded bundles across tied peaks: reducing one node's workspace can
+save nothing if another node still determines a shared scratch pool's size. Then trial nearby region
+cuts when contract changes do not fit. Do not enumerate the Cartesian product of all node contract menus.
+
+Cache pure requirement calculations by graph revision, relevant geometry/boundaries, workload,
+device/configuration, recipe, and contract, but never merge allocation identity merely because two
+nodes have the same geometry. Reuse region/dependency summaries to cheaply prioritize trials; use the
+real execution/allocation strategy to verify finalists. Cheap scores and partial summaries are not
+budget-feasibility evidence.
+
+Each finalist needs a provisional placement-specific plan covering physical allocation roots and
+lifetimes: weights/prepack coexistence, persistent KV/I/O/output backing, activations and copies, node
+workspace, initialization scratch, and retained allocator pools. Account asynchronous completion,
+alignment, and non-pool overhead/reserve, not just logical live-tensor bytes. The budget test is the
+maximum of initialization and Run backing peaks plus disjoint overhead/reserve, under the companion
+proposal's ownership and workload assumptions. CUDA's `gpu_mem_limit` is an arena limit, not this entire
+session-associated device budget.
+
+The EP owns route eligibility and requirement formulas; the framework consumes contract descriptors
+without knowing CUDA route names. Unknown sizes or unsupported lifetime assumptions remain unresolved,
+not zero. A fixed-contract placement search is a useful first slice; contract alternatives can be added
+without changing the whole-plan evaluator.
+
+Bound the number of trials/refinements, cache graph revisions, and use deterministic tie-breaks.
+Exhausting the search means **no feasible plan was found within the available candidates and limits**,
+not proof that the model cannot fit. Report the evaluated peak breakdown, unresolved terms, selected
+boundary, and search limits. A found plan is conditional on the modeled workload/allocator assumptions,
+not an unconditional device-wide no-OOM guarantee.
+
+### Separate `GetCapability()` Discovery from Budget Acceptance
+
+The opt-in flow needs a planning-safe discovery path. CUDA currently performs support discovery and
+additive budget gating in `GetCapability()`; simply passing a null resource accountant also skips its
+current L1 estimator queries. Refactor requirement discovery separately from acceptance instead of
+using that shortcut.
+
+| Stage | Responsibility |
+|:------|:---------------|
+| Discover | EPs expose executable candidates, optimization recipes, candidate contracts, and allocation requirements without committing resource charges or materializing device kernels. Discover alternatives before applying the selected-placement filter. |
+| Plan | The framework evaluates placement/recipes/contracts jointly using tentative EP-ownership views and recipe-described logical graphs, including transfers and execution/backing plans. Check user constraints and both initialization/Run peaks without normally rewriting each trial graph. |
+| Apply provisional winner | Apply only the provisional winner's selected recipes on a candidate graph with tentative EP ownership. This concretizes an already evaluated description without committing final placement. |
+| Reconcile and verify | Validate the transformed graph against the selected recipes, rediscover affected regions when needed, and rebuild/check transfer, execution, and backing plans, including required copies/casts and both memory peaks. |
+| Commit final placement | Finalize the selected EP eligibility/assignments and freeze graph revision, recipes, contract IDs, transfer boundaries, and backing strategy. Commit resource reservations only for the verified final survivors. |
+| Materialize and verify | Load device initializers, create kernels, and PrePack within the accepted initialization plan. Reconcile exact L2 requirements with the committed contracts and backing plan before their allocations/use. |
+
+**The final placement decision is the commit step, after selected optimizations and budget verification,
+before device materialization.** Choosing a provisional candidate is not final acceptance. Use an
+isolated candidate graph or a reliable rebuild mechanism so rejected rewrites do not contaminate other
+trials. If recipe consistency, support, or budget verification fails, reject the candidate and try another
+within the search limit, or report failure explicitly. A recipe mismatch requires corrected discovery
+and re-evaluation, not acceptance of an unmodeled implementation.
+
+Accurate discovery should make final verification a consistency check, not the first opportunity to
+discover the optimization's memory costs. Committed EP assignments alone are insufficient: the
+optimization recipes, dispatch contracts, transfers, and physical backing assumptions must also remain
+consistent through materialization and runtime.
+
+This requires framework changes: `SequentialPlanner::CreatePlan()` currently runs in session-state
+finalization after partitioning. Reuse its allocation/release/stream machinery in a provisional planning
+path rather than pretending the existing `GetCapability()` call already has that global view.
+
+Some EPs compile or create external state during capability discovery or partitioning. Those EPs need
+an explicit planning-safe discovery/materialization separation before joining this search; repeatedly
+calling an arbitrary EP's current `GetCapability()` is not a generic dry run.
+
+Current layering fallback makes annotation-directed nodes available to later EPs when the requested EP
+does not claim them. In budget-planned mode, that change invalidates the candidate: rebuild and
+re-evaluate it within the refinement limit, or fail explicitly. Do not silently accept different
+placement, fusion, dispatch permissions, transfers, or allocation lifetimes after checking the budget.
+The final executable graph, including inserted copy/cast nodes, must match the verified plan.
+
+L2 verification after kernel construction/PrePack cannot alone prevent initialization OOM. Requirements
+must be bounded before those allocations; materialization must honor the accepted backing strategy.
+A larger L2 requirement needs a verified revised plan before additional allocation/use, or an explicit
+initialization error. Warn-only continuation and allocator growth beyond the plan are not hard-budget
+enforcement.
+
+### Preserve the Same Planning Semantics across the Plugin EP ABI
+
+The internal C++ and plugin EP interfaces should normalize to the same candidate/recipe/contract model.
+The existing plugin ABI exposes `OrtEp::GetCapability()`, support-building functions such as
+`EpGraphSupportInfo_AddSingleNode()` and `EpGraphSupportInfo_AddNodesToFuse()`, and `OrtEp::Compile()`.
+These do not provide the proposed planning protocol or a C ABI equivalent of `optimization_func`;
+the current plugin adapter does not use `GraphOptimizerRegistry`.
+
+Preserve existing signatures and legacy behavior. Add optional, version-negotiated planning and
+selected-plan application/materialization support, with append-only API-table extensions and checks
+before accessing newly introduced members. Use opaque handles and C-compatible descriptors/builders,
+not `ComputeCapability`, STL containers, or `std::function` across the ABI. The adapter should carry the
+selected candidate, recipe, and contract identities into application/compilation so the plugin cannot
+silently choose an unmodeled implementation.
+
+ORT-owned descriptors can copy candidate metadata; EP-owned opaque recipe state needs explicit
+retention/release rules covering discarded candidates and initialization failures. Specify counted
+arrays, allocator ownership, handle validity, and `OrtStatus*` failure behavior. Do not retain borrowed
+graph/node views beyond their documented lifetimes.
+
+A compiling EP can apply its internal recipe during compilation of the selected region without exposing
+every internal rewrite to the host, provided the result honors the planned interface, contracts, and
+allocation bounds. A registered-kernel EP that needs host graph rewrites requires selected-plan
+application through a scoped, validated edit interface or an ORT-registered recipe, not unrestricted
+access to ORT's internal C++ `Graph`.
+
+An older plugin or missing planning callback means unsupported planning, not zero memory cost. Admit
+it to strict budget planning only through a proven compatibility adapter; otherwise reject that
+configuration explicitly while preserving its legacy non-planning path. The initial CUDA/CPU slice
+need not implement all plugin extensions. Concrete callback signatures, descriptor layouts, ownership,
+and negotiation belong in a focused follow-up API proposal; this section specifies required semantics,
+not finalized public APIs.
+
+### Implementation Slices and Validation
+
+Build on the companion proposal's fixed-placement lifetime report and enforceable backing plan before
+adding automatic offloading:
+
+1. Discover/validate regions, executable candidates, and optimization recipes; report their complete
+   transfer frontiers without changing placement.
+2. Evaluate explicit CPU/GPU cuts under fixed enforceable contracts with provisional plans and host
+   support/memory checks, including selected-recipe application and verification before final commitment.
+3. Add bounded automatic boundary selection, then small contract-menu alternatives and peak-targeted
+   bundles, with immutable bindings and final-assignment verification.
+
+Test incomplete or overlapping groups, block 1 versus block 10 matching, numeric block order, residual
+edges crossing several blocks, shared GPU weights after CPU offload, unsupported CPU dtypes/opsets,
+and boundaries crossing indivisible capabilities. Planner tests should cover initialization-dominated
+peaks, scratch reuse/tied peaks, transfer-induced non-monotonic memory, transformed/fused bindings,
+fusion-only support, optional fusion lost across a cut, stale recipe/graph revisions, mismatched optimizer
+results, rejected-candidate isolation, unexpected EP fallback, and search-limit exhaustion. Plugin
+extensions need coverage for older/missing callbacks, selected-contract propagation, recipe-state cleanup,
+and explicit unsupported-planning diagnostics. Distinguish recipe-description queries from mutating
+application callbacks, and check agreement between logical candidate plans and concretely transformed
+graphs. Validate modeled physical backing against measured device peaks for representative admitted
+workloads; measurements calibrate/validate the model rather than prove coverage of unobserved shapes
+or routes.
