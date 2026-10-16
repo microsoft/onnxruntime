@@ -153,6 +153,24 @@ TEST(OrtModelOnlyTests, RejectsGqaValueLayoutOptionWhenDisabled) {
 #endif
 
 #if defined(ORT_MINIMAL_BUILD)
+TEST(OrtModelOnlyTests, PartitionedCudaGraphOptionInMinimalBuild) {
+  for (const char* value : {"0", "1", "invalid"}) {
+    SCOPED_TRACE(value);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, value));
+    InferenceSessionWrapper session{options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+    const Status status = session.Initialize();
+    if (std::string_view(value) == "0") {
+      EXPECT_STATUS_OK(status);
+    } else {
+      EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(kOrtSessionOptionsEnablePartitionedCudaGraph));
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("is not supported in a minimal build"));
+    }
+  }
+}
+
 TEST(OrtModelOnlyTests, RejectsMoeExpertStatisticsInMinimalBuild) {
   for (const char* value : {"1", "true", ""}) {
     SCOPED_TRACE(value);
