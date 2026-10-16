@@ -177,14 +177,14 @@ Counter logs report selected expert IDs, pre-update scores, local/global ranks, 
 See [MoE expert counting](../MoEExpertCounting.md) for the logging and state formats, and
 [MoE/QMoE CUDA operators](../contrib_ops/cuda/moe_qmoe.md) for operator details.
 
-## QMoE INT4 benchmark: adaptive strategy
+## QMoE INT4 benchmarks: prompts 3-5
 
-This series replaces the previous FP16/INT4 sweeps, historical controls, and tuning results.
+Both strategies were rerun; these results replace the previous tables that included loading and warmup in memory peaks.
 Only **Qwen3.5-35B-A3B INT4** is measured, with 40 QMoE nodes, 256 experts per node, and top-k 8.
 `K` is the session-global CPU-resident expert count out of 10,240, not the number of CPU layers.
 
 The fixed settings are alpha `0.9`, epsilon `0.1`, probability weight `0`, and at most **five in-flight swaps per
-device**. Adaptive swaps are configured for every nonzero `K`, but require both CPU and CUDA expert slots.
+device**. Adaptive swaps require both CPU and CUDA expert slots; `basic` never swaps, regardless of that limit.
 At `K=10240`, all QMoE experts reside on CPU; the remaining model operations still use CUDA, so this is not a
 CPU-only execution-provider run. `K=0` disables CPU offload and is measured both with and without CUDA Graph
 capture. All nonzero `K` runs disable capture, which is unsupported with CPU offload.
@@ -192,109 +192,97 @@ No saved counter state or counter logging is used. Runtime defaults are unchange
 
 ### Protocol and metric definitions
 
-Measured on 2026-10-16 using source revision `1090c0ff914a232d28b30538c5863fb925605041`, which includes the
-CUDA shared-provider and aliased-input fixes. Target `main` was refreshed before measurement and was already
-included in this branch. Hardware: NVIDIA H200 (SM90), driver 580.105.08, and Intel Xeon Platinum 8480C
+Measured on 2026-10-16 using source revision `358cb402b1fb34aa9145c41d53517b53b2e040e9`.
+Target `main` was refreshed before measurement and was already included in this branch.
+Both strategies use the **same source-built runtime/provider binaries and physical H200 GPU 1**.
+GPU 0 was running another workload; this is a shared host, not a fully isolated benchmark machine.
+Hardware: NVIDIA H200 (SM90), driver 580.105.08, and Intel Xeon Platinum 8480C
 (two sockets, 96 physical cores, no SMT). Software: Linux, Python 3.12, GenAI CUDA 0.15.2, source-built ORT 1.32.0,
 and CUDA 13.3.73. Release build, native CUDA architecture, Flash/MEA enabled, quick build disabled.
 GenAI loaded the rebuilt ORT from the build directory, not an installed ORT wheel.
 
-The twelve configurations are `K=0` with capture off/on and `K=1024, 2048, ..., 10240` with capture off.
-Each runs once, serially in a fresh process on physical H200 GPU 0. The intermediate `K=1024..8192` measurements
-are retained from the initial sweep; the two all-GPU controls and `K=9216, 10240` were measured in an extension
-using the same model, prompts, settings, and unchanged runtime/provider binaries.
+Each strategy has twelve configurations: `K=0` with capture off/on and `K=1024, 2048, ..., 10240` with capture off.
+All 24 configurations completed successfully, freshly measured once, serially in separate processes, alternating
+adaptive/basic for each configuration. No earlier measurements are reused. Runtime/provider hashes were unchanged
+after both series.
 Every run uses the unchanged [five prompts](benchmark-prompts.json), greedy generation, and exactly 256 generated
-tokens per prompt. The first two prompts are warmup.
+tokens per prompt. **Prompts 1-2 are warmup only; all four published metrics use prompts 3-5 exclusively.**
 
 - **Prefill time (ms/prompt):** arithmetic mean of `append_tokens()` wall times for prompts 3-5.
 - **Decoded tokens/s:** 762 steady-state decoded tokens divided by their total measured decode time across
   prompts 3-5. The generation call using prefill logits and the first actual decode inference of each prompt
   are excluded. Prefill, loading, and Python log-writing outside the timed calls are not included.
-- **Peak GPU (GiB):** maximum device-wide NVML usage sampled every 50 ms across loading and all five prompts,
+- **Peak GPU (GiB):** maximum device-wide NVML usage sampled every 50 ms only during prompts 3-5,
   including ambient GPU memory, not just model allocations.
-- **Peak CPU RSS (GiB):** maximum process RSS across loading and all five prompts, taking the larger of the
-  50 ms samples and Linux `ru_maxrss`. This is resident memory, not total allocated or virtual memory.
+- **Peak CPU RSS (GiB):** maximum current process RSS sampled every 50 ms only during prompts 3-5.
+  Linux `ru_maxrss` is not used because it includes the process lifetime before the measured prompts.
+  This is resident memory, not total allocated or virtual memory.
+
+Memory is also sampled at prompt boundaries. Phase changes and sampling are serialized so loading or warmup
+samples cannot be attributed to a measured prompt. Each measured memory window covers prompt preparation,
+prefill, and generation; it excludes loading, prompts 1-2, and work between prompts. Allocations still resident
+during prompts 3-5 are included, even if they were created earlier. The JSON `measurements` summary identifies
+`prompt_indices: [3, 4, 5]` and contains the four published metrics. Whole-process peaks remain in the raw
+`memory` object for diagnostics, but are not used in these tables.
 
 Single runs are not repeated statistical estimates. Greedy generation does not replay an identical routing trace,
 and this benchmark does not evaluate model quality.
 
-A separate Nsight Systems smoke run (one prompt, 16 generated tokens, `K=0`, `--cuda-graph`) confirmed actual
-capture and replay: one `cudaStreamBeginCapture`, one `cudaStreamEndCapture`, one `cudaGraphInstantiate`,
-and 15 `cudaGraphLaunch` calls. Its instrumented timings are excluded from the table.
+A separate Nsight Systems smoke run with these runtime/provider binaries (one prompt, 16 generated tokens,
+`K=0`, `--cuda-graph`) confirmed one capture/instantiation and 15 `cudaGraphLaunch` calls.
+Its instrumented timings are excluded.
 
 The model graph SHA-256 is `84fe3652ac0c711b8f7782a93459296a39f58abc654d75dfb42d54ef474f2b03`.
 Runtime and CUDA provider hashes identify the exact binaries:
 
 | Artifact | SHA-256 |
 |---|---|
-| `libonnxruntime.so.1.32.0` | `5750dc0a84f95fb92b2d588fce1a50194671bd73aa7808b50659377c9879abf7` |
-| `libonnxruntime_providers_cuda.so` | `8e7e4fb2fb4fe488fb1b603b1d11c9ac573c74b94e6a3db27f6e95f9b7ada74b` |
+| `libonnxruntime.so.1.32.0` | `c0293a3f964737f4867a1826443c4a04a2128d5f071055243f0563ef956f5116` |
+| `libonnxruntime_providers_cuda.so` | `cd0bfd93995866a47dae2a98a99a0c9df39d007875e677efc4c1168ce17bed25` |
 
-### Results
+### Adaptive strategy
 
-All twelve runs completed successfully. The runtime/provider hashes were unchanged after the series.
-Each row is one run, with warm timing over prompts 3-5 and memory peaks over the complete process.
-Raw per-prompt JSON and logs are retained locally, not committed.
+The default strategy distributes initial CUDA expert slots round-robin without saved popularities and enables
+adaptive exchanges. Each row uses prompts 3-5 only. Raw per-prompt JSON and logs are retained locally, not committed.
 
 | K: CPU experts | CUDA Graph | Prefill time (ms/prompt) | Decoded tokens/s | Peak GPU (GiB) | Peak CPU RSS (GiB) |
 |---:|:---:|---:|---:|---:|---:|
-| 0 | Off | 21.077 | 129.257 | 39.390 | 1.574 |
-| 0 | On | 21.784 | 168.870 | 39.510 | 1.646 |
-| 1024 | Off | 34.407 | 79.497 | 38.224 | 18.263 |
-| 2048 | Off | 43.612 | 67.150 | 36.539 | 18.387 |
-| 3072 | Off | 140.587 | 40.814 | 34.732 | 18.472 |
-| 4096 | Off | 226.890 | 36.228 | 32.996 | 18.612 |
-| 5120 | Off | 246.045 | 35.727 | 31.160 | 21.733 |
-| 6144 | Off | 256.879 | 32.769 | 29.615 | 25.308 |
-| 7168 | Off | 366.267 | 28.065 | 27.930 | 28.883 |
-| 8192 | Off | 439.508 | 26.730 | 26.722 | 32.460 |
-| 9216 | Off | 469.877 | 25.334 | 24.601 | 36.035 |
-| 10240 | Off | 744.964 | 26.572 | 23.163 | 39.592 |
+| 0 | Off | 21.134 | 129.930 | 39.388 | 1.576 |
+| 0 | On | 21.391 | 169.841 | 39.476 | 1.646 |
+| 1024 | Off | 33.829 | 79.855 | 38.219 | 7.690 |
+| 2048 | Off | 46.457 | 57.834 | 36.539 | 11.266 |
+| 3072 | Off | 152.712 | 39.793 | 34.730 | 14.584 |
+| 4096 | Off | 209.657 | 37.036 | 32.969 | 18.159 |
+| 5120 | Off | 297.205 | 33.336 | 31.154 | 21.733 |
+| 6144 | Off | 324.400 | 30.664 | 29.613 | 25.308 |
+| 7168 | Off | 326.908 | 29.203 | 27.930 | 28.883 |
+| 8192 | Off | 434.233 | 27.003 | 26.207 | 32.456 |
+| 9216 | Off | 418.149 | 25.696 | 24.476 | 36.030 |
+| 10240 | Off | 574.325 | 27.032 | 22.683 | 39.538 |
 
-## QMoE INT4 benchmark: basic strategy
+### Basic strategy
 
-This series uses `--strategy basic` with the same Qwen3.5 INT4 model, unchanged five prompts, 256 greedy tokens
-per prompt, first two prompts as warmup, and the four metric definitions above. Alpha is `0.9`, epsilon is `0.1`,
-probability weight is `0`, and the configured swap limit remains `5`. The strategy prevents all swaps regardless
-of that limit. The sweep covers `K=0, 1024, ..., 10240`, plus a separate captured all-GPU control at `K=0`.
 With 256 experts per node, every nonzero step moves exactly four trailing QMoE nodes to CPU; there is no split
-boundary node in this model. All-GPU controls disable offload and its instrumentation entirely.
-
-Measured on 2026-10-16 using source revision `487a44eddac3a81fd0ba63757e5aa8fdf9a2f337`, including the basic
-strategy and failed-run logger-lifetime fix. Target `main` was refreshed and was already included. The software,
-host, and build configuration match those described above. These runs use physical H200 **GPU 1**, because GPU 0
-was running another workload. This is a shared host, not a fully isolated benchmark machine. The earlier adaptive
-series used GPU 0 and different binaries, so differences between the two tables are not a controlled,
-same-binary comparison of strategies.
-
-| Artifact | SHA-256 |
-|---|---|
-| `libonnxruntime.so.1.32.0` | `c0293a3f964737f4867a1826443c4a04a2128d5f071055243f0563ef956f5116` |
-| `libonnxruntime_providers_cuda.so` | `cd0bfd93995866a47dae2a98a99a0c9df39d007875e677efc4c1168ce17bed25` |
+boundary node in this model. Placement never changes. All four metrics again use prompts 3-5 only.
 
 A separate untimed real-model check at `K=4096` confirmed that the first 24 QMoE nodes selected only CUDA-resident
 experts and the last 16 selected only CPU-resident experts over 16 invocations per node, with no swap records.
 Its logging-enabled timings are not included in the results.
 
-A separate Nsight Systems run of the new all-GPU control (one prompt, 16 generated tokens) confirmed one capture
-and instantiation and 15 `cudaGraphLaunch` calls. Its instrumented timings are also excluded.
-All twelve timed runs completed successfully, with unchanged runtime/provider hashes. Each row is a single run;
-raw per-prompt JSON and logs are retained locally, not committed.
-
 | K: CPU experts | CUDA Graph | Prefill time (ms/prompt) | Decoded tokens/s | Peak GPU (GiB) | Peak CPU RSS (GiB) |
 |---:|:---:|---:|---:|---:|---:|
-| 0 | Off | 21.079 | 128.563 | 39.388 | 1.574 |
-| 0 | On | 21.807 | 169.488 | 39.447 | 1.645 |
-| 1024 | Off | 73.010 | 89.572 | 37.930 | 18.144 |
-| 2048 | Off | 122.929 | 69.399 | 36.275 | 18.144 |
-| 3072 | Off | 187.570 | 57.557 | 34.543 | 18.144 |
-| 4096 | Off | 217.239 | 50.454 | 32.851 | 18.152 |
-| 5120 | Off | 209.857 | 45.857 | 31.127 | 21.726 |
-| 6144 | Off | 329.509 | 40.231 | 29.431 | 25.302 |
-| 7168 | Off | 418.698 | 36.668 | 27.771 | 28.781 |
-| 8192 | Off | 463.234 | 35.093 | 26.047 | 32.356 |
-| 9216 | Off | 572.767 | 28.639 | 24.351 | 35.915 |
-| 10240 | Off | 611.970 | 28.730 | 22.691 | 39.594 |
+| 0 | Off | 20.898 | 132.550 | 39.392 | 1.574 |
+| 0 | On | 21.840 | 168.622 | 39.449 | 1.645 |
+| 1024 | Off | 84.129 | 85.967 | 37.900 | 7.424 |
+| 2048 | Off | 146.529 | 70.539 | 36.205 | 11.001 |
+| 3072 | Off | 193.798 | 59.878 | 34.637 | 14.579 |
+| 4096 | Off | 249.523 | 46.850 | 32.820 | 18.151 |
+| 5120 | Off | 335.351 | 44.232 | 31.127 | 21.727 |
+| 6144 | Off | 340.948 | 39.411 | 29.431 | 25.302 |
+| 7168 | Off | 440.696 | 36.474 | 27.740 | 28.781 |
+| 8192 | Off | 577.976 | 33.758 | 26.076 | 32.356 |
+| 9216 | Off | 541.466 | 29.513 | 24.383 | 35.915 |
+| 10240 | Off | 633.668 | 27.746 | 22.660 | 39.537 |
 
 ## Reproducing the series
 
@@ -305,39 +293,31 @@ Use the Qwen3.5 INT4 GenAI export and a matching source-built ORT/CUDA provider.
 export PYTHONPATH=/path/to/onnxruntime/build/linux_cuda/Release
 export LD_LIBRARY_PATH=/path/to/onnxruntime/build/linux_cuda/Release${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 cd /path/to/onnxruntime/build/linux_cuda/Release
-strategy=adaptive  # Set to basic for fixed GPU-first QMoE placement.
-gpu=0             # Use a free physical H200 GPU; the basic series used GPU 1.
-output="/tmp/qwen35-int4-${strategy}-sweep"
-mkdir -p "$output"
-for k in 0 1024 2048 3072 4096 5120 6144 7168 8192 9216 10240; do
-  CUDA_VISIBLE_DEVICES="$gpu" python /path/to/onnxruntime/tools/python/benchmark_moe_cpu_offload.py \
-    --name "qwen35-int4-${strategy}-k${k}-alpha09-epsilon01-swaps5" \
-    --model /path/to/qwen3.5-35b-cuda-int4 \
-    --prompts /path/to/onnxruntime/docs/moe-cpu-offload/benchmark-prompts.json \
-    --max-new-tokens 256 \
-    --cpu-offload-experts "$k" \
-    --strategy "$strategy" \
-    --counter-alpha 0.9 \
-    --swap-epsilon 0.1 \
-    --max-in-flight-swaps-per-device 5 \
-    --swap --no-counter-log --no-cuda-graph \
-    --output "$output/k${k}.json" \
-    --log "$output/k${k}.log" || exit "$?"
+gpu=1  # Use the same free physical H200 GPU for both strategies.
+for scenario in k0-nograph k0-graph k1024 k2048 k3072 k4096 k5120 k6144 k7168 k8192 k9216 k10240; do
+  case "$scenario" in
+    k0-nograph) k=0; graph=--no-cuda-graph ;;
+    k0-graph) k=0; graph=--cuda-graph ;;
+    *) k=${scenario#k}; graph=--no-cuda-graph ;;
+  esac
+  for strategy in adaptive basic; do
+    output="/tmp/qwen35-int4-warm35/${strategy}"
+    mkdir -p "$output"
+    CUDA_VISIBLE_DEVICES="$gpu" python /path/to/onnxruntime/tools/python/benchmark_moe_cpu_offload.py \
+      --name "qwen35-int4-warm35-${strategy}-${scenario}" \
+      --model /path/to/qwen3.5-35b-cuda-int4 \
+      --prompts /path/to/onnxruntime/docs/moe-cpu-offload/benchmark-prompts.json \
+      --max-new-tokens 256 \
+      --cpu-offload-experts "$k" \
+      --strategy "$strategy" \
+      --counter-alpha 0.9 \
+      --swap-epsilon 0.1 \
+      --max-in-flight-swaps-per-device 5 \
+      --swap --no-counter-log "$graph" \
+      --output "$output/${scenario}.json" \
+      --log "$output/${scenario}.log" || exit "$?"
+  done
 done
-
-CUDA_VISIBLE_DEVICES="$gpu" python /path/to/onnxruntime/tools/python/benchmark_moe_cpu_offload.py \
-  --name "qwen35-int4-${strategy}-k0-cuda-graph" \
-  --model /path/to/qwen3.5-35b-cuda-int4 \
-  --prompts /path/to/onnxruntime/docs/moe-cpu-offload/benchmark-prompts.json \
-  --max-new-tokens 256 \
-  --cpu-offload-experts 0 \
-  --strategy "$strategy" \
-  --counter-alpha 0.9 \
-  --swap-epsilon 0.1 \
-  --max-in-flight-swaps-per-device 5 \
-  --swap --no-counter-log --cuda-graph \
-  --output "$output/k0-graph.json" \
-  --log "$output/k0-graph.log"
 ```
 
 Use `--no-swap` to freeze adaptive placement, `--state` to load initial popularities, `--popularity-output` to save them,
