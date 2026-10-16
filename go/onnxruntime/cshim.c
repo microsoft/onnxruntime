@@ -1,4 +1,7 @@
 #include "cshim.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 _Static_assert(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2 == 24, "UINT2 C API ABI value must remain 24");
 _Static_assert(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2 == 25, "INT2 C API ABI value must remain 25");
@@ -8,11 +11,40 @@ static const OrtApi *g_api = NULL;
 static int g_api_version = 0;
 static const char *g_ort_version = NULL;
 
+void ort_reset_api(void) {
+    g_api = NULL;
+    g_api_version = 0;
+    g_ort_version = NULL;
+}
+
+static int ort_first_api_version(const char *version) {
+    if (version == NULL || version[0] != '1' || version[1] != '.') return ORT_GO_API_VERSION_MAX;
+    const char *p = version + 2;
+    if (*p < '0' || *p > '9') return ORT_GO_API_VERSION_MAX;
+    int minor = 0;
+    while (*p >= '0' && *p <= '9') {
+        // Clamp while parsing so an oversized minor cannot overflow.
+        if (minor < ORT_GO_API_VERSION_MAX) {
+            minor = minor * 10 + (*p - '0');
+            if (minor > ORT_GO_API_VERSION_MAX) minor = ORT_GO_API_VERSION_MAX;
+        }
+        p++;
+    }
+    if (*p++ != '.') return ORT_GO_API_VERSION_MAX;
+    if (*p < '0' || *p > '9') return ORT_GO_API_VERSION_MAX;
+    while (*p >= '0' && *p <= '9') p++;
+    if (*p != '\0') return ORT_GO_API_VERSION_MAX;
+    return minor;
+}
+
 int ort_init_api(void *get_api_base_fn, int *actual_version) {
+    ort_reset_api();
+    *actual_version = 0;
     const OrtApiBase *base = ((const OrtApiBase *(*)(void))get_api_base_fn)();
     if (base == NULL) return 1;
     g_ort_version = base->GetVersionString();
-    for (int v = ORT_GO_API_VERSION_MAX; v >= ORT_GO_API_VERSION_MIN; v--) {
+    // Release 1.N provides API N. Avoid rejected requests that ORT logs to stderr.
+    for (int v = ort_first_api_version(g_ort_version); v >= ORT_GO_API_VERSION_MIN; v--) {
         g_api = base->GetApi((uint32_t)v);
         if (g_api != NULL) {
             g_api_version = v;
@@ -20,11 +52,27 @@ int ort_init_api(void *get_api_base_fn, int *actual_version) {
             return 0;
         }
     }
+    ort_reset_api();
     return 2;
 }
 
 const char *ort_GetVersionString(void) {
     return g_ort_version;
+}
+
+// Call only after successful API initialization. Check versions before slot reads.
+static OrtStatusPtr ort_unsupported(const char *operation, int required) {
+    char message[192];
+    snprintf(message, sizeof(message), "%s requires API %d; negotiated API %d (function unavailable)",
+             operation, required, g_api_version);
+    return g_api->CreateStatus(ORT_NOT_IMPLEMENTED, message);
+}
+
+OrtStatusPtr ort_GetBuildInfoString(const char **out) {
+    if (g_api_version < 15) return ort_unsupported("GetBuildInfoString", 15);
+    if (g_api->GetBuildInfoString == NULL) return ort_unsupported("GetBuildInfoString", 15);
+    *out = g_api->GetBuildInfoString();
+    return NULL;
 }
 
 // Environment
@@ -485,10 +533,14 @@ OrtStatusPtr ort_CreateMemoryInfo(const char *name, enum OrtAllocatorType type,
 // Session options getters (since 1.27)
 
 OrtStatusPtr ort_GetMemPatternEnabled(const OrtSessionOptions *opts, int *out) {
+    if (g_api_version < 27) return ort_unsupported("GetMemPatternEnabled", 27);
+    if (g_api->GetMemPatternEnabled == NULL) return ort_unsupported("GetMemPatternEnabled", 27);
     return g_api->GetMemPatternEnabled(opts, out);
 }
 
 OrtStatusPtr ort_GetSessionExecutionMode(const OrtSessionOptions *opts, ExecutionMode *out) {
+    if (g_api_version < 27) return ort_unsupported("GetSessionExecutionMode", 27);
+    if (g_api->GetSessionExecutionMode == NULL) return ort_unsupported("GetSessionExecutionMode", 27);
     return g_api->GetSessionExecutionMode(opts, out);
 }
 
@@ -549,4 +601,231 @@ OrtStatusPtr ort_ReleaseAvailableProviders(char **ptr, int count) {
 
 void ort_AllocatorFree(OrtAllocator *allocator, void *ptr) {
     allocator->Free(allocator, ptr);
+}
+
+// Plugin execution providers. Version checks precede all API-22 slot reads.
+
+OrtStatusPtr ort_RegisterExecutionProviderLibrary(OrtEnv* env, const char* name, const ORTCHAR_T* path) {
+    if (g_api_version < 22) return ort_unsupported("RegisterExecutionProviderLibrary", 22);
+    if (g_api->RegisterExecutionProviderLibrary == NULL) return ort_unsupported("RegisterExecutionProviderLibrary", 22);
+    return g_api->RegisterExecutionProviderLibrary(env, name, path);
+}
+
+OrtStatusPtr ort_UnregisterExecutionProviderLibrary(OrtEnv* env, const char* name) {
+    if (g_api_version < 22) return ort_unsupported("UnregisterExecutionProviderLibrary", 22);
+    if (g_api->UnregisterExecutionProviderLibrary == NULL) return ort_unsupported("UnregisterExecutionProviderLibrary", 22);
+    return g_api->UnregisterExecutionProviderLibrary(env, name);
+}
+
+OrtStatusPtr ort_GetEpDevices(const OrtEnv* env, const OrtEpDevice* const** out, size_t* count) {
+    if (g_api_version < 22) return ort_unsupported("GetEpDevices", 22);
+    if (g_api->GetEpDevices == NULL) return ort_unsupported("GetEpDevices", 22);
+    return g_api->GetEpDevices(env, out, count);
+}
+
+OrtStatusPtr ort_SessionOptionsAppendExecutionProvider_V2(
+    OrtSessionOptions* opts, OrtEnv* env,
+    const OrtEpDevice* const* devices, size_t count,
+    const char* const* keys, const char* const* values, size_t num_options) {
+    if (g_api_version < 22) return ort_unsupported("SessionOptionsAppendExecutionProvider_V2", 22);
+    if (g_api->SessionOptionsAppendExecutionProvider_V2 == NULL)
+        return ort_unsupported("SessionOptionsAppendExecutionProvider_V2", 22);
+    return g_api->SessionOptionsAppendExecutionProvider_V2(opts, env, devices, count, keys, values, num_options);
+}
+
+OrtStatusPtr ort_SessionOptionsSetEpSelectionPolicy(OrtSessionOptions* opts, OrtExecutionProviderDevicePolicy policy) {
+    if (g_api_version < 22) return ort_unsupported("SessionOptionsSetEpSelectionPolicy", 22);
+    if (g_api->SessionOptionsSetEpSelectionPolicy == NULL) return ort_unsupported("SessionOptionsSetEpSelectionPolicy", 22);
+    return g_api->SessionOptionsSetEpSelectionPolicy(opts, policy);
+}
+
+OrtStatusPtr ort_EpDevice_EpName(const OrtEpDevice* device, const char** out) {
+    if (g_api_version < 22) return ort_unsupported("EpDevice_EpName", 22);
+    if (g_api->EpDevice_EpName == NULL) return ort_unsupported("EpDevice_EpName", 22);
+    *out = g_api->EpDevice_EpName(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_EpDevice_EpVendor(const OrtEpDevice* device, const char** out) {
+    if (g_api_version < 22) return ort_unsupported("EpDevice_EpVendor", 22);
+    if (g_api->EpDevice_EpVendor == NULL) return ort_unsupported("EpDevice_EpVendor", 22);
+    *out = g_api->EpDevice_EpVendor(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_EpDevice_EpMetadata(const OrtEpDevice* device, const OrtKeyValuePairs** out) {
+    if (g_api_version < 22) return ort_unsupported("EpDevice_EpMetadata", 22);
+    if (g_api->EpDevice_EpMetadata == NULL) return ort_unsupported("EpDevice_EpMetadata", 22);
+    *out = g_api->EpDevice_EpMetadata(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_EpDevice_EpOptions(const OrtEpDevice* device, const OrtKeyValuePairs** out) {
+    if (g_api_version < 22) return ort_unsupported("EpDevice_EpOptions", 22);
+    if (g_api->EpDevice_EpOptions == NULL) return ort_unsupported("EpDevice_EpOptions", 22);
+    *out = g_api->EpDevice_EpOptions(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_EpDevice_Device(const OrtEpDevice* device, const OrtHardwareDevice** out) {
+    if (g_api_version < 22) return ort_unsupported("EpDevice_Device", 22);
+    if (g_api->EpDevice_Device == NULL) return ort_unsupported("EpDevice_Device", 22);
+    *out = g_api->EpDevice_Device(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_HardwareDevice_Type(const OrtHardwareDevice* device, OrtHardwareDeviceType* out) {
+    if (g_api_version < 22) return ort_unsupported("HardwareDevice_Type", 22);
+    if (g_api->HardwareDevice_Type == NULL) return ort_unsupported("HardwareDevice_Type", 22);
+    *out = g_api->HardwareDevice_Type(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_HardwareDevice_VendorId(const OrtHardwareDevice* device, uint32_t* out) {
+    if (g_api_version < 22) return ort_unsupported("HardwareDevice_VendorId", 22);
+    if (g_api->HardwareDevice_VendorId == NULL) return ort_unsupported("HardwareDevice_VendorId", 22);
+    *out = g_api->HardwareDevice_VendorId(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_HardwareDevice_Vendor(const OrtHardwareDevice* device, const char** out) {
+    if (g_api_version < 22) return ort_unsupported("HardwareDevice_Vendor", 22);
+    if (g_api->HardwareDevice_Vendor == NULL) return ort_unsupported("HardwareDevice_Vendor", 22);
+    *out = g_api->HardwareDevice_Vendor(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_HardwareDevice_DeviceId(const OrtHardwareDevice* device, uint32_t* out) {
+    if (g_api_version < 22) return ort_unsupported("HardwareDevice_DeviceId", 22);
+    if (g_api->HardwareDevice_DeviceId == NULL) return ort_unsupported("HardwareDevice_DeviceId", 22);
+    *out = g_api->HardwareDevice_DeviceId(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_HardwareDevice_Metadata(const OrtHardwareDevice* device, const OrtKeyValuePairs** out) {
+    if (g_api_version < 22) return ort_unsupported("HardwareDevice_Metadata", 22);
+    if (g_api->HardwareDevice_Metadata == NULL) return ort_unsupported("HardwareDevice_Metadata", 22);
+    *out = g_api->HardwareDevice_Metadata(device);
+    return NULL;
+}
+
+OrtStatusPtr ort_GetKeyValuePairs(
+    const OrtKeyValuePairs* pairs, const char* const** keys,
+    const char* const** values, size_t* count) {
+    if (g_api_version < 22) return ort_unsupported("GetKeyValuePairs", 22);
+    if (g_api->GetKeyValuePairs == NULL) return ort_unsupported("GetKeyValuePairs", 22);
+    g_api->GetKeyValuePairs(pairs, keys, values, count);
+    return NULL;
+}
+
+OrtStatusPtr ort_SetDeterministicCompute(OrtSessionOptions* opts, bool enabled) {
+    if (g_api_version < 17) return ort_unsupported("SetDeterministicCompute", 17);
+    if (g_api->SetDeterministicCompute == NULL) return ort_unsupported("SetDeterministicCompute", 17);
+    return g_api->SetDeterministicCompute(opts, enabled);
+}
+
+OrtStatusPtr ort_SynchronizeBoundInputs(OrtIoBinding* binding) {
+    if (g_api_version < 10) return ort_unsupported("SynchronizeBoundInputs", 10);
+    if (g_api->SynchronizeBoundInputs == NULL) return ort_unsupported("SynchronizeBoundInputs", 10);
+    return g_api->SynchronizeBoundInputs(binding);
+}
+
+OrtStatusPtr ort_SynchronizeBoundOutputs(OrtIoBinding* binding) {
+    if (g_api_version < 10) return ort_unsupported("SynchronizeBoundOutputs", 10);
+    if (g_api->SynchronizeBoundOutputs == NULL) return ort_unsupported("SynchronizeBoundOutputs", 10);
+    return g_api->SynchronizeBoundOutputs(binding);
+}
+
+OrtStatusPtr ort_SessionOptionsSetWeightlessSourceModelBuffer(OrtSessionOptions* opts, const void* data, size_t size) {
+    if (g_api_version < 29) return ort_unsupported("SessionOptionsSetWeightlessSourceModelBuffer", 29);
+    if (g_api->SessionOptionsSetWeightlessSourceModelBuffer == NULL)
+        return ort_unsupported("SessionOptionsSetWeightlessSourceModelBuffer", 29);
+    return g_api->SessionOptionsSetWeightlessSourceModelBuffer(opts, data, size);
+}
+
+OrtStatusPtr ort_copy_buffer(const void* data, size_t size, void** out) {
+    if (data == NULL || size == 0) return g_api->CreateStatus(ORT_INVALID_ARGUMENT, "source buffer is empty");
+    void* copy = malloc(size);
+    if (copy == NULL) return g_api->CreateStatus(ORT_FAIL, "source buffer allocation failed");
+    memcpy(copy, data, size);
+    *out = copy;
+    return NULL;
+}
+
+OrtStatusPtr ort_SessionOptionsSetEpContextDataReadFunc(
+    OrtSessionOptions* options, OrtReadNamedBufferFunc reader, void* state) {
+    if (g_api_version < 31) return ort_unsupported("SessionOptionsSetEpContextDataReadFunc", 31);
+    if (g_api->SessionOptionsSetEpContextDataReadFunc == NULL)
+        return ort_unsupported("SessionOptionsSetEpContextDataReadFunc", 31);
+    return g_api->SessionOptionsSetEpContextDataReadFunc(options, reader, state);
+}
+
+typedef struct { uintptr_t handle; } OrtGoReaderState;
+extern OrtStatus* ortGoReadNamedBuffer(uintptr_t, char*, OrtAllocator*, void**, size_t*);
+
+OrtStatusPtr ort_reader_state(uintptr_t handle, void** out) {
+    OrtGoReaderState* state = malloc(sizeof(*state));
+    if (state == NULL) return g_api->CreateStatus(ORT_FAIL, "reader state allocation failed");
+    state->handle = handle;
+    *out = state;
+    return NULL;
+}
+
+OrtStatus* ORT_API_CALL ort_reader_trampoline(
+    void* state, const char* name, OrtAllocator* allocator, void** buffer, size_t* size) {
+    if (buffer != NULL) *buffer = NULL;
+    if (size != NULL) *size = 0;
+    if (state == NULL || name == NULL || allocator == NULL || buffer == NULL || size == NULL)
+        return g_api->CreateStatus(ORT_INVALID_ARGUMENT, "invalid reader callback arguments");
+    OrtGoReaderState* registration = state;
+    return ortGoReadNamedBuffer(registration->handle, (char*)name, allocator, buffer, size);
+}
+
+OrtStatusPtr ort_reader_validate(OrtAllocator* allocator) {
+    if (allocator == NULL || allocator->Alloc == NULL || allocator->Free == NULL || allocator->Info == NULL)
+        return g_api->CreateStatus(ORT_INVALID_ARGUMENT, "invalid reader allocator");
+    const OrtMemoryInfo* info = NULL;
+    OrtStatus* status = g_api->AllocatorGetInfo(allocator, &info);
+    if (status != NULL) return status;
+    if (info == NULL) return g_api->CreateStatus(ORT_INVALID_ARGUMENT, "reader allocator has no memory info");
+    OrtMemoryInfoDeviceType type;
+    g_api->MemoryInfoGetDeviceType(info, &type);
+    if (type != OrtMemoryInfoDeviceType_CPU &&
+        g_api->MemoryInfoGetDeviceMemType(info) != OrtDeviceMemoryType_HOST_ACCESSIBLE)
+        return g_api->CreateStatus(ORT_INVALID_ARGUMENT, "reader allocator memory is not host accessible");
+    return NULL;
+}
+
+OrtStatusPtr ort_reader_copy(OrtAllocator* allocator, const void* data, size_t size,
+                             void** out, size_t* out_size) {
+    if (size == 0) return NULL;
+    void* candidate = NULL;
+    OrtStatus* status = g_api->AllocatorAlloc(allocator, size, &candidate);
+    if (status != NULL) {
+        if (candidate != NULL) {
+            OrtStatus* cleanup = g_api->AllocatorFree(allocator, candidate);
+            if (cleanup != NULL) g_api->ReleaseStatus(cleanup);
+        }
+        return status;
+    }
+    if (candidate == NULL) return g_api->CreateStatus(ORT_FAIL, "reader allocator returned NULL");
+    memcpy(candidate, data, size);
+    *out = candidate;
+    *out_size = size;
+    return NULL;
+}
+
+OrtStatusPtr ort_reader_error(OrtErrorCode code, const char* message, size_t size) {
+    if (size == SIZE_MAX) return g_api->CreateStatus(ORT_FAIL, "reader error message too large");
+    char* copy = malloc(size + 1);
+    if (copy == NULL) return g_api->CreateStatus(ORT_FAIL, "reader error allocation failed");
+    if (size != 0) memcpy(copy, message, size);
+    copy[size] = 0;
+    OrtStatus* status = g_api->CreateStatus(code, copy);
+    free(copy);
+    return status;
+}
+
+OrtStatusPtr ort_reader_panic(void) {
+    return g_api->CreateStatus(ORT_FAIL, "EPContext data reader panicked");
 }
