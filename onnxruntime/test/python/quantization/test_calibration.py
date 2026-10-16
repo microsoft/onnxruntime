@@ -16,7 +16,7 @@ import onnx
 from onnx import TensorProto, helper, numpy_helper
 
 import onnxruntime
-from onnxruntime.quantization import quantize_static
+from onnxruntime.quantization import quantize_static, write_calibration_table
 from onnxruntime.quantization.calibrate import (
     CalibrationDataReader,
     CalibrationMethod,
@@ -808,6 +808,33 @@ class TestCalibrationCache(unittest.TestCase):
             calibration_cache_path=cache_path,
         )
         self.assertTrue(out2_path.exists())
+
+    def test_write_calibration_table_non_ascii_tensor_name(self):
+        """write_calibration_table() must not depend on the platform's default
+        text encoding: tensor names come straight from the model graph and can
+        contain non-ASCII characters, and on Windows the default open() mode
+        uses the ANSI code page (e.g. cp1252) rather than UTF-8, which raises
+        UnicodeEncodeError while writing calibration.cache."""
+        cache = {
+            "中文层名": TensorData(
+                lowest=np.array(0.0, dtype=np.float32),
+                highest=np.array(1.0, dtype=np.float32),
+            )
+        }
+        out_dir = Path(self._tmp_dir.name) / "non_ascii_calib_table"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        write_calibration_table(cache, dir=str(out_dir))
+
+        cache_file = out_dir / "calibration.cache"
+        self.assertTrue(cache_file.exists())
+        with cache_file.open("r", encoding="utf-8") as f:
+            contents = f.read()
+        self.assertIn("中文层名", contents)
+
+        json_file = out_dir / "calibration.json"
+        with json_file.open("r", encoding="utf-8") as f:
+            json.load(f)
 
 
 if __name__ == "__main__":
