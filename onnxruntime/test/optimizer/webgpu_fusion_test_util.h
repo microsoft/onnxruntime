@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -25,6 +28,93 @@
 namespace onnxruntime {
 namespace test {
 
+// Deterministic packed INT4 data and host math used as an oracle for fused decode shaders.
+struct FusedNBitsTestProjection {
+  std::vector<uint8_t> weights;
+  std::vector<MLFloat16> scales;
+};
+
+inline std::vector<MLFloat16> MakeFusedNBitsTestInput(int64_t k_size) {
+  std::vector<MLFloat16> values(static_cast<size_t>(k_size));
+  for (int64_t k = 0; k < k_size; ++k) {
+    values[static_cast<size_t>(k)] = MLFloat16(static_cast<float>((k * 13) % 29 - 14) / 16.0f);
+  }
+  return values;
+}
+
+inline std::vector<MLFloat16> MakeFusedNBitsTestNormScale(int64_t k_size) {
+  std::vector<MLFloat16> values(static_cast<size_t>(k_size));
+  for (int64_t k = 0; k < k_size; ++k) {
+    values[static_cast<size_t>(k)] = MLFloat16(0.75f + static_cast<float>(k % 5) * 0.0625f);
+  }
+  return values;
+}
+
+inline FusedNBitsTestProjection MakeFusedNBitsTestProjection(int64_t n, int64_t k_size,
+                                                             int64_t block_size, int seed) {
+  const int64_t blocks = k_size / block_size;
+  const int64_t blob_size = block_size / 2;
+  FusedNBitsTestProjection projection;
+  projection.weights.resize(static_cast<size_t>(n * blocks * blob_size));
+  projection.scales.resize(static_cast<size_t>(n * blocks));
+  for (int64_t row = 0; row < n; ++row) {
+    for (int64_t block = 0; block < blocks; ++block) {
+      const uint8_t quantized = static_cast<uint8_t>(3 + (row * 5 + block * 3 + seed) % 11);
+      const uint8_t packed = static_cast<uint8_t>(quantized | (quantized << 4));
+      const size_t block_offset = static_cast<size_t>((row * blocks + block) * blob_size);
+      std::fill_n(projection.weights.begin() + block_offset, blob_size, packed);
+      projection.scales[static_cast<size_t>(row * blocks + block)] =
+          MLFloat16(0.015625f * static_cast<float>(1 + (row + block + seed) % 4));
+    }
+  }
+  return projection;
+}
+
+inline std::vector<float> MakeFusedNBitsTestNormalizedInput(int64_t k_size, float epsilon) {
+  const auto input = MakeFusedNBitsTestInput(k_size);
+  const auto norm_scale = MakeFusedNBitsTestNormScale(k_size);
+  float sum_squared = 0.0f;
+  for (MLFloat16 value : input) {
+    const float x = value.ToFloat();
+    sum_squared += x * x;
+  }
+  const float inverse_rms = MLFloat16(1.0f / std::sqrt(sum_squared / k_size + epsilon)).ToFloat();
+  std::vector<float> normalized(static_cast<size_t>(k_size));
+  for (int64_t k = 0; k < k_size; ++k) {
+    normalized[static_cast<size_t>(k)] =
+        MLFloat16(input[static_cast<size_t>(k)].ToFloat() * inverse_rms *
+                  norm_scale[static_cast<size_t>(k)].ToFloat())
+            .ToFloat();
+  }
+  return normalized;
+}
+
+inline std::vector<float> MakeFusedNBitsTestMatMulReference(int64_t n, int64_t k_size,
+                                                           int64_t block_size, float epsilon, int seed) {
+  const int64_t blocks = k_size / block_size;
+  const int64_t blob_size = block_size / 2;
+  const auto normalized = MakeFusedNBitsTestNormalizedInput(k_size, epsilon);
+  const auto projection = MakeFusedNBitsTestProjection(n, k_size, block_size, seed);
+  std::vector<float> output(static_cast<size_t>(n), 0.0f);
+  for (int64_t row = 0; row < n; ++row) {
+    float sum = 0.0f;
+    for (int64_t k = 0; k < k_size; ++k) {
+      const int64_t block = k / block_size;
+      const size_t block_offset = static_cast<size_t>((row * blocks + block) * blob_size);
+      const int shift = (k & 1) * 4;
+      const int quantized =
+          (projection.weights[block_offset + static_cast<size_t>((k % block_size) / 2)] >> shift) & 0x0f;
+      const float weight =
+          MLFloat16(static_cast<float>(quantized - 8) *
+                    projection.scales[static_cast<size_t>(row * blocks + block)].ToFloat())
+              .ToFloat();
+      sum += normalized[static_cast<size_t>(k)] * weight;
+    }
+    output[static_cast<size_t>(row)] = sum;
+  }
+  return output;
+}
+
 // Variant of TransformerTester for WebGPU fusion tests that creates a fresh execution provider
 // per session via the provided factory, instead of sharing one EP across the baseline and target
 // sessions. Sharing a single WebGPU EP across multiple InferenceSessions in series can leave the
@@ -41,7 +131,8 @@ inline void RunWebGpuFusionTransformerTest(
     double relative_per_sample_tolerance,
     std::unique_ptr<GraphTransformer> transformer,
     const std::function<std::unique_ptr<IExecutionProvider>()>& ep_factory,
-    const std::function<void(SessionOptions&)>& add_session_options = {}) {
+    const std::function<void(SessionOptions&)>& add_session_options = {},
+    const std::function<void(const std::vector<OrtValue>&)>& check_target_fetches = {}) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
   domain_to_version[kMSDomain] = 1;
@@ -93,6 +184,10 @@ inline void RunWebGpuFusionTransformerTest(
 
   std::vector<OrtValue> target_fetches;
   ASSERT_NO_FATAL_FAILURE(run_model(target_level, target_fetches, std::move(transformer)));
+
+  if (check_target_fetches) {
+    check_target_fetches(target_fetches);
+  }
 
   const size_t num_outputs = baseline_fetches.size();
   ASSERT_EQ(num_outputs, target_fetches.size());

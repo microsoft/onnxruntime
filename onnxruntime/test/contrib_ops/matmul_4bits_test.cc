@@ -1287,7 +1287,8 @@ TEST(MatMulNBits, Float16_AccumulatorPrecisionOption_AllPaths) {
     bool has_bias;
   };
   constexpr Case cases[] = {
-      {1, 128, 1024, 32, 0, false},  // generic, decode shape
+      {1, 128, 1024, 32, 0, false},  // generic, decode shape with complete output tiles
+      {1, 130, 1024, 32, 0, false},  // generic, decode shape with a partial output tile
       {1, 128, 1024, 32, 0, true},   // generic, with bias
       {8, 128, 1024, 32, 0, false},  // wide tile, prefill shape
       {8, 128, 1024, 32, 0, true},   // wide tile, with bias
