@@ -40,7 +40,12 @@ void DeleteRegistry();
 
 struct CUDAProviderFactory : IExecutionProviderFactory {
   CUDAProviderFactory(const CUDAExecutionProviderInfo& info)
-      : info_{info} {}
+      : info_{info} {
+    if (info.default_memory_arena_cfg) {
+      info_.owned_memory_arena_cfg = std::make_shared<OrtArenaCfg>(*info.default_memory_arena_cfg);
+      info_.default_memory_arena_cfg = info_.owned_memory_arena_cfg.get();
+    }
+  }
   ~CUDAProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
