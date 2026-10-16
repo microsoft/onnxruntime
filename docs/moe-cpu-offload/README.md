@@ -405,17 +405,19 @@ Many parameters can be changed by the user, but they do not change during genera
 
 All strategies preserve exactly `K` CPU experts.
 
-### Prefill
+### Findings
+
+#### Prefill
 
 Adaptive beats basic, but layered can also win.
 
-### Decode
+#### Decode
 
 - Without on-demand swaps, adaptive is about **20% slower than basic**, averaged over the mixed CPU/GPU budgets.
 - A good compromise is layered: choose GPU layers like basic, then choose their GPU experts by popularity.
 - GPU layers can be first, last, or middle. No position is consistently best.
 
-### On-demand swaps
+#### On-demand swaps
 
 If only one selected expert is on CPU, swap it to CUDA and compute there, provided it fits.
 Swapping two is worse for decode, but can still improve prefill.
