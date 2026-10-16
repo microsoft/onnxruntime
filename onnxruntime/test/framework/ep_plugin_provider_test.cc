@@ -30,6 +30,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/plugin_ep/ep_allocator_utils.h"
+#include "core/session/plugin_ep/ep_schema_compatibility.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/file_util.h"
@@ -174,10 +175,12 @@ MakeTestOrtEpResult MakeTestOrtEp(OrtEpFactory& ep_factory,
   }
 
   auto& logging_manager = DefaultLoggingManager();
+  auto schema_compatibility = std::make_shared<PluginEpSchemaCompatibility>();
   auto ep = std::make_unique<PluginExecutionProvider>(std::move(ort_ep),
                                                       *static_cast<const OrtSessionOptions*>(ort_session_options),
                                                       ep_factory,
                                                       ep_devices,
+                                                      std::move(schema_compatibility),
                                                       /*kernel_registry*/ nullptr,
                                                       logging_manager.DefaultLogger());
 
