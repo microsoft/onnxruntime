@@ -380,3 +380,67 @@ with separate output directories and serial runs.
 For the 16-swap comparison, use `--strategy layered --gpu-ratio 0.6 --layer-order last`
 and `--max-in-flight-swaps-per-device 16`.
 Add `--counter-log` for swap and expert-device diagnostics; use separate output files.
+
+## Takeaways for Qwen3.5-35B-A3B INT4
+
+These observations apply to the model, H200, prompts, and CPU expert budgets measured above, not to every MoE model.
+Revisit them when switching models.
+
+### Strategy behavior
+
+Configuration parameters stay fixed for the loaded session; popularities and adaptive expert placement evolve.
+The global CPU expert budget `K` and each node's GPU capacity remain fixed.
+
+- **Adaptive:** experts are exchanged according to popularity. With probability weighting disabled,
+  `P_e(t) = alpha * P_e(t-1) + (1 - alpha) * I[e is selected]`.
+  Unselected experts also receive the decay. Updates happen once per QMoE invocation: once per decode token,
+  but over the deduplicated selected-expert union for prefill, not once per prefill token.
+  A background exchange becomes eligible when `P_hottest_CPU > (1 + epsilon) * P_coldest_GPU`,
+  within the same node. Epsilon is a relative margin, not an additive offset.
+  These benchmarks allow **five in-flight background exchanges per GPU**, not five guaranteed swaps per token
+  (the runtime default is four). At most one new background exchange per node is scheduled at a Run boundary.
+  Candidates blocked by the limit are not queued; they are recomputed at the next successful Run boundary.
+- **Basic:** with `layer_order=first`, fill earlier QMoE nodes on GPU, then leave later nodes on CPU.
+  A boundary node can be split to preserve exactly `K`; there are no swaps.
+- **Layered 80%:** target 80% of each chosen layer's experts on GPU, then continue to the next layer until
+  the GPU budget is exhausted. Some layers can remain entirely on CPU, and a boundary layer can be split.
+  Targets are rounded down and exceeded only when needed to preserve exactly `K`.
+  Within mixed layers, popularity and background exchanges follow the adaptive rule.
+  `first`, `last`, and `middle` choose GPU layer priority, not graph execution order.
+
+### Prefill
+
+Adaptive is faster than basic at all nine measured mixed CPU/GPU budgets, `K=1024` through `K=9216`,
+but **it is not consistently faster than the layered variants**.
+For example, at `K=4096`, adaptive takes 209.657 ms, versus 157.959 ms for 80% last
+and 101.023 ms for 60% last with a swap limit of 16.
+
+### Decode
+
+Without on-demand swaps, adaptive has lower throughput than basic at those same nine budgets.
+Averaging the per-K throughput deficits gives about **20%**, with individual deficits ranging from **7% to 34%**.
+Layered placement combines basic's layer selection with adaptive's popularity-based residency within mixed layers,
+and often offers a better trade-off. Neither an 80% target nor a particular layer position wins everywhere:
+first, last, and middle all win some measured comparisons.
+
+### On-demand swaps
+
+With `moe_cpu_offload_on_demand_threshold=1`, a QMoE invocation missing one required GPU expert can exchange
+it synchronously with an unselected GPU expert, reuse its CUDA-packed weights, and compute on GPU.
+The selected union must fit existing GPU capacity; otherwise the CPU path is retained without partial demand swaps.
+The threshold applies to both prefill and decode and is independent of the background concurrency limit.
+Zero preserves the previous behavior.
+
+The threshold-1/2 sweep is still in progress. Completed comparisons generally favor **1 over 2 for decode**,
+but on-demand swaps are not always faster than the disabled baseline, especially at large CPU expert budgets.
+**Two is not consistently better for prefill either.**
+These measurements compare complete threshold policies, not the isolated cost of exactly one versus two transfers;
+prefill counts distinct required experts across all tokens and tiles.
+
+### Next ideas
+
+- Rank exchange candidates using predicted next-use benefit, transfer/repacking cost, and the limited concurrency
+  budget, rather than popularity alone. Account for the fixed scheduling order so later nodes are not repeatedly blocked.
+- Adapt parameters such as concurrency and the on-demand threshold using measured throughput, rather than relying
+  only on user-selected constants. Tuning should account for prefill versus decode and measurement noise.
+  This automatic tuning is future work, not current behavior.
