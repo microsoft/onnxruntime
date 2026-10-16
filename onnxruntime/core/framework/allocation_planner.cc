@@ -490,33 +490,28 @@ class PlannerImpl {
 
   /*! \brief Given a tensor-type, return the primitive element type of the tensor.
    */
-  static MLDataType GetPrimitiveElementType(const DataType& tensor_type) {
+  static MLDataType GetPrimitiveElementType(DataType tensor_type) {
     MLDataType ml_data_type = DataTypeImpl::GetDataType(*tensor_type);
     const TensorTypeBase* tensor_type_base = ml_data_type->AsTensorType();
     ORT_ENFORCE(nullptr != tensor_type_base);
     return tensor_type_base->GetElementType();
   }
 
-  /*! \brief Given a tensor-type, return the size in bytes of the C++ carrier used for an element.
-   */
-  static size_t GetElementSize(const DataType& tensor_type) {
-    return GetPrimitiveElementType(tensor_type)->Size();
-  }
+  struct ElementStorage {
+    size_t element_size;
+    int32_t sub_element_count;
+  };
 
-  /*! \brief Given a tensor-type, return how many logical (sub-byte) elements are packed into one
-   *  carrier element. Returns 1 for regular types and >1 for packed sub-byte types (e.g. 2 for int4/uint4).
-   */
-  static int32_t GetSubElemCount(const DataType& tensor_type) {
-    const auto* prim_type = GetPrimitiveElementType(tensor_type)->AsPrimitiveDataType();
-    return prim_type != nullptr ? prim_type->GetNumSubElems() : 1;
+  // Share physical storage metadata between the reuse key and the final compatibility check.
+  static ElementStorage GetElementStorage(MLDataType element_type) {
+    const auto* prim_type = element_type->AsPrimitiveDataType();
+    return {element_type->Size(), prim_type != nullptr ? prim_type->GetNumSubElems() : 1};
   }
 
   static bool SameSize(const TensorShapeProto& shape1, const onnxruntime::NodeArg& arg1,
                        const TensorShapeProto& shape2, const onnxruntime::NodeArg& arg2) {
-    const auto& ptype1 = arg1.Type();
-    const auto& ptype2 = arg2.Type();
-    auto type1_size = GetElementSize(ptype1);
-    auto type2_size = GetElementSize(ptype2);
+    const auto storage1 = GetElementStorage(GetPrimitiveElementType(arg1.Type()));
+    const auto storage2 = GetElementStorage(GetPrimitiveElementType(arg2.Type()));
     bool is_type1_string = arg1.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
     bool is_type2_string = arg2.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
 
@@ -526,7 +521,7 @@ class PlannerImpl {
     // (e.g. uint4[1024] needs 512 bytes while uint8[1024] needs 1024 bytes). Reusing the smaller buffer for the
     // larger tensor produces a heap buffer overflow when the tensor is later written. Only treat the tensors as
     // the same size when the sub-element packing density also matches, which guarantees identical storage bytes.
-    if (GetSubElemCount(ptype1) != GetSubElemCount(ptype2)) {
+    if (storage1.sub_element_count != storage2.sub_element_count) {
       return false;
     }
 
@@ -535,7 +530,7 @@ class PlannerImpl {
     // If either of the tensors is a string, don't treat them the same. Moreover, reusing a string tensor for a string
     // tensor without releasing the previous memory can cause memory leaks; hence we don't allow reuse across string
     // tensors as well.
-    return !(is_type1_string || is_type2_string) && (type1_size == type2_size) && SameShape(shape1, shape2);
+    return !(is_type1_string || is_type2_string) && (storage1.element_size == storage2.element_size) && SameShape(shape1, shape2);
 
     /* TODO: we can improve this if the concrete shapes are known for both as below.
        Unclear whether this is worthwhile though.
@@ -575,8 +570,9 @@ class PlannerImpl {
     if (element_type == DataTypeImpl::GetType<std::string>()) return std::nullopt;
 
     size_t key = AllocPlan(arg.Name()).location.Hash();
-    HashCombine(element_type->Size(), key);
-    HashCombine(GetSubElemCount(arg.Type()), key);
+    const auto storage = GetElementStorage(element_type);
+    HashCombine(storage.element_size, key);
+    HashCombine(storage.sub_element_count, key);
     HashCombine(shape.dim_size(), key);
     for (const auto& dim : shape.dim()) {
       if (utils::HasDimValue(dim)) {
