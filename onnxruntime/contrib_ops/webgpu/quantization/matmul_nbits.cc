@@ -355,11 +355,15 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   constexpr uint32_t kU32Components = 4;
   uint32_t components_b_with_u32 = components_b * kU32Components;
   uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
-  // The decode reduction assigns one rank to each 32-lane subgroup.
+  // The decode reduction assigns two ranks to each 32-lane subgroup. Devices
+  // with a variable subgroup range must explicitly request that width.
   const auto& adapter = context.AdapterInfo();
-  const bool qlora_down_subgroups = has_qlora_down && adapter.vendor == std::string_view{"nvidia"} &&
-                                    context.HasFeature(wgpu::FeatureName::Subgroups) && adapter.subgroupMinSize == 32 &&
-                                    adapter.subgroupMaxSize == 32;
+  const bool fixed_subgroup_32 = adapter.subgroupMinSize == 32 && adapter.subgroupMaxSize == 32;
+  const bool request_subgroup_32 = has_qlora_down && !fixed_subgroup_32 &&
+                                   context.HasFeature(wgpu::FeatureName::SubgroupSizeControl) &&
+                                   adapter.subgroupMinSize <= 32 && adapter.subgroupMaxSize >= 32;
+  const bool qlora_down_subgroups = has_qlora_down && context.HasFeature(wgpu::FeatureName::Subgroups) &&
+                                    (fixed_subgroup_32 || request_subgroup_32);
   MatMulNBitsProgram program{tile_size,
                              static_cast<uint32_t>(nbits),
                              has_zero_points,
@@ -374,6 +378,9 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                              has_qlora_down,
                              qlora_down_subgroups};
   program.SetWorkgroupSize(workgroup_size);
+  if (qlora_down_subgroups && request_subgroup_32) {
+    program.SetSubgroupSize(32);
+  }
   uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
   program.SetDispatchGroupSize(num_N_tile + (has_qlora_down ? 4 : 0), dispatch_M, batch_count);
   program

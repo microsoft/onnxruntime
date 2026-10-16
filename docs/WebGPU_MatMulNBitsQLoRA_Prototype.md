@@ -77,14 +77,14 @@ insert a transpose or materialize a complete dequantized adapter.
 `session.webgpu.lora_fusion_mode=auto` is the default. M is the second-to-last
 dimension of X; a one-token prompt follows the decode selection.
 
-| Phase | Selected mode | NVIDIA implementation |
+| Phase | Selected mode | Implementation for eligible inputs |
 |---|---|---|
 | Prefill, M > 1 | `fuse_up` | INT8 down projection, then base with INT8 up projection and addition; eligible DP4A paths share quantized X |
 | Decode, M = 1 | `fuse_down` | Base and INT8 down projection in one dispatch, then INT8 up projection and addition |
 
 The joint decode kernel supports one total input row and K from 2048 through
 8192, when the base projection does not select DP4A. FP32 base projections
-can select DP4A even at M=1. On NVIDIA, eligible FP32 inputs with K from 2048
+can select DP4A even at M=1. Eligible FP32 inputs with K from 2048
 through 8192 use three dispatches: quantize X once, jointly compute the INT4
 base and INT8 down projections, then perform the INT8 up projection and addition.
 The joint DP4A shader retains the base's 128-thread workgroups and adds eight
@@ -94,9 +94,15 @@ its own output. The next dispatch provides synchronization. The existing DP4A
 eligibility checks, including `accuracy_level=4`, still apply. Adapter-off,
 FP16 decode, and prefill selection are unchanged.
 
+The joint decode paths use shape, type, and capability checks without a vendor
+restriction. The subgroup reduction accepts a fixed width of 32, or explicitly
+requests 32 with `SetSubgroupSize(32)` when `SubgroupSizeControl` is supported
+and 32 is within the adapter's range. Other devices use the workgroup-memory
+down reduction. Existing base MatMulNBits device policies still apply.
+
 The floating-input joint kernel retains 128 threads
 per workgroup and adds four workgroups for the
-32 down-projection outputs. On devices with fixed 32-lane subgroups, each lane
+32 down-projection outputs. With fixed or explicitly selected 32-lane subgroups, each lane
 loads X into registers and reuses it for two rank outputs, then reduces lane
 partials with FP32 subgroup sums. The previous workgroup-memory reduction
 remains the fallback. `QLoRAOutputVec4` uses 64 threads and one output per
@@ -116,7 +122,9 @@ reduction overhead, while shorter K retains tiled reuse across M. This is an
 initial policy, not a universal performance crossover. Existing DP4A
 eligibility checks and subgroup-matrix preference still apply. Other DP4A
 projections use the general tiled kernel, with 32-column tiles when N < 64
-and 64-column tiles otherwise.
+and 64-column tiles otherwise. Narrow tiles use 32 rows when the device's
+maximum subgroup size is below 64; otherwise they keep 64 rows to accommodate
+the existing 64-lane subgroup variant.
 Explicit `fuse_down` and `fuse_up` remain available. Shapes outside the joint
 decode specialization calculate T
 separately. Devices that select subgroup matrix arithmetic for the original

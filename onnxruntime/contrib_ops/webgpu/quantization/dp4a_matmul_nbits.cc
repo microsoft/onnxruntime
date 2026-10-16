@@ -204,7 +204,9 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
     return context.RunProgram(mul_program);
   }
 
-  const uint32_t tile_size_m = N < 64 && context.AdapterInfo().vendor == std::string_view{"nvidia"} ? 32 : 64;
+  // The 64-lane subgroup variant spans 64 rows. Reserve 32-row tiles for
+  // devices whose subgroup range cannot select that variant.
+  const uint32_t tile_size_m = N < 64 && context.AdapterInfo().subgroupMaxSize < 64 ? 32 : 64;
   const uint32_t tile_size_n = N < 64 ? 32 : 64;
   const uint32_t tile_size_k_vec = N < 64 && nbits == 8 && block_size == 32 ? 8 : 2;
   TensorShape reshaped_y_shape{batch_count, M, N / kVec4Components};

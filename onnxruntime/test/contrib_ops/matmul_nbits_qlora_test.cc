@@ -8,6 +8,9 @@
 #if !defined(ORT_USE_EP_API_ADAPTERS)
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+#include "dawn/native/DawnNative.h"
+#endif
 #endif
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #endif
@@ -109,7 +112,7 @@ void RunQuantizedPrefillAndReusedInput() {
 TEST(MatMulNBitsQLoRA, QuantizedPrefillAndReusedInput) { RunQuantizedPrefillAndReusedInput<MLFloat16>(); }
 TEST(MatMulNBitsQLoRA, QuantizedPrefillAndReusedInputFp32) { RunQuantizedPrefillAndReusedInput<float>(); }
 
-TEST(MatMulNBitsQLoRA, Fp32Numerics) {
+void RunFp32Numerics(const ConfigOptions& provider_options = {}) {
   struct Shape {
     int64_t m, k, n, batch;
   };
@@ -182,11 +185,53 @@ TEST(MatMulNBitsQLoRA, Fp32Numerics) {
         ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.webgpu.lora_fusion_mode", mode));
         test.Config(options);
         std::vector<std::unique_ptr<IExecutionProvider>> eps;
-        eps.push_back(DefaultWebGpuExecutionProvider());
+        eps.push_back(WebGpuExecutionProviderWithOptions(provider_options));
         test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
       }
     }
   }
+}
+
+TEST(MatMulNBitsQLoRA, Fp32Numerics) { RunFp32Numerics(); }
+
+TEST(MatMulNBitsQLoRA, Fp32NumericsWithoutSubgroups) {
+#if defined(ORT_USE_EP_API_ADAPTERS) || defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Requires native Dawn to create a device without subgroups.";
+#else
+  // Keep the default context alive to initialize Dawn's proc table.
+  auto initial_ep = DefaultWebGpuExecutionProvider();
+  ASSERT_NE(initial_ep, nullptr);
+  const auto instance_feature = wgpu::InstanceFeatureName::TimedWaitAny;
+  wgpu::InstanceDescriptor instance_desc{};
+  instance_desc.requiredFeatureCount = 1;
+  instance_desc.requiredFeatures = &instance_feature;
+  dawn::native::Instance instance{&instance_desc};
+  wgpu::RequestAdapterOptions adapter_options{};
+  adapter_options.backendType = static_cast<wgpu::BackendType>(webgpu::WebGpuContextConfig{}.backend_type);
+  auto adapters = instance.EnumerateAdapters(&adapter_options);
+  ASSERT_FALSE(adapters.empty());
+
+  const auto device_feature = wgpu::FeatureName::ImplicitDeviceSynchronization;
+  wgpu::DeviceDescriptor device_desc{};
+  device_desc.requiredFeatureCount = 1;
+  device_desc.requiredFeatures = &device_feature;
+  auto device = wgpu::Device::Acquire(adapters.front().CreateDevice(&device_desc));
+  ASSERT_NE(device, nullptr);
+  ASSERT_FALSE(device.HasFeature(wgpu::FeatureName::Subgroups));
+
+  ConfigOptions options;
+  ASSERT_STATUS_OK(options.AddConfigEntry(webgpu::options::kDeviceId, "1"));
+  ASSERT_STATUS_OK(options.AddConfigEntry(
+      webgpu::options::kWebGpuInstance, std::to_string(reinterpret_cast<uintptr_t>(instance.Get())).c_str()));
+  ASSERT_STATUS_OK(options.AddConfigEntry(
+      webgpu::options::kWebGpuDevice, std::to_string(reinterpret_cast<uintptr_t>(device.Get())).c_str()));
+  auto external_ep = WebGpuExecutionProviderWithOptions(options);
+  ASSERT_NE(external_ep, nullptr);
+  ASSERT_FALSE(webgpu::WebGpuContextFactory::GetContext(1).DeviceHasFeature(wgpu::FeatureName::Subgroups));
+  // Exercise the joint decode workgroup-memory reduction, including K tails,
+  // and the prefill fallback against the same dense FP64 reference.
+  RunFp32Numerics(options);
+#endif
 }
 
 TEST(MatMulNBitsQLoRA, DecodeJointDP4AQuantization) {
@@ -195,10 +240,8 @@ TEST(MatMulNBitsQLoRA, DecodeJointDP4AQuantization) {
 #else
   auto initial_ep = DefaultWebGpuExecutionProvider();
   ASSERT_NE(initial_ep, nullptr);
-  auto& gpu = webgpu::WebGpuContextFactory::GetContext(initial_ep->GetDeviceId());
-  if (!contrib::webgpu::HasDP4ADeviceSupport(initial_ep->GetDeviceId()) ||
-      gpu.AdapterInfo().vendor != std::string_view{"nvidia"}) {
-    GTEST_SKIP() << "The joint DP4A decode projection is selected on NVIDIA DP4A devices.";
+  if (!contrib::webgpu::HasDP4ADeviceSupport(initial_ep->GetDeviceId())) {
+    GTEST_SKIP() << "The joint decode projection requires DP4A device support.";
   }
 #endif
   constexpr int64_t k = 2176, n = 64, batch = 3;
@@ -353,10 +396,11 @@ TEST(MatMulNBitsQLoRA, DecodeSubgroupReduction) {
   ASSERT_NE(initial_ep, nullptr);
   auto& gpu = webgpu::WebGpuContextFactory::GetContext(initial_ep->GetDeviceId());
   const auto& adapter = gpu.AdapterInfo();
-  if (!gpu.DeviceHasFeature(wgpu::FeatureName::Subgroups) ||
-      adapter.vendor != std::string_view{"nvidia"} ||
-      adapter.subgroupMinSize != 32 || adapter.subgroupMaxSize != 32) {
-    GTEST_SKIP() << "The decode specialization requires NVIDIA 32-lane subgroups.";
+  const bool subgroup_32 = (adapter.subgroupMinSize == 32 && adapter.subgroupMaxSize == 32) ||
+                           (gpu.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl) &&
+                            adapter.subgroupMinSize <= 32 && adapter.subgroupMaxSize >= 32);
+  if (!gpu.DeviceHasFeature(wgpu::FeatureName::Subgroups) || !subgroup_32) {
+    GTEST_SKIP() << "The decode specialization requires fixed or selectable 32-lane subgroups.";
   }
 #endif
   for (bool acc_f32 : {false, true}) {

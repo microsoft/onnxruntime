@@ -18,13 +18,14 @@ void GenerateQLoRADown(ShaderHelper& shader, const std::string& base_groups, con
                        bool use_subgroups) {
   if (use_subgroups) {
     shader.AdditionalImplementation() << "alias qlora_acc_t = " << (acc_f32 ? "f32" : "output_element_t") << ";\n";
+    // Subgroup membership need not match consecutive local invocation indices.
     auto& body = shader.MainFunctionBody();
     body << "let qlora_base_groups = " << base_groups << ";\n"
          << R"(
 if (workgroup_idx >= qlora_base_groups) {
   let rank_base = (workgroup_idx - qlora_base_groups) * 8u;
-  let lane = local_idx % 32u;
-  let rank_local = local_idx / 32u;
+  let lane = sg_id;
+  let rank_local = subgroup_index;
   var partial0 = qlora_acc_t(0);
   var partial1 = qlora_acc_t(0);
   for (var k = lane * 16u; k < uniforms.K; k += 512u) {
@@ -278,8 +279,7 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     // shader must not replace that base projection's activation quantization.
     const bool base_dp4a = CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, 32, narrow<uint32_t>(n_),
                                                          narrow<uint32_t>(k_), 4, m, false, y);
-    if (!fuse_up && m == 1 && x->IsDataType<float>() && base_dp4a && k_ >= 2048 && k_ <= 8192 &&
-        context.AdapterInfo().vendor == std::string_view{"nvidia"}) {
+    if (!fuse_up && m == 1 && x->IsDataType<float>() && base_dp4a && k_ >= 2048 && k_ <= 8192) {
       auto base = context.CreateGPUTensor(y->DataType(), y->Shape());
       ORT_RETURN_IF_ERROR(ApplyDP4AMatrixMatMulNBits(
           x, w, s, nullptr, nullptr, narrow<uint32_t>(x->Shape().Size() / k_), 1, 1, narrow<uint32_t>(n_),
@@ -287,8 +287,7 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
           nullptr, nullptr, aq, &t, nullptr, nullptr, as));
       return ApplyQLoRAOutput(context, &base, &t, bq, bs, y);
     }
-    const bool joint_down = !fuse_up && x->Shape().Size() == k_ && k_ >= 2048 && k_ <= 8192 &&
-                            context.AdapterInfo().vendor == std::string_view{"nvidia"} && !base_dp4a;
+    const bool joint_down = !fuse_up && x->Shape().Size() == k_ && k_ >= 2048 && k_ <= 8192 && !base_dp4a;
     if (joint_down) {
       auto base = context.CreateGPUTensor(y->DataType(), y->Shape());
       ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, &base, 0,
