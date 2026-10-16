@@ -9,6 +9,9 @@
 #include "core/providers/shared/common.h"
 
 #include "core/common/inlined_containers.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/kernel_pilot.h"
+#endif
 #include "core/framework/murmurhash3.h"
 #include "core/framework/random_generator.h"
 #include "core/providers/cpu/controlflow/if.h"
@@ -301,6 +304,16 @@ Status IDataTransfer::CopySparseTensors(const std::vector<SparseSrcDstPair>& src
 #endif
 
 const Node& OpKernel::Node() const { return g_host->OpKernel__Node(this); }
+
+#if !defined(ORT_MINIMAL_BUILD)
+KernelPilotInitializer::~KernelPilotInitializer() {
+  g_host->KernelPilotInitializer__destruct(this);
+}
+
+void KernelPilotInitializer::Register(const OpKernel* kernel, Callback callback) {
+  g_host->KernelPilotInitializer__Register(this, kernel, std::move(callback));
+}
+#endif
 
 TensorShape::TensorShape(gsl::span<const int64_t> dims) {
   Allocate(dims.size());

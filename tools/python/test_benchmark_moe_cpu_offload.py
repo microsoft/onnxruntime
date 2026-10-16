@@ -50,9 +50,7 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
 
     def test_swap_limit_is_forwarded_to_session(self):
         self.assertEqual(
-            self.options(max_in_flight_swaps_per_device=16)[
-                "session.moe_max_in_flight_swaps_per_device"
-            ],
+            self.options(max_in_flight_swaps_per_device=16)["session.moe_max_in_flight_swaps_per_device"],
             "16",
         )
 

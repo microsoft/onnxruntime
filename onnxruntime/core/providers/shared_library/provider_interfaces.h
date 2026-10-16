@@ -51,6 +51,7 @@ class ThreadPool;
 class Initializer;
 class IOnnxRuntimeOpSchemaCollection;
 class KernelPilot;
+class KernelPilotInitializer;
 class RunInstrumentationContext;
 
 struct ModelSavingOptions;
@@ -1487,6 +1488,10 @@ struct ProviderHost {
                                    const float* scales, const void* zero_points,
                                    const float* bias, float* C, void* workspace,
                                    concurrency::ThreadPool* thread_pool) = 0;
+  virtual void KernelPilotInitializer__Register(
+      KernelPilotInitializer* p, const OpKernel* kernel,
+      std::function<Status(KernelPilot*)> callback) = 0;
+  virtual void KernelPilotInitializer__destruct(KernelPilotInitializer* p) = 0;
 #endif
 };
 

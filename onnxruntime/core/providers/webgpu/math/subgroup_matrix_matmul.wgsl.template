@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 //
-// Subgroup-matrix MatMul kernel (F16) for the 8x16x16 (sg_mat_m x sg_mat_n x
-// sg_mat_k) subgroup-matrix shape. The sg_mat_m/n/k values are still supplied as
-// params, but this kernel is currently only validated for 8/16/16; other
-// subgroup-matrix shapes are TBD and should get their own template variant.
+// Subgroup-matrix MatMul kernel (F16) for the 8x16x16 and 16x16x16 (sg_mat_m x
+// sg_mat_n x sg_mat_k) subgroup-matrix shapes. The sg_mat_m/n/k values are still
+// supplied as params, but this kernel is only validated for 8/16/16 and 16/16/16.
+// Other subgroup-matrix shapes are TBD and should get their own template variant.
 //
 // Computes Y[MxN] = A[MxK] @ B[KxN] using subgroupMatrixMultiplyAccumulate.
 //
@@ -13,8 +13,8 @@
 // B: weight, loaded directly from global memory in plain row-major KxN layout as a
 //    right operand (subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>) with row stride
 //    N_b. N_b is the padded row stride of the (possibly column-padded) B buffer and
-//    equals N unless the host padded B to an even stride to satisfy the load's
-//    4-byte row-start alignment (see the odd-N handling in subgroup_matrix_matmul.cc).
+//    equals N unless the host padded B to an aligned stride to satisfy the load's
+//    row-start alignment (see the B padding in subgroup_matrix_matmul.cc).
 //
 // Workgroup: split_k subgroups x 32 lanes (split_k in {1,2,4,8}).
 // Tile: kTileM x kTileN, chosen adaptively by the host config provider. Each
@@ -24,7 +24,7 @@
 // tile in shared memory, and the partials are summed at write-out.
 //
 // Preconditions enforced by the host: K % sg_mat_k == 0; B's row stride N_b is
-// even (the load requires 4-byte-aligned row starts); and the tile fits the
+// padded to the row-start alignment the load requires and the tile fits the
 // matrix (kTileM <= M, kTileN <= N - the host falls back otherwise). M and N may
 // otherwise be any size: a trailing partial tile is shifted back to end exactly
 // at M / N_b so no operand load runs past the end of A or B, and the rows/columns
@@ -84,9 +84,9 @@ $MAIN {
     let n_tile_start = n_tile * kTileN;
     let m_tile_start = m_tile * kTileM;
     // Shift a trailing partial tile back so its operand loads stay inside A and B.
-    // The N shift uses B's padded stride N_b so the shifted origin stays even (the
-    // load needs 4-byte-aligned row starts); the extra column is clipped at
-    // write-out. The max() only guards the u32 subtraction; the host guarantees
+    // The N shift uses B's padded stride N_b so the shifted origin stays aligned (the
+    // load needs aligned row starts). The extra columns are clipped at write-out.
+    // The max() only guards the u32 subtraction; the host guarantees
     // the tile fits.
     let global_base_n = min(n_tile_start, max(uniforms.N_b, kTileN) - kTileN);
     let m_base = min(m_tile_start, max(uniforms.M, kTileM) - kTileM);

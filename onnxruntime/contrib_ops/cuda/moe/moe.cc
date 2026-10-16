@@ -1318,6 +1318,16 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<void> cpu_output_device_buffer;
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  IAllocatorUniquePtr<void> cpu_input_snapshot;
+  const auto* cpu_input_data = reinterpret_cast<const CudaT*>(input->DataRaw());
+  if (async_cpu && run_cuda_experts && input->DataRaw() == output->DataRaw()) {
+    // CUDA writes every output row before later CPU chunks have packed their input.
+    cpu_input_snapshot = GetScratchBuffer<void>(input->SizeInBytes(), stream_obj);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_input_snapshot.get(), input->DataRaw(),
+                                         input->SizeInBytes(), cudaMemcpyDeviceToDevice, stream));
+    cpu_input_data = static_cast<const CudaT*>(cpu_input_snapshot.get());
+  }
+
   auto schedule_async_cpu_chunk = [&](size_t row_offset, size_t row_count) -> Status {
     auto& task = *cpu_task_;
     task.num_rows = row_count;
@@ -1326,7 +1336,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     if constexpr (kCpuOffloadSupported) {
       const size_t route_offset = row_offset * task.k;
       LaunchPackMoeCpuRows(
-          reinterpret_cast<const CudaT*>(input->DataRaw()) + row_offset * task.hidden_size,
+          cpu_input_data + row_offset * task.hidden_size,
           expert_indices + route_offset, expert_scales + route_offset,
           static_cast<const int*>(device_expert_map_.get()),
           reinterpret_cast<CudaT*>(task.device_input), task.device_ids, task.device_scales,

@@ -37,8 +37,8 @@ std::string pass_as_string(T&& v) {
 
 #include "wgsl_template_gen/generated/math/matmul_gemv.h"  // 59e4865f8dfb09777dff88b1b5983d18704a0713a43e26a48ee0479420b5dba5
 #include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // c1d802ca557f329f392fcd71ac806d73af886bcc1a4e0c19f4c39affb0bfd99e
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_8x16x16.h"  // 8576f40cad9c8942f6c88c357b4e5dd327a30210f07d37da4759a90b53e4b482
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // c58d42477e567010836d7760ad3bc35bf3535d3b2d495d0e41802488a93551c9
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul.h"  // 34ecf1392f9e66b1e8573f76daf878b219e991b50c55301d54cdcc8ee91b6e53
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // 4417a0eb6c04ce936a4be2d7a3080254b26ef44cccae021de9a5f2c2c40ab902
 #include "wgsl_template_gen/generated/nn/conv_transpose3d.h"  // 6ac2b5204cde9e0f987817c38e684629d1aa3aa2105f858e9d1a044864029a66
 #include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // dacf36da447a95df88adaca6763f006767a0ecf4d234d14b883ff0aa27a2b96f
 #include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // b4979ab8ce0d5a0ff32d75b6bf2cbc3919807cb8f870d95537f2ff88bcd23155

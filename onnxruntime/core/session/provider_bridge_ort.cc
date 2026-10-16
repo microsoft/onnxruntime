@@ -20,6 +20,9 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/fallback_cpu_capability.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/kernel_pilot.h"
+#endif
 #include "core/framework/kernel_registry.h"
 #include "core/framework/model_metadef_id_generator.h"
 #include "core/framework/murmurhash3.h"
@@ -1666,6 +1669,15 @@ struct ProviderHostImpl : ProviderHost {
     return p->GetKernelPilot();
   }
 #if !defined(ORT_MINIMAL_BUILD)
+  void KernelPilotInitializer__Register(
+      KernelPilotInitializer* p, const OpKernel* kernel,
+      std::function<Status(KernelPilot*)> callback) override {
+    p->Register(kernel, std::move(callback));
+  }
+  void KernelPilotInitializer__destruct(KernelPilotInitializer* p) override {
+    p->~KernelPilotInitializer();
+  }
+
   void MlasHalfGemmBatch__Run(
       size_t M, size_t N, size_t K, size_t batch_size,
       const void* data, concurrency::ThreadPool* thread_pool) override {
