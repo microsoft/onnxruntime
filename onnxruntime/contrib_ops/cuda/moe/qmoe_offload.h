@@ -26,6 +26,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   explicit QMoEOffload(const OpKernelInfo& info);
   ~QMoEOffload() override;
   Status ComputeInternal(OpKernelContext* context) const override;
+  void SyncPrefillSlotTables(cudaStream_t stream = nullptr) const;
   struct SharedLayerCache;
   friend bool TryGetQMoEResidentLayerSlabView(int device_id, int64_t layer_index, int num_experts,
                                               int hidden_size, int inter_size, QMoEResidentLayerSlabView* out_view);
@@ -97,6 +98,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   friend class DoorbellService;
   void InitializeComplementMode();
   void InitializeSsdStore();
+  void InitializeBoundedHostCache();
   Status EnsurePersistentDecodeState(OpKernelContext* context, size_t min_gpu_bytes,
                                      size_t min_host_bytes, cudaStream_t stream) const;
   Status StepBetweenRuns(cudaStream_t stream) const;
@@ -137,6 +139,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   onnxruntime::contrib::qmoe_shared::TensorExpertStore expert_store_;
   mutable onnxruntime::contrib::qmoe_shared::FileExpertStore file_expert_store_;
   int ssd_cache_slots_ = 0;
+  size_t host_cache_bytes_ = 0;
   std::string ssd_store_path_;
   std::string ssd_temp_file_;
   mutable uint64_t ssd_prefetch_gen_ = 0;
@@ -189,6 +192,9 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   };
   mutable std::vector<PendingPromotion> pending_promotions_;
   mutable bool slot_table_dirty_ = true;
+  mutable bool host_slot_table_dirty_ = true;
+  bool host_cache_mapped_ = false;
+  mutable InlinedVector<int32_t> file_store_expert_slot_;
   int cpu_threads_ = 0;
   int pool_task_batch_ = 1;
   bool unified_cpu_service_ = false;

@@ -106,6 +106,11 @@ class TensorExpertStore {
 // and background generation-tagged prefetch worker (v3 Section 6, Section 10 & P3).
 class FileExpertStore {
  public:
+  struct MappedBank {
+    const void* data = nullptr;
+    size_t expert_bytes = 0;
+    size_t block_offset = 0;
+  };
   FileExpertStore() = default;
   ~FileExpertStore() noexcept;
   FileExpertStore(const FileExpertStore&) = delete;
@@ -115,6 +120,18 @@ class FileExpertStore {
                   size_t cache_slots, size_t min_required_alignment = 256,
                   uint64_t model_content_id = 0) noexcept;
   void Shutdown() noexcept;
+
+  // Linux file-backed banks, read directly into the cache without repacking a second weight file.
+  // All banks must refer to immutable, readable regular-file mappings for their full E * bytes range.
+  bool InitializeMapped(const MappedBank* banks, size_t bank_count, int64_t num_experts,
+                        size_t expert_stride, size_t cache_slots) noexcept;
+  bool Evict(int32_t expert_id) noexcept;
+  bool TryAcquireCached(int32_t expert_id, ExpertBlockLease* out_lease) noexcept;
+  bool ReadExpertDirect(int32_t expert_id, uint8_t* dst) noexcept;
+  bool TryAcquireGroupCached(const int32_t* expert_ids, size_t count, ExpertBlockLease* out_leases) noexcept;
+  bool AcquireGroupReady(const int32_t* expert_ids, size_t count, ExpertBlockLease* out_leases) noexcept;
+  void ReleaseGroupLeases(const int32_t* expert_ids, size_t count) noexcept;
+  void SnapshotExpertToSlot(int32_t* out_slots, int32_t max_experts) const noexcept;
 
   bool AcquireReady(int32_t expert_id, ExpertBlockLease* out_lease) noexcept;
   bool AcquireReady(const ExpertKey& key, ExpertBlockLease* out_lease) noexcept {
@@ -131,6 +148,8 @@ class FileExpertStore {
   int64_t NumExperts() const noexcept { return num_experts_; }
   size_t ExpertStride() const noexcept { return expert_stride_; }
   size_t CacheSlots() const noexcept { return cache_slots_; }
+  uint8_t* CacheBase() const noexcept;
+  size_t CacheBytes() const noexcept { return cache_slots_ * expert_stride_; }
   uint64_t ContentId() const noexcept { return model_content_id_; }
   uint64_t CacheHits() const noexcept;
   uint64_t PrefetchHits() const noexcept;
@@ -138,6 +157,9 @@ class FileExpertStore {
   uint64_t BytesReadFromSsd() const noexcept;
 
  private:
+  bool InitializeStorage(const char* file_path, uint64_t file_offset, int64_t num_experts, size_t expert_stride,
+                         size_t cache_slots, size_t min_required_alignment, uint64_t model_content_id,
+                         const MappedBank* banks, size_t bank_count) noexcept;
   struct Impl;
   Impl* impl_ = nullptr;
   bool initialized_ = false;

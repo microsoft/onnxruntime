@@ -13,6 +13,10 @@
 #include "core/framework/kernel_pilot.h"
 #endif
 #include <charconv>
+#if defined(__linux__)
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
 #include <type_traits>
 #include "core/common/float8.h"
 #include "cutlass/numeric_types.h"
@@ -1569,6 +1573,25 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                              scratch_layout.indices_bytes);
 
   cudaStream_t stream = Stream(context);
+  struct PagedWeightRead {
+    cudaStream_t stream{};
+    std::vector<std::pair<void*, size_t>> ranges;
+    ~PagedWeightRead() {
+      if (ranges.empty()) return;
+      static_cast<void>(cudaStreamSynchronize(stream));
+      for (const auto& [ptr, bytes] : ranges) {
+        static_cast<void>(cudaHostUnregister(ptr));
+#if defined(__linux__)
+        const size_t page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
+        const uintptr_t lo = reinterpret_cast<uintptr_t>(ptr);
+        const uintptr_t first = (lo + page - 1) / page * page;
+        const uintptr_t end = (lo + bytes) / page * page;
+        if (end > first) static_cast<void>(madvise(reinterpret_cast<void*>(first), end - first, MADV_DONTNEED));
+#endif
+      }
+    }
+  };
+  std::unique_ptr<PagedWeightRead> paged_weights;
 
   bool is_fp16 = input->IsDataType<MLFloat16>();
   bool is_bf16 = input->IsDataType<BFloat16>();
@@ -2658,12 +2681,23 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       }
     }
     if (use_prefill_dma) {
+      if (!prefill_dma_view.dequant_fc1_weights || !prefill_dma_view.dequant_fc2_weights) {
+        dequant_fc1_weights = dequant_transient_env
+                                  ? GetTransientScratchBuffer<void>(fc1_bytes)
+                                  : GetScratchBuffer<void>(fc1_bytes, GetComputeStream(context));
+        dequant_fc2_weights = dequant_transient_env
+                                  ? GetTransientScratchBuffer<void>(fc2_bytes)
+                                  : GetScratchBuffer<void>(fc2_bytes, GetComputeStream(context));
+        prefill_dma_view.dequant_fc1_weights = dequant_fc1_weights.get();
+        prefill_dma_view.dequant_fc2_weights = dequant_fc2_weights.get();
+      }
       fc1_weight_data = prefill_dma_view.dequant_fc1_weights;
       fc2_weight_data = prefill_dma_view.dequant_fc2_weights;
       dequantize_fp4_dma = [&, fc1_n, fc1_k, fc2_n, fc2_k, num_experts](int pass_start_expert) {
         auto dequant_pass = [&](const uint8_t* stg_w, const uint8_t* stg_s, const float* stg_g,
                                 void* out, int n, int k, const Tensor* bias, void* output_bias,
-                                const uint8_t* res_w, const uint8_t* res_s) {
+                                const uint8_t* res_w, const uint8_t* res_s,
+                                const uint8_t* host_w, const uint8_t* host_s) {
           if (is_fp16_) {
             half* out_h = static_cast<half*>(out);
             LaunchQMoEDequantizeNvfp4Weights(
@@ -2671,7 +2705,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                 nullptr, bias ? static_cast<const half*>(bias->DataRaw()) : nullptr,
                 static_cast<half*>(output_bias), nvfp4_weights_row_major_,
                 res_w, res_s, prefill_dma_view.slot_table_dev,
-                pass_start_expert, expert_to_compact.get());
+                pass_start_expert, expert_to_compact.get(),
+                host_w, host_s, prefill_dma_view.host_expert_stride, prefill_dma_view.host_slot_table_dev);
           } else {
             __nv_bfloat16* out_b = static_cast<__nv_bfloat16*>(out);
             LaunchQMoEDequantizeNvfp4Weights(
@@ -2679,7 +2714,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                 nullptr, bias ? static_cast<const __nv_bfloat16*>(bias->DataRaw()) : nullptr,
                 static_cast<__nv_bfloat16*>(output_bias), nvfp4_weights_row_major_,
                 res_w, res_s, prefill_dma_view.slot_table_dev,
-                pass_start_expert, expert_to_compact.get());
+                pass_start_expert, expert_to_compact.get(),
+                host_w, host_s, prefill_dma_view.host_expert_stride, prefill_dma_view.host_slot_table_dev);
           }
         };
         dequant_pass(prefill_dma_view.staging_fc1_weights,
@@ -2687,15 +2723,34 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                      prefill_dma_view.staging_fc1_global_scales,
                      prefill_dma_view.dequant_fc1_weights, fc1_n, fc1_k,
                      fc1_experts_bias_optional, compact_fc1_bias.get(),
-                     prefill_dma_view.resident_fc1_weights, prefill_dma_view.resident_fc1_scales);
+                     prefill_dma_view.resident_fc1_weights, prefill_dma_view.resident_fc1_scales,
+                     prefill_dma_view.host_fc1_weights, prefill_dma_view.host_fc1_scales);
         dequant_pass(prefill_dma_view.staging_fc2_weights,
                      prefill_dma_view.staging_fc2_scales,
                      prefill_dma_view.staging_fc2_global_scales,
                      prefill_dma_view.dequant_fc2_weights, fc2_n, fc2_k,
                      fc2_experts_bias_optional, compact_fc2_bias.get(),
-                     prefill_dma_view.resident_fc2_weights, prefill_dma_view.resident_fc2_scales);
+                     prefill_dma_view.resident_fc2_weights, prefill_dma_view.resident_fc2_scales,
+                     prefill_dma_view.host_fc2_weights, prefill_dma_view.host_fc2_scales);
       };
     } else {
+      if (nvfp4_weights_row_major_ && ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_HOST_CACHE_MIB", 0) > 0 &&
+          resident_view.host_slot_table_dev == nullptr) {
+        // Fallback if prefill DMA staging is disabled in bounded host cache mode: register only this layer.
+        paged_weights = std::make_unique<PagedWeightRead>();
+        paged_weights->stream = stream;
+        paged_weights->ranges.reserve(4);
+        for (int index : {2, 3, 5, 6}) {
+          const Tensor* bank = context->Input<Tensor>(index);
+          ORT_RETURN_IF_NOT(bank, "Bounded prefill requires raw expert banks");
+          void* ptr = const_cast<void*>(bank->DataRaw());
+          cudaPointerAttributes attr{};
+          CUDA_RETURN_IF_ERROR(cudaPointerGetAttributes(&attr, ptr));
+          if (attr.type != cudaMemoryTypeUnregistered) continue;
+          CUDA_RETURN_IF_ERROR(cudaHostRegister(ptr, bank->SizeInBytes(), cudaHostRegisterMapped | cudaHostRegisterReadOnly));
+          paged_weights->ranges.emplace_back(ptr, bank->SizeInBytes());
+        }
+      }
       dequant_fc1_weights = dequant_transient_env
                                 ? GetTransientScratchBuffer<void>(fc1_bytes)
                                 : GetScratchBuffer<void>(fc1_bytes, GetComputeStream(context));
@@ -2708,14 +2763,17 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         // Choose the FP4 (MXFP4 / E8M0, block 32) or NVFP4 (E4M3, block 16) dequant launcher.
         auto dequant = [&](const uint8_t* weights, const uint8_t* block_scales, const float* global_scale,
                            void* out, int n, int k, const Tensor* bias, void* output_bias,
-                           const uint8_t* res_w, const uint8_t* res_s) {
+                           const uint8_t* res_w, const uint8_t* res_s,
+                           const uint8_t* host_w, const uint8_t* host_s) {
           if (is_fp16_) {
             half* out_h = static_cast<half*>(out);
             if (is_nvfp4) {
               LaunchQMoEDequantizeNvfp4Weights(weights, block_scales, global_scale, out_h, num_experts, n, k, stream,
                                                compact_to_expert.get(), bias ? static_cast<const half*>(bias->DataRaw()) : nullptr,
                                                static_cast<half*>(output_bias), nvfp4_weights_row_major_,
-                                               res_w, res_s, resident_view.slot_table_dev);
+                                               res_w, res_s, resident_view.slot_table_dev,
+                                               -1, nullptr,
+                                               host_w, host_s, resident_view.host_expert_stride, resident_view.host_slot_table_dev);
             } else {
               LaunchQMoEDequantizeFp4Weights(weights, block_scales, global_scale, out_h, num_experts, n, k, stream);
             }
@@ -2725,22 +2783,28 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
               LaunchQMoEDequantizeNvfp4Weights(weights, block_scales, global_scale, out_b, num_experts, n, k, stream,
                                                compact_to_expert.get(), bias ? static_cast<const __nv_bfloat16*>(bias->DataRaw()) : nullptr,
                                                static_cast<__nv_bfloat16*>(output_bias), nvfp4_weights_row_major_,
-                                               res_w, res_s, resident_view.slot_table_dev);
+                                               res_w, res_s, resident_view.slot_table_dev,
+                                               -1, nullptr,
+                                               host_w, host_s, resident_view.host_expert_stride, resident_view.host_slot_table_dev);
             } else {
               LaunchQMoEDequantizeFp4Weights(weights, block_scales, global_scale, out_b, num_experts, n, k, stream);
             }
           }
         };
+        const float* fc1_g_ptr = static_cast<const float*>(p_fc1_global_scale);
+        const float* fc2_g_ptr = static_cast<const float*>(p_fc2_global_scale);
         dequant(static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()),
                 static_cast<const uint8_t*>(p_fc1_block_scales),
-                static_cast<const float*>(p_fc1_global_scale),
+                fc1_g_ptr,
                 dequant_fc1_weights.get(), fc1_n, fc1_k, fc1_experts_bias_optional, compact_fc1_bias.get(),
-                resident_view.fc1_weights, resident_view.fc1_scales);
+                resident_view.fc1_weights, resident_view.fc1_scales,
+                resident_view.host_fc1_weights, resident_view.host_fc1_scales);
         dequant(static_cast<const uint8_t*>(fc2_experts_weights->DataRaw()),
                 static_cast<const uint8_t*>(p_fc2_block_scales),
-                static_cast<const float*>(p_fc2_global_scale),
+                fc2_g_ptr,
                 dequant_fc2_weights.get(), fc2_n, fc2_k, fc2_experts_bias_optional, compact_fc2_bias.get(),
-                resident_view.fc2_weights, resident_view.fc2_scales);
+                resident_view.fc2_weights, resident_view.fc2_scales,
+                resident_view.host_fc2_weights, resident_view.host_fc2_scales);
       };
       fc1_weight_data = dequant_fc1_weights.get();
       fc2_weight_data = dequant_fc2_weights.get();

@@ -412,6 +412,14 @@ struct QMoEResidentLayerSlabView {
   const uint8_t* fc2_weights = nullptr;
   const uint8_t* fc2_scales = nullptr;
   const int* slot_table_dev = nullptr;
+  const float* fc1_global_scales = nullptr;
+  const float* fc2_global_scales = nullptr;
+  const uint8_t* host_fc1_weights = nullptr;
+  const uint8_t* host_fc1_scales = nullptr;
+  const uint8_t* host_fc2_weights = nullptr;
+  const uint8_t* host_fc2_scales = nullptr;
+  size_t host_expert_stride = 0;
+  const int* host_slot_table_dev = nullptr;
 };
 
 struct QMoEPrefillPassDmaView {
@@ -428,6 +436,12 @@ struct QMoEPrefillPassDmaView {
   const uint8_t* resident_fc2_weights = nullptr;
   const uint8_t* resident_fc2_scales = nullptr;
   const int* slot_table_dev = nullptr;
+  const uint8_t* host_fc1_weights = nullptr;
+  const uint8_t* host_fc1_scales = nullptr;
+  const uint8_t* host_fc2_weights = nullptr;
+  const uint8_t* host_fc2_scales = nullptr;
+  size_t host_expert_stride = 0;
+  const int* host_slot_table_dev = nullptr;
   int* prefill_layer_hist_dev = nullptr;
 };
 
@@ -481,7 +495,11 @@ void LaunchQMoEDequantizeNvfp4Weights(
     const uint8_t* resident_block_scales = nullptr,
     const int* resident_expert_to_slot = nullptr,
     int pass_start_expert = -1,
-    const int* expert_active_mask = nullptr);
+    const int* expert_active_mask = nullptr,
+    const uint8_t* host_packed_weights = nullptr,
+    const uint8_t* host_block_scales = nullptr,
+    size_t host_expert_stride = 0,
+    const int* host_expert_to_slot = nullptr);
 
 void LaunchQMoEDequantizeNvfp4Weights(
     const uint8_t* packed_weights,
@@ -500,7 +518,11 @@ void LaunchQMoEDequantizeNvfp4Weights(
     const uint8_t* resident_block_scales = nullptr,
     const int* resident_expert_to_slot = nullptr,
     int pass_start_expert = -1,
-    const int* expert_active_mask = nullptr);
+    const int* expert_active_mask = nullptr,
+    const uint8_t* host_packed_weights = nullptr,
+    const uint8_t* host_block_scales = nullptr,
+    size_t host_expert_stride = 0,
+    const int* host_expert_to_slot = nullptr);
 
 // Repack column-major FP4 packed weights to row-major layout on GPU.
 // Input shape interpretation: [experts, k, n/2] (col-major packed),

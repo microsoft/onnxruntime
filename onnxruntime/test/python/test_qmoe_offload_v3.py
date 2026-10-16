@@ -67,6 +67,79 @@ def bf16_uint16_to_float32(arr: np.ndarray) -> np.ndarray:
 
 @unittest.skipIf(sys.platform == "win32", "TestQMoEOffloadV3 requires POSIX g++ toolchain and Linux plugin library.")
 class TestQMoEOffloadV3(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "linux", "Mapped file cache requires Linux")
+    def test_bounded_mapped_bank_cache(self):
+        """Bank offsets, tiny-cache contention, immutable backing, eviction, and short-read errors."""
+        cpp_src = r"""
+#include <cassert>
+#include <cstring>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <vector>
+#include "contrib_ops/cpu/moe/qmoe_shared_layout.h"
+using namespace onnxruntime::contrib::qmoe_shared;
+int main(int argc, char** argv) {
+  assert(argc == 2);
+  const int fd = open(argv[1], O_RDWR | O_CREAT | O_TRUNC, 0600);
+  assert(fd >= 0);
+  constexpr size_t n = 8, bank_bytes = 4096, stride = 8192, prefix = 4096;
+  std::vector<unsigned char> data(prefix + n * stride);
+  for (size_t e = 0; e < n; ++e) {
+    memset(data.data() + prefix + e * bank_bytes, int(e + 1), bank_bytes);
+    memset(data.data() + prefix + n * bank_bytes + e * bank_bytes, int(e + 21), bank_bytes);
+  }
+  assert(write(fd, data.data(), data.size()) == ssize_t(data.size()));
+  auto* mapped = static_cast<unsigned char*>(mmap(nullptr, data.size(), PROT_READ, MAP_SHARED, fd, 0));
+  assert(mapped != MAP_FAILED);
+  FileExpertStore::MappedBank banks[] = {
+      {mapped + prefix, bank_bytes, 0}, {mapped + prefix + n * bank_bytes, bank_bytes, bank_bytes}};
+  FileExpertStore cache;
+  assert(cache.InitializeMapped(banks, 2, n, stride, 1));
+  assert(cache.CacheSlots() == 1);
+  for (int iteration = 0; iteration < 40; ++iteration) {
+    const int32_t e = iteration % n;
+    const int32_t pf[] = {e, (e + 1) % int(n)};
+    assert(cache.Prefetch(pf, 2, iteration + 1));
+    ExpertBlockLease lease;
+    assert(cache.AcquireReady(e, &lease));
+    assert(!cache.Evict(e));  // pinned leases cannot be discarded
+    for (size_t i = 0; i < bank_bytes; ++i) {
+      assert(lease.data[i] == e + 1);
+      assert(lease.data[bank_bytes + i] == e + 21);
+    }
+    cache.ReleaseLease(e);
+    cache.WaitPrefetchIdle();
+    assert(cache.Evict(e));
+  }
+  cache.WaitPrefetchIdle();
+  cache.Shutdown();
+  // Heap and writable mappings cannot silently replace the immutable file source.
+  banks[0].data = data.data();
+  assert(!cache.InitializeMapped(banks, 2, n, stride, 1));
+  banks[0].data = mapped + prefix;
+  banks[1].block_offset = 0;
+  assert(!cache.InitializeMapped(banks, 2, n, stride, 1));
+  banks[1].block_offset = bank_bytes;
+  assert(cache.InitializeMapped(banks, 2, n, stride, 1));
+  assert(ftruncate(fd, prefix) == 0);
+  ExpertBlockLease missing;
+  assert(!cache.AcquireReady(7, &missing));
+  cache.Shutdown();
+  munmap(mapped, data.size());
+  close(fd);
+}
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = Path(tmp) / "cache_test"
+            subprocess.run(
+                ["g++", "-O2", "-pthread", "-std=c++20", f"-I{ORT_ROOT / 'onnxruntime'}",
+                 f"-I{ORT_ROOT / 'include/onnxruntime'}", "-x", "c++", "-",
+                 str(ORT_ROOT / "onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout.cc"), "-o", str(binary)],
+                input=cpp_src.encode(), check=True,
+            )
+            subprocess.run([str(binary), str(Path(tmp) / "weights.data")], check=True, timeout=30)
+
     def test_f12_checked_arithmetic_and_alignment_lease(self):
         """Verifies F12 standalone checked arithmetic and lease alignment tracking in qmoe_shared_layout."""
         cpp_src = r"""
