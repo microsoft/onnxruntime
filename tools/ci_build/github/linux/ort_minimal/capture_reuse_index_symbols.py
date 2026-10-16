@@ -71,6 +71,13 @@ def parse_link_command(text, directory):
     ]
 
 
+def merge_base_from_commit(raw_commit):
+    parents = [line[7:] for line in raw_commit.partition("\n\n")[0].splitlines() if line.startswith("parent ")]
+    if len(parents) != 2 or any(len(sha) != 40 or set(sha) - set("0123456789abcdef") for sha in parents):
+        raise ValueError("Expected the two-parent GitHub PR merge checkout")
+    return parents[0]
+
+
 def compile_command(command, source, output, original_source):
     command = list(command)
     command[command.index("-c") + 1] = str(source)
@@ -100,8 +107,13 @@ def main():
     if digest(REPO / SOURCE) != args.candidate_source_sha256:
         raise ValueError("Unexpected candidate source; refusing a mislabeled comparison")
     shutil.copyfile(build / "CMakeCache.txt", out / "CMakeCache.txt")
-    run(["git", "fetch", "--no-tags", "--depth=1", "origin", args.base_ref], REPO, out / "fetch.log")
-    changed = run(["git", "diff", "--name-only", args.base_ref, "HEAD", "--", "include", "onnxruntime", "cmake"], REPO)
+    # The PR's recorded base may lag its actual CI merge parent after main advances.
+    base_ref = merge_base_from_commit(run(["git", "cat-file", "-p", "HEAD"], REPO))
+    (out / "source-identities.json").write_text(
+        json.dumps({"actual_merge_base": base_ref, "original_published_base": args.base_ref}, indent=2) + "\n"
+    )
+    run(["git", "fetch", "--no-tags", "--depth=1", "origin", base_ref], REPO, out / "fetch.log")
+    changed = run(["git", "diff", "--name-only", base_ref, "HEAD", "--", "include", "onnxruntime", "cmake"], REPO)
     allowed = {SOURCE, "onnxruntime/test/framework/allocation_planner_test.cc"}
     if set(changed.splitlines()) - allowed:
         raise ValueError(f"Base/candidate runtime inputs differ beyond the planner: {changed}")
@@ -141,7 +153,7 @@ def main():
     baseline = out / "base"
     baseline.mkdir()
     baseline_source = baseline / "allocation_planner.cc"
-    baseline_source.write_text(run(["git", "show", f"{args.base_ref}:{SOURCE}"], REPO))
+    baseline_source.write_text(run(["git", "show", f"{base_ref}:{SOURCE}"], REPO))
     baseline_object = baseline / "allocation_planner.cc.o"
     baseline_compile = compile_command(original_compile, baseline_source, baseline_object, original_source)
     run(baseline_compile, build, baseline / "compile.log")
@@ -157,7 +169,8 @@ def main():
     report = {
         "kind": "targeted-baseline-TU-and-existing-CI-archives-relink-NOT-full-base-build",
         "head": run(["git", "rev-parse", "HEAD"], REPO).strip(),
-        "base": args.base_ref,
+        "base": base_ref,
+        "original_published_base": args.base_ref,
         "candidate_source_sha256": digest(REPO / SOURCE),
         "base_source_sha256": digest(baseline_source),
         "original_compile": original_compile,

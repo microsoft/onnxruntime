@@ -6,10 +6,18 @@ from __future__ import annotations
 import pathlib
 import unittest
 
-from capture_reuse_index_symbols import compile_command, link_command, parse_link_command
+from capture_reuse_index_symbols import compile_command, link_command, merge_base_from_commit, parse_link_command
 
 
 class CaptureReuseIndexSymbolsTest(unittest.TestCase):
+    def test_actual_merge_parent_not_stale_pr_base_or_commit_message(self):
+        raw = "tree " + "0" * 40 + "\nparent " + "a" * 40 + "\nparent " + "b" * 40 + "\n\nparent " + "c" * 40
+        self.assertEqual(merge_base_from_commit(raw), "a" * 40)
+
+    def test_requires_real_two_parent_merge(self):
+        with self.assertRaises(ValueError):
+            merge_base_from_commit("parent " + "a" * 40 + "\n\nordinary commit")
+
     def test_redirects_actual_cmake_linker_dependency_output(self):
         command = [
             "clang++",
