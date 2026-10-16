@@ -3,7 +3,7 @@
 
 #include "core/framework/allocation_planner.h"
 #include <charconv>
-#include <list>
+#include <vector>
 #include <algorithm>
 #include <deque>
 #include <sstream>
@@ -210,6 +210,7 @@ class PlannerImpl {
     // Removing initializers is a temporary measure needed to limit the number of copies of
     // tensors in GPU memory.
     OrtValueIndex reused_buffer_index = -1;  // index of original buffer to reuse
+    OrtValueIndex next_free_buffer = -1;
     bool is_inplace_reuse = false;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     OrtValueIndex inplace_reused_buffer_index = -1;  // index of original buffer to reuse inplace
@@ -219,20 +220,9 @@ class PlannerImpl {
   // ort_value_info_ is indexed by an OrtValueIndex
   std::vector<OrtValueInfo> ort_value_info_;
 
-  // FreeBufferInfo is used to track information about ml-values whose buffers are
-  // free to be reused.
-  struct FreeBufferInfo {
-    OrtValueIndex ml_value;
-    // deallocate_point is an index into the execution-plan; thus, ml_value becomes free after
-    // this step in the execution-plan is completed.
-    size_t deallocate_point;
-    FreeBufferInfo(OrtValueIndex ort_value, size_t dealloc_point)
-        : ml_value(ort_value), deallocate_point(dealloc_point) {}
-  };
-
-  // Compatible buffers have the same hash. Each bucket retains most-recently-freed
-  // ordering; hash collisions are checked with the original compatibility predicate.
-  InlinedHashMap<size_t, std::list<FreeBufferInfo>> freelists_;
+  // Heads use the existing integer-map instantiation, with per-value links.
+  // Prepending preserves LIFO, including collisions checked by the full predicate.
+  InlinedHashMap<size_t, size_t> freelists_;
 
   OrtValueIndex Index(const OrtValueName& name) {
     OrtValueIndex result;
@@ -604,14 +594,17 @@ class PlannerImpl {
     return key;
   }
 
-  void AddFreeBuffer(OrtValueIndex value, size_t program_counter) {
+  void AddFreeBuffer(OrtValueIndex value) {
     if (!context_->GetEnableMemoryReuse()) return;
     const auto* arg = ort_value_info_[value].p_def_site;
     if (!arg || IsNonTensor(*arg)) return;
     const auto* shape = context_->GetShape(*arg);
     if (!shape) return;
     if (auto key = GetReuseKey(*arg, *shape)) {
-      freelists_[*key].emplace_front(value, program_counter);
+      auto [bucket, inserted] = freelists_.try_emplace(*key, static_cast<size_t>(value));
+      ort_value_info_[value].next_free_buffer =
+          inserted ? -1 : static_cast<OrtValueIndex>(bucket->second);
+      bucket->second = static_cast<size_t>(value);
     }
   }
 
@@ -626,11 +619,12 @@ class PlannerImpl {
     if (!key) return false;
     auto bucket = freelists_.find(*key);
     if (bucket == freelists_.end()) return false;
-    auto& freelist = bucket->second;
     auto& required_memory_info = AllocPlan(output_arg.Name()).location;
 
-    for (auto it = freelist.begin(); it != freelist.end(); ++it) {
-      size_t reusable = static_cast<size_t>(it->ml_value);
+    OrtValueIndex previous = -1;
+    for (auto value = static_cast<OrtValueIndex>(bucket->second); value != -1;
+         previous = value, value = ort_value_info_[value].next_free_buffer) {
+      size_t reusable = static_cast<size_t>(value);
       const onnxruntime::NodeArg* p_node_arg = ort_value_info_.at(reusable).p_def_site;
       if (!p_node_arg) {
         // TODO this should be an error case, needs more investigation
@@ -652,9 +646,15 @@ class PlannerImpl {
       if (nullptr != p_available_buffer_shape) {
         if (SameSize(*p_available_buffer_shape, *p_node_arg,
                      *p_required_buffer_shape, output_arg)) {
-          *reusable_tensor = it->ml_value;
-          freelist.erase(it);
-          if (freelist.empty()) freelists_.erase(bucket);
+          *reusable_tensor = value;
+          auto next = ort_value_info_[reusable].next_free_buffer;
+          if (previous != -1) {
+            ort_value_info_[previous].next_free_buffer = next;
+          } else if (next != -1) {
+            bucket->second = static_cast<size_t>(next);
+          } else {
+            freelists_.erase(bucket);
+          }
           return true;
         }
       }
@@ -1717,7 +1717,7 @@ class PlannerImpl {
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original))) {
-            AddFreeBuffer(original, program_counter);
+            AddFreeBuffer(original);
           }
         }
       }
@@ -1737,7 +1737,7 @@ class PlannerImpl {
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original))) {
-            AddFreeBuffer(original, program_counter);
+            AddFreeBuffer(original);
           }
         }
       }
@@ -1751,7 +1751,7 @@ class PlannerImpl {
             // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
             // See comments in the OrtValueInfo definition.
             if (0 == DecrementUseCount(original)) {
-              AddFreeBuffer(original, program_counter);
+              AddFreeBuffer(original);
             }
           }
         }
