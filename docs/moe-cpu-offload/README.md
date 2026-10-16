@@ -177,7 +177,7 @@ Counter logs report selected expert IDs, pre-update scores, local/global ranks, 
 See [MoE expert counting](../MoEExpertCounting.md) for the logging and state formats, and
 [MoE/QMoE CUDA operators](../contrib_ops/cuda/moe_qmoe.md) for operator details.
 
-## QMoE INT4 benchmark
+## QMoE INT4 benchmark: adaptive strategy
 
 This series replaces the previous FP16/INT4 sweeps, historical controls, and tuning results.
 Only **Qwen3.5-35B-A3B INT4** is measured, with 40 QMoE nodes, 256 experts per node, and top-k 8.
@@ -251,6 +251,51 @@ Raw per-prompt JSON and logs are retained locally, not committed.
 | 9216 | Off | 469.877 | 25.334 | 24.601 | 36.035 |
 | 10240 | Off | 744.964 | 26.572 | 23.163 | 39.592 |
 
+## QMoE INT4 benchmark: basic strategy
+
+This series uses `--strategy basic` with the same Qwen3.5 INT4 model, unchanged five prompts, 256 greedy tokens
+per prompt, first two prompts as warmup, and the four metric definitions above. Alpha is `0.9`, epsilon is `0.1`,
+probability weight is `0`, and the configured swap limit remains `5`. The strategy prevents all swaps regardless
+of that limit. The sweep covers `K=0, 1024, ..., 10240`, plus a separate captured all-GPU control at `K=0`.
+With 256 experts per node, every nonzero step moves exactly four trailing QMoE nodes to CPU; there is no split
+boundary node in this model. All-GPU controls disable offload and its instrumentation entirely.
+
+Measured on 2026-10-16 using source revision `487a44eddac3a81fd0ba63757e5aa8fdf9a2f337`, including the basic
+strategy and failed-run logger-lifetime fix. Target `main` was refreshed and was already included. The software,
+host, and build configuration match those described above. These runs use physical H200 **GPU 1**, because GPU 0
+was running another workload. This is a shared host, not a fully isolated benchmark machine. The earlier adaptive
+series used GPU 0 and different binaries, so differences between the two tables are not a controlled,
+same-binary comparison of strategies.
+
+| Artifact | SHA-256 |
+|---|---|
+| `libonnxruntime.so.1.32.0` | `c0293a3f964737f4867a1826443c4a04a2128d5f071055243f0563ef956f5116` |
+| `libonnxruntime_providers_cuda.so` | `cd0bfd93995866a47dae2a98a99a0c9df39d007875e677efc4c1168ce17bed25` |
+
+A separate untimed real-model check at `K=4096` confirmed that the first 24 QMoE nodes selected only CUDA-resident
+experts and the last 16 selected only CPU-resident experts over 16 invocations per node, with no swap records.
+Its logging-enabled timings are not included in the results.
+
+A separate Nsight Systems run of the new all-GPU control (one prompt, 16 generated tokens) confirmed one capture
+and instantiation and 15 `cudaGraphLaunch` calls. Its instrumented timings are also excluded.
+All twelve timed runs completed successfully, with unchanged runtime/provider hashes. Each row is a single run;
+raw per-prompt JSON and logs are retained locally, not committed.
+
+| K: CPU experts | CUDA Graph | Prefill time (ms/prompt) | Decoded tokens/s | Peak GPU (GiB) | Peak CPU RSS (GiB) |
+|---:|:---:|---:|---:|---:|---:|
+| 0 | Off | 21.079 | 128.563 | 39.388 | 1.574 |
+| 0 | On | 21.807 | 169.488 | 39.447 | 1.645 |
+| 1024 | Off | 73.010 | 89.572 | 37.930 | 18.144 |
+| 2048 | Off | 122.929 | 69.399 | 36.275 | 18.144 |
+| 3072 | Off | 187.570 | 57.557 | 34.543 | 18.144 |
+| 4096 | Off | 217.239 | 50.454 | 32.851 | 18.152 |
+| 5120 | Off | 209.857 | 45.857 | 31.127 | 21.726 |
+| 6144 | Off | 329.509 | 40.231 | 29.431 | 25.302 |
+| 7168 | Off | 418.698 | 36.668 | 27.771 | 28.781 |
+| 8192 | Off | 463.234 | 35.093 | 26.047 | 32.356 |
+| 9216 | Off | 572.767 | 28.639 | 24.351 | 35.915 |
+| 10240 | Off | 611.970 | 28.730 | 22.691 | 39.594 |
+
 ## Reproducing the series
 
 Use the Qwen3.5 INT4 GenAI export and a matching source-built ORT/CUDA provider. With the build output on
@@ -260,35 +305,40 @@ Use the Qwen3.5 INT4 GenAI export and a matching source-built ORT/CUDA provider.
 export PYTHONPATH=/path/to/onnxruntime/build/linux_cuda/Release
 export LD_LIBRARY_PATH=/path/to/onnxruntime/build/linux_cuda/Release${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 cd /path/to/onnxruntime/build/linux_cuda/Release
-mkdir -p /tmp/qwen35-int4-sweep
+strategy=adaptive  # Set to basic for fixed GPU-first QMoE placement.
+gpu=0             # Use a free physical H200 GPU; the basic series used GPU 1.
+output="/tmp/qwen35-int4-${strategy}-sweep"
+mkdir -p "$output"
 for k in 0 1024 2048 3072 4096 5120 6144 7168 8192 9216 10240; do
-  CUDA_VISIBLE_DEVICES=0 python /path/to/onnxruntime/tools/python/benchmark_moe_cpu_offload.py \
-    --name "qwen35-int4-k${k}-alpha09-epsilon01-swaps5" \
+  CUDA_VISIBLE_DEVICES="$gpu" python /path/to/onnxruntime/tools/python/benchmark_moe_cpu_offload.py \
+    --name "qwen35-int4-${strategy}-k${k}-alpha09-epsilon01-swaps5" \
     --model /path/to/qwen3.5-35b-cuda-int4 \
     --prompts /path/to/onnxruntime/docs/moe-cpu-offload/benchmark-prompts.json \
     --max-new-tokens 256 \
     --cpu-offload-experts "$k" \
+    --strategy "$strategy" \
     --counter-alpha 0.9 \
     --swap-epsilon 0.1 \
     --max-in-flight-swaps-per-device 5 \
     --swap --no-counter-log --no-cuda-graph \
-    --output "/tmp/qwen35-int4-sweep/k${k}.json" \
-    --log "/tmp/qwen35-int4-sweep/k${k}.log" || exit "$?"
+    --output "$output/k${k}.json" \
+    --log "$output/k${k}.log" || exit "$?"
 done
 
-CUDA_VISIBLE_DEVICES=0 python /path/to/onnxruntime/tools/python/benchmark_moe_cpu_offload.py \
-  --name "qwen35-int4-k0-cuda-graph" \
+CUDA_VISIBLE_DEVICES="$gpu" python /path/to/onnxruntime/tools/python/benchmark_moe_cpu_offload.py \
+  --name "qwen35-int4-${strategy}-k0-cuda-graph" \
   --model /path/to/qwen3.5-35b-cuda-int4 \
   --prompts /path/to/onnxruntime/docs/moe-cpu-offload/benchmark-prompts.json \
   --max-new-tokens 256 \
   --cpu-offload-experts 0 \
+  --strategy "$strategy" \
   --counter-alpha 0.9 \
   --swap-epsilon 0.1 \
   --max-in-flight-swaps-per-device 5 \
   --swap --no-counter-log --cuda-graph \
-  --output /tmp/qwen35-int4-sweep/k0-graph.json \
-  --log /tmp/qwen35-int4-sweep/k0-graph.log
+  --output "$output/k0-graph.json" \
+  --log "$output/k0-graph.log"
 ```
 
-Use `--no-swap` for static placement, `--state` to load initial popularities, `--popularity-output` to save them,
+Use `--no-swap` to freeze adaptive placement, `--state` to load initial popularities, `--popularity-output` to save them,
 and `--counter-log` for separate routing analysis. Those runs are not part of this fixed-parameter series.
