@@ -181,21 +181,21 @@ struct Rule {
   using CheckAndBind = std::function<bool(const Graph&, Match&)>;
   using ReplacementFunction = std::function<Replacement(const Graph&, const Match&)>;
 
-  Rule(std::string name, Pattern pattern, ReplacementFunction replacement, CheckAndBind check_and_bind,
-       InlinedVector<OpsetRequirement, 1> opsets);
-  Rule(std::string name, std::string_view pattern, ReplacementFunction replacement, CheckAndBind check_and_bind,
-       InlinedVector<OpsetRequirement, 1> opsets);
-  Rule(std::string name, Pattern pattern, std::string_view replacement, CheckAndBind check_and_bind,
-       InlinedVector<OpsetRequirement, 1> opsets);
-  Rule(std::string name, std::string_view pattern, std::string_view replacement, CheckAndBind check_and_bind,
-       InlinedVector<OpsetRequirement, 1> opsets);
+  Rule(std::string name, Pattern pattern, ReplacementFunction replacement, CheckAndBind check_and_bind = {},
+       InlinedVector<OpsetRequirement, 1> opsets = {});
+  Rule(std::string name, std::string_view pattern, ReplacementFunction replacement, CheckAndBind check_and_bind = {},
+       InlinedVector<OpsetRequirement, 1> opsets = {});
+  Rule(std::string name, Pattern pattern, std::string_view replacement, CheckAndBind check_and_bind = {},
+       InlinedVector<OpsetRequirement, 1> opsets = {});
+  Rule(std::string name, std::string_view pattern, std::string_view replacement, CheckAndBind check_and_bind = {},
+       InlinedVector<OpsetRequirement, 1> opsets = {});
 
   std::string name;
   Pattern pattern;
   // Check-and-bind callbacks may prepare match-local attributes. Neither callback may mutate the graph
   // or retain pointers into a Match; replacement callbacks receive a read-only match.
   ReplacementFunction replacement;
-  CheckAndBind check_and_bind;
+  CheckAndBind check_and_bind;  // Empty accepts a structurally valid match without additional checks.
   InlinedVector<OpsetRequirement, 1> opsets;
 };
 

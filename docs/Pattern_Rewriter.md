@@ -26,31 +26,31 @@ HardSigmoid attributes shown:
 using namespace onnxruntime;
 using namespace onnxruntime::rewrite;
 
-bool IsFloat32(const NodeArg& value) {
-  const auto* type = value.TypeAsProto();
-  return type && type->has_tensor_type() &&
-         type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-}
-
 Rule MakeHardSwishRule() {
   const auto* pattern = R"(
-    (x) => {
+    (x:float[]) => {
       sigmoid = HardSigmoid(x, alpha=0.16666667, beta=0.5)
       return Mul(sigmoid, x)
     }
   )";
-  auto check_and_bind = [](const Graph&, Match& match) {
-    return IsFloat32(*match.valueOf("x"));
-  };
   const auto* replacement = "(x) => HardSwish(x)";
-  return Rule{"HardSigmoidMul", pattern, replacement, check_and_bind, {{kOnnxDomain, 14, 21}}};
+  return Rule{"HardSigmoidMul", pattern, replacement, {}, {{kOnnxDomain, 14, 21}}};
 }
 ```
 
 Both occurrences of `x` must bind the **same `NodeArg`**, not just tensors with
-equal shapes or contents. The check-and-bind callback checks the relevant data binding `x`;
+equal shapes or contents. `float[]` checks that `x` is a float32 tensor of any
+rank, including unknown rank (`float` alone would require a scalar);
 resolved schemas establish the corresponding intermediate and output types.
 It does not require every matched value to have the same element type.
+
+An empty `check_and_bind` means always accept after the built-in matching and
+safety checks. All constructor overloads default it to `{}`. Use the explicit
+`{}` placeholder above when supplying the fifth argument, opset requirements.
+The opset list defaults to empty, not an inferred version range: if omitted,
+populate `rule.opsets` before constructing a `PatternRewriter`. Missing required
+domain ranges remain an error. `check_and_bind_calls` counts only callbacks
+actually invoked, so an empty callback contributes zero.
 
 These opset bounds are a conservative supported range for this example, not an
 automatic statement about every schema version. Floating-point rewrites can
@@ -400,6 +400,12 @@ The following rule folds division by a finite float32 scalar into FusedMatMul's
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 
+bool IsFloat32(const NodeArg& value) {
+  const auto* type = value.TypeAsProto();
+  return type && type->has_tensor_type() &&
+         type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+}
+
 std::optional<float> FloatScalar(const Graph& graph, const NodeArg& value) {
   const auto* tensor = graph_utils::GetConstantInitializer(graph, value.Name());
   if (!tensor || tensor->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
@@ -430,7 +436,7 @@ Rule MakeMatMulDivRule() {
 }
 ```
 
-This example uses `IsFloat32` from the first example. Only the selected rule's
+Only the selected rule's
 replacement runs, with the bindings prepared by its successful check-and-bind
 callback. Replacement callbacks remain supported for choosing a parsed recipe;
 they receive `const Match&` and cannot update it. Parse any such recipes outside

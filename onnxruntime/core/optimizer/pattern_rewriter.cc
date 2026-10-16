@@ -1288,8 +1288,8 @@ PatternRewriter::PatternRewriter(Rules rules, Options options)
   InlinedHashMap<std::string, size_t> signatures;
   for (size_t i = 0; i < rules_.size(); ++i) {
     Rule& rule = rules_[i];
-    ORT_ENFORCE(!rule.name.empty() && !rule.pattern.Nodes().empty() && rule.check_and_bind && rule.replacement,
-                "Rules need a name, at least one node, a check_and_bind and a recipe.");
+    ORT_ENFORCE(!rule.name.empty() && !rule.pattern.Nodes().empty() && rule.replacement,
+                "Rules need a name, at least one node and a recipe.");
     InlinedHashSet<std::string> domains;
     for (auto& requirement : rule.opsets) {
       if (requirement.domain == kOnnxDomainAlias) requirement.domain = kOnnxDomain;
@@ -1430,12 +1430,14 @@ Status PatternRewriter::Run(Graph& graph, Statistics& statistics) const {
           if (!options_.match_only && id >= winner) break;
           Match rule_match = match;
           rule_match.pattern = &rules_[id].pattern;
-          ++statistics.check_and_bind_calls;
-          if (!rules_[id].check_and_bind(graph, rule_match)) {
-            report(id, root->Index(), FailureStage::CheckAndBind,
-                   rule_match.RejectionReason().empty() ? std::string_view("Check-and-bind rejected match.")
-                                                        : rule_match.RejectionReason());
-            continue;
+          if (rules_[id].check_and_bind) {
+            ++statistics.check_and_bind_calls;
+            if (!rules_[id].check_and_bind(graph, rule_match)) {
+              report(id, root->Index(), FailureStage::CheckAndBind,
+                     rule_match.RejectionReason().empty() ? std::string_view("Check-and-bind rejected match.")
+                                                          : rule_match.RejectionReason());
+              continue;
+            }
           }
           if (options_.match_only) ++statistics.matches;
           if (id < winner) {

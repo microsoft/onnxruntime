@@ -1794,6 +1794,58 @@ TEST(PatternRewriterTests, RuleConstructorOwnsParsedTextAndReusesPlans) {
   EXPECT_EQ(calls, 3u);
 }
 
+TEST(PatternRewriterTests, DefaultCheckAndBindAcceptsAnnotatedPatterns) {
+  const auto* pattern = "(x:float[])=>{a=Identity(x);return Identity(a);}";
+  const auto* replacement = "(x)=>Identity(x)";
+  Pattern parsed_pattern(pattern);
+  Replacement parsed_replacement(replacement);
+  Rules rules{
+      {"text", pattern, replacement},
+      {"parsed", parsed_pattern, parsed_replacement},
+      {"parsed_pattern", parsed_pattern, replacement},
+      {"parsed_replacement", pattern, parsed_replacement},
+      {"explicit_empty", pattern, replacement, {}, {{kOnnxDomain, 13, 17}}}};
+  for (auto& rule : rules) {
+    EXPECT_FALSE(rule.check_and_bind);
+    if (rule.opsets.empty()) {
+      EXPECT_THROW((void)PatternRewriter{Rules{rule}}, OnnxRuntimeException);
+      rule.opsets = {{kOnnxDomain, 13, 17}};
+    }
+    for (bool indexed : {false, true}) {
+      for (bool match_only : {false, true}) {
+        for (bool floating : {false, true}) {
+          TestGraph test;
+          auto& b = test.builder;
+          auto* x = floating ? b.MakeInput<float>({2, 3}, -1.0f, 1.0f)
+                             : b.MakeInput<int64_t>({2, 3}, -1, 1);
+          auto* a = b.MakeIntermediate();
+          b.AddNode("Identity", {x}, {a});
+          b.AddNode("Identity", {a}, {b.MakeOutput()});
+          b.SetGraphOutputs();
+          ASSERT_STATUS_OK(test.graph.Resolve());
+          Statistics stats;
+          ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = match_only, .indexed = indexed})
+                               .Run(test.graph, stats));
+          EXPECT_EQ(stats.matches, floating ? 1u : 0u);
+          EXPECT_EQ(stats.rewrites, floating && !match_only ? 1u : 0u);
+          EXPECT_EQ(stats.check_and_bind_calls, 0u);
+          ASSERT_STATUS_OK(test.graph.Resolve());
+        }
+      }
+    }
+  }
+  TransformerTester(
+      [](ModelTestBuilder& b) {
+        auto* x = b.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+        auto* a = b.MakeIntermediate();
+        b.AddNode("Identity", {x}, {a});
+        b.AddNode("Identity", {a}, {b.MakeOutput()});
+      },
+      [](InferenceSessionWrapper& session) { EXPECT_EQ(Count(session.GetGraph(), "Identity"), 1u); },
+      TransformerLevel::Default, TransformerLevel::Level1, 17, 0.0, 0.0,
+      std::make_unique<PatternRewriter>(Rules{rules.front()}));
+}
+
 TEST(PatternRewriterTests, RuleConstructorRejectsMalformedText) {
   const auto* pattern = "(x)=>{a=Identity(x);return Identity(a);}";
   const auto* replacement = "(x)=>Identity(x)";
