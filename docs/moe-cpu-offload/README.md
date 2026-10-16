@@ -509,8 +509,16 @@ All strategies preserve exactly `K` CPU experts.
   - Swapping two is worse for decode, but can still improve prefill.
   - Set `moe_cpu_offload_on_demand_threshold` to `1` or `2`; `0` keeps the previous behavior.
 
+### Next ideas
+
+- Predict which experts will be needed next, while accounting for the cost and limited number of swaps.
+- Automatically increase or reduce parameters when measured throughput improves, instead of relying only on defaults.
+  This is not implemented yet.
+
+### Tables
+
 Each cell below is **prefill ms / decode ms per token**; lower is better. Decode time is `1000 / tokens/s`.
-Best observed times are in **bold**. The N=1 column retains the [GPU-interference warning](#on-demand-threshold-sweep).
+Best observed times are in **bold**. The [GPU-interference warning](#on-demand-threshold-sweep) still applies.
 
 | K | CUDA Graph | Adaptive | Basic | 80% first | 80% first N=1 | 60% last, limit 16 |
 |---:|:---:|---:|---:|---:|---:|---:|
@@ -526,8 +534,21 @@ Best observed times are in **bold**. The N=1 column retains the [GPU-interferenc
 | 8192 | Off | **434.233** / 37.034 | 577.976 / 29.623 | 521.061 / 29.363 | 450.956 / 29.789 | 440.986 / **27.102** |
 | 9216 | Off | **418.149** / 38.916 | 541.466 / 33.884 | 565.593 / 34.252 | 899.263 / 205.511 | 438.548 / **33.148** |
 
-### Next ideas
+**Best observed values across all configurations**
 
-- Predict which experts will be needed next, while accounting for the cost and limited number of swaps.
-- Automatically increase or reduce parameters when measured throughput improves, instead of relying only on defaults.
-  This is not implemented yet.
+Includes series omitted from the Summary. At K=0, strategy names identify the all-GPU control cohort.
+
+| K | CUDA Graph | Best prefill (ms) | Strategy | Best decode (ms/token) | Strategy |
+|---:|:---:|---:|---|---:|---|
+| 0 | Off | 20.430 | 60% last | 7.277 | 60% last |
+| 0 | On | 21.331 | All-GPU control (new) | 5.663 | 70% first (earlier) |
+| 1024 | Off | 29.604 | 80% first | 9.516 | 80% first N=1 |
+| 2048 | Off | 36.109 | 70% first (earlier) | 12.792 | 70% first (earlier) |
+| 3072 | Off | 58.347 | Adaptive N=1 | 16.670 | 80% last |
+| 4096 | Off | 95.028 | Adaptive N=1 | 19.850 | 80% first N=1 |
+| 5120 | Off | 118.835 | 60% last, limit 16 | 19.755 | 70% first (earlier) |
+| 6144 | Off | 195.748 | 60% last, limit 16 | 24.489 | 80% last |
+| 7168 | Off | 307.013 | 60% middle | 25.225 | 60% middle |
+| 8192 | Off | 369.965 | 80% middle | 27.102 | 60% last, limit 16 |
+| 9216 | Off | 393.795 | Adaptive N=2 | 31.557 | 60% first |
+| 10240 | Off | 574.325 | Adaptive | 34.401 | 80% first (earlier) |
