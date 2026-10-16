@@ -37,6 +37,8 @@ jobs:
       uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
         submodules: false
+        # TEMPORARY observability: compile the exact previously measured source, not this workflow commit.
+        ref: f827a3cbca3d4a8d608ff20351dcb7c17ab2ca59
 
     - name: Setup Android NDK
       uses: ./.github/actions/setup-android-ndk
@@ -76,8 +78,12 @@ jobs:
 
     # FUTURE WORK: ccache, vcpkg cache
     - name: 1a. Build onnxruntime
+      id: minimal_build
       run: |
         set -e -x
+        SOURCE_SHA=$(git rev-parse HEAD)
+        test "$SOURCE_SHA" = f827a3cbca3d4a8d608ff20351dcb7c17ab2ca59
+        echo "TEMPORARY pinned-source diagnostic: workflow=${{ github.sha }} source=$SOURCE_SHA"
         BINARY_SIZE_THRESHOLD_ARGS=""
         BINARY_SIZE_THRESHOLD_IN_BYTES=1607680
         echo "Binary size threshold in bytes: ${BINARY_SIZE_THRESHOLD_IN_BYTES}"
@@ -105,7 +111,7 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD=1 \
           -e BUILD_BUILDNUMBER=${{ github.run_number }} \
-          -e BUILD_SOURCEVERSION=${{ github.sha }} \
+          -e BUILD_SOURCEVERSION="$SOURCE_SHA" \
           -e BUILD_ID=${{ github.run_id }} \
           -e BUILD_REASON=${{ github.event_name }} \
           -e BUILD_BRANCH=${{ github.ref }} \
@@ -117,6 +123,309 @@ jobs:
                        ${BINARY_SIZE_THRESHOLD_ARGS} \
                        tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_baseline.config"
       shell: bash
+
+    - name: TEMPORARY pinned-f827 link-map attribution (not final normal CI)
+      if: ${{ failure() && steps.minimal_build.outcome == 'failure' }}
+      timeout-minutes: 10
+      env:
+        DIAGNOSTIC_IMAGE: ${{ steps.build_docker_image_step.outputs.full-image-name }}
+        DIAGNOSTIC_WORKFLOW_SHA: ${{ github.sha }}
+      shell: python
+      run: |
+        import json
+        import os
+        import pathlib
+        import subprocess
+
+        # Run only existing container/NDK tools. Never replay a link command through a shell.
+        code = r'''
+        import hashlib
+        import json
+        import os
+        import pathlib
+        import re
+        import shlex
+        import subprocess
+        import sys
+
+        SOURCE = "f827a3cbca3d4a8d608ff20351dcb7c17ab2ca59"
+        ROOT = pathlib.Path("/onnxruntime_src")
+        BUILD = pathlib.Path("/build/1a/MinSizeRel")
+        WORK = ROOT / "planner-observability"
+        ARTIFACT = WORK / "artifact"
+        LIMIT = 2 * 1024 * 1024
+
+        def require(condition, reason):
+            if not condition:
+                raise RuntimeError(reason)
+
+        def digest(path):
+            result = hashlib.sha256()
+            with path.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    result.update(chunk)
+            return result.hexdigest()
+
+        def identity(before, mapped, after):
+            require(all(re.fullmatch(r"[0-9a-f]{64}", value or "")
+                        for value in (before, mapped, after)), "Missing library identity")
+            require(before == mapped == after, "INVALID attribution: library byte identity mismatch")
+
+        def rewrite_link(command, output, map_path):
+            require(len(command) <= 262144, "Link command exceeds 256KiB bound")
+            require(not re.search(r"[\n\r;&|`]", command) and "$(" not in command,
+                    "Unsupported shell/control syntax in recorded link command")
+            words = shlex.split(command)
+            require(words and re.fullmatch(
+                r"/ndk_home/toolchains/llvm/prebuilt/linux-x86_64/bin/clang\+\+", words[0]),
+                "Recorded command is not the expected NDK compiler driver")
+            matches = list(re.finditer(r"""(?<!\S)-o\s+("[^"]+"|'[^']+'|[^\s]+)""", command))
+            require(len(matches) == 1 and words.count("-o") == 1, "Expected one explicit link output")
+            match = matches[0]
+            old_output = pathlib.Path(shlex.split(match.group(1))[0])
+            require((BUILD / old_output).resolve() == (BUILD / "libonnxruntime.so").resolve(),
+                    "Recorded link output is not the completed normal core library")
+            require(not any("-Map" in word or "--Map" in word for word in words),
+                    "Original command already has a map-output option")
+            changed = command[:match.start(1)] + str(output) + command[match.end(1):]
+            changed += " -Wl,-Map," + str(map_path)
+            expected = list(words)
+            expected[expected.index("-o") + 1] = str(output)
+            expected.append("-Wl,-Map," + str(map_path))
+            require(shlex.split(changed) == expected, "Unexpected link argument change")
+            return changed, words
+
+        def parse_map(text):
+            lines = text.splitlines()
+            require(lines and all(word in lines[0] for word in ("VMA", "LMA", "Size", "Align", "Out", "In", "Symbol")),
+                    "Unsupported LLD map header")
+            columns = [lines[0].index(word) for word in ("Out", "In", "Symbol")]
+            rows = []
+            in_text = False
+            for line in lines[1:]:
+                if not line.strip():
+                    continue
+                match = re.fullmatch(r"\s*([0-9a-fA-F]+)\s+([0-9a-fA-F]+)\s+([0-9a-fA-F]+)\s+(\d+)\s+(.+)", line)
+                require(match is not None, "Unsupported LLD map row")
+                position, name = match.start(5), match.group(5)
+                if position == columns[0]:
+                    in_text = name == ".text"
+                elif position == columns[1]:
+                    continue
+                else:
+                    require(position >= columns[2], "Unsupported LLD map column alignment")
+                    if in_text:
+                        rows.append((int(match.group(1), 16), int(match.group(3), 16), name))
+            return rows
+
+        def select_symbols(rows, names):
+            require(len(rows) == len(names), "Demangler changed symbol line count")
+            selected = {}
+            for (address, size, _), name in zip(rows, names, strict=True):
+                relevant = ("PlannerImpl" in name or "SequentialPlanner::CreatePlan" in name
+                            or "FreeBufferIndex" in name
+                            or (("__tree" in name or "_Rb_tree" in name)
+                                and "unsigned long, unsigned long" in name))
+                if relevant:
+                    entry = selected.setdefault(address, {"size": 0, "aliases": []})
+                    entry["size"] = max(entry["size"], size)
+                    if name not in entry["aliases"]:
+                        entry["aliases"].append(name)
+            require(selected, "No planner/index symbols survived in map; no unstrip/debug fallback permitted")
+            return selected
+
+        def ranges_for(selected):
+            ranges = []
+            for address, entry in sorted(selected.items()):
+                if not entry["size"]:
+                    continue
+                end = address + entry["size"]
+                if ranges and address <= ranges[-1][1]:
+                    ranges[-1][1] = max(ranges[-1][1], end)
+                else:
+                    ranges.append([address, end])
+            require(ranges and len(ranges) <= 64, "Missing or excessive selected code ranges")
+            require(sum(end - start for start, end in ranges) <= 65536,
+                    "Selected code exceeds 64KiB disassembly bound; nothing silently truncated")
+            return ranges
+
+        def run(arguments, **kwargs):
+            return subprocess.check_output(arguments, text=True, timeout=360, **kwargs)
+
+        def main():
+            ARTIFACT.mkdir(parents=True, exist_ok=False)
+            os.chown(ARTIFACT, int(os.environ["DIAGNOSTIC_OWNER_UID"]), int(os.environ["DIAGNOSTIC_OWNER_GID"]))
+            original = BUILD / "libonnxruntime.so"
+            manifest = {"label": "TEMPORARY PINNED-f827 OBSERVABILITY ONLY; NOT FINAL NORMAL CI",
+                        "valid_attribution": False, "source_sha": SOURCE,
+                        "normal_build_SOURCEVERSION": SOURCE,
+                        "workflow_sha": os.environ["DIAGNOSTIC_WORKFLOW_SHA"],
+                        "image": os.environ["DIAGNOSTIC_IMAGE"], "threshold": 1607680}
+            try:
+                checked_out = run(["git", "-c", "safe.directory=/onnxruntime_src", "rev-parse", "HEAD"], cwd=ROOT).strip()
+                require(checked_out == SOURCE, "Unexpected checked-out source")
+                cache = BUILD / "CMakeCache.txt"
+                require(cache.is_file() and "CMAKE_GENERATOR:INTERNAL=Unix Makefiles" in cache.read_text(),
+                        "Expected Unix Makefiles generator; no guessed Ninja fallback")
+                record = BUILD / "CMakeFiles/onnxruntime.dir/link.txt"
+                require(original.is_file() and record.is_file(), "Completed library/link record unavailable")
+                with original.open("rb") as stream:
+                    require(stream.read(4) == b"\x7fELF", "Normal output is not ELF")
+                manifest["normal_before_sha256"] = digest(original)
+                lines = [line for line in record.read_text().splitlines() if line.strip()]
+                require(len(lines) == 1, "Expected single driver command; refusing post-link/symlink replay")
+                mapped, map_path = WORK / "map-only.so", WORK / "full.map"
+                command, words = rewrite_link(lines[0], mapped, map_path)
+                manifest["original_link_command"] = lines[0]
+                manifest["map_only_link_command"] = command
+                manifest["link_record_sha256"] = digest(record)
+                manifest["cache_sha256"] = digest(cache)
+                manifest["response_files"] = []
+                for word in words:
+                    if word.startswith("@"):
+                        response = BUILD / word[1:]
+                        require(response.is_file() and response.stat().st_size <= 4 * 1024 * 1024,
+                                "Missing or oversized response file")
+                        manifest["response_files"].append({"path": str(response), "sha256": digest(response)})
+                tools = pathlib.Path(words[0]).parent
+                manifest["compiler"] = run([words[0], "--version"])
+                manifest["linker"] = run([str(tools / "ld.lld"), "--version"])
+                manifest["normal_sections"] = run([str(tools / "llvm-readelf"), "--sections", "--wide", str(original)])
+                script = WORK / "map-only-link.txt"
+                script.write_text(command + "\n")
+                subprocess.run(["cmake", "-E", "cmake_link_script", str(script), "--verbose=1"],
+                               cwd=BUILD, check=True, timeout=360)
+                manifest["map_only_sha256"] = digest(mapped)
+                manifest["normal_after_sha256"] = digest(original)
+                identity(manifest["normal_before_sha256"], manifest["map_only_sha256"],
+                         manifest["normal_after_sha256"])
+                require(digest(record) == manifest["link_record_sha256"], "Original link record changed")
+                for response in manifest["response_files"]:
+                    require(digest(pathlib.Path(response["path"])) == response["sha256"],
+                            "Response file changed during relink")
+                require(map_path.stat().st_size <= 16 * 1024 * 1024, "Map exceeds 16MiB parse bound")
+                manifest["full_map_sha256"] = digest(map_path)
+                rows = parse_map(map_path.read_text())
+                require(len(rows) <= 32768, "Map symbol count exceeds parse bound")
+                names = run([str(tools / "llvm-cxxfilt")],
+                            input="".join(name + "\n" for _, _, name in rows)).splitlines()
+                selected = select_symbols(rows, names)
+                ranges = ranges_for(selected)
+                table = "address\tsize\taliases\n" + "".join(
+                    f"0x{address:x}\t{entry['size']}\t{json.dumps(entry['aliases'])}\n"
+                    for address, entry in sorted(selected.items()))
+                (ARTIFACT / "planner-symbols.tsv").write_text(table)
+                disassembly = ""
+                for start, end in ranges:
+                    disassembly += run([str(tools / "llvm-objdump"), "--disassemble", "--no-show-raw-insn",
+                                        f"--start-address={start}", f"--stop-address={end}", str(original)])
+                    require(len(disassembly.encode()) + len(table.encode()) < LIMIT - 65536,
+                            "Selected disassembly exceeds upload bound; nothing silently truncated")
+                (ARTIFACT / "planner-disassembly.txt").write_text(disassembly)
+                manifest["selected_unique_addresses"] = len(selected)
+                manifest["zero_size_selected_addresses"] = sum(not entry["size"] for entry in selected.values())
+                manifest["disassembly_ranges"] = ranges
+                manifest["valid_attribution"] = True
+            except Exception as error:
+                manifest["failure_reason"] = f"{type(error).__name__}: {error}"
+            finally:
+                if "normal_before_sha256" in manifest:
+                    try:
+                        manifest["normal_after_sha256"] = digest(original)
+                        identity(manifest["normal_before_sha256"], manifest.get("map_only_sha256"),
+                                 manifest["normal_after_sha256"])
+                    except Exception as error:
+                        manifest["valid_attribution"] = False
+                        manifest["identity_failure"] = str(error)
+                for name in ("map-only.so", "full.map", "map-only-link.txt"):
+                    try:
+                        (WORK / name).unlink(missing_ok=True)
+                    except OSError as error:
+                        manifest["valid_attribution"] = False
+                        manifest["cleanup_failure"] = str(error)
+                content = json.dumps(manifest, indent=2) + "\n"
+                total = len(content.encode()) + sum(path.stat().st_size for path in ARTIFACT.iterdir())
+                if total > LIMIT or not manifest["valid_attribution"]:
+                    manifest["valid_attribution"] = False
+                    if total > LIMIT:
+                        manifest["failure_reason"] = f"Artifact budget exceeded: {total} > {LIMIT}; no truncation"
+                    manifest["removed_invalid_payloads"] = [
+                        {"name": path.name, "bytes": path.stat().st_size} for path in ARTIFACT.iterdir()]
+                    for path in ARTIFACT.iterdir():
+                        path.unlink()
+                    content = json.dumps(manifest, indent=2) + "\n"
+                require(len(content.encode()) <= LIMIT, "Failure manifest exceeds upload bound")
+                (ARTIFACT / "manifest.json").write_text(content)
+            print(json.dumps({"valid_attribution": manifest["valid_attribution"],
+                              "failure_reason": manifest.get("failure_reason"),
+                              "identity_failure": manifest.get("identity_failure"),
+                              "cleanup_failure": manifest.get("cleanup_failure")}))
+            return 0 if manifest["valid_attribution"] else 1
+
+        if __name__ == "__main__":
+            sys.exit(main())
+        '''
+        workspace = pathlib.Path(os.environ["GITHUB_WORKSPACE"])
+        work = workspace / "planner-observability"
+        work.mkdir(exist_ok=False)
+        artifact = work / "artifact"
+        cidfile = work / "container.id"
+        try:
+            ndk = pathlib.Path(os.environ["ANDROID_NDK_HOME"]).resolve(strict=True)
+            command = [
+                "docker", "run", "--rm", "-i", "--cidfile", str(cidfile),
+                "--volume", f"{workspace}:/onnxruntime_src",
+                "--volume", f"{os.environ['RUNNER_TEMP']}:/build",
+                "--volume", f"{os.environ.get('ANDROID_HOME', '/usr/local/lib/android/sdk')}:/android_home",
+                "--volume", f"{ndk}:/ndk_home",
+                "-e", "DIAGNOSTIC_WORKFLOW_SHA", "-e", "DIAGNOSTIC_IMAGE",
+                "-e", f"DIAGNOSTIC_OWNER_UID={os.getuid()}", "-e", f"DIAGNOSTIC_OWNER_GID={os.getgid()}",
+                "-e", "TMPDIR=/onnxruntime_src/planner-observability",
+                "-w", "/onnxruntime_src", os.environ["DIAGNOSTIC_IMAGE"], "python3", "-",
+            ]
+            result = subprocess.run(command, input=code, text=True, check=False, timeout=540)
+            if result.returncode:
+                raise RuntimeError(f"Diagnostic container failed with exit {result.returncode}")
+        except Exception as error:
+            artifact.mkdir(parents=True, exist_ok=True)
+            manifest_path = artifact / "manifest.json"
+            manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+            manifest.update({
+                "valid_attribution": False, "launcher_failure": str(error),
+                "workflow_sha": os.environ["DIAGNOSTIC_WORKFLOW_SHA"],
+                "source_sha": "f827a3cbca3d4a8d608ff20351dcb7c17ab2ca59",
+            })
+            for path in artifact.iterdir():
+                if path.name != "manifest.json":
+                    path.unlink()
+            content = json.dumps(manifest, indent=2) + "\n"
+            if len(content.encode()) > 2 * 1024 * 1024:
+                content = json.dumps({
+                    "valid_attribution": False,
+                    "launcher_failure": str(error),
+                    "omitted_oversized_invalid_manifest_bytes": len(content.encode()),
+                }) + "\n"
+            manifest_path.unlink(missing_ok=True)
+            manifest_path.write_text(content)
+            raise
+        finally:
+            if cidfile.exists():
+                cid = cidfile.read_text().strip()
+                if len(cid) == 64 and all(char in "0123456789abcdef" for char in cid):
+                    subprocess.run(["docker", "rm", "--force", cid], check=False,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+                cidfile.unlink()
+            for name in ("map-only.so", "full.map", "map-only-link.txt"):
+                (work / name).unlink(missing_ok=True)
+
+    - name: Upload TEMPORARY planner attribution only (no ELF/full map)
+      if: ${{ always() && steps.minimal_build.outcome == 'failure' }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: TEMPORARY-pinned-f827-planner-attribution-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ github.workspace }}/planner-observability/artifact/
+        if-no-files-found: error
+        retention-days: 3
 
   android_nnapi_ep:
     runs-on: [
