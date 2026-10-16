@@ -275,7 +275,7 @@ def generate_vcpkg_install_options(build_dir, args):
         vcpkg_install_options.append("--x-feature=webnn-ep")
     if args.use_xnnpack:
         vcpkg_install_options.append("--x-feature=xnnpack-ep")
-    if args.use_telemetry and not args.use_windows_telemetry and not args.android and not args.build_wasm:
+    if args.use_telemetry and not args.use_windows_telemetry and not args.build_wasm:
         vcpkg_install_options.append("--x-feature=telemetry")
     overlay_triplets_dir = None
 

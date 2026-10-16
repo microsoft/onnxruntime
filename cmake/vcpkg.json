@@ -103,27 +103,28 @@
       "dependencies": []
     },
     "telemetry": {
-      "description": "Supply curl/mbedTLS transport for the source-built 1DS SDK on Linux",
+      "description": "Build the 1DS SDK with ONNX Runtime's telemetry policies",
       "dependencies": [
         {
-          "name": "curl",
+          "name": "cpp-client-telemetry",
           "default-features": false,
-          "features": [
-            "mbedtls"
-          ],
-          "platform": "linux"
+          "version>=": "3.10.281.1"
         },
         {
-          "name": "mbedtls",
-          "features": [
-            "pthreads"
-          ],
+          "$comment": "Select curl at the manifest root so vcpkg does not re-enable its default OpenSSL feature through the SDK's transitive dependency.",
+          "name": "curl",
+          "default-features": false,
+          "features": ["mbedtls"],
           "platform": "linux"
         }
       ]
     }
   },
   "overrides": [
+    {
+      "name": "cpp-client-telemetry",
+      "version": "3.10.281.1"
+    },
     {
       "name": "benchmark",
       "version": "1.9.5"
