@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 #include "core/providers/webgpu/nn/conv.h"
 #include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/nn/conv3d_naive.h"
 #include "core/providers/webgpu/nn/im2col_matmul.h"
+#include "core/providers/webgpu/nn/subgroup_matrix_conv.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/tensor/transpose.h"
@@ -27,7 +29,30 @@ Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const Tens
 }
 
 template <bool is_channels_last, bool is_fused>
+typename Conv<is_channels_last, is_fused>::ConvOptImpl*
+Conv<is_channels_last, is_fused>::ConvOptImplCache::GetOrCreate(
+    const Conv<is_channels_last, is_fused>& parent, const ComputeContextBase& context) {
+  std::call_once(init_flag_, [&]() {
+    impl_ = CreateSubgroupMatrixConvImpl(parent, context);
+  });
+  return impl_.get();
+}
+
+template <bool is_channels_last, bool is_fused>
 Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context) const {
+  // Preferred fast path on devices with a vendor subgroup-matrix tiling policy (see
+  // subgroup_matrix_conv.h). Created once on first use (it needs a device query), then
+  // it decides inside Compute whether the kernel/attrs qualify. It declines
+  // (handled=false, allocating nothing) otherwise and we fall through to the normal
+  // path order below.
+  if (ConvOptImpl* opt_impl = opt_impl_cache_.GetOrCreate(*this, context); opt_impl != nullptr) {
+    bool handled = false;
+    ORT_RETURN_IF_ERROR(opt_impl->Compute(context, handled));
+    if (handled) {
+      return Status::OK();
+    }
+  }
+
   bool has_bias = context.InputCount() > 2;
   const auto* input = context.Input<Tensor>(0);
   const Tensor* kernel = prepacked_kernel_ ? prepacked_kernel_.get() : context.Input<Tensor>(1);
@@ -322,6 +347,26 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
     return Status::OK();
   }
 
+  // Subgroup-matrix Conv path: it reads the weight in its original OIHW layout (it
+  // applies its own OIHW -> OHWI transpose at runtime to build the GEMM right
+  // operand), so the weight must not be prepacked at all.
+  //
+  // Must come before the Im2ColMatMul branch below: ComputeInternal tries the
+  // subgroup-matrix path first, and on the devices this path targets
+  // CanApplyIm2ColMatMulProgram() accepts the same problems. If im2col prepacked
+  // first, SubgroupMatrixConvImpl::Compute would see a non-null prepacked_kernel_ and
+  // decline on every constant-weight Conv -- i.e. the path would silently never run.
+  //
+  // Placed before the auto_pad check below for the same pads-independence reason as
+  // the im2col branch (see the comment there). Skipping the prepack here is always
+  // safe even if Compute() later declines for another reason: is_packed stays false,
+  // so input 1 stays in OIHW and every fallback path can still transpose it at
+  // runtime.
+  if (CanApplySubgroupMatrixConv(context, is_channels_last, kernel_shape,
+                                 onnxruntime::narrow<uint32_t>(conv_attrs_.group), tensor.DataType())) {
+    return Status::OK();
+  }
+
   // Im2ColMatMul path: transpose OIHW -> OHWI once here instead of on every inference.
   //
   // Placed before the auto_pad check below on purpose:
@@ -367,6 +412,7 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
 
   // Analyze execution paths in ComputeInternal to determine if kernel transpose is needed:
   //
+  // 0. Subgroup-matrix Conv path: handled above (not prepacked -- stays OIHW)
   // 1. Im2ColMatMul path: handled above (prepacked as OHWI)
   // 2. Grouped conv (group > 1): handled above (skip if !is_channels_last)
   // 3. MatMul optimization (same_size || is_1x1_conv):

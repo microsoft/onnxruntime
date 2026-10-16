@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <memory>
+#include <mutex>
+
 #include "core/common/optional.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
@@ -27,11 +30,36 @@ enum class KernelLayout {
 template <bool is_channels_last, bool is_fused>
 class Conv : public WebGpuKernel {
  public:
+  // Abstract base class for alternative optimized Conv implementations (currently the
+  // subgroup-matrix path). Implementations hold the parent Conv and read
+  // conv_attrs/activation/... from it, mirroring Gemm::GemmOptImpl.
+  class ConvOptImpl {
+   public:
+    explicit ConvOptImpl(const Conv& parent) : parent_(parent) {}
+    virtual ~ConvOptImpl() = default;
+
+    // Attempts the optimized path, reading the Conv operands from `context` and the
+    // Conv attributes from the parent. Sets handled=true when it ran; leaves
+    // handled=false (allocating nothing) so the caller falls back to the normal Conv
+    // path. Called before ComputeInternal has resolved auto_pad or allocated the
+    // output, so an implementation that needs those runs its own shape inference.
+    virtual Status Compute(ComputeContext& context, /*out*/ bool& handled) = 0;
+
+   protected:
+    const Conv& parent_;
+  };
+
   Conv(const OpKernelInfo& info) : WebGpuKernel(info), conv_attrs_(info) {
     if (is_fused) {
       // Throw the Status, not the expression: the message names the activation ORT_ENFORCE would drop.
       ORT_THROW_IF_ERROR(GetFusedActivationAttr(info, activation_));
     }
+    // Whether the weight input (index 1) is a constant initializer. An optimized
+    // implementation uses this to decide whether it may cache a derived form of the
+    // weight (e.g. a transposed copy) across Runs; a non-constant weight can change
+    // between Runs, so anything derived from it must be rebuilt every time.
+    const Tensor* w = nullptr;
+    w_is_constant_ = info.TryGetConstantInput(1, &w);
   }
   Status ComputeInternal(ComputeContext& context) const override;
 
@@ -40,6 +68,15 @@ class Conv : public WebGpuKernel {
                          int input_idx,
                          AllocatorPtr alloc,
                          /*out*/ bool& is_packed) override;
+
+  // State an optimized implementation (ConvOptImpl) reads from its parent Conv.
+  const ConvAttributes& ConvAttrs() const { return conv_attrs_; }
+  const Activation& ConvActivation() const { return activation_; }
+  // True when input 1 (the weight) is a constant initializer. See w_is_constant_.
+  bool IsWeightConstant() const { return w_is_constant_; }
+  // The prepacked weight, or null when it is not prepacked. Its layout is HWIO or OHWI,
+  // as reported by kernel_layout_.
+  const Tensor* PrepackedKernel() const { return prepacked_kernel_.get(); }
 
  protected:
   ConvAttributes conv_attrs_;
@@ -51,6 +88,30 @@ class Conv : public WebGpuKernel {
   // is set, otherwise input 1. Stays `OIHW` while `prepacked_kernel_` is null.
   KernelLayout kernel_layout_{KernelLayout::OIHW};
   mutable MatMulComputeDispatcher matmul_compute_dispatcher_;
+
+  bool w_is_constant_ = false;  // whether the weight input (index 1) is a constant initializer
+
+ private:
+  // Owns the alternative optimized implementation and builds it lazily: the impl
+  // needs device capabilities only reachable through a compute context (not the
+  // ctor), and the same Conv kernel can see concurrent Compute calls, so creation is
+  // guarded by call_once -- mirroring MatMulComputeDispatcher, except nested here
+  // because ConvOptImpl is itself nested in this template. A null impl after
+  // initialization means this device has no optimized path.
+  class ConvOptImplCache {
+   public:
+    ConvOptImplCache() = default;
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConvOptImplCache);
+
+    // Defined in conv.cc, not here: it calls into subgroup_matrix_conv.h, which
+    // includes this header, so the include can't go the other way.
+    ConvOptImpl* GetOrCreate(const Conv& parent, const ComputeContextBase& context);
+
+   private:
+    std::once_flag init_flag_;
+    std::unique_ptr<ConvOptImpl> impl_;
+  };
+  mutable ConvOptImplCache opt_impl_cache_;
 };
 
 Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const TensorShape& kernel_shape, Tensor* transposed_kernel, const InlinedVector<size_t>& perm);
