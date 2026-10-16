@@ -47,7 +47,13 @@ def expand_responses(command, directory):
 
 
 def link_command(command, output, map_path, replacement_archive=None):
-    command = [token for token in command if token not in ("-s", "-Wl,-s")]
+    command = [
+        token.split("=", 1)[0] + "=" + str(map_path.with_suffix(".d"))
+        if token.startswith(("--dependency-file=", "-Wl,--dependency-file="))
+        else token
+        for token in command
+        if token not in ("-s", "-Wl,-s")
+    ]
     command[command.index("-o") + 1] = str(output)
     if replacement_archive:
         indices = [i for i, token in enumerate(command) if pathlib.Path(token).name == "libonnxruntime_framework.a"]
@@ -55,6 +61,14 @@ def link_command(command, output, map_path, replacement_archive=None):
             raise ValueError("Expected exactly one framework archive in the expanded link command")
         command[indices[0]] = str(replacement_archive)
     return [*command, f"-Wl,-Map={map_path}"]
+
+
+def parse_link_command(text, directory):
+    # shlex does not remove the shell's double-quoted escape of '$'.
+    return [
+        token.replace(r"\$ORIGIN", "$ORIGIN") if token.startswith("-rpath=") else token
+        for token in expand_responses(shlex.split(text), directory)
+    ]
 
 
 def compile_command(command, source, output, original_source):
@@ -93,7 +107,7 @@ def main():
         raise ValueError(f"Base/candidate runtime inputs differ beyond the planner: {changed}")
 
     link_file = build / "CMakeFiles/onnxruntime.dir/link.txt"
-    original_link = expand_responses(shlex.split(link_file.read_text()), build)
+    original_link = parse_link_command(link_file.read_text(), build)
     if any(token in ("&&", ";", "|") for token in original_link):
         raise ValueError("Expected one compiler-driver link command, not a shell program")
     tools = pathlib.Path(original_link[0]).parent
@@ -149,9 +163,11 @@ def main():
         "original_compile": original_compile,
         "base_compile": baseline_compile,
         "original_link": original_link,
+        "original_artifacts_sha256": original_hashes,
         "original_library_sections": get_section_sizes(normal, str(tools / "llvm-readelf")),
         "variants": {},
     }
+    (out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     for variant, replacement in (("candidate", None), ("base", baseline_archive)):
         directory = out / variant
         directory.mkdir(exist_ok=True)
@@ -166,7 +182,14 @@ def main():
         stripped = directory / "libonnxruntime.stripped.so"
         run([str(tools / "llvm-strip"), "--strip-all", "-o", str(stripped), str(library)], build)
         sections = get_section_sizes(stripped, str(tools / "llvm-readelf"))
-        report["variants"][variant] = {"link": command, "sections": sections, "total": sum(sections.values())}
+        report["variants"][variant] = {
+            "link": command,
+            "sections": sections,
+            "total": sum(sections.values()),
+            "stripped_sha256": digest(stripped),
+            "unstripped_sha256": digest(library),
+        }
+        (out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     report["candidate_relink_sections_exact"] = (
         report["variants"]["candidate"]["sections"] == report["original_library_sections"]
     )
