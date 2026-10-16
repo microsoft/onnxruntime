@@ -759,15 +759,14 @@ Return Value:
     this->KVQuantGemmFp16Supported_ = true;
 
 #if defined(MLAS_USE_ARM_NEON_NCHWC)
-    // Use the AArch64 assembly implementation on non-Windows platforms.
-#if !defined(_WIN32)
+
     // Prefer the hand written micro-kernel for the NCHW convolution path. It
     // offers a tighter schedule and a specialised two-output inner loop that
     // reduces pressure on the memory system compared to the generic kernel.
+
+    // The armasm64 translation in arm64/SconvKernelNeon.asm makes this kernel
+    // available on Windows as well
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeonAsm;
-#else
-    this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeon;
-#endif
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
     this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeon;
@@ -909,14 +908,13 @@ Return Value:
 
     const bool HasI8MMInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM();
     if (HasI8MMInstructions) {
-#if defined(__linux__)
+#if defined(__linux__) || defined(_WIN32)
         //
-        // Hand-written GAS assembly (aarch64/Qgemm{S8S8KernelSmmla,
-        // U8X8KernelUmmla}.S): GAS-only, because armasm64 cannot encode i8mm
-        // mnemonics -- and those kernels also use x18, the reserved platform
-        // register, as a matrix-C row pointer. Off Linux the SVE svmmla
-        // dispatches below cover S8S8, U8S8 and U8U8 from portable frozen
-        // machine code, so nothing is lost.
+        // Hand-written assembly: the GAS kernels (aarch64/Qgemm{S8S8KernelSmmla,
+        // U8X8KernelUmmla}.S) use x18, the Windows reserved platform register, so
+        // Windows uses the armasm64 ports in arm64/ instead, which avoid x18.
+        // Elsewhere the SVE svmmla dispatches below cover S8S8, U8S8 and U8U8
+        // from portable frozen machine code.
         //
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUmmla;
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUmmla;
