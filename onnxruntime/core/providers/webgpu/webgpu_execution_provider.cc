@@ -631,7 +631,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
       weight_load_acceleration_mode_{config.weight_load_acceleration_mode},
 #endif
-      recording_{std::make_unique<webgpu::CommandRecordingState>(webgpu::CommandRecordingPhase::SessionInitialization)},
+      recording_{std::make_unique<webgpu::CommandRecordingState>()},
       prepack_allocator_{CreateWebGpuAllocator(
           context_id,
           /*device_free=*/!context.HasDevice(),
@@ -901,28 +901,7 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
   return profiler;
 }
 
-Status WebGpuExecutionProvider::OnSessionInitializationEnd() {
-  if (recording_->phase.load(std::memory_order_relaxed) != webgpu::CommandRecordingPhase::SessionInitialization) {
-    return Status::OK();
-  }
-  if (context_.HasDevice()) {
-    ORT_RETURN_IF_ERROR(context_.Flush(*recording_));
-  }
-  recording_->phase.store(webgpu::CommandRecordingPhase::SessionExecution, std::memory_order_relaxed);
-  if (context_.HasDevice()) {
-    // Drain releases racing with the phase transition; subsequent initializer frees release directly.
-    context_.InitializerBufferManager().RefreshPendingBuffers(*recording_, webgpu::GraphCaptureState::Default);
-  }
-  return Status::OK();
-}
-
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
-  // Older plugin hosts do not forward the initialization-end callback.
-  ORT_RETURN_IF_ERROR(OnSessionInitializationEnd());
-  // Drain pre-run copies and idle cache releases before switching to a graph pool.
-  if (IsGraphCaptureEnabled() || recording_->has_unsubmitted_work.load(std::memory_order_relaxed)) {
-    ORT_RETURN_IF_ERROR(context_.Flush(*recording_));
-  }
 #if defined(ORT_USE_EP_API_ADAPTERS)
   const bool serialized = webgpu::ep::UseSerializedExecutionMode();
   if (serialized) {
@@ -1081,8 +1060,7 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync
 #endif
   // The sync parameter is ignored: WebGPU EP always replays synchronously.
   ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
-  if (recording_->buffer_manager == nullptr ||
-      recording_->has_unsubmitted_work.load(std::memory_order_relaxed)) {
+  if (recording_->has_unsubmitted_work.load(std::memory_order_relaxed)) {
     ORT_RETURN_IF_ERROR(context_.Flush(*recording_));
   }
   const auto* previous_buffer_manager = recording_->buffer_manager;
