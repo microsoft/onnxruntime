@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/framework/allocation_planner.h"
+#include "core/framework/allocation_planner_reuse_index.h"
 #include <charconv>
-#include <map>
 #include <vector>
 #include <algorithm>
 #include <deque>
@@ -221,9 +221,7 @@ class PlannerImpl {
   // ort_value_info_ is indexed by an OrtValueIndex
   std::vector<OrtValueInfo> ort_value_info_;
 
-  // Share existing tree primitives while bounding bucket lookup to O(log B).
-  // Per-value links preserve LIFO; collisions still use the full predicate.
-  std::map<size_t, size_t> freelists_;
+  allocation_planner_internal::FreeBufferIndex freelists_;
 
   OrtValueIndex Index(const OrtValueName& name) {
     OrtValueIndex result;
@@ -602,10 +600,10 @@ class PlannerImpl {
     const auto* shape = context_->GetShape(*arg);
     if (!shape) return;
     if (auto key = GetReuseKey(*arg, *shape)) {
-      auto [bucket, inserted] = freelists_.try_emplace(*key, static_cast<size_t>(value));
+      auto& head = freelists_.GetOrCreate(*key);
       ort_value_info_[value].next_free_buffer =
-          inserted ? -1 : static_cast<OrtValueIndex>(bucket->second);
-      bucket->second = static_cast<size_t>(value);
+          head ? static_cast<OrtValueIndex>(*head) : -1;
+      head = static_cast<size_t>(value);
     }
   }
 
@@ -618,12 +616,12 @@ class PlannerImpl {
     if (nullptr == p_required_buffer_shape || p_required_buffer_shape->dim_size() == 0) return false;
     auto key = GetReuseKey(output_arg, *p_required_buffer_shape);
     if (!key) return false;
-    auto bucket = freelists_.find(*key);
-    if (bucket == freelists_.end()) return false;
+    auto* head = freelists_.Find(*key);
+    if (head == nullptr || !*head) return false;
     auto& required_memory_info = AllocPlan(output_arg.Name()).location;
 
     OrtValueIndex previous = -1;
-    for (auto value = static_cast<OrtValueIndex>(bucket->second); value != -1;
+    for (auto value = static_cast<OrtValueIndex>(**head); value != -1;
          previous = value, value = ort_value_info_[value].next_free_buffer) {
       size_t reusable = static_cast<size_t>(value);
       const onnxruntime::NodeArg* p_node_arg = ort_value_info_.at(reusable).p_def_site;
@@ -652,9 +650,9 @@ class PlannerImpl {
           if (previous != -1) {
             ort_value_info_[previous].next_free_buffer = next;
           } else if (next != -1) {
-            bucket->second = static_cast<size_t>(next);
+            *head = static_cast<size_t>(next);
           } else {
-            freelists_.erase(bucket);
+            head->reset();
           }
           return true;
         }
