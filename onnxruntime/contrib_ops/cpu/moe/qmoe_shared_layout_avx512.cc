@@ -218,27 +218,40 @@ void Fp4Group8Avx512(const uint8_t* w_base, const uint8_t* s_base, const __m512 
   const __m128i mask128 = _mm_set1_epi8(0x0F);
   const __m128i hi_blk = _mm_set_epi64x(0x1010101010101010ULL, 0ULL);
 
-  __m512 acc[8][RT];
-  for (int c = 0; c < 8; ++c) {
-    for (int r = 0; r < RT; ++r) {
-      acc[c][r] = _mm512_setzero_ps();
-    }
-  }
+  __m512 acc0_0 = _mm512_setzero_ps(), acc0_1 = _mm512_setzero_ps(), acc0_2 = _mm512_setzero_ps(), acc0_3 = _mm512_setzero_ps();
+  __m512 acc1_0 = _mm512_setzero_ps(), acc1_1 = _mm512_setzero_ps(), acc1_2 = _mm512_setzero_ps(), acc1_3 = _mm512_setzero_ps();
+  __m512 acc2_0 = _mm512_setzero_ps(), acc2_1 = _mm512_setzero_ps(), acc2_2 = _mm512_setzero_ps(), acc2_3 = _mm512_setzero_ps();
+  __m512 acc3_0 = _mm512_setzero_ps(), acc3_1 = _mm512_setzero_ps(), acc3_2 = _mm512_setzero_ps(), acc3_3 = _mm512_setzero_ps();
+  __m512 acc4_0 = _mm512_setzero_ps(), acc4_1 = _mm512_setzero_ps(), acc4_2 = _mm512_setzero_ps(), acc4_3 = _mm512_setzero_ps();
+  __m512 acc5_0 = _mm512_setzero_ps(), acc5_1 = _mm512_setzero_ps(), acc5_2 = _mm512_setzero_ps(), acc5_3 = _mm512_setzero_ps();
+  __m512 acc6_0 = _mm512_setzero_ps(), acc6_1 = _mm512_setzero_ps(), acc6_2 = _mm512_setzero_ps(), acc6_3 = _mm512_setzero_ps();
+  __m512 acc7_0 = _mm512_setzero_ps(), acc7_1 = _mm512_setzero_ps(), acc7_2 = _mm512_setzero_ps(), acc7_3 = _mm512_setzero_ps();
 
   const uint8_t* w_rows[8];
   const uint8_t* s_rows[8];
+#pragma GCC unroll 8
   for (int c = 0; c < 8; ++c) {
     w_rows[c] = w_base + c * w_stride;
     s_rows[c] = s_base + c * s_stride;
   }
 
   for (int64_t kp = 0; kp < k_pairs; ++kp) {
-    __m512 al[RT], ah[RT];
-    for (int r = 0; r < RT; ++r) {
-      al[r] = _mm512_loadu_ps(a_reordered + r * k + kp * 32);
-      ah[r] = _mm512_loadu_ps(a_reordered + r * k + kp * 32 + 16);
+    const __m512 al0 = _mm512_loadu_ps(a_reordered + 0 * k + kp * 32);
+    const __m512 ah0 = _mm512_loadu_ps(a_reordered + 0 * k + kp * 32 + 16);
+    __m512 al1, ah1, al2, ah2, al3, ah3;
+    if constexpr (RT >= 2) {
+      al1 = _mm512_loadu_ps(a_reordered + 1 * k + kp * 32);
+      ah1 = _mm512_loadu_ps(a_reordered + 1 * k + kp * 32 + 16);
     }
-    for (int c = 0; c < 8; ++c) {
+    if constexpr (RT >= 3) {
+      al2 = _mm512_loadu_ps(a_reordered + 2 * k + kp * 32);
+      ah2 = _mm512_loadu_ps(a_reordered + 2 * k + kp * 32 + 16);
+    }
+    if constexpr (RT >= 4) {
+      al3 = _mm512_loadu_ps(a_reordered + 3 * k + kp * 32);
+      ah3 = _mm512_loadu_ps(a_reordered + 3 * k + kp * 32 + 16);
+    }
+    auto step_col = [&](int c, __m512& a0, __m512& a1, __m512& a2, __m512& a3) __attribute__((always_inline)) {
       const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(w_rows[c] + kp * 16));
       __m512 wls, whs;
       if constexpr (IsMxfp4) {
@@ -255,14 +268,34 @@ void Fp4Group8Avx512(const uint8_t* w_base, const uint8_t* s_base, const __m512 
         wls = _mm512_permutex2var_ps(lut0, _mm512_cvtepu8_epi32(lo), lut1);
         whs = _mm512_permutex2var_ps(lut0, _mm512_cvtepu8_epi32(hi), lut1);
       }
-      for (int r = 0; r < RT; ++r) {
-        acc[c][r] = _mm512_fmadd_ps(wls, al[r], _mm512_fmadd_ps(whs, ah[r], acc[c][r]));
-      }
-    }
+      a0 = _mm512_fmadd_ps(wls, al0, _mm512_fmadd_ps(whs, ah0, a0));
+      if constexpr (RT >= 2) a1 = _mm512_fmadd_ps(wls, al1, _mm512_fmadd_ps(whs, ah1, a1));
+      if constexpr (RT >= 3) a2 = _mm512_fmadd_ps(wls, al2, _mm512_fmadd_ps(whs, ah2, a2));
+      if constexpr (RT >= 4) a3 = _mm512_fmadd_ps(wls, al3, _mm512_fmadd_ps(whs, ah3, a3));
+    };
+    step_col(0, acc0_0, acc0_1, acc0_2, acc0_3);
+    step_col(1, acc1_0, acc1_1, acc1_2, acc1_3);
+    step_col(2, acc2_0, acc2_1, acc2_2, acc2_3);
+    step_col(3, acc3_0, acc3_1, acc3_2, acc3_3);
+    step_col(4, acc4_0, acc4_1, acc4_2, acc4_3);
+    step_col(5, acc5_0, acc5_1, acc5_2, acc5_3);
+    step_col(6, acc6_0, acc6_1, acc6_2, acc6_3);
+    step_col(7, acc7_0, acc7_1, acc7_2, acc7_3);
   }
-  for (int c = 0; c < 8; ++c)
-    for (int r = 0; r < RT; ++r)
-      result[c][r] = _mm512_reduce_add_ps(acc[c][r]);
+  auto store_col = [&](int c, __m512 a0, __m512 a1, __m512 a2, __m512 a3) __attribute__((always_inline)) {
+    result[c][0] = _mm512_reduce_add_ps(a0);
+    if constexpr (RT >= 2) result[c][1] = _mm512_reduce_add_ps(a1);
+    if constexpr (RT >= 3) result[c][2] = _mm512_reduce_add_ps(a2);
+    if constexpr (RT >= 4) result[c][3] = _mm512_reduce_add_ps(a3);
+  };
+  store_col(0, acc0_0, acc0_1, acc0_2, acc0_3);
+  store_col(1, acc1_0, acc1_1, acc1_2, acc1_3);
+  store_col(2, acc2_0, acc2_1, acc2_2, acc2_3);
+  store_col(3, acc3_0, acc3_1, acc3_2, acc3_3);
+  store_col(4, acc4_0, acc4_1, acc4_2, acc4_3);
+  store_col(5, acc5_0, acc5_1, acc5_2, acc5_3);
+  store_col(6, acc6_0, acc6_1, acc6_2, acc6_3);
+  store_col(7, acc7_0, acc7_1, acc7_2, acc7_3);
 }
 
 template <int RT, bool IsMxfp4>
@@ -274,23 +307,31 @@ void Fp4Group4Avx512(const uint8_t* w_base, const uint8_t* s_base, const __m512 
   const __m128i mask128 = _mm_set1_epi8(0x0F);
   const __m128i hi_blk = _mm_set_epi64x(0x1010101010101010ULL, 0ULL);
 
-  __m512 acc[4][RT];
-  for (int c = 0; c < 4; ++c) {
-    for (int r = 0; r < RT; ++r) {
-      acc[c][r] = _mm512_setzero_ps();
-    }
-  }
+  __m512 acc0_0 = _mm512_setzero_ps(), acc0_1 = _mm512_setzero_ps(), acc0_2 = _mm512_setzero_ps(), acc0_3 = _mm512_setzero_ps();
+  __m512 acc1_0 = _mm512_setzero_ps(), acc1_1 = _mm512_setzero_ps(), acc1_2 = _mm512_setzero_ps(), acc1_3 = _mm512_setzero_ps();
+  __m512 acc2_0 = _mm512_setzero_ps(), acc2_1 = _mm512_setzero_ps(), acc2_2 = _mm512_setzero_ps(), acc2_3 = _mm512_setzero_ps();
+  __m512 acc3_0 = _mm512_setzero_ps(), acc3_1 = _mm512_setzero_ps(), acc3_2 = _mm512_setzero_ps(), acc3_3 = _mm512_setzero_ps();
 
   const uint8_t* w_rows[4] = {w_base, w_base + w_stride, w_base + 2 * w_stride, w_base + 3 * w_stride};
   const uint8_t* s_rows[4] = {s_base, s_base + s_stride, s_base + 2 * s_stride, s_base + 3 * s_stride};
 
   for (int64_t kp = 0; kp < k_pairs; ++kp) {
-    __m512 al[RT], ah[RT];
-    for (int r = 0; r < RT; ++r) {
-      al[r] = _mm512_loadu_ps(a_reordered + r * k + kp * 32);
-      ah[r] = _mm512_loadu_ps(a_reordered + r * k + kp * 32 + 16);
+    const __m512 al0 = _mm512_loadu_ps(a_reordered + 0 * k + kp * 32);
+    const __m512 ah0 = _mm512_loadu_ps(a_reordered + 0 * k + kp * 32 + 16);
+    __m512 al1, ah1, al2, ah2, al3, ah3;
+    if constexpr (RT >= 2) {
+      al1 = _mm512_loadu_ps(a_reordered + 1 * k + kp * 32);
+      ah1 = _mm512_loadu_ps(a_reordered + 1 * k + kp * 32 + 16);
     }
-    for (int c = 0; c < 4; ++c) {
+    if constexpr (RT >= 3) {
+      al2 = _mm512_loadu_ps(a_reordered + 2 * k + kp * 32);
+      ah2 = _mm512_loadu_ps(a_reordered + 2 * k + kp * 32 + 16);
+    }
+    if constexpr (RT >= 4) {
+      al3 = _mm512_loadu_ps(a_reordered + 3 * k + kp * 32);
+      ah3 = _mm512_loadu_ps(a_reordered + 3 * k + kp * 32 + 16);
+    }
+    auto step_col = [&](int c, __m512& a0, __m512& a1, __m512& a2, __m512& a3) __attribute__((always_inline)) {
       const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(w_rows[c] + kp * 16));
       __m512 wls, whs;
       if constexpr (IsMxfp4) {
@@ -307,14 +348,39 @@ void Fp4Group4Avx512(const uint8_t* w_base, const uint8_t* s_base, const __m512 
         wls = _mm512_permutex2var_ps(lut0, _mm512_cvtepu8_epi32(lo), lut1);
         whs = _mm512_permutex2var_ps(lut0, _mm512_cvtepu8_epi32(hi), lut1);
       }
-      for (int r = 0; r < RT; ++r) {
-        acc[c][r] = _mm512_fmadd_ps(wls, al[r], _mm512_fmadd_ps(whs, ah[r], acc[c][r]));
-      }
-    }
+      a0 = _mm512_fmadd_ps(wls, al0, _mm512_fmadd_ps(whs, ah0, a0));
+      if constexpr (RT >= 2) a1 = _mm512_fmadd_ps(wls, al1, _mm512_fmadd_ps(whs, ah1, a1));
+      if constexpr (RT >= 3) a2 = _mm512_fmadd_ps(wls, al2, _mm512_fmadd_ps(whs, ah2, a2));
+      if constexpr (RT >= 4) a3 = _mm512_fmadd_ps(wls, al3, _mm512_fmadd_ps(whs, ah3, a3));
+    };
+    step_col(0, acc0_0, acc0_1, acc0_2, acc0_3);
+    step_col(1, acc1_0, acc1_1, acc1_2, acc1_3);
+    step_col(2, acc2_0, acc2_1, acc2_2, acc2_3);
+    step_col(3, acc3_0, acc3_1, acc3_2, acc3_3);
   }
-  for (int c = 0; c < 4; ++c)
-    for (int r = 0; r < RT; ++r)
-      result[c][r] = _mm512_reduce_add_ps(acc[c][r]);
+  auto store_col = [&](int c, __m512 a0, __m512 a1, __m512 a2, __m512 a3) __attribute__((always_inline)) {
+    result[c][0] = _mm512_reduce_add_ps(a0);
+    if constexpr (RT >= 2) result[c][1] = _mm512_reduce_add_ps(a1);
+    if constexpr (RT >= 3) result[c][2] = _mm512_reduce_add_ps(a2);
+    if constexpr (RT >= 4) result[c][3] = _mm512_reduce_add_ps(a3);
+  };
+  store_col(0, acc0_0, acc0_1, acc0_2, acc0_3);
+  store_col(1, acc1_0, acc1_1, acc1_2, acc1_3);
+  store_col(2, acc2_0, acc2_1, acc2_2, acc2_3);
+  store_col(3, acc3_0, acc3_1, acc3_2, acc3_3);
+}
+
+inline int GetFp4Group8Mask() noexcept {
+  static const int mask = []() {
+    const char* env = std::getenv("ORT_QMOE_FP4_GROUP8_MASK");
+    if (env != nullptr && *env != '\0') {
+      return static_cast<int>(std::strtol(env, nullptr, 0)) & 0xF;
+    }
+    // Default to Group4 (0x0) across RT=1..4: eliminates 32-ZMM register spills at RT=3,4
+    // and keeps 4 weight + 4 scale streams within the L1D hardware prefetcher and 48 KiB L1D cache.
+    return 0x0;
+  }();
+  return mask;
 }
 
 template <int RT, bool IsMxfp4>
@@ -326,15 +392,17 @@ void Fp4RowTileAvx512(const uint8_t* weights, const uint8_t* block_scales, float
   const int64_t s_stride = IsMxfp4 ? (k / 32) : (k / 16);
   int64_t n0 = n_begin;
   if constexpr (RT <= 4) {
-    for (; n0 + 8 <= n_end; n0 += 8) {
-      float result8[8][RT];
-      Fp4Group8Avx512<RT, IsMxfp4>(weights + n0 * w_stride, block_scales + n0 * s_stride, lut_2d, k, a_reordered,
-                                   result8);
-      for (int c = 0; c < 8; ++c) {
-        const float b = (bias != nullptr)
-                            ? (bias_is_bf16 ? BFloat16ToFloat(bias[n0 + c]) : Avx512HalfBitsToFloat(bias[n0 + c]))
-                            : 0.0f;
-        for (int r = 0; r < RT; ++r) out[r * out_stride + (n0 + c - n_begin)] = result8[c][r] + b;
+    if ((GetFp4Group8Mask() & (1 << (RT - 1))) != 0) {
+      for (; n0 + 8 <= n_end; n0 += 8) {
+        float result8[8][RT];
+        Fp4Group8Avx512<RT, IsMxfp4>(weights + n0 * w_stride, block_scales + n0 * s_stride, lut_2d, k, a_reordered,
+                                     result8);
+        for (int c = 0; c < 8; ++c) {
+          const float b = (bias != nullptr)
+                              ? (bias_is_bf16 ? BFloat16ToFloat(bias[n0 + c]) : Avx512HalfBitsToFloat(bias[n0 + c]))
+                              : 0.0f;
+          for (int r = 0; r < RT; ++r) out[r * out_stride + (n0 + c - n_begin)] = result8[c][r] + b;
+        }
       }
     }
   }

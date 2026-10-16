@@ -168,6 +168,10 @@ struct QMoEOffload::CpuWork {
     size_t first;
     int count;
   };
+  struct alignas(64) PaddedAtomicInt {
+    std::atomic<int> value{0};
+  };
+  static constexpr size_t kMaxGroupSlots = 64;
   InlinedVector<float> reordered;
   InlinedVector<float> intermediate;
   InlinedVector<float> result;
@@ -176,6 +180,9 @@ struct QMoEOffload::CpuWork {
   InlinedVector<char> token_ready;
   InlinedVector<InlinedVector<int>> expert_routes;
   InlinedVector<ExpertCall> calls;
+  std::unique_ptr<PaddedAtomicInt[]> fc1_done = std::make_unique<PaddedAtomicInt[]>(kMaxGroupSlots);
+  std::array<const float*, kMaxGroupSlots> slot_act_in{};
+  std::array<qmoe_shared::Nvfp4ExpertView, kMaxGroupSlots> slot_view{};
 
   CpuWork(int group_calls, int num_experts, int hidden_size, int inter_size)
       : reordered(static_cast<size_t>(SafeInt<size_t>(group_calls) * qmoe_shared::kMaxRowsPerCall * hidden_size)),
@@ -3169,6 +3176,10 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
 
   std::vector<qmoe_shared::ExpertBlockLease> group_ssd_leases;
   if (use_ssd) group_ssd_leases.resize(group_calls);
+  static const bool per_expert_ready = []() {
+    const char* env = std::getenv("ORT_QMOE_PER_EXPERT_READY");
+    return env == nullptr || std::strcmp(env, "0") != 0;
+  }();
 
   for (size_t first_call = 0; first_call < calls.size(); first_call += group_calls) {
     const auto t_prep = timed ? now() : std::chrono::steady_clock::time_point{};
@@ -3200,22 +3211,30 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
                       static_cast<size_t>(hidden_size_) * sizeof(float));
         }
       }
+      if (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots) {
+        work.fc1_done[slot].value.store(0, std::memory_order_relaxed);
+        work.slot_act_in[slot] = contiguous_tokens
+                                     ? (work.token_rows.data() + static_cast<size_t>(t0) * hidden_size_)
+                                     : (work.reordered.data() + slot * call_rows * hidden_size_);
+        if (nvfp4_mode_) {
+          work.slot_view[slot] = make_nvfp4_view(group[slot].expert, use_ssd ? group_ssd_leases[slot].data : nullptr);
+        }
+      }
     }
     const auto t_fc1 = timed ? now() : std::chrono::steady_clock::time_point{};
     auto fc1_task = [&](ptrdiff_t task) {
       const int slot = static_cast<int>(task) / fc1_tasks;
       const int begin = (static_cast<int>(task) % fc1_tasks) * fc1_cols_;
       const int end = std::min(begin + fc1_cols_, 2 * inter_size_);
-      const auto& assignments = expert_routes[group[slot].expert];
       const int cnt = group[slot].count;
-      const int t0 = assignments[group[slot].first] / static_cast<int>(k_);
-      const bool contiguous_tokens = is_contiguous_token_range(assignments, group[slot].first, cnt, t0);
-      const float* act_in = contiguous_tokens
-                                ? (work.token_rows.data() + static_cast<size_t>(t0) * hidden_size_)
+      const float* act_in = (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots)
+                                ? work.slot_act_in[slot]
                                 : (work.reordered.data() + slot * call_rows * hidden_size_);
       const uint8_t* ssd_blk = use_ssd ? group_ssd_leases[slot].data : nullptr;
       if (nvfp4_mode_) {
-        const auto view = make_nvfp4_view(group[slot].expert, ssd_blk);
+        const auto view = (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots)
+                              ? work.slot_view[slot]
+                              : make_nvfp4_view(group[slot].expert, ssd_blk);
         qmoe_shared::Nvfp4Fc1SwiGluRange(
             hidden_size_, inter_size_, view, act_in,
             cnt, activation, work.intermediate.data() + slot * call_rows * inter_size_,
@@ -3232,15 +3251,15 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
                                     false, cpu_fp16_boundaries_);
       }
     };
-    run_parallel(static_cast<ptrdiff_t>(group_size) * fc1_tasks, fc1_task);
-    const auto t_fc2 = timed ? now() : std::chrono::steady_clock::time_point{};
     auto fc2_task = [&](ptrdiff_t task) {
       const int slot = static_cast<int>(task) / fc2_tasks;
       const int begin = (static_cast<int>(task) % fc2_tasks) * fc2_cols_;
       const int end = std::min(begin + fc2_cols_, hidden_size_);
       const uint8_t* ssd_blk = use_ssd ? group_ssd_leases[slot].data : nullptr;
       if (nvfp4_mode_) {
-        const auto view = make_nvfp4_view(group[slot].expert, ssd_blk);
+        const auto view = (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots)
+                              ? work.slot_view[slot]
+                              : make_nvfp4_view(group[slot].expert, ssd_blk);
         qmoe_shared::Nvfp4Fc2Range(
             hidden_size_, inter_size_, view, work.intermediate.data() + slot * call_rows * inter_size_,
             group[slot].count, work.result.data() + slot * call_rows * hidden_size_,
@@ -3268,7 +3287,34 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
         }
       }
     };
-    run_parallel(static_cast<ptrdiff_t>(group_size) * fc2_tasks, fc2_task);
+    std::chrono::steady_clock::time_point t_fc2{};
+    const ptrdiff_t total_fc1 = static_cast<ptrdiff_t>(group_size) * fc1_tasks;
+    const ptrdiff_t total_fc2 = static_cast<ptrdiff_t>(group_size) * fc2_tasks;
+    if (per_expert_ready && static_cast<size_t>(group_size) <= CpuWork::kMaxGroupSlots && !timed) {
+      auto fused_task = [&](ptrdiff_t task) {
+        if (task < total_fc1) {
+          const int slot = static_cast<int>(task) / fc1_tasks;
+          fc1_task(task);
+          work.fc1_done[slot].value.fetch_add(1, std::memory_order_release);
+        } else {
+          const ptrdiff_t fc2_idx = task - total_fc1;
+          const int slot = static_cast<int>(fc2_idx) / fc2_tasks;
+          while (work.fc1_done[slot].value.load(std::memory_order_acquire) < fc1_tasks) {
+#if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))
+            _mm_pause();
+#elif defined(__x86_64__) || defined(__i386__)
+            __builtin_ia32_pause();
+#endif
+          }
+          fc2_task(fc2_idx);
+        }
+      };
+      run_parallel(total_fc1 + total_fc2, fused_task);
+    } else {
+      run_parallel(total_fc1, fc1_task);
+      t_fc2 = timed ? now() : std::chrono::steady_clock::time_point{};
+      run_parallel(total_fc2, fc2_task);
+    }
     if (use_ssd) {
       for (int slot = 0; slot < group_size; ++slot) {
         file_expert_store_.ReleaseLease(group[slot].expert);
