@@ -190,7 +190,7 @@ split-reduce threshold):
 `ApplyFlashAttention` consult one shared predicate:
 
 ```cpp
-bool ShouldRunFusedPagedPrefill(context, is_fp16, max_seqlen_q,
+bool CanApplyFlashAttentionPagedPrefill(context, is_fp16, max_seqlen_q,
                                 head_size, block_size);
 ```
 
@@ -230,7 +230,7 @@ a padded BSNH scratch:
   `[token_count, 1, N, H]` view plus `cumulative_seqlens_q`; the fused
   paged-prefill shader reads Q rows through `q_row = cumulative_seqlens_q[b]
   + q_idx` (`q_varlen` template variant). Only safe when
-  `ShouldRunFusedPagedPrefill` returns true.
+  `CanApplyFlashAttentionPagedPrefill` returns true.
 
 Skipping unpack + repack removes two dispatches (~300–500 µs of CPU
 dispatch cost per Run on D3D12) plus the padded scratch allocation
@@ -242,7 +242,7 @@ Two full paged K/V reads plus two contiguous K/V writes per layer per step
 (gather), Q/output shuffles proportional to `token_count`, and a scratch
 allocation of `2 * B * kv_num_heads * max_kv_len * head_size + B *
 max_seqlen_q * hidden_size` bytes. Fallback is exercised on configurations
-that `ShouldRunFusedPagedPrefill` rejects (fp32, `head_size > 256`, or
+that `CanApplyFlashAttentionPagedPrefill` rejects (fp32, `head_size > 256`, or
 `block_size < max_k_step`); direct paged paths cover the common case on
 every WebGPU adapter.
 
@@ -355,7 +355,7 @@ preserving the single-kernel prefill algorithm and workgroup Q tiling of
 `FlashAttentionProgram`. It supports fp16, both BSNH Q and packed varlen Q
 (`q_varlen` template variant), variable-Q-length causal masking via
 `seqlen_k` + `seqlens_q`, and no attention bias / head sink / TurboQuant.
-`ShouldRunFusedPagedPrefill` (see §4.3) is the shared selection gate.
+`CanApplyFlashAttentionPagedPrefill` (see §4.3) is the shared selection gate.
 Measured wins on the microbench matrix vs. the #31611 gather-then-flash
 cascade: **1.01×–1.25×** on uniform prefill (geomean ~1.13×) and
 **1.14×–1.73×** on varlen prefill (geomean ~1.29×).
@@ -453,7 +453,7 @@ onnxruntime/contrib_ops/webgpu/bert/
 The direct paged decode / fused paged prefill programs are declared in
 `flash_attention.h` alongside the dense-FA programs so they can share the
 same `ApplyFlashAttention` dispatch surface, adapter cache hints, and
-`ShouldRunFusedPagedPrefill` selection helper.
+`CanApplyFlashAttentionPagedPrefill` selection helper.
 
 Shared helper (already exists on CUDA, refactor location in Phase 1):
 
@@ -503,7 +503,7 @@ ComputeInternal:
 
   # Route selection:
   use_direct_paged_decode   = (max_seqlen_q  < 32)
-  use_direct_paged_prefill  = ShouldRunFusedPagedPrefill(context, is_fp16,
+  use_direct_paged_prefill  = CanApplyFlashAttentionPagedPrefill(context, is_fp16,
                                                         max_seqlen_q,
                                                         head_size, block_size)
   use_direct_paged_attention = use_direct_paged_decode or use_direct_paged_prefill
@@ -529,7 +529,7 @@ ComputeInternal:
       ApplyFlashAttention() on paged cache directly (no gather)
       RunRepackOutput()
 
-  # (b) Fallback (rejected by ShouldRunFusedPagedPrefill, e.g. fp32,
+  # (b) Fallback (rejected by CanApplyFlashAttentionPagedPrefill, e.g. fp32,
   #     head_size > 256, or block_size < max_k_step):
   else:
     RunGatherKV()          # -> [B, kv_num_heads, max_kv_len, head_size]
@@ -571,7 +571,7 @@ Feature guards (v1 rejects with `NOT_IMPLEMENTED` and a specific message):
 | WebGPU graph capture forbids host-visible reads mid-graph. | Consume `attention_metadata` (Phase 2) instead of D→H syncing `cumulative_seqlens_q`. |
 | Subgroup width varies (16 Intel, 32 NV/AMD, 64 Qualcomm/Apple). | For the dense `FlashAttentionProgram` the `is_qualcomm`/`is_nvidia`/`is_apple`/`has_subgroups` cache-hint knobs select between shm and subgroup-shuffle variants. The paged prefill / paged decode shaders use no subgroup intrinsics (they run on every adapter that satisfies the dtype/shm-budget/alignment gates), so they do not need those knobs. |
 | WGSL forbids mixed `i32 + u32` arithmetic. `cumulative_seqlens_q` is stored as `array<i32>` but the row index is `u32`; tint reports the resolution failure as an opaque `absl::…raw_hash_map<>::at` at runtime. | Cast the storage-buffer element to `u32` before the addition (`u32(cumulative_seqlens_q[b]) + q_idx`). Applies in both the fused prefill shader's `loadq` and `writeo`. |
-| Fused paged prefill assumes one K/V tile lives entirely inside a single paged block, so both `loadk` and `loadv` do one `block_table` lookup per tile. `paged_attention_helper` only enforces `block_size >= 16` (power-of-two), so `block_size = 16` combined with fp16 `head_size <= 128` (`max_k_step = 32`) would splice into a physically-adjacent block that need not be the next entry in `block_table`. | `ShouldRunFusedPagedPrefill` rejects `block_size < max_k_step`; callers fall back to gather-then-flash. Both values are powers of two ≥ 16, so `>=` implies alignment. |
+| Fused paged prefill assumes one K/V tile lives entirely inside a single paged block, so both `loadk` and `loadv` do one `block_table` lookup per tile. `paged_attention_helper` only enforces `block_size >= 16` (power-of-two), so `block_size = 16` combined with fp16 `head_size <= 128` (`max_k_step = 32`) would splice into a physically-adjacent block that need not be the next entry in `block_table`. | `CanApplyFlashAttentionPagedPrefill` rejects `block_size < max_k_step`; callers fall back to gather-then-flash. Both values are powers of two ≥ 16, so `>=` implies alignment. |
 
 ---
 

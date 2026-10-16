@@ -71,6 +71,14 @@ class ModelCompilationOptions {
   void SetOutputModelExternalInitializersFile(const std::filesystem::path& external_initializers_path,
                                               size_t external_initializer_size_threshold);
 
+  void SetOutputModelExternalInitializersBuffer(const std::filesystem::path& logical_file_name,
+                                                size_t external_initializer_size_threshold,
+                                                onnxruntime::AllocatorPtr allocator,
+                                                void** output_buffer_ptr,
+                                                size_t* output_buffer_size_ptr);
+
+  void SetOutputModelExternalInitializersAlignment(size_t alignment, size_t minimum_size);
+
   /// <summary>
   /// Sets a pointer to the buffer that will contained the output/compiled ONNX model bytes.
   /// Overrides any previous call to SetOutputModelPath() or SetOutputModelBuffer().
@@ -228,9 +236,9 @@ class ModelCompilationOptions {
   bool GetEmbedEpContextForTelemetry() const;
 
   /// <summary>
-  /// Returns whether external initializers file is configured.
+  /// Returns whether external initializers are written to a file, buffer, or custom handler.
   /// </summary>
-  /// <returns>True if external initializers file is configured</returns>
+  /// <returns>True if an external initializers destination is configured</returns>
   bool HasExternalInitializersFileForTelemetry() const;
 
  private:

@@ -416,6 +416,13 @@ static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMin
 static const char* const kOrtSessionOptionsModelExternalInitializersFileFolderPath =
     "session.model_external_initializers_file_folder_path";
 
+// Use buffers supplied through AddExternalInitializersFromFilesInMemory directly for eligible main-graph initializers.
+// The application must keep each buffer unchanged and alive until all sessions created from the options are released.
+// "0": Copy initializer data during session creation. [DEFAULT]
+// "1": Borrow naturally aligned, native-endian initializer slices and copy other slices.
+static const char* const kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly =
+    "session.use_external_initializer_file_buffers_directly";
+
 // Use this config when saving pre-packed constant initializers to an external data file.
 // This allows you to memory map pre-packed initializers on model load and leave it to
 // to the OS the amount of memory consumed by the pre-packed initializers. Otherwise,
@@ -483,13 +490,16 @@ static const char* const kOrtSessionOptionsCudaFpAIntBGemvPairedK = "ep.cuda.fpa
 /// Opt in with "1" to wave-aware fp16/int4 M=8 GEMV tiles on sm_12x; "0" or unset keeps the default dispatch.
 static const char* const kOrtSessionOptionsCudaFpAIntBGemvWaveAware = "ep.cuda.fpa_intb_gemv_wave_aware";
 
-/// Reserved total KV-length envelope (accumulated past + current tokens) for CUDA
-/// GroupQueryAttention workspace estimation. Currently reader-only: the value is validated and
-/// forwarded to the Level-1 estimator but is not consumed, so it does not change workspace
-/// estimates or partitioning. Non-windowed estimation remains unavailable.
-/// A nonnegative decimal int64 is required; "0" or unset (default) means unspecified.
-/// Negative, malformed, or overflowing explicit values cause INVALID_ARGUMENT when creating
-/// resource accountants. This is not a runtime-enforced input limit or a no-OOM guarantee.
+/// Declared total KV-length envelope (accumulated past + current tokens) for CUDA
+/// GroupQueryAttention workspace estimation. A positive value enables non-windowed Level-1
+/// estimation using this bound; "0" or unset (default) leaves non-windowed estimation unavailable.
+/// The estimate also covers the allocated past cache capacity if it exceeds this envelope.
+/// Windowed estimation continues to use the cache capacity instead.
+/// A decimal integer in [0, INT32_MAX] is required. Invalid or out-of-ABI values cause
+/// INVALID_ARGUMENT during session initialization. Under capacity-aware partitioning, CUDA
+/// placement is declined when no proven GQA estimate is available; the generic workspace fallback
+/// is not used as a proof bound. This caller-declared envelope is not a runtime-enforced input limit
+/// or a no-OOM guarantee.
 static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength =
     "ep.cuda.gqa_workspace_max_total_sequence_length";
 

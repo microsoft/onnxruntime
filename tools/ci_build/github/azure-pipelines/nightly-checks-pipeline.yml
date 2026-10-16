@@ -1,0 +1,33 @@
+trigger: none
+pr: none
+
+schedules:
+- cron: '0 9 * * *'
+  displayName: Nightly checks
+  branches:
+    include:
+    - main
+  always: true
+
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+
+parameters:
+- name: run_webgpu_shader_validation
+  displayName: Run WebGPU shader validation
+  type: boolean
+  default: true
+
+extends:
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
+  parameters:
+    pool:
+      name: onnxruntime-Win-CPU-2022
+      os: windows
+    stages:
+    - ${{ if parameters.run_webgpu_shader_validation }}:
+      - template: stages/nightly-webgpu-shader-validation-stage.yml
