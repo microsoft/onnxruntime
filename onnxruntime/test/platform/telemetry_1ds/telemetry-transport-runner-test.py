@@ -7,7 +7,6 @@ import importlib.util
 import pathlib
 import socket
 import unittest
-from unittest import mock
 
 spec = importlib.util.spec_from_file_location(
     "telemetry_transport_runner", pathlib.Path(__file__).with_name("telemetry-transport-test.py")
@@ -19,7 +18,7 @@ spec.loader.exec_module(runner)
 class CollectorTest(unittest.TestCase):
     def test_bind_does_not_resolve_hostname(self):
         with (
-            mock.patch.object(socket, "getfqdn", side_effect=AssertionError("Unexpected DNS lookup")),
+            unittest.mock.patch.object(socket, "getfqdn", side_effect=AssertionError("Unexpected DNS lookup")),
             runner.Collector("upload") as collector,
         ):
             self.assertEqual(collector.server_address[0], "127.0.0.1")
