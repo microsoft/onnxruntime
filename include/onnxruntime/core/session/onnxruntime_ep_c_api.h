@@ -473,6 +473,8 @@ typedef struct OrtEpProfilerImpl OrtEpProfilerImpl;
  *    - Concurrency notes: each OrtEpProfilerImpl only receives calls for its specific run.
  *      OrtEpProfilerImpl::EndProfiling must only return EP events for its specific run.
  *
+ * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
+ *
  * \since Version 1.25.
  */
 struct OrtEpProfilerImpl {
@@ -725,6 +727,9 @@ typedef struct OrtKernelImpl OrtKernelImpl;
 
 /**
  * \brief Contains functions that an OrtEp implements to specify the computation for an operator kernel.
+ *
+ * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
+ *
  * \since Version 1.24.
  */
 struct OrtKernelImpl {
@@ -2216,8 +2221,7 @@ typedef enum OrtWeightlessSupport {
 /**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
  *
- * Implementations must zero initialize OrtEp before setting its members, as described for OrtEpFactory.
- * C++ derived structs should initialize the OrtEp base with OrtEp{}.
+ * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
  *
  * \since Version 1.22.
  */
@@ -2253,8 +2257,6 @@ struct OrtEp {
    *                  for each nested subgraph.
    * \param[inout] graph_support_info OrtEpGraphSupportInfo instance that the implementer must fill out in order to
    *                                  specify the supported nodes.
-   *
-   * \note Implementation of this function is required.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -2844,11 +2846,7 @@ typedef OrtStatus* (*ReleaseEpApiFactoryFn)(_In_ OrtEpFactory* factory);
 /**
  * \brief The OrtEpFactory provides functions to create and manage execution providers.
  *
- * Implementations must zero initialize OrtEpFactory before setting its members.
- * ORT checks some callback pointers for null before calling them, so an uninitialized pointer may pass the check
- * and cause a crash.
- * In C, initialize the structure with {0}. In C++, derived factories should initialize the OrtEpFactory base with
- * OrtEpFactory{}. The same requirement applies to OrtEp, OrtKernelImpl, and OrtEpProfilerImpl.
+ * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
  *
  * \since Version 1.22.
  */

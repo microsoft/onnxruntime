@@ -41,8 +41,6 @@ OpenVINOEpPluginFactory::OpenVINOEpPluginFactory(ApiPtrs apis, const std::string
   OrtEpFactory::GetVersion = GetVersionImpl;
 
   OrtEpFactory::GetSupportedDevices = GetSupportedDevicesImpl;
-  OrtEpFactory::CreateEp = CreateEpImpl;
-  OrtEpFactory::ReleaseEp = ReleaseEpImpl;
 
   OrtEpFactory::CreateAllocator = CreateAllocatorImpl;
   OrtEpFactory::ReleaseAllocator = ReleaseAllocatorImpl;
