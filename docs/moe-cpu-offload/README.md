@@ -55,7 +55,8 @@ Details: [operator support](../contrib_ops/cuda/moe_qmoe.md) and
 Alpha **0.9**, epsilon **0.1**, probability weight **0**, swap limit **5** (ignored by basic).
 At `K=10240`, all experts are on CPU, but other model operations still use CUDA.
 
-Both strategies were rerun on the **same H200 GPU 1 and runtime binaries**, alternating strategies for each K.
+All strategies use the **same H200 GPU 1**. Adaptive/basic alternate for each K using the same binaries;
+layered was measured separately after fixing profiling when a boundary layer has fewer GPU experts than top-k.
 Each configuration uses a fresh process and the same [five prompts](benchmark-prompts.json), with 256 greedy
 tokens per prompt. **Prompts 1-2 are warmup; all four metrics use prompts 3-5 only:**
 
@@ -68,9 +69,10 @@ tokens per prompt. **Prompts 1-2 are warmup; all four metrics use prompts 3-5 on
 Loading and warmup peaks are excluded; allocations still resident during prompts 3-5 are included.
 Published values come from the JSON `measurements` summary, not the whole-process `memory` peaks.
 
-Measured 2026-10-16 at `358cb402b1`: Linux, ORT 1.32.0, GenAI CUDA 0.15.2, CUDA 13.3.73, driver 580.105.08,
+Measured 2026-10-16 at `358cb402b1` (adaptive/basic) and `408fcd0ba2` (layered):
+Linux, ORT 1.32.0, GenAI CUDA 0.15.2, CUDA 13.3.73, driver 580.105.08,
 Xeon Platinum 8480C (96 physical cores). Release build, native CUDA architecture, Flash/MEA enabled.
-All 24 runs completed. These are single-run observations on a shared host, not statistical estimates or quality tests.
+These are single-run observations on a shared host, not statistical estimates or quality tests.
 
 ### Adaptive
 
@@ -108,6 +110,23 @@ Each 1,024-expert step moves four more trailing QMoE nodes to CPU.
 | 9216 | Off | 541.466 | 29.513 | 24.383 | 35.915 |
 | 10240 | Off | 633.668 | 27.746 | 22.660 | 39.537 |
 
+### Layered (80% GPU target per layer)
+
+| K: CPU experts | CUDA Graph | Prefill (ms) | Decode (tokens/s) | Peak GPU (GiB) | Peak CPU RSS (GiB) |
+|---:|:---:|---:|---:|---:|---:|
+| 0 | Off | 21.309 | 132.599 | 39.390 | 1.575 |
+| 0 | On | 21.683 | 169.083 | 39.461 | 1.644 |
+| 1024 | Off | 30.196 | 93.633 | 38.012 | 7.426 |
+| 2048 | Off | 48.208 | 55.676 | 35.937 | 11.024 |
+| 3072 | Off | 115.884 | 47.379 | 34.219 | 14.826 |
+| 4096 | Off | 189.019 | 47.085 | 33.012 | 18.158 |
+| 5120 | Off | 214.011 | 44.921 | 31.273 | 21.733 |
+| 6144 | Off | 259.104 | 39.614 | 29.678 | 25.312 |
+| 7168 | Off | 364.987 | 37.084 | 27.330 | 28.866 |
+| 8192 | Off | 554.616 | 31.864 | 25.607 | 32.441 |
+| 9216 | Off | 624.173 | 31.617 | 24.414 | 36.032 |
+| 10240 | Off | 652.343 | 29.069 | 22.660 | 39.536 |
+
 ## Reproduce
 
 Put a matching source build on `PYTHONPATH` and run outside the source package directory:
@@ -122,19 +141,17 @@ for scenario in k0-nograph k0-graph k1024 k2048 k3072 k4096 k5120 k6144 k7168 k8
     k0-graph) k=0; graph=--cuda-graph ;;
     *) k=${scenario#k}; graph=--no-cuda-graph ;;
   esac
-  for strategy in adaptive basic; do
+  for strategy in adaptive basic layered; do
     output="/tmp/qwen35-int4/${strategy}"
     mkdir -p "$output"
     CUDA_VISIBLE_DEVICES=1 python /path/to/onnxruntime/tools/python/benchmark_moe_cpu_offload.py \
       --name "${strategy}-${scenario}" \
       --model /path/to/qwen3.5-35b-cuda-int4 \
       --prompts /path/to/onnxruntime/docs/moe-cpu-offload/benchmark-prompts.json \
-      --max-new-tokens 256 --cpu-offload-experts "$k" --strategy "$strategy" \
+      --max-new-tokens 256 --cpu-offload-experts "$k" --strategy "$strategy" --gpu-ratio 0.8 \
       --counter-alpha 0.9 --swap-epsilon 0.1 --max-in-flight-swaps-per-device 5 \
       --swap --no-counter-log "$graph" \
       --output "$output/${scenario}.json" --log "$output/${scenario}.log" || exit "$?"
   done
 done
 ```
-
-Use `--strategy layered --gpu-ratio 0.8` to run the third strategy with the same protocol.
