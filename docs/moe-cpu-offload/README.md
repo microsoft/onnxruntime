@@ -509,6 +509,23 @@ All strategies preserve exactly `K` CPU experts.
   - Swapping two is worse for decode, but can still improve prefill.
   - Set `moe_cpu_offload_on_demand_threshold` to `1` or `2`; `0` keeps the previous behavior.
 
+Each cell below is **prefill ms / decode ms per token**; lower is better. Decode time is `1000 / tokens/s`.
+Best observed times are in **bold**. The N=1 column retains the [GPU-interference warning](#on-demand-threshold-sweep).
+
+| K | CUDA Graph | Adaptive | Basic | 80% first | 80% first N=1 | 60% last, limit 16 |
+|---:|:---:|---:|---:|---:|---:|---:|
+| 0 | Off | 21.134 / 7.696 | 20.898 / 7.544 | **20.719** / **7.474** | 21.078 / 7.823 | 21.143 / 7.777 |
+| 0 | On | 21.391 / **5.888** | 21.840 / 5.930 | 21.669 / 5.908 | **21.331** / 5.922 | 21.560 / 5.924 |
+| 1024 | Off | 33.829 / 12.523 | 84.129 / 11.632 | **29.604** / 10.605 | 29.975 / **9.516** | 55.736 / 15.607 |
+| 2048 | Off | 46.457 / 17.291 | 146.529 / 14.177 | **43.247** / 15.343 | 49.054 / **13.518** | 63.772 / 18.710 |
+| 3072 | Off | 152.712 / 25.130 | 193.798 / **16.701** | 111.006 / 19.607 | 108.784 / 18.426 | **85.188** / 24.001 |
+| 4096 | Off | 209.657 / 27.001 | 249.523 / 21.345 | 191.018 / 20.439 | 203.647 / **19.850** | **101.023** / 28.313 |
+| 5120 | Off | 297.205 / 29.997 | 335.351 / 22.608 | 266.120 / 23.469 | 269.312 / 22.560 | **118.835** / **21.150** |
+| 6144 | Off | 324.400 / 32.611 | 340.948 / **25.374** | 375.611 / 26.144 | 343.207 / 25.868 | **195.748** / 25.750 |
+| 7168 | Off | **326.908** / 34.243 | 440.696 / 27.417 | 369.580 / 27.274 | 411.831 / **27.264** | 379.688 / 31.610 |
+| 8192 | Off | **434.233** / 37.034 | 577.976 / 29.623 | 521.061 / 29.363 | 450.956 / 29.789 | 440.986 / **27.102** |
+| 9216 | Off | **418.149** / 38.916 | 541.466 / 33.884 | 565.593 / 34.252 | 899.263 / 205.511 | 438.548 / **33.148** |
+
 ### Next ideas
 
 - Predict which experts will be needed next, while accounting for the cost and limited number of swaps.
