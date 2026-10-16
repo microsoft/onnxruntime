@@ -3,13 +3,17 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
 
 #include "core/common/float8.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
+#include "core/providers/webgpu/program_cache_key.h"
+#include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -21,6 +25,12 @@ namespace test {
 
 #if defined(USE_WEBGPU) && !defined(DISABLE_FLOAT8_TYPES)
 namespace {
+class SubgroupIdTestProgram final : public webgpu::Program<SubgroupIdTestProgram> {
+ public:
+  SubgroupIdTestProgram() : Program{"SubgroupIdTest"} {}
+  Status GenerateShaderCode(webgpu::ShaderHelper&) const override { return Status::OK(); }
+};
+
 void RunFp8MatMul(const std::vector<int64_t>& a_dims, int64_t n, int64_t block_size,
                   bool with_a_scale, bool with_bias, bool distinct_rows = false) {
   auto ep = DefaultWebGpuExecutionProvider();
@@ -98,7 +108,8 @@ void RunFp8MatMul(const std::vector<int64_t>& a_dims, int64_t n, int64_t block_s
 bool SupportsFp8MatrixPath() {
   const auto& context = webgpu::WebGpuContextFactory::DefaultContext();
   bool supported = false;
-  if (context.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
+  if (context.Instance().HasWGSLLanguageFeature(wgpu::WGSLLanguageFeatureName::SubgroupId) &&
+      context.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
     const auto& configs = context.SubgroupMatrixConfigs();
     const auto& adapter = context.AdapterInfo();
     supported = webgpu::detail::SelectSubgroupMatrixConfigFromAdapterConfigs(
@@ -112,6 +123,30 @@ bool SupportsFp8MatrixPath() {
   return supported;
 }
 }  // namespace
+
+TEST(MatMulBlockQuantizedFp8WeightTest, SubgroupIdIsOptInAndCacheKeyed) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  const auto& context = webgpu::WebGpuContextFactory::DefaultContext();
+  SubgroupIdTestProgram program;
+  const auto original_key = webgpu::CalculateProgramCacheKey(program, {}, {});
+  webgpu::ShaderHelper ordinary_shader(program, program.Metadata(), context, {}, {}, 1, 1, 1);
+  ASSERT_STATUS_OK(ordinary_shader.Init());
+  EXPECT_EQ(std::move(ordinary_shader.MainFunctionBody()).str().find("@builtin(subgroup_id)"), std::string::npos);
+
+  program.SetUseSubgroupId(true);
+  EXPECT_NE(original_key, webgpu::CalculateProgramCacheKey(program, {}, {}));
+  webgpu::ShaderHelper matrix_shader(program, program.Metadata(), context, {}, {}, 1, 1, 1);
+  const bool supported = context.DeviceHasFeature(wgpu::FeatureName::Subgroups) &&
+                         context.Instance().HasWGSLLanguageFeature(wgpu::WGSLLanguageFeatureName::SubgroupId);
+  const auto status = matrix_shader.Init();
+  EXPECT_EQ(status.IsOK(), supported);
+  if (supported) {
+    EXPECT_NE(std::move(matrix_shader.MainFunctionBody()).str().find("@builtin(subgroup_id)"), std::string::npos);
+  }
+  webgpu::WebGpuContextFactory::ReleaseContext(0);
+}
 
 TEST(MatMulBlockQuantizedFp8WeightTest, DecodeRankOneOddBytes) {
   RunFp8MatMul({3}, 1, 2, false, false);
@@ -167,7 +202,7 @@ TEST(MatMulBlockQuantizedFp8WeightTest, SubnormalSignedWeightsAndBias) {
   }
   const std::vector<Float8E4M3FN> b{
       Float8E4M3FN(uint8_t{0x01}, Float8E4M3FN::FromBits()),
-      Float8E4M3FN(uint8_t{0x81}, Float8E4M3FN::FromBits()),
+      Float8E4M3FN(uint8_t{0x87}, Float8E4M3FN::FromBits()),
       Float8E4M3FN(0.5625f, true),
       Float8E4M3FN(-1.0f, true)};
   float expected = 0.25f;
@@ -182,6 +217,26 @@ TEST(MatMulBlockQuantizedFp8WeightTest, SubnormalSignedWeightsAndBias) {
   test.AddOptionalInputEdge<float>();
   test.AddInput<MLFloat16>("bias", {1}, {MLFloat16(0.25f)});
   test.AddOutput<MLFloat16>("Y", {1, 1}, {MLFloat16(expected)});
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(ep));
+  test.Run(options, OpTester::ExpectResult::kExpectSuccess, {}, {}, nullptr, &providers);
+}
+
+TEST(MatMulBlockQuantizedFp8WeightTest, ActivationQdqPreservesNaN) {
+  auto ep = DefaultWebGpuExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("block_size", int64_t{1});
+  test.AddInput<MLFloat16>("A", {2, 1}, ToFloat16({nan, 1.0f}));
+  test.AddInput<Float8E4M3FN>("B", {1, 1}, {Float8E4M3FN(1.0f, true)}, true);
+  test.AddInput<float>("b_scale", {1, 1}, {1.0f});
+  test.AddInput<float>("a_scale", {}, {0.375f});
+  test.AddOutput<MLFloat16>("Y", {2, 1}, ToFloat16({nan, 1.03125f}));
   SessionOptions options;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   std::vector<std::unique_ptr<IExecutionProvider>> providers;

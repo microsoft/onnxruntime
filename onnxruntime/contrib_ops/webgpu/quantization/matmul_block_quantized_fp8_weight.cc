@@ -167,6 +167,7 @@ Status MatMulBlockQuantizedFp8Weight::ComputeInternal(onnxruntime::webgpu::Compu
   }
 
   const bool use_matrix = M >= 8 &&
+                          context.HasWGSLLanguageFeature(wgpu::WGSLLanguageFeatureName::SubgroupId) &&
                           SelectSubgroupMatrixConfig(context, {{wgpu::SubgroupMatrixComponentType::F16,
                                                                 wgpu::SubgroupMatrixComponentType::F32,
                                                                 16, 16, 16, 32, false}})
@@ -179,6 +180,7 @@ Status MatMulBlockQuantizedFp8Weight::ComputeInternal(onnxruntime::webgpu::Compu
   // Tensor views require void*, but the alias only binds B as read-only storage; no copy or mutation occurs.
   Tensor weight_bytes(DataTypeImpl::GetType<uint8_t>(), b_shape, const_cast<void*>(b->DataRaw()), memory_info);
   Fp8MatMulProgram program{bias != nullptr, use_matrix};
+  program.SetUseSubgroupId(use_matrix);
   program.SetWorkgroupSize(use_matrix ? 128 : 32);
   if (use_matrix && context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
     program.SetSubgroupSize(32);
