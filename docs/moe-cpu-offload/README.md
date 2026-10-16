@@ -385,21 +385,25 @@ Add `--counter-log` for swap and expert-device diagnostics; use separate output 
 
 Working conclusions for this model on the H200. The threshold-1/2 sweep is still running.
 
-### Strategy behavior
+### Strategies
 
-The user chooses the parameters before loading the model. They stay fixed during generation.
+Many parameters can be changed by the user, but they do not change during generation.
 
-- **Adaptive:** swap experts based on popularity.
-  With binary counting, `P(t) = alpha * P(t-1) + (1-alpha)` for selected experts; others only decay.
-  In decode, update once per token; in prefill, count the selected-expert union once.
-  A swap is a candidate if `P_hottest_CPU > (1+epsilon) * P_coldest_GPU` in the same layer.
-  After each decode pass, launch at most five background swaps in these benchmarks.
-  Swaps still running count against those five: if three remain, only two new swaps can start.
-  Other candidates are ignored and reconsidered after the next pass.
-- **Basic:** fill the first QMoE layers on CUDA, then put the rest on CPU. No swaps.
-- **Layered 80%:** target 80% GPU / 20% CPU in each chosen layer until the GPU budget runs out.
-  Swap experts within mixed layers using the same popularity rule as adaptive.
-  All strategies preserve exactly `K` CPU experts.
+- **Adaptive**
+  - Experts are swapped based on popularity.
+  - In decode, `P(t) = alpha * P(t-1) + (1-alpha)` if the expert is chosen for token `t`;
+    otherwise, `P(t) = alpha * P(t-1)`.
+  - If `P_hottest_CPU > (1+epsilon) * P_coldest_GPU` in the same layer, the swap becomes a candidate.
+    At most five background swaps are started per token in these benchmarks; the rest are ignored for that pass.
+- **Basic**
+  - Experts are placed on CUDA for the first QMoE layers, then on CPU when the GPU budget is exhausted.
+- **Layered 80%**
+  - First layer: target 80% of experts on CUDA, 20% on CPU.
+  - Second layer: the same, unless the GPU budget is exhausted.
+  - Continue layer by layer.
+  - Swap experts in the same way as adaptive.
+
+All strategies preserve exactly `K` CPU experts.
 
 ### Prefill
 
