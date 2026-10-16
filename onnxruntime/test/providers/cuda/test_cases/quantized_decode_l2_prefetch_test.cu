@@ -9,7 +9,6 @@
 #include "contrib_ops/cuda/quantization/matmul_2bits_m1_impl.cuh"
 #include "contrib_ops/cuda/quantization/matmul_4bits_m1_impl.cuh"
 #include "contrib_ops/cuda/quantization/matmul_8bits_m1_impl.cuh"
-#include "gtest/gtest.h"
 
 namespace onnxruntime::test {
 namespace {
@@ -23,9 +22,12 @@ void CheckDecodePrefetchParity() {
   constexpr int code = (1 << (Bits - 1)) + 1;
   constexpr uint8_t packed_code = Bits == 2 ? 0xff : Bits == 4 ? 0x99
                                                                : 0x81;
+  constexpr int columns_per_block = Bits == 2   ? kColsPerThreadBlock2b
+                                    : Bits == 4 ? kColsPerThreadBlock
+                                                : kM1ColsPerThreadBlock8Bits;
+  static_assert(n % columns_per_block == 0);
 
   for (int k : {32, 128, 256, 512, 544, 1024, 4096, 4128}) {
-    SCOPED_TRACE(k);
     const int blocks_per_k = k / block_size;
     std::vector<T> activations(k);
     std::vector<T> scales(n * blocks_per_k);
@@ -42,9 +44,9 @@ void CheckDecodePrefetchParity() {
     thrust::device_vector<uint8_t> device_b(n * k / elements_per_byte, packed_code);
     thrust::device_vector<T> device_output(n);
     std::vector<T> baseline(n), prefetched(n);
-    const dim3 grid(n / 4);
-    const dim3 threads(32, 4);
-    const size_t shared_bytes = sizeof(T) * 4 * blocks_per_k;
+    const dim3 grid(n / columns_per_block);
+    const dim3 threads(onnxruntime::cuda::GPU_WARP_SIZE, columns_per_block);
+    const size_t shared_bytes = sizeof(T) * columns_per_block * blocks_per_k;
 
     // Pass the kernel flag directly: the environment switch is cached per process.
     auto launch = [&](bool enabled) {
@@ -72,20 +74,21 @@ void CheckDecodePrefetchParity() {
     for (int col = 0; col < n; ++col) {
       const float expected = (code - (1 << (Bits - 1))) * (k / 4.0f) *
                              static_cast<float>(scales[col * blocks_per_k]);
-      EXPECT_EQ(static_cast<float>(baseline[col]), expected);
-      EXPECT_EQ(static_cast<float>(prefetched[col]), static_cast<float>(baseline[col]));
+      ORT_ENFORCE(static_cast<float>(baseline[col]) == expected,
+                  "Decode reference mismatch: bits=", Bits, ", element_bytes=", sizeof(T),
+                  ", k=", k, ", col=", col, ", expected=", expected,
+                  ", actual=", static_cast<float>(baseline[col]));
+      ORT_ENFORCE(static_cast<float>(prefetched[col]) == static_cast<float>(baseline[col]),
+                  "Decode prefetch mismatch: bits=", Bits, ", element_bytes=", sizeof(T),
+                  ", k=", k, ", col=", col, ", baseline=", static_cast<float>(baseline[col]),
+                  ", prefetched=", static_cast<float>(prefetched[col]));
     }
   }
 }
 
-TEST(CUDA_EP_Unittest, QuantizedDecodeL2PrefetchParity) {
-  int device, major, minor;
-  CUDA_CALL_THROW(cudaGetDevice(&device));
-  CUDA_CALL_THROW(cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device));
-  CUDA_CALL_THROW(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device));
-  if (!contrib::cuda::ShouldPrefetchQuantizedDecodeL2(true, major, minor)) {
-    GTEST_SKIP() << "L2 decode prefetch is enabled only on SM121";
-  }
+}  // namespace
+
+void RunQuantizedDecodeL2PrefetchParity() {
   CheckDecodePrefetchParity<2, float>();
   CheckDecodePrefetchParity<4, float>();
   CheckDecodePrefetchParity<8, float>();
@@ -94,5 +97,4 @@ TEST(CUDA_EP_Unittest, QuantizedDecodeL2PrefetchParity) {
   CheckDecodePrefetchParity<8, half>();
 }
 
-}  // namespace
 }  // namespace onnxruntime::test

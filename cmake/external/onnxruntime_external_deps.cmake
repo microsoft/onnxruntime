@@ -65,6 +65,10 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     # If set, this code throws away the flag and does nothing on registration, which results in no flags being known:
     # https://github.com/abseil/abseil-cpp/blob/8dc90ff07402cd027daec520bb77f46e51855889/absl/flags/flag.h#L205-L217
     set(GTEST_HAS_ABSL OFF CACHE BOOL "" FORCE)
+  elseif (WIN32 AND onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+    # The EXE and internal-test DLL otherwise initialize separate static Abseil
+    # symbolizers with the same DbgHelp process handle, aborting the second init.
+    set(GTEST_HAS_ABSL OFF CACHE BOOL "" FORCE)
   else()
     set(GTEST_HAS_ABSL ON CACHE BOOL "" FORCE)
   endif()

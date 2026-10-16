@@ -7,6 +7,7 @@
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
 #include <cstring>
+#include <type_traits>
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 12080
 #include <cuda_fp4.h>
@@ -573,7 +574,7 @@ __device__ __forceinline__ void Fp4DecodeWord(uint32_t word, typename Fp4Cvt<T>:
   Fp4Cvt<T>::DecodeQuad(mag >> 16, sgn >> 16, out[2], out[3]);
 }
 
-template <typename T, int KSplit, int ColTiles, int MTiles>
+template <typename T, int KSplit, int ColTiles, int MTiles, bool EnableL2Prefetch>
 __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantizedFp4WeightMmaGemvKernel(
     T* __restrict__ y,
     const T* __restrict__ a,
@@ -584,7 +585,7 @@ __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantize
     int m,
     int n,
     int k,
-    int k_blocks, bool l2_prefetch) {
+    int k_blocks) {
   using Cvt = Fp4Cvt<T>;
   using MmaOp = Fp4GemvMma<T>;
   using T2 = typename Cvt::T2;
@@ -630,10 +631,10 @@ __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantize
   for (int wi = warp_k; wi < windows; wi += KSplit) {
     const int kbase = (wi << 7) + (t << 5);
     if (lo_ok) {
-      PrefetchQuantizedDecodeL2(b_lo, kbase / 2, KSplit * 64, k / 2, l2_prefetch);
+      PrefetchQuantizedDecodeL2(b_lo, kbase / 2, KSplit * 64, k / 2, EnableL2Prefetch);
     }
     if (hi_ok) {
-      PrefetchQuantizedDecodeL2(b_hi, kbase / 2, KSplit * 64, k / 2, l2_prefetch);
+      PrefetchQuantizedDecodeL2(b_hi, kbase / 2, KSplit * 64, k / 2, EnableL2Prefetch);
     }
     const uint4 wl4 = *reinterpret_cast<const uint4*>(b_lo + (kbase >> 1));
     const uint4 wh4 = *reinterpret_cast<const uint4*>(b_hi + (kbase >> 1));
@@ -998,12 +999,22 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
     const uint8_t* mbp = reinterpret_cast<const uint8_t*>(b_packed);
     const uint8_t* mws = reinterpret_cast<const uint8_t*>(weight_scale);
 
-#define ORT_LAUNCH_FP4_MMA_GEMV(T, KS, CT, MT)                                                   \
-  MatMulBlockQuantizedFp4WeightMmaGemvKernel<T, KS, CT, MT>                                      \
-      <<<mma_blocks, mma_threads, 0, stream>>>(reinterpret_cast<T*>(y),                          \
-                                               reinterpret_cast<const T*>(a), mbp, mws,          \
-                                               weight_scale_2, reinterpret_cast<const T*>(bias), \
-                                               m, n, k, k_blocks, l2_prefetch)
+#define ORT_LAUNCH_FP4_MMA_GEMV(T, KS, CT, MT)                                                       \
+  do {                                                                                               \
+    const auto launch_mma = [&](auto prefetch_tag) {                                                 \
+      constexpr bool prefetch = decltype(prefetch_tag)::value;                                       \
+      MatMulBlockQuantizedFp4WeightMmaGemvKernel<T, KS, CT, MT, prefetch>                            \
+          <<<mma_blocks, mma_threads, 0, stream>>>(reinterpret_cast<T*>(y),                          \
+                                                   reinterpret_cast<const T*>(a), mbp, mws,          \
+                                                   weight_scale_2, reinterpret_cast<const T*>(bias), \
+                                                   m, n, k, k_blocks);                               \
+    };                                                                                               \
+    if (l2_prefetch) {                                                                               \
+      launch_mma(std::true_type{});                                                                  \
+    } else {                                                                                         \
+      launch_mma(std::false_type{});                                                                 \
+    }                                                                                                \
+  } while (false)
 
 #define ORT_DISPATCH_FP4_MMA_GEMV_MT(T, MT)      \
   do {                                           \
