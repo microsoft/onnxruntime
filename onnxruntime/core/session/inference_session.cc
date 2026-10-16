@@ -3790,6 +3790,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     run_profiler->StartProfiling(profile_file);
   }
 
+  // Failed-run cleanup can log deferred MoE usage, so its guard must be destroyed first.
+  std::unique_ptr<logging::Logger> owned_run_logger;
 #if !defined(ORT_MINIMAL_BUILD)
   const bool collect_moe_statistics =
       session_options_.config_options.GetConfigOrDefault(
@@ -3891,9 +3893,6 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
       }
 
-      // scope of owned_run_logger is just the call to Execute.
-      // If Execute ever becomes async we need a different approach
-      std::unique_ptr<logging::Logger> owned_run_logger;
       const auto& run_logger = CreateLoggerForRun(run_options, owned_run_logger);
 
 #if !defined(ORT_MINIMAL_BUILD)

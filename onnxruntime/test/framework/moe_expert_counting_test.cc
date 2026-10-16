@@ -12,9 +12,12 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/session_state.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/session/environment.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "nlohmann/json.hpp"
+#include "test/capturing_sink.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
@@ -521,6 +524,70 @@ TEST(MoeExpertCountingTest, FailedKernelDoesNotCommitCollectedUsage) {
 }
 
 #if defined(USE_CUDA)
+#if !defined(ORT_NO_EXCEPTIONS)
+TEST(MoeExpertCountingTest, FailedRunKeepsLoggerAliveForDeferredUsage) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider || provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "Built-in CUDA execution provider is unavailable.";
+  }
+
+  class FailingRunEndProvider final : public CPUExecutionProvider {
+   public:
+    FailingRunEndProvider() : CPUExecutionProvider(CPUExecutionProviderInfo{}) {}
+
+    Status OnRunEnd(bool, const RunOptions&) override {
+      ORT_ENFORCE(!fail, "Intentional failure before deferred MoE usage is committed.");
+      return Status::OK();
+    }
+
+    bool fail{true};
+  };
+
+  auto sink = std::make_unique<CapturingSink>();
+  const auto* captured = sink.get();
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::move(sink), logging::Severity::kINFO, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  std::unique_ptr<Environment> environment;
+  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), environment));
+  auto options = CountingOptions();
+  options.session_logid = "deferred_moe_logger";
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "3"));
+  InferenceSessionWrapper session(options, *environment);
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+  auto failing_provider = std::make_unique<FailingRunEndProvider>();
+  auto* failure_control = failing_provider.get();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(failing_provider)));
+  const auto model = MakeCountingModel(false, true);
+  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  RunOptions run_options;
+  run_options.run_tag = "failed_run";
+  run_options.run_log_severity_level = static_cast<int>(logging::Severity::kINFO);
+  std::vector<OrtValue> outputs;
+  const std::array<std::string, 1> output_names{"output"};
+  const auto status = session.Run(run_options, CountingFeeds(), output_names, &outputs);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("Intentional failure before deferred MoE usage"), std::string::npos);
+  size_t counter_events = 0;
+  for (const auto& message : captured->Messages()) {
+    if (message.find("moe_expert_counters ") != std::string::npos) {
+      EXPECT_NE(message.find("deferred_moe_logger:failed_run"), std::string::npos);
+      ++counter_events;
+    }
+  }
+  EXPECT_EQ(counter_events, 2U);
+  for (const auto& [kernel, counters] : CountersByKernel(*session.GetSessionState().GetMoeExpertState())) {
+    EXPECT_EQ(counters, (InlinedVector<double>{1.0 - 0.9, 0, 1.0 - 0.9, 0}));
+  }
+
+  failure_control->fail = false;
+  RunCountingModel(session);
+}
+#endif
+
 TEST(MoeExpertCountingTest, CudaMoE) { TestCounting(false, true); }
 TEST(MoeExpertCountingTest, CudaQMoE) { TestCounting(true, true); }
 TEST(MoeExpertCountingTest, CudaQMoETiled) { TestCounting(true, true, true); }
