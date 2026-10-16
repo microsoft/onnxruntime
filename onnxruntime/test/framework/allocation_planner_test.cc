@@ -283,7 +283,8 @@ class PlannerTest : public ::testing::Test {
   }
 
   void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {},
-                  bool invoke_createPlan_explicityly = true) {
+                  bool invoke_createPlan_explicityly = true,
+                  const ISequentialPlannerContext* planner_context = nullptr) {
     state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_, edlm_,
                                   DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
     EXPECT_EQ(graph_.Resolve(), Status::OK());
@@ -307,7 +308,6 @@ class PlannerTest : public ::testing::Test {
     status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {}, remove_initializers);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-    SequentialPlannerTestContext test_context(&shape_map_);
     plan_.emplace();
 
     class MockStreamHandleRegsitry : public IStreamCommandHandleRegistry {
@@ -329,6 +329,8 @@ class PlannerTest : public ::testing::Test {
     };
 
     if (invoke_createPlan_explicityly) {
+      SequentialPlannerTestContext default_test_context(&shape_map_);
+      const ISequentialPlannerContext& test_context = planner_context != nullptr ? *planner_context : default_test_context;
       onnxruntime::GraphViewer graph_viewer{graph_};
       status = SequentialPlanner::CreatePlan(
           nullptr,
@@ -351,6 +353,16 @@ class PlannerTest : public ::testing::Test {
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
       // AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
     }
+  }
+
+  void CreatePlanWithMemoryReuseDisabled() {
+    class NoMemoryReusePlannerContext : public SequentialPlannerTestContext {
+     public:
+      using SequentialPlannerTestContext::SequentialPlannerTestContext;
+      bool GetEnableMemoryReuse() const override { return false; }
+    };
+    NoMemoryReusePlannerContext test_context(&shape_map_);
+    CreatePlan({}, true, &test_context);
   }
 
   void CheckAllocKind(const std::string& name, AllocKind kind) {
@@ -448,6 +460,39 @@ TEST_F(PlannerTest, ChainTest) {
   CheckFreed(1, {});
   CheckFreed(2, {B});
   CheckFreed(3, {X});
+}
+
+TEST_F(PlannerTest, DisabledMemoryReuseDoesNotReuseFreedBuffers) {
+  // tensor variables:
+  std::string W("W"), X("X"), B("B"), Y("Y"), Z("Z");
+
+  ONNX_NAMESPACE::TensorProto tensor;
+  tensor.add_dims(1);
+  tensor.add_float_data(1.0f);
+  tensor.set_data_type(TensorProto_DataType_FLOAT);
+  tensor.set_name("W");
+  GetGraph().AddInitializedTensor(tensor);
+
+  AddNormalNode(W, X);
+  AddNormalNode(X, B);
+  AddNormalNode(B, Y);
+  AddNormalNode(Y, Z);
+
+  Shape shape1{50, 100};
+  auto shape = &shape1.value;
+  SetShape({{X, shape}, {B, shape}, {Y, shape}, {Z, shape}});
+
+  CreatePlan();
+  CheckAllocKind(Y, AllocKind::kReuse);
+
+  CreatePlanWithMemoryReuseDisabled();
+
+  // This graph normally reuses X's buffer for Y. With memory reuse disabled, Y must allocate its own buffer.
+  CheckAllocKind(W, AllocKind::kAllocateStatically);
+  CheckAllocKind(X, AllocKind::kAllocate);
+  CheckAllocKind(B, AllocKind::kAllocate);
+  CheckAllocKind(Y, AllocKind::kAllocate);
+  CheckAllocKind(Z, AllocKind::kAllocateOutput);
 }
 
 /* InputOutputTest: Test that:
