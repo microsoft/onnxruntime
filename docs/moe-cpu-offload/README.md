@@ -57,9 +57,9 @@ Details: [operator support](../contrib_ops/cuda/moe_qmoe.md) and
 ## Qwen3.5 INT4 benchmark
 
 **Qwen3.5-35B-A3B INT4**, 40 QMoE nodes x 256 experts = 10,240 experts, top-k 8.
-Alpha **0.9**, epsilon **0.1**, probability weight **0**, swap limit **5** (ignored by basic).
+Alpha **0.9**, epsilon **0.1**, probability weight **0**, swap limit **5** unless noted (ignored by basic).
 At `K=10240`, all experts are on CPU, but other model operations still use CUDA.
-All published basic/layered measurements use `layer_order=first`.
+The original basic/layered series use `layer_order=first`; the separate position sweep below compares all three orders.
 
 All strategies use the **same H200 GPU 1**. Adaptive/basic alternate for each K using the same binaries;
 layered was measured separately after fixing profiling when a boundary layer has fewer GPU experts than top-k.
@@ -76,7 +76,8 @@ tokens per prompt. **Prompts 1-2 are warmup; all four metrics use prompts 3-5 on
 Loading and warmup peaks are excluded; allocations still resident during prompts 3-5 are included.
 Published values come from the JSON `measurements` summary, not the whole-process `memory` peaks.
 
-Measured 2026-10-16 at `358cb402b1` (adaptive/basic), `408fcd0ba2` (layered 80%) and `7c50cd1982` (layered 70%):
+Measured 2026-10-16 at `358cb402b1` (adaptive/basic), `408fcd0ba2` (layered 80%), `7c50cd1982` (layered 70%)
+and `bc0f54ff6b` (position sweep):
 Linux, ORT 1.32.0, GenAI CUDA 0.15.2, CUDA 13.3.73, driver 580.105.08,
 Xeon Platinum 8480C (96 physical cores). Release build, native CUDA architecture, Flash/MEA enabled.
 These are single-run observations on a shared host, not statistical estimates or quality tests.
@@ -170,6 +171,101 @@ Each 1,024-expert step moves four more trailing QMoE nodes to CPU.
 | 9216 | Off | 568.924 | 30.098 | 24.465 | 36.033 |
 | 10240 | Off | 717.923 | 28.232 | 21.722 | 39.507 |
 
+### Layered: 60%/80% and first/last/middle
+
+Separate cohort: 72 fresh runs, identical binaries and GPU, six variants interleaved per K and run serially.
+Same prompt/measurement protocol and swap limit 5. No position consistently wins; bold marks each row's fastest decode.
+At K=0 and K=10240, placement settings do not change execution; differences show run-to-run variability.
+
+#### Decode (tokens/s)
+
+| K | CUDA Graph | 60% first | 80% first | 60% last | 80% last | 60% middle | 80% middle |
+|---:|:---:|---:|---:|---:|---:|---:|---:|
+| 0 | Off | 136.780 | 133.797 | **137.428** | 132.785 | 130.385 | 132.991 |
+| 0 | On | **169.287** | 169.261 | 168.827 | 169.252 | 168.924 | 168.922 |
+| 1024 | Off | 81.065 | **94.298** | 66.750 | 80.914 | 63.721 | 75.744 |
+| 2048 | Off | **68.558** | 65.174 | 52.294 | 58.292 | 52.113 | 64.308 |
+| 3072 | Off | 54.918 | 51.002 | 41.284 | **59.988** | 40.027 | 56.550 |
+| 4096 | Off | 37.907 | 48.925 | 39.285 | 46.634 | 37.154 | **49.947** |
+| 5120 | Off | 39.626 | 42.609 | 42.769 | 43.093 | 38.010 | **43.170** |
+| 6144 | Off | 40.025 | 38.250 | 37.666 | **40.834** | 35.520 | 40.261 |
+| 7168 | Off | 35.382 | 36.665 | 34.716 | 35.100 | **39.643** | 36.239 |
+| 8192 | Off | 31.683 | **34.057** | 33.658 | 33.221 | 31.682 | 33.543 |
+| 9216 | Off | **31.689** | 29.195 | 30.717 | 30.360 | 31.323 | 27.604 |
+| 10240 | Off | 27.458 | 28.076 | **28.832** | 27.909 | 27.726 | 26.408 |
+
+#### Prefill (ms)
+
+| K | CUDA Graph | 60% first | 80% first | 60% last | 80% last | 60% middle | 80% middle |
+|---:|:---:|---:|---:|---:|---:|---:|---:|
+| 0 | Off | 20.547 | 20.719 | 20.430 | 20.737 | 20.954 | 20.797 |
+| 0 | On | 21.597 | 21.669 | 21.719 | 21.774 | 21.496 | 22.871 |
+| 1024 | Off | 43.849 | 29.604 | 55.373 | 33.209 | 63.106 | 42.469 |
+| 2048 | Off | 51.530 | 43.247 | 95.109 | 42.243 | 115.714 | 44.856 |
+| 3072 | Off | 90.679 | 111.006 | 158.163 | 105.315 | 172.761 | 107.787 |
+| 4096 | Off | 214.915 | 191.018 | 195.642 | 157.959 | 208.917 | 186.702 |
+| 5120 | Off | 206.028 | 266.120 | 165.493 | 194.461 | 217.876 | 272.631 |
+| 6144 | Off | 325.988 | 375.611 | 210.821 | 332.403 | 228.786 | 358.748 |
+| 7168 | Off | 381.340 | 369.580 | 318.008 | 439.249 | 307.013 | 374.420 |
+| 8192 | Off | 402.316 | 521.061 | 419.847 | 422.721 | 452.714 | 369.965 |
+| 9216 | Off | 499.094 | 565.593 | 571.157 | 602.627 | 437.221 | 508.575 |
+| 10240 | Off | 586.115 | 676.826 | 627.106 | 805.693 | 604.649 | 657.629 |
+
+#### Peak GPU (GiB)
+
+| K | CUDA Graph | 60% first | 80% first | 60% last | 80% last | 60% middle | 80% middle |
+|---:|:---:|---:|---:|---:|---:|---:|---:|
+| 0 | Off | 39.453 | 39.390 | 39.390 | 39.390 | 39.533 | 39.455 |
+| 0 | On | 38.515 | 39.449 | 39.574 | 39.508 | 39.445 | 39.510 |
+| 1024 | Off | 38.035 | 38.094 | 38.156 | 38.154 | 38.111 | 38.076 |
+| 2048 | Off | 36.367 | 36.437 | 36.379 | 36.500 | 36.379 | 36.449 |
+| 3072 | Off | 34.793 | 34.724 | 34.672 | 34.750 | 34.791 | 34.904 |
+| 4096 | Off | 33.013 | 33.056 | 33.135 | 33.060 | 33.189 | 33.060 |
+| 5120 | Off | 31.416 | 31.336 | 31.521 | 31.308 | 31.478 | 31.340 |
+| 6144 | Off | 29.644 | 29.556 | 29.826 | 29.615 | 29.703 | 29.736 |
+| 7168 | Off | 27.976 | 27.828 | 27.959 | 27.971 | 27.912 | 28.015 |
+| 8192 | Off | 26.150 | 26.170 | 26.295 | 26.238 | 26.338 | 26.121 |
+| 9216 | Off | 24.412 | 24.385 | 24.592 | 24.449 | 24.420 | 24.449 |
+| 10240 | Off | 22.722 | 22.722 | 22.738 | 22.660 | 22.789 | 22.722 |
+
+#### Peak CPU RSS (GiB)
+
+| K | CUDA Graph | 60% first | 80% first | 60% last | 80% last | 60% middle | 80% middle |
+|---:|:---:|---:|---:|---:|---:|---:|---:|
+| 0 | Off | 1.576 | 1.574 | 1.574 | 1.574 | 1.577 | 1.576 |
+| 0 | On | 1.616 | 1.645 | 1.649 | 1.646 | 1.644 | 1.647 |
+| 1024 | Off | 7.427 | 7.429 | 7.305 | 7.434 | 7.433 | 7.431 |
+| 2048 | Off | 11.004 | 11.040 | 10.878 | 11.268 | 11.007 | 11.266 |
+| 3072 | Off | 14.613 | 14.841 | 14.453 | 14.842 | 14.586 | 14.847 |
+| 4096 | Off | 18.159 | 18.160 | 18.163 | 18.161 | 18.164 | 18.159 |
+| 5120 | Off | 21.736 | 21.734 | 21.737 | 21.734 | 21.738 | 21.734 |
+| 6144 | Off | 25.307 | 25.307 | 25.312 | 25.310 | 25.309 | 25.314 |
+| 7168 | Off | 28.884 | 28.882 | 28.884 | 28.886 | 28.882 | 28.887 |
+| 8192 | Off | 32.456 | 32.458 | 32.461 | 32.460 | 32.461 | 32.457 |
+| 9216 | Off | 36.031 | 36.031 | 36.037 | 36.032 | 36.031 | 36.033 |
+| 10240 | Off | 39.539 | 39.538 | 39.540 | 39.536 | 39.541 | 39.539 |
+
+### Layered: 60% last, swap limit 16
+
+Twelve subsequent runs with the same binaries, GPU and protocol, changing only the swap limit from 5 to 16.
+Prefill and memory columns describe the 16-limit runs; decode compares both limits in tokens/s.
+There is no consistent decode gain. K=0 and K=10240 perform no swaps and provide variability controls.
+
+| K | CUDA Graph | Prefill (ms) | Decode, limit 5 | Decode, limit 16 | Change | Peak GPU (GiB) | Peak CPU RSS (GiB) |
+|---:|:---:|---:|---:|---:|---:|---:|---:|
+| 0 | Off | 21.143 | 137.428 | 128.579 | -6.4% | 39.455 | 1.576 |
+| 0 | On | 21.560 | 168.827 | 168.794 | 0.0% | 39.445 | 1.643 |
+| 1024 | Off | 55.736 | 66.750 | 64.073 | -4.0% | 37.974 | 7.428 |
+| 2048 | Off | 63.772 | 52.294 | 53.446 | +2.2% | 36.363 | 11.005 |
+| 3072 | Off | 85.188 | 41.284 | 41.665 | +0.9% | 34.744 | 14.582 |
+| 4096 | Off | 101.023 | 39.285 | 35.319 | -10.1% | 33.160 | 18.417 |
+| 5120 | Off | 118.835 | 42.769 | 47.282 | +10.6% | 31.512 | 21.737 |
+| 6144 | Off | 195.748 | 37.666 | 38.835 | +3.1% | 29.640 | 25.307 |
+| 7168 | Off | 379.688 | 34.716 | 31.635 | -8.9% | 27.898 | 28.882 |
+| 8192 | Off | 440.986 | 33.658 | 36.897 | +9.6% | 26.154 | 32.457 |
+| 9216 | Off | 438.548 | 30.717 | 30.168 | -1.8% | 24.406 | 36.031 |
+| 10240 | Off | 624.423 | 28.832 | 27.640 | -4.1% | 22.660 | 39.537 |
+
 ## Reproduce
 
 Put a matching source build on `PYTHONPATH` and run outside the source package directory:
@@ -201,3 +297,7 @@ done
 
 For the 70% series, use `--strategy layered --gpu-ratio 0.7` with a separate output directory.
 Use `--layer-order last` or `--layer-order middle` to change GPU layer selection for basic/layered.
+For the six-way position sweep, use `--strategy layered`, ratios `0.6`/`0.8`, and each layer order,
+with separate output directories and serial runs.
+For the 16-swap comparison, use `--strategy layered --gpu-ratio 0.6 --layer-order last`
+and `--max-in-flight-swaps-per-device 16`.
