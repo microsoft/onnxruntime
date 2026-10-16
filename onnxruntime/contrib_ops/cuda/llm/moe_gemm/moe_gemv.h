@@ -18,7 +18,8 @@ namespace onnxruntime::llm {
 namespace kernels {
 namespace moe_gemv {
 
-inline constexpr int64_t kMaxProfiledExpandedRows = 8;
+// 16 covers single-token decode of top-k 9 models (e.g. Nemotron-H LatentMoE); each expanded row is its own CTA.
+inline constexpr int64_t kMaxProfiledExpandedRows = 16;
 inline constexpr int64_t kMaxProfiledExpandedRowsForSmallProblemDim = 4;
 inline constexpr int64_t kMinProfiledProblemDim = 512;
 // Lowered from 704 to 512 so block-wise decode shapes (e.g. Qwen top_k=8,
