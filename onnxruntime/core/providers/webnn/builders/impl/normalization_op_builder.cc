@@ -132,9 +132,33 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       ORT_RETURN_IF_NOT(GetType(*input_defs[0], input_type, logger), "Cannot get input type");
       emscripten::val common_options = emscripten::val::object();
 
+      // In float16, Pow and ReduceMean overflow or lose precision on backends that compute them as typed
+      // (e.g. TensorRT-RTX, DirectML), so the decomposition runs in float32.
+      const bool is_float16 = input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+      if (is_float16) {
+        common_options.set("label", node.Name() + "_cast_input_to_fp32");
+        input = model_builder.GetBuilder().call<emscripten::val>("cast", input,
+                                                                 emscripten::val("float32"), common_options);
+
+        common_options.set("label", node.Name() + "_cast_scale_to_fp32");
+        scale = model_builder.GetBuilder().call<emscripten::val>("cast", scale,
+                                                                 emscripten::val("float32"), common_options);
+
+        if (!bias.isUndefined()) {
+          common_options.set("label", node.Name() + "_cast_bias_to_fp32");
+          bias = model_builder.GetBuilder().call<emscripten::val>("cast", bias,
+                                                                  emscripten::val("float32"), common_options);
+        }
+      }
+
       // If it is SkipSimplifiedLayerNormalization, add the skip and bias (if it exists) to the input.
       if (op_type == "SkipSimplifiedLayerNormalization") {
         emscripten::val skip = model_builder.GetOperand(input_defs[1]->Name());
+        if (is_float16) {
+          common_options.set("label", node.Name() + "_cast_skip_to_fp32");
+          skip = model_builder.GetBuilder().call<emscripten::val>("cast", skip,
+                                                                  emscripten::val("float32"), common_options);
+        }
         common_options.set("label", node.Name() + "_add_skip");
         input = model_builder.GetBuilder().call<emscripten::val>("add", input, skip, common_options);
         if (!bias.isUndefined()) {
@@ -146,12 +170,19 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
         // Now input equals to input_skip_bias_sum.
         if (TensorExists(output_defs, 3)) {
           emscripten::val input_skip_bias_sum = input;
+          if (is_float16) {
+            common_options.set("label", node.Name() + "_cast_input_skip_bias_sum_to_fp16");
+            input_skip_bias_sum = model_builder.GetBuilder().call<emscripten::val>("cast", input_skip_bias_sum,
+                                                                                   emscripten::val("float16"),
+                                                                                   common_options);
+          }
           model_builder.AddOperand(output_defs[3]->Name(), input_skip_bias_sum);
         }
       }
 
       // Pow
-      emscripten::val pow_constant = model_builder.CreateOrGetConstant<float>(input_type, 2);
+      emscripten::val pow_constant =
+          model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 2);
       common_options.set("label", node.Name() + "_pow");
       emscripten::val pow =
           model_builder.GetBuilder().call<emscripten::val>("pow", input, pow_constant, common_options);
@@ -164,7 +195,8 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       emscripten::val reduce_mean = model_builder.GetBuilder().call<emscripten::val>("reduceMean", pow, reduce_options);
 
       // Add
-      emscripten::val add_constant = model_builder.CreateOrGetConstant<float>(input_type, epsilon);
+      emscripten::val add_constant =
+          model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, epsilon);
       common_options.set("label", node.Name() + "_add");
       emscripten::val add =
           model_builder.GetBuilder().call<emscripten::val>("add", reduce_mean, add_constant, common_options);
@@ -187,6 +219,12 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       if (!bias.isUndefined() && op_type != "SkipSimplifiedLayerNormalization") {
         common_options.set("label", node.Name() + "_add_bias");
         output = model_builder.GetBuilder().call<emscripten::val>("add", output, bias, common_options);
+      }
+
+      if (is_float16) {
+        common_options.set("label", node.Name() + "_cast_output_to_fp16");
+        output = model_builder.GetBuilder().call<emscripten::val>("cast", output,
+                                                                  emscripten::val("float16"), common_options);
       }
     }
   } else if (op_type == "InstanceNormalization") {
