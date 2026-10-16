@@ -1,7 +1,10 @@
 /.vscode/
 /build/
-/script/
+/script/*
 !/script/install.js
+!/script/install-utils.js
+!/script/install-metadata.js
+!/script/native-directory.js
 /src/
 /test/
 
