@@ -178,6 +178,7 @@ struct QMoEOffload::CpuWork {
   InlinedVector<float> natural;
   InlinedVector<float> token_rows;
   InlinedVector<char> token_ready;
+  InlinedVector<uint8_t> expert_invocation_rows;
   InlinedVector<InlinedVector<int>> expert_routes;
   InlinedVector<ExpertCall> calls;
   std::unique_ptr<PaddedAtomicInt[]> fc1_done = std::make_unique<PaddedAtomicInt[]>(kMaxGroupSlots);
@@ -189,7 +190,40 @@ struct QMoEOffload::CpuWork {
         intermediate(static_cast<size_t>(SafeInt<size_t>(group_calls) * qmoe_shared::kMaxRowsPerCall * inter_size)),
         result(static_cast<size_t>(SafeInt<size_t>(group_calls) * qmoe_shared::kMaxRowsPerCall * hidden_size)),
         natural(hidden_size),
+        expert_invocation_rows(num_experts, 0),
         expert_routes(num_experts) {}
+};
+
+class SessionPromotionBudget {
+ public:
+  static SessionPromotionBudget& Instance() {
+    static SessionPromotionBudget instance;
+    return instance;
+  }
+
+  bool TryAcquire(const void* session_key, uint64_t step_seq, int max_promotions,
+                  size_t max_bytes, size_t promo_bytes) noexcept {
+    if (max_promotions <= 0 && max_bytes == 0) return true;
+    const uint64_t combined_key =
+        (static_cast<uint64_t>(reinterpret_cast<uintptr_t>(session_key)) << 24) ^ step_seq;
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (combined_key != current_key_) {
+      current_key_ = combined_key;
+      promotions_in_step_ = 0;
+      bytes_in_step_ = 0;
+    }
+    if (max_promotions > 0 && promotions_in_step_ >= max_promotions) return false;
+    if (max_bytes > 0 && promotions_in_step_ > 0 && bytes_in_step_ + promo_bytes > max_bytes) return false;
+    ++promotions_in_step_;
+    bytes_in_step_ += promo_bytes;
+    return true;
+  }
+
+ private:
+  std::mutex mutex_;
+  uint64_t current_key_ = ~uint64_t{0};
+  int promotions_in_step_ = 0;
+  size_t bytes_in_step_ = 0;
 };
 
 struct QMoEOffload::SharedLayerCache {
@@ -1859,6 +1893,14 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
     resident_phase_scores_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_RESIDENT_PHASE_SCORES", 0) == 1;
     resident_margin_percent_ = std::clamp(
         ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_RESIDENT_MARGIN_PERCENT", 125), 100, 10000);
+    marginal_row_weight_ = static_cast<float>(std::clamp(
+        ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_MARGINAL_ROW_WEIGHT_PCT", 80), 0, 100)) / 100.0f;
+    presence_ema_weight_ = static_cast<float>(std::clamp(
+        ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PRESENCE_EMA_WEIGHT_PCT", 200), 0, 10000)) / 100.0f;
+    step_promo_budget_ = std::clamp(
+        ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_STEP_PROMOTION_BUDGET", 16), 0, 256);
+    step_promo_bytes_ = static_cast<size_t>(std::clamp(
+        ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_STEP_PROMOTION_MIB", 64), 0, 4096)) << 20;
     resident_log_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_RESIDENT_LOG", 0) == 1;
 
     size_t slab_bytes = 0;
@@ -1874,6 +1916,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
     slot_expert_.assign(physical_slots_, -1);
     expert_slot_.assign(num_experts_, -1);
     expert_score_.assign(num_experts_, 0.0f);
+    expert_presence_ema_.assign(num_experts_, 0.0f);
     if (resident_phase_scores_) decode_score_.assign(num_experts_, 0.0f);
 
     // Pre-populate initial resident slots [0, resident_slots_) from profile-seeded initial_experts or 0..C-1.
@@ -1885,6 +1928,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
                                    : slot;
     }
     if (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_PREPOPULATE", 1) == 1) {
+      const float init_ema = static_cast<float>(k_) / static_cast<float>(std::max(1, num_experts_));
       for (int slot = 0; slot < resident_slots_; ++slot) {
         const int expert = initial_experts_[slot];
         ORT_ENFORCE(expert >= 0 && expert < num_experts_ && expert_slot_[expert] < 0,
@@ -1894,6 +1938,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
         expert_slot_[expert] = slot;
         const float prior = 4.0f + static_cast<float>(resident_slots_ - slot) * 0.25f;
         expert_score_[expert] = prior;
+        expert_presence_ema_[expert] = init_ema;
         if (resident_phase_scores_) decode_score_[expert] = prior;
       }
       CUDA_CALL_THROW(cudaMemcpy(CurrentSlotTableDev(), expert_slot_.data(),
@@ -2610,8 +2655,10 @@ void QMoEOffload::RestoreAndSeedResidentSlab(
 
   bool modified = was_lent;
   if (!enable_seeding) {
+    const float init_ema = static_cast<float>(k_) / static_cast<float>(std::max(1, num_experts_));
     for (int e = 0; e < num_experts_; ++e) {
       expert_score_[e] = 0.0f;
+      if (static_cast<size_t>(e) < expert_presence_ema_.size()) expert_presence_ema_[e] = 0.0f;
       if (resident_phase_scores_) decode_score_[e] = 0.0f;
     }
     for (int slot = 0; slot < resident_slots_; ++slot) {
@@ -2619,6 +2666,7 @@ void QMoEOffload::RestoreAndSeedResidentSlab(
       if (e >= 0 && e < num_experts_) {
         const float prior = 4.0f + static_cast<float>(resident_slots_ - slot) * 0.25f;
         expert_score_[e] = prior;
+        if (static_cast<size_t>(e) < expert_presence_ema_.size()) expert_presence_ema_[e] = init_ema;
         if (resident_phase_scores_) decode_score_[e] = prior;
       }
     }
@@ -2742,7 +2790,7 @@ void QMoEOffload::RestoreAndSeedResidentSlab(
   }
 }
 
-void QMoEOffload::RecordResidentRoute(int phase, int expert, bool hit) const {
+void QMoEOffload::RecordResidentRoute(int phase, int expert, bool hit, float weight) const {
   ++resident_total_routes_;
   ++phase_total_routes_[phase];
   if (hit) {
@@ -2751,7 +2799,7 @@ void QMoEOffload::RecordResidentRoute(int phase, int expert, bool hit) const {
   }
   resident_decode_active_ = phase != 0;
   auto& scores = resident_phase_scores_ && resident_decode_active_ ? decode_score_ : expert_score_;
-  scores[expert] += 1.0f;
+  scores[expert] += weight;
   if (resident_phase_scores_ && !continuous_decay_) {
     auto& routes = phase_routes_since_decay_[resident_decode_active_ ? 1 : 0];
     if (++routes >= resident_decay_routes_) {
@@ -2762,7 +2810,8 @@ void QMoEOffload::RecordResidentRoute(int phase, int expert, bool hit) const {
 }
 
 void QMoEOffload::CommitInvocationObservation(const std::array<int, 5>& phase_rows,
-                                              const std::array<std::vector<int>, 5>& phase_expert_rows) const {
+                                              const std::array<std::vector<int>, 5>& phase_expert_rows,
+                                              const uint8_t* invocation_expert_rows) const {
   if (!continuous_decay_ || resident_slots_ == 0) return;
   // Continuous exponential decay per committed logical invocation (v3 Section 8.2 / F7):
   // d = exp2(-delta_routes / resident_decay_routes_).
@@ -2781,19 +2830,25 @@ void QMoEOffload::CommitInvocationObservation(const std::array<int, 5>& phase_ro
     const float d = std::exp2(-static_cast<float>(decode_delta_routes) / static_cast<float>(resident_decay_routes_));
     for (auto& s : decode_score_) s *= d;
   }
-  // Also update invocation-presence EMA (half-life = 32 invocations) when phase_expert_rows is populated (v3 Section 8.2).
-  if (static_cast<int>(expert_presence_ema_.size()) == num_experts_ && total_delta_routes > 0 &&
-      !phase_expert_rows[0].empty()) {
+  // Update invocation-presence EMA (half-life = 32 invocations) from either fast invocation_expert_rows or phase_expert_rows.
+  if (static_cast<int>(expert_presence_ema_.size()) == num_experts_ && total_delta_routes > 0) {
     const float d_inv = std::exp2(-1.0f / 32.0f);
-    for (int e = 0; e < num_experts_; ++e) {
-      bool present = false;
-      for (int p = 0; p < 5; ++p) {
-        if (static_cast<int>(phase_expert_rows[p].size()) == num_experts_ && phase_expert_rows[p][e] > 0) {
-          present = true;
-          break;
-        }
+    if (invocation_expert_rows != nullptr) {
+      for (int e = 0; e < num_experts_; ++e) {
+        const bool present = invocation_expert_rows[e] > 0;
+        expert_presence_ema_[e] = d_inv * expert_presence_ema_[e] + (present ? (1.0f - d_inv) : 0.0f);
       }
-      expert_presence_ema_[e] = d_inv * expert_presence_ema_[e] + (present ? (1.0f - d_inv) : 0.0f);
+    } else if (!phase_expert_rows[0].empty()) {
+      for (int e = 0; e < num_experts_; ++e) {
+        bool present = false;
+        for (int p = 0; p < 5; ++p) {
+          if (static_cast<int>(phase_expert_rows[p].size()) == num_experts_ && phase_expert_rows[p][e] > 0) {
+            present = true;
+            break;
+          }
+        }
+        expert_presence_ema_[e] = d_inv * expert_presence_ema_[e] + (present ? (1.0f - d_inv) : 0.0f);
+      }
     }
   }
 }
@@ -2856,6 +2911,16 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
     if (slot_expert_[idx] >= 0) ++active_residents;
   }
 
+  auto effective_score = [&](int e) noexcept -> float {
+    float s = scores[e];
+    if (static_cast<size_t>(e) < expert_presence_ema_.size()) {
+      s += presence_ema_weight_ * expert_presence_ema_[e];
+    }
+    return s;
+  };
+  size_t single_expert_bytes = 0;
+  for (size_t b : resident_bank_bytes_) single_expert_bytes += b;
+
   if (use_bg_promo) {
     for (int promoted = 0; promoted < std::min(promotion_limit, spare_slots_); ++promoted) {
       int candidate = -1;
@@ -2869,9 +2934,10 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
             break;
           }
         }
-        if (!already_pending && scores[expert] > best) {
+        const float cand_score = effective_score(expert);
+        if (!already_pending && cand_score > best) {
           candidate = expert;
-          best = scores[expert];
+          best = cand_score;
         }
       }
       if (candidate < 0) break;
@@ -2907,8 +2973,9 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
                 break;
               }
             }
-            if (!used && scores[slot_expert_[idx]] < lowest) {
-              lowest = scores[slot_expert_[idx]];
+            const float res_score = effective_score(slot_expert_[idx]);
+            if (!used && res_score < lowest) {
+              lowest = res_score;
               victim_slot = idx;
             }
           }
@@ -2917,6 +2984,15 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
         const float threshold = lowest * (static_cast<float>(resident_margin_percent_) / 100.0f) + kMargin;
         if (best < threshold) break;
         evicted = slot_expert_[victim_slot];
+      }
+
+      const uint64_t step_seq = (decode_state_ && decode_state_->last_serviced_seq > 0)
+                                    ? decode_state_->last_serviced_seq
+                                    : (resident_total_routes_ / static_cast<uint64_t>(std::max<int64_t>(1, k_)));
+      if (!SessionPromotionBudget::Instance().TryAcquire(session_controller_.get(), step_seq,
+                                                         step_promo_budget_, step_promo_bytes_,
+                                                         single_expert_bytes)) {
+        break;
       }
 
       if (!promo_stream_) {
@@ -4213,6 +4289,7 @@ void QMoEOffload::RunAsyncCpu(AsyncTile& tile) const {
 
   // Pass 2: Record validated routes and classify cold misses on the callback thread (overlapped with GPU GEMV).
   const bool in_warmup = IsInQMoEWarmup();
+  std::fill(work.expert_invocation_rows.begin(), work.expert_invocation_rows.end(), uint8_t{0});
   for (int token = 0; token < tile.tile_rows; ++token) {
     const int token_phase = tile.has_phases ? static_cast<int>(tile.host_phases[token]) : 1;
     if (tile.counts) ++tile.counts[token_phase];
@@ -4223,9 +4300,11 @@ void QMoEOffload::RunAsyncCpu(AsyncTile& tile) const {
       const size_t statistic = static_cast<size_t>(token_phase) * num_experts_ + expert;
       if (tile.route_rows) ++tile.route_rows[statistic];
       if (tile.route_calls) tile.route_calls[statistic] = 1;
+      const uint8_t prev_rows = work.expert_invocation_rows[expert]++;
       if (resident_slots_ > 0) {
         if (!in_warmup) {
-          RecordResidentRoute(token_phase, expert, expert_slot_[expert] >= 0);
+          const float weight = (prev_rows == 0) ? 1.0f : marginal_row_weight_;
+          RecordResidentRoute(token_phase, expert, expert_slot_[expert] >= 0, weight);
         }
         if (expert_slot_[expert] >= 0) {
           continue;
@@ -4269,7 +4348,7 @@ void QMoEOffload::RunAsyncCpu(AsyncTile& tile) const {
   }
   if (resident_slots_ > 0 && !in_warmup) {
     if (continuous_decay_) {
-      CommitInvocationObservation(obs_phase_rows, obs_phase_expert_rows);
+      CommitInvocationObservation(obs_phase_rows, obs_phase_expert_rows, work.expert_invocation_rows.data());
     } else if (!resident_phase_scores_) {
       routes_since_decay_ += tile.tile_rows * static_cast<int>(k_);
       if (routes_since_decay_ >= resident_decay_routes_) {

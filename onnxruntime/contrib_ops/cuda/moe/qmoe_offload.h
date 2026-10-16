@@ -83,9 +83,10 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   Status PromoteResident(cudaStream_t stream, const InlinedVector<InlinedVector<int>>& cold_routes,
                          int max_promotions = 0, const int* streamed_experts = nullptr,
                          int streamed_count = 0) const;
-  void RecordResidentRoute(int phase, int expert, bool hit) const;
+  void RecordResidentRoute(int phase, int expert, bool hit, float weight = 1.0f) const;
   void CommitInvocationObservation(const std::array<int, 5>& phase_rows,
-                                   const std::array<std::vector<int>, 5>& phase_expert_rows) const;
+                                   const std::array<std::vector<int>, 5>& phase_expert_rows,
+                                   const uint8_t* invocation_expert_rows = nullptr) const;
 
   struct CpuWork;
   struct AsyncTile;
@@ -206,6 +207,10 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   int resident_promotions_ = 0;
   int resident_decay_routes_ = 0;
   int resident_margin_percent_ = 100;
+  float marginal_row_weight_ = 0.80f;
+  float presence_ema_weight_ = 2.0f;
+  int step_promo_budget_ = 16;
+  size_t step_promo_bytes_ = 64ULL << 20;
   bool resident_phase_scores_ = false;
   bool continuous_decay_ = false;
   bool bg_promo_stream_ = true;
