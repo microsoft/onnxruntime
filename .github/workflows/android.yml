@@ -132,10 +132,12 @@ jobs:
         DIAGNOSTIC_WORKFLOW_SHA: ${{ github.sha }}
       shell: python
       run: |
+        import hashlib
         import json
         import os
         import pathlib
         import subprocess
+        import sys
 
         # Run only existing container/NDK tools. Never replay a link command through a shell.
         code = r'''
@@ -409,14 +411,106 @@ jobs:
             manifest_path.write_text(content)
             raise
         finally:
-            if cidfile.exists():
-                cid = cidfile.read_text().strip()
-                if len(cid) == 64 and all(char in "0123456789abcdef" for char in cid):
-                    subprocess.run(["docker", "rm", "--force", cid], check=False,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
-                cidfile.unlink()
-            for name in ("map-only.so", "full.map", "map-only-link.txt"):
-                (work / name).unlink(missing_ok=True)
+            original_error = sys.exc_info()[1]
+            cleanup = {"status": "no_cidfile", "returncode": None, "stdout": "", "stderr": ""}
+            cleanup_failure = None
+            try:
+                if cidfile.exists():
+                    if cidfile.stat().st_size > 65:
+                        raise RuntimeError("Oversized owned CID; container cleanup is unverified")
+                    cid = cidfile.read_text().strip()
+                    cleanup["cid"] = cid
+                    if len(cid) != 64 or any(char not in "0123456789abcdef" for char in cid):
+                        raise RuntimeError("Invalid owned CID; container cleanup is unverified")
+                    try:
+                        removed = subprocess.run(["docker", "rm", "--force", cid], check=False,
+                                                 capture_output=True, text=True, timeout=30)
+                    except subprocess.TimeoutExpired as error:
+                        cleanup["timeout_seconds"] = error.timeout
+                        for name in ("stdout", "stderr"):
+                            value = getattr(error, name) or ""
+                            cleanup[name] = value.decode("utf-8", "backslashreplace") if isinstance(value, bytes) else value
+                        raise
+                    cleanup.update(returncode=removed.returncode, stdout=removed.stdout, stderr=removed.stderr)
+                    missing = (removed.returncode == 1 and not removed.stdout.strip()
+                               and removed.stderr.strip() == f"Error response from daemon: No such container: {cid}")
+                    if removed.returncode == 0:
+                        cleanup["status"] = "removed"
+                    elif missing:
+                        cleanup["status"] = "already_removed_exact_cid"
+                    else:
+                        raise RuntimeError(f"Owned container cleanup failed: docker rm exit {removed.returncode}")
+            except Exception as error:
+                cleanup_failure = f"{type(error).__name__}: {error}"
+                cleanup["status"] = "UNVERIFIED"
+            finally:
+                for path in (cidfile, *(work / name for name in ("map-only.so", "full.map", "map-only-link.txt"))):
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError as error:
+                        cleanup.setdefault("file_cleanup_failures", []).append(f"{path.name}: {error}")
+                        cleanup_failure = cleanup_failure or "Named diagnostic file cleanup failed"
+            try:
+                artifact.mkdir(parents=True, exist_ok=True)
+                manifest_path = artifact / "manifest.json"
+                try:
+                    manifest = json.loads(manifest_path.read_text())
+                    if not isinstance(manifest, dict):
+                        raise ValueError("Collector manifest is not an object")
+                except (OSError, ValueError) as error:
+                    cleanup_failure = cleanup_failure or f"Collector manifest unavailable/invalid: {error}"
+                    manifest = {"valid_attribution": False}
+                if "cleanup_failure" in manifest:
+                    manifest.setdefault("prior_cleanup_failure", manifest["cleanup_failure"])
+                manifest["container_cleanup"] = cleanup
+                if cleanup_failure:
+                    manifest.update(valid_attribution=False, cleanup_failure=cleanup_failure)
+                content = json.dumps(manifest, indent=2) + "\n"
+                total = len(content.encode()) + sum(path.stat().st_size for path in artifact.iterdir()
+                                                  if path.name != "manifest.json")
+                if total > 2 * 1024 * 1024:
+                    cleanup_failure = cleanup_failure or f"Cleanup artifact budget exceeded: {total} bytes"
+                    manifest.update(valid_attribution=False, cleanup_failure=cleanup_failure)
+                    for name in ("stdout", "stderr"):
+                        if name in cleanup:
+                            value = cleanup[name].encode()
+                            cleanup[name] = {"omitted_bytes": len(value), "sha256": hashlib.sha256(value).hexdigest()}
+                if not manifest.get("valid_attribution"):
+                    for path in artifact.iterdir():
+                        if path.name != "manifest.json":
+                            path.unlink()
+                content = json.dumps(manifest, indent=2) + "\n"
+                if len(content.encode()) > 2 * 1024 * 1024:
+                    def bounded_cause(value):
+                        value = str(value)
+                        encoded = value.encode()
+                        return value if len(encoded) <= 4096 else {
+                            "omitted_bytes": len(encoded), "sha256": hashlib.sha256(encoded).hexdigest(),
+                            "explicit_partial_prefix": value[:1024]}
+                    manifest = {"valid_attribution": False, "cleanup_failure": cleanup_failure,
+                                "launcher_failure": bounded_cause(manifest.get("launcher_failure")),
+                                "container_cleanup": cleanup,
+                                "omitted_oversized_invalid_manifest_bytes": len(content.encode())}
+                    content = json.dumps(manifest, indent=2) + "\n"
+                if len(content.encode()) > 2 * 1024 * 1024:
+                    oversized = content.encode()
+                    manifest = {"valid_attribution": False,
+                                "cleanup_failure": bounded_cause(cleanup_failure),
+                                "launcher_failure": bounded_cause(manifest.get("launcher_failure")),
+                                "container_cleanup": {
+                                    "status": cleanup["status"], "cid": cleanup.get("cid"),
+                                    "omitted_bytes": len(oversized),
+                                    "sha256": hashlib.sha256(oversized).hexdigest()}}
+                    content = json.dumps(manifest, indent=2) + "\n"
+                manifest_path.unlink(missing_ok=True)
+                manifest_path.write_text(content)
+            except Exception as error:
+                cleanup["manifest_failure"] = str(error)
+                cleanup_failure = cleanup_failure or f"Cleanup manifest persistence failed: {error}"
+            if cleanup_failure:
+                print(json.dumps({"cleanup_failure": cleanup_failure, "container_cleanup": cleanup}), file=sys.stderr)
+                if original_error is None:
+                    raise RuntimeError(cleanup_failure)
 
     - name: Upload TEMPORARY planner attribution only (no ELF/full map)
       if: ${{ always() && steps.minimal_build.outcome == 'failure' }}
