@@ -1,7 +1,7 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01 and M02 complete; M03 in progress.
-M02: [PR #12](https://github.com/onnxruntime/ort-state/pull/12).
+**Status:** Approved; M01-M03 complete.
+M03: [PR #13](https://github.com/onnxruntime/ort-state/pull/13).
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
 **Working memory:** [Shared scratchpad](SCRATCHPAD.md).
 
@@ -16,7 +16,7 @@ M02: [PR #12](https://github.com/onnxruntime/ort-state/pull/12).
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01 and M02 are complete; M03 is in progress; M04-M24 are pending. Check tasks when their
+M01-M03 are complete; M04-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -93,13 +93,13 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01 and M02 are **complete**; M03 is **in progress**; M04-M24 are **pending**.
+M01-M03 are **complete**; M04-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
 | [x] | M01 | Contracts, deterministic fixtures, coverage readiness / `contracts-fixtures` | Approved plan |
 | [x] | M02 | Stateful context and explicit SessionLoop / `context-loop` | M01 |
-| [ ] | M03 | SessionChain and tensor/state bindings / `chain-bindings` | M02 |
+| [x] | M03 | SessionChain and tensor/state bindings / `chain-bindings` | M02 |
 | [ ] | M04 | CPU KV cache management / `cpu-kv-cache` | M03 |
 | [ ] | M05 | CPU greedy sampling and decode iteration / `cpu-greedy` | M04 |
 | [ ] | M06 | Public C API and C++ wrappers / `public-api` | M02, M03, M04, M05 |
@@ -376,8 +376,9 @@ not a claim of device-line coverage for unchanged kernels.
 ### M03 - SessionChain and tensor/state bindings
 
 **Outcome:** Internal linear composition without a manifest state machine.
-**Status:** Validated, pending commit/PR, authorized 2026-10-16; `state/m03-chain-bindings`
-stacks on `state/m02-context-loop`.
+**Status:** Complete; [PR #13](https://github.com/onnxruntime/ort-state/pull/13)
+is ready for review. Branch `state/m03-chain-bindings` stacks on
+`state/m02-context-loop`. Implementation commit: `c4ad4d5389`.
 
 - [x] Implement ordered Session/SessionLoop composition and external/result ports.
 - [x] Implement renamed tensor mapping, iteration feedback, retained-state slots,
@@ -426,7 +427,7 @@ test declared transfers and explicit rejection of unsupported combinations.
 - Final source formatting, 120-column, document and whitespace checks passed.
 
 - [x] Finalize CPU/CUDA evidence and style/document checks.
-- [ ] Commit and publish the ready-for-review PR stacked on M02.
+- [x] Commit and publish the ready-for-review PR stacked on M02.
 
 Validation commands, using the established M01/M02 configurations:
 

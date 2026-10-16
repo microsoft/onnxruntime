@@ -13,7 +13,7 @@ Compressed project memory. This is not the execution plan.
   M01. `SPEC.md` and the execution plan are approved.
 - M01 is complete and published as ready-for-review PR #11:
   https://github.com/onnxruntime/ort-state/pull/11
-- No agents launched. M01 and M02 are complete; M03-M24 remain pending.
+- No agents launched. M01-M03 are complete; M04-M24 remain pending.
   Runtime production code starts with M02.
 - Future tracking: keep `TASKS.md` checklist current and record compressed
   discoveries/agent learnings here.
@@ -87,7 +87,7 @@ Compressed project memory. This is not the execution plan.
   standalone package; ORT loading; DDIM; Python; Phi-3 demo; diffusion demo;
   C#; Java; common JS/Node; Web/WASM; Go; Rust; Objective-C; React Native;
   integrated qualification/measurements.
-- M01 and M02 complete after explicit approval; M03-M24 remain pending.
+- M01-M03 complete after explicit approval; M04-M24 remain pending.
 - Each milestone includes intended outcome, tasks, CPU/CUDA test plan and gate.
   Actual prerequisites are listed separately from mechanical stack ordering.
 - M01 verifies concrete contracts, small fixtures and coverage readiness.
@@ -253,7 +253,7 @@ Compressed project memory. This is not the execution plan.
 - Final test-source formatting fixes (trailing commas to prevent >120-column
   initializer collapse) require one final focused rebuild/test. Production
   source already passed CPU tests and coverage; no production changes after that.
-- M03 commits/push/PR pending. No agents used.
+- M03 implementation commit `c4ad4d5389` pushed; no agents used.
 - Final CPU suite 30/30 and final coverage rechecked: 354/354 new unique
   executable source locations, 615/615 cumulative; LLVM aggregate 621/621.
 - CUDA build/tests passed: 58/58 focused, 26/26 regressions, no skips.
@@ -261,5 +261,7 @@ Compressed project memory. This is not the execution plan.
   with graph node assignment checks.
 - Compute Sanitizer memcheck: four chain state/reset/cancellation/host-staging/
   dynamic-cache tests passed, zero errors.
-- Final clang-format and 120-column checks passed. M03 validated, ready for
-  commit and stacked PR publication. No new device code or public API.
+- Final clang-format and 120-column checks passed. M03 complete in ready-for-review
+  PR #13: https://github.com/onnxruntime/ort-state/pull/13
+  Base `state/m02-context-loop`, head `state/m03-chain-bindings`.
+  No new device code or public API. M04 (CPU KVCacheManager) is next, not started.
