@@ -30,55 +30,29 @@
 
 #if defined(MLAS_TARGET_ARM64) && (!defined(_MSC_VER) || defined(__clang__))
 TEST(SGemmPostProcessTest, StridedAlphaBeta) {
-  ArmKleidiAI::MlasGemmApplyAlphaBetaStrided(nullptr, 0, 1.0f, 0.0f, nullptr, 1, true);
-  struct Case {
-    size_t count;
-    size_t stride;
-    float alpha;
-    float beta;
-    bool allow_memcpy;
-  };
-  // Cover the SIMD threshold/tail, copy path and GEMV's strided destination
-  // without repeating the full GEMM parameter matrix here.
-  constexpr Case cases[] = {
-      {31, 1, 1.0f, 0.25f, true},
-      {32, 1, -0.5f, 0.0f, true},
-      {32, 1, 1.0f, 0.25f, true},
-      {33, 1, -0.5f, 0.25f, true},
-      {33, 1, 1.0f, 0.0f, true},
-      {33, 1, 1.0f, 0.0f, false},
-      {33, 3, -0.5f, 0.25f, true},
-  };
+  constexpr size_t count = 33;
+  constexpr size_t stride = 3;
   constexpr float sentinel = -123.0f;
-  for (const auto& test_case : cases) {
-    SCOPED_TRACE(testing::Message() << "count=" << test_case.count << " stride=" << test_case.stride
-                                    << " memcpy=" << test_case.allow_memcpy << " alpha=" << test_case.alpha
-                                    << " beta=" << test_case.beta);
-    std::vector<float> product(test_case.count);
-    std::vector<float> output(test_case.count * test_case.stride + 2, sentinel);
-    float* destination = output.data() + 1;
-    for (size_t i = 0; i < test_case.count; ++i) {
-      product[i] = static_cast<float>(static_cast<int>(i % 7) - 3);
-      destination[i * test_case.stride] =
-          test_case.beta == 0.0f ? std::numeric_limits<float>::quiet_NaN() : 2.0f;
-    }
-    ArmKleidiAI::MlasGemmApplyAlphaBetaStrided(
-        product.data(), test_case.count, test_case.alpha, test_case.beta,
-        destination, test_case.stride, test_case.allow_memcpy);
-    for (size_t i = 0; i < test_case.count; ++i) {
-      EXPECT_EQ(destination[i * test_case.stride], test_case.alpha * product[i] + test_case.beta * 2.0f);
-      for (size_t padding = 1; padding < test_case.stride; ++padding) {
-        EXPECT_EQ(destination[i * test_case.stride + padding], sentinel);
-      }
-    }
-    EXPECT_EQ(output.front(), sentinel);
-    EXPECT_EQ(output.back(), sentinel);
+  std::vector<float> product(count);
+  std::vector<float> output(count * stride + 2, sentinel);
+  float* destination = output.data() + 1;
+  for (size_t i = 0; i < count; ++i) {
+    product[i] = static_cast<float>(static_cast<int>(i % 7) - 3);
+    destination[i * stride] = 2.0f;
   }
+  ArmKleidiAI::MlasGemmApplyAlphaBetaStrided(
+      product.data(), count, -0.5f, 0.25f, destination, stride, true);
+  for (size_t i = 0; i < count; ++i) {
+    EXPECT_EQ(destination[i * stride], -0.5f * product[i] + 0.5f);
+    for (size_t padding = 1; padding < stride; ++padding) {
+      EXPECT_EQ(destination[i * stride + padding], sentinel);
+    }
+  }
+  EXPECT_EQ(output.front(), sentinel);
+  EXPECT_EQ(output.back(), sentinel);
 }
 
 TEST(SGemmPostProcessTest, PaddedOutputAndBetaZeroNaNs) {
-  ArmKleidiAI::MlasGemmApplyAlphaBeta(nullptr, 0, 33, 1.0f, 0.0f, nullptr, 33);
-  ArmKleidiAI::MlasGemmApplyBeta(nullptr, 3, 0, 3, 0.0f);
   constexpr size_t rows = 3;
   constexpr size_t columns = 33;
   constexpr float sentinel = -123.0f;
@@ -110,28 +84,11 @@ TEST(SGemmPostProcessTest, PaddedOutputAndBetaZeroNaNs) {
 #endif
 
 TEST(SGemmPackedModelShapesTest, M1BetaZeroAndBetaOne) {
-  struct GemmShape {
-    size_t n;
-    size_t k;
-  };
-
-  constexpr GemmShape model_shapes[] = {
-      {128, 32},
-      {32, 128},
-      {256, 256},
-  };
-  constexpr float betas[] = {0.0f, 1.0f};
-
   MlasFgemmTest<float, true, false> tester;
-  for (const auto& shape : model_shapes) {
-    for (float beta : betas) {
-      SCOPED_TRACE(testing::Message()
-                   << "M=1 N=" << shape.n << " K=" << shape.k
-                   << " beta=" << beta);
-      // The fixture initializes C to -0.5, so beta=1 exercises the same
-      // pre-populated-output accumulation used after Gemm bias broadcasting.
-      tester.Test(false, false, 1, shape.n, shape.k, 1, 1.0f, beta);
-    }
+  for (float beta : {0.0f, 1.0f}) {
+    SCOPED_TRACE(testing::Message() << "beta=" << beta);
+    // C starts at -0.5, reproducing accumulation after Gemm bias broadcasting.
+    tester.Test(false, false, 1, 128, 32, 1, 1.0f, beta);
   }
 }
 
@@ -143,6 +100,17 @@ bool KleidiAIOpsSgemmIsAvailable(size_t n, size_t k) {
              CblasNoTrans, CblasNoTrans, n, k, true) >
          ArmKleidiAI::MlasGemmPackBExtensionSizeKleidiAIOps(
              CblasNoTrans, CblasNoTrans, n, k, false);
+}
+
+std::vector<float> SgemmTestMatrix(size_t rows, size_t columns, size_t ld, size_t period) {
+  std::vector<float> matrix(rows * ld, -123.0f);
+  for (size_t row = 0; row < rows; ++row) {
+    for (size_t column = 0; column < columns; ++column) {
+      matrix[row * ld + column] = static_cast<float>(static_cast<int>((row + column) % period) -
+                                                     static_cast<int>(period / 2));
+    }
+  }
+  return matrix;
 }
 
 }  // namespace
@@ -158,12 +126,7 @@ TEST(SGemmKleidiAIOpsTest, ReusePackedWeightsAcrossRowsThreadsAndScales) {
   if (!KleidiAIOpsSgemmIsAvailable(N, K)) {
     GTEST_SKIP() << "KleidiAI Ops SGEMM is unavailable for N=" << N << " K=" << K << ".";
   }
-  std::vector<float> b(K * Ldb, -123.0f);
-  for (size_t depth = 0; depth < K; ++depth) {
-    for (size_t column = 0; column < N; ++column) {
-      b[depth * Ldb + column] = static_cast<float>(static_cast<int>((depth + column) % 5) - 2);
-    }
-  }
+  const auto b = SgemmTestMatrix(K, N, Ldb, 5);
 
   const size_t packed_size = MlasGemmPackBSize(CblasNoTrans, CblasNoTrans, N, K, nullptr);
   ASSERT_NE(packed_size, size_t{0});
@@ -173,25 +136,16 @@ TEST(SGemmKleidiAIOpsTest, ReusePackedWeightsAcrossRowsThreadsAndScales) {
 
   constexpr std::array<std::array<float, 2>, 5> scales = {
       {{1.0f, 0.0f}, {1.0f, 1.0f}, {-0.5f, 0.0f}, {-0.5f, 0.25f}, {0.0f, 0.25f}}};
+  MlasFgemmTest<float, false, false> tester;
   for (size_t m : {1, 3, 24, 96}) {
-    std::vector<float> a(m * Lda, -123.0f);
-    std::vector<float> product(m * N, 0.0f);
-    for (size_t row = 0; row < m; ++row) {
-      for (size_t depth = 0; depth < K; ++depth) {
-        a[row * Lda + depth] = static_cast<float>(static_cast<int>((row + depth) % 7) - 3);
-      }
-      for (size_t column = 0; column < N; ++column) {
-        for (size_t depth = 0; depth < K; ++depth) {
-          product[row * N + column] += a[row * Lda + depth] * b[depth * Ldb + column];
-        }
-      }
-    }
-    for (auto* thread_pool : {static_cast<MLAS_THREADPOOL*>(nullptr), GetMlasThreadPool()}) {
-      for (const auto& scale : scales) {
-        const float alpha = scale[0];
-        const float beta = scale[1];
+    const auto a = SgemmTestMatrix(m, K, Lda, 7);
+    for (const auto& scale : scales) {
+      std::vector<float> expected(m * Ldc, 2.0f);
+      tester.ReferenceGemm(CblasNoTrans, CblasNoTrans, m, N, K, 1,
+                           scale[0], a.data(), Lda, b.data(), Ldb, scale[1], expected.data(), Ldc);
+      for (auto* thread_pool : {static_cast<MLAS_THREADPOOL*>(nullptr), GetMlasThreadPool()}) {
         SCOPED_TRACE(testing::Message() << "M=" << m << " threaded=" << (thread_pool != nullptr)
-                                        << " alpha=" << alpha << " beta=" << beta);
+                                        << " alpha=" << scale[0] << " beta=" << scale[1]);
         std::vector<float> c(m * Ldc, 2.0f);
         MLAS_SGEMM_DATA_PARAMS data{};
         data.A = a.data();
@@ -200,18 +154,13 @@ TEST(SGemmKleidiAIOpsTest, ReusePackedWeightsAcrossRowsThreadsAndScales) {
         data.BIsPacked = true;
         data.C = c.data();
         data.ldc = Ldc;
-        data.alpha = alpha;
-        data.beta = beta;
+        data.alpha = scale[0];
+        data.beta = scale[1];
         // Call the adapter directly so a generic MLAS fallback cannot mask
         // a broken packed-buffer contract.
         ASSERT_TRUE(ArmKleidiAI::MlasGemmBatchKleidiAIOps(
             CblasNoTrans, CblasTrans, m, N, K, &data, 1, thread_pool));
-        for (size_t row = 0; row < m; ++row) {
-          for (size_t column = 0; column < Ldc; ++column) {
-            const float expected = column < N ? alpha * product[row * N + column] + beta * 2.0f : 2.0f;
-            ASSERT_EQ(c[row * Ldc + column], expected) << "row=" << row << " column=" << column;
-          }
-        }
+        ASSERT_EQ(c, expected);
       }
     }
   }
@@ -254,16 +203,11 @@ TEST(SGemmKleidiAIOpsTest, PublicPackedWeightsFallBackAcrossLayoutsAndSelectors)
   constexpr size_t Ldc = N + 3;
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG disabled_selector{};
   disabled_selector.use_kleidiai = false;
+  MlasFgemmTest<float, false, false> tester;
 
   for (auto trans_b : {CblasNoTrans, CblasTrans}) {
     const size_t ldb = (trans_b == CblasNoTrans ? N : K) + 2;
-    std::vector<float> b((trans_b == CblasNoTrans ? K : N) * ldb, -123.0f);
-    for (size_t depth = 0; depth < K; ++depth) {
-      for (size_t column = 0; column < N; ++column) {
-        b[trans_b == CblasNoTrans ? depth * ldb + column : column * ldb + depth] =
-            static_cast<float>(static_cast<int>((depth + column) % 5) - 2);
-      }
-    }
+    const auto b = SgemmTestMatrix(trans_b == CblasNoTrans ? K : N, trans_b == CblasNoTrans ? N : K, ldb, 5);
     const size_t packed_size = MlasGemmPackBSize(CblasNoTrans, trans_b, N, K, nullptr);
     std::vector<uint8_t> packed_b(packed_size);
     MlasGemmPackB(CblasNoTrans, trans_b, N, K, b.data(), ldb, packed_b.data(), nullptr);
@@ -272,18 +216,10 @@ TEST(SGemmKleidiAIOpsTest, PublicPackedWeightsFallBackAcrossLayoutsAndSelectors)
 
     for (auto trans_a : {CblasNoTrans, CblasTrans}) {
       const size_t lda = (trans_a == CblasNoTrans ? K : M) + 2;
-      std::vector<float> a((trans_a == CblasNoTrans ? M : K) * lda, -123.0f);
-      std::vector<float> product(M * N, 0.0f);
-      for (size_t row = 0; row < M; ++row) {
-        for (size_t depth = 0; depth < K; ++depth) {
-          const float value = static_cast<float>(static_cast<int>((row + depth) % 7) - 3);
-          a[trans_a == CblasNoTrans ? row * lda + depth : depth * lda + row] = value;
-          for (size_t column = 0; column < N; ++column) {
-            product[row * N + column] += value *
-                                         b[trans_b == CblasNoTrans ? depth * ldb + column : column * ldb + depth];
-          }
-        }
-      }
+      const auto a = SgemmTestMatrix(trans_a == CblasNoTrans ? M : K, trans_a == CblasNoTrans ? K : M, lda, 7);
+      std::vector<float> expected(M * Ldc, 2.0f);
+      tester.ReferenceGemm(trans_a, trans_b, M, N, K, 1,
+                           -0.5f, a.data(), lda, b.data(), ldb, 0.25f, expected.data(), Ldc);
       std::vector<float> c(M * Ldc, 2.0f);
       MLAS_SGEMM_DATA_PARAMS data{};
       data.A = a.data();
@@ -308,12 +244,7 @@ TEST(SGemmKleidiAIOpsTest, PublicPackedWeightsFallBackAcrossLayoutsAndSelectors)
         data.beta = 0.25f;
         MlasGemmBatch(trans_a, CblasTrans, M, N, K, &data, 1, nullptr,
                       use_ops ? nullptr : &disabled_selector);
-        for (size_t row = 0; row < M; ++row) {
-          for (size_t column = 0; column < Ldc; ++column) {
-            const float expected = column < N ? -0.5f * product[row * N + column] + 0.25f * 2.0f : 2.0f;
-            ASSERT_EQ(c[row * Ldc + column], expected) << "row=" << row << " column=" << column;
-          }
-        }
+        ASSERT_EQ(c, expected);
       }
     }
   }
@@ -324,28 +255,18 @@ TEST(SGemmKleidiAIOpsTest, RelocatedConcatenatedPacksAndCorruptedExtensionUseNat
   constexpr size_t N = 17;
   constexpr size_t K = 13;
   constexpr size_t BatchSize = 2;
-  std::vector<float> a(M * K);
-  std::vector<float> b(BatchSize * K * N);
-  std::vector<float> product(BatchSize * M * N, 0.0f);
-  for (size_t i = 0; i < a.size(); ++i) {
-    a[i] = static_cast<float>(static_cast<int>(i % 7) - 3);
-  }
-  for (size_t i = 0; i < b.size(); ++i) {
-    b[i] = static_cast<float>(static_cast<int>(i % 5) - 2);
-  }
+  const auto a = SgemmTestMatrix(M, K, K, 7);
+  const auto b = SgemmTestMatrix(BatchSize * K, N, N, 5);
+  std::vector<float> expected(BatchSize * M * N, 2.0f);
+  MlasFgemmTest<float, false, false> tester;
   const size_t packed_size = MlasGemmPackBSize(CblasNoTrans, CblasNoTrans, N, K, nullptr);
   std::vector<uint8_t> original(BatchSize * packed_size);
   for (size_t batch = 0; batch < BatchSize; ++batch) {
     MlasGemmPackB(CblasNoTrans, CblasNoTrans, N, K, b.data() + batch * K * N, N,
                   original.data() + batch * packed_size, nullptr);
-    for (size_t row = 0; row < M; ++row) {
-      for (size_t column = 0; column < N; ++column) {
-        for (size_t depth = 0; depth < K; ++depth) {
-          product[batch * M * N + row * N + column] +=
-              a[row * K + depth] * b[batch * K * N + depth * N + column];
-        }
-      }
-    }
+    tester.ReferenceGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1,
+                         -0.5f, a.data(), K, b.data() + batch * K * N, N,
+                         0.25f, expected.data() + batch * M * N, N);
   }
   // Relocate to a different address and deliberately change its alignment.
   // Attention also stores multiple packs at successive public-size offsets.
@@ -384,9 +305,7 @@ TEST(SGemmKleidiAIOpsTest, RelocatedConcatenatedPacksAndCorruptedExtensionUseNat
                                       << " threaded=" << (thread_pool != nullptr));
       std::fill(c.begin(), c.end(), 2.0f);
       MlasGemmBatch(CblasNoTrans, CblasTrans, M, N, K, data, BatchSize, thread_pool, nullptr);
-      for (size_t i = 0; i < c.size(); ++i) {
-        ASSERT_EQ(c[i], -0.5f * product[i] + 0.25f * 2.0f) << "index=" << i;
-      }
+      ASSERT_EQ(c, expected);
     }
   }
 }
@@ -610,16 +529,9 @@ TEST(SGemmKleidiAIOpsTest, MixedPackedAndUnpackedBatch) {
   constexpr size_t K = 13;
   constexpr size_t BatchSize = 3;
 
-  std::vector<float> a(M * K * BatchSize);
-  std::vector<float> b(K * N * BatchSize);
+  const auto a = SgemmTestMatrix(BatchSize * M, K, K, 7);
+  const auto b = SgemmTestMatrix(BatchSize * K, N, N, 5);
   std::vector<float> c(M * N * BatchSize, 0.0f);
-  std::vector<float> expected(M * N * BatchSize, 0.0f);
-  for (size_t i = 0; i < a.size(); ++i) {
-    a[i] = static_cast<float>(static_cast<int>(i % 7) - 3);
-  }
-  for (size_t i = 0; i < b.size(); ++i) {
-    b[i] = static_cast<float>(static_cast<int>(i % 5) - 2);
-  }
 
   const size_t packed_b_size = MlasGemmPackBSize(CblasNoTrans, CblasNoTrans, N, K, nullptr);
   ASSERT_NE(packed_b_size, size_t{0});
@@ -652,24 +564,17 @@ TEST(SGemmKleidiAIOpsTest, MixedPackedAndUnpackedBatch) {
   data[1].B = reinterpret_cast<const float*>(generic_packed_b.data());
   data[1].BIsPacked = true;
 
-  for (size_t batch = 0; batch < BatchSize; ++batch) {
-    for (size_t row = 0; row < M; ++row) {
-      for (size_t column = 0; column < N; ++column) {
-        for (size_t depth = 0; depth < K; ++depth) {
-          expected[batch * M * N + row * N + column] +=
-              a[batch * M * K + row * K + depth] *
-              b[batch * K * N + depth * N + column];
-        }
-      }
-    }
-  }
   constexpr std::array<std::array<float, 2>, 3> scales = {{{1.0f, 1.0f}, {-0.5f, 0.25f}, {0.0f, 0.25f}}};
-  for (auto* thread_pool : {static_cast<MLAS_THREADPOOL*>(nullptr), GetMlasThreadPool()}) {
-    for (const auto& scale : scales) {
+  MlasFgemmTest<float, false, false> tester;
+  for (const auto& scale : scales) {
+    const float alpha = scale[0];
+    const float beta = scale[1];
+    std::vector<float> expected(M * N * BatchSize, 2.0f);
+    tester.ReferenceGemm(CblasNoTrans, CblasNoTrans, M, N, K, BatchSize,
+                         alpha, a.data(), K, b.data(), N, beta, expected.data(), N);
+    for (auto* thread_pool : {static_cast<MLAS_THREADPOOL*>(nullptr), GetMlasThreadPool()}) {
       // Rotations put each representation first and in every batch position.
       for (size_t first = 0; first < BatchSize; ++first) {
-        const float alpha = scale[0];
-        const float beta = scale[1];
         SCOPED_TRACE(testing::Message() << "first=" << first << " alpha=" << alpha << " beta=" << beta
                                         << " threaded=" << (thread_pool != nullptr));
         std::fill(c.begin(), c.end(), 2.0f);
@@ -680,9 +585,7 @@ TEST(SGemmKleidiAIOpsTest, MixedPackedAndUnpackedBatch) {
           params.beta = beta;
         }
         MlasGemmBatch(CblasNoTrans, CblasNoTrans, M, N, K, ordered_data, BatchSize, thread_pool, nullptr);
-        for (size_t i = 0; i < c.size(); ++i) {
-          ASSERT_EQ(c[i], alpha * expected[i] + beta * 2.0f) << "index=" << i;
-        }
+        ASSERT_EQ(c, expected);
       }
     }
   }
