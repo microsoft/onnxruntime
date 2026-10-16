@@ -5,11 +5,13 @@
 
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
+#include "core/providers/webgpu/webgpu_external_header.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
 class BufferManager;
+class WebGpuContext;
 struct CommandRecordingState;
 
 // Object layers ("outer" is the IDataTransfer object held by a manager):
@@ -56,8 +58,8 @@ struct CommandRecordingState;
 // DataTransfer (IDataTransfer subclass) and the C API wrapper.
 class DataTransferImpl {
  public:
-  DataTransferImpl(const BufferManager& buffer_manager, CommandRecordingState& recording)
-      : buffer_manager_{buffer_manager}, recording_{recording} {}
+  DataTransferImpl(WebGpuContext& context, const BufferManager& buffer_manager, CommandRecordingState& recording)
+      : context_{context}, buffer_manager_{buffer_manager}, recording_{recording} {}
 
   common::Status CopyTensor(void const* src_data,
                             bool src_is_gpu,
@@ -66,14 +68,20 @@ class DataTransferImpl {
                             size_t bytes) const;
 
  private:
+  void Upload(const void* src, WGPUBuffer dst, size_t size) const;
+  void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const;
+  void Download(WGPUBuffer src, void* dst, size_t size) const;
+
+  WebGpuContext& context_;
   const BufferManager& buffer_manager_;
   CommandRecordingState& recording_;
 };
 
 class DataTransfer : public IDataTransfer {
  public:
-  DataTransfer(const BufferManager& buffer_manager, CommandRecordingState& recording, int context_id)
-      : impl_{buffer_manager, recording}, context_id_{context_id} {}
+  DataTransfer(WebGpuContext& context, const BufferManager& buffer_manager,
+               CommandRecordingState& recording, int context_id)
+      : impl_{context, buffer_manager, recording}, context_id_{context_id} {}
   ~DataTransfer() {};
 
   // Device-compatibility half of CanCopy, split out because it needs no BufferManager and so can

@@ -462,7 +462,7 @@ TEST_F(WebGpuConcurrentContextTest, IndependentDataTransfersMultiThreadCopy) {
   std::array<std::unique_ptr<webgpu::DataTransferImpl>, kThreads> data_transfers;
   std::array<wgpu::Buffer, kThreads> gpu_buffers;
   for (int t = 0; t < kThreads; ++t) {
-    data_transfers[t] = std::make_unique<webgpu::DataTransferImpl>(context.BufferManager(), recordings[t]);
+    data_transfers[t] = std::make_unique<webgpu::DataTransferImpl>(context, context.BufferManager(), recordings[t]);
     wgpu::BufferDescriptor desc{};
     desc.size = kElements * sizeof(float);
     desc.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
