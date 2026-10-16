@@ -9,6 +9,10 @@ std::atomic<uint64_t> g_sync_count{0};
 std::atomic<int> g_preallocated_output_query_result{-1};
 std::atomic<int> g_preallocated_output_bad_index_rejected{-1};
 std::atomic<bool> g_create_data_transfer_should_fail{false};
+std::atomic<int> g_enable_weightless_option{-2};
+std::atomic<uint64_t> g_saved_initializer_count{0};
+std::atomic<const void*> g_weightless_source_model_data{nullptr};
+std::atomic<size_t> g_weightless_source_model_data_length{0};
 
 extern "C" void ExampleEpTestHooks_ResetSyncCount() { g_sync_count.store(0); }
 extern "C" uint64_t ExampleEpTestHooks_GetSyncCount() { return g_sync_count.load(); }
@@ -33,4 +37,21 @@ void RecordPreallocatedOutputBadIndexRejected(int rejected) {
 }
 bool ShouldFailCreateDataTransfer() {
   return g_create_data_transfer_should_fail.load();
+}
+extern "C" void ExampleEpTestHooks_ResetEnableWeightlessOption() { g_enable_weightless_option.store(-2); }
+extern "C" int ExampleEpTestHooks_GetEnableWeightlessOption() { return g_enable_weightless_option.load(); }
+void RecordEnableWeightlessOption(int value) { g_enable_weightless_option.store(value); }
+extern "C" void ExampleEpTestHooks_ResetSavedInitializerCount() { g_saved_initializer_count.store(0); }
+extern "C" uint64_t ExampleEpTestHooks_GetSavedInitializerCount() { return g_saved_initializer_count.load(); }
+void RecordSavedInitializer() { ++g_saved_initializer_count; }
+extern "C" void ExampleEpTestHooks_ResetWeightlessSourceModelBuffer() {
+  RecordWeightlessSourceModelBuffer(nullptr, 0);
+}
+extern "C" void ExampleEpTestHooks_GetWeightlessSourceModelBuffer(const void** data, size_t* length) {
+  *data = g_weightless_source_model_data.load();
+  *length = g_weightless_source_model_data_length.load();
+}
+void RecordWeightlessSourceModelBuffer(const void* data, size_t length) {
+  g_weightless_source_model_data.store(data);
+  g_weightless_source_model_data_length.store(length);
 }

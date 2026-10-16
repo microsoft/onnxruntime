@@ -57,9 +57,20 @@ OrtStatus* MulKernel::Compute(OrtKernelContext* kernel_ctx) {
     size_t num_inputs = kernel_context.GetInputCount();
 
     if (num_inputs == 2) {
-      // Both inputs are non-constant. Get them from ORT's KernelContext.
+      // Get both inputs from ORT's KernelContext. ORT also provides constant initializers in weightless mode, but
+      // this EP uses its own copy of an initializer if it saved one (OrtWeightlessSupport_EXTERNAL_ONLY mode copies
+      // the initializers stored inside the ONNX model).
       GetInputDataAndShape(kernel_context, 0, input0, shape0);
       GetInputDataAndShape(kernel_context, 1, input1, shape1);
+
+      if (const FloatInitializer* const_input0 = TryGetSavedInitializer(input0_name); const_input0 != nullptr) {
+        input0 = gsl::span<const float>(const_input0->data);
+        shape0 = const_input0->shape;
+      }
+      if (const FloatInitializer* const_input1 = TryGetSavedInitializer(input1_name); const_input1 != nullptr) {
+        input1 = gsl::span<const float>(const_input1->data);
+        shape1 = const_input1->shape;
+      }
     } else if (num_inputs == 1) {
       // ORT is only providing one non-constant input because this EP chose not to request constant initializer inputs.
       // Get the constant input from the initializers saved by the EP.
@@ -237,9 +248,10 @@ const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL ExampleEp::GetWeightlessSupportImpl(const OrtEp* /*this_ptr*/,
+OrtStatus* ORT_API_CALL ExampleEp::GetWeightlessSupportImpl(const OrtEp* this_ptr,
                                                             OrtWeightlessSupport* support) noexcept {
-  *support = OrtWeightlessSupport_ALL;
+  const auto* ep = static_cast<const ExampleEp*>(this_ptr);
+  *support = ep->config_.weightless_support;
   return nullptr;
 }
 
@@ -253,15 +265,22 @@ OrtStatus* ORT_API_CALL ExampleEp::GetEpContextDataCallbackSupportImpl(const Ort
   return nullptr;
 }
 
-bool ExampleEp::CopiesConstantInitializers() const {
-  return !(config_.enable_ep_context && config_.enable_weightless_ep_context_nodes);
+bool ExampleEp::DropsConstantInitializers() const {
+  return config_.weightless_mode == OrtWeightlessSupport_NONE;
 }
 
 OrtStatus* ExampleEp::TrySaveConstantInitializer(Ort::ConstValueInfo maybe_initializer) {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  const bool is_constant = maybe_initializer.IsConstantInitializer();
+  bool copy = maybe_initializer.IsConstantInitializer() && config_.weightless_mode != OrtWeightlessSupport_ALL;
 
-  if (is_constant) {
+  if (copy && config_.weightless_mode == OrtWeightlessSupport_EXTERNAL_ONLY) {
+    // Weightless for external initializers only: copy the initializer only if its data is inside the ONNX model.
+    Ort::ExternalInitializerInfo external_info{nullptr};
+    RETURN_IF_ERROR(maybe_initializer.GetExternalInitializerInfo(external_info));
+    copy = external_info == nullptr;
+  }
+
+  if (copy) {
     auto name = maybe_initializer.GetName();
     Ort::ConstValue value;
     RETURN_IF_ERROR(maybe_initializer.GetInitializer(value));
@@ -277,6 +296,7 @@ OrtStatus* ExampleEp::TrySaveConstantInitializer(Ort::ConstValueInfo maybe_initi
 
     FloatInitializer ep_initializer = {std::move(dims), std::vector<float>(data, data + num_elems)};
     float_initializers_.emplace(std::move(name), std::move(ep_initializer));
+    RecordSavedInitializer();
   }
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
@@ -381,14 +401,14 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
       // This gives ORT an opportunity to release unused ONNX initializers in the model.
       //
       // By default, this example EP sets this to true and saves initializers during the call to OrtEp::Compile for use
-      // during inference. However, if the application wants to generate a compiled model with weightless EPContext nodes,
-      // then the EP sets "drop_constant_initializers" to false so that ONNX Runtime provides the weights as inputs to
-      // the compiled/fused nodes (i.e., the EPContext nodes).
+      // during inference. However, if the application selects a weightless mode, the EP sets
+      // "drop_constant_initializers" to false so that ONNX Runtime provides the weights as inputs to the
+      // compiled/fused nodes (and the EPContext nodes of a compiled model). In OrtWeightlessSupport_EXTERNAL_ONLY mode
+      // the EP still copies the initializers stored inside the ONNX model.
       //
-      // Refer to the "ep.enable_weightless_ep_context_nodes"
-      // session configuration entry in onnxruntime_session_options_config_keys.h for more information about generating
-      // weightless EPContext models.
-      node_fusion_options.drop_constant_initializers = ep->CopiesConstantInitializers();
+      // Refer to the "ep.enable_weightless_mode" session configuration entry in
+      // onnxruntime_session_options_config_keys.h for more information about weightless mode.
+      node_fusion_options.drop_constant_initializers = ep->DropsConstantInitializers();
       RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(
           graph_support_info,
           reinterpret_cast<const OrtNode* const*>(supported_nodes.data()),
@@ -500,15 +520,14 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
         return status.release();
       }
 
-      // In GetCapability(), this EP may have specified that it doesn't need ORT to provide constant initializers
-      // during inference. If so, this EP saves copies of constant initializers so they're available during inference.
+      // Save copies of the constant initializers this EP copies in the selected weightless mode, so they're available
+      // during inference. In GetCapability(), this EP may also have specified that it doesn't need ORT to provide
+      // constant initializers during inference.
       //
       // We try to save each node input individually because graph.GetInitializers() does not return
       // initializers defined in parent or sibling subgraphs.
-      if (ep->CopiesConstantInitializers()) {
-        RETURN_IF_ERROR(ep->TrySaveConstantInitializer(node_inputs[0]));
-        RETURN_IF_ERROR(ep->TrySaveConstantInitializer(node_inputs[1]));
-      }
+      RETURN_IF_ERROR(ep->TrySaveConstantInitializer(node_inputs[0]));
+      RETURN_IF_ERROR(ep->TrySaveConstantInitializer(node_inputs[1]));
 
       // Create MulKernel for Mul nodes
       ep->mul_kernels_.emplace(fused_node_name,
