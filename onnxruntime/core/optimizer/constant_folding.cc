@@ -677,11 +677,10 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           auto* constant_arg_out = node->MutableOutputDefs()[output_idx];
           const Tensor& out_tensor = ort_value.Get<Tensor>();
           assert(out_tensor.OwnsBuffer());
-          constexpr const bool use_tensor_buffer_true = true;
           ONNX_NAMESPACE::TensorProto out_tensorproto = utils::TensorToTensorProto(
               out_tensor,
               constant_arg_out->Name(),
-              use_tensor_buffer_true);
+              /*use_tensor_buffer=*/true);
 
           ONNX_NAMESPACE::TensorShapeProto result_shape;
           for (auto& dim : out_tensor.Shape().GetDims()) {
