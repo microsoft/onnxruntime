@@ -846,6 +846,8 @@ TEST_F(PlannerTest, ReuseIndexDoesNotReuseStringBuffers) {
   CheckAllocKind(c, AllocKind::kAllocate);
 }
 
+// The indexed complexity contract applies to full builds, not the minimal linear fallback.
+#if !defined(ORT_MINIMAL_BUILD)
 TEST_F(PlannerTest, ReuseIndexAvoidsQuadraticShapeQueries) {
   constexpr int node_count = 512;
   InlinedVector<std::string> names;
@@ -867,6 +869,7 @@ TEST_F(PlannerTest, ReuseIndexAvoidsQuadraticShapeQueries) {
   EXPECT_LE(GetShapeQueryCount(), 3U * node_count);
   for (int i = 1; i < node_count; ++i) CheckAllocKind(names[i], AllocKind::kAllocate);
 }
+#endif
 
 // Test operator<< to output details of an allocation & execution plan.
 TEST_F(PlannerTest, PlanOutputTest) {

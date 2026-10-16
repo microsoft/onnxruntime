@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include <algorithm>
 #include <array>
 #include <limits>
@@ -156,3 +158,5 @@ TEST(FreeBufferIndexTest, CheckedCapacityGrowth) {
 
 }  // namespace
 }  // namespace onnxruntime::allocation_planner_internal
+
+#endif  // !defined(ORT_MINIMAL_BUILD)

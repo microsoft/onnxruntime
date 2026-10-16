@@ -3,6 +3,8 @@
 
 #pragma once
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include <cstddef>
 #include <functional>
 #include <optional>
@@ -94,3 +96,5 @@ class FreeBufferIndex {
 };
 
 }  // namespace onnxruntime::allocation_planner_internal
+
+#endif  // !defined(ORT_MINIMAL_BUILD)

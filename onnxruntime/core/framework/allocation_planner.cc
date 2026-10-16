@@ -2,7 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/framework/allocation_planner.h"
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/allocation_planner_reuse_index.h"
+#else
+#include <list>
+#endif
 #include <charconv>
 #include <vector>
 #include <algorithm>
@@ -211,7 +215,9 @@ class PlannerImpl {
     // Removing initializers is a temporary measure needed to limit the number of copies of
     // tensors in GPU memory.
     OrtValueIndex reused_buffer_index = -1;  // index of original buffer to reuse
+#if !defined(ORT_MINIMAL_BUILD)
     OrtValueIndex next_free_buffer = -1;
+#endif
     bool is_inplace_reuse = false;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     OrtValueIndex inplace_reused_buffer_index = -1;  // index of original buffer to reuse inplace
@@ -221,7 +227,26 @@ class PlannerImpl {
   // ort_value_info_ is indexed by an OrtValueIndex
   std::vector<OrtValueInfo> ort_value_info_;
 
+  // Full builds use the reuse index. All minimal variants retain the baseline LIFO linear
+  // algorithm and do not receive the indexed planner's startup-time improvement.
+#if !defined(ORT_MINIMAL_BUILD)
   allocation_planner_internal::FreeBufferIndex freelists_;
+#else
+  // FreeBufferInfo is used to track information about ml-values whose buffers are
+  // free to be reused.
+  struct FreeBufferInfo {
+    OrtValueIndex ml_value;
+    // deallocate_point is an index into the execution-plan; thus, ml_value becomes free after
+    // this step in the execution-plan is completed.
+    size_t deallocate_point;
+    FreeBufferInfo(OrtValueIndex ort_value, size_t dealloc_point)
+        : ml_value(ort_value), deallocate_point(dealloc_point) {}
+  };
+
+  // freelist_ : a list of ml-values whose buffers are free to be reused, sorted by when
+  // they became free (more recently freed earlier in the list).
+  std::list<FreeBufferInfo> freelist_;
+#endif
 
   OrtValueIndex Index(const OrtValueName& name) {
     OrtValueIndex result;
@@ -564,6 +589,7 @@ class PlannerImpl {
     return SameSize(*p_shape1, arg1, *p_shape2, arg2);
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   std::optional<size_t> GetReuseKey(const NodeArg& arg, const TensorShapeProto& shape) {
     if (shape.dim_size() == 0) return std::nullopt;
     const auto* element_type = GetPrimitiveElementType(arg.Type());
@@ -602,24 +628,32 @@ class PlannerImpl {
       head = static_cast<size_t>(value);
     }
   }
+#endif
 
-  // Find a compatible buffer without scanning unrelated shapes, types, or devices.
+  // Find a compatible buffer; full builds restrict the candidates with the reuse index.
   bool FindReusableTensor(const onnxruntime::NodeArg& output_arg, OrtValueIndex* reusable_tensor) {
     if (!context_->GetEnableMemoryReuse()) {
       return false;
     }
     auto p_required_buffer_shape = context_->GetShape(output_arg);
     if (nullptr == p_required_buffer_shape || p_required_buffer_shape->dim_size() == 0) return false;
+#if !defined(ORT_MINIMAL_BUILD)
     auto key = GetReuseKey(output_arg, *p_required_buffer_shape);
     if (!key) return false;
     auto* head = freelists_.Find(*key);
     if (head == nullptr || !*head) return false;
+#endif
     auto& required_memory_info = AllocPlan(output_arg.Name()).location;
 
+#if !defined(ORT_MINIMAL_BUILD)
     OrtValueIndex previous = -1;
     for (auto value = static_cast<OrtValueIndex>(**head); value != -1;
          previous = value, value = ort_value_info_[value].next_free_buffer) {
       size_t reusable = static_cast<size_t>(value);
+#else
+    for (auto it = freelist_.begin(); it != freelist_.end(); ++it) {
+      size_t reusable = static_cast<size_t>(it->ml_value);
+#endif
       const onnxruntime::NodeArg* p_node_arg = ort_value_info_.at(reusable).p_def_site;
       if (!p_node_arg) {
         // TODO this should be an error case, needs more investigation
@@ -641,6 +675,7 @@ class PlannerImpl {
       if (nullptr != p_available_buffer_shape) {
         if (SameSize(*p_available_buffer_shape, *p_node_arg,
                      *p_required_buffer_shape, output_arg)) {
+#if !defined(ORT_MINIMAL_BUILD)
           *reusable_tensor = value;
           auto next = ort_value_info_[reusable].next_free_buffer;
           if (previous != -1) {
@@ -650,6 +685,10 @@ class PlannerImpl {
           } else {
             head->reset();
           }
+#else
+          *reusable_tensor = it->ml_value;
+          freelist_.erase(it);
+#endif
           return true;
         }
       }
@@ -1578,7 +1617,11 @@ class PlannerImpl {
 #endif
       ORT_RETURN_IF_ERROR(ComputeSingleStreamReusePlan(i));
       ClearUseCount();
+#if !defined(ORT_MINIMAL_BUILD)
       freelists_.clear();  // DONOT share free buffers across streams
+#else
+      freelist_.clear();  // DONOT share freelist across streams
+#endif
     }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     CalculateLifetime(ort_value_usecount);
@@ -1712,7 +1755,11 @@ class PlannerImpl {
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original))) {
+#if !defined(ORT_MINIMAL_BUILD)
             AddFreeBuffer(original);
+#else
+            freelist_.push_front(FreeBufferInfo(original, program_counter));
+#endif
           }
         }
       }
@@ -1732,7 +1779,11 @@ class PlannerImpl {
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original))) {
+#if !defined(ORT_MINIMAL_BUILD)
             AddFreeBuffer(original);
+#else
+            freelist_.push_front(FreeBufferInfo(original, program_counter));
+#endif
           }
         }
       }
@@ -1746,7 +1797,11 @@ class PlannerImpl {
             // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
             // See comments in the OrtValueInfo definition.
             if (0 == DecrementUseCount(original)) {
+#if !defined(ORT_MINIMAL_BUILD)
               AddFreeBuffer(original);
+#else
+              freelist_.push_front(FreeBufferInfo(original, program_counter));
+#endif
             }
           }
         }
