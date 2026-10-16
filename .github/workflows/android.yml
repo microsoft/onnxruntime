@@ -138,7 +138,7 @@ jobs:
             --build-dir /build/1a/MinSizeRel \
             --output-dir /onnxruntime_src/android-reuse-index-diagnostics \
             --base-ref 327d11ab6c22e387acf793dd9de8caf406055ca9 \
-            --candidate-source-sha256 6ddb386eb6e36907f26cb591b6b95731ac72e0499797917059620888b6b638e9
+            --candidate-source-sha256 b897601440276c55868fbd76a3da129c8b3d0f0c026858a2dcb241a93d039549
 
     - name: Upload reuse-index attribution
       if: ${{ always() && github.head_ref == 'rui-ren/allocation-planner-reuse-index' }}

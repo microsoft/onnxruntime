@@ -3,7 +3,7 @@
 
 #include "core/framework/allocation_planner.h"
 #include <charconv>
-#include <map>
+#include <type_traits>
 #include <vector>
 #include <algorithm>
 #include <deque>
@@ -221,9 +221,9 @@ class PlannerImpl {
   // ort_value_info_ is indexed by an OrtValueIndex
   std::vector<OrtValueInfo> ort_value_info_;
 
-  // Share existing tree primitives while bounding bucket lookup to O(log B).
-  // Per-value links preserve LIFO; collisions still use the full predicate.
-  std::map<size_t, size_t> freelists_;
+  // Reuse the existing name/index map policy, without narrowing the compatibility hash.
+  // Owned binary keys include every byte, including NUL; per-value links preserve LIFO.
+  InlinedHashMap<std::string, OrtValueIndex> freelists_;
 
   OrtValueIndex Index(const OrtValueName& name) {
     OrtValueIndex result;
@@ -578,7 +578,9 @@ class PlannerImpl {
 
     size_t key = AllocPlan(arg.Name()).location.Hash();
     HashCombine(element_type->Size(), key);
-    HashCombine(GetSubElemCount(arg.Type()), key);
+    const auto* primitive_type = element_type->AsPrimitiveDataType();
+    const int32_t sub_elems = primitive_type != nullptr ? primitive_type->GetNumSubElems() : 1;
+    HashCombine(sub_elems, key);
     HashCombine(shape.dim_size(), key);
     for (const auto& dim : shape.dim()) {
       if (utils::HasDimValue(dim)) {
@@ -595,17 +597,22 @@ class PlannerImpl {
     return key;
   }
 
-  void AddFreeBuffer(OrtValueIndex value) {
+  static std::string ReuseKeyBytes(size_t key) {
+    static_assert(std::has_unique_object_representations_v<size_t>);
+    return std::string(reinterpret_cast<const char*>(&key), sizeof(key));
+  }
+
+  void AddFreeBuffer(const OrtValueIndex value) {
     if (!context_->GetEnableMemoryReuse()) return;
     const auto* arg = ort_value_info_[value].p_def_site;
     if (!arg || IsNonTensor(*arg)) return;
     const auto* shape = context_->GetShape(*arg);
     if (!shape) return;
     if (auto key = GetReuseKey(*arg, *shape)) {
-      auto [bucket, inserted] = freelists_.try_emplace(*key, static_cast<size_t>(value));
-      ort_value_info_[value].next_free_buffer =
-          inserted ? -1 : static_cast<OrtValueIndex>(bucket->second);
-      bucket->second = static_cast<size_t>(value);
+      const auto bucket_key = ReuseKeyBytes(*key);
+      auto [bucket, inserted] = freelists_.emplace(bucket_key, value);
+      ort_value_info_[value].next_free_buffer = inserted ? -1 : bucket->second;
+      bucket->second = value;
     }
   }
 
@@ -618,7 +625,7 @@ class PlannerImpl {
     if (nullptr == p_required_buffer_shape || p_required_buffer_shape->dim_size() == 0) return false;
     auto key = GetReuseKey(output_arg, *p_required_buffer_shape);
     if (!key) return false;
-    auto bucket = freelists_.find(*key);
+    auto bucket = freelists_.find(ReuseKeyBytes(*key));
     if (bucket == freelists_.end()) return false;
     auto& required_memory_info = AllocPlan(output_arg.Name()).location;
 
@@ -652,7 +659,7 @@ class PlannerImpl {
           if (previous != -1) {
             ort_value_info_[previous].next_free_buffer = next;
           } else if (next != -1) {
-            bucket->second = static_cast<size_t>(next);
+            bucket->second = next;
           } else {
             freelists_.erase(bucket);
           }
