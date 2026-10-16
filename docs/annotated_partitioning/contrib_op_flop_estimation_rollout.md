@@ -9,11 +9,6 @@ Start with a pure `com.microsoft::MatMulNBits` estimator and a coverage-aware st
 runtime counts, Attention coverage, and measured effective throughput. Keep dispatch, placement, memory admission,
 and allocation behavior unchanged throughout the diagnostic rollout.
 
-This plan builds on the
-[ORT Memory Estimates Copilot discussion](https://github.com/copilot/tasks/2cffab6d-eafa-4f8a-8595-590c601ee41c),
-including its follow-up rollout and design proposals. The discussion was recovered from session history; its
-recommendations are proposals, not evidence that the suggested APIs already exist.
-
 The key distinction is:
 
 - **FLOPs:** a count of floating-point mathematical operations for a defined workload.
