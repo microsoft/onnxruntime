@@ -810,7 +810,7 @@ std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTran
   return std::make_unique<webgpu::DataTransfer>(BufferManager(), Recording(), context_id_);
 }
 
-#if defined(__wasm__)
+#if defined(__EMSCRIPTEN__)
 std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetExternalDataLoader() const {
   return std::make_unique<webgpu::ExternalDataLoader>();
 }
