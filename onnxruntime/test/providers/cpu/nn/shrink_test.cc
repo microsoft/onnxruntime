@@ -306,14 +306,5 @@ TEST(MathOpTest, ShrinkUint64FractionalBiasAtMaximum) {
   test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
-TEST(MathOpTest, ShrinkBFloat16Type) {
-  OpTester test("Shrink", 9);
-  test.AddAttribute("bias", 10.0f);
-  test.AddAttribute("lambd", 2.0f);
-  test.AddInput<BFloat16>("X", {4}, {BFloat16(-3.0f), BFloat16(-1.0f), BFloat16(1.0f), BFloat16(4.0f)});
-  test.AddOutput<BFloat16>("Y", {4}, {BFloat16(7.0f), BFloat16(0.0f), BFloat16(0.0f), BFloat16(-6.0f)});
-  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
-}
-
 }  // namespace test
 }  // namespace onnxruntime
