@@ -13,11 +13,6 @@ constexpr size_t NormalizeBufferSize(size_t size) {
   return (size + 15) / 16 * 16;
 }
 
-// WebGPU requires that the copy size in CopyBufferToBuffer must be a multiple of 4 bytes.
-constexpr size_t NormalizeCopySize(size_t size) {
-  return (size + 3) / 4 * 4;
-}
-
 void EnforceBufferUnmapped(WebGpuContext& context, WGPUBuffer buffer) {
   if (context.ValidationMode() > ValidationMode::Basic) {
     ORT_ENFORCE(wgpuBufferGetMapState(buffer) == WGPUBufferMapState_Unmapped, "Buffer is still mapped.");
@@ -499,55 +494,6 @@ BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buf
       default_cache_{CreateBufferCacheManager(default_buffer_cache_mode)} {
 }
 
-void BufferManager::Upload(CommandRecordingState& recording, void* src, WGPUBuffer dst, size_t size) const {
-  // If the buffer is mapped, we can directly write to it.
-  void* mapped_data = wgpuBufferGetMappedRange(dst, 0, WGPU_WHOLE_MAP_SIZE);  // ensure the buffer is mapped
-  if (mapped_data) {
-    memcpy(mapped_data, src, size);
-    wgpuBufferUnmap(dst);
-    return;
-  }
-
-  // Otherwise, we need to use a staging buffer to upload data.
-  auto copy_size = NormalizeCopySize(size);
-
-  wgpu::BufferDescriptor desc{};
-  desc.size = copy_size;
-  desc.usage = wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::MapWrite;
-  desc.mappedAtCreation = true;
-
-  auto staging_buffer = context_.Device().CreateBuffer(&desc);
-  mapped_data = staging_buffer.GetMappedRange();
-  memcpy(mapped_data, src, size);
-  // NOTE: When copy_size != size (due to 4-byte alignment requirement of CopyBufferToBuffer),
-  // the trailing bytes [size, copy_size) in the staging buffer contain uninitialized data.
-  // This dirty data gets copied into the destination buffer and may cause problems.
-  // A possible solution is to use CopyBufferToBuffer for the aligned portion and a compute
-  // shader to write the non-aligned remainder.
-  staging_buffer.Unmap();
-
-  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
-  auto& command_encoder = context_.GetCommandEncoder(recording);
-  context_.EndComputePass(recording);
-  command_encoder.CopyBufferToBuffer(staging_buffer, 0, dst, 0, copy_size);
-  ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
-}
-
-void BufferManager::MemCpy(CommandRecordingState& recording, WGPUBuffer src, WGPUBuffer dst, size_t size) const {
-  ORT_ENFORCE(src != dst, "Source and destination buffers must be different.");
-  EnforceBufferUnmapped(context_, src);
-  EnforceBufferUnmapped(context_, dst);
-
-  auto copy_size = NormalizeCopySize(size);
-  auto src_size = static_cast<size_t>(wgpuBufferGetSize(src));
-  auto dst_size = static_cast<size_t>(wgpuBufferGetSize(dst));
-  ORT_ENFORCE(copy_size <= src_size && copy_size <= dst_size,
-              "Source and destination buffers must have enough space for the copy operation. src_size=",
-              src_size, ", dst_size=", dst_size, ", copy_size=", copy_size, ".");
-
-  context_.CopyBuffer(src, dst, copy_size, recording);
-}
-
 WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, wgpu::BufferUsage usage,
                                  bool initialize_to_zero,
                                  bool submit_zero_initialize) const {
@@ -620,54 +566,6 @@ void BufferManager::Release(WGPUBuffer buffer, const CommandRecordingState* reco
   }
 
   cache.ReleaseBuffer(buffer);
-}
-
-void BufferManager::Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const {
-  // Encode pending deferred dispatches before recording the readback; the flush below submits both
-  // in order.
-  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
-
-  EnforceBufferUnmapped(context_, src);
-  auto buffer_size = NormalizeBufferSize(size);
-
-  wgpu::BufferDescriptor desc{};
-  desc.size = buffer_size;
-  desc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapRead;
-
-  auto staging_buffer = context_.Device().CreateBuffer(&desc);
-  auto& command_encoder = context_.GetCommandEncoder(recording);
-  context_.EndComputePass(recording);
-  command_encoder.CopyBufferToBuffer(src, 0, staging_buffer, 0, buffer_size);
-  ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
-
-  // TODO: revise wait in whole project
-
-  struct MapAsyncResult {
-    wgpu::MapAsyncStatus status{};
-    std::string message{};
-  } map_async_result;
-
-  ORT_THROW_IF_ERROR(context_.Wait(
-      staging_buffer.MapAsync(
-          wgpu::MapMode::Read, 0, buffer_size, wgpu::CallbackMode::WaitAnyOnly,
-          // Note: Don't throw from a Dawn callback.
-          [](wgpu::MapAsyncStatus status, wgpu::StringView message,
-             MapAsyncResult* result) noexcept {
-            result->status = status;
-            if (auto message_sv = static_cast<std::string_view>(message);
-                !message_sv.empty()) {
-              result->message = std::string{message_sv};
-            }
-          },
-          &map_async_result)));
-
-  ORT_ENFORCE(map_async_result.status == wgpu::MapAsyncStatus::Success,
-              "Failed to download data from buffer. wgpu::MapAsyncStatus value: ",
-              static_cast<int>(map_async_result.status), ", message: ", map_async_result.message);
-
-  auto mapped_data = staging_buffer.GetConstMappedRange();
-  memcpy(dst, mapped_data, size);
-  staging_buffer.Unmap();
 }
 
 void BufferManager::RefreshPendingBuffers(CommandRecordingState& recording, GraphCaptureState graph_capture_state) const {

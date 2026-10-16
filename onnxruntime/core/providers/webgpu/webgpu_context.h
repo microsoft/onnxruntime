@@ -484,6 +484,7 @@ class WebGpuContext final {
   Status CheckDeviceStatus() const;
 
   friend class BufferManager;
+  friend class DataTransferImpl;
   friend class ComputeContext;
   friend class WebGpuContextFactory;
 
