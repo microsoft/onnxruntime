@@ -25,6 +25,7 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
             "counter_alpha": 0.9,
             "swap_epsilon": 0.1,
             "max_in_flight_swaps_per_device": 4,
+            "on_demand_threshold": 0,
             "swap": True,
             "counter_log": False,
             "state": None,
@@ -78,6 +79,12 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
             self.options(max_in_flight_swaps_per_device=16)["session.moe_max_in_flight_swaps_per_device"],
             "16",
         )
+
+    def test_on_demand_threshold_is_independent_of_background_swaps(self):
+        options = self.options(on_demand_threshold=2, swap=False)
+        self.assertEqual(options["session.moe_cpu_offload_on_demand_threshold"], "2")
+        self.assertEqual(options["session.moe_max_in_flight_swaps_per_device"], "0")
+        self.assertNotIn("session.moe_cpu_offload_on_demand_threshold", self.options())
 
     def test_layer_order_is_forwarded_only_for_basic_and_layered(self):
         for strategy in ("basic", "layered"):
@@ -168,6 +175,7 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
             "--no-cuda-graph",
         ]
         for option, value in [
+            ("--on-demand-threshold", "-1"),
             ("--max-new-tokens", "1"),
             ("--cpu-offload-experts", "-1"),
             ("--counter-alpha", "nan"),
@@ -192,6 +200,14 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
                     parse_args([*arguments, option, value])
                 self.assertEqual(error.exception.code, 2)
                 self.assertIn(option, error_output.getvalue())
+        for extra in (["--strategy", "basic"], ["--cpu-offload-experts", "0"]):
+            with self.subTest(extra=extra):
+                error_output = io.StringIO()
+                with contextlib.redirect_stderr(error_output), self.assertRaises(SystemExit) as error:
+                    parse_args([*arguments, "--on-demand-threshold", "1", *extra])
+                self.assertEqual(error.exception.code, 2)
+                self.assertIn("--on-demand-threshold", error_output.getvalue())
+        self.assertEqual(parse_args([*arguments, "--on-demand-threshold", "2"]).on_demand_threshold, 2)
 
 
 if __name__ == "__main__":

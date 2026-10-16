@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <optional>
 
 #include "core/framework/kernel_pilot_moe_expert_cache.h"
 #include "core/framework/kernel_pilot_moe_expert_selection.h"
@@ -91,6 +92,10 @@ class KernelPilot {
   double MoeExpertCounterAlpha() const noexcept { return moe_expert_counter_alpha_; }
   double MoeExpertCounterProbabilityWeight() const noexcept { return moe_expert_counter_probability_weight_; }
 
+  void RecordMoeDemandSwaps(size_t missing, size_t swapped, bool all_required_on_cuda) {
+    moe_demand_swaps_ = MoeDemandSwaps{missing, swapped, all_required_on_cuda};
+  }
+
  private:
   friend class KernelPilotMoeExpertState;
   void FinishRegistration() noexcept;
@@ -112,6 +117,11 @@ class KernelPilot {
   size_t moe_expert_count_{0};
   double moe_expert_counter_alpha_{0.75};
   double moe_expert_counter_probability_weight_{0.0};
+  struct MoeDemandSwaps {
+    size_t missing, swapped;
+    bool all_required_on_cuda;
+  };
+  std::optional<MoeDemandSwaps> moe_demand_swaps_;
 };
 
 }  // namespace onnxruntime

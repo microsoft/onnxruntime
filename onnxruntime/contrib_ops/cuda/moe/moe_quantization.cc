@@ -300,6 +300,14 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
               kOrtSessionOptionsConfigMoeCpuOffloadExperts,
               " must be a non-negative integer. Received: \"", cpu_offload_experts, "\".");
   cpu_offload_enabled_ = cpu_offload_expert_count > 0;
+  int64_t on_demand_threshold = -1;
+  ORT_ENFORCE(TryParseStringWithClassicLocale(
+                  op_kernel_info.GetConfigOptions().GetConfigOrDefault(
+                      kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold, "0"),
+                  on_demand_threshold) &&
+                  on_demand_threshold >= 0,
+              kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold, " must be a non-negative integer.");
+  cpu_offload_on_demand_threshold_ = narrow<size_t>(on_demand_threshold);
   if (cpu_offload_enabled_) {
     kernel_pilot_initializer_.Register(
         this, [this](KernelPilot* pilot) { return InitializeKernelPilot(pilot); });
@@ -1840,6 +1848,68 @@ Status QMoE::PrepareExpertSwapForInvocation(cudaStream_t stream) const {
   return Status::OK();
 }
 
+Status QMoE::CompleteExpertSwapSynchronously(cudaStream_t stream) {
+  if (swap_phase_ == SwapPhase::TransferInFlight) {
+    CUDA_RETURN_IF_ERROR(cudaEventSynchronize(swap_d2h_complete_event_));
+    CUDA_RETURN_IF_ERROR(cudaEventSynchronize(swap_transfer_complete_event_));
+    {
+      std::unique_lock<std::mutex> lock(swap_worker_mutex_);
+      swap_worker_condition_.wait(lock, [&]() { return swap_task_finished_; });
+      ORT_RETURN_IF_ERROR(swap_task_status_);
+    }
+    ORT_RETURN_IF_ERROR(PrepareExpertSwapForInvocation(stream));
+  }
+  if (swap_phase_ == SwapPhase::PublicationInFlight) {
+    CUDA_RETURN_IF_ERROR(cudaEventSynchronize(swap_publication_complete_event_));
+    ORT_RETURN_IF_ERROR(ReclaimCompletedSwap());
+  }
+  return Status::OK();
+}
+
+Status QMoE::SwapRequiredExperts(gsl::span<const uint8_t> required, cudaStream_t stream,
+                                 size_t& missing_experts, size_t& swapped_experts) {
+  ORT_RETURN_IF_NOT(required.size() == expert_map_.size(), "Invalid QMoE required-expert mask.");
+  swapped_experts = 0;
+  auto count_missing = [&]() {
+    size_t count = 0;
+    for (size_t expert = 0; expert < required.size(); ++expert) {
+      count += required[expert] && expert_map_[expert] < 0;
+    }
+    return count;
+  };
+  missing_experts = count_missing();
+  const size_t required_count = std::count(required.begin(), required.end(), uint8_t{1});
+  if (missing_experts == 0 || missing_experts > cpu_offload_on_demand_threshold_ ||
+      required_count > cuda_experts_.size()) {
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF_ERROR(CompleteExpertSwapSynchronously(stream));
+  missing_experts = count_missing();
+  if (missing_experts > cpu_offload_on_demand_threshold_) {
+    return Status::OK();
+  }
+  const auto counters = moe_pilot_->MoeExpertCounters();
+  for (size_t expert = 0; expert < required.size(); ++expert) {
+    if (!required[expert] || expert_map_[expert] >= 0) {
+      continue;
+    }
+    int outgoing = -1;
+    for (int candidate : cuda_experts_) {
+      if (!required[static_cast<size_t>(candidate)] &&
+          (outgoing < 0 || counters[static_cast<size_t>(candidate)] < counters[static_cast<size_t>(outgoing)] ||
+           (counters[static_cast<size_t>(candidate)] == counters[static_cast<size_t>(outgoing)] && candidate < outgoing))) {
+        outgoing = candidate;
+      }
+    }
+    ORT_RETURN_IF(outgoing < 0, "QMoE demand swap could not find an unused CUDA expert.");
+    ORT_RETURN_IF_ERROR(StartSwap(outgoing, narrow<int>(expert)));
+    ORT_RETURN_IF_ERROR(CompleteExpertSwapSynchronously(stream));
+    ++swapped_experts;
+  }
+  return Status::OK();
+}
+
 void QMoE::ReleaseSwapResources() noexcept {
   {
     std::lock_guard<std::mutex> lock(swap_worker_mutex_);
@@ -2131,7 +2201,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(k_ > 0 && k_ <= moe_params.num_experts,
                     "QMoE requires 0 < k <= num_experts, got k=", k_,
                     " and num_experts=", moe_params.num_experts);
+  bool on_demand_routing_prepared = false;
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  bool all_required_on_cuda = false;
   if (cpu_offload_enabled_) {
     ORT_RETURN_IF_NOT(moe_pilot_ != nullptr &&
                           expert_map_.size() ==
@@ -3237,6 +3309,41 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR(pilot->Moe().BeginInvocation(
         static_cast<size_t>(moe_params.num_experts)));
     ORT_RETURN_IF_ERROR(PrepareExpertSwapForInvocation(stream));
+    if (cpu_offload_on_demand_threshold_ > 0 && !cuda_experts_.empty() && !cpu_experts_.empty()) {
+      const size_t max_routes = SafeInt<size_t>(kCpuActivationChunkRows) * k_;
+      if (!on_demand_host_routes_) {
+        on_demand_host_routes_ = AllocateBufferOnCPUPinned<int>(max_routes);
+      }
+      ORT_RETURN_IF_NOT(on_demand_host_routes_, "Failed to allocate QMoE demand-routing buffer.");
+      InlinedVector<uint8_t> required(expert_map_.size(), uint8_t{0});
+      // Count the union across all prefill tiles before changing residency.
+      for (int64_t tile = 0; tile < row_tile_plan.TileCount(); ++tile) {
+        const int64_t rows = row_tile_plan.RowsInTile(tile);
+        const auto routing = route_tile(row_tile_plan.RowOffset(tile), rows);
+        ORT_RETURN_IF(routing.router_logits != nullptr, "QMoE demand swaps require materialized routing.");
+        const size_t routes = SafeInt<size_t>(rows) * k_;
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(on_demand_host_routes_.get(), expert_indices,
+                                             routes * sizeof(int), cudaMemcpyDeviceToHost, stream));
+        CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+        for (size_t route = 0; route < routes; ++route) {
+          const int expert = on_demand_host_routes_.get()[route];
+          ORT_RETURN_IF(expert < 0 || static_cast<size_t>(expert) >= required.size(),
+                        "QMoE demand routing produced an invalid expert ID: ", expert);
+          required[static_cast<size_t>(expert)] = 1;
+        }
+      }
+      on_demand_routing_prepared = !row_tile_plan.IsTiled();
+      size_t missing = 0, swapped = 0;
+      ORT_RETURN_IF_ERROR(const_cast<QMoE*>(this)->SwapRequiredExperts(required, stream, missing, swapped));
+      all_required_on_cuda = true;
+      for (size_t expert = 0; expert < required.size(); ++expert) {
+        if (required[expert] && expert_map_[expert] < 0) {
+          all_required_on_cuda = false;
+          break;
+        }
+      }
+      moe_pilot_->RecordMoeDemandSwaps(missing, swapped, all_required_on_cuda);
+    }
   } else if (routing_snapshot_) {
     auto* pilot = context->GetKernelPilot();
     ORT_RETURN_IF_NOT(pilot, "MoE expert tracking is enabled but its collector is unavailable.");
@@ -3989,7 +4096,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                   tile_rows, ".");
     }
 
-    auto fused_routing = route_tile(row_offset, tile_rows);
+    auto fused_routing = on_demand_routing_prepared
+                             ? onnxruntime::llm::kernels::cutlass_kernels::FusedRoutingParams{}
+                             : route_tile(row_offset, tile_rows);
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     if (routing_snapshot_ && !cpu_offload_enabled_) {
       if (fused_routing.router_logits != nullptr) {
@@ -4040,7 +4149,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     bool cpu_task_scheduled = false;
-    if (cpu_offload_enabled_ && !cpu_experts_.empty()) {
+    if (cpu_offload_enabled_ && !cpu_experts_.empty() && !all_required_on_cuda) {
       ORT_RETURN_IF_ERROR(PrepareCpuTask(
           context, narrow<size_t>(tile_rows),
           narrow<size_t>(moe_params.hidden_size),

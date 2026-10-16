@@ -78,13 +78,20 @@ static const char* const kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio =
 static const char* const kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder =
     "session.moe_cpu_offload_layer_order";
 
+// CUDA QMoE adaptive/layered only. If an invocation needs at most this many distinct CPU-resident experts,
+// synchronously exchange them with unused CUDA experts before computing. The default 0 disables this path.
+// Applies to prefill and decode; all selected experts must fit the node's existing CUDA capacity.
+// Preserves the CPU expert count. Independent of the background swap concurrency limit.
+static const char* const kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold =
+    "session.moe_cpu_offload_on_demand_threshold";
+
 // Relative margin required before an adaptive MoE swap replaces a CUDA-resident expert.
 // The value must be finite and non-negative. The default is 0.01.
 static const char* const kOrtSessionOptionsConfigMoeExpertSwapEpsilon =
     "session.moe_expert_swap_epsilon";
 
 // Maximum number of adaptive MoE expert swaps that may be in flight concurrently on one CUDA device.
-// Must be a non-negative integer. Zero disables adaptive swaps. The default is 4.
+// Must be a non-negative integer. Zero disables background swaps, not on-demand swaps. The default is 4.
 static const char* const kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice =
     "session.moe_max_in_flight_swaps_per_device";
 

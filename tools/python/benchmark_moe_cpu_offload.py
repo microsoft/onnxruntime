@@ -142,6 +142,8 @@ def model_session_options(args):
     if args.cpu_offload_experts > 0:
         session_options["session.moe_cpu_offload_experts"] = str(args.cpu_offload_experts)
         session_options["session.moe_cpu_offload_strategy"] = args.strategy
+        if args.on_demand_threshold > 0:
+            session_options["session.moe_cpu_offload_on_demand_threshold"] = str(args.on_demand_threshold)
         if args.strategy in ("basic", "layered"):
             session_options["session.moe_cpu_offload_layer_order"] = args.layer_order
         if args.strategy == "layered":
@@ -234,6 +236,12 @@ def parse_args(argv=None):
     parser.add_argument("--counter-alpha", type=float, default=0.9)
     parser.add_argument("--swap-epsilon", type=float, default=0.1)
     parser.add_argument("--max-in-flight-swaps-per-device", type=int, default=4)
+    parser.add_argument(
+        "--on-demand-threshold",
+        type=int,
+        default=0,
+        help="Synchronously swap at most N required CPU experts per QMoE invocation (default: disabled).",
+    )
     parser.add_argument("--swap", action=argparse.BooleanOptionalAction, required=True)
     parser.add_argument("--counter-log", action=argparse.BooleanOptionalAction, required=True)
     parser.add_argument("--cuda-graph", action=argparse.BooleanOptionalAction, required=True)
@@ -257,6 +265,10 @@ def parse_args(argv=None):
         parser.error("--swap-epsilon must be finite and non-negative.")
     if args.max_in_flight_swaps_per_device < 0:
         parser.error("--max-in-flight-swaps-per-device must be non-negative.")
+    if args.on_demand_threshold < 0:
+        parser.error("--on-demand-threshold must be non-negative.")
+    if args.on_demand_threshold > 0 and (args.cpu_offload_experts == 0 or args.strategy == "basic"):
+        parser.error("--on-demand-threshold requires CPU offload with --strategy adaptive or layered.")
     return args
 
 
@@ -345,6 +357,7 @@ def main():
         "max_in_flight_swaps_per_device": args.max_in_flight_swaps_per_device,
         "swaps_applicable": args.strategy != "basic" and args.swap and args.cpu_offload_experts > 0,
         "counter_log": args.counter_log,
+        "on_demand_threshold": args.on_demand_threshold,
         "cuda_graph": args.cuda_graph,
         "max_new_tokens": args.max_new_tokens,
         "memory_after_model_load": memory_after_model_load,

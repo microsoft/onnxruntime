@@ -99,6 +99,9 @@ class QMoE final : public CudaKernel, public MoEBase
   IAllocatorUniquePtr<void>& ResidentDeviceBuffer(ResidentTensorKind kind);
   const IAllocatorUniquePtr<void>& ResidentDeviceBuffer(ResidentTensorKind kind) const;
   Status PrepareExpertSwapForInvocation(cudaStream_t stream) const;
+  Status CompleteExpertSwapSynchronously(cudaStream_t stream);
+  Status SwapRequiredExperts(gsl::span<const uint8_t> required, cudaStream_t stream,
+                             size_t& missing_experts, size_t& swapped_experts);
   void InitializeSwapCpuExpert(int expert_id) const;
   void RunSwapWorker() const;
   void ReleaseSwapResources() noexcept;
@@ -351,6 +354,8 @@ class QMoE final : public CudaKernel, public MoEBase
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   KernelPilotInitializer kernel_pilot_initializer_;
   KernelPilot* moe_pilot_{nullptr};
+  size_t cpu_offload_on_demand_threshold_{0};
+  mutable IAllocatorUniquePtr<int> on_demand_host_routes_;
   int device_id_{0};
   AllocatorPtr cuda_allocator_;
   cudaStream_t cpu_offload_stream_{nullptr};

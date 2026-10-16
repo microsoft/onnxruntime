@@ -154,6 +154,13 @@ MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), Mo
                 kOrtSessionOptionsConfigMoeCpuOffloadExperts,
                 " must be a non-negative integer. Received: \"", cpu_offload_experts, "\".");
     cpu_offload_enabled_ = cpu_offload_expert_count > 0;
+    int64_t on_demand_threshold = 0;
+    ORT_ENFORCE(TryParseStringWithClassicLocale(
+                    op_kernel_info.GetConfigOptions().GetConfigOrDefault(
+                        kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold, "0"),
+                    on_demand_threshold) &&
+                    on_demand_threshold == 0,
+                kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold, " supports CUDA QMoE only.");
     if (cpu_offload_enabled_) {
       kernel_pilot_initializer_.Register(
           this, [this](KernelPilot* pilot) { return InitializeKernelPilot(pilot); });

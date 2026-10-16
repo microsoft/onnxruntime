@@ -2791,6 +2791,7 @@ common::Status InferenceSession::Initialize() {
           option == kOrtSessionOptionsConfigMoeCpuOffloadStrategy ||
           option == kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio ||
           option == kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder ||
+          option == kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold ||
           option == kOrtSessionOptionsConfigMoeExpertSwapEpsilon ||
           option == kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice) {
         return ORT_MAKE_STATUS(
@@ -2828,6 +2829,17 @@ common::Status InferenceSession::Initialize() {
                       " must be adaptive, basic or layered. Received: ", moe_cpu_offload_strategy);
     const auto moe_gpu_ratio =
         session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio);
+    const auto moe_on_demand_threshold =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold);
+    if (moe_on_demand_threshold) {
+      int64_t threshold = -1;
+      ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(*moe_on_demand_threshold, threshold) && threshold >= 0,
+                        kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold,
+                        " must be a non-negative integer. Received: \"", *moe_on_demand_threshold, "\".");
+      ORT_RETURN_IF(threshold > 0 && (!enable_moe_cpu_offload || moe_cpu_offload_strategy == "basic"),
+                    kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold,
+                    " requires CPU offload with the adaptive or layered strategy.");
+    }
     const auto moe_layer_order =
         session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder);
     if (moe_layer_order) {

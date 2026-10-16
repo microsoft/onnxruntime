@@ -5,6 +5,7 @@
 #include <cmath>
 #include <fstream>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 #include "core/framework/customregistry.h"
@@ -234,6 +235,154 @@ InlinedVector<int> CudaExperts(KernelPilotMoeExpertState& state, const OpKernel*
   gsl::span<const int> experts;
   ORT_THROW_IF_ERROR(state.GetKernelPilot(kernel)->GetMoeCudaExperts(experts));
   return InlinedVector<int>(experts.begin(), experts.end());
+}
+
+template <typename T>
+ModelProto MakeDemandSwapModel(int64_t rows, int64_t top_k, int64_t bits, bool swiglu) {
+  ModelProto model;
+  ORT_ENFORCE(model.ParseFromString(MakeCountingModel(true, true, false, rows)));
+  auto& graph = *model.mutable_graph();
+  graph.mutable_node()->RemoveLast();
+  auto& node = *graph.mutable_node(0);
+  node.set_output(0, "output");
+  node.set_input(4, "b1");
+  node.add_input("b2");
+  for (auto& attribute : *node.mutable_attribute()) {
+    if (attribute.name() == "k") attribute.set_i(top_k);
+    if (attribute.name() == "activation_type") attribute.set_s(swiglu ? "swiglu" : "relu");
+  }
+  for (const auto& [name, value] : {std::pair{"expert_weight_bits", bits},
+                                    std::pair{"weights_prepacked", int64_t{0}},
+                                    std::pair{"block_size", int64_t{32}},
+                                    std::pair{"normalize_routing_weights", int64_t{1}}}) {
+    auto* attribute = node.add_attribute();
+    attribute->set_name(name);
+    attribute->set_type(AttributeProto_AttributeType_INT);
+    attribute->set_i(value);
+  }
+  constexpr bool bf16 = std::is_same_v<T, BFloat16>;
+  const int type = bf16 ? TensorProto_DataType_BFLOAT16 : TensorProto_DataType_FLOAT16;
+  for (auto& value : *graph.mutable_input()) value.mutable_type()->mutable_tensor_type()->set_elem_type(type);
+  graph.mutable_output(0)->mutable_type()->mutable_tensor_type()->set_elem_type(type);
+  const int64_t fc1_rows = swiglu ? 2 * kWidth : kWidth;
+  for (auto& tensor : *graph.mutable_initializer()) {
+    const bool first = tensor.name() == "w1" || tensor.name() == "s1";
+    const bool weight = tensor.name() == "w1" || tensor.name() == "w2";
+    const int64_t outputs = first ? fc1_rows : kWidth;
+    tensor.clear_dims();
+    for (auto dim : {kExperts, outputs, weight ? kWidth / (8 / bits) : kWidth / 32}) tensor.add_dims(dim);
+    const size_t count = static_cast<size_t>(outputs * tensor.dims(2));
+    if (weight) {
+      std::string values(static_cast<size_t>(kExperts) * count, '\0');
+      for (int64_t expert = 0; expert < kExperts; ++expert) {
+        std::fill_n(values.begin() + expert * count, count,
+                    static_cast<char>(bits == 4 ? (9 + expert) * 17 : 1 + expert));
+      }
+      tensor.set_raw_data(values);
+    } else {
+      tensor.set_data_type(type);
+      const std::vector<T> scales(static_cast<size_t>(kExperts) * count, T(0.0078125f));
+      tensor.set_raw_data(scales.data(), scales.size() * sizeof(T));
+    }
+  }
+  for (const auto& [name, width] : {std::pair{"b1", fc1_rows}, std::pair{"b2", kWidth}}) {
+    AddZeroInitializer(graph, name, type, {kExperts, width}, sizeof(T));
+    const std::vector<T> bias(static_cast<size_t>(kExperts * width), T(0.0009765625f));
+    graph.mutable_initializer(graph.initializer_size() - 1)->set_raw_data(bias.data(), bias.size() * sizeof(T));
+  }
+  return model;
+}
+
+template <typename T>
+NameMLValMap DemandSwapFeeds(int64_t rows, gsl::span<const int> experts, bool different_last_row = false) {
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtValue input, router;
+  CreateMLValue<T>(allocator, {rows, kWidth}, std::vector<T>(static_cast<size_t>(rows * kWidth), T(0.125f)), &input);
+  std::vector<T> routing(static_cast<size_t>(rows * kExperts), T(0.f));
+  for (int64_t row = 0; row < rows; ++row) {
+    for (size_t i = 0; i < experts.size(); ++i) {
+      const int expert = different_last_row ? (row + 1 == rows ? experts.back() : experts.front()) : experts[i];
+      routing[static_cast<size_t>(row * kExperts + expert)] = T(9.f - static_cast<float>(i));
+    }
+  }
+  CreateMLValue<T>(allocator, {rows, kExperts}, routing, &router);
+  return {{"input", input}, {"router", router}};
+}
+
+template <typename T>
+void TestDemandSwaps() {
+  const std::vector<std::string> output_names{"output"};
+  struct Case {
+    int64_t rows, top_k, cpu, threshold;
+    InlinedVector<int> selected, expected;
+    bool different_last_row{false};
+  };
+  for (const char* strategy : {"adaptive", "layered"}) {
+    SCOPED_TRACE(strategy);
+    for (bool swiglu : {false, true}) {
+      for (int64_t bits : {4, 8}) {
+        if (swiglu && bits == 8) continue;
+        for (const auto& test : {
+                 Case{1, 1, 1, 1, {3}, {1, 2, 3}},
+                 Case{3, 1, 1, 1, {3}, {1, 2, 3}},
+                 Case{3, 2, 2, 2, {2, 3}, {2, 3}},
+                 Case{3, 2, 2, 1, {2, 3}, {0, 1}},
+                 Case{3, 2, 3, 1, {0, 3}, {0}},
+                 Case{1, 1, 4, 1, {3}, {}},
+                 Case{1, 1, 1, 0, {3}, {0, 1, 2}},
+                 Case{3, 2, 1, 1, {0, 2}, {0, 1, 2}},
+                 Case{257, 1, 2, 1, {2, 3}, {0, 1}, true},
+                 Case{257, 1, 2, 2, {2, 3}, {2, 3}, true}}) {
+          SCOPED_TRACE(MakeString("rows=", test.rows, ", top_k=", test.top_k, ", cpu=", test.cpu,
+                                  ", threshold=", test.threshold, ", bits=", bits, ", swiglu=", swiglu));
+          const auto model = MakeDemandSwapModel<T>(test.rows, test.top_k, bits, swiglu).SerializeAsString();
+          auto options = CountingOptions();
+          ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+          InferenceSessionWrapper reference(options, GetEnvironment());
+          ASSERT_STATUS_OK(reference.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+          ASSERT_STATUS_OK(reference.Load(model.data(), static_cast<int>(model.size())));
+          ASSERT_STATUS_OK(reference.Initialize());
+          const auto feeds = DemandSwapFeeds<T>(test.rows, test.selected, test.different_last_row);
+          std::vector<OrtValue> expected;
+          ASSERT_STATUS_OK(reference.Run(RunOptions{}, feeds, output_names, &expected));
+          ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+                                                                 std::to_string(test.cpu).c_str()));
+          ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold,
+                                                                 std::to_string(test.threshold).c_str()));
+          ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "0"));
+          ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadStrategy, strategy));
+          if (std::string_view(strategy) == "layered") {
+            ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio, "1"));
+          }
+          InferenceSessionWrapper session(options, GetEnvironment());
+          ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+          ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+          ASSERT_STATUS_OK(session.Initialize());
+          auto* state = session.GetSessionState().GetMoeExpertState();
+          const auto* kernel = session.GetSessionState().GetKernel(0);
+          ASSERT_NE(state, nullptr);
+          ASSERT_NE(kernel, nullptr);
+          for (int run = 0; run < 2; ++run) {
+            std::vector<OrtValue> actual;
+            ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &actual));
+            ASSERT_EQ(actual.size(), 1U);
+            EXPECT_EQ(CudaExperts(*state, kernel), test.expected);
+            const auto values = actual[0].Get<Tensor>().DataAsSpan<T>();
+            const auto reference_values = expected[0].Get<Tensor>().DataAsSpan<T>();
+            ASSERT_EQ(values.size(), reference_values.size());
+            for (size_t i = 0; i < values.size(); ++i) {
+              EXPECT_GT(reference_values[i].ToFloat(), 0.f);
+              // CPU accumulation uses FP32; CUDA rounds intermediate BF16 activations.
+              const float tolerance = std::is_same_v<T, BFloat16>
+                                          ? 0.0001f + 0.008f * std::abs(reference_values[i].ToFloat())
+                                          : 0.003f;
+              EXPECT_NEAR(values[i].ToFloat(), reference_values[i].ToFloat(), tolerance);
+            }
+          }
+        }
+      }
+    }
+  }
 }
 #endif
 
@@ -867,6 +1016,93 @@ TEST(MoeExpertCountingTest, CudaCpuOffloadUsesLoadedAlphaForMoEAndQMoE) {
   }
 }
 
+TEST(MoeExpertCountingTest, QMoESynchronousDemandSwaps) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider || provider->GetOrtEp() != nullptr || GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Built-in CUDA on SM80 or newer is required.";
+  }
+  TestDemandSwaps<MLFloat16>();
+}
+
+#if defined(ENABLE_BF16) && !defined(ORT_QUICK_BUILD)
+TEST(MoeExpertCountingTest, QMoESynchronousDemandSwapsBFloat16) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider || provider->GetOrtEp() != nullptr || GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Built-in CUDA on SM80 or newer is required.";
+  }
+  TestDemandSwaps<BFloat16>();
+}
+#endif
+
+TEST(MoeExpertCountingTest, QMoEDemandSwapsFinishBackgroundSwapAndPreserveCpuWeights) {
+  const std::vector<std::string> output_names{"output"};
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider || provider->GetOrtEp() != nullptr || GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Built-in CUDA on SM80 or newer is required.";
+  }
+  for (bool swiglu : {false, true}) {
+    const auto model = MakeDemandSwapModel<MLFloat16>(3, 1, 4, swiglu).SerializeAsString();
+    auto options = CountingOptions();
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    InferenceSessionWrapper reference(options, GetEnvironment());
+    ASSERT_STATUS_OK(reference.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+    ASSERT_STATUS_OK(reference.Load(model.data(), static_cast<int>(model.size())));
+    ASSERT_STATUS_OK(reference.Initialize());
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "2"));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold, "1"));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "1"));
+    InferenceSessionWrapper session(options, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+    ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    auto* state = session.GetSessionState().GetMoeExpertState();
+    const auto* kernel = session.GetSessionState().GetKernel(0);
+    ASSERT_NE(state, nullptr);
+    for (const auto& experts : {InlinedVector<int>{2, 3}, InlinedVector<int>{3}, InlinedVector<int>{0, 1}}) {
+      const auto feeds = DemandSwapFeeds<MLFloat16>(3, experts, experts.size() > 1);
+      std::vector<OrtValue> expected, actual;
+      ASSERT_STATUS_OK(reference.Run(RunOptions{}, feeds, output_names, &expected));
+      ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &actual));
+      const auto values = actual[0].Get<Tensor>().DataAsSpan<MLFloat16>();
+      const auto reference_values = expected[0].Get<Tensor>().DataAsSpan<MLFloat16>();
+      for (size_t i = 0; i < values.size(); ++i) {
+        EXPECT_NEAR(values[i].ToFloat(), reference_values[i].ToFloat(), 0.003f);
+      }
+      if (experts.size() == 1) {
+        EXPECT_EQ(CudaExperts(*state, kernel), (InlinedVector<int>{2, 3}));
+      } else {
+        EXPECT_EQ(CudaExperts(*state, kernel),
+                  experts.front() == 2 ? (InlinedVector<int>{0, 1}) : (InlinedVector<int>{2, 3}));
+      }
+    }
+  }
+}
+
+TEST(MoeExpertCountingTest, DemandSwapsRejectBasicAndDenseMoe) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider || provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "Built-in CUDA execution provider is unavailable.";
+  }
+  for (bool basic : {false, true}) {
+    SCOPED_TRACE(basic);
+    auto options = CountingOptions();
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "1"));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold, "1"));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadStrategy,
+                                                           basic ? "basic" : "adaptive"));
+    InferenceSessionWrapper session(options, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+    const auto model = MakeCountingModel(basic, true);
+    ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+    const auto status = session.Initialize();
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_NE(status.ErrorMessage().find(basic ? "requires CPU offload with the adaptive or layered strategy"
+                                               : "supports CUDA QMoE only"),
+              std::string::npos)
+        << status.ErrorMessage();
+  }
+}
+
 TEST(MoeExpertCountingTest, BasicQMoEOffloadFillsEarlierNodesAndNeverSwaps) {
   auto provider = DefaultCudaExecutionProvider();
   if (!provider || provider->GetOrtEp() != nullptr) {
@@ -879,7 +1115,6 @@ TEST(MoeExpertCountingTest, BasicQMoEOffloadFillsEarlierNodesAndNeverSwaps) {
     file << R"({"alpha":0.9,"epsilon":0,"experts":[{"moe":1,"expert":2,"popularity":100}]})";
     ASSERT_TRUE(file.good());
   }
-
   for (bool reverse_node_indices : {false, true}) {
     for (bool load_counters : {false, true}) {
       for (size_t cpu_count : {1U, 3U, 4U, 5U, 8U}) {
@@ -1785,6 +2020,7 @@ TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {
            std::pair{kOrtSessionOptionsConfigMoeCpuOffloadStrategy, "invalid"},
            std::pair{kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio, "0.8"},
            std::pair{kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder, "last"},
+           std::pair{kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold, "1"},
            std::pair{kOrtSessionOptionsConfigMoeCpuOffloadExperts, "invalid"}}) {
     SessionOptions options;
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(entry.first, entry.second));
@@ -1819,6 +2055,22 @@ TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {
     const auto model = MakeCountingModel();
     ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
     EXPECT_FALSE(session.Initialize().IsOK());
+  }
+}
+
+TEST(MoeExpertCountingTest, DemandSwapThresholdConfigurationIsValidated) {
+  for (const char* value : {"-1", "invalid", "", "1.5", "9223372036854775808", "0", "1"}) {
+    for (const char* strategy : {"adaptive", "basic", "layered"}) {
+      SCOPED_TRACE(MakeString("threshold=", value, ", strategy=", strategy));
+      auto options = CountingOptions();
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadStrategy, strategy));
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold, value));
+      InferenceSessionWrapper session(options, GetEnvironment());
+      const auto model = MakeCountingModel();
+      ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+      const bool valid = std::string_view(value) == "0";
+      EXPECT_EQ(session.Initialize().IsOK(), valid);
+    }
   }
 }
 TEST(MoeExpertCountingTest, LayeredGpuRatioConfigurationIsValidatedWithoutTracking) {

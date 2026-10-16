@@ -44,7 +44,16 @@ session = ort.InferenceSession("model.onnx", options, providers=["CUDAExecutionP
 ```
 
 Defaults: `K=0`, strategy `adaptive`, alpha `0.75`, epsilon `0.01`, swap limit `4`.
-Basic never swaps; for adaptive/layered, a zero swap limit freezes placement.
+Basic never swaps. A zero swap limit disables background swaps.
+
+For CUDA QMoE with `adaptive` or `layered`, set
+`session.moe_cpu_offload_on_demand_threshold=N` (default `0`, disabled), or use the benchmark's
+`--on-demand-threshold N`. If an invocation needs at most `N` distinct CPU-resident experts,
+exchange them synchronously with GPU experts unused by that invocation, then compute on GPU.
+This applies to prefill and decode; prefill counts the union across all tokens and tiles.
+Swaps reuse cached CUDA-packed weights and the existing outgoing CPU repacking path, preserving exactly `K`.
+If the selected union exceeds the layer's GPU capacity, no demand swaps are performed and CPU execution is retained.
+This threshold is independent of the background swap limit; synchronous swaps also work when that limit is `0`.
 
 Supported: FP16/BF16 MoE weights and uniform INT4/INT8 QMoE (`quant_type="int"`, `weights_prepacked=0`).
 Both require FP16/BF16 activations, constant weights and connected biases, a static hidden dimension, and prepacking.

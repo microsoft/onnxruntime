@@ -13,6 +13,7 @@
 #include <map>
 #include <numeric>
 #include <sstream>
+#include <utility>
 
 #include "nlohmann/json.hpp"
 #include "core/common/json_utils.h"
@@ -563,6 +564,19 @@ Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel, gsl::span<
   const bool log_counter_event =
       logging_logger_ != nullptr &&
       logging_logger_->OutputIsEnabled(logging::Severity::kINFO, logging::DataType::SYSTEM);
+  const auto demand_swaps = std::exchange(node->second.pilot.moe_demand_swaps_, std::nullopt);
+  if (log_counter_event && demand_swaps) {
+    std::ostringstream event;
+    event << "{\"request_id\":";
+    common::WriteJsonString(event, logging_request_id_);
+    event << ",\"graph_scope\":";
+    common::WriteJsonString(event, node->second.key.first);
+    event << ",\"node_index\":" << node->second.key.second
+          << ",\"missing_experts\":" << demand_swaps->missing
+          << ",\"swapped_experts\":" << demand_swaps->swapped
+          << ",\"all_required_on_cuda\":" << (demand_swaps->all_required_on_cuda ? "true" : "false") << "}";
+    LOGS(*logging_logger_, INFO) << "moe_expert_demand_swaps " << event.str();
+  }
   auto counters = gsl::make_span(counters_).subspan(range.begin, range.count);
   InlinedVector<double> logged_scores;
   InlinedVector<size_t> node_ranks;

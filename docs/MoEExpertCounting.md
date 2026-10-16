@@ -107,6 +107,16 @@ CPU expert, and both pre-swap scores. A blocked candidate is currently eligible 
 the per-device concurrency limit was reached. Candidates are recomputed after every run rather than retained in a
 persistent queue. This record is not part of the counter-record logging budget.
 
+CUDA QMoE also accepts `session.moe_cpu_offload_on_demand_threshold=N` (default `0`, disabled).
+With `adaptive` or `layered`, an invocation missing at most `N` distinct experts synchronously exchanges them
+with unselected GPU experts before computation. Prefill counts the union across all tokens and tiles; decode
+uses the same rule. The selected union must fit the layer's existing GPU capacity, otherwise execution stays
+on the existing CPU/GPU path without partial demand swaps. The exact CPU expert count is preserved.
+This mechanism is independent of the background swap limit and reuses existing CUDA packing and CPU repacking.
+For mixed CPU/GPU nodes, INFO logging adds `moe_expert_demand_swaps` records with request and node identity,
+`missing_experts`, completed `swapped_experts`, and `all_required_on_cuda`. These are distinct from background
+swap scheduling records and are not part of the counter-record logging budget.
+
 A `KernelPilot` is allocated for each kernel at initialization; its `KernelPilotMoeExpertSelection` member counts repeated routing IDs only once.
 Each counter is updated in place. The coefficient constraints keep it bounded by the larger of its initial value
 and `1`, so no next-value buffer or overflow-validation pass is needed.
@@ -216,11 +226,11 @@ session.moe_expert_swap_epsilon=<finite non-negative value> # default: 0.01
 session.moe_max_in_flight_swaps_per_device=<non-negative integer> # default: 4
 ```
 
-At most one exchange per node is scheduled at each inference boundary. Transfers run asynchronously; an invocation
-uses the previously published placement if its exchange is still incomplete, without waiting for it. The new placement
-is published only after both transfer directions complete. Setting the concurrency limit to `0` disables adaptive
-exchanges and keeps the initial placement fixed. Each node retains its initial CUDA slot count; redistribution of slots
-between nodes is not implemented.
+At most one background exchange per node is scheduled at each inference boundary. Transfers run asynchronously;
+without on-demand swaps, an invocation uses the previously published placement if its exchange is still incomplete,
+without waiting for it. The new placement is published only after both transfer directions complete.
+Setting the concurrency limit to `0` disables background exchanges and keeps initial placement fixed unless on-demand
+swaps are enabled. Each node retains its initial CUDA slot count; redistribution of slots between nodes is not implemented.
 
 Separate FC3 weights, sparse mixer routing, dynamic expert weights, QMoE, FP32, the CUDA plugin EP, CUDA graphs, and
 minimal builds are not supported by this option. See [MoE CPU offload](moe-cpu-offload/README.md) for exchange details
