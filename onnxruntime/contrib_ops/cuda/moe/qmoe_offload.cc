@@ -850,6 +850,57 @@ struct QMoEOffload::AsyncTile {
   bool persistent = false;
 };
 
+struct QMoESharedExpertBridge {
+  static constexpr uint64_t kMagic = 0x514d4f4553484558ULL;
+  static constexpr int kMaxRegisteredNames = 256;
+  static constexpr int kMaxNameLen = 128;
+  uint64_t magic = kMagic;
+  std::atomic<int> lock{0};
+  std::atomic<int> num_registered{0};
+  char registered_routed_names[kMaxRegisteredNames][kMaxNameLen]{};
+  bool pending = false;
+  cudaStream_t stream = nullptr;
+  const void* routed_output_ptr = nullptr;
+  int tile_rows = 0;
+  int hidden_size = 0;
+  int (*launch_deferred)(void* ctx, cudaStream_t stream, void* shared_out_ptr, int trigger) = nullptr;
+  void* ctx = nullptr;
+
+  bool IsRoutedNameRegistered(const char* name) const noexcept {
+    if (!name || !*name) return false;
+    const int n = num_registered.load(std::memory_order_acquire);
+    for (int i = 0; i < n; ++i) {
+      if (std::strncmp(registered_routed_names[i], name, kMaxNameLen - 1) == 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+};
+
+inline QMoESharedExpertBridge* GetQMoESharedExpertBridge() noexcept {
+  static QMoESharedExpertBridge* const instance = []() -> QMoESharedExpertBridge* {
+    constexpr const char* kEnvVar = "ORT_QMOE_SHARED_EXPERT_BRIDGE_PTR";
+    if (const char* env = std::getenv(kEnvVar); env && *env) {
+      unsigned long long raw_addr = 0;
+      if (std::sscanf(env, "%llx", &raw_addr) == 1 && raw_addr != 0) {
+        auto* p = reinterpret_cast<QMoESharedExpertBridge*>(static_cast<uintptr_t>(raw_addr));
+        if (p->magic == QMoESharedExpertBridge::kMagic) return p;
+      }
+    }
+    auto* p = new QMoESharedExpertBridge();
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%llx", static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(p)));
+#if defined(_WIN32)
+    _putenv_s(kEnvVar, buf);
+#else
+    setenv(kEnvVar, buf, 1);
+#endif
+    return p;
+  }();
+  return instance;
+}
+
 struct QMoEOffload::PersistentDecodeState {
   ResidentSlab scratch;
   size_t scratch_bytes = 0;
@@ -865,6 +916,15 @@ struct QMoEOffload::PersistentDecodeState {
   std::shared_ptr<onnxruntime::cuda::QMoEInvocationRecord> invocation_rec;
   std::unique_ptr<AsyncTile> tile;
   bool registered_with_doorbell = false;
+  const __nv_bfloat16* deferred_wave_output = nullptr;
+  const __nv_bfloat16* deferred_host_result = nullptr;
+  const int* deferred_hit_flag = nullptr;
+  __nv_bfloat16* deferred_contributions = nullptr;
+  const float* deferred_scales = nullptr;
+  const int* deferred_identity = nullptr;
+  __nv_bfloat16* deferred_routed_out = nullptr;
+  int deferred_routes = 0;
+  int deferred_tile_rows = 0;
 };
 
 class QMoEOffload::DoorbellService {
@@ -1049,6 +1109,18 @@ QMoEOffload::QMoEOffload(const OpKernelInfo& info)
   mxfp4_mode_ = (quant_type == "mxfp4" || quant_type == "fp4");
   nvfp4_mode_ = (quant_type == "nvfp4") || mxfp4_mode_;
   doorbell_enabled_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_DOORBELL", nvfp4_mode_ ? 1 : 0) == 1;
+  overlap_shared_expert_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_OVERLAP_SHARED_EXPERT", 1) == 1;
+  fuse_merge_finalize_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_FUSE_MERGE_FINALIZE", 1) == 1;
+#ifdef ORT_USE_EP_API_ADAPTERS
+  if (info.GetKernelInfo().GetOutputCount() > 0) {
+    output0_name_ = info.GetKernelInfo().GetOutputName(0);
+  }
+#else
+  if (!info.node().OutputDefs().empty() && info.node().OutputDefs()[0] != nullptr) {
+    output0_name_ = info.node().OutputDefs()[0]->Name();
+  }
+#endif
+  static_cast<void>(GetQMoESharedExpertBridge());
 
   ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("expert_weight_bits", 4) == 4,
               "QMoEOffload requires expert_weight_bits=4.");
@@ -2342,6 +2414,72 @@ void QMoEOffload::ServiceDoorbell() const {
   }
   std::atomic_thread_fence(std::memory_order_release);
   *decode_state_->doorbell_done_host = decode_state_->last_serviced_seq;
+}
+
+int QMoEOffload::LaunchDeferredMergeStatic(void* ctx, cudaStream_t stream, void* shared_out_ptr, int trigger) {
+  if (!ctx) return -1;
+  return static_cast<const QMoEOffload*>(ctx)->LaunchDeferredMerge(stream, shared_out_ptr, trigger);
+}
+
+int QMoEOffload::LaunchDeferredMerge(cudaStream_t stream, void* shared_out_ptr, int trigger) const {
+  if (!decode_state_) return -1;
+  auto* shared_out = reinterpret_cast<__nv_bfloat16*>(shared_out_ptr);
+  const int tile_rows = decode_state_->deferred_tile_rows;
+  const int routes = decode_state_->deferred_routes;
+  if (fuse_merge_finalize_ && (hidden_size_ & 7) == 0 && k_ <= 16) {
+    const cudaError_t err = LaunchQMoEOffloadMergeFinalizeCombine(
+        decode_state_->deferred_wave_output,
+        decode_state_->deferred_host_result,
+        decode_state_->deferred_hit_flag,
+        decode_state_->deferred_scales,
+        decode_state_->deferred_routed_out,
+        shared_out,
+        hidden_size_,
+        tile_rows,
+        static_cast<int>(k_),
+        stream,
+        decode_state_->doorbell_seq_dev,
+        decode_state_->doorbell_done_host,
+        trigger);
+    return err == cudaSuccess ? 0 : -1;
+  }
+  cudaError_t err = LaunchQMoEOffloadMerge(
+      decode_state_->deferred_wave_output,
+      decode_state_->deferred_host_result,
+      decode_state_->deferred_hit_flag,
+      decode_state_->deferred_contributions,
+      routes,
+      hidden_size_,
+      tile_rows,
+      static_cast<int>(k_),
+      stream,
+      decode_state_->doorbell_seq_dev,
+      decode_state_->doorbell_done_host);
+  if (err != cudaSuccess) return -1;
+  const ck::MOEParallelismConfig parallelism;
+  ck::finalizeMoeRoutingKernelLauncher<__nv_bfloat16, __nv_bfloat16, __nv_bfloat16>(
+      decode_state_->deferred_contributions,
+      decode_state_->deferred_routed_out,
+      nullptr,
+      decode_state_->deferred_scales,
+      decode_state_->deferred_identity,
+      nullptr,
+      decode_state_->deferred_identity,
+      nullptr,
+      tile_rows,
+      hidden_size_,
+      static_cast<int>(k_),
+      routes,
+      parallelism,
+      false,
+      stream);
+  if (cudaGetLastError() != cudaSuccess) return -1;
+  if (shared_out != nullptr) {
+    err = LaunchQMoESharedExpertCombine(
+        shared_out, decode_state_->deferred_routed_out, tile_rows * hidden_size_, trigger, stream);
+    if (err != cudaSuccess) return -1;
+  }
+  return 0;
 }
 
 Status QMoEOffload::StepBetweenRuns(cudaStream_t stream) const {
@@ -4543,18 +4681,44 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
         }
       }
       if (is_bf16_) {
-        CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadMerge(
-            reinterpret_cast<const __nv_bfloat16*>(wave_output),
-            reinterpret_cast<const __nv_bfloat16*>(host_result), hit_flag,
-            reinterpret_cast<__nv_bfloat16*>(contributions), routes, hidden_size_,
-            tile_rows, static_cast<int>(k_), stream,
-            decode_state_->doorbell_seq_dev, decode_state_->doorbell_done_host));
-        ck::finalizeMoeRoutingKernelLauncher<__nv_bfloat16, __nv_bfloat16, __nv_bfloat16>(
-            reinterpret_cast<const __nv_bfloat16*>(contributions),
-            reinterpret_cast<__nv_bfloat16*>(output->MutableDataRaw()),
-            bias_gpu_ptr ? reinterpret_cast<const __nv_bfloat16*>(route_bias) : nullptr,
-            scales, identity, nullptr, identity, nullptr, tile_rows, hidden_size_,
-            static_cast<int>(k_), routes, parallelism, false, stream);
+        decode_state_->deferred_wave_output = reinterpret_cast<const __nv_bfloat16*>(wave_output);
+        decode_state_->deferred_host_result = reinterpret_cast<const __nv_bfloat16*>(host_result);
+        decode_state_->deferred_hit_flag = hit_flag;
+        decode_state_->deferred_contributions = reinterpret_cast<__nv_bfloat16*>(contributions);
+        decode_state_->deferred_scales = scales;
+        decode_state_->deferred_identity = identity;
+        decode_state_->deferred_routed_out = reinterpret_cast<__nv_bfloat16*>(output->MutableDataRaw());
+        decode_state_->deferred_routes = routes;
+        decode_state_->deferred_tile_rows = tile_rows;
+        auto* bridge = GetQMoESharedExpertBridge();
+        const bool defer_to_shared_expert =
+            overlap_shared_expert_ && !bias_gpu_ptr && (hidden_size_ & 7) == 0 && k_ <= 16 &&
+            bridge != nullptr && bridge->IsRoutedNameRegistered(output0_name_.c_str());
+        if (defer_to_shared_expert) {
+          bridge->pending = true;
+          bridge->stream = stream;
+          bridge->routed_output_ptr = output->MutableDataRaw();
+          bridge->tile_rows = tile_rows;
+          bridge->hidden_size = hidden_size_;
+          bridge->ctx = const_cast<QMoEOffload*>(this);
+          bridge->launch_deferred = &QMoEOffload::LaunchDeferredMergeStatic;
+        } else if (!bias_gpu_ptr && fuse_merge_finalize_ && (hidden_size_ & 7) == 0 && k_ <= 16) {
+          ORT_RETURN_IF(LaunchDeferredMerge(stream, nullptr, 0) != 0,
+                        "QMoEOffload fused merge+finalize launch failed.");
+        } else {
+          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadMerge(
+              reinterpret_cast<const __nv_bfloat16*>(wave_output),
+              reinterpret_cast<const __nv_bfloat16*>(host_result), hit_flag,
+              reinterpret_cast<__nv_bfloat16*>(contributions), routes, hidden_size_,
+              tile_rows, static_cast<int>(k_), stream,
+              decode_state_->doorbell_seq_dev, decode_state_->doorbell_done_host));
+          ck::finalizeMoeRoutingKernelLauncher<__nv_bfloat16, __nv_bfloat16, __nv_bfloat16>(
+              reinterpret_cast<const __nv_bfloat16*>(contributions),
+              reinterpret_cast<__nv_bfloat16*>(output->MutableDataRaw()),
+              bias_gpu_ptr ? reinterpret_cast<const __nv_bfloat16*>(route_bias) : nullptr,
+              scales, identity, nullptr, identity, nullptr, tile_rows, hidden_size_,
+              static_cast<int>(k_), routes, parallelism, false, stream);
+        }
       } else {
         CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadMerge(
             reinterpret_cast<const half*>(wave_output),

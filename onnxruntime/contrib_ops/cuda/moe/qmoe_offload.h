@@ -98,6 +98,8 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
                                      size_t min_host_bytes, cudaStream_t stream) const;
   Status StepBetweenRuns(cudaStream_t stream) const;
   void ServiceDoorbell() const;
+  static int LaunchDeferredMergeStatic(void* ctx, cudaStream_t stream, void* shared_out_ptr, int trigger);
+  int LaunchDeferredMerge(cudaStream_t stream, void* shared_out_ptr, int trigger) const;
   template <typename ActT, typename ParallelRunner>
   int RunColdExperts(CpuWork& work, int group_calls, const ActT* host_input, int tile_rows, ActT* host_result,
                      int* host_cpu_ids, bool compact, ParallelRunner&& run_parallel,
@@ -150,6 +152,9 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   bool deterministic_replay_ = false;
   bool allow_cuda_graph_ = false;
   bool doorbell_enabled_ = false;
+  bool overlap_shared_expert_ = true;
+  bool fuse_merge_finalize_ = true;
+  std::string output0_name_;
   mutable std::unique_ptr<PersistentDecodeState> decode_state_;
 
   // Decoupled dispatch controls (v3 Section 8.1 / F7).

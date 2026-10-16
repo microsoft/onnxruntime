@@ -296,6 +296,161 @@ cudaError_t LaunchQMoEOffloadMerge(
   return cudaGetLastError();
 }
 
+__global__ void QMoEOffloadMergeFinalizeCombineKernel(
+    const __nv_bfloat16* wave_output, const __nv_bfloat16* cpu_rows, const int* hit_flag,
+    const float* scales, __nv_bfloat16* routed_out, __nv_bfloat16* shared_out,
+    int hidden_size, int tile_rows, int k,
+    const uint64_t* doorbell_seq_dev, const volatile uint64_t* doorbell_done_host, int trigger) {
+  const int original_row = blockIdx.x;
+  if (original_row >= tile_rows) return;
+  __shared__ int s_hit[16];
+  __shared__ float s_scale[16];
+  if (threadIdx.x < k && threadIdx.x < 16) {
+    const int route = original_row * k + threadIdx.x;
+    s_hit[threadIdx.x] = hit_flag[route];
+    s_scale[threadIdx.x] = scales[route];
+  }
+  __syncthreads();
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
+  if (trigger == 1) {
+    asm volatile("griddepcontrol.launch_dependents;" ::: "memory");
+  }
+#endif
+  const int num_vec4 = hidden_size >> 3;
+  const uint4* wave_v = reinterpret_cast<const uint4*>(wave_output);
+  const uint4* cpu_v = reinterpret_cast<const uint4*>(cpu_rows);
+  uint4* routed_v = reinterpret_cast<uint4*>(routed_out);
+  uint4* shared_v = reinterpret_cast<uint4*>(shared_out);
+
+  uint4 preloaded_wave[16];
+  uint4 preloaded_shared = make_uint4(0, 0, 0, 0);
+  const bool single_pass = (num_vec4 <= static_cast<int>(blockDim.x));
+  if (single_pass && static_cast<int>(threadIdx.x) < num_vec4) {
+    if (shared_v != nullptr) {
+      preloaded_shared = shared_v[static_cast<size_t>(original_row) * num_vec4 + threadIdx.x];
+    }
+    for (int k_idx = 0; k_idx < k && k_idx < 16; ++k_idx) {
+      if (s_hit[k_idx]) {
+        const int route = original_row * k + k_idx;
+        preloaded_wave[k_idx] = wave_v[static_cast<size_t>(route) * num_vec4 + threadIdx.x];
+      }
+    }
+  }
+  if (threadIdx.x == 0 && doorbell_seq_dev != nullptr && doorbell_done_host != nullptr) {
+    const uint64_t expected = *doorbell_seq_dev;
+    while (*doorbell_done_host < expected) {
+#if __CUDA_ARCH__ >= 700
+      __nanosleep(100);
+#endif
+    }
+    __threadfence_system();
+  }
+  __syncthreads();
+
+  for (int elem_idx = threadIdx.x; elem_idx < num_vec4; elem_idx += blockDim.x) {
+    float acc[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    for (int k_idx = 0; k_idx < k; ++k_idx) {
+      const int route = original_row * k + k_idx;
+      const size_t target_row = static_cast<size_t>(k_idx) * tile_rows + original_row;
+      const uint4 raw = s_hit[k_idx]
+                            ? (single_pass ? preloaded_wave[k_idx] : wave_v[static_cast<size_t>(route) * num_vec4 + elem_idx])
+                            : cpu_v[target_row * num_vec4 + elem_idx];
+      const float scale = s_scale[k_idx];
+      const __nv_bfloat162* b2 = reinterpret_cast<const __nv_bfloat162*>(&raw);
+#pragma unroll
+      for (int i = 0; i < 4; ++i) {
+        const float2 f2 = __bfloat1622float2(b2[i]);
+        acc[2 * i + 0] = acc[2 * i + 0] + scale * f2.x;
+        acc[2 * i + 1] = acc[2 * i + 1] + scale * f2.y;
+      }
+    }
+    uint4 routed_u4;
+    __nv_bfloat162* r2 = reinterpret_cast<__nv_bfloat162*>(&routed_u4);
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+      r2[i] = __floats2bfloat162_rn(acc[2 * i + 0], acc[2 * i + 1]);
+    }
+    if (shared_v != nullptr) {
+      const uint4 shared_u4 = single_pass
+                                  ? preloaded_shared
+                                  : shared_v[static_cast<size_t>(original_row) * num_vec4 + elem_idx];
+      const __nv_bfloat162* s2 = reinterpret_cast<const __nv_bfloat162*>(&shared_u4);
+      uint4 comb_u4;
+      __nv_bfloat162* c2 = reinterpret_cast<__nv_bfloat162*>(&comb_u4);
+#pragma unroll
+      for (int i = 0; i < 4; ++i) {
+        const float2 rf = __bfloat1622float2(r2[i]);
+        const float2 sf = __bfloat1622float2(s2[i]);
+        c2[i] = __floats2bfloat162_rn(rf.x + sf.x, rf.y + sf.y);
+      }
+      shared_v[static_cast<size_t>(original_row) * num_vec4 + elem_idx] = comb_u4;
+    } else if (routed_v != nullptr) {
+      routed_v[static_cast<size_t>(original_row) * num_vec4 + elem_idx] = routed_u4;
+    }
+  }
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
+  if (trigger == 2 || trigger == 0) {
+    asm volatile("griddepcontrol.launch_dependents;" ::: "memory");
+  }
+#endif
+}
+
+__global__ void QMoESharedExpertCombineKernel(
+    __nv_bfloat16* shared_out, const __nv_bfloat16* routed_out, int vec4_count, int trigger) {
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
+  if (trigger == 1) {
+    asm volatile("griddepcontrol.launch_dependents;" ::: "memory");
+  }
+#endif
+  uint4* shared_v = reinterpret_cast<uint4*>(shared_out);
+  const uint4* routed_v = reinterpret_cast<const uint4*>(routed_out);
+  for (int idx = blockIdx.x * blockDim.x + threadIdx.x; idx < vec4_count; idx += gridDim.x * blockDim.x) {
+    const uint4 r4 = routed_v[idx];
+    const uint4 s4 = shared_v[idx];
+    uint4 d4;
+    const __nv_bfloat162* r2 = reinterpret_cast<const __nv_bfloat162*>(&r4);
+    const __nv_bfloat162* s2 = reinterpret_cast<const __nv_bfloat162*>(&s4);
+    __nv_bfloat162* d2 = reinterpret_cast<__nv_bfloat162*>(&d4);
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+      const float2 rf = __bfloat1622float2(r2[i]);
+      const float2 sf = __bfloat1622float2(s2[i]);
+      d2[i] = __floats2bfloat162_rn(rf.x + sf.x, rf.y + sf.y);
+    }
+    shared_v[idx] = d4;
+  }
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
+  if (trigger == 2) {
+    asm volatile("griddepcontrol.launch_dependents;" ::: "memory");
+  }
+#endif
+}
+
+cudaError_t LaunchQMoEOffloadMergeFinalizeCombine(
+    const __nv_bfloat16* wave_output, const __nv_bfloat16* cpu_rows, const int* hit_flag,
+    const float* scales, __nv_bfloat16* routed_out, __nv_bfloat16* shared_out,
+    int hidden_size, int tile_rows, int k, cudaStream_t stream,
+    const uint64_t* doorbell_seq_dev, const volatile uint64_t* doorbell_done_host,
+    int trigger) {
+  if (tile_rows <= 0 || hidden_size <= 0) return cudaSuccess;
+  const int num_vec4 = hidden_size >> 3;
+  const int threads = (num_vec4 == 320) ? 320 : 256;
+  QMoEOffloadMergeFinalizeCombineKernel<<<tile_rows, threads, 0, stream>>>(
+      wave_output, cpu_rows, hit_flag, scales, routed_out, shared_out,
+      hidden_size, tile_rows, k, doorbell_seq_dev, doorbell_done_host, trigger);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoESharedExpertCombine(
+    __nv_bfloat16* shared_out, const __nv_bfloat16* routed_out,
+    int count, int trigger, cudaStream_t stream) {
+  if (count <= 0) return cudaSuccess;
+  const int vec4_count = count >> 3;
+  const int blocks = std::min(16, (vec4_count + 255) / 256);
+  QMoESharedExpertCombineKernel<<<blocks, 256, 0, stream>>>(shared_out, routed_out, vec4_count, trigger);
+  return cudaGetLastError();
+}
+
 // Shared with the fused routing prologue in the LLM MoE runner (moe_kernels.cu); see
 // core/providers/cuda/cu_inc/topk_warp_sort.cuh for why these live in a header.
 using onnxruntime::cuda::topk::SafeInvSum;

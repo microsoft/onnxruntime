@@ -87,6 +87,17 @@ cudaError_t LaunchQMoEOffloadMerge(
     int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream,
     const uint64_t* doorbell_seq_dev = nullptr, const volatile uint64_t* doorbell_done_host = nullptr);
 
+cudaError_t LaunchQMoEOffloadMergeFinalizeCombine(
+    const __nv_bfloat16* wave_output, const __nv_bfloat16* cpu_rows, const int* hit_flag,
+    const float* scales, __nv_bfloat16* routed_out, __nv_bfloat16* shared_out,
+    int hidden_size, int tile_rows, int k, cudaStream_t stream,
+    const uint64_t* doorbell_seq_dev = nullptr, const volatile uint64_t* doorbell_done_host = nullptr,
+    int trigger = 0);
+
+cudaError_t LaunchQMoESharedExpertCombine(
+    __nv_bfloat16* shared_out, const __nv_bfloat16* routed_out,
+    int count, int trigger, cudaStream_t stream);
+
 // Decode-only fused routing: softmax + top-k (bit-identical to LaunchSoftmaxTopK) and the (expert, token)-sorted expert
 // maps of fusedBuildExpertMapsSortFirstToken in one single-CTA launch. Returns false (nothing launched) outside its
 // envelope: 1..4 rows, exactly 512 experts, k in {1, 2, 4, 6, 8, 10}, 8-byte aligned logits.
