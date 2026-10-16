@@ -1,6 +1,7 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01 complete in [PR #11](https://github.com/onnxruntime/ort-state/pull/11), M02 in progress.
+**Status:** Approved; M01 and M02 complete.
+M02: [PR #12](https://github.com/onnxruntime/ort-state/pull/12).
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
 **Working memory:** [Shared scratchpad](SCRATCHPAD.md).
 
@@ -15,7 +16,7 @@
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01 is complete; M02 is in progress; M03-M24 are pending. Check tasks when their
+M01 and M02 are complete; M03-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -92,12 +93,12 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01 is **complete**; M02 is **in progress**; M03-M24 are **pending**.
+M01 and M02 are **complete**; M03-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
 | [x] | M01 | Contracts, deterministic fixtures, coverage readiness / `contracts-fixtures` | Approved plan |
-| [ ] | M02 | Stateful context and explicit SessionLoop / `context-loop` | M01 |
+| [x] | M02 | Stateful context and explicit SessionLoop / `context-loop` | M01 |
 | [ ] | M03 | SessionChain and tensor/state bindings / `chain-bindings` | M02 |
 | [ ] | M04 | CPU KV cache management / `cpu-kv-cache` | M03 |
 | [ ] | M05 | CPU greedy sampling and decode iteration / `cpu-greedy` | M04 |
@@ -275,8 +276,9 @@ runtime production implementation; M02 is the next pending milestone.
 ### M02 - Execution context and SessionLoop
 
 **Outcome:** Internal sequential stateful execution with explicit control.
-**Status:** Validated, pending commit/PR, authorized 2026-10-16; branch `state/m02-context-loop`
-stacks on `state/m01-contracts-fixtures`.
+**Status:** Complete; [PR #12](https://github.com/onnxruntime/ort-state/pull/12)
+is ready for review. Branch `state/m02-context-loop` stacks on
+`state/m01-contracts-fixtures`. Implementation commit: `a21ae23201`.
 
 - [x] Implement reusable loop definition plus isolated retained execution state.
 - [x] Implement Step/Next and Run-until-exit on the same stepping path.
@@ -326,7 +328,7 @@ prerequisites for these generic loop tests.
 
 - [x] Collect final CPU test and 100% new-line coverage evidence.
 - [x] Collect CUDA test evidence and stateless/package regression results.
-- [ ] Complete style/document checks, commit, and publish the stacked M02 PR.
+- [x] Complete style/document checks, commit, and publish the stacked M02 PR.
 
 Reproducible final validation commands (reuse the M01 CPU/CUDA configurations;
 the initial M02 regeneration changed the target to `onnxruntime_session_loop_test`):

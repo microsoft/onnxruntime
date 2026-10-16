@@ -13,8 +13,8 @@ Compressed project memory. This is not the execution plan.
   M01. `SPEC.md` and the execution plan are approved.
 - M01 is complete and published as ready-for-review PR #11:
   https://github.com/onnxruntime/ort-state/pull/11
-- No agents launched and no runtime production code changed. CPU and CUDA
-  baseline builds/tests passed; M02-M24 remain pending.
+- No agents launched. M01 and M02 are complete; M03-M24 remain pending.
+  Runtime production code starts with M02.
 - Future tracking: keep `TASKS.md` checklist current and record compressed
   discoveries/agent learnings here.
 
@@ -87,7 +87,7 @@ Compressed project memory. This is not the execution plan.
   standalone package; ORT loading; DDIM; Python; Phi-3 demo; diffusion demo;
   C#; Java; common JS/Node; Web/WASM; Go; Rust; Objective-C; React Native;
   integrated qualification/measurements.
-- M01 complete after explicit plan approval; M02-M24 remain pending.
+- M01 and M02 complete after explicit approval; M03-M24 remain pending.
 - Each milestone includes intended outcome, tasks, CPU/CUDA test plan and gate.
   Actual prerequisites are listed separately from mechanical stack ordering.
 - M01 verifies concrete contracts, small fixtures and coverage readiness.
@@ -207,7 +207,7 @@ Compressed project memory. This is not the execution plan.
   session files. Uses verified CUDA 13.1/A100 configuration from M01.
 - Runtime inputs use dense non-string tensors; token exits observe explicitly
   configured scalar int64 output (sampler/native generation remains M05).
-- No agents launched, M02 commits/push/PR still pending.
+- No agents launched. M02 implementation committed as `a21ae23201`.
 - Source encoding/whitespace/120-column and clang-format checks passed.
 - Current CUDA rebuild continues compiling existing provider kernels; no CUDA
   test results were available at that checkpoint.
@@ -216,5 +216,9 @@ Compressed project memory. This is not the execution plan.
 - CUDA stateless/package regressions: 26/26 passed, zero skips.
 - Compute Sanitizer memcheck: two representative native-CUDA lifetime/reset and
   in-flight cancellation tests passed, zero errors.
-- M02 validated; commit and stacked PR next. No new device production code, so
+- M02 validated and published in ready-for-review PR #12:
+  https://github.com/onnxruntime/ort-state/pull/12
+  Base branch `state/m01-contracts-fixtures`, head `state/m02-context-loop`.
+  No new device production code, so
   measured host 315/315 coverage is the applicable new-code gate.
+- Next pending milestone is M03 (SessionChain and bindings); not started.
