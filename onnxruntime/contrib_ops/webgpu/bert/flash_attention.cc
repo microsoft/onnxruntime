@@ -565,17 +565,17 @@ Status FlashAttentionPrefillSimpleProgram::GenerateShaderCode(ShaderHelper& shad
                              WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
                              WGSL_TEMPLATE_PARAMETER(kv_step_param, kv_step_),
                              WGSL_TEMPLATE_PARAMETER(q_BNSH, q_BNSH_),
-                             WGSL_TEMPLATE_PARAMETER(qk_is_fp16, false),
+                             WGSL_TEMPLATE_PARAMETER(qk_f32, true),
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
                              WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
+                             WGSL_TEMPLATE_PARAMETER(shuffle_chunk_param, shuffle_chunk_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlens_q, use_seqlens_q_));
 }
 
 bool CanApplyFlashAttentionPrefillSimple(bool is_intel,
-                                         uint32_t subgroup_min_size,
                                          bool kv_cache_quantization_enabled) {
-  return is_intel && subgroup_min_size >= 8u && !kv_cache_quantization_enabled;
+  return is_intel && !kv_cache_quantization_enabled;
 }
 
 Status ApplyFlashAttentionPrefillSimple(onnxruntime::webgpu::ComputeContext& context,
@@ -601,22 +601,25 @@ Status ApplyFlashAttentionPrefillSimple(onnxruntime::webgpu::ComputeContext& con
                                         bool q_BNSH,
                                         bool has_head_sink,
                                         const Tensor* head_sink) {
-  // The simple prefill kernel tiles the query sequence by its workgroup size
-  // (one query row per thread), so it can pick a different workgroup size than
-  // the full kernel. Larger tiles amortize the shared K/V load across more
-  // query rows (256 is the WebGPU maxComputeInvocationsPerWorkgroup). Causal
-  // attention does ~half the score work per row, so 128 fits it better, while
-  // non-causal uses 256. num_seq_tile / dispatch are recomputed from this size
-  // so the shader's tiling stays consistent.
-  const uint32_t prefill_simple_wg_size = parameters.is_unidirectional_ ? 128u : 256u;
-  // The shuffle loop broadcasts kv_step columns across the subgroup, so kv_step
-  // must not exceed the guaranteed minimum subgroup size: 16 when that minimum
-  // is >= 16, otherwise 8.
-  const uint32_t prefill_simple_kv_step = subgroup_min_size >= 16u ? 16u : 8u;
-  const uint32_t prefill_simple_num_seq_tile =
-      (parameters.sequence_length_ + prefill_simple_wg_size - 1) / prefill_simple_wg_size;
-  const uint32_t prefill_simple_dispatch_size =
-      parameters.batch_size_ * parameters.num_heads_ * prefill_simple_num_seq_tile;
+  constexpr uint32_t wg_size = 128u;
+  const uint32_t head_size_vec = static_cast<uint32_t>(parameters.head_size_) / 4u;
+  const uint32_t v_head_vec_step = std::min(16u, head_size_vec);
+  // Full-head K staging and sliced V staging share the workgroup storage budget.
+  const uint64_t bytes_per_column =
+      (uint64_t{head_size_vec} + v_head_vec_step) * 4u * Q->DataType()->Size();
+  const uint64_t max_workgroup_storage = context.DeviceLimits().maxComputeWorkgroupStorageSize;
+  uint32_t kv_step = 64u;
+  while (kv_step > 8u && bytes_per_column * kv_step > max_workgroup_storage) {
+    kv_step /= 2u;
+  }
+  ORT_RETURN_IF(bytes_per_column * kv_step > max_workgroup_storage,
+                "Simple prefill K/V tiles exceed workgroup storage limits.");
+  // Values below 8 select direct shared-memory reads, including without subgroups.
+  const uint32_t shuffle_chunk = std::min(kv_step, subgroup_min_size);
+  const uint32_t num_seq_tile =
+      (parameters.sequence_length_ + wg_size - 1) / wg_size;
+  const uint32_t dispatch_size =
+      parameters.batch_size_ * parameters.num_heads_ * num_seq_tile;
 
   FlashAttentionPrefillSimpleProgram program{"FlashAttentionPrefillSimple",
                                              has_attention_bias,
@@ -624,7 +627,8 @@ Status ApplyFlashAttentionPrefillSimple(onnxruntime::webgpu::ComputeContext& con
                                              parameters.head_size_,
                                              parameters.num_heads_,
                                              use_seqlen_k,
-                                             prefill_simple_kv_step,
+                                             kv_step,
+                                             shuffle_chunk,
                                              has_local_window,
                                              use_seqlens_q,
                                              q_BNSH,
@@ -645,16 +649,18 @@ Status ApplyFlashAttentionPrefillSimple(onnxruntime::webgpu::ComputeContext& con
     program.AddInputs({{head_sink, ProgramTensorMetadataDependency::Type}});
   }
   program.AddOutputs({{attn_output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
-  program.SetDispatchGroupSize(prefill_simple_dispatch_size)
-      .SetWorkgroupSize(prefill_simple_wg_size)
-      .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, use_seqlen_k, prefill_simple_wg_size, prefill_simple_kv_step, has_local_window, use_seqlens_q, q_BNSH, has_head_sink)
+  program.SetDispatchGroupSize(dispatch_size)
+      .SetWorkgroupSize(wg_size)
+      .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_,
+                 use_seqlen_k, wg_size, kv_step, shuffle_chunk,
+                 has_local_window, use_seqlens_q, q_BNSH, has_head_sink)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(present_sequence_length)},
                             {static_cast<uint32_t>(parameters.batch_size_)},
                             {static_cast<uint32_t>(parameters.n_reps)},
                             {alpha},
-                            {prefill_simple_num_seq_tile},
+                            {num_seq_tile},
                             {attn_bias_dim0},
                             {attn_bias_dim1},
                             {attn_bias_dim3},
@@ -1174,7 +1180,7 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
   const bool is_intel = context.AdapterInfo().vendor == std::string_view{"intel"};
   const uint32_t subgroup_min_size = has_subgroups ? context.AdapterInfo().subgroupMinSize : 0u;
   // TODO: Merge back into `FlashAttentionProgram`.
-  if (CanApplyFlashAttentionPrefillSimple(is_intel, subgroup_min_size, kv_cache_quantization_enabled)) {
+  if (CanApplyFlashAttentionPrefillSimple(is_intel, kv_cache_quantization_enabled)) {
     return ApplyFlashAttentionPrefillSimple(
         context, Q, present_key, present_value, attention_bias, seqlen_k, attn_output,
         parameters, has_attention_bias, use_seqlen_k, has_local_window, local_window_size,

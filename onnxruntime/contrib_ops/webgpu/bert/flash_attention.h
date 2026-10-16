@@ -214,6 +214,7 @@ class FlashAttentionPrefillSimpleProgram final : public Program<FlashAttentionPr
                                      int qkv_num_heads,
                                      bool use_seqlen_k,
                                      uint32_t kv_step,
+                                     uint32_t shuffle_chunk,
                                      bool has_local_window,
                                      bool use_seqlens_q,
                                      bool q_BNSH,
@@ -225,6 +226,7 @@ class FlashAttentionPrefillSimpleProgram final : public Program<FlashAttentionPr
         qkv_num_heads_(qkv_num_heads),
         use_seqlen_k_(use_seqlen_k),
         kv_step_(kv_step),
+        shuffle_chunk_(shuffle_chunk),
         has_local_window_(has_local_window),
         use_seqlens_q_(use_seqlens_q),
         q_BNSH_(q_BNSH),
@@ -251,6 +253,7 @@ class FlashAttentionPrefillSimpleProgram final : public Program<FlashAttentionPr
   int qkv_num_heads_;
   bool use_seqlen_k_;
   uint32_t kv_step_;
+  uint32_t shuffle_chunk_;
   bool has_local_window_;
   bool use_seqlens_q_;
   bool q_BNSH_;
@@ -258,7 +261,6 @@ class FlashAttentionPrefillSimpleProgram final : public Program<FlashAttentionPr
 };
 
 bool CanApplyFlashAttentionPrefillSimple(bool is_intel,
-                                         uint32_t subgroup_min_size,
                                          bool kv_cache_quantization_enabled);
 
 Status ApplyFlashAttentionPrefillSimple(onnxruntime::webgpu::ComputeContext& context,
