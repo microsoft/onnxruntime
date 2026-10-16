@@ -265,3 +265,46 @@ Compressed project memory. This is not the execution plan.
   PR #13: https://github.com/onnxruntime/ort-state/pull/13
   Base `state/m02-context-loop`, head `state/m03-chain-bindings`.
   No new device code or public API. M04 (CPU KVCacheManager) is next, not started.
+
+## M04
+
+- 2026-10-16: User authorized M04; branch `state/m04-cpu-kv-cache` stacks on M03.
+- Internal CPU manager: explicit layouts/dtypes/sequence axis, logical length
+  versus allocation capacity, validated full-output adoption/copy, append and
+  reserve. Arbitrary sequence axis must use compact logical packing, not
+  incorrectly reinterpret per-head capacity-strided buffers as dense tensors.
+- Preserve immutable snapshots by allocating fresh buffers on mutation; retain
+  compatible allocator-owned model outputs without extra copies. No model
+  input/output aliasing is inferred or enabled.
+- Managed loop cache bindings feed the manager and commit model outputs; chains
+  share one manager across their components, while independent executions do not.
+- Keep native CUDA management deferred. CPU/device rejection and host-staged
+  CUDA Sessions will be tested without claiming CUDA-backed cache support.
+- Implemented `kv_cache_manager.h/.cc`; wired explicit managed input/output
+  bindings into loops and chains. Added standalone/integration tests to existing
+  `session_chain_test.cc`, keeping milestone to ten files.
+- CPU first validation: 42/42 focused tests + 21/21 regressions passed, no skips.
+  LLVM reports 100% affected inference-runtime coverage; final denominator
+  verification after the last test/lifetime-only edits is pending.
+- Compile fixes: Tensor::IsContiguous exists only under ENABLE_STRIDED_TENSORS
+  (training); guard it. Convert SafeInt row offsets to size_t before pointer
+  arithmetic. ORT InlinedVector does not support N=0; explicitly use N=1 for
+  enlarged cache-binding/component structures. Typed array fixes enum/int test.
+- CPU inference configuration does not compile the training-only strided guard.
+  Do not claim training coverage. No new device code.
+- Manager share adopts allocator-owned outputs at their actual capacity;
+  copied/appended views retain compact logical packing and use fresh buffers.
+  Lifetime counters count manager data-buffer operations, not Session snapshots.
+- Additional final tests release producing Sessions and exercise last-axis
+  packing. Need final CPU rebuild/profiles and CUDA rebuild/test pass.
+- M04 no commits/push/PR yet; no agents used.
+- Final validation passed: CPU 42/42 focused + 21/21 regressions; CUDA build
+  76/76 focused + 26/26 regressions, no skips. Six new native-CUDA Session
+  integration cases still use the explicitly CPU-resident cache manager.
+- Final line gate: 335/335 new unique executable locations; 943/943 cumulative
+  unique locations. LLVM aggregate mapping 957/957. Eighteen unrelated
+  profile-map warnings, none affecting new or coupled runtime functions.
+- Compute Sanitizer: five CPU-cache/CUDA-Session integration cases passed,
+  zero errors. Producer Session release and all three axis positions tested.
+- All ten files pass formatting/whitespace/120-column/document checks.
+  M04 validated, ready for commit/stacked PR publication.

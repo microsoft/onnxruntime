@@ -7,6 +7,7 @@
 
 #include "core/common/safeint.h"
 #include "core/session/inference_session.h"
+#include "core/session/IOBinding.h"
 #include "core/session/stateful_execution_utils.h"
 
 namespace onnxruntime {
@@ -56,6 +57,7 @@ Status SessionChain::Initialize() {
       options = loop->Options();
     }
     ORT_RETURN_IF_NOT(session, "Null Session component: ", component.name);
+    options.kv_caches.insert(options.kv_caches.end(), component.kv_caches.begin(), component.kv_caches.end());
     const auto [status, outputs] = session->GetModelOutputs();
     ORT_RETURN_IF_ERROR(status);
     options.output_names.clear();
@@ -64,6 +66,18 @@ Status SessionChain::Initialize() {
     }
     std::shared_ptr<const SessionLoop> loop;
     ORT_RETURN_IF_ERROR(SessionLoop::Create(*session, std::move(options), loop));
+    for (const auto& item : loop->Options().kv_caches) {
+      auto found = std::find_if(cache_specs_.begin(), cache_specs_.end(),
+                                [&](const auto& spec) { return spec.name == item.cache.name; });
+      if (found == cache_specs_.end()) {
+        cache_specs_.push_back(item.cache);
+      } else {
+        ORT_RETURN_IF(found->element_type != item.cache.element_type || found->shape != item.cache.shape ||
+                          found->sequence_axis != item.cache.sequence_axis ||
+                          found->initial_capacity != item.cache.initial_capacity,
+                      "Inconsistent shared KV cache layout: ", item.cache.name);
+      }
+    }
     loops_.push_back(std::move(loop));
     sessions_.push_back(session);
   }
@@ -72,13 +86,16 @@ Status SessionChain::Initialize() {
   for (size_t index = 0; index < options_.components.size(); ++index) {
     const auto& component = options_.components[index];
     const auto& arguments = *sessions_[index]->GetModelInputs().second;
-    ORT_RETURN_IF(component.inputs.size() != arguments.size(),
+    ORT_RETURN_IF(component.inputs.size() + loops_[index]->Options().kv_caches.size() != arguments.size(),
                   "Component input binding count mismatch: ", component.name);
     InlinedHashSet<std::string> destinations;
     for (const auto& binding : component.inputs) {
       const auto* target = FindArgument(arguments, binding.input_name);
       ORT_RETURN_IF_NOT(target && destinations.insert(binding.input_name).second,
                         "Unknown or duplicate component input: ", component.name, ".", binding.input_name);
+      ORT_RETURN_IF(std::any_of(loops_[index]->Options().kv_caches.begin(), loops_[index]->Options().kv_caches.end(),
+                                [&](const auto& item) { return item.input_name == binding.input_name; }),
+                    "Managed KV cache input cannot also have a chain input binding: ", binding.input_name);
       const auto& source = binding.source;
       ORT_RETURN_IF(source.name.empty(), "Empty component input source: ", component.name);
       const NodeArg* source_type = nullptr;
@@ -98,6 +115,12 @@ Status SessionChain::Initialize() {
           ORT_RETURN_IF_NOT(source_type, "Unknown upstream output: ", source.name);
           break;
         case ChainSourceKind::State: {
+          auto cache = std::find_if(cache_specs_.begin(), cache_specs_.end(),
+                                    [&](const auto& spec) { return spec.name == source.name; });
+          if (cache != cache_specs_.end()) {
+            ORT_RETURN_IF_ERROR(KVCacheManager::CheckBinding(*cache, *target, true));
+            break;
+          }
           auto [it, inserted] = state_types.emplace(source.name, target);
           if (inserted) {
             initial_state_names_.insert(source.name);
@@ -117,6 +140,15 @@ Status SessionChain::Initialize() {
       const auto* output = FindArgument(*sessions_[index]->GetModelOutputs().second, binding.output_name);
       ORT_RETURN_IF_NOT(output && !binding.state_name.empty() && state_destinations.insert(binding.state_name).second,
                         "Invalid or duplicate state output: ", component.name, ".", binding.state_name);
+      auto cache = std::find_if(cache_specs_.begin(), cache_specs_.end(),
+                                [&](const auto& spec) { return spec.name == binding.state_name; });
+      if (cache != cache_specs_.end()) {
+        ORT_RETURN_IF_ERROR(KVCacheManager::CheckBinding(*cache, *output, false));
+        ORT_RETURN_IF(std::any_of(loops_[index]->Options().kv_caches.begin(), loops_[index]->Options().kv_caches.end(),
+                                  [&](const auto& item) { return item.cache.name == binding.state_name; }),
+                      "Managed KV output cannot also be written through a state binding: ", binding.state_name);
+        continue;
+      }
       auto it = state_types.find(binding.state_name);
       if (it != state_types.end()) {
         ORT_RETURN_IF_ERROR(CheckCompatibleTypes(*output, *it->second));
@@ -140,6 +172,9 @@ Status SessionChain::ValidateInputs(const SessionChainInputs& inputs) const {
                     inputs.initial_state.size() != initial_state_names_.size(),
                 "SessionChain external input, sequence, or initial state count mismatch");
   InlinedHashSet<std::string> produced_state;
+  for (const auto& spec : cache_specs_) {
+    produced_state.insert(spec.name);
+  }
   for (size_t index = 0; index < options_.components.size(); ++index) {
     std::optional<size_t> batch_count;
     for (const auto& binding : options_.components[index].inputs) {
@@ -181,12 +216,22 @@ Status SessionChain::ValidateInputs(const SessionChainInputs& inputs) const {
 
 Status SessionChain::CreateExecution(SessionChainInputs inputs, std::unique_ptr<SessionChainExecution>& out) const {
   ORT_RETURN_IF_ERROR(ValidateInputs(inputs));
-  out = std::unique_ptr<SessionChainExecution>(new SessionChainExecution(shared_from_this(), std::move(inputs)));
+  std::shared_ptr<KVCacheManager> cache;
+  if (!cache_specs_.empty()) {
+    std::unique_ptr<IOBinding> binding;
+    ORT_RETURN_IF_ERROR(sessions_[0]->NewIOBinding(&binding));
+    std::unique_ptr<KVCacheManager> manager;
+    ORT_RETURN_IF_ERROR(KVCacheManager::Create(cache_specs_, binding->GetCPUAllocator(kCpuExecutionProvider), manager));
+    cache = std::move(manager);
+  }
+  out = std::unique_ptr<SessionChainExecution>(
+      new SessionChainExecution(shared_from_this(), std::move(inputs), std::move(cache)));
   return Status::OK();
 }
 
-SessionChainExecution::SessionChainExecution(std::shared_ptr<const SessionChain> chain, SessionChainInputs inputs)
-    : chain_(std::move(chain)), initial_inputs_(std::move(inputs)) {
+SessionChainExecution::SessionChainExecution(std::shared_ptr<const SessionChain> chain, SessionChainInputs inputs,
+                                             std::shared_ptr<KVCacheManager> cache)
+    : chain_(std::move(chain)), initial_inputs_(std::move(inputs)), cache_(std::move(cache)) {
   Reset();
 }
 
@@ -247,7 +292,7 @@ Status SessionChainExecution::StepComponent(SessionChainStepResult& result) {
   if (!active_) {
     SessionLoopInputs inputs;
     ORT_RETURN_IF_ERROR(PrepareComponentInputs(inputs));
-    ORT_RETURN_IF_ERROR(loop->CreateExecution(std::move(inputs), active_));
+    ORT_RETURN_IF_ERROR(loop->CreateExecutionWithCache(std::move(inputs), cache_, active_));
   }
   ORT_RETURN_IF_ERROR(active_->Step(result.component_result));
   ORT_RETURN_IF(cancelled_.load(), "SessionChain cancelled during a component; call Reset before reuse");
@@ -260,7 +305,17 @@ Status SessionChainExecution::StepComponent(SessionChainStepResult& result) {
     }
     result.component_outputs = outputs;
     for (const auto& binding : component.state_outputs) {
+      if (cache_ && std::any_of(chain_->cache_specs_.begin(), chain_->cache_specs_.end(),
+                                [&](const auto& spec) { return spec.name == binding.state_name; })) {
+        ORT_RETURN_IF_ERROR(
+            cache_->Update(binding.state_name, outputs.at(binding.output_name), KVCacheUpdateKind::Share));
+      }
       state_.insert_or_assign(binding.state_name, outputs.at(binding.output_name));
+    }
+    for (const auto& item : loop->Options().kv_caches) {
+      KVCacheView view;
+      ORT_RETURN_IF_ERROR(cache_->Get(item.cache.name, view));
+      state_.insert_or_assign(item.cache.name, view.value);
     }
     invocations_ = SafeInt<int64_t>(invocations_) + 1;
   }
@@ -326,6 +381,14 @@ void SessionChainExecution::Reset() {
     component_outputs_.emplace_back();
   }
   state_ = initial_inputs_.initial_state;
+  if (cache_) {
+    cache_->Reset();
+    for (const auto& spec : chain_->cache_specs_) {
+      KVCacheView view;
+      ORT_THROW_IF_ERROR(cache_->Get(spec.name, view));
+      state_.emplace(spec.name, std::move(view.value));
+    }
+  }
   cancelled_.store(false);
   requires_reset_ = false;
 }

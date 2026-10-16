@@ -834,3 +834,60 @@ management, or SessionChain.
   execution, results/state/progress/cancellation and reinstates the original
   external inputs/initial state. Independent executions never share mutable
   progress or implicitly inherit another execution's updated state.
+
+## Appendix D. M04 CPU KVCacheManager contract
+
+- Each cache has an explicit name, float32/float16/bfloat16 element type, rank,
+  positive fixed non-sequence dimensions, sequence axis, and initial allocation
+  capacity. The layout's initial logical sequence dimension is zero. Cache
+  names distinguish layers/keys/values; no layout is inferred from buffer size.
+- Logical length and allocation capacity are separate. The exposed tensor is
+  densely packed for its logical shape, even when the sequence axis is not the
+  leading axis. Unused capacity is not exposed as tensor elements or accidentally
+  treated as per-head padding.
+- A newly created execution initializes its managed caches empty. Update/import,
+  append, reserve, inspection, and reset are independently testable on the CPU
+  manager. Nonempty cache seeding through the public execution APIs remains
+  future API work; ordinary user feeds cannot override managed input ports.
+- Full updates explicitly choose Share or Copy. Share retains an allocator-owned
+  CPU model output without extra cache-manager data copies. Borrowed buffers
+  require Copy. A supplied shared tensor must not subsequently be mutated by
+  the caller; ordinary ORT ownership/lifetime rules still apply.
+- Sharing adopts the supplied tensor's actual allocation extent: capacity becomes
+  its logical sequence length, rather than claiming it has the old reservation.
+  Copy preserves at least the prior reservation and grows when needed.
+- Append accepts only the newly produced sequence portion. It copies old/new
+  rows into compact logical packing with checked sizes/offsets. Empty appends
+  are no-ops. Full updates may preserve or grow logical length, not shrink it;
+  Reset is the explicit operation for clearing logical content.
+- Reserve is an at-least-capacity request, a no-op when capacity is sufficient.
+  Copy/Append/Reserve mutation uses fresh storage so previously returned views
+  remain stable; no unsupported model input/output aliasing is enabled.
+- Reset clears logical length while allowing allocation retention. Zero logical
+  shape prevents stale data becoming visible, and later writes do not overwrite
+  retained pre-reset views. Views retain backing allocations after manager,
+  context, Session, or producing result release.
+- Manager statistics report lifetime data-buffer allocations, bytes copied, and
+  successful shared updates. They exclude metadata allocations, Session output
+  snapshots and I/O transfers; they do not imply a performance threshold or
+  device-native cache implementation.
+- Validate dtype, rank, fixed dimensions, contiguous CPU location, sequence axis,
+  capacity and checked allocation/index arithmetic before copying. Unknown names,
+  unsupported update kinds, invalid metadata, failed/null allocation, and overflow
+  propagate explicit Status errors or normal internal ORT exceptions.
+- A failed single-cache mutation preserves that cache's prior value. Across
+  multiple cache updates, earlier successful updates need not be rolled back;
+  a failed execution is marked requiring Reset before reuse.
+- SessionLoop has explicit managed input/output bindings and full/delta update
+  policies. Managed inputs do not also accept finite/invariant/feedback bindings.
+  Control and selected outputs retain their existing snapshot contracts.
+- A SessionChain owns one cache manager per execution, shared by its component
+  loops and plain Session wrappers. Same-name caches require identical layout
+  declarations. Named state can observe/hand off those caches; compatible full
+  state outputs may update them, but duplicate managed/state writers are invalid.
+- Standalone loop reset clears its own manager. Component transitions do not
+  reset the chain's shared manager; chain reset clears it once. Independent
+  executions never share mutable cache-manager state.
+- CPU caches reject GPU/device allocations and device-resident updates. Testing
+  a CUDA Session with host snapshots verifies integration and rejection behavior,
+  not CUDA-backed cache management. Native CUDA storage remains M08.

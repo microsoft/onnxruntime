@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M03 complete.
+**Status:** Approved; M01-M03 complete; M04 in progress.
 M03: [PR #13](https://github.com/onnxruntime/ort-state/pull/13).
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
 **Working memory:** [Shared scratchpad](SCRATCHPAD.md).
@@ -16,7 +16,7 @@ M03: [PR #13](https://github.com/onnxruntime/ort-state/pull/13).
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M03 are complete; M04-M24 are pending. Check tasks when their
+M01-M03 are complete; M04 is in progress; M05-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -93,7 +93,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M03 are **complete**; M04-M24 are **pending**.
+M01-M03 are **complete**; M04 is **in progress**; M05-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -480,11 +480,13 @@ management, real-model qualification, or branch-complete coverage is made.
 ### M04 - CPU KVCacheManager
 
 **Outcome:** Safe contiguous caches shared across stages of one execution.
+**Status:** Validated, pending commit/PR, authorized 2026-10-16; `state/m04-cpu-kv-cache`
+stacks on `state/m03-chain-bindings`.
 
-- [ ] Implement CPU cache initialization, model-declared layout/type/shape
+- [x] Implement CPU cache initialization, model-declared layout/type/shape
   validation, logical length/capacity, append/update, retention, and reset.
-- [ ] Integrate prefill->decode handoff with context/binding ownership.
-- [ ] Share compatible allocations and explicitly copy/grow when required;
+- [x] Integrate prefill->decode handoff with context/binding ownership.
+- [x] Share compatible allocations and explicitly copy/grow when required;
   preserve model/kernel aliasing rules and checked size arithmetic.
 
 **CPU test plan:** Empty/initialized caches, growth boundaries, multiple layers,
@@ -495,6 +497,92 @@ invalid layout/length/dtype/capacity, size overflow, and allocation failure.
 and that the CPU cache contract does not masquerade as CUDA cache support.
 **Completion gate:** CPU chain fixture matches reference; sharing/copy behavior
 is observable; shared rules and 100% new cache-line coverage pass.
+
+**Execution evidence:**
+
+- CPU manager and explicit loop/chain managed-cache bindings implemented.
+  Layouts/dtypes/sequence axes, compact logical views, capacity, full/delta
+  updates, reserve, retention and reset are documented in SPEC Appendix D.
+- Shared owned outputs are retained without cache-manager copies. Copy/append/
+  reserve use fresh storage to preserve snapshots and never force model aliasing.
+- Independent contexts own different managers; chain component transitions retain
+  one shared manager. Plain Session wrappers and generic named-state handoff
+  interoperate with managed caches.
+- Final CPU validation: **42/42 focused tests passed**, including six standalone
+  CPU cache cases and six new provider-parameterized integration cases.
+  Stateless/package regressions: **21/21 passed**, no skips.
+- Final new-line coverage: **335/335 unique new executable source locations**.
+  Cumulative affected stateful runtime coverage is **943/943 unique locations**;
+  LLVM aggregate line mapping reports **957/957**, all 100%. Eighteen unrelated
+  profile-map warnings do not affect cache/loop/chain/shared-helper functions.
+- Initial compile issues were resolved by guarding the training-only strided
+  tensor API, using checked integer offsets before pointer arithmetic, explicit
+  one-element inline capacities for larger option structures, and a typed test
+  initializer. No unrelated Session or provider behavior was changed.
+- Final lifetime tests release the producing Sessions and exercise leading,
+  middle and last sequence axes.
+- CUDA build validation: **76/76 focused tests passed**, including six new
+  CPU-cache/native-CUDA-Session integration cases; existing stateless/package
+  regressions: **26/26 passed**. No skips and CUDA node assignment is asserted.
+- Compute Sanitizer memcheck: **5/5 passed, zero errors** on cache retention/reset,
+  shared-context handoff, plain-state interoperability, copy/delta policies and
+  invalid-output recovery.
+- Source formatting, 120-column, document and whitespace checks passed.
+- Native CUDA management and training-build qualification are not claimed.
+  The strided rejection check is compile-guarded for training builds; the
+  executable-line gate is measured for the Linux inference configuration.
+
+- [x] Finalize CPU/CUDA tests, coverage counts and style/document checks.
+- [ ] Commit and publish the ready-for-review PR stacked on M03.
+
+Final build/test commands, reusing the established inference configurations:
+
+```bash
+source .venv/bin/activate
+LLVM_PROFILE_FILE=/dev/null cmake -S cmake -B build/state-cpu/RelWithDebInfo
+LLVM_PROFILE_FILE=/dev/null cmake --build build/state-cpu/RelWithDebInfo \
+  --parallel 8 --target onnxruntime_session_loop_test onnxruntime_autoep_test
+cd build/state-cpu/RelWithDebInfo
+mkdir -p coverage/m04/final
+LLVM_PROFILE_FILE="$PWD/coverage/m04/final/%m-%p.profraw" \
+  ./onnxruntime_session_loop_test --gtest_output=xml:coverage/m04/final/tests.xml
+LLVM_PROFILE_FILE=/dev/null ./onnxruntime_autoep_test \
+  --gtest_filter='*StatefulExecutionBaselineTest.*:ModelPackageApiTest.*' \
+  --gtest_output=xml:coverage/m04/regressions.xml
+llvm-profdata merge -sparse coverage/m04/final/*.profraw \
+  -o coverage/m04/final/m04.profdata
+llvm-cov report ./onnxruntime_session_loop_test \
+  -instr-profile=coverage/m04/final/m04.profdata \
+  ../../../onnxruntime/core/session/kv_cache_manager.cc \
+  ../../../onnxruntime/core/session/kv_cache_manager.h \
+  ../../../onnxruntime/core/session/session_loop.cc \
+  ../../../onnxruntime/core/session/session_loop.h \
+  ../../../onnxruntime/core/session/session_chain.cc \
+  ../../../onnxruntime/core/session/session_chain.h \
+  ../../../onnxruntime/core/session/stateful_execution_utils.h
+```
+
+From the repository root with the matching CUDA 13.1/cuDNN environment:
+
+```bash
+PATH="$CUDA_HOME/bin:$PATH" cmake -S cmake \
+  -B build/state-cuda-baseline-13.1/RelWithDebInfo
+cmake --build build/state-cuda-baseline-13.1/RelWithDebInfo --parallel 8 \
+  --target onnxruntime_session_loop_test onnxruntime_autoep_test
+cd build/state-cuda-baseline-13.1/RelWithDebInfo
+export CUDA_VISIBLE_DEVICES=0
+export LD_LIBRARY_PATH="$PWD:$CUDNN_HOME/lib:$CUDA_HOME/lib64"
+./onnxruntime_session_loop_test --gtest_output=xml:m04-tests.xml
+./onnxruntime_autoep_test \
+  --gtest_filter='*StatefulExecutionBaselineTest.*:ModelPackageApiTest.*' \
+  --gtest_output=xml:m04-regressions.xml
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --error-exitcode 99 \
+  ./onnxruntime_session_loop_test \
+  --gtest_filter='Cuda/SessionChainTest.ManagedCpuCacheInLoopRetainsAndResets/*:Cuda/SessionChainTest.ManagedCacheSharesAcrossPrefillDecodeAndIndependentContexts/*:Cuda/SessionChainTest.OrdinaryStateBindingsCanReadAndCommitManagedCache/*:Cuda/SessionChainTest.ManagedCacheCopyAndDeltaPolicies/*:Cuda/SessionChainTest.InvalidManagedOutputRequiresResetWithoutCommittingCache/*'
+```
+
+All final commands passed. No device production code or native CUDA cache is
+introduced; the measured new-line gate is for Linux CPU inference code.
 
 ### M05 - CPU greedy sampling and decode integration
 
