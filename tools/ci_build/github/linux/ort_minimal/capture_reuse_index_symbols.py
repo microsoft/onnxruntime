@@ -193,10 +193,16 @@ def main():
             directory / "symbols.txt",
         )
         stripped = directory / "libonnxruntime.stripped.so"
-        run([str(tools / "llvm-strip"), "--strip-all", "-o", str(stripped), str(library)], build)
+        # lld -s retains .comment; llvm-strip --strip-all removes it and changes the gate total.
+        stripped_command = [
+            *link_command(original_link, stripped, directory / "link.stripped.map", replacement),
+            "-s",
+        ]
+        run(stripped_command, build, directory / "link.stripped.log")
         sections = get_section_sizes(stripped, str(tools / "llvm-readelf"))
         report["variants"][variant] = {
             "link": command,
+            "stripped_link": stripped_command,
             "sections": sections,
             "total": sum(sections.values()),
             "stripped_sha256": digest(stripped),

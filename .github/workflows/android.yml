@@ -120,7 +120,7 @@ jobs:
 
     # Temporary attribution for #33407; the preceding size gate is not bypassed.
     - name: Capture reuse-index Android linker attribution
-      if: ${{ failure() && github.head_ref == 'rui-ren/allocation-planner-reuse-index' }}
+      if: ${{ always() && github.head_ref == 'rui-ren/allocation-planner-reuse-index' }}
       timeout-minutes: 10
       shell: bash
       run: |
@@ -138,7 +138,7 @@ jobs:
             --build-dir /build/1a/MinSizeRel \
             --output-dir /onnxruntime_src/android-reuse-index-diagnostics \
             --base-ref 327d11ab6c22e387acf793dd9de8caf406055ca9 \
-            --candidate-source-sha256 8d31a660676fc9767f764b5e45791cb01acc6854c38c6f1f82a08c66e78402c0
+            --candidate-source-sha256 6ddb386eb6e36907f26cb591b6b95731ac72e0499797917059620888b6b638e9
 
     - name: Upload reuse-index attribution
       if: ${{ always() && github.head_ref == 'rui-ren/allocation-planner-reuse-index' }}

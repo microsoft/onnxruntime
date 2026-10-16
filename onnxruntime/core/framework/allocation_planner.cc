@@ -3,6 +3,7 @@
 
 #include "core/framework/allocation_planner.h"
 #include <charconv>
+#include <map>
 #include <vector>
 #include <algorithm>
 #include <deque>
@@ -220,9 +221,9 @@ class PlannerImpl {
   // ort_value_info_ is indexed by an OrtValueIndex
   std::vector<OrtValueInfo> ort_value_info_;
 
-  // Heads use the existing integer-map instantiation, with per-value links.
-  // Prepending preserves LIFO, including collisions checked by the full predicate.
-  InlinedHashMap<size_t, size_t> freelists_;
+  // Share existing tree primitives while bounding bucket lookup to O(log B).
+  // Per-value links preserve LIFO; collisions still use the full predicate.
+  std::map<size_t, size_t> freelists_;
 
   OrtValueIndex Index(const OrtValueName& name) {
     OrtValueIndex result;
