@@ -174,8 +174,11 @@ Only **Qwen3.5-35B-A3B INT4** is measured, with 40 QMoE nodes, 256 experts per n
 `K` is the session-global CPU-resident expert count out of 10,240, not the number of CPU layers.
 
 The fixed settings are alpha `0.9`, epsilon `0.1`, probability weight `0`, and at most **five in-flight swaps per
-device**. Adaptive swaps are enabled for every nonzero `K`; `K=0` is the all-GPU baseline with no applicable swaps.
-No saved counter state, CUDA Graph, or counter logging is used. Runtime defaults are unchanged.
+device**. Adaptive swaps are configured for every nonzero `K`, but require both CPU and CUDA expert slots.
+At `K=10240`, all QMoE experts reside on CPU; the remaining model operations still use CUDA, so this is not a
+CPU-only execution-provider run. `K=0` disables CPU offload and is measured both with and without CUDA Graph
+capture. All nonzero `K` runs disable capture, which is unsupported with CPU offload.
+No saved counter state or counter logging is used. Runtime defaults are unchanged.
 
 ### Protocol and metric definitions
 
@@ -186,7 +189,10 @@ included in this branch. Hardware: NVIDIA H200 (SM90), driver 580.105.08, and In
 and CUDA 13.3.73. Release build, native CUDA architecture, Flash/MEA enabled, quick build disabled.
 GenAI loaded the rebuilt ORT from the build directory, not an installed ORT wheel.
 
-Each of the nine configurations (`K=0, 1024, ..., 8192`) runs once, serially in a fresh process on physical H200 GPU 0.
+The twelve configurations are `K=0` with capture off/on and `K=1024, 2048, ..., 10240` with capture off.
+Each runs once, serially in a fresh process on physical H200 GPU 0. The intermediate `K=1024..8192` measurements
+are retained from the initial sweep; the two all-GPU controls and `K=9216, 10240` were measured in an extension
+using the same model, prompts, settings, and unchanged runtime/provider binaries.
 Every run uses the unchanged [five prompts](benchmark-prompts.json), greedy generation, and exactly 256 generated
 tokens per prompt. The first two prompts are warmup.
 
@@ -202,6 +208,10 @@ tokens per prompt. The first two prompts are warmup.
 Single runs are not repeated statistical estimates. Greedy generation does not replay an identical routing trace,
 and this benchmark does not evaluate model quality.
 
+A separate Nsight Systems smoke run (one prompt, 16 generated tokens, `K=0`, `--cuda-graph`) confirmed actual
+capture and replay: one `cudaStreamBeginCapture`, one `cudaStreamEndCapture`, one `cudaGraphInstantiate`,
+and 15 `cudaGraphLaunch` calls. Its instrumented timings are excluded from the table.
+
 The model graph SHA-256 is `84fe3652ac0c711b8f7782a93459296a39f58abc654d75dfb42d54ef474f2b03`.
 Runtime and CUDA provider hashes identify the exact binaries:
 
@@ -212,21 +222,24 @@ Runtime and CUDA provider hashes identify the exact binaries:
 
 ### Results
 
-All nine runs completed successfully. The runtime/provider hashes were unchanged after the series.
+All twelve runs completed successfully. The runtime/provider hashes were unchanged after the series.
 Each row is one run, with warm timing over prompts 3-5 and memory peaks over the complete process.
 Raw per-prompt JSON and logs are retained locally, not committed.
 
-| K: CPU experts | Prefill time (ms/prompt) | Decoded tokens/s | Peak GPU (GiB) | Peak CPU RSS (GiB) |
-|---:|---:|---:|---:|---:|
-| 0 | 21.117 | 129.955 | 39.463 | 1.579 |
-| 1024 | 34.407 | 79.497 | 38.224 | 18.263 |
-| 2048 | 43.612 | 67.150 | 36.539 | 18.387 |
-| 3072 | 140.587 | 40.814 | 34.732 | 18.472 |
-| 4096 | 226.890 | 36.228 | 32.996 | 18.612 |
-| 5120 | 246.045 | 35.727 | 31.160 | 21.733 |
-| 6144 | 256.879 | 32.769 | 29.615 | 25.308 |
-| 7168 | 366.267 | 28.065 | 27.930 | 28.883 |
-| 8192 | 439.508 | 26.730 | 26.722 | 32.460 |
+| K: CPU experts | CUDA Graph | Prefill time (ms/prompt) | Decoded tokens/s | Peak GPU (GiB) | Peak CPU RSS (GiB) |
+|---:|:---:|---:|---:|---:|---:|
+| 0 | Off | 21.077 | 129.257 | 39.390 | 1.574 |
+| 0 | On | 21.784 | 168.870 | 39.510 | 1.646 |
+| 1024 | Off | 34.407 | 79.497 | 38.224 | 18.263 |
+| 2048 | Off | 43.612 | 67.150 | 36.539 | 18.387 |
+| 3072 | Off | 140.587 | 40.814 | 34.732 | 18.472 |
+| 4096 | Off | 226.890 | 36.228 | 32.996 | 18.612 |
+| 5120 | Off | 246.045 | 35.727 | 31.160 | 21.733 |
+| 6144 | Off | 256.879 | 32.769 | 29.615 | 25.308 |
+| 7168 | Off | 366.267 | 28.065 | 27.930 | 28.883 |
+| 8192 | Off | 439.508 | 26.730 | 26.722 | 32.460 |
+| 9216 | Off | 469.877 | 25.334 | 24.601 | 36.035 |
+| 10240 | Off | 744.964 | 26.572 | 23.163 | 39.592 |
 
 ## Reproducing the series
 
@@ -238,7 +251,7 @@ export PYTHONPATH=/path/to/onnxruntime/build/linux_cuda/Release
 export LD_LIBRARY_PATH=/path/to/onnxruntime/build/linux_cuda/Release${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 cd /path/to/onnxruntime/build/linux_cuda/Release
 mkdir -p /tmp/qwen35-int4-sweep
-for k in 0 1024 2048 3072 4096 5120 6144 7168 8192; do
+for k in 0 1024 2048 3072 4096 5120 6144 7168 8192 9216 10240; do
   CUDA_VISIBLE_DEVICES=0 python /path/to/onnxruntime/tools/python/benchmark_moe_cpu_offload.py \
     --name "qwen35-int4-k${k}-alpha09-epsilon01-swaps5" \
     --model /path/to/qwen3.5-35b-cuda-int4 \
@@ -252,6 +265,19 @@ for k in 0 1024 2048 3072 4096 5120 6144 7168 8192; do
     --output "/tmp/qwen35-int4-sweep/k${k}.json" \
     --log "/tmp/qwen35-int4-sweep/k${k}.log" || exit "$?"
 done
+
+CUDA_VISIBLE_DEVICES=0 python /path/to/onnxruntime/tools/python/benchmark_moe_cpu_offload.py \
+  --name "qwen35-int4-k0-cuda-graph" \
+  --model /path/to/qwen3.5-35b-cuda-int4 \
+  --prompts /path/to/onnxruntime/docs/moe-cpu-offload/benchmark-prompts.json \
+  --max-new-tokens 256 \
+  --cpu-offload-experts 0 \
+  --counter-alpha 0.9 \
+  --swap-epsilon 0.1 \
+  --max-in-flight-swaps-per-device 5 \
+  --swap --no-counter-log --cuda-graph \
+  --output /tmp/qwen35-int4-sweep/k0-graph.json \
+  --log /tmp/qwen35-int4-sweep/k0-graph.log
 ```
 
 Use `--no-swap` for static placement, `--state` to load initial popularities, `--popularity-output` to save them,
