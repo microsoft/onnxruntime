@@ -118,43 +118,6 @@ jobs:
                        tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_baseline.config"
       shell: bash
 
-    # Temporary attribution for #33407; the preceding size gate is not bypassed.
-    - name: Capture reuse-index Android linker attribution
-      if: ${{ always() && github.head_ref == 'rui-ren/allocation-planner-reuse-index' }}
-      timeout-minutes: 10
-      shell: bash
-      run: |
-        set -e
-        NDK_HOME_REALPATH=$(realpath "$ANDROID_NDK_HOME")
-        ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
-        docker run --rm \
-          --volume "${{ github.workspace }}:/onnxruntime_src" \
-          --volume "${{ runner.temp }}:/build:ro" \
-          --volume "$NDK_HOME_REALPATH:/ndk_home:ro" \
-          --volume "$ANDROID_HOME:/android_home:ro" \
-          -w /onnxruntime_src \
-          "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
-          python3 tools/ci_build/github/linux/ort_minimal/capture_reuse_index_symbols.py \
-            --build-dir /build/1a/MinSizeRel \
-            --output-dir /onnxruntime_src/android-reuse-index-diagnostics \
-            --base-ref 327d11ab6c22e387acf793dd9de8caf406055ca9 \
-            --candidate-source-sha256 b897601440276c55868fbd76a3da129c8b3d0f0c026858a2dcb241a93d039549
-
-    - name: Upload reuse-index attribution
-      if: ${{ always() && github.head_ref == 'rui-ren/allocation-planner-reuse-index' }}
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        name: reuse-index-android-attribution
-        retention-days: 7
-        if-no-files-found: warn
-        path: |
-          android-reuse-index-diagnostics/**/*.json
-          android-reuse-index-diagnostics/**/*.txt
-          android-reuse-index-diagnostics/**/*.log
-          android-reuse-index-diagnostics/**/*.map
-          android-reuse-index-diagnostics/**/*.so
-          android-reuse-index-diagnostics/**/*.cc
-
   android_nnapi_ep:
     runs-on: [
         "self-hosted",
