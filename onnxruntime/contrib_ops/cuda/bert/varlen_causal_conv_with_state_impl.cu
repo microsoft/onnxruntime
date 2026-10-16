@@ -41,6 +41,7 @@ __global__ void VarlenCausalConvDecodeKernel(
     T* state_update,
     const int32_t* __restrict__ cu_seqlens,
     const int32_t* __restrict__ capture_count,
+    bool state_update_active,
     int batch_channels,
     int batch_size,
     int total_tokens,
@@ -68,7 +69,7 @@ __global__ void VarlenCausalConvDecodeKernel(
   const int64_t state_offset = static_cast<int64_t>(bc) * pad;
   const int64_t weight_offset = static_cast<int64_t>(c) * kernel_size;
   const T input_value = input[static_cast<int64_t>(b) * channels + c];
-  if (state_update != nullptr && capture_count[b] > 0) {
+  if (state_update != nullptr && state_update_active && capture_count[b] > 0) {
     state_update[static_cast<int64_t>(b) * state_update_capacity * channels + c] = input_value;
   }
 
@@ -138,6 +139,7 @@ __global__ void VarlenCausalConvKernel(
     T* state_update,
     const int32_t* __restrict__ cu_seqlens,
     const int32_t* __restrict__ capture_count,
+    bool state_update_active,
     int batch_size,
     int total_tokens,
     int channels,
@@ -168,7 +170,7 @@ __global__ void VarlenCausalConvKernel(
     return;
   }
   const int local_length = end - start;
-  const int captured = state_update == nullptr
+  const int captured = state_update == nullptr || !state_update_active
                            ? 0
                            : max(0, min(min(capture_count[b], state_update_capacity), local_length));
 
@@ -244,6 +246,7 @@ Status LaunchVarlenCausalConvWithStateKernel(
     T* state_update,
     const int32_t* cu_seqlens,
     const int32_t* capture_count,
+    bool state_update_active,
     int batch_size,
     int total_tokens,
     bool all_ones,
@@ -261,7 +264,7 @@ Status LaunchVarlenCausalConvWithStateKernel(
     const int blocks = static_cast<int>((batch_channels + threads - 1) / threads);
     VarlenCausalConvDecodeKernel<T><<<blocks, threads, 0, stream>>>(
         input, weight, bias, initial_state, output, final_state, state_update,
-        cu_seqlens, capture_count, static_cast<int>(batch_channels), batch_size, total_tokens,
+        cu_seqlens, capture_count, state_update_active, static_cast<int>(batch_channels), batch_size, total_tokens,
         channels, kernel_size, dilation, apply_silu, state_update_capacity);
     return CUDA_CALL(cudaGetLastError());
   }
@@ -301,25 +304,25 @@ Status LaunchVarlenCausalConvWithStateKernel(
   VarlenCausalConvKernel<T><<<static_cast<unsigned int>(general_blocks), threads,
                               shared_memory_bytes, stream>>>(
       input, weight, bias, initial_state, output, final_state, state_update,
-      cu_seqlens, capture_count, batch_size, total_tokens, channels, kernel_size, dilation,
+      cu_seqlens, capture_count, state_update_active, batch_size, total_tokens, channels, kernel_size, dilation,
       apply_silu, state_update_capacity);
   return CUDA_CALL(cudaGetLastError());
 }
 
 template Status LaunchVarlenCausalConvWithStateKernel<float>(
     cudaStream_t, const float*, const float*, const float*, const float*,
-    float*, float*, float*, const int32_t*, const int32_t*,
+    float*, float*, float*, const int32_t*, const int32_t*, bool,
     int, int, bool, int, int, int, bool, int, int);
 
 template Status LaunchVarlenCausalConvWithStateKernel<half>(
     cudaStream_t, const half*, const half*, const half*, const half*,
-    half*, half*, half*, const int32_t*, const int32_t*,
+    half*, half*, half*, const int32_t*, const int32_t*, bool,
     int, int, bool, int, int, int, bool, int, int);
 
 template Status LaunchVarlenCausalConvWithStateKernel<__nv_bfloat16>(
     cudaStream_t, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
     const __nv_bfloat16*, __nv_bfloat16*, __nv_bfloat16*, __nv_bfloat16*,
-    const int32_t*, const int32_t*, int, int, bool, int, int, int, bool, int, int);
+    const int32_t*, const int32_t*, bool, int, int, bool, int, int, int, bool, int, int);
 
 }  // namespace cuda
 }  // namespace contrib

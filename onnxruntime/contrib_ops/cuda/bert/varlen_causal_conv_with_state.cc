@@ -15,17 +15,18 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;  // CudaKernel, Stream, GetDeviceProp, ToCudaType
 
-#define REGISTER_KERNEL_TYPED(T)                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      VarlenCausalConvWithState,                                        \
-      kMSDomain,                                                        \
-      1,                                                                \
-      T,                                                                \
-      kCudaExecutionProvider,                                           \
-      (*KernelDefBuilder::Create())                                     \
-          .MayInplace(4, 1)                                             \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()), \
+#define REGISTER_KERNEL_TYPED(T)                                       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
+      VarlenCausalConvWithState,                                       \
+      kMSDomain,                                                       \
+      1,                                                               \
+      T,                                                               \
+      kCudaExecutionProvider,                                          \
+      (*KernelDefBuilder::Create())                                    \
+          .MayInplace(4, 1)                                            \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()) \
+          .InputMemoryType(OrtMemTypeCPUInput, 6),                     \
       VarlenCausalConvWithState<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -53,7 +54,8 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
   const Tensor* cu_seqlens_tensor = context->Input<Tensor>(2);
   const Tensor* bias_tensor = context->Input<Tensor>(3);  // optional
   const Tensor* initial_state_tensor = context->Input<Tensor>(4);
-  const Tensor* capture_count_tensor = context->Input<Tensor>(5);  // optional
+  const Tensor* capture_count_tensor = context->Input<Tensor>(5);        // optional
+  const Tensor* state_update_active_tensor = context->Input<Tensor>(6);  // optional
 
   ORT_RETURN_IF_NOT(input_tensor != nullptr, "input is required");
   ORT_RETURN_IF_NOT(weight_tensor != nullptr, "weight is required");
@@ -89,6 +91,12 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
     ORT_RETURN_IF_NOT(capture_count_shape.NumDimensions() == 1 && capture_count_shape[0] == batch_size_64,
                       "capture_count must have shape (", batch_size_64, "), got ",
                       capture_count_shape.ToString());
+  }
+  if (state_update_active_tensor != nullptr) {
+    const auto& state_update_active_shape = state_update_active_tensor->Shape();
+    ORT_RETURN_IF_NOT(state_update_active_shape.NumDimensions() == 1 && state_update_active_shape[0] == 1,
+                      "state_update_active must have shape (1), got ",
+                      state_update_active_shape.ToString());
   }
 
   const int64_t total_tokens_64 = input_shape[0];
@@ -151,6 +159,8 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
   const bool all_ones = (total_tokens_64 == batch_size_64);
 
   typedef typename OrtToCudaType<T>::type CudaT;
+  const bool state_update_active =
+      state_update_active_tensor == nullptr || state_update_active_tensor->Data<int32_t>()[0] != 0;
 
   return LaunchVarlenCausalConvWithStateKernel<CudaT>(
       Stream(context),
@@ -165,6 +175,7 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
           : nullptr,
       cu_seqlens_tensor->Data<int32_t>(),
       capture_count_tensor ? capture_count_tensor->Data<int32_t>() : nullptr,
+      state_update_active,
       batch_size,
       static_cast<int>(total_tokens_64),
       all_ones,
