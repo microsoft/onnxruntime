@@ -241,7 +241,7 @@ Status Gemm::Compute(OpKernelContext* context) const {
                            OpTypeToString(op_compute_type_), " returned ", status);
   }
 
-  status = xnn_run_operator(op0_.get(), nullptr);
+  status = xnn_run_operator(op0_.get(), threadpool);
 
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
