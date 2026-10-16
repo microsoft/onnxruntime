@@ -1,0 +1,211 @@
+{
+  "diagnostic_only": true,
+  "kernel_defect_established": false,
+  "model": "openvla/openvla-7b vision_encoder component only",
+  "model_revision": "47a0ec7fc4ec123775a391911046cf33cf9ed83f",
+  "exporter_commit": "f049872a1e240a360e9120e606abf5fe2a75c627",
+  "device": "NVIDIA H100 80GB HBM3, SM90, one CUDA-visible device",
+  "diagnostic_script_sha256": "afa5cb46cafb64441ff98b3a8c3f834db995ee8423f8db4fbe0e3fda5ea22e81",
+  "ort_version": "1.31.0",
+  "ort_build": "ORT Build Info: git-branch=HEAD, git-commit-id=402979ac1, int4-kv-cache=1, fp8-kv-cache=1, fp4-qmoe=1, build type=Release",
+  "optimization_level": "ORT_ENABLE_ALL",
+  "atol": 0.0001,
+  "rtol": 0.0001,
+  "comparison": {
+    "baseline": {
+      "image_features": {
+        "shape": [
+          1,
+          256,
+          4096
+        ],
+        "dtype": "float32",
+        "elements": 1048576,
+        "bitwise_equal": false,
+        "failing_elements": 0,
+        "max_absolute_difference": 2.002716064453125e-05,
+        "first_failing_coordinates": []
+      }
+    },
+    "instrumentation_preserved": true,
+    "captures": {
+      "image_features": {
+        "shape": [
+          1,
+          256,
+          4096
+        ],
+        "dtype": "float32",
+        "elements": 1048576,
+        "bitwise_equal": false,
+        "failing_elements": 0,
+        "max_absolute_difference": 2.002716064453125e-05,
+        "first_failing_coordinates": []
+      },
+      "v_vision_encoder.vision_backbone.featurizer.Concat_12": {
+        "shape": [
+          1,
+          261,
+          1024
+        ],
+        "dtype": "float32",
+        "elements": 267264,
+        "bitwise_equal": false,
+        "failing_elements": 0,
+        "max_absolute_difference": 1.1920928955078125e-05,
+        "first_failing_coordinates": []
+      },
+      "v_vision_encoder.vision_backbone.featurizer.blocks.0.norm1.LayerNormalization_13": {
+        "shape": [
+          1,
+          261,
+          1024
+        ],
+        "dtype": "float32",
+        "elements": 267264,
+        "bitwise_equal": false,
+        "failing_elements": 0,
+        "max_absolute_difference": 5.7220458984375e-06,
+        "first_failing_coordinates": []
+      },
+      "v_vision_encoder.vision_backbone.featurizer.blocks.0.Add_23": {
+        "shape": [
+          1,
+          261,
+          1024
+        ],
+        "dtype": "float32",
+        "elements": 267264,
+        "bitwise_equal": false,
+        "failing_elements": 0,
+        "max_absolute_difference": 1.5735626220703125e-05,
+        "first_failing_coordinates": []
+      },
+      "v_vision_encoder.vision_backbone.featurizer.blocks.0.norm2.LayerNormalization_24": {
+        "shape": [
+          1,
+          261,
+          1024
+        ],
+        "dtype": "float32",
+        "elements": 267264,
+        "bitwise_equal": false,
+        "failing_elements": 0,
+        "max_absolute_difference": 2.86102294921875e-05,
+        "first_failing_coordinates": []
+      }
+    },
+    "preservation_checks": {
+      "cpu": {
+        "image_features": true
+      },
+      "cuda": {
+        "image_features": true
+      }
+    }
+  },
+  "runs": {
+    "cpu": {
+      "graph_sha256_excludes_external_data": "9fcf27351ce7311142d82da3527d7d05475a9d7c7c7a48c2493a8bba08925789",
+      "profile_sha256": "27c92cda883e896b9d254ee368fe41459e618f149135b0ab7bec484fcde5cb74",
+      "kernel_counts": {
+        "CPUExecutionProvider": 761
+      },
+      "operations": {
+        "Split": 50,
+        "Conv": 2,
+        "ReorderOutput": 2,
+        "Shape": 3,
+        "Concat": 6,
+        "Reshape": 2,
+        "Transpose": 2,
+        "Add": 248,
+        "LayerNormalization": 98,
+        "MatMul": 199,
+        "Attention": 49,
+        "BiasGelu": 51,
+        "Expand": 2,
+        "Mul": 46,
+        "Slice": 1
+      }
+    },
+    "cuda": {
+      "graph_sha256_excludes_external_data": "9fcf27351ce7311142d82da3527d7d05475a9d7c7c7a48c2493a8bba08925789",
+      "profile_sha256": "7e20586e1c4055df13ed5ceee15772478ddba4f71b9bf01ebf16af5cabc9085e",
+      "kernel_counts": {
+        "CUDAExecutionProvider": 755,
+        "CPUExecutionProvider": 4
+      },
+      "operations": {
+        "Split": 50,
+        "Conv": 2,
+        "Shape": 3,
+        "Concat": 6,
+        "Reshape": 2,
+        "Transpose": 2,
+        "Add": 248,
+        "LayerNormalization": 98,
+        "MatMul": 199,
+        "Attention": 49,
+        "BiasGelu": 51,
+        "Expand": 2,
+        "Mul": 46,
+        "Slice": 1
+      }
+    },
+    "captured_cpu": {
+      "graph_sha256_excludes_external_data": "faf056209736200bdb33d5166b247b0c985caa0f76dbd223eb5350b382a101fe",
+      "profile_sha256": "ad5b4064e76b1c6ebf7a8797a4c6611adf7ad51cebd5410b0f4d699813059b4f",
+      "kernel_counts": {
+        "CPUExecutionProvider": 761
+      },
+      "operations": {
+        "Split": 50,
+        "Conv": 2,
+        "ReorderOutput": 2,
+        "Shape": 3,
+        "Concat": 6,
+        "Reshape": 2,
+        "Transpose": 2,
+        "Add": 248,
+        "LayerNormalization": 98,
+        "MatMul": 199,
+        "Attention": 49,
+        "BiasGelu": 51,
+        "Expand": 2,
+        "Mul": 46,
+        "Slice": 1
+      }
+    },
+    "captured_cuda": {
+      "graph_sha256_excludes_external_data": "faf056209736200bdb33d5166b247b0c985caa0f76dbd223eb5350b382a101fe",
+      "profile_sha256": "1933e05ecc4370843a74e317c9d1cf9f6141a84d0939dfe00ad4c8c4c7c33be8",
+      "kernel_counts": {
+        "CUDAExecutionProvider": 755,
+        "CPUExecutionProvider": 4
+      },
+      "operations": {
+        "Split": 50,
+        "Conv": 2,
+        "Shape": 3,
+        "Concat": 6,
+        "Reshape": 2,
+        "Transpose": 2,
+        "Add": 248,
+        "LayerNormalization": 98,
+        "MatMul": 199,
+        "Attention": 49,
+        "BiasGelu": 51,
+        "Expand": 2,
+        "Mul": 46,
+        "Slice": 1
+      }
+    }
+  },
+  "cuda_tf32_enabled": false,
+  "cpu_nodes_in_cuda_runs": "Exactly four INT64-only Concat shape kernels; no floating-point CPU fallback",
+  "full_model_eight_logit_failure_reproduced_by_this_component_probe": false,
+  "post_exit_device_state": "Idle snapshot verified after owned process exit; no compute processes, zero utilization, at most 16 MiB",
+  "artifact_scope": "Sanitized numerical observation only; weights, inputs, raw profiles, private repositories, paths and machine identifiers are excluded",
+  "runtime_warning": "Plugin EP device-registration warning was logged; effective CUDA options and 755 CUDA kernels in each CUDA run independently confirmed actual execution"
+}
