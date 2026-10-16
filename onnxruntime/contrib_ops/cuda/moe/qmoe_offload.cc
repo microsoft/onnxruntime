@@ -568,6 +568,33 @@ bool TryPrepareQMoEPrefillDmaLayer(
         std::max<int>(ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PREFILL_TOTAL_TOKENS", static_cast<int>(next_pos)),
                       static_cast<int>(next_pos));
     const int lend_threshold = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PREFILL_LEND_THRESHOLD", 2048);
+    int max_cfg_ext_slots = 0;
+    if (next_pos > lend_threshold || total_prompt_tokens > lend_threshold || tile_rows > lend_threshold) {
+      // Reclaim decode extension slots across all layers before allocating prefill DMA workspace (> 2k prefill).
+      std::vector<const QMoEOffload*> ext_owners;
+      {
+        std::lock_guard<std::mutex> cache_lock(QMoEOffload::SharedLayerCache::Mutex());
+        auto& reg = QMoEOffload::SharedLayerCache::Registry();
+        for (auto& [key, weak_cache] : reg) {
+          if (key.first != device_id) continue;
+          auto locked = weak_cache.lock();
+          if (locked && locked->owner) ext_owners.push_back(locked->owner);
+        }
+      }
+      for (const QMoEOffload* owner : ext_owners) {
+        static_cast<void>(owner->ReclaimDecodeExtension());
+      }
+    } else {
+      std::lock_guard<std::mutex> cache_lock(QMoEOffload::SharedLayerCache::Mutex());
+      auto& reg = QMoEOffload::SharedLayerCache::Registry();
+      for (auto& [key, weak_cache] : reg) {
+        if (key.first != device_id) continue;
+        auto locked = weak_cache.lock();
+        if (locked && locked->owner) {
+          max_cfg_ext_slots = std::max(max_cfg_ext_slots, locked->owner->configured_decode_extension_slots_);
+        }
+      }
+    }
     if (next_pos > 16384 || total_prompt_tokens > 16384) {
       const size_t high_lend_bytes =
           static_cast<size_t>(ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PREFILL_LEND_HIGH_MIB", 7200)) << 20;
@@ -580,6 +607,12 @@ bool TryPrepareQMoEPrefillDmaLayer(
       const size_t low_lend_bytes =
           static_cast<size_t>(ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PREFILL_LEND_LOW_MIB", 4400)) << 20;
       lend_tail_slabs_up_to(low_lend_bytes);
+    } else if (max_cfg_ext_slots > 4 && tile_rows >= 256) {
+      // When a large decode extension (> 4 slots/layer, e.g. 24 slots/layer = +1,152 experts = +3.0 GiB) is configured,
+      // temporarily lend the excess extension bytes during prefill and restore after prefill scratch is released.
+      const size_t ext_lend_bytes =
+          static_cast<size_t>(max_cfg_ext_slots - 4) * 48ULL * 2764808ULL;
+      lend_tail_slabs_up_to(ext_lend_bytes);
     }
     if (state.total_prefill_tokens_accum == 0) {
       CUDA_CALL_THROW(cudaMemsetAsync(
@@ -846,6 +879,9 @@ void FinalizeQMoEPrefillAndSeedDecode(int device_id, cudaStream_t stream) {
 
   const int total_routes = static_cast<int>(total_tokens) * 10;
   for (const auto& [l_idx, owner] : layers) {
+    if (total_tokens <= 8192) {
+      owner->RestoreDecodeExtensionConfig();
+    }
     const int* l_hist = (!host_hist.empty() && l_idx >= 0 && l_idx < 64)
                             ? (host_hist.data() + l_idx * num_experts)
                             : nullptr;
@@ -1800,6 +1836,13 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
   const int default_resident_slots = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_RESIDENT_SLOTS", 0);
   resident_slots_ = std::clamp(
       static_cast<int>(info.GetAttrOrDefault<int64_t>("resident_slots", default_resident_slots)), 0, num_experts_);
+  base_resident_slots_ = resident_slots_;
+  const int default_ext_slots = 0;
+  configured_decode_extension_slots_ = std::clamp(
+      ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_DECODE_EXTENSION_SLOTS", default_ext_slots),
+      0, std::max(0, num_experts_ - resident_slots_));
+  decode_extension_slots_ = configured_decode_extension_slots_;
+  resident_slots_ += decode_extension_slots_;
   const int default_spare_slots = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_SPARE_SLOTS", 0);
   spare_slots_ = std::clamp(
       static_cast<int>(info.GetAttrOrDefault<int64_t>("spare_slots", default_spare_slots)), 0, 16);
@@ -1919,24 +1962,26 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
     expert_presence_ema_.assign(num_experts_, 0.0f);
     if (resident_phase_scores_) decode_score_.assign(num_experts_, 0.0f);
 
-    // Pre-populate initial resident slots [0, resident_slots_) from profile-seeded initial_experts or 0..C-1.
+    // Pre-populate initial resident slots [0, base_resident_slots_) from profile-seeded initial_experts or 0..C_base-1.
+    // Decode extension slots [base_resident_slots_, resident_slots_) start empty (-1) so they incur zero startup/TTFT
+    // H2D copy latency and are populated asynchronously by PromoteResident without evicting initial_experts.
     std::vector<int64_t> initial_experts = info.GetAttrsOrDefault<int64_t>("initial_experts");
-    initial_experts_.resize(resident_slots_);
-    for (int slot = 0; slot < resident_slots_; ++slot) {
+    initial_experts_.resize(base_resident_slots_);
+    for (int slot = 0; slot < base_resident_slots_; ++slot) {
       initial_experts_[slot] = (static_cast<size_t>(slot) < initial_experts.size())
                                    ? static_cast<int>(initial_experts[slot])
                                    : slot;
     }
     if (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_PREPOPULATE", 1) == 1) {
       const float init_ema = static_cast<float>(k_) / static_cast<float>(std::max(1, num_experts_));
-      for (int slot = 0; slot < resident_slots_; ++slot) {
+      for (int slot = 0; slot < base_resident_slots_; ++slot) {
         const int expert = initial_experts_[slot];
         ORT_ENFORCE(expert >= 0 && expert < num_experts_ && expert_slot_[expert] < 0,
                     "QMoEOffload invalid or duplicate initial_experts entry ", expert, " at slot ", slot, ".");
         CopyExpertToResidentSlot(expert, slot, nullptr);
         slot_expert_[slot] = expert;
         expert_slot_[expert] = slot;
-        const float prior = 4.0f + static_cast<float>(resident_slots_ - slot) * 0.25f;
+        const float prior = 4.0f + static_cast<float>(base_resident_slots_ - slot) * 0.25f;
         expert_score_[expert] = prior;
         expert_presence_ema_[expert] = init_ema;
         if (resident_phase_scores_) decode_score_[expert] = prior;
@@ -2582,6 +2627,67 @@ size_t QMoEOffload::LendResidentSlab() const {
   return resident_slab_bytes_;
 }
 
+size_t QMoEOffload::ReclaimDecodeExtension() const {
+  if (!nvfp4_mode_ || decode_extension_slots_ <= 0 || resident_slots_ <= base_resident_slots_) {
+    return 0;
+  }
+  if (promo_stream_) {
+    static_cast<void>(cudaStreamSynchronize(promo_stream_));
+  }
+  pending_promotions_.clear();
+  const size_t old_bytes = resident_slab_bytes_;
+  decode_extension_slots_ = 0;
+  resident_slots_ = base_resident_slots_;
+  physical_slots_ = resident_slots_ + spare_slots_ + dummy_slots_;
+  size_t slab_bytes = 0;
+  for (size_t bank = 0; bank < resident_bank_bytes_.size(); ++bank) {
+    resident_bank_offsets_[bank] = AddSlab(SafeInt<size_t>(resident_bank_bytes_[bank]) * physical_slots_, slab_bytes);
+  }
+  resident_slab_bytes_ = slab_bytes;
+  last_slab_ptr_ = resident_slab_.get();
+  resident_slab_.reset();
+  slot_expert_.assign(physical_slots_, -1);
+  expert_slot_.assign(num_experts_, -1);
+  if (owned_layer_cache_) {
+    std::lock_guard<std::mutex> lock(SharedLayerCache::Mutex());
+    owned_layer_cache_->resident_slots = resident_slots_;
+    owned_layer_cache_->physical_slots = physical_slots_;
+    owned_layer_cache_->bank_offsets = resident_bank_offsets_;
+    owned_layer_cache_->slab_ptr = nullptr;
+  }
+  return old_bytes > slab_bytes ? (old_bytes - slab_bytes) : 0;
+}
+
+void QMoEOffload::RestoreDecodeExtensionConfig() const {
+  if (!nvfp4_mode_ || configured_decode_extension_slots_ <= 0 ||
+      decode_extension_slots_ == configured_decode_extension_slots_) {
+    return;
+  }
+  if (promo_stream_) {
+    static_cast<void>(cudaStreamSynchronize(promo_stream_));
+  }
+  pending_promotions_.clear();
+  decode_extension_slots_ = configured_decode_extension_slots_;
+  resident_slots_ = base_resident_slots_ + decode_extension_slots_;
+  physical_slots_ = resident_slots_ + spare_slots_ + dummy_slots_;
+  size_t slab_bytes = 0;
+  for (size_t bank = 0; bank < resident_bank_bytes_.size(); ++bank) {
+    resident_bank_offsets_[bank] = AddSlab(SafeInt<size_t>(resident_bank_bytes_[bank]) * physical_slots_, slab_bytes);
+  }
+  resident_slab_bytes_ = slab_bytes;
+  last_slab_ptr_ = resident_slab_.get();
+  resident_slab_.reset();
+  slot_expert_.assign(physical_slots_, -1);
+  expert_slot_.assign(num_experts_, -1);
+  if (owned_layer_cache_) {
+    std::lock_guard<std::mutex> lock(SharedLayerCache::Mutex());
+    owned_layer_cache_->resident_slots = resident_slots_;
+    owned_layer_cache_->physical_slots = physical_slots_;
+    owned_layer_cache_->bank_offsets = resident_bank_offsets_;
+    owned_layer_cache_->slab_ptr = nullptr;
+  }
+}
+
 void QMoEOffload::CopyExpertToResidentSlot(int expert, int slot, cudaStream_t stream) const {
   uint8_t* slab = resident_slab_.get();
   if (!slab || expert < 0 || expert >= num_experts_ || slot < 0 || slot >= physical_slots_) return;
@@ -2654,6 +2760,7 @@ void QMoEOffload::RestoreAndSeedResidentSlab(
   }
 
   bool modified = was_lent;
+  const int init_slots = base_resident_slots_ > 0 ? base_resident_slots_ : resident_slots_;
   if (!enable_seeding) {
     const float init_ema = static_cast<float>(k_) / static_cast<float>(std::max(1, num_experts_));
     for (int e = 0; e < num_experts_; ++e) {
@@ -2661,10 +2768,10 @@ void QMoEOffload::RestoreAndSeedResidentSlab(
       if (static_cast<size_t>(e) < expert_presence_ema_.size()) expert_presence_ema_[e] = 0.0f;
       if (resident_phase_scores_) decode_score_[e] = 0.0f;
     }
-    for (int slot = 0; slot < resident_slots_; ++slot) {
+    for (int slot = 0; slot < init_slots; ++slot) {
       const int e = (static_cast<size_t>(slot) < initial_experts_.size()) ? initial_experts_[slot] : slot;
       if (e >= 0 && e < num_experts_) {
-        const float prior = 4.0f + static_cast<float>(resident_slots_ - slot) * 0.25f;
+        const float prior = 4.0f + static_cast<float>(init_slots - slot) * 0.25f;
         expert_score_[e] = prior;
         if (static_cast<size_t>(e) < expert_presence_ema_.size()) expert_presence_ema_[e] = init_ema;
         if (resident_phase_scores_) decode_score_[e] = prior;
@@ -2674,7 +2781,7 @@ void QMoEOffload::RestoreAndSeedResidentSlab(
     phase_routes_since_decay_ = {0, 0};
 
     if (was_lent) {
-      for (int slot = 0; slot < resident_slots_; ++slot) {
+      for (int slot = 0; slot < init_slots; ++slot) {
         const int e = (static_cast<size_t>(slot) < initial_experts_.size()) ? initial_experts_[slot] : slot;
         CopyExpertToResidentSlot(e, slot, stream);
         slot_expert_[slot] = e;
@@ -2682,17 +2789,24 @@ void QMoEOffload::RestoreAndSeedResidentSlab(
       }
     } else {
       bool matches = true;
-      for (int slot = 0; slot < resident_slots_; ++slot) {
+      for (int slot = 0; slot < init_slots; ++slot) {
         const int e = (static_cast<size_t>(slot) < initial_experts_.size()) ? initial_experts_[slot] : slot;
         if (slot_expert_[slot] != e) {
           matches = false;
           break;
         }
       }
+      for (int slot = init_slots; slot < physical_slots_; ++slot) {
+        if (slot_expert_[slot] >= 0) {
+          expert_slot_[slot_expert_[slot]] = -1;
+          slot_expert_[slot] = -1;
+          modified = true;
+        }
+      }
       if (!matches) {
         slot_expert_.assign(physical_slots_, -1);
         expert_slot_.assign(num_experts_, -1);
-        for (int slot = 0; slot < resident_slots_; ++slot) {
+        for (int slot = 0; slot < init_slots; ++slot) {
           const int e = (static_cast<size_t>(slot) < initial_experts_.size()) ? initial_experts_[slot] : slot;
           CopyExpertToResidentSlot(e, slot, stream);
           slot_expert_[slot] = e;
@@ -2726,18 +2840,18 @@ void QMoEOffload::RestoreAndSeedResidentSlab(
     if (was_lent || max_seed_swaps > 0) {
       std::vector<int> order(num_experts_);
       for (int e = 0; e < num_experts_; ++e) order[e] = e;
-      std::partial_sort(order.begin(), order.begin() + resident_slots_, order.end(),
+      std::partial_sort(order.begin(), order.begin() + init_slots, order.end(),
                         [&](int a, int b) {
                           if (combined_scores[a] != combined_scores[b]) return combined_scores[a] > combined_scores[b];
                           return a < b;
                         });
       if (was_lent) {
-        for (int slot = 0; slot < resident_slots_; ++slot) {
+        for (int slot = 0; slot < init_slots; ++slot) {
           const int e = order[slot];
           CopyExpertToResidentSlot(e, slot, stream);
           slot_expert_[slot] = e;
           expert_slot_[e] = slot;
-          const float floor_score = 4.0f + static_cast<float>(resident_slots_ - slot) * 0.25f;
+          const float floor_score = 4.0f + static_cast<float>(init_slots - slot) * 0.25f;
           expert_score_[e] = std::max({expert_score_[e], combined_scores[e], floor_score});
           if (resident_phase_scores_) decode_score_[e] = expert_score_[e];
         }

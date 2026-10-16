@@ -73,6 +73,8 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
         Info().GetAllocator(OrtMemType::OrtMemTypeDefault), bytes, /*use_reserve*/ true);
   }
   size_t LendResidentSlab() const;
+  size_t ReclaimDecodeExtension() const;
+  void RestoreDecodeExtensionConfig() const;
   void CopyExpertToResidentSlot(int expert, int slot, cudaStream_t stream) const;
   void RestoreAndSeedResidentSlab(const int* prompt_hist, int total_prompt_routes,
                                   bool enable_seeding, cudaStream_t stream) const;
@@ -199,10 +201,13 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   std::shared_ptr<SharedLayerCache> owned_layer_cache_;
 
   // Dynamic per-layer GPU expert cache with in-slab spare and dummy slots: P = C + S + D (v3 Section 7.4/7.5 / F3).
-  int resident_slots_ = 0;       // C: logical resident capacity
+  mutable int resident_slots_ = 0;       // C: logical resident capacity (including decode_extension_slots_)
+  int base_resident_slots_ = 0;  // Base static resident capacity from model attributes
+  int configured_decode_extension_slots_ = 0;  // Configured extension slots for <= 8k decode
+  mutable int decode_extension_slots_ = 0;  // Additional reclaimable decode resident slots from prefill headroom
   int spare_slots_ = 0;          // S: spare physical slots for promotions
   int dummy_slots_ = 0;          // D: 1 if CutlassMoeFCRunner async needs an immutable dummy slot, 0 for NVFP4 GEMV
-  int physical_slots_ = 0;       // P = C + S + D
+  mutable int physical_slots_ = 0;       // P = C + S + D
   int dummy_slot_index_ = -1;    // C + S when D == 1, -1 when D == 0
   int resident_promotions_ = 0;
   int resident_decay_routes_ = 0;
@@ -216,8 +221,8 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   bool bg_promo_stream_ = true;
   mutable bool resident_decode_active_ = false;
   std::array<size_t, 6> resident_bank_bytes_{};
-  std::array<size_t, 6> resident_bank_offsets_{};
-  size_t resident_slab_bytes_ = 0;
+  mutable std::array<size_t, 6> resident_bank_offsets_{};
+  mutable size_t resident_slab_bytes_ = 0;
   std::vector<int> initial_experts_;
   size_t resident_workspace_bytes_ = 0;
   size_t stream_workspace_bytes_ = 0;
