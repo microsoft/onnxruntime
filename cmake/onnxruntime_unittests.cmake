@@ -3095,8 +3095,7 @@ if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN AND TARGET dawn::da
   target_compile_features(onnxruntime_webgpu_external_dawn_test PRIVATE cxx_std_20)
 endif()
 
-# This test uses the built-in WebGPU append API and does not register a plugin.
-if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS AND WIN32 AND onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
+if (onnxruntime_USE_WEBGPU AND WIN32 AND onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
   AddTest(DYN
           TARGET onnxruntime_webgpu_delay_load_test
           SOURCES ${onnxruntime_webgpu_delay_load_test_SRC}

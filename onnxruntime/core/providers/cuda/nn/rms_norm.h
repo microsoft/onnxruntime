@@ -17,8 +17,7 @@ class RMSNorm final : public CudaKernel {
  private:
   int64_t axis_;
   double epsilon_;
-  // The stash_type is not supported in the current implementation.
-  // int64_t stash_type;
+  int64_t stash_type_;
 };
 
 }  // namespace cuda

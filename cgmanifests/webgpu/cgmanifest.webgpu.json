@@ -6,9 +6,9 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+          "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
           "repositoryUrl": "https://github.com/google/dawn.git",
-          "tag": "v20260916.214021"
+          "tag": "v20261013.193955"
         }
       },
       "comments": "runtime; WebGPU EP root dependency pinned in cmake/deps.txt and patched by cmake/external/onnxruntime_external_deps.cmake.",
@@ -38,7 +38,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "2d78d7ce09549caca58fc28b442bbad3a19da432",
+          "commitHash": "af5aede14a0b4013be6890148d34e0fd7b1fac69",
           "repositoryUrl": "https://chromium.googlesource.com/chromium/src/third_party/abseil-cpp"
         }
       },
@@ -47,7 +47,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -60,7 +60,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "398c57e93a383373546bc6ae5ac2052b6155f2ba",
+          "commitHash": "18a42733eaf8bd7b03567f7b876ca2f2e1e7bc0e",
           "repositoryUrl": "https://chromium.googlesource.com/chromium/src/third_party/protobuf"
         }
       },
@@ -69,7 +69,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -82,7 +82,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "04fd3caa1e8267e4d95c806cad901181728e1006",
+          "commitHash": "86f980c731e62ae4eaf383d320449d71687936bf",
           "repositoryUrl": "https://github.com/KhronosGroup/SPIRV-Headers.git"
         }
       },
@@ -91,7 +91,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -101,7 +101,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "25318da789b94854908a15b4c718145e4e63fc87",
+          "commitHash": "911d1eaf87fd7763b2365d7e339816fa31ec3f4b",
           "repositoryUrl": "https://github.com/KhronosGroup/SPIRV-Tools.git"
         }
       },
@@ -110,7 +110,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -120,7 +120,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "ee2ec5fd83dafce291024683b50dc89219333076",
+          "commitHash": "c46850864f4661461b0f6cb9922c058ffea4915e",
           "repositoryUrl": "https://github.com/KhronosGroup/Vulkan-Headers.git"
         }
       },
@@ -129,7 +129,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -139,7 +139,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "930a38bce146cf85c5bd7cb00fa33a66c640c0c6",
+          "commitHash": "90738f6edfa19561a978fc5f97543ba37075ba9d",
           "repositoryUrl": "https://github.com/KhronosGroup/Vulkan-Utility-Libraries.git"
         }
       },
@@ -148,7 +148,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -167,7 +167,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -177,7 +177,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "13395eebe853e811d274f7bd9b71fb7d9b5a5851",
+          "commitHash": "456ae730017b9b4bd3371927abc82627fd51feef",
           "repositoryUrl": "https://chromium.googlesource.com/chromium/src/third_party/zlib"
         }
       },
@@ -186,7 +186,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -196,7 +196,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0fb0e3e45aeab84781a0c515298b40363f2bf312",
+          "commitHash": "4dd6a9f723c6ffdb44147b073ea23b6f9a0d5751",
           "repositoryUrl": "https://chromium.googlesource.com/chromium/src/base/allocator/partition_allocator.git"
         }
       },
@@ -205,7 +205,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -215,7 +215,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "397ffb2264b4650c97b2418ec9a0f07228719317",
+          "commitHash": "9757d44faa47de7e8d1bb731c30551ec608624f9",
           "repositoryUrl": "https://github.com/microsoft/DirectXShaderCompiler.git"
         }
       },
@@ -224,7 +224,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -243,7 +243,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -253,7 +253,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "c202b4a9dac30e789ed6e3b2354efa94357a56f3",
+          "commitHash": "64e87f9fbdaf6f53f6cff8f15e4b06f17cead514",
           "repositoryUrl": "https://chromium.googlesource.com/chromium/src/buildtools"
         }
       },
@@ -263,7 +263,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -273,7 +273,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "70510081984cfcdb14a15b3e08dfe9776dc7ed37",
+          "commitHash": "9f796802e5d633c96dbe97e0b6683d5e62594f9f",
           "repositoryUrl": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/clang/tools/clang-format.git"
         }
       },
@@ -283,7 +283,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -293,7 +293,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "e5285b2d6e5a51de33b19d41cf0b76cef329cdee",
+          "commitHash": "e1705face979e29370ff393177db19397782f568",
           "repositoryUrl": "https://chromium.googlesource.com/chromium/tools/depot_tools.git"
         }
       },
@@ -303,7 +303,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -323,7 +323,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -333,7 +333,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "14024f8f89421ba73a3d28c9b8f9fbd745d92dff",
+          "commitHash": "09351f6ec00c2b65f2d03585ae6da07098b024dc",
           "repositoryUrl": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxxabi.git"
         }
       },
@@ -343,7 +343,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -353,7 +353,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "91b3328166da1db7db15cb49c714d59198e56cab",
+          "commitHash": "5dbe1703ba9e6669cfcbcfc6fa6085b5115dd7cc",
           "repositoryUrl": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libc.git"
         }
       },
@@ -363,7 +363,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -383,7 +383,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -393,7 +393,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "9eae7c82c57b9e64a85bcf3a246821dffd9d4d5e",
+          "commitHash": "cd7fbbb1c416a259adde421e3105046c43482a2c",
           "repositoryUrl": "https://chromium.googlesource.com/chromium/src/build"
         }
       },
@@ -403,7 +403,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -413,7 +413,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "7fb0953a310546e26de3fc0bc1e87b7618998f57",
+          "commitHash": "ac2cea8c4e7f8dea698c56dc3d9c261d16860896",
           "repositoryUrl": "https://chromium.googlesource.com/chromium/src/tools/clang"
         }
       },
@@ -423,7 +423,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -433,7 +433,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0732f7097d066a81e673f90862994f76886fc638",
+          "commitHash": "1fd0e28956b24e0261f4272a0e4709da3af6d789",
           "repositoryUrl": "https://chromium.googlesource.com/chromium/src/tools/memory"
         }
       },
@@ -443,7 +443,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -463,7 +463,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -483,7 +483,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -493,7 +493,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "661c2e320f2e8d2bf13eb8acb035156da4c0b187",
+          "commitHash": "46d00d031ad908563088220923f4d963aba2eb7d",
           "repositoryUrl": "https://chromium.googlesource.com/chromium/src/tools/mb"
         }
       },
@@ -503,7 +503,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -513,7 +513,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "c643e243d3c79b5c411a4232f264b718cb740c83",
+          "commitHash": "45289eb985f1c323b05d5f42d1fd0b477e33acb6",
           "repositoryUrl": "https://chromium.googlesource.com/chromium/src/testing"
         }
       },
@@ -523,7 +523,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -533,7 +533,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "adc3407201e641a73a551d2f1181c684c33eea56",
+          "commitHash": "9951014982324338ea932dfdba259aeb1cca70f7",
           "repositoryUrl": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/compiler-rt/lib/fuzzer.git"
         }
       },
@@ -543,7 +543,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -563,7 +563,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -573,7 +573,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "471aa8aec31a4de79a96b72815180bc9dc71c420",
+          "commitHash": "9f2dadde7e63acbe93c38de5d2b50c08b1d33ea0",
           "repositoryUrl": "https://chromium.googlesource.com/catapult.git"
         }
       },
@@ -583,7 +583,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -603,7 +603,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -623,7 +623,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -643,7 +643,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -663,7 +663,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -683,7 +683,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -703,7 +703,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -716,7 +716,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "9fda9a70a68cc860213fd0181f1a1020dee10896",
+          "commitHash": "9649fea17b77e672ae19687bf0222109b6270e0d",
           "repositoryUrl": "https://chromium.googlesource.com/angle/angle"
         }
       },
@@ -726,7 +726,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -739,7 +739,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "694585a05946e1ed49b6bd577ca6537cbb57f025",
+          "commitHash": "0f87bb2d3742c2992fd1a7dcb2f051eebf79299c",
           "repositoryUrl": "https://swiftshader.googlesource.com/SwiftShader"
         }
       },
@@ -749,7 +749,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -759,7 +759,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0bd3b32840486c11b8b35ad64028302ec3a4582b",
+          "commitHash": "f21a172bc64be6f27c5c4c2a68c0b2bf2a07d2af",
           "repositoryUrl": "https://chromium.googlesource.com/vulkan-deps"
         }
       },
@@ -769,7 +769,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -779,7 +779,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "81f3df51ab1cf14ea35ff35f921241625cfbd7ca",
+          "commitHash": "8c90c518c2c18af98be121527309baea5b3282f0",
           "repositoryUrl": "https://github.com/KhronosGroup/glslang.git"
         }
       },
@@ -789,7 +789,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -802,7 +802,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "e146980907071e728176acfb8612641d25aacf09",
+          "commitHash": "6b45d76280a9525740c38c1796060eadb9267488",
           "repositoryUrl": "https://github.com/KhronosGroup/Vulkan-Loader.git"
         }
       },
@@ -812,7 +812,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -822,7 +822,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "462d9819e5953e064e1dcdc04d3edc5fc6bc9431",
+          "commitHash": "a967170a2b8a1ded4dbdf82d533caaec89184efe",
           "repositoryUrl": "https://github.com/KhronosGroup/Vulkan-Tools.git"
         }
       },
@@ -832,7 +832,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -842,7 +842,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "80c4ae25ee567668585e53a9c98e9fdc41b03456",
+          "commitHash": "b38b8fd1535d9e48fe8e2759001cc339d4fe4234",
           "repositoryUrl": "https://github.com/KhronosGroup/Vulkan-ValidationLayers.git"
         }
       },
@@ -852,7 +852,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -865,7 +865,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "1cdd228e34966dd6b95bd203e9f84faba0f371a1",
+          "commitHash": "6af574a14089ccfee87efe230ebcdd8742859813",
           "repositoryUrl": "https://github.com/KhronosGroup/OpenGL-Registry.git"
         }
       },
@@ -875,7 +875,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -888,7 +888,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5961a7fe64cf8a126890ced6f13d69e0a1e1b83e",
+          "commitHash": "db3425b8246136faccb5e2782b5694960bd6edf1",
           "repositoryUrl": "https://github.com/KhronosGroup/EGL-Registry.git"
         }
       },
@@ -898,7 +898,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -911,7 +911,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "32cc9f03ad14135b5f6f833dba83e7e80edc256f",
+          "commitHash": "cc11994e92512d0a3715e9d28876ec48accb971a",
           "repositoryUrl": "https://github.com/gpuweb/cts.git"
         }
       },
@@ -921,7 +921,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -941,7 +941,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -961,7 +961,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -981,7 +981,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -991,7 +991,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "e95743d3940e0ff3c267ab55ced9ae6120c7d416",
+          "commitHash": "22507c95ccb9e705eddc7cab8f28aa46b134f5fe",
           "repositoryUrl": "https://github.com/gpuweb/gpuweb.git"
         }
       },
@@ -1001,7 +1001,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -1011,7 +1011,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "b5ff182caa90e53293f47939716281342c0812ba",
+          "commitHash": "a1dc77409bb2b8bd80540cbf4b8db219e123e909",
           "repositoryUrl": "https://github.com/webgpu-native/webgpu-headers.git"
         }
       },
@@ -1021,7 +1021,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -1041,7 +1041,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
@@ -1061,7 +1061,7 @@
         {
           "type": "git",
           "git": {
-            "commitHash": "202b044ac73a82216bf1e8e706138bb7aedd3a15",
+            "commitHash": "f63db59722e8c1c0da9a3bcea0e40fb5c817a059",
             "repositoryUrl": "https://github.com/google/dawn.git"
           }
         }
