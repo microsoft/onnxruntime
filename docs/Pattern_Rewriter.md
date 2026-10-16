@@ -44,8 +44,12 @@ rank, including unknown rank (`float` alone would require a scalar);
 resolved schemas establish the corresponding intermediate and output types.
 It does not require every matched value to have the same element type.
 
-An empty `check_and_bind` means always accept after the built-in matching and
-safety checks. All constructor overloads default it to `{}`. Use the explicit
+The fourth `Rule` argument, `check_and_bind`, is an optional C++ callback that
+checks semantic conditions not expressed in the pattern and prepares new
+match-local bindings for the replacement. It returns `false` to reject a match,
+or `true` to accept it with any prepared bindings. Here `{}` means no additional
+checks or bindings: accept after the built-in matching and safety checks.
+All constructor overloads default it to `{}`. Use the explicit
 `{}` placeholder above when supplying the fifth argument, opset requirements.
 The opset list defaults to empty, not an inferred version range: if omitted,
 populate `rule.opsets` before constructing a `PatternRewriter`. Missing required
@@ -391,53 +395,54 @@ Declare the attribute binding in the replacement's input list, set it with
 `match.update`, and reference it as a keyword argument in a text replacement.
 No replacement lambda is needed just to prepare attributes.
 
-The following rule folds division by a finite float32 scalar into FusedMatMul's
-`alpha` attribute. It requires the Microsoft-domain opset to be imported already.
+The following rank-two specialization of the `TransposeMatMul` example rule
+checks a node attribute rather than inspecting types in C++. The pattern's
+annotations already require float32 matrices with compatible dimensions.
+The callback accepts only `Transpose` with an explicit `perm=[1,0]`, then
+binds a new integer attribute variable, `rhs_transpose`, for the text replacement.
+The resulting `FusedMatMul` uses `transB=1` to perform the same transpose internally.
+The Microsoft-domain opset must already be imported.
 
 ```cpp
-#include <cmath>
-#include <optional>
-#include "core/graph/graph_utils.h"
-#include "core/optimizer/initializer.h"
+#include "core/optimizer/pattern_rewriter.h"
 
-bool IsFloat32(const NodeArg& value) {
-  const auto* type = value.TypeAsProto();
-  return type && type->has_tensor_type() &&
-         type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-}
+using namespace onnxruntime;
+using namespace onnxruntime::rewrite;
 
-std::optional<float> FloatScalar(const Graph& graph, const NodeArg& value) {
-  const auto* tensor = graph_utils::GetConstantInitializer(graph, value.Name());
-  if (!tensor || tensor->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
-      tensor->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL ||
-      tensor->dims_size() != 0)
-    return std::nullopt;
-  Initializer initializer(graph, *tensor, graph.ModelPath());
-  if (initializer.size() != 1) return std::nullopt;
-  float scalar = *initializer.data<float>();
-  return std::isfinite(scalar) ? std::optional<float>(scalar) : std::nullopt;
-}
-
-Rule MakeMatMulDivRule() {
-  const auto* pattern = "(x,y,divisor) => { mm = MatMul(x,y); return Div(mm,divisor); }";
-  auto check_and_bind = [](const Graph& graph, Match& match) {
-    auto divisor = FloatScalar(graph, *match.valueOf("divisor"));
-    if (!IsFloat32(*match.valueOf("x")) || !IsFloat32(*match.valueOf("y")) ||
-        !divisor || *divisor == 0.0f || !std::isfinite(1.0f / *divisor))
+Rule MakeTransposeMatMulRule() {
+  const auto* pattern = R"(
+    (x:float[M,N], y:float[K,N]) => {
+      transposed = Transpose(y)
+      return MatMul(x,transposed)
+    }
+  )";
+  auto check_and_bind = [](const Graph&, Match& match) {
+    const auto& attributes = match.nodes[0]->GetAttributes();
+    auto perm = attributes.find("perm");
+    if (perm == attributes.end() ||
+        perm->second.type() != ONNX_NAMESPACE::AttributeProto_AttributeType_INTS ||
+        perm->second.ints_size() != 2 ||
+        perm->second.ints(0) != 1 || perm->second.ints(1) != 0)
       return false;
-    ONNX_NAMESPACE::AttributeProto alpha;
-    alpha.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
-    alpha.set_f(1.0f / *divisor);
-    match.update("alpha", std::move(alpha));
+    ONNX_NAMESPACE::AttributeProto trans_b;
+    trans_b.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    trans_b.set_i(1);
+    match.update("rhs_transpose", std::move(trans_b));
     return true;
   };
-  const auto* replacement = "(x,y,alpha) => com.microsoft::FusedMatMul(x,y,alpha=alpha)";
-  return Rule{"MatMulDiv", pattern, replacement, check_and_bind, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}};
+  const auto* replacement = "(x,y,rhs_transpose) => com.microsoft.FusedMatMul(x,y,transB=rhs_transpose)";
+  return Rule{"TransposeMatMul", pattern, replacement, check_and_bind, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}};
 }
 ```
 
-Only the selected rule's
-replacement runs, with the bindings prepared by its successful check-and-bind
+`match.nodes[0]` is the first pattern operator, `Transpose`, not the root
+`MatMul`. `rhs_transpose` is a new match-local name, not a graph value or an
+attribute captured by the pattern. The replacement declares it in its header
+and uses it in keyword position to set `transB`. No replacement lambda is needed.
+This specialization deliberately rejects an omitted `perm`, even though the
+rank-two default would also transpose the matrix.
+
+Only the selected rule's replacement runs, with the bindings prepared by its successful check-and-bind
 callback. Replacement callbacks remain supported for choosing a parsed recipe;
 they receive `const Match&` and cannot update it. Parse any such recipes outside
 the callback to avoid per-match parsing.
