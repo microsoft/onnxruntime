@@ -45,6 +45,9 @@ SessionLoop::SessionLoop(InferenceSession& session, SessionLoopOptions options)
   if (!options_.generated_token_output.empty()) {
     add_output(options_.generated_token_output);
   }
+  if (options_.generation) {
+    add_output(options_.generation->logits_output);
+  }
   for (const auto& condition : options_.exit_conditions) {
     if (condition.kind == LoopExitKind::BooleanOutput) {
       add_output(condition.output_name);
@@ -95,6 +98,23 @@ Status SessionLoop::Create(InferenceSession& session, SessionLoopOptions options
     ORT_RETURN_IF_ERROR(KVCacheManager::CheckBinding(item.cache, *input, true));
     ORT_RETURN_IF_ERROR(KVCacheManager::CheckBinding(item.cache, *output, false));
   }
+  if (options.generation) {
+    const auto& generation = *options.generation;
+    ORT_RETURN_IF_ERROR(TokenGeneration::Validate(generation, inputs, outputs));
+    ORT_RETURN_IF(!options.generated_token_output.empty(), "Native sampling cannot also use a model token output");
+    if (generation.phase == TokenGenerationPhase::Prefill) {
+      ORT_RETURN_IF(options.finite_input_names.size() != 1 || options.finite_input_names[0] != generation.input_ids,
+                    "Prefill requires exactly one finite prompt input");
+      ORT_RETURN_IF(std::none_of(options.exit_conditions.begin(), options.exit_conditions.end(),
+                                 [](const auto& condition) { return condition.kind == LoopExitKind::EndOfInputs; }),
+                    "Prefill requires an explicit EndOfInputs condition");
+    } else {
+      ORT_RETURN_IF(!options.finite_input_names.empty(), "Decode inputs are supplied by the native generation policy");
+    }
+    for (const auto& name : TokenGeneration::ManagedInputs(generation)) {
+      ORT_RETURN_IF_NOT(destinations.insert(name).second, "Conflicting managed generation input: ", name);
+    }
+  }
   InlinedHashSet<std::string> selected;
   for (const auto& name : options.output_names) {
     const auto* output = FindArgument(outputs, name);
@@ -121,12 +141,23 @@ Status SessionLoop::Create(InferenceSession& session, SessionLoopOptions options
         }
         [[fallthrough]];
       case LoopExitKind::Eos:
-        ORT_RETURN_IF(options.generated_token_output.empty(), "Token exits require a generated-token output");
+        ORT_RETURN_IF(options.generated_token_output.empty() && !options.generation,
+                      "Token exits require a generated-token output or native sampling policy");
         if (condition.kind == LoopExitKind::Eos) {
           ORT_RETURN_IF(condition.eos_token_ids.empty() ||
                             std::any_of(condition.eos_token_ids.begin(), condition.eos_token_ids.end(),
                                         [](int64_t id) { return id < 0; }),
                         "EOS requires nonnegative token IDs");
+          if (options.generation) {
+            const auto* logits = FindArgument(outputs, options.generation->logits_output);
+            const auto* shape = logits->Shape();
+            if (shape && shape->dim(shape->dim_size() - 1).has_dim_value()) {
+              const int64_t width = shape->dim(shape->dim_size() - 1).dim_value();
+              ORT_RETURN_IF(std::any_of(condition.eos_token_ids.begin(), condition.eos_token_ids.end(),
+                                        [&](int64_t id) { return id >= width; }),
+                            "EOS token ID is outside the logits vocabulary");
+            }
+          }
         }
         break;
       case LoopExitKind::BooleanOutput: {
@@ -146,11 +177,15 @@ Status SessionLoop::Create(InferenceSession& session, SessionLoopOptions options
 Status SessionLoop::ValidateInputs(const SessionLoopInputs& inputs) const {
   const auto& arguments = *session_.GetModelInputs().second;
   InlinedHashSet<std::string> finite(options_.finite_input_names.begin(), options_.finite_input_names.end());
-  ORT_RETURN_IF(inputs.inputs.size() + finite.size() + options_.kv_caches.size() != arguments.size(),
+  const auto managed = options_.generation ? TokenGeneration::ManagedInputs(*options_.generation)
+                                           : InlinedVector<std::string>{};
+  ORT_RETURN_IF(inputs.inputs.size() + finite.size() + options_.kv_caches.size() + managed.size() != arguments.size(),
                 "SessionLoop input count mismatch");
   for (const auto& [name, value] : inputs.inputs) {
     const auto* argument = FindArgument(arguments, name);
     ORT_RETURN_IF_NOT(argument && !finite.contains(name), "Unknown or conflicting invariant input: ", name);
+    ORT_RETURN_IF(std::find(managed.begin(), managed.end(), name) != managed.end(),
+                  "Managed generation inputs cannot also be invariant feeds");
     ORT_RETURN_IF(std::any_of(options_.kv_caches.begin(), options_.kv_caches.end(),
                               [&](const auto& item) { return item.input_name == name; }),
                   "Managed KV cache inputs cannot also be supplied as invariant feeds");
@@ -167,11 +202,17 @@ Status SessionLoop::ValidateInputs(const SessionLoopInputs& inputs) const {
                     "Prefill input tensor must not be empty");
     }
   }
+  if (options_.generation && options_.generation->phase == TokenGenerationPhase::Prefill) {
+    ORT_RETURN_IF(inputs.batches.size() != 1, "Initial prefill supports one complete prompt batch");
+    ORT_RETURN_IF_ERROR(TokenGeneration::ValidatePrompt(inputs.batches[0].at(options_.generation->input_ids)));
+  }
   return Status::OK();
 }
 
 Status SessionLoop::CreateExecution(SessionLoopInputs inputs, std::unique_ptr<SessionLoopExecution>& out) const {
   ORT_RETURN_IF_ERROR(ValidateInputs(inputs));
+  ORT_RETURN_IF(options_.generation && options_.generation->phase == TokenGenerationPhase::Decode,
+                "Decode generation must follow prefill in the same chain context");
   std::shared_ptr<KVCacheManager> cache;
   if (!options_.kv_caches.empty()) {
     InlinedVector<KVCacheSpec> specs;
@@ -185,26 +226,36 @@ Status SessionLoop::CreateExecution(SessionLoopInputs inputs, std::unique_ptr<Se
         KVCacheManager::Create(std::move(specs), binding->GetCPUAllocator(kCpuExecutionProvider), manager));
     cache = std::move(manager);
   }
+  auto generation = options_.generation ? std::make_shared<TokenGenerationState>() : nullptr;
   out = std::unique_ptr<SessionLoopExecution>(
-      new SessionLoopExecution(shared_from_this(), std::move(inputs), std::move(cache), true));
+      new SessionLoopExecution(shared_from_this(), std::move(inputs), std::move(cache), std::move(generation), true));
   return Status::OK();
 }
 
 Status SessionLoop::CreateExecutionWithCache(SessionLoopInputs inputs, std::shared_ptr<KVCacheManager> cache,
+                                             std::shared_ptr<TokenGenerationState> generation,
                                              std::unique_ptr<SessionLoopExecution>& out) const {
   ORT_RETURN_IF_ERROR(ValidateInputs(inputs));
   out = std::unique_ptr<SessionLoopExecution>(
-      new SessionLoopExecution(shared_from_this(), std::move(inputs), std::move(cache), false));
+      new SessionLoopExecution(shared_from_this(), std::move(inputs), std::move(cache), std::move(generation), false));
   return Status::OK();
 }
 
 SessionLoopExecution::SessionLoopExecution(std::shared_ptr<const SessionLoop> loop, SessionLoopInputs inputs,
-                                           std::shared_ptr<KVCacheManager> cache, bool owns_cache)
-    : loop_(std::move(loop)), initial_inputs_(std::move(inputs)), cache_(std::move(cache)), owns_cache_(owns_cache) {}
+                                           std::shared_ptr<KVCacheManager> cache,
+                                           std::shared_ptr<TokenGenerationState> generation, bool owns_state)
+    : loop_(std::move(loop)),
+      initial_inputs_(std::move(inputs)),
+      cache_(std::move(cache)),
+      generation_(std::move(generation)),
+      owns_state_(owns_state) {}
 
 void SessionLoopExecution::EvaluateExits(const InlinedVector<OrtValue>& values) {
   progress_.exit_reasons.clear();
   const auto& options = loop_->options_;
+  if (options.generation) {
+    progress_.generated_tokens = SafeInt<int64_t>(generation_->token_ids.size());
+  }
   for (const auto& condition : options.exit_conditions) {
     bool stop = false;
     switch (condition.kind) {
@@ -218,10 +269,12 @@ void SessionLoopExecution::EvaluateExits(const InlinedVector<OrtValue>& values) 
         stop = progress_.generated_tokens >= condition.limit;
         break;
       case LoopExitKind::Eos:
-        if (!values.empty()) {
-          const int64_t token = *values[FindOutput(loop_->fetch_names_, options.generated_token_output)]
-                                     .Get<Tensor>()
-                                     .Data<int64_t>();
+        if ((options.generation && !generation_->token_ids.empty()) || !values.empty()) {
+          const int64_t token = options.generation
+                                    ? generation_->token_ids.back()
+                                    : *values[FindOutput(loop_->fetch_names_, options.generated_token_output)]
+                                           .Get<Tensor>()
+                                           .Data<int64_t>();
           stop = std::find(condition.eos_token_ids.begin(), condition.eos_token_ids.end(), token) !=
                  condition.eos_token_ids.end();
         }
@@ -274,7 +327,22 @@ Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
   for (const auto& item : loop_->options_.kv_caches) {
     KVCacheView view;
     ORT_RETURN_IF_ERROR(cache_->Get(item.cache.name, view));
+    ORT_RETURN_IF(loop_->options_.generation && view.length != generation_->processed_tokens,
+                  "KV length does not match the generation context before invocation");
     ORT_RETURN_IF_ERROR(binding->BindInput(item.input_name, view.value));
+  }
+  int64_t input_count = 0;
+  LoopFeeds generated_feeds;
+  if (loop_->options_.generation) {
+    const auto& options = *loop_->options_.generation;
+    const OrtValue* prompt = options.phase == TokenGenerationPhase::Prefill
+                                 ? &initial_inputs_.batches[0].at(options.input_ids)
+                                 : nullptr;
+    ORT_RETURN_IF_ERROR(TokenGeneration::PrepareInputs(
+        options, *generation_, prompt, binding->GetCPUAllocator(kCpuExecutionProvider), generated_feeds, input_count));
+    for (const auto& [name, value] : generated_feeds) {
+      ORT_RETURN_IF_ERROR(binding->BindInput(name, value));
+    }
   }
   for (const auto& name : loop_->fetch_names_) {
     ORT_RETURN_IF_ERROR(binding->BindOutput(name));
@@ -307,16 +375,44 @@ Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
                     "Boolean exit output must be scalar");
     }
   }
+  std::optional<int64_t> sampled_token;
+  if (loop_->options_.generation) {
+    const auto& options = *loop_->options_.generation;
+    int64_t token = 0;
+    ORT_RETURN_IF_ERROR(Sampler::Greedy(snapshots[FindOutput(loop_->fetch_names_, options.logits_output)],
+                                        options.logits_position, token));
+    const auto& shape = snapshots[FindOutput(loop_->fetch_names_, options.logits_output)].Get<Tensor>().Shape();
+    for (const auto& condition : loop_->options_.exit_conditions) {
+      if (condition.kind == LoopExitKind::Eos) {
+        ORT_RETURN_IF(std::any_of(condition.eos_token_ids.begin(), condition.eos_token_ids.end(),
+                                  [&](int64_t id) { return id >= shape[shape.NumDimensions() - 1]; }),
+                      "EOS token ID is outside the runtime logits vocabulary");
+      }
+    }
+    sampled_token = token;
+  }
   if (!loop_->options_.generated_token_output.empty()) {
     const auto& token =
         snapshots[FindOutput(loop_->fetch_names_, loop_->options_.generated_token_output)].Get<Tensor>();
     ORT_RETURN_IF(token.Shape().NumDimensions() != 0 || *token.Data<int64_t>() < 0,
                   "Generated-token output must be a nonnegative scalar");
     progress_.generated_tokens = SafeInt<int64_t>(progress_.generated_tokens) + 1;
+    sampled_token = *token.Data<int64_t>();
   }
   for (const auto& item : loop_->options_.kv_caches) {
     ORT_RETURN_IF_ERROR(cache_->Update(item.cache.name, snapshots[FindOutput(loop_->fetch_names_, item.output_name)],
                                        item.update_kind));
+    if (loop_->options_.generation) {
+      KVCacheView view;
+      ORT_RETURN_IF_ERROR(cache_->Get(item.cache.name, view));
+      ORT_RETURN_IF(view.length != SafeInt<int64_t>(generation_->processed_tokens) + input_count,
+                    "KV length does not match the consumed generation input");
+    }
+  }
+  if (loop_->options_.generation) {
+    generation_->processed_tokens = SafeInt<int64_t>(generation_->processed_tokens) + input_count;
+    generation_->token_ids.push_back(*sampled_token);
+    generation_->prefill_complete = true;
   }
   progress_.iterations = SafeInt<int64_t>(progress_.iterations) + 1;
   EvaluateExits(snapshots);
@@ -326,6 +422,7 @@ Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
   }
   SessionLoopStepResult result = progress_;
   result.executed = true;
+  result.generated_token = sampled_token;
   for (const auto& name : loop_->options_.output_names) {
     result.outputs.push_back(snapshots[FindOutput(loop_->fetch_names_, name)]);
   }
@@ -344,8 +441,13 @@ Status SessionLoopExecution::Run(SessionLoopStepResult& out) {
 }
 
 void SessionLoopExecution::Reset() {
-  if (owns_cache_ && cache_) {
-    cache_->Reset();
+  if (owns_state_) {
+    if (cache_) {
+      cache_->Reset();
+    }
+    if (generation_) {
+      generation_->Reset();
+    }
   }
   feedback_.clear();
   progress_ = {};

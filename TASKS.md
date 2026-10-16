@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M04 complete.
+**Status:** Approved; M01-M04 complete; M05 in progress.
 M04: [PR #14](https://github.com/onnxruntime/ort-state/pull/14).
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
 **Working memory:** [Shared scratchpad](SCRATCHPAD.md).
@@ -16,7 +16,7 @@ M04: [PR #14](https://github.com/onnxruntime/ort-state/pull/14).
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M04 are complete; M05-M24 are pending. Check tasks when their
+M01-M04 are complete; M05 is in progress; M06-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -93,7 +93,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M04 are **complete**; M05-M24 are **pending**.
+M01-M04 are **complete**; M05 is **in progress**; M06-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -588,11 +588,13 @@ introduced; the measured new-line gate is for Linux CPU inference code.
 ### M05 - CPU greedy sampling and decode integration
 
 **Outcome:** CPU token selection and a complete tiny prefill/decode chain.
+**Status:** Validated, pending commit/PR, authorized 2026-10-16; `state/m05-cpu-greedy`
+stacks on `state/m04-cpu-kv-cache`.
 
-- [ ] Implement documented greedy selection using existing suitable helpers.
-- [ ] Validate supported logits shapes/dtypes/position, ties, non-finite behavior,
+- [x] Implement documented greedy selection using existing suitable helpers.
+- [x] Validate supported logits shapes/dtypes/position, ties, non-finite behavior,
   token IDs, and integration with explicit EOS/token-limit conditions.
-- [ ] Wire prefill-logit first-token handling and iterative decode without
+- [x] Wire prefill-logit first-token handling and iterative decode without
   duplicates or omissions. Keep caller accumulation explicit.
 
 **CPU test plan:** Known argmaxes, ties, negative values, supported precisions,
@@ -603,6 +605,96 @@ Compare the tiny chain token-by-token against direct Session calls.
 device-resident logits reach the CPU-only implementation; no hidden fallback.
 **Completion gate:** CPU end-to-end fixture, shared rules, and 100% new sampler/
 integration-line coverage pass.
+
+**Execution evidence:**
+
+- User confirmed the concrete M05 contracts before implementation: identical
+  explicit phase budgets, single unpadded int64 prompt, generated mask/position
+  feeds, strict any-NaN rejection, CPU/device distinction and context-local
+  prefill-before-decode ordering. Documented in SPEC Appendix E.
+- Added independently testable CPU greedy sampling and native generation policy.
+  Standard argmax tie semantics are reused; no contrib kernel/subgraph dependency.
+- Shared context counts generated IDs exactly once across phases, keeps prompt
+  tokens separate, checks pending EOS/budget at decode entry, and validates KV
+  lengths against consumed inputs. Typed final token-ID ports support empty
+  results without inventing unproduced model outputs.
+- Generated CPU feeds are retained through device synchronization/Run.
+- CPU focused suite: **55/55 passed**, including independent sampler/metadata/
+  allocation checks and full prefill/decode fixtures; stateless/package
+  regressions: **21/21 passed**, no skips.
+- Final new-line coverage: **369/369 unique new executable locations**; cumulative
+  affected runtime **1295/1295**, LLVM aggregate **1310/1310**, all 100%.
+  Eighteen profile-map warnings concern unrelated functions, not affected code.
+- Tests compare tokens/cache/mask/positions against direct Session invocations
+  and cover float16, ties/infinities/NaNs, invalid vocab/shape/position/device,
+  zero/one budgets, prefill EOS, reset/isolation and failure recovery.
+- Initial compile scope error and empty-prompt validation placement were fixed;
+  the empty-prompt regression now rejects even a zero-budget prefill.
+- A shared explicit state-reset helper avoids a GCC optimized-build
+  maybe-uninitialized diagnostic without suppressing warnings. Unspecified
+  generation phases reject explicitly rather than reading an unset enum.
+- CUDA configuration: **97/97 focused tests passed**, including eight new
+  provider-parameterized generation cases; stateless/package regressions:
+  **26/26 passed**, no skips. Actual CUDA model-node assignment is asserted.
+- Compute Sanitizer memcheck: **5/5 passed, zero errors**, covering reference
+  comparison, zero/one budgets, prefill/decode EOS, float16 and failure recovery.
+- Final formatting, 120-column, whitespace and document checks passed. No native
+  CUDA sampler or training-build coverage is claimed.
+
+- [x] Complete CUDA tests, memory checks and final source/document validation.
+- [ ] Commit and publish the ready-for-review PR stacked on M04.
+
+Validation commands (reuse the established instrumented CPU and CUDA 13.1 builds;
+regenerate CMake when first adding the native generation source files):
+
+```bash
+source .venv/bin/activate
+LLVM_PROFILE_FILE=/dev/null cmake -S cmake -B build/state-cpu/RelWithDebInfo
+LLVM_PROFILE_FILE=/dev/null cmake --build build/state-cpu/RelWithDebInfo \
+  --parallel 8 --target onnxruntime_session_loop_test onnxruntime_autoep_test
+cd build/state-cpu/RelWithDebInfo
+mkdir -p coverage/m05/verified
+LLVM_PROFILE_FILE="$PWD/coverage/m05/verified/%m-%p.profraw" \
+  ./onnxruntime_session_loop_test --gtest_output=xml:coverage/m05/verified/tests.xml
+LLVM_PROFILE_FILE=/dev/null ./onnxruntime_autoep_test \
+  --gtest_filter='*StatefulExecutionBaselineTest.*:ModelPackageApiTest.*' \
+  --gtest_output=xml:coverage/m05/verified/regressions.xml
+llvm-profdata merge -sparse coverage/m05/verified/*.profraw \
+  -o coverage/m05/verified/m05.profdata
+llvm-cov report ./onnxruntime_session_loop_test \
+  -instr-profile=coverage/m05/verified/m05.profdata \
+  ../../../onnxruntime/core/session/token_generation.cc \
+  ../../../onnxruntime/core/session/token_generation.h \
+  ../../../onnxruntime/core/session/session_loop.cc \
+  ../../../onnxruntime/core/session/session_loop.h \
+  ../../../onnxruntime/core/session/session_chain.cc \
+  ../../../onnxruntime/core/session/session_chain.h \
+  ../../../onnxruntime/core/session/kv_cache_manager.cc \
+  ../../../onnxruntime/core/session/kv_cache_manager.h \
+  ../../../onnxruntime/core/session/stateful_execution_utils.h
+```
+
+From the repository root with the matching CUDA/cuDNN environment:
+
+```bash
+PATH="$CUDA_HOME/bin:$PATH" cmake -S cmake \
+  -B build/state-cuda-baseline-13.1/RelWithDebInfo
+cmake --build build/state-cuda-baseline-13.1/RelWithDebInfo --parallel 8 \
+  --target onnxruntime_session_loop_test onnxruntime_autoep_test
+cd build/state-cuda-baseline-13.1/RelWithDebInfo
+export CUDA_VISIBLE_DEVICES=0
+export LD_LIBRARY_PATH="$PWD:$CUDNN_HOME/lib:$CUDA_HOME/lib64"
+./onnxruntime_session_loop_test --gtest_output=xml:m05-verified-tests.xml
+./onnxruntime_autoep_test \
+  --gtest_filter='*StatefulExecutionBaselineTest.*:ModelPackageApiTest.*' \
+  --gtest_output=xml:m05-verified-regressions.xml
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --error-exitcode 99 \
+  ./onnxruntime_session_loop_test \
+  --gtest_filter='Cuda/SessionChainTest.GreedyGenerationMatchesDirectSessionsAndFeedPolicies/*:Cuda/SessionChainTest.ZeroAndSingleTokenBudgetsAvoidExtraDecodeInvocations/*:Cuda/SessionChainTest.PrefillAndDecodeEosUseOneSharedCounterAndEmitOnce/*:Cuda/SessionChainTest.StandalonePrefillFloat16AndExplicitLogitsPosition/*:Cuda/SessionChainTest.GenerationFailuresRequireResetAndKeepCommittedState/*'
+```
+
+All final commands passed. These tests use native CUDA model execution with
+explicit CPU logits sampling, not a native CUDA greedy implementation.
 
 ### M06 - Public C API and C++ wrappers
 

@@ -42,6 +42,9 @@ Status SessionChain::Initialize() {
   ORT_RETURN_IF(options_.components.empty() || options_.outputs.empty(),
                 "SessionChain requires components and selected output ports");
   InlinedHashSet<std::string> names;
+  bool seen_decode = false;
+  std::optional<int64_t> generation_budget;
+  InlinedHashSet<std::string> generation_caches;
   for (const auto& component : options_.components) {
     ORT_RETURN_IF(component.name.empty() || !names.insert(component.name).second,
                   "Empty or duplicate SessionChain component name");
@@ -66,6 +69,33 @@ Status SessionChain::Initialize() {
     }
     std::shared_ptr<const SessionLoop> loop;
     ORT_RETURN_IF_ERROR(SessionLoop::Create(*session, std::move(options), loop));
+    if (loop->Options().generation) {
+      const auto phase = loop->Options().generation->phase;
+      std::optional<int64_t> budget;
+      for (const auto& condition : loop->Options().exit_conditions) {
+        if (condition.kind == LoopExitKind::MaxGeneratedTokens) {
+          budget = condition.limit;
+        }
+      }
+      if (phase == TokenGenerationPhase::Prefill) {
+        ORT_RETURN_IF(has_generation_, "A chain initially supports one prefill/decode generation pipeline");
+        has_generation_ = true;
+        generation_budget = budget;
+        for (const auto& item : loop->Options().kv_caches) {
+          generation_caches.insert(item.cache.name);
+        }
+      } else {
+        ORT_RETURN_IF(!has_generation_ || seen_decode, "Decode must follow one prefill in the same chain");
+        ORT_RETURN_IF(generation_budget != budget,
+                      "Prefill and decode must declare the same explicit generated-token budget");
+        ORT_RETURN_IF(generation_caches.size() != loop->Options().kv_caches.size(),
+                      "Prefill/decode managed cache sets differ");
+        for (const auto& item : loop->Options().kv_caches) {
+          ORT_RETURN_IF_NOT(generation_caches.contains(item.cache.name), "Prefill/decode managed cache names differ");
+        }
+        seen_decode = true;
+      }
+    }
     for (const auto& item : loop->Options().kv_caches) {
       auto found = std::find_if(cache_specs_.begin(), cache_specs_.end(),
                                 [&](const auto& spec) { return spec.name == item.cache.name; });
@@ -86,13 +116,19 @@ Status SessionChain::Initialize() {
   for (size_t index = 0; index < options_.components.size(); ++index) {
     const auto& component = options_.components[index];
     const auto& arguments = *sessions_[index]->GetModelInputs().second;
-    ORT_RETURN_IF(component.inputs.size() + loops_[index]->Options().kv_caches.size() != arguments.size(),
+    const auto managed = loops_[index]->Options().generation
+                             ? TokenGeneration::ManagedInputs(*loops_[index]->Options().generation)
+                             : InlinedVector<std::string>{};
+    const size_t managed_count = loops_[index]->Options().kv_caches.size() + managed.size();
+    ORT_RETURN_IF(component.inputs.size() + managed_count != arguments.size(),
                   "Component input binding count mismatch: ", component.name);
     InlinedHashSet<std::string> destinations;
     for (const auto& binding : component.inputs) {
       const auto* target = FindArgument(arguments, binding.input_name);
       ORT_RETURN_IF_NOT(target && destinations.insert(binding.input_name).second,
                         "Unknown or duplicate component input: ", component.name, ".", binding.input_name);
+      ORT_RETURN_IF(std::find(managed.begin(), managed.end(), binding.input_name) != managed.end(),
+                    "Managed generation input cannot also have a chain binding");
       ORT_RETURN_IF(std::any_of(loops_[index]->Options().kv_caches.begin(), loops_[index]->Options().kv_caches.end(),
                                 [&](const auto& item) { return item.input_name == binding.input_name; }),
                     "Managed KV cache input cannot also have a chain input binding: ", binding.input_name);
@@ -158,9 +194,15 @@ Status SessionChain::Initialize() {
   }
   InlinedHashSet<std::string> outputs;
   for (const auto& binding : options_.outputs) {
-    ORT_RETURN_IF(binding.name.empty() || !outputs.insert(binding.name).second ||
-                      binding.component_index >= sessions_.size(),
+    ORT_RETURN_IF(binding.name.empty() || !outputs.insert(binding.name).second,
                   "Invalid or duplicate chain output port: ", binding.name);
+    if (binding.kind == ChainOutputKind::GeneratedTokenIds) {
+      ORT_RETURN_IF(!has_generation_ || !binding.output_name.empty(),
+                    "Generated-token output ports require native generation and no model output name");
+      continue;
+    }
+    ORT_RETURN_IF(binding.kind != ChainOutputKind::ModelOutput || binding.component_index >= sessions_.size(),
+                  "Invalid chain output kind or component index");
     ORT_RETURN_IF_NOT(FindArgument(*sessions_[binding.component_index]->GetModelOutputs().second, binding.output_name),
                       "Unknown chain output: ", binding.output_name);
   }
@@ -186,8 +228,17 @@ Status SessionChain::ValidateInputs(const SessionChainInputs& inputs) const {
         auto it = inputs.sequences.find(source.name);
         ORT_RETURN_IF(it == inputs.sequences.end(), "Missing external sequence: ", source.name);
         count = it->second.size();
+        if (loops_[index]->Options().generation &&
+            loops_[index]->Options().generation->phase == TokenGenerationPhase::Prefill &&
+            binding.input_name == loops_[index]->Options().generation->input_ids) {
+          ORT_RETURN_IF(count != 1, "Prefill requires one complete prompt batch");
+        }
         for (const auto& item : it->second) {
           ORT_RETURN_IF_ERROR(CheckHostInput(target, item));
+          if (loops_[index]->Options().generation &&
+              binding.input_name == loops_[index]->Options().generation->input_ids) {
+            ORT_RETURN_IF_ERROR(TokenGeneration::ValidatePrompt(item));
+          }
         }
       } else if (source.kind == ChainSourceKind::ExternalInput) {
         auto it = inputs.inputs.find(source.name);
@@ -200,6 +251,10 @@ Status SessionChain::ValidateInputs(const SessionChainInputs& inputs) const {
       }
       if (value) {
         ORT_RETURN_IF_ERROR(CheckHostInput(target, *value));
+        if (loops_[index]->Options().generation &&
+            binding.input_name == loops_[index]->Options().generation->input_ids) {
+          ORT_RETURN_IF_ERROR(TokenGeneration::ValidatePrompt(*value));
+        }
       }
       if (IsFinite(*loops_[index], binding.input_name)) {
         ORT_RETURN_IF(batch_count.has_value() && *batch_count != count,
@@ -225,13 +280,18 @@ Status SessionChain::CreateExecution(SessionChainInputs inputs, std::unique_ptr<
     cache = std::move(manager);
   }
   out = std::unique_ptr<SessionChainExecution>(
-      new SessionChainExecution(shared_from_this(), std::move(inputs), std::move(cache)));
+      new SessionChainExecution(shared_from_this(), std::move(inputs), std::move(cache),
+                                has_generation_ ? std::make_shared<TokenGenerationState>() : nullptr));
   return Status::OK();
 }
 
 SessionChainExecution::SessionChainExecution(std::shared_ptr<const SessionChain> chain, SessionChainInputs inputs,
-                                             std::shared_ptr<KVCacheManager> cache)
-    : chain_(std::move(chain)), initial_inputs_(std::move(inputs)), cache_(std::move(cache)) {
+                                             std::shared_ptr<KVCacheManager> cache,
+                                             std::shared_ptr<TokenGenerationState> generation)
+    : chain_(std::move(chain)),
+      initial_inputs_(std::move(inputs)),
+      cache_(std::move(cache)),
+      generation_(std::move(generation)) {
   Reset();
 }
 
@@ -292,7 +352,7 @@ Status SessionChainExecution::StepComponent(SessionChainStepResult& result) {
   if (!active_) {
     SessionLoopInputs inputs;
     ORT_RETURN_IF_ERROR(PrepareComponentInputs(inputs));
-    ORT_RETURN_IF_ERROR(loop->CreateExecutionWithCache(std::move(inputs), cache_, active_));
+    ORT_RETURN_IF_ERROR(loop->CreateExecutionWithCache(std::move(inputs), cache_, generation_, active_));
   }
   ORT_RETURN_IF_ERROR(active_->Step(result.component_result));
   ORT_RETURN_IF(cancelled_.load(), "SessionChain cancelled during a component; call Reset before reuse");
@@ -349,8 +409,16 @@ Status SessionChainExecution::Step(SessionChainStepResult& out) {
   result.completed = component_index_ == chain_->loops_.size();
   result.components_completed = component_index_;
   result.invocations = invocations_;
+  result.generated_tokens = generation_ ? static_cast<int64_t>(SafeInt<int64_t>(generation_->token_ids.size())) : 0;
   if (result.completed && (result.executed || !result.component_name.empty())) {
     for (const auto& binding : chain_->options_.outputs) {
+      if (binding.kind == ChainOutputKind::GeneratedTokenIds) {
+        std::unique_ptr<IOBinding> io;
+        ORT_RETURN_IF_ERROR(chain_->sessions_[0]->NewIOBinding(&io));
+        result.outputs.emplace(binding.name, TokenGeneration::OutputTokens(
+                                                 *generation_, io->GetCPUAllocator(kCpuExecutionProvider)));
+        continue;
+      }
       const OrtValue* value = nullptr;
       ORT_RETURN_IF_ERROR(
           Resolve({ChainSourceKind::ComponentOutput, binding.output_name, binding.component_index}, value));
@@ -373,6 +441,9 @@ Status SessionChainExecution::Run(SessionChainStepResult& out) {
 
 void SessionChainExecution::Reset() {
   active_.reset();
+  if (generation_) {
+    generation_->Reset();
+  }
   component_index_ = 0;
   invocations_ = 0;
   component_outputs_.clear();

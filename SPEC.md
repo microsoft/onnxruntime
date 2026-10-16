@@ -657,7 +657,8 @@ Illustrative shape, not yet a complete runnable LLM package:
                 "phase": "prefill"
               },
               "exit_conditions": [
-                { "kind": "end_of_inputs" }
+                { "kind": "end_of_inputs" },
+                { "kind": "max_generated_tokens", "limit": 128 }
               ]
             }
           }
@@ -891,3 +892,75 @@ management, or SessionChain.
 - CPU caches reject GPU/device allocations and device-resident updates. Testing
   a CUDA Session with host snapshots verifies integration and rejection behavior,
   not CUDA-backed cache management. Native CUDA storage remains M08.
+
+## Appendix E. M05 CPU greedy sampling and generation contract
+
+The user explicitly approved these refinements on 2026-10-16:
+
+1. If used, a shared generated-token budget is declared explicitly and identically
+   on prefill and decode. Do not infer or move exit conditions between stages.
+2. Initial native generation uses unpadded int64 IDs shaped `[1, sequence]`,
+   optional named int64 all-ones attention-mask inputs, and sequential position IDs.
+3. CPU greedy supports float32/float16 and rejects any NaN in the supplied logits
+   tensor, including unselected positions. Device logits are explicitly rejected.
+4. Decode follows prefill in the same execution context. Importing partial
+   generation state/nonempty cache through execution APIs remains future work.
+
+### E.1 Sampler
+
+- `Sampler::Greedy` is independently testable and CPU-only. Supported logits are
+  `[1, vocabulary]` or `[1, sequence, vocabulary]`; dimensions must be nonempty.
+- An optional nonnegative position selects a sequence row; absence selects the
+  last row. Rank-two logits have one row, so only position zero is valid.
+- Return int64 IDs. Standard argmax selection chooses the lowest ID on ties;
+  infinities follow numeric ordering, including all-negative-infinity -> zero.
+  Validate the whole supplied tensor for NaN before returning a token.
+- Reject unsupported dtypes, batch/rank/position, null buffers and device memory.
+  Validate known metadata at definition time and dynamic values at execution.
+
+### E.2 Native iteration policy
+
+- `TokenGenerationOptions` explicitly identifies Prefill/Decode phase, input IDs,
+  logits output/position, optional attention-mask and position-ID ports.
+  Generation-managed inputs cannot also be finite/invariant/feedback/cache ports.
+- Prefill consumes exactly one nonempty finite prompt batch and declares
+  EndOfInputs. Empty or negative-ID prompts are invalid even with a zero budget.
+  Decode generates its own one-token input from the last sampled pending token.
+- Masks contain ones for all processed/current tokens. Position IDs begin at the
+  number of previously consumed input tokens. Other layouts/padding/signatures
+  are not guessed.
+- Generated CPU feed buffers remain owned through IOBinding synchronization and
+  Session execution so asynchronous device copies cannot outlive their sources.
+- A chain initially supports one prefill/decode pipeline. Phases have matching
+  explicit token budgets (or neither has one) and matching managed cache names/
+  layouts. A standalone prefill loop is supported; standalone decode is not.
+- The execution owns a small history of generated token IDs, processed-input
+  count, and prefill-completion state. This does not accumulate ordinary tensor
+  intermediates; callers still collect per-iteration tensor results themselves.
+
+### E.3 Stage boundaries, exits and outputs
+
+- The first sampled token comes from prefill logits, increments the shared
+  generation count, and is emitted once. Decode consumes that pending token
+  before sampling the next one. Prompt tokens do not count as generated tokens.
+- EOS and token limits inspect pending state on decode entry, so prefill EOS or
+  an already-exhausted budget causes no extra decode invocation or emission.
+- A zero budget performs no prefill/decode invocation and yields an empty token
+  result. Unrelated generic chain components retain their own execution rules.
+- Each successful sampling iteration exposes one optional `generated_token` in
+  its step result. Completion-only calls do not emit it again. Counts are shared
+  across phases while loop iteration counts remain local.
+- A typed `GeneratedTokenIds` chain output port returns an owned CPU int64 tensor
+  shaped `[generated_count]`, including `[0]`. This supports Run convenience and
+  zero-invocation completion without inventing model logits/cache outputs.
+  Selecting an unproduced ordinary model output still fails explicitly.
+- Cache lengths are checked against processed input tokens before invocation and
+  after updates. The final pending token has not yet entered the KV cache.
+- Reset clears generated IDs, consumed-input counters, pending/prefill state and
+  managed caches. Retained result tensors remain stable. Failures/cancellation
+  retain the existing requires-Reset contract; no silent sampling fallback.
+
+M05 does not add public ABI or EP/plugin overrides. CUDA Session integration uses
+explicit host staging and this CPU sampler; native CUDA sampling remains M09.
+The measured line-coverage gate targets the Linux inference configuration, not
+unbuilt training-only strided-tensor paths.

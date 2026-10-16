@@ -311,3 +311,49 @@ Compressed project memory. This is not the execution plan.
   https://github.com/onnxruntime/ort-state/pull/14
   Base `state/m03-chain-bindings`, head `state/m04-cpu-kv-cache`.
 - M05 (CPU greedy sampling and decode integration) is next, not started.
+
+## M05
+
+- 2026-10-16: User authorized M05; branch `state/m05-cpu-greedy` from M04.
+- User explicitly approved four concrete contracts:
+  identical explicit MaxGeneratedTokens budgets on prefill/decode if present,
+  including zero-budget no-generation-invocation semantics; unpadded [1,S]
+  int64 IDs with optional int64 all-ones mask/sequential position ports;
+  CPU float32/float16 greedy, reject any NaN in the entire supplied tensor and
+  reject device logits; decode follows prefill in the same context initially.
+- Reuse M04 cache handoff and M02 stepping. Shared generation state tracks
+  sampled IDs and processed input length; a prefill sample is counted/emitted
+  once and consumed by the first decode call. Decode checks EOS/budget on entry.
+- Generic loops and model-scalar token exits retain their current behavior.
+- Prior art reviewed: contrib generation feeds/TopK helpers are coupled to
+  subgraph/kernel contexts; standalone sampler should use standard deterministic
+  argmax logic rather than pulling contrib generation dependencies into Session.
+- Added `token_generation.h/.cc` for CPU Sampler and native feed/policy helpers;
+  wired typed options, shared token history, first-token handoff and EOS/budgets
+  into loop/chain. Typed GeneratedTokenIds final ports yield owned [count] tensors,
+  including [0], while ordinary unproduced model outputs still error.
+- Explicit shared budgets were added to the illustrative manifest's prefill
+  phase as well as decode. SPEC Appendix E records all approved semantics.
+- Generated host feeds stay owned until synchronization/Session completion;
+  no temporary CPU feed may be freed before a potential async device copy.
+- CPU 55/55 focused tests and 21/21 regressions passed, no skips. Scope issue
+  in sampled-token declaration and empty-batch validation placement were fixed.
+- Coverage: new 362/362 unique executable locations, cumulative 1288/1288;
+  LLVM aggregate 1303/1303. All 18 mapping warnings unrelated to affected code.
+- CUDA rebuild running as `m05-cuda-rebuild` (log `m05-cuda-build.log`).
+  Final CUDA run, memcheck, style/document checks and PR remain pending.
+- M05 remains internal: CPU sampler with explicit CUDA Session host staging;
+  native GPU sampling M09, public API M06. No agents used.
+- Final verified CPU run: 55/55 focused + 21/21 regressions; CUDA build:
+  97/97 focused + 26/26 regressions. No skips. Five generation CUDA memcheck
+  cases passed, zero errors.
+- Final gate after reset/default-phase refinements: 369/369 new unique executable
+  source locations; 1295/1295 cumulative unique; LLVM aggregate 1310/1310.
+  Eighteen unrelated map warnings, none affecting the stateful runtime.
+- Explicit TokenGenerationState::Reset avoids GCC false-positive warnings from
+  aggregate assignment of an Abseil inline vector. Default phase is Unspecified,
+  rejected explicitly. No warning suppression or success-shaped fallbacks.
+- Final XML/profiles/LCOV: CPU `coverage/m05/verified`, CUDA
+  `m05-verified-tests.xml` and `m05-verified-regressions.xml` in build output.
+- M05 validated, publication next. All ten files pass style/whitespace/120-column
+  checks. No new device production code or public API.

@@ -12,6 +12,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/ort_value.h"
 #include "core/session/kv_cache_manager.h"
+#include "core/session/token_generation.h"
 
 namespace onnxruntime {
 
@@ -46,6 +47,7 @@ struct SessionLoopOptions {
   // Reject an empty finite source or empty tensor for this input (e.g. a prompt).
   std::string nonempty_input;
   InlinedVector<LoopKVCacheBinding, 1> kv_caches;
+  std::optional<TokenGenerationOptions> generation;
 };
 
 using LoopFeeds = InlinedHashMap<std::string, OrtValue>;
@@ -64,6 +66,7 @@ struct SessionLoopStepResult {
   InlinedVector<LoopExitKind> exit_reasons;
   // Owned CPU snapshots, in the definition's output_names order.
   InlinedVector<OrtValue> outputs;
+  std::optional<int64_t> generated_token;
 };
 
 // The caller-owned, initialized Session must outlive the definition and executions.
@@ -82,6 +85,7 @@ class SessionLoop : public std::enable_shared_from_this<SessionLoop> {
   SessionLoop(InferenceSession& session, SessionLoopOptions options);
   Status ValidateInputs(const SessionLoopInputs& inputs) const;
   Status CreateExecutionWithCache(SessionLoopInputs inputs, std::shared_ptr<KVCacheManager> cache,
+                                  std::shared_ptr<TokenGenerationState> generation,
                                   std::unique_ptr<SessionLoopExecution>& out) const;
 
   InferenceSession& session_;
@@ -98,18 +102,21 @@ class SessionLoopExecution {
   void Reset();
   bool RequiresReset() const { return requires_reset_; }
   const KVCacheManager* Cache() const { return cache_.get(); }
+  const TokenGenerationState* Generation() const { return generation_.get(); }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionLoopExecution);
 
  private:
   friend class SessionLoop;
   SessionLoopExecution(std::shared_ptr<const SessionLoop> loop, SessionLoopInputs inputs,
-                       std::shared_ptr<KVCacheManager> cache, bool owns_cache);
+                       std::shared_ptr<KVCacheManager> cache, std::shared_ptr<TokenGenerationState> generation,
+                       bool owns_state);
   void EvaluateExits(const InlinedVector<OrtValue>& values);
 
   const std::shared_ptr<const SessionLoop> loop_;
   const SessionLoopInputs initial_inputs_;
   const std::shared_ptr<KVCacheManager> cache_;
-  const bool owns_cache_;
+  const std::shared_ptr<TokenGenerationState> generation_;
+  const bool owns_state_;
   InlinedVector<OrtValue> feedback_;
   SessionLoopStepResult progress_;
   std::atomic<bool> cancelled_{false};
