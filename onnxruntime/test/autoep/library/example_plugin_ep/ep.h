@@ -41,9 +41,8 @@ struct MulKernel {
 /// <summary>
 /// Kernel for EPContext nodes loaded from compiled models.
 ///
-/// This example EP does not support EPContext inference - Compute() returns NOT_IMPLEMENTED.
-/// A production EP would deserialize the ep_cache_context attribute and restore compiled state.
-/// This kernel exists to clearly separate EPContext handling from MulKernel.
+/// By default Compute() returns NOT_IMPLEMENTED. The test_execute_ep_context option restores
+/// a versioned float32 Mul descriptor for encrypted compiled-model integration tests.
 /// </summary>
 struct EpContextKernel {
   EpContextKernel(const OrtApi& ort_api, const OrtLogger& logger)
@@ -53,6 +52,8 @@ struct EpContextKernel {
 
   const OrtApi& ort_api;
   const OrtLogger& logger;
+  std::unordered_map<std::string, FloatInitializer> restored_initializers;
+  std::unique_ptr<MulKernel> restored_mul;
 };
 
 /// <summary>
@@ -67,6 +68,7 @@ class ExampleEp : public OrtEp, public ApiPtrs {
     bool advertise_ep_context_data_support = true;
     bool use_default_cpu_allocator = false;
     bool test_read_ep_context_during_compile = false;
+    bool test_execute_ep_context = false;
     std::string ep_context_output_model_path;
     // Other EP configs (typically extracted from OrtSessionOptions or OrtHardwareDevice(s))
   };
