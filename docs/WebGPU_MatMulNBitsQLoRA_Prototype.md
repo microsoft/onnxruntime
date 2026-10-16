@@ -11,8 +11,7 @@ the model's existing `model.decoder.session_options` object:
 
 ```json
 {
-  "session.enable_matmul_nbits_lora_fusion": "1",
-  "session.webgpu.lora_fusion_mode": "auto"
+  "session.enable_matmul_nbits_lora_fusion": "1"
 }
 ```
 
@@ -74,8 +73,8 @@ insert a transpose or materialize a complete dequantized adapter.
 
 ## Dispatch
 
-`session.webgpu.lora_fusion_mode=auto` is the default. M is the second-to-last
-dimension of X; a one-token prompt follows the decode selection.
+Selection is automatic. M is the second-to-last dimension of X; a one-token
+prompt follows the decode selection.
 
 | Phase | Selected mode | Implementation for eligible inputs |
 |---|---|---|
@@ -84,15 +83,14 @@ dimension of X; a one-token prompt follows the decode selection.
 
 The joint decode kernel supports one total input row and K from 2048 through
 8192, when the base projection does not select DP4A. FP32 base projections
-can select DP4A even at M=1. Eligible FP32 inputs with K from 2048
+can select DP4A even at M=1. Eligible FP32 decode inputs with K from 2048
 through 8192 use three dispatches: quantize X once, jointly compute the INT4
 base and INT8 down projections, then perform the INT8 up projection and addition.
 The joint DP4A shader retains the base's 128-thread workgroups and adds eight
 workgroups per input row for rank 32, with four ranks per workgroup. Both
 projections read the same quantized activation buffer and scales; each writes
 its own output. The next dispatch provides synchronization. The existing DP4A
-eligibility checks, including `accuracy_level=4`, still apply. Adapter-off,
-FP16 decode, and prefill selection are unchanged.
+eligibility checks, including `accuracy_level=4`, still apply.
 
 The joint decode paths use shape, type, and capability checks without a vendor
 restriction. The subgroup reduction accepts a fixed width of 32, or explicitly
@@ -108,6 +106,10 @@ partials with FP32 subgroup sums. The previous workgroup-memory reduction
 remains the fallback. `QLoRAOutputVec4` uses 64 threads and one output per
 thread, loading packed weights as `vec4<u32>` and T as `vec4<F>` along rank.
 
+FP32 short prefill (1 < M < 4) also uses standalone DP4A for the down
+projection when the base selects DP4A. This preserves the base/up fusion and
+reuses its activation quantization. FP16 short prefill and inputs that do not
+meet the base DP4A requirements retain the floating-input down projection.
 DP4A prefill quantizes X once and shares the quantized tensor and scales
 between the down projection and base projection, making three dispatches per
 adapted projection. Within the shared DP4A implementation,
@@ -125,9 +127,8 @@ projections use the general tiled kernel, with 32-column tiles when N < 64
 and 64-column tiles otherwise. Narrow tiles use 32 rows when the device's
 maximum subgroup size is below 64; otherwise they keep 64 rows to accommodate
 the existing 64-lane subgroup variant.
-Explicit `fuse_down` and `fuse_up` remain available. Shapes outside the joint
-decode specialization calculate T
-separately. Devices that select subgroup matrix arithmetic for the original
+Shapes outside the joint decode specialization calculate T separately.
+Devices that select subgroup matrix arithmetic for the original
 INT8 up projection retain that kernel and a separate Add to preserve arithmetic.
 
 ## Adapter off and graph matching

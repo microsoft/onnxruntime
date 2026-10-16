@@ -20,30 +20,25 @@ namespace onnxruntime::test {
 
 template <typename T>
 void RunEmptyAndActiveAdapters() {
-  for (const char* mode : {"auto", "fuse_down", "fuse_up"}) {
-    for (int64_t m : {1, 37}) {
-      for (auto ranks : {std::pair{0, 0}, {0, 1}, {32, 0}, {32, 1}}) {
-        auto ep = DefaultWebGpuExecutionProvider();
-        ASSERT_NE(ep, nullptr);
-        OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
-        test.AddAttribute<int64_t>("K", 64);
-        test.AddAttribute<int64_t>("N", 128);
-        test.AddInput<T>("X", {1, m, 64}, std::vector<T>(m * 64, T(0.5f)));
-        test.AddInput<uint8_t>("W", {128, 2, 16}, std::vector<uint8_t>(4096, 0x99), true);
-        test.AddInput<T>("S", {128, 2}, std::vector<T>(256, T(0.03125f)), true);
-        test.AddInput<uint8_t>("AQ", {ranks.first, 2, 32}, std::vector<uint8_t>(ranks.first * 64, 129));
-        test.AddInput<T>("AS", {32, 2}, std::vector<T>(64, T(0.03125f)));
-        test.AddInput<uint8_t>("BQ", {128, ranks.second, 32}, std::vector<uint8_t>(128 * ranks.second * 32, 129));
-        test.AddInput<T>("BS", {128, 1}, std::vector<T>(128, T(0.0625f)));
-        const float expected = ranks.first && ranks.second ? 3.0f : 1.0f;
-        test.AddOutput<T>("Y", {1, m, 128}, std::vector<T>(m * 128, T(expected)));
-        SessionOptions options;
-        ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.webgpu.lora_fusion_mode", mode));
-        test.Config(options);
-        std::vector<std::unique_ptr<IExecutionProvider>> eps;
-        eps.push_back(std::move(ep));
-        test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
-      }
+  for (int64_t m : {1, 37}) {
+    for (auto ranks : {std::pair{0, 0}, {0, 1}, {32, 0}, {32, 1}}) {
+      auto ep = DefaultWebGpuExecutionProvider();
+      ASSERT_NE(ep, nullptr);
+      OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
+      test.AddAttribute<int64_t>("K", 64);
+      test.AddAttribute<int64_t>("N", 128);
+      test.AddInput<T>("X", {1, m, 64}, std::vector<T>(m * 64, T(0.5f)));
+      test.AddInput<uint8_t>("W", {128, 2, 16}, std::vector<uint8_t>(4096, 0x99), true);
+      test.AddInput<T>("S", {128, 2}, std::vector<T>(256, T(0.03125f)), true);
+      test.AddInput<uint8_t>("AQ", {ranks.first, 2, 32}, std::vector<uint8_t>(ranks.first * 64, 129));
+      test.AddInput<T>("AS", {32, 2}, std::vector<T>(64, T(0.03125f)));
+      test.AddInput<uint8_t>("BQ", {128, ranks.second, 32}, std::vector<uint8_t>(128 * ranks.second * 32, 129));
+      test.AddInput<T>("BS", {128, 1}, std::vector<T>(128, T(0.0625f)));
+      const float expected = ranks.first && ranks.second ? 3.0f : 1.0f;
+      test.AddOutput<T>("Y", {1, m, 128}, std::vector<T>(m * 128, T(expected)));
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(std::move(ep));
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
     }
   }
 }
@@ -78,7 +73,7 @@ TEST(MatMulNBitsQLoRA, RejectsUnsupportedAdapterShapeAndBits) {
 
 template <typename T>
 void RunQuantizedPrefillAndReusedInput() {
-  for (int64_t m : {1, 3, 4, 65}) {
+  for (int64_t m : {1, 2, 3, 4, 65}) {
     for (int64_t accuracy : {0, 4}) {
       OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
       constexpr int64_t k = 256;
@@ -118,7 +113,8 @@ void RunFp32Numerics(const ConfigOptions& provider_options = {}) {
   };
   for (const auto shape : {Shape{1, 64, 128, 1}, Shape{1, 2048, 36, 1}, Shape{1, 2048, 64, 1}, Shape{1, 8192, 132, 1},
                            Shape{1, 2176, 64, 7}, Shape{1, 8192, 64, 1},
-                           Shape{2, 2048, 36, 2}, Shape{37, 2048, 132, 2}, Shape{128, 3072, 64, 1}}) {
+                           Shape{2, 2048, 36, 2}, Shape{2, 8192, 64, 1}, Shape{3, 3072, 64, 3},
+                           Shape{37, 2048, 132, 2}, Shape{128, 3072, 64, 1}}) {
     const auto [m, k, n, batch] = shape;
     SCOPED_TRACE(MakeString("M=", m, ", K=", k, ", N=", n, ", batch=", batch));
     std::vector<float> x(batch * m * k), as(k), bs(n), expected(batch * m * n);
@@ -164,30 +160,25 @@ void RunFp32Numerics(const ConfigOptions& provider_options = {}) {
         expected[row * n + col] = static_cast<float>(base) + static_cast<float>(delta);
       }
     }
-    for (const char* mode : {"auto", "fuse_down", "fuse_up"}) {
-      for (int64_t accuracy : {0, 4}) {
-        SCOPED_TRACE(MakeString(mode, ", accuracy=", accuracy));
-        OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
-        test.AddAttribute<int64_t>("K", k);
-        test.AddAttribute<int64_t>("N", n);
-        test.AddAttribute<int64_t>("accuracy_level", accuracy);
-        test.AddInput<float>("X", {batch, m, k}, x);
-        test.AddInput<uint8_t>("W", {n, k / 32, 16}, std::vector<uint8_t>(n * k / 2, 0x99), true);
-        test.AddInput<float>("S", {n, k / 32}, std::vector<float>(n * k / 32, 0.03125f), true);
-        test.AddInput<uint8_t>("AQ", {32, k / 32, 32}, aq);
-        test.AddInput<float>("AS", {32, k / 32}, as);
-        test.AddInput<uint8_t>("BQ", {n, 1, 32}, bq);
-        test.AddInput<float>("BS", {n, 1}, bs);
-        test.AddOutput<float>("Y", {batch, m, n}, expected);
-        test.SetOutputAbsErr("Y", 0.00001f);
-        test.SetOutputRelErr("Y", 0.00001f);
-        SessionOptions options;
-        ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.webgpu.lora_fusion_mode", mode));
-        test.Config(options);
-        std::vector<std::unique_ptr<IExecutionProvider>> eps;
-        eps.push_back(WebGpuExecutionProviderWithOptions(provider_options));
-        test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
-      }
+    for (int64_t accuracy : {0, 4}) {
+      SCOPED_TRACE(accuracy);
+      OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
+      test.AddAttribute<int64_t>("K", k);
+      test.AddAttribute<int64_t>("N", n);
+      test.AddAttribute<int64_t>("accuracy_level", accuracy);
+      test.AddInput<float>("X", {batch, m, k}, x);
+      test.AddInput<uint8_t>("W", {n, k / 32, 16}, std::vector<uint8_t>(n * k / 2, 0x99), true);
+      test.AddInput<float>("S", {n, k / 32}, std::vector<float>(n * k / 32, 0.03125f), true);
+      test.AddInput<uint8_t>("AQ", {32, k / 32, 32}, aq);
+      test.AddInput<float>("AS", {32, k / 32}, as);
+      test.AddInput<uint8_t>("BQ", {n, 1, 32}, bq);
+      test.AddInput<float>("BS", {n, 1}, bs);
+      test.AddOutput<float>("Y", {batch, m, n}, expected);
+      test.SetOutputAbsErr("Y", 0.00001f);
+      test.SetOutputRelErr("Y", 0.00001f);
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(WebGpuExecutionProviderWithOptions(provider_options));
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
     }
   }
 }
@@ -234,20 +225,22 @@ TEST(MatMulNBitsQLoRA, Fp32NumericsWithoutSubgroups) {
 #endif
 }
 
-TEST(MatMulNBitsQLoRA, DecodeJointDP4AQuantization) {
+void RunFp32DP4AQuantization(int64_t m) {
+  SCOPED_TRACE(m);
 #if defined(ORT_USE_EP_API_ADAPTERS)
   GTEST_SKIP() << "Hardware-specific specialization checks require direct adapter capability inspection.";
 #else
   auto initial_ep = DefaultWebGpuExecutionProvider();
   ASSERT_NE(initial_ep, nullptr);
   if (!contrib::webgpu::HasDP4ADeviceSupport(initial_ep->GetDeviceId())) {
-    GTEST_SKIP() << "The joint decode projection requires DP4A device support.";
+    GTEST_SKIP() << "Requires DP4A device support.";
   }
 #endif
   constexpr int64_t k = 2176, n = 64, batch = 3;
-  std::vector<float> x(batch * k), quantized_x(batch * k), as(k), expected(batch * n);
+  const int64_t rows = batch * m;
+  std::vector<float> x(rows * k), quantized_x(rows * k), as(k), expected(rows * n);
   std::vector<uint8_t> aq(32 * k), bq(n * 32, 128);
-  for (int64_t row = 0; row < batch; ++row) {
+  for (int64_t row = 0; row < rows; ++row) {
     for (int64_t col = 0; col < k; ++col) {
       const float scale = 1.0f / static_cast<float>(1 << (8 + (row + col / 128) % 3));
       const int value = col % 128 == 0 ? 127 : static_cast<int>((row * 19 + col * 11) % 255) - 127;
@@ -266,7 +259,7 @@ TEST(MatMulNBitsQLoRA, DecodeJointDP4AQuantization) {
   for (int64_t col = 0; col < n; ++col) bq[col * 32 + col % 32] = 129;
   // An identity up projection exposes every T value. The reference uses
   // dense FP64 products on the known grid, including a zero row and a K tail.
-  for (int64_t row = 0; row < batch; ++row) {
+  for (int64_t row = 0; row < rows; ++row) {
     double base = 0;
     for (int64_t col = 0; col < k; ++col) base += quantized_x[row * k + col] * 0.03125;
     for (int64_t r = 0; r < 32; ++r) {
@@ -277,29 +270,29 @@ TEST(MatMulNBitsQLoRA, DecodeJointDP4AQuantization) {
       expected[row * n + r] = expected[row * n + r + 32] = static_cast<float>(base) + static_cast<float>(sum);
     }
   }
-  for (const char* mode : {"auto", "fuse_down"}) {
-    SCOPED_TRACE(mode);
-    OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
-    test.AddAttribute<int64_t>("K", k);
-    test.AddAttribute<int64_t>("N", n);
-    test.AddAttribute<int64_t>("accuracy_level", 4);
-    test.AddInput<float>("X", {batch, 1, k}, x);
-    test.AddInput<uint8_t>("W", {n, k / 32, 16}, std::vector<uint8_t>(n * k / 2, 0x99), true);
-    test.AddInput<float>("S", {n, k / 32}, std::vector<float>(n * k / 32, 0.03125f), true);
-    test.AddInput<uint8_t>("AQ", {32, k / 32, 32}, aq);
-    test.AddInput<float>("AS", {32, k / 32}, as);
-    test.AddInput<uint8_t>("BQ", {n, 1, 32}, bq);
-    test.AddInput<float>("BS", {n, 1}, std::vector<float>(n, 1.0f));
-    test.AddOutput<float>("Y", {batch, 1, n}, expected);
-    test.SetOutputAbsErr("Y", 0.00001f);
-    test.SetOutputRelErr("Y", 0.00001f);
-    SessionOptions options;
-    ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.webgpu.lora_fusion_mode", mode));
-    test.Config(options);
-    std::vector<std::unique_ptr<IExecutionProvider>> eps;
-    eps.push_back(DefaultWebGpuExecutionProvider());
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
-  }
+  OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", k);
+  test.AddAttribute<int64_t>("N", n);
+  test.AddAttribute<int64_t>("accuracy_level", 4);
+  test.AddInput<float>("X", {batch, m, k}, x);
+  test.AddInput<uint8_t>("W", {n, k / 32, 16}, std::vector<uint8_t>(n * k / 2, 0x99), true);
+  test.AddInput<float>("S", {n, k / 32}, std::vector<float>(n * k / 32, 0.03125f), true);
+  test.AddInput<uint8_t>("AQ", {32, k / 32, 32}, aq);
+  test.AddInput<float>("AS", {32, k / 32}, as);
+  test.AddInput<uint8_t>("BQ", {n, 1, 32}, bq);
+  test.AddInput<float>("BS", {n, 1}, std::vector<float>(n, 1.0f));
+  test.AddOutput<float>("Y", {batch, m, n}, expected);
+  test.SetOutputAbsErr("Y", 0.00001f);
+  test.SetOutputRelErr("Y", 0.00001f);
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+TEST(MatMulNBitsQLoRA, DecodeJointDP4AQuantization) { RunFp32DP4AQuantization(1); }
+
+TEST(MatMulNBitsQLoRA, SmallMPrefillDP4AQuantization) {
+  for (int64_t m : {2, 3}) RunFp32DP4AQuantization(m);
 }
 
 TEST(MatMulNBitsQLoRA, NarrowKParallelReduction) {

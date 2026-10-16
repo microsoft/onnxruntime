@@ -104,53 +104,39 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionNumerics) {
     bool zero_base;
   };
   const ShapeCase shapes[] = {{1, 64, 128, 1, false}, {1, 2048, 128, 1, false}, {1, 3072, 132, 1, true}, {1, 8192, 128, 1, true}, {2, 2048, 132, 1, true}, {37, 2048, 128, 1, false}, {37, 3072, 132, 1, true}, {1, 2048, 128, 2, true}, {37, 2048, 132, 2, true}};
-  for (const char* mode : {"", "auto", "fuse_down", "fuse_up"}) {
-    for (const auto& shape : shapes) {
-      SCOPED_TRACE(mode[0] ? mode : "default");
-      SCOPED_TRACE(shape.m);
-      SCOPED_TRACE(shape.k);
-      SCOPED_TRACE(shape.n);
-      SCOPED_TRACE(shape.batch);
-      // DP4A prefill quantizes X; subgroup decode changes the K reduction
-      // order. Keep exact comparisons for the other dispatch paths.
-      const bool approximate =
-          (shape.m >= 4 && std::string_view{mode} != "fuse_down") ||
-          (shape.m == 1 && shape.batch == 1 && shape.k >= 2048 && shape.k <= 8192 &&
-           std::string_view{mode} != "fuse_up");
-      RunWebGpuFusionTransformerTest(
-          [shape](ModelTestBuilder& b) {
-            BuildQLoRA(b, shape.m, shape.k, shape.n, shape.batch, false, false, shape.zero_base);
-          },
-          [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckQLoRACount(s.GetGraph(), 1)); },
-          TransformerLevel::Level1, TransformerLevel::Level2, 21,
-          approximate ? 0.002 : 0.0, approximate ? 0.001 : 0.0, std::make_unique<MatMulNBitsQLoRAFusion>(),
-          [] { return DefaultWebGpuExecutionProvider(); },
-          [mode](SessionOptions& options) {
-            if (mode[0])
-              ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.webgpu.lora_fusion_mode", mode));
-          });
-    }
+  for (const auto& shape : shapes) {
+    SCOPED_TRACE(shape.m);
+    SCOPED_TRACE(shape.k);
+    SCOPED_TRACE(shape.n);
+    SCOPED_TRACE(shape.batch);
+    // DP4A prefill quantizes X; subgroup decode changes the K reduction
+    // order. Keep exact comparisons for the other dispatch paths.
+    const bool approximate =
+        shape.m >= 4 ||
+        (shape.m == 1 && shape.batch == 1 && shape.k >= 2048 && shape.k <= 8192);
+    RunWebGpuFusionTransformerTest(
+        [shape](ModelTestBuilder& b) {
+          BuildQLoRA(b, shape.m, shape.k, shape.n, shape.batch, false, false, shape.zero_base);
+        },
+        [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckQLoRACount(s.GetGraph(), 1)); },
+        TransformerLevel::Level1, TransformerLevel::Level2, 21,
+        approximate ? 0.002 : 0.0, approximate ? 0.001 : 0.0, std::make_unique<MatMulNBitsQLoRAFusion>(),
+        [] { return DefaultWebGpuExecutionProvider(); });
   }
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionFp32Numerics) {
   if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU unavailable.";
-  for (const char* mode : {"auto", "fuse_down", "fuse_up"}) {
-    for (const auto& [m, n] : {std::pair<int64_t, int64_t>{1, 128}, {1, 132}, {2, 128}, {37, 132}}) {
-      SCOPED_TRACE(MakeString(mode, ", M=", m, ", N=", n));
-      // Eligible FP32 decode shares the base projection's quantized X.
-      const bool quantized_down = (m >= 4 && std::string_view{mode} != "fuse_down") ||
-                                  (m == 1 && n % 16 == 0 && std::string_view{mode} != "fuse_up");
-      RunWebGpuFusionTransformerTest(
-          [m, n](ModelTestBuilder& b) { BuildQLoRA<float>(b, m, 2048, n); },
-          [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckQLoRACount(s.GetGraph(), 1)); },
-          TransformerLevel::Level1, TransformerLevel::Level2, 21,
-          quantized_down ? 0.002 : 0.00001, quantized_down ? 0.001 : 0.00001,
-          std::make_unique<MatMulNBitsQLoRAFusion>(), [] { return DefaultWebGpuExecutionProvider(); },
-          [mode](SessionOptions& options) {
-            ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.webgpu.lora_fusion_mode", mode));
-          });
-    }
+  for (const auto& [m, n] : {std::pair<int64_t, int64_t>{1, 128}, {1, 132}, {2, 128}, {2, 132}, {3, 128}, {37, 132}}) {
+    SCOPED_TRACE(MakeString("M=", m, ", N=", n));
+    // Eligible FP32 decode and short prefill share quantized X with the base.
+    const bool quantized_down = m >= 4 || n % 16 == 0;
+    RunWebGpuFusionTransformerTest(
+        [m, n](ModelTestBuilder& b) { BuildQLoRA<float>(b, m, 2048, n); },
+        [](InferenceSessionWrapper& s) { ASSERT_STATUS_OK(CheckQLoRACount(s.GetGraph(), 1)); },
+        TransformerLevel::Level1, TransformerLevel::Level2, 21,
+        quantized_down ? 0.002 : 0.00001, quantized_down ? 0.001 : 0.00001,
+        std::make_unique<MatMulNBitsQLoRAFusion>(), [] { return DefaultWebGpuExecutionProvider(); });
   }
 }
 
@@ -278,7 +264,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionPartialOverrides) {
 template <typename T>
 void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 64) {
   if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU unavailable.";
-  for (int64_t m : {1, 37}) {
+  for (int64_t m : {1, 2, 3, 37}) {
     SCOPED_TRACE(m);
     Model model("quantized LoRA empty defaults", false, ModelMetaData(), PathString(),
                 IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, logger);

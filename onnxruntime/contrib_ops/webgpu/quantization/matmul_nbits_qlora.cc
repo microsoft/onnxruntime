@@ -231,11 +231,6 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
         k_(info.GetAttr<int64_t>("K")),
         n_(info.GetAttr<int64_t>("N")),
         accuracy_level_(info.GetAttrOrDefault<int64_t>("accuracy_level", 0)) {
-    const auto mode = info.GetConfigOptions().GetConfigOrDefault("session.webgpu.lora_fusion_mode", "auto");
-    ORT_ENFORCE(mode == "auto" || mode == "fuse_up" || mode == "fuse_down",
-                "session.webgpu.lora_fusion_mode must be auto, fuse_down or fuse_up.");
-    automatic_ = mode == "auto";
-    fuse_up_ = mode == "fuse_up";
     ORT_ENFORCE(k_ > 0 && k_ % 32 == 0 && n_ > 0 && n_ % 4 == 0 && info.GetAttr<int64_t>("bits") == 4 &&
                     info.GetAttr<int64_t>("block_size") == 32 && info.GetAttr<int64_t>("lora_bits") == 8 &&
                     info.GetAttr<int64_t>("lora_block_size") == 32,
@@ -274,7 +269,7 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     t_shape.back() = 32;
     auto t = context.CreateGPUTensor(x->DataType(), TensorShape(t_shape));
     const auto m = narrow<uint32_t>(x->Shape()[x->Shape().NumDimensions() - 2]);
-    const bool fuse_up = fuse_up_ || (automatic_ && m > 1);
+    const bool fuse_up = m > 1;
     // FP32 may select DP4A even for M=1. The joint floating-point down
     // shader must not replace that base projection's activation quantization.
     const bool base_dp4a = CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, 32, narrow<uint32_t>(n_),
@@ -294,8 +289,10 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
                                            nullptr, 0, nullptr, nullptr, aq, &t, nullptr, as));
       return ApplyQLoRAOutput(context, &base, &t, bq, bs, y);
     }
-    // Allow activation quantization for prefill only when the model opts into it.
-    const auto down_accuracy = fuse_up && m >= kMinMForTileOptimization ? accuracy_level_ : 0;
+    // FP32 small-M prefill can use the existing DP4A down kernel and share
+    // quantized X with the base projection when accuracy_level permits it.
+    const auto down_accuracy =
+        fuse_up && (m >= kMinMForTileOptimization || (x->IsDataType<float>() && base_dp4a)) ? accuracy_level_ : 0;
     DP4AQuantizedInput quantized_x;
     ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, aq, as, nullptr, nullptr, k_, 32, 32, down_accuracy, 8, context, &t, 0,
                                          nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
@@ -331,8 +328,6 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
   int64_t k_;
   int64_t n_;
   int64_t accuracy_level_;
-  bool automatic_;
-  bool fuse_up_;
 };
 
 ONNX_OPERATOR_KERNEL_EX(MatMulNBitsQLoRA, kMSDomain, 1, kWebGpuExecutionProvider,
