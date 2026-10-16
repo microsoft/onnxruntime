@@ -136,10 +136,12 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
   kv_cache_bit_width_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_cache_bit_width", 0));
-  dispatch_policy_ = ParseKernelDispatchPolicy(
-      info.GetConfigOptions()
-          .GetConfigEntry(kOrtSessionOptionsKernelDispatchPolicy)
-          .value_or(""));
+  const auto policy = info.GetConfigOptions()
+                          .GetConfigEntry(kOrtSessionOptionsKernelDispatchPolicy)
+                          .value_or("");
+  ORT_ENFORCE(TryParseKernelDispatchPolicy(policy, dispatch_policy_),
+              "GroupQueryAttention (CUDA): invalid ", kOrtSessionOptionsKernelDispatchPolicy,
+              " value: '", policy, "'. Expected auto, latency, memory, safe, or empty.");
 #if defined(ORT_MINIMAL_BUILD) || defined(USE_CUDA_MINIMAL) || defined(DISABLE_CONTRIB_OPS) || \
     defined(BUILD_CUDA_EP_AS_PLUGIN)
   ORT_ENFORCE(dispatch_policy_ != KernelDispatchPolicy::Memory,

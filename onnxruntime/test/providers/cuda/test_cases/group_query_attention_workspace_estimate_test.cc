@@ -343,7 +343,7 @@ class GroupQueryAttentionDispatchPolicyTest : public testing::Test {
     config.sliding_window_cache = false;
     config.local_window_size = -1;
     config.max_total_sequence_length = test_case.declare_envelope ? test_case.capacity : 0;
-    config.dispatch_policy = ParseKernelDispatchPolicy(test_case.policy);
+    ASSERT_TRUE(TryParseKernelDispatchPolicy(test_case.policy, config.dispatch_policy));
     const auto& options = *cuda_ep->GetAttentionKernelOptions();
     const auto estimate = EstimateGroupQueryAttentionWorkspace(
         config, gsl::make_span(shapes), cuda_ep->GetDeviceProp(), options);
@@ -558,6 +558,35 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, NodeAdapterParsesAttributesAndTyp
   const auto estimate = EstimateFromNode(SeparateShapes(), options);
   ASSERT_TRUE(estimate.has_value());
   EXPECT_GT(estimate->total_workspace_bytes, 0u);
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, NodeAdapterForwardsDispatchPolicy) {
+  WithGroupQueryAttentionNode([](const Node& node) {
+    const auto default_config = GetGroupQueryAttentionWorkspaceEstimateConfigForTest(&node);
+    ASSERT_TRUE(default_config.has_value());
+    EXPECT_EQ(default_config->dispatch_policy, KernelDispatchPolicy::Auto);
+
+    AttentionKernelOptions options;
+    options.InitializeOnce(kMath, true);
+    for (const auto policy : {KernelDispatchPolicy::Auto, KernelDispatchPolicy::Latency,
+                              KernelDispatchPolicy::Memory, KernelDispatchPolicy::Safe}) {
+      SCOPED_TRACE(static_cast<int>(policy));
+      const auto config = GetGroupQueryAttentionWorkspaceEstimateConfigForTest(
+          &node, false, 4096, policy);
+      ASSERT_TRUE(config.has_value());
+      EXPECT_EQ(config->max_total_sequence_length, int64_t{4096});
+      EXPECT_EQ(config->dispatch_policy, policy);
+      const auto expected = EstimateGroupQueryAttentionWorkspace(
+          *config, SeparateShapes(), Device(), options);
+      ASSERT_TRUE(expected.has_value());
+      const auto estimate = EstimateGroupQueryAttentionWorkspaceForTest(
+          &node, SeparateShapes(), Device(), options, false, 4096, policy);
+      ASSERT_TRUE(estimate.has_value());
+      EXPECT_EQ(estimate->total_workspace_bytes, expected->total_workspace_bytes);
+      EXPECT_EQ(estimate->sized_backends, expected->sized_backends);
+      EXPECT_EQ(estimate->committed_backends, expected->committed_backends);
+    }
+  });
 }
 
 TEST(GroupQueryAttentionWorkspaceEstimateTest, ParsedEnvelopePreservesWindowedEstimateAndEnablesNonWindowed) {

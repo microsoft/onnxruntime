@@ -504,7 +504,9 @@ static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLengt
     "ep.cuda.gqa_workspace_max_total_sequence_length";
 
 /// Hardware-neutral kernel dispatch intent shared across operators and EPs.
-/// Unset, empty, or unrecognized values map to "auto"; matching is case-sensitive.
+/// Valid values are "auto", "latency", "memory", and "safe"; matching is case-sensitive.
+/// Unset or empty values map to "auto". Other values cause INVALID_ARGUMENT during
+/// session initialization.
 /// CUDA GroupQueryAttention is the first enforcing consumer: "latency" preserves its current
 /// route priority per phase, "memory" commits the smallest analytically bounded prefill,
 /// decode, and chunked-prefill route sets with a fallback proven to cover the admitted

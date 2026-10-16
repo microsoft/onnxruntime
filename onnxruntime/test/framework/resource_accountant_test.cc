@@ -829,7 +829,7 @@ TEST(KernelDispatchPolicyTest, PartialEstimatorConfigDefaultsPolicyToUnset) {
   EXPECT_EQ(config.cuda_gqa_workspace_max_total_sequence_length, int64_t{0});
 }
 
-TEST(KernelDispatchPolicyTest, ParsesTokens) {
+TEST(KernelDispatchPolicyTest, ParsesValidTokens) {
   struct Case {
     const char* value;
     KernelDispatchPolicy expected;
@@ -839,13 +839,20 @@ TEST(KernelDispatchPolicyTest, ParsesTokens) {
            Case{"auto", KernelDispatchPolicy::Auto},
            Case{"latency", KernelDispatchPolicy::Latency},
            Case{"memory", KernelDispatchPolicy::Memory},
-           Case{"safe", KernelDispatchPolicy::Safe},
-           Case{"Latency", KernelDispatchPolicy::Auto},
-           Case{" memory", KernelDispatchPolicy::Auto},
-           Case{"memory ", KernelDispatchPolicy::Auto},
-           Case{"unknown", KernelDispatchPolicy::Auto}}) {
+           Case{"safe", KernelDispatchPolicy::Safe}}) {
     SCOPED_TRACE(test_case.value);
-    EXPECT_EQ(ParseKernelDispatchPolicy(test_case.value), test_case.expected);
+    KernelDispatchPolicy parsed = KernelDispatchPolicy::Safe;
+    EXPECT_TRUE(TryParseKernelDispatchPolicy(test_case.value, parsed));
+    EXPECT_EQ(parsed, test_case.expected);
+  }
+}
+
+TEST(KernelDispatchPolicyTest, RejectsInvalidTokens) {
+  for (const char* value : {"Latency", "Memory", "SAFE", "memroy", " memory", "memory ", " memory ", " ", "unknown"}) {
+    SCOPED_TRACE(value);
+    KernelDispatchPolicy parsed = KernelDispatchPolicy::Memory;
+    EXPECT_FALSE(TryParseKernelDispatchPolicy(value, parsed));
+    EXPECT_EQ(parsed, KernelDispatchPolicy::Memory);
   }
 }
 
@@ -883,7 +890,7 @@ TEST(RealAccountantTest, FactoryRetainsKernelDispatchPolicyValue) {
   };
   for (const auto& test_case : {
            Case{nullptr}, Case{""}, Case{"auto"}, Case{"latency"}, Case{"memory"},
-           Case{"safe"}, Case{"Latency"}, Case{"unknown"}, Case{" memory "}}) {
+           Case{"safe"}}) {
     SCOPED_TRACE(test_case.value != nullptr ? test_case.value : "<unset>");
     ConfigOptions config;
     ASSERT_STATUS_OK(config.AddConfigEntry(
@@ -908,13 +915,36 @@ TEST(RealAccountantTest, FactoryRetainsKernelDispatchPolicyValue) {
 }
 
 TEST(RealAccountantTest, KernelDispatchPolicyDoesNotEnablePartitioning) {
-  for (const char* value : {"auto", "latency", "memory", "safe", "unknown"}) {
+  for (const char* value : {"", "auto", "latency", "memory", "safe"}) {
     SCOPED_TRACE(value);
     ConfigOptions config;
     ASSERT_STATUS_OK(config.AddConfigEntry(kOrtSessionOptionsKernelDispatchPolicy, value));
     std::optional<ResourceAccountantMap> acc_map;
     ASSERT_STATUS_OK(CreateAccountants(config, PathString(), acc_map));
     EXPECT_FALSE(acc_map.has_value());
+  }
+}
+
+TEST(RealAccountantTest, FactoryRejectsInvalidKernelDispatchPolicy) {
+  for (bool enable_partitioning : {false, true}) {
+    SCOPED_TRACE(enable_partitioning);
+    for (const char* value : {"Latency", "Memory", "SAFE", "memroy", " memory", "memory ", " memory ", " ", "unknown"}) {
+      SCOPED_TRACE(value);
+      ConfigOptions config;
+      if (enable_partitioning) {
+        ASSERT_STATUS_OK(config.AddConfigEntry(
+            kOrtSessionOptionsResourceCudaPartitioningSettings, "1000,"));
+      }
+      ASSERT_STATUS_OK(config.AddConfigEntry(
+          kOrtSessionOptionsKernelDispatchPolicy, value));
+      std::optional<ResourceAccountantMap> acc_map;
+      const auto status = CreateAccountants(config, PathString(), acc_map);
+      ASSERT_FALSE(status.IsOK());
+      EXPECT_EQ(status.Code(), common::StatusCode::INVALID_ARGUMENT);
+      EXPECT_NE(status.ErrorMessage().find(kOrtSessionOptionsKernelDispatchPolicy),
+                std::string::npos);
+      EXPECT_FALSE(acc_map.has_value());
+    }
   }
 }
 
