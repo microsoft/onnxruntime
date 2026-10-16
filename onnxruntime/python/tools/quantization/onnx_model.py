@@ -337,7 +337,7 @@ class ONNXModel:
         return None, None
 
     @staticmethod
-    def __replace_gemm_with_matmul(graph_path, tensor_names):
+    def __replace_gemm_with_matmul(graph_path, tensor_names, transposed_sources):
         new_nodes = []
         graph = graph_path[-1]
         transposed_weights = {}
@@ -348,12 +348,18 @@ class ONNXModel:
                 for attr in node.attribute:
                     if attr.type == 5:
                         graph_path.append(attr.g)
-                        kv = {attr.name: ONNXModel.__replace_gemm_with_matmul(graph_path, tensor_names)}
+                        kv = {
+                            attr.name: ONNXModel.__replace_gemm_with_matmul(
+                                graph_path, tensor_names, transposed_sources
+                            )
+                        }
                     elif attr.type == 10:
                         value = []
                         for subgraph in attr.graphs:
                             graph_path.append(subgraph)
-                            value.extend([ONNXModel.__replace_gemm_with_matmul(graph_path, tensor_names)])
+                            value.extend(
+                                [ONNXModel.__replace_gemm_with_matmul(graph_path, tensor_names, transposed_sources)]
+                            )
                         kv = {attr.name: value}
                     else:
                         kv = attribute_to_kwarg(attr)
@@ -393,6 +399,7 @@ class ONNXModel:
                                     onnx_numpy_helper.from_array(onnx_numpy_helper.to_array(B).T, transposed_name)
                                 )
                                 transposed_weights[inputB] = transposed_name
+                                transposed_sources[transposed_name] = inputB
                             inputB = transposed_weights[inputB]  # noqa: N806
                         else:
                             inputB += "_Transposed"  # noqa: N806
@@ -450,7 +457,9 @@ class ONNXModel:
                     elif attr.type == onnx.AttributeProto.GRAPHS:
                         graphs.extend(attr.graphs)
         graph_path = [self.graph()]
-        ONNXModel.__replace_gemm_with_matmul(graph_path, tensor_names)
+        transposed_sources = {}
+        ONNXModel.__replace_gemm_with_matmul(graph_path, tensor_names, transposed_sources)
+        return transposed_sources
 
     def save_model_to_file(self, output_path, use_external_data_format=False):
         """
