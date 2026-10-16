@@ -576,6 +576,19 @@ the result. Gate unplanned placement-sensitive transformations, rather than bann
 their implementation lives in the framework. EPs can reuse shared implementations through
 `GraphOptimizerRegistry`; they do not need to duplicate those optimizers.
 
+Separate **describing/selecting L2+ effects** from **applying graph rewrites**. A complete recipe
+provides implementation requirements and enough logical graph effects for ORT to evaluate the result
+without executing the transformation. Query kernel-private bounds from the workload, configuration,
+and selected implementation/contract; build the provisional execution/backing plan from the described
+tensors, aliases, and boundaries. Do not use graph mutation as the normal way to discover each
+candidate's requirements.
+
+Assignment-dependent selectors can use a tentative EP-ownership view or an isolated candidate graph.
+This supplies same-EP eligibility context without finalizing assignments. Evaluate placement, L2+
+recipes, and dispatch contracts jointly: moving a boundary can change which recipes are eligible and
+requires refreshing affected descriptions. L2+ planning therefore precedes final placement, while
+concrete rewriting normally occurs only when finalizing a provisional winner.
+
 Common normalization can run before discovery and establish the planning graph revision. Optional
 post-partition fusion/layout optimizations must participate through selected recipes or be disabled in
 this mode. Required casts, copies, and correctness transformations remain framework responsibilities,
@@ -586,10 +599,16 @@ verification.
 
 The existing `ComputeCapability::nodes_to_optimize` and `optimization_func` are application hooks,
 not pre-assignment requirement descriptions. Extend their planning integration so ORT can evaluate the
-recipe before applying it, then invoke the selected callback with tentative EP ownership established.
-That callback must apply the described recipe and update the capability consistently; it must not
-independently select a different fusion or implementation. Discovery, provisional rewriting, and
-verification must not bulk-materialize device weights or kernels.
+recipe without invoking its mutating callback. After selecting a provisional winner, apply only its
+selected callbacks with tentative EP ownership established, then reconcile and verify before final
+commitment. Each callback must apply the described recipe and update the capability consistently;
+it must not independently select a different fusion or implementation.
+
+If a recipe cannot describe its effects sufficiently, it may use temporary metadata-only lowering or
+an isolated planning-graph transformation to produce that description. This is an implementation
+fallback, not a requirement to run the existing L2+ pipeline for every trial. Unknown requirements
+remain unresolved. Neither this fallback nor ordinary discovery, provisional rewriting, and verification
+may execute inference or bulk-materialize device weights or kernels.
 
 ### Generate a Small Family of Boundaries
 
@@ -625,12 +644,12 @@ cannot by themselves decide which placement has the lowest whole-session backing
 The framework should use this loop:
 
 ```text
-discover support, regions, execution recipes, and small EP-authored contract menus
-    -> evaluate the preferred tentative placement/contracts
+discover support, regions, recipe descriptions, and small EP-authored contract menus
+    -> evaluate the preferred logical plan for tentative placement/recipes/contracts
     -> diagnose the initialization or Run peak and generate targeted alternatives
-    -> cheap-score alternatives; provisionally plan a bounded shortlist
-    -> choose a provisional candidate under the configured objective
-    -> tentatively assign EPs and apply the selected optimization recipes
+    -> cheap-score alternatives; build logical execution/backing plans for a bounded shortlist
+    -> choose a provisional winner under the configured objective
+    -> apply its selected recipes on a candidate graph with tentative EP ownership
     -> reconcile transformations and verify the resulting execution/backing plan
     -> commit the verified final placement/contracts/backing plan
     -> materialize within the accepted initialization plan
@@ -676,8 +695,8 @@ using that shortcut.
 | Stage | Responsibility |
 |:------|:---------------|
 | Discover | EPs expose executable candidates, optimization recipes, candidate contracts, and allocation requirements without committing resource charges or materializing device kernels. Discover alternatives before applying the selected-placement filter. |
-| Plan | The framework builds tentative placement, transfer, execution, and backing plans; evaluates boundaries/contracts; and checks user constraints and both initialization/Run peaks. |
-| Tentatively assign and apply | Establish provisional EP ownership and apply the selected optimization recipes on a candidate graph. This supplies assignment-dependent optimizer context without committing final placement. |
+| Plan | The framework evaluates placement/recipes/contracts jointly using tentative EP-ownership views and recipe-described logical graphs, including transfers and execution/backing plans. Check user constraints and both initialization/Run peaks without normally rewriting each trial graph. |
+| Apply provisional winner | Apply only the provisional winner's selected recipes on a candidate graph with tentative EP ownership. This concretizes an already evaluated description without committing final placement. |
 | Reconcile and verify | Validate the transformed graph against the selected recipes, rediscover affected regions when needed, and rebuild/check transfer, execution, and backing plans, including required copies/casts and both memory peaks. |
 | Commit final placement | Finalize the selected EP eligibility/assignments and freeze graph revision, recipes, contract IDs, transfer boundaries, and backing strategy. Commit resource reservations only for the verified final survivors. |
 | Materialize and verify | Load device initializers, create kernels, and PrePack within the accepted initialization plan. Reconcile exact L2 requirements with the committed contracts and backing plan before their allocations/use. |
@@ -766,6 +785,8 @@ peaks, scratch reuse/tied peaks, transfer-induced non-monotonic memory, transfor
 fusion-only support, optional fusion lost across a cut, stale recipe/graph revisions, mismatched optimizer
 results, rejected-candidate isolation, unexpected EP fallback, and search-limit exhaustion. Plugin
 extensions need coverage for older/missing callbacks, selected-contract propagation, recipe-state cleanup,
-and explicit unsupported-planning diagnostics. Validate modeled physical backing against measured device
-peaks for representative admitted workloads; measurements calibrate/validate the model rather than prove
-coverage of unobserved shapes or routes.
+and explicit unsupported-planning diagnostics. Distinguish recipe-description queries from mutating
+application callbacks, and check agreement between logical candidate plans and concretely transformed
+graphs. Validate modeled physical backing against measured device peaks for representative admitted
+workloads; measurements calibrate/validate the model rather than prove coverage of unobserved shapes
+or routes.
