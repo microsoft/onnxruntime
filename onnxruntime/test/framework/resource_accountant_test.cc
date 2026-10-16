@@ -803,6 +803,12 @@ TEST(RealAccountantTest, Factory_NoLimitNoStats) {
   EXPECT_FALSE(accountant->GetThreshold().has_value());
 }
 
+TEST(KernelDispatchPolicyTest, PartialEstimatorConfigDefaultsPolicyToUnset) {
+  const WorkspaceEstimatorConfig config{std::nullopt, std::nullopt};
+  EXPECT_FALSE(config.kernel_dispatch_policy.has_value());
+  EXPECT_EQ(config.cuda_gqa_workspace_max_total_sequence_length, int64_t{0});
+}
+
 TEST(KernelDispatchPolicyTest, ParsesTokens) {
   struct Case {
     const char* value;

@@ -70,7 +70,7 @@ struct WorkspaceEstimatorConfig {
   // Validated nonnegative, int32-compatible envelope; zero means unspecified.
   int64_t cuda_gqa_workspace_max_total_sequence_length = 0;
   // Raw session.kernel_dispatch_policy value; consumers share the framework parser.
-  std::optional<std::string> kernel_dispatch_policy;
+  std::optional<std::string> kernel_dispatch_policy = std::nullopt;
 };
 
 // Reads the caller-declared CUDA GQA envelope and validates its runtime ABI range.
