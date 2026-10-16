@@ -61,6 +61,8 @@ constexpr bool TensorProtoElementSizesAreConstexpr() {
       sizeof(uint8_t),   // FLOAT8E8M0
       sizeof(uint8_t),   // UINT2
       sizeof(uint8_t),   // INT2
+      sizeof(uint8_t),   // FLOAT6E2M3
+      sizeof(uint8_t),   // FLOAT6E3M2
   };
 
   for (size_t index = 0; index < expected_sizes.size(); ++index) {

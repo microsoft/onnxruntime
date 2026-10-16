@@ -13,6 +13,7 @@
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace Ort;
 
@@ -162,6 +163,154 @@ TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAlloca
     EXPECT_FLOAT_EQ(second_output[i], expected_output[i]) << "Second run output mismatch at index " << i;
   }
 }
+
+class WebGpuScatterGraphCaptureTests : public testing::TestWithParam<bool> {};
+
+void TestScatterReplayCopiesInput(const char* op_type, const std::vector<int64_t>& indices_shape,
+                                  bool enable_graph_capture, bool surrounding_dispatches = false) {
+  Env& env = *ort_env;
+  SessionOptions session_options;
+  session_options.DisableMemPattern();
+  session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  session_options.SetLogSeverityLevel(1);
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  if (surrounding_dispatches) {
+    session_options.EnableProfiling(ORT_TSTR("webgpu_scatter_capture_test"));
+  }
+  ASSERT_NO_FATAL_FAILURE(AppendWebGpuEp(
+      env, session_options, {{"enableGraphCapture", enable_graph_capture ? "1" : "0"}}));
+
+  const std::vector<int64_t> data_shape{3};
+  const std::vector<int64_t> updates_shape{1};
+  TensorTypeAndShapeInfo data_info(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, data_shape);
+  TensorTypeAndShapeInfo indices_info(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, indices_shape);
+  TensorTypeAndShapeInfo updates_info(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, updates_shape);
+  auto data_type = TypeInfo::CreateTensorInfo(data_info.GetConst());
+  auto indices_type = TypeInfo::CreateTensorInfo(indices_info.GetConst());
+  auto updates_type = TypeInfo::CreateTensorInfo(updates_info.GetConst());
+  std::vector<ValueInfo> inputs;
+  inputs.emplace_back("X", data_type.GetConst());
+  inputs.emplace_back("indices", indices_type.GetConst());
+  inputs.emplace_back("updates", updates_type.GetConst());
+  std::vector<ValueInfo> outputs;
+  outputs.emplace_back("Y", data_type.GetConst());
+  if (surrounding_dispatches) {
+    outputs.emplace_back("T", data_type.GetConst());
+    outputs.emplace_back("Z", data_type.GetConst());
+  }
+  Graph graph;
+  graph.SetInputs(inputs);
+  graph.SetOutputs(outputs);
+  if (surrounding_dispatches) {
+    Node before("Relu", onnxruntime::kOnnxDomain, "before", {"X"}, {"T"});
+    graph.AddNode(before);
+  }
+  Node scatter(op_type, onnxruntime::kOnnxDomain, "scatter",
+               {surrounding_dispatches ? "T" : "X", "indices", "updates"}, {"Y"});
+  graph.AddNode(scatter);
+  if (surrounding_dispatches) {
+    Node after("Relu", onnxruntime::kOnnxDomain, "after", {"Y"}, {"Z"});
+    graph.AddNode(after);
+  }
+  Model model(std::vector<Model::DomainOpsetPair>{{onnxruntime::kOnnxDomain, 18}});
+  model.AddGraph(graph);
+  Session session(env, model, session_options);
+
+  MemoryInfo gpu_mem_info("WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Allocator gpu_allocator(session, gpu_mem_info);
+  auto gpu_x = Value::CreateTensor<float>(gpu_allocator, data_shape.data(), data_shape.size());
+  auto gpu_indices = Value::CreateTensor<int64_t>(gpu_allocator, indices_shape.data(), indices_shape.size());
+  auto gpu_updates = Value::CreateTensor<float>(gpu_allocator, updates_shape.data(), updates_shape.size());
+  auto gpu_y = Value::CreateTensor<float>(gpu_allocator, data_shape.data(), data_shape.size());
+  Value gpu_t{nullptr};
+  Value gpu_z{nullptr};
+  // Separate bound output storage forces the copy path despite the kernel's MayInplace registration.
+  ASSERT_NE(gpu_x.GetTensorRawData(), gpu_y.GetTensorRawData());
+
+  IoBinding binding(session);
+  binding.BindInput("X", gpu_x);
+  binding.BindInput("indices", gpu_indices);
+  binding.BindInput("updates", gpu_updates);
+  binding.BindOutput("Y", gpu_y);
+  if (surrounding_dispatches) {
+    gpu_t = Value::CreateTensor<float>(gpu_allocator, data_shape.data(), data_shape.size());
+    gpu_z = Value::CreateTensor<float>(gpu_allocator, data_shape.data(), data_shape.size());
+    ASSERT_NE(gpu_t.GetTensorRawData(), gpu_y.GetTensorRawData());
+    binding.BindOutput("T", gpu_t);
+    binding.BindOutput("Z", gpu_z);
+  }
+
+  MemoryInfo cpu_mem_info = MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  std::vector<float> x{1.0f, 2.0f, 3.0f};
+  std::vector<int64_t> indices{1};
+  std::vector<float> updates{9.0f};
+  std::vector<float> result(3);
+  std::vector<float> input_after_run(3);
+  auto cpu_x = Value::CreateTensor<float>(cpu_mem_info, x.data(), x.size(), data_shape.data(), data_shape.size());
+  auto cpu_indices = Value::CreateTensor<int64_t>(
+      cpu_mem_info, indices.data(), indices.size(), indices_shape.data(), indices_shape.size());
+  auto cpu_updates = Value::CreateTensor<float>(
+      cpu_mem_info, updates.data(), updates.size(), updates_shape.data(), updates_shape.size());
+  auto cpu_result = Value::CreateTensor<float>(
+      cpu_mem_info, result.data(), result.size(), data_shape.data(), data_shape.size());
+  auto cpu_input_after_run = Value::CreateTensor<float>(
+      cpu_mem_info, input_after_run.data(), input_after_run.size(), data_shape.data(), data_shape.size());
+  auto copy = [&](const Value& src, Value& dst) {
+    auto status = env.CopyTensor(src, dst, nullptr);
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  };
+
+  ASSERT_NO_FATAL_FAILURE(copy(cpu_indices, gpu_indices));
+  RunOptions run_options;
+  run_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "1");
+  for (int run = 0; run < 4; ++run) {
+    SCOPED_TRACE(testing::Message() << op_type << ", capture=" << enable_graph_capture << ", run=" << run);
+    if (enable_graph_capture && run == 3) {
+      session.ReleaseCapturedGraph(1);
+    }
+    x[0] = 1.0f + 3.0f * run;
+    x[1] = 2.0f + 3.0f * run;
+    x[2] = 3.0f + 3.0f * run;
+    updates[0] = 9.0f - run;
+    ASSERT_NO_FATAL_FAILURE(copy(cpu_x, gpu_x));
+    ASSERT_NO_FATAL_FAILURE(copy(cpu_updates, gpu_updates));
+    binding.SynchronizeInputs();
+    session.Run(run_options, binding);
+    binding.SynchronizeOutputs();
+    ASSERT_NO_FATAL_FAILURE(copy(gpu_y, cpu_result));
+    ASSERT_NO_FATAL_FAILURE(copy(gpu_x, cpu_input_after_run));
+    EXPECT_EQ(input_after_run, x) << "Scatter must not overwrite the separately bound input";
+    EXPECT_EQ(result, (std::vector<float>{x[0], updates[0], x[2]}))
+        << "Replay must copy the new input values at positions not written by scatter";
+    if (surrounding_dispatches) {
+      ASSERT_NO_FATAL_FAILURE(copy(gpu_z, cpu_result));
+      EXPECT_EQ(result, (std::vector<float>{x[0], updates[0], x[2]}))
+          << "The dispatch following scatter must observe the copy and the scatter update";
+    }
+  }
+  if (enable_graph_capture) {
+    session.ReleaseCapturedGraph(1);
+  }
+  if (surrounding_dispatches) {
+    AllocatorWithDefaultOptions allocator;
+    auto profile_path = session.EndProfilingAllocated(allocator);
+    std::filesystem::remove(profile_path.get());
+  }
+}
+
+TEST_P(WebGpuScatterGraphCaptureTests, ScatterNDNonInplaceCopiesUpdatedInput) {
+  TestScatterReplayCopiesInput("ScatterND", {1, 1}, GetParam());
+}
+
+TEST_P(WebGpuScatterGraphCaptureTests, ScatterElementsNonInplaceCopiesUpdatedInput) {
+  TestScatterReplayCopiesInput("ScatterElements", {1}, GetParam());
+}
+
+TEST_P(WebGpuScatterGraphCaptureTests, ScatterNDCopyBetweenProfiledDispatches) {
+  TestScatterReplayCopiesInput("ScatterND", {1, 1}, GetParam(), true);
+}
+
+INSTANTIATE_TEST_SUITE_P(CaptureDisabledAndEnabled, WebGpuScatterGraphCaptureTests, testing::Bool());
 
 TEST(GraphCaptureTests, TestReleaseCapturedGraph) {
   Env& env = *ort_env;
