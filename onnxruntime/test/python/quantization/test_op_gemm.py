@@ -800,16 +800,22 @@ class TestOpGemm(unittest.TestCase):
         assert_allclose(expected, got)
 
     def test_dynamic_quantization_preserves_transposed_weight(self):
-        for shape, value_info, shared, per_channel in itertools.product(
-            [(3, 8), (3, 3)], [False, True], [False, True], [False, True]
+        for shape, value_info, shared, per_channel, bias_name in itertools.product(
+            [(3, 8), (3, 3)],
+            [False, True],
+            [False, True],
+            [False, True],
+            ["W_Transposed", "W_Transposed_quantized", "W_Transposed_scale", "W_Transposed_zero_point"],
         ):
-            with self.subTest(shape=shape, value_info=value_info, shared=shared, per_channel=per_channel):
+            with self.subTest(
+                shape=shape, value_info=value_info, shared=shared, per_channel=per_channel, bias_name=bias_name
+            ):
                 rows, cols = shape
                 weight = np.arange(rows * cols, dtype=np.float32).reshape(shape) - 4
                 bias = np.ones(rows, dtype=np.float32)
                 inputs = [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, cols])]
                 outputs = [helper.make_tensor_value_info("W_Transposed_1", TensorProto.FLOAT, [1, rows])]
-                nodes = [helper.make_node("Gemm", ["X", "W", "W_Transposed"], ["W_Transposed_1"], transB=1)]
+                nodes = [helper.make_node("Gemm", ["X", "W", bias_name], ["W_Transposed_1"], transB=1)]
                 feeds = {"X": np.arange(cols, dtype=np.float32).reshape(1, cols) / cols}
                 if shared:
                     inputs.append(helper.make_tensor_value_info("Z", TensorProto.FLOAT, [1, rows]))
@@ -835,7 +841,7 @@ class TestOpGemm(unittest.TestCase):
                     outputs,
                     initializer=[
                         onnx.numpy_helper.from_array(weight, "W"),
-                        onnx.numpy_helper.from_array(bias, "W_Transposed"),
+                        onnx.numpy_helper.from_array(bias, bias_name),
                     ],
                     value_info=[helper.make_tensor_value_info("W", TensorProto.FLOAT, shape)] if value_info else [],
                 )

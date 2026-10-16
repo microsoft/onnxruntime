@@ -389,11 +389,13 @@ class ONNXModel:
                         if B:
                             if inputB not in transposed_weights:
                                 transposed_name = inputB + "_Transposed"
+                                initializer_suffixes = ("", "_quantized", "_scale", "_zero_point")
                                 suffix = 0
-                                while transposed_name in tensor_names:
+                                while any(transposed_name + s in tensor_names for s in initializer_suffixes):
                                     suffix += 1
                                     transposed_name = f"{inputB}_Transposed_{suffix}"
-                                tensor_names.add(transposed_name)
+                                # Reserve names that quantization derives from this initializer.
+                                tensor_names.update(transposed_name + s for s in initializer_suffixes)
                                 # Keep the original tensor and its shape metadata valid for other consumers.
                                 graph.initializer.append(
                                     onnx_numpy_helper.from_array(onnx_numpy_helper.to_array(B).T, transposed_name)
