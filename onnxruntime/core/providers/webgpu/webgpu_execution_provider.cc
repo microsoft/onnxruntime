@@ -79,7 +79,8 @@ class Memcpy final : public OpKernel {
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
     const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
-    DataTransfer transfer(ep.BufferManager(), ep.Recording(), ep.GetDeviceId());
+    DataTransfer transfer(WebGpuContextFactory::GetContext(ep.GetDeviceId()), ep.Recording(),
+                          ep.GetDeviceId());
     return transfer.CopyTensor(*X, *Y);
   }
 };
@@ -807,7 +808,7 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
 #endif  // !defined(ORT_USE_EP_API_ADAPTERS)
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<webgpu::DataTransfer>(BufferManager(), Recording(), context_id_);
+  return std::make_unique<webgpu::DataTransfer>(context_, Recording(), context_id_);
 }
 
 #if defined(__wasm__)
@@ -906,14 +907,19 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
   if (serialized) {
     context_.SetActiveSerializedRecording(recording_.get());
   }
+#endif
   bool started = false;
   auto release_on_error = gsl::finally([&] {
-    if (serialized && !started) {
+    if (!started) {
       graph_buffer_mgr_active_ = false;
-      context_.SetActiveSerializedRecording(nullptr);
+      recording_->buffer_manager = nullptr;
+#if defined(ORT_USE_EP_API_ADAPTERS)
+      if (serialized) {
+        context_.SetActiveSerializedRecording(nullptr);
+      }
+#endif
     }
   });
-#endif
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     context_.PushErrorScope();
   }
@@ -951,24 +957,24 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
         }
       }
       graph_buffer_mgr_active_ = true;
+      recording_->buffer_manager = it->second.get();
 
       if (IsGraphCaptureAllowed() && !IsGraphCaptured(graph_annotation_id)) {
         auto& commands = captured_graphs_[graph_annotation_id];
-        context_.CaptureBegin(&commands, *it->second, *recording_);
+        context_.CaptureBegin(&commands, *recording_);
       }
     }
   }
 
   run_active_.store(true);
-#if defined(ORT_USE_EP_API_ADAPTERS)
   started = true;
-#endif
   return Status::OK();
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
   auto end_run = gsl::finally([&] {
     graph_buffer_mgr_active_ = false;
+    recording_->buffer_manager = nullptr;
     run_active_.store(false);
 #if defined(ORT_USE_EP_API_ADAPTERS)
     if (webgpu::ep::UseSerializedExecutionMode()) {
@@ -978,7 +984,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
   });
   // When capturing, flushing creates the replay-ready dispatch entries before
   // CaptureEnd() detaches their external storage.
-  Status flush_status = context_.Flush(BufferManager(), *recording_);
+  Status flush_status = context_.Flush(*recording_);
 
   if (!flush_status.IsOK()) {
     if (IsGraphCaptureEnabled()) {
@@ -1054,17 +1060,19 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync
 #endif
   // The sync parameter is ignored: WebGPU EP always replays synchronously.
   ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
-#if defined(ORT_USE_EP_API_ADAPTERS)
-  if (serialized_replay) {
-    ORT_RETURN_IF_ERROR(context_.Flush(context_.BufferManager(), *recording_));
+  if (recording_->has_unsubmitted_work.load(std::memory_order_relaxed)) {
+    ORT_RETURN_IF_ERROR(context_.Flush(*recording_));
   }
-#endif
+  const auto* previous_buffer_manager = recording_->buffer_manager;
+  auto restore_buffer_manager = gsl::finally([&] {
+    recording_->buffer_manager = previous_buffer_manager;
+  });
+  recording_->buffer_manager = per_graph_buffer_mgrs_.at(graph_annotation_id).get();
   // TODO: enable profiling in run level
   if (session_profiler_ && session_profiler_->Enabled()) {
     context_.StartProfiling();
   }
   context_.Replay(captured_graphs_.at(graph_annotation_id),
-                  *per_graph_buffer_mgrs_.at(graph_annotation_id),
                   *recording_);
   if (session_profiler_ && session_profiler_->Enabled()) {
     // Session-level profiling: collect into profiler's own events storage.
@@ -1089,6 +1097,9 @@ Status WebGpuExecutionProvider::ReleaseCapturedGraph(int graph_annotation_id) {
   // Release per-graph buffer manager (donate to session pool if enabled; otherwise destroy)
   auto mgr_it = per_graph_buffer_mgrs_.find(graph_annotation_id);
   if (mgr_it != per_graph_buffer_mgrs_.end()) {
+    if (recording_->buffer_manager == mgr_it->second.get()) {
+      recording_->buffer_manager = nullptr;
+    }
     if (session_buffer_pool_ && mgr_it->second) {
       session_buffer_pool_->Donate(*mgr_it->second);
     }

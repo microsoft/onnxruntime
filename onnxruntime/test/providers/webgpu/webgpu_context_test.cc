@@ -27,11 +27,13 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/buffer_manager.h"
+#include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/program_cache_key.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/inference_session.h"
 #include "test/test_environment.h"
@@ -193,7 +195,6 @@ void TestCopyAfterDeferredDispatch(bool upload, bool checked_completion = false)
   ASSERT_NE(ep, nullptr);
   auto& recording = static_cast<WebGpuExecutionProvider*>(ep.get())->Recording();
   auto& context = webgpu::WebGpuContextFactory::GetContext(0);
-  auto& buffer_manager = context.BufferManager();
 
   std::array<uint32_t, 16> input_data;
   input_data.fill(7);
@@ -203,7 +204,8 @@ void TestCopyAfterDeferredDispatch(bool upload, bool checked_completion = false)
   auto input = context.Device().CreateBuffer(&buffer_desc);
   auto output = context.Device().CreateBuffer(&buffer_desc);
   auto copy = context.Device().CreateBuffer(&buffer_desc);
-  buffer_manager.Upload(recording, input_data.data(), input.Get(), sizeof(input_data));
+  ASSERT_STATUS_OK(webgpu::DataTransferImpl(context, recording)
+                       .CopyTensor(input_data.data(), false, input.Get(), true, sizeof(input_data)));
 
   wgpu::ShaderSourceWGSL source{};
   source.code = R"(
@@ -238,19 +240,22 @@ void TestCopyAfterDeferredDispatch(bool upload, bool checked_completion = false)
   recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);
 
   if (checked_completion) {
-    ASSERT_STATUS_OK(context.FlushAndWaitChecked(buffer_manager, recording));
+    ASSERT_STATUS_OK(context.FlushAndWaitChecked(recording));
   } else if (upload) {
     // The dispatch must consume the original input before Upload overwrites it.
     input_data.fill(42);
-    buffer_manager.Upload(recording, input_data.data(), input.Get(), sizeof(input_data));
+    ASSERT_STATUS_OK(webgpu::DataTransferImpl(context, recording)
+                         .CopyTensor(input_data.data(), false, input.Get(), true, sizeof(input_data)));
   } else {
     // MemCpy must read the dispatch result, not the output buffer's initial zeros.
-    buffer_manager.MemCpy(recording, output.Get(), copy.Get(), sizeof(input_data));
+    ASSERT_STATUS_OK(webgpu::DataTransferImpl(context, recording)
+                         .CopyTensor(output.Get(), true, copy.Get(), true, sizeof(input_data)));
   }
   EXPECT_TRUE(recording.deferred_dispatches.empty());
 
   std::array<uint32_t, 16> result{};
-  buffer_manager.Download(recording, upload ? output.Get() : copy.Get(), result.data(), sizeof(result));
+  ASSERT_STATUS_OK(webgpu::DataTransferImpl(context, recording)
+                       .CopyTensor(upload ? output.Get() : copy.Get(), true, result.data(), false, sizeof(result)));
   std::array<uint32_t, 16> expected;
   expected.fill(8);
   EXPECT_EQ(result, expected);
@@ -288,7 +293,7 @@ TEST(WebGpuContextTest, CheckedCompletionHandlesEmptyAndPendingEncoders) {
       context.GetCommandEncoder(recording);
       ASSERT_TRUE(recording.has_unsubmitted_work.load(std::memory_order_relaxed));
     }
-    ASSERT_STATUS_OK(context.FlushAndWaitChecked(webgpu_ep.BufferManager(), recording));
+    ASSERT_STATUS_OK(context.FlushAndWaitChecked(recording));
     EXPECT_EQ(recording.command_encoder, nullptr);
     EXPECT_FALSE(recording.has_unsubmitted_work.load(std::memory_order_relaxed));
     ExpectQueueCompleted(context);
@@ -315,9 +320,9 @@ TEST(WebGpuContextTest, CheckedCompletionSubmitsAndWaitsForCopies) {
     SCOPED_TRACE(already_submitted);
     context.GetCommandEncoder(recording).CopyBufferToBuffer(source, 0, destination, 0, sizeof(expected));
     if (already_submitted) {
-      ASSERT_STATUS_OK(context.Flush(webgpu_ep.BufferManager(), recording));
+      ASSERT_STATUS_OK(context.Flush(recording));
     }
-    ASSERT_STATUS_OK(context.FlushAndWaitChecked(webgpu_ep.BufferManager(), recording));
+    ASSERT_STATUS_OK(context.FlushAndWaitChecked(recording));
     ExpectQueueCompleted(context);
 
     auto map_status = std::make_shared<wgpu::MapAsyncStatus>(wgpu::MapAsyncStatus::Error);
@@ -349,13 +354,13 @@ TEST(WebGpuContextTest, CheckedCompletionDrainsAfterDeferredDispatchFailure) {
   recording.deferred_dispatches.push_back(std::move(invalid_dispatch));
   recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);
 
-  const auto status = context.FlushAndWaitChecked(webgpu_ep.BufferManager(), recording);
+  const auto status = context.FlushAndWaitChecked(recording);
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("No cached or pending pipeline"));
   EXPECT_TRUE(recording.deferred_dispatches.empty());
   EXPECT_FALSE(recording.has_unsubmitted_work.load(std::memory_order_relaxed));
   ExpectQueueCompleted(context);
-  ASSERT_STATUS_OK(context.FlushAndWaitChecked(webgpu_ep.BufferManager(), recording));
+  ASSERT_STATUS_OK(context.FlushAndWaitChecked(recording));
 }
 
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
@@ -460,7 +465,7 @@ TEST(WebGpuContextTest, FailedPipelineWaitRetainsCallbackUntilDelivery) {
     auto& recording = ep.Recording();
     recording.deferred_dispatches.push_back(std::move(dispatch));
 
-    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(context.Flush(ep.BufferManager(), recording),
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(context.Flush(recording),
                                         "Failed to wait for the operation");
     EXPECT_TRUE(recording.deferred_dispatches.empty());
     ASSERT_EQ(weak_context.use_count(), 1);
@@ -508,7 +513,7 @@ TEST(WebGpuContextTest, FailedPipelineWaitRetainsCallbackAfterContextDestruction
     auto& recording = ep.Recording();
     recording.deferred_dispatches.push_back(std::move(dispatch));
 
-    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(context.Flush(ep.BufferManager(), recording),
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(context.Flush(recording),
                                         "Failed to wait for the operation");
     EXPECT_TRUE(recording.deferred_dispatches.empty());
     EXPECT_EQ(weak_context.use_count(), 1);
@@ -542,13 +547,13 @@ TEST(WebGpuContextTest, CheckedCompletionPropagatesValidationAndPreservesOuterSc
     context.Device().InjectError(wgpu::ErrorType::Validation, "checked-completion-outer-scope-error");
     // Poison the encoder before the helper's scopes; finishing it must report validation too.
     context.GetCommandEncoder(recording).ClearBuffer(buffer, 0, 64);
-    const auto status = context.FlushAndWaitChecked(ep.BufferManager(), recording);
+    const auto status = context.FlushAndWaitChecked(recording);
     EXPECT_FALSE(status.IsOK());
     EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("WebGPU error scope failed"));
     const auto outer_status = context.PopErrorScope();
     EXPECT_FALSE(outer_status.IsOK());
     EXPECT_THAT(outer_status.ErrorMessage(), testing::HasSubstr("checked-completion-outer-scope-error"));
-    ASSERT_STATUS_OK(context.FlushAndWaitChecked(ep.BufferManager(), recording));
+    ASSERT_STATUS_OK(context.FlushAndWaitChecked(recording));
     ExpectQueueCompleted(context);
   });
 #endif
@@ -568,7 +573,7 @@ TEST(WebGpuContextTest, ErrorScopesPropagateValidationAndOutOfMemory) {
       const auto status = context.PopErrorScope();
       EXPECT_FALSE(status.IsOK());
       EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("checked-completion-scope-error"));
-      ASSERT_STATUS_OK(context.FlushAndWaitChecked(ep.BufferManager(), ep.Recording()));
+      ASSERT_STATUS_OK(context.FlushAndWaitChecked(ep.Recording()));
     }
   });
 #endif
@@ -579,7 +584,7 @@ TEST(WebGpuContextTest, CheckedCompletionCleansScopesAfterWaitFailure) {
   GTEST_SKIP() << "Dawn native device creation is unavailable.";
 #else
   RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&) {
-    const auto status = context.FlushAndWaitChecked(ep.BufferManager(), ep.Recording());
+    const auto status = context.FlushAndWaitChecked(ep.Recording());
     EXPECT_FALSE(status.IsOK());
     EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Failed to wait for the operation"));
 
@@ -608,10 +613,10 @@ void TestCheckedCompletionUncapturedError(wgpu::ErrorType type) {
     auto& webgpu_ep = static_cast<WebGpuExecutionProvider&>(*ep);
     auto& context = webgpu::WebGpuContextFactory::GetContext(0);
     context.Device().InjectError(type, "checked-completion-uncaptured-error");
-    const auto status = context.FlushAndWaitChecked(webgpu_ep.BufferManager(), webgpu_ep.Recording());
+    const auto status = context.FlushAndWaitChecked(webgpu_ep.Recording());
     EXPECT_FALSE(status.IsOK());
     EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("checked-completion-uncaptured-error"));
-    EXPECT_FALSE(context.FlushAndWaitChecked(webgpu_ep.BufferManager(), webgpu_ep.Recording()).IsOK());
+    EXPECT_FALSE(context.FlushAndWaitChecked(webgpu_ep.Recording()).IsOK());
     context.PushErrorScope();
     EXPECT_TRUE(context.PopErrorScope().IsOK());
   });
@@ -633,7 +638,7 @@ TEST(WebGpuContextTest, CheckedCompletionDetectsLostExternalDevice) {
   for (bool pending_encoder : {false, true}) {
     RunWithExternalCompletionContext([pending_encoder](auto& context, auto& ep, const auto& lost) {
       auto& recording = ep.Recording();
-      ASSERT_STATUS_OK(context.FlushAndWaitChecked(ep.BufferManager(), recording));
+      ASSERT_STATUS_OK(context.FlushAndWaitChecked(recording));
       if (pending_encoder) {
         context.GetCommandEncoder(recording);
       }
@@ -641,11 +646,11 @@ TEST(WebGpuContextTest, CheckedCompletionDetectsLostExternalDevice) {
 
       // Dawn can report successful queue completion on a lost device.
       ExpectQueueCompleted(context);
-      const auto status = context.FlushAndWaitChecked(ep.BufferManager(), recording);
+      const auto status = context.FlushAndWaitChecked(recording);
       EXPECT_FALSE(status.IsOK());
       EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("WebGPU device lost"));
       EXPECT_TRUE(*lost);
-      EXPECT_FALSE(context.FlushAndWaitChecked(ep.BufferManager(), recording).IsOK());
+      EXPECT_FALSE(context.FlushAndWaitChecked(recording).IsOK());
     });
   }
 #endif
@@ -663,8 +668,8 @@ TEST(WebGpuContextTest, BufferReuseFollowsCachePolicyAndRecordingSubmission) {
     SCOPED_TRACE(static_cast<int>(mode));
     webgpu::BufferManager manager(context, mode, webgpu::BufferCacheMode::Disabled,
                                   webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled);
-    webgpu::CommandRecordingState first;
-    webgpu::CommandRecordingState second;
+    webgpu::CommandRecordingState first{manager};
+    webgpu::CommandRecordingState second{manager};
     auto buffer = manager.Create(first, 64, usage);
     wgpu::Buffer retained{buffer};
     context.GetCommandEncoder(first).ClearBuffer(buffer, 0, 64);
@@ -675,12 +680,12 @@ TEST(WebGpuContextTest, BufferReuseFollowsCachePolicyAndRecordingSubmission) {
     auto other_buffer = manager.Create(second, 64, usage);
     EXPECT_NE(other_buffer, buffer);
     context.GetCommandEncoder(second).ClearBuffer(other_buffer, 0, 64);
-    ASSERT_STATUS_OK(context.Flush(manager, second));
+    ASSERT_STATUS_OK(context.Flush(second));
     // A submission on another recording cannot make the first buffer reusable.
     auto after_other_submission = manager.Create(second, 64, usage);
     EXPECT_NE(after_other_submission, buffer);
 
-    ASSERT_STATUS_OK(context.Flush(manager, first));
+    ASSERT_STATUS_OK(context.Flush(first));
     auto reused = manager.Create(second, 64, usage);
     if (mode == webgpu::BufferCacheMode::Disabled || mode == webgpu::BufferCacheMode::LazyRelease) {
       EXPECT_NE(reused, buffer);
@@ -701,13 +706,13 @@ TEST(WebGpuContextTest, BufferReleasedAfterSubmissionIsReusableWithoutAnotherFlu
   webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Bucket,
                                 webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled,
                                 webgpu::BufferCacheMode::Disabled);
-  webgpu::CommandRecordingState recording;
-  webgpu::CommandRecordingState other;
+  webgpu::CommandRecordingState recording{manager};
+  webgpu::CommandRecordingState other{manager};
   constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
   auto buffer = manager.Create(recording, 64, usage);
   wgpu::Buffer retained{buffer};
   context.GetCommandEncoder(recording).ClearBuffer(buffer, 0, 64);
-  ASSERT_STATUS_OK(context.Flush(manager, recording));
+  ASSERT_STATUS_OK(context.Flush(recording));
 
   // An allocator can outlive its last Run. Free must not wait for another submission to this recording.
   manager.Release(buffer, &recording);
@@ -723,8 +728,8 @@ TEST(WebGpuContextTest, EmptyFlushRefreshesIdleCacheWithoutReleasingAnotherRecor
   webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Simple,
                                 webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled,
                                 webgpu::BufferCacheMode::Disabled);
-  webgpu::CommandRecordingState idle;
-  webgpu::CommandRecordingState active;
+  webgpu::CommandRecordingState idle{manager};
+  webgpu::CommandRecordingState active{manager};
   constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
   auto idle_buffer = manager.Create(idle, 64, usage);
   auto active_buffer = manager.Create(active, 64, usage);
@@ -734,13 +739,13 @@ TEST(WebGpuContextTest, EmptyFlushRefreshesIdleCacheWithoutReleasingAnotherRecor
   manager.Release(active_buffer, &active);
   manager.Release(idle_buffer, &idle);
 
-  ASSERT_STATUS_OK(context.Flush(manager, idle));
+  ASSERT_STATUS_OK(context.Flush(idle));
   auto reused = manager.Create(idle, 64, usage);
   EXPECT_EQ(reused, idle_buffer);
   auto still_pending = manager.Create(idle, 64, usage);
   EXPECT_NE(still_pending, active_buffer);
 
-  ASSERT_STATUS_OK(context.Flush(manager, active));
+  ASSERT_STATUS_OK(context.Flush(active));
   auto after_submission = manager.Create(idle, 64, usage);
   EXPECT_EQ(after_submission, active_buffer);
   manager.Release(reused);
@@ -755,14 +760,14 @@ TEST(WebGpuContextTest, IndependentClearPreservesPendingAndCapturedUniformBuffer
   webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Graph,
                                 webgpu::BufferCacheMode::GraphSimple, webgpu::BufferCacheMode::Disabled,
                                 webgpu::BufferCacheMode::Disabled);
-  webgpu::CommandRecordingState session_recording;
-  webgpu::CommandRecordingState independent_recording;
+  webgpu::CommandRecordingState session_recording{manager};
+  webgpu::CommandRecordingState independent_recording{manager};
   constexpr auto uniform_usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst;
   constexpr auto storage_usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
                                  wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
 
   std::vector<webgpu::CapturedCommand> captured_commands;
-  context.CaptureBegin(&captured_commands, manager, session_recording);
+  context.CaptureBegin(&captured_commands, session_recording);
   auto uniform_buffer = manager.Create(session_recording, 64, uniform_usage);
   wgpu::Buffer retained_uniform{uniform_buffer};
   context.GetCommandEncoder(session_recording).ClearBuffer(uniform_buffer, 0, 64);
@@ -773,7 +778,9 @@ TEST(WebGpuContextTest, IndependentClearPreservesPendingAndCapturedUniformBuffer
     std::array<uint32_t, 16> dirty_data;
     dirty_data.fill(0xffffffffu);
     auto dirty_buffer = manager.Create(independent_recording, sizeof(dirty_data), storage_usage);
-    manager.Upload(independent_recording, dirty_data.data(), dirty_buffer, sizeof(dirty_data));
+    ASSERT_STATUS_OK(
+        webgpu::DataTransferImpl(context, independent_recording)
+            .CopyTensor(dirty_data.data(), false, dirty_buffer, true, sizeof(dirty_data)));
     manager.Release(dirty_buffer, &independent_recording);
     auto cleared_buffer = wgpu::Buffer::Acquire(
         manager.Create(independent_recording, sizeof(dirty_data), storage_usage, true, true));
@@ -788,11 +795,180 @@ TEST(WebGpuContextTest, IndependentClearPreservesPendingAndCapturedUniformBuffer
   EXPECT_NE(before_submission.Get(), uniform_buffer);
   EXPECT_TRUE(session_recording.has_unsubmitted_work.load(std::memory_order_relaxed));
 
-  ASSERT_STATUS_OK(context.Flush(manager, session_recording));
+  ASSERT_STATUS_OK(context.Flush(session_recording));
   context.CaptureEnd(session_recording);
   submit_independent_clear();
   auto after_submission = wgpu::Buffer::Acquire(manager.Create(independent_recording, 64, uniform_usage));
   EXPECT_NE(after_submission.Get(), uniform_buffer);
+}
+
+TEST(WebGpuContextTest, DataTransferFlushRetiresRecordingBuffers) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Bucket,
+                                webgpu::BufferCacheMode::Simple, webgpu::BufferCacheMode::Disabled,
+                                webgpu::BufferCacheMode::Disabled);
+  constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+  webgpu::CommandRecordingState recording{manager};
+  webgpu::CommandRecordingState idle{manager};
+  auto buffer = manager.Create(recording, 64, usage);
+  wgpu::Buffer retained{buffer};
+  context.GetCommandEncoder(recording).ClearBuffer(buffer, 0, 64);
+  manager.Release(buffer, &recording);
+  auto before_submission = manager.Create(idle, 64, usage);
+  EXPECT_NE(before_submission, buffer);
+
+  std::array<uint32_t, 16> result;
+  result.fill(42);
+  webgpu::DataTransferImpl transfer(context, recording);
+  ASSERT_STATUS_OK(transfer.CopyTensor(retained.Get(), true, result.data(), false, sizeof(result)));
+  const std::array<uint32_t, 16> zeros{};
+  EXPECT_EQ(result, zeros);
+  EXPECT_FALSE(recording.has_unsubmitted_work.load(std::memory_order_relaxed));
+  EXPECT_EQ(recording.buffer_manager, &manager);
+  auto after_submission = manager.Create(idle, 64, usage);
+  EXPECT_EQ(after_submission, buffer);
+  manager.Release(before_submission);
+  manager.Release(after_submission);
+}
+
+TEST(WebGpuContextTest, ExecutionPoolBindingSurvivesAllocationsAndMultipleSubmissions) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  constexpr auto storage_usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
+                                 wgpu::BufferUsage::CopyDst;
+  constexpr auto uniform_usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst;
+
+  for (auto state : {webgpu::GraphCaptureState::Default, webgpu::GraphCaptureState::Capturing,
+                     webgpu::GraphCaptureState::Replaying}) {
+    SCOPED_TRACE(static_cast<int>(state));
+    webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Graph,
+                                  webgpu::BufferCacheMode::GraphSimple, webgpu::BufferCacheMode::Disabled,
+                                  webgpu::BufferCacheMode::Disabled);
+    webgpu::CommandRecordingState recording{manager};
+    recording.graph_capture_state = state;
+    webgpu::DataTransferImpl transfer(context, recording);
+
+    for (int submission = 0; submission < 2; ++submission) {
+      SCOPED_TRACE(submission);
+      auto storage = manager.Create(recording, 64, storage_usage);
+      auto uniform = manager.Create(recording, 64, uniform_usage);
+      wgpu::Buffer retained_storage{storage};
+      wgpu::Buffer retained_uniform{uniform};
+      context.GetCommandEncoder(recording).ClearBuffer(storage, 0, 64);
+      manager.Release(storage, &recording);
+      manager.Release(uniform, &recording);
+
+      // Neither context-owned pool may overwrite the execution-local association.
+      auto shared = context.BufferManager().Create(recording, 64, storage_usage);
+      auto initializer = context.InitializerBufferManager().Create(recording, 64, storage_usage);
+      context.BufferManager().Release(shared, &recording);
+      context.InitializerBufferManager().Release(initializer, &recording);
+      EXPECT_EQ(recording.buffer_manager, &manager);
+
+      std::array<uint32_t, 16> result;
+      result.fill(42);
+      ASSERT_STATUS_OK(transfer.CopyTensor(storage, true, result.data(), false, sizeof(result)));
+      const std::array<uint32_t, 16> zeros{};
+      EXPECT_EQ(result, zeros);
+      EXPECT_EQ(recording.buffer_manager, &manager);
+      EXPECT_EQ(recording.graph_capture_state, state);
+      EXPECT_FALSE(recording.has_unsubmitted_work.load(std::memory_order_relaxed));
+
+      auto reused_storage = manager.Create(recording, 64, storage_usage);
+      auto next_uniform = manager.Create(recording, 64, uniform_usage);
+      EXPECT_EQ(reused_storage, storage);
+      if (state == webgpu::GraphCaptureState::Default) {
+        EXPECT_EQ(next_uniform, uniform);
+      } else {
+        EXPECT_NE(next_uniform, uniform);
+      }
+      manager.Release(reused_storage, &recording);
+      manager.Release(next_uniform, &recording);
+    }
+  }
+}
+
+TEST(WebGpuContextTest, GraphPoolBindingFollowsRunAndReplayBoundaries) {
+  ConfigOptions options;
+  ASSERT_STATUS_OK(options.AddConfigEntry(kEnableGraphCapture, "1"));
+  auto provider = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& ep = *static_cast<WebGpuExecutionProvider*>(provider.get());
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  auto& recording = ep.Recording();
+  const webgpu::BufferManager* first_manager = nullptr;
+
+  for (int graph_id : {0, 1, 0}) {
+    RunOptions run_options;
+    ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(
+        kOrtRunOptionsConfigCudaGraphAnnotation, std::to_string(graph_id).c_str()));
+    ASSERT_STATUS_OK(ep.OnRunStart(run_options));
+    EXPECT_EQ(recording.buffer_manager, &ep.BufferManager());
+    ASSERT_NE(recording.buffer_manager, nullptr);
+    EXPECT_NE(recording.buffer_manager, &context.BufferManager());
+    if (first_manager == nullptr) {
+      first_manager = recording.buffer_manager;
+    } else if (graph_id == 0) {
+      EXPECT_EQ(recording.buffer_manager, first_manager);
+    } else {
+      EXPECT_NE(recording.buffer_manager, first_manager);
+    }
+
+    ASSERT_STATUS_OK(context.Flush(recording));
+    EXPECT_EQ(recording.buffer_manager, &ep.BufferManager());
+    ASSERT_STATUS_OK(ep.OnRunEnd(false, run_options));
+    EXPECT_EQ(recording.buffer_manager, nullptr);
+    ASSERT_TRUE(ep.IsGraphCaptured(graph_id));
+    ASSERT_STATUS_OK(ep.ReplayGraph(graph_id));
+    EXPECT_EQ(recording.buffer_manager, nullptr);
+    EXPECT_EQ(recording.graph_capture_state, webgpu::GraphCaptureState::Default);
+  }
+
+  RunOptions uncaptured_run;
+  ASSERT_STATUS_OK(uncaptured_run.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "-1"));
+  ASSERT_STATUS_OK(ep.OnRunStart(uncaptured_run));
+  EXPECT_EQ(recording.buffer_manager, nullptr);
+  EXPECT_EQ(&ep.BufferManager(), &context.BufferManager());
+  ASSERT_STATUS_OK(ep.OnRunEnd(false, uncaptured_run));
+  ASSERT_STATUS_OK(ep.ReleaseCapturedGraph(0));
+  ASSERT_STATUS_OK(ep.ReleaseCapturedGraph(1));
+}
+
+TEST(WebGpuContextTest, FailedGraphRunClearsExecutionPoolBinding) {
+  ConfigOptions options;
+  ASSERT_STATUS_OK(options.AddConfigEntry(kEnableGraphCapture, "1"));
+  auto provider = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& ep = *static_cast<WebGpuExecutionProvider*>(provider.get());
+  auto& recording = ep.Recording();
+  RunOptions run_options;
+  ASSERT_STATUS_OK(ep.OnRunStart(run_options));
+  ASSERT_NE(recording.buffer_manager, nullptr);
+  webgpu::DispatchCommandInfo dispatch;
+  dispatch.program_key = "missing_pipeline_for_failed_graph_run";
+  recording.deferred_dispatches.push_back(std::move(dispatch));
+  recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(ep.OnRunEnd(false, run_options), "No cached or pending pipeline");
+  EXPECT_EQ(recording.buffer_manager, nullptr);
+  EXPECT_EQ(recording.graph_capture_state, webgpu::GraphCaptureState::Default);
+  EXPECT_FALSE(recording.has_unsubmitted_work.load(std::memory_order_relaxed));
+  ASSERT_STATUS_OK(ep.ReleaseCapturedGraph(0));
+}
+
+TEST(WebGpuContextTest, FailedReplayRestoresRecordingState) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Graph,
+                                webgpu::BufferCacheMode::GraphSimple, webgpu::BufferCacheMode::Disabled,
+                                webgpu::BufferCacheMode::Disabled);
+  webgpu::CommandRecordingState recording{manager};
+  std::vector<webgpu::CapturedCommand> commands(1);
+  EXPECT_THROW(context.Replay(commands, recording), OnnxRuntimeException);
+  EXPECT_EQ(recording.graph_capture_state, webgpu::GraphCaptureState::Default);
+  EXPECT_EQ(recording.buffer_manager, &manager);
 }
 
 TEST(WebGpuContextTest, GraphFlushRetiresSharedBuffersForSubmittedRecording) {
@@ -813,9 +989,9 @@ TEST(WebGpuContextTest, GraphFlushRetiresSharedBuffersForSubmittedRecording) {
         SCOPED_TRACE(static_cast<int>(state));
         SCOPED_TRACE(static_cast<uint64_t>(usage));
         usage |= wgpu::BufferUsage::CopyDst;
-        webgpu::CommandRecordingState session;
+        webgpu::CommandRecordingState session{graph_manager};
         webgpu::CommandRecordingState other;
-        webgpu::CommandRecordingState idle;
+        webgpu::CommandRecordingState idle{graph_manager};
         session.graph_capture_state = state;
         auto released = shared_manager.Create(idle, 64, usage);
         auto other_released = shared_manager.Create(idle, 64, usage);
@@ -826,19 +1002,19 @@ TEST(WebGpuContextTest, GraphFlushRetiresSharedBuffersForSubmittedRecording) {
         shared_manager.Release(released, &session);
         shared_manager.Release(other_released, &other);
 
-        ASSERT_STATUS_OK(context.Flush(graph_manager, idle));
+        ASSERT_STATUS_OK(context.Flush(idle));
         auto before_submission = wgpu::Buffer::Acquire(shared_manager.Create(idle, 64, usage));
         EXPECT_NE(before_submission.Get(), released);
         EXPECT_NE(before_submission.Get(), other_released);
 
-        ASSERT_STATUS_OK(context.Flush(graph_manager, session));
+        ASSERT_STATUS_OK(context.Flush(session));
         EXPECT_EQ(session.graph_capture_state, state);
         auto reused = wgpu::Buffer::Acquire(shared_manager.Create(idle, 64, usage));
         EXPECT_EQ(reused.Get(), released);
         auto still_pending = wgpu::Buffer::Acquire(shared_manager.Create(idle, 64, usage));
         EXPECT_NE(still_pending.Get(), other_released);
 
-        ASSERT_STATUS_OK(context.Flush(shared_manager, other));
+        ASSERT_STATUS_OK(context.Flush(other));
         auto other_reused = wgpu::Buffer::Acquire(shared_manager.Create(idle, 64, usage));
         EXPECT_EQ(other_reused.Get(), other_released);
       }
@@ -846,7 +1022,7 @@ TEST(WebGpuContextTest, GraphFlushRetiresSharedBuffersForSubmittedRecording) {
   });
 }
 
-TEST(WebGpuContextTest, InitializerFlushRetiresSharedUniformBuffers) {
+TEST(WebGpuContextTest, FlushRetiresSharedUniformsAlongsideInitializerAllocations) {
   RunWithFreshDefaultContext([]() {
     ConfigOptions options;
     ASSERT_STATUS_OK(options.AddConfigEntry(kUniformBufferCacheMode, "simple"));
@@ -855,7 +1031,7 @@ TEST(WebGpuContextTest, InitializerFlushRetiresSharedUniformBuffers) {
     auto& shared_manager = context.BufferManager();
     constexpr auto usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst;
 
-    // Prepacking flushes the initializer manager, while uniforms use the shared manager.
+    // Prepacking can use both context-owned pools without selecting a manager for Flush.
     // An empty flush must also promote idle buffers from SimpleCacheManager's pending list.
     for (bool encode_commands : {true, false}) {
       SCOPED_TRACE(encode_commands);
@@ -866,7 +1042,11 @@ TEST(WebGpuContextTest, InitializerFlushRetiresSharedUniformBuffers) {
         context.GetCommandEncoder(recording).ClearBuffer(released, 0, 64);
       }
       shared_manager.Release(released, &recording);
-      ASSERT_STATUS_OK(context.Flush(context.InitializerBufferManager(), recording));
+      auto initializer = context.InitializerBufferManager().Create(
+          recording, 64, wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopyDst);
+      context.InitializerBufferManager().Release(initializer, &recording);
+      EXPECT_EQ(recording.buffer_manager, nullptr);
+      ASSERT_STATUS_OK(context.Flush(recording));
       auto reused = wgpu::Buffer::Acquire(shared_manager.Create(recording, 64, usage));
       EXPECT_EQ(reused.Get(), released);
     }
@@ -883,7 +1063,7 @@ TEST(WebGpuContextTest, FailedFlushDiscardsPendingBuffersFromBothManagers) {
     webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Bucket,
                                   webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled,
                                   webgpu::BufferCacheMode::Disabled);
-    webgpu::CommandRecordingState recording;
+    webgpu::CommandRecordingState recording{manager};
     constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopyDst;
     auto released = manager.Create(recording, 64, usage);
     auto shared_released = shared_manager.Create(recording, 64, usage);
@@ -896,11 +1076,11 @@ TEST(WebGpuContextTest, FailedFlushDiscardsPendingBuffersFromBothManagers) {
     manager.Release(released, &recording);
     shared_manager.Release(shared_released, &recording);
 
-    EXPECT_FALSE(context.Flush(manager, recording).IsOK());
+    EXPECT_FALSE(context.Flush(recording).IsOK());
     EXPECT_EQ(recording.command_encoder, nullptr);
     EXPECT_TRUE(recording.deferred_dispatches.empty());
     // Reusing the recording after failure must not revive discarded buffers in either manager.
-    ASSERT_STATUS_OK(context.Flush(manager, recording));
+    ASSERT_STATUS_OK(context.Flush(recording));
     auto replacement = wgpu::Buffer::Acquire(manager.Create(recording, 64, usage));
     auto shared_replacement = wgpu::Buffer::Acquire(shared_manager.Create(recording, 64, usage));
     EXPECT_NE(replacement.Get(), released);
@@ -915,7 +1095,7 @@ TEST(WebGpuContextTest, AbandonedRecordingDoesNotReturnBuffersToPool) {
   webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Bucket,
                                 webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled,
                                 webgpu::BufferCacheMode::Disabled);
-  webgpu::CommandRecordingState recording;
+  webgpu::CommandRecordingState recording{manager};
   constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
   auto buffer = manager.Create(recording, 64, usage);
   // Keep the handle alive so a new device allocation cannot reuse its address.
@@ -927,7 +1107,7 @@ TEST(WebGpuContextTest, AbandonedRecordingDoesNotReturnBuffersToPool) {
 
   // Reuse the recording's address after abandoning its previous commands.
   context.GetCommandEncoder(recording);
-  ASSERT_STATUS_OK(context.Flush(manager, recording));
+  ASSERT_STATUS_OK(context.Flush(recording));
   auto replacement = manager.Create(recording, 64, usage);
   EXPECT_NE(replacement, buffer);
   manager.Release(replacement);
@@ -945,6 +1125,8 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
                                        webgpu::BufferCacheMode::Simple,
                                        webgpu::BufferCacheMode::Disabled,
                                        webgpu::BufferCacheMode::Disabled);
+  webgpu_ep->Recording().buffer_manager = &buffer_manager;
+  auto unbind_manager = gsl::finally([&] { webgpu_ep->Recording().buffer_manager = nullptr; });
   webgpu::GpuBufferAllocator allocator(
       webgpu_ep->GetDeviceId(),
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
@@ -957,7 +1139,9 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
   void* allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
-  buffer_manager.Upload(webgpu_ep->Recording(), nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  ASSERT_STATUS_OK(
+      webgpu::DataTransferImpl(context, webgpu_ep->Recording())
+          .CopyTensor(nonzero_data.data(), false, dirty_buffer, true, sizeof(nonzero_data)));
   allocator.Free(allocation);
 
   allocation = allocator.Alloc(sizeof(nonzero_data));
@@ -966,7 +1150,7 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
   EXPECT_EQ(reused_buffer, dirty_buffer);
 
   const auto downloaded_data = ReadBufferWithExternalCommandEncoder(context, reused_buffer);
-  ASSERT_STATUS_OK(context.Flush(buffer_manager, webgpu_ep->Recording()));
+  ASSERT_STATUS_OK(context.Flush(webgpu_ep->Recording()));
   const std::array<uint32_t, 16> expected_data{};
   EXPECT_EQ(downloaded_data, expected_data);
 
@@ -980,19 +1164,20 @@ TEST(WebGpuContextTest, ReplaysCopyOnlyGraphAndRetainsBuffersUntilRelease) {
   webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Disabled,
                                 webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled,
                                 webgpu::BufferCacheMode::Disabled);
-  webgpu::CommandRecordingState recording;
+  webgpu::CommandRecordingState recording{manager};
   constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
   std::array<uint32_t, 3> values{1, 2, 3};
   auto source = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
   auto intermediate = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
   auto destination = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
-  manager.Upload(recording, values.data(), source.Get(), sizeof(values));
+  webgpu::DataTransferImpl transfer(context, recording);
+  ASSERT_STATUS_OK(transfer.CopyTensor(values.data(), false, source.Get(), true, sizeof(values)));
 
   std::vector<webgpu::CapturedCommand> commands;
-  context.CaptureBegin(&commands, manager, recording);
-  manager.MemCpy(recording, source.Get(), intermediate.Get(), sizeof(values));
-  manager.MemCpy(recording, intermediate.Get(), destination.Get(), sizeof(values));
-  ASSERT_STATUS_OK(context.Flush(manager, recording));
+  context.CaptureBegin(&commands, recording);
+  ASSERT_STATUS_OK(transfer.CopyTensor(source.Get(), true, intermediate.Get(), true, sizeof(values)));
+  ASSERT_STATUS_OK(transfer.CopyTensor(intermediate.Get(), true, destination.Get(), true, sizeof(values)));
+  ASSERT_STATUS_OK(context.Flush(recording));
   context.CaptureEnd(recording);
   ASSERT_EQ(commands.size(), 2u);
   EXPECT_EQ(recording.num_pending_dispatches, 0u);
@@ -1001,8 +1186,8 @@ TEST(WebGpuContextTest, ReplaysCopyOnlyGraphAndRetainsBuffersUntilRelease) {
   // Only the captured copies now own the intermediate; replay must keep it alive.
   intermediate = nullptr;
   values = {4, 5, 6};
-  manager.Upload(recording, values.data(), source.Get(), sizeof(values));
-  context.Replay(commands, manager, recording);
+  ASSERT_STATUS_OK(transfer.CopyTensor(values.data(), false, source.Get(), true, sizeof(values)));
+  context.Replay(commands, recording);
   EXPECT_EQ(ReadBufferWithExternalCommandEncoder<3>(context, destination.Get()), values);
   EXPECT_EQ(recording.num_pending_dispatches, 0u);
   context.ReleaseGraphResources(commands);
@@ -1021,6 +1206,8 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
                                        webgpu::BufferCacheMode::Disabled,
                                        webgpu::BufferCacheMode::Disabled,
                                        webgpu::BufferCacheMode::Disabled);
+  webgpu_ep->Recording().buffer_manager = &buffer_manager;
+  auto unbind_manager = gsl::finally([&] { webgpu_ep->Recording().buffer_manager = nullptr; });
   std::vector<webgpu::CapturedCommand> captured_commands;
   webgpu::GpuBufferAllocator allocator(
       webgpu_ep->GetDeviceId(),
@@ -1033,10 +1220,12 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   void* allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
-  buffer_manager.Upload(webgpu_ep->Recording(), nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  ASSERT_STATUS_OK(
+      webgpu::DataTransferImpl(context, webgpu_ep->Recording())
+          .CopyTensor(nonzero_data.data(), false, dirty_buffer, true, sizeof(nonzero_data)));
   allocator.Free(allocation);
 
-  context.CaptureBegin(&captured_commands, buffer_manager, webgpu_ep->Recording());
+  context.CaptureBegin(&captured_commands, webgpu_ep->Recording());
   allocation = allocator.Alloc(sizeof(nonzero_data));
   if (allocation == nullptr) {
     context.CaptureEnd(webgpu_ep->Recording());
@@ -1044,7 +1233,7 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   }
   WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
   EXPECT_EQ(reused_buffer, dirty_buffer);
-  const Status flush_status = context.Flush(buffer_manager, webgpu_ep->Recording());
+  const Status flush_status = context.Flush(webgpu_ep->Recording());
   context.CaptureEnd(webgpu_ep->Recording());
   if (!flush_status.IsOK()) {
     allocator.Free(allocation);
@@ -1068,6 +1257,8 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
                                        webgpu::BufferCacheMode::Simple,
                                        webgpu::BufferCacheMode::Disabled,
                                        webgpu::BufferCacheMode::Disabled);
+  webgpu_ep->Recording().buffer_manager = &buffer_manager;
+  auto unbind_manager = gsl::finally([&] { webgpu_ep->Recording().buffer_manager = nullptr; });
   webgpu::GpuBufferAllocator allocator(
       webgpu_ep->GetDeviceId(),
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
@@ -1080,8 +1271,10 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
   void* allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
-  buffer_manager.Upload(webgpu_ep->Recording(), nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
-  ASSERT_STATUS_OK(context.Flush(buffer_manager, webgpu_ep->Recording()));
+  ASSERT_STATUS_OK(
+      webgpu::DataTransferImpl(context, webgpu_ep->Recording())
+          .CopyTensor(nonzero_data.data(), false, dirty_buffer, true, sizeof(nonzero_data)));
+  ASSERT_STATUS_OK(context.Flush(webgpu_ep->Recording()));
   allocator.Free(allocation);
 
   RunOptions run_options;
@@ -1663,13 +1856,12 @@ TEST(WebGpuContextTest, D3D12AcceleratedAllocatorUsesProviderRecording) {
   EXPECT_TRUE(recording.has_unsubmitted_work.load());
   ASSERT_EQ(recording.pending_release_callbacks.size(), 1u);
 
-  auto& buffer_manager = webgpu_ep.InitializerBufferManager();
   webgpu::CommandRecordingState unrelated_recording;
-  ASSERT_STATUS_OK(context.Flush(buffer_manager, unrelated_recording));
+  ASSERT_STATUS_OK(context.Flush(unrelated_recording));
   EXPECT_TRUE(recording.has_unsubmitted_work.load());
   EXPECT_EQ(recording.pending_release_callbacks.size(), 1u);
 
-  ASSERT_STATUS_OK(context.Flush(buffer_manager, recording));
+  ASSERT_STATUS_OK(context.Flush(recording));
   EXPECT_FALSE(recording.has_unsubmitted_work.load());
   EXPECT_TRUE(recording.pending_release_callbacks.empty());
   EXPECT_EQ(ReadBufferWithExternalCommandEncoder<4>(context, destination.Get()),

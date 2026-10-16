@@ -5,11 +5,12 @@
 
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
+#include "core/providers/webgpu/webgpu_external_header.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class BufferManager;
+class WebGpuContext;
 struct CommandRecordingState;
 
 // Object layers ("outer" is the IDataTransfer object held by a manager):
@@ -32,7 +33,7 @@ struct CommandRecordingState;
 // - Env: the internal WebGpuEpFactory::CreateDataTransfer() creates a
 //   WebGpuDataTransferImpl via OrtWebGpuCreateDataTransfer().
 // - Session: WebGpuExecutionProvider::GetDataTransfer() creates DataTransfer below,
-//   bound to the EP's BufferManager and recording. Native kernels use this same
+//   bound to the EP's context and recording. Native kernels use this same
 //   Session DataTransferManager rather than creating another transfer.
 //
 // Plugin WebGPU:
@@ -49,15 +50,15 @@ struct CommandRecordingState;
 // for streamless copies, selecting the context from the GPU tensor's memory-device ID. Session-level
 // creation alone does not bind it to the requesting EP. In plugin builds, an explicit-stream copy uses
 // ep/sync_stream.cc to construct a temporary webgpu::DataTransferImpl with the
-// owning EP's BufferManager and recording, rather than the C API wrapper's
+// owning EP's context and recording, rather than the C API wrapper's
 // call-local recording.
 //
 // DataTransferImpl is the shared raw-pointer copy implementation used by both
 // DataTransfer (IDataTransfer subclass) and the C API wrapper.
 class DataTransferImpl {
  public:
-  DataTransferImpl(const BufferManager& buffer_manager, CommandRecordingState& recording)
-      : buffer_manager_{buffer_manager}, recording_{recording} {}
+  DataTransferImpl(WebGpuContext& context, CommandRecordingState& recording)
+      : context_{context}, recording_{recording} {}
 
   common::Status CopyTensor(void const* src_data,
                             bool src_is_gpu,
@@ -66,18 +67,21 @@ class DataTransferImpl {
                             size_t bytes) const;
 
  private:
-  const BufferManager& buffer_manager_;
+  void Upload(const void* src, WGPUBuffer dst, size_t size) const;
+  void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const;
+  void Download(WGPUBuffer src, void* dst, size_t size) const;
+
+  WebGpuContext& context_;
   CommandRecordingState& recording_;
 };
 
 class DataTransfer : public IDataTransfer {
  public:
-  DataTransfer(const BufferManager& buffer_manager, CommandRecordingState& recording, int context_id)
-      : impl_{buffer_manager, recording}, context_id_{context_id} {}
+  DataTransfer(WebGpuContext& context, CommandRecordingState& recording, int context_id)
+      : impl_{context, recording}, context_id_{context_id} {}
   ~DataTransfer() {};
 
-  // Device-compatibility half of CanCopy, split out because it needs no BufferManager and so can
-  // be tested without a live device.
+  // Device-compatibility half of CanCopy, which can be tested without a live device.
   static bool IsSupportedDevicePair(const OrtDevice& src_device, const OrtDevice& dst_device, int context_id = 0);
 
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
