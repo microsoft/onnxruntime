@@ -30,7 +30,19 @@ void CleanupWebGpuContexts();
 
 OrtEnv* OrtEnv::p_instance_;
 int OrtEnv::ref_count_ = 0;
-std::recursive_mutex OrtEnv::m_;
+
+/*static*/
+std::recursive_mutex& OrtEnv::Mutex() {
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 26426)
+#endif
+  static std::recursive_mutex m;
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+  return m;
+}
 
 OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)
     : value_(std::move(value1)) {
@@ -58,7 +70,7 @@ OrtEnvPtr OrtEnv::GetOrCreateInstance(const OrtEnv::LoggingManagerConstructionIn
                                       onnxruntime::common::Status& status,
                                       const OrtThreadingOptions* tp_options,
                                       const OrtKeyValuePairs* config_entries) {
-  std::lock_guard<std::recursive_mutex> lock(m_);
+  std::lock_guard<std::recursive_mutex> lock(Mutex());
   if (!p_instance_) {
     std::unique_ptr<LoggingManager> lmgr;
     std::string name = lm_info.logid;
@@ -125,7 +137,7 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
   OrtEnv* instance_to_delete = nullptr;
 
   {  // Scope for the lock guard
-    std::lock_guard<std::recursive_mutex> lock(m_);
+    std::lock_guard<std::recursive_mutex> lock(Mutex());
     assert(p_instance_ == env_ptr);
 
     --ref_count_;
@@ -156,7 +168,7 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
 
 /*static*/
 OrtEnvPtr OrtEnv::TryGetInstance() {
-  std::lock_guard<std::recursive_mutex> lock(m_);
+  std::lock_guard<std::recursive_mutex> lock(Mutex());
 
   if (p_instance_) {
     ++ref_count_;
