@@ -83,7 +83,8 @@ CommandRecordingState& GetWebGpuStreamCommandState(const OrtSyncStream* stream) 
 common::Status CopyTensorOnWebGpuStream(const OrtSyncStream* stream, const void* src_data,
                                         bool src_is_gpu, void* dst_data, bool dst_is_gpu, size_t bytes) {
   auto& ep = WebGpuSyncStream::From(stream).ep_;
-  DataTransferImpl transfer(ep.BufferManager(), ep.Recording());
+  auto& context = WebGpuContextFactory::GetContext(ep.GetDeviceId());
+  DataTransferImpl transfer(context, ep.BufferManager(), ep.Recording());
   return transfer.CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, bytes);
 }
 
