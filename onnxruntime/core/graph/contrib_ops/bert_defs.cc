@@ -2007,6 +2007,83 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           PagedAttentionTypeAndShapeInference(ctx);
         }));
 
+static OpSchema PackedSparseAttentionIndexerMergeSchema() {
+  return OpSchema()
+      .SetDoc(
+          "Stable union of a mapped base selection and either [range_start, range_end) "
+          "or an additional selection prefix. "
+          "Valid prefixes contain nonnegative indices. Padding is ignored. Outputs preserve "
+          "first-occurrence order and are padded with -1. Status is 0 for success, 1 for invalid "
+          "device metadata, or 2 for capacity overflow; failures return count 0 and all -1. "
+          "The caller supplies a common index namespace and guarantees causal visibility.")
+      .Attr("policy_mode", "append_range or append_indices.", AttributeProto::STRING)
+      .Attr("max_output_entries", "Fixed output width, in [1, 2^30].", AttributeProto::INT)
+      .Input(0, "base_indices", "Cached selections, shape (R, C).", "T")
+      .Input(1, "base_counts", "Valid base-prefix lengths, shape (R).", "T")
+      .Input(2, "base_row_indices", "Output-query to cached-row mapping, shape (N).", "T")
+      .Input(3, "range_starts", "Inclusive nonnegative starts, shape (N).", "T", OpSchema::Optional)
+      .Input(4, "range_ends", "Exclusive ends not less than starts, shape (N).", "T", OpSchema::Optional)
+      .Input(5, "additional_indices", "Required for append_indices: selections of shape (N, A); absent for append_range.",
+             "T", OpSchema::Optional)
+      .Input(6, "additional_counts", "Required for append_indices: valid prefix lengths of shape (N); absent for append_range.",
+             "T", OpSchema::Optional)
+      .Output(0, "selected_indices", "Merged indices, shape (N, max_output_entries).", "T")
+      .Output(1, "selected_counts", "Merged prefix lengths, shape (N).", "T")
+      .Output(2, "status", "Per-query device validation status, shape (N).", "T")
+      .TypeConstraint("T", {"tensor(int32)"}, "Integer selection tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        const auto* policy = ctx.getAttribute("policy_mode");
+        const auto* capacity = ctx.getAttribute("max_output_entries");
+        if (!policy || (policy->s() != "append_range" && policy->s() != "append_indices") || !capacity || capacity->i() <= 0 ||
+            capacity->i() > (int64_t{1} << 30)) {
+          fail_shape_inference("Invalid PackedSparseAttentionIndexerMerge policy or capacity");
+        }
+        for (size_t output = 0; output < 3; ++output) propagateElemTypeFromInputToOutput(ctx, 0, output);
+        if (hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim_size() != 2) {
+          fail_shape_inference("base_indices must have rank 2");
+        }
+        const bool append_indices = policy->s() == "append_indices";
+        for (size_t index = 3; index <= 6; ++index) {
+          const bool provided = index < ctx.getNumInputs() && ctx.getInputType(index) != nullptr;
+          if (provided != (append_indices ? index >= 5 : index <= 4)) {
+            fail_shape_inference("Merge inputs must match policy_mode");
+          }
+        }
+        const auto check_rows = [&](size_t input, int rank, size_t reference) {
+          if (!hasInputShape(ctx, input)) return;
+          const auto& shape = getInputShape(ctx, input);
+          if (shape.dim_size() != rank) fail_shape_inference("Merge input ", input, " must have rank ", rank);
+          if (hasInputShape(ctx, reference)) {
+            const auto& expected = getInputShape(ctx, reference);
+            if (expected.dim_size() > 0 && shape.dim(0).has_dim_value() && expected.dim(0).has_dim_value() &&
+                shape.dim(0).dim_value() != expected.dim(0).dim_value()) {
+              fail_shape_inference("Merge input ", input, " has a mismatched row dimension");
+            }
+          }
+        };
+        check_rows(1, 1, 0);
+        check_rows(2, 1, 2);
+        if (append_indices) {
+          check_rows(5, 2, 2);
+          check_rows(6, 1, 2);
+        } else {
+          check_rows(3, 1, 2);
+          check_rows(4, 1, 2);
+        }
+        if (hasInputShape(ctx, 2)) {
+          const auto& rows = getInputShape(ctx, 2);
+          if (rows.dim_size() != 1) fail_shape_inference("base_row_indices must have rank 1");
+          auto* shape = getOutputShape(ctx, 0);
+          *shape->add_dim() = rows.dim(0);
+          shape->add_dim()->set_dim_value(capacity->i());
+          propagateShapeFromInputToOutput(ctx, 2, 1);
+          propagateShapeFromInputToOutput(ctx, 2, 2);
+        }
+      });
+}
+
+ONNX_MS_OPERATOR_SET_SCHEMA(PackedSparseAttentionIndexerMerge, 1, PackedSparseAttentionIndexerMergeSchema());
+
 constexpr const char* SparsePagedAttention_ver1_doc = R"DOC(
 Selected-index attention over the PagedAttention main K/V cache.
 
@@ -2690,6 +2767,26 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
                          "'");
   }
   const bool is_qsa = policy == psai::Policy::kQsa;
+  const std::string state_policy = getAttribute(ctx, "indexshare_state_policy", std::string("default"));
+  if ((state_policy != "default" && state_policy != "hold" && state_policy != "advance") ||
+      (is_qsa && state_policy == "advance")) {
+    fail_shape_inference("PackedSparseAttentionIndexer: invalid indexshare_state_policy for policy_mode");
+  }
+
+  const bool has_indexshare = PackedSparseAttentionIndexerHasInput(ctx, psai::kIndexShareMode);
+  const int64_t output_capacity = getAttribute(ctx, "max_output_entries", static_cast<int64_t>(0));
+  for (int index : {psai::kMergedIndices, psai::kMergedCounts, psai::kMergedStatus}) {
+    if (PackedSparseAttentionIndexerHasInput(ctx, index) != has_indexshare) {
+      fail_shape_inference("PackedSparseAttentionIndexer: all IndexShare inputs must be provided together");
+    }
+  }
+  if (has_indexshare != (output_capacity > 0) || output_capacity < 0 ||
+      output_capacity > std::numeric_limits<int>::max()) {
+    fail_shape_inference("PackedSparseAttentionIndexer: IndexShare requires a positive max_output_entries");
+  }
+  if (has_indexshare != ctx.hasOutput(psai::kIndexShareStatus)) {
+    fail_shape_inference("PackedSparseAttentionIndexer: IndexShare requires its status output");
+  }
 
   const int64_t compress_ratio = getAttribute(ctx, "compress_ratio", static_cast<int64_t>(0));
   if (compress_ratio <= 0 ||
@@ -2763,8 +2860,7 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   }
   const bool has_capture_count = PackedSparseAttentionIndexerHasInput(ctx, psai::kStateUpdateCaptureCount);
   const bool has_state_update_active = PackedSparseAttentionIndexerHasInput(ctx, psai::kStateUpdateActive);
-  const bool has_state_update_output =
-      ctx.getNumOutputs() > static_cast<size_t>(psai::kStateUpdate) && ctx.getOutputType(psai::kStateUpdate) != nullptr;
+  const bool has_state_update_output = ctx.hasOutput(psai::kStateUpdate);
   if (!is_qsa && (state_update_capacity > 0 || has_capture_count ||
                   has_state_update_active || has_state_update_output)) {
     fail_shape_inference("PackedSparseAttentionIndexer: state update capture is only valid for policy_mode 'qsa'");
@@ -2776,7 +2872,7 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   }
 
   if (ctx.getNumOutputs() < static_cast<size_t>(psai::kFixedOutputCount) ||
-      ctx.getNumOutputs() > static_cast<size_t>(psai::kOutputCount)) {
+      ctx.getNumOutputs() > static_cast<size_t>(has_indexshare ? psai::kOutputCount : psai::kStateUpdate + 1)) {
     fail_shape_inference("PackedSparseAttentionIndexer: expected ", psai::kFixedOutputCount, " or ",
                          psai::kOutputCount, " declared outputs, got ", ctx.getNumOutputs());
   }
@@ -2787,6 +2883,7 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   }
   updateOutputElemType(ctx, psai::kSelectedIndices, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   updateOutputElemType(ctx, psai::kSelectedCounts, ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  if (has_indexshare) updateOutputElemType(ctx, psai::kIndexShareStatus, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   updateOutputElemType(ctx, psai::kPresentStateLengths, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   propagateElemTypeFromInputToOutput(ctx, psai::kPastKeyState, psai::kPresentKeyState);
   propagateElemTypeFromInputToOutput(ctx, psai::kPastKvBuffer, psai::kPresentKvBuffer);
@@ -2842,6 +2939,10 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
       PackedSparseAttentionIndexerShape(ctx, psai::kStateUpdateCaptureCount, 1);
   const auto* state_update_active_shape =
       PackedSparseAttentionIndexerShape(ctx, psai::kStateUpdateActive, 1);
+  const auto* mode_shape = PackedSparseAttentionIndexerShape(ctx, psai::kIndexShareMode, 1);
+  const auto* merged_indices_shape = PackedSparseAttentionIndexerShape(ctx, psai::kMergedIndices, 2);
+  const auto* merged_counts_shape = PackedSparseAttentionIndexerShape(ctx, psai::kMergedCounts, 1);
+  const auto* merged_status_shape = PackedSparseAttentionIndexerShape(ctx, psai::kMergedStatus, 1);
 
   auto require_equal_dims = [](const ONNX_NAMESPACE::TensorShapeProto* lhs, int lhs_index,
                                const ONNX_NAMESPACE::TensorShapeProto* rhs, int rhs_index,
@@ -2861,7 +2962,16 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   };
 
   const int64_t buffer_capacity = psai::GenericBufferCapacity(compress_ratio);
-  require_equal_dims(key_shape, 0, query_shape, 0, "key dimension 0 must equal query dimension 0");
+  require_dim_value(mode_shape, 0, 1, "indexshare_mode must have shape {1}");
+  require_dim_value(merged_indices_shape, 1, output_capacity, "merged_indices width must equal max_output_entries");
+  require_equal_dims(merged_indices_shape, 0, merged_counts_shape, 0, "merged_counts must match merged_indices rows");
+  require_equal_dims(merged_indices_shape, 0, merged_status_shape, 0, "merged_status must match merged_indices rows");
+  if (merged_indices_shape != nullptr && merged_indices_shape->dim(0).has_dim_value() &&
+      merged_indices_shape->dim(0).dim_value() != 0) {
+    require_equal_dims(merged_indices_shape, 0, past_sequence_shape, 0,
+                       "Nonempty merged_indices must have one row per request");
+  }
+  if (!has_indexshare) require_equal_dims(key_shape, 0, query_shape, 0, "key dimension 0 must equal query dimension 0");
   require_equal_dims(query_norm_shape, 0, key_norm_shape, 0,
                      "query_norm_weight and key_norm_weight dimensions must match");
   require_equal_dims(past_sequence_shape, 0, key_state_shape, 0,
@@ -2906,7 +3016,9 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     }
   }
   if (!is_qsa) {
-    require_equal_dims(gate_shape, 0, query_shape, 0, "gate dimension 0 must equal query dimension 0");
+    require_equal_dims(key_shape, 0, gate_shape, 0, "gate dimension 0 must equal key dimension 0");
+    require_equal_dims(key_shape, 0, position_ids_shape, 0, "position_ids dimension 0 must equal key dimension 0");
+    if (!has_indexshare) require_equal_dims(gate_shape, 0, query_shape, 0, "gate dimension 0 must equal query dimension 0");
     require_equal_dims(head_weights_shape, 0, query_shape, 0,
                        "head_weights dimension 0 must equal query dimension 0");
     if (head_weights_shape != nullptr && query_shape != nullptr &&
@@ -2926,8 +3038,8 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     require_equal_dims(gate_buffer_shape, 2, kv_buffer_shape, 2,
                        "past_gate_buffer and past_kv_buffer widths must match");
   }
-  require_equal_dims(position_ids_shape, 0, query_shape, 0,
-                     "position_ids dimension 0 must equal query dimension 0");
+  if (!has_indexshare) require_equal_dims(position_ids_shape, 0, query_shape, 0,
+                                          "position_ids dimension 0 must equal query dimension 0");
   if (cos_shape != nullptr && sin_shape != nullptr) {
     if (cos_shape->dim_size() != sin_shape->dim_size()) {
       fail_shape_inference("PackedSparseAttentionIndexer: cos_cache and sin_cache ranks must match");
@@ -2981,15 +3093,26 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
       fail_shape_inference("PackedSparseAttentionIndexer: query width must be divisible by head_size");
     }
 
-    const int64_t capacity = psai::SelectedCapacity(policy, token_budget, index_topk, compress_ratio);
+    const int64_t base_capacity = psai::SelectedCapacity(policy, token_budget, index_topk, compress_ratio);
+    if (has_indexshare && output_capacity < base_capacity) {
+      fail_shape_inference("PackedSparseAttentionIndexer: max_output_entries is smaller than the selection budget");
+    }
+    const int64_t capacity = has_indexshare ? output_capacity : base_capacity;
     ONNX_NAMESPACE::TensorShapeProto selected_shape;
-    SparseAttentionIndexerAppendDim(selected_shape, total_tokens_dim);
+    if (has_indexshare)
+      selected_shape.add_dim();
+    else
+      SparseAttentionIndexerAppendDim(selected_shape, total_tokens_dim);
     selected_shape.add_dim()->set_dim_value(capacity);
     updateOutputShape(ctx, psai::kSelectedIndices, selected_shape);
 
     ONNX_NAMESPACE::TensorShapeProto counts_shape;
-    SparseAttentionIndexerAppendDim(counts_shape, total_tokens_dim);
+    if (has_indexshare)
+      counts_shape.add_dim();
+    else
+      SparseAttentionIndexerAppendDim(counts_shape, total_tokens_dim);
     updateOutputShape(ctx, psai::kSelectedCounts, counts_shape);
+    if (has_indexshare) updateOutputShape(ctx, psai::kIndexShareStatus, counts_shape);
   }
 
   // State never grows: present_* always has exactly the same fixed shape as past_*.
@@ -3227,6 +3350,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Only for policy_mode 'qsa': optional capture gate with shape (1). A zero value disables capture.",
                "M",
                OpSchema::Optional)
+        .Input(18, "indexshare_mode", "CPU scalar [1]: 0 refresh, 1 reuse.", "M", OpSchema::Optional)
+        .Input(19, "merged_indices", "Packed merged selection [N,max_output_entries].", "M", OpSchema::Optional)
+        .Input(20, "merged_counts", "Merged counts [N].", "M", OpSchema::Optional)
+        .Input(21, "merged_status", "Merged device status [N].", "M", OpSchema::Optional)
+        .Attr("max_output_entries", "Fixed padded output width for the optional IndexShare interface.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("indexshare_state_policy", "Reuse state policy: default holds QSA and advances CSA; hold or advance overrides it.",
+              AttributeProto::STRING, std::string("default"))
         .Output(0,
                 "selected_indices",
                 "Selected entries with shape (total_tokens, capacity). capacity is "
@@ -3264,6 +3395,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "Inactive and unused slots are zero.",
                 "T",
                 OpSchema::Optional)
+        .Output(7, "indexshare_status", "Selection status [N], forwarded on reuse and zero on refresh.",
+                "M", OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain floating point tensors to float, float16 and bfloat16.")
