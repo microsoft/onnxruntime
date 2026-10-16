@@ -999,6 +999,47 @@ TEST(MoeExpertCountingTest, LayeredQMoEOffloadSwapsInEarlyAndBoundaryNodesOnly) 
   }
 }
 
+TEST(MoeExpertCountingTest, LayeredQMoEOffloadAllowsFewerGpuExpertsThanTopK) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider || provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "Built-in CUDA execution provider is unavailable.";
+  }
+  for (size_t cpu_count : {5U, 7U}) {
+    SCOPED_TRACE(cpu_count);
+    auto options = CountingOptions();
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadStrategy, "layered"));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+                                                           std::to_string(cpu_count).c_str()));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "0"));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    ModelProto model;
+    ASSERT_TRUE(model.ParseFromString(MakeCountingModel(true, true)));
+    for (auto& node : *model.mutable_graph()->mutable_node()) {
+      for (auto& attribute : *node.mutable_attribute()) {
+        if (attribute.name() == "k") attribute.set_i(kExperts);
+      }
+      for (const auto& [name, value] :
+           {std::pair{"expert_weight_bits", int64_t{4}}, std::pair{"weights_prepacked", int64_t{0}}}) {
+        auto* attribute = node.add_attribute();
+        attribute->set_name(name);
+        attribute->set_type(AttributeProto_AttributeType_INT);
+        attribute->set_i(value);
+      }
+    }
+    InferenceSessionWrapper session(options, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+    const auto serialized = model.SerializeAsString();
+    ASSERT_STATUS_OK(session.Load(serialized.data(), static_cast<int>(serialized.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    auto* state = session.GetSessionState().GetMoeExpertState();
+    ASSERT_NE(state, nullptr);
+    const auto* first = session.GetSessionState().GetKernel(0);
+    EXPECT_EQ(CudaExperts(*state, first).size(), 8 - cpu_count);
+    RunCountingModel(session);
+    RunCountingModel(session);
+  }
+}
+
 TEST(MoeExpertCountingTest, QMoEOnlyCpuOffloadStrategiesRejectDenseMoE) {
   auto provider = DefaultCudaExecutionProvider();
   if (!provider || provider->GetOrtEp() != nullptr) {
