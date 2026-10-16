@@ -496,6 +496,54 @@ conceptual planning metadata, not an existing `ComputeCapability` payload or a f
 | Enforceable contract menu | Identify supported runtime choices, workload coverage, and explicit-failure conditions for that implementation. |
 | Allocation requirements and bound status | Describe implementation-owned persistent/prepack storage, initialization scratch, and runtime workspace, with resource identity, location, size bound, alignment, lifetime, sharing relationships, and unresolved terms. |
 
+A conceptual internal representation is:
+
+```text
+ComputeCapability
+|-- sub_graph
+|   `-- source-node membership and supplied/derived boundary inputs/outputs
+`-- planning (optional)
+    |-- candidate_id + graph_revision
+    |-- alternative_view_ids + compatibility_constraints
+    |-- implementation_recipe
+    |   |-- standalone kernel, fused-kernel, or compiled-region lowering
+    |   |-- application_handle / recipe_state
+    |   `-- planning_graph or graph_effects_description
+    `-- contracts[]
+        |-- contract_id
+        |-- eligibility / workload coverage / explicit-failure conditions
+        |-- allocation_requirements[]
+        `-- bound_status / unresolved_terms
+```
+
+The optional payload preserves legacy capabilities outside budget-planned mode. A missing payload is
+not a zero-cost estimate or sufficient evidence for strict-budget admission without a proven adapter.
+Boundary information can be supplied or derived from the graph; the sketch does not imply that every
+boundary field already exists on `IndexedSubGraph`.
+
+The corresponding planning query could look like:
+
+```text
+GetCapability(graph_view, kernel_lookup, optimizer_registry, query_context)
+    -> execution_candidates[]
+
+query_context:
+    mode = Planning
+    graph_revision
+    workload_bounds
+    device/configuration
+    user_constraints
+```
+
+These are illustrative internal planning interfaces, not the current `GetCapability()` signature or
+finalized C++/C API layouts. Existing discovery/accountant integration needs adaptation; plugin ABI
+support must provide equivalent semantics through versioned C-compatible interfaces, not export these
+C++ objects directly.
+
+Returned requirements are evaluated for that query context and selected recipe/contract, not universal
+per-node estimates. Changes to the graph revision, placement boundaries, workload, configuration, or
+constraints require invalidating/re-querying affected descriptors unless their reuse is proven valid.
+
 The recipe and requirement query must describe the same implementation. The implementation owner
 supplies kernel-private sizing, preferably reusing runtime sizing helpers. ORT accounts for graph
 tensors, transfers, and global backing/lifetimes; a shared framework optimizer must describe storage
