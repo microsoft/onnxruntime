@@ -13,7 +13,7 @@ Compressed project memory. This is not the execution plan.
   M01. `SPEC.md` and the execution plan are approved.
 - M01 is complete and published as ready-for-review PR #11:
   https://github.com/onnxruntime/ort-state/pull/11
-- No agents launched. M01-M04 are complete; M05-M24 remain pending.
+- No agents launched. M01-M05 are complete; M06-M24 remain pending.
   Runtime production code starts with M02.
 - Future tracking: keep `TASKS.md` checklist current and record compressed
   discoveries/agent learnings here.
@@ -87,7 +87,7 @@ Compressed project memory. This is not the execution plan.
   standalone package; ORT loading; DDIM; Python; Phi-3 demo; diffusion demo;
   C#; Java; common JS/Node; Web/WASM; Go; Rust; Objective-C; React Native;
   integrated qualification/measurements.
-- M01-M04 complete after explicit approval; M05-M24 remain pending.
+- M01-M05 complete after explicit approval; M06-M24 remain pending.
 - Each milestone includes intended outcome, tasks, CPU/CUDA test plan and gate.
   Actual prerequisites are listed separately from mechanical stack ordering.
 - M01 verifies concrete contracts, small fixtures and coverage readiness.
@@ -355,5 +355,8 @@ Compressed project memory. This is not the execution plan.
   rejected explicitly. No warning suppression or success-shaped fallbacks.
 - Final XML/profiles/LCOV: CPU `coverage/m05/verified`, CUDA
   `m05-verified-tests.xml` and `m05-verified-regressions.xml` in build output.
-- M05 validated, publication next. All ten files pass style/whitespace/120-column
-  checks. No new device production code or public API.
+- M05 implementation commit `ddb8260691` published in ready-for-review PR #15:
+  https://github.com/onnxruntime/ort-state/pull/15
+  Base `state/m04-cpu-kv-cache`, head `state/m05-cpu-greedy`.
+- All ten files pass style/whitespace/120-column checks. No new device production
+  code or public API. M06 (public C API/C++ wrappers) is next, not started.

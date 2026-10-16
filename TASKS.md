@@ -1,7 +1,7 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M04 complete; M05 in progress.
-M04: [PR #14](https://github.com/onnxruntime/ort-state/pull/14).
+**Status:** Approved; M01-M05 complete.
+M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
 **Working memory:** [Shared scratchpad](SCRATCHPAD.md).
 
@@ -16,7 +16,7 @@ M04: [PR #14](https://github.com/onnxruntime/ort-state/pull/14).
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M04 are complete; M05 is in progress; M06-M24 are pending. Check tasks when their
+M01-M05 are complete; M06-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -93,7 +93,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M04 are **complete**; M05 is **in progress**; M06-M24 are **pending**.
+M01-M05 are **complete**; M06-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -101,7 +101,7 @@ M01-M04 are **complete**; M05 is **in progress**; M06-M24 are **pending**.
 | [x] | M02 | Stateful context and explicit SessionLoop / `context-loop` | M01 |
 | [x] | M03 | SessionChain and tensor/state bindings / `chain-bindings` | M02 |
 | [x] | M04 | CPU KV cache management / `cpu-kv-cache` | M03 |
-| [ ] | M05 | CPU greedy sampling and decode iteration / `cpu-greedy` | M04 |
+| [x] | M05 | CPU greedy sampling and decode iteration / `cpu-greedy` | M04 |
 | [ ] | M06 | Public C API and C++ wrappers / `public-api` | M02, M03, M04, M05 |
 | [ ] | M07 | Built-in/plugin EP capability contracts / `ep-stateful-hooks` | M04, M05, M06 |
 | [ ] | M08 | Native CUDA KV management / `cuda-kv-cache` | M07 |
@@ -588,8 +588,9 @@ introduced; the measured new-line gate is for Linux CPU inference code.
 ### M05 - CPU greedy sampling and decode integration
 
 **Outcome:** CPU token selection and a complete tiny prefill/decode chain.
-**Status:** Validated, pending commit/PR, authorized 2026-10-16; `state/m05-cpu-greedy`
-stacks on `state/m04-cpu-kv-cache`.
+**Status:** Complete; [PR #15](https://github.com/onnxruntime/ort-state/pull/15)
+is ready for review. Branch `state/m05-cpu-greedy` stacks on
+`state/m04-cpu-kv-cache`. Implementation commit: `ddb8260691`.
 
 - [x] Implement documented greedy selection using existing suitable helpers.
 - [x] Validate supported logits shapes/dtypes/position, ties, non-finite behavior,
@@ -642,7 +643,7 @@ integration-line coverage pass.
   CUDA sampler or training-build coverage is claimed.
 
 - [x] Complete CUDA tests, memory checks and final source/document validation.
-- [ ] Commit and publish the ready-for-review PR stacked on M04.
+- [x] Commit and publish the ready-for-review PR stacked on M04.
 
 Validation commands (reuse the established instrumented CPU and CUDA 13.1 builds;
 regenerate CMake when first adding the native generation source files):
