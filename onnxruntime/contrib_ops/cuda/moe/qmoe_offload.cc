@@ -1600,7 +1600,6 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
     num_experts_ = static_cast<int>(expert_blocks_->Shape()[0]);
     hidden_size_ = static_cast<int>(hidden);
     inter_size_ = static_cast<int>(inter);
-    qmoe::ApplyNumaInterleavePolicy(expert_blocks_->DataRaw(), expert_blocks_->SizeInBytes());
   } else {
     ORT_ENFORCE(info.TryGetConstantInput(2, &nvfp4_fc1_w_) && nvfp4_fc1_w_ &&
                     info.TryGetConstantInput(3, &nvfp4_fc1_s_) && nvfp4_fc1_s_ &&
@@ -1617,7 +1616,6 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
     for (const Tensor* t : {nvfp4_fc1_w_, nvfp4_fc1_s_, nvfp4_fc2_w_, nvfp4_fc2_s_}) {
       ORT_ENFORCE(t->Location().device.Type() == OrtDevice::CPU && t->DataRaw() != nullptr,
                   "QMoEOffload FP4 expert weights/scales must be on CPU.");
-      qmoe::ApplyNumaInterleavePolicy(t->DataRaw(), t->SizeInBytes());
     }
     const auto& fc1_shape = nvfp4_fc1_w_->Shape();
     const auto& fc2_shape = nvfp4_fc2_w_->Shape();

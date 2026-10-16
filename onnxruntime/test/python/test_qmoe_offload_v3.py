@@ -1215,28 +1215,70 @@ int main() {
         )
 
     def test_numa_striping_and_worker_pinning(self):
-        """Verifies NUMA page striping (ApplyNumaInterleavePolicy) and SpinPool socket-balanced worker pinning."""
+        """Checks actual singleton affinity, unique CPUs, restricted cpusets, and caller restoration."""
+        if sys.platform != "linux":
+            self.skipTest("Linux CPU affinity test")
         cpp_src = r"""
 #include <cassert>
+#include <set>
 #include <thread>
 #include <vector>
 #include "contrib_ops/cuda/moe/qmoe_spin_pool.h"
 using namespace onnxruntime::contrib::cuda::qmoe;
 int main() {
-    std::vector<uint8_t> buf(1 << 20, 0);
-    // ApplyNumaInterleavePolicy safely succeeds on multi-node Linux hosts and never crashes.
-    (void)ApplyNumaInterleavePolicy(buf.data(), buf.size());
-    SpinPool pool(8, 1000);
-    if (pool.NumaNodeCount() > 0) {
-        while (pool.PinnedWorkerCount() < 7) {
-            std::this_thread::yield();
-        }
-        assert(pool.PinnedWorkerCount() == 7);
+    setenv("ORT_QMOE_NUMA_PIN_WORKERS", "1", 1);
+    cpu_set_t original;
+    assert(sched_getaffinity(0, sizeof(original), &original) == 0);
+    const auto order = NumaBalancedCpuOrder(DiscoverAllowedNumaNodeCpuSets());
+    assert(!order.empty());
+    const int threads = std::min(8, static_cast<int>(order.size()));
+    auto check_pool = [&](int count) {
+        SpinPool pool(count, 1000);
+        std::vector<int> actual(count, -1);
+        std::atomic<int> arrived{0};
+        auto fn = [&](ptrdiff_t idx) {
+            cpu_set_t mask;
+            assert(pthread_getaffinity_np(pthread_self(), sizeof(mask), &mask) == 0);
+            assert(CPU_COUNT(&mask) == 1);
+            actual[idx] = sched_getcpu();
+            arrived.fetch_add(1);
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while (arrived.load() != count) {
+                assert(std::chrono::steady_clock::now() < deadline);
+                std::this_thread::yield();
+            }
+        };
+        pool.ParallelFor(count, fn, 1);
+        assert(pool.AffinityFailures() == 0);
+        assert(pool.PinnedWorkerCount() == count - 1);
+        std::set<int> unique(actual.begin(), actual.end());
+        assert(unique.size() == static_cast<size_t>(count));
+        for (int i = 0; i < count; ++i) assert(unique.count(pool.CpuForWorker(i)) == 1);
+    };
+    check_pool(threads);
+    cpu_set_t restored;
+    assert(sched_getaffinity(0, sizeof(restored), &restored) == 0);
+    assert(CPU_EQUAL(&original, &restored));
+    // Noncontiguous restrictions must not be expanded to the entire socket.
+    cpu_set_t restricted;
+    CPU_ZERO(&restricted);
+    const int limited = std::min(4, threads);
+    for (int i = 0; i < limited; ++i) CPU_SET(order[i], &restricted);
+    assert(sched_setaffinity(0, sizeof(restricted), &restricted) == 0);
+    check_pool(limited);
+    assert(sched_getaffinity(0, sizeof(restored), &restored) == 0);
+    assert(CPU_EQUAL(&restricted, &restored));
+    assert(sched_setaffinity(0, sizeof(original), &original) == 0);
+    setenv("ORT_QMOE_NUMA_PIN_WORKERS", "0", 1);
+    {
+        SpinPool pool(threads, 1000);
+        assert(pool.CpuForWorker(0) == -1);
+        std::atomic<int> sum{0};
+        auto fn = [&](ptrdiff_t idx) { sum.fetch_add(static_cast<int>(idx + 1)); };
+        pool.ParallelFor(16, fn, 1);
+        assert(sum.load() == 16 * 17 / 2);
+        assert(pool.PinnedWorkerCount() == 0);
     }
-    std::atomic<int> sum{0};
-    auto fn = [&](ptrdiff_t idx) { sum.fetch_add(static_cast<int>(idx + 1)); };
-    pool.ParallelFor(16, fn, 1);
-    assert(sum.load() == 16 * 17 / 2);
     return 0;
 }
 """

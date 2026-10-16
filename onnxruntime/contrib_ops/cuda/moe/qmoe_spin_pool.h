@@ -18,6 +18,7 @@
 #endif
 
 #if defined(__linux__)
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -98,48 +99,68 @@ inline std::vector<cpu_set_t> DiscoverAllowedNumaNodeCpuSets() {
   }
   return node_sets;
 }
-#endif
 
-// Applies MPOL_INTERLEAVE page striping across online NUMA memory nodes on Linux so dual-socket
-// DDR5 channels are balanced regardless of which socket first faults the expert weight pages.
-inline bool ApplyNumaInterleavePolicy(const void* addr, size_t bytes) noexcept {
-#if defined(__linux__) && defined(__NR_mbind)
-  if (addr == nullptr || bytes == 0) return false;
-  if (const char* env = std::getenv("ORT_QMOE_NUMA_INTERLEAVE"); env != nullptr && std::strcmp(env, "0") == 0) {
-    return false;
-  }
-  static const unsigned long kNodeMask = []() -> unsigned long {
-    unsigned long mask = 0;
-    const auto nodes = DiscoverLinuxMemoryNodes();
-    if (nodes.size() < 2) return 0;
-    for (int n : nodes) {
-      if (n >= 0 && static_cast<size_t>(n) < sizeof(unsigned long) * 8) {
-        mask |= (1UL << n);
+// Prefer one logical CPU per physical core, alternating NUMA nodes. SMT siblings
+// are appended only after all permitted physical cores have been assigned.
+inline std::vector<int> NumaBalancedCpuOrder(const std::vector<cpu_set_t>& node_sets) {
+  std::vector<std::vector<int>> primary(node_sets.size()), siblings(node_sets.size());
+  cpu_set_t seen;
+  CPU_ZERO(&seen);
+  for (size_t n = 0; n < node_sets.size(); ++n) {
+    for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
+      if (!CPU_ISSET(cpu, &node_sets[n])) continue;
+      if (CPU_ISSET(cpu, &seen)) {
+        siblings[n].push_back(cpu);
+        continue;
       }
+      primary[n].push_back(cpu);
+      CPU_SET(cpu, &seen);
+      std::ifstream in("/sys/devices/system/cpu/cpu" + std::to_string(cpu) + "/topology/thread_siblings_list");
+      std::string line;
+      std::vector<int> same_core;
+      if (std::getline(in, line)) ParseLinuxCpuRangeList(line, &same_core);
+      for (int sibling : same_core)
+        if (sibling >= 0 && sibling < CPU_SETSIZE) CPU_SET(sibling, &seen);
     }
-    return mask;
-  }();
-  if (kNodeMask == 0) return false;
-  const size_t page_size = 4096;
-  const uintptr_t raw = reinterpret_cast<uintptr_t>(addr);
-  const uintptr_t aligned_start = raw & ~(static_cast<uintptr_t>(page_size) - 1);
-  const size_t aligned_len = ((raw + bytes - aligned_start) + page_size - 1) & ~(page_size - 1);
-  constexpr int kMpolInterleave = 3;
-  constexpr unsigned kMpolMfMove = (1u << 1);
-  const unsigned long maxnode = sizeof(unsigned long) * 8;
-  long rc = syscall(__NR_mbind, reinterpret_cast<void*>(aligned_start), static_cast<unsigned long>(aligned_len),
-                    kMpolInterleave, &kNodeMask, maxnode, 0u);
-  if (rc != 0) {
-    rc = syscall(__NR_mbind, reinterpret_cast<void*>(aligned_start), static_cast<unsigned long>(aligned_len),
-                 kMpolInterleave, &kNodeMask, maxnode, kMpolMfMove);
   }
-  return rc == 0;
-#else
-  (void)addr;
-  (void)bytes;
-  return false;
-#endif
+  std::vector<int> order;
+  for (const auto* sets : {&primary, &siblings}) {
+    for (size_t i = 0;; ++i) {
+      bool any = false;
+      for (const auto& cpus : *sets) {
+        if (i < cpus.size()) {
+          order.push_back(cpus[i]);
+          any = true;
+        }
+      }
+      if (!any) break;
+    }
+  }
+  return order;
 }
+
+class ScopedCpuAffinity {
+ public:
+  explicit ScopedCpuAffinity(int cpu) noexcept {
+    if (cpu < 0 || cpu >= CPU_SETSIZE || pthread_getaffinity_np(pthread_self(), sizeof(saved_), &saved_) != 0 ||
+        !CPU_ISSET(cpu, &saved_)) return;
+    if (CPU_COUNT(&saved_) == 1) return;
+    cpu_set_t target;
+    CPU_ZERO(&target);
+    CPU_SET(cpu, &target);
+    restore_ = pthread_setaffinity_np(pthread_self(), sizeof(target), &target) == 0;
+  }
+  ~ScopedCpuAffinity() {
+    if (restore_) static_cast<void>(pthread_setaffinity_np(pthread_self(), sizeof(saved_), &saved_));
+  }
+  ScopedCpuAffinity(const ScopedCpuAffinity&) = delete;
+  ScopedCpuAffinity& operator=(const ScopedCpuAffinity&) = delete;
+
+ private:
+  cpu_set_t saved_{};
+  bool restore_{};
+};
+#endif
 
 inline size_t SpinPoolBatchSize(size_t count, size_t threads, size_t requested) {
   return std::min(requested, std::max(size_t{1}, count / threads));
@@ -157,8 +178,18 @@ class SpinPool final {
     const bool enable_pin = (pin_env == nullptr || std::strcmp(pin_env, "0") != 0);
     if (enable_pin) {
       node_masks_ = DiscoverAllowedNumaNodeCpuSets();
+      worker_cpus_ = NumaBalancedCpuOrder(node_masks_);
     }
     numa_node_count_ = static_cast<int>(node_masks_.size());
+    if (const char* log = std::getenv("ORT_QMOE_NUMA_DIAGNOSTICS"); log && std::strcmp(log, "0") != 0) {
+      std::string cpus;
+      for (int i = 0; i < threads; ++i) {
+        if (i > 0) cpus += ',';
+        cpus += std::to_string(CpuForWorker(i));
+      }
+      std::fprintf(stderr, "[QMoE NUMA] pool_threads=%d nodes=%d caller_then_worker_cpus=%s\n",
+                   threads, numa_node_count_, cpus.c_str());
+    }
 #endif
     for (int worker = 1; worker < threads; ++worker) {
       workers_.emplace_back([this, worker] { Loop(worker); });
@@ -194,6 +225,17 @@ class SpinPool final {
     return pinned_workers_.load(std::memory_order_acquire);
   }
 
+  int CpuForWorker(int worker) const noexcept {
+#if defined(__linux__)
+    return worker >= 0 && static_cast<size_t>(worker) < worker_cpus_.size() ? worker_cpus_[worker] : -1;
+#else
+    (void)worker;
+    return -1;
+#endif
+  }
+
+  int AffinityFailures() const noexcept { return affinity_failures_.load(std::memory_order_acquire); }
+
   template <typename Function>
   void ParallelFor(ptrdiff_t count, Function& function, int batch = 1) {
     if (count < 0 || batch < 1 || batch > 16) throw std::invalid_argument("Invalid QMoE pool job/batch.");
@@ -213,6 +255,11 @@ class SpinPool final {
 
   void Run(size_t count, void (*function)(void*, size_t), void* data, size_t requested_batch) {
     if (count == 0) return;
+#if defined(__linux__)
+    // The submitting thread participates as worker zero; restore arbitrary ORT
+    // callers' affinity when the job ends instead of permanently pinning them.
+    ScopedCpuAffinity caller_affinity(CpuForWorker(0));
+#endif
     if (workers_.empty() || count > kFieldMask) {
       for (size_t task = 0; task < count; ++task) function(data, task);
       return;
@@ -258,10 +305,15 @@ class SpinPool final {
 
   void Loop(int worker_idx) {
 #if defined(__linux__)
-    if (!node_masks_.empty()) {
-      const size_t node_slot = static_cast<size_t>(worker_idx) % node_masks_.size();
-      if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &node_masks_[node_slot]) == 0) {
+    const int cpu = CpuForWorker(worker_idx);
+    if (cpu >= 0) {
+      cpu_set_t mask;
+      CPU_ZERO(&mask);
+      CPU_SET(cpu, &mask);
+      if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) == 0) {
         pinned_workers_.fetch_add(1, std::memory_order_release);
+      } else {
+        affinity_failures_.fetch_add(1, std::memory_order_release);
       }
     }
 #else
@@ -289,8 +341,10 @@ class SpinPool final {
   std::atomic<int> spin_us_{2000};
   int numa_node_count_{0};
   std::atomic<int> pinned_workers_{0};
+  std::atomic<int> affinity_failures_{0};
 #if defined(__linux__)
   std::vector<cpu_set_t> node_masks_;
+  std::vector<int> worker_cpus_;
 #endif
   std::vector<std::thread> workers_;
   std::atomic<bool> stop_{false};
