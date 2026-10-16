@@ -1399,17 +1399,25 @@ Status WebGpuContext::FlushAndWaitChecked(CommandRecordingState& recording) {
 }
 
 Status WebGpuContext::Flush(CommandRecordingState& recording) {
-  const auto* execution_buffer_manager = recording.buffer_manager;
-  // Submission retires all context-owned pools and the execution-local pool, if any.
-  // Only the execution-local pool follows capture policy.
+  const auto* execution_buffer_manager = recording.buffer_manager != nullptr
+                                             ? recording.buffer_manager
+                                             : buffer_mgr_.get();
+  const auto phase = recording.phase.load(std::memory_order_relaxed);
+  const bool refresh_context_pools = phase != CommandRecordingPhase::SessionExecution;
+  const auto cache_state = execution_buffer_manager == buffer_mgr_.get() ||
+                                   execution_buffer_manager == initializer_buffer_mgr_.get()
+                               ? GraphCaptureState::Default
+                               : recording.graph_capture_state;
   const auto refresh_pending_buffers = [&]() {
-    if (execution_buffer_manager != nullptr &&
-        execution_buffer_manager != buffer_mgr_.get() &&
-        execution_buffer_manager != initializer_buffer_mgr_.get()) {
-      execution_buffer_manager->RefreshPendingBuffers(recording, recording.graph_capture_state);
+    execution_buffer_manager->RefreshPendingBuffers(recording, cache_state);
+    if (refresh_context_pools) {
+      if (execution_buffer_manager != buffer_mgr_.get()) {
+        buffer_mgr_->RefreshPendingBuffers(recording, GraphCaptureState::Default);
+      }
+      if (execution_buffer_manager != initializer_buffer_mgr_.get()) {
+        initializer_buffer_mgr_->RefreshPendingBuffers(recording, GraphCaptureState::Default);
+      }
     }
-    buffer_mgr_->RefreshPendingBuffers(recording, GraphCaptureState::Default);
-    initializer_buffer_mgr_->RefreshPendingBuffers(recording, GraphCaptureState::Default);
   };
 
   Status status = EncodeDeferredDispatches(recording);
@@ -1417,13 +1425,15 @@ Status WebGpuContext::Flush(CommandRecordingState& recording) {
     if (status.IsOK()) {
       refresh_pending_buffers();
     } else {
-      if (execution_buffer_manager != nullptr &&
-          execution_buffer_manager != buffer_mgr_.get() &&
-          execution_buffer_manager != initializer_buffer_mgr_.get()) {
-        execution_buffer_manager->DiscardPendingBuffers(recording);
+      execution_buffer_manager->DiscardPendingBuffers(recording);
+      if (refresh_context_pools) {
+        if (execution_buffer_manager != buffer_mgr_.get()) {
+          buffer_mgr_->DiscardPendingBuffers(recording);
+        }
+        if (execution_buffer_manager != initializer_buffer_mgr_.get()) {
+          initializer_buffer_mgr_->DiscardPendingBuffers(recording);
+        }
       }
-      buffer_mgr_->DiscardPendingBuffers(recording);
-      initializer_buffer_mgr_->DiscardPendingBuffers(recording);
     }
     return status;
   }

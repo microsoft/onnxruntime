@@ -552,6 +552,12 @@ bool BufferManager::SupportsUMA() const {
 void BufferManager::Release(WGPUBuffer buffer, const CommandRecordingState* recording) const {
   EnforceBufferUnmapped(context_, buffer);
   std::lock_guard<std::mutex> lock{mutex_};
+  if (this == &context_.InitializerBufferManager() && recording != nullptr &&
+      recording->phase.load(std::memory_order_relaxed) == CommandRecordingPhase::SessionExecution) {
+    // LazyRelease is only needed during initialization. Submitted/captured commands retain their own references.
+    wgpuBufferRelease(buffer);
+    return;
+  }
   auto& cache = GetCacheManager(buffer);
   // Keep reusable buffers out of the cache while this recording has unsubmitted work.
   // Graph caches also need this protection from streamless allocations.

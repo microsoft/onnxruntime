@@ -63,6 +63,8 @@ class Ep : public onnxruntime::ep::adapter::Ep {
                                                                   _In_ OrtEpDataLayout target_data_layout,
                                                                   _Outptr_ int* should_convert) noexcept;
 
+  static OrtStatus* ORT_API_CALL OnSessionInitializationEndImpl(_In_ OrtEp* this_ptr) noexcept;
+
   static OrtStatus* ORT_API_CALL OnRunStartImpl(_In_ OrtEp* this_ptr,
                                                 _In_ const OrtRunOptions* run_options) noexcept;
 

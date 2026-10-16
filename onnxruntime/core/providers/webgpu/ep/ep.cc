@@ -36,6 +36,7 @@ Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogg
   GetPreferredDataLayout = GetPreferredDataLayoutImpl;
   ShouldConvertDataLayoutForOp = ShouldConvertDataLayoutForOpImpl;
   SetDynamicOptions = nullptr;  // Not implemented
+  OnSessionInitializationEnd = OnSessionInitializationEndImpl;
   OnRunStart = OnRunStartImpl;
   OnRunEnd = OnRunEndImpl;
   CreateAllocator = CreateAllocatorImpl;
@@ -214,6 +215,17 @@ OrtStatus* ORT_API_CALL Ep::ShouldConvertDataLayoutForOpImpl(_In_ OrtEp* this_pt
     *should_convert = result.value() ? 1 : 0;
   } else {
     *should_convert = -1;
+  }
+  return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
+}
+
+OrtStatus* ORT_API_CALL Ep::OnSessionInitializationEndImpl(_In_ OrtEp* this_ptr) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  auto status = static_cast<Ep*>(this_ptr)->EpImpl()->OnSessionInitializationEnd();
+  if (!status.IsOK()) {
+    return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()),
+                                  status.ErrorMessage().c_str());
   }
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END

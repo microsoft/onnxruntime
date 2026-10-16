@@ -49,6 +49,7 @@
 
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
 #include "dawn/native/DawnNative.h"
+#include "dawn/dawn_proc.h"
 #endif
 
 namespace onnxruntime {
@@ -890,6 +891,185 @@ TEST(WebGpuContextTest, ExecutionPoolBindingSurvivesAllocationsAndMultipleSubmis
     }
   }
 }
+
+TEST(WebGpuContextTest, ExecutionFlushRefreshesOnlyBoundPoolRegardlessOfCaptureState) {
+  RunWithFreshDefaultContext([]() {
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kUniformBufferCacheMode, "simple"));
+    auto provider = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+    auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+    auto& shared_manager = context.BufferManager();
+    constexpr auto uniform_usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst;
+    constexpr auto storage_usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopyDst;
+
+    for (auto state : {webgpu::GraphCaptureState::Default, webgpu::GraphCaptureState::Capturing,
+                       webgpu::GraphCaptureState::Replaying}) {
+      SCOPED_TRACE(static_cast<int>(state));
+      webgpu::BufferManager graph_manager(context, webgpu::BufferCacheMode::Graph,
+                                          webgpu::BufferCacheMode::GraphSimple, webgpu::BufferCacheMode::Disabled,
+                                          webgpu::BufferCacheMode::Disabled);
+      webgpu::CommandRecordingState graph_recording{graph_manager};
+      graph_recording.phase.store(webgpu::CommandRecordingPhase::SessionExecution);
+      graph_recording.graph_capture_state = state;
+      webgpu::CommandRecordingState ordinary{webgpu::CommandRecordingPhase::SessionExecution};
+
+      auto shared = shared_manager.Create(ordinary, 64, uniform_usage);
+      wgpu::Buffer retained_shared{shared};
+      shared_manager.Release(shared, &ordinary);
+      auto graph = graph_manager.Create(graph_recording, 64, storage_usage);
+      wgpu::Buffer retained_graph{graph};
+      context.GetCommandEncoder(graph_recording).ClearBuffer(graph, 0, 64);
+      graph_manager.Release(graph, &graph_recording);
+
+      ASSERT_STATUS_OK(context.Flush(graph_recording));
+      EXPECT_FALSE(graph_recording.has_unsubmitted_work.load());
+      auto reused_graph = graph_manager.Create(graph_recording, 64, storage_usage);
+      EXPECT_EQ(reused_graph, graph);
+      graph_manager.Release(reused_graph, &graph_recording);
+      auto before_global_flush = wgpu::Buffer::Acquire(shared_manager.Create(ordinary, 64, uniform_usage));
+      EXPECT_NE(before_global_flush.Get(), shared);
+      ASSERT_STATUS_OK(context.Flush(ordinary));
+      auto reused_shared = wgpu::Buffer::Acquire(shared_manager.Create(ordinary, 64, uniform_usage));
+      EXPECT_EQ(reused_shared.Get(), shared);
+    }
+  });
+}
+
+TEST(WebGpuContextTest, GraphRunDrainsDefaultPoolBeforeBinding) {
+  RunWithFreshDefaultContext([]() {
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kEnableGraphCapture, "1"));
+    ASSERT_STATUS_OK(options.AddConfigEntry(kUniformBufferCacheMode, "simple"));
+    auto provider = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+    auto& ep = *static_cast<WebGpuExecutionProvider*>(provider.get());
+    auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+    auto& recording = ep.Recording();
+    ASSERT_STATUS_OK(ep.OnSessionInitializationEnd());
+    constexpr auto usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst;
+    for (bool encode_commands : {true, false}) {
+      SCOPED_TRACE(encode_commands);
+      auto shared = context.BufferManager().Create(recording, 64, usage);
+      wgpu::Buffer retained{shared};
+      if (encode_commands) {
+        context.GetCommandEncoder(recording).ClearBuffer(shared, 0, 64);
+      }
+      context.BufferManager().Release(shared, &recording);
+
+      RunOptions run_options;
+      ASSERT_STATUS_OK(ep.OnRunStart(run_options));
+      EXPECT_FALSE(recording.has_unsubmitted_work.load());
+      EXPECT_EQ(recording.buffer_manager, &ep.BufferManager());
+      EXPECT_NE(recording.buffer_manager, &context.BufferManager());
+      webgpu::CommandRecordingState other;
+      auto reused = wgpu::Buffer::Acquire(context.BufferManager().Create(other, 64, usage));
+      EXPECT_EQ(reused.Get(), shared);
+      ASSERT_STATUS_OK(ep.OnRunEnd(false, run_options));
+
+      auto between_runs = context.BufferManager().Create(recording, 64, usage);
+      wgpu::Buffer retained_between_runs{between_runs};
+      context.BufferManager().Release(between_runs, &recording);
+      ASSERT_STATUS_OK(ep.ReplayGraph(0));
+      auto reused_between_runs = wgpu::Buffer::Acquire(context.BufferManager().Create(other, 64, usage));
+      EXPECT_EQ(reused_between_runs.Get(), between_runs);
+      ASSERT_STATUS_OK(ep.ReleaseCapturedGraph(0));
+    }
+  });
+}
+
+TEST(WebGpuContextTest, FailedInitializationFlushDoesNotSwitchToExecution) {
+  ConfigOptions options;
+  auto provider = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& ep = *static_cast<WebGpuExecutionProvider*>(provider.get());
+  auto& recording = ep.Recording();
+  webgpu::DispatchCommandInfo dispatch;
+  dispatch.program_key = "missing_pipeline_for_failed_initialization";
+  recording.deferred_dispatches.push_back(std::move(dispatch));
+  recording.has_unsubmitted_work.store(true);
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(ep.OnSessionInitializationEnd(), "No cached or pending pipeline");
+  EXPECT_EQ(recording.phase.load(), webgpu::CommandRecordingPhase::SessionInitialization);
+  ASSERT_STATUS_OK(ep.OnSessionInitializationEnd());
+  EXPECT_EQ(recording.phase.load(), webgpu::CommandRecordingPhase::SessionExecution);
+}
+
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+namespace {
+WGPUBuffer tracked_initializer_buffer = nullptr;
+size_t initializer_release_count = 0;
+
+void CountInitializerBufferRelease(WGPUBuffer buffer) {
+  if (buffer == tracked_initializer_buffer) {
+    ++initializer_release_count;
+  }
+  dawn::native::GetProcs().bufferRelease(buffer);
+}
+}  // namespace
+
+TEST(WebGpuContextTest, InitializationEndDrainsBothPoolsAndExecutionSkipsInitializerRefresh) {
+  RunWithFreshDefaultContext([]() {
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kUniformBufferCacheMode, "simple"));
+    auto provider = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+    auto& ep = *static_cast<WebGpuExecutionProvider*>(provider.get());
+    auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+    auto& recording = ep.Recording();
+    auto procs = dawn::native::GetProcs();
+    procs.bufferRelease = CountInitializerBufferRelease;
+    dawnProcSetProcs(&procs);
+    auto restore_procs = gsl::finally([] {
+      tracked_initializer_buffer = nullptr;
+      dawnProcSetProcs(&dawn::native::GetProcs());
+    });
+    constexpr auto storage_usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopyDst;
+    constexpr auto uniform_usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst;
+    auto& initializer_manager = context.InitializerBufferManager();
+
+    auto shared = context.BufferManager().Create(recording, 64, uniform_usage);
+    wgpu::Buffer retained_shared{shared};
+    context.GetCommandEncoder(recording).ClearBuffer(shared, 0, 64);
+    context.BufferManager().Release(shared, &recording);
+    auto initializer = initializer_manager.Create(recording, 64, storage_usage);
+    wgpu::Buffer retained_initializer{initializer};
+    tracked_initializer_buffer = initializer;
+    initializer_release_count = 0;
+    initializer_manager.Release(initializer, &recording);
+    EXPECT_EQ(initializer_release_count, 0u);
+
+    ASSERT_STATUS_OK(ep.OnSessionInitializationEnd());
+    EXPECT_EQ(recording.phase.load(), webgpu::CommandRecordingPhase::SessionExecution);
+    EXPECT_EQ(initializer_release_count, 1u);
+    auto reused_shared = wgpu::Buffer::Acquire(context.BufferManager().Create(recording, 64, uniform_usage));
+    EXPECT_EQ(reused_shared.Get(), shared);
+
+    // Another Session may still be initializing on the same context.
+    webgpu::CommandRecordingState initializing{webgpu::CommandRecordingPhase::SessionInitialization};
+    auto other_initializer = initializer_manager.Create(initializing, 64, storage_usage);
+    wgpu::Buffer retained_other{other_initializer};
+    tracked_initializer_buffer = other_initializer;
+    initializer_release_count = 0;
+    initializer_manager.Release(other_initializer, &initializing);
+    ASSERT_STATUS_OK(context.Flush(recording));
+    EXPECT_EQ(initializer_release_count, 0u);
+    webgpu::BufferManager graph_manager(context, webgpu::BufferCacheMode::Graph,
+                                        webgpu::BufferCacheMode::GraphSimple, webgpu::BufferCacheMode::Disabled,
+                                        webgpu::BufferCacheMode::Disabled);
+    webgpu::CommandRecordingState graph_recording{graph_manager};
+    graph_recording.phase.store(webgpu::CommandRecordingPhase::SessionExecution);
+    ASSERT_STATUS_OK(context.Flush(graph_recording));
+    EXPECT_EQ(initializer_release_count, 0u);
+    ASSERT_STATUS_OK(context.Flush(initializing));
+    EXPECT_EQ(initializer_release_count, 1u);
+
+    auto late_initializer = initializer_manager.Create(recording, 64, storage_usage);
+    wgpu::Buffer retained_late{late_initializer};
+    tracked_initializer_buffer = late_initializer;
+    initializer_release_count = 0;
+    initializer_manager.Release(late_initializer, &recording);
+    EXPECT_EQ(initializer_release_count, 1u);
+    tracked_initializer_buffer = nullptr;
+  });
+}
+#endif
 
 TEST(WebGpuContextTest, GraphPoolBindingFollowsRunAndReplayBoundaries) {
   ConfigOptions options;

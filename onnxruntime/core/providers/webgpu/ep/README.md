@@ -112,10 +112,15 @@ and synchronize writes before another Session consumes a shared tensor. BufferMa
 releases for reusable buffers, grouped by recording and protected by its cache lock. Submission
 returns only that recording's buffers to the pool; caches without reuse need no such tracking.
 Pending lists are created only when buffers are released, with no buffer-manager registration per dispatch.
-`WebGpuContext::Flush(recording)` retires the default and initializer pools without a caller-selected
-manager. Capture-enabled Run and replay boundaries bind an execution-local pool to the recording,
-and that association survives intermediate submissions. Allocations and dispatches never change it.
-The execution-local pool follows capture policy; context-owned pools use the default refresh policy.
+`WebGpuContext::Flush(recording)` uses the recording's phase without a caller-selected manager.
+Session initialization retires the default and initializer pools. `OnSessionInitializationEnd`
+drains initialization work before switching to execution; older plugin hosts transition at the first Run.
+During Session execution, Flush retires the bound graph pool, or the default pool if none is bound,
+without refreshing the initializer pool. Initializer frees after the transition release their references
+directly instead of waiting for another initialization flush. External recordings retain context-pool cleanup.
+Run and replay boundaries drain pending work before binding an execution-local pool, and that association
+survives intermediate submissions. Allocations and dispatches never change it.
+Pool selection follows the binding, not capture state; the execution-local pool follows capture policy.
 Replay still retires recording-level releases and clears the unsubmitted-work flag, but skips
 the execution-local cache refresh.
 CommandRecordingState exposes an atomic unsubmitted-work flag so concurrent frees after submission can

@@ -128,11 +128,18 @@ struct CapturedCommand {
   std::variant<DispatchCommandInfo, CapturedBufferCopy> operation;
 };
 
+enum class CommandRecordingPhase {
+  External,
+  SessionInitialization,
+  SessionExecution,
+};
+
 // A command recording timeline has one caller at a time. ORT serializes Run on a Session;
 // plugin streamless operations use independent encoders. BufferManager synchronizes buffer
 // releases from concurrent allocator callers separately from command recording.
 struct CommandRecordingState {
   CommandRecordingState() = default;
+  explicit CommandRecordingState(CommandRecordingPhase phase) : phase{phase} {}
   explicit CommandRecordingState(const BufferManager& manager) : buffer_manager{&manager} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CommandRecordingState);
 
@@ -142,8 +149,10 @@ struct CommandRecordingState {
   // Concurrent allocator frees inspect only this flag, never the encoders or deferred dispatches.
   // BufferManager clears it under its cache lock after submission or abandonment.
   std::atomic<bool> has_unsubmitted_work{false};
+  // Allocator frees also inspect the phase to release initialized weights without a later Flush.
+  std::atomic<CommandRecordingPhase> phase{CommandRecordingPhase::External};
   // Optional execution-local pool, bound at Run/replay boundaries and preserved across submissions.
-  // Context-owned pools are always retired by Flush. This manager must outlive its association.
+  // Session execution retires this pool instead of the default pool. The manager must outlive its association.
   const BufferManager* buffer_manager = nullptr;
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
   std::mutex pending_release_callbacks_mutex;
