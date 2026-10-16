@@ -908,6 +908,10 @@ The user explicitly approved these refinements on 2026-10-16:
 
 ### E.1 Sampler
 
+- Token generation and sampling reside in `onnxruntime/core/generate/`, separate
+  from the Session/SessionLoop/SessionChain execution interfaces. Shared tensor/
+  argument validation resides in `onnxruntime/core/framework/` so generation
+  code does not depend on session implementation headers.
 - `Sampler::Greedy` is independently testable and CPU-only. Supported logits are
   `[1, vocabulary]` or `[1, sequence, vocabulary]`; dimensions must be nonempty.
 - An optional nonnegative position selects a sequence row; absence selects the

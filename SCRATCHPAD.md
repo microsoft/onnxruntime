@@ -360,3 +360,23 @@ Compressed project memory. This is not the execution plan.
   Base `state/m04-cpu-kv-cache`, head `state/m05-cpu-greedy`.
 - All ten files pass style/whitespace/120-column checks. No new device production
   code or public API. M06 (public C API/C++ wrappers) is next, not started.
+
+### M05 layout follow-up
+
+- 2026-10-16: User requested token generation outside `core/session`, suggesting
+  `core/generate`. Moved `token_generation.h/.cc` there.
+- Moved shared `stateful_execution_utils.h` into `core/framework` to avoid a
+  generation-to-session include dependency; no helper duplication or logic change.
+- Session/loop/chain interfaces stay in `core/session`. Source discovery includes
+  the new generation directory in the existing session library target.
+- Updated includes and documented source/coverage paths. Refreshing PR #15 is
+  pending publication; no M06 work.
+- CPU rebuilt and passed 55/55 focused + 21/21 regressions, zero skips.
+  `coverage/m05/layout` confirms generation/framework paths in the actual
+  instrumented artifacts and no old source mappings. Coverage stays 100%:
+  1295/1295 unique runtime locations, 1310/1310 LLVM aggregate.
+- CUDA validation passed: 97/97 focused + 26/26 regressions, no skips. Five
+  generation memcheck scenarios passed with zero errors.
+- M05's new-line gate remains 369/369 (same functions, new source paths).
+  Verified that PR #15 has no concurrent body/branch edits before refreshing it.
+- Layout refactor validated; commit/push and PR evidence refresh are next.

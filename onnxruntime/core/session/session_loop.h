@@ -12,7 +12,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/ort_value.h"
 #include "core/session/kv_cache_manager.h"
-#include "core/session/token_generation.h"
+#include "core/generate/token_generation.h"
 
 namespace onnxruntime {
 

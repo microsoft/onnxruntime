@@ -2,6 +2,7 @@
 
 **Status:** Approved; M01-M05 complete.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
+M05's requested generation-folder layout follow-up is validated, pending publication.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
 **Working memory:** [Shared scratchpad](SCRATCHPAD.md).
 
@@ -25,6 +26,9 @@ Planning validation: document-only Python 3 checks passed for all three planning
 documents, 24 milestone sections/checklist rows, intended outcomes, CPU/CUDA test
 plans, completion gates, dependency ordering, and specification-family mappings.
 No runtime build, test, or coverage result is implied.
+
+Coverage-command source paths track the current tree layout. Historical milestone
+counts remain the evidence recorded when those milestones were completed.
 
 ## 2. Execution and completion rules
 
@@ -449,7 +453,7 @@ llvm-cov report ./onnxruntime_session_loop_test \
   -instr-profile=coverage/m03/final/m03.profdata \
   ../../../onnxruntime/core/session/session_chain.cc \
   ../../../onnxruntime/core/session/session_chain.h \
-  ../../../onnxruntime/core/session/stateful_execution_utils.h \
+  ../../../onnxruntime/core/framework/stateful_execution_utils.h \
   ../../../onnxruntime/core/session/session_loop.cc \
   ../../../onnxruntime/core/session/session_loop.h
 ```
@@ -560,7 +564,7 @@ llvm-cov report ./onnxruntime_session_loop_test \
   ../../../onnxruntime/core/session/session_loop.h \
   ../../../onnxruntime/core/session/session_chain.cc \
   ../../../onnxruntime/core/session/session_chain.h \
-  ../../../onnxruntime/core/session/stateful_execution_utils.h
+  ../../../onnxruntime/core/framework/stateful_execution_utils.h
 ```
 
 From the repository root with the matching CUDA 13.1/cuDNN environment:
@@ -644,6 +648,17 @@ integration-line coverage pass.
 
 - [x] Complete CUDA tests, memory checks and final source/document validation.
 - [x] Commit and publish the ready-for-review PR stacked on M04.
+- [x] Move token generation to `core/generate`, keep shared validation in
+  `core/framework`, and revalidate CPU/CUDA builds, behavior and coverage.
+  Requested 2026-10-16; behavior/library targets remain unchanged.
+
+Layout follow-up evidence: source/header bodies are unchanged except include
+paths; no old paths or generation-to-session includes remain. CPU **55/55**
+focused tests and **21/21** regressions passed, no skips. New source mappings
+preserve **1295/1295** unique runtime locations (**1310/1310** LLVM aggregate).
+CUDA **97/97** focused tests and **26/26** regressions passed, no skips;
+all five memory-check scenarios passed with zero errors. M05's original
+**369/369** new-line gate is unchanged. Refreshing the existing PR is pending.
 
 Validation commands (reuse the established instrumented CPU and CUDA 13.1 builds;
 regenerate CMake when first adding the native generation source files):
@@ -654,25 +669,25 @@ LLVM_PROFILE_FILE=/dev/null cmake -S cmake -B build/state-cpu/RelWithDebInfo
 LLVM_PROFILE_FILE=/dev/null cmake --build build/state-cpu/RelWithDebInfo \
   --parallel 8 --target onnxruntime_session_loop_test onnxruntime_autoep_test
 cd build/state-cpu/RelWithDebInfo
-mkdir -p coverage/m05/verified
-LLVM_PROFILE_FILE="$PWD/coverage/m05/verified/%m-%p.profraw" \
-  ./onnxruntime_session_loop_test --gtest_output=xml:coverage/m05/verified/tests.xml
+mkdir -p coverage/m05/layout
+LLVM_PROFILE_FILE="$PWD/coverage/m05/layout/%m-%p.profraw" \
+  ./onnxruntime_session_loop_test --gtest_output=xml:coverage/m05/layout/tests.xml
 LLVM_PROFILE_FILE=/dev/null ./onnxruntime_autoep_test \
   --gtest_filter='*StatefulExecutionBaselineTest.*:ModelPackageApiTest.*' \
-  --gtest_output=xml:coverage/m05/verified/regressions.xml
-llvm-profdata merge -sparse coverage/m05/verified/*.profraw \
-  -o coverage/m05/verified/m05.profdata
+  --gtest_output=xml:coverage/m05/layout/regressions.xml
+llvm-profdata merge -sparse coverage/m05/layout/*.profraw \
+  -o coverage/m05/layout/m05.profdata
 llvm-cov report ./onnxruntime_session_loop_test \
-  -instr-profile=coverage/m05/verified/m05.profdata \
-  ../../../onnxruntime/core/session/token_generation.cc \
-  ../../../onnxruntime/core/session/token_generation.h \
+  -instr-profile=coverage/m05/layout/m05.profdata \
+  ../../../onnxruntime/core/generate/token_generation.cc \
+  ../../../onnxruntime/core/generate/token_generation.h \
   ../../../onnxruntime/core/session/session_loop.cc \
   ../../../onnxruntime/core/session/session_loop.h \
   ../../../onnxruntime/core/session/session_chain.cc \
   ../../../onnxruntime/core/session/session_chain.h \
   ../../../onnxruntime/core/session/kv_cache_manager.cc \
   ../../../onnxruntime/core/session/kv_cache_manager.h \
-  ../../../onnxruntime/core/session/stateful_execution_utils.h
+  ../../../onnxruntime/core/framework/stateful_execution_utils.h
 ```
 
 From the repository root with the matching CUDA/cuDNN environment:
@@ -685,10 +700,10 @@ cmake --build build/state-cuda-baseline-13.1/RelWithDebInfo --parallel 8 \
 cd build/state-cuda-baseline-13.1/RelWithDebInfo
 export CUDA_VISIBLE_DEVICES=0
 export LD_LIBRARY_PATH="$PWD:$CUDNN_HOME/lib:$CUDA_HOME/lib64"
-./onnxruntime_session_loop_test --gtest_output=xml:m05-verified-tests.xml
+./onnxruntime_session_loop_test --gtest_output=xml:m05-layout-tests.xml
 ./onnxruntime_autoep_test \
   --gtest_filter='*StatefulExecutionBaselineTest.*:ModelPackageApiTest.*' \
-  --gtest_output=xml:m05-verified-regressions.xml
+  --gtest_output=xml:m05-layout-regressions.xml
 "$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --error-exitcode 99 \
   ./onnxruntime_session_loop_test \
   --gtest_filter='Cuda/SessionChainTest.GreedyGenerationMatchesDirectSessionsAndFeedPolicies/*:Cuda/SessionChainTest.ZeroAndSingleTokenBudgetsAvoidExtraDecodeInvocations/*:Cuda/SessionChainTest.PrefillAndDecodeEosUseOneSharedCounterAndEmitOnce/*:Cuda/SessionChainTest.StandalonePrefillFloat16AndExplicitLogitsPosition/*:Cuda/SessionChainTest.GenerationFailuresRequireResetAndKeepCommittedState/*'

@@ -2,6 +2,8 @@
 # Licensed under the MIT License.
 
 file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/generate/*.h"
+    "${ONNXRUNTIME_ROOT}/core/generate/*.cc"
     "${ONNXRUNTIME_INCLUDE_DIR}/core/session/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/*.cc"
