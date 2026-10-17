@@ -50,7 +50,7 @@
 // The header is self-contained (no contrib/CUTLASS dependencies) and resolves to an inline no-op
 // when the fpA_intB path is not compiled in.
 #include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
-#if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
+#if !defined(DISABLE_CONTRIB_OPS) && !defined(USE_CUDA_MINIMAL) && USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 #endif
 
@@ -3639,7 +3639,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       auto* node = graph.GetNode(node_index);
       std::optional<Level1MemoryEstimate> level1_memory_estimate;
 
-#if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
+#if !defined(DISABLE_CONTRIB_OPS) && !defined(USE_CUDA_MINIMAL) && USE_FPA_INTB_GEMM
       // Level 1 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): a partition-time,
       // kernel-independent memory estimate for MatMulNBits. Runtime workspace and prepack
       // allocations remain separate so their different lifetimes are visible in reporting.
