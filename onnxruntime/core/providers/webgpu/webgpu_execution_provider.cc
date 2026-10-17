@@ -473,7 +473,8 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(21, 22, enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(23, 23, enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(24, 24, enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo(25, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(25, 27, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo(28, enable_int64)));
 
   // Register int64 Clip kernels with conditional int64 support
   RegisterClipInt64Kernels(*kernel_registry, enable_int64);
@@ -975,7 +976,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     }
 #endif
   });
-  // When capturing, flushing creates the replay-ready CapturedCommandInfo entries before
+  // When capturing, flushing creates the replay-ready dispatch entries before
   // CaptureEnd() detaches their external storage.
   Status flush_status = context_.Flush(BufferManager(), *recording_);
 

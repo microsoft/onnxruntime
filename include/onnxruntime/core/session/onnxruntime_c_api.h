@@ -224,6 +224,11 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2,   // maps to 4 packed int2 values (size == 1 byte)
   // Float8E8M0 type introduced in ONNX 1.21. 8-bit float with 8 exponent bits, 0 mantissa bits, no sign bit.
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0,  // Non-IEEE floating-point format, all values are powers of two
+  // Float6 types introduced in ONNX 1.23.
+  // ORT tensor storage uses one byte per element. TensorProto typed serialization uses int32_data;
+  // TensorProto raw_data uses bit-packed 6-bit values.
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3,
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2,
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -7580,14 +7585,16 @@ struct OrtApi {
   /** \brief Retrieve an experimental function pointer by name.
    *
    * Experimental functions are not part of the stable ABI and may be added or removed between releases without notice.
-   * Use the companion header onnxruntime_experimental_c_api.h for typedefs, name constants, and (for C++) typed
-   * accessors.
+   *
+   * Use the companion headers:
+   * - onnxruntime_experimental_c_api.h for function pointer typedefs and name constants.
+   * - onnxruntime_experimental_cxx_api.h for C++ typed accessors and wrapper types.
    *
    * \param[in] name The null-terminated name of the experimental function to look up.
    *                 Names follow the pattern "<target struct>_<function name>_SinceV<ORT API version added>".
    *                 Name constants are defined in onnxruntime_experimental_c_api.h.
-   * \return The function pointer cast to ::OrtExperimentalFnPtr, or nullptr if the function is not available in this
-   *         build. The caller must cast the returned pointer to the correct function pointer type before calling.
+   * \return The function pointer cast to ::OrtExperimentalFnPtr, or NULL if the function is not available.
+   *         The caller must cast the returned pointer to the correct function pointer type before calling.
    *         Function pointer typedefs are defined in onnxruntime_experimental_c_api.h.
    *
    * \since Version 1.28.

@@ -473,6 +473,8 @@ typedef struct OrtEpProfilerImpl OrtEpProfilerImpl;
  *    - Concurrency notes: each OrtEpProfilerImpl only receives calls for its specific run.
  *      OrtEpProfilerImpl::EndProfiling must only return EP events for its specific run.
  *
+ * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
+ *
  * \since Version 1.25.
  */
 struct OrtEpProfilerImpl {
@@ -725,6 +727,9 @@ typedef struct OrtKernelImpl OrtKernelImpl;
 
 /**
  * \brief Contains functions that an OrtEp implements to specify the computation for an operator kernel.
+ *
+ * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
+ *
  * \since Version 1.24.
  */
 struct OrtKernelImpl {
@@ -2215,6 +2220,9 @@ typedef enum OrtWeightlessSupport {
 
 /**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
+ *
+ * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
+ *
  * \since Version 1.22.
  */
 struct OrtEp {
@@ -2837,6 +2845,9 @@ typedef OrtStatus* (*ReleaseEpApiFactoryFn)(_In_ OrtEpFactory* factory);
 
 /**
  * \brief The OrtEpFactory provides functions to create and manage execution providers.
+ *
+ * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
+ *
  * \since Version 1.22.
  */
 struct OrtEpFactory {
