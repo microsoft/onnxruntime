@@ -19,6 +19,11 @@ class LayerNormImpl : public OpKernel {
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> prepacked_buffer_sizes,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
+
   // This method was created so that it can be called directly from `test/onnx/microbenchmark/layer_normalization.cc`.
   template <typename T, typename U>
   Status ComputeWithoutContext(
@@ -52,9 +57,11 @@ class LayerNormImpl : public OpKernel {
   int64_t axis_;
   float epsilon_;
   const bool simplified_;
-  IAllocatorUniquePtr<float> prepacked_scale_fp32_data_;
+  // f32 copies of narrow float scale/bias made in PrePack(). Owned by the kernel, or by the session when it
+  // caches the pre-packed weights (see UseSharedPrePackedBuffers()).
+  IAllocatorUniquePtr<void> prepacked_scale_fp32_data_;
   TensorShape prepacked_scale_fp32_shape_;
-  IAllocatorUniquePtr<float> prepacked_bias_fp32_data_;
+  IAllocatorUniquePtr<void> prepacked_bias_fp32_data_;
   TensorShape prepacked_bias_fp32_shape_;
 };
 
