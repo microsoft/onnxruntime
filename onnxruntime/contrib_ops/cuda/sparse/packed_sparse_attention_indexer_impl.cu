@@ -1389,7 +1389,9 @@ __global__ void ValidatePackedReuseKernel(const int32_t* cumulative_lengths, int
   if (threadIdx.x == 0) {
     counts[row] = 0;
     if (status[row] == 0) status[row] = 1;
-    if (overflow_flags != nullptr) overflow_flags[row] = 1;
+    if (overflow_flags != nullptr && overflow_flags[row] == 0) {
+      overflow_flags[row] = psai::kStateStatusInvalidMetadata;
+    }
   }
 }
 }  // namespace
