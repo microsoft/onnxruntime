@@ -80,13 +80,15 @@ def pointwise_conv_model(b, bias=None, relu=False):
     ).SerializeToString()
 
 
-def matmul_session(model, device, *, capture=False, robustness=True):
+def matmul_session(model, device, *, capture=False, robustness=True, fp32_accumulation=False):
     options = ort.SessionOptions()
     options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
     options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
     options.use_deterministic_compute = True
     options.log_severity_level = 1
     provider_options = {"validationMode": "full", "enableRobustness": str(int(robustness))}
+    if fp32_accumulation:
+        provider_options["enableMatmulFp32Accumulation"] = "1"
     if capture:
         provider_options["enableGraphCapture"] = "1"
     options.add_provider_for_devices([device], provider_options)
@@ -152,6 +154,7 @@ class TestWebGpuMatMul(unittest.TestCase):
         capture=False,
         updates=False,
         robustness=True,
+        fp32_accumulation=False,
         model=None,
         bias=None,
         relu=False,
@@ -162,6 +165,7 @@ class TestWebGpuMatMul(unittest.TestCase):
                 self.device,
                 capture=capture,
                 robustness=robustness,
+                fp32_accumulation=fp32_accumulation,
             )
             log.seek(0)
             initialization_log = log.read().decode("utf-8", errors="replace")
@@ -211,9 +215,15 @@ class TestWebGpuMatMul(unittest.TestCase):
     def test_exact_qwen_shapes(self):
         rng = np.random.default_rng(40)
         b = rng.normal(0, 0.1, (5120, 48)).astype(np.float16)
-        for m in (1, 8, 66):
+        for m in (1, 8, 9, 66):
             with self.subTest(m=m, output_shape=(m, 48)):
-                self.run_case(rng.normal(0, 0.1, (m, 5120)).astype(np.float16), b, gemv=m == 1)
+                # Exclude higher-priority f16 subgroup-matrix kernels without forcing GEMV.
+                self.run_case(
+                    rng.normal(0, 0.1, (m, 5120)).astype(np.float16),
+                    b,
+                    gemv=m <= 8,
+                    fp32_accumulation=True,
+                )
 
     def test_target_and_nearby_shapes(self):
         rng = np.random.default_rng(42)
@@ -250,8 +260,8 @@ class TestWebGpuMatMul(unittest.TestCase):
                 (1, 5120, n, np.float16, accepted)
                 for n, accepted in [(15, False), (16, True), (17, False), (63, False), (64, True), (65, False)]
             ),
-            (1, 5120, 48, np.float16, True),
-            (2, 5120, 48, np.float16, False),
+            # Unaligned K excludes subgroup-matrix kernels so they cannot mask the M limit.
+            *((m, 2049, 48, np.float16, m <= 8) for m in range(1, 10)),
             (1, 5120, 48, np.float32, False),
         ]
         for m, k, n, dtype, gemv in cases:
@@ -262,13 +272,22 @@ class TestWebGpuMatMul(unittest.TestCase):
                     gemv=gemv,
                 )
 
-    def test_batch_broadcast_stays_outside_gate(self):
+    def test_folded_a_batch_uses_gemv(self):
         rng = np.random.default_rng(48)
-        for a_shape, b_shape in [((2, 1, 5120), (5120, 48)), ((1, 5120), (2, 5120, 48))]:
+        self.run_case(
+            rng.normal(0, 0.1, (2, 1, 5120)).astype(np.float16),
+            rng.normal(0, 0.1, (5120, 48)).astype(np.float16),
+        )
+
+    def test_non_foldable_batched_weights_stay_outside_gate(self):
+        rng = np.random.default_rng(51)
+        for a_shape, b_shape in [((1, 2049), (2, 2049, 48)), ((2, 2, 2049), (2, 2049, 48))]:
             with self.subTest(a_shape=a_shape, b_shape=b_shape):
+                b = rng.normal(0, 0.1, b_shape).astype(np.float16)
+                b[1] = -b[0]
                 self.run_case(
                     rng.normal(0, 0.1, a_shape).astype(np.float16),
-                    rng.normal(0, 0.1, b_shape).astype(np.float16),
+                    b,
                     gemv=False,
                 )
 
@@ -348,7 +367,6 @@ class TestWebGpuMatMul(unittest.TestCase):
     def test_outside_gate(self):
         rng = np.random.default_rng(45)
         cases = [
-            ((2, 5120), (5120, 48), np.float16),
             ((2, 1, 2048), (2, 2048, 48), np.float16),
             ((1, 1024), (1024, 48), np.float16),
             ((1, 8193), (8193, 48), np.float16),
