@@ -97,7 +97,7 @@ struct Float8E4M3FN {
           } else {
             val |= ex << 3;
             val |= m >> 20;
-            if ((val & 0x7F) == 0x7F) {
+            if (saturate && (val & 0x7F) == 0x7F) {
               val &= 0xFE;
             }
           }
@@ -428,7 +428,7 @@ struct Float8E5M2 {
             } else if (saturate) {
               val |= 0x7B;
             } else {
-              val |= 0x7C;
+              val = (val & 0x80) | 0x7C;
             }
           }
         } else if (saturate) {
