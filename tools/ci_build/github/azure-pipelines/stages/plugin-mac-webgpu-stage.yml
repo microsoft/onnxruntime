@@ -70,6 +70,10 @@ stages:
           --update --skip_submodule_sync --build --parallel
       displayName: 'Build WebGPU Plugin'
 
+    - template: ../templates/webgpu-component-governance.yml
+      parameters:
+        dawn_source: '$(Build.SourcesDirectory)/build/${{ parameters.cmake_build_type }}/_deps/dawn-src'
+
     - script: |
         set -e
         plugin_path="$(Build.SourcesDirectory)/build/${{ parameters.cmake_build_type }}/libonnxruntime_providers_webgpu.dylib"

@@ -147,6 +147,11 @@ stages:
           Write-Host "DXC DLL successfully copied to the target directory"
         displayName: 'Download and Copy DXC Binaries'
 
+      - template: ../templates/webgpu-component-governance.yml
+        parameters:
+          dawn_source: '$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}/_deps/dawn-src'
+          include_dxc: true
+
       # Esrp signing
       - template: ../templates/win-esrp-dll.yml
         parameters:

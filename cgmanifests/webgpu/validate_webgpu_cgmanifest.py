@@ -76,21 +76,19 @@ def _find_git_registration(manifest: dict[str, Any], repository_url: str, *, tag
     return matches[0]
 
 
-def _dawn_pin_from_deps_txt() -> tuple[str, str]:
-    deps_text = DEPS_TXT.read_text(encoding="utf-8")
-    commit_match = re.search(
-        r"^dawn;https://github\.com/google/dawn/archive/([0-9a-f]{40})\.zip;", deps_text, re.MULTILINE
+def _dawn_pin_from_deps_txt(deps_file: Path = DEPS_TXT) -> tuple[str, str]:
+    deps_text = deps_file.read_text(encoding="utf-8")
+    matches = re.findall(
+        r"^dawn;https://github\.com/google/dawn/archive/([0-9a-f]{40}|refs/tags/[^;]+)\.zip;",
+        deps_text,
+        re.MULTILINE,
     )
-    if commit_match:
-        return "commitHash", commit_match.group(1)
-
-    tag_match = re.search(
-        r"^dawn;https://github\.com/google/dawn/archive/refs/tags/([^;]+)\.zip;", deps_text, re.MULTILINE
-    )
-    if tag_match:
-        return "tag", tag_match.group(1)
-
-    raise ValueError(f"could not find Dawn commit or tag in {DEPS_TXT}")
+    if len(matches) != 1:
+        raise ValueError(f"expected one Dawn commit or tag in {deps_file}")
+    pin = matches[0]
+    if pin.startswith("refs/tags/"):
+        return "tag", pin.removeprefix("refs/tags/")
+    return "commitHash", pin
 
 
 def _dxc_release_from_pipeline() -> tuple[str, str, str]:

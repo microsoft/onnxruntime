@@ -1,7 +1,7 @@
-# CGManifest Files
+# Component Governance Manifests
 This directory contains CGManifest (cgmanifest.json) files.
 See [here](https://docs.opensource.microsoft.com/tools/cg/cgmanifest.html) for details.
 
-The WebGPU-specific manifest is in `webgpu/cgmanifest.webgpu.json`. It is intentionally not named `cgmanifest.json`
-so default whole-repository Component Governance scans do not pick it up automatically. WebGPU packaging or
-NOTICE-generation pipelines should stage it as `cgmanifest.json` in their scan input.
+WebGPU plugin packaging generates and scans an inventory from fetched Dawn dependencies.
+The Dawn upgrade workflow also maintains a reviewed manifest with runtime/development classifications.
+See [webgpu/README.md](webgpu/README.md) for both workflows and their scopes.
