@@ -394,6 +394,27 @@ __global__ void SoftmaxTopKWarpMergeKernel(const T* logits, float* topk_scales, 
   }
 }
 
+template <typename KernelPtr>
+bool IsFusedRouteKernelSm90Available(KernelPtr kernel) {
+  static thread_local int cached_device = -1;
+  static thread_local KernelPtr cached_kernel = nullptr;
+  static thread_local bool available = false;
+  int device = -1;
+  if (cudaGetDevice(&device) != cudaSuccess) {
+    return false;
+  }
+  if (device != cached_device || kernel != cached_kernel) {
+    cudaFuncAttributes attributes{};
+    if (cudaFuncGetAttributes(&attributes, kernel) != cudaSuccess) {
+      return false;
+    }
+    available = attributes.ptxVersion >= 90 && attributes.binaryVersion >= 90;
+    cached_device = device;
+    cached_kernel = kernel;
+  }
+  return available;
+}
+
 template <typename T>
 bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indices,
                            int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
@@ -406,6 +427,10 @@ bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indice
       reinterpret_cast<uintptr_t>(logits) % 8 != 0) {
     return false;
   }
+  const auto kernel = k == 10 ? FusedSoftmaxTopKMapsKernel<T, 10> : FusedSoftmaxTopKMapsKernel<T, 0>;
+  if (!IsFusedRouteKernelSm90Available(kernel)) {
+    return false;
+  }
   cudaLaunchConfig_t config{};
   config.gridDim = dim3(1);
   config.blockDim = dim3(kFusedRouteThreads);
@@ -416,7 +441,6 @@ bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indice
   attribute[0].val.programmaticStreamSerializationAllowed = pdl ? 1 : 0;
   config.attrs = attribute;
   config.numAttrs = 1;
-  const auto kernel = k == 10 ? FusedSoftmaxTopKMapsKernel<T, 10> : FusedSoftmaxTopKMapsKernel<T, 0>;
   const cudaError_t status = cudaLaunchKernelEx(
       &config, kernel, logits, topk_scales, topk_indices, permuted_row_to_unpermuted_row,
       unpermuted_row_to_permuted_row, permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales);

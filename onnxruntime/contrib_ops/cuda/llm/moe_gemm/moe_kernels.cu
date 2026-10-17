@@ -1873,6 +1873,31 @@ __global__ void finalizeMoeRoutingNoFillingKernel(const GemmOutputType* expanded
 #endif
 }
 
+template <typename KernelPtr>
+struct FinalizeKernelLaunchCaps {
+  int max_threads_per_block;
+  bool sm90_pdl_available;
+};
+
+template <typename KernelPtr>
+FinalizeKernelLaunchCaps<KernelPtr> getFinalizeKernelLaunchCaps(KernelPtr func) {
+  static thread_local int cached_device = -1;
+  static thread_local KernelPtr cached_func = nullptr;
+  static thread_local FinalizeKernelLaunchCaps<KernelPtr> cached_caps{FINALIZE_THREADS_PER_BLOCK, false};
+  int device = -1;
+  CUDA_CALL_THROW(cudaGetDevice(&device));
+  if (device != cached_device || func != cached_func) {
+    cudaFuncAttributes attr{};
+    CUDA_CALL_THROW(cudaFuncGetAttributes(&attr, func));
+    const int max_threads = std::min(1024, (attr.maxThreadsPerBlock / 32) * 32);
+    cached_caps = {std::max(FINALIZE_THREADS_PER_BLOCK, max_threads),
+                   attr.ptxVersion >= 90 && attr.binaryVersion >= 90};
+    cached_device = device;
+    cached_func = func;
+  }
+  return cached_caps;
+}
+
 template <class OutputType, class GemmOutputType, class ScaleBiasType>
 void finalizeMoeRoutingKernelLauncher(const GemmOutputType* expanded_permuted_rows,
                                       OutputType* reduced_unpermuted_output, const ScaleBiasType* bias, const float* final_scales,
@@ -1911,28 +1936,30 @@ void finalizeMoeRoutingKernelLauncher(const GemmOutputType* expanded_permuted_ro
     auto func = final_scales
                     ? &finalizeMoeRoutingNoFillingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT>
                     : &finalizeMoeRoutingNoFillingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE>;
-    cudaLaunchKernelEx(&config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
-                       unpermuted_row_to_permuted_row, permuted_row_to_unpermuted_row, token_selected_experts,
-                       expert_first_token_offset, num_rows, cols, experts_per_token, num_experts_per_node_int, start_expert_id);
+    CUDA_CALL_THROW(cudaLaunchKernelEx(
+        &config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
+        unpermuted_row_to_permuted_row, permuted_row_to_unpermuted_row, token_selected_experts,
+        expert_first_token_offset, num_rows, cols, experts_per_token, num_experts_per_node_int, start_expert_id));
   } else {
+    if (num_rows <= 0) {
+      return;
+    }
     // If all-gather reduce-scatter is used, finalizeMoeRouting must fill invalid output tokens with zeros.
     const int64_t blocks = num_rows;
-    // One thread per 128-bit column vector (up to 1024) so each block reduces its row in a single pass; the
-    // one-row kernel below keeps the fixed block size.
+    // One thread per 128-bit column vector (clamped to the kernel's register-limited maxThreadsPerBlock) so
+    // each block reduces its row in as few passes as possible; the one-row kernel below keeps the fixed block size.
     const int64_t column_vectors = cols / kFinalizeElemPerThread;
-    const int64_t threads = (num_rows == 1 && experts_per_token > 0 && experts_per_token <= 4)
-                                ? FINALIZE_THREADS_PER_BLOCK
-                                : std::min<int64_t>(1024, std::max<int64_t>(FINALIZE_THREADS_PER_BLOCK / 2, (column_vectors + 31) / 32 * 32));
     config.gridDim = blocks;
-    config.blockDim = threads;
     if (num_rows == 1 && experts_per_token > 0 && experts_per_token <= 4) {
+      config.blockDim = FINALIZE_THREADS_PER_BLOCK;
 #define LAUNCH_FINALIZE_ONE_ROW(EXPERTS_PER_TOKEN)                                                                                        \
   do {                                                                                                                                    \
     auto func = final_scales                                                                                                              \
                     ? &finalizeMoeRoutingOneRowKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT, EXPERTS_PER_TOKEN>   \
                     : &finalizeMoeRoutingOneRowKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE, EXPERTS_PER_TOKEN>; \
-    cudaLaunchKernelEx(&config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,                          \
-                       unpermuted_row_to_permuted_row, token_selected_experts, cols, num_experts_per_node_int, start_expert_id);          \
+    CUDA_CALL_THROW(cudaLaunchKernelEx(&config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,          \
+                                       unpermuted_row_to_permuted_row, token_selected_experts, cols, num_experts_per_node_int,            \
+                                       start_expert_id));                                                                                 \
   } while (0)
 
       switch (experts_per_token) {
@@ -1954,19 +1981,30 @@ void finalizeMoeRoutingKernelLauncher(const GemmOutputType* expanded_permuted_ro
       auto func = final_scales
                       ? &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT, true>
                       : &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE, true>;
-      if (early_routing_loads) {
+      const auto caps = getFinalizeKernelLaunchCaps(func);
+      config.blockDim = std::min<int64_t>(
+          caps.max_threads_per_block,
+          std::max<int64_t>(FINALIZE_THREADS_PER_BLOCK / 2, (column_vectors + 31) / 32 * 32));
+      const bool use_early_routing_loads = early_routing_loads && caps.sm90_pdl_available;
+      if (use_early_routing_loads) {
         attrs[0].val.programmaticStreamSerializationAllowed = 1;
       }
-      cudaLaunchKernelEx(&config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
-                         unpermuted_row_to_permuted_row, token_selected_experts, cols, experts_per_token, num_experts_per_node_int,
-                         start_expert_id, early_routing_loads);
+      CUDA_CALL_THROW(cudaLaunchKernelEx(
+          &config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
+          unpermuted_row_to_permuted_row, token_selected_experts, cols, experts_per_token, num_experts_per_node_int,
+          start_expert_id, use_early_routing_loads));
     } else {
       auto func = final_scales
                       ? &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT, false>
                       : &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE, false>;
-      cudaLaunchKernelEx(&config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
-                         unpermuted_row_to_permuted_row, token_selected_experts, cols, experts_per_token, num_experts_per_node_int,
-                         start_expert_id, false);
+      const auto caps = getFinalizeKernelLaunchCaps(func);
+      config.blockDim = std::min<int64_t>(
+          caps.max_threads_per_block,
+          std::max<int64_t>(FINALIZE_THREADS_PER_BLOCK / 2, (column_vectors + 31) / 32 * 32));
+      CUDA_CALL_THROW(cudaLaunchKernelEx(
+          &config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
+          unpermuted_row_to_permuted_row, token_selected_experts, cols, experts_per_token, num_experts_per_node_int,
+          start_expert_id, false));
     }
   }
 }

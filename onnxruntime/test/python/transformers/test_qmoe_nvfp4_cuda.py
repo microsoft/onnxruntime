@@ -632,7 +632,7 @@ class TestQMoENVFP4(unittest.TestCase):
         output = torch.zeros(num_tokens, hidden_size, device=x.device, dtype=torch.float32)
         expert_mask = F.one_hot(topk_idx, num_classes=num_experts).permute(2, 1, 0)
 
-        for e in range(num_experts):
+        for e in topk_idx.unique().tolist():
             idx, top_x = torch.where(expert_mask[e])
             if top_x.shape[0] == 0:
                 continue
@@ -1111,6 +1111,33 @@ class TestQMoENVFP4(unittest.TestCase):
             dict(hidden_size=2560, inter_size=640, num_experts=16, top_k=10, num_tokens=6, use_bias=False),
         ),
         (
+            False,
+            False,
+            True,
+            True,
+            True,
+            True,
+            dict(hidden_size=5120, inter_size=640, num_experts=16, top_k=10, num_tokens=2, use_bias=True),
+        ),
+        (
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            dict(hidden_size=64, inter_size=64, num_experts=512, top_k=2, num_tokens=2, use_bias=False),
+        ),
+        (
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            dict(hidden_size=512, inter_size=512, num_experts=512, top_k=10, num_tokens=1, use_bias=True),
+        ),
+        (
             True,
             True,
             True,
@@ -1200,7 +1227,10 @@ for idx, case in enumerate(json.loads(sys.argv[2])):
     print(f"DECODE_GEMV_CASE_BEGIN\\t{idx}", flush=True)
     with profile(activities=[ProfilerActivity.CUDA]) as prof:
         out = test._run_nvfp4_moe_test(onnx_dtype=onnx_dtype, gemv_mode="1", offline_prepacked=True, **case)
-    names = sorted({e.name for e in prof.events() if "MoeGemvFp4" in e.name})
+    names = sorted({
+        e.name for e in prof.events()
+        if "MoeGemvFp4" in e.name or "FusedSoftmaxTopKMapsKernel" in e.name
+    })
     payload = base64.b64encode(out.view(torch.int16).cpu().numpy().tobytes()).decode()
     print("DECODE_GEMV_RESULT", str(idx), json.dumps(names), payload, sep="\\t", flush=True)
 """
@@ -1208,6 +1238,9 @@ for idx, case in enumerate(json.loads(sys.argv[2])):
     def _run_decode_gemv_subprocess(self, onnx_dtype, cases, decode_mode, native_scale=0):
         env = dict(os.environ)
         env["ORT_FP4_GEMV_DECODE_KERNEL"] = str(decode_mode)
+        if decode_mode == 0:
+            env["ORT_FP4_GEMV_FUSED_ROUTE"] = "0"
+            env["ORT_FP4_GEMV_PDL"] = "0"
         env["ORT_NVFP4_GEMV_NATIVE_SCALE"] = str(native_scale)
         env["ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO"] = "1"
         env.pop("ORT_NVFP4_FC1_EXPERT_REUSE", None)

@@ -2368,7 +2368,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     bool fc2_used_decode = false;
     // FC1 -> FC2 -> finalize overlap through programmatic dependent launch (row-major NVFP4 decode kernels only):
     // FC2 prefetches its weights and finalize its routing metadata while the previous kernel finishes.
-    const bool fc2_finalize_pdl = fp4_gemv_pdl && use_raw_nvfp4_gemv && nvfp4_weights_row_major_;
+    const bool fc2_finalize_pdl =
+        fp4_gemv_pdl && use_raw_nvfp4_gemv && nvfp4_weights_row_major_ && sm_ >= 90;
     auto run_fused = [&](auto* t_ptr) {
       using T = std::remove_pointer_t<decltype(t_ptr)>;
       const bool skip_expand = fp4_gemv_skip_expand_;
@@ -2379,7 +2380,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             quant_params, false, p_efto, nullptr, nullptr, nullptr, stream);
       }
 
-      auto launch_fc1 = [&](MoeGemvConfig cfg) {
+      auto launch_fc1 = [&](MoeGemvConfig cfg, bool pdl = false) {
         gemv::launch_moe_gemv_fp4_symmetric_interleaved_swiglu<T>(
             skip_expand ? static_cast<const T*>(input->DataRaw()) : static_cast<const T*>(p_act_buf.get()),
             gemv_fc1_weight,
@@ -2388,10 +2389,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             static_cast<const T*>(fc1_bias), static_cast<T*>(p_fc1_buf.get()),
             p_efto, p_exp, num_experts, expanded, inter, hidden, gemv_group_size, sm_, act_params, cfg,
             fc1_gemv_sm80_layout, use_raw_nvfp4_gemv, skip_expand ? p_r2u : nullptr, num_rows, stream,
-            nvfp4_weights_row_major_, nvfp4_fc1_decode_scale_eligible_, &fc1_used_decode,
-            fused_route_launched && skip_expand && fp4_gemv_fc1_pdl);
+            nvfp4_weights_row_major_, nvfp4_fc1_decode_scale_eligible_, &fc1_used_decode, pdl);
       };
-      auto launch_fc2 = [&](MoeGemvConfig cfg) {
+      auto launch_fc2 = [&](MoeGemvConfig cfg, bool pdl = false) {
         gemv::launch_moe_gemv_fp4_symmetric<T>(
             static_cast<const T*>(p_fc1_buf.get()),
             gemv_fc2_weight,
@@ -2400,7 +2400,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             static_cast<const T*>(fc2_bias), static_cast<T*>(p_fc2_buf.get()),
             p_efto, p_exp, num_experts, expanded, hidden, inter, gemv_group_size, sm_, cfg,
             fc2_gemv_sm80_layout, use_raw_nvfp4_gemv, stream, nvfp4_weights_row_major_,
-            nvfp4_fc2_decode_scale_eligible_, &fc2_used_decode, fc2_finalize_pdl);
+            nvfp4_fc2_decode_scale_eligible_, &fc2_used_decode, pdl);
       };
 
       if (do_tune) {
@@ -2485,8 +2485,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         }
       }
 
-      launch_fc1(fc1_config);
-      launch_fc2(fc2_config);
+      launch_fc1(fc1_config, !do_tune && fused_route_launched && skip_expand && fp4_gemv_fc1_pdl);
+      launch_fc2(fc2_config, fc2_finalize_pdl);
       ck::finalizeMoeRoutingKernelLauncher<T, T, T>(
           static_cast<const T*>(p_fc2_buf.get()), static_cast<T*>(output->MutableDataRaw()),
           nullptr, expert_scales, unpermuted_row_to_permuted_row, p_r2u, expert_indices,
