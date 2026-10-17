@@ -361,6 +361,54 @@ TEST(FlatbufferUtilsTest, Float6InitializerOrtFormatRoundTrip) {
   }
 }
 
+TEST(FlatbufferUtilsTest, Float6NativeMemoryInitializerOrtFormatRoundTrip) {
+  for (const auto type : {ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3,
+                          ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2}) {
+    constexpr size_t count = 132;
+    std::vector<uint8_t> unpacked(count);
+    for (size_t i = 0; i < count; ++i) {
+      unpacked[i] = static_cast<uint8_t>((i * 7 + 1) % 64);
+    }
+
+    ONNX_NAMESPACE::TensorProto initializer;
+    initializer.set_name("float6");
+    initializer.set_data_type(type);
+    initializer.add_dims(count);
+    ExternalDataInfo::SetExternalLocationToProto(
+        utils::kTensorProtoNativeEndianMemoryAddressTag,
+        narrow<ExternalDataInfo::OFFSET_TYPE>(reinterpret_cast<intptr_t>(unpacked.data())),
+        unpacked.size(), initializer);
+
+    std::vector<uint8_t> external_data;
+    ExternalDataWriter writer = [&external_data](int32_t, gsl::span<const uint8_t> bytes, uint64_t& offset) {
+      offset = 0;
+      external_data.assign(bytes.begin(), bytes.end());
+      return Status::OK();
+    };
+    flatbuffers::FlatBufferBuilder builder;
+    flatbuffers::Offset<fbs::Tensor> tensor_offset;
+    ASSERT_STATUS_OK(SaveInitializerOrtFormat(builder, initializer, {}, tensor_offset, writer));
+    builder.Finish(tensor_offset);
+
+    const auto* tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
+    EXPECT_EQ(tensor->external_data_offset(), 0);
+    EXPECT_EQ(external_data.size(), count * 6 / 8);
+    EXPECT_EQ(tensor->raw_data(), nullptr);
+
+    ExternalDataReader reader = [&external_data](uint64_t offset, gsl::span<uint8_t> bytes) {
+      ORT_ENFORCE(offset == 0 && bytes.size() == external_data.size());
+      std::copy(external_data.begin(), external_data.end(), bytes.begin());
+      return Status::OK();
+    };
+    ONNX_NAMESPACE::TensorProto loaded;
+    OrtFormatLoadOptions options;
+    ASSERT_STATUS_OK(LoadInitializerOrtFormat(*tensor, loaded, options, reader));
+    std::vector<uint8_t> decoded;
+    ASSERT_STATUS_OK(utils::UnpackInitializerData(loaded, decoded));
+    EXPECT_EQ(decoded, unpacked);
+  }
+}
+
 TEST(FlatbufferUtilsTest, LoadInitializerRejectsReservedTensorDataTypes) {
   for (int32_t value = 21; value <= 26; ++value) {
     flatbuffers::FlatBufferBuilder builder;

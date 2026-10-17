@@ -3302,6 +3302,12 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
         unpacked_tensor));
     if (initializer.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3 ||
         initializer.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2) {
+      std::unique_ptr<ExternalDataInfo> external_data_info;
+      ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(initializer.external_data(), external_data_info));
+      if (external_data_info->GetRelPath() == kTensorProtoNativeEndianMemoryAddressTag) {
+        return Status::OK();
+      }
+
       ONNX_NAMESPACE::TensorProto packed_initializer = initializer;
       packed_initializer.clear_external_data();
       packed_initializer.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_DEFAULT);

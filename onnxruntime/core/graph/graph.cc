@@ -4493,7 +4493,7 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
       if constexpr (endian::native == endian::little) {
         const bool is_naturally_aligned =
             reinterpret_cast<uintptr_t>(user_provided_tensor_buffer) % element_size == 0;
-        if (use_buffers_directly && !utils::HasString(old_initializer) &&
+        if (use_buffers_directly && !is_float6 && !utils::HasString(old_initializer) &&
             tensor_byte_size > utils::kSmallTensorExternalDataThreshold && is_naturally_aligned) {
           Tensor tensor{type, tensor_shape, user_provided_tensor_buffer,
                         OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)};
