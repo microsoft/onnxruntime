@@ -3,14 +3,13 @@
 
 #include <array>
 #include <cmath>
-#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <numeric>
-#include <string_view>
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/platform/env.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -140,8 +139,7 @@ TEST(MatMulNVFP4A16, ProductsStayFP32WhenMmaDisabled) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 or newer is required.";
   // The selector is process-cached. Run this test in a fresh process with the
   // override already set, rather than mutating it after another test dispatched.
-  const char* mma = std::getenv("ORT_FP4_GEMV_MMA");
-  if (mma == nullptr || std::string_view(mma) != "0") {
+  if (Env::Default().GetEnvironmentVar("ORT_FP4_GEMV_MMA") != "0") {
     GTEST_SKIP() << "Run in a fresh process with ORT_FP4_GEMV_MMA=0.";
   }
   for (bool overflow : {false, true}) {
