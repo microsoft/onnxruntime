@@ -18,11 +18,13 @@ const std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>> 
 bool NodeIsIgnorable(const Graph& graph, const Node& root_node, NodeIndex curr_node_index) {
   const Node* curr_node = graph.GetNode(curr_node_index);
 
-  // curr_node has different execution provider then it's parent or
-  // has output edge != 1 (this condition will handle the case when ignorable node
-  // is graph output i.e. a graph like this "MatMul->Transpose")
+  // curr_node has a different execution provider than its parent,
+  // has output edge != 1, or produces a graph output (a node output can be
+  // both a graph output and have a single consumer edge, so the edge count
+  // alone does not cover that case)
   if (curr_node->GetExecutionProviderType() != root_node.GetExecutionProviderType() ||
-      curr_node->GetOutputEdgesCount() != 1) {
+      curr_node->GetOutputEdgesCount() != 1 ||
+      graph.NodeProducesGraphOutput(*curr_node)) {
     return false;
   }
 
@@ -77,7 +79,8 @@ std::optional<NodeIndex> MatchPath(const Graph& graph, const Node& root_node, No
  * Other Conditions:
  *   - B tensor of MatMul should be constant.
  *   - scale, B, mean, var tensors of BatchNormalization should be constant.
- *   - Every node in the path, except the BatchNormalization, should have only 1 output edge.
+ *   - Every node in the path, except the BatchNormalization, should have only 1 output edge
+ *     and must not produce a graph output.
  */
 bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {1, 9, 13}) ||
