@@ -41,11 +41,13 @@ def _create_session(target, n, k, weights, scales, enabled, bias=False, zero_poi
     if zero_points or g_idx or bias:
         inputs += ["zp" if zero_points else "", "g_idx" if g_idx else "", "bias" if bias else ""]
     if zero_points:
-        initializers.append(numpy_helper.from_array(np.full((n, (k // BLOCK_SIZE + 1) // 2), 0x88, np.uint8), "zp"))
+        initializers.append(numpy_helper.from_array(np.full((n, (k // BLOCK_SIZE + 1) // 2), 0x35, np.uint8), "zp"))
     if g_idx:
-        initializers.append(numpy_helper.from_array(np.arange(k, dtype=np.int32) // BLOCK_SIZE, "g_idx"))
+        num_blocks = k // BLOCK_SIZE
+        reversed_g_idx = (num_blocks - 1) - (np.arange(k, dtype=np.int32) // BLOCK_SIZE)
+        initializers.append(numpy_helper.from_array(reversed_g_idx, "g_idx"))
     if bias:
-        initializers.append(numpy_helper.from_array(np.zeros(n, np.float16), "bias"))
+        initializers.append(numpy_helper.from_array(np.linspace(0.125, 1.5, n, dtype=np.float16), "bias"))
     node = helper.make_node(
         "MatMulNBits",
         inputs,
@@ -134,8 +136,10 @@ def _worker():
                 del tail, reference
 
     n, k = 12, 320
-    weights = np.full((n, k // BLOCK_SIZE, 16), 0x99, np.uint8)
-    scales = np.full((n, k // BLOCK_SIZE), 0.03125, np.float16)
+    weights, scales, a_excl = _pattern("realish", rng, n, k)
+    scale_only_session = _create_session(target, n, k, weights, scales, False)
+    scale_only_m2 = scale_only_session.run(["Y"], {"A": a_excl[:2].copy()})[0].tobytes()
+    del scale_only_session
     for label, kwargs, m in (
         ("M5", {}, 5),
         ("M8", {}, 8),
@@ -144,13 +148,16 @@ def _worker():
         ("zero_points", {"zero_points": True}, 2),
         ("g_idx", {"g_idx": True}, 2),
     ):
+        feed_a = np.resize(a_excl, (m, k)).copy()
         outputs = []
         for enabled in (False, True):
             session = _create_session(target, n, k, weights, scales, enabled, **kwargs)
-            outputs.append(session.run(["Y"], {"A": np.full((m, k), 0.125, np.float16)})[0].tobytes())
+            outputs.append(session.run(["Y"], {"A": feed_a})[0].tobytes())
             del session
         if outputs[0] != outputs[1]:
             raise AssertionError(f"{label}: selector changed an ineligible configuration")
+        if kwargs and outputs[0] == scale_only_m2:
+            raise AssertionError(f"{label}: exclusion input did not change output vs scale-only baseline")
     print(f"COMPARISONS={comparisons}")
 
 

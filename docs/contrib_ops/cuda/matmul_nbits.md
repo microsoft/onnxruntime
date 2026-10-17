@@ -279,7 +279,7 @@ receipt per M1/batched branch:
 
 ```text
 [MatMulNBitsUnaligned4] node="projection" M=1 K=10240 N=324 type=FP16 bits=4 branch=M1_SHARED_TAIL
-[MatMulNBitsUnaligned4] node="projection" M=7 K=10240 N=324 type=FP16 bits=4 branch=BATCHED_REGISTER_TAIL
+[MatMulNBitsUnaligned4] node="projection" M=4 K=10240 N=324 type=FP16 bits=4 branch=BATCHED_REGISTER_TAIL
 ```
 
 Atomic flags prevent duplicate lines from concurrent Runs. A receipt follows
@@ -303,9 +303,11 @@ python -m unittest onnxruntime/test/python/transformers/test_matmul_nbits_unalig
 The paired test requires 144 byte comparisons over M1,2,3,4; N4,12,324;
 K32,320,10240; and constant, signed-zero, adversarial and realish tensors.
 Independent poison rows in the padded reference must not affect valid outputs.
-The scratch direct-kernel guard probe additionally uses exact input allocation
-boundaries and output prefix/suffix poison for memcheck and synccheck; absent
-that validation, do not claim no-OOB evidence.
+Because `InferenceSession` allocates tensors from the ORT CUDA arena rather
+than exact-sized standalone buffers, this session-level test does not provide
+exact-boundary OOB detection under `compute-sanitizer`; verifying strict
+allocation boundaries requires a direct kernel launch harness with exact-sized
+input and output buffers and prefix/suffix poison guards.
 
 ---
 
