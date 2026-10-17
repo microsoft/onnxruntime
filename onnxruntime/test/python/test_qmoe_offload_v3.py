@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 import numpy as np
 import onnx
@@ -37,7 +38,7 @@ def ensure_plugin_registered() -> str:
     return ep_name
 
 
-def make_plugin_session(model_or_path, device_limit_bytes: int = 0) -> ort.InferenceSession:
+def make_plugin_session(model_or_path, device_limit_bytes: int = 0, initializers=()) -> ort.InferenceSession:
     ep_name = ensure_plugin_registered()
     devices = [d for d in ort.get_ep_devices() if d.ep_name == ep_name and d.device.type == ort.OrtHardwareDeviceType.GPU]
     assert devices, f"No GPU devices found for {ep_name}"
@@ -48,6 +49,8 @@ def make_plugin_session(model_or_path, device_limit_bytes: int = 0) -> ort.Infer
     if device_limit_bytes > 0:
         opts.add_session_config_entry("ep.cuda.gpu_device_mem_limit", str(device_limit_bytes))
     opts.add_provider_for_devices([devices[0]], {})
+    for name, value in initializers:
+        opts.add_initializer(name, value)
     if isinstance(model_or_path, (str, Path)):
         return ort.InferenceSession(str(model_or_path), sess_options=opts)
     return ort.InferenceSession(model_or_path.SerializeToString(), sess_options=opts)
@@ -71,7 +74,9 @@ class TestQMoEOffloadV3(unittest.TestCase):
     def test_bounded_mapped_bank_cache(self):
         """Bank offsets, tiny-cache contention, immutable backing, eviction, and short-read errors."""
         cpp_src = r"""
+#include <atomic>
 #include <cassert>
+#include <thread>
 #include <cstring>
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -79,6 +84,16 @@ class TestQMoEOffloadV3(unittest.TestCase):
 #include <vector>
 #include "contrib_ops/cpu/moe/qmoe_shared_layout.h"
 using namespace onnxruntime::contrib::qmoe_shared;
+// Pause a real disk read after the worker has published Loading and dropped its lock.
+std::atomic<bool> pause_read{false}, read_entered{false}, resume_read{false};
+extern "C" ssize_t __real_pread(int, void*, size_t, off_t);
+extern "C" ssize_t __wrap_pread(int fd, void* dst, size_t count, off_t offset) {
+  if (pause_read.exchange(false)) {
+    read_entered.store(true);
+    while (!resume_read.load()) std::this_thread::yield();
+  }
+  return __real_pread(fd, dst, count, offset);
+}
 int main(int argc, char** argv) {
   assert(argc == 2);
   const int fd = open(argv[1], O_RDWR | O_CREAT | O_TRUNC, 0600);
@@ -97,6 +112,18 @@ int main(int argc, char** argv) {
   FileExpertStore cache;
   assert(cache.InitializeMapped(banks, 2, n, stride, 1));
   assert(cache.CacheSlots() == 1);
+  const int32_t loading = 3;
+  pause_read.store(true);
+  assert(cache.Prefetch(&loading, 1, 1));
+  while (!read_entered.load()) std::this_thread::yield();
+  assert(!cache.Evict(loading));  // unpinned Loading is still owned by the disk writer
+  resume_read.store(true);
+  cache.WaitPrefetchIdle();
+  ExpertBlockLease loaded;
+  assert(cache.TryAcquireCached(loading, &loaded));
+  assert(loaded.data[0] == loading + 1 && loaded.data[bank_bytes] == loading + 21);
+  cache.ReleaseLease(loading);
+  assert(cache.Evict(loading));
   for (int iteration = 0; iteration < 40; ++iteration) {
     const int32_t e = iteration % n;
     const int32_t pf[] = {e, (e + 1) % int(n)};
@@ -115,6 +142,14 @@ int main(int argc, char** argv) {
   cache.WaitPrefetchIdle();
   cache.Shutdown();
   // Heap and writable mappings cannot silently replace the immutable file source.
+  auto* cow = static_cast<unsigned char*>(mmap(nullptr, data.size(), PROT_READ | PROT_WRITE,
+                                               MAP_PRIVATE, fd, 0));
+  assert(cow != MAP_FAILED);
+  cow[prefix] = 99;
+  assert(mprotect(cow, data.size(), PROT_READ) == 0);
+  banks[0].data = cow + prefix;
+  assert(!cache.InitializeMapped(banks, 2, n, stride, 1));
+  munmap(cow, data.size());
   banks[0].data = data.data();
   assert(!cache.InitializeMapped(banks, 2, n, stride, 1));
   banks[0].data = mapped + prefix;
@@ -133,7 +168,7 @@ int main(int argc, char** argv) {
         with tempfile.TemporaryDirectory() as tmp:
             binary = Path(tmp) / "cache_test"
             subprocess.run(
-                ["g++", "-O2", "-pthread", "-std=c++20", f"-I{ORT_ROOT / 'onnxruntime'}",
+                ["g++", "-O2", "-pthread", "-std=c++20", "-Wl,--wrap=pread", f"-I{ORT_ROOT / 'onnxruntime'}",
                  f"-I{ORT_ROOT / 'include/onnxruntime'}", "-x", "c++", "-",
                  str(ORT_ROOT / "onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout.cc"), "-o", str(binary)],
                 input=cpp_src.encode(), check=True,
@@ -1492,6 +1527,53 @@ int main() {
                 os.environ.pop("ORT_QMOE_ALLOW_CUDA_GRAPH", None)
             else:
                 os.environ["ORT_QMOE_ALLOW_CUDA_GRAPH"] = old_allow_cg
+
+    def test_bounded_host_cache_mapped_decode_with_promotions(self):
+        """A two-slot file cache repeatedly misses while GPU promotions exchange experts."""
+        rng = np.random.default_rng(704)
+        experts, hidden, inter, top_k = 8, 128, 64, 2
+        model, banks = self._make_nvfp4_test_model(rng, experts, hidden, inter, top_k)
+        with patch.dict(os.environ, {"ORT_QMOE_HOST_CACHE_MIB": "0"}):
+            reference = make_plugin_session(model)
+        bounded, _ = self._make_nvfp4_test_model(
+            rng, experts, hidden, inter, top_k, resident_slots=2, spare_slots=2,
+            initial_experts=[0, 1], banks=banks)
+        with tempfile.TemporaryDirectory() as tmp:
+            arrays, initializers = [], []
+            for tensor in bounded.graph.initializer:
+                path = Path(tmp) / tensor.name
+                path.write_bytes(tensor.raw_data)
+                dtype = np.float32 if tensor.data_type == TensorProto.FLOAT else np.uint8
+                array = np.memmap(path, mode="r", dtype=dtype, shape=tuple(tensor.dims))
+                arrays.append(array)
+                value = ort.OrtValue.ortvalue_from_numpy_with_onnx_type(array, tensor.data_type)
+                initializers.append((tensor.name, value))
+            settings = {"ORT_QMOE_HOST_CACHE_MIB": "1", "ORT_QMOE_HOST_CACHE_LAYERS": "32",
+                        "ORT_QMOE_SHARED_RESIDENT_PROMOTIONS": "2", "ORT_QMOE_HOST_CACHE_PREWARM": "0"}
+            with patch.dict(os.environ, settings):
+                session = make_plugin_session(bounded, initializers=initializers)
+                for step in range(24):
+                    x = float32_to_bf16_uint16(rng.standard_normal((1, 2, hidden)).astype(np.float32) * 0.25)
+                    routing = np.full((2, experts), -5.0, dtype=np.float32)
+                    routing[:, (step + 2) % experts] = 5.0
+                    routing[:, (step + 3) % experts] = 4.0
+                    routing = float32_to_bf16_uint16(routing)
+                    expected = self._run_bf16_session(reference, x, routing)
+                    actual = self._run_bf16_session(session, x, routing)
+                    np.testing.assert_allclose(actual, expected, rtol=2e-2, atol=2e-2)
+                del session
+                gc.collect()
+                # Two cold misses after a backing-file short read must raise on the caller,
+                # not throw out of a SpinPool worker or leave successful group leases pinned.
+                session = make_plugin_session(bounded, initializers=initializers)
+                (Path(tmp) / "fc1_w").write_bytes(b"")
+                routing = np.full((2, experts), -5.0, dtype=np.float32)
+                routing[:, 4:6] = 5.0
+                with self.assertRaisesRegex(Exception, "FileExpertStore AcquireReady failed"):
+                    self._run_bf16_session(session, x, float32_to_bf16_uint16(routing))
+                del session
+                gc.collect()
+        del reference
 
     def test_disjoint_host_complement_mode_and_ssd_tier(self):
         """Verifies Disjoint Host Complement Mode (D2H eviction writeback) and SSD FileExpertStore tier."""

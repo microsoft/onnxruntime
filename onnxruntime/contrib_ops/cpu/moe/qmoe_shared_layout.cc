@@ -720,7 +720,7 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
         int path_pos = 0;
         if (std::sscanf(line.c_str(), "%llx-%llx %4s %llx %x:%x %llu %n", &lo, &hi, perms,
                         &offset, &major_id, &minor_id, &inode, &path_pos) != 7 ||
-            address < lo || address + length > hi || perms[0] != 'r' || perms[1] == 'w' || inode == 0) continue;
+            address < lo || address + length > hi || perms[0] != 'r' || perms[1] == 'w' || perms[3] != 's' || inode == 0) continue;
         const std::string path = line.substr(static_cast<size_t>(path_pos));
         bank->fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
         if (bank->fd < 0) return false;
@@ -936,7 +936,8 @@ bool FileExpertStore::Evict(int32_t expert_id) noexcept {
   std::lock_guard<std::mutex> lock(impl_->mutex);
   const int slot = impl_->expert_to_slot[expert_id];
   if (slot < 0) return true;
-  if (impl_->slot_pins[slot] != 0) return false;
+  // The prefetch worker writes Loading slots outside the mutex, without a reader pin.
+  if (impl_->slot_state[slot] != Impl::kReady || impl_->slot_pins[slot] != 0) return false;
   impl_->expert_to_slot[expert_id] = -1;
   impl_->slot_expert[slot] = -1;
   impl_->slot_state[slot] = Impl::kEmpty;

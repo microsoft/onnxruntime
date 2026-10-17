@@ -420,6 +420,7 @@ struct QMoEResidentLayerSlabView {
   const uint8_t* host_fc2_scales = nullptr;
   size_t host_expert_stride = 0;
   const int* host_slot_table_dev = nullptr;
+  bool all_experts_cached = false;
 };
 
 struct QMoEPrefillPassDmaView {

@@ -533,6 +533,13 @@ bool TryGetQMoEResidentLayerSlabView(
       out_view->host_fc2_scales = cache_base + locked->nvfp4_layout.fc2_scales;
       out_view->host_expert_stride = locked->nvfp4_layout.stride;
       out_view->host_slot_table_dev = locked->slot_table_dev_ptr + num_experts;
+      out_view->all_experts_cached = true;
+      for (int e = 0; e < num_experts; ++e) {
+        if ((*locked->expert_slot_ptr)[e] < 0 && (*locked->host_slot_ptr)[e] < 0) {
+          out_view->all_experts_cached = false;
+          break;
+        }
+      }
     }
   }
   return true;
@@ -798,7 +805,11 @@ bool TryPrepareQMoEPrefillDmaLayer(
   }
   if (state.workspace_runner_experts != runner_num_experts ||
       state.workspace_hidden != hidden_size ||
-      state.workspace_inter != inter_size) {
+      state.workspace_inter != inter_size ||
+      state.dequant_fc2_offset != deq_fc2_off ||
+      state.staging_fc1_w_offset[0] != stg_fc1_w_off[0]) {
+    CUDA_CALL_THROW(cudaStreamSynchronize(exec_stream));
+    CUDA_CALL_THROW(cudaStreamSynchronize(state.dma_stream));
     state.workspace_runner_experts = runner_num_experts;
     state.workspace_hidden = hidden_size;
     state.workspace_inter = inter_size;
@@ -886,14 +897,11 @@ bool BeginQMoEPrefillDmaPass(
   out_view->staging_fc2_weights = state.workspace_dev + state.staging_fc2_w_offset[cur_buf];
   out_view->staging_fc1_scales = state.workspace_dev + state.staging_fc1_s_offset[cur_buf];
   out_view->staging_fc2_scales = state.workspace_dev + state.staging_fc2_s_offset[cur_buf];
-  if (!out_view->staging_fc1_global_scales) {
-    out_view->staging_fc1_global_scales =
-        reinterpret_cast<const float*>(state.workspace_dev + state.staging_fc1_g_offset[cur_buf]);
-  }
-  if (!out_view->staging_fc2_global_scales) {
-    out_view->staging_fc2_global_scales =
-        reinterpret_cast<const float*>(state.workspace_dev + state.staging_fc2_g_offset[cur_buf]);
-  }
+  // The other buffer may already hold the next layer. Scales follow the current pass buffer.
+  out_view->staging_fc1_global_scales =
+      reinterpret_cast<const float*>(state.workspace_dev + state.staging_fc1_g_offset[cur_buf]);
+  out_view->staging_fc2_global_scales =
+      reinterpret_cast<const float*>(state.workspace_dev + state.staging_fc2_g_offset[cur_buf]);
   return true;
 }
 
@@ -1290,6 +1298,7 @@ QMoEOffload::QMoEOffload(const OpKernelInfo& info)
                     ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_ROWS", 0) == 0,
                 "Bounded host cache cannot be combined with complement, legacy SSD, whole-expert pinning, or shared streaming.");
     host_cache_bytes_ = (SafeInt<size_t>(host_cache_mib) * (size_t{1} << 20)) / layers;
+    ORT_ENFORCE(host_cache_bytes_ > 0, "Host cache budget is too small for the configured layer count.");
   }
   ssd_store_path_ = info.GetAttrOrDefault<std::string>("ssd_store_path", "");
   if (ssd_store_path_.empty()) {
@@ -2588,29 +2597,10 @@ void QMoEOffload::InitializeComplementMode() {
 void QMoEOffload::InitializeBoundedHostCache() {
   ORT_ENFORCE(nvfp4_mode_ && !expert_blocks_ && nvfp4_fc1_g_ && nvfp4_fc2_g_ && stream_rows_ == 0,
               "Bounded host cache requires file-backed NVFP4 banks, explicit global scales, and no shared streaming.");
-  const int host_cache_mib = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_HOST_CACHE_MIB", 0);
-  const int total_layers = std::max(1, ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_HOST_CACHE_LAYERS", 1));
-  static std::mutex budget_mutex;
-  static size_t remaining_budget_bytes = 0;
-  static int remaining_layers = 0;
+  // A deterministic per-layer share is independent of construction order and other sessions.
+  // Unused shares require a session-owned planner before they can safely be redistributed.
   const size_t max_cold_slots = static_cast<size_t>(std::max(1, num_experts_ - base_resident_slots_));
-  size_t slots = 0;
-  {
-    std::lock_guard<std::mutex> lock(budget_mutex);
-    if (layer_index_ == 0 || remaining_layers <= 0) {
-      remaining_budget_bytes = SafeInt<size_t>(host_cache_mib) * (size_t{1} << 20);
-      remaining_layers = total_layers;
-    }
-    const size_t avg_layer_budget = remaining_budget_bytes / static_cast<size_t>(remaining_layers);
-    const size_t min_reserve = static_cast<size_t>(remaining_layers - 1) * nvfp4_layout_.stride;
-    const size_t avail_for_layer = (remaining_budget_bytes > min_reserve) ? (remaining_budget_bytes - min_reserve) : 0;
-    const size_t slack_bytes = std::min(avg_layer_budget / 8, size_t{256} << 20);
-    const size_t layer_budget = std::min(avail_for_layer, avg_layer_budget + slack_bytes);
-    slots = std::min(max_cold_slots, layer_budget / nvfp4_layout_.stride);
-    const size_t used_bytes = slots * nvfp4_layout_.stride;
-    remaining_budget_bytes = (remaining_budget_bytes > used_bytes) ? (remaining_budget_bytes - used_bytes) : 0;
-    --remaining_layers;
-  }
+  const size_t slots = std::min(max_cold_slots, host_cache_bytes_ / nvfp4_layout_.stride);
   ORT_ENFORCE(slots >= 1, "Host cache budget is too small for one expert per layer (", nvfp4_layout_.stride, " bytes).");
   const qmoe_shared::FileExpertStore::MappedBank banks[]{
       {nvfp4_fc1_w_->DataRaw(), resident_bank_bytes_[0], nvfp4_layout_.fc1_weights},
@@ -2624,15 +2614,11 @@ void QMoEOffload::InitializeBoundedHostCache() {
   if (uint8_t* cache_base = file_expert_store_.CacheBase()) {
     const size_t cache_bytes = file_expert_store_.CacheBytes();
     const size_t reg_bytes = (cache_bytes + size_t{4095}) & ~size_t{4095};
-    if (reg_bytes > 0 &&
-        cudaHostRegister(cache_base, reg_bytes,
-                         cudaHostRegisterPortable | cudaHostRegisterMapped | cudaHostRegisterReadOnly) == cudaSuccess) {
-      registered_host_ptrs_.push_back(cache_base);
-      experts_registered_ = true;
-      host_cache_mapped_ = true;
-    } else {
-      static_cast<void>(cudaGetLastError());
-    }
+    CUDA_CALL_THROW(cudaHostRegister(cache_base, reg_bytes,
+                                    cudaHostRegisterPortable | cudaHostRegisterMapped | cudaHostRegisterReadOnly));
+    registered_host_ptrs_.push_back(cache_base);
+    experts_registered_ = true;
+    host_cache_mapped_ = true;
   }
 }
 
@@ -3004,6 +2990,8 @@ void QMoEOffload::SyncPrefillSlotTables(cudaStream_t stream) const {
     slot_table_dirty_ = true;
   }
   if (host_cache_bytes_ > 0 && file_expert_store_.IsInitialized() && host_slot_table_dirty_) {
+    // Decode demand reads can replace host slots without changing GPU placement. Prefill is
+    // serialized with decode; drain the worker before publishing a fresh, stable snapshot.
     file_expert_store_.WaitPrefetchIdle();
     file_expert_store_.SnapshotExpertToSlot(file_store_expert_slot_.data(), num_experts_);
     if (resident_slab_ != nullptr &&
@@ -3127,7 +3115,7 @@ void QMoEOffload::RestoreAndSeedResidentSlab(
       expert_slot_[p.candidate] = p.target_slot;
       if (!host_complement_mode_ && file_expert_store_.IsInitialized()) {
         file_expert_store_.ReleaseLease(p.candidate);
-        if (host_cache_bytes_ > 0 && p.evicted_expert >= 0) {
+        if (host_cache_bytes_ > 0) {
           file_expert_store_.Evict(p.candidate);
           host_slot_table_dirty_ = true;
         }
@@ -3685,10 +3673,8 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
                                                cudaMemcpyHostToDevice, promo_stream_));
         }
       }
-      if (use_ssd && !experts_registered_) {
-        CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(promo_stream_));
-        file_expert_store_.ReleaseLease(candidate);
-      }
+      // Retain the source lease until pending_promotions_ is published or cancelled,
+      // including pageable legacy SSD storage. Each acquisition has one release.
       pending_promotions_.push_back({candidate, target_slot, victim_slot, evicted, host_evict_slot, host_cand_slot});
     }
     if (!pending_promotions_.empty()) {
@@ -3851,6 +3837,7 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
       file_expert_store_.ReleaseLease(candidate);
       if (host_cache_bytes_ > 0) {
         file_expert_store_.Evict(candidate);
+        host_slot_table_dirty_ = true;
         if (evicted >= 0) {
           const int32_t ev_id = static_cast<int32_t>(evicted);
           file_expert_store_.Prefetch(&ev_id, 1, ++ssd_prefetch_gen_);
@@ -3915,6 +3902,7 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
     return 0;
   }
   const bool use_ssd = !host_complement_mode_ && file_expert_store_.IsInitialized();
+  if (host_cache_bytes_ > 0) host_slot_table_dirty_ = true;
   const int fc1_tasks = (2 * inter_size_ + fc1_cols_ - 1) / fc1_cols_;
   const int fc2_tasks = (hidden_size_ + fc2_cols_ - 1) / fc2_cols_;
   const bool timed = cpu_timing_ && tile_rows <= 4;
@@ -3992,22 +3980,32 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
               group_expert_ids.data(), static_cast<size_t>(group_size), group_ssd_leases.data())) {
         if (group_size > 1 && static_cast<size_t>(group_size) <= file_expert_store_.CacheSlots()) {
           InlinedVector<int> miss_slots;
+          InlinedVector<uint8_t> acquired(static_cast<size_t>(group_size), 0);
           for (int slot = 0; slot < group_size; ++slot) {
-            if (!file_expert_store_.TryAcquireCached(group_expert_ids[slot], &group_ssd_leases[slot])) {
+            if (file_expert_store_.TryAcquireCached(group_expert_ids[slot], &group_ssd_leases[slot])) {
+              acquired[slot] = 1;
+            } else {
               miss_slots.push_back(slot);
             }
           }
-          if (miss_slots.size() == 1) {
-            const int s = miss_slots[0];
-            ORT_ENFORCE(file_expert_store_.AcquireReady(group_expert_ids[s], &group_ssd_leases[s]),
-                        "QMoEOffload FileExpertStore AcquireReady failed for expert ", group_expert_ids[s]);
-          } else if (miss_slots.size() > 1) {
-            auto acquire_task = [&](ptrdiff_t idx) {
-              const int s = miss_slots[static_cast<size_t>(idx)];
-              ORT_ENFORCE(file_expert_store_.AcquireReady(group_expert_ids[s], &group_ssd_leases[s]),
-                          "QMoEOffload FileExpertStore AcquireReady failed for expert ", group_expert_ids[s]);
-            };
+          auto acquire_task = [&](ptrdiff_t idx) noexcept {
+            const int s = miss_slots[static_cast<size_t>(idx)];
+            acquired[s] = file_expert_store_.AcquireReady(group_expert_ids[s], &group_ssd_leases[s]);
+          };
+          if (miss_slots.size() > 1) {
             run_parallel(static_cast<ptrdiff_t>(miss_slots.size()), acquire_task);
+          } else if (!miss_slots.empty()) {
+            acquire_task(0);
+          }
+          for (int slot = 0; slot < group_size; ++slot) {
+            if (!acquired[slot]) {
+              // Worker jobs must not throw: SpinPool has no exception boundary. Join first,
+              // release only successful acquisitions, then report failure on the caller.
+              for (int s = 0; s < group_size; ++s) {
+                if (acquired[s]) file_expert_store_.ReleaseLease(group_expert_ids[s]);
+              }
+              ORT_THROW("QMoEOffload FileExpertStore AcquireReady failed for expert ", group_expert_ids[slot]);
+            }
           }
         } else {
           ORT_ENFORCE(file_expert_store_.AcquireGroupReady(
@@ -4313,6 +4311,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
         file_expert_store_.ReleaseLease(p.candidate);
         if (host_cache_bytes_ > 0) {
           file_expert_store_.Evict(p.candidate);
+          host_slot_table_dirty_ = true;
           if (p.evicted_expert >= 0) {
             qmoe_shared::ExpertBlockLease ev_lease{};
             if (file_expert_store_.AcquireReady(p.evicted_expert, &ev_lease)) {

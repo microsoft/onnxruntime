@@ -13,10 +13,6 @@
 #include "core/framework/kernel_pilot.h"
 #endif
 #include <charconv>
-#if defined(__linux__)
-#include <sys/mman.h>
-#include <unistd.h>
-#endif
 #include <type_traits>
 #include "core/common/float8.h"
 #include "cutlass/numeric_types.h"
@@ -1573,25 +1569,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                              scratch_layout.indices_bytes);
 
   cudaStream_t stream = Stream(context);
-  struct PagedWeightRead {
-    cudaStream_t stream{};
-    std::vector<std::pair<void*, size_t>> ranges;
-    ~PagedWeightRead() {
-      if (ranges.empty()) return;
-      static_cast<void>(cudaStreamSynchronize(stream));
-      for (const auto& [ptr, bytes] : ranges) {
-        static_cast<void>(cudaHostUnregister(ptr));
-#if defined(__linux__)
-        const size_t page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
-        const uintptr_t lo = reinterpret_cast<uintptr_t>(ptr);
-        const uintptr_t first = (lo + page - 1) / page * page;
-        const uintptr_t end = (lo + bytes) / page * page;
-        if (end > first) static_cast<void>(madvise(reinterpret_cast<void*>(first), end - first, MADV_DONTNEED));
-#endif
-      }
-    }
-  };
-  std::unique_ptr<PagedWeightRead> paged_weights;
 
   bool is_fp16 = input->IsDataType<MLFloat16>();
   bool is_bf16 = input->IsDataType<BFloat16>();
@@ -2734,23 +2711,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                      prefill_dma_view.host_fc2_weights, prefill_dma_view.host_fc2_scales);
       };
     } else {
-      if (nvfp4_weights_row_major_ && ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_HOST_CACHE_MIB", 0) > 0 &&
-          resident_view.host_slot_table_dev == nullptr) {
-        // Fallback if prefill DMA staging is disabled in bounded host cache mode: register only this layer.
-        paged_weights = std::make_unique<PagedWeightRead>();
-        paged_weights->stream = stream;
-        paged_weights->ranges.reserve(4);
-        for (int index : {2, 3, 5, 6}) {
-          const Tensor* bank = context->Input<Tensor>(index);
-          ORT_RETURN_IF_NOT(bank, "Bounded prefill requires raw expert banks");
-          void* ptr = const_cast<void*>(bank->DataRaw());
-          cudaPointerAttributes attr{};
-          CUDA_RETURN_IF_ERROR(cudaPointerGetAttributes(&attr, ptr));
-          if (attr.type != cudaMemoryTypeUnregistered) continue;
-          CUDA_RETURN_IF_ERROR(cudaHostRegister(ptr, bank->SizeInBytes(), cudaHostRegisterMapped | cudaHostRegisterReadOnly));
-          paged_weights->ranges.emplace_back(ptr, bank->SizeInBytes());
-        }
-      }
+      ORT_RETURN_IF(nvfp4_weights_row_major_ &&
+                        ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_HOST_CACHE_MIB", 0) > 0 &&
+                        !resident_view.all_experts_cached,
+                    "Bounded prefill with incomplete GPU/host cache coverage requires prefill staging DMA. "
+                    "Enable ORT_QMOE_ENABLE_PREFILL_STAGING_DMA and provide sufficient workspace; "
+                    "pageable expert banks cannot be read directly by the GPU.");
       dequant_fc1_weights = dequant_transient_env
                                 ? GetTransientScratchBuffer<void>(fc1_bytes)
                                 : GetScratchBuffer<void>(fc1_bytes, GetComputeStream(context));
