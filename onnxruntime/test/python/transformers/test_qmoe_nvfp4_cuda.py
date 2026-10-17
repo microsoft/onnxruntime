@@ -18,16 +18,25 @@
 # SM-agnostic; the tests require SM80+ / CUDA / an ENABLE_FP4 + USE_FP4_QMOE build.
 # --------------------------------------------------------------------------
 
+import base64
+import functools
+import json
 import os
+import struct
 import subprocess
 import sys
 import unittest
+from pathlib import Path
 
 import numpy
 import pytest
 import torch
 import torch.nn.functional as F
-from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
+from cuda_plugin_ep_helper import (
+    _get_cuda_plugin_library_name,
+    _get_default_cuda_plugin_ep_path,
+    resolve_cuda_plugin_ep,
+)
 from onnx import helper
 from parameterized import parameterized
 
@@ -82,7 +91,7 @@ def fp4_e2m1_quantize(values):
     return quantized.reshape(values.shape), codes.reshape(values.shape)
 
 
-def quantize_weight_to_nvfp4(weight, block_size=NVFP4_BLOCK_SIZE):
+def quantize_weight_to_nvfp4(weight, block_size=NVFP4_BLOCK_SIZE, global_scale=None):
     """
     Quantize a per-expert weight matrix [N, K] to NVFP4.
 
@@ -102,19 +111,23 @@ def quantize_weight_to_nvfp4(weight, block_size=NVFP4_BLOCK_SIZE):
 
     w = weight.float()
     num_blocks = k // block_size
+    if global_scale is not None:
+        w = w.clone()
+        w[0, :block_size] *= (abs(global_scale) * FP4_MAX * E4M3_MAX) / w[0, :block_size].abs().amax()
+        global_scale = float(global_scale)
+    else:
+        global_amax = w.abs().amax().item()
+        # Per-expert global scale (weight_scale_2). Chosen so that per-block E4M3
+        # scales land within [0, E4M3_MAX].
+        global_scale = global_amax / (FP4_MAX * E4M3_MAX)
+        if global_scale <= 0:
+            global_scale = 1.0
+
     blocks = w.reshape(n, num_blocks, block_size)
-
     block_amax = blocks.abs().amax(dim=-1)  # [N, num_blocks]
-    global_amax = w.abs().amax().item()
-
-    # Per-expert global scale (weight_scale_2). Chosen so that per-block E4M3
-    # scales land within [0, E4M3_MAX].
-    global_scale = global_amax / (FP4_MAX * E4M3_MAX)
-    if global_scale <= 0:
-        global_scale = 1.0
 
     # Ideal per-block scale before E4M3 quantization.
-    block_scale_f = block_amax / FP4_MAX / global_scale  # [N, num_blocks], all <= E4M3_MAX
+    block_scale_f = (block_amax / FP4_MAX / abs(global_scale)).clamp(max=E4M3_MAX)  # [N, num_blocks], all <= E4M3_MAX
     block_scale_e4m3 = block_scale_f.to(torch.float8_e4m3fn)
     block_scale_deq = block_scale_e4m3.float()  # DecodeE4M3(byte)
 
@@ -280,6 +293,64 @@ def _cuda_sm():
     return cc[0] * 10 + cc[1]
 
 
+@functools.cache
+def _has_decode_gemv_image():
+    """Return whether the loaded CUDA provider binary has an SM90+ image for the current GPU."""
+    device_sm = _cuda_sm()
+    if device_sm < 90:
+        return False
+    lib_name = _get_cuda_plugin_library_name()
+    candidates = []
+    if os.path.exists("/proc/self/maps"):
+        with open("/proc/self/maps", encoding="utf-8", errors="ignore") as maps:
+            for line in maps:
+                parts = line.strip().split(None, 5)
+                if len(parts) == 6 and parts[5].endswith(lib_name) and os.path.exists(parts[5]):
+                    candidates.append(parts[5])
+                    break
+    env_path = os.environ.get("ORT_CUDA_PLUGIN_PATH", "")
+    if env_path and os.path.exists(env_path):
+        candidates.append(env_path)
+    default_path = _get_default_cuda_plugin_ep_path()
+    if default_path and os.path.exists(default_path):
+        candidates.append(default_path)
+    for binary_path in candidates:
+        data = Path(binary_path).read_bytes()
+        magic = struct.pack("<IHH", 0xBA55ED50, 1, 16)
+        pos = 0
+        selected = []
+        while (idx := data.find(magic, pos)) != -1:
+            if idx + 16 > len(data):
+                break
+            (payload_size,) = struct.unpack_from("<Q", data, idx + 8)
+            end = idx + 16 + payload_size
+            if payload_size > 0 and end <= len(data):
+                cur = idx + 16
+                cubin_sms, ptx_sms = set(), set()
+                valid = True
+                while cur + 64 <= end:
+                    kind, _, hdr_size, padded_size = struct.unpack_from("<HHIQ", data, cur)
+                    (sm,) = struct.unpack_from("<I", data, cur + 28)
+                    if kind not in (1, 2) or hdr_size < 64 or cur + hdr_size + padded_size > end:
+                        valid = False
+                        break
+                    (ptx_sms if kind == 1 else cubin_sms).add(sm)
+                    cur += hdr_size + padded_size
+                if valid and cur == end and (cubin_sms or ptx_sms):
+                    compat_cubins = [s for s in cubin_sms if s // 10 == device_sm // 10 and s <= device_sm]
+                    compat_ptx = [s for s in ptx_sms if s <= device_sm]
+                    if compat_cubins:
+                        selected.append(max(compat_cubins))
+                    elif compat_ptx:
+                        selected.append(max(compat_ptx))
+                pos = end
+            else:
+                pos = idx + 4
+        if selected:
+            return min(selected) >= 90
+    return True
+
+
 def _routes_native_fp4_prefill(num_tokens):
     """Predict whether a run routes to the native block-scaled FP4xFP4 CUTLASS prefill kernel.
 
@@ -332,6 +403,7 @@ class TestQMoENVFP4(unittest.TestCase):
         offline_prepacked=False,
         enable_cuda_graph=False,
         weights_prepacked=None,
+        global_scale=None,
     ):
         self._skip_if_no_fp4()
 
@@ -351,14 +423,14 @@ class TestQMoENVFP4(unittest.TestCase):
 
         for _ in range(num_experts):
             w1 = torch.randn(fc1_n, fc1_k, device=device) * 0.1
-            p1, b1, g1, d1 = quantize_weight_to_nvfp4(w1, block_size)
+            p1, b1, g1, d1 = quantize_weight_to_nvfp4(w1, block_size, global_scale=global_scale)
             fc1_packed.append(p1)
             fc1_bs.append(b1)
             fc1_gs.append(torch.tensor(g1, dtype=torch.float32))
             fc1_deq.append(d1)
 
             w2 = torch.randn(fc2_n, fc2_k, device=device) * 0.1
-            p2, b2, g2, d2 = quantize_weight_to_nvfp4(w2, block_size)
+            p2, b2, g2, d2 = quantize_weight_to_nvfp4(w2, block_size, global_scale=global_scale)
             fc2_packed.append(p2)
             fc2_bs.append(b2)
             fc2_gs.append(torch.tensor(g2, dtype=torch.float32))
@@ -1055,6 +1127,107 @@ class TestQMoENVFP4(unittest.TestCase):
             offline_prepacked=True,
             enable_cuda_graph=True,
         )
+
+    # Decode GEMV parity cases (row-major weights_prepacked=1, fused SwiGLU FC1) as (uses decode kernel, shape).
+    # The first three are the Qwen3.8 shapes (FC1 N=1280 K=2560 -> 8 K lanes, FC2 N=2560 K=640 -> 4 K lanes) at
+    # 10/20/60 expanded rows. The fourth has a partial last K tile (98 and 34 blocks); the next two set
+    # global_scale just below and above 3.98 / 448 to explicitly cover both the table-free and generic
+    # Fp4I2FConverter decode branches; the last has K % 32 != 0, which the decode kernel declines in favor of
+    # the KPacked kernel.
+    _DECODE_GEMV_CASES = (
+        (True, dict(hidden_size=2560, inter_size=640, num_experts=16, top_k=10, num_tokens=1, use_bias=False)),
+        (True, dict(hidden_size=2560, inter_size=640, num_experts=16, top_k=10, num_tokens=2, use_bias=True)),
+        (True, dict(hidden_size=2560, inter_size=640, num_experts=16, top_k=10, num_tokens=6, use_bias=False)),
+        (True, dict(hidden_size=1568, inter_size=544, num_experts=12, top_k=6, num_tokens=1, use_bias=True)),
+        (
+            True,
+            dict(
+                hidden_size=1568,
+                inter_size=544,
+                num_experts=12,
+                top_k=6,
+                num_tokens=1,
+                use_bias=True,
+                global_scale=3.90 / E4M3_MAX,
+            ),
+        ),
+        (
+            True,
+            dict(
+                hidden_size=1568,
+                inter_size=544,
+                num_experts=12,
+                top_k=6,
+                num_tokens=1,
+                use_bias=True,
+                global_scale=4.10 / E4M3_MAX,
+            ),
+        ),
+        (False, dict(hidden_size=528, inter_size=656, num_experts=16, top_k=10, num_tokens=6, use_bias=True)),
+    )
+
+    _DECODE_GEMV_OPTOUT_SCRIPT = """
+import base64, json, sys
+import torch
+from torch.profiler import ProfilerActivity, profile
+from test_qmoe_nvfp4_cuda import TestQMoENVFP4
+
+test = TestQMoENVFP4()
+onnx_dtype = int(sys.argv[1])
+for case in json.loads(sys.argv[2]):
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        out = test._run_nvfp4_moe_test(onnx_dtype=onnx_dtype, gemv_mode="1", offline_prepacked=True, **case)
+    names = sorted({e.name for e in prof.events() if "MoeGemvFp4" in e.name})
+    payload = base64.b64encode(out.view(torch.int16).cpu().numpy().tobytes()).decode()
+    print("DECODE_GEMV_RESULT", json.dumps(names), payload, sep="\\t", flush=True)
+"""
+
+    @parameterized.expand([(TensorProto.FLOAT16,), (TensorProto.BFLOAT16,)])
+    def test_nvfp4_offline_row_major_decode_gemv_bit_exact(self, onnx_dtype):
+        # The decode GEMV reproduces MoeGemvFp4RawKPackedKernel's summation order, so the QMoE output must be
+        # bit-identical with ORT_FP4_GEMV_DECODE_KERNEL=0. The knob is latched in a function-local static, so
+        # the opt-out run happens in a fresh process; every run has also been checked against the PyTorch
+        # reference by _run_nvfp4_moe_test.
+        self._skip_if_no_fp4()
+        cases = [{"use_swiglu": True, "input_scale": 0.1, **case} for _, case in self._DECODE_GEMV_CASES]
+        env = dict(os.environ)
+        env["ORT_FP4_GEMV_DECODE_KERNEL"] = "0"
+        env.pop("ORT_NVFP4_FC1_EXPERT_REUSE", None)
+        proc = subprocess.run(
+            [sys.executable, "-c", self._DECODE_GEMV_OPTOUT_SCRIPT, str(int(onnx_dtype)), json.dumps(cases)],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, f"ORT_FP4_GEMV_DECODE_KERNEL=0 run failed:\n{proc.stdout}\n{proc.stderr}")
+        optout = [line.split("\t")[1:] for line in proc.stdout.splitlines() if line.startswith("DECODE_GEMV_RESULT\t")]
+        self.assertEqual(len(optout), len(cases))
+
+        from torch.profiler import ProfilerActivity, profile  # noqa: PLC0415
+
+        for (uses_decode, _), case, (optout_kernel_json, payload) in zip(
+            self._DECODE_GEMV_CASES, cases, optout, strict=True
+        ):
+            with profile(activities=[ProfilerActivity.CUDA]) as prof:
+                decode = self._run_nvfp4_moe_test(onnx_dtype=onnx_dtype, gemv_mode="1", offline_prepacked=True, **case)
+            kernels = {event.name for event in prof.events() if "MoeGemvFp4" in event.name}
+            optout_kernels = json.loads(optout_kernel_json)
+            if optout_kernels:
+                self.assertTrue(any("MoeGemvFp4RawKPackedKernel" in name for name in optout_kernels), case)
+                self.assertFalse(any("MoeGemvFp4DecodeKernel" in name for name in optout_kernels), case)
+            if kernels:  # kernel events are only available when CUPTI works in this environment
+                self.assertEqual(
+                    any("MoeGemvFp4DecodeKernel" in name for name in kernels),
+                    uses_decode and _has_decode_gemv_image(),
+                    (case, kernels),
+                )
+            expected = torch.frombuffer(bytearray(base64.b64decode(payload)), dtype=torch.int16).reshape(decode.shape)
+            self.assertTrue(
+                torch.equal(decode.view(torch.int16).cpu(), expected),
+                f"decode GEMV output differs bitwise from the KPacked kernel for {case}",
+            )
 
     def test_nvfp4_fp16_prepacking_disabled_uses_raw_fallback(self):
         self._run_nvfp4_moe_test(
