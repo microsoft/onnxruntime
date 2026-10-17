@@ -1498,6 +1498,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Default value is 1e-6.",
               AttributeProto::FLOAT,
               1e-6f)
+        .Attr("q_norm_epsilon",
+              "Epsilon for per-head Q RMS normalization. Overrides qk_norm_epsilon for Q when provided. "
+              "Must be finite and positive.",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("k_norm_epsilon",
+              "Epsilon for per-head K RMS normalization. Overrides qk_norm_epsilon for K when provided. "
+              "Must be finite and positive.",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape"
