@@ -67,6 +67,7 @@ struct WorkspaceEstimateComparisonSummary {
 struct WorkspaceEstimatorConfig {
   std::optional<std::string> cuda_fpa_intb_gemm;
   std::optional<std::string> cuda_fpa_intb_profile_m;
+  std::optional<std::string> cuda_matmul_nbits_m_chunk_size = std::nullopt;
   // Validated nonnegative, int32-compatible envelope; zero means unspecified.
   int64_t cuda_gqa_workspace_max_total_sequence_length = 0;
 };
