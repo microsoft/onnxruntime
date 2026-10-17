@@ -786,8 +786,428 @@ TEST_F(StatefulApiTest, EveryStatusEntryValidatesRequiredPointers) {
   Error(api.SamplerSample(nullptr, nullptr, nullptr));
 }
 
+Ort::StatefulValue CxxOutput(const Ort::StatefulStepResult& result, const char* name,
+                             OrtStatefulOutputGroup group = ORT_STATEFUL_SELECTED_OUTPUTS) {
+  for (const auto& output : result.GetOutputs(group)) {
+    if (output.name == name) {
+      return output.value;
+    }
+  }
+  ORT_CXX_API_THROW(std::string("Output not found: ") + name, ORT_FAIL);
+}
+
+template <typename T>
+void CheckMove(T& resource) {
+  auto* original = static_cast<typename T::contained_type*>(resource);
+  T moved{std::move(resource)};
+  EXPECT_EQ(static_cast<typename T::contained_type*>(resource), nullptr);
+  resource = std::move(moved);
+  EXPECT_EQ(static_cast<typename T::contained_type*>(resource), original);
+}
+
+const OrtStatefulApi* ORT_API_CALL UnavailableStatefulApi() noexcept {
+  return nullptr;
+}
+
+class StatefulCxxApiProviderTest : public StatefulApiProviderTest {};
+
+TEST(StatefulCxxApiTest, OwnershipTypesAndUnavailableApi) {
+  static_assert(!std::is_copy_constructible_v<Ort::SessionLoopOptions>);
+  static_assert(!std::is_copy_constructible_v<Ort::SessionLoop>);
+  static_assert(!std::is_copy_constructible_v<Ort::SessionChainOptions>);
+  static_assert(!std::is_copy_constructible_v<Ort::SessionChain>);
+  static_assert(!std::is_copy_constructible_v<Ort::StatefulExecution>);
+  static_assert(!std::is_copy_constructible_v<Ort::KVCacheOptions>);
+  static_assert(!std::is_copy_constructible_v<Ort::KVCacheManager>);
+  static_assert(!std::is_copy_constructible_v<Ort::SamplerOptions>);
+  static_assert(std::is_copy_constructible_v<Ort::StatefulStepResult>);
+  static_assert(std::is_copy_constructible_v<Ort::KVCacheView>);
+  static_assert(std::is_copy_constructible_v<Ort::StatefulValue>);
+  static_assert(!std::is_convertible_v<Ort::StatefulValue, Ort::ConstValue>);
+  static_assert(!std::is_convertible_v<Ort::StatefulValue, OrtValue*>);
+  static_assert(std::is_same_v<decltype(std::declval<Ort::StatefulValue>().GetTensorData<float>()), const float*>);
+  static_assert(std::is_nothrow_move_constructible_v<Ort::StatefulValue>);
+  static_assert(std::is_nothrow_move_assignable_v<Ort::StatefulValue>);
+  auto parent = std::make_shared<Ort::Value>(Tensor<float>({1}, {7.f}));
+  std::weak_ptr<Ort::Value> lifetime(parent);
+  Ort::StatefulValue retained{static_cast<OrtValue*>(*parent), parent};
+  parent.reset();
+  EXPECT_FALSE(lifetime.expired());
+  auto retained_copy = retained;
+  retained = Ort::StatefulValue(nullptr);
+  EXPECT_FALSE(lifetime.expired());
+  retained_copy = Ort::StatefulValue(nullptr);
+  EXPECT_TRUE(lifetime.expired());
+  EXPECT_EQ(&Ort::GetStatefulApi(), &Api());
+  OrtApi unavailable = Ort::GetApi();
+  auto restore = std::unique_ptr<const OrtApi, void (*)(const OrtApi*)>(
+      &Ort::GetApi(), [](const OrtApi* api) { Ort::detail::Global::Api(api); });
+  unavailable.GetStatefulApi = &UnavailableStatefulApi;
+  Ort::detail::Global::Api(&unavailable);
+  EXPECT_THROW(Ort::GetStatefulApi(), Ort::Exception);
+  {
+    Ort::SessionLoopOptions loop_options(nullptr);
+    Ort::SessionLoop loop(nullptr);
+    Ort::SessionChainOptions chain_options(nullptr);
+    Ort::SessionChain chain(nullptr);
+    Ort::StatefulExecution execution(nullptr);
+    Ort::KVCacheOptions cache_options(nullptr);
+    Ort::KVCacheManager cache(nullptr);
+    Ort::SamplerOptions sampler(nullptr);
+    Ort::StatefulStepResult result(nullptr);
+    Ort::KVCacheView view(nullptr);
+    Ort::StatefulStepResult adopted_result(static_cast<OrtStatefulStepResult*>(nullptr));
+    Ort::KVCacheView adopted_view(static_cast<OrtKVCacheView*>(nullptr));
+    Ort::StatefulValue value(nullptr), defaulted;
+    EXPECT_EQ(static_cast<const OrtValue*>(value), nullptr);
+    EXPECT_EQ(static_cast<const OrtValue*>(defaulted), nullptr);
+    EXPECT_EQ(static_cast<const OrtStatefulStepResult*>(result), nullptr);
+    EXPECT_EQ(static_cast<const OrtKVCacheView*>(view), nullptr);
+    EXPECT_THROW(execution.Step(), Ort::Exception);
+  }
+}
+
+TEST_P(StatefulCxxApiProviderTest, LoopLifetimeMoveMetadataAndFailureRecovery) {
+  auto session = Session(stateful::MakeFeedbackModel(), GetParam());
+  FeedbackConfig config;
+  Ort::SessionLoopOptions options(config.config);
+  CheckMove(options);
+  EXPECT_EQ(&options.SetConfig(config.config), &options);
+  auto invalid = config.config;
+  invalid.struct_size = 0;
+  EXPECT_THROW(options.SetConfig(invalid), Ort::Exception);
+  Ort::SessionLoop loop(session, options);
+  CheckMove(loop);
+  auto seed = Tensor<float>({}, {0.f});
+  auto two = Tensor<float>({}, {2.f}), three = Tensor<float>({}, {3.f}), four = Tensor<float>({}, {4.f});
+  const OrtStatefulNamedValue initial{"past_value", seed};
+  const OrtStatefulNamedValue values[3]{{"input_value", two}, {"input_value", three}, {"input_value", four}};
+  const OrtStatefulInputBatch batches[3]{{&values[0], 1}, {&values[1], 1}, {&values[2], 1}};
+  OrtStatefulInputs inputs{};
+  inputs.struct_size = sizeof(inputs);
+  inputs.inputs = &initial;
+  inputs.num_inputs = 1;
+  inputs.batches = batches;
+  inputs.num_batches = 3;
+  auto execution = loop.CreateExecution(inputs);
+  CheckMove(execution);
+  loop = Ort::SessionLoop(nullptr);
+  options = Ort::SessionLoopOptions(nullptr);
+  seed = Ort::Value(nullptr);
+  two = Ort::Value(nullptr);
+  three = Ort::Value(nullptr);
+  four = Ort::Value(nullptr);
+  auto state = CxxOutput(execution.GetState(), "past_value", ORT_STATEFUL_STATE_VALUES);
+  EXPECT_EQ(state.GetTensorData<float>()[0], 0.f);
+  auto first = execution.Step();
+  EXPECT_FALSE(first.GetInfo().generated_token.has_value());
+  EXPECT_EQ(first.GetInfo().invocations, 1);
+  auto value = CxxOutput(first, "present_value");
+  EXPECT_EQ(value.GetTensorData<float>()[0], 2.f);
+  EXPECT_EQ(&*value, static_cast<const OrtValue*>(value));
+  auto copied = value;
+  auto moved = std::move(value);
+  EXPECT_EQ(static_cast<const OrtValue*>(value), nullptr);
+  value = std::move(moved);
+  auto& self = value;
+  value = std::move(self);
+  EXPECT_EQ(value.GetTensorData<float>()[0], 2.f);
+  value = copied;
+  first = Ort::StatefulStepResult(nullptr);
+  auto last = execution.Run();
+  auto info = last.GetInfo();
+  EXPECT_TRUE(info.completed);
+  EXPECT_EQ(info.iterations, 3);
+  const std::vector<OrtStatefulExitKind> expected_reasons{
+      ORT_STATEFUL_END_OF_INPUTS, ORT_STATEFUL_MAX_ITERATIONS, ORT_STATEFUL_BOOLEAN_OUTPUT};
+  EXPECT_EQ(info.exit_reasons, expected_reasons);
+  auto last_copy = last;
+  auto last_move = std::move(last_copy);
+  last = Ort::StatefulStepResult(nullptr);
+  EXPECT_EQ(CxxOutput(last_move, "present_value", ORT_STATEFUL_COMPONENT_OUTPUTS).GetTensorData<float>()[0], 9.f);
+  last_move = Ort::StatefulStepResult(nullptr);
+  EXPECT_EQ(info.exit_reasons.size(), 3u);
+  EXPECT_TRUE(execution.Step().GetOutputs().empty());
+  EXPECT_THROW(execution.GetState().GetOutputs(static_cast<OrtStatefulOutputGroup>(99)), Ort::Exception);
+  execution.Reset();
+  OrtStatefulStepResult* raw = nullptr;
+  Ok(Api().StatefulExecutionStep(execution, &raw));
+  Ort::StatefulStepResult adopted(raw);
+  EXPECT_EQ(adopted.GetInfo().iterations, 1);
+  OrtStatefulStepInfo c_info{};
+  Ok(Api().StatefulStepResultGetInfo(adopted, sizeof(c_info), &c_info));
+  EXPECT_EQ(c_info.invocations, adopted.GetInfo().invocations);
+  execution.Cancel();
+  EXPECT_THROW(execution.Step(), Ort::Exception);
+  EXPECT_TRUE(execution.RequiresReset());
+  EXPECT_THROW(execution.Run(), Ort::Exception);
+  EXPECT_THROW(execution.GetState(), Ort::Exception);
+  execution.Reset();
+  EXPECT_FALSE(execution.RequiresReset());
+  EXPECT_EQ(CxxOutput(execution.Run(), "present_value").GetTensorData<float>()[0], 9.f);
+  execution = Ort::StatefulExecution(nullptr);
+  adopted = Ort::StatefulStepResult(nullptr);
+  session = Ort::Session(nullptr);
+  EXPECT_EQ(value.GetTensorData<float>()[0], 2.f);
+  EXPECT_EQ(state.GetTensorData<float>()[0], 0.f);
+}
+
+TEST_P(StatefulCxxApiProviderTest, AllChainKindsRetainInputsStateAndMetadata) {
+  for (bool first_loop : {false, true}) {
+    for (bool second_loop : {false, true}) {
+      auto first_session = Session(stateful::MakeFeedbackModel(), GetParam());
+      auto second_session = Session(second_loop ? stateful::MakeFeedbackModel() : stateful::MakeRenamedStageModel(),
+                                    GetParam());
+      FeedbackConfig first_config, second_config;
+      second_config.config.num_finite_inputs = 0;
+      second_config.config.nonempty_input = nullptr;
+      second_config.config.exit_conditions = &second_config.exits[1];
+      second_config.config.num_exit_conditions = 1;
+      second_config.exits[1].limit = 2;
+      Ort::SessionLoop first(first_session, Ort::SessionLoopOptions(first_config.config));
+      Ort::SessionLoop second(nullptr);
+      if (second_loop) {
+        second = Ort::SessionLoop(second_session, Ort::SessionLoopOptions(second_config.config));
+      }
+      const OrtStatefulValueSource prompt_source{
+          first_loop ? ORT_STATEFUL_EXTERNAL_SEQUENCE : ORT_STATEFUL_EXTERNAL_INPUT,
+          first_loop ? "prompt" : "one", 0};
+      const OrtStatefulInputBinding first_inputs[2]{
+          {"input_value", prompt_source},
+          {"past_value", {ORT_STATEFUL_STATE, "carry", 0}}};
+      const OrtStatefulStateBinding write_state{"carry", "present_value"};
+      const OrtStatefulInputBinding second_inputs[2]{
+          {second_loop ? "past_value" : "upstream", {ORT_STATEFUL_COMPONENT_OUTPUT, "present_value", 0}},
+          {"input_value", {ORT_STATEFUL_EXTERNAL_INPUT, "delta", 0}}};
+      OrtStatefulChainComponent components[2]{};
+      components[0].name = "first";
+      components[0].session = first_loop ? nullptr : static_cast<OrtSession*>(first_session);
+      components[0].loop = first_loop ? static_cast<OrtSessionLoop*>(first) : nullptr;
+      components[0].inputs = first_inputs;
+      components[0].num_inputs = 2;
+      components[0].state_outputs = &write_state;
+      components[0].num_state_outputs = 1;
+      components[1].name = "second";
+      components[1].session = second_loop ? nullptr : static_cast<OrtSession*>(second_session);
+      components[1].loop = second_loop ? static_cast<OrtSessionLoop*>(second) : nullptr;
+      components[1].inputs = second_inputs;
+      components[1].num_inputs = second_loop ? 2 : 1;
+      const OrtStatefulChainOutput selected[2]{
+          {"early", 0, "present_value", ORT_STATEFUL_MODEL_OUTPUT},
+          {"result", 1, second_loop ? "present_value" : "pipeline_result", ORT_STATEFUL_MODEL_OUTPUT}};
+      OrtStatefulChainConfig config{sizeof(config), components, 2, selected, 2};
+      Ort::SessionChainOptions options(config);
+      CheckMove(options);
+      EXPECT_EQ(&options.SetConfig(config), &options);
+      auto invalid = config;
+      invalid.struct_size = 0;
+      EXPECT_THROW(options.SetConfig(invalid), Ort::Exception);
+      first = Ort::SessionLoop(nullptr);
+      second = Ort::SessionLoop(nullptr);
+      Ort::SessionChain chain(options);
+      CheckMove(chain);
+      auto one = Tensor<float>({}, {2.f}), two = Tensor<float>({}, {3.f});
+      auto carry = Tensor<float>({}, {1.f}), delta = Tensor<float>({}, {2.f});
+      const OrtStatefulNamedValue external[2]{{"one", one}, {"delta", delta}};
+      const OrtValue* prompt[2]{one, two};
+      const OrtStatefulInputSequence sequence{"prompt", prompt, 2};
+      const OrtStatefulNamedValue initial{"carry", carry};
+      OrtStatefulInputs inputs{};
+      inputs.struct_size = sizeof(inputs);
+      inputs.inputs = first_loop ? (second_loop ? &external[1] : nullptr) : external;
+      inputs.num_inputs = (first_loop ? 0u : 1u) + (second_loop ? 1u : 0u);
+      inputs.sequences = first_loop ? &sequence : nullptr;
+      inputs.num_sequences = first_loop ? 1 : 0;
+      inputs.initial_state = &initial;
+      inputs.num_initial_state = 1;
+      auto execution = chain.CreateExecution(inputs);
+      chain = Ort::SessionChain(nullptr);
+      options = Ort::SessionChainOptions(nullptr);
+      auto step = execution.Step();
+      EXPECT_EQ(step.GetInfo().invocations, 1);
+      EXPECT_EQ(step.GetInfo().component_name, "first");
+      auto result = execution.Run();
+      auto info = result.GetInfo();
+      const float early = first_loop ? 6.f : 3.f;
+      auto retained = CxxOutput(result, "result");
+      EXPECT_EQ(retained.GetTensorData<float>()[0], second_loop ? early + 4.f : early * 2.f);
+      EXPECT_EQ(CxxOutput(execution.GetState(), "carry", ORT_STATEFUL_STATE_VALUES).GetTensorData<float>()[0], early);
+      EXPECT_EQ(info.components_completed, 2u);
+      EXPECT_EQ(info.component_name, "second");
+      result = Ort::StatefulStepResult(nullptr);
+      execution.Reset();
+      execution = Ort::StatefulExecution(nullptr);
+      EXPECT_EQ(info.component_name, "second");
+      EXPECT_EQ(retained.GetTensorData<float>()[0], second_loop ? early + 4.f : early * 2.f);
+      retained = Ort::StatefulValue(nullptr);
+      EXPECT_EQ(info.component_name, "second");
+    }
+  }
+}
+
+TEST_F(StatefulApiTest, StatefulCxxCacheAndSamplerLifetimeErrorsAndAtomicUpdates) {
+  const int64_t dimensions[4]{1, 1, 0, 1};
+  const OrtStatefulKVCacheSpec spec{"key", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dimensions, 4, 2, 1};
+  OrtStatefulKVCacheConfig config{sizeof(config), &spec, 1};
+  Ort::KVCacheOptions options(config);
+  CheckMove(options);
+  EXPECT_EQ(&options.SetConfig(config), &options);
+  auto invalid = config;
+  invalid.struct_size = 0;
+  EXPECT_THROW(options.SetConfig(invalid), Ort::Exception);
+  Ort::AllocatorWithDefaultOptions allocator;
+  Ort::KVCacheManager manager(options, allocator);
+  CheckMove(manager);
+  auto first = Tensor<float>({1, 1, 1, 1}, {3.f});
+  manager.Update("key", first, ORT_KV_CACHE_SHARE);
+  auto view = manager.GetView("key");
+  auto copy = view;
+  auto moved = std::move(copy);
+  auto snapshot = moved.GetInfo();
+  EXPECT_EQ(snapshot.length, 1);
+  EXPECT_EQ(snapshot.capacity, 1);
+  OrtKVCacheView* raw = nullptr;
+  Ok(Api().KVCacheManagerGetView(manager, "key", &raw));
+  Ort::KVCacheView adopted(raw);
+  EXPECT_EQ(adopted.GetInfo().length, 1);
+  manager.Reserve("key", 4);
+  auto delta = Tensor<float>({1, 1, 1, 1}, {4.f});
+  manager.Update("key", delta, ORT_KV_CACHE_APPEND);
+  auto full = Tensor<float>({1, 1, 2, 1}, {5.f, 6.f});
+  manager.Update("key", full, ORT_KV_CACHE_COPY);
+  const auto stats = manager.GetStats();
+  EXPECT_GT(stats.allocations, 0u);
+  EXPECT_GT(stats.bytes_copied, 0u);
+  EXPECT_EQ(stats.shared_updates, 1u);
+  EXPECT_THROW(manager.GetView("missing"), Ort::Exception);
+  EXPECT_THROW(manager.Reserve("key", std::numeric_limits<int64_t>::max()), Ort::Exception);
+  {
+    float storage = 0.f;
+    Ort::MemoryInfo gpu("Cuda", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+    const int64_t shape[4]{1, 1, 1, 1};
+    auto device = Ort::Value::CreateTensor<float>(gpu, &storage, 1, shape, 4);
+    EXPECT_THROW(manager.Update("key", device, ORT_KV_CACHE_COPY), Ort::Exception);
+  }
+  manager.Reset();
+  manager = Ort::KVCacheManager(nullptr);
+  options = Ort::KVCacheOptions(nullptr);
+  first = Ort::Value(nullptr);
+  view = Ort::KVCacheView(nullptr);
+  moved = Ort::KVCacheView(nullptr);
+  adopted = Ort::KVCacheView(nullptr);
+  EXPECT_EQ(snapshot.value.GetTensorData<float>()[0], 3.f);
+  OrtStatefulSamplerConfig sampling{sizeof(sampling), ORT_STATEFUL_GREEDY, 1, 0};
+  Ort::SamplerOptions sampler(sampling);
+  CheckMove(sampler);
+  auto logits = Tensor<float>({1, 2, 3}, {1.f, 5.f, 2.f, 9.f, 1.f, 0.f});
+  EXPECT_EQ(sampler.Sample(logits), 1);
+  sampling.has_logits_position = 0;
+  EXPECT_EQ(&sampler.SetConfig(sampling), &sampler);
+  EXPECT_EQ(sampler.Sample(logits), 0);
+  sampling.algorithm = static_cast<OrtStatefulSamplingAlgorithm>(99);
+  EXPECT_THROW(sampler.SetConfig(sampling), Ort::Exception);
+  EXPECT_EQ(sampler.Sample(logits), 0);
+  auto half = Tensor<Ort::Float16_t>(
+      {1, 3}, {Ort::Float16_t(1.f), Ort::Float16_t(3.f), Ort::Float16_t(3.f)});
+  EXPECT_EQ(sampler.Sample(half), 1);
+  auto nan = Tensor<float>({1, 1}, {std::numeric_limits<float>::quiet_NaN()});
+  EXPECT_THROW(sampler.Sample(nan), Ort::Exception);
+  float storage = 1.f;
+  Ort::MemoryInfo gpu("Cuda", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  auto device = Ort::Value::CreateTensor<float>(gpu, &storage, 1, std::array<int64_t, 2>{1, 1}.data(), 2);
+  EXPECT_THROW(sampler.Sample(device), Ort::Exception);
+  try {
+    sampler.Sample(nullptr);
+    FAIL() << "NULL logits must throw";
+  } catch (const Ort::Exception& error) {
+    EXPECT_EQ(error.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+    EXPECT_FALSE(std::string_view(error.what()).empty());
+  }
+}
+
+TEST_P(StatefulCxxApiProviderTest, NativeGenerationBudgetsCacheSnapshotsAndOwnedTokens) {
+  for (int64_t budget : {0, 1, 2}) {
+    auto session = Session(PublicGenerationModel(), GetParam());
+    const int64_t dimensions[4]{1, 1, 0, 1};
+    const OrtStatefulKVCacheBinding cache{
+        {"key", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dimensions, 4, 2, 0},
+        "past_key",
+        "present_key",
+        ORT_KV_CACHE_SHARE};
+    const char* names[1]{"token"};
+    const char* outputs[1]{"logits"};
+    const int64_t eos = 2;
+    const OrtStatefulExitCondition prefill_exits[2]{
+        {ORT_STATEFUL_END_OF_INPUTS, 0, nullptr, nullptr, 0},
+        {ORT_STATEFUL_MAX_GENERATED_TOKENS, budget, nullptr, nullptr, 0}};
+    const OrtStatefulExitCondition decode_exits[2]{
+        {ORT_STATEFUL_MAX_GENERATED_TOKENS, budget, nullptr, nullptr, 0},
+        {ORT_STATEFUL_EOS, 0, nullptr, &eos, 1}};
+    OrtStatefulGenerationConfig generation{
+        sizeof(generation), ORT_STATEFUL_PREFILL, "token", "logits", "mask", "positions", 0, 0};
+    OrtStatefulLoopConfig config{};
+    config.struct_size = sizeof(config);
+    config.finite_input_names = names;
+    config.num_finite_inputs = 1;
+    config.output_names = outputs;
+    config.num_outputs = 1;
+    config.exit_conditions = prefill_exits;
+    config.num_exit_conditions = 2;
+    config.kv_caches = &cache;
+    config.num_kv_caches = 1;
+    config.generation = &generation;
+    Ort::SessionLoop prefill(session, Ort::SessionLoopOptions(config));
+    generation.phase = ORT_STATEFUL_DECODE;
+    config.num_finite_inputs = 0;
+    config.exit_conditions = decode_exits;
+    Ort::SessionLoop decode(session, Ort::SessionLoopOptions(config));
+    const OrtStatefulInputBinding input_binding{"token", {ORT_STATEFUL_EXTERNAL_INPUT, "prompt", 0}};
+    OrtStatefulChainComponent components[2]{};
+    components[0].name = "prefill";
+    components[0].loop = prefill;
+    components[0].inputs = &input_binding;
+    components[0].num_inputs = 1;
+    components[1].name = "decode";
+    components[1].loop = decode;
+    const OrtStatefulChainOutput output{"tokens", 0, nullptr, ORT_STATEFUL_GENERATED_TOKEN_IDS};
+    const OrtStatefulChainConfig chain_config{sizeof(chain_config), components, 2, &output, 1};
+    Ort::SessionChain chain{Ort::SessionChainOptions(chain_config)};
+    auto prompt = Tensor<int64_t>({1, 1}, {0});
+    const OrtStatefulNamedValue input{"prompt", prompt};
+    OrtStatefulInputs inputs{};
+    inputs.struct_size = sizeof(inputs);
+    inputs.inputs = &input;
+    inputs.num_inputs = 1;
+    auto execution = chain.CreateExecution(inputs);
+    auto result = execution.Run();
+    auto info = result.GetInfo();
+    EXPECT_EQ(info.generated_tokens, budget);
+    if (budget == 2) {
+      EXPECT_EQ(info.generated_token, 2);
+      const OrtStatefulSamplerConfig sampling{sizeof(sampling), ORT_STATEFUL_GREEDY, 0, 0};
+      EXPECT_EQ(Ort::SamplerOptions(sampling).Sample(CxxOutput(result, "logits", ORT_STATEFUL_COMPONENT_OUTPUTS)), 2);
+    } else {
+      EXPECT_FALSE(info.generated_token.has_value());
+    }
+    auto tokens = CxxOutput(result, "tokens");
+    EXPECT_EQ(tokens.GetTensorTypeAndShapeInfo().GetShape(), std::vector<int64_t>{budget});
+    for (int64_t i = 0; i < budget; ++i) {
+      EXPECT_EQ(tokens.GetTensorData<int64_t>()[i], i + 1);
+    }
+    auto keys = CxxOutput(execution.GetState(), "key", ORT_STATEFUL_STATE_VALUES);
+    EXPECT_EQ(keys.GetTensorTypeAndShapeInfo().GetShape()[2], budget);
+    execution.Reset();
+    result = Ort::StatefulStepResult(nullptr);
+    execution = Ort::StatefulExecution(nullptr);
+    EXPECT_EQ(keys.GetTensorTypeAndShapeInfo().GetShape()[2], budget);
+    EXPECT_EQ(tokens.GetTensorTypeAndShapeInfo().GetElementCount(), static_cast<size_t>(budget));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(Cpu, StatefulCxxApiProviderTest, testing::Values(false));
 INSTANTIATE_TEST_SUITE_P(Cpu, StatefulApiProviderTest, testing::Values(false));
 #ifdef USE_CUDA
+INSTANTIATE_TEST_SUITE_P(Cuda, StatefulCxxApiProviderTest, testing::Values(true));
 INSTANTIATE_TEST_SUITE_P(Cuda, StatefulApiProviderTest, testing::Values(true));
 #endif
 

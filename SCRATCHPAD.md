@@ -421,3 +421,31 @@ Compressed project memory. This is not the execution plan.
   https://github.com/onnxruntime/ort-state/pull/16, stacked on
   `state/m05-cpu-greedy`. Implementation commit `f0aa2513d7`.
   M06a is complete; pause for review/authorization before M06b.
+
+## M06b
+
+- User authorized finishing M06b on 2026-10-17. Branch
+  `state/m06b-stateful-cxx-api` starts at published M06a `b5f1431837`.
+- Use existing SDK Base for move-only resources. Immutable results/cache views
+  retain shared C-handle holders; distinct ConstValueImpl storage retains the
+  parent without implicit slicing to unowned ConstValue.
+- Allocate result control blocks before native Step/Run; allocate no owner
+  after advancing. Copy strings/reasons into C++ metadata. Empty resources must
+  release safely even when the stateful table is unavailable.
+- No agents used. CPU/CUDA tests, measured coverage and publication pending.
+- Initial focused tests passed: CPU 5/5; CUDA build 8/8, no skips. Initial
+  wrapper coverage 187/187 added executable locations. Executable-only SDK
+  coverage has 12 zero-hash unused-map warnings, none for new stateful wrappers.
+- clang-format deliberately uses ColumnLimit 0: manually keep new lines <=120.
+  Final combined tests/profiles, standalone SDK example and memcheck pending.
+- Final fresh M06b CPU: 36/36 C/C++ API/baseline + 55/55 native; CUDA:
+  49/49 API/baseline + 97/97 native, zero skips. API memcheck 8/8, zero errors.
+- New C++ wrappers 187/187 unique executable locations; cumulative stateful
+  native/C API 1857/1857, combined 2044/2044. Export SDK from API executable only;
+  runtime export adds .so/native objects. Inspected 42/215 zero-hash unused maps,
+  no measured new wrapper/changed runtime function affected.
+- SPEC F.6 contains a standalone public-SDK example. Exact documented source
+  compiled/linked/ran with GCC C++17, both normal and no-exceptions client flags.
+  Weak-owner test proves lifetime retention; static asserts forbid unowned
+  slicing/mutable pointers. All changed-range style/columns/doc checks passed.
+- M06 implementation/testing gates are now satisfied; publication remains.

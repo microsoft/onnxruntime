@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M05 and M06a complete; M06b pending.
+**Status:** Approved; M01-M05 and M06a complete; M06b in progress.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -17,7 +17,7 @@ M05's requested generation-folder layout follow-up is complete in the same PR.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M05 and M06a are complete; M06b and M07-M24 are pending. Check tasks when their
+M01-M05 and M06a are complete; M06b is in progress; M07-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -97,7 +97,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M05 and M06a are **complete**; M06b and M07-M24 are **pending**.
+M01-M05 and M06a are **complete**; M06b is **in progress**; M07-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -719,13 +719,14 @@ explicit CPU logits sampling, not a native CUDA greedy implementation.
 **Status:** Appendix F and the M06a/M06b split approved 2026-10-16.
 M06a is complete: [PR #16](https://github.com/onnxruntime/ort-state/pull/16),
 `state/m06a-stateful-c-api`, based on M05 `17e432b025`.
-M06b is pending; M06 remains incomplete until both sub-PRs are verified.
+M06b is authorized 2026-10-17 and in progress on `state/m06b-stateful-cxx-api`,
+based on M06a `b5f1431837`. M06 remains incomplete until both sub-PRs are verified.
 
 - [x] Add append-only public API entries and opaque resources consistent with
   existing tables. Do not bump `ORT_API_VERSION`.
 - [x] Expose configuration, bindings, exit conditions, contexts, loop/chain
   execution, cache/sampler integration, outputs, reset, cancellation, and release.
-- [ ] Add RAII C++ wrappers and Doxygen ownership/lifetime/`\since` documentation.
+- [x] Add RAII C++ wrappers and Doxygen ownership/lifetime/`\since` documentation.
   Ensure failed calls preserve out-parameters and contain exceptions.
 
 **CPU test plan:** Reproduce M02-M05 behavior through C and C++, not only internals;
@@ -763,6 +764,133 @@ The user approved the split and contracts without changes before implementation.
 - [x] Validate CUDA execution/provider assignment and memory safety.
 - [x] Record final evidence, complete style checks and publish the stacked PR.
   Ready-for-review PR #16 is stacked on M05; implementation commit `f0aa2513d7`.
+
+**M06b validation checklist:**
+
+- [x] Add move-only mutable C++ resources and complete public API wrappers.
+- [x] Retain result/cache owners in copyable const values and copy metadata.
+- [x] Test move/release ordering, errors and full CPU/CUDA behavior parity.
+- [x] Measure 100% new wrapper lines and cumulative C/native coverage.
+- [x] Validate standalone C++ consumption, CUDA memcheck, examples and style.
+- [ ] Record final evidence and publish the ready-for-review PR stacked on M06a.
+
+Initial focused C++ tests passed **5/5 on CPU** and **8/8 in the CUDA build**,
+zero skips. Initial measured new-wrapper coverage is **187/187 executable
+locations**; the final combined validation below also passed.
+
+**M06b execution evidence:**
+
+- Wrapped every M06a operation/resource in the header-only public C++ SDK.
+  Mutable resources use the existing move-only Base; immutable results/cache
+  views share C-handle ownership and do not expose ownership-releasing release().
+- Added parent-retaining const value storage, distinct from unowned ConstValue.
+  Copies retain the parent and moves empty the source; static assertions prevent
+  implicit slicing/mutable pointer conversion. A weak-owner test proves actual
+  parent lifetime, not merely unchanged data at a potentially freed address.
+- Metadata copies names/reasons and uses optional emitted tokens. Result owners
+  are allocated before Step/Run. Empty resources release safely when the API
+  table is absent; operations still throw explicitly. C ABI/version unchanged.
+- Final CPU build: **36/36 API/baseline tests** (10 C + 5 C++ + 21 regressions)
+  and **55/55 native tests**, zero skips.
+- Final CUDA 13.1/A100 build: **49/49 API/baseline tests** (15 C + 8 C++ + 26
+  regressions) and **97/97 native tests**, zero skips. Model-node CUDA assignment
+  and disabled CPU fallback are asserted in every CUDA parameterization.
+- Coverage: **187/187 new unique executable wrapper locations** (37 SDK
+  storage/helper-header lines and 150 inline implementation lines), plus **1857/1857**
+  cumulative native/C-API locations: **2044/2044**, all 100%.
+  Fresh profiles match final artifacts. SDK export uses the API executable;
+  runtime export adds the shared library/native executable. Inspected dumps have
+  42/215 zero-hash unused-map entries respectively, none affecting measured new
+  wrappers or changed runtime glue. This is line coverage, not branch coverage.
+- All four Session/Loop chain combinations, finite feeds/sequences/state,
+  explicit exits, zero/one/multiple generation budgets, float16/float32 greedy,
+  metadata/const-view lifetimes, move/copy/release ordering, native status-to-
+  exception mapping, atomic options and unsupported device rejection pass.
+- CUDA Compute Sanitizer: **8/8 C/C++ API cases passed, zero errors**.
+- SPEC Appendix F.6's exact standalone example compiled/linked/ran with GCC
+  C++17 `-Wall -Wextra -Werror`, both normally and with `ORT_NO_EXCEPTIONS`/
+  `-fno-exceptions` client flags. This does not claim a no-exceptions runtime,
+  minimal/training qualification, native CUDA cache/sampling or real-model
+  attention coverage. Those existing scope boundaries remain unchanged.
+- Changed-range formatting, 120 columns, whitespace, all 93 requirement IDs and
+  all 24 macro milestones were checked. The attached specification snapshot was
+  not modified; only repository documents were updated.
+
+Passing final CPU commands:
+
+```bash
+source .venv/bin/activate
+LLVM_PROFILE_FILE=/dev/null cmake --build build/state-cpu/RelWithDebInfo \
+  --parallel 8 --target onnxruntime_autoep_test onnxruntime_session_loop_test
+cd build/state-cpu/RelWithDebInfo
+mkdir -p coverage/m06b/complete
+LLVM_PROFILE_FILE="$PWD/coverage/m06b/complete/%m-%p.profraw" \
+  ./onnxruntime_autoep_test \
+  --gtest_filter='*StatefulApi*:*StatefulCxx*:*StatefulExecutionBaselineTest.*:ModelPackageApiTest.*' \
+  --gtest_output=xml:coverage/m06b/complete/api-tests.xml
+LLVM_PROFILE_FILE="$PWD/coverage/m06b/complete/%m-%p.profraw" \
+  ./onnxruntime_session_loop_test \
+  --gtest_output=xml:coverage/m06b/complete/native-tests.xml
+llvm-profdata merge -sparse coverage/m06b/complete/*.profraw \
+  -o coverage/m06b/complete/m06b.profdata
+llvm-cov export ./onnxruntime_autoep_test \
+  -instr-profile=coverage/m06b/complete/m06b.profdata -format=lcov \
+  ../../../include/onnxruntime/core/session/onnxruntime_cxx_api.h \
+  ../../../include/onnxruntime/core/session/onnxruntime_cxx_inline.h \
+  > coverage/m06b/complete/wrappers.lcov
+llvm-cov export ./onnxruntime_autoep_test -object ./libonnxruntime.so \
+  -object ./onnxruntime_session_loop_test \
+  -instr-profile=coverage/m06b/complete/m06b.profdata -format=lcov \
+  ../../../onnxruntime/core/session/stateful_api.cc \
+  ../../../onnxruntime/core/session/{session_loop,session_chain,kv_cache_manager}.{cc,h} \
+  ../../../onnxruntime/core/generate/token_generation.{cc,h} \
+  ../../../onnxruntime/core/framework/stateful_execution_utils.h \
+  > coverage/m06b/complete/runtime.lcov
+```
+
+Intersect deduplicated SDK DA locations with added lines against M06a
+`b5f1431837`; combine with the measured runtime DA locations for the exact
+187/2044 denominators. Inspect mismatch dumps rather than suppressing warnings.
+
+Passing CUDA commands (from repository root; matching CUDA/cuDNN paths as M06a):
+
+```bash
+source .venv/bin/activate
+export CUDA_HOME=/datadisks/disk4/bmeswani/cuda/cuda13.1
+export CUDNN_HOME="$CUDA_HOME/targets/x86_64-linux"
+export PATH="$CUDA_HOME/bin:$PATH"
+export LD_LIBRARY_PATH="$CUDNN_HOME/lib:${LD_LIBRARY_PATH:-}"
+cmake --build build/state-cuda-baseline-13.1/RelWithDebInfo \
+  --parallel 8 --target onnxruntime_autoep_test onnxruntime_session_loop_test
+cd build/state-cuda-baseline-13.1/RelWithDebInfo
+mkdir -p coverage/m06b/complete
+./onnxruntime_autoep_test \
+  --gtest_filter='*StatefulApi*:*StatefulCxx*:*StatefulExecutionBaselineTest.*:ModelPackageApiTest.*' \
+  --gtest_output=xml:coverage/m06b/complete/api-tests.xml
+./onnxruntime_session_loop_test \
+  --gtest_output=xml:coverage/m06b/complete/native-tests.xml
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --error-exitcode 99 \
+  ./onnxruntime_autoep_test \
+  --gtest_filter='Cuda/StatefulApiProviderTest.*:Cuda/StatefulCxxApiProviderTest.*'
+```
+
+Passing standalone example command (repository root):
+
+```bash
+python - <<'PY' | g++ -std=c++17 -Wall -Wextra -Werror \
+  -I include/onnxruntime/core/session -x c++ - \
+  -L build/state-cpu/RelWithDebInfo \
+  -Wl,-rpath,/datadisks/disk9/devpatel/ngenai/onnxruntime/build/state-cpu/RelWithDebInfo \
+  -lonnxruntime -o build/state-cpu/RelWithDebInfo/coverage/m06b/sdk-example
+from pathlib import Path
+text = Path("SPEC.md").read_text().split("### F.6 C++ ownership and executable example", 1)[1]
+print(text.split("```cpp", 1)[1].split("```", 1)[0])
+PY
+LLVM_PROFILE_FILE=/dev/null build/state-cpu/RelWithDebInfo/coverage/m06b/sdk-example
+```
+
+The same compile/link/run also passed with `-DORT_NO_EXCEPTIONS -fno-exceptions`
+and output name `sdk-example-noexceptions`. No package installations were needed.
 
 **M06a execution evidence:**
 

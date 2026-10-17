@@ -10,9 +10,10 @@
 // Each of the C++ wrapper classes holds only a pointer to the C internal object. Treat them like smart pointers.
 // To create an empty object, pass 'nullptr' to the constructor (for example, Env e{nullptr};). However, you can't use them
 // until you assign an instance that actually holds an underlying object.
+// Immutable stateful results, cache views and their const value views additionally retain shared ownership.
 //
 // For Ort objects only move assignment between objects is allowed, there are no copy constructors.
-// Some objects have explicit 'Clone' methods for this purpose.
+// Some objects have explicit 'Clone' methods for this purpose. Immutable stateful results/cache views are copyable.
 //
 // ConstXXXX types are copyable since they do not own the underlying C object, so you can pass them to functions as arguments
 // by value or by reference. ConstXXXX types are restricted to const only interfaces.
@@ -30,6 +31,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -260,6 +262,17 @@ inline const OrtModelPackageApi& GetModelPackageApi() {
     ORT_CXX_API_THROW("Model Package API is not available in this build", ORT_FAIL);
   }
 
+  return *api;
+}
+
+/** \brief Return the runtime-owned stateful API, throwing if unavailable.
+ * \since Version 1.32.
+ */
+inline const OrtStatefulApi& GetStatefulApi() {
+  auto* api = GetApi().GetStatefulApi();
+  if (api == nullptr) {
+    ORT_CXX_API_THROW("Stateful API is not available in this build", ORT_FAIL);
+  }
   return *api;
 }
 
@@ -682,6 +695,22 @@ ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelRegistry, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(OpSchema, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ProfilingEvent, GetEpApi);
 
+#define ORT_DEFINE_STATEFUL_RELEASE(NAME)         \
+  inline void OrtRelease(Ort##NAME* ptr) {        \
+    if (ptr) GetStatefulApi().Release##NAME(ptr); \
+  }
+ORT_DEFINE_STATEFUL_RELEASE(SessionLoopOptions);
+ORT_DEFINE_STATEFUL_RELEASE(SessionLoop);
+ORT_DEFINE_STATEFUL_RELEASE(SessionChainOptions);
+ORT_DEFINE_STATEFUL_RELEASE(SessionChain);
+ORT_DEFINE_STATEFUL_RELEASE(StatefulExecution);
+ORT_DEFINE_STATEFUL_RELEASE(StatefulStepResult);
+ORT_DEFINE_STATEFUL_RELEASE(KVCacheOptions);
+ORT_DEFINE_STATEFUL_RELEASE(KVCacheManager);
+ORT_DEFINE_STATEFUL_RELEASE(KVCacheView);
+ORT_DEFINE_STATEFUL_RELEASE(SamplerOptions);
+#undef ORT_DEFINE_STATEFUL_RELEASE
+
 // This is defined explicitly since OrtTensorRTProviderOptionsV2 is not a C API type,
 // but the struct has V2 in its name to indicate that it is the second version of the options.
 inline void OrtRelease(OrtTensorRTProviderOptionsV2* ptr) { GetApi().ReleaseTensorRTProviderOptions(ptr); }
@@ -703,7 +732,7 @@ struct Unowned {
  *
  * All of the C++ classes
  *  a) serve as containers for pointers to objects that are created by the underlying C API.
- *     Their size is just a pointer size, no need to dynamically allocate them. Use them by value.
+ *     Their size is just a pointer size, except shared stateful value storage. Use them by value.
  *  b) Each of struct XXXX, XXX instances function as smart pointers to the underlying C API objects.
  *     they would release objects owned automatically when going out of scope, they are move-only.
  *  c) ConstXXXX and UnownedXXX structs function as non-owning, copyable containers for the above pointers.
@@ -787,6 +816,39 @@ struct Base<Unowned<T>> {
 
  protected:
   contained_type* p_{};
+};
+
+struct StatefulValueOwner {};
+
+/** \brief Const value storage that retains a result/cache-view owner.
+ * Unlike Unowned<const OrtValue>, copying this storage retains its parent.
+ */
+template <>
+struct Base<StatefulValueOwner> {
+  using contained_type = const OrtValue;
+  Base() = default;
+  explicit Base(std::nullptr_t) noexcept {}
+  Base(const OrtValue* value, std::shared_ptr<const void> owner) noexcept
+      : p_{value}, owner_{std::move(owner)} {}
+  Base(const Base&) = default;
+  Base& operator=(const Base&) = default;
+  Base(Base&& other) noexcept
+      : p_{std::exchange(other.p_, nullptr)}, owner_{std::move(other.owner_)} {}
+  Base& operator=(Base&& other) noexcept {
+    if (this != &other) {
+      owner_ = std::move(other.owner_);
+      p_ = std::exchange(other.p_, nullptr);
+    }
+    return *this;
+  }
+  operator const OrtValue*() const noexcept { return p_; }
+  const OrtValue& operator*() const noexcept { return *p_; }
+
+ protected:
+  const OrtValue* p_{};
+
+ private:
+  std::shared_ptr<const void> owner_;
 };
 
 // Light functor to release memory with OrtAllocator
@@ -2849,6 +2911,184 @@ struct Value : detail::ValueImpl<OrtValue> {
   static Value CreateSparseTensor(OrtAllocator* allocator, const Shape& dense_shape, ONNXTensorElementDataType type);
 
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
+};
+
+/** \brief Copyable read-only value retaining its stateful result/cache-view parent.
+ *
+ * Raw data and borrowed metadata remain valid while a copy of this view lives.
+ * It has no mutable tensor interface and does not implicitly convert to the
+ * non-owning ConstValue wrapper. Raw C pointer conversions remain borrowed.
+ * \since Version 1.32.
+ */
+using StatefulValue = detail::ConstValueImpl<detail::StatefulValueOwner>;
+
+/** \brief Owned name and parent-retaining const value. \since Version 1.32. */
+struct StatefulNamedValue {
+  std::string name;
+  StatefulValue value;
+};
+
+/** \brief Owned metadata; strings/reasons remain valid after result release. \since Version 1.32. */
+struct StatefulStepInfo {
+  OrtStatefulResultKind kind{};
+  bool executed{};
+  bool completed{};
+  int64_t invocations{};
+  int64_t iterations{};
+  int64_t generated_tokens{};
+  size_t components_completed{};
+  std::string component_name;
+  std::vector<OrtStatefulExitKind> exit_reasons;
+  std::optional<int64_t> generated_token;
+};
+
+struct StatefulExecution;
+
+/** \brief Copyable immutable result; output views retain its shared C handle.
+ *
+ * Unlike mutable SDK resources, results use shared ownership and have no
+ * ownership-relinquishing release(). C pointer conversions are const/borrowed.
+ * \since Version 1.32.
+ */
+struct StatefulStepResult {
+  explicit StatefulStepResult(std::nullptr_t) noexcept {}
+  explicit StatefulStepResult(OrtStatefulStepResult* result);  ///< Adopt a C result; ownership transfers.
+  operator const OrtStatefulStepResult*() const noexcept;
+  StatefulStepInfo GetInfo() const;  ///< Copy progress, component name, exit reasons and optional token.
+  std::vector<StatefulNamedValue> GetOutputs(
+      OrtStatefulOutputGroup group = ORT_STATEFUL_SELECTED_OUTPUTS) const;  ///< Retain immutable values.
+
+ private:
+  using Owner = std::shared_ptr<detail::Base<OrtStatefulStepResult>>;
+  explicit StatefulStepResult(Owner owner) noexcept : owner_{std::move(owner)} {}
+  Owner owner_;
+  friend struct StatefulExecution;
+};
+
+/** \brief Move-only copied loop configuration; initialize the C record's struct_size.
+ * SetConfig is atomic; existing definitions are unaffected. \since Version 1.32.
+ */
+struct SessionLoopOptions : detail::Base<OrtSessionLoopOptions> {
+  using Base = detail::Base<OrtSessionLoopOptions>;
+  using Base::Base;
+  explicit SessionLoopOptions(std::nullptr_t) {}
+  explicit SessionLoopOptions(const OrtStatefulLoopConfig& config);
+  SessionLoopOptions& SetConfig(const OrtStatefulLoopConfig& config);
+};
+
+/** \brief Move-only immutable loop; its caller-owned Session must outlive the definition/executions.
+ * \since Version 1.32.
+ */
+struct SessionLoop : detail::Base<OrtSessionLoop> {
+  using Base = detail::Base<OrtSessionLoop>;
+  using Base::Base;
+  explicit SessionLoop(std::nullptr_t) {}
+  SessionLoop(const Session& session, const SessionLoopOptions& options);
+  StatefulExecution CreateExecution(const OrtStatefulInputs& inputs) const;  ///< Retain original feeds.
+};
+
+/** \brief Move-only copied chain configuration; Sessions remain caller-owned.
+ * SetConfig is atomic; component loop definitions are retained. \since Version 1.32.
+ */
+struct SessionChainOptions : detail::Base<OrtSessionChainOptions> {
+  using Base = detail::Base<OrtSessionChainOptions>;
+  using Base::Base;
+  explicit SessionChainOptions(std::nullptr_t) {}
+  explicit SessionChainOptions(const OrtStatefulChainConfig& config);
+  SessionChainOptions& SetConfig(const OrtStatefulChainConfig& config);
+};
+
+/** \brief Move-only immutable chain; Sessions must outlive its definition/executions.
+ * \since Version 1.32.
+ */
+struct SessionChain : detail::Base<OrtSessionChain> {
+  using Base = detail::Base<OrtSessionChain>;
+  using Base::Base;
+  explicit SessionChain(std::nullptr_t) {}
+  explicit SessionChain(const SessionChainOptions& options);
+  StatefulExecution CreateExecution(const OrtStatefulInputs& inputs) const;  ///< Retain original feeds.
+};
+
+/** \brief Move-only sequential context; only Cancel may be concurrent.
+ *
+ * Step/Run allocate shared result ownership before advancing the context.
+ * C status errors throw Ort::Exception with their code; invalidated executions
+ * require Reset. Caller-owned Sessions and tensor buffers must remain valid.
+ * \since Version 1.32.
+ */
+struct StatefulExecution : detail::Base<OrtStatefulExecution> {
+  using Base = detail::Base<OrtStatefulExecution>;
+  using Base::Base;
+  explicit StatefulExecution(std::nullptr_t) {}
+  StatefulStepResult Step();  ///< At most one invocation; intermediate outputs require Step.
+  StatefulStepResult Run();   ///< Run to completion; return only the final result.
+  void Reset();               ///< Reset progress/cache/generation and reuse original feeds.
+  void Cancel();              ///< Atomic boundary request, not kernel preemption.
+  bool RequiresReset() const;
+  StatefulStepResult GetState() const;  ///< Retained named-state snapshot; reject invalidated contexts.
+};
+
+/** \brief Move-only CPU cache layouts; SetConfig atomically replaces copied records.
+ * \since Version 1.32.
+ */
+struct KVCacheOptions : detail::Base<OrtKVCacheOptions> {
+  using Base = detail::Base<OrtKVCacheOptions>;
+  using Base::Base;
+  explicit KVCacheOptions(std::nullptr_t) {}
+  explicit KVCacheOptions(const OrtStatefulKVCacheConfig& config);
+  KVCacheOptions& SetConfig(const OrtStatefulKVCacheConfig& config);
+};
+
+/** \brief Retained cache tensor and copied logical/allocation extents. \since Version 1.32. */
+struct KVCacheViewInfo {
+  StatefulValue value;
+  int64_t length;
+  int64_t capacity;
+};
+
+/** \brief Copyable immutable cache view; values survive update/reset/manager release.
+ * Shared ownership precludes release(); C pointer conversions are borrowed.
+ * A caller's allocator must outlive all views/values using its callbacks.
+ * \since Version 1.32.
+ */
+struct KVCacheView {
+  explicit KVCacheView(std::nullptr_t) noexcept {}
+  explicit KVCacheView(OrtKVCacheView* view);  ///< Adopt a C view; ownership transfers.
+  operator const OrtKVCacheView*() const noexcept;
+  KVCacheViewInfo GetInfo() const;  ///< Return a parent-retaining const tensor and length/capacity.
+
+ private:
+  using Owner = std::shared_ptr<detail::Base<OrtKVCacheView>>;
+  explicit KVCacheView(Owner owner) noexcept : owner_{std::move(owner)} {}
+  Owner owner_;
+  friend struct KVCacheManager;
+};
+
+/** \brief Move-only CPU cache manager; allocator must outlive retained views/values.
+ * Unsupported device allocators/updates throw. \since Version 1.32.
+ */
+struct KVCacheManager : detail::Base<OrtKVCacheManager> {
+  using Base = detail::Base<OrtKVCacheManager>;
+  using Base::Base;
+  explicit KVCacheManager(std::nullptr_t) {}
+  KVCacheManager(const KVCacheOptions& options, OrtAllocator* allocator);
+  KVCacheView GetView(const char* name) const;
+  void Update(const char* name, const OrtValue* value, OrtKVCacheUpdateKind kind);
+  void Reserve(const char* name, int64_t capacity);
+  void Reset();
+  OrtStatefulKVCacheStats GetStats() const;  ///< Copy lifetime data-buffer operation counters.
+};
+
+/** \brief Move-only CPU greedy sampler; device logits/NaNs reject, ties choose the lowest ID.
+ * Float32/float16 [1,V] or [1,S,V] logits; SetConfig is atomic. \since Version 1.32.
+ */
+struct SamplerOptions : detail::Base<OrtSamplerOptions> {
+  using Base = detail::Base<OrtSamplerOptions>;
+  using Base::Base;
+  explicit SamplerOptions(std::nullptr_t) {}
+  explicit SamplerOptions(const OrtStatefulSamplerConfig& config);
+  SamplerOptions& SetConfig(const OrtStatefulSamplerConfig& config);
+  int64_t Sample(const OrtValue* logits) const;
 };
 
 namespace detail {
