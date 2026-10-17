@@ -3948,6 +3948,64 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
         }
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsQLoRA)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Computes MatMulNBits(X,W,scales) + MatMulNBits(MatMulNBits(X,lora_A,lora_A_scales),lora_B,lora_B_scales). "
+          "The base uses INT4 block-32 weights with implicit zero point 8. Adapters use INT8 block-32 weights "
+          "stored as unsigned bytes with implicit zero point 128 and block scales matching the activation type. Eligible adapter down "
+          "projections may quantize activations according to accuracy_level. Rank is 32; an empty rank dimension "
+          "in either packed adapter disables the adapter. "
+          "Intermediate projections use the activation type (FP16 or FP32) before the final addition. Adapters remain replaceable.")
+      .Attr("K", "Input feature dimension; a positive multiple of 32.", AttributeProto::INT)
+      .Attr("N", "Output feature dimension; a positive multiple of 4.", AttributeProto::INT)
+      .Attr("bits", "Base weight bit width; must be 4.", AttributeProto::INT, int64_t{4})
+      .Attr("block_size", "Base weight block size; must be 32.", AttributeProto::INT, int64_t{32})
+      .Attr("accuracy_level", "Accuracy policy for the base and eligible adapter down projections.", AttributeProto::INT,
+            int64_t{0})
+      .Attr("lora_bits", "Adapter weight bit width; must be 8.", AttributeProto::INT, int64_t{8})
+      .Attr("lora_block_size", "Adapter weight block size; must be 32.", AttributeProto::INT, int64_t{32})
+      .Input(0, "X", "Input of rank at least two, with last dimension K.", "T")
+      .Input(1, "W", "Packed INT4 base weights [N,K/32,16].", "TQ")
+      .Input(2, "scales", "Base block scales with N*K/32 elements; may be flattened.", "T")
+      .Input(3, "lora_A", "Packed INT8 down weights [R_A,K/32,32], R_A=0 or 32.", "TQ")
+      .Input(4, "lora_A_scales", "Down block scales [32,K/32]; retained even when the adapter is empty.", "T")
+      .Input(5, "lora_B", "Packed INT8 up weights [N,R_B/32,32], R_B=0 or 32.", "TQ")
+      .Input(6, "lora_B_scales", "Up block scales [N,1]; retained even when the adapter is empty.", "T")
+      .Output(0, "Y", "Input shape with the last dimension replaced by N.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "FP16 or FP32 activations and block scales.")
+      .TypeConstraint("TQ", {"tensor(uint8)"}, "Packed quantized weights.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        const auto k = getAttribute(ctx, "K", -1);
+        const auto n = getAttribute(ctx, "N", -1);
+        if (k <= 0 || k % 32 != 0 || n <= 0 || n % 4 != 0 ||
+            getAttribute(ctx, "bits", 4) != 4 || getAttribute(ctx, "block_size", 32) != 32 ||
+            getAttribute(ctx, "lora_bits", 8) != 8 || getAttribute(ctx, "lora_block_size", 32) != 32) {
+          fail_shape_inference("Unsupported MatMulNBitsQLoRA attributes.");
+        }
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim_size() < 2) {
+          fail_shape_inference("X must have rank at least two.");
+        }
+        MatmulWithQuantWeightShapeInference(ctx, k, n, true);
+        for (size_t index : {size_t{3}, size_t{4}, size_t{5}, size_t{6}}) {
+          if (!hasInputShape(ctx, index)) continue;
+          const auto& shape = getInputShape(ctx, index);
+          const bool packed = index == 3 || index == 5;
+          if (shape.dim_size() != (packed ? 3 : 2)) fail_shape_inference("Invalid quantized adapter rank.");
+          const int64_t dims[4][3] = {{32, k / 32, 32}, {32, k / 32, 0}, {n, 1, 32}, {n, 1, 0}};
+          for (int axis = 0; axis < shape.dim_size(); ++axis) {
+            const auto& dim = shape.dim(axis);
+            const bool empty_axis = (index == 3 && axis == 0) || (index == 5 && axis == 1);
+            if (dim.has_dim_value() && dim.dim_value() != dims[index - 3][axis] &&
+                !(empty_axis && dim.dim_value() == 0)) {
+              fail_shape_inference("Invalid quantized adapter dimensions.");
+            }
+          }
+        }
+      });
+
   static const char* MatMulNBitsMlp_ver1_doc = R"DOC(
 MatMulNBitsMlp fuses two MatMulNBits projections that share the same input and computes
 

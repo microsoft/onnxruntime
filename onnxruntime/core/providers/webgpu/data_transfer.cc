@@ -71,5 +71,24 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
                           src.SizeInBytes());
 }
 
+common::Status DataTransfer::CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) const {
+  if (src_dst_pairs.size() < 2 || buffer_manager_.SupportsUMA()) {
+    return IDataTransfer::CopyTensors(src_dst_pairs);
+  }
+  InlinedVector<BufferManager::UploadInfo> uploads;
+  uploads.reserve(src_dst_pairs.size());
+  for (const auto& pair : src_dst_pairs) {
+    const auto& src = pair.src.get();
+    auto& dst = pair.dst.get();
+    if (pair.src_stream != nullptr || src.Location().device.Type() != OrtDevice::CPU ||
+        dst.Location().device.Type() != OrtDevice::GPU) {
+      return IDataTransfer::CopyTensors(src_dst_pairs);
+    }
+    uploads.push_back({src.DataRaw(), static_cast<WGPUBuffer>(dst.MutableDataRaw()), src.SizeInBytes()});
+  }
+  buffer_manager_.UploadBatch(recording_, uploads);
+  return Status::OK();
+}
+
 }  // namespace webgpu
 }  // namespace onnxruntime

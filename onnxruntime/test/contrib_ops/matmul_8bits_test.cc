@@ -1057,6 +1057,28 @@ TEST(MatMulNBits, BFloat16_Int8_SmallMFallback) {
 }
 #endif
 
+#if defined(USE_WEBGPU)
+TEST(MatMulNBits, WebGpu_DP4A_NarrowN_Int8) {
+  for (int64_t m : {3, 4, 65}) {
+    for (int64_t n : {16, 32, 48, 64, 80}) {
+      for (bool has_zero_point : {false, true}) {
+        TestOptions8Bits opts{};
+        opts.M = m;
+        opts.N = n;
+        opts.K = 256;
+        opts.accuracy_level = 4;
+        opts.has_zero_point = has_zero_point;
+        opts.has_bias = true;
+        opts.output_abs_error = 0.05f;
+        opts.output_rel_error = 0.02f;
+        RunTest8Bits<MLFloat16>(opts);
+        RunTest8Bits<float>(opts);
+      }
+    }
+  }
+}
+#endif
+
 #if !defined(USE_CUDA) && !defined(USE_WEBGPU)
 #ifndef ENABLE_TRAINING
 // Pre-packing (and therefore cross-session sharing of pre-packed weights) is disabled in a full

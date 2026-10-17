@@ -71,6 +71,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulIntegerToFloat">com.microsoft.MatMulIntegerToFloat</a>
   * <a href="#com.microsoft.MatMulNBits">com.microsoft.MatMulNBits</a>
   * <a href="#com.microsoft.MatMulNBitsMlp">com.microsoft.MatMulNBitsMlp</a>
+  * <a href="#com.microsoft.MatMulNBitsQLoRA">com.microsoft.MatMulNBitsQLoRA</a>
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
@@ -4274,6 +4275,69 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Constrain quantized weight types to uint8.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulNBitsQLoRA"></a><a name="com.microsoft.matmulnbitsqlora">**com.microsoft.MatMulNBitsQLoRA**</a>
+
+  Computes MatMulNBits(X,W,scales) + MatMulNBits(MatMulNBits(X,lora_A,lora_A_scales),lora_B,lora_B_scales). The base uses INT4 block-32 weights with implicit zero point 8. Adapters use INT8 block-32 weights stored as unsigned bytes with implicit zero point 128 and block scales matching the activation type. Eligible adapter down projections may quantize activations according to accuracy_level. Rank is 32; an empty rank dimension in either packed adapter disables the adapter. Intermediate projections use the activation type (FP16 or FP32) before the final addition. Adapters remain replaceable.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Input feature dimension; a positive multiple of 32.</dd>
+<dt><tt>N</tt> : int (required)</dt>
+<dd>Output feature dimension; a positive multiple of 4.</dd>
+<dt><tt>accuracy_level</tt> : int</dt>
+<dd>Accuracy policy for the base and eligible adapter down projections.</dd>
+<dt><tt>bits</tt> : int</dt>
+<dd>Base weight bit width; must be 4.</dd>
+<dt><tt>block_size</tt> : int</dt>
+<dd>Base weight block size; must be 32.</dd>
+<dt><tt>lora_bits</tt> : int</dt>
+<dd>Adapter weight bit width; must be 8.</dd>
+<dt><tt>lora_block_size</tt> : int</dt>
+<dd>Adapter weight block size; must be 32.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input of rank at least two, with last dimension K.</dd>
+<dt><tt>W</tt> : TQ</dt>
+<dd>Packed INT4 base weights [N,K/32,16].</dd>
+<dt><tt>scales</tt> : T</dt>
+<dd>Base block scales with N*K/32 elements; may be flattened.</dd>
+<dt><tt>lora_A</tt> : TQ</dt>
+<dd>Packed INT8 down weights [R_A,K/32,32], R_A=0 or 32.</dd>
+<dt><tt>lora_A_scales</tt> : T</dt>
+<dd>Down block scales [32,K/32]; retained even when the adapter is empty.</dd>
+<dt><tt>lora_B</tt> : TQ</dt>
+<dd>Packed INT8 up weights [N,R_B/32,32], R_B=0 or 32.</dd>
+<dt><tt>lora_B_scales</tt> : T</dt>
+<dd>Up block scales [N,1]; retained even when the adapter is empty.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Input shape with the last dimension replaced by N.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
+<dd>FP16 or FP32 activations and block scales.</dd>
+<dt><tt>TQ</tt> : tensor(uint8)</dt>
+<dd>Packed quantized weights.</dd>
 </dl>
 
 

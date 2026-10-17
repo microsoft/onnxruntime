@@ -255,6 +255,18 @@ void RunTest2Bits(const TestOptions2Bits& opts) {
     test.ConfigEps(std::move(execution_providers));
     test.RunWithConfig();
   }
+#ifdef USE_WEBGPU
+  if constexpr (std::is_same<T1, MLFloat16>::value) {
+    // FP16 WebGPU cases must execute too; an unused OpTester traps in Debug
+    // and silently omits coverage in Release.
+    execution_providers.push_back(DefaultWebGpuExecutionProvider());
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(session_options);
+    test.ConfigEps(std::move(execution_providers));
+    test.RunWithConfig();
+  }
+#endif
 }
 
 template <typename AType, int M, int N, int K, int block_size, int accuracy_level = 0>
@@ -1519,6 +1531,26 @@ TEST(MatMul2Bits, Float32_2b_BlkLen32_Accuracy0) {
   TestMatMul2BitsTyped<float, 100, 32, 128, 32, 0>();
   TestMatMul2BitsTyped<float, 100, 288, 256, 32, 0>();
 }
+
+#ifdef USE_WEBGPU
+TEST(MatMulNBits, WebGpu_DP4A_NarrowN_Int2) {
+  for (int64_t n : {16, 32, 48, 64, 80}) {
+    for (bool has_zero_point : {false, true}) {
+      TestOptions2Bits opts{};
+      opts.M = 65;
+      opts.N = n;
+      opts.K = 256;
+      opts.accuracy_level = 4;
+      opts.has_zero_point = has_zero_point;
+      opts.has_bias = true;
+      opts.output_abs_error = 0.05f;
+      opts.output_rel_error = 0.02f;
+      RunTest2Bits<MLFloat16>(opts);
+      RunTest2Bits<float>(opts);
+    }
+  }
+}
+#endif
 
 #if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
 
