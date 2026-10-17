@@ -208,7 +208,7 @@ __device__ __forceinline__ void StoreMoeGemvFp4Pair(
 // NVFP4 schema weights are [E, K, N/2], with adjacent output columns in the two nibbles of
 // each byte. Transpose an N16/K1024 tile in shared memory so 64 independent K groups can
 // reuse each block scale for 16 values. Padding distributes compute-time reads across banks.
-template <typename T, bool FusedSwiGlu, bool EnableBias>
+template <typename T, bool FusedSwiGlu, bool EnableBias, bool EnableL2Prefetch>
 __global__ void MoeGemvFp4RawNPackedKernel(
     const T* act, const uint8_t* weight, const uint8_t* block_scales, const float* global_scales,
     const T* bias, T* out,
@@ -256,6 +256,13 @@ __global__ void MoeGemvFp4RawNPackedKernel(
   for (int k_tile = 0; k_tile < k; k_tile += kKLanes * 16) {
     for (int tile_row = threadIdx.x; tile_row < kKLanes * 16; tile_row += kWarpSize * kWarpsPerBlock) {
       const int tile_n = static_cast<int>(blockIdx.y) * kNLanes * kColsPerThread;
+      if constexpr (EnableL2Prefetch) {
+        const int64_t next_k = contrib::cuda::QuantizedDecodeL2PrefetchOffset(
+            static_cast<int64_t>(k_tile) + tile_row, kKLanes * 16, k);
+        if (next_k >= 0) {
+          contrib::cuda::PrefetchQuantizedDecodeL2Address(expert_weight + next_k * (n / 2) + tile_n / 2);
+        }
+      }
       uint2 packed = {};
       if (k_tile + tile_row < k) {
         const int reduction_column = k_tile + tile_row;
@@ -519,18 +526,28 @@ void LaunchMoeGemvFp4RawNPacked(
     }
     return;
   }
-  if (bias != nullptr) {
-    MoeGemvFp4RawNPackedKernel<T, FusedSwiGlu, true><<<grid, kThreads, 0, stream>>>(
-        act, weight, block_scales, global_scales, bias, out,
-        expert_first_token_offset, permuted_row_to_expert, num_experts,
-        weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
-        permuted_row_to_source_row, static_cast<int>(num_rows));
+  constexpr bool kPrefetchFc1 = false;
+  constexpr bool kPrefetchFc2 = true;
+  const auto launch = [&](auto prefetch_tag) {
+    constexpr bool prefetch = decltype(prefetch_tag)::value;
+    if (bias != nullptr) {
+      MoeGemvFp4RawNPackedKernel<T, FusedSwiGlu, true, prefetch><<<grid, kThreads, 0, stream>>>(
+          act, weight, block_scales, global_scales, bias, out,
+          expert_first_token_offset, permuted_row_to_expert, num_experts,
+          weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
+          permuted_row_to_source_row, static_cast<int>(num_rows));
+    } else {
+      MoeGemvFp4RawNPackedKernel<T, FusedSwiGlu, false, prefetch><<<grid, kThreads, 0, stream>>>(
+          act, weight, block_scales, global_scales, bias, out,
+          expert_first_token_offset, permuted_row_to_expert, num_experts,
+          weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
+          permuted_row_to_source_row, static_cast<int>(num_rows));
+    }
+  };
+  if (contrib::cuda::QuantizedDecodeL2PrefetchEnabled() && (FusedSwiGlu ? kPrefetchFc1 : kPrefetchFc2)) {
+    launch(std::true_type{});
   } else {
-    MoeGemvFp4RawNPackedKernel<T, FusedSwiGlu, false><<<grid, kThreads, 0, stream>>>(
-        act, weight, block_scales, global_scales, bias, out,
-        expert_first_token_offset, permuted_row_to_expert, num_experts,
-        weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), activation_params,
-        permuted_row_to_source_row, static_cast<int>(num_rows));
+    launch(std::false_type{});
   }
 }
 

@@ -319,6 +319,16 @@ GEMM and the original scale tensor for the other paths.
 | `ORT_FP4_GEMV_KSPLIT` | `0` | Benchmark override for the tensor-core GEMV K-split value (`1, 2, 4, 8, or 16`). |
 | `ORT_FP4_GEMV_COL_TILES` | `0` | Benchmark override for tensor-core GEMV column tiles (`1` or `4`). |
 | `ORT_FP4_GEMV_MATCH_N` / `ORT_FP4_GEMV_MATCH_K` | `0` | Restrict the two benchmark overrides to one `N`/`K` shape; zero means any shape. |
+| `ORT_QUANTIZED_DECODE_L2_PREFETCH` | `0` | Experimental SM121-only weight prefetching in scalar and tensor-core decode GEMV. See [the shared policy and A/B commands](matmul_nbits.md#experimental-sm121-l2-prefetching). |
+
+The tensor-core decode GEMV dispatches separate compile-time enabled and disabled
+specializations. The environment switch and SM121 eligibility check remain on the
+host; the disabled specialization contains no prefetch path. On an RTX Spark N1X,
+held-out FP16 M1 streaming tests measured 17.825% latency reduction for K4096/N4096
+and 11.824% for K4096/N3584 with 16 independently allocated weight matrices.
+Reusing one K4096/N4096 matrix instead regressed by 22.930%, so prefetch remains
+opt-in. These operator measurements are not a whole-model speedup claim, and the
+tested Qwen package does not contain this native dense-FP4 operator.
 
 The default remains the existing weight-only semantics: decode GEMV for small
 `M`, otherwise dequantize `B` and call cuBLAS.

@@ -10,6 +10,7 @@
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
+#include "contrib_ops/cuda/quantization/quantized_decode_l2_prefetch.cuh"
 
 // cuda_fp8.h only ships with CUDA 11.8+. Guard the include so older toolkits (or
 // DISABLE_FLOAT8_TYPES builds) still compile. CUDA_VERSION is provided by <cuda.h>,
@@ -221,7 +222,7 @@ __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
                                                int n,
                                                int k,
                                                int block_size,
-                                               int k_blocks) {
+                                               int k_blocks, bool l2_prefetch) {
   using AVec2 = Vec2<AType>;
 
   constexpr int kElemsPerLane = 16;
@@ -255,6 +256,10 @@ __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
 #pragma unroll
       for (int c = 0; c < ColsPerWarp; ++c) {
         const int col = col_base + c;
+        if (col < n) {
+          PrefetchQuantizedDecodeL2(input_b + static_cast<size_t>(col) * k,
+                                    koff[u], kStride * Unroll, k, l2_prefetch);
+        }
         b_raw[u][c] = (k_ok && col < n)
                           ? *reinterpret_cast<const uint4*>(input_b + static_cast<size_t>(col) * k + koff[u])
                           : make_uint4(0, 0, 0, 0);
@@ -525,7 +530,7 @@ __device__ __forceinline__ void Fp8MmaGemvBody(AType* __restrict__ output,
                                                int n,
                                                int k,
                                                int block_size,
-                                               int k_blocks) {
+                                               int k_blocks, bool l2_prefetch) {
   using Mma = Fp8GemvMma<AType>;
 
   const bool act_qdq = act_scale != nullptr;
@@ -562,6 +567,14 @@ __device__ __forceinline__ void Fp8MmaGemvBody(AType* __restrict__ output,
 
   for (int wi = warp; wi < windows; wi += KSplit) {
     const int k0 = wi << 6;
+    if (lo_ok) {
+      PrefetchQuantizedDecodeL2(input_b + static_cast<size_t>(col_lo) * k,
+                                static_cast<int64_t>(k0) + (t << 4), KSplit * 64, k, l2_prefetch);
+    }
+    if (hi_ok) {
+      PrefetchQuantizedDecodeL2(input_b + static_cast<size_t>(col_hi) * k,
+                                static_cast<int64_t>(k0) + (t << 4), KSplit * 64, k, l2_prefetch);
+    }
     const int kb = k0 / block_size;
     if (kb != cur_kb) {
       if (cur_kb >= 0) {
@@ -702,10 +715,10 @@ __device__ __forceinline__ void Fp8MmaGemvBody(AType* __restrict__ output,
       const float* __restrict__ weight_scale,    \
       const AType* __restrict__ bias,            \
       const float* __restrict__ act_scale,       \
-      int m, int n, int k, int block_size, int k_blocks
+      int m, int n, int k, int block_size, int k_blocks, bool l2_prefetch
 
 #define ORT_FP8_MMA_GEMV_ARGS \
-  output, input_a, input_b, weight_scale, bias, act_scale, m, n, k, block_size, k_blocks
+  output, input_a, input_b, weight_scale, bias, act_scale, m, n, k, block_size, k_blocks, l2_prefetch
 // clang-format on
 
 template <int KSplit, int MTiles, typename AType>
@@ -958,6 +971,8 @@ static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
         is_bf16, device_prop, stream, false);
   }
 
+  const bool l2_prefetch = QuantizedDecodeL2PrefetchEnabled();
+
   // Tensor-core path (SM80+). Beats the FMA kernel at every M on H200: 1.06-1.23x at M == 1 and
   // 1.4-1.87x at M == 4, where the FMA kernel is ALU bound. Needs 64-element K windows, and at
   // least 4 of them so KSplit warps have something to do.
@@ -988,12 +1003,12 @@ static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
       kernel_name<KSplit, MTiles><<<mma_blocks, mma_threads, 0, stream>>>(                   \
           reinterpret_cast<__nv_bfloat16*>(y), reinterpret_cast<const __nv_bfloat16*>(a), b, \
           weight_scale, reinterpret_cast<const __nv_bfloat16*>(bias), act_scale, m, n, k,    \
-          block_size, k_blocks);                                                             \
+          block_size, k_blocks, l2_prefetch);                                                \
     } else {                                                                                 \
       kernel_name<KSplit, MTiles><<<mma_blocks, mma_threads, 0, stream>>>(                   \
           reinterpret_cast<half*>(y), reinterpret_cast<const half*>(a), b,                   \
           weight_scale, reinterpret_cast<const half*>(bias), act_scale, m, n, k,             \
-          block_size, k_blocks);                                                             \
+          block_size, k_blocks, l2_prefetch);                                                \
     }                                                                                        \
   } while (0)
       if constexpr (KSplit == 16 && MTiles == 1) {
@@ -1042,11 +1057,11 @@ static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
     if (is_bf16) {
       MatMulBlockScaledFp8GemvKernel<RowsPerWarp, ColsPerWarp, Unroll><<<blocks, threads, 0, stream>>>(
           reinterpret_cast<__nv_bfloat16*>(y), reinterpret_cast<const __nv_bfloat16*>(a), b,
-          weight_scale, reinterpret_cast<const __nv_bfloat16*>(bias), act_scale, m, n, k, block_size, k_blocks);
+          weight_scale, reinterpret_cast<const __nv_bfloat16*>(bias), act_scale, m, n, k, block_size, k_blocks, l2_prefetch);
     } else {
       MatMulBlockScaledFp8GemvKernel<RowsPerWarp, ColsPerWarp, Unroll><<<blocks, threads, 0, stream>>>(
           reinterpret_cast<half*>(y), reinterpret_cast<const half*>(a), b,
-          weight_scale, reinterpret_cast<const half*>(bias), act_scale, m, n, k, block_size, k_blocks);
+          weight_scale, reinterpret_cast<const half*>(bias), act_scale, m, n, k, block_size, k_blocks, l2_prefetch);
     }
   };
 

@@ -1577,6 +1577,23 @@ onnxruntime/test/python/transformers/profile_qmoe_gemv.sh \
 
 ## 13. Testing
 
+`ORT_QUANTIZED_DECODE_L2_PREFETCH=1` opts into experimental SM121-only weight
+prefetching in INT and FP4 decode GEMV, including interleaved SwiGLU, INT fused
+finalize/split-K, and raw N-packed NVFP4. It is disabled by default and leaves
+grouped GEMM paths unchanged. See [the shared policy and A/B commands](matmul_nbits.md#experimental-sm121-l2-prefetching).
+Run the reference suites below in separate processes with the switch set to `0`
+and `1`; the switch is cached, so changing it inside a test process is not an A/B test.
+
+Raw N-packed NVFP4 uses compile-time enabled/disabled specializations. In this
+experimental policy, fused SwiGLU FC1 always selects the disabled specialization;
+non-fused FC2 selects the enabled specialization only when the shared SM121
+opt-in policy permits it. Other decode paths retain their existing policy.
+For the tested Qwen geometry, FC2 has K640 and the two-iteration K1024-tile
+lookahead issues no hints. Its held-out M2 improvement of 1.662% is therefore a
+compiler/resource effect, not an L2-prefetch benefit. The M1 streaming guard
+regressed by 0.554%, and whole-model benefit was not established. This policy is
+not a production-enablement recommendation.
+
 | Test file | Coverage |
 |-----------|----------|
 | [test_moe_cuda.py](onnxruntime/test/python/transformers/test_moe_cuda.py) | Standard MoE on CUDA: FP16/BF16, SiLU/GeLU/SwiGLU, routing, GEMM parity. SwiGLU coverage includes both GPT-OSS (`TestSwigluMoE`: interleaved, alpha=1.702/beta=1.0/limit=7.0) and Standard/Llama-Gemma (`TestStandardSwigluMoE`: concatenated `swiglu_fusion=2`, alpha=1.0/beta=0.0/no limit → `SiLU(Gate)×Value`). |

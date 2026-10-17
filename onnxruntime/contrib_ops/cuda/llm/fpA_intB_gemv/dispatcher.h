@@ -311,7 +311,7 @@ __device__ __forceinline__ void fill(void* tile, T v) {
 template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize, bool EnableActScale, bool EnableZero,
           bool EnableBias, bool ApplyAlphaInAdvance, typename TypeA = typename Details::TypeDetailsA::Type>
 __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* scales, TypeA* zeros, TypeA* bias,
-                       TypeA* out, float alpha, int m, int n, int k) {
+                       TypeA* out, float alpha, int m, int n, int k, bool l2_prefetch) {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   // ArgType          ArgName          DataType           Shape                 Layout
   // input            act              fp16/bf16          [m, k]                RowMajor
@@ -373,6 +373,7 @@ __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* sca
   fill<CtaM * CtaN>(tile_acc, static_cast<TypeA>(0.f));
 
   for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
+    weight_iterator.prefetch(iter, (static_cast<int64_t>(interleaved_k) - tid * StepK + CtaK - 1) / CtaK, l2_prefetch);
     TypeA vec_act_scale[StepK];
     TypeA vec_scale[CtaN], vec_zero[CtaN];
     TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
@@ -418,7 +419,7 @@ __host__ __device__ constexpr int PairedPhysicalPair(int q) {
 // about a third of the per-tile instructions. Each accumulator half2 holds two partial K sums that are added
 // in float at the end. Scale-only (no zero point, bias or activation scale) kernels only.
 template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize>
-__global__ void kernel_paired(half* act, uint8_t* weight, half* scales, half* out, int n, int k) {
+__global__ void kernel_paired(half* act, uint8_t* weight, half* scales, half* out, int n, int k, bool l2_prefetch) {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   using AccessTypeA = typename Details::AccessTypeA;
   using AccessTypeW = typename Details::AccessTypeW;
@@ -459,6 +460,7 @@ __global__ void kernel_paired(half* act, uint8_t* weight, half* scales, half* ou
   }
 
   for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
+    weight_iterator.prefetch(iter, (static_cast<int64_t>(interleaved_k) - tid * StepK + CtaK - 1) / CtaK, l2_prefetch);
     half vec_scale[CtaN];
     half2 w2[CtaN][NumPairs];
 #pragma unroll
@@ -515,7 +517,7 @@ void exec_kernel_paired(Params& params, cudaStream_t s) {
       reinterpret_cast<uint8_t*>(params.weight),
       reinterpret_cast<half*>(params.scales),
       reinterpret_cast<half*>(params.out),
-      params.n, params.k);
+      params.n, params.k, contrib::cuda::QuantizedDecodeL2PrefetchEnabled());
   if (params.debug) {
     std::printf("[fpA_intB_debug] GEMV launch: paired_k=1 M=%d\n", params.m);
     std::fflush(stdout);
@@ -540,7 +542,7 @@ void exec_kernel(Params& params, cudaStream_t s) {
       reinterpret_cast<T*>(params.bias),
       reinterpret_cast<T*>(params.out),
       params.alpha,
-      params.m, params.n, params.k);
+      params.m, params.n, params.k, contrib::cuda::QuantizedDecodeL2PrefetchEnabled());
   if (params.debug) {
     std::printf("[fpA_intB_debug] GEMV launch: paired_k=0 M=%d\n", params.m);
     std::fflush(stdout);

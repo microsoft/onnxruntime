@@ -44,7 +44,8 @@ template <typename Details, int CtaN, int Threads, int GroupSize, bool EnableBia
 __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
                                 const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
                                 int num_experts,
-                                int64_t weight_expert_stride, int64_t scale_expert_stride, int n, int k) {
+                                int64_t weight_expert_stride, int64_t scale_expert_stride, int n, int k,
+                                bool l2_prefetch) {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   using AccessTypeA = typename Details::AccessTypeA;
   using AccessTypeW = typename Details::AccessTypeW;
@@ -117,6 +118,7 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
   }
 
   for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
+    weight_iterator.prefetch(iter, (static_cast<int64_t>(interleaved_k) - tid * StepK + CtaK - 1) / CtaK, l2_prefetch);
     TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
     uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
     if constexpr (GroupSize != 0) {
@@ -215,7 +217,7 @@ __global__ void moe_gemv_fused_finalize_kernel(
     TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
     const int* unpermuted_row_to_permuted_row, const int* permuted_row_to_expert, const float* final_scales,
     int num_experts, int64_t weight_expert_stride, int64_t scale_expert_stride, int n, int k,
-    int num_rows, int experts_per_token) {
+    int num_rows, int experts_per_token, bool l2_prefetch) {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   using AccessTypeA = typename Details::AccessTypeA;
   using AccessTypeW = typename Details::AccessTypeW;
@@ -282,6 +284,7 @@ __global__ void moe_gemv_fused_finalize_kernel(
     }
 
     for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
+      weight_iterator.prefetch(iter, (static_cast<int64_t>(interleaved_k) - tid * StepK + CtaK - 1) / CtaK, l2_prefetch);
       TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
       uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
       if constexpr (GroupSize != 0) {
@@ -403,7 +406,7 @@ __global__ void moe_gemv_splitk_partials_kernel(
     TypeA* act, uint8_t* weight, TypeA* scales, float* partials,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t weight_expert_stride, int64_t scale_expert_stride, int n, int k, int64_t expanded_num_rows,
-    const int* permuted_row_to_source_row, int num_rows) {
+    const int* permuted_row_to_source_row, int num_rows, bool l2_prefetch) {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   using AccessTypeA = typename Details::AccessTypeA;
   using AccessTypeW = typename Details::AccessTypeW;
@@ -479,6 +482,7 @@ __global__ void moe_gemv_splitk_partials_kernel(
     if (idx_k >= interleaved_k) {
       continue;
     }
+    weight_iterator.prefetch(iter, (static_cast<int64_t>(interleaved_k) - tid * StepK + CtaK - 1) / CtaK, l2_prefetch, SplitK);
     TypeA tile_a[StepK];
     TypeA tile_w[StepK];
     TypeA tile_w_pack2[CtaN * StepK];
@@ -571,7 +575,7 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t weight_expert_stride, int64_t scale_expert_stride, int inter_size, int k,
     cutlass_kernels::ActivationParams activation_params,
-    const int* permuted_row_to_source_row, int num_rows) {
+    const int* permuted_row_to_source_row, int num_rows, bool l2_prefetch) {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   using AccessTypeA = typename Details::AccessTypeA;
   using AccessTypeW = typename Details::AccessTypeW;
@@ -652,6 +656,7 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
   }
 
   for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
+    weight_iterator.prefetch(iter, (static_cast<int64_t>(interleaved_k) - tid * StepK + CtaK - 1) / CtaK, l2_prefetch);
     TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
     uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
     if constexpr (GroupSize != 0) {
@@ -688,11 +693,13 @@ static void launch_moe_gemv(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* b
   if (bias != nullptr) {
     moe_gemv_kernel<Details, CtaN, Threads, GroupSize, true, TypeA, AccT><<<grid, block, 0, stream>>>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
-        weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k));
+        weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k),
+        contrib::cuda::QuantizedDecodeL2PrefetchEnabled());
   } else {
     moe_gemv_kernel<Details, CtaN, Threads, GroupSize, false, TypeA, AccT><<<grid, block, 0, stream>>>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
-        weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k));
+        weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k),
+        contrib::cuda::QuantizedDecodeL2PrefetchEnabled());
   }
 }
 
@@ -712,12 +719,12 @@ static void launch_moe_gemv_interleaved_swiglu(
     moe_gemv_interleaved_swiglu_kernel<Details, CtaN, Threads, GroupSize, true, TypeA, AccT><<<grid, block, 0, stream>>>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
         weight_expert_stride, scale_expert_stride, static_cast<int>(inter_size), static_cast<int>(k), activation_params,
-        permuted_row_to_source_row, static_cast<int>(num_rows));
+        permuted_row_to_source_row, static_cast<int>(num_rows), contrib::cuda::QuantizedDecodeL2PrefetchEnabled());
   } else {
     moe_gemv_interleaved_swiglu_kernel<Details, CtaN, Threads, GroupSize, false, TypeA, AccT><<<grid, block, 0, stream>>>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
         weight_expert_stride, scale_expert_stride, static_cast<int>(inter_size), static_cast<int>(k), activation_params,
-        permuted_row_to_source_row, static_cast<int>(num_rows));
+        permuted_row_to_source_row, static_cast<int>(num_rows), contrib::cuda::QuantizedDecodeL2PrefetchEnabled());
   }
 }
 
@@ -749,7 +756,7 @@ static void launch_moe_gemv_splitk_twopass_swiglu(
       <<<grid1, block1, 0, stream>>>(
           act, weight, scales, partials, expert_first_token_offset, permuted_row_to_expert, num_experts,
           weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), expanded_num_rows,
-          permuted_row_to_source_row, static_cast<int>(num_rows));
+          permuted_row_to_source_row, static_cast<int>(num_rows), contrib::cuda::QuantizedDecodeL2PrefetchEnabled());
 
   static constexpr int kReduceThreads = 256;
   dim3 grid2(static_cast<unsigned>(expanded_num_rows),
@@ -853,12 +860,12 @@ static void launch_moe_gemv_fused_finalize(
     moe_gemv_fused_finalize_kernel<Details, CtaN, Threads, GroupSize, true, TypeA, AccT><<<grid, block, 0, stream>>>(
         act, weight, scales, bias, out, unpermuted_row_to_permuted_row, permuted_row_to_expert, final_scales,
         num_experts, weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k),
-        static_cast<int>(num_rows), static_cast<int>(experts_per_token));
+        static_cast<int>(num_rows), static_cast<int>(experts_per_token), contrib::cuda::QuantizedDecodeL2PrefetchEnabled());
   } else {
     moe_gemv_fused_finalize_kernel<Details, CtaN, Threads, GroupSize, false, TypeA, AccT><<<grid, block, 0, stream>>>(
         act, weight, scales, bias, out, unpermuted_row_to_permuted_row, permuted_row_to_expert, final_scales,
         num_experts, weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k),
-        static_cast<int>(num_rows), static_cast<int>(experts_per_token));
+        static_cast<int>(num_rows), static_cast<int>(experts_per_token), contrib::cuda::QuantizedDecodeL2PrefetchEnabled());
   }
 }
 
