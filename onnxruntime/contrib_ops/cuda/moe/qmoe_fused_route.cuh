@@ -69,6 +69,7 @@ __global__ void __launch_bounds__(kFusedRouteThreads) FusedSoftmaxTopKMapsKernel
   // start its prologue right away (it waits for this grid to complete before reading the maps).
   asm volatile("griddepcontrol.wait;" ::: "memory");
   asm volatile("griddepcontrol.launch_dependents;");
+#endif
   constexpr int kMaxSel = K > 0 ? K : kFusedRouteMaxK;
   const int k = K > 0 ? K : k_runtime;
   __shared__ int s_key[kFusedRouteMaxRows * kFusedRouteMaxK];
@@ -113,7 +114,15 @@ __global__ void __launch_bounds__(kFusedRouteThreads) FusedSoftmaxTopKMapsKernel
         for (int j = 1; j < 16; ++j) {
           best = max(best, keys[j]);
         }
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
         winners[r] = __reduce_max_sync(0xFFFFFFFFu, best);
+#else
+#pragma unroll
+        for (int offset = 16; offset >= 1; offset >>= 1) {
+          best = max(best, __shfl_xor_sync(0xFFFFFFFFu, best, offset));
+        }
+        winners[r] = best;
+#endif
 #pragma unroll
         for (int j = 0; j < 16; ++j) {
           keys[j] = keys[j] == winners[r] ? 0u : keys[j];
@@ -206,7 +215,6 @@ __global__ void __launch_bounds__(kFusedRouteThreads) FusedSoftmaxTopKMapsKernel
       expert_first_token_offset[e] = count[i];
     }
   }
-#endif
 }
 
 }  // namespace cuda
