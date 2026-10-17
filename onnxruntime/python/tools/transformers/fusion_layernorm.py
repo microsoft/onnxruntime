@@ -24,10 +24,21 @@ class FusionLayerNormalization(Fusion):
 
         axes = self.model.get_node_attribute(node, "axes")
         if len(node.input) > 1 and node.input[1]:
-            if self.model.find_graph_input(node.input[1]) is not None:
-                # An initializer that is also a graph input can be overridden at runtime.
+            axes_name = node.input[1]
+            if axes_name in self.model.get_graphs_input_names():
+                # Inputs in any graph can be runtime values, including overridable initializers.
                 return False
-            axes = self.model.get_constant_value(node.input[1])
+            # Constant lookup is model-wide. Do not resolve a name that can refer to
+            # different values in sibling or nested graph scopes.
+            definitions = sum(
+                sum(tensor.name == axes_name for tensor in graph.initializer)
+                + sum(tensor.values.name == axes_name for tensor in graph.sparse_initializer)
+                + sum(axes_name in producer.output for producer in graph.node)
+                for graph in self.model.graphs()
+            )
+            if definitions != 1:
+                return False
+            axes = self.model.get_constant_value(axes_name)
         if axes is None or len(axes) != 1:
             return False
 
@@ -62,6 +73,16 @@ class FusionLayerNormalization(Fusion):
 
         root_input = node.input[0]
         input_shape = self.model.get_shape(root_input)
+        # Shape lookup describes the top-level graph. A nested definition of the
+        # same name cannot use that rank to prove a positive axis is last.
+        if any(
+            any(value.name == root_input for value in graph.input)
+            or any(tensor.name == root_input for tensor in graph.initializer)
+            or any(tensor.values.name == root_input for tensor in graph.sparse_initializer)
+            or any(root_input in producer.output for producer in graph.node)
+            for graph in self.model.graphs()[1:]
+        ):
+            input_shape = None
         rank = len(input_shape) if input_shape is not None else None
         if not self.is_last_axis_reduction(node, rank):
             return

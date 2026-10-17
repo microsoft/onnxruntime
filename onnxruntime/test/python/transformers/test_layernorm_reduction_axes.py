@@ -210,3 +210,166 @@ def test_unknown_intermediate_rank_is_conservative(axes, expected_fused):
 
 def test_force_does_not_bypass_reduction_semantics():
     check_fusion([1], [1], expected_fused=0, force=True)
+
+
+def branch_graph(prefix, axes, axes_input="initializer"):
+    graph = make_model(axes, axes, opset=18, axes_input=axes_input).graph
+    shared = {"mean_axes", "variance_axes"}
+
+    def rename(name):
+        return name if name in shared else prefix + name
+
+    for node in graph.node:
+        for i, name in enumerate(node.input):
+            node.input[i] = rename(name)
+        for i, name in enumerate(node.output):
+            node.output[i] = rename(name)
+    for tensor in graph.initializer:
+        tensor.name = rename(tensor.name)
+    for value in graph.output:
+        value.name = rename(value.name)
+    del graph.input[:]
+    graph.node.insert(0, helper.make_node("Identity", ["X"], [prefix + "X"]))
+    graph.name = prefix + "branch"
+    return graph
+
+
+def check_nested_fusion(model, feeds, expected, expected_fused=0):
+    onnx.checker.check_model(model)
+    np.testing.assert_allclose(ReferenceEvaluator(model).run(None, feeds)[0], expected, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(run_native(model, feeds), expected, rtol=1e-5, atol=1e-5)
+    wrapper = OnnxModel(model)
+    FusionLayerNormalization(wrapper).apply()
+    np.testing.assert_allclose(ReferenceEvaluator(wrapper.model).run(None, feeds)[0], expected, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(run_native(wrapper.model, feeds), expected, rtol=1e-5, atol=1e-5)
+    assert len(wrapper.get_nodes_by_op_type("LayerNormalization")) == expected_fused
+    onnx.checker.check_model(wrapper.model)
+
+
+@pytest.mark.parametrize("axes_input", ["initializer", "constant"])
+@pytest.mark.parametrize("condition", [True, False])
+def test_sibling_branch_axes_names_are_not_interchangeable(axes_input, condition):
+    # If attributes are visited in name order: put [-1] in the first (else) scope.
+    then_graph = branch_graph("then_", [1], axes_input)
+    else_graph = branch_graph("else_", [-1], axes_input)
+    graph = helper.make_graph(
+        [helper.make_node("If", ["condition"], ["Y"], then_branch=then_graph, else_branch=else_graph)],
+        "sibling_scopes",
+        [
+            helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3, 4]),
+            helper.make_tensor_value_info("condition", TensorProto.BOOL, []),
+        ],
+        [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3, 4])],
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)], ir_version=8)
+    x = (np.arange(24, dtype=np.float32).reshape(2, 3, 4) ** 2 + 3) / 11
+    axis = 1 if condition else -1
+    centered = x - np.mean(x, axis=axis, keepdims=True)
+    expected = centered / np.sqrt(np.mean(centered**2, axis=axis, keepdims=True) + np.float32(1e-5))
+    expected = expected * np.linspace(0.5, 1.5, 4, dtype=np.float32) + np.linspace(-0.25, 0.25, 4, dtype=np.float32)
+    check_nested_fusion(model, {"X": x, "condition": np.array(condition)}, expected)
+
+
+def test_loop_body_axes_inputs_are_not_sibling_constants():
+    body = branch_graph("loop_", [-1], "dynamic")
+    body.input.extend(
+        [
+            helper.make_tensor_value_info("iteration", TensorProto.INT64, []),
+            helper.make_tensor_value_info("body_condition", TensorProto.BOOL, []),
+            helper.make_tensor_value_info("mean_axes", TensorProto.INT64, [1]),
+            helper.make_tensor_value_info("variance_axes", TensorProto.INT64, [1]),
+            helper.make_tensor_value_info("carry_in", TensorProto.FLOAT, [2, 3, 4]),
+        ]
+    )
+    body.node.extend(
+        [
+            helper.make_node("Identity", ["body_condition"], ["next_condition"]),
+            helper.make_node("Identity", ["mean_axes"], ["next_mean_axes"]),
+            helper.make_node("Identity", ["variance_axes"], ["next_variance_axes"]),
+        ]
+    )
+    scan_output = body.output[0]
+    del body.output[:]
+    body.output.extend(
+        [
+            helper.make_tensor_value_info("next_condition", TensorProto.BOOL, []),
+            helper.make_tensor_value_info("next_mean_axes", TensorProto.INT64, [1]),
+            helper.make_tensor_value_info("next_variance_axes", TensorProto.INT64, [1]),
+            scan_output,
+        ]
+    )
+    # A sibling If branch supplies same-named constants to the old model-wide lookup.
+    sibling = branch_graph("sibling_", [-1])
+    other = branch_graph("other_", [-1])
+    for tensor in other.initializer:
+        if tensor.name in ("mean_axes", "variance_axes"):
+            old_name = tensor.name
+            tensor.name = "other_" + old_name
+            for node in other.node:
+                for i, name in enumerate(node.input):
+                    if name == old_name:
+                        node.input[i] = tensor.name
+    graph = helper.make_graph(
+        [
+            helper.make_node("If", ["condition"], ["unused"], then_branch=sibling, else_branch=other),
+            helper.make_node(
+                "Loop",
+                ["trip_count", "condition", "initial_axes", "initial_axes", "X"],
+                ["final_mean_axes", "final_variance_axes", "Y"],
+                body=body,
+            ),
+        ],
+        "loop_scope",
+        [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3, 4])],
+        [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3, 4])],
+        [
+            numpy_helper.from_array(np.array(1, dtype=np.int64), "trip_count"),
+            numpy_helper.from_array(np.array(True), "condition"),
+            numpy_helper.from_array(np.array([1], dtype=np.int64), "initial_axes"),
+        ],
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)], ir_version=8)
+    x = (np.arange(24, dtype=np.float32).reshape(2, 3, 4) ** 2 + 3) / 11
+    centered = x - np.mean(x, axis=1, keepdims=True)
+    expected = centered / np.sqrt(np.mean(centered**2, axis=1, keepdims=True) + np.float32(1e-5))
+    expected = expected * np.linspace(0.5, 1.5, 4, dtype=np.float32) + np.linspace(-0.25, 0.25, 4, dtype=np.float32)
+    # Only the Loop body is required to stay unfused; the unrelated unique-name branch may fuse.
+    onnx.checker.check_model(model)
+    np.testing.assert_allclose(ReferenceEvaluator(model).run(None, {"X": x})[0], expected, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(run_native(model, {"X": x}), expected, rtol=1e-5, atol=1e-5)
+    wrapper = OnnxModel(model)
+    FusionLayerNormalization(wrapper).apply()
+    np.testing.assert_allclose(ReferenceEvaluator(wrapper.model).run(None, {"X": x})[0], expected, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(run_native(wrapper.model, {"X": x}), expected, rtol=1e-5, atol=1e-5)
+    loop_graph = next(g for g in wrapper.graphs() if g.name == "loop_branch")
+    assert not any(node.op_type == "LayerNormalization" for node in loop_graph.node)
+    onnx.checker.check_model(wrapper.model)
+
+
+@pytest.mark.parametrize("condition", [True, False])
+def test_unambiguous_nested_axes_still_fuse(condition):
+    branches = [branch_graph("then_", [-1]), branch_graph("else_", [-1])]
+    for branch in branches:
+        for tensor in branch.initializer:
+            if tensor.name in ("mean_axes", "variance_axes"):
+                old_name = tensor.name
+                tensor.name = branch.name + old_name
+                for node in branch.node:
+                    for i, name in enumerate(node.input):
+                        if name == old_name:
+                            node.input[i] = tensor.name
+    graph = helper.make_graph(
+        [helper.make_node("If", ["condition"], ["Y"], then_branch=branches[0], else_branch=branches[1])],
+        "unique_scopes",
+        [
+            helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3, 4]),
+            helper.make_tensor_value_info("condition", TensorProto.BOOL, []),
+        ],
+        [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3, 4])],
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)], ir_version=8)
+    x = (np.arange(24, dtype=np.float32).reshape(2, 3, 4) ** 2 + 3) / 11
+    centered = x - np.mean(x, axis=-1, keepdims=True)
+    expected = centered / np.sqrt(np.mean(centered**2, axis=-1, keepdims=True) + np.float32(1e-5))
+    expected = expected * np.linspace(0.5, 1.5, 4, dtype=np.float32) + np.linspace(-0.25, 0.25, 4, dtype=np.float32)
+    check_nested_fusion(model, {"X": x, "condition": np.array(condition)}, expected, expected_fused=2)
