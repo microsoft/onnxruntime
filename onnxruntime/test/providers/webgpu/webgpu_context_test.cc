@@ -231,7 +231,7 @@ void TestCopyAfterDeferredDispatch(bool upload, bool checked_completion = false)
   bind_group_desc.layout = pipeline.GetBindGroupLayout(0);
   bind_group_desc.entryCount = entries.size();
   bind_group_desc.entries = entries.data();
-  webgpu::CapturedCommandInfo dispatch;
+  webgpu::DispatchCommandInfo dispatch;
   dispatch.compute_pipeline = pipeline;
   dispatch.bind_group = context.Device().CreateBindGroup(&bind_group_desc);
   recording.deferred_dispatches.push_back(std::move(dispatch));
@@ -344,7 +344,7 @@ TEST(WebGpuContextTest, CheckedCompletionDrainsAfterDeferredDispatchFailure) {
   auto& webgpu_ep = static_cast<WebGpuExecutionProvider&>(*ep);
   auto& context = webgpu::WebGpuContextFactory::GetContext(0);
   auto& recording = webgpu_ep.Recording();
-  webgpu::CapturedCommandInfo invalid_dispatch;
+  webgpu::DispatchCommandInfo invalid_dispatch;
   invalid_dispatch.program_key = "checked-completion-missing-pipeline";
   recording.deferred_dispatches.push_back(std::move(invalid_dispatch));
   recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);
@@ -451,7 +451,7 @@ TEST(WebGpuContextTest, FailedPipelineWaitRetainsCallbackUntilDelivery) {
   RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&) {
     // Invalid WGSL makes the pipeline event ready synchronously, but WaitAnyOnly defers delivery.
     context.PushErrorScope();
-    webgpu::CapturedCommandInfo dispatch;
+    webgpu::DispatchCommandInfo dispatch;
     dispatch.program_key = "failed-wait-pipeline-callback";
     auto& build = dispatch.pending_build.emplace();
     ASSERT_STATUS_OK(StartPipelineCallbackTestBuild(context, build, true));
@@ -498,7 +498,7 @@ TEST(WebGpuContextTest, FailedPipelineWaitRetainsCallbackAfterContextDestruction
   std::weak_ptr<webgpu::PipelineCallbackContext> weak_context;
   RunWithExternalCompletionContext([&](auto& context, auto& ep, const auto&) {
     context.PushErrorScope();
-    webgpu::CapturedCommandInfo dispatch;
+    webgpu::DispatchCommandInfo dispatch;
     dispatch.program_key = "post-context-pipeline-callback";
     auto& build = dispatch.pending_build.emplace();
     ASSERT_STATUS_OK(StartPipelineCallbackTestBuild(context, build, true));
@@ -761,7 +761,7 @@ TEST(WebGpuContextTest, IndependentClearPreservesPendingAndCapturedUniformBuffer
   constexpr auto storage_usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
                                  wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
 
-  std::vector<webgpu::CapturedCommandInfo> captured_commands;
+  std::vector<webgpu::CapturedCommand> captured_commands;
   context.CaptureBegin(&captured_commands, manager, session_recording);
   auto uniform_buffer = manager.Create(session_recording, 64, uniform_usage);
   wgpu::Buffer retained_uniform{uniform_buffer};
@@ -889,7 +889,7 @@ TEST(WebGpuContextTest, FailedFlushDiscardsPendingBuffersFromBothManagers) {
     auto shared_released = shared_manager.Create(recording, 64, usage);
     wgpu::Buffer retained{released};
     wgpu::Buffer shared_retained{shared_released};
-    webgpu::CapturedCommandInfo dispatch;
+    webgpu::DispatchCommandInfo dispatch;
     dispatch.program_key = "missing_pipeline_for_failed_flush_test";
     recording.deferred_dispatches.push_back(std::move(dispatch));
     recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);
@@ -973,6 +973,42 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
   allocator.Free(allocation);
 }
 
+TEST(WebGpuContextTest, ReplaysCopyOnlyGraphAndRetainsBuffersUntilRelease) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Disabled,
+                                webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled,
+                                webgpu::BufferCacheMode::Disabled);
+  webgpu::CommandRecordingState recording;
+  constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+  std::array<uint32_t, 3> values{1, 2, 3};
+  auto source = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
+  auto intermediate = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
+  auto destination = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
+  manager.Upload(recording, values.data(), source.Get(), sizeof(values));
+
+  std::vector<webgpu::CapturedCommand> commands;
+  context.CaptureBegin(&commands, manager, recording);
+  manager.MemCpy(recording, source.Get(), intermediate.Get(), sizeof(values));
+  manager.MemCpy(recording, intermediate.Get(), destination.Get(), sizeof(values));
+  ASSERT_STATUS_OK(context.Flush(manager, recording));
+  context.CaptureEnd(recording);
+  ASSERT_EQ(commands.size(), 2u);
+  EXPECT_EQ(recording.num_pending_dispatches, 0u);
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder<3>(context, destination.Get()), values);
+
+  // Only the captured copies now own the intermediate; replay must keep it alive.
+  intermediate = nullptr;
+  values = {4, 5, 6};
+  manager.Upload(recording, values.data(), source.Get(), sizeof(values));
+  context.Replay(commands, manager, recording);
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder<3>(context, destination.Get()), values);
+  EXPECT_EQ(recording.num_pending_dispatches, 0u);
+  context.ReleaseGraphResources(commands);
+  EXPECT_TRUE(commands.empty());
+}
+
 TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
@@ -985,7 +1021,7 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
                                        webgpu::BufferCacheMode::Disabled,
                                        webgpu::BufferCacheMode::Disabled,
                                        webgpu::BufferCacheMode::Disabled);
-  std::vector<webgpu::CapturedCommandInfo> captured_commands;
+  std::vector<webgpu::CapturedCommand> captured_commands;
   webgpu::GpuBufferAllocator allocator(
       webgpu_ep->GetDeviceId(),
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
