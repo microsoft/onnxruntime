@@ -28,6 +28,7 @@ using contrib::cuda::GQAWorkspaceBounds;
 using contrib::cuda::GQAWorkspaceProblem;
 using contrib::cuda::GQAWorkspaceStatus;
 using contrib::cuda::GQAXqaWorkspaceRecipe;
+using contrib::cuda::IsGQAPhaseReachableForSequenceBound;
 using contrib::cuda::IsSupportedGQAXqaGroupSize;
 using contrib::cuda::IsSupportedGQAXqaHeadSize;
 
@@ -57,6 +58,14 @@ static_assert(ClassifyGQAExecutionPhase(false, 1) ==
               GQAExecutionPhase::Decode);
 static_assert(ClassifyGQAExecutionPhase(false, 2) ==
               GQAExecutionPhase::ChunkedPrefill);
+static_assert(IsGQAPhaseReachableForSequenceBound(GQAExecutionPhase::Prefill, 1));
+static_assert(IsGQAPhaseReachableForSequenceBound(GQAExecutionPhase::Decode, 1));
+static_assert(!IsGQAPhaseReachableForSequenceBound(GQAExecutionPhase::ChunkedPrefill, 1));
+static_assert(IsGQAPhaseReachableForSequenceBound(GQAExecutionPhase::Prefill, 2));
+static_assert(IsGQAPhaseReachableForSequenceBound(GQAExecutionPhase::Decode, 2));
+static_assert(IsGQAPhaseReachableForSequenceBound(GQAExecutionPhase::ChunkedPrefill, 2));
+static_assert(!IsGQAPhaseReachableForSequenceBound(GQAExecutionPhase::Prefill, 0));
+static_assert(!IsGQAPhaseReachableForSequenceBound(GQAExecutionPhase::Decode, -1));
 
 void CompileGroupQueryAttentionWorkspaceHeaderInIsolation() {
   GQAWorkspaceProblem problem;
