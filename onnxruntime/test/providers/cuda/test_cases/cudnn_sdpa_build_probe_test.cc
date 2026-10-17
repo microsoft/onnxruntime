@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef DISABLE_CONTRIB_OPS
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 
 #include <cuda_runtime.h>
 #include <cudnn.h>
@@ -94,4 +94,4 @@ TEST(CudnnSdpaBuildProbeTest, RunThrowsOnRejectedGraph) {
 
 #endif  // CUDNN_MAJOR >= 9
 
-#endif  // DISABLE_CONTRIB_OPS
+#endif  // !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)

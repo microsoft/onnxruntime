@@ -147,6 +147,8 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   // cuDNN SDPA (cudnn_frontend) supports FP16 and BF16 and is auto-preferred on SM>=90.
   enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options_->UseCudnnFlashAttention();
   auto_enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options_->AllowCudnnFlashAttentionAuto();
+  reject_cudnn_sdpa_graph_for_test_ =
+      ParseEnvironmentVariableWithDefault<int>("ORT_TEST_ONLY_GQA_REJECT_CUDNN_SDPA_GRAPH", 0) != 0;
 
   if (!disable_flash_attention_) {
     zeros_ = this->GetScratchBuffer<int>(kZerosCount, nullptr);
@@ -820,6 +822,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
         AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH,
         GetCudnnHandle(context),
         GetComputeStream(context));
+    if (reject_cudnn_sdpa_graph_for_test_) {
+      use_cudnn_sdpa = false;
+    }
   }
   data.use_cudnn_sdpa = use_cudnn_sdpa;
 
