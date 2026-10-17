@@ -13,7 +13,7 @@ Compressed project memory. This is not the execution plan.
   M01. `SPEC.md` and the execution plan are approved.
 - M01 is complete and published as ready-for-review PR #11:
   https://github.com/onnxruntime/ort-state/pull/11
-- No agents launched. M01-M05 and M06a are complete; M06b and M07-M24 remain pending.
+- No agents launched. M01-M06 are complete; M07-M24 remain pending.
   Runtime production code starts with M02.
 - Future tracking: keep `TASKS.md` checklist current and record compressed
   discoveries/agent learnings here.
@@ -449,3 +449,7 @@ Compressed project memory. This is not the execution plan.
   Weak-owner test proves lifetime retention; static asserts forbid unowned
   slicing/mutable pointers. All changed-range style/columns/doc checks passed.
 - M06 implementation/testing gates are now satisfied; publication remains.
+- Published M06b ready-for-review PR #17:
+  https://github.com/onnxruntime/ort-state/pull/17, stacked on M06a PR #16.
+  Implementation commit `cd63f2f8ba`; all source changes tested before committing.
+  M06 is complete; M07-M24 remain pending. No PRs were merged.

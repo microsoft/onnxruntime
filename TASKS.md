@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M05 and M06a complete; M06b in progress.
+**Status:** Approved; M01-M06 complete; M07-M24 pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -17,7 +17,7 @@ M05's requested generation-folder layout follow-up is complete in the same PR.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M05 and M06a are complete; M06b is in progress; M07-M24 are pending. Check tasks when their
+M01-M06 are complete; M07-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -97,7 +97,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M05 and M06a are **complete**; M06b is **in progress**; M07-M24 are **pending**.
+M01-M06 are **complete**; M07-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -106,7 +106,7 @@ M01-M05 and M06a are **complete**; M06b is **in progress**; M07-M24 are **pendin
 | [x] | M03 | SessionChain and tensor/state bindings / `chain-bindings` | M02 |
 | [x] | M04 | CPU KV cache management / `cpu-kv-cache` | M03 |
 | [x] | M05 | CPU greedy sampling and decode iteration / `cpu-greedy` | M04 |
-| [ ] | M06 | Public C API and C++ wrappers / `public-api` | M02, M03, M04, M05 |
+| [x] | M06 | Public C API and C++ wrappers / `public-api` | M02, M03, M04, M05 |
 | [ ] | M07 | Built-in/plugin EP capability contracts / `ep-stateful-hooks` | M04, M05, M06 |
 | [ ] | M08 | Native CUDA KV management / `cuda-kv-cache` | M07 |
 | [ ] | M09 | Native CUDA greedy sampling / `cuda-greedy` | M07 |
@@ -719,8 +719,9 @@ explicit CPU logits sampling, not a native CUDA greedy implementation.
 **Status:** Appendix F and the M06a/M06b split approved 2026-10-16.
 M06a is complete: [PR #16](https://github.com/onnxruntime/ort-state/pull/16),
 `state/m06a-stateful-c-api`, based on M05 `17e432b025`.
-M06b is authorized 2026-10-17 and in progress on `state/m06b-stateful-cxx-api`,
-based on M06a `b5f1431837`. M06 remains incomplete until both sub-PRs are verified.
+M06b is complete: [PR #17](https://github.com/onnxruntime/ort-state/pull/17),
+`state/m06b-stateful-cxx-api`, based on M06a `b5f1431837`.
+Both sub-PRs are verified and published ready for review; M06 is complete.
 
 - [x] Add append-only public API entries and opaque resources consistent with
   existing tables. Do not bump `ORT_API_VERSION`.
@@ -772,7 +773,8 @@ The user approved the split and contracts without changes before implementation.
 - [x] Test move/release ordering, errors and full CPU/CUDA behavior parity.
 - [x] Measure 100% new wrapper lines and cumulative C/native coverage.
 - [x] Validate standalone C++ consumption, CUDA memcheck, examples and style.
-- [ ] Record final evidence and publish the ready-for-review PR stacked on M06a.
+- [x] Record final evidence and publish the ready-for-review PR stacked on M06a.
+  PR #17 is stacked on PR #16; implementation commit `cd63f2f8ba`.
 
 Initial focused C++ tests passed **5/5 on CPU** and **8/8 in the CUDA build**,
 zero skips. Initial measured new-wrapper coverage is **187/187 executable
