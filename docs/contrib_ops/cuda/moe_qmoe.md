@@ -1137,6 +1137,16 @@ Global scaling, activation-dtype rounding, weight decoding, accumulation,
 routing, and prefill are unchanged. This scalar conversion does not introduce
 FP8 activations or native FP8 matrix multiplication.
 
+CUDA internal-test builds with FP4 QMoE register
+`onnxruntime_nvfp4_native_scale_0` and `onnxruntime_nvfp4_native_scale_1` in CTest.
+These launch fresh processes with the flag explicitly disabled/enabled, because
+the launcher caches it. The native-specific test skips unless FP8 helpers and the
+loaded kernel's binary and PTX compilation targets support SM90+; a newer device
+alone is insufficient. Software/fallback numerical coverage remains separate.
+The all-scale-code regression exercises FP16/BF16 with K=16, 80, and 1040.
+Nonzero contributions in every K block, varying scales, and an independent
+full-reduction reference cover all four/eight K lanes and later iterations.
+
 For native K-packed NVFP4 verification, `ORT_NVFP4_FC1_EXPERT_REUSE=1` enables
 experimental two-row FC1 weight and scale reuse. Set it before the first GEMV
 invocation; it is read once per launcher specialization. The dispatch is limited

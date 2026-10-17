@@ -41,6 +41,11 @@ inline constexpr int64_t kMaxProfiledExpandedRowsNvfp4KPacked = 80;
 // compute dispatch query this so the prepacked weights and the kernel always agree.
 bool Fp4MoeGemvUseInterleaved();
 
+// Checks the loaded kernel's compilation target, not just the current device's SM.
+bool Fp4MoeGemvSupportsNativeScale();
+// Identifies native-scale specializations for unfused, no-bias K-packed launches.
+bool Fp4MoeGemvKernelUsesNativeScale(const void* kernel);
+
 // Shape-derived default tiling for the non-interleaved ColumnMajor FP4 GEMV. Used whenever the
 // runtime does not have a profiled result for the shape, which is the shipping default because
 // ORT_FP4_GEMV_AUTOTUNE is off (it synchronizes the inference stream) and is skipped entirely

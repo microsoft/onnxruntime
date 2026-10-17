@@ -479,6 +479,24 @@ __global__ void MoeGemvFp4RawKPackedKernel(
 #endif
 }
 
+bool Fp4MoeGemvSupportsNativeScale() {
+#if defined(ORT_CUDA_TYPE_HELPER_HAS_FP8)
+  cudaFuncAttributes attributes{};
+  CUDA_CALL_THROW(cudaFuncGetAttributes(
+      &attributes, MoeGemvFp4RawKPackedKernel<half, false, false, 4, false, true>));
+  return attributes.binaryVersion >= 90 && attributes.ptxVersion >= 90;
+#else
+  return false;
+#endif
+}
+
+bool Fp4MoeGemvKernelUsesNativeScale(const void* kernel) {
+  return kernel == reinterpret_cast<const void*>(MoeGemvFp4RawKPackedKernel<half, false, false, 4, false, true>) ||
+         kernel == reinterpret_cast<const void*>(MoeGemvFp4RawKPackedKernel<half, false, false, 8, false, true>) ||
+         kernel == reinterpret_cast<const void*>(MoeGemvFp4RawKPackedKernel<__nv_bfloat16, false, false, 4, false, true>) ||
+         kernel == reinterpret_cast<const void*>(MoeGemvFp4RawKPackedKernel<__nv_bfloat16, false, false, 8, false, true>);
+}
+
 template <typename T, bool FusedSwiGlu>
 void LaunchMoeGemvFp4RawNPacked(
     const T* act, const uint8_t* weight, const uint8_t* block_scales, const float* global_scales,
