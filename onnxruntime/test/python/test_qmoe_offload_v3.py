@@ -98,19 +98,22 @@ int main(int argc, char** argv) {
   assert(argc == 2);
   const int fd = open(argv[1], O_RDWR | O_CREAT | O_TRUNC, 0600);
   assert(fd >= 0);
-  constexpr size_t n = 8, bank_bytes = 4096, stride = 8192, prefix = 4096;
-  std::vector<unsigned char> data(prefix + n * stride);
+  constexpr size_t n = 8, bank_bytes = 4096, stride = 8192 + 256, prefix = 4096, tiny_bytes = 4;
+  const size_t tiny_base = prefix + 2 * n * bank_bytes;
+  std::vector<unsigned char> data(tiny_base + n * tiny_bytes);
   for (size_t e = 0; e < n; ++e) {
     memset(data.data() + prefix + e * bank_bytes, int(e + 1), bank_bytes);
     memset(data.data() + prefix + n * bank_bytes + e * bank_bytes, int(e + 21), bank_bytes);
+    memset(data.data() + tiny_base + e * tiny_bytes, int(e + 41), tiny_bytes);
   }
   assert(write(fd, data.data(), data.size()) == ssize_t(data.size()));
   auto* mapped = static_cast<unsigned char*>(mmap(nullptr, data.size(), PROT_READ, MAP_SHARED, fd, 0));
   assert(mapped != MAP_FAILED);
   FileExpertStore::MappedBank banks[] = {
-      {mapped + prefix, bank_bytes, 0}, {mapped + prefix + n * bank_bytes, bank_bytes, bank_bytes}};
+      {mapped + prefix, bank_bytes, 0}, {mapped + prefix + n * bank_bytes, bank_bytes, bank_bytes},
+      {mapped + tiny_base, tiny_bytes, 2 * bank_bytes}};
   FileExpertStore cache;
-  assert(cache.InitializeMapped(banks, 2, n, stride, 1));
+  assert(cache.InitializeMapped(banks, 3, n, stride, 1));
   assert(cache.CacheSlots() == 1);
   const int32_t loading = 3;
   pause_read.store(true);
@@ -122,6 +125,7 @@ int main(int argc, char** argv) {
   ExpertBlockLease loaded;
   assert(cache.TryAcquireCached(loading, &loaded));
   assert(loaded.data[0] == loading + 1 && loaded.data[bank_bytes] == loading + 21);
+  assert(loaded.data[2 * bank_bytes] == loading + 41 && loaded.data[2 * bank_bytes + 3] == loading + 41);
   cache.ReleaseLease(loading);
   assert(cache.Evict(loading));
   for (int iteration = 0; iteration < 40; ++iteration) {
@@ -135,11 +139,32 @@ int main(int argc, char** argv) {
       assert(lease.data[i] == e + 1);
       assert(lease.data[bank_bytes + i] == e + 21);
     }
+    assert(lease.data[2 * bank_bytes] == e + 41);
     cache.ReleaseLease(e);
     cache.WaitPrefetchIdle();
     assert(cache.Evict(e));
   }
   cache.WaitPrefetchIdle();
+  {
+    // A cached slot can be reassigned to another expert without storage I/O.
+    ExpertBlockLease l;
+    assert(cache.AcquireReady(2, &l));
+    assert(cache.BeginReplace(2, 5) == nullptr);  // pinned
+    cache.ReleaseLease(2);
+    assert(cache.BeginReplace(2, 2) == nullptr);
+    uint8_t* fill = cache.BeginReplace(2, 5);
+    assert(fill != nullptr);
+    memset(fill, 77, 16);
+    cache.FinishReplace(5, true);
+    assert(cache.TryAcquireCached(5, &l) && l.data[0] == 77);
+    cache.ReleaseLease(5);
+    assert(!cache.TryAcquireCached(2, &l));
+    fill = cache.BeginReplace(5, 6);
+    assert(fill != nullptr);
+    assert(!cache.TryAcquireCached(6, &l));  // Loading is not readable
+    cache.FinishReplace(6, false);
+    assert(!cache.TryAcquireCached(6, &l) && !cache.TryAcquireCached(5, &l));
+  }
   cache.Shutdown();
   // Heap and writable mappings cannot silently replace the immutable file source.
   auto* cow = static_cast<unsigned char*>(mmap(nullptr, data.size(), PROT_READ | PROT_WRITE,
@@ -148,15 +173,15 @@ int main(int argc, char** argv) {
   cow[prefix] = 99;
   assert(mprotect(cow, data.size(), PROT_READ) == 0);
   banks[0].data = cow + prefix;
-  assert(!cache.InitializeMapped(banks, 2, n, stride, 1));
+  assert(!cache.InitializeMapped(banks, 3, n, stride, 1));
   munmap(cow, data.size());
   banks[0].data = data.data();
-  assert(!cache.InitializeMapped(banks, 2, n, stride, 1));
+  assert(!cache.InitializeMapped(banks, 3, n, stride, 1));
   banks[0].data = mapped + prefix;
   banks[1].block_offset = 0;
-  assert(!cache.InitializeMapped(banks, 2, n, stride, 1));
+  assert(!cache.InitializeMapped(banks, 3, n, stride, 1));
   banks[1].block_offset = bank_bytes;
-  assert(cache.InitializeMapped(banks, 2, n, stride, 1));
+  assert(cache.InitializeMapped(banks, 3, n, stride, 1));
   assert(ftruncate(fd, prefix) == 0);
   ExpertBlockLease missing;
   assert(!cache.AcquireReady(7, &missing));

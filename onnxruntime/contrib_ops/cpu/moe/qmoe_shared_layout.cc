@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <condition_variable>
 #include <cstdlib>
@@ -449,6 +450,9 @@ struct FileExpertStore::Impl {
     uint64_t offset = 0;
     size_t bytes = 0;
     size_t destination = 0;
+    // Tiny per-expert banks (global scales) are copied once at initialization: a cold 4-byte pread costs a
+    // full random storage I/O.
+    std::vector<uint8_t> resident;
     ~ReadBank() {
 #if !defined(_WIN32)
       if (fd >= 0) close(fd);
@@ -488,14 +492,41 @@ struct FileExpertStore::Impl {
   std::atomic<uint64_t> prefetch_hits{0};
   std::atomic<uint64_t> ssd_misses{0};
   std::atomic<uint64_t> bytes_read{0};
+  std::atomic<uint64_t> read_ns{0};
 
   bool drop_page_cache = false;
+  bool read_opt = true;
 
   bool ReadExpertFromDisk(int32_t expert_id, uint8_t* dst) noexcept {
+    const auto read_begin = std::chrono::steady_clock::now();
+    const bool ok = ReadExpertFromDiskImpl(expert_id, dst);
+    read_ns.fetch_add(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                          std::chrono::steady_clock::now() - read_begin).count()),
+                      std::memory_order_relaxed);
+    return ok;
+  }
+
+  bool ReadExpertFromDiskImpl(int32_t expert_id, uint8_t* dst) noexcept {
     const uint64_t offset = file_offset + static_cast<uint64_t>(expert_id) * expert_stride;
 #if !defined(_WIN32)
     if (!banks.empty()) {
+      // Start asynchronous readahead for every bank first so a cold expert's bank reads overlap on the device
+      // instead of paying one storage round trip per bank.
+      if (read_opt) {
+        for (const auto& bank : banks) {
+          if (bank->resident.empty()) {
+            posix_fadvise(bank->fd, static_cast<off_t>(bank->offset + static_cast<uint64_t>(expert_id) * bank->bytes),
+                          static_cast<off_t>(bank->bytes), POSIX_FADV_WILLNEED);
+          }
+        }
+      }
       for (const auto& bank : banks) {
+        if (!bank->resident.empty()) {
+          std::memcpy(dst + bank->destination, bank->resident.data() + static_cast<size_t>(expert_id) * bank->bytes,
+                      bank->bytes);
+          bytes_read.fetch_add(bank->bytes, std::memory_order_relaxed);
+          continue;
+        }
         const uint64_t bank_offset = bank->offset + static_cast<uint64_t>(expert_id) * bank->bytes;
         size_t done = 0;
         while (done < bank->bytes) {
@@ -695,6 +726,8 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
     return false;
   }
 
+  const char* read_opt_env = std::getenv("ORT_QMOE_HOST_CACHE_READ_OPT");
+  const bool read_opt_enabled = read_opt_env == nullptr || std::strcmp(read_opt_env, "0") != 0;
   std::vector<std::unique_ptr<Impl::ReadBank>> read_banks;
   try {
     for (size_t i = 0; i < bank_count; ++i) {
@@ -732,6 +765,10 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
         bank->offset = offset + address - lo;
         bank->bytes = source.expert_bytes;
         bank->destination = source.block_offset;
+        if (source.expert_bytes <= 64 && read_opt_enabled) {
+          bank->resident.assign(static_cast<const uint8_t*>(source.data),
+                                static_cast<const uint8_t*>(source.data) + length);
+        }
         break;
       }
       if (bank->fd < 0) return false;
@@ -785,6 +822,7 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
 #endif
   try {
   impl->banks = std::move(read_banks);
+  impl->read_opt = read_opt_enabled;
   impl->file_path = file_path ? file_path : "mapped-banks";
   impl->file_offset = file_offset;
   impl->num_experts = num_experts;
@@ -943,6 +981,41 @@ bool FileExpertStore::Evict(int32_t expert_id) noexcept {
   impl_->slot_state[slot] = Impl::kEmpty;
   impl_->slot_prefetched[slot] = 0;
   return true;
+}
+
+uint8_t* FileExpertStore::BeginReplace(int32_t old_id, int32_t new_id) noexcept {
+  if (!initialized_ || !impl_ || old_id < 0 || new_id < 0 || old_id == new_id ||
+      static_cast<int64_t>(old_id) >= num_experts_ || static_cast<int64_t>(new_id) >= num_experts_) {
+    return nullptr;
+  }
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  const int slot = impl_->expert_to_slot[old_id];
+  if (slot < 0 || impl_->expert_to_slot[new_id] >= 0 || impl_->slot_state[slot] != Impl::kReady ||
+      impl_->slot_pins[slot] != 0) {
+    return nullptr;
+  }
+  impl_->expert_to_slot[old_id] = -1;
+  impl_->expert_to_slot[new_id] = slot;
+  impl_->slot_expert[slot] = new_id;
+  impl_->slot_state[slot] = Impl::kLoading;
+  impl_->slot_prefetched[slot] = 0;
+  return impl_->aligned_base + static_cast<size_t>(slot) * expert_stride_;
+}
+
+void FileExpertStore::FinishReplace(int32_t new_id, bool ok) noexcept {
+  if (!initialized_ || !impl_ || new_id < 0 || static_cast<int64_t>(new_id) >= num_experts_) return;
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  const int slot = impl_->expert_to_slot[new_id];
+  if (slot < 0 || impl_->slot_state[slot] != Impl::kLoading) return;
+  if (ok) {
+    impl_->slot_state[slot] = Impl::kReady;
+    impl_->slot_lru[slot] = ++impl_->lru_clock;
+  } else {
+    impl_->expert_to_slot[new_id] = -1;
+    impl_->slot_expert[slot] = -1;
+    impl_->slot_state[slot] = Impl::kEmpty;
+  }
+  impl_->cv.notify_all();
 }
 
 bool FileExpertStore::TryAcquireCached(int32_t expert_id, ExpertBlockLease* out_lease) noexcept {
@@ -1105,6 +1178,17 @@ uint64_t FileExpertStore::SsdMisses() const noexcept {
 }
 uint64_t FileExpertStore::BytesReadFromSsd() const noexcept {
   return impl_ ? impl_->bytes_read.load(std::memory_order_relaxed) : 0;
+}
+uint64_t FileExpertStore::ReadNanoseconds() const noexcept {
+  return impl_ ? impl_->read_ns.load(std::memory_order_relaxed) : 0;
+}
+void FileExpertStore::ResetStats() noexcept {
+  if (!impl_) return;
+  impl_->cache_hits.store(0, std::memory_order_relaxed);
+  impl_->prefetch_hits.store(0, std::memory_order_relaxed);
+  impl_->ssd_misses.store(0, std::memory_order_relaxed);
+  impl_->bytes_read.store(0, std::memory_order_relaxed);
+  impl_->read_ns.store(0, std::memory_order_relaxed);
 }
 
 bool ValidateExpertStorageRange(int64_t num_experts, size_t stride, uint64_t external_offset,

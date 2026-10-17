@@ -126,6 +126,11 @@ class FileExpertStore {
   bool InitializeMapped(const MappedBank* banks, size_t bank_count, int64_t num_experts,
                         size_t expert_stride, size_t cache_slots) noexcept;
   bool Evict(int32_t expert_id) noexcept;
+  // Reassigns the Ready, unpinned cache slot of `old_id` to `new_id` without touching storage. Returns the slot
+  // payload for the caller to fill (the slot is Loading, so readers of `new_id` wait), or nullptr if the slot
+  // cannot be taken. Every successful call must be followed by FinishReplace(new_id, ok).
+  uint8_t* BeginReplace(int32_t old_id, int32_t new_id) noexcept;
+  void FinishReplace(int32_t new_id, bool ok) noexcept;
   bool TryAcquireCached(int32_t expert_id, ExpertBlockLease* out_lease) noexcept;
   bool ReadExpertDirect(int32_t expert_id, uint8_t* dst) noexcept;
   bool TryAcquireGroupCached(const int32_t* expert_ids, size_t count, ExpertBlockLease* out_leases) noexcept;
@@ -155,6 +160,8 @@ class FileExpertStore {
   uint64_t PrefetchHits() const noexcept;
   uint64_t SsdMisses() const noexcept;
   uint64_t BytesReadFromSsd() const noexcept;
+  uint64_t ReadNanoseconds() const noexcept;
+  void ResetStats() noexcept;
 
  private:
   bool InitializeStorage(const char* file_path, uint64_t file_offset, int64_t num_experts, size_t expert_stride,

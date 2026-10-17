@@ -101,6 +101,9 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   void InitializeComplementMode();
   void InitializeSsdStore();
   void InitializeBoundedHostCache();
+  // Reuses the host cache slot of a just-promoted expert to hold the GPU victim copied back from the slab,
+  // avoiding a storage re-read of the victim. Returns false if the victim must be fetched from storage instead.
+  bool SwapHostCandidateForVictim(int candidate, int evicted, int victim_slab_slot, cudaStream_t stream) const;
   Status EnsurePersistentDecodeState(OpKernelContext* context, size_t min_gpu_bytes,
                                      size_t min_host_bytes, cudaStream_t stream) const;
   Status StepBetweenRuns(cudaStream_t stream) const;
@@ -196,6 +199,9 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   mutable bool slot_table_dirty_ = true;
   mutable bool host_slot_table_dirty_ = true;
   bool host_cache_mapped_ = false;
+  bool swap_victim_to_host_cache_ = true;
+  mutable uint64_t victim_swaps_ = 0;
+  mutable uint64_t victim_swap_fallbacks_ = 0;
   mutable InlinedVector<int32_t> file_store_expert_slot_;
   int cpu_threads_ = 0;
   int pool_task_batch_ = 1;
