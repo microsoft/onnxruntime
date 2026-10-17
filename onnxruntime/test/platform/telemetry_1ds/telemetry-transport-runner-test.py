@@ -6,7 +6,7 @@
 import importlib.util
 import pathlib
 import socket
-import unittest
+import unittest.mock
 
 spec = importlib.util.spec_from_file_location(
     "telemetry_transport_runner", pathlib.Path(__file__).with_name("telemetry-transport-test.py")
