@@ -479,6 +479,7 @@ endif()
 
 if(LINUX AND NOT onnxruntime_DISABLE_DEVICE_DISCOVERY)
   list(APPEND onnxruntime_test_framework_src_patterns
+    "${TEST_SRC_DIR}/platform/linux/drm_device_discovery_test.cc"
     "${TEST_SRC_DIR}/platform/linux/npu_device_discovery_test.cc"
     "${TEST_SRC_DIR}/platform/linux/pci_device_discovery_test.cc")
 endif()
