@@ -90,21 +90,21 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node, cons
             static_cast<size_t>(axes_init->dims().Get(0)) != starts.size()) {
           return false;
         }
+      }
 
-        // If steps input exists, it should be constant and all values should be 1.
-        if (get_input_if_exists(4)) {
-          const ONNX_NAMESPACE::TensorProto* steps_init = get_initializer_if_constant(4);
-          if (!steps_init) {
+      // If steps input exists, it should be constant and all values should be 1.
+      if (get_input_if_exists(4)) {
+        const ONNX_NAMESPACE::TensorProto* steps_init = get_initializer_if_constant(4);
+        if (!steps_init) {
+          return false;
+        }
+        InlinedVector<int64_t> steps = get_initializer_data(steps_init);
+        if (steps.size() != starts.size()) {
+          return false;
+        }
+        for (int64_t step : steps) {
+          if (step != 1) {
             return false;
-          }
-          InlinedVector<int64_t> steps = get_initializer_data(steps_init);
-          if (steps.size() != starts.size()) {
-            return false;
-          }
-          for (int64_t step : steps) {
-            if (step != 1) {
-              return false;
-            }
           }
         }
       }
