@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <cstdlib>
 
 #include "gtest/gtest.h"
@@ -89,20 +90,93 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreKSplitSelection) {
       {5105, 1, 128, 48, 12, 1, 32},
       {5104, 1, 128, 48, 12, 1, 16},
       {5120, 1, 127, 48, 12, 1, 16},
+      {7168, 8, 80, 48, 12, 1, 16},
+      {5120, 9, 128, 48, 12, 1, 16},
       {32768, 1, 80, 48, 12, 1, 32},
       {32769, 1, 80, 48, 12, 1, 32},
       {65536, 1, 80, 48, 12, 1, 32},
       {131072, 1, 80, 48, 12, 1, 32},
       {248320, 1, 80, 48, 12, 1, 32},
       {1024, 4, 80, 48, 12, 1, 16},
-      {7168, 8, 80, 48, 12, 1, 16},
       {16384, 9, 80, 48, 12, 1, 8},
-      {5120, 9, 128, 48, 12, 1, 16},
       {16384, 16, 80, 48, 12, 1, 8},
       {16384, 1, 80, 47, 12, 1, 8},
       {16384, 1, 80, 49, 12, 1, 8},
       {16384, 1, 80, 48, 12, 0, 8},
       {16384, 1, 80, 48, 9, 0, 8},
+
+      // H200 (132 SMs). KSplit 8 qualified here on standalone timings, then regressed
+      // 16-18% per call inside a live decode stream, so SM90 keeps the generic policy.
+      // These are the shapes that the withdrawn rule would have flipped.
+      {4224, 8, 80, 132, 9, 0, 16},  // 264 blocks, exactly two per SM
+      {4240, 8, 80, 132, 9, 0, 16},  // 265 blocks, first shape past the standalone boundary
+      {4240, 1, 80, 132, 9, 0, 16},
+      {5120, 8, 96, 132, 9, 0, 16},  // Qwen3.8-27B GDN out projection, 320 blocks
+      {6144, 8, 80, 132, 9, 0, 16},  // Qwen3.8-27B QKV projection, 384 blocks
+      {7920, 8, 80, 132, 9, 0, 16},  // 495 blocks, top of the standalone band
+      {8192, 8, 80, 132, 9, 0, 8},   // unchanged: N >= 8192 already selected 8
+      {1024, 8, 80, 132, 9, 0, 16},
+      {4225, 8, 80, 132, 9, 0, 16},
+      {5120, 9, 80, 132, 9, 0, 16},
+      // The reduction is too short to feed 16 warps, so the window clamp still wins.
+      {6144, 8, 12, 132, 9, 0, 8},
+      {6144, 8, 4, 132, 9, 0, 4},
+      {4096, 8, 80, 128, 8, 9, 16},
+      {4097, 8, 80, 128, 8, 9, 16},
+      {6144, 8, 80, 128, 8, 9, 16},
+      {6145, 1, 80, 128, 8, 9, 8},
+      {6145, 8, 80, 128, 8, 9, 8},
+      {6145, 9, 80, 128, 8, 9, 16},
+      {7168, 16, 80, 128, 8, 9, 16},
+      {7168, 32, 80, 128, 8, 9, 16},
+      {7168, 8, 16, 128, 8, 9, 8},
+      {7168, 8, 96, 128, 8, 9, 8},
+      {7168, 8, 97, 128, 8, 9, 16},
+      {7168, 8, 128, 128, 8, 9, 16},
+      {7168, 8, 15, 128, 8, 9, 8},
+      {7168, 8, 7, 128, 8, 9, 4},
+      {7168, 8, 80, 127, 8, 9, 16},
+      {7168, 8, 80, 129, 8, 9, 16},
+      {7168, 8, 80, 128, 8, 6, 16},
+      {7168, 8, 80, 128, 12, 0, 16},
+      {8191, 8, 80, 128, 8, 9, 8},
+      {8192, 9, 128, 128, 8, 9, 8},
+
+      // RTX 5060 Ti (SM120, 36 SMs): preserve pinned KS16 at 73..108 output blocks.
+      {1152, 1, 80, 36, 12, 0, 16},
+      {1153, 1, 80, 36, 12, 0, 16},
+      {1728, 1, 80, 36, 12, 0, 16},
+      {1729, 1, 80, 36, 12, 0, 8},
+      {1729, 8, 40, 36, 12, 0, 8},
+      {1729, 8, 96, 36, 12, 0, 8},
+      {1729, 8, 39, 36, 12, 0, 16},
+      {1729, 8, 97, 36, 12, 0, 16},
+      {1729, 9, 80, 36, 12, 0, 16},
+      {5120, 4, 96, 36, 12, 0, 8},
+      {1153, 1, 39, 36, 12, 0, 16},
+      {1153, 1, 97, 36, 12, 0, 16},
+      {1153, 9, 80, 36, 12, 0, 16},
+      {1153, 1, 80, 35, 12, 0, 16},
+      {1153, 1, 80, 36, 12, 1, 16},
+
+      // RTX 5090 Laptop (SM120, 170 SMs): the 340/341-block boundary did not
+      // reproduce the 36-SM crossover, so it retains the generic policy.
+      {5440, 1, 40, 170, 12, 0, 16},
+      {5456, 1, 40, 170, 12, 0, 16},
+      {5440, 1, 80, 170, 12, 0, 16},
+      {5456, 1, 80, 170, 12, 0, 16},
+      {5456, 1, 96, 170, 12, 0, 16},
+      {5456, 4, 96, 170, 12, 0, 16},
+      {5456, 8, 96, 170, 12, 0, 16},
+      {8160, 1, 80, 170, 12, 0, 16},
+      {8176, 1, 80, 170, 12, 0, 16},
+      {8192, 1, 80, 170, 12, 0, 8},
+
+      // RTX 3060 (SM86, 28 SMs): measured regressions retain the legacy N threshold.
+      {897, 1, 80, 28, 8, 6, 16},
+      {2048, 1, 80, 28, 8, 6, 16},
+      {8191, 1, 80, 28, 8, 6, 16},
+      {8192, 1, 80, 28, 8, 6, 8},
   };
 
   for (const Case& c : cases) {
@@ -117,6 +191,38 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreKSplitSelection) {
                   c.compute_capability_major, c.compute_capability_minor),
               c.expected);
   }
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreResidencySelection) {
+  using onnxruntime::contrib::cuda::Fp8MmaGemvPinsResidency;
+  using onnxruntime::contrib::cuda::Fp8MmaOutputBlocks;
+  using onnxruntime::contrib::cuda::PickGenericFp8MmaKSplit;
+
+  for (const auto& device : {std::array<int, 3>{8, 9, 128}, {12, 0, 36}, {9, 0, 132}}) {
+    const auto [major, minor, sm_count] = device;
+    for (int n : {32 * sm_count, 32 * sm_count + 1, 48 * sm_count, 48 * sm_count + 1}) {
+      SCOPED_TRACE("N = " + std::to_string(n) + ", SMs = " + std::to_string(sm_count));
+      const int k_split = PickGenericFp8MmaKSplit(n, 8, 80, sm_count, major, minor);
+      const int output_blocks = Fp8MmaOutputBlocks(n);
+      const bool in_pinned_window = output_blocks > 2 * sm_count && output_blocks <= 3 * sm_count;
+      EXPECT_EQ(Fp8MmaGemvPinsResidency(n, k_split, 1, sm_count, major, minor), in_pinned_window);
+      if (in_pinned_window) {
+        EXPECT_EQ(k_split, 16);
+      }
+      EXPECT_FALSE(Fp8MmaGemvPinsResidency(n, 8, 1, sm_count, major, minor));
+      EXPECT_FALSE(Fp8MmaGemvPinsResidency(n, 16, 2, sm_count, major, minor));
+      EXPECT_FALSE(Fp8MmaGemvPinsResidency(n, 16, 4, sm_count, major, minor));
+    }
+  }
+  EXPECT_FALSE(Fp8MmaGemvPinsResidency(4097, 16, 1, 128, 8, 0));
+  EXPECT_FALSE(Fp8MmaGemvPinsResidency(4097, 16, 1, 128, 8, 6));
+
+  // A small recursive tail of a request above M=32 is not a qualified low-M request.
+  EXPECT_EQ(PickGenericFp8MmaKSplit(7168, 8, 80, 128, 8, 9, false), 16);
+  EXPECT_EQ(PickGenericFp8MmaKSplit(5120, 1, 96, 36, 12, 0, false), 16);
+  EXPECT_EQ(PickGenericFp8MmaKSplit(8192, 1, 96, 36, 12, 0, false), 8);
+  EXPECT_EQ(PickGenericFp8MmaKSplit(5120, 1, 12, 36, 12, 0, false), 8);
+  EXPECT_EQ(PickGenericFp8MmaKSplit(5120, 1, 4, 36, 12, 0, false), 4);
 }
 
 TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreForcedKSplit32) {
