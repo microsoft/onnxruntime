@@ -86,5 +86,20 @@ suppression accidentally applied to enabled cases fail rather than skip.
 
 These tests use local HTTP, not TLS. They do not replace certificate-policy
 tests, native platform coverage beyond the selected transport, or the distinct Windows
-`ExitProcess`/DLL-process-detach regression in #33291. A zero SDK teardown-upload
-budget does not bound cancellation or worker draining.
+`ExitProcess`/DLL-process-detach regression introduced by #33291. A zero SDK
+teardown-upload budget does not bound cancellation or worker draining.
+
+## Windows process termination
+
+The three `onnxruntime_telemetry_{process_exit,normal_destruction,explicit_unload}_test`
+cases use a DLL-owned provider and a mock pending uploader. Like the transport
+fixture, this DLL compiles a generated provider copy: test-only hooks install the
+mock after suppressed initialization and verify shared-state cleanup after
+shutdown. No test peer or friendship is needed in the production class.
+The destructor, Windows shutdown guard, and lock ordering are unchanged.
+The parent requires both successful child exit and a teardown-verification signal.
+
+```text
+cmake --build . --config RelWithDebInfo --target onnxruntime_telemetry_shutdown_test
+ctest -C RelWithDebInfo -R "^onnxruntime_telemetry_(process_exit|normal_destruction|explicit_unload)_test$" --output-on-failure
+```
