@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M05 complete; M06a implementation/validation in progress.
+**Status:** Approved; M01-M05 and M06a complete; M06b pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -17,7 +17,7 @@ M05's requested generation-folder layout follow-up is complete in the same PR.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M05 are complete; M06a is in progress; M06b and M07-M24 are pending. Check tasks when their
+M01-M05 and M06a are complete; M06b and M07-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -97,7 +97,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M05 are **complete**; M06a is **in progress**; M06b and M07-M24 are **pending**.
+M01-M05 and M06a are **complete**; M06b and M07-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -717,7 +717,8 @@ explicit CPU logits sampling, not a native CUDA greedy implementation.
 
 **Outcome:** Complete programmatic access to the implemented core primitives.
 **Status:** Appendix F and the M06a/M06b split approved 2026-10-16.
-M06a is in progress on `state/m06a-stateful-c-api`, based on M05 `17e432b025`.
+M06a is complete: [PR #16](https://github.com/onnxruntime/ort-state/pull/16),
+`state/m06a-stateful-c-api`, based on M05 `17e432b025`.
 M06b is pending; M06 remains incomplete until both sub-PRs are verified.
 
 - [x] Add append-only public API entries and opaque resources consistent with
@@ -760,7 +761,8 @@ The user approved the split and contracts without changes before implementation.
 - [x] Validate the final CPU build, existing regressions and pure-C consumer.
 - [x] Measure 100% new executable API/native-glue lines.
 - [x] Validate CUDA execution/provider assignment and memory safety.
-- [ ] Record final evidence, complete style checks and publish the stacked PR.
+- [x] Record final evidence, complete style checks and publish the stacked PR.
+  Ready-for-review PR #16 is stacked on M05; implementation commit `f0aa2513d7`.
 
 **M06a execution evidence:**
 

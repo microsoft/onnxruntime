@@ -13,7 +13,7 @@ Compressed project memory. This is not the execution plan.
   M01. `SPEC.md` and the execution plan are approved.
 - M01 is complete and published as ready-for-review PR #11:
   https://github.com/onnxruntime/ort-state/pull/11
-- No agents launched. M01-M05 are complete; M06-M24 remain pending.
+- No agents launched. M01-M05 and M06a are complete; M06b and M07-M24 remain pending.
   Runtime production code starts with M02.
 - Future tracking: keep `TASKS.md` checklist current and record compressed
   discoveries/agent learnings here.
@@ -417,3 +417,7 @@ Compressed project memory. This is not the execution plan.
 - Full CPU/CUDA reconfiguration was necessary for the new test files; source
   globs do not use CONFIGURE_DEPENDS. Final logs use `m06a-*-complete-*` names.
   C++ RAII is deliberately still pending M06b; macro M06 is not complete.
+- Published ready-for-review M06a PR #16:
+  https://github.com/onnxruntime/ort-state/pull/16, stacked on
+  `state/m05-cpu-greedy`. Implementation commit `f0aa2513d7`.
+  M06a is complete; pause for review/authorization before M06b.
