@@ -224,6 +224,13 @@ TEST(BatchNormTest, InfiniteScale_NoNaN) {
 
   auto expected_output = {inf, inf, inf, inf, inf, inf, inf, inf, inf};
   TestBatchNorm(input_data_map, input_shapes_map, 1e-5f, expected_output, input_shape);
+
+  for (const char* name : {"scale", "B", "mean", "var"}) {
+    input_shapes_map.at(name) = {1, 3, 3};
+    input_data_map.at(name) = vector<float>(9, input_data_map.at(name).front());
+  }
+  TestBatchNorm(input_data_map, input_shapes_map, 1e-5f, expected_output, input_shape,
+                false, 0, OpTester::ExpectResult::kExpectSuccess, "", 8);
 }
 
 TEST(BatchNormTest, BatchNorm1d_3d_Pytorch) {
