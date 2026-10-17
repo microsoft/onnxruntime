@@ -27,7 +27,7 @@ SaveDims(flatbuffers::FlatBufferBuilder& builder, const DimsFieldType& dims) {
   return builder.CreateVector(dims_data);
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ENABLE_TRAINING_APIS)
 
 static std::vector<uint8_t> PackFloat6Data(gsl::span<const uint8_t> unpacked_data) {
   std::vector<uint8_t> packed_data(unpacked_data.size() - unpacked_data.size() / 4, 0);
@@ -53,6 +53,10 @@ static std::vector<uint8_t> PackFloat6Data(gsl::span<const uint8_t> unpacked_dat
   }
   return packed_data;
 }
+
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                 const TensorProto& initializer,

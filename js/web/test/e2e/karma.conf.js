@@ -30,6 +30,7 @@ const files = [
   { pattern: './model_with_orig_ext_data.onnx', included: false },
   { pattern: './model_with_orig_ext_data.bin', included: false },
   { pattern: './fp6-external-data.onnx', included: false },
+  { pattern: './fp6-external-data-short-*.onnx', included: false },
   { pattern: './fp6-external-data.bin', included: false },
   { pattern: './test-wasm-path-override/*', included: false, nocache: true, watched: false },
 ];
@@ -74,6 +75,8 @@ module.exports = function (config) {
       '/model_with_orig_ext_data.onnx': '/base/model_with_orig_ext_data.onnx',
       '/model_with_orig_ext_data.bin': '/base/model_with_orig_ext_data.bin',
       '/fp6-external-data.onnx': '/base/fp6-external-data.onnx',
+      '/fp6-external-data-short-e2m3.onnx': '/base/fp6-external-data-short-e2m3.onnx',
+      '/fp6-external-data-short-e3m2.onnx': '/base/fp6-external-data-short-e3m2.onnx',
       '/fp6-external-data.bin': '/base/fp6-external-data.bin',
       '/test-wasm-path-override/': '/base/test-wasm-path-override/',
     },

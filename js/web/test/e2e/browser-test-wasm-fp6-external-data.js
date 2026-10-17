@@ -28,3 +28,23 @@ it('Browser E2E testing - WASM backend with external packed FP6 data', async fun
 
   await session.release();
 });
+
+it('Browser E2E testing - reject oversized external FP6 data before WASM allocation', async function () {
+  for (const type of ['e2m3', 'e3m2']) {
+    let session;
+    try {
+      session = await ort.InferenceSession.create(`./fp6-external-data-short-${type}.onnx`, {
+        executionProviders: ['wasm'],
+        externalData: [{ data: './fp6-external-data.bin', path: 'fp6-external-data.bin' }],
+        extra: { session: { allow_released_opsets_only: '0' } },
+      });
+      assert(false, `expected an out-of-bounds error for ${type}`);
+    } catch (e) {
+      assert(String(e).toLowerCase().includes('out of bounds'), `${type}: ${e}`);
+    } finally {
+      if (session) {
+        await session.release();
+      }
+    }
+  }
+});

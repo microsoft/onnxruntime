@@ -849,6 +849,7 @@ Status ReadFloat6ExternalData(const Env& env, const ONNX_NAMESPACE::TensorProto&
     ORT_RETURN_IF(file_offset < 0 || end_of_read >= 4294967296LL,
                   "External initializer: ", tensor.name(), " offset: ", file_offset,
                   " size to read: ", static_cast<size_t>(data_size), " exceeds WASM file range.");
+    ORT_RETURN_IF_ERROR(ValidateWebAssemblyExternalDataRange(external_file_path, file_offset, data_size));
     data.resize(data_size);
     return LoadWebAssemblyExternalData(env, external_file_path, file_offset, data_size,
                                        ExternalDataLoadType::CPU, reinterpret_cast<char*>(data.data()));

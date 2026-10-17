@@ -253,7 +253,8 @@ TEST(SaveWithExternalInitializers, Float6PackedData) {
     output->mutable_type()->mutable_tensor_type()->set_elem_type(type);
     output->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
     std::shared_ptr<Model> model;
-    ASSERT_STATUS_OK(Model::Load(std::move(source), model_path.native(), model, nullptr, *logger));
+    ASSERT_STATUS_OK(Model::Load(std::move(source), model_path.native(), model, nullptr, *logger,
+                                 ModelOptions(false, false)));
     for (const bool embed : {false, true}) {
       ModelSavingOptions options{0};
       options.force_embed_external_ini = embed;
