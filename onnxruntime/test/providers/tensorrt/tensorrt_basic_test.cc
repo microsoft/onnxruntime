@@ -380,6 +380,63 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   ASSERT_EQ(model_hash, model_hash3) << "model 1&3 are same models and they have same hash, no matter where they are loaded";
 }
 
+TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingInputShapes) {
+  const std::string trt_version = std::to_string(NV_TENSORRT_MAJOR) + "." + std::to_string(NV_TENSORRT_MINOR);
+  const std::string cuda_version = std::to_string(CUDA_VERSION);
+  auto generate_id = [&](const TypeProto& input_type) {
+    Model model("main_graph", false, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+    auto& x = graph.GetOrCreateNodeArg("x", &input_type);
+    auto& y = graph.GetOrCreateNodeArg("y", &input_type);
+    auto& z = graph.GetOrCreateNodeArg("z", &input_type);
+    graph.AddNode("add", "Add", "", {&x, &y}, {&z});
+    ORT_THROW_IF_ERROR(graph.Resolve());
+
+    // Match the reported collision: same graph name and structure, loaded from bytes without a path.
+    std::string model_bytes = model.ToProto().SerializeAsString();
+    std::shared_ptr<Model> loaded_model;
+    ORT_THROW_IF_ERROR(Model::LoadFromBytes(static_cast<int>(model_bytes.size()), model_bytes.data(),
+                                            loaded_model, nullptr, DefaultLoggingManager().DefaultLogger()));
+    return TRTGenerateId(GraphViewer(loaded_model->MainGraph()), trt_version, cuda_version);
+  };
+
+  const InlinedVector<TensorShapeVector> shapes = {
+      {3, 3}, {4, 4}, {3, 4}, {4, 3}, {9}, {}, {0}, {0, 3}, {0, 4}, {3, 0}, {3, -1}, {4, -1}, {-1, 3}, {1, 23}, {12, 3}, {4294967299LL, 3}};
+  InlinedVector<HashValue> hashes;
+  hashes.reserve(shapes.size());
+  for (const auto& dims : shapes) {
+    SCOPED_TRACE(::testing::PrintToString(dims));
+    TypeProto input_type;
+    auto* tensor_type = input_type.mutable_tensor_type();
+    tensor_type->set_elem_type(TensorProto_DataType_FLOAT);
+    auto* shape = tensor_type->mutable_shape();
+    for (int64_t dim : dims) {
+      auto* dimension = shape->add_dim();
+      if (dim < 0) {
+        dimension->set_dim_param("batch");
+      } else {
+        dimension->set_dim_value(dim);
+      }
+    }
+
+    const HashValue hash = generate_id(input_type);
+    EXPECT_EQ(hash, generate_id(input_type)) << "Identical models must retain the same cache ID";
+    for (HashValue previous_hash : hashes) {
+      EXPECT_NE(hash, previous_hash) << "Different static shapes or ranks must not share a cache ID";
+    }
+    hashes.push_back(hash);
+
+    input_type.set_denotation("IMAGE");
+    for (auto& dim : *shape->mutable_dim()) {
+      dim.set_denotation("DATA_BATCH");
+      if (dim.has_dim_param()) {
+        dim.set_dim_param("renamed_batch");
+      }
+    }
+    EXPECT_EQ(hash, generate_id(input_type)) << "Shape annotations must not invalidate the cache";
+  }
+}
+
 TEST(TensorrtExecutionProviderTest, EPContextNode) {
   std::string model_name_str = "EPContextNode_test.onnx";
   PathString model_name = ToPathString(model_name_str);
