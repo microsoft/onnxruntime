@@ -342,6 +342,16 @@ ORT_RUNTIME_CLASS(EpAssignedNode);
 ORT_RUNTIME_CLASS(ModelPackageOptions);
 ORT_RUNTIME_CLASS(ModelPackageContext);
 ORT_RUNTIME_CLASS(ModelPackageComponentContext);
+ORT_RUNTIME_CLASS(SessionLoopOptions);
+ORT_RUNTIME_CLASS(SessionLoop);
+ORT_RUNTIME_CLASS(SessionChainOptions);
+ORT_RUNTIME_CLASS(SessionChain);
+ORT_RUNTIME_CLASS(StatefulExecution);
+ORT_RUNTIME_CLASS(StatefulStepResult);
+ORT_RUNTIME_CLASS(KVCacheOptions);
+ORT_RUNTIME_CLASS(KVCacheManager);
+ORT_RUNTIME_CLASS(KVCacheView);
+ORT_RUNTIME_CLASS(SamplerOptions);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -986,6 +996,9 @@ typedef struct OrtInteropApi OrtInteropApi;
 
 struct OrtModelPackageApi;
 typedef struct OrtModelPackageApi OrtModelPackageApi;
+
+struct OrtStatefulApi;
+typedef struct OrtStatefulApi OrtStatefulApi;
 
 struct OrtEpApi;
 typedef struct OrtEpApi OrtEpApi;
@@ -7706,6 +7719,16 @@ struct OrtApi {
    * \since Version 1.31.
    */
   const OrtModelPackageApi*(ORT_API_CALL* GetModelPackageApi)(void);
+
+  /** \brief Get the runtime-owned stateful execution API table.
+   *
+   * Request OrtApi with ORT_API_VERSION before accessing this appended member.
+   * The table must not be released. It is NULL in minimal builds.
+   *
+   * \return The stateful API table, or NULL when unavailable.
+   * \since Version 1.32.
+   */
+  const OrtStatefulApi*(ORT_API_CALL* GetStatefulApi)(void);
 };
 
 /*
@@ -9195,6 +9218,536 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOpt
  * \param device_id HIP device id, starts from zero.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, int device_id);
+
+/** \brief Explicit SessionLoop exit kinds. \since Version 1.32. */
+typedef enum OrtStatefulExitKind {
+  ORT_STATEFUL_END_OF_INPUTS = 0,
+  ORT_STATEFUL_MAX_ITERATIONS = 1,
+  ORT_STATEFUL_MAX_GENERATED_TOKENS = 2,
+  ORT_STATEFUL_EOS = 3,
+  ORT_STATEFUL_BOOLEAN_OUTPUT = 4
+} OrtStatefulExitKind;
+
+/** \brief Cache update policy; no model input/output aliasing is inferred. \since Version 1.32. */
+typedef enum OrtKVCacheUpdateKind {
+  ORT_KV_CACHE_SHARE = 0,
+  ORT_KV_CACHE_COPY = 1,
+  ORT_KV_CACHE_APPEND = 2
+} OrtKVCacheUpdateKind;
+
+/** \brief Native token-generation phase. \since Version 1.32. */
+typedef enum OrtStatefulGenerationPhase {
+  ORT_STATEFUL_GENERATION_UNSPECIFIED = 0,
+  ORT_STATEFUL_PREFILL = 1,
+  ORT_STATEFUL_DECODE = 2
+} OrtStatefulGenerationPhase;
+
+/** \brief Supported token sampling algorithms. \since Version 1.32. */
+typedef enum OrtStatefulSamplingAlgorithm {
+  ORT_STATEFUL_GREEDY = 0
+} OrtStatefulSamplingAlgorithm;
+
+/** \brief Source namespace for a chain input. \since Version 1.32. */
+typedef enum OrtStatefulSourceKind {
+  ORT_STATEFUL_EXTERNAL_INPUT = 0,
+  ORT_STATEFUL_EXTERNAL_SEQUENCE = 1,
+  ORT_STATEFUL_COMPONENT_OUTPUT = 2,
+  ORT_STATEFUL_STATE = 3
+} OrtStatefulSourceKind;
+
+/** \brief Selected chain port kind. \since Version 1.32. */
+typedef enum OrtStatefulOutputKind {
+  ORT_STATEFUL_MODEL_OUTPUT = 0,
+  ORT_STATEFUL_GENERATED_TOKEN_IDS = 1
+} OrtStatefulOutputKind;
+
+/** \brief Result value collection. \since Version 1.32. */
+typedef enum OrtStatefulOutputGroup {
+  ORT_STATEFUL_SELECTED_OUTPUTS = 0,
+  ORT_STATEFUL_COMPONENT_OUTPUTS = 1,
+  ORT_STATEFUL_STATE_VALUES = 2
+} OrtStatefulOutputGroup;
+
+/** \brief Kind of owned result. \since Version 1.32. */
+typedef enum OrtStatefulResultKind {
+  ORT_STATEFUL_LOOP_RESULT = 0,
+  ORT_STATEFUL_CHAIN_RESULT = 1,
+  ORT_STATEFUL_STATE_SNAPSHOT = 2
+} OrtStatefulResultKind;
+
+/** \brief Borrowed UTF-8 name/value pair.
+ *
+ * For inputs, the caller owns both pointers. For result arrays, both pointers
+ * are read-only and valid until the owning OrtStatefulStepResult is released.
+ * Tensor data backed by caller memory retains its ordinary ORT lifetime rules.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulNamedValue {
+  const char* name;
+  const OrtValue* value;
+} OrtStatefulNamedValue;
+
+/** \brief Explicit exit configuration; unused fields must be zero/NULL.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulExitCondition {
+  OrtStatefulExitKind kind;
+  int64_t limit;                 ///< Nonnegative iteration/generated-token limit.
+  const char* output_name;       ///< Scalar bool model output for BOOLEAN_OUTPUT.
+  const int64_t* eos_token_ids;  ///< Nonnegative EOS IDs for EOS.
+  size_t num_eos_token_ids;
+} OrtStatefulExitCondition;
+
+/** \brief Previous-output to next-input feedback mapping. \since Version 1.32. */
+typedef struct OrtStatefulFeedbackBinding {
+  const char* input_name;
+  const char* output_name;
+} OrtStatefulFeedbackBinding;
+
+/** \brief Contiguous CPU cache layout. Fixed dimensions are positive; sequence is initially zero.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulKVCacheSpec {
+  const char* name;
+  ONNXTensorElementDataType element_type;  ///< FLOAT, FLOAT16, or BFLOAT16.
+  const int64_t* shape;
+  size_t rank;
+  int64_t sequence_axis;
+  int64_t initial_capacity;
+} OrtStatefulKVCacheSpec;
+
+/** \brief Managed cache model ports and update policy. \since Version 1.32. */
+typedef struct OrtStatefulKVCacheBinding {
+  OrtStatefulKVCacheSpec cache;
+  const char* input_name;
+  const char* output_name;
+  OrtKVCacheUpdateKind update_kind;
+} OrtStatefulKVCacheBinding;
+
+/** \brief Native single-sequence int64 token policy; optional mask/position names may be NULL.
+ * Set phase explicitly to PREFILL or DECODE; UNSPECIFIED is invalid.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulGenerationConfig {
+  size_t struct_size;  ///< Initialize to sizeof(OrtStatefulGenerationConfig).
+  OrtStatefulGenerationPhase phase;
+  const char* input_ids;
+  const char* logits_output;
+  const char* attention_mask;
+  const char* position_ids;
+  int has_logits_position;  ///< Exactly 0 or 1.
+  int64_t logits_position;
+} OrtStatefulGenerationConfig;
+
+/** \brief Typed loop configuration, copied by the options APIs.
+ *
+ * Initialize struct_size and zero all other fields before configuring them.
+ * Pointer/count pairs permit NULL only with count zero. Nested array-record
+ * layouts are fixed; future extensions use appended top-level fields/new records.
+ * A loop requires explicit outputs and at least one exit condition.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulLoopConfig {
+  size_t struct_size;  ///< Initialize to sizeof(OrtStatefulLoopConfig).
+  const char* const* finite_input_names;
+  size_t num_finite_inputs;
+  const OrtStatefulFeedbackBinding* feedback;
+  size_t num_feedback;
+  const char* const* output_names;
+  size_t num_outputs;
+  const OrtStatefulExitCondition* exit_conditions;
+  size_t num_exit_conditions;
+  const char* generated_token_output;  ///< Optional scalar int64 model-token output.
+  const char* nonempty_input;          ///< Optional finite input requiring nonempty data.
+  const OrtStatefulKVCacheBinding* kv_caches;
+  size_t num_kv_caches;
+  const OrtStatefulGenerationConfig* generation;  ///< Optional native policy.
+} OrtStatefulLoopConfig;
+
+/** \brief Explicit chain input source. component_index applies only to COMPONENT_OUTPUT.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulValueSource {
+  OrtStatefulSourceKind kind;
+  const char* name;
+  size_t component_index;
+} OrtStatefulValueSource;
+
+/** \brief Maps one source to one model input. \since Version 1.32. */
+typedef struct OrtStatefulInputBinding {
+  const char* input_name;
+  OrtStatefulValueSource source;
+} OrtStatefulInputBinding;
+
+/** \brief Writes a model output into a named retained-state slot. \since Version 1.32. */
+typedef struct OrtStatefulStateBinding {
+  const char* state_name;
+  const char* output_name;
+} OrtStatefulStateBinding;
+
+/** \brief Chain component. Exactly one of session/loop is non-NULL.
+ *
+ * Sessions remain caller-owned and must outlive definitions/executions.
+ * Loop definitions are retained; releasing the caller's loop handle is safe.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulChainComponent {
+  const char* name;
+  OrtSession* session;
+  const OrtSessionLoop* loop;
+  const OrtStatefulInputBinding* inputs;
+  size_t num_inputs;
+  const OrtStatefulStateBinding* state_outputs;
+  size_t num_state_outputs;
+  const OrtStatefulKVCacheBinding* kv_caches;
+  size_t num_kv_caches;
+} OrtStatefulChainComponent;
+
+/** \brief Named final output; generated-token ports require a NULL/empty output_name.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulChainOutput {
+  const char* name;
+  size_t component_index;
+  const char* output_name;
+  OrtStatefulOutputKind kind;
+} OrtStatefulChainOutput;
+
+/** \brief Typed chain configuration, copied by the options APIs. \since Version 1.32. */
+typedef struct OrtStatefulChainConfig {
+  size_t struct_size;  ///< Initialize to sizeof(OrtStatefulChainConfig).
+  const OrtStatefulChainComponent* components;
+  size_t num_components;
+  const OrtStatefulChainOutput* outputs;
+  size_t num_outputs;
+} OrtStatefulChainConfig;
+
+/** \brief One finite loop input batch. \since Version 1.32. */
+typedef struct OrtStatefulInputBatch {
+  const OrtStatefulNamedValue* values;
+  size_t num_values;
+} OrtStatefulInputBatch;
+
+/** \brief Named finite sequence for chain construction. \since Version 1.32. */
+typedef struct OrtStatefulInputSequence {
+  const char* name;
+  const OrtValue* const* values;
+  size_t num_values;
+} OrtStatefulInputSequence;
+
+/** \brief Initial execution inputs. Handles/names are retained/copied, not external tensor buffers.
+ *
+ * Loops use inputs/batches; chains use inputs/sequences/initial_state. Fields
+ * belonging to the wrong execution kind must be empty. Reset reuses these feeds.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulInputs {
+  size_t struct_size;  ///< Initialize to sizeof(OrtStatefulInputs).
+  const OrtStatefulNamedValue* inputs;
+  size_t num_inputs;
+  const OrtStatefulInputBatch* batches;
+  size_t num_batches;
+  const OrtStatefulInputSequence* sequences;
+  size_t num_sequences;
+  const OrtStatefulNamedValue* initial_state;
+  size_t num_initial_state;
+} OrtStatefulInputs;
+
+/** \brief CPU cache options description. \since Version 1.32. */
+typedef struct OrtStatefulKVCacheConfig {
+  size_t struct_size;  ///< Initialize to sizeof(OrtStatefulKVCacheConfig).
+  const OrtStatefulKVCacheSpec* caches;
+  size_t num_caches;
+} OrtStatefulKVCacheConfig;
+
+/** \brief CPU greedy options; unsupported algorithms reject.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulSamplerConfig {
+  size_t struct_size;  ///< Initialize to sizeof(OrtStatefulSamplerConfig).
+  OrtStatefulSamplingAlgorithm algorithm;
+  int has_logits_position;  ///< Exactly 0 or 1.
+  int64_t logits_position;
+} OrtStatefulSamplerConfig;
+
+/** \brief Result metadata. Borrowed strings/reasons share the result's lifetime.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulStepInfo {
+  size_t struct_size;  ///< Number of bytes populated by the runtime.
+  OrtStatefulResultKind kind;
+  int executed;
+  int completed;
+  int64_t invocations;
+  int64_t iterations;
+  int64_t generated_tokens;
+  size_t components_completed;
+  const char* component_name;  ///< Empty for standalone loops/state snapshots.
+  const OrtStatefulExitKind* exit_reasons;
+  size_t num_exit_reasons;
+  int has_generated_token;
+  int64_t generated_token;
+} OrtStatefulStepInfo;
+
+/** \brief Cache-manager lifetime data-buffer operation counters. \since Version 1.32. */
+typedef struct OrtStatefulKVCacheStats {
+  size_t struct_size;
+  size_t allocations;
+  size_t bytes_copied;
+  size_t shared_updates;
+} OrtStatefulKVCacheStats;
+
+/** \brief Append-only API for stateful execution.
+ *
+ * Obtain from OrtApi::GetStatefulApi. All status-returning calls contain C++
+ * exceptions and leave out-parameters unchanged on failure. Returned non-NULL
+ * OrtStatus objects must be released with OrtApi::ReleaseStatus. All strings are
+ * UTF-8. Configurations are copied; changing options does not alter definitions.
+ * Release functions accept NULL. Only Cancel may run concurrently with execution.
+ * \since Version 1.32.
+ */
+struct OrtStatefulApi {
+  /** \brief Copy a typed loop configuration into mutable options.
+   * \param[in] config Sized configuration to copy.
+   * \param[out] out Owned options; release with ReleaseSessionLoopOptions.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(CreateSessionLoopOptions, _In_ const OrtStatefulLoopConfig* config,
+                  _Outptr_ OrtSessionLoopOptions** out);
+  /** \brief Atomically replace a loop options configuration.
+   * \param[in,out] options Mutable options.
+   * \param[in] config Configuration to copy.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(SessionLoopOptionsSetConfig, _Inout_ OrtSessionLoopOptions* options,
+                  _In_ const OrtStatefulLoopConfig* config);
+  /** \brief Release options; NULL is accepted.
+   * \param[in] input Options to release. \since Version 1.32.
+   */
+  ORT_CLASS_RELEASE(SessionLoopOptions);
+  /** \brief Create an immutable loop definition.
+   * \param[in] session Initialized caller-owned Session; must outlive its definitions/executions.
+   * \param[in] options Options captured by value.
+   * \param[out] out Owned definition; release with ReleaseSessionLoop.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(CreateSessionLoop, _In_ OrtSession* session, _In_ const OrtSessionLoopOptions* options,
+                  _Outptr_ OrtSessionLoop** out);
+  /** \brief Release a loop handle; captured definitions remain alive.
+   * \param[in] input Definition handle or NULL. \since Version 1.32.
+   */
+  ORT_CLASS_RELEASE(SessionLoop);
+  /** \brief Copy a typed chain configuration into mutable options.
+   * \param[in] config Sized configuration; loop definitions are retained, Sessions are not owned.
+   * \param[out] out Owned options; release with ReleaseSessionChainOptions.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(CreateSessionChainOptions, _In_ const OrtStatefulChainConfig* config,
+                  _Outptr_ OrtSessionChainOptions** out);
+  /** \brief Atomically replace chain options.
+   * \param[in,out] options Mutable options.
+   * \param[in] config Configuration to copy.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(SessionChainOptionsSetConfig, _Inout_ OrtSessionChainOptions* options,
+                  _In_ const OrtStatefulChainConfig* config);
+  /** \brief Release chain options.
+   * \param[in] input Options or NULL. \since Version 1.32.
+   */
+  ORT_CLASS_RELEASE(SessionChainOptions);
+  /** \brief Create an immutable chain.
+   * \param[in] options Captured configuration.
+   * \param[out] out Owned chain; release with ReleaseSessionChain.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(CreateSessionChain, _In_ const OrtSessionChainOptions* options, _Outptr_ OrtSessionChain** out);
+  /** \brief Release a chain handle.
+   * \param[in] input Chain or NULL. \since Version 1.32.
+   */
+  ORT_CLASS_RELEASE(SessionChain);
+  /** \brief Create a loop execution with validated initial inputs.
+   * \param[in] loop Definition retained by the execution.
+   * \param[in] inputs Copied feeds; caller buffers retain ordinary ORT lifetime requirements.
+   * \param[out] out Owned context; release with ReleaseStatefulExecution.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(CreateLoopExecution, _In_ const OrtSessionLoop* loop, _In_ const OrtStatefulInputs* inputs,
+                  _Outptr_ OrtStatefulExecution** out);
+  /** \brief Create a chain execution with validated initial inputs.
+   * \param[in] chain Definition retained by the execution.
+   * \param[in] inputs Copied named inputs/sequences/state.
+   * \param[out] out Owned context; release with ReleaseStatefulExecution.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(CreateChainExecution, _In_ const OrtSessionChain* chain, _In_ const OrtStatefulInputs* inputs,
+                  _Outptr_ OrtStatefulExecution** out);
+  /** \brief Release an execution; retained result snapshots remain valid.
+   * \param[in] input Context or NULL. \since Version 1.32.
+   */
+  ORT_CLASS_RELEASE(StatefulExecution);
+  /** \brief Advance at most one model invocation.
+   * \param[in,out] execution Sequential context.
+   * \param[out] out Owned result; release with ReleaseStatefulStepResult.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(StatefulExecutionStep, _Inout_ OrtStatefulExecution* execution,
+                  _Outptr_ OrtStatefulStepResult** out);
+  /** \brief Repeated Step until completion, returning only the final result.
+   * \param[in,out] execution Sequential context.
+   * \param[out] out Owned result; ordinary intermediate outputs require Step.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(StatefulExecutionRun, _Inout_ OrtStatefulExecution* execution,
+                  _Outptr_ OrtStatefulStepResult** out);
+  /** \brief Reset progress/cache/generation, reusing the original feeds.
+   * \param[in,out] execution Context to reset.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(StatefulExecutionReset, _Inout_ OrtStatefulExecution* execution);
+  /** \brief Request boundary cancellation; does not preempt a running kernel.
+   * \param[in,out] execution Context; this operation alone may be concurrent with Step/Run.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(StatefulExecutionCancel, _Inout_ OrtStatefulExecution* execution);
+  /** \brief Inspect failure/cancellation invalidation.
+   * \param[in] execution Context.
+   * \param[out] out Requires-Reset flag, 0 or 1.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(StatefulExecutionRequiresReset, _In_ const OrtStatefulExecution* execution, _Out_ int* out);
+  /** \brief Retain a read-only named-state snapshot without executing.
+   * \param[in] execution Healthy context; invalidated contexts must first be reset.
+   * \param[out] out Owned snapshot; query STATE_VALUES and release with ReleaseStatefulStepResult.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(StatefulExecutionGetState, _In_ const OrtStatefulExecution* execution,
+                  _Outptr_ OrtStatefulStepResult** out);
+  /** \brief Release a result and its borrowed names/values/reasons.
+   * \param[in] input Result or NULL. \since Version 1.32.
+   */
+  ORT_CLASS_RELEASE(StatefulStepResult);
+  /** \brief Inspect result metadata.
+   * \param[in] result Owned result.
+   * \param[in] info_size Caller buffer size, at least sizeof(OrtStatefulStepInfo).
+   * \param[out] out Metadata with borrowed pointers; excess buffer bytes are untouched.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(StatefulStepResultGetInfo, _In_ const OrtStatefulStepResult* result, size_t info_size,
+                  _Out_ OrtStatefulStepInfo* out);
+  /** \brief Borrow an immutable output collection.
+   * \param[in] result Parent result, which must outlive the returned array.
+   * \param[in] group Selected/component/state namespace.
+   * \param[out] values Borrowed array, NULL when empty; values must not be mutated/released.
+   * \param[out] count Array size.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(StatefulStepResultGetOutputs, _In_ const OrtStatefulStepResult* result, OrtStatefulOutputGroup group,
+                  _Outptr_result_buffer_maybenull_(*count) const OrtStatefulNamedValue** values, _Out_ size_t* count);
+  /** \brief Copy cache layouts into options.
+   * \param[in] config Sized CPU cache configuration.
+   * \param[out] out Owned options; release with ReleaseKVCacheOptions.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(CreateKVCacheOptions, _In_ const OrtStatefulKVCacheConfig* config, _Outptr_ OrtKVCacheOptions** out);
+  /** \brief Atomically replace cache layouts.
+   * \param[in,out] options Mutable options.
+   * \param[in] config Configuration to copy.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(KVCacheOptionsSetConfig, _Inout_ OrtKVCacheOptions* options,
+                  _In_ const OrtStatefulKVCacheConfig* config);
+  /** \brief Release cache options.
+   * \param[in] input Options or NULL. \since Version 1.32.
+   */
+  ORT_CLASS_RELEASE(KVCacheOptions);
+  /** \brief Initialize empty CPU caches.
+   * \param[in] options Captured layouts.
+   * \param[in] allocator CPU allocator; must outlive manager and every retained value/view using its callbacks.
+   * \param[out] out Owned manager; release with ReleaseKVCacheManager.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(CreateKVCacheManager, _In_ const OrtKVCacheOptions* options, _In_ OrtAllocator* allocator,
+                  _Outptr_ OrtKVCacheManager** out);
+  /** \brief Release a cache manager; views retain their allocation.
+   * \param[in] input Manager or NULL. \since Version 1.32.
+   */
+  ORT_CLASS_RELEASE(KVCacheManager);
+  /** \brief Retain one cache value and its length/capacity.
+   * \param[in] manager Cache manager.
+   * \param[in] name UTF-8 cache name.
+   * \param[out] out Owned view; release with ReleaseKVCacheView.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(KVCacheManagerGetView, _In_ const OrtKVCacheManager* manager, _In_z_ const char* name,
+                  _Outptr_ OrtKVCacheView** out);
+  /** \brief Release a retained cache view.
+   * \param[in] input View or NULL. \since Version 1.32.
+   */
+  ORT_CLASS_RELEASE(KVCacheView);
+  /** \brief Borrow a cache view's immutable value/metadata.
+   * \param[in] view Retained view.
+   * \param[out] value Borrowed const OrtValue; valid until view release, not independently released/mutated.
+   * \param[out] length Logical sequence length.
+   * \param[out] capacity Allocation sequence capacity.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(KVCacheViewGetInfo, _In_ const OrtKVCacheView* view, _Outptr_ const OrtValue** value,
+                  _Out_ int64_t* length, _Out_ int64_t* capacity);
+  /** \brief Share/copy a full cache or append a delta.
+   * \param[in,out] manager CPU manager.
+   * \param[in] name Cache name.
+   * \param[in] value CPU tensor; shared allocator-owned data must remain immutable.
+   * \param[in] kind Explicit update policy.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(KVCacheManagerUpdate, _Inout_ OrtKVCacheManager* manager, _In_z_ const char* name,
+                  _In_ const OrtValue* value, OrtKVCacheUpdateKind kind);
+  /** \brief Reserve at least a sequence capacity without invalidating retained views.
+   * \param[in,out] manager CPU manager.
+   * \param[in] name Cache name.
+   * \param[in] capacity Nonnegative requested capacity.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(KVCacheManagerReserve, _Inout_ OrtKVCacheManager* manager, _In_z_ const char* name, int64_t capacity);
+  /** \brief Clear logical cache content, retaining allowed allocation capacity.
+   * \param[in,out] manager CPU manager.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(KVCacheManagerReset, _Inout_ OrtKVCacheManager* manager);
+  /** \brief Inspect cumulative manager data-buffer counters.
+   * \param[in] manager CPU manager.
+   * \param[in] stats_size Caller buffer size, at least sizeof(OrtStatefulKVCacheStats).
+   * \param[out] out Counters; excludes Session snapshots/I/O/metadata allocations.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(KVCacheManagerGetStats, _In_ const OrtKVCacheManager* manager, size_t stats_size,
+                  _Out_ OrtStatefulKVCacheStats* out);
+  /** \brief Copy CPU greedy sampler options.
+   * \param[in] config Sized typed configuration.
+   * \param[out] out Owned options; release with ReleaseSamplerOptions.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(CreateSamplerOptions, _In_ const OrtStatefulSamplerConfig* config, _Outptr_ OrtSamplerOptions** out);
+  /** \brief Atomically replace sampler options.
+   * \param[in,out] options Mutable options.
+   * \param[in] config Configuration to copy.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(SamplerOptionsSetConfig, _Inout_ OrtSamplerOptions* options,
+                  _In_ const OrtStatefulSamplerConfig* config);
+  /** \brief Release sampler options.
+   * \param[in] input Options or NULL. \since Version 1.32.
+   */
+  ORT_CLASS_RELEASE(SamplerOptions);
+  /** \brief Greedy argmax on CPU logits; NaNs/device logits reject, ties choose lowest ID.
+   * \param[in] options Greedy configuration.
+   * \param[in] logits Float32/float16 [1,V] or [1,S,V] CPU tensor.
+   * \param[out] token Nonnegative int64 token ID.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(SamplerSample, _In_ const OrtSamplerOptions* options, _In_ const OrtValue* logits,
+                  _Out_ int64_t* token);
+};
 
 /*
  * This is the old way to add the MIGraphX provider to the session, please use

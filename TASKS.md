@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M05 complete.
+**Status:** Approved; M01-M05 complete; M06a implementation/validation in progress.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -17,7 +17,7 @@ M05's requested generation-folder layout follow-up is complete in the same PR.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M05 are complete; M06-M24 are pending. Check tasks when their
+M01-M05 are complete; M06a is in progress; M06b and M07-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -97,7 +97,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M05 are **complete**; M06-M24 are **pending**.
+M01-M05 are **complete**; M06a is **in progress**; M06b and M07-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -716,10 +716,13 @@ explicit CPU logits sampling, not a native CUDA greedy implementation.
 ### M06 - Public C API and C++ wrappers
 
 **Outcome:** Complete programmatic access to the implemented core primitives.
+**Status:** Appendix F and the M06a/M06b split approved 2026-10-16.
+M06a is in progress on `state/m06a-stateful-c-api`, based on M05 `17e432b025`.
+M06b is pending; M06 remains incomplete until both sub-PRs are verified.
 
-- [ ] Add append-only public API entries and opaque resources consistent with
+- [x] Add append-only public API entries and opaque resources consistent with
   existing tables. Do not bump `ORT_API_VERSION`.
-- [ ] Expose configuration, bindings, exit conditions, contexts, loop/chain
+- [x] Expose configuration, bindings, exit conditions, contexts, loop/chain
   execution, cache/sampler integration, outputs, reset, cancellation, and release.
 - [ ] Add RAII C++ wrappers and Doxygen ownership/lifetime/`\since` documentation.
   Ensure failed calls preserve out-parameters and contain exceptions.
@@ -731,6 +734,134 @@ resource cleanup, and compatibility with ordinary Session/API use.
 unsupported native-feature reporting until the corresponding milestone.
 **Completion gate:** C/C++ consumers compile; ABI table checks and shared rules
 pass; 100% new API/wrapper-line coverage, including inline code, is measured.
+
+**Approved reviewable sub-PRs:**
+
+1. **M06a - C ABI and typed configuration.** Add the append-only accessor/table,
+   typed configuration/options, loop/chain execution, result/state inspection,
+   standalone cache and sampler APIs, release functions, Doxygen and C tests.
+   CPU tests cover M02-M05 via C, invalid arguments, exceptions, lifetimes,
+   out-parameters and ABI layout. CUDA tests cover actual Session execution and
+   explicit unsupported device-native cache/sampler behavior. Compile a pure-C
+   consumer and measure 100% new executable C-API/native-glue lines.
+2. **M06b - C++ RAII and lifetime-safe views.** Stack on M06a; add conventional
+   C++ wrappers, owning immutable-result/view lifetimes, examples and tests.
+   CPU/CUDA behavior must match C; test move/release ordering, error mapping and
+   retained values after result/execution release. Measure 100% new C++ wrapper
+   lines in addition to cumulative C-API coverage.
+
+M06 is complete only after both sub-PRs satisfy their documented gates.
+SPEC Appendix F contains the approved concrete public-interface contracts.
+The user approved the split and contracts without changes before implementation.
+
+**M06a validation checklist:**
+
+- [x] Initial instrumented CPU build and nine public C-API tests passed.
+- [x] Validate the final CPU build, existing regressions and pure-C consumer.
+- [x] Measure 100% new executable API/native-glue lines.
+- [x] Validate CUDA execution/provider assignment and memory safety.
+- [ ] Record final evidence, complete style checks and publish the stacked PR.
+
+**M06a execution evidence:**
+
+- Appended one runtime-owned `GetStatefulApi` accessor and a dedicated 38-entry
+  table; existing entries/signatures/version boundaries are unchanged.
+  `ORT_API_VERSION` remains 32; public members document Version 1.32.
+- Added opaque owning resources, copied typed configurations, transactional
+  SetConfig, immutable definitions, retained execution inputs/results/cache
+  views, state inspection, cancellation/reset, cache operations and CPU greedy.
+- CPU shared-library build passed: **31/31 API/baseline tests** (10 C-API cases
+  plus 21 stateless/package regressions) and **55/55 native cases**, zero skips.
+- CUDA 13.1/A100 build passed: **41/41 API/baseline tests** (15 C-API cases,
+  including five CUDA parameterizations, plus 26 regressions) and **97/97 native
+  cases**, zero skips. CUDA fixture Sessions assert CUDA node assignment and
+  disable CPU fallback.
+- A checked-in `.c` consumer compiles as C in both normal test targets and
+  exercises sampling, cache ownership and retained-view data after manager and
+  original tensor release. Independent GCC C11 compilation/link/run also passed
+  with `-Wall -Wextra -Werror` against the current shared library.
+- New production/glue coverage: **562/562 unique executable lines**, comprising
+  546 API lines and 16 native state-inspection lines. Cumulative affected
+  production/header coverage: **1857/1857 unique executable locations**, 100%.
+  Fresh profiles combine the API/shared-library and native test runs. Detailed
+  diagnostics identify 131 zero-hash unused-map entries; none names a new API
+  function or the changed state-inspection helper. This is executable-line
+  coverage, not 100% branch coverage or qualification of unbuilt configurations.
+- Tests cover copied configuration/input-handle lifetimes, all four Session/
+  Loop chain combinations, finite sequences/state, explicit exits/native
+  generation, zero budgets, stable results/views across reset/release, NULL/
+  size/count/enum errors, atomic replacement, exception containment, preserved
+  out-parameters and append-only accessor layout.
+- Compute Sanitizer memcheck: **5/5 CUDA C-API cases passed, zero errors**.
+  Caches and sampling remain CPU implementations with explicit device rejection;
+  native CUDA implementations remain M08/M09. Minimal/training builds are not
+  qualified here. C++ RAII wrappers remain the separately approved M06b.
+- C/C++ formatting, 120-column checks and source whitespace checks passed.
+
+Validation commands (from the repository root unless a `cd` is shown):
+
+```bash
+source .venv/bin/activate
+LLVM_PROFILE_FILE=/dev/null cmake -S cmake -B build/state-cpu/RelWithDebInfo
+LLVM_PROFILE_FILE=/dev/null cmake --build build/state-cpu/RelWithDebInfo \
+  --parallel 8 --target onnxruntime_autoep_test onnxruntime_session_loop_test
+cd build/state-cpu/RelWithDebInfo
+mkdir -p coverage/m06a/complete
+LLVM_PROFILE_FILE="$PWD/coverage/m06a/complete/%m-%p.profraw" \
+  ./onnxruntime_autoep_test \
+  --gtest_filter='*StatefulApi*:*StatefulExecutionBaselineTest.*:ModelPackageApiTest.*' \
+  --gtest_output=xml:coverage/m06a/complete/api-tests.xml
+LLVM_PROFILE_FILE="$PWD/coverage/m06a/complete/%m-%p.profraw" \
+  ./onnxruntime_session_loop_test \
+  --gtest_output=xml:coverage/m06a/complete/native-tests.xml
+llvm-profdata merge -sparse coverage/m06a/complete/*.profraw \
+  -o coverage/m06a/complete/m06a.profdata
+llvm-cov export ./onnxruntime_autoep_test -object ./libonnxruntime.so \
+  -object ./onnxruntime_session_loop_test \
+  -instr-profile=coverage/m06a/complete/m06a.profdata -format=lcov \
+  ../../../onnxruntime/core/session/stateful_api.cc \
+  ../../../onnxruntime/core/session/onnxruntime_c_api.cc \
+  ../../../onnxruntime/core/session/session_loop.cc \
+  ../../../onnxruntime/core/session/session_loop.h \
+  ../../../onnxruntime/core/session/session_chain.cc \
+  ../../../onnxruntime/core/session/session_chain.h \
+  ../../../onnxruntime/core/session/kv_cache_manager.cc \
+  ../../../onnxruntime/core/session/kv_cache_manager.h \
+  ../../../onnxruntime/core/generate/token_generation.cc \
+  ../../../onnxruntime/core/generate/token_generation.h \
+  ../../../onnxruntime/core/framework/stateful_execution_utils.h \
+  > coverage/m06a/complete/cumulative.lcov
+printf 'int StatefulApiCConsumerTest(void);\nint main(void) { return StatefulApiCConsumerTest(); }\n' |
+  gcc -std=c11 -Wall -Wextra -Werror -I../../../include/onnxruntime -x c - \
+  ../../../onnxruntime/test/autoep/stateful_api_c_test.c -L. -Wl,-rpath,"$PWD" \
+  -lonnxruntime -o coverage/m06a/complete/c-smoke
+LLVM_PROFILE_FILE=/dev/null ./coverage/m06a/complete/c-smoke
+```
+
+All commands above passed. Coverage export emitted the inspected warnings noted
+above; deduplicated LCOV locations establish the exact new-line denominator.
+
+```bash
+source .venv/bin/activate
+export CUDA_HOME=/datadisks/disk4/bmeswani/cuda/cuda13.1
+export CUDNN_HOME="$CUDA_HOME/targets/x86_64-linux"
+export PATH="$CUDA_HOME/bin:$PATH"
+export LD_LIBRARY_PATH="$CUDNN_HOME/lib:${LD_LIBRARY_PATH:-}"
+cmake -S cmake -B build/state-cuda-baseline-13.1/RelWithDebInfo
+cmake --build build/state-cuda-baseline-13.1/RelWithDebInfo \
+  --parallel 8 --target onnxruntime_autoep_test onnxruntime_session_loop_test
+cd build/state-cuda-baseline-13.1/RelWithDebInfo
+mkdir -p coverage/m06a/complete
+./onnxruntime_autoep_test \
+  --gtest_filter='*StatefulApi*:*StatefulExecutionBaselineTest.*:ModelPackageApiTest.*' \
+  --gtest_output=xml:coverage/m06a/complete/api-tests.xml
+./onnxruntime_session_loop_test \
+  --gtest_output=xml:coverage/m06a/complete/native-tests.xml
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter='Cuda/StatefulApiProviderTest.*'
+```
+
+All CUDA commands above passed, with the nonzero counts/zero errors stated above.
 
 ### M07 - Built-in and plugin EP customization
 

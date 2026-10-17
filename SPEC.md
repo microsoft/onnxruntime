@@ -968,3 +968,122 @@ M05 does not add public ABI or EP/plugin overrides. CUDA Session integration use
 explicit host staging and this CPU sampler; native CUDA sampling remains M09.
 The measured line-coverage gate targets the Linux inference configuration, not
 unbuilt training-only strided-tensor paths.
+
+## Appendix F. Proposed M06 public C/C++ interface
+
+**Status:** Approved by the user on 2026-10-16; begin M06a, then review M06b.
+
+This contract preserves the approved runtime behavior and ownership model.
+It makes concrete the configuration, input and observation surfaces needed to
+wrap M02-M05. M06 has two independently tested/reviewable sub-PRs:
+the complete C ABI first, then C++ RAII wrappers. Neither alone completes M06.
+
+### F.1 ABI organization and compatibility
+
+- Append one `OrtApi::GetStatefulApi()` accessor and its implementation pointer;
+  never reorder/change existing entries or increment `ORT_API_VERSION`.
+- Define a dedicated append-only `OrtStatefulApi` table using existing ORT
+  calling/status/release conventions. The table is runtime-owned, not released.
+- Current `ORT_API_VERSION` is 32, so new API members are documented with
+  `\since Version 1.32.` Runtime/header version negotiation remains via
+  `OrtApiBase::GetApi(ORT_API_VERSION)` before accessing the appended member.
+- Follow existing companion-API behavior for unsupported builds: explicitly
+  document a NULL table/unsupported status and a corresponding C++ exception,
+  not successful empty results. Linux inference is the initial validation target.
+
+### F.2 Typed configuration
+
+Use C-compatible enums and size-tagged POD descriptions, not JSON:
+
+- Loop configuration: finite input names, feedback bindings, selected outputs,
+  explicit exits/limits/EOS IDs, optional model-token output/nonempty input,
+  managed cache bindings and optional native generation policy/ports.
+- Chain configuration: named ordered Session/SessionLoop components, typed
+  external/sequence/component-output/state sources, state writers, cache bindings,
+  and selected model/generated-token output ports.
+- Cache configuration: names, ONNX element types, dimensions, sequence axes and
+  initial capacities; typed Share/Copy/Append update modes.
+- Sampler configuration: Greedy algorithm and optional logits position.
+- Input configuration: named OrtValues, finite loop batches, named chain
+  sequences and initial ordinary state. Reject fields belonging to the wrong
+  execution kind rather than ignoring them.
+
+Copy all configuration strings/arrays into opaque mutable options. A typed
+SetConfig operation replaces an options configuration atomically; definitions
+capture an immutable snapshot. Validate pointer/count pairs, names/enums and
+size tags before dereferencing/copying. Size tags allow future append-only
+configuration evolution without reading beyond caller-provided structures.
+Keep the original last-field endpoints as the minimum accepted V1 sizes.
+Metadata getters populate only the known prefix and leave excess bytes untouched.
+
+Intended resources are the approved LoopOptions, Loop, ChainOptions, Chain,
+StatefulExecution, StatefulStepResult, KVCacheOptions and SamplerOptions handles,
+plus KVCacheManager and retained KVCacheView handles for independent cache use.
+Every resource has its matching release function; release accepts NULL.
+
+### F.3 Construction and execution
+
+Retain the Section A.4 names, with the approved signature refinement:
+
+```c
+OrtStatus* CreateLoopExecution(
+    const OrtSessionLoop* loop, const OrtStatefulInputs* inputs,
+    OrtStatefulExecution** out);
+OrtStatus* CreateChainExecution(
+    const OrtSessionChain* chain, const OrtStatefulInputs* inputs,
+    OrtStatefulExecution** out);
+```
+
+Providing typed inputs at creation matches the native implementations and
+prevents partially configured executions. Reset reuses the original inputs,
+as already implemented/approved; constructing with a different prompt requires
+a new execution. Configurations and OrtValue handles are retained/copied;
+caller-backed tensor memory still follows ordinary ORT lifetime requirements.
+
+Expose Step, Run, Reset, Cancel, requires-Reset inspection, and retained-state
+inspection. Step/Run return an owned result. Failed calls preserve every supplied
+out-parameter. Use API_IMPL_BEGIN/API_IMPL_END at status-returning boundaries
+so internal exceptions become OrtStatus and never cross the C ABI.
+
+### F.4 Results and ownership
+
+- Sessions remain caller-owned and must outlive referencing definitions and
+  executions, exactly as in the approved native contract.
+- Definitions retain component definitions; executions retain their definition.
+  Releasing options/definition handles does not invalidate a captured execution.
+- An owned step result exposes execution kind, progress/counters, component
+  identity, completion/executed flags, exit reasons and optional emitted token.
+- Output collections distinguish selected outputs, current component outputs
+  and explicit state snapshots. Names and const OrtValue pointers are borrowed
+  from the owning result and remain valid until that result is released.
+- State inspection must retain/snapshot its data, not expose a mutable container
+  whose values silently change on subsequent steps/reset.
+- Standalone loop state uses feedback input names and managed cache names;
+  collisions report an error rather than silently omitting a value. Its
+  component-output collection mirrors selected outputs. Chain snapshots expose
+  ordinary named state and managed caches; component outputs describe the
+  current component. Invalidated executions require reset before state inspection.
+- Cache views own the retained value plus logical length/capacity metadata.
+  Their const value remains valid across manager updates/reset/release.
+- C++ read-only value views retain a shared owner of the result/cache-view
+  handle. They therefore cannot dangle merely because the original C++ result
+  wrapper was moved/destroyed. No deep data copy is required just to retain a
+  read-only view.
+- Follow existing C++ move-only RAII patterns for mutable resources. Document
+  the necessary shared ownership used by immutable result/value views.
+
+### F.5 Independent cache and sampler operations
+
+Expose cache create/get-view/update/reserve/reset/statistics using the validated
+M04 CPU implementation and an explicit OrtAllocator. Document that a caller's
+custom allocator must outlive any values/views still using its callbacks.
+Reject unsupported device configurations; do not imply M08 functionality.
+
+Expose standalone greedy sampling through SamplerOptions and the M05 CPU
+sampler. Device logits remain unsupported; no M09 fallback is invented.
+Package construction and EP/plugin override registration remain M11/M07 work.
+
+Before publication, fully document every public member's arguments, output
+ownership, failure behavior and release requirements. C-only compilation,
+public C/C++ parity, ABI table offsets and measured new-line coverage are
+mandatory gates for the two approved sub-PRs.

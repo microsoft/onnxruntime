@@ -381,3 +381,39 @@ Compressed project memory. This is not the execution plan.
 - Layout refactor complete in commit `417832d919`, pushed to the existing M05
   branch. PR #15 retains its template and now documents the new layout and
   post-refactor validation. No behavior, namespace or library-target changes.
+
+## M06
+
+- 2026-10-16: User authorized M06. Created `state/m06-public-api` from
+  updated M05 head `17e432b025`.
+- Read public C API instructions and companion C/C++ patterns. Current
+  ORT_API_VERSION=32: append accessor/table entries, no version bump; new
+  public members need Doxygen `\since Version 1.32.`.
+- Proposed contracts in SPEC Appendix F await user approval: size-tagged typed
+  configuration copied into opaque options, typed inputs at execution creation,
+  caller-owned Sessions, retained const result/cache views and C++ parent-owner
+  lifetimes, standalone cache/sampler operations.
+- Proposed M06a C ABI + M06b C++ RAII sub-PRs in TASKS for reviewability.
+  Macro M06 remains incomplete until both pass CPU/CUDA and 100% new-line gates.
+- No runtime/public-header edits, builds, tests, commits or PRs for M06 yet.
+- User approved Appendix F and M06a/M06b split without changes; authorized M06a.
+  Renamed the work branch `state/m06a-stateful-c-api`; M06b remains pending.
+- M06a now implements the append-only accessor and 38-entry C table, owning
+  options/definitions/executions/results/cache/sampler handles and typed records.
+  All nine initial public C-API CPU tests passed. Final CPU/CUDA rebuilds,
+  pure-C runtime smoke, measured line coverage and publication remain pending.
+- Size checks freeze the original last-field endpoints; metadata copies preserve
+  oversized caller-buffer tails. Future appended fields cannot raise V1 minimums.
+- Standalone loop state snapshots expose feedback and managed caches; retained
+  views survive reset. Failed execution snapshots are rejected until reset.
+- Final M06a CPU: 31/31 API/baseline + 55/55 native tests; CUDA: 41/41 API/baseline
+  + 97/97 native tests. Zero skips. CUDA API memcheck 5/5, zero errors; actual
+  CUDA node assignments asserted. Caches/sampling remain CPU, not M08/M09.
+- Pure-C consumer is now checked in and compiled as a C object in the autoep
+  target; standalone GCC C11 `-Wall -Wextra -Werror` link/runtime smoke passed.
+- Final fresh combined coverage: 562/562 new unique executable lines (546 API,
+  16 native GetState); cumulative production/inline headers 1857/1857. The 131
+  zero-hash profile-map warnings do not name any new/changed function.
+- Full CPU/CUDA reconfiguration was necessary for the new test files; source
+  globs do not use CONFIGURE_DEPENDS. Final logs use `m06a-*-complete-*` names.
+  C++ RAII is deliberately still pending M06b; macro M06 is not complete.
