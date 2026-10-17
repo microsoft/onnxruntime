@@ -109,6 +109,60 @@ TEST(MeanVarianceNormalizationTest, AllAxes) {
   TestMeanVarianceNormalizationOverAllAxes({2, 2, 2, 2, 2});
 }
 
+TEST(MeanVarianceNormalizationTest, ConstantInput) {
+  for (int opset : {9, 13}) {
+    for (float value : {0.0f, 5.0f}) {
+      SCOPED_TRACE(MakeString("opset: ", opset, ", value: ", value));
+
+      OpTester test("MeanVarianceNormalization", opset);
+      test.AddInput<float>("input", {2, 2, 1, 1}, {value, value, value, value});
+      test.AddOutput<float>("output", {2, 2, 1, 1}, {0.0f, 0.0f, 0.0f, 0.0f});
+      test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+    }
+  }
+}
+
+TEST(MeanVarianceNormalizationTest, MixedConstantAndVariableGroups) {
+  for (int opset : {9, 13}) {
+    // Axis 0 requires transposing, while axis 1 uses the input directly.
+    for (int64_t axis : {0, 1}) {
+      SCOPED_TRACE(MakeString("opset: ", opset, ", axis: ", axis));
+
+      const auto X = axis == 0 ? std::array{3.0f, -1.0f, 3.0f, 1.0f}
+                               : std::array{3.0f, 3.0f, -1.0f, 1.0f};
+      const auto Y = axis == 0 ? std::array{0.0f, -1.0f, 0.0f, 1.0f}
+                               : std::array{0.0f, 0.0f, -1.0f, 1.0f};
+
+      OpTester test("MeanVarianceNormalization", opset);
+      test.AddAttribute("axes", std::vector<int64_t>{axis});
+      test.AddInput<float>("input", {2, 2}, X.data(), X.size());
+      test.AddOutput<float>("output", {2, 2}, Y.data(), Y.size());
+      test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+    }
+  }
+}
+
+TEST(MeanVarianceNormalizationTest, EpsilonAddedToStandardDeviation) {
+  for (int opset : {9, 13}) {
+    for (int64_t axis : {0, 1}) {
+      SCOPED_TRACE(MakeString("opset: ", opset, ", axis: ", axis));
+
+      // Zero-mean groups have standard deviations 1e-9 and 3e-9. Adding
+      // 1e-9 after the square root gives magnitudes 1/2 and 3/4.
+      const auto X = axis == 0 ? std::array{-1e-9f, -3e-9f, 1e-9f, 3e-9f}
+                               : std::array{-1e-9f, 1e-9f, -3e-9f, 3e-9f};
+      const auto Y = axis == 0 ? std::array{-0.5f, -0.75f, 0.5f, 0.75f}
+                               : std::array{-0.5f, 0.5f, -0.75f, 0.75f};
+
+      OpTester test("MeanVarianceNormalization", opset);
+      test.AddAttribute("axes", std::vector<int64_t>{axis});
+      test.AddInput<float>("input", {2, 2}, X.data(), X.size());
+      test.AddOutput<float>("output", {2, 2}, Y.data(), Y.size());
+      test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+    }
+  }
+}
+
 TEST(MeanVarianceNormalizationTest, AxesSubsets5D) {
   // test data was generated with:
   //   python onnxruntime/test/providers/cpu/tensor/gen_mvn_test_data.py --shape 2 2 2 2 2 --axes <axes values>
