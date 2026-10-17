@@ -10,9 +10,9 @@
 
 #include <gtest/gtest.h>
 
-#include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/platform/env_var_utils.h"
 
 #if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
