@@ -883,6 +883,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                 fc2_expert_weight_bits_,
                                 fc3_expert_weight_bits_},
       is_fused_swiglu, block_size_));
+  if (router_weights != nullptr && router_weights->Shape() != router_probs->Shape()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'router_weights' is expected to have shape ",
+                           router_probs->Shape(), ", got ", router_weights->Shape());
+  }
   if (is_block_fp8) {
     const int64_t fc1_n = is_fused_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
     ORT_RETURN_IF_NOT(fc1_shape == TensorShape({moe_params.num_experts, fc1_n, moe_params.hidden_size}) &&
@@ -1528,15 +1533,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       if (is_fp16) {
         LaunchApplyRouterWeights(reinterpret_cast<const half*>(rw), expert_indices, expert_scales,
                                  static_cast<int>(tile_rows), static_cast<int>(moe_params.num_experts),
-                                 static_cast<int>(k_), stream);
+                                 static_cast<int>(k_), normalize_routing_weights_, stream);
       } else if (is_bf16) {
         LaunchApplyRouterWeights(reinterpret_cast<const __nv_bfloat16*>(rw), expert_indices, expert_scales,
                                  static_cast<int>(tile_rows), static_cast<int>(moe_params.num_experts),
-                                 static_cast<int>(k_), stream);
+                                 static_cast<int>(k_), normalize_routing_weights_, stream);
       } else {
         LaunchApplyRouterWeights(reinterpret_cast<const float*>(rw), expert_indices, expert_scales,
                                  static_cast<int>(tile_rows), static_cast<int>(moe_params.num_experts),
-                                 static_cast<int>(k_), stream);
+                                 static_cast<int>(k_), normalize_routing_weights_, stream);
       }
     }
     return fused_routing;

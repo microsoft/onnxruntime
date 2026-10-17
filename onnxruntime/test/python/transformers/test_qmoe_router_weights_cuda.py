@@ -11,31 +11,38 @@ evaluation of the dequantized int4 block-wise experts. T = 1 with k = 9 exercise
 import os
 import unittest
 
-import onnx
 import torch
 from onnx import TensorProto, helper
 
 import onnxruntime as ort
 
 BLOCK = 32
-HIDDEN = 256
-INTER = 256
+HIDDEN = 512
+INTER = 512
 
 
 _plugin_state = {"registered": False}
 
 
-def _session(model_path):
+def _session(model_bytes):
     options = ort.SessionOptions()
     plugin = os.environ.get("ORT_TEST_CUDA_PLUGIN_EP_LIBRARY")
     if plugin:  # run against a plugin-EP build
         if not _plugin_state["registered"]:
             ort.register_execution_provider_library("CUDAExecutionProvider", plugin)
             _plugin_state["registered"] = True
-        devices = [d for d in ort.get_ep_devices() if d.ep_name == "CUDAExecutionProvider"]
+        devices = [
+            d
+            for d in ort.get_ep_devices()
+            if d.ep_name == "CUDAExecutionProvider" and d.ep_options.get("device_id") == "0"
+        ]
+        if not devices:
+            devices = [d for d in ort.get_ep_devices() if d.ep_name == "CUDAExecutionProvider"]
         options.add_provider_for_devices(devices[:1], {})
-        return ort.InferenceSession(model_path, sess_options=options)
-    return ort.InferenceSession(model_path, sess_options=options, providers=["CUDAExecutionProvider"])
+        return ort.InferenceSession(model_bytes, sess_options=options)
+    return ort.InferenceSession(
+        model_bytes, sess_options=options, providers=[("CUDAExecutionProvider", {"device_id": 0})]
+    )
 
 
 def _quantize_int4_blockwise(weight):
@@ -64,7 +71,18 @@ def _tensor(name, t):
     "CUDA EP not available",
 )
 class TestQMoERouterWeightsCuda(unittest.TestCase):
-    def _run(self, dtype, activation, tokens, num_experts, top_k, use_router_weights):
+    def _run(
+        self,
+        dtype,
+        activation,
+        tokens,
+        num_experts,
+        top_k,
+        use_router_weights,
+        normalize_routing_weights=0,
+        zero_router_weights=False,
+        router_weights_experts=None,
+    ):
         torch.manual_seed(0)
         ort_type = TensorProto.BFLOAT16 if dtype == torch.bfloat16 else TensorProto.FLOAT16
         w1, w2 = torch.randn(num_experts, INTER, HIDDEN) * 0.05, torch.randn(num_experts, HIDDEN, INTER) * 0.05
@@ -75,7 +93,12 @@ class TestQMoERouterWeightsCuda(unittest.TestCase):
         logits = torch.randn(tokens, num_experts)
         selected = torch.topk(logits, top_k)[1]
         probs = torch.zeros(tokens, num_experts).scatter(1, selected, 1.0).to(dtype)  # selection only
-        mix = torch.rand(tokens, num_experts).to(dtype)  # aggregation weights of every expert
+        rw_experts = num_experts if router_weights_experts is None else router_weights_experts
+        if zero_router_weights:
+            mix = torch.zeros(tokens, rw_experts, dtype=dtype)
+        else:
+            # Keep unnormalized top-k sums away from 1.0 so normalize_routing_weights=1 is distinguishable.
+            mix = (torch.rand(tokens, rw_experts) * 0.25 + 0.05).to(dtype)
 
         inputs = ["x", "probs", "w1", "s1", "", "w2", "s2", "", "", "", "", "", "", ""]
         graph_inputs = [
@@ -84,7 +107,7 @@ class TestQMoERouterWeightsCuda(unittest.TestCase):
         ]
         if use_router_weights:
             inputs.append("mix")
-            graph_inputs.append(helper.make_tensor_value_info("mix", ort_type, [tokens, num_experts]))
+            graph_inputs.append(helper.make_tensor_value_info("mix", ort_type, [tokens, rw_experts]))
         node = helper.make_node(
             "QMoE",
             inputs,
@@ -92,7 +115,7 @@ class TestQMoERouterWeightsCuda(unittest.TestCase):
             domain="com.microsoft",
             k=top_k,
             activation_type=activation,
-            normalize_routing_weights=0,
+            normalize_routing_weights=normalize_routing_weights,
             expert_weight_bits=4,
             block_size=BLOCK,
             weights_prepacked=0,
@@ -113,34 +136,48 @@ class TestQMoERouterWeightsCuda(unittest.TestCase):
             graph, opset_imports=[helper.make_opsetid("", 21), helper.make_opsetid("com.microsoft", 1)]
         )
         model.ir_version = 10
-        path = os.path.join(os.environ.get("TMPDIR", "/tmp"), f"qmoe_rw_{os.getpid()}.onnx")
-        onnx.save(model, path)
-        try:
-            session = _session(path)
-        finally:
-            os.remove(path)
+        session = _session(model.SerializeToString())
         binding = session.io_binding()
         for name, t in (("x", x), ("probs", probs)) + ((("mix", mix),) if use_router_weights else ()):
             binding.bind_ortvalue_input(name, ort.OrtValue.from_dlpack(t.cuda().contiguous().__dlpack__()))
         binding.bind_output("y", "cuda", 0)
         session.run_with_iobinding(binding)
         y = torch.from_dlpack(binding.get_outputs()[0]).float().cpu()
+        if zero_router_weights:
+            return y.abs().max().item()
 
         act = {"relu": torch.relu, "relu2": lambda h: torch.relu(h) ** 2, "silu": torch.nn.functional.silu}[activation]
         # without router_weights the op softmaxes router_probs and uses the result for both selection and aggregation
         weights = mix.float() if use_router_weights else torch.softmax(probs.float(), dim=-1)
         ref = torch.zeros(tokens, HIDDEN)
         for t in range(tokens):
-            for e in selected[t].tolist():
+            sel = selected[t].tolist()
+            w = weights[t, sel].float()
+            if normalize_routing_weights:
+                w_sum = w.sum()
+                w = w / w_sum if w_sum != 0.0 else torch.zeros_like(w)
+            for j, e in enumerate(sel):
                 h = act(x[t].float() @ d1[e].to(dtype).float().T).to(dtype).float()
-                ref[t] += (h @ d2[e].to(dtype).float().T) * weights[t, e].float()
+                ref[t] += (h @ d2[e].to(dtype).float().T) * w[j]
         return ((y - ref).norm() / ref.norm()).item()
 
     def test_router_weights_aggregation(self):
         for dtype in (torch.float16, torch.bfloat16):
             for tokens in (1, 5):
-                with self.subTest(dtype=dtype, tokens=tokens):
-                    self.assertLess(self._run(dtype, "relu", tokens, 16, 4, True), 0.03)
+                for normalize in (0, 1):
+                    with self.subTest(dtype=dtype, tokens=tokens, normalize=normalize):
+                        self.assertLess(
+                            self._run(dtype, "relu", tokens, 16, 4, True, normalize_routing_weights=normalize),
+                            0.03,
+                        )
+        self.assertEqual(
+            self._run(torch.float16, "relu", 2, 16, 4, True, normalize_routing_weights=1, zero_router_weights=True),
+            0.0,
+        )
+
+    def test_router_weights_shape_mismatch_rejected(self):
+        with self.assertRaisesRegex(Exception, "router_weights"):
+            self._run(torch.float16, "relu", 1, 16, 4, True, router_weights_experts=1)
 
     def test_relu2_top9_decode(self):
         for tokens in (1, 3):
