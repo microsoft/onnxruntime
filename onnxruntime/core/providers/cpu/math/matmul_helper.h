@@ -40,6 +40,17 @@ class MatMulComputeHelper {
     size_t right_num_dims = orig_right_shape.NumDimensions();
     ORT_RETURN_IF_NOT(left_num_dims >= 1 && right_num_dims >= 1, "left_num_dims and right_num_dims must be >= 1");
 
+    if (transa && left_num_dims >= 2 && right_num_dims == 1 && !trans_batch_a && !trans_batch_b) {
+      // The rank-1 right path treats M as a batch of contiguous rows, but
+      // transposed A stores logical rows as strided columns. Use the matrix path.
+      const TensorShape right_matrix_shape = transb ? TensorShape({1, orig_right_shape[0]})
+                                                    : TensorShape({orig_right_shape[0], 1});
+      ORT_RETURN_IF_ERROR(Compute(orig_left_shape, right_matrix_shape, transa, transb,
+                                  trans_batch_a, trans_batch_b, fill_offsets));
+      output_shape_ = output_shape_.Slice(0, output_shape_.NumDimensions() - 1);
+      return Status::OK();
+    }
+
     // Special cases below for right_shape being 2D and left_shape > 2D by flattening left_shape to 2D
     // Note that padding 1s in front of the right_shape can be flattened too
     // A: [M1, M2, ... K], B: [K, N]
