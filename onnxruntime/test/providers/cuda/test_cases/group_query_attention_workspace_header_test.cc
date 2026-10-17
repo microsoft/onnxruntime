@@ -61,6 +61,8 @@ static_assert(ClassifyGQAExecutionPhase(false, 2) ==
 static_assert(IsGQAPhaseReachableForSequenceBound(GQAExecutionPhase::Prefill, 1));
 static_assert(IsGQAPhaseReachableForSequenceBound(GQAExecutionPhase::Decode, 1));
 static_assert(!IsGQAPhaseReachableForSequenceBound(GQAExecutionPhase::ChunkedPrefill, 1));
+static_assert(IsGQAPhaseReachableForSequenceBound(GQAExecutionPhase::Prefill, 2));
+static_assert(IsGQAPhaseReachableForSequenceBound(GQAExecutionPhase::Decode, 2));
 static_assert(IsGQAPhaseReachableForSequenceBound(GQAExecutionPhase::ChunkedPrefill, 2));
 static_assert(!IsGQAPhaseReachableForSequenceBound(GQAExecutionPhase::Prefill, 0));
 static_assert(!IsGQAPhaseReachableForSequenceBound(GQAExecutionPhase::Decode, -1));

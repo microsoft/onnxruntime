@@ -530,7 +530,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, QueryBoundAdmitsEveryRuntimeClass
       for (auto phase : {GQAExecutionPhase::Prefill, GQAExecutionPhase::Decode,
                          GQAExecutionPhase::ChunkedPrefill}) {
         EXPECT_EQ(estimate->committed_backends.Get(phase) != GQAReachableBackend::None,
-                  contrib::cuda::IsGQAPhaseReachableForSequenceBound(phase, sequence));
+                  phase != GQAExecutionPhase::ChunkedPrefill || sequence > 1);
       }
     }
   }

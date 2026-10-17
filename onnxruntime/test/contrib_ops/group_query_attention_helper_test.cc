@@ -61,7 +61,10 @@ TEST(GroupQueryAttentionHelperTest, PromptClassificationAndAdmissionRespectTotal
       EXPECT_EQ(parameters.is_subsequent_prompt, !device_total && cpu_chunk);
       const auto phase = contrib::cuda::ClassifyGQAExecutionPhase(
           parameters.is_first_prompt, parameters.sequence_length);
-      EXPECT_TRUE(contrib::cuda::IsGQAPhaseReachableForSequenceBound(phase, test_case.sequence));
+      for (int64_t sequence_bound : {int64_t{test_case.sequence}, int64_t{8}}) {
+        EXPECT_TRUE(contrib::cuda::IsGQAPhaseReachableForSequenceBound(phase, sequence_bound))
+            << "sequence bound=" << sequence_bound;
+      }
       if (device_total) {
         EXPECT_EQ(phase, test_case.sequence == 1 ? contrib::cuda::GQAExecutionPhase::Decode
                                                  : contrib::cuda::GQAExecutionPhase::ChunkedPrefill);
