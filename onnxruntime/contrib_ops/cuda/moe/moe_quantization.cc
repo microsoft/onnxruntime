@@ -2652,7 +2652,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           if (!use_prefill_dma) {
             static_cast<void>(TryGetQMoEResidentLayerSlabView(
                 dev_id, parsed_layer, narrow<int>(moe_params.num_experts),
-                narrow<int>(moe_params.hidden_size), narrow<int>(moe_params.inter_size), &resident_view));
+                narrow<int>(moe_params.hidden_size), narrow<int>(moe_params.inter_size), &resident_view, stream));
           }
         }
       }

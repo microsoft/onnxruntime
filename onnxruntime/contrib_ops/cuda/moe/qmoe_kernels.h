@@ -452,7 +452,8 @@ bool TryGetQMoEResidentLayerSlabView(
     int num_experts,
     int hidden_size,
     int inter_size,
-    QMoEResidentLayerSlabView* out_view);
+    QMoEResidentLayerSlabView* out_view,
+    cudaStream_t stream = nullptr);
 
 void RegisterQMoEDenseLayerHostWeights(
     int device_id, int64_t layer_index, int num_experts, int hidden_size, int inter_size,
@@ -469,6 +470,9 @@ bool TryPrepareQMoEPrefillDmaLayer(
 bool BeginQMoEPrefillDmaPass(
     int device_id, int64_t layer_index, int pass_idx, int num_passes, int runner_num_experts,
     cudaStream_t exec_stream, QMoEPrefillPassDmaView* out_view);
+
+void PrefetchNextQMoEPrefillDmaPass(
+    int device_id, int64_t layer_index, int pass_idx, int num_passes, int runner_num_experts);
 
 void EndQMoEPrefillDmaPassDequant(
     int device_id, int pass_idx, cudaStream_t exec_stream);

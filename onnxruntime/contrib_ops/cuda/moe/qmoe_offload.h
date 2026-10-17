@@ -29,7 +29,8 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   void SyncPrefillSlotTables(cudaStream_t stream = nullptr) const;
   struct SharedLayerCache;
   friend bool TryGetQMoEResidentLayerSlabView(int device_id, int64_t layer_index, int num_experts,
-                                              int hidden_size, int inter_size, QMoEResidentLayerSlabView* out_view);
+                                              int hidden_size, int inter_size, QMoEResidentLayerSlabView* out_view,
+                                              cudaStream_t stream);
   friend bool TryPrepareQMoEPrefillDmaLayer(
       int device_id, int64_t layer_index, int num_experts, int hidden_size, int inter_size,
       int runner_num_experts, int64_t tile_rows, size_t elem_size,
@@ -77,6 +78,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   size_t ReclaimDecodeExtension() const;
   void RestoreDecodeExtensionConfig() const;
   void CopyExpertToResidentSlot(int expert, int slot, cudaStream_t stream) const;
+  void BatchCopyExpertsToResidentSlots(const int* experts, const int* slots, int count, cudaStream_t stream) const;
   void RestoreAndSeedResidentSlab(const int* prompt_hist, int total_prompt_routes,
                                   bool enable_seeding, cudaStream_t stream) const;
   void StageExperts(const int* experts, int count) const;
@@ -230,6 +232,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   mutable std::array<size_t, 6> resident_bank_offsets_{};
   mutable size_t resident_slab_bytes_ = 0;
   std::vector<int> initial_experts_;
+  std::vector<int> ranked_experts_;
   size_t resident_workspace_bytes_ = 0;
   size_t stream_workspace_bytes_ = 0;
   mutable ResidentSlab resident_slab_;

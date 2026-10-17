@@ -309,6 +309,8 @@ struct DevicePrefillDmaState {
   size_t total_lent_bytes = 0;
   std::vector<int64_t> lent_layers;
   int* hist_dev = nullptr;
+  bool use_uva_in_dma_pass = false;
+  uint64_t mmap_touched_layer_mask = 0;
 
   static DevicePrefillDmaState& ForDevice(int device_id) {
     static std::mutex map_mutex;
@@ -349,6 +351,7 @@ bool EnqueuePrefillPassDmaLocked(
     }
   }
   const InlinedVector<int>* expert_slot_ptr = nullptr;
+  const InlinedVector<int32_t>* host_slot_ptr = nullptr;
   qmoe_shared::FileExpertStore* file_store_ptr = nullptr;
   qmoe_shared::Nvfp4ExpertBlockLayout nvfp4_layout{};
   if (locked) {
@@ -361,6 +364,7 @@ bool EnqueuePrefillPassDmaLocked(
     if (locked->file_store_ptr != nullptr) {
       file_store_ptr = locked->file_store_ptr;
       nvfp4_layout = locked->nvfp4_layout;
+      host_slot_ptr = locked->host_slot_ptr;
     }
   }
 
@@ -389,52 +393,6 @@ bool EnqueuePrefillPassDmaLocked(
   const uint8_t* src_fc1_w_base = wl.fc1_w + static_cast<size_t>(pass_start) * fc1_w_stride;
   const uint8_t* src_fc2_w_base = wl.fc2_w + static_cast<size_t>(pass_start) * fc2_w_stride;
 
-  if (state.host_staging[buf_idx] != nullptr) {
-    if (state.dma_done_recorded[buf_idx]) {
-      static_cast<void>(cudaEventSynchronize(state.dma_done_event[buf_idx]));
-    }
-    uint8_t* hbuf = state.host_staging[buf_idx];
-    uint8_t* h_fc1_s = hbuf;
-    uint8_t* h_fc2_s = h_fc1_s + static_cast<size_t>(count) * fc1_s_stride;
-    uint8_t* h_fc1_w = h_fc2_s + static_cast<size_t>(count) * fc2_s_stride;
-    uint8_t* h_fc2_w = h_fc1_w + static_cast<size_t>(count) * fc1_w_stride;
-    auto copy_expert_fn = [&](ptrdiff_t idx) {
-      const size_t i = static_cast<size_t>(idx);
-      const size_t src_e = static_cast<size_t>(pass_start) + i;
-      if (expert_slot_ptr != nullptr && (*expert_slot_ptr)[src_e] >= 0) {
-        return;
-      }
-      if (file_store_ptr != nullptr) {
-        qmoe_shared::ExpertBlockLease lease{};
-        if (file_store_ptr->TryAcquireCached(static_cast<int32_t>(src_e), &lease)) {
-          std::memcpy(h_fc1_s + i * fc1_s_stride, lease.data + nvfp4_layout.fc1_scales, fc1_s_stride);
-          std::memcpy(h_fc2_s + i * fc2_s_stride, lease.data + nvfp4_layout.fc2_scales, fc2_s_stride);
-          std::memcpy(h_fc1_w + i * fc1_w_stride, lease.data + nvfp4_layout.fc1_weights, fc1_w_stride);
-          std::memcpy(h_fc2_w + i * fc2_w_stride, lease.data + nvfp4_layout.fc2_weights, fc2_w_stride);
-          file_store_ptr->ReleaseLease(static_cast<int32_t>(src_e));
-          return;
-        }
-      }
-      std::memcpy(h_fc1_s + i * fc1_s_stride, wl.fc1_s + src_e * fc1_s_stride, fc1_s_stride);
-      std::memcpy(h_fc2_s + i * fc2_s_stride, wl.fc2_s + src_e * fc2_s_stride, fc2_s_stride);
-      std::memcpy(h_fc1_w + i * fc1_w_stride, wl.fc1_w + src_e * fc1_w_stride, fc1_w_stride);
-      std::memcpy(h_fc2_w + i * fc2_w_stride, wl.fc2_w + src_e * fc2_w_stride, fc2_w_stride);
-    };
-    SharedSpinPool(64).ParallelFor(static_cast<ptrdiff_t>(count), copy_expert_fn, 2);
-    src_fc1_s = h_fc1_s;
-    src_fc2_s = h_fc2_s;
-    src_fc1_w_base = h_fc1_w;
-    src_fc2_w_base = h_fc2_w;
-  }
-
-  if (cudaMemcpyAsync(dst_fc1_s, src_fc1_s,
-                      static_cast<size_t>(count) * fc1_s_stride, cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
-    return false;
-  }
-  if (cudaMemcpyAsync(dst_fc2_s, src_fc2_s,
-                      static_cast<size_t>(count) * fc2_s_stride, cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
-    return false;
-  }
   if (cudaMemcpyAsync(dst_fc1_g, wl.fc1_g, static_cast<size_t>(wl.num_experts) * sizeof(float),
                       cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
     return false;
@@ -444,45 +402,143 @@ bool EnqueuePrefillPassDmaLocked(
     return false;
   }
 
-  if (expert_slot_ptr == nullptr) {
-    if (cudaMemcpyAsync(dst_fc1_w, src_fc1_w_base,
-                        static_cast<size_t>(count) * fc1_w_stride, cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
+  if (state.host_staging[buf_idx] != nullptr) {
+    const uint8_t* cache_base = (file_store_ptr != nullptr) ? file_store_ptr->CacheBase() : nullptr;
+    auto is_covered = [&](int src_e) -> bool {
+      if (expert_slot_ptr != nullptr && (*expert_slot_ptr)[src_e] >= 0) return true;
+      if (state.use_uva_in_dma_pass && host_slot_ptr != nullptr && (*host_slot_ptr)[src_e] >= 0) return true;
       return false;
-    }
-    if (cudaMemcpyAsync(dst_fc2_w, src_fc2_w_base,
-                        static_cast<size_t>(count) * fc2_w_stride, cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
-      return false;
-    }
-  } else {
-    // Coalesce cold expert runs; merge across single-expert resident gaps so PCIe DMA bursts stay >= 3-10 MiB.
-    int i = 0;
-    while (i < count) {
-      if ((*expert_slot_ptr)[pass_start + i] >= 0) {
-        ++i;
-        continue;
+    };
+    InlinedVector<int> uncached_idx;
+    for (int i = 0; i < count; ++i) {
+      if (!is_covered(pass_start + i)) {
+        uncached_idx.push_back(i);
       }
-      const int r0 = i;
-      ++i;
+    }
+    if (!uncached_idx.empty()) {
+      if (state.dma_done_recorded[buf_idx]) {
+        static_cast<void>(cudaEventSynchronize(state.dma_done_event[buf_idx]));
+      }
+      uint8_t* hbuf = state.host_staging[buf_idx];
+      uint8_t* h_fc1_s = hbuf;
+      uint8_t* h_fc2_s = h_fc1_s + static_cast<size_t>(count) * fc1_s_stride;
+      uint8_t* h_fc1_w = h_fc2_s + static_cast<size_t>(count) * fc2_s_stride;
+      uint8_t* h_fc2_w = h_fc1_w + static_cast<size_t>(count) * fc1_w_stride;
+      std::atomic<bool> touched_mmap{false};
+      auto copy_expert_fn = [&](ptrdiff_t k_idx) noexcept {
+        const size_t i = static_cast<size_t>(uncached_idx[static_cast<size_t>(k_idx)]);
+        const size_t src_e = static_cast<size_t>(pass_start) + i;
+        if (cache_base != nullptr && host_slot_ptr != nullptr) {
+          const int h_slot = (*host_slot_ptr)[src_e];
+          if (h_slot >= 0) {
+            const uint8_t* slot_data = cache_base + static_cast<size_t>(h_slot) * nvfp4_layout.stride;
+            std::memcpy(h_fc1_s + i * fc1_s_stride, slot_data + nvfp4_layout.fc1_scales, fc1_s_stride);
+            std::memcpy(h_fc2_s + i * fc2_s_stride, slot_data + nvfp4_layout.fc2_scales, fc2_s_stride);
+            std::memcpy(h_fc1_w + i * fc1_w_stride, slot_data + nvfp4_layout.fc1_weights, fc1_w_stride);
+            std::memcpy(h_fc2_w + i * fc2_w_stride, slot_data + nvfp4_layout.fc2_weights, fc2_w_stride);
+            return;
+          }
+        }
+        touched_mmap.store(true, std::memory_order_relaxed);
+        std::memcpy(h_fc1_s + i * fc1_s_stride, wl.fc1_s + src_e * fc1_s_stride, fc1_s_stride);
+        std::memcpy(h_fc2_s + i * fc2_s_stride, wl.fc2_s + src_e * fc2_s_stride, fc2_s_stride);
+        std::memcpy(h_fc1_w + i * fc1_w_stride, wl.fc1_w + src_e * fc1_w_stride, fc1_w_stride);
+        std::memcpy(h_fc2_w + i * fc2_w_stride, wl.fc2_w + src_e * fc2_w_stride, fc2_w_stride);
+      };
+      SharedSpinPool(64).ParallelFor(static_cast<ptrdiff_t>(uncached_idx.size()), copy_expert_fn, 1);
+      if (touched_mmap.load(std::memory_order_relaxed) && target_layer >= 0 && target_layer < 64) {
+        state.mmap_touched_layer_mask |= (uint64_t{1} << target_layer);
+      }
+
+      if (cudaMemcpyAsync(dst_fc1_s, h_fc1_s,
+                          static_cast<size_t>(count) * fc1_s_stride, cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
+        return false;
+      }
+      if (cudaMemcpyAsync(dst_fc2_s, h_fc2_s,
+                          static_cast<size_t>(count) * fc2_s_stride, cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
+        return false;
+      }
+      int i = 0;
       while (i < count) {
-        if ((*expert_slot_ptr)[pass_start + i] < 0) {
+        if (is_covered(pass_start + i)) {
           ++i;
-        } else if (i + 1 < count && (*expert_slot_ptr)[pass_start + i + 1] < 0) {
-          i += 2;  // bridge single resident expert to avoid splitting DMA descriptor
-        } else {
-          break;
+          continue;
+        }
+        const int r0 = i;
+        ++i;
+        while (i < count) {
+          if (!is_covered(pass_start + i)) {
+            ++i;
+          } else if (i + 1 < count && !is_covered(pass_start + i + 1)) {
+            i += 2;
+          } else {
+            break;
+          }
+        }
+        const int r1 = i;
+        const size_t run_len = static_cast<size_t>(r1 - r0);
+        if (cudaMemcpyAsync(dst_fc1_w + static_cast<size_t>(r0) * fc1_w_stride,
+                            h_fc1_w + static_cast<size_t>(r0) * fc1_w_stride,
+                            run_len * fc1_w_stride, cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
+          return false;
+        }
+        if (cudaMemcpyAsync(dst_fc2_w + static_cast<size_t>(r0) * fc2_w_stride,
+                            h_fc2_w + static_cast<size_t>(r0) * fc2_w_stride,
+                            run_len * fc2_w_stride, cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
+          return false;
         }
       }
-      const int r1 = i;
-      const size_t run_len = static_cast<size_t>(r1 - r0);
-      if (cudaMemcpyAsync(dst_fc1_w + static_cast<size_t>(r0) * fc1_w_stride,
-                          src_fc1_w_base + static_cast<size_t>(r0) * fc1_w_stride,
-                          run_len * fc1_w_stride, cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
+    }
+  } else {
+    if (cudaMemcpyAsync(dst_fc1_s, src_fc1_s,
+                        static_cast<size_t>(count) * fc1_s_stride, cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
+      return false;
+    }
+    if (cudaMemcpyAsync(dst_fc2_s, src_fc2_s,
+                        static_cast<size_t>(count) * fc2_s_stride, cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
+      return false;
+    }
+
+    if (expert_slot_ptr == nullptr) {
+      if (cudaMemcpyAsync(dst_fc1_w, src_fc1_w_base,
+                          static_cast<size_t>(count) * fc1_w_stride, cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
         return false;
       }
-      if (cudaMemcpyAsync(dst_fc2_w + static_cast<size_t>(r0) * fc2_w_stride,
-                          src_fc2_w_base + static_cast<size_t>(r0) * fc2_w_stride,
-                          run_len * fc2_w_stride, cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
+      if (cudaMemcpyAsync(dst_fc2_w, src_fc2_w_base,
+                          static_cast<size_t>(count) * fc2_w_stride, cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
         return false;
+      }
+    } else {
+      // Coalesce cold expert runs; merge across single-expert resident gaps so PCIe DMA bursts stay >= 3-10 MiB.
+      int i = 0;
+      while (i < count) {
+        if ((*expert_slot_ptr)[pass_start + i] >= 0) {
+          ++i;
+          continue;
+        }
+        const int r0 = i;
+        ++i;
+        while (i < count) {
+          if ((*expert_slot_ptr)[pass_start + i] < 0) {
+            ++i;
+          } else if (i + 1 < count && (*expert_slot_ptr)[pass_start + i + 1] < 0) {
+            i += 2;  // bridge single resident expert to avoid splitting DMA descriptor
+          } else {
+            break;
+          }
+        }
+        const int r1 = i;
+        const size_t run_len = static_cast<size_t>(r1 - r0);
+        if (cudaMemcpyAsync(dst_fc1_w + static_cast<size_t>(r0) * fc1_w_stride,
+                            src_fc1_w_base + static_cast<size_t>(r0) * fc1_w_stride,
+                            run_len * fc1_w_stride, cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
+          return false;
+        }
+        if (cudaMemcpyAsync(dst_fc2_w + static_cast<size_t>(r0) * fc2_w_stride,
+                            src_fc2_w_base + static_cast<size_t>(r0) * fc2_w_stride,
+                            run_len * fc2_w_stride, cudaMemcpyHostToDevice, state.dma_stream) != cudaSuccess) {
+          return false;
+        }
       }
     }
   }
@@ -504,7 +560,8 @@ bool TryGetQMoEResidentLayerSlabView(
     int num_experts,
     int hidden_size,
     int inter_size,
-    QMoEResidentLayerSlabView* out_view) {
+    QMoEResidentLayerSlabView* out_view,
+    cudaStream_t stream) {
   if (!out_view || layer_index < 0) return false;
   std::shared_ptr<QMoEOffload::SharedLayerCache> locked;
   {
@@ -515,17 +572,20 @@ bool TryGetQMoEResidentLayerSlabView(
     locked = it->second.lock();
   }
   if (!locked || locked->num_experts != num_experts || locked->hidden_size != hidden_size ||
-      locked->inter_size != inter_size || !locked->slab_ptr || !locked->slot_table_dev_ptr ||
+      locked->inter_size != inter_size || !locked->slot_table_dev_ptr ||
       locked->resident_slots <= 0) {
     return false;
   }
-  out_view->fc1_weights = locked->slab_ptr + locked->bank_offsets[0];
-  out_view->fc2_weights = locked->slab_ptr + locked->bank_offsets[1];
-  out_view->fc1_scales = locked->slab_ptr + locked->bank_offsets[2];
-  out_view->fc2_scales = locked->slab_ptr + locked->bank_offsets[3];
-  out_view->slot_table_dev = locked->slot_table_dev_ptr;
+  const bool has_gpu_slab = (locked->slab_ptr != nullptr && locked->expert_slot_ptr != nullptr);
+  if (has_gpu_slab) {
+    out_view->fc1_weights = locked->slab_ptr + locked->bank_offsets[0];
+    out_view->fc2_weights = locked->slab_ptr + locked->bank_offsets[1];
+    out_view->fc1_scales = locked->slab_ptr + locked->bank_offsets[2];
+    out_view->fc2_scales = locked->slab_ptr + locked->bank_offsets[3];
+    out_view->slot_table_dev = locked->slot_table_dev_ptr;
+  }
   if (locked->owner && locked->owner->host_cache_mapped_ && locked->file_store_ptr != nullptr) {
-    locked->owner->SyncPrefillSlotTables(nullptr);
+    locked->owner->SyncPrefillSlotTables(stream);
     if (const uint8_t* cache_base = locked->file_store_ptr->CacheBase()) {
       out_view->host_fc1_weights = cache_base + locked->nvfp4_layout.fc1_weights;
       out_view->host_fc2_weights = cache_base + locked->nvfp4_layout.fc2_weights;
@@ -535,14 +595,16 @@ bool TryGetQMoEResidentLayerSlabView(
       out_view->host_slot_table_dev = locked->slot_table_dev_ptr + num_experts;
       out_view->all_experts_cached = true;
       for (int e = 0; e < num_experts; ++e) {
-        if ((*locked->expert_slot_ptr)[e] < 0 && (*locked->host_slot_ptr)[e] < 0) {
+        const bool in_gpu = has_gpu_slab && ((*locked->expert_slot_ptr)[e] >= 0);
+        const bool in_host = (locked->host_slot_ptr != nullptr) && ((*locked->host_slot_ptr)[e] >= 0);
+        if (!in_gpu && !in_host) {
           out_view->all_experts_cached = false;
           break;
         }
       }
     }
   }
-  return true;
+  return out_view->slot_table_dev != nullptr || out_view->host_slot_table_dev != nullptr;
 }
 
 void RegisterQMoEDenseLayerHostWeights(
@@ -850,9 +912,11 @@ bool TryPrepareQMoEPrefillDmaLayer(
     }
   }
 
+  state.use_uva_in_dma_pass = true;
+
   QMoEResidentLayerSlabView res_view{};
   static_cast<void>(TryGetQMoEResidentLayerSlabView(
-      device_id, layer_index, num_experts, hidden_size, inter_size, &res_view));
+      device_id, layer_index, num_experts, hidden_size, inter_size, &res_view, exec_stream));
 
   out_view->dequant_fc1_weights = use_arena_dequant ? nullptr : (state.workspace_dev + state.dequant_fc1_offset);
   out_view->dequant_fc2_weights = use_arena_dequant ? nullptr : (state.workspace_dev + state.dequant_fc2_offset);
@@ -861,6 +925,12 @@ bool TryPrepareQMoEPrefillDmaLayer(
   out_view->resident_fc2_weights = res_view.fc2_weights;
   out_view->resident_fc2_scales = res_view.fc2_scales;
   out_view->slot_table_dev = res_view.slot_table_dev;
+  out_view->host_fc1_weights = res_view.host_fc1_weights;
+  out_view->host_fc1_scales = res_view.host_fc1_scales;
+  out_view->host_fc2_weights = res_view.host_fc2_weights;
+  out_view->host_fc2_scales = res_view.host_fc2_scales;
+  out_view->host_expert_stride = res_view.host_expert_stride;
+  out_view->host_slot_table_dev = res_view.host_slot_table_dev;
   return true;
 }
 
@@ -905,6 +975,10 @@ bool BeginQMoEPrefillDmaPass(
   return true;
 }
 
+void PrefetchNextQMoEPrefillDmaPass(
+    int /*device_id*/, int64_t /*layer_index*/, int /*pass_idx*/, int /*num_passes*/, int /*runner_num_experts*/) {
+}
+
 void EndQMoEPrefillDmaPassDequant(int device_id, int pass_idx, cudaStream_t exec_stream) {
   auto& state = DevicePrefillDmaState::ForDevice(device_id);
   std::lock_guard<std::mutex> lock(state.mutex);
@@ -925,8 +999,9 @@ void FinalizeQMoEPrefillAndSeedDecode(int device_id, cudaStream_t stream) {
 
   const int64_t total_tokens = state.total_prefill_tokens_accum;
   const bool in_warmup = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_IN_WARMUP", 0) == 1;
-  bool is_new_turn_reset = false;
-  if (total_tokens == 0 && !state.prefill_active && !in_warmup) {
+  const bool aborted_previous_prefill = (stream != nullptr) && (state.prefill_active || !state.lent_layers.empty());
+  bool is_new_turn_reset = aborted_previous_prefill && !in_warmup;
+  if (stream != nullptr && !in_warmup) {
     const int next_prompt_tokens = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PREFILL_TOTAL_TOKENS", 0);
     if (next_prompt_tokens > 0 &&
         (next_prompt_tokens < 2048 ||
@@ -938,7 +1013,7 @@ void FinalizeQMoEPrefillAndSeedDecode(int device_id, cudaStream_t stream) {
     }
   }
   const bool seed_enabled =
-      !in_warmup && !is_new_turn_reset && (total_tokens > 0) &&
+      !in_warmup && !is_new_turn_reset && !aborted_previous_prefill && (total_tokens > 0) &&
       (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_RESIDENT_PROMOTIONS", 0) > 0) &&
       (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PREFILL_WARM_SEED", 1) == 1);
 
@@ -978,16 +1053,21 @@ void FinalizeQMoEPrefillAndSeedDecode(int device_id, cudaStream_t stream) {
     state.workspace_bytes = 0;
     state.workspace_runner_experts = 0;
   }
-  for (int b = 0; b < 2; ++b) {
-    if (state.host_staging[b]) {
-      static_cast<void>(cudaFreeHost(state.host_staging[b]));
-      state.host_staging[b] = nullptr;
+  if (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_FREE_HOST_STAGING", 0) == 1) {
+    for (int b = 0; b < 2; ++b) {
+      if (state.host_staging[b]) {
+        static_cast<void>(cudaFreeHost(state.host_staging[b]));
+        state.host_staging[b] = nullptr;
+      }
+      state.dma_done_recorded[b] = false;
     }
-    state.dma_done_recorded[b] = false;
+    state.host_staging_bytes = 0;
+  } else {
+    state.dma_done_recorded[0] = state.dma_done_recorded[1] = false;
   }
-  state.host_staging_bytes = 0;
 #if defined(__linux__)
-  if (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_HOST_CACHE_MIB", 0) > 0) {
+  if (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_HOST_CACHE_MIB", 0) > 0 &&
+      state.mmap_touched_layer_mask != 0) {
     const size_t page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
     auto unmap_range = [page](const uint8_t* ptr, size_t bytes) {
       if (!ptr || bytes == 0) return;
@@ -999,6 +1079,7 @@ void FinalizeQMoEPrefillAndSeedDecode(int device_id, cudaStream_t stream) {
       }
     };
     for (const auto& [l_idx, wl] : state.dense_layers) {
+      if (l_idx < 0 || l_idx >= 64 || ((state.mmap_touched_layer_mask >> l_idx) & 1u) == 0) continue;
       const size_t fc1_n = static_cast<size_t>(wl.inter_size) * 2;
       const size_t fc1_k = static_cast<size_t>(wl.hidden_size);
       const size_t fc2_n = static_cast<size_t>(wl.hidden_size);
@@ -1009,6 +1090,7 @@ void FinalizeQMoEPrefillAndSeedDecode(int device_id, cudaStream_t stream) {
       unmap_range(wl.fc1_s, ne * fc1_n * (fc1_k / 16));
       unmap_range(wl.fc2_s, ne * fc2_n * (fc2_k / 16));
     }
+    state.mmap_touched_layer_mask = 0;
   }
 #endif
   qmoe::CpuBudgetGroup::Default().EnterDecodePhase(g_shared_spin_pool_ptr.load(std::memory_order_acquire));
@@ -2153,13 +2235,56 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
                                    ? static_cast<int>(initial_experts[slot])
                                    : slot;
     }
+    ranked_experts_.clear();
+    ranked_experts_.reserve(num_experts_);
+    std::vector<uint8_t> seen_rank(static_cast<size_t>(num_experts_), 0);
+    for (int64_t e64 : initial_experts) {
+      const int e = static_cast<int>(e64);
+      if (e >= 0 && e < num_experts_ && !seen_rank[static_cast<size_t>(e)]) {
+        seen_rank[static_cast<size_t>(e)] = 1;
+        ranked_experts_.push_back(e);
+      }
+    }
+    if (ranked_experts_.size() < static_cast<size_t>(num_experts_) &&
+        ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_USE_EXPERT_PROFILE", 1) == 1) {
+      std::string prof_path = ParseEnvironmentVariableWithDefault<std::string>(
+          "ORT_QMOE_EXPERT_PROFILE", "/data/tlwu/strata_qwen38_udq4_24g_20261005/data/expert-profile.bin");
+      std::ifstream pf(prof_path, std::ios::binary);
+      uint32_t hdr[6]{};
+      if (pf && pf.read(reinterpret_cast<char*>(hdr), sizeof(hdr))) {
+        const uint32_t magic = hdr[0], ver = hdr[1], n_layers = hdr[2], n_exp = hdr[3], n_ranked = hdr[5];
+        if (magic == 0x50525453u && ver == 1u && static_cast<int>(n_exp) == num_experts_ &&
+            layer_index_ >= 0 && layer_index_ < static_cast<int64_t>(n_layers) &&
+            n_ranked <= n_layers * n_exp) {
+          std::vector<uint16_t> pairs(static_cast<size_t>(n_ranked) * 2);
+          if (pf.read(reinterpret_cast<char*>(pairs.data()), static_cast<std::streamsize>(pairs.size() * sizeof(uint16_t)))) {
+            for (uint32_t i = 0; i < n_ranked; ++i) {
+              const int l_id = static_cast<int>(pairs[static_cast<size_t>(i) * 2]);
+              const int e_id = static_cast<int>(pairs[static_cast<size_t>(i) * 2 + 1]);
+              if (l_id == static_cast<int>(layer_index_) && e_id >= 0 && e_id < num_experts_ &&
+                  !seen_rank[static_cast<size_t>(e_id)]) {
+                seen_rank[static_cast<size_t>(e_id)] = 1;
+                ranked_experts_.push_back(e_id);
+              }
+            }
+          }
+        }
+      }
+    }
+    for (int e = 0; e < num_experts_; ++e) {
+      if (!seen_rank[static_cast<size_t>(e)]) {
+        seen_rank[static_cast<size_t>(e)] = 1;
+        ranked_experts_.push_back(e);
+      }
+    }
     if (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_PREPOPULATE", 1) == 1) {
       const float init_ema = static_cast<float>(k_) / static_cast<float>(std::max(1, num_experts_));
+      std::vector<int> init_slot_ids(base_resident_slots_);
       for (int slot = 0; slot < base_resident_slots_; ++slot) {
         const int expert = initial_experts_[slot];
         ORT_ENFORCE(expert >= 0 && expert < num_experts_ && expert_slot_[expert] < 0,
                     "QMoEOffload invalid or duplicate initial_experts entry ", expert, " at slot ", slot, ".");
-        CopyExpertToResidentSlot(expert, slot, nullptr);
+        init_slot_ids[slot] = slot;
         slot_expert_[slot] = expert;
         expert_slot_[expert] = slot;
         const float prior = 4.0f + static_cast<float>(base_resident_slots_ - slot) * 0.25f;
@@ -2167,6 +2292,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
         expert_presence_ema_[expert] = init_ema;
         if (resident_phase_scores_) decode_score_[expert] = prior;
       }
+      BatchCopyExpertsToResidentSlots(initial_experts_.data(), init_slot_ids.data(), base_resident_slots_, nullptr);
       CUDA_CALL_THROW(cudaMemcpy(CurrentSlotTableDev(), expert_slot_.data(),
                                  SafeInt<size_t>(num_experts_) * sizeof(int), cudaMemcpyHostToDevice));
       slot_table_dirty_ = false;
@@ -2179,13 +2305,14 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
       std::vector<int32_t> cold_to_warm;
       const size_t target_warm = file_expert_store_.CacheSlots();
       cold_to_warm.reserve(target_warm);
-      for (int e = 0; e < num_experts_ && cold_to_warm.size() < target_warm; ++e) {
+      for (int e : ranked_experts_) {
+        if (cold_to_warm.size() >= target_warm) break;
         if (expert_slot_[e] < 0) {
           cold_to_warm.push_back(static_cast<int32_t>(e));
         }
       }
       if (!cold_to_warm.empty()) {
-        auto warm_fn = [this, &cold_to_warm](ptrdiff_t idx) {
+        auto warm_fn = [this, &cold_to_warm](ptrdiff_t idx) noexcept {
           qmoe_shared::ExpertBlockLease lease{};
           const int32_t e = cold_to_warm[static_cast<size_t>(idx)];
           if (file_expert_store_.AcquireReady(e, &lease)) {
@@ -2194,6 +2321,13 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
         };
         SharedSpinPool(cpu_threads_).ParallelFor(
             static_cast<ptrdiff_t>(cold_to_warm.size()), warm_fn, 1);
+        // Touch from coldest to hottest so FileExpertStore's LRU victim order evicts the coldest expert first.
+        for (size_t i = cold_to_warm.size(); i-- > 0;) {
+          qmoe_shared::ExpertBlockLease lease{};
+          if (file_expert_store_.TryAcquireCached(cold_to_warm[i], &lease)) {
+            file_expert_store_.ReleaseLease(cold_to_warm[i]);
+          }
+        }
       }
       file_expert_store_.SnapshotExpertToSlot(file_store_expert_slot_.data(), num_experts_);
       CUDA_CALL_THROW(cudaMemcpy(CurrentSlotTableDev() + num_experts_, file_store_expert_slot_.data(),
@@ -3099,6 +3233,102 @@ void QMoEOffload::CopyExpertToResidentSlot(int expert, int slot, cudaStream_t st
   }
 }
 
+void QMoEOffload::BatchCopyExpertsToResidentSlots(
+    const int* experts, const int* slots, int count, cudaStream_t stream) const {
+  if (count <= 0) return;
+  if (host_cache_bytes_ == 0 || !file_expert_store_.IsInitialized()) {
+    for (int i = 0; i < count; ++i) {
+      CopyExpertToResidentSlot(experts[i], slots[i], stream);
+    }
+    return;
+  }
+  uint8_t* slab = resident_slab_.get();
+  if (!slab) return;
+  int dev_id = 0;
+  static_cast<void>(cudaGetDevice(&dev_id));
+  auto& dma_state = DevicePrefillDmaState::ForDevice(dev_id);
+  const size_t cap_per_buf = (dma_state.host_staging[0] && dma_state.host_staging[1] && nvfp4_layout_.stride > 0)
+                                 ? (dma_state.host_staging_bytes / nvfp4_layout_.stride)
+                                 : 0;
+  if (cap_per_buf * 2 < static_cast<size_t>(count)) {
+    for (int i = 0; i < count; ++i) {
+      CopyExpertToResidentSlot(experts[i], slots[i], stream);
+    }
+    return;
+  }
+  const std::array<size_t, 6> offsets{nvfp4_layout_.fc1_weights, nvfp4_layout_.fc2_weights,
+                                      nvfp4_layout_.fc1_scales, nvfp4_layout_.fc2_scales,
+                                      nvfp4_layout_.fc1_global_scale, nvfp4_layout_.fc2_global_scale};
+  std::vector<qmoe_shared::ExpertBlockLease> leases(static_cast<size_t>(count));
+  std::vector<uint8_t> acquired(static_cast<size_t>(count), 0);
+  std::vector<int> miss_indices;
+  miss_indices.reserve(static_cast<size_t>(count));
+  for (int i = 0; i < count; ++i) {
+    const int e = experts[i];
+    if (e >= 0 && e < num_experts_ && file_expert_store_.TryAcquireCached(e, &leases[static_cast<size_t>(i)])) {
+      acquired[static_cast<size_t>(i)] = 1;
+    } else {
+      miss_indices.push_back(i);
+    }
+  }
+  std::vector<int> miss_pos(static_cast<size_t>(count), -1);
+  if (!miss_indices.empty()) {
+    std::vector<uint8_t> read_ok(miss_indices.size(), 0);
+    for (size_t m = 0; m < miss_indices.size(); ++m) {
+      miss_pos[static_cast<size_t>(miss_indices[m])] = static_cast<int>(m);
+    }
+    auto read_fn = [&](ptrdiff_t m_idx) noexcept {
+      const size_t m = static_cast<size_t>(m_idx);
+      const int e = experts[miss_indices[m]];
+      uint8_t* dst = dma_state.host_staging[m & 1] + (m >> 1) * nvfp4_layout_.stride;
+      read_ok[m] = file_expert_store_.ReadExpertDirect(e, dst) ? 1 : 0;
+    };
+    if (miss_indices.size() > 1) {
+      SharedSpinPool(cpu_threads_).ParallelFor(static_cast<ptrdiff_t>(miss_indices.size()), read_fn, 1);
+    } else {
+      read_fn(0);
+    }
+    for (size_t m = 0; m < miss_indices.size(); ++m) {
+      if (!read_ok[m]) {
+        for (int i = 0; i < count; ++i) {
+          if (acquired[static_cast<size_t>(i)]) {
+            file_expert_store_.ReleaseLease(experts[i]);
+          }
+        }
+        ORT_THROW("Cannot read expert for resident upload: ", experts[miss_indices[m]]);
+      }
+    }
+  }
+  for (int i = 0; i < count; ++i) {
+    const int slot = slots[i];
+    if (slot < 0 || slot >= physical_slots_) continue;
+    const size_t m = static_cast<size_t>(miss_pos[static_cast<size_t>(i)]);
+    const uint8_t* base = acquired[static_cast<size_t>(i)]
+                              ? leases[static_cast<size_t>(i)].data
+                              : (dma_state.host_staging[m & 1] + (m >> 1) * nvfp4_layout_.stride);
+    for (size_t bank = 0; bank < 6; ++bank) {
+      const size_t dst_off = resident_bank_offsets_[bank] + SafeInt<size_t>(slot) * resident_bank_bytes_[bank];
+      if (stream) {
+        CUDA_CALL_THROW(cudaMemcpyAsync(slab + dst_off, base + offsets[bank], resident_bank_bytes_[bank],
+                                        cudaMemcpyHostToDevice, stream));
+      } else {
+        CUDA_CALL_THROW(cudaMemcpy(slab + dst_off, base + offsets[bank], resident_bank_bytes_[bank],
+                                   cudaMemcpyHostToDevice));
+      }
+    }
+  }
+  if (stream) {
+    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  }
+  for (int i = 0; i < count; ++i) {
+    if (acquired[static_cast<size_t>(i)]) {
+      file_expert_store_.ReleaseLease(experts[i]);
+      file_expert_store_.Evict(experts[i]);
+      host_slot_table_dirty_ = true;
+    }
+  }
+}
+
 void QMoEOffload::RestoreAndSeedResidentSlab(
     const int* prompt_hist, int total_prompt_routes, bool enable_seeding, cudaStream_t stream) const {
   if (!nvfp4_mode_ || resident_slots_ <= 0 || resident_slab_bytes_ == 0) return;
@@ -3164,12 +3394,16 @@ void QMoEOffload::RestoreAndSeedResidentSlab(
     phase_routes_since_decay_ = {0, 0};
 
     if (was_lent) {
+      std::vector<int> restore_experts(init_slots);
+      std::vector<int> restore_slots(init_slots);
       for (int slot = 0; slot < init_slots; ++slot) {
         const int e = (static_cast<size_t>(slot) < initial_experts_.size()) ? initial_experts_[slot] : slot;
-        CopyExpertToResidentSlot(e, slot, stream);
+        restore_experts[slot] = e;
+        restore_slots[slot] = slot;
         slot_expert_[slot] = e;
         expert_slot_[e] = slot;
       }
+      BatchCopyExpertsToResidentSlots(restore_experts.data(), restore_slots.data(), init_slots, stream);
     } else {
       bool matches = true;
       for (int slot = 0; slot < init_slots; ++slot) {
@@ -3190,15 +3424,22 @@ void QMoEOffload::RestoreAndSeedResidentSlab(
         std::vector<int> prev_slot_expert = std::vector<int>(slot_expert_.begin(), slot_expert_.end());
         slot_expert_.assign(physical_slots_, -1);
         expert_slot_.assign(num_experts_, -1);
+        std::vector<int> restore_experts;
+        std::vector<int> restore_slots;
         for (int slot = 0; slot < init_slots; ++slot) {
           const int e = (static_cast<size_t>(slot) < initial_experts_.size()) ? initial_experts_[slot] : slot;
           if (static_cast<size_t>(slot) >= prev_slot_expert.size() || prev_slot_expert[slot] != e) {
-            CopyExpertToResidentSlot(e, slot, stream);
+            restore_experts.push_back(e);
+            restore_slots.push_back(slot);
           } else if (host_cache_bytes_ > 0) {
             file_expert_store_.Evict(e);
           }
           slot_expert_[slot] = e;
           expert_slot_[e] = slot;
+        }
+        if (!restore_experts.empty()) {
+          BatchCopyExpertsToResidentSlots(
+              restore_experts.data(), restore_slots.data(), static_cast<int>(restore_experts.size()), stream);
         }
         modified = true;
       }
@@ -3234,15 +3475,19 @@ void QMoEOffload::RestoreAndSeedResidentSlab(
                           return a < b;
                         });
       if (was_lent) {
+        std::vector<int> restore_experts(init_slots);
+        std::vector<int> restore_slots(init_slots);
         for (int slot = 0; slot < init_slots; ++slot) {
           const int e = order[slot];
-          CopyExpertToResidentSlot(e, slot, stream);
+          restore_experts[slot] = e;
+          restore_slots[slot] = slot;
           slot_expert_[slot] = e;
           expert_slot_[e] = slot;
           const float floor_score = 4.0f + static_cast<float>(init_slots - slot) * 0.25f;
           expert_score_[e] = std::max({expert_score_[e], combined_scores[e], floor_score});
           if (resident_phase_scores_) decode_score_[e] = expert_score_[e];
         }
+        BatchCopyExpertsToResidentSlots(restore_experts.data(), restore_slots.data(), init_slots, stream);
       } else {
         const float margin_scale = static_cast<float>(resident_margin_percent_) / 100.0f;
         int swaps = 0;
@@ -3296,9 +3541,18 @@ void QMoEOffload::RestoreAndSeedResidentSlab(
         if (already_warm < target_warm) {
           const size_t need_warm = target_warm - already_warm;
           cold_to_warm.reserve(need_warm);
-          for (int e = 0; e < num_experts_ && cold_to_warm.size() < need_warm; ++e) {
-            if (expert_slot_[e] < 0 && file_store_expert_slot_[e] < 0) {
-              cold_to_warm.push_back(static_cast<int32_t>(e));
+          if (!ranked_experts_.empty()) {
+            for (int e : ranked_experts_) {
+              if (cold_to_warm.size() >= need_warm) break;
+              if (expert_slot_[e] < 0 && file_store_expert_slot_[e] < 0) {
+                cold_to_warm.push_back(static_cast<int32_t>(e));
+              }
+            }
+          } else {
+            for (int e = 0; e < num_experts_ && cold_to_warm.size() < need_warm; ++e) {
+              if (expert_slot_[e] < 0 && file_store_expert_slot_[e] < 0) {
+                cold_to_warm.push_back(static_cast<int32_t>(e));
+              }
             }
           }
         }
@@ -3902,7 +4156,6 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
     return 0;
   }
   const bool use_ssd = !host_complement_mode_ && file_expert_store_.IsInitialized();
-  if (host_cache_bytes_ > 0) host_slot_table_dirty_ = true;
   const int fc1_tasks = (2 * inter_size_ + fc1_cols_ - 1) / fc1_cols_;
   const int fc2_tasks = (hidden_size_ + fc2_cols_ - 1) / fc2_cols_;
   const bool timed = cpu_timing_ && tile_rows <= 4;
@@ -3978,6 +4231,7 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
       }
       if (!file_expert_store_.TryAcquireGroupCached(
               group_expert_ids.data(), static_cast<size_t>(group_size), group_ssd_leases.data())) {
+        if (host_cache_bytes_ > 0) host_slot_table_dirty_ = true;
         if (group_size > 1 && static_cast<size_t>(group_size) <= file_expert_store_.CacheSlots()) {
           InlinedVector<int> miss_slots;
           InlinedVector<uint8_t> acquired(static_cast<size_t>(group_size), 0);
