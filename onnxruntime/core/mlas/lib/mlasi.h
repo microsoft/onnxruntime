@@ -1788,6 +1788,11 @@ struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
 enum MlasCoreType { mlas_core_unknown = 0, mlas_core_little = 2, mlas_core_big = 3 };
 
 
+#if defined(__linux__) && defined(MLAS_TARGET_AMD64) && defined(MLAS_ENABLE_TEST_HOOKS)
+bool MlasInitAMX();
+bool MlasAMXCheckOSSupportForTesting(unsigned long bitmask, bool (*probe)(int, void*), void* context);
+#endif
+
 struct MLAS_PLATFORM {
 
     MLAS_PLATFORM(void);
