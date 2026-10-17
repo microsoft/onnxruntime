@@ -1679,6 +1679,25 @@ block()
   onnxruntime_apply_test_target_workarounds(${onnxruntime_provider_test_target})
   onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
 
+  if (onnxruntime_USE_CUDA AND onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND
+      onnxruntime_USE_FP4_QMOE AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    set(nvfp4_scale_filter "CUDA_EP_Unittest.QMoENvfp4Gemv*")
+    if (onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+      set(nvfp4_scale_outer_filter "${nvfp4_scale_filter}")
+    else()
+      set(nvfp4_scale_outer_filter "CUDA_EP_Unittest.All")
+    endif()
+    foreach(native_scale 0 1)
+      add_test(NAME onnxruntime_nvfp4_native_scale_${native_scale}
+        COMMAND $<TARGET_FILE:${onnxruntime_provider_test_target}>
+          "--gtest_filter=${nvfp4_scale_outer_filter}"
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:${onnxruntime_provider_test_target}>)
+      set_tests_properties(onnxruntime_nvfp4_native_scale_${native_scale} PROPERTIES
+        ENVIRONMENT "GTEST_FILTER=${nvfp4_scale_filter};ORT_NVFP4_GEMV_NATIVE_SCALE=${native_scale}"
+        RUN_SERIAL TRUE)
+    endforeach()
+  endif()
+
   if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND
       NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD AND
       NOT IOS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

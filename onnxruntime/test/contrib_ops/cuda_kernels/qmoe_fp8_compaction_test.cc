@@ -5,10 +5,12 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <type_traits>
 #include <vector>
 
 #include <gtest/gtest.h>
 
+#include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "core/providers/cuda/cuda_common.h"
 
@@ -190,12 +192,19 @@ void TestNvfp4GemvScaleCodes(int k) {
   constexpr int n = 256;
   std::vector<uint8_t> weights(n * k / 2, 0);
   std::vector<uint8_t> scales(n * k / 16);
+  const int blocks = k / 16;
   for (int row = 0; row < n; ++row) {
-    weights[row * k / 2] = 2;
-    std::fill_n(scales.begin() + row * k / 16, k / 16, static_cast<uint8_t>(row));
+    for (int block = 0; block < blocks; ++block) {
+      weights[row * k / 2 + block * 8] = 0x22;
+      scales[row * blocks + block] =
+          block == 0 ? static_cast<uint8_t>(row) : static_cast<uint8_t>(0x30 + (row + block) % 16);
+    }
   }
   std::vector<T> input(k, T(0.0f));
-  input[0] = T(1.0f);
+  for (int block = 0; block < blocks; ++block) {
+    input[block * 16] = T(1.0f + (block % 3) * 0.5f);
+    input[block * 16 + 1] = T(0.5f + (block % 2) * 0.25f);
+  }
   const float global = 0.37f;
   const int expert = 0;
   CudaBuffer device_weights(weights.size());
@@ -210,10 +219,33 @@ void TestNvfp4GemvScaleCodes(int k) {
   device_global.Upload(&global);
   device_expert.Upload(&expert);
   using namespace onnxruntime::llm::kernels::moe_gemv;
+  cudaStream_t stream;
+  cudaGraph_t graph;
+  cudaGraphExec_t executable;
+  CUDA_CALL_THROW(cudaStreamCreate(&stream));
+  CUDA_CALL_THROW(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
   launch_moe_gemv_fp4_symmetric<T>(
       device_input.As<T>(), device_weights.As<uint8_t>(), nullptr, device_scales.As<uint8_t>(),
       device_global.As<float>(), nullptr, device_output.As<T>(), nullptr, device_expert.As<int>(),
-      1, 1, n, k, 16, 90, MoeGemvConfig::kDefault, false, true, nullptr, true);
+      1, 1, n, k, 16, 90, MoeGemvConfig::kDefault, false, true, stream, true);
+  CUDA_CALL_THROW(cudaStreamEndCapture(stream, &graph));
+  size_t node_count = 0;
+  CUDA_CALL_THROW(cudaGraphGetNodes(graph, nullptr, &node_count));
+  std::vector<cudaGraphNode_t> nodes(node_count);
+  CUDA_CALL_THROW(cudaGraphGetNodes(graph, nodes.data(), &node_count));
+  EXPECT_EQ(node_count, 1u);
+  if (node_count == 1) {
+    cudaKernelNodeParams node{};
+    CUDA_CALL_THROW(cudaGraphKernelNodeGetParams(nodes[0], &node));
+    EXPECT_EQ(Fp4MoeGemvKernelUsesNativeScale(node.func),
+              ParseEnvironmentVariableWithDefault<bool>("ORT_NVFP4_GEMV_NATIVE_SCALE", false));
+  }
+  CUDA_CALL_THROW(cudaGraphInstantiate(&executable, graph, nullptr, nullptr, 0));
+  CUDA_CALL_THROW(cudaGraphLaunch(executable, stream));
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  CUDA_CALL_THROW(cudaGraphExecDestroy(executable));
+  CUDA_CALL_THROW(cudaGraphDestroy(graph));
+  CUDA_CALL_THROW(cudaStreamDestroy(stream));
   std::array<T, n> actual{};
   device_output.Download(actual.data());
   for (int code = 0; code < 256; ++code) {
@@ -222,8 +254,24 @@ void TestNvfp4GemvScaleCodes(int k) {
     if ((code & 127) == 127) {
       EXPECT_TRUE(std::isnan(value));
     } else {
-      EXPECT_EQ(value, static_cast<float>(T(FiniteFp8Reference(code) * global)));
+      double sum = 0.0;
+      for (int block = 0; block < blocks; ++block) {
+        const float scale = static_cast<float>(T(FiniteFp8Reference(scales[code * blocks + block]) * global));
+        sum += scale * static_cast<float>(input[block * 16]);
+        sum += scale * static_cast<float>(input[block * 16 + 1]);
+      }
+      const float expected = static_cast<float>(T(static_cast<float>(sum)));
+      const float tolerance = std::is_same_v<T, half> ? 0.001f : 0.008f;
+      EXPECT_NEAR(value, expected, std::max(1e-7f, std::abs(expected) * tolerance));
     }
+  }
+}
+
+void TestNvfp4GemvScaleCodeConfigurations() {
+  for (int k : {16, 80, 1040}) {
+    SCOPED_TRACE(k);
+    TestNvfp4GemvScaleCodes<half>(k);
+    TestNvfp4GemvScaleCodes<__nv_bfloat16>(k);
   }
 }
 
@@ -231,11 +279,17 @@ TEST(CUDA_EP_Unittest, QMoENvfp4GemvAllScaleCodesPreserveScaledValuesAndNaNs) {
   if (!SupportsFp8Gemv()) {
     GTEST_SKIP() << "NVFP4 GEMV requires SM80+.";
   }
-  for (int k : {16, 1040}) {
-    SCOPED_TRACE(k);
-    TestNvfp4GemvScaleCodes<half>(k);
-    TestNvfp4GemvScaleCodes<__nv_bfloat16>(k);
+  TestNvfp4GemvScaleCodeConfigurations();
+}
+
+TEST(CUDA_EP_Unittest, QMoENvfp4GemvNativeScale) {
+  if (!ParseEnvironmentVariableWithDefault<bool>("ORT_NVFP4_GEMV_NATIVE_SCALE", false)) {
+    GTEST_SKIP() << "Native-scale coverage runs in its flag-enabled CTest process.";
   }
+  if (!SupportsFp8Gemv() || !onnxruntime::llm::kernels::moe_gemv::Fp4MoeGemvSupportsNativeScale()) {
+    GTEST_SKIP() << "Native E4M3 scale conversion requires FP8-enabled kernels compiled for SM90+.";
+  }
+  TestNvfp4GemvScaleCodeConfigurations();
 }
 #endif
 
