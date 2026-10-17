@@ -498,6 +498,53 @@ void LaunchSoftmaxTopK(
 }
 
 template <typename T>
+__global__ void ApplyRouterWeightsKernel(const T* router_weights, const int* topk_indices, float* topk_scales,
+                                         int num_rows, int num_experts, int k, bool normalize_scales) {
+  const int row = blockIdx.x * blockDim.x + threadIdx.x;
+  if (row >= num_rows) return;
+
+  const T* weights_row = router_weights + static_cast<int64_t>(row) * num_experts;
+  const int* row_indices = topk_indices + static_cast<int64_t>(row) * k;
+  float* row_scales = topk_scales + static_cast<int64_t>(row) * k;
+
+  float weight_sum = 0.0f;
+  for (int j = 0; j < k; ++j) {
+    const float w = static_cast<float>(weights_row[row_indices[j]]);
+    row_scales[j] = w;
+    weight_sum += w;
+  }
+  if (normalize_scales) {
+    const float inv_weight_sum = (weight_sum == 0.0f) ? 0.0f : (1.0f / weight_sum);
+    for (int j = 0; j < k; ++j) {
+      row_scales[j] *= inv_weight_sum;
+    }
+  }
+}
+
+template <typename T>
+static void DispatchApplyRouterWeights(const T* router_weights, const int* topk_indices, float* topk_scales,
+                                       int num_rows, int num_experts, int k, bool normalize_scales,
+                                       cudaStream_t stream) {
+  if (num_rows <= 0 || k <= 0) return;
+  const int block = 128;
+  ApplyRouterWeightsKernel<T><<<Compute1DGridSize(num_rows, block), block, 0, stream>>>(
+      router_weights, topk_indices, topk_scales, num_rows, num_experts, k, normalize_scales);
+}
+
+void LaunchApplyRouterWeights(const float* rw, const int* idx, float* scales, int rows, int experts, int k,
+                              bool normalize_scales, cudaStream_t stream) {
+  DispatchApplyRouterWeights<float>(rw, idx, scales, rows, experts, k, normalize_scales, stream);
+}
+void LaunchApplyRouterWeights(const half* rw, const int* idx, float* scales, int rows, int experts, int k,
+                              bool normalize_scales, cudaStream_t stream) {
+  DispatchApplyRouterWeights<half>(rw, idx, scales, rows, experts, k, normalize_scales, stream);
+}
+void LaunchApplyRouterWeights(const __nv_bfloat16* rw, const int* idx, float* scales, int rows, int experts, int k,
+                              bool normalize_scales, cudaStream_t stream) {
+  DispatchApplyRouterWeights<__nv_bfloat16>(rw, idx, scales, rows, experts, k, normalize_scales, stream);
+}
+
+template <typename T>
 __global__ void QMoEPrePackZPKernel(const uint8_t* zp, const T* scales, T* out, int num_elements, float offset) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < num_elements) {
