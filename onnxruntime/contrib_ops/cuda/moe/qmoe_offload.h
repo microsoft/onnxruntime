@@ -18,6 +18,7 @@
 
 namespace onnxruntime::contrib::cuda {
 
+class QMoE;
 struct QMoEResidentLayerSlabView;
 struct QMoEPrefillPassDmaView;
 
@@ -213,6 +214,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   std::unique_ptr<qmoe::CallbackTiming> callback_timing_;
   std::shared_ptr<onnxruntime::cuda::QMoESessionController> session_controller_;
   std::shared_ptr<SharedLayerCache> owned_layer_cache_;
+  std::unique_ptr<QMoE> prefill_qmoe_;
 
   // Dynamic per-layer GPU expert cache with in-slab spare and dummy slots: P = C + S + D (v3 Section 7.4/7.5 / F3).
   mutable int resident_slots_ = 0;       // C: logical resident capacity (including decode_extension_slots_)
