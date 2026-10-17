@@ -91,6 +91,7 @@ empty output name for `qsa`; `state_update` is declared only when QSA capture is
 | 4 | `present_gate_buffer` | same shape as `past_gate_buffer` | T | csa only |
 | 5 | `present_state_lengths` | same shape as `past_state_lengths` | int32 | both |
 | 6 | `state_update` | `(batch_size, state_update_capacity, head_size)` | T | qsa capture only |
+| 8 | `state_status` | `(batch_size)` | int32 | optional, CUDA only |
 
 `capacity` is `token_budget + compress_ratio - 1` for `qsa` and `index_topk` for `csa`, exactly the
 same formula (`SelectedCapacity`) used by `SparseAttentionIndexer`.
@@ -132,6 +133,16 @@ and buffer compaction reads entries at or above the destination index before ove
 `state_capacity - old_entry_count` allows, that request's step is rejected as a deterministic
 no-op: its state and state lengths remain unchanged, and its selection outputs stay empty. This
 never reads or writes outside a tensor's fixed extent and never silently truncates state.
+
+**State status.** The rejection above is silent unless the optional output 8, `state_status`, is
+requested (outputs 6 and 7 are then declared, possibly with empty names). It holds one int32 per
+request, written on the device by the state update kernel, so a CUDA-graph-captured caller can
+check it on the host after replay without any synchronization inside the operator: `0` the update
+was applied (or intentionally held by IndexShare reuse), `1` invalid device metadata (inconsistent
+`cumulative_sequence_lengths`, `past_sequence_lengths` or `past_state_lengths`), `2` the update
+would exceed `state_capacity`. The values follow the status convention of
+`PackedSparseAttentionIndexerMerge`. A non-zero request leaves its state unchanged and emits an
+empty selection. The WebGPU kernel does not implement the output and fails if it is requested.
 
 **Transactional QSA capture.** When `state_update_capacity > 0`,
 `state_update_capture_count[b]` requests capture of that request's leading transitions, clamped to
