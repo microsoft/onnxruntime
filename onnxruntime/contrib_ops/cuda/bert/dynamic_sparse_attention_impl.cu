@@ -1129,7 +1129,7 @@ Status LaunchDynamicSparseAttention(
       static_cast<size_t>(parameters.head_size) * sizeof(T);
   bool use_prefill_kernel = false;
   if constexpr (std::is_same_v<T, __nv_bfloat16>) {
-    static const bool enabled = ParseEnvironmentVariableWithDefault<int>("ORT_DSA_PREFILL_KERNEL", 1) != 0;
+    const bool enabled = ParseEnvironmentVariableWithDefault<int>("ORT_DSA_PREFILL_KERNEL", 1) != 0;
     // max_shared_memory_per_block is the default 48 KB limit; the kernel opts in to more and requires SM80+.
     int device = 0;
     int cc_major = 0;

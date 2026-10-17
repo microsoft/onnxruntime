@@ -142,8 +142,12 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
     for (int it = 0; it < kTile / 4; ++it) {
       const int cand_in_tile = it * 4 + warp;
       const int index = candidate_index(tile * kTile + cand_in_tile);
-      const __nv_bfloat16* src = base + static_cast<int64_t>(index < 0 ? 0 : index) * kHeadDim + lane * 8;
-      CpAsync16(dst + cand_in_tile * kRowStride + lane * 8, src);
+      __nv_bfloat16* row_dst = dst + cand_in_tile * kRowStride + lane * 8;
+      if (index >= 0) {
+        CpAsync16(row_dst, base + static_cast<int64_t>(index) * kHeadDim + lane * 8);
+      } else {
+        *reinterpret_cast<uint4*>(row_dst) = make_uint4(0, 0, 0, 0);
+      }
     }
   };
 

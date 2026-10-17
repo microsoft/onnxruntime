@@ -146,6 +146,10 @@ std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig> PickPrefi
     return std::nullopt;
   };
   auto find_ampere = [&](CutlassTileConfig tile) -> std::optional<CutlassGemmConfig> {
+#if defined(EXCLUDE_SM_80) || defined(ORT_QUICK_BUILD)
+    ORT_UNUSED_PARAMETER(tile);
+    return std::nullopt;
+#else
     std::optional<CutlassGemmConfig> best;
     for (const auto& t : tactics) {
       if (!t.is_tma_warp_specialized && t.sm_version < 90 && t.tile_config_sm80 == tile &&
@@ -154,6 +158,7 @@ std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig> PickPrefi
       }
     }
     return best;
+#endif
   };
   std::optional<CutlassGemmConfig> pick;
   if (rows_per_expert >= 100.0) {

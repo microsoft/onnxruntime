@@ -1545,16 +1545,26 @@ __global__ void CsaSelectKernel(const float* scores, const int64_t* position_ids
   }
 }
 
+bool UseTiledQsaBlockScoring(const SparseAttentionIndexerParams& params) {
+  const bool tiled_scoring =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QSA_TILED_SCORING", 1) != 0;
+  return tiled_scoring && !params.use_block_representatives && params.max_block_count > 0 &&
+         params.sequence_length >= 16 && params.head_size > 0 && params.head_size % kScoreChunk == 0;
+}
+
 }  // namespace
 
 size_t GetQsaWorkspaceFloatCount(const SparseAttentionIndexerParams& params) {
   const size_t rows = static_cast<size_t>(params.batch_size) * params.sequence_length;
   const size_t query_count = rows * params.num_heads * params.head_size;
+  if (UseHierarchicalQsaTopK(params, false)) {
+    return query_count;
+  }
   const size_t pooled_keys =
-      static_cast<size_t>(params.batch_size) * std::max(params.max_block_count, 1) * params.head_size;
-  return UseHierarchicalQsaTopK(params, false)
-             ? query_count
-             : query_count + rows * std::max(params.max_block_count, 1) + pooled_keys;
+      UseTiledQsaBlockScoring(params)
+          ? static_cast<size_t>(params.batch_size) * std::max(params.max_block_count, 1) * params.head_size
+          : 0;
+  return query_count + rows * std::max(params.max_block_count, 1) + pooled_keys;
 }
 
 size_t GetQsaWorkspaceIntCount(const SparseAttentionIndexerParams& params, bool has_mask) {
@@ -1674,16 +1684,13 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(radix_histogram, 0, rows * 256 * sizeof(uint32_t), stream));
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(candidate_counts, 0, rows * sizeof(int32_t), stream));
     }
-    static const bool tiled_scoring =
-        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QSA_TILED_SCORING", 1) != 0;
     if (use_hierarchical_topk) {
       const int tile_count = GetHierarchicalTileCount(params);
       const int64_t tile_work = rows * tile_count;
       const int tile_blocks = static_cast<int>(std::min<int64_t>(tile_work, kMaxGridDimX));
       QsaScoreTileTopKKernel<T><<<tile_blocks, kHierarchicalScoreThreads, 0, stream>>>(
           query_rotated, present_key, visible_count, hierarchical_keys, tile_count, params);
-    } else if (!params.use_block_representatives && tiled_scoring && params.sequence_length >= 16 &&
-               params.head_size % kScoreChunk == 0) {
+    } else if (UseTiledQsaBlockScoring(params)) {
       float* pooled_keys = block_scores + rows * params.max_block_count;
       ORT_RETURN_IF_ERROR(
           ConfigureDynamicSharedMemory(QsaPoolBlockKeysKernel<T>, score_shared_bytes, "QsaPoolBlockKeysKernel"));
