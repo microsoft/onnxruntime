@@ -20,10 +20,16 @@ using namespace onnxruntime::webgpu;
 
 class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatMulNBitsProgram> {
  public:
-  SubgroupMatrixMatMulNBitsProgram(uint32_t nbits, SubgroupMatrixConfig config, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, bool has_tail_buffer)
-      : Program{"SubgroupMatrixMatMulNBits"},
+  SubgroupMatrixMatMulNBitsProgram(uint32_t nbits, SubgroupMatrixConfig config, uint32_t tile_m,
+                                   uint32_t tile_n, uint32_t tile_k,
+                                   bool has_zero_points, bool has_bias,
+                                   bool has_weight_idx, bool has_weight_idx_indirect, bool has_tail_buffer)
+      : Program{config.subgroupSize == 64 ? "SubgroupMatrixMatMulNBitsWave64" : "SubgroupMatrixMatMulNBits"},
         nbits_(nbits),
         config_(config),
+        tile_m_(tile_m),
+        tile_n_(tile_n),
+        tile_k_(tile_k),
         has_zero_points_(has_zero_points),
         has_bias_(has_bias),
         has_weight_idx_{has_weight_idx},
@@ -35,12 +41,16 @@ class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatM
       {"N", ProgramUniformVariableDataType::Uint32},
       {"K", ProgramUniformVariableDataType::Uint32},
       {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
-      {"weight_idx", ProgramUniformVariableDataType::Uint32},
-      {"m_tiles_per_wg", ProgramUniformVariableDataType::Uint32});
+      {"num_N_tile", ProgramUniformVariableDataType::Uint32},
+      {"num_M_tile", ProgramUniformVariableDataType::Uint32},
+      {"weight_idx", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t nbits_;
   SubgroupMatrixConfig config_;
+  uint32_t tile_m_;
+  uint32_t tile_n_;
+  uint32_t tile_k_;
   bool has_zero_points_;
   bool has_bias_;
   bool has_weight_idx_;

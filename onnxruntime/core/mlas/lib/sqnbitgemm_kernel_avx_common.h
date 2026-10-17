@@ -1,4 +1,5 @@
 #pragma once
+#include "core/common/safeint.h"
 #include "qnbitgemm.h"
 #include "sqnbitgemm_q8_block.h"
 
@@ -72,21 +73,22 @@ QNBitGemmPackQuantBDataSize(
 )
 {
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+    const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const SafeInt<size_t> BlockCount = SafeInt<size_t>(N) * BlockCountK;
     if (ComputeType == SQNBIT_CompInt8) {
-        size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-        const size_t ScaleSize = N * BlockCountK * sizeof(float);
-        size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
+        SafeInt<size_t> PackedQuantBDataSize = BlockCount * BlkDataSize;
+        const SafeInt<size_t> ScaleSize = BlockCount * sizeof(float);
+        SafeInt<size_t> BlkSumSize = SafeInt<size_t>(MlasDivRoundup(N, 16)) * BlockCountK * 16 * sizeof(float);
 
         // avx512 requires alignment on a 64-byte boundary
         constexpr size_t PackedQuantBDataAlignment = 64;
-        PackedQuantBDataSize += PackedQuantBDataAlignment - 1;
+        PackedQuantBDataSize += SafeInt<size_t>(PackedQuantBDataAlignment) - 1;
         constexpr size_t BlkSumAlignment = MlasQNBitQuantBBlkSumAlignment();
-        BlkSumSize += BlkSumAlignment - 1;
+        BlkSumSize += SafeInt<size_t>(BlkSumAlignment) - 1;
 
-        return PackedQuantBDataSize + ScaleSize + BlkSumSize;
+        return static_cast<size_t>(PackedQuantBDataSize + ScaleSize + BlkSumSize);
     } else {
-        const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-        return PackedQuantBDataSize;
+        return static_cast<size_t>(BlockCount * BlkDataSize);
     }
 }
 

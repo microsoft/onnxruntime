@@ -4377,7 +4377,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_beta</tt> : float</dt>
 <dd>Beta parameter used in activation function.</dd>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
+<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu</dd>
 <dt><tt>k</tt> : int</dt>
 <dd>Number of top experts to select from expert pool</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
@@ -5207,7 +5207,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.PackedSparseAttentionIndexerMerge"></a><a name="com.microsoft.packedsparseattentionindexermerge">**com.microsoft.PackedSparseAttentionIndexerMerge**</a>
 
-  Stable union of a mapped base selection and [range_start, range_end). Valid prefixes contain nonnegative indices. Padding is ignored. Outputs preserve first-occurrence order and are padded with -1. Status is 0 for success, 1 for invalid device metadata, or 2 for capacity overflow; failures return count 0 and all -1. The caller supplies a common index namespace and guarantees causal visibility.
+  Stable union of a mapped base selection and either [range_start, range_end) or an additional selection prefix. Valid prefixes contain nonnegative indices. Padding is ignored. Outputs preserve first-occurrence order and are padded with -1. Status is 0 for success, 1 for invalid device metadata, or 2 for capacity overflow; failures return count 0 and all -1. The caller supplies a common index namespace and guarantees causal visibility.
 
 #### Version
 
@@ -5236,9 +5236,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>range_ends</tt> (optional) : T</dt>
 <dd>Exclusive ends not less than starts, shape (N).</dd>
 <dt><tt>additional_indices</tt> (optional) : T</dt>
-<dd>Reserved; must be absent for append_range.</dd>
+<dd>Required for append_indices: selections of shape (N, A); absent for append_range.</dd>
 <dt><tt>additional_counts</tt> (optional) : T</dt>
-<dd>Reserved; must be absent for append_range.</dd>
+<dd>Required for append_indices: valid prefix lengths of shape (N); absent for append_range.</dd>
 </dl>
 
 #### Outputs
@@ -6203,6 +6203,8 @@ This version of the operator has been available since version 1 of the 'com.micr
         These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
         Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
         Other activation types and unsupported routing sizes retain the fallback.
+        The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
+        that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
   
         Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
         Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
@@ -6238,7 +6240,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_beta</tt> : float</dt>
 <dd>Beta parameter used in activation function.</dd>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
+<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu</dd>
 <dt><tt>block_size</tt> : int</dt>
 <dd>For integer quantization, size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). Both hidden_size and inter_size must be divisible by the block size. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. Without a positive value, FP8 uses per-expert global scales. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>

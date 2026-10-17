@@ -1435,7 +1435,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     MoE, 1,
     OpSchema()
         .SetDoc(MoE_ver1_doc)
-        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
+        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu", AttributeProto::STRING, std::string("relu"))
         .Attr("swiglu_fusion", "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("swiglu_limit", "The limit used to clamp in SwiGLU. No clamp when limit is not provided.", AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Attr("activation_alpha", "Alpha parameter used in activation function.", AttributeProto::FLOAT, 1.0f)
@@ -1495,6 +1495,8 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
       Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
       Other activation types and unsupported routing sizes retain the fallback.
+      The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
+      that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
 
       Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
       Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
@@ -1521,7 +1523,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(qMoE_ver1_doc)
         .Attr("activation_type",
-              "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu",
+              "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu",
               AttributeProto::STRING,
               std::string("relu"))
         .Attr("k",

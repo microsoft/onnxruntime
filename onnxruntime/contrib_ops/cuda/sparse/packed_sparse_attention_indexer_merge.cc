@@ -1,4 +1,5 @@
 #include "core/providers/cuda/cuda_kernel.h"
+#include "core/common/safeint.h"
 #include "contrib_ops/cpu/sparse/packed_sparse_attention_indexer_merge_common.h"
 #include "contrib_ops/cuda/sparse/packed_sparse_attention_indexer_merge_impl.h"
 
@@ -31,6 +32,8 @@ class PackedSparseAttentionIndexerMerge final : public onnxruntime::cuda::CudaKe
                         additional_counts->Shape() != rows->Shape() ||
                         additional->Shape()[1] > INT32_MAX - dimensions.capacity,
                     "Additional selections must have shape [N,A] and counts [N], with bounded capacity");
+      dimensions.hash_capacity = indexer_merge::HashCapacity(
+          capacity_, static_cast<int64_t>(dimensions.capacity) + additional->Shape()[1]);
     } else {
       ORT_RETURN_IF(additional || additional_counts, "append_range does not accept additional index inputs");
       ORT_RETURN_IF_ERROR(indexer_merge::Validate(base, counts, rows, starts, ends, capacity_, dimensions));
@@ -40,7 +43,7 @@ class PackedSparseAttentionIndexerMerge final : public onnxruntime::cuda::CudaKe
     auto* status = context->Output(2, {dimensions.queries});
     if (dimensions.queries == 0) return Status::OK();
     auto workspace = GetScratchBuffer<int32_t>(
-        static_cast<size_t>(dimensions.queries) * dimensions.hash_capacity * 2, GetComputeStream(context));
+        SafeInt<size_t>(dimensions.queries) * dimensions.hash_capacity * 2, GetComputeStream(context));
     if (append_indices_) {
       CUDA_RETURN_IF_ERROR(LaunchPackedSparseAttentionIndexerMergeIndices(
           Stream(context), base->Data<int32_t>(), counts->Data<int32_t>(), rows->Data<int32_t>(),

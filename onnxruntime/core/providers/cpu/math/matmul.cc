@@ -179,9 +179,8 @@ Status MatMul<double>::Compute(OpKernelContext* ctx) const {
     return Status::OK();
 
   if (helper.K() == 0) {
-    EigenMatrixMapRowMajor<double> dest(y->MutableData<double>(),
-                                        narrow<Eigen::Index>(helper.M()), narrow<Eigen::Index>(helper.N()));
-    dest.setZero();
+    auto output_span = gsl::make_span(y->MutableData<double>(), narrow<size_t>(y->Shape().Size()));
+    std::fill(output_span.begin(), output_span.end(), double{});
     return Status::OK();
   }
 
@@ -476,9 +475,8 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   if (helper.K() == 0) {
     // When we have (M, 0, N) then the inputs are empty, but the output should
     // be filled out with zeros.
-    EigenMatrixMapRowMajor<float> dest(y->MutableData<float>(),
-                                       narrow<Eigen::Index>(helper.M()), narrow<Eigen::Index>(helper.N()));
-    dest.setZero();
+    auto output_span = gsl::make_span(y->MutableData<float>(), narrow<size_t>(y->Shape().Size()));
+    std::fill(output_span.begin(), output_span.end(), float{});
     return Status::OK();
   }
 

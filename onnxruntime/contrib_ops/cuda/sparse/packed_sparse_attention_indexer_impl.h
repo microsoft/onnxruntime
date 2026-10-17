@@ -48,8 +48,10 @@ struct PackedSparseAttentionIndexerParams {
 size_t GetQsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams& params);
 size_t GetCsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams& params);
 Status LaunchValidatePackedIndexerReuse(cudaStream_t stream, const int32_t* cumulative_lengths,
+                                        const int32_t* past_sequence_lengths, const int32_t* past_state_lengths,
                                         int32_t* indices, int32_t* counts, int32_t* status,
-                                        int batch_size, int capacity, const int32_t* overflow_flags = nullptr);
+                                        int batch_size, int capacity, int state_capacity, int compress_ratio,
+                                        bool is_qsa, int32_t* overflow_flags = nullptr);
 // `overflow_flags` is a caller-allocated int32 scratch buffer with at least `batch_size` elements
 // (unused when batch_size == 0). The update kernel writes, per request, whether this call's new
 // blocks/windows would exceed state_capacity; when it does, the whole step is rejected for that

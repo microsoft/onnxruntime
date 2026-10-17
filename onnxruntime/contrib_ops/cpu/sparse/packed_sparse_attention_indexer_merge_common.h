@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #ifndef SHARED_PROVIDER
@@ -24,8 +25,15 @@ struct Dimensions {
   int32_t rows;
   int32_t capacity;
   int32_t queries;
-  int32_t hash_capacity;
+  int64_t hash_capacity;
 };
+
+inline int64_t HashCapacity(int64_t output_capacity, int64_t candidate_capacity) {
+  const int64_t insertion_bound = std::min(output_capacity + 1, candidate_capacity);
+  int64_t capacity = 1;
+  while (capacity < 2 * insertion_bound) capacity *= 2;
+  return capacity;
+}
 
 inline Status Validate(const Tensor* base, const Tensor* counts, const Tensor* rows,
                        const Tensor* starts, const Tensor* ends, int64_t output_capacity,
@@ -41,10 +49,8 @@ inline Status Validate(const Tensor* base, const Tensor* counts, const Tensor* r
   ORT_RETURN_IF_NOT(counts->Shape() == TensorShape({cached_rows}) &&
                         starts->Shape() == rows->Shape() && ends->Shape() == rows->Shape(),
                     "Counts and range tensors must match their row dimensions");
-  int64_t hash_capacity = 1;
-  while (hash_capacity < output_capacity) hash_capacity *= 2;
   dimensions = {static_cast<int32_t>(cached_rows), static_cast<int32_t>(base_capacity),
-                static_cast<int32_t>(queries), static_cast<int32_t>(hash_capacity)};
+                static_cast<int32_t>(queries), HashCapacity(output_capacity, base_capacity)};
   return Status::OK();
 }
 

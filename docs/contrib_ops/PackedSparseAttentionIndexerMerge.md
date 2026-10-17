@@ -32,9 +32,13 @@ every status before publishing dependent results. A status output does not
 prevent downstream nodes from executing in the same graph.
 
 CUDA uses one cooperative block per query with invocation-local scratch for
-stable duplicate removal. WebGPU uses one invocation per query, with a
-workgroup hash table for capacities up to 4096 and an output-prefix scan for
-larger capacities. Neither kernel modifies the base tensors or retains a
+stable duplicate removal. Hash scratch is bounded by the candidate width and
+the output capacity plus one overflow-detection entry, rather than the output
+capacity alone. Successful rows use at most half of the hash slots.
+WebGPU uses one cooperative workgroup per query. Parallel first-occurrence
+checks and ordered chunk compaction preserve stable output order without a
+capacity-dependent workgroup hash table or a serial large-capacity fallback.
+Neither kernel modifies the base tensors or retains a
 selection between runs.
 
 Regression tests: `PackedSparseAttentionIndexerMerge.*` in

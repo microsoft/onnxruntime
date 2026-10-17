@@ -1528,7 +1528,9 @@ std::unique_ptr<IExecutionProvider> TryGetEpWithVarlenCausalConvWithState() {
 }
 
 std::unique_ptr<IExecutionProvider> GetWebGpuEpWithTestStorageBufferBindingSize(uint64_t max_size) {
-  return WebGpuExecutionProviderWithTestStorageBufferBindingSize(max_size);
+  WebGpuExecutionProviderTestOptions test_options{};
+  test_options.max_storage_buffer_binding_size = max_size;
+  return WebGpuExecutionProviderWithTestOptions(test_options);
 }
 
 // Transpose a single request's (channels, length) reference block to the token-major
