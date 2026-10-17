@@ -87,6 +87,12 @@ def compile_qsa(source, element_type, paired=False):
     return compile_device_code(prefix + body, name), params_dtype
 
 
+def qsa_score_grid(source, rows, tiles):
+    if "const int token = static_cast<int>(blockIdx.y)" in source:
+        return (min(tiles, 128), rows)
+    return (rows * tiles, 1)
+
+
 def compile_qsa_emit(source):
     prefix, _ = qsa_prefix(source)
     topk_source = (ROOT / "core/providers/cuda/cu_inc/topk_warp_sort.cuh").read_text()
@@ -272,11 +278,7 @@ def run_qsa(baseline, check_only, sanitizer_case=False):
                     common = (keys, queries, cumulative, past, positions, lengths, overflow)
                     old_args = (*common, expected, numpy.int32(tiles), params[()])
                     new_args = (*common, actual, numpy.int32(tiles), params[()])
-                    old_grid = (
-                        (min(tiles, 128), rows)
-                        if "const int token = static_cast<int>(blockIdx.y)" in baseline
-                        else (rows * tiles,)
-                    )
+                    old_grid = qsa_score_grid(baseline, rows, tiles)
                     use_paired = rows >= 4
                     candidate_kernel = paired_kernel if use_paired else new_kernel
                     new_grid = (min(tiles, 128), (rows + 1) // 2 if use_paired else rows)
@@ -355,14 +357,14 @@ def run_qsa(baseline, check_only, sanitizer_case=False):
                             ),
                             flush=True,
                         )
-        checks += qsa_ragged_replay(old_kernel, new_kernel, params_dtype, element_type, random)
+        checks += qsa_ragged_replay(old_kernel, new_kernel, params_dtype, element_type, random, baseline)
         checks += qsa_ragged_replay(
-            old_kernel, paired_kernel, params_dtype, element_type, random, paired=True, baseline=baseline
+            old_kernel, paired_kernel, params_dtype, element_type, random, baseline, paired=True
         )
     print(f"QSA exact-key checks passed: {checks}", flush=True)
 
 
-def qsa_ragged_replay(old_kernel, new_kernel, params_dtype, element_type, random, paired=False, baseline=None):
+def qsa_ragged_replay(old_kernel, new_kernel, params_dtype, element_type, random, baseline, paired=False):
     rows, capacity, batches = 8, 4099, 1 if paired else 3
     params = numpy.zeros((), dtype=params_dtype)
     for name, value in {
@@ -390,7 +392,7 @@ def qsa_ragged_replay(old_kernel, new_kernel, params_dtype, element_type, random
     common = (keys, query, cumulative, past, positions, lengths, overflow)
     old_args = (*common, expected, numpy.int32(tiles), params[()])
     new_args = (*common, actual, numpy.int32(tiles), params[()])
-    old_ops = [(old_kernel, (min(tiles, 128), rows), (1024,), old_args)]
+    old_ops = [(old_kernel, qsa_score_grid(baseline, rows, tiles), (1024,), old_args)]
     new_ops = [
         (new_kernel, (min(tiles, 128), (rows + 1) // 2 if paired else rows), (256,) if paired else (1024,), new_args)
     ]
@@ -443,12 +445,15 @@ def qsa_ragged_replay(old_kernel, new_kernel, params_dtype, element_type, random
     graph = stream.end_capture()
     checks = 0
     overflow_cases = ((0,), (1,)) if paired else ((0, 0, 0), (0, 1, 0), (0, 0, 1), (0, 1, 1))
-    for visible in (0, 1, 9, 1025, capacity):
+    visibility_cases = [(visible, visible * 4) for visible in (0, 1, 9, 1025, capacity)]
+    if paired:
+        visibility_cases.append((1026, 4098))
+    for visible, past_length in visibility_cases:
         for overflow_values in overflow_cases:
             lengths.set(
                 numpy.array([[visible, 0]] if paired else [[0, 0], [visible, 0], [visible // 2, 0]], dtype=numpy.int32)
             )
-            past.set(numpy.array([visible * 4] if paired else [0, visible * 4, (visible // 2) * 4], dtype=numpy.int32))
+            past.set(numpy.array([past_length] if paired else [0, past_length, (visible // 2) * 4], dtype=numpy.int32))
             overflow.set(numpy.array(overflow_values, dtype=numpy.int32))
             expected.fill(0xDEAD)
             actual.fill(0xBEEF)
