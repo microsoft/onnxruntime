@@ -36,6 +36,7 @@ parameters:
     - '3.12'
     - '3.13'
     - '3.14'
+    - '3.15'
 
 - name: LinuxPythonConfigurations
   type: object
@@ -53,6 +54,8 @@ parameters:
     docker_python_exe_path: '/opt/python/cp314-cp314/bin/python3.14'
   - python_version: '3.14t'
     docker_python_exe_path: '/opt/python/cp314-cp314t/bin/python3.14'
+  - python_version: '3.15'
+    docker_python_exe_path: '/opt/python/cp315-cp315/bin/python3.15'
 
 - name: cmake_windows_x64_cuda_archs
   type: string

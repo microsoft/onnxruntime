@@ -48,6 +48,10 @@ stages:
         displayName: 'Download Pipeline Artifact - Win GPU 3.14'
         artifact: 'win_gpu_wheel_3.14'
         patterns: '*.whl'
+      - download: build
+        displayName: 'Download Pipeline Artifact - Win GPU 3.15'
+        artifact: 'win_gpu_wheel_3.15'
+        patterns: '*.whl'
       - script: find $(Pipeline.Workspace) -name \*win_amd64.whl -exec mv {} $(Pipeline.Workspace)/build/onnxruntime_gpu \;
         displayName: 'Merge files together'
 

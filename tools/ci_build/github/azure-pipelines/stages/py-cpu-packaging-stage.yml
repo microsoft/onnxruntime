@@ -84,6 +84,13 @@ stages:
           cmake_build_type: ${{ parameters.cmake_build_type }}
           python_version: '3.14'
 
+      - template: ../templates/py-macos.yml
+        parameters:
+          arch: 'arm64'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          python_version: '3.15'
+
 - ${{ if eq(parameters.enable_linux_arm, true) }}:
   - stage: Python_Packaging_Linux_ARM
     dependsOn: []
