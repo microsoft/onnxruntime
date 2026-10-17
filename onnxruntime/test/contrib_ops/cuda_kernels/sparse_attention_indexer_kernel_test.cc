@@ -29,6 +29,14 @@ TEST(SparseAttentionIndexerCudaKernelTest, QsaWorkspaceIncludesPreparedQuery) {
   constexpr size_t kPreparedQueryElements = kRows * 4 * 128;
   constexpr size_t kBlockScoreElements = kRows * 2048;
   EXPECT_EQ(GetQsaWorkspaceFloatCount(params), kPreparedQueryElements + kBlockScoreElements);
+
+  params.sequence_length = 16;
+  constexpr size_t kPrefillRows = 32;
+  constexpr size_t kPrefillQueryElements = kPrefillRows * 4 * 128;
+  constexpr size_t kPrefillBlockScoreElements = kPrefillRows * 2048;
+  constexpr size_t kPooledKeyElements = 2 * 2048 * 128;
+  EXPECT_EQ(GetQsaWorkspaceFloatCount(params),
+            kPrefillQueryElements + kPrefillBlockScoreElements + kPooledKeyElements);
 }
 
 TEST(SparseAttentionIndexerCudaKernelTest, QsaLongContextPerformanceRegression) {

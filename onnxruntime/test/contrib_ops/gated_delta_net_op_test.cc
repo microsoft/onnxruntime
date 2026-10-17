@@ -1359,7 +1359,98 @@ TEST(GatedDeltaNetTest, Recurrent_Float32) {
 TEST(GatedDeltaNetTest, BFloat16UsesRecurrentFallback) {
   if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{64, 1, 1, 2, kDim, kDim};
-  RunTypedCase<BFloat16>(g, Options{}, MakeInputs(g, 151), 6e-3f, 2e-3f);
+  const Inputs in = MakeInputs(g, 151);
+  RunTypedCase<BFloat16>(g, Options{}, in, 6e-3f, 2e-3f);
+  {
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{{"ORT_GDN_PLAN", "recurrent"}}};
+    RunTypedCase<BFloat16>(g, Options{}, in, 6e-3f, 2e-3f);
+  }
+  if (!NeedSkipGatedDeltaNetSplitTest()) {
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}}};
+    RunTypedCase<BFloat16>(g, Options{}, in, 6e-3f, 2e-3f);
+  }
+}
+
+TEST(GatedDeltaNetTest, BFloat16ValuesOutsideFp16Range) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{64, 1, 1, 2, kDim, kDim};
+
+  // Values above FP16 max finite (65504): 2^20 * 0.5 = 524288.0f would overflow to Inf if
+  // narrowed through FP16.
+  {
+    Inputs in = MakeInputs(g, 159);
+    const float large_scale = std::ldexp(1.0f, 20);
+    for (float& x : in.v) x *= large_scale;
+    for (float& x : in.state0) x *= large_scale;
+    Options o;
+    o.scale = std::ldexp(1.0f, -20) / std::sqrt(static_cast<float>(kDim));
+    std::vector<OrtValue> fetches;
+    RunTypedCase<BFloat16>(g, o, in, 6e-3f, 2e-3f * large_scale, false, &fetches);
+    ASSERT_EQ(fetches.size(), 3u);
+    const float* final_state = fetches[1].Get<Tensor>().Data<float>();
+    float max_abs_state = 0.0f;
+    for (int64_t i = 0; i < fetches[1].Get<Tensor>().Shape().Size(); ++i) {
+      ASSERT_TRUE(std::isfinite(final_state[i]));
+      max_abs_state = std::max(max_abs_state, std::abs(final_state[i]));
+    }
+    EXPECT_GT(max_abs_state, 65504.0f);
+  }
+
+  // Values below FP16 min subnormal (2^-24): 2^-30 would flush to 0 if narrowed through FP16.
+  {
+    Inputs in = MakeInputs(g, 163);
+    const float small_scale = std::ldexp(1.0f, -30);
+    for (float& x : in.v) x *= small_scale;
+    for (float& x : in.state0) x *= small_scale;
+    Options o;
+    o.scale = std::ldexp(1.0f, 30) / std::sqrt(static_cast<float>(kDim));
+    std::vector<OrtValue> fetches;
+    RunTypedCase<BFloat16>(g, o, in, 6e-3f, 2e-3f * small_scale, false, &fetches);
+    ASSERT_EQ(fetches.size(), 3u);
+    const BFloat16* out = fetches[0].Get<Tensor>().Data<BFloat16>();
+    float max_abs_out = 0.0f;
+    for (int64_t i = 0; i < fetches[0].Get<Tensor>().Shape().Size(); ++i) {
+      max_abs_out = std::max(max_abs_out, std::abs(out[i].ToFloat()));
+    }
+    EXPECT_GT(max_abs_out, 1e-2f);
+  }
+}
+
+TEST(GatedDeltaNetTest, BFloat16OutputAvoidsFp16DoubleRounding) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{64, 1, 1, 2, kDim, kDim};
+  Inputs in;
+  in.q.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+  in.k.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+  in.v.assign(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f);
+  in.decay.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+  in.beta.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+  in.state0.assign(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+  for (int t = 0; t < g.total_tokens; ++t) {
+    in.q[static_cast<size_t>(t) * g.dk] = 1.0f;
+  }
+  for (int hv = 0; hv < g.hv; ++hv) {
+    for (int c = 0; c < g.dv; ++c) {
+      in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk] = 1.0f;
+    }
+  }
+
+  // 1 + 23 * 2^-11 = 1.01123046875 rounds directly to BFloat16 1.0078125 (0x3f81),
+  // whereas rounding to FP16 first (1.01171875) and then to BFloat16 double-rounds to
+  // 1.015625 (0x3f82).
+  Options o;
+  o.update_rule = "linear";
+  o.scale = 1.01123046875f;
+  std::vector<OrtValue> fetches;
+  RunTypedCase<BFloat16>(g, o, in, 0.0f, 0.0f, false, &fetches);
+  ASSERT_EQ(fetches.size(), 3u);
+  const BFloat16 expected(1.0078125f);
+  const BFloat16* out = fetches[0].Get<Tensor>().Data<BFloat16>();
+  for (int64_t i = 0; i < fetches[0].Get<Tensor>().Shape().Size(); ++i) {
+    ASSERT_EQ(out[i].val, expected.val) << "output element " << i;
+  }
 }
 
 // One token per request drives the warp-specialised decode kernel, a separate instantiation
@@ -2150,7 +2241,18 @@ TEST(GatedDeltaNetPlanTest, BFloat16UsesRecurrentEngine) {
 
   const auto plan = gdn::SelectPlan(d, 160 * 1024);
   EXPECT_TRUE(plan.supported);
-  EXPECT_EQ(plan.engine, gdn::Engine::kRecurrent);
+  EXPECT_EQ(plan.engine, gdn::Engine::kChunked);
+
+  d.sm_major = 7;
+  const auto pre_ampere_plan = gdn::SelectPlan(d, 160 * 1024);
+  EXPECT_TRUE(pre_ampere_plan.supported);
+  EXPECT_EQ(pre_ampere_plan.engine, gdn::Engine::kRecurrent);
+
+  d.sm_major = 8;
+  d.io_type = gdn::IoType::kFloat;
+  const auto float_plan = gdn::SelectPlan(d, 160 * 1024);
+  EXPECT_TRUE(float_plan.supported);
+  EXPECT_EQ(float_plan.engine, gdn::Engine::kRecurrent);
 }
 
 TEST(GatedDeltaNetPlanTest, RecurrentSharedMemoryIncludesBothNormalizationScalars) {

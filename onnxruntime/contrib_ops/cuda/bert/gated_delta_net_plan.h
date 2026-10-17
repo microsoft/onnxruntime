@@ -178,9 +178,9 @@ inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
   // scalar decay per (token, v-head). Per-key-dim decay (KDA) stays sequential.
   const bool rule_ok = !desc.decay_per_key_dim;
 
-  // Its GEMM operands are fp16 mma fragments, so float input would be silently narrowed;
-  // float stays on the scalar engine. bfloat16 needs bf16 fragments, not yet written.
-  const bool type_ok = desc.io_type == IoType::kFloat16;
+  // Its GEMM operands are 16-bit mma fragments (fp16 or bf16), so float input would be
+  // silently narrowed; float stays on the scalar engine.
+  const bool type_ok = desc.io_type == IoType::kFloat16 || desc.io_type == IoType::kBFloat16;
 
   if (long_enough && shape_ok && rule_ok && type_ok && desc.sm_major >= 8) {
     plan.v_block = 64;
@@ -269,7 +269,7 @@ inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
     } else if (!rule_ok) {
       plan.reject_reason = "per-key-dimension decay";
     } else if (!type_ok) {
-      plan.reject_reason = "chunked engine requires float16 input";
+      plan.reject_reason = "chunked engine requires float16 or bfloat16 input";
     }
   }
   return plan;
