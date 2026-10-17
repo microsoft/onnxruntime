@@ -5,8 +5,10 @@
 
 #include <atomic>
 #include <memory>
+#include "core/framework/kernel_dispatch_policy.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
+#include "contrib_ops/cuda/bert/group_query_attention_workspace_bounds.h"
 #include "contrib_ops/cuda/bert/attention_kernel_options.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 
@@ -56,6 +58,58 @@ class GroupQueryAttention final : public CudaKernel {
   KVQuantizationType k_quant_type_;
   KVQuantizationType v_quant_type_;
   int kv_cache_bit_width_;
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+  int64_t max_total_sequence_length_ = 0;
+#endif
+  KernelDispatchPolicy dispatch_policy_ = KernelDispatchPolicy::Auto;
+  mutable std::atomic<uint32_t> committed_prefill_backends_{
+      static_cast<uint32_t>(GetGQAReachableBackendsForPhase(
+          kAllGQAReachableBackends, GQAExecutionPhase::Prefill))};
+  mutable std::atomic<uint32_t> committed_decode_backends_{
+      static_cast<uint32_t>(GetGQAReachableBackendsForPhase(
+          kAllGQAReachableBackends, GQAExecutionPhase::Decode))};
+  mutable std::atomic<uint32_t> committed_chunked_prefill_backends_{
+      static_cast<uint32_t>(GetGQAReachableBackendsForPhase(
+          kAllGQAReachableBackends, GQAExecutionPhase::ChunkedPrefill))};
+
+  void StoreCommittedBackends(
+      const GQACommittedBackends& committed_backends) const noexcept {
+    committed_prefill_backends_.store(
+        static_cast<uint32_t>(committed_backends.prefill),
+        std::memory_order_relaxed);
+    committed_decode_backends_.store(
+        static_cast<uint32_t>(committed_backends.decode),
+        std::memory_order_relaxed);
+    committed_chunked_prefill_backends_.store(
+        static_cast<uint32_t>(committed_backends.chunked_prefill),
+        std::memory_order_relaxed);
+  }
+
+  GQAReachableBackend GetGQAPermittedBackends(
+      GQAExecutionPhase phase) const noexcept {
+    uint32_t committed = 0;
+    switch (phase) {
+      case GQAExecutionPhase::Prefill:
+        committed =
+            committed_prefill_backends_.load(std::memory_order_relaxed);
+        break;
+      case GQAExecutionPhase::Decode:
+        committed =
+            committed_decode_backends_.load(std::memory_order_relaxed);
+        break;
+      case GQAExecutionPhase::ChunkedPrefill:
+        committed =
+            committed_chunked_prefill_backends_.load(std::memory_order_relaxed);
+        break;
+    }
+    return static_cast<GQAReachableBackend>(committed);
+  }
+
+  bool IsGQABackendPermitted(
+      GQAExecutionPhase phase,
+      GQAReachableBackend backend) const noexcept {
+    return HasGQAReachableBackend(GetGQAPermittedBackends(phase), backend);
+  }
 
   static constexpr int kZerosCount = 256;  // In prompt case we create a zero buffer of size 256 for seqlen (assume batch_size <= 256)
   IAllocatorUniquePtr<int> zeros_;

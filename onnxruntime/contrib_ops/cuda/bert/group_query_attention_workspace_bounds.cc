@@ -230,10 +230,10 @@ GQAWorkspaceStatus XqaBackendEnvelope(const GQAWorkspaceProblem& problem,
   return status;
 }
 
-}  // namespace
-
-GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
-    const GQAWorkspaceBounds& bounds) noexcept {
+GQAWorkspaceAggregate GetGQAWorkspaceAggregateForPermittedPhase(
+    const GQAWorkspaceBounds& bounds,
+    GQAExecutionPhase phase,
+    GQAReachableBackend permitted_backends) noexcept {
   GQAWorkspaceAggregate aggregate;
   if (bounds.qkv_element_size != 2 ||
       (bounds.cache_element_size != 1 && bounds.cache_element_size != 2) ||
@@ -242,11 +242,16 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
       bounds.num_heads % bounds.kv_num_heads != 0 ||
       bounds.head_size_bound < 8 || bounds.present_kv_cache_capacity_bound <= 0 ||
       bounds.multi_processor_count <= 0 ||
-      (!bounds.prompt_reachable && !bounds.decode_reachable)) {
+      !IsGQAPhaseAdmitted(bounds, phase) ||
+      (phase == GQAExecutionPhase::ChunkedPrefill &&
+       bounds.sequence_length_bound <= 1) ||
+      permitted_backends == GQAReachableBackend::None ||
+      GetGQAReachableBackendsForPhase(permitted_backends, phase) !=
+          permitted_backends) {
     aggregate.status = Invalid("GQA workspace bounds are incomplete or invalid.");
     return aggregate;
   }
-  if (HasGQAReachableBackend(bounds.reachable_backends, GQAReachableBackend::Cudnn)) {
+  if (HasGQAReachableBackend(permitted_backends, GQAReachableBackend::Cudnn)) {
     aggregate.status = Unavailable(
         "A reachable cuDNN GQA route has no graph-free workspace oracle.");
     return aggregate;
@@ -277,13 +282,16 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
     aggregate.sized_backends = aggregate.sized_backends | backend;
   };
 
-  const std::array<int64_t, 2> sequence_candidates{
-      1, bounds.sequence_length_bound};
+  const int64_t sequence_length =
+      phase == GQAExecutionPhase::Decode
+          ? 1
+          : bounds.sequence_length_bound;
+  const bool first_prompt = phase == GQAExecutionPhase::Prefill;
   const auto size_complete = [&](GQABackend backend, int64_t head_size,
-                                 int64_t sequence_length, bool first_prompt) {
+                                 int64_t sequence, bool first) {
     int64_t effective_kv_length = 0;
     const auto effective_status =
-        EffectiveKvLengthBound(bounds, sequence_length, effective_kv_length);
+        EffectiveKvLengthBound(bounds, sequence, effective_kv_length);
     if (!effective_status.IsOK()) {
       GQACompleteWorkspaceResult result;
       result.status = effective_status;
@@ -296,30 +304,23 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
                                                : GQAPreprocessMode::Unfused;
     route.unfused.total_sequence_length = effective_kv_length;
     return GetGQACompleteWorkspaceRecipe(
-        MakeProblem(bounds, sequence_length, head_size, first_prompt), route);
+        MakeProblem(bounds, sequence, head_size, first), route);
   };
 
   const int64_t general_head = LargestMultipleOfEight(
       bounds.head_size_bound, std::numeric_limits<int32_t>::max());
   for (GQAReachableBackend backend :
        {GQAReachableBackend::MemoryEfficient, GQAReachableBackend::Unfused}) {
-    if (!HasGQAReachableBackend(bounds.reachable_backends, backend)) continue;
+    if (!HasGQAReachableBackend(permitted_backends, backend)) continue;
     const int64_t head = backend == GQAReachableBackend::MemoryEfficient
                              ? LargestMultipleOfEight(bounds.head_size_bound, 1024)
                              : general_head;
-    for (int64_t sequence : sequence_candidates) {
-      if (sequence == 1 && !bounds.decode_reachable && bounds.sequence_length_bound != 1) continue;
-      if (sequence > 1 && !bounds.prompt_reachable) continue;
-      for (bool first : {false, true}) {
-        if (first && !bounds.prompt_reachable) continue;
-        const auto result = size_complete(
-            backend == GQAReachableBackend::MemoryEfficient
-                ? GQABackend::MemoryEfficient
-                : GQABackend::Unfused,
-            head, sequence, first);
-        retain(backend, result.status, result.recipe.total_workspace_bytes);
-      }
-    }
+    const auto result = size_complete(
+        backend == GQAReachableBackend::MemoryEfficient
+            ? GQABackend::MemoryEfficient
+            : GQABackend::Unfused,
+        head, sequence_length, first_prompt);
+    retain(backend, result.status, result.recipe.total_workspace_bytes);
   }
 
   const auto size_flash = [&](bool fast, int64_t sequence, bool first) {
@@ -341,30 +342,17 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
     if (status.IsOK()) status = Compose(prep.recipe.total_preparation_bytes, backend, total);
     return std::pair<GQAWorkspaceStatus, size_t>{status, total};
   };
-  if (HasGQAReachableBackend(bounds.reachable_backends, GQAReachableBackend::Flash)) {
-    for (int64_t sequence : sequence_candidates) {
-      if (sequence == 1 && !bounds.decode_reachable && bounds.sequence_length_bound != 1) continue;
-      if (sequence > 1 && !bounds.prompt_reachable) continue;
-      for (bool first : {false, true}) {
-        if (first && !bounds.prompt_reachable) continue;
-        const auto result = size_flash(false, sequence, first);
-        retain(GQAReachableBackend::Flash, result.first, result.second);
-      }
-    }
+  if (HasGQAReachableBackend(permitted_backends, GQAReachableBackend::Flash)) {
+    const auto result = size_flash(false, sequence_length, first_prompt);
+    retain(GQAReachableBackend::Flash, result.first, result.second);
   }
-  if (HasGQAReachableBackend(bounds.reachable_backends,
+  if (HasGQAReachableBackend(permitted_backends,
                              GQAReachableBackend::FlashFastDecode)) {
-    // The current graph adapter rejects non-windowed inputs, so this route is
-    // retained for graph-free callers and a future non-windowed adapter.
-    // FlashBackendEnvelope reserves the maximum reachable split count instead
-    // of evaluating the non-monotonic split heuristic. Its storage and the
-    // preparation storage are nondecreasing in sequence length, so Smax covers
-    // every dynamic S in the bounded domain.
-    const auto result = size_flash(true, bounds.sequence_length_bound, false);
+    const auto result = size_flash(true, 1, false);
     retain(GQAReachableBackend::FlashFastDecode, result.first, result.second);
   }
 
-  if (HasGQAReachableBackend(bounds.reachable_backends, GQAReachableBackend::Xqa)) {
+  if (HasGQAReachableBackend(permitted_backends, GQAReachableBackend::Xqa)) {
     bool found_head = false;
     for (int64_t head : {int64_t{64}, int64_t{128}, int64_t{256}, int64_t{512}}) {
       if (head > bounds.head_size_bound) continue;
@@ -413,6 +401,184 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
     if (!status.IsOK()) aggregate.status = status;
   }
   return aggregate;
+}
+
+struct GQAMinimumRoute {
+  GQAWorkspaceStatus status;
+  GQAReachableBackend backends = GQAReachableBackend::None;
+  size_t workspace_bytes = 0;
+};
+
+template <size_t CandidateCount>
+GQAMinimumRoute SelectMinimumWorkspaceRoute(
+    const GQAWorkspaceBounds& bounds,
+    const std::array<GQAReachableBackend, CandidateCount>& candidates,
+    GQAExecutionPhase phase) noexcept {
+  GQAMinimumRoute selected;
+  selected.status = Unavailable("No analytically bounded GQA route covers the execution phase.");
+  const auto reachable = GetGQAReachableBackendsForPhase(bounds.reachable_backends, phase);
+  const auto covering = IntersectGQAReachableBackends(
+      reachable, bounds.covering_backends.Get(phase));
+  const auto consider = [&](GQAReachableBackend backends, GQAMinimumRoute& minimum) {
+    const auto estimate =
+        GetGQAWorkspaceAggregateForPermittedPhase(bounds, phase, backends);
+    if (!estimate.status.IsOK()) return;
+    if (minimum.backends != GQAReachableBackend::None &&
+        estimate.total_workspace_bytes >= minimum.workspace_bytes) {
+      return;
+    }
+
+    minimum.status = {};
+    minimum.backends = backends;
+    minimum.workspace_bytes = estimate.total_workspace_bytes;
+  };
+
+  GQAMinimumRoute fallback;
+  fallback.status = Unavailable(
+      "No analytically bounded GQA route covers every admitted geometry and runtime eligibility outcome.");
+  for (GQAReachableBackend candidate : candidates) {
+    if (HasGQAReachableBackend(covering, candidate)) {
+      consider(candidate, fallback);
+    }
+  }
+  if (!fallback.status.IsOK()) return fallback;
+
+  for (GQAReachableBackend candidate : candidates) {
+    if (!HasGQAReachableBackend(reachable, candidate)) continue;
+    const auto backends =
+        HasGQAReachableBackend(covering, candidate)
+            ? candidate
+            : candidate | fallback.backends;
+    consider(backends, selected);
+  }
+
+  return selected;
+}
+
+GQAWorkspaceAggregate AggregateCommittedPhases(
+    const GQAWorkspaceBounds& bounds,
+    const GQACommittedBackends& committed_backends) noexcept {
+  GQAWorkspaceAggregate aggregate;
+  aggregate.committed_backends = committed_backends;
+  for (GQAExecutionPhase phase :
+       {GQAExecutionPhase::Prefill,
+        GQAExecutionPhase::Decode,
+        GQAExecutionPhase::ChunkedPrefill}) {
+    if (!IsGQAPhaseAdmitted(bounds, phase)) continue;
+
+    const auto permitted = committed_backends.Get(phase);
+    if (permitted == GQAReachableBackend::None) {
+      aggregate.status =
+          Unavailable("The GQA dispatch policy has no route for an admitted phase.");
+      return aggregate;
+    }
+
+    const auto phase_aggregate =
+        GetGQAWorkspaceAggregateForPermittedPhase(bounds, phase, permitted);
+    if (!phase_aggregate.status.IsOK()) {
+      return phase_aggregate;
+    }
+    aggregate.total_workspace_bytes =
+        std::max(aggregate.total_workspace_bytes,
+                 phase_aggregate.total_workspace_bytes);
+    aggregate.persistent_prepack_bytes =
+        std::max(aggregate.persistent_prepack_bytes,
+                 phase_aggregate.persistent_prepack_bytes);
+    aggregate.initialization_scratch_bytes =
+        std::max(aggregate.initialization_scratch_bytes,
+                 phase_aggregate.initialization_scratch_bytes);
+    aggregate.sized_backends =
+        aggregate.sized_backends | phase_aggregate.sized_backends;
+  }
+  return aggregate;
+}
+
+}  // namespace
+
+GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
+    const GQAWorkspaceBounds& bounds,
+    KernelDispatchPolicy policy) noexcept {
+  GQACommittedBackends committed_backends;
+  const auto commit_all_applicable = [&](GQAReachableBackend backends) {
+    for (GQAExecutionPhase phase :
+         {GQAExecutionPhase::Prefill,
+          GQAExecutionPhase::Decode,
+          GQAExecutionPhase::ChunkedPrefill}) {
+      if (!IsGQAPhaseAdmitted(bounds, phase)) continue;
+      committed_backends.Set(
+          phase, GetGQAReachableBackendsForPhase(backends, phase));
+    }
+  };
+
+  switch (policy) {
+    case KernelDispatchPolicy::Auto:
+    case KernelDispatchPolicy::Latency:
+      commit_all_applicable(bounds.reachable_backends);
+      break;
+    case KernelDispatchPolicy::Safe:
+      commit_all_applicable(IntersectGQAReachableBackends(
+          bounds.reachable_backends, kAnalyticallyBoundedGQABackends));
+      break;
+    case KernelDispatchPolicy::Memory: {
+      auto selection_bounds = bounds;
+      if (selection_bounds.xqa_head_sink_storage !=
+              GQAXqaHeadSinkStorage::None ||
+          selection_bounds.head_sink_may_be_prepacked) {
+        // Level 1 knows that a constant sink may be prepacked, while Level 2
+        // knows the exact post-PrePack state. Rank both from the conservative
+        // dynamic-conversion recipe so they commit the same route set.
+        selection_bounds.xqa_head_sink_storage =
+            GQAXqaHeadSinkStorage::DynamicConversion;
+      }
+      constexpr std::array<GQAReachableBackend, 3> kGeneralPriority{
+          GQAReachableBackend::Flash,
+          GQAReachableBackend::MemoryEfficient,
+          GQAReachableBackend::Unfused};
+      constexpr std::array<GQAReachableBackend, 5> kDecodePriority{
+          GQAReachableBackend::Xqa,
+          GQAReachableBackend::FlashFastDecode,
+          GQAReachableBackend::Flash,
+          GQAReachableBackend::MemoryEfficient,
+          GQAReachableBackend::Unfused};
+
+      for (GQAExecutionPhase phase :
+           {GQAExecutionPhase::Prefill,
+            GQAExecutionPhase::ChunkedPrefill}) {
+        if (!IsGQAPhaseAdmitted(bounds, phase)) continue;
+        const auto selected =
+            SelectMinimumWorkspaceRoute(
+                selection_bounds, kGeneralPriority, phase);
+        if (!selected.status.IsOK()) {
+          GQAWorkspaceAggregate aggregate;
+          aggregate.status = selected.status;
+          return aggregate;
+        }
+        committed_backends.Set(phase, selected.backends);
+      }
+      if (bounds.decode_reachable) {
+        const auto selected =
+            SelectMinimumWorkspaceRoute(
+                selection_bounds, kDecodePriority,
+                GQAExecutionPhase::Decode);
+        if (!selected.status.IsOK()) {
+          GQAWorkspaceAggregate aggregate;
+          aggregate.status = selected.status;
+          return aggregate;
+        }
+        committed_backends.decode = selected.backends;
+      }
+      break;
+    }
+  }
+
+  if (committed_backends.Union() == GQAReachableBackend::None) {
+    GQAWorkspaceAggregate aggregate;
+    aggregate.status =
+        Unavailable("The GQA dispatch policy has no reachable permitted route.");
+    return aggregate;
+  }
+
+  return AggregateCommittedPhases(bounds, committed_backends);
 }
 
 }  // namespace cuda

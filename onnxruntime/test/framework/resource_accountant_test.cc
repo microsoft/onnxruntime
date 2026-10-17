@@ -3,6 +3,7 @@
 
 #include "core/framework/resource_accountant.h"
 #include "core/framework/config_options.h"
+#include "core/framework/cuda_gqa_workspace_config.h"
 #include "core/framework/kernel_dispatch_policy.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/constants.h"
@@ -803,6 +804,25 @@ TEST(RealAccountantTest, Factory_NoLimitNoStats) {
   EXPECT_FALSE(accountant->GetThreshold().has_value());
 }
 
+TEST(CudaGqaWorkspaceEnvelopeTest, RawValueParserPreservesRangeAndFailureOutput) {
+  int64_t parsed = -1;
+  ASSERT_STATUS_OK(ParseCudaGqaWorkspaceMaxTotalSequenceLength("0", parsed));
+  EXPECT_EQ(parsed, 0);
+  ASSERT_STATUS_OK(ParseCudaGqaWorkspaceMaxTotalSequenceLength("2147483647", parsed));
+  EXPECT_EQ(parsed, std::numeric_limits<int32_t>::max());
+
+  for (const char* value : {"", "-1", "+1", " 1", "1 ", "1x", "0x1",
+                            "2147483648", "9223372036854775808"}) {
+    SCOPED_TRACE(value);
+    parsed = 17;
+    const auto status = ParseCudaGqaWorkspaceMaxTotalSequenceLength(
+        std::string_view{value}, parsed);
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+    EXPECT_EQ(parsed, 17);
+  }
+}
+
 TEST(KernelDispatchPolicyTest, PartialEstimatorConfigDefaultsPolicyToUnset) {
   const WorkspaceEstimatorConfig config{std::nullopt, std::nullopt};
   EXPECT_FALSE(config.kernel_dispatch_policy.has_value());
@@ -864,7 +884,7 @@ TEST(RealAccountantTest, FactoryRetainsNarrowWorkspaceEstimatorConfig) {
             std::optional<std::string>{"memory"});
 }
 
-TEST(RealAccountantTest, FactoryRetainsKernelDispatchPolicyReader) {
+TEST(RealAccountantTest, FactoryRetainsKernelDispatchPolicyValue) {
   struct Case {
     const char* value;
   };
