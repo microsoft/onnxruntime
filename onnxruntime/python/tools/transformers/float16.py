@@ -273,7 +273,8 @@ def convert_float_to_float16(
     # When it is converted to float16, there are mixed types: some inputs are float32 and some are float16.
     # This list keeps track of such nodes that are not in block list.
     mixed_float_type_node_list = []
-    # Nodes that are not in block list but have some outputs fixed as float, like LayerNormalization.
+    # Nodes that are not in block list but have some outputs fixed as float, like LayerNormalization, with the
+    # graph that owns each of them.
     float_output_node_list = []
 
     # type inference on input model
@@ -394,8 +395,8 @@ def convert_float_to_float16(
                             if (n.op_type in ["RandomNormal", "RandomUniform", "SequenceEmpty"]) and not has_dtype:
                                 n.attribute.extend([helper.make_attribute("dtype", TensorProto.FLOAT16)])
 
-                        if n.op_type in ALWAYS_FLOAT_OUTPUTS:
-                            float_output_node_list.append(n)
+                        if n.domain in ("", "ai.onnx") and n.op_type in ALWAYS_FLOAT_OUTPUTS:
+                            float_output_node_list.append((n, q))
 
                         if (
                             n.domain in ("", "ai.onnx")
@@ -475,21 +476,23 @@ def convert_float_to_float16(
                     node.input[i] = cast_output_names[cast_key]
                     break
 
-    # Some operators have data type fixed as float for some outputs. Add a float to float16 cast after those outputs.
-    for node in float_output_node_list:
+    # Some operators have data type fixed as float for some outputs. Add a float to float16 cast after those outputs,
+    # in the graph that owns the node, which can be a subgraph.
+    for node, graph in float_output_node_list:
         for i, output in enumerate(node.output):
             if i not in ALWAYS_FLOAT_OUTPUTS[node.op_type]:
                 continue
             for value_info in value_info_list:
                 if output == value_info.name:
-                    new_value_info = model.graph.value_info.add()
+                    new_value_info = graph.value_info.add()
                     new_value_info.CopyFrom(value_info)
                     output_cast_name = output + "_cast_to_fp16"
                     new_value_info.name = output_cast_name
                     new_value_info.type.tensor_type.elem_type = TensorProto.FLOAT
                     node_name = output + "_cast_to_fp16_node"
-                    new_node = [helper.make_node("Cast", [output_cast_name], [output], to=10, name=node_name)]
-                    model.graph.node.extend(new_node)
+                    new_node = helper.make_node("Cast", [output_cast_name], [output], to=10, name=node_name)
+                    # Right after the node, as ORT needs the nodes of a subgraph in topological order
+                    graph.node.insert(list(graph.node).index(node) + 1, new_node)
                     node.output[i] = output_cast_name
                     break
 
