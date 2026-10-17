@@ -22,13 +22,14 @@ namespace logging {
 class Logger;
 }
 
-// Host-side state only. CUDA allocations and placement policy do not belong here.
+// Session-global host policy and counters. CUDA allocations and transfer mechanics stay provider-side.
 class KernelPilotMoeExpertState {
  public:
   // Counter-update logging
   // ----------------------
 
   KernelPilotMoeExpertState() = default;
+  ~KernelPilotMoeExpertState();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelPilotMoeExpertState);
 
   static constexpr size_t kMaxCounterLogRecordsPerRun = 1024;
@@ -38,41 +39,54 @@ class KernelPilotMoeExpertState {
   Status BeginRun(std::string request_id, const logging::Logger* logger);
 
   // Releases the active Run and its optional logging state.
-  Status EndRun();
+  Status EndRun(bool run_succeeded = true);
 
   // Expert counters
   // ---------------
 
   // Configures the exponential counter update:
-  //   counter = alpha * counter + beta * selected
+  //   counter = alpha * counter + (1 - alpha) * selected
   // Must be called before registering any MoE kernels.
-  Status SetCounterParameters(double alpha, double beta);
+  Status SetCounterAlpha(double alpha);
+
+  // Blends a selected expert's binary contribution with its routing probability.
+  // Zero preserves binary counting; one uses only the routing probability.
+  Status SetCounterProbabilityWeight(double probability_weight);
+  double CounterProbabilityWeight() const noexcept { return counter_probability_weight_; }
+
+  // Enables static CUDA placement and sets the global number of experts offloaded to CPU.
+  // Must be called before FinalizeInitialization().
+  Status SetCpuOffloadExpertCount(size_t cpu_offload_expert_count);
+
+  // Basic and layered placement are QMoE-only; basic never swaps.
+  Status SetCpuOffloadStrategy(std::string_view strategy);
+
+  // Target GPU fraction per layer for layered placement, before preserving the exact global budget.
+  Status SetCpuOffloadGpuRatio(double gpu_ratio);
+
+  // Layer priority for GPU placement with basic/layered: first, last, or center-outward.
+  Status SetCpuOffloadLayerOrder(std::string_view layer_order);
+
+  // Sets the relative margin required before replacing a CUDA-resident expert.
+  // Must be called before registering any MoE kernels.
+  Status SetSwapEpsilon(double epsilon);
+
+  // Sets the maximum concurrent adaptive swaps on each CUDA device.
+  // Must be called before registering any MoE kernels. Zero disables adaptive swaps.
+  Status SetMaxInFlightSwapsPerDevice(size_t max_in_flight_swaps_per_device);
+
+  // Writes the final expert popularities as JSON when this session-owned state is destroyed.
+  Status SetPopularityOutputFile(std::string output_file);
 
   // Registers one resolved MoE kernel and allocates its contiguous counter range and
   // provider-independent KernelPilot. Registration closes after initialization.
   Status RegisterNode(const OpKernel* kernel, std::string_view graph_scope, size_t node_index,
-                      std::string_view node_type, size_t expert_count);
+                      std::string_view node_type, size_t expert_count, size_t topological_order = 0);
 
-  // Loads initial counters after node registration and before FinalizeInitialization().
-  // UTF-8 text format: the first line must be exactly "moe_expert_state 1", followed by
-  // one whitespace-separated record per line:
-  //   "graph_scope" node_index node_type expert_id counter_value
-  // Example:
-  //   moe_expert_state 1
-  //   "main" 0 MoE 2 12
-  //   "main/4/11:then_branch" 0 QMoE 1 3.5
-  //
-  // graph_scope uses std::quoted escaping for quotes/backslashes; unquoted scopes without
-  // whitespace are also accepted. The root scope is "main"; subgraphs append
-  // /<parent-node-index>/<attribute-name-length>:<attribute-name> (length in bytes).
-  // node_index identifies the registered node in the resolved, optimized graph.
-  // node_type must match its registered type ("MoE" or "QMoE"). expert_id is a zero-based
-  // index local to that node, not a global expert index or kernel pointer.
-  // counter_value is parsed in the classic locale and must be finite and non-negative.
-  //
-  // Omitted experts retain their current values (zero after registration). Blank lines,
-  // comments, extra fields, duplicate expert records, unknown nodes, and invalid IDs or
-  // values are rejected. A malformed record or stream read error leaves all counters unchanged.
+  // Loads alpha, epsilon, and initial counters from the JSON produced by SavePopularity().
+  // Nodes use their stable zero-based ordinal after sorting by graph scope and node index.
+  // Omitted experts retain their current values. Invalid or duplicate records leave all
+  // parameters and counters unchanged.
   Status Load(std::istream& input);
 
   // Closes registration and loading. Run-time counter updates require finalized state.
@@ -102,7 +116,9 @@ class KernelPilotMoeExpertState {
 
  private:
   friend class KernelPilot;
-  Status RecordUsage(const OpKernel* kernel);
+  Status RecordUsage(const OpKernel* kernel, gsl::span<const double> updated_counters = {});
+  Status ScheduleSwaps();
+  Status SavePopularity() const;
 
   using Key = std::pair<std::string, size_t>;
   struct ExpertRange {
@@ -110,22 +126,41 @@ class KernelPilotMoeExpertState {
     size_t count;
   };
   struct KernelState {
-    KernelState(Key key, ExpertRange range, KernelPilotMoeExpertState& owner, const OpKernel* kernel)
-        : key(std::move(key)), experts(range), pilot(owner, kernel) {}
+    KernelState(Key key, ExpertRange range, KernelPilotMoeExpertState& owner, const OpKernel* kernel,
+                size_t topological_order)
+        : key(std::move(key)), experts(range), pilot(owner, kernel), topological_order(topological_order) {}
     Key key;
     ExpertRange experts;
     KernelPilot pilot;
+    InlinedVector<int> cuda_experts;
+    size_t topological_order;
   };
   NodeHashMap<const OpKernel*, KernelState> kernels_;
   InlinedHashMap<std::pair<const OpKernel*, int>, size_t> expert_ids_;
   InlinedVector<double> counters_;
+  InlinedVector<KernelPilot*> deferred_usage_;
+  std::mutex counter_logging_mutex_;
   mutable std::mutex run_mutex_;
   bool run_active_{false};
   std::string logging_request_id_;
   const logging::Logger* logging_logger_{nullptr};
   std::atomic<size_t> logging_record_count_{0};
-  double alpha_{0.9};
-  double beta_{0.1};
+  double alpha_{0.75};
+  double counter_probability_weight_{0.0};
+  std::string popularity_output_file_;
+  size_t cpu_offload_expert_count_{0};
+  double swap_epsilon_{0.01};
+  size_t max_in_flight_swaps_per_device_{4};
+  bool cpu_offload_enabled_{false};
+  enum class CpuOffloadStrategy { Adaptive,
+                                  Basic,
+                                  Layered };
+  CpuOffloadStrategy cpu_offload_strategy_{CpuOffloadStrategy::Adaptive};
+  double cpu_offload_gpu_ratio_{0.8};
+  enum class CpuOffloadLayerOrder { First,
+                                    Last,
+                                    Middle };
+  CpuOffloadLayerOrder cpu_offload_layer_order_{CpuOffloadLayerOrder::First};
   bool initialized_{false};
 };
 

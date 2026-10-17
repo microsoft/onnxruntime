@@ -31,17 +31,69 @@ static const char* const kOrtSessionOptionsConfigEnableMoeExpertStatistics =
 // Overlapping Run() calls on the same session are rejected while enabled.
 static const char* const kOrtSessionOptionsConfigEnableMoeExpertCounting =
     "session.enable_moe_expert_counting";
-// Optional UTF-8 initial counter-state file. Requires expert counting or statistics logging to be enabled.
+// Optional UTF-8 JSON counter-state file produced by session.moe_expert_popularity_file.
+// Restores alpha, epsilon, and per-expert popularities; JSON parameters override separately configured values.
+// Requires expert counting, statistics logging, popularity output, or CPU offload to be enabled.
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterStateFile =
     "session.moe_expert_counter_state_file";
+// Optional UTF-8 JSON output file for final per-expert popularity counters.
+// The file is written when the session is destroyed and includes the configured alpha and epsilon values.
+static const char* const kOrtSessionOptionsConfigMoeExpertPopularityFile =
+    "session.moe_expert_popularity_file";
 // Exponential decay applied to every expert counter after each invocation of its MoE/QMoE node.
-// Must be finite and non-negative, with alpha + beta <= 1. The default is 0.9.
+// Must be finite and in [0, 1]. A selected expert receives an increment of 1 - alpha. The default is 0.75.
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterAlpha =
     "session.moe_expert_counter_alpha";
-// Increment applied to each expert selected during an invocation.
-// Must be finite and non-negative, with alpha + beta <= 1. The default is 0.1.
-static const char* const kOrtSessionOptionsConfigMoeExpertCounterBeta =
-    "session.moe_expert_counter_beta";
+
+// Blend between binary selection and routing-probability contributions to expert counters.
+// Must be finite and in [0, 1]. Zero preserves binary counting; one uses routing probabilities. The default is 0.
+static const char* const kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight =
+    "session.moe_expert_counter_probability_weight";
+
+// Number of FP16/BF16 MoE experts to execute on CPU across the session. CPU and CUDA experts use disjoint compact
+// weight stores; initialization does not copy the complete expert set into CPU staging storage.
+// The value must be a non-negative integer no greater
+// than the number of experts owned by CUDA MoE nodes. The default is 0, which disables CPU offloading.
+static const char* const kOrtSessionOptionsConfigMoeCpuOffloadExperts =
+    "session.moe_cpu_offload_experts";
+
+// CPU expert placement strategy: "adaptive" (default) uses popularity and permits swaps.
+// "basic" supports CUDA QMoE only: fill nodes in the selected layer order with CUDA experts,
+// then place the remaining experts on CPU. A boundary node may be split. Placement never changes.
+// "layered" is QMoE-only: fill chosen nodes up to moe_cpu_offload_gpu_ratio using popularity,
+// then leave the rest on CPU. Popularity-driven swaps stay within nodes with CUDA experts.
+static const char* const kOrtSessionOptionsConfigMoeCpuOffloadStrategy =
+    "session.moe_cpu_offload_strategy";
+
+// Target CUDA fraction per QMoE node for "layered", rounded down to whole experts. Default: 0.8.
+// Must be finite and in (0, 1]. If the global CUDA budget exceeds the sum of these targets,
+// raise capacities in the selected layer order only as needed to preserve the exact CPU expert count.
+static const char* const kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio =
+    "session.moe_cpu_offload_gpu_ratio";
+
+// GPU layer priority for "basic" and "layered": "first" (default), "last", or "middle".
+// Eligible QMoE nodes are sorted by graph scope, then topological order. "last" reverses that list;
+// "middle" starts at the left center and alternates right/left outward (8 nodes: 3,4,2,5,1,6,0,7).
+// This changes placement only, not graph execution order or saved popularity record numbering.
+static const char* const kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder =
+    "session.moe_cpu_offload_layer_order";
+
+// CUDA QMoE adaptive/layered only. If an invocation needs at most this many distinct CPU-resident experts,
+// synchronously exchange them with unused CUDA experts before computing. The default 0 disables this path.
+// Applies to prefill and decode; all selected experts must fit the node's existing CUDA capacity.
+// Preserves the CPU expert count. Independent of the background swap concurrency limit.
+static const char* const kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold =
+    "session.moe_cpu_offload_on_demand_threshold";
+
+// Relative margin required before an adaptive MoE swap replaces a CUDA-resident expert.
+// The value must be finite and non-negative. The default is 0.01.
+static const char* const kOrtSessionOptionsConfigMoeExpertSwapEpsilon =
+    "session.moe_expert_swap_epsilon";
+
+// Maximum number of adaptive MoE expert swaps that may be in flight concurrently on one CUDA device.
+// Must be a non-negative integer. Zero disables background swaps, not on-demand swaps. The default is 4.
+static const char* const kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice =
+    "session.moe_max_in_flight_swaps_per_device";
 
 // A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
 // will be used. Use this to override the usage of env allocators on a per session level.

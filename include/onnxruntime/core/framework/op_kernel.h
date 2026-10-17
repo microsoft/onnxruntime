@@ -36,6 +36,10 @@ class OpKernelContext;
 
 namespace onnxruntime {
 
+#if !defined(ORT_MINIMAL_BUILD)
+class KernelPilot;
+#endif
+
 std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info);
 
 class OpKernel {

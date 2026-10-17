@@ -60,6 +60,15 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
 
   std::priority_queue<NodeIndex, std::vector<NodeIndex>, decltype(greater_order_comp)> candidates(greater_order_comp);
 
+  // Original graph edges can point to nodes excluded from a filtered view.
+  auto add_candidate = [&](NodeIndex node_index) {
+    if (graph.GetNode(node_index) == nullptr) {
+      return false;
+    }
+    candidates.push(node_index);
+    return true;
+  };
+
   InlinedHashSet<const NodeArg*> cpu_output_args;
 
   InlinedHashSet<NodeIndex> provider_nodes;
@@ -85,8 +94,9 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
             cpu_output_args.insert(&node_arg);
             auto consumer_nodes = graph.GetConsumerNodes(node_arg.Name());
             for (auto& consumer_node : consumer_nodes) {
-              candidates.push(consumer_node->Index());
-              LOGS(logger, INFO) << "Candidate for fallback CPU execution: " << consumer_node->Name();
+              if (add_candidate(consumer_node->Index())) {
+                LOGS(logger, INFO) << "Candidate for fallback CPU execution: " << consumer_node->Name();
+              }
             }
           }
           return Status::OK();
@@ -120,7 +130,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
           cpu_output_args.insert(output);
         }
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-          candidates.push((*it).Index());
+          add_candidate((*it).Index());
         }
       }
       continue;
@@ -171,7 +181,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
         cpu_output_args.insert(output);
       }
       for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-        candidates.push((*it).Index());
+        add_candidate((*it).Index());
       }
     }
   }

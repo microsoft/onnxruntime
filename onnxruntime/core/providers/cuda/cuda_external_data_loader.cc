@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cstring>
 #include <exception>
 
 #include "core/common/inlined_containers.h"
@@ -81,17 +82,16 @@ void SwapByteOrderInplace(void* buffer, size_t length, size_t element_size) {
   }
 }
 
-common::Status LoadWithPageableBuffer(const RandomAccessFile& file, FileOffsetType data_offset,
-                                      size_t length, Tensor& tensor,
-                                      size_t configured_reader_count,
-                                      std::unique_ptr<ExternalDataLoaderThreadPool>& reader_pool) {
+common::Status LoadWithPageableBuffer(
+    const std::function<common::Status(size_t, gsl::span<char>)>& read, Tensor& tensor,
+    bool little_endian_source) {
+  const size_t length = tensor.SizeInBytes();
   InlinedVector<uint8_t> buffer(std::min(kExternalDataLoaderBufferSize, length));
   auto* destination = static_cast<uint8_t*>(tensor.MutableDataRaw());
 
   for (size_t offset = 0; offset < length;) {
     const size_t chunk_size = std::min(buffer.size(), length - offset);
-    ORT_RETURN_IF_ERROR(
-        ReadChunk(file, data_offset + offset, chunk_size, buffer.data(), configured_reader_count, reader_pool));
+    ORT_RETURN_IF_ERROR(read(offset, gsl::span<char>{reinterpret_cast<char*>(buffer.data()), chunk_size}));
 
     if (tensor.IsDataType<bool>()) {
       std::transform(buffer.begin(), buffer.begin() + chunk_size, buffer.begin(),
@@ -100,7 +100,7 @@ common::Status LoadWithPageableBuffer(const RandomAccessFile& file, FileOffsetTy
 
     if constexpr (std::endian::native != std::endian::little) {
       const size_t element_size = tensor.DataType()->Size();
-      if (element_size > 1) {
+      if (little_endian_source && element_size > 1) {
         SwapByteOrderInplace(buffer.data(), chunk_size, element_size);
       }
     }
@@ -204,6 +204,58 @@ common::Status ExternalDataLoader::LoadTensor(const RandomAccessFile& file,
   ORT_RETURN_IF(data_offset < 0 || end_offset > file_length,
                 "External data range is outside the file.");
 
+  return LoadTensorWithReader(
+      [&](size_t offset, gsl::span<char> buffer) {
+        return ReadChunk(file, data_offset + offset, buffer.size(), buffer.data(),
+                         reading_thread_count_, reader_pool_);
+      },
+      tensor, true);
+}
+
+common::Status ExternalDataLoader::LoadTensorFromHost(
+    const Tensor& source, gsl::span<const int> experts, Tensor& tensor) const {
+  ORT_RETURN_IF_NOT(source.Location().device.Type() == OrtDevice::CPU &&
+                        source.DataType() == tensor.DataType() && !source.IsDataTypeString(),
+                    "Expert loading requires a CPU source with the same numeric type as the CUDA tensor.");
+  ORT_RETURN_IF_NOT(source.Shape().NumDimensions() > 0 && source.Shape()[0] > 0,
+                    "Expert loading requires a positive expert dimension.");
+  const size_t num_experts = static_cast<size_t>(source.Shape()[0]);
+  ORT_RETURN_IF_NOT(source.SizeInBytes() % num_experts == 0, "Invalid expert weight size.");
+  const size_t expert_bytes = source.SizeInBytes() / num_experts;
+  ORT_RETURN_IF_NOT(expert_bytes > 0 &&
+                        tensor.SizeInBytes() == SafeInt<size_t>(experts.size()) * expert_bytes,
+                    "Compact CUDA expert tensor has an invalid size.");
+  for (int expert : experts) {
+    ORT_RETURN_IF(expert < 0 || static_cast<size_t>(expert) >= num_experts,
+                  "Expert index is outside the source tensor.");
+  }
+  const auto* source_data = static_cast<const char*>(source.DataRaw());
+  return LoadTensorWithReader(
+      [&](size_t offset, gsl::span<char> buffer) {
+        size_t copied = 0;
+        while (copied < buffer.size()) {
+          const size_t slot = offset / expert_bytes;
+          const size_t within_expert = offset % expert_bytes;
+          const size_t count = std::min(expert_bytes - within_expert, buffer.size() - copied);
+          std::memcpy(buffer.data() + copied,
+                      source_data + static_cast<size_t>(experts[slot]) * expert_bytes + within_expert,
+                      count);
+          copied += count;
+          offset += count;
+        }
+        return Status::OK();
+      },
+      tensor, false);
+}
+
+common::Status ExternalDataLoader::LoadTensorWithReader(
+    const ReadFn& read, Tensor& tensor, bool little_endian_source) const {
+  ORT_RETURN_IF_NOT(CanLoad(tensor.Location()) && !tensor.IsDataTypeString(),
+                    "Unsupported tensor for CUDA loading.");
+  const size_t length = tensor.SizeInBytes();
+  if (length == 0) {
+    return Status::OK();
+  }
   std::lock_guard<std::mutex> lock(mutex_);
   CudaDeviceGuard device_guard;
   ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
@@ -211,7 +263,7 @@ common::Status ExternalDataLoader::LoadTensor(const RandomAccessFile& file,
   if (!resource_status.IsOK()) {
     // TODO: Remember setup failures during initialization and report the first CUDA error
     // so later initializers do not repeatedly retry unavailable pinned buffers or streams.
-    return LoadWithPageableBuffer(file, data_offset, length, tensor, reading_thread_count_, reader_pool_);
+    return LoadWithPageableBuffer(read, tensor, little_endian_source);
   }
 
   auto* destination = static_cast<uint8_t*>(tensor.MutableDataRaw());
@@ -244,8 +296,7 @@ common::Status ExternalDataLoader::LoadTensor(const RandomAccessFile& file,
     }
 
     const auto read_status =
-        ReadChunk(file, data_offset + offset, chunk_size, buffers_[buffer_index],
-                  reading_thread_count_, reader_pool_);
+        read(offset, gsl::span<char>{static_cast<char*>(buffers_[buffer_index]), chunk_size});
     if (!read_status.IsOK()) {
       ORT_IGNORE_RETURN_VALUE(synchronize_streams());
       return read_status;
@@ -259,7 +310,7 @@ common::Status ExternalDataLoader::LoadTensor(const RandomAccessFile& file,
 
     if constexpr (std::endian::native != std::endian::little) {
       const size_t element_size = tensor.DataType()->Size();
-      if (element_size > 1) {
+      if (little_endian_source && element_size > 1) {
         SwapByteOrderInplace(buffers_[buffer_index], chunk_size, element_size);
       }
     }

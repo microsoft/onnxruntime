@@ -1608,6 +1608,11 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
 Status SessionState::InitializeMoeExpertState(std::shared_ptr<KernelPilotMoeExpertState> state,
                                               std::string graph_scope) {
   moe_expert_state_ = std::move(state);
+  const auto& topological_order = GetGraphViewer().GetNodesInTopologicalOrder();
+  InlinedHashMap<NodeIndex, size_t> node_order;
+  for (size_t i = 0; i < topological_order.size(); ++i) {
+    node_order.emplace(topological_order[i], i);
+  }
   for (const auto& node : graph_.Nodes()) {
     if (node.Domain() != kMSDomain || (node.OpType() != "MoE" && node.OpType() != "QMoE")) {
       continue;
@@ -1620,13 +1625,31 @@ Status SessionState::InitializeMoeExpertState(std::shared_ptr<KernelPilotMoeExpe
                           shape->dim(1).dim_value() > 0,
                       "MoE expert counting requires a static positive expert dimension for ", node.Name());
     ORT_RETURN_IF_ERROR(moe_expert_state_->RegisterNode(
-        GetKernel(node.Index()), graph_scope, node.Index(), node.OpType(), static_cast<size_t>(shape->dim(1).dim_value())));
+        GetKernel(node.Index()), graph_scope, node.Index(), node.OpType(), static_cast<size_t>(shape->dim(1).dim_value()),
+        node_order.at(node.Index())));
   }
   for (auto& [node_index, subgraphs] : subgraph_session_states_) {
     for (auto& [attribute, subgraph] : subgraphs) {
       const std::string scope = MakeString(graph_scope, "/", node_index, "/",
                                            attribute.size(), ":", attribute);
       ORT_RETURN_IF_ERROR(subgraph->InitializeMoeExpertState(moe_expert_state_, scope));
+    }
+  }
+  return Status::OK();
+}
+
+Status SessionState::InitializeKernelPilots() {
+  for (const auto& node : graph_.Nodes()) {
+    auto* kernel = GetMutableKernel(node.Index());
+    if (kernel != nullptr) {
+      ORT_RETURN_IF_ERROR(KernelPilotInitializer::Run(kernel, GetKernelPilot(kernel)));
+    }
+  }
+  for (auto& [node_index, subgraphs] : subgraph_session_states_) {
+    ORT_UNUSED_PARAMETER(node_index);
+    for (auto& [attribute, subgraph] : subgraphs) {
+      ORT_UNUSED_PARAMETER(attribute);
+      ORT_RETURN_IF_ERROR(subgraph->InitializeKernelPilots());
     }
   }
   return Status::OK();
@@ -1675,19 +1698,71 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
       sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1";
   const bool enable_moe_expert_statistics =
       sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
-  if (enable_moe_expert_counting || enable_moe_expert_statistics) {
+  const auto popularity_output_file =
+      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertPopularityFile, "");
+  const bool enable_moe_popularity_output = !popularity_output_file.empty();
+  const auto cpu_offload_expert_count_value =
+      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0");
+  int64_t cpu_offload_expert_count = -1;
+  ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(cpu_offload_expert_count_value, cpu_offload_expert_count) &&
+                        cpu_offload_expert_count >= 0,
+                    kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+                    " must be a non-negative integer. Received: \"",
+                    cpu_offload_expert_count_value, "\".");
+  const bool enable_moe_cpu_offload = cpu_offload_expert_count > 0;
+  const auto cpu_offload_strategy =
+      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeCpuOffloadStrategy, "adaptive");
+  ORT_RETURN_IF_NOT(cpu_offload_strategy == "adaptive" || cpu_offload_strategy == "basic" ||
+                        cpu_offload_strategy == "layered",
+                    kOrtSessionOptionsConfigMoeCpuOffloadStrategy,
+                    " must be adaptive, basic or layered. Received: ", cpu_offload_strategy);
+  if (enable_moe_expert_counting || enable_moe_expert_statistics ||
+      enable_moe_cpu_offload || enable_moe_popularity_output) {
     double alpha = 0.0;
-    double beta = 0.0;
+    double counter_probability_weight = 0.0;
+    double swap_epsilon = 0.0;
+    int64_t max_in_flight_swaps_per_device = -1;
     auto state = std::make_shared<KernelPilotMoeExpertState>();
+    ORT_RETURN_IF_ERROR(state->SetCpuOffloadStrategy(cpu_offload_strategy));
+    const auto layer_order =
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder, "first");
+    ORT_RETURN_IF_ERROR(state->SetCpuOffloadLayerOrder(layer_order));
+    const auto gpu_ratio_value =
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio, "0.8");
+    double gpu_ratio = 0.0;
+    ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(gpu_ratio_value, gpu_ratio),
+                      "Invalid ", kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio, " value: ", gpu_ratio_value);
+    ORT_RETURN_IF_ERROR(state->SetCpuOffloadGpuRatio(gpu_ratio));
     const auto alpha_value =
-        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.9");
-    const auto beta_value =
-        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterBeta, "0.1");
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.75");
+    const auto counter_probability_weight_value = sess_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight, "0");
+    const auto swap_epsilon_value =
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertSwapEpsilon, "0.01");
+    const auto max_in_flight_swaps_per_device_value = sess_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "4");
     ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(alpha_value, alpha),
                       "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterAlpha, " value: ", alpha_value);
-    ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(beta_value, beta),
-                      "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterBeta, " value: ", beta_value);
-    ORT_RETURN_IF_ERROR(state->SetCounterParameters(alpha, beta));
+    ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(counter_probability_weight_value, counter_probability_weight),
+                      "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight,
+                      " value: ", counter_probability_weight_value);
+    ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(swap_epsilon_value, swap_epsilon),
+                      "Invalid ", kOrtSessionOptionsConfigMoeExpertSwapEpsilon,
+                      " value: ", swap_epsilon_value);
+    ORT_RETURN_IF_NOT(
+        TryParseStringWithClassicLocale(max_in_flight_swaps_per_device_value, max_in_flight_swaps_per_device) &&
+            max_in_flight_swaps_per_device >= 0,
+        kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice,
+        " must be a non-negative integer. Received: \"", max_in_flight_swaps_per_device_value, "\".");
+    ORT_RETURN_IF_ERROR(state->SetCounterAlpha(alpha));
+    ORT_RETURN_IF_ERROR(state->SetCounterProbabilityWeight(counter_probability_weight));
+    ORT_RETURN_IF_ERROR(state->SetSwapEpsilon(swap_epsilon));
+    ORT_RETURN_IF_ERROR(
+        state->SetMaxInFlightSwapsPerDevice(static_cast<size_t>(max_in_flight_swaps_per_device)));
+    if (enable_moe_cpu_offload) {
+      ORT_RETURN_IF_ERROR(
+          state->SetCpuOffloadExpertCount(static_cast<size_t>(cpu_offload_expert_count)));
+    }
     ORT_RETURN_IF_ERROR(InitializeMoeExpertState(std::move(state), "main"));
     const auto state_file =
         sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterStateFile, "");
@@ -1697,6 +1772,10 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
       ORT_RETURN_IF_ERROR(moe_expert_state_->Load(input));
     }
     ORT_RETURN_IF_ERROR(moe_expert_state_->FinalizeInitialization());
+    ORT_RETURN_IF_ERROR(InitializeKernelPilots());
+    if (enable_moe_popularity_output) {
+      ORT_RETURN_IF_ERROR(moe_expert_state_->SetPopularityOutputFile(popularity_output_file));
+    }
   }
 #endif
   return status;
@@ -1877,6 +1956,142 @@ static void AccumulateAllNestedSubgraphsInfo(
   }
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+static bool IsCudaCpuOffloadMoeNode(const Node& node) {
+  if (node.Domain() != kMSDomain || node.OpType() != "MoE" ||
+      node.GetExecutionProviderType() != kCudaExecutionProvider ||
+      node.InputDefs().empty()) {
+    return false;
+  }
+
+  const auto* input_type = node.InputDefs()[0]->TypeAsProto();
+  if (input_type == nullptr || !input_type->has_tensor_type()) {
+    return false;
+  }
+  const int32_t element_type = input_type->tensor_type().elem_type();
+  return element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+         element_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+}
+
+static bool IsMoeCpuOffloadOuterScopeValue(const Graph& graph, const std::string& name) {
+  // A parent's implicit inputs are shared by sibling subgraphs; local definitions still take precedence.
+  if (!graph.IsOuterScopeValue(name) ||
+      graph.GetAllInitializedTensors().find(name) != graph.GetAllInitializedTensors().end()) {
+    return false;
+  }
+  const auto& inputs = graph.GetInputsIncludingInitializers();
+  return std::none_of(inputs.begin(), inputs.end(),
+                      [&](const NodeArg* input) { return input->Name() == name; });
+}
+
+static Status FindMoeCpuOffloadInitializerUses(
+    const Graph& graph,
+    const std::string& initializer_name,
+    bool graph_owns_initializer,
+    bool& found_moe_expert_use) {
+  if (!graph_owns_initializer && !IsMoeCpuOffloadOuterScopeValue(graph, initializer_name)) {
+    return Status::OK();
+  }
+
+  for (const auto& node : graph.Nodes()) {
+    const auto& input_defs = node.InputDefs();
+    for (size_t input_idx = 0; input_idx < input_defs.size(); ++input_idx) {
+      const NodeArg* input = input_defs[input_idx];
+      if (!input->Exists() || input->Name() != initializer_name) {
+        continue;
+      }
+
+      ORT_RETURN_IF_NOT(
+          IsCudaCpuOffloadMoeNode(node) && input_idx >= 2 && input_idx < 8,
+          "FP16/BF16 MoE CPU offload requires expert initializer ", initializer_name,
+          " to be used only as an expert input of CUDA FP16/BF16 MoE nodes.");
+      found_moe_expert_use = true;
+    }
+
+    for (const Graph* subgraph : node.GetSubgraphs()) {
+      ORT_RETURN_IF_ERROR(
+          FindMoeCpuOffloadInitializerUses(*subgraph, initializer_name, false, found_moe_expert_use));
+    }
+  }
+
+  for (const NodeArg* output : graph.GetOutputs()) {
+    ORT_RETURN_IF(output->Exists() && output->Name() == initializer_name,
+                  "FP16/BF16 MoE CPU offload requires expert initializer ", initializer_name,
+                  " not to be exposed as a graph output.");
+  }
+
+  return Status::OK();
+}
+
+static void CollectMoeCpuOffloadInitializerNames(
+    const Graph& graph,
+    InlinedHashSet<std::string>& initializer_names) {
+  for (const auto& node : graph.Nodes()) {
+    if (IsCudaCpuOffloadMoeNode(node)) {
+      const auto& input_defs = node.InputDefs();
+      for (size_t input_idx = 2; input_idx < std::min<size_t>(input_defs.size(), 8); ++input_idx) {
+        if (input_defs[input_idx]->Exists()) {
+          initializer_names.insert(input_defs[input_idx]->Name());
+        }
+      }
+    }
+
+    for (const Graph* subgraph : node.GetSubgraphs()) {
+      InlinedHashSet<std::string> subgraph_initializer_names;
+      CollectMoeCpuOffloadInitializerNames(*subgraph, subgraph_initializer_names);
+      for (const auto& name : subgraph_initializer_names) {
+        if (IsMoeCpuOffloadOuterScopeValue(*subgraph, name)) {
+          initializer_names.insert(name);
+        }
+      }
+    }
+  }
+}
+
+static Status PlaceMoeCpuOffloadInitializersOnCpu(
+    const GraphViewer& graph,
+    const SessionOptions& session_options,
+    const OrtValueNameIdxMap& ort_value_name_idx_map,
+    SequentialExecutionPlan& execution_plan) {
+  const auto offload_count_value = session_options.config_options.GetConfigOrDefault(
+      kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0");
+  int64_t offload_count = -1;
+  ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(offload_count_value, offload_count) &&
+                        offload_count >= 0,
+                    kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+                    " must be a non-negative integer. Received: \"",
+                    offload_count_value, "\".");
+  if (offload_count == 0) {
+    return Status::OK();
+  }
+
+  // MoE::PrePack retains these constants on CPU and uploads only the selected resident experts.
+  // Override their planned location before SaveInitializedTensors materializes them on CUDA.
+  InlinedHashSet<std::string> initializer_names;
+  CollectMoeCpuOffloadInitializerNames(graph.GetGraph(), initializer_names);
+  for (const auto& initializer_name : initializer_names) {
+    if (!graph.IsConstantInitializer(initializer_name, /*check_outer_scope*/ false)) {
+      continue;
+    }
+
+    bool found_moe_expert_use = false;
+    ORT_RETURN_IF_ERROR(
+        FindMoeCpuOffloadInitializerUses(graph.GetGraph(), initializer_name, true, found_moe_expert_use));
+    if (!found_moe_expert_use) {
+      continue;
+    }
+
+    int ort_value_index = -1;
+    ORT_RETURN_IF_ERROR(ort_value_name_idx_map.GetIdx(initializer_name, ort_value_index));
+    execution_plan.SetLocation(
+        static_cast<size_t>(ort_value_index),
+        OrtDevice{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0});
+  }
+
+  return Status::OK();
+}
+#endif
+
 Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                               const KernelRegistryManager& kernel_registry_manager,
                                               _In_opt_ const Node* parent_node,
@@ -1981,6 +2196,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // Uncomment the below to dump the allocation plan to std::cout
   // std::cout << std::make_pair(&*p_seq_exec_plan_, this);
 
+#if !defined(ORT_MINIMAL_BUILD)
+  ORT_RETURN_IF_ERROR(PlaceMoeCpuOffloadInitializersOnCpu(
+      *graph_viewer_, session_options, ort_value_name_idx_map_, *p_seq_exec_plan_));
+#endif
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   GetMemoryProfiler()->Init(GetExecutionPlan(), GetOrtValueNameIdxMap());
 #endif
@@ -1989,6 +2209,19 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // For inference it is enabled by default, but users can choose to disable it via session options.
   const bool disable_prepacking =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0") == "1";
+#if !defined(ORT_MINIMAL_BUILD)
+  const auto moe_cpu_offload_experts = session_options.config_options.GetConfigOrDefault(
+      kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0");
+  int64_t moe_cpu_offload_expert_count = -1;
+  ORT_RETURN_IF_NOT(
+      TryParseStringWithClassicLocale(moe_cpu_offload_experts, moe_cpu_offload_expert_count) &&
+          moe_cpu_offload_expert_count >= 0,
+      kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+      " must be a non-negative integer. Received: \"", moe_cpu_offload_experts, "\".");
+  ORT_RETURN_IF(disable_prepacking && moe_cpu_offload_expert_count > 0,
+                kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+                " requires prepacking to remain enabled.");
+#endif
   // Memory pattern tracer allocates all initializers on a single contiguous
   // buffer. This has the effect of reducing memory fragmentation.
   // Further more, in training scenarios NCCL kernels require initializers to be allocated

@@ -43,9 +43,15 @@ class ExternalDataInfo;
 class PhiloxGenerator;
 using ProviderType = const std::string&;
 class RandomGenerator;
+#if !defined(ORT_MINIMAL_BUILD)
+namespace concurrency {
+class ThreadPool;
+}
+#endif
 class Initializer;
 class IOnnxRuntimeOpSchemaCollection;
 class KernelPilot;
+class KernelPilotInitializer;
 class RunInstrumentationContext;
 
 struct ModelSavingOptions;
@@ -1456,6 +1462,37 @@ struct ProviderHost {
 
   // Kernel pilot support — appended at end to preserve vtable ABI compatibility.
   virtual KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) = 0;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  virtual void MlasHalfGemmBatch__Run(
+      size_t M, size_t N, size_t K, size_t batch_size,
+      const void* data, concurrency::ThreadPool* thread_pool) = 0;
+  virtual concurrency::ThreadPool* OpKernelContext__GetOperatorThreadPool(const OpKernelContext* p) = 0;
+
+  virtual void MlasGemmBatch__Run(
+      size_t M, size_t N, size_t K, size_t batch_size,
+      const void* data, concurrency::ThreadPool* thread_pool) = 0;
+#endif
+
+  virtual bool OpKernelInfo__TryGetConstantInputOrtValue(const OpKernelInfo* p, int input_index, const OrtValue** constant_input_value) = 0;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Q4 FP32 uses the x86 MLAS nibble layout produced by the CUDA offload packer.
+  virtual bool MlasQ4GemmFp32__IsAvailable(size_t block_size) = 0;
+  virtual size_t MlasQ4GemmFp32__PackBSize(size_t N, size_t K, size_t block_size,
+                                           bool has_zero_point) = 0;
+  virtual size_t MlasQ4GemmFp32__WorkspaceSize(size_t M, size_t N, size_t K,
+                                               size_t block_size, bool has_zero_point) = 0;
+  virtual void MlasQ4GemmFp32__Run(size_t M, size_t N, size_t K, size_t block_size,
+                                   const float* A, const void* packed_b,
+                                   const float* scales, const void* zero_points,
+                                   const float* bias, float* C, void* workspace,
+                                   concurrency::ThreadPool* thread_pool) = 0;
+  virtual void KernelPilotInitializer__Register(
+      KernelPilotInitializer* p, const OpKernel* kernel,
+      std::function<Status(KernelPilot*)> callback) = 0;
+  virtual void KernelPilotInitializer__destruct(KernelPilotInitializer* p) = 0;
+#endif
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

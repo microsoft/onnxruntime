@@ -12,24 +12,27 @@ The default is `0`. Counting alone does not emit logs, enable profiling, change 
 Configure the update with:
 
 ```text
-session.moe_expert_counter_alpha=<finite non-negative value> # default: 0.9
-session.moe_expert_counter_beta=<finite non-negative value>  # default: 0.1
+session.moe_expert_counter_alpha=<finite value in [0, 1]> # default: 0.75
+session.moe_expert_counter_probability_weight=<finite value in [0, 1]> # default: 0
 ```
 
-The coefficients must satisfy `alpha + beta <= 1`; zero is allowed for either coefficient.
+The selected-expert increment is `1 - alpha`. With CPU offload, the optional probability weight `lambda` changes the
+selected contribution from `1` to `(1 - lambda) + lambda * routing_probability`.
 
 It supports the CPU and built-in CUDA `MoE` and `QMoE` kernels. Minimal builds, the CUDA plugin EP, and CUDA graph
-capture are not supported when either counting or counter-update logging is enabled.
+capture are not supported when counting, counter-update logging, or CPU offload is enabled.
 Minimal builds omit the counter state, its initialization/run bookkeeping, and the CUDA routing-snapshot collector
 sources. They reject counter configuration except for explicitly disabling counting.
 
 Each node invocation updates every expert counter belonging to that node:
 
 ```text
-c(t+1) = alpha * c(t) + beta * (1 if used otherwise 0)
+c(t+1) = alpha * c(t) + (1 - alpha) * contribution
 ```
 
-Selecting an expert for several token rows still contributes one `beta`. Unused experts still receive the decay term.
+By default, `contribution` is `1` for a selected expert and `0` otherwise. With probability weighting, repeated
+selections use the maximum routing probability observed for that expert during the invocation. Unused experts still
+receive the decay term.
 Counts persist across `Run()` calls. Only successful kernel invocations commit their collected usage.
 A failed run can retain updates from earlier successful kernels, including CUDA nodes whose
 expert computations were still in flight when their counters were updated. Updates are not transactional across an
@@ -38,7 +41,7 @@ entire model invocation.
 The root `SessionState` owns a `KernelPilotMoeExpertState` shared with its subgraph states. Sessions never share counters.
 While counter-update logging is active, the state also stores the current request ID and logger. Because expert
 selections and counters are session-owned mutable state, a concurrent Run is rejected whenever counting or
-counter-update logging is enabled.
+counter-update logging is enabled, or when CPU offload uses the counters.
 Registration uses graph scope and resolved node index, with one counter per expert. The router's expert dimension must
 be statically known when the session is initialized. The global expert count is the sum of those per-node dimensions;
 for `N` equally sized MoE nodes with `E` experts, it is `N * E`.
@@ -50,6 +53,10 @@ dictionary directly, without atomic counters, graph-name lookup, or per-invocati
 the same method emits one `moe_expert_counters` JSON record containing the request ID, node identity, deduplicated
 selected experts, and the updated counters. The node identity includes its graph scope so equal node indices in
 different subgraphs remain distinguishable.
+Records include `expert_offset`, the beginning of the node's range in the runtime's global expert array.
+Counter replay uses this offset for deterministic tie-breaking, independently of layer names or execution order.
+Legacy main-graph traces without offsets use resolved node-index registration order; replay rejects legacy subgraph
+traces without offsets rather than guessing their global order.
 Logging is limited to 1024 counter records per `Run()`, shared across all nodes and subgraphs.
 On the first omitted record, a single WARNING `moe_expert_counters_truncated` JSON marker reports
 `request_id` and `max_records`. Later records are omitted without formatting their JSON.
@@ -57,6 +64,59 @@ Counter updates continue unchanged after the limit, and the logging budget reset
 The Python analyzer rejects any trace containing this marker, even with an otherwise valid completion footer.
 When INFO output is disabled, counter records are neither formatted nor charged against the logging budget.
 Only logging-budget reservation uses an atomic; counting-only updates remain unsynchronized across disjoint kernel ranges.
+
+`tools/python/qmoe_expert_activation_correlations.py` analyzes complete counter traces as binary expert activations.
+For every MoE node, it computes the full expert-by-expert Pearson correlation matrix against the same node at the
+previous decode token. For every layer after the first, it also computes the matrix against the preceding layer at
+the same token. Prefill records are excluded, decode invocations are aligned independently within each prompt, and
+previous-token pairs never cross prompt boundaries. The output contains compressed NumPy matrices for all expert
+pairs and their activation counts, a PDF of heatmaps, and a CSV listing the 20 highest and 20 lowest sufficiently
+supported correlations from each matrix. The PDF uses the full Pearson scale from `-1` to `1` and plots both ranked
+matrices as full-page heatmaps. One additional graph per MoE node plots every finite correlation in sorted order,
+with the previous-token and previous-layer series on the same axes. A second linear graph shows the 1,000 strongest
+positive and 1,000 strongest negative correlations for both relations. The analyzer also exports
+`<output-prefix>-selected-experts.csv` with one decode selection per row: the cumulative one-based decode iteration,
+the zero-based layer-sorted MoE number, the local expert number, and its zero-based global position:
+
+```bash
+python tools/python/qmoe_expert_activation_correlations.py counter.log \
+  --output-prefix counter-expert-activation-correlations
+```
+
+`qmoe_prompt_runner.py --until-eos` omits its usual artificial new-token limit and lets generation stop on EOS. The
+model context length remains the unavoidable hard limit.
+
+The CPU-offload strategy is selected with `session.moe_cpu_offload_strategy=adaptive|basic|layered` (default `adaptive`).
+The QMoE-only `basic` strategy fills the chosen nodes' GPU expert slots, then places the remaining
+experts on CPU, with an optionally split boundary node. Placement ignores saved popularities and never swaps,
+regardless of the configured swap limit; usage counters remain available.
+The QMoE-only `layered` strategy fills chosen layers up to `session.moe_cpu_offload_gpu_ratio` (default `0.8`),
+then leaves the rest on CPU. Within each GPU-resident layer, including a partially filled boundary layer,
+placement and swaps use popularity. The target is rounded down; if necessary, layers exceed it in the chosen order
+only enough to preserve exactly `K` CPU experts.
+Both strategies accept `session.moe_cpu_offload_layer_order=first|last|middle` (default `first`):
+start from the beginning, end, or center of the graph-scope/topological layer list.
+Middle alternates outward from the left center (`3,4,2,5,1,6,0,7` for 8 layers).
+Graph execution order and saved popularity record numbering are unchanged. See
+[CPU offload strategies](moe-cpu-offload/README.md#initial-placement-and-ownership) for ordering and restrictions.
+
+After each successful CPU-offload `Run()` using `adaptive` or `layered`, INFO logging also emits one `moe_expert_swaps` JSON record. It reports
+`in_flight` swaps and `blocked_candidates` per CUDA device, plus session-wide totals. Its `scheduled_swaps` array
+identifies each exchange started by that run with the graph scope, node index, device, outgoing CUDA expert, incoming
+CPU expert, and both pre-swap scores. A blocked candidate is currently eligible for a swap but was not started because
+the per-device concurrency limit was reached. Candidates are recomputed after every run rather than retained in a
+persistent queue. This record is not part of the counter-record logging budget.
+
+CUDA QMoE also accepts `session.moe_cpu_offload_on_demand_threshold=N` (default `0`, disabled).
+With `adaptive` or `layered`, an invocation missing at most `N` distinct experts synchronously exchanges them
+with unselected GPU experts before computation. Prefill counts the union across all tokens and tiles; decode
+uses the same rule. The selected union must fit the layer's existing GPU capacity, otherwise execution stays
+on the existing CPU/GPU path without partial demand swaps. The exact CPU expert count is preserved.
+This mechanism is independent of the background swap limit and reuses existing CUDA packing and CPU repacking.
+For mixed CPU/GPU nodes, INFO logging adds `moe_expert_demand_swaps` records with request and node identity,
+`missing_experts`, completed `swapped_experts`, and `all_required_on_cuda`. These are distinct from background
+swap scheduling records and are not part of the counter-record logging budget.
+
 A `KernelPilot` is allocated for each kernel at initialization; its `KernelPilotMoeExpertSelection` member counts repeated routing IDs only once.
 Each counter is updated in place. The coefficient constraints keep it bounded by the larger of its initial value
 and `1`, so no next-value buffer or overflow-validation pass is needed.
@@ -119,35 +179,91 @@ is enabled. `KernelPilotMoeExpertSelection` resets the
 current invocation's selected-expert set while reusing its storage. The CUDA adapter also reuses its pinned host
 buffer and copy event. Buffer capacity grows only when needed for a larger invocation.
 
-Both counting and counter-update logging options are cached at kernel construction. With their default values (`0`), the
+Counting, counter-update logging, and a non-empty popularity output path enable tracking at kernel construction.
+With both flags disabled and no output path, the
 kernel skips collector construction, collection calls, and statistics-only size calculations.
 There are no statistics allocations, host transfers, or stream synchronizations on that path; only cached flag checks
 remain. Enabling these diagnostics adds overhead.
 
-## Initial counter file
+## FP16/BF16 CUDA expert offload and adaptive placement
 
-Optionally set:
-
-```text
-session.moe_expert_counter_state_file=/path/to/counters.txt
-```
-
-This requires counting or counter-update logging to be enabled. The UTF-8 text file begins with
-`moe_expert_state 1`, followed by whitespace-separated records:
+Set the session-wide CPU offload count with:
 
 ```text
-moe_expert_state 1
-"main" 0 MoE 2 12
-"main" 1 QMoE 0 3.5
-"main/4/11:then_branch" 0 MoE 1 7
+session.moe_cpu_offload_experts=<non-negative integer>
 ```
 
-Each record contains a quoted graph scope, node index, operator type, expert ID, and initial counter value. The root
-scope is `main`. A subgraph appends `/<parent-node-index>/<attribute-name-length>:<attribute-name>` to its parent's
-scope. This distinguishes nodes with the same index in different subgraphs. Node indices refer to the resolved,
-optimized graph, not necessarily the original serialized graph.
+CPU offload applies to built-in CUDA `MoE` nodes with FP16 or BF16 activations and constant
+expert weights. Before session initialization returns, `KernelPilot` chooses the experts that remain resident in CUDA
+memory. All-zero counters distribute slots round-robin across eligible nodes; initialized counters rank experts by
+descending value with deterministic ties. The offload count is global and must not exceed the number of experts in
+eligible CUDA nodes. The default is `0`, which disables CPU offloading.
 
-Values must be finite and non-negative. Omitted experts start at zero. Without a file, all experts start at zero.
-Unknown nodes, mismatched operator types, out-of-range expert IDs, duplicate records, malformed files, and file-access
-errors fail session initialization. Use the same model and graph-optimization configuration when preparing and loading
-a counter file.
+With CPU offload enabled, eligible nodes use disjoint compact weight stores: CPU-resident experts have GEMM-layout
+weights on CPU, while CUDA-resident experts have CUTLASS-layout weights on CUDA. Initialization retains ownership of
+the original initializers without copying their complete contents into per-kernel CPU vectors. External expert weights
+remain file-backed mappings until their node is initialized. The CUDA external-data loader gathers the selected CUDA
+experts through its two reusable 64 MiB pinned buffers; only CPU-resident experts are materialized in CPU GEMM layout.
+Each original initializer is released after its compact stores are ready, including for nodes with no CPU experts.
+There is no permanent CPU copy of every CUDA-resident expert and no complete model-sized CPU staging copy.
+
+During inference, CUDA experts run through the existing CUTLASS MoE path. CPU-resident FP16 experts use MLAS FP16
+GEMMs; CPU-resident BF16 experts use FP32 GEMM-layout weights and MLAS FP32 GEMMs.
+Their weighted outputs are combined on CUDA. Routing still records every selected expert, so counter updates continue
+unchanged.
+
+Offload requires prepacking to remain enabled and the input hidden dimension to be statically known. Connected
+FC1/FC2 biases must be constant, just like the expert weights.
+Expert-weight collection and validation follow actual outer-scope captures into subgraphs; same-named local inputs
+and initializers are separate values and do not cause ancestor values to be validated or moved to CPU.
+
+After each successful `Run()`, the runtime uses the updated counters to schedule adaptive exchanges within nodes that
+have both CPU and CUDA experts. A node is eligible when its highest CPU counter exceeds
+`(1 + epsilon)` times its lowest CUDA counter. Configure the relative margin and per-device concurrency limit with:
+
+```text
+session.moe_expert_swap_epsilon=<finite non-negative value> # default: 0.01
+session.moe_max_in_flight_swaps_per_device=<non-negative integer> # default: 4
+```
+
+At most one background exchange per node is scheduled at each inference boundary. Transfers run asynchronously;
+without on-demand swaps, an invocation uses the previously published placement if its exchange is still incomplete,
+without waiting for it. The new placement is published only after both transfer directions complete.
+Setting the concurrency limit to `0` disables background exchanges and keeps initial placement fixed unless on-demand
+swaps are enabled. Each node retains its initial CUDA slot count; redistribution of slots between nodes is not implemented.
+
+Separate FC3 weights, sparse mixer routing, dynamic expert weights, QMoE, FP32, the CUDA plugin EP, CUDA graphs, and
+minimal builds are not supported by this option. See [MoE CPU offload](moe-cpu-offload/README.md) for exchange details
+and benchmark results.
+
+## Popularity state file
+
+Set an output path to write the final state when the session is destroyed:
+
+```text
+session.moe_expert_popularity_file=/path/to/popularity.json
+```
+
+The option enables counting by itself. The benchmark wrapper exposes it as `--popularity-output`. The UTF-8 JSON file
+contains the configured decay coefficient (`alpha`), swap threshold (`epsilon`), and one record per expert:
+
+```json
+{
+  "alpha": 0.9,
+  "epsilon": 0.1,
+  "experts": [
+    {"moe": 0, "expert": 0, "popularity": 0.42},
+    {"moe": 0, "expert": 1, "popularity": 0.17}
+  ]
+}
+```
+
+`moe` is a stable zero-based ordinal obtained by sorting resolved nodes by graph scope and node index. `expert` is the
+zero-based expert index local to that MoE node. If the file cannot be written during session destruction, ONNX Runtime
+logs an error.
+
+Pass the resulting file back through `session.moe_expert_counter_state_file` or the benchmark's `--state` option to
+restore the popularities, `alpha`, and `epsilon`. Values from the JSON replace explicitly configured alpha and epsilon.
+The loaded alpha also replaces the coefficient cached by every CUDA pilot before the first inference.
+Omitted experts start at zero. Out-of-range or duplicate expert records, invalid values, malformed JSON, and file-access
+errors fail session initialization. Use the same model and graph-optimization configuration when loading a state file.

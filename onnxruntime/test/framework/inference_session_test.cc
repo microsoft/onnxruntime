@@ -1248,14 +1248,14 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 
 #ifndef __wasm__
 TEST(InferenceSessionTests, MoeExpertStatisticsLoadsStateFileWithNativePath) {
-  for (const auto* state_file : {"moe_expert_state_ascii.txt", "moe_expert_state_\xE6\xB5\x8B\xE8\xAF\x95.txt"}) {
+  for (const auto* state_file : {"moe_expert_state_ascii.json", "moe_expert_state_\xE6\xB5\x8B\xE8\xAF\x95.json"}) {
     SCOPED_TRACE(state_file);
     const auto state_path = std::filesystem::path(ToPathString(state_file));
     auto cleanup = gsl::finally([&state_path]() { std::filesystem::remove(state_path); });
     {
       std::ofstream output{state_path};
       ASSERT_TRUE(output.is_open());
-      output << "moe_expert_state 1\n";
+      output << R"({"alpha":0.75,"epsilon":0.01,"experts":[]})";
       ASSERT_TRUE(output.good());
     }
 

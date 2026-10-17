@@ -68,4 +68,10 @@ common::Status LoadCudaExternalDataForTest(
       *file, offset, length, *static_cast<Tensor*>(tensor));
 }
 
+common::Status LoadCudaExpertsFromHostForTest(
+    const void* loader, const void* source, gsl::span<const int> experts, void* tensor) {
+  return static_cast<const cuda::ExternalDataLoader*>(loader)->LoadTensorFromHost(
+      *static_cast<const Tensor*>(source), experts, *static_cast<Tensor*>(tensor));
+}
+
 }  // namespace onnxruntime::test

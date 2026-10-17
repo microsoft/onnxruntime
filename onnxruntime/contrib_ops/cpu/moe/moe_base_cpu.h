@@ -32,7 +32,8 @@ class MoEBaseCPU {
     const auto& options = op_kernel_info.GetConfigOptions();
     enable_moe_expert_tracking_ =
         options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1" ||
-        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
+        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1" ||
+        !options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertPopularityFile, "").empty();
 #endif
     ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_).IsOK());
     // Defense-in-depth: k must be at least 1. The upper bound (k <= num_experts)

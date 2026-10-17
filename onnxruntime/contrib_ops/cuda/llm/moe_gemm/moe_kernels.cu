@@ -3206,6 +3206,11 @@ __global__ void prepareFakeRouterBuffers(
   curandStatePhilox4_32_10_t state;
   curand_init(sample, tid, 0, &state);
   for (int k_idx = 0; k_idx < k; k_idx++) {
+    // CPU offload can leave fewer GPU experts than top-k; pad non-GPU routes like real routing.
+    if (k_idx >= num_experts) {
+      token_selected_experts[k * tid + k_idx] = -1;
+      continue;
+    }
     while (true) {
       // curand_uniform includes 1 but not 0, so round up and subtract 1
       int expert = std::ceil(static_cast<float>(num_experts) * curand_uniform(&state)) - 1;
