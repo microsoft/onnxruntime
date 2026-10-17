@@ -10,9 +10,9 @@
 
 #include <gtest/gtest.h>
 
-#include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/platform/env_var_utils.h"
 
 #if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
@@ -201,11 +201,19 @@ void TestFp8GemvCodeDecoding(int scale_type, int block_size, int k, int fusion, 
       std::fill_n(up_weights.begin() + (expert * source_n + row) * k, k, static_cast<uint8_t>(code + 1));
     }
   }
-  std::vector<S> scales(2 * scales_per_expert, S(1.25f));
-  std::fill(scales.begin() + scales_per_expert, scales.end(), S(0.5f));
-  std::vector<T> input(2 * k, T(0.0f));
-  input[0] = T(1.0f);
-  input[k] = T(-2.0f);
+  const int k_blocks = (k + block_size - 1) / block_size;
+  std::vector<S> scales(2 * scales_per_expert);
+  for (int expert = 0; expert < 2; ++expert) {
+    for (int block = 0; block < scales_per_expert; ++block) {
+      scales[expert * scales_per_expert + block] =
+          S((expert + 1) * 0.25f + ((block / k_blocks) % 4) * 0.125f + (block % k_blocks) * 0.25f);
+    }
+  }
+  std::vector<T> input(2 * k);
+  for (int col = 0; col < k; ++col) {
+    input[col] = T(col == k - 1 ? 2.0f : (1 + col % 4) * 0.03125f);
+    input[k + col] = T(col == k - 1 ? -4.0f : -(1 + col % 3) * 0.0625f);
+  }
   const std::array<int, 2> experts{1, 0};
   const std::array<int, 2> source_rows{1, 0};
   CudaBuffer device_weights(weights.size());
@@ -247,6 +255,17 @@ void TestFp8GemvCodeDecoding(int scale_type, int block_size, int k, int fusion, 
     CUDA_CALL_THROW(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
     qmoe::LaunchQMoEFp8Projection(params, device_input.As<T>(), device_output.As<T>(), stream);
     CUDA_CALL_THROW(cudaStreamEndCapture(stream, &captured));
+    size_t node_count = 0;
+    CUDA_CALL_THROW(cudaGraphGetNodes(captured, nullptr, &node_count));
+    std::vector<cudaGraphNode_t> nodes(node_count);
+    CUDA_CALL_THROW(cudaGraphGetNodes(captured, nodes.data(), &node_count));
+    EXPECT_EQ(node_count, 1u);
+    if (node_count == 1) {
+      cudaKernelNodeParams node{};
+      CUDA_CALL_THROW(cudaGraphKernelNodeGetParams(nodes[0], &node));
+      EXPECT_EQ(qmoe::QMoEFp8GemvKernelUsesNativeDecode(node.func),
+                ParseEnvironmentVariableWithDefault<bool>("ORT_QMOE_FP8_GEMV_NATIVE_DECODE", false));
+    }
     CUDA_CALL_THROW(cudaGraphInstantiate(&executable, captured, nullptr, nullptr, 0));
     CUDA_CALL_THROW(cudaGraphLaunch(executable, stream));
     CUDA_CALL_THROW(cudaStreamSynchronize(stream));
@@ -269,14 +288,22 @@ void TestFp8GemvCodeDecoding(int scale_type, int block_size, int k, int fusion, 
         EXPECT_TRUE(std::isnan(value));
         continue;
       }
-      const T scaled_weight(FiniteFp8Reference(code) * (row == 0 ? 0.5f : 1.25f));
-      const T expected(static_cast<float>(scaled_weight) * (row == 0 ? -2.0f : 1.0f));
-      EXPECT_EQ(value, static_cast<float>(expected));
+      const int source_col = fusion == 1 ? col / 2 : code;
+      double sum = 0.0;
+      for (int inner = 0; inner < k; ++inner) {
+        const float scale = static_cast<float>(scales[experts[row] * scales_per_expert +
+                                                      (source_col / block_size) * k_blocks + inner / block_size]);
+        const T scaled_weight(FiniteFp8Reference(code) * scale);
+        sum += static_cast<float>(scaled_weight) * static_cast<float>(input[source_rows[row] * k + inner]);
+      }
+      const float expected = static_cast<float>(T(static_cast<float>(sum)));
+      const float tolerance = std::is_same_v<T, half> ? 0.001f : 0.008f;
+      EXPECT_NEAR(value, expected, std::max(1e-7f, std::abs(expected) * tolerance));
     }
   }
 }
 
-TEST(CUDA_EP_Unittest, QMoEFp8GemvAllCodesWithMappedRowsPartialKBlocksAndGraphReplay) {
+void TestFp8GemvCodeConfigurations() {
   for (int block_size : {16, 128}) {
     for (int fusion : {0, 1, 2}) {
       for (bool graph : {false, true}) {
@@ -293,6 +320,20 @@ TEST(CUDA_EP_Unittest, QMoEFp8GemvAllCodesWithMappedRowsPartialKBlocksAndGraphRe
       }
     }
   }
+}
+
+TEST(CUDA_EP_Unittest, QMoEFp8GemvAllCodesWithMappedRowsPartialKBlocksAndGraphReplay) {
+  TestFp8GemvCodeConfigurations();
+}
+
+TEST(CUDA_EP_Unittest, QMoEFp8GemvNativeDecode) {
+  if (!ParseEnvironmentVariableWithDefault<bool>("ORT_QMOE_FP8_GEMV_NATIVE_DECODE", false)) {
+    GTEST_SKIP() << "Native decoding coverage runs in its flag-enabled CTest process.";
+  }
+  if (!qmoe::QMoEFp8GemvSupportsNativeDecode()) {
+    GTEST_SKIP() << "Native E4M3 decoding requires FP8-enabled kernels compiled for SM90+.";
+  }
+  TestFp8GemvCodeConfigurations();
 }
 
 #if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)

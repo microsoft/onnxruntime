@@ -1369,6 +1369,17 @@ code. The flag defaults to false. Set it before initializing the runtime;
 launch specializations cache its value. Older compiled architectures retain
 software conversion. GEMM/prefill continues to use the existing decoder.
 
+CUDA internal-test builds register `onnxruntime_fp8_native_decode_0` and
+`onnxruntime_fp8_native_decode_1` in CTest. Each flag value runs in a fresh process.
+The graph cases inspect the captured kernel function to verify the requested
+template specialization, and native-specific coverage additionally checks the
+FP8 build gate and the loaded kernel's binary/PTX targets before running. It skips
+explicitly when native instructions are unavailable instead of claiming fallback
+execution as native coverage.
+All K elements contribute to the numerical reference; the three K blocks have
+different scales and the partial tail has a significant nonzero activation.
+This detects dropped blocks, missing tails, and reuse of the first block's scale.
+
 This changes only scalar byte decoding. Block scaling, activation-dtype
 rounding, accumulation order, row mappings, and gate/up layouts are retained.
 Finite E4M3FN values are exactly representable in FP16, so this conversion does

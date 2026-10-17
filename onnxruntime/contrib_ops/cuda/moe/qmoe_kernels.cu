@@ -1603,6 +1603,21 @@ __global__ void QMoEFp8GemvKernel(QMoEFp8ProjectionParams params, const T* input
   }
 }
 
+bool QMoEFp8GemvSupportsNativeDecode() {
+#if defined(ORT_CUDA_TYPE_HELPER_HAS_FP8)
+  cudaFuncAttributes attributes{};
+  CUDA_CALL_THROW(cudaFuncGetAttributes(&attributes, QMoEFp8GemvKernel<half, true>));
+  return attributes.binaryVersion >= 90 && attributes.ptxVersion >= 90;
+#else
+  return false;
+#endif
+}
+
+bool QMoEFp8GemvKernelUsesNativeDecode(const void* kernel) {
+  return kernel == reinterpret_cast<const void*>(QMoEFp8GemvKernel<half, true>) ||
+         kernel == reinterpret_cast<const void*>(QMoEFp8GemvKernel<__nv_bfloat16, true>);
+}
+
 __global__ void QMoEFp8ExpertTilesKernel(const int64_t* expert_offsets, int* tile_offsets, int num_experts) {
   int tiles = 0;
   tile_offsets[0] = 0;
