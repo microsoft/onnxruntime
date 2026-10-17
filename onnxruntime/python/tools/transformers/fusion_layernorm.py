@@ -17,6 +17,22 @@ class FusionLayerNormalization(Fusion):
         self.check_constant_and_dimension = check_constant_and_dimension
         self.force = force
 
+    def is_last_axis_reduction(self, node, rank: int | None) -> bool:
+        # The replacement has axis=-1 and retains reduced dimensions in its statistics.
+        if self.model.get_node_attribute(node, "keepdims") == 0:
+            return False
+
+        axes = self.model.get_node_attribute(node, "axes")
+        if len(node.input) > 1 and node.input[1]:
+            if self.model.find_graph_input(node.input[1]) is not None:
+                # An initializer that is also a graph input can be overridden at runtime.
+                return False
+            axes = self.model.get_constant_value(node.input[1])
+        if axes is None or len(axes) != 1:
+            return False
+
+        return bool(axes[0] == -1 or (rank is not None and axes[0] == rank - 1))
+
     def fuse(self, node, input_name_to_nodes: dict, output_name_to_node: dict):
         """
         Fuse Layer Normalization subgraph into one node LayerNormalization:
@@ -45,6 +61,10 @@ class FusionLayerNormalization(Fusion):
             return
 
         root_input = node.input[0]
+        input_shape = self.model.get_shape(root_input)
+        rank = len(input_shape) if input_shape is not None else None
+        if not self.is_last_axis_reduction(node, rank):
+            return
 
         if children[0].op_type != "Sub" or children[0].input[0] != root_input:
             return
@@ -79,6 +99,9 @@ class FusionLayerNormalization(Fusion):
             output_name_to_node,
         )
         if parent_nodes is None:
+            return
+
+        if not self.is_last_axis_reduction(parent_nodes[2], rank):
             return
 
         sub_node = parent_nodes[-1]
