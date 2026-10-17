@@ -284,6 +284,21 @@ class TestInferenceSession(unittest.TestCase):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         self.assertTrue("CPUExecutionProvider" in sess.get_providers())
 
+    @unittest.skipUnless(
+        sys.platform == "win32" and "DmlExecutionProvider" in onnxrt.get_available_providers(),
+        "requires the DirectML execution provider on Windows",
+    )
+    def test_invalid_dml_device_id_returns_readable_error(self):
+        invalid_device_id = 2**31 - 1
+        with self.assertRaisesRegex(
+            RuntimeError, f"Failed to enumerate DirectML adapter with device_id {invalid_device_id}"
+        ):
+            onnxrt.InferenceSession(
+                get_name("mul_1.onnx"),
+                providers=[("DmlExecutionProvider", {"device_id": str(invalid_device_id)})],
+                enable_fallback=False,
+            )
+
     def test_enabling_and_disabling_telemetry(self):
         onnxrt.disable_telemetry_events()
 
