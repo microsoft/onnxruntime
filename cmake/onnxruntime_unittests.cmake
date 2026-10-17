@@ -1160,6 +1160,10 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels_fp16_uint2.cu"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_kernels.cu"
       )
+      if (onnxruntime_USE_FP4_QMOE)
+        list(APPEND onnxruntime_providers_cuda_plugin_ut_impl_src
+          "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.cu")
+      endif()
     endif()
 
     onnxruntime_add_object_library(onnxruntime_providers_cuda_plugin_ut_impl ${onnxruntime_providers_cuda_plugin_ut_impl_src})
@@ -1178,6 +1182,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
       ORT_USE_EP_API_ADAPTERS=1)
     target_compile_options(onnxruntime_providers_cuda_plugin_ut_impl PRIVATE
       ${_cuda_plugin_shared_compile_options}
+      "$<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>"
       "$<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-parameter>"
       "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">")
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
