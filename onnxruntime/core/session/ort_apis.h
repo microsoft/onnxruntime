@@ -755,6 +755,8 @@ ORT_API(const char*, GetRunConfigEntry, _In_ const OrtRunOptions* options, _In_z
 
 ORT_API(const OrtMemoryInfo*, EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device,
         _In_ OrtDeviceMemoryType memory_type);
+ORT_API_STATUS_IMPL(EpDevice_GetMemoryCapacity, _In_ const OrtEpDevice* ep_device,
+                    _Out_ uint64_t* total_memory_bytes, _Out_ uint64_t* available_memory_bytes);
 
 ORT_API_STATUS_IMPL(CreateSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
                     _In_ OrtDeviceMemoryType mem_type, _In_ OrtAllocatorType allocator_type,

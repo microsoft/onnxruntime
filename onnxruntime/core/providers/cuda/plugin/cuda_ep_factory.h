@@ -98,6 +98,12 @@ class CudaEpFactory : public OrtEpFactory {
       const OrtKeyValuePairs* stream_options,
       OrtSyncStreamImpl** stream) noexcept;
 
+  static OrtStatus* ORT_API_CALL GetDeviceMemoryCapacityImpl(
+      OrtEpFactory* this_ptr,
+      const OrtEpDevice* ep_device,
+      uint64_t* total_memory_bytes,
+      uint64_t* available_memory_bytes) noexcept;
+
   const OrtApi& ort_api_;
   const OrtEpApi& ep_api_;
   const OrtLogger& default_logger_;

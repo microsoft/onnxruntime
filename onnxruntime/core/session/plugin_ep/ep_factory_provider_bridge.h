@@ -65,6 +65,18 @@ class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
     return ep_factory_.CreateSyncStreamForDevice(&ep_factory_, device, stream_options, stream);
   }
 
+  OrtStatus* GetDeviceMemoryCapacity(const OrtEpDevice* ep_device,
+                                     uint64_t* total_memory_bytes,
+                                     uint64_t* available_memory_bytes) noexcept override {
+    if (ep_factory_.ort_version_supported < 32 ||
+        ep_factory_.GetDeviceMemoryCapacity == nullptr) {
+      return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                   "GetDeviceMemoryCapacity is not implemented for this EP factory.");
+    }
+    return ep_factory_.GetDeviceMemoryCapacity(
+        &ep_factory_, ep_device, total_memory_bytes, available_memory_bytes);
+  }
+
   OrtStatus* CreateExternalResourceImporterForDevice(
       const OrtEpDevice* ep_device,
       OrtExternalResourceImporterImpl** importer) noexcept override {
