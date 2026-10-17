@@ -52,8 +52,8 @@ class CudaGraphManager {
   /// Begin capturing CUDA operations on the stream.
   void CaptureBegin(CudaGraphAnnotation_t id);
 
-  /// End capture, instantiate the graph, and store the executable.
-  void CaptureEnd(CudaGraphAnnotation_t id);
+  /// End capture, sample free device memory, instantiate the graph, and store the executable.
+  void CaptureEnd(CudaGraphAnnotation_t id, size_t* post_capture_free_mem = nullptr);
 
   /// Launch a previously captured graph. Returns OrtStatus on error.
   OrtStatus* Replay(CudaGraphAnnotation_t id, bool sync = true);
