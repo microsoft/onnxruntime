@@ -518,11 +518,38 @@ void OneDsTelemetry::Initialize() {
     logger->SetContext("frameworkName", framework);
   }
 
+  // DebugEventSource initializes its process-wide recursive mutex lazily. Initialize it
+  // synchronously before registering teardown, rather than letting an HTTP worker initialize
+  // it later and register its destructor after our teardown callback. This diagnostic event
+  // stays inside the SDK; it is not sent to the collector.
+  pending_log_manager.Get()->DispatchEvent(DebugEvent{DebugEventType::EVT_UNKNOWN});
+
+  // The provider may outlive SDK function-local statics. Stop its workers before those
+  // statics are destroyed, even if the last provider has been released and recreated.
+  static const bool shutdown_registered = std::atexit(&OneDsTelemetry::ShutdownAtExit) == 0;
+  if (!shutdown_registered) {
+    ORT_TELEMETRY_WARN("Failed to register telemetry shutdown");
+    return;
+  }
+
   // Publish the fully-configured logger atomically; concurrent readers observe it only now.
   // enabled_ is left to its default / the runtime EnableTelemetryEvents()/DisableTelemetryEvents()
   // opt-in state rather than being force-set here.
   pending_log_manager.Commit(config_, log_manager_);
   logger_.store(logger, std::memory_order_release);
+}
+
+void OneDsTelemetry::ShutdownAtExit() noexcept {
+  ORT_TRY {
+    std::lock_guard<std::mutex> lock(global_mutex_);
+    // Do not let later static destructors restart telemetry during process teardown.
+    telemetry_disabled_.store(true, std::memory_order_release);
+    enabled_.store(false, std::memory_order_release);
+    Shutdown();
+  }
+  ORT_CATCH(...) {
+    // Logging and other application state may already be gone.
+  }
 }
 
 void OneDsTelemetry::Shutdown() {
