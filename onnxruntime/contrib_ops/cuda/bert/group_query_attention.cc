@@ -147,6 +147,8 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   // cuDNN SDPA (cudnn_frontend) supports FP16 and BF16 and is auto-preferred on SM>=90.
   enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options_->UseCudnnFlashAttention();
   auto_enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options_->AllowCudnnFlashAttentionAuto();
+  reject_cudnn_sdpa_graph_for_test_ =
+      ParseEnvironmentVariableWithDefault<int>("ORT_TEST_ONLY_GQA_REJECT_CUDNN_SDPA_GRAPH", 0) != 0;
 
   if (!disable_flash_attention_) {
     zeros_ = this->GetScratchBuffer<int>(kZerosCount, nullptr);
@@ -792,6 +794,38 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                               parameters.sequence_length,          // seq_len_q
                                                               parameters.seqlen_present_kv_cache,  // seq_len_kv (capacity)
                                                               parameters.is_unidirectional);
+
+  // When cuDNN was picked by the SM>=90 auto rule rather than requested explicitly, check that the
+  // planner can build the graph before committing to it: the buffers for the other kernels are
+  // sized below, so a failure inside CudnnSdpaAttention could not fall back. This uses the same
+  // key as CudnnSdpaAttention's cudnn_sdpa::run call. Buildability is per (thread, shape), so it
+  // is checked on every Run; after the first build it is a cache lookup.
+  if (use_cudnn_sdpa && !enable_cudnn_flash_attention_) {
+    const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size))
+                                                 : parameters.scale;
+    use_cudnn_sdpa = onnxruntime::cudnn_sdpa::try_build_graph(
+        parameters.batch_size,
+        parameters.num_heads,
+        parameters.kv_num_heads,
+        parameters.head_size,
+        parameters.head_size,
+        parameters.sequence_length,
+        parameters.seqlen_present_kv_cache,
+        scale,
+        parameters.is_unidirectional,
+        std::is_same<T, BFloat16>::value,
+        /*has_bias=*/false,
+        /*broadcast_attn_bias_dim_0=*/false,
+        /*broadcast_attn_bias_dim_1=*/false,
+        /*has_padding_mask=*/true,
+        /*sliding_window=*/0,
+        AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH,
+        GetCudnnHandle(context),
+        GetComputeStream(context));
+    if (reject_cudnn_sdpa_graph_for_test_) {
+      use_cudnn_sdpa = false;
+    }
+  }
   data.use_cudnn_sdpa = use_cudnn_sdpa;
 
 #if USE_FLASH_ATTENTION
