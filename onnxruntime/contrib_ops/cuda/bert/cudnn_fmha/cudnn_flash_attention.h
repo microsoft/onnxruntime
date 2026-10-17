@@ -47,6 +47,34 @@ void run(
     Stream* stream,
     AllocatorPtr allocator);
 
+// Pre-dispatch buildability probe for run(). is_supported() only checks static shapes; the cuDNN
+// planner can still reject the graph (e.g. cuDNN 9.20 on sm_120 has only a runtime-compiled SDPA
+// engine, which needs NVRTC). Returns true iff the graph run() would use is cached or was just
+// built, and false without throwing when the planner rejects it, so the caller can pick another
+// kernel before committing to cuDNN. The key matches run()'s: has_padding_mask is true when run()
+// gets either mask, since run() synthesizes the missing side. Rejections are cached, and run()
+// throws on a cached rejection. On a cache miss while `stream` is capturing, returns false without
+// building or caching.
+bool try_build_graph(
+    int batch_size,
+    int num_heads_q,
+    int num_heads_kv,
+    int head_size_qk,
+    int head_size_v,
+    int sequence_length_q,
+    int sequence_length_kv,
+    float scale,
+    bool is_causal,
+    bool is_bf16,
+    bool has_bias,
+    bool broadcast_attn_bias_dim_0,
+    bool broadcast_attn_bias_dim_1,
+    bool has_padding_mask,
+    int sliding_window,
+    AttentionQkvFormat qkv_format,
+    cudnnHandle_t handle,
+    Stream* stream);
+
 // Paged-KV variant of the SDPA above. The K/V "cache" tensors point into a shared block pool with
 // physical layout [cache_num_blocks, block_size, num_heads_kv, head_size]; a per-batch page_table
 // selects which blocks belong to which sequence. Same masking surface as run() with these first-cut
