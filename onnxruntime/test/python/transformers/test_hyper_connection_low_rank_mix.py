@@ -49,28 +49,40 @@ def has_cuda():
     return "CUDAExecutionProvider" in ort.get_available_providers()
 
 
-def build_model(io_elem, C, H, R, prologue, attrs):
+def make_initializer(name, io_elem, tensor):
+    dtype = DTYPES[io_elem]
+    raw = tensor.to(dtype).contiguous().view(torch.uint8).numpy().tobytes()
+    return helper.make_tensor(name, io_elem, list(tensor.shape), raw, raw=True)
+
+
+def build_model(io_elem, C, H, R, prologue, attrs, weights=None):
     """Graph with float32 inputs/outputs; Casts move the activations to the type under test."""
     F = TP.FLOAT
     K = C * H
-    node_inputs = ["streams", "norm_scale", "down_weight", "up_weight", "inject_weight"]
-    graph_inputs = [
-        ("streams", ["rows", K]),
-        ("norm_scale", [K]),
-        ("down_weight", [K, R]),
-        ("up_weight", [R, K]),
-        ("inject_weight", [K, C]),
-    ]
+    weight_names = ("norm_scale", "down_weight", "up_weight", "inject_weight")
+    node_inputs = ["streams"] + [n if weights is not None else n + "_t" for n in weight_names]
+    graph_inputs = [("streams", ["rows", K])]
+    initializers = []
+    if weights is not None:
+        initializers = [make_initializer(n, io_elem, weights[n]) for n in weight_names]
+    else:
+        graph_inputs += [
+            ("norm_scale", [K]),
+            ("down_weight", [K, R]),
+            ("up_weight", [R, K]),
+            ("inject_weight", [K, C]),
+        ]
     if prologue:
-        node_inputs += ["prev_block_output", "prev_post_gate"]
+        node_inputs += ["prev_block_output_t", "prev_post_gate_t"]
         graph_inputs += [("prev_block_output", ["rows", H]), ("prev_post_gate", ["rows", C])]
     outputs = ["pre_output", "post_gate", "streams_out"]
 
     nodes = [helper.make_node("Cast", [n], [n + "_t"], to=io_elem, name=n + "/cast") for n, _ in graph_inputs]
+    node_inputs[0] = "streams_t"
     nodes.append(
         helper.make_node(
             "HyperConnectionLowRankMix",
-            [n + "_t" for n in node_inputs],
+            node_inputs,
             [n + "_t" for n in outputs],
             domain="com.microsoft",
             num_branches=C,
@@ -87,6 +99,7 @@ def build_model(io_elem, C, H, R, prologue, attrs):
             helper.make_tensor_value_info("post_gate", F, ["rows", C]),
             helper.make_tensor_value_info("streams_out", F, ["rows", K]),
         ],
+        initializer=initializers,
     )
     model = helper.make_model(
         graph, opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)]
@@ -214,27 +227,144 @@ class TestHyperConnectionLowRankMix(unittest.TestCase):
                     self._check(io_elem, rows, REAL_SHAPE, True, attrs=attrs, seed=3)
 
     def test_chain_of_blocks(self):
-        """Two consecutive calls through the prologue equal the explicit post-mix between them."""
+        """Two consecutive blocks in the same graph equal the explicit post-mix between them."""
         C, H, R = REAL_SHAPE
+        weight_names = ("norm_scale", "down_weight", "up_weight", "inject_weight")
         for io_elem in (TP.FLOAT16, TP.BFLOAT16):
             dtype = DTYPES[io_elem]
             with self.subTest(io_elem=io_elem):
-                inputs = make_inputs(dtype, 2, C, H, R, False, seed=4)
-                first = self.cache.get(io_elem, C, H, R, False, ATTRS)
-                second = self.cache.get(io_elem, C, H, R, True, ATTRS)
-                _, gate, streams = first.run(None, {k: v.numpy() for k, v in inputs.items()})
-                # Use the block "output" as an independent tensor (a stand-in for the attention/MLP result).
-                block_out = torch.randn(2, H, generator=torch.Generator().manual_seed(8)).to(dtype).float().numpy()
-                chained = dict(inputs)
-                chained["streams"] = streams
+                inputs0 = make_inputs(dtype, 2, C, H, R, False, seed=4)
+                inputs1 = make_inputs(dtype, 2, C, H, R, True, seed=8)
+                block_out = inputs1["prev_block_output"]
+                initializers = [make_initializer(f"w0_{k}", io_elem, inputs0[k]) for k in weight_names] + [
+                    make_initializer(f"w1_{k}", io_elem, inputs1[k]) for k in weight_names
+                ]
+                nodes = [
+                    helper.make_node("Cast", ["streams"], ["streams_t"], to=io_elem),
+                    helper.make_node("Cast", ["block_out"], ["block_out_t"], to=io_elem),
+                    helper.make_node(
+                        "HyperConnectionLowRankMix",
+                        ["streams_t", *[f"w0_{k}" for k in weight_names]],
+                        ["pre0_t", "gate0_t", "streams0_t"],
+                        domain="com.microsoft",
+                        num_branches=C,
+                        **ATTRS,
+                    ),
+                    helper.make_node(
+                        "HyperConnectionLowRankMix",
+                        ["streams0_t", *[f"w1_{k}" for k in weight_names], "block_out_t", "gate0_t"],
+                        ["pre_output_t", "post_gate_t", "streams_out_t"],
+                        domain="com.microsoft",
+                        num_branches=C,
+                        **ATTRS,
+                    ),
+                    helper.make_node("Cast", ["pre_output_t"], ["pre_output"], to=TP.FLOAT),
+                    helper.make_node("Cast", ["post_gate_t"], ["post_gate"], to=TP.FLOAT),
+                ]
+                graph = helper.make_graph(
+                    nodes,
+                    "hc_chain",
+                    [
+                        helper.make_tensor_value_info("streams", TP.FLOAT, [2, C * H]),
+                        helper.make_tensor_value_info("block_out", TP.FLOAT, [2, H]),
+                    ],
+                    [
+                        helper.make_tensor_value_info("pre_output", TP.FLOAT, [2, H]),
+                        helper.make_tensor_value_info("post_gate", TP.FLOAT, [2, C]),
+                    ],
+                    initializer=initializers,
+                )
+                model = helper.make_model(
+                    graph, opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)]
+                )
+                model.ir_version = 10
+                so = ort.SessionOptions()
+                so.log_severity_level = 3
+                session = ort.InferenceSession(model.SerializeToString(), so, providers=["CUDAExecutionProvider"])
+                out = session.run(None, {"streams": inputs0["streams"].numpy(), "block_out": block_out.numpy()})
+
+                _, gate0, streams0 = reference(inputs0, dtype, C, H, ATTRS)
+                chained = dict(inputs1)
+                chained["streams"] = streams0
                 chained["prev_block_output"] = block_out
-                chained["prev_post_gate"] = gate
-                out = second.run(None, {k: np.asarray(v) for k, v in chained.items()})
-                ref_inputs = {k: torch.from_numpy(np.asarray(v)) for k, v in chained.items()}
-                exp = reference(ref_inputs, dtype, C, H, ATTRS)
+                chained["prev_post_gate"] = gate0
+                exp = reference(chained, dtype, C, H, ATTRS)
                 rtol, atol = tolerances(io_elem)
                 np.testing.assert_allclose(out[0], exp[0].numpy(), rtol=rtol, atol=atol)
                 np.testing.assert_allclose(out[1], exp[1].numpy(), rtol=rtol, atol=atol)
+
+    def test_same_graph_computed_weight(self):
+        """A fused producer's [8, 8] pre_output used as a weight by a second fused node must not race under PDL."""
+        rows = 8
+        prod_C, H, prod_R = 8, 8, 512
+        cons_C, cons_R = 1, 8
+        weight_names = ("norm_scale", "down_weight", "up_weight", "inject_weight")
+        for io_elem in (TP.FLOAT16, TP.BFLOAT16):
+            dtype = DTYPES[io_elem]
+            for dynamic_weight in ("down_weight", "up_weight"):
+                with self.subTest(io_elem=io_elem, dynamic_weight=dynamic_weight):
+                    prod_in = make_inputs(dtype, rows, prod_C, H, prod_R, False, seed=10)
+                    cons_in = make_inputs(dtype, rows, cons_C, H, cons_R, False, seed=11)
+                    initializers = [make_initializer(f"p_{k}", io_elem, prod_in[k]) for k in weight_names] + [
+                        make_initializer(f"c_{k}", io_elem, cons_in[k]) for k in weight_names if k != dynamic_weight
+                    ]
+                    cons_weights = ["p_pre_t" if k == dynamic_weight else f"c_{k}" for k in weight_names]
+                    nodes = [
+                        helper.make_node("Cast", ["p_streams"], ["p_streams_t"], to=io_elem),
+                        helper.make_node("Cast", ["c_streams"], ["c_streams_t"], to=io_elem),
+                        helper.make_node(
+                            "HyperConnectionLowRankMix",
+                            ["p_streams_t", *[f"p_{k}" for k in weight_names]],
+                            ["p_pre_t", "p_gate_t"],
+                            domain="com.microsoft",
+                            num_branches=prod_C,
+                            **ATTRS,
+                        ),
+                        helper.make_node(
+                            "HyperConnectionLowRankMix",
+                            ["c_streams_t", *cons_weights],
+                            ["pre_output_t", "post_gate_t"],
+                            domain="com.microsoft",
+                            num_branches=cons_C,
+                            **ATTRS,
+                        ),
+                        helper.make_node("Cast", ["pre_output_t"], ["pre_output"], to=TP.FLOAT),
+                        helper.make_node("Cast", ["post_gate_t"], ["post_gate"], to=TP.FLOAT),
+                    ]
+                    graph = helper.make_graph(
+                        nodes,
+                        "hc_computed_weight",
+                        [
+                            helper.make_tensor_value_info("p_streams", TP.FLOAT, [rows, prod_C * H]),
+                            helper.make_tensor_value_info("c_streams", TP.FLOAT, [rows, cons_C * H]),
+                        ],
+                        [
+                            helper.make_tensor_value_info("pre_output", TP.FLOAT, [rows, H]),
+                            helper.make_tensor_value_info("post_gate", TP.FLOAT, [rows, cons_C]),
+                        ],
+                        initializer=initializers,
+                    )
+                    model = helper.make_model(
+                        graph, opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)]
+                    )
+                    model.ir_version = 10
+                    so = ort.SessionOptions()
+                    so.log_severity_level = 3
+                    session = ort.InferenceSession(model.SerializeToString(), so, providers=["CUDAExecutionProvider"])
+                    pre, gate = session.run(
+                        None,
+                        {
+                            "p_streams": prod_in["streams"].numpy(),
+                            "c_streams": cons_in["streams"].numpy(),
+                        },
+                    )
+                    prod_pre, _, _ = reference(prod_in, dtype, prod_C, H, ATTRS)
+                    ref_cons = dict(cons_in)
+                    ref_cons[dynamic_weight] = prod_pre
+                    exp_pre, exp_gate, _ = reference(ref_cons, dtype, cons_C, H, ATTRS)
+                    rtol, atol = tolerances(io_elem)
+                    np.testing.assert_allclose(pre, exp_pre.numpy(), rtol=rtol, atol=atol)
+                    np.testing.assert_allclose(gate, exp_gate.numpy(), rtol=rtol, atol=atol)
 
     def test_fused_rows_are_independent(self):
         """The fused kernels use a fixed reduction order: a row gives the same bits at any batch size."""
@@ -270,7 +400,7 @@ class TestHyperConnectionLowRankMix(unittest.TestCase):
                 with self.subTest(io_elem=io_elem, rows=rows):
                     dtype = DTYPES[io_elem]
                     inputs = make_inputs(dtype, rows, C, H, R, True, seed=9)
-                    model = build_model(io_elem, C, H, R, True, ATTRS)
+                    model = build_model(io_elem, C, H, R, True, ATTRS, weights=inputs)
                     so = ort.SessionOptions()
                     so.log_severity_level = 3
                     graph_session = ort.InferenceSession(
@@ -280,22 +410,26 @@ class TestHyperConnectionLowRankMix(unittest.TestCase):
                     )
                     binding = graph_session.io_binding()
                     keep = []
-                    for name, value in inputs.items():
-                        ortvalue = ort.OrtValue.ortvalue_from_numpy(value.numpy(), "cuda", 0)
-                        keep.append(ortvalue)
+                    for name in ("streams", "prev_block_output", "prev_post_gate"):
+                        dev_in = inputs[name].cuda().contiguous()
+                        ortvalue = ort.OrtValue.from_dlpack(dev_in.__dlpack__())
+                        keep.extend((dev_in, ortvalue))
                         binding.bind_ortvalue_input(name, ortvalue)
                     shapes = {"pre_output": (rows, H), "post_gate": (rows, C), "streams_out": (rows, C * H)}
                     outputs = {}
                     for name, shape in shapes.items():
-                        outputs[name] = ort.OrtValue.ortvalue_from_shape_and_type(shape, np.float32, "cuda", 0)
-                        binding.bind_ortvalue_output(name, outputs[name])
+                        dev_out = torch.empty(shape, dtype=torch.float32, device="cuda")
+                        ort_out = ort.OrtValue.from_dlpack(dev_out.__dlpack__())
+                        keep.extend((dev_out, ort_out))
+                        outputs[name] = dev_out
+                        binding.bind_ortvalue_output(name, ort_out)
                     graph_session.run_with_iobinding(binding)  # captures
                     graph_session.run_with_iobinding(binding)  # replays
                     expected = self.cache.get(io_elem, C, H, R, True, ATTRS).run(
                         None, {k: v.numpy() for k, v in inputs.items()}
                     )
                     for name, exp in zip(shapes, expected, strict=True):
-                        np.testing.assert_array_equal(outputs[name].numpy(), exp, err_msg=name)
+                        np.testing.assert_array_equal(outputs[name].cpu().numpy(), exp, err_msg=name)
 
     def test_zero_rows(self):
         C, H, R = 4, 64, 16

@@ -50,11 +50,12 @@ bool CanUseFusedHyperConnectionLowRankMix(const cudaDeviceProp& device_prop,
 // Number of float elements of scratch memory the fused path needs.
 size_t HyperConnectionLowRankMixFusedScratchElements(const HyperConnectionLowRankMixConfig& config);
 
+// Programmatic dependent launch is enabled on sm_90+ only when the weight inputs are constant initializers.
 template <typename T>
 Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, cudaStream_t stream,
                                             const HyperConnectionLowRankMixConfig& config,
                                             const HyperConnectionLowRankMixTensors<T>& tensors,
-                                            float* scratch);
+                                            float* scratch, bool weights_are_constant = false);
 
 // General path built from cuBLAS GEMMs and elementwise kernels. Scratch buffers (in elements of T):
 // hn [rows, C * H], down [rows, R], up [rows, C * H], inject [rows, C].

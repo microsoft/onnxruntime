@@ -11,10 +11,11 @@
 //   HcUpPreKernel grid (ceil(H / 16), 1, row groups)
 //                 reduces the partials in a fixed order, then ScaledSiLU, up GEMV, sigmoid, pre-mix and the
 //                 inject gate.
-// Both kernels are launched with programmatic dependent launch (sm_90+, plain launches elsewhere). Each one
-// triggers its dependents immediately and prefetches its weights (which never depend on a previous kernel)
-// into shared memory before griddepcontrol.wait; everything that consumes another kernel's output comes after
-// the wait, so correctness never depends on the trigger position.
+// When the weight inputs (norm_scale, down_weight, up_weight, inject_weight) are constant initializers, both
+// kernels are launched with programmatic dependent launch on sm_90+ (plain launches otherwise). Each one
+// triggers its dependents immediately and prefetches its constant weights into shared memory before
+// griddepcontrol.wait; everything that consumes another kernel's output comes after the wait, so correctness
+// never depends on the trigger position.
 // Every intermediate is rounded to T at the points where the unfused ONNX subgraph rounds; the GEMVs
 // accumulate in fp32 in a fixed (deterministic) order.
 //
@@ -792,13 +793,14 @@ template <typename T>
 Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, cudaStream_t stream,
                                             const HyperConnectionLowRankMixConfig& config,
                                             const HyperConnectionLowRankMixTensors<T>& tensors,
-                                            float* scratch) {
+                                            float* scratch, bool weights_are_constant) {
   if constexpr (sizeof(T) != 2) {
     ORT_UNUSED_PARAMETER(device_prop);
     ORT_UNUSED_PARAMETER(stream);
     ORT_UNUSED_PARAMETER(config);
     ORT_UNUSED_PARAMETER(tensors);
     ORT_UNUSED_PARAMETER(scratch);
+    ORT_UNUSED_PARAMETER(weights_are_constant);
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "fused HyperConnectionLowRankMix requires a 16-bit type");
   } else {
     ORT_RETURN_IF_NOT(CanUseFusedHyperConnectionLowRankMix<T>(device_prop, config),
@@ -811,7 +813,7 @@ Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, c
                     g.splits, g.partial_stride, config.epsilon};
     UpParams up{config.rows, config.branches, config.hidden, config.rank, g.splits, g.partial_stride,
                 config.silu_alpha, config.reduction_scale, config.gate_div, config.gate_mul};
-    const bool use_pdl = device_prop.major >= 9;
+    const bool use_pdl = device_prop.major >= 9 && weights_are_constant;
     if (config.rows == 1) {
       return LaunchFusedRows<T, 1>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
     }
@@ -865,7 +867,7 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
                                                         const HyperConnectionLowRankMixConfig&); \
   template Status LaunchHyperConnectionLowRankMixFused<T>(                                       \
       const cudaDeviceProp&, cudaStream_t, const HyperConnectionLowRankMixConfig&,               \
-      const HyperConnectionLowRankMixTensors<T>&, float*);                                       \
+      const HyperConnectionLowRankMixTensors<T>&, float*, bool);                                 \
   template Status LaunchHyperConnectionLowRankMixUnfused<T>(                                     \
       cublasHandle_t, cudaStream_t, const HyperConnectionLowRankMixConfig&,                      \
       const HyperConnectionLowRankMixTensors<T>&, T*, T*, T*, T*);

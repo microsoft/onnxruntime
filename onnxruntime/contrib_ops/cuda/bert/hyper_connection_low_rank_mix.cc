@@ -35,6 +35,11 @@ HyperConnectionLowRankMix<T>::HyperConnectionLowRankMix(const OpKernelInfo& info
       gate_mul_(info.GetAttrOrDefault<float>("gate_mul", 1.0f)) {
   ORT_ENFORCE(num_branches_ > 0, "HyperConnectionLowRankMix requires a positive num_branches");
   ORT_ENFORCE(gate_div_ != 0.0f, "gate_div must be non-zero");
+  const Tensor* constant_input = nullptr;
+  weights_are_constant_ = info.TryGetConstantInput(1, &constant_input) &&
+                          info.TryGetConstantInput(2, &constant_input) &&
+                          info.TryGetConstantInput(3, &constant_input) &&
+                          info.TryGetConstantInput(4, &constant_input);
 }
 
 template <typename T>
@@ -121,7 +126,7 @@ Status HyperConnectionLowRankMix<T>::ComputeInternal(OpKernelContext* context) c
     if (streams_out != nullptr) {
       tensors.streams_out = reinterpret_cast<CudaT*>(streams_out->MutableData<T>());
     } else {
-      streams_scratch = GetScratchBuffer<T>(static_cast<size_t>(params.rows * features), context->GetComputeStream());
+      streams_scratch = GetScratchBuffer<T>(static_cast<size_t>(params.rows * features), GetComputeStream(context));
       tensors.streams_out = reinterpret_cast<CudaT*>(streams_scratch.get());
     }
   } else if (streams_out != nullptr) {
@@ -142,16 +147,16 @@ Status HyperConnectionLowRankMix<T>::ComputeInternal(OpKernelContext* context) c
   const auto& device_prop = GetDeviceProp();
   if (aligned && CanUseFusedHyperConnectionLowRankMix<CudaT>(device_prop, config)) {
     auto scratch = GetScratchBuffer<float>(HyperConnectionLowRankMixFusedScratchElements(config),
-                                           context->GetComputeStream());
+                                           GetComputeStream(context));
     return LaunchHyperConnectionLowRankMixFused<CudaT>(device_prop, Stream(context), config, tensors,
-                                                       scratch.get());
+                                                       scratch.get(), weights_are_constant_);
   }
 
   const size_t rows = static_cast<size_t>(params.rows);
-  auto hn = GetScratchBuffer<T>(rows * static_cast<size_t>(features), context->GetComputeStream());
-  auto down = GetScratchBuffer<T>(rows * static_cast<size_t>(rank), context->GetComputeStream());
-  auto up = GetScratchBuffer<T>(rows * static_cast<size_t>(features), context->GetComputeStream());
-  auto inject = GetScratchBuffer<T>(rows * static_cast<size_t>(branches), context->GetComputeStream());
+  auto hn = GetScratchBuffer<T>(rows * static_cast<size_t>(features), GetComputeStream(context));
+  auto down = GetScratchBuffer<T>(rows * static_cast<size_t>(rank), GetComputeStream(context));
+  auto up = GetScratchBuffer<T>(rows * static_cast<size_t>(features), GetComputeStream(context));
+  auto inject = GetScratchBuffer<T>(rows * static_cast<size_t>(branches), GetComputeStream(context));
   return LaunchHyperConnectionLowRankMixUnfused<CudaT>(
       GetCublasHandle(context), Stream(context), config, tensors, reinterpret_cast<CudaT*>(hn.get()),
       reinterpret_cast<CudaT*>(down.get()), reinterpret_cast<CudaT*>(up.get()),

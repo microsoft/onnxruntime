@@ -135,7 +135,7 @@ Expected Reference(const Problem& p, const Attrs& a) {
 
 template <typename T>
 void RunTest(int64_t rows, int64_t C, int64_t H, int64_t R, bool prologue, bool request_streams_out,
-             float tolerance, unsigned seed = 1) {
+             float tolerance, unsigned seed = 1, bool constant_weights = true) {
   auto cuda = DefaultCudaExecutionProvider();
   if (!cuda) {
     GTEST_SKIP() << "HyperConnectionLowRankMix is only implemented for CUDA";
@@ -153,10 +153,10 @@ void RunTest(int64_t rows, int64_t C, int64_t H, int64_t R, bool prologue, bool 
   test.AddAttribute<float>("gate_div", a.gate_div);
   test.AddAttribute<float>("gate_mul", a.gate_mul);
   test.AddInput<T>("streams", {rows, K}, ToTensorType<T>(p.streams));
-  test.AddInput<T>("norm_scale", {K}, ToTensorType<T>(p.norm));
-  test.AddInput<T>("down_weight", {K, R}, ToTensorType<T>(p.down));
-  test.AddInput<T>("up_weight", {R, K}, ToTensorType<T>(p.up));
-  test.AddInput<T>("inject_weight", {K, C}, ToTensorType<T>(p.inject));
+  test.AddInput<T>("norm_scale", {K}, ToTensorType<T>(p.norm), constant_weights);
+  test.AddInput<T>("down_weight", {K, R}, ToTensorType<T>(p.down), constant_weights);
+  test.AddInput<T>("up_weight", {R, K}, ToTensorType<T>(p.up), constant_weights);
+  test.AddInput<T>("inject_weight", {K, C}, ToTensorType<T>(p.inject), constant_weights);
   if (prologue) {
     test.AddInput<T>("prev_block_output", {rows, H}, ToTensorType<T>(p.prev_out));
     test.AddInput<T>("prev_post_gate", {rows, C}, ToTensorType<T>(p.prev_gate));
@@ -186,6 +186,7 @@ constexpr float kBf16Tol = 6e-2f;
 
 TEST(HyperConnectionLowRankMixTest, FusedFloat16WithPrologue) {
   RunTest<MLFloat16>(2, 4, 16, 8, true, true, kFp16Tol);
+  RunTest<MLFloat16>(2, 4, 16, 8, true, true, kFp16Tol, 1, false);
 }
 
 TEST(HyperConnectionLowRankMixTest, FusedFloat16WithoutPrologue) {

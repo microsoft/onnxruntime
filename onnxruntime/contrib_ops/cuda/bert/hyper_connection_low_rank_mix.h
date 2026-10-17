@@ -20,6 +20,7 @@ class HyperConnectionLowRankMix final : public onnxruntime::cuda::CudaKernel {
   float silu_alpha_;
   float gate_div_;
   float gate_mul_;
+  bool weights_are_constant_{false};
 };
 
 }  // namespace onnxruntime::contrib::cuda
