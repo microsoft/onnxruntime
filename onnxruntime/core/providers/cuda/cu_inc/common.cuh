@@ -311,6 +311,12 @@ __device__ __inline__ double _Log(double a) { return log(a); }
 template <>
 __device__ __inline__ half _Log(half a) { return half(logf((float)a)); }
 
+// Keep the exponent non-positive without cancellation for small affinities.
+__device__ __inline__ float _Sigmoid(float a) {
+  const float e = expf(-fabsf(a));
+  return a > 0.0f ? 1.0f / (1.0f + e) : e / (1.0f + e);
+}
+
 template <typename T>
 __device__ __inline T _Tanh(T a);
 
