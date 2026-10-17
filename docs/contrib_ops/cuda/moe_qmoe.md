@@ -1128,6 +1128,31 @@ the raw kernel, so profiling them only adds synchronization and repeated work. W
 
 ### 9b.3 Fast E2M1 → half/bf16 decode
 
+For offline K-packed NVFP4 GEMV, `ORT_NVFP4_GEMV_NATIVE_SCALE=1` optionally
+uses native E4M3-to-half conversion on compiled SM90+ code for block scales.
+It defaults to false. Set it before initializing the runtime; the launch
+specializations cache its value. Older compiled architectures retain software
+conversion. Existing K-lane selection and optional expert-row reuse are retained.
+Global scaling, activation-dtype rounding, weight decoding, accumulation,
+routing, and prefill are unchanged. This scalar conversion does not introduce
+FP8 activations or native FP8 matrix multiplication.
+
+CUDA internal-test builds with FP4 QMoE register
+`onnxruntime_nvfp4_native_scale_0` and `onnxruntime_nvfp4_native_scale_1` in CTest.
+These launch fresh processes with the flag explicitly disabled/enabled, because
+the launcher caches it. The native-specific test skips unless FP8 helpers and the
+loaded kernel's binary and PTX compilation targets support SM90+; a newer device
+alone is insufficient. Software/fallback numerical coverage remains separate.
+The all-scale-code regression exercises FP16/BF16 with K=16, 80, and 1040.
+Nonzero contributions in every K block, varying scales, and an independent
+full-reduction reference cover all four/eight K lanes and later iterations.
+
+CUDA plugin internal-test builds compile the FP4 launcher implementation into
+their test implementation target, with relaxed constexpr enabled for its CUTLASS
+headers. The standalone kernel benchmark preserves device-function templates and
+extracts only the global kernel body, excluding host-only inspection helpers.
+Its source-generation unit tests run without CuPy or GPU execution.
+
 For native K-packed NVFP4 verification, `ORT_NVFP4_FC1_EXPERT_REUSE=1` enables
 experimental two-row FC1 weight and scale reuse. Set it before the first GEMV
 invocation; it is read once per launcher specialization. The dispatch is limited
@@ -1341,6 +1366,36 @@ Un-permute → weighted sum → output
 ```
 
 ---
+
+### 10.6 Optional native E4M3 GEMV decoding
+
+`ORT_QMOE_FP8_GEMV_NATIVE_DECODE=1` enables native E4M3-to-half conversion for
+block-scaled FP8 weights in the fused FP16/BF16 GEMV path on compiled SM90+
+code. The flag defaults to false. Set it before initializing the runtime;
+launch specializations cache its value. Older compiled architectures retain
+software conversion. GEMM/prefill continues to use the existing decoder.
+
+CUDA internal-test builds register `onnxruntime_fp8_native_decode_0` and
+`onnxruntime_fp8_native_decode_1` in CTest. Each flag value runs in a fresh process.
+The graph cases inspect the captured kernel function to verify the requested
+template specialization, and native-specific coverage additionally checks the
+FP8 build gate and the loaded kernel's binary/PTX targets before running. It skips
+explicitly when native instructions are unavailable instead of claiming fallback
+execution as native coverage.
+All K elements contribute to the numerical reference; the three K blocks have
+different scales and the partial tail has a significant nonzero activation.
+This detects dropped blocks, missing tails, and reuse of the first block's scale.
+
+This changes only scalar byte decoding. Block scaling, activation-dtype
+rounding, accumulation order, row mappings, and gate/up layouts are retained.
+Finite E4M3FN values are exactly representable in FP16, so this conversion does
+not add quantization. NaN propagation is preserved; NaN-payload equivalence
+and full-model output identity are not promised.
+
+CUDA kernel regressions cover all 256 bytes through GEMV with mapped rows,
+separate and fused gate/up layouts, 16- and 128-element scale blocks, partial
+K blocks, FP32/FP16/BF16 scale tensors, and CUDA graph capture/replay.
+Run them in separate processes with the native flag disabled and enabled.
 
 ## 11. WFP4AFP8 Details
 

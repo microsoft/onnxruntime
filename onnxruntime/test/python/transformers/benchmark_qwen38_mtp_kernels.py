@@ -23,8 +23,8 @@ def compile_device_code(code, name):
     return module.get_function(name)
 
 
-def device_function(source, name):
-    match = re.search(r"__device__[^\n]*\b" + name + r"\(", source)
+def device_function(source, name, qualifier="__device__"):
+    match = re.search(qualifier + r"[^\n]*\b" + name + r"\(", source)
     if match is None:
         raise ValueError(f"Missing device function: {name}")
     body = source.index("{", match.end())
@@ -33,7 +33,9 @@ def device_function(source, name):
     while depth:
         depth += (source[end] == "{") - (source[end] == "}")
         end += 1
-    return source[match.start() : end]
+    template = re.search(r"template\s*<[^;{}]*>\s*$", source[: match.start()])
+    start = template.start() if template is not None else match.start()
+    return source[start:end]
 
 
 def qsa_prefix(source):
@@ -499,9 +501,6 @@ def compile_nvfp4(source, element_type, fused, bias, wide, reuse=False):
     converter_end = details.index("\n};", converter_start) + 3
     pair_start = source.index("template <typename T, bool FusedSwiGlu, bool EnableBias>\n__device__")
     pair_end = source.index("// NVFP4 schema weights", pair_start)
-    kernel_start = source.index("__global__ void MoeGemvFp4RawKPackedKernel")
-    kernel_start = source.rindex("template <", 0, kernel_start)
-    kernel_end = source.index("template <typename T, bool FusedSwiGlu>\nvoid LaunchMoeGemvFp4RawNPacked", kernel_start)
     prefix = (
         """
 #include <cuda_fp16.h>
@@ -526,7 +525,10 @@ namespace cutlass_kernels {
     )
     prefix += "\n}}\nnamespace fiv {\n" + details[converter_start:converter_end] + "\n}\n"
     body = (
-        device_function(source, "DecodeE4M3Fn") + "\n" + source[pair_start:pair_end] + source[kernel_start:kernel_end]
+        device_function(source, "DecodeE4M3Fn")
+        + "\n"
+        + source[pair_start:pair_end]
+        + device_function(source, "MoeGemvFp4RawKPackedKernel", "__global__")
     )
     flags = f"{str(fused).lower()},{str(bias).lower()}"
     lanes = ",4" if wide else ""
