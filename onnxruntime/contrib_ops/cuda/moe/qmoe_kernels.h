@@ -297,6 +297,9 @@ template <typename T>
 void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
                              const T* input, T* output, cudaStream_t stream);
 
+bool QMoEFp8GemvSupportsNativeDecode();
+bool QMoEFp8GemvKernelUsesNativeDecode(const void* kernel);
+
 template <typename T>
 void LaunchQMoEFp8Activation(const T* input, const T* bias, T* output,
                              const int* experts, int rows, int inter_size, int fusion,

@@ -1367,6 +1367,36 @@ Un-permute → weighted sum → output
 
 ---
 
+### 10.6 Optional native E4M3 GEMV decoding
+
+`ORT_QMOE_FP8_GEMV_NATIVE_DECODE=1` enables native E4M3-to-half conversion for
+block-scaled FP8 weights in the fused FP16/BF16 GEMV path on compiled SM90+
+code. The flag defaults to false. Set it before initializing the runtime;
+launch specializations cache its value. Older compiled architectures retain
+software conversion. GEMM/prefill continues to use the existing decoder.
+
+CUDA internal-test builds register `onnxruntime_fp8_native_decode_0` and
+`onnxruntime_fp8_native_decode_1` in CTest. Each flag value runs in a fresh process.
+The graph cases inspect the captured kernel function to verify the requested
+template specialization, and native-specific coverage additionally checks the
+FP8 build gate and the loaded kernel's binary/PTX targets before running. It skips
+explicitly when native instructions are unavailable instead of claiming fallback
+execution as native coverage.
+All K elements contribute to the numerical reference; the three K blocks have
+different scales and the partial tail has a significant nonzero activation.
+This detects dropped blocks, missing tails, and reuse of the first block's scale.
+
+This changes only scalar byte decoding. Block scaling, activation-dtype
+rounding, accumulation order, row mappings, and gate/up layouts are retained.
+Finite E4M3FN values are exactly representable in FP16, so this conversion does
+not add quantization. NaN propagation is preserved; NaN-payload equivalence
+and full-model output identity are not promised.
+
+CUDA kernel regressions cover all 256 bytes through GEMV with mapped rows,
+separate and fused gate/up layouts, 16- and 128-element scale blocks, partial
+K blocks, FP32/FP16/BF16 scale tensors, and CUDA graph capture/replay.
+Run them in separate processes with the native flag disabled and enabled.
+
 ## 11. WFP4AFP8 Details
 
 `quant_type="wfp4afp8"` pairs MXFP4 weights with FP8 e4m3 activations. Unlike

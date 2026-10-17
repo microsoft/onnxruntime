@@ -1685,6 +1685,25 @@ block()
   onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
 
   if (onnxruntime_USE_CUDA AND onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND
+      NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    set(fp8_decode_filter "CUDA_EP_Unittest.QMoEFp8Gemv*")
+    if (onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+      set(fp8_decode_outer_filter "${fp8_decode_filter}")
+    else()
+      set(fp8_decode_outer_filter "CUDA_EP_Unittest.All")
+    endif()
+    foreach(native_decode 0 1)
+      add_test(NAME onnxruntime_fp8_native_decode_${native_decode}
+        COMMAND $<TARGET_FILE:${onnxruntime_provider_test_target}>
+          "--gtest_filter=${fp8_decode_outer_filter}"
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:${onnxruntime_provider_test_target}>)
+      set_tests_properties(onnxruntime_fp8_native_decode_${native_decode} PROPERTIES
+        ENVIRONMENT "GTEST_FILTER=${fp8_decode_filter};ORT_QMOE_FP8_GEMV_NATIVE_DECODE=${native_decode}"
+        RUN_SERIAL TRUE)
+    endforeach()
+  endif()
+
+  if (onnxruntime_USE_CUDA AND onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND
       onnxruntime_USE_FP4_QMOE AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
     set(nvfp4_scale_filter "CUDA_EP_Unittest.QMoENvfp4Gemv*")
     if (onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
