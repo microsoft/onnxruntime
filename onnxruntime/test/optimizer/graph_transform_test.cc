@@ -13795,6 +13795,185 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
   }
 }
 
+
+TEST_F(GraphTransformationTests, GatherToSliceFusionNegativeStepDynamicLimit) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* data = builder.MakeInput<float>(
+        std::vector<int64_t>{5},
+        std::vector<float>{10, 11, 12, 13, 14});
+
+    auto* start = builder.MakeInitializer<int64_t>({}, {3});
+    auto* limit = builder.MakeInput<int64_t>(
+        std::vector<int64_t>{}, std::vector<int64_t>{-1});
+    auto* delta = builder.MakeInitializer<int64_t>({}, {-1});
+
+    auto* range_output = builder.MakeIntermediate();
+    auto* gather_output = builder.MakeOutput();
+
+    builder.AddNode("Range", {start, limit, delta}, {range_output});
+    builder.AddNode("Gather", {data, range_output}, {gather_output})
+        .AddAttribute("axis", static_cast<int64_t>(0));
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    auto& graph = session.GetGraph();
+    bool has_range = false;
+    bool has_gather = false;
+
+    for (const auto& node : graph.Nodes()) {
+      has_range |= node.OpType() == "Range";
+      has_gather |= node.OpType() == "Gather";
+    }
+
+    EXPECT_TRUE(has_range);
+    EXPECT_TRUE(has_gather);
+  };
+
+  TransformerTester(
+      build_test_case,
+      check_transformed_graph,
+      TransformerLevel::Default,
+      TransformerLevel::Level1,
+      12,
+      0.0,
+      0.0,
+      std::make_unique<GatherToSliceFusion>());
+}
+
+
+TEST_F(GraphTransformationTests, GatherToSliceFusionNegativeRangeLimit) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* data = builder.MakeInput<float>(
+      std::vector<int64_t>{5},
+      std::vector<float>{10, 11, 12, 13, 14});
+
+    auto* start = builder.MakeInitializer<int64_t>({}, {3});
+    auto* limit = builder.MakeInitializer<int64_t>({}, {-1});
+    auto* delta = builder.MakeInitializer<int64_t>({}, {-1});
+
+    auto* range_output = builder.MakeIntermediate();
+    auto* gather_output = builder.MakeOutput();
+
+    builder.AddNode("Range", {start, limit, delta}, {range_output});
+    builder.AddNode("Gather", {data, range_output}, {gather_output})
+        .AddAttribute("axis", static_cast<int64_t>(0));
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    auto& graph = session.GetGraph();
+    bool has_range = false;
+    bool has_gather = false;
+
+    for (const auto& node : graph.Nodes()) {
+      has_range |= node.OpType() == "Range";
+      has_gather |= node.OpType() == "Gather";
+    }
+
+    EXPECT_TRUE(has_range);
+    EXPECT_TRUE(has_gather);
+  };
+
+  TransformerTester(
+      build_test_case,
+      check_transformed_graph,
+      TransformerLevel::Default,
+      TransformerLevel::Level1,
+      12,
+      0.0,
+      0.0,
+      std::make_unique<GatherToSliceFusion>());
+}
+
+TEST_F(GraphTransformationTests, GatherToSliceFusionNegativeStepZeroLimit) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* data = builder.MakeInput<float>(
+        std::vector<int64_t>{5},
+        std::vector<float>{10, 11, 12, 13, 14});
+
+    auto* start = builder.MakeInitializer<int64_t>({}, {3});
+    auto* limit = builder.MakeInitializer<int64_t>({}, {0});
+    auto* delta = builder.MakeInitializer<int64_t>({}, {-1});
+
+    auto* range_output = builder.MakeIntermediate();
+    auto* gather_output = builder.MakeOutput();
+
+    builder.AddNode("Range", {start, limit, delta}, {range_output});
+    builder.AddNode("Gather", {data, range_output}, {gather_output})
+        .AddAttribute("axis", static_cast<int64_t>(0));
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    auto& graph = session.GetGraph();
+    bool has_range = false;
+    bool has_gather = false;
+    bool has_slice = false;
+
+    for (const auto& node : graph.Nodes()) {
+      has_range |= node.OpType() == "Range";
+      has_gather |= node.OpType() == "Gather";
+      has_slice |= node.OpType() == "Slice";
+    }
+
+    EXPECT_FALSE(has_range);
+    EXPECT_FALSE(has_gather);
+    EXPECT_TRUE(has_slice);
+  };
+
+  TransformerTester(
+      build_test_case,
+      check_transformed_graph,
+      TransformerLevel::Default,
+      TransformerLevel::Level1,
+      12,
+      0.0,
+      0.0,
+      std::make_unique<GatherToSliceFusion>());
+}
+
+TEST_F(GraphTransformationTests, GatherToSliceFusionNegativeRangeLimitDynamic) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* data = builder.MakeInput<float>(
+      std::vector<int64_t>{5},
+      std::vector<float>{10, 11, 12, 13, 14});
+    auto* start = builder.MakeInitializer<int64_t>({}, {3});
+    auto* limit = builder.MakeInput<int64_t>(
+        std::vector<int64_t>{}, std::vector<int64_t>{-1});
+    auto* delta = builder.MakeInput<int64_t>(
+        std::vector<int64_t>{}, std::vector<int64_t>{-1});
+
+    auto* range_output = builder.MakeIntermediate();
+    auto* gather_output = builder.MakeOutput();
+
+    builder.AddNode("Range", {start, limit, delta}, {range_output});
+    builder.AddNode("Gather", {data, range_output}, {gather_output})
+        .AddAttribute("axis", static_cast<int64_t>(0));
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    auto& graph = session.GetGraph();
+    bool has_range = false;
+    bool has_gather = false;
+
+    for (const auto& node : graph.Nodes()) {
+      has_range |= node.OpType() == "Range";
+      has_gather |= node.OpType() == "Gather";
+    }
+
+    EXPECT_TRUE(has_range);
+    EXPECT_TRUE(has_gather);
+  };
+
+  TransformerTester(
+      build_test_case,
+      check_transformed_graph,
+      TransformerLevel::Default,
+      TransformerLevel::Level1,
+      12,
+      0.0,
+      0.0,
+      std::make_unique<GatherToSliceFusion>());
+}
+
 #if !defined(DISABLE_CONTRIB_OPS)
 
 TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
