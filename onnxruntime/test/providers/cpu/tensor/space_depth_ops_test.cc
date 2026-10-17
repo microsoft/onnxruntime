@@ -99,7 +99,7 @@ TEST(TensorOpTest, SpaceToDepthOpset28BlocksizeThree) {
   test.Run();
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) && defined(ENABLE_CUDA_NHWC_OPS)
 TEST(TensorOpTest, SpaceToDepthOpset28NhwcCrd) {
   auto cuda_provider = DefaultCudaExecutionProvider();
   if (cuda_provider == nullptr) {
