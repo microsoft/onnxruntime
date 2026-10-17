@@ -104,8 +104,7 @@ class GemmIdCore {
   int n;
   int k;
   nvinfer::DataType dtype;
-  int packing_sm;
-  int device_sm;
+  int sm;
   int quant_bits;
   int device_id;
   int group_size;
@@ -119,13 +118,11 @@ class GemmIdCore {
 
   GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0, int bits_ = 0, int group_size_ = 0,
              bool has_zeros_ = false, bool gemv_enabled_ = false, bool has_bias_ = false,
-             std::string device_name_ = std::string(), bool wave_aware_ = false, int tag_ = 0, int device_id_ = 0,
-             int device_sm_ = 0)
+             std::string device_name_ = std::string(), bool wave_aware_ = false, int tag_ = 0, int device_id_ = 0)
       : n(n_),
         k(k_),
         dtype(dtype_),
-        packing_sm(sm_),
-        device_sm(device_sm_),
+        sm(sm_),
         quant_bits(bits_),
         device_id(device_id_),
         group_size(group_size_),
@@ -139,8 +136,7 @@ class GemmIdCore {
 
   GemmIdCore()
       : n(-1), k(-1), dtype(nvinfer::DataType::kFLOAT),  // dtype does not matter here
-        packing_sm(0),
-        device_sm(0),
+        sm(0),
         quant_bits(0),
         device_id(0),
         group_size(0),
@@ -156,7 +152,7 @@ class GemmIdCore {
   friend std::ostream& operator<<(std::ostream& out, GemmIdCore const& id) {
     out << "(N;K)=(" << id.n << ";" << id.k << "),";
     out << " type=" << static_cast<int>(id.dtype);
-    out << " packing_sm=" << id.packing_sm << " device_sm=" << id.device_sm;
+    out << " sm=" << id.sm;
     out << " bits=" << id.quant_bits << " group_size=" << id.group_size;
     out << " has_zeros=" << id.has_zeros << " gemv=" << id.gemv_enabled << " has_bias=" << id.has_bias;
     out << " device=" << id.device_name << " device_id=" << id.device_id;
@@ -167,8 +163,7 @@ class GemmIdCore {
 
  protected:
   bool isEqual(GemmIdCore const& id) const {
-    return n == id.n && k == id.k && dtype == id.dtype && packing_sm == id.packing_sm &&
-           device_sm == id.device_sm && quant_bits == id.quant_bits &&
+    return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm && quant_bits == id.quant_bits &&
            group_size == id.group_size && has_zeros == id.has_zeros && gemv_enabled == id.gemv_enabled &&
            has_bias == id.has_bias && device_name == id.device_name && device_id == id.device_id && tag == id.tag &&
            wave_aware == id.wave_aware;
@@ -181,15 +176,14 @@ struct GemmIdCoreHash {
     auto h1 = std::hash<int>{}(id.n);
     auto h2 = std::hash<int>{}(id.k);
     auto h3 = std::hash<int>{}(static_cast<int>(id.dtype));
-    auto h4 = std::hash<int>{}(id.packing_sm);
+    auto h4 = std::hash<int>{}(id.sm);
     auto h5 = std::hash<int>{}((id.quant_bits << 16) ^ (id.group_size << 3) ^ (id.has_bias ? 4 : 0) ^
                                (id.has_zeros ? 2 : 0) ^ (id.gemv_enabled ? 1 : 0));
     auto h6 = std::hash<std::string>{}(id.device_name);
     auto h7 = std::hash<int>{}(id.tag);
     auto h8 = std::hash<bool>{}(id.wave_aware);
     auto h9 = std::hash<int>{}(id.device_id);
-    auto h10 = std::hash<int>{}(id.device_sm);
-    return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6 ^ h7 ^ h8 ^ h9 ^ h10;
+    return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6 ^ h7 ^ h8 ^ h9;
   }
 };
 
@@ -254,10 +248,6 @@ class GemmPluginProfiler {
 
   void setAllocator(onnxruntime::AllocatorPtr allocator) {
     mAllocator = std::move(allocator);
-  }
-
-  void setRunner(RunnerPtr const& runner) {
-    mRunner = runner;
   }
 
   std::optional<Config> getBestConfig(int m, GemmIdType const& gemmId);
@@ -525,6 +515,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
   }
 
   int const mRounded = RoundUpProfileM(std::max(1, m), getMaxProfileM());
+  fflush(stdout);
 
   // Capture-time hits may observe buckets added by another session after construction.
   // Staging touches only host memory, never CUDA APIs or the filesystem.

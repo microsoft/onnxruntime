@@ -602,7 +602,7 @@ TEST(GemmTacticCacheTest, CachedDecodeVariantRequiresMatchingGeometry) {
   profiler.setQuant(4, false, false);
   profiler.setGroupSize(32);
   profiler.setDecodeInterleave(4);
-  profiler.setCudaKernelType(KernelType::FP16Int4Groupwise, 80, 80);
+  profiler.setCudaKernelType(KernelType::FP16Int4Groupwise, 80);
   CutlassGemmConfig config;
   config.enableCudaKernel = true;
   for (int variant = 2; variant <= 7; ++variant) {
@@ -884,7 +884,7 @@ TEST(GemmTacticCacheTest, CachedValidationRespectsSessionLaunchLimit) {
   Profiler profiler;
   profiler.setQuant(4, false, true);
   profiler.setGroupSize(64);
-  profiler.setCudaKernelType(KernelType::FP16Int4Groupwise, 80, 80);
+  profiler.setCudaKernelType(KernelType::FP16Int4Groupwise, 80);
   profiler.setMaxProfileM(64);
   profiler.setPersistentCache(cache);
   Profiler::MProfileMap map;

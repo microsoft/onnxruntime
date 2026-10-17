@@ -109,10 +109,9 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mDecodeInterleave = interleave;
   }
 
-  void setCudaKernelType(KernelType cudaKernelType, int kernelArch, int deviceArch) {
+  void setCudaKernelType(KernelType cudaKernelType, int arch) {
     mCudaKernelType = cudaKernelType;
-    mKernelArch = kernelArch;
-    mDeviceArch = deviceArch;
+    mArch = arch;
   }
 
   void setL2CacheBytes(size_t l2CacheBytes) {
@@ -183,8 +182,7 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   int mQuantBits = 0;
   int mGroupSize = 0;
   KernelType mCudaKernelType = KernelType::FP16Int4Groupwise;
-  int mKernelArch = 0;
-  int mDeviceArch = 0;
+  int mArch = 0;
   int mDecodeInterleave = 0;
   size_t mL2CacheBytes = 0;
   std::atomic<size_t> mProfileWeightIndex{0};
