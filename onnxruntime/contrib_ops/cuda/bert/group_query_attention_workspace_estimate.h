@@ -31,6 +31,8 @@ struct GQAWorkspaceEstimateConfig {
   size_t cache_element_size = 0;
   int64_t num_heads = 0;
   int64_t kv_num_heads = 0;
+  // Exact head geometry from executable-graph metadata, not max-shape hints; zero means unknown.
+  int64_t static_head_size = 0;
   int64_t causal = 1;
   int64_t local_window_size = -1;
   bool sliding_window_cache = false;

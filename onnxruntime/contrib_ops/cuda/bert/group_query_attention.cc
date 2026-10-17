@@ -8,6 +8,7 @@
 #include <limits>
 #include <sstream>
 #include <vector>
+#include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
@@ -256,6 +257,10 @@ Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
     InlinedVector<WorkspaceRequirement>& requirements) const {
   requirements.clear();
   GQAWorkspaceEstimateConfig config;
+  const auto graph_config = GetGroupQueryAttentionWorkspaceEstimateConfig(this->Node());
+  if (graph_config.has_value()) {
+    config.static_head_size = graph_config->static_head_size;
+  }
   config.qkv_element_size = sizeof(T);
   config.cache_element_size = sizeof(U);
   config.num_heads = num_heads_;
@@ -291,11 +296,15 @@ Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
       config, input_shapes, GetDeviceProp(), *kernel_options_);
   if (!estimate.has_value()) {
     ORT_RETURN_IF(
-        dispatch_policy_ == KernelDispatchPolicy::Memory ||
-            dispatch_policy_ == KernelDispatchPolicy::Safe,
+        dispatch_policy_ == KernelDispatchPolicy::Memory,
         "GroupQueryAttention could not commit the '",
         KernelDispatchPolicyName(dispatch_policy_),
         "' dispatch policy from the declared shape/envelope and analytically bounded routes.");
+    if (dispatch_policy_ == KernelDispatchPolicy::Safe) {
+      LOGS_DEFAULT(VERBOSE)
+          << "GroupQueryAttention safe policy retains analytically bounded route restrictions "
+             "without a declared workspace bound because shape/envelope estimation is unavailable.";
+    }
     return Status::OK();
   }
 

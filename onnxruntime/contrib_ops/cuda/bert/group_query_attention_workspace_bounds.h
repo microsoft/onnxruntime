@@ -227,7 +227,7 @@ struct GQAWorkspaceAggregate {
 // the maximum over admitted phases and their permitted routes. Auto and Latency
 // preserve the phase-applicable route cascade. Memory minimizes complete route
 // sets per phase, retaining a proven covering fallback for partial-coverage routes;
-// decode also retains the selected general-phase routes. Safe commits every
+// each phase selects its own fallback independently. Safe commits every
 // analytically bounded route applicable to each phase. A committed cuDNN route
 // makes the result unavailable because its allocator-based workspace has no
 // graph-free oracle.

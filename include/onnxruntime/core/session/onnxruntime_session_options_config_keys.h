@@ -511,8 +511,9 @@ static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLengt
 /// route priority per phase, "memory" commits the smallest analytically bounded prefill,
 /// decode, and chunked-prefill route sets with a fallback proven to cover the admitted
 /// geometry and runtime eligibility outcomes, and "safe" permits only analytically bounded
-/// routes applicable to each phase. "memory" requires Level-2 workspace commitment and is
-/// rejected during GQA kernel initialization when unavailable, including CUDA plugin and
+/// routes applicable to each phase even without a declared shape/envelope workspace bound.
+/// Capacity-aware placement still requires a proven estimate. "memory" requires Level-2
+/// workspace commitment and is rejected during GQA kernel initialization when unavailable, including CUDA plugin and
 /// CUDA-minimal or ORT-minimal builds. A non-auto policy fails closed when no committed route
 /// can serve a run. The option does not by itself enforce a workload envelope or memory
 /// budget or provide a no-OOM guarantee.

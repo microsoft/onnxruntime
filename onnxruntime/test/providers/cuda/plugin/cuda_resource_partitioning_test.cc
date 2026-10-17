@@ -29,6 +29,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/kernel_dispatch_policy.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_env.h"
@@ -387,6 +388,14 @@ TEST_F(CudaPluginPartitioningTest, GqaDispatchPolicyInitialization) {
     InferenceSessionWrapper session(ort_options.value, GetOrtEnv().GetEnvironment());
     ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
     const auto status = ToStatusAndRelease(InitializeSession(&ort_options, session));
+    KernelDispatchPolicy parsed_policy = KernelDispatchPolicy::Auto;
+    if (!TryParseKernelDispatchPolicy(policy, parsed_policy)) {
+      ASSERT_FALSE(status.IsOK());
+      EXPECT_EQ(status.Code(), common::StatusCode::INVALID_ARGUMENT);
+      EXPECT_NE(status.ErrorMessage().find(kOrtSessionOptionsKernelDispatchPolicy),
+                std::string::npos);
+      continue;
+    }
     if (strcmp(policy, "memory") == 0) {
       ASSERT_FALSE(status.IsOK());
       EXPECT_NE(status.ErrorMessage().find(
