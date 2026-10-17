@@ -101,7 +101,13 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
       // Only set thread affinity on Server with auto affinity.
       // On client best to let OS scheduler handle.
       // On big (P-Core) / little (E-Core) CPU designs affinity overrides QoS and has high power usage
-      if (IsWindowsServer()) {
+
+      // Exception: where the platform reports a topology-aware selection (Windows ARM64
+      // performance cores), pin to it so the pool does not spill onto the slower cores.
+      // Homogeneous parts and the ORT_ARM64_USE_ALL_CORES opt-out report false here and
+      // keep the unaffinitized client path.
+      const bool pin_default_affinities = Env::Default().ShouldPinDefaultThreadAffinities();
+      if (IsWindowsServer() || pin_default_affinities) {
         auto default_affinities = Env::Default().GetDefaultThreadAffinities();
         if (default_affinities.size() <= 1) {
           return nullptr;
