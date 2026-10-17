@@ -342,6 +342,14 @@ OneDsTelemetry::OneDsTelemetry(const Telemetry& local_telemetry) : OneDsTelemetr
 }
 
 OneDsTelemetry::~OneDsTelemetry() {
+#if defined(_WIN32)
+  // ExitProcess terminates the other threads before running DLL destructors.
+  // The uploader cannot drain WinHTTP callbacks here, and a terminated thread
+  // may still own one of our locks. Normal destruction/FreeLibrary still cleans up.
+  if (telemetry_internal::IsDllShutdownInProgress()) {
+    return;
+  }
+#endif
   std::lock_guard<std::mutex> lock(global_mutex_);
 
   global_register_count_--;

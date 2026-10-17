@@ -13,4 +13,8 @@ const char* GetDefaultEncodedToken();
 int32_t GetProcessorCount();
 std::string GetCachePath(const std::string& directory);
 
+#if defined(_WIN32)
+bool IsDllShutdownInProgress();
+#endif
+
 }  // namespace onnxruntime::telemetry_internal

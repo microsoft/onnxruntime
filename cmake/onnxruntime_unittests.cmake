@@ -3134,4 +3134,26 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
   )
 endif()
 
+if(WIN32 AND onnxruntime_USE_1DS_TELEMETRY)
+  if(NOT GDK_PLATFORM AND NOT CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
+    set(telemetry_lifecycle_test_dir "${TEST_SRC_DIR}/platform/windows_telemetry/lifecycle")
+    onnxruntime_add_shared_library(onnxruntime_telemetry_shutdown_test_library
+      "${telemetry_lifecycle_test_dir}/telemetry_shutdown_test_library.cc"
+      "${telemetry_lifecycle_test_dir}/telemetry_shutdown_test_library.def")
+    target_link_libraries(onnxruntime_telemetry_shutdown_test_library PRIVATE onnxruntime_common mat)
+    onnxruntime_add_executable(onnxruntime_telemetry_shutdown_test
+      "${telemetry_lifecycle_test_dir}/telemetry_shutdown_test.cc")
+    add_dependencies(onnxruntime_telemetry_shutdown_test onnxruntime_telemetry_shutdown_test_library)
+    foreach(mode process_exit normal_destruction explicit_unload)
+      add_test(NAME onnxruntime_telemetry_${mode}_test
+        COMMAND onnxruntime_telemetry_shutdown_test
+          "$<TARGET_FILE:onnxruntime_telemetry_shutdown_test_library>" ${mode}
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:onnxruntime_telemetry_shutdown_test>")
+      set_tests_properties(onnxruntime_telemetry_${mode}_test PROPERTIES TIMEOUT 15)
+    endforeach()
+    set_target_properties(onnxruntime_telemetry_shutdown_test_library onnxruntime_telemetry_shutdown_test
+      PROPERTIES FOLDER "ONNXRuntimeTest")
+  endif()
+endif()
+
 include(onnxruntime_fuzz_test.cmake)
