@@ -1147,6 +1147,12 @@ The all-scale-code regression exercises FP16/BF16 with K=16, 80, and 1040.
 Nonzero contributions in every K block, varying scales, and an independent
 full-reduction reference cover all four/eight K lanes and later iterations.
 
+CUDA plugin internal-test builds compile the FP4 launcher implementation into
+their test implementation target, with relaxed constexpr enabled for its CUTLASS
+headers. The standalone kernel benchmark preserves device-function templates and
+extracts only the global kernel body, excluding host-only inspection helpers.
+Its source-generation unit tests run without CuPy or GPU execution.
+
 For native K-packed NVFP4 verification, `ORT_NVFP4_FC1_EXPERT_REUSE=1` enables
 experimental two-row FC1 weight and scale reuse. Set it before the first GEMV
 invocation; it is read once per launcher specialization. The dispatch is limited
