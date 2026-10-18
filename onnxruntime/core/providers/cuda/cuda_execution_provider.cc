@@ -46,6 +46,10 @@
 
 #include "core/providers/cuda/cuda_stream_handle.h"
 
+// Persistent fpA_intB tactic cache flush at EP teardown (no-op unless onnxruntime_USE_FPA_INTB_GEMM).
+// The header is self-contained (no contrib/CUTLASS dependencies) and resolves to an inline no-op
+// when the fpA_intB path is not compiled in.
+#include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
 #if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 #endif
@@ -413,6 +417,10 @@ std::optional<bool> CUDAExecutionProvider::ShouldConvertDataLayoutForOp([[maybe_
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
+  // Persist fpA_intB MatMulNBits tactics staged in memory to disk (best-effort, dirty-guarded).
+  // No-op in builds without onnxruntime_USE_FPA_INTB_GEMM. The plugin EP flushes from ~CudaEp.
+  onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCaches();
+
   // clean up thread local context caches
   {
     std::lock_guard<std::mutex> lock(context_state_.mutex);
@@ -568,6 +576,23 @@ Status CUDAExecutionProvider::ReplayGraph(int graph_annotation_id, bool sync) {
 void CUDAExecutionProvider::RetainBufferForGraphCapture(std::shared_ptr<void> buffer) const {
   std::lock_guard<std::mutex> lock(captured_host_buffers_mutex_);
   captured_host_buffers_.push_back(std::move(buffer));
+}
+
+void CUDAExecutionProvider::SetSessionModelPath(std::filesystem::path path) const {
+  if (!path.empty() && path.is_relative()) {
+    std::error_code ec;
+    std::filesystem::path abs_path = std::filesystem::absolute(path, ec);
+    if (!ec && !abs_path.empty()) {
+      path = std::move(abs_path);
+    }
+  }
+  std::lock_guard<std::mutex> lock(model_path_mutex_);
+  model_path_ = std::move(path);
+}
+
+std::filesystem::path CUDAExecutionProvider::GetSessionModelPath() const {
+  std::lock_guard<std::mutex> lock(model_path_mutex_);
+  return model_path_;
 }
 
 namespace cuda {
@@ -3290,6 +3315,9 @@ void InitializeRegistry() {
 }
 
 void DeleteRegistry() {
+  // Save any tactic caches of sessions still alive when the provider is shut down, before worker
+  // threads are stopped or the provider DLL is unloaded.
+  onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCaches();
   s_kernel_registry.reset();
 }
 
@@ -3494,6 +3522,10 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   std::vector<std::unique_ptr<ComputeCapability>> result;
   const logging::Logger& logger = *GetLogger();
 
+  if (!graph.ModelPath().empty()) {
+    SetSessionModelPath(graph.ModelPath());
+  }
+
   // Figure out the memory limit if accountant is available
   size_t memory_threshold = std::numeric_limits<size_t>::max();
   SafeInt<size_t> consumed_memory = 0;
@@ -3681,7 +3713,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
             input_defs.size() > 11 && input_defs[11] != nullptr &&
             input_defs[11]->Exists() &&
             graph.IsConstantInitializer(input_defs[11]->Name(), true);
-        // The factory validates the envelope once. It remains reader-only here.
+        // The factory validates the caller-declared envelope once.
         const auto gqa_workspace_max_total_sequence_length =
             resource_accountant->GetWorkspaceEstimatorConfig()
                 .cuda_gqa_workspace_max_total_sequence_length;
@@ -3696,6 +3728,13 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
           LOGS(logger, VERBOSE) << "Level-1 memory estimate for " << node->Name()
                                 << ": runtime workspace="
                                 << ws->total_workspace_bytes << " bytes";
+        } else {
+          // The generic safety margin is an ad-hoc fallback, not a proven GQA
+          // workspace bound. Capacity-aware placement therefore fails closed.
+          LOGS(logger, WARNING)
+              << "CUDA_EP declining capacity-aware assignment for GroupQueryAttention node "
+              << node->Name() << " because no proven route-aware workspace estimate is available.";
+          continue;
         }
       }
 #endif

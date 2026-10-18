@@ -5,6 +5,7 @@
 #pragma warning(disable : 4244)
 #endif
 
+#include <cmath>
 #include <functional>
 #include <fstream>
 #include <random>
@@ -4561,13 +4562,14 @@ ConvActivationBuilder SimpleActivation(const std::string& op_type,
 // Use fp16, group 1, NHWC, and a non-1x1 kernel to select Im2ColMatMulProgram.
 void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation,
                                      const std::string& expected_activation,
-                                     int opset_version) {
+                                     int opset_version,
+                                     int64_t input_channels = 4) {
   if (!DefaultWebGpuExecutionProvider()) {
     GTEST_SKIP() << "WebGPU EP unavailable in this build.";
   }
 
-  const std::vector<int64_t> input_shape{1, 4, 14, 14};
-  const std::vector<int64_t> weight_shape{8, 4, 3, 3};
+  const std::vector<int64_t> input_shape{1, input_channels, 14, 14};
+  const std::vector<int64_t> weight_shape{8, input_channels, 3, 3};
 
   auto to_fp16 = [](const std::vector<float>& values) {
     std::vector<MLFloat16> converted;
@@ -4588,8 +4590,10 @@ void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation
   };
 
   auto build_test_case = [&](ModelTestBuilder& builder) {
-    auto* input = builder.MakeInput<MLFloat16>(input_shape, to_fp16(ramp(1 * 4 * 14 * 14, -3.0f, 3.0f)));
-    auto* weight = builder.MakeInitializer<MLFloat16>(weight_shape, to_fp16(ramp(8 * 4 * 3 * 3, -0.5f, 0.5f)));
+    auto* input = builder.MakeInput<MLFloat16>(
+        input_shape, to_fp16(ramp(static_cast<size_t>(input_channels * 14 * 14), -3.0f, 3.0f)));
+    auto* weight = builder.MakeInitializer<MLFloat16>(
+        weight_shape, to_fp16(ramp(static_cast<size_t>(8 * input_channels * 3 * 3), -0.5f, 0.5f)));
     auto* bias = builder.MakeInitializer<MLFloat16>({weight_shape[0]}, to_fp16(ramp(8, -0.5f, 0.5f)));
     auto* conv_out = builder.MakeIntermediate();
     auto* output = builder.MakeOutput();
@@ -4644,10 +4648,11 @@ void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation
            "whether the im2col program was selected";
   };
 
-  RunWebGpuFusionTransformerTest(build_test_case, check_transformed_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset_version,
-                                 /*per_sample_tolerance=*/2e-2,
-                                 /*relative_per_sample_tolerance=*/2e-2,
-                                 /*transformer=*/nullptr, []() { return DefaultWebGpuExecutionProvider(); }, [](SessionOptions& session_options) {
+  RunWebGpuFusionTransformerTest(
+      build_test_case, check_transformed_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset_version,
+      /*per_sample_tolerance=*/2e-2,
+      /*relative_per_sample_tolerance=*/2e-2,
+      /*transformer=*/nullptr, []() { return DefaultWebGpuExecutionProvider(); }, [](SessionOptions& session_options) {
                                    session_options.enable_profiling = true;
                                    session_options.profile_file_prefix = ORT_TSTR("webgpu_im2col_activation"); });
 
@@ -4757,6 +4762,16 @@ TEST_F(GraphTransformationTests, WebGpuConvLeakyReluParityAcrossAlphaValues) {
 
 TEST_F(GraphTransformationTests, WebGpuIm2ColConvReluFusionMatchesUnfusedResults) {
   RunWebGpuIm2ColActivationParity(SimpleActivation("Relu"), "Relu", 17);
+}
+
+// Odd input channels give vec_size == 1, which takes the scalar path of the shader (including the
+// subgroup variant when subgroup-size control is available). 4 channels give vec_size == 4 and 2 give 2.
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvOddInputChannelsMatchesUnfusedResults) {
+  RunWebGpuIm2ColActivationParity(SimpleActivation("Relu"), "Relu", 17, /*input_channels=*/3);
+}
+
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvTwoInputChannelsMatchesUnfusedResults) {
+  RunWebGpuIm2ColActivationParity(SimpleActivation("Relu"), "Relu", 17, /*input_channels=*/2);
 }
 
 TEST_F(GraphTransformationTests, WebGpuIm2ColConvLeakyReluFusionMatchesUnfusedResults) {
@@ -7307,7 +7322,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionContiguousReshapesWithSharedShapeP
   };
 
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1, [](Graph&) { return Status::OK(); }, post_graph_checker));
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1, [](Graph&) { return Status::OK(); }, post_graph_checker));
 }
 
 // Full-session test of a Reshape chain whose first shape input is produced by a Where node.
@@ -11831,6 +11847,133 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionDoubleType) {
         EXPECT_EQ(transformed_op_counts["com.microsoft.FusedMatMul"], 1);
       },
       {kCpuExecutionProvider});
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionRejectsLossyDoubleScale) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeInput<double>({{2, 2}});
+    auto* input_b = builder.MakeInput<double>({{2, 2}});
+    auto* scale = builder.MakeScalarInitializer<double>(std::nextafter(1.0, 2.0));
+    auto* scaled_a = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Mul", {input_a, scale}, {scaled_a});
+    builder.AddNode("MatMul", {scaled_a, input_b}, {output});
+  };
+
+  auto check_not_fused = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Mul") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.at("MatMul") == 1);
+    TEST_RETURN_IF(op_to_count.count("com.microsoft.FusedMatMul") != 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 13, *logger_, std::make_unique<MatMulScaleFusion>(),
+      TransformerLevel::Level2, 1, check_not_fused, check_not_fused));
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionRejectsLossyDoubleDivScale) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeInput<double>({{2, 2}});
+    auto* input_b = builder.MakeInput<double>({{2, 2}});
+    auto* divisor = builder.MakeScalarInitializer<double>(3.0);
+    auto* scaled_a = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Div", {input_a, divisor}, {scaled_a});
+    builder.AddNode("MatMul", {scaled_a, input_b}, {output});
+  };
+
+  auto check_not_fused = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Div") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.at("MatMul") == 1);
+    TEST_RETURN_IF(op_to_count.count("com.microsoft.FusedMatMul") != 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 13, *logger_, std::make_unique<MatMulScaleFusion>(),
+      TransformerLevel::Level2, 1, check_not_fused, check_not_fused));
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionRejectsLossyCombinedDoubleScale) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeInput<double>({{2, 2}});
+    auto* input_b = builder.MakeInput<double>({{2, 2}});
+    const double scale_value = static_cast<double>(std::nextafter(1.0f, 2.0f));
+    auto* scale1 = builder.MakeScalarInitializer<double>(scale_value);
+    auto* scale2 = builder.MakeScalarInitializer<double>(scale_value);
+    auto* scaled_a = builder.MakeIntermediate();
+    auto* matmul_output = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Mul", {input_a, scale1}, {scaled_a});
+    builder.AddNode("MatMul", {scaled_a, input_b}, {matmul_output});
+    builder.AddNode("Mul", {matmul_output, scale2}, {output});
+  };
+
+  auto check_not_fused = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Mul") == 2);
+    TEST_RETURN_IF_NOT(op_to_count.at("MatMul") == 1);
+    TEST_RETURN_IF(op_to_count.count("com.microsoft.FusedMatMul") != 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 13, *logger_, std::make_unique<MatMulScaleFusion>(),
+      TransformerLevel::Level2, 1, check_not_fused, check_not_fused));
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionRejectsCancellingLossyDoubleScales) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeInput<double>({{1, 1}});
+    auto* input_b = builder.MakeInput<double>({{1, 1}});
+    auto* scale1 = builder.MakeScalarInitializer<double>(1e300);
+    auto* scale2 = builder.MakeScalarInitializer<double>(1e-300);
+    auto* scaled_a = builder.MakeIntermediate();
+    auto* matmul_output = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Mul", {input_a, scale1}, {scaled_a});
+    builder.AddNode("MatMul", {scaled_a, input_b}, {matmul_output});
+    builder.AddNode("Mul", {matmul_output, scale2}, {output});
+  };
+
+  auto check_not_fused = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Mul") == 2);
+    TEST_RETURN_IF_NOT(op_to_count.at("MatMul") == 1);
+    TEST_RETURN_IF(op_to_count.count("com.microsoft.FusedMatMul") != 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 13, *logger_, std::make_unique<MatMulScaleFusion>(),
+      TransformerLevel::Level2, 1, check_not_fused, check_not_fused));
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionRejectsLossyIntegerScale) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeInput<int64_t>({{2, 2}});
+    auto* input_b = builder.MakeInput<int64_t>({{2, 2}});
+    auto* scale = builder.MakeScalarInitializer<int64_t>((int64_t{1} << 24) + 1);
+    auto* scaled_a = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Mul", {input_a, scale}, {scaled_a});
+    builder.AddNode("MatMul", {scaled_a, input_b}, {output});
+  };
+
+  auto check_not_fused = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Mul") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.at("MatMul") == 1);
+    TEST_RETURN_IF(op_to_count.count("com.microsoft.FusedMatMul") != 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 13, *logger_, std::make_unique<MatMulScaleFusion>(),
+      TransformerLevel::Level2, 1, check_not_fused, check_not_fused));
 }
 
 TEST_F(GraphTransformationTests, MatMulScaleFusionWithScaleInput) {

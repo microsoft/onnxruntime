@@ -5,6 +5,7 @@
 #include "cuda_device_mapping.h"
 #include "cuda_ep.h"
 #include "cuda_plugin_kernels.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
 #include "core/common/string_utils.h"
 #include "core/session/onnxruntime_c_api.h"
 #include <algorithm>
@@ -54,6 +55,10 @@ CudaEpFactory::CudaEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api,
 }
 
 CudaEpFactory::~CudaEpFactory() {
+  // Save any tactic caches of sessions still alive when the factory is released, before worker
+  // threads are stopped or the plugin DLL is unloaded.
+  onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCaches();
+
   for (auto& [key, entry] : device_cache_) {
     static_cast<void>(key);
     for (auto& arena : entry.device_arenas) {
