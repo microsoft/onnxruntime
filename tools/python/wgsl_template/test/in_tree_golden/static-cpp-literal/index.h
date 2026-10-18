@@ -18,7 +18,7 @@ struct TemplateParameter<"math/matmul_gemv.wgsl.template"> {
 };
 
 template <>
-Status ApplyTemplate<"math/matmul_gemv.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"math/matmul_gemv.wgsl.template">::type params);
+Status ApplyTemplate<"math/matmul_gemv.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/matmul_gemv.wgsl.template">::type params);
 
 //
 // Template: math/subgroup_matrix_gemm_8x16x16.wgsl.template
@@ -41,7 +41,7 @@ struct TemplateParameter<"math/subgroup_matrix_gemm_8x16x16.wgsl.template"> {
 };
 
 template <>
-Status ApplyTemplate<"math/subgroup_matrix_gemm_8x16x16.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_gemm_8x16x16.wgsl.template">::type params);
+Status ApplyTemplate<"math/subgroup_matrix_gemm_8x16x16.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_gemm_8x16x16.wgsl.template">::type params);
 
 //
 // Template: math/subgroup_matrix_matmul_8x16x16.wgsl.template
@@ -60,7 +60,7 @@ struct TemplateParameter<"math/subgroup_matrix_matmul_8x16x16.wgsl.template"> {
 };
 
 template <>
-Status ApplyTemplate<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">::type params);
+Status ApplyTemplate<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">::type params);
 
 //
 // Template: math/subgroup_matrix_matmul_pad_b.wgsl.template
@@ -75,28 +75,7 @@ struct TemplateParameter<"math/subgroup_matrix_matmul_pad_b.wgsl.template"> {
 };
 
 template <>
-Status ApplyTemplate<"math/subgroup_matrix_matmul_pad_b.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_matmul_pad_b.wgsl.template">::type params);
-
-//
-// Template: nn/conv_transpose3d.wgsl.template
-//
-
-template <>
-struct TemplateParameter<"nn/conv_transpose3d.wgsl.template"> {
-  using type = struct {
-    int param_components;
-    int param_has_bias;
-    int param_is_channels_last;
-    int param_is_prepacked;
-    const ShaderVariableHelper* var_bias;
-    const ShaderVariableHelper* var_output;
-    const ShaderVariableHelper* var_w;
-    const ShaderVariableHelper* var_x;
-  };
-};
-
-template <>
-Status ApplyTemplate<"nn/conv_transpose3d.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"nn/conv_transpose3d.wgsl.template">::type params);
+Status ApplyTemplate<"math/subgroup_matrix_matmul_pad_b.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_matmul_pad_b.wgsl.template">::type params);
 
 //
 // Template: nn/im2col_matmul.wgsl.template
@@ -119,7 +98,7 @@ struct TemplateParameter<"nn/im2col_matmul.wgsl.template"> {
 };
 
 template <>
-Status ApplyTemplate<"nn/im2col_matmul.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"nn/im2col_matmul.wgsl.template">::type params);
+Status ApplyTemplate<"nn/im2col_matmul.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"nn/im2col_matmul.wgsl.template">::type params);
 
 //
 // Template: tensor/oihw_to_ohwi.wgsl.template
@@ -134,7 +113,7 @@ struct TemplateParameter<"tensor/oihw_to_ohwi.wgsl.template"> {
 };
 
 template <>
-Status ApplyTemplate<"tensor/oihw_to_ohwi.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"tensor/oihw_to_ohwi.wgsl.template">::type params);
+Status ApplyTemplate<"tensor/oihw_to_ohwi.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"tensor/oihw_to_ohwi.wgsl.template">::type params);
 
 //
 // Template: tensor/pad.wgsl.template
@@ -151,4 +130,25 @@ struct TemplateParameter<"tensor/pad.wgsl.template"> {
 };
 
 template <>
-Status ApplyTemplate<"tensor/pad.wgsl.template">(ConfiguredShaderHelper& shader_helper, TemplateParameter<"tensor/pad.wgsl.template">::type params);
+Status ApplyTemplate<"tensor/pad.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"tensor/pad.wgsl.template">::type params);
+
+//
+// Template: nn/conv_transpose3d.wgsl.template
+//
+
+template <>
+struct TemplateParameter<"nn/conv_transpose3d.wgsl.template"> {
+  using type = struct {
+    int param_components;
+    int param_has_bias;
+    int param_is_channels_last;
+    int param_is_prepacked;
+    const ShaderVariableHelper* var_bias;
+    const ShaderVariableHelper* var_output;
+    const ShaderVariableHelper* var_w;
+    const ShaderVariableHelper* var_x;
+  };
+};
+
+template <>
+Status ApplyTemplate<"nn/conv_transpose3d.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"nn/conv_transpose3d.wgsl.template">::type params);

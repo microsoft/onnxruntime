@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "core/providers/webgpu/configured_program.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
@@ -11,37 +10,28 @@
 namespace onnxruntime {
 namespace webgpu {
 
-#define WEBGPU_CAST_PROGRAM_CONFIG(F) \
-  F(int32_t, to_)                     \
-  F(bool, is_from_int64_)             \
-  F(bool, is_from_float_)             \
-  F(bool, is_from_unsigned_)          \
-  F(bool, is_from_uint8_)
+class CastProgram final : public Program<CastProgram> {
+ public:
+  CastProgram(int32_t to, bool is_from_int64, bool is_from_float, bool is_from_unsigned, bool is_from_uint8)
+      : Program{"Cast"},
+        to_{to},
+        is_from_int64_{is_from_int64},
+        is_from_float_{is_from_float},
+        is_from_unsigned_{is_from_unsigned},
+        is_from_uint8_{is_from_uint8} {}
 
-struct CastProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_CAST_PROGRAM_CONFIG);
-  static Config MakeConfig(int32_t to, bool is_from_int64, bool is_from_float, bool is_from_unsigned, bool is_from_uint8) {
-    Config result{};
-    result.to_ = int32_t{to};
-    result.is_from_int64_ = bool{is_from_int64};
-    result.is_from_float_ = bool{is_from_float};
-    result.is_from_unsigned_ = bool{is_from_unsigned};
-    result.is_from_uint8_ = bool{is_from_uint8};
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-    return result;
-  }
-  static constexpr std::string_view name = "Cast";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32},
+                                          {"output_size", ProgramUniformVariableDataType::Uint32});
 
-#define WEBGPU_CAST_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, vec_size)                          \
-  U(Uint32, output_size)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_CAST_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_CAST_PROGRAM_SHADER_UNIFORMS
+ private:
+  int32_t to_;
+  bool is_from_int64_;
+  bool is_from_float_;
+  bool is_from_unsigned_;
+  bool is_from_uint8_;
 };
-#undef WEBGPU_CAST_PROGRAM_CONFIG
-
-using CastProgram = ConfiguredProgram<CastProgramShader>;
 
 class Cast final : public WebGpuKernel {
  public:

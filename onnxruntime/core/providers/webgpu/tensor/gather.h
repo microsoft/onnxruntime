@@ -4,38 +4,25 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/cpu/tensor/gatherbase.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-#define WEBGPU_GATHER_PROGRAM_CONFIG(F) \
-  F(uint32_t, axis_)                    \
-  F(bool, is_int64_)
+class GatherProgram final : public Program<GatherProgram> {
+ public:
+  GatherProgram(const uint32_t axis, bool is_int64) : Program{"Gather"}, axis_{axis}, is_int64_{is_int64} {}
 
-struct GatherProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATHER_PROGRAM_CONFIG);
-  static Config MakeConfig(const uint32_t axis, bool is_int64) {
-    Config result{};
-    result.axis_ = uint32_t{axis};
-    result.is_int64_ = bool{is_int64};
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-    return result;
-  }
-  static constexpr std::string_view name = "Gather";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"data_size", ProgramUniformVariableDataType::Uint32},
+                                          {"output_size", ProgramUniformVariableDataType::Uint32});
 
-#define WEBGPU_GATHER_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, data_size)                           \
-  U(Uint32, output_size)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATHER_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_GATHER_PROGRAM_SHADER_UNIFORMS
+ private:
+  uint32_t axis_;
+  bool is_int64_;
 };
-#undef WEBGPU_GATHER_PROGRAM_CONFIG
-
-using GatherProgram = ConfiguredProgram<GatherProgramShader>;
 
 class Gather final : public WebGpuKernel, public GatherBase {
  public:

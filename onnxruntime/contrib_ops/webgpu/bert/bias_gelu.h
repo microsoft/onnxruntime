@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -14,27 +13,18 @@ namespace webgpu {
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
-#define WEBGPU_BIAS_GELU_PROGRAM_CONFIG(F) F(int, bias_components_)
-
-struct BiasGeluProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_BIAS_GELU_PROGRAM_CONFIG);
-  static Config MakeConfig(int bias_components) {
-    Config result{};
-    result.bias_components_ = int{bias_components};
-
-    return result;
+class BiasGeluProgram final : public Program<BiasGeluProgram> {
+ public:
+  BiasGeluProgram(int bias_components) : Program{"BiasGelu"}, bias_components_{bias_components} {
   }
-  static constexpr std::string_view name = "BiasGelu";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
 
-#define WEBGPU_BIAS_GELU_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, vec_size)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_BIAS_GELU_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_BIAS_GELU_PROGRAM_SHADER_UNIFORMS
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  int bias_components_;
 };
-#undef WEBGPU_BIAS_GELU_PROGRAM_CONFIG
-
-using BiasGeluProgram = ConfiguredProgram<BiasGeluProgramShader>;
 
 class BiasGelu final : public WebGpuKernel {
  public:

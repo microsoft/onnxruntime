@@ -3,83 +3,158 @@
 
 #include "core/providers/webgpu/program_cache_key.h"
 
-#include <atomic>
-#include "core/providers/webgpu/shader_metadata.h"
+#include "core/providers/webgpu/string_macros.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
+// macro "D" - append to the ostream only in debug build
+#ifndef NDEBUG  // if debug build
+#define D(str) << str
+#else
+#define D(str)
+#endif
+
 namespace {
-std::string CalculateStructuredKey(const ProgramBase& program,
-                                   std::span<const uint32_t> inputs_segments,
-                                   std::span<const uint32_t> outputs_segments,
-                                   const void* generator_type) {
-  std::string key;
-  key.reserve(128);
-  key.push_back('\1');
-  // The token identifies a static generator and its immutable metadata in this process.
-  // This is not a persistent cache or an encoding of a configuration pointer.
-  AppendConfigValue(key, reinterpret_cast<uintptr_t>(generator_type));
-  program.AppendSpecializationKey(key);
-  ShaderProgramMetadata{program}.AppendTo(key);
-  AppendConfigValue(key, program.OverridableConstants().size());
-  for (const auto& value : program.OverridableConstants()) {
-    AppendConfigValue(key, value.has_value);
-    if (value.has_value) {
-      AppendConfigValue(key, value.type);
-      switch (value.type) {
-        case ProgramConstantDataType::Float32:
-          AppendConfigValue(key, value.f32);
-          break;
-        case ProgramConstantDataType::Float16:
-          AppendConfigValue(key, value.f16.val);
-          break;
-        case ProgramConstantDataType::Int32:
-          AppendConfigValue(key, value.i32);
-          break;
-        case ProgramConstantDataType::Uint32:
-          AppendConfigValue(key, value.u32);
-          break;
-        case ProgramConstantDataType::Bool:
-          AppendConfigValue(key, value.boolean);
-          break;
-      }
-    }
+// append the info of an input or output to the cachekey
+void AppendTensorInfo(OStringStream& ss,
+                      const TensorShape& tensor_shape,
+                      ProgramVariableDataType var_type,
+                      ProgramTensorMetadataDependency dependency,
+                      bool& first,
+                      uint32_t segments,
+                      bool is_buffer_view,
+                      size_t buffer_owner) {
+  if (first) {
+    first = false;
+  } else {
+    ss << '|';
   }
-  AppendConfigValue(key, program.UniformVariables().size());
-  for (const auto& uniform : program.UniformVariables()) {
-    AppendConfigValue(key, uniform.length);
-    if (uniform.length != 0) AppendConfigValue(key, uniform.data_type);
-  }
-  for (size_t i = 0; i < program.Inputs().size(); ++i) {
-    ShaderTensorMetadata{program.Inputs()[i], inputs_segments[i], program.InputBufferOwner(i)}.AppendTo(key);
-  }
-  for (size_t i = 0; i < program.Outputs().size(); ++i) {
-    ShaderTensorMetadata{program.Outputs()[i], outputs_segments[i], program.OutputBufferOwner(i)}.AppendTo(key);
-  }
-  AppendConfigValue(key, program.Indices().size());
-  for (const auto& indices : program.Indices()) AppendConfigValue(key, indices.NumDimensions());
-  return key;
-}
 
+  if ((dependency & ProgramTensorMetadataDependency::Type) == ProgramTensorMetadataDependency::Type) {
+#ifndef NDEBUG  // if debug build
+    ss << var_type;
+#else
+    ss << static_cast<int>(var_type);
+#endif
+    ss << ';';
+  }
+
+  if (segments != 1) {
+    ss D("Segs=") << 'S' << segments << ';';
+  }
+  if (is_buffer_view) {
+    ss D("View=") << 'V' << buffer_owner << ';';
+  }
+
+  if ((dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape) {
+    ss D("Dims=") << tensor_shape.ToString();
+  } else if ((dependency & ProgramTensorMetadataDependency::Rank) == ProgramTensorMetadataDependency::Rank) {
+    ss D("Rank=") << tensor_shape.NumDimensions();
+  }
+}
 }  // namespace
-
-std::string ShaderDiagnosticIds::Format(const std::string& key) const {
-  static std::atomic<uint64_t> next_id{1};
-  uint64_t id;
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto [entry, inserted] = ids_.try_emplace(key, 0);
-    if (inserted) entry->second = next_id.fetch_add(1, std::memory_order_relaxed);
-    id = entry->second;
-  }
-  return "shader:" + std::to_string(id);
-}
 
 std::string CalculateProgramCacheKey(const ProgramBase& program,
                                      std::span<uint32_t> inputs_segments,
                                      std::span<uint32_t> outputs_segments) {
-  return CalculateStructuredKey(program, inputs_segments, outputs_segments, program.StructuredKeyType());
+  SS(ss, kStringInitialSizeCacheKey);
+
+  // final key format:
+  // <KEY>=<PROGRAM_NAME>[<CUSTOM_CACHE_HINT>]:<WORKGROUP_SIZE>:<SUBGROUP_SIZE>:<UNIFORMS>:<INPUTS_INFO>
+  //
+  // <CUSTOM_CACHE_HINT> = <HINT_0>|<HINT_1>|...
+  // <WORKGROUP_SIZE>    = <X_IF_OVERRIDDEN>,<Y_IF_OVERRIDDEN>,<Z_IF_OVERRIDDEN>
+  // <SUBGROUP_SIZE>     = <SUBGROUP_SIZE_IF_OVERRIDDEN>
+  // <UNIFORMS>          = <UNIFORMS_INFO_0>|<UNIFORMS_INFO_1>|...
+  // <UNIFORMS_INFO_i>   = <UNIFORM_LENGTH>
+  // <INPUTS_INFO>       = <INPUTS_INFO_0>|<INPUTS_INFO_1>|...
+  // <INPUTS_INFO_i>     = <TENSOR_ELEMENT_TYPE_OR_EMPTY>;<TENSOR_SEGMENTS_OR_EMPTY>;<TENSOR_SHAPE_OR_RANK_OR_EMPTY>
+  ss << program.Name();
+
+  // append custom cache hint if any
+  if (auto& hint = program.CacheHint(); !hint.empty()) {
+    ss << '[' D("CacheHint=") << hint << ']';
+  }
+
+  // append workgroup size if overridden
+  if (auto x = program.WorkgroupSizeX(), y = program.WorkgroupSizeY(), z = program.WorkgroupSizeZ();
+      x != 0 || y != 0 || z != 0) {
+    ss << ":" D("WorkgroupSize=");
+    // only append non-zero values. zero values are considered as use default
+    if (x > 0) {
+      ss << x;
+    }
+    ss << ",";
+    if (y > 0) {
+      ss << y;
+    }
+    ss << ",";
+    if (z > 0) {
+      ss << z;
+    }
+  }
+
+  // append the requested subgroup size (subgroup-size-control) if any
+  if (auto subgroup_size = program.SubgroupSize(); subgroup_size != 0) {
+    ss << ":" D("SubgroupSize=") << subgroup_size;
+  }
+
+  ss << ":" D("UniformSizes=");
+  bool first = true;
+  for (const auto& uniform : program.UniformVariables()) {
+    if (first) {
+      first = false;
+    } else {
+      ss << "|";
+    }
+    if (uniform.length > 0) {
+      ss << uniform.length;
+    }
+  }
+
+  ss << ":" D("Inputs=");
+  first = true;
+  for (size_t i = 0; i < program.Inputs().size(); i++) {
+    const auto& input = program.Inputs()[i];
+    AppendTensorInfo(ss,
+                     input.use_override_shape ? input.override_shape : input.tensor->Shape(),
+                     input.var_type,
+                     input.dependency,
+                     first,
+                     inputs_segments[i],
+                     input.is_buffer_view,
+                     program.InputBufferOwner(i));
+  }
+
+  ss << ":" D("Outputs=");
+  first = true;
+  for (size_t i = 0; i < program.Outputs().size(); i++) {
+    const auto& output = program.Outputs()[i];
+    AppendTensorInfo(ss,
+                     output.use_override_shape ? output.override_shape : output.tensor->Shape(),
+                     output.var_type,
+                     output.dependency,
+                     first,
+                     outputs_segments[i],
+                     output.is_buffer_view,
+                     program.OutputBufferOwner(i));
+  }
+
+  if (!program.Indices().empty()) {
+    ss << ":" D("Indices=");
+    first = true;
+    for (const auto& indices_shape : program.Indices()) {
+      if (first) {
+        first = false;
+      } else {
+        ss << '|';
+      }
+      ss D("Rank=") << indices_shape.NumDimensions();
+    }
+  }
+
+  return SS_GET(ss);
 }
 
 }  // namespace webgpu

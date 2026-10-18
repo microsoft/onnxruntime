@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include <string>
 #include <iostream>
 #include "core/providers/webgpu/webgpu_kernel.h"
@@ -13,8 +12,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status ScatterNDProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                  ConfiguredShaderHelper& shader) {
+Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   shader.AddInput("updates", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseShapeAndStride);
@@ -114,20 +112,20 @@ Status ScatterNDProgramShader::GenerateShaderCode([[maybe_unused]] const Config&
   };
   std::string data_type_str;
   bool reducible = false;
-  if (config.data_type_ == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+  if (data_type_ == DataTypeImpl::GetType<int32_t>()) {
     reducible = true;
     data_type_str = "i32";
-  } else if (config.data_type_ == ONNX_NAMESPACE::TensorProto_DataType_UINT32) {
+  } else if (data_type_ == DataTypeImpl::GetType<uint32_t>()) {
     reducible = true;
     data_type_str = "u32";
-  } else if (config.data_type_ == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  } else if (data_type_ == DataTypeImpl::GetType<float>()) {
     reducible = true;
     data_type_str = "f32";
   } else {
     // Default value.
     data_type_str = "output_element_t";
   }
-  if (config.reduction_ != ScatterNDReduction::None && !reducible) {
+  if (reduction_ != ScatterNDReduction::None && !reducible) {
     ORT_THROW("ScatterND: Reduction is not supported for data type ", data_type_str);
   }
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
@@ -136,8 +134,9 @@ Status ScatterNDProgramShader::GenerateShaderCode([[maybe_unused]] const Config&
                             << "  var indices_end = indices_start + uniforms.last_index_dimension;\n"
                             << "  for (var i = indices_start; i < indices_end; i++) {\n"
                             << "    var index = i32(indices[i].x);\n"
-                            << calc_data_offset_snippet(output_rank) << "  }\n"
-                            << update_elements_snippet(config.reduction_, data_type_str);
+                            << calc_data_offset_snippet(output_rank)
+                            << "  }\n"
+                            << update_elements_snippet(reduction_, data_type_str);
   return Status::OK();
 }
 
@@ -167,15 +166,16 @@ Status ScatterND::ComputeInternal(ComputeContext& context) const {
   MLDataType data_type = input->DataType();
   ScatterNDProgram program(reduction_, data_type);
   program
-      .AddInputs({{indices, ProgramTensorMetadataDependency::None},
-                  {updates, ProgramTensorMetadataDependency::None}})
+      .CacheHint(static_cast<uint32_t>(reduction_))
+      .AddInputs({{indices, ProgramTensorMetadataDependency::TypeAndRank},
+                  {updates, ProgramTensorMetadataDependency::TypeAndRank}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({output_size, last_index_dimension, num_updates_elements});
   if (reduction_ != ScatterNDReduction::None && (data_type == DataTypeImpl::GetType<float>() || data_type == DataTypeImpl::GetType<int32_t>() ||
                                                  data_type == DataTypeImpl::GetType<uint32_t>())) {
-    program.AddOutput({output, ProgramTensorMetadataDependency::None, ProgramOutput::Atomic});
+    program.AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, ProgramOutput::Atomic});
   } else {
-    program.AddOutput({output, ProgramTensorMetadataDependency::None});
+    program.AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank});
   }
   return context.RunProgram(program);
 }

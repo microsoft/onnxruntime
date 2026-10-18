@@ -4,39 +4,27 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime::contrib::webgpu {
 
 using namespace onnxruntime::webgpu;
 
-#define WEBGPU_BRANCHWISE_R_M_S_NORM_PROGRAM_CONFIG(F) \
-  F(bool, has_scale_)                                  \
-  F(bool, shared_scale_)
+class BranchwiseRMSNormProgram final : public Program<BranchwiseRMSNormProgram> {
+ public:
+  BranchwiseRMSNormProgram(bool has_scale, bool shared_scale)
+      : Program{"BranchwiseRMSNorm"}, has_scale_(has_scale), shared_scale_(shared_scale) {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"hidden", ProgramUniformVariableDataType::Uint32},
+      {"branches", ProgramUniformVariableDataType::Uint32},
+      {"groups", ProgramUniformVariableDataType::Uint32},
+      {"epsilon", ProgramUniformVariableDataType::Float32});
 
-struct BranchwiseRMSNormProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_BRANCHWISE_R_M_S_NORM_PROGRAM_CONFIG);
-  static Config MakeConfig(bool has_scale, bool shared_scale) {
-    Config result{};
-    result.has_scale_ = bool(has_scale);
-    result.shared_scale_ = bool(shared_scale);
-
-    return result;
-  }
-  static constexpr std::string_view name = "BranchwiseRMSNorm";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-#define WEBGPU_BRANCHWISE_R_M_S_NORM_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, hidden)                                             \
-  U(Uint32, branches)                                           \
-  U(Uint32, groups)                                             \
-  U(Float32, epsilon)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_BRANCHWISE_R_M_S_NORM_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_BRANCHWISE_R_M_S_NORM_PROGRAM_SHADER_UNIFORMS
+ private:
+  bool has_scale_;
+  bool shared_scale_;
 };
-#undef WEBGPU_BRANCHWISE_R_M_S_NORM_PROGRAM_CONFIG
-
-using BranchwiseRMSNormProgram = ConfiguredProgram<BranchwiseRMSNormProgramShader>;
 
 class BranchwiseRMSNorm final : public WebGpuKernel {
  public:

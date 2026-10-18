@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/linear_attention_gates.h"
 
 #include "core/providers/webgpu/shader_helper.h"
@@ -33,18 +32,17 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     GatedRMSNorm);
 
-Status LinearAttentionGateProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                            ConfiguredShaderHelper& shader) {
+Status LinearAttentionGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& dt_bias = shader.AddInput("dt_bias", ShaderUsage::UseUniform);
   const auto& decay_scale = shader.AddInput("decay_scale", ShaderUsage::UseUniform);
   const ShaderVariableHelper* b = nullptr;
-  if (config.has_b_) {
+  if (has_b_) {
     b = &shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   }
   const auto& decay = shader.AddOutput("decay", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const ShaderVariableHelper* beta = nullptr;
-  if (config.has_beta_) {
+  if (has_beta_) {
     beta = &shader.AddOutput("beta", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   }
 
@@ -69,7 +67,7 @@ Status LinearAttentionGateProgramShader::GenerateShaderCode([[maybe_unused]] con
                             << dt_bias.GetByOffset("h") << ");\n"
                             << "  " << decay.SetByOffset("global_idx", "decay_element_t(f32(" + decay_scale.GetByOffset("h") + ") * la_softplus(biased))")
                             << "\n";
-  if (config.has_beta_) {
+  if (has_beta_) {
     shader.MainFunctionBody() << "  "
                               << beta->SetByOffset("global_idx",
                                                    "beta_element_t(la_sigmoid(f32(" + b->GetByOffset("global_idx") + ")))")
@@ -109,11 +107,12 @@ Status LinearAttentionGate::ComputeInternal(ComputeContext& context) const {
   }
 
   LinearAttentionGateProgram program{b != nullptr, beta != nullptr};
-  program.AddInputs({{a, ProgramTensorMetadataDependency::None},
-                     {dt_bias, ProgramTensorMetadataDependency::None},
-                     {decay_scale, ProgramTensorMetadataDependency::None}});
+  program.CacheHint(b != nullptr, beta != nullptr)
+      .AddInputs({{a, ProgramTensorMetadataDependency::Type},
+                  {dt_bias, ProgramTensorMetadataDependency::None},
+                  {decay_scale, ProgramTensorMetadataDependency::None}});
   if (b != nullptr) {
-    program.AddInput({b, ProgramTensorMetadataDependency::None});
+    program.AddInput({b, ProgramTensorMetadataDependency::Type});
   }
   program.AddOutput({decay, ProgramTensorMetadataDependency::None});
   if (beta != nullptr) {
@@ -126,8 +125,7 @@ Status LinearAttentionGate::ComputeInternal(ComputeContext& context) const {
   return context.RunProgram(program);
 }
 
-Status GatedRMSNormProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                     ConfiguredShaderHelper& shader) {
+Status GatedRMSNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& scale = shader.AddInput("scale", ShaderUsage::UseUniform);
   const auto& gate = shader.AddInput("gate", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
@@ -164,14 +162,12 @@ Status GatedRMSNormProgramShader::GenerateShaderCode([[maybe_unused]] const Conf
       << "  let inv_rms = inverseSqrt(row_sum_sq[0] / f32(uniforms.norm_size) + uniforms.epsilon);\n"
       << "  for (var i = local_idx; i < uniforms.norm_size; i += workgroup_size_x) {\n"
       << "    let z = f32(" << gate.GetByOffset("base + i") << ");\n"
-      << "    let normalized = f32(" << input.GetByOffset("base + i") << ") * inv_rms * f32(" << scale.GetByOffset("i")
-      << ");\n"
+      << "    let normalized = f32(" << input.GetByOffset("base + i") << ") * inv_rms * f32("
+      << scale.GetByOffset("i") << ");\n"
       << "    "
-      << output.SetByOffset("base + i",
-                            std::string("output_element_t(normalized * ") +
-                                (config.activation_ == GatedRMSNormActivation::kSilu ? "(z * stable_sigmoid(z))"
-                                                                                     : "stable_sigmoid(z)") +
-                                ")")
+      << output.SetByOffset("base + i", std::string("output_element_t(normalized * ") +
+                                            (activation_ == GatedRMSNormActivation::kSilu ? "(z * stable_sigmoid(z))" : "stable_sigmoid(z)") +
+                                            ")")
       << "\n"
       << "  }\n";
 
@@ -211,10 +207,10 @@ Status GatedRMSNorm::ComputeInternal(ComputeContext& context) const {
                                                      : 256;
 
   GatedRMSNormProgram program{activation_};
-
-  program.AddInputs({{input, ProgramTensorMetadataDependency::None},
-                     {scale, ProgramTensorMetadataDependency::None},
-                     {gate, ProgramTensorMetadataDependency::None}})
+  program.CacheHint(static_cast<int>(activation_));
+  program.AddInputs({{input, ProgramTensorMetadataDependency::Type},
+                     {scale, ProgramTensorMetadataDependency::Type},
+                     {gate, ProgramTensorMetadataDependency::Type}})
       .AddOutput({output, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(num_rows))
       .SetWorkgroupSize(workgroup_size)

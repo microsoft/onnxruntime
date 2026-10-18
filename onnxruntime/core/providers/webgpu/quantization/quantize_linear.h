@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -16,40 +15,32 @@ enum class PackingMode {
   Packed4,  // 4-bit: 8 elements per u32, manual bit extraction
 };
 
-#define WEBGPU_DEQUANTIZE_LINEAR_PROGRAM_CONFIG(F) \
-  F(PackingMode, packing_)                         \
-  F(bool, packed_signed_)                          \
-  F(bool, per_layer_)                              \
-  F(bool, per_axis_)                               \
-  F(bool, has_zeropoint_)                          \
-  F(int, rank_)
+class DequantizeLinearProgram final : public Program<DequantizeLinearProgram> {
+ public:
+  DequantizeLinearProgram(PackingMode packing, bool is_packed_signed, bool per_layer,
+                          bool per_axis, bool has_zeropoint, int rank = 0)
+      : Program<DequantizeLinearProgram>{"DequantizeLinear"},
+        packing_{packing},
+        packed_signed_{is_packed_signed},
+        per_layer_{per_layer},
+        per_axis_{per_axis},
+        has_zeropoint_{has_zeropoint},
+        rank_{rank} {}
 
-struct DequantizeLinearProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_DEQUANTIZE_LINEAR_PROGRAM_CONFIG);
-  static Config MakeConfig(PackingMode packing, bool is_packed_signed, bool per_layer, bool per_axis, bool has_zeropoint, int rank = 0) {
-    Config result{};
-    result.packing_ = PackingMode{packing};
-    result.packed_signed_ = bool{is_packed_signed};
-    result.per_layer_ = bool{per_layer};
-    result.per_axis_ = bool{per_axis};
-    result.has_zeropoint_ = bool{has_zeropoint};
-    result.rank_ = int{rank};
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-    return result;
-  }
-  static constexpr std::string_view name = "DequantizeLinear";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"axis", ProgramUniformVariableDataType::Uint32},
+                                          {"block_size", ProgramUniformVariableDataType::Uint32},
+                                          {"output_size", ProgramUniformVariableDataType::Uint32});
 
-#define WEBGPU_DEQUANTIZE_LINEAR_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, axis)                                           \
-  U(Uint32, block_size)                                     \
-  U(Uint32, output_size)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_DEQUANTIZE_LINEAR_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_DEQUANTIZE_LINEAR_PROGRAM_SHADER_UNIFORMS
+ private:
+  PackingMode packing_;
+  bool packed_signed_;
+  bool per_layer_;
+  bool per_axis_;
+  bool has_zeropoint_;
+  int rank_;
 };
-#undef WEBGPU_DEQUANTIZE_LINEAR_PROGRAM_CONFIG
-
-using DequantizeLinearProgram = ConfiguredProgram<DequantizeLinearProgramShader>;
 
 class DequantizeLinear final : public WebGpuKernel {
  public:

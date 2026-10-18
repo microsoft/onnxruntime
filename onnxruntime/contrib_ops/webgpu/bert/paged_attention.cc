@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include <cmath>
 #include <limits>
 
@@ -45,8 +44,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .MayInplace(4, 2),
     PagedAttention);
 
-Status ScatterKVToPagedCacheProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                              ConfiguredShaderHelper& sh) {
+Status ScatterKVToPagedCacheProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& key = sh.AddInput("key", ShaderUsage::UseUniform);
   const auto& value = sh.AddInput("value", ShaderUsage::UseUniform);
   const auto& cumulative_sequence_length = sh.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
@@ -93,15 +91,15 @@ Status RunPagedAttentionScatterKVToPagedCache(onnxruntime::webgpu::ComputeContex
   ScatterKVToPagedCacheProgram program{};
   program
       .AddInputs({
-          {key, ProgramTensorMetadataDependency::None},
-          {value, ProgramTensorMetadataDependency::None},
-          {cumulative_seqlens_q, ProgramTensorMetadataDependency::None},
-          {past_seqlens, ProgramTensorMetadataDependency::None},
-          {block_table, ProgramTensorMetadataDependency::None},
+          {key, ProgramTensorMetadataDependency::TypeAndRank},
+          {value, ProgramTensorMetadataDependency::TypeAndRank},
+          {cumulative_seqlens_q, ProgramTensorMetadataDependency::TypeAndRank},
+          {past_seqlens, ProgramTensorMetadataDependency::TypeAndRank},
+          {block_table, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddOutputs({
-          {key_cache_out, ProgramTensorMetadataDependency::None},
-          {value_cache_out, ProgramTensorMetadataDependency::None},
+          {key_cache_out, ProgramTensorMetadataDependency::TypeAndRank},
+          {value_cache_out, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddUniformVariables({
           {token_count},
@@ -117,8 +115,7 @@ Status RunPagedAttentionScatterKVToPagedCache(onnxruntime::webgpu::ComputeContex
   return context.RunProgram(program);
 }
 
-Status PagedAttentionRotaryProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                             ConfiguredShaderHelper& sh) {
+Status PagedAttentionRotaryProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& input = sh.AddInput("input", ShaderUsage::UseUniform);
   const auto& cos_cache = sh.AddInput("cos_cache", ShaderUsage::UseUniform);
   const auto& sin_cache = sh.AddInput("sin_cache", ShaderUsage::UseUniform);
@@ -158,14 +155,14 @@ Status RunPagedAttentionRotaryEmbedding(onnxruntime::webgpu::ComputeContext& con
   PagedAttentionRotaryProgram program{};
   program
       .AddInputs({
-          {input, ProgramTensorMetadataDependency::None},
-          {cos_cache, ProgramTensorMetadataDependency::None},
-          {sin_cache, ProgramTensorMetadataDependency::None},
-          {cumulative_seqlens_q, ProgramTensorMetadataDependency::None},
-          {past_seqlens, ProgramTensorMetadataDependency::None},
+          {input, ProgramTensorMetadataDependency::TypeAndRank},
+          {cos_cache, ProgramTensorMetadataDependency::TypeAndRank},
+          {sin_cache, ProgramTensorMetadataDependency::TypeAndRank},
+          {cumulative_seqlens_q, ProgramTensorMetadataDependency::TypeAndRank},
+          {past_seqlens, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddOutputs({
-          {output, ProgramTensorMetadataDependency::None},
+          {output, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddUniformVariables({
           {batch_size},
@@ -179,8 +176,7 @@ Status RunPagedAttentionRotaryEmbedding(onnxruntime::webgpu::ComputeContext& con
   return context.RunProgram(program);
 }
 
-Status PagedAttentionSplitPackedQKVProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                                     ConfiguredShaderHelper& sh) {
+Status PagedAttentionSplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& input = sh.AddInput("input", ShaderUsage::UseUniform);
   const auto& q_out = sh.AddOutput("q_out", ShaderUsage::UseUniform);
   const auto& k_out = sh.AddOutput("k_out", ShaderUsage::UseUniform);
@@ -210,12 +206,12 @@ Status RunPagedAttentionSplitPackedQKV(onnxruntime::webgpu::ComputeContext& cont
   PagedAttentionSplitPackedQKVProgram program{};
   program
       .AddInputs({
-          {packed_qkv, ProgramTensorMetadataDependency::None},
+          {packed_qkv, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddOutputs({
-          {q_out, ProgramTensorMetadataDependency::None},
-          {k_out, ProgramTensorMetadataDependency::None},
-          {v_out, ProgramTensorMetadataDependency::None},
+          {q_out, ProgramTensorMetadataDependency::TypeAndRank},
+          {k_out, ProgramTensorMetadataDependency::TypeAndRank},
+          {v_out, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddUniformVariables({
           {token_count},
@@ -228,8 +224,7 @@ Status RunPagedAttentionSplitPackedQKV(onnxruntime::webgpu::ComputeContext& cont
   return context.RunProgram(program);
 }
 
-Status PagedAttentionGatherKVProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                               ConfiguredShaderHelper& sh) {
+Status PagedAttentionGatherKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& key_cache = sh.AddInput("key_cache", ShaderUsage::UseUniform);
   const auto& value_cache = sh.AddInput("value_cache", ShaderUsage::UseUniform);
   const auto& cumulative_sequence_length =
@@ -271,15 +266,15 @@ static Status RunGatherKV(onnxruntime::webgpu::ComputeContext& context,
   PagedAttentionGatherKVProgram program{};
   program
       .AddInputs({
-          {key_cache, ProgramTensorMetadataDependency::None},
-          {value_cache, ProgramTensorMetadataDependency::None},
-          {cumulative_seqlens_q, ProgramTensorMetadataDependency::None},
-          {past_seqlens, ProgramTensorMetadataDependency::None},
-          {block_table, ProgramTensorMetadataDependency::None},
+          {key_cache, ProgramTensorMetadataDependency::TypeAndRank},
+          {value_cache, ProgramTensorMetadataDependency::TypeAndRank},
+          {cumulative_seqlens_q, ProgramTensorMetadataDependency::TypeAndRank},
+          {past_seqlens, ProgramTensorMetadataDependency::TypeAndRank},
+          {block_table, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddOutputs({
-          {k_padded, ProgramTensorMetadataDependency::None},
-          {v_padded, ProgramTensorMetadataDependency::None},
+          {k_padded, ProgramTensorMetadataDependency::TypeAndRank},
+          {v_padded, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddUniformVariables({
           {batch_size},
@@ -293,8 +288,7 @@ static Status RunGatherKV(onnxruntime::webgpu::ComputeContext& context,
   return context.RunProgram(program);
 }
 
-Status PagedAttentionUnpackQueryProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                                  ConfiguredShaderHelper& sh) {
+Status PagedAttentionUnpackQueryProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& input = sh.AddInput("input", ShaderUsage::UseUniform);
   const auto& cumulative_sequence_length =
       sh.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
@@ -323,11 +317,11 @@ static Status RunUnpackQuery(onnxruntime::webgpu::ComputeContext& context,
   PagedAttentionUnpackQueryProgram program{};
   program
       .AddInputs({
-          {query, ProgramTensorMetadataDependency::None},
-          {cumulative_seqlens_q, ProgramTensorMetadataDependency::None},
+          {query, ProgramTensorMetadataDependency::TypeAndRank},
+          {cumulative_seqlens_q, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddOutputs({
-          {q_padded, ProgramTensorMetadataDependency::None},
+          {q_padded, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddUniformVariables({
           {num_heads},
@@ -339,8 +333,7 @@ static Status RunUnpackQuery(onnxruntime::webgpu::ComputeContext& context,
   return context.RunProgram(program);
 }
 
-Status PagedAttentionRepackOutputProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                                   ConfiguredShaderHelper& sh) {
+Status PagedAttentionRepackOutputProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& input = sh.AddInput("input", ShaderUsage::UseUniform);
   const auto& cumulative_sequence_length =
       sh.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
@@ -351,8 +344,7 @@ Status PagedAttentionRepackOutputProgramShader::GenerateShaderCode([[maybe_unuse
                              WGSL_TEMPLATE_VARIABLE(output, output));
 }
 
-Status PagedAttentionPackMetadataProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                                   ConfiguredShaderHelper& sh) {
+Status PagedAttentionPackMetadataProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& cumulative_sequence_length =
       sh.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
   const auto& past_seqlens = sh.AddInput("past_seqlens", ShaderUsage::UseUniform);
@@ -372,11 +364,11 @@ static Status RunPackMetadata(onnxruntime::webgpu::ComputeContext& context,
   PagedAttentionPackMetadataProgram program{};
   program
       .AddInputs({
-          {cumulative_sequence_length, ProgramTensorMetadataDependency::None},
-          {past_seqlens, ProgramTensorMetadataDependency::None},
+          {cumulative_sequence_length, ProgramTensorMetadataDependency::TypeAndRank},
+          {past_seqlens, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddOutputs({
-          {output, ProgramTensorMetadataDependency::None},
+          {output, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddUniformVariables({
           {batch_size},
@@ -386,8 +378,7 @@ static Status RunPackMetadata(onnxruntime::webgpu::ComputeContext& context,
   return context.RunProgram(program);
 }
 
-Status PagedAttentionPrepareMetadataProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                                      ConfiguredShaderHelper& sh) {
+Status PagedAttentionPrepareMetadataProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& cumulative_sequence_length =
       sh.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
   const auto& past_seqlens = sh.AddInput("past_seqlens", ShaderUsage::UseUniform);
@@ -410,12 +401,12 @@ static Status RunPrepareMetadata(onnxruntime::webgpu::ComputeContext& context,
   PagedAttentionPrepareMetadataProgram program{};
   program
       .AddInputs({
-          {cumulative_sequence_length, ProgramTensorMetadataDependency::None},
-          {past_seqlens, ProgramTensorMetadataDependency::None},
+          {cumulative_sequence_length, ProgramTensorMetadataDependency::TypeAndRank},
+          {past_seqlens, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddOutputs({
-          {seqlen_k, ProgramTensorMetadataDependency::None},
-          {seqlens_q, ProgramTensorMetadataDependency::None},
+          {seqlen_k, ProgramTensorMetadataDependency::TypeAndRank},
+          {seqlens_q, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddUniformVariables({
           {batch_size},
@@ -443,11 +434,11 @@ static Status RunRepackOutput(onnxruntime::webgpu::ComputeContext& context,
   PagedAttentionRepackOutputProgram program{};
   program
       .AddInputs({
-          {padded_output, ProgramTensorMetadataDependency::None},
-          {cumulative_seqlens_q, ProgramTensorMetadataDependency::None},
+          {padded_output, ProgramTensorMetadataDependency::TypeAndRank},
+          {cumulative_seqlens_q, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddOutputs({
-          {output, ProgramTensorMetadataDependency::None},
+          {output, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddUniformVariables({
           {batch_size},

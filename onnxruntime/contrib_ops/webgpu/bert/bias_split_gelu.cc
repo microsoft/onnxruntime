@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "contrib_ops/webgpu/bert/bias_split_gelu.h"
@@ -22,8 +21,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     BiasSplitGelu);
 
-Status BiasSplitGeluProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                      ConfiguredShaderHelper& shader) {
+Status BiasSplitGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& x =
       shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const ShaderVariableHelper& bias = shader.AddInput("bias", ShaderUsage::UseUniform);
@@ -37,10 +35,8 @@ Status BiasSplitGeluProgramShader::GenerateShaderCode([[maybe_unused]] const Con
                             << "let biasIdx = global_idx % halfChannels;\n"
                             << "let batchIndex = global_idx / halfChannels;\n"
                             << "let inputOffset = biasIdx + batchIndex * halfChannels * 2;\n"
-                            << "let valueLeft = " << x.GetByOffset("inputOffset") << " + "
-                            << bias.GetByOffset("biasIdx") << ";\n"
-                            << "let valueRight = " << x.GetByOffset("inputOffset + halfChannels") << " + "
-                            << bias.GetByOffset("biasIdx + halfChannels") << ";\n"
+                            << "let valueLeft = " << x.GetByOffset("inputOffset") << " + " << bias.GetByOffset("biasIdx") << ";\n"
+                            << "let valueRight = " << x.GetByOffset("inputOffset + halfChannels") << " + " << bias.GetByOffset("biasIdx + halfChannels") << ";\n"
                             << "let geluRight = valueRight * 0.5 * (erf_v(valueRight / x_element_t(M_SQRT2)) + 1);\n"
                             << output.SetByOffset("global_idx", "valueLeft * geluRight");
 
@@ -74,7 +70,7 @@ Status BiasSplitGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
 
   BiasSplitGeluProgram program{};
   program
-      .AddInputs({{input, ProgramTensorMetadataDependency::None, components},
+      .AddInputs({{input, ProgramTensorMetadataDependency::Type, components},
                   {bias, ProgramTensorMetadataDependency::None, components}})
       .AddOutput({output, ProgramTensorMetadataDependency::None, components})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)

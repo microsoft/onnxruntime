@@ -17,7 +17,6 @@
 #include "core/common/common.h"
 
 #include "core/providers/webgpu/program.h"
-#include "core/providers/webgpu/program_cache_key.h"
 
 namespace onnxruntime {
 class Tensor;
@@ -79,7 +78,7 @@ class ProgramManager {
                std::vector<int>& shape_uniform_ranks,
                wgpu::Future& future,
                const std::shared_ptr<PipelineCallbackContext>& callback_context) const;
-  // Pipeline cache lookup / insert. These operations share state across sessions, so both
+  // Pipeline cache lookup / insert. These are the only members shared across sessions, so both
   // are serialized. Build() is deliberately not: callers invoke it between Get() and Set(), which
   // keeps shader compilation - by far the expensive part - outside the lock. Two sessions racing
   // on the same key therefore compile it twice; Set() keeps the first artifact and the loser is
@@ -89,8 +88,6 @@ class ProgramManager {
   // std::unordered_map keeps element references stable across rehash.
   const ProgramArtifact* Get(const std::string& key) const;
   const ProgramArtifact* Set(const std::string& key, ProgramArtifact&& program);
-
-  std::string KeyForLogging(const std::string& key) const { return diagnostic_ids_.Format(key); }
 
  private:
   wgpu::PipelineLayout CreatePipelineLayout(const ProgramBase& program,
@@ -104,7 +101,6 @@ class ProgramManager {
   WebGpuContext& webgpu_context_;
 
   std::function<void(std::string_view)> shader_dump_fn_;
-  ShaderDiagnosticIds diagnostic_ids_;
 };
 
 }  // namespace webgpu

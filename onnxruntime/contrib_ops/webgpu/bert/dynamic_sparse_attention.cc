@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/dynamic_sparse_attention.h"
 
 #include <algorithm>
@@ -73,29 +72,28 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 10),
     DynamicSparseAttention);
 
-Status DynamicSparseAttentionPrepareQueryProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                                           ConfiguredShaderHelper& shader) {
+Status DynamicSparseAttentionPrepareQueryProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& query = shader.AddInput("query", ShaderUsage::UseUniform);
   const auto& seqlens_k = shader.AddInput("seqlens_k", ShaderUsage::UseUniform);
   const ShaderVariableHelper* q_norm_weight = nullptr;
-  if (config.use_qk_norm_) {
+  if (use_qk_norm_) {
     q_norm_weight = &shader.AddInput("q_norm_weight", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* cos_cache = nullptr;
   const ShaderVariableHelper* sin_cache = nullptr;
-  if (config.do_rotary_) {
+  if (do_rotary_) {
     cos_cache = &shader.AddInput("cos_cache", ShaderUsage::UseUniform);
     sin_cache = &shader.AddInput("sin_cache", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* position_ids = nullptr;
-  if (config.has_position_ids_) {
+  if (has_position_ids_) {
     position_ids = &shader.AddInput("position_ids", ShaderUsage::UseUniform);
   }
 
   const auto& prepared_query =
       shader.AddOutput("prepared_query", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  if (config.use_qk_norm_) {
+  if (use_qk_norm_) {
     shader.AdditionalImplementation()
         << "var<workgroup> q_sumsq_partials: array<f32, " << kAttentionWorkgroupSize << ">;\n"
         << "var<workgroup> q_inv_rms: f32;\n";
@@ -107,13 +105,13 @@ Status DynamicSparseAttentionPrepareQueryProgramShader::GenerateShaderCode([[may
        << "  let row = workgroup_idx / uniforms.num_heads;\n"
        << "  let s = row % uniforms.sequence_length;\n"
        << "  let b = row / uniforms.sequence_length;\n";
-  if (config.packed_qkv_) {
+  if (packed_qkv_) {
     body << "  let q_base = row * uniforms.packed_stride + h * uniforms.head_size;\n";
   } else {
     body << "  let q_base = row * uniforms.query_hidden_size + h * uniforms.head_size;\n";
   }
   body << "  let output_base = (row * uniforms.num_heads + h) * uniforms.head_size;\n";
-  if (config.use_qk_norm_) {
+  if (use_qk_norm_) {
     body << "  var q_sumsq = 0.0;\n"
          << "  for (var c = local_idx; c < uniforms.head_size; c += "
          << kAttentionWorkgroupSize << "u) {\n"
@@ -140,14 +138,14 @@ Status DynamicSparseAttentionPrepareQueryProgramShader::GenerateShaderCode([[may
   body << "  for (var d = local_idx; d < uniforms.head_size; d += "
        << kAttentionWorkgroupSize << "u) {\n"
        << "    var q_value = f32(" << query.GetByOffset("q_base + d") << ") * q_inv_rms;\n";
-  if (config.use_qk_norm_) {
+  if (use_qk_norm_) {
     body << "    q_value *= f32(" << q_norm_weight->GetByOffset("d") << ");\n";
   }
-  if (config.do_rotary_) {
+  if (do_rotary_) {
     body << "    if (d >= uniforms.rotary_offset && d < uniforms.rotary_offset + uniforms.rotary_dim) {\n"
          << "      let rotary_d = d - uniforms.rotary_offset;\n"
          << "      let half_dim = uniforms.rotary_dim / 2u;\n";
-    if (config.rotary_interleaved_) {
+    if (rotary_interleaved_) {
       body << "      let pair_d = uniforms.rotary_offset + (rotary_d ^ 1u);\n"
            << "      let cache_d = rotary_d / 2u;\n"
            << "      let first = (rotary_d & 1u) == 0u;\n";
@@ -158,10 +156,10 @@ Status DynamicSparseAttentionPrepareQueryProgramShader::GenerateShaderCode([[may
            << "      let cache_d = rotary_d % half_dim;\n";
     }
     body << "      var q_pair = f32(" << query.GetByOffset("q_base + pair_d") << ") * q_inv_rms;\n";
-    if (config.use_qk_norm_) {
+    if (use_qk_norm_) {
       body << "      q_pair *= f32(" << q_norm_weight->GetByOffset("pair_d") << ");\n";
     }
-    if (config.has_position_ids_) {
+    if (has_position_ids_) {
       body << "      let position_words = " << position_ids->GetByOffset("row", true) << ";\n"
            << "      let position_valid = position_words.y == 0u"
               " && position_words.x < uniforms.rotary_max_position;\n"
@@ -182,51 +180,49 @@ Status DynamicSparseAttentionPrepareQueryProgramShader::GenerateShaderCode([[may
          << "    }\n"
          << "    " << prepared_query.SetByOffset("output_base + d", "prepared_query_element_t(q_value)") << "\n";
   }
-  if (!config.do_rotary_) {
+  if (!do_rotary_) {
     body << "    " << prepared_query.SetByOffset("output_base + d", "prepared_query_element_t(q_value)") << "\n";
   }
   body << "  }\n";
   return Status::OK();
 }
 
-Status DynamicSparseAttentionInitializeCacheProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                                              ConfiguredShaderHelper& shader) {
+Status DynamicSparseAttentionInitializeCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper* past_key = nullptr;
   const ShaderVariableHelper* past_value = nullptr;
-  if (config.initialize_key_ && config.has_past_key_) {
+  if (initialize_key_ && has_past_key_) {
     past_key = &shader.AddInput("past_key", ShaderUsage::UseUniform);
   }
-  if (config.initialize_value_ && config.has_past_value_) {
+  if (initialize_value_ && has_past_value_) {
     past_value = &shader.AddInput("past_value", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* present_key = nullptr;
   const ShaderVariableHelper* present_value = nullptr;
-  if (config.initialize_key_) {
+  if (initialize_key_) {
     present_key = &shader.AddOutput("present_key", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   }
-  if (config.initialize_value_) {
+  if (initialize_value_) {
     present_value = &shader.AddOutput("present_value", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   }
 
   auto& body = shader.MainFunctionBody();
   body << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.dispatch_size");
-  if (config.initialize_key_) {
+  if (initialize_key_) {
     const std::string value = past_key == nullptr ? "0.0" : "f32(" + past_key->GetByOffset("global_idx") + ")";
     body << "  " << present_key->SetByOffset("global_idx", "present_key_element_t(" + value + ")") << "\n";
   }
-  if (config.initialize_value_) {
+  if (initialize_value_) {
     const std::string value = past_value == nullptr ? "0.0" : "f32(" + past_value->GetByOffset("global_idx") + ")";
     body << "  " << present_value->SetByOffset("global_idx", "present_value_element_t(" + value + ")") << "\n";
   }
   return Status::OK();
 }
 
-Status DynamicSparseAttentionAppendKvProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                                       ConfiguredShaderHelper& shader) {
+Status DynamicSparseAttentionAppendKvProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper* query = nullptr;
   const ShaderVariableHelper* key = nullptr;
   const ShaderVariableHelper* value = nullptr;
-  if (config.packed_qkv_) {
+  if (packed_qkv_) {
     query = &shader.AddInput("query", ShaderUsage::UseUniform);
   } else {
     key = &shader.AddInput("key", ShaderUsage::UseUniform);
@@ -234,17 +230,17 @@ Status DynamicSparseAttentionAppendKvProgramShader::GenerateShaderCode([[maybe_u
   }
   const auto& seqlens_k = shader.AddInput("seqlens_k", ShaderUsage::UseUniform);
   const ShaderVariableHelper* k_norm_weight = nullptr;
-  if (config.use_qk_norm_) {
+  if (use_qk_norm_) {
     k_norm_weight = &shader.AddInput("k_norm_weight", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* cos_cache = nullptr;
   const ShaderVariableHelper* sin_cache = nullptr;
-  if (config.do_rotary_) {
+  if (do_rotary_) {
     cos_cache = &shader.AddInput("cos_cache", ShaderUsage::UseUniform);
     sin_cache = &shader.AddInput("sin_cache", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* position_ids = nullptr;
-  if (config.has_position_ids_) {
+  if (has_position_ids_) {
     position_ids = &shader.AddInput("position_ids", ShaderUsage::UseUniform);
   }
   const auto& present_key =
@@ -252,7 +248,7 @@ Status DynamicSparseAttentionAppendKvProgramShader::GenerateShaderCode([[maybe_u
   const auto& present_value =
       shader.AddOutput("present_value", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  if (config.use_qk_norm_) {
+  if (use_qk_norm_) {
     shader.AdditionalImplementation()
         << "var<workgroup> k_sumsq_partials: array<f32, " << kAttentionWorkgroupSize << ">;\n"
         << "var<workgroup> k_inv_rms: f32;\n";
@@ -271,7 +267,7 @@ Status DynamicSparseAttentionAppendKvProgramShader::GenerateShaderCode([[maybe_u
        << "  }\n"
        << "  let destination = workgroupUniformLoad(&destination_shared);\n"
        << "  if (destination < 0i || destination >= i32(uniforms.cache_capacity)) { return; }\n";
-  if (config.packed_qkv_) {
+  if (packed_qkv_) {
     body << "  let key_base = row * uniforms.packed_stride + uniforms.query_hidden_size"
          << " + kv_head * uniforms.head_size;\n"
          << "  let value_base = row * uniforms.packed_stride + uniforms.query_hidden_size"
@@ -280,16 +276,19 @@ Status DynamicSparseAttentionAppendKvProgramShader::GenerateShaderCode([[maybe_u
     body << "  let key_base = row * uniforms.kv_hidden_size + kv_head * uniforms.head_size;\n"
          << "  let value_base = key_base;\n";
   }
-  if (config.use_qk_norm_) {
+  if (use_qk_norm_) {
     body << "  var k_sumsq = 0.0;\n"
-         << "  for (var c = local_idx; c < uniforms.head_size; c += " << kAttentionWorkgroupSize << "u) {\n"
+         << "  for (var c = local_idx; c < uniforms.head_size; c += "
+         << kAttentionWorkgroupSize << "u) {\n"
          << "    let kv = f32("
-         << (config.packed_qkv_ ? query->GetByOffset("key_base + c") : key->GetByOffset("key_base + c")) << ");\n"
+         << (packed_qkv_ ? query->GetByOffset("key_base + c") : key->GetByOffset("key_base + c"))
+         << ");\n"
          << "    k_sumsq += kv * kv;\n"
          << "  }\n"
          << "  k_sumsq_partials[local_idx] = k_sumsq;\n"
          << "  workgroupBarrier();\n"
-         << "  for (var stride = " << (kAttentionWorkgroupSize / 2) << "u; stride > 0u; stride >>= 1u) {\n"
+         << "  for (var stride = " << (kAttentionWorkgroupSize / 2)
+         << "u; stride > 0u; stride >>= 1u) {\n"
          << "    if (local_idx < stride) {\n"
          << "      k_sumsq_partials[local_idx] += k_sumsq_partials[local_idx + stride];\n"
          << "    }\n"
@@ -303,18 +302,19 @@ Status DynamicSparseAttentionAppendKvProgramShader::GenerateShaderCode([[maybe_u
   } else {
     body << "  let k_inv_rms = 1.0;\n";
   }
-  body << "  for (var d = local_idx; d < uniforms.head_size; d += " << kAttentionWorkgroupSize << "u) {\n"
+  body << "  for (var d = local_idx; d < uniforms.head_size; d += "
+       << kAttentionWorkgroupSize << "u) {\n"
        << "    var key_value = f32("
-       << (config.packed_qkv_ ? query->GetByOffset("key_base + d") : key->GetByOffset("key_base + d"))
+       << (packed_qkv_ ? query->GetByOffset("key_base + d") : key->GetByOffset("key_base + d"))
        << ") * k_inv_rms;\n";
-  if (config.use_qk_norm_) {
+  if (use_qk_norm_) {
     body << "    key_value *= f32(" << k_norm_weight->GetByOffset("d") << ");\n";
   }
-  if (config.do_rotary_) {
+  if (do_rotary_) {
     body << "    if (d >= uniforms.rotary_offset && d < uniforms.rotary_offset + uniforms.rotary_dim) {\n"
          << "      let rotary_d = d - uniforms.rotary_offset;\n"
          << "      let half_dim = uniforms.rotary_dim / 2u;\n";
-    if (config.rotary_interleaved_) {
+    if (rotary_interleaved_) {
       body << "      let pair_d = uniforms.rotary_offset + (rotary_d ^ 1u);\n"
            << "      let cache_d = rotary_d / 2u;\n"
            << "      let first = (rotary_d & 1u) == 0u;\n";
@@ -325,12 +325,12 @@ Status DynamicSparseAttentionAppendKvProgramShader::GenerateShaderCode([[maybe_u
            << "      let cache_d = rotary_d % half_dim;\n";
     }
     body << "      var key_pair = f32("
-         << (config.packed_qkv_ ? query->GetByOffset("key_base + pair_d") : key->GetByOffset("key_base + pair_d"))
+         << (packed_qkv_ ? query->GetByOffset("key_base + pair_d") : key->GetByOffset("key_base + pair_d"))
          << ") * k_inv_rms;\n";
-    if (config.use_qk_norm_) {
+    if (use_qk_norm_) {
       body << "      key_pair *= f32(" << k_norm_weight->GetByOffset("pair_d") << ");\n";
     }
-    if (config.has_position_ids_) {
+    if (has_position_ids_) {
       body << "      let position_words = " << position_ids->GetByOffset("row", true) << ";\n"
            << "      let rotary_position_valid = position_words.y == 0u"
               " && position_words.x < uniforms.rotary_max_position;\n"
@@ -350,7 +350,7 @@ Status DynamicSparseAttentionAppendKvProgramShader::GenerateShaderCode([[maybe_u
          << "    }\n";
   }
   const std::string value_expression =
-      config.packed_qkv_ ? query->GetByOffset("value_base + d") : value->GetByOffset("value_base + d");
+      packed_qkv_ ? query->GetByOffset("value_base + d") : value->GetByOffset("value_base + d");
   body << "    let cache_offset = ((b * uniforms.kv_num_heads + kv_head) * uniforms.cache_capacity"
        << " + u32(destination)) * uniforms.head_size + d;\n"
        << "    " << present_key.SetByOffset("cache_offset", "present_key_element_t(key_value)") << "\n"
@@ -359,28 +359,27 @@ Status DynamicSparseAttentionAppendKvProgramShader::GenerateShaderCode([[maybe_u
   return Status::OK();
 }
 
-Status DynamicSparseAttentionProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                               ConfiguredShaderHelper& shader) {
+Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& query = shader.AddInput("query", ShaderUsage::UseUniform);
   const auto& main_key = shader.AddInput("main_key", ShaderUsage::UseUniform);
   const auto& main_value = shader.AddInput("main_value", ShaderUsage::UseUniform);
   const ShaderVariableHelper* auxiliary_key = nullptr;
   const ShaderVariableHelper* auxiliary_value = nullptr;
-  if (config.selected_from_auxiliary_ && config.has_selection_) {
+  if (selected_from_auxiliary_ && has_selection_) {
     auxiliary_key = &shader.AddInput("auxiliary_key", ShaderUsage::UseUniform);
-    if (config.has_auxiliary_value_) {
+    if (has_auxiliary_value_) {
       auxiliary_value = &shader.AddInput("auxiliary_value", ShaderUsage::UseUniform);
     }
   }
   const ShaderVariableHelper* selected_indices = nullptr;
   const ShaderVariableHelper* selected_counts = nullptr;
-  if (config.has_selection_) {
+  if (has_selection_) {
     selected_indices = &shader.AddInput("selected_indices", ShaderUsage::UseUniform);
     selected_counts = &shader.AddInput("selected_counts", ShaderUsage::UseUniform);
   }
   const auto& seqlens_k = shader.AddInput("seqlens_k", ShaderUsage::UseUniform);
   const ShaderVariableHelper* head_sink = nullptr;
-  if (config.has_head_sink_) {
+  if (has_head_sink_) {
     head_sink = &shader.AddInput("head_sink", ShaderUsage::UseUniform);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
@@ -388,7 +387,7 @@ Status DynamicSparseAttentionProgramShader::GenerateShaderCode([[maybe_unused]] 
   shader.AdditionalImplementation()
       << "var<workgroup> dot_partials: array<f32, " << kAttentionWorkgroupSize << ">;\n"
       << "var<workgroup> total_length_shared: i32;\n";
-  if (config.has_selection_) {
+  if (has_selection_) {
     shader.AdditionalImplementation() << "var<workgroup> selected_count_shared: u32;\n";
   }
   auto& body = shader.MainFunctionBody();
@@ -449,7 +448,7 @@ Status DynamicSparseAttentionProgramShader::GenerateShaderCode([[maybe_unused]] 
          << "      }\n";
   };
 
-  if (config.local_plus_selected_) {
+  if (local_plus_selected_) {
     body << "  let local_start = max(0i, query_position - i32(uniforms.local_window_size) + 1i);\n"
          << "  let local_end = min(query_position, min(total_length - 1i, i32(uniforms.cache_capacity) - 1i));\n"
          << "  for (var index = local_start; index <= local_end; index++) {\n"
@@ -461,7 +460,7 @@ Status DynamicSparseAttentionProgramShader::GenerateShaderCode([[maybe_unused]] 
     body << "  }\n";
   }
 
-  if (config.has_selection_) {
+  if (has_selection_) {
     body << "  if (local_idx == 0u) {\n"
          << "    let selected_count_i32 = " << selected_counts->GetByOffset("row") << ";\n"
          << "    selected_count_shared = u32(clamp(selected_count_i32, 0i, i32(uniforms.max_selected)));\n"
@@ -470,10 +469,10 @@ Status DynamicSparseAttentionProgramShader::GenerateShaderCode([[maybe_unused]] 
          << "  for (var i = 0u; i < selected_count; i++) {\n"
          << "    let selected_index = "
          << selected_indices->GetByOffset("row * uniforms.max_selected + i") << ";\n";
-    if (config.selected_from_auxiliary_) {
+    if (selected_from_auxiliary_) {
       body << "    let safe_index = u32(clamp(selected_index, 0i,"
               " i32(uniforms.auxiliary_sequence_length) - 1i));\n";
-      emit_candidate(*auxiliary_key, config.has_auxiliary_value_ ? *auxiliary_value : *auxiliary_key,
+      emit_candidate(*auxiliary_key, has_auxiliary_value_ ? *auxiliary_value : *auxiliary_key,
                      "selected_index >= 0i && selected_index < i32(uniforms.auxiliary_sequence_length)",
                      "((b * uniforms.kv_num_heads + kv_head) * uniforms.auxiliary_sequence_length"
                      " + safe_index) * uniforms.head_size");
@@ -489,9 +488,9 @@ Status DynamicSparseAttentionProgramShader::GenerateShaderCode([[maybe_unused]] 
     body << "  }\n";
   }
 
-  if (config.has_head_sink_ || config.use_smooth_softmax_) {
+  if (has_head_sink_ || use_smooth_softmax_) {
     body << "  {\n";
-    if (config.has_head_sink_) {
+    if (has_head_sink_) {
       body << "    let sink_logit = f32(" << head_sink->GetByOffset("head") << ");\n";
     } else {
       body << "    let sink_logit = 0.0;\n";
@@ -695,22 +694,24 @@ Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeConte
       parameters.is_packed_qkv, parameters.use_qk_norm, parameters.do_rotary,
       parameters.rotary_interleaved, has_position_ids);
   prepare_query_program
-      .AddInput({query, ProgramTensorMetadataDependency::None});
-  prepare_query_program.AddInput({seqlens_k, ProgramTensorMetadataDependency::None});
+      .CacheHint(parameters.is_packed_qkv, parameters.use_qk_norm, parameters.do_rotary,
+                 parameters.rotary_interleaved, has_position_ids)
+      .AddInput({query, ProgramTensorMetadataDependency::TypeAndRank});
+  prepare_query_program.AddInput({seqlens_k, ProgramTensorMetadataDependency::TypeAndRank});
   if (parameters.use_qk_norm) {
-    prepare_query_program.AddInput({q_norm_weight, ProgramTensorMetadataDependency::None});
+    prepare_query_program.AddInput({q_norm_weight, ProgramTensorMetadataDependency::TypeAndRank});
   }
   if (parameters.do_rotary) {
     prepare_query_program.AddInputs({
-        {cos_cache, ProgramTensorMetadataDependency::None},
-        {sin_cache, ProgramTensorMetadataDependency::None},
+        {cos_cache, ProgramTensorMetadataDependency::TypeAndRank},
+        {sin_cache, ProgramTensorMetadataDependency::TypeAndRank},
     });
   }
   if (has_position_ids) {
-    prepare_query_program.AddInput({position_ids, ProgramTensorMetadataDependency::None});
+    prepare_query_program.AddInput({position_ids, ProgramTensorMetadataDependency::TypeAndRank});
   }
   prepare_query_program
-      .AddOutput({&prepared_query, ProgramTensorMetadataDependency::None})
+      .AddOutput({&prepared_query, ProgramTensorMetadataDependency::TypeAndRank})
       .AddUniformVariables({
           {narrow<uint32_t>(parameters.sequence_length)},
           {narrow<uint32_t>(parameters.num_heads)},
@@ -732,20 +733,21 @@ Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeConte
   if (initialize_key || initialize_value) {
     DynamicSparseAttentionInitializeCacheProgram initialize_cache_program(
         initialize_key, initialize_value, past_key != nullptr, past_value != nullptr);
-
+    initialize_cache_program.CacheHint(
+        initialize_key, initialize_value, past_key != nullptr, past_value != nullptr);
     if (initialize_key && past_key != nullptr) {
-      initialize_cache_program.AddInput({past_key, ProgramTensorMetadataDependency::None});
+      initialize_cache_program.AddInput({past_key, ProgramTensorMetadataDependency::TypeAndRank});
     }
     if (initialize_value && past_value != nullptr) {
-      initialize_cache_program.AddInput({past_value, ProgramTensorMetadataDependency::None});
+      initialize_cache_program.AddInput({past_value, ProgramTensorMetadataDependency::TypeAndRank});
     }
     if (initialize_key) {
       initialize_cache_program.AddOutput(
-          {present_key_output, ProgramTensorMetadataDependency::None});
+          {present_key_output, ProgramTensorMetadataDependency::TypeAndRank});
     }
     if (initialize_value) {
       initialize_cache_program.AddOutput(
-          {present_value_output, ProgramTensorMetadataDependency::None});
+          {present_value_output, ProgramTensorMetadataDependency::TypeAndRank});
     }
     initialize_cache_program.AddUniformVariable({cache_elements})
         .SetDispatchGroupSize((cache_elements + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
@@ -760,32 +762,34 @@ Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeConte
   DynamicSparseAttentionAppendKvProgram append_kv_program(
       parameters.is_packed_qkv, parameters.use_qk_norm, parameters.do_rotary,
       parameters.rotary_interleaved, has_position_ids);
-
+  append_kv_program.CacheHint(
+      parameters.is_packed_qkv, parameters.use_qk_norm, parameters.do_rotary,
+      parameters.rotary_interleaved, has_position_ids);
   if (parameters.is_packed_qkv) {
-    append_kv_program.AddInput({query, ProgramTensorMetadataDependency::None});
+    append_kv_program.AddInput({query, ProgramTensorMetadataDependency::TypeAndRank});
   } else {
     append_kv_program.AddInputs({
-        {key, ProgramTensorMetadataDependency::None},
-        {value, ProgramTensorMetadataDependency::None},
+        {key, ProgramTensorMetadataDependency::TypeAndRank},
+        {value, ProgramTensorMetadataDependency::TypeAndRank},
     });
   }
-  append_kv_program.AddInput({seqlens_k, ProgramTensorMetadataDependency::None});
+  append_kv_program.AddInput({seqlens_k, ProgramTensorMetadataDependency::TypeAndRank});
   if (parameters.use_qk_norm) {
-    append_kv_program.AddInput({k_norm_weight, ProgramTensorMetadataDependency::None});
+    append_kv_program.AddInput({k_norm_weight, ProgramTensorMetadataDependency::TypeAndRank});
   }
   if (parameters.do_rotary) {
     append_kv_program.AddInputs({
-        {cos_cache, ProgramTensorMetadataDependency::None},
-        {sin_cache, ProgramTensorMetadataDependency::None},
+        {cos_cache, ProgramTensorMetadataDependency::TypeAndRank},
+        {sin_cache, ProgramTensorMetadataDependency::TypeAndRank},
     });
   }
   if (has_position_ids) {
-    append_kv_program.AddInput({position_ids, ProgramTensorMetadataDependency::None});
+    append_kv_program.AddInput({position_ids, ProgramTensorMetadataDependency::TypeAndRank});
   }
   append_kv_program
       .AddOutputs({
-          {present_key_output, ProgramTensorMetadataDependency::None},
-          {present_value_output, ProgramTensorMetadataDependency::None},
+          {present_key_output, ProgramTensorMetadataDependency::TypeAndRank},
+          {present_value_output, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddUniformVariables({
           {narrow<uint32_t>(parameters.sequence_length)},
@@ -808,29 +812,31 @@ Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeConte
   DynamicSparseAttentionProgram attention_program(
       has_selection, local_plus_selected, selected_from_auxiliary, has_auxiliary_value,
       head_sink != nullptr, use_smooth_softmax);
-  attention_program.AddInputs({
-      {&prepared_query, ProgramTensorMetadataDependency::None},
-      {present_key_output, ProgramTensorMetadataDependency::None},
-      {present_value_output, ProgramTensorMetadataDependency::None},
-  });
+  attention_program.CacheHint(has_selection, local_plus_selected, selected_from_auxiliary, has_auxiliary_value,
+                              head_sink != nullptr, use_smooth_softmax)
+      .AddInputs({
+          {&prepared_query, ProgramTensorMetadataDependency::TypeAndRank},
+          {present_key_output, ProgramTensorMetadataDependency::TypeAndRank},
+          {present_value_output, ProgramTensorMetadataDependency::TypeAndRank},
+      });
   if (selected_from_auxiliary && has_selection) {
-    attention_program.AddInput({auxiliary_key, ProgramTensorMetadataDependency::None});
+    attention_program.AddInput({auxiliary_key, ProgramTensorMetadataDependency::TypeAndRank});
     if (has_auxiliary_value) {
-      attention_program.AddInput({auxiliary_value, ProgramTensorMetadataDependency::None});
+      attention_program.AddInput({auxiliary_value, ProgramTensorMetadataDependency::TypeAndRank});
     }
   }
   if (has_selection) {
     attention_program.AddInputs({
-        {selected_indices, ProgramTensorMetadataDependency::None},
-        {selected_counts, ProgramTensorMetadataDependency::None},
+        {selected_indices, ProgramTensorMetadataDependency::TypeAndRank},
+        {selected_counts, ProgramTensorMetadataDependency::TypeAndRank},
     });
   }
-  attention_program.AddInput({seqlens_k, ProgramTensorMetadataDependency::None});
+  attention_program.AddInput({seqlens_k, ProgramTensorMetadataDependency::TypeAndRank});
   if (head_sink != nullptr) {
-    attention_program.AddInput({head_sink, ProgramTensorMetadataDependency::None});
+    attention_program.AddInput({head_sink, ProgramTensorMetadataDependency::TypeAndRank});
   }
   attention_program
-      .AddOutput({output, ProgramTensorMetadataDependency::None})
+      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
       .AddUniformVariables({
           {narrow<uint32_t>(parameters.sequence_length)},
           {narrow<uint32_t>(parameters.num_heads)},

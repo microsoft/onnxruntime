@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/branchwise_rms_norm.h"
 
 #include "contrib_ops/cpu/hyper_connection_helper.h"
@@ -19,11 +18,10 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("M", WebGpuSupportedFloatTypes()),
     BranchwiseRMSNorm);
 
-Status BranchwiseRMSNormProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                          ConfiguredShaderHelper& shader) {
+Status BranchwiseRMSNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const ShaderVariableHelper* scale = nullptr;
-  if (config.has_scale_) {
+  if (has_scale_) {
     scale = &shader.AddInput("scale", ShaderUsage::UseUniform);
   }
   const auto& y = shader.AddOutput("y", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
@@ -48,8 +46,9 @@ Status BranchwiseRMSNormProgramShader::GenerateShaderCode([[maybe_unused]] const
          "  let inv_rms = inverseSqrt(sums[0] / f32(uniforms.hidden) + uniforms.epsilon);\n"
          "  for (var h = local_idx; h < uniforms.hidden; h += workgroup_size_x) {\n"
          "    var weight = 1.0;\n";
-  if (config.has_scale_) {
-    const char* scale_offset = config.shared_scale_ ? "h" : "(group % uniforms.branches) * uniforms.hidden + h";
+  if (has_scale_) {
+    const char* scale_offset =
+        shared_scale_ ? "h" : "(group % uniforms.branches) * uniforms.hidden + h";
     shader.MainFunctionBody()
         << "    weight = f32(" << scale->GetByOffset(scale_offset) << ");\n";
   }
@@ -85,9 +84,10 @@ Status BranchwiseRMSNorm::ComputeInternal(onnxruntime::webgpu::ComputeContext& c
   }
 
   BranchwiseRMSNormProgram program{scale != nullptr, shared_scale};
-  program.AddInput({x, ProgramTensorMetadataDependency::None});
+  program.CacheHint(scale != nullptr, shared_scale)
+      .AddInput({x, ProgramTensorMetadataDependency::Type});
   if (scale != nullptr) {
-    program.AddInput({scale, ProgramTensorMetadataDependency::None});
+    program.AddInput({scale, ProgramTensorMetadataDependency::Type});
   }
   program.AddOutput({y, ProgramTensorMetadataDependency::None})
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(params.hidden)},

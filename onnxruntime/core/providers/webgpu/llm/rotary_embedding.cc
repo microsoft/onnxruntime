@@ -92,10 +92,11 @@ Status RotaryEmbedding::ComputeInternal(ComputeContext& context) const {
 
     contrib::webgpu::RotaryEmbeddingProgram program{interleaved_};
     program
-        .AddInputs({{input, ProgramTensorMetadataDependency::None},
-                    {position_ids, ProgramTensorMetadataDependency::None},
-                    {cos_cache, ProgramTensorMetadataDependency::None},
-                    {sin_cache, ProgramTensorMetadataDependency::None}})
+        .CacheHint(interleaved_)
+        .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
+                    {position_ids, ProgramTensorMetadataDependency::Rank},
+                    {cos_cache, ProgramTensorMetadataDependency::Rank},
+                    {sin_cache, ProgramTensorMetadataDependency::Rank}})
         .AddOutput({output, ProgramTensorMetadataDependency::None})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .AddUniformVariables({{1.0f},
@@ -121,7 +122,7 @@ Status RotaryEmbedding::ComputeInternal(ComputeContext& context) const {
     int32_t start_i32 = 0;
     int32_t delta_i32 = 1;
     range_program
-        .AddOutput({&pos_ids_tensor, ProgramTensorMetadataDependency::None})
+        .AddOutput({&pos_ids_tensor, ProgramTensorMetadataDependency::Type})
         .SetDispatchGroupSize((total_seq + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .AddUniformVariables({
             total_seq,
@@ -133,10 +134,11 @@ Status RotaryEmbedding::ComputeInternal(ComputeContext& context) const {
 
   contrib::webgpu::RotaryEmbeddingProgram program{interleaved_};
   program
-      .AddInputs({{input, ProgramTensorMetadataDependency::None},
-                  {&pos_ids_tensor, ProgramTensorMetadataDependency::None},
-                  {cos_cache, ProgramTensorMetadataDependency::None, cache_2d_shape, 1},
-                  {sin_cache, ProgramTensorMetadataDependency::None, cache_2d_shape, 1}})
+      .CacheHint(interleaved_)
+      .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
+                  {&pos_ids_tensor, ProgramTensorMetadataDependency::Rank},
+                  {cos_cache, ProgramTensorMetadataDependency::Rank, cache_2d_shape, 1},
+                  {sin_cache, ProgramTensorMetadataDependency::Rank, cache_2d_shape, 1}})
       .AddOutput({output, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{1.0f},

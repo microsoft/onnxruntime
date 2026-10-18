@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/gated_add.h"
 
 #include "core/providers/webgpu/shader_helper.h"
@@ -21,8 +20,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     GatedAdd);
 
-Status GatedAddProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                 ConfiguredShaderHelper& shader) {
+Status GatedAddProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform);
   const auto& y = shader.AddInput("y", ShaderUsage::UseUniform);
   const auto& gate = shader.AddInput("gate", ShaderUsage::UseUniform);
@@ -65,9 +63,9 @@ Status GatedAdd::ComputeInternal(ComputeContext& context) const {
   }
 
   GatedAddProgram program{};
-  program.AddInputs({{x, ProgramTensorMetadataDependency::None},
-                     {y, ProgramTensorMetadataDependency::None},
-                     {gate, ProgramTensorMetadataDependency::None}})
+  program.AddInputs({{x, ProgramTensorMetadataDependency::Type},
+                     {y, ProgramTensorMetadataDependency::Type},
+                     {gate, ProgramTensorMetadataDependency::Type}})
       .AddOutput({output, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(output_size) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(output_size)},

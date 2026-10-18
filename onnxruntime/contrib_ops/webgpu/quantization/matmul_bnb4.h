@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -14,36 +13,24 @@ namespace webgpu {
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
-#define WEBGPU_MAT_MUL_BNB4_PROGRAM_CONFIG(F) \
-  F(int64_t, quant_type_)                     \
-  F(int, output_number_)
+class MatMulBnb4Program final : public Program<MatMulBnb4Program> {
+ public:
+  MatMulBnb4Program(int64_t quant_type, int output_number)
+      : Program{"MatMulBnb4"}, quant_type_{quant_type}, output_number_{output_number} {}
 
-struct MatMulBnb4ProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MAT_MUL_BNB4_PROGRAM_CONFIG);
-  static Config MakeConfig(int64_t quant_type, int output_number) {
-    Config result{};
-    result.quant_type_ = int64_t{quant_type};
-    result.output_number_ = int{output_number};
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-    return result;
-  }
-  static constexpr std::string_view name = "MatMulBnb4";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"N", ProgramUniformVariableDataType::Uint32},
+                                          {"K", ProgramUniformVariableDataType::Uint32},
+                                          {"block_size", ProgramUniformVariableDataType::Uint32},
+                                          {"output_size", ProgramUniformVariableDataType::Uint32});
 
-#define WEBGPU_MAT_MUL_BNB4_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, N)                                         \
-  U(Uint32, K)                                         \
-  U(Uint32, block_size)                                \
-  U(Uint32, output_size)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MAT_MUL_BNB4_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_MAT_MUL_BNB4_PROGRAM_SHADER_UNIFORMS
-
+ private:
+  int64_t quant_type_;
   // Number of output rows (M dimension) computed by each invocation. Reusing each dequantized
   // weight across multiple rows amortizes the relatively expensive dequantization.
+  int output_number_;
 };
-#undef WEBGPU_MAT_MUL_BNB4_PROGRAM_CONFIG
-
-using MatMulBnb4Program = ConfiguredProgram<MatMulBnb4ProgramShader>;
 
 // Shared-memory tiled variant used for larger M. Two schemes are selected by `components`:
 //   * components == 4 (N % 4 == 0 && K % 4 == 0): a vec4 GEMM tiling modeled on the WebGPU
@@ -51,20 +38,8 @@ using MatMulBnb4Program = ConfiguredProgram<MatMulBnb4ProgramShader>;
 //     4 rows x one vec4 of columns); A is read vec4 along K, B is dequantized into a vec4 of 4
 //     output columns, and the output is stored vec4.
 //   * components == 1 (fallback): a scalar 16x16 tile, one output element per invocation.
-#define WEBGPU_MAT_MUL_BNB4_TILE_PROGRAM_CONFIG(F) \
-  F(int64_t, quant_type_)                          \
-  F(int, components_)
-
-struct MatMulBnb4TileProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MAT_MUL_BNB4_TILE_PROGRAM_CONFIG);
-  static Config MakeConfig(int64_t quant_type, int components) {
-    Config result{};
-    result.quant_type_ = int64_t{quant_type};
-    result.components_ = int{components};
-
-    return result;
-  }
-  static constexpr std::string_view name = "MatMulBnb4Tile";
+class MatMulBnb4TileProgram final : public Program<MatMulBnb4TileProgram> {
+ public:
   // Scalar-fallback tile size and the M threshold above which a tiled kernel is used.
   static constexpr int kTileSize = 16;
   // Vec4 GEMM tiling: 8x8 workgroup, 4 rows per invocation -> a 32x32 output block per workgroup.
@@ -72,21 +47,21 @@ struct MatMulBnb4TileProgramShader {
   static constexpr int kGemmRowsPerThread = 4;
   static constexpr int kGemmTile = kGemmWorkgroup * kGemmRowsPerThread;  // 32
 
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
+  MatMulBnb4TileProgram(int64_t quant_type, int components)
+      : Program{"MatMulBnb4Tile"}, quant_type_{quant_type}, components_{components} {}
 
-#define WEBGPU_MAT_MUL_BNB4_TILE_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, M)                                              \
-  U(Uint32, N)                                              \
-  U(Uint32, K)                                              \
-  U(Uint32, block_size)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MAT_MUL_BNB4_TILE_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_MAT_MUL_BNB4_TILE_PROGRAM_SHADER_UNIFORMS
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
 
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32},
+                                          {"K", ProgramUniformVariableDataType::Uint32},
+                                          {"block_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  int64_t quant_type_;
   // Vectorization scheme selector: 4 = vec4 GEMM tiling, 1 = scalar fallback (see class comment).
+  int components_;
 };
-#undef WEBGPU_MAT_MUL_BNB4_TILE_PROGRAM_CONFIG
-
-using MatMulBnb4TileProgram = ConfiguredProgram<MatMulBnb4TileProgramShader>;
 
 class MatMulBnb4 final : public WebGpuKernel {
  public:

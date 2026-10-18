@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
@@ -12,13 +11,17 @@ namespace onnxruntime {
 namespace webgpu {
 struct SymbolInfo {
   size_t count{0};
+  std::vector<int> input_indices;
   int64_t dim_value{0};
 };
 
-using EinsumSymbolIndices = std::map<std::string, std::vector<size_t>>;
-#define WEBGPU_EINSUM_TERM_CONFIG(F) F(EinsumSymbolIndices, symbol_to_indices)
-WEBGPU_DECLARE_SPECIALIZATION(EinsumTerm, WEBGPU_EINSUM_TERM_CONFIG);
-#undef WEBGPU_EINSUM_TERM_CONFIG
+struct EinsumTerm {
+  // Indices of the symbols in the term which cannot be negative.
+  std::map<std::string, std::vector<size_t>> symbol_to_indices;
+  // The index of the input tensor in the Einsum equation.
+  // This is -1 for the output term.
+  int input_index{-1};
+};
 
 class EinsumEquation {
  public:
@@ -31,38 +34,26 @@ class EinsumEquation {
  private:
   bool has_ellipsis_{false};
   std::vector<int64_t> ellipsis_dims_;
-  void AddSymbol(const std::string& symbol, int64_t dim_value);
+  void AddSymbol(const std::string& symbol, int64_t dim_value, int input_index);
   EinsumTerm ProcessTerm(const std::string& term,
                          bool is_input,
-                         gsl::span<const int64_t> dims);
+                         gsl::span<const int64_t> dims,
+                         int index = -1);
 };
 
-#define WEBGPU_EINSUM_PROGRAM_CONFIG(F)         \
-  F(gsl::span<const EinsumTerm>, input_terms_)  \
-  F(gsl::span<const EinsumTerm>, output_terms_) \
-  F(bool, is_scalar_)
+class EinsumProgram final : public Program<EinsumProgram> {
+ public:
+  EinsumProgram(size_t input_count, const EinsumEquation& parsed_equation)
+      : Program{"Einsum"}, input_count_(input_count), parsed_equation_{parsed_equation} {}
 
-struct EinsumProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_EINSUM_PROGRAM_CONFIG);
-  static Config MakeConfig(const EinsumEquation& equation) {
-    Config result{};
-    result.input_terms_ = gsl::span<const EinsumTerm>{equation.lhs_};
-    result.output_terms_ = gsl::span<const EinsumTerm>{&equation.rhs_, 1};
-    result.is_scalar_ = bool{equation.output_dims.empty()};
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-    return result;
-  }
-  static constexpr std::string_view name = "Einsum";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
 
-#define WEBGPU_EINSUM_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, output_size)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_EINSUM_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_EINSUM_PROGRAM_SHADER_UNIFORMS
+ private:
+  size_t input_count_;
+  const EinsumEquation& parsed_equation_;
 };
-#undef WEBGPU_EINSUM_PROGRAM_CONFIG
-
-using EinsumProgram = ConfiguredProgram<EinsumProgramShader>;
 
 class Einsum final : public WebGpuKernel {
  public:

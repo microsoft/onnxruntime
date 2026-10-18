@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/kv_cache_block_quant_int8.h"
 #include "contrib_ops/webgpu/bert/kv_cache_quantization.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -13,40 +12,43 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-Status KvCacheBlockQuantInt8ProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                              ConfiguredShaderHelper& shader) {
+Status KvCacheBlockQuantInt8Program::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& key = shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias |
                                                ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
   const auto& value = shader.AddInput("value", ShaderUsage::UseUniform);
   const auto& present_key = shader.AddOutput("present_key", ShaderUsage::UseUniform);
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
 
-  if (config.use_seqlen_k_) {
+  if (use_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::None);
   }
-  if (config.prepare_indirect_dispatch_) {
+  if (prepare_indirect_dispatch_) {
     shader.AddInput("total_sequence_length_input", ShaderUsage::None);
     shader.AddOutput("indirect_buffer", ShaderUsage::None);
   }
 
   const ShaderVariableHelper* past_key = nullptr;
   const ShaderVariableHelper* past_value = nullptr;
-  if (config.has_past_) {
+  if (has_past_) {
     past_key = &shader.AddInput("past_key", ShaderUsage::UseUniform);
     past_value = &shader.AddInput("past_value", ShaderUsage::UseUniform);
   }
 
-  return WGSL_TEMPLATE_APPLY(
-      shader, "bert/kv_cache_block_quant_int8.wgsl.template", WGSL_TEMPLATE_PARAMETER(components, config.components_),
-      WGSL_TEMPLATE_PARAMETER(compressed_head_size_u32, config.compressed_head_size_u32_),
-      WGSL_TEMPLATE_PARAMETER(has_past, config.has_past_), WGSL_TEMPLATE_PARAMETER(head_size, config.head_size_),
-      WGSL_TEMPLATE_PARAMETER(kv_BNSH, config.kv_BNSH_),
-      WGSL_TEMPLATE_PARAMETER(past_present_share_buffer, config.past_present_share_buffer_),
-      WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch, config.prepare_indirect_dispatch_),
-      WGSL_TEMPLATE_PARAMETER(use_seqlen_k, config.use_seqlen_k_), WGSL_TEMPLATE_VARIABLE(key, key),
-      WGSL_TEMPLATE_OPTIONAL_VARIABLE(past_key, past_key), WGSL_TEMPLATE_OPTIONAL_VARIABLE(past_value, past_value),
-      WGSL_TEMPLATE_VARIABLE(present_key, present_key), WGSL_TEMPLATE_VARIABLE(present_value, present_value),
-      WGSL_TEMPLATE_VARIABLE(value, value));
+  return WGSL_TEMPLATE_APPLY(shader, "bert/kv_cache_block_quant_int8.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(components, components_),
+                             WGSL_TEMPLATE_PARAMETER(compressed_head_size_u32, compressed_head_size_u32_),
+                             WGSL_TEMPLATE_PARAMETER(has_past, has_past_),
+                             WGSL_TEMPLATE_PARAMETER(head_size, head_size_),
+                             WGSL_TEMPLATE_PARAMETER(kv_BNSH, kv_BNSH_),
+                             WGSL_TEMPLATE_PARAMETER(past_present_share_buffer, past_present_share_buffer_),
+                             WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch, prepare_indirect_dispatch_),
+                             WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
+                             WGSL_TEMPLATE_VARIABLE(key, key),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(past_key, past_key),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(past_value, past_value),
+                             WGSL_TEMPLATE_VARIABLE(present_key, present_key),
+                             WGSL_TEMPLATE_VARIABLE(present_value, present_value),
+                             WGSL_TEMPLATE_VARIABLE(value, value));
 }
 
 Status BlockQuantInt8CopyToKvCache(onnxruntime::webgpu::ComputeContext& context,
@@ -83,8 +85,8 @@ Status BlockQuantInt8CopyToKvCache(onnxruntime::webgpu::ComputeContext& context,
                                        head_size, components, compressed_head_size_u32,
                                        prepare_indirect_dispatch, use_seqlen_k};
   if (kv_BNSH) {
-    program.AddInputs({{K, ProgramTensorMetadataDependency::None, components},
-                       {V, ProgramTensorMetadataDependency::None, components}});
+    program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, components},
+                       {V, ProgramTensorMetadataDependency::TypeAndRank, components}});
   } else {
     ORT_RETURN_IF_ERROR(
         (parameters.qkv_format_ == Q_K_V_BSNH)
@@ -93,8 +95,8 @@ Status BlockQuantInt8CopyToKvCache(onnxruntime::webgpu::ComputeContext& context,
                               "qkv format ", parameters.qkv_format_, " is not supported yet."));
     TensorShape reshaped_KV_shape{
         parameters.batch_size_, parameters.kv_sequence_length_, kv_num_heads, head_size / components};
-    program.AddInputs({{K, ProgramTensorMetadataDependency::None, reshaped_KV_shape, components},
-                       {V, ProgramTensorMetadataDependency::None, reshaped_KV_shape, components}});
+    program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components},
+                       {V, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components}});
   }
 
   if (use_seqlen_k) {
@@ -104,11 +106,11 @@ Status BlockQuantInt8CopyToKvCache(onnxruntime::webgpu::ComputeContext& context,
     program.AddInput({total_seqlen, ProgramTensorMetadataDependency::None});
   }
   if (has_past) {
-    program.AddInputs({{past_key, ProgramTensorMetadataDependency::None},
-                       {past_value, ProgramTensorMetadataDependency::None}});
+    program.AddInputs({{past_key, ProgramTensorMetadataDependency::TypeAndRank},
+                       {past_value, ProgramTensorMetadataDependency::TypeAndRank}});
   }
-  program.AddOutputs({{present_key, ProgramTensorMetadataDependency::None},
-                      {present_value, ProgramTensorMetadataDependency::None}});
+  program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank},
+                      {present_value, ProgramTensorMetadataDependency::Rank}});
   if (prepare_indirect_dispatch) {
     program.AddOutput({indirect_buffer, ProgramTensorMetadataDependency::None});
   }
@@ -119,7 +121,9 @@ Status BlockQuantInt8CopyToKvCache(onnxruntime::webgpu::ComputeContext& context,
 
   program.SetDispatchGroupSize(total_workgroups)
       .SetWorkgroupSize(workgroup_size)
-
+      .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_,
+                 prepare_indirect_dispatch, use_seqlen_k, head_size, components,
+                 compressed_head_size_u32)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.batch_size_)},
                             {static_cast<uint32_t>(compressed_head_size_u32)},
                             {static_cast<uint32_t>(copy_sequence_length)},
@@ -136,40 +140,45 @@ Status BlockQuantInt8CopyToKvCache(onnxruntime::webgpu::ComputeContext& context,
   return context.RunProgram(program);
 }
 
-Status KvCacheBlockQuantInt8FusedRotaryProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                                         ConfiguredShaderHelper& shader) {
+Status KvCacheBlockQuantInt8FusedRotaryProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& packed_qkv = shader.AddInput("packed_qkv", ShaderUsage::UseUniform);
   const auto& cos_cache = shader.AddInput(
       "cos_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
 
-  if (config.use_seqlen_k_) {
+  if (use_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::None);
   }
-  if (config.prepare_indirect_dispatch_) {
+  if (prepare_indirect_dispatch_) {
     shader.AddInput("total_sequence_length_input", ShaderUsage::None);
   }
 
   const auto& query = shader.AddOutput("query", ShaderUsage::UseUniform);
   const auto& present_key = shader.AddOutput("present_key", ShaderUsage::UseUniform);
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
-  if (config.prepare_indirect_dispatch_) {
+  if (prepare_indirect_dispatch_) {
     shader.AddOutput("indirect_buffer", ShaderUsage::None);
   }
 
-  return WGSL_TEMPLATE_APPLY(
-      shader, "bert/kv_cache_block_quant_int8_fused_rotary.wgsl.template",
-      WGSL_TEMPLATE_PARAMETER(compressed_head_size_u32, config.compressed_head_size_u32_),
-      WGSL_TEMPLATE_PARAMETER(half_rotary_dim, config.half_rotary_dim_),
-      WGSL_TEMPLATE_PARAMETER(head_size, config.head_size_),
-      WGSL_TEMPLATE_PARAMETER(multi_rotary_cache_concat_offset, config.multi_rotary_cache_concat_offset_),
-      WGSL_TEMPLATE_PARAMETER(past_present_share_buffer, config.past_present_share_buffer_),
-      WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch, config.prepare_indirect_dispatch_),
-      WGSL_TEMPLATE_PARAMETER(use_multi_rotary_cache_concat, config.multi_rotary_cache_concat_offset_ > 0),
-      WGSL_TEMPLATE_PARAMETER(use_seqlen_k, config.use_seqlen_k_), WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
-      WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv), WGSL_TEMPLATE_VARIABLE(present_key, present_key),
-      WGSL_TEMPLATE_VARIABLE(present_value, present_value), WGSL_TEMPLATE_VARIABLE(query, query),
-      WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache));
+  return WGSL_TEMPLATE_APPLY(shader, "bert/kv_cache_block_quant_int8_fused_rotary.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(compressed_head_size_u32, compressed_head_size_u32_),
+                             WGSL_TEMPLATE_PARAMETER(half_rotary_dim, half_rotary_dim_),
+                             WGSL_TEMPLATE_PARAMETER(head_size, head_size_),
+                             WGSL_TEMPLATE_PARAMETER(multi_rotary_cache_concat_offset,
+                                                     multi_rotary_cache_concat_offset_),
+                             WGSL_TEMPLATE_PARAMETER(past_present_share_buffer,
+                                                     past_present_share_buffer_),
+                             WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch,
+                                                     prepare_indirect_dispatch_),
+                             WGSL_TEMPLATE_PARAMETER(use_multi_rotary_cache_concat,
+                                                     multi_rotary_cache_concat_offset_ > 0),
+                             WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
+                             WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
+                             WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv),
+                             WGSL_TEMPLATE_VARIABLE(present_key, present_key),
+                             WGSL_TEMPLATE_VARIABLE(present_value, present_value),
+                             WGSL_TEMPLATE_VARIABLE(query, query),
+                             WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache));
 }
 
 Status BlockQuantInt8ApplyRotaryAndCopyToKvCache(
@@ -211,10 +220,10 @@ Status BlockQuantInt8ApplyRotaryAndCopyToKvCache(
       head_size, half_rotary_dim, compressed_head_size_u32,
       parameters.past_present_share_buffer_, prepare_indirect_dispatch, use_seqlen_k,
       multi_rotary_cache_concat_offset};
-  program.AddInput({packedQKV, ProgramTensorMetadataDependency::None});
+  program.AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank});
   program.AddInputs({
-      {cos_cache, ProgramTensorMetadataDependency::None},
-      {sin_cache, ProgramTensorMetadataDependency::None},
+      {cos_cache, ProgramTensorMetadataDependency::TypeAndRank},
+      {sin_cache, ProgramTensorMetadataDependency::Rank},
   });
   if (use_seqlen_k) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
@@ -223,8 +232,8 @@ Status BlockQuantInt8ApplyRotaryAndCopyToKvCache(
     program.AddInput({total_seqlen, ProgramTensorMetadataDependency::None});
   }
   program.AddOutputs({{query, ProgramTensorMetadataDependency::None},
-                      {present_key, ProgramTensorMetadataDependency::None},
-                      {present_value, ProgramTensorMetadataDependency::None}});
+                      {present_key, ProgramTensorMetadataDependency::Rank},
+                      {present_value, ProgramTensorMetadataDependency::Rank}});
   if (prepare_indirect_dispatch) {
     program.AddOutput({indirect_buffer, ProgramTensorMetadataDependency::None});
   }
@@ -232,7 +241,9 @@ Status BlockQuantInt8ApplyRotaryAndCopyToKvCache(
   const uint32_t present_seq_length = static_cast<uint32_t>(present_key->Shape()[2]);
   program.SetDispatchGroupSize(total_workgroups)
       .SetWorkgroupSize(workgroup_size)
-
+      .CacheHint(parameters.past_present_share_buffer_, prepare_indirect_dispatch,
+                 use_seqlen_k, head_size, half_rotary_dim, compressed_head_size_u32,
+                 multi_rotary_cache_concat_offset)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.batch_size_)},
                             {static_cast<uint32_t>(compressed_head_size_u32)},
                             {static_cast<uint32_t>(parameters.hidden_size_)},

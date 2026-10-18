@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -23,216 +22,144 @@ using onnxruntime::webgpu::ComputeContext;
 // VarlenNGramHashMappingProgram and VarlenNGramFillDefaultProgram both read this flag and their writes
 // are mutually exclusive on it, so the output is always fully and unambiguously written regardless of
 // launch order, as long as this program runs first (guaranteed by same-queue submission order).
-#define WEBGPU_VARLEN_N_GRAM_VALIDATE_CU_SEQLENS_PROGRAM_CONFIG(F)
-
-struct VarlenNGramValidateCuSeqlensProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_VARLEN_N_GRAM_VALIDATE_CU_SEQLENS_PROGRAM_CONFIG);
-  static Config MakeConfig() {
-    Config result{};
-
-    return result;
-  }
-  static constexpr std::string_view name = "VarlenNGramValidateCuSeqlens";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-#define WEBGPU_VARLEN_N_GRAM_VALIDATE_CU_SEQLENS_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, batch_size)                                                     \
-  U(Uint32, total_tokens)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_VARLEN_N_GRAM_VALIDATE_CU_SEQLENS_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_VARLEN_N_GRAM_VALIDATE_CU_SEQLENS_PROGRAM_SHADER_UNIFORMS
+class VarlenNGramValidateCuSeqlensProgram final : public Program<VarlenNGramValidateCuSeqlensProgram> {
+ public:
+  VarlenNGramValidateCuSeqlensProgram() : Program{"VarlenNGramValidateCuSeqlens"} {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
+                                          {"total_tokens", ProgramUniformVariableDataType::Uint32});
 };
-#undef WEBGPU_VARLEN_N_GRAM_VALIDATE_CU_SEQLENS_PROGRAM_CONFIG
-
-using VarlenNGramValidateCuSeqlensProgram = ConfiguredProgram<VarlenNGramValidateCuSeqlensProgramShader>;
 
 // Fills the hash_ids output (and, when present, present_ids) with deterministic defaults (zero hash
 // ids, pad_id present_ids) when the validity flag produced by VarlenNGramValidateCuSeqlensProgram is
 // false. Dispatched over a size derived only from host-known shape (max(total_tokens * num_heads,
 // batch_size * state_length)), never from the untrusted cu_seqlens contents, so it always covers the
 // whole output regardless of what cu_seqlens contains.
-#define WEBGPU_VARLEN_N_GRAM_FILL_DEFAULT_PROGRAM_CONFIG(F) \
-  F(bool, has_present_ids_)                                 \
-  F(bool, has_present_segment_ids_)                         \
-  F(bool, has_state_update_)                                \
-  F(bool, has_eos_token_id_)
+class VarlenNGramFillDefaultProgram final : public Program<VarlenNGramFillDefaultProgram> {
+ public:
+  VarlenNGramFillDefaultProgram(bool has_present_ids, bool has_present_segment_ids, bool has_state_update,
+                                bool has_eos_token_id)
+      : Program{"VarlenNGramFillDefault"},
+        has_present_ids_(has_present_ids),
+        has_present_segment_ids_(has_present_segment_ids),
+        has_state_update_(has_state_update),
+        has_eos_token_id_(has_eos_token_id) {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_count", ProgramUniformVariableDataType::Uint32},
+                                          {"present_count", ProgramUniformVariableDataType::Uint32},
+                                          {"state_update_count", ProgramUniformVariableDataType::Uint32},
+                                          {"pad_id", ProgramUniformVariableDataType::Int32});
 
-struct VarlenNGramFillDefaultProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_VARLEN_N_GRAM_FILL_DEFAULT_PROGRAM_CONFIG);
-  static Config MakeConfig(bool has_present_ids, bool has_present_segment_ids, bool has_state_update, bool has_eos_token_id) {
-    Config result{};
-    result.has_present_ids_ = bool(has_present_ids);
-    result.has_present_segment_ids_ = bool(has_present_segment_ids);
-    result.has_state_update_ = bool(has_state_update);
-    result.has_eos_token_id_ = bool(has_eos_token_id);
-
-    return result;
-  }
-  static constexpr std::string_view name = "VarlenNGramFillDefault";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-#define WEBGPU_VARLEN_N_GRAM_FILL_DEFAULT_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, output_count)                                            \
-  U(Uint32, present_count)                                           \
-  U(Uint32, state_update_count)                                      \
-  U(Int32, pad_id)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_VARLEN_N_GRAM_FILL_DEFAULT_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_VARLEN_N_GRAM_FILL_DEFAULT_PROGRAM_SHADER_UNIFORMS
+ private:
+  bool has_present_ids_;
+  bool has_present_segment_ids_;
+  bool has_state_update_;
+  bool has_eos_token_id_;
 };
-#undef WEBGPU_VARLEN_N_GRAM_FILL_DEFAULT_PROGRAM_CONFIG
-
-using VarlenNGramFillDefaultProgram = ConfiguredProgram<VarlenNGramFillDefaultProgramShader>;
 
 // Computes n-gram hash ids over a packed, token-major batch of variable-length sequences. One
 // workgroup is assigned per packed request (dispatch group count == batch_size) so the n-gram
 // window for every token in that request is clamped at the request's own boundary and never reads
 // across into an adjacent packed request.
-#define WEBGPU_VARLEN_N_GRAM_HASH_MAPPING_PROGRAM_CONFIG(F) \
-  F(bool, has_past_ids_)                                    \
-  F(bool, has_eos_token_id_)                                \
-  F(bool, has_nearest_reset_)
+class VarlenNGramHashMappingProgram final : public Program<VarlenNGramHashMappingProgram> {
+ public:
+  VarlenNGramHashMappingProgram(bool has_past_ids, bool has_eos_token_id, bool has_nearest_reset)
+      : Program{"VarlenNGramHashMapping"},
+        has_past_ids_(has_past_ids),
+        has_eos_token_id_(has_eos_token_id),
+        has_nearest_reset_(has_nearest_reset) {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
+                                          {"total_tokens", ProgramUniformVariableDataType::Uint32},
+                                          {"max_ngram_size", ProgramUniformVariableDataType::Uint32},
+                                          {"n_head_per_ngram", ProgramUniformVariableDataType::Uint32},
+                                          {"pad_id", ProgramUniformVariableDataType::Int32});
 
-struct VarlenNGramHashMappingProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_VARLEN_N_GRAM_HASH_MAPPING_PROGRAM_CONFIG);
-  static Config MakeConfig(bool has_past_ids, bool has_eos_token_id, bool has_nearest_reset) {
-    Config result{};
-    result.has_past_ids_ = bool(has_past_ids);
-    result.has_eos_token_id_ = bool(has_eos_token_id);
-    result.has_nearest_reset_ = bool(has_nearest_reset);
-
-    return result;
-  }
-  static constexpr std::string_view name = "VarlenNGramHashMapping";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-#define WEBGPU_VARLEN_N_GRAM_HASH_MAPPING_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, batch_size)                                              \
-  U(Uint32, total_tokens)                                            \
-  U(Uint32, max_ngram_size)                                          \
-  U(Uint32, n_head_per_ngram)                                        \
-  U(Int32, pad_id)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_VARLEN_N_GRAM_HASH_MAPPING_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_VARLEN_N_GRAM_HASH_MAPPING_PROGRAM_SHADER_UNIFORMS
+ private:
+  bool has_past_ids_;
+  bool has_eos_token_id_;
+  bool has_nearest_reset_;
 };
-#undef WEBGPU_VARLEN_N_GRAM_HASH_MAPPING_PROGRAM_CONFIG
 
-using VarlenNGramHashMappingProgram = ConfiguredProgram<VarlenNGramHashMappingProgramShader>;
+class VarlenNGramPrepareNearestResetProgram final
+    : public Program<VarlenNGramPrepareNearestResetProgram> {
+ public:
+  VarlenNGramPrepareNearestResetProgram(bool has_past_ids, bool has_eos_token_id,
+                                        bool has_segment_ids, bool has_past_segment_ids,
+                                        bool reset_on_eos)
+      : Program{"VarlenNGramPrepareNearestReset"},
+        has_past_ids_(has_past_ids),
+        has_eos_token_id_(has_eos_token_id),
+        has_segment_ids_(has_segment_ids),
+        has_past_segment_ids_(has_past_segment_ids),
+        reset_on_eos_(reset_on_eos) {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
+                                          {"total_tokens", ProgramUniformVariableDataType::Uint32},
+                                          {"max_ngram_size", ProgramUniformVariableDataType::Uint32},
+                                          {"pad_id", ProgramUniformVariableDataType::Int32});
 
-#define WEBGPU_VARLEN_N_GRAM_PREPARE_NEAREST_RESET_PROGRAM_CONFIG(F) \
-  F(bool, has_past_ids_)                                             \
-  F(bool, has_eos_token_id_)                                         \
-  F(bool, has_segment_ids_)                                          \
-  F(bool, has_past_segment_ids_)                                     \
-  F(bool, reset_on_eos_)
-
-struct VarlenNGramPrepareNearestResetProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_VARLEN_N_GRAM_PREPARE_NEAREST_RESET_PROGRAM_CONFIG);
-  static Config MakeConfig(bool has_past_ids, bool has_eos_token_id, bool has_segment_ids, bool has_past_segment_ids, bool reset_on_eos) {
-    Config result{};
-    result.has_past_ids_ = bool(has_past_ids);
-    result.has_eos_token_id_ = bool(has_eos_token_id);
-    result.has_segment_ids_ = bool(has_segment_ids);
-    result.has_past_segment_ids_ = bool(has_past_segment_ids);
-    result.reset_on_eos_ = bool(reset_on_eos);
-
-    return result;
-  }
-  static constexpr std::string_view name = "VarlenNGramPrepareNearestReset";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-#define WEBGPU_VARLEN_N_GRAM_PREPARE_NEAREST_RESET_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, batch_size)                                                       \
-  U(Uint32, total_tokens)                                                     \
-  U(Uint32, max_ngram_size)                                                   \
-  U(Int32, pad_id)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_VARLEN_N_GRAM_PREPARE_NEAREST_RESET_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_VARLEN_N_GRAM_PREPARE_NEAREST_RESET_PROGRAM_SHADER_UNIFORMS
+ private:
+  bool has_past_ids_;
+  bool has_eos_token_id_;
+  bool has_segment_ids_;
+  bool has_past_segment_ids_;
+  bool reset_on_eos_;
 };
-#undef WEBGPU_VARLEN_N_GRAM_PREPARE_NEAREST_RESET_PROGRAM_CONFIG
 
-using VarlenNGramPrepareNearestResetProgram = ConfiguredProgram<VarlenNGramPrepareNearestResetProgramShader>;
-
-#define WEBGPU_VARLEN_N_GRAM_ADD_HEAD_OFFSETS_PROGRAM_CONFIG(F)
-
-struct VarlenNGramAddHeadOffsetsProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_VARLEN_N_GRAM_ADD_HEAD_OFFSETS_PROGRAM_CONFIG);
-  static Config MakeConfig() {
-    Config result{};
-
-    return result;
-  }
-  static constexpr std::string_view name = "VarlenNGramAddHeadOffsets";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-#define WEBGPU_VARLEN_N_GRAM_ADD_HEAD_OFFSETS_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, output_count)                                                \
-  U(Uint32, num_heads)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_VARLEN_N_GRAM_ADD_HEAD_OFFSETS_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_VARLEN_N_GRAM_ADD_HEAD_OFFSETS_PROGRAM_SHADER_UNIFORMS
+class VarlenNGramAddHeadOffsetsProgram final : public Program<VarlenNGramAddHeadOffsetsProgram> {
+ public:
+  VarlenNGramAddHeadOffsetsProgram() : Program{"VarlenNGramAddHeadOffsets"} {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_count", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
 };
-#undef WEBGPU_VARLEN_N_GRAM_ADD_HEAD_OFFSETS_PROGRAM_CONFIG
-
-using VarlenNGramAddHeadOffsetsProgram = ConfiguredProgram<VarlenNGramAddHeadOffsetsProgramShader>;
 
 // Emits the right-aligned trailing window of (past_ids ++ this request's tokens) per packed
 // request, analogous to NGramPresentIdsProgram but scoped by cumulative_sequence_length instead of
 // a fixed-stride batch row.
-#define WEBGPU_VARLEN_N_GRAM_PRESENT_IDS_PROGRAM_CONFIG(F) \
-  F(bool, has_present_ids_)                                \
-  F(bool, has_present_segment_ids_)                        \
-  F(bool, has_past_ids_)                                   \
-  F(bool, has_past_segment_ids_)                           \
-  F(bool, has_eos_token_id_)
+class VarlenNGramPresentIdsProgram final : public Program<VarlenNGramPresentIdsProgram> {
+ public:
+  VarlenNGramPresentIdsProgram(bool has_present_ids, bool has_present_segment_ids, bool has_past_ids,
+                               bool has_past_segment_ids, bool has_eos_token_id)
+      : Program{"VarlenNGramPresentIds"},
+        has_present_ids_(has_present_ids),
+        has_present_segment_ids_(has_present_segment_ids),
+        has_past_ids_(has_past_ids),
+        has_past_segment_ids_(has_past_segment_ids),
+        has_eos_token_id_(has_eos_token_id) {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
+                                          {"state_length", ProgramUniformVariableDataType::Uint32},
+                                          {"batch_size", ProgramUniformVariableDataType::Uint32},
+                                          {"total_tokens", ProgramUniformVariableDataType::Uint32},
+                                          {"pad_id", ProgramUniformVariableDataType::Int32});
 
-struct VarlenNGramPresentIdsProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_VARLEN_N_GRAM_PRESENT_IDS_PROGRAM_CONFIG);
-  static Config MakeConfig(bool has_present_ids, bool has_present_segment_ids, bool has_past_ids, bool has_past_segment_ids,
-                           bool has_eos_token_id) {
-    Config result{};
-    result.has_present_ids_ = bool(has_present_ids);
-    result.has_present_segment_ids_ = bool(has_present_segment_ids);
-    result.has_past_ids_ = bool(has_past_ids);
-    result.has_past_segment_ids_ = bool(has_past_segment_ids);
-    result.has_eos_token_id_ = bool(has_eos_token_id);
-
-    return result;
-  }
-  static constexpr std::string_view name = "VarlenNGramPresentIds";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-#define WEBGPU_VARLEN_N_GRAM_PRESENT_IDS_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, total)                                                  \
-  U(Uint32, state_length)                                           \
-  U(Uint32, batch_size)                                             \
-  U(Uint32, total_tokens)                                           \
-  U(Int32, pad_id)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_VARLEN_N_GRAM_PRESENT_IDS_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_VARLEN_N_GRAM_PRESENT_IDS_PROGRAM_SHADER_UNIFORMS
+ private:
+  bool has_present_ids_;
+  bool has_present_segment_ids_;
+  bool has_past_ids_;
+  bool has_past_segment_ids_;
+  bool has_eos_token_id_;
 };
-#undef WEBGPU_VARLEN_N_GRAM_PRESENT_IDS_PROGRAM_CONFIG
 
-using VarlenNGramPresentIdsProgram = ConfiguredProgram<VarlenNGramPresentIdsProgramShader>;
+class VarlenNGramStateUpdateProgram final : public Program<VarlenNGramStateUpdateProgram> {
+ public:
+  VarlenNGramStateUpdateProgram(bool has_past_ids, bool has_eos_token_id)
+      : Program{"VarlenNGramStateUpdate"},
+        has_past_ids_(has_past_ids),
+        has_eos_token_id_(has_eos_token_id) {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
+                                          {"state_length", ProgramUniformVariableDataType::Uint32},
+                                          {"state_update_capacity", ProgramUniformVariableDataType::Uint32},
+                                          {"total_tokens", ProgramUniformVariableDataType::Uint32},
+                                          {"pad_id", ProgramUniformVariableDataType::Int32});
 
-#define WEBGPU_VARLEN_N_GRAM_STATE_UPDATE_PROGRAM_CONFIG(F) \
-  F(bool, has_past_ids_)                                    \
-  F(bool, has_eos_token_id_)
-
-struct VarlenNGramStateUpdateProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_VARLEN_N_GRAM_STATE_UPDATE_PROGRAM_CONFIG);
-  static Config MakeConfig(bool has_past_ids, bool has_eos_token_id) {
-    Config result{};
-    result.has_past_ids_ = bool(has_past_ids);
-    result.has_eos_token_id_ = bool(has_eos_token_id);
-
-    return result;
-  }
-  static constexpr std::string_view name = "VarlenNGramStateUpdate";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader);
-#define WEBGPU_VARLEN_N_GRAM_STATE_UPDATE_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, total)                                                   \
-  U(Uint32, state_length)                                            \
-  U(Uint32, state_update_capacity)                                   \
-  U(Uint32, total_tokens)                                            \
-  U(Int32, pad_id)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_VARLEN_N_GRAM_STATE_UPDATE_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_VARLEN_N_GRAM_STATE_UPDATE_PROGRAM_SHADER_UNIFORMS
+ private:
+  bool has_past_ids_;
+  bool has_eos_token_id_;
 };
-#undef WEBGPU_VARLEN_N_GRAM_STATE_UPDATE_PROGRAM_CONFIG
-
-using VarlenNGramStateUpdateProgram = ConfiguredProgram<VarlenNGramStateUpdateProgramShader>;
 
 class VarlenNGramHashMapping final : public WebGpuKernel {
  public:

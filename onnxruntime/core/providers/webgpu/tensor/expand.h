@@ -4,36 +4,25 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-#define WEBGPU_EXPAND_PROGRAM_CONFIG(F)   \
-  F(bool, input_last_dim_divisible_by_4_) \
-  F(bool, output_last_dim_divisible_by_4_)
+class ExpandProgram final : public Program<ExpandProgram> {
+ public:
+  ExpandProgram(const bool input_last_dim_divisible_by_4, const bool output_last_dim_divisible_by_4) : Program{"Expand"},
+                                                                                                       input_last_dim_divisible_by_4_{input_last_dim_divisible_by_4},
+                                                                                                       output_last_dim_divisible_by_4_{output_last_dim_divisible_by_4} {}
 
-struct ExpandProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_EXPAND_PROGRAM_CONFIG);
-  static Config MakeConfig(const bool input_last_dim_divisible_by_4, const bool output_last_dim_divisible_by_4) {
-    Config result{};
-    result.input_last_dim_divisible_by_4_ = bool{input_last_dim_divisible_by_4};
-    result.output_last_dim_divisible_by_4_ = bool{output_last_dim_divisible_by_4};
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-    return result;
-  }
-  static constexpr std::string_view name = "Expand";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"data_size", ProgramUniformVariableDataType::Uint32});
 
-#define WEBGPU_EXPAND_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, data_size)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_EXPAND_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_EXPAND_PROGRAM_SHADER_UNIFORMS
+ private:
+  bool input_last_dim_divisible_by_4_;
+  bool output_last_dim_divisible_by_4_;
 };
-#undef WEBGPU_EXPAND_PROGRAM_CONFIG
-
-using ExpandProgram = ConfiguredProgram<ExpandProgramShader>;
 
 class Expand final : public WebGpuKernel {
  public:

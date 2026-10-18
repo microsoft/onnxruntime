@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/math/gemm_utils.h"
 
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -14,7 +13,7 @@ namespace webgpu {
 // which are used in the MatMulWriteFnSource function.
 namespace {
 
-void HandleMaybeHaveBiasForGEMM(ConfiguredShaderHelper& shader,
+void HandleMaybeHaveBiasForGEMM(ShaderHelper& shader,
                                 const ShaderVariableHelper& output,
                                 const ShaderVariableHelper* c,
                                 int output_components,
@@ -39,7 +38,7 @@ void HandleMaybeHaveBiasForGEMM(ConfiguredShaderHelper& shader,
   shader.AdditionalImplementation() << output.SetByIndices("coords", "value") << "\n";
 }
 
-void HandleMaybeBiasForMatMul(ConfiguredShaderHelper& shader,
+void HandleMaybeBiasForMatMul(ShaderHelper& shader,
                               const ShaderVariableHelper& output,
                               const ShaderVariableHelper* bias,
                               std::string activation_snippet,
@@ -53,7 +52,7 @@ void HandleMaybeBiasForMatMul(ConfiguredShaderHelper& shader,
 }
 
 void HandleMatMulWithSplitK(
-    ConfiguredShaderHelper& shader,
+    ShaderHelper& shader,
     bool is_gemm,
     const ShaderVariableHelper& output,
     ProgramVariableDataType output_variable_type) {
@@ -106,7 +105,7 @@ void HandleMatMulWithSplitK(
   }
 }
 
-void EmitMatMulWriteFnHeader(ConfiguredShaderHelper& shader, const ShaderVariableHelper& output) {
+void EmitMatMulWriteFnHeader(ShaderHelper& shader, const ShaderVariableHelper& output) {
   const int output_components = output.NumComponents();
   shader.AdditionalImplementation()
       << "fn mm_write(batch: i32, row: i32, colIn: i32, valueIn: output_value_t) {\n";
@@ -117,7 +116,7 @@ void EmitMatMulWriteFnHeader(ConfiguredShaderHelper& shader, const ShaderVariabl
                                     << "    var value = valueIn;\n";
 }
 
-void EmitMatMulWriteFnFooter(ConfiguredShaderHelper& shader) {
+void EmitMatMulWriteFnFooter(ShaderHelper& shader) {
   shader.AdditionalImplementation()
       << "  }\n"
       << "}\n\n";
@@ -125,7 +124,7 @@ void EmitMatMulWriteFnFooter(ConfiguredShaderHelper& shader) {
 
 }  // namespace
 
-void InitializeLogicalWorkgroupIDAndGlobalID(ConfiguredShaderHelper& shader) {
+void InitializeLogicalWorkgroupIDAndGlobalID(ShaderHelper& shader) {
   // Dispatch normalization can pad the grid. The return must be uniform across
   // each workgroup, including kernels that use barriers or reinterpret z for Split-K.
   shader.MainFunctionBody()
@@ -139,7 +138,7 @@ void InitializeLogicalWorkgroupIDAndGlobalID(ConfiguredShaderHelper& shader) {
       << "  let logical_global_id = logical_workgroup_id * workgroupSize + local_id;\n";
 }
 
-void MatMulReadFnSource(ConfiguredShaderHelper& shader,
+void MatMulReadFnSource(ShaderHelper& shader,
                         std::string_view function_name,
                         const ShaderVariableHelper& input,
                         const std::string& input_name,
@@ -180,7 +179,7 @@ void MatMulReadFnSource(ConfiguredShaderHelper& shader,
                                     << "}\n\n";
 }
 
-void MatMulReadFnSource(ConfiguredShaderHelper& shader,
+void MatMulReadFnSource(ShaderHelper& shader,
                         const ShaderVariableHelper& a,
                         const ShaderVariableHelper& b,
                         const ShaderIndicesHelper* batch_dims,
@@ -190,7 +189,7 @@ void MatMulReadFnSource(ConfiguredShaderHelper& shader,
   MatMulReadFnSource(shader, "mm_readB", b, "b", batch_dims, "uniforms.dim_inner", "uniforms.dim_b_outer", transB);
 }
 
-void MatMulWriteFnSourceForMatMul(ConfiguredShaderHelper& shader,
+void MatMulWriteFnSourceForMatMul(ShaderHelper& shader,
                                   const ShaderVariableHelper& output,
                                   const ShaderVariableHelper* bias,
                                   std::string activation_snippet,
@@ -200,7 +199,7 @@ void MatMulWriteFnSourceForMatMul(ConfiguredShaderHelper& shader,
   EmitMatMulWriteFnFooter(shader);
 }
 
-void MatMulWriteFnSourceForGemm(ConfiguredShaderHelper& shader,
+void MatMulWriteFnSourceForGemm(ShaderHelper& shader,
                                 const ShaderVariableHelper& output,
                                 const ShaderVariableHelper* bias,
                                 bool c_is_scalar) {
@@ -209,7 +208,7 @@ void MatMulWriteFnSourceForGemm(ConfiguredShaderHelper& shader,
   EmitMatMulWriteFnFooter(shader);
 }
 
-void MatMulWriteFnSourceWithSplitK(ConfiguredShaderHelper& shader,
+void MatMulWriteFnSourceWithSplitK(ShaderHelper& shader,
                                    const ShaderVariableHelper& output,
                                    bool is_gemm,
                                    ProgramVariableDataType output_variable_type) {
@@ -218,7 +217,7 @@ void MatMulWriteFnSourceWithSplitK(ConfiguredShaderHelper& shader,
   EmitMatMulWriteFnFooter(shader);
 }
 
-Status MakeMatMulPackedVec4Source(ConfiguredShaderHelper& shader,
+Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
                                   const InlinedVector<int64_t>& elements_per_thread,
                                   uint32_t workgroup_size_x,
                                   uint32_t workgroup_size_y,
@@ -469,7 +468,7 @@ Status MakeMatMulPackedVec4Source(ConfiguredShaderHelper& shader,
   return Status::OK();
 }
 
-Status MakeMatMulPackedSource(ConfiguredShaderHelper& shader,
+Status MakeMatMulPackedSource(ShaderHelper& shader,
                               const InlinedVector<int64_t>& elements_per_thread,
                               uint32_t workgroup_size_x,
                               uint32_t workgroup_size_y,

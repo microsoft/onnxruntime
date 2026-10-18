@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/math/matmul_packed.h"
 
 #include "core/providers/webgpu/math/gemm_utils.h"
@@ -12,11 +11,11 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status MatMulProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
+Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
 
-  const bool need_split_k = (config.split_dim_inner_ > 1);
+  const bool need_split_k = NeedSplitK();
   ShaderUsage output_usage = ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias;
   if (need_split_k) {
     // When Split-K is enabled, we will declare output as `atomic<i32>` to call atomic built-in
@@ -28,55 +27,59 @@ Status MatMulProgramShader::GenerateShaderCode([[maybe_unused]] const Config& co
   const auto& batch_dims = shader.AddIndices("batch_dims", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
   const ShaderVariableHelper* bias = nullptr;
-  if (config.has_bias_) {
+  if (has_bias_) {
     bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
-  std::string apply_activation = GetActivationSnippet(config.activation_, "output_value_t", "output_element_t");
+  std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   // Emit activation helpers before the write function uses them.
-  shader.AdditionalImplementation() << GetActivationDeclaration(config.activation_, "output_value_t", "output_element_t");
-  ProgramVariableDataType output_var_type = shader.OutputType(0);
+  shader.AdditionalImplementation() << GetActivationDeclaration(activation_, "output_value_t", "output_element_t");
+  ProgramVariableDataType output_var_type = this->Outputs()[0].var_type;
   // declare the read and write functions
   MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false);
   if (need_split_k) {
     MatMulWriteFnSourceWithSplitK(shader, output, /*is_gemm = */ false, output_var_type);
   } else {
-    MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, config.is_channels_last_);
+    MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, is_channels_last_);
   }
   std::string data_type = "output_element_t";
   // generate the main function
-  if (config.is_vec4_) {
+  if (is_vec4_) {
     ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(
-        shader, config.elements_per_thread_, shader.WorkgroupSizeX(), shader.WorkgroupSizeY(), data_type, &batch_dims,
+        shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims,
         /*transA = */ false, /*transB = */ false, /*alpha = */ 1.f, /*need_handle_matmul = */ true,
-        /*output_components = */ 4, config.tile_inner_, need_split_k, config.split_dim_inner_,
-        config.use_f32_accumulation_));
+        /*output_components = */ 4, tile_inner_, need_split_k, split_dim_inner_,
+        use_f32_accumulation_));
   } else {
     ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(
-        shader, config.elements_per_thread_, shader.WorkgroupSizeX(), shader.WorkgroupSizeY(), data_type, &batch_dims,
+        shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims,
         /*transpose_a = */ false, /*transpose_b = */ false, /*alpha = */ 1.f,
-        /*need_handle_matmul = */ true, config.tile_inner_, need_split_k, config.split_dim_inner_,
-        config.use_f32_accumulation_));
+        /*need_handle_matmul = */ true, tile_inner_, need_split_k, split_dim_inner_,
+        use_f32_accumulation_));
   }
   return Status::OK();
 }
 
-Status MatMulFillBiasOrZeroBeforeSplitKProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
+bool MatMulProgram::NeedSplitK() const {
+  return split_dim_inner_ > 1;
+}
+
+Status MatMulFillBiasOrZeroBeforeSplitKProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
   const ShaderVariableHelper* bias = nullptr;
-  if (config.has_bias_) {
+  if (has_bias_) {
     bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
 
   // Handle bias with `MatMulWriteFnSourceForGemm() or MatMulWriteFnSourceForMatMul()`.
-  if (config.is_gemm_) {
-    MatMulWriteFnSourceForGemm(shader, output, bias, config.bias_is_scalar_);
+  if (is_gemm_) {
+    MatMulWriteFnSourceForGemm(shader, output, bias, bias_is_scalar_);
   } else {
     // Currently we only support `is_channels_last` to be true and no activation.
     MatMulWriteFnSourceForMatMul(shader, output, bias, /*activation_snippet*/ "", /*is_channels_last*/ true);
   }
 
-  shader.MainFunctionBody() << "  let output_components = " << config.output_components_ << ";\n";
+  shader.MainFunctionBody() << "  let output_components = " << output_components_ << ";\n";
   shader.MainFunctionBody() << R"(
   let output_id = i32(global_idx);
 

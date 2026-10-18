@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/math/gemm.h"
 #include "core/providers/webgpu/math/gemm_packed.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm.h"
@@ -41,8 +40,7 @@ WEBGPU_GEMM_VERSIONED_KERNEL(9, 10)
 WEBGPU_GEMM_VERSIONED_KERNEL(11, 12)
 WEBGPU_GEMM_KERNEL(13)
 
-Status GemmNaiveProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                  ConfiguredShaderHelper& shader) {
+Status GemmNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
@@ -52,19 +50,19 @@ Status GemmNaiveProgramShader::GenerateShaderCode([[maybe_unused]] const Config&
                             << "\n";
 
   // When A or B is empty, we don't bind A and B. Because WebGPU doesn't support binding a zero-sized buffer.
-  if (config.need_handle_matmul_) {
+  if (need_handle_matmul_) {
     const ShaderVariableHelper& A = shader.AddInput("A", ShaderUsage::UseUniform);
     const ShaderVariableHelper& B = shader.AddInput("B", ShaderUsage::UseUniform);
 
     shader.MainFunctionBody() << "  for (var k = 0u; k < uniforms.K; k = k + 1u) {\n";
 
-    if (config.transA_ && config.transB_) {
+    if (transA_ && transB_) {
       shader.MainFunctionBody() << "    value = value + " << A.GetByOffset("k * uniforms.M + m")
                                 << " * " << B.GetByOffset("n * uniforms.K + k") << ";\n";
-    } else if (config.transA_ && !config.transB_) {
+    } else if (transA_ && !transB_) {
       shader.MainFunctionBody() << "    value = value + " << A.GetByOffset("k * uniforms.M + m")
                                 << " * " << B.GetByOffset("k * uniforms.N + n") << ";\n";
-    } else if (!config.transA_ && config.transB_) {
+    } else if (!transA_ && transB_) {
       shader.MainFunctionBody() << "    value = value + " << A.GetByOffset("m * uniforms.K + k")
                                 << " * " << B.GetByOffset("n * uniforms.K + k") << ";\n";
     } else {
@@ -79,7 +77,7 @@ Status GemmNaiveProgramShader::GenerateShaderCode([[maybe_unused]] const Config&
   shader.MainFunctionBody() << "  value = value * output_value_t(uniforms.alpha);\n";
 
   // Calculate Bias
-  if (config.need_handle_bias_) {
+  if (need_handle_bias_) {
     const ShaderVariableHelper& C = shader.AddInput("C", ShaderUsage::UseUniform);
     shader.MainFunctionBody() << "  value = value + output_value_t(uniforms.beta) * "
                               << C.GetByOffset(C.BroadcastedIndicesToOffset("vec2(m, n)", output)) << ";\n";
@@ -146,15 +144,16 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
     // Use naive implementation for small matrices
     GemmNaiveProgram program{transA_, transB_, need_handle_bias, need_handle_matmul};
     if (need_handle_matmul) {
-      program.AddInputs({{A, ProgramTensorMetadataDependency::None},
-                         {B, ProgramTensorMetadataDependency::None}});
+      program.AddInputs({{A, ProgramTensorMetadataDependency::Type},
+                         {B, ProgramTensorMetadataDependency::Type}});
     }
 
     if (need_handle_bias) {
-      program.AddInput({C, ProgramTensorMetadataDependency::None});
+      program.AddInput({C, ProgramTensorMetadataDependency::Rank});
     }
 
-    program.AddOutputs({{Y, ProgramTensorMetadataDependency::None}})
+    program.CacheHint(transA_, transB_)
+        .AddOutputs({{Y, ProgramTensorMetadataDependency::Type}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .SetWorkgroupSize(WORKGROUP_SIZE)
         .AddUniformVariables({{static_cast<uint32_t>(output_size)},

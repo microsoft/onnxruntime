@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/hyper_connection_pre_mix.h"
 
 #include <string>
@@ -36,24 +35,22 @@ std::string GateOffset(int layout, std::string_view row,
 
 }  // namespace
 
-Status HyperConnectionPreMixProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                              ConfiguredShaderHelper& shader) {
+Status HyperConnectionPreMixProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& streams = shader.AddInput("streams", ShaderUsage::UseUniform);
   const auto& pre_mix = shader.AddInput("pre_mix", ShaderUsage::UseUniform);
   const auto& y = shader.AddOutput("y", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
-  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.count")
-                            << "  let row = global_idx / uniforms.hidden;\n"
-                               "  let h = global_idx % uniforms.hidden;\n"
-                               "  var sum = 0.0;\n"
-                               "  for (var c = 0u; c < uniforms.branches; c++) {\n"
-                               "    let x_offset = (row * uniforms.branches + c) * uniforms.hidden + h;\n"
-                            << "    let gate_offset = " << GateOffset(config.gate_layout_, "row", "c", "h") << ";\n"
-                            << "    sum += f32(" << streams.GetByOffset("x_offset") << ") * f32("
-                            << pre_mix.GetByOffset("gate_offset")
-                            << ");\n"
-                               "  }\n"
-                            << "  " << y.SetByOffset("global_idx", "y_element_t(sum * uniforms.reduction_scale)")
-                            << "\n";
+  shader.MainFunctionBody()
+      << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.count")
+      << "  let row = global_idx / uniforms.hidden;\n"
+         "  let h = global_idx % uniforms.hidden;\n"
+         "  var sum = 0.0;\n"
+         "  for (var c = 0u; c < uniforms.branches; c++) {\n"
+         "    let x_offset = (row * uniforms.branches + c) * uniforms.hidden + h;\n"
+      << "    let gate_offset = " << GateOffset(gate_layout_, "row", "c", "h") << ";\n"
+      << "    sum += f32(" << streams.GetByOffset("x_offset") << ") * f32("
+      << pre_mix.GetByOffset("gate_offset") << ");\n"
+                                               "  }\n"
+      << "  " << y.SetByOffset("global_idx", "y_element_t(sum * uniforms.reduction_scale)") << "\n";
   return Status::OK();
 }
 
@@ -74,8 +71,9 @@ Status HyperConnectionPreMix::ComputeInternal(onnxruntime::webgpu::ComputeContex
   const uint32_t count = onnxruntime::narrow<uint32_t>(y->Shape().Size());
   if (count == 0) return Status::OK();
   HyperConnectionPreMixProgram program{static_cast<int>(layout)};
-  program
-      .AddInputs({{streams, ProgramTensorMetadataDependency::None}, {pre_mix, ProgramTensorMetadataDependency::None}})
+  program.CacheHint(static_cast<int>(layout))
+      .AddInputs({{streams, ProgramTensorMetadataDependency::Type},
+                  {pre_mix, ProgramTensorMetadataDependency::Type}})
       .AddOutput({y, ProgramTensorMetadataDependency::None})
       .AddUniformVariables({{count},
                             {onnxruntime::narrow<uint32_t>(params.branches)},

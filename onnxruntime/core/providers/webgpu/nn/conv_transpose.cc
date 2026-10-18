@@ -128,14 +128,14 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     const auto input_channels_per_group = narrow<uint32_t>(input_channels / group);
     const int components = is_prepacked ? GetMaxComponents(input_channels_per_group) : 1;
     ConvTranspose3DProgram program(is_channels_last, has_bias, is_prepacked, components);
-    program.AddInputs({{input, ProgramTensorMetadataDependency::None, is_channels_last ? components : 1},
-                       {filter, ProgramTensorMetadataDependency::None, components}})
-        .AddOutput({output, ProgramTensorMetadataDependency::None})
-
+    program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, is_channels_last ? components : 1},
+                       {filter, ProgramTensorMetadataDependency::TypeAndRank, components}})
+        .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
+        .CacheHint(is_channels_last, has_bias, is_prepacked, components)
         .AddUniformVariables({{output_size}, {strides}, {dilations}, {pads_3d}, {input_channels_per_group}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
     if (has_bias) {
-      program.AddInput({bias, ProgramTensorMetadataDependency::None});
+      program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank});
     }
     return context.RunProgram(program);
   }

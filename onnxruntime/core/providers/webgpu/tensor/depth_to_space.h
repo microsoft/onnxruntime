@@ -4,32 +4,20 @@
 #pragma once
 
 #include "core/providers/webgpu/program.h"
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-#define WEBGPU_DEPTH_TO_SPACE_PROGRAM_CONFIG(F) F(InlinedVector<int64_t>, perm_)
+class DepthToSpaceProgram final : public Program<DepthToSpaceProgram> {
+ public:
+  DepthToSpaceProgram(int64_t* perm) : Program{"DepthToSpace"}, perm_{perm} {}
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
 
-struct DepthToSpaceProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_DEPTH_TO_SPACE_PROGRAM_CONFIG);
-  static Config MakeConfig(int64_t* perm) {
-    Config result{};
-    result.perm_ = InlinedVector<int64_t>(perm, perm + 6);
-
-    return result;
-  }
-  static constexpr std::string_view name = "DepthToSpace";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
-#define WEBGPU_DEPTH_TO_SPACE_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, output_size)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_DEPTH_TO_SPACE_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_DEPTH_TO_SPACE_PROGRAM_SHADER_UNIFORMS
+ private:
+  int64_t* perm_;
 };
-#undef WEBGPU_DEPTH_TO_SPACE_PROGRAM_CONFIG
-
-using DepthToSpaceProgram = ConfiguredProgram<DepthToSpaceProgramShader>;
 
 template <bool is_nhwc>
 class DepthToSpace final : public WebGpuKernel {

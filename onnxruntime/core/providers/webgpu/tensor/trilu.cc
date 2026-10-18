@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include <limits>
 
 #include "core/providers/common.h"
@@ -23,14 +22,14 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPU, 1),
     Trilu);
 
-Status TriluProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
+Status TriluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let row = i32((global_idx / uniforms.matrix_w) % uniforms.matrix_h);\n"
                             << "let col = i32(global_idx % uniforms.matrix_w);\n"
                             << "let input_value = " << input.GetByOffset("global_idx") << ";\n";
-  if (config.upper_) {
+  if (upper_) {
     shader.MainFunctionBody() << "let value = select(input_value_t(0), input_value, (row + uniforms.k) <= col);\n";
   } else {
     shader.MainFunctionBody() << "let value = select(input_value_t(0), input_value, (row + uniforms.k) >= col);\n";
@@ -91,8 +90,9 @@ Status Trilu::ComputeInternal(ComputeContext& context) const {
 
   TriluProgram program{upper_};
   program
-      .AddInput({input_tensor, ProgramTensorMetadataDependency::None})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
+      .CacheHint(upper_)
+      .AddInput({input_tensor, ProgramTensorMetadataDependency::Type})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type})
       .SetDispatchGroupSize((static_cast<uint32_t>(output_size) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)},
                             {static_cast<uint32_t>(matrix_h)},

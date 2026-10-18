@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup.h"
 #include "core/providers/webgpu/math/gemm_utils.h"
@@ -10,28 +9,28 @@ namespace onnxruntime {
 namespace webgpu {
 namespace intel {
 
-Status GemmSubgroupProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
+Status GemmSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform |
                                                                       ShaderUsage::UseValueTypeAlias |
                                                                       ShaderUsage::UseElementTypeAlias);
 
-  if (config.need_handle_matmul_) {
+  if (need_handle_matmul_) {
     const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
                                              ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
                                              ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
-    MatMulReadFnSource(shader, a, b, nullptr, config.transA_, config.transB_);
+    MatMulReadFnSource(shader, a, b, nullptr, transA_, transB_);
   }
 
-  ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, config.elements_per_thread_, nullptr, config.is_vec4_, config.a_vec4_,
-                                               config.b_is_fp16_, config.use_f32_accumulation_, config.transA_, config.transB_,
-                                               config.alpha_, config.need_handle_matmul_));
+  ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, nullptr, is_vec4_, a_vec4_,
+                                               b_is_fp16_, use_f32_accumulation_, transA_, transB_,
+                                               alpha_, need_handle_matmul_));
   const ShaderVariableHelper* c = nullptr;
-  if (config.need_handle_bias_) {
+  if (need_handle_bias_) {
     c = &shader.AddInput("c", ShaderUsage::UseUniform);
   }
-  MatMulWriteFnSourceForGemm(shader, output, c, config.c_is_scalar_);
+  MatMulWriteFnSourceForGemm(shader, output, c, c_is_scalar_);
 
   return Status::OK();
 }
@@ -103,16 +102,17 @@ Status ApplyGemmIntel(const Tensor* a,
                               is_vec4, a_vec4, b_is_fp16, use_f32_accumulation, elements_per_thread};
 
   if (need_handle_matmul) {
-    program.AddInputs({{a, ProgramTensorMetadataDependency::None, a_components},
-                       {b, ProgramTensorMetadataDependency::None, b_components}});
+    program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
+                       {b, ProgramTensorMetadataDependency::TypeAndRank, b_components}});
   }
 
   if (need_handle_bias) {
-    program.AddInput({c, ProgramTensorMetadataDependency::None, c_components});
+    program.AddInput({c, ProgramTensorMetadataDependency::TypeAndRank, c_components});
   }
 
-  program
-      .AddOutputs({{y, ProgramTensorMetadataDependency::None, output_components}})
+  program.CacheHint(alpha, transA, transB, c_is_scalar, a_vec4, b_is_fp16, use_f32_accumulation,
+                    absl::StrJoin(elements_per_thread, "-"))
+      .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank, output_components}})
       .SetDispatchGroupSize(dispatch_x, dispatch_y, 1)
       .SetWorkgroupSize(kSubgroupLogicalWorkGroupSizeX * kSubgroupLogicalWorkGroupSizeY, 1, 1)
       .AddUniformVariables({{alpha},

@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup_utils.h"
 
@@ -19,7 +18,7 @@ bool CanApplySubgroup(const ComputeContext& context, int64_t M, int64_t N, int64
 
 int64_t ElementsPerThreadY(ComputeContext& context, uint32_t M);
 
-Status MakeMatMulSubgroupSource(ConfiguredShaderHelper& shader,
+Status MakeMatMulSubgroupSource(ShaderHelper& shader,
                                 const InlinedVector<int64_t>& elements_per_thread,
                                 const ShaderIndicesHelper* batch_dims,
                                 bool is_vec4,

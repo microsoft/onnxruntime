@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/scaled_silu.h"
 
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
@@ -17,11 +16,10 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("M", WebGpuSupportedFloatTypes()),
     ScaledSiLU);
 
-Status ScaledSiLUProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                   ConfiguredShaderHelper& shader) {
+Status ScaledSiLUProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const ShaderVariableHelper* scale = nullptr;
-  if (config.has_scale_) scale = &shader.AddInput("scale", ShaderUsage::UseUniform);
+  if (has_scale_) scale = &shader.AddInput("scale", ShaderUsage::UseUniform);
   const auto& y = shader.AddOutput("y", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   shader.AdditionalImplementation()
       << "fn stable_sigmoid(v: f32) -> f32 {\n"
@@ -31,7 +29,7 @@ Status ScaledSiLUProgramShader::GenerateShaderCode([[maybe_unused]] const Config
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.count")
       << "  var scale_value = uniforms.alpha;\n";
-  if (config.has_scale_) {
+  if (has_scale_) {
     shader.MainFunctionBody() << "  scale_value = f32(" << scale->GetByOffset("0u") << ");\n";
   }
   shader.MainFunctionBody()
@@ -53,8 +51,8 @@ Status ScaledSiLU::ComputeInternal(onnxruntime::webgpu::ComputeContext& context)
   const uint32_t count = onnxruntime::narrow<uint32_t>(x->Shape().Size());
   if (count == 0) return Status::OK();
   ScaledSiLUProgram program{scale != nullptr};
-  program.AddInput({x, ProgramTensorMetadataDependency::None});
-  if (scale != nullptr) program.AddInput({scale, ProgramTensorMetadataDependency::None});
+  program.CacheHint(scale != nullptr).AddInput({x, ProgramTensorMetadataDependency::Type});
+  if (scale != nullptr) program.AddInput({scale, ProgramTensorMetadataDependency::Type});
   program.AddOutput({y, ProgramTensorMetadataDependency::None})
       .AddUniformVariables({{count}, {alpha_}})
       .SetDispatchGroupSize((count + 255) / 256)

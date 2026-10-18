@@ -479,7 +479,7 @@ static void CheckSingleTokenGateIndices(const std::vector<float>& logits, int k,
   Tensor topk_values(dtype, TensorShape{1, cols}, weights_buffer.Get(), memory_info);
   Tensor indirect_experts(DataTypeImpl::GetType<uint32_t>(), TensorShape{k}, indices_buffer.Get(), memory_info);
   contrib::webgpu::Gate1TokenProgram gate{k, use_fp16, false, true};
-  gate.AddInputs({{&router_logits, webgpu::ProgramTensorMetadataDependency::None}})
+  gate.AddInputs({{&router_logits, webgpu::ProgramTensorMetadataDependency::Type}})
       .AddOutput({&topk_values, webgpu::ProgramTensorMetadataDependency::None})
       .AddOutput({&indirect_experts, webgpu::ProgramTensorMetadataDependency::None})
       .SetWorkgroupSize(cols)

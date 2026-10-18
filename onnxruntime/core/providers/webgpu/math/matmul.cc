@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/math/matmul.h"
 
 #include <limits>
@@ -54,23 +53,17 @@ ONNX_OPERATOR_KERNEL_EX(
 
 namespace {
 
-#define WEBGPU_MAT_MUL_GEMV_PROGRAM_CONFIG(F)
+class MatMulGemvProgram final : public Program<MatMulGemvProgram> {
+ public:
+  MatMulGemvProgram() : Program{"MatMulGemv"} {}
 
-struct MatMulGemvProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_MAT_MUL_GEMV_PROGRAM_CONFIG);
-  static Config MakeConfig() {
-    Config result{};
-
-    return result;
-  }
-  static constexpr std::string_view name = "MatMulGemv";
   static constexpr uint32_t kWorkgroupSizeX = 1;
   static constexpr uint32_t kWorkgroupSizeY = 128;
   static_assert(kWorkgroupSizeY != 0 && (kWorkgroupSizeY & (kWorkgroupSizeY - 1)) == 0,
                 "MatMulGemvProgram requires kWorkgroupSizeY to be a non-zero power of two "
                 "because the WGSL reduction loop halves workgroup_size_y each iteration.");
 
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
     const auto& a = shader.AddInput("a", ShaderUsage::None);
     const auto& b = shader.AddInput("b", ShaderUsage::None);
     const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
@@ -80,15 +73,9 @@ struct MatMulGemvProgramShader {
                                WGSL_TEMPLATE_VARIABLE(output, output));
   }
 
-#define WEBGPU_MAT_MUL_GEMV_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, K)                                         \
-  U(Uint32, N)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_MAT_MUL_GEMV_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_MAT_MUL_GEMV_PROGRAM_SHADER_UNIFORMS
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"K", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32});
 };
-#undef WEBGPU_MAT_MUL_GEMV_PROGRAM_CONFIG
-
-using MatMulGemvProgram = ConfiguredProgram<MatMulGemvProgramShader>;
 
 }  // namespace
 
@@ -108,42 +95,42 @@ static std::string CalcResult(int64_t components, int64_t a_components, int64_t 
   return oss.str();
 }
 
-Status MatMulNaiveProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
+Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper* a = nullptr;
   const ShaderVariableHelper* b = nullptr;
   int a_components = 1;
-  if (!config.is_zero_k_) {
+  if (!is_zero_k_) {
     a = &shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
                                   ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     b = &shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
                                   ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     a_components = a->NumComponents();
   }
-  const int components = NumberOfComponents(shader.OutputType(0));  // components of N
+  const int components = NumberOfComponents(Outputs()[0].var_type);  // components of N
 
   std::string process_bias;
-  if (config.has_bias_) {
+  if (has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
-    process_bias = config.is_channels_last_
+    process_bias = is_channels_last_
                        ? "value += output_value_t(bias[col / " + std::to_string(components) + "]);"
                        : "value += output_value_t(bias[row + i]);";
   }
 
-  std::string apply_activation = GetActivationSnippet(config.activation_, "output_value_t", "output_element_t");
+  std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform |
                                                       ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AdditionalImplementation() << GetActivationDeclaration(config.activation_, "output_value_t", "output_element_t");
+  shader.AdditionalImplementation() << GetActivationDeclaration(activation_, "output_value_t", "output_element_t");
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let col = (global_idx % (uniforms.N / " << components << ")) * " << components << ";\n"
                             << "var index1 = global_idx / (uniforms.N / " << components << ");\n"
-                            << "let stride1 = uniforms.M / " << config.output_number_ << ";\n"
-                            << "let row = (index1 % stride1) * " << config.output_number_ << ";\n"
+                            << "let stride1 = uniforms.M / " << output_number_ << ";\n"
+                            << "let row = (index1 % stride1) * " << output_number_ << ";\n"
                             << "let batch = index1 / stride1;\n"
-                            << "var values: array<output_value_t, " << config.output_number_ << ">;\n";
-  if (!config.is_zero_k_) {
+                            << "var values: array<output_value_t, " << output_number_ << ">;\n";
+  if (!is_zero_k_) {
     const auto& batch_dims = shader.AddIndices("batch_dims");
-    if (config.output_rank_ != 2) {
+    if (output_rank_ != 2) {
       shader.MainFunctionBody() << "let batch_indices = " << batch_dims.OffsetToIndices("batch") << ";\n";
     }
     shader.MainFunctionBody() << "var a_indices: a_indices_t;\n"
@@ -157,10 +144,10 @@ Status MatMulNaiveProgramShader::GenerateShaderCode([[maybe_unused]] const Confi
                               << b->IndicesSet("b_indices", b->Rank() - 1, 0) << "\n"
                               << "let b_offset = " << b->IndicesToOffset("b_indices") << " * " << components << ";\n"
                               << "for (var k: u32 = 0u; k < uniforms.K; k = k + " << a_components << ") {\n"
-                              << CalcResult(components, a_components, config.output_number_) << "\n"
+                              << CalcResult(components, a_components, output_number_) << "\n"
                               << "}\n";
   }
-  shader.MainFunctionBody() << "for (var i = 0u; i < " << config.output_number_ << "u; i++) {\n"
+  shader.MainFunctionBody() << "for (var i = 0u; i < " << output_number_ << "u; i++) {\n"
                             << "  var value = values[i];\n"
                             << process_bias << "\n"
                             << apply_activation << "\n"
@@ -238,16 +225,19 @@ static Status ApplyMatMulNaive(ComputeContext& context,
 
   MatMulNaiveProgram program{activation, output_rank, output_number, has_bias,
                              is_channels_last, is_zero_k};
-  program;
+  program
+      .CacheHint(activation.CacheKey(), std::to_string(components),
+                 std::to_string(a_components), std::to_string(output_number),
+                 std::to_string(is_channels_last), std::to_string(is_zero_k));
   if (!is_zero_k) {
     program
-        .AddInputs({{a, ProgramTensorMetadataDependency::None, a_components},
-                    {b, ProgramTensorMetadataDependency::None, components}})
+        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
+                    {b, ProgramTensorMetadataDependency::TypeAndRank, components}})
         .AddIndices(outer_dims);
   }
   if (has_bias) {
     const int bias_components = is_channels_last ? components : 1;
-    program.AddInput({inputs[2], ProgramTensorMetadataDependency::None, bias_components});
+    program.AddInput({inputs[2], ProgramTensorMetadataDependency::Rank, bias_components});
   }
   program
       .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None,
@@ -269,12 +259,12 @@ static Status ApplyMatMulGemv(ComputeContext& context,
   const uint32_t n_vec_count = n / 4;
 
   MatMulGemvProgram program;
-  program.AddInputs({{a, ProgramTensorMetadataDependency::None, ProgramInput::Flatten},
-                     {b, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, 4}})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, ProgramOutput::Flatten, 4})
+  program.AddInputs({{a, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten},
+                     {b, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
       .AddUniformVariables({{k}, {n}})
-      .SetWorkgroupSize(MatMulGemvProgramShader::kWorkgroupSizeX, MatMulGemvProgramShader::kWorkgroupSizeY)
-      .SetDispatchGroupSize(CeilDiv(n_vec_count, MatMulGemvProgramShader::kWorkgroupSizeX));
+      .SetWorkgroupSize(MatMulGemvProgram::kWorkgroupSizeX, MatMulGemvProgram::kWorkgroupSizeY)
+      .SetDispatchGroupSize(CeilDiv(n_vec_count, MatMulGemvProgram::kWorkgroupSizeX));
   return context.RunProgram(program);
 }
 
@@ -349,7 +339,7 @@ static Status ApplyMatMulPacked(ComputeContext& context,
       CreateMatMulIntermediateShape(outer_dims_b, dim_inner, dim_b_outer, components);
   const TensorShape output_shape_temp{batch_size, dim_a_outer, dim_b_outer / components};
   Tensor split_k_output;
-  ProgramOutput output(output_tensor, ProgramTensorMetadataDependency::None,
+  ProgramOutput output(output_tensor, ProgramTensorMetadataDependency::TypeAndRank,
                        output_shape_temp, components);
   const Tensor* bias = has_bias ? inputs[2] : nullptr;
   bool use_bias_in_matmul = has_bias;
@@ -372,7 +362,7 @@ static Status ApplyMatMulPacked(ComputeContext& context,
     if (requires_fp32_accumulation) {
       split_k_output = context.CreateGPUTensor(DataTypeImpl::GetType<float>(), output_tensor->Shape());
       reduction_output = &split_k_output;
-      output = ProgramOutput(reduction_output, ProgramTensorMetadataDependency::None,
+      output = ProgramOutput(reduction_output, ProgramTensorMetadataDependency::TypeAndRank,
                              output_shape_temp, components);
     }
 
@@ -399,9 +389,12 @@ static Status ApplyMatMulPacked(ComputeContext& context,
                         is_channels_last, split_dim_inner, configuration.tile_inner,
                         requires_fp32_accumulation};
   program
-
-      .AddInputs({{a, ProgramTensorMetadataDependency::None, a_shape_temp, components},
-                  {b, ProgramTensorMetadataDependency::None, b_shape_temp, components}})
+      .CacheHint(activation.CacheKey(), absl::StrJoin(elements_per_thread, "-"),
+                 absl::StrJoin(configuration.workgroup_size, "-"),
+                 std::to_string(is_vec4), components, is_channels_last,
+                 split_dim_inner, configuration.tile_inner, requires_fp32_accumulation)
+      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
+                  {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}, {splits_per_batch}})
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
@@ -414,7 +407,7 @@ static Status ApplyMatMulPacked(ComputeContext& context,
   if (use_bias_in_matmul) {
     const int bias_components = is_channels_last ? components : 1;
     const TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), bias_components);
-    program.AddInput({bias, ProgramTensorMetadataDependency::None, reduced_bias_shape, bias_components});
+    program.AddInput({bias, ProgramTensorMetadataDependency::Rank, reduced_bias_shape, bias_components});
   }
 
   ORT_RETURN_IF_ERROR(context.RunProgram(program));
@@ -424,10 +417,11 @@ static Status ApplyMatMulPacked(ComputeContext& context,
     CastProgram cast_program{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
                              false, true, false, false};
     cast_program
-        .AddInput({&split_k_output, ProgramTensorMetadataDependency::None, {vec_size}, 4})
+        .AddInput({&split_k_output, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
         .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, {vec_size}, 4})
         .SetDispatchGroupSize(CeilDiv(vec_size, static_cast<uint32_t>(WORKGROUP_SIZE)))
-        .AddUniformVariables({{vec_size}, {output_size}});
+        .AddUniformVariables({{vec_size}, {output_size}})
+        .CacheHint(std::to_string(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
     return context.RunProgram(cast_program);
   }
   return Status::OK();
@@ -584,14 +578,14 @@ MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKPr
   const uint32_t dispatch_x = narrow<uint32_t>(dispatch_x_u64);
 
   const uint32_t dim_b_outer_components = narrow<uint32_t>(dim_b_outer * output_components);
-  program
-      .AddOutput({output, ProgramTensorMetadataDependency::None, output_shape, static_cast<int32_t>(output_components)})
+  program.CacheHint(is_gemm, has_bias, output_components, bias_is_scalar)
+      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_shape, static_cast<int32_t>(output_components)})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer_components}, {beta}, {batch_size}})
       .SetDispatchGroupSize(dispatch_x);
 
   if (has_bias) {
     const TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), output_components);
-    program.AddInput({bias, ProgramTensorMetadataDependency::None, reduced_bias_shape, static_cast<int32_t>(output_components)});
+    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, static_cast<int32_t>(output_components)});
   }
 
   return program;

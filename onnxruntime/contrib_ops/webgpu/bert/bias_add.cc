@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -21,7 +20,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     BiasAdd);
 
-Status BiasAddShader::GenerateShaderCode(const Config&, ConfiguredShaderHelper& shader) {
+Status BiasAddProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform);
   const ShaderVariableHelper& bias = shader.AddInput("bias", ShaderUsage::UseUniform);
   const ShaderVariableHelper& residual = shader.AddInput("residual", ShaderUsage::UseUniform);
@@ -62,7 +61,7 @@ Status BiasAdd::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) co
 
   BiasAddProgram program{};
   program
-      .AddInputs({{input, ProgramTensorMetadataDependency::None, components},
+      .AddInputs({{input, ProgramTensorMetadataDependency::Type, components},
                   {bias, ProgramTensorMetadataDependency::None, components},
                   {residual, ProgramTensorMetadataDependency::None, components}})
       .AddOutput({output, ProgramTensorMetadataDependency::None, components})

@@ -5,33 +5,20 @@
 
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
-#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-#define WEBGPU_GATHER_ELEMENTS_PROGRAM_CONFIG(F)
+class GatherElementsProgram final : public Program<GatherElementsProgram> {
+ public:
+  GatherElementsProgram() : Program{"GatherElements"} {}
 
-struct GatherElementsProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_GATHER_ELEMENTS_PROGRAM_CONFIG);
-  static Config MakeConfig() {
-    Config result{};
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-    return result;
-  }
-  static constexpr std::string_view name = "GatherElements";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
-
-#define WEBGPU_GATHER_ELEMENTS_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, output_size)                                  \
-  U(Int32, axis_dim_limit)                                \
-  U(Int32, axis)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_GATHER_ELEMENTS_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_GATHER_ELEMENTS_PROGRAM_SHADER_UNIFORMS
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
+                                          {"axis_dim_limit", ProgramUniformVariableDataType::Int32},
+                                          {"axis", ProgramUniformVariableDataType::Int32});
 };
-#undef WEBGPU_GATHER_ELEMENTS_PROGRAM_CONFIG
-
-using GatherElementsProgram = ConfiguredProgram<GatherElementsProgramShader>;
 
 class GatherElements final : public WebGpuKernel {
  public:

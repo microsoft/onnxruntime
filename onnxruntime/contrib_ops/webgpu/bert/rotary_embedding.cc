@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
@@ -21,20 +20,19 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>()),
     RotaryEmbedding);
 
-Status RotaryEmbeddingProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                        ConfiguredShaderHelper& shader) {
+Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform);
   // The second input is either seqlens (use_seqlens_for_position_) or position_ids (legacy path).
   // Declared here so the input order matches the caller's AddInputs order:
   // [input, seqlens|position_ids, cos_cache, sin_cache].
-  const auto& position_ids_or_seqlens = config.use_seqlens_for_position_
+  const auto& position_ids_or_seqlens = use_seqlens_for_position_
                                             ? shader.AddInput("seqlens", ShaderUsage::UseUniform)
                                             : shader.AddInput("position_ids", ShaderUsage::UseUniform);
   const auto& cos_cache = shader.AddInput("cos_cache", ShaderUsage::UseUniform);
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
-  const auto interleaved_str = config.interleaved_ ? "true" : "false";
-  if (config.use_seqlens_for_position_) {
+  const auto interleaved_str = interleaved_ ? "true" : "false";
+  if (use_seqlens_for_position_) {
     // Seqlens path (GQA): inputs are [input, seqlens, cos_cache, sin_cache].
     // Compute per-batch past_seqlen from seqlens[batch_idx] = total_seqlen - 1.
     shader.MainFunctionBody() << "  let half_rotary_emb_dim = uniforms.cos_cache_shape[1];\n"
@@ -107,12 +105,12 @@ Status RotaryEmbeddingProgramShader::GenerateShaderCode([[maybe_unused]] const C
   return Status::OK();
 }
 
-Status FusedQKRotaryEmbeddingProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                               ConfiguredShaderHelper& shader) {
+Status FusedQKRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Inputs. q_input/k_input use the element-type alias when has_qk_norm_ is true so we can
   // mix in the f32-computed inverse-RMS scale at element-type precision.
-  const ShaderUsage qk_input_usage =
-      config.has_qk_norm_ ? (ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias) : ShaderUsage::UseUniform;
+  const ShaderUsage qk_input_usage = has_qk_norm_
+                                         ? (ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias)
+                                         : ShaderUsage::UseUniform;
   const auto& q_input = shader.AddInput("q_input", qk_input_usage);
   const auto& k_input = shader.AddInput("k_input", qk_input_usage);
   const auto& seqlens = shader.AddInput("seqlens", ShaderUsage::UseUniform);
@@ -125,7 +123,7 @@ Status FusedQKRotaryEmbeddingProgramShader::GenerateShaderCode([[maybe_unused]] 
   // Decode-only fast path: each thread re-reads its own head's head_size channels to
   // compute the sum-of-squares (no reductions, no shared memory). The redundant L1
   // traffic is sub-microsecond on Qwen3-1.7B decode geometry.
-  if (config.has_qk_norm_) {
+  if (has_qk_norm_) {
     shader.AddInput("q_norm_weight", ShaderUsage::UseUniform);
     shader.AddInput("k_norm_weight", ShaderUsage::UseUniform);
   }
@@ -134,7 +132,7 @@ Status FusedQKRotaryEmbeddingProgramShader::GenerateShaderCode([[maybe_unused]] 
   const auto& q_output = shader.AddOutput("q_output", ShaderUsage::UseUniform);
   const auto& k_output = shader.AddOutput("k_output", ShaderUsage::UseUniform);
 
-  const auto interleaved_str = config.interleaved_ ? "true" : "false";
+  const auto interleaved_str = interleaved_ ? "true" : "false";
 
   auto& body = shader.MainFunctionBody();
   body
@@ -149,7 +147,7 @@ Status FusedQKRotaryEmbeddingProgramShader::GenerateShaderCode([[maybe_unused]] 
   // is always 1 (channel stride), so subtracting bsnh[3] gives the head's channel-0 offset
   // for both interleaved and non-interleaved layouts in the rotated branch. In the
   // passthrough else-branch we recompute from bsnh[0..2] explicitly.
-  if (config.has_qk_norm_) {
+  if (has_qk_norm_) {
     body
         << "  let q_head_base = bsnh[0] * uniforms.q_input_output_stride[0]\n"
         << "                  + bsnh[1] * uniforms.q_input_output_stride[1]\n"
@@ -177,13 +175,13 @@ Status FusedQKRotaryEmbeddingProgramShader::GenerateShaderCode([[maybe_unused]] 
   // Helpers that load Q/K and (when has_qk_norm_) apply the fused per-channel norm scale.
   // The channel index expressions match the qi/qj/ki/kj/qk/kk computations used below.
   auto load_q = [&](const std::string& off, const std::string& chan) {
-    if (!config.has_qk_norm_) {
+    if (!has_qk_norm_) {
       return q_input.GetByOffset(off);
     }
     return std::string("(") + q_input.GetByOffset(off) + " * q_inv_rms * q_norm_weight[" + chan + "])";
   };
   auto load_k = [&](const std::string& off, const std::string& chan) {
-    if (!config.has_qk_norm_) {
+    if (!has_qk_norm_) {
       return k_input.GetByOffset(off);
     }
     return std::string("(") + k_input.GetByOffset(off) + " * k_inv_rms * k_norm_weight[" + chan + "])";
@@ -191,8 +189,8 @@ Status FusedQKRotaryEmbeddingProgramShader::GenerateShaderCode([[maybe_unused]] 
 
   // Channel index expressions for the rotated branch. For interleaved layout the pair is
   // (2*bsnh[3], 2*bsnh[3]+1); otherwise it is (bsnh[3], bsnh[3]+half_rotary_dim).
-  const std::string c_i = config.interleaved_ ? "(2u * bsnh[3])" : "bsnh[3]";
-  const std::string c_j = config.interleaved_ ? "(2u * bsnh[3] + 1u)" : "(bsnh[3] + half_rotary_dim)";
+  const std::string c_i = interleaved_ ? "(2u * bsnh[3])" : "bsnh[3]";
+  const std::string c_j = interleaved_ ? "(2u * bsnh[3] + 1u)" : "(bsnh[3] + half_rotary_dim)";
   // Channel index for the passthrough else-branch (only fires when head_size > 2 * half_rotary_dim).
   const std::string c_k = "(bsnh[3] + half_rotary_dim)";
 
@@ -297,10 +295,11 @@ Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
 
   RotaryEmbeddingProgram program(rotary_interleaved, use_seqlens_for_position);
   program
-      .AddInputs({{input, ProgramTensorMetadataDependency::None},
-                  {position_ids_or_seqlens, ProgramTensorMetadataDependency::None},
-                  {cos_cache, ProgramTensorMetadataDependency::None},
-                  {sin_cache, ProgramTensorMetadataDependency::None}})
+      .CacheHint(rotary_interleaved, use_seqlens_for_position)
+      .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
+                  {position_ids_or_seqlens, ProgramTensorMetadataDependency::TypeAndRank},
+                  {cos_cache, ProgramTensorMetadataDependency::Rank},
+                  {sin_cache, ProgramTensorMetadataDependency::Rank}})
       .AddOutput({output, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{scale},

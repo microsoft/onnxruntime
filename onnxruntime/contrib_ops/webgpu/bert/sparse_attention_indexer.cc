@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "contrib_ops/webgpu/bert/sparse_attention_indexer.h"
 
 #include <cmath>
@@ -107,8 +106,7 @@ uint32_t DivideRoundUp(uint32_t value, uint32_t divisor) {
 
 }  // namespace
 
-Status SparseAttentionIndexerFillProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                                   ConfiguredShaderHelper& shader) {
+Status SparseAttentionIndexerFillProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("selected_indices", ShaderUsage::UseUniform);
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
@@ -116,14 +114,13 @@ Status SparseAttentionIndexerFillProgramShader::GenerateShaderCode([[maybe_unuse
   return Status::OK();
 }
 
-Status SparseAttentionIndexerQsaConcatProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                                        ConfiguredShaderHelper& shader) {
+Status SparseAttentionIndexerQsaConcatProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper* past = nullptr;
   const ShaderVariableHelper* current = nullptr;
-  if (config.has_past_) {
+  if (has_past_) {
     past = &shader.AddInput("past_key", ShaderUsage::UseUniform);
   }
-  if (config.has_current_) {
+  if (has_current_) {
     current = &shader.AddInput("key", ShaderUsage::UseUniform);
   }
   const auto& present = shader.AddOutput("present_key",
@@ -135,7 +132,7 @@ Status SparseAttentionIndexerQsaConcatProgramShader::GenerateShaderCode([[maybe_
       << "  let token_row = global_idx / uniforms.head_size;\n"
       << "  let token = token_row % uniforms.total_sequence_length;\n"
       << "  let batch = token_row / uniforms.total_sequence_length;\n";
-  if (config.has_past_) {
+  if (has_past_) {
     shader.MainFunctionBody()
         << "  if (token < uniforms.past_sequence_length) {\n"
         << "    " << present.SetByOffset("global_idx", "present_key_element_t(" + past->GetByOffset("(batch * uniforms.past_sequence_length + token) * uniforms.head_size + d") + ")")
@@ -143,7 +140,7 @@ Status SparseAttentionIndexerQsaConcatProgramShader::GenerateShaderCode([[maybe_
         << "    return;\n"
         << "  }\n";
   }
-  if (config.has_current_) {
+  if (has_current_) {
     shader.MainFunctionBody()
         << "  let current_token = token - uniforms.past_sequence_length;\n"
         << "  let current_row = batch * uniforms.sequence_length + current_token;\n"
@@ -153,8 +150,7 @@ Status SparseAttentionIndexerQsaConcatProgramShader::GenerateShaderCode([[maybe_
   return Status::OK();
 }
 
-Status SparseAttentionIndexerQsaSelectProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                                        ConfiguredShaderHelper& shader) {
+Status SparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& query = shader.AddInput("query", ShaderUsage::UseUniform);
   const auto& present_key = shader.AddInput("present_key", ShaderUsage::UseUniform);
   const auto& query_norm = shader.AddInput("query_norm_weight", ShaderUsage::UseUniform);
@@ -169,7 +165,7 @@ Status SparseAttentionIndexerQsaSelectProgramShader::GenerateShaderCode([[maybe_
       << "var<workgroup> visible_count_shared: u32;\n"
       << "fn visible(row: u32, token: u32) -> bool {\n"
       << "  let query = row % uniforms.sequence_length;\n";
-  if (config.has_mask_) {
+  if (has_mask_) {
     const auto& mask = shader.AddInput("mask", ShaderUsage::UseUniform);
     shader.AdditionalImplementation()
         << "  let batch = row / uniforms.sequence_length;\n"
@@ -339,8 +335,7 @@ Status SparseAttentionIndexerQsaSelectProgramShader::GenerateShaderCode([[maybe_
   return Status::OK();
 }
 
-Status SparseAttentionIndexerCsaCopyCompressedProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                                                ConfiguredShaderHelper& shader) {
+Status SparseAttentionIndexerCsaCopyCompressedProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& past = shader.AddInput("past_compressed_key", ShaderUsage::UseUniform);
   const auto& present = shader.AddOutput("present_compressed_key",
                                          ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
@@ -360,12 +355,11 @@ Status SparseAttentionIndexerCsaCopyCompressedProgramShader::GenerateShaderCode(
   return Status::OK();
 }
 
-Status SparseAttentionIndexerCsaCompressProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                                          ConfiguredShaderHelper& shader) {
+Status SparseAttentionIndexerCsaCompressProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& key = shader.AddInput("key", ShaderUsage::UseUniform);
   const auto& gate = shader.AddInput("gate", ShaderUsage::UseUniform);
   const ShaderVariableHelper* past_proj = nullptr;
-  if (config.has_past_buffer_) {
+  if (has_past_buffer_) {
     past_proj = &shader.AddInput("past_proj_buffer", ShaderUsage::UseUniform);
   }
   const auto& bias = shader.AddInput("position_bias", ShaderUsage::UseUniform);
@@ -380,7 +374,7 @@ Status SparseAttentionIndexerCsaCompressProgramShader::GenerateShaderCode([[mayb
   shader.AdditionalImplementation()
       << kWgslNegativeMax
       << "fn kv_value(batch: u32, position: u32, channel: u32) -> f32 {\n";
-  if (config.has_past_buffer_) {
+  if (has_past_buffer_) {
     shader.AdditionalImplementation()
         << "  if (position < uniforms.past_buffer_length) {\n"
         << "    return f32(" << past_proj->GetByOffset(
@@ -397,7 +391,7 @@ Status SparseAttentionIndexerCsaCompressProgramShader::GenerateShaderCode([[mayb
       << ");\n"
       << "}\n"
       << "fn gate_value(batch: u32, position: u32, channel: u32) -> f32 {\n";
-  if (config.has_past_buffer_) {
+  if (has_past_buffer_) {
     shader.AdditionalImplementation()
         << "  if (position < uniforms.past_buffer_length) {\n"
         << "    return f32(" << past_proj->GetByOffset(
@@ -487,16 +481,15 @@ Status SparseAttentionIndexerCsaCompressProgramShader::GenerateShaderCode([[mayb
   return Status::OK();
 }
 
-Status SparseAttentionIndexerCsaCopyBufferProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                                            ConfiguredShaderHelper& shader) {
+Status SparseAttentionIndexerCsaCopyBufferProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper* key = nullptr;
   const ShaderVariableHelper* gate = nullptr;
-  if (config.has_current_) {
+  if (has_current_) {
     key = &shader.AddInput("key", ShaderUsage::UseUniform);
     gate = &shader.AddInput("gate", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* past_proj = nullptr;
-  if (config.has_past_buffer_) {
+  if (has_past_buffer_) {
     past_proj = &shader.AddInput("past_proj_buffer", ShaderUsage::UseUniform);
   }
   const auto& present_proj = shader.AddOutput("present_proj_buffer",
@@ -510,7 +503,7 @@ Status SparseAttentionIndexerCsaCopyBufferProgramShader::GenerateShaderCode([[ma
       << "  let token = token_row % uniforms.present_buffer_length;\n"
       << "  let batch = token_row / uniforms.present_buffer_length;\n"
       << "  let source = uniforms.present_buffer_start + token;\n";
-  if (config.has_past_buffer_) {
+  if (has_past_buffer_) {
     shader.MainFunctionBody()
         << "  if (source < uniforms.past_buffer_length) {\n"
         << "    let input = (batch * uniforms.past_buffer_length + source) * width + channel;\n"
@@ -523,7 +516,7 @@ Status SparseAttentionIndexerCsaCopyBufferProgramShader::GenerateShaderCode([[ma
         << "    return;\n"
         << "  }\n";
   }
-  if (config.has_current_) {
+  if (has_current_) {
     shader.MainFunctionBody()
         << "  let current_token = source - uniforms.past_buffer_length;\n"
         << "  let input = (batch * uniforms.sequence_length + current_token) * width + channel;\n"
@@ -539,8 +532,7 @@ Status SparseAttentionIndexerCsaCopyBufferProgramShader::GenerateShaderCode([[ma
   return Status::OK();
 }
 
-Status SparseAttentionIndexerCsaSelectProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                                        ConfiguredShaderHelper& shader) {
+Status SparseAttentionIndexerCsaSelectProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& query = shader.AddInput("query", ShaderUsage::UseUniform);
   const auto& query_norm = shader.AddInput("query_norm_weight", ShaderUsage::UseUniform);
   const auto& compressed_key = shader.AddInput("scoring_compressed_keys", ShaderUsage::UseUniform);
@@ -788,14 +780,15 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
     const bool has_current = sequence_length > 0;
     const Tensor* current_key = packed_qk ? query : key;
     SparseAttentionIndexerQsaConcatProgram concat{has_past, has_current};
-    concat.SetWorkgroupSize(kElementwiseWorkgroupSize);
+    concat.CacheHint(has_past, has_current)
+        .SetWorkgroupSize(kElementwiseWorkgroupSize);
     if (has_past) {
-      concat.AddInput({past_key, ProgramTensorMetadataDependency::None});
+      concat.AddInput({past_key, ProgramTensorMetadataDependency::Type});
     }
     if (has_current) {
-      concat.AddInput({current_key, ProgramTensorMetadataDependency::None});
+      concat.AddInput({current_key, ProgramTensorMetadataDependency::Type});
     }
-    concat.AddOutput({present, ProgramTensorMetadataDependency::None})
+    concat.AddOutput({present, ProgramTensorMetadataDependency::Type})
         .SetDispatchGroupSize(DivideRoundUp(ToUint32(present_elements), kElementwiseWorkgroupSize))
         .AddUniformVariables({{ToUint32(present_elements)},
                               {ToUint32(sequence_length)},
@@ -811,16 +804,18 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
     return Status::OK();
   }
   SparseAttentionIndexerQsaSelectProgram select{mask != nullptr};
-  select.AddInputs({{query, ProgramTensorMetadataDependency::None},
-                    {present, ProgramTensorMetadataDependency::None},
-                    {query_norm, ProgramTensorMetadataDependency::None},
-                    {key_norm, ProgramTensorMetadataDependency::None},
-                    {cos_cache, ProgramTensorMetadataDependency::None},
-                    {sin_cache, ProgramTensorMetadataDependency::None}});
+  select.CacheHint(query->GetElementType(), num_heads, head_size, rotary_width, compress_ratio_, capacity,
+                   mask != nullptr)
+      .AddInputs({{query, ProgramTensorMetadataDependency::Type},
+                  {present, ProgramTensorMetadataDependency::Type},
+                  {query_norm, ProgramTensorMetadataDependency::Type},
+                  {key_norm, ProgramTensorMetadataDependency::Type},
+                  {cos_cache, ProgramTensorMetadataDependency::Type},
+                  {sin_cache, ProgramTensorMetadataDependency::Type}});
   if (mask != nullptr) {
-    select.AddInput({mask, ProgramTensorMetadataDependency::None, {mask->Shape().Size()}, 1});
+    select.AddInput({mask, ProgramTensorMetadataDependency::Type, {mask->Shape().Size()}, 1});
   }
-  select.AddOutput({selected, ProgramTensorMetadataDependency::None})
+  select.AddOutput({selected, ProgramTensorMetadataDependency::Type})
       .SetWorkgroupSize(kQsaSelectWorkgroupSize)
       .SetDispatchGroupSize(ToUint32(rows))
       .AddUniformVariables({{ToUint32(rows)},
@@ -956,9 +951,10 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
   const int64_t past_compressed_elements = batch_size * past_compressed_length * head_size;
   if (past_compressed_elements > 0) {
     SparseAttentionIndexerCsaCopyCompressedProgram copy;
-    copy.AddInput({past_compressed, ProgramTensorMetadataDependency::None})
-        .AddOutputs({{present_compressed, ProgramTensorMetadataDependency::None},
-                     {&*scoring_compressed_keys, ProgramTensorMetadataDependency::None}})
+    copy.CacheHint(query->GetElementType())
+        .AddInput({past_compressed, ProgramTensorMetadataDependency::Type})
+        .AddOutputs({{present_compressed, ProgramTensorMetadataDependency::Type},
+                     {&*scoring_compressed_keys, ProgramTensorMetadataDependency::Type}})
         .SetWorkgroupSize(kElementwiseWorkgroupSize)
         .SetDispatchGroupSize(DivideRoundUp(ToUint32(past_compressed_elements), kElementwiseWorkgroupSize))
         .AddUniformVariables({{ToUint32(past_compressed_elements)},
@@ -971,16 +967,18 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
   if (plan.new_window_count > 0) {
     const bool has_past_buffer = past_buffer_length > 0;
     SparseAttentionIndexerCsaCompressProgram compress{has_past_buffer};
-    compress.AddInputs({{key, ProgramTensorMetadataDependency::None}, {gate, ProgramTensorMetadataDependency::None}});
+    compress.CacheHint(query->GetElementType(), has_past_buffer, head_size, rotary_width, compress_ratio_)
+        .AddInputs({{key, ProgramTensorMetadataDependency::Type},
+                    {gate, ProgramTensorMetadataDependency::Type}});
     if (has_past_buffer) {
-      compress.AddInput({past_proj, ProgramTensorMetadataDependency::None});
+      compress.AddInput({past_proj, ProgramTensorMetadataDependency::Type});
     }
-    compress.AddInputs({{bias, ProgramTensorMetadataDependency::None},
-                        {key_norm, ProgramTensorMetadataDependency::None},
-                        {cos_cache, ProgramTensorMetadataDependency::None},
-                        {sin_cache, ProgramTensorMetadataDependency::None}})
-        .AddOutputs({{present_compressed, ProgramTensorMetadataDependency::None},
-                     {&*scoring_compressed_keys, ProgramTensorMetadataDependency::None}})
+    compress.AddInputs({{bias, ProgramTensorMetadataDependency::Type},
+                        {key_norm, ProgramTensorMetadataDependency::Type},
+                        {cos_cache, ProgramTensorMetadataDependency::Type},
+                        {sin_cache, ProgramTensorMetadataDependency::Type}})
+        .AddOutputs({{present_compressed, ProgramTensorMetadataDependency::Type},
+                     {&*scoring_compressed_keys, ProgramTensorMetadataDependency::Type}})
         .SetWorkgroupSize(kSerialWorkgroupSize)
         .SetDispatchGroupSize(ToUint32(batch_size * plan.new_window_count))
         .AddUniformVariables({{ToUint32(batch_size * plan.new_window_count)},
@@ -1004,15 +1002,15 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
     const bool has_past_buffer = past_buffer_length > 0;
     const bool has_current = sequence_length > 0;
     SparseAttentionIndexerCsaCopyBufferProgram copy_buffer{has_past_buffer, has_current};
-
+    copy_buffer.CacheHint(query->GetElementType(), has_past_buffer, has_current);
     if (has_current) {
-      copy_buffer.AddInputs({{key, ProgramTensorMetadataDependency::None},
-                             {gate, ProgramTensorMetadataDependency::None}});
+      copy_buffer.AddInputs({{key, ProgramTensorMetadataDependency::Type},
+                             {gate, ProgramTensorMetadataDependency::Type}});
     }
     if (has_past_buffer) {
-      copy_buffer.AddInput({past_proj, ProgramTensorMetadataDependency::None});
+      copy_buffer.AddInput({past_proj, ProgramTensorMetadataDependency::Type});
     }
-    copy_buffer.AddOutput({present_proj, ProgramTensorMetadataDependency::None})
+    copy_buffer.AddOutput({present_proj, ProgramTensorMetadataDependency::Type})
         .SetWorkgroupSize(kElementwiseWorkgroupSize)
         .SetDispatchGroupSize(DivideRoundUp(ToUint32(present_buffer_elements), kElementwiseWorkgroupSize))
         .AddUniformVariables({{ToUint32(present_buffer_elements)},
@@ -1038,31 +1036,32 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
     return context.RunProgram(fill);
   }
   SparseAttentionIndexerCsaSelectProgram select;
-  select
-      .AddInputs({{query, ProgramTensorMetadataDependency::None},
-                  {query_norm, ProgramTensorMetadataDependency::None},
-                  {&*scoring_compressed_keys, ProgramTensorMetadataDependency::None},
-                  {head_weights, ProgramTensorMetadataDependency::None},
-                  {position_ids, ProgramTensorMetadataDependency::None},
-                  {cos_cache, ProgramTensorMetadataDependency::None},
-                  {sin_cache, ProgramTensorMetadataDependency::None}})
-      .AddOutput({selected, ProgramTensorMetadataDependency::None})
+  select.CacheHint(query->GetElementType(), num_heads, head_size, rotary_width, compress_ratio_, capacity)
+      .AddInputs({{query, ProgramTensorMetadataDependency::Type},
+                  {query_norm, ProgramTensorMetadataDependency::Type},
+                  {&*scoring_compressed_keys, ProgramTensorMetadataDependency::Type},
+                  {head_weights, ProgramTensorMetadataDependency::Type},
+                  {position_ids, ProgramTensorMetadataDependency::Type},
+                  {cos_cache, ProgramTensorMetadataDependency::Type},
+                  {sin_cache, ProgramTensorMetadataDependency::Type}})
+      .AddOutput({selected, ProgramTensorMetadataDependency::Type})
       .SetWorkgroupSize(kSerialWorkgroupSize)
       .SetDispatchGroupSize(ToUint32(rows))
-      .AddUniformVariables(
-          {{ToUint32(rows)},
-           {ToUint32(sequence_length)},
-           {ToUint32(num_heads)},
-           {ToUint32(head_size)},
-           {ToUint32(rotary_width)},
-           {ToUint32(max_rotary_length)},
-           {rotary_cache_shape.batched ? ToUint32(max_rotary_length) : 0u},
-           {ToUint32(compress_ratio_)},
-           {ToUint32(capacity)},
-           {ToUint32(present_compressed_length)},
-           {epsilon_},
-           {has_scale_ ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size))},
-           {has_head_weight_scale_ ? head_weight_scale_ : 1.0f / std::sqrt(static_cast<float>(num_heads))}});
+      .AddUniformVariables({{ToUint32(rows)},
+                            {ToUint32(sequence_length)},
+                            {ToUint32(num_heads)},
+                            {ToUint32(head_size)},
+                            {ToUint32(rotary_width)},
+                            {ToUint32(max_rotary_length)},
+                            {rotary_cache_shape.batched ? ToUint32(max_rotary_length) : 0u},
+                            {ToUint32(compress_ratio_)},
+                            {ToUint32(capacity)},
+                            {ToUint32(present_compressed_length)},
+                            {epsilon_},
+                            {has_scale_ ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size))},
+                            {has_head_weight_scale_
+                                 ? head_weight_scale_
+                                 : 1.0f / std::sqrt(static_cast<float>(num_heads))}});
   return context.RunProgram(select);
 }
 

@@ -5,7 +5,6 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
-#include "core/providers/webgpu/configured_program.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -18,33 +17,21 @@ enum class ScatterElementsReduction : int {
   Max = 4,
 };
 
-#define WEBGPU_SCATTER_ELEMENTS_PROGRAM_CONFIG(F) \
-  F(int64_t, axis_)                               \
-  F(ScatterElementsReduction, reduction_)         \
-  F(int32_t, data_type_)
+class ScatterElementsProgram final : public Program<ScatterElementsProgram> {
+ public:
+  ScatterElementsProgram(int64_t axis, ScatterElementsReduction reduction, MLDataType data_type)
+      : Program{"ScatterElements"}, axis_(axis), reduction_(reduction), data_type_(data_type) {}
 
-struct ScatterElementsProgramShader {
-  WEBGPU_DECLARE_SPECIALIZATION(Config, WEBGPU_SCATTER_ELEMENTS_PROGRAM_CONFIG);
-  static Config MakeConfig(int64_t axis, ScatterElementsReduction reduction, MLDataType data_type) {
-    Config result{};
-    result.axis_ = int64_t(axis);
-    result.reduction_ = ScatterElementsReduction(reduction);
-    result.data_type_ = int32_t(data_type->AsPrimitiveDataType()->GetDataType());
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-    return result;
-  }
-  static constexpr std::string_view name = "ScatterElements";
-  static Status GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& sh);
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
+                                          {"axis_dim_limit", ProgramUniformVariableDataType::Uint32});
 
-#define WEBGPU_SCATTER_ELEMENTS_PROGRAM_SHADER_UNIFORMS(U) \
-  U(Uint32, output_size)                                   \
-  U(Uint32, axis_dim_limit)
-  WEBGPU_DECLARE_UNIFORMS(WEBGPU_SCATTER_ELEMENTS_PROGRAM_SHADER_UNIFORMS);
-#undef WEBGPU_SCATTER_ELEMENTS_PROGRAM_SHADER_UNIFORMS
+ private:
+  int64_t axis_;
+  ScatterElementsReduction reduction_;
+  MLDataType data_type_;
 };
-#undef WEBGPU_SCATTER_ELEMENTS_PROGRAM_CONFIG
-
-using ScatterElementsProgram = ConfiguredProgram<ScatterElementsProgramShader>;
 
 class ScatterElements : public WebGpuKernel {
  public:

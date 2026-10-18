@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/math/cum_sum.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -33,7 +32,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPU, 1),
     CumSum);
 
-Status CumSumProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config, ConfiguredShaderHelper& shader) {
+Status CumSumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
@@ -90,7 +89,7 @@ Status CumSum::ComputeInternal(ComputeContext& context) const {
   CumSumProgram program{};
   program
       .AddInput({input_tensor})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::TypeAndRank})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)},
                             {static_cast<uint32_t>(axis)},

@@ -162,7 +162,6 @@ class ShaderHelper final {
   //
   Status GenerateSourceCode(std::string& code, std::vector<int>& shape_uniform_ranks);
   friend class ProgramManager;
-  friend class ConfiguredShaderHelper;
 
   const WebGpuContext& webgpu_context_;
   const wgpu::Limits& limits_;

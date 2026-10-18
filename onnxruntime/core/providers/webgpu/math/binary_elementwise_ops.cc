@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include <memory>
 #include <optional>
 
@@ -16,33 +15,19 @@
 namespace onnxruntime {
 namespace webgpu {
 
-static std::string GetMinMaxImpl(int element_type, bool is_max);
-static std::string GetPowImpl(int element_type);
-
-Status BinaryElementwiseProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                          ConfiguredShaderHelper& shader) {
+Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& c = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
-  const bool a_is_bool = shader.InputType(0) == ProgramVariableDataType::Boolx4;
-  const bool b_is_bool = shader.InputType(1) == ProgramVariableDataType::Boolx4;
+  const bool a_is_bool = Inputs()[0].var_type == ProgramVariableDataType::Boolx4;
+  const bool b_is_bool = Inputs()[1].var_type == ProgramVariableDataType::Boolx4;
 
-  switch (config.implementation_) {
-    case BinaryImplementation::Min:
-    case BinaryImplementation::Max:
-      shader.AdditionalImplementation() << GetMinMaxImpl(shader.InputElementType(0), config.implementation_ == BinaryImplementation::Max);
-      break;
-    case BinaryImplementation::Pow:
-      shader.AdditionalImplementation() << GetPowImpl(shader.InputElementType(0));
-      break;
-    case BinaryImplementation::None:
-      break;
-  }
+  shader.AdditionalImplementation() << additional_impl_;
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
 
-  if ((shader.InputElementType(0) == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) || (shader.OutputElementType(0) == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64)) {
+  if (is_int64_input_ || is_int64_output_) {
     // INT64 input or output (component=1): declare shared base and element_count for use in the shader.
     shader.MainFunctionBody()
         << "let base = global_idx * 4u;\n"
@@ -52,15 +37,15 @@ Status BinaryElementwiseProgramShader::GenerateShaderCode([[maybe_unused]] const
   // check whether can use element-wise mode.
   // If either A or B is scalar, or A and B have the same shape, element-wise mode can be used.
   // In element-wise mode, no indices calculation is needed.
-  if (config.is_lhs_scalar_ || config.is_rhs_scalar_ || !config.is_broadcast_) {
-    if ((shader.InputElementType(0) == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64)) {
+  if (is_lhs_scalar_ || is_rhs_scalar_ || !is_broadcast_) {
+    if (is_int64_input_) {
       // INT64 inputs have component=1; read 4 individual elements into vec4 for uniform processing.
       // Guard lanes 1-3 against OOB reads when size is not divisible by 4.
       const auto a_offset = [&](const std::string& idx) {
-        return config.is_lhs_scalar_ ? a.GetByOffset("0") : a.GetByOffset(idx);
+        return is_lhs_scalar_ ? a.GetByOffset("0") : a.GetByOffset(idx);
       };
       const auto b_offset = [&](const std::string& idx) {
-        return config.is_rhs_scalar_ ? b.GetByOffset("0") : b.GetByOffset(idx);
+        return is_rhs_scalar_ ? b.GetByOffset("0") : b.GetByOffset(idx);
       };
       shader.MainFunctionBody()
           << "var a0 = " << a_offset("base") << ";\n"
@@ -74,14 +59,14 @@ Status BinaryElementwiseProgramShader::GenerateShaderCode([[maybe_unused]] const
           << "let b = vec4<input_b_value_t>(b0, b1, b2, b3);\n";
     } else {
       // get A data
-      if (config.is_lhs_scalar_) {
+      if (is_lhs_scalar_) {
         shader.MainFunctionBody() << "let a = input_a_value_t(" << a.GetByOffset("0") << ".x);\n";
       } else {
         shader.MainFunctionBody() << "let a = " << a.GetByOffset("global_idx") << ";\n";
       }
 
       // get B data
-      if (config.is_rhs_scalar_) {
+      if (is_rhs_scalar_) {
         shader.MainFunctionBody() << "let b = input_b_value_t(" << b.GetByOffset("0") << ".x);\n";
       } else {
         shader.MainFunctionBody() << "let b = " << b.GetByOffset("global_idx") << ";\n";
@@ -97,12 +82,12 @@ Status BinaryElementwiseProgramShader::GenerateShaderCode([[maybe_unused]] const
     // If either last dimension of A or B is divisible by 4, or the shared dimension is divisible by 4, vectorize mode
     // can be enabled.
     // In vectorize mode, the source data of A and B will be loaded only once to calculate 4 output values.
-    if (config.vectorize_) {
+    if (vectorize_) {
       shader.MainFunctionBody() << "let outputIndices = " << c_indices.OffsetToIndices("global_idx * 4") << ";\n"
                                 << "let offset_a = " << a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
                                 << "let offset_b = " << b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n";
       // get A data
-      if (config.is_lhs_use_4_components_) {
+      if (is_lhs_use_4_components_) {
         shader.MainFunctionBody() << "let a = " << a.GetByOffset("offset_a / 4") << ";\n";
       } else if (a_is_bool) {
         shader.MainFunctionBody() << "let a = " << a.GetByOffset("offset_a / 4") << "[offset_a % 4];\n";
@@ -111,7 +96,7 @@ Status BinaryElementwiseProgramShader::GenerateShaderCode([[maybe_unused]] const
       }
 
       // get B data
-      if (config.is_rhs_use_4_components_) {
+      if (is_rhs_use_4_components_) {
         shader.MainFunctionBody() << "let b = " << b.GetByOffset("offset_b / 4") << ";\n";
       } else if (b_is_bool) {
         shader.MainFunctionBody() << "let b = " << b.GetByOffset("offset_b / 4") << "[offset_b % 4];\n";
@@ -164,18 +149,16 @@ Status BinaryElementwiseProgramShader::GenerateShaderCode([[maybe_unused]] const
     }
   }
 
-  if ((shader.OutputElementType(0) == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64)) {
+  if (is_int64_output_) {
     // INT64 output (component=1): write each component of the vec4 result individually.
-    shader.MainFunctionBody() << "let result = " << config.expression_.Text() << ";\n"
-                              << c.SetByOffset("base", "result[0]") << "\n"
-                              << "if (base + 1u < element_count) { " << c.SetByOffset("base + 1u", "result[1]")
-                              << " }\n"
-                              << "if (base + 2u < element_count) { " << c.SetByOffset("base + 2u", "result[2]")
-                              << " }\n"
-                              << "if (base + 3u < element_count) { " << c.SetByOffset("base + 3u", "result[3]")
-                              << " }\n";
+    shader.MainFunctionBody()
+        << "let result = " << expression_ << ";\n"
+        << c.SetByOffset("base", "result[0]") << "\n"
+        << "if (base + 1u < element_count) { " << c.SetByOffset("base + 1u", "result[1]") << " }\n"
+        << "if (base + 2u < element_count) { " << c.SetByOffset("base + 2u", "result[2]") << " }\n"
+        << "if (base + 3u < element_count) { " << c.SetByOffset("base + 3u", "result[3]") << " }\n";
   } else {
-    shader.MainFunctionBody() << c.SetByOffset("global_idx", config.expression_.Text());
+    shader.MainFunctionBody() << c.SetByOffset("global_idx", expression_);
   }
   return Status::OK();
 }
@@ -186,8 +169,8 @@ namespace {
 // shape of `lhs` and `rhs`, and must contain at least one element.
 Status RunBinaryProgram(ComputeContext& context,
                         const std::string& kernel_name,
-                        ShaderLiteral expression,
-                        BinaryImplementation implementation,
+                        const std::string& expression,
+                        const std::string& additional_impl,
                         const Tensor* lhs_tensor,
                         const Tensor* rhs_tensor,
                         Tensor* output_tensor) {
@@ -240,26 +223,30 @@ Status RunBinaryProgram(ComputeContext& context,
 
   BinaryElementwiseProgram program{kernel_name,
                                    expression,
-                                   implementation,
+                                   additional_impl,
                                    is_broadcast,
                                    is_lhs_scalar,
                                    is_rhs_scalar,
                                    shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4,
                                    shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4,
-                                   vectorize};
+                                   vectorize,
+                                   is_int64_input,
+                                   is_int64_output};
   program
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},
           {static_cast<uint32_t>(size)},
       })
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, {output_size}, output_component});
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {output_size}, output_component});
 
   if (is_lhs_scalar || is_rhs_scalar || !is_broadcast) {
     // Mode Element-wise
-    program.AddInputs(
-        {{lhs_tensor, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, is_int64_input ? 1 : 4},
-         {rhs_tensor, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, is_int64_input ? 1 : 4}});
+    // cache hint: "E{is_a_scalar}{is_b_scalar}"
+    program
+        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, is_int64_input ? 1 : 4},
+                    {rhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, is_int64_input ? 1 : 4}})
+        .CacheHint("E" + std::to_string(is_lhs_scalar) + std::to_string(is_rhs_scalar));
   } else if (vectorize) {
     // reshape the dims to merge the shared dimension if available
     bool need_reshape = shared_dimension_divisible_by_4 && num_shared_dimension > 1;
@@ -276,28 +263,33 @@ Status RunBinaryProgram(ComputeContext& context,
     }
 
     if (shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4 || is_lhs_bool) {
-      program.AddInput({lhs_tensor, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, 4});
+      program.AddInput({lhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4});
     } else {
-      program.AddInput({lhs_tensor, ProgramTensorMetadataDependency::None});
+      program.AddInput({lhs_tensor, ProgramTensorMetadataDependency::Type});
     }
     if (shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4 || is_rhs_bool) {
-      program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, 4});
+      program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4});
     } else {
-      program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::None});
+      program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::Type});
     }
     // Mode Vectorize broadcast
-    program.AddIndices(std::move(reshaped_output_shape))
+    // Boolx4 storage does not distinguish vector reads from lane broadcasts.
+    program
+        .AddIndices(std::move(reshaped_output_shape))
         .AddIndices(std::move(reshaped_lhs_shape))
-        .AddIndices(std::move(reshaped_rhs_shape));
+        .AddIndices(std::move(reshaped_rhs_shape))
+        .CacheHint("V", is_lhs_bool && (shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4),
+                   is_rhs_bool && (shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4));
   } else {
     // Mode Broadcast
+    // cache hint: "B"
     program
-        .AddInputs(
-            {{lhs_tensor, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, is_lhs_bool ? 4 : 1},
-             {rhs_tensor, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, is_rhs_bool ? 4 : 1}})
+        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, is_lhs_bool ? 4 : 1},
+                    {rhs_tensor, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, is_rhs_bool ? 4 : 1}})
         .AddIndices(output_tensor->Shape())
         .AddIndices(lhs_tensor->Shape())
-        .AddIndices(rhs_tensor->Shape());
+        .AddIndices(rhs_tensor->Shape())
+        .CacheHint("B");
   }
 
   return context.RunProgram(program);
@@ -317,7 +309,12 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  return RunBinaryProgram(context, kernel_name_, expression_, implementation_, lhs_tensor, rhs_tensor, output_tensor);
+  std::string additional_impl;
+  if (get_additional_impl_) {
+    additional_impl = get_additional_impl_(lhs_tensor->GetElementType(), rhs_tensor->GetElementType());
+  }
+
+  return RunBinaryProgram(context, kernel_name_, expression_, additional_impl, lhs_tensor, rhs_tensor, output_tensor);
 }
 
 Status VariadicElementwise::ComputeInternal(ComputeContext& context) const {
@@ -350,6 +347,10 @@ Status VariadicElementwise::ComputeInternal(ComputeContext& context) const {
   // duration of this call. Reserve up front so the vector never reallocates and invalidates the
   // pointers handed to the next iteration.
   const auto element_type = input_0->DataType();
+  std::string additional_impl;
+  if (get_additional_impl_) {
+    additional_impl = get_additional_impl_(input_0->GetElementType(), input_0->GetElementType());
+  }
   InlinedVector<Tensor> intermediate_tensors;
   // input_count >= 2 here (the single-input case returned above), so the last fold targets the
   // kernel output and there are input_count - 2 intermediates. Guard the subtraction anyway so a
@@ -371,7 +372,7 @@ Status VariadicElementwise::ComputeInternal(ComputeContext& context) const {
       intermediate_tensors.push_back(context.CreateGPUTensor(element_type, intermediate_shape));
       dst_tensor = &intermediate_tensors.back();
     }
-    ORT_RETURN_IF_ERROR(RunBinaryProgram(context, kernel_name_, expression_, implementation_,
+    ORT_RETURN_IF_ERROR(RunBinaryProgram(context, kernel_name_, expression_, additional_impl,
                                          lhs_tensor, rhs_tensor, dst_tensor));
     lhs_tensor = dst_tensor;
   }
@@ -424,10 +425,17 @@ static std::string GetMinMaxImpl(int element_type, bool is_max) {
   return SS_GET(s);
 }
 
-WEBGPU_VARIADIC_IMPL(Max, "max_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", BinaryImplementation::Max)
-WEBGPU_VARIADIC_IMPL(Min, "min_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", BinaryImplementation::Min)
+static std::string GetMaxImpl(int lhs_element_type, int /* rhs_element_type */) {
+  return GetMinMaxImpl(lhs_element_type, /*is_max=*/true);
+}
+static std::string GetMinImpl(int lhs_element_type, int /* rhs_element_type */) {
+  return GetMinMaxImpl(lhs_element_type, /*is_max=*/false);
+}
 
-static std::string GetPowImpl(int lhs_element_type) {
+WEBGPU_VARIADIC_IMPL(Max, "max_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", GetMaxImpl)
+WEBGPU_VARIADIC_IMPL(Min, "min_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", GetMinImpl)
+
+std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
   SS(s, 1024);
   std::string round_str;
   if (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
@@ -460,7 +468,7 @@ static std::string GetPowImpl(int lhs_element_type) {
   return SS_GET(s);
 }
 
-WEBGPU_BINARY_IMPL(Pow, "pow_v(a, b)", BinaryImplementation::Pow)
+WEBGPU_BINARY_IMPL(Pow, "pow_v(a, b)", GetPowImpl)
 WEBGPU_BINARY_IMPL(PRelu, "select(b * a, a, a >= vec4<input_a_element_t>(0))")
 WEBGPU_BINARY_IMPL(Equal, "vec4<u32>(vec4<input_a_element_t>(a) == vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_IMPL(Greater, "vec4<u32>(vec4<input_a_element_t>(a) > vec4<input_b_element_t>(b))")

@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "core/common/span_utils.h"
 #include "core/common/inlined_containers.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -82,8 +81,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedNumberTypes()),
     Transpose);
 
-Status OIHW2OHWIProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                  ConfiguredShaderHelper& shader) {
+Status OIHW2OHWIProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& src = shader.AddInput("src", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
@@ -92,12 +90,11 @@ Status OIHW2OHWIProgramShader::GenerateShaderCode([[maybe_unused]] const Config&
                              WGSL_TEMPLATE_VARIABLE(src, src));
 }
 
-Status TransposeProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                  ConfiguredShaderHelper& shader) {
+Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
 
-  if (config.use_shared_) {
+  if (use_shared_) {
     shader.AdditionalImplementation() << "var<workgroup> tile : array<array<output_value_t, tile_size + 1>, tile_size>;\n";
     // The tile is tile_size square but the workgroup is only tile_rows deep, so each thread
     // carries tile_size/tile_rows rows of it. That keeps every global access tile_size
@@ -124,8 +121,8 @@ Status TransposeProgramShader::GenerateShaderCode([[maybe_unused]] const Config&
   } else {
     shader.AdditionalImplementation() << "fn perm(i: output_indices_t)->a_indices_t {\n"
                                          "  var a: a_indices_t;\n";
-    for (size_t i = 0; i < config.perm_.size(); ++i) {
-      shader.AdditionalImplementation() << "  a[" << config.perm_[i] << "] = i[" << i << "];\n";
+    for (size_t i = 0; i < perm_.size(); ++i) {
+      shader.AdditionalImplementation() << "  a[" << perm_[i] << "] = i[" << i << "];\n";
     }
     shader.AdditionalImplementation() << "  return a;\n"
                                          "}\n";
@@ -180,9 +177,9 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContextBase& context,
       transpose_program.SetWorkgroupSize(64);
       transpose_program.SetDispatchGroupSize(dispatch_size);
       transpose_program.AddInput({&input,
-                                  ProgramTensorMetadataDependency::None});
+                                  ProgramTensorMetadataDependency::TypeAndRank});
       transpose_program.AddOutput({&output,
-                                   ProgramTensorMetadataDependency::None});
+                                   ProgramTensorMetadataDependency::TypeAndRank});
       transpose_program.AddUniformVariables({{channel_output},
                                              {channel_input},
                                              {kernel_height},
@@ -227,7 +224,8 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContextBase& context,
   TransposeProgram program{permutations, use_shared};
 
   program
-      .AddInputs({{&input, ProgramTensorMetadataDependency::None, new_input_shape, components}})
+      .CacheHint(absl::StrJoin(permutations, "-"))
+      .AddInputs({{&input, ProgramTensorMetadataDependency::TypeAndRank, new_input_shape, components}})
       .AddOutputs({{&output, ProgramTensorMetadataDependency::None, output_shape, components}})
       .AddUniformVariables({{output_size}});
 

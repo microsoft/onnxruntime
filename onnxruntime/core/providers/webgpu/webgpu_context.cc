@@ -558,10 +558,8 @@ Status WebGpuContext::WaitForDeferredPipelineBuilds(CommandRecordingState& recor
 
     if (!dispatch.pending_build) {
       result = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "No cached or pending pipeline for deferred dispatch: ", program_mgr_->KeyForLogging(dispatch.program_key));
-      // Do not return early. Later dispatches may own pending callback contexts that must remain
-      // alive until their builds complete. The caller will discard all dispatches without encoding
-      // them after this function finishes draining the window.
+                               "No cached or pending pipeline for deferred dispatch: ", dispatch.program_key);
+      // Drain the rest of the window before discarding all dispatches without encoding them.
       continue;
     }
 
@@ -745,7 +743,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   auto key = CalculateProgramCacheKey(program, inputs_segments, outputs_segments);
 
-  LOGS(context.Logger(), INFO) << "Starting program \"" << program_mgr_->KeyForLogging(key) << "\" (" << x << ", " << y << ", " << z << ")";
+  LOGS(context.Logger(), INFO) << "Starting program \"" << key << "\" (" << x << ", " << y << ", " << z << ")";
   // The program cache prevents duplicate builds across encoded windows.
   // EncodeDeferredDispatches() inserts completed pipelines into this cache before clearing the window.
   const auto* program_artifact = program_mgr_->Get(key);
@@ -980,7 +978,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   // Capture profiling info now (shapes must be read while tensors are alive); replayed in flush.
   if (is_profiling_) {
     command.pending_kernel_info.emplace(context.NodeName(), context.OpType(), program.Name(),
-                                        program_mgr_->KeyForLogging(key), inputs, outputs);
+                                        key, inputs, outputs);
   }
   recording.deferred_dispatches.push_back(std::move(command));
 

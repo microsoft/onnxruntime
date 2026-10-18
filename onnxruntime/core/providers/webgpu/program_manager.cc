@@ -11,7 +11,6 @@
 #include "core/platform/env_var.h"
 
 #include "core/providers/webgpu/program_manager.h"
-#include "core/providers/webgpu/program_cache_key.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_context.h"
 
@@ -220,14 +219,13 @@ Status ProgramManager::Build(const ProgramBase& program,
 
   // Dump shader code, if requested. It is dumped to `shader_dump_fn_` if set or VERBOSE logging otherwise.
   {
-    const auto shader_content = [this, &program, &program_key, &code]() {
-      const auto diagnostic_key = KeyForLogging(program_key);
+    const auto shader_content = [&program, &program_key, &code]() {
       return MakeString("\n=== WebGPU Shader code [", program.Name(),
-                        ", Key=\"", diagnostic_key, "\"",
+                        ", Key=\"", program_key, "\"",
                         "] Start ===\n\n",
                         code,
                         "\n=== WebGPU Shader code [", program.Name(),
-                        ", Key=\"", diagnostic_key, "\"",
+                        ", Key=\"", program_key, "\"",
                         "] End ===\n");
     };
 

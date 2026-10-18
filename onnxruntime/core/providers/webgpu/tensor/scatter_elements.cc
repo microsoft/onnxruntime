@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/configured_program.h"
 #include "core/providers/webgpu/tensor/scatter_elements.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -9,8 +8,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status ScatterElementsProgramShader::GenerateShaderCode([[maybe_unused]] const Config& config,
-                                                        ConfiguredShaderHelper& shader) {
+Status ScatterElementsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& indices = shader.AddInput("indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& updates = shader.AddInput("updates", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseShapeAndStride);
@@ -116,23 +114,23 @@ Status ScatterElementsProgramShader::GenerateShaderCode([[maybe_unused]] const C
   // Determine data type string for atomic operations
   std::string data_type_str;
   bool reducible = false;
-  if (config.data_type_ == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+  if (data_type_ == DataTypeImpl::GetType<int32_t>()) {
     reducible = true;
     data_type_str = "i32";
-  } else if (config.data_type_ == ONNX_NAMESPACE::TensorProto_DataType_UINT32) {
+  } else if (data_type_ == DataTypeImpl::GetType<uint32_t>()) {
     reducible = true;
     data_type_str = "u32";
-  } else if (config.data_type_ == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  } else if (data_type_ == DataTypeImpl::GetType<float>()) {
     reducible = true;
     data_type_str = "f32";
-  } else if (config.data_type_ == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+  } else if (data_type_ == DataTypeImpl::GetType<MLFloat16>()) {
     reducible = true;
     data_type_str = "f16";
   } else {
     data_type_str = "output_value_t";
   }
 
-  if (config.reduction_ != ScatterElementsReduction::None && !reducible) {
+  if (reduction_ != ScatterElementsReduction::None && !reducible) {
     ORT_THROW("ScatterElements: Reduction is not supported for data type ", data_type_str);
   }
 
@@ -161,20 +159,19 @@ Status ScatterElementsProgramShader::GenerateShaderCode([[maybe_unused]] const C
   // Build output indices by replacing the axis dimension with the scatter index
   shader.MainFunctionBody() << "  // Build output indices\n"
                             << "  var output_indices = update_indices;\n"
-                            << output.IndicesSet("output_indices", std::to_string(config.axis_), "u32(idx)") << ";\n";
+                            << output.IndicesSet("output_indices", std::to_string(axis_), "u32(idx)") << ";\n";
 
   // Get update value and scatter
   shader.MainFunctionBody() << "  let update_value = " << updates.GetByOffset("global_idx") << ";\n";
   shader.MainFunctionBody() << "  let output_offset = " << output.IndicesToOffset("output_indices") << ";\n";
 
   // Handle reduction
-  if (config.reduction_ == ScatterElementsReduction::None) {
+  if (reduction_ == ScatterElementsReduction::None) {
     // Non-reduction path: use direct assignment
     shader.MainFunctionBody() << "  " << output.SetByOffset("output_offset", "update_value") << ";\n";
   } else {
     // Reduction path: use atomic operations
-    shader.MainFunctionBody() << atomic_reduction_snippet(config.reduction_, "output", "output_offset", "update_value",
-                                                          data_type_str);
+    shader.MainFunctionBody() << atomic_reduction_snippet(reduction_, "output", "output_offset", "update_value", data_type_str);
   }
 
   return Status::OK();
@@ -225,8 +222,9 @@ Status ScatterElements::ComputeInternal(ComputeContext& context) const {
   ScatterElementsProgram program(axis, reduction_, data_type);
 
   program
-      .AddInputs({{indices, ProgramTensorMetadataDependency::None},
-                  {updates, ProgramTensorMetadataDependency::None}})
+      .CacheHint(std::to_string(axis) + "_" + std::to_string(static_cast<uint32_t>(reduction_)))
+      .AddInputs({{indices, ProgramTensorMetadataDependency::TypeAndRank},
+                  {updates, ProgramTensorMetadataDependency::TypeAndRank}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({output_size, axis_dim_limit});
 
@@ -237,9 +235,9 @@ Status ScatterElements::ComputeInternal(ComputeContext& context) const {
        data_type == DataTypeImpl::GetType<MLFloat16>() ||
        data_type == DataTypeImpl::GetType<int32_t>() ||
        data_type == DataTypeImpl::GetType<uint32_t>())) {
-    program.AddOutput({output, ProgramTensorMetadataDependency::None, ProgramOutput::Atomic});
+    program.AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, ProgramOutput::Atomic});
   } else {
-    program.AddOutput({output, ProgramTensorMetadataDependency::None});
+    program.AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank});
   }
 
   return context.RunProgram(program);
