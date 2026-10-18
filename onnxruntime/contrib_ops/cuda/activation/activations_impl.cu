@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cuda_runtime.h>
+#include <type_traits>
 #include "activations_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/unary_elementwise_impl.cuh"
@@ -39,11 +40,22 @@ struct OP_ScaledTanh : public CtxScaledTanh {
 template <typename T>
 struct OP_QuickGelu : public CtxQuickGelu {
   __device__ __inline__ T operator()(const T& a) const {
-    T v = a * static_cast<T>(alpha);
-    T one = static_cast<T>(1.f);
-    T zero = static_cast<T>(0.f);
-    T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
-    return a * sigmoid;
+    using ComputeT = std::conditional_t<std::is_same_v<T, double>, double, float>;
+    const ComputeT value = static_cast<ComputeT>(a);
+    const ComputeT scaled = value * static_cast<ComputeT>(alpha);
+    if constexpr (std::is_same_v<ComputeT, float>) {
+      // Float exp enters its subnormal range near -87; keep the final product wide.
+      if (scaled < -87.0f) {
+        const double wide_value = static_cast<double>(value);
+        const double exponent = _Exp(wide_value * static_cast<double>(alpha));
+        return static_cast<T>(static_cast<float>(wide_value * exponent / (1.0 + exponent)));
+      }
+    }
+    const ComputeT exponent = _Exp(scaled >= ComputeT(0) ? -scaled : scaled);
+    // Preserve negative tails and round only after the fused sigmoid/product.
+    const ComputeT sigmoid = scaled >= ComputeT(0) ? ComputeT(1) / (ComputeT(1) + exponent)
+                                                   : exponent / (ComputeT(1) + exponent);
+    return static_cast<T>(value * sigmoid);
   }
 };
 

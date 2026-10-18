@@ -49,6 +49,8 @@ class MoEBase {
     ORT_ENFORCE(op_kernel_info.GetAttr<std::string>("activation_type", &activation_type_str).IsOK());
     if (activation_type_str == "relu") {
       activation_type_ = ActivationType::Relu;
+    } else if (activation_type_str == "relu2") {
+      activation_type_ = ActivationType::Relu2;
     } else if (activation_type_str == "gelu") {
       activation_type_ = ActivationType::Gelu;
     } else if (activation_type_str == "silu") {
