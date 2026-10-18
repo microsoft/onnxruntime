@@ -125,7 +125,7 @@ TEST_P(SessionLoopTest, RetentionResetCompletionAndRunParity) {
   EXPECT_EQ(session->calls, calls);
   ASSERT_STATUS_OK(first->Run(result));
   EXPECT_FALSE(result.executed);
-  first->Reset();
+  ASSERT_STATUS_OK(first->Reset());
   ASSERT_STATUS_OK(first->Step(result));
   EXPECT_EQ(result.iterations, 1);
   EXPECT_EQ(*result.outputs[0].Get<Tensor>().Data<float>(), 2.f);
@@ -250,7 +250,7 @@ TEST_P(SessionLoopTest, CancellationBeforeAndDuringRun) {
   EXPECT_EQ(session->calls, 0u);
   EXPECT_TRUE(execution->RequiresReset());
   EXPECT_EQ(result.iterations, 99);
-  execution->Reset();
+  ASSERT_STATUS_OK(execution->Reset());
 
   std::promise<void> entered, resume;
   auto resumed = resume.get_future();
@@ -268,7 +268,7 @@ TEST_P(SessionLoopTest, CancellationBeforeAndDuringRun) {
   EXPECT_EQ(result.iterations, 99);
   EXPECT_FALSE(execution->Step(result).IsOK());
   session->before_run = {};
-  execution->Reset();
+  ASSERT_STATUS_OK(execution->Reset());
   ASSERT_STATUS_OK(execution->Run(result));
   EXPECT_EQ(result.iterations, 3);
 }
@@ -285,12 +285,12 @@ TEST_P(SessionLoopTest, FailureAndExceptionRequireReset) {
   EXPECT_EQ(result.iterations, 1);
   EXPECT_TRUE(execution->RequiresReset());
   EXPECT_FALSE(execution->Run(result).IsOK());
-  execution->Reset();
+  ASSERT_STATUS_OK(execution->Reset());
   session->before_run = []() -> Status { ORT_THROW("injected exception"); };
   EXPECT_THROW(ORT_THROW_IF_ERROR(execution->Step(result)), OnnxRuntimeException);
   EXPECT_TRUE(execution->RequiresReset());
   session->before_run = {};
-  execution->Reset();
+  ASSERT_STATUS_OK(execution->Reset());
   ASSERT_STATUS_OK(execution->Run(result));
   EXPECT_EQ(*result.outputs[0].Get<Tensor>().Data<float>(), 9.f);
 }

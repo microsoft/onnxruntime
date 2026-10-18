@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M06 complete; M07-M24 pending.
+**Status:** Approved; M01-M06 complete; M07a implementation in progress.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -998,6 +998,10 @@ All CUDA commands above passed, with the nonzero counts/zero errors stated above
 ### M07 - Built-in and plugin EP customization
 
 **Outcome:** Providers can implement cache features and/or sampling independently.
+**Status:** SPEC Appendix G and the detailed M07a/M07b plan were approved
+2026-10-17 without changes. Both sub-PRs are authorized sequentially.
+M07a is in progress on `state/m07a-ep-stateful-hooks`, based on M06b `5bde969b66`;
+M07b follows its verified/published head.
 
 - [ ] Add capability-based in-tree hooks and boundary-safe plugin C contracts.
 - [ ] Route CPU implementations through the selection contract; specify allowed
@@ -1012,6 +1016,255 @@ release ordering and rejection of unsafe or undisclosed fallbacks.
 verify unavailable CUDA stateful capabilities are still reported accurately.
 **Completion gate:** Built-in and plugin routes both execute; public boundary
 documentation and 100% new host/glue-line coverage satisfy shared rules.
+
+#### M07a - Native contracts, CPU routing and public controls
+
+**Intended outcome:** Real in-tree capability-based cache/sampler dispatch,
+preserving CPU defaults and all M02-M06 behavior. Native and C/C++ callers can
+select/query implementations and observe supported fallback without relying on
+plugin registration or new CUDA kernels.
+**Dependencies:** M04, M05, M06. Stack this PR on M06b PR #17.
+
+- [x] A1: Define boundary-safe capability, selection, device/layout and provider-
+  resource contracts. Support individual KV operations and greedy independently;
+  validate advertised callbacks and version/size fields. Shared declarations must
+  not leak graph types or C++ containers/ownership across a C/DLL boundary.
+- [x] A2: Add optional IExecutionProvider discovery/hooks and wire the shared-
+  provider bridge. Unchanged EPs report no overrides. Supply the CPU reference
+  implementation through this contract, reusing existing algorithms.
+- [x] A3: Resolve independent CPU/PreferProvider/RequireProvider selections for
+  caches and sampling. Resolve a single compatible cache backend/device/storage
+  contract per chain; reject conflicts and invalid/ambiguous provider requests.
+  Allow only compatible missing-capability CPU fallback, never retry after an
+  invoked callback fails. Preserve intentional CPU-mode Session I/O staging.
+- [x] A4: Integrate dispatch into standalone caches/sampling, loops, generation
+  and shared-chain caches. Bind provider-backed standalone use explicitly to an
+  initialized Session; retain required callback/resources. Keep token generation
+  in core/generate and CPU behavior Session-free where already supported.
+- [x] A5: Propagate fallible provider/reset operations through native and public
+  error paths. Keep invalidation sticky after possibly mutating failures and
+  failed reset. Preserve immutable views and failure out-parameters; add any
+  required standalone-cache health query rather than silently reusing bad state.
+- [x] A6: Append public policy/binding/capability/dispatch-observation operations
+  and C++ wrappers. Preserve M06 V1 minimum sizes and fixed nested array-record
+  strides; do not reorder entries, change shipped signatures, bump API version
+  or add release-boundary markers. Metadata returned by C++ must retain/copy its
+  owners as in M06b.
+- [ ] A7: Add real synthetic in-tree providers and conformance tests, execute
+  all relevant CPU/CUDA regressions, measure every new host/bridge line, document
+  API/lifetimes/examples, and publish a ready-for-review PR.
+
+**CPU test plan:**
+
+- Verify unchanged default CPU outputs and real CPU reference dispatch for
+  Session-free standalone objects and model-loop/chain execution.
+- Exercise independent sampler-only/cache-only and partial-operation overrides;
+  compare results with the reference CPU implementation and assert actual
+  callback counts/selected operation, not only a registered provider name.
+- Cover absent/unknown providers, ambiguous/incompatible devices, missing
+  capabilities in PreferProvider/RequireProvider, permitted CPU-storage fallback,
+  rejected device fallback and conflicting shared-cache stage requirements.
+- Inject callback errors, including NOT_IMPLEMENTED after invocation, reset
+  failures and malformed results. Assert no CPU retry, preserved out-parameters,
+  invalidation/recovery and stable pre-existing snapshots.
+- Reproduce generic loops, all four chain combinations, finite inputs/state,
+  prefill/decode, EOS/limits and zero/one token budgets through native and C/C++.
+  Zero-budget execution must not introduce model/sampler invocations.
+- Verify configuration snapshots, retained contexts/allocators and callback
+  resources after mutable-object release. Use observable lifetime/allocator
+  counters, not merely reads from potentially freed but unchanged memory.
+- Test C/C++ boundary compilation and examples. Keep observability bounded:
+  per-operation selection/counters/current metadata, not unbounded token history.
+- Rerun M06's 36 API/baseline and 55 native CPU cases, plus the new actual cases;
+  counts are baselines, not predictions or a substitute for inspecting new XML.
+
+**CUDA test plan:**
+
+- Build the affected native/shared-provider paths with the existing consistent
+  CUDA 13.1/A100 configuration; preserve real CUDA model-node assignment.
+- Verify default CPU stateful behavior remains explicit/observable with CUDA
+  Sessions, and native CUDA cache/sampler requirements fail until M08/M09.
+- Run applicable host-override/error/lifetime and CPU-compatible fallback cases
+  in the CUDA build. Reject device-storage CPU fallback rather than copying it
+  behind the caller's policy. Do not label CPU callback dispatch native CUDA.
+- Rerun the 49 API/baseline and 97 native CUDA-build cases plus new tests; run
+  relevant generic API cases under Compute Sanitizer with zero errors.
+
+**M07a completion gate:** Every introduced native/public path, including shared-
+provider bridge glue, has measured 100% new executable-line coverage. If a
+conditional bridge path is absent from the instrumented CPU build, exercise it
+with an appropriate host/shared-provider fixture or collect its matching
+instrumented host profile; do not omit it from the denominator. CPU/CUDA tests,
+examples, ABI/style/document checks and publication must all pass. M07 itself
+remains incomplete while M07b is outstanding.
+
+**Current validation:** Initial focused CPU provider tests passed **6/6**.
+Final regressions, CUDA verification and measured coverage below passed;
+publication remains. The native optional hook is appended after existing virtual
+members, preserving old slot positions, and matching full builds were verified.
+
+**M07a verified evidence:**
+
+- Added per-operation, versioned C descriptors; optional native/shared-provider
+  discovery; real CPU reference dispatch; independent copied policies; retained
+  provider resources; and appended C/C++ configuration/discovery/diagnostics.
+  No shipped C entries, version boundaries or M06 nested record strides changed.
+- KV callbacks stage results and validate storage/extents before commit.
+  Provider failures invalidate mutable state; NOT_IMPLEMENTED after invocation
+  is propagated without CPU retry. Failed reset stays invalid. Allocator adapters
+  supplied to callbacks are retained with returned tensor storage, not left on
+  a dead stack frame. Native reset Status is checked through C/C++ and tests.
+- Sampling dispatch remains in core/generate, with framework-level declarations
+  instead of reverse native-session includes. A shared/DLL header uses only C
+  handles/metadata; no graph types leak across the provider interface.
+- Final CPU build/tests passed: **61/61 native** (six new provider cases plus
+  55 regressions) and **36/36 public API/baseline cases**, zero skips.
+- Final CUDA 13.1/A100 build/tests passed: **107/107 native** (ten provider cases
+  plus 97 regressions) and **49/49 public API/baseline cases**, zero skips.
+  New CUDA conformance fixtures assert actual model-node assignment and disable CPU fallback.
+- Exact new-line coverage: **782/782 unique executable source locations**,
+  including native/default/shared-provider headers, callback/resource/error
+  glue and all new C++ wrappers. The initial 763/770 result was not rounded up:
+  targeted tests closed all gaps, followed by style-final rebuilt profiles.
+- SDK coverage is exported from its exercising native test executable; runtime
+  coverage additionally includes the public API executable/shared library.
+  Detailed dumps identify 47/193 zero-hash unused-map entries respectively,
+  none affecting the measured new functions in the selected exports. Mixing
+  all SDK maps would include dormant copies from non-exercising images.
+- Compute Sanitizer: **4/4 native-provider CUDA cases** and **8/8 public API CUDA
+  cases**, zero errors. CPU callbacks/delegations are not native GPU work.
+- Extended the checked-in C consumer to exercise Session-free CPU policies,
+  diagnostics and cache health. GCC C11 compile/link/run passed with warnings
+  as errors. SPEC G.9's exact C++17 provider-selection example compiled/ran both
+  normally and with no-exceptions client flags; no runtime-mode qualification
+  is implied.
+- Tests prove partial/missing/required capabilities, actual callback counts,
+  per-stage sampling/shared-cache policy conflicts, reference delegation,
+  context/allocator retention, reset failures and CPU staging observability.
+  Staging counters are explicit CPU payloads, not inferred DMA measurements.
+- Changed-range formatting, 120 columns, whitespace, 93 requirement IDs and
+  24 macro milestones passed. No new dependency was installed.
+
+Passing final commands (reuse the established build configurations):
+
+```bash
+source .venv/bin/activate
+LLVM_PROFILE_FILE=/dev/null cmake --build build/state-cpu/RelWithDebInfo \
+  --parallel 8 --target onnxruntime_autoep_test onnxruntime_session_loop_test
+cd build/state-cpu/RelWithDebInfo
+mkdir -p coverage/m07a/verified
+LLVM_PROFILE_FILE="$PWD/coverage/m07a/verified/%m-%p.profraw" \
+  ./onnxruntime_session_loop_test \
+  --gtest_output=xml:coverage/m07a/verified/native-tests.xml
+LLVM_PROFILE_FILE="$PWD/coverage/m07a/verified/%m-%p.profraw" \
+  ./onnxruntime_autoep_test \
+  --gtest_filter='*StatefulApi*:*StatefulCxx*:*StatefulExecutionBaselineTest.*:ModelPackageApiTest.*' \
+  --gtest_output=xml:coverage/m07a/verified/api-tests.xml
+llvm-profdata merge -sparse coverage/m07a/verified/*.profraw \
+  -o coverage/m07a/verified/m07a.profdata
+```
+
+Export SDK headers from onnxruntime_session_loop_test and native changed sources
+with onnxruntime_autoep_test/libonnxruntime.so added as objects. Deduplicate DA
+locations and intersect added source lines against M06b `5bde969b66`; all 782
+executed. New untracked source files are entirely new for the initial export.
+
+From the CUDA build output directory after the matching successful build:
+
+```bash
+./onnxruntime_session_loop_test \
+  --gtest_output=xml:coverage/m07a/verified/native-tests.xml
+./onnxruntime_autoep_test \
+  --gtest_filter='*StatefulApi*:*StatefulCxx*:*StatefulExecutionBaselineTest.*:ModelPackageApiTest.*' \
+  --gtest_output=xml:coverage/m07a/verified/api-tests.xml
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --error-exitcode 99 \
+  ./onnxruntime_session_loop_test --gtest_filter='Cuda/StatefulProviderTest.*'
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --error-exitcode 99 \
+  ./onnxruntime_autoep_test \
+  --gtest_filter='Cuda/StatefulApiProviderTest.*:Cuda/StatefulCxxApiProviderTest.*'
+```
+
+All commands above passed with the counts stated above. M07b remains required
+before macro M07 can be marked complete.
+
+#### M07b - Plugin registration, adapters and compatibility
+
+**Intended outcome:** Dynamically loaded plugins can advertise and execute
+independent/partial stateful capabilities safely through the public C boundary,
+without breaking older OrtEp allocations or unloading live callback resources.
+**Dependency:** M07a. Use a separate branch/PR stacked on the verified M07a head.
+
+- [ ] B1: Append optional OrtEpApi registration/discovery entry points for copied,
+  versioned, size-tagged descriptors. Do not add mandatory fields to OrtEp or
+  read beyond an old allocation. Validate registration atomically; clean up
+  retained resources if registration or subsequent EP creation fails.
+- [ ] B2: Adapt registered callbacks to the native dispatcher. Retain callback
+  contexts, factory/library, allocator and any callback-used resources for the
+  needed lifetime, including values surviving Session/context release. Make
+  unregistration safe while live objects still depend on callback code.
+- [ ] B3: Extend the real example/test plugin for no overrides, sampler-only,
+  partial KV, full supported CPU capabilities and injected failures. Preserve
+  numerical/retained-view contracts; assert actual callback results and counts.
+- [ ] B4: Add a genuine frozen legacy/shorter OrtEp fixture and version/size/ABI
+  checks. A current-size instance with registration disabled is insufficient.
+  Verify existing no-registration plugins continue to load/run.
+- [ ] B5: Exercise provider/context/deleter retention, failed creation/registration
+  cleanup, exactly-once release and safe lifetime across unregistration. Cover
+  reset errors/no-retry fallback with plugin callbacks, not only native mocks.
+- [ ] B6: Run C/C++ plugin conformance and CPU/CUDA builds/regressions, include
+  plugin adapter/registration host glue in fresh coverage, document implementer
+  usage and limitations, and publish a ready-for-review stacked PR.
+
+**CPU test plan:**
+
+- Load the real plugin libraries and execute all supported override modes.
+  Compare reference outputs and query implementation/fallback evidence.
+- Test minimum/undersized/extended descriptors, unknown versions/capabilities,
+  missing callbacks, bad pointer/count pairs and owned callback-status handling.
+- Use the actual older/shorter ABI fixture; verify no new OrtEp-field read and
+  no descriptor is required from legacy plugins.
+- Fail registration and EP creation after resources were acquired; prove that
+  contexts/library resources are neither leaked nor released twice.
+- Release options, definitions, executions and Sessions while retained values
+  remain. Exercise their eventual allocator/deleter callbacks safely; verify
+  live callback code/resources cannot be unloaded by unregistration.
+- Check public C/C++ selection, metadata ownership and error behavior with
+  plugins, plus the complete M07a and M02-M06 regressions.
+
+**CUDA test plan:**
+
+- Load/run the same plugin extension in the CUDA-enabled build; exercise
+  relevant CUDA Session integration and preserve explicit capability reporting.
+- Repeat incompatible-device/missing-required-native-capability cases and
+  ensure plugin CPU overrides are not reported as native CUDA implementations.
+- Run relevant plugin/API lifetime and model-integration cases under Compute
+  Sanitizer. Native CUDA KV/sampling/stream kernels remain M08/M09.
+
+**M07b completion gate:** Real dynamic-plugin dispatch, partial support, genuine
+legacy ABI compatibility, error propagation and retained-resource lifetime are
+proved. All new registration/adapter/host glue has measured 100% executable-line
+coverage with matching fresh executable/library profiles. CPU/CUDA, pure-C ABI,
+C++ wrapper/example, style/document and ready-for-review PR gates pass.
+Only then mark macro M07 complete.
+
+**Execution/validation procedure for both sub-PRs:**
+
+- Keep this checklist and SCRATCHPAD current; stop for user review if a material
+  contract change to approved Appendix G is necessary.
+- Use the existing instrumented CPU and consistent CUDA 13.1 build trees.
+  Regenerate CMake only when source discovery/targets/configuration changes.
+- Start with the smallest new test selectors, then combine related new cases
+  and the established API/native regressions. Verify nonzero XML counts, no
+  unexpected skips, real callback invocation and required CUDA node assignment.
+- Collect fresh `%m-%p.profraw` profiles for CPU executables and relevant shared
+  modules; export/deduplicate exact new source locations against the sub-PR base.
+  Inspect mismatch dumps and resolve warnings affecting measured changed code.
+- Use existing build/test/lint tooling, no dependency additions unless required.
+  No device-line coverage claim applies to CPU callbacks; any new device
+  implementation would require the separate M08/M09 scope and coverage gates.
+- Record exact passing commands/counts/coverage and limitations in this section
+  and the repository PR template. Commit/push each independently verified PR;
+  do not merge automatically or mark full M07 complete after only M07a.
 
 ### M08 - Native CUDA KV management
 

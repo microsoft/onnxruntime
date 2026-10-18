@@ -1500,6 +1500,25 @@ inline SessionLoopOptions::SessionLoopOptions(const OrtStatefulLoopConfig& confi
   ThrowOnError(GetStatefulApi().CreateSessionLoopOptions(&config, &p_));
 }
 
+namespace detail {
+inline StatefulDispatchInfo CopyDispatchInfo(const OrtStatefulDispatchInfo& info) {
+  return {info.provider_name, info.requested_provider_name, info.policy, info.origin, info.operation,
+          info.device_type, info.device_id, info.cpu_calls, info.provider_calls, info.cpu_delegations, info.failures};
+}
+}  // namespace detail
+
+inline OrtStatefulProviderCapabilities QueryStatefulProviderCapabilities(const Session& session, const char* name) {
+  OrtStatefulProviderCapabilities out{};
+  ThrowOnError(GetStatefulApi().QueryStatefulProviderCapabilities(session, name, sizeof(out), &out));
+  return out;
+}
+
+inline SessionLoopOptions& SessionLoopOptions::SetProvider(
+    OrtStatefulProviderFeature feature, const OrtStatefulProviderSelection& selection) {
+  ThrowOnError(GetStatefulApi().SessionLoopOptionsSetProvider(p_, feature, &selection));
+  return *this;
+}
+
 inline SessionLoopOptions& SessionLoopOptions::SetConfig(const OrtStatefulLoopConfig& config) {
   ThrowOnError(GetStatefulApi().SessionLoopOptionsSetConfig(p_, &config));
   return *this;
@@ -1521,6 +1540,12 @@ inline SessionChainOptions::SessionChainOptions(const OrtStatefulChainConfig& co
 
 inline SessionChainOptions& SessionChainOptions::SetConfig(const OrtStatefulChainConfig& config) {
   ThrowOnError(GetStatefulApi().SessionChainOptionsSetConfig(p_, &config));
+  return *this;
+}
+
+inline SessionChainOptions& SessionChainOptions::SetComponentProvider(
+    size_t component, OrtStatefulProviderFeature feature, const OrtStatefulProviderSelection& selection) {
+  ThrowOnError(GetStatefulApi().SessionChainOptionsSetComponentProvider(p_, component, feature, &selection));
   return *this;
 }
 
@@ -1562,6 +1587,19 @@ inline bool StatefulExecution::RequiresReset() const {
   int out = 0;
   ThrowOnError(GetStatefulApi().StatefulExecutionRequiresReset(p_, &out));
   return out != 0;
+}
+
+inline StatefulDispatchInfo StatefulExecution::GetDispatchInfo(
+    OrtStatefulProviderFeature feature, OrtStatefulProviderOperation operation, size_t component) const {
+  OrtStatefulDispatchInfo out{};
+  ThrowOnError(GetStatefulApi().StatefulExecutionGetDispatchInfo(p_, feature, component, operation, sizeof(out), &out));
+  return detail::CopyDispatchInfo(out);
+}
+
+inline OrtStatefulStagingInfo StatefulExecution::GetStagingInfo(size_t component) const {
+  OrtStatefulStagingInfo out{};
+  ThrowOnError(GetStatefulApi().StatefulExecutionGetStagingInfo(p_, component, sizeof(out), &out));
+  return out;
 }
 
 inline StatefulStepResult StatefulExecution::GetState() const {
@@ -1621,6 +1659,12 @@ inline KVCacheOptions& KVCacheOptions::SetConfig(const OrtStatefulKVCacheConfig&
   return *this;
 }
 
+inline KVCacheOptions& KVCacheOptions::SetProvider(
+    const OrtStatefulProviderSelection& selection, OrtSession* session) {
+  ThrowOnError(GetStatefulApi().KVCacheOptionsSetProvider(p_, session, &selection));
+  return *this;
+}
+
 inline KVCacheManager::KVCacheManager(const KVCacheOptions& options, OrtAllocator* allocator) {
   ThrowOnError(GetStatefulApi().CreateKVCacheManager(options, allocator, &p_));
 }
@@ -1651,6 +1695,18 @@ inline OrtStatefulKVCacheStats KVCacheManager::GetStats() const {
   return out;
 }
 
+inline bool KVCacheManager::RequiresReset() const {
+  int out = 0;
+  ThrowOnError(GetStatefulApi().KVCacheManagerRequiresReset(p_, &out));
+  return out != 0;
+}
+
+inline StatefulDispatchInfo KVCacheManager::GetDispatchInfo(OrtStatefulProviderOperation operation) const {
+  OrtStatefulDispatchInfo out{};
+  ThrowOnError(GetStatefulApi().KVCacheManagerGetDispatchInfo(p_, operation, sizeof(out), &out));
+  return detail::CopyDispatchInfo(out);
+}
+
 inline KVCacheView::KVCacheView(OrtKVCacheView* view)
     : owner_{std::make_shared<detail::Base<OrtKVCacheView>>(detail::Base<OrtKVCacheView>{view})} {}
 
@@ -1678,6 +1734,18 @@ inline int64_t SamplerOptions::Sample(const OrtValue* logits) const {
   int64_t out = 0;
   ThrowOnError(GetStatefulApi().SamplerSample(p_, logits, &out));
   return out;
+}
+
+inline SamplerOptions& SamplerOptions::SetProvider(
+    const OrtStatefulProviderSelection& selection, OrtSession* session) {
+  ThrowOnError(GetStatefulApi().SamplerOptionsSetProvider(p_, session, &selection));
+  return *this;
+}
+
+inline StatefulDispatchInfo SamplerOptions::GetDispatchInfo() const {
+  OrtStatefulDispatchInfo out{};
+  ThrowOnError(GetStatefulApi().SamplerOptionsGetDispatchInfo(p_, sizeof(out), &out));
+  return detail::CopyDispatchInfo(out);
 }
 
 inline EpContextConfig::EpContextConfig(const SessionOptions& session_options)

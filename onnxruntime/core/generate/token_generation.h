@@ -11,11 +11,14 @@
 namespace onnxruntime {
 
 class NodeArg;
+class StatefulDispatch;
 
 class Sampler {
  public:
   // CPU-only; any NaN is an error. Equal maxima select the lowest token ID.
   static Status Greedy(const OrtValue& logits, std::optional<int64_t> position, int64_t& token);
+  static Status Sample(const OrtValue& logits, std::optional<int64_t> position,
+                       StatefulDispatch& dispatch, int64_t& token);
 };
 
 enum class TokenGenerationPhase { Prefill,

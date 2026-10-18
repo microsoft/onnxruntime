@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/framework/execution_provider.h"
+#include "core/framework/stateful_provider.h"
 #include "core/graph/constants.h"
 
 namespace onnxruntime {
@@ -31,6 +32,9 @@ class CPUExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+  const OrtStatefulProviderDescriptor* GetStatefulProvider() const noexcept override {
+    return GetCpuStatefulProviderDescriptor();
+  }
 
  private:
   CPUExecutionProviderInfo info_;

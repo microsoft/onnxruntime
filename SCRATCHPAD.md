@@ -453,3 +453,90 @@ Compressed project memory. This is not the execution plan.
   https://github.com/onnxruntime/ort-state/pull/17, stacked on M06a PR #16.
   Implementation commit `cd63f2f8ba`; all source changes tested before committing.
   M06 is complete; M07-M24 remain pending. No PRs were merged.
+
+## M07
+
+- User requested M07 on 2026-10-17. Baseline M06b `5bde969b66`; created
+  `state/m07a-ep-stateful-hooks`. No implementation yet.
+- Interview confirmed: explicit CPU default; independent cache/sampler
+  CPU/PreferProvider/RequireProvider policies; one compatible cache backend/
+  device per chain, per-stage sampling; missing-capability CPU fallback only
+  with compatible data/storage; no retry after callback failure/hidden transfers.
+- Standalone CPU remains Session-free; provider-backed standalone use explicitly
+  binds a Session. M07a native/CPU dispatch and M07b plugin/compatibility split
+  accepted. User confirmed no additional specification inputs.
+- SPEC Appendix G drafted for review. Prepare detailed TASKS only after SPEC
+  approval, then obtain plan approval before implementation.
+- Existing A.5 already prefers versioned size-tagged C descriptors registered
+  through appended OrtEpApi functions, not reads of new OrtEp fields.
+  Preserve retained-view/plugin-library lifetimes and existing CPU-mode staging;
+  native CUDA remains M08/M09. Boundary headers must not leak graph/C++ types.
+- User approved SPEC Appendix G without changes. Detailed M07a/M07b tasks,
+  separate outcomes and CPU/CUDA/100%-coverage test gates are now drafted in
+  TASKS for plan review. No implementation yet.
+- Existing PluginExecutionProvider uses UniqueOrtEp with a factory-reference
+  deleter: retained stateful callback/allocator/library contexts need explicit
+  lifetime ownership beyond Session release. Plan includes failed-creation
+  registration cleanup and a genuinely shorter legacy OrtEp fixture.
+- Plan approved without changes; user authorized BOTH M07a and M07b sequentially.
+  Native implementation is underway; no M07 commits/PRs yet.
+- M07a code added: C descriptors with per-operation cache/greedy capabilities,
+  explicit CPU-reference delegation, CPU/Prefer/Require policies; optional C-only
+  IExecutionProvider virtual descriptor getter and real CPU descriptor; host
+  binding/dispatch/lease code in core/session/stateful_provider.cc with native
+  declarations in core/framework/stateful_execution_provider.h. Shared/DLL header
+  include/core/framework/stateful_provider.h uses only public C types, no graph.
+- KV operations now stage CPU work/results, dispatch individual callbacks, retain
+  returned storage/context/allocator owners, validate extents, and invalidate
+  after provider failure. Reset returns Status end-to-end; old native tests now
+  ASSERT_STATUS_OK on Reset. Generate-side sampler_provider.cc keeps sampler
+  dispatch outside core/session and uses an in-tree generic exception boundary.
+- Loop/chain provider selections, shared-cache conflict validation, per-stage
+  sampling, public C/C++ setters/capability/dispatch/health queries are wired.
+  Separate CPU binding/output/snapshot payload counters are observable, explicitly
+  not inferred DMA/native-GPU evidence. M06 C structs/nested record strides stay
+  unchanged; new functions append to OrtStatefulApi.
+- New focused conformance source: test/framework/stateful_provider_test.cc,
+  explicitly added to onnxruntime_session_loop_test. Covers synthetic native
+  provider, actual custom greedy + cache delegation/direct allocator use,
+  partial/required/fallback/no-retry, invalidation/reset, pipeline and lifetimes.
+- CPU initial build failed only on local `selected` name collision, fixed. Next
+  build exposed nodiscard Reset calls in old native tests (fixed) and a test
+  include edited mid-build (error_code_helper.h now included). Known active
+  CPU rebuild: m07a-cpu-fix-build; CUDA initial build: m07a-cuda-build.
+  Logs: files/m07a-*.log. No new M07 tests have run yet.
+- Critical allocator lifetime fix: callback request allocator is a SHARED
+  OrtAllocatorImplWrappingIAllocator retained with returned storage. A stack
+  allocator adapter would dangle when plugin CreateTensorAsOrtValue retains it.
+- M07b investigation: Environment currently owns unique EpInfo/unique EpLibrary,
+  while PluginExecutionProvider/Factory hold raw factory/device refs. Proposed
+  root fix: shared EpInfo + weak opaque owner in private OrtEpDevice; factory and
+  native plugin EP hold strong owner, delaying unload through retained backend
+  leases. No public OrtEp layout change. Descriptor registration can be scoped to
+  synchronous CreateEp (TLS transaction with rollback), then copied into adapter;
+  no global stale OrtEp registry/new OrtEp fields needed. Still unimplemented.
+- First focused CPU tests passed 6/6, before final ABI/layout stabilization.
+  IExecutionProvider hook moved to END of existing virtual members (do not shift
+  old slots). Stopped in-flight builds to avoid mixed vtables and started matching
+  full rebuilds: m07a-cpu-stable and m07a-cuda-stable. Do not reuse earlier profiles.
+- Public C consumer now exercises Session-free CPU policy/dispatch/health.
+  Additional tests cover auto/ambiguous device ids, CPU-provider delegation and
+  CPU-reference double invocation. Old native Reset calls check Status.
+- Callback allocator adapter retention is mandatory: C CreateTensorAsOrtValue
+  retains its raw OrtAllocator pointer; returned storage now retains the shared
+  adapter, its backing allocator AND provider lease until deallocation.
+- B lifetime implementation detail: promote Environment::EpInfo to shared_ptr;
+  private OrtEpDevice stores weak opaque owner; plugin factory/adapter keep a
+  strong owner. This defers factory/DLL unload after unregistration, avoiding
+  raw factory refs dangling while retained backend values live.
+- M07a FINAL verified: CPU native 61/61 + public API/baseline 36/36; CUDA native
+  107/107 + public API/baseline 49/49, zero skips. Sanitizer native provider4 +
+  publicAPI8 cases all passed, zero errors. Relevant CUDA fixtures disable CPU
+  fallback and assert all model-node assignment.
+- Final new-source coverage 782/782 unique executable locations. Fresh profiles:
+  build/state-cpu/RelWithDebInfo/coverage/m07a/verified. SDK exported native exe
+  only; native export additionally API exe/.so. Inspected 47/193 unused zero-hash
+  maps, none affecting measured new functions. Final logs `m07a-*-verified-*`.
+- GCC pure C11 extended consumer and exact SPEC G.9 SDK example passed; C++ example
+  also passed no-exceptions client flags. Source style/columns/traceability pass.
+  All M07a gates satisfied except publication; M07b still unimplemented.
