@@ -311,8 +311,8 @@ void Fp4Group8Avx512(const uint8_t* w_base, const uint8_t* s_base, const __m512 
 }
 
 template <int RT, bool IsMxfp4>
-void Fp4Group4Avx512(const uint8_t* w_base, const uint8_t* s_base, const __m512 (&lut_2d)[256], int64_t k,
-                     const float* a_reordered, float (&result)[4][RT]) {
+void Fp4Group4Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const uint8_t* s_base,
+                     const __m512 (&lut_2d)[256], int64_t k, const float* a_reordered, float (&result)[4][RT]) {
   const int64_t k_pairs = k / 32;
   const int64_t w_stride = k / 2;
   const int64_t s_stride = IsMxfp4 ? (k / 32) : (k / 16);
@@ -328,6 +328,13 @@ void Fp4Group4Avx512(const uint8_t* w_base, const uint8_t* s_base, const __m512 
   const uint8_t* s_rows[4] = {s_base, s_base + s_stride, s_base + 2 * s_stride, s_base + 3 * s_stride};
 
   for (int64_t kp = 0; kp < k_pairs; ++kp) {
+    if (next_w_base != nullptr && (kp & 3) == 0) {
+      const int64_t byte_off = kp * 16;
+      _mm_prefetch(reinterpret_cast<const char*>(next_w_base + 0 * w_stride + byte_off), _MM_HINT_T0);
+      _mm_prefetch(reinterpret_cast<const char*>(next_w_base + 1 * w_stride + byte_off), _MM_HINT_T0);
+      _mm_prefetch(reinterpret_cast<const char*>(next_w_base + 2 * w_stride + byte_off), _MM_HINT_T0);
+      _mm_prefetch(reinterpret_cast<const char*>(next_w_base + 3 * w_stride + byte_off), _MM_HINT_T0);
+    }
     const __m512 al0 = _mm512_loadu_ps(a_reordered + 0 * k + kp * 32);
     const __m512 ah0 = _mm512_loadu_ps(a_reordered + 0 * k + kp * 32 + 16);
     __m512 al1, ah1, al2, ah2, al3, ah3;
@@ -420,7 +427,8 @@ void Fp4RowTileAvx512(const uint8_t* weights, const uint8_t* block_scales, float
   }
   for (; n0 + 4 <= n_end; n0 += 4) {
     float result[4][RT];
-    Fp4Group4Avx512<RT, IsMxfp4>(weights + n0 * w_stride, block_scales + n0 * s_stride, lut_2d, k, a_reordered,
+    const uint8_t* next_w = (n0 + 8 <= n_end) ? (weights + (n0 + 4) * w_stride) : nullptr;
+    Fp4Group4Avx512<RT, IsMxfp4>(weights + n0 * w_stride, next_w, block_scales + n0 * s_stride, lut_2d, k, a_reordered,
                                  result);
     for (int c = 0; c < 4; ++c) {
       const float b = (bias != nullptr)

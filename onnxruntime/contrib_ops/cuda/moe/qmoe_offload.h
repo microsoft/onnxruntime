@@ -113,6 +113,18 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
                                      size_t min_host_bytes, cudaStream_t stream) const;
   Status StepBetweenRuns(cudaStream_t stream) const;
   void ServiceDoorbell() const;
+  struct CrossLayerPromoRequest {
+    const QMoEOffload* node = nullptr;
+    int device_id = 0;
+    int candidate = -1;
+    int target_slot = -1;
+    int victim_slot = -1;
+    int evicted_expert = -1;
+  };
+  bool TryPrepareCrossLayerPromotion(CrossLayerPromoRequest* out_req) const noexcept;
+  bool ExecuteCrossLayerPromotionDma(const CrossLayerPromoRequest& req, uint8_t* pinned_bounce_buf,
+                                     size_t bounce_cap) const noexcept;
+  bool TryCommitCrossLayerPromotion(const CrossLayerPromoRequest& req) const noexcept;
   static int LaunchDeferredMergeStatic(void* ctx, cudaStream_t stream, void* shared_out_ptr, int trigger);
   int LaunchDeferredMerge(cudaStream_t stream, void* shared_out_ptr, int trigger) const;
   template <typename ActT, typename ParallelRunner>

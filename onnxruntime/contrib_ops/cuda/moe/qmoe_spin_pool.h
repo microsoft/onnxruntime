@@ -27,6 +27,18 @@
 #include <string>
 #include <sys/syscall.h>
 #include <unistd.h>
+#elif defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
 #endif
 
 namespace onnxruntime::contrib::cuda::qmoe {
@@ -160,6 +172,103 @@ class ScopedCpuAffinity {
   cpu_set_t saved_{};
   bool restore_{};
 };
+#elif defined(_WIN32)
+inline std::vector<int> DiscoverWindowsBalancedCpuOrder(int* out_l3_domains = nullptr) {
+  DWORD_PTR proc_mask = 0, sys_mask = 0;
+  if (!GetProcessAffinityMask(GetCurrentProcess(), &proc_mask, &sys_mask) || proc_mask == 0) {
+    proc_mask = ~DWORD_PTR{0};
+  }
+
+  // Discover L3 cache domains (CCDs on AMD Ryzen / NUMA clusters) in processor group 0.
+  std::vector<KAFFINITY> l3_masks;
+  DWORD l3_bytes = 0;
+  GetLogicalProcessorInformationEx(RelationCache, nullptr, &l3_bytes);
+  if (l3_bytes > 0) {
+    std::vector<uint8_t> buf(l3_bytes);
+    if (GetLogicalProcessorInformationEx(
+            RelationCache, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buf.data()), &l3_bytes)) {
+      size_t offset = 0;
+      while (offset < l3_bytes) {
+        auto* info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buf.data() + offset);
+        if (info->Size == 0) break;
+        if (info->Relationship == RelationCache && info->Cache.Level == 3 && info->Cache.GroupCount >= 1 &&
+            info->Cache.GroupMasks[0].Group == 0) {
+          const KAFFINITY m = info->Cache.GroupMasks[0].Mask & proc_mask;
+          if (m != 0 && std::find(l3_masks.begin(), l3_masks.end(), m) == l3_masks.end()) {
+            l3_masks.push_back(m);
+          }
+        }
+        offset += info->Size;
+      }
+    }
+  }
+  if (l3_masks.empty()) {
+    l3_masks.push_back(proc_mask);
+  }
+  if (out_l3_domains) *out_l3_domains = static_cast<int>(l3_masks.size());
+
+  // Discover physical cores (RelationProcessorCore) and separate primary hardware threads from SMT siblings.
+  std::vector<std::vector<int>> domain_primary(l3_masks.size());
+  std::vector<std::vector<int>> domain_siblings(l3_masks.size());
+  DWORD core_bytes = 0;
+  GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &core_bytes);
+  if (core_bytes > 0) {
+    std::vector<uint8_t> buf(core_bytes);
+    if (GetLogicalProcessorInformationEx(
+            RelationProcessorCore, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buf.data()), &core_bytes)) {
+      size_t offset = 0;
+      while (offset < core_bytes) {
+        auto* info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buf.data() + offset);
+        if (info->Size == 0) break;
+        if (info->Relationship == RelationProcessorCore && info->Processor.GroupCount >= 1 &&
+            info->Processor.GroupMask[0].Group == 0) {
+          const KAFFINITY mask = info->Processor.GroupMask[0].Mask & proc_mask;
+          if (mask != 0) {
+            size_t dom = 0;
+            for (size_t d = 0; d < l3_masks.size(); ++d) {
+              if ((l3_masks[d] & mask) != 0) {
+                dom = d;
+                break;
+              }
+            }
+            bool first = true;
+            for (int bit = 0; bit < static_cast<int>(sizeof(KAFFINITY) * 8); ++bit) {
+              if ((mask & (KAFFINITY{1} << bit)) != 0) {
+                if (first) {
+                  domain_primary[dom].push_back(bit);
+                  first = false;
+                } else {
+                  domain_siblings[dom].push_back(bit);
+                }
+              }
+            }
+          }
+        }
+        offset += info->Size;
+      }
+    }
+  }
+
+  // Rotate domain 0 so physical core 0 (typically used by the main/UI/WaitCycle thread) is assigned last among primary cores.
+  if (!domain_primary.empty() && domain_primary[0].size() > 1) {
+    std::rotate(domain_primary[0].begin(), domain_primary[0].begin() + 1, domain_primary[0].end());
+  }
+
+  std::vector<int> order;
+  for (const auto* sets : {&domain_primary, &domain_siblings}) {
+    for (size_t i = 0;; ++i) {
+      bool any = false;
+      for (const auto& cpus : *sets) {
+        if (i < cpus.size()) {
+          order.push_back(cpus[i]);
+          any = true;
+        }
+      }
+      if (!any) break;
+    }
+  }
+  return order;
+}
 #endif
 
 inline size_t SpinPoolBatchSize(size_t count, size_t threads, size_t requested) {
@@ -188,6 +297,21 @@ class SpinPool final {
         cpus += std::to_string(CpuForWorker(i));
       }
       std::fprintf(stderr, "[QMoE NUMA] pool_threads=%d nodes=%d caller_then_worker_cpus=%s\n",
+                   threads, numa_node_count_, cpus.c_str());
+    }
+#elif defined(_WIN32)
+    const char* pin_env = std::getenv("ORT_QMOE_NUMA_PIN_WORKERS");
+    const bool enable_pin = (pin_env == nullptr || std::strcmp(pin_env, "0") != 0);
+    if (enable_pin) {
+      worker_cpus_ = DiscoverWindowsBalancedCpuOrder(&numa_node_count_);
+    }
+    if (const char* log = std::getenv("ORT_QMOE_NUMA_DIAGNOSTICS"); log && std::strcmp(log, "0") != 0) {
+      std::string cpus;
+      for (int i = 0; i < threads; ++i) {
+        if (i > 0) cpus += ',';
+        cpus += std::to_string(CpuForWorker(i));
+      }
+      std::fprintf(stderr, "[QMoE WinCCD] pool_threads=%d l3_domains=%d caller_then_worker_cpus=%s\n",
                    threads, numa_node_count_, cpus.c_str());
     }
 #endif
@@ -226,7 +350,7 @@ class SpinPool final {
   }
 
   int CpuForWorker(int worker) const noexcept {
-#if defined(__linux__)
+#if defined(__linux__) || defined(_WIN32)
     return worker >= 0 && static_cast<size_t>(worker) < worker_cpus_.size() ? worker_cpus_[worker] : -1;
 #else
     (void)worker;
@@ -316,6 +440,15 @@ class SpinPool final {
         affinity_failures_.fetch_add(1, std::memory_order_release);
       }
     }
+#elif defined(_WIN32)
+    const int cpu = CpuForWorker(worker_idx);
+    if (cpu >= 0 && cpu < static_cast<int>(sizeof(DWORD_PTR) * 8)) {
+      if (SetThreadAffinityMask(GetCurrentThread(), DWORD_PTR{1} << cpu) != 0) {
+        pinned_workers_.fetch_add(1, std::memory_order_release);
+      } else {
+        affinity_failures_.fetch_add(1, std::memory_order_release);
+      }
+    }
 #else
     (void)worker_idx;
 #endif
@@ -344,6 +477,8 @@ class SpinPool final {
   std::atomic<int> affinity_failures_{0};
 #if defined(__linux__)
   std::vector<cpu_set_t> node_masks_;
+  std::vector<int> worker_cpus_;
+#elif defined(_WIN32)
   std::vector<int> worker_cpus_;
 #endif
   std::vector<std::thread> workers_;

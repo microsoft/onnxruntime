@@ -3037,6 +3037,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                          static_cast<__nv_bfloat16*>(tile_output),
                                          tile_elems, is_last_pass, stream);
         }
+        if (use_prefill_dma) {
+          PrefetchNextQMoEPrefillDmaPass(
+              prefill_dma_dev_id, prefill_dma_layer, pass_idx, num_compact_passes,
+              runner_num_experts, stream);
+        }
       }
     } else {
       if (use_expert_compaction) {
