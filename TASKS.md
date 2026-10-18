@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M06 complete; M07a implementation in progress.
+**Status:** Approved; M01-M06 and M07a complete; M07b in progress.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -1000,11 +1000,12 @@ All CUDA commands above passed, with the nonzero counts/zero errors stated above
 **Outcome:** Providers can implement cache features and/or sampling independently.
 **Status:** SPEC Appendix G and the detailed M07a/M07b plan were approved
 2026-10-17 without changes. Both sub-PRs are authorized sequentially.
-M07a is in progress on `state/m07a-ep-stateful-hooks`, based on M06b `5bde969b66`;
-M07b follows its verified/published head.
+M07a is complete: [PR #18](https://github.com/onnxruntime/ort-state/pull/18),
+`state/m07a-ep-stateful-hooks`, based on M06b `5bde969b66`.
+M07b follows the verified/published M07a head; macro M07 remains incomplete.
 
 - [ ] Add capability-based in-tree hooks and boundary-safe plugin C contracts.
-- [ ] Route CPU implementations through the selection contract; specify allowed
+- [x] Route CPU implementations through the selection contract; specify allowed
   transfers/fallback and make implementation selection observable.
 - [ ] Extend a test plugin to demonstrate partial/full support, lifetimes,
   unsupported features, errors, and compatibility with older plugin contracts.
@@ -1050,7 +1051,7 @@ plugin registration or new CUDA kernels.
   strides; do not reorder entries, change shipped signatures, bump API version
   or add release-boundary markers. Metadata returned by C++ must retain/copy its
   owners as in M06b.
-- [ ] A7: Add real synthetic in-tree providers and conformance tests, execute
+- [x] A7: Add real synthetic in-tree providers and conformance tests, execute
   all relevant CPU/CUDA regressions, measure every new host/bridge line, document
   API/lifetimes/examples, and publish a ready-for-review PR.
 
@@ -1099,8 +1100,9 @@ examples, ABI/style/document checks and publication must all pass. M07 itself
 remains incomplete while M07b is outstanding.
 
 **Current validation:** Initial focused CPU provider tests passed **6/6**.
-Final regressions, CUDA verification and measured coverage below passed;
-publication remains. The native optional hook is appended after existing virtual
+Final regressions, CUDA verification, measured coverage and publication passed.
+Implementation commit `8fbd403493` is published in ready-for-review PR #18.
+The native optional hook is appended after existing virtual
 members, preserving old slot positions, and matching full builds were verified.
 
 **M07a verified evidence:**

@@ -540,3 +540,7 @@ Compressed project memory. This is not the execution plan.
 - GCC pure C11 extended consumer and exact SPEC G.9 SDK example passed; C++ example
   also passed no-exceptions client flags. Source style/columns/traceability pass.
   All M07a gates satisfied except publication; M07b still unimplemented.
+- M07a published ready for review as PR #18:
+  https://github.com/onnxruntime/ort-state/pull/18. Implementation `8fbd403493`;
+  both CPU/CUDA and exact 782/782 new-line gates verified before publication.
+  Continue directly to authorized M07b, stacked on the final M07a head.
