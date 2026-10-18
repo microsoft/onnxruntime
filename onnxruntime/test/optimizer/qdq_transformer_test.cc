@@ -2421,9 +2421,11 @@ TEST(QDQTransformerTests, ArgMax) {
   RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, false);
   RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/);
 
-  // Should *not* drop DQ when scale is non-positive, as it inverts ordering for ArgMax.
+  // Should *not* drop DQ when scale is non-positive (negative or zero), as it inverts ordering or causes ties for ArgMax.
   RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, false /*use_contrib_qdq*/, false /*expect_drop_dq*/, -1.0f /*scale*/);
   RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/, false /*expect_drop_dq*/, -1.0f /*scale*/);
+  RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, false /*use_contrib_qdq*/, false /*expect_drop_dq*/, 0.0f /*scale*/);
+  RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/, false /*expect_drop_dq*/, 0.0f /*scale*/);
 
   // Should *not* drop DQ for 16-bit DQ -> ArgMax (because ORT does not support 16-bit input types for ArgMax).
   RunArgMaxDropDQTestCase<uint16_t>({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/, false /*expect_drop_dq*/);
