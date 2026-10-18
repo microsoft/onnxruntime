@@ -188,18 +188,17 @@ class BatchNorm : public OpKernel {
     // The fused form (bias - mean * inv_std * scale) produces NaN when
     // mean == 0 and scale is infinite (0 * Inf = NaN), which differs from
     // the ONNX reference formula: (X - mean) * inv_std * scale + bias.
-    Eigen::Array<T, Eigen::Dynamic, 1> new_scale = inv_std * scale_arr;
     EigenArrayMap<T> Y_arr(Y->MutableData<T>(),
                            is_spatial_ ? sample_size : sample_size_incl_all_channels,
                            is_spatial_ ? N * C : N);
 
     if (is_spatial_) {  // spatial == 1
       for (size_t nc = 0; nc < N * C; ++nc) {
-        Y_arr.col(nc) = (X_arr.col(nc) - mean_arr(nc % C)) * new_scale(nc % C) + bias_arr(nc % C);
+        Y_arr.col(nc) = (X_arr.col(nc) - mean_arr(nc % C)) * inv_std(nc % C) * scale_arr(nc % C) + bias_arr(nc % C);
       }
     } else {  // spatial == 0
       for (size_t n = 0; n < N; ++n) {
-        Y_arr.col(n) = (X_arr.col(n) - mean_arr) * new_scale + bias_arr;
+        Y_arr.col(n) = (X_arr.col(n) - mean_arr) * inv_std * scale_arr + bias_arr;
       }
     }
     return Status::OK();

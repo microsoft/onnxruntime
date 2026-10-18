@@ -233,6 +233,30 @@ TEST(BatchNormTest, InfiniteScale_NoNaN) {
                 false, 0, OpTester::ExpectResult::kExpectSuccess, "", 8);
 }
 
+
+TEST(BatchNormTest, InfiniteScale_UnderflowBeforeScale_IsNaN) {
+  constexpr float inf = std::numeric_limits<float>::infinity();
+  constexpr float nan = std::numeric_limits<float>::quiet_NaN();
+
+  InputDataMap input_data_map;
+  input_data_map.insert({"X", vector<float>(9, 1e-30f)});
+  input_data_map.insert({"scale", {inf}});
+  input_data_map.insert({"B", {0.f}});
+  input_data_map.insert({"mean", {0.f}});
+  input_data_map.insert({"var", {1e38f}});
+
+  InputShapesMap input_shapes_map;
+  vector<int64_t> input_shape{1, 1, 3, 3};
+  input_shapes_map.insert({"X", input_shape});
+  input_shapes_map.insert({"scale", {1}});
+  input_shapes_map.insert({"B", {1}});
+  input_shapes_map.insert({"mean", {1}});
+  input_shapes_map.insert({"var", {1}});
+
+  auto expected_output = {nan, nan, nan, nan, nan, nan, nan, nan, nan};
+  TestBatchNorm(input_data_map, input_shapes_map, 1e-5f, expected_output, input_shape);
+}
+
 TEST(BatchNormTest, BatchNorm1d_3d_Pytorch) {
   vector<float> X{0.948241f, 1.23591f, -0.39321f, 1.4254f, -0.730771f, 0.439872f, 0.0265089f, 0.8748f,
                   -0.197505f, 0.962646f, 0.421469f, 1.94512f, 0.234179f, -0.931897f, -0.214905f, -0.982965f,
