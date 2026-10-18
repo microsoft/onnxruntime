@@ -26,61 +26,75 @@ ss << __str_5;
 //  8 | $MAIN {
 MainFunctionStart();
 ss << __str_5;
-//  9 |   let n_vec = workgroup_idx * workgroup_size_x + local_id.x;
+//  9 |   let n_vec_count = uniforms.N / 4u;
 ss << __str_6;
-// 10 |   let n_vec_count = uniforms.N / 4u;
+// 10 |   let groups_per_row = (n_vec_count + workgroup_size_x - 1u) / workgroup_size_x;
 ss << __str_7;
-// 11 |   var acc = vec4<f32>(0);
-ss << __str_8;
-// 12 |   if (n_vec < n_vec_count) {
-ss << __str_9;
-// 13 |     for (var k = local_id.y; k < uniforms.K; k += workgroup_size_y) {
-ss << __str_10;
-// 14 |       let av = f32(a.getByOffset(k));
-ss << __str_11;
-ss << __var_a->GetByOffset(__str_0);
-ss << __str_12;
-// 15 |       let bv = vec4<f32>(b.getByOffset(k * n_vec_count + n_vec));
-ss << __str_13;
-ss << __var_b->GetByOffset(__str_1);
-ss << __str_12;
-// 16 |       acc = fma(vec4<f32>(av), bv, acc);
-ss << __str_14;
-// 17 |     }
-ss << __str_15;
-// 18 |   }
-ss << __str_16;
-// 19 |   partials[local_idx] = acc;
-ss << __str_17;
-// 20 |   workgroupBarrier();
-ss << __str_18;
-// 21 |
+// 11 |   // Use the flattened index because dispatch normalization can reshape the workgroup grid.
 ss << __str_5;
-// 22 |   // All lanes participate in the barriers, including a partial N tile.
-// 23 |   for (var stride = workgroup_size_y / 2u; stride > 0u; stride /= 2u) {
-ss << __str_19;
-// 24 |     if (local_id.y < stride) {
-ss << __str_20;
-// 25 |       partials[local_idx] += partials[local_idx + stride * workgroup_size_x];
-ss << __str_21;
-// 26 |     }
+// 12 |   let row = workgroup_idx / groups_per_row;
+ss << __str_8;
+// 13 |   // Reject padded rows uniformly before buffer accesses or workgroup barriers.
+ss << __str_5;
+// 14 |   if (row >= uniforms.M) {
+ss << __str_9;
+// 15 |     return;
+ss << __str_10;
+// 16 |   }
+ss << __str_11;
+// 17 |   let n_vec = (workgroup_idx % groups_per_row) * workgroup_size_x + local_id.x;
+ss << __str_12;
+// 18 |   var acc = vec4<f32>(0);
+ss << __str_13;
+// 19 |   if (n_vec < n_vec_count) {
+ss << __str_14;
+// 20 |     for (var k = local_id.y; k < uniforms.K; k += workgroup_size_y) {
 ss << __str_15;
-// 27 |     workgroupBarrier();
+// 21 |       let av = f32(a.getByOffset(row * uniforms.K + k));
+ss << __str_16;
+ss << __var_a->GetByOffset(__str_0);
+ss << __str_17;
+// 22 |       let bv = vec4<f32>(b.getByOffset(k * n_vec_count + n_vec));
+ss << __str_18;
+ss << __var_b->GetByOffset(__str_1);
+ss << __str_17;
+// 23 |       acc = fma(vec4<f32>(av), bv, acc);
+ss << __str_19;
+// 24 |     }
+ss << __str_20;
+// 25 |   }
+ss << __str_11;
+// 26 |   partials[local_idx] = acc;
+ss << __str_21;
+// 27 |   workgroupBarrier();
 ss << __str_22;
-// 28 |   }
-ss << __str_16;
-// 29 |   if (local_id.y == 0u && n_vec < n_vec_count) {
+// 28 |
+ss << __str_5;
+// 29 |   // All lanes participate in the barriers, including a partial N tile.
+// 30 |   for (var stride = workgroup_size_y / 2u; stride > 0u; stride /= 2u) {
 ss << __str_23;
-// 30 |     output.setByOffset(n_vec, output_value_t(partials[local_idx]));
+// 31 |     if (local_id.y < stride) {
 ss << __str_24;
-ss << __var_output->SetByOffset(__str_2, __str_3);
+// 32 |       partials[local_idx] += partials[local_idx + stride * workgroup_size_x];
 ss << __str_25;
-// 31 |   }
-ss << __str_16;
-// 32 | }
+// 33 |     }
+ss << __str_20;
+// 34 |     workgroupBarrier();
+ss << __str_26;
+// 35 |   }
+ss << __str_11;
+// 36 |   if (local_id.y == 0u && n_vec < n_vec_count) {
+ss << __str_27;
+// 37 |     output.setByOffset(row * n_vec_count + n_vec, output_value_t(partials[local_idx]));
+ss << __str_28;
+ss << __var_output->SetByOffset(__str_2, __str_3);
+ss << __str_29;
+// 38 |   }
+ss << __str_11;
+// 39 | }
 MainFunctionEnd();
 ss << __str_5;
-// 33 |
+// 40 |
 
 
   return Status::OK();

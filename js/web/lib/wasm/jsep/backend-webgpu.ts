@@ -694,6 +694,9 @@ export class WebGpuBackend {
   }
 
   upload(gpuDataId: number, data: Uint8Array): void {
+    // The allocation planner can reuse a buffer still read by pending commands. Submit those commands before
+    // queue.writeBuffer overwrites it, including copies that do not increment pendingDispatchNumber.
+    this.flush();
     this.gpuDataManager.upload(gpuDataId, data);
   }
 
