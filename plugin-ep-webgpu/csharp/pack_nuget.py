@@ -55,14 +55,10 @@ LICENSE_FILES: tuple[Path, ...] = (REPO_ROOT / "LICENSE", REPO_ROOT / "ThirdPart
 
 # Import the shared template helper from _packaging_utils.py in the parent directory.
 sys.path.insert(0, str(SCRIPT_DIR.parent))
-from _packaging_utils import WINDOWS_AGILITY_SDK_BINARIES as _WINDOWS_AGILITY_SDK_BINARIES  # noqa: E402
 from _packaging_utils import (  # noqa: E402  (path setup must precede import)
     gen_file_from_template,
     get_plugin_binaries,
 )
-
-WINDOWS_BINARIES = tuple(path.as_posix() for path in get_plugin_binaries("Windows"))
-WINDOWS_AGILITY_SDK_BINARIES = tuple(path.as_posix() for path in _WINDOWS_AGILITY_SDK_BINARIES)
 
 
 def get_platforms(*, include_agility_sdk_files: bool = False) -> dict[str, tuple[str, tuple[str, ...]]]:
@@ -73,7 +69,7 @@ def get_platforms(*, include_agility_sdk_files: bool = False) -> dict[str, tuple
                 path.as_posix()
                 for path in get_plugin_binaries(
                     target_platform,
-                    include_agility_sdk_files=include_agility_sdk_files and target_platform == "Windows",
+                    include_agility_sdk_files=include_agility_sdk_files,
                 )
             ),
         )
@@ -245,9 +241,9 @@ def stage_binaries(
             src = source_dir / filename
             if not src.is_file():
                 raise PackError(f"expected binary not found: {src}")
-            destination = target_dir / filename
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, destination)
+            dst = target_dir / filename
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
             print(f"  {filename}")
         staged.add(name)
 

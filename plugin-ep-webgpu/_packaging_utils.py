@@ -23,6 +23,7 @@ WINDOWS_AGILITY_SDK_BINARIES = (Path("D3D12/D3D12Core.dll"), Path("D3D12/d3d12SD
 def get_plugin_binaries(target_platform: str, *, include_agility_sdk_files: bool = False) -> tuple[Path, ...]:
     """Return the required plugin binaries for a target platform.
 
+    Returned paths are relative to the binary directory provided by the caller.
     `target_platform` uses `platform.system()` names such as "Windows", "Linux", and "Darwin".
     """
     try:

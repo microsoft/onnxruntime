@@ -47,6 +47,11 @@ def get_dotnet_sdk_major():
 
 DOTNET_SDK_MAJOR = get_dotnet_sdk_major()
 DOTNET_SDK_REQUIRED = os.environ.get("ORT_WEBGPU_TEST_REQUIRE_DOTNET_SDK") == "1"
+WINDOWS_BINARIES = pack_nuget.get_platforms()["win_x64"][1]
+WINDOWS_BINARIES_WITH_AGILITY_SDK = pack_nuget.get_platforms(include_agility_sdk_files=True)["win_x64"][1]
+WINDOWS_AGILITY_SDK_BINARIES = tuple(
+    filename for filename in WINDOWS_BINARIES_WITH_AGILITY_SDK if filename not in WINDOWS_BINARIES
+)
 
 
 def should_run_dotnet_sdk_test(sdk_major, sdk_required):
@@ -65,7 +70,7 @@ class PackNugetTest(unittest.TestCase):
         platforms = pack_nuget.get_platforms()
         files = list(platforms[platform][1])
         if platform.startswith("win_") and include_agility_sdk:
-            files.extend(pack_nuget.WINDOWS_AGILITY_SDK_BINARIES)
+            files.extend(WINDOWS_AGILITY_SDK_BINARIES)
         for filename in files:
             if filename != missing:
                 path = source / filename
@@ -93,14 +98,14 @@ class PackNugetTest(unittest.TestCase):
                 self.stage_platform(platform, use_dawn_agility_sdk=use_dawn_agility_sdk)
                 expected_files = list(files)
                 if use_dawn_agility_sdk:
-                    expected_files.extend(pack_nuget.WINDOWS_AGILITY_SDK_BINARIES)
+                    expected_files.extend(WINDOWS_AGILITY_SDK_BINARIES)
                 for filename in expected_files:
                     destination = self.staging / "runtimes" / rid / "native" / filename
                     self.assertEqual(destination.read_bytes(), filename.encode())
 
     def test_stage_binaries_rejects_missing_agility_dll(self):
         for platform in ("win_x64", "win_arm64"):
-            for missing in pack_nuget.WINDOWS_AGILITY_SDK_BINARIES:
+            for missing in WINDOWS_AGILITY_SDK_BINARIES:
                 with self.subTest(platform=platform, missing=missing), self.assertRaises(pack_nuget.PackError):
                     self.stage_platform(platform, missing, use_dawn_agility_sdk=True)
 
@@ -265,7 +270,7 @@ class PackNugetTest(unittest.TestCase):
             targets = pack_nuget.PROJECT_DIR / f"{package_id}.targets"
             archive.write(targets, f"buildTransitive/{targets.name}")
             for rid in ("win-x64", "win-arm64"):
-                for filename in pack_nuget.WINDOWS_BINARIES + pack_nuget.WINDOWS_AGILITY_SDK_BINARIES:
+                for filename in WINDOWS_BINARIES_WITH_AGILITY_SDK:
                     archive.writestr(f"runtimes/{rid}/native/{filename}", f"{rid}/{filename}".encode())
 
         for rid in (None, "win-x64", "win-arm64", "win10-x64", "win10-arm64"):
@@ -297,7 +302,7 @@ class PackNugetTest(unittest.TestCase):
                     expected_rids = (rid.replace("win10-", "win-"),) if rid else ("win-x64", "win-arm64")
                     for expected_rid in expected_rids:
                         native_dir = output if rid else output / "runtimes" / expected_rid / "native"
-                        for filename in pack_nuget.WINDOWS_BINARIES + pack_nuget.WINDOWS_AGILITY_SDK_BINARIES:
+                        for filename in WINDOWS_BINARIES_WITH_AGILITY_SDK:
                             binary = native_dir / filename
                             self.assertTrue(binary.is_file(), f"{action}: missing {binary}")
                             self.assertEqual(binary.read_bytes(), f"{expected_rid}/{filename}".encode())

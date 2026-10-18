@@ -39,8 +39,6 @@ AUDITWHEEL_EXCLUDE = [
 def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str, *, use_dawn_agility_sdk: bool = False):
     """Copy the package source tree into staging_dir, copy binaries, and stamp the version."""
     target_platform = platform.system()
-    if target_platform not in ("Windows", "Linux", "Darwin"):
-        raise ValueError(f"Unsupported wheel platform: {target_platform}")
     if use_dawn_agility_sdk and target_platform != "Windows":
         raise ValueError("--use-dawn-agility-sdk is only supported for Windows wheels")
 
