@@ -93,6 +93,8 @@ class QMoE final : public CudaKernel, public MoEBase {
   // 1 is reserved for a possible future Hopper-specific layout (e.g. W4A8).
   bool weights_prepacked_ = true;
   bool nvfp4_weights_row_major_ = false;
+  bool nvfp4_fc1_decode_scale_eligible_ = false;
+  bool nvfp4_fc2_decode_scale_eligible_ = false;
   // Cached source weight shapes captured at PrePack time. When the
   // PrePack hook consumed and released the original int4/int8 or MXFP4
   // weight initializers (``is_packed = true``), ``context->Input<Tensor>(2)``

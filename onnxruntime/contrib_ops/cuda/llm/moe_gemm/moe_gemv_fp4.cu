@@ -539,6 +539,13 @@ __device__ __forceinline__ uint4 LoadWeightStreaming(const void* ptr) {
 
 // The activation row is staged as FP32 in shared memory and must fit the default 48 KiB limit.
 static constexpr int kDecodeMaxK = 8192;
+// Default enablement (ORT_FP4_GEMV_DECODE_KERNEL=1) is restricted to the H200-measured decode envelope:
+// SM90, up to 20 expanded rows, N and K up to 2560, and verified table-free scale eligibility
+// (|global_scale| * 448 < 3.98). Set ORT_FP4_GEMV_DECODE_KERNEL=2 to opt into the full kernel envelope
+// (SM90+, up to 80 expanded rows, K <= 8192, any even N, and the generic Fp4I2FConverter scale fallback).
+static constexpr int kDecodeDefaultMaxN = 2560;
+static constexpr int kDecodeDefaultMaxK = 2560;
+static constexpr int64_t kDecodeDefaultMaxExpandedRows = 20;
 // Tiling of the two KLanes variants (KLanes = 8 for K > 1024, 4 otherwise): warps per CTA, K tiles per
 // prefetch batch and the min-blocks-per-SM hint that caps registers. Tuned on H200 for the Qwen3.8 FC1
 // (N=1280, K=2560, fused SwiGLU) and FC2 (N=2560, K=640) shapes at 10 expanded rows.
@@ -550,13 +557,6 @@ static constexpr int kDecodeK4Batch = 2;
 static constexpr int kDecodeK4MinBlocks = 4;
 // Rows beyond this use the KPacked kernel, which amortizes less per-row work as the grid grows.
 static constexpr int64_t kDecodeMaxExpandedRows = 80;
-
-// Opt-out for the decode-specialised row-major NVFP4 GEMV (env ORT_FP4_GEMV_DECODE_KERNEL=0).
-static bool Fp4MoeGemvUseDecodeKernel() {
-  static const bool enabled =
-      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_DECODE_KERNEL", 1) != 0;
-  return enabled;
-}
 
 // Table-free decode: place the three e2m1 magnitude bits (e1 e0 m) at the lowest exponent bits and the
 // top mantissa bit of T and the sign at bit 15. The result is fp4_value * 2^-126 for bf16 and
@@ -873,7 +873,11 @@ void LaunchMoeGemvFp4RawNPacked(
     const T* bias, T* out,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t expanded_num_rows, int64_t n, int64_t k, cutlass_kernels::ActivationParams activation_params,
-    const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream, bool weights_row_major, int sm) {
+    const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream, bool weights_row_major, int sm,
+    bool decode_scale_eligible = false, bool* decode_kernel_launched = nullptr) {
+  if (decode_kernel_launched != nullptr) {
+    *decode_kernel_launched = false;
+  }
   constexpr int kThreads = 128;
   constexpr int kColsPerBlock = 16;
   const int64_t weight_expert_stride = n * k / 2;
@@ -882,12 +886,34 @@ void LaunchMoeGemvFp4RawNPacked(
   if (weights_row_major) {
     static const bool enable_expert_reuse =
         onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_NVFP4_FC1_EXPERT_REUSE", 0) == 1;
+    // Decode kernel mode (env ORT_FP4_GEMV_DECODE_KERNEL):
+    //   0: disabled (always use MoeGemvFp4RawKPackedKernel)
+    //   1: default (measured SM90 envelope with verified table-free scale eligibility)
+    //   2: opt-in full kernel envelope (SM90+, up to 80 expanded rows, K <= 8192, including generic scale fallback)
+    static const int decode_mode =
+        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_DECODE_KERNEL", 1);
     const bool reuse_experts = enable_expert_reuse && FusedSwiGlu && n == 1280 && k == 2560 &&
                                expanded_num_rows >= 40 && expert_first_token_offset != nullptr &&
                                permuted_row_to_expert != nullptr;
+    static const bool native_scale =
+        onnxruntime::ParseEnvironmentVariableWithDefault<bool>("ORT_NVFP4_GEMV_NATIVE_SCALE", false);
+    static const bool native_scale_supported = native_scale && Fp4MoeGemvSupportsNativeScale();
+    const bool allow_extended_decode_envelope = decode_mode >= 2;
+    // When ORT_NVFP4_GEMV_NATIVE_SCALE=1 is enabled on SM90, the 4-lane native-scale KPacked kernel
+    // (MoeGemvFp4RawKPackedKernel<half, ..., 4, false, true>) is slightly faster than MoeGemvFp4DecodeKernel
+    // for FP16 at K <= 1024 (e.g. Qwen3.8 FC2 K=640: 8.03 vs 8.41 us at top-10, 14.17 vs 14.23 us at top-20)
+    // while producing bit-identical results.
+    const bool prefer_native_kpacked_fp16 =
+        std::is_same_v<T, half> && native_scale_supported && k <= 1024;
+    const bool decode_envelope_ok =
+        allow_extended_decode_envelope
+            ? (sm >= 90)
+            : (sm == 90 && decode_scale_eligible && !prefer_native_kpacked_fp16 &&
+               expanded_num_rows <= kDecodeDefaultMaxExpandedRows &&
+               n <= kDecodeDefaultMaxN && k <= kDecodeDefaultMaxK);
     // Decode kernel: same summation order and KLanes dispatch as the KPacked kernel below (bit-identical).
-    // It steps aside for the expert-reuse variant and for shapes/alignments it does not cover.
-    if (!reuse_experts && sm >= 90 && Fp4MoeGemvUseDecodeKernel() && expanded_num_rows <= kDecodeMaxExpandedRows &&
+    // It steps aside for the expert-reuse variant and for shapes/alignments/scales outside the active envelope.
+    if (!reuse_experts && decode_mode != 0 && decode_envelope_ok && expanded_num_rows <= kDecodeMaxExpandedRows &&
         k % 32 == 0 && k <= kDecodeMaxK && n % 2 == 0 && reinterpret_cast<uintptr_t>(weight) % 16 == 0 &&
         reinterpret_cast<uintptr_t>(block_scales) % 2 == 0 && reinterpret_cast<uintptr_t>(act) % 16 == 0) {
       const size_t decode_smem = static_cast<size_t>(k / 32) * kDecodeActUnitStride * sizeof(float);
@@ -938,11 +964,12 @@ void LaunchMoeGemvFp4RawNPacked(
                                  std::integral_constant<int, kDecodeK8Batch>{}, std::integral_constant<int, kDecodeK8MinBlocks>{});
       }
       if (launched) {
+        if (decode_kernel_launched != nullptr) {
+          *decode_kernel_launched = true;
+        }
         return;
       }
     }
-    static const bool native_scale =
-        onnxruntime::ParseEnvironmentVariableWithDefault<bool>("ORT_NVFP4_GEMV_NATIVE_SCALE", false);
     const auto launch_k_packed = [&](auto k_lanes, auto reuse_rows, auto native_tag) {
       constexpr int kKLanes = decltype(k_lanes)::value;
       constexpr bool kReuseRows = decltype(reuse_rows)::value;
@@ -1075,6 +1102,27 @@ bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int
   return is_moe_gemv_fp4_supported(sm, expanded_num_rows, n, k, group_size, MoeGemvConfig::kDefault);
 }
 
+bool is_moe_gemv_fp4_decode_image_available(int sm, bool is_fp16) {
+  if (sm < 90) {
+    return false;
+  }
+  const auto check_type = [&](auto type_tag) {
+    using T = typename decltype(type_tag)::type;
+    cudaFuncAttributes attributes{};
+    CUDA_CALL_THROW(cudaFuncGetAttributes(
+        &attributes, MoeGemvFp4DecodeKernel<T, true, false, 8, kDecodeK8Warps, kDecodeK8Batch, kDecodeK8MinBlocks>));
+    return attributes.ptxVersion >= 90;
+  };
+  if (is_fp16) {
+    return check_type(TypeTag<half>{});
+  }
+#ifdef ENABLE_BF16
+  return check_type(TypeTag<__nv_bfloat16>{});
+#else
+  return false;
+#endif
+}
+
 template <typename T>
 void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T* scales,
                                    const uint8_t* raw_block_scales, const float* raw_global_scales,
@@ -1082,7 +1130,11 @@ void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T*
                                    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
                                    int num_experts, int64_t expanded_num_rows, int64_t n, int64_t k, int group_size,
                                    int sm, MoeGemvConfig config, bool sm80_pair_interleaved, bool raw_n_packed,
-                                   cudaStream_t stream, bool weights_row_major) {
+                                   cudaStream_t stream, bool weights_row_major, bool decode_scale_eligible,
+                                   bool* decode_kernel_launched) {
+  if (decode_kernel_launched != nullptr) {
+    *decode_kernel_launched = false;
+  }
   if (raw_n_packed) {
     ORT_ENFORCE(group_size == 16, "Raw N-packed FP4 GEMV is NVFP4-only.");
     ORT_ENFORCE(raw_block_scales != nullptr && raw_global_scales != nullptr,
@@ -1091,7 +1143,7 @@ void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T*
         act, weight, raw_block_scales, raw_global_scales, bias, out,
         expert_first_token_offset, permuted_row_to_expert, num_experts,
         expanded_num_rows, n, k, cutlass_kernels::ActivationParams{}, nullptr, expanded_num_rows, stream,
-        weights_row_major, sm);
+        weights_row_major, sm, decode_scale_eligible, decode_kernel_launched);
     return;
   }
   // Interleaved path: ColumnMajorInterleaved layout + dtype-conditional accumulation + smaller
@@ -1150,7 +1202,11 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
     int64_t expanded_num_rows, int64_t inter_size, int64_t k, int group_size, int sm,
     cutlass_kernels::ActivationParams activation_params, MoeGemvConfig config, bool sm80_pair_interleaved,
     bool raw_n_packed,
-    const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream, bool weights_row_major) {
+    const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream, bool weights_row_major,
+    bool decode_scale_eligible, bool* decode_kernel_launched) {
+  if (decode_kernel_launched != nullptr) {
+    *decode_kernel_launched = false;
+  }
   if (raw_n_packed) {
     ORT_ENFORCE(group_size == 16, "Raw N-packed FP4 GEMV is NVFP4-only.");
     ORT_ENFORCE(raw_block_scales != nullptr && raw_global_scales != nullptr,
@@ -1159,7 +1215,7 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
         act, weight, raw_block_scales, raw_global_scales, bias, out,
         expert_first_token_offset, permuted_row_to_expert, num_experts,
         expanded_num_rows, inter_size * 2, k, activation_params, permuted_row_to_source_row, num_rows, stream,
-        weights_row_major, sm);
+        weights_row_major, sm, decode_scale_eligible, decode_kernel_launched);
     return;
   }
   // Interleaved path: ColumnMajorInterleaved layout + dtype-conditional accumulation + smaller
@@ -1215,22 +1271,23 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
 template void launch_moe_gemv_fp4_symmetric<half>(
     const half*, const uint8_t*, const half*, const uint8_t*, const float*, const half*, half*,
     const int64_t*, const int*, int,
-    int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool, bool, cudaStream_t, bool);
+    int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool, bool, cudaStream_t, bool, bool, bool*);
 template void launch_moe_gemv_fp4_symmetric_interleaved_swiglu<half>(
     const half*, const uint8_t*, const half*, const uint8_t*, const float*, const half*, half*,
     const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, MoeGemvConfig, bool, bool,
-    const int*, int64_t, cudaStream_t, bool);
+    const int*, int64_t, cudaStream_t, bool, bool, bool*);
 #ifdef ENABLE_BF16
 template void launch_moe_gemv_fp4_symmetric<__nv_bfloat16>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const uint8_t*, const float*,
     const __nv_bfloat16*, __nv_bfloat16*,
-    const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool, bool, cudaStream_t, bool);
+    const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool, bool, cudaStream_t,
+    bool, bool, bool*);
 template void launch_moe_gemv_fp4_symmetric_interleaved_swiglu<__nv_bfloat16>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const uint8_t*, const float*,
     const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
-    MoeGemvConfig, bool, bool, const int*, int64_t, cudaStream_t, bool);
+    MoeGemvConfig, bool, bool, const int*, int64_t, cudaStream_t, bool, bool, bool*);
 #endif
 
 }  // namespace moe_gemv

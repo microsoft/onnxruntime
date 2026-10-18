@@ -830,7 +830,7 @@ debug switches.
 | `ORT_ENABLE_FP4_GEMV` | on | Fused MXFP4 GEMV decode kernel. Set to `0` to force the dequant-to-dense fallback (debugging/bisecting). Active in the SM80+ fallback regime, and as the decode arm when native CUTLASS prefill is enabled. |
 | `ORT_FP4_GEMV_AUTOTUNE` | `0` | Opt-in per-shape autotune of the GEMV CtaN/Threads tiling. Enabling it synchronizes the first uncached inference for each shape. |
 | `ORT_FP4_GEMV_AUTOTUNE_LOG` | `0` | Set to `1` to log the chosen GEMV configs per shape. |
-| `ORT_FP4_GEMV_DECODE_KERNEL` | `1` | NVFP4 offline K-packed (`weights_prepacked=1`) decode GEMV. Set to `0` to force `MoeGemvFp4RawKPackedKernel`; outputs are bit-identical either way. Read once per process. See [§9b.2](#9b2-fused-gemv-decode-group-16). |
+| `ORT_FP4_GEMV_DECODE_KERNEL` | `1` | NVFP4 offline K-packed (`weights_prepacked=1`) decode GEMV mode: `1` (default) enables `MoeGemvFp4DecodeKernel` in the measured SM90 decode envelope (`expanded_num_rows <= 20`, `N, K <= 2560`, and per-projection `|global_scale| * 448 < 3.98`); `0` forces `MoeGemvFp4RawKPackedKernel`; `2` opts into the full kernel envelope (`SM90+`, `expanded_num_rows <= 80`, `K <= 8192`, including the generic scale decoder). Outputs are bit-identical across all modes. Read once per process. See [§9b.2](#9b2-fused-gemv-decode-group-16). |
 | `ORT_FP4_GEMV_INTERLEAVED` | `0` | **Experimental, opt-in.** Routes the MXFP4 decode GEMV through the `ColumnMajorInterleaved` weight layout (`kInterleave=4`, `kStepK=32`) with dtype-conditional accumulation. fp16 gets faster decode; bf16 stays accuracy-safe. Default off keeps the shipping `ColumnMajor` path byte-for-byte unchanged. See [§9.10](#910-interleaved-gemv-layout--dtype-conditional-accumulation). |
 | `ORT_FP4_GEMV_INTERLEAVED_HALFACC` | `0` | **Override.** When `ORT_FP4_GEMV_INTERLEAVED=1`, forces 16-bit accumulation for *both* fp16 and bf16, overriding the dtype-conditional policy; regresses bf16 accuracy, so it is off by default. |
 | `ORT_FP4_SM80_GEMM` | `1` | Routes SM80+ (including SM120/SM121) FP4 prefill through the fused-dequant grouped GEMM. Set to `0` to force dense fallback for debugging or comparison. Decode routes through the fused MXFP4 GEMV, reading the *same* pre-packed buffer as prefill. In this regime the raw e2m1 initializers are released after `PrePack`. See [§9.11](#911-single-copy-sm80-weights-prefill--decode-share-one-buffer). |
@@ -1109,22 +1109,48 @@ the activation row is staged once per CTA in shared memory as FP32.
 The kernel is **bit-identical** to `MoeGemvFp4RawKPackedKernel`: it keeps the same K-lane count
 (`KLanes = 4` for `K <= 1024`, else `8`), the same lane assignment (`lane = block % KLanes`), the same
 separate even/odd FP32 accumulators per lane, and the same `acc_even + acc_odd` followed by an xor tree
-over `KLanes / 2 .. 1`, so outputs do not depend on which of the two kernels runs. It is used for FP16 and
-BF16 on SM90+ with a selected CUDA image compiled for SM90 or newer, when `K % 32 == 0`, `K <= 8192`,
-`N` is even, the weight/scale/activation pointers are
-16/2/16-byte aligned, and at most 80 expanded rows are processed; other shapes use
-`MoeGemvFp4RawKPackedKernel`. It steps aside when `ORT_NVFP4_FC1_EXPERT_REUSE=1` selects the two-row reuse
-kernel. Set `ORT_FP4_GEMV_DECODE_KERNEL=0` before the first GEMV invocation (the value is latched once) to
-force `MoeGemvFp4RawKPackedKernel`.
-Forward-compatible builds using pre-SM90 PTX (for example, `CMAKE_CUDA_ARCHITECTURES=80`)
-also use `MoeGemvFp4RawKPackedKernel`, even on SM90+ hardware.
+over `KLanes / 2 .. 1`, so outputs do not depend on which of the two kernels runs.
 
-On H200 (BF16, 10 expanded rows, 512-expert L2-cold layout, CUDA-graph average) the Qwen3.8 FC1
-(`N=1280`, `K=2560`, fused SwiGLU) and FC2 (`N=2560`, `K=640`) launches take 12.1 and 7.5 us instead of
-18.5 and 10.3 us. The table-free decode requires every block scale to stay below 4
-(`|global_scale| * 448 < 3.98`, true for real NVFP4 checkpoints: Qwen3.8 has at most 0.09). An expert with
-larger scales takes a generic `Fp4I2FConverter` decode that is bit-identical but about 30% slower than
-`MoeGemvFp4RawKPackedKernel`; set `ORT_FP4_GEMV_DECODE_KERNEL=0` for such a checkpoint.
+By default (`ORT_FP4_GEMV_DECODE_KERNEL=1`), dispatch is restricted to the H200-measured decode envelope:
+- `SM90` (`sm == 90`) with a selected CUDA image compiled for `SM90` or newer (`attributes.ptxVersion >= 90`;
+  forward-compatible builds using pre-SM90 PTX such as `CMAKE_CUDA_ARCHITECTURES=80` fall back to
+  `MoeGemvFp4RawKPackedKernel`),
+- FP16 or BF16, at most 20 expanded rows, `K % 32 == 0`, `K <= 2560`, even `N <= 2560`, and 16/2/16-byte aligned
+  weight/scale/activation pointers,
+- Per-projection table-free scale eligibility (`|global_scale| * 448 < 3.98` for every expert in the projection),
+  recorded independently for FC1 and FC2 during `PrePack`. Projections whose scales exceed this bound stay on
+  `MoeGemvFp4RawKPackedKernel` by default rather than taking the slower generic `Fp4I2FConverter` branch.
+- When `ORT_NVFP4_GEMV_NATIVE_SCALE=1` is also enabled on `SM90` (see [§9b.3](#9b3-fast-e2m1--halfbf16-decode)),
+  FP16 projections with `K <= 1024` (such as Qwen3.8 FC2, `K=640`) and any projection that stays on
+  `MoeGemvFp4RawKPackedKernel` use the 4/8-lane native-scale `MoeGemvFp4RawKPackedKernel<..., NativeScale=true>`
+  (`8.03 us` vs. `8.41 us` for FP16 FC2 at 10 expanded rows, and `17.50 / 9.90 us` vs. `18.54 / 10.30 us` on
+  large-scale fallback), while remaining bit-identical.
+- Steps aside when `ORT_NVFP4_FC1_EXPERT_REUSE=1` selects the two-row reuse kernel.
+
+Set `ORT_FP4_GEMV_DECODE_KERNEL=0` before the first GEMV invocation (latched once per process) to force
+`MoeGemvFp4RawKPackedKernel`, or `ORT_FP4_GEMV_DECODE_KERNEL=2` to opt into the full kernel envelope
+(`SM90+`, up to 80 expanded rows, `K <= 8192`, any even `N`, and the generic `Fp4I2FConverter` fallback for
+`|global_scale| * 448 >= 3.98`).
+
+On H200 (`SM90`, CUDA 13.0) for the Qwen3.8 shape (`hidden=2560`, `inter=640`, 512 experts, `top_k=10`,
+`weights_prepacked=1`), the FC1 (`N=1280`, `K=2560`, fused SwiGLU) and FC2 (`N=2560`, `K=640`) launches
+average (over 300 launches per CUDA graph, 10 graph replays; repeated-replay variation within ±0.15 us):
+- BF16, 10 expanded rows: `12.13` and `7.49 us` vs. `18.51` and `10.27 us` (`1.47x` faster FC1+FC2).
+- BF16, 20 expanded rows: `20.79` and `12.20 us` vs. `36.05` and `17.23 us` (`1.62x` faster FC1+FC2).
+- FP16, 10 expanded rows: `13.77` and `8.41 us` vs. `17.55` and `9.44 us` (`1.22x` faster FC1+FC2).
+- FP16, 20 expanded rows: `24.71` and `14.28 us` vs. `34.01` and `16.80 us` (`1.30x` faster FC1+FC2).
+
+To keep the 512-expert weights (`800 MiB` FC1 + `100 MiB` scales; `400 MiB` FC2 + `50 MiB` scales) cold in
+H200's `50 MiB` L2 cache during CUDA-graph timing, consecutive launches in the captured graph advance
+`permuted_row_to_expert` (or `router_probs` at the ORT node level) through 64 disjoint routing permutations
+covering all 512 experts (`ceil(512 / 10) = 52` launches stream the full `900 MiB` FC1 / `450 MiB` FC2 bank
+before any expert repeats). To reproduce the end-to-end ORT QMoE node comparison on H200:
+
+```bash
+python onnxruntime/test/python/transformers/benchmark_qwen38_mtp_kernels.py --baseline-stdin --kernel nvfp4_decode < onnxruntime/contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.cu
+ORT_FP4_GEMV_DECODE_KERNEL=0 pytest onnxruntime/test/python/transformers/test_qmoe_nvfp4_cuda.py -k test_nvfp4_offline_row_major_decode_gemv_bit_exact
+ORT_FP4_GEMV_DECODE_KERNEL=1 pytest onnxruntime/test/python/transformers/test_qmoe_nvfp4_cuda.py -k test_nvfp4_offline_row_major_decode_gemv_bit_exact
+```
 
 #### Raw-layout memory option
 

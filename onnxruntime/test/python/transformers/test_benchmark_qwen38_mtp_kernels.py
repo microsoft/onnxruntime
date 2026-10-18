@@ -54,6 +54,12 @@ template <typename T, bool FusedSwiGlu, bool EnableBias, int KLanes = 8,
 __global__ void MoeGemvFp4RawKPackedKernel() { if (NativeScale) { return; } }
 bool Fp4MoeGemvSupportsNativeScale() { return cudaFuncGetAttributes(); }
 bool Fp4MoeGemvKernelUsesNativeScale() { return false; }
+template <typename T>
+__device__ __forceinline__ float PackedLowToFloat(uint32_t word) { return word; }
+template <typename T, bool FusedSwiGlu, bool EnableBias, int KLanes, int Warps, int Batch, int MinBlocks>
+__global__ void MoeGemvFp4DecodeKernel() {}
+template <typename T, bool FusedSwiGlu>
+void LaunchMoeGemvFp4RawNPacked() {}
 """
         headers = {
             "common.h": "enum class ActivationType { Identity };\nstruct ActivationParams {\n  ActivationParams() {} };",
@@ -61,22 +67,27 @@ bool Fp4MoeGemvKernelUsesNativeScale() { return false; }
             "interleaved_numeric_conversion.h": "CUTLASS_DEVICE int fp4_e2m1x8_uninterleave(int value) { return value; }",
         }
         for element in ("half", "__nv_bfloat16"):
-            for fused, bias, wide, reuse in (
-                (False, False, True, False),
-                (True, True, False, False),
-                (True, False, False, True),
+            for fused, bias, wide, reuse, decode in (
+                (False, False, True, False, False),
+                (True, True, False, False, False),
+                (True, False, False, True, False),
+                (True, False, False, False, True),
+                (False, True, True, False, True),
             ):
-                with self.subTest(element=element, fused=fused, bias=bias, wide=wide, reuse=reuse):
+                with self.subTest(element=element, fused=fused, bias=bias, wide=wide, reuse=reuse, decode=decode):
                     with (
                         unittest.mock.patch.object(Path, "read_text", lambda path: headers[path.name]),
                         unittest.mock.patch.object(
                             self.benchmark, "compile_device_code", return_value=object()
                         ) as compile_code,
                     ):
-                        self.benchmark.compile_nvfp4(source, element, fused, bias, wide, reuse)
+                        self.benchmark.compile_nvfp4(source, element, fused, bias, wide, reuse, decode=decode)
                     generated, _ = compile_code.call_args.args
                     self.assertIn("template <bool NativeDecode = false>", generated)
-                    self.assertIn("__global__ void MoeGemvFp4RawKPackedKernel", generated)
+                    if decode:
+                        self.assertIn("__global__ void MoeGemvFp4DecodeKernel", generated)
+                    else:
+                        self.assertIn("__global__ void MoeGemvFp4RawKPackedKernel", generated)
                     self.assertNotIn("bool Fp4MoeGemvSupportsNativeScale", generated)
                     self.assertNotIn("bool Fp4MoeGemvKernelUsesNativeScale", generated)
                     self.assertNotIn("cudaFuncGetAttributes", generated)
