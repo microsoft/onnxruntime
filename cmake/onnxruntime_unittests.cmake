@@ -3095,8 +3095,7 @@ if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN AND TARGET dawn::da
   target_compile_features(onnxruntime_webgpu_external_dawn_test PRIVATE cxx_std_20)
 endif()
 
-# This test uses the built-in WebGPU append API and does not register a plugin.
-if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS AND WIN32 AND onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
+if (onnxruntime_USE_WEBGPU AND WIN32 AND onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
   AddTest(DYN
           TARGET onnxruntime_webgpu_delay_load_test
           SOURCES ${onnxruntime_webgpu_delay_load_test_SRC}
@@ -3133,6 +3132,28 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
           LIBS ${onnxruntime_ep_graph_test_LIBS}
           DEPENDS ${all_dependencies}
   )
+endif()
+
+if(WIN32 AND onnxruntime_USE_1DS_TELEMETRY)
+  if(NOT GDK_PLATFORM AND NOT CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
+    set(telemetry_lifecycle_test_dir "${TEST_SRC_DIR}/platform/windows_telemetry/lifecycle")
+    onnxruntime_add_shared_library(onnxruntime_telemetry_shutdown_test_library
+      "${telemetry_lifecycle_test_dir}/telemetry_shutdown_test_library.cc"
+      "${telemetry_lifecycle_test_dir}/telemetry_shutdown_test_library.def")
+    target_link_libraries(onnxruntime_telemetry_shutdown_test_library PRIVATE onnxruntime_common mat)
+    onnxruntime_add_executable(onnxruntime_telemetry_shutdown_test
+      "${telemetry_lifecycle_test_dir}/telemetry_shutdown_test.cc")
+    add_dependencies(onnxruntime_telemetry_shutdown_test onnxruntime_telemetry_shutdown_test_library)
+    foreach(mode process_exit normal_destruction explicit_unload)
+      add_test(NAME onnxruntime_telemetry_${mode}_test
+        COMMAND onnxruntime_telemetry_shutdown_test
+          "$<TARGET_FILE:onnxruntime_telemetry_shutdown_test_library>" ${mode}
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:onnxruntime_telemetry_shutdown_test>")
+      set_tests_properties(onnxruntime_telemetry_${mode}_test PROPERTIES TIMEOUT 15)
+    endforeach()
+    set_target_properties(onnxruntime_telemetry_shutdown_test_library onnxruntime_telemetry_shutdown_test
+      PROPERTIES FOLDER "ONNXRuntimeTest")
+  endif()
 endif()
 
 include(onnxruntime_fuzz_test.cmake)
