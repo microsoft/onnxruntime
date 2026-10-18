@@ -251,11 +251,17 @@ CastFromString(const std::string& input, DstType& output) {
 }
 
 template <typename DstType>
-typename std::enable_if<IsOrtFloat16Type<DstType>::value || IsOrtFloat8Type<DstType>::value ||
-                            IsOrtFloat6Type<DstType>::value,
-                        void>::type
+typename std::enable_if<IsOrtFloat16Type<DstType>::value || IsOrtFloat8Type<DstType>::value, void>::type
 CastFromString(const std::string& input, DstType& output) {
   float intermediate;
+  CastFromString(input, intermediate);
+  output = DstType(intermediate);
+}
+
+template <typename DstType>
+typename std::enable_if<IsOrtFloat6Type<DstType>::value, void>::type
+CastFromString(const std::string& input, DstType& output) {
+  double intermediate;
   CastFromString(input, intermediate);
   output = DstType(intermediate);
 }

@@ -134,6 +134,8 @@ static void PrepareForQDQ(const TensorShape& input_shape,
       KernelDefBuilder()                                                     \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())            \
           .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),       \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()})  \
+          .TypeConstraint("T3", {DataTypeImpl::GetTensorType<float>(),       \
                                  DataTypeImpl::GetTensorType<MLFloat16>()}), \
       DequantizeLinear<T>);
 

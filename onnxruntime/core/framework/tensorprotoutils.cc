@@ -447,7 +447,25 @@ Status TensorProtoWithExternalDataToTensorProto(
 
     ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(ten_proto, external_data_path, unpacked_data));
     // Set the raw data in the new tensor
-    onnxruntime::utils::SetRawDataInTensorProto(result, unpacked_data.data(), unpacked_data.size());
+    if (HasExternalDataInMemory(ten_proto) &&
+        (ten_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3 ||
+         ten_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2)) {
+      std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
+      ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(ten_proto.external_data(), external_data_info));
+      if (external_data_info->GetRelPath() == kTensorProtoNativeEndianMemoryAddressTag) {
+        const auto* bytes = unpacked_data.data();
+        const std::string packed_data = ten_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3
+                                            ? PackFloat6Tensor(reinterpret_cast<const Float6E2M3*>(bytes),
+                                                               unpacked_data.size())
+                                            : PackFloat6Tensor(reinterpret_cast<const Float6E3M2*>(bytes),
+                                                               unpacked_data.size());
+        onnxruntime::utils::SetRawDataInTensorProto(result, packed_data.data(), packed_data.size());
+      } else {
+        onnxruntime::utils::SetRawDataInTensorProto(result, unpacked_data.data(), unpacked_data.size());
+      }
+    } else {
+      onnxruntime::utils::SetRawDataInTensorProto(result, unpacked_data.data(), unpacked_data.size());
+    }
   }
 
   new_tensor_proto = std::move(result);

@@ -2388,6 +2388,21 @@ TEST(CastOpTest, DoubleToFloat6RoundingNearMidpoints) {
                                  OpTester::ExpectResult::kExpectSuccess, "", 28);
 }
 
+TEST(CastOpTest, StringToFloat6RoundingNearMidpoints) {
+  const std::vector<int64_t> shape{2};
+  const std::vector<std::string> e2_values{"1.1874999999999998", "1.1875"};
+  const std::vector<std::string> e3_values{"1.3749999999999998", "1.375"};
+  const std::vector<Float6E2M3> e2_expected{
+      Float6E2M3(0x09, Float6E2M3::FromBits()), Float6E2M3(0x0A, Float6E2M3::FromBits())};
+  const std::vector<Float6E3M2> e3_expected{
+      Float6E3M2(0x0D, Float6E3M2::FromBits()), Float6E3M2(0x0E, Float6E3M2::FromBits())};
+
+  TestCastOp<std::string, Float6E2M3>(gsl::make_span(e2_values), gsl::make_span(e2_expected), shape,
+                                      OpTester::ExpectResult::kExpectSuccess, "", 28);
+  TestCastOp<std::string, Float6E3M2>(gsl::make_span(e3_values), gsl::make_span(e3_expected), shape,
+                                      OpTester::ExpectResult::kExpectSuccess, "", 28);
+}
+
 TEST(CastOpTest, Float6EncodingBoundaries) {
   const float infinity = std::numeric_limits<float>::infinity();
 
