@@ -4082,7 +4082,7 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearInt32ZeroPointThroughSoftmax) 
     EXPECT_EQ(op_to_count.count("QuantizeLinear"), 0);
   };
   TransformerTester(build_test_case, check_no_quantize_inserted, TransformerLevel::Default,
-                    TransformerLevel::Level1, /*opset_version*/ {13, 21});
+                    TransformerLevel::Level1, /*opset_version*/ {12, 13, 21});
 }
 
 TEST(TransposeOptimizerTests, TestCast) {
