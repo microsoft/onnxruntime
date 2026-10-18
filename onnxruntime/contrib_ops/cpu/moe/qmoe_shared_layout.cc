@@ -1,3 +1,8 @@
+#if defined(_MSC_VER)
+#define _CRT_SECURE_NO_WARNINGS 1
+#pragma warning(disable : 4996)
+#endif
+
 #include "contrib_ops/cpu/moe/qmoe_shared_layout.h"
 
 #include <algorithm>
@@ -450,6 +455,7 @@ struct FileExpertStore::Impl {
     uint64_t offset = 0;
     size_t bytes = 0;
     size_t destination = 0;
+    const uint8_t* mapped_ptr = nullptr;
     // Tiny per-expert banks (global scales) are copied once at initialization: a cold 4-byte pread costs a
     // full random storage I/O.
     std::vector<uint8_t> resident;
@@ -508,18 +514,19 @@ struct FileExpertStore::Impl {
 
   bool ReadExpertFromDiskImpl(int32_t expert_id, uint8_t* dst) noexcept {
     const uint64_t offset = file_offset + static_cast<uint64_t>(expert_id) * expert_stride;
-#if !defined(_WIN32)
     if (!banks.empty()) {
+#if !defined(_WIN32)
       // Start asynchronous readahead for every bank first so a cold expert's bank reads overlap on the device
       // instead of paying one storage round trip per bank.
       if (read_opt) {
         for (const auto& bank : banks) {
-          if (bank->resident.empty()) {
+          if (bank->resident.empty() && bank->fd >= 0) {
             posix_fadvise(bank->fd, static_cast<off_t>(bank->offset + static_cast<uint64_t>(expert_id) * bank->bytes),
                           static_cast<off_t>(bank->bytes), POSIX_FADV_WILLNEED);
           }
         }
       }
+#endif
       for (const auto& bank : banks) {
         if (!bank->resident.empty()) {
           std::memcpy(dst + bank->destination, bank->resident.data() + static_cast<size_t>(expert_id) * bank->bytes,
@@ -527,6 +534,13 @@ struct FileExpertStore::Impl {
           bytes_read.fetch_add(bank->bytes, std::memory_order_relaxed);
           continue;
         }
+        if (bank->mapped_ptr != nullptr) {
+          std::memcpy(dst + bank->destination, bank->mapped_ptr + static_cast<size_t>(expert_id) * bank->bytes,
+                      bank->bytes);
+          bytes_read.fetch_add(bank->bytes, std::memory_order_relaxed);
+          continue;
+        }
+#if !defined(_WIN32)
         const uint64_t bank_offset = bank->offset + static_cast<uint64_t>(expert_id) * bank->bytes;
         size_t done = 0;
         while (done < bank->bytes) {
@@ -540,9 +554,13 @@ struct FileExpertStore::Impl {
           posix_fadvise(bank->fd, static_cast<off_t>(bank_offset), static_cast<off_t>(bank->bytes), POSIX_FADV_DONTNEED);
         }
         bytes_read.fetch_add(bank->bytes, std::memory_order_relaxed);
+#else
+        return false;
+#endif
       }
       return true;
     }
+#if !defined(_WIN32)
     if (fd >= 0) {
       size_t done = 0;
       while (done < expert_stride) {
@@ -731,7 +749,6 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
   std::vector<std::unique_ptr<Impl::ReadBank>> read_banks;
   try {
     for (size_t i = 0; i < bank_count; ++i) {
-#if defined(__linux__)
       const auto& source = banks[i];
       size_t length = 0;
       const uintptr_t address = reinterpret_cast<uintptr_t>(source.data);
@@ -743,6 +760,7 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
         if (source.block_offset < banks[j].block_offset + banks[j].expert_bytes &&
             banks[j].block_offset < source.block_offset + source.expert_bytes) return false;
       }
+#if defined(__linux__)
       std::ifstream maps("/proc/self/maps");
       std::string line;
       auto bank = std::make_unique<Impl::ReadBank>();
@@ -773,6 +791,16 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
       }
       if (bank->fd < 0) return false;
       read_banks.push_back(std::move(bank));
+#elif defined(_WIN32)
+      auto bank = std::make_unique<Impl::ReadBank>();
+      bank->mapped_ptr = static_cast<const uint8_t*>(source.data);
+      bank->bytes = source.expert_bytes;
+      bank->destination = source.block_offset;
+      if (source.expert_bytes <= 64 && read_opt_enabled) {
+        bank->resident.assign(static_cast<const uint8_t*>(source.data),
+                              static_cast<const uint8_t*>(source.data) + length);
+      }
+      read_banks.push_back(std::move(bank));
 #else
       return false;
 #endif
@@ -792,11 +820,14 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
     }
   }
 #else
-  if (!file_path) return false;
-  std::ifstream check_in(file_path, std::ios::binary | std::ios::ate);
-  if (!check_in) return false;
-  const auto file_len = check_in.tellg();
-  if (file_len < 0 || static_cast<uint64_t>(file_len) < file_offset + static_cast<uint64_t>(total_expert_bytes)) return false;
+  if (file_path) {
+    std::ifstream check_in(file_path, std::ios::binary | std::ios::ate);
+    if (!check_in) return false;
+    const auto file_len = check_in.tellg();
+    if (file_len < 0 || static_cast<uint64_t>(file_len) < file_offset + static_cast<uint64_t>(total_expert_bytes)) return false;
+  } else if (read_banks.empty()) {
+    return false;
+  }
 #endif
 
   uint8_t* raw = static_cast<uint8_t*>(std::malloc(alloc_bytes));

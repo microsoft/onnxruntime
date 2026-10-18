@@ -171,9 +171,23 @@ std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig> PickPrefi
 
 bool StaticFp4CutlassShapeSupported(const OpKernelInfo& op_kernel_info, bool is_swiglu) {
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
-  ORT_UNUSED_PARAMETER(op_kernel_info);
-  ORT_UNUSED_PARAMETER(is_swiglu);
-  return false;
+  if (op_kernel_info.GetInputCount() <= 5) {
+    return false;
+  }
+
+  const auto fc1_shape = op_kernel_info.GetKernelInfo().GetInputTypeInfo(2).GetTensorTypeAndShapeInfo().GetShape();
+  const auto fc2_shape = op_kernel_info.GetKernelInfo().GetInputTypeInfo(5).GetTensorTypeAndShapeInfo().GetShape();
+  if (fc1_shape.size() != 3 || fc2_shape.size() != 3) {
+    return false;
+  }
+
+  const int64_t fc1_k = fc1_shape[1];
+  const int64_t fc1_packed_n = fc1_shape[2];
+  const int64_t fc2_k = fc2_shape[1];
+  const int64_t fc2_packed_n = fc2_shape[2];
+  if (fc1_k <= 0 || fc1_packed_n <= 0 || fc2_k <= 0 || fc2_packed_n <= 0) {
+    return false;
+  }
 #else
   const auto& input_defs = op_kernel_info.node().InputDefs();
   if (input_defs.size() <= 5 || input_defs[2] == nullptr || input_defs[5] == nullptr) {
@@ -194,6 +208,7 @@ bool StaticFp4CutlassShapeSupported(const OpKernelInfo& op_kernel_info, bool is_
       !TryGetStaticDim(fc2_shape, 1, fc2_k) || !TryGetStaticDim(fc2_shape, 2, fc2_packed_n)) {
     return false;
   }
+#endif
 
   const int64_t hidden_size = fc1_k;
   const int64_t hidden_size_from_fc2 = fc2_packed_n * 2;
@@ -208,20 +223,8 @@ bool StaticFp4CutlassShapeSupported(const OpKernelInfo& op_kernel_info, bool is_
     return false;
   }
 
-  // The SM90 WFP4A16 block-scaled grouped GEMM packs block scales in groups of 8 k-blocks
-  // (PackedScalesNum = CTA_K(256) / group_size(32)); the GEMM reads ceil(K/256) of those
-  // packed groups. PrePackFp4ScalesForTmaWs zero-pads each expert's k-block count up to a
-  // multiple of 8 (and the runner strides experts by the padded count), so K no longer has
-  // to be 256-aligned: the partial last group's tail blocks are zero and are only read by
-  // the GEMM's last CTA-K-tile, where the matching A/B K elements are TMA-zeroed. The
-  // binding requirements are now the MXFP4 block-scale vector size (k % 32 == 0 for an
-  // integral k-block count) and the weight/activation TMA alignment. Gate on 64 as a
-  // conservative margin above 32; this admits gpt-oss-20b (hidden=inter=2880) while leaving
-  // headroom for any untested N-dim/CTA tiling alignment, and can be lowered to 32 once
-  // broader shapes are validated.
   constexpr int64_t kMxfp4CutlassAlignment = 64;
   return hidden_size % kMxfp4CutlassAlignment == 0 && inter_size % kMxfp4CutlassAlignment == 0;
-#endif
 }
 
 // Returns the per-rank expert count DeepGEMM would run, or 0 if the static shapes rule it out.
@@ -749,8 +752,14 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
         int dev_id = 0;
         static_cast<void>(cudaGetDevice(&dev_id));
         const int num_e = static_cast<int>(fc1_w->Shape()[0]);
-        const int hid = static_cast<int>(fc2_w->Shape()[1]);
-        const int inter = static_cast<int>(fc1_w->Shape()[1] / 2);
+        const bool legacy_w = (fc1_w->Shape()[1] == fc2_w->Shape()[2] * 2 &&
+                               fc1_w->Shape()[2] == fc2_w->Shape()[1]);
+        const int hid = (fc2_s->Shape().NumDimensions() == 3)
+                            ? static_cast<int>(fc2_s->Shape()[1])
+                            : static_cast<int>(legacy_w ? fc1_w->Shape()[1] : fc2_w->Shape()[1]);
+        const int inter = (fc1_s->Shape().NumDimensions() == 3)
+                              ? static_cast<int>(fc1_s->Shape()[1] / 2)
+                              : static_cast<int>(legacy_w ? fc2_w->Shape()[1] : (fc1_w->Shape()[1] / 2));
         RegisterQMoEDenseLayerHostWeights(
             dev_id, parsed_layer, num_e, hid, inter,
             static_cast<const uint8_t*>(fc1_w->DataRaw()),
@@ -1364,8 +1373,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           effective_row_tile_size != qmoe::kDisabledRowTileSize && !use_fp4_gemv && !use_packed_int_gemv);
   const bool use_nvfp4_compaction = is_nvfp4 && !route_native_fp4 && !use_fp4_gemv;
   const bool use_expert_compaction = is_block_fp8 || use_nvfp4_compaction;
+#if defined(_WIN32)
+  static const int max_compact_experts_env =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_MAX_COMPACT_EXPERTS", 64);
+#else
   static const int max_compact_experts_env =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_MAX_COMPACT_EXPERTS", 0);
+#endif
   const int dynamic_compact_experts =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_CURRENT_MAX_COMPACT_EXPERTS", max_compact_experts_env);
   static const bool dequant_transient_env =
@@ -2968,7 +2982,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         if (use_prefill_dma) {
           ORT_ENFORCE(BeginQMoEPrefillDmaPass(
               prefill_dma_dev_id, prefill_dma_layer, pass_idx, num_compact_passes,
-              runner_num_experts, stream, &prefill_dma_view));
+              runner_num_experts, stream, &prefill_dma_view, expert_to_compact.get()));
           LaunchQMoERemapExpertRange(expert_indices, compact_expert_indices.get(),
                                      tile_routes, pass_idx * runner_num_experts,
                                      runner_num_experts, stream);

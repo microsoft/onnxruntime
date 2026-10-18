@@ -3,6 +3,10 @@
 
 #pragma once
 
+#if defined(_MSC_VER)
+#pragma warning(disable : 4996)
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <cstdint>

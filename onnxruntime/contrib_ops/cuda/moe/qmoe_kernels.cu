@@ -2375,9 +2375,16 @@ __global__ void QMoEDequantizeNvfp4RowMajorKernel(
   }
   const int resident_slot = (resident_expert_to_slot != nullptr) ? resident_expert_to_slot[expert] : -1;
   const bool use_resident = (resident_slot >= 0 && resident_packed_weights != nullptr && resident_block_scales != nullptr);
-  const int host_slot = (!use_resident && host_expert_to_slot != nullptr) ? host_expert_to_slot[expert] : -1;
+  const int host_slot = (!use_resident && host_expert_to_slot != nullptr && host_packed_weights != nullptr) ? host_expert_to_slot[expert] : -1;
   const bool use_host_cache = (host_slot >= 0 && host_packed_weights != nullptr && host_block_scales != nullptr && host_expert_stride > 0);
-  const int cold_index = (pass_start_expert >= 0) ? output_expert : expert;
+  const int cold_index = (pass_start_expert >= 0)
+                             ? ((!use_resident && !use_host_cache && host_expert_to_slot != nullptr)
+                                    ? host_expert_to_slot[output_expert]
+                                    : output_expert)
+                             : expert;
+  if (!use_resident && !use_host_cache && cold_index < 0) {
+    return;
+  }
   const size_t w_row_bytes = static_cast<size_t>(k >> 1);
   const size_t s_row_bytes = static_cast<size_t>(k >> 4);
   const uint8_t* w_expert_base = use_resident

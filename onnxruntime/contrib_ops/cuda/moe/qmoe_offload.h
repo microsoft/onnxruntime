@@ -40,7 +40,11 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
       cudaStream_t exec_stream, QMoEPrefillPassDmaView* out_view);
   friend bool BeginQMoEPrefillDmaPass(
       int device_id, int64_t layer_index, int pass_idx, int num_passes, int runner_num_experts,
-      cudaStream_t exec_stream, QMoEPrefillPassDmaView* out_view);
+      cudaStream_t exec_stream, QMoEPrefillPassDmaView* out_view,
+      const int* expert_active_mask_dev);
+  friend void PrefetchNextQMoEPrefillDmaPass(
+      int device_id, int64_t layer_index, int pass_idx, int num_passes, int runner_num_experts,
+      cudaStream_t exec_stream);
   friend void FinalizeQMoEPrefillAndSeedDecode(int device_id, cudaStream_t stream);
 
  private:

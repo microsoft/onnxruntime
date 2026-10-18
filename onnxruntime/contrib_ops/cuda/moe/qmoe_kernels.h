@@ -469,10 +469,12 @@ bool TryPrepareQMoEPrefillDmaLayer(
 
 bool BeginQMoEPrefillDmaPass(
     int device_id, int64_t layer_index, int pass_idx, int num_passes, int runner_num_experts,
-    cudaStream_t exec_stream, QMoEPrefillPassDmaView* out_view);
+    cudaStream_t exec_stream, QMoEPrefillPassDmaView* out_view,
+    const int* expert_active_mask_dev = nullptr);
 
 void PrefetchNextQMoEPrefillDmaPass(
-    int device_id, int64_t layer_index, int pass_idx, int num_passes, int runner_num_experts);
+    int device_id, int64_t layer_index, int pass_idx, int num_passes, int runner_num_experts,
+    cudaStream_t exec_stream = nullptr);
 
 void EndQMoEPrefillDmaPassDequant(
     int device_id, int pass_idx, cudaStream_t exec_stream);

@@ -7,6 +7,16 @@
 // Runtime CPU support is verified via CpuHasAvx512() / MlasPlatformAvx512Supported() before
 // any function in this translation unit is invoked.
 
+#if defined(_MSC_VER)
+#define _CRT_SECURE_NO_WARNINGS 1
+#pragma warning(disable : 4996 4556 4068 4100)
+#define QMOE_LAMBDA_INLINE [[msvc::forceinline]]
+#elif defined(__GNUC__) || defined(__clang__)
+#define QMOE_LAMBDA_INLINE __attribute__((always_inline))
+#else
+#define QMOE_LAMBDA_INLINE
+#endif
+
 #include "contrib_ops/cpu/moe/qmoe_shared_layout.h"
 
 #include <algorithm>
@@ -47,7 +57,7 @@ inline float Avx512HalfBitsToFloat(uint16_t h) noexcept {
 }
 
 inline float Avx512RoundFp16(float v) noexcept {
-  const __m128i half_bits = _mm_cvtps_ph(_mm_set_ss(v), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+  const __m128i half_bits = _mm_cvtps_ph(_mm_set_ss(v), _MM_FROUND_TO_NEAREST_INT);
   return _mm_cvtss_f32(_mm_cvtph_ps(half_bits));
 }
 
@@ -73,7 +83,7 @@ inline __m512 Avx512RoundBf16Vec(__m512 v) noexcept {
 }
 
 inline __m512 Avx512RoundFp16Vec(__m512 v) noexcept {
-  return _mm512_cvtph_ps(_mm512_cvtps_ph(v, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
+  return _mm512_cvtph_ps(_mm512_cvtps_ph(v, _MM_FROUND_TO_NEAREST_INT));
 }
 
 template <int RT>
@@ -229,7 +239,9 @@ void Fp4Group8Avx512(const uint8_t* w_base, const uint8_t* s_base, const __m512 
 
   const uint8_t* w_rows[8];
   const uint8_t* s_rows[8];
+#if defined(__GNUC__)
 #pragma GCC unroll 8
+#endif
   for (int c = 0; c < 8; ++c) {
     w_rows[c] = w_base + c * w_stride;
     s_rows[c] = s_base + c * s_stride;
@@ -251,7 +263,7 @@ void Fp4Group8Avx512(const uint8_t* w_base, const uint8_t* s_base, const __m512 
       al3 = _mm512_loadu_ps(a_reordered + 3 * k + kp * 32);
       ah3 = _mm512_loadu_ps(a_reordered + 3 * k + kp * 32 + 16);
     }
-    auto step_col = [&](int c, __m512& a0, __m512& a1, __m512& a2, __m512& a3) __attribute__((always_inline)) {
+    auto step_col = [&](int c, __m512& a0, __m512& a1, __m512& a2, __m512& a3) QMOE_LAMBDA_INLINE {
       const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(w_rows[c] + kp * 16));
       __m512 wls, whs;
       if constexpr (IsMxfp4) {
@@ -282,7 +294,7 @@ void Fp4Group8Avx512(const uint8_t* w_base, const uint8_t* s_base, const __m512 
     step_col(6, acc6_0, acc6_1, acc6_2, acc6_3);
     step_col(7, acc7_0, acc7_1, acc7_2, acc7_3);
   }
-  auto store_col = [&](int c, __m512 a0, __m512 a1, __m512 a2, __m512 a3) __attribute__((always_inline)) {
+  auto store_col = [&](int c, __m512 a0, __m512 a1, __m512 a2, __m512 a3) QMOE_LAMBDA_INLINE {
     result[c][0] = _mm512_reduce_add_ps(a0);
     if constexpr (RT >= 2) result[c][1] = _mm512_reduce_add_ps(a1);
     if constexpr (RT >= 3) result[c][2] = _mm512_reduce_add_ps(a2);
@@ -331,7 +343,7 @@ void Fp4Group4Avx512(const uint8_t* w_base, const uint8_t* s_base, const __m512 
       al3 = _mm512_loadu_ps(a_reordered + 3 * k + kp * 32);
       ah3 = _mm512_loadu_ps(a_reordered + 3 * k + kp * 32 + 16);
     }
-    auto step_col = [&](int c, __m512& a0, __m512& a1, __m512& a2, __m512& a3) __attribute__((always_inline)) {
+    auto step_col = [&](int c, __m512& a0, __m512& a1, __m512& a2, __m512& a3) QMOE_LAMBDA_INLINE {
       const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(w_rows[c] + kp * 16));
       __m512 wls, whs;
       if constexpr (IsMxfp4) {
@@ -358,7 +370,7 @@ void Fp4Group4Avx512(const uint8_t* w_base, const uint8_t* s_base, const __m512 
     step_col(2, acc2_0, acc2_1, acc2_2, acc2_3);
     step_col(3, acc3_0, acc3_1, acc3_2, acc3_3);
   }
-  auto store_col = [&](int c, __m512 a0, __m512 a1, __m512 a2, __m512 a3) __attribute__((always_inline)) {
+  auto store_col = [&](int c, __m512 a0, __m512 a1, __m512 a2, __m512 a3) QMOE_LAMBDA_INLINE {
     result[c][0] = _mm512_reduce_add_ps(a0);
     if constexpr (RT >= 2) result[c][1] = _mm512_reduce_add_ps(a1);
     if constexpr (RT >= 3) result[c][2] = _mm512_reduce_add_ps(a2);
@@ -500,7 +512,7 @@ void Avx512FloatToHalfBitsRow(const float* src, uint16_t* dst, int64_t count) {
   int64_t i = 0;
   for (; i + 16 <= count; i += 16) {
     _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst + i),
-                        _mm512_cvtps_ph(_mm512_loadu_ps(src + i), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
+                        _mm512_cvtps_ph(_mm512_loadu_ps(src + i), _MM_FROUND_TO_NEAREST_INT));
   }
   for (; i < count; ++i) dst[i] = FloatToHalf(src[i]);
 }

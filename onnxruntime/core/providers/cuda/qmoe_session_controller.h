@@ -386,7 +386,14 @@ class QMoESessionController {
 
     common::Status first_error = common::Status::OK();
     if (had_offload_nodes && !sync_stream) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
       const char* strict_env = std::getenv("ORT_QMOE_REJECT_DISABLE_SYNC");
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
       if (strict_env != nullptr && std::string(strict_env) == "1") {
         first_error = ORT_MAKE_STATUS(
             ONNXRUNTIME, INVALID_ARGUMENT,

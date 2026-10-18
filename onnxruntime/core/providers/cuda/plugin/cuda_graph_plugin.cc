@@ -138,6 +138,16 @@ OrtStatus* CudaGraphManager::Replay(CudaGraphAnnotation_t id, bool sync) {
            ": " + cudaGetErrorString(err))
               .c_str());
     }
+  } else {
+    // Flush WDDM command queue so cudaGraphLaunch is submitted to the GPU hardware immediately.
+    err = cudaStreamQuery(stream_);
+    if (err != cudaSuccess && err != cudaErrorNotReady) {
+      return Ort::GetApi().CreateStatus(
+          ORT_EP_FAIL,
+          (std::string("CUDA graph stream query error: ") + cudaGetErrorName(err) +
+           ": " + cudaGetErrorString(err))
+              .c_str());
+    }
   }
 
   return nullptr;

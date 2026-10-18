@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if defined(_MSC_VER)
+#pragma warning(disable : 4996)
+#endif
+
 #include "cuda_ep.h"
 #include "cuda_ep_factory.h"
 #include "core/providers/cuda/cudnn_loader.h"
@@ -754,6 +758,11 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
 
   if (sync_stream && !replayed_graph) {
     PL_CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(context.graph_stream));
+  } else if (!sync_stream) {
+    cudaError_t query_err = cudaStreamQuery(context.graph_stream);
+    if (query_err != cudaSuccess && query_err != cudaErrorNotReady) {
+      PL_CUDA_RETURN_IF_ERROR(query_err);
+    }
   }
   return nullptr;
 

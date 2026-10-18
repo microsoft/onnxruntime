@@ -5,7 +5,6 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
-#include <cub/block/block_reduce.cuh>
 #include <limits>
 
 #include "core/providers/cuda/cu_inc/common.cuh"

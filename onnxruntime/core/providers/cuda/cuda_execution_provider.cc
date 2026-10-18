@@ -2,6 +2,10 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
+#if defined(_MSC_VER)
+#pragma warning(disable : 4996)
+#endif
+
 // provider_api.h must be first to set SHARED_PROVIDER
 #include "core/providers/shared_library/provider_api.h"
 
