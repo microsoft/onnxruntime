@@ -1,20 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <limits>
 #include <string>
 
-#include "core/optimizer/constant_folding.h"
-#include "core/optimizer/initializer.h"
-#include "core/optimizer/utils.h"
-#include "core/graph/graph_utils.h"
-#include "core/optimizer/optimizer_execution_frame.h"
+#include "core/common/parse_string.h"
+#include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_utils.h"
+#include "core/optimizer/constant_folding.h"
+#include "core/optimizer/initializer.h"
+#include "core/optimizer/optimizer_execution_frame.h"
+#include "core/optimizer/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/common/safeint.h"
-#include "core/common/parse_string.h"
 
 using namespace onnxruntime::common;
 
@@ -381,6 +382,64 @@ static int64_t EstimateNodeOutputSizeInBytes(const Node& node, const Graph& grap
   return total_size;
 }
 
+static bool HasVariableWidthOutput(const Node& node) {
+  for (const auto* output_def : node.OutputDefs()) {
+    if (!output_def->Exists()) {
+      continue;
+    }
+
+    const auto* type_proto = output_def->TypeAsProto();
+    if (type_proto != nullptr && utils::HasTensorType(*type_proto) &&
+        type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+static int64_t EstimateFreedInputSizeInBytes(const Graph& graph,
+                                             const InitializedTensorSet& constant_inputs) {
+  SafeInt<int64_t> total_size = 0;
+  for (const auto& [input_name, tensor_proto] : constant_inputs) {
+    const ONNX_NAMESPACE::TensorProto* local_initializer = nullptr;
+    if (!graph.GetInitializedTensor(input_name, local_initializer) ||
+        local_initializer != tensor_proto) {
+      continue;
+    }
+
+    const NodeArg* input_arg = graph.GetNodeArg(input_name);
+    if (graph.GetConsumerNodes(input_name).size() != 1 ||
+        (input_arg != nullptr && graph.IsOutput(input_arg))) {
+      continue;
+    }
+
+    SafeInt<int64_t> num_elements = 1;
+    bool valid_shape = true;
+    for (int64_t dim : tensor_proto->dims()) {
+      if (dim < 0) {
+        valid_shape = false;
+        break;
+      }
+      num_elements *= dim;
+    }
+
+    if (!valid_shape) {
+      continue;
+    }
+
+    const auto elem_type =
+        static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor_proto->data_type());
+    const int64_t input_size =
+        ComputeTensorSizeInBytesForConstantFolding(elem_type, num_elements);
+    if (input_size >= 0) {
+      total_size += input_size;
+    }
+  }
+
+  return total_size;
+}
+
 // Get the configured max output size from session options, or use the default.
 static int64_t GetConstantFoldingMaxOutputSize(const ConfigOptions& config_options) {
   std::string max_size_str = config_options.GetConfigOrDefault(
@@ -399,6 +458,19 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   bool have_updated_nodes = false;
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
+
+  // Read the optional size threshold for constant folding. A value of 0 (the default) means no limit.
+  int64_t output_size_threshold = 0;
+  {
+    const std::string threshold_str = config_options_.GetConfigOrDefault(
+        kOrtSessionOptionsConfigConstantFoldingNodeWeightSizeThreshold, "0");
+    if (!TryParseStringWithClassicLocale(threshold_str, output_size_threshold) ||
+        output_size_threshold < 0) {
+      LOGS(logger, WARNING) << "Failed to parse constant folding size threshold from config value '"
+                            << threshold_str << "'. Using no threshold.";
+      output_size_threshold = 0;
+    }
+  }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   std::function<bool(const std::string&)> is_sparse_initializer_check = [&graph](const std::string& name) -> bool {
@@ -439,6 +511,37 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         have_updated_nodes = true;
       }
     } else if (node->OpType().compare("Shape") == 0) {
+      if (output_size_threshold > 0) {
+        ORT_TRY {
+          const int64_t estimated_output_size = EstimateNodeOutputSizeInBytes(*node, graph);
+          if (estimated_output_size >= 0) {
+            InitializedTensorSet constant_inputs;
+            const auto& input_defs = node->InputDefs();
+            if (!input_defs.empty() && input_defs[0] != nullptr) {
+              constexpr bool check_outer_scope = false;
+              const auto* initializer =
+                  graph.GetConstantInitializer(input_defs[0]->Name(), check_outer_scope);
+              if (initializer != nullptr) {
+                constant_inputs.emplace(input_defs[0]->Name(), initializer);
+              }
+            }
+
+            const int64_t freed_input_size = EstimateFreedInputSizeInBytes(graph, constant_inputs);
+            const int64_t net_increase = std::max<int64_t>(estimated_output_size - freed_input_size, 0);
+            if (net_increase > output_size_threshold) {
+              LOGS(logger, INFO) << "Skipping constant folding for Shape node '" << node->Name()
+                                 << "': estimated net memory increase " << net_increase
+                                 << " bytes exceeds the threshold of " << output_size_threshold << " bytes.";
+              continue;
+            }
+          }
+        }
+        ORT_CATCH(const std::exception&) {
+          LOGS(logger, WARNING) << "Integer overflow while estimating net memory increase of Shape node '"
+                                << node->Name() << "'. Skipping constant folding for this node.";
+          continue;
+        }
+      }
       converted_to_constant = ConstantFoldShapeNode(graph, *node);
     } else {
       InitializedTensorSet constant_inputs;
@@ -490,12 +593,11 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         }
       }
 
-      // Check if the estimated output size exceeds the configured limit.
-      // This prevents malicious models from causing excessive memory allocation during constant folding.
-      if (max_output_size > 0) {
-        int64_t estimated_size = -1;
+      // Check the estimated output size before creating the execution frame or running the kernel.
+      int64_t estimated_output_size = -1;
+      if (max_output_size > 0 || output_size_threshold > 0) {
         ORT_TRY {
-          estimated_size = EstimateNodeOutputSizeInBytes(*node, graph);
+          estimated_output_size = EstimateNodeOutputSizeInBytes(*node, graph);
         }
         ORT_CATCH(const std::exception&) {
           LOGS(logger, WARNING) << "Failed to estimate output size of "
@@ -503,18 +605,51 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                 << "'. Skipping constant folding for this node.";
           continue;
         }
+      }
 
-        if (estimated_size > max_output_size) {
+      // This absolute cap prevents malicious models from causing excessive allocation.
+      if (max_output_size > 0) {
+        if (estimated_output_size > max_output_size) {
           LOGS(logger, WARNING) << "Skipping constant folding for " << node->OpType()
-                                << " node '" << node->Name()
-                                << "' because estimated output size (" << estimated_size
+                                << " node '" << node->Name() << "' because estimated output size ("
+                                << estimated_output_size
                                 << " bytes) exceeds the limit (" << max_output_size << " bytes).";
           continue;
         }
-        if (estimated_size < 0) {
+        if (estimated_output_size < 0) {
           LOGS(logger, INFO) << "Skipping constant folding for " << node->OpType()
                              << " node '" << node->Name()
                              << "' because output size could not be estimated before execution.";
+          continue;
+        }
+      }
+
+      // The optional threshold limits model growth rather than absolute output size.
+      if (output_size_threshold > 0 && HasVariableWidthOutput(*node)) {
+        LOGS(logger, INFO) << "Skipping constant folding for " << node->OpType()
+                           << " node '" << node->Name()
+                           << "' because variable-width output size cannot be estimated before execution.";
+        continue;
+      }
+
+      if (output_size_threshold > 0 && estimated_output_size >= 0) {
+        int64_t freed_input_size = 0;
+        ORT_TRY {
+          freed_input_size = EstimateFreedInputSizeInBytes(graph, constant_inputs);
+        }
+        ORT_CATCH(const std::exception&) {
+          LOGS(logger, WARNING) << "Integer overflow while estimating freed input size of "
+                                << node->OpType() << " node '" << node->Name()
+                                << "'. Skipping constant folding for this node.";
+          continue;
+        }
+
+        const int64_t net_increase = std::max<int64_t>(estimated_output_size - freed_input_size, 0);
+        if (net_increase > output_size_threshold) {
+          LOGS(logger, INFO) << "Skipping constant folding for " << node->OpType()
+                             << " node '" << node->Name()
+                             << "': estimated net memory increase " << net_increase
+                             << " bytes exceeds the threshold of " << output_size_threshold << " bytes.";
           continue;
         }
       }
