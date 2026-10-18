@@ -3,16 +3,15 @@
 
 import importlib.util
 import sys
-import unittest
+import unittest.mock
 from pathlib import Path
-from unittest import mock
 
 
 def load_benchmark():
     path = Path(__file__).with_name("benchmark_qwen38_mtp_kernels.py")
     spec = importlib.util.spec_from_file_location("benchmark_qwen38_mtp_kernels", path)
     module = importlib.util.module_from_spec(spec)
-    with mock.patch.dict(sys.modules, {"cupy": mock.Mock()}):
+    with unittest.mock.patch.dict(sys.modules, {"cupy": unittest.mock.Mock()}):
         spec.loader.exec_module(module)
     return module
 
@@ -44,7 +43,23 @@ class TestBenchmarkCudaSource(unittest.TestCase):
             self.benchmark.device_function("", "missing")
 
     def test_nvfp4_generated_source_excludes_host_inspection(self):
-        source = (self.benchmark.ROOT / "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.cu").read_text()
+        source = """
+template <bool NativeDecode = false>
+__device__ float DecodeE4M3Fn(unsigned char code) { return code; }
+template <typename T, bool FusedSwiGlu, bool EnableBias>
+__device__ void StorePair() {}
+// NVFP4 schema weights
+template <typename T, bool FusedSwiGlu, bool EnableBias, int KLanes = 8,
+          bool ReuseExpertRows = false, bool NativeScale = false>
+__global__ void MoeGemvFp4RawKPackedKernel() { if (NativeScale) { return; } }
+bool Fp4MoeGemvSupportsNativeScale() { return cudaFuncGetAttributes(); }
+bool Fp4MoeGemvKernelUsesNativeScale() { return false; }
+"""
+        headers = {
+            "common.h": "enum class ActivationType { Identity };\nstruct ActivationParams {\n  ActivationParams() {} };",
+            "details.h": "template <typename AType, bool PairInterleaved = false>\nstruct Converter {\n};",
+            "interleaved_numeric_conversion.h": "CUTLASS_DEVICE int fp4_e2m1x8_uninterleave(int value) { return value; }",
+        }
         for element in ("half", "__nv_bfloat16"):
             for fused, bias, wide, reuse in (
                 (False, False, True, False),
@@ -52,9 +67,12 @@ class TestBenchmarkCudaSource(unittest.TestCase):
                 (True, False, False, True),
             ):
                 with self.subTest(element=element, fused=fused, bias=bias, wide=wide, reuse=reuse):
-                    with mock.patch.object(
-                        self.benchmark, "compile_device_code", return_value=object()
-                    ) as compile_code:
+                    with (
+                        unittest.mock.patch.object(Path, "read_text", lambda path: headers[path.name]),
+                        unittest.mock.patch.object(
+                            self.benchmark, "compile_device_code", return_value=object()
+                        ) as compile_code,
+                    ):
                         self.benchmark.compile_nvfp4(source, element, fused, bias, wide, reuse)
                     generated, _ = compile_code.call_args.args
                     self.assertIn("template <bool NativeDecode = false>", generated)

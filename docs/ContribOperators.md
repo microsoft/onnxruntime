@@ -42,6 +42,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.FusedMatMulActivation">com.microsoft.FusedMatMulActivation</a>
   * <a href="#com.microsoft.GatedAdd">com.microsoft.GatedAdd</a>
   * <a href="#com.microsoft.GatedDeltaNet">com.microsoft.GatedDeltaNet</a>
+  * <a href="#com.microsoft.GatedDeltaNetStateReplay">com.microsoft.GatedDeltaNetStateReplay</a>
   * <a href="#com.microsoft.GatedRMSNorm">com.microsoft.GatedRMSNorm</a>
   * <a href="#com.microsoft.GatedRelativePositionBias">com.microsoft.GatedRelativePositionBias</a>
   * <a href="#com.microsoft.GatherBlockQuantized">com.microsoft.GatherBlockQuantized</a>
@@ -2504,6 +2505,78 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>State, gate, beta and compact state-update tensors are always float.</dd>
 <dt><tt>TI</tt> : tensor(int32)</dt>
 <dd>Constrain index and count tensors to int32.</dd>
+</dl>
+
+
+### <a name="com.microsoft.GatedDeltaNetStateReplay"></a><a name="com.microsoft.gateddeltanetstatereplay">**com.microsoft.GatedDeltaNetStateReplay**</a>
+
+  Replay one request's captured GatedDeltaNet transitions into an inactive recurrent-state row.
+  The WebGPU implementation uses FP32 backing tensors and CPU metadata; it does not recompute
+  normalization, gates, beta, or retrieval. It waits for checked GPU completion before returning.
+  
+  `metadata` is int64 [11], ordered as:
+    source_offset, destination_offset, decay_offset, key_offset, delta_offset,
+    Hv, Dv, Dk, Hk, capacity, kept_count.
+  Offsets are FP32-element offsets into the full backing tensors, not storage-binding byte offsets.
+  All offsets are nonnegative; dimensions and capacity are positive; 1 <= kept_count <= capacity.
+  The caller must ensure that all kept transitions were actually captured.
+  
+  The source_state selected by source_offset must be the state snapshot from immediately before
+  the captured GatedDeltaNet transitions began. Using the producer's final state or another
+  same-shaped snapshot is invalid because captured delta is state-dependent.
+  The capsule geometry (Hv, Dv, Dk, Hk) and capacity must match the producer that generated it.
+  capacity is the original capsule capture/layout capacity. kept_count only selects the leading
+  transitions to replay; kept_count must NOT be substituted for capacity when deriving the
+  decay/key/delta section offsets.
+  
+  State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv],
+  key [capacity, Hk, Dk], and delta [capacity, Hv, Dv] starting at their respective offsets.
+  For every state element (h,v,i):
+    hk = floor(h * Hk / Hv)
+    s = source[h,v,i]
+    for t = 0 .. kept_count-1:
+      s *= decay[t,h]
+      s += key[t,hk,i] * delta[t,h,v]
+    destination[h,v,i] = s
+  Unused capsule tail entries are not read. All other destination elements are preserved.
+  
+  The output must be explicitly prebound to the same full allocation as destination_backing.
+  Destination backing must be distinct from source and capsule backing. This first implementation
+  supports one descriptor, uint32 shader indexing and no graph capture.
+  Source and capsule may share read-only backing; storage bindings are deduplicated only when
+  their BufferViews have the same Program binding owner, not merely equal raw buffer handles.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>source_backing</tt> : T</dt>
+<dd>Full rank-1 FP32 backing tensor containing the state snapshot from immediately before capture.</dd>
+<dt><tt>capsule_backing</tt> : T</dt>
+<dd>Full rank-1 FP32 compact-update backing tensor.</dd>
+<dt><tt>destination_backing</tt> : T</dt>
+<dd>Full rank-1 FP32 inactive destination-state backing tensor.</dd>
+<dt><tt>metadata</tt> : TI</dt>
+<dd>CPU int64 [11] containing offsets, geometry, capacity and kept_count.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>destination_out</tt> : T</dt>
+<dd>Same backing allocation and shape as destination_backing.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>State and capsule tensors are FP32.</dd>
+<dt><tt>TI</tt> : tensor(int64)</dt>
+<dd>CPU replay metadata is int64.</dd>
 </dl>
 
 
@@ -5023,7 +5096,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   [total_tokens, ...] axis instead of a dense [batch_size, sequence_length, ...] axis. It selects, for
   every packed query token, the sparse-attention candidates that a following SparsePagedAttention (or
   similar) operator is allowed to read.
-
+  
   Unlike SparseAttentionIndexer, this operator:
     * takes packed query/key tensors plus cumulative_sequence_lengths (request boundaries) and
       past_sequence_lengths (per-request past length) instead of a dense batch and a dense mask;
@@ -5034,10 +5107,10 @@ This version of the operator has been available since version 1 of the 'com.micr
       rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory;
     * additionally emits selected_counts, the exact number of active (non -1) entries per query, so
       that no downstream consumer needs to scan selected_indices for its query's true count.
-
+  
   Both policy_mode values keep the semantics of SparseAttentionIndexer, applied independently to each
   request's own packed token range and fixed-capacity state slice:
-
+  
     policy_mode = "qsa" ("query sparse attention" token indexer)
       Processes each request's new tokens sequentially: appends raw indexer keys to the generic
       pending buffer, and whenever it reaches compress_ratio tokens, mean-pools it, applies RMSNorm
@@ -5049,7 +5122,7 @@ This version of the operator has been available since version 1 of the 'com.micr
       past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
       incomplete block. QSA positions are the request-local logical cache positions derived from
       past_sequence_lengths and cumulative_sequence_lengths; position_ids must be omitted.
-
+  
     policy_mode = "csa" ("compressed sparse attention" block indexer)
       Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window
       count) independently per request, using that request's own buffer_length and new token count;
@@ -5057,7 +5130,7 @@ This version of the operator has been available since version 1 of the 'com.micr
       rotated and appended to key_state. Queries are scored against every causally visible compressed
       entry with sum_h w_h * ReLU(q_h . k) and the index_topk highest scoring entry indices are
       emitted.
-
+  
   Common contract:
     * selected_indices is int32 with a fixed capacity that only depends on attributes:
       token_budget + compress_ratio - 1 for "qsa" (values are request-local token positions into the
@@ -5078,7 +5151,7 @@ This version of the operator has been available since version 1 of the 'com.micr
     * cumulative_sequence_lengths, past_sequence_lengths and past_state_lengths are read directly by
       the device kernel; a zero-token request row (a repeated cumulative offset) is valid and simply
       contributes no query rows for that request.
-
+  
   OgaEngine integration note: this operator only defines the ORT contrib op; wiring
   past_key_state / past_kv_buffer / past_gate_buffer / past_state_lengths as Engine-managed,
   per-request fixed-size state (analogous to a paged auxiliary cache) is expected to happen in the
@@ -8698,5 +8771,4 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
 
