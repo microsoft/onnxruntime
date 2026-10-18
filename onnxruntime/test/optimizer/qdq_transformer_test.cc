@@ -2376,7 +2376,8 @@ static void RunArgMaxDropDQTestCase(const std::vector<int64_t>& input_shape,
                                     int keepdims,
                                     int select_last_index,
                                     bool use_contrib_qdq,
-                                    bool expect_drop_dq = true) {
+                                    bool expect_drop_dq = true,
+                                    float scale = .003f) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<QuantType>(input_shape,
                                                    std::numeric_limits<QuantType>::min(),
@@ -2385,7 +2386,7 @@ static void RunArgMaxDropDQTestCase(const std::vector<int64_t>& input_shape,
 
     // add DQ
     auto* dq_output = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(input_arg, .003f, 1, dq_output, use_contrib_qdq);
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, scale, 1, dq_output, use_contrib_qdq);
 
     // add ArgMax
     Node& argmax_node = builder.AddNode("ArgMax", {dq_output}, {output_arg});
@@ -2419,6 +2420,10 @@ static void RunArgMaxDropDQTestCase(const std::vector<int64_t>& input_shape,
 TEST(QDQTransformerTests, ArgMax) {
   RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, false);
   RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/);
+
+  // Should *not* drop DQ when scale is non-positive, as it inverts ordering for ArgMax.
+  RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, false /*use_contrib_qdq*/, false /*expect_drop_dq*/, -1.0f /*scale*/);
+  RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/, false /*expect_drop_dq*/, -1.0f /*scale*/);
 
   // Should *not* drop DQ for 16-bit DQ -> ArgMax (because ORT does not support 16-bit input types for ArgMax).
   RunArgMaxDropDQTestCase<uint16_t>({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/, false /*expect_drop_dq*/);
