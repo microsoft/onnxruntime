@@ -14,6 +14,7 @@
 #include "ep_data_transfer.h"
 #include "ep_stream_support.h"
 #include "ep_test_hooks.h"
+#include "ep_stateful.h"
 
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -144,6 +145,7 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
 }
 
 ExampleEpFactory::~ExampleEpFactory() {
+  RecordStatefulLifetime(2);
   for (auto* device : virtual_hardware_devices_) {
     ep_api.ReleaseHardwareDevice(device);
   }
@@ -340,6 +342,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   std::string test_ort_version;
   std::string use_default_cpu_allocator;
   std::string test_read_ep_context_during_compile;
+  std::string stateful_mode;
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEnable, "0",
                                                  ep_context_enable));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEmbedMode, "0",
@@ -357,6 +360,10 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   }
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kExampleEpTestOrtVersion, "current",
                                                  test_ort_version));
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kExampleEpTestStatefulMode, "none", stateful_mode));
+  if (stateful_mode == "legacy23") {
+    return CreateLegacyExampleEp23(*factory, factory->ep_name_.c_str(), ep);
+  }
   if (test_ort_version != "current" && test_ort_version != "30") {
     return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
                                          "Example EP test ORT version must be 'current' or '30'.");
@@ -389,6 +396,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
     // Keep the support callback populated to verify that ORT ignores it for older EP versions.
     dummy_ep->ort_version_supported = 30;
   }
+  RETURN_IF_ERROR(RegisterExampleStatefulProvider(dummy_ep.get(), *factory, *logger, stateful_mode));
   *ep = dummy_ep.release();
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
@@ -396,6 +404,10 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
 
 /*static*/
 void ORT_API_CALL ExampleEpFactory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) noexcept {
+  if (ep && ep->ort_version_supported == 23) {
+    ReleaseLegacyExampleEp23(ep);
+    return;
+  }
   ExampleEp* dummy_ep = static_cast<ExampleEp*>(ep);
   delete dummy_ep;
 }

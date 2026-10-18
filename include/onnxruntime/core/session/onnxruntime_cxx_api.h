@@ -2959,6 +2959,8 @@ struct StatefulDispatchInfo {
 
 /** \brief Query registered provider capabilities without executing them. \since Version 1.32. */
 OrtStatefulProviderCapabilities QueryStatefulProviderCapabilities(const Session& session, const char* name);
+/** \brief Register copied plugin callbacks within synchronous CreateEp. \since Version 1.32. */
+void RegisterStatefulProvider(OrtEp* ep, const OrtStatefulProviderDescriptor& descriptor);
 
 struct StatefulExecution;
 

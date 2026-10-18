@@ -54,6 +54,14 @@ int StatefulApiCConsumerTest(void) {
   cache_config.struct_size = sizeof(cache_config);
   cache_config.caches = &spec;
   cache_config.num_caches = 1;
+  status = api->GetEpApi()->RegisterStatefulProvider(NULL, NULL);
+  if (status == NULL) {
+    fprintf(stderr, "Registration outside CreateEp must fail\n");
+    code = 7;
+    goto cleanup;
+  }
+  api->ReleaseStatus(status);
+  status = NULL;
   CHECK(api->GetAllocatorWithDefaultOptions(&allocator));
   CHECK(api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory));
   CHECK(api->CreateTensorWithDataAsOrtValue(memory, scores, sizeof(scores), logits_shape, 2,

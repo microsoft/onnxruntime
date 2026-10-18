@@ -8,6 +8,11 @@ VERS_1.0.0 {
   ExampleEpTestHooks_GetPreallocatedOutputQueryResult;
   ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected;
   ExampleEpTestHooks_SetCreateDataTransferFailure;
+  ExampleEpTestHooks_ResetStateful;
+  ExampleEpTestHooks_GetStatefulCalls;
+  ExampleEpTestHooks_SetStatefulFailure;
+  ExampleEpTestHooks_SetStatefulObserver;
+  ExampleEpTestHooks_GetLegacySize;
  local:
     *;
 };

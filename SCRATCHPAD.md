@@ -544,3 +544,58 @@ Compressed project memory. This is not the execution plan.
   https://github.com/onnxruntime/ort-state/pull/18. Implementation `8fbd403493`;
   both CPU/CUDA and exact 782/782 new-line gates verified before publication.
   Continue directly to authorized M07b, stacked on the final M07a head.
+- M07b branch `state/m07b-plugin-stateful-hooks` starts at final M07a
+  `46715fb08a`. No M07b commits/PR yet.
+- Native plugin changes implemented: transactional thread-local CreateEp
+  registration (`plugin_ep/stateful_ep_registration.*`), copied/retained
+  descriptors, appended OrtEpApi::RegisterStatefulProvider + C++ free wrapper.
+  Scope rolls back failed/duplicate/mismatched creation, supports nesting.
+- Environment EpInfo/map now shared; private OrtEpDevice has weak library_owner;
+  plugin factory/adapter retain it strongly. No public OrtEp fields changed.
+- Provider leases now retain Session logger AND custom LoggingManager ownership
+  (shared native owners) so delayed plugin/context teardown does not log through
+  a dead Session logger.
+- Extended example plugin (`ep_stateful.*`) modes: none/sampler/append/full,
+  extended/short/bad-version/missing-callback/duplicate/wrong-EP/create-failure.
+  Actual CPU greedy and explicit cache CPU-reference calls; new exported test
+  hooks record callbacks/factory/context destruction and inject failures.
+- Frozen 1.23 OrtEp prefix uses only original fields through
+  GetCompiledModelCompatibilityInfo. Allocated at END of writable page with
+  inaccessible next page (Windows/POSIX). sizeof prefix ==
+  offsetof(current OrtEp, GetKernelRegistry), less than current struct.
+  No current-size inheritance trick. Factory handles legacy destruction.
+- New public test file autoep/test_stateful_plugin.cc covers real dynamic-plugin
+  modes, legacy guard, registration rollback, cache/reset errors, retained values
+  across Session release + library unregistration, custom logger callback after
+  Session release and full prefill/decode on CPU/CUDA. Added native nested-scope
+  test to stateful_provider_test.cc; C consumer checks registration outside scope.
+- Active initial builds: m07b-cpu-build and m07b-cuda-build. No M07b tests have run
+  yet, no compiler errors seen so far. C/CPP syntax through umbrella header passed;
+  ep_c_api.h must NOT be included directly (documented include order).
+- Initial real plugin tests: CPU4/4, CUDA8/8; native baseline CPU62/62,
+  CUDA108/108. CPU full AutoEP139/139 passed (14 initial failures were missing
+  fixtures; stage add_mul_add/squeeze_mul_relu/if_mul/loop_sub_one/scan_mul/
+  custom_mul/conv_qdq_external_ini.onnx + .bin/sub_mul_sub in both testdata dirs).
+- Initial B new production/glue coverage80/80 against46715fb08a. Full AutoEP
+  profiles exercise second factory constructor via provider_policy_context.cc;
+  targeted-only profiles had two unexecuted lines there.
+- CUDA full AutoEP157 ran;20 existing EPContext-schema cases unsupported by this
+  intentionally contrib-disabled CUDA config failed (not new stateful code).
+  Supported selection137/137 passed. Exact exclusions recorded in
+  files/m07b-cuda-epcontext-exclusions.txt; CPU full suite covers those cases.
+  New plugin/API12 + native provider4 CUDA memchecks passed, zero errors.
+- Formatting done on B changes, no120-column violations. Final fresh matching
+  build/profile runs and inspected warnings still needed before B publication.
+- Native private headers changed coherently before these builds; do not edit
+  public layouts mid-build. Format/coverage/tests still pending; exact post-A
+  delta base is 46715fb08a. Parent A's complete verified evidence is preserved.
+- M07b FINAL fresh verification passed: CPU full AutoEP139/139 + native62/62;
+  CUDA supported AutoEP137/137 + native108/108, no skips. Exactly20 old
+  EPContext-schema tests excluded ONLY on contrib-disabled CUDA, all covered CPU.
+  Final sanitizer12 plugin/publicAPI +4 native cases passed, zero errors.
+- Final new production/glue80/80. Profiles in CPU coverage/m07b/final; SDK exported
+  from libexample_plugin_ep.so, native from API exe + .so/native exe. Inspected
+  132/351 unused zero-hash maps; none affects measured changed functions.
+- GCC C11 extended consumer and standalone C++17 registration-wrapper error
+  consumer compiled/linked/ran. Style/columns/whitespace/93 IDs/24 milestones pass.
+  Only publication remains; no further runtime changes after final builds.

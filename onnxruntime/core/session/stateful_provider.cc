@@ -40,6 +40,7 @@ Status FindProvider(InferenceSession& session, const char* name, std::shared_ptr
 
 struct StatefulProviderBinding::Lease {
   OrtStatefulProviderDescriptor descriptor{};
+  std::shared_ptr<const void> logging_resources;
   std::shared_ptr<IExecutionProvider> provider;
   ~Lease() {
     if (descriptor.context) {
@@ -119,6 +120,7 @@ Status StatefulProviderBinding::Resolve(InferenceSession* session, const Statefu
   std::shared_ptr<IExecutionProvider> provider;
   ORT_RETURN_IF_ERROR(FindProvider(*session, selection.provider_name.c_str(), provider));
   auto lease = std::make_shared<Lease>();
+  lease->logging_resources = session->RetainProviderLoggingResources();
   if (const auto* descriptor = provider->GetStatefulProvider()) {
     ORT_RETURN_IF_ERROR(ValidateDescriptor(*descriptor));
     lease->descriptor = *descriptor;

@@ -619,6 +619,7 @@ class InferenceSession {
    *Get InferenceSession logger.
    */
   const logging::Logger* GetLogger() const { return session_logger_; };
+  std::shared_ptr<const void> RetainProviderLoggingResources() const;
 
   const SessionState& GetSessionState() const {
     ORT_ENFORCE(session_state_ != nullptr, "Session must be initialized to create session state.");
@@ -756,13 +757,13 @@ class InferenceSession {
   /// execution_providers_ so they outlive the logger and EPs during destruction (C++ destroys
   /// members in reverse declaration order).
   logging::LoggingManager* logging_manager_;
-  std::unique_ptr<logging::LoggingManager> user_logging_manager_;
+  std::shared_ptr<logging::LoggingManager> user_logging_manager_;
 
   /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
   /// This MUST be declared before execution_providers_ so the logger outlives EPs during destruction
   /// (C++ destroys members in reverse declaration order), allowing EP teardown callbacks to safely
   /// use the logger pointer.
-  std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
+  std::shared_ptr<logging::Logger> owned_session_logger_ = nullptr;
 
   // The list of execution providers.
   // This MUST be prior to model_ in case there are values in the model that were allocated using an allocator

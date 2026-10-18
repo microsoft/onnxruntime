@@ -4913,6 +4913,14 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
   return *run_logger;
 }
 
+std::shared_ptr<const void> InferenceSession::RetainProviderLoggingResources() const {
+  struct Owners {
+    std::shared_ptr<logging::LoggingManager> manager;
+    std::shared_ptr<logging::Logger> logger;
+  };
+  return std::make_shared<Owners>(Owners{user_logging_manager_, owned_session_logger_});
+}
+
 void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
   // create logger for session, using provided logging manager if possible
   if (logging_manager != nullptr) {

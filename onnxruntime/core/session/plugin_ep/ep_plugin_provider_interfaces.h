@@ -23,6 +23,7 @@ struct EpNode;
 struct EpValueInfo;
 class NodeArg;
 class PluginExecutionProvider;
+class RegisteredStatefulProvider;
 
 /// <summary>
 /// IExecutionProviderFactory that wraps a OrtEpFactory. Required for SessionOptionsAppendExecutionProvider_V2.
@@ -58,6 +59,7 @@ struct PluginExecutionProviderFactory : public IExecutionProviderFactory {
                                        /*out*/ std::unique_ptr<PluginExecutionProvider>& plugin_ep);
 
  private:
+  std::shared_ptr<void> library_owner_;
   OrtEpFactory& ep_factory_;
   InlinedVector<const OrtEpDevice*> devices_;
   InlinedVector<const OrtHardwareDevice*> hardware_devices_;
@@ -91,10 +93,13 @@ class PluginExecutionProvider : public IExecutionProvider {
   explicit PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options, OrtEpFactory& ep_factory,
                                    gsl::span<const OrtEpDevice* const> ep_devices,
                                    std::shared_ptr<KernelRegistry> kernel_registry,
-                                   const logging::Logger& logger);
+                                   const logging::Logger& logger,
+                                   std::shared_ptr<void> library_owner = {},
+                                   std::shared_ptr<RegisteredStatefulProvider> stateful_provider = {});
   ~PluginExecutionProvider();
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  const OrtStatefulProviderDescriptor* GetStatefulProvider() const noexcept override;
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
@@ -171,7 +176,10 @@ class PluginExecutionProvider : public IExecutionProvider {
     std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos;
   };
 
+  // Keep code/factories alive until all callback-bearing members are destroyed.
+  std::shared_ptr<void> library_owner_;
   UniqueOrtEp ort_ep_;
+  std::shared_ptr<RegisteredStatefulProvider> stateful_provider_;
   OrtEpFactory& ep_factory_;
   std::vector<const OrtEpDevice*> ep_devices_;
   std::vector<const OrtMemoryInfo*> allocator_mem_infos_;

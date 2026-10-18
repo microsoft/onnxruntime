@@ -44,6 +44,10 @@ struct Utils {
     using GetPreallocatedOutputQueryResultFn = int (*)();
     using GetPreallocatedOutputBadIndexRejectedFn = int (*)();
     using SetCreateDataTransferFailureFn = void (*)(int enabled);
+    using ResetStatefulFn = void (*)();
+    using GetStatefulCallsFn = uint64_t (*)(int);
+    using SetStatefulFailureFn = void (*)(int, int);
+    using SetStatefulObserverFn = void (*)(void*, void (*)(void*, int));
 
     ResetSyncCountFn reset_sync_count{};
     GetSyncCountFn get_sync_count{};
@@ -51,6 +55,11 @@ struct Utils {
     GetPreallocatedOutputQueryResultFn get_preallocated_output_query_result{};
     GetPreallocatedOutputBadIndexRejectedFn get_preallocated_output_bad_index_rejected{};
     SetCreateDataTransferFailureFn set_create_data_transfer_failure{};
+    ResetStatefulFn reset_stateful{};
+    GetStatefulCallsFn get_stateful_calls{};
+    SetStatefulFailureFn set_stateful_failure{};
+    SetStatefulObserverFn set_stateful_observer{};
+    GetSyncCountFn get_legacy_size{};
   };
 
   using LoadExampleEpHooksPtr = std::unique_ptr<ExampleEpHooks, std::function<void(ExampleEpHooks*)>>;

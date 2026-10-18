@@ -28,6 +28,7 @@
 #include "core/session/plugin_ep/ep_allocator_utils.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
 #include "core/session/plugin_ep/ep_event_profiling.h"
+#include "core/session/plugin_ep/stateful_ep_registration.h"
 #include "core/session/ort_apis.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/partitioning_utils.h"
@@ -40,7 +41,8 @@ namespace onnxruntime {
 
 PluginExecutionProviderFactory::PluginExecutionProviderFactory(OrtEpFactory& ep_factory,
                                                                gsl::span<const OrtEpDevice* const> ep_devices)
-    : ep_factory_{ep_factory},
+    : library_owner_{ep_devices.empty() ? nullptr : ep_devices.front()->library_owner.lock()},
+      ep_factory_{ep_factory},
       devices_{ep_devices.begin(), ep_devices.end()} {
   hardware_devices_.reserve(ep_devices.size());
   ep_metadata_.reserve(ep_devices.size());
@@ -55,7 +57,8 @@ PluginExecutionProviderFactory::PluginExecutionProviderFactory(OrtEpFactory& ep_
                                                                gsl::span<const OrtEpDevice* const> ep_devices,
                                                                gsl::span<const OrtHardwareDevice* const> hw_devices,
                                                                gsl::span<const OrtKeyValuePairs* const> ep_metadata)
-    : ep_factory_{ep_factory},
+    : library_owner_{ep_devices.empty() ? nullptr : ep_devices.front()->library_owner.lock()},
+      ep_factory_{ep_factory},
       devices_{ep_devices.begin(), ep_devices.end()},
       hardware_devices_{hw_devices.begin(), hw_devices.end()},
       ep_metadata_{ep_metadata.begin(), ep_metadata.end()} {
@@ -96,6 +99,7 @@ Status PluginExecutionProviderFactory::CreatePluginExecutionProvider(
     /*out*/ std::unique_ptr<PluginExecutionProvider>& plugin_ep) {
   plugin_ep = nullptr;
   OrtEp* ort_ep_raw = nullptr;
+  StatefulEpCreationScope stateful_scope;
 
   ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory_.CreateEp(&ep_factory_, hardware_devices_.data(),
                                                               ep_metadata_.data(), hardware_devices_.size(),
@@ -104,6 +108,8 @@ Status PluginExecutionProviderFactory::CreatePluginExecutionProvider(
                 "' returned a NULL OrtEp instance");
 
   auto ort_ep = UniqueOrtEp(ort_ep_raw, OrtEpDeleter(ep_factory_));
+  std::shared_ptr<RegisteredStatefulProvider> stateful_provider;
+  ORT_RETURN_IF_ERROR(stateful_scope.Take(ort_ep_raw, stateful_provider));
 
   ORT_RETURN_IF_ERROR(SanityCheckOrtEp(*ort_ep));
 
@@ -113,7 +119,8 @@ Status PluginExecutionProviderFactory::CreatePluginExecutionProvider(
   plugin_ep = std::make_unique<PluginExecutionProvider>(std::move(ort_ep),
                                                         session_options, ep_factory_, devices_,
                                                         kernel_registry,
-                                                        *logger.ToInternal());
+                                                        *logger.ToInternal(), library_owner_,
+                                                        std::move(stateful_provider));
   return Status::OK();
 }
 
@@ -178,10 +185,14 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
                                                  OrtEpFactory& ep_factory,
                                                  gsl::span<const OrtEpDevice* const> ep_devices,
                                                  std::shared_ptr<KernelRegistry> kernel_registry,
-                                                 const logging::Logger& logger)
+                                                 const logging::Logger& logger,
+                                                 std::shared_ptr<void> library_owner,
+                                                 std::shared_ptr<RegisteredStatefulProvider> stateful_provider)
     : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(*ep, ep_devices),
                          std::vector<const OrtEpDevice*>(ep_devices.begin(), ep_devices.end()), logger),
+      library_owner_(std::move(library_owner)),
       ort_ep_(std::move(ep)),
+      stateful_provider_(std::move(stateful_provider)),
       ep_factory_(ep_factory),
       ep_devices_(ep_devices.begin(), ep_devices.end()),
       kernel_registry_(std::move(kernel_registry)) {
@@ -246,6 +257,10 @@ const logging::Logger& PluginExecutionProvider::GetEpLoggerOrDefault() const {
 
 std::shared_ptr<KernelRegistry> PluginExecutionProvider::GetKernelRegistry() const {
   return kernel_registry_;
+}
+
+const OrtStatefulProviderDescriptor* PluginExecutionProvider::GetStatefulProvider() const noexcept {
+  return stateful_provider_ ? &stateful_provider_->Descriptor() : nullptr;
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>

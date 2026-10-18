@@ -594,7 +594,7 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "EP library is already registered under ", registration_name);
       }
 
-      std::unique_ptr<EpInfo> ep_info;
+      std::shared_ptr<EpInfo> ep_info;
       ORT_RETURN_IF_ERROR(EpInfo::Create(std::move(ep_library), ep_info, internal_factories));
 
       // Register shared allocators
@@ -1028,14 +1028,14 @@ Status Environment::ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtDevi
   return status;
 }
 
-Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
+Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::shared_ptr<EpInfo>& out,
                                    const std::vector<EpFactoryInternal*>& internal_factories) {
   if (!library_in) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "EpLibrary was null");
   }
 
-  auto instance_unique_ptr = std::unique_ptr<EpInfo>(new EpInfo());  // can't use make_unique with private ctor
-  EpInfo& instance = *instance_unique_ptr;
+  auto owner = std::shared_ptr<EpInfo>(new EpInfo());
+  EpInfo& instance = *owner;
   instance.library = std::move(library_in);
   instance.internal_factories = internal_factories;
 
@@ -1070,12 +1070,13 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
           ep_devices[i]->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_LibraryPath, library_path->string());
         }
 
+        ep_devices[i]->library_owner = owner;
         instance.execution_devices.emplace_back(ep_devices[i]);  // take ownership
       }
     }
   }
 
-  out = std::move(instance_unique_ptr);
+  out = std::move(owner);
   return Status::OK();
 }
 

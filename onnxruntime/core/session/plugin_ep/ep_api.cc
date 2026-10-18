@@ -33,6 +33,7 @@
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
+#include "core/session/plugin_ep/stateful_ep_registration.h"
 #include "core/session/plugin_ep/ep_control_flow_kernel_impls.h"
 #include "core/session/utils.h"
 #include "core/common/profiler_common.h"
@@ -1259,6 +1260,13 @@ ORT_API_STATUS_IMPL(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const Ort
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(RegisterStatefulProvider, OrtEp* ep, const OrtStatefulProviderDescriptor* descriptor) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::StatefulEpCreationScope::Register(ep, descriptor));
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -1354,6 +1362,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ReleaseEpContextConfig,
     &OrtExecutionProviderApi::EpContextConfigGetEpContextDataReadFunc,
     &OrtExecutionProviderApi::EpContextConfigGetEpContextDataWriteFunc,
+    &OrtExecutionProviderApi::RegisterStatefulProvider,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
