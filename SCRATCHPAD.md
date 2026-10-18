@@ -13,7 +13,7 @@ Compressed project memory. This is not the execution plan.
   M01. `SPEC.md` and the execution plan are approved.
 - M01 is complete and published as ready-for-review PR #11:
   https://github.com/onnxruntime/ort-state/pull/11
-- No agents launched. M01-M06 are complete; M07-M24 remain pending.
+- No agents launched. M01-M07 are complete; M08-M24 remain pending.
   Runtime production code starts with M02.
 - Future tracking: keep `TASKS.md` checklist current and record compressed
   discoveries/agent learnings here.
@@ -599,3 +599,8 @@ Compressed project memory. This is not the execution plan.
 - GCC C11 extended consumer and standalone C++17 registration-wrapper error
   consumer compiled/linked/ran. Style/columns/whitespace/93 IDs/24 milestones pass.
   Only publication remains; no further runtime changes after final builds.
+- M07b published ready for review as PR #19:
+  https://github.com/onnxruntime/ort-state/pull/19, stacked on M07a PR #18.
+  Implementation `fd2331ff8a`. Both M07 sub-milestones complete; macro M07 marked
+  complete. M08-M24 remain pending; no PRs merged. CUDA EPContext/schema exclusions
+  remain explicitly documented, not reported as passing unfiltered tests.

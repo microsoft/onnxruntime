@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M06 and M07a complete; M07b in progress.
+**Status:** Approved; M01-M07 complete; M08-M24 pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -17,7 +17,7 @@ M05's requested generation-folder layout follow-up is complete in the same PR.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M06 are complete; M07-M24 are pending. Check tasks when their
+M01-M07 are complete; M08-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -97,7 +97,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M06 are **complete**; M07-M24 are **pending**.
+M01-M07 are **complete**; M08-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -107,7 +107,7 @@ M01-M06 are **complete**; M07-M24 are **pending**.
 | [x] | M04 | CPU KV cache management / `cpu-kv-cache` | M03 |
 | [x] | M05 | CPU greedy sampling and decode iteration / `cpu-greedy` | M04 |
 | [x] | M06 | Public C API and C++ wrappers / `public-api` | M02, M03, M04, M05 |
-| [ ] | M07 | Built-in/plugin EP capability contracts / `ep-stateful-hooks` | M04, M05, M06 |
+| [x] | M07 | Built-in/plugin EP capability contracts / `ep-stateful-hooks` | M04, M05, M06 |
 | [ ] | M08 | Native CUDA KV management / `cuda-kv-cache` | M07 |
 | [ ] | M09 | Native CUDA greedy sampling / `cuda-greedy` | M07 |
 | [ ] | M10 | Standalone package schema and authoring / `package-schema` | M01, M03 |
@@ -1002,14 +1002,14 @@ All CUDA commands above passed, with the nonzero counts/zero errors stated above
 2026-10-17 without changes. Both sub-PRs are authorized sequentially.
 M07a is complete: [PR #18](https://github.com/onnxruntime/ort-state/pull/18),
 `state/m07a-ep-stateful-hooks`, based on M06b `5bde969b66`.
-M07b follows the verified/published M07a head; macro M07 remains incomplete.
-The authorized plugin implementation is in progress on
+M07b is complete: [PR #19](https://github.com/onnxruntime/ort-state/pull/19),
 `state/m07b-plugin-stateful-hooks`, based on M07a `46715fb08a`.
+Both independently verified sub-PRs are published ready for review; macro M07 is complete.
 
-- [ ] Add capability-based in-tree hooks and boundary-safe plugin C contracts.
+- [x] Add capability-based in-tree hooks and boundary-safe plugin C contracts.
 - [x] Route CPU implementations through the selection contract; specify allowed
   transfers/fallback and make implementation selection observable.
-- [ ] Extend a test plugin to demonstrate partial/full support, lifetimes,
+- [x] Extend a test plugin to demonstrate partial/full support, lifetimes,
   unsupported features, errors, and compatibility with older plugin contracts.
 
 **CPU test plan:** Execute real CPU/cache/sampler overrides and test-plugin calls;
@@ -1215,7 +1215,7 @@ without breaking older OrtEp allocations or unloading live callback resources.
 - [x] B5: Exercise provider/context/deleter retention, failed creation/registration
   cleanup, exactly-once release and safe lifetime across unregistration. Cover
   reset errors/no-retry fallback with plugin callbacks, not only native mocks.
-- [ ] B6: Run C/C++ plugin conformance and CPU/CUDA builds/regressions, include
+- [x] B6: Run C/C++ plugin conformance and CPU/CUDA builds/regressions, include
   plugin adapter/registration host glue in fresh coverage, document implementer
   usage and limitations, and publish a ready-for-review stacked PR.
 
@@ -1259,7 +1259,8 @@ The CUDA build's supported AutoEP selection passed **137/137**, with 20 existing
 EPContext/schema cases explicitly excluded because
 `onnxruntime_DISABLE_CONTRIB_OPS=ON`; those cases passed in the full CPU suite.
 Final new production/glue line coverage is **80/80**. Style-final rebuilt
-profiles and sanitizer confirmation passed; publication remains.
+profiles, sanitizer confirmation and publication passed. Implementation commit
+`fd2331ff8a` is published in ready-for-review PR #19, stacked on PR #18.
 
 **M07b verified evidence:**
 
