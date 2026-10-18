@@ -2135,6 +2135,8 @@ TEST(ConvTransposeTest, Depthwise1DStreaming) {
         test.AddInput<float>("W", {3, 1, kernel}, filter, initializer);
         test.AddInput<float>("B", {3}, bias, initializer);
         test.AddOutput<float>("Y", {2, 3, output_length}, expected);
+        test.SetOutputAbsErr("Y", 0.0f);
+        test.SetOutputRelErr("Y", 0.0f);
         std::vector<std::unique_ptr<IExecutionProvider>> providers;
         providers.push_back(DefaultCpuExecutionProvider());
         test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
@@ -2171,6 +2173,25 @@ TEST(ConvTransposeTest, Depthwise1DStreaming) {
         }
       }
       run(length, kernel, 1, 5, 4, large_input, filter, bias, expected);
+
+      auto repeat = [](const std::vector<float>& values, size_t count) {
+        std::vector<float> result;
+        result.reserve(values.size() * count);
+        for (size_t i = 0; i < count; ++i) {
+          result.insert(result.end(), values.begin(), values.end());
+        }
+        return result;
+      };
+      // Separate rounding gives 0 at position 2; fused accumulation gives -1.
+      run(2, 3, 1, 0, 0,
+          repeat({4097.0f, 16785408.0f}, 6),
+          repeat({1.0f, 0.0f, -4097.0f}, 3), {0.0f, 0.0f, 0.0f},
+          repeat({4097.0f, 0.0f, 0.0f, 0.0f, -68769816576.0f, 0.0f}, 6));
+      // Ascending tap order gives 1 at position 4; reversing it gives 0.
+      run(3, 5, 1, 0, 0,
+          repeat({1.0f, 1.0f, 1.0f}, 6),
+          repeat({-16777216.0f, 0.0f, 16777216.0f, 0.0f, 1.0f}, 3), {0.0f, 0.0f, 0.0f},
+          repeat({-16777216.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 16777216.0f, 0.0f, 1.0f, 0.0f}, 6));
     }
   }
 }
