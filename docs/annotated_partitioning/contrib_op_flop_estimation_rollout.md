@@ -25,6 +25,18 @@ The key distinction is:
 **Recommended first release:** counting conventions, `MatMulNBits` core dense-equivalent operations, and a versioned
 developer report. Throughput and performance-policy changes are separate deliverables.
 
+### Initial implementation
+
+The internal [MatMulNBits compute estimator](../../onnxruntime/contrib_ops/cpu/quantization/matmul_nbits_compute_estimate.h)
+provides a checked shape-based count and a static adapter for resolved in-tree graph nodes. Its result is either a
+core dense-equivalent count under convention version 1 or an explicit unavailable reason. Rank-one inputs use
+`M = 1`; unknown dimensions remain unavailable even alongside zero extents. The adapter reads canonical graph
+shapes, not maximum-shape scenarios, and does not validate packed weights or replace normal operator validation.
+
+This first increment does not add a graph report, runtime instrumentation, public API, or inference-policy changes.
+The sources are included by the existing CPU contrib source glob, independently of CUDA, and the tests run in
+`onnxruntime_provider_test` with `--gtest_filter="MatMulNBitsComputeEstimate*"` after rebuilding.
+
 ## 2. Motivation and boundaries
 
 The feature should help users and ORT developers:
