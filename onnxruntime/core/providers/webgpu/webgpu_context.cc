@@ -67,6 +67,113 @@ struct RequestAdapterOptionsLuid : wgpu::ChainedStruct {
   LUID adapter_luid{};
 };
 
+common::Status SelectWeightLoadingD3D12Device(
+    wgpu::PowerPreference power_preference,
+    LUID& selected_adapter_luid,
+    Microsoft::WRL::ComPtr<ID3D12Device>& selected_device) {
+  Microsoft::WRL::ComPtr<IDXGIFactory6> dxgi_factory;
+  HRESULT result =
+      CreateDXGIFactory2(0, IID_PPV_ARGS(&dxgi_factory));
+  ORT_RETURN_IF_ERROR(
+      FAILED(result)
+          ? ORT_MAKE_STATUS(
+                ONNXRUNTIME, FAIL,
+                "Accelerated weight loading failed to create the DXGI factory "
+                "with HRESULT 0x",
+                std::hex, static_cast<uint32_t>(result), ".")
+          : common::Status::OK());
+
+  DXGI_GPU_PREFERENCE gpu_preference =
+      DXGI_GPU_PREFERENCE_UNSPECIFIED;
+  if (power_preference == wgpu::PowerPreference::HighPerformance) {
+    gpu_preference = DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE;
+  } else if (power_preference == wgpu::PowerPreference::LowPower) {
+    gpu_preference = DXGI_GPU_PREFERENCE_MINIMUM_POWER;
+  }
+
+  for (uint32_t adapter_index = 0;; ++adapter_index) {
+    Microsoft::WRL::ComPtr<IDXGIAdapter1> dxgi_adapter;
+    result = dxgi_factory->EnumAdapterByGpuPreference(
+        adapter_index, gpu_preference,
+        IID_PPV_ARGS(&dxgi_adapter));
+    if (result == DXGI_ERROR_NOT_FOUND) {
+      break;
+    }
+    ORT_RETURN_IF(
+        FAILED(result),
+        "Accelerated weight loading failed to enumerate DXGI adapters with "
+        "HRESULT 0x",
+        std::hex, static_cast<uint32_t>(result), ".");
+
+    DXGI_ADAPTER_DESC1 adapter_description{};
+    result = dxgi_adapter->GetDesc1(&adapter_description);
+    if (FAILED(result) ||
+        (adapter_description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0) {
+      continue;
+    }
+
+    Microsoft::WRL::ComPtr<ID3D12Device> candidate_device;
+    result = D3D12CreateDevice(
+        dxgi_adapter.Get(), D3D_FEATURE_LEVEL_11_0,
+        IID_PPV_ARGS(&candidate_device));
+    if (SUCCEEDED(result)) {
+      selected_adapter_luid = adapter_description.AdapterLuid;
+      selected_device = std::move(candidate_device);
+      return common::Status::OK();
+    }
+  }
+  return ORT_MAKE_STATUS(
+      ONNXRUNTIME, FAIL,
+      "Accelerated weight loading did not find a hardware D3D12 adapter.");
+}
+
+void ConfigureWeightLoadingAdapterOptions(
+    const WebGpuContextConfig& config,
+    WeightLoadAccelerationMode weight_load_acceleration_mode,
+    wgpu::RequestAdapterOptions& adapter_options,
+    RequestAdapterOptionsLuid& luid_options,
+    Microsoft::WRL::ComPtr<ID3D12Device>& weight_loading_d3d12_device) {
+  // Retain the selected adapter's native device even when the first session
+  // disables acceleration. Later sessions reuse this context and cannot
+  // repeat adapter selection.
+  const bool preselect_weight_loading_adapter =
+      static_cast<wgpu::BackendType>(config.backend_type) ==
+          wgpu::BackendType::D3D12 &&
+      !config.adapter_index;
+  if (!preselect_weight_loading_adapter) {
+    return;
+  }
+
+  LUID selected_adapter_luid{};
+  const auto selection_start = std::chrono::steady_clock::now();
+  const auto selection_status = SelectWeightLoadingD3D12Device(
+      adapter_options.powerPreference, selected_adapter_luid,
+      weight_loading_d3d12_device);
+
+  if (!selection_status.IsOK()) {
+    if (IsWeightLoadAccelerationRequired(weight_load_acceleration_mode)) {
+      ORT_THROW(selection_status.ErrorMessage());
+    }
+    LOGS_DEFAULT(WARNING)
+        << selection_status.ErrorMessage()
+        << " Continuing with ordinary Dawn adapter selection without "
+           "accelerated weight loading.";
+    weight_loading_d3d12_device.Reset();
+  }
+  if (weight_loading_d3d12_device) {
+    luid_options.adapter_luid = selected_adapter_luid;
+    luid_options.nextInChain = adapter_options.nextInChain;
+    adapter_options.nextInChain = &luid_options;
+
+    LOGS_DEFAULT(INFO)
+        << "WebGPU D3D12 weight-loading GPU selection: "
+        << std::chrono::duration<double, std::milli>(
+               std::chrono::steady_clock::now() - selection_start)
+               .count()
+        << " ms.";
+  }
+}
+
 }  // namespace
 #endif
 
@@ -120,99 +227,9 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       const auto* ordinary_adapter_options_chain =
           req_adapter_options.nextInChain;
       RequestAdapterOptionsLuid luid_options{};
-      const bool preselect_weight_loading_adapter =
-          IsWeightLoadAccelerationEnabled(weight_load_acceleration_mode_) &&
-          static_cast<wgpu::BackendType>(config.backend_type) ==
-              wgpu::BackendType::D3D12 &&
-          !config.adapter_index;
-      if (preselect_weight_loading_adapter) {
-        LUID selected_luid{};
-        const auto selection_start = std::chrono::steady_clock::now();
-        const auto selection_status = [&]() -> common::Status {
-          Microsoft::WRL::ComPtr<IDXGIFactory6> dxgi_factory;
-          HRESULT result =
-              CreateDXGIFactory2(0, IID_PPV_ARGS(&dxgi_factory));
-          ORT_RETURN_IF_ERROR(
-              FAILED(result)
-                  ? ORT_MAKE_STATUS(
-                        ONNXRUNTIME, FAIL,
-                        "Accelerated weight loading failed to create the DXGI factory "
-                        "with HRESULT 0x",
-                        std::hex, static_cast<uint32_t>(result), ".")
-                  : common::Status::OK());
-
-          DXGI_GPU_PREFERENCE gpu_preference =
-              DXGI_GPU_PREFERENCE_UNSPECIFIED;
-          if (req_adapter_options.powerPreference ==
-              wgpu::PowerPreference::HighPerformance) {
-            gpu_preference = DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE;
-          } else if (req_adapter_options.powerPreference ==
-                     wgpu::PowerPreference::LowPower) {
-            gpu_preference = DXGI_GPU_PREFERENCE_MINIMUM_POWER;
-          }
-
-          for (uint32_t adapter_index = 0;; ++adapter_index) {
-            Microsoft::WRL::ComPtr<IDXGIAdapter1> dxgi_adapter;
-            result = dxgi_factory->EnumAdapterByGpuPreference(
-                adapter_index, gpu_preference,
-                IID_PPV_ARGS(&dxgi_adapter));
-            if (result == DXGI_ERROR_NOT_FOUND) {
-              break;
-            }
-            ORT_RETURN_IF(
-                FAILED(result),
-                "Accelerated weight loading failed to enumerate DXGI adapters with "
-                "HRESULT 0x",
-                std::hex, static_cast<uint32_t>(result), ".");
-
-            DXGI_ADAPTER_DESC1 adapter_description{};
-            result = dxgi_adapter->GetDesc1(&adapter_description);
-            if (FAILED(result) ||
-                (adapter_description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0) {
-              continue;
-            }
-
-            Microsoft::WRL::ComPtr<ID3D12Device> candidate_device;
-            result = D3D12CreateDevice(
-                dxgi_adapter.Get(), D3D_FEATURE_LEVEL_11_0,
-                IID_PPV_ARGS(&candidate_device));
-            if (SUCCEEDED(result)) {
-              selected_luid = adapter_description.AdapterLuid;
-              weight_loading_d3d12_device_ = std::move(candidate_device);
-              return common::Status::OK();
-            }
-          }
-          return ORT_MAKE_STATUS(
-              ONNXRUNTIME, FAIL,
-              "Accelerated weight loading did not find a hardware D3D12 adapter.");
-        }();
-
-        if (!selection_status.IsOK()) {
-          if (IsWeightLoadAccelerationRequired(
-                  weight_load_acceleration_mode_)) {
-            ORT_THROW(selection_status.ErrorMessage());
-          }
-          LOGS_DEFAULT(WARNING)
-              << selection_status.ErrorMessage()
-              << " Continuing with ordinary Dawn adapter selection without "
-                 "accelerated weight loading.";
-          weight_loading_d3d12_device_.Reset();
-        }
-        if (weight_loading_d3d12_device_) {
-          luid_options.adapter_luid = selected_luid;
-#if !defined(__wasm__)
-          luid_options.nextInChain = &adapter_toggles_desc;
-#endif
-          req_adapter_options.nextInChain = &luid_options;
-
-          LOGS_DEFAULT(INFO)
-              << "WebGPU D3D12 weight-loading GPU selection: "
-              << std::chrono::duration<double, std::milli>(
-                     std::chrono::steady_clock::now() - selection_start)
-                     .count()
-              << " ms.";
-        }
-      }
+      ConfigureWeightLoadingAdapterOptions(
+          config, weight_load_acceleration_mode_, req_adapter_options,
+          luid_options, weight_loading_d3d12_device_);
 #endif
 
       wgpu::Adapter adapter;
@@ -436,6 +453,13 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     // Use the backend selected by Dawn rather than the requested backend. The
     // request can be Undefined when Dawn performs automatic adapter selection.
     selected_backend_type_ = adapter_info_.backendType;
+#if !defined(USE_EXTERNAL_DAWN)
+    if (selected_backend_type_ == wgpu::BackendType::D3D12 &&
+        weight_loading_d3d12_device_ == nullptr) {
+      weight_loading_d3d12_device_ =
+          dawn::native::d3d12::GetD3D12Device(device_.Get());
+    }
+#endif
 #endif
 
     // create buffer manager
@@ -470,16 +494,6 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       query_type_ = TimestampQueryType::None;
     }
   });
-
-#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING) && !defined(USE_EXTERNAL_DAWN)
-  if (IsWeightLoadAccelerationEnabled(config.weight_load_acceleration_mode) &&
-      selected_backend_type_ == wgpu::BackendType::D3D12 &&
-      device_ != nullptr &&
-      weight_loading_d3d12_device_ == nullptr) {
-    weight_loading_d3d12_device_ =
-        dawn::native::d3d12::GetD3D12Device(device_.Get());
-  }
-#endif
 
   if (max_num_pending_dispatches_ != config.max_num_pending_dispatches) {
     LOGS_DEFAULT(WARNING)
