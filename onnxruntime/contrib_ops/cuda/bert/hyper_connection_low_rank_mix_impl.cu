@@ -25,11 +25,11 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
-#include <cub/block/block_reduce.cuh>
 #include <algorithm>
 #include <limits>
 #include <type_traits>
 
+#include "core/providers/cuda/cu_inc/cub.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "core/providers/cuda/cuda_common.h"
 

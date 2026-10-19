@@ -410,26 +410,37 @@ class TestHyperConnectionLowRankMix(unittest.TestCase):
                     )
                     binding = graph_session.io_binding()
                     keep = []
-                    for name in ("streams", "prev_block_output", "prev_post_gate"):
-                        dev_in = inputs[name].cuda().contiguous()
-                        ortvalue = ort.OrtValue.from_dlpack(dev_in.__dlpack__())
-                        keep.extend((dev_in, ortvalue))
-                        binding.bind_ortvalue_input(name, ortvalue)
                     shapes = {"pre_output": (rows, H), "post_gate": (rows, C), "streams_out": (rows, C * H)}
                     outputs = {}
-                    for name, shape in shapes.items():
-                        dev_out = torch.empty(shape, dtype=torch.float32, device="cuda")
-                        ort_out = ort.OrtValue.from_dlpack(dev_out.__dlpack__())
-                        keep.extend((dev_out, ort_out))
-                        outputs[name] = dev_out
-                        binding.bind_ortvalue_output(name, ort_out)
+                    use_dlpack = torch.cuda.is_available()
+                    if use_dlpack:
+                        for name in ("streams", "prev_block_output", "prev_post_gate"):
+                            dev_in = inputs[name].cuda().contiguous()
+                            ortvalue = ort.OrtValue.from_dlpack(dev_in.__dlpack__())
+                            keep.extend((dev_in, ortvalue))
+                            binding.bind_ortvalue_input(name, ortvalue)
+                        for name, shape in shapes.items():
+                            dev_out = torch.empty(shape, dtype=torch.float32, device="cuda")
+                            ort_out = ort.OrtValue.from_dlpack(dev_out.__dlpack__())
+                            keep.extend((dev_out, ort_out))
+                            outputs[name] = dev_out
+                            binding.bind_ortvalue_output(name, ort_out)
+                    else:
+                        for name in ("streams", "prev_block_output", "prev_post_gate"):
+                            ortvalue = ort.OrtValue.ortvalue_from_numpy(inputs[name].numpy(), "cuda", 0)
+                            keep.append(ortvalue)
+                            binding.bind_ortvalue_input(name, ortvalue)
+                        for name, shape in shapes.items():
+                            outputs[name] = ort.OrtValue.ortvalue_from_shape_and_type(shape, np.float32, "cuda", 0)
+                            binding.bind_ortvalue_output(name, outputs[name])
                     graph_session.run_with_iobinding(binding)  # captures
                     graph_session.run_with_iobinding(binding)  # replays
                     expected = self.cache.get(io_elem, C, H, R, True, ATTRS).run(
                         None, {k: v.numpy() for k, v in inputs.items()}
                     )
                     for name, exp in zip(shapes, expected, strict=True):
-                        np.testing.assert_array_equal(outputs[name].cpu().numpy(), exp, err_msg=name)
+                        actual = outputs[name].cpu().numpy() if use_dlpack else outputs[name].numpy()
+                        np.testing.assert_array_equal(actual, exp, err_msg=name)
 
     def test_zero_rows(self):
         C, H, R = 4, 64, 16
