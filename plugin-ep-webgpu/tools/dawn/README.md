@@ -5,23 +5,59 @@ It uses the active pin in `cmake/deps.txt` and the patch order in
 `cmake/external/onnxruntime_external_deps.cmake`. The script, helpers, and tests
 are owned by the WebGPU provider so they can move with it to a standalone repo.
 
-## Prepare a roll
+## Recommended upgrade workflow
 
 Prerequisites: Python 3.10+, Git, GNU `patch`, and network access to GitHub.
 On Windows, Git for Windows supplies `patch.exe` in its `usr/bin` directory;
 add that directory to `PATH` or pass `--patch-executable PATH`.
 
-```powershell
-python plugin-ep-webgpu/tools/dawn/update_dawn.py --revision v20261013.193955
-```
+1. Start an upgrade branch from current `main` containing this tooling. Commit or
+   set aside unrelated edits so the generated roll is easy to review. Run the
+   commands below from the repository root.
 
-The default mode changes no tracked files. It writes `report.md`, `report.json`, and
-`changes.patch` under `build/dawn-upgrade/`. Review these files, resolve any
-reported compatibility decisions, then apply the prepared roll:
+2. Choose an exact Dawn tag or full commit and prepare a dry run. Replace the
+   example revision with the intended target:
 
-```powershell
-python plugin-ep-webgpu/tools/dawn/update_dawn.py --revision v20261013.193955 --apply
-```
+   ```powershell
+   python plugin-ep-webgpu/tools/dawn/update_dawn.py --revision v20261013.193955
+   ```
+
+   This changes no tracked files. It writes `report.md`, `report.json`, and
+   `changes.patch` under `build/dawn-upgrade/`.
+
+3. Review `report.md` and `changes.patch`. Check dependency additions/removals,
+   classifications, conditions, and patch context. Resolve reported blockers,
+   such as a new component needing classification or a conflicting patch, then
+   repeat the dry run. An already-upstream patch needs a reviewed removal from
+   the active patch stack; the tool does not delete it automatically.
+
+4. Apply the prepared upgrade using the same target revision:
+
+   ```powershell
+   python plugin-ep-webgpu/tools/dawn/update_dawn.py --revision v20261013.193955 --apply
+   ```
+
+   This regenerates the plan, verifies its inputs, and applies the archive pin,
+   manifest, SwiftShader, and patch edits only when there are no blockers.
+
+5. Check the resulting files:
+
+   ```powershell
+   python plugin-ep-webgpu/tools/dawn/update_dawn.py --check
+   python cgmanifests/webgpu/validate_webgpu_cgmanifest.py
+   git diff --check
+   ```
+
+   All commands should succeed. The upgrade check should report zero required
+   edits and zero blockers. The separate offline validator also checks the
+   independently packaged DXC release metadata against the Windows pipeline;
+   it does not download Dawn or validate child dependency pins against DEPS.
+
+6. Build and test the affected configurations, inspect the final packages, and
+   submit the reviewed roll. Follow the validation checklist below, including
+   feature-specific hardware tests when an upgrade enables a new GPU capability.
+   The plugin packaging pipelines generate and scan the fetched build-input
+   inventory after the build; it need not be generated manually before a roll.
 
 `--revision` accepts an exact tag or a full commit hash. Omitting it checks the
 current pin. Downloads are cached under `build/dawn-upgrade/cache/`; cached
@@ -76,12 +112,7 @@ integration is checked so re-enabling it cannot silently bypass upgrade checks.
 The redistributed DXC release and optional Agility SDK are independent pins;
 neither is changed by this command.
 
-## Verify the result
-
-```powershell
-python plugin-ep-webgpu/tools/dawn/update_dawn.py --check
-python cgmanifests/webgpu/validate_webgpu_cgmanifest.py
-```
+## Validation checklist
 
 Exit codes: `0` means the requested planning/application/check completed,
 `1` means `--check` found required edits, and `2` means a blocker or error.

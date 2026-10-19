@@ -793,6 +793,27 @@ TEST_F(GraphTransformationTests, CastSceLossFusion) {
   ASSERT_EQ(op_to_count["Cast"], 9);
 }
 
+TEST_F(GraphTransformationTests, CastSceLossFusionWithGraphInput) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* scores = builder.MakeInput<float>({{2, 3}});
+    auto* labels = builder.MakeInput<int64_t>({{2}});
+    auto* loss = builder.MakeOutput<float>(std::vector<int64_t>{});
+    auto* log_prob = builder.MakeOutput<float>(std::vector<int64_t>{2, 3});
+    builder.AddNode("SoftmaxCrossEntropyLossInternal", {scores, labels}, {loss, log_prob}, kMSDomain)
+        .AddAttribute("reduction", "mean");
+  };
+
+  auto check_unchanged = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("com.microsoft.SoftmaxCrossEntropyLossInternal") == 1);
+    TEST_RETURN_IF(op_count.count("Cast") != 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::make_unique<CastSceLossFusion>(),
+                                        TransformerLevel::Level2, 1, check_unchanged, check_unchanged));
+}
+
 Node* GetNodeByName(Graph& graph, std::string node_name) {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -1207,10 +1228,13 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithoutCas
 
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TypeProto tensor_float_matrix = tensor_float;
+  tensor_float_matrix.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  tensor_float_matrix.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
   TypeProto tensor_int;
   tensor_int.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
-  onnxruntime::NodeArg x_def("X", &tensor_float);
-  onnxruntime::NodeArg ls_out_def("ls_out", &tensor_float);
+  onnxruntime::NodeArg x_def("X", &tensor_float_matrix);
+  onnxruntime::NodeArg ls_out_def("ls_out", &tensor_float_matrix);
   onnxruntime::NodeArg target_def("target", &tensor_int);
   onnxruntime::NodeArg weight_def("weight", &tensor_float);
   onnxruntime::NodeArg ignore_index_def("ignore_index", &tensor_int);
@@ -1243,13 +1267,19 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithCast) 
 
   TypeProto tensor_half;
   tensor_half.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+  TypeProto tensor_half_matrix = tensor_half;
+  tensor_half_matrix.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  tensor_half_matrix.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TypeProto tensor_float_matrix = tensor_float;
+  tensor_float_matrix.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  tensor_float_matrix.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
   TypeProto tensor_int;
   tensor_int.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
-  onnxruntime::NodeArg x_def("X", &tensor_half);
-  onnxruntime::NodeArg ls_out_def("ls_out", &tensor_half);
-  onnxruntime::NodeArg ct_out_def("ct_out", &tensor_float);
+  onnxruntime::NodeArg x_def("X", &tensor_half_matrix);
+  onnxruntime::NodeArg ls_out_def("ls_out", &tensor_half_matrix);
+  onnxruntime::NodeArg ct_out_def("ct_out", &tensor_float_matrix);
   onnxruntime::NodeArg target_def("target", &tensor_int);
   onnxruntime::NodeArg weight_def("weight", &tensor_float);
   onnxruntime::NodeArg ignore_index_def("ignore_index", &tensor_int);
@@ -1276,6 +1306,161 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithCast) 
   ASSERT_TRUE(op_to_count["LogSoftmax"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.NegativeLogLikelihoodLossInternal"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
+}
+
+TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionGuards) {
+  struct TestCase {
+    int64_t axis;
+    bool public_log_prob;
+    bool should_fuse;
+  };
+
+  for (const auto test_case :
+       {TestCase{1, false, true}, TestCase{-1, false, true}, TestCase{0, false, false},
+        TestCase{1, true, false}}) {
+    auto build_test_case = [test_case](ModelTestBuilder& builder) {
+      auto* scores = builder.MakeInput<float>({{2, 3}});
+      auto* labels = builder.MakeInput<int64_t>({{2}});
+      NodeArg* log_prob = test_case.public_log_prob
+                              ? builder.MakeOutput<float>(std::vector<int64_t>{2, 3})
+                              : builder.MakeIntermediate<float>({{2, 3}});
+      auto* loss = builder.MakeOutput<float>(std::vector<int64_t>{});
+      builder.AddNode("LogSoftmax", {scores}, {log_prob}).AddAttribute("axis", test_case.axis);
+      builder.AddNode("NegativeLogLikelihoodLossInternal", {log_prob, labels}, {loss}, kMSDomain)
+          .AddAttribute("reduction", "mean");
+    };
+
+    auto check_before = [](Graph& graph) {
+      const auto op_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count.at("LogSoftmax") == 1);
+      TEST_RETURN_IF_NOT(op_count.at("com.microsoft.NegativeLogLikelihoodLossInternal") == 1);
+      return Status::OK();
+    };
+    auto check_after = [test_case](Graph& graph) {
+      const auto op_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count.count("LogSoftmax") == (test_case.should_fuse ? 0U : 1U));
+      TEST_RETURN_IF_NOT(op_count.count("com.microsoft.NegativeLogLikelihoodLossInternal") ==
+                         (test_case.should_fuse ? 0U : 1U));
+      TEST_RETURN_IF_NOT(op_count.count("com.microsoft.SoftmaxCrossEntropyLossInternal") ==
+                         (test_case.should_fuse ? 1U : 0U));
+      return Status::OK();
+    };
+
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_,
+                                          std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(),
+                                          TransformerLevel::Level1, 1, check_before, check_after));
+  }
+}
+
+TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionPre13RequiresRankTwo) {
+  for (const auto& scores_shape : {std::vector<int64_t>{2, 3}, std::vector<int64_t>{2, 3, 4}}) {
+    const bool should_fuse = scores_shape.size() == 2;
+    auto build_test_case = [scores_shape](ModelTestBuilder& builder) {
+      auto labels_shape = scores_shape;
+      labels_shape.erase(labels_shape.begin() + 1);
+      auto* scores = builder.MakeInput<float>(scores_shape);
+      auto* labels = builder.MakeInput<int64_t>(labels_shape);
+      auto* log_prob = builder.MakeIntermediate<float>(scores_shape);
+      auto* loss = builder.MakeOutput<float>(std::vector<int64_t>{});
+      builder.AddNode("LogSoftmax", {scores}, {log_prob}).AddAttribute("axis", int64_t{1});
+      builder.AddNode("NegativeLogLikelihoodLossInternal", {log_prob, labels}, {loss}, kMSDomain)
+          .AddAttribute("reduction", "mean");
+    };
+
+    auto check_after = [should_fuse](Graph& graph) {
+      const auto op_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(OpCount(op_count, "LogSoftmax") == (should_fuse ? 0 : 1));
+      TEST_RETURN_IF_NOT(OpCount(op_count, "com.microsoft.NegativeLogLikelihoodLossInternal") ==
+                         (should_fuse ? 0 : 1));
+      TEST_RETURN_IF_NOT(OpCount(op_count, "com.microsoft.SoftmaxCrossEntropyLossInternal") ==
+                         (should_fuse ? 1 : 0));
+      return Status::OK();
+    };
+
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        build_test_case, 12, *logger_, std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(),
+        TransformerLevel::Level1, 1, nullptr, check_after));
+  }
+}
+
+TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionPre13RejectsUnknownRank) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* scores = builder.MakeInput<float>(std::nullopt);
+    auto* labels = builder.MakeInput<int64_t>(std::nullopt);
+    auto* log_prob = builder.MakeIntermediate<float>(std::nullopt);
+    auto* loss = builder.MakeOutput<float>(std::vector<int64_t>{});
+    builder.AddNode("LogSoftmax", {scores}, {log_prob}).AddAttribute("axis", int64_t{1});
+    builder.AddNode("NegativeLogLikelihoodLossInternal", {log_prob, labels}, {loss}, kMSDomain)
+        .AddAttribute("reduction", "mean");
+  };
+
+  auto check_unchanged = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(OpCount(op_count, "LogSoftmax") == 1);
+    TEST_RETURN_IF_NOT(OpCount(op_count, "com.microsoft.NegativeLogLikelihoodLossInternal") == 1);
+    TEST_RETURN_IF_NOT(OpCount(op_count, "com.microsoft.SoftmaxCrossEntropyLossInternal") == 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 12, *logger_, std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(),
+      TransformerLevel::Level1, 1, check_unchanged, check_unchanged));
+}
+
+TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionRejectsSharedIntermediates) {
+  enum class SharedValue {
+    DirectLogSoftmaxOutput,
+    LogSoftmaxOutput,
+    CastOutput,
+    PublicCastOutput,
+  };
+
+  for (const auto shared_value : {SharedValue::DirectLogSoftmaxOutput, SharedValue::LogSoftmaxOutput,
+                                  SharedValue::CastOutput, SharedValue::PublicCastOutput}) {
+    auto build_test_case = [shared_value](ModelTestBuilder& builder) {
+      const bool use_cast = shared_value != SharedValue::DirectLogSoftmaxOutput;
+      const bool public_cast_output = shared_value == SharedValue::PublicCastOutput;
+      auto* scores = use_cast ? builder.MakeInput<MLFloat16>({{2, 3}}) : builder.MakeInput<float>({{2, 3}});
+      auto* labels = builder.MakeInput<int64_t>({{2}});
+      auto* log_prob = use_cast ? builder.MakeIntermediate<MLFloat16>({{2, 3}})
+                                : builder.MakeIntermediate<float>({{2, 3}});
+      NodeArg* nll_input = log_prob;
+      NodeArg* cast_log_prob = nullptr;
+      auto* loss = builder.MakeOutput<float>(std::vector<int64_t>{});
+
+      builder.AddNode("LogSoftmax", {scores}, {log_prob}).AddAttribute("axis", int64_t{-1});
+      if (use_cast) {
+        cast_log_prob = public_cast_output
+                            ? builder.MakeOutput<float>(std::vector<int64_t>{2, 3})
+                            : builder.MakeIntermediate<float>(std::vector<int64_t>{2, 3});
+        builder.AddNode("Cast", {log_prob}, {cast_log_prob})
+            .AddAttribute("to", static_cast<int64_t>(TensorProto_DataType_FLOAT));
+        nll_input = cast_log_prob;
+      }
+      builder.AddNode("NegativeLogLikelihoodLossInternal", {nll_input, labels}, {loss}, kMSDomain)
+          .AddAttribute("reduction", "mean");
+      if (!public_cast_output) {
+        auto* shared_output = builder.MakeOutput();
+        builder.AddNode("Identity",
+                        {shared_value == SharedValue::CastOutput ? cast_log_prob : log_prob},
+                        {shared_output});
+      }
+    };
+
+    auto check_unchanged = [shared_value](Graph& graph) {
+      const auto op_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(OpCount(op_count, "LogSoftmax") == 1);
+      TEST_RETURN_IF_NOT(OpCount(op_count, "Cast") ==
+                         (shared_value == SharedValue::DirectLogSoftmaxOutput ? 0 : 1));
+      TEST_RETURN_IF_NOT(OpCount(op_count, "com.microsoft.NegativeLogLikelihoodLossInternal") == 1);
+      TEST_RETURN_IF_NOT(OpCount(op_count, "com.microsoft.SoftmaxCrossEntropyLossInternal") == 0);
+      return Status::OK();
+    };
+
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        build_test_case, 13, *logger_, std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(),
+        TransformerLevel::Level1, 1, check_unchanged, check_unchanged));
+  }
 }
 
 class LSTMReplacementTestsParameterized : public GraphTransformationTests,
