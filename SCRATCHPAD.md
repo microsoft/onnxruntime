@@ -13,7 +13,7 @@ Compressed project memory. This is not the execution plan.
   M01. `SPEC.md` and the execution plan are approved.
 - M01 is complete and published as ready-for-review PR #11:
   https://github.com/onnxruntime/ort-state/pull/11
-- No agents launched. M01-M08 and M09a are complete; M09b/M10-M24 remain pending.
+- No agents launched. M01-M08 and M09a are complete; M09b is in progress; M10-M24 remain pending.
   Runtime production code starts with M02.
 - Future tracking: keep `TASKS.md` checklist current and record compressed
   discoveries/agent learnings here.
@@ -850,3 +850,43 @@ Compressed project memory. This is not the execution plan.
   All gates complete, no merges. Macro M09 remains incomplete; M09b is NOT
   authorized or implemented. Exact host83/device25 coverage and actual scalar-
   transfer proof are retained in session files/TASKS; no sampling coverage waiver.
+
+## M09b
+
+- User authorized M09b on 2026-10-19. Created
+  state/m09b-cuda-plugin-sampling-integration from M09aff2363e3b8 (#22).
+  Approved Appendix I / TASKS B1-B7 apply; no new interview/plan gate needed.
+- Generalize M08's private GPU cache port routing to device values, without
+  using a GPU sampler allocator for CPU cache storage. Cache/sampler dispatch
+  policies remain separate; route compatibility compares actual GPU identity,
+  not per-feature Require/Prefer policy.
+- Reuse the retained Session allocator already held by M09a's provider binding.
+  GPU cache/logits outputs must remain GPU; CPU-role conflicts and mismatched
+  routed devices reject rather than introducing hidden transfers.
+- Chain routes each declared GPU component/state value using its originating
+  provider, including sampler-only stages. External/initial feeds remain host-
+  accessible by the existing chain contract. GPU feedback requires GPU output.
+- No CUDA kernel changes intended; preserve M09a's independently measured25/25
+  device proof and verify all new host lines. New native/public/C11 generation
+  tests, stream/error/lifetime parity and actual DtoH trace will establish B gates.
+- FINAL M09b: CPU63 native/139 AutoEP, plugin121 native/190 unfiltered AutoEP,
+  legacy110 native/43 selected public/stateful all PASS, zero reported suite skips.
+  New native4/public6 (96policy/dtype/budget/EOS variants), C11 GPU sampling,
+  explicit positions, sampler-only/hidden-logit models, data roles/route conflicts,
+  NaN/model failure/cancellation/reset and all-owner release are verified.
+- Host116/116 (loop59+chain54+allocatorgetter3), actual profiles
+  coverage/m09b/final;403 dormant zero-hash maps, no new-function mismatch.
+  New devicefunctions/lines0/N/A; M09a CUDA source AND object hashes unchanged,
+  retaining its measured25/25 device proof. No new kernel/algorithm edits.
+- Nsys actual GPU generation atvocab257 proves3 DtoH copies ALL16 bytes(total48),
+  no cache/logits readback. HtoD5copies8256bytes record weights/CPU feed movement
+  separately. Normal instrumented synchronous3-token Run observation28533.93us,
+  not a throughput claim/performancegate.
+- New native4/public6 plus C++17 SDK example memcheck:zero errors/leaks.
+  Parent M08 timing-only sanitizer limitation unchanged, no new case excluded.
+  C11/C++17 and normal/noexceptions CPUclients pass; CPU .so has no CUDA deps.
+- SDK model generation first failed missing onnx; only then installed ONNX1.23.2
+  and dependencies in existing isolated .venv. No runtime/manifest dependency.
+  Generator source m09b_make_sdk_model.py retained for reproducibility.
+- Implementation/validation gates pass; final publication on #22 is pending.
+  MacroM09 remains incomplete until publication; M10 not started. No agents used.

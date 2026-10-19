@@ -1668,8 +1668,8 @@ completed interview.
 The user chose CUDA plugin EP only, GPU-resident exposed logits under explicit
 GPU sampling, token/status-only readback, and an M09a/M09b delivery split.
 Additional specification inputs: None. The user approved the detailed plan
-without changes and authorized M09a only. M09a is verified and published ready
-for review in PR #22; pause before M09b for authorization.
+without changes and initially authorized M09a only. M09a is verified and published
+ready for review in PR #22. The user separately authorized M09b on 2026-10-19.
 
 ### I.1 Scope and preserved behavior
 
@@ -1860,5 +1860,138 @@ int main(int argc, char** argv) {
   return dispatch.provider_calls == 2 && dispatch.cpu_calls == 0 &&
                  dispatch.cpu_delegations == 0
              ? 0 : 5;
+}
+```
+
+### I.7 Device-resident generation SDK example (M09b)
+
+GPU cache and sampler choices remain independent. Each explicitly sampled GPU
+logits producer must execute on its selected CUDA plugin device; ordinary outputs
+and CPU-sampled logits keep CPU snapshots. Declared GPU component/state inputs
+retain their origin's device. Conflicting CPU/GPU output roles, mismatched devices
+and GPU-feedback inputs with CPU-feedback outputs reject before invocation.
+Arbitrary external/initial-state chain inputs retain their host-only contract.
+
+This C++17 public-SDK example accepts the plugin library and one dynamic decoder
+model used for both phases. Its ports match the reusable tiny fixture:
+`token:int64[1,S]`, `past_key:float[1,1,P,1]`, `logits:float[1,S,4]`,
+`present_key:float[1,1,P+S,1]`, with the fixture's deterministic score table.
+The expected generated IDs for prompt `[0,1]` are `[2,3,0]`. A retained GPU
+logits value survives all definitions/executions/Sessions and library discovery
+release; the caller-owned Env remains alive. CPU inspection is explicit.
+
+```cpp
+#include <algorithm>
+#include <array>
+#include <filesystem>
+#include <stdexcept>
+#include <string_view>
+#include <cuda_runtime_api.h>
+#include "onnxruntime_cxx_api.h"
+
+static Ort::SessionLoop MakeLoop(const Ort::Session& session, bool decode) {
+  const int64_t shape[]{1, 1, 0, 1};
+  const OrtStatefulKVCacheBinding cache{
+      {"key", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, shape, 4, 2, 0},
+      "past_key", "present_key", ORT_KV_CACHE_SHARE};
+  const OrtStatefulGenerationConfig generation{
+      sizeof(generation), decode ? ORT_STATEFUL_DECODE : ORT_STATEFUL_PREFILL,
+      "token", "logits", nullptr, nullptr, 0, 0};
+  const char* finite[]{"token"};
+  const char* outputs[]{"logits", "present_key"};
+  const OrtStatefulExitCondition exits[]{
+      {ORT_STATEFUL_MAX_GENERATED_TOKENS, 3, nullptr, nullptr, 0},
+      {ORT_STATEFUL_END_OF_INPUTS, 0, nullptr, nullptr, 0}};
+  OrtStatefulLoopConfig config{};
+  config.struct_size = sizeof(config);
+  config.finite_input_names = decode ? nullptr : finite;
+  config.num_finite_inputs = decode ? 0 : 1;
+  config.output_names = outputs;
+  config.num_outputs = 2;
+  config.exit_conditions = exits;
+  config.num_exit_conditions = decode ? 1 : 2;
+  config.kv_caches = &cache;
+  config.num_kv_caches = 1;
+  config.generation = &generation;
+  Ort::SessionLoopOptions options(config);
+  const OrtStatefulProviderSelection gpu{
+      sizeof(gpu), ORT_STATEFUL_PROVIDER_REQUIRE, "CUDAExecutionProvider",
+      OrtMemoryInfoDeviceType_GPU, 0};
+  options.SetProvider(ORT_STATEFUL_FEATURE_CACHE, gpu);
+  options.SetProvider(ORT_STATEFUL_FEATURE_SAMPLER, gpu);
+  return Ort::SessionLoop(session, options);
+}
+
+int main(int argc, char** argv) {
+  if (argc != 3) return 2;
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "gpu-generation");
+  env.RegisterExecutionProviderLibrary("gpu-generation", std::filesystem::path(argv[1]).native());
+  Ort::ConstEpDevice device(nullptr);
+  for (auto candidate : env.GetEpDevices()) {
+    if (std::string_view(candidate.EpName()) == "CUDAExecutionProvider" &&
+        candidate.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT).GetDeviceId() == 0) {
+      device = candidate;
+      break;
+    }
+  }
+  if (!device) throw std::runtime_error("CUDA plugin device 0 unavailable");
+  Ort::SessionOptions options;
+  options.SetIntraOpNumThreads(1).SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  options.AddConfigEntry("session.disable_cpu_ep_fallback", "1");
+  options.AppendExecutionProvider_V2(env, {device}, Ort::KeyValuePairs{});
+  const auto path = std::filesystem::path(argv[2]).native();
+  Ort::Session prefill(env, path.c_str(), options), decode(env, path.c_str(), options);
+  auto first = MakeLoop(prefill, false), second = MakeLoop(decode, true);
+  const OrtStatefulInputBinding prompt_binding{
+      "token", {ORT_STATEFUL_EXTERNAL_INPUT, "prompt", 0}};
+  const OrtStatefulChainComponent components[]{
+      {"prefill", nullptr, first, &prompt_binding, 1, nullptr, 0, nullptr, 0},
+      {"decode", nullptr, second, nullptr, 0, nullptr, 0, nullptr, 0}};
+  const OrtStatefulChainOutput ports[]{
+      {"tokens", 0, nullptr, ORT_STATEFUL_GENERATED_TOKEN_IDS},
+      {"logits", 1, "logits", ORT_STATEFUL_MODEL_OUTPUT}};
+  const OrtStatefulChainConfig config{sizeof(config), components, 2, ports, 2};
+  Ort::SessionChainOptions chain_options(config);
+  Ort::SessionChain chain(chain_options);
+  Ort::AllocatorWithDefaultOptions cpu;
+  const int64_t input_shape[]{1, 2};
+  auto prompt = Ort::Value::CreateTensor<int64_t>(cpu, input_shape, 2);
+  prompt.GetTensorMutableData<int64_t>()[0] = 0;
+  prompt.GetTensorMutableData<int64_t>()[1] = 1;
+  const OrtStatefulNamedValue input{"prompt", prompt};
+  OrtStatefulInputs inputs{};
+  inputs.struct_size = sizeof(inputs);
+  inputs.inputs = &input;
+  inputs.num_inputs = 1;
+  auto execution = chain.CreateExecution(inputs);
+  auto result = execution.Run();
+  Ort::StatefulValue retained(nullptr);
+  bool saw_tokens = false;
+  for (const auto& value : result.GetOutputs()) {
+    if (value.name == "tokens") {
+      saw_tokens = true;
+      const std::array<int64_t, 3> expected{2, 3, 0};
+      if (value.value.GetTensorTypeAndShapeInfo().GetElementCount() != 3 ||
+          !std::equal(expected.begin(), expected.end(), value.value.GetTensorData<int64_t>())) return 3;
+    }
+    if (value.name == "logits") retained = value.value;
+  }
+  if (!saw_tokens || !retained ||
+      retained.GetTensorMemoryInfo().GetDeviceType() != OrtMemoryInfoDeviceType_GPU) return 4;
+  execution.Reset();
+  result = Ort::StatefulStepResult(nullptr);
+  execution = Ort::StatefulExecution(nullptr);
+  chain = Ort::SessionChain(nullptr);
+  chain_options = Ort::SessionChainOptions(nullptr);
+  first = Ort::SessionLoop(nullptr);
+  second = Ort::SessionLoop(nullptr);
+  prefill = Ort::Session(nullptr);
+  decode = Ort::Session(nullptr);
+  env.UnregisterExecutionProviderLibrary("gpu-generation");
+  std::array<float, 4> logits{};
+  if (retained.GetTensorTypeAndShapeInfo().GetElementCount() != logits.size()) return 5;
+  if (cudaMemcpy(logits.data(), retained.GetTensorRawData(), sizeof(logits),
+                 cudaMemcpyDeviceToHost) != cudaSuccess) return 6;
+  return logits[0] > logits[1] ? 0 : 7;
 }
 ```

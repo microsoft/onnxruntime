@@ -154,7 +154,7 @@ cleanup:
   return code;
 }
 
-int StatefulApiCGpuLoopIntegrationTest(OrtSession* session, const OrtValue* tokens,
+int StatefulApiCGpuLoopIntegrationTest(OrtSession* session, const OrtValue* tokens, int gpu_sampler,
                                        OrtStatefulStepResult** retained_out) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   const OrtStatefulApi* stateful = api->GetStatefulApi();
@@ -171,31 +171,41 @@ int StatefulApiCGpuLoopIntegrationTest(OrtSession* session, const OrtValue* toke
       "present_key",
       ORT_KV_CACHE_SHARE};
   const char* finite[] = {"token"};
-  const char* output[] = {"present_key"};
+  const char* output[] = {"present_key", "logits"};
   const OrtStatefulExitCondition exit = {ORT_STATEFUL_END_OF_INPUTS, 0, NULL, NULL, 0};
   const OrtStatefulProviderSelection gpu = {
       sizeof(gpu), ORT_STATEFUL_PROVIDER_REQUIRE, "CUDAExecutionProvider", OrtMemoryInfoDeviceType_GPU, 0};
   const OrtStatefulNamedValue token = {"token", tokens};
   const OrtStatefulInputBatch batch = {&token, 1};
+  const OrtStatefulGenerationConfig generation = {
+      sizeof(generation), ORT_STATEFUL_PREFILL, "token", "logits", NULL, NULL, 0, 0};
+  OrtStatefulStepInfo info = {0};
   OrtStatefulLoopConfig config = {0};
   OrtStatefulInputs inputs = {0};
   config.struct_size = sizeof(config);
   config.finite_input_names = finite;
   config.num_finite_inputs = 1;
   config.output_names = output;
-  config.num_outputs = 1;
+  config.num_outputs = gpu_sampler ? 2 : 1;
   config.exit_conditions = &exit;
   config.num_exit_conditions = 1;
   config.kv_caches = &cache;
   config.num_kv_caches = 1;
+  config.generation = gpu_sampler ? &generation : NULL;
   inputs.struct_size = sizeof(inputs);
   inputs.batches = &batch;
   inputs.num_batches = 1;
   CHECK(stateful->CreateSessionLoopOptions(&config, &options));
   CHECK(stateful->SessionLoopOptionsSetProvider(options, ORT_STATEFUL_FEATURE_CACHE, &gpu));
+  if (gpu_sampler) CHECK(stateful->SessionLoopOptionsSetProvider(options, ORT_STATEFUL_FEATURE_SAMPLER, &gpu));
   CHECK(stateful->CreateSessionLoop(session, options, &loop));
   CHECK(stateful->CreateLoopExecution(loop, &inputs, &execution));
   CHECK(stateful->StatefulExecutionRun(execution, &result));
+  CHECK(stateful->StatefulStepResultGetInfo(result, sizeof(info), &info));
+  if (gpu_sampler && (!info.has_generated_token || info.generated_token != 2)) {
+    code = 10;
+    goto cleanup;
+  }
   CHECK(stateful->StatefulExecutionReset(execution));
   *retained_out = result;
   result = NULL;

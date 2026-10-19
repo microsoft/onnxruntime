@@ -8,6 +8,7 @@
 #include <string>
 
 #include "core/common/status.h"
+#include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
 #include "core/session/onnxruntime_c_api.h"
 
@@ -37,6 +38,7 @@ class StatefulProviderBinding {
   const char* Name() const;
   bool CacheCompatible(const StatefulProviderBinding& other) const;
   OrtValue RetainValue(OrtValue value, std::shared_ptr<const void> resource = {}) const;
+  AllocatorPtr GetAllocator() const;
   Status InvokeGreedy(OrtStatefulGreedyRequest request, int64_t& token) const;
 
  private:

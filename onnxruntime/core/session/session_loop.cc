@@ -195,10 +195,6 @@ Status SessionLoop::Create(InferenceSession& session, SessionLoopOptions options
     ORT_RETURN_IF_ERROR(
         sampler_dispatch.Select(ORT_STATEFUL_SAMPLE_GREEDY, element_type, true, provider_selected));
   }
-  if (options.sampler_provider.device_type != OrtMemoryInfoDeviceType_CPU) {
-    return ORT_MAKE_STATUS(
-        ONNXRUNTIME, NOT_IMPLEMENTED, "Device-native logits Session integration is unavailable");
-  }
   auto loop = std::shared_ptr<SessionLoop>(
       new SessionLoop(session, std::move(options), std::move(cache_provider), std::move(sampler_provider)));
   if (loop->cache_provider_.Selection().device_type != OrtMemoryInfoDeviceType_CPU) {
@@ -207,37 +203,49 @@ Status SessionLoop::Create(InferenceSession& session, SessionLoopOptions options
       device_inputs.insert(item.input_name);
       device_outputs.insert(item.output_name);
     }
-    ORT_RETURN_IF_ERROR(loop->ConfigureDeviceCache(
+    ORT_RETURN_IF_ERROR(loop->ConfigureDeviceValues(
         loop->cache_provider_, std::move(device_inputs), std::move(device_outputs)));
+  }
+  if (loop->sampler_provider_.Selection().device_type != OrtMemoryInfoDeviceType_CPU) {
+    ORT_RETURN_IF_ERROR(loop->ConfigureDeviceValues(
+        loop->sampler_provider_, {}, {loop->options_.generation->logits_output}));
   }
   out = std::move(loop);
   return Status::OK();
 }
 
-Status SessionLoop::ConfigureDeviceCache(const StatefulProviderBinding& provider,
-                                         InlinedHashSet<std::string> inputs,
-                                         InlinedHashSet<std::string> outputs) {
+Status SessionLoop::ConfigureDeviceValues(const StatefulProviderBinding& provider,
+                                          InlinedHashSet<std::string> inputs,
+                                          InlinedHashSet<std::string> outputs) {
   const auto& selection = provider.Selection();
   ORT_RETURN_IF_NOT(selection.device_type == OrtMemoryInfoDeviceType_GPU &&
                         selection.provider_name == kCudaExecutionProvider,
-                    "Device-cache Session integration requires the CUDA plugin");
+                    "Device-value Session integration requires the CUDA plugin");
   StatefulProviderBinding local;
   ORT_RETURN_IF_ERROR(StatefulProviderBinding::Resolve(&session_, selection, local));
-  ORT_RETURN_IF_NOT(provider.CacheCompatible(local), "Incompatible device-cache Session provider");
-  ORT_RETURN_IF(options_.generation && outputs.contains(options_.generation->logits_output),
+  ORT_RETURN_IF_NOT((local.Descriptor().capabilities.memory_types & (uint32_t{1} << OrtMemoryInfoDeviceType_GPU)) != 0,
+                    "Device-value Session integration requires GPU provider capabilities");
+  inputs.insert(device_inputs_.begin(), device_inputs_.end());
+  outputs.insert(device_outputs_.begin(), device_outputs_.end());
+  ORT_RETURN_IF(options_.generation &&
+                    sampler_provider_.Selection().device_type == OrtMemoryInfoDeviceType_CPU &&
+                    outputs.contains(options_.generation->logits_output),
                 "Device cache output cannot also supply CPU sampler logits");
-  const auto& state = session_.GetSessionState();
-  for (const auto& [device, allocator] : state.GetAllocators()) {
-    if (device.Type() == OrtDevice::GPU && device.Id() == selection.device_id &&
-        device.MemType() == OrtDevice::MemType::DEFAULT) {
-      device_cache_allocator_ = allocator;
-      break;
-    }
+  for (const auto& item : options_.kv_caches) {
+    ORT_RETURN_IF(cache_provider_.Selection().device_type == OrtMemoryInfoDeviceType_CPU &&
+                      outputs.contains(item.output_name),
+                  "CPU cache output cannot also require GPU value storage");
   }
-  ORT_RETURN_IF_NOT(device_cache_allocator_, "Selected device-cache Session allocator is unavailable");
-  const auto& device = device_cache_allocator_->Info().device;
+  const auto& state = session_.GetSessionState();
+  auto allocator = local.GetAllocator();
+  ORT_RETURN_IF_NOT(allocator, "Selected device-value Session allocator is unavailable");
+  const auto& device = allocator->Info().device;
+  ORT_RETURN_IF(device_allocator_ && device_allocator_->Info().device != device,
+                "Conflicting device-value requirements in the same Session");
   for (const auto& feedback : options_.feedback) {
     if (outputs.contains(feedback.output_name)) inputs.insert(feedback.input_name);
+    ORT_RETURN_IF(inputs.contains(feedback.input_name) && !outputs.contains(feedback.output_name),
+                  "GPU feedback input requires a GPU feedback output: ", feedback.input_name);
   }
   auto check_ports = [&](const auto& names, bool is_input) -> Status {
     for (const auto& name : names) {
@@ -247,24 +255,29 @@ Status SessionLoop::ConfigureDeviceCache(const StatefulProviderBinding& provider
                         std::any_of(nodes.begin(), nodes.end(), [&](const auto& node) {
                           return !node.device || *node.device != device;
                         }),
-                    "Device-cache port requires the selected GPU without staging: ", name);
+                    "Device-value port requires the selected GPU without staging: ", name);
     }
     return Status::OK();
   };
   ORT_RETURN_IF_ERROR(check_ports(inputs, true));
   ORT_RETURN_IF_ERROR(check_ports(outputs, false));
-  device_cache_provider_ = std::move(local);
-  device_cache_inputs_ = std::move(inputs);
-  device_cache_outputs_ = std::move(outputs);
+  device_provider_ = std::move(local);
+  device_allocator_ = std::move(allocator);
+  device_inputs_ = std::move(inputs);
+  device_outputs_ = std::move(outputs);
   return Status::OK();
 }
 
-Status SessionLoop::WithDeviceCachePorts(const StatefulProviderBinding& provider,
-                                         InlinedHashSet<std::string> inputs,
-                                         InlinedHashSet<std::string> outputs,
-                                         std::shared_ptr<const SessionLoop>& out) const {
+Status SessionLoop::WithDevicePorts(const StatefulProviderBinding& provider,
+                                    InlinedHashSet<std::string> inputs,
+                                    InlinedHashSet<std::string> outputs,
+                                    std::shared_ptr<const SessionLoop>& out) const {
   auto loop = std::shared_ptr<SessionLoop>(new SessionLoop(session_, options_, cache_provider_, sampler_provider_));
-  ORT_RETURN_IF_ERROR(loop->ConfigureDeviceCache(provider, std::move(inputs), std::move(outputs)));
+  loop->device_provider_ = device_provider_;
+  loop->device_allocator_ = device_allocator_;
+  loop->device_inputs_ = device_inputs_;
+  loop->device_outputs_ = device_outputs_;
+  ORT_RETURN_IF_ERROR(loop->ConfigureDeviceValues(provider, std::move(inputs), std::move(outputs)));
   out = std::move(loop);
   return Status::OK();
 }
@@ -285,9 +298,9 @@ Status SessionLoop::ValidateInputs(const SessionLoopInputs& inputs) const {
                               [&](const auto& item) { return item.input_name == name; }),
                   "Managed KV cache inputs cannot also be supplied as invariant feeds");
     ORT_RETURN_IF_ERROR(CheckInput(*argument, value));
-    if (device_cache_inputs_.contains(name)) {
-      ORT_RETURN_IF(value.Get<Tensor>().Location().device != device_cache_allocator_->Info().device,
-                    "Device-cache input requires matching GPU storage: ", name);
+    if (device_inputs_.contains(name)) {
+      ORT_RETURN_IF(value.Get<Tensor>().Location().device != device_allocator_->Info().device,
+                    "Device-value input requires matching GPU storage: ", name);
     }
   }
   ORT_RETURN_IF(finite.empty() && !inputs.batches.empty(), "Batches require finite input names");
@@ -297,9 +310,9 @@ Status SessionLoop::ValidateInputs(const SessionLoopInputs& inputs) const {
     for (const auto& [name, value] : batch) {
       ORT_RETURN_IF_NOT(finite.contains(name), "Unknown finite input: ", name);
       ORT_RETURN_IF_ERROR(CheckInput(*FindArgument(arguments, name), value));
-      if (device_cache_inputs_.contains(name)) {
-        ORT_RETURN_IF(value.Get<Tensor>().Location().device != device_cache_allocator_->Info().device,
-                      "Device-cache finite input requires matching GPU storage: ", name);
+      if (device_inputs_.contains(name)) {
+        ORT_RETURN_IF(value.Get<Tensor>().Location().device != device_allocator_->Info().device,
+                      "Device-value finite input requires matching GPU storage: ", name);
       }
       ORT_RETURN_IF(name == options_.nonempty_input && value.Get<Tensor>().Shape().Size() == 0,
                     "Prefill input tensor must not be empty");
@@ -325,8 +338,9 @@ Status SessionLoop::CreateExecution(SessionLoopInputs inputs, std::unique_ptr<Se
     std::unique_ptr<IOBinding> binding;
     ORT_RETURN_IF_ERROR(session_.NewIOBinding(&binding));
     std::unique_ptr<KVCacheManager> manager;
-    auto allocator =
-        device_cache_allocator_ ? device_cache_allocator_ : binding->GetCPUAllocator(kCpuExecutionProvider);
+    auto allocator = cache_provider_.Selection().device_type == OrtMemoryInfoDeviceType_CPU
+                         ? binding->GetCPUAllocator(kCpuExecutionProvider)
+                         : device_allocator_;
     ORT_RETURN_IF_ERROR(KVCacheManager::Create(std::move(specs), std::move(allocator), manager, cache_provider_));
     cache = std::move(manager);
   }
@@ -464,16 +478,16 @@ Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
   }
   for (const auto& name : loop_->fetch_names_) {
     ORT_RETURN_IF_ERROR(binding->BindOutput(
-        name, loop_->device_cache_outputs_.contains(name)
-                  ? loop_->device_cache_allocator_->Info().device
+        name, loop_->device_outputs_.contains(name)
+                  ? loop_->device_allocator_->Info().device
                   : OrtDevice{}));
   }
-  if (!loop_->device_cache_provider_) {
+  if (!loop_->device_provider_) {
     ORT_RETURN_IF_ERROR(binding->SynchronizeInputs());
   }
   RunOptions run_options;
   ORT_RETURN_IF_ERROR(loop_->session_.Run(run_options, *binding));
-  if (!loop_->device_cache_provider_) {
+  if (!loop_->device_provider_) {
     ORT_RETURN_IF_ERROR(binding->SynchronizeOutputs());
   }
   ORT_RETURN_IF(cancelled_.load(), "SessionLoop execution cancelled during a step; call Reset before reuse");
@@ -482,18 +496,18 @@ Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
   snapshots.reserve(binding->GetOutputs().size());
   const auto allocator = binding->GetCPUAllocator(kCpuExecutionProvider);
   CPUDataTransfer transfer;
-  for (const auto& value : binding->GetOutputs()) {
+  for (size_t index = 0; index < binding->GetOutputs().size(); ++index) {
+    const auto& value = binding->GetOutputs()[index];
     const Tensor& source = value.Get<Tensor>();
-    if (!source.Location().device.UsesCpuMemory()) {
-      ORT_RETURN_IF_NOT(loop_->device_cache_provider_ &&
-                            source.Location().device == loop_->device_cache_allocator_->Info().device,
-                        "Unexpected device output in stateful execution");
-      snapshots.push_back(loop_->device_cache_provider_->RetainValue(value, loop_->device_cache_allocator_));
+    if (loop_->device_outputs_.contains(binding->GetOutputNames()[index])) {
+      ORT_RETURN_IF_NOT(loop_->device_provider_ &&
+                            source.Location().device == loop_->device_allocator_->Info().device,
+                        "Stateful device output requires matching GPU storage");
+      snapshots.push_back(loop_->device_provider_->RetainValue(value, loop_->device_allocator_));
       continue;
     }
-    if (source.Location().device.UsesCpuMemory()) {
-      staging_.cpu_output_bytes = SafeInt<size_t>(staging_.cpu_output_bytes) + source.SizeInBytes();
-    }
+    ORT_RETURN_IF_NOT(source.Location().device.UsesCpuMemory(), "Unexpected device output in stateful execution");
+    staging_.cpu_output_bytes = SafeInt<size_t>(staging_.cpu_output_bytes) + source.SizeInBytes();
     OrtValue snapshot;
     Tensor::InitOrtValue(source.DataType(), source.Shape(), allocator, snapshot);
     if (source.SizeInBytes() != 0) {

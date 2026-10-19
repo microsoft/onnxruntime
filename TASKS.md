@@ -1,7 +1,7 @@
 # Stateful Session Execution: Execution Plan
 
 **Status:** Approved; M01-M08 and M09a complete and published for review;
-M09b requires separate authorization; M10-M24 pending.
+M09b is authorized and in progress; M10-M24 pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -18,7 +18,7 @@ M05's requested generation-folder layout follow-up is complete in the same PR.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M08 and M09a are complete; M09b/M10-M24 are pending. Check tasks when their
+M01-M08 and M09a are complete; M09b is in progress and M10-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -98,7 +98,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M08 and M09a are **complete**; M09b/M10-M24 are **pending**.
+M01-M08 and M09a are **complete**; M09b is **in progress** and M10-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -1830,7 +1830,7 @@ The user chose CUDA plugin only, GPU-resident exposed logits, token/status-only
 readback and an M09a/M09b split, with no additional requirements. Branch
 `state/m09a-cuda-plugin-greedy` is based on M08b `2b6388fe5b`. The standalone
 backend is verified and published ready for review in PR #22.
-M09b remains unauthorized and no loop/chain GPU sampling is claimed.
+M09b was separately authorized on 2026-10-19 and is now in progress.
 
 - [x] Implement CUDA greedy reduction/selection with CPU-equivalent documented
   tie/non-finite semantics and supported dtype/layout handling.
@@ -2132,34 +2132,38 @@ and sanitizer logs. M09b remains unimplemented and requires user authorization.
 
 #### M09b - GPU logits and loop/chain sampling integration
 
+**Status:** Authorized 2026-10-19. Branch
+`state/m09b-cuda-plugin-sampling-integration` is based on M09a `ff2363e3b8`,
+stacked on PR #22. GPU kernels are unchanged; this milestone wires host execution.
+
 **Intended outcome:** Explicit CUDA-plugin sampling runs end-to-end with
 GPU-resident logits and compatible M08 caches. Exposed logits stay GPU; ordinary
 outputs, host token history and CPU-default sampling preserve their contracts.
 **Dependency:** Verified/published M09a. Separate branch/PR stacked on its head.
 
-- [ ] B1: Resolve sampler device/allocator resources from initialized Sessions
+- [x] B1: Resolve sampler device/allocator resources from initialized Sessions
   and validate actual logits producer placement. Remove only the implemented
   CUDA-plugin sampler rejection; leave legacy/shared and unsupported devices
   explicit. Reuse/refine M08 routing without conflating cache and sampler policy.
-- [ ] B2: Bind explicitly GPU-sampled logits on GPU and retain stable device
+- [x] B2: Bind explicitly GPU-sampled logits on GPU and retain stable device
   values in selected/component/named-state/downstream surfaces, including
   internal chain retention of unselected model outputs. CPU sampler logits and
   other ordinary outputs remain stable CPU snapshots. Conflicting roles/device
   requirements must reject rather than force a hidden transfer.
-- [ ] B3: Invoke GPU sampling through existing dispatch, observe the completed
+- [x] B3: Invoke GPU sampling through existing dispatch, observe the completed
   token/status before updating history/exits, and preserve prefill pending-token
   handoff, matching budgets, EOS, iteration exits and zero-budget no-invocation.
   Keep generated CPU input-feed behavior visible; do not claim fully device-only
   token generation or reintroduce a CPU argmax path.
-- [ ] B4: Preserve independent cache/sampler choices and per-stage selection:
+- [x] B4: Preserve independent cache/sampler choices and per-stage selection:
   GPU cache/CPU sampler, CPU cache/GPU sampler, and compatible GPU cache/GPU
   sampler. Prove cross-Session/nondefault-stream handoff on the selected GPU;
   reject unsupported mismatched producers/devices and arbitrary migration.
-- [ ] B5: Exercise cancellation, NaN/model/provider/transfer failure, reset,
+- [x] B5: Exercise cancellation, NaN/model/provider/transfer failure, reset,
   isolated contexts and retained GPU logits through update/release/Session
   teardown/library unregistration. Preserve public C/C++ transactional errors,
   sticky execution invalidation and caller-owned resource lifetime duties.
-- [ ] B6: Add native and genuine C/C++ end-to-end parity, explicit device/
+- [x] B6: Add native and genuine C/C++ end-to-end parity, explicit device/
   dispatch/transfer/staging evidence and reference comparisons. Measure all new
   core/plugin host code and any new device code; preserve M09a's independent
   device coverage proof rather than replacing it with host-only results.
@@ -2205,6 +2209,127 @@ through standalone-to-generation native/C/C++ integration. All new executable
 host/device lines are measured at100%, prior M09a gates remain valid, CPU/GPU/
 legacy regressions and applicable sanitizer checks pass, and exact limitations/
 measurements are documented in the published stacked PR.
+
+**M09b verification complete; publication pending:**
+
+- Generalized private GPU cache port routing to declared device values, using
+  the retained initialized-Session allocator already owned by the native provider
+  binding. Cache allocation still follows cache policy, not whichever GPU value
+  happens to configure the Session: CPU cache/GPU sampling remains CPU storage.
+- GPU-sampled logits are bound and retained on GPU in selected/component/state
+  results and declared downstream/finite inputs. Chain routes carry their
+  originating provider/device; GPU cache routes, sampler-only routes and
+  per-stage CPU/GPU sampling remain independent. Compatible Require/Prefer
+  policies are not confused with physical device compatibility.
+- Reject CPU/GPU role conflicts, mismatched routed devices, host producers/
+  consumers and GPU-feedback inputs with CPU-feedback outputs before invocation.
+  Snapshot publication validates the declared storage role, rather than accepting
+  unexpected CPU data for a device output. Arbitrary chain external/initial-state
+  inputs retain their host-only contract.
+- Preserve actual task-stream Run completion without extra provider-wide Sync,
+  scalar token/status observation before history/exits, zero-budget validation,
+  prefill pending-token handoff, reset/cancellation boundaries and stable old
+  logits/cache results. Model/NaN failures suppress downstream invocations and
+  require reset; public failed-call output pointers remain unchanged.
+- Final CPU: **63/63 native +139/139 unfiltered AutoEP** passed.
+- Final CUDA plugin: **121/121 native +190/190 unfiltered AutoEP** passed,
+  **zero skips/exclusions**, with visible GPUs0/1.
+- New integration tests: **4 native +6 public**, including96 combinations of
+  cache policy, phase sampler policy, float32/float16, budgets0/1/3 and EOS.
+  They also cover explicit row selection, sampler-only/no-cache models,
+  unselected internal logits, named-state/component/finite routes, actual bound
+  placements, corrupt output storage, resource teardown and cross-device
+  rejection. XML confirms `cross_device_logits_tested=true`.
+- Legacy/shared CUDA: **110/110 native +43/43 selected public/stateful**
+  regression cases passed; no native GPU sampler/cache hook is added.
+- Measured new executable **host coverage116/116**: loop routing59/59,
+  chain routing54/54 and retained-allocator accessor3/3. Fresh actual-plugin
+  profiles use `coverage/m09b/final`. All403 LLVM mismatch-map entries are
+  dormant zero-hash maps, with no new-function mismatch.
+- New device functions/lines: **0/0, N/A**, not an invented100% device result.
+  The M09a greedy device source **and compiled object** hashes are unchanged,
+  preserving its independently measured **25/25** device-source proof. M09b
+  changes only host execution/resource routing and tests.
+- End-to-end Nsight Systems trace with vocabulary257 and GPU caches/logits:
+  **3 Device-to-Host copies, each16 bytes, total48 bytes**, matching3 GPU greedy
+  callbacks. There is no2056-byte prefill/1028-byte decode logits readback or
+  cache readback. The trace separately records5 Host-to-Device copies totaling
+  8256 bytes (weights/prompt/generated-token setup); host feeds are not called
+  device-only work or confused with logical CPU staging counters.
+- A normal instrumented-suite synchronous3-token Run observation was
+  **28533.93us**. This includes execution setup/host orchestration and is not a
+  release throughput benchmark or numerical performance gate.
+- Compute Sanitizer memcheck/leak-check: **4/4 native +6/6 public integration
+  cases and the executable C++17 generation example** passed with **zero errors
+  and zero leaked bytes/allocations**. No new sampling case is excluded.
+  The previously documented M08 unrelated-stream timing-only limitation remains
+  separate; the full normal suite includes that test and passes it.
+- Genuine C11 generation consumer and public C++17 end-to-end example pass
+  through reset, definition/execution/Session release and library unregistration,
+  with explicit inspection of retained GPU logits afterward. CPU C++17 normal
+  and no-exceptions **client** examples, strict changed-unit type checks,
+  formatting/120-column limits, whitespace and93-requirement/24-milestone
+  traceability pass. The CPU shared library has no CUDA dependency.
+- The IDE test runner reported no connected client; actual repository test
+  binaries were run from their output directories. SDK model generation first
+  failed with missing Python `onnx`; only then was ONNX1.23.2 and its dependencies
+  installed into the existing isolated `.venv`. No runtime dependency/manifest
+  was added or shared driver setting changed.
+
+Passing final commands (test commands run from the respective output directory):
+
+```bash
+source .venv/bin/activate
+cmake --build build/state-cuda-plugin-13.1/RelWithDebInfo --parallel 24 \
+  --target onnxruntime_session_loop_test onnxruntime_autoep_test
+cd build/state-cuda-plugin-13.1/RelWithDebInfo
+export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_HOME=/datadisks/disk4/bmeswani/cuda/cuda13.1
+export LD_LIBRARY_PATH="$PWD:$CUDA_HOME/lib64:$CUDA_HOME/targets/x86_64-linux/lib"
+mkdir -p coverage/m09b/final
+LLVM_PROFILE_FILE="$PWD/coverage/m09b/final/%m-%p.profraw" \
+  ./onnxruntime_session_loop_test --gtest_output=xml:coverage/m09b/final/native-tests.xml
+# Passed:121/121, zero skips.
+LLVM_PROFILE_FILE="$PWD/coverage/m09b/final/%m-%p.profraw" \
+  ./onnxruntime_autoep_test --gtest_output=xml:coverage/m09b/final/autoep-tests.xml
+# Passed:190/190, zero skips.
+llvm-profdata merge -sparse coverage/m09b/final/*.profraw \
+  -o coverage/m09b/final/m09b.profdata
+# Passed: changed-source LLVM measurement116/116 against M09aff2363e3b8.
+export LLVM_PROFILE_FILE=/dev/null
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --leak-check full --error-exitcode 99 \
+  ./onnxruntime_session_loop_test --gtest_filter='CudaSamplingIntegrationTest.*'
+# Passed:4/4, zero errors/leaks.
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --leak-check full --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter='CudaSamplingApiIntegrationTest.*'
+# Passed:6/6, zero errors/leaks.
+"$CUDA_HOME/bin/nsys" profile --sample=none --cpuctxsw=none --trace=cuda \
+  --force-overwrite=true \
+  --output=/home/devpatel/.copilot/session-state/819a29ec-8ea8-4b2f-9938-e40236ffd239/files/m09b-generation-transfer \
+  ./onnxruntime_autoep_test --gtest_filter='CudaSamplingApiIntegrationTest.GpuSamplingTransferAndLatency'
+# Passed:1/1; exported CUPTI memcpy SQLite records prove3 DtoH copies16 bytes each.
+cd ../../state-cpu/RelWithDebInfo
+./onnxruntime_session_loop_test --gtest_output=xml:coverage/m09b/final/native-tests.xml
+./onnxruntime_autoep_test --gtest_output=xml:coverage/m09b/final/autoep-tests.xml
+# Passed:63/63 native and139/139 unfiltered AutoEP.
+cd ../../state-cuda-baseline-13.1/RelWithDebInfo
+export LD_LIBRARY_PATH="$PWD:$CUDA_HOME/lib64:$CUDA_HOME/targets/x86_64-linux/lib"
+./onnxruntime_session_loop_test --gtest_output=xml:coverage/m09b/final/native-tests.xml
+./onnxruntime_autoep_test --gtest_filter='AutoEpSelection.CudaEP:*Stateful*' \
+  --gtest_output=xml:coverage/m09b/final/stateful-tests.xml
+# Passed:110/110 native and43/43 selected public/stateful cases.
+```
+
+Compiler/build settings match the independently verified M09a artifacts:
+Clang18 host LLVM coverage, NVCC13.1/GCC13, SM80, matching CUDA13.1/cuDNN and
+the existing nonfatal-warning configuration for baseline mixed-compiler warnings.
+Exact logs and reports remain in session files as `m09b-*-tests.log`,
+`m09b-native-sanitizer.log`, `m09b-public-sanitizer.log`,
+`m09b-sdk-sanitizer.log`, `m09b-host-coverage-final.txt`,
+`m09b-device-baseline-sha256.txt`, `m09b-transfer-proof.txt` and
+`m09b-generation-transfer.sqlite`. SPEC I.7 contains the executable SDK example;
+`m09b_make_sdk_model.py` regenerates its checked validation fixture. M10 is not
+started and no PR has been merged.
 
 **Execution and evidence procedure for both sub-PRs:**
 
