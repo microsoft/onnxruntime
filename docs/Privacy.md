@@ -11,7 +11,7 @@ ONNX Runtime collects trace events with the goal of improving product quality. F
 Telemetry is turned **ON** by default in the official builds ([see here](../README.md#binaries)). Both providers are accessed through ONNX Runtime's common telemetry interface (see [telemetry.h](../onnxruntime/core/platform/telemetry.h)).
 
 ### Private Builds
-The build driver enables telemetry by default for supported native platforms. Targets without a supported provider and builds that disable C++ exceptions automatically exclude telemetry. For information on how to disable telemetry in other builds, see [Disabling Telemetry](#disabling-telemetry) below.
+The build driver enables telemetry by default for supported native platforms, including minimal builds that disable C++ exceptions. Targets without a supported provider automatically exclude telemetry. For information on how to disable telemetry in other builds, see [Disabling Telemetry](#disabling-telemetry) below.
 
 Existing native Windows build scripts that pass `--use_telemetry` retain the
 historical TraceLogging backend, with a deprecation warning. New scripts can use
@@ -39,26 +39,38 @@ For ways to disable telemetry, see the [Disabling Telemetry](#disabling-telemetr
 
 Telemetry can be disabled in any of these ways:
 
-- **Disable it at build time.** Pass `--no_telemetry` to `build.py` or `build.sh`. This omits the 1DS provider from all builds and disables the Microsoft telemetry configuration on Windows. Unsupported targets and exception-free builds never include telemetry.
+- **Disable it at build time.** Pass `--no_telemetry` to `build.py` or `build.sh`. This omits the 1DS provider from all builds and disables the Microsoft telemetry configuration on Windows. Unsupported targets never include telemetry.
 - **Disable all 1DS telemetry at runtime.** Set `ORT_DISABLE_TELEMETRY=1` before ONNX Runtime initializes. On all builds with 1DS telemetry, this prevents the uploader, events, and persistent device identifier from being created for the process lifetime. The legacy Windows TraceLogging backend does not use this environment variable.
 - **Disable non-essential events via the API.** The C API (and the C#, Python, and Java bindings) can suppress non-essential telemetry. ONNX Runtime may already have emitted a minimal initialization event before the API can be called. On builds for **Windows apps and components**, ETW events are recorded only when an external trace session is collecting.
 
-All 1DS builds use the pinned GitHub SDK source, including builds that use vcpkg for
-other dependencies. Desktop builds disable the SDK's native device-ID collection and
+1DS builds use SDK **3.10.281.1**. Vcpkg builds consume `MSTelemetry` from the
+`cpp-client-telemetry` overlay, based on the hash-verified release archive in
+[microsoft/vcpkg#54342](https://github.com/microsoft/vcpkg/pull/54342).
+Only this port's registry baseline is advanced; other dependencies retain ORT's
+existing baseline. The overlay remains necessary for ORT's disabled SDK logging,
+platform-specific device-ID policy, exception policy, private SQLite/zlib, and
+Linux mbedTLS transport. Non-vcpkg builds use the pinned GitHub source directly.
+Desktop builds disable the SDK's native device-ID collection and
 instead supply a hash of ORT's locally generated persistent identifier. Android and
-iOS retain the SDK's platform device IDs. SDK logging is compiled out; source builds
-retain exception support, use WinHTTP on Windows, and use Java HTTP with native SQLite
-storage on Android.
+iOS retain the SDK's platform device IDs. SDK logging is compiled out; both build paths
+match ORT's exception policy via `MATSDK_DISABLE_EXCEPTIONS`, use WinHTTP on Windows,
+and use Java HTTP with native SQLite storage on Android. Passing
+`--minimal_build --disable_exceptions` (or setting `onnxruntime_MINIMAL_BUILD=ON`
+and `onnxruntime_DISABLE_EXCEPTIONS=ON` in CMake) disables exceptions in both ORT
+and the embedded SDK without disabling telemetry. Vcpkg builds must use the matching
+generated `noexception` triplet; its port-specific `MATSDK_DISABLE_EXCEPTIONS`
+setting controls the separately built SDK.
 
 Telemetry-enabled static Linux builds depend on static curl and
 mbedTLS. FetchContent-built static ORT packages include these archives; vcpkg-built
-packages resolve these transport dependencies through vcpkg. Shared ORT libraries use
+packages resolve these transport dependencies through vcpkg. Vcpkg feature unions
+may enable additional curl dependencies, such as OpenSSL. Shared ORT libraries use
 a public-symbol allowlist, so embedded telemetry dependencies are not exported. ELF
 consumers also hide the SDK, bundled SQLite, zlib, curl, and mbedTLS archives, and
 GNU's implicitly linked `libstdc++_nonshared.a` compatibility archive while preserving
 ORT's public API exports.
 
 Applications linking a telemetry-enabled static Linux ORT build must not co-link
-another copy of curl or mbedTLS. Symbol hiding does not namespace static archives,
+another copy of curl or its TLS dependencies. Symbol hiding does not namespace static archives,
 so duplicate-symbol or archive-order conflicts can still occur. Build ORT with
-`--no_telemetry` if your application needs its own curl or mbedTLS copy.
+`--no_telemetry` if your application needs its own curl or TLS-library copy.

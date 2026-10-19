@@ -69,7 +69,7 @@ def _parse_build_settings(args):
 
     build_settings["build_params"] = build_params
     build_settings["use_telemetry"] = not any(
-        build_param.split("=", 1)[0] in {"--no_telemetry", "--disable_exceptions"} for build_param in build_params
+        build_param.split("=", 1)[0] == "--no_telemetry" for build_param in build_params
     )
 
     return build_settings

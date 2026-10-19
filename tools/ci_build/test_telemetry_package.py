@@ -196,7 +196,7 @@ class TelemetryPackageTest(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn(error, " ".join(result.stderr.split()))
 
-    def test_source_sdk_selection_with_and_without_vcpkg(self):
+    def test_source_sdk_selection_without_vcpkg(self):
         external = (_ROOT / "cmake" / "external" / "onnxruntime_external_deps.cmake").read_text(encoding="utf-8")
         telemetry = external[external.index("# 1DS SDK (cpp_client_telemetry)") :]
         telemetry = telemetry[: telemetry.index("FILE(TO_NATIVE_PATH")]
@@ -235,10 +235,19 @@ class TelemetryPackageTest(unittest.TestCase):
                       if(NOT MATSDK_CURL_PROVIDER STREQUAL expected_curl)
                         message(FATAL_ERROR "Unexpected curl provider for ${platform}/${use_vcpkg}")
                       endif()
+                      if(NOT MATSDK_DISABLE_EXCEPTIONS STREQUAL onnxruntime_DISABLE_EXCEPTIONS)
+                        message(FATAL_ERROR "SDK exception support must match ONNX Runtime")
+                      endif()
                       set_property(GLOBAL PROPERTY sdk_source_selected TRUE)
                     endmacro()
-                    function(check_source platform use_vcpkg expected_curl)
+                    function(check_source platform use_vcpkg expected_curl disable_exceptions)
                       set(onnxruntime_USE_1DS_TELEMETRY ON)
+                      set(onnxruntime_DISABLE_EXCEPTIONS "${disable_exceptions}")
+                      if(disable_exceptions)
+                        set(MATSDK_DISABLE_EXCEPTIONS OFF CACHE BOOL "" FORCE)
+                      else()
+                        set(MATSDK_DISABLE_EXCEPTIONS ON CACHE BOOL "" FORCE)
+                      endif()
                       set(onnxruntime_BUILD_SHARED_LIB ON)
                       set(BUILD_SHARED_LIBS ON)
                       set(BUILD_VERSION caller-version)
@@ -262,17 +271,19 @@ class TelemetryPackageTest(unittest.TestCase):
                       if(DEFINED CACHE{MATSDK_CURL_PROVIDER})
                         message(FATAL_ERROR "SDK options must not remain in the parent cache")
                       endif()
+                      if(DEFINED CACHE{MATSDK_DISABLE_EXCEPTIONS})
+                        message(FATAL_ERROR "SDK exception policy must not remain in the parent cache")
+                      endif()
                       get_target_property(sqlite_definitions sqlite3_bundled COMPILE_DEFINITIONS)
                       if("SQLITE_DEFAULT_MEMSTATUS=0" IN_LIST sqlite_definitions)
                         message(FATAL_ERROR "Disabling SQLite memory accounting defeats the SDK's soft heap limit")
                       endif()
                     endfunction()
-                    check_source(Windows OFF SYSTEM)
-                    check_source(Windows ON SYSTEM)
-                    check_source(Linux OFF FETCH)
-                    check_source(Linux ON SYSTEM)
-                    check_source(Darwin OFF SYSTEM)
-                    check_source(Darwin ON SYSTEM)
+                    foreach(disable_exceptions OFF ON)
+                      check_source(Windows OFF SYSTEM "${disable_exceptions}")
+                      check_source(Linux OFF FETCH "${disable_exceptions}")
+                      check_source(Darwin OFF SYSTEM "${disable_exceptions}")
+                    endforeach()
                     """
                 ),
                 encoding="utf-8",
@@ -288,11 +299,71 @@ class TelemetryPackageTest(unittest.TestCase):
                 f"-Dexpected_sdk_version={url.rsplit('/v', 1)[-1].removesuffix('.zip')}",
             )
 
-    def test_vcpkg_telemetry_feature_installs_transport_not_sdk(self):
+    def test_vcpkg_telemetry_feature_installs_sdk(self):
         manifest = json.loads((_ROOT / "cmake" / "vcpkg.json").read_text(encoding="utf-8"))
         dependencies = manifest["features"]["telemetry"]["dependencies"]
-        self.assertEqual({dependency["name"] for dependency in dependencies}, {"curl", "mbedtls"})
-        self.assertTrue(all(dependency["platform"] == "linux" for dependency in dependencies))
+        self.assertEqual([dependency["name"] for dependency in dependencies], ["cpp-client-telemetry", "curl"])
+        sdk, curl = dependencies
+        self.assertFalse(sdk["default-features"])
+        self.assertFalse(curl["default-features"])
+        self.assertEqual(curl["features"], ["mbedtls"])
+        self.assertEqual(curl["platform"], "linux")
+
+    def test_vcpkg_android_java_transport_compile_flags(self):
+        overlay = _ROOT / "cmake" / "vcpkg-ports" / "cpp-client-telemetry" / "portfile.cmake"
+        with tempfile.TemporaryDirectory(prefix="ort-telemetry-overlay-") as temporary:
+            root = Path(temporary)
+            script = root / "overlay.cmake"
+            script.write_text(
+                textwrap.dedent(
+                    """
+                    cmake_minimum_required(VERSION 3.28)
+                    function(vcpkg_check_linkage)
+                    endfunction()
+                    function(vcpkg_from_github)
+                    endfunction()
+                    function(vcpkg_cmake_configure)
+                      cmake_parse_arguments(SDK "" "SOURCE_PATH" "OPTIONS" ${ARGN})
+                      foreach(flags VCPKG_C_FLAGS VCPKG_CXX_FLAGS)
+                        separate_arguments(definitions UNIX_COMMAND "${${flags}}")
+                        if(NOT "-DKEEP_CALLER_FLAG" IN_LIST definitions)
+                          message(FATAL_ERROR "The overlay must preserve caller flags")
+                        endif()
+                        if(VCPKG_TARGET_IS_ANDROID)
+                          if(NOT "-DANDROID" IN_LIST definitions OR
+                             NOT "-DANDROID_SUPPRESS_LOGCAT" IN_LIST definitions)
+                            message(FATAL_ERROR "The SDK's Java HTTP transport requires ANDROID")
+                          endif()
+                        elseif("-DANDROID" IN_LIST definitions OR
+                               "-DANDROID_SUPPRESS_LOGCAT" IN_LIST definitions)
+                          message(FATAL_ERROR "Android flags must not leak into host builds")
+                        endif()
+                      endforeach()
+                      if(NOT "-DMATSDK_ANDROID_HTTP_CLIENT=JAVA" IN_LIST SDK_OPTIONS)
+                        message(FATAL_ERROR "ORT must select the Java HTTP transport")
+                      endif()
+                    endfunction()
+                    function(vcpkg_cmake_install)
+                    endfunction()
+                    function(vcpkg_cmake_config_fixup)
+                    endfunction()
+                    function(vcpkg_install_copyright)
+                    endfunction()
+                    # Avoid install/cleanup side effects while exercising the overlay policy.
+                    function(file)
+                    endfunction()
+                    set(VCPKG_C_FLAGS "-DKEEP_CALLER_FLAG")
+                    set(VCPKG_CXX_FLAGS "-DKEEP_CALLER_FLAG")
+                    include("${OVERLAY}")
+                    """
+                ),
+                encoding="utf-8",
+            )
+            for android in ("OFF", "ON"):
+                with self.subTest(android=android):
+                    self._run(
+                        "cmake", f"-DVCPKG_TARGET_IS_ANDROID={android}", f"-DOVERLAY={overlay}", "-P", str(script)
+                    )
 
     def test_production_include_without_module_search_path(self):
         includes = [
