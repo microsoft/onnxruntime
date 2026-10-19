@@ -65,8 +65,6 @@ add that directory to `PATH` or pass `--patch-executable PATH`.
 6. Build and test the affected configurations, inspect the final packages, and
    submit the reviewed roll. Follow the validation checklist below, including
    feature-specific hardware tests when an upgrade enables a new GPU capability.
-   The plugin packaging pipelines generate and scan the fetched build-input
-   inventory after the build; it need not be generated manually before a roll.
 
 `--revision` accepts an exact tag, a full commit hash, or `latest`. The `latest`
 selector queries Dawn's Git tags matching `vYYYYMMDD.HHMMSS` and chooses the
@@ -167,21 +165,6 @@ archives, moved tags, metadata preservation, removal policy, distinct revisions
 of the same repository, patch conflicts, concurrent edits, and failed-write
 recovery. Latest-tag tests cover timestamp selection, concrete pinning, and
 discovery failures without writes. Package files are left untouched.
-
-## Relationship to component inventories
-
-The roll command updates the checked-in, reviewed manifest. It preserves
-runtime/development classifications and the independently redistributed DXC
-release registration. It reports newly fetched dependencies for classification
-rather than guessing whether they ship in a package. Matching a registration
-requires the repository identity **and** revision; a second checkout of the same
-repository at a different revision is a separate input.
-
-The [build-input inventory generator](../../../../cgmanifests/webgpu/BUILD-INVENTORY.md)
-serves a different purpose: after CMake fetches dependencies, it records their
-actual checkout commits for component scanning. It does not replace the roll
-command or the reviewed manifest. Neither inventory alone describes a package's
-final linked/redistributed contents.
 
 ## Upgrade examples used to validate the tool
 
