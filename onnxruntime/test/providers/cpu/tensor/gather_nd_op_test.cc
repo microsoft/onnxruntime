@@ -509,7 +509,10 @@ TEST(GatherNDOpTest, NegativeBatchDimsRejected) {
   test.AddInput<float>("data", {2, 3}, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f});
   test.AddInput<int64_t>("indices", {2, 1}, {0, 1});
   test.AddOutput<float>("output", {2, 3}, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "must not be negative", {kTensorrtExecutionProvider});
+
+  std::vector<std::unique_ptr<onnxruntime::IExecutionProvider>> cpu_only_ep;
+  cpu_only_ep.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "must not be negative", {}, nullptr, &cpu_only_ep);
 }
 
 }  // namespace test

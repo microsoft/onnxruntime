@@ -961,7 +961,41 @@ TEST(SignalOpsTest, DFT20_Rank0InputRejected) {
   test.AddOptionalInputEdge<int64_t>();
   test.AddInput<int64_t>("axis", {}, {1});
   test.AddOutput<float>("output", {1}, {1.f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "input must have rank >= 2");
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "input must have rank >= 2", {}, nullptr, &execution_providers);
+}
+
+TEST(SignalOpsTest, DFT20_NonScalarAxisRejected) {
+  for (const auto& axis_values : {std::vector<int64_t>{}, std::vector<int64_t>{1, 2}}) {
+    OpTester test("DFT", kOpsetVersion20);
+    test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput: it only affects tensors added afterwards
+    test.AddInput<float>("input", {1, 5, 1}, {1.f, 2.f, 3.f, 4.f, 5.f});
+    test.AddOptionalInputEdge<int64_t>();
+    test.AddInput<int64_t>("axis", {static_cast<int64_t>(axis_values.size())}, axis_values);
+    test.AddOutput<float>("output", {1, 5, 2}, std::vector<float>(10, 0.f));
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure, "DFT: 'axis' input must contain exactly one element.",
+             {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(SignalOpsTest, DFT20_OmittedOptionalAxisInputUsesDefault) {
+  OpTester test("DFT", kOpsetVersion20);
+  test.AddInput<float>("input", {1, 5, 1}, {1.f, 2.f, 3.f, 4.f, 5.f});
+  test.AddInput<int64_t>("dft_length", {}, {5});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddAttribute<int64_t>("onesided", 0);
+  test.AddOutput<float>("output", {1, 5, 2},
+                        {15.000000f, 0.0000000f, -2.499999f, 3.4409550f, -2.500000f,
+                         0.8123000f, -2.499999f, -0.812299f, -2.500003f, -3.440953f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(SignalOpsTest, STFT_Rank0SignalRejected) {
@@ -972,7 +1006,10 @@ TEST(SignalOpsTest, STFT_Rank0SignalRejected) {
   test.AddOptionalInputEdge<float>();
   test.AddInput<int64_t>("frame_length", {}, {2});
   test.AddOutput<float>("output", {1}, {1.f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "signal must have rank 2 or 3");
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "signal must have rank 2 or 3", {}, nullptr, &execution_providers);
 }
 
 }  // namespace test

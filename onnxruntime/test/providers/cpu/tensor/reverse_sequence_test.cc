@@ -222,7 +222,10 @@ TEST(ReverseSequenceTest, Rank1InputRejected) {
   test.AddInput<float>("input", {4}, {0.f, 1.f, 2.f, 3.f});
   test.AddInput<int64_t>("sequence_lens", {1}, {1});
   test.AddOutput<float>("Y", {4}, {0.f, 1.f, 2.f, 3.f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "input must have rank >= 2", {kTensorrtExecutionProvider});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "input must have rank >= 2", {}, nullptr, &eps);
 }
 
 }  // namespace test
