@@ -204,9 +204,9 @@ void RunEngramGateNormedTest(float tolerance, bool packed = false) {
   OpTester test("EngramGate", 1, kMSDomain);
   test.AddAttribute<float>("epsilon", kEpsilon);
   const std::vector<int64_t> key_shape = packed ? std::vector<int64_t>{1, hc_mult, hidden_size}
-                                                 : std::vector<int64_t>{1, 1, hc_mult, hidden_size};
+                                                : std::vector<int64_t>{1, 1, hc_mult, hidden_size};
   const std::vector<int64_t> value_shape = packed ? std::vector<int64_t>{1, hidden_size}
-                                                   : std::vector<int64_t>{1, 1, hidden_size};
+                                                  : std::vector<int64_t>{1, 1, hidden_size};
   test.AddInput<T>("key", key_shape, ToTensorType<T>(key));
   test.AddInput<T>("query", key_shape, ToTensorType<T>(query));
   test.AddInput<T>("value", value_shape, ToTensorType<T>(value));
@@ -273,9 +273,9 @@ void RunEngramGateVectorizedTest(float tolerance, int64_t hidden, bool packed = 
   OpTester test("EngramGate", 1, kMSDomain);
   test.AddAttribute<float>("epsilon", kEpsilon);
   const std::vector<int64_t> key_shape = packed ? std::vector<int64_t>{kBatch * kSequence, kHcMult, hidden}
-                                                 : std::vector<int64_t>{kBatch, kSequence, kHcMult, hidden};
+                                                : std::vector<int64_t>{kBatch, kSequence, kHcMult, hidden};
   const std::vector<int64_t> value_shape = packed ? std::vector<int64_t>{kBatch * kSequence, hidden}
-                                                   : std::vector<int64_t>{kBatch, kSequence, hidden};
+                                                  : std::vector<int64_t>{kBatch, kSequence, hidden};
   test.AddInput<T>("key", key_shape, ToTensorType<T>(key));
   test.AddInput<T>("query", key_shape, ToTensorType<T>(query));
   test.AddInput<T>("value", value_shape, ToTensorType<T>(value));
