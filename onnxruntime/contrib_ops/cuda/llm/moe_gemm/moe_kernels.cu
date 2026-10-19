@@ -1626,7 +1626,7 @@ __global__ void finalizeMoeRoutingKernel(const GemmOutputType* expanded_permuted
 
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
   if (!(STAGE_ROUTING && early_routing_loads)) {
-    asm volatile("griddepcontrol.wait;");
+    asm volatile("griddepcontrol.wait;" ::: "memory");
   }
 #endif
 
@@ -1889,9 +1889,17 @@ FinalizeKernelLaunchCaps<KernelPtr> getFinalizeKernelLaunchCaps(KernelPtr func) 
   if (device != cached_device || func != cached_func) {
     cudaFuncAttributes attr{};
     CUDA_CALL_THROW(cudaFuncGetAttributes(&attr, func));
-    const int max_threads = std::min(1024, (attr.maxThreadsPerBlock / 32) * 32);
-    cached_caps = {std::max(FINALIZE_THREADS_PER_BLOCK, max_threads),
-                   attr.ptxVersion >= 90 && attr.binaryVersion >= 90};
+    int driver_version = 0;
+    int sm_major = 0;
+    const bool driver_and_arch_ok =
+        cudaDriverGetVersion(&driver_version) == cudaSuccess && driver_version >= 12000 &&
+        cudaDeviceGetAttribute(&sm_major, cudaDevAttrComputeCapabilityMajor, device) == cudaSuccess && sm_major >= 9;
+    if (!driver_and_arch_ok) {
+      (void)cudaGetLastError();
+    }
+    const int max_threads = std::max(32, std::min(1024, (attr.maxThreadsPerBlock / 32) * 32));
+    cached_caps = {max_threads,
+                   driver_and_arch_ok && attr.ptxVersion >= 90 && attr.binaryVersion >= 90};
     cached_device = device;
     cached_func = func;
   }
@@ -1916,12 +1924,13 @@ void finalizeMoeRoutingKernelLauncher(const GemmOutputType* expanded_permuted_ro
   int num_experts_per_node_int = SafeInt<int>(num_experts_per_node);
   const int start_expert_id = num_experts_per_node_int * parallelism_config.ep_rank;
 
-  cudaLaunchConfig_t config;
+  const bool env_pdl = onnxruntime::llm::common::getEnvEnablePDL();
+  cudaLaunchConfig_t config{};
   config.dynamicSmemBytes = 0;
   config.stream = stream;
-  cudaLaunchAttribute attrs[1];
+  cudaLaunchAttribute attrs[1]{};
   attrs[0].id = cudaLaunchAttributeProgrammaticStreamSerialization;
-  attrs[0].val.programmaticStreamSerializationAllowed = onnxruntime::llm::common::getEnvEnablePDL();
+  attrs[0].val.programmaticStreamSerializationAllowed = env_pdl ? 1 : 0;
   config.numAttrs = 1;
   config.attrs = attrs;
 
@@ -1988,11 +1997,23 @@ void finalizeMoeRoutingKernelLauncher(const GemmOutputType* expanded_permuted_ro
       const bool use_early_routing_loads = early_routing_loads && caps.sm90_pdl_available;
       if (use_early_routing_loads) {
         attrs[0].val.programmaticStreamSerializationAllowed = 1;
+        const cudaError_t status = cudaLaunchKernelEx(
+            &config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
+            unpermuted_row_to_permuted_row, token_selected_experts, cols, experts_per_token, num_experts_per_node_int,
+            start_expert_id, true);
+        if (status == cudaSuccess) {
+          return;
+        }
+        if (status != cudaErrorInvalidValue && status != cudaErrorNotSupported) {
+          CUDA_CALL_THROW(status);
+        }
+        (void)cudaGetLastError();
+        attrs[0].val.programmaticStreamSerializationAllowed = 0;
       }
       CUDA_CALL_THROW(cudaLaunchKernelEx(
           &config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
           unpermuted_row_to_permuted_row, token_selected_experts, cols, experts_per_token, num_experts_per_node_int,
-          start_expert_id, use_early_routing_loads));
+          start_expert_id, false));
     } else {
       auto func = final_scales
                       ? &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT, false>

@@ -27,6 +27,7 @@ constexpr int kFusedRouteMaxRows = 4;
 constexpr int kFusedRouteMaxK = 16;
 constexpr int kFusedRouteExperts = 512;  // the kernel is specialised for exactly 512 experts
 constexpr int kFusedRouteThreads = 128;
+static_assert(kFusedRouteMaxRows * kFusedRouteMaxK <= 64);
 
 __device__ __forceinline__ uint32_t FusedRouteKey(float logit, int index, bool valid) {
   const uint32_t bits = logit == 0.0f ? 0u : __float_as_uint(logit);

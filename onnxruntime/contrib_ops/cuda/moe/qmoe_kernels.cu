@@ -401,14 +401,21 @@ bool IsFusedRouteKernelSm90Available(KernelPtr kernel) {
   static thread_local bool available = false;
   int device = -1;
   if (cudaGetDevice(&device) != cudaSuccess) {
+    (void)cudaGetLastError();
     return false;
   }
   if (device != cached_device || kernel != cached_kernel) {
+    int driver_version = 0;
+    int sm_major = 0;
     cudaFuncAttributes attributes{};
-    if (cudaFuncGetAttributes(&attributes, kernel) != cudaSuccess) {
+    if (cudaDriverGetVersion(&driver_version) != cudaSuccess ||
+        cudaDeviceGetAttribute(&sm_major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess ||
+        cudaFuncGetAttributes(&attributes, kernel) != cudaSuccess) {
+      (void)cudaGetLastError();
       return false;
     }
-    available = attributes.ptxVersion >= 90 && attributes.binaryVersion >= 90;
+    available = driver_version >= 12000 && sm_major >= 9 &&
+                attributes.ptxVersion >= 90 && attributes.binaryVersion >= 90;
     cached_device = device;
     cached_kernel = kernel;
   }
@@ -431,20 +438,32 @@ bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indice
   if (!IsFusedRouteKernelSm90Available(kernel)) {
     return false;
   }
-  cudaLaunchConfig_t config{};
-  config.gridDim = dim3(1);
-  config.blockDim = dim3(kFusedRouteThreads);
-  config.dynamicSmemBytes = 0;
-  config.stream = stream;
-  cudaLaunchAttribute attribute[1];
-  attribute[0].id = cudaLaunchAttributeProgrammaticStreamSerialization;
-  attribute[0].val.programmaticStreamSerializationAllowed = pdl ? 1 : 0;
-  config.attrs = attribute;
-  config.numAttrs = 1;
-  const cudaError_t status = cudaLaunchKernelEx(
-      &config, kernel, logits, topk_scales, topk_indices, permuted_row_to_unpermuted_row,
+  if (pdl) {
+    cudaLaunchConfig_t config{};
+    config.gridDim = dim3(1);
+    config.blockDim = dim3(kFusedRouteThreads);
+    config.dynamicSmemBytes = 0;
+    config.stream = stream;
+    cudaLaunchAttribute attribute[1]{};
+    attribute[0].id = cudaLaunchAttributeProgrammaticStreamSerialization;
+    attribute[0].val.programmaticStreamSerializationAllowed = 1;
+    config.attrs = attribute;
+    config.numAttrs = 1;
+    const cudaError_t status = cudaLaunchKernelEx(
+        &config, kernel, logits, topk_scales, topk_indices, permuted_row_to_unpermuted_row,
+        unpermuted_row_to_permuted_row, permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales);
+    if (status == cudaSuccess) {
+      return true;
+    }
+    if (status != cudaErrorInvalidValue && status != cudaErrorNotSupported) {
+      ORT_ENFORCE(status == cudaSuccess, "fused QMoE routing launch failed: ", cudaGetErrorString(status));
+    }
+    (void)cudaGetLastError();
+  }
+  kernel<<<1, kFusedRouteThreads, 0, stream>>>(
+      logits, topk_scales, topk_indices, permuted_row_to_unpermuted_row,
       unpermuted_row_to_permuted_row, permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales);
-  ORT_ENFORCE(status == cudaSuccess, "fused QMoE routing launch failed: ", cudaGetErrorString(status));
+  CUDA_CALL_THROW(cudaGetLastError());
   return true;
 }
 

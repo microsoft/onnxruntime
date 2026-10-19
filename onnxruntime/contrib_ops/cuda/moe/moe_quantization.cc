@@ -2486,12 +2486,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       }
 
       launch_fc1(fc1_config, !do_tune && fused_route_launched && skip_expand && fp4_gemv_fc1_pdl);
-      launch_fc2(fc2_config, fc2_finalize_pdl);
+      launch_fc2(fc2_config, fc2_finalize_pdl && fc1_used_decode);
       ck::finalizeMoeRoutingKernelLauncher<T, T, T>(
           static_cast<const T*>(p_fc2_buf.get()), static_cast<T*>(output->MutableDataRaw()),
           nullptr, expert_scales, unpermuted_row_to_permuted_row, p_r2u, expert_indices,
           p_efto, num_rows, hidden, static_cast<int64_t>(k_), num_experts,
-          parallelism_config, false, stream, fc2_finalize_pdl);
+          parallelism_config, false, stream, fc2_finalize_pdl && fc2_used_decode);
     };
 
     if (is_fp16_) {

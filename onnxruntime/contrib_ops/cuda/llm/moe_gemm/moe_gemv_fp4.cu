@@ -481,9 +481,22 @@ __global__ void MoeGemvFp4RawKPackedKernel(
 
 bool Fp4MoeGemvSupportsNativeScale() {
 #if defined(ORT_CUDA_TYPE_HELPER_HAS_FP8)
+  int device = -1;
+  if (cudaGetDevice(&device) != cudaSuccess) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  int sm_major = 0;
+  if (cudaDeviceGetAttribute(&sm_major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess || sm_major < 9) {
+    (void)cudaGetLastError();
+    return false;
+  }
   cudaFuncAttributes attributes{};
-  CUDA_CALL_THROW(cudaFuncGetAttributes(
-      &attributes, MoeGemvFp4RawKPackedKernel<half, false, false, 4, false, true>));
+  if (cudaFuncGetAttributes(
+          &attributes, MoeGemvFp4RawKPackedKernel<half, false, false, 4, false, true>) != cudaSuccess) {
+    (void)cudaGetLastError();
+    return false;
+  }
   return attributes.binaryVersion >= 90 && attributes.ptxVersion >= 90;
 #else
   return false;
@@ -557,12 +570,6 @@ static constexpr int kDecodeK4Batch = 2;
 static constexpr int kDecodeK4MinBlocks = 4;
 // Rows beyond this use the KPacked kernel, which amortizes less per-row work as the grid grows.
 static constexpr int64_t kDecodeMaxExpandedRows = 80;
-
-// Opt-out for the programmatic dependent launch of FC2 (env ORT_FP4_GEMV_PDL=0).
-static bool Fp4MoeGemvUsePdl() {
-  static const bool enabled = onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_PDL", 1) != 0;
-  return enabled;
-}
 
 // Table-free decode: place the three e2m1 magnitude bits (e1 e0 m) at the lowest exponent bits and the
 // top mantissa bit of T and the sign at bit 15. The result is fp4_value * 2^-126 for bf16 and
@@ -758,10 +765,12 @@ __global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
   // before FC1 passed its wait (expert maps, weights) before its own wait and the FC1 output after it.
   // FC1 triggers only after its own wait (the routing kernel may be its primary grid), so FC2 and the finalize
   // kernel, which read routing metadata before their waits, never launch before that metadata is complete.
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
   if constexpr (FusedSwiGlu) {
     asm volatile("griddepcontrol.wait;" ::: "memory");
   }
   asm volatile("griddepcontrol.launch_dependents;");
+#endif
 
   const int row = static_cast<int>(blockIdx.x);
   int expert = permuted_row_to_expert != nullptr ? permuted_row_to_expert[row] : 0;
@@ -813,9 +822,11 @@ __global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
   uint32_t scale_codes[Batch][kDecodeColsPerThread];
   load_batch(0, packed, scale_codes);
 
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
   if constexpr (!FusedSwiGlu) {
     asm volatile("griddepcontrol.wait;" ::: "memory");  // the activation row is the FC1 output
   }
+#endif
   // Stage the activation row as FP32, one padded 32-element unit per lane pair.
   extern __shared__ __align__(16) float act_smem[];
   {
@@ -886,6 +897,47 @@ __global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
 #endif
 }
 
+// Opt-out for the programmatic dependent launch of FC2 (env ORT_FP4_GEMV_PDL=0).
+static bool Fp4MoeGemvUsePdl() {
+  static const bool enabled = onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_PDL", 1) != 0;
+  return enabled;
+}
+
+template <typename KernelPtr>
+static bool QuerySm90DecodeKernelCaps(KernelPtr kernel, bool* pdl_supported = nullptr) {
+  if (pdl_supported != nullptr) {
+    *pdl_supported = false;
+  }
+  int device = -1;
+  if (cudaGetDevice(&device) != cudaSuccess) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  int sm_major = 0;
+  if (cudaDeviceGetAttribute(&sm_major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess || sm_major < 9) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  cudaFuncAttributes attributes{};
+  if (cudaFuncGetAttributes(&attributes, kernel) != cudaSuccess) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  const bool image_available = attributes.ptxVersion >= 90 && attributes.binaryVersion >= 90;
+  if (!image_available) {
+    return false;
+  }
+  if (pdl_supported != nullptr) {
+    int driver_version = 0;
+    if (cudaDriverGetVersion(&driver_version) == cudaSuccess) {
+      *pdl_supported = driver_version >= 12000;
+    } else {
+      (void)cudaGetLastError();
+    }
+  }
+  return true;
+}
+
 template <typename T, bool FusedSwiGlu>
 void LaunchMoeGemvFp4RawNPacked(
     const T* act, const uint8_t* weight, const uint8_t* block_scales, const float* global_scales,
@@ -947,28 +999,26 @@ void LaunchMoeGemvFp4RawNPacked(
                                static_cast<unsigned>((n + kBlockCols - 1) / kBlockCols));
         const auto launch_bias = [&](auto bias_tag) {
           constexpr bool kEnableBias = decltype(bias_tag)::value;
+          auto kernel = MoeGemvFp4DecodeKernel<T, FusedSwiGlu, kEnableBias, kKLanes, kWarps, kBatch, kMinBlocks>;
           // PTX compiled below SM90 has an empty decode body, even when JIT-loaded on SM90+.
           // Image selection depends on the device SM; refresh when a thread switches architectures.
           static thread_local int cached_sm = -1;
           static thread_local bool available = false;
+          static thread_local bool pdl_supported = false;
           if (cached_sm != sm) {
-            cudaFuncAttributes attributes{};
-            CUDA_CALL_THROW(cudaFuncGetAttributes(
-                &attributes, MoeGemvFp4DecodeKernel<T, FusedSwiGlu, kEnableBias, kKLanes, kWarps, kBatch, kMinBlocks>));
-            available = attributes.ptxVersion >= 90;
+            available = QuerySm90DecodeKernelCaps(kernel, &pdl_supported);
             cached_sm = sm;
           }
           if (!available) {
             return false;
           }
-          auto kernel = MoeGemvFp4DecodeKernel<T, FusedSwiGlu, kEnableBias, kKLanes, kWarps, kBatch, kMinBlocks>;
-          if (programmatic_dependent_launch && Fp4MoeGemvUsePdl()) {
+          if (programmatic_dependent_launch && Fp4MoeGemvUsePdl() && pdl_supported) {
             cudaLaunchConfig_t config{};
             config.gridDim = decode_grid;
             config.blockDim = dim3(kWarps * 32);
             config.dynamicSmemBytes = decode_smem;
             config.stream = stream;
-            cudaLaunchAttribute attribute[1];
+            cudaLaunchAttribute attribute[1]{};
             attribute[0].id = cudaLaunchAttributeProgrammaticStreamSerialization;
             attribute[0].val.programmaticStreamSerializationAllowed = 1;
             config.attrs = attribute;
@@ -977,14 +1027,21 @@ void LaunchMoeGemvFp4RawNPacked(
                 &config, kernel, act, weight, block_scales, global_scales, bias, out, expert_first_token_offset,
                 permuted_row_to_expert, num_experts, weight_expert_stride, scale_expert_stride, static_cast<int>(n),
                 static_cast<int>(k), activation_params, permuted_row_to_source_row, static_cast<int>(num_rows));
-            ORT_ENFORCE(status == cudaSuccess, "FP4 GEMV decode launch failed: ", cudaGetErrorString(status));
-            return true;
+            if (status == cudaSuccess) {
+              return true;
+            }
+            if (status != cudaErrorInvalidValue && status != cudaErrorNotSupported) {
+              ORT_ENFORCE(status == cudaSuccess, "FP4 GEMV decode launch failed: ", cudaGetErrorString(status));
+            }
+            (void)cudaGetLastError();
+            pdl_supported = false;
           }
           kernel<<<decode_grid, kWarps * 32, decode_smem, stream>>>(
               act, weight, block_scales, global_scales, bias, out,
               expert_first_token_offset, permuted_row_to_expert, num_experts,
               weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k),
               activation_params, permuted_row_to_source_row, static_cast<int>(num_rows));
+          CUDA_CALL_THROW(cudaGetLastError());
           return true;
         };
         if (bias != nullptr) {
@@ -1146,10 +1203,8 @@ bool is_moe_gemv_fp4_decode_image_available(int sm, bool is_fp16) {
   }
   const auto check_type = [&](auto type_tag) {
     using T = typename decltype(type_tag)::type;
-    cudaFuncAttributes attributes{};
-    CUDA_CALL_THROW(cudaFuncGetAttributes(
-        &attributes, MoeGemvFp4DecodeKernel<T, true, false, 8, kDecodeK8Warps, kDecodeK8Batch, kDecodeK8MinBlocks>));
-    return attributes.ptxVersion >= 90;
+    return QuerySm90DecodeKernelCaps(
+        MoeGemvFp4DecodeKernel<T, true, false, 8, kDecodeK8Warps, kDecodeK8Batch, kDecodeK8MinBlocks>);
   };
   if (is_fp16) {
     return check_type(TypeTag<half>{});
