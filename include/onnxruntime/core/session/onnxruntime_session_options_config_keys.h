@@ -660,6 +660,9 @@ static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_k
 // Option values:
 // - "0": Disable Use of SVE SGEMM kernels. [DEFAULT]
 // - "1": Use SVE SGEMM kernels when available.
+// Applies to MatMul, Gemm, Conv and the FP32 flash attention paths of MultiHeadAttention and
+// GroupQueryAttention. The SVE kernels are built with -ffast-math, so enabling this changes the
+// numerical results slightly relative to the default NEON kernels.
 static const char* const kOrtSessionOptionsMlasEnableSveSgemm = "mlas.enable_sve_sgemm";
 
 // Power-user tuning option for the Arm® KleidiAI™ SME IGEMM convolution route on Arm64.

@@ -58,10 +58,11 @@ Abstract:
 
 //
 // Redundant when the TU is already built for SVE, and on some compilers it
-// conflicts with the command-line -march.
+// conflicts with the command-line -march. Native MSVC has no GNU attribute
+// syntax and only calls the frozen assembly, which needs no target attribute.
 //
 #if !defined(MLAS_SVE_TARGET)
-#if defined(__ARM_FEATURE_SVE)
+#if defined(__ARM_FEATURE_SVE) || (defined(_MSC_VER) && !defined(__clang__))
 #define MLAS_SVE_TARGET
 #else
 #define MLAS_SVE_TARGET __attribute__((target("arch=armv8.2-a+sve")))

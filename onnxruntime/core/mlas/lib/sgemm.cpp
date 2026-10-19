@@ -315,7 +315,7 @@ Return Value:
 
         do {
 #if defined(MLAS_USE_SVE)
-            if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+            if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (BackendKernelSelectorConfig != nullptr && BackendKernelSelectorConfig->enable_sve_sgemm)) {
                 MlasSveLoadStore(D, b);
             } else {
                 MlasStoreNeon4Lane(D, b);
@@ -367,7 +367,7 @@ Return Value:
             const float* b = B;
 
 #if defined(MLAS_USE_SVE)
-            if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+            if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (BackendKernelSelectorConfig != nullptr && BackendKernelSelectorConfig->enable_sve_sgemm)) {
                 MlasSveZeroInitialize(d);
             } else {
                 MlasStoreNeonZero4Lane(d, ZeroFloat32x4x4);
@@ -557,7 +557,7 @@ Return Value:
         }
 
 #elif defined(MLAS_USE_SVE)
-        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (BackendKernelSelectorConfig != nullptr && BackendKernelSelectorConfig->enable_sve_sgemm)) {
             MlasSveTranspose(D, b, ldb, x);
         } else {
             while (x >= 4) {
@@ -648,7 +648,7 @@ Return Value:
 
             if ((CountY & 8) != 0) {
 #if defined(MLAS_USE_SVE)
-                if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+                if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (BackendKernelSelectorConfig != nullptr && BackendKernelSelectorConfig->enable_sve_sgemm)) {
                     MlasSveTransposePackB8x4(&d[0], &b[0], ldb);
                 } else {
                     MlasSgemmTransposePackBNx4<8>(&d[0], &b[0], ldb);
@@ -674,7 +674,7 @@ Return Value:
 
             if ((CountY & 4) != 0) {
 #if defined(MLAS_USE_SVE)
-                if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+                if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (BackendKernelSelectorConfig != nullptr && BackendKernelSelectorConfig->enable_sve_sgemm)) {
                     MlasSveTransposePackB4x4(&d[0], &b[0], ldb);
                 } else {
                     MlasSgemmTransposePackBNx4<4>(&d[0], &b[0], ldb);
@@ -728,7 +728,7 @@ Return Value:
 
             if ((CountY & 1) != 0) {
 #if defined(MLAS_USE_SVE)
-                if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+                if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (BackendKernelSelectorConfig != nullptr && BackendKernelSelectorConfig->enable_sve_sgemm)) {
                     MlasSveScatterStore(&d[0], &b[0]);
                 } else {
                     MlasNeonScatterStore4(d, b);
@@ -840,7 +840,8 @@ MlasSgemmCopyPackB(
     const float* B,
     size_t ldb,
     size_t CountX,
-    size_t CountY
+    size_t CountY,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 /*++
 
@@ -871,6 +872,8 @@ Return Value:
 
 --*/
 {
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+
     //
     // Copy data from matrix B into the destination buffer 16 columns at a
     // time.
@@ -923,7 +926,8 @@ MlasSgemmTransposePackB(
     const float* B,
     size_t ldb,
     size_t CountY,
-    size_t CountX
+    size_t CountX,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 /*++
 
@@ -954,6 +958,8 @@ Return Value:
 
 --*/
 {
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+
     //
     // Transpose elements from matrix B into the packed buffer 16 rows at a
     // time.
@@ -1120,7 +1126,7 @@ Return Value:
         //
         const bool UseSveKernel =
             MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() &&
-            (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm) &&
+            (BackendKernelSelectorConfig != nullptr && BackendKernelSelectorConfig->enable_sve_sgemm) &&
             MlasSveVectorLengthWords() != 4;
 #else
         MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
@@ -1307,7 +1313,7 @@ Return Value:
     if (K <= MLAS_SGEMM_SVE_SMALLK_MAX && TransA == CblasNoTrans &&
         ((TransB == CblasNoTrans) || (K == 1 && ldb == 1)) &&
         MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() &&
-        (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+        (BackendKernelSelectorConfig != nullptr && BackendKernelSelectorConfig->enable_sve_sgemm)) {
 
         const size_t VectorLength = MlasSveVectorLengthWords();
 
