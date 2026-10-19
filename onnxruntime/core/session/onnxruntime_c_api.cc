@@ -3351,7 +3351,8 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
   auto new_graph_viewer = std::make_unique<GraphViewer>(graph, *indexed_sub_graph);
 
   std::unique_ptr<EpGraph> result;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(EpGraph::Create(std::move(new_graph_viewer), std::move(indexed_sub_graph), result));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(EpGraph::Create(std::move(new_graph_viewer), std::move(indexed_sub_graph), result,
+                                                  ep_graph->GetRetainedInitializerValues()));
 
   *dst_graph = result.release();
 

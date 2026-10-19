@@ -808,11 +808,12 @@ static const char* const kOrtSessionOptionsGqaValueLayout = "session.gqa_value_l
 // constant initializers.
 //
 // This option works in both JIT (non-cached) and AOT (EPContext model) flows:
-// - JIT: The EP should set drop_constant_initializers to false in OrtNodeFusionOptions so that ORT
-//   provides the initializer data as inputs to the compiled/fused node. The EP can then access these
-//   initializers at Compute() time via KernelContext_GetInput().
-//   NOTE: Extending the lifetime of initializer data obtained via ValueInfo_GetInitializerValue() during
-//   Compile() so that the EP can cache and reuse data pointers directly is planned but not yet implemented.
+// - JIT: For EPs that implement GetWeightlessSupport and report support, ORT retains constant initializer
+//   OrtValues obtained via ValueInfo_GetInitializerValue() during Compile() through EP teardown. The EP
+//   may cache these OrtValues and data pointers for read-only inference use, even with
+//   drop_constant_initializers=true. This pins the original allocation, not a later device copy.
+//   Alternatively, set drop_constant_initializers=false to access initializer inputs via
+//   KernelContext_GetInput(). Overridable initializers must use runtime inputs, not cached constants.
 // - AOT: ORT generates EPContext models with weightless EPContext nodes. The EP should use the
 //   "onnx_model_filename" EPContext node attribute or the "ep.context_source_model_path" session option
 //   to locate the source model's initializer data when creating a session from the compiled model.

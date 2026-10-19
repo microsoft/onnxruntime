@@ -19,6 +19,7 @@
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
+struct EpInitializerValues;
 struct EpNode;
 struct EpValueInfo;
 class NodeArg;
@@ -169,6 +170,8 @@ class PluginExecutionProvider : public IExecutionProvider {
     std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos;
   };
 
+  // Declared before ort_ep_ so borrowed constants remain valid through ReleaseEp().
+  std::unique_ptr<EpInitializerValues> retained_initializer_values_;
   UniqueOrtEp ort_ep_;
   OrtEpFactory& ep_factory_;
   std::vector<const OrtEpDevice*> ep_devices_;

@@ -636,13 +636,22 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
   api_fused_nodes.reserve(num_graphs);
   api_node_compute_infos_.reserve(api_node_compute_infos_.size() + num_graphs);
 
+  EpInitializerValues* retained_initializer_values = nullptr;
+  if (weightless_requested_ && ort_ep_->ort_version_supported >= 29) {
+    if (retained_initializer_values_ == nullptr) {
+      retained_initializer_values_ = std::make_unique<EpInitializerValues>();
+    }
+    retained_initializer_values = retained_initializer_values_.get();
+  }
+
   // Wrap GraphViewers into OrtGraphs and fused Nodes into OrtNodes.
   for (const FusedNodeAndGraph& node_and_graph : fused_nodes_and_graphs) {
     const GraphViewer& graph_viewer = node_and_graph.filtered_graph;
     const Node& fused_node = node_and_graph.fused_node;
 
     std::unique_ptr<EpGraph> ep_graph = nullptr;
-    ORT_RETURN_IF_ERROR(EpGraph::Create(graph_viewer, ep_graph));
+    ORT_RETURN_IF_ERROR(EpGraph::Create(graph_viewer, ep_graph, /*create_parent_node*/ false,
+                                        retained_initializer_values));
     api_graphs.push_back(ep_graph->ToExternal());
     api_graphs_holder.push_back(std::move(ep_graph));
 

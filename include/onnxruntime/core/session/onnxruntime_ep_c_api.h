@@ -655,8 +655,9 @@ struct OrtNodeFusionOptions {
 
   /** \brief If set to true, specify that the execution provider does not require ONNX Runtime to provide constant
    * initializers as inputs to the fused node during model inference. This is used when the execution
-   * provider saves a copy of constant initializers, and allows ONNX Runtime to release constant initializers that
-   * are not used by any execution provider.
+   * provider saves a copy of constant initializers, or borrows Compile-time constant data in weightless mode.
+   * This allows ONNX Runtime to release graph initializers that are not used by any execution provider.
+   * Retained weightless constants remain alive independently of this option.
    *
    * If not specified, defaults to false. That is, ONNX Runtime provides constant initializers as inputs to
    * the fused node by default.
@@ -2235,6 +2236,9 @@ struct OrtEp {
    * \note Do NOT cache the provided OrtGraph instances in any of the OrtNodeComputeInfo functions because the
    *       graphs are only valid for the duration of the call to Compile. Any graph/node/input/output
    *       names that are needed by the OrtNodeComputeInfo functions must be copied and stored by the OrtEp.
+   *       With weightless mode enabled and GetWeightlessSupport() reporting support, constant initializer
+   *       OrtValues obtained via ValueInfo_GetInitializerValue() may be cached for read-only use through
+   *       ReleaseEp(). This does not extend the lifetime of the graphs or their metadata.
    *
    * \note As of version 1.24, implementation of this function is optional if the EP does not compile nodes and
    *       uses a kernel registry instead.
@@ -2691,14 +2695,15 @@ struct OrtEp {
    * support weightless mode for all initializers on newer hardware but only for external initializers on
    * older hardware that requires weight transformation.
    *
-   * EPs that support weightless mode should set drop_constant_initializers to false in OrtNodeFusionOptions
-   * so that ORT provides the initializer data as inputs to the compiled/fused node. The EP can then access
-   * these initializers at Compute() time via KernelContext_GetInput().
+   * With weightless mode enabled and this callback reporting support, ORT retains constant initializer
+   * OrtValues obtained via ValueInfo_GetInitializerValue() during Compile() through ReleaseEp().
+   * The EP may cache these OrtValues and their data pointers for read-only use during Compute() and teardown,
+   * including constants in nested graphs and graph views. This retains the original allocation, which may
+   * coexist with separate runtime or device copies; it does not change the tensor's memory placement.
    *
-   * \note Extending the lifetime of initializer data obtained via ValueInfo_GetInitializerValue() during
-   *       Compile() so that the EP can cache and reuse data pointers directly (without going through
-   *       KernelContext) is planned but not yet implemented. Until then, KernelContext_GetInput() is the
-   *       only supported way to access initializer data at Compute() time.
+   * EPs that use cached constants without runtime initializer inputs may set drop_constant_initializers
+   * to true in OrtNodeFusionOptions. EPs that need initializers as runtime inputs should set it to false
+   * and access them via KernelContext_GetInput(). Overridable initializers must remain runtime inputs.
    *
    * \param[in] this_ptr The OrtEp instance.
    * \param[out] support Output parameter set to the EP's weightless support scope.
