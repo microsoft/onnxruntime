@@ -23,6 +23,7 @@ class RotaryEmbedding final : public CudaKernel {
   int rotary_embedding_dim;
   bool interleaved;
   bool is_packed_batching;
+  bool use_fp32_arithmetic;
 };
 
 }  // namespace cuda
