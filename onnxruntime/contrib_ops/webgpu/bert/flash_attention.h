@@ -208,17 +208,17 @@ Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& cont
 class FlashAttentionPrefillProgram final : public Program<FlashAttentionPrefillProgram> {
  public:
   FlashAttentionPrefillProgram(const std::string& kernel_name,
-                                     bool has_attention_bias,
-                                     bool is_unidirectional,
-                                     int qkv_head_size,
-                                     int qkv_num_heads,
-                                     bool use_seqlen_k,
-                                     uint32_t kv_step,
-                                     uint32_t shuffle_chunk,
-                                     bool has_local_window,
-                                     bool use_seqlens_q,
-                                     bool q_BNSH,
-                                     bool has_head_sink)
+                               bool has_attention_bias,
+                               bool is_unidirectional,
+                               int qkv_head_size,
+                               int qkv_num_heads,
+                               bool use_seqlen_k,
+                               uint32_t kv_step,
+                               uint32_t shuffle_chunk,
+                               bool has_local_window,
+                               bool use_seqlens_q,
+                               bool q_BNSH,
+                               bool has_head_sink)
       : Program{kernel_name},
         has_attention_bias_(has_attention_bias),
         is_unidirectional_(is_unidirectional),
@@ -261,31 +261,31 @@ class FlashAttentionPrefillProgram final : public Program<FlashAttentionPrefillP
 };
 
 bool CanApplyFlashAttentionPrefill(bool is_intel,
-                                         bool kv_cache_quantization_enabled);
+                                   bool kv_cache_quantization_enabled);
 
 Status ApplyFlashAttentionPrefill(onnxruntime::webgpu::ComputeContext& context,
-                                        const Tensor* Q,
-                                        const Tensor* present_key,
-                                        const Tensor* present_value,
-                                        const Tensor* attention_bias,
-                                        const Tensor* seqlen_k,
-                                        Tensor* attn_output,
-                                        const WebgpuAttentionParameters& parameters,
-                                        bool has_attention_bias,
-                                        bool use_seqlen_k,
-                                        bool has_local_window,
-                                        int local_window_size,
-                                        uint32_t present_sequence_length,
-                                        uint32_t subgroup_min_size,
-                                        float alpha,
-                                        uint32_t attn_bias_dim0,
-                                        uint32_t attn_bias_dim1,
-                                        uint32_t attn_bias_dim3,
-                                        bool use_seqlens_q,
-                                        const Tensor* seqlens_q,
-                                        bool q_BNSH,
-                                        bool has_head_sink,
-                                        const Tensor* head_sink);
+                                  const Tensor* Q,
+                                  const Tensor* present_key,
+                                  const Tensor* present_value,
+                                  const Tensor* attention_bias,
+                                  const Tensor* seqlen_k,
+                                  Tensor* attn_output,
+                                  const WebgpuAttentionParameters& parameters,
+                                  bool has_attention_bias,
+                                  bool use_seqlen_k,
+                                  bool has_local_window,
+                                  int local_window_size,
+                                  uint32_t present_sequence_length,
+                                  uint32_t subgroup_min_size,
+                                  float alpha,
+                                  uint32_t attn_bias_dim0,
+                                  uint32_t attn_bias_dim1,
+                                  uint32_t attn_bias_dim3,
+                                  bool use_seqlens_q,
+                                  const Tensor* seqlens_q,
+                                  bool q_BNSH,
+                                  bool has_head_sink,
+                                  const Tensor* head_sink);
 
 class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecodeQKVProgram> {
  public:

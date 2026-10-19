@@ -55,6 +55,8 @@ const head_size_vec : u32 = head_size / vec_factor;
 const num_qk_vec : u32 = kv_step / vec_factor;
 const k_head_vec_step : u32 = head_size_vec;
 const v_head_vec_step : u32 = min(16u, head_size_vec);
+// Padded to whole V slices so the last, partial slice can run a full v_head_vec_step iterations.
+const o_tile_vec : u32 = ((head_size_vec + v_head_vec_step - 1u) / v_head_vec_step) * v_head_vec_step;
 
 var<workgroup> k_tile : array<array<q_value_t, kv_step>, k_head_vec_step>;
 var<workgroup> v_tile : array<array<q_value_t, kv_step>, v_head_vec_step>;
@@ -118,7 +120,7 @@ $MAIN {
   }
 
   var q_tile : array<q_value_t, head_size_vec>;
-  var o_tile : array<q_value_t, head_size_vec>;
+  var o_tile : array<q_value_t, o_tile_vec>;
 
   // This thread's query row within the tile; may run past the sequence end.
   let seq_tile_idx = workgroup_idx % uniforms.num_seq_tile;
@@ -152,8 +154,6 @@ $MAIN {
 #endif
   let total_sequence_length = get_total_sequence_length(batch_idx);
 
-#if is_unidirectional
-  // Causal: query i attends to keys [0, i].
 #if use_seqlens_q
   // LEFT-aligned per-batch Q length: past_len_b = total_kv_b - q_len_b (>= 0).
   let q_len_b = u32(seqlens_q[batch_idx]);
@@ -166,6 +166,9 @@ $MAIN {
                                     0u,
                                     total_sequence_length <= uniforms.new_sequence_length);
 #endif
+
+#if is_unidirectional
+  // Causal: query i attends to keys [0, past + i].
   let max_causal_len_for_workgroup = past_sequence_length +
                                      (seq_tile_idx + 1) * workgroup_size_x;
   let loop_bound = min(total_sequence_length, max_causal_len_for_workgroup);
@@ -177,14 +180,11 @@ $MAIN {
 #endif
 
 #if has_local_window
-#if is_unidirectional
-  let first_query_causal_length = past_sequence_length + seq_tile_idx * workgroup_size_x + 1u;
-#else
-  let first_query_causal_length = total_sequence_length;
-#endif
-  let first_query_window_start = first_query_causal_length -
-                                 min(first_query_causal_length, uniforms.local_window_size);
-  let local_window_start = seq_causal_length - min(seq_causal_length, uniforms.local_window_size);
+  // The window's left bound is query-relative, with or without the causal right bound.
+  let first_query_end = past_sequence_length + seq_tile_idx * workgroup_size_x + 1u;
+  let query_end = past_sequence_length + q_idx_global + 1u;
+  let first_query_window_start = first_query_end - min(first_query_end, uniforms.local_window_size);
+  let local_window_start = query_end - min(query_end, uniforms.local_window_size);
 #else
   let first_query_window_start = 0u;
   let local_window_start = 0u;
@@ -245,9 +245,13 @@ $MAIN {
 
     // Exponentiate against the new max and accumulate this tile's denominator
     // contribution.
+    // Masked scores are already min_value. If nothing in this row is visible yet,
+    // new_max is min_value too and exp(min_value - new_max) would be 1, so
+    // exponentiate against 0 instead to keep masked entries at 0.
+    let exp_base = select(f32(new_max), 0.0, new_max <= min_value);
     var sum_vec = vec4<qk_precision>(0);
     for (var m = 0u; m < num_qk_vec; m++) {
-      qk[m] = vec4<qk_precision>(exp(vec4<f32>(qk[m]) - f32(new_max)));
+      qk[m] = vec4<qk_precision>(exp(vec4<f32>(qk[m]) - exp_base));
       sum_vec += qk[m];
     }
     let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
