@@ -10,6 +10,7 @@
 
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
 #include "contrib_ops/cuda/bert/gated_delta_net_mma.cuh"
+#include "core/common/logging/logging.h"
 #include "core/framework/stream_handles.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
@@ -510,33 +511,19 @@ __global__ void SparsePagedAttentionGroupedKernel(
               key_row = auxiliary_key + base;
               value_row = auxiliary_kv_shared ? key_row : auxiliary_value + base;
             }
-          } else if (logical_position < main_length && (!is_causal || logical_position <= query_position)) {
-            const int logical_block = logical_position / block_size;
-            const int physical_block = logical_block < max_num_blocks_per_seq
-                                           ? block_table[static_cast<int64_t>(batch_id) * max_num_blocks_per_seq +
-                                                         logical_block]
-                                           : -1;
-            if (physical_block >= 0 && physical_block < num_blocks) {
-              if (logical_position >= past_seqlens[batch_id]) {
-                const int current_token = cumulative_seqlens_q[batch_id] + logical_position - past_seqlens[batch_id];
-                const int slot = slot_mapping == nullptr
-                                     ? physical_block * block_size + logical_position % block_size
-                                     : slot_mapping[current_token];
-                if (slot >= 0 && slot < num_blocks * block_size) {
-                  key_row = current_key + static_cast<int64_t>(current_token) * current_key_stride +
-                            kv_head_id * kChannels;
-                  value_row = current_value + static_cast<int64_t>(current_token) * current_value_stride +
-                              kv_head_id * kChannels;
-                }
-              } else {
-                const int64_t base = ((static_cast<int64_t>(physical_block) * block_size +
-                                       logical_position % block_size) *
-                                          kv_num_heads +
-                                      kv_head_id) *
-                                     kChannels;
-                cached_key_row = key_cache + base;
-                cached_value_row = value_cache + base;
-              }
+          } else {
+            const int64_t candidate_ref = SparsePagedAttentionResolveMainCandidate(
+                logical_position, batch_id, query_position, main_length, past_seqlens[batch_id],
+                cumulative_seqlens_q, block_table, slot_mapping, block_size, num_blocks,
+                max_num_blocks_per_seq, is_causal);
+            if (candidate_ref >= kSparsePagedAttentionDirectCandidate) {
+              const int64_t current_token = candidate_ref - kSparsePagedAttentionDirectCandidate;
+              key_row = current_key + current_token * current_key_stride + kv_head_id * kChannels;
+              value_row = current_value + current_token * current_value_stride + kv_head_id * kChannels;
+            } else if (candidate_ref >= 0) {
+              const int64_t base = (candidate_ref * kv_num_heads + kv_head_id) * kChannels;
+              cached_key_row = key_cache + base;
+              cached_value_row = value_cache + base;
             }
           }
         }
@@ -1154,6 +1141,7 @@ Status SparseQkvToContext(
                                                                 kSparsePagedAttentionTile * (sizeof(const T*) +
                                                                                              sizeof(const TCACHE*) + sizeof(bool));
   if (use_grouped) {
+    LOGS_DEFAULT(VERBOSE) << "SparsePagedAttention dispatch: grouped, vectorized=" << enable_grouped_vectorized;
     const dim3 grouped_grid(static_cast<unsigned int>(token_head_count / 6), num_splits);
     const auto launch_grouped = [&](auto vectorized_tag) {
       SparsePagedAttentionGroupedKernel<T, TCACHE, decltype(vectorized_tag)::value><<<grouped_grid, 6 * 32, 0,
@@ -1225,6 +1213,8 @@ Status SparseQkvToContext(
                                                             : SparsePagedAttentionGqaTiledKernel<T, 12, 4>)
                                     : (use_six_heads ? SparsePagedAttentionGqaTiledKernel<T, 6>
                                                      : SparsePagedAttentionGqaTiledKernel<T>);
+      LOGS_DEFAULT(VERBOSE) << "SparsePagedAttention dispatch: tiled, heads=" << heads_per_block
+                            << ", qk=" << use_tensor_core_qk << ", pv=" << use_tensor_core_pv;
       tiled_kernel<<<tiled_grid, (use_tensor_core_pv ? 4 : heads_per_block) * 32, 0,
                      static_cast<cudaStream_t>(stream->GetHandle())>>>(
           prepared_query, prepared_key, prepared_value, data.key_cache, data.value_cache,

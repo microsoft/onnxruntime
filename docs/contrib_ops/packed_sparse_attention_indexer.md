@@ -299,6 +299,13 @@ mechanics with no packed equivalent):
   respective execution provider);
 - `qsa` state-capacity overflow safety;
 - active and disabled transactional QSA capture on CUDA and WebGPU;
+- the CUDA-only `QsaRadixTopKReferenceParity` test, which re-executes its cases in isolated
+  processes with `ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK=0` and `=1`, comparing random scores,
+  threshold ties, an empty row, a partial 32-key tile, and a fully selected radix bucket against
+  the reference indices and counts. Its eligible geometry selects the hierarchical path, so the
+  flag-on process must log `QsaPartialTopKKernel<true>` (the flag-off process must log
+  `QsaMergeTileTopKKernel`) or the test fails. Run it with
+  `--gtest_filter=PackedSparseAttentionIndexerCudaTest.QsaRadixTopKReferenceParity`;
 - FP32/FP16 (and CUDA-only BF16) numeric coverage against an in-file reference that mirrors this
   document's contract.
 

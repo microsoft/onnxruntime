@@ -16,12 +16,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,11 +31,13 @@
 #include "gtest/gtest.h"
 
 #include "contrib_ops/cpu/sparse/packed_sparse_attention_indexer_common.h"
+#include "core/common/logging/logging.h"
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
@@ -1072,6 +1076,78 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
   }
 }
 
+QsaPackedProblem MakeRadixTopKProblem(int visible_blocks, int block_topk, int token_count = 1) {
+  QsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.compress_ratio = 4;
+  problem.cumulative_sequence_lengths = {0, token_count};
+  problem.past_sequence_lengths = {visible_blocks * problem.compress_ratio};
+  problem.head_size = 128;
+  problem.num_heads = 4;
+  problem.rotary_width = 64;
+  problem.token_budget = block_topk * problem.compress_ratio;
+  problem.state_capacity = 2051;
+  problem = MakeQsaPackedProblem(std::move(problem));
+  return problem;
+}
+
+void SetRadixTopKScoreGroups(QsaPackedProblem& problem, int high_score_blocks, int tied_score_blocks,
+                             int high_score_index = -1) {
+  std::fill(problem.query.begin(), problem.query.end(), 1.0f);
+  std::fill(problem.query_norm_weight.begin(), problem.query_norm_weight.end(), 1.0f);
+  std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
+  std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
+  const int visible_blocks = problem.past_sequence_lengths[0] / problem.compress_ratio;
+  for (int block = 0; block < visible_blocks; ++block) {
+    const float value =
+        block == high_score_index || block < high_score_blocks ? 3.0f : block < tied_score_blocks ? 2.0f
+                                                                                                  : 1.0f;
+    std::fill_n(problem.past_key_state.begin() + static_cast<size_t>(block) * problem.head_size,
+                problem.head_size, value);
+  }
+}
+
+void RunRadixTopKCase(QsaPackedProblem problem) {
+  ASSERT_LE(problem.TotalTokens(), 64);
+  ASSERT_GE(problem.state_capacity, 2048);
+  ASSERT_EQ(problem.head_size, 128);
+  ASSERT_EQ(problem.compress_ratio, 4);
+  ASSERT_EQ(problem.num_heads, 4);
+  ASSERT_GT(problem.token_budget / problem.compress_ratio, 32);
+  ASSERT_LE(problem.token_budget / problem.compress_ratio, 512);
+  RunQsaPackedTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda);
+}
+
+void RunRadixTopKRegressionCases() {
+  const char* flag = std::getenv("ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK");
+  ASSERT_NE(flag, nullptr);
+  ASSERT_TRUE(std::string(flag) == "0" || std::string(flag) == "1");
+
+  auto random_scores = MakeRadixTopKProblem(2051, 35);
+  std::mt19937 generator(33393);
+  std::uniform_real_distribution<float> distribution(-0.5f, 0.5f);
+  for (float& value : random_scores.query) value = distribution(generator);
+  for (float& value : random_scores.past_key_state) value = distribution(generator);
+  RunRadixTopKCase(std::move(random_scores));
+
+  auto threshold_ties = MakeRadixTopKProblem(2051, 35);
+  SetRadixTopKScoreGroups(threshold_ties, 33, 71);
+  RunRadixTopKCase(std::move(threshold_ties));
+
+  auto empty_row = MakeRadixTopKProblem(2051, 35, 2);
+  empty_row.position_ids = {0, 8204};
+  SetRadixTopKScoreGroups(empty_row, 33, 71);
+  RunRadixTopKCase(std::move(empty_row));
+
+  auto partial_tile = MakeRadixTopKProblem(2051, 35);
+  SetRadixTopKScoreGroups(partial_tile, 34, 34, 2050);
+  RunRadixTopKCase(std::move(partial_tile));
+
+  auto fully_selected_bucket = MakeRadixTopKProblem(64, 64);
+  SetRadixTopKScoreGroups(fully_selected_bucket, 64, 64);
+  RunRadixTopKCase(std::move(fully_selected_bucket));
+}
+
 }  // namespace
 
 TEST(PackedSparseAttentionIndexerTest, QsaFloat) { RunQsaPackedTest<float>(1.0e-5f); }
@@ -1253,6 +1329,31 @@ TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalTopK) {
                 problem.head_size, value);
   }
   RunQsaPackedTest<float>(1.0e-5f, std::move(problem));
+}
+
+TEST(PackedSparseAttentionIndexerCudaTest, QsaRadixTopKReferenceParity) {
+#if GTEST_HAS_DEATH_TEST
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+  for (const char* radix_flag : {"0", "1"}) {
+    const char* dispatch_marker =
+        radix_flag[0] == '1' ? "QsaPartialTopKKernel<true>" : "QsaMergeTileTopKKernel";
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK", radix_flag}}};
+    ASSERT_EXIT(
+        {
+          logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
+          logging::LoggingManager::SetDefaultLoggerVerbosity(1);
+          RunRadixTopKRegressionCases();
+          std::_Exit(::testing::Test::HasFailure() ? EXIT_FAILURE : EXIT_SUCCESS);
+        },
+        ::testing::ExitedWithCode(EXIT_SUCCESS), dispatch_marker);
+  }
+#else
+  GTEST_SKIP() << "GoogleTest death tests are not available";
+#endif
 }
 
 TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalPackedVerification) {

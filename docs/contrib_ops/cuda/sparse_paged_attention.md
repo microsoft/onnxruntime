@@ -58,5 +58,16 @@ scoring for eligible twelve-head prefill tiles. With that option enabled,
 path. These environment options default to off and are cached on first use.
 Neither option establishes broad model-quality or throughput equivalence.
 
+The CUDA Python regression `test_sparse_paged_attention_prefill_cuda.py` runs
+scalar, QK-only, QK+PV, BF16 QK, and both grouped-load configurations in fresh
+processes. Each compares to an independent reference with multiple/partial
+tiles, invalid selections, suppressed-write prefix hits, and attention sinks.
+Verbose dispatch messages are asserted so an unintended fallback cannot pass.
+Run it against a build containing this change on SM80 or newer:
+
+```bash
+python -m pytest onnxruntime/test/python/transformers/test_sparse_paged_attention_prefill_cuda.py
+```
+
 Selector fusion, paged auxiliary storage, and auxiliary quantization remain
 outside this operator's scope.

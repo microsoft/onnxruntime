@@ -36,6 +36,7 @@
 
 #include "contrib_ops/cpu/sparse/packed_sparse_attention_indexer_common.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_indexer_device_math.cuh"
+#include "core/common/logging/logging.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "core/providers/cuda/cu_inc/topk_warp_sort.cuh"
@@ -1579,10 +1580,12 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     static const bool use_radix_topk =
         ParseEnvironmentVariableWithDefault<bool>("ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK", false);
     if (use_radix_topk) {
+      LOGS_DEFAULT(VERBOSE) << "[PackedSparseAttentionIndexer] dispatching QsaPartialTopKKernel<true>";
       QsaPartialTopKKernel<true><<<token_blocks, kThreads, 0, stream>>>(
           selection_workspace, cumulative_sequence_lengths, past_sequence_lengths, position_ids,
           present_state_lengths, overflow_flags, params);
     } else {
+      LOGS_DEFAULT(VERBOSE) << "[PackedSparseAttentionIndexer] dispatching QsaMergeTileTopKKernel";
       for (int list_width = kHierarchicalTopKTileBlocks; list_width < key_stride; list_width *= 2) {
         const int pairs_per_row = (key_stride + 2 * list_width - 1) / (2 * list_width);
         const int64_t merge_work = static_cast<int64_t>(params.total_tokens) * pairs_per_row;

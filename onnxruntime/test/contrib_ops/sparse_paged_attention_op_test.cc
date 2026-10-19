@@ -837,6 +837,14 @@ TEST(SparsePagedAttention, Cuda_GqaTiledPrefillHandlesMixedSourcesAndMasks) {
       }
     }
   }
+  for (int head = 0; head < kv_heads; ++head) {
+    const int cached_offset = ((past_length + 5) * kv_heads + head) * head_size;
+    const int current_offset = (5 * kv_heads + head) * head_size;
+    std::fill_n(key_cache.begin() + cached_offset, head_size, MLFloat16(0.75f));
+    std::fill_n(value_cache.begin() + cached_offset, head_size, MLFloat16(4.0f));
+    std::fill_n(key.begin() + current_offset, head_size, MLFloat16(-0.75f));
+    std::fill_n(value.begin() + current_offset, head_size, MLFloat16(-4.0f));
+  }
   auto expected = HalfVector(0.0f, static_cast<int>(query.size()));
   for (int token = 0; token < token_count; ++token) {
     for (int head = 0; head < num_heads; ++head) {
@@ -845,8 +853,7 @@ TEST(SparsePagedAttention, Cuda_GqaTiledPrefillHandlesMixedSourcesAndMasks) {
       float numerator = 0.0f;
       for (int index = 0; index < counts[token]; ++index) {
         const int position = selected[token * selected_width + index];
-        if (position < 0 || position > past_length + token || blocks[position / kBlockSize] < 0 ||
-            (position >= past_length && slots[position - past_length] < 0)) {
+        if (position < 0 || position > past_length + token || blocks[position / kBlockSize] < 0) {
           continue;
         }
         const int offset = (position * kv_heads + kv_head) * head_size;
