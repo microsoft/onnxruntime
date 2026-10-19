@@ -36,7 +36,7 @@ struct HyperConnectionLowRankMixTensors {
   const T* prev_post_gate = nullptr;
   T* pre_output = nullptr;
   T* post_gate = nullptr;
-  T* streams_out = nullptr;  // written when the prologue is present; must then be non-null
+  T* streams_out = nullptr;  // optional on the unfused path; required on the fused path when the prologue is present
 };
 
 // Rows up to this value use the two-kernel fused path; larger inputs use the cuBLAS based path.

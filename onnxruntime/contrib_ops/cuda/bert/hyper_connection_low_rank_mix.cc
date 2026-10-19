@@ -122,12 +122,8 @@ Status HyperConnectionLowRankMix<T>::ComputeInternal(OpKernelContext* context) c
   if (has_prologue) {
     tensors.prev_block_output = reinterpret_cast<const CudaT*>(prev_block_output->Data<T>());
     tensors.prev_post_gate = reinterpret_cast<const CudaT*>(prev_post_gate->Data<T>());
-    // The kernels need the post-mixed streams; use scratch memory if the graph does not consume them.
     if (streams_out != nullptr) {
       tensors.streams_out = reinterpret_cast<CudaT*>(streams_out->MutableData<T>());
-    } else {
-      streams_scratch = GetScratchBuffer<T>(static_cast<size_t>(params.rows * features), GetComputeStream(context));
-      tensors.streams_out = reinterpret_cast<CudaT*>(streams_scratch.get());
     }
   } else if (streams_out != nullptr) {
     // Without a prologue the streams pass through unchanged.
@@ -146,6 +142,11 @@ Status HyperConnectionLowRankMix<T>::ComputeInternal(OpKernelContext* context) c
 
   const auto& device_prop = GetDeviceProp();
   if (aligned && CanUseFusedHyperConnectionLowRankMix<CudaT>(device_prop, config)) {
+    if (has_prologue && tensors.streams_out == nullptr) {
+      // HcUpPreKernel reads the post-mixed streams written by HcDownKernel; allocate scratch only for the fused path.
+      streams_scratch = GetScratchBuffer<T>(static_cast<size_t>(params.rows * features), GetComputeStream(context));
+      tensors.streams_out = reinterpret_cast<CudaT*>(streams_scratch.get());
+    }
     auto scratch = GetScratchBuffer<float>(HyperConnectionLowRankMixFusedScratchElements(config),
                                            GetComputeStream(context));
     return LaunchHyperConnectionLowRankMixFused<CudaT>(device_prop, Stream(context), config, tensors,

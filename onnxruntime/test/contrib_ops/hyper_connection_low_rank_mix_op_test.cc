@@ -134,40 +134,39 @@ Expected Reference(const Problem& p, const Attrs& a) {
 }
 
 template <typename T>
-void RunTest(int64_t rows, int64_t C, int64_t H, int64_t R, bool prologue, bool request_streams_out,
-             float tolerance, unsigned seed = 1, bool constant_weights = true) {
+void RunProblem(const Problem& p, const Attrs& a, bool request_streams_out, float tolerance,
+                bool constant_weights = true) {
   auto cuda = DefaultCudaExecutionProvider();
   if (!cuda) {
     GTEST_SKIP() << "HyperConnectionLowRankMix is only implemented for CUDA";
   }
-  const Attrs a;
-  const Problem p = MakeProblem<T>(rows, C, H, R, prologue, seed);
   const Expected e = Reference<T>(p, a);
-  const int64_t K = C * H;
+  const int64_t K = p.C * p.H;
+  const bool prologue = !p.prev_out.empty();
 
   OpTester test("HyperConnectionLowRankMix", 1, kMSDomain);
-  test.AddAttribute<int64_t>("num_branches", C);
+  test.AddAttribute<int64_t>("num_branches", p.C);
   test.AddAttribute<float>("epsilon", a.epsilon);
   test.AddAttribute<float>("reduction_scale", a.reduction_scale);
   test.AddAttribute<float>("silu_alpha", a.silu_alpha);
   test.AddAttribute<float>("gate_div", a.gate_div);
   test.AddAttribute<float>("gate_mul", a.gate_mul);
-  test.AddInput<T>("streams", {rows, K}, ToTensorType<T>(p.streams));
+  test.AddInput<T>("streams", {p.rows, K}, ToTensorType<T>(p.streams));
   test.AddInput<T>("norm_scale", {K}, ToTensorType<T>(p.norm), constant_weights);
-  test.AddInput<T>("down_weight", {K, R}, ToTensorType<T>(p.down), constant_weights);
-  test.AddInput<T>("up_weight", {R, K}, ToTensorType<T>(p.up), constant_weights);
-  test.AddInput<T>("inject_weight", {K, C}, ToTensorType<T>(p.inject), constant_weights);
+  test.AddInput<T>("down_weight", {K, p.R}, ToTensorType<T>(p.down), constant_weights);
+  test.AddInput<T>("up_weight", {p.R, K}, ToTensorType<T>(p.up), constant_weights);
+  test.AddInput<T>("inject_weight", {K, p.C}, ToTensorType<T>(p.inject), constant_weights);
   if (prologue) {
-    test.AddInput<T>("prev_block_output", {rows, H}, ToTensorType<T>(p.prev_out));
-    test.AddInput<T>("prev_post_gate", {rows, C}, ToTensorType<T>(p.prev_gate));
+    test.AddInput<T>("prev_block_output", {p.rows, p.H}, ToTensorType<T>(p.prev_out));
+    test.AddInput<T>("prev_post_gate", {p.rows, p.C}, ToTensorType<T>(p.prev_gate));
   } else {
     test.AddOptionalInputEdge<T>();
     test.AddOptionalInputEdge<T>();
   }
-  test.AddOutput<T>("pre_output", {rows, H}, ToTensorType<T>(e.pre));
-  test.AddOutput<T>("post_gate", {rows, C}, ToTensorType<T>(e.gate));
+  test.AddOutput<T>("pre_output", {p.rows, p.H}, ToTensorType<T>(e.pre));
+  test.AddOutput<T>("post_gate", {p.rows, p.C}, ToTensorType<T>(e.gate));
   if (request_streams_out) {
-    test.AddOutput<T>("streams_out", {rows, K}, ToTensorType<T>(e.streams));
+    test.AddOutput<T>("streams_out", {p.rows, K}, ToTensorType<T>(e.streams));
   } else {
     test.AddOptionalOutputEdge<T>();
   }
@@ -176,6 +175,14 @@ void RunTest(int64_t rows, int64_t C, int64_t H, int64_t R, bool prologue, bool 
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(std::move(cuda));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+template <typename T>
+void RunTest(int64_t rows, int64_t C, int64_t H, int64_t R, bool prologue, bool request_streams_out,
+             float tolerance, unsigned seed = 1, bool constant_weights = true) {
+  const Attrs a;
+  const Problem p = MakeProblem<T>(rows, C, H, R, prologue, seed);
+  RunProblem<T>(p, a, request_streams_out, tolerance, constant_weights);
 }
 
 constexpr float kFp32Tol = 2e-4f;
@@ -208,7 +215,47 @@ TEST(HyperConnectionLowRankMixTest, FusedMultipleKSlicesAndWeightChunks) {
 
 TEST(HyperConnectionLowRankMixTest, UnfusedManyRows) {
   RunTest<MLFloat16>(9, 4, 16, 8, true, true, kFp16Tol);
+  RunTest<MLFloat16>(9, 4, 16, 8, true, false, kFp16Tol);
   RunTest<BFloat16>(17, 4, 64, 16, false, true, kBf16Tol);
+  RunTest<BFloat16>(17, 4, 64, 16, true, false, kBf16Tol);
+}
+
+TEST(HyperConnectionLowRankMixTest, UnfusedFloat16CancellingDotProducts) {
+  // At K = C * H = 20480, cuBLAS selects a split-K kernel for the general-path GEMMs; without
+  // CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION, the per-split partial sums exceed FP16 max (65504)
+  // and overflow to +/-Inf (producing NaN on reduction) instead of cancelling in FP32 to small finite values.
+  for (const int64_t R : {int64_t{6}, int64_t{8}}) {
+    const int64_t rows = 9;
+    const int64_t C = 4;
+    const int64_t H = 5120;
+    const int64_t K = C * H;
+    const int64_t half_k = K / 2;
+
+    Attrs a;
+    a.epsilon = 0.0f;
+    Problem p{rows, C, H, R, {}, {}, {}, {}, {}, {}, {}};
+    p.streams.assign(static_cast<size_t>(rows * K), 1.0f);
+    p.norm.assign(static_cast<size_t>(K), 16.0f);  // hn == 16.0 everywhere
+    p.down.assign(static_cast<size_t>(K * R), 0.0f);
+    for (int64_t j = 0; j < R; ++j) {
+      for (int64_t k = 0; k < half_k - 1; ++k) {
+        p.down[static_cast<size_t>(k * R + j)] = 32.0f;
+        p.down[static_cast<size_t>((half_k + k) * R + j)] = -32.0f;
+      }
+      p.down[static_cast<size_t>((half_k - 1) * R + j)] = 0.0625f * static_cast<float>((j % 4) - 1);
+    }
+    p.up.assign(static_cast<size_t>(R * K), 0.125f);
+    p.inject.assign(static_cast<size_t>(K * C), 0.0f);
+    for (int64_t c = 0; c < C; ++c) {
+      for (int64_t k = 0; k < half_k - 1; ++k) {
+        p.inject[static_cast<size_t>(k * C + c)] = 32.0f;
+        p.inject[static_cast<size_t>((half_k + k) * C + c)] = -32.0f;
+      }
+      p.inject[static_cast<size_t>((half_k - 1) * C + c)] = 0.0625f * static_cast<float>(c - 1);
+    }
+
+    RunProblem<MLFloat16>(p, a, false, 1e-3f);
+  }
 }
 
 TEST(HyperConnectionLowRankMixTest, UnfusedUnsupportedShape) {

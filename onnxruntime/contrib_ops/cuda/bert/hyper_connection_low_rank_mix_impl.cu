@@ -617,7 +617,9 @@ __global__ void NormKernel(const T* __restrict__ streams, const T* __restrict__ 
     float v = to_float<T>(streams[base + h]);
     if constexpr (kPost) {
       v = Rnd<T>(fmaf(gate_c, to_float<T>(prev_out[row * hidden + h]), v));
-      streams_out[base + h] = from_float<T>(v);
+      if (streams_out != nullptr) {
+        streams_out[base + h] = from_float<T>(v);
+      }
     }
     sum_sq += v * v;
   }
@@ -677,6 +679,36 @@ constexpr cudaDataType_t CudaDataType() {
     return CUDA_R_16BF;
   }
 }
+
+// Disallows reduced-precision split-K reductions (and TF32 tensor op math) around the unfused GEMMs,
+// restoring the caller's cuBLAS math mode on scope exit including on failure.
+class ScopedCublasMathMode {
+ public:
+  ScopedCublasMathMode() = default;
+  ScopedCublasMathMode(const ScopedCublasMathMode&) = delete;
+  ScopedCublasMathMode& operator=(const ScopedCublasMathMode&) = delete;
+
+  Status Set(cublasHandle_t cublas, cublasMath_t mode) {
+    CUBLAS_RETURN_IF_ERROR(cublasGetMathMode(cublas, &prev_mode_));
+    if (prev_mode_ != mode) {
+      CUBLAS_RETURN_IF_ERROR(cublasSetMathMode(cublas, mode));
+      handle_ = cublas;
+      restore_ = true;
+    }
+    return Status::OK();
+  }
+
+  ~ScopedCublasMathMode() {
+    if (restore_) {
+      (void)cublasSetMathMode(handle_, prev_mode_);
+    }
+  }
+
+ private:
+  cublasHandle_t handle_ = nullptr;
+  cublasMath_t prev_mode_ = CUBLAS_DEFAULT_MATH;
+  bool restore_ = false;
+};
 
 // Row-major C[m, n] = A[m, k] * B[k, n] with fp32 accumulation and T output.
 template <typename T>
@@ -805,6 +837,8 @@ Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, c
   } else {
     ORT_RETURN_IF_NOT(CanUseFusedHyperConnectionLowRankMix<T>(device_prop, config),
                       "unsupported problem for the fused HyperConnectionLowRankMix path");
+    ORT_RETURN_IF_NOT(tensors.prev_block_output == nullptr || tensors.streams_out != nullptr,
+                      "fused HyperConnectionLowRankMix requires streams_out buffer when prologue is present");
     const FusedGeometry g = GetFusedGeometry(config);
     float* partial = scratch;
     float* inv_rms = scratch + static_cast<size_t>(config.rows) * g.splits * g.partial_stride;
@@ -842,10 +876,15 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
   }
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
+  ScopedCublasMathMode math_mode;
+  ORT_RETURN_IF_ERROR(math_mode.Set(cublas, CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION));
+
   ORT_RETURN_IF_ERROR(Gemm<T>(cublas, rows, config.rank, K, hn, tensors.down_weight, down));
   ORT_RETURN_IF_ERROR(Gemm<T>(cublas, rows, config.branches, K, hn, tensors.inject_weight, inject));
 
   const int64_t down_count = rows * config.rank;
+  ORT_RETURN_IF_NOT(BlocksFor(down_count) <= std::numeric_limits<int>::max(),
+                    "CUDA launch requires too many blocks");
   ScaledSiluKernel<T><<<static_cast<int>(BlocksFor(down_count)), kThreads, 0, stream>>>(
       down, down_count, config.silu_alpha);
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));

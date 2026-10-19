@@ -451,6 +451,101 @@ class TestHyperConnectionLowRankMix(unittest.TestCase):
         self.assertEqual(gate.shape, (0, C))
         self.assertEqual(streams_out.shape, (0, C * H))
 
+    def test_unfused_prologue_without_streams_out(self):
+        """When streams_out is omitted on the unfused path with a prologue, pre_output and post_gate stay exact."""
+        C, H, R = 4, 64, 16
+        rows = 16
+        K = C * H
+        weight_names = ("norm_scale", "down_weight", "up_weight", "inject_weight")
+        for io_elem in (TP.FLOAT16, TP.BFLOAT16):
+            dtype = DTYPES[io_elem]
+            with self.subTest(io_elem=io_elem):
+                inputs = make_inputs(dtype, rows, C, H, R, True, seed=12)
+                initializers = [make_initializer(k, io_elem, inputs[k]) for k in weight_names]
+                nodes = [
+                    helper.make_node("Cast", ["streams"], ["streams_t"], to=io_elem),
+                    helper.make_node("Cast", ["prev_block_output"], ["prev_block_output_t"], to=io_elem),
+                    helper.make_node("Cast", ["prev_post_gate"], ["prev_post_gate_t"], to=io_elem),
+                    helper.make_node(
+                        "HyperConnectionLowRankMix",
+                        ["streams_t", *weight_names, "prev_block_output_t", "prev_post_gate_t"],
+                        ["pre_output_t", "post_gate_t"],
+                        domain="com.microsoft",
+                        num_branches=C,
+                        **ATTRS,
+                    ),
+                    helper.make_node("Cast", ["pre_output_t"], ["pre_output"], to=TP.FLOAT),
+                    helper.make_node("Cast", ["post_gate_t"], ["post_gate"], to=TP.FLOAT),
+                ]
+                graph = helper.make_graph(
+                    nodes,
+                    "hc_unfused_no_streams_out",
+                    [
+                        helper.make_tensor_value_info("streams", TP.FLOAT, [rows, K]),
+                        helper.make_tensor_value_info("prev_block_output", TP.FLOAT, [rows, H]),
+                        helper.make_tensor_value_info("prev_post_gate", TP.FLOAT, [rows, C]),
+                    ],
+                    [
+                        helper.make_tensor_value_info("pre_output", TP.FLOAT, [rows, H]),
+                        helper.make_tensor_value_info("post_gate", TP.FLOAT, [rows, C]),
+                    ],
+                    initializer=initializers,
+                )
+                model = helper.make_model(
+                    graph, opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)]
+                )
+                model.ir_version = 10
+                so = ort.SessionOptions()
+                so.log_severity_level = 3
+                session = ort.InferenceSession(model.SerializeToString(), so, providers=["CUDAExecutionProvider"])
+                pre, gate = session.run(
+                    None,
+                    {
+                        "streams": inputs["streams"].numpy(),
+                        "prev_block_output": inputs["prev_block_output"].numpy(),
+                        "prev_post_gate": inputs["prev_post_gate"].numpy(),
+                    },
+                )
+                exp_pre, exp_gate, _ = reference(inputs, dtype, C, H, ATTRS)
+                rtol, atol = tolerances(io_elem)
+                np.testing.assert_allclose(pre, exp_pre.numpy(), rtol=rtol, atol=atol)
+                np.testing.assert_allclose(gate, exp_gate.numpy(), rtol=rtol, atol=atol)
+
+    def test_unfused_fp16_cancelling_dot_products(self):
+        """FP16 general-path GEMMs must disallow reduced-precision split-K reductions that would overflow FP16."""
+        C, H = 4, 5120
+        K = C * H
+        half_k = K // 2
+        attrs = dict(ATTRS, epsilon=0.0)
+        for rows, R in ((9, 6), (9, 8)):
+            with self.subTest(rows=rows, R=R):
+                down = torch.zeros(K, R, dtype=torch.float32)
+                down[: half_k - 1, :] = 32.0
+                down[half_k : K - 1, :] = -32.0
+                for j in range(R):
+                    down[half_k - 1, j] = 0.0625 * ((j % 4) - 1)
+
+                inject = torch.zeros(K, C, dtype=torch.float32)
+                inject[: half_k - 1, :] = 32.0
+                inject[half_k : K - 1, :] = -32.0
+                for c in range(C):
+                    inject[half_k - 1, c] = 0.0625 * (c - 1)
+
+                inputs = {
+                    "streams": torch.ones(rows, K, dtype=torch.float32),
+                    "norm_scale": torch.full((K,), 16.0, dtype=torch.float32),
+                    "down_weight": down,
+                    "up_weight": torch.full((R, K), 0.125, dtype=torch.float32),
+                    "inject_weight": inject,
+                }
+                session = self.cache.get(TP.FLOAT16, C, H, R, False, attrs)
+                pre, gate, streams_out = session.run(None, {k: v.numpy() for k, v in inputs.items()})
+                exp_pre, exp_gate, exp_streams = reference(inputs, torch.float16, C, H, attrs)
+                rtol, atol = tolerances(TP.FLOAT16)
+                np.testing.assert_allclose(pre, exp_pre.numpy(), rtol=rtol, atol=atol)
+                np.testing.assert_allclose(gate, exp_gate.numpy(), rtol=rtol, atol=atol)
+                np.testing.assert_allclose(streams_out, exp_streams.numpy(), rtol=rtol, atol=atol)
+
 
 if __name__ == "__main__":
     unittest.main()
