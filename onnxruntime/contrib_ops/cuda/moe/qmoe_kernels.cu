@@ -1583,8 +1583,8 @@ __device__ __forceinline__ T QMoEFp8Weight(const QMoEFp8ProjectionParams& params
   return static_cast<T>(DecodeFloat8E4M3FN<NativeDecode>(weights[weight_index]) * scale);
 }
 
-template <typename T, bool NativeDecode = false>
-__global__ void QMoEFp8GemvKernel(QMoEFp8ProjectionParams params, const T* input, T* output) {
+template <typename T, bool NativeDecode = false, typename OutputT = T>
+__global__ void QMoEFp8GemvKernel(QMoEFp8ProjectionParams params, const T* input, OutputT* output) {
   const int row = static_cast<int>(blockIdx.y);
   const int expert = params.experts[row];
   const int output_col = static_cast<int>(blockIdx.x) * 4 + threadIdx.x / 32;
@@ -1599,7 +1599,7 @@ __global__ void QMoEFp8GemvKernel(QMoEFp8ProjectionParams params, const T* input
   }
   sum = WarpReduceSum(sum);
   if (threadIdx.x % 32 == 0) {
-    output[static_cast<int64_t>(row) * params.n + output_col] = static_cast<T>(sum);
+    output[static_cast<int64_t>(row) * params.n + output_col] = static_cast<OutputT>(sum);
   }
 }
 
@@ -1615,7 +1615,9 @@ bool QMoEFp8GemvSupportsNativeDecode() {
 
 bool QMoEFp8GemvKernelUsesNativeDecode(const void* kernel) {
   return kernel == reinterpret_cast<const void*>(QMoEFp8GemvKernel<half, true>) ||
-         kernel == reinterpret_cast<const void*>(QMoEFp8GemvKernel<__nv_bfloat16, true>);
+         kernel == reinterpret_cast<const void*>(QMoEFp8GemvKernel<__nv_bfloat16, true>) ||
+         kernel == reinterpret_cast<const void*>(QMoEFp8GemvKernel<half, true, float>) ||
+         kernel == reinterpret_cast<const void*>(QMoEFp8GemvKernel<__nv_bfloat16, true, float>);
 }
 
 __global__ void QMoEFp8ExpertTilesKernel(const int64_t* expert_offsets, int* tile_offsets, int num_experts) {
@@ -1633,8 +1635,8 @@ void LaunchQMoEFp8ExpertTiles(const int64_t* expert_offsets, int* tile_offsets,
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
-template <typename T>
-__global__ void QMoEFp8GemmKernel(QMoEFp8ProjectionParams params, const T* input, T* output) {
+template <typename T, typename OutputT>
+__global__ void QMoEFp8GemmKernel(QMoEFp8ProjectionParams params, const T* input, OutputT* output) {
 #if __CUDA_ARCH__ >= 800
   namespace wmma = nvcuda::wmma;
   const int tile = static_cast<int>(blockIdx.y);
@@ -1696,33 +1698,33 @@ __global__ void QMoEFp8GemmKernel(QMoEFp8ProjectionParams params, const T* input
     const int64_t row = row_start + index / 64;
     const int col = column_start + index % 64;
     if (row < row_end && col < params.n) {
-      output[row * params.n + col] = static_cast<T>(output_tile[index]);
+      output[row * params.n + col] = static_cast<OutputT>(output_tile[index]);
     }
   }
 #endif
 }
 
-template <typename T>
+template <typename T, typename OutputT>
 void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
-                             const T* input, T* output, cudaStream_t stream) {
+                             const T* input, OutputT* output, cudaStream_t stream) {
   if (params.tile_offsets) {
     const int tiles = std::min(params.expanded_rows,
                                std::min(params.num_experts, params.expanded_rows) + params.expanded_rows / 16);
-    QMoEFp8GemmKernel<<<dim3((params.n + 63) / 64, tiles), 128, 0, stream>>>(params, input, output);
+    QMoEFp8GemmKernel<T, OutputT><<<dim3((params.n + 63) / 64, tiles), 128, 0, stream>>>(params, input, output);
   } else {
     static const bool native_decode =
         ParseEnvironmentVariableWithDefault<bool>("ORT_QMOE_FP8_GEMV_NATIVE_DECODE", false);
     if (native_decode) {
-      QMoEFp8GemvKernel<T, true><<<dim3((params.n + 3) / 4, params.expanded_rows), 128, 0, stream>>>(params, input, output);
+      QMoEFp8GemvKernel<T, true, OutputT><<<dim3((params.n + 3) / 4, params.expanded_rows), 128, 0, stream>>>(params, input, output);
     } else {
-      QMoEFp8GemvKernel<T, false><<<dim3((params.n + 3) / 4, params.expanded_rows), 128, 0, stream>>>(params, input, output);
+      QMoEFp8GemvKernel<T, false, OutputT><<<dim3((params.n + 3) / 4, params.expanded_rows), 128, 0, stream>>>(params, input, output);
     }
   }
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
-template <typename T>
-__global__ void QMoEFp8ActivationKernel(const T* input, const T* bias, T* output,
+template <typename T, typename InputT>
+__global__ void QMoEFp8ActivationKernel(const InputT* input, const T* bias, T* output,
                                         const int* experts, int rows, int inter_size, int fusion,
                                         float alpha, float beta, float limit) {
   const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -1750,8 +1752,8 @@ __global__ void QMoEFp8ActivationKernel(const T* input, const T* bias, T* output
   output[index] = static_cast<T>(gate / (1.0f + expf(-alpha * gate)) * up);
 }
 
-template <typename T>
-void LaunchQMoEFp8Activation(const T* input, const T* bias, T* output,
+template <typename T, typename InputT>
+void LaunchQMoEFp8Activation(const InputT* input, const T* bias, T* output,
                              const int* experts, int rows, int inter_size, int fusion,
                              float alpha, float beta, float limit, cudaStream_t stream) {
   const int64_t count = static_cast<int64_t>(rows) * inter_size;
@@ -1762,8 +1764,12 @@ void LaunchQMoEFp8Activation(const T* input, const T* bias, T* output,
 
 template void LaunchQMoEFp8Projection<half>(const QMoEFp8ProjectionParams&, const half*, half*, cudaStream_t);
 template void LaunchQMoEFp8Projection<__nv_bfloat16>(const QMoEFp8ProjectionParams&, const __nv_bfloat16*, __nv_bfloat16*, cudaStream_t);
+template void LaunchQMoEFp8Projection<half, float>(const QMoEFp8ProjectionParams&, const half*, float*, cudaStream_t);
+template void LaunchQMoEFp8Projection<__nv_bfloat16, float>(const QMoEFp8ProjectionParams&, const __nv_bfloat16*, float*, cudaStream_t);
 template void LaunchQMoEFp8Activation<half>(const half*, const half*, half*, const int*, int, int, int, float, float, float, cudaStream_t);
 template void LaunchQMoEFp8Activation<__nv_bfloat16>(const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, const int*, int, int, int, float, float, float, cudaStream_t);
+template void LaunchQMoEFp8Activation<half, float>(const float*, const half*, half*, const int*, int, int, int, float, float, float, cudaStream_t);
+template void LaunchQMoEFp8Activation<__nv_bfloat16, float>(const float*, const __nv_bfloat16*, __nv_bfloat16*, const int*, int, int, int, float, float, float, cudaStream_t);
 
 template <typename T>
 __global__ void QMoEDequantizeFp8WeightsKernel(
