@@ -105,6 +105,8 @@ tokens per prompt. **Prompts 1-2 are warmup; all four metrics use prompts 3-5 on
 
 Loading and warmup peaks are excluded; allocations still resident during prompts 3-5 are included.
 Published values come from the JSON `measurements` summary, not the whole-process `memory` peaks.
+For CPU-only runs, use `--provider cpu --cpu-offload-experts 0 --no-cuda-graph`.
+These runs sample process RSS without requiring `CUDA_VISIBLE_DEVICES` or NVML; GPU memory fields are JSON `null`.
 
 Measured 2026-10-16 at `358cb402b1` (adaptive/basic), `408fcd0ba2` (layered 80%), `7c50cd1982` (layered 70%)
 and `bc0f54ff6b` (position sweep):

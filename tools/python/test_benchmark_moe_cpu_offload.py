@@ -7,15 +7,57 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from benchmark_moe_cpu_offload import (
+    MemorySampler,
     decode_summary,
     effective_counter_parameters,
     model_session_options,
     parse_args,
+    physical_gpu_index,
     summarize_measurements,
 )
 
 
 class TestMoeOffloadBenchmark(unittest.TestCase):
+    def test_cpu_memory_sampling_without_cuda(self):
+        for visible_devices in ("", "-1", "GPU-unavailable", "0,1"):
+            with self.subTest(visible_devices=visible_devices):
+                gpu_index = physical_gpu_index("cpu", visible_devices)
+                sampler = MemorySampler(gpu_index)
+                self.addCleanup(lambda sampler=sampler: sampler.stop() if sampler.thread.is_alive() else None)
+                self.assertIsNone(sampler.nvml)
+                sampler.set_phase("prompt_3")
+                snapshot = sampler.snapshot()
+                memory = sampler.stop()
+                self.assertGreater(snapshot["cpu_rss_mib"], 0)
+                self.assertIsNone(snapshot["gpu_used_mib"])
+                self.assertGreaterEqual(memory["peak_cpu_rss_mib"], memory["baseline_cpu_rss_mib"])
+                self.assertIsNone(memory["baseline_gpu_used_mib"])
+                self.assertIsNone(memory["peak_gpu_used_mib"])
+                self.assertIsNone(memory["phase_peaks"]["prompt_3"]["gpu_used_mib"])
+                result = summarize_measurements(
+                    [
+                        {
+                            "prompt_index": 3,
+                            "generated_tokens": 3,
+                            "prefill_ms": 1,
+                            "steady_decode": {"mean_ms": 10},
+                            "memory": memory["phase_peaks"]["prompt_3"],
+                        }
+                    ]
+                )
+                self.assertGreater(result["peak_cpu_rss_mib"], 0)
+                self.assertIsNone(result["peak_gpu_used_mib"])
+                self.assertAlmostEqual(result["decoded_tokens_per_second"], 100)
+
+    def test_cuda_memory_sampling_requires_one_physical_gpu(self):
+        self.assertEqual(physical_gpu_index("cuda", "2"), 2)
+        for visible_devices in ("", "-1", "GPU-unavailable", "0,1"):
+            with (
+                self.subTest(visible_devices=visible_devices),
+                self.assertRaisesRegex(ValueError, "one physical GPU index"),
+            ):
+                physical_gpu_index("cuda", visible_devices)
+
     def options(self, **overrides):
         values = {
             "cpu_offload_experts": 1000,

@@ -17,6 +17,7 @@
 
 namespace onnxruntime {
 
+class Node;
 class OpKernel;
 namespace logging {
 class Logger;
@@ -77,6 +78,8 @@ class KernelPilotMoeExpertState {
 
   // Writes the final expert popularities as JSON when this session-owned state is destroyed.
   Status SetPopularityOutputFile(std::string output_file);
+
+  static bool IsCpuOffloadEligible(const Node& node);
 
   // Registers one resolved MoE kernel and allocates its contiguous counter range and
   // provider-independent KernelPilot. Registration closes after initialization.

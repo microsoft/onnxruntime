@@ -4,7 +4,9 @@
 #include <atomic>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
+#include <limits>
 #include <mutex>
 
 #include "contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
@@ -127,6 +129,106 @@ TEST_F(KernelPilotMoeExpertSelectionCudaTest, GpuCountersMatchBinaryAndWeightedH
         EXPECT_NEAR(snapshot.counters[expert], alpha * initial[expert] + (1.0 - alpha) * contribution, 1e-12);
         EXPECT_EQ(snapshot.probabilities[expert], expected_probabilities[expert]);
         EXPECT_EQ(snapshot.first_routes[expert], expected_first_routes[expert]);
+      }
+    }
+  }
+}
+
+TEST_F(KernelPilotMoeExpertSelectionCudaTest, LargeAndTiledGpuCountersMatchHostUpdates) {
+  constexpr size_t expert_count = 257;
+  constexpr size_t max_routes = 32768 * 8;
+  struct Snapshot {
+    double counters[expert_count];
+    int64_t first_routes[expert_count];
+    float probabilities[expert_count];
+  };
+  Snapshot* device_snapshot = nullptr;
+  int* device_ids = nullptr;
+  float* device_scales = nullptr;
+  ASSERT_EQ(cudaMalloc(&device_snapshot, sizeof(Snapshot)), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&device_ids, max_routes * sizeof(int)), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&device_scales, max_routes * sizeof(float)), cudaSuccess);
+  auto release = gsl::finally([&]() {
+    EXPECT_EQ(cudaFree(device_snapshot), cudaSuccess);
+    EXPECT_EQ(cudaFree(device_ids), cudaSuccess);
+    EXPECT_EQ(cudaFree(device_scales), cudaSuccess);
+  });
+  InlinedVector<int> ids;
+  InlinedVector<float> scales;
+  ids.reserve(max_routes);
+  scales.reserve(max_routes);
+  for (size_t route = 0; route < max_routes; ++route) {
+    ids.push_back(static_cast<int>(route % (expert_count - 1)));
+    scales.push_back(static_cast<float>(route % 19) / 20.0f);
+  }
+  ASSERT_EQ(cudaMemcpyAsync(device_ids, ids.data(), ids.size() * sizeof(int),
+                            cudaMemcpyHostToDevice, stream_),
+            cudaSuccess);
+  for (bool invalid : {false, true}) {
+    scales[0] = invalid ? std::numeric_limits<float>::quiet_NaN() : 0.0f;
+    ASSERT_EQ(cudaMemcpyAsync(device_scales, scales.data(), scales.size() * sizeof(float),
+                              cudaMemcpyHostToDevice, stream_),
+              cudaSuccess);
+    for (size_t route_count : {size_t{1024}, size_t{1025}, max_routes}) {
+      for (bool tiled : {false, true}) {
+        for (double weight : {0.0, 0.5, 1.0}) {
+          SCOPED_TRACE(MakeString("routes=", route_count, ", tiled=", tiled, ", weight=", weight,
+                                  ", invalid=", invalid));
+          Snapshot expected;
+          for (size_t expert = 0; expert < expert_count; ++expert) {
+            expected.counters[expert] = 0.25;
+            expected.probabilities[expert] = -1.0f;
+            expected.first_routes[expert] = -1;
+          }
+          for (size_t route = 0; route < route_count; ++route) {
+            const int expert = ids[route];
+            if (expected.first_routes[expert] < 0) {
+              expected.first_routes[expert] = static_cast<int64_t>(route);
+            }
+            if (weight > 0.0 && !std::isfinite(scales[route])) {
+              expected.probabilities[expert] = std::numeric_limits<float>::quiet_NaN();
+            } else if (!std::isnan(expected.probabilities[expert])) {
+              expected.probabilities[expert] = std::fmax(expected.probabilities[expert], std::fmax(scales[route], 0.0f));
+            }
+          }
+          constexpr double alpha = 0.9;
+          Snapshot actual{};
+          for (size_t expert = 0; expert < expert_count; ++expert) {
+            actual.counters[expert] = 0.25;
+            actual.probabilities[expert] = 1.0f;
+          }
+          ASSERT_EQ(cudaMemcpyAsync(device_snapshot, &actual, sizeof(actual),
+                                    cudaMemcpyHostToDevice, stream_),
+                    cudaSuccess);
+          const auto update = [&](size_t begin, size_t end, bool finalize) {
+            contrib::cuda::LaunchUpdateMoeExpertCounters(
+                device_ids + begin, device_scales + begin, end - begin,
+                device_snapshot->counters, device_snapshot->probabilities, device_snapshot->first_routes,
+                expert_count, begin, finalize, alpha, weight, stream_);
+          };
+          if (tiled) {
+            update(0, 8, false);
+            update(8, route_count - 8, false);
+            update(route_count - 8, route_count, true);
+          } else {
+            update(0, route_count, true);
+          }
+          ASSERT_EQ(cudaMemcpyAsync(&actual, device_snapshot, sizeof(actual),
+                                    cudaMemcpyDeviceToHost, stream_),
+                    cudaSuccess);
+          ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
+          for (size_t expert = 0; expert < expert_count; ++expert) {
+            const float probability = expected.probabilities[expert];
+            if (std::isnan(probability)) {
+              EXPECT_TRUE(std::isnan(actual.probabilities[expert]));
+            } else {
+              EXPECT_EQ(actual.probabilities[expert], probability);
+            }
+            EXPECT_EQ(actual.first_routes[expert], expected.first_routes[expert]);
+            const double contribution = probability >= 0.0f ? (1.0 - weight) + weight * probability : 0.0;
+            EXPECT_NEAR(actual.counters[expert], alpha * 0.25 + (1.0 - alpha) * contribution, 1e-12);
+          }
+        }
       }
     }
   }

@@ -241,6 +241,37 @@ Status KernelPilotMoeExpertState::Load(std::istream& input) {
   return Status::OK();
 }
 
+bool KernelPilotMoeExpertState::IsCpuOffloadEligible(const Node& node) {
+  if (node.GetExecutionProviderType() != kCudaExecutionProvider || node.Domain() != kMSDomain ||
+      (node.OpType() != "MoE" && node.OpType() != "QMoE") || node.InputDefs().empty()) {
+    return false;
+  }
+  const auto* input_type = node.InputDefs()[0]->TypeAsProto();
+  if (input_type == nullptr || !input_type->has_tensor_type()) {
+    return false;
+  }
+  const int32_t element_type = input_type->tensor_type().elem_type();
+  if (element_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+      element_type != ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
+    return false;
+  }
+  if (node.OpType() == "MoE") {
+    return true;
+  }
+  const auto& attributes = node.GetAttributes();
+  const auto get_int_attribute = [&](std::string_view name, int64_t default_value) {
+    const auto attribute = attributes.find(std::string(name));
+    return attribute == attributes.end() ? default_value : attribute->second.i();
+  };
+  const auto quant_type = attributes.find("quant_type");
+  const int64_t bits = get_int_attribute("expert_weight_bits", 0);
+  return (quant_type == attributes.end() || quant_type->second.s() == "int") &&
+         (bits == 4 || bits == 8) &&
+         get_int_attribute("fc1_expert_weight_bits", bits) == bits &&
+         get_int_attribute("fc2_expert_weight_bits", bits) == bits &&
+         get_int_attribute("weights_prepacked", -1) == 0;
+}
+
 Status KernelPilotMoeExpertState::FinalizeInitialization() {
   ORT_RETURN_IF(initialized_, "MoE expert state is already initialized.");
 
@@ -254,40 +285,12 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
     InlinedVector<KernelState*> cuda_kernels;
     size_t cuda_eligible_expert_count = 0;
     for (auto& [kernel, state] : kernels_) {
-      const auto* input_type = kernel->Node().InputDefs().empty()
-                                   ? nullptr
-                                   : kernel->Node().InputDefs()[0]->TypeAsProto();
-      const int32_t element_type =
-          input_type != nullptr && input_type->has_tensor_type()
-              ? input_type->tensor_type().elem_type()
-              : ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
       const auto& node = kernel->Node();
       ORT_RETURN_IF(cpu_offload_strategy_ != CpuOffloadStrategy::Adaptive && node.OpType() == "MoE" &&
                         node.GetExecutionProviderType() == kCudaExecutionProvider,
                     "The ", cpu_offload_strategy_ == CpuOffloadStrategy::Basic ? "basic" : "layered",
                     " CPU offload strategy supports QMoE only, not CUDA MoE.");
-      const auto& attributes = node.GetAttributes();
-      const auto get_int_attribute = [&](std::string_view name, int64_t default_value) {
-        const auto attribute = attributes.find(std::string(name));
-        return attribute == attributes.end() ? default_value : attribute->second.i();
-      };
-      const auto get_string_attribute = [&](std::string_view name, std::string_view default_value) {
-        const auto attribute = attributes.find(std::string(name));
-        return attribute == attributes.end() ? std::string(default_value) : attribute->second.s();
-      };
-      const int64_t qmoe_bits = get_int_attribute("expert_weight_bits", 0);
-      const bool supported_qmoe =
-          node.OpType() == "QMoE" &&
-          get_string_attribute("quant_type", "int") == "int" &&
-          (qmoe_bits == 4 || qmoe_bits == 8) &&
-          get_int_attribute("fc1_expert_weight_bits", qmoe_bits) == qmoe_bits &&
-          get_int_attribute("fc2_expert_weight_bits", qmoe_bits) == qmoe_bits &&
-          get_int_attribute("weights_prepacked", -1) == 0;
-      if (kernel->Node().GetExecutionProviderType() == kCudaExecutionProvider &&
-          kernel->Node().Domain() == kMSDomain &&
-          (kernel->Node().OpType() == "MoE" || supported_qmoe) &&
-          (element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
-           element_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16)) {
+      if (IsCpuOffloadEligible(node)) {
         cuda_kernels.push_back(&state);
         cuda_eligible_expert_count += state.experts.count;
       }

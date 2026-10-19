@@ -663,6 +663,80 @@ TEST(MoeExpertCountingTest, WeightedOffloadCountersExcludeCpuKernels) {
   EXPECT_DOUBLE_EQ(counters[3], 0.0);
 }
 
+TEST(MoeExpertCountingTest, WeightedOffloadCountersExcludeFloatCudaKernels) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider || provider->GetOrtEp() != nullptr || GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Built-in CUDA execution provider with compute capability 8.0 or newer is required.";
+  }
+  auto sink = std::make_unique<CapturingSink>();
+  const auto* captured = sink.get();
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::move(sink), logging::Severity::kINFO, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  std::unique_ptr<Environment> environment;
+  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), environment));
+  auto options = CountingOptions();
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight, "0.5"));
+  ModelProto model;
+  ASSERT_TRUE(model.ParseFromString(MakeCountingModel(false, true)));
+  auto& graph = *model.mutable_graph();
+  SetValue(*graph.add_input(), "float_input", TensorProto_DataType_FLOAT, {3, kWidth});
+  SetValue(*graph.add_input(), "float_router", TensorProto_DataType_FLOAT, {3, kExperts});
+  SetValue(*graph.add_output(), "float_output", TensorProto_DataType_FLOAT, {3, kWidth});
+  AddZeroInitializer(graph, "float_w1", TensorProto_DataType_FLOAT, {kExperts, kWidth, kWidth}, sizeof(float));
+  AddZeroInitializer(graph, "float_w2", TensorProto_DataType_FLOAT, {kExperts, kWidth, kWidth}, sizeof(float));
+  auto* float_node = graph.mutable_node(0);
+  float_node->set_input(0, "float_input");
+  float_node->set_input(1, "float_router");
+  float_node->set_input(2, "float_w1");
+  float_node->set_input(4, "float_w2");
+  float_node->set_output(0, "float_output");
+  graph.mutable_node(1)->set_input(0, "input");
+
+  InferenceSessionWrapper session(options, *environment);
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+  const auto serialized = model.SerializeAsString();
+  ASSERT_STATUS_OK(session.Load(serialized.data(), static_cast<int>(serialized.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  const auto& session_state = session.GetSessionState();
+  auto* state = session_state.GetMoeExpertState();
+  ASSERT_NE(state, nullptr);
+  ASSERT_EQ(session_state.GetKernel(0)->Node().GetExecutionProviderType(), kCudaExecutionProvider);
+  ASSERT_EQ(session_state.GetKernel(1)->Node().GetExecutionProviderType(), kCudaExecutionProvider);
+  EXPECT_EQ(state->TotalExpertCount(), static_cast<size_t>(kExperts));
+  EXPECT_EQ(session_state.GetKernelPilot(session_state.GetKernel(0)), nullptr);
+  ASSERT_NE(session_state.GetKernelPilot(session_state.GetKernel(1)), nullptr);
+
+  auto feeds = CountingFeeds();
+  auto float_feeds = CountingFeedsTyped<float>();
+  feeds.emplace("float_input", float_feeds.at("input"));
+  feeds.emplace("float_router", float_feeds.at("router"));
+  RunOptions run_options;
+  run_options.run_log_severity_level = static_cast<int>(logging::Severity::kINFO);
+  std::vector<OrtValue> outputs;
+  const std::array<std::string, 2> output_names{"output", "float_output"};
+  ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &outputs));
+  InlinedVector<double> counters;
+  ASSERT_STATUS_OK(state->GetCounters(session_state.GetKernel(1), counters));
+  ASSERT_EQ(counters.size(), static_cast<size_t>(kExperts));
+  EXPECT_GT(counters[0], 0.0);
+  EXPECT_DOUBLE_EQ(counters[1], 0.0);
+  EXPECT_GT(counters[2], 0.0);
+  EXPECT_DOUBLE_EQ(counters[3], 0.0);
+  size_t counter_events = 0;
+  for (const auto& message : captured->Messages()) {
+    if (message.find("moe_expert_counters ") != std::string::npos) {
+      EXPECT_NE(message.find("\"node_index\":1"), std::string::npos);
+      EXPECT_NE(message.find("\"moe_count\":1"), std::string::npos);
+      EXPECT_NE(message.find("\"total_expert_count\":4"), std::string::npos);
+      ++counter_events;
+    }
+  }
+  EXPECT_EQ(counter_events, 1U);
+}
+
 #if !defined(ORT_NO_EXCEPTIONS)
 TEST(MoeExpertCountingTest, FailedRunKeepsLoggerAliveForDeferredUsage) {
   auto provider = DefaultCudaExecutionProvider();

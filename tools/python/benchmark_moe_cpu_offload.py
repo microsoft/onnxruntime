@@ -61,12 +61,20 @@ def current_rss_mib():
     return int(fields[1]) * os.sysconf("SC_PAGE_SIZE") / (1024 * 1024)
 
 
+def physical_gpu_index(provider, visible_devices):
+    if provider == "cpu":
+        return None
+    if not visible_devices.isdigit():
+        raise ValueError("CUDA_VISIBLE_DEVICES must contain one physical GPU index.")
+    return int(visible_devices)
+
+
 class MemorySampler:
     def __init__(self, physical_gpu_index, interval_seconds=0.05):
-        self.nvml = NvmlMemory(physical_gpu_index)
+        self.nvml = NvmlMemory(physical_gpu_index) if physical_gpu_index is not None else None
         self.interval_seconds = interval_seconds
         self.baseline_cpu_rss_mib = current_rss_mib()
-        self.baseline_gpu_used_mib = self.nvml.used_mib()
+        self.baseline_gpu_used_mib = self.nvml.used_mib() if self.nvml is not None else None
         self.peak_cpu_rss_mib = self.baseline_cpu_rss_mib
         self.peak_gpu_used_mib = self.baseline_gpu_used_mib
         self.phase = "model_load"
@@ -83,12 +91,13 @@ class MemorySampler:
 
     def _sample_locked(self):
         cpu_rss_mib = current_rss_mib()
-        gpu_used_mib = self.nvml.used_mib()
+        gpu_used_mib = self.nvml.used_mib() if self.nvml is not None else None
         self.peak_cpu_rss_mib = max(self.peak_cpu_rss_mib, cpu_rss_mib)
-        self.peak_gpu_used_mib = max(self.peak_gpu_used_mib, gpu_used_mib)
         peaks = self.phase_peaks.setdefault(self.phase, {"cpu_rss_mib": cpu_rss_mib, "gpu_used_mib": gpu_used_mib})
         peaks["cpu_rss_mib"] = max(peaks["cpu_rss_mib"], cpu_rss_mib)
-        peaks["gpu_used_mib"] = max(peaks["gpu_used_mib"], gpu_used_mib)
+        if gpu_used_mib is not None:
+            self.peak_gpu_used_mib = max(self.peak_gpu_used_mib, gpu_used_mib)
+            peaks["gpu_used_mib"] = max(peaks["gpu_used_mib"], gpu_used_mib)
 
     def _run(self):
         try:
@@ -105,13 +114,17 @@ class MemorySampler:
             self._sample_locked()
 
     def snapshot(self):
-        return {"cpu_rss_mib": current_rss_mib(), "gpu_used_mib": self.nvml.used_mib()}
+        return {
+            "cpu_rss_mib": current_rss_mib(),
+            "gpu_used_mib": self.nvml.used_mib() if self.nvml is not None else None,
+        }
 
     def stop(self):
         self.stop_event.set()
         self.thread.join()
         if self.error is not None:
-            self.nvml.close()
+            if self.nvml is not None:
+                self.nvml.close()
             raise self.error
         self._sample()
         result = {
@@ -124,7 +137,8 @@ class MemorySampler:
             "peak_gpu_used_mib": self.peak_gpu_used_mib,
             "phase_peaks": self.phase_peaks,
         }
-        self.nvml.close()
+        if self.nvml is not None:
+            self.nvml.close()
         return result
 
 
@@ -207,12 +221,13 @@ def summarize_measurements(prompts):
     decode_seconds = sum(
         (prompt["generated_tokens"] - 2) * prompt["steady_decode"]["mean_ms"] / 1000 for prompt in prompts
     )
+    gpu_memory = [prompt["memory"]["gpu_used_mib"] for prompt in prompts]
     return {
         "prompt_indices": [prompt["prompt_index"] for prompt in prompts],
         "prefill_ms": statistics.mean(prompt["prefill_ms"] for prompt in prompts),
         "decoded_tokens": decode_tokens,
         "decoded_tokens_per_second": decode_tokens / decode_seconds,
-        "peak_gpu_used_mib": max(prompt["memory"]["gpu_used_mib"] for prompt in prompts),
+        "peak_gpu_used_mib": None if all(value is None for value in gpu_memory) else max(gpu_memory),
         "peak_cpu_rss_mib": max(prompt["memory"]["cpu_rss_mib"] for prompt in prompts),
     }
 
@@ -283,13 +298,11 @@ def main():
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if args.popularity_output is not None:
         args.popularity_output.parent.mkdir(parents=True, exist_ok=True)
-    visible_gpu = os.environ.get("CUDA_VISIBLE_DEVICES", "")
-    if not visible_gpu.isdigit():
-        raise ValueError("CUDA_VISIBLE_DEVICES must contain one physical GPU index.")
+    gpu_index = physical_gpu_index(args.provider, os.environ.get("CUDA_VISIBLE_DEVICES", ""))
 
     genai = importlib.import_module("onnxruntime_genai")
 
-    memory_sampler = MemorySampler(int(visible_gpu))
+    memory_sampler = MemorySampler(gpu_index)
     with redirect_native_stderr(args.log):
         model_start = time.perf_counter()
         model = create_model(genai, args)

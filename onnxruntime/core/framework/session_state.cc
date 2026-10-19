@@ -1623,6 +1623,9 @@ Status SessionState::InitializeMoeExpertState(std::shared_ptr<KernelPilotMoeExpe
     }
     ORT_RETURN_IF_NOT(ep == kCudaExecutionProvider,
                       "MoE expert counting is not supported by ", ep);
+    if (!KernelPilotMoeExpertState::IsCpuOffloadEligible(node)) {
+      continue;
+    }
     const auto* shape = node.InputDefs().at(1)->Shape();
     ORT_RETURN_IF_NOT(shape && shape->dim_size() == 2 && shape->dim(1).has_dim_value() &&
                           shape->dim(1).dim_value() > 0,
@@ -1956,19 +1959,7 @@ static void AccumulateAllNestedSubgraphsInfo(
 
 #if !defined(ORT_MINIMAL_BUILD)
 static bool IsCudaCpuOffloadMoeNode(const Node& node) {
-  if (node.Domain() != kMSDomain || node.OpType() != "MoE" ||
-      node.GetExecutionProviderType() != kCudaExecutionProvider ||
-      node.InputDefs().empty()) {
-    return false;
-  }
-
-  const auto* input_type = node.InputDefs()[0]->TypeAsProto();
-  if (input_type == nullptr || !input_type->has_tensor_type()) {
-    return false;
-  }
-  const int32_t element_type = input_type->tensor_type().elem_type();
-  return element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
-         element_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+  return node.OpType() == "MoE" && KernelPilotMoeExpertState::IsCpuOffloadEligible(node);
 }
 
 static bool IsMoeCpuOffloadOuterScopeValue(const Graph& graph, const std::string& name) {

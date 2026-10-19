@@ -11,6 +11,18 @@
 namespace onnxruntime::contrib::cuda {
 namespace {
 
+constexpr int kInvalidProbabilityBits = 0x7fffffff;
+
+__device__ void UpdateMoeExpertCounter(double* counters, size_t expert, float probability,
+                                       double alpha, double probability_weight) {
+  const double decayed = __dmul_rn(counters[expert], alpha);
+  const double contribution = probability >= 0.0f
+                                  ? __dadd_rn(1.0 - probability_weight,
+                                              __dmul_rn(probability_weight, static_cast<double>(probability)))
+                                  : 0.0;
+  counters[expert] = __dadd_rn(decayed, __dmul_rn(1.0 - alpha, contribution));
+}
+
 __global__ void UpdateMoeExpertCountersKernel(const int* ids, const float* scales, size_t route_count,
                                               double* counters, float* selected_probabilities, int64_t* first_routes,
                                               size_t expert_count, size_t route_offset, bool finalize,
@@ -27,11 +39,13 @@ __global__ void UpdateMoeExpertCountersKernel(const int* ids, const float* scale
         first_route = static_cast<int64_t>(route_offset + route);
       }
       if (probability_weight > 0.0 && (!isfinite(scales[route]) || scales[route] < 0.0f || scales[route] > 1.0f)) {
-        probability = nanf("");
+        probability = __int_as_float(kInvalidProbabilityBits);
         break;
       }
-      probability = fmaxf(probability, scales[route]);
-      probability = fmaxf(probability, 0.0f);
+      if (!isnan(probability)) {
+        probability = fmaxf(probability, scales[route]);
+        probability = fmaxf(probability, 0.0f);
+      }
     }
   }
   selected_probabilities[expert] = probability;
@@ -39,12 +53,44 @@ __global__ void UpdateMoeExpertCountersKernel(const int* ids, const float* scale
   if (!finalize) {
     return;
   }
-  const double decayed = __dmul_rn(counters[expert], alpha);
-  const double contribution = probability >= 0.0f
-                                  ? __dadd_rn(1.0 - probability_weight,
-                                              __dmul_rn(probability_weight, static_cast<double>(probability)))
-                                  : 0.0;
-  counters[expert] = __dadd_rn(decayed, __dmul_rn(1.0 - alpha, contribution));
+  UpdateMoeExpertCounter(counters, expert, probability, alpha, probability_weight);
+}
+
+__global__ void InitializeMoeExpertSelectionKernel(float* selected_probabilities, int64_t* first_routes,
+                                                   size_t expert_count) {
+  const size_t expert = blockIdx.x * blockDim.x + threadIdx.x;
+  if (expert < expert_count) {
+    selected_probabilities[expert] = -1.0f;
+    first_routes[expert] = -1;
+  }
+}
+
+__global__ void ReduceMoeExpertRoutesKernel(const int* ids, const float* scales, size_t route_count,
+                                            float* selected_probabilities, int64_t* first_routes,
+                                            size_t expert_count, size_t route_offset, double probability_weight) {
+  for (size_t route = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       route < route_count; route += static_cast<size_t>(blockDim.x) * gridDim.x) {
+    const int expert = ids[route];
+    if (expert < 0 || static_cast<size_t>(expert) >= expert_count) {
+      continue;
+    }
+    const float scale = scales[route];
+    const bool invalid = probability_weight > 0.0 && (!isfinite(scale) || scale < 0.0f || scale > 1.0f);
+    // Nonnegative float bits are ordered as signed ints. A positive NaN keeps invalid scales sticky across tiles.
+    const int probability_bits = invalid ? kInvalidProbabilityBits : __float_as_int(fmaxf(scale, 0.0f));
+    atomicMax(reinterpret_cast<int*>(selected_probabilities + expert), probability_bits);
+    // The unselected sentinel -1 is the largest unsigned value.
+    atomicMin(reinterpret_cast<unsigned long long*>(first_routes + expert),
+              static_cast<unsigned long long>(route_offset + route));
+  }
+}
+
+__global__ void FinalizeMoeExpertCountersKernel(double* counters, const float* selected_probabilities,
+                                                size_t expert_count, double alpha, double probability_weight) {
+  const size_t expert = blockIdx.x * blockDim.x + threadIdx.x;
+  if (expert < expert_count) {
+    UpdateMoeExpertCounter(counters, expert, selected_probabilities[expert], alpha, probability_weight);
+  }
 }
 
 template <typename T>
@@ -231,10 +277,28 @@ void LaunchUpdateMoeExpertCounters(const int* ids, const float* scales, size_t r
                                    double* counters, float* selected_probabilities, int64_t* first_routes,
                                    size_t expert_count, size_t route_offset, bool finalize,
                                    double alpha, double probability_weight, cudaStream_t stream) {
-  UpdateMoeExpertCountersKernel<<<static_cast<unsigned int>((expert_count + 255) / 256), 256, 0, stream>>>(
-      ids, scales, route_count, counters, selected_probabilities, first_routes, expert_count,
-      route_offset, finalize, alpha, probability_weight);
+  const auto expert_blocks = static_cast<unsigned int>((expert_count + 255) / 256);
+  if (route_count <= 1024) {
+    UpdateMoeExpertCountersKernel<<<expert_blocks, 256, 0, stream>>>(
+        ids, scales, route_count, counters, selected_probabilities, first_routes, expert_count,
+        route_offset, finalize, alpha, probability_weight);
+    CUDA_CALL_THROW(cudaGetLastError());
+    return;
+  }
+  if (route_offset == 0) {
+    InitializeMoeExpertSelectionKernel<<<expert_blocks, 256, 0, stream>>>(
+        selected_probabilities, first_routes, expert_count);
+    CUDA_CALL_THROW(cudaGetLastError());
+  }
+  const auto route_blocks = static_cast<unsigned int>(std::min<size_t>((route_count + 255) / 256, 65535));
+  ReduceMoeExpertRoutesKernel<<<route_blocks, 256, 0, stream>>>(
+      ids, scales, route_count, selected_probabilities, first_routes, expert_count, route_offset, probability_weight);
   CUDA_CALL_THROW(cudaGetLastError());
+  if (finalize) {
+    FinalizeMoeExpertCountersKernel<<<expert_blocks, 256, 0, stream>>>(
+        counters, selected_probabilities, expert_count, alpha, probability_weight);
+    CUDA_CALL_THROW(cudaGetLastError());
+  }
 }
 
 #define DEFINE_MOE_CPU_ROUTING(T)                                                                                      \

@@ -10,6 +10,8 @@ Without offload, counters and routing snapshots are not allocated, state files a
 are not written. Requests for counting, statistics, or popularity output emit a warning and do not enable counters.
 This applies to both CPU and CUDA sessions. Nodes assigned to the CPU execution provider never participate in
 offload counters; CPU experts within a CUDA-offloaded node are still counted by that node.
+Only offload-eligible CUDA FP16/BF16 nodes are registered, so FP32 CUDA MoE nodes in a mixed model are excluded
+from both the counters and the logged node/expert totals.
 `session.enable_moe_expert_statistics=1` emits one structured
 `moe_expert_counters` log after each successful MoE kernel invocation, subject to the per-Run logging limit below.
 Configure the update with:
