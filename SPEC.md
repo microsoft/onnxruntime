@@ -1414,7 +1414,8 @@ with only its version number changed.
 plugin EP only, CUDA copy primitives where sufficient, GPU-resident cache
 views/results, and an M08a/M08b split, with no additional specification input.
 The detailed execution plan is approved without changes. M08a is complete in
-PR #20. The user authorized the next milestone, M08b, on 2026-10-19.
+PR #20. M08b, separately authorized on 2026-10-19, is complete in PR #21.
+Both CUDA-plugin-only sub-milestones are independently verified and ready for review.
 
 ### H.1 Scope and preserved behavior
 

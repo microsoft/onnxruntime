@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M07 complete; M08 specification approved, plan under review.
+**Status:** Approved; M01-M08 complete and published for review; M09-M24 pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -17,7 +17,7 @@ M05's requested generation-folder layout follow-up is complete in the same PR.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M07 are complete; M08 is in progress and M09-M24 are pending. Check tasks when their
+M01-M08 are complete and M09-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -97,7 +97,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M07 are **complete**; M08 is **in progress** and M09-M24 are **pending**.
+M01-M08 are **complete**; M09-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -108,7 +108,7 @@ M01-M07 are **complete**; M08 is **in progress** and M09-M24 are **pending**.
 | [x] | M05 | CPU greedy sampling and decode iteration / `cpu-greedy` | M04 |
 | [x] | M06 | Public C API and C++ wrappers / `public-api` | M02, M03, M04, M05 |
 | [x] | M07 | Built-in/plugin EP capability contracts / `ep-stateful-hooks` | M04, M05, M06 |
-| [ ] | M08 | Native CUDA KV management / `cuda-kv-cache` | M07 |
+| [x] | M08 | Native CUDA KV management / `cuda-kv-cache` | M07 |
 | [ ] | M09 | Native CUDA greedy sampling / `cuda-greedy` | M07 |
 | [ ] | M10 | Standalone package schema and authoring / `package-schema` | M01, M03 |
 | [ ] | M11 | ORT package-to-chain loading / `package-runtime` | M06, M07, M08, M09, M10 |
@@ -1402,9 +1402,9 @@ from this exact stored exclusion list, never from arbitrary unrelated failures.
 **Outcome:** Device-resident cache lifecycle and prefill/decode handoff.
 **Status:** SPEC Appendix H approved 2026-10-18 without changes. User scoped M08
 to CUDA plugin EP only, copy primitives/GPU cache views and an M08a/M08b split.
-The user approved the detailed plan without changes and authorized M08a only.
-Implementation uses `state/m08a-cuda-plugin-kv-cache`, based on M07b
-`03d7476859`. Pause for authorization before implementing M08b.
+The user approved the detailed plan without changes, initially authorized M08a,
+and separately authorized M08b on 2026-10-19. Both are complete and published
+as independently verified ready-for-review PRs #20 and #21. No PR has been merged.
 
 - [x] Implement CUDA allocation/retention/update/growth/reset using ORT allocator,
   device, and stream abstractions; advertise only supported features.
@@ -1609,7 +1609,7 @@ zero-hash dormant maps, with no new-function mismatch; final dumps are checked
 again against the passing profiles. Exact logs/report are retained as
 `m08a-*-complete-*`, `m08a-plugin-sanitizer-*`, `m08a-cpu-verified-*`,
 `m08a-legacy-stateful-tests.log` and `m08a-host-coverage-final.txt` in session files.
-M08b remains unimplemented and requires user authorization.
+M08b was subsequently authorized and completed in PR #21, as recorded below.
 
 #### M08b - Device-resident loop/chain integration
 
@@ -1643,7 +1643,7 @@ across compatible CUDA-plugin Sessions, including distinct streams.
 - [x] B6: Add end-to-end native/public C/C++ parity, device/copy/dispatch/staging
   evidence and stream/lifetime tests. Exercise relevant named-state/component
   handoff paths, not just one preferred cache binding.
-- [ ] B7: Measure every introduced core/plugin host path and any device code,
+- [x] B7: Measure every introduced core/plugin host path and any device code,
   rerun baselines/sanitizer/examples, document exact limits/evidence, and publish
   the ready-for-review stacked PR. Only then complete macro M08.
 
@@ -1683,7 +1683,9 @@ All new core/plugin host lines and any new device lines meet their measured
 coverage gates. CPU/CUDA-plugin correctness, memory/order/lifetime, documentation
 and publication pass; mark M08 complete only after both sub-PRs.
 
-**M08b verification complete; publication pending:**
+**M08b complete:** Implementation `249f60acf8`, published ready for human review
+as [PR #21](https://github.com/onnxruntime/ort-state/pull/21), stacked on M08a
+PR #20. This completes macro M08. No PR has been merged; M09 is not started.
 
 - Resolve actual Session GPU allocators and validate the declared cache ports'
   planned device. Managed and declared cache-alias outputs are bound directly to

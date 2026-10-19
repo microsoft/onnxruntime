@@ -13,7 +13,7 @@ Compressed project memory. This is not the execution plan.
   M01. `SPEC.md` and the execution plan are approved.
 - M01 is complete and published as ready-for-review PR #11:
   https://github.com/onnxruntime/ort-state/pull/11
-- No agents launched. M01-M07 are complete; M08 is in progress; M09-M24 remain pending.
+- No agents launched. M01-M08 are complete; M09-M24 remain pending.
   Runtime production code starts with M02.
 - Future tracking: keep `TASKS.md` checklist current and record compressed
   discoveries/agent learnings here.
@@ -609,7 +609,7 @@ Compressed project memory. This is not the execution plan.
 
 - User requested M08 on 2026-10-18. Baseline M07b `03d7476859`; created
   `state/m08a-cuda-plugin-kv-cache`. M08a implementation/validation is active;
-  M08b remains unauthorized.
+  M08b was subsequently authorized and completed; see its section below.
 - Interview completed: **CUDA plugin EP ONLY**, not legacy/shared CUDA. Prefer
   CUDA allocation/copy primitives, no custom kernels unless necessary. All new
   host/glue lines measured100%; if no new device code, device denominator0/N/A
@@ -705,7 +705,7 @@ Compressed project memory. This is not the execution plan.
 - All implementation/verification gates pass. M08a implementation e6ce58508e is
   published ready for review as PR #20, stacked on #19:
   https://github.com/onnxruntime/ort-state/pull/20
-  M08b has NOT started and still needs user authorization. No PRs merged.
+  M08b was subsequently authorized and completed in PR #21. No PRs merged.
 
 ## M08b
 
@@ -752,3 +752,8 @@ Compressed project memory. This is not the execution plan.
   GPU cache-only diagnostic correctly retains unavailable GPU logits wording.
   Full GPU suites and explicit native-memory4/public22 memcheck selectors are
   separate from the documented instrumented timing limitation. No M09 code.
+- M08b implementation249f60acf8 published ready-for-review as PR #21, stacked
+  on M08a #20: https://github.com/onnxruntime/ort-state/pull/21
+  Macro M08 complete; M09 not started. No PRs merged. All reported functional
+  suites unfiltered where stated, no skips; exact sanitizer selector limitation
+  is explicitly documented in TASKS/PR and must not be omitted from summaries.
