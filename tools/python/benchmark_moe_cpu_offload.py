@@ -122,10 +122,11 @@ class MemorySampler:
     def stop(self):
         self.stop_event.set()
         self.thread.join()
-        if self.error is not None:
+        error = self.error
+        if error is not None:
             if self.nvml is not None:
                 self.nvml.close()
-            raise self.error
+            raise error
         self._sample()
         result = {
             "baseline_cpu_rss_mib": self.baseline_cpu_rss_mib,
