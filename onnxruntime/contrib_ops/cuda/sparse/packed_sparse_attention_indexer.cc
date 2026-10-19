@@ -646,6 +646,11 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeCsa(OpKernelContext* cont
 
 template <typename T, typename TState>
 Status PackedSparseAttentionIndexer<T, TState>::ComputeReuse(OpKernelContext* context) const {
+  for (int index : {psai::kMidKvBuffer, psai::kMidStateLengths, psai::kValidationStatus}) {
+    Tensor* output = context->OutputCount() > index ? context->Output(index, TensorShape({0})) : nullptr;
+    ORT_RETURN_IF(output != nullptr,
+                  "PackedSparseAttentionIndexer: outputs 8-10 are not supported in IndexShare reuse mode");
+  }
   const Tensor* query = context->Input<Tensor>(psai::kQuery);
   const Tensor* lengths = context->Input<Tensor>(psai::kPastSequenceLengths);
   const Tensor* indices = context->Input<Tensor>(psai::kMergedIndices);

@@ -599,10 +599,12 @@ std::unique_ptr<IExecutionProvider> CreateProvider(ProviderKind provider_kind,
 #endif
 }
 
-void RunOnProvider(OpTester& test, std::unique_ptr<IExecutionProvider> provider) {
+void RunOnProvider(OpTester& test, std::unique_ptr<IExecutionProvider> provider,
+                   OpTester::ExpectResult expected_result = OpTester::ExpectResult::kExpectSuccess,
+                   const std::string& expected_error = "") {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(std::move(provider));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  test.Run(expected_result, expected_error, {}, nullptr, &providers);
 }
 
 std::vector<float> MakeWave(size_t count, float phase, float step) {
@@ -952,7 +954,8 @@ QsaPackedProblem MakeQsaPackedProblem(QsaPackedProblem problem = {}) {
 template <typename T, typename TState = T>
 void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedProblem(),
                       ProviderKind provider_kind = ProviderKind::Cuda, QsaPackedResult* actual = nullptr,
-                      bool packed_qk = false, const ConfigOptions* webgpu_options = nullptr, int padding = 0) {
+                      bool packed_qk = false, const ConfigOptions* webgpu_options = nullptr, int padding = 0,
+                      const std::string& expected_error = "") {
   auto provider = CreateProvider(provider_kind, webgpu_options);
   if (provider == nullptr) {
     GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
@@ -1064,7 +1067,9 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
     if (problem.state_update_capacity == 0) test.AddOptionalOutputEdge<T>();
     test.AddOutput<int32_t>("status", {total_tokens}, std::vector<int32_t>(static_cast<size_t>(total_tokens), 0));
   }
-  RunOnProvider(test, std::move(provider));
+  RunOnProvider(test, std::move(provider),
+                expected_error.empty() ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
+                expected_error);
   if (actual != nullptr) {
     const auto& fetches = test.GetFetches();
     actual->present_key_state = CopyTensorToFloat<TState>(fetches[2].Get<Tensor>());
@@ -1095,7 +1100,7 @@ TEST(PackedSparseAttentionIndexerTest, IndexShareRefreshPreservesBudgetAndPadsRo
 }
 
 TEST(PackedSparseAttentionIndexerTest, IndexShareReusePackedQkAndStatus) {
-  for (int invalid = 0; invalid < 7; ++invalid) {
+  for (int invalid = 0; invalid < 9; ++invalid) {
     SCOPED_TRACE(invalid);
     std::vector<int32_t> cumulative{0, 1, 2};
     std::vector<int32_t> past_lengths{5, 5};
@@ -1143,7 +1148,17 @@ TEST(PackedSparseAttentionIndexerTest, IndexShareReusePackedQkAndStatus) {
     test.AddOutput<int32_t>("present_lengths", {2, 2}, state_lengths);
     test.AddOptionalOutputEdge<float>();
     test.AddOutput<int32_t>("status", {2}, {invalid == 0 ? 0 : 1, 2});
-    RunOnProvider(test, std::move(provider));
+    if (invalid == 7) {
+      test.AddOutput<float>("mid_buffer", {2, 3, 2}, std::vector<float>(12));
+      test.AddOutput<int32_t>("mid_lengths", {2, 2}, std::vector<int32_t>(4));
+    } else if (invalid == 8) {
+      test.AddOptionalOutputEdge<float>();
+      test.AddOptionalOutputEdge<int32_t>();
+      test.AddOutput<int32_t>("validation", {2}, {0, 0});
+    }
+    RunOnProvider(test, std::move(provider),
+                  invalid >= 7 ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
+                  invalid >= 7 ? "outputs 8-10 are not supported in IndexShare reuse mode" : "");
   }
 }
 
@@ -1200,6 +1215,17 @@ TEST(PackedSparseAttentionIndexerTest, QsaStateUpdateCapturesRawAndBlockTransiti
   problem.state_update_capacity = 8;
   problem.state_update_capture_count = {8, 3};
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::Cuda);
+}
+
+TEST(PackedSparseAttentionIndexerTest, QsaBFloat16FloatStateCapture) {
+  QsaPackedProblem problem;
+  problem.batch_size = 2;
+  problem.compress_ratio = 4;
+  problem.cumulative_sequence_lengths = {0, 8, 13};
+  problem.past_sequence_lengths = {0, 3};
+  problem.state_update_capacity = 8;
+  problem.state_update_capture_count = {8, 3};
+  RunQsaPackedTest<BFloat16, float>(2.0e-2f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::Cuda);
 }
 
 TEST(PackedSparseAttentionIndexerTest, QsaStateUpdateActiveZeroClearsAllSlots) {
@@ -1512,6 +1538,24 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, QsaPortableStorageBindingLimit) {
   ConfigOptions config_options;
   ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, "8"));
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu, nullptr, false, &config_options);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaExplicitPositionsStorageBindingLimit) {
+  auto problem = MakeQsaPackedProblem();
+  problem.position_ids.resize(static_cast<size_t>(problem.TotalTokens()));
+  for (int b = 0; b < problem.batch_size; ++b) {
+    const int start = problem.cumulative_sequence_lengths[b];
+    const int end = problem.cumulative_sequence_lengths[b + 1];
+    for (int token = start; token < end; ++token) {
+      problem.position_ids[token] = problem.past_sequence_lengths[b] + token - start;
+    }
+  }
+  for (const std::string limit : {"8", "9"}) {
+    ConfigOptions config_options;
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, limit));
+    RunQsaPackedTest<float>(1.0e-5f, problem, ProviderKind::WebGpu, nullptr, false, &config_options, 0,
+                            limit == "8" ? "QSA selection requires 9 storage-buffer bindings" : "");
+  }
 }
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaAllEmptyBatchPreservesState) {

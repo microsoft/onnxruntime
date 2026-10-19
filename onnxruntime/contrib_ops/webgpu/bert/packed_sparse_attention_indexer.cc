@@ -70,12 +70,16 @@ Status CheckShape(const Tensor* tensor, const char* name, std::initializer_list<
 
 Status CheckStorageBindingLimit(const onnxruntime::webgpu::ComputeContext& context,
                                 const char* program_name,
-                                std::initializer_list<const Tensor*> tensors) {
+                                std::initializer_list<const Tensor*> tensors,
+                                const Tensor* optional_tensor = nullptr) {
   const auto& limits = context.DeviceLimits();
   uint32_t binding_count = 0;
   for (const Tensor* tensor : tensors) {
     ORT_RETURN_IF(tensor == nullptr, "PackedSparseAttentionIndexer: missing tensor for ", program_name);
     binding_count += StorageBindingSegments(tensor, limits.maxStorageBufferBindingSize);
+  }
+  if (optional_tensor != nullptr) {
+    binding_count += StorageBindingSegments(optional_tensor, limits.maxStorageBufferBindingSize);
   }
   if (binding_count > limits.maxStorageBuffersPerShaderStage) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
@@ -1168,7 +1172,8 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
   ORT_RETURN_IF_ERROR(CheckStorageBindingLimit(
       context, "QSA selection",
       {&query_metadata, present_key_state, &rotary_cache, &sequence_metadata, present_state_lengths, &overflow_flags,
-       selected_indices, selected_counts, position_ids}));
+       selected_indices, selected_counts},
+      position_ids));
   PackedSparseAttentionIndexerQsaSelectProgram select{rotary.batched, position_ids != nullptr};
   select.CacheHint(rotary.batched, position_ids != nullptr)
       .SetWorkgroupSize(kWorkgroupSize)

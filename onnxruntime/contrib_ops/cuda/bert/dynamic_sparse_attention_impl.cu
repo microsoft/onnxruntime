@@ -1750,11 +1750,13 @@ size_t GetDynamicSparseAttentionWorkspaceSize(
 
   const size_t query_blocks =
       static_cast<size_t>(parameters.batch_size) * parameters.sequence_length * parameters.num_heads;
+  const bool grouped_decode =
+      UseGroupedDecodeAttention(parameters, element_size, max_shared_memory_per_block);
   const size_t split_count =
-      UseGroupedDecodeAttention(parameters, element_size, max_shared_memory_per_block)
+      grouped_decode
           ? GetGroupedDecodeSplitCount(parameters)
           : GetAttentionSplitCount(parameters);
-  if (split_count == 1) {
+  if (split_count == 1 && !grouped_decode) {
     return 0;
   }
   return SafeInt<size_t>(query_blocks) * split_count *
