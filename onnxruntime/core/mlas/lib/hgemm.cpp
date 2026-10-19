@@ -198,6 +198,7 @@ MlasHgemmKernelLoop(
     bool ZeroMode
     )
 {
+#if defined(MLAS_USE_SVE)
     const auto* a = reinterpret_cast<const _mlas_fp16_*>(A);
     const auto* b = reinterpret_cast<const _mlas_fp16_*>(B);
     auto* c = reinterpret_cast<_mlas_fp16_*>(C);
@@ -205,23 +206,15 @@ MlasHgemmKernelLoop(
     while (CountM > 0) {
         size_t RowsHandled = 0;
 
-#if defined(MLAS_USE_SVE)
         if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
             if (ZeroMode) {
                 RowsHandled = MlasHgemmKernelZero_sve(a, b, c, CountK, CountM, CountN, lda, ldc, alpha);
             } else {
                 RowsHandled = MlasHgemmKernelAdd_sve(a, b, c, CountK, CountM, CountN, lda, ldc, alpha);
             }
-        } else
-#endif
-        {
+        } else {
             // Not reached, MlasGemmBatch routes CPUs without SVE to MlasHgemmNeonBatch.
-            MLAS_UNREFERENCED_PARAMETER(b);
-            MLAS_UNREFERENCED_PARAMETER(CountK);
-            MLAS_UNREFERENCED_PARAMETER(CountN);
-            MLAS_UNREFERENCED_PARAMETER(alpha);
-            MLAS_UNREFERENCED_PARAMETER(ZeroMode);
-            MLAS_THROW_EX(std::runtime_error, "HGEMM requires SVE in this build");
+            MLAS_THROW_EX(std::runtime_error, "HGEMM requires SVE on this CPU");
         }
 
         c += ldc * RowsHandled;
@@ -230,6 +223,21 @@ MlasHgemmKernelLoop(
     }
 
     return reinterpret_cast<MLAS_HGEMM_FP16*>(c);
+#else
+    // Not reached, MlasGemmBatch routes builds without SVE to MlasHgemmNeonBatch.
+    // Nothing may follow the throw: MSVC rejects unreachable code (C4702).
+    MLAS_UNREFERENCED_PARAMETER(A);
+    MLAS_UNREFERENCED_PARAMETER(B);
+    MLAS_UNREFERENCED_PARAMETER(C);
+    MLAS_UNREFERENCED_PARAMETER(CountK);
+    MLAS_UNREFERENCED_PARAMETER(CountM);
+    MLAS_UNREFERENCED_PARAMETER(CountN);
+    MLAS_UNREFERENCED_PARAMETER(lda);
+    MLAS_UNREFERENCED_PARAMETER(ldc);
+    MLAS_UNREFERENCED_PARAMETER(alpha);
+    MLAS_UNREFERENCED_PARAMETER(ZeroMode);
+    MLAS_THROW_EX(std::runtime_error, "HGEMM requires SVE in this build");
+#endif
 }
 
 
@@ -854,11 +862,24 @@ MlasHGemmPackBSize(
         return 0;
     }
 
-    const size_t AlignedN =
-        (N + MLAS_HGEMM_STRIDEN_THREAD_ALIGN - 1) & ~size_t(MLAS_HGEMM_STRIDEN_THREAD_ALIGN - 1);
-    const size_t BytesRequired = AlignedN * K * sizeof(MLAS_HGEMM_FP16);
+    // Return 0 rather than a wrapped size the packer would overrun.
+    size_t AlignedN = 0;
+    if (MlasAddOverflowsSizeT(N, MLAS_HGEMM_STRIDEN_THREAD_ALIGN - 1, &AlignedN)) {
+        return 0;
+    }
+    AlignedN &= ~size_t(MLAS_HGEMM_STRIDEN_THREAD_ALIGN - 1);
+
+    size_t BytesRequired = 0;
+    if (MlasMultiplyOverflowsSizeT(AlignedN, K, &BytesRequired) ||
+        MlasMultiplyOverflowsSizeT(BytesRequired, sizeof(MLAS_HGEMM_FP16), &BytesRequired)) {
+        return 0;
+    }
+
     const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
-    return (BytesRequired + BufferAlignment - 1) & ~(BufferAlignment - 1);
+    if (MlasAddOverflowsSizeT(BytesRequired, BufferAlignment - 1, &BytesRequired)) {
+        return 0;
+    }
+    return BytesRequired & ~(BufferAlignment - 1);
 }
 
 void

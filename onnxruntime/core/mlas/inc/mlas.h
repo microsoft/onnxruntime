@@ -1798,7 +1798,8 @@ struct MLAS_HGEMM_DATA_PARAMS {
 
 /**
  * @brief Returns the size in bytes of the buffer MlasHGemmPackB fills for an N x K (op(B) is K x N)
- *        matrix, or 0 when the HGEMM driver is unavailable on this CPU and B must not be packed.
+ *        matrix, or 0 when the HGEMM driver is unavailable on this CPU or the size overflows size_t,
+ *        in which case B must not be packed.
  */
 size_t
 MLASCALL

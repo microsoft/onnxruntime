@@ -119,6 +119,29 @@ class MlasSveHGemmEdgeTest : public MlasTestBase {
     }
   }
 
+  // alpha * A must not be formed in FP16: 65504 * 2 overflows, but
+  // alpha * (A x B) = 2 * 65504 / 1024 = 127.9375 is exact.
+  void TestAlphaNoOverflow(size_t M, size_t N, float beta) {
+    constexpr size_t K = 1;
+    const size_t ldc = N + 1;
+    std::vector<MLAS_FP16> A(M * K, MLAS_FP16(65504.0f));
+    std::vector<MLAS_FP16> B(K * N, MLAS_FP16(1.0f / 1024.0f));
+    MLAS_FP16* C = BufferC.GetFilledBuffer(M * ldc, [](MLAS_FP16* p, size_t n) {
+      for (size_t i = 0; i < n; ++i) p[i] = MLAS_FP16(1.0f);
+    });
+    const float expected = MLAS_FP16(127.9375f + beta).ToFloat();
+
+    MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, A.data(), K, B.data(), N, C, ldc,
+             MLAS_FP16(2.0f).val, MLAS_FP16(beta).val, nullptr);
+
+    for (size_t i = 0; i < M; ++i) {
+      for (size_t j = 0; j < N; ++j) {
+        ASSERT_EQ(C[i * ldc + j].ToFloat(), expected)
+            << "alpha overflow at (" << i << ", " << j << ") M=" << M << " N=" << N << " beta=" << beta;
+      }
+    }
+  }
+
  public:
   static const char* GetTestSuiteName() { return "SveHGemmEdge"; }
 
@@ -129,6 +152,13 @@ class MlasSveHGemmEdgeTest : public MlasTestBase {
 
     TestZeroK(0.0f);
     TestZeroK(0.5f);
+
+    for (size_t M : {1, 2, 4, 6, 8, 15}) {
+      for (size_t N : {2, 70}) {
+        TestAlphaNoOverflow(M, N, 0.0f);
+        TestAlphaNoOverflow(M, N, 1.0f);
+      }
+    }
 
     // Packing an empty B must not write to PackedB.
     const MLAS_FP16* B = BufferB.GetBuffer(64, /*ZeroFill*/ true);

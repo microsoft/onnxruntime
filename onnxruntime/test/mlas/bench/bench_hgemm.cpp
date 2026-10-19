@@ -11,6 +11,10 @@
 static const std::vector<std::string> hgemm_bench_arg_names = {"M", "N", "K"};
 
 void HGEMM(benchmark::State& state, bool transA, bool transB) {
+  if (!MlasHGemmSupported(transA ? CblasTrans : CblasNoTrans, transB ? CblasTrans : CblasNoTrans)) {
+    state.SkipWithError("HGEMM does not support this transpose combination on this platform.");
+    return;
+  }
   if (state.range(0) <= 0) throw std::invalid_argument("M must greater than 0!");
   if (state.range(1) <= 0) throw std::invalid_argument("N must greater than 0!");
   if (state.range(2) <= 0) throw std::invalid_argument("K must greater than 0!");

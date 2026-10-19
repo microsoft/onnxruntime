@@ -62,6 +62,8 @@ const size_t hk_step = 64;
 
 //
 // ZeroMode overwrites C instead of adding to it. Alpha1 skips the alpha scale.
+// Alpha is applied to the accumulated product, not to A: pre-scaling A in FP16
+// can overflow even when alpha * (A x B) is representable.
 //
 template <bool ZeroMode, bool Alpha1>
 MLAS_SVE_TARGET MLAS_FORCEINLINE void
@@ -111,11 +113,6 @@ hprocessrows_8(
                 __fp16 a6 = reinterpret_cast<const __fp16*>(a)[6 * lda + p];
                 __fp16 a7 = reinterpret_cast<const __fp16*>(a)[7 * lda + p];
 
-                if constexpr (!Alpha1) {
-                    a0 *= halpha; a1 *= halpha; a2 *= halpha; a3 *= halpha;
-                    a4 *= halpha; a5 *= halpha; a6 *= halpha; a7 *= halpha;
-                }
-
                 acc0_0 = svmla_f16_m(pg0, acc0_0, b0, svdup_n_f16(a0));
                 acc0_1 = svmla_f16_m(pg1, acc0_1, b1, svdup_n_f16(a0));
                 acc1_0 = svmla_f16_m(pg0, acc1_0, b0, svdup_n_f16(a1));
@@ -144,6 +141,25 @@ hprocessrows_8(
         _mlas_fp16_* out6 = res + 6 * ldc + col;
         _mlas_fp16_* out7 = res + 7 * ldc + col;
 
+        if constexpr (!Alpha1) {
+            acc0_0 = svmul_n_f16_x(pg0, acc0_0, halpha);
+            acc1_0 = svmul_n_f16_x(pg0, acc1_0, halpha);
+            acc2_0 = svmul_n_f16_x(pg0, acc2_0, halpha);
+            acc3_0 = svmul_n_f16_x(pg0, acc3_0, halpha);
+            acc4_0 = svmul_n_f16_x(pg0, acc4_0, halpha);
+            acc5_0 = svmul_n_f16_x(pg0, acc5_0, halpha);
+            acc6_0 = svmul_n_f16_x(pg0, acc6_0, halpha);
+            acc7_0 = svmul_n_f16_x(pg0, acc7_0, halpha);
+
+            acc0_1 = svmul_n_f16_x(pg1, acc0_1, halpha);
+            acc1_1 = svmul_n_f16_x(pg1, acc1_1, halpha);
+            acc2_1 = svmul_n_f16_x(pg1, acc2_1, halpha);
+            acc3_1 = svmul_n_f16_x(pg1, acc3_1, halpha);
+            acc4_1 = svmul_n_f16_x(pg1, acc4_1, halpha);
+            acc5_1 = svmul_n_f16_x(pg1, acc5_1, halpha);
+            acc6_1 = svmul_n_f16_x(pg1, acc6_1, halpha);
+            acc7_1 = svmul_n_f16_x(pg1, acc7_1, halpha);
+        }
         if constexpr (!ZeroMode) {
             acc0_0 = svadd_f16_m(pg0, acc0_0, svld1_f16(pg0, (const __fp16*)out0));
             acc1_0 = svadd_f16_m(pg0, acc1_0, svld1_f16(pg0, (const __fp16*)out1));
@@ -204,10 +220,6 @@ hprocessrows_8(
                 __fp16 a6 = reinterpret_cast<const __fp16*>(a)[6 * lda + p];
                 __fp16 a7 = reinterpret_cast<const __fp16*>(a)[7 * lda + p];
 
-                if constexpr (!Alpha1) {
-                    a0 *= halpha; a1 *= halpha; a2 *= halpha; a3 *= halpha;
-                    a4 *= halpha; a5 *= halpha; a6 *= halpha; a7 *= halpha;
-                }
                 acc0 = svmla_f16_m(pg, acc0, b0, svdup_n_f16(a0));
                 acc1 = svmla_f16_m(pg, acc1, b0, svdup_n_f16(a1));
                 acc2 = svmla_f16_m(pg, acc2, b0, svdup_n_f16(a2));
@@ -228,6 +240,16 @@ hprocessrows_8(
         _mlas_fp16_* out6 = res + 6 * ldc + col;
         _mlas_fp16_* out7 = res + 7 * ldc + col;
 
+        if constexpr (!Alpha1) {
+            acc0 = svmul_n_f16_x(pg, acc0, halpha);
+            acc1 = svmul_n_f16_x(pg, acc1, halpha);
+            acc2 = svmul_n_f16_x(pg, acc2, halpha);
+            acc3 = svmul_n_f16_x(pg, acc3, halpha);
+            acc4 = svmul_n_f16_x(pg, acc4, halpha);
+            acc5 = svmul_n_f16_x(pg, acc5, halpha);
+            acc6 = svmul_n_f16_x(pg, acc6, halpha);
+            acc7 = svmul_n_f16_x(pg, acc7, halpha);
+        }
         if constexpr (!ZeroMode) {
             acc0 = svadd_f16_m(pg, acc0, svld1_f16(pg, (const __fp16*)out0));
             acc1 = svadd_f16_m(pg, acc1, svld1_f16(pg, (const __fp16*)out1));
@@ -307,10 +329,6 @@ hprocessrows_6(
                 __fp16 a4 = reinterpret_cast<const __fp16*>(a)[4 * lda + p];
                 __fp16 a5 = reinterpret_cast<const __fp16*>(a)[5 * lda + p];
 
-                if constexpr (!Alpha1) {
-                    a0 *= halpha; a1 *= halpha; a2 *= halpha;
-                    a3 *= halpha; a4 *= halpha; a5 *= halpha;
-                }
                 acc0_0 = svmla_f16_m(pg0, acc0_0, b0, svdup_n_f16(a0));
                 acc0_1 = svmla_f16_m(pg1, acc0_1, b1, svdup_n_f16(a0));
                 acc1_0 = svmla_f16_m(pg0, acc1_0, b0, svdup_n_f16(a1));
@@ -326,6 +344,20 @@ hprocessrows_6(
             }
         }
 
+        if constexpr (!Alpha1) {
+            acc0_0 = svmul_n_f16_x(pg0, acc0_0, halpha);
+            acc0_1 = svmul_n_f16_x(pg1, acc0_1, halpha);
+            acc1_0 = svmul_n_f16_x(pg0, acc1_0, halpha);
+            acc1_1 = svmul_n_f16_x(pg1, acc1_1, halpha);
+            acc2_0 = svmul_n_f16_x(pg0, acc2_0, halpha);
+            acc2_1 = svmul_n_f16_x(pg1, acc2_1, halpha);
+            acc3_0 = svmul_n_f16_x(pg0, acc3_0, halpha);
+            acc3_1 = svmul_n_f16_x(pg1, acc3_1, halpha);
+            acc4_0 = svmul_n_f16_x(pg0, acc4_0, halpha);
+            acc4_1 = svmul_n_f16_x(pg1, acc4_1, halpha);
+            acc5_0 = svmul_n_f16_x(pg0, acc5_0, halpha);
+            acc5_1 = svmul_n_f16_x(pg1, acc5_1, halpha);
+        }
         if constexpr (!ZeroMode) {
             acc0_0 = svadd_f16_m(pg0, acc0_0, svld1_f16(pg0, (const __fp16*)out0_0));
             acc0_1 = svadd_f16_m(pg1, acc0_1, svld1_f16(pg1, (const __fp16*)out0_1));
@@ -381,10 +413,6 @@ hprocessrows_6(
                 __fp16 a4 = reinterpret_cast<const __fp16*>(a)[4 * lda + p];
                 __fp16 a5 = reinterpret_cast<const __fp16*>(a)[5 * lda + p];
 
-                if constexpr (!Alpha1) {
-                    a0 *= halpha; a1 *= halpha; a2 *= halpha;
-                    a3 *= halpha; a4 *= halpha; a5 *= halpha;
-                }
                 acc0 = svmla_f16_m(pg, acc0, b0, svdup_n_f16(a0));
                 acc1 = svmla_f16_m(pg, acc1, b0, svdup_n_f16(a1));
                 acc2 = svmla_f16_m(pg, acc2, b0, svdup_n_f16(a2));
@@ -394,6 +422,14 @@ hprocessrows_6(
             }
         }
 
+        if constexpr (!Alpha1) {
+            acc0 = svmul_n_f16_x(pg, acc0, halpha);
+            acc1 = svmul_n_f16_x(pg, acc1, halpha);
+            acc2 = svmul_n_f16_x(pg, acc2, halpha);
+            acc3 = svmul_n_f16_x(pg, acc3, halpha);
+            acc4 = svmul_n_f16_x(pg, acc4, halpha);
+            acc5 = svmul_n_f16_x(pg, acc5, halpha);
+        }
         if constexpr (!ZeroMode) {
             acc0 = svadd_f16_m(pg, acc0, svld1_f16(pg, (const __fp16*)out0));
             acc1 = svadd_f16_m(pg, acc1, svld1_f16(pg, (const __fp16*)out1));
@@ -461,10 +497,6 @@ hprocessrows_4(
                 __fp16 a2 = reinterpret_cast<const __fp16*>(a)[2 * lda + p];
                 __fp16 a3 = reinterpret_cast<const __fp16*>(a)[3 * lda + p];
 
-                if constexpr (!Alpha1) {
-                    a0 *= halpha; a1 *= halpha; a2 *= halpha; a3 *= halpha;
-                }
-
                 svfloat16_t va0 = svdup_n_f16(a0);
                 svfloat16_t va1 = svdup_n_f16(a1);
                 svfloat16_t va2 = svdup_n_f16(a2);
@@ -481,6 +513,16 @@ hprocessrows_4(
             }
         }
 
+        if constexpr (!Alpha1) {
+            acc0_0 = svmul_n_f16_x(pg0, acc0_0, halpha);
+            acc0_1 = svmul_n_f16_x(pg1, acc0_1, halpha);
+            acc1_0 = svmul_n_f16_x(pg0, acc1_0, halpha);
+            acc1_1 = svmul_n_f16_x(pg1, acc1_1, halpha);
+            acc2_0 = svmul_n_f16_x(pg0, acc2_0, halpha);
+            acc2_1 = svmul_n_f16_x(pg1, acc2_1, halpha);
+            acc3_0 = svmul_n_f16_x(pg0, acc3_0, halpha);
+            acc3_1 = svmul_n_f16_x(pg1, acc3_1, halpha);
+        }
         if constexpr (!ZeroMode) {
             acc0_0 = svadd_f16_m(pg0, acc0_0, svld1_f16(pg0, (const __fp16*)out0_0));
             acc0_1 = svadd_f16_m(pg1, acc0_1, svld1_f16(pg1, (const __fp16*)out0_1));
@@ -521,9 +563,6 @@ hprocessrows_4(
                 __fp16 a1 = reinterpret_cast<const __fp16*>(a)[1 * lda + p];
                 __fp16 a2 = reinterpret_cast<const __fp16*>(a)[2 * lda + p];
                 __fp16 a3 = reinterpret_cast<const __fp16*>(a)[3 * lda + p];
-                if constexpr (!Alpha1) {
-                    a0 *= halpha; a1 *= halpha; a2 *= halpha; a3 *= halpha;
-                }
                 svfloat16_t va0 = svdup_n_f16(a0);
                 svfloat16_t va1 = svdup_n_f16(a1);
                 svfloat16_t va2 = svdup_n_f16(a2);
@@ -535,6 +574,12 @@ hprocessrows_4(
             }
         }
 
+        if constexpr (!Alpha1) {
+            acc0 = svmul_n_f16_x(pg, acc0, halpha);
+            acc1 = svmul_n_f16_x(pg, acc1, halpha);
+            acc2 = svmul_n_f16_x(pg, acc2, halpha);
+            acc3 = svmul_n_f16_x(pg, acc3, halpha);
+        }
         if constexpr (!ZeroMode) {
             acc0 = svadd_f16_m(pg, acc0, svld1_f16(pg, (const __fp16*)out0));
             acc1 = svadd_f16_m(pg, acc1, svld1_f16(pg, (const __fp16*)out1));
@@ -589,9 +634,6 @@ hprocessrows_2(
 
                 __fp16 a0 = reinterpret_cast<const __fp16*>(a)[0 * lda + p];
                 __fp16 a1 = reinterpret_cast<const __fp16*>(a)[1 * lda + p];
-                if constexpr (!Alpha1) {
-                    a0 *= halpha; a1 *= halpha;
-                }
                 svfloat16_t va0 = svdup_n_f16(a0);
                 svfloat16_t va1 = svdup_n_f16(a1);
                 acc0_0 = svmla_f16_m(pg0, acc0_0, b0, va0);
@@ -599,6 +641,12 @@ hprocessrows_2(
                 acc1_0 = svmla_f16_m(pg0, acc1_0, b0, va1);
                 acc1_1 = svmla_f16_m(pg1, acc1_1, b1, va1);
             }
+        }
+        if constexpr (!Alpha1) {
+            acc0_0 = svmul_n_f16_x(pg0, acc0_0, halpha);
+            acc0_1 = svmul_n_f16_x(pg1, acc0_1, halpha);
+            acc1_0 = svmul_n_f16_x(pg0, acc1_0, halpha);
+            acc1_1 = svmul_n_f16_x(pg1, acc1_1, halpha);
         }
         if constexpr (!ZeroMode) {
             acc0_0 = svadd_f16_m(pg0, acc0_0, svld1_f16(pg0, (const __fp16*)out0_0));
@@ -623,14 +671,15 @@ hprocessrows_2(
                 svfloat16_t b0 = svld1_f16(pg, (const __fp16*)b_ptr);
                 __fp16 a0 = reinterpret_cast<const __fp16*>(a)[0 * lda + p];
                 __fp16 a1 = reinterpret_cast<const __fp16*>(a)[1 * lda + p];
-                if constexpr (!Alpha1) {
-                    a0 *= halpha; a1 *= halpha;
-                }
                 svfloat16_t va0 = svdup_n_f16(a0);
                 svfloat16_t va1 = svdup_n_f16(a1);
                 acc0 = svmla_f16_m(pg, acc0, b0, va0);
                 acc1 = svmla_f16_m(pg, acc1, b0, va1);
             }
+        }
+        if constexpr (!Alpha1) {
+            acc0 = svmul_n_f16_x(pg, acc0, halpha);
+            acc1 = svmul_n_f16_x(pg, acc1, halpha);
         }
         if constexpr (!ZeroMode) {
             acc0 = svadd_f16_m(pg, acc0, svld1_f16(pg, (const __fp16*)out0));
@@ -676,12 +725,14 @@ hprocessrows_1(
                 svfloat16_t b0 = svld1_f16(pg0, (const __fp16*)b0_ptr);
                 svfloat16_t b1 = svld1_f16(pg1, (const __fp16*)b1_ptr);
                 __fp16 a0 = reinterpret_cast<const __fp16*>(a)[p];
-                if constexpr (!Alpha1)
-                    a0 *= halpha;
                 svfloat16_t va0 = svdup_n_f16(a0);
                 acc0 = svmla_f16_m(pg0, acc0, b0, va0);
                 acc1 = svmla_f16_m(pg1, acc1, b1, va0);
             }
+        }
+        if constexpr (!Alpha1) {
+            acc0 = svmul_n_f16_x(pg0, acc0, halpha);
+            acc1 = svmul_n_f16_x(pg1, acc1, halpha);
         }
         if constexpr (!ZeroMode) {
             acc0 = svadd_f16_m(pg0, acc0, svld1_f16(pg0, (const __fp16*)out0));
@@ -700,11 +751,12 @@ hprocessrows_1(
                 const _mlas_fp16_* b_ptr = b + p * PACKED_B_BLOCK_WIDTH_FP16 + col;
                 svfloat16_t b0 = svld1_f16(pg, (const __fp16*)b_ptr);
                 __fp16 a0 = reinterpret_cast<const __fp16*>(a)[p];
-                if constexpr (!Alpha1)
-                    a0 *= halpha;
                 svfloat16_t va0 = svdup_n_f16(a0);
                 acc = svmla_f16_m(pg, acc, b0, va0);
             }
+        }
+        if constexpr (!Alpha1) {
+            acc = svmul_n_f16_x(pg, acc, halpha);
         }
         if constexpr (!ZeroMode) {
             acc = svadd_f16_m(pg, acc, svld1_f16(pg, (const __fp16*)out));
