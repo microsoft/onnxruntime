@@ -22,22 +22,22 @@ using onnxruntime::cuda::CudaKernel;
 using onnxruntime::cuda::OrtToCudaType;
 namespace gdn = gated_delta_net;
 
-#define REGISTER_KERNEL_TYPED(T)                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      GatedDeltaNet,                                                    \
-      kMSDomain,                                                        \
-      1,                                                                \
-      T,                                                                \
-      kCudaExecutionProvider,                                           \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>())   \
-          .TypeConstraint("TG", {DataTypeImpl::GetTensorType<float>(), \
+#define REGISTER_KERNEL_TYPED(T)                                           \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                           \
+      GatedDeltaNet,                                                       \
+      kMSDomain,                                                           \
+      1,                                                                   \
+      T,                                                                   \
+      kCudaExecutionProvider,                                              \
+      (*KernelDefBuilder::Create())                                        \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())           \
+          .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>())      \
+          .TypeConstraint("TG", {DataTypeImpl::GetTensorType<float>(),     \
                                  DataTypeImpl::GetTensorType<MLFloat16>(), \
                                  DataTypeImpl::GetTensorType<BFloat16>()}) \
-          .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>()) \
-          .InputMemoryType(OrtMemTypeCPUInput, 10)                      \
-          .MayInplace(6, 1),                                            \
+          .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>())    \
+          .InputMemoryType(OrtMemTypeCPUInput, 10)                         \
+          .MayInplace(6, 1),                                               \
       GatedDeltaNet<T>);
 
 REGISTER_KERNEL_TYPED(float)

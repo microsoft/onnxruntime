@@ -745,8 +745,8 @@ Status LaunchRecurrent(const Descriptor& desc, bool warp_specialized, const Vari
 
 template <typename T, bool InputTypeGates>
 static Status LaunchGatedDeltaNetTypedGates(const Descriptor& desc, const Plan& plan, const VariantPack<T>& pack,
-                           float scale, int max_threads_per_block,
-                           size_t max_shared_memory_per_block, cudaStream_t stream) {
+                                            float scale, int max_threads_per_block,
+                                            size_t max_shared_memory_per_block, cudaStream_t stream) {
   KernelParams p{};
   p.total_tokens = desc.total_tokens;
   p.uniform_len = desc.batch > 0 ? desc.total_tokens / desc.batch : 0;
@@ -800,13 +800,13 @@ static Status LaunchGatedDeltaNetTypedGates(const Descriptor& desc, const Plan& 
       // The chunked engine only accepts head_size_qk == head_size_v == 128, so the warp
       // kernel is always the right shape here.
       return LaunchRecurrent<T, InputTypeGates>(desc, /*warp_specialized=*/true, pack, p,
-                                max_shared_memory_per_block, stream);
+                                                max_shared_memory_per_block, stream);
     }
   }
 
   (void)max_threads_per_block;
   return LaunchRecurrent<T, InputTypeGates>(desc, plan.warp_specialized, pack, p, max_shared_memory_per_block,
-                            stream);
+                                            stream);
 }
 
 template <typename T>

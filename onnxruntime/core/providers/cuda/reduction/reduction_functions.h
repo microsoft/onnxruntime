@@ -109,7 +109,7 @@ Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output
 /** Sum FP32-rounded squares across columns, preserving reduce_matrix_columns' summation order. */
 template <typename TIn>
 Status reduce_square_matrix_columns(cudaStream_t stream, const TIn* input, float* output,
-                                   int m, int n, void* buffer, size_t buffer_size, int input_row_stride = 0);
+                                    int m, int n, void* buffer, size_t buffer_size, int input_row_stride = 0);
 
 /**
  * Computes ReduceSum for an arbitrary set of axes. This is the general fallback

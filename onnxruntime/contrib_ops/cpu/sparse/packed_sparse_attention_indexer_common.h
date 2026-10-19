@@ -71,9 +71,9 @@ enum OutputIndex : int {
   kPresentStateLengths = 5,  // [batch_size, 2], int32
   kStateUpdate = 6,          // qsa only, optional: [batch_size, state_update_capacity, head_size]
   kIndexShareStatus = 7,
-  kMidKvBuffer = 8,          // qsa only, optional: buffer snapshot after the first request token
-  kMidStateLengths = 9,      // qsa only, optional: state lengths after the first request token
-  kValidationStatus = 10,    // qsa only, optional: per-request overflow/metadata status
+  kMidKvBuffer = 8,        // qsa only, optional: buffer snapshot after the first request token
+  kMidStateLengths = 9,    // qsa only, optional: state lengths after the first request token
+  kValidationStatus = 10,  // qsa only, optional: per-request overflow/metadata status
   kOutputCount = 8,
   kMaxOutputCount = 11,
 };

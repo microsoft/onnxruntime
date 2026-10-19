@@ -480,8 +480,8 @@ Status LaunchCausalConvProjectionKernel(
   return CUDA_CALL(cudaGetLastError());
 }
 
-#define INSTANTIATE_PROJECTION(T) \
-  template Status LaunchCausalConvProjectionKernel<T>( \
+#define INSTANTIATE_PROJECTION(T)                                       \
+  template Status LaunchCausalConvProjectionKernel<T>(                  \
       cudaStream_t, const T*, const T*, const T*, const T*, T*, T*, T*, \
       int, int, int, int, int, int, int, int, bool, bool);
 INSTANTIATE_PROJECTION(float)
