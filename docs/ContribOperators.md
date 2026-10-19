@@ -5258,7 +5258,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>indexshare_status</tt> (optional) : M</dt>
 <dd>Selection status [N], forwarded on reuse and zero on refresh.</dd>
 <dt><tt>state_status</tt> (optional) : M</dt>
-<dd>Device-side per-request state update status with shape (batch_size). 0: the request's state update was applied (or intentionally held by IndexShare reuse); 1: invalid device metadata (cumulative_sequence_lengths, past_sequence_lengths or past_state_lengths are inconsistent); 2: the update would exceed state_capacity. A non-zero request leaves its state unchanged and emits an empty selection (selected_counts is 0 and selected_indices is -1). Intended for CUDA graph replay, where the host checks it after the replay instead of synchronizing inside the operator. Currently supported by the CUDA provider only.</dd>
+<dd>Device-side per-request state update status with shape (batch_size). 0: the request's state update was applied (or intentionally held by IndexShare reuse); 1: invalid device metadata (cumulative_sequence_lengths, past_sequence_lengths or past_state_lengths are inconsistent); 2: the update would exceed state_capacity. A non-zero request leaves its state payloads unchanged, clamps out-of-range past_state_lengths into present_state_lengths, and emits an empty selection (selected_counts is 0 and selected_indices is -1). Intended for CUDA graph replay, where the host checks it after the replay instead of synchronizing inside the operator. Currently supported by the CUDA provider only.</dd>
 </dl>
 
 #### Type Constraints

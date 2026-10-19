@@ -57,10 +57,10 @@ Status LaunchValidatePackedIndexerReuse(cudaStream_t stream, const int32_t* cumu
 // (unused when batch_size == 0); it may be the operator's state_status output. The update kernel
 // writes, per request, a psai::StateStatusCode: 1 for inconsistent device metadata, 2 when this
 // call's new blocks/windows would exceed state_capacity, else 0. When non-zero, the whole step is rejected for that
-// request (present_state_lengths / present_key_state / present_kv_buffer / present_gate_buffer for
-// that request are left exactly as their past_* counterparts) and the select kernels force that
-// request's selected_indices/selected_counts to the safe empty result (-1 / 0) rather than
-// selecting against a partially updated state.
+// request (present_key_state / present_kv_buffer / present_gate_buffer for that request are left
+// unchanged and present_state_lengths is left as past_state_lengths clamped to valid bounds) and
+// the select kernels force that request's selected_indices/selected_counts to the safe empty
+// result (-1 / 0) rather than selecting against a partially updated state.
 template <typename T>
 Status LaunchQsaPackedSparseAttentionIndexer(
     cudaStream_t stream,

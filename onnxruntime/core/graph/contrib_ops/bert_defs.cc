@@ -3144,9 +3144,10 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     *state_update_shape.add_dim() = key_state_shape->dim(2);
     updateOutputShape(ctx, psai::kStateUpdate, state_update_shape);
   }
-  if (has_state_status_output && key_state_shape != nullptr) {
+  if (has_state_status_output && (key_state_shape != nullptr || past_sequence_shape != nullptr)) {
     ONNX_NAMESPACE::TensorShapeProto state_status_shape;
-    *state_status_shape.add_dim() = key_state_shape->dim(0);
+    *state_status_shape.add_dim() =
+        key_state_shape != nullptr ? key_state_shape->dim(0) : past_sequence_shape->dim(0);
     updateOutputShape(ctx, psai::kStateStatus, state_status_shape);
   }
 }
@@ -3417,8 +3418,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "Device-side per-request state update status with shape (batch_size). 0: the request's state "
                 "update was applied (or intentionally held by IndexShare reuse); 1: invalid device metadata "
                 "(cumulative_sequence_lengths, past_sequence_lengths or past_state_lengths are inconsistent); "
-                "2: the update would exceed state_capacity. A non-zero request leaves its state unchanged "
-                "and emits an empty selection (selected_counts is 0 and selected_indices is -1). "
+                "2: the update would exceed state_capacity. A non-zero request leaves its state payloads "
+                "unchanged, clamps out-of-range past_state_lengths into present_state_lengths, and emits an "
+                "empty selection (selected_counts is 0 and selected_indices is -1). "
                 "Intended for CUDA graph replay, where the host checks it after the replay instead of "
                 "synchronizing inside the operator. Currently supported by the CUDA provider only.",
                 "M",

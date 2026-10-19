@@ -196,12 +196,18 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
   }
 
   std::vector<NodeArg*> outputs;
-  for (int i = 0; i < (options.indexshare ? psai::kIndexShareStatus + 1 : options.output_count); ++i) {
+  const int declared_outputs =
+      options.indexshare ? std::max(options.output_count, psai::kIndexShareStatus + 1) : options.output_count;
+  for (int i = 0; i < declared_outputs; ++i) {
     const bool omit_gate_output =
         i == psai::kPresentGateBuffer &&
         ((is_csa && options.omit_csa_gate_output) || (!is_csa && !options.add_qsa_gate_output));
-    const bool omit_capture_output = options.indexshare && i == psai::kStateUpdate && options.output_count <= i;
-    outputs.push_back(omit_gate_output || omit_capture_output ? &empty : builder.MakeOutput());
+    const bool omit_capture_output =
+        i == psai::kStateUpdate && options.state_update_capacity == 0 &&
+        options.output_count != psai::kStateUpdate + 1;
+    const bool omit_indexshare_status = !options.indexshare && i == psai::kIndexShareStatus;
+    outputs.push_back(omit_gate_output || omit_capture_output || omit_indexshare_status ? &empty
+                                                                                        : builder.MakeOutput());
   }
   Node& node = builder.AddNode("PackedSparseAttentionIndexer", inputs, outputs, kMSDomain);
   node.AddAttribute("policy_mode", options.policy_mode);
@@ -354,6 +360,24 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, QsaInfersStateUpdate) {
   const Node& node = *graph.Nodes().begin();
   ExpectShape(graph, node.OutputDefs()[psai::kStateUpdate]->Name(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
               {options.batch_size, options.state_update_capacity, options.head_size});
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, InfersStateStatus) {
+  for (const char* policy_mode : {psai::kPolicyModeQsa, psai::kPolicyModeCsa}) {
+    for (bool indexshare : {false, true}) {
+      GraphOptions options;
+      options.policy_mode = policy_mode;
+      options.indexshare = indexshare;
+      options.output_count = psai::kOutputCount;
+      std::unique_ptr<Model> model;
+      ASSERT_STATUS_OK(BuildAndResolve([&options](ModelTestBuilder& builder) { AddNode(builder, options); }, model));
+
+      const Graph& graph = model->MainGraph();
+      const Node& node = *graph.Nodes().begin();
+      ExpectShape(graph, node.OutputDefs()[psai::kStateStatus]->Name(), ONNX_NAMESPACE::TensorProto_DataType_INT32,
+                  {options.batch_size});
+    }
+  }
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, CsaInfersFixedCapacityAndState) {
@@ -1154,6 +1178,7 @@ TEST(PackedSparseAttentionIndexerTest, IndexShareReusePackedQkAndStatus) {
     test.AddOutput<int32_t>("present_lengths", {2, 2}, state_lengths);
     test.AddOptionalOutputEdge<float>();
     test.AddOutput<int32_t>("status", {2}, {invalid == 0 ? 0 : 1, 2});
+    test.AddOutput<int32_t>("state_status", {2}, {0, 0});
     RunOnProvider(test, std::move(provider));
   }
 }
@@ -2072,6 +2097,13 @@ TEST(PackedSparseAttentionIndexerTest, IndexShareCsaAdvanceReportsStateStatus) {
   problem.state_capacity = 1;
   problem.report_state_status = true;
   RunCsaPackedTest<float>(MakeCsaPackedProblem(problem), 1.0e-5f, ProviderKind::Cuda, nullptr, nullptr, true, true);
+
+  CsaPackedProblem empty_batch;
+  empty_batch.batch_size = 0;
+  empty_batch.cumulative_sequence_lengths = {0};
+  empty_batch.report_state_status = true;
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(empty_batch)), 1.0e-5f, ProviderKind::Cuda, nullptr, nullptr,
+                          true);
 }
 
 #ifdef USE_WEBGPU

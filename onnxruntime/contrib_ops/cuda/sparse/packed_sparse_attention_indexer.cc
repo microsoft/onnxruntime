@@ -576,8 +576,10 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context, con
                                              cudaMemcpyDeviceToDevice, Stream(context)));
       }
     }
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(overflow_flags, 0, std::max<int64_t>(batch_size, 1) * sizeof(int32_t),
-                                         Stream(context)));
+    if (batch_size > 0) {
+      CUDA_RETURN_IF_ERROR(
+          cudaMemsetAsync(overflow_flags, 0, static_cast<size_t>(batch_size) * sizeof(int32_t), Stream(context)));
+    }
     ORT_RETURN_IF_ERROR(LaunchValidatePackedIndexerReuse(
         Stream(context), cumulative_sequence_lengths->Data<int32_t>(), past_sequence_lengths->Data<int32_t>(),
         past_state_lengths->Data<int32_t>(), selected_indices->MutableData<int32_t>(),

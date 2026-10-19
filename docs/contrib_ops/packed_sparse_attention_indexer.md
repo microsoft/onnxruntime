@@ -141,8 +141,9 @@ check it on the host after replay without any synchronization inside the operato
 was applied (or intentionally held by IndexShare reuse), `1` invalid device metadata (inconsistent
 `cumulative_sequence_lengths`, `past_sequence_lengths` or `past_state_lengths`), `2` the update
 would exceed `state_capacity`. The values follow the status convention of
-`PackedSparseAttentionIndexerMerge`. A non-zero request leaves its state unchanged and emits an
-empty selection. The WebGPU kernel does not implement the output and fails if it is requested.
+`PackedSparseAttentionIndexerMerge`. A non-zero request leaves its state payloads unchanged, clamps
+out-of-range `past_state_lengths` into `present_state_lengths`, and emits an empty selection. The
+WebGPU kernel does not implement the output and fails if it is requested.
 
 **Transactional QSA capture.** When `state_update_capacity > 0`,
 `state_update_capture_count[b]` requests capture of that request's leading transitions, clamped to
