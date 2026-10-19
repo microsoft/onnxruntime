@@ -10,6 +10,7 @@ from qmoe_expert_distribution import (
     CUMULATIVE_GLOBAL_POSITION_THRESHOLDS,
     LAYER_NUMBER,
     SELECTED_EXPERT_COUNT,
+    generation_iteration,
     inspect_trace,
     node_identity,
     node_sort_key,
@@ -21,6 +22,8 @@ from qmoe_expert_distribution import (
 class ReplayEvent:
     node_index: int
     selected_experts: tuple[int, ...]
+    prompt_index: int
+    generation_iteration: int
 
 
 @dataclass(frozen=True)
@@ -98,7 +101,7 @@ def load_replay_trace(log_path):
     events = []
     expert_offsets = {}
 
-    def append_event(_, event):
+    def append_event(prompt_index, event):
         identity = node_identity(event)
         if "expert_offset" in event:
             offset = event["expert_offset"]
@@ -110,7 +113,9 @@ def load_replay_trace(log_path):
         selected_experts = tuple(selected_expert["expert_id"] for selected_expert in event["selected_experts"])
         if any(not 0 <= expert_id < experts_per_node for expert_id in selected_experts):
             raise ValueError(f"Trace contains an expert ID outside [0, {experts_per_node}): {selected_experts}.")
-        events.append(ReplayEvent(identity_to_index[identity], selected_experts))
+        events.append(
+            ReplayEvent(identity_to_index[identity], selected_experts, prompt_index, generation_iteration(event))
+        )
 
     parsed_summary = parse_counter_trace(log_path, append_event)
     if parsed_summary != summary:
@@ -127,7 +132,15 @@ def load_replay_trace(log_path):
         # Legacy main-graph kernels are registered by resolved node index, not layer name or execution order.
         runtime_identities = sorted(identities, key=lambda identity: identity[1])
     runtime_indices = {identity: index for index, identity in enumerate(runtime_identities)}
-    events = [ReplayEvent(runtime_indices[identities[event.node_index]], event.selected_experts) for event in events]
+    events = [
+        ReplayEvent(
+            runtime_indices[identities[event.node_index]],
+            event.selected_experts,
+            event.prompt_index,
+            event.generation_iteration,
+        )
+        for event in events
+    ]
     return events, runtime_identities, moe_count, experts_per_node
 
 
@@ -155,7 +168,9 @@ def evaluate_alpha(
     moe_invocation_total = 0
     for event in events:
         node_scores = scores[event.node_index]
-        if len(event.selected_experts) == selected_expert_count:
+        if event.generation_iteration > 0:
+            if len(event.selected_experts) != selected_expert_count:
+                raise ValueError(f"Decode event must contain {selected_expert_count} selected experts.")
             global_offset = event.node_index * experts_per_node
             global_positions = []
             for expert_id in event.selected_experts:
@@ -183,7 +198,7 @@ def evaluate_alpha(
         )
 
     if selected_total == 0:
-        raise ValueError(f"Trace contains no events with {selected_expert_count} selected experts.")
+        raise ValueError("Trace contains no decode events.")
     return [
         OptimizationResult(
             alpha=alpha,
@@ -352,10 +367,16 @@ def average_all_experts_below_threshold(events, moe_count, experts_per_node, alp
     totals = {threshold: [0] * moe_count for threshold in thresholds}
     iteration_count = 0
     nodes_seen = set()
+    current_iteration = None
 
     for event in events:
-        if len(event.selected_experts) == SELECTED_EXPERT_COUNT:
-            if not nodes_seen:
+        if event.generation_iteration > 0:
+            iteration = (event.prompt_index, event.generation_iteration)
+            if iteration != current_iteration:
+                if nodes_seen and len(nodes_seen) != moe_count:
+                    raise ValueError("The trace contains an incomplete decode iteration.")
+                current_iteration = iteration
+                nodes_seen.clear()
                 ranked_experts = sorted(
                     (
                         -score,
@@ -378,11 +399,10 @@ def average_all_experts_below_threshold(events, moe_count, experts_per_node, alp
             node_scores[expert_id] += 1.0 - alpha
         scores[event.node_index] = node_scores
 
-        if len(nodes_seen) == moe_count:
-            nodes_seen.clear()
-
-    if nodes_seen:
+    if nodes_seen and len(nodes_seen) != moe_count:
         raise ValueError("The trace ends during an incomplete decode iteration.")
+    if iteration_count == 0:
+        raise ValueError("Trace contains no decode events.")
     return {threshold: [total / iteration_count for total in node_totals] for threshold, node_totals in totals.items()}
 
 

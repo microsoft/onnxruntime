@@ -230,13 +230,18 @@ def generate(genai, model, tokenizer, prompt, max_new_tokens, raw_prompt):
     params = genai.GeneratorParams(model)
     params.set_search_options(**generation_search_options(len(prompt_tokens), max_new_tokens))
     generator = genai.Generator(model, params)
+    print("[qmoe_prompt_runner] prefill 0", file=sys.stderr, flush=True)
     generator.append_tokens(prompt_tokens)
 
     generated_tokens = []
+    iteration = 0
     start = time.perf_counter()
     while not generator.is_done():
+        if iteration:
+            print(f"[qmoe_prompt_runner] decode {iteration}", file=sys.stderr, flush=True)
         generator.generate_next_token()
         generated_tokens.extend(generator.get_next_tokens().tolist())
+        iteration += 1
     duration = time.perf_counter() - start
 
     return {

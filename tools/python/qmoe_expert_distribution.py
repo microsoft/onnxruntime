@@ -13,6 +13,7 @@ COUNTER_COMPLETE_MARKER = "moe_expert_counters_complete "
 COUNTER_TRUNCATED_MARKER = "moe_expert_counters_truncated "
 PROMPT_START = re.compile(r"^\[qmoe_prompt_runner\] (\d+)/(\d+) prompt_start$")
 PROMPT_END = re.compile(r"^\[qmoe_prompt_runner\] (\d+)/(\d+) prompt_end$")
+GENERATION_STEP = re.compile(r"^\[qmoe_prompt_runner\] (prefill|decode) (\d+)$")
 LAYER_NUMBER = re.compile(r"/layers\.(\d+)/")
 SELECTED_EXPERT_COUNT = 8
 GLOBAL_POSITION_THRESHOLDS = (5120, 8000)
@@ -70,6 +71,15 @@ def node_sort_key(identity):
 def node_display_name(identity):
     graph_scope, node_index, node_type, node_name = identity
     return f"{graph_scope}:{node_name or f'{node_type}[{node_index}]'}"
+
+
+def generation_iteration(event):
+    iteration = event.get("generation_iteration")
+    if type(iteration) is not int or iteration < 0:
+        raise ValueError(
+            "Trace is missing valid prefill/decode generation markers; regenerate it with qmoe_prompt_runner.py."
+        )
+    return iteration
 
 
 def _validate_counter_event(event, line_number):
@@ -140,6 +150,7 @@ def _validate_counter_event(event, line_number):
 
 def parse_counter_trace(log_path, on_event=None):
     active_prompt = None
+    active_iteration = None
     completed_prompts = 0
     expected_prompts = None
     counter_event_count = 0
@@ -168,6 +179,21 @@ def parse_counter_trace(log_path, on_event=None):
                     )
                 expected_prompts = prompt_total
                 active_prompt = prompt_index
+                active_iteration = None
+                continue
+
+            generation_step = GENERATION_STEP.fullmatch(stripped_line)
+            if generation_step:
+                phase, iteration_text = generation_step.groups()
+                iteration = int(iteration_text)
+                expected_iteration = 0 if active_iteration is None else active_iteration + 1
+                if (
+                    active_prompt is None
+                    or iteration != expected_iteration
+                    or phase != ("prefill" if iteration == 0 else "decode")
+                ):
+                    raise ValueError(f"Unexpected generation marker at line {line_number}: {stripped_line}")
+                active_iteration = iteration
                 continue
 
             prompt_end = PROMPT_END.fullmatch(stripped_line)
@@ -203,6 +229,8 @@ def parse_counter_trace(log_path, on_event=None):
             except json.JSONDecodeError as exc:
                 raise ValueError(f"Invalid counter JSON at line {line_number}: {exc}") from exc
             _validate_counter_event(event, line_number)
+            if active_iteration is not None:
+                event["generation_iteration"] = active_iteration
             if on_event is not None:
                 on_event(active_prompt, event)
             counter_event_count += 1
@@ -274,8 +302,10 @@ def build_timeline(
         nonlocal time_index
         identity = node_identity(event)
         selected_experts = event["selected_experts"]
-        if len(selected_experts) != selected_expert_count:
+        if generation_iteration(event) == 0:
             return
+        if len(selected_experts) != selected_expert_count:
+            raise ValueError(f"Decode event must contain {selected_expert_count} selected experts.")
         minimum_score = min(selected_expert["score"] for selected_expert in selected_experts)
         global_position = max(selected_expert["global_position"] for selected_expert in selected_experts)
         expert_counts_by_global_position_threshold = tuple(

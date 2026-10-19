@@ -89,6 +89,12 @@ python tools/python/qmoe_expert_activation_correlations.py counter.log \
 `qmoe_prompt_runner.py --until-eos` omits its usual artificial new-token limit and lets generation stop on EOS. The
 model context length remains the unavoidable hard limit. Collecting counter traces with this runner requires
 `--cpu-offload-experts` to be positive; a run without offload produces no counter records.
+The runner writes `[qmoe_prompt_runner] prefill 0` before submitting prompt tokens and
+`[qmoe_prompt_runner] decode N` before each subsequent generation step. These markers identify the phase even for a
+one-token prompt or a multi-token prefill selecting only eight distinct experts. Timeline and correlation analysis
+exclude prefill; counter replay applies its updates but scores only decode. Replay retains both the prompt and
+generation iteration so decode groups cannot span prompts. Decode analysis rejects older traces without this phase
+metadata instead of guessing from the number of selected experts; regenerate those traces with the updated runner.
 
 The CPU-offload strategy is selected with `session.moe_cpu_offload_strategy=adaptive|basic|layered` (default `adaptive`).
 The QMoE-only `basic` strategy fills the chosen nodes' GPU expert slots, then places the remaining

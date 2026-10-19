@@ -29,7 +29,7 @@ from qmoe_expert_distribution import (  # noqa: E402
 )
 
 
-def _event(node_index, node_name, selected_experts):
+def _event(node_index, node_name, selected_experts, generation_iteration=1):
     return {
         "request_id": "",
         "graph_scope": "main",
@@ -38,6 +38,7 @@ def _event(node_index, node_name, selected_experts):
         "node_name": node_name,
         "moe_count": 2,
         "total_expert_count": 6,
+        "generation_iteration": generation_iteration,
         "selected_experts": selected_experts,
     }
 
@@ -73,12 +74,15 @@ def _trace(events):
 class TestQMoEExpertDistribution(unittest.TestCase):
     def test_counter_parameter_optimization(self):
         events = [
-            (0, (0,)),
-            (1, (0,)),
-            (0, (1, 0)),
-            (1, (1, 0)),
+            (0, (0,), 0),
+            (1, (0,), 0),
+            (0, (1, 0), 1),
+            (1, (1, 0), 1),
         ]
-        replay_events = [ReplayEvent(node_index, selected_experts) for node_index, selected_experts in events]
+        replay_events = [
+            ReplayEvent(node_index, selected_experts, 1, iteration)
+            for node_index, selected_experts, iteration in events
+        ]
 
         results = evaluate_alpha(
             replay_events,
@@ -162,6 +166,7 @@ class TestQMoEExpertDistribution(unittest.TestCase):
                     _selected(1, 0.1, 1, 1, 1),
                     _selected(2, 0.1, 2, 2, 2),
                 ],
+                generation_iteration=0,
             ),
             _event(
                 1,
@@ -294,6 +299,18 @@ class TestQMoEExpertDistribution(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "has no prompt_end"):
                 parse_counter_trace(log_path)
+
+    def test_rejects_out_of_order_generation_markers(self):
+        for marker in ("decode 0", "decode 1", "prefill 0\n[qmoe_prompt_runner] decode 2"):
+            with self.subTest(marker=marker), tempfile.TemporaryDirectory() as temp_dir:
+                log_path = Path(temp_dir) / "routing.log"
+                trace = _trace([]).replace(
+                    "[qmoe_prompt_runner] 1/1 prompt_start",
+                    f"[qmoe_prompt_runner] 1/1 prompt_start\n[qmoe_prompt_runner] {marker}",
+                )
+                log_path.write_text(trace, encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "Unexpected generation marker"):
+                    parse_counter_trace(log_path)
 
 
 if __name__ == "__main__":

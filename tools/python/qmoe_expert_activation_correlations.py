@@ -9,6 +9,7 @@ import numpy as np
 from qmoe_expert_distribution import (
     LAYER_NUMBER,
     SELECTED_EXPERT_COUNT,
+    generation_iteration,
     inspect_trace,
     node_display_name,
     node_identity,
@@ -84,19 +85,24 @@ def load_activation_trace(log_path, selected_expert_count=SELECTED_EXPERT_COUNT)
     expert_count = total_expert_count // moe_count
     identities = tuple(sorted(identities, key=node_sort_key))
     identity_to_index = {identity: index for index, identity in enumerate(identities)}
-    selected_by_prompt = defaultdict(lambda: [[] for _ in identities])
+    selected_by_prompt = defaultdict(lambda: [{} for _ in identities])
     decode_iterations = [0] * len(identities)
     selected_expert_rows = []
 
     def append_event(prompt_index, event):
         selected_experts = event["selected_experts"]
-        if len(selected_experts) != selected_expert_count:
+        iteration = generation_iteration(event)
+        if iteration == 0:
             return
+        if len(selected_experts) != selected_expert_count:
+            raise ValueError(f"Decode event must contain {selected_expert_count} selected experts.")
         node_index = identity_to_index[node_identity(event)]
         expert_ids = tuple(selected_expert["expert_id"] for selected_expert in selected_experts)
         if any(not 0 <= expert_id < expert_count for expert_id in expert_ids):
             raise ValueError(f"Trace contains an expert ID outside [0, {expert_count}): {expert_ids}.")
-        selected_by_prompt[prompt_index][node_index].append(expert_ids)
+        if iteration in selected_by_prompt[prompt_index][node_index]:
+            raise ValueError(f"Duplicate MoE node in prompt {prompt_index}, decode iteration {iteration}.")
+        selected_by_prompt[prompt_index][node_index][iteration] = expert_ids
         decode_iterations[node_index] += 1
         selected_expert_rows.extend(
             (
@@ -115,18 +121,18 @@ def load_activation_trace(log_path, selected_expert_count=SELECTED_EXPERT_COUNT)
     prompt_activations = []
     for prompt_index in range(1, summary.prompts + 1):
         selections_by_node = selected_by_prompt[prompt_index]
-        invocation_counts = [len(selections) for selections in selections_by_node]
-        if not invocation_counts or min(invocation_counts) == 0 or len(set(invocation_counts)) != 1:
+        iterations = [sorted(selections) for selections in selections_by_node]
+        if not iterations or not iterations[0] or any(indexes != iterations[0] for indexes in iterations):
             counts = ", ".join(
-                f"{node_display_name(identity)}={count}"
-                for identity, count in zip(identities, invocation_counts, strict=True)
+                f"{node_display_name(identity)}={indexes}"
+                for identity, indexes in zip(identities, iterations, strict=True)
             )
             raise ValueError(f"Prompt {prompt_index} has unaligned decode invocations across MoE nodes: {counts}.")
 
-        activations = np.zeros((invocation_counts[0], moe_count, expert_count), dtype=np.uint8)
+        activations = np.zeros((len(iterations[0]), moe_count, expert_count), dtype=np.uint8)
         for node_index, selections in enumerate(selections_by_node):
-            for token_index, expert_ids in enumerate(selections):
-                activations[token_index, node_index, list(expert_ids)] = 1
+            for token_index, iteration in enumerate(iterations[0]):
+                activations[token_index, node_index, list(selections[iteration])] = 1
         prompt_activations.append(activations)
 
     return ActivationTrace(
