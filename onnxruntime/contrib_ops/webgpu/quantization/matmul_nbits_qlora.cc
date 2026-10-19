@@ -251,6 +251,8 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     ORT_RETURN_IF_NOT(
         w->Shape() == TensorShape({n_, k_ / 32, 16}) && s->Shape().Size() == SafeInt<int64_t>(n_) * (k_ / 32),
         "Invalid base weight/scales shape.");
+    // TODO: Support arbitrary adapter ranks with a rank uniform, per-block up scales,
+    // and vector-tail handling while preserving rank-32 performance.
     const auto rank_a = aq->Shape()[0];
     const auto blocks_b = bq->Shape()[1];
     ORT_RETURN_IF_NOT((rank_a == 0 || rank_a == 32) && (blocks_b == 0 || blocks_b == 1) && aq->Shape()[1] == k_ / 32 &&
