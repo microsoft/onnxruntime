@@ -954,5 +954,26 @@ TEST(SignalOpsTest, DFT20_2D_real) {
   TestDFT2DReal(kOpsetVersion20);
 }
 
+TEST(SignalOpsTest, DFT20_Rank0InputRejected) {
+  OpTester test("DFT", 20);
+  test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput: it only affects tensors added afterwards
+  test.AddInput<float>("input", {}, {1.f});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddInput<int64_t>("axis", {}, {1});
+  test.AddOutput<float>("output", {1}, {1.f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "input must have rank >= 2");
+}
+
+TEST(SignalOpsTest, STFT_Rank0SignalRejected) {
+  OpTester test("STFT", 17);
+  test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput: it only affects tensors added afterwards
+  test.AddInput<float>("signal", {}, {1.f});
+  test.AddInput<int64_t>("frame_step", {}, {1});
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<int64_t>("frame_length", {}, {2});
+  test.AddOutput<float>("output", {1}, {1.f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "signal must have rank 2 or 3");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

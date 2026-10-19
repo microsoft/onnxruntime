@@ -213,5 +213,17 @@ TEST(ReverseSequenceTest, BadLength) {
   run_test(false);
 }
 
+// Rank is unknown at load (no shape on the inputs), so only the kernel can reject a rank-1 input.
+TEST(ReverseSequenceTest, Rank1InputRejected) {
+  OpTester test("ReverseSequence", 10);
+  test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput: it only affects tensors added afterwards
+  test.AddAttribute("batch_axis", int64_t(1));
+  test.AddAttribute("time_axis", int64_t(0));
+  test.AddInput<float>("input", {4}, {0.f, 1.f, 2.f, 3.f});
+  test.AddInput<int64_t>("sequence_lens", {1}, {1});
+  test.AddOutput<float>("Y", {4}, {0.f, 1.f, 2.f, 3.f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "input must have rank >= 2", {kTensorrtExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

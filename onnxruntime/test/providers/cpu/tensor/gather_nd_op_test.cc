@@ -502,5 +502,15 @@ TEST(GatherNDOpTest, GatherND_runtime_scalar_indices_error) {
            {}, nullptr, &cpu_only_ep);
 }
 
+TEST(GatherNDOpTest, NegativeBatchDimsRejected) {
+  OpTester test("GatherND", 13);
+  test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput: it only affects tensors added afterwards
+  test.AddAttribute<int64_t>("batch_dims", -2);
+  test.AddInput<float>("data", {2, 3}, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f});
+  test.AddInput<int64_t>("indices", {2, 1}, {0, 1});
+  test.AddOutput<float>("output", {2, 3}, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "must not be negative", {kTensorrtExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -101,5 +101,13 @@ TEST(InverseContribOpTest, one_dim_input_fails) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "rank must be >= 2");
 }
 
+TEST(InverseContribOpTest, non_square_input_rejected) {
+  OpTester test("Inverse", 1, kMSDomain);
+  test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput: rank/dims are then unknown at load
+  test.AddInput<float>("X", {1, 3, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f});
+  test.AddOutput<float>("Y", {1, 3, 2}, {0.f, 0.f, 0.f, 0.f, 0.f, 0.f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "must form a square matrix");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

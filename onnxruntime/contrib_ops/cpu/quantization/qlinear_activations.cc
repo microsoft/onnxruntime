@@ -20,9 +20,13 @@ void QLinearLookupBase<T>::BuildLookupTableIfFixed(const OpKernelInfo& info, Tra
   const Tensor* tensor_y_zero_point = nullptr;
 
   bool get_x_scale = info.TryGetConstantInput(1, &tensor_x_scale);
-  bool get_x_zero_point = !info.node().InputDefs()[2]->Exists() || info.TryGetConstantInput(2, &tensor_x_zero_point);
+  // trailing optional inputs may be omitted entirely (InputDefs() is then shorter than 5), so check the size first
+  const auto& input_defs = info.node().InputDefs();
+  bool get_x_zero_point = input_defs.size() <= 2 || !input_defs[2]->Exists() ||
+                          info.TryGetConstantInput(2, &tensor_x_zero_point);
   bool get_y_scale = info.TryGetConstantInput(3, &tensor_y_scale);
-  bool get_y_zero_point = !info.node().InputDefs()[4]->Exists() || info.TryGetConstantInput(4, &tensor_y_zero_point);
+  bool get_y_zero_point = input_defs.size() <= 4 || !input_defs[4]->Exists() ||
+                          info.TryGetConstantInput(4, &tensor_y_zero_point);
   bool is_fixed_parameters = get_x_scale && get_x_zero_point && get_y_scale && get_y_zero_point;
 
   if (is_fixed_parameters) {
