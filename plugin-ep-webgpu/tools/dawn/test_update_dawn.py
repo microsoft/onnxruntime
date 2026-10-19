@@ -5,6 +5,7 @@ import difflib
 import io
 import json
 import shutil
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -20,6 +21,7 @@ NEW = "2" * 40
 CHILD = "3" * 40
 DEP = "https://github.com/example/dependency.git"
 SWIFT = "https://swiftshader.googlesource.com/SwiftShader"
+LATEST_TAG = "v20261016.190333"
 
 
 def deps_text(commit):
@@ -114,6 +116,31 @@ class PlanTests(TempTest):
             plan.apply()
         self.assertEqual((self.root / "first").read_text(), "old1")
         self.assertEqual((self.root / "second").read_text(), "old2")
+
+
+class LatestTagTests(unittest.TestCase):
+    def test_selects_newest_timestamp_not_ref_order_or_commit_hash(self):
+        # Include unrelated and prerelease-looking refs that must not win.
+        refs = [
+            (OLD, LATEST_TAG),
+            (NEW, "v20261016.090000"),
+            (NEW, "v20261015.235959"),
+            (NEW, "v9999.0.0"),
+            (NEW, "v20261017.010000-preview"),
+            (NEW, "v20261017.010000^{}"),
+            (NEW, "v20261017.10000"),
+        ]
+        with patch.object(updater.subprocess, "run") as run:
+            run.return_value.stdout = "".join(f"{sha}\trefs/tags/{tag}\n" for sha, tag in refs)
+            self.assertEqual(updater.latest_dawn_tag(), LATEST_TAG)
+            self.assertIn("--refs", run.call_args.args[0])
+
+    def test_no_usable_tag_fails_without_a_main_branch_fallback(self):
+        for refs in ["", f"{NEW}\trefs/heads/main\n", "invalid\trefs/tags/v20261016.190333\n"]:
+            with self.subTest(refs=refs), patch.object(updater.subprocess, "run") as run:
+                run.return_value.stdout = refs
+                with self.assertRaisesRegex(ValueError, "no dated Dawn release tags"):
+                    updater.latest_dawn_tag()
 
 
 class MetadataTests(TempTest):
@@ -311,7 +338,7 @@ class CommandTests(TempTest):
         self.write(updater.SWIFTSHADER_DOCKERFILE, f"ARG SWIFTSHADER_COMMIT={OLD}\n")
         self.write(updater.EXTERNAL_CMAKE, "if (FALSE)\n  # inactive\n  find_package(dawn REQUIRED)\nendif()\n")
         self.source = FakeSource(cache=self.root)
-        self.contexts.enter_context(
+        self.archive = self.contexts.enter_context(
             patch.object(
                 updater,
                 "archive_for_revision",
@@ -323,6 +350,47 @@ class CommandTests(TempTest):
         self.contexts.enter_context(redirect_stdout(io.StringIO()))
         self.contexts.enter_context(redirect_stderr(io.StringIO()))
         self.args = ["--repo-root", str(self.root), "--revision", NEW]
+
+    def test_latest_resolves_once_per_invocation_and_writes_only_concrete_pins(self):
+        url = f"https://github.com/google/dawn/archive/refs/tags/{LATEST_TAG}.zip"
+        self.archive.return_value = (self.source, url, "4" * 40, LATEST_TAG)
+        args = [*self.args[:-1], "latest"]
+        before = (self.root / updater.DEPS_FILE).read_bytes()
+        with patch.object(updater, "latest_dawn_tag", return_value=LATEST_TAG) as latest:
+            self.assertEqual(updater.main(args), 0)
+            latest.assert_called_once_with()
+            self.archive.assert_called_once_with(LATEST_TAG, self.root / "build/dawn-upgrade/cache")
+            self.assertEqual((self.root / updater.DEPS_FILE).read_bytes(), before)
+            report = json.loads((self.root / "build/dawn-upgrade/report.json").read_text())
+            self.assertEqual(report["requestedRevision"], "latest")
+            self.assertEqual(report["revision"], LATEST_TAG)
+            self.assertEqual(report["commit"], NEW)
+            self.assertIn("--revision latest", (self.root / "build/dawn-upgrade/report.md").read_text())
+            self.assertEqual(updater.main([*args, "--apply"]), 0)
+            self.assertEqual(latest.call_count, 2)
+        self.assertIn(url, (self.root / updater.DEPS_FILE).read_text())
+        self.assertNotIn("latest", (self.root / updater.DEPS_FILE).read_text())
+        dawn = json.loads((self.root / updater.MANIFEST).read_text())["registrations"][0]["component"]["git"]
+        self.assertEqual(dawn["tag"], LATEST_TAG)
+        self.assertEqual(dawn["commitHash"], NEW)
+
+    def test_latest_resolution_errors_do_not_download_or_modify_inputs(self):
+        files = [updater.DEPS_FILE, updater.MANIFEST, updater.SWIFTSHADER_DOCKERFILE]
+        before = {name: (self.root / name).read_bytes() for name in files}
+        errors = [ValueError("no dated Dawn release tags"), subprocess.TimeoutExpired("git", 30)]
+        for error in errors:
+            with self.subTest(error=error), patch.object(updater, "latest_dawn_tag", side_effect=error):
+                self.assertEqual(updater.main([*self.args[:-1], "latest", "--apply"]), 2)
+                self.archive.assert_not_called()
+                self.assertEqual({name: (self.root / name).read_bytes() for name in files}, before)
+
+    def test_explicit_and_default_revisions_do_not_query_latest(self):
+        with patch.object(updater, "latest_dawn_tag") as latest:
+            self.assertEqual(updater.main(self.args), 0)
+            self.assertEqual(self.archive.call_args.args[0], NEW)
+            self.assertEqual(updater.main(self.args[:-2]), 0)
+            self.assertEqual(self.archive.call_args.args[0], OLD)
+            latest.assert_not_called()
 
     def test_plan_apply_check_end_to_end_and_json_report(self):
         before = (self.root / updater.DEPS_FILE).read_bytes()

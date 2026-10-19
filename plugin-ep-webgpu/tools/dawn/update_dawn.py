@@ -34,6 +34,26 @@ SWIFTSHADER_DOCKERFILE = "tools/ci_build/github/linux/docker/inference/shared/py
 FETCHER = "tools/fetch_dawn_dependencies.py"
 
 
+def latest_dawn_tag() -> str:
+    """Select the newest timestamped release tag, independent of ref listing order."""
+    result = subprocess.run(
+        ["git", "ls-remote", "--tags", "--refs", validator.DAWN_REPOSITORY_URL, "refs/tags/v*"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    tags = []
+    for line in result.stdout.splitlines():
+        match = re.fullmatch(r"[0-9a-fA-F]{40}\s+refs/tags/(v[0-9]{8}\.[0-9]{6})", line)
+        if match:
+            tags.append(match[1])
+    if not tags:
+        raise ValueError("no dated Dawn release tags found (expected vYYYYMMDD.HHMMSS)")
+    # The fixed-width timestamp format sorts in chronological order.
+    return max(tags)
+
+
 def digest(path: Path) -> str:
     checksum = hashlib.sha1(usedforsecurity=False)
     with path.open("rb") as stream:
@@ -196,11 +216,13 @@ def format_report(report: dict) -> str:
         "# Dawn upgrade report",
         "",
         f"- Current pin: `{report['oldRevision']}` (`{report['oldCommit']}`)",
-        f"- Requested pin: `{report['revision']}` (`{report['commit']}`)",
+        f"- Target pin: `{report['revision']}` (`{report['commit']}`)",
         f"- Archive: {report['archiveUrl']}",
         f"- Archive SHA1: `{report['archiveSHA1']}`",
         "",
     ]
+    if report.get("requestedRevision") == "latest":
+        lines += ["Selected with `--revision latest` (newest dated Dawn release tag).", ""]
     if report.get("previousManifestCommit", report["oldCommit"]) != report["oldCommit"]:
         lines += [
             f"The existing manifest root `{report['previousManifestCommit']}` differs from the current pin.",
@@ -303,13 +325,18 @@ def make_plan(root: Path, revision: str | None, cache: Path, patch_executable: s
     plan = Plan(root)
     old_field, old_pin = validator._dawn_pin_from_deps_txt(root / DEPS_FILE)
     old_commit = cg._resolve_dawn_commit(old_field, old_pin)
-    source, url, archive_hash, tag = archive_for_revision(revision or old_pin, cache)
+    requested_revision = revision or old_pin
+    target_revision = latest_dawn_tag() if requested_revision == "latest" else requested_revision
+    if requested_revision == "latest":
+        print(f"Resolved latest to {target_revision}", file=sys.stderr, flush=True)
+    source, url, archive_hash, tag = archive_for_revision(target_revision, cache)
     deps = cg.parse_dawn_deps(source.read("DEPS"))
     previous = cg.parse_dawn_deps(Source(old_commit, cache).read("DEPS"))
     plan.report.update(
         oldRevision=old_pin,
         oldCommit=old_commit,
-        revision=revision or old_pin,
+        requestedRevision=requested_revision,
+        revision=target_revision,
         commit=source.commit,
         archiveUrl=url,
         archiveSHA1=archive_hash,
@@ -363,7 +390,9 @@ def make_plan(root: Path, revision: str | None, cache: Path, patch_executable: s
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--revision", help="exact Dawn tag or full Git commit; defaults to the current pin")
+    parser.add_argument(
+        "--revision", help="exact Dawn tag, full Git commit, or 'latest' dated release tag; defaults to the current pin"
+    )
     parser.add_argument("--repo-root", type=Path, default=REPO_ROOT, help="ORT checkout to inspect/update")
     parser.add_argument("--cache-dir", type=Path, help="download cache; defaults to <repo>/build/dawn-upgrade/cache")
     parser.add_argument("--output-dir", type=Path, help="report.md, report.json and changes.patch destination")

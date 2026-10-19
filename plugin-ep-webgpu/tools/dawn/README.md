@@ -22,6 +22,12 @@ add that directory to `PATH` or pass `--patch-executable PATH`.
    python plugin-ep-webgpu/tools/dawn/update_dawn.py --revision v20261013.193955
    ```
 
+   To discover the newest dated Dawn release tag instead:
+
+   ```powershell
+   python plugin-ep-webgpu/tools/dawn/update_dawn.py --revision latest
+   ```
+
    This changes no tracked files. It writes `report.md`, `report.json`, and
    `changes.patch` under `build/dawn-upgrade/`.
 
@@ -39,6 +45,9 @@ add that directory to `PATH` or pass `--patch-executable PATH`.
 
    This regenerates the plan, verifies its inputs, and applies the archive pin,
    manifest, SwiftShader, and patch edits only when there are no blockers.
+   If the dry run used `latest`, use the concrete tag printed in its report to
+   apply the reviewed revision. Using `--revision latest --apply` is also
+   supported, but selects the newest tag at the time of that invocation.
 
 5. Check the resulting files:
 
@@ -59,8 +68,16 @@ add that directory to `PATH` or pass `--patch-executable PATH`.
    The plugin packaging pipelines generate and scan the fetched build-input
    inventory after the build; it need not be generated manually before a roll.
 
-`--revision` accepts an exact tag or a full commit hash. Omitting it checks the
-current pin. Downloads are cached under `build/dawn-upgrade/cache/`; cached
+`--revision` accepts an exact tag, a full commit hash, or `latest`. The `latest`
+selector queries Dawn's Git tags matching `vYYYYMMDD.HHMMSS` and chooses the
+greatest timestamp, independently of ref listing order. Other tag formats and
+branch tips are excluded. The selected tag is then resolved to a commit using
+the same checks as an explicit tag; the report and proposed files contain the
+concrete tag/commit, never a floating `latest` pin. Discovery requires network
+access on every invocation, including `--check`.
+
+Omitting `--revision` checks the current pin without looking for a newer tag.
+Downloads are cached under `build/dawn-upgrade/cache/`; cached
 archives are checked for corruption and their DEPS must match the resolved
 commit. Tags are resolved again after downloading to detect a moved tag.
 
@@ -148,7 +165,8 @@ Tests use temporary files and mocked downloads, with real GNU patch for patch
 ordering and refresh tests. They cover dry runs, checks, idempotence, corrupt
 archives, moved tags, metadata preservation, removal policy, distinct revisions
 of the same repository, patch conflicts, concurrent edits, and failed-write
-recovery. Package files are left untouched.
+recovery. Latest-tag tests cover timestamp selection, concrete pinning, and
+discovery failures without writes. Package files are left untouched.
 
 ## Relationship to component inventories
 
