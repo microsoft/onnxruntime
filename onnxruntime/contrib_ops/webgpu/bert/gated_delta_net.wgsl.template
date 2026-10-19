@@ -10,7 +10,6 @@
 #param sigmoid_beta
 #param qk_l2_norm
 #param use_packed_params
-#param vectorized_value_io
 #param capture_state_updates
 #param vectorized_value_io
 #param value_channels_per_workgroup

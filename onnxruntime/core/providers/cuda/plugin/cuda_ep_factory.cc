@@ -5,6 +5,7 @@
 #include "cuda_device_mapping.h"
 #include "cuda_ep.h"
 #include "cuda_plugin_kernels.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
 #include "core/common/string_utils.h"
 #include "core/session/onnxruntime_c_api.h"
 #include <algorithm>
@@ -54,6 +55,10 @@ CudaEpFactory::CudaEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api,
 }
 
 CudaEpFactory::~CudaEpFactory() {
+  // Save any tactic caches of sessions still alive when the factory is released, before worker
+  // threads are stopped or the plugin DLL is unloaded.
+  onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCaches();
+
   for (auto& [key, entry] : device_cache_) {
     static_cast<void>(key);
     for (auto& arena : entry.device_arenas) {
@@ -654,7 +659,6 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   const std::string fuse_conv_bias_key = ep_options_prefix + "fuse_conv_bias";
   const std::string sdpa_kernel_key = ep_options_prefix + "sdpa_kernel";
   const std::string enable_cuda_graph_key = ep_options_prefix + "enable_cuda_graph";
-  const std::string enable_host_pageable_gather_key = ep_options_prefix + "enable_host_pageable_gather";
   const std::string min_runs_key = ep_options_prefix + "min_num_runs_before_cuda_graph_capture";
   const std::string has_user_compute_stream_key = ep_options_prefix + "has_user_compute_stream";
   const std::string user_compute_stream_key = ep_options_prefix + "user_compute_stream";
@@ -691,9 +695,6 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   read_session_config_bool(
       {enable_cuda_graph_key, "ep.cuda.enable_cuda_graph", "enable_cuda_graph"},
       config.enable_cuda_graph);
-  read_session_config_bool(
-      {enable_host_pageable_gather_key, "ep.cuda.enable_host_pageable_gather", "enable_host_pageable_gather"},
-      config.enable_host_pageable_gather);
   read_session_config_non_negative_int(
       {min_runs_key, "ep.cuda.min_num_runs_before_cuda_graph_capture"},
       config.min_num_runs_before_cuda_graph_capture);

@@ -147,6 +147,115 @@ static void RunMoETest(const std::vector<float>& input, const std::vector<float>
 
 // TODO(wy): Add python parity tests that can serve as examples. Need cutlass upgrade to build cutlass extensions to
 // add weights preprocesser to onnxruntime_pybind_quant.cc
+template <typename ElementType>
+static void RunCudaReluSquaredMoETest(int minimum_cuda_arch, int expert_weight_bits = 0) {
+  if (!HasCudaEnvironment(minimum_cuda_arch)) {
+    GTEST_SKIP() << "CUDA architecture does not support the test element type";
+  }
+
+  constexpr int num_rows = 2;
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = 128;
+  constexpr int inter_size = 128;
+  std::vector<ElementType> input(num_rows * hidden_size);
+  std::vector<ElementType> expected(input.size());
+  std::vector<ElementType> fc1(num_experts * inter_size * hidden_size, ElementType(0.0f));
+  std::vector<ElementType> fc2(num_experts * hidden_size * inter_size, ElementType(0.0f));
+  std::vector<ElementType> fc1_bias(num_experts * inter_size);
+  std::vector<ElementType> fc2_bias(num_experts * hidden_size);
+
+  for (int expert = 0; expert < num_experts; ++expert) {
+    for (int channel = 0; channel < hidden_size; ++channel) {
+      const int diagonal = expert * hidden_size * inter_size + channel * hidden_size + channel;
+      fc1[diagonal] = ElementType(static_cast<float>(expert + 1));
+      fc2[diagonal] = ElementType(1.0f);
+      fc1_bias[expert * inter_size + channel] = ElementType(expert == 0 ? 0.5f : -0.5f);
+      fc2_bias[expert * hidden_size + channel] = ElementType(expert == 0 ? 0.25f : -0.25f);
+    }
+  }
+  for (int row = 0; row < num_rows; ++row) {
+    for (int channel = 0; channel < hidden_size; ++channel) {
+      const float value = static_cast<float>((channel + row) % 8 - 3) * 0.5f;
+      input[row * hidden_size + channel] = ElementType(value);
+      const float first = std::max(0.0f, value + 0.5f);
+      const float second = std::max(0.0f, 2.0f * value - 0.5f);
+      expected[row * hidden_size + channel] = ElementType(0.5f * (first * first + second * second));
+    }
+  }
+
+  OpTester tester(expert_weight_bits == 0 ? "MoE" : "QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 2);
+  tester.AddAttribute<std::string>("activation_type", "relu2");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddInput<ElementType>("input", {num_rows, hidden_size}, input);
+  tester.AddInput<ElementType>("router_probs", {num_rows, num_experts},
+                               std::vector<ElementType>(num_rows * num_experts, ElementType(0.5f)));
+  if (expert_weight_bits == 0) {
+    tester.AddInput<ElementType>("fc1_experts_weights", {num_experts, inter_size, hidden_size}, fc1);
+    tester.AddInput<ElementType>("fc1_experts_bias", {num_experts, inter_size}, fc1_bias);
+    tester.AddInput<ElementType>("fc2_experts_weights", {num_experts, hidden_size, inter_size}, fc2);
+    tester.AddInput<ElementType>("fc2_experts_bias", {num_experts, hidden_size}, fc2_bias);
+  } else {
+    ASSERT_TRUE(expert_weight_bits == 4 || expert_weight_bits == 8);
+    const int pack_size = 8 / expert_weight_bits;
+    const int zero_point = 1 << (expert_weight_bits - 1);
+    const uint8_t packed_zero = expert_weight_bits == 4 ? 0x88 : 0x80;
+    std::vector<uint8_t> quantized_fc1(num_experts * hidden_size * inter_size / pack_size, packed_zero);
+    std::vector<uint8_t> quantized_fc2(quantized_fc1.size(), packed_zero);
+    for (int expert = 0; expert < num_experts; ++expert) {
+      for (int channel = 0; channel < hidden_size; ++channel) {
+        const int diagonal = expert * hidden_size * inter_size / pack_size +
+                             channel * inter_size / pack_size + channel / pack_size;
+        const int shift = (channel % pack_size) * expert_weight_bits;
+        const uint8_t mask = static_cast<uint8_t>(((1 << expert_weight_bits) - 1) << shift);
+        quantized_fc1[diagonal] = static_cast<uint8_t>(
+            (quantized_fc1[diagonal] & ~mask) | ((zero_point + expert + 1) << shift));
+        quantized_fc2[diagonal] = static_cast<uint8_t>(
+            (quantized_fc2[diagonal] & ~mask) | ((zero_point + 1) << shift));
+      }
+    }
+    tester.AddAttribute<int64_t>("expert_weight_bits", expert_weight_bits);
+    tester.AddAttribute<int64_t>("weights_prepacked", 0);
+    tester.AddInput<uint8_t>("fc1_experts_weights",
+                             {num_experts, inter_size, hidden_size / pack_size}, quantized_fc1, true);
+    tester.AddInput<ElementType>("fc1_scales", {num_experts, inter_size},
+                                 std::vector<ElementType>(num_experts * inter_size, ElementType(1.0f)), true);
+    tester.AddInput<ElementType>("fc1_experts_bias", {num_experts, inter_size}, fc1_bias);
+    tester.AddInput<uint8_t>("fc2_experts_weights",
+                             {num_experts, hidden_size, inter_size / pack_size}, quantized_fc2, true);
+    tester.AddInput<ElementType>("fc2_scales", {num_experts, hidden_size},
+                                 std::vector<ElementType>(num_experts * hidden_size, ElementType(1.0f)), true);
+    tester.AddInput<ElementType>("fc2_experts_bias", {num_experts, hidden_size}, fc2_bias);
+  }
+  tester.AddOutput<ElementType>("output", {num_rows, hidden_size}, expected);
+  tester.SetOutputAbsErr("output", 0.001f);
+  SessionOptions options;
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(MoETest, CudaReluSquaredFloat32) {
+  RunCudaReluSquaredMoETest<float>(700);
+}
+
+TEST(MoETest, CudaReluSquaredFloat16) {
+  RunCudaReluSquaredMoETest<MLFloat16>(700);
+}
+
+TEST(MoETest, CudaReluSquaredBFloat16) {
+  RunCudaReluSquaredMoETest<BFloat16>(800);
+}
+
+TEST(MoETest, CudaReluSquaredQuantizedInt4) {
+  RunCudaReluSquaredMoETest<MLFloat16>(750, 4);
+}
+
+TEST(MoETest, CudaReluSquaredQuantizedInt8) {
+  RunCudaReluSquaredMoETest<MLFloat16>(750, 8);
+}
+
 static void RunQMoETest(const std::vector<float>& input, const std::vector<float>& router_probs,
                         const std::vector<uint8_t>& fc1_experts_weights,
                         const std::vector<uint8_t>& fc2_experts_weights,
@@ -1920,9 +2029,7 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
                                               bool expect_scratch_failure = true,
                                               bool use_initializers = false,
                                               int64_t num_rows = 1,
-                                              int64_t row_tile_size = 0,
-                                              const char* skip_profiling_config = nullptr,
-                                              const char* expected_config_failure = nullptr) {
+                                              int64_t row_tile_size = 0) {
   constexpr int64_t num_experts = 1;
 
   auto make_identity = [block_size](int64_t bits, int64_t rows, int64_t columns,
@@ -2050,40 +2157,11 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
         "ep.cuda.qmoe_row_tile_size", std::to_string(row_tile_size).c_str()));
   }
-  if (skip_profiling_config != nullptr) {
-    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-        "ep.cuda.qmoe_skip_nvfp4_gemv_profiling", skip_profiling_config));
-  }
   tester.Run(session_options,
-             expected_config_failure != nullptr || (max_scratch_bytes > 0 && expect_scratch_failure)
-                 ? OpTester::ExpectResult::kExpectFailure
-                 : OpTester::ExpectResult::kExpectSuccess,
-             expected_config_failure != nullptr                ? expected_config_failure
-             : max_scratch_bytes > 0 && expect_scratch_failure ? "exceeding the configured limit"
-                                                               : "",
+             max_scratch_bytes > 0 && expect_scratch_failure ? OpTester::ExpectResult::kExpectFailure
+                                                             : OpTester::ExpectResult::kExpectSuccess,
+             max_scratch_bytes > 0 && expect_scratch_failure ? "exceeding the configured limit" : "",
              {}, nullptr, &execution_providers);
-}
-
-TEST(MoETest, QMoETest_CudaSkipNvfp4GemvProfilingSessionOption) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
-  }
-  const auto run = [](const char* config_value, const char* expected_error = nullptr) {
-    RunQMoEMixedWidthCudaIdentityTest(2, 4, 0, false, false, false, 32, 64, 64,
-                                      false, false, 1, 0, config_value, expected_error);
-  };
-  for (const char* env_value : {"", "0", "1", "invalid"}) {
-    SCOPED_TRACE(env_value);
-    ScopedEnvironmentVariables env({{"ORT_QMOE_SKIP_NVFP4_GEMV_PROFILING", env_value}});
-    run("0");
-    run("1");
-    run(nullptr, std::string(env_value) == "invalid" ? "Failed to parse environment variable" : nullptr);
-  }
-  ScopedEnvironmentVariables env({{"ORT_QMOE_SKIP_NVFP4_GEMV_PROFILING", "0"}});
-  for (const char* config_value : {"", "2", "true", "-1"}) {
-    SCOPED_TRACE(config_value);
-    run(config_value, "ep.cuda.qmoe_skip_nvfp4_gemv_profiling must be 0 or 1");
-  }
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaBlockWise) {

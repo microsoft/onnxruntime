@@ -9,7 +9,6 @@
 #pragma once
 #include <algorithm>
 #include <atomic>
-#include <cstdio>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -25,6 +24,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_sm90_validation.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_unaligned4.h"
 #include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
@@ -303,6 +303,8 @@ class MatMulNBits final : public CudaKernel {
         if (m_chunk_size_ > 0) {
           const int64_t max_unchunked_m =
               force_chunked_ ? m_chunk_size_ : std::max<int64_t>(m_chunk_size_, m_chunk_min_rows_);
+          gemmProfiler_->setMaxProfileM(static_cast<int>(
+              std::min<int64_t>(max_unchunked_m, onnxruntime::llm::kernels::weight_only::kMaxProfileM)));
           max_m = static_cast<int>(std::min<int64_t>(max_m, max_unchunked_m));
         }
         RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
@@ -409,6 +411,9 @@ class MatMulNBits final : public CudaKernel {
   bool is_zero_points_scale_same_type_{false};
   bool force_chunked_{false};
   int64_t chunk_target_rows_{kDefaultChunkTargetRows};
+  bool unaligned4_fast_path_{
+      ParseUnaligned4FastPathEnabled(ParseEnvironmentVariableWithDefault<std::string>(kUnaligned4FastPathEnvVar, ""))};
+  Unaligned4DispatchLog unaligned4_log_;
 
 #if USE_FPA_INTB_GEMM
   bool has_fpA_intB_gemv_{false};
@@ -429,7 +434,6 @@ class MatMulNBits final : public CudaKernel {
   WeightOnlyGemmRunnerPtr weightOnlyGemmRunner_{nullptr};
   mutable GemmProfilerPtr gemmProfiler_{nullptr};
   GemmIdCore gemmId_{};
-  std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig> sm120_decode_tactic_;
 
   IAllocatorUniquePtr<void> fpA_intB_weight_buffer_;
   IAllocatorUniquePtr<void> fpA_intB_scale_buffer_;

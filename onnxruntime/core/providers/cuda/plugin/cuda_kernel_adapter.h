@@ -505,6 +505,7 @@ class PluginKernelCollector {
 // which is initialized in CudaEpFactory::CudaEpFactory.
 
 #include <cstring>
+#include <filesystem>  // NOLINT(build/c++17)
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -534,11 +535,10 @@ struct CudaKernelAdapterRuntimeConfig {
   bool cudnn_conv1d_pad_to_nc1d = false;
   bool enable_cudnn = true;
   bool fuse_conv_bias = false;
-  bool enable_cuda_graph = false;
-  bool enable_host_pageable_gather = false;
   int sdpa_kernel = 0;
   int device_id = 0;
   bool do_copy_in_default_stream = true;
+  bool enable_cuda_graph = false;
   cudaDeviceProp device_prop{};
   onnxruntime::AttentionKernelOptions attention_kernel_options;
   std::mutex captured_host_buffers_mutex;
@@ -548,6 +548,27 @@ struct CudaKernelAdapterRuntimeConfig {
     std::lock_guard<std::mutex> lock(captured_host_buffers_mutex);
     captured_host_buffers.push_back(std::move(buffer));
   }
+
+  // Path of the model the EP partitioned (recorded in GetCapability); empty if loaded from bytes.
+  void SetModelPath(std::filesystem::path path) {
+    if (!path.empty() && path.is_relative()) {
+      std::error_code ec;
+      std::filesystem::path abs_path = std::filesystem::absolute(path, ec);
+      if (!ec && !abs_path.empty()) {
+        path = std::move(abs_path);
+      }
+    }
+    std::lock_guard<std::mutex> lock(model_path_mutex);
+    model_path = std::move(path);
+  }
+  std::filesystem::path GetModelPath() const {
+    std::lock_guard<std::mutex> lock(model_path_mutex);
+    return model_path;
+  }
+
+ private:
+  mutable std::mutex model_path_mutex;
+  std::filesystem::path model_path;
 };
 template <typename T>
 struct SizeOf {
@@ -1160,15 +1181,15 @@ class CudaKernel : public OpKernel {
     return device_prop_;
   }
   inline int GetDeviceId() const { return device_id_; }
+  std::filesystem::path GetSessionModelPath() const { return runtime_config_->GetModelPath(); }
+  // Identifies the session (execution provider instance) that owns this kernel.
+  const void* GetSessionKey() const { return runtime_config_.get(); }
   int GetCudnnConvAlgo() const { return runtime_config_->cudnn_conv_algo; }
   bool GetCudnnConvUseMaxWorkspace() const { return runtime_config_->cudnn_conv_use_max_workspace; }
   bool GetCudnnConv1dPadToNc1d() const { return runtime_config_->cudnn_conv1d_pad_to_nc1d; }
   bool UseTF32() const { return use_tf32_; }
   bool IsFuseConvBias() const { return runtime_config_->fuse_conv_bias; }
-  bool EnableHostPageableGather() const { return runtime_config_->enable_host_pageable_gather; }
-  bool IsCudaGraphEnabled() const { return runtime_config_->enable_cuda_graph; }
   bool IsArchAvailable(int arch) const { return GetDeviceProp().major >= arch; }
-  int GetDeviceId() const { return device_id_; }
   // Delegate to the base OpKernel::Info() which holds a safe copy of OpKernelInfo.
   // Do NOT store a reference to the constructor parameter — it becomes dangling.
   const OpKernelInfo& Info() const { return OpKernel::Info(); }

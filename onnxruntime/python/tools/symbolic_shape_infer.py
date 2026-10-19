@@ -2844,7 +2844,7 @@ class SymbolicShapeInference:
             copy_state_output(4, 14, output_dtype)  # present_gate_buffer <- past_gate_buffer
         copy_state_output(5, 15, onnx.TensorProto.INT32)  # present_state_lengths <- past_state_lengths
         if policy_mode == "qsa" and len(node.output) > 6 and node.output[6]:
-            past_key_shape = self._get_sympy_shape(node, 12) if len(node.input) > 12 and node.input[12] else None
+            past_key_shape = self._get_sympy_shape(node, 12)
             if past_key_shape is not None:
                 state_update_capacity = get_attribute(node, "state_update_capacity", 0)
                 vi = self.known_vi_[node.output[6]]

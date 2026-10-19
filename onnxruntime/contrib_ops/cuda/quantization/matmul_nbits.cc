@@ -5,12 +5,25 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>  // NOLINT(build/c++17)
+#include <memory>
+#include <mutex>
 #include <optional>
+#include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <corecrt_startup.h>
+#endif
 
 #include "core/common/status.h"
 #include "core/common/float16.h"
-#include "core/framework/tuning_context.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
@@ -23,6 +36,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_sm90_validation.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
 #endif
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
@@ -117,6 +131,157 @@ using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPlugin
 using onnxruntime::llm::kernels::weight_only::WeightTypeId;
 static GemmPluginProfilerManager<WeightOnlyGroupwiseQuantGemmPluginProfiler> s_profilerManager;
 
+namespace {
+// Process-global registry of persistent tactic caches, keyed by their resolved file location so that
+// identical shapes are tuned once and reused across sessions and nodes that share a location.
+struct GlobalTacticCacheRegistry {
+  std::mutex mutex;
+  std::unordered_map<std::string, std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache>> caches;
+};
+
+GlobalTacticCacheRegistry& GetGlobalTacticCacheRegistry() {
+  // Leaked on purpose: a CUDA EP owned by another static may be destroyed after this library's statics.
+  static auto* registry = new GlobalTacticCacheRegistry();
+  return *registry;
+}
+
+bool IsWindowsDllShutdownInProgress() {
+#if defined(_WIN32)
+  using RtlDllShutdownInProgressFn = BOOLEAN(NTAPI*)();
+  static const auto rtl_dll_shutdown_in_progress = reinterpret_cast<RtlDllShutdownInProgressFn>(
+      ::GetProcAddress(::GetModuleHandleW(L"ntdll.dll"), "RtlDllShutdownInProgress"));
+  return rtl_dll_shutdown_in_progress != nullptr && rtl_dll_shutdown_in_progress() != 0;
+#else
+  return false;
+#endif
+}
+
+void FlushAllTacticCaches(bool log_failures, bool allow_blocking) {
+  if (IsWindowsDllShutdownInProgress()) {
+    return;
+  }
+  try {
+    auto& registry = GetGlobalTacticCacheRegistry();
+    std::vector<std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache>> caches;
+    {
+      std::unique_lock<std::mutex> lock(registry.mutex, std::defer_lock);
+      if (allow_blocking) {
+        lock.lock();
+      } else if (!lock.try_lock()) {
+        return;
+      }
+      caches.reserve(registry.caches.size());
+      for (const auto& entry : registry.caches) {
+        caches.push_back(entry.second);
+      }
+    }
+    // Flush outside the registry lock so file I/O never blocks session creation on another thread.
+    for (const auto& cache : caches) {
+      if (cache == nullptr) {
+        continue;
+      }
+      if (IsWindowsDllShutdownInProgress()) {
+        return;
+      }
+      try {
+        auto status = allow_blocking ? cache->Flush() : cache->TryFlush();
+        if (!status.IsOK() && log_failures) {
+          ORT_LLM_LOG_WARNING("Failed to flush MatMulNBits gemm tactic cache: " + status.ErrorMessage());
+        }
+      } catch (...) {
+        // Swallow: cache persistence is best-effort and must not escape teardown.
+      }
+    }
+  } catch (...) {
+    // Registry snapshot allocation must not escape teardown either.
+  }
+}
+
+void OnProcessExitFlushTacticCaches() {
+  FlushAllTacticCaches(/*log_failures*/ false, /*allow_blocking*/ false);
+}
+
+void RegisterProcessExitTacticCacheFlusher() {
+#if defined(_WIN32)
+  // Static destructors in a Windows DLL run during DLL_PROCESS_DETACH, after ExitProcess has
+  // already stopped worker threads (which may still hold a registry or cache mutex). Register a
+  // process-wide CRT exit callback instead so live sessions save during exit() before worker
+  // threads are stopped, and pin the DLL so the callback address stays valid if the provider is
+  // unloaded earlier.
+  static std::once_flag once;
+  std::call_once(once, []() {
+    HMODULE module = nullptr;
+    if (::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+                             reinterpret_cast<LPCWSTR>(&OnProcessExitFlushTacticCaches), &module)) {
+      _crt_atexit(&OnProcessExitFlushTacticCaches);
+    }
+  });
+#endif
+}
+
+// Saves tactics of sessions still alive at process exit / module unload without blocking during
+// Windows DLL shutdown. Does not log: the default logger may be gone.
+struct ExitTacticCacheFlusher {
+  ~ExitTacticCacheFlusher() { FlushAllTacticCaches(/*log_failures*/ false, /*allow_blocking*/ false); }
+};
+ExitTacticCacheFlusher s_exit_tactic_cache_flusher;
+}  // namespace
+
+// Returns the process-global cache for `file_path` (creating, loading, and registering it on first
+// use). Returns nullptr when the location is already bound to a different GPU's signature (e.g. one
+// explicit prefix shared by heterogeneous devices). When `load` is set, an existing cache is re-read
+// if the file changed since it was last loaded or written, so each new session starts from the
+// latest file. Tactics are only staged in memory while sessions run; the disk write happens in
+// FlushMatMulNBitsTacticCaches() when a session closes.
+static std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> GetGlobalMatMulNBitsTacticCache(
+    std::string file_path, onnxruntime::llm::gemm_cache::HardwareSignature signature, bool load) {
+  using onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache;
+  auto& registry = GetGlobalTacticCacheRegistry();
+  std::lock_guard<std::mutex> lock(registry.mutex);
+  auto it = registry.caches.find(file_path);
+  if (it != registry.caches.end()) {
+    if (!it->second->Signature().StrictMatches(signature)) {
+      ORT_LLM_LOG_WARNING("fpA_intB tactic cache " + file_path +
+                          " is already used by a different GPU in this process; persistence is disabled for " +
+                          signature.device_name);
+      return nullptr;
+    }
+    if (load) {
+      static_cast<void>(it->second->ReloadIfChanged());
+    }
+    return it->second;
+  }
+
+  RegisterProcessExitTacticCacheFlusher();
+  auto cache = std::make_shared<MatMulNBitsTacticCache>(file_path, std::move(signature));
+  auto status = cache->Load();
+  static_cast<void>(status);  // A missing/mismatched file simply yields an empty cache.
+  registry.caches.emplace(std::move(file_path), cache);
+  return cache;
+}
+
+// Flushes every registered tactic cache to disk when a session closes. This is the only place tuned
+// tactics reach disk, which keeps file I/O off session creation and inference. Best-effort and
+// dirty-guarded (Flush() is a no-op when nothing new was staged), so calling it once per CUDA EP
+// teardown is cheap even when several sessions share the process. Safe to call from a destructor:
+// never throws.
+void FlushMatMulNBitsTacticCaches() {
+  FlushAllTacticCaches(/*log_failures*/ true, /*allow_blocking*/ true);
+}
+
+void FlushMatMulNBitsTacticCachesForShutdown() {
+  FlushAllTacticCaches(/*log_failures*/ false, /*allow_blocking*/ false);
+}
+
+std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> GetGlobalMatMulNBitsTacticCacheForTesting(
+    std::string file_path, onnxruntime::llm::gemm_cache::HardwareSignature signature, bool load) {
+  return GetGlobalMatMulNBitsTacticCache(std::move(file_path), std::move(signature), load);
+}
+
+std::unique_lock<std::mutex> LockMatMulNBitsTacticCacheRegistryForTesting() {
+  return std::unique_lock<std::mutex>(GetGlobalTacticCacheRegistry().mutex);
+}
+
 constexpr auto kScaleAndZeros = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS;
 constexpr auto kScaleOnly = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY;
 
@@ -126,12 +291,12 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
                              int64_t nbits, int64_t block_size,
                              int64_t weight_prepacked, bool has_zero_points, bool has_g_idx, bool has_bias,
                              int device_sm, int fpa_intb_option) {
-  ORT_UNUSED_PARAMETER(has_bias);
 #if USE_COMPACT_FPA_INTB_GEMM
   const bool dtype_ok = input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
                         input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
 #else
   ORT_UNUSED_PARAMETER(has_zero_points);
+  ORT_UNUSED_PARAMETER(has_bias);
   // The fpA_intB path consumes FP16 or BF16 input A only. CUDA also registers an FP32 MatMulNBits
   // variant that must never be reported as fpA_intB-eligible.
   const bool dtype_ok = (input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
@@ -523,6 +688,41 @@ void ValidateSm90PrepackedWeightSupport(int sm, int64_t block_size) {
 
 template <typename T>
 void MatMulNBits<T>::InitGemmProfiler(int sm) {
+  // Resolve the persistent tactic cache from session config (falls back to env vars).
+  namespace gc = onnxruntime::llm::gemm_cache;
+  const auto& info = this->Info();
+  const std::string mode = ResolveFpAIntBConfigOrEnv(info, gc::kSessionConfigCacheMode, gc::kEnvCacheMode);
+  const std::optional<gc::CacheAccess> parsed_access = gc::ParseCacheAccess(mode);
+  ORT_ENFORCE(parsed_access.has_value(), "Invalid ", gc::kSessionConfigCacheMode, " value '", mode,
+              "'. Expected load_save, load, or save.");
+  const gc::CacheAccess cache_access = *parsed_access;
+  const std::string to_model = ResolveFpAIntBConfigOrEnv(info, gc::kSessionConfigCacheToModel, gc::kEnvCacheToModel);
+  const std::optional<bool> use_sidecar = gc::ParseCacheFlag(to_model);
+  ORT_ENFORCE(use_sidecar.has_value(), "Invalid ", gc::kSessionConfigCacheToModel, " value '", to_model,
+              "'. Expected 0 or 1.");
+  std::string sidecar_prefix;
+  if (*use_sidecar) {
+    // Empty for models loaded from bytes, in which case the other locations still apply.
+    std::filesystem::path model_path = this->GetSessionModelPath();
+    if (!model_path.empty() && model_path.is_relative()) {
+      std::error_code ec;
+      std::filesystem::path abs_path = std::filesystem::absolute(model_path, ec);
+      if (!ec && !abs_path.empty()) {
+        model_path = std::move(abs_path);
+      }
+    }
+    const auto model_path_u8 = model_path.u8string();
+    sidecar_prefix.assign(model_path_u8.begin(), model_path_u8.end());
+  }
+
+  const auto& device_prop = this->GetDeviceProp();
+  const gc::HardwareSignature cache_signature = gc::HardwareSignature::FromDevice(
+      device_prop.name, device_prop.major * 10 + device_prop.minor, device_prop.multiProcessorCount);
+  std::string cache_file_path = gc::MatMulNBitsTacticCache::ResolveFilePath(
+      info.GetConfigOptions().GetConfigOrDefault(gc::kSessionConfigCacheDir, ""),
+      info.GetConfigOptions().GetConfigOrDefault(gc::kSessionConfigCachePrefix, ""), cache_signature,
+      sidecar_prefix);
+
   gemmProfiler_ = s_profilerManager.createGemmPluginProfiler(/*inference*/ false);
 
   using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
@@ -626,12 +826,29 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   }
 #endif
 
-  gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm, sm_);
+  gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
   gemmProfiler_->setWaveAwareGemv(wave_aware_gemv_);
   gemmProfiler_->setL2CacheBytes(static_cast<size_t>(this->GetDeviceProp().l2CacheSize));
   gemmProfiler_->setQuant(static_cast<int>(nbits_), has_bias_, has_zero_points_);
   gemmProfiler_->setGroupSize(static_cast<int>(block_size_));
   gemmProfiler_->setDecodeInterleave(weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90 ? 1 : 4);
+
+  if (!cache_file_path.empty()) {
+    // Persisted sessions use a session-local profile map so they deduplicate identical shapes
+    // within the session while loading new or retuned tactics from the persistent cache rather
+    // than reusing stale entries from the process-global map.
+    gemmProfiler_->setPersistentCache(
+        GetGlobalMatMulNBitsTacticCache(std::move(cache_file_path), cache_signature, cache_access.load),
+        cache_access,
+        s_profilerManager.getSessionProfileMap(this->GetSessionKey()));
+  }
+  const std::string tuning_results_prefix =
+      info.GetConfigOptions().GetConfigOrDefault(gc::kSessionConfigTuningResultsPrefix, "");
+  if (!tuning_results_prefix.empty()) {
+    gemmProfiler_->setTuningResultsCache(GetGlobalMatMulNBitsTacticCache(
+        gc::MatMulNBitsTacticCache::ResolveFilePath("", tuning_results_prefix, cache_signature), cache_signature,
+        /*load*/ false));
+  }
 
   auto allocator = this->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
   gemmProfiler_->setAllocator(allocator);
@@ -642,28 +859,17 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int
   // Number of 16-bit elements after casting int2/int4/int8 to fp16.
   int n_16b = static_cast<int>(N_ / (16 / nbits_));
 
-  // Include both the packing/kernel SM and physical device SM so compatible weight layouts can
-  // still select different tactics on different GPU generations.
+  // Include the packing/kernel SM in the GEMM id so the SM80-compatibility and native SM90 kernels
+  // (which need different tactics) do not share profiled configs for the same (N, K, dtype).
   const int kernel_sm = FpAIntBPackingSmForKernel();
-  // The tag keeps profiled results with and without the optional paired-K tactic apart.
-  const int tactic_set_tag = paired_gemv_mode_;
-  if constexpr (std::is_same_v<T, MLFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kHALF, kernel_sm,
-                         sm_, wave_aware_gemv_, tactic_set_tag,
-                         this->GetDeviceId(), static_cast<int>(nbits_), static_cast<int>(block_size_),
-                         has_bias_, has_zero_points_);
-  } else if constexpr (std::is_same_v<T, BFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kBF16, kernel_sm,
-                         sm_, wave_aware_gemv_, tactic_set_tag,
-                         this->GetDeviceId(), static_cast<int>(nbits_), static_cast<int>(block_size_),
-                         has_bias_, has_zero_points_);
-  }
+  const auto dtype = std::is_same_v<T, BFloat16> ? onnxruntime::llm::nvinfer::DataType::kBF16
+                                                 : onnxruntime::llm::nvinfer::DataType::kHALF;
+  gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), dtype, kernel_sm, static_cast<int>(nbits_),
+                       static_cast<int>(block_size_), has_zero_points_, hasWeightOnlyCudaKernel, has_bias_,
+                       this->GetDeviceProp().name, wave_aware_gemv_, paired_gemv_mode_, this->GetDeviceId());
 
   GemmDims dims = {min_m, max_m, n_16b, K_};
   gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, hasWeightOnlyCudaKernel);
-  if (sm_ >= 120) {
-    sm120_decode_tactic_ = gemmProfiler_->getBestConfig(1, gemmId_);
-  }
 }
 
 template <typename T>
@@ -946,7 +1152,6 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   int m = SafeInt<int>(helper.M());
   int n = SafeInt<int>(helper.N());
   int k = SafeInt<int>(helper.K());
-
   DUMP_TENSOR_INIT();
 
 #if USE_FPA_INTB_GEMM
@@ -967,12 +1172,9 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       // and synchronizes events, and allocates/frees scratch, all of which are illegal while the
       // compute stream is being captured. Fall back to a lookup of an already-profiled bucket
       // (warmup runs before capture populate these); only outside capture do we allow lazy
-      // single-bucket profiling. SM120+ caches the eagerly profiled M=1 tactic, avoiding both the
-      // capture query and shared profile-map lookup on the non-deterministic decode path.
-      const bool use_deterministic_compute = ctx->GetUseDeterministicCompute();
-      const bool has_cached_decode_tactic = m == 1 && sm120_decode_tactic_.has_value();
-      const bool stream_is_capturing = !use_deterministic_compute && !has_cached_decode_tactic &&
-                                       onnxruntime::llm::common::isCapturing(stream);
+      // single-bucket profiling. Note: a null cudaStream_t is the default stream (a valid capture
+      // target under per-thread default streams), so query the capture status unconditionally.
+      const bool stream_is_capturing = onnxruntime::llm::common::isCapturing(stream);
 
       // Env-gated diagnostics (ORT_FPA_INTB_DEBUG=1): dump the selected tactic, the kernel path
       // (GEMV CUDA kernel vs CUTLASS GEMM), the weight format, and the device/packing SM so that
@@ -1006,12 +1208,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         const int rows = std::min(chunk_m, m - row_start);
         // Only a trailing partial chunk can change rows, so this looks up at most two tactics.
         if (rows != tactic_m) {
-          bestTactic = use_deterministic_compute
-                           ? gemmProfiler_->getDeterministicConfig(rows)
-                           : (rows == 1 && sm120_decode_tactic_.has_value()
-                                  ? sm120_decode_tactic_
-                                  : (stream_is_capturing ? gemmProfiler_->getBestConfig(rows, gemmId_)
-                                                         : gemmProfiler_->getBestConfigOrProfile(rows, gemmId_)));
+          bestTactic = stream_is_capturing ? gemmProfiler_->getBestConfig(rows, gemmId_)
+                                           : gemmProfiler_->getBestConfigOrProfile(rows, gemmId_);
           if (!bestTactic.has_value()) {
             return ORT_MAKE_STATUS(
                 ONNXRUNTIME, FAIL,
@@ -1103,6 +1301,28 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 #endif
+
+#if USE_FPA_INTB_GEMM
+  const bool unaligned4_has_fpA_intB = has_fpA_intB_gemm_;
+#else
+  constexpr bool unaligned4_has_fpA_intB = false;
+#endif
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    if (IsUnaligned4FastPathEligible(
+            unaligned4_fast_path_, true, m, n, k, static_cast<int>(nbits_), static_cast<int>(block_size_),
+            column_wise_quant_blk_, zero_points != nullptr, bias != nullptr, reorder_idx != nullptr,
+            unaligned4_has_fpA_intB, force_chunked_) &&
+        TryMatMulUnaligned4Bits<CudaT>(
+            reinterpret_cast<CudaT*>(Y->MutableData<T>()), reinterpret_cast<const CudaT*>(a_data),
+            blob_data, reinterpret_cast<const CudaT*>(scales_data), m, n, k,
+            GetDeviceProp().sharedMemPerBlock, stream)) {
+      if (unaligned4_log_.ShouldLog(m == 1)) {
+        CUDA_RETURN_IF_ERROR(cudaPeekAtLastError());
+        unaligned4_log_.Log(m == 1, this->Node().Name(), m, k, n);
+      }
+      return Status::OK();
+    }
+  }
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
     // First, try the fused fast path. It handles bias only for the GPT-OSS router GEMV

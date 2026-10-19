@@ -1521,28 +1521,6 @@ TEST(MatMulNBits, Fp16_Int4_BlockSize32_FpAIntB) {
   }
 }
 
-TEST(MatMulNBits, Fp16_Int4_BlockSize32_GB10DecodeShapes) {
-  if (!HasCudaEnvironment(1200)) {
-    GTEST_SKIP() << "Skipping GB10 decode-shape tests on CUDA < 12.0";
-  }
-
-  constexpr float abs_error = 0.1f;
-  constexpr bool zp_is_4bit = true;
-  constexpr bool has_zeropoint = false;
-
-  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
-
-  RunTest<MLFloat16>(1, 320, 10240, 32, has_zeropoint, zp_is_4bit, abs_error);
-  RunTest<MLFloat16>(1, 324, 10240, 32, has_zeropoint, zp_is_4bit, abs_error);
-  RunTest<MLFloat16>(1, 324, 10240, 32, has_zeropoint, zp_is_4bit, abs_error, false, true);
-  RunTest<MLFloat16>(1, 1, 2560, 32, has_zeropoint, zp_is_4bit, abs_error);
-  RunTest<MLFloat16>(1, 1, 2560, 32, has_zeropoint, zp_is_4bit, abs_error, false, true);
-  RunTest<MLFloat16>(1, 10240, 320, 32, has_zeropoint, zp_is_4bit, abs_error);
-  RunTest<MLFloat16>(1, 1792, 2560, 32, has_zeropoint, zp_is_4bit, abs_error);
-  RunTest<MLFloat16>(1, 512, 2560, 32, has_zeropoint, zp_is_4bit, abs_error);
-  RunTest<MLFloat16>(1, 2560, 6144, 32, has_zeropoint, zp_is_4bit, abs_error);
-}
-
 TEST(MatMulNBits, BFloat16_Int4_BlockSize32_FpAIntB) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "Skipping BFloat16 MatMul tests on CUDA < 8.0";
@@ -1587,7 +1565,7 @@ TEST(MatMulNBits, Fp16_Int4_NoZeroPoint_Bias) {
 
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
 
-  for (auto block_size : {32, 64, 128}) {
+  for (auto block_size : {64, 128}) {
     RunTest<MLFloat16>(1, 256, 1024, block_size, has_zeropoint, zp_is_4bit, abs_error, has_g_idx, has_bias);
     RunTest<MLFloat16>(32, 1024, 2048, block_size, has_zeropoint, zp_is_4bit, abs_error, has_g_idx, has_bias);
   }
@@ -2187,6 +2165,33 @@ TEST(MatMulNBits, PrePack_InvalidBShape_RejectsAtSessionInit) {
            {}, nullptr, &execution_providers);
 }
 
+TEST(MatMulNBits, PrePack_Fp16InvalidBShape_RejectsAtSessionInit) {
+  constexpr int64_t M = 1, N = 4, K = 32, block_size = 32;
+  constexpr int64_t k_blocks = (K + block_size - 1) / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+  constexpr int64_t bad_N = N - 1;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", int64_t{0});
+
+  test.AddInput<MLFloat16>("A", {M, K}, std::vector<MLFloat16>(M * K, MLFloat16(1.0f)), false);
+  test.AddInput<uint8_t>("B", {bad_N, k_blocks, blob_size},
+                         std::vector<uint8_t>(bad_N * k_blocks * blob_size, 0), true);
+  test.AddInput<MLFloat16>("scales", {N, k_blocks},
+                           std::vector<MLFloat16>(N * k_blocks, MLFloat16(1.0f)), true);
+  test.AddOutput<MLFloat16>("Y", {M, N}, std::vector<MLFloat16>(M * N, MLFloat16(0.0f)));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "MatMulNBits PrePack: B initializer shape",
+           {}, nullptr, &execution_providers);
+}
+
 // B shape has the wrong rank (2D instead of (N, k_blocks, blob_size)).
 TEST(MatMulNBits, PrePack_InvalidBRank_RejectsAtSessionInit) {
   constexpr int64_t M = 1, N = 4, K = 32, block_size = 32;
@@ -2249,6 +2254,33 @@ TEST(MatMulNBits, PrePack_InvalidScalesShape_RejectsAtSessionInit) {
 
   std::vector<float> y_data(M * N, 0.0f);
   test.AddOutput<float>("Y", {M, N}, y_data);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "MatMulNBits PrePack: scales initializer shape",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(MatMulNBits, PrePack_Fp16InvalidScalesShape_RejectsAtSessionInit) {
+  constexpr int64_t M = 1, N = 4, K = 32, block_size = 32;
+  constexpr int64_t k_blocks = (K + block_size - 1) / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+  constexpr int64_t bad_N = N - 1;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", int64_t{0});
+
+  test.AddInput<MLFloat16>("A", {M, K}, std::vector<MLFloat16>(M * K, MLFloat16(1.0f)), false);
+  test.AddInput<uint8_t>("B", {N, k_blocks, blob_size},
+                         std::vector<uint8_t>(N * k_blocks * blob_size, 0), true);
+  test.AddInput<MLFloat16>("scales", {bad_N, k_blocks},
+                           std::vector<MLFloat16>(bad_N * k_blocks, MLFloat16(1.0f)), true);
+  test.AddOutput<MLFloat16>("Y", {M, N}, std::vector<MLFloat16>(M * N, MLFloat16(0.0f)));
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());

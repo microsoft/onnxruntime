@@ -180,12 +180,6 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
     return std::make_shared<CUDAProviderFactory>(info);
   }
 
-  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(
-      const ProviderOptions& provider_options) override {
-    return std::make_shared<CUDAProviderFactory>(
-        CUDAExecutionProviderInfo::FromProviderOptions(provider_options));
-  }
-
   std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, const OrtArenaCfg* default_memory_arena_cfg) override {
     CUDAExecutionProvider::CUDAAllocatorParams params{};
     params.device_id = device_id;
@@ -694,10 +688,12 @@ struct CudaSyncStreamImpl : OrtSyncStreamImpl {
 struct CudaEpFactory : OrtEpFactory {
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
 
-  CudaEpFactory(const OrtApi& ort_api_in, const OrtLogger& default_logger_in) : ort_api{ort_api_in},
+  CudaEpFactory(const OrtApi& ort_api_in, const OrtLogger& default_logger_in) : OrtEpFactory{},
+                                                                                ort_api{ort_api_in},
                                                                                 ep_api{*ort_api_in.GetEpApi()},
                                                                                 default_logger{default_logger_in},
                                                                                 data_transfer_impl{ort_api_in} {
+    ort_version_supported = ORT_API_VERSION;
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
     GetVendorId = GetVendorIdImpl;

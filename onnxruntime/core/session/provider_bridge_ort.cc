@@ -2210,14 +2210,6 @@ std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(
   ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
-std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(
-    const ProviderOptions& provider_options) {
-  ORT_TRY {
-    return GetProviderInfo_CUDA().CreateExecutionProviderFactory(provider_options);
-  }
-  ORT_CATCH_LOG_RETURN_NULLPTR;
-}
-
 std::shared_ptr<IExecutionProviderFactory>
 CannProviderFactoryCreator::Create(const OrtCANNProviderOptions* provider_options) {
   return s_library_cann.Get().CreateExecutionProviderFactory(provider_options);

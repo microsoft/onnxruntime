@@ -262,6 +262,24 @@ __global__ void VarlenNGramPresentIdsKernel(
   const int64_t state_length = max_ngram_size - 1;
   const T missing_history_value = eos_token_id == nullptr ? pad_id : eos_token_id[0];
   const int64_t local_length = end - start;
+  if (state_update != nullptr) {
+    const int64_t captured = min(static_cast<int64_t>(max(capture_count[b], 0)),
+                                 min(local_length, state_update_capacity));
+    const int64_t update_items = state_update_capacity * state_length;
+    for (int64_t item = threadIdx.x; item < update_items; item += blockDim.x) {
+      const int64_t t = item / state_length;
+      const int64_t j = item % state_length;
+      T token = pad_id;
+      if (t < captured) {
+        const int64_t source_t = t + 1 - state_length + j;
+        token = source_t >= 0
+                    ? input_ids[start + source_t]
+                    : HistoryId<T>(past_ids, b, state_length + source_t, state_length, missing_history_value);
+      }
+      state_update[(static_cast<int64_t>(b) * state_update_capacity + t) * state_length + j] = token;
+    }
+  }
+  __syncthreads();
   for (int64_t chunk = 0; chunk < state_length; chunk += blockDim.x) {
     const int64_t j = chunk + threadIdx.x;
     T token = missing_history_value;
@@ -289,23 +307,6 @@ __global__ void VarlenNGramPresentIdsKernel(
       }
     }
     __syncthreads();
-  }
-  if (state_update != nullptr) {
-    const int64_t captured = min(static_cast<int64_t>(max(capture_count[b], 0)),
-                                 min(local_length, state_update_capacity));
-    const int64_t update_items = state_update_capacity * state_length;
-    for (int64_t item = threadIdx.x; item < update_items; item += blockDim.x) {
-      const int64_t t = item / state_length;
-      const int64_t j = item % state_length;
-      T token = pad_id;
-      if (t < captured) {
-        const int64_t source_t = t + 1 - state_length + j;
-        token = source_t >= 0
-                    ? input_ids[start + source_t]
-                    : HistoryId<T>(past_ids, b, state_length + source_t, state_length, missing_history_value);
-      }
-      state_update[(static_cast<int64_t>(b) * state_update_capacity + t) * state_length + j] = token;
-    }
   }
 }
 

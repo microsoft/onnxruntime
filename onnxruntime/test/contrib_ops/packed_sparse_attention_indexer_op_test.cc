@@ -38,6 +38,10 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -107,16 +111,26 @@ struct GraphOptions {
   bool omit_csa_gate_output = false;
   int output_count = psai::kFixedOutputCount;
   std::string policy_mode = psai::kPolicyModeQsa;
+  bool indexshare = false;
+  std::string indexshare_state_policy = "default";
+  std::vector<int64_t> mode_shape{1};
+  int64_t merged_rows = 0;
+  int64_t merged_width = 8;
+  int64_t merged_counts_rows = -1;
+  int64_t merged_status_rows = -1;
+  int64_t projection_tokens = -1;
 };
 
 int64_t BufferCapacity(int64_t compress_ratio) { return 2 * compress_ratio - 1; }
 
-// Builds a fixed 16-input node; csa-only slots are left empty for policy_mode "qsa", as the schema
-// requires. position_ids (slot 11) is optional for "qsa" and forced on for "csa".
+// Builds a fixed-input node; csa-only slots are left empty for policy_mode "qsa", as the schema
+// requires. position_ids (slot 11) is omitted for "qsa" and forced on for "csa".
 void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
   const bool is_csa = options.policy_mode == psai::kPolicyModeCsa;
   const int64_t width = is_csa ? 2 * options.head_size : options.head_size;
   const int64_t buffer_capacity = BufferCapacity(options.compress_ratio);
+  const int64_t projection_tokens =
+      options.projection_tokens >= 0 ? options.projection_tokens : options.total_tokens;
   NodeArg& empty = builder.graph_.GetOrCreateNodeArg("", nullptr);
 
   std::vector<NodeArg*> inputs{
@@ -135,7 +149,7 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
       builder.MakeInput<int32_t>(std::vector<int64_t>{options.batch_size}),
   };
   if (is_csa || options.add_csa_inputs) {
-    inputs.push_back(builder.MakeInput<float>(std::vector<int64_t>{options.total_tokens, width}));
+    inputs.push_back(builder.MakeInput<float>(std::vector<int64_t>{projection_tokens, width}));
     inputs.push_back(builder.MakeInput<float>(std::vector<int64_t>{options.compress_ratio, width}));
     inputs.push_back(builder.MakeInput<float>(std::vector<int64_t>{options.total_tokens, options.num_heads}));
   } else {
@@ -144,7 +158,7 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
     inputs.push_back(&empty);
   }
   if (is_csa || options.add_position_ids) {
-    inputs.push_back(builder.MakeInput<int64_t>(std::vector<int64_t>{options.total_tokens}));
+    inputs.push_back(builder.MakeInput<int64_t>(std::vector<int64_t>{projection_tokens}));
   } else {
     inputs.push_back(&empty);
   }
@@ -171,16 +185,30 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
   if (options.add_state_update_active) {
     inputs.push_back(builder.MakeInput<int32_t>(std::vector<int64_t>{1}));
   }
+  if (options.indexshare) {
+    inputs.resize(psai::kIndexShareMode, &empty);
+    inputs.push_back(builder.MakeInput<int32_t>(options.mode_shape));
+    inputs.push_back(builder.MakeInput<int32_t>(std::vector<int64_t>{options.merged_rows, options.merged_width}));
+    inputs.push_back(builder.MakeInput<int32_t>(std::vector<int64_t>{
+        options.merged_counts_rows >= 0 ? options.merged_counts_rows : options.merged_rows}));
+    inputs.push_back(builder.MakeInput<int32_t>(std::vector<int64_t>{
+        options.merged_status_rows >= 0 ? options.merged_status_rows : options.merged_rows}));
+  }
 
   std::vector<NodeArg*> outputs;
-  for (int i = 0; i < options.output_count; ++i) {
-    const bool omit_gate = (!is_csa && !options.add_qsa_gate_output) || (is_csa && options.omit_csa_gate_output);
-    outputs.push_back(i == psai::kPresentGateBuffer && omit_gate ? &empty : builder.MakeOutput());
+  for (int i = 0; i < (options.indexshare ? psai::kIndexShareStatus + 1 : options.output_count); ++i) {
+    const bool omit_gate_output =
+        i == psai::kPresentGateBuffer &&
+        ((is_csa && options.omit_csa_gate_output) || (!is_csa && !options.add_qsa_gate_output));
+    const bool omit_capture_output = options.indexshare && i == psai::kStateUpdate && options.output_count <= i;
+    outputs.push_back(omit_gate_output || omit_capture_output ? &empty : builder.MakeOutput());
   }
   Node& node = builder.AddNode("PackedSparseAttentionIndexer", inputs, outputs, kMSDomain);
   node.AddAttribute("policy_mode", options.policy_mode);
   node.AddAttribute("compress_ratio", options.compress_ratio);
   node.AddAttribute("state_capacity", options.state_capacity);
+  node.AddAttribute("indexshare_state_policy", options.indexshare_state_policy);
+  if (options.indexshare) node.AddAttribute("max_output_entries", int64_t{8});
   if (options.state_update_capacity != 0) {
     node.AddAttribute("state_update_capacity", options.state_update_capacity);
   }
@@ -192,6 +220,93 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
 }
 
 }  // namespace
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, ValidatesIndexShareInterface) {
+  for (int invalid = 0; invalid < 8; ++invalid) {
+    GraphOptions options;
+    options.indexshare = true;
+    switch (invalid) {
+      case 0:
+        options.mode_shape = {2};
+        break;
+      case 1:
+        options.mode_shape = {1, 1};
+        break;
+      case 2:
+        options.merged_width = 7;
+        break;
+      case 3:
+        options.merged_counts_rows = 1;
+        break;
+      case 4:
+        options.merged_status_rows = 1;
+        break;
+      case 5:
+        options.merged_rows = 3;
+        break;
+      case 6:
+        options.indexshare_state_policy = "invalid";
+        break;
+      case 7:
+        options.indexshare_state_policy = "advance";
+        break;
+    }
+    std::unique_ptr<Model> model;
+    SCOPED_TRACE(invalid);
+    EXPECT_FALSE(BuildAndResolve([&](ModelTestBuilder& builder) { AddNode(builder, options); }, model).IsOK());
+  }
+  GraphOptions options;
+  options.indexshare = true;
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(BuildAndResolve([&](ModelTestBuilder& builder) { AddNode(builder, options); }, model));
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, IndexShareCsaValidatesProjectionRows) {
+  for (bool mismatch : {false, true}) {
+    GraphOptions options;
+    options.indexshare = true;
+    options.policy_mode = psai::kPolicyModeCsa;
+    options.total_tokens = 0;
+    options.key_total_tokens = 2;
+    options.projection_tokens = mismatch ? 1 : 2;
+    options.merged_rows = 2;
+    std::unique_ptr<Model> model;
+    const auto status = BuildAndResolve([&](ModelTestBuilder& builder) { AddNode(builder, options); }, model);
+    EXPECT_EQ(status.IsOK(), !mismatch) << status.ErrorMessage();
+  }
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, MergeValidatesPolicyInputsAndShapes) {
+  for (bool append_indices : {false, true}) {
+    for (int invalid = -1; invalid < 8; ++invalid) {
+      std::unique_ptr<Model> model;
+      const auto status = BuildAndResolve([&](ModelTestBuilder& builder) {
+        NodeArg* empty = &builder.graph_.GetOrCreateNodeArg("", nullptr);
+        std::vector<NodeArg*> inputs{
+            builder.MakeInput<int32_t>(std::vector<int64_t>{2, 4}),
+            builder.MakeInput<int32_t>(invalid == 0 ? std::vector<int64_t>{2, 1} : invalid == 1 ? std::vector<int64_t>{3}
+                                                                                                : std::vector<int64_t>{2}),
+            builder.MakeInput<int32_t>(std::vector<int64_t>{3}), empty, empty, empty, empty};
+        const int first = append_indices ? 5 : 3;
+        inputs[first] = builder.MakeInput<int32_t>(invalid == 2 ? std::vector<int64_t>{3, 1, 1} : append_indices ? std::vector<int64_t>{3, 2}
+                                                                                                                 : std::vector<int64_t>{3});
+        inputs[first + 1] = builder.MakeInput<int32_t>(invalid == 3 ? std::vector<int64_t>{2} : invalid == 7 ? std::vector<int64_t>{3, 1}
+                                                                                                             : std::vector<int64_t>{3});
+        if (invalid == 4) inputs[first] = empty;
+        if (invalid == 5) inputs[append_indices ? 3 : 5] = builder.MakeInput<int32_t>(std::vector<int64_t>{3});
+        if (invalid == 6) inputs[first] = builder.MakeInput<int32_t>(
+                              append_indices ? std::vector<int64_t>{2, 2} : std::vector<int64_t>{2});
+        Node& node = builder.AddNode("PackedSparseAttentionIndexerMerge", inputs,
+                                     {builder.MakeOutput(), builder.MakeOutput(), builder.MakeOutput()}, kMSDomain);
+        node.AddAttribute("policy_mode", std::string(append_indices ? "append_indices" : "append_range"));
+        node.AddAttribute("max_output_entries", int64_t{8});
+      },
+                                          model);
+      SCOPED_TRACE(invalid);
+      EXPECT_EQ(status.IsOK(), invalid == -1) << status.ErrorMessage();
+    }
+  }
+}
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, QsaInfersFixedCapacityAndState) {
   GraphOptions options;
@@ -262,6 +377,18 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, CsaInfersFixedCapacityAndSt
   ExpectShape(graph, node.OutputDefs()[psai::kPresentStateLengths]->Name(),
               ONNX_NAMESPACE::TensorProto_DataType_INT32, {options.batch_size, 2});
 }
+
+#ifdef USE_CUDA
+TEST(PackedSparseAttentionIndexerCudaTest, DynamicSharedMemoryBoundaryValidation) {
+  constexpr size_t supported_bytes = 64 * 1024;
+  EXPECT_STATUS_OK(psai::ValidateDynamicSharedMemory(supported_bytes, supported_bytes, "BoundaryKernel"));
+  const Status status = psai::ValidateDynamicSharedMemory(
+      supported_bytes + 1, supported_bytes, "BoundaryKernel");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("requires 65537 bytes"), std::string::npos);
+  EXPECT_NE(status.ErrorMessage().find("supports at most 65536"), std::string::npos);
+}
+#endif
 
 #ifndef ORT_NO_EXCEPTIONS
 
@@ -350,12 +477,11 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaWithCsaInput) {
                        "must be omitted when policy_mode is 'qsa'");
 }
 
-TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaWithPositionIdsAndCsaInputsMismatch) {
-  // position_ids alone is allowed for qsa (optional); only the csa-only slots must be omitted.
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaWithPositionIds) {
   GraphOptions options;
   options.add_position_ids = true;
-  std::unique_ptr<Model> model;
-  ASSERT_STATUS_OK(BuildAndResolve([&options](ModelTestBuilder& builder) { AddNode(builder, options); }, model));
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "must be omitted when policy_mode is 'qsa'");
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsCsaMissingPositionIds) {
@@ -427,6 +553,21 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsCsaStateUpdateCaptur
   options.output_count = psai::kStateUpdate + 1;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
                        "only valid for policy_mode 'qsa'");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaPresentGateBuffer) {
+  GraphOptions options;
+  options.add_qsa_gate_output = true;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "present_gate_buffer) must be omitted");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsMissingCsaPresentGateBuffer) {
+  GraphOptions options;
+  options.policy_mode = psai::kPolicyModeCsa;
+  options.omit_csa_gate_output = true;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "present_gate_buffer) is required");
 }
 
 #endif  // ORT_NO_EXCEPTIONS
@@ -630,15 +771,27 @@ void QsaPackedReference(const QsaPackedProblem& p, QsaPackedResult& out) {
   for (int b = 0; b < p.batch_size; ++b) {
     const int req_start = p.cumulative_sequence_lengths[static_cast<size_t>(b)];
     const int req_end = p.cumulative_sequence_lengths[static_cast<size_t>(b) + 1];
-    const int req_len = std::max(req_end - req_start, 0);
-    const int old_key_len =
-        std::clamp(p.past_state_lengths[static_cast<size_t>(b) * 2 + 0], 0, p.state_capacity);
-    const int old_buf_len =
-        std::clamp(p.past_state_lengths[static_cast<size_t>(b) * 2 + 1], 0, p.compress_ratio - 1);
+    const int raw_key_len = p.past_state_lengths[static_cast<size_t>(b) * 2 + 0];
+    const int raw_buf_len = p.past_state_lengths[static_cast<size_t>(b) * 2 + 1];
+    const int past_sequence_length = p.past_sequence_lengths[static_cast<size_t>(b)];
+    const bool invalid_metadata =
+        p.cumulative_sequence_lengths[0] != 0 ||
+        p.cumulative_sequence_lengths[static_cast<size_t>(p.batch_size)] != total_tokens ||
+        req_start < 0 || req_end < req_start || req_end > total_tokens ||
+        past_sequence_length < 0 || raw_key_len < 0 || raw_key_len > p.state_capacity ||
+        raw_buf_len < 0 || raw_buf_len >= p.compress_ratio ||
+        raw_key_len != past_sequence_length / p.compress_ratio ||
+        raw_buf_len != past_sequence_length % p.compress_ratio;
+    const int req_len = invalid_metadata ? 0 : req_end - req_start;
+    const int old_key_len = std::clamp(raw_key_len, 0, p.state_capacity);
+    const int old_buf_len = std::clamp(raw_buf_len, 0, p.compress_ratio - 1);
     const int pending = old_buf_len + req_len;
     const int full_new_block_count = pending / p.compress_ratio;
-    overflowed[static_cast<size_t>(b)] = full_new_block_count > std::max(p.state_capacity - old_key_len, 0);
+    overflowed[static_cast<size_t>(b)] =
+        invalid_metadata || full_new_block_count > std::max(p.state_capacity - old_key_len, 0);
     if (overflowed[static_cast<size_t>(b)]) {
+      out.present_state_lengths[static_cast<size_t>(b) * 2 + 0] = old_key_len;
+      out.present_state_lengths[static_cast<size_t>(b) * 2 + 1] = old_buf_len;
       key_len_after[static_cast<size_t>(b)] = old_key_len;
       continue;
     }
@@ -797,7 +950,7 @@ QsaPackedProblem MakeQsaPackedProblem(QsaPackedProblem problem = {}) {
 template <typename T>
 void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedProblem(),
                       ProviderKind provider_kind = ProviderKind::Cuda, QsaPackedResult* actual = nullptr,
-                      bool packed_qk = false, int padding = 0, const ConfigOptions* webgpu_options = nullptr) {
+                      bool packed_qk = false, const ConfigOptions* webgpu_options = nullptr, int padding = 0) {
   auto provider = CreateProvider(provider_kind, webgpu_options);
   if (provider == nullptr) {
     GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
@@ -932,47 +1085,60 @@ TEST(PackedSparseAttentionIndexerTest, QsaPackedQueryKey) {
 }
 
 TEST(PackedSparseAttentionIndexerTest, IndexShareRefreshPreservesBudgetAndPadsRows) {
-  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::Cuda, nullptr, true, 6);
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::Cuda, nullptr, true, nullptr, 6);
 }
 
 TEST(PackedSparseAttentionIndexerTest, IndexShareReusePackedQkAndStatus) {
-  auto provider = DefaultCudaExecutionProvider();
-  if (!provider) GTEST_SKIP() << "Requires CUDA";
-  OpTester test("PackedSparseAttentionIndexer", 1, kMSDomain);
-  test.AddAttribute("policy_mode", std::string("qsa"));
-  test.AddAttribute("compress_ratio", int64_t{2});
-  test.AddAttribute("state_capacity", int64_t{4});
-  test.AddAttribute("token_budget", int64_t{2});
-  test.AddAttribute("max_output_entries", int64_t{5});
-  test.AddInput<float>("query_key", {0, 4}, {});
-  test.AddOptionalInputEdge<float>();
-  test.AddInput<float>("q_norm", {2}, {1, 1});
-  test.AddInput<float>("k_norm", {2}, {1, 1});
-  test.AddInput<float>("cos", {8, 2}, std::vector<float>(16, 1));
-  test.AddInput<float>("sin", {8, 2}, std::vector<float>(16, 0));
-  test.AddInput<int32_t>("cumulative", {3}, {0, 1, 2});
-  test.AddInput<int32_t>("past_lengths", {2}, {5, 5});
-  for (int index = 8; index <= 10; ++index) test.AddOptionalInputEdge<float>();
-  test.AddOptionalInputEdge<int64_t>();
-  test.AddInput<float>("past_keys", {2, 4, 2}, std::vector<float>(16, 1));
-  test.AddInput<float>("past_buffer", {2, 3, 2}, std::vector<float>(12, 2));
-  test.AddOptionalInputEdge<float>();
-  test.AddInput<int32_t>("state_lengths", {2, 2}, {2, 1, 2, 1});
-  test.AddOptionalInputEdge<int32_t>();
-  test.AddOptionalInputEdge<int32_t>();
-  test.AddInput<int32_t>("mode", {1}, {1});
-  test.AddInput<int32_t>("merged_indices", {2, 5}, {0, 2, 5, -1, -1, -1, -1, -1, -1, -1});
-  test.AddInput<int32_t>("merged_counts", {2}, {3, 0});
-  test.AddInput<int32_t>("merged_status", {2}, {0, 2});
-  test.AddOutput<int32_t>("selected", {2, 5}, {0, 2, 5, -1, -1, -1, -1, -1, -1, -1});
-  test.AddOutput<int32_t>("selected_counts", {2}, {3, 0});
-  test.AddOutput<float>("present_keys", {2, 4, 2}, std::vector<float>(16, 1));
-  test.AddOutput<float>("present_buffer", {2, 3, 2}, std::vector<float>(12, 2));
-  test.AddOptionalOutputEdge<float>();
-  test.AddOutput<int32_t>("present_lengths", {2, 2}, {2, 1, 2, 1});
-  test.AddOptionalOutputEdge<float>();
-  test.AddOutput<int32_t>("status", {2}, {0, 2});
-  RunOnProvider(test, std::move(provider));
+  for (int invalid = 0; invalid < 7; ++invalid) {
+    SCOPED_TRACE(invalid);
+    std::vector<int32_t> cumulative{0, 1, 2};
+    std::vector<int32_t> past_lengths{5, 5};
+    std::vector<int32_t> state_lengths{2, 1, 2, 1};
+    std::vector<int32_t> merged_counts{3, 3};
+    if (invalid == 1) merged_counts[0] = -1;
+    if (invalid == 2) merged_counts[0] = 6;
+    if (invalid == 3) cumulative[2] = 5;
+    if (invalid == 4) past_lengths[0] = -1;
+    if (invalid == 5) state_lengths[0] = 5;
+    if (invalid == 6) state_lengths[1] = 0;
+    auto provider = DefaultCudaExecutionProvider();
+    if (!provider) GTEST_SKIP() << "Requires CUDA";
+    OpTester test("PackedSparseAttentionIndexer", 1, kMSDomain);
+    test.AddAttribute("policy_mode", std::string("qsa"));
+    test.AddAttribute("compress_ratio", int64_t{2});
+    test.AddAttribute("state_capacity", int64_t{4});
+    test.AddAttribute("token_budget", int64_t{2});
+    test.AddAttribute("max_output_entries", int64_t{5});
+    test.AddInput<float>("query_key", {0, 4}, {});
+    test.AddOptionalInputEdge<float>();
+    test.AddInput<float>("q_norm", {2}, {1, 1});
+    test.AddInput<float>("k_norm", {2}, {1, 1});
+    test.AddInput<float>("cos", {8, 2}, std::vector<float>(16, 1));
+    test.AddInput<float>("sin", {8, 2}, std::vector<float>(16, 0));
+    test.AddInput<int32_t>("cumulative", {3}, cumulative);
+    test.AddInput<int32_t>("past_lengths", {2}, past_lengths);
+    for (int index = 8; index <= 10; ++index) test.AddOptionalInputEdge<float>();
+    test.AddOptionalInputEdge<int64_t>();
+    test.AddInput<float>("past_keys", {2, 4, 2}, std::vector<float>(16, 1));
+    test.AddInput<float>("past_buffer", {2, 3, 2}, std::vector<float>(12, 2));
+    test.AddOptionalInputEdge<float>();
+    test.AddInput<int32_t>("state_lengths", {2, 2}, state_lengths);
+    test.AddOptionalInputEdge<int32_t>();
+    test.AddOptionalInputEdge<int32_t>();
+    test.AddInput<int32_t>("mode", {1}, {1});
+    test.AddInput<int32_t>("merged_indices", {2, 5}, {0, 2, 5, -1, -1, 9, 8, 7, 6, 5});
+    test.AddInput<int32_t>("merged_counts", {2}, merged_counts);
+    test.AddInput<int32_t>("merged_status", {2}, {0, 2});
+    test.AddOutput<int32_t>("selected", {2, 5}, invalid == 0 ? std::vector<int32_t>{0, 2, 5, -1, -1, -1, -1, -1, -1, -1} : std::vector<int32_t>(10, -1));
+    test.AddOutput<int32_t>("selected_counts", {2}, {invalid == 0 ? 3 : 0, 0});
+    test.AddOutput<float>("present_keys", {2, 4, 2}, std::vector<float>(16, 1));
+    test.AddOutput<float>("present_buffer", {2, 3, 2}, std::vector<float>(12, 2));
+    test.AddOptionalOutputEdge<float>();
+    test.AddOutput<int32_t>("present_lengths", {2, 2}, state_lengths);
+    test.AddOptionalOutputEdge<float>();
+    test.AddOutput<int32_t>("status", {2}, {invalid == 0 ? 0 : 1, 2});
+    RunOnProvider(test, std::move(provider));
+  }
 }
 
 TEST(PackedSparseAttentionIndexerTest, QsaPrefillThenDecodeIndependentState) {
@@ -1089,6 +1255,63 @@ TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalTopK) {
   RunQsaPackedTest<float>(1.0e-5f, std::move(problem));
 }
 
+TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalPackedVerification) {
+  QsaPackedProblem problem;
+  problem.batch_size = 3;
+  problem.cumulative_sequence_lengths = {0, 0, 7, 8};
+  problem.past_sequence_lengths = {0, 4101, 16388};
+  problem.head_size = 128;
+  problem.num_heads = 4;
+  problem.rotary_width = 64;
+  problem.compress_ratio = 4;
+  problem.token_budget = 2048;
+  problem.state_capacity = 65536;
+  problem = MakeQsaPackedProblem(std::move(problem));
+  std::fill(problem.query.begin(), problem.query.end(), 1.0f);
+  std::fill(problem.query_norm_weight.begin(), problem.query_norm_weight.end(), 1.0f);
+  std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
+  std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
+  for (int batch = 0; batch < problem.batch_size; ++batch) {
+    for (int block = 0; block < problem.state_capacity; ++block) {
+      const float value = static_cast<float>(block + 1) / problem.state_capacity;
+      const size_t offset = (static_cast<size_t>(batch) * problem.state_capacity + block) * problem.head_size;
+      std::fill_n(problem.past_key_state.begin() + offset, problem.head_size, value);
+    }
+  }
+  RunQsaPackedTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda);
+}
+
+TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalPairedVerification) {
+  for (int tokens : {5, 8}) {
+    QsaPackedProblem problem;
+    problem.batch_size = 1;
+    problem.cumulative_sequence_lengths = {0, tokens};
+    problem.past_sequence_lengths = {4098};
+    problem.head_size = 128;
+    problem.num_heads = 4;
+    problem.rotary_width = 64;
+    problem.compress_ratio = 4;
+    problem.token_budget = 2048;
+    problem.state_capacity = 4099;
+    problem = MakeQsaPackedProblem(std::move(problem));
+    std::fill(problem.query.begin(), problem.query.end(), 1.0f);
+    std::fill(problem.key.begin(), problem.key.end(), 1.0f);
+    std::fill(problem.query_norm_weight.begin(), problem.query_norm_weight.end(), 1.0f);
+    std::fill(problem.key_norm_weight.begin(), problem.key_norm_weight.end(), 1.0f);
+    std::fill(problem.past_kv_buffer.begin(), problem.past_kv_buffer.end(), 1.0f);
+    std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
+    std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
+    for (int block = 0; block < problem.state_capacity; ++block) {
+      const float value = static_cast<float>(block + 1) / problem.state_capacity;
+      std::fill_n(problem.past_key_state.begin() + static_cast<size_t>(block) * problem.head_size,
+                  problem.head_size, value);
+    }
+    RunQsaPackedTest<float>(1.0e-5f, problem, ProviderKind::Cuda);
+    RunQsaPackedTest<MLFloat16>(2.0e-3f, problem, ProviderKind::Cuda);
+    RunQsaPackedTest<BFloat16>(2.0e-2f, std::move(problem), ProviderKind::Cuda);
+  }
+}
+
 TEST(PackedSparseAttentionIndexerTest, QsaRaggedPrefill) {
   QsaPackedProblem problem;
   problem.batch_size = 1;
@@ -1203,7 +1426,7 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, QsaStateUpdateActiveZeroClearsAllSl
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaPortableStorageBindingLimit) {
   ConfigOptions config_options;
   ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, "8"));
-  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu, nullptr, false, 0, &config_options);
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu, nullptr, false, &config_options);
 }
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaAllEmptyBatchPreservesState) {
@@ -1222,6 +1445,16 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, QsaStateCapacityOverflowIsRejected)
   problem.past_sequence_lengths = {4};
   problem.state_capacity = 2;
   problem.past_state_lengths = {2, 0};
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaMalformedStateLengthsAreClamped) {
+  QsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 1};
+  problem.past_sequence_lengths = {4};
+  problem.state_capacity = 2;
+  problem.past_state_lengths = {3, -1};
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::WebGpu);
 }
 #endif
@@ -1291,17 +1524,27 @@ void CsaPackedReference(const CsaPackedProblem& p, CsaPackedResult& out) {
   for (int b = 0; b < p.batch_size; ++b) {
     const int req_start = p.cumulative_sequence_lengths[static_cast<size_t>(b)];
     const int req_end = p.cumulative_sequence_lengths[static_cast<size_t>(b) + 1];
-    const int req_len = std::max(req_end - req_start, 0);
-    const int old_key_len =
-        std::clamp(p.past_state_lengths[static_cast<size_t>(b) * 2 + 0], 0, p.state_capacity);
-    const int old_buf_len =
-        std::clamp(p.past_state_lengths[static_cast<size_t>(b) * 2 + 1], 0, buffer_capacity);
+    const int raw_key_len = p.past_state_lengths[static_cast<size_t>(b) * 2 + 0];
+    const int raw_buf_len = p.past_state_lengths[static_cast<size_t>(b) * 2 + 1];
+    const bool invalid_metadata =
+        p.cumulative_sequence_lengths[0] != 0 ||
+        p.cumulative_sequence_lengths[static_cast<size_t>(p.batch_size)] != total_tokens ||
+        req_start < 0 || req_end < req_start || req_end > total_tokens ||
+        p.past_sequence_lengths[static_cast<size_t>(b)] < 0 ||
+        raw_key_len < 0 || raw_key_len > p.state_capacity ||
+        raw_buf_len < 0 || raw_buf_len > buffer_capacity;
+    const int req_len = invalid_metadata ? 0 : req_end - req_start;
+    const int old_key_len = std::clamp(raw_key_len, 0, p.state_capacity);
+    const int old_buf_len = std::clamp(raw_buf_len, 0, buffer_capacity);
     const int overlap_length = old_buf_len >= p.compress_ratio ? p.compress_ratio : 0;
     const int leftover_length = old_buf_len - overlap_length;
     const int pending = leftover_length + req_len;
     const int full_new_window_count = pending / p.compress_ratio;
-    overflowed[static_cast<size_t>(b)] = full_new_window_count > std::max(p.state_capacity - old_key_len, 0);
+    overflowed[static_cast<size_t>(b)] =
+        invalid_metadata || full_new_window_count > std::max(p.state_capacity - old_key_len, 0);
     if (overflowed[static_cast<size_t>(b)]) {
+      out.present_state_lengths[static_cast<size_t>(b) * 2 + 0] = old_key_len;
+      out.present_state_lengths[static_cast<size_t>(b) * 2 + 1] = old_buf_len;
       key_len_after[static_cast<size_t>(b)] = old_key_len;
       continue;
     }
@@ -1475,7 +1718,8 @@ CsaPackedProblem MakeCsaPackedProblem(CsaPackedProblem problem = {}) {
 template <typename T>
 void RunCsaPackedTest(const CsaPackedProblem& base, float tolerance,
                       ProviderKind provider_kind = ProviderKind::Cuda, CsaPackedResult* actual = nullptr,
-                      bool reuse = false, bool reuse_failure = false, const ConfigOptions* webgpu_options = nullptr) {
+                      const ConfigOptions* webgpu_options = nullptr, bool reuse = false, bool reuse_failure = false,
+                      int32_t merged_status = 0, int32_t merged_count = 1) {
   auto provider = CreateProvider(provider_kind, webgpu_options);
   if (provider == nullptr) {
     GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
@@ -1557,8 +1801,8 @@ void RunCsaPackedTest(const CsaPackedProblem& base, float tolerance,
     test.AddOptionalInputEdge<int32_t>();
     test.AddInput<int32_t>("mode", {1}, {1});
     test.AddInput<int32_t>("merged", {batch_size, output_capacity}, merged);
-    test.AddInput<int32_t>("merged_counts", {batch_size}, std::vector<int32_t>(static_cast<size_t>(batch_size), 1));
-    test.AddInput<int32_t>("merged_status", {batch_size}, std::vector<int32_t>(static_cast<size_t>(batch_size), 0));
+    test.AddInput<int32_t>("merged_counts", {batch_size}, std::vector<int32_t>(static_cast<size_t>(batch_size), merged_count));
+    test.AddInput<int32_t>("merged_status", {batch_size}, std::vector<int32_t>(static_cast<size_t>(batch_size), merged_status));
   }
   test.AddOutput<int32_t>("selected_indices", {total_tokens, output_capacity}, expected.selected_indices);
   test.AddOutput<int32_t>("selected_counts", {total_tokens}, expected.selected_counts);
@@ -1571,7 +1815,8 @@ void RunCsaPackedTest(const CsaPackedProblem& base, float tolerance,
   test.AddOutput<int32_t>("present_state_lengths", {batch_size, 2}, expected.present_state_lengths);
   if (reuse) {
     test.AddOptionalOutputEdge<T>();
-    test.AddOutput<int32_t>("status", {batch_size}, std::vector<int32_t>(static_cast<size_t>(batch_size), reuse_failure ? 1 : 0));
+    test.AddOutput<int32_t>("status", {batch_size}, std::vector<int32_t>(static_cast<size_t>(batch_size), merged_status != 0 ? merged_status : reuse_failure ? 1
+                                                                                                                                                             : 0));
   }
   RunOnProvider(test, std::move(provider));
   if (actual != nullptr) {
@@ -1594,8 +1839,8 @@ TEST(PackedSparseAttentionIndexerTest, IndexShareCsaAdvanceWithoutScoring) {
   problem.past_sequence_lengths = {3, 1};
   problem.past_state_lengths = {1, 3, 1, 1};
   problem = MakeCsaPackedProblem(std::move(problem));
-  RunCsaPackedTest<float>(problem, 1.0e-5f, ProviderKind::Cuda, nullptr, true);
-  RunCsaPackedTest<MLFloat16>(problem, 4.0e-3f, ProviderKind::Cuda, nullptr, true);
+  RunCsaPackedTest<float>(problem, 1.0e-5f, ProviderKind::Cuda, nullptr, nullptr, true);
+  RunCsaPackedTest<MLFloat16>(problem, 4.0e-3f, ProviderKind::Cuda, nullptr, nullptr, true);
 }
 
 TEST(PackedSparseAttentionIndexerTest, IndexShareCsaRejectsOffsetsAndStateOverflow) {
@@ -1603,15 +1848,37 @@ TEST(PackedSparseAttentionIndexerTest, IndexShareCsaRejectsOffsetsAndStateOverfl
   problem.cumulative_sequence_lengths = {0, 0, 2};
   problem.past_sequence_lengths = {3, 3};
   problem.past_state_lengths = {1, 3, 1, 3};
-  RunCsaPackedTest<float>(MakeCsaPackedProblem(problem), 1.0e-5f, ProviderKind::Cuda, nullptr, true, true);
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(problem), 1.0e-5f, ProviderKind::Cuda, nullptr, nullptr, true, true);
   problem.cumulative_sequence_lengths = {0, 1, 2};
   problem.state_capacity = 1;
-  RunCsaPackedTest<float>(MakeCsaPackedProblem(problem), 1.0e-5f, ProviderKind::Cuda, nullptr, true, true);
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(problem), 1.0e-5f, ProviderKind::Cuda, nullptr, nullptr, true, true);
+}
+
+TEST(PackedSparseAttentionIndexerTest, IndexShareCsaRejectsInvalidSelectionsBeforeAdvancing) {
+  CsaPackedProblem problem;
+  problem.cumulative_sequence_lengths = {0, 1, 2};
+  problem.past_sequence_lengths = {3, 1};
+  problem.past_state_lengths = {1, 3, 1, 1};
+  problem = MakeCsaPackedProblem(std::move(problem));
+  RunCsaPackedTest<float>(problem, 1.0e-5f, ProviderKind::Cuda, nullptr, nullptr, true, true, 2, 1);
+  RunCsaPackedTest<float>(problem, 1.0e-5f, ProviderKind::Cuda, nullptr, nullptr, true, true, 0, -1);
+  RunCsaPackedTest<float>(problem, 1.0e-5f, ProviderKind::Cuda, nullptr, nullptr, true, true, 0, INT32_MAX);
 }
 
 TEST(PackedSparseAttentionIndexerTest, CsaFloat16) { RunCsaPackedTest<MLFloat16>(MakeCsaPackedProblem(), 4.0e-3f); }
 
 TEST(PackedSparseAttentionIndexerTest, CsaBFloat16) { RunCsaPackedTest<BFloat16>(MakeCsaPackedProblem(), 3.0e-2f); }
+
+TEST(PackedSparseAttentionIndexerTest, CsaLargeRatioCompaction) {
+  CsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.compress_ratio = 64;
+  problem.cumulative_sequence_lengths = {0, 64};
+  problem.past_sequence_lengths = {65};
+  problem.state_capacity = 4;
+  problem.past_state_lengths = {0, 65};
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f);
+}
 
 TEST(PackedSparseAttentionIndexerTest, CsaPrefillThenDecodeIndependentState) {
   if (DefaultCudaExecutionProvider() == nullptr) {
@@ -1646,64 +1913,6 @@ TEST(PackedSparseAttentionIndexerTest, CsaStateCapacityOverflowIsRejected) {
   RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f);
 }
 
-#ifdef USE_WEBGPU
-TEST(PackedSparseAttentionIndexerWebGpuTest, CsaFloat) {
-  RunCsaPackedTest<float>(MakeCsaPackedProblem(), 1.0e-5f, ProviderKind::WebGpu);
-}
-
-TEST(PackedSparseAttentionIndexerWebGpuTest, CsaFloat16) {
-  RunCsaPackedTest<MLFloat16>(MakeCsaPackedProblem(), 4.0e-3f, ProviderKind::WebGpu);
-}
-
-TEST(PackedSparseAttentionIndexerWebGpuTest, CsaStateCapacityOverflowIsRejected) {
-  CsaPackedProblem problem;
-  problem.batch_size = 1;
-  problem.cumulative_sequence_lengths = {0, 4};
-  problem.state_capacity = 1;
-  problem.past_state_lengths = {1, 0};
-  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f, ProviderKind::WebGpu);
-}
-#endif
-
-#ifdef USE_CUDA
-TEST(PackedSparseAttentionIndexerCudaTest, DynamicSharedMemoryBoundaryValidation) {
-  constexpr size_t supported_bytes = 64 * 1024;
-  EXPECT_STATUS_OK(psai::ValidateDynamicSharedMemory(supported_bytes, supported_bytes, "BoundaryKernel"));
-  const Status status = psai::ValidateDynamicSharedMemory(
-      supported_bytes + 1, supported_bytes, "BoundaryKernel");
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_NE(status.ErrorMessage().find("BoundaryKernel"), std::string::npos);
-}
-#endif
-
-#ifndef ORT_NO_EXCEPTIONS
-TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaPresentGateBuffer) {
-  GraphOptions options;
-  options.add_qsa_gate_output = true;
-  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "present_gate_buffer) must be omitted");
-}
-
-TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsMissingCsaPresentGateBuffer) {
-  GraphOptions options;
-  options.policy_mode = psai::kPolicyModeCsa;
-  options.omit_csa_gate_output = true;
-  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "present_gate_buffer) is required");
-}
-#endif
-
-TEST(PackedSparseAttentionIndexerTest, CsaLargeRatioCompaction) {
-  CsaPackedProblem problem;
-  problem.batch_size = 1;
-  problem.compress_ratio = 64;
-  problem.cumulative_sequence_lengths = {0, 64};
-  problem.past_sequence_lengths = {65};
-  problem.state_capacity = 4;
-  problem.past_state_lengths = {0, 65};
-  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f);
-}
-
 TEST(PackedSparseAttentionIndexerTest, CsaMalformedStateLengthsAreClamped) {
   CsaPackedProblem problem;
   problem.batch_size = 1;
@@ -1715,20 +1924,18 @@ TEST(PackedSparseAttentionIndexerTest, CsaMalformedStateLengthsAreClamped) {
 }
 
 #ifdef USE_WEBGPU
-TEST(PackedSparseAttentionIndexerWebGpuTest, QsaMalformedStateLengthsAreClamped) {
-  QsaPackedProblem problem;
-  problem.batch_size = 1;
-  problem.cumulative_sequence_lengths = {0, 1};
-  problem.past_sequence_lengths = {4};
-  problem.state_capacity = 2;
-  problem.past_state_lengths = {3, -1};
-  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::WebGpu);
+TEST(PackedSparseAttentionIndexerWebGpuTest, CsaFloat) {
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, CsaFloat16) {
+  RunCsaPackedTest<MLFloat16>(MakeCsaPackedProblem(), 4.0e-3f, ProviderKind::WebGpu);
 }
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, CsaPortableStorageBindingLimit) {
   ConfigOptions config_options;
   ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, "8"));
-  RunCsaPackedTest<float>(MakeCsaPackedProblem(), 1.0e-5f, ProviderKind::WebGpu, nullptr, false, false, &config_options);
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(), 1.0e-5f, ProviderKind::WebGpu, nullptr, &config_options);
 }
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, CsaAllEmptyBatchPreservesState) {
@@ -1737,6 +1944,15 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, CsaAllEmptyBatchPreservesState) {
   problem.cumulative_sequence_lengths = {0, 0};
   problem.past_sequence_lengths = {3};
   problem.past_state_lengths = {1, 1};
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, CsaStateCapacityOverflowIsRejected) {
+  CsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 4};
+  problem.state_capacity = 1;
+  problem.past_state_lengths = {1, 0};
   RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f, ProviderKind::WebGpu);
 }
 

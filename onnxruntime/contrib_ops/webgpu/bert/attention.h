@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/providers/webgpu/compute_context.h"
-#include "core/providers/webgpu/math/matmul.h"
+#include "core/providers/webgpu/math/matmul_compute_dispatcher.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
@@ -150,7 +150,7 @@ class Attention final : public WebGpuKernel, public onnxruntime::contrib::Attent
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
-  mutable MatMulOptImplCache matmul_compute_cache_;
+  mutable MatMulComputeDispatcher matmul_compute_dispatcher_;
   bool weights_are_constant_ = false;
 };
 

@@ -14,7 +14,7 @@ using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
 // Computes the scalar gate for each (token, g) row. The gate does not depend on the output channel,
-// so one workgroup computes it once per row instead of every channel recomputing the key projection.
+// so one workgroup reduces it once per row instead of every channel repeating the reduction.
 class EngramGateScalarProgram final : public Program<EngramGateScalarProgram> {
  public:
   EngramGateScalarProgram() : Program{"EngramGateScalar"} {}
@@ -26,7 +26,7 @@ class EngramGateScalarProgram final : public Program<EngramGateScalarProgram> {
                                           {"epsilon", ProgramUniformVariableDataType::Float32});
 };
 
-// Applies the per-row gate to the value projection, one invocation per output element.
+// Broadcasts the per-row gate over the value channels, one invocation per vecN of output channels.
 class EngramGateProgram final : public Program<EngramGateProgram> {
  public:
   EngramGateProgram() : Program{"EngramGate"} {}
