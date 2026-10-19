@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <limits>
 #include <sstream>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -19,6 +20,7 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/unittest_util/framework_test_utils.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test_environment.h"
 
@@ -107,6 +109,8 @@ TEST(SpeculativeFoldTest, CpuFeedsPropagateStateAcrossRunsAndRejectInvalidMetada
   ASSERT_STATUS_OK(session.Initialize());
   auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   NameMLValMap feeds;
+  const std::vector<std::string> output_names{
+      "updated_ctl", "updated_ctx", "sel", "cos_out", "sin_out", "done"};
   auto feed = [&](const char* name, const TensorShapeVector& shape, const auto& values) {
     using T = typename std::decay_t<decltype(values)>::value_type;
     OrtValue value;
@@ -130,8 +134,7 @@ TEST(SpeculativeFoldTest, CpuFeedsPropagateStateAcrossRunsAndRejectInvalidMetada
     feed("ctl", {8}, control);
     feed("ctx_commit", {2}, context);
     std::vector<OrtValue> outputs;
-    ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds,
-                                 {"updated_ctl", "updated_ctx", "sel", "cos_out", "sin_out", "done"}, &outputs));
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
     ASSERT_EQ(outputs.size(), 6u);
     const auto* result = outputs[0].Get<Tensor>().Data<int64_t>();
     EXPECT_EQ(result[0], 8);
@@ -169,8 +172,7 @@ TEST(SpeculativeFoldTest, CpuFeedsPropagateStateAcrossRunsAndRejectInvalidMetada
     feed("ctx_commit", {2}, context);
     feed("ptrs", {2}, std::vector<int64_t>{muted ? 0 : ring.Address(), muted ? 0 : 4});
     std::vector<OrtValue> outputs;
-    ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds,
-                                 {"updated_ctl", "updated_ctx", "sel", "cos_out", "sin_out", "done"}, &outputs));
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
     const auto* result = outputs[0].Get<Tensor>().Data<int64_t>();
     EXPECT_EQ(outputs[2].Get<Tensor>().Data<int64_t>()[0], 0);
     EXPECT_EQ(outputs[5].Get<Tensor>().Data<int32_t>()[0], muted ? 0 : 1);
@@ -209,8 +211,7 @@ TEST(SpeculativeFoldTest, CpuFeedsPropagateStateAcrossRunsAndRejectInvalidMetada
     feed("ctx_commit", {2}, context);
     feed("ptrs", {2}, std::vector<int64_t>{invalid.address, invalid.capacity});
     std::vector<OrtValue> outputs;
-    ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds,
-                                 {"updated_ctl", "updated_ctx", "sel", "cos_out", "sin_out", "done"}, &outputs));
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
     auto expected = control;
     expected[3] = 1;
     expected[5] = invalid.error;

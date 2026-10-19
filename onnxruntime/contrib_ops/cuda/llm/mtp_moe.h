@@ -20,6 +20,15 @@ constexpr int kExpertCount = 512;
 constexpr int kTopK = 10;
 constexpr int kFfnSize = 640;
 constexpr int kScratchStride = 32 + kTopK * kFfnSize;
+constexpr int kMaxRows = 65535;
+
+inline Status ValidateRowCount(int64_t rows) {
+  if (rows <= 0 || rows > kMaxRows) {
+    return Status(common::StatusCategory::ONNXRUNTIME, common::StatusCode::INVALID_ARGUMENT,
+                  "MtpMoe requires between 1 and 65535 rows");
+  }
+  return Status::OK();
+}
 
 Status LaunchRouter(const __nv_bfloat16* router_logits, float* scratch,
                     int rows, cudaStream_t stream);

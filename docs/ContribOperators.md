@@ -61,7 +61,6 @@ Do not modify directly.*
   * <a href="#com.microsoft.HyperConnectionPreMix">com.microsoft.HyperConnectionPreMix</a>
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
-  * <sub>experimental</sub> <a href="#com.microsoft.IsAllFinite">com.microsoft.IsAllFinite</a>
   * <a href="#com.microsoft.LinearAttention">com.microsoft.LinearAttention</a>
   * <a href="#com.microsoft.LinearAttentionGate">com.microsoft.LinearAttentionGate</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
@@ -93,7 +92,6 @@ Do not modify directly.*
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
   * <a href="#com.microsoft.PagedAttention">com.microsoft.PagedAttention</a>
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
-  * <sub>experimental</sub> <a href="#com.microsoft.QEmbedLayerNormalization">com.microsoft.QEmbedLayerNormalization</a>
   * <a href="#com.microsoft.QGemm">com.microsoft.QGemm</a>
   * <a href="#com.microsoft.QLinearAdd">com.microsoft.QLinearAdd</a>
   * <a href="#com.microsoft.QLinearAveragePool">com.microsoft.QLinearAveragePool</a>
@@ -144,6 +142,8 @@ Do not modify directly.*
   * <a href="#com.microsoft.VarlenNGramHashMapping">com.microsoft.VarlenNGramHashMapping</a>
   * <a href="#com.microsoft.WhisperBeamSearch">com.microsoft.WhisperBeamSearch</a>
   * <a href="#com.microsoft.WordConvEmbedding">com.microsoft.WordConvEmbedding</a>
+  * <sub>experimental</sub> <a href="#com.microsoft.IsAllFinite">com.microsoft.IsAllFinite</a>
+  * <sub>experimental</sub> <a href="#com.microsoft.QEmbedLayerNormalization">com.microsoft.QEmbedLayerNormalization</a>
 ## com.microsoft
 ### <a name="com.microsoft.Attention"></a><a name="com.microsoft.attention">**com.microsoft.Attention**</a>
 
@@ -4621,6 +4621,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MtpMoe"></a><a name="com.microsoft.mtpmoe">**com.microsoft.MtpMoe**</a>
 
   Mixture-of-experts projection for multi-token prediction. The input and router logits are bfloat16.
+  The row count must be between 1 and 65535, inclusive, to fit the CUDA projection grid dimensions.
   Expert weights are packed NVFP4 bytes with shape [512, 1280, 1440] for gate/up and [512, 2560, 360]
   for down projection. The output has the same shape as input. The second output is a fully initialized float
   scratch buffer. A row containing non-finite router logits selects valid expert indices 0 through 9 and

@@ -24,6 +24,20 @@ namespace mtp_moe = onnxruntime::contrib::cuda::mtp_moe;
 constexpr float kGateUpGlobalScale = 0.0005173456156626344f;
 constexpr float kDownGlobalScale = 0.00031534829759038985f;
 
+TEST(MtpMoeTest, RowCountBoundaries) {
+  EXPECT_TRUE(mtp_moe::ValidateRowCount(1).IsOK());
+  EXPECT_TRUE(mtp_moe::ValidateRowCount(65535).IsOK());
+  for (int rows : {-1, 0, 65536, std::numeric_limits<int>::max()}) {
+    SCOPED_TRACE(rows);
+    const auto status = mtp_moe::ValidateRowCount(rows);
+    EXPECT_EQ(status.Code(), common::StatusCode::INVALID_ARGUMENT);
+    const auto launch_status = mtp_moe::LaunchNvfp4MtpMoe(
+        nullptr, nullptr, nullptr, nullptr, 1.0f, 1.0f, nullptr, nullptr, rows, nullptr);
+    EXPECT_EQ(launch_status.Code(), common::StatusCode::INVALID_ARGUMENT);
+    EXPECT_EQ(launch_status.ErrorMessage(), status.ErrorMessage());
+  }
+}
+
 void CheckCuda(cudaError_t error) {
   if (error != cudaSuccess) {
     throw std::runtime_error(cudaGetErrorString(error));

@@ -6,8 +6,6 @@
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
-#include <limits>
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -38,8 +36,8 @@ class MtpMoe final : public CudaKernel {
                           input_shape[2] == mtp_moe::kHiddenSize,
                       "MtpMoe input must have shape [1, R, 2560], got ", input_shape);
     const int64_t rows = input_shape[1];
-    ORT_RETURN_IF_NOT(rows > 0 && rows <= std::numeric_limits<int>::max() &&
-                          router_shape.NumDimensions() == 3 &&
+    ORT_RETURN_IF_ERROR(mtp_moe::ValidateRowCount(rows));
+    ORT_RETURN_IF_NOT(router_shape.NumDimensions() == 3 &&
                           router_shape[0] == 1 && router_shape[1] == rows &&
                           router_shape[2] == mtp_moe::kExpertCount,
                       "MtpMoe router logits must have shape [1, R, 512], got ", router_shape);

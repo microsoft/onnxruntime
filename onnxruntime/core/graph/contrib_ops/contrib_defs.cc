@@ -1467,6 +1467,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
 constexpr const char* MtpMoe_ver1_doc = R"DOC(
 Mixture-of-experts projection for multi-token prediction. The input and router logits are bfloat16.
+The row count must be between 1 and 65535, inclusive, to fit the CUDA projection grid dimensions.
 Expert weights are packed NVFP4 bytes with shape [512, 1280, 1440] for gate/up and [512, 2560, 360]
 for down projection. The output has the same shape as input. The second output is a fully initialized float
 scratch buffer. A row containing non-finite router logits selects valid expert indices 0 through 9 and

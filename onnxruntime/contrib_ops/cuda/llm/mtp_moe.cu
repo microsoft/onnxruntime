@@ -292,10 +292,7 @@ Status LaunchNvfp4MtpMoe(const __nv_bfloat16* input, const __nv_bfloat16* router
                          const uint8_t* gate_up_weights, const uint8_t* down_weights,
                          float gate_up_global_scale, float down_global_scale,
                          float* scratch, __nv_bfloat16* output, int rows, cudaStream_t stream) {
-  if (rows <= 0) {
-    return Status(common::StatusCategory::ONNXRUNTIME, common::StatusCode::INVALID_ARGUMENT,
-                  "MtpMoe requires at least one row");
-  }
+  ORT_RETURN_IF_ERROR(ValidateRowCount(rows));
   const cudaError_t clear_error = cudaMemsetAsync(
       scratch, 0, static_cast<size_t>(rows) * kScratchStride * sizeof(float), stream);
   if (clear_error != cudaSuccess) {
