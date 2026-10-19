@@ -213,10 +213,6 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
   for (int chunk0 = 0; chunk0 < seq_len; chunk0 += BT) {
     const int len = min(BT, seq_len - chunk0);
 
-    for (int idx = tid; idx < DK * kDVB; idx += kChunkedThreads) {
-      const int r = idx / kDVB, c = idx % kDVB;
-      s.s_h[r * L::kVh + c] = FloatToElem<T>(s.s_f[r * L::kVf + c]);
-    }
     for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
       const int t = idx / DK, d = idx % DK;
       const int64_t tok = tok_base + chunk0 + t;
@@ -290,8 +286,8 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     BuildTriInverse<BT>(s.m_h, L::kMh, s.db_h, s.nb_h, s.ti_h, L::kMh, s.t_f, L::kVf, warp_id,
                         lane, tid);
 
-    SmemGemm<BT, kDVB, DK, false, false, false>(s.t_f, L::kVf, s.k_h, L::kKh, s.s_h, L::kVh,
-                                                warp_id, lane);
+    SmemGemmFp32State<BT, kDVB, DK, false>(s.t_f, L::kVf, s.k_h, L::kKh, s.s_f, L::kVf, s.s_h,
+                                           L::kVh, warp_id, lane, tid);
     __syncthreads();
     for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
       const int t = idx / kDVB, c = idx % kDVB;
@@ -328,8 +324,8 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     SmemGemm<BT, kDVB, BT, false, false, false>(s.t_f, L::kVf, s.m_h, L::kMh, s.u_h, L::kVh,
                                                 warp_id, lane);
     __syncthreads();
-    SmemGemm<BT, kDVB, DK, false, false, true>(s.t_f, L::kVf, s.q_h, L::kKh, s.s_h, L::kVh,
-                                               warp_id, lane);
+    SmemGemmFp32State<BT, kDVB, DK, true>(s.t_f, L::kVf, s.q_h, L::kKh, s.s_f, L::kVf, s.s_h,
+                                          L::kVh, warp_id, lane, tid);
     __syncthreads();
     for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
       const int t = idx / kDVB, c = idx % kDVB;

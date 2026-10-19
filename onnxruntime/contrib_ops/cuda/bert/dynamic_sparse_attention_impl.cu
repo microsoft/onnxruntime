@@ -1137,11 +1137,13 @@ Status LaunchDynamicSparseAttention(
     CUDA_RETURN_IF_ERROR(cudaGetDevice(&device));
     CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, device));
     CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&optin_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, device));
+    constexpr int kMaxGridDimYZ = 65535;
     use_prefill_kernel =
         enabled && cc_major >= 8 && parameters.sequence_length >= 8 &&
         parameters.head_size == dsa_prefill::kHeadDim && !local_plus_selected &&
         parameters.selected_kv_source == DynamicSparseAttentionKvSource::kMain &&
         !parameters.use_smooth_softmax && parameters.max_selected > 0 &&
+        parameters.kv_num_heads > 0 && parameters.kv_num_heads <= kMaxGridDimYZ &&
         parameters.num_heads % parameters.kv_num_heads == 0 &&
         parameters.num_heads / parameters.kv_num_heads <= dsa_prefill::kMaxGroup &&
         static_cast<size_t>(optin_shared) >= dsa_prefill::kSharedBytes;

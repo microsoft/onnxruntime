@@ -266,6 +266,97 @@ __device__ __forceinline__ void SmemGemm(CT* C, int ldc, const T* A, int lda,
   }
 }
 
+// C[M][N] (ldc) = A[M][K] @ S[K][N] (+ C if Accumulate), where A is in T (fp16/bf16) and
+// S[K][lds_f] is the FP32 recurrent state, staged through s_h[K][lds_h].
+// For bf16, three exact bf16 slices (hi + mid + lo) reconstruct all 24 IEEE-754 significand
+// bits of S while keeping the tensor-core m16n8k16 path and zero extra shared memory.
+template <int M, int N, int K, bool Accumulate, int kWarps = kChunkedWarps, typename T = __half>
+__device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A, int lda,
+                                                  const float* S, int lds_f, T* s_h, int lds_h,
+                                                  int warp_id, int lane, int tid) {
+  constexpr int kMTiles = M / 16;
+  constexpr int kNTiles = N / 8;
+  static_assert(kMTiles <= kWarps, "each warp must hold its full M tile in registers");
+  constexpr int kWarpsPerM = kWarps / kMTiles;
+  constexpr int kNPerWarp = (kNTiles + kWarpsPerM - 1) / kWarpsPerM;
+  constexpr int kSlices = std::is_same_v<T, __nv_bfloat16> ? 3 : 1;
+
+  const int m_group = warp_id / kWarpsPerM;
+  const int n_group = warp_id % kWarpsPerM;
+  const int gid = lane >> 2, tig = lane & 3;
+  const int m0 = m_group * 16;
+  const int r0 = m0 + gid, r1 = m0 + gid + 8;
+
+  float acc[kNPerWarp][4];
+#pragma unroll
+  for (int i = 0; i < kNPerWarp; ++i) {
+    acc[i][0] = acc[i][1] = acc[i][2] = acc[i][3] = 0.0f;
+  }
+
+#pragma unroll
+  for (int slice = 0; slice < kSlices; ++slice) {
+    for (int idx = tid; idx < K * N; idx += kChunkedThreads) {
+      const int r = idx / N, c = idx % N;
+      const float sf = S[r * lds_f + c];
+      if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+        const __nv_bfloat16 hi_bf = __float2bfloat16_rn(sf);
+        if (slice == 0) {
+          s_h[r * lds_h + c] = hi_bf;
+        } else {
+          const float hi = __bfloat162float(hi_bf);
+          const float rem1 = isfinite(hi) ? (sf - hi) : 0.0f;
+          const __nv_bfloat16 mid_bf = __float2bfloat16_rn(rem1);
+          if (slice == 1) {
+            s_h[r * lds_h + c] = mid_bf;
+          } else {
+            const float mid = __bfloat162float(mid_bf);
+            const float rem2 = isfinite(mid) ? (rem1 - mid) : 0.0f;
+            s_h[r * lds_h + c] = __float2bfloat16_rn(rem2);
+          }
+        }
+      } else {
+        s_h[r * lds_h + c] = FloatToElem<T>(sf);
+      }
+    }
+    __syncthreads();
+
+    if (m_group < kMTiles) {
+      for (int k0 = 0; k0 < K; k0 += 16) {
+        uint32_t a[4];
+        LoadFragA<false>(a, A, lda, m0, k0, lane);
+#pragma unroll
+        for (int i = 0; i < kNPerWarp; ++i) {
+          const int nt = n_group + i * kWarpsPerM;
+          if (nt < kNTiles) {
+            uint32_t b[2];
+            LoadFragB<false>(b, s_h, lds_h, k0, nt * 8, lane);
+            MmaM16N8K16<T>(acc[i], a, b);
+          }
+        }
+      }
+    }
+    if constexpr (kSlices > 1) {
+      if (slice + 1 < kSlices) {
+        __syncthreads();
+      }
+    }
+  }
+
+  if (m_group < kMTiles) {
+#pragma unroll
+    for (int i = 0; i < kNPerWarp; ++i) {
+      const int nt = n_group + i * kWarpsPerM;
+      if (nt < kNTiles) {
+        const int c0 = nt * 8 + tig * 2;
+        StoreC(C + r0 * ldc + c0, (Accumulate ? LoadC(C + r0 * ldc + c0) : 0.0f) + acc[i][0]);
+        StoreC(C + r0 * ldc + c0 + 1, (Accumulate ? LoadC(C + r0 * ldc + c0 + 1) : 0.0f) + acc[i][1]);
+        StoreC(C + r1 * ldc + c0, (Accumulate ? LoadC(C + r1 * ldc + c0) : 0.0f) + acc[i][2]);
+        StoreC(C + r1 * ldc + c0 + 1, (Accumulate ? LoadC(C + r1 * ldc + c0 + 1) : 0.0f) + acc[i][3]);
+      }
+    }
+  }
+}
+
 template <int BT>
 __device__ __forceinline__ void InclusiveScanBT(float* x, int tid) {
   static_assert(BT == 32 || BT == 64, "chunk length must be 32 or 64");

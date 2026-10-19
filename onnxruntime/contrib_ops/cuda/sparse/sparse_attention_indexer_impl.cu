@@ -31,6 +31,7 @@ namespace {
 constexpr int kThreads = 128;
 constexpr int kWarpSize = 32;
 constexpr int64_t kMaxGridDimX = kSaiMaxGridDimX;
+constexpr int kMaxGridDimYZ = 65535;
 constexpr int kBoundedTopKMax = 512;
 constexpr int kBoundedTopKItemsPerThread = kBoundedTopKMax / kThreads;
 constexpr int kDistributedTopKMaxRows = 64;
@@ -1548,8 +1549,12 @@ __global__ void CsaSelectKernel(const float* scores, const int64_t* position_ids
 bool UseTiledQsaBlockScoring(const SparseAttentionIndexerParams& params) {
   const bool tiled_scoring =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QSA_TILED_SCORING", 1) != 0;
+  const int64_t row_tiles =
+      (static_cast<int64_t>(params.sequence_length) + kScoreTileRows - 1) / kScoreTileRows;
   return tiled_scoring && !params.use_block_representatives && params.max_block_count > 0 &&
-         params.sequence_length >= 16 && params.head_size > 0 && params.head_size % kScoreChunk == 0;
+         params.batch_size > 0 && params.batch_size <= kMaxGridDimYZ &&
+         params.sequence_length >= 16 && row_tiles <= kMaxGridDimYZ &&
+         params.head_size > 0 && params.head_size % kScoreChunk == 0;
 }
 
 }  // namespace

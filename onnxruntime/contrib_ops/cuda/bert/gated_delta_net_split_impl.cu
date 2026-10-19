@@ -37,12 +37,9 @@
 //  2. Every one of those four GEMMs scales with the v-block width, so narrowing the block
 //     to raise the CTA count now genuinely divides the work instead of duplicating it.
 //
-// The state is kept in fp16 rather than the fused engine's fp32, which is what brings K2
-// under the 113.5 KB that lets two CTAs share an SM. fp16 (not bf16, which is what the
-// reference implementations use) because the operator's q/k/v/output are fp16 already,
-// qk_l2_norm bounds |k| <= 1 and beta = sigmoid(.) < 1, so the state stays around O(10)
-// against fp16's 65504 ceiling, and fp16 carries three more mantissa bits than bf16 on
-// what is an accumulator running the length of the sequence.
+// The state is kept in fp32 across chunks with a 16-bit mma staging tile, and K2 reuses
+// the upper half of the stacked [W; Qg] buffer for Kd once the state GEMM completes, keeping
+// K2 at 112.6 KB so two CTAs can still share an SM on Hopper.
 
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
@@ -69,6 +66,7 @@ struct SplitLd {
   static constexpr int kBh = DVB + 8;                    // rows of length DVB
   static constexpr int kMh = BT + 8;                     // rows of length BT
   static constexpr int kSh = DVB + 8;                    // state rows, DVB wide
+  static constexpr int kSf = DVB + 4;                    // fp32 state rows, DVB wide
   static constexpr int kF1 = (DV > BT ? DV : BT) + 4;    // K1 fp32 scratch
   static constexpr int kF2 = (DVB > BT ? DVB : BT) + 4;  // K2 fp32 scratch
 };
@@ -295,16 +293,18 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
 }
 
 // ---------------------------------------------------------------------------
-// K2 shared memory. The state lives here in 16-bit for the whole walk.
+// K2 shared memory. The recurrent state lives in fp32 (`s_f`) for the whole walk
+// and is staged into `s_h` for 16-bit mma; `kd_h` reuses the upper half of `wq_h`.
 // ---------------------------------------------------------------------------
 template <typename T, int DK, int DV, int BT, int DVB>
 struct ScanSmem {
-  T* s_h;      // [DK][kSh]    recurrent state
+  float* s_f;  // [DK][kSf]    recurrent state in fp32
+  float* t_f;  // [DK][kF2], and DK == 2 BT holds both halves of the stacked GEMM
+  T* s_h;      // [DK][kSh]    16-bit mma operand staging tile for the state
   T* wq_h;     // [2 BT][kKh]  W stacked on Qg
   T* u_h;      // [BT][kBh]    Uv, then U in place
   T* p_h;      // [BT][kMh]
-  T* kd_h;     // [BT][kKh]
-  float* t_f;  // [DK][kF2], and DK == 2 BT holds both halves of the stacked GEMM
+  T* kd_h;     // [BT][kKh]    aliases wq_h + BT * kKh after W/Qg GEMM
 };
 
 template <typename T, int DK, int DV, int BT, int DVB>
@@ -313,6 +313,8 @@ __device__ __forceinline__ ScanSmem<T, DK, DV, BT, DVB> CarveScan(char* raw) {
   static_assert(DK == 2 * BT, "t_f must cover both halves of the stacked [2 BT x DVB] GEMM");
   ScanSmem<T, DK, DV, BT, DVB> s;
   float* f = reinterpret_cast<float*>(raw);
+  s.s_f = f;
+  f += DK * L::kSf;
   s.t_f = f;
   f += DK * L::kF2;
   T* h = reinterpret_cast<T*>(f);
@@ -324,7 +326,7 @@ __device__ __forceinline__ ScanSmem<T, DK, DV, BT, DVB> CarveScan(char* raw) {
   h += BT * L::kBh;
   s.p_h = h;
   h += BT * L::kMh;
-  s.kd_h = h;
+  s.kd_h = s.wq_h + BT * L::kKh;
   return s;
 }
 
@@ -355,10 +357,8 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
   const float* seed = first_pass ? pack.initial_state : carry;
   for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
     const int r = idx / DVB, c = idx % DVB;
-    s.s_h[r * L::kSh + c] =
-        seed != nullptr
-            ? FloatToElem<T>(seed[st_off + static_cast<int64_t>(v0 + c) * DK + r])
-            : FloatToElem<T>(0.f);
+    s.s_f[r * L::kSf + c] =
+        seed != nullptr ? seed[st_off + static_cast<int64_t>(v0 + c) * DK + r] : 0.0f;
   }
   __syncthreads();
 
@@ -379,9 +379,6 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
     for (int idx = tid; idx < 2 * BT * DK; idx += kChunkedThreads) {
       s.wq_h[(idx / DK) * L::kKh + idx % DK] = wq_in[idx];
     }
-    for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
-      s.kd_h[(idx / DK) * L::kKh + idx % DK] = kd_in[idx];
-    }
     for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
       const int t = idx / DVB, d = idx % DVB;
       s.u_h[t * L::kBh + d] = uv_in[t * DV + v0 + d];
@@ -392,13 +389,16 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
     __syncthreads();
 
     // One GEMM for both products of the state: rows [0, BT) are W S, rows [BT, 2 BT) are Qg S.
-    SmemGemm<2 * BT, DVB, DK, false, false, false>(s.t_f, L::kF2, s.wq_h, L::kKh, s.s_h, L::kSh,
-                                                   warp_id, lane);
+    SmemGemmFp32State<2 * BT, DVB, DK, false>(s.t_f, L::kF2, s.wq_h, L::kKh, s.s_f, L::kSf,
+                                              s.s_h, L::kSh, warp_id, lane, tid);
     __syncthreads();
     for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
       const int t = idx / DVB, c = idx % DVB;
       s.u_h[t * L::kBh + c] =
           FloatToElem<T>(ElemToFloat(s.u_h[t * L::kBh + c]) - s.t_f[t * L::kF2 + c]);
+    }
+    for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+      s.kd_h[(idx / DK) * L::kKh + idx % DK] = kd_in[idx];
     }
     __syncthreads();
 
@@ -416,12 +416,10 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
       }
     }
 
-    // S = decay S + Kd^T U, straight into the 16-bit state: the mma accumulator is float
-    // either way, so this is the same single rounding as staging it through t_f, and it
-    // needs no barrier against the output epilogue above, which only reads t_f.
-    SmemGemm<DK, DVB, BT, true, false, true, T>(s.s_h, L::kSh, s.kd_h, L::kKh, s.u_h,
-                                                L::kBh, warp_id, lane,
-                                                decays[head_base + c_local]);
+    // S = decay S + Kd^T U in FP32 so small per-chunk decays do not round away between chunks.
+    SmemGemm<DK, DVB, BT, true, false, true, float>(s.s_f, L::kSf, s.kd_h, L::kKh, s.u_h,
+                                                    L::kBh, warp_id, lane,
+                                                    decays[head_base + c_local]);
     __syncthreads();
   }
 
@@ -429,7 +427,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
   for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
     const int r = idx / DVB, c = idx % DVB;
     const int64_t off = st_off + static_cast<int64_t>(v0 + c) * DK + r;
-    const float v = ElemToFloat(s.s_h[r * L::kSh + c]);
+    const float v = s.s_f[r * L::kSf + c];
     if (carry != nullptr) carry[off] = v;
     if (last_pass && pack.final_state != nullptr) pack.final_state[off] = v;
   }

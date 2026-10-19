@@ -12,7 +12,6 @@
 #include "contrib_ops/cuda/bert/gated_delta_net_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
-
 #include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {

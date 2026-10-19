@@ -136,15 +136,16 @@ inline size_t SplitPrepareSmemBytes(int bt, int dk, int dv) {
   return f + h;
 }
 
-// K2 holds the fp16 state, W/Qg/Kd, its own v-block of U, P, and one fp32 scratch that must
-// be wide enough for the [DK x DVB] state update.
+// K2 holds the fp32 state and its 16-bit mma tile, W/Qg (whose upper half is reused for Kd),
+// its own v-block of U, P, and one fp32 scratch that covers the [2 BT x DVB] stacked GEMM.
 inline size_t SplitScanSmemBytes(int bt, int dk, int dvb) {
   const int ld_kh = dk + 8;
   const int ld_bh = dvb + 8;
   const int ld_mh = bt + 8;
+  const int ld_sf = dvb + 4;
   const int ld_f2 = (dvb > bt ? dvb : bt) + 4;
-  const size_t f = sizeof(float) * static_cast<size_t>(dk) * ld_f2;
-  const size_t h = sizeof(uint16_t) * static_cast<size_t>(dk * ld_bh + 3 * bt * ld_kh +
+  const size_t f = sizeof(float) * static_cast<size_t>(dk) * (ld_sf + ld_f2);
+  const size_t h = sizeof(uint16_t) * static_cast<size_t>(dk * ld_bh + 2 * bt * ld_kh +
                                                           bt * ld_bh + bt * ld_mh);
   return f + h;
 }
