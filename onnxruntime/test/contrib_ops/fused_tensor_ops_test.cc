@@ -146,8 +146,8 @@ void RunSigmoidGateMulBroadcastResidualRounding(bool sigmoid_in_fp32, bool silu_
         const BFloat16 denominator(1.0f + BFloat16(exp_value).ToFloat());
         const BFloat16 reciprocal(1.0f / denominator.ToFloat());
         const BFloat16 rounded_sigmoid = sigmoid_in_fp32
-                                            ? BFloat16(sigmoid)
-                                            : (gate > 0 ? reciprocal : BFloat16(1.0f - reciprocal.ToFloat()));
+                                             ? BFloat16(sigmoid)
+                                             : (gate > 0 ? reciprocal : BFloat16(1.0f - reciprocal.ToFloat()));
         const BFloat16 activation = silu_gate ? BFloat16(gate * rounded_sigmoid.ToFloat()) : rounded_sigmoid;
         const BFloat16 product(values[i].ToFloat() * activation.ToFloat());
         expected[i] = residual ? BFloat16(product.ToFloat() + residuals[i].ToFloat()) : product;
@@ -186,7 +186,7 @@ TEST(FusedTensorOpsTest, SigmoidGateMulRejectsBroadcastAndResidualShapes) {
     test.AddAttribute<int64_t>("broadcast_gate", 1);
     test.AddInput<BFloat16>("attention", {2, 3}, ToBFloat16(std::vector<float>(6, 1.0f)));
     test.AddInput<BFloat16>("projection", bad_residual ? std::vector<int64_t>{2, 1} : std::vector<int64_t>{1, 2},
-                           ToBFloat16({1.0f, 1.0f}));
+                            ToBFloat16({1.0f, 1.0f}));
     if (bad_residual) test.AddInput<BFloat16>("residual", {1}, ToBFloat16({1.0f}));
     test.AddOutput<BFloat16>("output", {2, 3}, ToBFloat16(std::vector<float>(6, 0.0f)));
     test.Run(OpTester::ExpectResult::kExpectFailure,
@@ -208,8 +208,8 @@ TEST(FusedTensorOpsTest, SigmoidGateMulBroadcastEmptyAndInvalidAttributes) {
     test.AddInput<BFloat16>("residual", {0, 3}, {});
     test.AddOutput<BFloat16>("output", {0, 3}, {});
     const std::vector<std::string> errors = {"", "broadcast_gate must be zero or one",
-                                           "sigmoid_in_fp32 must be zero or one",
-                                           "cannot be combined with packed layout attributes"};
+                                             "sigmoid_in_fp32 must be zero or one",
+                                             "cannot be combined with packed layout attributes"};
     test.Run(mode == 0 ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
              errors[mode], {}, nullptr, &providers);
   }
@@ -227,13 +227,12 @@ TEST(FusedTensorOpsTest, SigmoidGateMulSiluEmptyAndInvalidAttributes) {
     test.AddInput<BFloat16>("projection", {0, mode == 4 ? 1 : 3}, {});
     test.AddOutput<BFloat16>("output", {0, 3}, {});
     const std::vector<std::string> errors = {"", "silu_gate must be zero or one", "are exclusive",
-                                           "cannot be combined with packed layout attributes",
-                                           "silu gate must have the same shape"};
+                                             "cannot be combined with packed layout attributes",
+                                             "silu gate must have the same shape"};
     test.Run(mode == 0 ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
              errors[mode], {}, nullptr, &providers);
   }
 }
-
 
 TEST(FusedTensorOpsTest, UntileHyperConnectionWeights) {
   constexpr int64_t kInputElements = 160ll * 20480;
