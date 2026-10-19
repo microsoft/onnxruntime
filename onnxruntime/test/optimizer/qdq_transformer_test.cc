@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <type_traits>
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/span_utils.h"
@@ -4107,6 +4108,36 @@ TEST(QDQTransformerTests, Softmax_U8U8) {
   QDQTransformerSoftmaxTests<uint8_t, uint8_t>();
 }
 
+TEST(QDQTransformerTests, SoftmaxSaturatesOutputWithoutOverflow) {
+  for (int opset : {12, 13}) {
+    for (int64_t width : {1, 2}) {
+      for (float output_scale : {1.0f / 256.0f, std::ldexp(1.0f, -25)}) {
+        SCOPED_TRACE(testing::Message() << "opset=" << opset << " width=" << width
+                                        << " output_scale=" << output_scale);
+        auto build_test_case = [&](ModelTestBuilder& builder) {
+          auto* input = builder.MakeInput<uint8_t>({1, width}, std::vector<uint8_t>(static_cast<size_t>(width), 127));
+          auto* dq_output = builder.MakeIntermediate();
+          builder.AddDequantizeLinearNode<uint8_t>(input, 0.105f, 127, dq_output);
+          auto* softmax_output = builder.MakeIntermediate();
+          builder.AddNode("Softmax", {dq_output}, {softmax_output}).AddAttribute("axis", int64_t{1});
+          auto* q_output = builder.MakeIntermediate();
+          builder.AddQuantizeLinearNode<uint8_t>(softmax_output, output_scale, 0, q_output);
+          builder.AddDequantizeLinearNode<uint8_t>(q_output, 1.0f / 256.0f, 0, builder.MakeOutput());
+        };
+        auto check_graph = [](InferenceSessionWrapper& session) {
+          const auto counts = CountOpsInGraph(session.GetGraph());
+          EXPECT_EQ(counts.at("com.microsoft.QLinearSoftmax"), 1);
+          EXPECT_EQ(counts.count("Softmax"), 0);
+        };
+        TransformerTester(build_test_case, check_graph,
+                          TransformerLevel::Level1, TransformerLevel::Level2,
+                          opset, 0.0f, 0.0f,
+                          std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+      }
+    }
+  }
+}
+
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
 TEST(QDQTransformerTests, QDQPropagation_QBackward) {
@@ -5690,7 +5721,10 @@ TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset13) {
 // test removal of Q->DQ pairs by QDQFinalCleanupTransformer
 TEST(QDQTransformerTests, QDQFinalCleanupTransformerReportsIntentionalRemoval) {
   auto& logger = DefaultLoggingManager().DefaultLogger();
-  Model model("QDQFinalCleanupRemovalTester", false, logger);
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 25;
+  Model model("QDQFinalCleanupRemovalTester", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
   Graph& graph = model.MainGraph();
   ModelTestBuilder builder(graph);
 

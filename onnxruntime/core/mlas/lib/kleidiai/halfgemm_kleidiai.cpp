@@ -20,6 +20,7 @@
 #include "kai/ukernels/matmul/kai_matmul.h"
 #include "kai/ukernels/matmul/kai_matmul_pack_rhs.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme.h"
+#include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_x16p2vlx2b_x16_x16_sme.h"
 
 namespace {
 constexpr const char* Sve2p1HalfGemmKernelName =
@@ -124,12 +125,15 @@ bool ReadSve2p1PackedRhsMetadata(
     return true;
 }
 
-size_t GetPackedRhsSize(KaiHalfGemmBackend backend, size_t N, size_t K) {
+size_t GetPackedRhsSize(KaiHalfGemmBackend backend, size_t N, size_t K, bool BIsTransposed) {
     switch (backend) {
         case KaiHalfGemmBackend::Sme:
+            if (BIsTransposed) {
+                return kai_get_rhs_packed_size_rhs_pack_nxk_x16p2vlx2b_x16_x16_sme(N, K);
+            }
             return kai_get_rhs_packed_size_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme(N, K);
         case KaiHalfGemmBackend::Sve2p1:
-            return GetSve2p1PackedRhsSize(N, K);
+            return BIsTransposed ? 0 : GetSve2p1PackedRhsSize(N, K);
         case KaiHalfGemmBackend::None:
             return 0;
     }
@@ -143,9 +147,14 @@ size_t PackRhs(
     size_t ldb_bytes,
     const MLAS_FP16* rhs,
     const MLAS_FP16* bias,
-    void* rhs_packed
+    void* rhs_packed,
+    bool BIsTransposed
 ) {
     if (backend == KaiHalfGemmBackend::Sve2p1) {
+        if (BIsTransposed) {
+            return 0;
+        }
+
         const auto& packer = kai_rhs_pack_kxn_x16p16vsx2bx16_x16_x16_sve();
         const kai_matmul_pack_rhs_uker_config config{};
         const kai_matmul_pack_rhs_uker_rhs_packed_dim_args packed_shape{N, K};
@@ -164,9 +173,16 @@ size_t PackRhs(
     }
 
     const auto& hgemm = GetKleidiAIHgemmUKernel();
-    kai_run_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme(
-        1, N, K, hgemm.ukernel.get_nr(), hgemm.ukernel.get_kr(), hgemm.ukernel.get_sr(), ldb_bytes,
-        rhs, bias, nullptr, rhs_packed, 0, nullptr);
+    if (BIsTransposed) {
+        kai_run_rhs_pack_nxk_x16p2vlx2b_x16_x16_sme(
+            1, N, K, hgemm.ukernel.get_nr(), hgemm.ukernel.get_kr(), hgemm.ukernel.get_sr(), ldb_bytes,
+            rhs, bias, nullptr, rhs_packed, 0, nullptr);
+    } else {
+        kai_run_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme(
+            1, N, K, hgemm.ukernel.get_nr(), hgemm.ukernel.get_kr(), hgemm.ukernel.get_sr(), ldb_bytes,
+            rhs, bias, nullptr, rhs_packed, 0, nullptr);
+    }
+
     return 0;
 }
 
@@ -312,14 +328,17 @@ ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(
     size_t N,
     size_t K
 ) {
-    if (TransA != CblasNoTrans || TransB != CblasNoTrans || N == 0 || K == 0) {
+    const auto backend = SelectKaiHalfGemmBackend();
+
+    if (TransA != CblasNoTrans ||
+        (TransB != CblasNoTrans && (TransB != CblasTrans || backend != KaiHalfGemmBackend::Sme)) ||
+        N == 0 || K == 0) {
         return 0;
     }
 
-    const auto backend = SelectKaiHalfGemmBackend();
     return backend == KaiHalfGemmBackend::Sve2p1
                ? GetSve2p1NativePackedRhsSize(N, K)
-               : GetPackedRhsSize(backend, N, K);
+               : GetPackedRhsSize(backend, N, K, TransB == CblasTrans);
 }
 
 bool
@@ -333,18 +352,21 @@ ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
     size_t ldb,
     void* PackedB
 ) {
-    if (TransA != CblasNoTrans || TransB != CblasNoTrans) {
-        return false;
-    }
-
-    if (PackedB == nullptr || B == nullptr || N == 0 || K == 0 || ldb < N) {
-        return false;
-    }
-
     const auto backend = SelectKaiHalfGemmBackend();
+
+    if (TransA != CblasNoTrans ||
+        (TransB != CblasNoTrans && (TransB != CblasTrans || backend != KaiHalfGemmBackend::Sme))) {
+        return false;
+    }
+
+    const size_t minimum_ldb = TransB == CblasTrans ? K : N;
+    if (PackedB == nullptr || B == nullptr || N == 0 || K == 0 || ldb < minimum_ldb) {
+        return false;
+    }
+
     const size_t packed_rhs_size = backend == KaiHalfGemmBackend::Sve2p1
                                        ? GetSve2p1NativePackedRhsSize(N, K)
-                                       : GetPackedRhsSize(backend, N, K);
+                                       : GetPackedRhsSize(backend, N, K, TransB == CblasTrans);
     if (packed_rhs_size == 0) {
         return false;
     }
@@ -362,7 +384,7 @@ ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
         packed_rhs_data = static_cast<std::byte*>(PackedB) + Sve2p1PackedRhsMetadataSize;
     }
 
-    const size_t vector_length = PackRhs(backend, N, K, ldb_bytes, B, zero_bias.data(), packed_rhs_data);
+    const size_t vector_length = PackRhs(backend, N, K, ldb_bytes, B, zero_bias.data(), packed_rhs_data, TransB == CblasTrans);
     if (backend == KaiHalfGemmBackend::Sve2p1) {
         std::memcpy(PackedB, &vector_length, sizeof(vector_length));
     }
@@ -408,9 +430,15 @@ ArmKleidiAI::MlasHalfGemmBatch(
     // this override accepts arbitrary MLAS batches. Validate every native-packed
     // RHS before any entry writes output so a later mismatch cannot partially modify C.
     bool needs_rhs_packing = false;
+    size_t packed_rhs_size = 0;
     for (size_t b = 0; b < BatchN; ++b) {
         const auto& data = DataParams[b];
         if (data.OutputProcessor != nullptr) {
+            return false;
+        }
+        if (data.BIsTransposed &&
+            (backend != KaiHalfGemmBackend::Sme || data.BIsBackendNativePacked || data.BIsPacked ||
+             data.BIsfp32 || data.ldb < K)) {
             return false;
         }
         if (data.BIsBackendNativePacked && (data.ldb != 0 || data.Bias != nullptr)) {
@@ -424,6 +452,11 @@ ArmKleidiAI::MlasHalfGemmBatch(
                 return false;
             }
         }
+        const size_t data_packed_rhs_size = GetPackedRhsSize(backend, N, K, data.BIsTransposed);
+        if (data_packed_rhs_size == 0) {
+            return false;
+        }
+        packed_rhs_size = std::max(packed_rhs_size, data_packed_rhs_size);
         // Native-packed RHS is consumed directly below. Only allocate the
         // runtime RHS packing scratch when at least one batch entry needs it.
         needs_rhs_packing = needs_rhs_packing || !data.BIsBackendNativePacked;
@@ -435,11 +468,6 @@ ArmKleidiAI::MlasHalfGemmBatch(
         KLEIDIAI_KERNEL_LOG(sme_hgemm->name);
     } else {
         KLEIDIAI_KERNEL_LOG(Sve2p1HalfGemmKernelName);
-    }
-
-    const size_t packed_rhs_size = GetPackedRhsSize(backend, N, K);
-    if (packed_rhs_size == 0) {
-        return false;
     }
 
     // TODO: Plumb MLAS_ACTIVATION through this call site if MLAS_HALF_GEMM_DATA_PARAMS
@@ -520,7 +548,8 @@ ArmKleidiAI::MlasHalfGemmBatch(
 
             rhs_vector_length = PackRhs(
                 backend, N, K, ldb_bytes, rhs_base,
-                data.Bias != nullptr ? data.Bias : g_kai_half_tls.bias_zero.data(), rhs_packed_buffer);
+                data.Bias != nullptr ? data.Bias : g_kai_half_tls.bias_zero.data(), rhs_packed_buffer,
+                data.BIsTransposed);
             rhs_packed = rhs_packed_buffer;
         }
 

@@ -1879,9 +1879,9 @@ TEST(GroupQueryAttentionTest, FlashDecoding_LocalWindow_Reference_CPU) {
   constexpr int kv_block_size = 16;
   constexpr int kv_chunk_count = (total_length + kv_block_size - 1) / kv_block_size;
   constexpr int thread_count = 12;
+  // thread_count fixes the MLAS task count, not the pool's DegreeOfParallelism (which varies by machine).
   concurrency::ThreadPool thread_pool(&Env::Default(), ThreadOptions{}, nullptr, thread_count,
                                       concurrency::kSpinDurationDefault, false);
-  ASSERT_EQ(concurrency::ThreadPool::DegreeOfParallelism(&thread_pool), thread_count);
   for (int head_size : {8, 24, 256}) {
     for (int window_size : {-1, 1, 24, 40}) {
       SCOPED_TRACE(testing::Message() << "head_size=" << head_size << " window=" << window_size);

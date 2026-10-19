@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <class T, int block_size, bool has_zero_point>
+template <class T, int block_size, bool has_zero_point, bool TailN = false>
 __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat4BitsKernelM1(
     T* output,
     const T* a_data,
@@ -37,8 +37,13 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat4Bi
   int offset = n_block_id * kColsPerThreadBlock * blocks_per_K;
   for (int i = warp_id * kWarpSize + lane_id; i < kColsPerThreadBlock * blocks_per_K;
        i += kColsPerThreadBlock * kWarpSize) {
-    const int column = n_block_id * kColsPerThreadBlock + i / blocks_per_K;
-    b_scale_vec[i] = column < n ? scales_data[offset + i] : T{};
+    if constexpr (TailN) {
+      const int remaining_cols = n - n_block_id * kColsPerThreadBlock;
+      const int valid_cols = remaining_cols < kColsPerThreadBlock ? remaining_cols : kColsPerThreadBlock;
+      b_scale_vec[i] = i < valid_cols * blocks_per_K ? scales_data[offset + i] : T(0.f);
+    } else {
+      b_scale_vec[i] = scales_data[offset + i];
+    }
   }
 
   uint8_t* b_zp_vec;
@@ -57,6 +62,13 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat4Bi
     b_zp_vec += warp_id * b_zp_k * 2;
   }
   __syncthreads();
+  if constexpr (TailN) {
+    static_assert(!has_zero_point, "TailN is scale-only");
+    // Every thread participates in the scale-loading barrier before an invalid output warp exits.
+    if (n_id >= n) {
+      return;
+    }
+  }
 
   if (n_id >= n) {
     return;

@@ -81,3 +81,5 @@ Use types that fall into established patterns. For example, we use int64_t for d
 ### 9.  Adding a new API
 
 Follow these guidelines and instructions in the source code.  "Rules on how to add a new Ort API version" in [onnxruntime_c_api.cc](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/session/onnxruntime_c_api.cc).
+
+If a new API needs to be proved out before it's ready to add as a stable API, consider adding it as an experimental C API first. See the [experimental C API guidelines](./Experimental_C_API_Guidelines.md) for details.
