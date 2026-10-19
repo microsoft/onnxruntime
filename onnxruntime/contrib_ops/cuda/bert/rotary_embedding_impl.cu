@@ -189,8 +189,7 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
                                    const int position_ids_format, const bool interleaved,
                                    const int max_threads_per_block,
                                    int4 in_strides, int4 out_strides,  // strides in bnsh coord
-                                   const bool use_fp32_arithmetic
-) {
+                                   const bool use_fp32_arithmetic) {
   // Note: Current implementation assumes head_size <= max_threads_per_block
   // because head_size is currently large for LLaMA-2. For smaller head_size
   // and num_heads values, we can create a block as `block(num_heads, head_size, 1)`
@@ -221,8 +220,10 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
           interleaved, in_strides, out_strides);
     }
   };
-  if (use_fp32_arithmetic) launch(std::true_type{});
-  else launch(std::false_type{});
+  if (use_fp32_arithmetic)
+    launch(std::true_type{});
+  else
+    launch(std::false_type{});
 
   return CUDA_CALL(cudaGetLastError());
 }

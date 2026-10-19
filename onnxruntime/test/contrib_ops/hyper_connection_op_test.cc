@@ -113,7 +113,10 @@ class StandardRMSChainTester : public OpTester {
  public:
   StandardRMSChainTester(int output_type, float epsilon, int64_t start = 0, int64_t width = 0)
       : OpTester("StandardRMSChain", 17, kOnnxDomain, false),
-        output_type_(output_type), epsilon_(epsilon), start_(start), width_(width) {}
+        output_type_(output_type),
+        epsilon_(epsilon),
+        start_(start),
+        width_(width) {}
 
   void AddNodes(Graph& graph, std::vector<NodeArg*>& inputs, std::vector<NodeArg*>& outputs,
                 std::vector<std::function<void(Node&)>>&) override {
@@ -132,7 +135,8 @@ class StandardRMSChainTester : public OpTester {
       source = value("selected");
       graph.AddNode("slice", "Slice", "",
                     {inputs[0], constant("starts", start_), constant("ends", start_ + width_),
-                     constant("axes", -1)}, {source});
+                     constant("axes", -1)},
+                    {source});
     }
     auto* x = value("float_x");
     graph.AddNode("cast", "Cast", "", {source}, {x})
@@ -200,7 +204,7 @@ void TestStandardRMSArithmetic(int type, bool packed = false) {
         std::vector<OrtValue> expected;
         for (OpTester* tester : {static_cast<OpTester*>(&reference), &fused}) {
           const std::vector<int64_t> input_shape = rows == 48 ? std::vector<int64_t>{1, 2, 24, stride}
-                                                            : std::vector<int64_t>{1, rows, stride};
+                                                              : std::vector<int64_t>{1, rows, stride};
           auto output_shape = input_shape;
           output_shape.back() = width;
           tester->AddInput<T>("X", input_shape, input);
