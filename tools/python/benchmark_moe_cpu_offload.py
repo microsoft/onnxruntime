@@ -251,8 +251,8 @@ def parse_args(argv=None):
     paths = [path.resolve() for path in (args.output, args.log, args.state, args.popularity_output) if path is not None]
     if len(paths) != len(set(paths)):
         parser.error("--output, --log, --state, and --popularity-output must refer to different files.")
-    if args.max_new_tokens < 2:
-        parser.error("--max-new-tokens must be at least 2 to measure actual decode inference.")
+    if args.max_new_tokens < 3:
+        parser.error("--max-new-tokens must be at least 3 to measure steady-state decode inference.")
     if args.cpu_offload_experts < 0:
         parser.error("--cpu-offload-experts must be non-negative.")
     if not math.isfinite(args.gpu_ratio) or not 0 < args.gpu_ratio <= 1:

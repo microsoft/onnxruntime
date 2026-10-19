@@ -177,6 +177,7 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
         for option, value in [
             ("--on-demand-threshold", "-1"),
             ("--max-new-tokens", "1"),
+            ("--max-new-tokens", "2"),
             ("--cpu-offload-experts", "-1"),
             ("--counter-alpha", "nan"),
             ("--counter-alpha", "1.1"),
@@ -208,6 +209,7 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
                 self.assertEqual(error.exception.code, 2)
                 self.assertIn("--on-demand-threshold", error_output.getvalue())
         self.assertEqual(parse_args([*arguments, "--on-demand-threshold", "2"]).on_demand_threshold, 2)
+        self.assertEqual(parse_args([*arguments, "--max-new-tokens", "3"]).max_new_tokens, 3)
 
 
 if __name__ == "__main__":

@@ -88,7 +88,7 @@ python tools/python/qmoe_expert_activation_correlations.py counter.log \
 
 `qmoe_prompt_runner.py --until-eos` omits its usual artificial new-token limit and lets generation stop on EOS. The
 model context length remains the unavoidable hard limit. Collecting counter traces with this runner requires
-`--cpu-offload-experts` to be positive; a run without offload produces no counter records.
+`--moe-cpu-offload-experts` to be positive; a run without offload produces no counter records.
 The runner writes `[qmoe_prompt_runner] prefill 0` before submitting prompt tokens and
 `[qmoe_prompt_runner] decode N` before each subsequent generation step. These markers identify the phase even for a
 one-token prompt or a multi-token prefill selecting only eight distinct experts. Timeline and correlation analysis
@@ -241,9 +241,10 @@ without waiting for it. The new placement is published only after both transfer 
 Setting the concurrency limit to `0` disables background exchanges and keeps initial placement fixed unless on-demand
 swaps are enabled. Each node retains its initial CUDA slot count; redistribution of slots between nodes is not implemented.
 
-Separate FC3 weights, sparse mixer routing, dynamic expert weights, QMoE, FP32, the CUDA plugin EP, CUDA graphs, and
-minimal builds are not supported by this option. See [MoE CPU offload](moe-cpu-offload/README.md) for exchange details
-and benchmark results.
+Separate FC3 weights, sparse mixer routing, dynamic expert weights, FP32, the CUDA plugin EP, CUDA graphs, and
+minimal builds are not supported by dense MoE offload. INT4/INT8 QMoE also supports this option, subject to the
+[QMoE offload restrictions](contrib_ops/cuda/moe_qmoe.md#31-int4int8-cpu-expert-offload).
+See [MoE CPU offload](moe-cpu-offload/README.md) for exchange details and benchmark results.
 
 ## Popularity state file
 
@@ -253,8 +254,10 @@ Set an output path to write the final state when the session is destroyed:
 session.moe_expert_popularity_file=/path/to/popularity.json
 ```
 
-The option enables counting by itself. The benchmark wrapper exposes it as `--popularity-output`. The UTF-8 JSON file
-contains the configured decay coefficient (`alpha`), swap threshold (`epsilon`), and one record per expert:
+This requires `session.moe_cpu_offload_experts` to be positive; the option does not enable counting by itself.
+Without offload, the runtime warns and writes no popularity file. The benchmark wrapper exposes the output path as
+`--popularity-output`. The UTF-8 JSON file contains the configured decay coefficient (`alpha`), swap threshold
+(`epsilon`), and one record per expert:
 
 ```json
 {
