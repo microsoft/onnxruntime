@@ -1235,16 +1235,16 @@ class FusionAttention(Fusion):
             and len(mask_nodes) > 1
             and not is_transformers_5_mask
         ):
-            _, mul_val = self.model.get_constant_input(mask_nodes[0])
-            # The mask value shall be a float scalar (usually is the lowest float value).
-            if (
-                (mul_val is None)
-                or not (isinstance(mul_val, np.ndarray) and mul_val.size == 1)
-                or (mul_val.item() >= 0)
-            ):
+            constant_index, _ = self.model.get_constant_input(mask_nodes[0])
+            if constant_index is None:
                 return
-            if mul_val.item() != -10000:
-                self.mask_filter_value = mul_val.item()
+            # Embedding the filter as an attribute must not freeze a graph input
+            # or resolve a same-named initializer from a different graph scope.
+            mul_val = self.get_scalar_scale(mask_nodes[0].input[constant_index], output_name_to_node, allow_sqrt=False)
+            if mul_val is None or mul_val >= 0:
+                return
+            if mul_val != -10000:
+                self.mask_filter_value = mul_val
 
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_k.input[0] == root_input:
             attention_last_node = reshape_qkv if einsum_node is None else transpose_qkv
