@@ -4620,6 +4620,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     CausalConvWithState, 1,
     OpSchema()
         .SetDoc(CausalConvWithState_ver1_doc)
+        .Attr("input_channels", "CUDA channels-last input channel slice width; 0 selects all channels. "
+              "Nondefault extended attributes require rank-3 input and state_window=0.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("input_channel_offset", "Starting channel of the channels-last input slice (CUDA only).",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("state_length", "Carry history length (CUDA only); 0 uses (kernel_size-1)*dilation. "
+              "An explicit length must cover the receptive field; convolution reads its trailing history.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("state_channels_last", "State layout override (CUDA only): -1 follows channels_last, "
+              "0 uses [B,C,state_length], 1 uses [B,state_length,C].",
+              AttributeProto::INT, static_cast<int64_t>(-1))
         .Attr("activation",
               "Fused activation function. One of: 'silu', 'swish', 'none'. "
               "Default is 'none'.",
@@ -4663,7 +4674,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "input",
                "Input tensor with shape (batch_size, channels, ...) in the default channels-first "
                "layout. Spatial dims: 1D: (L,); 2D: (H, W); 3D: (D, H, W). When channels_last = 1 "
-               "the shape is (batch_size, sequence_length, d_1, ..., d_n) instead.",
+               "the shape is (batch_size, sequence_length, d_1, ..., d_n) instead. Extended channel "
+               "selection uses rank-3 (batch_size, sequence_length, input_width).",
                "T")
         .Input(1,
                "weight",
@@ -4681,12 +4693,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "or (W, batch_size, channels, state_length) when state_window = W > 0, in which case "
                "only slot W-1 is read, where state_length = (k_1 - 1) * dilation. When "
                "channels_last = 1 each slot is (batch_size, state_length, d_1, ..., d_n) instead. "
-               "If not provided, padding is zero.",
+               "The state_length and state_channels_last attributes may override the length and "
+               "layout for the CUDA extended path. If not provided, padding is zero.",
                "T",
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "Convolution output with same shape as input.",
+                "Convolution output with same shape as input, except the final dimension is "
+                "input_channels when extended channel selection is enabled.",
                 "T")
         .Output(1,
                 "present_state",
@@ -4695,8 +4709,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "(batch_size, state_length, d_1, ..., d_n) per slot when channels_last = 1. Slot "
                 "W-1 contains the last state_length values from the virtual input along the causal "
                 "axis; slot j contains the same for the prefix ending at position "
-                "(seq_len - W + j).",
+                "(seq_len - W + j). Extended attributes override the state length and layout "
+                "as for past_state.",
                 "T")
+        .Output(2, "first_state", "Optional carry state after the first input position, with the same "
+                "layout and length as present_state. CUDA only; requires rank-3 channels-last input "
+                "and state_window=0.", "T", OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
@@ -4705,6 +4723,63 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
 
           const int64_t state_window = getAttribute(ctx, "state_window", 0);
+          const int64_t input_channels = getAttribute(ctx, "input_channels", 0);
+          const int64_t channel_offset = getAttribute(ctx, "input_channel_offset", 0);
+          const int64_t history = getAttribute(ctx, "state_length", 0);
+          const int64_t state_layout = getAttribute(ctx, "state_channels_last", -1);
+          if (input_channels < 0 || input_channels > std::numeric_limits<int>::max() ||
+              channel_offset < 0 || channel_offset > std::numeric_limits<int>::max() ||
+              history < 0 || history > std::numeric_limits<int>::max() ||
+              state_layout < -1 || state_layout > 1) {
+            fail_shape_inference("CausalConvWithState: invalid extended attributes");
+          }
+          if (input_channels != 0 || channel_offset != 0 || history != 0 || state_layout != -1 ||
+              ctx.getNumOutputs() > 2) {
+            if (getAttribute(ctx, "channels_last", 0) != 1 || getAttribute(ctx, "ndim", 1) != 1 ||
+                state_window != 0 || getAttribute(ctx, "dilation", 1) < 1) {
+              fail_shape_inference("CausalConvWithState: extended attributes require channels_last=1, ndim=1, state_window=0");
+            }
+            if (ctx.getNumOutputs() > 2) propagateElemTypeFromInputToOutput(ctx, 0, 2);
+            if (!hasInputShape(ctx, 0)) return;
+            const auto& input = getInputShape(ctx, 0);
+            if (input.dim_size() != 3) fail_shape_inference("CausalConvWithState: extended input must have rank 3");
+            TensorShapeProto output = input;
+            auto* channels = output.mutable_dim(2);
+            if (input_channels > 0) channels->set_dim_value(input_channels);
+            if (input.dim(2).has_dim_value() &&
+                (channel_offset > input.dim(2).dim_value() ||
+                 (channels->has_dim_value() && channels->dim_value() > input.dim(2).dim_value() - channel_offset))) {
+              fail_shape_inference("CausalConvWithState: channel slice exceeds input width");
+            }
+            updateOutputShape(ctx, 0, output);
+            TensorShapeProto::Dimension length;
+            if (history > 0) length.set_dim_value(history);
+            if (hasInputShape(ctx, 1)) {
+              const auto& weight = getInputShape(ctx, 1);
+              if (weight.dim_size() != 3) fail_shape_inference("CausalConvWithState: weight must have rank 3");
+              if (weight.dim(0).has_dim_value() && channels->has_dim_value() &&
+                  weight.dim(0).dim_value() != channels->dim_value()) {
+                fail_shape_inference("CausalConvWithState: weight channels mismatch");
+              }
+              if (weight.dim(2).has_dim_value()) {
+                const int64_t kernel = weight.dim(2).dim_value();
+                const int64_t dilation = getAttribute(ctx, "dilation", 1);
+                if (kernel <= 0 || kernel - 1 > std::numeric_limits<int>::max() / dilation) {
+                  fail_shape_inference("CausalConvWithState: invalid receptive field");
+                }
+                const int64_t pad = (kernel - 1) * dilation;
+                if (history != 0 && history < pad) fail_shape_inference("CausalConvWithState: state_length is too short");
+                if (history == 0) length.set_dim_value(pad);
+              }
+            }
+            TensorShapeProto state;
+            *state.add_dim() = input.dim(0);
+            *state.add_dim() = state_layout == 0 ? *channels : length;
+            *state.add_dim() = state_layout == 0 ? length : *channels;
+            updateOutputShape(ctx, 1, state);
+            if (ctx.getNumOutputs() > 2) updateOutputShape(ctx, 2, state);
+            return;
+          }
           if (state_window < 0 || state_window > kMaxStateWindow) {
             fail_shape_inference("CausalConvWithState: state_window must be in [0, ", kMaxStateWindow,
                                  "], got ", state_window);
@@ -5270,7 +5345,7 @@ The delta family ('delta' and 'gated_delta') requires L2-normalized keys. Withou
 per-chunk system (I + M) is arbitrarily ill-conditioned and the recurrence diverges. Either
 normalize upstream or set `qk_l2_norm=1` to have the operator do it.
 
-Fused activations. `gate_activation='qwen'` computes the effective decay in float32 from the
+Fused activations. `gate_activation='softplus'` computes the effective decay in float32 from the
 raw projection carried by `decay`:
 
   g = -exp(a_log) * Softplus(decay + dt_bias)
@@ -5278,6 +5353,9 @@ raw projection carried by `decay`:
 `beta_activation='sigmoid'` applies a sigmoid to `beta`, and `qk_l2_norm=1` L2-normalizes each
 query and key head vector. Folding these in avoids materializing the intermediates and keeps
 the gate arithmetic in float32 independent of the input type.
+Decay and beta may be float or the query element type (both use the same type). CUDA widens
+FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone lossless casts.
+State, a_log, and dt_bias remain float. WebGPU currently accepts float decay and beta only.
 
 )DOC";
 
@@ -5292,8 +5370,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Output scaling factor. When 0.0 (default) uses 1/sqrt(head_size_qk).",
               AttributeProto::FLOAT, 0.0f)
         .Attr("gate_activation",
-              "'none' (default) treats `decay` as the effective log-space decay. 'qwen' computes "
-              "-exp(a_log) * Softplus(decay + dt_bias) in float32.",
+              "'none' (default) treats `decay` as the effective log-space decay. 'softplus' computes "
+              "-exp(a_log) * Softplus(decay + dt_bias) in float32. 'qwen' is also accepted for "
+              "compatibility.",
               AttributeProto::STRING, std::string("none"))
         .Attr("beta_activation",
               "'none' (default) treats `beta` as the effective update rate. 'sigmoid' applies a "
@@ -5313,6 +5392,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Capacity C for compact contiguous-prefix transition capture, in [0, 8]. "
               "0 (default) disables compact state-update outputs.",
               AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("state_output",
+              "Third output is either 'state_update' (default) or the recurrent state after "
+              "the first token ('mid_state'). CUDA supports both modes; WebGPU supports "
+              "'state_update'.",
+              AttributeProto::STRING, std::string("state_update"))
         .Input(0, "query", "Query or packed QKV, shaped as described above.", "T")
         .Input(1, "key", "Key, shape (total_tokens, num_heads_k, head_size_qk)", "T",
                OpSchema::Optional)
@@ -5324,20 +5408,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "TI", OpSchema::Optional)
         .Input(4, "decay",
                "Log-space decay, shape (total_tokens, num_heads_v) for a scalar per-head decay or "
-               "(total_tokens, num_heads_v, head_size_qk) for a per-key-dimension decay.",
-               "TS", OpSchema::Optional)
-        .Input(5, "beta", "Update rate, shape (total_tokens, num_heads_v)", "TS",
+               "(total_tokens, num_heads_v, head_size_qk) for a per-key-dimension decay. "
+               "Float or the query element type; converted to float before gate arithmetic.",
+               "TG", OpSchema::Optional)
+        .Input(5, "beta", "Update rate, shape (total_tokens, num_heads_v). Same element type as decay.", "TG",
                OpSchema::Optional)
         .Input(6, "initial_state",
                "Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), "
                "V-major. Required for packed QKV. May alias final_state.",
                "TS", OpSchema::Optional)
         .Input(7, "a_log",
-               "Per-head A_log, shape (num_heads_v). Requires gate_activation=qwen.",
+               "Per-head A_log, shape (num_heads_v). Requires gate_activation=softplus.",
                "TS", OpSchema::Optional)
         .Input(8, "dt_bias",
                "Per-head gate bias, shape (num_heads_v). "
-               "Requires gate_activation=qwen.",
+               "Requires gate_activation=softplus.",
                "TS", OpSchema::Optional)
         .Input(9, "capture_count",
                "Number of leading local token transitions to capture for each request, shape "
@@ -5355,14 +5440,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "(batch_size, num_heads_v, head_size_v, head_size_qk)",
                 "TS", OpSchema::Optional)
         .Output(2, "state_update",
-                "Struct-of-arrays compact transition factors, shape "
-                "(batch_size, state_update_capacity * (num_heads_v + num_heads_k * "
-                "head_size_qk + num_heads_v * head_size_v)).",
+                "Struct-of-arrays transition factors when state_output='state_update', or "
+                "the state after the first token when state_output='mid_state'.",
                 "TS", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain query/key/value/output types.")
         .TypeConstraint("TS", {"tensor(float)"},
-                        "State, gate, beta and compact state-update tensors are always float.")
+                        "State, gate parameters and compact state-update tensors are always float.")
+        .TypeConstraint("TG", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Decay and beta are float or match the query element type. Gate arithmetic is float.")
         .TypeConstraint("TI", {"tensor(int32)"}, "Constrain index and count tensors to int32.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -5454,45 +5540,59 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                                  kMaxStateWindow, "], got ", state_update_capacity);
           }
           if (ctx.getNumOutputs() > 2) {
-            ONNX_NAMESPACE::TensorShapeProto capsule_shape;
-            add_batch_dim(capsule_shape);
-            auto* width = capsule_shape.add_dim();
-            if (!packed_qkv && query_shape.dim(token_dims).has_dim_value() &&
-                query_shape.dim(token_dims + 1).has_dim_value() &&
-                value_shape->dim(token_dims).has_dim_value() &&
-                value_shape->dim(token_dims + 1).has_dim_value()) {
-              // num_heads_k is constrained to equal num_heads_q, so query supplies it.
-              const int64_t num_heads_k = query_shape.dim(token_dims).dim_value();
-              const int64_t head_size_qk = query_shape.dim(token_dims + 1).dim_value();
-              const int64_t num_heads_v = value_shape->dim(token_dims).dim_value();
-              const int64_t head_size_v = value_shape->dim(token_dims + 1).dim_value();
-              if (num_heads_k <= 0 || head_size_qk <= 0 || num_heads_v <= 0 || head_size_v <= 0) {
-                fail_shape_inference(
-                    "GatedDeltaNet: head counts and head sizes must be positive");
-              }
-
-              constexpr int64_t max_dimension = std::numeric_limits<int64_t>::max();
-              if (num_heads_k > max_dimension / head_size_qk ||
-                  num_heads_v > max_dimension / head_size_v) {
-                fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
-              }
-              const int64_t key_width = num_heads_k * head_size_qk;
-              const int64_t value_width = num_heads_v * head_size_v;
-              if (num_heads_v > max_dimension - key_width) {
-                fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
-              }
-              const int64_t width_without_capacity = num_heads_v + key_width;
-              if (value_width > max_dimension - width_without_capacity) {
-                fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
-              }
-              const int64_t per_token_width = width_without_capacity + value_width;
-              if (state_update_capacity > 0 &&
-                  per_token_width > max_dimension / state_update_capacity) {
-                fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
-              }
-              width->set_dim_value(state_update_capacity * per_token_width);
+            const std::string state_output =
+                getAttribute(ctx, "state_output", std::string("state_update"));
+            if (state_output != "state_update" && state_output != "mid_state") {
+              fail_shape_inference("GatedDeltaNet: state_output must be 'state_update' or 'mid_state'");
             }
-            updateOutputShape(ctx, 2, capsule_shape);
+            if (state_output == "mid_state") {
+              if (state_update_capacity != 0) {
+                fail_shape_inference("GatedDeltaNet: mid_state output requires state_update_capacity=0");
+              }
+              if (state_shape != nullptr) {
+                updateOutputShape(ctx, 2, *state_shape);
+              }
+            } else {
+              ONNX_NAMESPACE::TensorShapeProto capsule_shape;
+              add_batch_dim(capsule_shape);
+              auto* width = capsule_shape.add_dim();
+              if (!packed_qkv && query_shape.dim(token_dims).has_dim_value() &&
+                  query_shape.dim(token_dims + 1).has_dim_value() &&
+                  value_shape->dim(token_dims).has_dim_value() &&
+                  value_shape->dim(token_dims + 1).has_dim_value()) {
+                // num_heads_k is constrained to equal num_heads_q, so query supplies it.
+                const int64_t num_heads_k = query_shape.dim(token_dims).dim_value();
+                const int64_t head_size_qk = query_shape.dim(token_dims + 1).dim_value();
+                const int64_t num_heads_v = value_shape->dim(token_dims).dim_value();
+                const int64_t head_size_v = value_shape->dim(token_dims + 1).dim_value();
+                if (num_heads_k <= 0 || head_size_qk <= 0 || num_heads_v <= 0 || head_size_v <= 0) {
+                  fail_shape_inference(
+                      "GatedDeltaNet: head counts and head sizes must be positive");
+                }
+
+                constexpr int64_t max_dimension = std::numeric_limits<int64_t>::max();
+                if (num_heads_k > max_dimension / head_size_qk ||
+                    num_heads_v > max_dimension / head_size_v) {
+                  fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
+                }
+                const int64_t key_width = num_heads_k * head_size_qk;
+                const int64_t value_width = num_heads_v * head_size_v;
+                if (num_heads_v > max_dimension - key_width) {
+                  fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
+                }
+                const int64_t width_without_capacity = num_heads_v + key_width;
+                if (value_width > max_dimension - width_without_capacity) {
+                  fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
+                }
+                const int64_t per_token_width = width_without_capacity + value_width;
+                if (state_update_capacity > 0 &&
+                    per_token_width > max_dimension / state_update_capacity) {
+                  fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
+                }
+                width->set_dim_value(state_update_capacity * per_token_width);
+              }
+              updateOutputShape(ctx, 2, capsule_shape);
+            }
           }
 
           if (state_shape != nullptr) {

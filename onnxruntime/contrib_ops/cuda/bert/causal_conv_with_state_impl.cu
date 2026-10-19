@@ -27,6 +27,44 @@ namespace cuda {
 
 namespace {
 
+template <typename T>
+__global__ void CausalConvProjectionKernel(
+    const T* input, const T* weight, const T* bias, const T* past,
+    T* output, T* present, T* first_state, int channels, int length,
+    int kernel_size, int dilation, int input_width, int channel_offset,
+    int state_length, CausalConvLayout state_layout, bool apply_silu) {
+  const int b = blockIdx.y;
+  const int c = blockIdx.x * blockDim.x + threadIdx.x;
+  if (c >= channels) return;
+  const int pad = (kernel_size - 1) * dilation;
+  const int position = blockIdx.z;
+  {
+    float sum = bias == nullptr ? 0.0f : to_float(bias[c]);
+    for (int tap = 0; tap < kernel_size; ++tap) {
+      const int source = position - pad + tap * dilation;
+      const float value = source >= 0
+                              ? to_float(input[(static_cast<int64_t>(b) * length + source) * input_width + channel_offset + c])
+                              : (past == nullptr ? 0.0f : to_float(past[state_layout.Offset(b, state_length + source, c)]));
+      sum += value * to_float(weight[c * kernel_size + tap]);
+    }
+    if (apply_silu) sum = sum / (1.0f + expf(-sum));
+    output[(static_cast<int64_t>(b) * length + position) * channels + c] = from_float<T>(sum);
+  }
+  if (position != 0) return;
+  for (int position = 0; position < state_length; ++position) {
+    const int source = length - state_length + position;
+    present[state_layout.Offset(b, position, c)] =
+        source >= 0 ? input[(static_cast<int64_t>(b) * length + source) * input_width + channel_offset + c]
+                    : (past == nullptr ? from_float<T>(0.0f) : past[state_layout.Offset(b, state_length + source, c)]);
+    if (first_state != nullptr) {
+      const int first_source = 1 - state_length + position;
+      first_state[state_layout.Offset(b, position, c)] =
+          first_source >= 0 ? input[static_cast<int64_t>(b) * length * input_width + channel_offset + c]
+                            : (past == nullptr ? from_float<T>(0.0f) : past[state_layout.Offset(b, state_length + first_source, c)]);
+    }
+  }
+}
+
 __device__ __forceinline__ float silu_fn(float x) {
   return x / (1.0f + expf(-x));
 }
@@ -427,6 +465,29 @@ __global__ void CausalConvPrefillKernelChannelsLast(
 }
 
 }  // anonymous namespace
+
+template <typename T>
+Status LaunchCausalConvProjectionKernel(
+    cudaStream_t stream, const T* input, const T* weight, const T* bias, const T* past,
+    T* output, T* present, T* first_state, int batch, int channels, int length,
+    int kernel_size, int dilation, int input_width, int channel_offset,
+    int state_length, bool state_channels_last, bool apply_silu) {
+  const dim3 grid((channels - 1) / 128 + 1, batch, length);
+  CausalConvProjectionKernel<T><<<grid, 128, 0, stream>>>(
+      input, weight, bias, past, output, present, first_state, channels, length,
+      kernel_size, dilation, input_width, channel_offset, state_length,
+      MakeCausalConvLayout(state_channels_last, channels, state_length), apply_silu);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+#define INSTANTIATE_PROJECTION(T) \
+  template Status LaunchCausalConvProjectionKernel<T>( \
+      cudaStream_t, const T*, const T*, const T*, const T*, T*, T*, T*, \
+      int, int, int, int, int, int, int, int, bool, bool);
+INSTANTIATE_PROJECTION(float)
+INSTANTIATE_PROJECTION(half)
+INSTANTIATE_PROJECTION(__nv_bfloat16)
+#undef INSTANTIATE_PROJECTION
 
 template <typename T>
 Status LaunchCausalConvWithStateKernel(

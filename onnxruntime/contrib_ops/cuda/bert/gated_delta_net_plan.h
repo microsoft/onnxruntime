@@ -26,7 +26,7 @@ enum class UpdateRule : int { kLinear = 0,
                               kDelta = 2,
                               kGatedDelta = 3 };
 enum class GateActivation : int { kNone = 0,
-                                  kQwen = 1 };
+                                  kSoftplusDecay = 1 };
 enum class BetaActivation : int { kNone = 0,
                                   kSigmoid = 1 };
 
