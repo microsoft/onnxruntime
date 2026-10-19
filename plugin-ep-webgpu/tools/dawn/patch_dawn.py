@@ -84,6 +84,7 @@ def refresh_patches(plan, source, cmake_path: str, executable: str) -> None:
             output = applied.stdout + applied.stderr
             refresh = fuzz or "offset" in output
             if refresh:
+                expected = {relative: (root / relative).read_bytes() for relative in touched}
                 refreshed = ""
                 for relative in touched:
                     after = (root / relative).read_text(encoding="utf-8")
@@ -102,6 +103,22 @@ def refresh_patches(plan, source, cmake_path: str, executable: str) -> None:
                 # Empty context lines need no leading space; avoid introducing
                 # trailing whitespace into the checked-in patch files.
                 refreshed = "".join("\n" if line == " \n" else line for line in refreshed.splitlines(keepends=True))
+                # Verify the replacement patch reproduces the same source with
+                # strict context before including it in the update.
+                for relative, text_before in before.items():
+                    (root / relative).write_bytes(text_before.encode("utf-8"))
+                patch_file.write_bytes(refreshed.encode("utf-8"))
+                strict_args = ["--fuzz=0" if arg.startswith("--fuzz=") else arg for arg in args]
+                verified = subprocess.run(
+                    strict_args, cwd=root, env=env, capture_output=True, text=True, timeout=30, check=False
+                )
+                diagnostics = verified.stdout + verified.stderr
+                if (
+                    verified.returncode
+                    or re.search(r"\b(?:offset [+-]?\d+ lines?|with fuzz \d+)\b", diagnostics)
+                    or any((root / relative).read_bytes() != data for relative, data in expected.items())
+                ):
+                    raise ValueError(f"refreshed patch {path} did not reproduce the expected source: {diagnostics}")
                 plan.edit(path, refreshed)
             results.append(
                 {"path": path, "status": "refreshed" if refresh else "clean", "contextFuzz": fuzz, "output": output}

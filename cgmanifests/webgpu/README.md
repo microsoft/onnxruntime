@@ -25,9 +25,15 @@ registration and explain the packaging path in `comments` and `detectedComponent
 
 When rolling Dawn or changing WebGPU packaging:
 
-For a complete Dawn roll, use the [Dawn upgrade tool](../../plugin-ep-webgpu/tools/dawn/README.md).
-It coordinates the archive pin/checksum, this manifest, SwiftShader, and active patches.
-The commands below remain useful for manifest-only maintenance.
+For a complete Dawn update, run the [Dawn update tool](../../plugin-ep-webgpu/tools/dawn/README.md):
+
+```powershell
+python plugin-ep-webgpu/tools/dawn/update_dawn.py
+```
+
+It selects the latest dated release by default, updates the archive pin/checksum, this manifest, SwiftShader,
+and active patches, then validates the result automatically. Use `--revision TAG_OR_COMMIT` to choose a version.
+The commands below are for manifest-only maintenance; they are not additional steps after a complete update.
 
 1. After updating the `dawn` entry in `cmake/deps.txt`, refresh the registered Git commit hashes:
 

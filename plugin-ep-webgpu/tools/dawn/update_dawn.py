@@ -2,7 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-"""Prepare and check a Dawn roll, including archive, manifest, patches and test dependencies."""
+"""Update Dawn's archive pin, manifest, patches and test dependencies, then validate the result."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ import subprocess
 import sys
 import urllib.request
 import zipfile
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -32,6 +33,7 @@ MANIFEST = "cgmanifests/webgpu/cgmanifest.webgpu.json"
 EXTERNAL_CMAKE = "cmake/external/onnxruntime_external_deps.cmake"
 SWIFTSHADER_DOCKERFILE = "tools/ci_build/github/linux/docker/inference/shared/python/webgpu/Dockerfile"
 FETCHER = "tools/fetch_dawn_dependencies.py"
+DXC_PIPELINE = "tools/ci_build/github/azure-pipelines/stages/plugin-win-webgpu-stage.yml"
 
 
 def latest_dawn_tag() -> str:
@@ -213,8 +215,9 @@ def refresh_manifest(manifest: dict, source: Source, tag: str | None, deps: dict
 def format_report(report: dict) -> str:
     """Render the prepared edits and review decisions without implying build validation."""
     lines = [
-        "# Dawn upgrade report",
+        "# Dawn update report",
         "",
+        f"- Result: {report.get('status', 'prepared')}",
         f"- Current pin: `{report['oldRevision']}` (`{report['oldCommit']}`)",
         f"- Target pin: `{report['revision']}` (`{report['commit']}`)",
         f"- Archive: {report['archiveUrl']}",
@@ -231,7 +234,8 @@ def format_report(report: dict) -> str:
         ]
     lines += ["## Required review", ""]
     lines += [f"- {message}" for message in report["blockers"]] or ["No metadata or patch blockers found."]
-    lines += ["", "## Prepared files", ""]
+    heading = "Updated files" if report.get("status") == "updated" else "Prepared files"
+    lines += ["", f"## {heading}", ""]
     lines += [f"- `{path}`" for path in report["changedFiles"]] or ["No tracked changes needed."]
     counts = report.get("inventoryCounts")
     if counts:
@@ -265,7 +269,7 @@ def format_report(report: dict) -> str:
     lines += ["", "Review refreshed patch context in `changes.patch`; detailed patch output is in `report.json`."]
     lines += ["", "## Validation still required", ""]
     lines += [f"- {note}" for note in report["notes"]]
-    lines += ["", "This report prepares source edits; it does not certify a build, package, or GPU run.", ""]
+    lines += ["", "These checks cover metadata and patches; they do not certify a build, package, or GPU run.", ""]
     return "\n".join(lines)
 
 
@@ -301,11 +305,11 @@ class Plan:
             for p in sorted(self.changes)
         )
 
-    def apply(self) -> None:
+    def apply(self, validate: Callable[[], None] | None = None) -> None:
         if self.report["blockers"]:
             raise ValueError("cannot apply a roll with unresolved blockers; see report.json")
         # Check all inputs before the first write, and roll back completed writes
-        # if a filesystem error interrupts application. Preserve local newlines.
+        # if writing or validation fails. Preserve local newlines.
         for path, original in self.original.items():
             if (self.root / path).read_bytes() != original:
                 raise ValueError(f"{path} changed while preparing the roll; rerun")
@@ -315,7 +319,11 @@ class Plan:
                 data = text.replace("\n", "\r\n") if b"\r\n" in self.original[path] else text
                 written.append(path)
                 (self.root / path).write_bytes(data.encode("utf-8"))
-        except OSError:
+                if (self.root / path).read_bytes() != data.encode("utf-8"):
+                    raise ValueError(f"{path} does not match the generated update")
+            if validate is not None:
+                validate()
+        except Exception:
             for path in reversed(written):
                 (self.root / path).write_bytes(self.original[path])
             raise
@@ -323,6 +331,7 @@ class Plan:
 
 def make_plan(root: Path, revision: str | None, cache: Path, patch_executable: str) -> Plan:
     plan = Plan(root)
+    plan.read(DXC_PIPELINE)  # Track the independent release metadata used in final validation.
     old_field, old_pin = validator._dawn_pin_from_deps_txt(root / DEPS_FILE)
     old_commit = cg._resolve_dawn_commit(old_field, old_pin)
     requested_revision = revision or old_pin
@@ -388,41 +397,54 @@ def make_plan(root: Path, revision: str | None, cache: Path, patch_executable: s
     return plan
 
 
+def write_reports(plan: Plan, output: Path) -> None:
+    output.mkdir(parents=True, exist_ok=True)
+    (output / "report.json").write_text(json.dumps(plan.report, indent=2) + "\n", encoding="utf-8")
+    (output / "report.md").write_text(format_report(plan.report), encoding="utf-8")
+    (output / "changes.patch").write_text(plan.diff(), encoding="utf-8")
+
+
+def validate_updated_files(root: Path) -> None:
+    validator.validate_manifest(
+        json.loads((root / MANIFEST).read_text(encoding="utf-8")),
+        deps_file=root / DEPS_FILE,
+        pipeline_file=root / DXC_PIPELINE,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--revision", help="exact Dawn tag, full Git commit, or 'latest' dated release tag; defaults to the current pin"
-    )
+    parser.add_argument("--revision", default="latest", help="exact Dawn tag, full Git commit, or 'latest' (default)")
     parser.add_argument("--repo-root", type=Path, default=REPO_ROOT, help="ORT checkout to inspect/update")
     parser.add_argument("--cache-dir", type=Path, help="download cache; defaults to <repo>/build/dawn-upgrade/cache")
     parser.add_argument("--output-dir", type=Path, help="report.md, report.json and changes.patch destination")
     parser.add_argument("--patch-executable", default="patch", help="GNU patch executable")
-    modes = parser.add_mutually_exclusive_group()
-    modes.add_argument("--apply", action="store_true", help="apply prepared changes; default is a read-only plan")
-    modes.add_argument("--check", action="store_true", help="fail if tracked files need changes")
     args = parser.parse_args(argv)
     root = args.repo_root.resolve()
     output = args.output_dir or root / "build/dawn-upgrade"
     cache = args.cache_dir or root / "build/dawn-upgrade/cache"
     try:
         plan = make_plan(root, args.revision, cache, args.patch_executable)
-        output.mkdir(parents=True, exist_ok=True)
-        (output / "report.json").write_text(json.dumps(plan.report, indent=2) + "\n", encoding="utf-8")
-        (output / "report.md").write_text(format_report(plan.report), encoding="utf-8")
-        (output / "changes.patch").write_text(plan.diff(), encoding="utf-8")
+        plan.report["status"] = "blocked" if plan.report["blockers"] else "prepared"
+        write_reports(plan, output)
         print(f"Dawn: {plan.report['oldRevision']} -> {plan.report['revision']} ({plan.report['commit']})")
-        print(
-            f"{len(plan.changes)} changed files; {len(plan.report['blockers'])} blockers. Report: {output / 'report.md'}"
-        )
         for blocker in plan.report["blockers"]:
             print(f"REVIEW: {blocker}", file=sys.stderr)
         if plan.report["blockers"]:
+            print(f"No update applied. Report: {output / 'report.md'}", file=sys.stderr)
             return 2
-        if args.apply:
-            plan.apply()
-            print("Applied local changes. Build and package validation are still required.")
-        if args.check and plan.changes:
-            return 1
+        try:
+            plan.apply(lambda: validate_updated_files(root))
+        except Exception as error:
+            plan.report["status"] = "failed"
+            plan.report["blockers"].append(str(error))
+            write_reports(plan, output)
+            raise
+        plan.report["status"] = "updated"
+        write_reports(plan, output)
+        print(
+            f"Updated {len(plan.changes)} files; metadata and patch validation passed. Report: {output / 'report.md'}"
+        )
         return 0
     except (OSError, ValueError, KeyError, SyntaxError, zipfile.BadZipFile, subprocess.SubprocessError) as error:
         print(f"ERROR: {error}", file=sys.stderr)

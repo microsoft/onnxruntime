@@ -22,6 +22,9 @@ CHILD = "3" * 40
 DEP = "https://github.com/example/dependency.git"
 SWIFT = "https://swiftshader.googlesource.com/SwiftShader"
 LATEST_TAG = "v20261016.190333"
+DXC_TAG = "v1.8.2502"
+DXC_URL = f"https://github.com/microsoft/DirectXShaderCompiler/releases/download/{DXC_TAG}/dxc.zip"
+DXC_SHA256 = "A" * 64
 
 
 def deps_text(commit):
@@ -116,6 +119,35 @@ class PlanTests(TempTest):
             plan.apply()
         self.assertEqual((self.root / "first").read_text(), "old1")
         self.assertEqual((self.root / "second").read_text(), "old2")
+
+    def test_validation_failure_restores_every_written_file(self):
+        self.write("first", "old1")
+        self.write("second", "old2")
+        plan = updater.Plan(self.root)
+        plan.edit("first", "new1")
+        plan.edit("second", "new2")
+
+        def reject():
+            self.assertEqual((self.root / "second").read_text(), "new2")
+            raise ValueError("validation failed")
+
+        with self.assertRaisesRegex(ValueError, "validation failed"):
+            plan.apply(reject)
+        self.assertEqual((self.root / "first").read_text(), "old1")
+        self.assertEqual((self.root / "second").read_text(), "old2")
+
+    def test_incomplete_write_is_detected_and_rolled_back(self):
+        self.write("file", "old")
+        plan = updater.Plan(self.root)
+        plan.edit("file", "updated")
+        write_bytes = Path.write_bytes
+
+        def truncate(path, data):
+            return write_bytes(path, b"up" if data == b"updated" else data)
+
+        with patch.object(Path, "write_bytes", truncate), self.assertRaisesRegex(ValueError, "generated update"):
+            plan.apply()
+        self.assertEqual((self.root / "file").read_text(), "old")
 
 
 class LatestTagTests(unittest.TestCase):
@@ -326,6 +358,31 @@ class PatchTests(TempTest):
         with self.assertRaises(ValueError):
             patch_dawn.patch_paths("--- a/../../escape\n+++ b/../../escape\n")
 
+    def test_incorrect_refreshed_patch_is_rejected_before_editing_checkout(self):
+        before = "a\nb\nc\nd\ne\nf\ng\n"
+        after = before.replace("d\n", "changed\n")
+        text = "".join(
+            difflib.unified_diff(before.splitlines(True), after.splitlines(True), fromfile="a/file", tofile="b/file")
+        )
+        self.write("cmake/patches/dawn/one.patch", text)
+        self.write(
+            "external.cmake",
+            "set(ONNXRUNTIME_Dawn_PATCH_COMMAND\n${PROJECT_SOURCE_DIR}/patches/dawn/one.patch)\nonnxruntime_fetchcontent_declare(",
+        )
+        plan = updater.Plan(self.root)
+        diff = difflib.unified_diff
+
+        def corrupt_diff(*args, **kwargs):
+            return (line.replace("+changed", "+incorrect") for line in diff(*args, **kwargs))
+
+        with (
+            patch.object(patch_dawn.difflib, "unified_diff", side_effect=corrupt_diff),
+            self.assertRaisesRegex(ValueError, "did not reproduce"),
+        ):
+            patch_dawn.refresh_patches(plan, FakeSource(files={"file": "prefix\n" + before}), "external.cmake", "patch")
+        self.assertEqual((self.root / "cmake/patches/dawn/one.patch").read_text(), text)
+        self.assertFalse(plan.changes)
+
 
 class CommandTests(TempTest):
     def setUp(self):
@@ -334,7 +391,12 @@ class CommandTests(TempTest):
             updater.DEPS_FILE,
             f"other;keep;unchanged\ndawn;https://github.com/google/dawn/archive/{OLD}.zip;{'0' * 40}\n",
         )
-        self.write(updater.MANIFEST, json.dumps(manifest(), indent=2) + "\n")
+        reviewed = manifest()
+        dxc = registration(updater.validator.DXC_REPOSITORY_URL, OLD, f"runtime; {DXC_URL}; SHA256: {DXC_SHA256}")
+        dxc["component"]["git"]["tag"] = DXC_TAG
+        reviewed["registrations"].append(dxc)
+        self.write(updater.MANIFEST, json.dumps(reviewed, indent=2) + "\n")
+        self.write(updater.DXC_PIPELINE, f'$dxcZipUrl = "{DXC_URL}"\n$expectedHash = "{DXC_SHA256}"\n')
         self.write(updater.SWIFTSHADER_DOCKERFILE, f"ARG SWIFTSHADER_COMMIT={OLD}\n")
         self.write(updater.EXTERNAL_CMAKE, "if (FALSE)\n  # inactive\n  find_package(dawn REQUIRED)\nendif()\n")
         self.source = FakeSource(cache=self.root)
@@ -360,13 +422,15 @@ class CommandTests(TempTest):
             self.assertEqual(updater.main(args), 0)
             latest.assert_called_once_with()
             self.archive.assert_called_once_with(LATEST_TAG, self.root / "build/dawn-upgrade/cache")
-            self.assertEqual((self.root / updater.DEPS_FILE).read_bytes(), before)
+            self.assertNotEqual((self.root / updater.DEPS_FILE).read_bytes(), before)
             report = json.loads((self.root / "build/dawn-upgrade/report.json").read_text())
             self.assertEqual(report["requestedRevision"], "latest")
             self.assertEqual(report["revision"], LATEST_TAG)
             self.assertEqual(report["commit"], NEW)
+            self.assertEqual(report["status"], "updated")
             self.assertIn("--revision latest", (self.root / "build/dawn-upgrade/report.md").read_text())
-            self.assertEqual(updater.main([*args, "--apply"]), 0)
+            with patch.object(updater.cg, "_resolve_dawn_commit", return_value=NEW):
+                self.assertEqual(updater.main(args), 0)
             self.assertEqual(latest.call_count, 2)
         self.assertIn(url, (self.root / updater.DEPS_FILE).read_text())
         self.assertNotIn("latest", (self.root / updater.DEPS_FILE).read_text())
@@ -380,29 +444,37 @@ class CommandTests(TempTest):
         errors = [ValueError("no dated Dawn release tags"), subprocess.TimeoutExpired("git", 30)]
         for error in errors:
             with self.subTest(error=error), patch.object(updater, "latest_dawn_tag", side_effect=error):
-                self.assertEqual(updater.main([*self.args[:-1], "latest", "--apply"]), 2)
+                self.assertEqual(updater.main([*self.args[:-1], "latest"]), 2)
                 self.archive.assert_not_called()
                 self.assertEqual({name: (self.root / name).read_bytes() for name in files}, before)
 
-    def test_explicit_and_default_revisions_do_not_query_latest(self):
+    def test_explicit_revision_does_not_query_latest(self):
         with patch.object(updater, "latest_dawn_tag") as latest:
             self.assertEqual(updater.main(self.args), 0)
             self.assertEqual(self.archive.call_args.args[0], NEW)
-            self.assertEqual(updater.main(self.args[:-2]), 0)
-            self.assertEqual(self.archive.call_args.args[0], OLD)
             latest.assert_not_called()
 
-    def test_plan_apply_check_end_to_end_and_json_report(self):
+    def test_default_revision_is_latest(self):
+        with patch.object(updater, "latest_dawn_tag", return_value=LATEST_TAG) as latest:
+            self.assertEqual(updater.main(self.args[:-2]), 0)
+            latest.assert_called_once_with()
+            self.assertEqual(self.archive.call_args.args[0], LATEST_TAG)
+        report = json.loads((self.root / "build/dawn-upgrade/report.json").read_text())
+        self.assertEqual(report["requestedRevision"], "latest")
+        self.assertEqual(report["status"], "updated")
+
+    def test_one_command_updates_validates_and_is_idempotent(self):
         before = (self.root / updater.DEPS_FILE).read_bytes()
         self.assertEqual(updater.main(self.args), 0)
-        self.assertEqual((self.root / updater.DEPS_FILE).read_bytes(), before)
+        self.assertNotEqual((self.root / updater.DEPS_FILE).read_bytes(), before)
         report_text = (self.root / "build/dawn-upgrade/report.md").read_text()
         self.assertIn(updater.DEPS_FILE, report_text)
         self.assertIn("### Changed (0)", report_text)
-        self.assertIn("it does not certify a build", report_text)
-        self.assertEqual(updater.main([*self.args, "--check"]), 1)
-        self.assertEqual(updater.main([*self.args, "--apply"]), 0)
-        self.assertEqual(updater.main([*self.args, "--check"]), 0)
+        self.assertIn("Result: updated", report_text)
+        self.assertIn("they do not certify a build", report_text)
+        updated = (self.root / updater.DEPS_FILE).read_bytes()
+        self.assertEqual(updater.main(self.args), 0)
+        self.assertEqual((self.root / updater.DEPS_FILE).read_bytes(), updated)
         self.assertIn("other;keep;unchanged", (self.root / updater.DEPS_FILE).read_text())
         report = json.loads((self.root / "build/dawn-upgrade/report.json").read_text())
         self.assertEqual(report["commit"], NEW)
@@ -411,15 +483,15 @@ class CommandTests(TempTest):
     def test_blocker_leaves_inputs_intact_and_produces_report(self):
         self.source.files[updater.FETCHER] = "required_submodules = ['unknown']"
         before = (self.root / updater.DEPS_FILE).read_bytes()
-        self.assertEqual(updater.main([*self.args, "--apply"]), 2)
+        self.assertEqual(updater.main(self.args), 2)
         self.assertEqual((self.root / updater.DEPS_FILE).read_bytes(), before)
         self.assertTrue(json.loads((self.root / "build/dawn-upgrade/report.json").read_text())["blockers"])
         self.assertIn("unknown", (self.root / "build/dawn-upgrade/report.md").read_text())
 
-    def test_roll_does_not_read_or_change_runtime_packaging(self):
+    def test_roll_does_not_change_runtime_packaging(self):
         self.write("setup.py", 'runtime_libraries = ["dxil.dll", "dxcompiler.dll"]\n')
         before = (self.root / "setup.py").read_bytes()
-        self.assertEqual(updater.main([*self.args, "--apply"]), 0)
+        self.assertEqual(updater.main(self.args), 0)
         self.assertEqual((self.root / "setup.py").read_bytes(), before)
         report = json.loads((self.root / "build/dawn-upgrade/report.json").read_text())
         self.assertEqual(
@@ -429,12 +501,12 @@ class CommandTests(TempTest):
     def test_invalid_patch_metadata_is_reported_without_writes(self):
         self.refresh_patches.side_effect = ValueError("upstream removed a patched file")
         before = (self.root / updater.DEPS_FILE).read_bytes()
-        self.assertEqual(updater.main([*self.args, "--apply"]), 2)
+        self.assertEqual(updater.main(self.args), 2)
         self.assertEqual((self.root / updater.DEPS_FILE).read_bytes(), before)
         self.assertIn("upstream removed a patched file", (self.root / "build/dawn-upgrade/report.md").read_text())
 
     def test_report_distinguishes_stale_manifest_from_current_pin(self):
-        original = manifest()
+        original = json.loads((self.root / updater.MANIFEST).read_text())
         original["registrations"][0]["component"]["git"]["commitHash"] = CHILD
         self.write(updater.MANIFEST, json.dumps(original))
         self.assertEqual(updater.main(self.args), 0)
@@ -444,10 +516,20 @@ class CommandTests(TempTest):
     def test_reenabled_dawn_vcpkg_path_requires_review(self):
         self.write(updater.EXTERNAL_CMAKE, "find_package(dawn REQUIRED)\n")
         before = (self.root / updater.DEPS_FILE).read_bytes()
-        self.assertEqual(updater.main([*self.args, "--apply"]), 2)
+        self.assertEqual(updater.main(self.args), 2)
         self.assertEqual((self.root / updater.DEPS_FILE).read_bytes(), before)
         report = json.loads((self.root / "build/dawn-upgrade/report.json").read_text())
         self.assertIn("vcpkg integration changed", report["blockers"][0])
+
+    def test_integrated_dxc_validation_failure_rolls_back_the_update(self):
+        files = [updater.DEPS_FILE, updater.MANIFEST, updater.SWIFTSHADER_DOCKERFILE]
+        before = {path: (self.root / path).read_bytes() for path in files}
+        self.write(updater.DXC_PIPELINE, f'$dxcZipUrl = "{DXC_URL}"\n$expectedHash = "{"B" * 64}"\n')
+        self.assertEqual(updater.main(self.args), 2)
+        self.assertEqual({path: (self.root / path).read_bytes() for path in files}, before)
+        report = json.loads((self.root / "build/dawn-upgrade/report.json").read_text())
+        self.assertEqual(report["status"], "failed")
+        self.assertIn("DXC", report["blockers"][0])
 
 
 if __name__ == "__main__":

@@ -91,12 +91,12 @@ def _dawn_pin_from_deps_txt(deps_file: Path = DEPS_TXT) -> tuple[str, str]:
     return "commitHash", pin
 
 
-def _dxc_release_from_pipeline() -> tuple[str, str, str]:
-    pipeline_text = PLUGIN_WIN_WEBGPU_STAGE.read_text(encoding="utf-8")
+def _dxc_release_from_pipeline(pipeline_file: Path = PLUGIN_WIN_WEBGPU_STAGE) -> tuple[str, str, str]:
+    pipeline_text = pipeline_file.read_text(encoding="utf-8")
     url_match = re.search(r'\$dxcZipUrl = "([^"]+)"', pipeline_text)
     hash_match = re.search(r'\$expectedHash = "([0-9A-Fa-f]+)"', pipeline_text)
     if not url_match or not hash_match:
-        raise ValueError(f"could not find DXC release URL/hash in {PLUGIN_WIN_WEBGPU_STAGE}")
+        raise ValueError(f"could not find DXC release URL/hash in {pipeline_file}")
 
     tag_match = re.search(r"/download/(v[^/]+)/", url_match.group(1))
     if not tag_match:
@@ -105,21 +105,21 @@ def _dxc_release_from_pipeline() -> tuple[str, str, str]:
     return tag_match.group(1), url_match.group(1), hash_match.group(1).upper()
 
 
-def _validate_dawn_root(manifest: dict[str, Any]) -> None:
+def _validate_dawn_root(manifest: dict[str, Any], deps_file: Path = DEPS_TXT) -> None:
     registration = _find_git_registration(manifest, DAWN_REPOSITORY_URL)
     git = _git_component(registration)
     if git is None:
         raise ValueError("Dawn registration must be a git component")
 
-    pin_field, expected_pin = _dawn_pin_from_deps_txt()
+    pin_field, expected_pin = _dawn_pin_from_deps_txt(deps_file)
     if git.get(pin_field) != expected_pin:
         raise ValueError(
-            f"Dawn manifest {pin_field} {git.get(pin_field)} does not match {DEPS_TXT} {pin_field} {expected_pin}"
+            f"Dawn manifest {pin_field} {git.get(pin_field)} does not match {deps_file} {pin_field} {expected_pin}"
         )
 
 
-def _validate_dxc_release(manifest: dict[str, Any]) -> None:
-    expected_tag, expected_url, expected_hash = _dxc_release_from_pipeline()
+def _validate_dxc_release(manifest: dict[str, Any], pipeline_file: Path = PLUGIN_WIN_WEBGPU_STAGE) -> None:
+    expected_tag, expected_url, expected_hash = _dxc_release_from_pipeline(pipeline_file)
     registration = _find_git_registration(manifest, DXC_REPOSITORY_URL, tag=expected_tag)
     git = _git_component(registration)
     if git is None:
@@ -160,12 +160,22 @@ def _validate_dawn_dependency_roots(manifest: dict[str, Any]) -> None:
             raise ValueError(f"Dawn dependency root does not match {DAWN_REPOSITORY_URL}@{dawn_commit}: {comments}")
 
 
+def validate_manifest(
+    manifest: dict[str, Any],
+    *,
+    deps_file: Path = DEPS_TXT,
+    pipeline_file: Path = PLUGIN_WIN_WEBGPU_STAGE,
+) -> None:
+    """Validate reviewed metadata against the selected checkout's pins."""
+    _validate_dawn_root(manifest, deps_file)
+    _validate_dxc_release(manifest, pipeline_file)
+    _validate_dawn_dependency_roots(manifest)
+
+
 def main() -> int:
     try:
         manifest = _load_manifest()
-        _validate_dawn_root(manifest)
-        _validate_dxc_release(manifest)
-        _validate_dawn_dependency_roots(manifest)
+        validate_manifest(manifest)
     except (OSError, ValueError) as ex:
         print(f"ERROR: {ex}", file=sys.stderr)
         return 1
