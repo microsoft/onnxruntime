@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -48,9 +49,30 @@ Status KernelPilotMoeExpertState::BeginRun(std::string request_id, const logging
 Status KernelPilotMoeExpertState::EndRun(bool run_succeeded) {
   std::lock_guard<std::mutex> lock(run_mutex_);
   ORT_RETURN_IF_NOT(run_active_, "MoE expert tracking is not active.");
+  auto finish = gsl::finally([&]() {
+    deferred_usage_.clear();
+    logging_request_id_.clear();
+    logging_logger_ = nullptr;
+    run_active_ = false;
+  });
+  const auto complete_usage = [](KernelPilot& pilot) {
+    Status completion;
+    ORT_TRY {
+      completion = pilot.CompleteMoeUsage();
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        completion = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "MoE usage completion failed: ", ex.what());
+      });
+    }
+    ORT_CATCH(...) {
+      completion = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Unknown exception during MoE usage completion.");
+    }
+    return completion;
+  };
   Status status = Status::OK();
   for (auto* pilot : deferred_usage_) {
-    const Status completion = pilot->CompleteMoeUsage();
+    const Status completion = complete_usage(*pilot);
     if (status.IsOK() && !completion.IsOK()) {
       status = completion;
     }
@@ -58,7 +80,7 @@ Status KernelPilotMoeExpertState::EndRun(bool run_succeeded) {
   deferred_usage_.clear();
   for (auto& [kernel, state] : kernels_) {
     ORT_UNUSED_PARAMETER(kernel);
-    const Status completion = state.pilot.CompleteMoeUsage();
+    const Status completion = complete_usage(state.pilot);
     if (status.IsOK() && !completion.IsOK()) {
       status = completion;
     }
@@ -67,9 +89,6 @@ Status KernelPilotMoeExpertState::EndRun(bool run_succeeded) {
       cpu_offload_strategy_ != CpuOffloadStrategy::Basic) {
     status = ScheduleSwaps();
   }
-  logging_request_id_.clear();
-  logging_logger_ = nullptr;
-  run_active_ = false;
   return status;
 }
 

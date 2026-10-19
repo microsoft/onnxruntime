@@ -88,11 +88,11 @@ Status KernelPilot::CompleteMoeUsageInternal() {
   if (moe_usage_ == nullptr || !moe_usage_->HasPendingUsage()) {
     return Status::OK();
   }
-  KernelPilotMoeExpertUsageSnapshot snapshot;
-  const Status completion = moe_usage_->CompleteUsage(snapshot);
   const bool commit = deferred_invocation_succeeded_;
   deferred_invocation_succeeded_ = false;
   auto finish = gsl::finally([&]() { moe_.FinishInvocation(); });
+  KernelPilotMoeExpertUsageSnapshot snapshot;
+  const Status completion = moe_usage_->CompleteUsage(snapshot);
   ORT_RETURN_IF_ERROR(completion);
   if (!commit) {
     return Status::OK();

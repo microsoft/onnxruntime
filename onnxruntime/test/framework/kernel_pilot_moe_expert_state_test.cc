@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <thread>
 
 #include "gtest/gtest.h"
@@ -242,6 +243,77 @@ TEST_F(KernelPilotMoeExpertStateTest, PropagatesAsyncUsageFailureAndReleasesRun)
   ASSERT_STATUS_OK(state.BeginRun("next run", nullptr));
   ASSERT_STATUS_OK(state.EndRun());
 }
+
+#if !defined(ORT_NO_EXCEPTIONS)
+TEST_F(KernelPilotMoeExpertStateTest, ConvertsThrowingUsageToStatusAndReleasesRun) {
+  class ThrowingUsage final : public IKernelPilotMoeExpertUsage {
+   public:
+    bool HasPendingUsage() const noexcept override { return usage.pending; }
+    Status CompleteUsage(KernelPilotMoeExpertUsageSnapshot& snapshot) override {
+      if (throw_on_completion) {
+        if (unknown_exception) {
+          throw 42;
+        }
+        throw std::runtime_error("test usage completion exception");
+      }
+      return usage.CompleteUsage(snapshot);
+    }
+
+    bool throw_on_completion{true};
+    bool unknown_exception{false};
+    DeferredMoeUsage usage;
+  };
+
+  for (bool unknown_exception : {false, true}) {
+    SCOPED_TRACE(unknown_exception);
+    KernelPilotMoeExpertState state;
+    ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));
+    ASSERT_STATUS_OK(state.RegisterNode(kernels_[1], "main", 1, "MoE", 3));
+    ASSERT_STATUS_OK(state.FinalizeInitialization());
+    const std::array<int, 2> initial_ids{0, 2};
+    ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], initial_ids));
+    const auto initial_counters = Counters(state, kernels_[0]);
+    auto* failing_pilot = state.GetKernelPilot(kernels_[0]);
+    auto* successful_pilot = state.GetKernelPilot(kernels_[1]);
+    ThrowingUsage failing_usage;
+    failing_usage.unknown_exception = unknown_exception;
+    failing_usage.usage.counters = {0.6, 0.1, 0.4};
+    DeferredMoeUsage successful_usage;
+    ASSERT_STATUS_OK(failing_pilot->AttachMoeExpertUsage(&failing_usage));
+    ASSERT_STATUS_OK(successful_pilot->AttachMoeExpertUsage(&successful_usage));
+    ASSERT_STATUS_OK(state.BeginRun("throwing completion", nullptr));
+    for (auto* pilot : {failing_pilot, successful_pilot}) {
+      ASSERT_STATUS_OK(pilot->Moe().BeginInvocation(3));
+      ASSERT_STATUS_OK(pilot->RecordUsage());
+    }
+    const Status status = state.EndRun();
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_EQ(status.Code(), common::RUNTIME_EXCEPTION);
+    EXPECT_NE(status.ErrorMessage().find(unknown_exception ? "Unknown exception" : "test usage completion exception"),
+              std::string::npos);
+    EXPECT_EQ(Counters(state, kernels_[0]), initial_counters);
+    EXPECT_EQ(Counters(state, kernels_[1]), successful_usage.counters);
+
+    failing_usage.throw_on_completion = false;
+    ASSERT_STATUS_OK(state.BeginRun("discard failed invocation", nullptr));
+    failing_usage.usage.pending = false;
+    ASSERT_STATUS_OK(failing_pilot->RecordUsage());
+    ASSERT_STATUS_OK(successful_pilot->RecordUsage());
+    EXPECT_EQ(Counters(state, kernels_[0]), initial_counters);
+    EXPECT_EQ(Counters(state, kernels_[1]), successful_usage.counters);
+    failing_usage.usage.pending = true;
+    ASSERT_STATUS_OK(state.EndRun(false));
+    EXPECT_FALSE(failing_usage.usage.pending);
+    EXPECT_EQ(Counters(state, kernels_[0]), initial_counters);
+    failing_usage.usage.pending = true;
+    ASSERT_STATUS_OK(state.BeginRun("next successful run", nullptr));
+    ASSERT_STATUS_OK(failing_pilot->Moe().BeginInvocation(3));
+    ASSERT_STATUS_OK(failing_pilot->RecordUsage());
+    ASSERT_STATUS_OK(state.EndRun());
+    EXPECT_EQ(Counters(state, kernels_[0]), failing_usage.usage.counters);
+  }
+}
+#endif
 
 void MakeEligibleForCudaFp16MoePlacement(const OpKernel* kernel) {
   auto& node = const_cast<Node&>(kernel->Node());

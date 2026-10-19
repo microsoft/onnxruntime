@@ -3852,7 +3852,21 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   bool moe_run_active = false;
   auto end_moe_run = gsl::finally([&]() {
     if (moe_run_active) {
-      ORT_IGNORE_RETURN_VALUE(moe_expert_state->EndRun(false));
+      moe_run_active = false;
+      ORT_TRY {
+        const Status status = moe_expert_state->EndRun(false);
+        if (!status.IsOK()) {
+          LOGS(*session_logger_, ERROR) << "MoE failed-run cleanup failed: " << status.ErrorMessage();
+        }
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          LOGS(*session_logger_, ERROR) << "MoE failed-run cleanup threw: " << ex.what();
+        });
+      }
+      ORT_CATCH(...) {
+        LOGS(*session_logger_, ERROR) << "Unknown exception during MoE failed-run cleanup.";
+      }
     }
   });
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -4018,8 +4032,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
 #if !defined(ORT_MINIMAL_BUILD)
       if (moe_run_active) {
-        const Status moe_run_status = moe_expert_state->EndRun(retval.IsOK());
         moe_run_active = false;
+        const Status moe_run_status = moe_expert_state->EndRun(retval.IsOK());
         if (retval.IsOK() && !moe_run_status.IsOK()) {
           retval = moe_run_status;
         }

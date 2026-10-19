@@ -1563,8 +1563,8 @@ Status QMoE::PrepareUsage(OpKernelContext* context, KernelPilot* pilot,
 }
 
 Status QMoE::CompleteUsage(KernelPilotMoeExpertUsageSnapshot& snapshot) {
-  const QMoEScopedCudaDevice device_guard(device_id_);
   auto finish = gsl::finally([&]() { usage_pending_ = false; });
+  const QMoEScopedCudaDevice device_guard(device_id_);
   if (cpu_callback_scheduled_) {
     std::unique_lock<std::mutex> lock(cpu_worker_mutex_);
     cpu_worker_condition_.wait(lock, [&]() { return cpu_task_finished_; });

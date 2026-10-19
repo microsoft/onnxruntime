@@ -42,6 +42,9 @@ Counts persist across `Run()` calls. Only successful kernel invocations commit t
 A failed run can retain updates from earlier successful kernels, including CUDA nodes whose
 expert computations were still in flight when their counters were updated. Updates are not transactional across an
 entire model invocation.
+Provider exceptions during deferred usage completion become failure statuses, and run tracking is released even on
+failure. Cleanup errors on an already-failed run are logged without replacing its original error or escaping the
+cleanup guard.
 
 The root `SessionState` owns a `KernelPilotMoeExpertState` shared with its subgraph states. Sessions never share counters.
 While counter-update logging is active, the state also stores the current request ID and logger. Because expert

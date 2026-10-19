@@ -510,9 +510,9 @@ void MoE<T>::RunCpuWorker() const {
 
 template <typename T>
 Status MoE<T>::CompleteUsage(KernelPilotMoeExpertUsageSnapshot& snapshot) {
+  auto finish = gsl::finally([&]() { usage_pending_ = false; });
   CudaDeviceGuard device_guard;
   ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
-  auto finish = gsl::finally([&]() { usage_pending_ = false; });
   if (cpu_callback_scheduled_) {
     std::unique_lock<std::mutex> lock(cpu_worker_mutex_);
     cpu_worker_condition_.wait(lock, [&]() { return cpu_task_finished_; });
