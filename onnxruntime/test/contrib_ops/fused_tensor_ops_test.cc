@@ -186,6 +186,51 @@ TEST(FusedTensorOpsTest, SigmoidGateMulCheckedProjectionExtent) {
   }
 }
 
+TEST(FusedTensorOpsTest, SigmoidGateMulPaddedHeadStride) {
+  for (int64_t tokens : {1, 2}) {
+    for (bool truncated : {false, true}) {
+      auto providers = CudaProvider();
+      if (providers.empty()) GTEST_SKIP();
+      OpTester test("SigmoidGateMul", 1, kMSDomain);
+      test.AddAttribute<int64_t>("head_dim", 1);
+      test.AddAttribute<int64_t>("num_heads", 2);
+      test.AddAttribute<int64_t>("q_stride", 4);
+      test.AddAttribute<int64_t>("tok_stride", 6);
+      const int64_t extent = tokens * 6 - (truncated ? 1 : 0);
+      test.AddInput<BFloat16>("attention", {tokens, 2},
+                              tokens == 1 ? ToBFloat16({2, 4}) : ToBFloat16({2, 4, 6, 8}));
+      test.AddInput<BFloat16>("projection", {extent}, std::vector<BFloat16>(extent));
+      test.AddOutput<BFloat16>("output", {tokens, 2},
+                               tokens == 1 ? ToBFloat16({1, 2}) : ToBFloat16({1, 2, 3, 4}));
+      test.Run(truncated ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
+               truncated ? "projection is too small" : "", {}, nullptr, &providers);
+    }
+  }
+}
+
+TEST(FusedTensorOpsTest, SigmoidGateMulRejectsOutOfRangeLayoutAttributes) {
+#if defined(ORT_NO_EXCEPTIONS)
+  GTEST_SKIP() << "Checked narrowing failures abort when exceptions are disabled.";
+#endif
+  for (const char* attribute : {"head_dim", "num_heads", "q_stride"}) {
+    for (int64_t value : {int64_t{4294967300}, int64_t{-4294967292}}) {
+      auto providers = CudaProvider();
+      if (providers.empty()) GTEST_SKIP();
+      SCOPED_TRACE(attribute);
+      SCOPED_TRACE(value);
+      OpTester test("SigmoidGateMul", 1, kMSDomain);
+      test.AddAttribute<int64_t>("head_dim", std::string(attribute) == "head_dim" ? value : 2);
+      test.AddAttribute<int64_t>("num_heads", std::string(attribute) == "num_heads" ? value : 2);
+      test.AddAttribute<int64_t>("q_stride", std::string(attribute) == "q_stride" ? value : 4);
+      test.AddAttribute<int64_t>("tok_stride", 8);
+      test.AddInput<BFloat16>("attention", {1, 4}, std::vector<BFloat16>(4));
+      test.AddInput<BFloat16>("projection", {8}, std::vector<BFloat16>(8));
+      test.AddOutput<BFloat16>("output", {1, 4}, std::vector<BFloat16>(4));
+      test.Run(OpTester::ExpectResult::kExpectFailure, "narrowing_error", {}, nullptr, &providers);
+    }
+  }
+}
+
 void RunSigmoidGateMulBroadcastResidualRounding(bool sigmoid_in_fp32, bool silu_gate = false) {
   for (bool residual : {false, true}) {
     for (int64_t width : {1, 257, 2560}) {
@@ -255,6 +300,9 @@ TEST(FusedTensorOpsTest, SigmoidGateMulRejectsBroadcastAndResidualShapes) {
 
 TEST(FusedTensorOpsTest, SigmoidGateMulBroadcastEmptyAndInvalidAttributes) {
   for (int mode = 0; mode < 4; ++mode) {
+#if defined(ORT_NO_EXCEPTIONS)
+    if (mode != 0) continue;
+#endif
     auto providers = CudaProvider();
     if (providers.empty()) GTEST_SKIP();
     OpTester test("SigmoidGateMul", 1, kMSDomain);
@@ -275,6 +323,9 @@ TEST(FusedTensorOpsTest, SigmoidGateMulBroadcastEmptyAndInvalidAttributes) {
 
 TEST(FusedTensorOpsTest, SigmoidGateMulSiluEmptyAndInvalidAttributes) {
   for (int mode = 0; mode < 5; ++mode) {
+#if defined(ORT_NO_EXCEPTIONS)
+    if (mode >= 1 && mode <= 3) continue;
+#endif
     auto providers = CudaProvider();
     if (providers.empty()) GTEST_SKIP();
     OpTester test("SigmoidGateMul", 1, kMSDomain);

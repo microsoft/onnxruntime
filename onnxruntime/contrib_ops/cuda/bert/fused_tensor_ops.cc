@@ -7,6 +7,7 @@
 #include <array>
 #include <limits>
 
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
@@ -128,9 +129,9 @@ Status RowSelect::ComputeInternal(OpKernelContext* context) const {
 
 SigmoidGateMul::SigmoidGateMul(const OpKernelInfo& info)
     : CudaKernel(info),
-      head_dim_(static_cast<int>(info.GetAttrOrDefault<int64_t>("head_dim", 0))),
-      heads_(static_cast<int>(info.GetAttrOrDefault<int64_t>("num_heads", 0))),
-      q_stride_(static_cast<int>(info.GetAttrOrDefault<int64_t>("q_stride", 0))),
+      head_dim_(narrow<int>(info.GetAttrOrDefault<int64_t>("head_dim", 0))),
+      heads_(narrow<int>(info.GetAttrOrDefault<int64_t>("num_heads", 0))),
+      q_stride_(narrow<int>(info.GetAttrOrDefault<int64_t>("q_stride", 0))),
       tok_stride_(info.GetAttrOrDefault<int64_t>("tok_stride", 0)),
       q_offset_(info.GetAttrOrDefault<int64_t>("q_offset", 0)),
       broadcast_gate_(info.GetAttrOrDefault<int64_t>("broadcast_gate", 0) == 1),
@@ -178,7 +179,8 @@ Status SigmoidGateMul::ComputeInternal(OpKernelContext* context) const {
       int64_t required_extent;
       int64_t head_extent;
       ORT_RETURN_IF_NOT(SafeMultiply(tokens - 1, tok_stride_, required_extent) &&
-                            SafeMultiply(static_cast<int64_t>(heads_), static_cast<int64_t>(q_stride_), head_extent) &&
+                            SafeMultiply(static_cast<int64_t>(heads_ - 1), static_cast<int64_t>(q_stride_), head_extent) &&
+                            SafeAdd(head_extent, 2LL * head_dim_, head_extent) &&
                             SafeAdd(required_extent, q_offset_, required_extent) &&
                             SafeAdd(required_extent, head_extent, required_extent),
                         "SigmoidGateMul projection extent overflows int64");

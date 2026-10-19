@@ -76,6 +76,7 @@ void RunOnSupportedProviders(OpTester& test, bool packed = false) {
     providers.push_back(DefaultCudaExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
   } else {
+    // OpTester preassigns nodes without GetCapability; the session regression below tests fallback.
     test.Run(OpTester::ExpectResult::kExpectSuccess, "",
              packed ? std::unordered_set<std::string>{kWebGpuExecutionProvider}
                     : std::unordered_set<std::string>{});
@@ -1816,7 +1817,84 @@ TEST(EngramOpsTest, EngramGatePackedBFloat16) {
   RunEngramGateVectorizedTest<BFloat16>(2e-2f, 4, true);
 }
 
+#ifdef USE_WEBGPU
+template <typename T>
+void RunEngramGatePackedWebGpuCpuFallbackTest() {
+  for (bool normed : {false, true}) {
+    auto webgpu = DefaultWebGpuExecutionProvider();
+    if (webgpu == nullptr) GTEST_SKIP() << "WebGPU execution provider is not available";
+    std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 17}, {kMSDomain, 1}};
+    Model model("EngramGatePackedFallback", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                DefaultLoggingManager().DefaultLogger());
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder builder(graph);
+    auto* key = builder.MakeInput<T>({2, 2, 1}, ToTensorType<T>({1, 1, 1, 1}));
+    auto* query = builder.MakeInput<T>({2, 2, 1}, ToTensorType<T>({1, 1, 1, 1}));
+    auto* value = builder.MakeInput<T>({2, 1}, ToTensorType<T>({2, 4}));
+    auto* key_scale = builder.MakeInput<T>({2, 1}, ToTensorType<T>({1, 1}));
+    auto* query_scale = builder.MakeInput<T>({2, 1}, ToTensorType<T>({1, 1}));
+    std::vector<NodeArg*> inputs{key, query, value, key_scale, query_scale};
+    std::vector<NodeArg*> outputs{builder.MakeOutput()};
+    if (normed) {
+      inputs.push_back(builder.MakeInput<T>({2, 1}, ToTensorType<T>({1, 1})));
+      outputs.push_back(builder.MakeOutput());
+    }
+    auto& node = builder.AddNode("EngramGate", inputs, outputs, kMSDomain);
+    node.AddAttribute("epsilon", 0.0f);
+    builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(graph.Resolve());
+    ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
+    std::string model_data;
+    ASSERT_TRUE(model_proto.SerializeToString(&model_data));
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Default;
+    InferenceSessionWrapper session(options, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(webgpu)));
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
+    std::istringstream model_stream(model_data);
+    ASSERT_STATUS_OK(session.Load(model_stream));
+    ASSERT_STATUS_OK(session.Initialize());
+    size_t gate_nodes = 0;
+    for (const auto& assigned_node : session.GetSessionState().GetGraphViewer().Nodes()) {
+      if (assigned_node.OpType() == "EngramGate") {
+        ++gate_nodes;
+        EXPECT_EQ(assigned_node.GetExecutionProviderType(), kCpuExecutionProvider);
+      }
+    }
+    ASSERT_EQ(gate_nodes, 1u);
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &fetches));
+    ASSERT_EQ(fetches.size(), normed ? 2u : 1u);
+    const float gate = Sigmoid(1.0f);
+    const auto expected = ToTensorType<T>({2 * gate, 2 * gate, 4 * gate, 4 * gate});
+    const auto actual = fetches[0].Get<Tensor>().DataAsSpan<T>();
+    ASSERT_EQ(actual.size(), expected.size());
+    for (size_t i = 0; i < actual.size(); ++i) {
+      EXPECT_NEAR(static_cast<float>(actual[i]), static_cast<float>(expected[i]), 2e-3f);
+    }
+    if (normed) {
+      ASSERT_EQ(fetches[1].Get<Tensor>().Shape(), TensorShape({2, 2, 1}));
+      for (T element : fetches[1].Get<Tensor>().DataAsSpan<T>()) {
+        EXPECT_NEAR(static_cast<float>(element), 1.0f, 2e-3f);
+      }
+    }
+  }
+}
+
+TEST(EngramOpsTest, EngramGatePackedWebGpuCpuFallbackFloat) {
+  RunEngramGatePackedWebGpuCpuFallbackTest<float>();
+}
+
+TEST(EngramOpsTest, EngramGatePackedWebGpuCpuFallbackFloat16) {
+  RunEngramGatePackedWebGpuCpuFallbackTest<MLFloat16>();
+}
+#endif
+
 TEST(EngramOpsTest, EngramGateRejectsMixedPackedRanks) {
+#if defined(ORT_NO_EXCEPTIONS)
+  GTEST_SKIP() << "Static shape inference failures abort when exceptions are disabled.";
+#endif
   for (bool bad_query : {false, true}) {
     OpTester test("EngramGate", 1, kMSDomain);
     test.AddInput<float>("key", {1, 1, 2}, {1, 1});
