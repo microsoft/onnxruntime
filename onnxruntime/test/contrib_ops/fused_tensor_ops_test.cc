@@ -234,6 +234,21 @@ TEST(FusedTensorOpsTest, SigmoidGateMulSiluEmptyAndInvalidAttributes) {
   }
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+TEST(FusedTensorOpsTest, DequantizeLinearFp8ToBf16) {
+  auto providers = CudaProvider();
+  if (providers.empty()) GTEST_SKIP();
+
+  OpTester test("DequantizeLinear", 1, kMSDomain);
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<int64_t>("output_dtype", ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
+  test.AddInput<Float8E4M3FN>("weight", {1, 8}, std::vector<Float8E4M3FN>(8, Float8E4M3FN(1.0f)));
+  test.AddInput<float>("scale", {8}, std::vector<float>(8, 2.0f));
+  test.AddOptionalInputEdge<Float8E4M3FN>();
+  test.AddOutput<BFloat16>("weight_bf16", {1, 8}, ToTensorType<BFloat16>(std::vector<float>(8, 2.0f)));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+#endif
 
 TEST(FusedTensorOpsTest, UntileHyperConnectionWeights) {
   constexpr int64_t kInputElements = 160ll * 20480;

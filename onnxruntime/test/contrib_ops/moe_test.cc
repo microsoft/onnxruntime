@@ -2542,8 +2542,8 @@ template <typename ElementType>
 static void RunQMoEPackedPrefillRoutingTest(int64_t num_rows, int64_t hidden_size, int64_t inter_size,
                                             int64_t top_k, bool skewed, bool scale_initializers = true,
                                             int64_t row_tile_size = 0, int64_t block_size = 64,
-                                            int64_t fc1_bits = 2, int64_t fc2_bits = 4) {
-  constexpr int64_t num_experts = 8;
+                                            int64_t fc1_bits = 2, int64_t fc2_bits = 4,
+                                            int64_t num_experts = 8) {
   constexpr float alpha = 1.5f;
   constexpr float beta = 0.125f;
   constexpr float limit = 0.5f;
@@ -2556,7 +2556,7 @@ static void RunQMoEPackedPrefillRoutingTest(int64_t num_rows, int64_t hidden_siz
     return 0.125f * static_cast<float>(expert + 1) +
            0.015625f * static_cast<float>(column % 5) + 0.03125f * static_cast<float>(block);
   };
-  const auto make_weights = [](int64_t rows, int64_t columns, int64_t bits, bool interleaved) {
+  const auto make_weights = [num_experts](int64_t rows, int64_t columns, int64_t bits, bool interleaved) {
     const int64_t pack_size = 8 / bits;
     const uint8_t zero = static_cast<uint8_t>(1u << (bits - 1));
     std::vector<uint8_t> weights(static_cast<size_t>(num_experts * rows * columns / pack_size), 0);
@@ -2684,6 +2684,7 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRouting) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "SM80 or later is required for packed INT2 prefill.";
   }
+
   ScopedEnvironmentVariables scoped_env_vars{
       {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
   for (int64_t top_k : {1, 2, 4}) {
@@ -2692,6 +2693,20 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRouting) {
       RunQMoEPackedPrefillRoutingTest<MLFloat16>(33, 512, 256, top_k, skewed);
 #if defined(ENABLE_BF16)
       RunQMoEPackedPrefillRoutingTest<BFloat16>(257, 512, 256, top_k, skewed);
+#endif
+    }
+  }
+}
+
+TEST(MoETest, QMoETest_CudaColumnTiledFinalize) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80 or later is required for packed INT2 decode.";
+  }
+  for (int64_t rows : {1, 2}) {
+    for (int64_t hidden : {2560, 2624}) {
+      RunQMoEPackedPrefillRoutingTest<MLFloat16>(rows, hidden, 128, 10, false, true, 0, 64, 2, 4, 16);
+#if defined(ENABLE_BF16)
+      RunQMoEPackedPrefillRoutingTest<BFloat16>(rows, hidden, 128, 10, false, true, 0, 64, 2, 4, 16);
 #endif
     }
   }

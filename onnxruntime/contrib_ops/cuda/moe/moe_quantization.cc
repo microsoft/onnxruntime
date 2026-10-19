@@ -2460,7 +2460,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     IAllocatorUniquePtr<int> blocked_expert_counts;
     IAllocatorUniquePtr<int> blocked_expert_counts_cumsum;
     IAllocatorUniquePtr<int> blocked_row_to_unpermuted_row;
-    if (!ck::fusedBuildExpertMapsSortFirstToken(
+    if (!TryLaunchSmallDecodeExpertMaps(
+            expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
+            static_cast<int>(num_rows), num_experts, static_cast<int>(k_), stream) &&
+        !ck::fusedBuildExpertMapsSortFirstToken(
             expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
             num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream)) {
       const int64_t num_tokens_per_block = ck::computeNumTokensPerBlock(num_rows, num_experts);
@@ -2629,6 +2632,16 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       }
 
       launch_fc1(fc1_config);
+      if (use_raw_nvfp4_gemv && nvfp4_weights_row_major_ &&
+          parallelism_config.tp_size == 1 && parallelism_config.ep_size == 1 &&
+          gemv::try_launch_moe_gemv_nvfp4_fused_finalize<T>(
+              static_cast<const T*>(p_fc1_buf.get()), gemv_fc2_weight, gemv_fc2_raw_block_scales,
+              gemv_fc2_raw_global_scales, static_cast<const T*>(fc2_bias),
+              static_cast<T*>(output->MutableDataRaw()), unpermuted_row_to_permuted_row,
+              p_exp, expert_scales, num_experts, static_cast<int>(num_rows), static_cast<int>(k_),
+              static_cast<int>(hidden), static_cast<int>(inter), stream)) {
+        return;
+      }
       launch_fc2(fc2_config);
       ck::finalizeMoeRoutingKernelLauncher<T, T, T>(
           static_cast<const T*>(p_fc2_buf.get()), static_cast<T*>(output->MutableDataRaw()),

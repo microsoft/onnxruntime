@@ -220,6 +220,42 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
   }
 }
 
+__global__ void SmallDecodeExpertMapsKernel(
+    const int* indices, int* row_to_source, int* source_to_row, int* sorted_experts,
+    int64_t* expert_offsets, int rows, int experts, int k) {
+  __shared__ int selected[32];
+  const int expanded = rows * k;
+  if (threadIdx.x < expanded) selected[threadIdx.x] = indices[threadIdx.x];
+  __syncthreads();
+  if (threadIdx.x < expanded) {
+    const int original = threadIdx.x;
+    const int expert = selected[original];
+    int rank = 0;
+    for (int i = 0; i < expanded; ++i) {
+      rank += selected[i] < expert || (selected[i] == expert && i < original);
+    }
+    const int source = (original % k) * rows + original / k;
+    row_to_source[rank] = source;
+    source_to_row[source] = rank;
+    sorted_experts[rank] = expert;
+  }
+  for (int expert = threadIdx.x; expert <= experts; expert += blockDim.x) {
+    int count = 0;
+    for (int i = 0; i < expanded; ++i) count += selected[i] < expert;
+    expert_offsets[expert] = count;
+  }
+}
+
+bool TryLaunchSmallDecodeExpertMaps(
+    const int* indices, int* row_to_source, int* source_to_row, int* sorted_experts,
+    int64_t* expert_offsets, int rows, int experts, int k, cudaStream_t stream) {
+  if (rows < 1 || rows > 2 || experts < 1 || experts > 512 || k < 1 || k > 16 || k > experts) return false;
+  SmallDecodeExpertMapsKernel<<<1, 128, 0, stream>>>(
+      indices, row_to_source, source_to_row, sorted_experts, expert_offsets, rows, experts, k);
+  CUDA_CALL_THROW(cudaGetLastError());
+  return true;
+}
+
 // Warp-bitonic softmax + top-k for num_experts <= 32. Each warp handles one
 // row, with lane `l` owning expert `l`. The whole softmax reduction and the
 // sort are done with warp shuffles (no shared memory). This is the fastest path

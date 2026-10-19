@@ -1158,6 +1158,12 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels_fp16_uint2.cu"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_kernels.cu"
       )
+      if (TARGET onnxruntime_providers_cuda_plugin_llm_fp4)
+        list(APPEND onnxruntime_providers_cuda_plugin_ut_impl_src
+          "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.cu")
+        set_property(SOURCE "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/qmoe_fp8_compaction_test.cc"
+          APPEND PROPERTY COMPILE_DEFINITIONS ORT_TEST_NVFP4_GEMV)
+      endif()
     endif()
 
     onnxruntime_add_object_library(onnxruntime_providers_cuda_plugin_ut_impl ${onnxruntime_providers_cuda_plugin_ut_impl_src})
