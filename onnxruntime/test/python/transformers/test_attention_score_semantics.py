@@ -343,3 +343,50 @@ def test_sibling_scale_bindings_are_not_interchangeable(use_mha, condition):
     wrapped = optimize(model, use_mha)
     np.testing.assert_allclose(native(wrapped.model, feeds), reference, rtol=1e-5, atol=1e-5)
     assert not wrapped.get_nodes_by_op_type("MultiHeadAttention" if use_mha else "Attention")
+
+
+@pytest.mark.parametrize("use_mha", [False, True])
+@pytest.mark.parametrize("override", [None, -2.0, 0.0, 2.0])
+def test_runtime_mask_filter_preserves_input_and_values(use_mha, override):
+    model, feeds, _ = make("control")
+    model.graph.input.append(helper.make_tensor_value_info("mul_weight", TensorProto.FLOAT, [1]))
+    if override is not None:
+        feeds["mul_weight"] = np.array([override], np.float32)
+    onnx.checker.check_model(model)
+    expected = native(model, feeds)
+    wrapped = optimize(model, use_mha)
+    assert "mul_weight" in {value.name for value in wrapped.model.graph.input}
+    np.testing.assert_allclose(native(wrapped.model, feeds), expected, rtol=1e-5, atol=1e-5)
+    assert not wrapped.get_nodes_by_op_type("MultiHeadAttention" if use_mha else "Attention")
+
+
+@pytest.mark.parametrize("use_mha", [False, True])
+@pytest.mark.parametrize("condition", [False, True])
+def test_sibling_mask_bindings_are_not_interchangeable(use_mha, condition):
+    models, inputs, expected = [], [], []
+    feeds = {}
+    for prefix, mask_value in [("then_", -2), ("else_", -10000)]:
+        model, values, reference = make("control", mask_value=mask_value)
+        prefix_graph(model.graph, prefix, shared=["mul_weight"])
+        inputs.extend(model.graph.input)
+        del model.graph.input[:]
+        models.append(model)
+        feeds.update({prefix + key: value for key, value in values.items()})
+        expected.append(reference)
+    inputs.append(helper.make_tensor_value_info("condition", TensorProto.BOOL, []))
+    feeds["condition"] = np.array(condition)
+    graph = helper.make_graph(
+        [helper.make_node("If", ["condition"], ["Y"], then_branch=models[0].graph, else_branch=models[1].graph)],
+        "sibling_mask_scopes",
+        inputs,
+        [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 2, 4])],
+    )
+    model = helper.make_model(
+        graph, opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)], ir_version=8
+    )
+    reference = expected[0 if condition else 1]
+    onnx.checker.check_model(model)
+    np.testing.assert_allclose(native(model, feeds), reference, rtol=1e-5, atol=1e-5)
+    wrapped = optimize(model, use_mha)
+    np.testing.assert_allclose(native(wrapped.model, feeds), reference, rtol=1e-5, atol=1e-5)
+    assert not wrapped.get_nodes_by_op_type("MultiHeadAttention" if use_mha else "Attention")
