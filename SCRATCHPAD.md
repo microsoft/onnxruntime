@@ -13,7 +13,7 @@ Compressed project memory. This is not the execution plan.
   M01. `SPEC.md` and the execution plan are approved.
 - M01 is complete and published as ready-for-review PR #11:
   https://github.com/onnxruntime/ort-state/pull/11
-- No agents launched. M01-M08 are complete; M09-M24 remain pending.
+- No agents launched. M01-M08 and M09a are complete; M09b/M10-M24 remain pending.
   Runtime production code starts with M02.
 - Future tracking: keep `TASKS.md` checklist current and record compressed
   discoveries/agent learnings here.
@@ -845,3 +845,8 @@ Compressed project memory. This is not the execution plan.
 - A2-A6 verified; final style/traceability/publication being finished. No new
   dependency installed, no driver settings changed; sudo was used ONLY for
   user-authorized profiling. Pause before M09b after publishing M09a.
+- M09a implementation73066ddcbe published ready-for-review as PR #22 on #21:
+  https://github.com/onnxruntime/ort-state/pull/22
+  All gates complete, no merges. Macro M09 remains incomplete; M09b is NOT
+  authorized or implemented. Exact host83/device25 coverage and actual scalar-
+  transfer proof are retained in session files/TASKS; no sampling coverage waiver.

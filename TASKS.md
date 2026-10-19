@@ -1,7 +1,7 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M08 complete and published for review; M09a authorized
-and in progress; M09b requires separate authorization; M10-M24 pending.
+**Status:** Approved; M01-M08 and M09a complete and published for review;
+M09b requires separate authorization; M10-M24 pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -18,7 +18,7 @@ M05's requested generation-folder layout follow-up is complete in the same PR.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M08 are complete, M09a is in progress, and M09b/M10-M24 are pending. Check tasks when their
+M01-M08 and M09a are complete; M09b/M10-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -98,7 +98,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M08 are **complete**; M09a is **in progress** and M09b/M10-M24 are **pending**.
+M01-M08 and M09a are **complete**; M09b/M10-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -1829,7 +1829,7 @@ M09a only. Pause before M09b.
 The user chose CUDA plugin only, GPU-resident exposed logits, token/status-only
 readback and an M09a/M09b split, with no additional requirements. Branch
 `state/m09a-cuda-plugin-greedy` is based on M08b `2b6388fe5b`. The standalone
-backend and its host/device coverage are verified; publication is pending.
+backend is verified and published ready for review in PR #22.
 M09b remains unauthorized and no loop/chain GPU sampling is claimed.
 
 - [x] Implement CUDA greedy reduction/selection with CPU-equivalent documented
@@ -1886,7 +1886,7 @@ verified M08 resource/device baseline. Stack on M08b PR #21 (`2b6388fe5b`).
   Intersect against the M09a base, report both denominators and close all gaps.
   Identify reused unchanged kernels separately; do not treat M08's copy-only
   result as M09 coverage evidence.
-- [ ] A7: Finish CPU/CUDA/legacy regressions, sanitizer, ABI/style/public SDK
+- [x] A7: Finish CPU/CUDA/legacy regressions, sanitizer, ABI/style/public SDK
   examples and representative latency/copy measurement. Record exact commands/
   counts/coverage/limits, then publish an independently reviewable ready PR.
   Pause before M09b unless its execution was separately authorized.
@@ -1979,7 +1979,10 @@ CUDA_VISIBLE_DEVICES=0 "$CUDA_HOME/bin/ncu" --section SourceCounters \
 # source counters that distinguish both executed/unexecuted controls.
 ```
 
-**M09a verification complete; publication pending:**
+**M09a complete:** Implementation `73066ddcbe`, published ready for human review
+as [PR #22](https://github.com/onnxruntime/ort-state/pull/22), stacked on M08b
+PR #21. Macro M09 remains incomplete until M09b is separately authorized and
+verified. No PR has been merged.
 
 - Implemented a two-stage CUDA reduction with CUB BlockReduce: a grid-stride
   whole-logits NaN scan and selected-row argmax produce bounded block partials,

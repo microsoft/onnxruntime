@@ -1668,7 +1668,8 @@ completed interview.
 The user chose CUDA plugin EP only, GPU-resident exposed logits under explicit
 GPU sampling, token/status-only readback, and an M09a/M09b delivery split.
 Additional specification inputs: None. The user approved the detailed plan
-without changes and authorized M09a only. Pause before M09b for authorization.
+without changes and authorized M09a only. M09a is verified and published ready
+for review in PR #22; pause before M09b for authorization.
 
 ### I.1 Scope and preserved behavior
 
