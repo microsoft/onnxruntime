@@ -896,37 +896,33 @@ This version of the operator has been available since version 1 of the 'com.micr
   performed in float32 and the result is converted to T.
   With use_onnx_arithmetic=1, compute FP32 square, mean, epsilon addition, square
   root, division, and scale multiplication with separate rounding boundaries.
-  CUDA reuses the standard fast ReduceMean summation order, including its scalar-result
-  path; it does not substitute reciprocal square root or change the reduction tree.
-  For multiple rows, FP32-rounded squaring is performed during the reduction load rather
-  than materializing a separate FP32 square tensor.
-  Optional Y_fp32 losslessly widens the already T-rounded Y and requires
-  use_onnx_arithmetic=1. WebGPU supports only the default mode without Y_fp32.
-  CUDA-only version 2 can select a contiguous last-axis interval directly from
-  packed rows using input_start and input_width. It retains the same reduction
-  order over the selected width and avoids materializing a Slice tensor.
+  CUDA reuses the standard fast last-axis ReduceMean summation order by default.
+  Deterministic CUDA sessions instead use a fixed-order reduction, which may
+  round differently from the default reduction or deterministic ReduceMean.
+  This mode does not substitute reciprocal square root.
+  Optional Y_fp32 losslessly widens the already T-rounded Y to float32; it does
+  not bypass the output rounding boundary and requires use_onnx_arithmetic=1.
+  WebGPU currently supports only the default mode without Y_fp32.
 
 #### Version
 
-Version 1 retains the original input layout. Version 2 adds CUDA-only packed-input
-selection; CPU and WebGPU implement version 1 only.
+This version of the operator has been available since version 2 of the 'com.microsoft' operator set.
+
+Other versions of this operator: com.microsoft.BranchwiseRMSNorm-1
 
 #### Attributes
 
 <dl>
-<dt><tt>epsilon</tt> : float</dt>
+<dt><tt>epsilon</tt> : float (default is 1e-05)</dt>
 <dd>Epsilon added before reciprocal square root.</dd>
-<dt><tt>input_start</tt> : int (default is 0, version 2)</dt>
-<dd>Nonnegative starting offset in the last input dimension. A nonzero offset requires input_width.</dd>
-<dt><tt>input_width</tt> : int (default is 0, version 2)</dt>
-<dd>Width selected before normalization. Zero retains the full input. A positive width
-requires use_onnx_arithmetic=1 and num_branches=0, and the selected interval must fit
-within the last input dimension.</dd>
+<dt><tt>input_start</tt> : int (default is 0)</dt>
+<dd>CUDA-only starting offset in the last input dimension.</dd>
+<dt><tt>input_width</tt> : int (default is 0)</dt>
+<dd>CUDA-only width selected from the last input dimension before normalization. Zero retains the full input. Requires grouped input and use_onnx_arithmetic=1. Outputs retain the leading dimensions and use this last dimension.</dd>
 <dt><tt>num_branches</tt> : int (default is 0)</dt>
 <dd>Number of branches for flattened input. Omit or set to zero for grouped input.</dd>
 <dt><tt>use_onnx_arithmetic</tt> : int (default is 0)</dt>
-<dd>Use explicit FP32 mean/sqrt/divide/multiply arithmetic instead of reciprocal RMS.
-Supported values are 0 (default) and 1.</dd>
+<dd>Use explicit FP32 mean/sqrt/divide/multiply arithmetic instead of reciprocal RMS. Supported values are 0 (default) and 1.</dd>
 </dl>
 
 #### Inputs (1 - 2)
@@ -938,25 +934,24 @@ Supported values are 0 (default) and 1.</dd>
 <dd>Optional scale with shape (C * H), (C, H), or (H).</dd>
 </dl>
 
-#### Outputs
+#### Outputs (1 - 2)
 
 <dl>
 <dt><tt>Y</tt> : T</dt>
-<dd>RMS-normalized output with the same shape as X, except that version 2 with
-positive input_width replaces the last dimension with input_width.</dd>
+<dd>RMS-normalized output with the same shape as X.</dd>
 <dt><tt>Y_fp32</tt> (optional) : F</dt>
-<dd>Float32 widening of the already T-rounded Y. Requires use_onnx_arithmetic=1.</dd>
+<dd>Optional float32 widening of the already T-rounded Y. Requires use_onnx_arithmetic=1.</dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
-<dt><tt>F</tt> : tensor(float)</dt>
-<dd>Widened output is float32.</dd>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output to floating-point tensors.</dd>
 <dt><tt>M</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain scale to floating-point tensors.</dd>
+<dt><tt>F</tt> : tensor(float)</dt>
+<dd>Widened output is float32.</dd>
 </dl>
 
 
@@ -7199,18 +7194,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices
   that are multiplied to query and key before the inner product of query and key is taken.
-  Version 2 adds optional FP32 arithmetic with activation-type storage. With
-  use_fp32_arithmetic=1, input and cache values are widened inside the CUDA kernel,
-  each multiplication and addition is rounded separately in float32, and only the
-  final result is converted back to the input type. This preserves a
-  Cast-to-float -> float RotaryEmbedding -> Cast-to-input-type chain.
-  Version 1 and the default arithmetic are unchanged.
 
 #### Version
 
-The latest version is 2 of the 'com.microsoft' operator set. Version 2 is currently
-implemented by CUDA only; other providers retain version 1 and cannot silently
-execute version 2 with legacy low-precision arithmetic.
+This version of the operator has been available since version 2 of the 'com.microsoft' operator set.
+
+Other versions of this operator: com.microsoft.RotaryEmbedding-1
 
 #### Attributes
 
@@ -7225,10 +7214,8 @@ execute version 2 with legacy low-precision arithmetic.
 <dd>Rotary embedding dimension. Default value is 0.</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1.0</dd>
-<dt><tt>use_fp32_arithmetic</tt> : int (default is 0; version 2 only)</dt>
-<dd>Widen input and cache values, perform separately rounded float32 multiplication
-and addition, then round the output once to the input type. Supported values are
-0 (legacy arithmetic) and 1.</dd>
+<dt><tt>use_fp32_arithmetic</tt> : int (default is 0)</dt>
+<dd>Widen input and cache values to float32, round each multiplication and addition in float32, then convert the result to the input type. Values are 0 (legacy arithmetic) or 1. Currently supported by CUDA only.</dd>
 </dl>
 
 #### Inputs

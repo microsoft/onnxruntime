@@ -91,7 +91,9 @@ Status BranchwiseRMSNorm<T>::ComputeInternal(OpKernelContext* context) const {
                       "ONNX arithmetic requires the row count to fit in int32");
     const auto buffer_size = compute_reduce_matrix_columns_buffer_size<float>(
         static_cast<int>(groups), static_cast<int>(params.hidden));
-    auto squares = GetScratchBuffer<float>(groups == 1 ? output_shape.Size() : 0, GetComputeStream(context));
+    const bool deterministic_compute = context->GetUseDeterministicCompute();
+    auto squares = GetScratchBuffer<float>(groups == 1 && !deterministic_compute ? output_shape.Size() : 0,
+                                           GetComputeStream(context));
     auto sums = GetScratchBuffer<float>(groups, GetComputeStream(context));
     auto buffer = GetScratchBuffer<uint8_t>(buffer_size, GetComputeStream(context));
     return LaunchStandardBranchwiseRMSNorm<CudaT>(
@@ -101,7 +103,7 @@ Status BranchwiseRMSNorm<T>::ComputeInternal(OpKernelContext* context) const {
         scale == nullptr || scale->Shape().Size() == params.hidden, epsilon_,
         widened == nullptr ? nullptr : widened->MutableData<float>(),
         squares.get(), sums.get(), buffer.get(), buffer_size,
-        static_cast<int>(input_width_ == 0 ? params.hidden : input_stride));
+        static_cast<int>(input_width_ == 0 ? params.hidden : input_stride), deterministic_compute);
   }
   return LaunchMixedScaleBranchwiseRMSNorm<CudaT>(
       Stream(context), x_data, scale == nullptr ? nullptr : scale->DataRaw(),

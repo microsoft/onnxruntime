@@ -280,6 +280,122 @@ TEST(HyperConnectionOpsTest, BranchwiseRMSNormPackedBFloat16Exact) {
   TestStandardRMSArithmetic<BFloat16>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, true);
 }
 
+template <typename T, typename ScaleT>
+void TestStandardRMSBranchScales(int type) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA is required for exact branch scales";
+  constexpr int outer = 2;
+  constexpr int branches = 3;
+  constexpr float epsilon = 1e-6f;
+  for (int width : {31, 128, 513}) {
+    for (bool flattened_scale : {false, true}) {
+      SCOPED_TRACE(width);
+      SCOPED_TRACE(flattened_scale);
+      std::vector<T> input(outer * branches * width);
+      std::vector<ScaleT> scale(branches * width);
+      std::vector<float> float_scale(scale.size());
+      for (size_t i = 0; i < input.size(); ++i) input[i] = T(std::sin(static_cast<float>(i) * 0.71f) * 9.0f);
+      for (int branch = 0; branch < branches; ++branch) {
+        for (int h = 0; h < width; ++h) {
+          const int index = branch * width + h;
+          scale[index] = ScaleT((branch + 1) * 0.7f + (h % 17) * 0.013f);
+          if constexpr (std::is_same_v<ScaleT, float>) {
+            float_scale[index] = scale[index];
+          } else {
+            float_scale[index] = scale[index].ToFloat();
+          }
+        }
+      }
+      const std::vector<int64_t> shape{outer, branches, width};
+      StandardRMSChainTester reference(type, epsilon);
+      reference.AddInput<T>("X", shape, input);
+      reference.AddInput<float>("scale", {branches, width}, float_scale);
+      reference.AddOutput<T>("Y", shape, std::vector<T>(input.size()));
+      reference.AddOutput<float>("Y_fp32", shape, std::vector<float>(input.size()));
+      OpTester fused("BranchwiseRMSNorm", 2, kMSDomain, false);
+      fused.AddAttribute<int64_t>("use_onnx_arithmetic", 1);
+      fused.AddAttribute<float>("epsilon", epsilon);
+      fused.AddInput<T>("X", shape, input);
+      fused.AddInput<ScaleT>("scale", flattened_scale ? std::vector<int64_t>{branches * width} : std::vector<int64_t>{branches, width},
+                             scale);
+      fused.AddOutput<T>("Y", shape, std::vector<T>(input.size()));
+      fused.AddOutput<float>("Y_fp32", shape, std::vector<float>(input.size()));
+      std::vector<OrtValue> expected;
+      for (OpTester* tester : {static_cast<OpTester*>(&reference), &fused}) {
+        SessionOptions options;
+        options.graph_optimization_level = TransformerLevel::Default;
+        std::vector<std::unique_ptr<IExecutionProvider>> providers;
+        providers.push_back(DefaultCudaExecutionProvider());
+        tester->Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+        const auto& fetches = tester->GetFetches();
+        ASSERT_EQ(fetches.size(), 2u);
+        if (expected.empty()) {
+          expected = fetches;
+        } else {
+          for (size_t output = 0; output < fetches.size(); ++output) {
+            const auto& before = expected[output].Get<Tensor>();
+            const auto& after = fetches[output].Get<Tensor>();
+            ASSERT_EQ(before.SizeInBytes(), after.SizeInBytes());
+            EXPECT_EQ(std::memcmp(before.DataRaw(), after.DataRaw(), before.SizeInBytes()), 0) << output;
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(HyperConnectionOpsTest, BranchwiseRMSNormCudaExactBranchScales) {
+  TestStandardRMSBranchScales<float, float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  TestStandardRMSBranchScales<float, MLFloat16>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  TestStandardRMSBranchScales<float, BFloat16>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  TestStandardRMSBranchScales<MLFloat16, float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  TestStandardRMSBranchScales<MLFloat16, MLFloat16>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  TestStandardRMSBranchScales<MLFloat16, BFloat16>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  TestStandardRMSBranchScales<BFloat16, float>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
+  TestStandardRMSBranchScales<BFloat16, MLFloat16>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
+  TestStandardRMSBranchScales<BFloat16, BFloat16>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
+}
+
+TEST(HyperConnectionOpsTest, BranchwiseRMSNormWideSingleRowDeterministic) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA is required for deterministic RMS";
+  constexpr int width = 8192;
+  constexpr float epsilon = 1e-6f;
+  std::vector<float> input(width);
+  double square_sum = 0.0;
+  for (int i = 0; i < width; ++i) {
+    input[i] = std::sin(static_cast<float>(i) * 0.71f) * (1 + i % 17);
+    const float square = input[i] * input[i];
+    square_sum += square;
+  }
+  const float rms = std::sqrt(static_cast<float>(square_sum / width) + epsilon);
+  std::vector<float> expected(width);
+  for (int i = 0; i < width; ++i) expected[i] = input[i] / rms;
+  std::vector<float> first;
+  for (int run = 0; run < 10; ++run) {
+    OpTester tester("BranchwiseRMSNorm", 2, kMSDomain);
+    tester.AddAttribute<int64_t>("use_onnx_arithmetic", 1);
+    tester.AddAttribute<float>("epsilon", epsilon);
+    tester.AddInput<float>("X", {1, 1, width}, input);
+    tester.AddOptionalInputEdge<float>();
+    tester.AddOutput<float>("Y", {1, 1, width}, expected, false, 1e-5f, 1e-5f);
+    tester.AddOutput<float>("Y_fp32", {1, 1, width}, expected, false, 1e-5f, 1e-5f);
+    SessionOptions options;
+    options.use_deterministic_compute = true;
+    options.graph_optimization_level = TransformerLevel::Default;
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+    const auto& fetches = tester.GetFetches();
+    ASSERT_EQ(fetches.size(), 2u);
+    const float* actual = fetches[0].Get<Tensor>().Data<float>();
+    if (first.empty()) {
+      first.assign(actual, actual + width);
+    } else {
+      EXPECT_EQ(std::memcmp(first.data(), actual, width * sizeof(float)), 0);
+    }
+    EXPECT_EQ(std::memcmp(actual, fetches[1].Get<Tensor>().Data<float>(), width * sizeof(float)), 0);
+  }
+}
+
 TEST(HyperConnectionOpsTest, BranchwiseRMSNormPackedRejectsInvalidSlice) {
   if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA is required for packed RMS";
   for (const auto& [start, width, mode, branches, message] :
