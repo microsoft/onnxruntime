@@ -78,6 +78,9 @@ class ComputeContextBase {
   inline bool HasFeature(wgpu::FeatureName feature) const {
     return webgpu_context_.DeviceHasFeature(feature);
   }
+  inline bool HasWGSLLanguageFeature(wgpu::WGSLLanguageFeatureName feature) const {
+    return webgpu_context_.Instance().HasWGSLLanguageFeature(feature);
+  }
   inline const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const {
     return webgpu_context_.SubgroupMatrixConfigs();
   }
