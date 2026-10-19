@@ -10,6 +10,7 @@ import onnx.numpy_helper as onnx_numpy_helper
 from onnx.onnx_pb import ModelProto
 
 from .quant_utils import attribute_to_kwarg, find_by_name
+from onnxruntime.tools.onnx_model_utils import update_tensor_metadata_for_permutation
 
 
 def _clean_initializers_helper(graph, model):
@@ -390,6 +391,8 @@ class ONNXModel:
                                     Bs_graph.input.remove(input)
                                     break
                             Bs_graph.initializer.extend([B_trans])
+                            # Update metadata for the transposed initializer to avoid shape inference mismatch
+                            update_tensor_metadata_for_permutation(Bs_graph, inputB, [1, 0])
                         else:
                             inputB += "_Transposed"  # noqa: N806
                             transpose_node = onnx_helper.make_node(

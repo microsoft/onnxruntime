@@ -231,6 +231,96 @@ def make_input_shape_fixed(graph: onnx.GraphProto, input_name: str, fixed_shape:
     )
 
 
+def update_tensor_metadata_for_permutation(
+    graph: onnx.GraphProto,
+    tensor_name: str,
+    perm: list[int],
+    *,
+    strict_mode: bool = False,
+) -> int:
+    """
+    Update shape metadata for a specific tensor by applying a permutation to its dimensions.
+
+    This updates existing annotations (value_info, inputs, outputs) for the tensor named `tensor_name` in `graph`.
+    It does not create new value_info entries. If the shape rank does not match the length of `perm`, behavior depends
+    on `strict_mode`:
+      - strict_mode=True: raises ValueError
+      - strict_mode=False: no-op for that entry
+
+    The function swaps entire Dimension messages to correctly preserve whether a dim was concrete (dim_value) or symbolic
+    (dim_param). Returns the number of annotations updated.
+
+    :param graph: GraphProto containing the tensor metadata to update
+    :param tensor_name: Name of the tensor whose metadata should be permuted
+    :param perm: Permutation of dimension indices. Must be a permutation of range(len(perm)).
+    :param strict_mode: If True, validates inputs and rank strictly and raises on invalid cases. If False, invalid
+                        inputs are treated as no-ops.
+    :return: Count of annotations updated
+    """
+
+    # validate perm structure
+    if not isinstance(perm, (list, tuple)) or not all(isinstance(p, int) for p in perm):
+        # Programming error regardless of strictness
+        raise ValueError("perm must be a list of integers")
+    k = len(perm)
+    if k == 0:
+        return 0
+    if sorted(perm) != list(range(k)):
+        if strict_mode:
+            raise ValueError("perm must be a permutation of 0..len(perm)-1")
+        return 0
+
+    def _permute_dims(vinfo: onnx.ValueInfoProto) -> bool:
+        if not vinfo.type.HasField("tensor_type"):
+            return False
+        ttype = vinfo.type.tensor_type
+        if not ttype.HasField("shape"):
+            return False
+        dims = ttype.shape.dim
+        rank = len(dims)
+        if rank < k:
+            if strict_mode:
+                raise ValueError(
+                    f"Rank ({rank}) smaller than permutation length ({k}) for tensor '{vinfo.name}'"
+                )
+            return False
+        if strict_mode and rank != k:
+            raise ValueError(
+                f"Rank ({rank}) differs from permutation length ({k}) for tensor '{vinfo.name}'"
+            )
+        # Require indices within range for the actual rank
+        if any(p >= rank or p < 0 for p in perm):
+            if strict_mode:
+                raise ValueError(f"Permutation indices out of range for rank {rank}: {perm}")
+            return False
+
+        # Swap entire Dimension messages per perm
+        copied = [onnx.TensorShapeProto.Dimension() for _ in range(rank)]
+        for i in range(rank):
+            copied[i].CopyFrom(dims[i])
+        for i, p in enumerate(perm):
+            dims[i].CopyFrom(copied[p])
+        return True
+
+    updated = 0
+    for vi in graph.value_info:
+        if vi.name == tensor_name:
+            if _permute_dims(vi):
+                updated += 1
+
+    for gi in graph.input:
+        if gi.name == tensor_name:
+            if _permute_dims(gi):
+                updated += 1
+
+    for go in graph.output:
+        if go.name == tensor_name:
+            if _permute_dims(go):
+                updated += 1
+
+    return updated
+
+
 def fix_output_shapes(model: onnx.ModelProto):
     """
     Update the output shapesof a model where the input shape/s were made fixed, if possible.
