@@ -560,27 +560,13 @@ void run(
     cudnnHandle_t handle,
     Stream* stream,
     AllocatorPtr allocator) {
-  // cuDNN requires both seq_len_q and seq_len_kv to be present when a padding mask is used. When the
-  // caller provides only one side, synthesize the other as the full (unpadded) sequence length so it
-  // behaves as a no-op padding mask on that side.
-  IAllocatorUniquePtr<int> synthesized_seq_len_q;
-  IAllocatorUniquePtr<int> synthesized_seq_len_kv;
-  if (mask_sequence_lengths_q != nullptr || mask_sequence_lengths_kv != nullptr) {
-    if (mask_sequence_lengths_q == nullptr) {
-      synthesized_seq_len_q = CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_q);
-      mask_sequence_lengths_q = synthesized_seq_len_q.get();
-    }
-    if (mask_sequence_lengths_kv == nullptr) {
-      synthesized_seq_len_kv = CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_kv);
-      mask_sequence_lengths_kv = synthesized_seq_len_kv.get();
-    }
-  }
-
-  // After the synthesis above, the q and kv masks are either both set or both null.
+  // The graph has a padding mask when either side is given; the missing side is synthesized below,
+  // after the graph is known to be buildable.
+  const bool has_padding_mask = mask_sequence_lengths_q != nullptr || mask_sequence_lengths_kv != nullptr;
   GraphParams params;
   FillGraphParams(params, batch_size, num_heads_q, num_heads_kv, head_size_qk, head_size_v,
                   sequence_length_q, sequence_length_kv, scale, is_causal, is_bf16, attn_bias != nullptr,
-                  broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1, mask_sequence_lengths_kv != nullptr,
+                  broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1, has_padding_mask,
                   sliding_window, qkv_format, handle);
 
   std::shared_ptr<fe::graph::Graph> mha_graph;
@@ -599,6 +585,22 @@ void run(
               " sequence_length_kv:", sequence_length_kv, " is_causal:", params.is_causal, " is_bf16:", is_bf16,
               " has_bias:", params.has_bias, " has_padding_mask:", params.has_padding_mask_q,
               " sliding_window:", sliding_window, " cudnn version:", cudnnGetVersion());
+  }
+
+  // cuDNN requires both seq_len_q and seq_len_kv to be present when a padding mask is used. When the
+  // caller provides only one side, synthesize the other as the full (unpadded) sequence length so it
+  // behaves as a no-op padding mask on that side.
+  IAllocatorUniquePtr<int> synthesized_seq_len_q;
+  IAllocatorUniquePtr<int> synthesized_seq_len_kv;
+  if (has_padding_mask) {
+    if (mask_sequence_lengths_q == nullptr) {
+      synthesized_seq_len_q = CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_q);
+      mask_sequence_lengths_q = synthesized_seq_len_q.get();
+    }
+    if (mask_sequence_lengths_kv == nullptr) {
+      synthesized_seq_len_kv = CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_kv);
+      mask_sequence_lengths_kv = synthesized_seq_len_kv.get();
+    }
   }
 
   std::unordered_map<fe::graph::Tensor_attributes::uid_t, void*> variant_pack = {

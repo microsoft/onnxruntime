@@ -821,7 +821,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
         /*sliding_window=*/0,
         AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH,
         GetCudnnHandle(context),
-        GetComputeStream(context));
+        ort_stream.get());
     if (reject_cudnn_sdpa_graph_for_test_) {
       use_cudnn_sdpa = false;
     }
