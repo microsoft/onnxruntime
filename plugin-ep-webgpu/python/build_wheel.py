@@ -34,7 +34,6 @@ BINARY_PATTERNS = [
     "libonnxruntime_providers_webgpu.so",
     "libonnxruntime_providers_webgpu.dylib",
     # DXC dependencies (Windows)
-    "dxil.dll",
     "dxcompiler.dll",
     # Dawn shared library (if built as shared)
     "webgpu_dawn.dll",

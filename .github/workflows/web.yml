@@ -56,6 +56,7 @@ jobs:
       extra_build_args: "--target onnxruntime_webassembly --skip_tests --disable_rtti"
       build_jsep: true
       build_webgpu: true
+      build_webgpu_static_plugin: true
 
   wasm_Release_static_library:
     needs: precheck

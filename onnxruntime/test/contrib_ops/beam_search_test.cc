@@ -127,6 +127,19 @@ TEST(BeamSearchTest, ExpandBufferSupportsRankGreaterThanFour) {
   EXPECT_EQ(expanded.Get<Tensor>().Shape(), TensorShape({2, 2, 3, 4, 5}));
 }
 
+TEST(BeamSearchTest, ExpandBufferRejectsSequenceLengthExceedingMaximum) {
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  OrtValue input;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({1, 1, 5, 1}), allocator, input);
+
+  OrtValue expanded;
+  const Status status = contrib::GenerationCpuDeviceHelper::ExpandBuffer<float>(
+      nullptr, input, 2, allocator, expanded, false, 4);
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Input sequence length (5) exceeds max sequence length (4)"));
+}
+
 namespace {
 
 class TestSubgraph final : public contrib::transformers::Subgraph {

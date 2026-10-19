@@ -51,13 +51,19 @@ import sys
 import threading
 import unittest
 import warnings
+from unittest.mock import patch
 
 import numpy
 import torch
 from onnx import TensorProto, helper
 from parameterized import parameterized
 
-from onnxruntime import InferenceSession, OrtValue, SessionOptions, get_available_providers
+from onnxruntime import (
+    InferenceSession,
+    OrtValue,
+    SessionOptions,
+    get_available_providers,
+)
 
 # #################################################################################################
 #  Helper Functions
@@ -231,6 +237,43 @@ def require_cudnn_sdpa():
     return os.environ.get("ORT_TEST_REQUIRE_CUDNN_SDPA") == "1"
 
 
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _parse_attention_kernel_options(captured_text):
+    """Parse the single AttentionKernelOptions line emitted while creating this session."""
+    option_lines = [line for line in captured_text.splitlines() if "AttentionKernelOptions:" in line]
+    if len(option_lines) != 1:
+        raise ValueError(f"expected exactly one AttentionKernelOptions line, found {len(option_lines)}")
+
+    body = option_lines[0].split("AttentionKernelOptions:", 1)[1]
+    tokens = _ANSI_ESCAPE.sub("", body).strip().split()
+    if not tokens:
+        raise ValueError("AttentionKernelOptions line contains no options")
+
+    options = {}
+    for token in tokens:
+        match = re.fullmatch(r"([A-Z_]+)=([01])", token)
+        if match is None:
+            raise ValueError(f"malformed AttentionKernelOptions token: {token!r}")
+        name, value = match.groups()
+        if name in options:
+            raise ValueError(f"duplicate AttentionKernelOptions value: {name}")
+        options[name] = value == "1"
+    return options
+
+
+def _dispatch_check_action(expected_kernel, sdpa_kernel, is_supported, option_enabled, is_required=False):
+    """Classify a backend dispatch check as assert, skip, or ignore."""
+    if is_required:
+        return "assert"
+    if not is_supported:
+        return "ignore"
+    if expected_kernel != "MATH" and sdpa_kernel == "MATH" and option_enabled is False:
+        return "skip"
+    return "assert"
+
+
 def _run_capturing_sdpa_kernel(run_func):
     """Run run_func with attention-kernel debug info enabled and return (result, sdpa_kernel).
 
@@ -325,7 +368,8 @@ def numpy_attention_ref(q, k, v, nonpad_kv_seqlen, is_causal=False, attn_bias=No
 
     # Apply causal mask
     if is_causal:
-        # NOTE (Phase-3 caveat): this uses a CAPACITY-anchored bottom-right offset (kv_seq - q_seq).
+        # External-cache prefill caveat: this uses a capacity-anchored bottom-right offset
+        # (kv_seq - q_seq).
         # It is exact for decode (q_seq == 1), where every batch's single query attends the whole
         # valid KV region regardless of nonpad[b]. If this reference is reused for prefill
         # (q_seq > 1) with heterogeneous nonpad lengths, it DIVERGES from the ONNX per-batch
@@ -1015,9 +1059,9 @@ class TestTensorScatterAttentionCUDAFP32(unittest.TestCase):
         numpy.testing.assert_allclose(present_v, ref_present_v, rtol=rtol["fp32"], atol=atol["fp32"])
 
 
-# cuDNN SDPA decode tier (Phase 1, issue #29714). Forces the cuDNN kernel via the sdpa_kernel
-# provider option (CUDNN_FLASH_ATTENTION=8 | MATH=16 fallback) so the gated external-cache decode
-# path (nonpad_kv_seqlen, q_seq==1, fp16; both is_causal=0 and is_causal=1) routes to cuDNN when
+# cuDNN SDPA external-cache decode tier (issue #29714). Forces the cuDNN kernel via the
+# sdpa_kernel provider option (CUDNN_FLASH_ATTENTION=8 | MATH=16 fallback) so the gated path
+# (nonpad_kv_seqlen, q_seq==1, fp16; both is_causal=0 and is_causal=1) routes to cuDNN when
 # supported and falls back to the unfused kernel otherwise. Both produce spec-equivalent output,
 # so this asserts numeric parity either way — in particular the fully-masked-batch (nonpad==0)
 # zero-fill guard, which cuDNN needs but the other tiers get for free.
@@ -1026,6 +1070,8 @@ _CUDNN_DECODE_TOTAL_KV = 8
 
 # sdpa_kernel bitmask (AttentionBackend in attention_common.h): select cuDNN and keep the unfused
 # kernel as a fallback for configs where cuDNN is unsupported.
+_SDPA_KERNEL_FLASH_ATTENTION = 1
+_SDPA_KERNEL_EFFICIENT_ATTENTION = 2
 _SDPA_KERNEL_CUDNN_FLASH_ATTENTION = 8
 _SDPA_KERNEL_MATH = 16
 _SDPA_KERNEL_CUDNN_WITH_MATH_FALLBACK = _SDPA_KERNEL_CUDNN_FLASH_ATTENTION | _SDPA_KERNEL_MATH
@@ -2184,6 +2230,460 @@ class TestCausalTensorScatterBottomRight(unittest.TestCase):
         numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
         numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp16"], atol=atol["fp16"])
         numpy.testing.assert_allclose(present_v, ref_present_v, rtol=rtol["fp16"], atol=atol["fp16"])
+
+
+# #################################################################################################
+#  present_key/present_value redundant-copy skip (external-cache 4-D BNSH aliasing)
+# #################################################################################################
+# Attention::Run{Flash,CudnnSdpa,MemoryEfficient,Unfused}Attention populate present_key/present_value
+# for 4-D BNSH external-cache inputs via llm_attention_detail::CopyKVToPresent (attention.cc), which
+# skips the D2D copy entirely when present_key/present_value is bound to the SAME device buffer as
+# the K/V cache input (mirroring TensorScatter's own .MayInplace(0, 0) self-copy skip). These tests:
+#   1. Prove the skip actually fires when present_* aliases the cache buffer, via the greppable
+#      "present_copy_skipped" log tag emitted at VERBOSE severity — without this, a regression that
+#      re-introduced the unconditional copy would still pass on output correctness alone (the copy
+#      is redundant, not wrong, when src == dst).
+#   2. Prove the non-aliased path still runs the copy (tag absent) and both paths remain correct.
+#      Backend parameters establish independent tier coverage whenever the options printed by the
+#      runtime show that tier remained enabled after availability and request filtering.
+#
+# Only reachable for 4-D BNSH inputs (use_4d=True): the 3-D BSNH path always needs a
+# layout-changing transpose into present_*, so src and dst can never alias there.
+_PRESENT_COPY_SKIPPED_TAG = "present_copy_skipped"
+_ORT_LOG_SEVERITY_VERBOSE = 0
+
+# CopyKVToPresent logs through this session's logger: the plugin build uses the kernel-info logger,
+# while the legacy build uses the logger assigned to the EP. Thus the tag is controlled purely by
+# session_options.log_severity_level — no process-global logger mutation is needed.
+# Every ORT log line carries its session's logid, so a unique logid lets the assertions below
+# require BOTH the tag AND this test's own logid on the SAME line. fd 2 is a process-global
+# descriptor: without the logid anchor, a concurrently running session (e.g. a parallel test
+# worker) emitting the same tag during the redirected window would satisfy a bare substring match
+# for the wrong session — which would make the negative (tag-absent) assertion racy.
+_PRESENT_COPY_SKIP_TEST_LOGID = "test_attention_present_kv_copy_skip"
+
+# Matches a captured log line that carries BOTH this test's session logid and the skip tag.
+# OStreamSink writes "<timestamp> [<severity>:<category>:<logger_id>, <location>] <message>"
+# (onnxruntime/core/common/logging/sinks/ostream_sink.cc), so the logid is delimited by ':' before
+# and ', ' after. Matching those delimiters (rather than a bare substring) keeps a different
+# session whose logid merely CONTAINS this one from false-matching.
+_PRESENT_COPY_SKIPPED_LINE = re.compile(
+    rf"^.*:{re.escape(_PRESENT_COPY_SKIP_TEST_LOGID)}, .*{re.escape(_PRESENT_COPY_SKIPPED_TAG)}.*$",
+    re.MULTILINE,
+)
+
+
+# Env overrides are applied before AttentionKernelOptions is created. These cases also pass an
+# explicit sdpa_kernel provider option, which bypasses the env vars in
+# AttentionKernelOptions::Initialize; the overrides are defense-in-depth against an ambient
+# environment. cuDNN has no ORT_DISABLE_* switch in this cascade (only the opt-in
+# ORT_ENABLE_CUDNN_FLASH_ATTENTION, superseded by the sdpa_kernel option), and the unfused/MATH
+# kernel cannot be disabled at all, so those two cases need no override.
+_FORCE_ENABLE_ENV = {
+    "flash": {"ORT_DISABLE_FLASH_ATTENTION": "0"},
+    "efficient": {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "0"},
+}
+
+
+def _run_tensorscatter_attention_4d(
+    batch_size,
+    total_kv_seq_len,
+    q_seq_len,
+    q_num_heads,
+    kv_num_heads,
+    head_size,
+    nonpad_seqlens,
+    scatter_positions,
+    provider_options,
+    alias_present,
+):
+    """4-D BNSH TensorScatter + Attention, with present_key/value optionally aliased to the K/V
+    cache buffer (the pattern llm_attention_detail::CopyKVToPresent's skip targets).
+
+    Runs at VERBOSE log severity and captures native stderr (present_copy_skipped tag) and
+    stdout (SdpaKernel=... dispatch tier, via ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO) so callers
+    can assert on both. Returns (output, present_k, present_v, ref_output, ref_present_k,
+    ref_present_v, log_text, sdpa_kernel, attention_kernel_options).
+    """
+    torch.manual_seed(123)
+    std = 0.2
+    key_cache_t = torch.randn(batch_size, kv_num_heads, total_kv_seq_len, head_size, dtype=torch.float16) * std
+    value_cache_t = torch.randn(batch_size, kv_num_heads, total_kv_seq_len, head_size, dtype=torch.float16) * std
+    for b in range(batch_size):
+        old_valid = max(0, nonpad_seqlens[b] - q_seq_len)
+        if old_valid < total_kv_seq_len:
+            key_cache_t[b, :, old_valid:, :] = 0
+            value_cache_t[b, :, old_valid:, :] = 0
+    new_k_t = torch.randn(batch_size, kv_num_heads, q_seq_len, head_size, dtype=torch.float16) * std
+    new_v_t = torch.randn(batch_size, kv_num_heads, q_seq_len, head_size, dtype=torch.float16) * std
+    query_t = torch.randn(batch_size, q_num_heads, q_seq_len, head_size, dtype=torch.float16) * std
+
+    key_cache_ref = key_cache_t.float().cpu().numpy().copy()
+    value_cache_ref = value_cache_t.float().cpu().numpy().copy()
+    new_k_ref = new_k_t.float().cpu().numpy()
+    new_v_ref = new_v_t.float().cpu().numpy()
+    for b in range(batch_size):
+        pos = scatter_positions[b]
+        for t in range(q_seq_len):
+            key_cache_ref[b, :, pos + t, :] = new_k_ref[b, :, t, :]
+            value_cache_ref[b, :, pos + t, :] = new_v_ref[b, :, t, :]
+    q_ref = query_t.float().cpu().numpy().transpose(0, 2, 1, 3)
+    k_ref = key_cache_ref.transpose(0, 2, 1, 3)
+    v_ref = value_cache_ref.transpose(0, 2, 1, 3)
+    ref_output_bsnh = numpy_attention_ref(q_ref, k_ref, v_ref, nonpad_seqlens, is_causal=False)
+    ref_output = ref_output_bsnh.transpose(0, 2, 1, 3)
+    ref_present_k = key_cache_ref
+    ref_present_v = value_cache_ref
+
+    onnx_model_str = build_tensorscatter_attention_graph(
+        batch_size=batch_size,
+        total_kv_seq_len=total_kv_seq_len,
+        q_seq_len=q_seq_len,
+        q_num_heads=q_num_heads,
+        kv_num_heads=kv_num_heads,
+        head_size=head_size,
+        ort_type=TensorProto.FLOAT16,
+        is_causal=0,
+        use_4d=True,
+    )
+
+    # CopyKVToPresent uses the kernel-info logger in plugin builds and the EP logger in legacy
+    # builds. Both are session-anchored, so the unique logid anchors assertions to this session.
+    # ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO is still process-global state and must be restored even
+    # if session creation itself throws, so everything from here to the run is wrapped in one
+    # try/finally.
+    previous_debug_info_env = os.environ.get("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO")
+    os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = "1"
+    session = None
+    io_binding = None
+    try:
+        # AttentionKernelOptions prints during InferenceSession construction, whereas dispatch
+        # prints during Run. Capture stdout across both. Keep stderr scoped to Run so the existing
+        # present-copy logger assertion retains its original semantics.
+        with _CaptureNativeFd(_STDOUT_FD) as captured_stdout:
+            session_options = SessionOptions()
+            session_options.log_severity_level = _ORT_LOG_SEVERITY_VERBOSE
+            session_options.logid = _PRESENT_COPY_SKIP_TEST_LOGID
+            session = InferenceSession(
+                onnx_model_str,
+                session_options,
+                providers=["CUDAExecutionProvider"],
+                provider_options=[provider_options],
+            )
+
+            key_cache_ort = OrtValue.ortvalue_from_numpy(key_cache_t.cpu().numpy(), "cuda", 0)
+            value_cache_ort = OrtValue.ortvalue_from_numpy(value_cache_t.cpu().numpy(), "cuda", 0)
+            new_k_ort = OrtValue.ortvalue_from_numpy(new_k_t.cpu().numpy(), "cuda", 0)
+            new_v_ort = OrtValue.ortvalue_from_numpy(new_v_t.cpu().numpy(), "cuda", 0)
+            write_indices_ort = OrtValue.ortvalue_from_numpy(
+                numpy.array(scatter_positions, dtype=numpy.int64), "cuda", 0
+            )
+            query_ort = OrtValue.ortvalue_from_numpy(query_t.cpu().numpy(), "cuda", 0)
+            nonpad_ort = OrtValue.ortvalue_from_numpy(numpy.array(nonpad_seqlens, dtype=numpy.int64), "cuda", 0)
+
+            output_shape = [batch_size, q_num_heads, q_seq_len, head_size]
+            output_ort = OrtValue.ortvalue_from_shape_and_type(output_shape, numpy.float16, "cuda", 0)
+
+            io_binding = session.io_binding()
+            io_binding.bind_ortvalue_input("key_cache", key_cache_ort)
+            io_binding.bind_ortvalue_input("value_cache", value_cache_ort)
+            io_binding.bind_ortvalue_input("new_k", new_k_ort)
+            io_binding.bind_ortvalue_input("new_v", new_v_ort)
+            io_binding.bind_ortvalue_input("write_indices", write_indices_ort)
+            io_binding.bind_ortvalue_input("query", query_ort)
+            io_binding.bind_ortvalue_input("nonpad_kv_seqlen", nonpad_ort)
+            io_binding.bind_ortvalue_output("output", output_ort)
+            # In-place TensorScatter: the updated cache always aliases the cache input buffer.
+            io_binding.bind_ortvalue_output("updated_key_cache", key_cache_ort)
+            io_binding.bind_ortvalue_output("updated_value_cache", value_cache_ort)
+            if alias_present:
+                # Full 3-way alias: key_cache input == updated_key_cache output == present_key output.
+                # This is the production pattern CopyKVToPresent's skip targets.
+                io_binding.bind_ortvalue_output("present_key", key_cache_ort)
+                io_binding.bind_ortvalue_output("present_value", value_cache_ort)
+            else:
+                present_shape = [batch_size, kv_num_heads, total_kv_seq_len, head_size]
+                present_k_ort = OrtValue.ortvalue_from_shape_and_type(present_shape, numpy.float16, "cuda", 0)
+                present_v_ort = OrtValue.ortvalue_from_shape_and_type(present_shape, numpy.float16, "cuda", 0)
+                io_binding.bind_ortvalue_output("present_key", present_k_ort)
+                io_binding.bind_ortvalue_output("present_value", present_v_ort)
+
+            with _CaptureNativeFd(_STDERR_FD) as captured_log:
+                io_binding.synchronize_inputs()
+                session.run_with_iobinding(io_binding)
+                io_binding.synchronize_outputs()
+        log_text = captured_log.text
+        sdpa_kernel = _parse_sdpa_kernel(captured_stdout.text)
+        attention_kernel_options = _parse_attention_kernel_options(captured_stdout.text)
+
+        output = output_ort.numpy()
+        if alias_present:
+            present_k = key_cache_ort.numpy()
+            present_v = value_cache_ort.numpy()
+        else:
+            present_k = present_k_ort.numpy()
+            present_v = present_v_ort.numpy()
+    finally:
+        if previous_debug_info_env is None:
+            os.environ.pop("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", None)
+        else:
+            os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = previous_debug_info_env
+
+    del io_binding, session
+    gc.collect()
+    return (
+        output,
+        present_k,
+        present_v,
+        ref_output,
+        ref_present_k,
+        ref_present_v,
+        log_text,
+        sdpa_kernel,
+        attention_kernel_options,
+    )
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
+class TestAttentionPresentKVCopySkip(unittest.TestCase):
+    """present_key/present_value D2D-copy skip when aliased to the external KV cache buffer."""
+
+    # (name, provider_options, expected SdpaKernel=... tier, "is this tier expected to be
+    # available on this HW" predicate). A "PASSED" on numeric correctness alone does NOT prove
+    # which backend ran, since flash/efficient/cudnn all OR in a MATH fallback bit. Without this
+    # assertion, a regression that broke 3 of the 4 backends' call sites while leaving
+    # unfused/MATH intact would still pass all 8 tests green. The runtime's printed option state
+    # independently identifies whether Flash, Efficient, and cuDNN remain enabled after build,
+    # runtime-stability, and request filtering.
+    _CASES = (
+        (
+            "flash",
+            {"sdpa_kernel": str(_SDPA_KERNEL_FLASH_ATTENTION | _SDPA_KERNEL_MATH)},
+            "FLASH_ATTENTION",
+            has_flash_attention,
+        ),
+        (
+            "efficient",
+            {"sdpa_kernel": str(_SDPA_KERNEL_EFFICIENT_ATTENTION | _SDPA_KERNEL_MATH)},
+            "EFFICIENT_ATTENTION",
+            lambda: True,  # cutlass memory-efficient attention supports this class's SM53+ floor.
+        ),
+        (
+            "cudnn",
+            {"sdpa_kernel": str(_SDPA_KERNEL_CUDNN_WITH_MATH_FALLBACK)},
+            "CUDNN_FLASH_ATTENTION",
+            # cudnn_sdpa::is_supported requires SM80+, head sizes divisible by 8 and <=256,
+            # nonzero kv heads, and q_heads divisible by kv_heads. This class's fixed
+            # B=2/q_heads=8/kv_heads=2/head_size=128/q_seq=1 shape satisfies every shape rule;
+            # AttentionKernelOptions independently reports build/version stability.
+            lambda: has_cuda_device(80),
+        ),
+        (
+            "math",
+            {"sdpa_kernel": str(_SDPA_KERNEL_MATH)},
+            "MATH",
+            lambda: True,  # the unfused/MATH kernel has no HW/build gating.
+        ),
+    )
+
+    def _check_dispatched_tier(self, name, expected_kernel, sdpa_kernel, is_supported, attention_kernel_options):
+        """Assert the expected backend dispatched when supported and compiled/requested.
+
+        Numeric correctness alone does NOT prove which backend ran (flash/efficient/cudnn all OR in
+        a MATH fallback bit), hence the assertion. AttentionKernelOptions independently reports
+        whether Flash, Efficient, and cuDNN were available and requested. The cuDNN hardware gate
+        separately mirrors cudnn_sdpa::is_supported for this class's fixed eligible shape, avoiding
+        the circular observed-dispatch probe.
+        """
+        option_name = {
+            "flash": "FLASH_ATTENTION",
+            "efficient": "EFFICIENT_ATTENTION",
+            "cudnn": "CUDNN_FLASH_ATTENTION",
+        }.get(name)
+        option_enabled = None
+        if option_name is not None:
+            if option_name not in attention_kernel_options:
+                self.fail(f"[{name}] AttentionKernelOptions omitted required value {option_name}")
+            option_enabled = attention_kernel_options[option_name]
+
+        is_required = name == "cudnn" and require_cudnn_sdpa()
+        action = _dispatch_check_action(
+            expected_kernel,
+            sdpa_kernel,
+            is_supported=True if is_required else is_supported(),
+            option_enabled=option_enabled,
+            is_required=is_required,
+        )
+        if action == "ignore":
+            return
+        if action == "skip":
+            self.skipTest(
+                f"[{name}] the explicitly requested {expected_kernel} tier fell back to MATH, and "
+                f"AttentionKernelOptions reported {option_name}=0, so it was unavailable or "
+                "requested out for this session."
+            )
+        self.assertEqual(
+            expected_kernel,
+            sdpa_kernel,
+            f"[{name}] expected the {expected_kernel} tier to dispatch on this HW/build, "
+            f"got {sdpa_kernel} — the per-backend coverage this test claims is not real.",
+        )
+
+    @parameterized.expand(_CASES)
+    def test_copy_skipped_when_present_aliases_cache(self, name, provider_options, expected_kernel, is_supported):
+        # head_size=128 is instantiated by Flash in both full and QUICK_BUILD configurations.
+        batch, total_kv, q_seq, q_heads, kv_heads, head_size = 2, 8, 1, 8, 2, 128
+        nonpad_seqlens = [4, 6]
+        scatter_positions = [3, 5]
+
+        with patch.dict(os.environ, _FORCE_ENABLE_ENV.get(name, {})):
+            (
+                output,
+                present_k,
+                present_v,
+                ref_output,
+                ref_present_k,
+                ref_present_v,
+                log_text,
+                sdpa_kernel,
+                attention_kernel_options,
+            ) = _run_tensorscatter_attention_4d(
+                batch,
+                total_kv,
+                q_seq,
+                q_heads,
+                kv_heads,
+                head_size,
+                nonpad_seqlens,
+                scatter_positions,
+                provider_options,
+                alias_present=True,
+            )
+
+        self._check_dispatched_tier(name, expected_kernel, sdpa_kernel, is_supported, attention_kernel_options)
+        skipped_copy_records = _PRESENT_COPY_SKIPPED_LINE.findall(log_text)
+        self.assertEqual(
+            2,
+            len(skipped_copy_records),
+            f"[{name}] present_key/value aliased the cache buffer, so exactly two captured log records "
+            f"(one for K and one for V) must carry both this session's logid "
+            f"('{_PRESENT_COPY_SKIP_TEST_LOGID}') and the '{_PRESENT_COPY_SKIPPED_TAG}' tag; "
+            f"got {len(skipped_copy_records)}.",
+        )
+        numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_v, ref_present_v, rtol=rtol["fp16"], atol=atol["fp16"])
+
+    @parameterized.expand(_CASES)
+    def test_copy_still_runs_when_present_not_aliased(self, name, provider_options, expected_kernel, is_supported):
+        # head_size=128 is instantiated by Flash in both full and QUICK_BUILD configurations.
+        batch, total_kv, q_seq, q_heads, kv_heads, head_size = 2, 8, 1, 8, 2, 128
+        nonpad_seqlens = [4, 6]
+        scatter_positions = [3, 5]
+
+        with patch.dict(os.environ, _FORCE_ENABLE_ENV.get(name, {})):
+            (
+                output,
+                present_k,
+                present_v,
+                ref_output,
+                ref_present_k,
+                ref_present_v,
+                log_text,
+                sdpa_kernel,
+                attention_kernel_options,
+            ) = _run_tensorscatter_attention_4d(
+                batch,
+                total_kv,
+                q_seq,
+                q_heads,
+                kv_heads,
+                head_size,
+                nonpad_seqlens,
+                scatter_positions,
+                provider_options,
+                alias_present=False,
+            )
+
+        self._check_dispatched_tier(name, expected_kernel, sdpa_kernel, is_supported, attention_kernel_options)
+        skipped_copy_records = _PRESENT_COPY_SKIPPED_LINE.findall(log_text)
+        self.assertEqual(
+            0,
+            len(skipped_copy_records),
+            f"[{name}] present_key/value used SEPARATE buffers from the cache, but "
+            f"{len(skipped_copy_records)} log record(s) with this session's logid "
+            f"('{_PRESENT_COPY_SKIP_TEST_LOGID}') carry the '{_PRESENT_COPY_SKIPPED_TAG}' tag — "
+            "the aliasing check may have a false positive.",
+        )
+        numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_v, ref_present_v, rtol=rtol["fp16"], atol=atol["fp16"])
+
+
+class TestAttentionBackendDispatchDecision(unittest.TestCase):
+    """CPU-only coverage for fused-backend routing enforcement decisions."""
+
+    def test_compiled_in_backend_math_fallback_is_asserted(self):
+        self.assertEqual("assert", _dispatch_check_action("FLASH_ATTENTION", "MATH", True, True))
+
+    def test_compiled_out_backend_math_fallback_is_skipped(self):
+        self.assertEqual("skip", _dispatch_check_action("FLASH_ATTENTION", "MATH", True, False))
+
+    def test_unsupported_hardware_is_ignored(self):
+        self.assertEqual("ignore", _dispatch_check_action("FLASH_ATTENTION", "MATH", False, True))
+
+    def test_non_math_routing_mismatch_is_asserted(self):
+        self.assertEqual(
+            "assert",
+            _dispatch_check_action("FLASH_ATTENTION", "EFFICIENT_ATTENTION", True, True),
+        )
+
+    def test_required_cudnn_math_fallback_is_asserted(self):
+        self.assertEqual(
+            "assert",
+            _dispatch_check_action("CUDNN_FLASH_ATTENTION", "MATH", False, None, is_required=True),
+        )
+
+    def test_cudnn_disabled_on_supported_hardware_is_skipped(self):
+        self.assertEqual(
+            "skip",
+            _dispatch_check_action("CUDNN_FLASH_ATTENTION", "MATH", True, False),
+        )
+
+    def test_cudnn_enabled_on_supported_hardware_is_asserted(self):
+        self.assertEqual(
+            "assert",
+            _dispatch_check_action("CUDNN_FLASH_ATTENTION", "MATH", True, True),
+        )
+
+    def test_cudnn_enabled_on_unsupported_hardware_is_ignored(self):
+        self.assertEqual(
+            "ignore",
+            _dispatch_check_action("CUDNN_FLASH_ATTENTION", "MATH", False, True),
+        )
+
+    def test_options_line_is_parsed(self):
+        text = (
+            "\x1b[36mAttentionKernelOptions: FLASH_ATTENTION=1 "
+            "EFFICIENT_ATTENTION=0 CUDNN_FLASH_ATTENTION=1 MATH=1\x1b[0m\n"
+        )
+        self.assertEqual(
+            {
+                "FLASH_ATTENTION": True,
+                "EFFICIENT_ATTENTION": False,
+                "CUDNN_FLASH_ATTENTION": True,
+                "MATH": True,
+            },
+            _parse_attention_kernel_options(text),
+        )
+
+    def test_missing_options_line_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "exactly one AttentionKernelOptions line"):
+            _parse_attention_kernel_options("AttentionKernelDebugInfo: SdpaKernel=MATH\n")
+
+    def test_malformed_options_line_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "malformed AttentionKernelOptions token"):
+            _parse_attention_kernel_options("AttentionKernelOptions: FLASH_ATTENTION=yes MATH=1\n")
 
 
 if __name__ == "__main__":

@@ -19,6 +19,22 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
+TEST(GRUTest, RuntimeScalarInputRejected) {
+  OpTester test("GRU", 14);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("hidden_size", int64_t{1});
+  test.AddInput<float>("X", {}, {1.0f});
+  test.AddInput<float>("W", {1, 3, 1}, {1.0f, 1.0f, 1.0f});
+  test.AddInput<float>("R", {1, 3, 1}, {1.0f, 1.0f, 1.0f});
+  test.AddOutput<float>("Y", {1, 1, 1, 1}, {0.0f});
+  test.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Input X must have 3 dimensions only", {}, nullptr,
+           &execution_providers);
+}
+
 #ifndef ORT_NO_EXCEPTIONS
 TEST(GRUTest, CalculateBufferElementCountThrowsOnOverflow) {
   EXPECT_THROW((void)onnxruntime::rnn::detail::CalculateBufferElementCount({std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 5}),
@@ -208,34 +224,6 @@ TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasTwoRows) {
   // test Y_h not being returned
   DefaultActivationsSimpleWeightsNoBias("forward", Y_data, {});
 }
-
-#if defined(USE_WEBGPU)
-TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasLayout1) {
-  // layout=1 stores X as [batch, sequence, input] and Y as
-  // [batch, sequence, num_directions, hidden].
-  const std::vector<float> X_data{1.f, 10.f,
-                                  2.f, 11.f};
-  const std::vector<float> W_data{0.1f, 0.2f, 0.3f,
-                                  1.f, 2.f, 3.f,
-                                  10.f, 11.f, 12.f};
-  const std::vector<float> R_data(3 * 3 * 3, 0.1f);
-  const std::vector<float> Y_data{
-      // batch 0
-      0.4750208f, 0.450166f, 0.4255575f,
-      0.6027093f, 0.5083023f, 0.44950223f,
-      // batch 1
-      0.45016602f, 0.40131235f, 0.35434368f,
-      0.5754369f, 0.45485455f, 0.3747841f};
-  const std::vector<float> Y_h_data{
-      0.6027093f, 0.5083023f, 0.44950223f,
-      0.5754369f, 0.45485455f, 0.3747841f};
-
-  RunGruTest(X_data, W_data, R_data, Y_data, Y_h_data,
-             /*input_size=*/1, /*batch_size=*/2, /*hidden_size=*/3, /*seq_length=*/2,
-             nullptr, nullptr, nullptr, "forward", 9999.0f, true, false,
-             default_activations, {}, {}, /*layout=*/1, /*webgpu_only=*/true);
-}
-#endif
 
 TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsNoBiasTwoRows) {
   std::vector<float> Y_data{

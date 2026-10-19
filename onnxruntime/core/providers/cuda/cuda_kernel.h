@@ -121,6 +121,9 @@ class CudaKernel : public OpKernel {
   }
 
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
+  std::filesystem::path GetSessionModelPath() const { return provider_->GetSessionModelPath(); }
+  // Identifies the session (execution provider instance) that owns this kernel.
+  const void* GetSessionKey() const { return provider_; }
   int GetCudnnConvAlgo() const { return provider_->GetCudnnConvAlgo(); }
   bool GetCudnnConvUseMaxWorkspace() const { return provider_->GetCudnnConvUseMaxWorkspace(); }
   bool GetCudnnConv1dPadToNc1d() const { return provider_->GetCudnnConv1dPadToNc1d(); }
@@ -316,11 +319,6 @@ class CudaKernel : public OpKernel {
   }
 
  protected:
-  template <typename T>
-  inline const T* GetConstOnes(size_t count, cudaStream_t stream) const {
-    return provider_->template GetConstOnes<T>(count, stream);
-  }
-
   inline int GetDeviceId() const { return provider_->GetDeviceId(); }
 
  private:
@@ -333,3 +331,35 @@ class CudaKernel : public OpKernel {
 #else
 #include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
 #endif
+
+namespace onnxruntime {
+namespace cuda {
+
+inline bool InputExists(const OpKernelInfo& info, size_t input_index) {
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  const auto node = info.node();
+  return node.InputExists(input_index);
+#else
+  const auto& input_defs = info.node().InputDefs();
+  return input_index < input_defs.size() && input_defs[input_index]->Exists();
+#endif
+}
+
+// Returns the tensor element type of the input at input_index. Out-of-range inputs and omitted
+// optional inputs both return TensorProto_DataType_UNDEFINED.
+inline int32_t GetInputElementType(const OpKernelInfo& info, size_t input_index) {
+  if (!InputExists(info, input_index)) {
+    return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  }
+
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  return static_cast<int32_t>(
+      info.GetKernelInfo().GetInputTypeInfo(input_index).GetTensorTypeAndShapeInfo().GetElementType());
+#else
+  const auto& input_defs = info.node().InputDefs();
+  return input_defs[input_index]->TypeAsProto()->tensor_type().elem_type();
+#endif
+}
+
+}  // namespace cuda
+}  // namespace onnxruntime

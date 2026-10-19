@@ -3,7 +3,11 @@
 
 #pragma once
 
+struct ProviderInfo_OpenVINO;
+
 namespace onnxruntime {
+
+ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO();
 
 bool InitProvidersSharedLibrary();
 void UnloadSharedProviders();

@@ -40,20 +40,30 @@ import onnxruntime_ep_webgpu as webgpu_ep
 ort.register_execution_provider_library("webgpu", webgpu_ep.get_library_path())
 
 # Discover WebGPU EP devices
-# The WebGPU EP currently accepts one EP device and selects the physical GPU independently.
+# The WebGPU EP currently accepts one EP device. Select a physical Dawn adapter independently.
 webgpu_ep_device = next((d for d in ort.get_ep_devices() if d.ep_name == webgpu_ep.get_ep_name()), None)
 if webgpu_ep_device is None:
     raise RuntimeError("No WebGPU EP device found.")
 
 # Create a session using the WebGPU EP
 sess_options = ort.SessionOptions()
-sess_options.add_provider_for_devices([webgpu_ep_device], {})
+sess_options.add_provider_for_devices(
+  [webgpu_ep_device],
+  {"adapterIndex": "0"},
+)
 session = ort.InferenceSession("model.onnx", sess_options=sess_options)
 
 # Run inference (replace shape/dtype/name to match your model)
 input_data = np.zeros((1, 3, 224, 224), dtype=np.float32)
 output = session.run(None, {"input": input_data})
 ```
+
+`adapterIndex` is a zero-based index into Dawn's adapter enumeration for the requested backend, using the power
+preference as an ordering and selection hint.
+It selects a physical adapter; `deviceId` remains the ORT WebGPU context identifier and does not select a GPU.
+The default context owns one device per process, so use a separate process for each adapter, or supply a custom
+`webgpuInstance`/`webgpuDevice` pair for multiple devices in one process. Omit `adapterIndex` to retain Dawn's
+automatic adapter selection.
 
 ## Troubleshooting
 

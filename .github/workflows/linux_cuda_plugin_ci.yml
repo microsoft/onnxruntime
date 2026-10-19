@@ -57,7 +57,7 @@ jobs:
     runs-on:
       - self-hosted
       - "1ES.Pool=onnxruntime-github-linux-a10"
-      - "1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10-Test"
+      - "1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10"
       - "JobId=test-linux-cuda-plugin-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
     timeout-minutes: 210
     permissions:
@@ -80,7 +80,7 @@ jobs:
 
       # --- Download Build Artifact to Runner Temp Directory ---
       - name: Download Build Artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: build-output-x64-Release
           path: ${{ runner.temp }}/Release
@@ -136,6 +136,8 @@ jobs:
             -v ${{ runner.temp }}/Release:/build/Release \
             -e NVIDIA_VISIBLE_DEVICES=all \
             -e ORT_TEST_CUDA_PLUGIN_EP=1 \
+            -e ORT_RUN_CUDA_TACTIC_CACHE_TESTS=1 \
+            -e ORT_CUDA_PLUGIN_PATH=/build/Release/Release/libonnxruntime_providers_cuda.so \
             ${{ steps.build_docker_image_step.outputs.full-image-name }} \
             bash -c "
               set -ex
@@ -144,6 +146,8 @@ jobs:
               python -m pip install /build/Release/Release/dist/onnxruntime*.whl
               python -m pip install numpy onnx
               python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+              cd /build/Release/Release
+              python /onnxruntime_src/onnxruntime/test/python/onnxruntime_test_python_fpa_intb_tune.py
               cd /onnxruntime_src/onnxruntime/test/python/transformers
               python test_cuda_plugin_ep.py
             "

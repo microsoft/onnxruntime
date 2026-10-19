@@ -9,13 +9,20 @@ import os
 from pathlib import Path
 
 import numpy
+import packaging.version as pv
 import torch
 from affinity_helper import AffinitySetting
 from benchmark_helper import OptimizerInfo, Precision, create_onnxruntime_session
 from huggingface_models import MODEL_CLASSES
 from quantize_helper import QuantizeHelper
 from torch_onnx_export_helper import torch_onnx_export
-from transformers import AutoConfig, AutoFeatureExtractor, AutoTokenizer, LxmertConfig, TransfoXLConfig
+from transformers import AutoConfig, AutoFeatureExtractor, AutoTokenizer, LxmertConfig
+from transformers import __version__ as transformers_version
+
+try:
+    from transformers import TransfoXLConfig
+except ImportError:
+    TransfoXLConfig = None
 
 from onnxruntime.transformers.models.gpt2.gpt2_helper import (
     PRETRAINED_GPT2_MODELS,
@@ -26,6 +33,17 @@ from onnxruntime.transformers.models.gpt2.gpt2_helper import (
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 logger = logging.getLogger(__name__)
+
+
+class _ModelWithNamedInputs(torch.nn.Module):
+    def __init__(self, model: torch.nn.Module, input_names: list[str]):
+        super().__init__()
+        self.model = model
+        self.input_names = input_names
+
+    def forward(self, *args):
+        return self.model(**dict(zip(self.input_names, args, strict=True)))
+
 
 # Workaround by replacing torch.triu using self-defined op
 # Since torch.triu cannot be exported to ONNX. See https://github.com/pytorch/pytorch/issues/32968
@@ -73,7 +91,7 @@ def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_name
     if isinstance(config, LxmertConfig):
         inputs["visual_feats"] = numpy.random.randn(1, 1, config.visual_feat_dim).astype(numpy.float32)
         inputs["visual_pos"] = numpy.random.randn(1, 1, config.visual_pos_dim).astype(numpy.float32)
-    if isinstance(config, TransfoXLConfig):
+    if TransfoXLConfig is not None and isinstance(config, TransfoXLConfig):
         inputs["tf_transfo_xl_model/transformer/pos_emb/einsum/Einsum/inputs_1:0"] = numpy.zeros(
             [config.hidden_size], dtype=numpy.float32
         )
@@ -305,6 +323,8 @@ def load_pretrained_model(model_name, config, cache_dir, custom_model_class, is_
 
     if model_class_name == "GPT2ModelNoPastState":
         if is_tf_model:
+            if TFGPT2ModelNoPastState is None:
+                raise ImportError("TensorFlow GPT-2 models are not available in Transformers 5 or later.")
             return TFGPT2ModelNoPastState.from_pretrained(model_name, config=config, cache_dir=cache_dir)
         else:
             return GPT2ModelNoPastState.from_pretrained(model_name, config=config, cache_dir=cache_dir)
@@ -323,6 +343,8 @@ def load_pt_model(model_name, model_class, cache_dir, config_modifier):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
     if hasattr(config, "return_dict"):
         config.return_dict = False
+    if pv.Version(transformers_version) >= pv.Version("5.0"):
+        config._attn_implementation = "eager"
 
     config_modifier.modify(config)
 
@@ -495,7 +517,7 @@ def export_onnx_model_from_pt(
     else:
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
         max_input_size = tokenizer.model_max_length
-        example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="pt")
+        example_inputs = tokenizer("This is a sample input", return_tensors="pt")
 
     example_inputs = filter_inputs(example_inputs, input_names)
 
@@ -531,8 +553,13 @@ def export_onnx_model_from_pt(
             dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
 
         replace_torch_functions()
+        export_model = (
+            _ModelWithNamedInputs(model, list(example_inputs.keys()))
+            if pv.Version(transformers_version) >= pv.Version("5.0")
+            else model
+        )
         torch_onnx_export(
-            model=model,
+            model=export_model,
             args=tuple(example_inputs.values()),
             f=onnx_model_path,
             input_names=list(example_inputs.keys()),
@@ -603,7 +630,7 @@ def export_onnx_model_from_tf(
     config, model = load_tf_model(model_name, model_class, cache_dir, config_modifier)
     model.resize_token_embeddings(len(tokenizer))
 
-    example_inputs = tokenizer.encode_plus(
+    example_inputs = tokenizer(
         "This is a sample input",
         return_tensors="tf",
         max_length=max_input_size,
@@ -613,7 +640,7 @@ def export_onnx_model_from_tf(
     example_inputs = filter_inputs(example_inputs, input_names)
 
     if config.is_encoder_decoder:
-        example_inputs["decoder_input_ids"] = tokenizer.encode_plus(
+        example_inputs["decoder_input_ids"] = tokenizer(
             "This is a sample input",
             return_tensors="tf",
             max_length=max_input_size,

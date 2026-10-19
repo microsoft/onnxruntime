@@ -25,6 +25,7 @@
 #endif
 
 #include "xqa_paged_loader.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include <cassert>
 
 #ifndef HEAD_ELEMS

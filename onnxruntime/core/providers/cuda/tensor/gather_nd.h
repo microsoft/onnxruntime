@@ -21,6 +21,9 @@ class GatherNDBase : public CudaKernel {
   }
 
  protected:
+  // GPU-resident indices are validated asynchronously. Invalid forward slices are zero-filled,
+  // and GatherNDGrad skips their updates, so CUDA graph capture and the valid-index success path
+  // do not require a device-to-host readback. CPU-resident indices return INVALID_ARGUMENT.
   template <typename TIndex>
   Status PrepareCompute(
       void* alloc_stream,

@@ -614,6 +614,9 @@ ORT_API_STATUS_IMPL(SessionOptionsSetEpSelectionPolicyDelegate, _In_ OrtSessionO
                     _In_ EpSelectionDelegate delegate,
                     _In_opt_ void* state);
 
+ORT_API_STATUS_IMPL(SessionOptionsSetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
+                    _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state);
+
 // OrtHardwareDevice accessors.
 ORT_API(OrtHardwareDeviceType, HardwareDevice_Type, _In_ const OrtHardwareDevice* device);
 ORT_API(uint32_t, HardwareDevice_VendorId, _In_ const OrtHardwareDevice* device);
@@ -827,6 +830,9 @@ ORT_API_STATUS_IMPL(GetTensorElementTypeAndShapeDataReference, _In_ const OrtVal
                     _Out_ ONNXTensorElementDataType* elem_type,
                     _Outptr_result_maybenull_ const int64_t** shape_data,
                     _Out_ size_t* shape_data_count);
+
+// Model Package API
+ORT_API(const OrtModelPackageApi*, GetModelPackageApi);
 
 // Experimental API
 ORT_API(OrtExperimentalFnPtr, GetExperimentalFunction, _In_ const char* name);

@@ -54,7 +54,7 @@ ModelPackageStatus* ResolvePath(const fs::path& base_dir,
                                      "ResolvePath: input must not be empty.");
   }
 
-  fs::path raw(input);
+  fs::path raw = fs::u8path(input);
 
   if (!opts.allow_external_paths) {
     if (raw.is_absolute() || raw.has_root_name()) {
@@ -80,7 +80,7 @@ ModelPackageStatus* ResolvePath(const fs::path& base_dir,
     if (must_exist) {
       return model_package::MakeStatus(
           MODEL_PACKAGE_ERR_NOT_FOUND,
-          std::string("ResolvePath: '") + joined.string() + "' does not exist.");
+          std::string("ResolvePath: '") + joined.u8string() + "' does not exist.");
     }
     // Missing leaf (common during authoring/commit). When following symlinks, use
     // weakly_canonical so any existing symlinks in the path prefix are still resolved;
@@ -97,7 +97,7 @@ ModelPackageStatus* ResolvePath(const fs::path& base_dir,
     if (ec) {
       return model_package::MakeStatus(
           MODEL_PACKAGE_ERR_IO,
-          std::string("ResolvePath: canonical('") + joined.string() + "') failed: " + ec.message());
+          std::string("ResolvePath: canonical('") + joined.u8string() + "') failed: " + ec.message());
     }
   } else {
     canonical = fs::weakly_canonical(joined, ec);
@@ -116,8 +116,8 @@ ModelPackageStatus* ResolvePath(const fs::path& base_dir,
     fs::path canonical_root = fs::weakly_canonical(package_root, ec);
     if (ec) canonical_root = package_root.lexically_normal();
 
-    auto root_str = canonical_root.lexically_normal().string();
-    auto can_str = canonical.lexically_normal().string();
+    auto root_str = canonical_root.lexically_normal().u8string();
+    auto can_str = canonical.lexically_normal().u8string();
     if (can_str.size() < root_str.size() ||
         can_str.compare(0, root_str.size(), root_str) != 0 ||
         (can_str.size() > root_str.size() &&

@@ -66,7 +66,7 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_util_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_activation_kernels.cuh"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_utils.cuh"
-#if defined(HAS_SM90_OR_LATER)
+#if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
 #include "contrib_ops/cuda/llm/moe_gemm/deep_gemm_sm90.h"
 #endif
 
@@ -543,6 +543,10 @@ bool fusedBuildExpertMapsSortFirstTokenBlockSize(const int* token_selected_exper
       func = &fusedBuildExpertMapsSortFirstTokenBlockSize<8, LOG2_NUM_EXPERTS>;
       break;
     }
+    case 10: {
+      func = &fusedBuildExpertMapsSortFirstTokenBlockSize<10, LOG2_NUM_EXPERTS>;
+      break;
+    }
     default: {
       ORT_LLM_LOG_DEBUG(onnxruntime::MakeString("Top-K value ", experts_per_token, " does not have supported fused moe prologues"));
       return false;
@@ -561,12 +565,13 @@ bool fusedBuildExpertMapsSortFirstToken(const int* token_selected_experts, int* 
   // We need enough bits to represent [0, num_experts_per_node+1] (inclusive) i.e. num_experts_per_node + 2 values
   // This is floor(log2(num_experts_per_node+1)) + 1
   int expert_log = static_cast<int>(log2(num_experts_per_node + 1)) + 1;
-  if (expert_log <= 9) {
+  if (expert_log <= 10) {
     auto funcs = std::array{&fusedBuildExpertMapsSortFirstTokenBlockSize<1>,
                             &fusedBuildExpertMapsSortFirstTokenBlockSize<2>, &fusedBuildExpertMapsSortFirstTokenBlockSize<3>,
                             &fusedBuildExpertMapsSortFirstTokenBlockSize<4>, &fusedBuildExpertMapsSortFirstTokenBlockSize<5>,
                             &fusedBuildExpertMapsSortFirstTokenBlockSize<6>, &fusedBuildExpertMapsSortFirstTokenBlockSize<7>,
-                            &fusedBuildExpertMapsSortFirstTokenBlockSize<8>, &fusedBuildExpertMapsSortFirstTokenBlockSize<9>};
+                            &fusedBuildExpertMapsSortFirstTokenBlockSize<8>, &fusedBuildExpertMapsSortFirstTokenBlockSize<9>,
+                            &fusedBuildExpertMapsSortFirstTokenBlockSize<10>};
 
     return funcs[expert_log - 1](token_selected_experts, permuted_row_to_unpermuted_row,
                                  unpermuted_row_to_permuted_row, permuted_token_selected_experts,
@@ -2213,7 +2218,7 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   size_t smoothed_act_size = use_awq ? std::max(permuted_elems, interbuf_elems) * sizeof(T) * 2
                                      : 0;  // Extra workspace required by AWQ for smoothing activations
   size_t fp4_deep_gemm_workspace_size = 0;
-#if defined(HAS_SM90_OR_LATER)
+#if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
   if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, __nv_bfloat16> &&
                 std::is_same_v<OutputType, __nv_bfloat16> && std::is_same_v<InputType, __nv_bfloat16>) {
     if (use_fp4_deep_gemm_ && num_rows > 0 && num_rows <= deep_gemm_sm90::kMaxTokensPerExpert &&
@@ -2495,10 +2500,22 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
                                                                                        ? static_cast<const ScaleBiasType*>(quant_params.groupwise.fc1.weight_zeros)
                                                                                        : nullptr,
                                                                                    fc1_expert_biases, reinterpret_cast<OutputType*>(output), alpha_scale_ptr_array, /*occupancy*/ nullptr,
-                                                                                   fc1_activation_type, expanded_num_rows, /*N*/ int64_t(fc1_out_size),
+                                                                                   fc1_activation_type == ActivationType::Relu2
+                                                                                       ? ActivationType::Identity
+                                                                                       : fc1_activation_type,
+                                                                                   expanded_num_rows, /*N*/ int64_t(fc1_out_size),
                                                                                    /*K*/ hidden_size, num_experts_per_node, quant_params.groupwise.group_size, bias_is_broadcast,
                                                                                    /*use_fused_moe*/ false, stream, activation_params, config};
     gemm_runner.moeGemmBiasAct(universal_input, TmaWarpSpecializedGroupedGemmInput{});
+
+    if (fc1_activation_type == ActivationType::Relu2) {
+      // Preserve the FC1 output-type rounding before squaring; the GEMM already added its bias.
+      doActivation<T, OutputType>(
+          output, reinterpret_cast<const OutputType*>(output), nullptr,
+          static_cast<const OutputType*>(nullptr), bias_is_broadcast,
+          expert_first_token_offset, num_experts_per_node, inter_size, expanded_num_rows,
+          fc1_activation_type, quant_params, false, nullptr, stream, activation_params);
+    }
 
     sync_check_cuda_error(stream);
   } else {
@@ -2874,6 +2891,10 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
           fused_routing.normalize_routing_weights, stream);
       token_selected_experts = fused_routing.token_selected_experts;
       token_topk_unpermuted_scales = fused_routing.token_final_scales;
+      if (fused_routing.on_routing_ready != nullptr) {
+        fused_routing.on_routing_ready(fused_routing.routing_context, token_selected_experts,
+                                       static_cast<size_t>(expanded_num_rows), stream);
+      }
     } else if (!use_w4afp8) {
       // WAR: fusedBuildExpertMapsSortFirstToken kernel will lead to illegal memory access for W4AFP8
       fused_prologue_result = fusedBuildExpertMapsSortFirstToken(token_selected_experts,
@@ -2945,7 +2966,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
 
     sync_check_cuda_error(stream);
 
-#if defined(HAS_SM90_OR_LATER)
+#if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
     if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, __nv_bfloat16> &&
                   std::is_same_v<OutputType, __nv_bfloat16> && std::is_same_v<InputType, __nv_bfloat16>) {
       const bool use_fp4_deep_gemm =

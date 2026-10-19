@@ -293,6 +293,8 @@ session = ort.InferenceSession("model.onnx", opts,
 
 ONNX Runtime processes nodes in topological order, accumulating estimated memory. When the cumulative cost exceeds the budget, assignment to the CUDA EP halts immediately — remaining nodes are not considered even if they would individually fit within the budget. Those nodes are eligible for assignment by the subsequent EPs in the session's provider list.
 
+Stats files may contain only a subset of graph nodes. For backward compatibility, a node missing from a supplied stats file has zero accounting cost; ONNX Runtime does not mix ad-hoc estimates into a profile-based accounting session.
+
 Because assignment follows topological order, groups of nodes that you would prefer to offload (for example, MoE expert blocks) may appear at arbitrary positions in the graph. If you want specific node groups to have the lowest priority for device placement, combine the memory budget with layer annotations: annotate the nodes you want to offload to CPU explicitly, and let the capacity-aware partitioner handle the rest.
 
 ### Ad-Hoc Mode (No Stats File)
@@ -308,6 +310,20 @@ opts.add_session_config_entry(
     "4194304,"
 )
 ```
+
+For dynamic-shape models, `session.max_shape_override` supplies planning shapes:
+
+```python
+opts.add_session_config_entry(
+    "session.max_shape_override",
+    "input_ids:[8,4096];attention_mask:[8,4096]"
+)
+```
+
+ONNX Runtime propagates these values through a separate shape-inference graph. The resulting shapes
+are used for ad-hoc dynamic-output sizes and Level-1 workspace estimates, so they directly affect the
+hard partitioning budget and can change CUDA/CPU assignment. They do not constrain runtime inputs and
+are estimation hints rather than guaranteed upper bounds.
 
 ### Setting Format Summary
 The value of `session.resource_cuda_partitioning_settings` is a comma-separated pair:
@@ -328,7 +344,7 @@ EPs that prefer the NHWC data layout — for example, the CUDA EP when it is cre
 1. **First pass (tentative):** The EP tags the nodes it could claim so the layout transformer can rewrite them into the NHWC (`com.microsoft.nhwc`) form.
 2. **Second pass (final):** After the layout transform, the EP runs capability detection again and fuses/optimizes the rewritten nodes. Some first-pass nodes may be dropped here (for example, a node whose NHWC form is not actually supported), in which case they fall back to a later EP.
 
-Because the first-pass tags are tentative, ONNX Runtime does **not** commit any memory budget for them. The budget is committed only for the nodes that survive the second pass; the cost of a node that is dropped is never counted against the memory limit. This keeps the accumulated memory estimate accurate when `prefer_nhwc` is combined with `session.resource_cuda_partitioning_settings`, so a dropped node does not consume phantom budget that could prematurely halt assignment of later nodes.
+Because the first-pass tags are tentative, ONNX Runtime performs complete second-pass support discovery without budget gating, probes the accountant-aware capability grouping without budget truncation, and rebuilds reservations for the reconciled survivor set so shared initializers are charged exactly once. Final budget admission is retried if truncation changes that survivor set. Only final assignments remain committed. This keeps the accumulated memory estimate accurate when `prefer_nhwc` is combined with `session.resource_cuda_partitioning_settings`, prevents displaced or dropped nodes from consuming phantom budget, and prevents later survivors from being reclaimed at zero cost after an early budget stop.
 
 ## Combining Features
 Layer annotations OR name-based assignment can be combined with capacity-aware partitioning. Note that annotation-based and name-based matching are **mutually exclusive** — you cannot use both simultaneously.

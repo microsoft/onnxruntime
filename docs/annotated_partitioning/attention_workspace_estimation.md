@@ -162,6 +162,117 @@ The planned operator-specific sequence is:
 5. Separate memory models for Linear, Sparse, Longformer, quantized, and ONNX Attention operators.
 6. Continue the generic planner integration after its budget and multi-slot contracts stabilize.
 
+### GroupQueryAttention XQA and Flash recipes
+
+The first GroupQueryAttention backend follow-up adds graph-free, checked
+recipes for two concrete selected backends:
+
+- XQA reproduces the semaphore, row-max, row-sum, and multi-block output
+  accumulator layout from `GetXQAScratchSize`. Its backend allocation also
+  retains the runtime's aligned RoPE Q/K buffers and dynamic FP32 head-sink
+  conversion. A persistent prepacked head sink is not transient workspace.
+- Flash retains the separate LSE, split-LSE, and split-output allocations.
+  Fast decode selects splits using KV heads and the local-window-adjusted KV
+  length, but sizes accumulators using query heads and a head size rounded to
+  32, matching the GQA override.
+
+Flash split selection is discontinuous and concrete workspace is not monotonic
+in KV length. For example, with `B=1`, `S_q=1`, two heads, head size 64, and
+108 SMs, increasing KV length from 13,824 to 13,825 changes the selected split
+count from 54 to 28 and reduces the concrete split workspace. A future bounded
+aggregate must therefore compute a conservative envelope over the bounded
+domain or report unavailable; evaluating only the componentwise maximum is not
+safe.
+
+### GroupQueryAttention MEA, unfused, and complete-route recipes
+
+The stacked route-composition follow-up adds the remaining selected backends:
+
+- Memory-efficient Attention retains separate K and V head-expansion
+  allocations at the effective staged cache capacity and its optional FP32
+  output accumulator.
+- Unfused retains the single combined allocation containing aligned Q BNSH,
+  aligned Y BNSH, aligned FP32 QK, and the aligned softmax upper bound.
+
+A complete concrete route places its preparation regions once, then places the
+selected backend's simultaneously-live allocation regions at checked
+256-byte-aligned offsets. This does not change runtime allocation topology and
+does not select or aggregate routes. cuDNN is explicitly unavailable because a
+graph-free recipe must not query or build a cuDNN graph.
+
+When exactly one past/present K/V pair aliases, non-windowed GQA preserves the
+aliased past tensor in a separate scratch allocation before preprocessing
+overwrites the present cache. The workspace problem records that asymmetric
+alias fact and the past-cache capacity, and the preparation recipe includes the
+checked preservation region. Windowed execution, XQA, and Flash fast decode
+require both K/V pairs to alias and reject this state.
+
+### GroupQueryAttention bounded estimator and framework adapters
+
+The GQA framework follow-up translates positional inputs and immutable kernel
+attributes into a graph-free bounded domain. It covers packed and separate
+Q/K/V, optional past-cache pairs, cache quantization, prompt and decode states,
+windowed staging and compaction, XQA (including unresolved shared-memory
+fallback), regular and fast-decode Flash, MEA, unfused, and cuDNN reachability.
+Head geometry derived from `WorkspaceInputShape` is an upper bound: route
+reachability searches supported smaller head sizes instead of testing only the
+componentwise maximum.
+
+Flash split selection is not monotonic in KV length. The bounded estimator uses
+the runtime block size (`256` for head size at most 64, `128` through 128, and
+`64` above 128) and bounds the selected split count by:
+
+```text
+min(128, SM count, ceil(KV length bound / block size))
+```
+
+It then sizes the split accumulators at that envelope. Complete routes are
+mutually exclusive and are aggregated with `max`, not sum. The resulting
+nonzero estimate is one operator-owned slot-0 root with 256-byte alignment.
+Level 1 reports it as `runtime_workspace_bytes`; Level 2 declares one root from
+the same estimator. Level 1 conservatively includes dynamic head-sink conversion
+because prepack state is unavailable during capability analysis. For a constant
+head sink, it separately charges the possible session-lived FP32 copy and the
+initialization-only device staging copy, even when session configuration later
+disables prepacking. Level 2 can omit the transient conversion region when the
+constructed kernel has a prepacked head sink, so its root can be smaller.
+Neither adapter changes runtime
+`GetScratchBuffer()` calls or allocation topology.
+
+The CPU `total_sequence_length` scalar and past/present aliasing are not
+available through `WorkspaceInputShape`. For non-windowed GQA, the positive
+caller-declared `ep.cuda.gqa_workspace_max_total_sequence_length` value supplies
+the missing total-KV bound. The estimator requires that envelope to cover the
+query-length bound and sizes cache-dependent work at the greater of the
+allocated past-cache capacity and the envelope. Because graph analysis cannot
+prove aliasing, the aggregate also includes the worst-case full-past
+preservation scratch. The declaration is an estimation contract, not a
+runtime-enforced input limit or a no-OOM guarantee.
+
+Successful estimates can cover both sliding-window nodes and positive-envelope
+non-windowed nodes. Sliding-window cache capacity remains `C`, while a
+multi-token step uses a transient staged/effective attention extent of `C + S`;
+a single-token step uses `C`. Runtime requires both past/present pairs to alias
+before sliding-window staging or compaction, excluding the partial-alias
+preservation path. Estimation remains unavailable for missing or invalid shape
+facts, an unset or undersized non-windowed envelope, cache capacity outside the
+runtime int32 ABI, attention bias, or any reachable cuDNN route because cuDNN's
+allocator-based workspace has no sound graph-free oracle. Under capacity-aware
+CUDA placement, unavailable GQA proof declines CUDA assignment; generic
+fallback remains available to unrelated operators, and profile data cannot
+substitute for the missing GQA proof. Level 2 emits no requirement when its
+estimate is unavailable.
+
+The CUDA plugin's host-side accounting path does not yet receive analytical
+estimates, so capacity-aware placement declines new GQA assignments there even
+when an envelope is declared. A fused group containing such a node is declined
+as a whole. Placement without a resource accountant, previously accounted
+assignments, and unrelated operators or plugin EPs retain their existing behavior.
+
+Unlike the log-only PA/PMHA Level-1 probe, a successful GQA Level-1 estimate is
+passed to the #31962 resource accountant as `runtime_workspace_bytes` and can
+affect CUDA partition acceptance.
+
 MHA and GQA are high-value coverage targets and have high estimation-drift risk. Their runtime behavior can include
 dynamic internal backend dispatch, cache lifecycle and aliasing, optional inputs, non-monotonic fallback paths, and
 unfused workspace governed by `S_q * S_kv_total`. GQA additionally has different Q and KV head counts. MHA can have

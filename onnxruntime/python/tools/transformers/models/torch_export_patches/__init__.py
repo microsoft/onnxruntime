@@ -7,6 +7,7 @@ import torch
 from transformers import __version__ as transformers_version
 from transformers.cache_utils import DynamicCache, EncoderDecoderCache
 
+from .cache_helper import get_dynamic_cache_key_value
 from .onnx_export_errors import (
     bypass_export_some_errors,
     register_additional_serialization_functions,
@@ -387,15 +388,16 @@ def string_type(
         return f"MambaCache(conv_states={c}, ssm_states={d})"
 
     if obj.__class__.__name__ == "DynamicCache":
+        key_cache, value_cache = get_dynamic_cache_key_value(obj)
         kc = string_type(
-            obj.key_cache,
+            key_cache,
             with_shape=with_shape,
             with_min_max=with_min_max,
             with_device=with_device,
             limit=limit,
         )
         vc = string_type(
-            obj.value_cache,
+            value_cache,
             with_shape=with_shape,
             with_min_max=with_min_max,
             with_device=with_device,

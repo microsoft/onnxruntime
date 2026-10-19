@@ -36,8 +36,8 @@ from pathlib import Path
 
 # Platform name -> (RID, list of native binary filenames expected in the source dir).
 PLATFORMS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "win_x64": ("win-x64", ("onnxruntime_providers_webgpu.dll", "dxil.dll", "dxcompiler.dll")),
-    "win_arm64": ("win-arm64", ("onnxruntime_providers_webgpu.dll", "dxil.dll", "dxcompiler.dll")),
+    "win_x64": ("win-x64", ("onnxruntime_providers_webgpu.dll", "dxcompiler.dll")),
+    "win_arm64": ("win-arm64", ("onnxruntime_providers_webgpu.dll", "dxcompiler.dll")),
     "linux_x64": ("linux-x64", ("libonnxruntime_providers_webgpu.so",)),
     "linux_aarch64": ("linux-arm64", ("libonnxruntime_providers_webgpu.so",)),
     "macos_arm64": ("osx-arm64", ("libonnxruntime_providers_webgpu.dylib",)),

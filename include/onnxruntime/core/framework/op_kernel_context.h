@@ -3,6 +3,9 @@
 
 namespace onnxruntime {
 class IExecutionFrame;
+#if !defined(ORT_MINIMAL_BUILD)
+class KernelPilot;
+#endif
 class Stream;
 namespace concurrency {
 class ThreadPool;
@@ -190,6 +193,7 @@ class OpKernelContext {
   OpKernelContext(concurrency::ThreadPool* threadpool, const logging::Logger& logger, Stream* stream);
 
   onnxruntime::NodeIndex GetNodeIndex() const;
+  const OpKernel* GetKernel() const noexcept { return kernel_; }
 
   virtual const OrtValue* GetInputMLValue(int index) const;
   virtual const OrtValue* GetImplicitInputMLValue(int index) const;
@@ -206,6 +210,13 @@ class OpKernelContext {
   virtual OrtValue* GetOrCreateOutputMLValue(int index);
 
   virtual int GetOrtValueIndexForOutput(int output_index) const;
+
+#if !defined(ORT_MINIMAL_BUILD)
+ public:
+  // Keep new virtuals after existing declarations to preserve their vtable slots.
+  // Session-owned pilot for this kernel; nullptr when unavailable.
+  virtual KernelPilot* GetKernelPilot() const { return nullptr; }
+#endif
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);

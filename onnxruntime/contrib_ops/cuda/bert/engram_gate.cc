@@ -42,6 +42,7 @@ Status EngramGate<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* value = context->Input<Tensor>(2);
   const Tensor* key_norm_scale = context->Input<Tensor>(3);
   const Tensor* query_norm_scale = context->Input<Tensor>(4);
+  const Tensor* conv_norm_scale = context->Input<Tensor>(5);
 
   const TensorShape& key_shape = key->Shape();
   ORT_RETURN_IF_NOT(key_shape.NumDimensions() == 4,
@@ -58,8 +59,15 @@ Status EngramGate<T>::ComputeInternal(OpKernelContext* context) const {
                     "key_norm_scale must have shape (hc_mult, hidden_size)");
   ORT_RETURN_IF_NOT(query_norm_scale->Shape() == TensorShape({hc_mult, hidden_size}),
                     "query_norm_scale must have shape (hc_mult, hidden_size)");
+  if (conv_norm_scale != nullptr) {
+    ORT_RETURN_IF_NOT(conv_norm_scale->Shape() == TensorShape({hc_mult, hidden_size}),
+                      "conv_norm_scale must have shape (hc_mult, hidden_size)");
+  }
 
   Tensor* output = context->Output(0, key_shape);
+  Tensor* output_normed = context->OutputCount() > 1 ? context->Output(1, key_shape) : nullptr;
+  ORT_RETURN_IF_NOT(output_normed == nullptr || conv_norm_scale != nullptr,
+                    "conv_norm_scale is required to produce the gated_value_normed output");
   if (key_shape.Size() == 0) {
     return Status::OK();
   }
@@ -71,7 +79,9 @@ Status EngramGate<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(value->Data<T>()),
       reinterpret_cast<const CudaT*>(key_norm_scale->Data<T>()),
       reinterpret_cast<const CudaT*>(query_norm_scale->Data<T>()),
+      conv_norm_scale == nullptr ? nullptr : reinterpret_cast<const CudaT*>(conv_norm_scale->Data<T>()),
       reinterpret_cast<CudaT*>(output->MutableData<T>()),
+      output_normed == nullptr ? nullptr : reinterpret_cast<CudaT*>(output_normed->MutableData<T>()),
       batch_size,
       sequence_length,
       hc_mult,

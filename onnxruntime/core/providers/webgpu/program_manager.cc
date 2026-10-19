@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "core/common/common.h"
+#include "core/common/safeint.h"
 #include "core/common/logging/logging.h"
 #include "core/platform/env_var.h"
 
@@ -15,6 +16,50 @@
 
 namespace onnxruntime {
 namespace webgpu {
+
+namespace detail {
+
+std::function<void(std::string_view)> CreateShaderDumpFunction(std::string dump_file_path) {
+  static std::mutex dump_mutex{};  // one single mutex is shared across all of the shader dump functions
+  auto dump_file = std::make_shared<std::ofstream>(dump_file_path.c_str(), std::ios::app);
+  return [dump_file = std::move(dump_file)](std::string_view shader_content) {
+    std::lock_guard lock{dump_mutex};
+    *dump_file << shader_content << "\n";
+    dump_file->flush();
+  };
+}
+
+Status NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z, uint32_t limit_per_dimension) {
+  ORT_RETURN_IF(x == 0 || y == 0 || z == 0, "Invalid dispatch group size (", x, ", ", y, ", ", z, ")");
+  ORT_RETURN_IF(limit_per_dimension == 0, "Invalid WebGPU dispatch limit.");
+
+  // ShaderHelper flattens workgroup IDs into a u32. Reject products outside that range.
+  uint32_t xy{}, size{};
+  ORT_RETURN_IF(!SafeMultiply(x, y, xy) || !SafeMultiply(xy, z, size),
+                "The dispatch group count exceeds uint32_t range.");
+  if (x > limit_per_dimension || y > limit_per_dimension || z > limit_per_dimension) {
+    double dispatch_avg = std::ceil(std::sqrt(static_cast<double>(size)));
+    if (dispatch_avg > limit_per_dimension) {
+      dispatch_avg = std::ceil(std::cbrt(static_cast<double>(size)));
+      ORT_RETURN_IF(dispatch_avg > limit_per_dimension, "The dispatch group size exceeds WebGPU maximum.");
+      const uint32_t side = static_cast<uint32_t>(dispatch_avg);
+      uint32_t square{}, cube{};
+      ORT_RETURN_IF(!SafeMultiply(side, side, square) || !SafeMultiply(square, side, cube),
+                    "The normalized dispatch group count exceeds uint32_t range.");
+      x = y = z = side;
+    } else {
+      const uint32_t side = static_cast<uint32_t>(dispatch_avg);
+      uint32_t square{};
+      ORT_RETURN_IF(!SafeMultiply(side, side, square),
+                    "The normalized dispatch group count exceeds uint32_t range.");
+      x = y = side;
+      z = 1;
+    }
+  }
+  return Status::OK();
+}
+
+}  // namespace detail
 
 ProgramArtifact::ProgramArtifact(std::string program_name,
                                  wgpu::ComputePipeline&& compute_pipeline,
@@ -29,41 +74,27 @@ ProgramManager::ProgramManager(WebGpuContext& webgpu_context)
     : webgpu_context_{webgpu_context} {
   if (std::string dump_file_path = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_EP_SHADER_DUMP_FILE");
       !dump_file_path.empty()) {
-    auto dump_file = std::make_shared<std::ofstream>(dump_file_path.c_str(), std::ios::app);
-    shader_dump_fn_ = [dump_file = std::move(dump_file)](std::string_view shader_content) {
-      *dump_file << shader_content << "\n";
-    };
+    shader_dump_fn_ = detail::CreateShaderDumpFunction(std::move(dump_file_path));
   }
 }
 
 Status ProgramManager::NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const {
-  ORT_RETURN_IF(x == 0 || y == 0 || z == 0, "Invalid dispatch group size (", x, ", ", y, ", ", z, ")");
-
-  auto limit_per_dimension = webgpu_context_.DeviceLimits().maxComputeWorkgroupsPerDimension;
-  if (x > limit_per_dimension || y > limit_per_dimension || z > limit_per_dimension) {
-    double size = static_cast<double>(x) * static_cast<double>(y) * static_cast<double>(z);
-    double dispatch_avg = std::ceil(std::sqrt(size));
-    if (dispatch_avg > limit_per_dimension) {
-      dispatch_avg = std::ceil(std::cbrt(size));
-      ORT_RETURN_IF(dispatch_avg > limit_per_dimension, "The dispatch group size exceeds WebGPU maximum.");
-      x = y = z = static_cast<uint32_t>(dispatch_avg);
-    } else {
-      x = y = static_cast<uint32_t>(dispatch_avg);
-      z = 1;
-    }
-  }
-  return Status::OK();
+  return detail::NormalizeDispatchGroupSize(x, y, z, webgpu_context_.DeviceLimits().maxComputeWorkgroupsPerDimension);
 }
 
 Status ProgramManager::CalculateSegmentsForInputsAndOutputs(const ProgramBase& program, std::vector<uint32_t>& inputs_segments, std::vector<uint32_t>& outputs_segments) const {
-  inputs_segments.resize(program.Inputs().size(), 1);
-  outputs_segments.resize(program.Outputs().size(), 1);
+  inputs_segments.resize(program.Inputs().size(), 0);
+  outputs_segments.resize(program.Outputs().size(), 0);
 
   const uint64_t maxStorageBufferBindingSize = webgpu_context_.DeviceLimits().maxStorageBufferBindingSize;
 
   // Inputs
   for (size_t i = 0; i < program.Inputs().size(); ++i) {
+    if (program.InputBufferOwner(i) != i) {
+      continue;
+    }
     const auto& input = program.Inputs()[i];
+    inputs_segments[i] = 1;
     if (input.tensor && input.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
       uint32_t segments = static_cast<uint32_t>((input.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
       inputs_segments[i] = segments;
@@ -71,7 +102,11 @@ Status ProgramManager::CalculateSegmentsForInputsAndOutputs(const ProgramBase& p
   }
   // Outputs
   for (size_t i = 0; i < program.Outputs().size(); ++i) {
+    if (program.OutputBufferOwner(i) != i) {
+      continue;
+    }
     const auto& output = program.Outputs()[i];
+    outputs_segments[i] = 1;
     if (output.tensor && output.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
       uint32_t segments = static_cast<uint32_t>((output.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
       outputs_segments[i] = segments;
@@ -94,6 +129,10 @@ wgpu::PipelineLayout ProgramManager::CreatePipelineLayout(const ProgramBase& pro
   }
   const bool has_uniform_binding =
       std::any_of(shape_uniform_ranks.begin(), shape_uniform_ranks.end(), [](int rank) { return rank > 0; }) ||
+      std::any_of(program.Inputs().cbegin(), program.Inputs().cend(),
+                  [](const ProgramInput& input) { return input.is_buffer_view; }) ||
+      std::any_of(program.Outputs().cbegin(), program.Outputs().cend(),
+                  [](const ProgramOutput& output) { return output.is_buffer_view; }) ||
       std::any_of(program.UniformVariables().cbegin(), program.UniformVariables().cend(),
                   [](const ProgramUniformVariableValue& uniform) { return uniform.length > 0; });
 
@@ -149,7 +188,7 @@ Status ProgramManager::Build(const ProgramBase& program,
                              wgpu::BindGroupLayout& bind_group_layout,
                              std::vector<int>& shape_uniform_ranks,
                              wgpu::Future& future,
-                             PipelineCallbackContext& callback_context) const {
+                             const std::shared_ptr<PipelineCallbackContext>& callback_context) const {
   auto& device = webgpu_context_.Device();
   ShaderHelper shader_helper{program,
                              program_metadata,
@@ -282,8 +321,8 @@ Status ProgramManager::Build(const ProgramBase& program,
 #endif
 
   auto pipeline_callback =
-      [](wgpu::CreatePipelineAsyncStatus status, wgpu::ComputePipeline pipeline, wgpu::StringView message,
-         PipelineCallbackContext* context) noexcept {
+      [context = callback_context](wgpu::CreatePipelineAsyncStatus status, wgpu::ComputePipeline pipeline,
+                                   wgpu::StringView message) noexcept {
         if (status == wgpu::CreatePipelineAsyncStatus::Success) {
           context->pipeline = std::move(pipeline);
         } else {
@@ -296,12 +335,12 @@ Status ProgramManager::Build(const ProgramBase& program,
   future = device.CreateComputePipelineAsync(
       &pipeline_descriptor,
       wgpu::CallbackMode::WaitAnyOnly,
-      pipeline_callback,
-      &callback_context);
+      std::move(pipeline_callback));
   return Status::OK();
 }
 
 const ProgramArtifact* ProgramManager::Get(const std::string& key) const {
+  std::lock_guard<std::mutex> lock(programs_mutex_);
   auto result = programs_.find(key);
   if (result != programs_.end()) {
     return &result->second;
@@ -311,6 +350,7 @@ const ProgramArtifact* ProgramManager::Get(const std::string& key) const {
 }
 
 const ProgramArtifact* ProgramManager::Set(const std::string& key, ProgramArtifact&& program) {
+  std::lock_guard<std::mutex> lock(programs_mutex_);
   return &(programs_.emplace(key, std::move(program)).first->second);
 }
 

@@ -259,23 +259,81 @@ void LaunchQMoEPackFp4ScalesForTmaWs(
     int k_blocks,
     cudaStream_t stream);
 
+// Keeps the original routing IDs intact. Unused compact_to_expert slots are -1.
+void LaunchQMoECompactExperts(
+    const int* expert_indices,
+    int* compact_indices,
+    int* expert_to_compact,
+    int* compact_to_expert,
+    int num_experts,
+    int expert_capacity,
+    int64_t num_routes,
+    cudaStream_t stream);
+
+struct QMoEFp8ProjectionParams {
+  const uint8_t* weights = nullptr;
+  const uint8_t* up_weights = nullptr;
+  const void* scales = nullptr;
+  const void* up_scales = nullptr;
+  int scale_type = 0;
+  int up_scale_type = 0;
+  const int* row_to_unpermuted = nullptr;
+  const int* experts = nullptr;
+  const int64_t* expert_offsets = nullptr;
+  const int* tile_offsets = nullptr;
+  int num_experts = 0;
+  int num_rows = 0;
+  int expanded_rows = 0;
+  int n = 0;
+  int k = 0;
+  int block_size = 0;
+  int fusion = 0;
+};
+
+void LaunchQMoEFp8ExpertTiles(const int64_t* expert_offsets, int* tile_offsets,
+                              int num_experts, cudaStream_t stream);
+
+template <typename T, typename OutputT = T>
+void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
+                             const T* input, OutputT* output, cudaStream_t stream);
+
+bool QMoEFp8GemvSupportsNativeDecode();
+bool QMoEFp8GemvKernelUsesNativeDecode(const void* kernel);
+
+template <typename T, typename InputT = T>
+void LaunchQMoEFp8Activation(const InputT* input, const T* bias, T* output,
+                             const int* experts, int rows, int inter_size, int fusion,
+                             float alpha, float beta, float limit, cudaStream_t stream);
+
 void LaunchQMoEDequantizeFp8Weights(
     const uint8_t* weights,
-    const float* global_scales,
+    const float* scales,
     half* output,
     int num_experts,
     int n,
     int k,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    int block_size = 0,
+    bool split_fc1 = false,
+    bool block_fused_fc1 = false,
+    const int* compact_to_expert = nullptr,
+    const half* bias = nullptr,
+    half* output_bias = nullptr);
 
 void LaunchQMoEDequantizeFp8Weights(
     const uint8_t* weights,
-    const float* global_scales,
+    const float* scales,
     __nv_bfloat16* output,
     int num_experts,
     int n,
     int k,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    int block_size = 0,
+    bool split_fc1 = false,
+    bool block_fused_fc1 = false,
+    const int* compact_to_expert = nullptr,
+    const __nv_bfloat16* bias = nullptr,
+    __nv_bfloat16* output_bias = nullptr);
 
 // NVFP4 weight dequantization: E2M1 4-bit weights with Float8E4M3FN block scales
 // (block size 16) and per-expert float32 global scales. Weight layout [E, K, N/2],
@@ -288,7 +346,11 @@ void LaunchQMoEDequantizeNvfp4Weights(
     int num_experts,
     int n,
     int k,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    const int* compact_to_expert = nullptr,
+    const half* bias = nullptr,
+    half* output_bias = nullptr,
+    bool weights_row_major = false);
 
 void LaunchQMoEDequantizeNvfp4Weights(
     const uint8_t* packed_weights,
@@ -298,7 +360,11 @@ void LaunchQMoEDequantizeNvfp4Weights(
     int num_experts,
     int n,
     int k,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    const int* compact_to_expert = nullptr,
+    const __nv_bfloat16* bias = nullptr,
+    __nv_bfloat16* output_bias = nullptr,
+    bool weights_row_major = false);
 
 // Repack column-major FP4 packed weights to row-major layout on GPU.
 // Input shape interpretation: [experts, k, n/2] (col-major packed),

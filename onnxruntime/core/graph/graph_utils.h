@@ -474,9 +474,12 @@ inline bool FindPath(Graph& graph, const Node& node, bool is_input_edge,
 /**
  * Remove nodes with only one output edge using bottom-up bfs traversal.
  * @param node: The node to start with.
+ * @param removed_node_indices Optional output for the indexes of nodes that were removed. When provided, the caller
+ *                             is responsible for reporting their replacement or intentional removal.
  * @returns true if there is one or more node(s) removed by this function. Otherwise return false.
  */
-bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node);
+bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node,
+                                      std::vector<NodeIndex>* removed_node_indices = nullptr);
 
 /** Creates a mutable NodeArg owned by the graph with mirrored base_arg's TypeProto and name
  * @param base_arg The NodeArg the newly created NodeArg is mirrored based off.

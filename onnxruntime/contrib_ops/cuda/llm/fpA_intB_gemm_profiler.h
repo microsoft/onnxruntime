@@ -16,9 +16,14 @@
  */
 #pragma once
 
-#include <cassert>
 #include <cutlass/numeric_types.h>
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cassert>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -27,6 +32,7 @@
 #include "contrib_ops/cuda/llm/gemm_profiler.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
+#include "contrib_ops/cuda/llm/gemm_tactic_cache.h"
 
 using WeightOnlyGemmRunner = onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface;
 using WeightOnlyGemmRunnerPtr = std::shared_ptr<WeightOnlyGemmRunner>;
@@ -41,8 +47,7 @@ enum class WeightTypeId {
 constexpr int32_t FP16_BITS = 16;
 constexpr int32_t INT8_BITS = 8;
 constexpr int32_t INT4_BITS = 4;
-constexpr int32_t FP16_INT4_RATIO = FP16_BITS / INT4_BITS;
-constexpr int32_t FP16_INT8_RATIO = FP16_BITS / INT8_BITS;
+constexpr int32_t INT2_BITS = 2;
 
 // Comma-separated list of M buckets to profile for MatMulNBits/fpA_intB. Overrides the default
 // reduced bucket set. Example: ORT_FPA_INTB_PROFILE_M="1,8,64,512".
@@ -51,6 +56,23 @@ constexpr const char* kEnvProfileM = "ORT_FPA_INTB_PROFILE_M";
 // Default top M that bounds the initial profile sweep when no override is given. Larger runtime
 // M values are handled by lazy single-bucket profiling.
 constexpr int kDefaultProfileMaxM = 2048;
+
+// Maps a measured tactic time to the value compared during tactic selection. For small M, CUTLASS
+// must beat the CUDA GEMV by 10% when the weight fits in L2, because the profiler then times it
+// L2-resident while decode streams it from DRAM.
+float GetWeightOnlyGemmSelectionTime(int m, size_t weight_bytes, size_t l2_cache_bytes,
+                                     bool is_cuda_kernel, float time);
+
+// Computes the single temporary CUDA allocation used while profiling tactics.
+// `packed_n` is the number of 16-bit elements that hold one packed weight row.
+// Shared with partition-time memory estimation so the allocation formulas cannot drift.
+std::optional<std::array<size_t, 7>> ComputeWeightOnlyGemmProfilerBufferSizes(
+    size_t max_m, size_t packed_n, size_t k, int quant_bits,
+    size_t group_size, size_t runner_workspace_bytes, size_t streaming_l2_bytes = 0);
+
+std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
+    size_t max_m, size_t packed_n, size_t k, int quant_bits,
+    size_t group_size, size_t runner_workspace_bytes, size_t streaming_l2_bytes = 0);
 
 class WeightOnlyGroupwiseQuantGemmPluginProfiler
     : public GemmPluginProfiler<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig, WeightOnlyGemmRunnerPtr,
@@ -62,6 +84,10 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   // positive list (empty when the string is empty/blank). Used for the ep.cuda.fpa_intb_profile_m
   // session-config key and the ORT_FPA_INTB_PROFILE_M env var, both resolved by the kernel.
   static std::vector<int> ParseProfileMList(const std::string& value);
+
+  // Returns the exact initial bucket set used by construction-time profiling.
+  static std::vector<int> GetInitialProfileMBuckets(
+      int min_m, int max_m, const std::vector<int>& profile_m_override);
 
   // Overrides the initial profile M-bucket set for this profiler instance (per session). An empty
   // list keeps the built-in default bucket set. Resolved by the kernel from session config / env.
@@ -79,30 +105,101 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mGroupSize = groupSize;
   }
 
+  void setDecodeInterleave(int interleave) {
+    mDecodeInterleave = interleave;
+  }
+
   void setCudaKernelType(KernelType cudaKernelType, int arch) {
     mCudaKernelType = cudaKernelType;
     mArch = arch;
   }
 
+  void setL2CacheBytes(size_t l2CacheBytes) {
+    mL2CacheBytes = l2CacheBytes;
+  }
+
+  // Attaches the process-global persistent tactic cache. A nullptr keeps the
+  // in-process-only behavior (no disk reads/writes). A non-null `session_profile_map` replaces the
+  // process-global profile map so this profiler deduplicates shapes within its own session while
+  // using `cache` for cross-session persistence (and re-tuning without mutating live sessions).
+  void setPersistentCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache,
+                          onnxruntime::llm::gemm_cache::CacheAccess access = {},
+                          MNKProfileMapPtr session_profile_map = nullptr) {
+    mCache = std::move(cache);
+    mCacheAccess = access;
+    if (session_profile_map != nullptr) {
+      setSelectionTactics(session_profile_map);
+    }
+  }
+
+  void setTuningResultsCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache) {
+    mTuningResultsCache = std::move(cache);
+  }
+
+  // Paired-K fp16 int4 GEMV tactic for the M = 8 bucket (M = 5..8 at run time). Mode 1 adds it as an extra
+  // candidate, so it is kept only where it beats the default GEMV and the CUTLASS kernels; mode 2 offers
+  // only that tactic (testing and benchmarking); mode 0 disables it.
+  void setPairedGemvMode(int mode) {
+    mPairedGemvMode = mode;
+  }
+
+  void setWaveAwareGemv(bool enabled) {
+    mWaveAwareGemv = enabled;
+  }
+
  protected:
+  bool canProfileInt4Decode(int m) const {
+    return m == 1 && mDecodeInterleave == 4 && mQuantBits == INT4_BITS && mGroupSize == 32 &&
+           !mHasBiases && !mHasZeros &&
+           (mCudaKernelType == KernelType::FP16Int4Groupwise ||
+            mCudaKernelType == KernelType::BF16Int4Groupwise);
+  }
+
   void runTactic(int m, int n, int k, Config const& tactic,
                  char* workspace, cudaStream_t const& stream) override;
 
   size_t computeTmpSize(size_t maxM, size_t n, size_t k) override;
 
+  void initTmpData(int m, int n, int k, char* workspace, size_t size, cudaStream_t stream) override;
+
   std::vector<Config> getTactics(int m, int n, int k) const override;
 
   bool checkTactic(int m, int n, int k, Config const& tactic) const override;
 
+  float getSelectionTime(int m, int n, int k, Config const& tactic, float time) const override;
+
   std::vector<int> getProfileMBuckets(int minM, int maxM, bool hasWeightOnlyCudaKernel) const override;
 
+  void loadPersistentCache(GemmIdCore const& gemmId, MProfileMap& map,
+                           bool hasWeightOnlyCudaKernel) override;
+
+  // Records buckets in `map` that are new or differ from the cache in memory (no disk write).
+  void stagePersistentCache(GemmIdCore const& gemmId, MProfileMap const& map,
+                            bool hasWeightOnlyCudaKernel) override;
+
  private:
-  bool mHasBiases;
-  bool mHasZeros;
-  int mQuantBits;
-  int mGroupSize;
-  KernelType mCudaKernelType;
-  int mArch;
+  onnxruntime::llm::gemm_cache::MatMulNBitsKey makeCacheKey(GemmIdCore const& gemmId,
+                                                            bool hasWeightOnlyCudaKernel) const;
+
+  // Populates the in-memory cache with any buckets in `map` not already recorded (no disk write).
+  // Returns true if at least one new bucket was staged.
+  bool stageProfiledTactics(GemmIdCore const& gemmId, MProfileMap const& map,
+                            bool hasWeightOnlyCudaKernel);
+
+  bool mHasBiases = false;
+  bool mHasZeros = false;
+  int mQuantBits = 0;
+  int mGroupSize = 0;
+  KernelType mCudaKernelType = KernelType::FP16Int4Groupwise;
+  int mArch = 0;
+  int mDecodeInterleave = 0;
+  size_t mL2CacheBytes = 0;
+  std::atomic<size_t> mProfileWeightIndex{0};
+  int mPairedGemvMode = 0;
+  std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mCache;
+  onnxruntime::llm::gemm_cache::CacheAccess mCacheAccess;
+  std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mTuningResultsCache;
+  bool mWaveAwareGemv = false;
   std::vector<int> mProfileMOverride;
 };
 

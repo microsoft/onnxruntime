@@ -26,6 +26,58 @@ _LAST_RELEASED_AI_ONNX_OPSET = max(v for (d, v) in helper.OP_SET_ID_VERSION_MAP 
 
 
 class TestIOBinding(unittest.TestCase):
+    def test_cuda_rms_norm_fp16_offset_buffers(self):
+        """RMSNorm must accept FP16 CUDA buffers offset by one element without corrupting their padding."""
+        if "CUDAExecutionProvider" not in onnxrt.get_available_providers():
+            self.skipTest("CUDAExecutionProvider unavailable")
+
+        epsilon = 1e-5
+        options = onnxrt.SessionOptions()
+        options.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_DISABLE_ALL
+        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        for width in (32, 512):
+            shape = [2, width]
+            inputs = [
+                helper.make_tensor_value_info("X", TensorProto.FLOAT16, shape),
+                helper.make_tensor_value_info("scale", TensorProto.FLOAT16, [width]),
+            ]
+            outputs = [helper.make_tensor_value_info("Y", TensorProto.FLOAT16, shape)]
+            node = helper.make_node("RMSNormalization", ["X", "scale"], ["Y"], axis=-1, epsilon=epsilon)
+            model = helper.make_model(
+                helper.make_graph([node], "rms-norm-offset-buffers", inputs, outputs),
+                opset_imports=[helper.make_opsetid("", 23)],
+                ir_version=10,
+            )
+            session = onnxrt.InferenceSession(model.SerializeToString(), options, providers=["CUDAExecutionProvider"])
+            values = np.linspace(-2, 2, 2 * width).astype(np.float16).reshape(shape)
+            scale = np.linspace(0.5, 1.5, width).astype(np.float16)
+            reference = values.astype(np.float64)
+            reference = reference * scale / np.sqrt(np.mean(reference**2, axis=-1, keepdims=True) + epsilon)
+            for offsets in ((0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 1)):
+                with self.subTest(width=width, offsets=offsets):
+                    buffers = []
+                    binding = session.io_binding()
+                    for name, data, offset in zip(("X", "scale", "Y"), (values, scale, values), offsets, strict=True):
+                        padded = np.full(data.size + 2, 123, dtype=np.float16)
+                        if name != "Y":
+                            padded[offset : offset + data.size] = data.ravel()
+                        buffer = onnxrt.OrtValue.ortvalue_from_numpy(padded, "cuda", 0)
+                        buffers.append(buffer)
+                        pointer = buffer.data_ptr() + offset * padded.itemsize
+                        self.assertEqual(pointer % 4, offset * padded.itemsize)
+                        bind = binding.bind_output if name == "Y" else binding.bind_input
+                        bind(name, "cuda", 0, np.float16, data.shape, pointer)
+                    session.run_with_iobinding(binding)
+                    binding.synchronize_outputs()
+                    output = buffers[2].numpy()
+                    start = offsets[2]
+                    actual = output[start : start + values.size].reshape(shape)
+                    np.testing.assert_allclose(actual, reference, rtol=1e-3, atol=1e-3)
+                    np.testing.assert_array_equal(output[:start], np.float16(123))
+                    np.testing.assert_array_equal(output[start + values.size :], np.float16(123))
+                    for buffer, data, offset in zip(buffers[:2], (values, scale), offsets[:2], strict=True):
+                        np.testing.assert_array_equal(buffer.numpy()[offset : offset + data.size], data.ravel())
+
     def _create_ortvalue_input_on_gpu(self, device):
         return onnxrt.OrtValue.ortvalue_from_numpy(
             np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32), device, 0

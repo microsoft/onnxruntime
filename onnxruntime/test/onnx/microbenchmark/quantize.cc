@@ -5,7 +5,7 @@
 #include "core/util/thread_utils.h"
 #include "core/framework/int4.h"
 
-static void BenchSize(benchmark::internal::Benchmark* b) {
+static void BenchSize(benchmark::Benchmark* b) {
   for (int size : {80000, 160000, 320000, 640000, 1280000}) {
     for (int threads : {2, 4, 6, 8}) {
       b->Args({size, threads});
@@ -156,7 +156,7 @@ static void BM_BlockedQuantize_LastAxis(benchmark::State& state) {
 BENCHMARK(BM_BlockedQuantize_NotLastAxis)
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kNanosecond)
-    ->Apply([](benchmark::internal::Benchmark* b) {
+    ->Apply([](benchmark::Benchmark* b) {
       b->ArgNames({"M", "N", "block_size", "threads"});
       b->ArgsProduct({{1024, 4096}, {4096}, {128}, {2, 8}});
     });
@@ -164,7 +164,7 @@ BENCHMARK(BM_BlockedQuantize_NotLastAxis)
 BENCHMARK(BM_BlockedQuantize_LastAxis)
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kNanosecond)
-    ->Apply([](benchmark::internal::Benchmark* b) {
+    ->Apply([](benchmark::Benchmark* b) {
       b->ArgNames({"M", "N", "quant_block_size", "threads"});
       b->ArgsProduct({{1024, 4096}, {4096}, {64, 128}, {2, 8}});
     });

@@ -1,22 +1,76 @@
 #include "InferenceSessionHostObject.h"
 #include "AsyncWorker.h"
 #include "JsiUtils.h"
+#include "LoadModelArgumentPolicy.h"
 #include "SessionUtils.h"
 #include "TensorUtils.h"
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <limits>
+#include <memory>
 #include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
 
 using namespace facebook::jsi;
 
 namespace onnxruntimejsi {
+
+namespace {
+
+LoadModelArgumentType getLoadModelArgumentType(Runtime& runtime,
+                                               const Value& value) {
+  if (value.isString()) {
+    return LoadModelArgumentType::String;
+  }
+  if (value.isNumber()) {
+    return LoadModelArgumentType::Number;
+  }
+  if (value.isObject()) {
+    return value.asObject(runtime).isArrayBuffer(runtime)
+               ? LoadModelArgumentType::ArrayBuffer
+               : LoadModelArgumentType::Object;
+  }
+  return LoadModelArgumentType::Other;
+}
+
+size_t parseBufferIndex(Runtime& runtime, const Value& value,
+                        const char* argumentName) {
+  const double raw = value.asNumber();
+  if (!std::isfinite(raw) || raw < 0 || std::trunc(raw) != raw ||
+      raw >= static_cast<double>(std::numeric_limits<size_t>::max())) {
+    throw JSError(runtime,
+                  std::string("loadModel ") + argumentName +
+                      " must be a non-negative integer representable as size_t");
+  }
+  return static_cast<size_t>(raw);
+}
+
+}  // namespace
 
 class InferenceSessionHostObject::LoadModelAsyncWorker : public AsyncWorker {
  public:
   LoadModelAsyncWorker(Runtime& runtime, const Value* arguments, size_t count,
                        std::shared_ptr<InferenceSessionHostObject> session)
       : AsyncWorker(runtime, session->env_), session_(session) {
-    if (count < 1)
-      throw JSError(runtime, "loadModel requires at least 1 argument");
-    if (arguments[0].isString()) {
+    std::array<LoadModelArgumentType, 4> argumentTypes{};
+    const size_t classifiedCount = std::min(count, argumentTypes.size());
+    for (size_t i = 0; i < classifiedCount; ++i) {
+      argumentTypes[i] = getLoadModelArgumentType(runtime, arguments[i]);
+    }
+    const auto layout = resolveLoadModelArgumentLayout(
+        argumentTypes.data(), classifiedCount);
+    if (!layout.valid || count != classifiedCount) {
+      throw JSError(
+          runtime,
+          "loadModel expects (modelPath, options) or "
+          "(buffer, byteOffset, byteLength, options)");
+    }
+
+    useModelBuffer_ = layout.usesModelBuffer;
+    if (!useModelBuffer_) {
       modelPath_ = arguments[0].asString(runtime).utf8(runtime);
       if (modelPath_.find("file:/") == 0) {
         modelPath_ = modelPath_.substr(5);
@@ -24,42 +78,101 @@ class InferenceSessionHostObject::LoadModelAsyncWorker : public AsyncWorker {
           modelPath_ = modelPath_.substr(2);
         }
       }
-    } else if (arguments[0].isObject() &&
-               arguments[0].asObject(runtime).isArrayBuffer(runtime)) {
+    } else {
       auto arrayBufferObj = arguments[0].asObject(runtime);
       auto arrayBuffer = arrayBufferObj.getArrayBuffer(runtime);
-      modelData_ = arrayBuffer.data(runtime);
-      modelDataLength_ = arrayBuffer.size(runtime);
-    } else {
-      throw JSError(runtime, "Model path or buffer is required");
+      const size_t byteOffset =
+          parseBufferIndex(runtime, arguments[1], "byteOffset");
+      const size_t byteLength =
+          parseBufferIndex(runtime, arguments[2], "byteLength");
+      const size_t bufferSize = arrayBuffer.size(runtime);
+      if (byteOffset > bufferSize || byteLength > bufferSize - byteOffset) {
+        throw JSError(runtime, "loadModel buffer range is out of bounds");
+      }
+      if (byteLength > 0) {
+        const auto* begin = arrayBuffer.data(runtime) + byteOffset;
+        modelData_.assign(begin, begin + byteLength);
+      }
     }
-    keepValue(runtime, arguments[0]);
-    if (count > 1) {
-      parseSessionOptions(runtime, arguments[1], sessionOptions_);
-    }
+    parseSessionOptions(runtime, arguments[layout.optionsIndex], sessionOptions_,
+                        session->env_, epContextDataRead_);
+    abortEpContextDataRead_ = epContextDataRead_;
+    // The state stays private to this worker until Ort::Session construction succeeds. Nothing is
+    // published to the host object here, so a rejected load releases it deterministically in
+    // onReject() instead of leaving it retained until a later dispose or garbage collection.
   }
+
+  ~LoadModelAsyncWorker() override { abortAndJoin(); }
 
  protected:
   void execute() {
-    if (modelPath_.empty()) {
-      session_->session_ = std::make_shared<Ort::Session>(
-          session_->env_->getOrtEnv(), modelData_, modelDataLength_,
+    if (useModelBuffer_) {
+      loadedSession_ = std::make_shared<Ort::Session>(
+          session_->env_->getOrtEnv(),
+          modelData_.empty() ? nullptr : modelData_.data(), modelData_.size(),
           sessionOptions_);
     } else {
-      session_->session_ = std::make_shared<Ort::Session>(
+      loadedSession_ = std::make_shared<Ort::Session>(
           session_->env_->getOrtEnv(), modelPath_.c_str(), sessionOptions_);
     }
   }
 
-  Value onResolve(Runtime& rt) { return Value::undefined(); }
+  Value onResolve(Runtime& rt) {
+    // Publish only on the JS thread so dispose(), reload, and successful construction cannot race
+    // while reading or replacing the host object's shared_ptr members.
+    session_->session_.reset();
+    previousEpContextDataRead_ = std::move(session_->epContextDataRead_);
+    session_->epContextDataRead_ = std::move(epContextDataRead_);
+    session_->session_ = std::move(loadedSession_);
+
+    // The retired state can no longer be reached by any session; release it here so the JS
+    // function is dropped on the JS thread.
+    releaseState(previousEpContextDataRead_);
+    abortEpContextDataRead_.reset();
+    return Value::undefined();
+  }
+
+  Value onReject(Runtime& rt, const std::string& err) {
+    // Session construction failed, so the state was never published. Release it on the JS thread
+    // rather than waiting for this worker to be collected.
+    releaseState(epContextDataRead_);
+    abortEpContextDataRead_.reset();
+    return AsyncWorker::onReject(rt, err);
+  }
+
+  void onAbort() override {
+    if (abortEpContextDataRead_) {
+      abortEpContextDataRead_->invalidate();
+    }
+  }
 
  private:
+  // Must run on the JS thread: dropping the last reference releases the JS callback function.
+  static void
+  releaseState(std::shared_ptr<EpContextDataReadCallback>& state) noexcept {
+    if (state) {
+      state->invalidate();
+      state.reset();
+    }
+  }
+
   std::string error_;
   std::string modelPath_;
-  void* modelData_;
-  size_t modelDataLength_;
+  bool useModelBuffer_ = false;
+  std::vector<uint8_t> modelData_;
   std::shared_ptr<InferenceSessionHostObject> session_;
   Ort::SessionOptions sessionOptions_;
+  // Strong snapshot of the state referenced by sessionOptions_, owned solely by this worker until
+  // the session it belongs to exists.
+  std::shared_ptr<EpContextDataReadCallback> epContextDataRead_;
+  // Immutable snapshot used by onAbort() to unblock a worker waiting for the JS thread. execute()
+  // may move epContextDataRead_ into the host concurrently, so the abort path must not access it.
+  std::shared_ptr<EpContextDataReadCallback> abortEpContextDataRead_;
+  // State displaced from the host object by a successful reload, kept alive until the JS thread
+  // can release it.
+  std::shared_ptr<EpContextDataReadCallback> previousEpContextDataRead_;
+  // Declared after every callback-state reference so a worker-local session is destroyed first.
+  std::shared_ptr<Ort::Session> loadedSession_;
   std::shared_ptr<WeakObject> weakResolve_;
   std::shared_ptr<WeakObject> weakReject_;
   std::thread thread_;
@@ -109,6 +222,8 @@ class InferenceSessionHostObject::RunAsyncWorker : public AsyncWorker {
             });
   }
 
+  ~RunAsyncWorker() override { abortAndJoin(); }
+
  protected:
   void execute() {
     auto inputNames = std::vector<const char*>(inputNames_.size());
@@ -145,7 +260,7 @@ class InferenceSessionHostObject::RunAsyncWorker : public AsyncWorker {
     return Value(rt, resultObject);
   }
 
-  void onAbort() {
+  void onAbort() override {
     runOptions_.SetTerminate();
   }
 
@@ -169,7 +284,12 @@ DEFINE_METHOD(InferenceSessionHostObject::run) {
 }
 
 DEFINE_METHOD(InferenceSessionHostObject::dispose) {
+  // Release the session first: ONNX Runtime may still call the read callback while it exists.
   session_.reset();
+  if (epContextDataRead_) {
+    epContextDataRead_->invalidate();
+    epContextDataRead_.reset();
+  }
   return Value::undefined();
 }
 

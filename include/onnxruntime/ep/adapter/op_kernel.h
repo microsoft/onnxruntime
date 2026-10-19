@@ -63,6 +63,15 @@ struct OpKernel {
     return Status::OK();
   }
 
+  // Mirrors the in-tree per-kernel prepack execution state for shared kernel source compatibility.
+  void SetOuterPrePackParallelism(bool enabled) noexcept {
+    outer_prepack_parallelism_enabled_ = enabled;
+  }
+
+  bool IsOuterPrePackParallelismEnabled() const noexcept {
+    return outer_prepack_parallelism_enabled_;
+  }
+
   // Mirrors the in-tree OpKernel default so shared kernel source compiled for the plugin hierarchy
   // continues to build. The plugin host does not bridge or invoke this virtual; plugin/C-ABI
   // forwarding is deferred, so this adapter declaration remains a default no-op. See the core
@@ -76,6 +85,7 @@ struct OpKernel {
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
   OpKernelInfo op_kernel_info_;
+  bool outer_prepack_parallelism_enabled_{false};
 };
 
 /// <summary>

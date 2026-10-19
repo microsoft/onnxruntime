@@ -6,7 +6,10 @@ import { InferenceSession } from 'onnxruntime-common';
 import { getInstance } from './wasm-factory';
 import { allocWasmString, checkLastError, iterateExtraOptions } from './wasm-utils';
 
-export const setRunOptions = (options: InferenceSession.RunOptions): [number, number[]] => {
+export const setRunOptions = (
+  options: InferenceSession.RunOptions,
+  loraAdapterHandles: readonly number[],
+): [number, number[]] => {
   const wasm = getInstance();
   let runOptionsHandle = 0;
   const allocs: number[] = [];
@@ -59,6 +62,12 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [number, nu
           checkLastError(`Can't set a run config entry: ${key} - ${value}.`);
         }
       });
+    }
+
+    for (const adapterHandle of loraAdapterHandles) {
+      if (wasm._OrtRunOptionsAddActiveLoraAdapter(runOptionsHandle, adapterHandle) !== 0) {
+        checkLastError("Can't add an active LoRA adapter.");
+      }
     }
 
     return [runOptionsHandle, allocs];

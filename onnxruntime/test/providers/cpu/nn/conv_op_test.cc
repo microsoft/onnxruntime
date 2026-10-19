@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/graph/constants.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "default_providers.h"
 #include "gtest/gtest.h"
 #include "test/common/random_generator.h"
@@ -170,6 +171,25 @@ void TestMobileClipDepthwiseMultiplier2(int64_t channels, int64_t input_hw) {
 }  // namespace
 
 // Conv
+TEST(ConvTest, MissingBiasCUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  OpTester test("Conv", 11);
+  test.AddInput<float>("X", {1, 1, 2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("W", {1, 1, 1, 1}, {2.f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {2.f, 4.f, 6.f, 8.f});
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda_ep));
+  test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
 TEST(ConvTest, Conv1D_1) {
   ConvOpAndTestAttributes attrs = {
       "",                          // auto_pad
@@ -1286,6 +1306,111 @@ TEST(ConvTest, Depthwise2D_Bias_Group2) {
 
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+// A depthwise conv whose channel count is a multiple of four, so an NHWC implementation may carry
+// four channels per thread: input, weight and output channels all correspond 1:1. Padding is on so
+// the taps that fall outside the input are exercised too.
+TEST(ConvTest, Depthwise2D_Bias_Group4_Padded) {
+  ConvOpAndTestAttributes attrs = {
+      "",                                // auto_pad
+      std::vector<int64_t>{1, 1},        // dilations
+      4,                                 // group
+      std::vector<int64_t>{3, 3},        // kernel_shape
+      std::vector<int64_t>{1, 1, 1, 1},  // pads
+      std::vector<int64_t>{1, 1},        // strides
+      {}                                 // excluded EPs
+  };
+
+  std::vector<float> X = {
+      0.0f, 1.0f, 2.0f,
+      3.0f, 4.0f, 5.0f,
+      6.0f, 7.0f, 8.0f,
+
+      9.0f, 10.0f, 11.0f,
+      12.0f, 13.0f, 14.0f,
+      15.0f, 16.0f, 17.0f,
+
+      18.0f, 19.0f, 20.0f,
+      21.0f, 22.0f, 23.0f,
+      24.0f, 25.0f, 26.0f,
+
+      27.0f, 28.0f, 29.0f,
+      30.0f, 31.0f, 32.0f,
+      33.0f, 34.0f, 35.0f};
+  std::vector<int64_t> X_shape = {1, 4, 3, 3};
+  // Per-channel constant weights 1, 2, 3, 4, so a channel that reads the wrong weight plane or the
+  // wrong input plane produces a visibly wrong value.
+  std::vector<float> W = {
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+      2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
+      3.0f, 3.0f, 3.0f, 3.0f, 3.0f, 3.0f, 3.0f, 3.0f, 3.0f,
+      4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f};
+  std::vector<int64_t> W_shape = {4, 1, 3, 3};
+  std::vector<float> B = {0.0f, -1.0f, -2.0f, -3.0f};
+  std::vector<int64_t> B_shape = {4};
+  std::vector<int64_t> Y_shape = {1, 4, 3, 3};
+  auto expected_vals = {
+      8.0f, 15.0f, 12.0f,
+      21.0f, 36.0f, 27.0f,
+      20.0f, 33.0f, 24.0f,
+
+      87.0f, 137.0f, 95.0f,
+      149.0f, 233.0f, 161.0f,
+      111.0f, 173.0f, 119.0f,
+
+      238.0f, 367.0f, 250.0f,
+      385.0f, 592.0f, 403.0f,
+      274.0f, 421.0f, 286.0f,
+
+      461.0f, 705.0f, 477.0f,
+      729.0f, 1113.0f, 753.0f,
+      509.0f, 777.0f, 525.0f};
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+// Same shape of channel count, but with a dilation, so the tap offsets no longer advance by one
+// input element.
+TEST(ConvTest, Depthwise2D_Group4_Dilated) {
+  ConvOpAndTestAttributes attrs = {
+      "",                                // auto_pad
+      std::vector<int64_t>{2, 2},        // dilations
+      4,                                 // group
+      std::vector<int64_t>{2, 2},        // kernel_shape
+      std::vector<int64_t>{0, 0, 0, 0},  // pads
+      std::vector<int64_t>{1, 1},        // strides
+      {}                                 // excluded EPs
+  };
+
+  std::vector<float> X(64);
+  for (size_t i = 0; i < X.size(); ++i) {
+    X[i] = static_cast<float>(i);
+  }
+  std::vector<int64_t> X_shape = {1, 4, 4, 4};
+  std::vector<float> W = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      1.0f, 2.0f, 3.0f, 4.0f,
+      1.0f, 2.0f, 3.0f, 4.0f,
+      1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<int64_t> W_shape = {4, 1, 2, 2};
+  std::vector<int64_t> Y_shape = {1, 4, 2, 2};
+  auto expected_vals = {
+      68.0f, 78.0f,
+      108.0f, 118.0f,
+
+      228.0f, 238.0f,
+      268.0f, 278.0f,
+
+      388.0f, 398.0f,
+      428.0f, 438.0f,
+
+      548.0f, 558.0f,
+      588.0f, 598.0f};
+
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
 TEST(ConvTest, Depthwise2D_Bias_Group15) {

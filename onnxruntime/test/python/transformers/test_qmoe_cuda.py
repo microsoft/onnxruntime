@@ -301,14 +301,15 @@ def create_moe_onnx_graph(
     if not has_onnx:
         return None
 
-    assert fc1_experts_weights.dtype == torch.uint8, "FC1 weights must be uint8 for QMoE"
-    assert fc2_experts_weights.dtype == torch.uint8, "FC2 weights must be uint8 for QMoE"
-    assert fc1_scales is not None, "FC1 scales must be provided for QMoE"
-    assert fc2_scales is not None, "FC2 scales must be provided for QMoE"
+    if use_quant:
+        assert fc1_experts_weights.dtype == torch.uint8, "FC1 weights must be uint8 for QMoE"
+        assert fc2_experts_weights.dtype == torch.uint8, "FC2 weights must be uint8 for QMoE"
+        assert fc1_scales is not None, "FC1 scales must be provided for QMoE"
+        assert fc2_scales is not None, "FC2 scales must be provided for QMoE"
 
-    # Accept float16 or float32 scales; tests may produce float32 for better precision
-    assert fc1_scales.dtype in (torch.float16, torch.float32), "FC1 scales must be float16 or float32 for QMoE"
-    assert fc2_scales.dtype in (torch.float16, torch.float32), "FC2 scales must be float16 or float32 for QMoE"
+        # Accept float16 or float32 scales; tests may produce float32 for better precision
+        assert fc1_scales.dtype in (torch.float16, torch.float32), "FC1 scales must be float16 or float32 for QMoE"
+        assert fc2_scales.dtype in (torch.float16, torch.float32), "FC2 scales must be float16 or float32 for QMoE"
 
     if not has_onnx:
         return None
@@ -349,11 +350,6 @@ def create_moe_onnx_graph(
 
     activation = "swiglu" if use_swiglu else "silu"
 
-    # Set normalization behavior based on operator type:
-    # - QMoE: Raw logits passed, needs normalization in C++ kernel
-    # - Regular MoE: Pre-computed probabilities passed, no additional normalization needed
-    normalize_routing = 1 if use_quant else 0
-
     nodes = [
         helper.make_node(
             op_name,
@@ -361,7 +357,7 @@ def create_moe_onnx_graph(
             ["output"],
             "MoE_0",
             k=topk,
-            normalize_routing_weights=normalize_routing,
+            normalize_routing_weights=1,
             activation_type=activation,
             # Add new attributes with backwards-compatible default values
             swiglu_fusion=swiglu_fusion,
@@ -413,52 +409,25 @@ def create_moe_onnx_graph(
         ),
     ]
 
-    # Calculate scale tensor shapes based on block_size
-    if block_size > 0:
-        # Block-wise quantization: 3D scale tensors
-        fc1_blocks_per_row = (hidden_size + block_size - 1) // block_size
-        fc2_blocks_per_row = (inter_size + block_size - 1) // block_size
+    if use_quant:
+        if block_size > 0:
+            fc1_blocks_per_row = (hidden_size + block_size - 1) // block_size
+            fc2_blocks_per_row = (inter_size + block_size - 1) // block_size
+            fc1_scale_shape = [num_experts, 2 * inter_size if use_swiglu else inter_size, fc1_blocks_per_row]
+            fc2_scale_shape = [num_experts, hidden_size, fc2_blocks_per_row]
+        else:
+            fc1_scale_shape = [num_experts, 2 * inter_size if use_swiglu else inter_size]
+            fc2_scale_shape = [num_experts, hidden_size]
 
-        # [Experts, N, Blocks] to match Spec
-        fc1_scale_shape = [num_experts, 2 * inter_size if use_swiglu else inter_size, fc1_blocks_per_row]
-        fc2_scale_shape = [num_experts, hidden_size, fc2_blocks_per_row]
-    else:
-        # Row-wise quantization: 2D scale tensors
-        fc1_scale_shape = [num_experts, 2 * inter_size if use_swiglu else inter_size]
-        fc2_scale_shape = [num_experts, hidden_size]
-
-    # Handle scale tensors
-    # Process scale tensors for proper data format
-    if onnx_dtype == TensorProto.BFLOAT16:
-        # BFloat16 cannot be converted to numpy directly. Convert to float32 first.
-        # make_tensor will handle the conversion back to BFloat16.
-        fc1_scale_val = fc1_scales.to(torch.float32).flatten().detach().cpu().tolist()
-        fc2_scale_val = fc2_scales.to(torch.float32).flatten().detach().cpu().tolist()
-        scale_raw = False
-    else:
-        # Use tolist() directly to avoid numpy conversion issues for other types
-        fc1_scale_val = fc1_scales.to(torch_dtype).flatten().detach().cpu().tolist()
-        fc2_scale_val = fc2_scales.to(torch_dtype).flatten().detach().cpu().tolist()
-        scale_raw = False
-
-    initializers.extend(
-        [
-            helper.make_tensor(
-                "fc1_scales",
-                onnx_dtype,
-                fc1_scale_shape,
-                fc1_scale_val,
-                raw=scale_raw,
-            ),
-            helper.make_tensor(
-                "fc2_scales",
-                onnx_dtype,
-                fc2_scale_shape,
-                fc2_scale_val,
-                raw=scale_raw,
-            ),
-        ]
-    )
+        scale_type = torch.float32 if onnx_dtype == TensorProto.BFLOAT16 else torch_dtype
+        fc1_scale_val = fc1_scales.to(scale_type).flatten().detach().cpu().tolist()
+        fc2_scale_val = fc2_scales.to(scale_type).flatten().detach().cpu().tolist()
+        initializers.extend(
+            [
+                helper.make_tensor("fc1_scales", onnx_dtype, fc1_scale_shape, fc1_scale_val, raw=False),
+                helper.make_tensor("fc2_scales", onnx_dtype, fc2_scale_shape, fc2_scale_val, raw=False),
+            ]
+        )
 
     # Add zero-point initializers if provided
     if fc1_zero_points is not None:
@@ -751,41 +720,8 @@ class SparseMoeBlockORTHelper(nn.Module):
         hidden_states_flat = hidden_states.view(-1, hidden_dim)
         router_logits = self.gate(hidden_states_flat)
 
-        # Different routing logic for QMoE vs regular MoE:
-        # - QMoE expects raw logits (does its own softmax internally)
-        # - Regular MoE expects pre-computed routing probabilities
-        if hasattr(self, "quant_bits") and self.quant_bits > 0:
-            # QMoE: Pass raw logits directly (QMoE does softmax internally)
-            router_input = router_logits
-            if enable_debug:
-                print("DEBUG: Using QMoE routing (raw logits)")
-        else:
-            # Regular MoE: Apply the same routing logic as PyTorch reference
-            # This converts raw logits to proper routing probabilities
-            routing_weights, selected_experts = masked_sampling_omp_inference(
-                router_logits,
-                top_k=self.top_k,
-                jitter_eps=self.router_jitter_noise,
-                training=False,
-            )
-
-            # IMPORTANT: The routing weights from masked_sampling_omp_inference sum to top_k,
-            # but ONNX Runtime expects normalized probabilities that sum to 1.0
-            # Normalize the routing weights per token
-            routing_weights = routing_weights / routing_weights.sum(dim=1, keepdim=True)
-
-            # Create proper router probabilities tensor that matches PyTorch routing
-            router_input = torch.zeros_like(router_logits)
-            for i in range(router_logits.shape[0]):  # For each token
-                for j in range(self.top_k):  # For each top-k expert
-                    expert_idx = selected_experts[i, j]
-                    router_input[i, expert_idx] = routing_weights[i, j]
-
-            if enable_debug:
-                print("DEBUG: Using regular MoE routing (processed probabilities)")
-
         if enable_debug:
-            print(f"DEBUG: router_input stats: mean={router_input.mean():.6f}, std={router_input.std():.6f}")
+            print(f"DEBUG: router_logits stats: mean={router_logits.mean():.6f}, std={router_logits.std():.6f}")
             print(
                 f"DEBUG: hidden_states_flat stats: mean={hidden_states_flat.mean():.6f}, std={hidden_states_flat.std():.6f}"
             )
@@ -794,7 +730,7 @@ class SparseMoeBlockORTHelper(nn.Module):
 
         tensors = {
             "input": hidden_states_flat.clone().to(device=device, dtype=torch_dtype),
-            "router_probs": router_input.clone().to(device=device, dtype=torch_dtype),
+            "router_probs": router_logits.clone().to(device=device, dtype=torch_dtype),
             "output": torch.zeros((batch_size * sequence_length, hidden_dim), device=device, dtype=torch_dtype),
         }
 
@@ -1043,9 +979,8 @@ class SparseMoeBlockORTHelper(nn.Module):
         self.ort_sess = self.create_ort_session(self.moe_onnx_graph) if self.moe_onnx_graph else None
         return self.ort_sess is not None
 
-    def parity_check(self):
-        model_updated = self.recreate_onnx_model()
-        if not model_updated:
+    def parity_check(self, recreate_model=True):
+        if recreate_model and not self.recreate_onnx_model():
             raise AssertionError("Model update failed")
 
         dtype = onnx_to_torch_type_map.get(self.onnx_dtype, torch.float32)
@@ -1575,6 +1510,24 @@ def _run_qmoe_cutlass_gemm_second_scale_row_regression(test_case, quant_bits, us
 
 @unittest.skipIf(not torch.cuda.is_available(), "skipping QMoE test since it requires CUDA.")
 class TestPhiQMoE(unittest.TestCase):
+    @parameterized.expand([(0,), (4,)])
+    def test_packed_token_input_cuda(self, quant_bits):
+        torch.manual_seed(1977 + quant_bits)
+        numpy.random.seed(1977 + quant_bits)
+
+        config = PhiMoEConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_tok=2)
+        packed_moe = PhiMoESparseMoeBlock(
+            config,
+            batch_size=1,
+            sequence_length=7,
+            quant_bits=quant_bits,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_asymmetric_quant=False,
+        )
+
+        self.assertIsNotNone(packed_moe.ort_sess)
+        packed_moe.parity_check(recreate_model=False)
+
     @parameterized.expand(phi3_test_cases)
     def test_phi3_qmoe_parity(self, batch_size, sequence_length, quant_bits):
         # Create unique seed based on test parameters to ensure different inputs for each test

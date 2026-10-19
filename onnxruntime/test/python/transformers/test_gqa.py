@@ -40,7 +40,7 @@ from onnx import TensorProto, helper
 from packaging import version
 from parameterized import parameterized
 
-from onnxruntime import InferenceSession, SessionOptions, get_build_info
+from onnxruntime import InferenceSession, OrtValue, SessionOptions, get_available_providers, get_build_info
 from onnxruntime import __version__ as ort_version
 
 # Set seed for reproducibility
@@ -72,6 +72,159 @@ enable_deterministic_check = True
 # #################################################################################################
 #  Configuration and Helper Classes
 # #################################################################################################
+
+
+class TestBorrowedKVCache(unittest.TestCase):
+    @parameterized.expand(
+        [
+            (provider, device, dtype, tensor_type, head_size, query_length, with_past)
+            for provider, device, dtype, tensor_type in (
+                ("CPUExecutionProvider", "cpu", numpy.float32, TensorProto.FLOAT),
+                ("CUDAExecutionProvider", "cuda", numpy.float16, TensorProto.FLOAT16),
+            )
+            for head_size in (64, 512)
+            for query_length, with_past in ((1, True), (7, False), (7, True))
+        ]
+    )
+    def test_cache_inputs_remain_unchanged(
+        self, provider, device, dtype, tensor_type, head_size, query_length, with_past
+    ):
+        """Omitted present outputs must preserve borrowed caches across repeated runs."""
+        if provider not in get_available_providers():
+            self.skipTest(f"{provider} unavailable")
+        self.check_borrowed_cache(provider, device, dtype, tensor_type, head_size, query_length, with_past)
+
+    @parameterized.expand([(head_size, query_length) for head_size in (16, 64) for query_length in (1, 7)])
+    def test_cpu_fp16_generic_reference(self, head_size, query_length):
+        """Check generic CPU FP16 attention with padded caches and multiple KV heads."""
+        self.check_borrowed_cache(
+            "CPUExecutionProvider", "cpu", numpy.float16, TensorProto.FLOAT16, head_size, query_length, True
+        )
+
+    @parameterized.expand(
+        [
+            (head_size, query_length, window)
+            for head_size in (64, 128, 256)
+            for query_length in (1, 7)
+            for window in (1, 16, 32)
+        ]
+    )
+    def test_unfused_sliding_window_reference(self, head_size, query_length, window):
+        """Force unfused CUDA attention and verify that the window includes the current token."""
+        if "CUDAExecutionProvider" not in get_available_providers():
+            self.skipTest("CUDAExecutionProvider unavailable")
+        with (
+            scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "1"),
+            scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "1"),
+            scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+        ):
+            kernel = get_sdpa_kernel_from_debug_info(
+                lambda: self.check_borrowed_cache(
+                    "CUDAExecutionProvider",
+                    "cuda",
+                    numpy.float16,
+                    TensorProto.FLOAT16,
+                    head_size,
+                    query_length,
+                    True,
+                    window,
+                )
+            )
+            self.assertEqual(kernel, "MATH")
+
+    def check_borrowed_cache(
+        self, provider, device, dtype, tensor_type, head_size, query_length, with_past, local_window_size=16
+    ):
+        random = numpy.random.default_rng(42)
+        batch_size = 1 if query_length > 1 and with_past else 2
+        shapes = {
+            "query": [batch_size, query_length, 8 * head_size],
+            "key": [batch_size, 0, 2 * head_size],
+            "value": [batch_size, 0, 2 * head_size],
+            "past_key": [batch_size, 2, 64, head_size],
+            "past_value": [batch_size, 2, 64, head_size],
+        }
+        feeds = {name: random.uniform(-1, 1, shape).astype(dtype) for name, shape in shapes.items()}
+        lengths = [32, 28] if query_length == 1 else ([38] if with_past else [6, 4])
+        feeds["seqlens_k"] = numpy.asarray(lengths, dtype=numpy.int32)
+        feeds["total_sequence_length"] = numpy.asarray([max(lengths) + 1], dtype=numpy.int32)
+        inputs = [helper.make_tensor_value_info(name, tensor_type, shape) for name, shape in shapes.items()]
+        inputs += [helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [batch_size])]
+        inputs += [helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1])]
+        options = SessionOptions()
+        options.intra_op_num_threads = 12
+        if device == "cuda":
+            options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+
+        def make_session(omit_outputs):
+            outputs = [helper.make_tensor_value_info("output", tensor_type, shapes["query"])]
+            if not omit_outputs:
+                outputs += [
+                    helper.make_tensor_value_info("present_key", tensor_type, shapes["past_key"]),
+                    helper.make_tensor_value_info("present_value", tensor_type, shapes["past_value"]),
+                ]
+            node = helper.make_node(
+                "GroupQueryAttention",
+                list(feeds),
+                [output.name for output in outputs],
+                domain="com.microsoft",
+                num_heads=8,
+                kv_num_heads=2,
+                local_window_size=local_window_size,
+            )
+            model = helper.make_model(
+                helper.make_graph([node], "borrowed-cache", inputs, outputs),
+                opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+                ir_version=10,
+            )
+            return InferenceSession(model.SerializeToString(), options, providers=[provider])
+
+        expected_session = make_session(False)
+        borrowed_session = make_session(True)
+        caches = {name: OrtValue.ortvalue_from_numpy(feeds[name], device, 0) for name in ("past_key", "past_value")}
+        originals = {name: feeds[name].copy() for name in caches}
+        for _ in range(2):
+            expected = expected_session.run(["output"], feeds)[0]
+            binding = borrowed_session.io_binding()
+            for name, values in feeds.items():
+                if name in caches:
+                    binding.bind_ortvalue_input(name, caches[name])
+                else:
+                    binding.bind_cpu_input(name, values)
+            binding.bind_output("output", device)
+            borrowed_session.run_with_iobinding(binding)
+            actual = binding.copy_outputs_to_cpu()[0]
+            self.assertTrue(numpy.isfinite(actual).all())
+            tolerance = 2e-3 if dtype == numpy.float16 else 2e-5
+            numpy.testing.assert_allclose(actual, expected, rtol=tolerance, atol=2e-5)
+            if with_past:
+                reference = numpy.empty((batch_size, query_length, 8, head_size), dtype=numpy.float64)
+                queries = feeds["query"].reshape(reference.shape).astype(numpy.float64)
+                for batch_index, last_position in enumerate(feeds["seqlens_k"]):
+                    for query_index in range(query_length):
+                        end = int(last_position) + 2 - query_length + query_index
+                        start = max(0, end - local_window_size)
+                        for head_index in range(8):
+                            keys = originals["past_key"][batch_index, head_index // 4, start:end].astype(numpy.float64)
+                            values = originals["past_value"][batch_index, head_index // 4, start:end].astype(
+                                numpy.float64
+                            )
+                            scores = keys @ queries[batch_index, query_index, head_index] / math.sqrt(head_size)
+                            weights = numpy.exp(scores - scores.max())
+                            reference[batch_index, query_index, head_index] = (weights / weights.sum()) @ values
+                numpy.testing.assert_allclose(
+                    actual,
+                    reference.reshape(actual.shape),
+                    rtol=tolerance,
+                    atol=tolerance,
+                )
+                feeds["seqlens_k"] -= 3
+                feeds["total_sequence_length"] -= 3
+            for name, cache in caches.items():
+                numpy.testing.assert_array_equal(cache.numpy(), originals[name])
+            feeds["query"] = random.uniform(-1, 1, shapes["query"]).astype(dtype)
 
 
 class CaptureStdout:
@@ -4207,6 +4360,15 @@ def _windowed_make_session(config: GQAConfig, ort_type, providers=None):
     return InferenceSession(onnx_model_str, SessionOptions(), providers=providers)
 
 
+def _windowed_resident_count(total_length: int, capacity: int, window: int) -> int:
+    """`L(T)` from the operator spec: the number of KV positions resident after a step."""
+    if total_length <= capacity:
+        return total_length
+    gap = capacity - window + 1
+    overflow = total_length - capacity
+    return total_length - gap * ((overflow + gap - 1) // gap)
+
+
 def _windowed_run_steps(
     base_config: GQAConfig,
     buffer_sequence_length: int,
@@ -4230,7 +4392,8 @@ def _windowed_run_steps(
     """Drives a GroupQueryAttention node token-chunk by token-chunk over a shared past/present buffer.
 
     `q_all`/`k_all`/`v_all` hold the whole sequence in BSNH layout, so the same inputs can be replayed
-    against a full-length cache and against a windowed one. Returns the per-step `output` tensors.
+    against a full-length cache and against a windowed one. Returns the per-step `output` tensors
+    together with the final `present_key` / `present_value` buffers.
     """
     batch_size = base_config.batch_size
     kv_hidden_size = base_config.kv_num_heads * base_config.head_size
@@ -4317,7 +4480,7 @@ def _windowed_run_steps(
         outputs.append(out.clone())
         past_length = total_length
 
-    return outputs
+    return outputs, cache_k, cache_v
 
 
 class TestGQAWindowedKvCache(unittest.TestCase):
@@ -4327,7 +4490,8 @@ class TestGQAWindowedKvCache(unittest.TestCase):
 
     max_length = 1024
     window_size = 128
-    slack = 256
+    # CUDA requires the cache capacity to equal local_window_size; the CPU subclass overrides this.
+    slack = 0
 
     device = "cuda"
     torch_type = torch.float16
@@ -4421,14 +4585,14 @@ class TestGQAWindowedKvCache(unittest.TestCase):
             "v_scale": v_scale,
             "providers": self.providers,
         }
-        reference = _windowed_run_steps(base_config, self.max_length, 0, **common)
+        reference, reference_cache_k, reference_cache_v = _windowed_run_steps(base_config, self.max_length, 0, **common)
         if base_config.k_quant_type != "NONE" and any(torch.isnan(step).any() for step in reference):
             # A quantized KV cache is only read correctly by the flash-attention prefill kernels.
             # Builds without them route the first prompt through memory-efficient attention, which
             # reinterprets the quantized cache as unquantized and produces NaN for both the
             # windowed and the full-length run, so there is nothing to compare.
             self.skipTest("quantized prefill needs a build with flash attention enabled")
-        windowed = _windowed_run_steps(base_config, capacity, 1, **common)
+        windowed, cache_k, cache_v = _windowed_run_steps(base_config, capacity, 1, **common)
 
         for step_index, (expected, actual) in enumerate(zip(reference, windowed, strict=True)):
             numpy.testing.assert_allclose(
@@ -4437,6 +4601,21 @@ class TestGQAWindowedKvCache(unittest.TestCase):
                 rtol=rtol,
                 atol=atol,
                 err_msg=f"mismatch at step {step_index} (step_lengths={step_lengths})",
+            )
+
+        # Layout contract: rows [0, L) of present_key/present_value hold the L most recent positions
+        # in increasing position order. The full-length reference run stores every position at its
+        # absolute row, so its tail is the exact byte-for-byte expectation for the windowed rows --
+        # this holds for RoPE'd and quantized caches too, because both runs write the same values.
+        resident = _windowed_resident_count(total_length, capacity, base_config.local_window_size)
+        for name, actual_cache, reference_cache in (
+            ("present_key", cache_k, reference_cache_k),
+            ("present_value", cache_v, reference_cache_v),
+        ):
+            numpy.testing.assert_array_equal(
+                actual_cache[:, :, :resident].cpu().numpy(),
+                reference_cache[:, :, total_length - resident : total_length].cpu().numpy(),
+                err_msg=f"{name} resident range mismatch (L={resident}, T={total_length}, C={capacity})",
             )
 
     def test_prompt_shorter_than_capacity_then_decode(self):
@@ -4451,7 +4630,7 @@ class TestGQAWindowedKvCache(unittest.TestCase):
         self._check_parity(self._base_config(), steps)
 
     def test_chunked_prefill(self):
-        # Chunks of 128 fit in the capacity (128 + 256) without staging.
+        # Multi-token chunks arriving on a partially filled cache.
         # GroupQueryAttention only allows a subsequent prompt (1 < S < T) at batch_size 1.
         steps = [128] * 6 + [1] * 32
         self._check_parity(self._base_config(batch_size=1), steps)
@@ -4508,22 +4687,17 @@ class TestGQAWindowedKvCache(unittest.TestCase):
             self._base_config(batch_size=1), step_lengths=[32, 16, 1, 1], buffer_sequence_length=capacity
         )
 
-    def test_small_slack_many_compactions(self):
-        # C == W + 8 reclaims only 9 rows per compaction, so a long decode run crosses the
-        # compaction boundary dozens of times instead of once or twice.
-        self._check_parity(
-            self._base_config(), step_lengths=[64, *([1] * 400)], buffer_sequence_length=self.window_size + 8
-        )
+    def test_capacity_larger_than_window(self):
+        # CUDA evicts the minimum number of rows per step, which reproduces the documented layout
+        # only when there is no slack above the window, so C > W is rejected.
+        self._require_ep()
 
-    def test_chunked_prefill_small_slack(self):
-        # 32-token chunks onto a cache with 9 free rows: once the cache has filled, every chunk
-        # drops rows its own first query still reads, so it must stage from a drifted append point.
-        # GroupQueryAttention only allows a subsequent prompt (1 < S < T) at batch_size 1.
-        self._check_parity(
-            self._base_config(batch_size=1),
-            step_lengths=[32] * 10 + [1] * 20,
-            buffer_sequence_length=self.window_size + 8,
-        )
+        with self.assertRaisesRegex(Exception, "requires the KV cache capacity.*to equal local_window_size"):
+            self._check_parity(
+                self._base_config(batch_size=1),
+                step_lengths=[32, 1, 1],
+                buffer_sequence_length=self.window_size + 8,
+            )
 
     def test_capacity_too_small_is_rejected(self):
         self._require_ep()
@@ -4577,6 +4751,9 @@ class TestGQAWindowedKvCacheCpu(TestGQAWindowedKvCache):
     torch_type = torch.float32
     ort_type = TensorProto.FLOAT
     providers: typing.ClassVar[list[str]] = ["CPUExecutionProvider"]
+    # The CPU kernel accepts any capacity at or above the window and uses the slack to amortize
+    # compaction, so it is exercised with a capacity well above local_window_size.
+    slack = 256
 
     def _require_ep(self):
         pass
@@ -4585,6 +4762,32 @@ class TestGQAWindowedKvCacheCpu(TestGQAWindowedKvCache):
         # The float32 CPU kernel keeps an unquantized float32 cache by default.
         overrides.setdefault("kv_cache_type", "float32")
         return super()._base_config(**overrides)
+
+    def test_capacity_larger_than_window(self):
+        # CPU accepts slack above the window; the resident count then sawtooths between W and C
+        # instead of staying at min(T, C). Exercised in depth by the two small-slack tests below.
+        self._check_parity(
+            self._base_config(batch_size=1),
+            step_lengths=[32, 1, 1],
+            buffer_sequence_length=self.window_size + 8,
+        )
+
+    def test_small_slack_many_compactions(self):
+        # C == W + 8 reclaims only 9 rows per compaction, so a long decode run crosses the
+        # compaction boundary dozens of times instead of once or twice.
+        self._check_parity(
+            self._base_config(), step_lengths=[64, *([1] * 400)], buffer_sequence_length=self.window_size + 8
+        )
+
+    def test_chunked_prefill_small_slack(self):
+        # 32-token chunks onto a cache with 9 free rows: once the cache has filled, every chunk
+        # drops rows its own first query still reads, so it must stage from a drifted append point.
+        # GroupQueryAttention only allows a subsequent prompt (1 < S < T) at batch_size 1.
+        self._check_parity(
+            self._base_config(batch_size=1),
+            step_lengths=[32] * 10 + [1] * 20,
+            buffer_sequence_length=self.window_size + 8,
+        )
 
     def test_attention_bias_with_position_ids(self):
         self._check_parity(
