@@ -3367,8 +3367,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "past_key_state",
                "Generic fixed-capacity state: policy_mode 'qsa' stores prepared complete-block keys; "
                "policy_mode 'csa' stores compressed keys. Shape is (batch_size, state_capacity, head_size) and "
-               "never changes across calls. For QSA, this state may use FLOAT while query/key tensors use "
-               "FLOAT16 or BFLOAT16.",
+               "never changes across calls. CUDA QSA also supports FLOAT key state with BFLOAT16 "
+               "query/key tensors. WebGPU requires key state and activations to have the same type.",
                "T_KEY")
         .Input(13,
                "past_kv_buffer",

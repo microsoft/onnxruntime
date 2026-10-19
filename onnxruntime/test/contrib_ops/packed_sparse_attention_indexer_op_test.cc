@@ -1552,7 +1552,7 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, QsaExplicitPositionsStorageBindingL
   }
   for (const std::string limit : {"8", "9"}) {
     ConfigOptions config_options;
-    ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, limit));
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, limit.c_str()));
     RunQsaPackedTest<float>(1.0e-5f, problem, ProviderKind::WebGpu, nullptr, false, &config_options, 0,
                             limit == "8" ? "QSA selection requires 9 storage-buffer bindings" : "");
   }

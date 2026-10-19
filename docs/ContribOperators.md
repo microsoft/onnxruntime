@@ -5236,7 +5236,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>position_ids</tt> (optional) : I</dt>
 <dd>Only for policy_mode 'csa': absolute position of every packed query, with shape (total_tokens).</dd>
 <dt><tt>past_key_state</tt> : T_KEY</dt>
-<dd>Generic fixed-capacity state: policy_mode 'qsa' stores prepared complete-block keys; policy_mode 'csa' stores compressed keys. Shape is (batch_size, state_capacity, head_size) and never changes across calls. For QSA, this state may use FLOAT while query/key tensors use FLOAT16 or BFLOAT16.</dd>
+<dd>Generic fixed-capacity state: policy_mode 'qsa' stores prepared complete-block keys; policy_mode 'csa' stores compressed keys. Shape is (batch_size, state_capacity, head_size) and never changes across calls. CUDA QSA also supports FLOAT key state with BFLOAT16 query/key tensors. WebGPU requires key state and activations to have the same type.</dd>
 <dt><tt>past_kv_buffer</tt> : T</dt>
 <dd>Generic fixed-capacity pending-token buffer. Shape is (batch_size, 2 * compress_ratio - 1, head_size) for policy_mode 'qsa' (which only ever uses up to compress_ratio - 1 of these entries) and (batch_size, 2 * compress_ratio - 1, 2 * head_size) for policy_mode 'csa'.</dd>
 <dt><tt>past_gate_buffer</tt> (optional) : T</dt>
