@@ -3,11 +3,15 @@
 
 #include <cstdint>
 #include <memory>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
+#if !defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/webgpu_context.h"
+#endif
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -303,6 +307,155 @@ TEST(MathOpTest, MatMulSubgroupMatrix) {
   // 16x16x16 config falls back to the default impl for this width.
   SCOPED_TRACE("RuntimeB UnalignedN36 (N=36)");
   RunSubgroupMatrixMatMulTest({64, 128}, 128, 36, /*b_is_initializer=*/false);
+}
+
+class WebGpuMatMulGemvTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    WebGpuExecutionProviderTestOptions options{};
+    options.forced_matmul_algorithm = webgpu::MatMulAlgorithm::Gemv;
+    try {
+      auto ep = WebGpuExecutionProviderWithTestOptions(options);
+      if (!ep) {
+        GTEST_SKIP() << "WebGPU execution provider test options are not available.";
+      }
+#if !defined(ORT_USE_EP_API_ADAPTERS)
+      auto& context = webgpu::WebGpuContextFactory::GetContext(ep->GetDeviceId());
+      if (!context.HasDevice() || !context.DeviceHasFeature(wgpu::FeatureName::ShaderF16)) {
+        GTEST_SKIP() << "A usable FP16 WebGPU adapter is not available.";
+      }
+#endif
+    } catch (const OnnxRuntimeException& error) {
+      if (std::string_view{error.what()}.find("Failed to get a WebGPU adapter") != std::string_view::npos) {
+        GTEST_SKIP() << error.what();
+      }
+      throw;
+    }
+  }
+
+  void Run(const std::vector<int64_t>& a_dims, int64_t K, int64_t N, bool expect_gemv,
+           bool force_gemv = false, bool batched_weights = false) {
+    SCOPED_TRACE(::testing::PrintToString(a_dims));
+    SCOPED_TRACE(K);
+    SCOPED_TRACE(N);
+    SCOPED_TRACE(batched_weights);
+    const int64_t M = TensorShape{a_dims}.SizeToDimension(a_dims.size() - 1);
+    const int64_t rows_per_batch = a_dims[a_dims.size() - 2];
+    const int64_t weight_batches = batched_weights ? M / rows_per_batch : 1;
+    std::vector<MLFloat16> a(M * K), b(weight_batches * K * N), y(M * N);
+    for (int64_t i = 0; i < M * K; ++i) {
+      a[i] = MLFloat16(static_cast<float>((i % 7) - 3) * 0.125f);
+    }
+    for (int64_t i = 0; i < weight_batches * K * N; ++i) {
+      const int64_t batch = i / (K * N);
+      b[i] = MLFloat16(static_cast<float>((i % 5) - 2) * 0.125f + static_cast<float>(batch) * 0.25f);
+    }
+    for (int64_t m = 0; m < M; ++m) {
+      const int64_t b_offset = batched_weights ? (m / rows_per_batch) * K * N : 0;
+      for (int64_t n = 0; n < N; ++n) {
+        float sum = 0.0f;
+        for (int64_t k = 0; k < K; ++k) {
+          sum += a[m * K + k].ToFloat() * b[b_offset + k * N + n].ToFloat();
+        }
+        y[m * N + n] = MLFloat16(sum);
+      }
+    }
+
+    struct DispatchCounts {
+      size_t total = 0;
+      size_t gemv = 0;
+    } dispatches;
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    session_options.session_log_severity_level = ORT_LOGGING_LEVEL_INFO;
+    session_options.user_logging_param = &dispatches;
+    session_options.user_logging_function = [](void* param, OrtLoggingLevel, const char*, const char*,
+                                               const char*, const char* message) {
+      auto& counts = *static_cast<DispatchCounts*>(param);
+      const std::string_view text{message};
+      if (text.find("Starting program \"") == 0) {
+        ++counts.total;
+        if (text.find("Starting program \"MatMulGemv") == 0) {
+          ++counts.gemv;
+        }
+      }
+    };
+    WebGpuExecutionProviderTestOptions options{};
+    options.forced_matmul_algorithm = webgpu::MatMulAlgorithm::Gemv;
+    auto ep = force_gemv ? WebGpuExecutionProviderWithTestOptions(options) : DefaultWebGpuExecutionProvider();
+    ASSERT_NE(ep, nullptr);
+
+    auto y_dims = a_dims;
+    y_dims.back() = N;
+    auto b_dims = batched_weights ? a_dims : std::vector<int64_t>{K, N};
+    b_dims[b_dims.size() - 2] = K;
+    b_dims.back() = N;
+    OpTester test("MatMul", 14);
+    test.AddInput<MLFloat16>("A", a_dims, a);
+    test.AddInput<MLFloat16>("B", b_dims, b);
+    test.AddOutput<MLFloat16>("Y", y_dims, y);
+    test.SetOutputAbsErr("Y", 0.02f);
+    test.Config(session_options).ConfigEp(std::move(ep)).RunWithConfig();
+    ASSERT_GT(dispatches.total, 0u);
+    if (expect_gemv) {
+      EXPECT_EQ(dispatches.gemv, dispatches.total);
+    } else {
+      EXPECT_EQ(dispatches.gemv, 0u);
+    }
+  }
+};
+
+TEST_F(WebGpuMatMulGemvTest, SmallRows) {
+  for (int64_t m = 1; m <= 8; ++m) {
+    Run({m, 5120}, 5120, 48, true, true);
+  }
+  Run({4, 2048}, 2048, 16, true, true);
+  Run({4, 8192}, 8192, 64, true, true);
+  Run({3, 2049}, 2049, 20, true, true);
+  Run({2, 2, 5120}, 5120, 48, true, true);
+}
+
+TEST_F(WebGpuMatMulGemvTest, AutomaticSelection) {
+  // Non-aligned K excludes subgroup-matrix kernels without forcing GEMV.
+  for (int64_t m = 1; m <= 8; ++m) {
+    Run({m, 2049}, 2049, 48, true);
+  }
+}
+
+TEST_F(WebGpuMatMulGemvTest, GuardFallbacks) {
+  Run({9, 2049}, 2049, 48, false);
+  Run({4, 2047}, 2047, 48, false);
+  Run({4, 8193}, 8193, 48, false);
+  Run({4, 5120}, 5120, 12, false);
+  Run({4, 5120}, 5120, 68, false);
+  Run({4, 5120}, 5120, 49, false);
+}
+
+TEST_F(WebGpuMatMulGemvTest, BatchedWeightsFallback) {
+  Run({2, 2, 2049}, 2049, 48, false, /*force_gemv=*/false, /*batched_weights=*/true);
+}
+
+TEST_F(WebGpuMatMulGemvTest, ForcedGemvRejectsTooManyRows) {
+  constexpr int64_t M = 9;
+  constexpr int64_t K = 2049;
+  constexpr int64_t N = 48;
+  WebGpuExecutionProviderTestOptions options{};
+  options.forced_matmul_algorithm = webgpu::MatMulAlgorithm::Gemv;
+  auto ep = WebGpuExecutionProviderWithTestOptions(options);
+  ASSERT_NE(ep, nullptr);
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  OpTester test("MatMul", 14);
+  test.AddInput<MLFloat16>("A", {M, K}, std::vector<MLFloat16>(M * K, MLFloat16{1.0f}));
+  test.AddInput<MLFloat16>("B", {K, N}, std::vector<MLFloat16>(K * N, MLFloat16{1.0f}));
+  test.AddOutput<MLFloat16>("Y", {M, N}, std::vector<MLFloat16>(M * N, MLFloat16{static_cast<float>(K)}));
+  test.Config(session_options)
+      .ConfigEp(std::move(ep))
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "MatMul algorithm gemv does not support these inputs or this device.")
+      .RunWithConfig();
 }
 #endif  // defined(USE_WEBGPU)
 #endif

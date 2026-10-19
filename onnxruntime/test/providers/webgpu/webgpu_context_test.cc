@@ -47,6 +47,7 @@
 
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
 #include "dawn/native/DawnNative.h"
+#include "test/providers/webgpu/webgpu_context_test_helper.h"
 #endif
 
 namespace onnxruntime {
@@ -386,51 +387,13 @@ Status StartPipelineCallbackTestBuild(webgpu::WebGpuContext& context, webgpu::Pe
                        build.bind_group_layout, build.shape_uniform_ranks, build.future, build.callback_context);
 }
 
-template <typename TestBody>
-void RunWithExternalCompletionContext(TestBody test_body, bool timed_wait = true) {
-  ConfigOptions options;
-  auto owned_ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
-  ASSERT_NE(owned_ep, nullptr);
-
-  const auto instance_feature = wgpu::InstanceFeatureName::TimedWaitAny;
-  wgpu::InstanceDescriptor instance_desc{};
-  instance_desc.requiredFeatureCount = timed_wait ? 1 : 0;
-  instance_desc.requiredFeatures = timed_wait ? &instance_feature : nullptr;
-  dawn::native::Instance instance{&instance_desc};
-  wgpu::RequestAdapterOptions adapter_options{};
-  adapter_options.backendType = static_cast<wgpu::BackendType>(webgpu::WebGpuContextConfig{}.backend_type);
-  auto adapters = instance.EnumerateAdapters(&adapter_options);
-  ASSERT_FALSE(adapters.empty());
-
-  const auto device_feature = wgpu::FeatureName::ImplicitDeviceSynchronization;
-  auto lost = std::make_shared<bool>(false);
-  wgpu::DeviceDescriptor device_desc{};
-  device_desc.requiredFeatureCount = 1;
-  device_desc.requiredFeatures = &device_feature;
-  device_desc.SetDeviceLostCallback(
-      wgpu::CallbackMode::WaitAnyOnly,
-      [lost](const wgpu::Device&, wgpu::DeviceLostReason, wgpu::StringView) noexcept { *lost = true; });
-  auto device = wgpu::Device::Acquire(adapters.front().CreateDevice(&device_desc));
-  ASSERT_NE(device, nullptr);
-
-  ConfigOptions external_options;
-  ASSERT_STATUS_OK(external_options.AddConfigEntry(kDeviceId, "1"));
-  ASSERT_STATUS_OK(external_options.AddConfigEntry(
-      kWebGpuInstance, std::to_string(reinterpret_cast<uintptr_t>(instance.Get())).c_str()));
-  ASSERT_STATUS_OK(external_options.AddConfigEntry(
-      kWebGpuDevice, std::to_string(reinterpret_cast<uintptr_t>(device.Get())).c_str()));
-  auto external_ep = WebGpuProviderFactoryCreator::Create(external_options)->CreateProvider();
-  auto& webgpu_ep = static_cast<WebGpuExecutionProvider&>(*external_ep);
-  auto& context = webgpu::WebGpuContextFactory::GetContext(1);
-  test_body(context, webgpu_ep, lost);
-}
 #endif
 
 TEST(WebGpuContextTest, SuccessfulPipelineBuildReleasesCallbackOwnership) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native device creation is unavailable.";
 #else
-  RunWithExternalCompletionContext([](auto& context, auto&, const auto&) {
+  RunWithExternalCompletionContext([](auto& context, auto&, const auto&, auto&) {
     webgpu::PendingPipelineBuild build;
     ASSERT_STATUS_OK(StartPipelineCallbackTestBuild(context, build, false));
     const std::weak_ptr<webgpu::PipelineCallbackContext> weak_context = build.callback_context;
@@ -448,7 +411,7 @@ TEST(WebGpuContextTest, FailedPipelineWaitRetainsCallbackUntilDelivery) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native device creation is unavailable.";
 #else
-  RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&) {
+  RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&, auto&) {
     // Invalid WGSL makes the pipeline event ready synchronously, but WaitAnyOnly defers delivery.
     context.PushErrorScope();
     webgpu::DispatchCommandInfo dispatch;
@@ -496,7 +459,7 @@ TEST(WebGpuContextTest, FailedPipelineWaitRetainsCallbackAfterContextDestruction
   wgpu::Instance callback_instance;
   wgpu::Future future{};
   std::weak_ptr<webgpu::PipelineCallbackContext> weak_context;
-  RunWithExternalCompletionContext([&](auto& context, auto& ep, const auto&) {
+  RunWithExternalCompletionContext([&](auto& context, auto& ep, const auto&, auto&) {
     context.PushErrorScope();
     webgpu::DispatchCommandInfo dispatch;
     dispatch.program_key = "post-context-pipeline-callback";
@@ -531,7 +494,7 @@ TEST(WebGpuContextTest, CheckedCompletionPropagatesValidationAndPreservesOuterSc
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native device creation is unavailable.";
 #else
-  RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&) {
+  RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&, auto&) {
     auto& recording = ep.Recording();
     wgpu::BufferDescriptor desc{};
     desc.size = 64;
@@ -558,7 +521,7 @@ TEST(WebGpuContextTest, ErrorScopesPropagateValidationAndOutOfMemory) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native error injection is unavailable.";
 #else
-  RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&) {
+  RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&, auto&) {
     for (const auto filter : {wgpu::ErrorFilter::Validation, wgpu::ErrorFilter::OutOfMemory}) {
       SCOPED_TRACE(static_cast<uint32_t>(filter));
       const auto type = filter == wgpu::ErrorFilter::Validation ? wgpu::ErrorType::Validation
@@ -578,7 +541,7 @@ TEST(WebGpuContextTest, CheckedCompletionCleansScopesAfterWaitFailure) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native device creation is unavailable.";
 #else
-  RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&) {
+  RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&, auto&) {
     const auto status = context.FlushAndWaitChecked(ep.BufferManager(), ep.Recording());
     EXPECT_FALSE(status.IsOK());
     EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Failed to wait for the operation"));
@@ -594,6 +557,77 @@ TEST(WebGpuContextTest, CheckedCompletionCleansScopesAfterWaitFailure) {
     EXPECT_EQ(*pop_status, wgpu::PopErrorScopeStatus::Error);
   },
                                    false);
+#endif
+}
+
+TEST(WebGpuContextTest, CheckedRegionReportsEarlyShaderErrorOnExternalDevice) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native device creation is unavailable.";
+#else
+  RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&, auto&) {
+    wgpu::ShaderSourceWGSL source{};
+    source.code = "checked_region_invalid_shader";
+    wgpu::ShaderModuleDescriptor desc{};
+    desc.nextInChain = &source;
+    const auto status = context.RunAndWaitChecked(ep.BufferManager(), ep.Recording(), [&]() {
+      context.Device().CreateShaderModule(&desc);
+      return Status::OK();
+    });
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("CreateShaderModule"));
+    // No invalid command is recorded: a successful queue wait alone cannot detect this error.
+    EXPECT_EQ(ep.Recording().command_encoder, nullptr);
+    ExpectQueueCompleted(context);
+    ASSERT_STATUS_OK(context.FlushAndWaitChecked(ep.BufferManager(), ep.Recording()));
+  });
+#endif
+}
+
+void TestCheckedRegionEnqueueFailure(bool throw_exception) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  ORT_UNUSED_PARAMETER(throw_exception);
+  GTEST_SKIP() << "Dawn native error injection is unavailable.";
+#else
+  RunWithExternalCompletionContext([throw_exception](auto& context, auto& ep, const auto&, auto&) {
+    context.PushErrorScope();
+    context.Device().InjectError(wgpu::ErrorType::Validation, "checked-region-outer-error");
+    size_t enqueue_count = 0;
+    const auto status = context.RunAndWaitChecked(ep.BufferManager(), ep.Recording(), [&]() -> Status {
+      ++enqueue_count;
+      context.GetCommandEncoder(ep.Recording());
+      context.Device().InjectError(wgpu::ErrorType::Validation, "checked-region-validation-error");
+      context.Device().InjectError(wgpu::ErrorType::OutOfMemory, "checked-region-oom-error");
+      if (throw_exception) {
+        ORT_THROW("checked-region-enqueue-failure");
+      }
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "checked-region-enqueue-failure");
+    });
+    const auto outer_status = context.PopErrorScope();
+    EXPECT_EQ(enqueue_count, 1u);
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("checked-region-enqueue-failure"));
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("checked-region-validation-error"));
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("checked-region-oom-error"));
+    EXPECT_FALSE(outer_status.IsOK());
+    EXPECT_THAT(outer_status.ErrorMessage(), testing::HasSubstr("checked-region-outer-error"));
+    EXPECT_TRUE(ep.Recording().deferred_dispatches.empty());
+    EXPECT_EQ(ep.Recording().command_encoder, nullptr);
+    EXPECT_FALSE(ep.Recording().has_unsubmitted_work.load(std::memory_order_relaxed));
+    ExpectQueueCompleted(context);
+    ASSERT_STATUS_OK(context.FlushAndWaitChecked(ep.BufferManager(), ep.Recording()));
+  });
+#endif
+}
+
+TEST(WebGpuContextTest, CheckedRegionCleansScopesAfterEnqueueFailure) {
+  TestCheckedRegionEnqueueFailure(false);
+}
+
+TEST(WebGpuContextTest, CheckedRegionCleansScopesAfterEnqueueException) {
+#ifdef ORT_NO_EXCEPTIONS
+  GTEST_SKIP() << "Exceptions are disabled.";
+#else
+  TestCheckedRegionEnqueueFailure(true);
 #endif
 }
 
@@ -631,7 +665,7 @@ TEST(WebGpuContextTest, CheckedCompletionDetectsLostExternalDevice) {
   GTEST_SKIP() << "Dawn native device loss injection is unavailable.";
 #else
   for (bool pending_encoder : {false, true}) {
-    RunWithExternalCompletionContext([pending_encoder](auto& context, auto& ep, const auto& lost) {
+    RunWithExternalCompletionContext([pending_encoder](auto& context, auto& ep, const auto& lost, auto&) {
       auto& recording = ep.Recording();
       ASSERT_STATUS_OK(context.FlushAndWaitChecked(ep.BufferManager(), recording));
       if (pending_encoder) {

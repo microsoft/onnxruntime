@@ -1533,11 +1533,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     const int fc1_n = inter * (fusion ? 2 : 1);
     const int max_routes = narrow<int>(row_tile_plan.rows_per_tile * k_);
     const size_t element_size = input->DataType()->Size();
+    const size_t projection_element_size = fusion ? element_size : sizeof(float);
     auto row_map = GetScratchBuffer<int>(max_routes, GetComputeStream(context));
     auto sorted_experts = GetScratchBuffer<int>(max_routes, GetComputeStream(context));
     auto expert_offsets = GetScratchBuffer<int64_t>(num_experts + 1, GetComputeStream(context));
     auto tile_offsets = GetScratchBuffer<int>(num_experts + 1, GetComputeStream(context));
-    auto projection = GetScratchBuffer<void>(SafeInt<size_t>(max_routes) * fc1_n * element_size, GetComputeStream(context));
+    const size_t projection_bytes = SafeInt<size_t>(max_routes) * fc1_n * projection_element_size;
+    auto projection = GetScratchBuffer<void>(projection_bytes, GetComputeStream(context));
     auto activation = GetScratchBuffer<void>(SafeInt<size_t>(max_routes) * inter * element_size, GetComputeStream(context));
     auto result = GetScratchBuffer<void>(SafeInt<size_t>(max_routes) * hidden * element_size, GetComputeStream(context));
     auto scale_type = [](const Tensor* tensor) {
@@ -1596,13 +1598,21 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         params.block_size = narrow<int>(block_size_);
         params.fusion = fusion;
         const auto* tile_input = static_cast<const T*>(input->DataRaw()) + row_offset * hidden;
-        LaunchQMoEFp8Projection(params, tile_input, static_cast<T*>(projection.get()), stream);
         const auto* fc1_bias = fc1_experts_bias_optional ? static_cast<const T*>(fc1_experts_bias_optional->DataRaw()) : nullptr;
-        LaunchQMoEFp8Activation(static_cast<const T*>(projection.get()), fc1_bias, static_cast<T*>(activation.get()),
-                                sorted_experts.get(), routes, inter, fusion,
-                                split_fp8_fc1 || !fusion ? 1.0f : activation_alpha_,
-                                split_fp8_fc1 ? 0.0f : activation_beta_,
-                                split_fp8_fc1 ? std::numeric_limits<float>::infinity() : swiglu_limit_, stream);
+        auto project_and_activate = [&](auto* projected) {
+          LaunchQMoEFp8Projection(params, tile_input, projected, stream);
+          LaunchQMoEFp8Activation(projected, fc1_bias, static_cast<T*>(activation.get()),
+                                  sorted_experts.get(), routes, inter, fusion,
+                                  split_fp8_fc1 || !fusion ? 1.0f : activation_alpha_,
+                                  split_fp8_fc1 ? 0.0f : activation_beta_,
+                                  split_fp8_fc1 ? std::numeric_limits<float>::infinity() : swiglu_limit_, stream);
+        };
+        if (fusion) {
+          project_and_activate(static_cast<T*>(projection.get()));
+        } else {
+          // Match the dense SiLU epilogue: narrow only after bias and activation.
+          project_and_activate(static_cast<float*>(projection.get()));
+        }
         params.weights = static_cast<const uint8_t*>(fc2_experts_weights->DataRaw());
         params.scales = fc2_scale_tensor->DataRaw();
         params.scale_type = scale_type(fc2_scale_tensor);
@@ -1631,7 +1641,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 #endif
     }
     if (enable_kernel_debug_info_) {
-      const size_t activation_bytes = SafeInt<size_t>(max_routes) * (fc1_n + inter + hidden) * element_size;
+      const size_t activation_bytes = SafeInt<size_t>(projection_bytes) +
+                                      SafeInt<size_t>(max_routes) * (inter + hidden) * element_size;
       PrintQMoEKernelDebugInfo(row_tile_plan.rows_per_tile > 8 ? "fp8_fused_gemm" : "fp8_fused_gemv",
                                moe_params.num_rows, row_tile_plan.rows_per_tile, final_tile_rows,
                                max_routes, final_tile_rows * k_, 0, total_scratch_bytes + activation_bytes);
@@ -2323,6 +2334,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     const bool is_capturing = capture_status != cudaStreamCaptureStatusNone;
     const bool do_tune = enable_fp4_gemv_autotune_ && !have_tune && !is_capturing;
 
+    bool fc1_used_decode = false;
+    bool fc2_used_decode = false;
     auto run_fused = [&](auto* t_ptr) {
       using T = std::remove_pointer_t<decltype(t_ptr)>;
       const bool skip_expand = fp4_gemv_skip_expand_;
@@ -2342,7 +2355,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             static_cast<const T*>(fc1_bias), static_cast<T*>(p_fc1_buf.get()),
             p_efto, p_exp, num_experts, expanded, inter, hidden, gemv_group_size, sm_, act_params, cfg,
             fc1_gemv_sm80_layout, use_raw_nvfp4_gemv, skip_expand ? p_r2u : nullptr, num_rows, stream,
-            nvfp4_weights_row_major_);
+            nvfp4_weights_row_major_, nvfp4_fc1_decode_scale_eligible_, &fc1_used_decode);
       };
       auto launch_fc2 = [&](MoeGemvConfig cfg) {
         gemv::launch_moe_gemv_fp4_symmetric<T>(
@@ -2352,7 +2365,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             gemv_fc2_raw_global_scales,
             static_cast<const T*>(fc2_bias), static_cast<T*>(p_fc2_buf.get()),
             p_efto, p_exp, num_experts, expanded, hidden, inter, gemv_group_size, sm_, cfg,
-            fc2_gemv_sm80_layout, use_raw_nvfp4_gemv, stream, nvfp4_weights_row_major_);
+            fc2_gemv_sm80_layout, use_raw_nvfp4_gemv, stream, nvfp4_weights_row_major_,
+            nvfp4_fc2_decode_scale_eligible_, &fc2_used_decode);
       };
 
       if (do_tune) {
@@ -2456,6 +2470,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                moe_params.num_rows, moe_params.num_rows,
                                expanded, expanded,
                                workspace_size, total_scratch_bytes);
+      if (nvfp4_weights_row_major_) {
+        std::cout << "QMoE NVFP4 DecodeImageAvailable="
+                  << (gemv::is_moe_gemv_fp4_decode_image_available(sm_, is_fp16_) ? 1 : 0)
+                  << " FC1ScaleEligible=" << (nvfp4_fc1_decode_scale_eligible_ ? 1 : 0)
+                  << " FC2ScaleEligible=" << (nvfp4_fc2_decode_scale_eligible_ ? 1 : 0)
+                  << " FC1Kernel=" << (fc1_used_decode ? "decode" : "kpacked")
+                  << " FC2Kernel=" << (fc2_used_decode ? "decode" : "kpacked")
+                  << std::endl;
+      }
     }
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     if (routing_snapshot_) {
@@ -3197,11 +3220,37 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
              (quant_type_ == "fp4" || quant_type_ == "nvfp4" || quant_type_ == "fp8" || quant_type_ == "wfp4afp8")) {
     ORT_ENFORCE(tensor.IsDataType<float>() && tensor.Shape().NumDimensions() == 1,
                 "QMoE ", quant_type_, " global scales must be 1-D float tensors.");
+    const auto is_nvfp4_decode_scale_eligible = [&](const Tensor& scale_tensor) -> bool {
+      if (quant_type_ != "nvfp4") {
+        return false;
+      }
+      const int64_t count = scale_tensor.Shape().Size();
+      if (count <= 0) {
+        return false;
+      }
+      const float* scales = scale_tensor.Data<float>();
+      std::unique_ptr<float[]> host_scales;
+      if (scale_tensor.Location().device.Type() != OrtDevice::CPU) {
+        host_scales = std::make_unique<float[]>(static_cast<size_t>(count));
+        CUDA_CALL_THROW(cudaMemcpyAsync(host_scales.get(), scales, static_cast<size_t>(count) * sizeof(float),
+                                        cudaMemcpyDeviceToHost, stream));
+        CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+        scales = host_scales.get();
+      }
+      for (int64_t i = 0; i < count; ++i) {
+        if (!onnxruntime::llm::kernels::moe_gemv::IsNvfp4DecodeFastScale(scales[i])) {
+          return false;
+        }
+      }
+      return true;
+    };
     if (input_idx == 15) {
+      nvfp4_fc1_decode_scale_eligible_ = is_nvfp4_decode_scale_eligible(tensor);
       PrePackCopyToGpu(tensor, stream, alloc, packed_fc1_global_scale_, is_packed);
       fp4_fc1_global_scale_e_ = tensor.Shape()[0];
       TryBuildGemvFp4Scales(1, stream, alloc);
     } else {
+      nvfp4_fc2_decode_scale_eligible_ = is_nvfp4_decode_scale_eligible(tensor);
       PrePackCopyToGpu(tensor, stream, alloc, packed_fc2_global_scale_, is_packed);
       fp4_fc2_global_scale_e_ = tensor.Shape()[0];
       TryBuildGemvFp4Scales(2, stream, alloc);
