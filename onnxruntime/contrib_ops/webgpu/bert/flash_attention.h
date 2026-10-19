@@ -205,9 +205,9 @@ Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& cont
                                        uint32_t max_num_blocks_per_seq,
                                        const Tensor* cumulative_seqlens_q = nullptr);
 
-class FlashAttentionPrefillSimpleProgram final : public Program<FlashAttentionPrefillSimpleProgram> {
+class FlashAttentionPrefillProgram final : public Program<FlashAttentionPrefillProgram> {
  public:
-  FlashAttentionPrefillSimpleProgram(const std::string& kernel_name,
+  FlashAttentionPrefillProgram(const std::string& kernel_name,
                                      bool has_attention_bias,
                                      bool is_unidirectional,
                                      int qkv_head_size,
@@ -260,10 +260,10 @@ class FlashAttentionPrefillSimpleProgram final : public Program<FlashAttentionPr
   bool has_head_sink_;
 };
 
-bool CanApplyFlashAttentionPrefillSimple(bool is_intel,
+bool CanApplyFlashAttentionPrefill(bool is_intel,
                                          bool kv_cache_quantization_enabled);
 
-Status ApplyFlashAttentionPrefillSimple(onnxruntime::webgpu::ComputeContext& context,
+Status ApplyFlashAttentionPrefill(onnxruntime::webgpu::ComputeContext& context,
                                         const Tensor* Q,
                                         const Tensor* present_key,
                                         const Tensor* present_value,
