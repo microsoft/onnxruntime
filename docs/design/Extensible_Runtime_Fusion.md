@@ -329,6 +329,8 @@ struct OrtRuntimeFusionApi {
   OrtStatus* (ORT_API_CALL* RegisterExtension)(OrtSessionOptions*, const OrtRFExtension*);
   OrtStatus* (ORT_API_CALL* SnapshotInfo)(
       const OrtRFContext*, uint64_t* generation, OrtRFGraphId* root, OrtRFGraphId* current);
+  OrtStatus* (ORT_API_CALL* GetSessionConfig)(
+      const OrtRFContext*, const OrtRFConfig** out);
   OrtStatus* (ORT_API_CALL* GraphInfo)(
       const OrtRFContext*, OrtRFGraphId, const OrtRFGraphInfo** out);
   OrtStatus* (ORT_API_CALL* NodeAt)(
@@ -347,6 +349,16 @@ These are limits, not reservations. The runtime may reject tighter platform limi
 `Configure` copies and replaces configuration atomically; options become immutable to the session
 at initialization. Conflicting duplicate package ID/revision registrations fail rather than
 silently changing precedence.
+
+Before the first `Match`, core validates configuration against the loaded graph and freezes the
+session's effective configuration. `GetSessionConfig` exposes that immutable snapshot, including
+validated workload bounds, resource mode, required patterns and limits. ORT owns the returned
+record and all nested strings/arrays; they are read-only borrows valid only during the current
+callback, not handles to mutable `OrtSessionOptions`. Do not release, modify or retain them.
+Every graph callback in a session sees the same effective configuration. Reconfiguring cloned
+options must not alter another clone or an already-created session, even when registration and
+package state are shared. `Match` must read this session view rather than infer bounds from shared
+`package_state`, symbolic shape names or an earlier Run.
 
 Graph, node, and value IDs are nonzero and unique within a snapshot, including descendants. The
 context identifies its current graph; `SnapshotInfo` returns both root and current, while each callback's
@@ -407,6 +419,9 @@ Shape bounds are an application-declared workload envelope in **both** modes, no
 inferred from one example. Require `0 <= min <= max` per dimension and reject unknown input names,
 duplicate bounds and inconsistent ranks. Core validates all submitted feeds/bindings against the
 accepted envelope before launching any kernel, including kernels before a recurrent region.
+`Match` obtains these validated bounds through `GetSessionConfig`; graph type metadata alone
+does not encode their finite minima/maxima. Missing bounds remain unknown, not unrestricted
+permission to fuse.
 Eligibility must hold for the entire fixed-shape or bounded envelope. No arbitrary package Run
 callback, dynamic match/defuse, or data-dependent fallback is added.
 If eligibility cannot be proven from topology, types, fixed shapes and declared shape bounds, leave
@@ -740,6 +755,7 @@ DSO is a blocked prerequisite, never a pass.
 | `RuntimeFusionTests.*` / `onnxruntime_test_all` | Absent/disabled/Basic preserve behavior; required-at-Basic error; trace partition, extension once, L2, casts, copies, including repeated optimization loops and nested graphs. |
 | `RuntimeFusionTests.*` | EP-split, opaque compiler regions, deterministic overlaps, stale IDs, all escaping outputs/captures, missing schema, invalid combined DAG, failed Resolve, callback failure, proposal/byte limits. Verify graph unchanged on precommit non-match and session discarded on commit failure. |
 | `RuntimeFusionApiTest.*` / `onnxruntime_shared_lib_test` | Static and separately built DSO; null discovery/version mismatch/short descriptors; copied descriptors; cloned options after original release; concurrent sessions and no callback reentrancy; partial registration failure; retained-state/destructor/unload order. |
+| `RuntimeFusionApiTest.SessionConfigBounds` / `onnxruntime_shared_lib_test` | `Match` reads the validated effective config, including nested bounds, through a callback-scoped read-only borrow. Clones configured with different bounds and concurrent sessions see their own snapshots; releasing/reconfiguring options cannot alter another clone or an existing session. Invalid configuration fails before Match. |
 | `RuntimeFusionApiTest.*` | Build DSO using only public C headers, no private ORT includes/link symbols; load into separately built ORT. Test no-native-loader build using the same static registration API. |
 | `RuntimeFusionTests.WholeScan*` | CUDA parent/body positive; CPU parent/CUDA body negative; CUDA parent/mixed body negative; capture/state order; unsupported nested control flow; recursive overlap; descendant resource retirement before graph destruction; no loop after acceptance. |
 | `RuntimeFusionTests.Budget*` | Unknown estimate, target larger than source, partial CSV, shared initializer, initialization peak, stale body IDs, later-transform invalidation, final graph failure even for optional fusion, unchanged EP budget, out-of-bound Run rejected before state mutation. |
@@ -778,6 +794,15 @@ lowering, not a mathematically similar hand-reassociated Scan. Its independent r
 the displayed recurrence separately in FP64, applying the canonical round/cast points explicitly.
 If the registered kernel cannot preserve that schedule within the predeclared gates, decline this
 pattern; do not silently select a different state ABI.
+
+For the configuration-visibility regression, use one saved canonical GQA graph with symbolic
+`B/P/S`, `Hq=4,Hkv=2,D=64`, and the same package registration shared by cloned options.
+Configure session A with `B=1,P=[1,17],S=[2,7]`, and session B with
+`B=2,P=[1,17],S=[2,7]`. Each `Match` must observe its own bounds through `GetSessionConfig`;
+A is eligible if the remaining contract checks pass, while B must decline batched continuation
+chunks. Initialize the sessions concurrently and verify that reconfiguring one options clone
+cannot change the other's snapshot. Add a third envelope whose `P_max + S_max > INT32_MAX`:
+decline GQA during matching without allocating tensors at those maximum dimensions.
 
 ### Reduced decoder configuration and export recipe
 
