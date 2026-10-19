@@ -17,6 +17,7 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/math/gemm_utils.h"
+#include "core/providers/webgpu/math/matmul.h"
 #include "core/providers/webgpu/math/matmul_packed.h"
 #include "core/providers/webgpu/math/matmul_utils.h"
 #include "core/providers/webgpu/nn/conv2d_mm.h"
@@ -107,8 +108,9 @@ class DispatchTestKernel final : public OpKernel {
   Status Compute(OpKernelContext*) const override { return Status::OK(); }
 };
 
+template <typename T>
 void RunAndReadProgram(WebGpuExecutionProvider& ep, const ProgramBase& program,
-                       WGPUBuffer output_buffer, std::vector<float>& output_data) {
+                       WGPUBuffer output_buffer, std::vector<T>& output_data) {
   auto& context = WebGpuContextFactory::GetContext(0);
   ConfigOptions options;
   Model model("dispatch_padding", false, DefaultLoggingManager().DefaultLogger());
@@ -122,11 +124,12 @@ void RunAndReadProgram(WebGpuExecutionProvider& ep, const ProgramBase& program,
   DispatchTestKernel kernel(info);
   ComputeContextBase compute_context(context, ep, kernel);
   ASSERT_STATUS_OK(compute_context.RunProgram(program));
-  ep.BufferManager().Download(ep.Recording(), output_buffer, output_data.data(), output_data.size() * sizeof(float));
+  ep.BufferManager().Download(ep.Recording(), output_buffer, output_data.data(), output_data.size() * sizeof(T));
 }
 
-wgpu::Buffer CreateStorageBuffer(WebGpuExecutionProvider& ep, gsl::span<float> data) {
-  const size_t size = data.size() * sizeof(float);
+template <typename T>
+wgpu::Buffer CreateStorageBuffer(WebGpuExecutionProvider& ep, std::vector<T>& data) {
+  const size_t size = data.size() * sizeof(T);
   auto buffer = wgpu::Buffer::Acquire(ep.BufferManager().Create(
       ep.Recording(), size, wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst));
   ep.BufferManager().Upload(ep.Recording(), data.data(), buffer.Get(), size);
@@ -354,6 +357,54 @@ TEST_F(WebGpuDispatchExecutionTest, Conv2dMMPreservesPaddingInBothLayouts) {
     program.SetDispatchGroupSize(physical[0], physical[1], physical[2]);
     ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(Ep(), program, output_buffer.Get(), output_data));
     CheckResultsAndPadding(output_data, batches * 8 * 2 * 2, 32.0f);
+  }
+}
+
+TEST_F(WebGpuDispatchExecutionTest, MatMulGemvPreservesPaddingAfterNormalization) {
+  auto& context = WebGpuContextFactory::GetContext(Ep().GetDeviceId());
+  if (!context.DeviceHasFeature(wgpu::FeatureName::ShaderF16)) {
+    GTEST_SKIP() << "FP16 is not supported by the WebGPU adapter.";
+  }
+  constexpr uint32_t N = 28;
+  constexpr uint32_t K = 2048;
+  const MLFloat16 canary{-42.0f};
+  const OrtMemoryInfo memory_info(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
+  for (const uint32_t M : {1u, 2u}) {
+    SCOPED_TRACE(M);
+    std::array<uint32_t, 3> physical{M * (N / 4), 1, 1};
+    ASSERT_STATUS_OK(webgpu::detail::NormalizeDispatchGroupSize(physical[0], physical[1], physical[2], 5));
+    const uint32_t padded_rows = CeilDiv(physical[0] * physical[1] * physical[2], N / 4);
+    ASSERT_GT(padded_rows, M);
+
+    // Bind padded buffers so a missing row guard visibly overwrites the canary.
+    std::vector<MLFloat16> a_data(padded_rows * K, MLFloat16{0.5f});
+    for (uint32_t m = 0; m < M; ++m) {
+      std::fill_n(a_data.begin() + m * K, K, MLFloat16{0.125f * static_cast<float>(m + 1)});
+    }
+    std::vector<MLFloat16> b_data(K * N, MLFloat16{0.125f});
+    std::vector<MLFloat16> output_data(padded_rows * N, canary);
+    auto a_buffer = CreateStorageBuffer(Ep(), a_data);
+    auto b_buffer = CreateStorageBuffer(Ep(), b_data);
+    auto output_buffer = CreateStorageBuffer(Ep(), output_data);
+    Tensor a(DataTypeImpl::GetType<MLFloat16>(), {M, K}, a_buffer.Get(), memory_info);
+    Tensor b(DataTypeImpl::GetType<MLFloat16>(), {K, N}, b_buffer.Get(), memory_info);
+    Tensor output(DataTypeImpl::GetType<MLFloat16>(), {M, N}, output_buffer.Get(), memory_info);
+    MatMulGemvProgram program;
+    program.AddInputs({{&a, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten},
+                       {&b, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
+        .AddOutput({&output, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
+        .AddUniformVariables({{K}, {N}, {M}})
+        .SetWorkgroupSize(MatMulGemvProgram::kWorkgroupSizeX, MatMulGemvProgram::kWorkgroupSizeY)
+        .SetDispatchGroupSize(physical[0], physical[1], physical[2]);
+    ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(Ep(), program, output_buffer.Get(), output_data));
+    for (uint32_t m = 0; m < M; ++m) {
+      for (uint32_t n = 0; n < N; ++n) {
+        EXPECT_EQ(output_data[m * N + n].ToFloat(), 32.0f * static_cast<float>(m + 1));
+      }
+    }
+    for (size_t i = M * N; i < output_data.size(); ++i) {
+      EXPECT_EQ(output_data[i].ToFloat(), canary.ToFloat()) << "at padding index " << i;
+    }
   }
 }
 

@@ -40,7 +40,8 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, 
         ORT_THROW("inner_element_size ", inner_element_size, " is not supported.");
     }
   };
-  const std::string coord_a_snippet = is_channels_last_ ? "let coord = vec4<i32>(batch, xRow, xCol, xCh / " + std::to_string(inner_element_size_x == 3 ? 4 : inner_element_size_x) + ");" : "let coord = vec4<i32>(batch, xCh, xRow, xCol);";
+  // The vec3 path assembles three scalar loads, so its channel coordinate is not packed.
+  const std::string coord_a_snippet = is_channels_last_ ? "let coord = vec4<i32>(batch, xRow, xCol, xCh / " + std::to_string(inner_element_size_x == 3 ? 1 : inner_element_size_x) + ");" : "let coord = vec4<i32>(batch, xCh, xRow, xCol);";
   const std::string coord_res_snippet = is_channels_last_ ? "let coords = vec4<i32>(batch, row / outWidth, row % outWidth, col / " + std::to_string(inner_element_size) + ");" : "let coords = vec4<i32>(batch, row, col / outWidth, col % outWidth);";
 
   const std::string xHeight = is_channels_last_ ? "i32(uniforms.x_shape[1])" : "i32(uniforms.x_shape[2])";

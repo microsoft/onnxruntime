@@ -16,10 +16,12 @@
  */
 #pragma once
 
+#include <cutlass/numeric_types.h>
+
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cassert>
-#include <cutlass/numeric_types.h>
 #include <memory>
 #include <optional>
 #include <set>
@@ -117,9 +119,17 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   }
 
   // Attaches the process-global persistent tactic cache. A nullptr keeps the
-  // in-process-only behavior (no disk reads/writes).
-  void setPersistentCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache) {
+  // in-process-only behavior (no disk reads/writes). A non-null `session_profile_map` replaces the
+  // process-global profile map so this profiler deduplicates shapes within its own session while
+  // using `cache` for cross-session persistence (and re-tuning without mutating live sessions).
+  void setPersistentCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache,
+                          onnxruntime::llm::gemm_cache::CacheAccess access = {},
+                          MNKProfileMapPtr session_profile_map = nullptr) {
     mCache = std::move(cache);
+    mCacheAccess = access;
+    if (session_profile_map != nullptr) {
+      setSelectionTactics(session_profile_map);
+    }
   }
 
   void setTuningResultsCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache) {
@@ -163,6 +173,7 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   void loadPersistentCache(GemmIdCore const& gemmId, MProfileMap& map,
                            bool hasWeightOnlyCudaKernel) override;
 
+  // Records buckets in `map` that are new or differ from the cache in memory (no disk write).
   void stagePersistentCache(GemmIdCore const& gemmId, MProfileMap const& map,
                             bool hasWeightOnlyCudaKernel) override;
 
@@ -186,6 +197,7 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   std::atomic<size_t> mProfileWeightIndex{0};
   int mPairedGemvMode = 0;
   std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mCache;
+  onnxruntime::llm::gemm_cache::CacheAccess mCacheAccess;
   std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mTuningResultsCache;
   bool mWaveAwareGemv = false;
   std::vector<int> mProfileMOverride;

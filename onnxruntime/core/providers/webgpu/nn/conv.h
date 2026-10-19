@@ -51,7 +51,8 @@ class Conv : public WebGpuKernel {
 
   Conv(const OpKernelInfo& info) : WebGpuKernel(info), conv_attrs_(info) {
     if (is_fused) {
-      ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
+      // Throw the Status, not the expression: the message names the activation ORT_ENFORCE would drop.
+      ORT_THROW_IF_ERROR(GetFusedActivationAttr(info, activation_));
     }
     // Whether the weight input (index 1) is a constant initializer. An optimized
     // implementation uses this to decide whether it may cache a derived form of the

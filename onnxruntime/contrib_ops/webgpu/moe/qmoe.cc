@@ -136,6 +136,7 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
   const uint32_t scale_k_blocks = (inner - 1) / 128 + 1;
   uint32_t byte_offset = 0;
   const bool use_matrix = !indirect_experts && rows >= 128 && cols >= 256 && inner >= 256 &&
+                          context.HasWGSLLanguageFeature(wgpu::WGSLLanguageFeatureName::SubgroupId) &&
                           BlockFp8MatrixDispatchFits(rows, cols,
                                                      context.DeviceLimits().maxComputeWorkgroupsPerDimension) &&
                           input->DataType() == DataTypeImpl::GetType<MLFloat16>() &&
@@ -144,6 +145,7 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
                                                                 16, 16, 16, 32, false}})
                               .has_value();
   BlockFp8ExpertMatMulProgram program{bias != nullptr, indirect_experts != nullptr, broadcast_input, use_matrix};
+  program.SetUseSubgroupId(use_matrix);
   program.AddInputs({{input, ProgramTensorMetadataDependency::Type}});
   if (indirect_experts) {
     program.AddInputs({{&raw_weights, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})

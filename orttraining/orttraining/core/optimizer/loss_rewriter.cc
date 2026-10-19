@@ -25,6 +25,10 @@ Status SoftmaxCrossEntropyLossInternalFusion::ApplyImpl(Graph& graph, bool& modi
     }
 
     if (p_first_input->OpType() == "Cast") {
+      if (p_first_input->GetOutputEdgesCount() != 1 || graph.NodeProducesGraphOutput(*p_first_input)) {
+        continue;
+      }
+
       p_first_input = graph_utils::GetInputNode(*p_first_input, 0);
       if (!p_first_input || p_first_input->OpType() != "LogSoftmax") {
         continue;
@@ -32,6 +36,30 @@ Status SoftmaxCrossEntropyLossInternalFusion::ApplyImpl(Graph& graph, bool& modi
     }
 
     Node& log_softmax_node = *graph.GetNode(p_first_input->Index());
+    if (log_softmax_node.GetOutputEdgesCount() != 1 || graph.NodeProducesGraphOutput(log_softmax_node)) {
+      continue;
+    }
+
+    const auto* input_shape = log_softmax_node.InputDefs()[0]->Shape();
+    if (log_softmax_node.SinceVersion() < 13 &&
+        (input_shape == nullptr || input_shape->dim_size() != 2)) {
+      continue;
+    }
+
+    const auto axis_attr = log_softmax_node.GetAttributes().find("axis");
+    int64_t axis = axis_attr == log_softmax_node.GetAttributes().end()
+                       ? (log_softmax_node.SinceVersion() < 13 ? 1 : -1)
+                       : axis_attr->second.i();
+    if (axis < 0) {
+      if (input_shape == nullptr) {
+        continue;
+      }
+      axis += input_shape->dim_size();
+    }
+    if (axis != 1) {
+      continue;
+    }
+
     graph_utils::RemoveNode(graph, log_softmax_node);
     const auto& loss_inputs = loss_node.MutableInputDefs();
     auto& loss_outputs = loss_node.MutableOutputDefs();
