@@ -27,9 +27,15 @@ TEST(LayoutTransformationPotentiallyAddedOpsTests, OpsHaveLatestVersions) {
     if (prev_domain != it->domain || prev_op_type != it->op_type) {
       const auto* schema = schema_registry->GetSchema(std::string{it->op_type}, INT_MAX, std::string{it->domain});
       ASSERT_NE(schema, nullptr);
-      EXPECT_EQ(schema->SinceVersion(), it->since_version)
-          << "A new version for op " << it->op_type << " (" << schema->SinceVersion()
-          << ") is available. Please update kLayoutTransformationPotentiallyAddedOps to include it.";
+      const bool is_staged_opset_28_qdq =
+          it->domain == kOnnxDomain && schema->SinceVersion() == 28 &&
+          (it->op_type == "DequantizeLinear" || it->op_type == "QuantizeLinear");
+      if (!is_staged_opset_28_qdq) {
+        EXPECT_EQ(schema->SinceVersion(), it->since_version)
+            << "A new version for op " << it->op_type << " (" << schema->SinceVersion()
+            << ") is available. Please update kLayoutTransformationPotentiallyAddedOps to include it.";
+      }
+      // TODO(#32372): Remove this exception when the opset-28 Q/DQ kernels land.
       prev_domain = it->domain;
       prev_op_type = it->op_type;
     }

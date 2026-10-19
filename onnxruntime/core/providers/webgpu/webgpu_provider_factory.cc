@@ -468,18 +468,19 @@ WebGpuContextConfig ParseWebGpuContextConfig(
 }  // namespace
 
 static std::shared_ptr<IExecutionProviderFactory> CreateWebGpuProviderFactory(
-    const ConfigOptions& config_options, uint64_t test_only_max_storage_buffer_binding_size) {
+    const ConfigOptions& config_options, const WebGpuExecutionProviderTestOptions& test_options) {
   const auto weight_load_acceleration_mode =
       ResolveWeightLoadAccelerationMode(config_options);
 
   // prepare WebGpuExecutionProviderConfig
   WebGpuExecutionProviderConfig webgpu_ep_config =
       ParseEpConfig(config_options, weight_load_acceleration_mode);
+  webgpu_ep_config.forced_matmul_algorithm = test_options.forced_matmul_algorithm;
 
   // prepare WebGpuContextConfig
   WebGpuContextConfig config =
       ParseWebGpuContextConfig(config_options, weight_load_acceleration_mode);
-  config.test_only_max_storage_buffer_binding_size = test_only_max_storage_buffer_binding_size;
+  config.test_only_max_storage_buffer_binding_size = test_options.max_storage_buffer_binding_size;
 
   // Load the Dawn library and create the WebGPU instance.
   auto& context = WebGpuContextFactory::CreateContext(config);
@@ -489,12 +490,12 @@ static std::shared_ptr<IExecutionProviderFactory> CreateWebGpuProviderFactory(
 }
 
 std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(const ConfigOptions& config_options) {
-  return CreateWebGpuProviderFactory(config_options, 0);
+  return CreateWebGpuProviderFactory(config_options, {});
 }
 
 std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::CreateForTesting(
-    const ConfigOptions& config_options, uint64_t max_storage_buffer_binding_size) {
-  return CreateWebGpuProviderFactory(config_options, max_storage_buffer_binding_size);
+    const ConfigOptions& config_options, const WebGpuExecutionProviderTestOptions& test_options) {
+  return CreateWebGpuProviderFactory(config_options, test_options);
 }
 
 // WebGPU DataTransfer implementation wrapper for the C API

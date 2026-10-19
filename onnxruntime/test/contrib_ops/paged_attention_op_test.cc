@@ -2530,7 +2530,7 @@ TEST(PagedAttention, EndToEnd_Prefill_MultiBatch_Varlen_Fused) {
 
 // Fused paged prefill across a block boundary. block_size == max_k_step (32
 // for fp16 head_size <= 128) is the tightest configuration
-// ShouldRunFusedPagedPrefill accepts. token_count = 64 spans two paged
+// CanApplyFlashAttentionPagedPrefill accepts. token_count = 64 spans two paged
 // blocks, and block_table = {3, 1} makes the two logical pages map to
 // non-adjacent physical blocks — any indexing bug that assumes physical
 // adjacency of consecutive logical pages will fail here (see the alignment
@@ -2572,12 +2572,12 @@ TEST(PagedAttention, EndToEnd_Decode_BlockBoundaryCrossing) {
   RunEndToEndCaseOnAvailableProviders(c);
 }
 
-// Force the ShouldRunFusedPagedPrefill *reject* branch. With fp16 head_size
+// Force the CanApplyFlashAttentionPagedPrefill *reject* branch. With fp16 head_size
 // 128, max_k_step is 32, so block_size 16 fails the block_size >= max_k_step
 // guard. PagedAttention must then take the gather-then-flash cascade (the
 // merged #31611 code path). Verifies output parity against the reference in
 // the fallback path, locking down the reject-boundary so a future refactor
-// of ShouldRunFusedPagedPrefill can't silently change it.
+// of CanApplyFlashAttentionPagedPrefill can't silently change it.
 TEST(PagedAttention, EndToEnd_Prefill_ForcedFallback_BlockSizeBelowMaxKStep) {
   EndToEndCase c{};
   c.batch_size = 1;

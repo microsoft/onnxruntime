@@ -2,6 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import importlib
 import sys
 import unittest
 from pathlib import Path
@@ -10,7 +11,13 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import build_args
+build = importlib.import_module("build")
+build_args = importlib.import_module("build_args")
+
+_RELEASED_OPSET_ENVIRONMENT = {
+    "ALLOW_RELEASED_ONNX_OPSET_ONLY": "1",
+    "ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS": "0",
+}
 
 
 class BuildArgsTest(unittest.TestCase):
@@ -88,6 +95,7 @@ class BuildArgsTest(unittest.TestCase):
         cases = (
             (("--build_wasm",), "linux", "x86_64"),
             (("--minimal_build", "--disable_exceptions"), "linux", "x86_64"),
+            (("--disable_exceptions",), "linux", "x86_64"),
             (("--rv64",), "linux", "riscv64"),
             (("--visionos",), "macos", "arm64"),
             (("--tvos",), "macos", "arm64"),
@@ -98,6 +106,11 @@ class BuildArgsTest(unittest.TestCase):
             with self.subTest(arguments=arguments, platform_name=platform_name, machine=machine):
                 args = self._parse(*arguments, platform_name=platform_name, machine=machine)
                 self.assertFalse(args.use_telemetry)
+
+    def test_wasm_disable_exceptions_requires_minimal_build(self):
+        with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
+            self._parse("--build_wasm", "--disable_exceptions", platform_name="linux")
+        self._parse("--build_wasm", "--disable_exceptions", "--minimal_build", platform_name="linux")
 
     def test_android_enables_telemetry_by_default(self):
         args = self._parse("--android", platform_name="linux")
@@ -112,6 +125,27 @@ class BuildArgsTest(unittest.TestCase):
             self._parse(platform_name="linux")
 
         warn.assert_not_called()
+
+
+class OnnxBackendTestEnvironmentTest(unittest.TestCase):
+    def test_cpu_and_cuda_require_released_opsets_by_default(self):
+        with mock.patch.dict(build.os.environ, {}, clear=True):
+            for use_cuda in (False, True):
+                with self.subTest(use_cuda=use_cuda):
+                    self.assertEqual(
+                        build.get_onnx_backend_test_environment(use_cuda),
+                        _RELEASED_OPSET_ENVIRONMENT,
+                    )
+
+    def test_cpu_and_cuda_require_released_opsets_regardless_of_parent_policy(self):
+        for parent_policy in ("0", "1"):
+            with mock.patch.dict(build.os.environ, {"ALLOW_RELEASED_ONNX_OPSET_ONLY": parent_policy}, clear=True):
+                for use_cuda in (False, True):
+                    with self.subTest(use_cuda=use_cuda, parent_policy=parent_policy):
+                        self.assertEqual(
+                            build.get_onnx_backend_test_environment(use_cuda),
+                            _RELEASED_OPSET_ENVIRONMENT,
+                        )
 
 
 if __name__ == "__main__":

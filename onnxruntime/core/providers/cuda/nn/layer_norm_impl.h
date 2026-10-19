@@ -28,7 +28,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, typename U, typename V, bool simplified>
+template <typename T, typename U, typename V, bool simplified, bool stash_normalized = false>
 void HostApplyLayerNorm(
     const cudaDeviceProp& prop,
     cudaStream_t stream,
