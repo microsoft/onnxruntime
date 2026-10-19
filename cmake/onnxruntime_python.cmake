@@ -348,6 +348,9 @@ if (onnxruntime_USE_CUDA AND NOT WIN32 AND onnxruntime_BUILD_CUDA_QUANT_PREPROCE
     ${cutlass_SOURCE_DIR}/tools/util/include
   )
   target_compile_definitions(onnxruntime_cuda_quant_preprocess PRIVATE USE_CUDA)
+  # Offline packing must honor force_arch=90 even when the build excludes SM90 GEMM kernels.
+  # Otherwise get_arch_for_mixed_gemm_weight_preprocess silently substitutes the SM80 layout.
+  target_compile_options(onnxruntime_cuda_quant_preprocess PRIVATE "-UEXCLUDE_SM_90")
   target_link_libraries(onnxruntime_cuda_quant_preprocess PRIVATE
     onnxruntime_common
     Boost::mp11

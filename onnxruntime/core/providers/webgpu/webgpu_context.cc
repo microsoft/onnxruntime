@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include <gsl/util>
+
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
 #include <d3d12.h>
 #include <dxgi1_6.h>
@@ -454,7 +456,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     program_mgr_ = std::make_unique<ProgramManager>(*this);
 
     // create split-k config
-    split_k_config_ = std::make_unique<SplitKConfig>(adapter_info_);
+    split_k_config_ = std::make_unique<SplitKConfig>(CreateSplitKConfig(adapter_info_));
 
     // set query type
 #if !defined(__wasm__)
@@ -625,7 +627,7 @@ Status WebGpuContext::EncodeDeferredDispatches(CommandRecordingState& recording)
     DispatchCommand(dispatch, recording);
     if (recording.graph_capture_state == GraphCaptureState::Capturing) {
       ORT_ENFORCE(recording.external_captured_commands != nullptr);
-      recording.external_captured_commands->push_back(std::move(dispatch));
+      recording.external_captured_commands->push_back({std::move(dispatch)});
     }
   }
 
@@ -957,7 +959,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   // Record the ready bind group and return. The deferred drain only needs to wait for the pipeline
   // and encode the dispatch commands.
-  webgpu::CapturedCommandInfo command;
+  webgpu::DispatchCommandInfo command;
   command.program_key = key;
   if (program_artifact != nullptr) {
     command.compute_pipeline = program_artifact->compute_pipeline;
@@ -1342,6 +1344,12 @@ Status WebGpuContext::CheckDeviceStatus() const {
 
 Status WebGpuContext::FlushAndWaitChecked(const webgpu::BufferManager& buffer_mgr,
                                           CommandRecordingState& recording) {
+  return RunAndWaitChecked(buffer_mgr, recording, []() { return Status::OK(); });
+}
+
+Status WebGpuContext::RunAndWaitChecked(const webgpu::BufferManager& buffer_mgr,
+                                        CommandRecordingState& recording,
+                                        const std::function<Status()>& enqueue) {
   ORT_RETURN_IF_NOT(HasDevice(), "WebGPU checked completion requires a device.");
 
   PushErrorScope(wgpu::ErrorFilter::Internal);
@@ -1359,6 +1367,27 @@ Status WebGpuContext::FlushAndWaitChecked(const webgpu::BufferManager& buffer_mg
     }
     result = Status(result.Category(), result.Code(), result.ErrorMessage() + "; " + status.ErrorMessage());
   };
+
+  size_t scopes_to_pop = 3;
+  const auto pop_scopes = [&]() {
+    while (scopes_to_pop > 0) {
+      --scopes_to_pop;
+      record_failure(PopErrorScope());
+    }
+  };
+  const auto cleanup = gsl::finally(pop_scopes);
+
+  ORT_TRY {
+    record_failure(enqueue());
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      record_failure(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU checked enqueue failed: ", ex.what()));
+    });
+  }
+  ORT_CATCH(...) {
+    record_failure(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU checked enqueue failed: unknown exception."));
+  }
 
   ORT_TRY {
     record_failure(Flush(buffer_mgr, recording));
@@ -1392,9 +1421,7 @@ Status WebGpuContext::FlushAndWaitChecked(const webgpu::BufferManager& buffer_mg
   }
 
   // Do not return early: every scope must be popped even if flushing or waiting failed.
-  for (int i = 0; i < 3; ++i) {
-    record_failure(PopErrorScope());
-  }
+  pop_scopes();
   record_failure(CheckDeviceStatus());
   return result;
 }
@@ -1521,7 +1548,7 @@ wgpu::BindGroup WebGpuContext::CreateBindGroup(const std::vector<WGPUBuffer>& bi
   return wgpu::BindGroup::Acquire(bind_group);
 }
 
-void WebGpuContext::DispatchCommand(const webgpu::CapturedCommandInfo& command,
+void WebGpuContext::DispatchCommand(const webgpu::DispatchCommandInfo& command,
                                     CommandRecordingState& recording) {
   ORT_ENFORCE(command.compute_pipeline.has_value());
   ORT_ENFORCE(command.bind_group != nullptr);
@@ -1545,7 +1572,20 @@ void WebGpuContext::DispatchCommand(const webgpu::CapturedCommandInfo& command,
   }
 }
 
-void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands,
+void WebGpuContext::CopyBuffer(WGPUBuffer source, WGPUBuffer destination, uint64_t size,
+                               CommandRecordingState& recording) {
+  // Materialize earlier deferred dispatches before inserting the copy into either command sequence.
+  ORT_THROW_IF_ERROR(EncodeDeferredDispatches(recording));
+  EndComputePass(recording);
+  GetCommandEncoder(recording).CopyBufferToBuffer(source, 0, destination, 0, size);
+  if (recording.graph_capture_state == GraphCaptureState::Capturing) {
+    ORT_ENFORCE(recording.external_captured_commands != nullptr);
+    recording.external_captured_commands->push_back(
+        {CapturedBufferCopy{wgpu::Buffer{source}, wgpu::Buffer{destination}, size}});
+  }
+}
+
+void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommand>* captured_commands,
                                  const webgpu::BufferManager& buffer_manager,
                                  CommandRecordingState& recording) {
   LOGS_DEFAULT(VERBOSE) << "CaptureBegin with external storage";
@@ -1561,7 +1601,7 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
   recording.graph_capture_state = GraphCaptureState::Capturing;
 }
 
-void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands,
+void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommand>& captured_commands,
                            const webgpu::BufferManager& buffer_manager,
                            CommandRecordingState& recording) {
   LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
@@ -1569,7 +1609,12 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
   // Replay all captured commands from the provided vector
   const size_t command_count = captured_commands.size();
   for (size_t i = 0; i < command_count; ++i) {
-    auto& command = captured_commands[i];
+    const auto& operation = captured_commands[i].operation;
+    if (const auto* copy = std::get_if<CapturedBufferCopy>(&operation)) {
+      CopyBuffer(copy->source.Get(), copy->destination.Get(), copy->size, recording);
+      continue;
+    }
+    const auto& command = std::get<DispatchCommandInfo>(operation);
     // Restore profiling info when profiling is enabled. All commands are expected
     // to have profiling data in this mode to keep pending_kernels_ consistent
     // with num_pending_dispatches_.
@@ -1600,12 +1645,10 @@ void WebGpuContext::CaptureEnd(CommandRecordingState& recording) {
   recording.external_captured_commands = nullptr;
 }
 
-void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands) {
+void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommand>& captured_commands) {
   LOGS_DEFAULT(VERBOSE) << "ReleaseGraphResources: Releasing " << captured_commands.size() << " captured command resources";
 
-  for (auto& command : captured_commands) {
-    command.bind_group = nullptr;
-  }
+  captured_commands.clear();
 }
 
 std::mutex WebGpuContextFactory::mutex_;

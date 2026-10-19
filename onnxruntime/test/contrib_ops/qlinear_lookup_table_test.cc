@@ -4,6 +4,8 @@
 #include "test/util/include/default_providers.h"
 
 #include <cfenv>
+#include <cmath>
+#include <limits>
 
 namespace onnxruntime {
 namespace test {
@@ -322,6 +324,173 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_Int8_Saturate) {
   };
   run_test(true);
   run_test(false);
+}
+
+template <typename T>
+void TestQLinearSoftmaxEmptyInput() {
+  for (int64_t opset : {12, 13}) {
+    for (const TensorShapeVector& dims : {TensorShapeVector{0, 2, 37},
+                                          TensorShapeVector{2, 0, 37},
+                                          TensorShapeVector{2, 37, 0}}) {
+      for (bool add_shape : {false, true}) {
+        for (bool fixed_scales : {false, true}) {
+          SCOPED_TRACE(testing::Message() << "opset=" << opset << " dims=" << testing::PrintToString(dims)
+                                          << " add_shape=" << add_shape << " fixed_scales=" << fixed_scales);
+          OpTester test("QLinearSoftmax", 1, onnxruntime::kMSDomain);
+          test.ConfigEp(DefaultCpuExecutionProvider());
+          test.AddAttribute<int64_t>("axis", -1);
+          test.AddAttribute<int64_t>("opset", opset);
+          test.AddShapeToTensorData(add_shape);
+          test.AddInput<T>("X", dims, {});
+          test.AddInput<float>("X_scale", {}, {0.105f}, fixed_scales);
+          test.AddInput<T>("X_zero_point", {}, {0}, fixed_scales);
+          test.AddInput<float>("Y_scale", {}, {1.0f / 256.0f}, fixed_scales);
+          test.AddInput<T>("Y_zero_point", {}, {0}, fixed_scales);
+          test.AddOutput<T>("Y", dims, {});
+          test.RunWithConfig();
+        }
+      }
+    }
+  }
+}
+
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_UInt8_EmptyInput) {
+  TestQLinearSoftmaxEmptyInput<uint8_t>();
+}
+
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_Int8_EmptyInput) {
+  TestQLinearSoftmaxEmptyInput<int8_t>();
+}
+
+template <typename T>
+void TestQLinearSoftmaxSmallOutputScale() {
+  const T high = std::numeric_limits<T>::max();
+  const T low = std::numeric_limits<T>::lowest();
+  for (int64_t opset : {12, 13}) {
+    for (bool nonlast_axis : {false, true}) {
+      const std::vector<int64_t> dims = nonlast_axis ? std::vector<int64_t>{2, 1} : std::vector<int64_t>{1, 2};
+      for (bool add_shape : {false, true}) {
+        for (bool fixed_scales : {false, true}) {
+          for (float output_scale : {std::ldexp(1.0f, -25), std::ldexp(1.0f, -40),
+                                     std::numeric_limits<float>::min(), std::numeric_limits<float>::denorm_min()}) {
+            volatile float scale = output_scale;
+            volatile double promoted_scale = scale;
+            if (promoted_scale == 0.0) {
+              continue;  // Some platforms flush subnormal inputs to zero.
+            }
+            for (T zero_point : {low, static_cast<T>(23)}) {
+              for (bool equal_inputs : {false, true}) {
+                SCOPED_TRACE(testing::Message() << "opset=" << opset << " nonlast_axis=" << nonlast_axis
+                                                << " add_shape=" << add_shape << " fixed_scales=" << fixed_scales
+                                                << " output_scale=" << output_scale << " zero_point=" << int(zero_point)
+                                                << " equal_inputs=" << equal_inputs);
+                OpTester test("QLinearSoftmax", 1, onnxruntime::kMSDomain);
+                test.ConfigEp(DefaultCpuExecutionProvider());
+                test.AddAttribute<int64_t>("axis", nonlast_axis ? 0 : 1);
+                test.AddAttribute<int64_t>("opset", opset);
+                test.AddShapeToTensorData(add_shape);
+                test.AddInput<T>("X", dims, equal_inputs ? std::vector<T>{0, 0} : std::vector<T>{low, high});
+                test.AddInput<float>("X_scale", {}, {1.0f}, fixed_scales);
+                test.AddInput<T>("X_zero_point", {}, {0}, fixed_scales);
+                test.AddInput<float>("Y_scale", {}, {output_scale}, fixed_scales);
+                test.AddInput<T>("Y_zero_point", {}, {zero_point}, fixed_scales);
+                // Equal logits saturate both outputs. A difference of 255 leaves the smaller probability
+                // below half of even the smallest positive float scale, so it quantizes to the zero point.
+                test.AddOutput<T>("Y", dims, {equal_inputs ? high : zero_point, high});
+                test.RunWithConfig();
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_UInt8_SmallOutputScale) {
+  TestQLinearSoftmaxSmallOutputScale<uint8_t>();
+}
+
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_Int8_SmallOutputScale) {
+  TestQLinearSoftmaxSmallOutputScale<int8_t>();
+}
+
+template <typename T>
+void TestQLinearSoftmaxSingleton() {
+  for (int64_t opset : {12, 13}) {
+    for (bool add_shape : {false, true}) {
+      for (bool fixed_scales : {false, true}) {
+        for (T zero_point : {std::numeric_limits<T>::lowest(), static_cast<T>(23)}) {
+          SCOPED_TRACE(testing::Message() << "opset=" << opset << " add_shape=" << add_shape
+                                          << " fixed_scales=" << fixed_scales << " zero_point=" << int(zero_point));
+          OpTester test("QLinearSoftmax", 1, onnxruntime::kMSDomain);
+          test.ConfigEp(DefaultCpuExecutionProvider());
+          test.AddAttribute<int64_t>("axis", -1);
+          test.AddAttribute<int64_t>("opset", opset);
+          test.AddShapeToTensorData(add_shape);
+          test.AddInput<T>("X", {2, 1}, {std::numeric_limits<T>::lowest(), std::numeric_limits<T>::max()});
+          test.AddInput<float>("X_scale", {}, {0.105f}, fixed_scales);
+          test.AddInput<T>("X_zero_point", {}, {0}, fixed_scales);
+          test.AddInput<float>("Y_scale", {}, {1.0f / 256.0f}, fixed_scales);
+          test.AddInput<T>("Y_zero_point", {}, {zero_point}, fixed_scales);
+          test.AddOutput<T>("Y", {2, 1}, {std::numeric_limits<T>::max(), std::numeric_limits<T>::max()});
+          test.RunWithConfig();
+        }
+      }
+    }
+  }
+}
+
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_UInt8_Singleton) {
+  TestQLinearSoftmaxSingleton<uint8_t>();
+}
+
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_Int8_Singleton) {
+  TestQLinearSoftmaxSingleton<int8_t>();
+}
+
+template <typename T>
+void TestQLinearSoftmaxRounding() {
+  for (int64_t opset : {12, 13}) {
+    for (bool fixed_scales : {false, true}) {
+      for (const auto& values : {std::pair{1.0f / 3.0f, 2}, std::pair{1.0f / 5.0f, 2},
+                                 std::pair{1.0f / 11.0f, 6}, std::pair{1.0f / 9.0f, 4},
+                                 std::pair{1.0f / 59.0f, 30}, std::pair{1.0f / 249.0f, 124}}) {
+        SCOPED_TRACE(testing::Message() << "opset=" << opset << " fixed_scales=" << fixed_scales
+                                        << " output_scale=" << values.first);
+        OpTester test("QLinearSoftmax", 1, onnxruntime::kMSDomain);
+        test.ConfigEp(DefaultCpuExecutionProvider());
+        test.AddAttribute<int64_t>("axis", -1);
+        test.AddAttribute<int64_t>("opset", opset);
+        test.AddInput<T>("X", {1, 2}, {0, 0});
+        test.AddInput<float>("X_scale", {}, {0.105f}, fixed_scales);
+        test.AddInput<T>("X_zero_point", {}, {0}, fixed_scales);
+        test.AddInput<float>("Y_scale", {}, {values.first}, fixed_scales);
+        test.AddInput<T>("Y_zero_point", {}, {0}, fixed_scales);
+        test.AddOutput<T>("Y", {1, 2}, {static_cast<T>(values.second), static_cast<T>(values.second)});
+        test.RunWithConfig();
+      }
+      OpTester test("QLinearSoftmax", 1, onnxruntime::kMSDomain);
+      test.ConfigEp(DefaultCpuExecutionProvider());
+      test.AddAttribute<int64_t>("axis", -1);
+      test.AddAttribute<int64_t>("opset", opset);
+      test.AddInput<T>("X", {1, 2}, {0, 16});
+      test.AddInput<float>("X_scale", {}, {1.0f}, fixed_scales);
+      test.AddInput<T>("X_zero_point", {}, {0}, fixed_scales);
+      test.AddInput<float>("Y_scale", {}, {std::ldexp(1.0f, -25)}, fixed_scales);
+      test.AddInput<T>("Y_zero_point", {}, {0}, fixed_scales);
+      test.AddOutput<T>("Y", {1, 2}, {4, std::numeric_limits<T>::max()});
+      test.RunWithConfig();
+    }
+  }
+}
+
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_UInt8_Rounding) {
+  TestQLinearSoftmaxRounding<uint8_t>();
+}
+
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_Int8_Rounding) {
+  TestQLinearSoftmaxRounding<int8_t>();
 }
 
 }  // namespace test

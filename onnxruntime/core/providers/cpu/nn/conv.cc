@@ -15,6 +15,7 @@
  */
 /* Modifications Copyright (c) Microsoft. */
 
+#include <algorithm>
 #include <vector>
 
 #include "core/providers/cpu/nn/conv.h"
@@ -99,6 +100,19 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
   // Bail out early if one of the dimensions is zero.
   if (Y->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
+  if (C == 0) {
+    T* output = Y->MutableData<T>();
+    const size_t spatial_size = narrow<size_t>(output_shape.Size());
+    const T* bias = B == nullptr ? nullptr : B->Data<T>();
+    for (int64_t n = 0; n < N; ++n) {
+      for (int64_t c = 0; c < M; ++c) {
+        std::fill_n(output, spatial_size, bias == nullptr ? T{} : bias[c]);
+        output += spatial_size;
+      }
+    }
     return Status::OK();
   }
 
@@ -292,6 +306,33 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   TensorShape output_shape = channels_last_ ? TensorShape(Y_dims).Slice(1, 3) : Y->Shape().Slice(2);
 
   if (Y->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
+  if (C == 0) {
+    if (Sum != nullptr) {
+      ORT_RETURN_IF_NOT(Sum->Shape() == Y->Shape(), "output and sum shape must match");
+    }
+    const size_t output_size = narrow<size_t>(Y->Shape().Size());
+    const size_t spatial_size = narrow<size_t>(output_shape.Size());
+    const size_t batch_count = narrow<size_t>(N);
+    const size_t channel_count = narrow<size_t>(M);
+    const float* bias = B == nullptr ? nullptr : B->Data<float>();
+    const float* sum = Sum == nullptr ? nullptr : Sum->Data<float>();
+    float* output = Y->MutableData<float>();
+
+    for (size_t n = 0; n < batch_count; ++n) {
+      for (size_t c = 0; c < channel_count; ++c) {
+        for (size_t i = 0; i < spatial_size; ++i) {
+          const size_t index = channels_last_
+                                   ? (n * spatial_size + i) * channel_count + c
+                                   : (n * channel_count + c) * spatial_size + i;
+          output[index] = (bias == nullptr ? 0.0f : bias[c]) + (sum == nullptr ? 0.0f : sum[index]);
+        }
+      }
+    }
+
+    MlasActivation(&activation_, output, nullptr, 1, output_size, output_size);
     return Status::OK();
   }
 
