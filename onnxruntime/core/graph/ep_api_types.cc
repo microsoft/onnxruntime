@@ -158,7 +158,9 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
       SubgraphState subgraph_state;
       subgraph_state.attribute_name = attr_name;
       subgraph_state.subgraph_viewer = std::make_unique<GraphViewer>(*subgraph);
-      ORT_RETURN_IF_ERROR(EpGraph::Create(*subgraph_state.subgraph_viewer, subgraph_state.ep_subgraph));
+      ORT_RETURN_IF_ERROR(EpGraph::Create(*subgraph_state.subgraph_viewer, subgraph_state.ep_subgraph,
+                                          /*create_parent_node*/ false,
+                                          ep_graph != nullptr ? ep_graph->GetRetainedInitializerValues() : nullptr));
       subgraph_state.ep_subgraph->SetParentNode(ep_node.get());
 
       ep_node_subgraphs.emplace_back(std::move(subgraph_state));
@@ -568,20 +570,24 @@ void EpGraph::IndexToEpNodeMap::SetEpNode(NodeIndex node_index, EpNode* ep_node)
   nodes_[i] = ep_node;
 }
 
-EpGraph::EpGraph(const GraphViewer& graph_viewer, PrivateTag)
-    : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer_(graph_viewer) {}
+EpGraph::EpGraph(const GraphViewer& graph_viewer, PrivateTag, InitializerValues* retained_initializer_values)
+    : OrtGraph(OrtGraphIrApi::kEpApi),
+      graph_viewer_(graph_viewer),
+      retained_initializer_values_(retained_initializer_values) {}
 
 EpGraph::EpGraph(std::unique_ptr<GraphViewer> graph_viewer,
                  std::unique_ptr<IndexedSubGraph> indexed_sub_graph,
-                 PrivateTag)
+                 PrivateTag, InitializerValues* retained_initializer_values)
     : OrtGraph(OrtGraphIrApi::kEpApi),
       graph_viewer_(*graph_viewer.get()),
+      retained_initializer_values_(retained_initializer_values),
       owned_graph_viewer_(std::move(graph_viewer)),
       owned_indexed_sub_graph_(std::move(indexed_sub_graph)) {}
 
 // Static class function to create a std::unique_ptr<EpGraph>.
-Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result, bool create_parent_node) {
-  auto ep_graph = std::make_unique<EpGraph>(graph_viewer, PrivateTag{});
+Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result,
+                       bool create_parent_node, InitializerValues* retained_initializer_values) {
+  auto ep_graph = std::make_unique<EpGraph>(graph_viewer, PrivateTag{}, retained_initializer_values);
 
   return CreateImpl(std::move(ep_graph), graph_viewer, result, create_parent_node);
 }
@@ -589,11 +595,12 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<
 // Static class function to create a std::unique_ptr<EpGraph>.
 Status EpGraph::Create(std::unique_ptr<GraphViewer> src_graph_viewer,
                        std::unique_ptr<IndexedSubGraph> src_indexed_sub_graph,
-                       /*out*/ std::unique_ptr<EpGraph>& result) {
+                       /*out*/ std::unique_ptr<EpGraph>& result,
+                       InitializerValues* retained_initializer_values) {
   auto& graph_viewer = *src_graph_viewer.get();
   auto ep_graph = std::make_unique<EpGraph>(std::move(src_graph_viewer),
                                             std::move(src_indexed_sub_graph),
-                                            PrivateTag{});
+                                            PrivateTag{}, retained_initializer_values);
 
   return CreateImpl(std::move(ep_graph), graph_viewer, result);
 }
@@ -602,6 +609,19 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
                            /*out*/ std::unique_ptr<EpGraph>& result, bool create_parent_node) {
   AllocatorPtr initializer_allocator = CPUAllocator::DefaultInstance();
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_map;
+
+  auto keep_initializer_value = [&ep_graph](std::unique_ptr<OrtValue> value, bool is_constant) {
+    OrtValue* result = value.get();
+    if (is_constant && ep_graph->retained_initializer_values_ != nullptr) {
+      auto& retained = *ep_graph->retained_initializer_values_;
+      // An EP may create graph views concurrently during Compile().
+      std::lock_guard<std::mutex> lock(retained.mutex);
+      retained.values.push_back(std::move(value));
+    } else {
+      ep_graph->initializer_values_holder_.push_back(std::move(value));
+    }
+    return result;
+  };
 
   // Process graph inputs.
   const std::vector<const NodeArg*>& graph_input_node_args = graph_viewer.GetInputsIncludingInitializers();
@@ -623,12 +643,12 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
                               graph_output_value_infos,
                               [](EpValueInfo* v) { v->SetFlag(EpValueInfo::Flags::kIsGraphOutput); });
 
-  std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> outer_scope_initializer_values;
+  std::unordered_map<std::string_view, OrtValue*> outer_scope_initializer_values;
 
   // Create OrtValueInfo and OrtValue instances for each initializer.
   const InitializedTensorSet initializers = graph_viewer.GetAllInitializedTensors();
   std::vector<EpValueInfo*> initializer_value_infos;
-  std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values;
+  std::unordered_map<std::string_view, OrtValue*> initializer_values;
 
   initializer_value_infos.reserve(initializers.size());
   initializer_values.reserve(initializers.size());
@@ -670,7 +690,9 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
       }
     }
 
-    initializer_values.emplace(value_info->GetName(), std::move(initializer_value));
+    initializer_values.emplace(value_info->GetName(),
+                               keep_initializer_value(std::move(initializer_value),
+                                                      flag == EpValueInfo::kIsConstantInitializer));
   }
 
   // Process nodes in topological order, converting Node to EpNode.
@@ -760,7 +782,8 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
                                                              *outer_initializer_value));
           }
         }
-        outer_scope_initializer_values.emplace(outer_value_info->GetName(), std::move(outer_initializer_value));
+        outer_scope_initializer_values.emplace(outer_value_info->GetName(),
+                                               keep_initializer_value(std::move(outer_initializer_value), is_constant));
       }
     }
   }
@@ -925,12 +948,16 @@ const EpNode* EpGraph::GetNode(NodeIndex node_index) const {
 }
 
 Status EpGraph::GetInitializerValue(std::string_view name, const OrtValue*& result) const {
-  auto ensure_ort_value_loaded = [&](const std::unique_ptr<OrtValue>& ort_value) -> Status {
+  auto ensure_ort_value_loaded = [&](OrtValue* ort_value) -> Status {
     if (!ort_value->IsAllocated()) {
-      // Lazy load the OrtValue. This happens for external initializers.
-      const Graph& graph = graph_viewer_.GetGraph();
-      ORT_RETURN_IF_ERROR(graph.LoadExternalInitializerAsOrtValue(std::string(name),
-                                                                  const_cast<OrtValue&>(*ort_value)));
+      // External initializers may belong to an outer scope.
+      const std::string initializer_name(name);
+      const Graph* graph = &graph_viewer_.GetGraph();
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+      while (!graph->GetInitializedTensor(initializer_name, tensor_proto) && graph->ParentGraph() != nullptr) {
+        graph = graph->ParentGraph();
+      }
+      ORT_RETURN_IF_ERROR(graph->LoadExternalInitializerAsOrtValue(initializer_name, *ort_value));
     }
 
     return Status::OK();
@@ -939,10 +966,10 @@ Status EpGraph::GetInitializerValue(std::string_view name, const OrtValue*& resu
   // Check for initializer value in the graph's scope.
   if (auto iter = initializer_values_.find(name);
       iter != initializer_values_.end()) {
-    const std::unique_ptr<OrtValue>& ort_value = iter->second;
+    OrtValue* ort_value = iter->second;
     ORT_RETURN_IF_ERROR(ensure_ort_value_loaded(ort_value));
 
-    result = ort_value.get();
+    result = ort_value;
     return Status::OK();
   }
 
@@ -950,10 +977,10 @@ Status EpGraph::GetInitializerValue(std::string_view name, const OrtValue*& resu
   // Only finds a value if the outer initializer value is used within this graph.
   if (auto iter = outer_scope_initializer_values_.find(name);
       iter != outer_scope_initializer_values_.end()) {
-    const std::unique_ptr<OrtValue>& ort_value = iter->second;
+    OrtValue* ort_value = iter->second;
     ORT_RETURN_IF_ERROR(ensure_ort_value_loaded(ort_value));
 
-    result = ort_value.get();
+    result = ort_value;
     return Status::OK();
   }
 

@@ -22,6 +22,7 @@
 #include "core/framework/plugin_data_transfer.h"
 #include "core/framework/resource_accountant.h"
 #include "core/framework/stream_handles.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -278,7 +279,213 @@ struct CreateProviderTestContext {
   PluginExecutionProviderFactory provider_factory;
 };
 
+struct InitializerLifetimeState {
+  void CheckInitializer() const {
+    ASSERT_FALSE(initializer_freed);
+    ASSERT_NE(initializer, nullptr);
+    EXPECT_FLOAT_EQ(initializer->Get<Tensor>().Data<float>()[0], 2.0f);
+  }
+
+  const OrtValue* initializer = nullptr;
+  bool expect_retained = false;
+  bool fail_compile = false;
+  bool initializer_freed = false;
+  bool computed = false;
+  bool compute_state_released = false;
+  bool compute_infos_released = false;
+  bool ep_released = false;
+};
+
+struct InitializerLifetimeEp : TestOrtEp {
+  struct ComputeInfo : OrtNodeComputeInfo {
+    explicit ComputeInfo(InitializerLifetimeState& test_state) : OrtNodeComputeInfo{}, state(test_state) {
+      ort_version_supported = ORT_API_VERSION;
+      CreateState = [](OrtNodeComputeInfo* this_ptr, OrtNodeComputeContext*, void** compute_state) noexcept -> OrtStatus* {
+        *compute_state = &static_cast<ComputeInfo*>(this_ptr)->state;
+        return nullptr;
+      };
+      Compute = [](OrtNodeComputeInfo*, void* compute_state, OrtKernelContext*) noexcept -> OrtStatus* {
+        auto& state = *static_cast<InitializerLifetimeState*>(compute_state);
+        state.CheckInitializer();
+        state.computed = true;
+        return nullptr;
+      };
+      ReleaseState = [](OrtNodeComputeInfo*, void* compute_state) noexcept {
+        auto& state = *static_cast<InitializerLifetimeState*>(compute_state);
+        state.CheckInitializer();
+        state.compute_state_released = true;
+      };
+    }
+
+    InitializerLifetimeState& state;
+  };
+
+  explicit InitializerLifetimeEp(InitializerLifetimeState& test_state) : state(test_state), compute_info(test_state) {
+    GetWeightlessSupport = [](const OrtEp*, OrtWeightlessSupport* support) noexcept -> OrtStatus* {
+      *support = OrtWeightlessSupport_ALL;
+      return nullptr;
+    };
+    Compile = [](OrtEp* this_ptr, const OrtGraph** graphs, const OrtNode**, size_t count,
+                 OrtNodeComputeInfo** compute_infos, OrtNode**) noexcept -> OrtStatus* {
+      auto& ep = *static_cast<InitializerLifetimeEp*>(this_ptr);
+      if (count != 1) {
+        return ep.ort_api->CreateStatus(ORT_FAIL, "Expected one graph");
+      }
+
+      size_t num_initializers = 0;
+      if (OrtStatus* status = ep.ort_api->Graph_GetNumInitializers(graphs[0], &num_initializers)) {
+        return status;
+      }
+      if (num_initializers != 1) {
+        return ep.ort_api->CreateStatus(ORT_FAIL, "Expected one initializer");
+      }
+
+      const OrtValueInfo* initializer_info = nullptr;
+      if (OrtStatus* status = ep.ort_api->Graph_GetInitializers(graphs[0], &initializer_info, 1)) {
+        return status;
+      }
+      if (OrtStatus* status = ep.ort_api->ValueInfo_GetInitializerValue(initializer_info, &ep.state.initializer)) {
+        return status;
+      }
+
+      compute_infos[0] = &ep.compute_info;
+      return ep.state.fail_compile ? ep.ort_api->CreateStatus(ORT_FAIL, "Test compile failure") : nullptr;
+    };
+    ReleaseNodeComputeInfos = [](OrtEp* this_ptr, OrtNodeComputeInfo** compute_infos, size_t count) noexcept {
+      auto& ep = *static_cast<InitializerLifetimeEp*>(this_ptr);
+      EXPECT_EQ(count, 1u);
+      EXPECT_EQ(compute_infos[0], &ep.compute_info);
+      if (ep.state.expect_retained) {
+        ep.state.CheckInitializer();
+      }
+      ep.state.compute_infos_released = true;
+    };
+  }
+
+  ~InitializerLifetimeEp() {
+    if (state.expect_retained) {
+      state.CheckInitializer();
+    }
+    EXPECT_TRUE(state.compute_infos_released);
+    state.ep_released = true;
+  }
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InitializerLifetimeEp);
+
+  InitializerLifetimeState& state;
+  ComputeInfo compute_info;
+};
+
+static void CheckCompileInitializerLifetime(bool weightless_enabled, bool fail_compile = false,
+                                            uint32_t ep_api_version = ORT_API_VERSION) {
+  InitializerLifetimeState state;
+  state.expect_retained = weightless_enabled && ep_api_version >= 29;
+  state.fail_compile = fail_compile;
+
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("initializer_lifetime", false, logger);
+  Graph& graph = model.MainGraph();
+  auto tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape{32},
+                                         CPUAllocator::DefaultInstance());
+  std::fill_n(tensor->MutableData<float>(), 32, 2.0f);
+  auto tensor_proto = utils::TensorToTensorProto(*tensor, "W", /*use_tensor_buffer*/ true);
+  ASSERT_TRUE(utils::HasExternalDataInMemory(tensor_proto));
+
+  OrtValue initializer;
+  initializer.Init(tensor.release(), DataTypeImpl::GetType<Tensor>(), [&state](void* data) {
+    delete static_cast<Tensor*>(data);
+    state.initializer_freed = true;
+  });
+  ASSERT_STATUS_OK(graph.AddInitializedOrtValue(tensor_proto, initializer));
+  initializer = OrtValue{};
+
+  auto type = utils::TypeProtoFromTensorProto(tensor_proto);
+  auto& x = graph.GetOrCreateNodeArg("X", &type);
+  auto& w = graph.GetOrCreateNodeArg("W", &type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &type);
+  Node& node = graph.AddNode("mul", "Mul", "", {&x, &w}, {&y});
+  graph.SetInputs({&x});
+  graph.SetOutputs({&y});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  TestOrtEpFactory factory;
+  factory.ReleaseEp = [](OrtEpFactory*, OrtEp* ep) noexcept { delete static_cast<InitializerLifetimeEp*>(ep); };
+  auto hardware_device = MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU);
+  auto ep_device = MakeTestOrtEpDevice(hardware_device.get(), factory, nullptr, nullptr);
+  std::array<const OrtEpDevice*, 1> ep_devices{ep_device.get()};
+  Ort::SessionOptions session_options;
+  if (weightless_enabled) {
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+  }
+
+  auto ort_ep = std::make_unique<InitializerLifetimeEp>(state);
+  ort_ep->ort_version_supported = ep_api_version;
+  auto ep = std::make_unique<PluginExecutionProvider>(
+      UniqueOrtEp(ort_ep.release(), OrtEpDeleter{factory}),
+      *static_cast<const OrtSessionOptions*>(session_options), factory, ep_devices, nullptr, logger);
+
+  IndexedSubGraph subgraph;
+  subgraph.nodes.push_back(node.Index());
+  auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
+  meta_def->name = "BorrowedInitializer";
+  meta_def->domain = ep->Type();
+  meta_def->since_version = 1;
+  meta_def->inputs = {"X"};  // The constant is not a runtime binding.
+  meta_def->outputs = {"Y"};
+  subgraph.SetMetaDef(std::move(meta_def));
+  Node& fused_node = graph.BeginFuseSubGraph(subgraph, "fused_mul");
+
+  std::vector<NodeComputeInfo> compute_infos;
+  {
+    GraphViewer graph_viewer(graph, subgraph);
+    const Status status = ep->Compile({{fused_node, graph_viewer}}, compute_infos);
+    if (fail_compile) {
+      ASSERT_FALSE(status.IsOK());
+      EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Test compile failure"));
+    } else {
+      ASSERT_STATUS_OK(status);
+    }
+  }
+
+  graph.FinalizeFuseSubGraph(subgraph, fused_node);
+  ASSERT_STATUS_OK(graph.Resolve());
+  EXPECT_EQ(fused_node.InputDefs().size(), 1u);
+  ASSERT_EQ(state.initializer_freed, !state.expect_retained);
+
+  if (state.expect_retained && !fail_compile) {
+    ASSERT_EQ(compute_infos.size(), 1u);
+    FunctionState compute_state = nullptr;
+    ASSERT_EQ(compute_infos[0].create_state_func(nullptr, &compute_state), 0);
+    ASSERT_STATUS_OK(compute_infos[0].compute_func(compute_state, &Ort::GetApi(), nullptr));
+    compute_infos[0].release_state_func(compute_state);
+    EXPECT_TRUE(state.computed);
+    EXPECT_TRUE(state.compute_state_released);
+  }
+
+  ep.reset();
+  EXPECT_TRUE(state.compute_infos_released);
+  EXPECT_TRUE(state.ep_released);
+  EXPECT_TRUE(state.initializer_freed);
+}
+
 }  // namespace test_plugin_ep
+
+TEST(PluginExecutionProviderTest, RetainsCompileInitializersThroughTeardown) {
+  test_plugin_ep::CheckCompileInitializerLifetime(/*weightless_enabled*/ true);
+}
+
+TEST(PluginExecutionProviderTest, RetainsCompileInitializersOnCompileFailure) {
+  test_plugin_ep::CheckCompileInitializerLifetime(/*weightless_enabled*/ true, /*fail_compile*/ true);
+}
+
+TEST(PluginExecutionProviderTest, DoesNotRetainCompileInitializersWithoutWeightless) {
+  test_plugin_ep::CheckCompileInitializerLifetime(/*weightless_enabled*/ false);
+}
+
+TEST(PluginExecutionProviderTest, DoesNotRetainCompileInitializersForLegacyEp) {
+  test_plugin_ep::CheckCompileInitializerLifetime(/*weightless_enabled*/ true, /*fail_compile*/ false,
+                                                  /*ep_api_version*/ 28);
+}
 
 TEST(PluginExecutionProviderFactoryTest, CreatePluginExecutionProviderFailsWithNullGetNamePointer) {
   test_plugin_ep::CreateProviderTestContext context;
