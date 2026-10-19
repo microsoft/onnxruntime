@@ -2,7 +2,9 @@
 # Licensed under the MIT License.
 
 import importlib.util
+import os
 import sys
+import tempfile
 import unittest.mock
 from pathlib import Path
 
@@ -112,6 +114,31 @@ void LaunchMoeGemvFp4RawNPacked() {}
             self.assertNotIn("QuerySm90DecodeKernelCaps", generated)
             self.assertNotIn("ParseEnvironmentVariableWithDefault", generated)
             self.assertNotIn("cudaFuncGetAttributes", generated)
+
+    def test_resolve_ort_root_from_copied_build_tree_and_workspace_env(self):
+        marker = Path("contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.cu")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir).resolve()
+            ort_root = temp_root / "repo" / "onnxruntime"
+            (ort_root / marker).parent.mkdir(parents=True, exist_ok=True)
+            (ort_root / marker).write_text("// stub\n")
+
+            copied_in_repo = (
+                temp_root
+                / "repo"
+                / "build"
+                / "Release"
+                / "Release"
+                / "transformers"
+                / "benchmark_qwen38_mtp_kernels.py"
+            )
+            self.assertEqual(self.benchmark.resolve_ort_root(copied_in_repo), ort_root)
+
+            copied_in_temp = (
+                temp_root / "_temp" / "build" / "RelWithDebInfo" / "RelWithDebInfo" / "transformers" / "benchmark.py"
+            )
+            with unittest.mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": str(temp_root / "repo")}, clear=False):
+                self.assertEqual(self.benchmark.resolve_ort_root(copied_in_temp), ort_root)
 
 
 if __name__ == "__main__":
