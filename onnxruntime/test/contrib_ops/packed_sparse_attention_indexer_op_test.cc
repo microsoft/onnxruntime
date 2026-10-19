@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstdint>
 #include <functional>
@@ -29,6 +30,9 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
+#include "absl/flags/reflection.h"
+#endif
 
 #include "contrib_ops/cpu/sparse/packed_sparse_attention_indexer_common.h"
 #include "core/common/logging/logging.h"
@@ -1109,7 +1113,8 @@ void SetRadixTopKScoreGroups(QsaPackedProblem& problem, int high_score_blocks, i
   }
 }
 
-void RunRadixTopKCase(QsaPackedProblem problem) {
+void RunRadixTopKCase(const char* name, QsaPackedProblem problem) {
+  SCOPED_TRACE(name);
   ASSERT_LE(problem.TotalTokens(), 64);
   ASSERT_GE(problem.state_capacity, 2048);
   ASSERT_EQ(problem.head_size, 128);
@@ -1129,24 +1134,24 @@ void RunRadixTopKRegressionCases() {
   std::uniform_real_distribution<float> distribution(-0.5f, 0.5f);
   for (float& value : random_scores.query) value = distribution(generator);
   for (float& value : random_scores.past_key_state) value = distribution(generator);
-  RunRadixTopKCase(std::move(random_scores));
+  RunRadixTopKCase("random_scores", std::move(random_scores));
 
   auto threshold_ties = MakeRadixTopKProblem(2051, 35);
   SetRadixTopKScoreGroups(threshold_ties, 33, 71);
-  RunRadixTopKCase(std::move(threshold_ties));
+  RunRadixTopKCase("threshold_ties", std::move(threshold_ties));
 
   auto empty_row = MakeRadixTopKProblem(2051, 35, 2);
   empty_row.position_ids = {0, 8204};
   SetRadixTopKScoreGroups(empty_row, 33, 71);
-  RunRadixTopKCase(std::move(empty_row));
+  RunRadixTopKCase("empty_row", std::move(empty_row));
 
   auto partial_tile = MakeRadixTopKProblem(2051, 35);
   SetRadixTopKScoreGroups(partial_tile, 34, 34, 2050);
-  RunRadixTopKCase(std::move(partial_tile));
+  RunRadixTopKCase("partial_tile", std::move(partial_tile));
 
   auto fully_selected_bucket = MakeRadixTopKProblem(64, 64);
   SetRadixTopKScoreGroups(fully_selected_bucket, 64, 64);
-  RunRadixTopKCase(std::move(fully_selected_bucket));
+  RunRadixTopKCase("fully_selected_bucket", std::move(fully_selected_bucket));
 }
 #endif
 
@@ -1339,7 +1344,16 @@ TEST(PackedSparseAttentionIndexerCudaTest, QsaRadixTopKReferenceParity) {
     GTEST_SKIP() << "CUDA execution provider is not available";
   }
 
+#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
+  auto* death_test_style_flag = absl::FindCommandLineFlag("gtest_death_test_style");
+  ASSERT_NE(death_test_style_flag, nullptr);
+  const std::string previous_style = death_test_style_flag->CurrentValue();
+  std::string flag_error;
+  ASSERT_TRUE(death_test_style_flag->ParseFrom("threadsafe", &flag_error)) << flag_error;
+#else
+  const auto previous_style = GTEST_FLAG_GET(death_test_style);
   GTEST_FLAG_SET(death_test_style, "threadsafe");
+#endif
   for (const char* radix_flag : {"0", "1"}) {
     const char* dispatch_marker =
         radix_flag[0] == '1' ? "QsaPartialTopKKernel<true>" : "QsaMergeTileTopKKernel";
@@ -1349,10 +1363,25 @@ TEST(PackedSparseAttentionIndexerCudaTest, QsaRadixTopKReferenceParity) {
           logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
           logging::LoggingManager::SetDefaultLoggerVerbosity(1);
           RunRadixTopKRegressionCases();
+          const auto* result = ::testing::UnitTest::GetInstance()->current_test_info()->result();
+          for (int index = 0; index < result->total_part_count(); ++index) {
+            const auto& part = result->GetTestPartResult(index);
+            if (part.failed()) {
+              std::fprintf(stderr, "%s:%d: %s\n", part.file_name() ? part.file_name() : "unknown",
+                           part.line_number(), part.message());
+            }
+          }
+          std::fflush(stderr);
           std::_Exit(::testing::Test::HasFailure() ? EXIT_FAILURE : EXIT_SUCCESS);
         },
         ::testing::ExitedWithCode(EXIT_SUCCESS), dispatch_marker);
   }
+#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
+  flag_error.clear();
+  EXPECT_TRUE(death_test_style_flag->ParseFrom(previous_style, &flag_error)) << flag_error;
+#else
+  GTEST_FLAG_SET(death_test_style, previous_style);
+#endif
 #else
   GTEST_SKIP() << "GoogleTest death tests are not available";
 #endif

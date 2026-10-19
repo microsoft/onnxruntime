@@ -35,7 +35,6 @@
 
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
-#include "core/platform/env.h"
 
 #include <algorithm>
 #include <array>
@@ -486,7 +485,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
     static std::atomic<uint64_t> next_capture_instance{0};
     calibration_capture_name_ =
         EncodeCalibrationCaptureName(node_name) + "_p" +
-        std::to_string(Env::Default().GetSelfPid()) + "_i" +
+        std::to_string(logging::GetProcessId()) + "_i" +
         std::to_string(next_capture_instance.fetch_add(1, std::memory_order_relaxed));
     LOGS_DEFAULT(WARNING) << "QMoE calibration capture enabled for " << op_kernel_info.node().Name()
                           << "; synchronous diagnostic capture, not suitable for performance measurements.";
