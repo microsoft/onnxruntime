@@ -17,6 +17,9 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/math/gemm_utils.h"
+#include "core/providers/webgpu/math/matmul.h"
+#include "core/providers/webgpu/math/matmul_packed.h"
+#include "core/providers/webgpu/math/matmul_utils.h"
 #include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
@@ -105,8 +108,9 @@ class DispatchTestKernel final : public OpKernel {
   Status Compute(OpKernelContext*) const override { return Status::OK(); }
 };
 
+template <typename T>
 void RunAndReadProgram(WebGpuExecutionProvider& ep, const ProgramBase& program,
-                       WGPUBuffer output_buffer, std::vector<float>& output_data) {
+                       WGPUBuffer output_buffer, std::vector<T>& output_data) {
   auto& context = WebGpuContextFactory::GetContext(0);
   ConfigOptions options;
   Model model("dispatch_padding", false, DefaultLoggingManager().DefaultLogger());
@@ -120,11 +124,12 @@ void RunAndReadProgram(WebGpuExecutionProvider& ep, const ProgramBase& program,
   DispatchTestKernel kernel(info);
   ComputeContextBase compute_context(context, ep, kernel);
   ASSERT_STATUS_OK(compute_context.RunProgram(program));
-  ep.BufferManager().Download(ep.Recording(), output_buffer, output_data.data(), output_data.size() * sizeof(float));
+  ep.BufferManager().Download(ep.Recording(), output_buffer, output_data.data(), output_data.size() * sizeof(T));
 }
 
-wgpu::Buffer CreateStorageBuffer(WebGpuExecutionProvider& ep, gsl::span<float> data) {
-  const size_t size = data.size() * sizeof(float);
+template <typename T>
+wgpu::Buffer CreateStorageBuffer(WebGpuExecutionProvider& ep, std::vector<T>& data) {
+  const size_t size = data.size() * sizeof(T);
   auto buffer = wgpu::Buffer::Acquire(ep.BufferManager().Create(
       ep.Recording(), size, wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst));
   ep.BufferManager().Upload(ep.Recording(), data.data(), buffer.Get(), size);
@@ -146,6 +151,61 @@ class WebGpuDispatchExecutionTest : public ::testing::Test {
  private:
   std::unique_ptr<IExecutionProvider> ep_;
 };
+
+TEST_F(WebGpuDispatchExecutionTest, PackedMatMulSupportsNonDefaultValidTuning) {
+  constexpr uint32_t M = 4;
+  constexpr uint32_t N = 64;
+  constexpr uint32_t K = 32;
+  std::vector<float> a_data(M * K);
+  std::vector<float> b_data(K * N);
+  std::vector<float> output_data(M * N, 0.0f);
+  for (size_t i = 0; i < a_data.size(); ++i) {
+    a_data[i] = static_cast<float>(static_cast<int>(i % 7) - 3) * 0.125f;
+  }
+  for (size_t i = 0; i < b_data.size(); ++i) {
+    b_data[i] = static_cast<float>(static_cast<int>(i % 11) - 5) * 0.0625f;
+  }
+
+  auto a_buffer = CreateStorageBuffer(Ep(), a_data);
+  auto b_buffer = CreateStorageBuffer(Ep(), b_data);
+  auto output_buffer = CreateStorageBuffer(Ep(), output_data);
+  const OrtMemoryInfo memory_info(
+      WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
+  Tensor a(DataTypeImpl::GetType<float>(), TensorShape{M, K}, a_buffer.Get(), memory_info);
+  Tensor b(DataTypeImpl::GetType<float>(), TensorShape{K, N}, b_buffer.Get(), memory_info);
+  Tensor output(DataTypeImpl::GetType<float>(), TensorShape{M, N}, output_buffer.Get(), memory_info);
+
+  const TensorShape outer_dims{};
+  const TensorShape a_program_shape = CreateMatMulIntermediateShape(outer_dims, M, K, 4);
+  const TensorShape b_program_shape = CreateMatMulIntermediateShape(outer_dims, K, N, 4);
+  const TensorShape output_program_shape{1, M, N / 4};
+  InlinedVector<int64_t> elements_per_thread{4, 2, 1};
+  const Activation activation;
+  MatMulProgram program{activation, /*bias=*/false, /*is_vec4=*/true,
+                        elements_per_thread, /*is_channels_last=*/true,
+                        /*split_dim_inner=*/1, /*tile_inner=*/64};
+  program.AddInputs({{&a, ProgramTensorMetadataDependency::TypeAndRank, a_program_shape, 4},
+                     {&b, ProgramTensorMetadataDependency::TypeAndRank, b_program_shape, 4}})
+      .AddUniformVariables({{M}, {N}, {K}, {uint32_t{1}}, {uint32_t{1}}, {uint32_t{1}}, {uint32_t{1}}})
+      .AddIndices(outer_dims)
+      .SetDispatchGroupSize(1, 1, 1)
+      .SetWorkgroupSize(16, 4, 1)
+      .AddOutput(ProgramOutput(&output, ProgramTensorMetadataDependency::Rank,
+                               output_program_shape, 4));
+  AppendActivationUniformsData(activation, program);
+
+  RunAndReadProgram(Ep(), program, output_buffer.Get(), output_data);
+  for (uint32_t m = 0; m < M; ++m) {
+    for (uint32_t n = 0; n < N; ++n) {
+      float expected = 0.0f;
+      for (uint32_t k = 0; k < K; ++k) {
+        expected += a_data[m * K + k] * b_data[k * N + n];
+      }
+      EXPECT_NEAR(output_data[m * N + n], expected, 1e-5f)
+          << "at output (" << m << ", " << n << ")";
+    }
+  }
+}
 
 constexpr float kOutputPaddingCanary = -12345.0f;
 
@@ -297,6 +357,54 @@ TEST_F(WebGpuDispatchExecutionTest, Conv2dMMPreservesPaddingInBothLayouts) {
     program.SetDispatchGroupSize(physical[0], physical[1], physical[2]);
     ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(Ep(), program, output_buffer.Get(), output_data));
     CheckResultsAndPadding(output_data, batches * 8 * 2 * 2, 32.0f);
+  }
+}
+
+TEST_F(WebGpuDispatchExecutionTest, MatMulGemvPreservesPaddingAfterNormalization) {
+  auto& context = WebGpuContextFactory::GetContext(Ep().GetDeviceId());
+  if (!context.DeviceHasFeature(wgpu::FeatureName::ShaderF16)) {
+    GTEST_SKIP() << "FP16 is not supported by the WebGPU adapter.";
+  }
+  constexpr uint32_t N = 28;
+  constexpr uint32_t K = 2048;
+  const MLFloat16 canary{-42.0f};
+  const OrtMemoryInfo memory_info(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
+  for (const uint32_t M : {1u, 2u}) {
+    SCOPED_TRACE(M);
+    std::array<uint32_t, 3> physical{M * (N / 4), 1, 1};
+    ASSERT_STATUS_OK(webgpu::detail::NormalizeDispatchGroupSize(physical[0], physical[1], physical[2], 5));
+    const uint32_t padded_rows = CeilDiv(physical[0] * physical[1] * physical[2], N / 4);
+    ASSERT_GT(padded_rows, M);
+
+    // Bind padded buffers so a missing row guard visibly overwrites the canary.
+    std::vector<MLFloat16> a_data(padded_rows * K, MLFloat16{0.5f});
+    for (uint32_t m = 0; m < M; ++m) {
+      std::fill_n(a_data.begin() + m * K, K, MLFloat16{0.125f * static_cast<float>(m + 1)});
+    }
+    std::vector<MLFloat16> b_data(K * N, MLFloat16{0.125f});
+    std::vector<MLFloat16> output_data(padded_rows * N, canary);
+    auto a_buffer = CreateStorageBuffer(Ep(), a_data);
+    auto b_buffer = CreateStorageBuffer(Ep(), b_data);
+    auto output_buffer = CreateStorageBuffer(Ep(), output_data);
+    Tensor a(DataTypeImpl::GetType<MLFloat16>(), {M, K}, a_buffer.Get(), memory_info);
+    Tensor b(DataTypeImpl::GetType<MLFloat16>(), {K, N}, b_buffer.Get(), memory_info);
+    Tensor output(DataTypeImpl::GetType<MLFloat16>(), {M, N}, output_buffer.Get(), memory_info);
+    MatMulGemvProgram program;
+    program.AddInputs({{&a, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten},
+                       {&b, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
+        .AddOutput({&output, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
+        .AddUniformVariables({{K}, {N}, {M}})
+        .SetWorkgroupSize(MatMulGemvProgram::kWorkgroupSizeX, MatMulGemvProgram::kWorkgroupSizeY)
+        .SetDispatchGroupSize(physical[0], physical[1], physical[2]);
+    ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(Ep(), program, output_buffer.Get(), output_data));
+    for (uint32_t m = 0; m < M; ++m) {
+      for (uint32_t n = 0; n < N; ++n) {
+        EXPECT_EQ(output_data[m * N + n].ToFloat(), 32.0f * static_cast<float>(m + 1));
+      }
+    }
+    for (size_t i = M * N; i < output_data.size(); ++i) {
+      EXPECT_EQ(output_data[i].ToFloat(), canary.ToFloat()) << "at padding index " << i;
+    }
   }
 }
 

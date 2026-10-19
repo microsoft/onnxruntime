@@ -400,7 +400,7 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
   }
 
   std::vector<graph_utils::EdgeEndToMatch> path1{
-      {0, 0, "Cast", {9, 13, 19, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}, kOnnxDomain},
       {0, 0, "Slice", {10, 11, 13}, kOnnxDomain},  // Last Slice
       {0, 0, "Slice", {10, 11, 13}, kOnnxDomain},  // Mask Slice
       {0, 1, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
