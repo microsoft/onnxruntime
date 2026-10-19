@@ -16,12 +16,14 @@ namespace onnxruntime::contrib::webgpu {
 
 void GenerateQLoRADown(ShaderHelper& shader, const std::string& base_groups, const std::string& x_value, bool acc_f32,
                        bool use_subgroups) {
+  auto& body = shader.MainFunctionBody();
+  // Dispatch normalization can append workgroups beyond the four adapter groups.
+  body << "let qlora_base_groups = " << base_groups << ";\n"
+       << "if (workgroup_idx >= qlora_base_groups + 4u) { return; }\n";
   if (use_subgroups) {
     shader.AdditionalImplementation() << "alias qlora_acc_t = " << (acc_f32 ? "f32" : "output_element_t") << ";\n";
     // Subgroup membership need not match consecutive local invocation indices.
-    auto& body = shader.MainFunctionBody();
-    body << "let qlora_base_groups = " << base_groups << ";\n"
-         << R"(
+    body << R"(
 if (workgroup_idx >= qlora_base_groups) {
   let rank_base = (workgroup_idx - qlora_base_groups) * 8u;
   let lane = sg_id;
@@ -66,8 +68,7 @@ if (workgroup_idx >= qlora_base_groups) {
 var<workgroup> qlora_x_tile: array<vec4<output_element_t>, 128>;
 var<workgroup> qlora_partials: array<array<qlora_acc_t, 32>, 8>;
 )";
-  shader.MainFunctionBody() << "let qlora_base_groups = " << base_groups << ";\n"
-                            << R"(
+  body << R"(
 if (workgroup_idx >= qlora_base_groups) {
   let rank_base = (workgroup_idx - qlora_base_groups) * 8u;
   let lane = local_idx % 32u;
@@ -77,7 +78,7 @@ if (workgroup_idx >= qlora_base_groups) {
     let k4 = start / 4u + local_idx;
     var xv = vec4<output_element_t>(0);
     if (k4 < uniforms.K / 4u) { xv = )"
-                            << x_value << R"(; }
+       << x_value << R"(; }
     qlora_x_tile[local_idx] = xv;
     workgroupBarrier();
     for (var rank_offset = 0u; rank_offset < 8u; rank_offset += 4u) {
