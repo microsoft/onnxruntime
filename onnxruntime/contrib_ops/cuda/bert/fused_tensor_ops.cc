@@ -7,7 +7,7 @@
 #include <array>
 #include <limits>
 
-#include "core/common/float8.h"
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 
@@ -47,16 +47,6 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()),
     SigmoidGateMul);
-
-#if !defined(DISABLE_FLOAT8_TYPES)
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    DequantizeLinear, kMSDomain, 1, Float8E4M3FN_BFloat16, kCudaExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<Float8E4M3FN>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<BFloat16>())
-        .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>()),
-    DequantizeLinearFp8Bf16);
-#endif
 
 ONNX_OPERATOR_KERNEL_EX(
     UntileHyperConnectionWeights, kMSDomain, 1, kCudaExecutionProvider,
@@ -153,7 +143,7 @@ SigmoidGateMul::SigmoidGateMul(const OpKernelInfo& info)
   const int64_t silu = info.GetAttrOrDefault<int64_t>("silu_gate", 0);
   ORT_ENFORCE(silu == 0 || silu == 1, "SigmoidGateMul silu_gate must be zero or one");
   ORT_ENFORCE(!(broadcast_gate_ && silu_gate_), "SigmoidGateMul broadcast_gate and silu_gate are exclusive");
-  ORT_ENFORCE(broadcast_gate_ || silu_gate_ || (head_dim_ > 0 && heads_ > 0 && q_stride_ >= 2 * head_dim_ && tok_stride_ > 0 && q_offset_ >= 0),
+  ORT_ENFORCE(broadcast_gate_ || silu_gate_ || (head_dim_ > 0 && heads_ > 0 && q_stride_ >= 2LL * head_dim_ && tok_stride_ > 0 && q_offset_ >= 0),
               "SigmoidGateMul received invalid layout attributes");
   ORT_ENFORCE(!(broadcast_gate_ || silu_gate_) || (head_dim_ == 0 && heads_ == 0 && q_stride_ == 0 &&
                                                    tok_stride_ == 0 && q_offset_ == 0),
@@ -184,10 +174,17 @@ Status SigmoidGateMul::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(count % row_width == 0,
                       "SigmoidGateMul attention size must be divisible by heads * head_dim");
     const int64_t tokens = count / row_width;
-    ORT_RETURN_IF_NOT(projection->Shape().Size() >=
-                          (tokens - 1) * tok_stride_ + q_offset_ +
-                              static_cast<int64_t>(heads_) * q_stride_,
-                      "SigmoidGateMul projection is too small for the configured layout");
+    if (tokens > 0) {
+      int64_t required_extent;
+      int64_t head_extent;
+      ORT_RETURN_IF_NOT(SafeMultiply(tokens - 1, tok_stride_, required_extent) &&
+                            SafeMultiply(static_cast<int64_t>(heads_), static_cast<int64_t>(q_stride_), head_extent) &&
+                            SafeAdd(required_extent, q_offset_, required_extent) &&
+                            SafeAdd(required_extent, head_extent, required_extent),
+                        "SigmoidGateMul projection extent overflows int64");
+      ORT_RETURN_IF_NOT(projection->Shape().Size() >= required_extent,
+                        "SigmoidGateMul projection is too small for the configured layout");
+    }
   }
   Tensor* output = context->Output(0, attention->Shape());
   return LaunchSigmoidGateMul(
@@ -197,44 +194,6 @@ Status SigmoidGateMul::ComputeInternal(OpKernelContext* context) const {
       q_stride_, tok_stride_, q_offset_, gate_row_width,
       residual == nullptr ? nullptr : reinterpret_cast<const uint16_t*>(residual->Data<BFloat16>()),
       sigmoid_in_fp32_, silu_gate_);
-}
-
-DequantizeLinearFp8Bf16::DequantizeLinearFp8Bf16(const OpKernelInfo& info)
-    : CudaKernel(info), axis_(info.GetAttrOrDefault<int64_t>("axis", 1)) {}
-
-Status DequantizeLinearFp8Bf16::ComputeInternal(OpKernelContext* context) const {
-  const Tensor* input = context->Input<Tensor>(0);
-  const Tensor* scales = context->Input<Tensor>(1);
-  const Tensor* zero_point = context->Input<Tensor>(2);
-  const auto& input_shape = input->Shape();
-  ORT_RETURN_IF_NOT(input_shape.NumDimensions() > 0,
-                    "DequantizeLinear FP8/BF16 input must have rank at least one");
-  int64_t axis = axis_ < 0 ? axis_ + static_cast<int64_t>(input_shape.NumDimensions()) : axis_;
-
-  int64_t axis_size = 1;
-  int64_t inner_size = 1;
-  if (scales->Shape().Size() != 1) {
-    ORT_RETURN_IF_NOT(axis >= 0 && axis < static_cast<int64_t>(input_shape.NumDimensions()),
-                      "DequantizeLinear axis is out of range");
-    ORT_RETURN_IF_NOT(scales->Shape().NumDimensions() == 1 &&
-                          scales->Shape().Size() == input_shape[axis],
-                      "DequantizeLinear scale must be scalar or match the selected axis");
-    axis_size = scales->Shape().Size();
-    inner_size = input_shape.SizeFromDimension(static_cast<size_t>(axis + 1));
-  }
-  if (zero_point != nullptr) {
-    ORT_RETURN_IF_NOT(zero_point->Shape().Size() == 1 ||
-                          zero_point->Shape() == scales->Shape(),
-                      "DequantizeLinear zero point must be scalar or match the scale");
-  }
-
-  Tensor* output = context->Output(0, input_shape);
-  return LaunchDequantizeLinearFp8Bf16(
-      Stream(context), reinterpret_cast<const uint8_t*>(input->DataRaw()),
-      zero_point == nullptr ? nullptr : reinterpret_cast<const uint8_t*>(zero_point->DataRaw()),
-      scales->Data<float>(),
-      reinterpret_cast<uint16_t*>(output->MutableData<BFloat16>()), input_shape.Size(),
-      axis_size, inner_size, zero_point == nullptr || zero_point->Shape().Size() == 1);
 }
 
 UntileHyperConnectionWeights::UntileHyperConnectionWeights(const OpKernelInfo& info)

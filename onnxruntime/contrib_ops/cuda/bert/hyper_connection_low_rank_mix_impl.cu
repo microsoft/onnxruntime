@@ -11,10 +11,7 @@
 //   HcUpPreKernel grid (ceil(H / 16), 1, row groups)
 //                 reduces the partials in a fixed order, then ScaledSiLU, up GEMV, sigmoid, pre-mix and the
 //                 inject gate.
-// Both kernels are launched with programmatic dependent launch (sm_90+, plain launches elsewhere). Each one
-// triggers its dependents immediately and prefetches its weights (which never depend on a previous kernel)
-// into shared memory before griddepcontrol.wait; everything that consumes another kernel's output comes after
-// the wait, so correctness never depends on the trigger position.
+// Both kernels use ordinary stream-ordered launches: their weights may be outputs of preceding nodes.
 // Every intermediate is rounded to T at the points where the unfused ONNX subgraph rounds; the GEMVs
 // accumulate in fp32 in a fixed (deterministic) order.
 //
@@ -820,7 +817,8 @@ Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, c
                     g.splits, g.partial_stride, config.epsilon};
     UpParams up{config.rows, config.branches, config.hidden, config.rank, g.splits, g.partial_stride,
                 config.silu_alpha, config.reduction_scale, config.gate_div, config.gate_mul};
-    const bool use_pdl = device_prop.major >= 9;
+    // Weights can be produced by preceding nodes, so no input prefetch may overlap their execution.
+    const bool use_pdl = false;
     if (config.rows == 1) {
       return LaunchFusedRows<T, 1>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
     }

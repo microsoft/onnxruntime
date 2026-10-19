@@ -27,11 +27,6 @@ Status LaunchSigmoidGateMul(cudaStream_t stream, const uint16_t* attention,
                             int64_t token_stride, int64_t q_offset,
                             int64_t gate_row_width, const uint16_t* residual, bool sigmoid_in_fp32,
                             bool silu_gate);
-Status LaunchDequantizeLinearFp8Bf16(cudaStream_t stream, const uint8_t* input,
-                                     const uint8_t* zero_point, const float* scales,
-                                     uint16_t* output, int64_t count,
-                                     int64_t axis_size, int64_t inner_size,
-                                     bool scalar_zero_point);
 Status LaunchUntileHyperConnectionWeights(cudaStream_t stream, const uint16_t* input,
                                           uint16_t* output, int kind);
 
@@ -74,15 +69,6 @@ class SigmoidGateMul final : public onnxruntime::cuda::CudaKernel {
   bool broadcast_gate_;
   bool sigmoid_in_fp32_;
   bool silu_gate_;
-};
-
-class DequantizeLinearFp8Bf16 final : public onnxruntime::cuda::CudaKernel {
- public:
-  explicit DequantizeLinearFp8Bf16(const OpKernelInfo& info);
-  Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  int64_t axis_;
 };
 
 class UntileHyperConnectionWeights final : public onnxruntime::cuda::CudaKernel {

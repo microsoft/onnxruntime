@@ -1812,6 +1812,24 @@ TEST(EngramOpsTest, EngramGatePackedFloat16) {
   RunEngramGateVectorizedTest<MLFloat16>(3e-3f, 4, true);
 }
 
+TEST(EngramOpsTest, EngramGatePackedBFloat16) {
+  RunEngramGateVectorizedTest<BFloat16>(2e-2f, 4, true);
+}
+
+TEST(EngramOpsTest, EngramGateRejectsMixedPackedRanks) {
+  for (bool bad_query : {false, true}) {
+    OpTester test("EngramGate", 1, kMSDomain);
+    test.AddInput<float>("key", {1, 1, 2}, {1, 1});
+    test.AddInput<float>("query", bad_query ? std::vector<int64_t>{1, 1, 1, 2} : std::vector<int64_t>{1, 1, 2}, {1, 1});
+    test.AddInput<float>("value", bad_query ? std::vector<int64_t>{1, 2} : std::vector<int64_t>{1, 1, 2}, {1, 1});
+    test.AddInput<float>("key_norm_scale", {1, 2}, {1, 1});
+    test.AddInput<float>("query_norm_scale", {1, 2}, {1, 1});
+    test.AddOutput<float>("output", {1, 1, 2}, {0, 0});
+    test.Run(OpTester::ExpectResult::kExpectFailure,
+             bad_query ? "query rank must match key rank" : "value rank must be one lower");
+  }
+}
+
 // 260 channels is the smallest multiple of 4 above both accumulation strides (CUDA's blockDim.x of
 // 256 and, with components == 4, the WGSL workgroup size of 64 over hidden_size / 4 == 65), so this
 // is the only case where either strided reduction loop runs more than once per thread.
@@ -1837,6 +1855,10 @@ TEST(EngramOpsTest, EngramGateNormedFloat16) {
 
 TEST(EngramOpsTest, EngramGatePackedNormedFloat) {
   RunEngramGateNormedTest<float>(1e-4f, true);
+}
+
+TEST(EngramOpsTest, EngramGatePackedNormedBFloat16) {
+  RunEngramGateNormedTest<BFloat16>(2e-2f, true);
 }
 
 TEST(EngramOpsTest, EngramGateNormedBFloat16) {

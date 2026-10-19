@@ -8,6 +8,8 @@
 #include <type_traits>
 #include <vector>
 
+#include "core/framework/session_options.h"
+#include "core/graph/graph.h"
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -182,7 +184,67 @@ constexpr float kFp32Tol = 2e-4f;
 constexpr float kFp16Tol = 8e-3f;
 constexpr float kBf16Tol = 6e-2f;
 
+class DependentNormScaleTester : public OpTester {
+ public:
+  DependentNormScaleTester() : OpTester("HyperConnectionLowRankMix", 1, kMSDomain) {}
+
+  void AddNodes(Graph& graph, std::vector<NodeArg*>& inputs, std::vector<NodeArg*>& outputs,
+                std::vector<std::function<void(Node&)>>&) override {
+    auto* norm = &graph.GetOrCreateNodeArg("produced_norm", nullptr);
+    auto* producer_gate = &graph.GetOrCreateNodeArg("producer_gate", nullptr);
+    const Attrs a;
+    auto add_mix = [&](const char* name, const std::vector<NodeArg*>& node_inputs,
+                       const std::vector<NodeArg*>& node_outputs) {
+      auto& node = graph.AddNode(name, "HyperConnectionLowRankMix", "", node_inputs, node_outputs, nullptr, kMSDomain);
+      node.AddAttribute("num_branches", int64_t{1});
+      node.AddAttribute("epsilon", a.epsilon);
+      node.AddAttribute("reduction_scale", a.reduction_scale);
+      node.AddAttribute("silu_alpha", a.silu_alpha);
+      node.AddAttribute("gate_div", a.gate_div);
+      node.AddAttribute("gate_mul", a.gate_mul);
+    };
+    add_mix("producer", {inputs[0], inputs[1], inputs[2], inputs[3], inputs[4]}, {norm, producer_gate});
+    add_mix("consumer", {inputs[5], norm, inputs[6], inputs[7], inputs[8]}, outputs);
+    graph.SetOutputs(outputs);
+  }
+};
+
+template <typename T>
+void RunDependentNormScaleTest(float tolerance) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP();
+  for (unsigned seed : {17u, 29u, 53u}) {
+    const Attrs a;
+    const Problem producer = MakeProblem<T>(1, 1, 64, 8, false, seed);
+    Problem consumer = MakeProblem<T>(1, 1, 64, 8, false, seed + 1);
+    consumer.norm = Reference<T>(producer, a).pre;
+    const Expected expected = Reference<T>(consumer, a);
+    DependentNormScaleTester test;
+    test.AddInput<T>("producer_streams", {64}, ToTensorType<T>(producer.streams));
+    test.AddInput<T>("producer_norm", {64}, ToTensorType<T>(producer.norm));
+    test.AddInput<T>("producer_down", {64, 8}, ToTensorType<T>(producer.down));
+    test.AddInput<T>("producer_up", {8, 64}, ToTensorType<T>(producer.up));
+    test.AddInput<T>("producer_inject", {64, 1}, ToTensorType<T>(producer.inject));
+    test.AddInput<T>("consumer_streams", {64}, ToTensorType<T>(consumer.streams));
+    test.AddInput<T>("consumer_down", {64, 8}, ToTensorType<T>(consumer.down));
+    test.AddInput<T>("consumer_up", {8, 64}, ToTensorType<T>(consumer.up));
+    test.AddInput<T>("consumer_inject", {64, 1}, ToTensorType<T>(consumer.inject));
+    test.AddOutput<T>("pre_output", {64}, ToTensorType<T>(expected.pre));
+    test.AddOutput<T>("post_gate", {1}, ToTensorType<T>(expected.gate));
+    test.SetOutputTolerance(tolerance, tolerance);
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Default;
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  }
+}
+
 }  // namespace
+
+TEST(HyperConnectionLowRankMixTest, FusedNormScaleProducedByPrecedingMix) {
+  RunDependentNormScaleTest<MLFloat16>(kFp16Tol);
+  RunDependentNormScaleTest<BFloat16>(kBf16Tol);
+}
 
 TEST(HyperConnectionLowRankMixTest, FusedFloat16WithPrologue) {
   RunTest<MLFloat16>(2, 4, 16, 8, true, true, kFp16Tol);

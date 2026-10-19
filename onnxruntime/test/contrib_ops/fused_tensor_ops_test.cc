@@ -8,7 +8,6 @@
 #include <type_traits>
 #include <vector>
 
-#include "core/common/float8.h"
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -75,6 +74,29 @@ TEST(FusedTensorOpsTest, ArgMaxLastAxisPartitionedVocabulary) {
   }
 }
 
+template <typename T>
+void RunArgMaxNaNRows() {
+  for (int64_t width : {1, 4096, 4097, 12289}) {
+    auto providers = CudaProvider();
+    if (providers.empty()) GTEST_SKIP();
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    std::vector<float> values(4 * width, nan);
+    values[2 * width - 1] = -std::numeric_limits<float>::infinity();
+    values[2 * width] = values[3 * width - 1] = 5.0f;
+    values[4 * width - 1] = 7.0f;
+    OpTester test("ArgMaxLastAxis", 1, kMSDomain);
+    test.AddInput<T>("logits", {4, width}, ToTensorType<T>(values));
+    test.AddOutput<int64_t>("indices", {4}, {0, width - 1, 0, width - 1});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  }
+}
+
+TEST(FusedTensorOpsTest, ArgMaxLastAxisNaNSingleAndMultiplePartitions) {
+  RunArgMaxNaNRows<float>();
+  RunArgMaxNaNRows<MLFloat16>();
+  RunArgMaxNaNRows<BFloat16>();
+}
+
 TEST(FusedTensorOpsTest, EmbeddingRMSNorm) {
   auto providers = CudaProvider();
   if (providers.empty()) GTEST_SKIP();
@@ -92,6 +114,22 @@ TEST(FusedTensorOpsTest, EmbeddingRMSNorm) {
   test.AddInput<BFloat16>("table", {2, 4}, ToTensorType<BFloat16>(table));
   test.AddInput<float>("weight", {4}, {1.0f, 1.0f, 1.0f, 1.0f});
   test.AddOutput<BFloat16>("normalized", {2, 4}, ToTensorType<BFloat16>(expected));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(FusedTensorOpsTest, EmbeddingRMSNormIndexBounds) {
+  auto providers = CudaProvider();
+  if (providers.empty()) GTEST_SKIP();
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  OpTester test("EmbeddingRMSNorm", 1, kMSDomain);
+  test.AddAttribute<float>("epsilon", 0.0f);
+  test.AddInput<int64_t>("ids", {8}, {0, 1, -1, -2, 2, -3, std::numeric_limits<int64_t>::min(), std::numeric_limits<int64_t>::max()});
+  test.AddInput<BFloat16>("table", {2, 4}, ToBFloat16({2, 0, 0, 0, 0, 2, 0, 0}));
+  test.AddInput<float>("weight", {4}, {1, 1, 1, 1});
+  test.AddOutput<BFloat16>("normalized", {8, 4},
+                           ToBFloat16({2, 0, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0,
+                                       nan, nan, nan, nan, nan, nan, nan, nan,
+                                       nan, nan, nan, nan, nan, nan, nan, nan}));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
@@ -126,6 +164,26 @@ TEST(FusedTensorOpsTest, SigmoidGateMul) {
   test.AddInput<BFloat16>("projection", {1, 4}, ToTensorType<BFloat16>({1.0f, 2.0f, 0.0f, 0.0f}));
   test.AddOutput<BFloat16>("output", {1, 1, 2}, ToTensorType<BFloat16>({1.0f, 2.0f}));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(FusedTensorOpsTest, SigmoidGateMulCheckedProjectionExtent) {
+  for (int mode = 0; mode < 4; ++mode) {
+    auto providers = CudaProvider();
+    if (providers.empty()) GTEST_SKIP();
+    const bool empty = mode == 3;
+    OpTester test("SigmoidGateMul", 1, kMSDomain);
+    test.AddAttribute<int64_t>("head_dim", 1);
+    test.AddAttribute<int64_t>("num_heads", 1);
+    test.AddAttribute<int64_t>("q_stride", 2);
+    test.AddAttribute<int64_t>("tok_stride", mode == 1 ? 1 : std::numeric_limits<int64_t>::max());
+    test.AddAttribute<int64_t>("q_offset", mode == 1 ? std::numeric_limits<int64_t>::max() : 0);
+    const int64_t tokens = empty ? 0 : (mode == 2 ? 3 : 2);
+    test.AddInput<BFloat16>("attention", {tokens, 1}, std::vector<BFloat16>(tokens));
+    test.AddInput<BFloat16>("projection", {0}, {});
+    test.AddOutput<BFloat16>("output", {tokens, 1}, std::vector<BFloat16>(tokens));
+    test.Run(empty ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
+             empty ? "" : "projection extent overflows int64", {}, nullptr, &providers);
+  }
 }
 
 void RunSigmoidGateMulBroadcastResidualRounding(bool sigmoid_in_fp32, bool silu_gate = false) {

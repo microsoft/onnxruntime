@@ -58,7 +58,7 @@ __global__ void ArgmaxRowsKernel(const T* input, const int64_t* input_indices,
     __syncthreads();
   }
   if (tid == 0) {
-    output[blockIdx.x] = indices[0];
+    output[blockIdx.x] = partial_values == nullptr && indices[0] == INT64_MAX ? 0 : indices[0];
     if (partial_values != nullptr) partial_values[blockIdx.x] = values[0];
   }
 }
@@ -84,10 +84,17 @@ Status LaunchTypedArgmax(cudaStream_t stream, const T* input, int64_t rows,
 
 __global__ void EmbedNormKernel(const int64_t* ids, const uint16_t* table,
                                 const float* weight, float epsilon,
-                                uint16_t* output, int64_t rows, int64_t hidden_size) {
+                                uint16_t* output, int64_t vocab_size, int64_t hidden_size) {
   __shared__ float sums[512];
   const int64_t row_index = blockIdx.x;
-  const int64_t token_id = ids[row_index];
+  int64_t token_id = ids[row_index];
+  if (token_id < -vocab_size || token_id >= vocab_size) {
+    for (int64_t col = threadIdx.x; col < hidden_size; col += blockDim.x) {
+      output[row_index * hidden_size + col] = __bfloat16_as_ushort(__float2bfloat16_rn(CUDART_NAN_F));
+    }
+    return;
+  }
+  if (token_id < 0) token_id += vocab_size;
   const uint16_t* embedding = table + token_id * hidden_size;
   float sum = 0.0f;
   for (int64_t col = threadIdx.x; col < hidden_size; col += blockDim.x) {
@@ -109,7 +116,6 @@ __global__ void EmbedNormKernel(const int64_t* ids, const uint16_t* table,
     output[row_index * hidden_size + col] =
         __bfloat16_as_ushort(__float2bfloat16_rn(normalized));
   }
-  (void)rows;
 }
 
 __global__ void RowSelectKernel(const int64_t* selection,
@@ -184,37 +190,6 @@ __global__ void SigmoidGateMulKernel(const __nv_bfloat16* attention,
   output[i] = value;
 }
 
-__device__ __forceinline__ float DecodeE4M3FN(uint8_t value) {
-  const float sign = (value & 0x80u) != 0 ? -1.0f : 1.0f;
-  const int exponent = (value >> 3) & 0x0f;
-  const int mantissa = value & 0x07;
-  if (exponent == 0) {
-    return sign * ldexpf(static_cast<float>(mantissa), -9);
-  }
-  if (exponent == 0x0f && mantissa == 0x07) {
-    return CUDART_NAN_F;
-  }
-  return sign * ldexpf(1.0f + static_cast<float>(mantissa) * 0.125f,
-                       exponent - 7);
-}
-
-__global__ void DequantizeLinearFp8Bf16Kernel(const uint8_t* input,
-                                              const uint8_t* zero_point,
-                                              const float* scales, uint16_t* output,
-                                              int64_t count, int64_t axis_size,
-                                              int64_t inner_size,
-                                              bool scalar_zero_point) {
-  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (index >= count) return;
-  float value = DecodeE4M3FN(input[index]);
-  const int64_t scale_index = axis_size == 1 ? 0 : (index / inner_size) % axis_size;
-  if (zero_point != nullptr) {
-    value -= DecodeE4M3FN(zero_point[scalar_zero_point ? 0 : scale_index]);
-  }
-  value *= scales[scale_index];
-  output[index] = __bfloat16_as_ushort(__float2bfloat16_rn(value));
-}
-
 __global__ void UntileHcBf16Kernel(const uint16_t* input, uint16_t* output, int kind) {
   constexpr int64_t kVectorCount = 204800;
   constexpr int64_t kElementCount = kVectorCount * 16;
@@ -275,7 +250,7 @@ Status LaunchEmbeddingRMSNorm(cudaStream_t stream, const int64_t* ids, const uin
                     "EmbeddingRMSNorm has too many rows for a CUDA grid");
   if (rows == 0) return Status::OK();
   EmbedNormKernel<<<static_cast<unsigned>(rows), 512, 0, stream>>>(
-      ids, table, weight, epsilon, output, rows, hidden_size);
+      ids, table, weight, epsilon, output, vocab_size, hidden_size);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -323,20 +298,6 @@ Status LaunchSigmoidGateMul(cudaStream_t stream, const uint16_t* attention,
     LAUNCH_GATE(false, false, false);
   }
 #undef LAUNCH_GATE
-  return CUDA_CALL(cudaGetLastError());
-}
-
-Status LaunchDequantizeLinearFp8Bf16(cudaStream_t stream, const uint8_t* input,
-                                     const uint8_t* zero_point, const float* scales,
-                                     uint16_t* output, int64_t count,
-                                     int64_t axis_size, int64_t inner_size,
-                                     bool scalar_zero_point) {
-  if (count == 0) return Status::OK();
-  const int64_t block_count = (count - 1) / kThreads + 1;
-  ORT_RETURN_IF_NOT(block_count <= std::numeric_limits<int>::max(),
-                    "DequantizeLinear FP8/BF16 requires too many CUDA blocks");
-  DequantizeLinearFp8Bf16Kernel<<<static_cast<int>(block_count), kThreads, 0, stream>>>(
-      input, zero_point, scales, output, count, axis_size, inner_size, scalar_zero_point);
   return CUDA_CALL(cudaGetLastError());
 }
 

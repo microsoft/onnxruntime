@@ -4588,7 +4588,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(2,
                "value",
                "Projected Engram value shared by every hyper-connection, with shape "
-               "(batch_size, sequence_length, hidden_size).",
+               "(batch_size, sequence_length, hidden_size) or (total_tokens, hidden_size).",
                "T")
         .Input(3,
                "key_norm_scale",
@@ -4611,7 +4611,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(1,
                 "gated_value_normed",
                 "Optional RMS-normalized gated value tensor with shape "
-                "(batch_size, sequence_length, hc_mult, hidden_size).",
+                "(batch_size, sequence_length, hc_mult, hidden_size) or (total_tokens, hc_mult, hidden_size).",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T",
@@ -4625,8 +4625,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
           if (hasInputShape(ctx, 0)) {
             const auto& key_shape = getInputShape(ctx, 0);
-            if (key_shape.dim_size() != 4) {
-              fail_shape_inference("EngramGate: key must have rank 4");
+            if (key_shape.dim_size() != 3 && key_shape.dim_size() != 4) {
+              fail_shape_inference("EngramGate: key must have rank 3 or 4");
             }
             propagateShapeFromInputToOutput(ctx, 0, 0);
             if (ctx.getNumOutputs() > 1) {
@@ -4635,14 +4635,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
           if (hasInputShape(ctx, 1)) {
             const auto& query_shape = getInputShape(ctx, 1);
-            if (query_shape.dim_size() != 4) {
-              fail_shape_inference("EngramGate: query must have rank 4");
+            if (query_shape.dim_size() != 3 && query_shape.dim_size() != 4) {
+              fail_shape_inference("EngramGate: query must have rank 3 or 4");
+            }
+            if (hasInputShape(ctx, 0) && query_shape.dim_size() != getInputShape(ctx, 0).dim_size()) {
+              fail_shape_inference("EngramGate: query rank must match key rank");
             }
           }
           if (hasInputShape(ctx, 2)) {
             const auto& value_shape = getInputShape(ctx, 2);
-            if (value_shape.dim_size() != 3) {
-              fail_shape_inference("EngramGate: value must have rank 3");
+            if (value_shape.dim_size() != 2 && value_shape.dim_size() != 3) {
+              fail_shape_inference("EngramGate: value must have rank 2 or 3");
+            }
+            if ((hasInputShape(ctx, 0) && value_shape.dim_size() + 1 != getInputShape(ctx, 0).dim_size()) ||
+                (hasInputShape(ctx, 1) && value_shape.dim_size() + 1 != getInputShape(ctx, 1).dim_size())) {
+              fail_shape_inference("EngramGate: value rank must be one lower than key and query rank");
             }
           }
         }));
@@ -5636,7 +5643,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("keepdims", "Keep a singleton final axis when nonzero.", AttributeProto::INT,
               static_cast<int64_t>(0))
         .Input(0, "logits", "Logits with vocabulary on the last axis.", "T")
-        .Output(0, "indices", "First maximum index for each leading row.", "I")
+        .Output(0, "indices",
+                "First maximum index for each leading row. NaNs are ignored; "
+                "an all-NaN row returns index zero.",
+                "I")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Supported logit types.")
         .TypeConstraint("I", {"tensor(int64)"}, "Argmax indices are int64.")
@@ -5662,7 +5672,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(FusedTensorOps_ver1_doc)
         .Attr("epsilon", "RMS normalization epsilon.", AttributeProto::FLOAT)
-        .Input(0, "ids", "Embedding row indices with any shape.", "I")
+        .Input(0, "ids",
+               "Embedding row indices with any shape. Negative indices in [-vocabulary, -1] "
+               "count from the end. Out-of-range indices produce NaN output rows.",
+               "I")
         .Input(1, "table", "BF16 embedding matrix [vocabulary, hidden].", "T")
         .Input(2, "weight", "FP32 RMS normalization weight [hidden].", "F")
         .Output(0, "normalized", "BF16 normalized embeddings [shape(ids), hidden].", "T")

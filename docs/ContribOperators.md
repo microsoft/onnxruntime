@@ -3,6 +3,8 @@
 Do not modify directly.*
 
 * com.microsoft
+  * <a href="#com.microsoft.ArgMaxLastAxis">com.microsoft.ArgMaxLastAxis</a>
+  * <a href="#com.microsoft.EmbeddingRMSNorm">com.microsoft.EmbeddingRMSNorm</a>
   * <a href="#com.microsoft.HyperConnectionLowRankMix">com.microsoft.HyperConnectionLowRankMix</a>
   * <a href="#com.microsoft.Attention">com.microsoft.Attention</a>
   * <a href="#com.microsoft.AttnLSTM">com.microsoft.AttnLSTM</a>
@@ -119,9 +121,11 @@ Do not modify directly.*
   * <a href="#com.microsoft.RestorePadding">com.microsoft.RestorePadding</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.RotaryEmbedding">com.microsoft.RotaryEmbedding</a>
+  * <a href="#com.microsoft.RowSelect">com.microsoft.RowSelect</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Sampling">com.microsoft.Sampling</a>
   * <a href="#com.microsoft.ScaledSiLU">com.microsoft.ScaledSiLU</a>
+  * <a href="#com.microsoft.SigmoidGateMul">com.microsoft.SigmoidGateMul</a>
   * <a href="#com.microsoft.SkipGroupNorm">com.microsoft.SkipGroupNorm</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
   * <a href="#com.microsoft.SkipSimplifiedLayerNormalization">com.microsoft.SkipSimplifiedLayerNormalization</a>
@@ -136,6 +140,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Trilu">com.microsoft.Trilu</a>
   * <a href="#com.microsoft.UnfoldTensor">com.microsoft.UnfoldTensor</a>
   * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
+  * <a href="#com.microsoft.UntileHyperConnectionWeights">com.microsoft.UntileHyperConnectionWeights</a>
   * <a href="#com.microsoft.VarlenCausalConvWithState">com.microsoft.VarlenCausalConvWithState</a>
   * <a href="#com.microsoft.VarlenNGramHashMapping">com.microsoft.VarlenNGramHashMapping</a>
   * <a href="#com.microsoft.WhisperBeamSearch">com.microsoft.WhisperBeamSearch</a>
@@ -144,6 +149,45 @@ Do not modify directly.*
   * <sub>experimental</sub> <a href="#com.microsoft.QEmbedLayerNormalization">com.microsoft.QEmbedLayerNormalization</a>
 
 ## com.microsoft
+### <a name="com.microsoft.ArgMaxLastAxis"></a><a name="com.microsoft.argmaxlastaxis">**com.microsoft.ArgMaxLastAxis**</a>
+
+  CUDA contrib operators for fused tensor operations used by transformer models.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>keepdims</tt> : int (default is 0)</dt>
+<dd>Keep a singleton final axis when nonzero.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>logits</tt> : T</dt>
+<dd>Logits with vocabulary on the last axis.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>indices</tt> : I</dt>
+<dd>First maximum index for each leading row. NaNs are ignored; an all-NaN row returns index zero.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Supported logit types.</dd>
+<dt><tt>I</tt> : tensor(int64)</dt>
+<dd>Argmax indices are int64.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.Attention"></a><a name="com.microsoft.attention">**com.microsoft.Attention**</a>
 
   Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
@@ -1971,6 +2015,51 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.EmbeddingRMSNorm"></a><a name="com.microsoft.embeddingrmsnorm">**com.microsoft.EmbeddingRMSNorm**</a>
+
+  CUDA contrib operators for fused tensor operations used by transformer models.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>RMS normalization epsilon.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>ids</tt> : I</dt>
+<dd>Embedding row indices with any shape. Negative indices in [-vocabulary, -1] count from the end. Out-of-range indices produce NaN output rows.</dd>
+<dt><tt>table</tt> : T</dt>
+<dd>BF16 embedding matrix [vocabulary, hidden].</dd>
+<dt><tt>weight</tt> : F</dt>
+<dd>FP32 RMS normalization weight [hidden].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>normalized</tt> : T</dt>
+<dd>BF16 normalized embeddings [shape(ids), hidden].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>I</tt> : tensor(int64)</dt>
+<dd>Indices use int64.</dd>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>Embedding and result use BF16.</dd>
+<dt><tt>F</tt> : tensor(float)</dt>
+<dd>Normalization weight uses FP32.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.EngramGate"></a><a name="com.microsoft.engramgate">**com.microsoft.EngramGate**</a>
 
   Fuses the Engram gate.
@@ -1999,7 +2088,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>epsilon</tt> : float</dt>
+<dt><tt>epsilon</tt> : float (default is 1e-05)</dt>
 <dd>Epsilon used by both RMS normalization steps. Default is 1e-5.</dd>
 </dl>
 
@@ -2007,11 +2096,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>key</tt> : T</dt>
-<dd>Projected Engram keys with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+<dd>Projected Engram keys with shape (batch_size, sequence_length, hc_mult, hidden_size) or (total_tokens, hc_mult, hidden_size).</dd>
 <dt><tt>query</tt> : T</dt>
-<dd>Hidden-state queries with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+<dd>Hidden-state queries with the same shape as key.</dd>
 <dt><tt>value</tt> : T</dt>
-<dd>Projected Engram value shared by every hyper-connection, with shape (batch_size, sequence_length, hidden_size).</dd>
+<dd>Projected Engram value shared by every hyper-connection, with shape (batch_size, sequence_length, hidden_size) or (total_tokens, hidden_size).</dd>
 <dt><tt>key_norm_scale</tt> : T</dt>
 <dd>RMSNorm scale for keys with shape (hc_mult, hidden_size).</dd>
 <dt><tt>query_norm_scale</tt> : T</dt>
@@ -2024,9 +2113,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>Gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+<dd>Gated value tensor with the same shape as key.</dd>
 <dt><tt>gated_value_normed</tt> (optional) : T</dt>
-<dd>Optional RMS-normalized gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+<dd>Optional RMS-normalized gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size) or (total_tokens, hc_mult, hidden_size).</dd>
 </dl>
 
 #### Type Constraints
@@ -7224,6 +7313,48 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.RowSelect"></a><a name="com.microsoft.rowselect">**com.microsoft.RowSelect**</a>
+
+  CUDA contrib operators for fused tensor operations used by transformer models.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>selection</tt> : I</dt>
+<dd>Scalar-like int64 row selector; zero selects row 0.</dd>
+<dt><tt>x0</tt> : T</dt>
+<dd>BF16 tensor with shape [1, 2, ...].</dd>
+<dt><tt>x1</tt> : T</dt>
+<dd>BF16 tensor with shape [1, 2, ...].</dd>
+<dt><tt>x2</tt> : T</dt>
+<dd>BF16 tensor with shape [1, 2, ...].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>y0</tt> : T</dt>
+<dd>Selected BF16 tensor with shape [1, 1, ...].</dd>
+<dt><tt>y1</tt> : T</dt>
+<dd>Selected BF16 tensor with shape [1, 1, ...].</dd>
+<dt><tt>y2</tt> : T</dt>
+<dd>Selected BF16 tensor with shape [1, 1, ...].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>I</tt> : tensor(int64)</dt>
+<dd>Selector uses int64.</dd>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>Inputs and outputs use BF16.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.SampleOp"></a><a name="com.microsoft.sampleop">**com.microsoft.SampleOp**</a>
 
   Sample echo operator.
@@ -7380,6 +7511,61 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output to floating-point tensors.</dd>
 <dt><tt>M</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain the optional scale to floating-point tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.SigmoidGateMul"></a><a name="com.microsoft.sigmoidgatemul">**com.microsoft.SigmoidGateMul**</a>
+
+  CUDA contrib operators for fused tensor operations used by transformer models.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>broadcast_gate</tt> : int (default is 0)</dt>
+<dd>When one, projection has the attention shape with final dimension one. Packed layout attributes must be zero. CUDA only.</dd>
+<dt><tt>head_dim</tt> : int (default is 0)</dt>
+<dd>Dimension of each attention head.</dd>
+<dt><tt>num_heads</tt> : int (default is 0)</dt>
+<dd>Number of attention heads.</dd>
+<dt><tt>q_offset</tt> : int (default is 0)</dt>
+<dd>Offset of the query projection within each token.</dd>
+<dt><tt>q_stride</tt> : int (default is 0)</dt>
+<dd>Per-head stride in the packed projection.</dd>
+<dt><tt>sigmoid_in_fp32</tt> : int (default is 1)</dt>
+<dd>One computes sigmoid in FP32 before BF16 conversion. Zero preserves the input-type intermediate arithmetic of CUDA Sigmoid, including subtraction on negative inputs.</dd>
+<dt><tt>silu_gate</tt> : int (default is 0)</dt>
+<dd>When one, projection and attention have identical shapes. Multiply the BF16-rounded sigmoid by projection and round to BF16 before multiplying attention. Cannot be combined with broadcast_gate or packed layout attributes.</dd>
+<dt><tt>tok_stride</tt> : int (default is 0)</dt>
+<dd>Per-token stride in the packed projection.</dd>
+</dl>
+
+#### Inputs (2 - 3)
+
+<dl>
+<dt><tt>attention</tt> : T</dt>
+<dd>BF16 attention values.</dd>
+<dt><tt>projection</tt> : T</dt>
+<dd>BF16 packed projection containing gate values.</dd>
+<dt><tt>residual</tt> (optional) : T</dt>
+<dd>Optional BF16 residual with the attention shape.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Attention multiplied by BF16-rounded sigmoid gates, rounded to BF16 before optionally adding residual and rounding again.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>Inputs and output use BF16.</dd>
 </dl>
 
 
@@ -8288,6 +8474,45 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.UntileHyperConnectionWeights"></a><a name="com.microsoft.untilehyperconnectionweights">**com.microsoft.UntileHyperConnectionWeights**</a>
+
+  CUDA contrib operators for fused tensor operations used by transformer models.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>kind</tt> : int</dt>
+<dd>Untile layout kind, either 0 or 1.</dd>
+</dl>
+
+#### Inputs (1 - 2)
+
+<dl>
+<dt><tt>tiled</tt> : T</dt>
+<dd>Tiled BF16 weight [160, 20480].</dd>
+<dt><tt>unused</tt> (optional) : T</dt>
+<dd>Reserved optional input retained for exporter compatibility.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>untiled</tt> : T</dt>
+<dd>Untiled BF16 weight.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>Input and output use BF16.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.VarlenCausalConvWithState"></a><a name="com.microsoft.varlencausalconvwithstate">**com.microsoft.VarlenCausalConvWithState**</a>
 
   Stateful causal depthwise convolution over a packed, token-major batch of variable-length
@@ -8778,20 +9003,20 @@ No versioning maintained for experimental ops.
   One hyper-connection block with a low-rank gate network, fused into one operator. C = num_branches streams of
   width H are kept as one flattened (..., C * H) tensor. With the optional prologue the operator first applies the
   post-mix of the previous block (identity stream mix):
-
+  
     S[..., c, h] = streams[..., c, h] + prev_post_gate[..., c] * prev_block_output[..., h]
-
+  
   and otherwise S = streams. It then computes, with `rms` taken per branch over H:
-
+  
     hn[..., c, h] = S[..., c, h] / sqrt(mean_h(S[..., c, :]^2) + epsilon) * norm_scale[c, h]
     d             = ScaledSiLU(hn @ down_weight, silu_alpha)                   (..., R)
     g[..., c, h]  = sigmoid(d @ up_weight)                                    per stream and feature
     pre_output    = reduction_scale * sum_c(hn[..., c, h] * g[..., c, h])     (..., H)
     post_gate     = sigmoid((hn @ inject_weight) / gate_div) * gate_mul         (..., C)
-
+  
   pre_output is the input of the next transformer block and post_gate is prev_post_gate of the next call.
   streams_out is S (the streams after the prologue; a copy of streams when there is no prologue).
-
+  
   Numerics contract. Matrix products and reductions accumulate in float32. The result of every step is rounded
   to T once, as the output of the equivalent standard operator would be:
   S = cast_T(streams + prev_post_gate * prev_block_output), hn = cast_T(S * inv_rms * norm_scale),
@@ -8809,17 +9034,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>epsilon</tt> : float</dt>
+<dt><tt>epsilon</tt> : float (default is 1e-05)</dt>
 <dd>Epsilon added to the mean square of each branch before the reciprocal square root.</dd>
-<dt><tt>gate_div</tt> : float</dt>
+<dt><tt>gate_div</tt> : float (default is 1.0)</dt>
 <dd>Divisor applied to the inject logits before the sigmoid. Must not be zero.</dd>
-<dt><tt>gate_mul</tt> : float</dt>
+<dt><tt>gate_mul</tt> : float (default is 1.0)</dt>
 <dd>Multiplier applied to the sigmoid of the inject logits.</dd>
 <dt><tt>num_branches</tt> : int (required)</dt>
 <dd>Number of residual streams C. The last dimension of streams is C * H.</dd>
-<dt><tt>reduction_scale</tt> : float</dt>
+<dt><tt>reduction_scale</tt> : float (default is 1.0)</dt>
 <dd>Multiplier applied to the sum over branches of pre_output.</dd>
-<dt><tt>silu_alpha</tt> : float</dt>
+<dt><tt>silu_alpha</tt> : float (default is 1.0)</dt>
 <dd>Scale of the ScaledSiLU between the down and up projections.</dd>
 </dl>
 
@@ -8859,3 +9084,5 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain all floating-point inputs and outputs to the same type.</dd>
 </dl>
+
+
