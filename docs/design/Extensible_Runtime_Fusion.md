@@ -73,8 +73,9 @@ that borrows existing CUDA kernels. Creating a competing EP solely to reach thos
 
 ## 3. Integration and graph lifecycle (D1)
 
-Propose an explicit call in `TransformGraph`, after partition and installation of mutation-accounting
-callbacks, immediately before the existing outer L2+ loop (before R's line 2015):
+For the fixed-placement pilot, propose an explicit call in `TransformGraph`, after partition and
+installation of mutation-accounting callbacks, immediately before the existing outer L2+ loop
+(before R's line 2015):
 
 ```text
 canonical load -> shared preprocessing / L0-L1 -> ordinary partition and EP assignment
@@ -104,6 +105,37 @@ Match the graph actually present here, not the exporter input. Publish positive 
 fixtures at this boundary, including L0/L1 normalization and partition assignments. Later transforms
 may change replacement nodes; trace them and revalidate kernel/resource provenance on the final
 graph. Retain the existing private `RegisterGraphTransformer` path unchanged.
+
+### Future fusion-aware placement integration
+
+The fixed-placement path above is not the future planner's final-assignment contract. As
+[chilo-ms notes](https://github.com/microsoft/onnxruntime/issues/33403#issuecomment-6226599402),
+assignment-dependent matching may use tentative EP ownership. A planner must know eligible
+implementation recipes, their logical graph effects and allocation requirements before accepting
+a placement; source-only sizing could otherwise offload a region whose fused target would fit.
+The separately proposed planning flow is:
+
+```text
+candidate EP assignment view
+ -> read-only recipe / effect / resource queries
+ -> planner chooses placement and compatible recipes
+ -> rewrite only selected regions
+ -> verify transformed graph and memory feasibility
+ -> finalize ownership -> instantiate device resources
+```
+
+Keep recipe description separate from rewrite application. Queries must not mutate the live graph,
+construct target kernels, upload weights or materialize trial device resources; evaluating another
+placement must not require executing every candidate transformation. A future planning context must
+identify its tentative ownership view, graph revision and workload/contract bounds, so recipes and
+estimates from a discarded trial cannot be reused for another assignment.
+
+V1's once-only callbacks still inspect a fixed assigned snapshot; the current C table does not
+claim this planning-mode context. Any future adapter/context extensions require separate API,
+lifetime and resource-owner approval with the
+[region-aware placement proposal #33372](https://github.com/microsoft/onnxruntime/pull/33372).
+Neither the planner nor repeated planning queries are added to this pilot. Required-pattern policy
+and preference for eligible fusion remain in force; this is not per-session speed benchmarking.
 
 ## 4. Proposed experimental C boundary (D2)
 
@@ -739,8 +771,15 @@ search is deferred.
 The post-partition hook deliberately runs after the partitioner's accountant objects have been
 used to produce reservations. Budgeted implementation therefore needs a planning-safe target
 estimator/resource-owner adapter; invoking the existing source consolidation callback cannot stand
-in for it. Do not move matching into a per-EP capability loop to regain access to those objects:
-partitioning may revisit graphs/providers. This missing adapter blocks budgeted mode, not baseline.
+in for it. For this fixed-placement path, do not move matching into a per-EP capability loop to
+regain access to those objects: partitioning may revisit graphs/providers. This missing adapter
+blocks budgeted mode, not baseline.
+
+Baseline/budgeted are resource modes, not fixed/planning placement modes. Budgeted admission here
+validates the chosen assignment; it does not search alternative ownership or guarantee discovery of
+a GPU placement made feasible by fusion. Future planning needs the nonmutating recipe queries in
+section 3 before final placement acceptance, followed by reconciliation of the selected graph and
+memory plan. That integration is proposed, not a guarantee supplied by current ORT main.
 
 ## 9. Qualification plan, not execution evidence
 
@@ -1056,6 +1095,13 @@ affected-file scope, acceptance gates and exact verification targets. Dependenci
 | M3 stateful/whole-Scan | Recursive read-only inspection, core-derived closure, body accounting retirement, narrow LinearAttention sequence replacement and asymmetric-state tests. Convolution state qualification extended here. | Actual M1/M2 PRs, D3/D4 whole-Scan acceptance and P5 before sequence implementation; no wider GatedDeltaNet approval. |
 | M4 reduced generation/package/resources | Random-weight text decoder, generated-token feedback, A/B immutable-artifact proof, distribution matrix and optional budgeted recipes. | Actual M1-M3 PRs, D6 release owner, P7. Budgeted portion separately blocked on D5/P6 and each target recipe. Baseline qualification can proceed without general planner #33372. |
 | M5 official 27B campaign | New pinned text-only export, independent numerical comparison, coverage/performance/resource report with retained provenance. Vision/full-VLM is a separate qualification. | Actual M4 PR/report; explicit weight/export/device/build/retention budget authorization. Historical Mobius #758 is context, not a substitute. |
+
+Future planner integration is outside M1-M5 and is not a prerequisite for the fixed-placement
+pilot. After the relevant fusion and placement contracts are accepted, a separate adapter milestone
+must qualify query isolation, tentative-assignment/revision invalidation, and a case where the
+unfused estimate would trigger offload but an eligible fused recipe fits. It must verify the
+selected rewrite and reconciled memory plan before final ownership commitment and device
+materialization; no runtime planning or qualification is authorized by this roadmap.
 
 ### Acceptance record
 
