@@ -702,5 +702,7 @@ Compressed project memory. This is not the execution plan.
 - Compute Sanitizer17 newGPU+6 native+documentedCUDA SDK client: zero errors,
   zero leakedbytes/allocations. Separate allocation-failure-then-Mul regression
   also zero errors/leaks. Final logs m08a-*-complete-* / m08a-plugin-sanitizer-*.
-- All implementation/verification gates pass; M08a publication remains.
-  M08b has NOT started and still needs user authorization.
+- All implementation/verification gates pass. M08a implementation e6ce58508e is
+  published ready for review as PR #20, stacked on #19:
+  https://github.com/onnxruntime/ort-state/pull/20
+  M08b has NOT started and still needs user authorization. No PRs merged.

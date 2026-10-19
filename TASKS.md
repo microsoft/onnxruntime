@@ -1454,7 +1454,7 @@ stream/resource boundaries. CPU remains the default; CUDA sampling stays absent.
   NVCC's supported host compiler, or use matching GCC host coverage where needed;
   do not count a non-executing CPU stub. If custom device functions become
   necessary, return to the strict measured-device-line gate rather than waive it.
-- [ ] A7: Complete CPU/plugin-GPU regressions, sanitizer, ABI/style/examples,
+- [x] A7: Complete CPU/plugin-GPU regressions, sanitizer, ABI/style/examples,
   exact evidence and independently reviewable publication.
 
 **CPU test plan:**
@@ -1492,7 +1492,9 @@ proof pass, including the new callback module's measured 100% host coverage.
 Record device coverage as zero/N/A only if no device functions were added.
 Publish ready for review; loop/chain GPU-cache integration is not yet claimed.
 
-**M08a verification complete; publication pending:**
+**M08a complete:** Implementation `e6ce58508e`, published ready for human review
+as [PR #20](https://github.com/onnxruntime/ort-state/pull/20), stacked on M07b
+PR #19. No PR has been merged. M08b remains unauthorized.
 
 - Six cache operations execute in the real CUDA plugin with float32/float16/
   bfloat16 support and no greedy capability or CPU-reference delegation.
