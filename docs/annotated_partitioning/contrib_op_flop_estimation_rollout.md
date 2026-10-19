@@ -25,6 +25,10 @@ The key distinction is:
 **Recommended first release:** counting conventions, `MatMulNBits` core dense-equivalent operations, and a versioned
 developer report. Throughput and performance-policy changes are separate deliverables.
 
+Ancillary-work estimates are incremental follow-ups, not prerequisites for this first release. Define their
+component contract during reporting design, add shape-based bias counts after static reporting, and add
+implementation-dependent work only when its execution route and frequency can be established.
+
 ### Initial implementation
 
 The internal [MatMulNBits compute estimator](../../onnxruntime/contrib_ops/cpu/quantization/matmul_nbits_compute_estimate.h)
@@ -115,6 +119,45 @@ dequantization, and an optional bias. The pilot counts **only core matrix multip
 
 Example: `A = [2, 3, 64]`, `K = 64`, `N = 32` gives `M = 6` and **24,576 dense-equivalent operations**.
 This is not a complete count of all work performed by `MatMulNBits`.
+
+### 4.3 Ancillary components and counting categories
+
+Core versus ancillary describes an operation's role, not whether it is floating-point work. Floating-point bias
+addition and dequantization arithmetic can contribute FLOPs; bitwise unpacking does not. Report named components
+alongside the stable core metric rather than silently broadening the meaning of `2MNK`.
+
+| Component | Initial counting approach | Required basis and limitations |
+| --- | --- | --- |
+| Matrix-product core | `2MNK` dense-equivalent operations | Preserve the existing convention; not literal executed floating-point instructions |
+| Optional bias | `MN` logical floating-point additions when bias is present | Known output geometry and optional-input presence; zero for absent bias, unavailable when presence or geometry is unknown |
+| Logical weight reconstruction | Under an explicit scalar convention, `KN` subtractions and `KN` multiplications for `(q - zero_point) * scale` | One reconstruction of logical weights only; not a claim about per-invocation execution |
+| Executed dequantization | Count arithmetic over the elements actually processed, including repetition | Validated route, dtype, padding, reuse, and preparation frequency; otherwise unavailable |
+| Unpacking | Route-specific bitwise/integer operations where justified | Keep separate from FLOPs; do not assume a universal instruction count per quantized weight |
+| Conversions | Number of elements converted, with source and destination types | Separate category, not an arithmetic FLOP count |
+| Layout transforms | Logical elements or bytes moved | Not measured DRAM traffic; caches and reuse are outside this count |
+| Padding and recomputation | Additional route-specific arithmetic, classified by arithmetic type | Count only work beyond the corresponding baseline; avoid overlap with other components |
+| Prepacking | Separately scoped initialization or first-use work | Never charge automatically to every steady-state invocation |
+
+Logical reconstruction is an optional workload scenario, not an executed-work subtotal. A kernel may reconstruct
+weights once and cache them, repeat reconstruction across tiles, or fold the arithmetic into another computation.
+An integer subtraction or an optimized-away operation must not be reported as an executed floating-point operation.
+Explicitly document the treatment of symmetric zero points, fused operations, and eliminated arithmetic.
+
+For every added component, retain:
+
+- metric/unit, included work, and counting-convention version;
+- basis: logical semantics, declared scenario, or validated selected route;
+- phase: initialization, first use, or per invocation;
+- processed geometry and, where needed, repetition/reuse assumptions;
+- available count or an explicit unavailable reason.
+
+Keep dense-equivalent operations, floating-point arithmetic, integer/bitwise operations, conversions, and logical
+bytes moved in separate categories. Only combine non-overlapping components with compatible units, conventions,
+bases, and phases. In particular, do not present core dense-equivalent operations plus ancillary FLOPs as literal
+total executed FLOPs. Known-component subtotals must retain exclusions and incomplete-coverage indicators.
+
+Adding components improves coverage; validated route attribution improves fidelity to execution. Neither makes
+the quantized core a hardware instruction count or predicts latency without measurement.
 
 ## 5. Proposed architecture and report
 
@@ -213,6 +256,19 @@ from particular contributors. Calendar estimates should follow contract review a
 Phase 4 and Phase 5 can proceed independently after their prerequisites. Do not make pilot throughput wait for
 complete Attention coverage. Phases 0-2 are the useful, independently shippable MVP.
 
+The ancillary increments below extend these phases without renumbering or blocking the main rollout:
+
+| Increment | Deliverables | Dependencies | Proposed owner | Exit gate |
+| --- | --- | --- | --- | --- |
+| 2a. Shape-based ancillary work | Separate optional-bias count; component-level coverage and exclusions | Phase 2 and approved component contract | Framework + quantization owners | Present/absent bias and dynamic/empty geometry tests pass; core counts remain unchanged |
+| Optional logical reconstruction | Separately labeled one-reconstruction scenario, if consumers need it | Phase 2 and approved scalar reconstruction convention | Quantization + tooling owners | Hand-calculated cases pass; never labeled per-invocation executed work |
+| 3a. Route-specific ancillary work | Incremental dequantization, unpacking, conversion, layout, padding, and prepacking estimates | Phase 3 plus validated route and preparation-frequency metadata for each supported path | Quantization + EP owners | Route, reuse, padding, repetition, phase, and non-overlap tests pass; unknown paths remain unavailable |
+
+Agree on component semantics during Phase 2 design, but do not implement every component before shipping the MVP.
+Increment 2a can proceed alongside runtime-count development. Increment 3a does not block Attention or core-only
+throughput reporting; each new component is enabled only for routes with enough evidence. Full ancillary coverage
+is not required before subsequent phases or the initial feature PR.
+
 ### Phase 2: static-report launch
 
 - Begin with an internal/developer reporting surface; the exact command or API is a Phase 0 decision.
@@ -221,6 +277,16 @@ complete Attention coverage. Phases 0-2 are the useful, independently shippable 
 - Validate real optimized models, including cases where fusion removes all directly supported pilot nodes.
 - Include feature availability, convention/schema versions, exclusions, and unavailable reasons in documentation.
 - Publish reports without changing provider assignment, kernel selection, allocator behavior, or inference outputs.
+- Establish component naming, units, provenance, execution phase, and completeness rules for later ancillary work.
+  Keep this initial contract small; the core-only report does not require speculative route-estimation machinery.
+
+### Increment 2a: shape-based ancillary work
+
+- Add optional bias as a separate `MN` logical floating-point-addition count, leaving `matmul_core` unchanged.
+- Distinguish absent bias from unknown optional-input metadata; use checked arithmetic and existing unavailable states.
+- Report component-level exclusions and coverage, not just whether a node has any estimate.
+- If a logical reconstruction scenario is requested, report its subtraction and multiplication counts separately
+  under an approved convention. Do not add `2KN` to every invocation or imply reconstruction actually ran.
 
 ### Phase 3: runtime refinement
 
@@ -230,6 +296,22 @@ complete Attention coverage. Phases 0-2 are the useful, independently shippable 
 - Do not copy GPU scalar values to the host or synchronize solely to compute a count.
 - Use already validated host-visible metadata, or report `missing_semantic_value`.
 - Bound cache growth and test changing shapes and semantic values, not just repeated fixed-shape runs.
+
+### Increment 3a: route-specific ancillary work
+
+For one supported route at a time:
+
+1. Reuse the kernel's validated geometry and actual route decision; do not duplicate its dispatch cascade.
+2. Establish whether preparation runs during initialization, first use, or each invocation.
+3. Determine processed elements, including padding, repeated tiles, split-K work, and any cached or shared preparation.
+4. Classify floating-point arithmetic, integer/bitwise work, conversions, and logical data movement separately.
+5. Add checked pure formulas fed by that metadata, with independent reference tests.
+6. Report unavailable when route, reuse, or frequency is unknown; do not synchronize or copy device data solely for
+   estimation. Include all count-affecting route and preparation state in cache keys or invalidate cached estimates.
+
+Fusion does not imply that a component is absent or separately materialized. Verify which arithmetic is retained,
+eliminated, or repeated before attributing it. Treat prepacking as its own lifetime-scoped component, and distinguish
+first-use preparation from steady-state work. Do not attribute shared preparation in full to multiple consumers.
 
 ### Phase 4: Attention expansion
 
@@ -273,6 +355,8 @@ Label quantized results as dense-equivalent operations/s, not literal hardware T
 - Do not sum overlapping device intervals and call the result end-to-end latency.
 - Keep CUDA Graph replay and unsupported EP timing explicitly unavailable until attribution is verified.
 - Record device, dtype, workload, provider, and route when observable; unknown route identity must remain unknown.
+- Name the numerator's component scope. Core-only throughput can ship without ancillary coverage; adding a component
+  must not silently redefine an existing rate or mix initialization work into a steady-state duration.
 
 ## 7. Validation and acceptance
 
@@ -284,6 +368,8 @@ Use independent expected values rather than comparing two implementations of the
 | Metadata | Unknown rank/dimensions, mismatched K, missing/invalid attributes, omitted optional inputs | Explicit correct reason; no zero fallback or unsigned wrap |
 | Boundaries | Valid zero extent, large products, uint64 overflow, zero with other unknown dimensions | Documented validity rules and checked arithmetic; unavailable when validity is unproven |
 | Semantics | Bias present/absent, prepacked weights, CPU/CUDA routes | Same core count; exclusions preserved |
+| Logical ancillary work | Bias present/absent, empty/dynamic outputs, overflow, hand-calculated reconstruction cases | Exact component counts under the stated convention; logical reconstruction never claimed as observed execution |
+| Route-specific ancillary work | Cached versus per-invocation preparation, dtype, padding, repeated tiles, split-K, fusion, shared prepacking, route changes | Independently verified counts and phase attribution; no overlap, stale reuse, or extra synchronization; unknown routes unavailable |
 | Static graph | Unsupported ops, fusion, opaque partitions, subgraphs, shape scenarios | No double counting; exact subtotals and coverage state |
 | Runtime | Changing batch/sequence sizes, repeated/concurrent runs, count-affecting scalar changes | Invocation-specific counts; no stale cache reuse or extra synchronization |
 | Attention | Hand-enumerated pairs for causal/past/windowed/ragged cases; unequal QK/V dimensions | Exact pair-based counts for supported cases; explicit missing-metadata result otherwise |
@@ -331,6 +417,7 @@ and rollback plan.
 | Q8 | Which timing paths reliably correlate full op execution, including capture? | CPU and eager CUDA first; defer capture and other EPs until validated | Phase 5 |
 | Q9 | Should external EPs/custom ops register estimators? | Revisit after multiple built-in operators demonstrate the needed contract | Public API design |
 | Q10 | When may estimates affect placement or dispatch? | Only after calibrated end-to-end experiments, including bandwidth and transfer costs | Phase 6 |
+| Q11 | Which ancillary components and reconstruction conventions should be supported first? | Bias after static reporting; logical reconstruction only if needed; executed-work estimates require validated route and frequency metadata | Phase 2 design; per-route approval before Increment 3a |
 
 ## 10. Completion criteria
 
