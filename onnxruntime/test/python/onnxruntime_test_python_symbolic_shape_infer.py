@@ -882,9 +882,6 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         self.assertEqual(separate_graph.output[0].type.tensor_type.shape.dim[2].dim_value, 33)
         self.assertFalse(separate_graph.output[1].type.tensor_type.HasField("shape"))
 
-
-
-
     def test_unsqueeze_opset_11(self):
         graph = helper.make_graph(
             [

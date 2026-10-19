@@ -75,9 +75,7 @@ void TestFp8SplitOutputs() {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA device is required for split-output FP8 matmul.";
   }
-  for (const auto& [m, k] : {std::pair<int64_t, int64_t>{0, 256}, {1, 256}, {2, 256}, {2, 320},
-                            {2, 1088}, {9, 256},
-                            {32, 256}, {33, 256}, {65, 256}, {2, 16}, {2, 30}, {2, 0}}) {
+  for (const auto& [m, k] : {std::pair<int64_t, int64_t>{0, 256}, {1, 256}, {2, 256}, {2, 320}, {2, 1088}, {9, 256}, {32, 256}, {33, 256}, {65, 256}, {2, 16}, {2, 30}, {2, 0}}) {
     for (const bool activation_scale : {false, true}) {
       SCOPED_TRACE("M=" + std::to_string(m) + " K=" + std::to_string(k) +
                    " W8A8=" + std::to_string(activation_scale));
@@ -85,9 +83,9 @@ void TestFp8SplitOutputs() {
       constexpr int64_t block_size = 64;
       const int64_t k_blocks = (k + block_size - 1) / block_size;
       const std::vector<int64_t> widths = m == 2 && k == 256
-                                             ? std::vector<int64_t>{1, 1, 1, 1, 1, 1, 1, 10}
-                                             : (m == 33 ? std::vector<int64_t>{17}
-                                                        : std::vector<int64_t>{1, 7, 9});
+                                              ? std::vector<int64_t>{1, 1, 1, 1, 1, 1, 1, 10}
+                                              : (m == 33 ? std::vector<int64_t>{17}
+                                                         : std::vector<int64_t>{1, 7, 9});
       std::vector<T> a;
       std::vector<Float8E4M3FN> b;
       std::vector<float> scales;
@@ -162,8 +160,7 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, RejectsInvalidSplitSizes) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA device is required for split-output FP8 matmul.";
   }
-  for (const std::vector<int64_t>& widths : {std::vector<int64_t>{}, {0, 17}, {-1, 18}, {8, 8},
-                                            {1, 1, 1, 1, 1, 1, 1, 1, 9}}) {
+  for (const std::vector<int64_t>& widths : {std::vector<int64_t>{}, {0, 17}, {-1, 18}, {8, 8}, {1, 1, 1, 1, 1, 1, 1, 1, 9}}) {
     OpTester test("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
     test.AddAttribute<std::vector<int64_t>>("split_sizes", widths);
     test.AddInput<BFloat16>("A", {1, 16}, std::vector<BFloat16>(16));

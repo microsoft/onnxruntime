@@ -168,11 +168,11 @@ void RunDynamicSparseAttentionCase(
   }
   if (c.has_past) {
     tester.AddInput<CacheT>("past_key",
-                       {c.batch_size, c.kv_num_heads, c.cache_sequence_length, c.head_size},
-                       ToTensorData<CacheT>(c.past_key));
+                            {c.batch_size, c.kv_num_heads, c.cache_sequence_length, c.head_size},
+                            ToTensorData<CacheT>(c.past_key));
     tester.AddInput<CacheT>("past_value",
-                       {c.batch_size, c.kv_num_heads, c.cache_sequence_length, c.head_size},
-                       ToTensorData<CacheT>(c.past_value));
+                            {c.batch_size, c.kv_num_heads, c.cache_sequence_length, c.head_size},
+                            ToTensorData<CacheT>(c.past_value));
   } else {
     tester.AddOptionalInputEdge<T>();
     tester.AddOptionalInputEdge<T>();
@@ -239,20 +239,24 @@ void RunDynamicSparseAttentionCase(
     tester.AddOptionalInputEdge<int32_t>();
   }
   if (!c.key_scale.empty() || !c.value_scale.empty()) {
-    if (c.key_scale.empty()) tester.AddOptionalInputEdge<float>();
-    else tester.AddInput<float>("key_scale", {int64_t(c.key_scale.size())}, c.key_scale);
-    if (c.value_scale.empty()) tester.AddOptionalInputEdge<float>();
-    else tester.AddInput<float>("value_scale", {int64_t(c.value_scale.size())}, c.value_scale);
+    if (c.key_scale.empty())
+      tester.AddOptionalInputEdge<float>();
+    else
+      tester.AddInput<float>("key_scale", {int64_t(c.key_scale.size())}, c.key_scale);
+    if (c.value_scale.empty())
+      tester.AddOptionalInputEdge<float>();
+    else
+      tester.AddInput<float>("value_scale", {int64_t(c.value_scale.size())}, c.value_scale);
   }
 
   tester.AddOutput<T>("output", {c.batch_size, c.sequence_length, hidden_size},
                       ToTensorData<T>(c.expected_output));
   tester.AddOutput<CacheT>("present_key",
-                      {c.batch_size, c.kv_num_heads, c.cache_sequence_length, c.head_size},
-                      ToTensorData<CacheT>(c.expected_present_key));
+                           {c.batch_size, c.kv_num_heads, c.cache_sequence_length, c.head_size},
+                           ToTensorData<CacheT>(c.expected_present_key));
   tester.AddOutput<CacheT>("present_value",
-                      {c.batch_size, c.kv_num_heads, c.cache_sequence_length, c.head_size},
-                      ToTensorData<CacheT>(c.expected_present_value));
+                           {c.batch_size, c.kv_num_heads, c.cache_sequence_length, c.head_size},
+                           ToTensorData<CacheT>(c.expected_present_value));
   if (c.expected_validation_status.has_value()) {
     tester.AddOutput<int32_t>("validation_status", {1}, {*c.expected_validation_status});
   }
@@ -420,11 +424,11 @@ TEST(DynamicSparseAttentionTest, Int8CacheRejectsMissingOrMalformedScales_CUDA) 
     } else {
       c.key_scale.resize(8);
     }
-    const char* error = variant == 0 ? "INT8 caches require per-channel"
-                       : variant == 1 ? "must be provided together"
-                                      : "INT8 cache scales must have shape";
+    const char* error = variant == 0   ? "INT8 caches require per-channel"
+                        : variant == 1 ? "must be provided together"
+                                       : "INT8 cache scales must have shape";
     RunDynamicSparseAttentionCase<float, int8_t>(c, std::move(cuda_ep),
-                                                OpTester::ExpectResult::kExpectFailure, error);
+                                                 OpTester::ExpectResult::kExpectFailure, error);
   }
 }
 
@@ -517,14 +521,14 @@ DynamicSparseAttentionCase MakeGroupedInt8CacheCase(int sequence_length, bool au
         double dot = 0.0;
         for (int d = 0; d < c.head_size; ++d) {
           const float key = from_auxiliary ? c.auxiliary_key[offset + d]
-                                          : c.expected_present_key[offset + d] * c.key_scale[kv * c.head_size + d];
+                                           : c.expected_present_key[offset + d] * c.key_scale[kv * c.head_size + d];
           dot += c.query[out + d] * key;
         }
         const double weight = std::exp(dot * c.scale);
         denominator += weight;
         for (int d = 0; d < c.head_size; ++d) {
           const float value = from_auxiliary ? c.auxiliary_value[offset + d]
-                                            : c.expected_present_value[offset + d] * c.value_scale[kv * c.head_size + d];
+                                             : c.expected_present_value[offset + d] * c.value_scale[kv * c.head_size + d];
           numerator[d] += static_cast<float>(weight * value);
         }
       }

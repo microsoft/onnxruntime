@@ -3477,55 +3477,55 @@ that are multiplied to query and key before the inner product of query and key i
 )DOC";
 static OpSchema RotaryEmbeddingSchema() {
   return OpSchema()
-        .SetDoc(RotaryEmbedding_ver1_doc)
-        .Attr("scale",
-              "Custom scale will be used if specified. Default value is 1.0",
-              AttributeProto::FLOAT,
-              OPTIONAL_VALUE)
-        .Attr("interleaved",
-              "Indicates whether the input has real and imaginary parts interleaved. "
-              "Default value is 0 (False), meaning the first half of the input consists of real values "
-              "and the second half consists of imaginary values.",
-              AttributeProto::INT,
-              OPTIONAL_VALUE)
-        .Attr("rotary_embedding_dim",
-              "Rotary embedding dimension. Default value is 0.",
-              AttributeProto::INT,
-              OPTIONAL_VALUE)
-        .Attr("num_heads",
-              "Number of attention heads. Default value is 0. Must use with rotary_embedding_dim",
-              AttributeProto::INT,
-              OPTIONAL_VALUE)
-        .Attr("is_packed_batching",
-              "ragged batch inputs or not. Default value is 0",
-              AttributeProto::INT,
-              OPTIONAL_VALUE)
-        .Input(0,
-               "input",
-               "3D tensor with shape (batch_size, sequence_length, hidden_size) or 4D with shape (batch_size, num_heads, sequence_length, head_size)",
-               "T")
-        .Input(1,
-               "position_ids",
-               "1D tensor with shape (1) or 2D tensor with shape (batch_size, sequence_length)",
-               "M")
-        .Input(2,
-               "cos_cache",
-               "2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)",
-               "T")
-        .Input(3,
-               "sin_cache",
-               "2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)",
-               "T")
-        .Output(0,
-                "output",
-                "tensor with same shape as input.",
-                "T")
-        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
-        .TypeConstraint("M", {"tensor(int64)"}, "Constrain input and output types to integer tensors")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          propagateShapeFromInputToOutput(ctx, 0, 0);
-        });
+      .SetDoc(RotaryEmbedding_ver1_doc)
+      .Attr("scale",
+            "Custom scale will be used if specified. Default value is 1.0",
+            AttributeProto::FLOAT,
+            OPTIONAL_VALUE)
+      .Attr("interleaved",
+            "Indicates whether the input has real and imaginary parts interleaved. "
+            "Default value is 0 (False), meaning the first half of the input consists of real values "
+            "and the second half consists of imaginary values.",
+            AttributeProto::INT,
+            OPTIONAL_VALUE)
+      .Attr("rotary_embedding_dim",
+            "Rotary embedding dimension. Default value is 0.",
+            AttributeProto::INT,
+            OPTIONAL_VALUE)
+      .Attr("num_heads",
+            "Number of attention heads. Default value is 0. Must use with rotary_embedding_dim",
+            AttributeProto::INT,
+            OPTIONAL_VALUE)
+      .Attr("is_packed_batching",
+            "ragged batch inputs or not. Default value is 0",
+            AttributeProto::INT,
+            OPTIONAL_VALUE)
+      .Input(0,
+             "input",
+             "3D tensor with shape (batch_size, sequence_length, hidden_size) or 4D with shape (batch_size, num_heads, sequence_length, head_size)",
+             "T")
+      .Input(1,
+             "position_ids",
+             "1D tensor with shape (1) or 2D tensor with shape (batch_size, sequence_length)",
+             "M")
+      .Input(2,
+             "cos_cache",
+             "2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)",
+             "T")
+      .Input(3,
+             "sin_cache",
+             "2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)",
+             "T")
+      .Output(0,
+              "output",
+              "tensor with same shape as input.",
+              "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("M", {"tensor(int64)"}, "Constrain input and output types to integer tensors")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+      });
 }
 
 ONNX_MS_OPERATOR_SET_SCHEMA(RotaryEmbedding, 1, RotaryEmbeddingSchema());
@@ -4689,15 +4689,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     CausalConvWithState, 1,
     OpSchema()
         .SetDoc(CausalConvWithState_ver1_doc)
-        .Attr("input_channels", "CUDA channels-last input channel slice width; 0 selects all channels. "
+        .Attr("input_channels",
+              "CUDA channels-last input channel slice width; 0 selects all channels. "
               "Nondefault extended attributes require rank-3 input and state_window=0.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("input_channel_offset", "Starting channel of the channels-last input slice (CUDA only).",
               AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("state_length", "Carry history length (CUDA only); 0 uses (kernel_size-1)*dilation. "
+        .Attr("state_length",
+              "Carry history length (CUDA only); 0 uses (kernel_size-1)*dilation. "
               "An explicit length must cover the receptive field; convolution reads its trailing history.",
               AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("state_channels_last", "State layout override (CUDA only): -1 follows channels_last, "
+        .Attr("state_channels_last",
+              "State layout override (CUDA only): -1 follows channels_last, "
               "0 uses [B,C,state_length], 1 uses [B,state_length,C].",
               AttributeProto::INT, static_cast<int64_t>(-1))
         .Attr("activation",
@@ -4781,9 +4784,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "(seq_len - W + j). Extended attributes override the state length and layout "
                 "as for past_state.",
                 "T")
-        .Output(2, "first_state", "Optional carry state after the first input position, with the same "
+        .Output(2, "first_state",
+                "Optional carry state after the first input position, with the same "
                 "layout and length as present_state. CUDA only; requires rank-3 channels-last input "
-                "and state_window=0.", "T", OpSchema::Optional)
+                "and state_window=0.",
+                "T", OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
@@ -5763,20 +5768,26 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("q_stride", "Per-head stride in the packed projection.", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("tok_stride", "Per-token stride in the packed projection.", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("q_offset", "Offset of the query projection within each token.", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("broadcast_gate", "When one, projection has the attention shape with final dimension one. "
-              "Packed layout attributes must be zero. CUDA only.", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("sigmoid_in_fp32", "One computes sigmoid in FP32 before BF16 conversion. Zero preserves "
+        .Attr("broadcast_gate",
+              "When one, projection has the attention shape with final dimension one. "
+              "Packed layout attributes must be zero. CUDA only.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("sigmoid_in_fp32",
+              "One computes sigmoid in FP32 before BF16 conversion. Zero preserves "
               "the input-type intermediate arithmetic of CUDA Sigmoid, including subtraction on negative inputs.",
               AttributeProto::INT, static_cast<int64_t>(1))
-        .Attr("silu_gate", "When one, projection and attention have identical shapes. Multiply the "
+        .Attr("silu_gate",
+              "When one, projection and attention have identical shapes. Multiply the "
               "BF16-rounded sigmoid by projection and round to BF16 before multiplying attention. "
               "Cannot be combined with broadcast_gate or packed layout attributes.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0, "attention", "BF16 attention values.", "T")
         .Input(1, "projection", "BF16 packed projection containing gate values.", "T")
         .Input(2, "residual", "Optional BF16 residual with the attention shape.", "T", OpSchema::Optional)
-        .Output(0, "output", "Attention multiplied by BF16-rounded sigmoid gates, rounded to BF16 "
-                "before optionally adding residual and rounding again.", "T")
+        .Output(0, "output",
+                "Attention multiplied by BF16-rounded sigmoid gates, rounded to BF16 "
+                "before optionally adding residual and rounding again.",
+                "T")
         .TypeConstraint("T", {"tensor(bfloat16)"}, "Inputs and output use BF16.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -5947,64 +5958,66 @@ WebGPU currently supports only the default mode without Y_fp32.
 
 static OpSchema BranchwiseRMSNormSchema() {
   return OpSchema()
-        .SetDoc(BranchwiseRMSNorm_ver1_doc)
-        .Attr("epsilon", "Epsilon added before reciprocal square root.",
-              AttributeProto::FLOAT, 1e-5f)
-        .Attr("num_branches",
-              "Number of branches for flattened input. Omit or set to zero for grouped input.",
-              AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("use_onnx_arithmetic",
-              "Use explicit FP32 mean/sqrt/divide/multiply arithmetic instead of reciprocal RMS. "
-              "Supported values are 0 (default) and 1.",
-              AttributeProto::INT, static_cast<int64_t>(0))
-        .Input(0, "X", "Grouped (..., C, H) or flattened (..., C * H) input.", "T")
-        .Input(1, "scale", "Optional scale with shape (C * H), (C, H), or (H).",
-               "M", OpSchema::Optional)
-        .Output(0, "Y", "RMS-normalized output with the same shape as X.", "T")
-        .Output(1, "Y_fp32", "Optional float32 widening of the already T-rounded Y. "
-                "Requires use_onnx_arithmetic=1.", "F", OpSchema::Optional)
-        .TypeConstraint("T",
-                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
-                        "Constrain input and output to floating-point tensors.")
-        .TypeConstraint("M",
-                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
-                        "Constrain scale to floating-point tensors.")
-        .TypeConstraint("F", {"tensor(float)"}, "Widened output is float32.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          const auto start = getAttribute(ctx, "input_start", 0);
-          const auto width = getAttribute(ctx, "input_width", 0);
-          if (start < 0 || width < 0 || (width == 0 && start != 0)) {
-            fail_shape_inference("input_start and input_width must describe a nonnegative slice");
+      .SetDoc(BranchwiseRMSNorm_ver1_doc)
+      .Attr("epsilon", "Epsilon added before reciprocal square root.",
+            AttributeProto::FLOAT, 1e-5f)
+      .Attr("num_branches",
+            "Number of branches for flattened input. Omit or set to zero for grouped input.",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("use_onnx_arithmetic",
+            "Use explicit FP32 mean/sqrt/divide/multiply arithmetic instead of reciprocal RMS. "
+            "Supported values are 0 (default) and 1.",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Input(0, "X", "Grouped (..., C, H) or flattened (..., C * H) input.", "T")
+      .Input(1, "scale", "Optional scale with shape (C * H), (C, H), or (H).",
+             "M", OpSchema::Optional)
+      .Output(0, "Y", "RMS-normalized output with the same shape as X.", "T")
+      .Output(1, "Y_fp32",
+              "Optional float32 widening of the already T-rounded Y. "
+              "Requires use_onnx_arithmetic=1.",
+              "F", OpSchema::Optional)
+      .TypeConstraint("T",
+                      {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                      "Constrain input and output to floating-point tensors.")
+      .TypeConstraint("M",
+                      {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                      "Constrain scale to floating-point tensors.")
+      .TypeConstraint("F", {"tensor(float)"}, "Widened output is float32.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        const auto start = getAttribute(ctx, "input_start", 0);
+        const auto width = getAttribute(ctx, "input_width", 0);
+        if (start < 0 || width < 0 || (width == 0 && start != 0)) {
+          fail_shape_inference("input_start and input_width must describe a nonnegative slice");
+        }
+        if (width != 0 && (getAttribute(ctx, "use_onnx_arithmetic", 0) != 1 ||
+                           getAttribute(ctx, "num_branches", 0) != 0)) {
+          fail_shape_inference("input_width requires use_onnx_arithmetic=1 and grouped input");
+        }
+        if (hasInputShape(ctx, 0)) {
+          auto shape = getInputShape(ctx, 0);
+          if (width != 0) {
+            if (shape.dim_size() < 2) fail_shape_inference("grouped input requires rank at least two");
+            auto* last = shape.mutable_dim(shape.dim_size() - 1);
+            if (last->has_dim_value() && (start > last->dim_value() || width > last->dim_value() - start)) {
+              fail_shape_inference("input slice exceeds the last dimension");
+            }
+            last->set_dim_value(width);
           }
-          if (width != 0 && (getAttribute(ctx, "use_onnx_arithmetic", 0) != 1 ||
-                             getAttribute(ctx, "num_branches", 0) != 0)) {
-            fail_shape_inference("input_width requires use_onnx_arithmetic=1 and grouped input");
+          updateOutputShape(ctx, 0, shape);
+        }
+        if (ctx.getNumOutputs() > 1) {
+          if (getAttribute(ctx, "use_onnx_arithmetic", 0) != 1) {
+            fail_shape_inference("Y_fp32 requires use_onnx_arithmetic=1");
           }
+          updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
           if (hasInputShape(ctx, 0)) {
             auto shape = getInputShape(ctx, 0);
-            if (width != 0) {
-              if (shape.dim_size() < 2) fail_shape_inference("grouped input requires rank at least two");
-              auto* last = shape.mutable_dim(shape.dim_size() - 1);
-              if (last->has_dim_value() && (start > last->dim_value() || width > last->dim_value() - start)) {
-                fail_shape_inference("input slice exceeds the last dimension");
-              }
-              last->set_dim_value(width);
-            }
-            updateOutputShape(ctx, 0, shape);
+            if (width != 0) shape.mutable_dim(shape.dim_size() - 1)->set_dim_value(width);
+            updateOutputShape(ctx, 1, shape);
           }
-          if (ctx.getNumOutputs() > 1) {
-            if (getAttribute(ctx, "use_onnx_arithmetic", 0) != 1) {
-              fail_shape_inference("Y_fp32 requires use_onnx_arithmetic=1");
-            }
-            updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-            if (hasInputShape(ctx, 0)) {
-              auto shape = getInputShape(ctx, 0);
-              if (width != 0) shape.mutable_dim(shape.dim_size() - 1)->set_dim_value(width);
-              updateOutputShape(ctx, 1, shape);
-            }
-          }
-        });
+        }
+      });
 }
 
 ONNX_MS_OPERATOR_SET_SCHEMA(BranchwiseRMSNorm, 1, BranchwiseRMSNormSchema());
@@ -6013,7 +6026,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     BranchwiseRMSNormSchema()
         .Attr("input_start", "CUDA-only starting offset in the last input dimension.",
               AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("input_width", "CUDA-only width selected from the last input dimension before normalization. "
+        .Attr("input_width",
+              "CUDA-only width selected from the last input dimension before normalization. "
               "Zero retains the full input. Requires grouped input and use_onnx_arithmetic=1. "
               "Outputs retain the leading dimensions and use this last dimension.",
               AttributeProto::INT, static_cast<int64_t>(0)));

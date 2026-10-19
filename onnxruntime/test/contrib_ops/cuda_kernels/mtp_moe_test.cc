@@ -102,7 +102,7 @@ std::vector<uint8_t> MakeNvfp4Weights(int experts, int rows, int k) {
   for (int expert = 0; expert < experts; ++expert) {
     for (int row = 0; row < rows; ++row) {
       uint8_t* weight_row = weights.data() +
-                           (static_cast<size_t>(expert) * rows + row) * row_bytes;
+                            (static_cast<size_t>(expert) * rows + row) * row_bytes;
       for (int column = 0; column < k; ++column) {
         const uint8_t code = static_cast<uint8_t>((expert * 13 + row * 7 + column * 3 + column / 17) & 0xf);
         uint8_t& packed = weight_row[column >> 1];
@@ -211,7 +211,8 @@ ReferenceResult ReferenceMtpMoe(const std::vector<__nv_bfloat16>& input,
       const size_t expert_offset = static_cast<size_t>(expert) * hidden * down_row_bytes;
       const uint8_t* weight_row = down.data() + expert_offset + output_column * down_row_bytes;
       const float down_sum = RoundBf16(ReferenceNvfp4Dot(
-          weight_row, result.hidden.data() + slot * ffn, ffn) * kDownGlobalScale);
+                                           weight_row, result.hidden.data() + slot * ffn, ffn) *
+                                       kDownGlobalScale);
       const float weighted = RoundBf16(down_sum * result.routing_weights[slot]);
       total += weighted;
     }
@@ -234,7 +235,7 @@ TEST(CUDA_EP_Unittest, MtpMoeRouterSelectsStableTopTenAndBf16Normalizes) {
   cudaStream_t stream = nullptr;
   CheckCuda(cudaStreamCreate(&stream));
   const Status status = mtp_moe::LaunchRouter(device_logits.As<__nv_bfloat16>(),
-                                               device_scratch.As<float>(), rows, stream);
+                                              device_scratch.As<float>(), rows, stream);
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   CheckCuda(cudaStreamSynchronize(stream));
   CheckCuda(cudaStreamDestroy(stream));

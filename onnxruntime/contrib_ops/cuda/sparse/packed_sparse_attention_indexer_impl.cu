@@ -667,7 +667,7 @@ __global__ void QsaMergeTileTopKKernel(const uint64_t* input_keys, uint64_t* out
 }
 
 __global__ void QsaMergeTwoLevelsTopKKernel(const uint64_t* input_keys, uint64_t* output_keys,
-                                          int key_stride, int list_width, int rows) {
+                                            int key_stride, int list_width, int rows) {
   __shared__ uint64_t inputs[4 * kBoundedTopKMax];
   __shared__ uint64_t intermediate[2 * kBoundedTopKMax];
   const int groups_per_row = (key_stride + 4 * list_width - 1) / (4 * list_width);
@@ -1515,7 +1515,7 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     const int64_t tile_work =
         static_cast<int64_t>(params.total_tokens) * std::min(tile_count, kHierarchicalScoreMaxBlocksPerRow);
     QsaScoreTileTopKKernel<T, TState><<<static_cast<int>(std::min<int64_t>(tile_work, kSaiMaxGridDimX)),
-                                kHierarchicalTileScoreThreads, 0, stream>>>(
+                                        kHierarchicalTileScoreThreads, 0, stream>>>(
         present_key_state, query_rotated, cumulative_sequence_lengths, past_sequence_lengths, position_ids,
         present_state_lengths, overflow_flags, merge_input, tile_count, params);
     static const bool use_radix_topk =
@@ -1530,7 +1530,7 @@ Status LaunchQsaPackedSparseAttentionIndexer(
           const int groups_per_row = (key_stride + 4 * list_width - 1) / (4 * list_width);
           const int64_t merge_work = static_cast<int64_t>(params.total_tokens) * groups_per_row;
           QsaMergeTwoLevelsTopKKernel<<<static_cast<int>(std::min<int64_t>(merge_work, kSaiMaxGridDimX)),
-                                       kHierarchicalMergeThreads, 0, stream>>>(
+                                        kHierarchicalMergeThreads, 0, stream>>>(
               merge_input, merge_output, key_stride, list_width, params.total_tokens);
           list_width *= 4;
         } else {
@@ -1663,10 +1663,10 @@ Status LaunchCsaPackedSparseAttentionIndexer(
   return CUDA_CALL(cudaGetLastError());
 }
 
-#define INSTANTIATE_QSA(T, TState)                                                                                \
-  template Status LaunchQsaPackedSparseAttentionIndexer<T, TState>(                                               \
-      cudaStream_t, const PackedSparseAttentionIndexerParams&, const T*, const T*, const T*, const T*,            \
-      const T*, const T*, const int32_t*, const int32_t*, const int64_t*, const TState*, const T*,                \
+#define INSTANTIATE_QSA(T, TState)                                                                     \
+  template Status LaunchQsaPackedSparseAttentionIndexer<T, TState>(                                    \
+      cudaStream_t, const PackedSparseAttentionIndexerParams&, const T*, const T*, const T*, const T*, \
+      const T*, const T*, const int32_t*, const int32_t*, const int64_t*, const TState*, const T*,     \
       const int32_t*, const int32_t*, bool, int32_t*, int32_t*, TState*, T*, int32_t*, T*, float*, int32_t*);
 
 #define INSTANTIATE_CSA(T)                                                                                        \
