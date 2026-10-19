@@ -157,6 +157,8 @@ def model_session_options(args):
     if args.cpu_offload_experts > 0:
         session_options["session.moe_cpu_offload_experts"] = str(args.cpu_offload_experts)
         session_options["session.moe_cpu_offload_strategy"] = args.strategy
+        if args.placement_beta != 1:
+            session_options["session.moe_expert_placement_beta"] = str(args.placement_beta)
         if args.on_demand_threshold > 0:
             session_options["session.moe_cpu_offload_on_demand_threshold"] = str(args.on_demand_threshold)
         if args.strategy in ("basic", "layered"):
@@ -250,6 +252,7 @@ def parse_args(argv=None):
     parser.add_argument("--gpu-ratio", type=float, default=0.8)
     parser.add_argument("--layer-order", choices=("first", "last", "middle"), default="first")
     parser.add_argument("--counter-alpha", type=float, default=0.9)
+    parser.add_argument("--placement-beta", type=float, default=1.0)
     parser.add_argument("--swap-epsilon", type=float, default=0.1)
     parser.add_argument("--max-in-flight-swaps-per-device", type=int, default=4)
     parser.add_argument(
@@ -277,6 +280,10 @@ def parse_args(argv=None):
         parser.error("--layer-order requires --strategy basic or layered.")
     if not math.isfinite(args.counter_alpha) or not 0 <= args.counter_alpha <= 1:
         parser.error("--counter-alpha must be finite and in [0, 1].")
+    if not math.isfinite(args.placement_beta) or not 0 <= args.placement_beta <= 1:
+        parser.error("--placement-beta must be finite and in [0, 1].")
+    if args.placement_beta < 1 and (args.cpu_offload_experts == 0 or args.strategy == "basic"):
+        parser.error("--placement-beta below one requires CPU offload with --strategy adaptive or layered.")
     if not math.isfinite(args.swap_epsilon) or args.swap_epsilon < 0:
         parser.error("--swap-epsilon must be finite and non-negative.")
     if args.max_in_flight_swaps_per_device < 0:
@@ -366,6 +373,7 @@ def main():
         "gpu_ratio": args.gpu_ratio,
         "layer_order": args.layer_order,
         "counter_alpha": counter_alpha,
+        "placement_beta": args.placement_beta,
         "swap_epsilon": swap_epsilon,
         "swap": args.swap,
         "max_in_flight_swaps_per_device": args.max_in_flight_swaps_per_device,

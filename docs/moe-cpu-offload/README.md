@@ -41,6 +41,7 @@ alpha `0.9` and epsilon `0.1` and requires an explicit `--cpu-offload-experts` v
 | **`moe_cpu_offload_on_demand_threshold`** | **`--on-demand-threshold N`** | **`0`** | Synchronously swap required CPU experts onto GPU if at most `N` are missing and all selected experts fit existing GPU capacity. CUDA QMoE adaptive/layered only; `0` disables it. |
 | `moe_expert_counter_alpha` | `--counter-alpha` | `0.75` | Popularity decay coefficient in `[0, 1]`; larger values retain longer history. |
 | `moe_expert_counter_probability_weight` | Not exposed | `0` | Weight in `[0, 1]` blending binary expert selection with routing probability when updating offload counters. |
+| `moe_expert_placement_beta` | `--placement-beta` | `1` | Blend popularity with same-QMoE previous-invocation co-selection predictions. Swaps remain at end of Run; requires adaptive/layered placement and sequential execution. |
 | `moe_expert_swap_epsilon` | `--swap-epsilon` | `0.01` | Non-negative relative popularity margin required for background exchanges. Does not gate on-demand swaps. |
 | `moe_max_in_flight_swaps_per_device` | `--max-in-flight-swaps-per-device` | `4` | Maximum concurrent background exchanges per CUDA device. `0` disables background swaps, not on-demand swaps. |
 | `enable_moe_expert_counting` | Not exposed | `0` | Legacy counting flag; does not enable counters without offload. Offload maintains counters independently of this flag. |
@@ -76,13 +77,102 @@ Swaps reuse cached CUDA-packed weights and the existing outgoing CPU repacking p
 If the selected union exceeds the layer's GPU capacity, no demand swaps are performed and CPU execution is retained.
 This threshold is independent of the background swap limit; synchronous swaps also work when that limit is `0`.
 
+To keep early QMoE layers entirely on CPU and later layers partially on GPU, use `layered` with
+`layer_order=last` and choose `K` large enough that the later layers consume all available GPU slots.
+For example, with 40 layers of 256 experts, `K=6144` and `gpu_ratio=0.8` leave the first 19 layers entirely on CPU,
+the last 20 layers with 204 GPU experts each, and the boundary layer with 16 GPU experts. Add
+`session.moe_expert_placement_beta=0.25` (benchmark: `--placement-beta 0.25`) to rank later-layer experts using
+`0.25 * popularity + 0.75 * sum C[current_selected, expert]`. Each QMoE's current selection predicts its own
+next invocation. Background swaps remain at the end of Run, with unchanged epsilon, swap limits, and layer capacities.
+`beta=0` uses only co-selection predictions; `beta=1` preserves popularity-only behavior without correlation matrices
+or any additional per-layer snapshot synchronization. See [counter definitions](#counters-and-predictive-placement) below.
+The benchmark records beta in its result JSON; the historical result tables used the default `1`.
+The [paired beta comparison](#beta-comparison-60-last-more-than-half-of-experts-on-cpu) below measured the earlier
+first-QMoE predictor, not the current same-QMoE temporal predictor.
+
 Supported: FP16/BF16 MoE weights and uniform INT4/INT8 QMoE (`quant_type="int"`, `weights_prepacked=0`).
 Both require FP16/BF16 activations, constant weights and connected biases, a static hidden dimension, and prepacking.
 Offload does not support FC3, sparse mixer, FP32 MoE, other quantization formats, CUDA Graph capture,
 plugin CUDA EP, minimal builds, or overlapping runs on one session.
 
-Details: [operator support](../contrib_ops/cuda/moe_qmoe.md) and
-[counters, saved state, and logging](../MoEExpertCounting.md).
+For operator support, see [MoE/QMoE](../contrib_ops/cuda/moe_qmoe.md).
+
+## Counters and predictive placement
+
+Only offload-eligible built-in CUDA nodes maintain counters, including their CPU-resident experts.
+CPU EP nodes, unsupported nodes, and sessions without offload do not participate.
+Each successful invocation updates popularity `P`; selected experts contribute once, using the union across tokens
+and tiles, including prefill. With probability weight `lambda`, their contribution is
+`(1-lambda) + lambda * max_routing_probability`; unselected experts only decay.
+Counters start at zero and persist across runs. Updates from successful kernels are not rolled back if a later kernel fails.
+
+With `beta<1`, each QMoE `m` maintains its own zero-initialized temporal co-selection matrix:
+
+```text
+S[t,m,j] = 1 if expert j is selected anywhere in invocation t of QMoE m, otherwise 0
+C[m,i,j] <- alpha * C[m,i,j] + (1-alpha) * S[t-1,m,i] * S[t,m,j]
+score_next[m,j] = beta * P[m,j] + (1-beta) * sum(C[m,k,j] for k selected by the current invocation of QMoE m)
+```
+
+All matrix entries decay on each successful invocation with a previous selection; only joint selections add an
+increment. Routing probabilities do not weight `C`, and the sum is not normalized. The first invocation only seeds
+history; an empty selection is a valid sample, not missing history. Each node keeps independent history across Runs,
+including nodes in subgraphs. An unsuccessful Run invalidates previous selections but retains already learned `C`
+and popularity updates. There is no implicit prompt-boundary reset.
+
+GPU usage completion stays deferred until the existing end-of-Run boundary (or the next invocation of the same
+kernel when its snapshot must be reused). There is no first-layer prediction trigger or added per-layer wait.
+After collecting usage, the existing end-of-Run scheduler ranks experts for the next invocation.
+Initial placement is unchanged; non-QMoE nodes retain popularity-only scoring. With 40 QMoEs and 256 experts each,
+the matrices use 20 MiB; `beta=1` allocates none.
+
+### Saved state and diagnostics
+
+`--popularity-output` saves `P`, alpha, and epsilon at session destruction; `--state` restores them.
+Use the same model and graph-optimization settings. Omitted experts start at zero; invalid records fail initialization.
+Neither `C` nor beta is saved or restored. The JSON format is:
+
+```json
+{"alpha": 0.9, "epsilon": 0.1, "experts": [{"moe": 0, "expert": 0, "popularity": 0.42}]}
+```
+
+`moe` is a zero-based ordinal sorted by graph scope and resolved node index, **not** the topological QMoE numbering
+used for prediction; `expert` is local to that node.
+`--counter-log` enables INFO records: `moe_expert_counters`, `moe_expert_swaps`, and `moe_expert_demand_swaps`.
+The 1,024 counter-record limit per run emits `moe_expert_counters_truncated` on overflow; updates continue,
+but analyzers reject truncated traces. Logging adds overhead; keep it off for performance measurements.
+
+Reuse [qmoe_prompt_runner.py](../../tools/python/qmoe_prompt_runner.py) for phase-tagged traces,
+[qmoe_expert_distribution.py](../../tools/python/qmoe_expert_distribution.py) for timelines,
+[qmoe_expert_activation_correlations.py](../../tools/python/qmoe_expert_activation_correlations.py) for correlations,
+and [optimize_qmoe_expert_counters.py](../../tools/python/optimize_qmoe_expert_counters.py) for counter replay.
+Analysis requires the runner's prefill/decode markers: timelines and correlations exclude prefill;
+replay applies its updates but scores only decode.
+
+To log the five standard prompts and compare every QMoE with the **first** QMoE at the same token,
+itself at the previous token, and the **last** QMoE at the previous token, reuse the existing scripts:
+
+```bash
+python tools/python/qmoe_prompt_runner.py /path/to/qwen3.5-35b-cuda-int4 \
+  --prompts-file docs/moe-cpu-offload/benchmark-prompts.json --max-new-tokens 256 \
+  --moe-cpu-offload-experts 1 --moe-expert-counter-alpha 0.9 --moe-max-in-flight-swaps-per-device 0 \
+  --output /tmp/qmoe-prompts.json --counter-log /tmp/qmoe-counters.log
+python tools/python/qmoe_expert_activation_correlations.py /tmp/qmoe-counters.log \
+  --reference-layer first --include-last-layer-previous-token --output-prefix /tmp/first-last-layer-correlations
+```
+
+One CPU expert is required to enable collection; swaps are disabled. Generation can stop on EOS before 256 tokens.
+`--reference-layer first` computes binary Pearson correlations, **not** the EMA co-selection counters `C`.
+The default remains `previous` for adjacent-layer analysis. Temporal pairs never cross prompt boundaries.
+In the NPZ archive, `first_qmoe_same_token[q,j,i]` is `corr(S[t,m,j], S[t,0,i])`, with `m` identified by
+`first_qmoe_current_node_names[q]`; `same_qmoe_previous_token[m,i,j]` correlates the current and previous token
+in the same QMoE. Constant expert activations yield undefined (`NaN`) correlations.
+`--include-last-layer-previous-token` adds `last_qmoe_previous_token[m,i,j]`, correlating `S[t,m,i]` with
+`S[t-1,M-1,j]`, where `M-1` is the last QMoE in the same graph scope. Its heatmap and third series are included
+in the PDF; node names and activation counts are retained in the NPZ. For the last QMoE itself, this relation
+equals its own previous-token correlation.
+The PDF shows all matrices; the summary CSV lists supported extreme pairs, and the selected-experts CSV retains
+all decode selections.
 
 ## Qwen3.5 INT4 benchmark
 
@@ -97,14 +187,18 @@ The 80% and 70% layered series use identical binaries; the default remains 80%.
 Each configuration uses a fresh process and the same [five prompts](benchmark-prompts.json), with 256 greedy
 tokens per prompt. **Prompts 1-2 are warmup; all four metrics use prompts 3-5 only:**
 
-- **Prefill:** mean `append_tokens()` time.
+- **Prefill:** 84 input tokens (25, 28, and 31 for prompts 3-5) / total `append_tokens()` time.
+  For these same prompts, convert the JSON's mean `prefill_ms` to token/s as `28000 / prefill_ms`,
+  not `1000 / prefill_ms`.
 - **Decode:** 762 steady-state tokens / total decode time, excluding the prefill-logits generation call and
   each prompt's first actual decode inference.
 - **Peak GPU:** device-wide NVML memory sampled every 50 ms and at prompt boundaries.
 - **Peak CPU:** current process RSS sampled over the same windows, not lifetime `ru_maxrss`.
 
 Loading and warmup peaks are excluded; allocations still resident during prompts 3-5 are included.
-Published values come from the JSON `measurements` summary, not the whole-process `memory` peaks.
+Published values come from the JSON `measurements` summary, with prefill converted as above,
+not the whole-process `memory` peaks. Prefill and decode are both in **token/s; higher is better**.
+Memory stays in GiB.
 For CPU-only runs, use `--provider cpu --cpu-offload-experts 0 --no-cuda-graph`.
 These runs sample process RSS without requiring `CUDA_VISIBLE_DEVICES` or NVML; GPU memory fields are JSON `null`.
 
@@ -114,119 +208,213 @@ Linux, ORT 1.32.0, GenAI CUDA 0.15.2, CUDA 13.3.73, driver 580.105.08,
 Xeon Platinum 8480C (96 physical cores). Release build, native CUDA architecture, Flash/MEA enabled.
 These are single-run observations on a shared host, not statistical estimates or quality tests.
 
-### Summary: decode throughput (tokens/s)
+### Beta comparison: 60% last, more than half of experts on CPU
+
+Measured **2026-10-19** using the existing `tools/python/benchmark_moe_cpu_offload.py`, with the earlier first-QMoE predictor
+on top of `314bc93103` (uncommitted working-tree changes). Both series used the same freshly rebuilt runtime and CUDA
+provider on **H200 GPU 1**, with `layered`, `gpu_ratio=0.6`, `layer_order=last`, alpha `0.9`, epsilon `0.1`,
+and swap limit **5**. On-demand swaps, counter logging, and CUDA Graph were disabled.
+Each K used a fresh process for beta **1**, then another for beta **0.5**, running serially.
+All five existing prompts generated 256 tokens; **all four metrics below use only prompts 3-5** after prompts 1-2
+warm up each process. Decode counts 762 steady-state tokens per run.
+
+The per-layer GPU target is `floor(0.6 * 256) = 153` experts, or **59.77%**. For K=6144/7168/8192/9216,
+the first 13/19/26/33 layers are entirely CPU-resident, the next boundary layer has 118/12/59/106 GPU experts,
+and the remaining last layers have 153 GPU experts each. **K=10240 is an all-CPU-expert control**:
+other model operations still run on CUDA, but no expert can benefit from predictive GPU placement.
+
+| K: CPU experts | CPU share | Decode beta=1 (token/s) | Decode beta=0.5 (token/s) | Decode change | Prefill beta=1 (token/s) | Prefill beta=0.5 (token/s) |
+|---:|---:|---:|---:|---:|---:|---:|
+| 6144 | 60% | 38.359 | 32.935 | -14.14% | 125.367 | 100.143 |
+| 7168 | 70% | 33.509 | 28.513 | -14.91% | 99.192 | 78.386 |
+| 8192 | 80% | 34.420 | 32.679 | -5.06% | 67.923 | 66.849 |
+| 9216 | 90% | 32.486 | 29.219 | -10.06% | 57.950 | 51.254 |
+| 10240 | 100% | 27.630 | 25.963 | -6.03% | 43.236 | 41.376 |
+
+| K: CPU experts | Peak GPU beta=1 (GiB) | Peak GPU beta=0.5 (GiB) | Peak CPU RSS beta=1 (GiB) | Peak CPU RSS beta=0.5 (GiB) |
+|---:|---:|---:|---:|---:|
+| 6144 | 29.638 | 29.607 | 25.308 | 25.326 |
+| 7168 | 28.039 | 27.992 | 28.886 | 28.906 |
+| 8192 | 26.213 | 26.275 | 32.459 | 32.479 |
+| 9216 | 24.467 | 24.527 | 36.033 | 36.054 |
+| 10240 | 22.658 | 21.658 | 39.537 | 39.525 |
+
+**In this sweep, beta=0.5 did not improve throughput:** decode throughput was 5.1%-14.9% lower and prefill throughput
+was 1.6%-21.0% lower. That implementation eagerly completed usage after every QMoE, including a host wait for the
+CUDA counter-copy completion event in addition to the CPU-expert wait already required by offload.
+This reduced host/GPU overlap and started prediction after the first QMoE's computation,
+not immediately when routing is available. These results include that synchronization, correlation updates, and
+predictive scheduling; they do not isolate the scoring formula. The all-CPU-expert row cannot show a placement benefit
+and also retains those opt-in costs.
+Its 39 correlation matrices occupied 19.5 MiB; measured RSS includes other allocations as well.
+These measurements do not evaluate the current same-QMoE predictor, which removes eager per-layer completion.
+GPU memory is device-wide NVML memory sampled every 50 ms. No external GPU compute processes were present at
+the start of any run, and runtime/provider hashes were unchanged across the sweep, but continuous isolation was not
+enforced. These are one run per configuration on a shared host, not statistical estimates or quality comparisons.
+The 1 GiB lower GPU peak in the all-CPU-expert beta=0.5 run is an observed allocation difference, not evidence of
+expert-placement savings.
+
+[Exact measurements and binary/source provenance](beta-comparison-20261019.json) are retained separately from the
+older cohorts below.
+
+### GPU ratio and beta sweep: 33 of 45 configurations completed
+
+Measured **2026-10-19**, after the paired comparison, with the same earlier first-QMoE runtime/provider binaries
+and benchmark script, not the current temporal predictor.
+The sweep was stopped on request after **33 completed configurations**; it was not resumed.
+Placement is `layered/last`, swap limit **5**, beta **1/0.5/0.1**, with the same five prompts and measurement windows.
+All GPU-1 compute-process checks before runs were empty; continuous isolation was not enforced.
+
+Beta columns show **prefill / decode in token/s**. The final column compares against the **best non-layered strategy
+at the same K**: historical Adaptive, Basic, and the on-demand Adaptive variants. Basic has the highest decode
+throughput among those strategies at all four measured budgets. These baselines were not rerun.
+The partial-sweep results remain separate from the paired-comparison columns in the Summary below.
+
+For reference, the original Adaptive and Basic baselines are also shown explicitly, in **prefill / decode token/s**:
+
+| K: CPU experts | Adaptive | Basic |
+|---:|---:|---:|
+| 6144 | 86.313 / 30.664 | 82.124 / 39.411 |
+| 7168 | 85.651 / 29.203 | 63.536 / 36.474 |
+| 8192 | 64.482 / 27.003 | 48.445 / 33.758 |
+| 9216 | 66.962 / 25.696 | 51.711 / 29.513 |
+
+| K: CPU experts | GPU target per layer | beta=1 | beta=0.5 | beta=0.1 | Best non-layered decode (token/s) and strategy |
+|---:|---:|---:|---:|---:|---|
+| 6144 | 60% | 124.715 / 35.123 | 112.586 / 34.558 | 114.817 / 31.606 | **39.411** - Basic |
+| 6144 | 70% | 131.807 / 42.161 | 112.304 / 31.364 | 115.604 / 31.838 | **39.411** - Basic |
+| 6144 | 80% | 78.763 / 40.208 | 87.111 / 36.023 | 103.450 / 35.843 | **39.411** - Basic |
+| 7168 | 60% | 94.385 / 34.842 | 74.305 / 30.641 | 63.228 / 28.782 | **36.474** - Basic |
+| 7168 | 70% | 76.499 / 35.994 | 80.104 / 32.001 | 70.721 / 32.586 | **36.474** - Basic |
+| 7168 | 80% | 67.606 / 36.534 | 68.902 / 33.626 | 67.243 / 34.718 | **36.474** - Basic |
+| 8192 | 60% | 63.793 / 36.306 | 65.925 / 30.521 | 61.086 / 31.280 | **33.758** - Basic |
+| 8192 | 70% | 63.549 / 35.796 | 82.178 / 32.407 | 59.812 / 30.455 | **33.758** - Basic |
+| 8192 | 80% | 59.330 / 33.014 | 59.441 / 30.601 | 61.887 / 28.459 | **33.758** - Basic |
+| 9216 | 60% | 47.917 / 31.595 | 59.584 / 29.329 | 52.812 / 27.619 | **29.513** - Basic |
+| 9216 | 70% | 52.532 / 30.591 | 50.401 / 27.063 | 50.788 / 26.934 | **29.513** - Basic |
+| 9216 | 80% | n/a | n/a | n/a | **29.513** - Basic |
+
+`n/a` means not measured. No K=10240 configuration completed in this sweep.
+Beta=1 gave the highest decode throughput in all **11 measured ratio/budget groups**.
+Beta<1 sometimes improved prefill, but retains the eager-completion overhead described above.
+These are single-run observations, not paired reruns or a statistically established ranking against the historical
+baselines. The all-strategy best values, including Layered, remain in the final Tables section.
+[Exact partial results, memory peaks, provenance, and missing configurations](ratio-beta-comparison-20261019.json).
+
+### Summary: decode throughput (token/s)
 
 Highest observed rate per row in **bold**. The matching prefill summary follows; memory peaks are detailed below.
 Percentage columns use layered placement; the swap limit is 5 unless noted.
 `earlier` identifies the original cohort, kept separate from the fresh position sweep.
-`N=1`/`N=2` are on-demand thresholds. **Those new series have possible GPU interference;
+`N=1`/`N=2` are on-demand thresholds. **Those series have possible GPU interference;
 see the [sweep warning](#on-demand-threshold-sweep).** Their K=0 columns share two fresh all-GPU controls
-with the threshold disabled. `n/a` means K=10240 was omitted from this sweep.
+with the threshold disabled. `new` identifies the 2026-10-19 beta series, kept separate from historical cohorts.
+`n/a` means the configuration was not measured: K=10240 for the on-demand series, K<6144 for the beta series.
 
-| K | CUDA Graph | Adaptive | Basic | 80% first (earlier) | 80% first | 80% last | 60% middle | 80% middle | 60% last, limit 16 | Adaptive N=1 | Adaptive N=2 | 80% first N=1 | 80% first N=2 |
-|---:|:---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 0 | Off | 129.930 | 132.550 | 132.599 | **133.797** | 132.785 | 130.385 | 132.991 | 128.579 | 127.829 | 127.829 | 127.829 | 127.829 |
-| 0 | On | **169.841** | 168.622 | 169.083 | 169.261 | 169.252 | 168.924 | 168.922 | 168.794 | 168.862 | 168.862 | 168.862 | 168.862 |
-| 1024 | Off | 79.855 | 85.967 | 93.633 | 94.298 | 80.914 | 63.721 | 75.744 | 64.073 | 92.155 | 87.180 | **105.088** | 96.845 |
-| 2048 | Off | 57.834 | 70.539 | 55.676 | 65.174 | 58.292 | 52.113 | 64.308 | 53.446 | 68.595 | **74.055** | 73.977 | 65.891 |
-| 3072 | Off | 39.793 | 59.878 | 47.379 | 51.002 | **59.988** | 40.027 | 56.550 | 41.665 | 54.189 | 49.423 | 54.272 | 56.441 |
-| 4096 | Off | 37.036 | 46.850 | 47.085 | 48.925 | 46.634 | 37.154 | 49.947 | 35.319 | 44.061 | 37.448 | **50.377** | 45.613 |
-| 5120 | Off | 33.336 | 44.232 | 44.921 | 42.609 | 43.093 | 38.010 | 43.170 | **47.282** | 34.105 | 25.579 | 44.327 | 42.273 |
-| 6144 | Off | 30.664 | 39.411 | 39.614 | 38.250 | **40.834** | 35.520 | 40.261 | 38.835 | 28.010 | 20.759 | 38.657 | 38.375 |
-| 7168 | Off | 29.203 | 36.474 | 37.084 | 36.665 | 35.100 | **39.643** | 36.239 | 31.635 | 27.997 | 17.475 | 36.679 | 34.063 |
-| 8192 | Off | 27.003 | 33.758 | 31.864 | 34.057 | 33.221 | 31.682 | 33.543 | **36.897** | 27.923 | 23.315 | 33.569 | 15.156 |
-| 9216 | Off | 25.696 | 29.513 | **31.617** | 29.195 | 30.360 | 31.323 | 27.604 | 30.168 | 25.263 | 25.418 | 4.866 | 29.398 |
-| 10240 | Off | 27.032 | 27.746 | **29.069** | 28.076 | 27.909 | 27.726 | 26.408 | 27.640 | n/a | n/a | n/a | n/a |
+| K | CUDA Graph | Adaptive | Basic | 80% first (earlier) | 80% first | 80% last | 60% middle | 80% middle | 60% last, limit 16 | Adaptive N=1 | Adaptive N=2 | 80% first N=1 | 80% first N=2 | 60% last beta=1 (new) | 60% last beta=0.5 (new) |
+|---:|:---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | Off | 129.930 | 132.550 | 132.599 | **133.797** | 132.785 | 130.385 | 132.991 | 128.579 | 127.829 | 127.829 | 127.829 | 127.829 | n/a | n/a |
+| 0 | On | **169.841** | 168.622 | 169.083 | 169.261 | 169.252 | 168.924 | 168.922 | 168.794 | 168.862 | 168.862 | 168.862 | 168.862 | n/a | n/a |
+| 1024 | Off | 79.855 | 85.967 | 93.633 | 94.298 | 80.914 | 63.721 | 75.744 | 64.073 | 92.155 | 87.180 | **105.088** | 96.845 | n/a | n/a |
+| 2048 | Off | 57.834 | 70.539 | 55.676 | 65.174 | 58.292 | 52.113 | 64.308 | 53.446 | 68.595 | **74.055** | 73.977 | 65.891 | n/a | n/a |
+| 3072 | Off | 39.793 | 59.878 | 47.379 | 51.002 | **59.988** | 40.027 | 56.550 | 41.665 | 54.189 | 49.423 | 54.272 | 56.441 | n/a | n/a |
+| 4096 | Off | 37.036 | 46.850 | 47.085 | 48.925 | 46.634 | 37.154 | 49.947 | 35.319 | 44.061 | 37.448 | **50.377** | 45.613 | n/a | n/a |
+| 5120 | Off | 33.336 | 44.232 | 44.921 | 42.609 | 43.093 | 38.010 | 43.170 | **47.282** | 34.105 | 25.579 | 44.327 | 42.273 | n/a | n/a |
+| 6144 | Off | 30.664 | 39.411 | 39.614 | 38.250 | **40.834** | 35.520 | 40.261 | 38.835 | 28.010 | 20.759 | 38.657 | 38.375 | 38.359 | 32.935 |
+| 7168 | Off | 29.203 | 36.474 | 37.084 | 36.665 | 35.100 | **39.643** | 36.239 | 31.635 | 27.997 | 17.475 | 36.679 | 34.063 | 33.509 | 28.513 |
+| 8192 | Off | 27.003 | 33.758 | 31.864 | 34.057 | 33.221 | 31.682 | 33.543 | **36.897** | 27.923 | 23.315 | 33.569 | 15.156 | 34.420 | 32.679 |
+| 9216 | Off | 25.696 | 29.513 | 31.617 | 29.195 | 30.360 | 31.323 | 27.604 | 30.168 | 25.263 | 25.418 | 4.866 | 29.398 | **32.486** | 29.219 |
+| 10240 | Off | 27.032 | 27.746 | **29.069** | 28.076 | 27.909 | 27.726 | 26.408 | 27.640 | n/a | n/a | n/a | n/a | 27.630 | 25.963 |
 
-### Summary: prefill (ms)
+### Summary: prefill throughput (token/s)
 
-Lowest observed time per row in **bold**, using the same configurations and cohorts as the decode summary.
-The same [GPU-interference warning](#on-demand-threshold-sweep) applies to the new N=1/N=2 columns.
+Highest observed rate per row in **bold**, using the same configurations and cohorts as the decode summary.
+The same [GPU-interference warning](#on-demand-threshold-sweep) applies to the N=1/N=2 columns.
 
-| K | CUDA Graph | Adaptive | Basic | 80% first (earlier) | 80% first | 80% last | 60% middle | 80% middle | 60% last, limit 16 | Adaptive N=1 | Adaptive N=2 | 80% first N=1 | 80% first N=2 |
-|---:|:---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 0 | Off | 21.134 | 20.898 | 21.309 | **20.719** | 20.737 | 20.954 | 20.797 | 21.143 | 21.078 | 21.078 | 21.078 | 21.078 |
-| 0 | On | 21.391 | 21.840 | 21.683 | 21.669 | 21.774 | 21.496 | 22.871 | 21.560 | **21.331** | **21.331** | **21.331** | **21.331** |
-| 1024 | Off | 33.829 | 84.129 | 30.196 | **29.604** | 33.209 | 63.106 | 42.469 | 55.736 | 39.334 | 53.795 | 29.975 | 36.094 |
-| 2048 | Off | 46.457 | 146.529 | 48.208 | 43.247 | **42.243** | 115.714 | 44.856 | 63.772 | 62.269 | 58.298 | 49.054 | 99.362 |
-| 3072 | Off | 152.712 | 193.798 | 115.884 | 111.006 | 105.315 | 172.761 | 107.787 | 85.188 | **58.347** | 89.459 | 108.784 | 101.010 |
-| 4096 | Off | 209.657 | 249.523 | 189.019 | 191.018 | 157.959 | 208.917 | 186.702 | 101.023 | **95.028** | 113.821 | 203.647 | 245.073 |
-| 5120 | Off | 297.205 | 335.351 | 214.011 | 266.120 | 194.461 | 217.876 | 272.631 | **118.835** | 156.540 | 162.494 | 269.312 | 247.682 |
-| 6144 | Off | 324.400 | 340.948 | 259.104 | 375.611 | 332.403 | 228.786 | 358.748 | **195.748** | 270.250 | 219.496 | 343.207 | 423.817 |
-| 7168 | Off | 326.908 | 440.696 | 364.987 | 369.580 | 439.249 | **307.013** | 374.420 | 379.688 | 369.866 | 335.098 | 411.831 | 429.193 |
-| 8192 | Off | 434.233 | 577.976 | 554.616 | 521.061 | 422.721 | 452.714 | **369.965** | 440.986 | 386.245 | 381.292 | 450.956 | 701.088 |
-| 9216 | Off | 418.149 | 541.466 | 624.173 | 565.593 | 602.627 | 437.221 | 508.575 | 438.548 | 410.442 | **393.795** | 899.263 | 651.025 |
-| 10240 | Off | **574.325** | 633.668 | 652.343 | 676.826 | 805.693 | 604.649 | 657.629 | 624.423 | n/a | n/a | n/a | n/a |
+| K | CUDA Graph | Adaptive | Basic | 80% first (earlier) | 80% first | 80% last | 60% middle | 80% middle | 60% last, limit 16 | Adaptive N=1 | Adaptive N=2 | 80% first N=1 | 80% first N=2 | 60% last beta=1 (new) | 60% last beta=0.5 (new) |
+|---:|:---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | Off | 1324.879 | 1339.841 | 1313.999 | **1351.417** | 1350.244 | 1336.260 | 1346.348 | 1324.315 | 1328.399 | 1328.399 | 1328.399 | 1328.399 | n/a | n/a |
+| 0 | On | 1308.962 | 1282.051 | 1291.334 | 1292.169 | 1285.937 | 1302.568 | 1224.258 | 1298.701 | **1312.644** | **1312.644** | **1312.644** | **1312.644** | n/a | n/a |
+| 1024 | Off | 827.692 | 332.822 | 927.275 | **945.818** | 843.145 | 443.698 | 659.304 | 502.368 | 711.852 | 520.494 | 934.112 | 775.752 | n/a | n/a |
+| 2048 | Off | 602.708 | 191.088 | 580.816 | 647.444 | **662.832** | 241.976 | 624.220 | 439.064 | 449.662 | 480.291 | 570.800 | 281.798 | n/a | n/a |
+| 3072 | Off | 183.352 | 144.480 | 241.621 | 252.239 | 265.869 | 162.074 | 259.772 | 328.685 | **479.888** | 312.993 | 257.391 | 277.200 | n/a | n/a |
+| 4096 | Off | 133.551 | 112.214 | 148.133 | 146.583 | 177.261 | 134.025 | 149.972 | 277.165 | **294.650** | 246.000 | 137.493 | 114.252 | n/a | n/a |
+| 5120 | Off | 94.211 | 83.495 | 130.834 | 105.216 | 143.988 | 128.513 | 102.703 | **235.621** | 178.868 | 172.314 | 103.969 | 113.048 | n/a | n/a |
+| 6144 | Off | 86.313 | 82.124 | 108.065 | 74.545 | 84.235 | 122.385 | 78.049 | **143.041** | 103.608 | 127.565 | 81.583 | 66.066 | 125.367 | 100.143 |
+| 7168 | Off | 85.651 | 63.536 | 76.715 | 75.762 | 63.745 | 91.201 | 74.782 | 73.745 | 75.703 | 83.558 | 67.989 | 65.239 | **99.192** | 78.386 |
+| 8192 | Off | 64.482 | 48.445 | 50.485 | 53.737 | 66.238 | 61.849 | **75.683** | 63.494 | 72.493 | 73.435 | 62.090 | 39.938 | 67.923 | 66.849 |
+| 9216 | Off | 66.962 | 51.711 | 44.859 | 49.506 | 46.463 | 64.041 | 55.056 | 63.847 | 68.219 | **71.103** | 31.137 | 43.009 | 57.950 | 51.254 |
+| 10240 | Off | **48.753** | 44.187 | 42.922 | 41.370 | 34.753 | 46.308 | 42.577 | 44.841 | n/a | n/a | n/a | n/a | 43.236 | 41.376 |
 
 ### Adaptive
 
-| K: CPU experts | CUDA Graph | Prefill (ms) | Decode (tokens/s) | Peak GPU (GiB) | Peak CPU RSS (GiB) |
+| K: CPU experts | CUDA Graph | Prefill (token/s) | Decode (token/s) | Peak GPU (GiB) | Peak CPU RSS (GiB) |
 |---:|:---:|---:|---:|---:|---:|
-| 0 | Off | 21.134 | 129.930 | 39.388 | 1.576 |
-| 0 | On | 21.391 | 169.841 | 39.476 | 1.646 |
-| 1024 | Off | 33.829 | 79.855 | 38.219 | 7.690 |
-| 2048 | Off | 46.457 | 57.834 | 36.539 | 11.266 |
-| 3072 | Off | 152.712 | 39.793 | 34.730 | 14.584 |
-| 4096 | Off | 209.657 | 37.036 | 32.969 | 18.159 |
-| 5120 | Off | 297.205 | 33.336 | 31.154 | 21.733 |
-| 6144 | Off | 324.400 | 30.664 | 29.613 | 25.308 |
-| 7168 | Off | 326.908 | 29.203 | 27.930 | 28.883 |
-| 8192 | Off | 434.233 | 27.003 | 26.207 | 32.456 |
-| 9216 | Off | 418.149 | 25.696 | 24.476 | 36.030 |
-| 10240 | Off | 574.325 | 27.032 | 22.683 | 39.538 |
+| 0 | Off | 1324.879 | 129.930 | 39.388 | 1.576 |
+| 0 | On | 1308.962 | 169.841 | 39.476 | 1.646 |
+| 1024 | Off | 827.692 | 79.855 | 38.219 | 7.690 |
+| 2048 | Off | 602.708 | 57.834 | 36.539 | 11.266 |
+| 3072 | Off | 183.352 | 39.793 | 34.730 | 14.584 |
+| 4096 | Off | 133.551 | 37.036 | 32.969 | 18.159 |
+| 5120 | Off | 94.211 | 33.336 | 31.154 | 21.733 |
+| 6144 | Off | 86.313 | 30.664 | 29.613 | 25.308 |
+| 7168 | Off | 85.651 | 29.203 | 27.930 | 28.883 |
+| 8192 | Off | 64.482 | 27.003 | 26.207 | 32.456 |
+| 9216 | Off | 66.962 | 25.696 | 24.476 | 36.030 |
+| 10240 | Off | 48.753 | 27.032 | 22.683 | 39.538 |
 
 ### Basic
 
 Each 1,024-expert step moves four more trailing QMoE nodes to CPU.
 
-| K: CPU experts | CUDA Graph | Prefill (ms) | Decode (tokens/s) | Peak GPU (GiB) | Peak CPU RSS (GiB) |
+| K: CPU experts | CUDA Graph | Prefill (token/s) | Decode (token/s) | Peak GPU (GiB) | Peak CPU RSS (GiB) |
 |---:|:---:|---:|---:|---:|---:|
-| 0 | Off | 20.898 | 132.550 | 39.392 | 1.574 |
-| 0 | On | 21.840 | 168.622 | 39.449 | 1.645 |
-| 1024 | Off | 84.129 | 85.967 | 37.900 | 7.424 |
-| 2048 | Off | 146.529 | 70.539 | 36.205 | 11.001 |
-| 3072 | Off | 193.798 | 59.878 | 34.637 | 14.579 |
-| 4096 | Off | 249.523 | 46.850 | 32.820 | 18.151 |
-| 5120 | Off | 335.351 | 44.232 | 31.127 | 21.727 |
-| 6144 | Off | 340.948 | 39.411 | 29.431 | 25.302 |
-| 7168 | Off | 440.696 | 36.474 | 27.740 | 28.781 |
-| 8192 | Off | 577.976 | 33.758 | 26.076 | 32.356 |
-| 9216 | Off | 541.466 | 29.513 | 24.383 | 35.915 |
-| 10240 | Off | 633.668 | 27.746 | 22.660 | 39.537 |
+| 0 | Off | 1339.841 | 132.550 | 39.392 | 1.574 |
+| 0 | On | 1282.051 | 168.622 | 39.449 | 1.645 |
+| 1024 | Off | 332.822 | 85.967 | 37.900 | 7.424 |
+| 2048 | Off | 191.088 | 70.539 | 36.205 | 11.001 |
+| 3072 | Off | 144.480 | 59.878 | 34.637 | 14.579 |
+| 4096 | Off | 112.214 | 46.850 | 32.820 | 18.151 |
+| 5120 | Off | 83.495 | 44.232 | 31.127 | 21.727 |
+| 6144 | Off | 82.124 | 39.411 | 29.431 | 25.302 |
+| 7168 | Off | 63.536 | 36.474 | 27.740 | 28.781 |
+| 8192 | Off | 48.445 | 33.758 | 26.076 | 32.356 |
+| 9216 | Off | 51.711 | 29.513 | 24.383 | 35.915 |
+| 10240 | Off | 44.187 | 27.746 | 22.660 | 39.537 |
 
 ### Layered (80% GPU target per layer)
 
-| K: CPU experts | CUDA Graph | Prefill (ms) | Decode (tokens/s) | Peak GPU (GiB) | Peak CPU RSS (GiB) |
+| K: CPU experts | CUDA Graph | Prefill (token/s) | Decode (token/s) | Peak GPU (GiB) | Peak CPU RSS (GiB) |
 |---:|:---:|---:|---:|---:|---:|
-| 0 | Off | 21.309 | 132.599 | 39.390 | 1.575 |
-| 0 | On | 21.683 | 169.083 | 39.461 | 1.644 |
-| 1024 | Off | 30.196 | 93.633 | 38.012 | 7.426 |
-| 2048 | Off | 48.208 | 55.676 | 35.937 | 11.024 |
-| 3072 | Off | 115.884 | 47.379 | 34.219 | 14.826 |
-| 4096 | Off | 189.019 | 47.085 | 33.012 | 18.158 |
-| 5120 | Off | 214.011 | 44.921 | 31.273 | 21.733 |
-| 6144 | Off | 259.104 | 39.614 | 29.678 | 25.312 |
-| 7168 | Off | 364.987 | 37.084 | 27.330 | 28.866 |
-| 8192 | Off | 554.616 | 31.864 | 25.607 | 32.441 |
-| 9216 | Off | 624.173 | 31.617 | 24.414 | 36.032 |
-| 10240 | Off | 652.343 | 29.069 | 22.660 | 39.536 |
+| 0 | Off | 1313.999 | 132.599 | 39.390 | 1.575 |
+| 0 | On | 1291.334 | 169.083 | 39.461 | 1.644 |
+| 1024 | Off | 927.275 | 93.633 | 38.012 | 7.426 |
+| 2048 | Off | 580.816 | 55.676 | 35.937 | 11.024 |
+| 3072 | Off | 241.621 | 47.379 | 34.219 | 14.826 |
+| 4096 | Off | 148.133 | 47.085 | 33.012 | 18.158 |
+| 5120 | Off | 130.834 | 44.921 | 31.273 | 21.733 |
+| 6144 | Off | 108.065 | 39.614 | 29.678 | 25.312 |
+| 7168 | Off | 76.715 | 37.084 | 27.330 | 28.866 |
+| 8192 | Off | 50.485 | 31.864 | 25.607 | 32.441 |
+| 9216 | Off | 44.859 | 31.617 | 24.414 | 36.032 |
+| 10240 | Off | 42.922 | 29.069 | 22.660 | 39.536 |
 
 ### Layered (70% GPU target per layer)
 
-| K: CPU experts | CUDA Graph | Prefill (ms) | Decode (tokens/s) | Peak GPU (GiB) | Peak CPU RSS (GiB) |
+| K: CPU experts | CUDA Graph | Prefill (token/s) | Decode (token/s) | Peak GPU (GiB) | Peak CPU RSS (GiB) |
 |---:|:---:|---:|---:|---:|---:|
-| 0 | Off | 20.923 | 130.596 | 39.517 | 1.577 |
-| 0 | On | 21.694 | 176.596 | 39.486 | 1.646 |
-| 1024 | Off | 30.333 | 91.353 | 38.012 | 7.426 |
-| 2048 | Off | 36.109 | 78.171 | 36.420 | 11.035 |
-| 3072 | Off | 156.260 | 39.392 | 34.799 | 14.586 |
-| 4096 | Off | 204.432 | 35.276 | 32.096 | 18.129 |
-| 5120 | Off | 210.089 | 50.620 | 31.486 | 21.737 |
-| 6144 | Off | 274.308 | 38.230 | 29.611 | 25.308 |
-| 7168 | Off | 367.447 | 34.966 | 26.945 | 28.852 |
-| 8192 | Off | 444.187 | 34.234 | 26.138 | 32.457 |
-| 9216 | Off | 568.924 | 30.098 | 24.465 | 36.033 |
-| 10240 | Off | 717.923 | 28.232 | 21.722 | 39.507 |
+| 0 | Off | 1338.240 | 130.596 | 39.517 | 1.577 |
+| 0 | On | 1290.679 | 176.596 | 39.486 | 1.646 |
+| 1024 | Off | 923.087 | 91.353 | 38.012 | 7.426 |
+| 2048 | Off | 775.430 | 78.171 | 36.420 | 11.035 |
+| 3072 | Off | 179.189 | 39.392 | 34.799 | 14.586 |
+| 4096 | Off | 136.965 | 35.276 | 32.096 | 18.129 |
+| 5120 | Off | 133.277 | 50.620 | 31.486 | 21.737 |
+| 6144 | Off | 102.075 | 38.230 | 29.611 | 25.308 |
+| 7168 | Off | 76.201 | 34.966 | 26.945 | 28.852 |
+| 8192 | Off | 63.037 | 34.234 | 26.138 | 32.457 |
+| 9216 | Off | 49.216 | 30.098 | 24.465 | 36.033 |
+| 10240 | Off | 39.001 | 28.232 | 21.722 | 39.507 |
 
 ### Layered: 60%/80% and first/last/middle
 
@@ -234,7 +422,7 @@ Separate cohort: 72 fresh runs, identical binaries and GPU, six variants interle
 Same prompt/measurement protocol and swap limit 5. No position consistently wins; bold marks each row's fastest decode.
 At K=0 and K=10240, placement settings do not change execution; differences show run-to-run variability.
 
-#### Decode (tokens/s)
+#### Decode (token/s)
 
 | K | CUDA Graph | 60% first | 80% first | 60% last | 80% last | 60% middle | 80% middle |
 |---:|:---:|---:|---:|---:|---:|---:|---:|
@@ -251,22 +439,22 @@ At K=0 and K=10240, placement settings do not change execution; differences show
 | 9216 | Off | **31.689** | 29.195 | 30.717 | 30.360 | 31.323 | 27.604 |
 | 10240 | Off | 27.458 | 28.076 | **28.832** | 27.909 | 27.726 | 26.408 |
 
-#### Prefill (ms)
+#### Prefill (token/s)
 
 | K | CUDA Graph | 60% first | 80% first | 60% last | 80% last | 60% middle | 80% middle |
 |---:|:---:|---:|---:|---:|---:|---:|---:|
-| 0 | Off | 20.547 | 20.719 | 20.430 | 20.737 | 20.954 | 20.797 |
-| 0 | On | 21.597 | 21.669 | 21.719 | 21.774 | 21.496 | 22.871 |
-| 1024 | Off | 43.849 | 29.604 | 55.373 | 33.209 | 63.106 | 42.469 |
-| 2048 | Off | 51.530 | 43.247 | 95.109 | 42.243 | 115.714 | 44.856 |
-| 3072 | Off | 90.679 | 111.006 | 158.163 | 105.315 | 172.761 | 107.787 |
-| 4096 | Off | 214.915 | 191.018 | 195.642 | 157.959 | 208.917 | 186.702 |
-| 5120 | Off | 206.028 | 266.120 | 165.493 | 194.461 | 217.876 | 272.631 |
-| 6144 | Off | 325.988 | 375.611 | 210.821 | 332.403 | 228.786 | 358.748 |
-| 7168 | Off | 381.340 | 369.580 | 318.008 | 439.249 | 307.013 | 374.420 |
-| 8192 | Off | 402.316 | 521.061 | 419.847 | 422.721 | 452.714 | 369.965 |
-| 9216 | Off | 499.094 | 565.593 | 571.157 | 602.627 | 437.221 | 508.575 |
-| 10240 | Off | 586.115 | 676.826 | 627.106 | 805.693 | 604.649 | 657.629 |
+| 0 | Off | 1362.729 | 1351.417 | 1370.534 | 1350.244 | 1336.260 | 1346.348 |
+| 0 | On | 1296.476 | 1292.169 | 1289.194 | 1285.937 | 1302.568 | 1224.258 |
+| 1024 | Off | 638.555 | 945.818 | 505.662 | 843.145 | 443.698 | 659.304 |
+| 2048 | Off | 543.373 | 647.444 | 294.399 | 662.832 | 241.976 | 624.220 |
+| 3072 | Off | 308.782 | 252.239 | 177.033 | 265.869 | 162.074 | 259.772 |
+| 4096 | Off | 130.284 | 146.583 | 143.119 | 177.261 | 134.025 | 149.972 |
+| 5120 | Off | 135.904 | 105.216 | 169.191 | 143.988 | 128.513 | 102.703 |
+| 6144 | Off | 85.893 | 74.545 | 132.814 | 84.235 | 122.385 | 78.049 |
+| 7168 | Off | 73.425 | 75.762 | 88.048 | 63.745 | 91.201 | 74.782 |
+| 8192 | Off | 69.597 | 53.737 | 66.691 | 66.238 | 61.849 | 75.683 |
+| 9216 | Off | 56.102 | 49.506 | 49.023 | 46.463 | 64.041 | 55.056 |
+| 10240 | Off | 47.772 | 41.370 | 44.650 | 34.753 | 46.308 | 42.577 |
 
 #### Peak GPU (GiB)
 
@@ -305,23 +493,23 @@ At K=0 and K=10240, placement settings do not change execution; differences show
 ### Layered: 60% last, swap limit 16
 
 Twelve subsequent runs with the same binaries, GPU and protocol, changing only the swap limit from 5 to 16.
-Prefill and memory columns describe the 16-limit runs; decode compares both limits in tokens/s.
+Prefill and memory columns describe the 16-limit runs; decode compares both limits in token/s.
 There is no consistent decode gain. K=0 and K=10240 perform no swaps and provide variability controls.
 
-| K | CUDA Graph | Prefill (ms) | Decode, limit 5 | Decode, limit 16 | Change | Peak GPU (GiB) | Peak CPU RSS (GiB) |
+| K | CUDA Graph | Prefill (token/s) | Decode, limit 5 | Decode, limit 16 | Change | Peak GPU (GiB) | Peak CPU RSS (GiB) |
 |---:|:---:|---:|---:|---:|---:|---:|---:|
-| 0 | Off | 21.143 | 137.428 | 128.579 | -6.4% | 39.455 | 1.576 |
-| 0 | On | 21.560 | 168.827 | 168.794 | 0.0% | 39.445 | 1.643 |
-| 1024 | Off | 55.736 | 66.750 | 64.073 | -4.0% | 37.974 | 7.428 |
-| 2048 | Off | 63.772 | 52.294 | 53.446 | +2.2% | 36.363 | 11.005 |
-| 3072 | Off | 85.188 | 41.284 | 41.665 | +0.9% | 34.744 | 14.582 |
-| 4096 | Off | 101.023 | 39.285 | 35.319 | -10.1% | 33.160 | 18.417 |
-| 5120 | Off | 118.835 | 42.769 | 47.282 | +10.6% | 31.512 | 21.737 |
-| 6144 | Off | 195.748 | 37.666 | 38.835 | +3.1% | 29.640 | 25.307 |
-| 7168 | Off | 379.688 | 34.716 | 31.635 | -8.9% | 27.898 | 28.882 |
-| 8192 | Off | 440.986 | 33.658 | 36.897 | +9.6% | 26.154 | 32.457 |
-| 9216 | Off | 438.548 | 30.717 | 30.168 | -1.8% | 24.406 | 36.031 |
-| 10240 | Off | 624.423 | 28.832 | 27.640 | -4.1% | 22.660 | 39.537 |
+| 0 | Off | 1324.315 | 137.428 | 128.579 | -6.4% | 39.455 | 1.576 |
+| 0 | On | 1298.701 | 168.827 | 168.794 | 0.0% | 39.445 | 1.643 |
+| 1024 | Off | 502.368 | 66.750 | 64.073 | -4.0% | 37.974 | 7.428 |
+| 2048 | Off | 439.064 | 52.294 | 53.446 | +2.2% | 36.363 | 11.005 |
+| 3072 | Off | 328.685 | 41.284 | 41.665 | +0.9% | 34.744 | 14.582 |
+| 4096 | Off | 277.165 | 39.285 | 35.319 | -10.1% | 33.160 | 18.417 |
+| 5120 | Off | 235.621 | 42.769 | 47.282 | +10.6% | 31.512 | 21.737 |
+| 6144 | Off | 143.041 | 37.666 | 38.835 | +3.1% | 29.640 | 25.307 |
+| 7168 | Off | 73.745 | 34.716 | 31.635 | -8.9% | 27.898 | 28.882 |
+| 8192 | Off | 63.494 | 33.658 | 36.897 | +9.6% | 26.154 | 32.457 |
+| 9216 | Off | 63.847 | 30.717 | 30.168 | -1.8% | 24.406 | 36.031 |
+| 10240 | Off | 44.841 | 28.832 | 27.640 | -4.1% | 22.660 | 39.537 |
 
 ### On-demand threshold sweep
 
@@ -342,7 +530,7 @@ The absence of an abnormal memory peak does not prove that a run was interferenc
 | 80% first N=1 | 3072, 6144, 9216 |
 | 80% first N=2 | 7168, 8192 |
 
-#### Decode (tokens/s)
+#### Decode (token/s)
 
 | K | CUDA Graph | Adaptive N=1 | Adaptive N=2 | 80% first N=1 | 80% first N=2 |
 |---:|:---:|---:|---:|---:|---:|
@@ -358,21 +546,21 @@ The absence of an abnormal memory peak does not prove that a run was interferenc
 | 8192 | Off | 27.923 | 23.315 | **33.569** | 15.156 |
 | 9216 | Off | 25.263 | 25.418 | 4.866 | **29.398** |
 
-#### Prefill (ms)
+#### Prefill (token/s)
 
 | K | CUDA Graph | Adaptive N=1 | Adaptive N=2 | 80% first N=1 | 80% first N=2 |
 |---:|:---:|---:|---:|---:|---:|
-| 0 | Off | 21.078 | 21.078 | 21.078 | 21.078 |
-| 0 | On | 21.331 | 21.331 | 21.331 | 21.331 |
-| 1024 | Off | 39.334 | 53.795 | 29.975 | 36.094 |
-| 2048 | Off | 62.269 | 58.298 | 49.054 | 99.362 |
-| 3072 | Off | 58.347 | 89.459 | 108.784 | 101.010 |
-| 4096 | Off | 95.028 | 113.821 | 203.647 | 245.073 |
-| 5120 | Off | 156.540 | 162.494 | 269.312 | 247.682 |
-| 6144 | Off | 270.250 | 219.496 | 343.207 | 423.817 |
-| 7168 | Off | 369.866 | 335.098 | 411.831 | 429.193 |
-| 8192 | Off | 386.245 | 381.292 | 450.956 | 701.088 |
-| 9216 | Off | 410.442 | 393.795 | 899.263 | 651.025 |
+| 0 | Off | 1328.399 | 1328.399 | 1328.399 | 1328.399 |
+| 0 | On | 1312.644 | 1312.644 | 1312.644 | 1312.644 |
+| 1024 | Off | 711.852 | 520.494 | 934.112 | 775.752 |
+| 2048 | Off | 449.662 | 480.291 | 570.800 | 281.798 |
+| 3072 | Off | 479.888 | 312.993 | 257.391 | 277.200 |
+| 4096 | Off | 294.650 | 246.000 | 137.493 | 114.252 |
+| 5120 | Off | 178.868 | 172.314 | 103.969 | 113.048 |
+| 6144 | Off | 103.608 | 127.565 | 81.583 | 66.066 |
+| 7168 | Off | 75.703 | 83.558 | 67.989 | 65.239 |
+| 8192 | Off | 72.493 | 73.435 | 62.090 | 39.938 |
+| 9216 | Off | 68.219 | 71.103 | 31.137 | 43.009 |
 
 #### Peak GPU (GiB)
 
@@ -470,6 +658,29 @@ For the six-way position sweep, use `--strategy layered`, ratios `0.6`/`0.8`, an
 with separate output directories and serial runs.
 For the 16-swap comparison, use `--strategy layered --gpu-ratio 0.6 --layer-order last`
 and `--max-in-flight-swaps-per-device 16`.
+For beta comparisons, reuse the same script and environment with the existing five-prompt file.
+The following sweep compares 60%/70%/80% GPU targets and beta 1/0.5/0.1 at each CPU budget, in 45 serial fresh processes.
+Restrict the ratios and beta values to `0.6` and `1 0.5` for the paired configuration.
+The active runtime uses same-QMoE temporal prediction; reproducing historical results requires their recorded source:
+
+```bash
+for k in 6144 7168 8192 9216 10240; do
+  for ratio in 0.6 0.7 0.8; do
+    for beta in 1 0.5 0.1; do
+      name="layered-${ratio}-last-k${k}-beta${beta}"
+      CUDA_VISIBLE_DEVICES=1 python /path/to/onnxruntime/tools/python/benchmark_moe_cpu_offload.py \
+        --name "$name" --model /path/to/qwen3.5-35b-cuda-int4 \
+        --prompts /path/to/onnxruntime/docs/moe-cpu-offload/benchmark-prompts.json \
+        --max-new-tokens 256 --cpu-offload-experts "$k" \
+        --strategy layered --gpu-ratio "$ratio" --layer-order last --placement-beta "$beta" \
+        --counter-alpha 0.9 --swap-epsilon 0.1 --max-in-flight-swaps-per-device 5 \
+        --on-demand-threshold 0 --swap --no-counter-log --no-cuda-graph \
+        --output "/tmp/qwen35-int4/${name}.json" --log "/tmp/qwen35-int4/${name}.log" || exit "$?"
+    done
+  done
+done
+```
+
 For the on-demand sweep, use `--on-demand-threshold 1` or `2` with `--strategy adaptive`,
 or `--strategy layered --gpu-ratio 0.8 --layer-order first`, for K=1024..9216.
 Add `--counter-log` for swap and expert-device diagnostics; use separate output files.
@@ -505,7 +716,15 @@ All strategies preserve exactly `K` CPU experts.
 - **Decode**
   - Without on-demand swaps, adaptive is about **20% slower than basic**, averaged over the mixed CPU/GPU budgets.
   - A good compromise is layered: choose GPU layers like basic, then choose their GPU experts by popularity.
-  - GPU layers can be first, last, or middle. No position is consistently best.
+  - GPU layers can be first, last, or middle. No position or GPU fraction is consistently best:
+    at K=6144, 80% last reached **40.834 token/s** versus **37.666** for 60% last in the same position sweep;
+    at K=7168, 60% middle reached **39.643** versus **34.716** for 60% last.
+- **Latest beta comparison**
+  - At 60% last and K=6144..10240, beta=0.5 lowered decode throughput by **5.1%-14.9%** versus beta=1.
+  - The new beta=1 run at K=7168 gives the best observed prefill, **99.192 token/s**;
+    at K=9216 it gives the best observed decode, **32.486 token/s**.
+  - These measurements used eager first-QMoE prediction, not the current end-of-Run temporal predictor.
+    They include synchronization overhead and do not isolate prediction quality.
 - **On-demand swaps**
   - If only one selected expert is on CPU, swap it to CUDA and compute there, provided it fits.
   - Swapping two is worse for decode, but can still improve prefill.
@@ -513,45 +732,47 @@ All strategies preserve exactly `K` CPU experts.
 
 ### Next ideas
 
-- Predict which experts will be needed next, while accounting for the cost and limited number of swaps.
+- Benchmark the same-QMoE temporal predictor against beta=1 while accounting for swap cost.
 - Automatically increase or reduce parameters when measured throughput improves, instead of relying only on defaults.
   This is not implemented yet.
 
 ### Tables
 
-**Best observed values across all configurations**
+**Best observed throughput across all configurations**
 
-Includes series omitted from the Summary. At K=0, strategy names identify the all-GPU control cohort.
-The [GPU-interference warning](#on-demand-threshold-sweep) still applies.
+Includes the paired and partial beta sweeps and historical series omitted from the Summary.
+Higher is better for both metrics.
+At K=0, strategy names identify the all-GPU control cohort. The [GPU-interference warning](#on-demand-threshold-sweep) still applies.
 
-| K | CUDA Graph | Best prefill (ms) | Strategy | Best decode (ms/token) | Strategy |
+| K | CUDA Graph | Best prefill (token/s) | Strategy | Best decode (token/s) | Strategy |
 |---:|:---:|---:|---|---:|---|
-| 0 | Off | 20.430 | 60% last | 7.277 | 60% last |
-| 0 | On | 21.331 | All-GPU control (new) | 5.663 | 70% first (earlier) |
-| 1024 | Off | 29.604 | 80% first | 9.516 | 80% first N=1 |
-| 2048 | Off | 36.109 | 70% first (earlier) | 12.792 | 70% first (earlier) |
-| 3072 | Off | 58.347 | Adaptive N=1 | 16.670 | 80% last |
-| 4096 | Off | 95.028 | Adaptive N=1 | 19.850 | 80% first N=1 |
-| 5120 | Off | 118.835 | 60% last, limit 16 | 19.755 | 70% first (earlier) |
-| 6144 | Off | 195.748 | 60% last, limit 16 | 24.489 | 80% last |
-| 7168 | Off | 307.013 | 60% middle | 25.225 | 60% middle |
-| 8192 | Off | 369.965 | 80% middle | 27.102 | 60% last, limit 16 |
-| 9216 | Off | 393.795 | Adaptive N=2 | 31.557 | 60% first |
-| 10240 | Off | 574.325 | Adaptive | 34.401 | 80% first (earlier) |
+| 0 | Off | 1370.534 | 60% last | 137.428 | 60% last |
+| 0 | On | 1312.644 | All-GPU control (on-demand cohort) | 176.596 | 70% first (earlier) |
+| 1024 | Off | 945.818 | 80% first | 105.088 | 80% first N=1 |
+| 2048 | Off | 775.430 | 70% first (earlier) | 78.171 | 70% first (earlier) |
+| 3072 | Off | 479.888 | Adaptive N=1 | 59.988 | 80% last |
+| 4096 | Off | 294.650 | Adaptive N=1 | 50.377 | 80% first N=1 |
+| 5120 | Off | 235.621 | 60% last, limit 16 | 50.620 | 70% first (earlier) |
+| 6144 | Off | 143.041 | 60% last, limit 16 | 42.161 | 70% last beta=1 (partial sweep) |
+| 7168 | Off | 99.192 | 60% last beta=1 (new) | 39.643 | 60% middle |
+| 8192 | Off | 82.178 | 70% last beta=0.5 (partial sweep) | 36.897 | 60% last, limit 16 |
+| 9216 | Off | 71.103 | Adaptive N=2 | 32.486 | 60% last beta=1 (new) |
+| 10240 | Off | 48.753 | Adaptive | 29.069 | 80% first (earlier) |
 
-Each cell below is **prefill ms / decode ms per token**; lower is better. Decode time is `1000 / tokens/s`.
-Best observed times are in **bold**.
+Each cell below is **prefill / decode, both in token/s**; higher is better. Best rates per row are in **bold**.
+`n/a` means the configuration was not measured, not a zero throughput.
 
-| K | CUDA Graph | Adaptive | Basic | 80% first | 80% first N=1 | 60% last, limit 16 |
-|---:|:---:|---:|---:|---:|---:|---:|
-| 0 | Off | 21.134 / 7.696 | 20.898 / 7.544 | **20.719** / **7.474** | 21.078 / 7.823 | 21.143 / 7.777 |
-| 0 | On | 21.391 / **5.888** | 21.840 / 5.930 | 21.669 / 5.908 | **21.331** / 5.922 | 21.560 / 5.924 |
-| 1024 | Off | 33.829 / 12.523 | 84.129 / 11.632 | **29.604** / 10.605 | 29.975 / **9.516** | 55.736 / 15.607 |
-| 2048 | Off | 46.457 / 17.291 | 146.529 / 14.177 | **43.247** / 15.343 | 49.054 / **13.518** | 63.772 / 18.710 |
-| 3072 | Off | 152.712 / 25.130 | 193.798 / **16.701** | 111.006 / 19.607 | 108.784 / 18.426 | **85.188** / 24.001 |
-| 4096 | Off | 209.657 / 27.001 | 249.523 / 21.345 | 191.018 / 20.439 | 203.647 / **19.850** | **101.023** / 28.313 |
-| 5120 | Off | 297.205 / 29.997 | 335.351 / 22.608 | 266.120 / 23.469 | 269.312 / 22.560 | **118.835** / **21.150** |
-| 6144 | Off | 324.400 / 32.611 | 340.948 / **25.374** | 375.611 / 26.144 | 343.207 / 25.868 | **195.748** / 25.750 |
-| 7168 | Off | **326.908** / 34.243 | 440.696 / 27.417 | 369.580 / 27.274 | 411.831 / **27.264** | 379.688 / 31.610 |
-| 8192 | Off | **434.233** / 37.034 | 577.976 / 29.623 | 521.061 / 29.363 | 450.956 / 29.789 | 440.986 / **27.102** |
-| 9216 | Off | **418.149** / 38.916 | 541.466 / 33.884 | 565.593 / 34.252 | 899.263 / 205.511 | 438.548 / **33.148** |
+| K | CUDA Graph | Adaptive | Basic | 80% first | 80% first N=1 | 60% last, limit 16 | 60% last beta=1 (new) | 60% last beta=0.5 (new) |
+|---:|:---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | Off | 1324.879 / 129.930 | 1339.841 / 132.550 | **1351.417** / **133.797** | 1328.399 / 127.829 | 1324.315 / 128.579 | n/a | n/a |
+| 0 | On | 1308.962 / **169.841** | 1282.051 / 168.622 | 1292.169 / 169.261 | **1312.644** / 168.862 | 1298.701 / 168.794 | n/a | n/a |
+| 1024 | Off | 827.692 / 79.855 | 332.822 / 85.967 | **945.818** / 94.298 | 934.112 / **105.088** | 502.368 / 64.073 | n/a | n/a |
+| 2048 | Off | 602.708 / 57.834 | 191.088 / 70.539 | **647.444** / 65.174 | 570.800 / **73.977** | 439.064 / 53.446 | n/a | n/a |
+| 3072 | Off | 183.352 / 39.793 | 144.480 / **59.878** | 252.239 / 51.002 | 257.391 / 54.272 | **328.685** / 41.665 | n/a | n/a |
+| 4096 | Off | 133.551 / 37.036 | 112.214 / 46.850 | 146.583 / 48.925 | 137.493 / **50.377** | **277.165** / 35.319 | n/a | n/a |
+| 5120 | Off | 94.211 / 33.336 | 83.495 / 44.232 | 105.216 / 42.609 | 103.969 / 44.327 | **235.621** / **47.282** | n/a | n/a |
+| 6144 | Off | 86.313 / 30.664 | 82.124 / **39.411** | 74.545 / 38.250 | 81.583 / 38.657 | **143.041** / 38.835 | 125.367 / 38.359 | 100.143 / 32.935 |
+| 7168 | Off | 85.651 / 29.203 | 63.536 / 36.474 | 75.762 / 36.665 | 67.989 / **36.679** | 73.745 / 31.635 | **99.192** / 33.509 | 78.386 / 28.513 |
+| 8192 | Off | 64.482 / 27.003 | 48.445 / 33.758 | 53.737 / 34.057 | 62.090 / 33.569 | 63.494 / **36.897** | **67.923** / 34.420 | 66.849 / 32.679 |
+| 9216 | Off | **66.962** / 25.696 | 51.711 / 29.513 | 49.506 / 29.195 | 31.137 / 4.866 | 63.847 / 30.168 | 57.950 / **32.486** | 51.254 / 29.219 |
+| 10240 | Off | **48.753** / 27.032 | 44.187 / 27.746 | 41.370 / **28.076** | n/a | 44.841 / 27.640 | 43.236 / 27.630 | 41.376 / 25.963 |

@@ -65,6 +65,7 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
             "gpu_ratio": 0.8,
             "layer_order": "first",
             "counter_alpha": 0.9,
+            "placement_beta": 1.0,
             "swap_epsilon": 0.1,
             "max_in_flight_swaps_per_device": 4,
             "on_demand_threshold": 0,
@@ -142,6 +143,12 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
 
     def test_zero_epsilon_is_preserved(self):
         self.assertEqual(self.options(swap_epsilon=0)["session.moe_expert_swap_epsilon"], "0")
+
+    def test_placement_beta_is_forwarded_for_predictive_swaps(self):
+        self.assertNotIn("session.moe_expert_placement_beta", self.options())
+        options = self.options(strategy="layered", layer_order="last", placement_beta=0.25)
+        self.assertEqual(options["session.moe_expert_placement_beta"], "0.25")
+        self.assertEqual(options["session.moe_cpu_offload_layer_order"], "last")
 
     def test_popularity_output_is_forwarded_to_session(self):
         self.assertEqual(
@@ -223,6 +230,10 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
             ("--cpu-offload-experts", "-1"),
             ("--counter-alpha", "nan"),
             ("--counter-alpha", "1.1"),
+            ("--placement-beta", "-0.1"),
+            ("--placement-beta", "1.1"),
+            ("--placement-beta", "nan"),
+            ("--placement-beta", "inf"),
             ("--swap-epsilon", "inf"),
             ("--swap-epsilon", "-0.1"),
             ("--max-in-flight-swaps-per-device", "-1"),
@@ -250,6 +261,12 @@ class TestMoeOffloadBenchmark(unittest.TestCase):
                     parse_args([*arguments, "--on-demand-threshold", "1", *extra])
                 self.assertEqual(error.exception.code, 2)
                 self.assertIn("--on-demand-threshold", error_output.getvalue())
+            with self.subTest(extra=extra, option="--placement-beta"):
+                error_output = io.StringIO()
+                with contextlib.redirect_stderr(error_output), self.assertRaises(SystemExit) as error:
+                    parse_args([*arguments, "--placement-beta", "0.5", *extra])
+                self.assertEqual(error.exception.code, 2)
+                self.assertIn("--placement-beta", error_output.getvalue())
         self.assertEqual(parse_args([*arguments, "--on-demand-threshold", "2"]).on_demand_threshold, 2)
         self.assertEqual(parse_args([*arguments, "--max-new-tokens", "3"]).max_new_tokens, 3)
 

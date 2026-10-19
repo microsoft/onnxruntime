@@ -51,6 +51,14 @@ static const char* const kOrtSessionOptionsConfigMoeExpertCounterAlpha =
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight =
     "session.moe_expert_counter_probability_weight";
 
+// QMoE next-invocation placement: beta * popularity + (1 - beta) * sum C[current_selected, expert].
+// C is the binary co-selection EMA between consecutive invocations of the same QMoE.
+// Counter completion and swap decisions stay at the existing end-of-Run boundary.
+// Must be finite and in [0, 1]. Default 1 preserves popularity-only placement without allocating C.
+// Values below 1 require CPU offload, adaptive/layered placement, and sequential execution.
+static const char* const kOrtSessionOptionsConfigMoeExpertPlacementBeta =
+    "session.moe_expert_placement_beta";
+
 // Number of FP16/BF16 MoE experts to execute on CPU across the session. CPU and CUDA experts use disjoint compact
 // weight stores; initialization does not copy the complete expert set into CPU staging storage.
 // The value must be a non-negative integer no greater

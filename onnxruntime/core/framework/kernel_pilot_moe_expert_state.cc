@@ -49,7 +49,15 @@ Status KernelPilotMoeExpertState::BeginRun(std::string request_id, const logging
 Status KernelPilotMoeExpertState::EndRun(bool run_succeeded) {
   std::lock_guard<std::mutex> lock(run_mutex_);
   ORT_RETURN_IF_NOT(run_active_, "MoE expert tracking is not active.");
+  bool preserve_history = false;
   auto finish = gsl::finally([&]() {
+    if (!preserve_history && placement_beta_ < 1.0) {
+      for (auto& [kernel, state] : kernels_) {
+        ORT_UNUSED_PARAMETER(kernel);
+        state.reference_selection.clear();
+        state.has_reference_selection = false;
+      }
+    }
     deferred_usage_.clear();
     logging_request_id_.clear();
     logging_logger_ = nullptr;
@@ -89,6 +97,7 @@ Status KernelPilotMoeExpertState::EndRun(bool run_succeeded) {
       cpu_offload_strategy_ != CpuOffloadStrategy::Basic) {
     status = ScheduleSwaps();
   }
+  preserve_history = run_succeeded && status.IsOK();
   return status;
 }
 
@@ -108,6 +117,15 @@ Status KernelPilotMoeExpertState::SetCounterProbabilityWeight(double probability
   ORT_RETURN_IF(initialized_ || !kernels_.empty(),
                 "MoE expert counter probability weight cannot change after node registration.");
   counter_probability_weight_ = probability_weight;
+  return Status::OK();
+}
+
+Status KernelPilotMoeExpertState::SetPlacementBeta(double beta) {
+  ORT_RETURN_IF_NOT(std::isfinite(beta) && beta >= 0.0 && beta <= 1.0,
+                    "MoE expert placement beta must be finite and in [0, 1].");
+  ORT_RETURN_IF(initialized_ || !kernels_.empty(),
+                "MoE expert placement beta cannot change after node registration.");
+  placement_beta_ = beta;
   return Status::OK();
 }
 
@@ -192,7 +210,8 @@ Status KernelPilotMoeExpertState::RegisterNode(const OpKernel* kernel, std::stri
     expert_ids_.emplace(std::make_pair(kernel, static_cast<int>(expert)), counters_.size());
     counters_.push_back(0.0);
   }
-  auto [entry, inserted] = kernels_.try_emplace(kernel, key, range, *this, kernel, topological_order);
+  auto [entry, inserted] = kernels_.try_emplace(kernel, key, range, *this, kernel, topological_order,
+                                                node_type == "QMoE");
   ORT_ENFORCE(inserted);
   ORT_RETURN_IF_ERROR(entry->second.pilot.Moe().BeginInvocation(expert_count));
   entry->second.pilot.FinishRegistration();
@@ -293,6 +312,17 @@ bool KernelPilotMoeExpertState::IsCpuOffloadEligible(const Node& node) {
 
 Status KernelPilotMoeExpertState::FinalizeInitialization() {
   ORT_RETURN_IF(initialized_, "MoE expert state is already initialized.");
+  if (placement_beta_ < 1.0) {
+    ORT_RETURN_IF(cpu_offload_strategy_ == CpuOffloadStrategy::Basic,
+                  "MoE expert placement beta below one requires adaptive or layered placement.");
+    for (auto& [kernel, state] : kernels_) {
+      ORT_UNUSED_PARAMETER(kernel);
+      if (state.is_qmoe) {
+        const size_t count = SafeInt<size_t>(state.experts.count) * state.experts.count;
+        state.correlations.assign(count, 0.0);
+      }
+    }
+  }
 
   if (cpu_offload_enabled_) {
     struct Candidate {
@@ -440,6 +470,18 @@ KernelPilot* KernelPilotMoeExpertState::GetKernelPilot(const OpKernel* kernel) {
   return node != kernels_.end() ? &node->second.pilot : nullptr;
 }
 
+double KernelPilotMoeExpertState::PlacementScore(const KernelState& state, size_t expert) const {
+  const double popularity = counters_[state.experts.begin + expert];
+  if (state.correlations.empty()) {
+    return popularity;
+  }
+  double prediction = 0.0;
+  for (int selected : state.reference_selection) {
+    prediction += state.correlations[static_cast<size_t>(selected) * state.experts.count + expert];
+  }
+  return placement_beta_ * popularity + (1.0 - placement_beta_) * prediction;
+}
+
 Status KernelPilotMoeExpertState::ScheduleSwaps() {
   struct SwapQueueMetrics {
     size_t in_flight{0};
@@ -483,9 +525,9 @@ Status KernelPilotMoeExpertState::ScheduleSwaps() {
     }
 
     int coldest_cuda_expert = state->cuda_experts.front();
-    double cuda_min = counters_[state->experts.begin + static_cast<size_t>(coldest_cuda_expert)];
+    double cuda_min = PlacementScore(*state, static_cast<size_t>(coldest_cuda_expert));
     for (int expert : state->cuda_experts) {
-      const double counter = counters_[state->experts.begin + static_cast<size_t>(expert)];
+      const double counter = PlacementScore(*state, static_cast<size_t>(expert));
       if (counter < cuda_min || (counter == cuda_min && expert < coldest_cuda_expert)) {
         coldest_cuda_expert = expert;
         cuda_min = counter;
@@ -500,7 +542,7 @@ Status KernelPilotMoeExpertState::ScheduleSwaps() {
           state->cuda_experts.end()) {
         continue;
       }
-      const double counter = counters_[state->experts.begin + expert];
+      const double counter = PlacementScore(*state, expert);
       if (hottest_cpu_expert < 0 || counter > cpu_max ||
           (counter == cpu_max && expert_id < hottest_cpu_expert)) {
         hottest_cpu_expert = expert_id;
@@ -583,6 +625,23 @@ Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel, gsl::span<
   ORT_RETURN_IF(counter_probability_weight_ > 0.0 &&
                     routing_probabilities.size() != used_expert_ids.size(),
                 "MoE expert counter probability weighting requires routing probabilities.");
+  auto& state = node->second;
+  if (!state.correlations.empty()) {
+    ORT_RETURN_IF_NOT(run_active_, "QMoE correlation updates require an active Run.");
+    if (state.has_reference_selection) {
+      for (auto& correlation : state.correlations) {
+        correlation *= alpha_;
+      }
+      for (int previous : state.reference_selection) {
+        for (int selected : used_expert_ids) {
+          state.correlations[static_cast<size_t>(previous) * range.count + static_cast<size_t>(selected)] +=
+              1.0 - alpha_;
+        }
+      }
+    }
+    state.reference_selection.assign(used_expert_ids.begin(), used_expert_ids.end());
+    state.has_reference_selection = true;
+  }
   const bool log_counter_event =
       logging_logger_ != nullptr &&
       logging_logger_->OutputIsEnabled(logging::Severity::kINFO, logging::DataType::SYSTEM);
@@ -739,6 +798,14 @@ Status KernelPilotMoeExpertState::GetCounters(const OpKernel* kernel, InlinedVec
   for (size_t expert = 0; expert < range.count; ++expert) {
     counters.push_back(counters_[range.begin + expert]);
   }
+  return Status::OK();
+}
+
+Status KernelPilotMoeExpertState::GetCorrelations(const OpKernel* kernel,
+                                                  InlinedVector<double>& correlations) const {
+  const auto node = kernels_.find(kernel);
+  ORT_RETURN_IF(node == kernels_.end(), "Unknown MoE counter kernel.");
+  correlations = node->second.correlations;
   return Status::OK();
 }
 

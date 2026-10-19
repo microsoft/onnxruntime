@@ -2788,6 +2788,7 @@ common::Status InferenceSession::Initialize() {
           option == kOrtSessionOptionsConfigMoeExpertPopularityFile ||
           option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
           option == kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight ||
+          option == kOrtSessionOptionsConfigMoeExpertPlacementBeta ||
           option == kOrtSessionOptionsConfigMoeCpuOffloadStrategy ||
           option == kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio ||
           option == kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder ||
@@ -2882,6 +2883,21 @@ common::Status InferenceSession::Initialize() {
                             probability_weight >= 0.0 && probability_weight <= 1.0,
                         kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight,
                         " must be finite and in [0, 1]. Received: \"", *moe_counter_probability_weight, "\".");
+    }
+    const auto moe_placement_beta =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertPlacementBeta);
+    if (moe_placement_beta) {
+      double beta = -1.0;
+      ORT_RETURN_IF_NOT(enable_moe_cpu_offload,
+                        kOrtSessionOptionsConfigMoeExpertPlacementBeta, " requires MoE CPU offload to be enabled.");
+      ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(*moe_placement_beta, beta) &&
+                            std::isfinite(beta) && beta >= 0.0 && beta <= 1.0,
+                        kOrtSessionOptionsConfigMoeExpertPlacementBeta,
+                        " must be finite and in [0, 1]. Received: \"", *moe_placement_beta, "\".");
+      ORT_RETURN_IF(beta < 1.0 && (moe_cpu_offload_strategy == "basic" ||
+                                   session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL),
+                    kOrtSessionOptionsConfigMoeExpertPlacementBeta,
+                    " below one requires adaptive or layered placement and sequential execution.");
     }
     const auto moe_swap_epsilon =
         session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertSwapEpsilon);

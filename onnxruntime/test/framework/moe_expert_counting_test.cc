@@ -1186,6 +1186,121 @@ TEST(MoeExpertCountingTest, QMoEDemandSwapsFinishBackgroundSwapAndPreserveCpuWei
   }
 }
 
+TEST(MoeExpertCountingTest, QMoESameLayerHistoryPredictsNextCudaExpertAtEndRun) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider || provider->GetOrtEp() != nullptr || GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Built-in CUDA on SM80 or newer is required.";
+  }
+  auto model = MakeDemandSwapModel<MLFloat16>(1, 1, 4, false);
+  auto& graph = *model.mutable_graph();
+  // Exact binary products avoid accumulating CPU/CUDA FP16 bias-rounding differences across layers.
+  for (auto& tensor : *graph.mutable_initializer()) {
+    if (tensor.name() == "b1" || tensor.name() == "b2") {
+      tensor.set_raw_data(std::string(tensor.raw_data().size(), '\0'));
+    }
+  }
+  NodeProto later = graph.node(0);
+  graph.mutable_node(0)->set_output(0, "intermediate");
+  later.set_name("moe1");
+  later.set_input(0, "intermediate");
+  later.set_input(1, "router_later");
+  *graph.add_node() = later;
+  SetValue(*graph.add_input(), "router_later", TensorProto_DataType_FLOAT16, {1, kExperts});
+  const auto bytes = model.SerializeAsString();
+  auto options = CountingOptions();
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  InferenceSessionWrapper reference(options, GetEnvironment());
+  ASSERT_STATUS_OK(reference.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+  ASSERT_STATUS_OK(reference.Load(bytes.data(), static_cast<int>(bytes.size())));
+  ASSERT_STATUS_OK(reference.Initialize());
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "7"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadStrategy, "layered"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder, "last"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio, "0.25"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.5"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertPlacementBeta, "0"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+  options.session_log_severity_level = 1;
+  auto sink = std::make_unique<CapturingSink>();
+  auto* sink_ptr = sink.get();
+  auto manager = std::make_unique<logging::LoggingManager>(
+      std::move(sink), logging::Severity::kINFO, false, logging::LoggingManager::InstanceType::Temporal);
+  std::unique_ptr<Environment> environment;
+  ASSERT_STATUS_OK(Environment::Create(std::move(manager), environment));
+  InferenceSessionWrapper session(options, *environment);
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+  ASSERT_STATUS_OK(session.Load(bytes.data(), static_cast<int>(bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  auto* state = session.GetSessionState().GetMoeExpertState();
+  ASSERT_NE(state, nullptr);
+  const auto* first = session.GetSessionState().GetKernel(0);
+  const auto* second = session.GetSessionState().GetKernel(1);
+  ASSERT_EQ(first->Node().GetExecutionProviderType(), kCudaExecutionProvider);
+  ASSERT_EQ(second->Node().GetExecutionProviderType(), kCudaExecutionProvider);
+  EXPECT_TRUE(CudaExperts(*state, first).empty());
+  EXPECT_EQ(CudaExperts(*state, second), (InlinedVector<int>{0}));
+  const std::vector<std::string> output_names{"output"};
+  size_t prediction_log_begin = 0;
+  size_t prediction_log_end = 0;
+  for (size_t t = 0; t < 5; ++t) {
+    const std::array<int, 1> first_ids{t == 1 || t == 2 ? 1 : 0};
+    const std::array<int, 1> later_ids{t % 2 == 0 ? 2 : 0};
+    auto feeds = DemandSwapFeeds<MLFloat16>(1, first_ids);
+    auto later_feeds = DemandSwapFeeds<MLFloat16>(1, later_ids);
+    feeds.emplace("router_later", later_feeds.at("router"));
+    std::vector<OrtValue> expected, actual;
+    ASSERT_STATUS_OK(reference.Run(RunOptions{}, feeds, output_names, &expected));
+    RunOptions run_options;
+    run_options.run_log_severity_level = static_cast<int>(logging::Severity::kINFO);
+    if (t == 3) {
+      ASSERT_EQ(CudaExperts(*state, second), (InlinedVector<int>{0}));
+      prediction_log_begin = sink_ptr->Messages().size();
+    }
+    ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &actual));
+    if (t == 3) {
+      prediction_log_end = sink_ptr->Messages().size();
+    }
+    const auto values = actual[0].Get<Tensor>().DataAsSpan<MLFloat16>();
+    const auto reference_values = expected[0].Get<Tensor>().DataAsSpan<MLFloat16>();
+    ASSERT_EQ(values.size(), reference_values.size());
+    for (size_t i = 0; i < values.size(); ++i) {
+      EXPECT_NEAR(values[i].ToFloat(), reference_values[i].ToFloat(), 0.003f);
+    }
+  }
+  EXPECT_TRUE(CudaExperts(*state, first).empty());
+  EXPECT_EQ(CudaExperts(*state, second), (InlinedVector<int>{2}));
+  InlinedVector<double> correlations;
+  ASSERT_STATUS_OK(state->GetCorrelations(second, correlations));
+  ASSERT_EQ(correlations.size(), 16U);
+  EXPECT_DOUBLE_EQ(correlations[2], 0.625);
+  EXPECT_DOUBLE_EQ(correlations[8], 0.3125);
+  bool saw_prediction = false;
+  bool saw_target_counter = false;
+  for (size_t i = prediction_log_begin; i < prediction_log_end; ++i) {
+    const auto& message = sink_ptr->Messages()[i];
+    constexpr std::string_view swap_marker{"moe_expert_swaps "};
+    constexpr std::string_view counter_marker{"moe_expert_counters "};
+    if (const size_t pos = message.find(swap_marker); pos != std::string::npos) {
+      const auto event = nlohmann::json::parse(message.substr(pos + swap_marker.size()));
+      for (const auto& swap : event["scheduled_swaps"]) {
+        if (swap["node_index"] == 1 && swap["incoming_cpu_expert"] == 2) {
+          EXPECT_TRUE(saw_target_counter);
+          EXPECT_FALSE(event.contains("phase"));
+          EXPECT_FALSE(event.contains("reference_node_index"));
+          saw_prediction = true;
+        }
+      }
+    }
+    if (const size_t pos = message.find(counter_marker); pos != std::string::npos) {
+      const auto event = nlohmann::json::parse(message.substr(pos + counter_marker.size()));
+      saw_target_counter = saw_target_counter || event["node_index"] == 1;
+    }
+  }
+  EXPECT_TRUE(saw_prediction);
+  EXPECT_TRUE(saw_target_counter);
+}
+
 TEST(MoeExpertCountingTest, DemandSwapsRejectBasicAndDenseMoe) {
   auto provider = DefaultCudaExecutionProvider();
   if (!provider || provider->GetOrtEp() != nullptr) {

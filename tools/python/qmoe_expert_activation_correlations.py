@@ -43,10 +43,21 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description=(
             "Compute binary expert-selection correlations for each QMoE against the same QMoE at the previous "
-            "decode token and against the QMoE in the previous layer at the same token."
+            "decode token and against the first or previous QMoE layer at the same token."
         )
     )
     parser.add_argument("log", type=Path, help="Log containing 'moe_expert_counters' JSON records.")
+    parser.add_argument(
+        "--reference-layer",
+        choices=("previous", "first"),
+        default="previous",
+        help="Same-token reference within each graph scope (default: previous layer).",
+    )
+    parser.add_argument(
+        "--include-last-layer-previous-token",
+        action="store_true",
+        help="Also correlate each QMoE with the last QMoE of its graph scope at the previous decode token.",
+    )
     parser.add_argument(
         "--output-prefix",
         type=Path,
@@ -180,50 +191,70 @@ def _layer_numbers(identities):
     return layers
 
 
-def compute_activation_correlations(trace):
-    same_qmoe_previous_token = []
-    for node_index, identity in enumerate(trace.identities):
+def _previous_token_correlations(trace, context_nodes, relation):
+    correlations = []
+    for node_index, (identity, context_node_index) in enumerate(zip(trace.identities, context_nodes, strict=True)):
         current = np.concatenate(
             [activations[1:, node_index, :] for activations in trace.prompt_activations],
             axis=0,
         )
         previous = np.concatenate(
-            [activations[:-1, node_index, :] for activations in trace.prompt_activations],
+            [activations[:-1, context_node_index, :] for activations in trace.prompt_activations],
             axis=0,
         )
         values, current_counts, context_counts = binary_activation_correlation(current, previous)
-        same_qmoe_previous_token.append(
+        correlations.append(
             CorrelationMatrix(
-                "same_qmoe_previous_token",
+                relation,
                 identity,
-                identity,
+                trace.identities[context_node_index],
                 values,
                 current_counts,
                 context_counts,
                 current.shape[0],
             )
         )
+    return tuple(correlations)
 
-    previous_qmoe_same_token = []
+
+def compute_last_qmoe_previous_token_correlations(trace):
+    last_nodes = {}
+    for (graph_scope, _), node_index in sorted(_layer_numbers(trace.identities).items()):
+        last_nodes[graph_scope] = node_index
+    context_nodes = [last_nodes[identity[0]] for identity in trace.identities]
+    return _previous_token_correlations(trace, context_nodes, "last_qmoe_previous_token")
+
+
+def compute_activation_correlations(trace, reference_layer="previous"):
+    if reference_layer not in ("previous", "first"):
+        raise ValueError("Reference layer must be 'previous' or 'first'.")
+    same_qmoe_previous_token = _previous_token_correlations(
+        trace, range(len(trace.identities)), "same_qmoe_previous_token"
+    )
+    context_qmoe_same_token = []
     layers = _layer_numbers(trace.identities)
+    first_layers = {}
+    for graph_scope, layer in layers:
+        first_layers[graph_scope] = min(layer, first_layers.get(graph_scope, layer))
     for (graph_scope, layer), current_node_index in sorted(layers.items()):
-        previous_node_index = layers.get((graph_scope, layer - 1))
-        if previous_node_index is None:
+        context_layer = first_layers[graph_scope] if reference_layer == "first" else layer - 1
+        context_node_index = layers.get((graph_scope, context_layer))
+        if context_node_index is None or context_node_index == current_node_index:
             continue
         current = np.concatenate(
             [activations[:, current_node_index, :] for activations in trace.prompt_activations],
             axis=0,
         )
-        previous = np.concatenate(
-            [activations[:, previous_node_index, :] for activations in trace.prompt_activations],
+        context = np.concatenate(
+            [activations[:, context_node_index, :] for activations in trace.prompt_activations],
             axis=0,
         )
-        values, current_counts, context_counts = binary_activation_correlation(current, previous)
-        previous_qmoe_same_token.append(
+        values, current_counts, context_counts = binary_activation_correlation(current, context)
+        context_qmoe_same_token.append(
             CorrelationMatrix(
-                "previous_qmoe_same_token",
+                f"{reference_layer}_qmoe_same_token",
                 trace.identities[current_node_index],
-                trace.identities[previous_node_index],
+                trace.identities[context_node_index],
                 values,
                 current_counts,
                 context_counts,
@@ -231,27 +262,42 @@ def compute_activation_correlations(trace):
             )
         )
 
-    return tuple(same_qmoe_previous_token), tuple(previous_qmoe_same_token)
+    return tuple(same_qmoe_previous_token), tuple(context_qmoe_same_token)
 
 
-def write_correlation_archive(path, same_qmoe_previous_token, previous_qmoe_same_token):
+def _context_archive_fields(correlations, prefix, relation, expert_count):
+    return {
+        f"{prefix}_{relation}": (
+            np.stack([c.values.astype(np.float32) for c in correlations])
+            if correlations
+            else np.empty((0, expert_count, expert_count), dtype=np.float32)
+        ),
+        f"{prefix}_current_activation_counts": (
+            np.stack([c.current_activation_counts for c in correlations])
+            if correlations
+            else np.empty((0, expert_count), dtype=np.int64)
+        ),
+        f"{prefix}_context_activation_counts": (
+            np.stack([c.context_activation_counts for c in correlations])
+            if correlations
+            else np.empty((0, expert_count), dtype=np.int64)
+        ),
+        f"{prefix}_current_node_names": np.array([c.current_identity[3] for c in correlations]),
+        f"{prefix}_context_node_names": np.array([c.context_identity[3] for c in correlations]),
+        f"{prefix}_samples": np.array([c.samples for c in correlations]),
+    }
+
+
+def write_correlation_archive(
+    path,
+    same_qmoe_previous_token,
+    context_qmoe_same_token,
+    reference_layer="previous",
+    last_qmoe_previous_token=(),
+):
     path.parent.mkdir(parents=True, exist_ok=True)
+    context_prefix = {"previous": "previous_qmoe", "first": "first_qmoe"}[reference_layer]
     expert_count = same_qmoe_previous_token[0].values.shape[0]
-    previous_values = (
-        np.stack([correlation.values.astype(np.float32) for correlation in previous_qmoe_same_token])
-        if previous_qmoe_same_token
-        else np.empty((0, expert_count, expert_count), dtype=np.float32)
-    )
-    previous_current_counts = (
-        np.stack([correlation.current_activation_counts for correlation in previous_qmoe_same_token])
-        if previous_qmoe_same_token
-        else np.empty((0, expert_count), dtype=np.int64)
-    )
-    previous_context_counts = (
-        np.stack([correlation.context_activation_counts for correlation in previous_qmoe_same_token])
-        if previous_qmoe_same_token
-        else np.empty((0, expert_count), dtype=np.int64)
-    )
     np.savez_compressed(
         path,
         same_qmoe_previous_token=np.stack(
@@ -265,16 +311,12 @@ def write_correlation_archive(path, same_qmoe_previous_token, previous_qmoe_same
         ),
         same_qmoe_node_names=np.array([correlation.current_identity[3] for correlation in same_qmoe_previous_token]),
         same_qmoe_samples=np.array([correlation.samples for correlation in same_qmoe_previous_token]),
-        previous_qmoe_same_token=previous_values,
-        previous_qmoe_current_activation_counts=previous_current_counts,
-        previous_qmoe_context_activation_counts=previous_context_counts,
-        previous_qmoe_current_node_names=np.array(
-            [correlation.current_identity[3] for correlation in previous_qmoe_same_token]
+        **_context_archive_fields(context_qmoe_same_token, context_prefix, "same_token", expert_count),
+        **(
+            _context_archive_fields(last_qmoe_previous_token, "last_qmoe", "previous_token", expert_count)
+            if last_qmoe_previous_token
+            else {}
         ),
-        previous_qmoe_context_node_names=np.array(
-            [correlation.context_identity[3] for correlation in previous_qmoe_same_token]
-        ),
-        previous_qmoe_samples=np.array([correlation.samples for correlation in previous_qmoe_same_token]),
     )
 
 
@@ -369,19 +411,28 @@ def write_selected_experts(path, rows):
 def write_correlation_plots(
     path,
     same_qmoe_previous_token,
-    previous_qmoe_same_token,
+    context_qmoe_same_token,
+    last_qmoe_previous_token=(),
 ):
     import matplotlib.pyplot as plt  # noqa: PLC0415
     from matplotlib.backends.backend_pdf import PdfPages  # noqa: PLC0415
 
-    previous_by_current = {correlation.current_identity: correlation for correlation in previous_qmoe_same_token}
+    context_by_current = {correlation.current_identity: correlation for correlation in context_qmoe_same_token}
+    last_by_current = {correlation.current_identity: correlation for correlation in last_qmoe_previous_token}
 
     with PdfPages(path) as pdf:
         for same_correlation in same_qmoe_previous_token:
-            previous_correlation = previous_by_current.get(same_correlation.current_identity)
+            context_correlation = context_by_current.get(same_correlation.current_identity)
             panels = [(same_correlation, "Same QMoE, previous token")]
-            if previous_correlation is not None:
-                panels.append((previous_correlation, "Previous-layer QMoE, same token"))
+            if context_correlation is not None:
+                title = {
+                    "previous_qmoe_same_token": "Previous-layer QMoE, same token",
+                    "first_qmoe_same_token": "First-layer QMoE, same token",
+                }[context_correlation.relation]
+                panels.append((context_correlation, title))
+            last_correlation = last_by_current.get(same_correlation.current_identity)
+            if last_correlation is not None:
+                panels.append((last_correlation, "Last-layer QMoE, previous token"))
 
             for correlation, title in panels:
                 figure, heatmap_axis = plt.subplots(figsize=(12, 10))
@@ -404,7 +455,7 @@ def write_correlation_plots(
                 plt.close(figure)
 
             figure, extremes_axis = plt.subplots(figsize=(14, 8))
-            colors = ("tab:blue", "tab:orange")
+            colors = ("tab:blue", "tab:orange", "tab:green")
             for index, (correlation, title) in enumerate(panels):
                 color = colors[index]
                 positive, negative = _positive_and_negative_extremes(correlation.values, PLOT_EXTREME_COUNT)
@@ -470,15 +521,20 @@ def main():
         raise ValueError("--min-activations must be positive.")
     output_prefix = args.output_prefix or args.log.with_name(f"{args.log.stem}-expert-activation-correlations")
     trace = load_activation_trace(args.log)
-    same_qmoe_previous_token, previous_qmoe_same_token = compute_activation_correlations(trace)
+    same_qmoe_previous_token, context_qmoe_same_token = compute_activation_correlations(trace, args.reference_layer)
+    last_qmoe_previous_token = (
+        compute_last_qmoe_previous_token_correlations(trace) if args.include_last_layer_previous_token else ()
+    )
     archive_path = Path(f"{output_prefix}.npz")
     summary_path = Path(f"{output_prefix}.csv")
     selected_experts_path = Path(f"{output_prefix}-selected-experts.csv")
     plot_path = Path(f"{output_prefix}.pdf")
-    write_correlation_archive(archive_path, same_qmoe_previous_token, previous_qmoe_same_token)
+    write_correlation_archive(
+        archive_path, same_qmoe_previous_token, context_qmoe_same_token, args.reference_layer, last_qmoe_previous_token
+    )
     write_correlation_summary(
         summary_path,
-        (*same_qmoe_previous_token, *previous_qmoe_same_token),
+        (*same_qmoe_previous_token, *context_qmoe_same_token, *last_qmoe_previous_token),
         args.pairs_per_tail,
         args.min_activations,
     )
@@ -486,15 +542,18 @@ def main():
     write_correlation_plots(
         plot_path,
         same_qmoe_previous_token,
-        previous_qmoe_same_token,
+        context_qmoe_same_token,
+        last_qmoe_previous_token,
     )
 
     print(f"prompts: {len(trace.prompt_activations)}")
     print(f"MoE nodes: {len(trace.identities)}")
     print(f"experts per node: {trace.expert_count}")
     print(f"same-QMoE previous-token samples: {same_qmoe_previous_token[0].samples}")
-    if previous_qmoe_same_token:
-        print(f"previous-QMoE same-token samples: {previous_qmoe_same_token[0].samples}")
+    if context_qmoe_same_token:
+        print(f"{args.reference_layer}-QMoE same-token samples: {context_qmoe_same_token[0].samples}")
+    if last_qmoe_previous_token:
+        print(f"last-QMoE previous-token samples: {last_qmoe_previous_token[0].samples}")
     print(archive_path)
     print(summary_path)
     print(selected_experts_path)

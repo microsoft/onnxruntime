@@ -458,6 +458,247 @@ TEST_F(KernelPilotMoeExpertStateTest, LayeredPopularityAndSwapsStayWithinGpuLaye
   }
 }
 
+TEST_F(KernelPilotMoeExpertStateTest, CorrelationsUseBinaryInvocationUnionsAndDecayEveryPair) {
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.SetCounterAlpha(0.5));
+  ASSERT_STATUS_OK(state.SetCounterProbabilityWeight(1.0));
+  ASSERT_STATUS_OK(state.SetPlacementBeta(0.25));
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[1], "main", 1, "QMoE", 3, 1));
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 9, "QMoE", 2, 0));
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[2], "main", 0, "QMoE", 4, 2));
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  InlinedVector<double> correlations;
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  const int first[] = {1, 1};
+  const float first_probabilities[] = {0.1f, 0.2f};
+  ASSERT_STATUS_OK(CollectWeightedAndRecord(state, kernels_[0], first, first_probabilities));
+  const int later[] = {2, 0, 2};
+  const float later_probabilities[] = {0.1f, 0.3f, 0.2f};
+  ASSERT_STATUS_OK(CollectWeightedAndRecord(state, kernels_[1], later, later_probabilities));
+  ASSERT_STATUS_OK(CollectWeightedAndRecord(state, kernels_[2], {}, {}));
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_STATUS_OK(state.GetCorrelations(kernels_[1], correlations));
+  EXPECT_EQ(correlations, (InlinedVector<double>(9, 0.0)));
+  ASSERT_STATUS_OK(state.GetCorrelations(kernels_[2], correlations));
+  EXPECT_EQ(correlations, (InlinedVector<double>(16, 0.0)));
+
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  const int next_first[] = {0};
+  const float probability[] = {1.0f};
+  ASSERT_STATUS_OK(CollectWeightedAndRecord(state, kernels_[0], next_first, probability));
+  const int next_later[] = {1};
+  ASSERT_STATUS_OK(CollectWeightedAndRecord(state, kernels_[1], next_later, probability));
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_STATUS_OK(state.GetCorrelations(kernels_[1], correlations));
+  EXPECT_EQ(correlations, (InlinedVector<double>{0, 0.5, 0, 0, 0, 0, 0, 0.5, 0}));
+  ASSERT_STATUS_OK(state.GetCorrelations(kernels_[0], correlations));
+  EXPECT_EQ(correlations, (InlinedVector<double>{0, 0, 0.5, 0}));
+
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  ASSERT_STATUS_OK(CollectWeightedAndRecord(state, kernels_[1], {}, {}));
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_STATUS_OK(state.GetCorrelations(kernels_[1], correlations));
+  EXPECT_EQ(correlations, (InlinedVector<double>{0, 0.25, 0, 0, 0, 0, 0, 0.25, 0}));
+
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  ASSERT_STATUS_OK(CollectWeightedAndRecord(state, kernels_[1], next_later, probability));
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_STATUS_OK(state.GetCorrelations(kernels_[1], correlations));
+  EXPECT_EQ(correlations, (InlinedVector<double>{0, 0.125, 0, 0, 0, 0, 0, 0.125, 0}));
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  ASSERT_STATUS_OK(CollectWeightedAndRecord(state, kernels_[1], later, later_probabilities));
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_STATUS_OK(state.GetCorrelations(kernels_[1], correlations));
+  EXPECT_EQ(correlations, (InlinedVector<double>{0, 0.0625, 0, 0.5, 0, 0.5, 0, 0.0625, 0}));
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, PredictsNextInvocationAtEndRunWithBetaAndSwapLimits) {
+  for (double beta : {0.0, 0.25, 0.6, 0.75, 1.0}) {
+    for (size_t limit : {0U, 1U, 2U}) {
+      SCOPED_TRACE(MakeString("beta=", beta, ", limit=", limit));
+      KernelPilotMoeExpertState state;
+      ASSERT_STATUS_OK(state.SetCounterAlpha(0.5));
+      ASSERT_STATUS_OK(state.SetSwapEpsilon(0.0));
+      ASSERT_STATUS_OK(state.SetPlacementBeta(beta));
+      ASSERT_STATUS_OK(state.SetCpuOffloadStrategy("layered"));
+      ASSERT_STATUS_OK(state.SetCpuOffloadLayerOrder("last"));
+      ASSERT_STATUS_OK(state.SetCpuOffloadGpuRatio(0.5));
+      ASSERT_STATUS_OK(state.SetCpuOffloadExpertCount(8));
+      ASSERT_STATUS_OK(state.SetMaxInFlightSwapsPerDevice(limit));
+      for (size_t i = 0; i < 3; ++i) {
+        MakeEligibleForCudaQMoEPlacement(kernels_[i]);
+        ASSERT_STATUS_OK(state.RegisterNode(kernels_[i], "main", i, "QMoE", 4, i));
+      }
+      ASSERT_STATUS_OK(state.FinalizeInitialization());
+      // Learn transitions between CPU experts and GPU experts before attaching transfer caches.
+      for (int invocation = 0; invocation < 3; ++invocation) {
+        ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+        const InlinedVector<int> first{0, 1};
+        const InlinedVector<int> second = invocation == 1 ? InlinedVector<int>{0, 1} : InlinedVector<int>{2};
+        const InlinedVector<int> third = invocation == 1 ? InlinedVector<int>{0, 1} : InlinedVector<int>{3};
+        ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], first));
+        ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[1], second));
+        ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[2], third));
+        ASSERT_STATUS_OK(state.EndRun());
+      }
+      std::array<FakeMoeExpertCache, 3> caches;
+      for (size_t i = 0; i < 3; ++i) {
+        auto* pilot = state.GetKernelPilot(kernels_[i]);
+        gsl::span<const int> experts;
+        ASSERT_STATUS_OK(pilot->GetMoeCudaExperts(experts));
+        EXPECT_EQ(experts.size(), i == 0 ? 0U : 2U);
+        ASSERT_STATUS_OK(pilot->AttachMoeExpertCache(&caches[i]));
+      }
+      ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+      const int first[] = {0, 1};
+      for (size_t i = 0; i < 3; ++i) {
+        ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[i], first));
+        EXPECT_TRUE(caches[i].Swaps().empty());
+      }
+      ASSERT_STATUS_OK(state.EndRun());
+      // The unnormalized sum of two reference rows outweighs P even at beta=0.6.
+      EXPECT_TRUE(caches[0].Swaps().empty());
+      for (size_t i = 1; i < 3; ++i) {
+        if (beta <= 0.6 && i <= limit) {
+          EXPECT_EQ(caches[i].Swaps(), (InlinedVector<std::pair<int, int>>{{0, i == 1 ? 2 : 3}}));
+        } else {
+          EXPECT_TRUE(caches[i].Swaps().empty());
+        }
+      }
+    }
+  }
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, CorrelationsDeferGpuSnapshotsUntilEndRun) {
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.SetPlacementBeta(0.0));
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "QMoE", 3, 0));
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[1], "main", 1, "QMoE", 3, 1));
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  std::array<DeferredMoeUsage, 2> usages;
+  for (size_t i = 0; i < 2; ++i) {
+    ASSERT_STATUS_OK(state.GetKernelPilot(kernels_[i])->AttachMoeExpertUsage(&usages[i]));
+  }
+  InlinedVector<double> correlations;
+  for (int invocation = 0; invocation < 2; ++invocation) {
+    ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+    for (size_t i = 0; i < 2; ++i) {
+      usages[i].pending = true;
+      auto* pilot = state.GetKernelPilot(kernels_[i]);
+      ASSERT_STATUS_OK(pilot->Moe().BeginInvocation(3));
+      ASSERT_STATUS_OK(pilot->RecordUsage());
+      EXPECT_TRUE(usages[i].pending);
+      ASSERT_STATUS_OK(state.GetCorrelations(kernels_[i], correlations));
+      EXPECT_EQ(correlations, (InlinedVector<double>(9, 0.0)));
+    }
+    ASSERT_STATUS_OK(state.EndRun());
+    for (size_t i = 0; i < 2; ++i) {
+      EXPECT_FALSE(usages[i].pending);
+      ASSERT_STATUS_OK(state.GetCorrelations(kernels_[i], correlations));
+      if (invocation == 0) {
+        EXPECT_EQ(correlations, (InlinedVector<double>(9, 0.0)));
+      } else {
+        EXPECT_EQ(correlations, (InlinedVector<double>{0.25, 0, 0.25, 0, 0, 0, 0.25, 0, 0.25}));
+      }
+    }
+  }
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, CorrelationsKeepIndependentHistoryAndResetItAfterFailure) {
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.SetPlacementBeta(0.0));
+  for (size_t i = 0; i < 3; ++i) {
+    ASSERT_STATUS_OK(state.RegisterNode(kernels_[i], i == 2 ? "main/body" : "main", i, "QMoE", 2, i));
+  }
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  const int zero[] = {0};
+  const int one[] = {1};
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[1], one));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], zero));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[2], zero));
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[1], zero));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], one));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[2], one));
+  InlinedVector<double> correlations;
+  ASSERT_STATUS_OK(state.GetCorrelations(kernels_[0], correlations));
+  EXPECT_EQ(correlations, (InlinedVector<double>{0, 0.25, 0, 0}));
+  ASSERT_STATUS_OK(state.GetCorrelations(kernels_[1], correlations));
+  EXPECT_EQ(correlations, (InlinedVector<double>{0, 0, 0.25, 0}));
+  ASSERT_STATUS_OK(state.GetCorrelations(kernels_[2], correlations));
+  EXPECT_EQ(correlations, (InlinedVector<double>{0, 0.25, 0, 0}));
+  ASSERT_STATUS_OK(state.EndRun(false));
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[1], one));
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_STATUS_OK(state.GetCorrelations(kernels_[1], correlations));
+  EXPECT_EQ(correlations, (InlinedVector<double>{0, 0, 0.25, 0}));
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[1], zero));
+  // Consecutive invocations of one node are valid even without another node executing.
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[1], one));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[2], zero));
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_STATUS_OK(state.GetCorrelations(kernels_[1], correlations));
+  EXPECT_EQ(correlations, (InlinedVector<double>{0, 0.25, 0.328125, 0}));
+  ASSERT_STATUS_OK(state.GetCorrelations(kernels_[2], correlations));
+  EXPECT_EQ(correlations, (InlinedVector<double>{0, 0.25, 0, 0}));
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, CorrelationsResetHistoryAfterDeferredUsageFailure) {
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.SetPlacementBeta(0.0));
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "QMoE", 3));
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  const int selected[] = {0};
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
+  ASSERT_STATUS_OK(state.EndRun());
+  auto* pilot = state.GetKernelPilot(kernels_[0]);
+  DeferredMoeUsage usage;
+  usage.completion_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "test temporal usage failure");
+  ASSERT_STATUS_OK(pilot->AttachMoeExpertUsage(&usage));
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  ASSERT_STATUS_OK(pilot->Moe().BeginInvocation(3));
+  ASSERT_STATUS_OK(pilot->RecordUsage());
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(state.EndRun(), "test temporal usage failure");
+
+  usage.completion_status = Status::OK();
+  usage.pending = true;
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  ASSERT_STATUS_OK(pilot->Moe().BeginInvocation(3));
+  ASSERT_STATUS_OK(pilot->RecordUsage());
+  ASSERT_STATUS_OK(state.EndRun());
+  InlinedVector<double> correlations;
+  ASSERT_STATUS_OK(state.GetCorrelations(kernels_[0], correlations));
+  EXPECT_EQ(correlations, (InlinedVector<double>(9, 0.0)));
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, ValidatesAndFreezesPlacementBeta) {
+  KernelPilotMoeExpertState state;
+  for (double beta : {-0.1, 1.1, std::numeric_limits<double>::infinity(),
+                      std::numeric_limits<double>::quiet_NaN()}) {
+    EXPECT_FALSE(state.SetPlacementBeta(beta).IsOK());
+  }
+  ASSERT_STATUS_OK(state.SetPlacementBeta(0.0));
+  ASSERT_STATUS_OK(state.SetPlacementBeta(0.5));
+  ASSERT_STATUS_OK(state.SetPlacementBeta(1.0));
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "QMoE", 2));
+  EXPECT_FALSE(state.SetPlacementBeta(0.5).IsOK());
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  InlinedVector<double> correlations;
+  ASSERT_STATUS_OK(state.GetCorrelations(kernels_[0], correlations));
+  EXPECT_TRUE(correlations.empty());
+  EXPECT_FALSE(state.GetCorrelations(kernels_[1], correlations).IsOK());
+
+  KernelPilotMoeExpertState basic;
+  ASSERT_STATUS_OK(basic.SetPlacementBeta(0.5));
+  ASSERT_STATUS_OK(basic.SetCpuOffloadStrategy("basic"));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(basic.FinalizeInitialization(), "adaptive or layered");
+}
+
 TEST_F(KernelPilotMoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSubgraphs) {
   KernelPilotMoeExpertState state;
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));
