@@ -36,6 +36,8 @@ Do not modify directly.*
   * <a href="#com.microsoft.EngramGate">com.microsoft.EngramGate</a>
   * <a href="#com.microsoft.ExpandDims">com.microsoft.ExpandDims</a>
   * <a href="#com.microsoft.FastGelu">com.microsoft.FastGelu</a>
+  * <a href="#com.microsoft.FoldMid2">com.microsoft.FoldMid2</a>
+  * <a href="#com.microsoft.FoldTail">com.microsoft.FoldTail</a>
   * <a href="#com.microsoft.FusedConv">com.microsoft.FusedConv</a>
   * <a href="#com.microsoft.FusedGemm">com.microsoft.FusedGemm</a>
   * <a href="#com.microsoft.FusedMatMul">com.microsoft.FusedMatMul</a>
@@ -54,6 +56,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.GridSample">com.microsoft.GridSample</a>
   * <a href="#com.microsoft.GroupNorm">com.microsoft.GroupNorm</a>
   * <a href="#com.microsoft.GroupQueryAttention">com.microsoft.GroupQueryAttention</a>
+  * <a href="#com.microsoft.HyperConnectionLowRankMix">com.microsoft.HyperConnectionLowRankMix</a>
   * <a href="#com.microsoft.HyperConnectionPostMix">com.microsoft.HyperConnectionPostMix</a>
   * <a href="#com.microsoft.HyperConnectionPreMix">com.microsoft.HyperConnectionPreMix</a>
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
@@ -73,6 +76,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
+  * <a href="#com.microsoft.MtpMoe">com.microsoft.MtpMoe</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
@@ -892,18 +896,39 @@ This version of the operator has been available since version 1 of the 'com.micr
   (..., C, H), or flattened shape (..., C * H) when num_branches is specified.
   The optional scale may have shape (C * H), (C, H), or (H). Arithmetic is
   performed in float32 and the result is converted to T.
+  With use_onnx_arithmetic=1, compute FP32 square, mean, epsilon addition, square
+  root, division, and scale multiplication with separate rounding boundaries.
+  CUDA reuses the standard fast ReduceMean summation order, including its scalar-result
+  path; it does not substitute reciprocal square root or change the reduction tree.
+  For multiple rows, FP32-rounded squaring is performed during the reduction load rather
+  than materializing a separate FP32 square tensor.
+  Optional Y_fp32 losslessly widens the already T-rounded Y and requires
+  use_onnx_arithmetic=1. WebGPU supports only the default mode without Y_fp32.
+  CUDA-only version 2 can select a contiguous last-axis interval directly from
+  packed rows using input_start and input_width. It retains the same reduction
+  order over the selected width and avoids materializing a Slice tensor.
 
 #### Version
 
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+Version 1 retains the original input layout. Version 2 adds CUDA-only packed-input
+selection; CPU and WebGPU implement version 1 only.
 
 #### Attributes
 
 <dl>
 <dt><tt>epsilon</tt> : float (default is 1e-05)</dt>
 <dd>Epsilon added before reciprocal square root.</dd>
+<dt><tt>input_start</tt> : int (default is 0, version 2)</dt>
+<dd>Nonnegative starting offset in the last input dimension. A nonzero offset requires input_width.</dd>
+<dt><tt>input_width</tt> : int (default is 0, version 2)</dt>
+<dd>Width selected before normalization. Zero retains the full input. A positive width
+requires use_onnx_arithmetic=1 and num_branches=0, and the selected interval must fit
+within the last input dimension.</dd>
 <dt><tt>num_branches</tt> : int (default is 0)</dt>
 <dd>Number of branches for flattened input. Omit or set to zero for grouped input.</dd>
+<dt><tt>use_onnx_arithmetic</tt> : int (default is 0)</dt>
+<dd>Use explicit FP32 mean/sqrt/divide/multiply arithmetic instead of reciprocal RMS.
+Supported values are 0 (default) and 1.</dd>
 </dl>
 
 #### Inputs (1 - 2)
@@ -919,7 +944,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>Y</tt> : T</dt>
-<dd>RMS-normalized output with the same shape as X.</dd>
+<dd>RMS-normalized output with the same shape as X, except that version 2 with
+positive input_width replaces the last dimension with input_width.</dd>
+<dt><tt>Y_fp32</tt> (optional) : F</dt>
+<dd>Float32 widening of the already T-rounded Y. Requires use_onnx_arithmetic=1.</dd>
 </dl>
 
 #### Type Constraints
@@ -927,6 +955,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>M</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain scale to floating-point tensors.</dd>
+<dt><tt>F</tt> : tensor(float)</dt>
+<dd>Widened output is float32.</dd>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output to floating-point tensors.</dd>
 </dl>
@@ -1721,6 +1751,12 @@ This version of the operator has been available since version 1 of the 'com.micr
   auxiliary_key is used as both K and V. DeepSeek-style post-attention inverse/conjugate RoPE and output projection remain
   the exporter's responsibility.
 
+  CUDA also supports INT8 main caches with float32 per-channel key/value scales. Appended rows are
+  quantized with round-to-nearest-even and saturation to [-128, 127]; attention reads the quantized
+  representation, including current rows. Auxiliary caches retain the query's floating-point type.
+  Scales must be positive and finite; requested validation reports invalid scales as status 10,
+  and CUDA strict validation raises an error. WebGPU supports only query-typed floating caches.
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -1756,7 +1792,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Add a zero-valued sink logit when no explicit head_sink is supplied.</dd>
 </dl>
 
-#### Inputs (11 - 17)
+#### Inputs (11 - 20)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -1765,10 +1801,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Current main key [batch, sequence, kv_num_heads * head_size].</dd>
 <dt><tt>value</tt> (optional) : T</dt>
 <dd>Current main value [batch, sequence, kv_num_heads * head_size].</dd>
-<dt><tt>past_key</tt> (optional) : T</dt>
-<dd>Main key cache in BNSH layout.</dd>
-<dt><tt>past_value</tt> (optional) : T</dt>
-<dd>Main value cache in BNSH layout.</dd>
+<dt><tt>past_key</tt> (optional) : TCache</dt>
+<dd>Main key cache in BNSH layout, query-typed or INT8.</dd>
+<dt><tt>past_value</tt> (optional) : TCache</dt>
+<dd>Main value cache in BNSH layout, matching past_key.</dd>
 <dt><tt>auxiliary_key</tt> (optional) : T</dt>
 <dd>Read-only auxiliary key sequence in BNSH layout.</dd>
 <dt><tt>auxiliary_value</tt> (optional) : T</dt>
@@ -1793,17 +1829,25 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Optional K RMSNorm weight [head_size].</dd>
 <dt><tt>head_sink</tt> (optional) : T</dt>
 <dd>Optional sink logit [num_heads]. Participates in the shared softmax denominator in both attention modes.</dd>
+<dt><tt>committed_length</tt> (optional) : M</dt>
+<dd>Optional single-request committed cursor. Inconsistency with sequence metadata produces validation status 9.</dd>
+<dt><tt>key_scale</tt> (optional) : S</dt>
+<dd>Positive finite per-channel INT8 key-cache scales [kv_num_heads * head_size].</dd>
+<dt><tt>value_scale</tt> (optional) : S</dt>
+<dd>Positive finite per-channel INT8 value-cache scales [kv_num_heads * head_size]. Both scales are required for INT8 caches.</dd>
 </dl>
 
-#### Outputs (1 - 3)
+#### Outputs (1 - 4)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>Attention output [batch, sequence, num_heads * head_size].</dd>
-<dt><tt>present_key</tt> (optional) : T</dt>
+<dt><tt>present_key</tt> (optional) : TCache</dt>
 <dd>Updated main key cache in BNSH layout.</dd>
-<dt><tt>present_value</tt> (optional) : T</dt>
+<dt><tt>present_value</tt> (optional) : TCache</dt>
 <dd>Updated main value cache in BNSH layout.</dd>
+<dt><tt>validation_status</tt> (optional) : M</dt>
+<dd>One int32 validation status: zero for valid inputs; 9 for cursor mismatch; 10 for invalid INT8 scales.</dd>
 </dl>
 
 #### Type Constraints
@@ -1811,6 +1855,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain all floating-point inputs and outputs to one element type.</dd>
+<dt><tt>TCache</tt> : tensor(float), tensor(float16), tensor(bfloat16), tensor(int8)</dt>
+<dd>Cache type matches T unless INT8 per-channel scales are supplied.</dd>
+<dt><tt>S</tt> : tensor(float)</dt>
+<dd>INT8 cache scales use float32.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain selection and sequence metadata to int32.</dd>
 </dl>
@@ -2095,6 +2143,106 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(double), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float or half tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.FoldMid2"></a><a name="com.microsoft.foldmid2">**com.microsoft.FoldMid2**</a>
+
+  Combines speculative-token acceptance, recurrent-state commit bookkeeping, and head rotary-cache lookup for a two-token verification step. When `ctl[3]` is zero, the operator updates `ctl` and `ctx_commit` in place and writes a result record through the device-accessible pointer and capacity in `ptrs`.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>next_tokens</tt> : I64</dt>
+<dd>Two predicted token IDs.</dd>
+<dt><tt>input_ids</tt> : I64</dt>
+<dd>Two input token IDs; input_ids[1] is the draft token.</dd>
+<dt><tt>status</tt> : I32</dt>
+<dd>Status values aggregated into the result record.</dd>
+<dt><tt>ctl</tt> : I64</dt>
+<dd>Mutable eight-element control state.</dd>
+<dt><tt>ctx_commit</tt> : I64</dt>
+<dd>Mutable two-element committed context.</dd>
+<dt><tt>ctx_a</tt> : I64</dt>
+<dd>Context selected when the draft is rejected.</dd>
+<dt><tt>ctx_b</tt> : I64</dt>
+<dd>Context selected when the draft is accepted.</dd>
+<dt><tt>ptrs</tt> : I64</dt>
+<dd>Device pointers containing the result-ring address and capacity.</dd>
+<dt><tt>cos_cache</tt> : B</dt>
+<dd>Bfloat16 rotary cosine cache with shape [positions, 32].</dd>
+<dt><tt>sin_cache</tt> : B</dt>
+<dd>Bfloat16 rotary sine cache with shape [positions, 32].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>head_ids</tt> : I64</dt>
+<dd>Two token IDs consumed by the head.</dd>
+<dt><tt>head_c</tt> : I32</dt>
+<dd>Current head-cache length.</dd>
+<dt><tt>slot_ids</tt> : I64</dt>
+<dd>Two consecutive head-cache slots.</dd>
+<dt><tt>seqlens</tt> : I32</dt>
+<dd>Head sequence length.</dd>
+<dt><tt>cos_out</tt> : B</dt>
+<dd>Two rows of rotary cosine values.</dd>
+<dt><tt>sin_out</tt> : B</dt>
+<dd>Two rows of rotary sine values.</dd>
+<dt><tt>sel</tt> : I64</dt>
+<dd>Selected row: one when the draft is accepted, otherwise zero.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>B</tt> : tensor(bfloat16)</dt>
+<dd>Constrain rotary cache tensors to bfloat16.</dd>
+<dt><tt>I32</tt> : tensor(int32)</dt>
+<dd>Constrain status and sequence tensors to int32.</dd>
+<dt><tt>I64</tt> : tensor(int64)</dt>
+<dd>Constrain control and token tensors to int64.</dd>
+</dl>
+
+
+### <a name="com.microsoft.FoldTail"></a><a name="com.microsoft.foldtail">**com.microsoft.FoldTail**</a>
+
+  Updates the next speculative draft token and aggregate error bit from the head result. When `ctl[3]` is zero, the operator updates the control tensor in place; muted calls return `done=0` without changing the state.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>next_token</tt> : I64</dt>
+<dd>Next draft token ID.</dd>
+<dt><tt>status</tt> : I32</dt>
+<dd>Head status values.</dd>
+<dt><tt>ctl</tt> : I64</dt>
+<dd>Mutable eight-element control state.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>done</tt> : I32</dt>
+<dd>One when the control state was updated; zero for muted calls.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>I32</tt> : tensor(int32)</dt>
+<dd>Constrain status and output tensors to int32.</dd>
+<dt><tt>I64</tt> : tensor(int64)</dt>
+<dd>Constrain token and control tensors to int64.</dd>
 </dl>
 
 
@@ -3256,6 +3404,94 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain KV cache scale types.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask to int tensor.</dd>
+</dl>
+
+
+### <a name="com.microsoft.HyperConnectionLowRankMix"></a><a name="com.microsoft.hyperconnectionlowrankmix">**com.microsoft.HyperConnectionLowRankMix**</a>
+
+  One hyper-connection block with a low-rank gate network, fused into one operator. C = num_branches streams of
+  width H are kept as one flattened (..., C * H) tensor. With the optional prologue the operator first applies the
+  post-mix of the previous block (identity stream mix):
+
+    S[..., c, h] = streams[..., c, h] + prev_post_gate[..., c] * prev_block_output[..., h]
+
+  and otherwise S = streams. It then computes, with `rms` taken per branch over H:
+
+    hn[..., c, h] = S[..., c, h] / sqrt(mean_h(S[..., c, :]^2) + epsilon) * norm_scale[c, h]
+    d             = ScaledSiLU(hn @ down_weight, silu_alpha)                   (..., R)
+    g[..., c, h]  = sigmoid(d @ up_weight)                                    per stream and feature
+    pre_output    = reduction_scale * sum_c(hn[..., c, h] * g[..., c, h])     (..., H)
+    post_gate     = sigmoid((hn @ inject_weight) / gate_div) * gate_mul         (..., C)
+
+  pre_output is the input of the next transformer block and post_gate is prev_post_gate of the next call.
+  streams_out is S (the streams after the prologue; a copy of streams when there is no prologue).
+
+  Numerics contract. Matrix products and reductions accumulate in float32. The result of every step is rounded
+  to T once, as the output of the equivalent standard operator would be:
+  S = cast_T(streams + prev_post_gate * prev_block_output), hn = cast_T(S * inv_rms * norm_scale),
+  down = cast_T(hn @ down_weight), Z = cast_T(silu_alpha * down), SG = cast_T(sigmoid(Z)), hidden = cast_T(Z * SG),
+  up = cast_T(hidden @ up_weight), g = cast_T(sigmoid(up)), pre_output = cast_T(reduction_scale * sum_c(hn * g)),
+  inject = cast_T(hn @ inject_weight), post_gate = cast_T(cast_T(sigmoid(cast_T(inject / gate_div))) * gate_mul).
+  sigmoid is evaluated in float32 with expf and rounded once to T; it does not reproduce a Sigmoid kernel that
+  rounds to T after every elementary operation. The accumulation order of the matrix products is fixed, so the
+  results are deterministic, but they are not bitwise identical to cuBLAS.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Epsilon added to the mean square of each branch before the reciprocal square root.</dd>
+<dt><tt>gate_div</tt> : float</dt>
+<dd>Divisor applied to the inject logits before the sigmoid. Must not be zero.</dd>
+<dt><tt>gate_mul</tt> : float</dt>
+<dd>Multiplier applied to the sigmoid of the inject logits.</dd>
+<dt><tt>num_branches</tt> : int (required)</dt>
+<dd>Number of residual streams C. The last dimension of streams is C * H.</dd>
+<dt><tt>reduction_scale</tt> : float</dt>
+<dd>Multiplier applied to the sum over branches of pre_output.</dd>
+<dt><tt>silu_alpha</tt> : float</dt>
+<dd>Scale of the ScaledSiLU between the down and up projections.</dd>
+</dl>
+
+#### Inputs (5 - 7)
+
+<dl>
+<dt><tt>streams</tt> : T</dt>
+<dd>Flattened streams (..., C * H). With the prologue these are the streams before the previous block's post-mix.</dd>
+<dt><tt>norm_scale</tt> : T</dt>
+<dd>Per-branch RMS norm weight with shape (C * H).</dd>
+<dt><tt>down_weight</tt> : T</dt>
+<dd>Down projection with shape (C * H, R), row-major [K, N].</dd>
+<dt><tt>up_weight</tt> : T</dt>
+<dd>Up projection with shape (R, C * H), row-major [K, N].</dd>
+<dt><tt>inject_weight</tt> : T</dt>
+<dd>Post-gate projection with shape (C * H, C), row-major [K, N].</dd>
+<dt><tt>prev_block_output</tt> (optional) : T</dt>
+<dd>Optional output of the previous block with shape (..., H). Provide together with prev_post_gate.</dd>
+<dt><tt>prev_post_gate</tt> (optional) : T</dt>
+<dd>Optional post-mix gate of the previous block with shape (..., C). Provide together with prev_block_output.</dd>
+</dl>
+
+#### Outputs (2 - 3)
+
+<dl>
+<dt><tt>pre_output</tt> : T</dt>
+<dd>Block input with shape (..., H).</dd>
+<dt><tt>post_gate</tt> : T</dt>
+<dd>Post-mix gate for the next call with shape (..., C).</dd>
+<dt><tt>streams_out</tt> (optional) : T</dt>
+<dd>Optional streams after the prologue, with the same shape as streams. Equal to streams when the prologue inputs are absent.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain all floating-point inputs and outputs to the same type.</dd>
 </dl>
 
 
@@ -4423,6 +4659,57 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MtpMoe"></a><a name="com.microsoft.mtpmoe">**com.microsoft.MtpMoe**</a>
+
+  Fused bfloat16 NVFP4 mixture-of-experts projection for multi-token prediction.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>gate_up_global_scale</tt> : float (required)</dt>
+<dd>Global scale applied to the gate/up projection weights.</dd>
+<dt><tt>down_global_scale</tt> : float (required)</dt>
+<dd>Global scale applied to the down projection weights.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Bfloat16 hidden states with shape [1, rows, 2560].</dd>
+<dt><tt>router_logits</tt> : T</dt>
+<dd>Bfloat16 router logits with shape [1, rows, 512].</dd>
+<dt><tt>gate_up_weights</tt> : T1</dt>
+<dd>Packed NVFP4 gate/up weights with shape [512, 1280, 1440].</dd>
+<dt><tt>down_weights</tt> : T1</dt>
+<dd>Packed NVFP4 down weights with shape [512, 2560, 360].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Bfloat16 output with the same shape as input.</dd>
+<dt><tt>scratch</tt> : T2</dt>
+<dd>Float scratch buffer used by the fused expert projections.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>Constrain activations and output to bfloat16.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Constrain packed expert weights to uint8.</dd>
+<dt><tt>T2</tt> : tensor(float)</dt>
+<dd>Constrain scratch to float.</dd>
 </dl>
 
 
@@ -7106,10 +7393,18 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices
   that are multiplied to query and key before the inner product of query and key is taken.
+  Version 2 adds optional FP32 arithmetic with activation-type storage. With
+  use_fp32_arithmetic=1, input and cache values are widened inside the CUDA kernel,
+  each multiplication and addition is rounded separately in float32, and only the
+  final result is converted back to the input type. This preserves a
+  Cast-to-float -> float RotaryEmbedding -> Cast-to-input-type chain.
+  Version 1 and the default arithmetic are unchanged.
 
 #### Version
 
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+The latest version is 2 of the 'com.microsoft' operator set. Version 2 is currently
+implemented by CUDA only; other providers retain version 1 and cannot silently
+execute version 2 with legacy low-precision arithmetic.
 
 #### Attributes
 
@@ -7124,6 +7419,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Rotary embedding dimension. Default value is 0.</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1.0</dd>
+<dt><tt>use_fp32_arithmetic</tt> : int (default is 0; version 2 only)</dt>
+<dd>Widen input and cache values, perform separately rounded float32 multiplication
+and addition, then round the output once to the input type. Supported values are
+0 (legacy arithmetic) and 1.</dd>
 </dl>
 
 #### Inputs
