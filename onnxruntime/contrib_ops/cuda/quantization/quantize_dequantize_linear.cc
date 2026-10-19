@@ -64,7 +64,7 @@ class DequantizeLinearFp8Bf16 final : public CudaKernel {
                       "x_zero_point and x_scale must have the same shape.");
 
     const int64_t scale_count = scale.Shape().Size();
-    ORT_RETURN_IF_NOT(scale_count > 0, "x_scale must not be empty.");
+    ORT_RETURN_IF_NOT(scale_count > 0 || count == 0, "x_scale must not be empty.");
     int64_t axis_stride = 1;
     if (scale_count != 1) {
       const int64_t axis = HandleNegativeAxis(axis_, shape.NumDimensions());
