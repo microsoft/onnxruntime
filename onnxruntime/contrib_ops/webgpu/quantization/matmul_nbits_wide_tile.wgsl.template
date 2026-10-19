@@ -6,6 +6,7 @@
 #param has_weight_idx
 #param has_weight_idx_indirect
 #param nbits
+#param packed_f16_shuffle
 #param acc_f32
 #param subgroup_min_size
 #param tile_m
@@ -213,6 +214,13 @@ fn dequantize(packed_data : vec2<u32>,
 // vecs consumed per dequantized weight column can be read in one access.
 var<workgroup> a_data_tile : array<array<array<input_a_value_t, 2u>, kTileM>, KAVecSizeForBlock32 / 2u>;
 
+#if packed_f16_shuffle
+// Preserve the FP16 payload exactly, using integer subgroup transport on Qualcomm D3D12.
+fn shuffle_packed_f16(value : input_a_value_t, lane : u32) -> input_a_value_t {
+  return bitcast<vec4<f16>>(subgroupShuffle(bitcast<vec2<u32>>(value), lane));
+}
+#endif
+
 $MAIN {
   let batch = workgroup_idx / (uniforms.num_M_tile * uniforms.num_N_tile);
   let row = ((workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile) * kTileM;
@@ -251,8 +259,13 @@ $MAIN {
       for (var m_idx = 0u; m_idx < kTileM; m_idx++) {
         // The shuffle stays in the workgroup-memory element type; only the dot products are
         // widened, so the broadcast traffic is the same in both accumulator states.
+#if packed_f16_shuffle
+        results[m_idx] += dot(vec4<acc_element_t>(shuffle_packed_f16(a[0], m_idx)), vec4<acc_element_t>(b_dequantized[0])) +
+                          dot(vec4<acc_element_t>(shuffle_packed_f16(a[1], m_idx)), vec4<acc_element_t>(b_dequantized[1]));
+#else
         results[m_idx] += dot(vec4<acc_element_t>(subgroupShuffle(a[0], m_idx)), vec4<acc_element_t>(b_dequantized[0])) +
                           dot(vec4<acc_element_t>(subgroupShuffle(a[1], m_idx)), vec4<acc_element_t>(b_dequantized[1]));
+#endif
       }
 #elif subgroup_min_size > 0 && tile_m % subgroup_min_size == 0
       // kTileM is wider than a single subgroup can shuffle, so it's split into
@@ -261,8 +274,13 @@ $MAIN {
         let m_offset = chunk * subgroup_min_size;
         let a = a_data_tile[b_idx][capped_sg_id + m_offset];
         for (var m_idx = 0u; m_idx < subgroup_min_size; m_idx++) {
+#if packed_f16_shuffle
+          results[m_idx + m_offset] += dot(vec4<acc_element_t>(shuffle_packed_f16(a[0], m_idx)), vec4<acc_element_t>(b_dequantized[0])) +
+                                       dot(vec4<acc_element_t>(shuffle_packed_f16(a[1], m_idx)), vec4<acc_element_t>(b_dequantized[1]));
+#else
           results[m_idx + m_offset] += dot(vec4<acc_element_t>(subgroupShuffle(a[0], m_idx)), vec4<acc_element_t>(b_dequantized[0])) +
                                        dot(vec4<acc_element_t>(subgroupShuffle(a[1], m_idx)), vec4<acc_element_t>(b_dequantized[1]));
+#endif
         }
       }
 #else
