@@ -37,6 +37,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
         .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("TG", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>())
         .InputMemoryType(OrtMemTypeCPUInput, 10)
         .MayInplace(6, 1),
@@ -47,9 +48,10 @@ GatedDeltaNet::GatedDeltaNet(const OpKernelInfo& info) : WebGpuKernel(info) {
   ORT_ENFORCE(update_rule_ != GatedDeltaNetUpdateRule::Invalid,
               "update_rule must be one of: linear, gated, delta, gated_delta");
   const auto gate_activation = info.GetAttrOrDefault<std::string>("gate_activation", "none");
-  ORT_ENFORCE(gate_activation == "none" || gate_activation == "qwen",
-              "gate_activation must be one of: none, qwen");
-  qwen_gate_ = gate_activation == "qwen";
+  ORT_ENFORCE(gate_activation == "none" || gate_activation == "softplus" ||
+                  gate_activation == "qwen",
+              "gate_activation must be one of: none, softplus");
+  qwen_gate_ = gate_activation == "softplus" || gate_activation == "qwen";
   const auto beta_activation = info.GetAttrOrDefault<std::string>("beta_activation", "none");
   ORT_ENFORCE(beta_activation == "none" || beta_activation == "sigmoid",
               "beta_activation must be one of: none, sigmoid");
@@ -60,6 +62,9 @@ GatedDeltaNet::GatedDeltaNet(const OpKernelInfo& info) : WebGpuKernel(info) {
   const auto state_update_capacity = info.GetAttrOrDefault<int64_t>("state_update_capacity", 0);
   ORT_ENFORCE(state_update_capacity >= 0 && state_update_capacity <= 8,
               "state_update_capacity must be in [0, 8], got ", state_update_capacity);
+  ORT_ENFORCE(info.GetAttrOrDefault<std::string>("state_output", "state_update") ==
+                  "state_update",
+              "WebGPU GatedDeltaNet supports only state_output='state_update'");
   state_update_capacity_ = static_cast<int>(state_update_capacity);
 }
 
