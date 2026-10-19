@@ -9,6 +9,7 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
+#include "core/framework/int4.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
@@ -4083,6 +4084,39 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearInt32ZeroPointThroughSoftmax) 
   };
   TransformerTester(build_test_case, check_no_quantize_inserted, TransformerLevel::Default,
                     TransformerLevel::Level1, /*opset_version*/ {12, 13, 21});
+}
+
+// Positive counterpart to the #33443 regression test above: a per-tensor 4-bit
+// DequantizeLinear with an explicit zero point must still get the Q/DQ repair. QuantizeLinear
+// supports INT4 output at opset 21 even though api::DataType has no INT4 enumerator, so the
+// INT32 guard must not reject it. Uses the Transpose -> DQ -> Transpose shape of
+// RunDequantizeLinearTestCase, which only cancels if MakeQDQNodeUnit inserts the Q -> DQ pair.
+TEST(TransposeOptimizerTests, TestDequantizeLinearInt4ZeroPoint) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput(std::vector<int64_t>{2, 4, 6, 3},
+                                         Int4x2(Int4x2::min_val, 0), Int4x2(Int4x2::max_val, 0));
+    auto* scale_arg = builder.MakeInput<float>(std::vector<int64_t>{}, std::vector<float>{0.05f});
+    auto* zp_arg = builder.MakeInput<Int4x2>(std::vector<int64_t>{}, std::vector<Int4x2>{Int4x2(0, 0)});
+
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* dq_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("DequantizeLinear", {transpose_1_out_0, scale_arg, zp_arg}, {dq_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {dq_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  // The transposes only cancel if the Q -> DQ pair was inserted for the 4-bit DQ, and
+  // TransformerTester also runs the optimized model and compares its outputs against the
+  // unoptimized model.
+  auto check_transposes_cancelled = [](InferenceSessionWrapper& session) {
+    EXPECT_EQ(EstimateTransposeCost(session.GetGraph()), 0);
+  };
+  TransformerTester(build_test_case, check_transposes_cancelled, TransformerLevel::Default,
+                    TransformerLevel::Level1, /*opset_version*/ 21);
 }
 
 TEST(TransposeOptimizerTests, TestCast) {
