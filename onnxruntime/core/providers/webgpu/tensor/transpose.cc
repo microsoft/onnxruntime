@@ -150,6 +150,10 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContextBase& context,
   }
   TensorShape output_shape(output_dims);
 
+  if (input_shape.Size() == 0) {
+    return Status::OK();
+  }
+
   // Check if `OIHW2OHWIProgram` can be applied.
   //
   // `OIHW2OHWIProgram` was originally designed to transpose 4D weights from OIHW

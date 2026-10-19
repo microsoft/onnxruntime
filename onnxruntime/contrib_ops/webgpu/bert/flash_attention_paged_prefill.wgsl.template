@@ -24,7 +24,7 @@
 //     it is preferable.
 //
 // Alignment invariant: paged_attention_helper enforces block_size to be a
-// power of two >= 16, and ShouldRunFusedPagedPrefill additionally rejects
+// power of two >= 16, and CanApplyFlashAttentionPagedPrefill additionally rejects
 // block_size < max_k_step. max_k_step is 32 (fp16, head <= 128) or 16
 // otherwise, and k_start advances by max_k_step starting at 0. Because both
 // block_size and max_k_step are powers of two and block_size >= max_k_step,
@@ -57,7 +57,7 @@ const head_size_vec : u32 = head_size / vec_factor;
 
 // K and V tiles in shared memory. Budget = 2 * head_size * max_k_step *
 // element_size B (two tiles, k and v). Sized for the 16 KiB shm budget
-// enforced by ShouldRunFusedPagedPrefill:
+// enforced by CanApplyFlashAttentionPagedPrefill:
 //   * fp16 head_size 128, max_k_step 32 -> 2 * 128 * 32 * 2 = 16 KiB
 //   * fp16 head_size 256, max_k_step 16 -> 2 * 256 * 16 * 2 = 16 KiB
 // (matches the dense FA sizing at shm-path adapters.)

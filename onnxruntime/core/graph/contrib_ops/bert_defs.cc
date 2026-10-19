@@ -370,14 +370,10 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
                                                       : past_dims[2].dim_value();
           present_shape.add_dim()->set_dim_value(present_sequence_length);
         } else {
-          // Cannot compute exact present_sequence_length.
-          if (ctx.getNumInputs() > 6 && past_dims[2].has_dim_value() && past_dims[2].dim_value() == 0) {
-            // If total_sequence_length is provided and past_key has 0 length, present_key will grow.
-            // Leave the dimension as dynamic to avoid "Error merging shape info" warning.
-            present_shape.add_dim();
-          } else {
-            *present_shape.add_dim() = past_dims[2];
-          }
+          // total_sequence_length is a runtime input here, so neither a symbolic nor a fixed past
+          // length bounds present. Copying the past dimension would let the allocation planner give
+          // present a past-sized buffer ("Shape mismatch attempting to re-use buffer").
+          present_shape.add_dim();
         }
         *present_shape.add_dim() = past_dims[3];  // head_size
 
@@ -488,6 +484,16 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
 void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
+  const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+  const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
+  if (num_heads <= 0 || num_heads > std::numeric_limits<int>::max()) {
+    fail_shape_inference("num_heads must be a positive int");
+  }
+  if (kv_num_heads <= 0 || kv_num_heads > std::numeric_limits<int>::max() ||
+      num_heads % kv_num_heads != 0) {
+    fail_shape_inference("kv_num_heads must be positive and divide num_heads");
+  }
+
   if (hasInputShape(ctx, 0)) {
     const auto& query_shape = getInputShape(ctx, 0);
     const auto& query_dims = query_shape.dim();
@@ -496,10 +502,9 @@ void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
     }
 
     auto output_shape = query_shape;
-    const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
-    const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
     if (ctx.getInputType(2) == nullptr) {
-      if (num_heads > 0 && kv_num_heads > 0 && query_dims[2].has_dim_value()) {
+      output_shape.mutable_dim(2)->Clear();
+      if (query_dims[2].has_dim_value()) {
         const int64_t packed_heads = num_heads + 2 * kv_num_heads;
         const int64_t packed_hidden_size = query_dims[2].dim_value();
         if (packed_hidden_size % packed_heads != 0) {
@@ -507,8 +512,7 @@ void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
         }
         output_shape.mutable_dim(2)->set_dim_value(num_heads * (packed_hidden_size / packed_heads));
       }
-    } else if (num_heads > 0 && query_dims[2].has_dim_value() &&
-               query_dims[2].dim_value() % num_heads != 0) {
+    } else if (query_dims[2].has_dim_value() && query_dims[2].dim_value() % num_heads != 0) {
       fail_shape_inference("Query hidden size must be divisible by the number of query heads");
     }
     updateOutputShape(ctx, 0, output_shape);
@@ -528,10 +532,7 @@ void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
 
     if (hasInputShape(ctx, 0)) {
       const auto& query_dims = getInputShape(ctx, 0).dim();
-      const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
-      const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
-      if (query_dims.size() == 3 && num_heads > 0 && kv_num_heads > 0 &&
-          query_dims[2].has_dim_value()) {
+      if (query_dims.size() == 3 && query_dims[2].has_dim_value()) {
         const bool is_packed = ctx.getInputType(2) == nullptr;
         const int64_t divisor = is_packed ? num_heads + 2 * kv_num_heads : num_heads;
         if (query_dims[2].dim_value() % divisor != 0) {
@@ -541,8 +542,9 @@ void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
         ONNX_NAMESPACE::TensorShapeProto present_shape;
         *present_shape.add_dim() = query_dims[0];
         present_shape.add_dim()->set_dim_value(kv_num_heads);
+        const bool past_inputs_omitted = ctx.getInputType(3) == nullptr && ctx.getInputType(4) == nullptr;
         const auto* total_length_data = ctx.getInputData(10);
-        if (total_length_data != nullptr) {
+        if (past_inputs_omitted && total_length_data != nullptr) {
           const auto total_lengths = ParseData<int32_t>(total_length_data);
           if (total_lengths.size() != 1) {
             fail_shape_inference("total_sequence_length must contain exactly one element");
@@ -609,7 +611,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("rotary_interleaved", "Whether rotary pairs use interleaved layout.",
               AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("rotary_offset", "First head channel covered by rotary embedding.",
+        .Attr("rotary_offset",
+              "First head channel covered by rotary embedding. Must be nonnegative, a multiple of 8, and leave room "
+              "for the rotary dimensions within head_size.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("qk_norm_epsilon", "Epsilon for optional per-head Q/K RMS normalization.",
               AttributeProto::FLOAT, 1e-6f)
@@ -618,7 +622,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("auxiliary_kv_shared", "Use auxiliary_key as both key and value when auxiliary_value is omitted.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0, "query",
-               "Query [batch, sequence, num_heads * head_size], or packed QKV.", "T")
+               "Query [batch, sequence, num_heads * head_size]. When key and value are omitted, each row contains "
+               "Q, K, then V concatenated with total width (num_heads + 2 * kv_num_heads) * head_size.",
+               "T")
         .Input(1, "key", "Current main key [batch, sequence, kv_num_heads * head_size].", "T",
                OpSchema::Optional)
         .Input(2, "value", "Current main value [batch, sequence, kv_num_heads * head_size].", "T",
@@ -2004,7 +2010,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 static OpSchema PackedSparseAttentionIndexerMergeSchema() {
   return OpSchema()
       .SetDoc(
-          "Stable union of a mapped base selection and [range_start, range_end). "
+          "Stable union of a mapped base selection and either [range_start, range_end) "
+          "or an additional selection prefix. "
           "Valid prefixes contain nonnegative indices. Padding is ignored. Outputs preserve "
           "first-occurrence order and are padded with -1. Status is 0 for success, 1 for invalid "
           "device metadata, or 2 for capacity overflow; failures return count 0 and all -1. "
@@ -2016,8 +2023,10 @@ static OpSchema PackedSparseAttentionIndexerMergeSchema() {
       .Input(2, "base_row_indices", "Output-query to cached-row mapping, shape (N).", "T")
       .Input(3, "range_starts", "Inclusive nonnegative starts, shape (N).", "T", OpSchema::Optional)
       .Input(4, "range_ends", "Exclusive ends not less than starts, shape (N).", "T", OpSchema::Optional)
-      .Input(5, "additional_indices", "Reserved; must be absent for append_range.", "T", OpSchema::Optional)
-      .Input(6, "additional_counts", "Reserved; must be absent for append_range.", "T", OpSchema::Optional)
+      .Input(5, "additional_indices", "Required for append_indices: selections of shape (N, A); absent for append_range.",
+             "T", OpSchema::Optional)
+      .Input(6, "additional_counts", "Required for append_indices: valid prefix lengths of shape (N); absent for append_range.",
+             "T", OpSchema::Optional)
       .Output(0, "selected_indices", "Merged indices, shape (N, max_output_entries).", "T")
       .Output(1, "selected_counts", "Merged prefix lengths, shape (N).", "T")
       .Output(2, "status", "Per-query device validation status, shape (N).", "T")
@@ -2032,6 +2041,34 @@ static OpSchema PackedSparseAttentionIndexerMergeSchema() {
         for (size_t output = 0; output < 3; ++output) propagateElemTypeFromInputToOutput(ctx, 0, output);
         if (hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim_size() != 2) {
           fail_shape_inference("base_indices must have rank 2");
+        }
+        const bool append_indices = policy->s() == "append_indices";
+        for (size_t index = 3; index <= 6; ++index) {
+          const bool provided = index < ctx.getNumInputs() && ctx.getInputType(index) != nullptr;
+          if (provided != (append_indices ? index >= 5 : index <= 4)) {
+            fail_shape_inference("Merge inputs must match policy_mode");
+          }
+        }
+        const auto check_rows = [&](size_t input, int rank, size_t reference) {
+          if (!hasInputShape(ctx, input)) return;
+          const auto& shape = getInputShape(ctx, input);
+          if (shape.dim_size() != rank) fail_shape_inference("Merge input ", input, " must have rank ", rank);
+          if (hasInputShape(ctx, reference)) {
+            const auto& expected = getInputShape(ctx, reference);
+            if (expected.dim_size() > 0 && shape.dim(0).has_dim_value() && expected.dim(0).has_dim_value() &&
+                shape.dim(0).dim_value() != expected.dim(0).dim_value()) {
+              fail_shape_inference("Merge input ", input, " has a mismatched row dimension");
+            }
+          }
+        };
+        check_rows(1, 1, 0);
+        check_rows(2, 1, 2);
+        if (append_indices) {
+          check_rows(5, 2, 2);
+          check_rows(6, 1, 2);
+        } else {
+          check_rows(3, 1, 2);
+          check_rows(4, 1, 2);
         }
         if (hasInputShape(ctx, 2)) {
           const auto& rows = getInputShape(ctx, 2);
@@ -2358,7 +2395,6 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
     fail_shape_inference("SparseAttentionIndexer: policy_mode '", policy_mode, "' requires exactly ",
                          expected_outputs, " declared outputs, got ", ctx.getNumOutputs());
   }
-
   updateOutputElemType(ctx, sai::kSelectedIndices, ONNX_NAMESPACE::TensorProto_DataType_INT32);
 
   const bool has_key = SparseAttentionIndexerHasInput(ctx, sai::kKey);
@@ -2377,6 +2413,9 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
   const auto* query_norm_shape = SparseAttentionIndexerShape(ctx, sai::kQueryNormWeight, 1);
   if (query_width_dim.has_dim_value() && query_width_dim.dim_value() <= 0) {
     fail_shape_inference("SparseAttentionIndexer: query width must be > 0, got ", query_width_dim.dim_value());
+  }
+  if (query_width_dim.has_dim_value() && query_width_dim.dim_value() > std::numeric_limits<int>::max()) {
+    fail_shape_inference("SparseAttentionIndexer: query width must be no greater than INT_MAX");
   }
   if (query_norm_shape == nullptr) {
     return;
@@ -2420,7 +2459,12 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
       } else {
         auto* total_dim = present_shape.add_dim();
         if (past_key_shape->dim(1).has_dim_value() && sequence_dim.has_dim_value()) {
-          total_dim->set_dim_value(past_key_shape->dim(1).dim_value() + sequence_dim.dim_value());
+          const int64_t past_length = past_key_shape->dim(1).dim_value();
+          const int64_t sequence_length = sequence_dim.dim_value();
+          if (past_length > std::numeric_limits<int64_t>::max() - sequence_length) {
+            fail_shape_inference("SparseAttentionIndexer: present key sequence length exceeds INT64_MAX");
+          }
+          total_dim->set_dim_value(past_length + sequence_length);
         }
       }
       SparseAttentionIndexerAppendDim(present_shape, head_size_dim);
@@ -2475,7 +2519,11 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
     if (SparseAttentionIndexerHasInput(ctx, sai::kPastSequenceLength)) {
       *entry_dim = past_compressed_shape->dim(1);
     } else if (plan_known && past_compressed_shape->dim(1).has_dim_value()) {
-      entry_dim->set_dim_value(past_compressed_shape->dim(1).dim_value() + plan.new_window_count);
+      const int64_t past_length = past_compressed_shape->dim(1).dim_value();
+      if (past_length > std::numeric_limits<int64_t>::max() - plan.new_window_count) {
+        fail_shape_inference("SparseAttentionIndexer: present compressed-key length exceeds INT64_MAX");
+      }
+      entry_dim->set_dim_value(past_length + plan.new_window_count);
     }
     SparseAttentionIndexerAppendDim(present_shape, head_size_dim);
     updateOutputShape(ctx, sai::kPresentKey, present_shape);
@@ -2512,7 +2560,8 @@ decoders, chosen with the policy_mode attribute:
     the current window its "Cb" half), normalizes and rotates the entry, appends it to the
     compressed-key state, scores the queries against every compressed entry with
     sum_h w_h * ReLU(q_h . k), masks the entries a query may not attend to and emits the index_topk
-    highest scoring entry indices.
+    highest scoring entry indices. If a channel's softmax denominator is non-positive or non-finite
+    (for example, all logits are -inf or any logit is +inf), its pooled value is zero.
 
 Common contract:
   * selected_indices is int32 with a fixed capacity that only depends on attributes:
@@ -2718,6 +2767,11 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
                          "'");
   }
   const bool is_qsa = policy == psai::Policy::kQsa;
+  const std::string state_policy = getAttribute(ctx, "indexshare_state_policy", std::string("default"));
+  if ((state_policy != "default" && state_policy != "hold" && state_policy != "advance") ||
+      (is_qsa && state_policy == "advance")) {
+    fail_shape_inference("PackedSparseAttentionIndexer: invalid indexshare_state_policy for policy_mode");
+  }
 
   const bool has_indexshare = PackedSparseAttentionIndexerHasInput(ctx, psai::kIndexShareMode);
   const int64_t output_capacity = getAttribute(ctx, "max_output_entries", static_cast<int64_t>(0));
@@ -2726,7 +2780,8 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
       fail_shape_inference("PackedSparseAttentionIndexer: all IndexShare inputs must be provided together");
     }
   }
-  if (has_indexshare != (output_capacity > 0) || output_capacity > std::numeric_limits<int>::max()) {
+  if (has_indexshare != (output_capacity > 0) || output_capacity < 0 ||
+      output_capacity > std::numeric_limits<int>::max()) {
     fail_shape_inference("PackedSparseAttentionIndexer: IndexShare requires a positive max_output_entries");
   }
   if (has_indexshare != ctx.hasOutput(psai::kIndexShareStatus)) {
@@ -2779,8 +2834,7 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   }
 
   // Strict policy input validation: every fixed slot required by every policy must be provided;
-  // csa-only slots must be provided iff policy_mode is 'csa'; position_ids is optional for 'qsa'
-  // and required for 'csa'.
+  // csa-only slots must be provided iff policy_mode is 'csa'.
   for (int index : {psai::kQuery, psai::kQueryNormWeight, psai::kKeyNormWeight, psai::kCosCache, psai::kSinCache,
                     psai::kCumulativeSequenceLengths, psai::kPastSequenceLengths, psai::kPastKeyState,
                     psai::kPastKvBuffer, psai::kPastStateLengths}) {
@@ -2799,9 +2853,10 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
                                   : " is required when policy_mode is 'csa'");
     }
   }
-  if (!is_qsa && !PackedSparseAttentionIndexerHasInput(ctx, psai::kPositionIds)) {
+  if (PackedSparseAttentionIndexerHasInput(ctx, psai::kPositionIds) == is_qsa) {
     fail_shape_inference("PackedSparseAttentionIndexer: input ", psai::kPositionIds,
-                         " (position_ids) is required when policy_mode is 'csa'");
+                         is_qsa ? " (position_ids) must be omitted when policy_mode is 'qsa'"
+                                : " (position_ids) is required when policy_mode is 'csa'");
   }
   const bool has_capture_count = PackedSparseAttentionIndexerHasInput(ctx, psai::kStateUpdateCaptureCount);
   const bool has_state_update_active = PackedSparseAttentionIndexerHasInput(ctx, psai::kStateUpdateActive);
@@ -2884,6 +2939,10 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
       PackedSparseAttentionIndexerShape(ctx, psai::kStateUpdateCaptureCount, 1);
   const auto* state_update_active_shape =
       PackedSparseAttentionIndexerShape(ctx, psai::kStateUpdateActive, 1);
+  const auto* mode_shape = PackedSparseAttentionIndexerShape(ctx, psai::kIndexShareMode, 1);
+  const auto* merged_indices_shape = PackedSparseAttentionIndexerShape(ctx, psai::kMergedIndices, 2);
+  const auto* merged_counts_shape = PackedSparseAttentionIndexerShape(ctx, psai::kMergedCounts, 1);
+  const auto* merged_status_shape = PackedSparseAttentionIndexerShape(ctx, psai::kMergedStatus, 1);
 
   auto require_equal_dims = [](const ONNX_NAMESPACE::TensorShapeProto* lhs, int lhs_index,
                                const ONNX_NAMESPACE::TensorShapeProto* rhs, int rhs_index,
@@ -2903,6 +2962,15 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   };
 
   const int64_t buffer_capacity = psai::GenericBufferCapacity(compress_ratio);
+  require_dim_value(mode_shape, 0, 1, "indexshare_mode must have shape {1}");
+  require_dim_value(merged_indices_shape, 1, output_capacity, "merged_indices width must equal max_output_entries");
+  require_equal_dims(merged_indices_shape, 0, merged_counts_shape, 0, "merged_counts must match merged_indices rows");
+  require_equal_dims(merged_indices_shape, 0, merged_status_shape, 0, "merged_status must match merged_indices rows");
+  if (merged_indices_shape != nullptr && merged_indices_shape->dim(0).has_dim_value() &&
+      merged_indices_shape->dim(0).dim_value() != 0) {
+    require_equal_dims(merged_indices_shape, 0, past_sequence_shape, 0,
+                       "Nonempty merged_indices must have one row per request");
+  }
   if (!has_indexshare) require_equal_dims(key_shape, 0, query_shape, 0, "key dimension 0 must equal query dimension 0");
   require_equal_dims(query_norm_shape, 0, key_norm_shape, 0,
                      "query_norm_weight and key_norm_weight dimensions must match");
@@ -2948,6 +3016,8 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     }
   }
   if (!is_qsa) {
+    require_equal_dims(key_shape, 0, gate_shape, 0, "gate dimension 0 must equal key dimension 0");
+    require_equal_dims(key_shape, 0, position_ids_shape, 0, "position_ids dimension 0 must equal key dimension 0");
     if (!has_indexshare) require_equal_dims(gate_shape, 0, query_shape, 0, "gate dimension 0 must equal query dimension 0");
     require_equal_dims(head_weights_shape, 0, query_shape, 0,
                        "head_weights dimension 0 must equal query dimension 0");
@@ -3097,7 +3167,8 @@ request's own packed token range and fixed-capacity state slice:
     sum_h ReLU(q_h . k), the token_budget / compress_ratio highest scoring blocks are kept, and
     their token indices are emitted (request-local logical positions, i.e. the same numbering as
     past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
-    incomplete block.
+    incomplete block. QSA positions are the request-local logical cache positions derived from
+    past_sequence_lengths and cumulative_sequence_lengths; position_ids must be omitted.
 
   policy_mode = "csa" ("compressed sparse attention" block indexer)
     Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window
@@ -3219,8 +3290,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(7,
                "past_sequence_lengths",
                "Device-resident number of tokens already processed for each request before this call, with "
-               "shape (batch_size). Used as the default absolute query position when position_ids is omitted "
-               "(policy_mode 'qsa'), and to validate state consistency.",
+               "shape (batch_size). Used to derive request-local logical query positions for policy_mode 'qsa' "
+               "and to validate state consistency.",
                "M")
         .Input(8,
                "gate",
@@ -3240,8 +3311,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(11,
                "position_ids",
-               "Optional for policy_mode 'qsa', required for policy_mode 'csa': absolute position of every "
-               "packed query, with shape (total_tokens).",
+               "Only for policy_mode 'csa': absolute position of every packed query, with shape (total_tokens).",
                "I",
                OpSchema::Optional)
         .Input(12,
@@ -4125,10 +4195,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (ctx.getNumOutputs() > 1) {
             propagateElemTypeFromInputToOutput(ctx, 0, 1);
           }
-          if (ctx.getNumOutputs() > 2) {
-            propagateElemTypeFromInputToOutput(ctx, 3, 2);
-          }
-
           const int64_t max_ngram_size = getAttribute(ctx, "max_ngram_size", int64_t{-1});
           const int64_t n_head_per_ngram = getAttribute(ctx, "n_head_per_ngram", int64_t{-1});
           if (max_ngram_size < 2) {
@@ -4494,13 +4560,12 @@ channels-first layout; only the memory layout differs.
 constexpr const char* EngramGate_ver1_doc = R"DOC(
 Fuses the Engram gate.
 
-The op consumes already projected keys and hidden-state queries in either dense
-(batch_size, sequence_length, hc_mult, hidden_size) or packed
-(total_tokens, hc_mult, hidden_size) layout. The projected value has the corresponding
-(batch_size, sequence_length, hidden_size) or (total_tokens, hidden_size) layout and is shared by
-every hyper-connection. The key and value projections stay outside the op so they can run on the
-execution provider's tuned MatMul (weight prepacking, tensor cores, quantized weights) and so the
-value projection is computed once per token instead of once per hyper-connection.
+The op consumes already projected keys in (batch_size, sequence_length, hc_mult, hidden_size) layout,
+the hidden-state queries in the same layout, an already projected value in
+(batch_size, sequence_length, hidden_size) layout that is shared by every hyper-connection, and the two
+RMSNorm scales. The key and value projections stay outside the op so they can run on the execution
+provider's tuned MatMul (weight prepacking, tensor cores, quantized weights) and so the value
+projection is computed once per token instead of once per hyper-connection.
 
 It computes the Engram gate:
 
@@ -4523,17 +4588,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               1.0e-5f)
         .Input(0,
                "key",
-               "Projected Engram keys with shape (batch_size, sequence_length, hc_mult, hidden_size) "
-               "or (total_tokens, hc_mult, hidden_size).",
+               "Projected Engram keys with shape (batch_size, sequence_length, hc_mult, hidden_size).",
                "T")
         .Input(1,
                "query",
-               "Hidden-state queries with the same shape as key.",
+               "Hidden-state queries with shape (batch_size, sequence_length, hc_mult, hidden_size).",
                "T")
         .Input(2,
                "value",
                "Projected Engram value shared by every hyper-connection, with shape "
-               "(batch_size, sequence_length, hidden_size) or (total_tokens, hidden_size).",
+               "(batch_size, sequence_length, hidden_size).",
                "T")
         .Input(3,
                "key_norm_scale",
@@ -4551,11 +4615,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "Gated value tensor with the same shape as key.",
+                "Gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).",
                 "T")
         .Output(1,
                 "gated_value_normed",
-                "Optional RMS-normalized gated value tensor with the same shape as key.",
+                "Optional RMS-normalized gated value tensor with shape "
+                "(batch_size, sequence_length, hc_mult, hidden_size).",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T",
@@ -4569,8 +4634,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
           if (hasInputShape(ctx, 0)) {
             const auto& key_shape = getInputShape(ctx, 0);
-            if (key_shape.dim_size() != 3 && key_shape.dim_size() != 4) {
-              fail_shape_inference("EngramGate: key must have rank 3 or 4");
+            if (key_shape.dim_size() != 4) {
+              fail_shape_inference("EngramGate: key must have rank 4");
             }
             propagateShapeFromInputToOutput(ctx, 0, 0);
             if (ctx.getNumOutputs() > 1) {
@@ -4579,39 +4644,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
           if (hasInputShape(ctx, 1)) {
             const auto& query_shape = getInputShape(ctx, 1);
-            if (query_shape.dim_size() != 3 && query_shape.dim_size() != 4) {
-              fail_shape_inference("EngramGate: query must have rank 3 or 4");
-            }
-            if (hasInputShape(ctx, 0)) {
-              const auto& key_shape = getInputShape(ctx, 0);
-              if (query_shape.dim_size() != key_shape.dim_size()) {
-                fail_shape_inference("EngramGate: query must have the same rank as key");
-              }
-              for (int i = 0; i < key_shape.dim_size(); ++i) {
-                if (query_shape.dim(i).has_dim_value() && key_shape.dim(i).has_dim_value() &&
-                    query_shape.dim(i).dim_value() != key_shape.dim(i).dim_value()) {
-                  fail_shape_inference("EngramGate: query must have the same shape as key");
-                }
-              }
+            if (query_shape.dim_size() != 4) {
+              fail_shape_inference("EngramGate: query must have rank 4");
             }
           }
           if (hasInputShape(ctx, 2)) {
             const auto& value_shape = getInputShape(ctx, 2);
-            if (value_shape.dim_size() != 2 && value_shape.dim_size() != 3) {
-              fail_shape_inference("EngramGate: value must have rank 2 or 3");
-            }
-            if (hasInputShape(ctx, 0) && value_shape.dim_size() + 1 != getInputShape(ctx, 0).dim_size()) {
-              fail_shape_inference("EngramGate: value rank must be one less than key rank");
-            }
-            if (hasInputShape(ctx, 0) && value_shape.dim_size() + 1 == getInputShape(ctx, 0).dim_size()) {
-              const auto& key_shape = getInputShape(ctx, 0);
-              for (int i = 0; i < value_shape.dim_size(); ++i) {
-                const int key_dim = i == value_shape.dim_size() - 1 ? i + 1 : i;
-                if (value_shape.dim(i).has_dim_value() && key_shape.dim(key_dim).has_dim_value() &&
-                    value_shape.dim(i).dim_value() != key_shape.dim(key_dim).dim_value()) {
-                  fail_shape_inference("EngramGate: value must match key's token dimensions and hidden size");
-                }
-              }
+            if (value_shape.dim_size() != 3) {
+              fail_shape_inference("EngramGate: value must have rank 3");
             }
           }
         }));
@@ -4898,9 +4938,7 @@ transaction-safe only when the whole operator call is unconditionally committed;
 may select a prefix or roll back must preserve initial_state and replay the compact state update.
 
 When state_update_capacity is positive, capture_count is required with shape (batch_size), and
-state_update has shape (batch_size, state_update_capacity, channels). The optional CPU int32
-state_update_active input has shape (1). When present and zero, state_update remains all zero;
-when omitted or nonzero, capture proceeds normally.
+state_update has shape (batch_size, state_update_capacity, channels).
 For request b, slots [0, clamp(capture_count[b], 0,
 min(state_update_capacity, sequence_length[b]))) contain the original local input token values.
 These values represent the append component of each shift-left-and-append state transition.
@@ -4976,12 +5014,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "and state_update_capacity. Required exactly when state_update_capacity is positive.",
                "M",
                OpSchema::Optional)
-        .Input(6,
-               "state_update_active",
-               "Optional CPU int32 tensor with shape (1). Zero disables compact state update "
-               "capture for this call; omitted or nonzero enables capture.",
-               "M",
-               OpSchema::Optional)
         .Output(0,
                 "output",
                 "Token-major convolution output with the same shape as input.",
@@ -5002,8 +5034,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         "Constrain input and output types to float tensors.")
         .TypeConstraint("M",
                         {"tensor(int32)"},
-                        "Constrain cumulative_sequence_length and capture_count to device int32 tensors, "
-                        "and state_update_active to a CPU int32 tensor.")
+                        "Constrain cumulative_sequence_length and capture_count to device int32 tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
@@ -5062,14 +5093,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               if (cu_dim.has_dim_value() && capture_count_shape.dim(0).has_dim_value() &&
                   capture_count_shape.dim(0).dim_value() != cu_dim.dim_value() - 1) {
                 fail_shape_inference("VarlenCausalConvWithState: capture_count must have shape (batch_size)");
-              }
-            }
-            if (hasInputShape(ctx, 6)) {
-              auto& state_update_active_shape = getInputShape(ctx, 6);
-              if (state_update_active_shape.dim_size() != 1 ||
-                  (state_update_active_shape.dim(0).has_dim_value() &&
-                   state_update_active_shape.dim(0).dim_value() != 1)) {
-                fail_shape_inference("VarlenCausalConvWithState: state_update_active must have shape (1)");
               }
             }
 
@@ -5285,6 +5308,73 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    GatedDeltaNetStateReplay, 1,
+    OpSchema()
+        .SetDoc(R"DOC(
+Replay one request's captured GatedDeltaNet transitions into an inactive recurrent-state row.
+The WebGPU implementation uses FP32 backing tensors and CPU metadata; it does not recompute
+normalization, gates, beta, or retrieval. It waits for checked GPU completion before returning.
+
+`metadata` is int64 [11], ordered as:
+  source_offset, destination_offset, decay_offset, key_offset, delta_offset,
+  Hv, Dv, Dk, Hk, capacity, kept_count.
+Offsets are FP32-element offsets into the full backing tensors, not storage-binding byte offsets.
+All offsets are nonnegative; dimensions and capacity are positive; 1 <= kept_count <= capacity.
+The caller must ensure that all kept transitions were actually captured.
+
+The source_state selected by source_offset must be the state snapshot from immediately before
+the captured GatedDeltaNet transitions began. Using the producer's final state or another
+same-shaped snapshot is invalid because captured delta is state-dependent.
+The capsule geometry (Hv, Dv, Dk, Hk) and capacity must match the producer that generated it.
+capacity is the original capsule capture/layout capacity. kept_count only selects the leading
+transitions to replay; kept_count must NOT be substituted for capacity when deriving the
+decay/key/delta section offsets.
+
+State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv],
+key [capacity, Hk, Dk], and delta [capacity, Hv, Dv] starting at their respective offsets.
+For every state element (h,v,i):
+  hk = floor(h * Hk / Hv)
+  s = source[h,v,i]
+  for t = 0 .. kept_count-1:
+    s *= decay[t,h]
+    s += key[t,hk,i] * delta[t,h,v]
+  destination[h,v,i] = s
+Unused capsule tail entries are not read. All other destination elements are preserved.
+
+The output must be explicitly prebound to the same full allocation as destination_backing.
+Destination backing must be distinct from source and capsule backing. This first implementation
+supports one descriptor, uint32 shader indexing and no graph capture.
+Source and capsule may share read-only backing; storage bindings are deduplicated only when
+their BufferViews have the same Program binding owner, not merely equal raw buffer handles.
+)DOC")
+        .Input(0, "source_backing",
+               "Full rank-1 FP32 backing tensor containing the state snapshot from immediately before capture.", "T")
+        .Input(1, "capsule_backing", "Full rank-1 FP32 compact-update backing tensor.", "T")
+        .Input(2, "destination_backing", "Full rank-1 FP32 inactive destination-state backing tensor.", "T")
+        .Input(3, "metadata", "CPU int64 [11] containing offsets, geometry, capacity and kept_count.", "TI")
+        .Output(0, "destination_out", "Same backing allocation and shape as destination_backing.", "T")
+        .TypeConstraint("T", {"tensor(float)"}, "State and capsule tensors are FP32.")
+        .TypeConstraint("TI", {"tensor(int64)"}, "CPU replay metadata is int64.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 2, 0);
+          for (size_t index = 0; index < 4; ++index) {
+            if (!hasInputShape(ctx, index)) {
+              continue;
+            }
+            const auto& shape = getInputShape(ctx, index);
+            if (shape.dim_size() != 1) {
+              fail_shape_inference("GatedDeltaNetStateReplay inputs must have rank 1.");
+            }
+            if (index == 3 && shape.dim(0).has_dim_value() && shape.dim(0).dim_value() != 11) {
+              fail_shape_inference("GatedDeltaNetStateReplay metadata must have shape [11].");
+            }
+          }
+          if (hasInputShape(ctx, 2)) {
+            propagateShapeFromInputToOutput(ctx, 2, 0);
+          }
+        }));
+
 constexpr const char* GatedDeltaNet_ver1_doc = R"DOC(
 Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
 Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
@@ -5299,6 +5389,7 @@ rather than from attributes:
 
 Alternatively, key and value may be omitted and query contains packed QKV with shape
 `[total_tokens, 2 * num_heads_q * head_size_qk + num_heads_v * head_size_v]`.
+`initial_state` is required for packed QKV to determine the head counts and head sizes.
 
 The leading token axis may instead be spelled as an explicit `[batch_size, sequence_length]`
 pair, making query/key/value (and the output) rank 4 and decay/beta rank 3. The memory layout
@@ -5464,16 +5555,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
           }
 
-          if (!hasInputShape(ctx, 0)) {
-            return;
-          }
-          const auto& query_shape = getInputShape(ctx, 0);
-          const bool has_key = ctx.getInputType(1) != nullptr;
-          const bool has_value = ctx.getInputType(2) != nullptr;
+          const bool has_key = ctx.getNumInputs() > 1 && ctx.getInputType(1) != nullptr;
+          const bool has_value = ctx.getNumInputs() > 2 && ctx.getInputType(2) != nullptr;
           if (has_key != has_value) {
             fail_shape_inference("GatedDeltaNet: key and value must both be present or both be omitted");
           }
           const bool packed_qkv = !has_key;
+          const bool has_state = ctx.getNumInputs() > 6 && ctx.getInputType(6) != nullptr;
+          if (packed_qkv && !has_state) {
+            fail_shape_inference("GatedDeltaNet: initial_state is required for packed QKV");
+          }
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          const auto& query_shape = getInputShape(ctx, 0);
           const int rank = query_shape.dim_size();
           const int token_dims = rank - (packed_qkv ? 1 : 2);
           if ((packed_qkv && rank != 2 && rank != 3) ||
@@ -5495,10 +5590,52 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
 
           const ONNX_NAMESPACE::TensorShapeProto* state_shape = nullptr;
-          if (hasInputShape(ctx, 6)) {
+          if (ctx.getNumInputs() > 6 && hasInputShape(ctx, 6)) {
             state_shape = &getInputShape(ctx, 6);
             if (state_shape->dim_size() != 4) {
               fail_shape_inference("GatedDeltaNet: initial_state must have rank 4");
+            }
+          }
+
+          if (packed_qkv) {
+            if (state_shape == nullptr) {
+              return;
+            }
+            if (query_shape.dim(token_dims).has_dim_value() &&
+                state_shape->dim(1).has_dim_value() && state_shape->dim(2).has_dim_value() &&
+                state_shape->dim(3).has_dim_value()) {
+              const int64_t packed_size = query_shape.dim(token_dims).dim_value();
+              const int64_t num_heads_v = state_shape->dim(1).dim_value();
+              const int64_t head_size_v = state_shape->dim(2).dim_value();
+              const int64_t head_size_qk = state_shape->dim(3).dim_value();
+              constexpr int64_t max_dimension = std::numeric_limits<int64_t>::max();
+              if (num_heads_v <= 0 || head_size_v <= 0 || head_size_qk <= 0) {
+                fail_shape_inference("GatedDeltaNet: packed QKV head counts and head sizes must be positive");
+              }
+              if (num_heads_v > max_dimension / head_size_v || head_size_qk > max_dimension / 2) {
+                fail_shape_inference("GatedDeltaNet: packed QKV dimensions overflow int64");
+              }
+              const int64_t value_size = num_heads_v * head_size_v;
+              const int64_t query_key_size = 2 * head_size_qk;
+              if (packed_size <= value_size || (packed_size - value_size) % query_key_size != 0) {
+                fail_shape_inference(
+                    "GatedDeltaNet: packed QKV last dimension must be 2 * num_heads_q * head_size_qk + "
+                    "num_heads_v * head_size_v");
+              }
+              const int64_t num_heads_q = (packed_size - value_size) / query_key_size;
+              if (num_heads_v % num_heads_q != 0) {
+                fail_shape_inference("GatedDeltaNet: num_heads_v must be a positive multiple of num_heads_q");
+              }
+            }
+            const bool has_cu_seqlens = ctx.getNumInputs() > 3 && ctx.getInputType(3) != nullptr;
+            if (!has_cu_seqlens && token_dims == 1 && query_shape.dim(0).has_dim_value() &&
+                state_shape->dim(0).has_dim_value()) {
+              const int64_t total_tokens = query_shape.dim(0).dim_value();
+              const int64_t batch = state_shape->dim(0).dim_value();
+              if (batch <= 0 || total_tokens <= 0 || total_tokens % batch != 0) {
+                fail_shape_inference(
+                    "GatedDeltaNet: total_tokens must be divisible by batch, with positive token count and batch size");
+              }
             }
           }
 
@@ -5507,13 +5644,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             *out_shape.add_dim() = query_shape.dim(i);
           }
           if (packed_qkv) {
-            if (state_shape != nullptr) {
-              *out_shape.add_dim() = state_shape->dim(1);
-              *out_shape.add_dim() = state_shape->dim(2);
-            } else {
-              out_shape.add_dim();
-              out_shape.add_dim();
-            }
+            *out_shape.add_dim() = state_shape->dim(1);
+            *out_shape.add_dim() = state_shape->dim(2);
           } else {
             if (query_shape.dim(token_dims).has_dim_value() &&
                 value_shape->dim(token_dims).has_dim_value()) {
@@ -6054,7 +6186,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* HyperConnectionPostMix_ver1_doc = R"DOC(
 Mixes existing streams and injects one branch output:
 Y[..., k, h] = sum_c(stream_mix[..., c, k] * streams[..., c, h])
-               + post_mix[..., k, h] * branch_output[..., h].
+               + post_mix[..., k, h] * block_output[..., h].
 stream_mix is optional and defaults to the identity. post_mix has shape
 (..., C), (..., C, 1), or (..., C, H). No activation is applied.
 )DOC";

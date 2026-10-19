@@ -47,7 +47,7 @@ class MatMulComputeHelper {
     // A: [M1, M2, ... K], B: [1, ..., 1, K, N]
     // A: [M1, M2, ... K], B: [1, ..., 1, N, K]^T
     if (!transa && !trans_batch_a && !trans_batch_b && left_num_dims >= 2 && right_num_dims >= 2 && left_num_dims >= right_num_dims &&
-        orig_right_shape.SizeToDimension(right_num_dims - 1) == orig_right_shape[right_num_dims - 2]) {
+        orig_right_shape.SizeToDimension(right_num_dims - 2) == 1) {
       M_ = static_cast<ptrdiff_t>(orig_left_shape.SizeToDimension(left_num_dims - 1));
       K_ = static_cast<ptrdiff_t>(orig_left_shape[left_num_dims - 1]);
       N_ = static_cast<ptrdiff_t>(transb ? orig_right_shape[right_num_dims - 2] : orig_right_shape[right_num_dims - 1]);
@@ -137,7 +137,10 @@ class MatMulComputeHelper {
 
     // broadcasting for all output dims except last two
     for (size_t idx_dim = 0; idx_dim < num_dims_with_pad - 2; ++idx_dim) {
-      output_dims[idx_dim] = std::max(left_padded_dims_[idx_dim], right_padded_dims_[idx_dim]);
+      const auto left_dim = left_padded_dims_[idx_dim];
+      const auto right_dim = right_padded_dims_[idx_dim];
+      const auto min_dim = std::min(left_dim, right_dim);
+      output_dims[idx_dim] = min_dim == 0 ? 0 : std::max(left_dim, right_dim);
       if (left_padded_dims_[idx_dim] != output_dims[idx_dim])
         ORT_RETURN_IF_NOT(left_padded_dims_[idx_dim] == 1, "left operand cannot broadcast on dim ", idx_dim);
       if (right_padded_dims_[idx_dim] != output_dims[idx_dim])
@@ -231,7 +234,7 @@ class MatMulComputeHelper {
     output_broadcast_dims_.resize(num_broadcasted_dims_);
     for (size_t i = num_broadcasted_dims_; i > 0; --i) {
       size_t idx = i - 1;
-      output_broadcast_dims_[idx] = std::max(left_padded_dims_[idx], right_padded_dims_[idx]);
+      output_broadcast_dims_[idx] = static_cast<ptrdiff_t>(output_shape_[idx]);
       output_broadcast_strides_[idx] = ((i == num_broadcasted_dims_) ? 1 : output_broadcast_strides_[idx + 1] * output_broadcast_dims_[idx + 1]);
       left_padded_strides_[idx] = ((i == num_broadcasted_dims_) ? 1 : left_padded_strides_[idx + 1] * left_padded_dims_[idx + 1]);
       right_padded_strides_[idx] = ((i == num_broadcasted_dims_) ? 1 : right_padded_strides_[idx + 1] * right_padded_dims_[idx + 1]);
