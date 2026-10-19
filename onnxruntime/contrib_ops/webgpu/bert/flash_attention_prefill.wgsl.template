@@ -32,7 +32,6 @@ fn get_total_sequence_length(batch_idx: u32) -> u32 {
 #endif
 
 // Accumulate scores and softmax statistics in f32 to avoid fp16 overflow.
-// Individual dot products retain the Q/K storage precision.
 #if qk_f32
 alias qk_precision = f32;
 const min_value = qk_precision(-3.4028234663852886e+38f);
@@ -57,12 +56,10 @@ const num_qk_vec : u32 = kv_step / vec_factor;
 const k_head_vec_step : u32 = head_size_vec;
 const v_head_vec_step : u32 = min(16u, head_size_vec);
 
-// Adjacent subgroup lanes access adjacent workgroup-memory addresses.
 var<workgroup> k_tile : array<array<q_value_t, kv_step>, k_head_vec_step>;
 var<workgroup> v_tile : array<array<q_value_t, kv_step>, v_head_vec_step>;
 
 // Cooperatively load k_step key columns starting at k_start into shared memory.
-// Columns past total_seq are zeroed so out-of-range lanes contribute nothing.
 fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32, total_seq : u32) {
   let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
                k_start * head_size_vec;
@@ -120,7 +117,6 @@ $MAIN {
     return;
   }
 
-  // Per-thread query row and output accumulator (zero-initialized).
   var q_tile : array<q_value_t, head_size_vec>;
   var o_tile : array<q_value_t, head_size_vec>;
 
@@ -198,7 +194,6 @@ $MAIN {
   let aligned_window_start = (first_query_window_start / kv_step) * kv_step;
 
   for (var k_start = aligned_window_start; k_start < loop_bound; k_start += kv_step) {
-    // The previous iteration's PV barriers protect K reads before this overwrite.
     loadk(k_start, batch_head_idx, local_idx, kv_step, total_sequence_length);
     workgroupBarrier();
 
@@ -248,8 +243,8 @@ $MAIN {
     let local_max = max(max(local_max_vec.x, local_max_vec.y), max(local_max_vec.z, local_max_vec.w));
     let new_max = max(previous_max, local_max);
 
-    // Exponentiate against the new max (in f32 for stability) and accumulate
-    // this tile's denominator contribution.
+    // Exponentiate against the new max and accumulate this tile's denominator
+    // contribution.
     var sum_vec = vec4<qk_precision>(0);
     for (var m = 0u; m < num_qk_vec; m++) {
       qk[m] = vec4<qk_precision>(exp(vec4<f32>(qk[m]) - f32(new_max)));
@@ -294,7 +289,6 @@ $MAIN {
 #endif
         o_tile[head_start + i] = o_tile[head_start + i] * o_ratio + acc;
       }
-      // Protect V reads before the next head slice or K/V tile.
       workgroupBarrier();
     }
   }

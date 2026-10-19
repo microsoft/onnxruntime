@@ -10,6 +10,7 @@
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 #include <string>
 
@@ -540,7 +541,7 @@ Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& cont
   return context.RunProgram(program);
 }
 
-Status FlashAttentionPrefillSimpleProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status FlashAttentionPrefillProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddInput("present_key", ShaderUsage::UseUniform);
   shader.AddInput("present_value", ShaderUsage::UseUniform);
@@ -558,7 +559,7 @@ Status FlashAttentionPrefillSimpleProgram::GenerateShaderCode(ShaderHelper& shad
   }
   shader.AddOutput("output", ShaderUsage::UseUniform);
 
-  return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_prefill_simple.wgsl.template",
+  return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_prefill.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_attention_bias, has_attention_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_head_sink, has_head_sink_),
                              WGSL_TEMPLATE_PARAMETER(has_local_window, has_local_window_),
@@ -573,12 +574,12 @@ Status FlashAttentionPrefillSimpleProgram::GenerateShaderCode(ShaderHelper& shad
                              WGSL_TEMPLATE_PARAMETER(use_seqlens_q, use_seqlens_q_));
 }
 
-bool CanApplyFlashAttentionPrefillSimple(bool is_intel,
+bool CanApplyFlashAttentionPrefill(bool is_intel,
                                          bool kv_cache_quantization_enabled) {
   return is_intel && !kv_cache_quantization_enabled;
 }
 
-Status ApplyFlashAttentionPrefillSimple(onnxruntime::webgpu::ComputeContext& context,
+Status ApplyFlashAttentionPrefill(onnxruntime::webgpu::ComputeContext& context,
                                         const Tensor* Q,
                                         const Tensor* present_key,
                                         const Tensor* present_value,
@@ -601,27 +602,33 @@ Status ApplyFlashAttentionPrefillSimple(onnxruntime::webgpu::ComputeContext& con
                                         bool q_BNSH,
                                         bool has_head_sink,
                                         const Tensor* head_sink) {
-  constexpr uint32_t wg_size = 128u;
-  const uint32_t head_size_vec = static_cast<uint32_t>(parameters.head_size_) / 4u;
-  const uint32_t v_head_vec_step = std::min(16u, head_size_vec);
-  // Full-head K staging and sliced V staging share the workgroup storage budget.
-  const uint64_t bytes_per_column =
-      (uint64_t{head_size_vec} + v_head_vec_step) * 4u * Q->DataType()->Size();
-  const uint64_t max_workgroup_storage = context.DeviceLimits().maxComputeWorkgroupStorageSize;
-  uint32_t kv_step = 64u;
-  while (kv_step > 8u && bytes_per_column * kv_step > max_workgroup_storage) {
-    kv_step /= 2u;
+  const auto& adapter_info = context.AdapterInfo();
+  const bool is_intel_xe2 = adapter_info.vendor == std::string_view{"intel"} &&
+                           (adapter_info.architecture == std::string_view{"xe-2lpg"} ||
+                            adapter_info.architecture == std::string_view{"xe-2hpg"});
+  const bool is_intel_xe3 = adapter_info.vendor == std::string_view{"intel"} &&
+                           (adapter_info.architecture == std::string_view{"xe-3lpg"} ||
+                            adapter_info.architecture == std::string_view{"xe-3lpg-xs"});
+  // Default: 64 threads, 16 KV rows per step.
+  uint32_t wg_size = 64u;
+  uint32_t kv_step = 16u;
+  // Xe2: query length <= 128 uses 128 threads and 64 KV rows per step;
+  //      longer queries use 256 threads and 32 KV rows per step.
+  // Xe3: 128 threads, 64 KV rows per step for all query lengths.
+  if (is_intel_xe3 || (is_intel_xe2 && parameters.sequence_length_ <= 128)) {
+    wg_size = 128u;
+    kv_step = 64u;
+  } else if (is_intel_xe2) {
+    wg_size = 256u;
+    kv_step = 32u;
   }
-  ORT_RETURN_IF(bytes_per_column * kv_step > max_workgroup_storage,
-                "Simple prefill K/V tiles exceed workgroup storage limits.");
   // Values below 8 select direct shared-memory reads, including without subgroups.
   const uint32_t shuffle_chunk = std::min(kv_step, subgroup_min_size);
-  const uint32_t num_seq_tile =
-      (parameters.sequence_length_ + wg_size - 1) / wg_size;
+  const uint32_t num_seq_tile = CeilDiv(static_cast<uint32_t>(parameters.sequence_length_), wg_size);
   const uint32_t dispatch_size =
       parameters.batch_size_ * parameters.num_heads_ * num_seq_tile;
 
-  FlashAttentionPrefillSimpleProgram program{"FlashAttentionPrefillSimple",
+  FlashAttentionPrefillProgram program{"FlashAttentionPrefill",
                                              has_attention_bias,
                                              parameters.is_unidirectional_,
                                              parameters.head_size_,
@@ -1179,9 +1186,9 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
 
   const bool is_intel = context.AdapterInfo().vendor == std::string_view{"intel"};
   const uint32_t subgroup_min_size = has_subgroups ? context.AdapterInfo().subgroupMinSize : 0u;
-  // TODO: Merge back into `FlashAttentionProgram`.
-  if (CanApplyFlashAttentionPrefillSimple(is_intel, kv_cache_quantization_enabled)) {
-    return ApplyFlashAttentionPrefillSimple(
+  // TODO(daijh): Merge back into `FlashAttentionProgram`.
+  if (CanApplyFlashAttentionPrefill(is_intel, kv_cache_quantization_enabled)) {
+    return ApplyFlashAttentionPrefill(
         context, Q, present_key, present_value, attention_bias, seqlen_k, attn_output,
         parameters, has_attention_bias, use_seqlen_k, has_local_window, local_window_size,
         present_sequence_length, subgroup_min_size, alpha, attn_bias_dim0, attn_bias_dim1, attn_bias_dim3,
