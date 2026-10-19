@@ -28,21 +28,11 @@ Abstract:
 size_t
 MlasSgemmNativePackBSize(size_t N, size_t K)
 {
-    size_t aligned_n = 0;
-    if (MlasAddOverflowsSizeT(N, MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1, &aligned_n)) {
-        MLAS_THROW_EX(std::overflow_error, "SGEMM packed dimension overflow.");
-    }
-    aligned_n &= ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
-    size_t bytes = 0;
-    if (MlasMultiplyOverflowsSizeT(aligned_n, K, &bytes) ||
-        MlasMultiplyOverflowsSizeT(bytes, sizeof(float), &bytes)) {
-        MLAS_THROW_EX(std::overflow_error, "SGEMM packed buffer size overflow.");
-    }
+    const size_t aligned_n =
+        (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
+    const size_t bytes = aligned_n * K * sizeof(float);
     const size_t alignment = MlasGetPreferredBufferAlignment();
-    if (MlasAddOverflowsSizeT(bytes, alignment - 1, &bytes)) {
-        MLAS_THROW_EX(std::overflow_error, "SGEMM packed alignment overflow.");
-    }
-    return bytes & ~(alignment - 1);
+    return (bytes + alignment - 1) & ~(alignment - 1);
 }
 
 //
@@ -1561,27 +1551,42 @@ MlasGemmBatch(
         (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSGemmBatchOverride != nullptr &&
         TransA != CBLAS_TRANSPOSE::CblasTrans;
-    bool has_packed_b_extension = false;
+    bool dispatch_per_entry = false;
     if (can_use_override && GetMlasPlatform().MlasSGemmPackedBHasExtensionOverride != nullptr &&
         Data != nullptr && BatchSize > 1 && M != 0) {
         for (size_t batch = 0; batch < BatchSize; ++batch) {
-            has_packed_b_extension |= Data[batch].BIsPacked &&
-                GetMlasPlatform().MlasSGemmPackedBHasExtensionOverride(Data[batch].B, N, K);
+            if (!Data[batch].BIsPacked ||
+                GetMlasPlatform().MlasSGemmPackedBHasExtensionOverride(Data[batch].B, N, K)) {
+                dispatch_per_entry = true;
+                break;
+            }
         }
     }
-    if (has_packed_b_extension) {
+    if (dispatch_per_entry) {
         // Decide independently for each entry. Retrying a partially completed
         // batch would accumulate completed entries twice when beta is nonzero.
         MLAS_BACKEND_KERNEL_SELECTOR_CONFIG fallback{};
         fallback.use_kleidiai = false;
+        size_t fallback_start = 0;
         for (size_t batch = 0; batch < BatchSize; ++batch) {
             if (!GetMlasPlatform().MlasSGemmBatchOverride(
                     TransA, TransB, M, N, K, &Data[batch], 1, ThreadPool)) {
+                continue;
+            }
+            // Group unhandled entries to preserve native cross-batch parallelism.
+            if (fallback_start < batch) {
                 MlasGemmBatch(
-                    TransA, TransB, M, N, K, &Data[batch], 1, ThreadPool,
+                    TransA, TransB, M, N, K, &Data[fallback_start], batch - fallback_start, ThreadPool,
                     &fallback
                 );
             }
+            fallback_start = batch + 1;
+        }
+        if (fallback_start < BatchSize) {
+            MlasGemmBatch(
+                TransA, TransB, M, N, K, &Data[fallback_start], BatchSize - fallback_start, ThreadPool,
+                &fallback
+            );
         }
         return;
     }

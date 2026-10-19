@@ -79,6 +79,7 @@ struct ThreadScratch {
     std::vector<float> fp32_output;
     std::vector<uint8_t> skipped_tasks;
     AlignedByteBuffer working;
+    AlignedByteBuffer packed_rhs;
     bool in_use{};
 };
 
@@ -90,6 +91,7 @@ struct ScratchLease {
     {
         ArmKleidiAI::MlasShrinkKleidiAIScratchIfTooLarge(scratch.fp32_output);
         ArmKleidiAI::MlasShrinkKleidiAIScratchIfTooLarge(scratch.working.storage);
+        ArmKleidiAI::MlasShrinkKleidiAIScratchIfTooLarge(scratch.packed_rhs.storage);
         scratch.in_use = false;
     }
     ScratchLease(const ScratchLease&) = delete;
@@ -551,12 +553,16 @@ struct CachedGemmPlan {
     size_t n{};
     size_t k{};
     bool accumulate{};
+    bool unpacked_rhs{};
+    bool transposed_rhs{};
     int max_threads{};
+    std::string requested_filter;
     std::unique_ptr<kai::ops::GemmCommon<Lhs, Rhs, Output>> gemm;
     WorkPartition partition{};
     size_t window_dim0{};
     size_t window_dim1{};
     size_t working_size{};
+    size_t rhs_packed_size{};
     uint32_t vector_length{};
     std::string kernel_name;
 };
@@ -596,6 +602,34 @@ GetGemmPlanCache()
 
 template <typename Lhs, typename Rhs, typename Output>
 CachedGemmPlan<Lhs, Rhs, Output>*
+CacheGemmPlan(CachedGemmPlan<Lhs, Rhs, Output>&& new_plan)
+{
+    new_plan.kernel_name = new_plan.gemm->get_config().filter;
+    new_plan.vector_length = CurrentVectorLengthBytes(new_plan.kernel_name);
+    const auto window = new_plan.gemm->get_window_size();
+    new_plan.window_dim0 = window.get_size(0);
+    new_plan.window_dim1 = window.get_size(1);
+    if (new_plan.window_dim0 == 0 || new_plan.window_dim1 == 0) {
+        return nullptr;
+    }
+    new_plan.partition = PartitionWindow(window, new_plan.max_threads);
+    new_plan.gemm->set_nthreads(static_cast<int>(new_plan.partition.task_count));
+    new_plan.working_size = new_plan.gemm->get_working_size();
+    new_plan.rhs_packed_size = new_plan.gemm->get_B_pretransposed_array_size();
+
+    auto& cache = GetGemmPlanCache<Lhs, Rhs, Output>();
+    if (cache.entries.size() < cache.kMaximumEntries) {
+        cache.entries.emplace_back(std::move(new_plan));
+        return &cache.entries.back();
+    }
+    auto& replacement = cache.entries[cache.next_replacement];
+    replacement = std::move(new_plan);
+    cache.next_replacement = (cache.next_replacement + 1) % cache.kMaximumEntries;
+    return &replacement;
+}
+
+template <typename Lhs, typename Rhs, typename Output>
+CachedGemmPlan<Lhs, Rhs, Output>*
 PrepareGemm(
     const PackedHeader& header,
     size_t m,
@@ -607,7 +641,7 @@ PrepareGemm(
 {
     auto& cache = GetGemmPlanCache<Lhs, Rhs, Output>();
     for (auto& plan : cache.entries) {
-        if (plan.m == m && plan.n == n && plan.k == k &&
+        if (!plan.unpacked_rhs && plan.m == m && plan.n == n && plan.k == k &&
             plan.accumulate == accumulate && plan.max_threads == max_threads &&
             SamePlanKey(plan.header, header)) {
             return &plan;
@@ -642,26 +676,44 @@ PrepareGemm(
     new_plan.accumulate = accumulate;
     new_plan.max_threads = max_threads;
     new_plan.gemm = std::move(gemm);
-    new_plan.kernel_name = selected_config.filter;
-    new_plan.vector_length = CurrentVectorLengthBytes(new_plan.kernel_name);
-    const auto window = new_plan.gemm->get_window_size();
-    new_plan.window_dim0 = window.get_size(0);
-    new_plan.window_dim1 = window.get_size(1);
-    if (new_plan.window_dim0 == 0 || new_plan.window_dim1 == 0) {
+    return CacheGemmPlan(std::move(new_plan));
+}
+
+template <typename Lhs, typename Rhs, typename Output>
+CachedGemmPlan<Lhs, Rhs, Output>*
+PrepareUnpackedGemm(size_t m, size_t n, size_t k, bool transposed, bool accumulate, int max_threads)
+{
+    const std::string requested_filter = RequestedKernelFilter();
+    auto& cache = GetGemmPlanCache<Lhs, Rhs, Output>();
+    for (auto& plan : cache.entries) {
+        if (plan.unpacked_rhs && plan.m == m && plan.n == n && plan.k == k &&
+            plan.transposed_rhs == transposed && plan.accumulate == accumulate &&
+            plan.max_threads == max_threads && plan.requested_filter == requested_filter &&
+            plan.vector_length == CurrentVectorLengthBytes(plan.kernel_name)) {
+            return &plan;
+        }
+    }
+
+    kai::ops::GemmConfig config;
+    config.filter = requested_filter;
+    auto gemm = SelectGemm<Lhs, Rhs, Output>(m, n, k, &config, accumulate, max_threads);
+    // The pinned non-fixed FP32 implementations require RHS packing. Fixed
+    // weight formats are not raw RHS layouts and cannot be substituted here.
+    if (gemm == nullptr || !gemm->B_is_pretransposed() ||
+        (transposed && !gemm->B_pretranspose_supports_transpose())) {
         return nullptr;
     }
-    new_plan.partition = PartitionWindow(window, max_threads);
-    new_plan.gemm->set_nthreads(static_cast<int>(new_plan.partition.task_count));
-    new_plan.working_size = new_plan.gemm->get_working_size();
-
-    if (cache.entries.size() < cache.kMaximumEntries) {
-        cache.entries.emplace_back(std::move(new_plan));
-        return &cache.entries.back();
-    }
-    auto& replacement = cache.entries[cache.next_replacement];
-    replacement = std::move(new_plan);
-    cache.next_replacement = (cache.next_replacement + 1) % cache.kMaximumEntries;
-    return &replacement;
+    CachedGemmPlan<Lhs, Rhs, Output> new_plan;
+    new_plan.m = m;
+    new_plan.n = n;
+    new_plan.k = k;
+    new_plan.accumulate = accumulate;
+    new_plan.unpacked_rhs = true;
+    new_plan.transposed_rhs = transposed;
+    new_plan.max_threads = max_threads;
+    new_plan.requested_filter = requested_filter;
+    new_plan.gemm = std::move(gemm);
+    return CacheGemmPlan(std::move(new_plan));
 }
 
 template <typename Lhs, typename Rhs, typename Output>
@@ -750,6 +802,74 @@ ExecuteGemm(
     return true;
 }
 
+bool
+ExecuteUnpackedGemm(
+    size_t m,
+    size_t n,
+    size_t k,
+    const MLAS_SGEMM_DATA_PARAMS& params,
+    bool transposed,
+    int max_threads,
+    MLAS_THREADPOOL* thread_pool
+)
+{
+    if (!FitsOpsMatrixSpan(transposed ? n : k, transposed ? k : n, params.ldb)) {
+        return false;
+    }
+    if (params.alpha == 0.0f) {
+        ArmKleidiAI::MlasGemmApplyBeta(params.C, m, n, params.ldc, params.beta);
+        return true;
+    }
+
+    const bool can_write_directly = params.alpha == 1.0f && (params.beta == 0.0f || params.beta == 1.0f);
+    auto* plan = can_write_directly
+                     ? PrepareUnpackedGemm<float, float, float>(m, n, k, transposed, params.beta == 1.0f, max_threads)
+                     : nullptr;
+    const bool temporary_output = plan == nullptr;
+    if (temporary_output) {
+        plan = PrepareUnpackedGemm<float, float, float>(m, n, k, transposed, false, max_threads);
+    }
+    if (plan == nullptr || plan->rhs_packed_size == 0) {
+        return false;
+    }
+
+    size_t output_size = 0;
+    if (temporary_output && MlasMultiplyOverflowsSizeT(m, n, &output_size)) {
+        return false;
+    }
+    auto& scratch = GetThreadScratch();
+    if (!scratch.packed_rhs.Resize(plan->rhs_packed_size)) {
+        return false;
+    }
+    std::memset(scratch.packed_rhs.Data(), 0, plan->rhs_packed_size);
+    // Only the execution plan is cached: a reused B address can contain new
+    // values. Pack with this invocation's actual shape and scheduling state.
+    plan->gemm->pretranspose_B_array(
+        scratch.packed_rhs.Data(), params.B, static_cast<int>(params.ldb), 0, transposed
+    );
+    KLEIDIAI_KERNEL_LOG(
+        "kai::ops transient pack kernel=" << plan->kernel_name << " M=" << m << " N=" << n << " K=" << k
+                                          << " payload_bytes=" << plan->rhs_packed_size
+    );
+    if (temporary_output) {
+        scratch.fp32_output.resize(output_size);
+    }
+    if (!ExecuteGemm(
+            *plan, params.A, params.lda,
+            temporary_output ? scratch.fp32_output.data() : params.C,
+            temporary_output ? n : params.ldc,
+            scratch.packed_rhs.Data(), m, n, k, plan->accumulate, "fp32", thread_pool
+        )) {
+        return false;
+    }
+    if (temporary_output) {
+        ArmKleidiAI::MlasGemmApplyAlphaBeta(
+            scratch.fp32_output.data(), m, n, params.alpha, params.beta, params.C, params.ldc, false
+        );
+    }
+    return true;
+}
+
 }  // namespace
 
 size_t
@@ -827,20 +947,26 @@ bool
     }
     // False means no output was changed; the dispatcher falls back per entry.
     if (BatchSize != 1 || TransA != CblasNoTrans || K == 0 || Data == nullptr ||
-        Data->A == nullptr || Data->C == nullptr || !Data->BIsPacked ||
+        Data->A == nullptr || Data->C == nullptr ||
+        (TransB != CblasNoTrans && TransB != CblasTrans) ||
         !FitsOpsMatrixSpan(M, K, Data->lda) || !FitsOpsMatrixSpan(M, N, Data->ldc)) {
         return false;
     }
+    const int max_threads = GetTargetThreadCount(
+        ThreadPool, double(M) * double(N) * double(K), double(MLAS_SGEMM_THREAD_COMPLEXITY)
+    );
     auto& scratch = GetThreadScratch();
     if (scratch.in_use || Data->B == nullptr) {
         return false;
     }
     ScratchLease lease(scratch);
+    if (!Data->BIsPacked) {
+        return ExecuteUnpackedGemm(M, N, K, *Data, TransB == CblasTrans, max_threads, ThreadPool);
+    }
     const auto* extension = reinterpret_cast<const std::byte*>(Data->B) + MlasSgemmNativePackBSize(N, K);
     PackedHeader header{};
     if (!ReadHeader(extension, PackedDataType::Fp32, N, K, header) ||
-        header.trans_b != static_cast<uint32_t>(CblasNoTrans) ||
-        (TransB != CblasNoTrans && TransB != CblasTrans)) {
+        header.trans_b != static_cast<uint32_t>(CblasNoTrans)) {
         return false;
     }
 
@@ -848,10 +974,6 @@ bool
     if (MlasMultiplyOverflowsSizeT(M, N, &output_size)) {
         return false;
     }
-    const int max_threads = GetTargetThreadCount(
-        ThreadPool, double(M) * double(N) * double(K), double(MLAS_SGEMM_THREAD_COMPLEXITY)
-    );
-
     const auto& params = *Data;
     if (params.alpha == 0.0f) {
         ArmKleidiAI::MlasGemmApplyBeta(params.C, M, N, params.ldc, params.beta);

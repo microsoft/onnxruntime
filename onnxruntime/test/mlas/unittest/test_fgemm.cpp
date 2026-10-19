@@ -113,7 +113,299 @@ std::vector<float> SgemmTestMatrix(size_t rows, size_t columns, size_t ld, size_
   return matrix;
 }
 
+MLAS_THREADPOOL* SgemmRuntimePackingThreadPool() {
+#if !defined(BUILD_MLAS_NO_ONNXRUNTIME)
+  static auto thread_pool = std::make_unique<onnxruntime::concurrency::ThreadPool>(
+      &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 4, true);
+  return thread_pool.get();
+#else
+  return nullptr;
+#endif
+}
+
 }  // namespace
+
+TEST(SGemmKleidiAIOpsTest, RuntimePackingTracksUnpackedWeightsAcrossCalls) {
+  constexpr size_t N = 129;
+  constexpr size_t K = 513;
+  constexpr size_t Ldb = N + 3;
+  constexpr size_t Lda = K + 5;
+  constexpr size_t Ldc = N + 7;
+  constexpr float sentinel = -123.0f;
+  auto b = SgemmTestMatrix(K, N, Ldb, 5);
+  const float* const b_address = b.data();
+  constexpr std::array<std::array<float, 2>, 5> scales = {
+      {{1.0f, 0.0f}, {1.0f, 1.0f}, {-0.5f, 0.0f}, {-0.5f, 0.25f}, {0.0f, 0.25f}}};
+  constexpr std::array<size_t, 3> rows = {65, 256, 257};
+  std::array<std::array<bool, 2>, rows.size()> supported{};
+  bool exercised = false;
+  MlasFgemmTest<float, false, false> tester;
+  for (size_t iteration = 0; iteration < 2; ++iteration) {
+    if (iteration != 0) {
+      for (size_t row = 0; row < K; ++row) {
+        for (size_t column = 0; column < N; ++column) {
+          b[row * Ldb + column] = 1.0f - b[row * Ldb + column];
+        }
+      }
+    }
+    ASSERT_EQ(b.data(), b_address);
+    const auto original_b = b;
+    for (size_t shape = 0; shape < rows.size(); ++shape) {
+      const size_t m = rows[shape];
+      const auto a = SgemmTestMatrix(m, K, Lda, 7);
+      for (const auto& scale : scales) {
+        std::vector<float> initial(m * Ldc + 2, sentinel);
+        for (size_t row = 0; row < m; ++row) {
+          std::fill_n(initial.data() + 1 + row * Ldc, N, 2.0f);
+        }
+        auto expected = initial;
+        tester.ReferenceGemm(CblasNoTrans, CblasNoTrans, m, N, K, 1,
+                             scale[0], a.data(), Lda, b.data(), Ldb, scale[1], expected.data() + 1, Ldc);
+        size_t threads = 0;
+        for (auto* thread_pool : {static_cast<MLAS_THREADPOOL*>(nullptr), SgemmRuntimePackingThreadPool()}) {
+          SCOPED_TRACE(testing::Message() << "iteration=" << iteration << " M=" << m
+                                          << " threaded=" << (thread_pool != nullptr)
+                                          << " alpha=" << scale[0] << " beta=" << scale[1]);
+          auto c = initial;
+          MLAS_SGEMM_DATA_PARAMS data{};
+          data.A = a.data();
+          data.lda = Lda;
+          data.B = b.data();
+          data.ldb = Ldb;
+          data.C = c.data() + 1;
+          data.ldc = Ldc;
+          data.alpha = scale[0];
+          data.beta = scale[1];
+          const bool used_ops = ArmKleidiAI::MlasGemmBatchKleidiAIOps(
+              CblasNoTrans, CblasNoTrans, m, N, K, &data, 1, thread_pool);
+          if (iteration == 0 && &scale == &scales.front()) {
+            // Transient eligibility depends on the actual M and thread budget,
+            // not on whether the reusable PackB API can select an N/K format.
+            supported[shape][threads] = used_ops;
+          }
+          if (supported[shape][threads]) {
+            ASSERT_TRUE(used_ops);
+          }
+          if (used_ops) {
+            ASSERT_EQ(c, expected);
+            exercised |= scale[0] != 0.0f;
+          } else {
+            ASSERT_EQ(c, initial);
+          }
+          ASSERT_EQ(b, original_b);
+          std::copy(initial.begin(), initial.end(), c.begin());
+          MlasGemmBatch(CblasNoTrans, CblasNoTrans, m, N, K, &data, 1, thread_pool, nullptr);
+          ASSERT_EQ(c, expected);
+          ASSERT_EQ(b, original_b);
+          ++threads;
+        }
+      }
+    }
+  }
+  if (!exercised) {
+    GTEST_SKIP() << "The selected Ops configuration does not support these transient RHS shapes.";
+  }
+}
+
+TEST(SGemmKleidiAIOpsTest, UnpackedTransposeLayoutsUseOpsOrUnmodifiedFallback) {
+  constexpr size_t M = 65;
+  constexpr size_t N = 17;
+  constexpr size_t K = 13;
+  constexpr size_t Ldc = N + 3;
+  MlasFgemmTest<float, false, false> tester;
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG disabled_selector{};
+  disabled_selector.use_kleidiai = false;
+  for (auto trans_a : {CblasNoTrans, CblasTrans}) {
+    const size_t lda = (trans_a == CblasNoTrans ? K : M) + 2;
+    const auto a = SgemmTestMatrix(trans_a == CblasNoTrans ? M : K, trans_a == CblasNoTrans ? K : M, lda, 7);
+    for (auto trans_b : {CblasNoTrans, CblasTrans}) {
+      const size_t ldb = (trans_b == CblasNoTrans ? N : K) + 2;
+      const auto b = SgemmTestMatrix(trans_b == CblasNoTrans ? K : N, trans_b == CblasNoTrans ? N : K, ldb, 5);
+      std::vector<float> expected(M * Ldc + 2, 2.0f);
+      tester.ReferenceGemm(trans_a, trans_b, M, N, K, 1,
+                           -0.5f, a.data(), lda, b.data(), ldb, 0.25f, expected.data() + 1, Ldc);
+      for (auto* thread_pool : {static_cast<MLAS_THREADPOOL*>(nullptr), SgemmRuntimePackingThreadPool()}) {
+        SCOPED_TRACE(testing::Message() << "TransA=" << trans_a << " TransB=" << trans_b
+                                        << " threaded=" << (thread_pool != nullptr));
+        std::vector<float> c(M * Ldc + 2, 2.0f);
+        MLAS_SGEMM_DATA_PARAMS data{};
+        data.A = a.data();
+        data.lda = lda;
+        data.B = b.data();
+        data.ldb = ldb;
+        data.C = c.data() + 1;
+        data.ldc = Ldc;
+        data.alpha = -0.5f;
+        data.beta = 0.25f;
+        const bool used_ops = ArmKleidiAI::MlasGemmBatchKleidiAIOps(
+            trans_a, trans_b, M, N, K, &data, 1, thread_pool);
+        if (trans_a == CblasTrans) {
+          ASSERT_FALSE(used_ops);
+        }
+        if (used_ops) {
+          ASSERT_EQ(c, expected);
+        } else {
+          ASSERT_TRUE(std::all_of(c.begin(), c.end(), [](float value) { return value == 2.0f; }));
+        }
+        for (bool use_ops : {false, true}) {
+          std::fill(c.begin(), c.end(), 2.0f);
+          MlasGemmBatch(trans_a, trans_b, M, N, K, &data, 1, thread_pool,
+                        use_ops ? nullptr : &disabled_selector);
+          ASSERT_EQ(c, expected);
+        }
+      }
+    }
+  }
+}
+
+TEST(SGemmKleidiAIOpsTest, RuntimeSelectionUsesActualM1Shape) {
+  constexpr size_t M = 1;
+  constexpr size_t N = 129;
+  constexpr size_t K = 513;
+  constexpr size_t Lda = K + 2;
+  constexpr size_t Ldb = N + 3;
+  constexpr size_t Ldc = N + 5;
+  const auto b = SgemmTestMatrix(K, N, Ldb, 5);
+  const auto a = SgemmTestMatrix(M, K, Lda, 7);
+  bool exercised = false;
+  MlasFgemmTest<float, false, false> tester;
+  constexpr std::array<std::array<float, 2>, 3> scales = {{{1.0f, 0.0f}, {1.0f, 1.0f}, {-0.5f, 0.25f}}};
+  for (auto* thread_pool : {static_cast<MLAS_THREADPOOL*>(nullptr), SgemmRuntimePackingThreadPool()}) {
+    bool supported = false;
+    for (const auto& scale : scales) {
+      SCOPED_TRACE(testing::Message() << "threaded=" << (thread_pool != nullptr)
+                                      << " alpha=" << scale[0] << " beta=" << scale[1]);
+      std::vector<float> expected(M * Ldc + 2, 2.0f);
+      tester.ReferenceGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1,
+                           scale[0], a.data(), Lda, b.data(), Ldb, scale[1], expected.data() + 1, Ldc);
+      std::vector<float> c(M * Ldc + 2, 2.0f);
+      MLAS_SGEMM_DATA_PARAMS data{};
+      data.A = a.data();
+      data.lda = Lda;
+      data.B = b.data();
+      data.ldb = Ldb;
+      data.C = c.data() + 1;
+      data.ldc = Ldc;
+      data.alpha = scale[0];
+      data.beta = scale[1];
+      const bool used_ops = ArmKleidiAI::MlasGemmBatchKleidiAIOps(
+          CblasNoTrans, CblasNoTrans, M, N, K, &data, 1, thread_pool);
+      if (&scale == &scales.front()) {
+        supported = used_ops;
+      }
+      if (supported) {
+        ASSERT_TRUE(used_ops);
+      }
+      if (used_ops) {
+        ASSERT_EQ(c, expected);
+        exercised = true;
+      } else {
+        ASSERT_TRUE(std::all_of(c.begin(), c.end(), [](float value) { return value == 2.0f; }));
+      }
+      std::fill(c.begin(), c.end(), 2.0f);
+      MlasGemmBatch(CblasNoTrans, CblasNoTrans, M, N, K, &data, 1, thread_pool, nullptr);
+      ASSERT_EQ(c, expected);
+    }
+  }
+  if (!exercised) {
+    GTEST_SKIP() << "The selected Ops configuration does not support transient M=1 GEMM.";
+  }
+}
+
+TEST(SGemmKleidiAIOpsTest, RejectsUnpackedLayoutsBeforeReadingInputs) {
+  MatrixGuardBuffer<uint8_t> guard;
+  const auto* inaccessible_input = reinterpret_cast<const float*>(guard.GetBuffer(1, true) + 1);
+  const size_t oversized = static_cast<size_t>(std::numeric_limits<int>::max()) + 1;
+  struct Layout {
+    CBLAS_TRANSPOSE trans_a;
+    CBLAS_TRANSPOSE trans_b;
+    size_t lda;
+    size_t ldb;
+    size_t ldc;
+  };
+  const Layout layouts[] = {
+      {CblasTrans, CblasNoTrans, 2, 3, 3},
+      {CblasNoTrans, CblasNoTrans, 3, 3, 3},
+      {CblasNoTrans, CblasNoTrans, 4, 2, 3},
+      {CblasNoTrans, CblasTrans, 4, 3, 3},
+      {CblasNoTrans, CblasNoTrans, 4, 3, 2},
+      {CblasNoTrans, CblasNoTrans, 4, oversized, 3}};
+  for (const auto& layout : layouts) {
+    SCOPED_TRACE(testing::Message() << "TransA=" << layout.trans_a << " TransB=" << layout.trans_b
+                                    << " lda=" << layout.lda << " ldb=" << layout.ldb << " ldc=" << layout.ldc);
+    float c = 2.0f;
+    MLAS_SGEMM_DATA_PARAMS data{};
+    data.A = inaccessible_input;
+    data.lda = layout.lda;
+    data.B = inaccessible_input;
+    data.ldb = layout.ldb;
+    data.C = &c;
+    data.ldc = layout.ldc;
+    data.alpha = 1.0f;
+    data.beta = 0.25f;
+    EXPECT_FALSE(ArmKleidiAI::MlasGemmBatchKleidiAIOps(
+        layout.trans_a, layout.trans_b, 64, 3, 4, &data, 1, nullptr));
+    EXPECT_EQ(c, 2.0f);
+  }
+
+  // Matrix spans fit, but Ops' padded scheduling window does not. Reject the
+  // plan before accessing B or allocating a full temporary product.
+  float c = 2.0f;
+  MLAS_SGEMM_DATA_PARAMS data{};
+  data.A = inaccessible_input;
+  data.lda = 13;
+  data.B = inaccessible_input;
+  data.ldb = 17;
+  data.C = &c;
+  data.ldc = 17;
+  data.alpha = -0.5f;
+  data.beta = 0.25f;
+  EXPECT_FALSE(ArmKleidiAI::MlasGemmBatchKleidiAIOps(
+      CblasNoTrans, CblasNoTrans, 5000000, 17, 13, &data, 1, nullptr));
+  EXPECT_EQ(c, 2.0f);
+}
+
+TEST(SGemmKleidiAIOpsTest, UnpackedBatchSupportsPaddedSourceLayouts) {
+  constexpr size_t M = 65;
+  constexpr size_t N = 17;
+  constexpr size_t K = 13;
+  constexpr size_t BatchSize = 3;
+  constexpr size_t Lda = K + 2;
+  constexpr size_t Ldc = N + 3;
+  constexpr size_t OutputStride = M * Ldc + 2;
+  const auto a = SgemmTestMatrix(BatchSize * M, K, Lda, 7);
+  MlasFgemmTest<float, false, false> tester;
+  for (auto trans_b : {CblasNoTrans, CblasTrans}) {
+    const size_t rows_b = trans_b == CblasNoTrans ? K : N;
+    const size_t columns_b = trans_b == CblasNoTrans ? N : K;
+    const size_t ldb = columns_b + 2;
+    const auto b = SgemmTestMatrix(BatchSize * rows_b, columns_b, ldb, 5);
+    std::vector<float> expected(BatchSize * OutputStride, 2.0f);
+    for (size_t batch = 0; batch < BatchSize; ++batch) {
+      tester.ReferenceGemm(CblasNoTrans, trans_b, M, N, K, 1,
+                           -0.5f, a.data() + batch * M * Lda, Lda,
+                           b.data() + batch * rows_b * ldb, ldb,
+                           0.25f, expected.data() + batch * OutputStride + 1, Ldc);
+    }
+    for (auto* thread_pool : {static_cast<MLAS_THREADPOOL*>(nullptr), SgemmRuntimePackingThreadPool()}) {
+      SCOPED_TRACE(testing::Message() << "TransB=" << trans_b << " threaded=" << (thread_pool != nullptr));
+      std::vector<float> c(BatchSize * OutputStride, 2.0f);
+      MLAS_SGEMM_DATA_PARAMS data[BatchSize]{};
+      for (size_t batch = 0; batch < BatchSize; ++batch) {
+        data[batch].A = a.data() + batch * M * Lda;
+        data[batch].lda = Lda;
+        data[batch].B = b.data() + batch * rows_b * ldb;
+        data[batch].ldb = ldb;
+        data[batch].C = c.data() + batch * OutputStride + 1;
+        data[batch].ldc = Ldc;
+        data[batch].alpha = -0.5f;
+        data[batch].beta = 0.25f;
+      }
+      MlasGemmBatch(CblasNoTrans, trans_b, M, N, K, data, BatchSize, thread_pool, nullptr);
+      ASSERT_EQ(c, expected);
+    }
+  }
+}
 
 TEST(SGemmKleidiAIOpsTest, ReusePackedWeightsAcrossRowsThreadsAndScales) {
   // In particular, interleaved kernels must retain the same B packing when

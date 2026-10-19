@@ -18,7 +18,6 @@ namespace ArmKleidiAI
 
 constexpr size_t kAlphaBetaNeonMinElements = 32;
 
-// The product is contiguous; GEMV may require strided destination elements.
 inline void
 MlasGemmApplyAlphaBetaStrided(
     const float* product, size_t count, float alpha, float beta, float* output, size_t output_stride, bool allow_memcpy
