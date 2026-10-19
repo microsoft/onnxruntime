@@ -1,7 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M08 and M09a complete and published for review;
-M09b is authorized and in progress; M10-M24 pending.
+**Status:** Approved; M01-M09 complete and published for review; M10-M24 pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -18,7 +17,7 @@ M05's requested generation-folder layout follow-up is complete in the same PR.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M08 and M09a are complete; M09b is in progress and M10-M24 are pending. Check tasks when their
+M01-M09 are complete and M10-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -98,7 +97,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M08 and M09a are **complete**; M09b is **in progress** and M10-M24 are **pending**.
+M01-M09 are **complete**; M10-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -110,7 +109,7 @@ M01-M08 and M09a are **complete**; M09b is **in progress** and M10-M24 are **pen
 | [x] | M06 | Public C API and C++ wrappers / `public-api` | M02, M03, M04, M05 |
 | [x] | M07 | Built-in/plugin EP capability contracts / `ep-stateful-hooks` | M04, M05, M06 |
 | [x] | M08 | Native CUDA KV management / `cuda-kv-cache` | M07 |
-| [ ] | M09 | Native CUDA greedy sampling / `cuda-greedy` | M07, M08 |
+| [x] | M09 | Native CUDA greedy sampling / `cuda-greedy` | M07, M08 |
 | [ ] | M10 | Standalone package schema and authoring / `package-schema` | M01, M03 |
 | [ ] | M11 | ORT package-to-chain loading / `package-runtime` | M06, M07, M08, M09, M10 |
 | [ ] | M12 | DDIM scheduler and denoising state / `ddim-policy` | M03, M06, M08 |
@@ -1830,11 +1829,11 @@ The user chose CUDA plugin only, GPU-resident exposed logits, token/status-only
 readback and an M09a/M09b split, with no additional requirements. Branch
 `state/m09a-cuda-plugin-greedy` is based on M08b `2b6388fe5b`. The standalone
 backend is verified and published ready for review in PR #22.
-M09b was separately authorized on 2026-10-19 and is now in progress.
+M09b was separately authorized on 2026-10-19 and is complete in PR #23.
 
 - [x] Implement CUDA greedy reduction/selection with CPU-equivalent documented
   tie/non-finite semantics and supported dtype/layout handling.
-- [ ] Integrate provider discovery, stream ordering, token observation, and exits.
+- [x] Integrate provider discovery, stream ordering, token observation, and exits.
 - [x] Keep cache and sampler capability selection independent.
 
 **CPU test plan:** Rerun greedy/EP baseline and unsupported-capability tests.
@@ -2128,7 +2127,7 @@ Exact evidence/source/counter exports remain in session files as
 `m09a-host-coverage-final.txt`, `m09a-device-coverage-final.txt`,
 `m09a-greedy-device-coverage.ncu-rep`, `m09a-greedy-device-source.csv`,
 `m09a-transfer-proof.txt`, `m09a-greedy-transfer.sqlite`, `m09a-*-tests.log`
-and sanitizer logs. M09b remains unimplemented and requires user authorization.
+and sanitizer logs. M09b was subsequently authorized and completed in PR #23.
 
 #### M09b - GPU logits and loop/chain sampling integration
 
@@ -2167,7 +2166,7 @@ outputs, host token history and CPU-default sampling preserve their contracts.
   dispatch/transfer/staging evidence and reference comparisons. Measure all new
   core/plugin host code and any new device code; preserve M09a's independent
   device coverage proof rather than replacing it with host-only results.
-- [ ] B7: Rerun CPU/plugin/legacy baselines and applicable sanitizer checks,
+- [x] B7: Rerun CPU/plugin/legacy baselines and applicable sanitizer checks,
   verify retained-output/public SDK/style contracts, record latency/copy results
   and exact coverage evidence, and publish the second ready-for-review PR.
   Complete macro M09 only after both independently verified sub-PRs are published.
@@ -2210,7 +2209,9 @@ host/device lines are measured at100%, prior M09a gates remain valid, CPU/GPU/
 legacy regressions and applicable sanitizer checks pass, and exact limitations/
 measurements are documented in the published stacked PR.
 
-**M09b verification complete; publication pending:**
+**M09b complete:** Implementation `2a684c8ba1`, published ready for human review
+as [PR #23](https://github.com/onnxruntime/ort-state/pull/23), stacked on M09a
+PR #22. This completes macro M09. No PR has been merged; M10 is not started.
 
 - Generalized private GPU cache port routing to declared device values, using
   the retained initialized-Session allocator already owned by the native provider

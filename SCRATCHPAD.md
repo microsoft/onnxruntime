@@ -13,7 +13,7 @@ Compressed project memory. This is not the execution plan.
   M01. `SPEC.md` and the execution plan are approved.
 - M01 is complete and published as ready-for-review PR #11:
   https://github.com/onnxruntime/ort-state/pull/11
-- No agents launched. M01-M08 and M09a are complete; M09b is in progress; M10-M24 remain pending.
+- No agents launched. M01-M09 are complete; M10-M24 remain pending.
   Runtime production code starts with M02.
 - Future tracking: keep `TASKS.md` checklist current and record compressed
   discoveries/agent learnings here.
@@ -847,8 +847,8 @@ Compressed project memory. This is not the execution plan.
   user-authorized profiling. Pause before M09b after publishing M09a.
 - M09a implementation73066ddcbe published ready-for-review as PR #22 on #21:
   https://github.com/onnxruntime/ort-state/pull/22
-  All gates complete, no merges. Macro M09 remains incomplete; M09b is NOT
-  authorized or implemented. Exact host83/device25 coverage and actual scalar-
+  All M09a gates complete, no merges. M09b was subsequently authorized and
+  completed below. Exact host83/device25 coverage and actual scalar-
   transfer proof are retained in session files/TASKS; no sampling coverage waiver.
 
 ## M09b
@@ -888,5 +888,10 @@ Compressed project memory. This is not the execution plan.
 - SDK model generation first failed missing onnx; only then installed ONNX1.23.2
   and dependencies in existing isolated .venv. No runtime/manifest dependency.
   Generator source m09b_make_sdk_model.py retained for reproducibility.
-- Implementation/validation gates pass; final publication on #22 is pending.
-  MacroM09 remains incomplete until publication; M10 not started. No agents used.
+- Implementation/validation/publication gates pass; PR #23 is stacked on #22.
+  MacroM09 is complete; M10 not started. No agents used.
+- M09b implementation2a684c8ba1 published ready-for-review as PR #23 on #22:
+  https://github.com/onnxruntime/ort-state/pull/23
+  MacroM09 COMPLETE. M10 not started; no merges. Exact host116/116, unchanged
+  M09a25/25 device proof and measured48-byte total generation readbacks documented.
+  Parent M08 timing-only sanitizer limitation unchanged; no new case excluded.
