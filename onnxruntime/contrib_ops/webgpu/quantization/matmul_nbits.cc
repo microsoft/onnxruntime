@@ -57,6 +57,7 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect_),
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
                              WGSL_TEMPLATE_PARAMETER(nbits, nbits_),
+                             WGSL_TEMPLATE_PARAMETER(packed_f16_shuffle, packed_f16_shuffle_),
                              WGSL_TEMPLATE_PARAMETER(subgroup_min_size, subgroup_min_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_m, tile_m_),
                              WGSL_TEMPLATE_PARAMETER(tile_n, tile_n_),
@@ -282,8 +283,13 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
     const uint32_t subgroup_min_size = (context.HasFeature(wgpu::FeatureName::Subgroups) && !is_nvidia)
                                            ? context.AdapterInfo().subgroupMinSize
                                            : 0u;
+    // Qualcomm D3D12 miscomputes FP16 shuffles. Shuffle the same bits as u32
+    // while preserving the tile, storage type, and accumulation precision.
+    const bool packed_f16_shuffle = subgroup_min_size != 0 && is_f16 &&
+                                    context.AdapterInfo().vendor == std::string_view{"qualcomm"} &&
+                                    context.AdapterInfo().backendType == wgpu::BackendType::D3D12;
 
-    MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, tile_m, tile_n, static_cast<uint32_t>(nbits), subgroup_min_size, acc_f32};
+    MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, tile_m, tile_n, static_cast<uint32_t>(nbits), subgroup_min_size, acc_f32, packed_f16_shuffle};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, num_M_tile, batch_count);
 
@@ -324,7 +330,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                  {num_N_tile},
                                  {num_M_tile},
                                  {weight_index}});
-    program.CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, subgroup_min_size, acc_f32);
+    program.CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, subgroup_min_size, acc_f32, packed_f16_shuffle);
 
     return context.RunProgram(program);
   }
