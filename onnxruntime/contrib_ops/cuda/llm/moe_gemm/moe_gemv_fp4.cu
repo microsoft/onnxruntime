@@ -376,7 +376,7 @@ __global__ void MoeGemvFp4RawKPackedKernel(
   constexpr int kKLanes = KLanes;
   constexpr int kBlockSize = 16;
   constexpr int kColsPerBlock = FusedFinalize ? 8 : 128 / kKLanes;
-  constexpr int kReductionUnroll = FusedSwiGlu ? 2 : 1;
+  constexpr int kReductionUnroll = FusedSwiGlu ? 4 : 1;
   static_assert(kKLanes == 4 || kKLanes == 8);
   constexpr unsigned kFullMask = 0xffffffffu;
   using PackedT = std::conditional_t<std::is_same_v<T, half>, half2, __nv_bfloat162>;
