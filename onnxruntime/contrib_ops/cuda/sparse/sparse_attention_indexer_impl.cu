@@ -11,7 +11,7 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math_constants.h>
-#include <cub/block/block_radix_sort.cuh>
+#include "core/providers/cuda/cu_inc/cub.cuh"
 
 #include <algorithm>
 #include "contrib_ops/cuda/sparse/sparse_attention_indexer_device_math.cuh"
