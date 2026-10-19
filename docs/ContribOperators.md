@@ -3,6 +3,9 @@
 Do not modify directly.*
 
 * com.microsoft
+  * <a href="#com.microsoft.MtpMoe">com.microsoft.MtpMoe</a>
+  * <a href="#com.microsoft.FoldMid2">com.microsoft.FoldMid2</a>
+  * <a href="#com.microsoft.FoldTail">com.microsoft.FoldTail</a>
   * <a href="#com.microsoft.Attention">com.microsoft.Attention</a>
   * <a href="#com.microsoft.AttnLSTM">com.microsoft.AttnLSTM</a>
   * <a href="#com.microsoft.BeamSearch">com.microsoft.BeamSearch</a>
@@ -8772,3 +8775,150 @@ No versioning maintained for experimental ops.
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
 
+### <a name="com.microsoft.MtpMoe"></a><a name="com.microsoft.mtpmoe">**com.microsoft.MtpMoe**</a>
+
+  Fused bfloat16 NVFP4 mixture-of-experts projection for multi-token prediction.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>gate_up_global_scale</tt> : float (required)</dt>
+<dd>Global scale applied to the gate/up projection weights.</dd>
+<dt><tt>down_global_scale</tt> : float (required)</dt>
+<dd>Global scale applied to the down projection weights.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Bfloat16 hidden states with shape [1, rows, 2560].</dd>
+<dt><tt>router_logits</tt> : T</dt>
+<dd>Bfloat16 router logits with shape [1, rows, 512].</dd>
+<dt><tt>gate_up_weights</tt> : T1</dt>
+<dd>Packed NVFP4 gate/up weights with shape [512, 1280, 1440].</dd>
+<dt><tt>down_weights</tt> : T1</dt>
+<dd>Packed NVFP4 down weights with shape [512, 2560, 360].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Bfloat16 output with the same shape as input.</dd>
+<dt><tt>scratch</tt> : T2</dt>
+<dd>Float scratch buffer used by the fused expert projections.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>Constrain activations and output to bfloat16.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Constrain packed expert weights to uint8.</dd>
+<dt><tt>T2</tt> : tensor(float)</dt>
+<dd>Constrain scratch to float.</dd>
+</dl>
+
+### <a name="com.microsoft.FoldMid2"></a><a name="com.microsoft.foldmid2">**com.microsoft.FoldMid2**</a>
+
+  Combines speculative-token acceptance, recurrent-state commit bookkeeping, and head rotary-cache lookup for a two-token verification step. When `ctl[3]` is zero, the operator updates `ctl` and `ctx_commit` in place and writes a result record through the device-accessible pointer and capacity in `ptrs`.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>next_tokens</tt> : I64</dt>
+<dd>Two predicted token IDs.</dd>
+<dt><tt>input_ids</tt> : I64</dt>
+<dd>Two input token IDs; input_ids[1] is the draft token.</dd>
+<dt><tt>status</tt> : I32</dt>
+<dd>Status values aggregated into the result record.</dd>
+<dt><tt>ctl</tt> : I64</dt>
+<dd>Mutable eight-element control state.</dd>
+<dt><tt>ctx_commit</tt> : I64</dt>
+<dd>Mutable two-element committed context.</dd>
+<dt><tt>ctx_a</tt> : I64</dt>
+<dd>Context selected when the draft is rejected.</dd>
+<dt><tt>ctx_b</tt> : I64</dt>
+<dd>Context selected when the draft is accepted.</dd>
+<dt><tt>ptrs</tt> : I64</dt>
+<dd>Device pointers containing the result-ring address and capacity.</dd>
+<dt><tt>cos_cache</tt> : B</dt>
+<dd>Bfloat16 rotary cosine cache with shape [positions, 32].</dd>
+<dt><tt>sin_cache</tt> : B</dt>
+<dd>Bfloat16 rotary sine cache with shape [positions, 32].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>head_ids</tt> : I64</dt>
+<dd>Two token IDs consumed by the head.</dd>
+<dt><tt>head_c</tt> : I32</dt>
+<dd>Current head-cache length.</dd>
+<dt><tt>slot_ids</tt> : I64</dt>
+<dd>Two consecutive head-cache slots.</dd>
+<dt><tt>seqlens</tt> : I32</dt>
+<dd>Head sequence length.</dd>
+<dt><tt>cos_out</tt> : B</dt>
+<dd>Two rows of rotary cosine values.</dd>
+<dt><tt>sin_out</tt> : B</dt>
+<dd>Two rows of rotary sine values.</dd>
+<dt><tt>sel</tt> : I64</dt>
+<dd>Selected row: one when the draft is accepted, otherwise zero.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>B</tt> : tensor(bfloat16)</dt>
+<dd>Constrain rotary cache tensors to bfloat16.</dd>
+<dt><tt>I32</tt> : tensor(int32)</dt>
+<dd>Constrain status and sequence tensors to int32.</dd>
+<dt><tt>I64</tt> : tensor(int64)</dt>
+<dd>Constrain control and token tensors to int64.</dd>
+</dl>
+
+### <a name="com.microsoft.FoldTail"></a><a name="com.microsoft.foldtail">**com.microsoft.FoldTail**</a>
+
+  Updates the next speculative draft token and aggregate error bit from the head result. When `ctl[3]` is zero, the operator updates the control tensor in place; muted calls return `done=0` without changing the state.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>next_token</tt> : I64</dt>
+<dd>Next draft token ID.</dd>
+<dt><tt>status</tt> : I32</dt>
+<dd>Head status values.</dd>
+<dt><tt>ctl</tt> : I64</dt>
+<dd>Mutable eight-element control state.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>done</tt> : I32</dt>
+<dd>One when the control state was updated; zero for muted calls.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>I32</tt> : tensor(int32)</dt>
+<dd>Constrain status and output tensors to int32.</dd>
+<dt><tt>I64</tt> : tensor(int64)</dt>
+<dd>Constrain token and control tensors to int64.</dd>
+</dl>
