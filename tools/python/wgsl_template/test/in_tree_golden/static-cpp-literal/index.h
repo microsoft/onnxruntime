@@ -44,11 +44,11 @@ template <>
 Status ApplyTemplate<"math/subgroup_matrix_gemm_8x16x16.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_gemm_8x16x16.wgsl.template">::type params);
 
 //
-// Template: math/subgroup_matrix_matmul_8x16x16.wgsl.template
+// Template: math/subgroup_matrix_matmul.wgsl.template
 //
 
 template <>
-struct TemplateParameter<"math/subgroup_matrix_matmul_8x16x16.wgsl.template"> {
+struct TemplateParameter<"math/subgroup_matrix_matmul.wgsl.template"> {
   using type = struct {
     int param_sg_mat_count_m;
     int param_sg_mat_count_n;
@@ -60,7 +60,7 @@ struct TemplateParameter<"math/subgroup_matrix_matmul_8x16x16.wgsl.template"> {
 };
 
 template <>
-Status ApplyTemplate<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">::type params);
+Status ApplyTemplate<"math/subgroup_matrix_matmul.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_matmul.wgsl.template">::type params);
 
 //
 // Template: math/subgroup_matrix_matmul_pad_b.wgsl.template

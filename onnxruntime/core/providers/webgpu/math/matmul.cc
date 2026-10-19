@@ -51,30 +51,61 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     MatMul);
 
+Status MatMulGemvProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& a = shader.AddInput("a", ShaderUsage::None);
+  const auto& b = shader.AddInput("b", ShaderUsage::None);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
+  return WGSL_TEMPLATE_APPLY(shader, "math/matmul_gemv.wgsl.template",
+                             WGSL_TEMPLATE_VARIABLE(a, a),
+                             WGSL_TEMPLATE_VARIABLE(b, b),
+                             WGSL_TEMPLATE_VARIABLE(output, output));
+}
+
 namespace {
 
-class MatMulGemvProgram final : public Program<MatMulGemvProgram> {
+class MatMulZeroKProgram final : public Program<MatMulZeroKProgram> {
  public:
-  MatMulGemvProgram() : Program{"MatMulGemv"} {}
-
-  static constexpr uint32_t kWorkgroupSizeX = 1;
-  static constexpr uint32_t kWorkgroupSizeY = 128;
-  static_assert(kWorkgroupSizeY != 0 && (kWorkgroupSizeY & (kWorkgroupSizeY - 1)) == 0,
-                "MatMulGemvProgram requires kWorkgroupSizeY to be a non-zero power of two "
-                "because the WGSL reduction loop halves workgroup_size_y each iteration.");
+  MatMulZeroKProgram(const Activation& activation, bool has_bias,
+                     bool is_channels_last, bool bias_is_scalar)
+      : Program{"MatMulZeroK"},
+        activation_(activation),
+        has_bias_(has_bias),
+        is_channels_last_(is_channels_last),
+        bias_is_scalar_(bias_is_scalar) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    const auto& a = shader.AddInput("a", ShaderUsage::None);
-    const auto& b = shader.AddInput("b", ShaderUsage::None);
-    const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
-    return WGSL_TEMPLATE_APPLY(shader, "math/matmul_gemv.wgsl.template",
-                               WGSL_TEMPLATE_VARIABLE(a, a),
-                               WGSL_TEMPLATE_VARIABLE(b, b),
-                               WGSL_TEMPLATE_VARIABLE(output, output));
+    const auto& output = shader.AddOutput(
+        "output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+    shader.AdditionalImplementation()
+        << GetActivationDeclaration(activation_, "output_value_t", "output_element_t");
+    if (has_bias_) {
+      shader.AddInput("bias", ShaderUsage::UseValueTypeAlias);
+    }
+    shader.MainFunctionBody()
+        << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+        << "var value = output_value_t(0);\n";
+    if (has_bias_) {
+      const char* index = bias_is_scalar_ ? "0" : is_channels_last_ ? "global_idx % uniforms.N"
+                                                                    : "(global_idx / uniforms.N) % uniforms.M";
+      shader.MainFunctionBody() << "value = output_value_t(bias[" << index << "]);\n";
+    }
+    shader.MainFunctionBody()
+        << GetActivationSnippet(activation_, "output_value_t", "output_element_t")
+        << output.SetByOffset("global_idx", "value");
+    return Status::OK();
   }
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"K", ProgramUniformVariableDataType::Uint32},
-                                          {"N", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"output_size", ProgramUniformVariableDataType::Uint32},
+      {"M", ProgramUniformVariableDataType::Uint32},
+      {"N", ProgramUniformVariableDataType::Uint32},
+      WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
+
+ private:
+  const Activation activation_;
+  const bool has_bias_;
+  const bool is_channels_last_;
+  const bool bias_is_scalar_;
 };
 
 }  // namespace
@@ -254,6 +285,7 @@ static Status ApplyMatMulGemv(ComputeContext& context,
                               const MatMulComputeHelper& helper) {
   const auto* a = inputs[0];
   const auto* b = inputs[1];
+  const uint32_t m = narrow<uint32_t>(a->Shape().SizeToDimension(a->Shape().NumDimensions() - 1));
   const uint32_t n = narrow<uint32_t>(helper.N());
   const uint32_t k = narrow<uint32_t>(helper.K());
   const uint32_t n_vec_count = n / 4;
@@ -262,9 +294,9 @@ static Status ApplyMatMulGemv(ComputeContext& context,
   program.AddInputs({{a, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten},
                      {b, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
-      .AddUniformVariables({{k}, {n}})
+      .AddUniformVariables({{k}, {n}, {m}})
       .SetWorkgroupSize(MatMulGemvProgram::kWorkgroupSizeX, MatMulGemvProgram::kWorkgroupSizeY)
-      .SetDispatchGroupSize(CeilDiv(n_vec_count, MatMulGemvProgram::kWorkgroupSizeX));
+      .SetDispatchGroupSize(CeilDiv(n_vec_count, MatMulGemvProgram::kWorkgroupSizeX) * m);
   return context.RunProgram(program);
 }
 
@@ -444,6 +476,37 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(logical_a_shape, logical_b_shape));
 
+  if (helper.OutputShape().Size() == 0) {
+    return Status::OK();
+  }
+  if (helper.K() == 0) {
+    if (const auto forced_algorithm = context.ForcedMatMulAlgorithm()) {
+      ORT_RETURN_IF_NOT(*forced_algorithm == MatMulAlgorithm::Naive,
+                        "MatMul algorithm ", MatMulAlgorithmName(*forced_algorithm),
+                        " does not support these inputs or this device.");
+    }
+    // Empty inputs have null GPU buffers and must not be bound to a MatMul shader.
+    const Tensor* bias = has_bias ? inputs[2] : nullptr;
+    const bool bias_is_scalar = bias && bias->Shape().Size() == 1;
+    if (bias) {
+      const int64_t expected_bias_size = is_channels_last ? helper.N() : helper.M();
+      ORT_RETURN_IF_NOT(bias_is_scalar || bias->Shape().Size() == expected_bias_size,
+                        "Zero-K MatMul bias must be scalar or match the output channel dimension.");
+    }
+    const uint32_t output_size = narrow<uint32_t>(helper.OutputShape().Size());
+    MatMulZeroKProgram program{activation, bias != nullptr, is_channels_last, bias_is_scalar};
+    program.CacheHint(activation.CacheKey(), bias != nullptr, is_channels_last, bias_is_scalar)
+        .AddOutput({output_tensor, ProgramTensorMetadataDependency::TypeAndRank, 1})
+        .AddUniformVariables(
+            {{output_size}, {narrow<uint32_t>(helper.M())}, {narrow<uint32_t>(helper.N())}})
+        .SetDispatchGroupSize(CeilDiv(output_size, static_cast<uint32_t>(WORKGROUP_SIZE)));
+    AppendActivationUniformsData(activation, program);
+    if (bias) {
+      program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, 1});
+    }
+    return context.RunProgram(program);
+  }
+
   Initialize(context);
   const bool requires_fp32_accumulation =
       context.EnableMatmulFp32Accumulation() && a->IsDataType<MLFloat16>();
@@ -467,8 +530,12 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
                                         logical_output_shape.NumDimensions() - 2))
                                   : 1;
   const bool folds_batch_into_m = batch_a != 1 && batch_b == 1;
+  const int64_t packed_m = folds_batch_into_m
+                               ? logical_a_shape.SizeToDimension(logical_a_shape.NumDimensions() - 1)
+                               : helper.M();
+  const uint64_t packed_batch_size = folds_batch_into_m ? 1 : batch_size;
   const bool can_run_gemv =
-      batch_size == 1 && helper.M() == 1 &&
+      packed_batch_size == 1 && packed_m >= 1 && packed_m <= 8 &&
       helper.N() > 0 && helper.N() % 4 == 0 && helper.K() > 0 &&
       !has_bias && activation.activation_kind_ == ActivationKind::None &&
       a->IsDataType<MLFloat16>() && b->IsDataType<MLFloat16>() &&
@@ -478,11 +545,9 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
   selection_params.m = helper.M();
   selection_params.n = helper.N();
   selection_params.k = helper.K();
-  selection_params.packed_m = folds_batch_into_m
-                                  ? logical_a_shape.SizeToDimension(logical_a_shape.NumDimensions() - 1)
-                                  : helper.M();
+  selection_params.packed_m = packed_m;
   selection_params.batch_size = batch_size;
-  selection_params.packed_batch_size = folds_batch_into_m ? 1 : batch_size;
+  selection_params.packed_batch_size = packed_batch_size;
   selection_params.adapter_architecture = context.AdapterInfo().architecture;
   selection_params.a_data_type = a->GetElementType();
   selection_params.b_data_type = b->GetElementType();
