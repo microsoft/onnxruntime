@@ -27,7 +27,10 @@ class FloatRotaryChainTester : public OpTester {
  public:
   FloatRotaryChainTester(int type, int heads, int rotary_dim, bool interleaved)
       : OpTester("RotaryEmbedding", 1, kMSDomain, false),
-        type_(type), heads_(heads), rotary_dim_(rotary_dim), interleaved_(interleaved) {}
+        type_(type),
+        heads_(heads),
+        rotary_dim_(rotary_dim),
+        interleaved_(interleaved) {}
 
   void AddNodes(Graph& graph, std::vector<NodeArg*>& inputs, std::vector<NodeArg*>& outputs,
                 std::vector<std::function<void(Node&)>>&) override {
@@ -74,7 +77,7 @@ void TestFloatRotaryArithmetic(int type) {
           const int rotary_dim = 64;
           const int cache_rows = batch * sequence + 3;
           std::vector<int64_t> shape = transposed ? std::vector<int64_t>{batch, heads, sequence, width}
-                                                 : std::vector<int64_t>{batch, sequence, heads * width};
+                                                  : std::vector<int64_t>{batch, sequence, heads * width};
           std::vector<T> input(batch * sequence * heads * width), cosine(cache_rows * rotary_dim / 2),
               sine(cosine.size());
           const bool scalar_position = !transposed;
@@ -94,8 +97,7 @@ void TestFloatRotaryArithmetic(int type) {
           std::vector<OrtValue> expected;
           for (OpTester* tester : {static_cast<OpTester*>(&reference), &fused}) {
             tester->AddInput<T>("input", shape, input);
-            tester->AddInput<int64_t>("positions", scalar_position ? std::vector<int64_t>{1}
-                                                                  : std::vector<int64_t>{batch, sequence}, positions);
+            tester->AddInput<int64_t>("positions", scalar_position ? std::vector<int64_t>{1} : std::vector<int64_t>{batch, sequence}, positions);
             tester->AddInput<T>("cosine", {cache_rows, rotary_dim / 2}, cosine);
             tester->AddInput<T>("sine", {cache_rows, rotary_dim / 2}, sine);
             tester->AddOutput<T>("output", shape, std::vector<T>(input.size()));

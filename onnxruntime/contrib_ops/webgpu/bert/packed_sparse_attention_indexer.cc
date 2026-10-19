@@ -1158,9 +1158,9 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
   ORT_RETURN_IF_ERROR(CheckStorageBindingLimit(
       context, "QSA selection",
       {&query_metadata, present_key_state, &rotary_cache, &sequence_metadata, present_state_lengths, &overflow_flags,
-         selected_indices, selected_counts, position_ids}));
-      PackedSparseAttentionIndexerQsaSelectProgram select{rotary.batched, position_ids != nullptr};
-      select.CacheHint(rotary.batched, position_ids != nullptr)
+       selected_indices, selected_counts, position_ids}));
+  PackedSparseAttentionIndexerQsaSelectProgram select{rotary.batched, position_ids != nullptr};
+  select.CacheHint(rotary.batched, position_ids != nullptr)
       .SetWorkgroupSize(kWorkgroupSize)
       .AddInputs({{&query_metadata, ProgramTensorMetadataDependency::Type},
                   {present_key_state, ProgramTensorMetadataDependency::Type},

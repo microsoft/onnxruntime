@@ -386,7 +386,9 @@ void QsaReference(const QsaProblem& problem, std::vector<int32_t>& selected, std
             } else {
               pooled[static_cast<size_t>(d)] +=
                   problem.key[(static_cast<size_t>(b) * problem.sequence_length +
-                               position - problem.past_sequence_length) * head_size + d];
+                               position - problem.past_sequence_length) *
+                                  head_size +
+                              d];
             }
           }
         }
@@ -492,7 +494,6 @@ void QsaReference(const QsaProblem& problem, std::vector<int32_t>& selected, std
       }
     }
   }
-
 }
 
 struct CsaProblem {

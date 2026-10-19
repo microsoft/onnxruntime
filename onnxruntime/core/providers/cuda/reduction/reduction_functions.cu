@@ -539,7 +539,7 @@ struct RoundedSquare {
 
 template <typename TIn>
 Status reduce_square_matrix_columns(cudaStream_t stream, const TIn* input, float* output,
-                                   int m, int n, void* buffer, size_t buffer_size, int input_row_stride) {
+                                    int m, int n, void* buffer, size_t buffer_size, int input_row_stride) {
   return detail::call_reduce_matrix_columns<TIn, float, RoundedSquare, Identity, false>(
       stream, input, output, m, n, buffer, buffer_size, input_row_stride);
 }

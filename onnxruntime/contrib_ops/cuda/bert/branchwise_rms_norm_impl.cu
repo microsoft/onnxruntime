@@ -168,9 +168,9 @@ INSTANTIATE(__nv_bfloat16)
 
 #undef INSTANTIATE
 
-#define INSTANTIATE_STANDARD(T) \
+#define INSTANTIATE_STANDARD(T)                                                                    \
   template Status LaunchStandardBranchwiseRMSNorm<T>(cudaStream_t, const T*, const void*, int, T*, \
-                                                      int, int, int, bool, float, float*, float*, float*, void*, size_t, int);
+                                                     int, int, int, bool, float, float*, float*, float*, void*, size_t, int);
 INSTANTIATE_STANDARD(float)
 INSTANTIATE_STANDARD(half)
 INSTANTIATE_STANDARD(__nv_bfloat16)
