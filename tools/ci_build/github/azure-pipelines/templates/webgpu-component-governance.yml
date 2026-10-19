@@ -1,0 +1,36 @@
+parameters:
+- name: dawn_source
+  type: string
+- name: include_dxc
+  type: boolean
+  default: false
+
+steps:
+- task: PythonScript@0
+  displayName: 'Test WebGPU component inventory generator'
+  inputs:
+    scriptPath: '$(Build.SourcesDirectory)/cgmanifests/webgpu/test_generate_webgpu_cgmanifest.py'
+
+- task: PythonScript@0
+  displayName: 'Generate WebGPU component inventory from fetched sources'
+  inputs:
+    scriptPath: '$(Build.SourcesDirectory)/cgmanifests/webgpu/generate_webgpu_cgmanifest.py'
+    ${{ if parameters.include_dxc }}:
+      arguments: >-
+        --dawn-source "${{ parameters.dawn_source }}"
+        --dxc-pipeline "$(Build.SourcesDirectory)/tools/ci_build/github/azure-pipelines/stages/plugin-win-webgpu-stage.yml"
+        --output "$(Build.ArtifactStagingDirectory)/metadata/cgmanifest.json"
+    ${{ else }}:
+      arguments: >-
+        --dawn-source "${{ parameters.dawn_source }}"
+        --output "$(Build.ArtifactStagingDirectory)/metadata/cgmanifest.json"
+
+# The normal pipeline scan excludes Build.BinariesDirectory, where Dawn is fetched.
+# Scan the generated inventory explicitly and retain it with this platform's binaries.
+- task: ComponentGovernanceComponentDetection@0
+  displayName: 'Scan generated WebGPU component inventory'
+  inputs:
+    scanType: Register
+    sourceScanPath: '$(Build.ArtifactStagingDirectory)/metadata'
+    verbosity: Normal
+    alertWarningLevel: High
