@@ -1608,8 +1608,8 @@ __global__ void finalizeMoeRoutingKernel(const GemmOutputType* expanded_permuted
   constexpr int64_t FINALIZE_ELEM_PER_THREAD = 128 / std::min(sizeof_bits<OutputType>::value, sizeof_bits<GemmOutputType>::value);
   assert(orig_cols % FINALIZE_ELEM_PER_THREAD == 0);
 
-  const int64_t start_offset = threadIdx.x;
-  const int64_t stride = FINALIZE_THREADS_PER_BLOCK;
+  const int64_t start_offset = static_cast<int64_t>(blockIdx.y) * blockDim.x + threadIdx.x;
+  const int64_t stride = static_cast<int64_t>(blockDim.x) * gridDim.y;
   const int64_t num_elems_in_col = orig_cols / FINALIZE_ELEM_PER_THREAD;
 
   using BiasElem = cutlass::Array<ScaleBiasType, FINALIZE_ELEM_PER_THREAD>;
@@ -1628,7 +1628,7 @@ __global__ void finalizeMoeRoutingKernel(const GemmOutputType* expanded_permuted
   __shared__ int s_expert_id[STAGE_ROUTING ? FINALIZE_MAX_STAGED_TOPK : 1];
   __shared__ float s_row_scale[STAGE_ROUTING ? FINALIZE_MAX_STAGED_TOPK : 1];
   if constexpr (STAGE_ROUTING) {
-    for (int64_t k_idx = threadIdx.x; k_idx < experts_per_token; k_idx += FINALIZE_THREADS_PER_BLOCK) {
+    for (int64_t k_idx = threadIdx.x; k_idx < experts_per_token; k_idx += blockDim.x) {
       int64_t const k_offset = original_row * experts_per_token + k_idx;
       int const expert_id = token_selected_experts[k_offset] - start_expert_id;
       bool const is_local_expert = expert_id >= 0 && expert_id < num_experts_per_node;
@@ -1915,6 +1915,13 @@ void finalizeMoeRoutingKernelLauncher(const GemmOutputType* expanded_permuted_ro
       }
 #undef LAUNCH_FINALIZE_ONE_ROW
     } else if (experts_per_token <= FINALIZE_MAX_STAGED_TOPK) {
+      if (num_rows <= 2) {
+        constexpr int kDecodeThreads = 32;
+        config.blockDim = dim3(kDecodeThreads);
+        config.gridDim = dim3(static_cast<unsigned>(num_rows),
+                              static_cast<unsigned>((cols / kFinalizeElemPerThread + kDecodeThreads - 1) /
+                                                    kDecodeThreads));
+      }
       auto func = final_scales
                       ? &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT, true>
                       : &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE, true>;

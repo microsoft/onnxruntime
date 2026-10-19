@@ -12,6 +12,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+bool TryLaunchSmallDecodeExpertMaps(
+    const int* indices, int* row_to_source, int* source_to_row, int* sorted_experts,
+    int64_t* expert_offsets, int rows, int experts, int k, cudaStream_t stream);
+
 void LaunchSoftmaxTopK(
     const float* logits,
     float* topk_scales,

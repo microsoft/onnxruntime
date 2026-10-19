@@ -3191,9 +3191,13 @@ are `A_scaled = fp8_e4m3(A / a_scale) * a_scale` (W8A8). Otherwise, A retains it
 precision (weight-only W8A16).
 
 The operator multiplies the activation by the transpose of B_scaled and adds the optional bias.
-The output has shape [..., N] and the same element type as A.)DOC")
+The output has shape [..., N] and the same element type as A. When split_sizes is provided,
+return up to eight consecutive last-dimension partitions instead, equivalent to Split(Y, split_sizes).
+The partition widths must be positive and sum to N.)DOC")
         .Attr("block_size", "Number of consecutive K values that share one weight scale. Default 128.",
               AttributeProto::INT, static_cast<int64_t>(128))
+        .Attr("split_sizes", "Optional last-dimension output widths (one to eight positive sizes).",
+              AttributeProto::INTS, OPTIONAL_VALUE)
         .Input(0, "A", "Row-major FP16/BF16 activation of shape [..., K].", "T")
         .Input(1, "B", "Row-major FP8 E4M3 weight of shape [N, K].", "T1")
         .Input(2, "b_scale", "Per-block FP32 weight scales of shape [N, ceil(K / block_size)].", "T2")
@@ -3203,13 +3207,31 @@ The output has shape [..., N] and the same element type as A.)DOC")
                "its FP16/BF16 precision.",
                "T2", OpSchema::Optional)
         .Input(4, "bias", "Optional bias of shape [N].", "T", OpSchema::Optional)
-        .Output(0, "Y", "Output of shape [..., N] in the activation type.", "T")
+        .Output(0, "Y", "Output(s) of shape [..., N] or [..., split_sizes[i]] in the activation type.",
+                "T", OpSchema::Variadic)
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"},
                         "Constrain activation, bias and output to FP16 or BF16.")
         .TypeConstraint("T1", {"tensor(float8e4m3fn)"}, "Constrain weight to FP8 E4M3.")
         .TypeConstraint("T2", {"tensor(float)"}, "Constrain scales to FP32.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          const auto* split = ctx.getAttribute("split_sizes");
+          if ((split == nullptr && ctx.getNumOutputs() != 1) ||
+              (split != nullptr && (split->ints_size() < 1 || split->ints_size() > 8 ||
+                                    static_cast<size_t>(split->ints_size()) != ctx.getNumOutputs()))) {
+            fail_shape_inference("Output count must match split_sizes, or be one when split_sizes is absent.");
+          }
+          int64_t split_total = 0;
+          if (split != nullptr) {
+            for (const auto width : split->ints()) {
+              if (width <= 0 || width > INT64_MAX - split_total) {
+                fail_shape_inference("split_sizes must contain positive widths with no sum overflow.");
+              }
+              split_total += width;
+            }
+          }
+          for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+            propagateElemTypeFromInputToOutput(ctx, 0, i);
+          }
           if (!hasNInputShapes(ctx, 2)) {
             return;
           }
@@ -3227,7 +3249,16 @@ The output has shape [..., N] and the same element type as A.)DOC")
             *output_shape.add_dim() = a_shape.dim(i);
           }
           *output_shape.add_dim() = b_shape.dim(0);
-          updateOutputShape(ctx, 0, output_shape);
+          if (split != nullptr && b_shape.dim(0).has_dim_value() &&
+              split_total != b_shape.dim(0).dim_value()) {
+            fail_shape_inference("split_sizes must sum to the weight's N dimension.");
+          }
+          for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+            if (split != nullptr) {
+              output_shape.mutable_dim(output_shape.dim_size() - 1)->set_dim_value(split->ints(static_cast<int>(i)));
+            }
+            updateOutputShape(ctx, i, output_shape);
+          }
         }));
 
 static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,

@@ -48,6 +48,16 @@ MatMulBlockQuantizedFp8Weight::MatMulBlockQuantizedFp8Weight(const OpKernelInfo&
       max_dequant_scratch_bytes_(DequantScratchLimitBytes()),
       enable_deep_gemm_(ParseEnvironmentVariableWithDefault<bool>("ORT_FP8_MATMUL_DEEPGEMM", false)) {
   ORT_ENFORCE(block_size_ > 0, "block_size must be positive.");
+  if (info.GetAttrs<int64_t>("split_sizes", split_sizes_).IsOK()) {
+    ORT_ENFORCE(!split_sizes_.empty() && split_sizes_.size() <= Fp8GemvOutputSplit::kMaxOutputs,
+                "split_sizes requires one to eight widths.");
+    int64_t total = 0;
+    for (const auto width : split_sizes_) {
+      ORT_ENFORCE(width > 0 && width <= INT64_MAX - total,
+                  "split_sizes must contain positive widths with no sum overflow.");
+      total += width;
+    }
+  }
 }
 
 template <typename T>
@@ -94,27 +104,75 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
   TensorShape b_logical_shape({n, k});
   ORT_RETURN_IF_ERROR(helper.Compute(a_shape, b_logical_shape, transa, transb));
 
-  Tensor* Y = context->Output(0, helper.OutputShape());
-  if (Y->Shape().Size() == 0) {
-    return Status::OK();
-  }
-
   const int m_i = SafeInt<int>(helper.M());
   const int n_i = SafeInt<int>(helper.N());
   const int k_i = SafeInt<int>(helper.K());
 
+  const bool use_gemv = m_i > 0 &&
+                        m_i <= MatMulBlockScaledFp8GemvMaxM(k_i, SafeInt<int>(block_size_), GetDeviceProp()) &&
+                        (k_i % 16 == 0) && (block_size_ % 16 == 0);
+  const bool direct_split = !split_sizes_.empty() && use_gemv &&
+                            MatMulBlockScaledFp8GemvSupportsSplitOutput(
+                                m_i, k_i, SafeInt<int>(block_size_), GetDeviceProp());
+  Fp8GemvOutputSplit split;
+  void* y_data;
+  IAllocatorUniquePtr<CudaT> y_scratch;
+  const auto output_shape = helper.OutputShape();
+  if (split_sizes_.empty()) {
+    ORT_ENFORCE(context->OutputCount() == 1, "Without split_sizes exactly one output is required.");
+    y_data = context->Output(0, output_shape)->MutableDataRaw();
+  } else {
+    ORT_ENFORCE(context->OutputCount() == static_cast<int>(split_sizes_.size()),
+                "Output count must match split_sizes.");
+    int64_t total = 0;
+    for (const auto width : split_sizes_) {
+      total += width;
+    }
+    ORT_ENFORCE(total == n, "split_sizes must sum to the weight's N dimension.");
+    split.count = static_cast<int>(split_sizes_.size());
+    for (int i = 0; i < split.count; ++i) {
+      TensorShapeVector shape(output_shape.GetDims().begin(), output_shape.GetDims().end());
+      shape.back() = split_sizes_[i];
+      split.outputs[i] = context->Output(i, TensorShape(shape))->MutableDataRaw();
+      split.widths[i] = SafeInt<int>(split_sizes_[i]);
+    }
+    if (direct_split) {
+      y_data = split.outputs[0];
+    } else {
+      y_scratch = GetScratchBuffer<CudaT>(SafeInt<size_t>(output_shape.Size()), GetComputeStream(context));
+      y_data = y_scratch.get();
+    }
+  }
+  if (output_shape.Size() == 0) {
+    return Status::OK();
+  }
+  const auto finish_output = [&]() -> Status {
+    if (split.count != 0 && !direct_split) {
+      size_t offset = 0;
+      for (int i = 0; i < split.count; ++i) {
+        const size_t width_bytes = static_cast<size_t>(split.widths[i]) * sizeof(CudaT);
+        CUDA_RETURN_IF_ERROR(cudaMemcpy2DAsync(
+            split.outputs[i], width_bytes, static_cast<const uint8_t*>(y_data) + offset,
+            static_cast<size_t>(n_i) * sizeof(CudaT), width_bytes, m_i,
+            cudaMemcpyDeviceToDevice, Stream(context)));
+        offset += width_bytes;
+      }
+    }
+    return Status::OK();
+  };
+
   if (k_i == 0) {
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes(), Stream(context)));
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(y_data, 0, SafeInt<size_t>(output_shape.Size()) * sizeof(CudaT), Stream(context)));
     if (bias != nullptr) {
       ORT_RETURN_IF_ERROR(LaunchAddBiasBlockScaledFp8(
-          Y->MutableDataRaw(),
+          y_data,
           bias->DataRaw(),
           m_i,
           n_i,
           std::is_same<T, BFloat16>::value,
           Stream(context)));
     }
-    return Status::OK();
+    return finish_output();
   }
 
   // Optional W8A8 activation path: statically quantize A to FP8 E4M3 and dequantize back so the
@@ -123,9 +181,6 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
   //
   // The decode GEMV absorbs this round trip in-register, so the standalone kernel (and its [M, K]
   // scratch buffer) is only materialized for the cuBLAS path below.
-  const bool use_gemv = m_i > 0 &&
-                        m_i <= MatMulBlockScaledFp8GemvMaxM(k_i, SafeInt<int>(block_size_), GetDeviceProp()) &&
-                        (k_i % 16 == 0) && (block_size_ % 16 == 0);
   const bool fuse_act_qdq = use_gemv && !FusedFp8ActivationQdqDisabled();
 
 #if defined(USE_DEEP_GEMM)
@@ -154,14 +209,14 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
         const size_t weight_offset = SafeInt<size_t>(offset) * k_i;
         const size_t scale_offset = SafeInt<size_t>(offset) * (k_i / 128);
         ORT_RETURN_IF_ERROR(LaunchMatMulFp8DeepGemm(
-            Y->MutableData<T>() + offset, a_quant.get(), a_scales.get(),
+            static_cast<T*>(y_data) + offset, a_quant.get(), a_scales.get(),
             static_cast<const uint8_t*>(b->DataRaw()) + weight_offset,
             b_scale->Data<float>() + scale_offset,
             bias != nullptr ? bias->Data<T>() + offset : nullptr,
             packed_b_scales.get(), accum.get(), m_i, rows, k_i, aligned_m, n_i,
             std::is_same<T, BFloat16>::value, GetDeviceProp().multiProcessorCount, Stream(context)));
       }
-      return Status::OK();
+      return finish_output();
     }
   }
 #endif
@@ -186,8 +241,8 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
   // A fused warp-per-column kernel reads the FP8 weight directly, avoiding both the [N, K]
   // dequant scratch buffer and the cuBLAS GEMM (which is underutilized at M == 1).
   if (use_gemv) {
-    return LaunchMatMulBlockScaledFp8Gemv(
-        Y->MutableDataRaw(),
+    ORT_RETURN_IF_ERROR(LaunchMatMulBlockScaledFp8Gemv(
+        y_data,
         a_ptr,
         b->DataRaw(),
         b_scale->Data<float>(),
@@ -199,7 +254,8 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
         SafeInt<int>(block_size_),
         std::is_same<T, BFloat16>::value,
         GetDeviceProp(),
-        Stream(context));
+        Stream(context), direct_split ? split : Fp8GemvOutputSplit{}));
+    return finish_output();
   }
 
   // Dequantize the FP8 weight into a scratch buffer of the activation type, then GEMM. The scratch
@@ -243,7 +299,7 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
         reinterpret_cast<const CudaT*>(a_ptr),
         helper.Lda(transa),
         &zero,
-        reinterpret_cast<CudaT*>(Y->MutableDataRaw()) + n_offset,
+        static_cast<CudaT*>(y_data) + n_offset,
         helper.Ldc(),
         GetDeviceProp(),
         UseTF32()));
@@ -251,7 +307,7 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
 
   if (bias != nullptr) {
     ORT_RETURN_IF_ERROR(LaunchAddBiasBlockScaledFp8(
-        Y->MutableDataRaw(),
+        y_data,
         bias->DataRaw(),
         m_i,
         n_i,
@@ -259,7 +315,7 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
         Stream(context)));
   }
 
-  return Status::OK();
+  return finish_output();
 #endif
 }
 
