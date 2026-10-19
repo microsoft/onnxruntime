@@ -3294,7 +3294,7 @@ The partition widths must be positive and sum to N.)DOC")
           const auto* split = ctx.getAttribute("split_sizes");
           if ((split == nullptr && ctx.getNumOutputs() != 1) ||
               (split != nullptr && (split->ints_size() < 1 || split->ints_size() > 8 ||
-                                   static_cast<size_t>(split->ints_size()) != ctx.getNumOutputs()))) {
+                                    static_cast<size_t>(split->ints_size()) != ctx.getNumOutputs()))) {
             fail_shape_inference("Output count must match split_sizes, or be one when split_sizes is absent.");
           }
           int64_t split_total = 0;

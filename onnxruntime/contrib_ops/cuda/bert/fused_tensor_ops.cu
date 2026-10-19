@@ -169,8 +169,8 @@ __global__ void SigmoidGateMulKernel(const __nv_bfloat16* attention,
     const BFloat16 a(gate);
     // Match CUDA Sigmoid's input-type intermediates, including its negative-input subtraction.
     const BFloat16 value = a > BFloat16(0.0f)
-                              ? BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(-a))
-                              : BFloat16(1.0f) - BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(a));
+                               ? BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(-a))
+                               : BFloat16(1.0f) - BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(a));
     sigmoid_bf16 = __float2bfloat16_rn(static_cast<float>(value));
   }
   if constexpr (SiluGate) {
@@ -254,13 +254,13 @@ Status LaunchArgMaxLastAxis(cudaStream_t stream, const void* input, int input_ty
   switch (input_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       return LaunchTypedArgmax(stream, static_cast<const float*>(input), rows, width, output,
-                                partial_values, partial_indices);
+                               partial_values, partial_indices);
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       return LaunchTypedArgmax(stream, static_cast<const half*>(input), rows, width, output,
-                                partial_values, partial_indices);
+                               partial_values, partial_indices);
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
       return LaunchTypedArgmax(stream, static_cast<const __nv_bfloat16*>(input), rows, width, output,
-                                partial_values, partial_indices);
+                               partial_values, partial_indices);
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ArgMaxLastAxis input type is not supported");
   }
@@ -299,11 +299,11 @@ Status LaunchSigmoidGateMul(cudaStream_t stream, const uint16_t* attention,
   const int64_t block_count = (count - 1) / kThreads + 1;
   ORT_RETURN_IF_NOT(block_count <= std::numeric_limits<int>::max(),
                     "SigmoidGateMul requires too many CUDA blocks");
-#define LAUNCH_GATE(BROADCAST, RESIDUAL, SILU) \
+#define LAUNCH_GATE(BROADCAST, RESIDUAL, SILU)                                                             \
   SigmoidGateMulKernel<BROADCAST, RESIDUAL, SILU><<<static_cast<int>(block_count), kThreads, 0, stream>>>( \
-      reinterpret_cast<const __nv_bfloat16*>(attention), \
-      reinterpret_cast<const __nv_bfloat16*>(projection), \
-      reinterpret_cast<__nv_bfloat16*>(output), count, head_dim, heads, q_stride, \
+      reinterpret_cast<const __nv_bfloat16*>(attention),                                                   \
+      reinterpret_cast<const __nv_bfloat16*>(projection),                                                  \
+      reinterpret_cast<__nv_bfloat16*>(output), count, head_dim, heads, q_stride,                          \
       token_stride, q_offset, gate_row_width, reinterpret_cast<const __nv_bfloat16*>(residual), sigmoid_in_fp32)
   if (silu_gate) {
     if (residual != nullptr) {

@@ -40,7 +40,7 @@ struct VariantPack {
 template <typename T>
 __device__ __forceinline__ float LoadGate(const void* data, int64_t index, bool gates_in_input_type) {
   return gates_in_input_type ? static_cast<float>(static_cast<const T*>(data)[index])
-                            : static_cast<const float*>(data)[index];
+                             : static_cast<const float*>(data)[index];
 }
 #endif
 

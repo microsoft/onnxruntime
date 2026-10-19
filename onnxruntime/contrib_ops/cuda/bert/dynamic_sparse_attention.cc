@@ -19,21 +19,21 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-#define REGISTER_KERNEL_TYPED(T)                                       \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
-      DynamicSparseAttention,                                          \
-      kMSDomain,                                                       \
-      1,                                                               \
-      T,                                                               \
-      kCudaExecutionProvider,                                          \
-      (*KernelDefBuilder::Create())                                    \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
+#define REGISTER_KERNEL_TYPED(T)                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
+      DynamicSparseAttention,                                               \
+      kMSDomain,                                                            \
+      1,                                                                    \
+      T,                                                                    \
+      kCudaExecutionProvider,                                               \
+      (*KernelDefBuilder::Create())                                         \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())            \
           .TypeConstraint("TCache", BuildKernelDefConstraints<T, int8_t>()) \
-          .TypeConstraint("S", DataTypeImpl::GetTensorType<float>())   \
-          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()) \
-          .MayInplace(3, 1)                                            \
-          .MayInplace(4, 2)                                            \
-          .InputMemoryType(OrtMemTypeCPUInput, 10),                    \
+          .TypeConstraint("S", DataTypeImpl::GetTensorType<float>())        \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())      \
+          .MayInplace(3, 1)                                                 \
+          .MayInplace(4, 2)                                                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 10),                         \
       DynamicSparseAttention<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -142,7 +142,7 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
                     "DynamicSparseAttention: INT8 caches require per-channel key_scale and value_scale.");
   ORT_RETURN_IF_NOT((past_key == nullptr || past_key->IsDataType<T>() || quantized_cache) &&
                         (past_value == nullptr || (quantized_cache ? past_value->IsDataType<int8_t>()
-                                                                 : past_value->IsDataType<T>())),
+                                                                   : past_value->IsDataType<T>())),
                     "DynamicSparseAttention: cache types must match activations or both be INT8.");
 
   DynamicSparseAttentionParameters parameters;

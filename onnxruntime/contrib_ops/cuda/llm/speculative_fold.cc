@@ -114,16 +114,16 @@ class FoldTail final : public CudaKernel {
 ONNX_OPERATOR_KERNEL_EX(
     FoldMid2, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-         .TypeConstraint("I64", DataTypeImpl::GetTensorType<int64_t>())
-         .TypeConstraint("I32", DataTypeImpl::GetTensorType<int32_t>())
-         .TypeConstraint("B", DataTypeImpl::GetTensorType<BFloat16>()),
+        .TypeConstraint("I64", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("I32", DataTypeImpl::GetTensorType<int32_t>())
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<BFloat16>()),
     FoldMid2);
 
 ONNX_OPERATOR_KERNEL_EX(
     FoldTail, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-         .TypeConstraint("I64", DataTypeImpl::GetTensorType<int64_t>())
-         .TypeConstraint("I32", DataTypeImpl::GetTensorType<int32_t>()),
+        .TypeConstraint("I64", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("I32", DataTypeImpl::GetTensorType<int32_t>()),
     FoldTail);
 
 }  // namespace cuda

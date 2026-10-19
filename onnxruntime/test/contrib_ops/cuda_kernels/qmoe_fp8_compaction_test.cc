@@ -69,7 +69,7 @@ void TestRoutingMaps(int rows, int experts, int k, bool normalize, bool tied) {
   CudaBuffer offsets((experts + 1) * sizeof(int64_t));
   input.Upload(logits.data());
   qmoe::LaunchSoftmaxTopK(input.As<T>(), scales.As<float>(), indices.As<int>(),
-                         rows, experts, k, normalize, nullptr);
+                          rows, experts, k, normalize, nullptr);
   ASSERT_TRUE(qmoe::TryLaunchSmallDecodeExpertMaps(
       indices.As<int>(), r2u.As<int>(), u2r.As<int>(), sorted.As<int>(),
       offsets.As<int64_t>(), rows, experts, k, nullptr));
