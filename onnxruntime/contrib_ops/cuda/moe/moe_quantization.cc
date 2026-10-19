@@ -292,6 +292,7 @@ REGISTER_KERNEL_TYPED(BFloat16)
 
 QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info, GetDeviceProp()) {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  device_id_ = GetDeviceId();
   const auto cpu_offload_experts = op_kernel_info.GetConfigOptions().GetConfigOrDefault(
       kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0");
   int64_t cpu_offload_expert_count = -1;
@@ -308,26 +309,6 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
                   on_demand_threshold >= 0,
               kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold, " must be a non-negative integer.");
   cpu_offload_on_demand_threshold_ = narrow<size_t>(on_demand_threshold);
-  if (cpu_offload_enabled_) {
-    kernel_pilot_initializer_.Register(
-        this, [this](KernelPilot* pilot) { return InitializeKernelPilot(pilot); });
-    device_id_ = GetDeviceId();
-    cuda_allocator_ = op_kernel_info.GetAllocator(OrtMemTypeDefault);
-    if (!routing_snapshot_) {
-      routing_snapshot_.emplace(op_kernel_info.GetAllocator(OrtMemTypeCPU));
-    }
-    const QMoEScopedCudaDevice device_guard(device_id_);
-    CUDA_CALL_THROW(cudaStreamCreateWithFlags(&cpu_offload_stream_, cudaStreamNonBlocking));
-    CUDA_CALL_THROW(cudaStreamCreateWithFlags(&swap_d2h_stream_, cudaStreamNonBlocking));
-    CUDA_CALL_THROW(cudaStreamCreateWithFlags(&swap_h2d_stream_, cudaStreamNonBlocking));
-    CUDA_CALL_THROW(cudaEventCreateWithFlags(&last_expert_use_event_, cudaEventDisableTiming));
-    CUDA_CALL_THROW(cudaEventCreateWithFlags(&cpu_routes_ready_event_, cudaEventDisableTiming));
-    CUDA_CALL_THROW(cudaEventCreateWithFlags(&cpu_input_ready_event_, cudaEventDisableTiming));
-    CUDA_CALL_THROW(cudaEventCreateWithFlags(&usage_complete_event_, cudaEventDisableTiming));
-    CUDA_CALL_THROW(cudaEventCreateWithFlags(&swap_d2h_complete_event_, cudaEventDisableTiming));
-    CUDA_CALL_THROW(cudaEventCreateWithFlags(&swap_transfer_complete_event_, cudaEventDisableTiming));
-    CUDA_CALL_THROW(cudaEventCreateWithFlags(&swap_publication_complete_event_, cudaEventDisableTiming));
-  }
 #endif
   enable_kernel_debug_info_ =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>(kEnableQMoEKernelDebugInfo, 0) != 0;
@@ -433,6 +414,25 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       (expert_weight_bits_ == 4 || expert_weight_bits_ == 8) &&
       fc1_expert_weight_bits_ == expert_weight_bits_ &&
       fc2_expert_weight_bits_ == expert_weight_bits_;
+  if (cpu_offload_enabled_) {
+    kernel_pilot_initializer_.Register(
+        this, [this](KernelPilot* pilot) { return InitializeKernelPilot(pilot); });
+    cuda_allocator_ = op_kernel_info.GetAllocator(OrtMemTypeDefault);
+    if (!routing_snapshot_) {
+      routing_snapshot_.emplace(op_kernel_info.GetAllocator(OrtMemTypeCPU));
+    }
+    const QMoEScopedCudaDevice device_guard(device_id_);
+    CUDA_CALL_THROW(cudaStreamCreateWithFlags(&cpu_offload_stream_, cudaStreamNonBlocking));
+    CUDA_CALL_THROW(cudaStreamCreateWithFlags(&swap_d2h_stream_, cudaStreamNonBlocking));
+    CUDA_CALL_THROW(cudaStreamCreateWithFlags(&swap_h2d_stream_, cudaStreamNonBlocking));
+    CUDA_CALL_THROW(cudaEventCreateWithFlags(&last_expert_use_event_, cudaEventDisableTiming));
+    CUDA_CALL_THROW(cudaEventCreateWithFlags(&cpu_routes_ready_event_, cudaEventDisableTiming));
+    CUDA_CALL_THROW(cudaEventCreateWithFlags(&cpu_input_ready_event_, cudaEventDisableTiming));
+    CUDA_CALL_THROW(cudaEventCreateWithFlags(&usage_complete_event_, cudaEventDisableTiming));
+    CUDA_CALL_THROW(cudaEventCreateWithFlags(&swap_d2h_complete_event_, cudaEventDisableTiming));
+    CUDA_CALL_THROW(cudaEventCreateWithFlags(&swap_transfer_complete_event_, cudaEventDisableTiming));
+    CUDA_CALL_THROW(cudaEventCreateWithFlags(&swap_publication_complete_event_, cudaEventDisableTiming));
+  }
 #endif
   if (use_int_dequant_fallback) {
     ORT_ENFORCE(!weights_prepacked_,

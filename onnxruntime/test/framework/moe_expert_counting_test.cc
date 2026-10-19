@@ -737,6 +737,71 @@ TEST(MoeExpertCountingTest, WeightedOffloadCountersExcludeFloatCudaKernels) {
   EXPECT_EQ(counter_events, 1U);
 }
 
+TEST(MoeExpertCountingTest, CpuOffloadSkipsPrepackedQMoE) {
+  for (int64_t bits : {4, 8}) {
+    for (int64_t prepacked_mode : {-1, 1}) {
+      SCOPED_TRACE(MakeString("bits=", bits, ", weights_prepacked=", prepacked_mode));
+      auto provider = DefaultCudaExecutionProvider();
+      if (!provider || provider->GetOrtEp() != nullptr || GetCudaArchitecture() < 800) {
+        GTEST_SKIP() << "Built-in CUDA execution provider with compute capability 8.0 or newer is required.";
+      }
+      auto options = CountingOptions();
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "3"));
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight, "0.5"));
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      ModelProto model;
+      ASSERT_TRUE(model.ParseFromString(MakeCountingModel(true, true)));
+      auto& graph = *model.mutable_graph();
+      for (auto& initializer : *graph.mutable_initializer()) {
+        if (initializer.data_type() == TensorProto_DataType_UINT8) {
+          const int64_t packed_width = kWidth / (8 / bits);
+          initializer.set_dims(2, packed_width);
+          initializer.set_raw_data(std::string(kExperts * kWidth * packed_width, '\0'));
+        }
+      }
+      for (int i = 0; i < graph.node_size(); ++i) {
+        auto& node = *graph.mutable_node(i);
+        auto* attribute = node.add_attribute();
+        attribute->set_name("expert_weight_bits");
+        attribute->set_type(AttributeProto_AttributeType_INT);
+        attribute->set_i(bits);
+        if (i == 0 || prepacked_mode != -1) {
+          attribute = node.add_attribute();
+          attribute->set_name("weights_prepacked");
+          attribute->set_type(AttributeProto_AttributeType_INT);
+          attribute->set_i(i == 0 ? 0 : prepacked_mode);
+        }
+      }
+      InferenceSessionWrapper session(options, GetEnvironment());
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+      const auto serialized = model.SerializeAsString();
+      ASSERT_STATUS_OK(session.Load(serialized.data(), static_cast<int>(serialized.size())));
+      ASSERT_STATUS_OK(session.Initialize());
+      const auto& session_state = session.GetSessionState();
+      auto* state = session_state.GetMoeExpertState();
+      ASSERT_NE(state, nullptr);
+      const auto* canonical = session_state.GetKernel(0);
+      const auto* prepacked = session_state.GetKernel(1);
+      ASSERT_NE(canonical, nullptr);
+      ASSERT_NE(prepacked, nullptr);
+      ASSERT_EQ(canonical->Node().GetExecutionProviderType(), kCudaExecutionProvider);
+      ASSERT_EQ(prepacked->Node().GetExecutionProviderType(), kCudaExecutionProvider);
+      EXPECT_EQ(state->TotalExpertCount(), static_cast<size_t>(kExperts));
+      ASSERT_NE(session_state.GetKernelPilot(canonical), nullptr);
+      EXPECT_EQ(session_state.GetKernelPilot(prepacked), nullptr);
+      EXPECT_EQ(CudaExperts(*state, canonical), InlinedVector<int>({0}));
+      RunCountingModel(session);
+      InlinedVector<double> counters;
+      ASSERT_STATUS_OK(state->GetCounters(canonical, counters));
+      ASSERT_EQ(counters.size(), static_cast<size_t>(kExperts));
+      EXPECT_GT(counters[0], 0.0);
+      EXPECT_DOUBLE_EQ(counters[1], 0.0);
+      EXPECT_GT(counters[2], 0.0);
+      EXPECT_DOUBLE_EQ(counters[3], 0.0);
+    }
+  }
+}
+
 #if !defined(ORT_NO_EXCEPTIONS)
 TEST(MoeExpertCountingTest, FailedRunKeepsLoggerAliveForDeferredUsage) {
   auto provider = DefaultCudaExecutionProvider();

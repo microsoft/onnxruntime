@@ -12,6 +12,8 @@ This applies to both CPU and CUDA sessions. Nodes assigned to the CPU execution 
 offload counters; CPU experts within a CUDA-offloaded node are still counted by that node.
 Only offload-eligible CUDA FP16/BF16 nodes are registered, so FP32 CUDA MoE nodes in a mixed model are excluded
 from both the counters and the logged node/expert totals.
+Prepacked INT4/INT8 CUDA QMoE nodes likewise retain ordinary GPU execution without allocating offload or
+counter-collection resources, even when other nodes in the same session use CPU offload.
 `session.enable_moe_expert_statistics=1` emits one structured
 `moe_expert_counters` log after each successful MoE kernel invocation, subject to the per-Run logging limit below.
 Configure the update with:
