@@ -4,8 +4,11 @@
 #include "contrib_ops/cuda/llm/mtp_moe.h"
 
 #include <cuda_fp8.h>
+#include <math_constants.h>
 
 #include <cstdint>
+
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -81,6 +84,21 @@ __global__ void RouterKernel(const __nv_bfloat16* __restrict__ logits,
   }
   for (int offset = 16; offset > 0; offset >>= 1) {
     max_logit = fmaxf(max_logit, __shfl_xor_sync(0xffffffffu, max_logit, offset));
+  }
+  bool invalid = false;
+#pragma unroll
+  for (int i = 0; i < kIterations; ++i) {
+    invalid |= !isfinite(logits_per_lane[i]);
+  }
+  if (__any_sync(0xffffffffu, invalid)) {
+    if (lane == 0) {
+      float* row_scratch = scratch + static_cast<int64_t>(row) * kScratchStride;
+      for (int k = 0; k < kTopK; ++k) {
+        row_scratch[k] = __int_as_float(k);
+        row_scratch[kTopK + k] = CUDART_NAN_F;
+      }
+    }
+    return;
   }
 
   float exponentials[kIterations];
@@ -278,7 +296,12 @@ Status LaunchNvfp4MtpMoe(const __nv_bfloat16* input, const __nv_bfloat16* router
     return Status(common::StatusCategory::ONNXRUNTIME, common::StatusCode::INVALID_ARGUMENT,
                   "MtpMoe requires at least one row");
   }
-  RouterKernel<<<rows, 32, 0, stream>>>(router_logits, scratch);
+  const cudaError_t clear_error = cudaMemsetAsync(
+      scratch, 0, static_cast<size_t>(rows) * kScratchStride * sizeof(float), stream);
+  if (clear_error != cudaSuccess) {
+    return Status(common::StatusCategory::SYSTEM, static_cast<int>(clear_error), cudaGetErrorString(clear_error));
+  }
+  ORT_RETURN_IF_ERROR(LaunchRouter(router_logits, scratch, rows, stream));
   GateUpKernel<<<dim3(kFfnSize / kWarpsPerBlock, kTopK, rows), kWarpsPerBlock * 32, 0, stream>>>(
       input, gate_up_weights, scratch, gate_up_global_scale);
   DownKernel<<<dim3(kHiddenSize, rows), kTopK * 32, 0, stream>>>(down_weights, scratch, output, down_global_scale);

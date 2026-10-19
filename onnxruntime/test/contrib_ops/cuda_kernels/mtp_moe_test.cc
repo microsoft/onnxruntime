@@ -290,6 +290,8 @@ TEST(CUDA_EP_Unittest, MtpMoeNvfp4MatchesReferenceArithmeticEndToEnd) {
   DeviceBuffer device_down(full_down_bytes);
   DeviceBuffer device_output(hidden * sizeof(__nv_bfloat16));
   DeviceBuffer device_scratch(mtp_moe::kScratchStride * sizeof(float));
+  const std::vector<float> scratch_poison(mtp_moe::kScratchStride, -999.0f);
+  device_scratch.Upload(scratch_poison.data(), scratch_poison.size() * sizeof(float));
   device_input.Upload(input.data(), input.size() * sizeof(__nv_bfloat16));
   device_router.Upload(router.data(), router.size() * sizeof(__nv_bfloat16));
   for (int expert = 0; expert < experts; ++expert) {
@@ -314,6 +316,12 @@ TEST(CUDA_EP_Unittest, MtpMoeNvfp4MatchesReferenceArithmeticEndToEnd) {
   std::vector<uint8_t> actual_scratch(mtp_moe::kScratchStride * sizeof(float));
   device_output.Download(actual_output.data(), actual_output.size() * sizeof(__nv_bfloat16));
   device_scratch.Download(actual_scratch.data(), actual_scratch.size());
+  for (size_t i = 20 * sizeof(float); i < actual_scratch.size(); ++i) {
+    if (i < 32 * sizeof(float) ||
+        i >= 32 * sizeof(float) + mtp_moe::kTopK * ffn * sizeof(__nv_bfloat16)) {
+      EXPECT_EQ(actual_scratch[i], 0) << "scratch padding byte " << i;
+    }
+  }
 
   for (int slot = 0; slot < mtp_moe::kTopK; ++slot) {
     int actual_expert = -1;
@@ -336,6 +344,32 @@ TEST(CUDA_EP_Unittest, MtpMoeNvfp4MatchesReferenceArithmeticEndToEnd) {
     const float actual = __bfloat162float(actual_output[column]);
     const float reference = __bfloat162float(expected.output[column]);
     EXPECT_NEAR(actual, reference, 0.01f + 0.01f * std::abs(reference)) << "output column " << column;
+  }
+}
+
+TEST(CUDA_EP_Unittest, MtpMoeRouterNonFiniteRowsKeepExpertIndicesInRange) {
+  constexpr int rows = 4;
+  std::vector<__nv_bfloat16> logits(rows * mtp_moe::kExpertCount, __float2bfloat16(0.0f));
+  logits[0] = __float2bfloat16(std::numeric_limits<float>::quiet_NaN());
+  logits[mtp_moe::kExpertCount + 17] = __float2bfloat16(std::numeric_limits<float>::infinity());
+  std::fill(logits.begin() + 2 * mtp_moe::kExpertCount, logits.begin() + 3 * mtp_moe::kExpertCount,
+            __float2bfloat16(-std::numeric_limits<float>::infinity()));
+  logits[3 * mtp_moe::kExpertCount + 511] = __float2bfloat16(-std::numeric_limits<float>::infinity());
+  DeviceBuffer device_logits(logits.size() * sizeof(__nv_bfloat16));
+  DeviceBuffer device_scratch(rows * mtp_moe::kScratchStride * sizeof(float));
+  device_logits.Upload(logits.data(), logits.size() * sizeof(__nv_bfloat16));
+  const Status status = mtp_moe::LaunchRouter(device_logits.As<__nv_bfloat16>(),
+                                              device_scratch.As<float>(), rows, nullptr);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  std::vector<float> scratch(rows * mtp_moe::kScratchStride);
+  device_scratch.Download(scratch.data(), scratch.size() * sizeof(float));
+  for (int row = 0; row < rows; ++row) {
+    for (int slot = 0; slot < mtp_moe::kTopK; ++slot) {
+      int expert = -1;
+      std::memcpy(&expert, &scratch[row * mtp_moe::kScratchStride + slot], sizeof(expert));
+      EXPECT_EQ(expert, slot);
+      EXPECT_TRUE(std::isnan(scratch[row * mtp_moe::kScratchStride + mtp_moe::kTopK + slot]));
+    }
   }
 }
 
