@@ -5153,6 +5153,7 @@ struct OrtApi {
    *
    * Note: It's caller's responsibility to properly manage the lifetime of the instance pointed by this pointer.
    * The arena configuration is copied when the execution provider is appended to session options.
+   * The arena configuration pointer is preserved by UpdateCUDAProviderOptions; use a null value here to clear it.
    *
    * \param cuda_options - OrtCUDAProviderOptionsV2 instance
    * \param key - Name of the provider option
