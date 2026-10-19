@@ -1660,3 +1660,204 @@ int main(int argc, char** argv) {
 - Retained GPU result/state tensors survive execution/reset and originating
   Session release. Definitions/executions still require their caller Sessions
   to remain alive. GPU tensor-data getters never perform implicit readback.
+
+## Appendix I. M09 CUDA plugin greedy sampling contract
+
+**Status:** Approved by the user without changes on 2026-10-19, following the
+completed interview.
+The user chose CUDA plugin EP only, GPU-resident exposed logits under explicit
+GPU sampling, token/status-only readback, and an M09a/M09b delivery split.
+Additional specification inputs: None. The user approved the detailed plan
+without changes and authorized M09a only. Pause before M09b for authorization.
+
+### I.1 Scope and preserved behavior
+
+- Implement real GPU greedy sampling for the CUDA plugin EP only through the
+  existing optional stateful provider descriptor and independent sampler policy.
+  Legacy/shared CUDA does not acquire native sampling capabilities.
+- CPU remains the default sampler. Existing CPU greedy, GPU-cache/CPU-sampler
+  execution, ordinary stateless Session behavior and explicit loop exits remain
+  unchanged. Sampling algorithms beyond greedy remain out of scope.
+- Preserve independently selected cache/sampler policies. GPU sampling does not
+  require GPU cache selection; any movement resulting from an explicitly chosen
+  CPU cache remains distinct from sampling and is not called GPU-native caching.
+- Advertise the greedy operation and supported dtype/device metadata only when
+  implemented and verified. Require/Prefer/CPU retain M07's dispatch rules:
+  compatible fallback only for a missing capability, no retry after an advertised
+  callback fails, and no undisclosed device transfer.
+- Initially support contiguous float32/float16 logits shaped `[1,V]` or
+  `[1,S,V]`, with nonempty dimensions and the existing optional row position.
+  Bfloat16 sampling, batched requests, strided layouts, arbitrary cross-device
+  pipelines, asynchronous/serving APIs and device-resident token-feed generation
+  are not introduced by M09.
+
+### I.2 Exact greedy semantics
+
+- Return an int64 token ID in `[0,V)`. Omitted position selects the last row;
+  rank-two logits have one row and only position zero is valid.
+- Match CPU comparisons exactly for supported inputs. The lowest token ID wins
+  ties, including ties spanning reduction/launch boundaries. Positive/negative
+  infinity follow numeric ordering; an all-negative-infinity row selects zero.
+- Reject any NaN anywhere in the complete supplied logits tensor, including
+  unselected rows. Row selection must not narrow the NaN-validation domain.
+- Validate rank/batch/dtype/position/contiguity, dimensions, device placement,
+  buffers and checked size/index/scratch arithmetic before accessing device
+  data. Reject invalid or unsupported inputs with an explicit error.
+- GPU code performs both selection and whole-tensor NaN validation. Do not
+  silently copy logits to CPU, call the CPU reference, perform host argmax or
+  replace a failed GPU result with a default token. Failed calls preserve public
+  out-parameters and follow existing invalidation/error contracts.
+
+### I.3 Execution, resources and observable movement
+
+- Use compatible ORT/plugin allocator and device/stream abstractions for
+  scratch/results. Reuse existing suitable CUDA reduction utilities where they
+  fully satisfy these semantics; do not duplicate kernels or introduce complex
+  launch tiers without a correctness or measured need.
+- Order work on the appropriate selected device/stream. Complete kernel work
+  and required result transfers before the synchronous callback/API returns;
+  do not add an unrequested device-wide wait to establish completion.
+- Restore caller device state and retain callback/library/logger/allocator/
+  stream resources for all work and dependent values. Caller-owned external
+  streams, allocators and inputs retain their normal lifetime/readiness duties.
+- The synchronous API may read back the resulting token ID and compact
+  validation/status information. It must not read back the full logits tensor
+  as part of sampling.
+- The size-tagged greedy request has an appended borrowed scratch-allocator
+  field. Native dispatch resolves and retains a compatible initialized-Session
+  allocator, provides its C adapter only for the synchronous callback, and
+  destroys scratch before returning. Existing request prefixes and public API
+  tables/version remain unchanged; generation code does not import native
+  Session allocator-adapter implementation headers.
+- Existing host token history, EOS/budget checks and generated input-feed
+  construction remain unchanged. Their scalar observations and CPU input
+  payloads must not be misrepresented as an entirely device-only generation
+  pipeline.
+- Expose actual provider dispatch and zero CPU-reference delegation for native
+  sampling. Record token/status transfer and existing staging evidence
+  separately; distinguish measured transfers from logical payload counters.
+  Record representative latency/copy measurements without performance thresholds.
+
+### I.4 Loop/chain integration and output ownership
+
+- M09b removes the device-sampler integration rejection only for the implemented,
+  explicitly selected CUDA plugin path. Resolve compatible Session resources and
+  validate actual logits producer placement instead of assuming CUDA registration
+  alone proves GPU logits or silently staging a CPU-produced logits tensor.
+- Under explicit GPU sampling, bind logits to GPU and keep selected/component
+  logits results GPU-resident, including outputs retained only for downstream
+  chain bookkeeping. Retain immutable logits snapshots with their required
+  allocator/provider resources. CPU inspection requires an explicit caller copy;
+  raw tensor-data getters never perform an implicit readback.
+- Other ordinary non-cache/non-logits outputs retain stable CPU behavior.
+  CPU-default sampling keeps its existing CPU logits snapshots. M08's explicitly
+  selected GPU cache outputs/state/handoff remain GPU-resident.
+- Support the existing standalone prefill and shared prefill/decode chain
+  contracts with matching explicit budgets, EndOfInputs, EOS and iteration limits.
+  Device sampling, cache sharing and per-stage sampler selection must agree on
+  actual compatible producer/device placement; unsupported combinations reject
+  rather than introduce arbitrary migration.
+- Preserve zero-budget validation with no model or sampler invocation, first-token
+  handoff, context isolation, cancellation boundaries, reset and retained values.
+  Keep scalar result observation synchronized before history/exits consume it.
+- Model/provider/launch/transfer failures remain explicit. Potentially advanced
+  mutable execution requires reset; failed reset cannot mark it healthy. Do not
+  retry a failed GPU sampler on CPU.
+
+### I.5 Proof, coverage and reviewable delivery
+
+- Prove actual CUDA plugin greedy callbacks and GPU execution, correct physical
+  device placement, token/status-only observation and no host argmax/logits
+  fallback. CPU-equivalent values alone do not prove the intended path ran.
+- Test float32/float16, supported shapes/positions, all-infinity rows, ties,
+  NaNs in selected/unselected rows, zero/one/multiple token budgets, and sizes
+  around relevant reduction/launch boundaries. Include nondefault and distinct
+  compatible Session streams, error/resource lifetime cases and retained logits.
+- Compare standalone and complete tiny prefill/decode results against CPU
+  references through native and public C/C++ interfaces. Rerun CPU, M08 GPU cache,
+  provider-registration/policy and legacy unsupported-capability regressions.
+- Measure 100% of every new executable host/glue line and every new executable
+  device line using the actual exercised artifacts. Establish a credible device
+  execution-to-source measurement method before claiming the device gate.
+  Tool installation, line information, kernel launch success, host coverage and
+  Compute Sanitizer are not substitutes for device-line coverage.
+- Reuse of existing CUDA code must be identified explicitly. Do not automatically
+  carry forward M08's copy-only zero-device-code result, exclude new device
+  helpers/template logic from the denominator, or waive measurement because the
+  tooling is unavailable. Unmeasured new device code blocks completion.
+- Run applicable memory/order/lifetime checks under Compute Sanitizer. Disclose
+  exact selectors and any instrumentation limitation separately from functional
+  correctness and coverage; do not silently turn failures into skips.
+- M09a supplies the CUDA plugin sampler backend, standalone C/C++ conformance,
+  resource/stream correctness and measured host/device coverage, stacked on
+  independently verified M08b PR #21. It does not claim loop/chain GPU sampling.
+- M09b supplies GPU logits binding/retention, loop/chain generation integration,
+  public/native parity and end-to-end evidence, stacked on verified M09a.
+  Each sub-PR is independently documented, tested and ready for human review.
+  Macro M09 is complete only after both pass their gates.
+- After approval of this appendix, prepare and separately review the detailed
+  execution plan and authorization boundary before runtime implementation.
+
+### I.6 Standalone CUDA-plugin SDK example (M09a)
+
+M09a exposes standalone GPU greedy, not GPU-sampled loops/chains (M09b).
+This C++17 example takes the CUDA plugin library and an ONNX model such as
+`onnxruntime/test/testdata/mul_1.onnx`. The caller explicitly uploads the logits;
+sampling reads back only a compact token/status result. A separate caller-owned
+allocator Session stays alive through all input/scratch use, as required by
+the existing public allocator contract. Final DLL unload while that Session
+still needs it is not claimed.
+
+```cpp
+#include <array>
+#include <filesystem>
+#include <stdexcept>
+#include <string_view>
+#include <cuda_runtime_api.h>
+#include "onnxruntime_cxx_api.h"
+
+static void CheckCuda(cudaError_t status) {
+  if (status != cudaSuccess) throw std::runtime_error(cudaGetErrorString(status));
+}
+
+int main(int argc, char** argv) {
+  if (argc != 3) return 2;
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "cuda-greedy-example");
+  env.RegisterExecutionProviderLibrary("stateful-cuda", std::filesystem::path(argv[1]).native());
+  Ort::ConstEpDevice device(nullptr);
+  for (auto candidate : env.GetEpDevices()) {
+    if (std::string_view(candidate.EpName()) == "CUDAExecutionProvider" &&
+        candidate.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT).GetDeviceId() == 0) {
+      device = candidate;
+      break;
+    }
+  }
+  if (!device) throw std::runtime_error("CUDA plugin device 0 unavailable");
+  Ort::SessionOptions options;
+  options.SetIntraOpNumThreads(1);
+  options.AppendExecutionProvider_V2(env, {device}, Ort::KeyValuePairs{});
+  const auto model = std::filesystem::path(argv[2]).native();
+  Ort::Session allocator_session(env, model.c_str(), options);
+  Ort::Allocator allocator(allocator_session, device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  Ort::Session session(env, model.c_str(), options);
+  const int64_t shape[]{1, 3};
+  const std::array<float, 3> values{1.f, 8.f, 8.f};
+  auto logits = Ort::Value::CreateTensor<float>(allocator, shape, 2);
+  CheckCuda(cudaMemcpy(logits.GetTensorMutableData<float>(), values.data(),
+                       sizeof(values), cudaMemcpyHostToDevice));
+  const OrtStatefulSamplerConfig config{sizeof(config), ORT_STATEFUL_GREEDY, 0, 0};
+  const OrtStatefulProviderSelection selection{
+      sizeof(selection), ORT_STATEFUL_PROVIDER_REQUIRE, "CUDAExecutionProvider",
+      OrtMemoryInfoDeviceType_GPU, 0};
+  Ort::SamplerOptions sampler(config);
+  sampler.SetProvider(selection, session);
+  if (sampler.Sample(logits) != 1) return 3;
+  session = Ort::Session(nullptr);
+  env.UnregisterExecutionProviderLibrary("stateful-cuda");
+  if (sampler.Sample(logits) != 1) return 4;
+  const auto dispatch = sampler.GetDispatchInfo();
+  return dispatch.provider_calls == 2 && dispatch.cpu_calls == 0 &&
+                 dispatch.cpu_delegations == 0
+             ? 0 : 5;
+}
+```

@@ -757,3 +757,91 @@ Compressed project memory. This is not the execution plan.
   Macro M08 complete; M09 not started. No PRs merged. All reported functional
   suites unfiltered where stated, no skips; exact sanitizer selector limitation
   is explicitly documented in TASKS/PR and must not be omitted from summaries.
+
+## M09
+
+- User requested M09 on 2026-10-19. Interview complete: CUDA plugin EP ONLY;
+  under explicit GPU sampling, selected/component logits stayGPU; only final
+  tokenID/compact validation status may be readback. Host history/exits/generated
+  feed behavior staysunchanged. Split M09a backend/standalone proof and M09b
+  integration. Additional requirements: None.
+- Created state/m09a-cuda-plugin-greedy from verified M08b2b6388fe5b (#21).
+  User approved SPEC Appendix I without changes. Detailed M09a/M09b plan is now
+  drafted in TASKS for separate review/execution-scope authorization.
+  No runtime implementation or device-coverage probe has been started.
+- Preserve float32/float16 [1,V]/[1,S,V], lowestID ties, numeric infinities,
+  all-negative-inf->0 and rejection of anyNaN in entire tensor including
+  unselectedrows. No full-logits CPU fallback or CPU reference delegation.
+- Existing CUDA reduction_functions has ArgMax last-axis implementations and
+  unary ops have IsNaN; reuse only if full semantics/resources fit. Do not infer
+  any-NaN rejection from existing argmax behavior (it skips/special-cases NaNs).
+- Nsight Compute2025.4.1 exists under CUDA13.1; installation is NOT proof of
+  source-line device coverage. Every new devicefunction/helper/template must be
+  measured100%; lack of device instrumentation blockscompletion. Do not carry
+  M08's no-new-device-functions N/A result forward by assumption.
+- Runtime sampler dispatch already validates metadata/device, keeps outparams
+  transactional and records provider failures/noCPUretry. Loop still rejects
+  device sampling, and M08 binds ordinary logitsCPU. M09b must wire all selected/
+  component/retained logits surfaces and preserve independently chosen cache policy.
+- Detailed plan puts credible source-mapped device-line measurement FIRST:
+  actual executed/nonexecuted negative-control paths, permissions/exports and
+  complete new-device-helper/template denominators. No host-only/memcheck proxy
+  or automatic M08N/A carryover. Failure to measure blockscompletion.
+- Plan includes per-subPR CPU/plugin/legacy/C/C++ tests, whole-tensor NaN tests,
+  bounded token/status-only transfer proof, independently selected cache/sampler
+  combinations, cross-Session streams, retained logits and exact documentation/
+  coverage/sanitizer/publication gates. Await user scope choice before A1.
+- User approved the detailed plan without changes and authorized M09a ONLY.
+  A1 device source-coverage/negative-control probe starts before runtime sampler
+  implementation. Pause before M09b; unavailable device measurement blocks A1.
+- A1 probe compiled with NVCC13.1 -O2 -lineinfo -archsm80/GCC13. Two ordinary
+  modes passed with expected+32/-32 using distinct noinline devicefunctions.
+  NCU2025.4.1 SourceCounters then FAILED ERR_NVGPUCTRPERM on device0.
+  No source-execution coverage report exists. Do NOT claim kernel output is
+  coverage, add production sampler code before this gate, or change privileges.
+- Need administrator-provided profiling access or another approved environment/
+  source-execution coverage tool. Source/log retained in session files as
+  m09a-device-coverage-probe.cu / m09a-source-coverage-probe.log; temporarybinary
+  cleaned. Only SPEC/TASKS/SCRATCHPAD are dirty; no M09 runtime edits/commit/PR.
+- User explicitly authorized admin privilege for profiling. sudo -n -- ncu
+  SourceCounters succeeds; no global driver settings changed. Mode1/mode2
+  source+SASS CSV exports prove reciprocal negativecontrols: ownsource line6
+  atomicAdd counts32/0, line10 atomicSub0/32; callsitesfliptoo.
+  A1 now PASS; proof/source/exports/reports retained in sessionfiles.
+- Proceeding M09a only. Use one simple two-stage GPU reduction: tiled/grid-stride
+  whole-logits NaN validation plus selected-row argmax, block partials and final
+  compact token/status. Reuse CUB BlockReduce, preserve float32/half ties/infs.
+  No full-logits readback, no host argmax, no M09b loop support yet.
+- Greedy request appended a borrowed selected-Session scratch allocator, supplied
+  by native StatefulProviderBinding::InvokeGreedy so generate/ does not include
+  Session allocator-adapter headers. Adapter/scratch live only through sync call.
+- Keep authored host launch code in cuda_greedy_launch.cc, using standard
+  cudaLaunchKernel with matching registered kernel entry signatures. .cu contains
+  only device functions/kernels: Clang LLVM measures host wrapper lines, while
+  NCU measures actual device code; NVCC-generated host stubs are NOT device proof.
+  This avoids silently omitting NVCC/GCC host-launch lines from host coverage.
+- New CUDA kernel source alone uses -lineinfo for reproducible source counters.
+  Full CPU/plugin builds underway after coherent public/native header changes.
+- FINAL standalone M09a: CPU63 native/139 AutoEP, plugin117 native/184 unfiltered
+  AutoEP, legacy110 native/43 selected public/stateful all PASS, zero skips.
+  M09b has not started; GPU loop/chain sampling remains explicitly unavailable.
+- Host83/83 new executablelines (CUDAcallback52,launcher15,binding14,dispatch2);
+  device25/25 real source-mapped locations, including all emitted brace/epilogue
+  locations (NONE excluded), across44 actual float/half/final kernel launches.
+  Kernel source SHA25692837bc204a43c0e2ca0f7da8b5f0a037d5a6200d572a235412d9530e587cbcd.
+  Matching profiles coverage/m09a/final; 589plugin/174runtime dormant zero-hash
+  LLVM maps, no new-function mismatch.
+- Nsight Systems isolated trace proves33 DtoH copies ALL16bytes(total528),
+  no full-logits readback. HtoD201036 includes201028-byte explicit input upload;
+  do not claimzeroinput movement. Instrumented normal-suite latency avg
+  GPU67.33us /CPU98.54us onvocab50257,32measuredcalls, no performancegate.
+- Compute Sanitizer greedy5 +nativeboundary2 +publicC++17 GPUclient all zero
+  errors/leaks; racecheck/synccheck coverage case zero hazards/warnings/errors.
+  No new sampler sanitizer exclusion. Parent M08 timing-only limitation unchanged.
+- Genuine C11 caller, C++17 GPU sampling after Sessionrelease/unregistration and
+  CPU SDK normal/noexceptions-client runs PASS. Public sampler comments updated
+  CPUdefault/explicitGPU as final documentation-only edits after validation;
+  runtimecode/ABI/device source are unchanged by those comments.
+- A2-A6 verified; final style/traceability/publication being finished. No new
+  dependency installed, no driver settings changed; sudo was used ONLY for
+  user-authorized profiling. Pause before M09b after publishing M09a.

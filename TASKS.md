@@ -1,6 +1,7 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M08 complete and published for review; M09-M24 pending.
+**Status:** Approved; M01-M08 complete and published for review; M09a authorized
+and in progress; M09b requires separate authorization; M10-M24 pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -17,7 +18,7 @@ M05's requested generation-folder layout follow-up is complete in the same PR.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M08 are complete and M09-M24 are pending. Check tasks when their
+M01-M08 are complete, M09a is in progress, and M09b/M10-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -97,7 +98,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M08 are **complete**; M09-M24 are **pending**.
+M01-M08 are **complete**; M09a is **in progress** and M09b/M10-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -109,7 +110,7 @@ M01-M08 are **complete**; M09-M24 are **pending**.
 | [x] | M06 | Public C API and C++ wrappers / `public-api` | M02, M03, M04, M05 |
 | [x] | M07 | Built-in/plugin EP capability contracts / `ep-stateful-hooks` | M04, M05, M06 |
 | [x] | M08 | Native CUDA KV management / `cuda-kv-cache` | M07 |
-| [ ] | M09 | Native CUDA greedy sampling / `cuda-greedy` | M07 |
+| [ ] | M09 | Native CUDA greedy sampling / `cuda-greedy` | M07, M08 |
 | [ ] | M10 | Standalone package schema and authoring / `package-schema` | M01, M03 |
 | [ ] | M11 | ORT package-to-chain loading / `package-runtime` | M06, M07, M08, M09, M10 |
 | [ ] | M12 | DDIM scheduler and denoising state / `ddim-policy` | M03, M06, M08 |
@@ -1822,11 +1823,19 @@ M09 GPU sampling is not started or claimed.
 ### M09 - Native CUDA greedy sampling
 
 **Outcome:** Greedy token selection without an undisclosed host sampler.
+**Status:** Interview complete and SPEC Appendix I approved without changes
+2026-10-19. The user approved the detailed plan without changes and authorized
+M09a only. Pause before M09b.
+The user chose CUDA plugin only, GPU-resident exposed logits, token/status-only
+readback and an M09a/M09b split, with no additional requirements. Branch
+`state/m09a-cuda-plugin-greedy` is based on M08b `2b6388fe5b`. The standalone
+backend and its host/device coverage are verified; publication is pending.
+M09b remains unauthorized and no loop/chain GPU sampling is claimed.
 
-- [ ] Implement CUDA greedy reduction/selection with CPU-equivalent documented
+- [x] Implement CUDA greedy reduction/selection with CPU-equivalent documented
   tie/non-finite semantics and supported dtype/layout handling.
 - [ ] Integrate provider discovery, stream ordering, token observation, and exits.
-- [ ] Keep cache and sampler capability selection independent.
+- [x] Keep cache and sampler capability selection independent.
 
 **CPU test plan:** Rerun greedy/EP baseline and unsupported-capability tests.
 **CUDA test plan:** Exact token agreement on deterministic fixtures, vocab sizes
@@ -1835,6 +1844,382 @@ stream ordering, error cases, native-dispatch assertion, and no host sampling.
 Exercise the complete tiny prefill/decode chain using M08 caches.
 **Completion gate:** Shared rules, CPU parity, and 100% new host/device-line
 coverage pass. Latency/copy measurements have no performance pass threshold.
+
+#### M09a - CUDA plugin greedy backend and standalone proof
+
+**Intended outcome:** The real CUDA plugin advertises and executes synchronous
+GPU greedy for supported logits, including whole-tensor NaN rejection. Only
+token/status information is read back. CPU defaults and cache capabilities stay
+unchanged; loop/chain GPU sampling remains explicitly unsupported until M09b.
+**Dependencies:** M05 CPU semantics, M06 C/C++, M07 dispatch/plugin ABI and the
+verified M08 resource/device baseline. Stack on M08b PR #21 (`2b6388fe5b`).
+
+- [x] A1: Establish device-line measurement before implementing the production
+  sampler. Use CUDA13.1/NVCC, source line information and available Nsight Compute
+  source/SASS execution counters or another demonstrated device execution-to-
+  source method. A small session-local probe must distinguish executed lines
+  from a deliberately unexecuted compiled path; line tables/host launch counts
+  alone are insufficient. Verify permissions and reproducible export/denominator.
+  If unavailable, stop with the evidence rather than waive the device gate.
+- [x] A2: Define the smallest boundary-safe callback/resource wiring using the
+  existing descriptor. Reuse compatible retained ORT/plugin scratch allocators,
+  selected device/stream and M07/M08 leases, including external allocator/stream
+  obligations. If a request resource extension is actually necessary, use
+  size-checked appended C fields with frozen prior prefixes, not native Session
+  types or an unrelated API/version redesign.
+- [x] A3: Implement selection plus complete-logits NaN validation on GPU for
+  float32/float16. Audit existing last-axis argmax, IsNaN and reduction utilities;
+  reuse only when their semantics and index limits fit. Use checked sizes and
+  deterministic lowest-ID ties across every reduction boundary. Prefer one
+  simple proven path over speculative launch tiers or duplicate algorithms.
+- [x] A4: Integrate the greedy callback and advertise its exact capability bit/
+  dtypes/devices without changing six-cache behavior or legacy/shared CUDA.
+  Transfer only the token and compact validation/status result, complete work
+  on its stream before return, restore device state and surface allocation/
+  launch/transfer failures without CPU retry or changed out-parameters.
+- [x] A5: Add genuine native/C/C++ standalone conformance tests and controlled
+  resource/error cases. Assert real callback/device work, zero CPU delegation,
+  supported copy sizes and immutable input logits. Validate metadata/index/
+  overflow rejection before launch; do not exhaust shared GPUs to provoke OOM.
+- [x] A6: Measure every new executable host/device line from exercised matching
+  artifacts, including new device helpers, functors and template logic.
+  Intersect against the M09a base, report both denominators and close all gaps.
+  Identify reused unchanged kernels separately; do not treat M08's copy-only
+  result as M09 coverage evidence.
+- [ ] A7: Finish CPU/CUDA/legacy regressions, sanitizer, ABI/style/public SDK
+  examples and representative latency/copy measurement. Record exact commands/
+  counts/coverage/limits, then publish an independently reviewable ready PR.
+  Pause before M09b unless its execution was separately authorized.
+
+**CPU test plan:**
+
+- Rerun greedy semantics, loop/chain generation, caches, public API/provider/
+  registration/lifetime baselines in the CPU tree. No CUDA dependency is added.
+- Preserve CPU default selection, explicit Prefer/Require behavior and
+  transactional public outputs. Missing GPU capability is not a failed callback;
+  advertised callback failures, including NOT_IMPLEMENTED, never retry CPU.
+- Compile/run C11 and C++17 consumers; preserve no-exceptions client compilation,
+  ABI prefix/version rules and immutable returned-value ownership.
+
+**CUDA plugin test plan:**
+
+- Load the actual plugin and assert the greedy bit, float32/float16 sampler mask,
+  selected physical GPU and zero CPU-reference delegation. Assert unchanged KV
+  bits and absence of native sampling in the legacy/shared CUDA build.
+- Compare exact IDs with CPU for rank2/rank3, default/first/interior/last rows,
+  V=1 and sizes below/at/above all chosen launch/reduction boundaries, including
+  multiple blocks/tiles where used. Cover realistic larger vocabulary examples.
+- Cover negative/positive/mixed infinities, all-negative infinity, equal maxima
+  spanning lanes/blocks, signed zeros, float16 limits, and NaNs at the beginning/
+  middle/end of selected and unselected rows. Verify rejection leaves the public
+  token output unchanged; no full-logits CPU sampling/readback is allowed.
+- Cover wrong batch/rank/dtype/position/device/contiguity, empty dimensions,
+  checked arithmetic and controlled allocation/provider failures before unsafe
+  access. Confirm explicit errors and no CPU retry.
+- Test default/nondefault streams, caller device restoration, input readiness
+  duties, completion before token observation and cleanup after failure.
+  Test standalone use after releasing its bound Session/options where permitted,
+  respecting caller-owned allocator/stream/OrtEnv obligations.
+- Run applicable cases under Compute Sanitizer with exact nonzero counts and
+  zero unexpected memory errors/leaks. Measure token/status movement and latency
+  separately from logical CPU staging counters.
+
+**M09a completion gate:** Actual standalone CUDA sampling, exact CPU semantics,
+bounded observations, safe resource/error behavior and measured 100% new host/
+device executable lines all pass. An unavailable device-coverage measurement
+blocks this gate. Loop/chain GPU logits integration is not yet claimed.
+
+**A1 profiling access resolved; source-line proof passed (2026-10-19):**
+
+- Built a session-local CUDA13.1/NVCC SM80 source-line probe, separate from
+  production runtime code. It has distinct noinline executed/unexecuted device
+  functions selected by a runtime mode, providing a negative control.
+- Both ordinary executions passed: mode1 produced32 and mode2 produced-32,
+  exactly as expected. This proves only that the test kernel executes, not
+  source-line coverage.
+- Nsight Compute2025.4.1 launched the probe but source-counter collection failed
+  with **`ERR_NVGPUCTRPERM`**: this user cannot access NVIDIA GPU performance
+  counters on device0. No valid device-line coverage report was collected.
+- At that point no driver settings/permissions were modified, no privileged
+  command or permission workaround was attempted, and production implementation
+  had not begun. A2-A7 were blocked pending A1.
+- The initial required input was profiling permission arranged by the administrator,
+  or access to another approved environment/tool that can demonstrate the same
+  executed/unexecuted source-line measurement. Do not substitute host coverage,
+  successful kernel output or memcheck for the required device proof.
+- The user then explicitly authorized admin privileges for profiling. Retrying
+  the profiler with `sudo -n -- .../ncu` succeeded without changing any global
+  driver setting. Both mode reports were exported as CUDA/SASS source counters.
+- Reciprocal negative-control assertions passed: line6's atomicAdd executes32
+  predicated-on thread instructions in mode1 and0 in mode2; line10's atomicSub
+  executes0 in mode1 and32 in mode2. The taken/untaken call sites also reverse.
+  `m09a-device-coverage-proof.txt` records the assertions and source counters.
+  A1 is now complete; A2-A7 may proceed under the approved M09a authorization.
+- Production device coverage will count authored executable source locations
+  mapped to device instructions. Compiler-only padding/epilogue mappings must be
+  identified separately, never used to conceal an unexecuted authored statement.
+- Evidence/source: `m09a-source-coverage-probe.log` and
+  `m09a-device-coverage-probe.cu` in session files. Rebuild its temporary executable
+  before rerunning after final cleanup.
+
+```bash
+CUDA_HOME=/datadisks/disk4/bmeswani/cuda/cuda13.1
+probe=/home/devpatel/.copilot/session-state/819a29ec-8ea8-4b2f-9938-e40236ffd239/files/m09a-device-coverage-probe
+"$CUDA_HOME/bin/nvcc" -O2 -lineinfo -arch=sm_80 -ccbin /usr/bin/g++ \
+  "$probe.cu" -o "$probe"
+CUDA_VISIBLE_DEVICES=0 "$probe" 1
+CUDA_VISIBLE_DEVICES=0 "$probe" 2
+# Passed: expected32 and-32, respectively. Not coverage evidence.
+CUDA_VISIBLE_DEVICES=0 "$CUDA_HOME/bin/ncu" --section SourceCounters \
+  --import-source yes --force-overwrite \
+  --export /home/devpatel/.copilot/session-state/819a29ec-8ea8-4b2f-9938-e40236ffd239/files/m09a-source-coverage-mode1 \
+  "$probe" 1
+# Initial unprivileged attempt failed: ERR_NVGPUCTRPERM.
+# User-authorized sudo -n -- ncu retries for modes1/2 passed and exported
+# source counters that distinguish both executed/unexecuted controls.
+```
+
+**M09a verification complete; publication pending:**
+
+- Implemented a two-stage CUDA reduction with CUB BlockReduce: a grid-stride
+  whole-logits NaN scan and selected-row argmax produce bounded block partials,
+  followed by a compact token/status result. Float32/float16, lowest-ID ties,
+  infinities, signed zero and subnormal values agree exactly with CPU.
+  Existing last-axis argmax's NaN behavior does not satisfy whole-tensor
+  rejection, so only suitable lower-level reduction machinery is reused.
+- The callback uses the initialized Session's compatible retained scratch
+  allocator through an appended size-checked borrowed request field. The native
+  binding supplies its C adapter only during the synchronous callback; scratch
+  is released before that adapter expires. No new public API-table entry,
+  version bump or native Session header dependency in generate/ is introduced.
+- Host launch code uses standard cudaLaunchKernel in a separate C++ translation
+  unit; registered entry signatures match the NVCC device definitions. This
+  makes every authored host launch line LLVM-measurable rather than omitting
+  uninstrumented NVCC/GCC host statements. Only the new kernel source adds
+  source line information; no device debug/coverage proxy substitutes for
+  measured GPU execution.
+- CUDA capability bits are now127 (six KV operations plus greedy); cache masks/
+  behavior remain unchanged and sampler types are float32/float16 on GPU.
+  Legacy/shared CUDA remains unextended. GPU loop/chain sampling still returns
+  its explicit integration-unavailable error until separately authorized M09b.
+- New conformance covers reduction widths1/31/32/33/255/256/257/1023/1024/1025/
+  65535/65536/65537/131073, differing selected rows, cross-block ties, all/mixed
+  infinities, signed zeros, subnormals/extreme finite values and NaNs anywhere.
+  Tests compare exact CPU results, unchanged input bytes and failed-call token
+  sentinels, actual provider/no-delegation counters, wrong metadata/devices,
+  checked overflow, default/user streams, device restoration and bound-Session
+  release. Controlled failed allocations reject before kernel/data access.
+- Final CPU: **63/63 native +139/139 unfiltered AutoEP** passed.
+- Final CUDA plugin: **117/117 native +184/184 unfiltered AutoEP** passed on
+  visible GPUs0/1, **zero skips/exclusions**. These include five new standalone
+  GPU test cases and a new native greedy request/allocator boundary case.
+  Existing cache/generation tests retain CPU sampling and remain regressions,
+  not an assertion that M09b has already been implemented.
+- Legacy/shared CUDA: **110/110 native +43/43 selected public/stateful** cases
+  passed; native sampling/cache capability remains absent.
+- Measured new executable **host/glue coverage83/83**: CUDA callback52/52,
+  C++ kernel launcher15/15, native resource binding14/14 and sampler dispatch2/2.
+  Fresh actual-plugin profiles use `coverage/m09a/final`. The589 plugin/174
+  runtime LLVM map warnings are exclusively dormant zero-hash entries, with
+  no new-function mismatch.
+- Measured new executable **device coverage25/25** from real Nsight Compute
+  SourceCounters CUDA/SASS exports of44 launched kernels. Predicated-on thread
+  instruction counts prove both float/half entries, final reduction and all
+  emitted own-source locations executed. Mapped entry/epilogue braces are
+  included; **no device source location is excluded**. The declarations-only
+  helper header has no additional device instruction mappings. The report is
+  matched against the source SHA256 and exercised plugin artifact; kernel
+  success/host coverage/memcheck are not used as device coverage proxies.
+- Actual movement proof from a separate Nsight Systems CUDA trace:
+  **33 Device-to-Host copies, each16 bytes, total528 bytes**, matching33 sampler
+  calls. No full-logits readback occurs in the isolated sampler trace. The
+  trace also contains201036 Host-to-Device bytes, including the explicit201028-
+  byte logits upload. Those uploads are not sampling readback or a claim of a
+  fully device-only input pipeline.
+- Representative instrumented-build latency for float32 vocabulary50257,
+  32 measured calls after GPU warmup: **67.33us GPU** and **98.54us CPU** mean
+  synchronous sample time. These are observations, not release performance
+  claims or pass thresholds; CPU/GPU profiling/configuration is documented.
+- Compute Sanitizer: **5/5 greedy +2/2 native boundary** memcheck/leak-check cases
+  and the documented C++17 GPU example passed with **zero errors/leaked bytes/
+  allocations**. The shared-memory reduction coverage case also passed
+  **racecheck with zero hazards/warnings** and **synccheck with zero errors**.
+  No new sampler case is excluded from its applicable sanitizer selector.
+  M08's separately documented unrelated-stream timing limitation is unchanged,
+  not silently extended or represented as an instrumented timing pass.
+- Genuine C11 sampler consumer compilation/execution and the C++17 GPU SDK
+  example passed, including sampling after bound-Session release and library
+  unregistration while the caller's allocator Session remains alive. The CPU
+  C++17 example also passed normal/no-exceptions **client** builds. Runtime
+  no-exceptions behavior and final DLL unload while caller resources remain
+  alive are not newly claimed.
+- All changed-source strict type checks, source/kernel compilation, formatting/
+  120-column limits, whitespace and93-requirement/24-milestone traceability pass.
+  The CPU shared library has no CUDA dependency. Final public sampler comments
+  describe CPU-default/explicit device behavior; these final comment-only edits
+  do not change the validated runtime code or ABI.
+
+Passing build/test/measurement commands (tests run from their output directories):
+
+```bash
+source .venv/bin/activate
+cmake --compile-no-warning-as-error -S cmake \
+  -B build/state-cuda-plugin-13.1/RelWithDebInfo
+cmake --build build/state-cuda-plugin-13.1/RelWithDebInfo --parallel 24 \
+  --target onnxruntime_session_loop_test onnxruntime_autoep_test
+cd build/state-cuda-plugin-13.1/RelWithDebInfo
+export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_HOME=/datadisks/disk4/bmeswani/cuda/cuda13.1
+export LD_LIBRARY_PATH="$PWD:$CUDA_HOME/lib64:$CUDA_HOME/targets/x86_64-linux/lib"
+mkdir -p coverage/m09a/final
+LLVM_PROFILE_FILE="$PWD/coverage/m09a/final/%m-%p.profraw" \
+  ./onnxruntime_session_loop_test --gtest_output=xml:coverage/m09a/final/native-tests.xml
+# Passed:117/117, zero skips.
+LLVM_PROFILE_FILE="$PWD/coverage/m09a/final/%m-%p.profraw" \
+  ./onnxruntime_autoep_test --gtest_output=xml:coverage/m09a/final/autoep-tests.xml
+# Passed:184/184, zero skips.
+llvm-profdata merge -sparse coverage/m09a/final/*.profraw \
+  -o coverage/m09a/final/m09a.profdata
+# Passed: module-specific LLVM new-line measurement83/83 against M08b2b6388fe5b.
+export LLVM_PROFILE_FILE=/dev/null
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --leak-check full --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter='CudaStatefulTest.Greedy*'
+# Passed:5/5, zero errors/leaks.
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --leak-check full --error-exitcode 99 \
+  ./onnxruntime_session_loop_test --gtest_filter='StatefulCudaProviderBoundaryTest.*'
+# Passed:2/2, zero errors/leaks.
+"$CUDA_HOME/bin/compute-sanitizer" --tool racecheck --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter='CudaStatefulTest.GreedyDeviceCoverage'
+# Passed:1/1, zero hazards/errors/warnings.
+"$CUDA_HOME/bin/compute-sanitizer" --tool synccheck --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter='CudaStatefulTest.GreedyDeviceCoverage'
+# Passed:1/1, zero errors.
+```
+
+The actual measurement used the user's explicitly authorized privileged profiler
+process only, with no global driver settings changed:
+
+```bash
+# From the CUDA plugin output directory:
+sudo -n -- env CUDA_VISIBLE_DEVICES=0 LLVM_PROFILE_FILE=/dev/null \
+  LD_LIBRARY_PATH="$PWD:$CUDA_HOME/lib64:$CUDA_HOME/targets/x86_64-linux/lib" \
+  "$CUDA_HOME/bin/ncu" --devices 0 --section SourceCounters --import-source yes \
+  --kernel-name-base function --kernel-name 'regex:.*Greedy.*' --force-overwrite \
+  --export /home/devpatel/.copilot/session-state/819a29ec-8ea8-4b2f-9938-e40236ffd239/files/m09a-greedy-device-coverage \
+  ./onnxruntime_autoep_test --gtest_filter='CudaStatefulTest.GreedyDeviceCoverage'
+# Passed:1/1 and44 profiled launches; CUDA/SASS source exports give25/25.
+"$CUDA_HOME/bin/nsys" profile --sample=none --cpuctxsw=none --trace=cuda \
+  --force-overwrite=true \
+  --output=/home/devpatel/.copilot/session-state/819a29ec-8ea8-4b2f-9938-e40236ffd239/files/m09a-greedy-transfer \
+  ./onnxruntime_autoep_test --gtest_filter='CudaStatefulTest.GreedyTransferAndLatency'
+# Passed:1/1; exported CUPTI memcpy SQLite records prove33 DtoH transfers16 bytes each.
+```
+
+CPU output-directory commands `./onnxruntime_session_loop_test` and
+`./onnxruntime_autoep_test` passed63/139. The corresponding legacy CUDA native
+command and `./onnxruntime_autoep_test --gtest_filter='AutoEpSelection.CudaEP:*Stateful*'`
+passed110/43. Compiler/configuration matches M08: Clang18 host LLVM,
+NVCC13.1/GCC13, SM80, matching CUDA13.1/cuDNN, existing nonfatal-warning mode
+for baseline mixed-compiler diagnostics. No dependency install was needed.
+Exact evidence/source/counter exports remain in session files as
+`m09a-host-coverage-final.txt`, `m09a-device-coverage-final.txt`,
+`m09a-greedy-device-coverage.ncu-rep`, `m09a-greedy-device-source.csv`,
+`m09a-transfer-proof.txt`, `m09a-greedy-transfer.sqlite`, `m09a-*-tests.log`
+and sanitizer logs. M09b remains unimplemented and requires user authorization.
+
+#### M09b - GPU logits and loop/chain sampling integration
+
+**Intended outcome:** Explicit CUDA-plugin sampling runs end-to-end with
+GPU-resident logits and compatible M08 caches. Exposed logits stay GPU; ordinary
+outputs, host token history and CPU-default sampling preserve their contracts.
+**Dependency:** Verified/published M09a. Separate branch/PR stacked on its head.
+
+- [ ] B1: Resolve sampler device/allocator resources from initialized Sessions
+  and validate actual logits producer placement. Remove only the implemented
+  CUDA-plugin sampler rejection; leave legacy/shared and unsupported devices
+  explicit. Reuse/refine M08 routing without conflating cache and sampler policy.
+- [ ] B2: Bind explicitly GPU-sampled logits on GPU and retain stable device
+  values in selected/component/named-state/downstream surfaces, including
+  internal chain retention of unselected model outputs. CPU sampler logits and
+  other ordinary outputs remain stable CPU snapshots. Conflicting roles/device
+  requirements must reject rather than force a hidden transfer.
+- [ ] B3: Invoke GPU sampling through existing dispatch, observe the completed
+  token/status before updating history/exits, and preserve prefill pending-token
+  handoff, matching budgets, EOS, iteration exits and zero-budget no-invocation.
+  Keep generated CPU input-feed behavior visible; do not claim fully device-only
+  token generation or reintroduce a CPU argmax path.
+- [ ] B4: Preserve independent cache/sampler choices and per-stage selection:
+  GPU cache/CPU sampler, CPU cache/GPU sampler, and compatible GPU cache/GPU
+  sampler. Prove cross-Session/nondefault-stream handoff on the selected GPU;
+  reject unsupported mismatched producers/devices and arbitrary migration.
+- [ ] B5: Exercise cancellation, NaN/model/provider/transfer failure, reset,
+  isolated contexts and retained GPU logits through update/release/Session
+  teardown/library unregistration. Preserve public C/C++ transactional errors,
+  sticky execution invalidation and caller-owned resource lifetime duties.
+- [ ] B6: Add native and genuine C/C++ end-to-end parity, explicit device/
+  dispatch/transfer/staging evidence and reference comparisons. Measure all new
+  core/plugin host code and any new device code; preserve M09a's independent
+  device coverage proof rather than replacing it with host-only results.
+- [ ] B7: Rerun CPU/plugin/legacy baselines and applicable sanitizer checks,
+  verify retained-output/public SDK/style contracts, record latency/copy results
+  and exact coverage evidence, and publish the second ready-for-review PR.
+  Complete macro M09 only after both independently verified sub-PRs are published.
+
+**CPU test plan:**
+
+- Run CPU loops/chains/generation/sampler/cache and provider/public ABI/lifetime
+  baselines. CPU remains default and retains CPU logits snapshots.
+- Confirm unchanged zero-budget validation, first-token/EOS semantics,
+  metadata/error behavior, staging counters and no CUDA runtime dependency.
+- Preserve unsupported-capability errors and explicitly compatible CPU fallback;
+  no failed GPU callback may silently become CPU sampling.
+
+**CUDA plugin test plan:**
+
+- Execute the complete tiny prefill/decode chain using real GPU model assignment,
+  GPU logits, native GPU greedy and compatible M08 GPU caches. Disable model CPU
+  fallback and assert actual callbacks; token equality alone is insufficient.
+- Compare tokens, processed lengths, cache data and exit reasons against CPU for
+  budgets0/1/multiple, EOS/iteration exits and reset. Cover float32/float16 logits
+  and explicit row selection with NaN rejection across the complete tensor.
+- Assert selected/component/state-retained logits remain GPU and survive later
+  executions/reset/release. Read GPU data only via explicit test copies. Verify
+  ordinary outputs remain CPU and no chain bookkeeping introduces full-logits
+  readback under GPU sampling.
+- Test each cache/sampler policy combination and differing stage sampler choices,
+  default/user streams and compatible cross-Session ordering. Count actual
+  token/status transfer payloads or trace them; do not infer DMA from dispatch
+  labels or mislabel ordinary host token feeds as GPU-native work.
+- Exercise errors/NaNs/cancellation/reset/teardown and library unregistration,
+  including no downstream invocation after failure. Check completion before an
+  observation/readback can conceal a synchronization error.
+- Run new memory/order/lifetime cases under Compute Sanitizer where applicable.
+  Preserve M08's exact already-documented timing-only instrumentation limitation
+  separately; do not silently extend that exclusion to new sampler cases.
+
+**M09b completion gate:** GPU-resident logits and actual GPU sampling are proved
+through standalone-to-generation native/C/C++ integration. All new executable
+host/device lines are measured at100%, prior M09a gates remain valid, CPU/GPU/
+legacy regressions and applicable sanitizer checks pass, and exact limitations/
+measurements are documented in the published stacked PR.
+
+**Execution and evidence procedure for both sub-PRs:**
+
+- Keep SPEC/TASKS/SCRATCHPAD current; the attached editor snapshots are read-only.
+  Seek review before any material departure from approved Appendix I.
+- Use the existing instrumented CPU tree and separate CUDA13.1 plugin tree;
+  legacy CUDA only establishes its own regression/unsupported-capability results.
+  Preserve the supported NVCC host compiler, source information and matching
+  artifact/profile identity when combining host and device measurements.
+- Do not claim source coverage from host wrapper counters, successful launches
+  or sanitizer output. Save device source mapping/executed-line exports, test
+  selectors and denominator calculations; retain negative-control evidence.
+- Start with smallest conformance selectors, then full relevant baselines.
+  Verify nonzero counts, intended backend execution and no unexpected skips.
+  Explicitly disclose any tool/configuration-specific exclusion and its scope.
+- Stage only necessary fixtures and clean exact temporary consumers/probes.
+  Publish each independently verified PR with the repository template and exact
+  validation results; do not automatically merge or begin M10.
 
 ### M10 - Standalone Model Package schema and authoring
 

@@ -3,10 +3,13 @@
 
 #include "core/framework/stateful_execution_provider.h"
 
+#include <optional>
+
 #include "core/common/safeint.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/error_code_helper.h"
 #include "core/session/IOBinding.h"
+#include "core/session/allocator_adapters.h"
 #include "core/framework/stateful_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
@@ -42,6 +45,7 @@ struct StatefulProviderBinding::Lease {
   OrtStatefulProviderDescriptor descriptor{};
   std::shared_ptr<const void> logging_resources;
   std::shared_ptr<IExecutionProvider> provider;
+  AllocatorPtr allocator;
   ~Lease() {
     if (descriptor.context) {
       descriptor.Release(descriptor.context);
@@ -140,9 +144,24 @@ Status StatefulProviderBinding::Resolve(InferenceSession* session, const Statefu
   }
   ORT_RETURN_IF(supported_id >= 0 && supported_id != value.selection_.device_id,
                 "Stateful provider device id mismatch");
+  for (const auto& [device, allocator] : session->GetSessionState().GetAllocators()) {
+    if (static_cast<int>(device.Type()) == static_cast<int>(value.selection_.device_type) &&
+        device.Id() == value.selection_.device_id && device.MemType() == OrtDevice::MemType::DEFAULT) {
+      lease->allocator = allocator;
+      break;
+    }
+  }
   value.lease_ = std::move(lease);
   out = std::move(value);
   return Status::OK();
+}
+
+Status StatefulProviderBinding::InvokeGreedy(OrtStatefulGreedyRequest request, int64_t& token) const {
+  std::optional<OrtAllocatorImplWrappingIAllocator> allocator;
+  if (lease_ && lease_->allocator) allocator.emplace(AllocatorPtr{lease_->allocator});
+  request.allocator = allocator ? &*allocator : nullptr;
+  const auto& descriptor = Descriptor();
+  return ToStatusAndRelease(descriptor.Greedy(descriptor.context, &request, &token));
 }
 
 Status StatefulProviderBinding::Query(InferenceSession& session, const char* name,
