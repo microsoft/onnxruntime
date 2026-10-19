@@ -28,8 +28,10 @@ SubgroupMatrixTilingSelector CreateSubgroupMatrixTilingSelector(
 
 // Like CreateSubgroupMatrixTilingSelector, but for the subgroup-matrix Conv path.
 // The tile candidates are shared, but selection uses the Conv workgroup-memory
-// budget (which also stages the im2col A tile) and the Conv-tuned tree instead
-// of the MatMul table. Returns an empty selector on non-Intel devices.
+// budget (which also stages the im2col A tile) and a Conv-specific heuristic
+// instead of the MatMul pretuned table. Conv has no pretuned table of its own: a
+// per-architecture sweep does not generalize across hardware, so this always goes
+// through the heuristic. Returns an empty selector on non-Intel devices.
 SubgroupMatrixTilingSelector CreateSubgroupMatrixConvTilingSelector(
     const ComputeContextBase& context);
 

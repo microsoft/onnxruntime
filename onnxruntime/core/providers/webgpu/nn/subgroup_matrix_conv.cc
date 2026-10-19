@@ -282,8 +282,10 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     // Safety net: the Conv selector already enforces the Conv scratch budget
     // (output tiles + im2col A staging), so this clamp normally does nothing; it
     // guards against a stray oversized split-K from the selector. Only split_k is
-    // clamped, not the tile area: the largest candidate tile needs
-    // 64 * (64 + 16) = 5120 elements at split_k 1, well inside the budget.
+    // clamped, not the tile area: ConvHeuristicTiling always picks the smallest
+    // tile_m (8), so the largest candidate tile needs 8 * (64 + 16) = 640 elements
+    // at split_k 1, or 8 * 8 * 80 = 5120 at the largest split_k (8), well inside
+    // the budget.
     uint32_t split_k = tiling->split_k;
     while (split_k > 1 &&
            split_k * tile_m * (tile_n + config.K) > intel::kMaxScratchElems) {
