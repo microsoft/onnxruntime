@@ -37,6 +37,14 @@ enum class MatMulBiasVariant {
   kVOnly,
 };
 
+constexpr int64_t kAppleTileTestK = 256;    // Larger than the existing K=16 result cases.
+constexpr int64_t kAppleTileTestNq = 65;    // Two complete 32-column tiles and a one-column tail.
+constexpr int64_t kAppleTileTestNkv = 33;   // Fused QKV shares K/V width; both end in tile two.
+constexpr int64_t kAppleTileTestBlockSize = 32;
+constexpr int64_t kAppleTileTestBlocks = kAppleTileTestK / kAppleTileTestBlockSize;
+constexpr int64_t kAppleTileTestBlobSize = kAppleTileTestBlockSize / 2;
+constexpr float kAppleTileTestEpsilon = 1e-6f;
+
 void SetWebGpuProvider(Node& node) {
   node.SetExecutionProviderType(kWebGpuExecutionProvider);
 }
@@ -254,6 +262,50 @@ void BuildMatMulNBitsQkvWebGpuPatternWithVBias(ModelTestBuilder& builder) {
                                        MatMulBiasVariant::kVOnly);
 }
 
+void BuildMatMulNBitsQkvAppleTileTestPattern(ModelTestBuilder& builder) {
+  const auto input_values = MakeFusedNBitsTestInput(kAppleTileTestK);
+  const auto norm_scale_values = MakeFusedNBitsTestNormScale(kAppleTileTestK);
+  const auto q = MakeFusedNBitsTestProjection(
+    kAppleTileTestNq, kAppleTileTestK, kAppleTileTestBlockSize, 1);
+  const auto k = MakeFusedNBitsTestProjection(
+    kAppleTileTestNkv, kAppleTileTestK, kAppleTileTestBlockSize, 5);
+  const auto v = MakeFusedNBitsTestProjection(
+    kAppleTileTestNkv, kAppleTileTestK, kAppleTileTestBlockSize, 9);
+  NodeArg* input = builder.MakeInput<MLFloat16>({1, kAppleTileTestK}, input_values);
+  NodeArg* norm_scale = builder.MakeInitializer<MLFloat16>({kAppleTileTestK}, norm_scale_values);
+  NodeArg* optional = builder.MakeOptionalTensor();
+
+  auto add_projection_inputs = [&](int64_t n, const FusedNBitsTestProjection& projection) {
+    return std::pair<NodeArg*, NodeArg*>{
+        builder.MakeInitializer<uint8_t>({n, kAppleTileTestBlocks, kAppleTileTestBlobSize}, projection.weights),
+        builder.MakeInitializer<MLFloat16>({n, kAppleTileTestBlocks}, projection.scales)};
+  };
+  const auto [q_weight, q_scale] = add_projection_inputs(kAppleTileTestNq, q);
+  const auto [k_weight, k_scale] = add_projection_inputs(kAppleTileTestNkv, k);
+  const auto [v_weight, v_scale] = add_projection_inputs(kAppleTileTestNkv, v);
+
+  NodeArg* normalized = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, kAppleTileTestK});
+  NodeArg* q_output = builder.MakeOutput<MLFloat16>(std::vector<int64_t>{1, kAppleTileTestNq});
+  NodeArg* k_output = builder.MakeOutput<MLFloat16>(std::vector<int64_t>{1, kAppleTileTestNkv});
+  NodeArg* v_output = builder.MakeOutput<MLFloat16>(std::vector<int64_t>{1, kAppleTileTestNkv});
+
+  Node& norm = builder.AddNode("SimplifiedLayerNormalization", {input, norm_scale}, {normalized});
+  norm.AddAttribute("epsilon", kAppleTileTestEpsilon);
+  const auto q_attrs = MakeMatMulNBitsAttrs(kAppleTileTestK, kAppleTileTestNq,
+                                            kAppleTileTestBlockSize, 4, 0);
+  const auto kv_attrs = MakeMatMulNBitsAttrs(kAppleTileTestK, kAppleTileTestNkv,
+                                             kAppleTileTestBlockSize, 4, 0);
+  Node& q_matmul = builder.AddNode("MatMulNBits", {normalized, q_weight, q_scale, optional, optional, optional},
+                                  {q_output}, kMSDomain, &q_attrs);
+  Node& k_matmul = builder.AddNode("MatMulNBits", {normalized, k_weight, k_scale, optional, optional, optional},
+                                  {k_output}, kMSDomain, &kv_attrs);
+  Node& v_matmul = builder.AddNode("MatMulNBits", {normalized, v_weight, v_scale, optional, optional, optional},
+                                  {v_output}, kMSDomain, &kv_attrs);
+  for (Node* node : {&norm, &q_matmul, &k_matmul, &v_matmul}) {
+    SetWebGpuProvider(*node);
+  }
+}
+
 }  // namespace
 
 TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionFusesWebGpuPattern) {
@@ -291,6 +343,50 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedWebGpuResults
       5e-3,
       std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       []() { return DefaultWebGpuExecutionProvider(); });
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionAppleDecodeGeometryMatchesHostReference) {
+  auto make_ep = []() { return DefaultWebGpuExecutionProvider(); };
+  if (!make_ep()) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  const std::vector<std::vector<float>> expected{
+      MakeFusedNBitsTestMatMulReference(
+        kAppleTileTestNq, kAppleTileTestK, kAppleTileTestBlockSize, kAppleTileTestEpsilon, 1),
+      MakeFusedNBitsTestMatMulReference(
+        kAppleTileTestNkv, kAppleTileTestK, kAppleTileTestBlockSize, kAppleTileTestEpsilon, 5),
+      MakeFusedNBitsTestMatMulReference(
+        kAppleTileTestNkv, kAppleTileTestK, kAppleTileTestBlockSize, kAppleTileTestEpsilon, 9)};
+  auto check_target_fetches = [expected](const std::vector<OrtValue>& fetches) {
+    ASSERT_EQ(fetches.size(), expected.size());
+    for (size_t output_index = 0; output_index < expected.size(); ++output_index) {
+      const auto actual = fetches[output_index].Get<Tensor>().DataAsSpan<MLFloat16>();
+      ASSERT_EQ(actual.size(), expected[output_index].size());
+      for (size_t i = 0; i < expected[output_index].size(); ++i) {
+        EXPECT_NEAR(actual[i].ToFloat(), expected[output_index][i], 0.02f)
+            << "output " << output_index << ", index " << i;
+      }
+    }
+  };
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    ASSERT_STATUS_OK(CheckMatMulNBitsQkvFusedGraphImpl(session.GetGraph(),
+                                                       /*expect_skip_sln_output=*/false,
+                                                       /*expect_skip_input=*/false));
+  };
+
+  RunWebGpuFusionTransformerTest(
+      BuildMatMulNBitsQkvAppleTileTestPattern,
+      check_transformed_graph,
+      TransformerLevel::Level1,
+      TransformerLevel::Level2,
+      21,
+      0.02,
+      0.02,
+      std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      make_ep,
+      {},
+      check_target_fetches);
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionFusesSkipWebGpuPattern) {
