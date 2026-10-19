@@ -2880,10 +2880,9 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
                                   : " is required when policy_mode is 'csa'");
     }
   }
-  if (PackedSparseAttentionIndexerHasInput(ctx, psai::kPositionIds) == is_qsa) {
+  if (!is_qsa && !PackedSparseAttentionIndexerHasInput(ctx, psai::kPositionIds)) {
     fail_shape_inference("PackedSparseAttentionIndexer: input ", psai::kPositionIds,
-                         is_qsa ? " (position_ids) must be omitted when policy_mode is 'qsa'"
-                                : " (position_ids) is required when policy_mode is 'csa'");
+                         " (position_ids) is required when policy_mode is 'csa'");
   }
   const bool has_capture_count = PackedSparseAttentionIndexerHasInput(ctx, psai::kStateUpdateCaptureCount);
   const bool has_state_update_active = PackedSparseAttentionIndexerHasInput(ctx, psai::kStateUpdateActive);
@@ -3218,7 +3217,7 @@ request's own packed token range and fixed-capacity state slice:
     their token indices are emitted (request-local logical positions, i.e. the same numbering as
     past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
     incomplete block. QSA positions are the request-local logical cache positions derived from
-    past_sequence_lengths and cumulative_sequence_lengths; position_ids must be omitted.
+    past_sequence_lengths and cumulative_sequence_lengths unless optional position_ids are supplied.
 
   policy_mode = "csa" ("compressed sparse attention" block indexer)
     Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window

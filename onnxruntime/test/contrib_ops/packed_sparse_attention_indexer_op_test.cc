@@ -124,7 +124,7 @@ struct GraphOptions {
 int64_t BufferCapacity(int64_t compress_ratio) { return 2 * compress_ratio - 1; }
 
 // Builds a fixed-input node; csa-only slots are left empty for policy_mode "qsa", as the schema
-// requires. position_ids (slot 11) is omitted for "qsa" and forced on for "csa".
+// requires. position_ids (slot 11) is optional for "qsa" and forced on for "csa".
 void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
   const bool is_csa = options.policy_mode == psai::kPolicyModeCsa;
   const int64_t width = is_csa ? 2 * options.head_size : options.head_size;
@@ -477,11 +477,13 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaWithCsaInput) {
                        "must be omitted when policy_mode is 'qsa'");
 }
 
-TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaWithPositionIds) {
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, QsaAcceptsPositionIds) {
   GraphOptions options;
   options.add_position_ids = true;
-  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "must be omitted when policy_mode is 'qsa'");
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(BuildAndResolve([&options](ModelTestBuilder& builder) { AddNode(builder, options); }, model));
+  const auto& node = *model->MainGraph().Nodes().begin();
+  EXPECT_TRUE(node.InputDefs()[psai::kPositionIds]->Exists());
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsCsaMissingPositionIds) {
@@ -534,7 +536,7 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsWrongOutputCount) {
   GraphOptions options;
   options.output_count = 4;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "output size 4 not in range [min=6, max=8]");
+                       "output size 4 not in range [min=6, max=11]");
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsStateUpdateCapacityWithoutCaptureCount) {
@@ -1343,6 +1345,18 @@ TEST(PackedSparseAttentionIndexerTest, QsaMalformedStateLengthsAreClamped) {
   problem.state_capacity = 2;
   problem.past_state_lengths = {3, -1};
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)));
+}
+
+TEST(PackedSparseAttentionIndexerTest, QsaExplicitPositionIds) {
+  auto problem = MakeQsaPackedProblem();
+  problem.position_ids.resize(static_cast<size_t>(problem.TotalTokens()));
+  for (int batch = 0; batch < problem.batch_size; ++batch) {
+    const int start = problem.cumulative_sequence_lengths[batch];
+    for (int token = start; token < problem.cumulative_sequence_lengths[batch + 1]; ++token) {
+      problem.position_ids[static_cast<size_t>(token)] = problem.past_sequence_lengths[batch] + token - start + 1;
+    }
+  }
+  RunQsaPackedTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda);
 }
 
 TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalTileBoundariesPreserveStableTies) {
