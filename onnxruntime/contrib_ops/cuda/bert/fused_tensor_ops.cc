@@ -13,12 +13,12 @@
 
 namespace onnxruntime::contrib::cuda {
 
-#define REGISTER_ARGMAX_LAST_AXIS(T)                                       \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                           \
-      ArgMaxLastAxis, kMSDomain, 1, T, kCudaExecutionProvider,             \
-      (*KernelDefBuilder::Create())                                        \
-            .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
-            .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),  \
+#define REGISTER_ARGMAX_LAST_AXIS(T)                                    \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+      ArgMaxLastAxis, kMSDomain, 1, T, kCudaExecutionProvider,          \
+      (*KernelDefBuilder::Create())                                     \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
+          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
       ArgMaxLastAxis<T>);
 
 REGISTER_ARGMAX_LAST_AXIS(float)
@@ -30,38 +30,38 @@ REGISTER_ARGMAX_LAST_AXIS(BFloat16)
 ONNX_OPERATOR_KERNEL_EX(
     EmbeddingRMSNorm, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>())
-          .TypeConstraint("F", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>())
+        .TypeConstraint("F", DataTypeImpl::GetTensorType<float>()),
     EmbeddingRMSNorm);
 
 ONNX_OPERATOR_KERNEL_EX(
     RowSelect, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()),
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()),
     RowSelect);
 
 ONNX_OPERATOR_KERNEL_EX(
     SigmoidGateMul, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()),
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()),
     SigmoidGateMul);
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     DequantizeLinear, kMSDomain, 1, Float8E4M3FN_BFloat16, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<Float8E4M3FN>())
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<BFloat16>())
-          .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<Float8E4M3FN>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<BFloat16>())
+        .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>()),
     DequantizeLinearFp8Bf16);
 #endif
 
 ONNX_OPERATOR_KERNEL_EX(
     UntileHyperConnectionWeights, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()),
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()),
     UntileHyperConnectionWeights);
 
 template <typename T>
@@ -153,12 +153,10 @@ SigmoidGateMul::SigmoidGateMul(const OpKernelInfo& info)
   const int64_t silu = info.GetAttrOrDefault<int64_t>("silu_gate", 0);
   ORT_ENFORCE(silu == 0 || silu == 1, "SigmoidGateMul silu_gate must be zero or one");
   ORT_ENFORCE(!(broadcast_gate_ && silu_gate_), "SigmoidGateMul broadcast_gate and silu_gate are exclusive");
-  ORT_ENFORCE(broadcast_gate_ || silu_gate_ || (head_dim_ > 0 && heads_ > 0 &&
-                  q_stride_ >= 2 * head_dim_ &&
-                  tok_stride_ > 0 && q_offset_ >= 0),
+  ORT_ENFORCE(broadcast_gate_ || silu_gate_ || (head_dim_ > 0 && heads_ > 0 && q_stride_ >= 2 * head_dim_ && tok_stride_ > 0 && q_offset_ >= 0),
               "SigmoidGateMul received invalid layout attributes");
   ORT_ENFORCE(!(broadcast_gate_ || silu_gate_) || (head_dim_ == 0 && heads_ == 0 && q_stride_ == 0 &&
-                                      tok_stride_ == 0 && q_offset_ == 0),
+                                                   tok_stride_ == 0 && q_offset_ == 0),
               "SigmoidGateMul broadcast_gate/silu_gate cannot be combined with packed layout attributes");
 }
 
@@ -184,12 +182,12 @@ Status SigmoidGateMul::ComputeInternal(OpKernelContext* context) const {
   } else {
     const int64_t row_width = static_cast<int64_t>(heads_) * head_dim_;
     ORT_RETURN_IF_NOT(count % row_width == 0,
-                    "SigmoidGateMul attention size must be divisible by heads * head_dim");
+                      "SigmoidGateMul attention size must be divisible by heads * head_dim");
     const int64_t tokens = count / row_width;
     ORT_RETURN_IF_NOT(projection->Shape().Size() >=
-                        (tokens - 1) * tok_stride_ + q_offset_ +
-                            static_cast<int64_t>(heads_) * q_stride_,
-                    "SigmoidGateMul projection is too small for the configured layout");
+                          (tokens - 1) * tok_stride_ + q_offset_ +
+                              static_cast<int64_t>(heads_) * q_stride_,
+                      "SigmoidGateMul projection is too small for the configured layout");
   }
   Tensor* output = context->Output(0, attention->Shape());
   return LaunchSigmoidGateMul(

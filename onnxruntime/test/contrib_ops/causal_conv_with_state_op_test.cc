@@ -365,12 +365,16 @@ void TestPackedChannelHistory(int length, bool state_last, bool use_past, bool u
   test.AddAttribute<std::string>("activation", silu ? "silu" : "none");
   test.AddInput<T>("input", {batch, length, width}, input);
   test.AddInput<T>("weight", {channels, 1, kernel}, weight);
-  if (use_bias) test.AddInput<T>("bias", {channels}, bias);
-  else test.AddOptionalInputEdge<T>();
+  if (use_bias)
+    test.AddInput<T>("bias", {channels}, bias);
+  else
+    test.AddOptionalInputEdge<T>();
   const std::vector<int64_t> state_shape = state_last ? std::vector<int64_t>{batch, history, channels}
-                                                    : std::vector<int64_t>{batch, channels, history};
-  if (use_past) test.AddInput<T>("past", state_shape, past);
-  else test.AddOptionalInputEdge<T>();
+                                                      : std::vector<int64_t>{batch, channels, history};
+  if (use_past)
+    test.AddInput<T>("past", state_shape, past);
+  else
+    test.AddOptionalInputEdge<T>();
   test.AddOutput<T>("output", {batch, length, channels}, output);
   test.AddOutput<T>("present", state_shape, present);
   if (first_output) test.AddOutput<T>("first", state_shape, first);

@@ -45,7 +45,7 @@ struct Fp8GemvOutputSplit {
 };
 
 bool MatMulBlockScaledFp8GemvSupportsSplitOutput(int m, int k, int block_size,
-                                                const cudaDeviceProp& device_prop);
+                                                 const cudaDeviceProp& device_prop);
 
 #if defined(USE_DEEP_GEMM)
 Status LaunchPrepareMatMulFp8DeepGemm(void* a_quant, float* a_scales, const void* a,

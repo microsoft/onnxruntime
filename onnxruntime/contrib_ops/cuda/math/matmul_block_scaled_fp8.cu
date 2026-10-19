@@ -516,7 +516,7 @@ struct Fp8GemvMma<__nv_bfloat16> {
 
 template <typename T>
 __device__ __forceinline__ T* Fp8OutputColumn(T* output, int col, int& stride,
-                                             const Fp8GemvOutputSplit& split) {
+                                              const Fp8GemvOutputSplit& split) {
   for (int i = 0; i < split.count; ++i) {
     if (col < split.widths[i]) {
       stride = split.widths[i];
@@ -946,7 +946,7 @@ bool Fp8MmaGb10TuningEnabled() {
 }
 
 bool MatMulBlockScaledFp8GemvSupportsSplitOutput(int m, int k, int block_size,
-                                                const cudaDeviceProp& device_prop) {
+                                                 const cudaDeviceProp& device_prop) {
 #if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
   return device_prop.major >= 8 && m > 0 && m <= kFp8MmaGemvTileM &&
          k >= 256 && k % 64 == 0 && block_size % 64 == 0 && Fp8GemvMmaEnabled();
@@ -1041,19 +1041,19 @@ static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
     const auto launch_mma = [&]<int KSplit, int MTiles>() {
       const dim3 mma_threads{32, KSplit};
       const auto launch_variant = [&]<bool SplitOutput>() {
-#define ORT_FP8_LAUNCH_MMA(kernel_name)                                                       \
-  do {                                                                                      \
-    if (is_bf16) {                                                                          \
-      kernel_name<KSplit, MTiles, SplitOutput><<<mma_blocks, mma_threads, 0, stream>>>(       \
-          reinterpret_cast<__nv_bfloat16*>(y), reinterpret_cast<const __nv_bfloat16*>(a), b,  \
-          weight_scale, reinterpret_cast<const __nv_bfloat16*>(bias), act_scale, m, n, k,     \
-          block_size, k_blocks, split);                                                     \
-    } else {                                                                               \
-      kernel_name<KSplit, MTiles, SplitOutput><<<mma_blocks, mma_threads, 0, stream>>>(       \
-          reinterpret_cast<half*>(y), reinterpret_cast<const half*>(a), b,                    \
-          weight_scale, reinterpret_cast<const half*>(bias), act_scale, m, n, k,              \
-          block_size, k_blocks, split);                                                     \
-    }                                                                                      \
+#define ORT_FP8_LAUNCH_MMA(kernel_name)                                                      \
+  do {                                                                                       \
+    if (is_bf16) {                                                                           \
+      kernel_name<KSplit, MTiles, SplitOutput><<<mma_blocks, mma_threads, 0, stream>>>(      \
+          reinterpret_cast<__nv_bfloat16*>(y), reinterpret_cast<const __nv_bfloat16*>(a), b, \
+          weight_scale, reinterpret_cast<const __nv_bfloat16*>(bias), act_scale, m, n, k,    \
+          block_size, k_blocks, split);                                                      \
+    } else {                                                                                 \
+      kernel_name<KSplit, MTiles, SplitOutput><<<mma_blocks, mma_threads, 0, stream>>>(      \
+          reinterpret_cast<half*>(y), reinterpret_cast<const half*>(a), b,                   \
+          weight_scale, reinterpret_cast<const half*>(bias), act_scale, m, n, k,             \
+          block_size, k_blocks, split);                                                      \
+    }                                                                                        \
   } while (0)
         if constexpr (KSplit == 16 && MTiles == 1) {
           if (pin_residency) {

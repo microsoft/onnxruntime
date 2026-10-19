@@ -956,7 +956,7 @@ __global__ void GroupedDecodeDynamicSparseAttentionKernel(
   const int selected_count = max(0, min(selected_counts[row], max_selected));
   const int candidate_count = local_count + selected_count;
   constexpr int kCandidatesPerSplit = kQuantizedCache ? kGroupedQuantizedDecodeCandidatesPerSplit
-                                                     : kGroupedDecodeCandidatesPerSplit;
+                                                      : kGroupedDecodeCandidatesPerSplit;
   const int candidate_begin = split * kCandidatesPerSplit;
   const int32_t* row_indices =
       max_selected == 0 ? selected_indices : selected_indices + static_cast<int64_t>(row) * max_selected;
