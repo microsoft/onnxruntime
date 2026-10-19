@@ -472,6 +472,24 @@ bool CanApplySubgroupMatrixConv(ComputeContextBase& context,
     return false;
   }
 
+  // The weight buffer is bound as a single WGSL binding (input_b), and the shader's
+  // subgroupMatrixLoad calls address it with offsets derived from the full [N, K]
+  // weight -- they know nothing about ProgramManager's binding-segment split, which
+  // kicks in once a tensor exceeds maxStorageBufferBindingSize. A weight past that
+  // limit would still pass every check above, get split into multiple bindings, and
+  // then have its later output channels load past the first binding. Reject it here,
+  // before PrePackInternal or any output allocation/transpose, so it falls back to
+  // the normal (prepacked) conv paths instead.
+  const uint64_t max_weight_elems = context.DeviceLimits().maxStorageBufferBindingSize / sizeof(MLFloat16);
+  if (static_cast<uint64_t>(kernel_shape.Size()) > max_weight_elems) {
+    LOGS_DEFAULT(VERBOSE) << "SubgroupMatrixConv rejected: weight exceeds maxStorageBufferBindingSize"
+                          << " (kernel_shape[OIHW]=" << kernel_shape.ToString() << ", elems="
+                          << kernel_shape.Size() << ", limit_elems=" << max_weight_elems
+                          << ", maxStorageBufferBindingSize=" << context.DeviceLimits().maxStorageBufferBindingSize
+                          << " bytes).";
+    return false;
+  }
+
   const std::optional<SubgroupMatrixConfig> config = GetSupportedConfig(context);
   if (!config) {
     LOGS_DEFAULT(VERBOSE) << "SubgroupMatrixConv rejected: device does not report the required 8x16x16 F16"
