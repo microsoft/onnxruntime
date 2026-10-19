@@ -13,7 +13,7 @@ Compressed project memory. This is not the execution plan.
   M01. `SPEC.md` and the execution plan are approved.
 - M01 is complete and published as ready-for-review PR #11:
   https://github.com/onnxruntime/ort-state/pull/11
-- No agents launched. M01-M07 are complete; M08-M24 remain pending.
+- No agents launched. M01-M07 are complete; M08 is in progress; M09-M24 remain pending.
   Runtime production code starts with M02.
 - Future tracking: keep `TASKS.md` checklist current and record compressed
   discoveries/agent learnings here.
@@ -604,3 +604,103 @@ Compressed project memory. This is not the execution plan.
   Implementation `fd2331ff8a`. Both M07 sub-milestones complete; macro M07 marked
   complete. M08-M24 remain pending; no PRs merged. CUDA EPContext/schema exclusions
   remain explicitly documented, not reported as passing unfiltered tests.
+
+## M08
+
+- User requested M08 on 2026-10-18. Baseline M07b `03d7476859`; created
+  `state/m08a-cuda-plugin-kv-cache`. M08a implementation/validation is active;
+  M08b remains unauthorized.
+- Interview completed: **CUDA plugin EP ONLY**, not legacy/shared CUDA. Prefer
+  CUDA allocation/copy primitives, no custom kernels unless necessary. All new
+  host/glue lines measured100%; if no new device code, device denominator0/N/A
+  explicitly, not100%. Any device code added still needs measured100% coverage.
+- Managed GPU cache views/results stayGPU under explicit selection; ordinary
+  non-cache outputs/logits retain CPU behavior and sampling staysCPU untilM09.
+  CPU default remains unchanged. M08a backend + M08b loop/chain integration split
+  accepted. Additional specification inputs: None.
+- SPEC Appendix H drafted for review. Await approval before detailed TASKS,
+  then plan approval before implementation.
+- CUDA plugin/native are mutually exclusive CMake variants:
+  onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON selects the plugin. Existing verified
+  CUDA tree is legacy/shared, so a plugin-enabled build must be validated.
+- Existing SessionState::GetAllocator(OrtDevice) and GetAllocators are available.
+  Current loops bind all outputs toCPU and cloneCPU snapshots; managed cache
+  outputs need device binding/retention while ordinary outputs remainCPU.
+- CUDA plugin CudaEp::Config supports device id/user_compute_stream; factory
+  CreateEpImpl is the existing synchronous descriptor-registration site.
+  Core M07 rejects both device-cache/device-sampler loop integration currently;
+  M08 removes only the implemented plugin cache rejection.
+- User approved SPEC Appendix H and the detailed plan without changes.
+  Authorized M08a only; pause before M08b. Implementation is starting.
+- Plugin test routing already exists in default_providers.cc under
+  ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP + ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE.
+  CMake initializes this for test_all, not the focused session_loop target:
+  plan explicitly wires its macros/dependency/initialization rather than accepting
+  a null DefaultCudaExecutionProvider or skipped GPU cases.
+- Plan covers real instrumented plugin host code (Clang/LLVM host + supported
+  NVCC host compiler or matching GCC host coverage), not CPU-only stubs. Device
+  line denominator0/N/A is valid only if actual new device functions0.
+- Plan also requires completion/order evidence BEFORE readback can implicitly
+  synchronize, all relevant cache/state/component surfaces and native legacy
+  unsupported assertions. Standalone caller tensors keep standard readiness rules.
+- M08a implementation: plugin-only cuda_stateful.cc registers six cache bits,
+  three dtypes and GPU-only memory; no sampler/device functions. Checked compact
+  row copies preserve snapshots; callback synchronizes default/user stream and
+  restores device even on Work failure. M07 leases retain code/logger/allocator.
+- Public request gained trailing size-checked retain_value callback; core makes
+  an owned OrtValue reference without copying data. Needed for plugin Share/Reset
+  without native Session headers. No public API-table/version changes.
+- Separate plugin tree uses Clang18 LLVM host coverage and NVCC13.1/GCC13.
+  Existing mixed-compiler diagnostics require CUDA -Xcompiler=-Wno-error=pragmas
+  and CXX -Wno-error=unused-private-field (pre-existing pool_release_threshold_)
+  plus -Wno-error=instantiation-after-specialization (pre-existing cast_op.cc).
+  These are local validation flags, not unrelated source fixes.
+- Further stock Cast scalar-brace diagnostics required the existing supported
+  CMake --compile-no-warning-as-error option for the instrumented plugin build.
+  New callback/device-test sources independently pass strict -Werror checks.
+- AutoEP is a DYN/public-API target: enabling native dynamic-plugin test_main
+  infrastructure caused unresolved private test helpers. It now registers CUDA
+  directly through the public Env API under a target-only macro. Focused native
+  tests retain the existing dynamic-provider infrastructure and dependency.
+- Standalone C11/C++17 example compilation passed. CPU/plugin builds and
+  runtime/coverage/sanitizer verification remain in progress; no M08 PR yet.
+- Stream test blocks the selected nondefault stream and uses a prepared GPU
+  allocation so neither cudaMalloc nor a readback can mask missing copy completion.
+- Session-allocator API explicitly requires its Session to remain alive. Tests
+  and the SDK example keep a separate caller-owned allocator Session; backend
+  Session/context is released independently. Never claim final DLL unload while
+  that caller resource still needs it.
+- Found/fixed coupled repeated-Share lifetime bug: equal Tensor pointers do not
+  imply equal OrtValue ownership blocks. Reusing storage now adopts the known
+  existing owned entry, not a possibly unleased input reference. Native observer
+  test checks context retention across repeated Share/Reset and final releases.
+- Fresh final CPU run including that regression passed 63 native +139 AutoEP
+  tests, zero failures/skips. Evidence uses m08a-cpu-verified-* and CPU profiles
+  coverage/m08a/verified. Legacy CUDA rebuilt and 42 stateful cases passed,
+  including exact ORT_NOT_IMPLEMENTED from GPU-compatible manager construction
+  and zero advertised cache bits. Policy capture alone intentionally does not
+  validate per-operation availability. Plugin linking/runtime checks remain.
+- Actual standalone plugin proof passed 17 GPU cases (three dtypes/four axes,
+  real devices0/1, prepared-allocator stream gate and C/C++ lifetimes); SDK CUDA
+  example passed. Initial new host measurement128/128, old-device denominator0.
+- Full GPU native111 passed. AutoEP needed public V2 routing in the M01 baseline,
+  public selection delegate instead of the legacy test.ep_to_select prototype,
+  and a supported provider option when NHWC is compiled out. Startup-preloaded
+  plugins must be recognized by the existing test registration helper.
+- Sanitizer exposed the remaining broad-suite failure: a controlled NULL
+  allocator return did not make CreateTensor fail, so reserve copied to NULL
+  and poisoned CUDA last-error seen by later Mul. Explicit nonempty-buffer
+  validation now precedes copies. Capacity bytes also use SafeInt BEFORE tensor
+  creation, and callback completion reports/consumes pending CUDA error.
+  Regression requires exact allocation/Integer-overflow messages, no allocation
+  on overflow, device restoration and cudaPeekAtLastError success.
+- FINAL: CPU63 native+139 AutoEP, legacy43 selected, actual CUDA plugin111 native
+  +174 UNFILTERED AutoEP all passed, zero skips, visible devices0,1. New17 cases
+  record restored_device1/tested_cache_devices2. No exclusions/waivers.
+- Final new production/glue coverage137/137 (module123, factory4, core10) from
+  actual plugin profiles coverage/m08a/complete. New devicefunctions/lines0/N/A.
+- Compute Sanitizer17 newGPU+6 native+documentedCUDA SDK client: zero errors,
+  zero leakedbytes/allocations. Separate allocation-failure-then-Mul regression
+  also zero errors/leaks. Final logs m08a-*-complete-* / m08a-plugin-sanitizer-*.
+- All implementation/verification gates pass; M08a publication remains.
+  M08b has NOT started and still needs user authorization.

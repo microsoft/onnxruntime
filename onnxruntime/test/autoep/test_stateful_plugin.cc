@@ -85,7 +85,7 @@ class StatefulPluginTest : public testing::TestWithParam<bool> {
     options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "1");
     options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(registered_.get())}, Ort::KeyValuePairs{});
     if (GetParam()) {
-      options.AppendExecutionProvider_CUDA(OrtCUDAProviderOptions{});
+      Utils::AppendCudaExecutionProvider(*ort_env, options);
       options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
     }
     const auto bytes = model.SerializeAsString();

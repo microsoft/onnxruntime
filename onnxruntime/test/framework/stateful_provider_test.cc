@@ -38,6 +38,7 @@ struct Probe {
   bool delegate_greedy = false;
   bool double_reference = false;
   bool allocate_directly = false;
+  bool check_retaining_request = false;
   size_t destroyed = 0;
   std::array<size_t, 7> calls{};
 };
@@ -64,6 +65,25 @@ OrtStatus* ORT_API_CALL CacheOperation(void* pointer, const OrtStatefulCacheOper
                                        OrtStatefulCacheOperationResult* out) noexcept {
   auto& probe = *static_cast<ProviderContext*>(pointer)->probe;
   ++probe.calls[request->operation];
+  if (probe.check_retaining_request) {
+    EXPECT_GE(request->struct_size,
+              offsetof(OrtStatefulCacheOperationRequest, retain_value) + sizeof(request->retain_value));
+    OrtValue sentinel;
+    OrtValue* retained = &sentinel;
+    auto* status = request->retain_value(nullptr, &retained);
+    EXPECT_NE(status, nullptr);
+    EXPECT_EQ(retained, &sentinel);
+    request->api->ReleaseStatus(status);
+    if (request->value) {
+      status = request->retain_value(request->value, nullptr);
+      EXPECT_NE(status, nullptr);
+      request->api->ReleaseStatus(status);
+      status = request->retain_value(request->value, &retained);
+      if (status) return status;
+      std::unique_ptr<OrtValue> owner(retained);
+      EXPECT_EQ(owner->Get<Tensor>().DataRaw(), request->value->Get<Tensor>().DataRaw());
+    }
+  }
   if (probe.fail_operation == request->operation) {
     return request->api->CreateStatus(probe.error, "injected stateful cache failure");
   }
@@ -226,6 +246,55 @@ class StatefulProviderTest : public testing::TestWithParam<bool> {
     return Ort::Session{reinterpret_cast<OrtSession*>(session.release())};
   }
 };
+
+TEST_P(StatefulProviderTest, RetainingRequestExtensionOwnsReferencesAndValidatesArguments) {
+  auto probe = std::make_shared<Probe>();
+  probe->check_retaining_request = true;
+  auto session = Session(probe);
+  const int64_t shape[]{1, 0, 2};
+  const OrtStatefulKVCacheSpec spec{"key", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, shape, 3, 1, 0};
+  const OrtStatefulKVCacheConfig config{sizeof(config), &spec, 1};
+  Ort::KVCacheOptions options(config);
+  options.SetProvider(Selection(), session);
+  Ort::AllocatorWithDefaultOptions allocator;
+  Ort::KVCacheManager manager(options, allocator);
+  auto value = Tensor<float>({1, 1, 2}, {1.f, 2.f});
+  manager.Update("key", value, ORT_KV_CACHE_SHARE);
+  manager.Update("key", value, ORT_KV_CACHE_SHARE);
+  auto retained = manager.GetView("key").GetInfo().value;
+  manager.Reset();
+  manager.Reset();
+  EXPECT_FALSE(manager.RequiresReset());
+  manager = Ort::KVCacheManager(nullptr);
+  options = Ort::KVCacheOptions(nullptr);
+  session = Ort::Session(nullptr);
+  value = Ort::Value(nullptr);
+  EXPECT_EQ(probe->destroyed, 0u);
+  EXPECT_EQ(retained.GetTensorData<float>()[0], 1.f);
+  retained = Ort::StatefulValue(nullptr);
+  EXPECT_EQ(probe->destroyed, 1u);
+}
+
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+TEST(StatefulCudaProviderBoundaryTest, RequiresSizeTaggedRetainingRequest) {
+  auto provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(provider, nullptr);
+  const auto* descriptor = provider->GetStatefulProvider();
+  ASSERT_NE(descriptor, nullptr);
+  OrtStatefulCacheOperationRequest request{};
+  request.struct_size = offsetof(OrtStatefulCacheOperationRequest, retain_value);
+  OrtValue sentinel;
+  OrtStatefulCacheOperationResult result{sizeof(result), &sentinel, 2, 3, 4, 5, 6};
+  for (const size_t size : {request.struct_size, sizeof(request)}) {
+    request.struct_size = size;
+    Ort::Status status(descriptor->CacheOperation(descriptor->context, &request, &result));
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_NE(status.GetErrorMessage().find("retaining cache-request extension"), std::string::npos);
+    EXPECT_EQ(result.storage, &sentinel);
+    EXPECT_EQ(result.length, 2);
+  }
+}
+#endif
 
 TEST_P(StatefulProviderTest, CapabilitySelectionSamplerAndMissingOverrides) {
   auto probe = std::make_shared<Probe>();
@@ -557,7 +626,11 @@ TEST_P(StatefulProviderTest, FeedbackStagingAndArgumentValidation) {
   bad.provider_name = kTestProvider;
   EXPECT_THROW(sampler.SetProvider(bad), Ort::Exception);
   if (GetParam()) {
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+    EXPECT_EQ(Ort::QueryStatefulProviderCapabilities(session, kCudaExecutionProvider).operations, 63u);
+#else
     EXPECT_EQ(Ort::QueryStatefulProviderCapabilities(session, kCudaExecutionProvider).operations, 0u);
+#endif
     EXPECT_THROW(sampler.SetProvider(Selection(ORT_STATEFUL_PROVIDER_REQUIRE, kCudaExecutionProvider), session),
                  Ort::Exception);
   }

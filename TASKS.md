@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M07 complete; M08-M24 pending.
+**Status:** Approved; M01-M07 complete; M08 specification approved, plan under review.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -17,7 +17,7 @@ M05's requested generation-folder layout follow-up is complete in the same PR.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M07 are complete; M08-M24 are pending. Check tasks when their
+M01-M07 are complete; M08 is in progress and M09-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -97,7 +97,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M07 are **complete**; M08-M24 are **pending**.
+M01-M07 are **complete**; M08 is **in progress** and M09-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -1400,19 +1400,306 @@ from this exact stored exclusion list, never from arbitrary unrelated failures.
 ### M08 - Native CUDA KV management
 
 **Outcome:** Device-resident cache lifecycle and prefill/decode handoff.
+**Status:** SPEC Appendix H approved 2026-10-18 without changes. User scoped M08
+to CUDA plugin EP only, copy primitives/GPU cache views and an M08a/M08b split.
+The user approved the detailed plan without changes and authorized M08a only.
+Implementation uses `state/m08a-cuda-plugin-kv-cache`, based on M07b
+`03d7476859`. Pause for authorization before implementing M08b.
 
-- [ ] Implement CUDA allocation/retention/update/growth/reset using ORT allocator,
+- [x] Implement CUDA allocation/retention/update/growth/reset using ORT allocator,
   device, and stream abstractions; advertise only supported features.
 - [ ] Wire stage sharing and required movement without illegal aliasing.
-- [ ] Expose dispatch/copy/allocation evidence for tests and later measurement.
+- [x] Expose dispatch/copy/allocation evidence for tests and later measurement.
 
 **CPU test plan:** Rerun CPU cache and EP-contract regressions.
 **CUDA test plan:** CPU/CUDA cache contents and lengths agree on fixtures; verify
 device placement, compatible-buffer sharing, required copies, nondefault stream
 ordering, completion before observation/release, growth/reset, invalid devices,
 allocation/provider failures, cancellation, and resource cleanup.
-**Completion gate:** Actual CUDA dispatch plus measured 100% new host/device-line
-coverage. Device coverage unavailability blocks completion, not just a report.
+**Completion gate:** Actual CUDA plugin dispatch plus measured 100% new
+executable host/glue lines and any new device lines. If no device functions are
+introduced, their new-line denominator is zero/N/A, not 100%; missing measurement
+of device code actually added still blocks completion.
+
+#### M08a - CUDA plugin cache backend and standalone device proof
+
+**Intended outcome:** The CUDA plugin advertises and executes the six supported
+KV operations on real GPU storage, using ORT allocators and correct synchronous
+stream/resource boundaries. CPU remains the default; CUDA sampling stays absent.
+**Dependencies:** M04, M06, M07. Stack this PR on M07b PR #19.
+
+- [x] A1: Establish a separate CUDA-plugin-enabled build/test configuration using
+  matching CUDA 13.1/cuDNN and the available A100 hardware. Wire the focused test
+  targets' existing dynamic-plugin initialization/definitions/dependencies; do
+  not accept a null DefaultCudaExecutionProvider or a legacy build as proof.
+- [x] A2: Implement a boundary-safe CUDA-plugin cache callback/context module.
+  Register it transactionally during CreateEp, retain code/factory/logger/
+  allocator/stream resources, and advertise only implemented KV capabilities,
+  supported dtypes/devices and contiguous compact layout. No legacy/shared
+  CUDA hook or greedy capability is added.
+- [x] A3: Implement GPU initialization, owned-output Share, full Copy, arbitrary-
+  sequence-axis delta Append, Reserve/growth and logical Reset. Reuse CUDA copy
+  primitives, checked geometry/size calculations and M07 result validation;
+  preserve old views and do not assume graph input/output aliasing.
+- [x] A4: Use compatible ORT/plugin GPU allocators and appropriate stream/device
+  ownership. Establish producer/consumer ordering and complete operation work at
+  the synchronous boundary; avoid unrequested global device-wide waits.
+  Standalone caller-produced tensors follow the ordinary explicit input-readiness
+  contract; unknown external producer streams cannot be inferred from a pointer.
+- [x] A5: Add real standalone C/C++ backend tests for device placement, data,
+  alias/retention semantics, reference results, errors and operation counters.
+  Preserve CPU defaults and explicit no-CPU-fallback/no-sampler behavior.
+- [x] A6: Measure 100% every new CUDA host/callback/resource line using the actual
+  instrumented plugin artifact. Prefer a compatible Clang/LLVM host build with
+  NVCC's supported host compiler, or use matching GCC host coverage where needed;
+  do not count a non-executing CPU stub. If custom device functions become
+  necessary, return to the strict measured-device-line gate rather than waive it.
+- [ ] A7: Complete CPU/plugin-GPU regressions, sanitizer, ABI/style/examples,
+  exact evidence and independently reviewable publication.
+
+**CPU test plan:**
+
+- Rerun M07's CPU cache, policy, lifetime, public API and plugin-registration
+  baselines. A CPU-only build must not acquire a CUDA runtime dependency.
+- Verify unchanged default CPU results and explicit unsupported/required errors
+  when the selected build/provider lacks the CUDA-plugin cache capability.
+- Compile public C/C++ examples and descriptor boundaries; preserve copied
+  configuration/metadata and retained const-view behavior.
+
+**CUDA plugin test plan:**
+
+- Load the real CUDA plugin, query its six KV bits/dtype/device contract and
+  confirm the greedy bit is absent. Assert callback invocation, physical GPU
+  allocation/device id and zero CPU-reference delegation/fallback.
+- Compare copied-back contents, logical length and capacity against CPU reference
+  for float32/float16/bfloat16, multiple outer dimensions, sequence axes at the
+  beginning/middle/end and lengths around zero/growth boundaries.
+- Check Share pointer identity and rejection of borrowed/incompatible storage;
+  verify Copy/Append/Reserve allocate safely and retained views do not change.
+- Test zero capacity, spare capacity, empty appends, no-op reserve, Reset,
+  repeated reuse and final destruction after mutable object/Session release.
+- Test default/nondefault and caller-configured streams, scoped device-state
+  restoration and correct completion. Check stream/event readiness or controlled
+  ordering before a readback that could otherwise mask missing synchronization.
+- Use controlled allocator/provider failures and overflow/device errors; never
+  exhaust a shared GPU to simulate OOM. Verify sticky invalidation/no CPU retry,
+  successful reset recovery and safe resource cleanup.
+- Run relevant cases under Compute Sanitizer; record actual nonzero counts,
+  supported architecture and no unexpected skips.
+
+**M08a completion gate:** Real CUDA-plugin allocations/operations and lifetime
+proof pass, including the new callback module's measured 100% host coverage.
+Record device coverage as zero/N/A only if no device functions were added.
+Publish ready for review; loop/chain GPU-cache integration is not yet claimed.
+
+**M08a verification complete; publication pending:**
+
+- Six cache operations execute in the real CUDA plugin with float32/float16/
+  bfloat16 support and no greedy capability or CPU-reference delegation.
+  Compact copies handle every explicit sequence axis and preserve snapshots.
+- The size-tagged request has an appended `retain_value` callback for owned
+  handle references across the C boundary; no API-table/version change or native
+  Session dependency is introduced into the plugin module.
+- Equal Tensor pointers can have different OrtValue owners. Repeated Share now
+  preserves the existing leased owner; an exact context-destruction regression
+  covers repeated Share/Reset and final releases.
+- Capacity bytes are checked before tensor creation. Custom allocators can
+  return NULL without tensor creation failing, so nonempty storage is explicitly
+  checked before any copy. Tests require precise allocation/overflow errors,
+  unchanged allocator-call count on overflow, sticky invalidation, reset recovery
+  and no leaked CUDA last-error state. The initial sanitizer-detected invalid
+  copy is fixed; no broad-suite exclusion or sanitizer suppression is accepted.
+- CPU: **63/63 native +139/139 unfiltered AutoEP** passed.
+- CUDA plugin: **111/111 native +174/174 unfiltered AutoEP** passed, zero skips,
+  with `CUDA_VISIBLE_DEVICES=0,1`. The 174 include **17 new device cases**.
+  XML records prove restored caller device **1** and **2** selected cache devices.
+  Default/nondefault stream completion is checked before readback; the blocked
+  stream uses a prepared allocation so cudaMalloc cannot mask missing completion.
+- Legacy/shared CUDA: **43/43** selected regression cases passed, including actual
+  GPU model selection, zero native cache bits and exact `ORT_NOT_IMPLEMENTED`
+  during required-cache construction with a compatible GPU allocator.
+- Final actual-plugin new production/glue coverage: **137/137** executable source
+  locations: callback/resource module **123/123**, factory registration **4/4**
+  and core retaining/owner glue **10/10**. Fresh profiles use
+  `coverage/m08a/complete`. New device functions/lines are **0/0, N/A**, not a
+  claimed 100% device result: only existing CUDA runtime copy APIs are used.
+- Compute Sanitizer memcheck/leak-check: **17/17 device +6/6 native-provider**
+  cases and the documented C++17 CUDA example passed, **zero errors and zero
+  leaked bytes/allocations**. A separate two-case allocation-error-then-inference
+  regression also passed with zero errors/leaks.
+- Genuine C11 consumer compilation and execution passed. The documented C++17
+  CPU example passed normally and with no-exceptions **client** flags. The CUDA
+  example passed normal execution and memcheck through reset, backend-Session
+  release and library unregistration. Its separate caller-owned allocator Session
+  remains alive as required by the existing Session-allocator API; final DLL
+  unload while that caller resource is alive is not claimed.
+- New code passes strict warning-as-error Clang type checking; the callback also
+  passes GCC13 host checking. Formatting/120 columns, whitespace, 93 requirement
+  IDs and 24 macro milestones passed. The CPU library has no CUDA dependency.
+
+The separate plugin tree uses Clang18 host LLVM coverage, NVCC13.1/GCC13, SM80,
+matching CUDA13.1/cuDNN, contrib schemas enabled, and NHWC/Flash/MEA/TRT-fused
+attention disabled. Its final regeneration used the supported
+`--compile-no-warning-as-error` option for pre-existing Clang pool/Cast and mixed
+compiler diagnostics; no unrelated CUDA source was changed to silence them.
+The final cache also records CXX flags
+`-fprofile-instr-generate -fcoverage-mapping -Wno-error=unused-private-field -Wno-error=instantiation-after-specialization`
+and CUDA flag `-Xcompiler=-Wno-error=pragmas`.
+
+Focused native tests use the existing dynamic-provider test infrastructure.
+The DYN AutoEP executable instead registers CUDA through the public Env API,
+avoiding private native test-library dependencies. All three stateful public
+fixtures use the common V2/legacy routing helper. Generic CUDA selection uses
+the public delegate for plugins rather than the old internal-only prototype,
+recognizes preloaded libraries, and requests a supported option when NHWC is
+disabled; CPU fallback is disabled in that CUDA selection proof.
+
+Passing final build/test commands (run tests from each output directory):
+
+```bash
+source .venv/bin/activate
+cmake --build build/state-cpu/RelWithDebInfo --parallel 8 \
+  --target onnxruntime_session_loop_test onnxruntime_autoep_test
+cd build/state-cpu/RelWithDebInfo
+# Passed: native 63/63; AutoEP 139/139.
+./onnxruntime_session_loop_test
+./onnxruntime_autoep_test
+cd ../../..
+
+cmake --compile-no-warning-as-error -S cmake \
+  -B build/state-cuda-plugin-13.1/RelWithDebInfo
+cmake --build build/state-cuda-plugin-13.1/RelWithDebInfo --parallel 16 \
+  --target onnxruntime_session_loop_test onnxruntime_autoep_test
+cd build/state-cuda-plugin-13.1/RelWithDebInfo
+export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_HOME=/datadisks/disk4/bmeswani/cuda/cuda13.1
+export LD_LIBRARY_PATH="$PWD:$CUDA_HOME/lib64:$CUDA_HOME/targets/x86_64-linux/lib"
+mkdir -p coverage/m08a/complete
+LLVM_PROFILE_FILE="$PWD/coverage/m08a/complete/%m-%p.profraw" \
+  ./onnxruntime_session_loop_test --gtest_output=xml:coverage/m08a/complete/native-tests.xml
+# Passed: 111/111, zero skips.
+LLVM_PROFILE_FILE="$PWD/coverage/m08a/complete/%m-%p.profraw" \
+  ./onnxruntime_autoep_test --gtest_output=xml:coverage/m08a/complete/autoep-tests.xml
+# Passed: 174/174, zero skips; no exclusions.
+llvm-profdata merge -sparse coverage/m08a/complete/*.profraw \
+  -o coverage/m08a/complete/m08a.profdata
+# Passed: module-specific llvm-cov line exports intersected against added lines
+# from M07b 03d7476859, including wholly new callback source: 137/137.
+export LLVM_PROFILE_FILE=/dev/null
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --leak-check full --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter='*CudaStateful*'
+# Passed: 17/17, zero errors/leaks.
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --leak-check full --error-exitcode 99 \
+  ./onnxruntime_session_loop_test \
+  --gtest_filter='StatefulCudaProviderBoundaryTest.*:Cuda/StatefulProviderTest.*'
+# Passed: 6/6, zero errors/leaks.
+
+cd ../../state-cuda-baseline-13.1/RelWithDebInfo
+export LD_LIBRARY_PATH="$PWD:$CUDA_HOME/lib64:$CUDA_HOME/targets/x86_64-linux/lib"
+./onnxruntime_autoep_test --gtest_filter='AutoEpSelection.CudaEP:*Stateful*'
+# Passed: 43/43, zero skips.
+```
+
+Export the callback/factory source from `libonnxruntime_providers_cuda.so` and
+the core source from `libonnxruntime.so`. Inspect LLVM mismatch dumps before
+accepting coverage: the initial 588 plugin/174 runtime warnings were exclusively
+zero-hash dormant maps, with no new-function mismatch; final dumps are checked
+again against the passing profiles. Exact logs/report are retained as
+`m08a-*-complete-*`, `m08a-plugin-sanitizer-*`, `m08a-cpu-verified-*`,
+`m08a-legacy-stateful-tests.log` and `m08a-host-coverage-final.txt` in session files.
+M08b remains unimplemented and requires user authorization.
+
+#### M08b - Device-resident loop/chain integration
+
+**Intended outcome:** Programmatic loops/chains use the selected GPU cache
+without cache host round-trips, while stable ordinary outputs and CPU greedy
+sampling retain their existing behavior. Prefill/decode share one GPU backend
+across compatible CUDA-plugin Sessions, including distinct streams.
+**Dependency:** M08a. Separate branch/PR stacked on its verified/published head.
+
+- [ ] B1: Resolve the selected GPU allocator/device from initialized Session
+  resources without hard-coded allocator names or hidden CPU substitution.
+  Remove only the implemented CUDA-plugin cache integration rejection; keep
+  device sampling and legacy/shared native-cache requests unsupported.
+- [ ] B2: Bind managed cache outputs to GPU memory and feed device-resident
+  retained cache values back to Sessions. Process cache callback results without
+  converting their state through CPU snapshots.
+- [ ] B3: Wire selected/component/state/downstream cache tensor surfaces
+  consistently: managed cache values remain GPU-resident under explicit GPU
+  selection, ordinary non-cache outputs stay stable CPU values, and CPU logits/
+  token sampling remain explicitly observable until M09.
+- [ ] B4: Preserve compatible prefill/decode sharing across Sessions and
+  nondefault streams on the same GPU. Validate shared backend/layout/device and
+  cache-port compatibility; reject unsupported heterogeneous/cross-device paths.
+- [ ] B5: Preserve retained GPU views/results across update/reset/release and
+  unregistration; propagate callback, model, cancellation and reset failures
+  through the existing invalidation/C/C++ error rules. Respect caller-owned
+  streams/allocators/OrtEnv obligations.
+- [ ] B6: Add end-to-end native/public C/C++ parity, device/copy/dispatch/staging
+  evidence and stream/lifetime tests. Exercise relevant named-state/component
+  handoff paths, not just one preferred cache binding.
+- [ ] B7: Measure every introduced core/plugin host path and any device code,
+  rerun baselines/sanitizer/examples, document exact limits/evidence, and publish
+  the ready-for-review stacked PR. Only then complete macro M08.
+
+**CPU test plan:**
+
+- Rerun CPU loops/chains/generation/cache and all M07 contracts/registration/
+  lifetime/public API regressions. Verify no CUDA dependency or behavior change
+  for CPU-default execution and no accidental device-greedy advertisement.
+- Verify explicit policy controls still reject unavailable providers/devices.
+  Legacy/shared CUDA remains unsupported for native KV by approved scope.
+
+**CUDA plugin test plan:**
+
+- Run tiny real GPU cache-producing/consuming graphs and prefill/decode fixtures;
+  disable CPU model fallback and assert actual CUDA plugin node assignment.
+- Compare tokens, GPU cache contents and processed lengths with CPU/reference
+  Sessions for zero/one/multiple-token budgets, EOS/iteration exits and reset.
+  CPU sampling must be reported as CPU, not native CUDA.
+- Assert managed cache ports/results/views stay GPU-resident and do not acquire
+  CPU cache copies through internal snapshots or chain retention. Inspect GPU
+  contents only with explicit test copies; ordinary outputs/logits remain CPU.
+- Exercise different compatible plugin Sessions/streams, all relevant loop/chain
+  forms and downstream cache/state handoff. Reject mismatched GPU ids/layouts
+  and unsupported cache-port/heterogeneous configurations.
+- Verify cache-ready completion before next-stage use/observation and safe
+  release after cancellation/model/provider errors. Readback synchronization
+  alone is not proof that the API's completion boundary was correct.
+- Test isolated contexts, old snapshots after capacity growth/reset, retained
+  values after Session release/library unregistration and exactly-once resource
+  destruction using counters/observers where relevant.
+- Run C/C++ consumers/examples, actual default/nondefault-stream cases and
+  relevant integration cases under Compute Sanitizer with zero errors.
+
+**M08b completion gate:** Real GPU-resident cache state and cross-Session
+handoff are proved through native and C/C++, not just standalone callbacks.
+All new core/plugin host lines and any new device lines meet their measured
+coverage gates. CPU/CUDA-plugin correctness, memory/order/lifetime, documentation
+and publication pass; mark M08 complete only after both sub-PRs.
+
+**Validation and execution procedure:**
+
+- Keep TASKS/SCRATCHPAD current; stop for review of material changes to approved
+  Appendix H. No implementation for legacy/shared CUDA is included.
+- Use the existing instrumented CPU tree plus a distinct plugin-enabled CUDA
+  tree. Record compiler, CUDA/NVCC host compiler, CMake flags, GPU architecture
+  and coverage toolchain. Never mix profiles from older artifacts/build variants.
+- Instrument and exercise CUDA host code in the real plugin DLL. Host coverage
+  from a CPU mock cannot establish it. Measure any conditional core integration
+  paths using an appropriate matching build/fixture.
+- Start with smallest relevant selectors; then combine new cases with native/
+  public API/registration/allocator baselines. Confirm nonzero XML counts,
+  actual callbacks/devices/model assignment and no unexpected skips.
+- Preserve the known distinction between the legacy contrib-disabled CUDA
+  baseline and the new plugin configuration. Document unsupported schema/test
+  exclusions explicitly rather than reporting an unfiltered suite as passing.
+- Prefer standard CUDA copy/allocation calls; no new device function means a
+  zero/N/A device-line denominator, not missing coverage. New device code, if
+  any is introduced, must be measured at 100% or blocks completion.
+- Publish independently documented/tested stacked PRs with exact passing
+  commands/counts/coverage and the approved plugin-only limitation; do not merge
+  automatically or mark full M08 complete after only M08a.
 
 ### M09 - Native CUDA greedy sampling
 
@@ -1837,7 +2124,7 @@ negative/error tests. Supporting milestones do not replace final qualification.
 | Plan approval | Approved 2026-10-15 | M01 authorized; later work follows the approved dependencies and gates. |
 | Concrete API/schema contracts | Semantic requirements approved; exact contracts not yet implemented | M01 documents within approved scope; material choices return to user. |
 | CPU/compiler/language coverage readiness | Not probed by running builds/tools during planning | Establish in M01; verify 100% per affected PR. |
-| CUDA device-line coverage | Tooling feasibility unverified | M01 investigates; M08/M09 cannot complete with host-only measurements. |
+| CUDA device-line coverage | M08 copy-primitive approach approved; M09 still requires device instrumentation | Actual GPU dispatch remains mandatory. M08 may report zero/N/A only with no new device functions; any device code added in M08/M09 needs measured 100% coverage. |
 | Local Phi-3/SD files and adapters | Paths/integrations not supplied | Request concrete paths before M14/M15; synthetic fixtures do not replace real demos. |
 | CPU/CUDA model variants | Actual signatures/precision not inspected | Verify compatible local variants; no silent model substitution/download. |
 | Objective-C/iOS validation | Linux is the initial platform; Apple access not provided | M22/M23 need supplemental runner/coverage or remain blocked; no implicit scope reduction. |

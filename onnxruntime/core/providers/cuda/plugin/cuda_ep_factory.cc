@@ -4,9 +4,11 @@
 #include "cuda_ep_factory.h"
 #include "cuda_device_mapping.h"
 #include "cuda_ep.h"
+#include "cuda_stateful.h"
 #include "cuda_plugin_kernels.h"
 #include "core/common/string_utils.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "ep/api.h"
 #include <algorithm>
 #include <cassert>
 #include <cctype>
@@ -797,6 +799,10 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
 
   const OrtLogger& ep_logger = logger ? *logger : factory->default_logger_;
   auto actual_ep = std::make_unique<CudaEp>(*factory, config, ep_logger);
+  if (::onnxruntime::ep::CurrentOrtApiVersion() >= 32) {
+    Ort::ThrowOnError(RegisterCudaStatefulProvider(
+        actual_ep.get(), config.device_id, static_cast<cudaStream_t>(config.user_compute_stream)));
+  }
   *ep = actual_ep.release();
 
   return nullptr;
