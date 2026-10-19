@@ -43,8 +43,8 @@ alpha `0.9` and epsilon `0.1` and requires an explicit `--cpu-offload-experts` v
 | `moe_expert_counter_probability_weight` | Not exposed | `0` | Weight in `[0, 1]` blending binary expert selection with routing probability when updating offload counters. |
 | `moe_expert_swap_epsilon` | `--swap-epsilon` | `0.01` | Non-negative relative popularity margin required for background exchanges. Does not gate on-demand swaps. |
 | `moe_max_in_flight_swaps_per_device` | `--max-in-flight-swaps-per-device` | `4` | Maximum concurrent background exchanges per CUDA device. `0` disables background swaps, not on-demand swaps. |
-| `enable_moe_expert_counting` | Not exposed | `0` | Enable persistent counters without logging or changing placement. Offload maintains counters independently of this flag. |
-| `enable_moe_expert_statistics` | `--counter-log` / `--no-counter-log` | `0` | Emit counter updates at INFO severity; also enables counting. The benchmark raises the logger level with `--counter-log`. |
+| `enable_moe_expert_counting` | Not exposed | `0` | Legacy counting flag; does not enable counters without offload. Offload maintains counters independently of this flag. |
+| `enable_moe_expert_statistics` | `--counter-log` / `--no-counter-log` | `0` | Emit offload counter updates at INFO severity. Disabled without offload. The benchmark raises the logger level with `--counter-log`. |
 | `moe_expert_counter_state_file` | `--state` | Unset | Load saved popularities, alpha, and epsilon instead of starting with zero counters. |
 | `moe_expert_popularity_file` | `--popularity-output` | Unset | Save final popularities and counter parameters when the session is destroyed. |
 

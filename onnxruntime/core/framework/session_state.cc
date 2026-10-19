@@ -1618,7 +1618,10 @@ Status SessionState::InitializeMoeExpertState(std::shared_ptr<KernelPilotMoeExpe
       continue;
     }
     const auto& ep = node.GetExecutionProviderType();
-    ORT_RETURN_IF_NOT(ep == kCpuExecutionProvider || ep == kCudaExecutionProvider,
+    if (ep == kCpuExecutionProvider) {
+      continue;
+    }
+    ORT_RETURN_IF_NOT(ep == kCudaExecutionProvider,
                       "MoE expert counting is not supported by ", ep);
     const auto* shape = node.InputDefs().at(1)->Shape();
     ORT_RETURN_IF_NOT(shape && shape->dim_size() == 2 && shape->dim(1).has_dim_value() &&
@@ -1694,10 +1697,6 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
 
 #if !defined(ORT_MINIMAL_BUILD)
   ORT_RETURN_IF_ERROR(status);
-  const bool enable_moe_expert_counting =
-      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1";
-  const bool enable_moe_expert_statistics =
-      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
   const auto popularity_output_file =
       sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertPopularityFile, "");
   const bool enable_moe_popularity_output = !popularity_output_file.empty();
@@ -1716,8 +1715,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
                         cpu_offload_strategy == "layered",
                     kOrtSessionOptionsConfigMoeCpuOffloadStrategy,
                     " must be adaptive, basic or layered. Received: ", cpu_offload_strategy);
-  if (enable_moe_expert_counting || enable_moe_expert_statistics ||
-      enable_moe_cpu_offload || enable_moe_popularity_output) {
+  if (enable_moe_cpu_offload) {
     double alpha = 0.0;
     double counter_probability_weight = 0.0;
     double swap_epsilon = 0.0;

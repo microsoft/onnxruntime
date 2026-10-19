@@ -1,13 +1,16 @@
 # Session-global MoE expert counters
 
-Enable expert usage counters with the session configuration entry:
+Expert usage counters are enabled only when CPU offload is enabled:
 
 ```text
-session.enable_moe_expert_counting=1
+session.moe_cpu_offload_experts=<positive expert count>
 ```
 
-The default is `0`. Counting alone does not emit logs, enable profiling, change expert placement, or swap weights.
-`session.enable_moe_expert_statistics=1` enables the same counter updates and emits one structured
+Without offload, counters and routing snapshots are not allocated, state files are not loaded, and popularity files
+are not written. Requests for counting, statistics, or popularity output emit a warning and do not enable counters.
+This applies to both CPU and CUDA sessions. Nodes assigned to the CPU execution provider never participate in
+offload counters; CPU experts within a CUDA-offloaded node are still counted by that node.
+`session.enable_moe_expert_statistics=1` emits one structured
 `moe_expert_counters` log after each successful MoE kernel invocation, subject to the per-Run logging limit below.
 Configure the update with:
 
@@ -19,7 +22,7 @@ session.moe_expert_counter_probability_weight=<finite value in [0, 1]> # default
 The selected-expert increment is `1 - alpha`. With CPU offload, the optional probability weight `lambda` changes the
 selected contribution from `1` to `(1 - lambda) + lambda * routing_probability`.
 
-It supports the CPU and built-in CUDA `MoE` and `QMoE` kernels. Minimal builds, the CUDA plugin EP, and CUDA graph
+It supports built-in CUDA `MoE` and `QMoE` kernels with CPU offload. Minimal builds, the CUDA plugin EP, and CUDA graph
 capture are not supported when counting, counter-update logging, or CPU offload is enabled.
 Minimal builds omit the counter state, its initialization/run bookkeeping, and the CUDA routing-snapshot collector
 sources. They reject counter configuration except for explicitly disabling counting.
@@ -84,7 +87,8 @@ python tools/python/qmoe_expert_activation_correlations.py counter.log \
 ```
 
 `qmoe_prompt_runner.py --until-eos` omits its usual artificial new-token limit and lets generation stop on EOS. The
-model context length remains the unavoidable hard limit.
+model context length remains the unavoidable hard limit. Collecting counter traces with this runner requires
+`--cpu-offload-experts` to be positive; a run without offload produces no counter records.
 
 The CPU-offload strategy is selected with `session.moe_cpu_offload_strategy=adaptive|basic|layered` (default `adaptive`).
 The QMoE-only `basic` strategy fills the chosen nodes' GPU expert slots, then places the remaining
@@ -144,8 +148,7 @@ counter-retrieval API.
 it carries no kernel-specific logic itself. `KernelPilotMoeExpertSelection`, defined in
 `core/framework/kernel_pilot_moe_expert_selection.h`,
 collects and deduplicates local expert IDs for one invocation, with reusable selection storage and no counter-update
-logic. CPU kernels feed it
-their host routing IDs directly through `pilot->Moe()`. The CUDA adapter, `KernelPilotMoeExpertSelectionCuda`, owns only the
+logic. CPU kernels do not collect expert usage. The CUDA adapter, `KernelPilotMoeExpertSelectionCuda`, owns only the
 device-transfer resources and feeds completed host snapshots into the `KernelPilotMoeExpertSelection` obtained from the context.
 Both implement `IKernelPilotMoeExpertSelection`; the CUDA implementation delegates the shared selection API to the
 session-owned selection after attaching it for an invocation.
@@ -155,7 +158,7 @@ For each MoE or QMoE invocation, the events are:
 
 1. `Compute()` obtains the kernel's session-owned `KernelPilot` through `OpKernelContext::GetKernelPilot()`.
 2. `BeginInvocation(expert_count)` clears the previous transient selection while retaining its allocated storage.
-3. The routing stage computes local expert IDs. CPU kernels call `Collect()` with host IDs. CUDA kernels enqueue a
+3. The routing stage computes local expert IDs. CUDA kernels enqueue a
    device-to-host copy and completion event through `KernelPilotMoeExpertSelectionCuda`.
 4. CUDA submits the expert work, then `Consume()` waits only for the earlier copy event and calls `Collect()` while
    later expert work may remain in flight.

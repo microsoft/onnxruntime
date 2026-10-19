@@ -4227,6 +4227,7 @@ static std::vector<nlohmann::json> ParseMoeCounterLogs(const std::string& logs) 
   return events;
 }
 
+#ifdef USE_CUDA
 static nlohmann::json ExpectedSelectedExperts(
     gsl::span<const int> expert_ids, gsl::span<const std::string_view> devices) {
   ORT_ENFORCE(expert_ids.size() == devices.size());
@@ -4244,6 +4245,7 @@ static nlohmann::json ExpectedSelectedExperts(
   }
   return result;
 }
+#endif
 
 static std::vector<nlohmann::json> RunMoECpuLoggingTest(
     bool enable_moe_statistics,
@@ -4302,19 +4304,10 @@ static std::vector<nlohmann::json> RunMoECpuLoggingTest(
   return ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
 }
 
-TEST(MoETest, MoECpuLogHasCounterUpdateSchema) {
+TEST(MoETest, MoECpuDoesNotLogCountersWithoutOffload) {
   const auto routing_events = RunMoECpuLoggingTest(
       true, {1, 2, 4}, OpTester::ExpectResult::kExpectSuccess, "", 2);
-  ASSERT_EQ(routing_events.size(), 1U);
-  const auto& event = routing_events[0];
-  EXPECT_EQ(event["request_id"], "{routing \"request\"}");
-  const int expert_ids[] = {0, 1};
-  const std::string_view devices[] = {"CPU", "CPU"};
-  EXPECT_EQ(event["selected_experts"], ExpectedSelectedExperts(expert_ids, devices));
-  EXPECT_FALSE(event.contains("counters"));
-  EXPECT_TRUE(event.contains("node_index"));
-  EXPECT_TRUE(event.contains("node_name"));
-  EXPECT_EQ(event["node_type"], "MoE");
+  EXPECT_TRUE(routing_events.empty());
 }
 
 TEST(MoETest, MoECpuRoutingLogDisabledHasNoDecision) {
@@ -4375,17 +4368,10 @@ static std::vector<nlohmann::json> RunQMoECpuLoggingTest(
   return ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
 }
 
-TEST(MoETest, QMoECpuLogHasCounterUpdateSchema) {
+TEST(MoETest, QMoECpuDoesNotLogCountersWithoutOffload) {
   const auto routing_events = RunQMoECpuLoggingTest(
       {1, 2, 32}, OpTester::ExpectResult::kExpectSuccess, "", 2);
-  ASSERT_EQ(routing_events.size(), 1U);
-  const auto& event = routing_events[0];
-  EXPECT_EQ(event["request_id"], "cpu qmoe request");
-  const int expert_ids[] = {1, 0};
-  const std::string_view devices[] = {"CPU", "CPU"};
-  EXPECT_EQ(event["selected_experts"], ExpectedSelectedExperts(expert_ids, devices));
-  EXPECT_FALSE(event.contains("counters"));
-  EXPECT_EQ(event["node_type"], "QMoE");
+  EXPECT_TRUE(routing_events.empty());
 }
 #endif
 
@@ -4418,7 +4404,7 @@ static void ConfigureCudaMoeRoutingTester(
                           std::vector<float>(num_rows * hidden_size, 0.0f));
 }
 
-TEST(MoETest, MoECudaLogHasCounterUpdateSchema) {
+TEST(MoETest, MoECudaDoesNotLogCountersWithoutOffload) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
   }
@@ -4443,14 +4429,7 @@ TEST(MoETest, MoECudaLogHasCounterUpdateSchema) {
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &execution_providers);
   const auto routing_events = ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
 
-  ASSERT_EQ(routing_events.size(), 1U);
-  const auto& event = routing_events[0];
-  EXPECT_EQ(event["request_id"], "cuda request");
-  const int expert_ids[] = {0, 1};
-  const std::string_view devices[] = {"CUDA", "CUDA"};
-  EXPECT_EQ(event["selected_experts"], ExpectedSelectedExperts(expert_ids, devices));
-  EXPECT_FALSE(event.contains("counters"));
-  EXPECT_EQ(event["node_type"], "MoE");
+  EXPECT_TRUE(routing_events.empty());
 }
 
 template <typename T>
@@ -4548,6 +4527,10 @@ void RunMoECudaStaticCpuOffloadRunsDisabledMixedAndAllCpuExpertsAndCountsUsage()
     tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {},
                &run_options, &execution_providers);
     const auto routing_events = ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
+    if (cpu_offload_expert_count <= 0) {
+      EXPECT_TRUE(routing_events.empty());
+      continue;
+    }
     ASSERT_EQ(routing_events.size(), 1U);
     const int expert_ids[] = {0, 1};
     const std::string_view all_cuda[] = {"CUDA", "CUDA"};
@@ -5547,7 +5530,7 @@ TEST(MoETest, MoECudaFp16StaticCpuOffloadRejectsInvalidWeightRank) {
              nullptr, &execution_providers);
 }
 
-TEST(MoETest, QMoECudaTiledLogHasOneCounterUpdate) {
+TEST(MoETest, QMoECudaTiledDoesNotLogCountersWithoutOffload) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
   }
@@ -5604,14 +5587,7 @@ TEST(MoETest, QMoECudaTiledLogHasOneCounterUpdate) {
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &execution_providers);
   const auto routing_events = ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
 
-  ASSERT_EQ(routing_events.size(), 1U);
-  const auto& event = routing_events[0];
-  EXPECT_EQ(event["request_id"], "qmoe tiled request");
-  const int expert_ids[] = {0, 1};
-  const std::string_view devices[] = {"CUDA", "CUDA"};
-  EXPECT_EQ(event["selected_experts"], ExpectedSelectedExperts(expert_ids, devices));
-  EXPECT_FALSE(event.contains("counters"));
-  EXPECT_EQ(event["node_type"], "QMoE");
+  EXPECT_TRUE(routing_events.empty());
 }
 
 TEST(MoETest, MoeStatisticsRejectsCudaGraphCapture) {
@@ -5632,10 +5608,12 @@ TEST(MoETest, MoeStatisticsRejectsCudaGraphCapture) {
   SessionOptions session_options;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigMoeCpuOffloadExperts, "1"));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(execution_provider));
   tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
-             "is not supported when graph capture is enabled", {}, nullptr, &execution_providers);
+             "not supported when graph capture is enabled", {}, nullptr, &execution_providers);
 }
 
 TEST(MoETest, MoeStatisticsRejectsCudaPlugin) {
@@ -5651,13 +5629,15 @@ TEST(MoETest, MoeStatisticsRejectsCudaPlugin) {
   SessionOptions session_options;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigMoeCpuOffloadExperts, "1"));
   OpTester tester("MoE", 1, onnxruntime::kMSDomain);
   ConfigureCudaMoeRoutingTester(tester);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(execution_provider));
   tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
-             "is not supported by the CUDA plugin execution provider", {}, nullptr, &execution_providers);
+             "not supported by the CUDA plugin execution provider", {}, nullptr, &execution_providers);
 }
 #endif
 #endif

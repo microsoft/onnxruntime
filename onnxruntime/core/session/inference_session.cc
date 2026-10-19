@@ -2865,6 +2865,11 @@ common::Status InferenceSession::Initialize() {
                     kOrtSessionOptionsConfigMoeExpertPopularityFile, " must not be empty.");
     }
     const bool enable_moe_popularity_output = moe_popularity_file.has_value();
+    if (!enable_moe_cpu_offload &&
+        (enable_moe_expert_counting || enable_moe_expert_statistics || enable_moe_popularity_output)) {
+      LOGS(*session_logger_, WARNING)
+          << "MoE expert counting, statistics and popularity output are disabled because CPU offload is not enabled.";
+    }
     const auto moe_counter_probability_weight =
         session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight);
     if (moe_counter_probability_weight) {
@@ -2917,8 +2922,14 @@ common::Status InferenceSession::Initialize() {
                         !enable_moe_expert_counting && !enable_moe_expert_statistics &&
                         !enable_moe_cpu_offload && !enable_moe_popularity_output,
                     key, " requires expert counting, statistics logging, popularity output, or MoE CPU offload.");
+      if (const auto value = session_options_.config_options.GetConfigEntry(key)) {
+        double alpha = -1.0;
+        ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(*value, alpha) &&
+                              std::isfinite(alpha) && alpha >= 0.0 && alpha <= 1.0,
+                          key, " must be finite and in [0, 1]. Received: \"", *value, "\".");
+      }
     }
-    if (enable_moe_expert_counting || enable_moe_cpu_offload || enable_moe_popularity_output) {
+    if (enable_moe_cpu_offload) {
       for (const auto& execution_provider : execution_providers_) {
         ORT_RETURN_IF(execution_provider->Type() == kCudaExecutionProvider &&
                           execution_provider->GetOrtEp() != nullptr,
@@ -2927,7 +2938,7 @@ common::Status InferenceSession::Initialize() {
                       "MoE expert counting and CPU offload are not supported when graph capture is enabled.");
       }
     }
-    if (enable_moe_expert_statistics) {
+    if (enable_moe_cpu_offload && enable_moe_expert_statistics) {
       for (const auto& execution_provider : execution_providers_) {
         if (execution_provider->Type() == kCudaExecutionProvider &&
             execution_provider->GetOrtEp() != nullptr) {

@@ -20,13 +20,14 @@
 // If the config value is set to "1" then the prepacking is disabled, otherwise prepacking is enabled (default value)
 static const char* const kOrtSessionOptionsConfigDisablePrepacking = "session.disable_prepacking";
 
-// Log MoE expert-counter updates at INFO severity. This enables counter updates even when expert counting is disabled.
+// Log MoE expert-counter updates at INFO severity during CPU offload.
 // At most 1024 updates are logged per Run; further updates emit one WARNING truncation marker but still count.
 // "0": disable (default); "1": enable.
 static const char* const kOrtSessionOptionsConfigEnableMoeExpertStatistics =
     "session.enable_moe_expert_statistics";
 
-// Persist per-expert usage counters across Run() calls, without changing placement.
+// Persist per-expert usage counters across Run() calls during CPU offload.
+// Counting, statistics and popularity output are disabled when session.moe_cpu_offload_experts is zero.
 // "0": disable (default); "1": enable. Counting alone does not emit statistics logs.
 // Overlapping Run() calls on the same session are rejected while enabled.
 static const char* const kOrtSessionOptionsConfigEnableMoeExpertCounting =
@@ -36,7 +37,7 @@ static const char* const kOrtSessionOptionsConfigEnableMoeExpertCounting =
 // Requires expert counting, statistics logging, popularity output, or CPU offload to be enabled.
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterStateFile =
     "session.moe_expert_counter_state_file";
-// Optional UTF-8 JSON output file for final per-expert popularity counters.
+// Optional UTF-8 JSON output file for final per-expert popularity counters during CPU offload.
 // The file is written when the session is destroyed and includes the configured alpha and epsilon values.
 static const char* const kOrtSessionOptionsConfigMoeExpertPopularityFile =
     "session.moe_expert_popularity_file";

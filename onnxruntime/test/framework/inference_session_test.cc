@@ -1247,7 +1247,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 }
 
 #ifndef __wasm__
-TEST(InferenceSessionTests, MoeExpertStatisticsLoadsStateFileWithNativePath) {
+TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotLoadStateWithoutOffload) {
   for (const auto* state_file : {"moe_expert_state_ascii.json", "moe_expert_state_\xE6\xB5\x8B\xE8\xAF\x95.json"}) {
     SCOPED_TRACE(state_file);
     const auto state_path = std::filesystem::path(ToPathString(state_file));
@@ -1268,7 +1268,7 @@ TEST(InferenceSessionTests, MoeExpertStatisticsLoadsStateFileWithNativePath) {
     InferenceSession session{session_options, GetEnvironment()};
     ASSERT_STATUS_OK(session.Load(MODEL_URI));
     ASSERT_STATUS_OK(session.Initialize());
-    ASSERT_NE(session.GetSessionState().GetMoeExpertState(), nullptr);
+    ASSERT_EQ(session.GetSessionState().GetMoeExpertState(), nullptr);
   }
 }
 #endif
@@ -1378,7 +1378,7 @@ TEST(InferenceSessionTests, MoeCountingRejectsConcurrentRuns) {
   ASSERT_STATUS_OK(state.EndRun());
 }
 
-TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotRequireSessionProfiling) {
+TEST(InferenceSessionTests, MoeExpertStatisticsWithoutOffloadDoesNotCreateCounters) {
   SessionOptions session_options;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
@@ -1386,10 +1386,11 @@ TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotRequireSessionProfiling) {
   InferenceSession session{session_options, GetEnvironment()};
   ASSERT_STATUS_OK(session.Load(MODEL_URI));
   ASSERT_STATUS_OK(session.Initialize());
+  EXPECT_EQ(session.GetSessionState().GetMoeExpertState(), nullptr);
 }
 
 #ifdef ENABLE_TRAINING
-TEST(InferenceSessionTests, MoeExpertStatisticsRejectsDeprecatedPartialRun) {
+TEST(InferenceSessionTests, MoeExpertStatisticsWithoutOffloadHasNoPartialRunCounters) {
   SessionOptions session_options;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
@@ -1397,20 +1398,7 @@ TEST(InferenceSessionTests, MoeExpertStatisticsRejectsDeprecatedPartialRun) {
   InferenceSession session{session_options, GetEnvironment()};
   ASSERT_STATUS_OK(session.Load(MODEL_URI));
   ASSERT_STATUS_OK(session.Initialize());
-  ASSERT_NE(session.GetSessionState().GetMoeExpertState(), nullptr);
-
-  RunOptions run_options;
-  std::vector<OrtValue> feeds;
-  std::vector<OrtValue> fetches;
-  PartialGraphExecutionState state;
-  FeedsFetchesManager feeds_fetches_manager{FeedsFetchesInfo{}};
-  const Status status = session.PartialRun(
-      run_options, feeds, fetches, state, feeds_fetches_manager, nullptr, 0);
-
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(
-                                         "MoE expert counting and statistics are not supported by the deprecated "
-                                         "PartialRun path."));
+  EXPECT_EQ(session.GetSessionState().GetMoeExpertState(), nullptr);
 }
 #endif
 
@@ -1431,7 +1419,7 @@ class CudaPluginTestExecutionProvider final : public IExecutionProvider {
   }
 };
 
-TEST(InferenceSessionTests, MoeExpertStatisticsRejectsCudaPluginExecutionProvider) {
+TEST(InferenceSessionTests, MoeExpertStatisticsWithoutOffloadAllowsCudaPluginExecutionProvider) {
   SessionOptions session_options;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
@@ -1440,10 +1428,8 @@ TEST(InferenceSessionTests, MoeExpertStatisticsRejectsCudaPluginExecutionProvide
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(
       std::make_unique<CudaPluginTestExecutionProvider>()));
   ASSERT_STATUS_OK(session.Load(MODEL_URI));
-  const Status status = session.Initialize();
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(),
-              testing::HasSubstr("not supported by the CUDA plugin execution provider"));
+  ASSERT_STATUS_OK(session.Initialize());
+  EXPECT_EQ(session.GetSessionState().GetMoeExpertState(), nullptr);
 }
 
 TEST(InferenceSessionTests, MoeExpertStatisticsRequiresStrictBoolean) {
@@ -1458,7 +1444,7 @@ TEST(InferenceSessionTests, MoeExpertStatisticsRequiresStrictBoolean) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must be set to either \"0\" or \"1\""));
 }
 
-TEST(InferenceSessionTests, MoeExpertCountingRejectsCudaPluginExecutionProvider) {
+TEST(InferenceSessionTests, MoeExpertCountingWithoutOffloadAllowsCudaPluginExecutionProvider) {
   SessionOptions session_options;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsConfigEnableMoeExpertCounting, "1"));
@@ -1467,10 +1453,8 @@ TEST(InferenceSessionTests, MoeExpertCountingRejectsCudaPluginExecutionProvider)
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(
       std::make_unique<CudaPluginTestExecutionProvider>()));
   ASSERT_STATUS_OK(session.Load(MODEL_URI));
-  const Status status = session.Initialize();
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(),
-              testing::HasSubstr("not supported by the CUDA plugin execution provider"));
+  ASSERT_STATUS_OK(session.Initialize());
+  EXPECT_EQ(session.GetSessionState().GetMoeExpertState(), nullptr);
 }
 
 // See issue #27732 for details on why this is disabled.

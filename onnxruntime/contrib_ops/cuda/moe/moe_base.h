@@ -33,16 +33,6 @@ namespace cuda {
 class MoEBase {
  protected:
   MoEBase(const OpKernelInfo& op_kernel_info, const cudaDeviceProp& device_prop) {
-#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-    const auto& options = op_kernel_info.GetConfigOptions();
-    const bool enable_moe_expert_tracking =
-        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1" ||
-        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1" ||
-        !options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertPopularityFile, "").empty();
-    if (enable_moe_expert_tracking) {
-      routing_snapshot_.emplace(op_kernel_info.GetAllocator(OrtMemTypeCPU));
-    }
-#endif
     ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_).IsOK());
 
     using onnxruntime::llm::kernels::cutlass_kernels::ActivationType;

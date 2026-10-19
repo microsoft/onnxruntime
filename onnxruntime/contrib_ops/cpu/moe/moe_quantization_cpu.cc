@@ -1261,11 +1261,6 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   const int64_t hidden_size = moe_params.hidden_size;
   const int64_t inter_size = moe_params.inter_size;
   const int64_t num_experts = moe_params.num_experts;
-#if !defined(ORT_MINIMAL_BUILD)
-  const size_t routing_element_count = enable_moe_expert_tracking_
-                                           ? static_cast<size_t>(SafeInt<size_t>(num_tokens) * SafeInt<size_t>(k_))
-                                           : 0;
-#endif
 
   ORT_RETURN_IF_NOT(k_ <= num_experts,
                     "QMoE attribute 'k' must be <= num_experts; got k=", k_,
@@ -2525,16 +2520,6 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   } else {
     accumulate(output->template MutableData<T>());
   }
-
-#if !defined(ORT_MINIMAL_BUILD)
-  if (enable_moe_expert_tracking_) {
-    auto* pilot = context->GetKernelPilot();
-    ORT_RETURN_IF_NOT(pilot, "MoE expert tracking is enabled but its collector is unavailable.");
-    auto& usage = pilot->Moe();
-    ORT_RETURN_IF_ERROR(usage.BeginInvocation(static_cast<size_t>(num_experts)));
-    ORT_RETURN_IF_ERROR(usage.Collect(gsl::make_span(route_expert, routing_element_count)));
-  }
-#endif
 
   return Status::OK();
 }
