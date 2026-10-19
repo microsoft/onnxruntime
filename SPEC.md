@@ -1413,8 +1413,8 @@ with only its version number changed.
 **Status:** Approved by the user on 2026-10-18 without changes. Scope is CUDA
 plugin EP only, CUDA copy primitives where sufficient, GPU-resident cache
 views/results, and an M08a/M08b split, with no additional specification input.
-The detailed execution plan is approved without changes. M08a implementation is
-authorized; M08b requires separate authorization after M08a is complete.
+The detailed execution plan is approved without changes. M08a is complete in
+PR #20. The user authorized the next milestone, M08b, on 2026-10-19.
 
 ### H.1 Scope and preserved behavior
 
@@ -1550,7 +1550,7 @@ authorized; M08b requires separate authorization after M08a is complete.
 
 ### H.8 Standalone CUDA-plugin SDK example (M08a)
 
-M08a enables standalone caches, not device-cache loop/chain integration (M08b).
+M08a enables standalone caches; M08b adds device-cache loop/chain integration.
 The plugin uses checked, compact per-row CUDA copies, avoiding 2D-copy pitch
 limits without new device functions. Operations finish on the default or
 caller-configured stream before returning; external inputs must already be
@@ -1632,3 +1632,30 @@ int main(int argc, char** argv) {
   return retained.length == 2 && output == expected ? 0 : 4;
 }
 ```
+
+### H.9 Device-resident loop/chain integration (M08b)
+
+- Select `CUDAExecutionProvider` with GPU memory and an explicit compatible
+  device (or the provider's unambiguous device). CPU remains the default.
+- Resolve cache allocation from the initialized Session's actual GPU allocator,
+  including chains whose first component is CPU-only. Verify all declared cache
+  producers/consumers execute on the selected GPU; reject mismatches instead of
+  inserting an implicit cache transfer.
+- Bind managed cache outputs directly to that GPU and retain their allocator/
+  provider lease. Ordinary outputs and logits keep CPU snapshots; CPU sampling
+  is reported separately. No GPU sampling is added.
+- Follow declared managed-cache output, component-output and named-state edges.
+  A state output writing a shared cache slot is device-bound even when its
+  component has no managed past/present pair. Feedback and finite loop inputs
+  routed from device caches keep their device values and validate placement.
+  Arbitrary external/initial-state chain inputs retain the host-accessible
+  contract; this milestone does not infer a cache from a tensor's shape or
+  silently treat unrelated device inputs as a declared cache edge.
+- Synchronous Run cleans up/synchronizes its actual execution streams before
+  publishing values. The explicit device-cache path does not additionally call
+  IOBinding's provider-wide Sync, which would wait on unrelated CUDA work.
+  Independent caller streams/allocators keep their ordinary readiness/lifetime
+  obligations.
+- Retained GPU result/state tensors survive execution/reset and originating
+  Session release. Definitions/executions still require their caller Sessions
+  to remain alive. GPU tensor-data getters never perform implicit readback.

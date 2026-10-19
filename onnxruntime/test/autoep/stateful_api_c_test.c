@@ -154,4 +154,57 @@ cleanup:
   return code;
 }
 
+int StatefulApiCGpuLoopIntegrationTest(OrtSession* session, const OrtValue* tokens,
+                                       OrtStatefulStepResult** retained_out) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  const OrtStatefulApi* stateful = api->GetStatefulApi();
+  OrtStatus* status = NULL;
+  OrtSessionLoopOptions* options = NULL;
+  OrtSessionLoop* loop = NULL;
+  OrtStatefulExecution* execution = NULL;
+  OrtStatefulStepResult* result = NULL;
+  int code = 0;
+  const int64_t shape[] = {1, 1, 0, 1};
+  const OrtStatefulKVCacheBinding cache = {
+      {"key", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, shape, 4, 2, 0},
+      "past_key",
+      "present_key",
+      ORT_KV_CACHE_SHARE};
+  const char* finite[] = {"token"};
+  const char* output[] = {"present_key"};
+  const OrtStatefulExitCondition exit = {ORT_STATEFUL_END_OF_INPUTS, 0, NULL, NULL, 0};
+  const OrtStatefulProviderSelection gpu = {
+      sizeof(gpu), ORT_STATEFUL_PROVIDER_REQUIRE, "CUDAExecutionProvider", OrtMemoryInfoDeviceType_GPU, 0};
+  const OrtStatefulNamedValue token = {"token", tokens};
+  const OrtStatefulInputBatch batch = {&token, 1};
+  OrtStatefulLoopConfig config = {0};
+  OrtStatefulInputs inputs = {0};
+  config.struct_size = sizeof(config);
+  config.finite_input_names = finite;
+  config.num_finite_inputs = 1;
+  config.output_names = output;
+  config.num_outputs = 1;
+  config.exit_conditions = &exit;
+  config.num_exit_conditions = 1;
+  config.kv_caches = &cache;
+  config.num_kv_caches = 1;
+  inputs.struct_size = sizeof(inputs);
+  inputs.batches = &batch;
+  inputs.num_batches = 1;
+  CHECK(stateful->CreateSessionLoopOptions(&config, &options));
+  CHECK(stateful->SessionLoopOptionsSetProvider(options, ORT_STATEFUL_FEATURE_CACHE, &gpu));
+  CHECK(stateful->CreateSessionLoop(session, options, &loop));
+  CHECK(stateful->CreateLoopExecution(loop, &inputs, &execution));
+  CHECK(stateful->StatefulExecutionRun(execution, &result));
+  CHECK(stateful->StatefulExecutionReset(execution));
+  *retained_out = result;
+  result = NULL;
+cleanup:
+  stateful->ReleaseStatefulStepResult(result);
+  stateful->ReleaseStatefulExecution(execution);
+  stateful->ReleaseSessionLoop(loop);
+  stateful->ReleaseSessionLoopOptions(options);
+  return code;
+}
+
 #undef CHECK

@@ -125,6 +125,44 @@ Status SessionChain::Initialize() {
     sessions_.push_back(session);
   }
 
+  if (cache_provider_ && cache_provider_->Selection().device_type != OrtMemoryInfoDeviceType_CPU) {
+    InlinedVector<InlinedHashSet<std::string>> device_outputs;
+    for (size_t i = 0; i < loops_.size(); ++i) {
+      auto outputs = loops_[i]->device_cache_outputs_;
+      for (const auto& binding : options_.components[i].state_outputs) {
+        if (std::any_of(cache_specs_.begin(), cache_specs_.end(),
+                        [&](const auto& spec) { return spec.name == binding.state_name; })) {
+          outputs.insert(binding.output_name);
+        }
+      }
+      device_outputs.push_back(std::move(outputs));
+    }
+    InlinedHashSet<std::string> device_state;
+    for (const auto& spec : cache_specs_) device_state.insert(spec.name);
+    for (size_t i = 0; i < loops_.size(); ++i) {
+      auto inputs = loops_[i]->device_cache_inputs_;
+      for (const auto& binding : options_.components[i].inputs) {
+        const auto& source = binding.source;
+        if ((source.kind == ChainSourceKind::State && device_state.contains(source.name)) ||
+            (source.kind == ChainSourceKind::ComponentOutput && source.component_index < i &&
+             device_outputs[source.component_index].contains(source.name))) {
+          inputs.insert(binding.input_name);
+        }
+      }
+      for (const auto& binding : options_.components[i].state_outputs) {
+        if (device_outputs[i].contains(binding.output_name)) {
+          device_state.insert(binding.state_name);
+        } else {
+          device_state.erase(binding.state_name);
+        }
+      }
+      if (!inputs.empty() || !device_outputs[i].empty()) {
+        ORT_RETURN_IF_ERROR(loops_[i]->WithDeviceCachePorts(
+            *cache_provider_, std::move(inputs), device_outputs[i], loops_[i]));
+      }
+    }
+  }
+
   InlinedHashMap<std::string, const NodeArg*> state_types;
   for (size_t index = 0; index < options_.components.size(); ++index) {
     const auto& component = options_.components[index];
@@ -289,8 +327,11 @@ Status SessionChain::CreateExecution(SessionChainInputs inputs, std::unique_ptr<
     std::unique_ptr<IOBinding> binding;
     ORT_RETURN_IF_ERROR(sessions_[0]->NewIOBinding(&binding));
     std::unique_ptr<KVCacheManager> manager;
-    ORT_RETURN_IF_ERROR(KVCacheManager::Create(cache_specs_, binding->GetCPUAllocator(kCpuExecutionProvider),
-                                               manager, *cache_provider_));
+    const auto cache_loop = std::find_if(loops_.begin(), loops_.end(),
+                                         [](const auto& loop) { return !loop->Options().kv_caches.empty(); });
+    auto allocator = (*cache_loop)->device_cache_allocator_;
+    if (!allocator) allocator = binding->GetCPUAllocator(kCpuExecutionProvider);
+    ORT_RETURN_IF_ERROR(KVCacheManager::Create(cache_specs_, std::move(allocator), manager, *cache_provider_));
     cache = std::move(manager);
   }
   auto execution = std::unique_ptr<SessionChainExecution>(

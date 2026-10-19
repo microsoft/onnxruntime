@@ -706,3 +706,49 @@ Compressed project memory. This is not the execution plan.
   published ready for review as PR #20, stacked on #19:
   https://github.com/onnxruntime/ort-state/pull/20
   M08b has NOT started and still needs user authorization. No PRs merged.
+
+## M08b
+
+- User approved M08a and authorized the next milestone on 2026-10-19.
+  Existing approved Appendix H/TASKS B1-B7 apply. Created
+  state/m08b-cuda-plugin-cache-integration from M08a6959554e55.
+- Scope remains CUDA plugin only; GPU sampling stays M09. Implement all
+  managed/selected/component/named-state cache surfaces, retain GPU results and
+  local Session allocators/provider leases. CPU ordinary outputs stay stable.
+- Existing IOBinding SynchronizeInputs/Outputs calls provider Sync(), which is
+  CUDA device-wide. Device-cache integration must rely instead on Run's synchronous
+  task-stream cleanup; caller external inputs must already be ready.
+- Core implementation tracks private per-loop device-cache input/output names,
+  validates actual SessionState port devices and retains output values with local
+  provider/allocator leases. Chain performs a second, forward-only cache-edge
+  pass including named state/cache writers without managed port pairs.
+- Arbitrary external/initial-state chain feeds remain host-only; GPU routing is
+  inferred ONLY from declared internal cache/state/component edges, not dtype/shape.
+  No public configuration fields or GPU kernels are added.
+- New native/public tests cover Share/Copy/Append, stable device snapshots,
+  actual bound ports, CPU-only leading stage, four Session/Loop combinations,
+  component+named-state cache aliases, finite/feedback GPU inputs, generation
+  budgets/EOS against CPU, cross-Session user streams, cancellation/model errors,
+  C11 lifetimes/unregistration and unrelated-stream nonblocking proof.
+- Initial complete GPU tests116 native+179 unfiltered AutoEP passed; native5
+  +public5 new integration cases all pass. Runtime coverage129/129 plus new
+  model helper12/12; final matching-artifact profiles are being regenerated.
+- Sanitizer public integration+standalone22 cases pass zero errors/leaks;
+  native memory4 pass zero errors/leaks. The unrelated-stream wall-clock
+  concurrency assertion times out only under memcheck, inside model Run.
+  It passes normal execution ten consecutive times with an unrelated stream
+  held blocked. Same-thread warmup, device-only feeds and prepared outputs were
+  tested; a CUDA-only memset calibration passes under memcheck, so do NOT claim
+  universal sanitizer serialization. Document the exact scoped limitation:
+  native timing test remains in full normal suites/coverage, excluded only from
+  memcheck's memory-safety selector. No memory error is suppressed.
+- Corrected a test-only malformed NodeInfo injection: adding conflicting device
+  usage via the real AddInput mapping API rejects it before our guard and
+  dereferences a supplied null node for its error message. Final test instead
+  temporarily changes/restores the existing planned input device.
+- FINAL M08b artifacts: CPU63/139, legacy110/43 and plugin116/179 all passed,
+  zero skips in the reported suites. Runtime coverage130/130 (loop88+chain42),
+  helper12/12; no devicefunctions0/N/A. Final profiles coverage/m08b/complete.
+  GPU cache-only diagnostic correctly retains unavailable GPU logits wording.
+  Full GPU suites and explicit native-memory4/public22 memcheck selectors are
+  separate from the documented instrumented timing limitation. No M09 code.

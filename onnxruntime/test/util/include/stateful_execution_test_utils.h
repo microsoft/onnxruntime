@@ -135,6 +135,19 @@ inline ONNX_NAMESPACE::ModelProto MakeDenoiserModel() {
   return model;
 }
 
+inline ONNX_NAMESPACE::ModelProto MakeDynamicDecoderModel() {
+  auto model = MakeDecoderModel();
+  auto& graph = *model.mutable_graph();
+  graph.mutable_input(0)->mutable_type()->mutable_tensor_type()->clear_shape();
+  graph.mutable_output(0)->mutable_type()->mutable_tensor_type()->clear_shape();
+  SetTensorType(*graph.mutable_input(0), "token", ONNX_NAMESPACE::TensorProto_DataType_INT64, {1, -1});
+  SetTensorType(*graph.mutable_output(0), "logits", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, -1, 4});
+  for (auto& initializer : *graph.mutable_initializer()) {
+    if (initializer.name() == "key_shape") initializer.set_int64_data(2, -1);
+  }
+  return model;
+}
+
 }  // namespace stateful
 }  // namespace test
 }  // namespace onnxruntime
