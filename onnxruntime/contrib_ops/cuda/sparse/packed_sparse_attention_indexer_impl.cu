@@ -59,6 +59,7 @@ constexpr int kDistributedTopKMinBlocks = 2048;
 constexpr int kHierarchicalTileBlocks = 8;
 constexpr int kHierarchicalTopKTileBlocks = 32;
 constexpr int kHierarchicalScoreThreads = 1024;
+constexpr int kHierarchicalTileScoreThreads = 512;
 constexpr int kHierarchicalScoreMaxBlocksPerRow = 128;
 constexpr int kHierarchicalMergeThreads = 256;
 constexpr int kQwenHeadSize = 128;
@@ -129,13 +130,13 @@ __global__ void ElementwiseCopyKernel(const T* src, T* dst, int64_t count) {
 // leading RoPE -> append into fixed-capacity key_state) and publishes the raw trailing buffer.
 // Reads only past_kv_buffer / key (never present_kv_buffer / present_key_state), so it is correct
 // whether or not the present/past tensors are the same aliased allocation.
-template <typename T>
+template <typename T, typename TState>
 __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, const T* cos_cache,
                                      const T* sin_cache, const int32_t* cumulative_sequence_lengths,
                                      const int32_t* past_sequence_lengths, const T* past_kv_buffer,
                                      const int32_t* past_state_lengths, const int32_t* state_update_capture_count,
                                      bool state_update_active,
-                                     T* present_key_state, T* present_kv_buffer,
+                                     TState* present_key_state, T* present_kv_buffer,
                                      int32_t* present_state_lengths, T* state_update, int32_t* overflow_flags,
                                      PackedSparseAttentionIndexerParams params) {
   extern __shared__ float shared[];
@@ -185,6 +186,36 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
       present_state_lengths[b * 2 + psai::kKeyStateLength] = old_key_len + new_block_count;
       present_state_lengths[b * 2 + psai::kBufferLength] = new_buf_len;
       overflow_flags[b] = rejected ? 1 : 0;
+    }
+
+    if (params.mid_kv_buffer != nullptr && params.mid_state_lengths != nullptr) {
+      const int mid_req = min(req_len, 1);
+      const int mid_pending = old_buf_len + mid_req;
+      const int mid_blocks = rejected ? 0 : mid_pending / params.compress_ratio;
+      const int mid_buf_len = rejected ? old_buf_len : mid_pending % params.compress_ratio;
+      if (threadIdx.x == 0) {
+        params.mid_state_lengths[b * 2 + psai::kKeyStateLength] = old_key_len + mid_blocks;
+        params.mid_state_lengths[b * 2 + psai::kBufferLength] = mid_buf_len;
+      }
+      T* mid_buffer = static_cast<T*>(params.mid_kv_buffer);
+      const int mid_total = params.buffer_capacity * params.head_size;
+      for (int i = static_cast<int>(threadIdx.x); i < mid_total; i += static_cast<int>(blockDim.x)) {
+        const int t = i / params.head_size;
+        const int d = i - t * params.head_size;
+        const int virtual_pos = mid_blocks * params.compress_ratio + t;
+        const int64_t slot = static_cast<int64_t>(b) * params.buffer_capacity * params.head_size + i;
+        if (t >= mid_buf_len || rejected) {
+          mid_buffer[slot] = past_kv_buffer[slot];
+        } else {
+          mid_buffer[slot] =
+              virtual_pos < old_buf_len
+                  ? past_kv_buffer[(static_cast<int64_t>(b) * params.buffer_capacity + virtual_pos) *
+                                       params.head_size +
+                                   d]
+                  : key[(static_cast<int64_t>(req_start) + (virtual_pos - old_buf_len)) * params.key_row_stride +
+                        d];
+        }
+      }
     }
 
     for (int t = static_cast<int>(threadIdx.x); t < capture_count; t += static_cast<int>(blockDim.x)) {
@@ -244,7 +275,7 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
       const int64_t capture_base =
           (static_cast<int64_t>(b) * params.state_update_capacity + completion_token) * params.head_size;
       for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
-        present_key_state[out_base + d] = from_float<T>(rotated[d]);
+        present_key_state[out_base + d] = from_float<TState>(rotated[d]);
         if (completion_token < capture_count) {
           state_update[capture_base + d] = from_float<T>(rotated[d]);
         }
@@ -336,8 +367,8 @@ __global__ void PackedRotateQueryKernel(const T* query, const T* query_norm_weig
 // One block per (token, key_state slot). Scores are directly dotted against the already-prepared
 // present_key_state entry (unlike the dense op, no per-query pooling/normalize/rotate is repeated
 // here because the packed contract stores fully-prepared blocks in key_state).
-template <typename T>
-__global__ void QsaBlockScoreKernel(const T* present_key_state, const float* query_rotated,
+template <typename T, typename TState>
+__global__ void QsaBlockScoreKernel(const TState* present_key_state, const float* query_rotated,
                                     const int32_t* cumulative_sequence_lengths,
                                     const int32_t* past_sequence_lengths, const int64_t* position_ids,
                                     const int32_t* present_state_lengths, float* block_scores,
@@ -377,7 +408,7 @@ __global__ void QsaBlockScoreKernel(const T* present_key_state, const float* que
           query_rotated + (static_cast<int64_t>(token) * params.num_heads + head) * params.head_size;
       float partial = 0.0f;
       for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
-        partial += query_head[d] * to_float<T>(present_key_state[key_base + d]);
+        partial += query_head[d] * to_float<TState>(present_key_state[key_base + d]);
       }
       score += fmaxf(SaiBlockSum(partial, reduction), 0.0f);
     }
@@ -392,8 +423,8 @@ __global__ void QsaBlockScoreKernel(const T* present_key_state, const float* que
 // (state block, query head). Unlike the generic rectangular launch, each CTA stops at its row's
 // live causal block count and never launches or writes work for unused fixed-capacity slots.
 // WarpHeads instead keeps all heads in one warp to reuse keys without CTA-wide barriers.
-template <typename T, bool WarpHeads = false>
-__global__ void QsaRaggedPrefillScoreKernel(const T* present_key_state, const float* query_rotated,
+template <typename T, typename TState, bool WarpHeads = false>
+__global__ void QsaRaggedPrefillScoreKernel(const TState* present_key_state, const float* query_rotated,
                                             const int32_t* cumulative_sequence_lengths,
                                             const int32_t* past_sequence_lengths, const int64_t* position_ids,
                                             const int32_t* present_state_lengths, const int32_t* overflow_flags,
@@ -477,8 +508,8 @@ __global__ void QsaRaggedPrefillScoreKernel(const T* present_key_state, const fl
   }
 }
 
-template <typename T>
-__global__ void QsaScoreTileTopKKernel(const T* present_key_state, const float* query_rotated,
+template <typename T, typename TState>
+__global__ void QsaScoreTileTopKKernel(const TState* present_key_state, const float* query_rotated,
                                        const int32_t* cumulative_sequence_lengths,
                                        const int32_t* past_sequence_lengths, const int64_t* position_ids,
                                        const int32_t* present_state_lengths, const int32_t* overflow_flags,
@@ -489,8 +520,7 @@ __global__ void QsaScoreTileTopKKernel(const T* present_key_state, const float* 
 
   const int warp = static_cast<int>(threadIdx.x) / kWarpSize;
   const int lane = static_cast<int>(threadIdx.x) % kWarpSize;
-  const int block_slot = warp / kQwenNumHeads;
-  const int head = warp % kQwenNumHeads;
+  const int block_slot = warp;
   const int blocks_per_row = min(tile_count, kHierarchicalScoreMaxBlocksPerRow);
   const int first_tile = static_cast<int>(blockIdx.x) % blocks_per_row;
   const int token = static_cast<int>(blockIdx.x) / blocks_per_row;
@@ -516,24 +546,36 @@ __global__ void QsaScoreTileTopKKernel(const T* present_key_state, const float* 
     return;
   }
   const int d = lane * 4;
-  const int64_t query_base =
-      (static_cast<int64_t>(token) * kQwenNumHeads + head) * kQwenHeadSize;
-  const float4 query_value = LoadQsaVector4(query_rotated + query_base + d);
+  float4 query_values[kQwenNumHeads];
+#pragma unroll
+  for (int head = 0; head < kQwenNumHeads; ++head) {
+    const int64_t query_base =
+        (static_cast<int64_t>(token) * kQwenNumHeads + head) * kQwenHeadSize;
+    query_values[head] = LoadQsaVector4(query_rotated + query_base + d);
+  }
   for (int tile = first_tile; tile < live_tiles; tile += blocks_per_row) {
     const int64_t output_base = row_base + tile * kHierarchicalTopKTileBlocks;
-    for (int slot = block_slot; slot < kHierarchicalTopKTileBlocks; slot += kHierarchicalTileBlocks) {
+    for (int slot = block_slot; slot < kHierarchicalTopKTileBlocks;
+         slot += kHierarchicalTileScoreThreads / kWarpSize) {
       const int block_index = tile * kHierarchicalTopKTileBlocks + slot;
-      float score = 0.0f;
+      float4 key_value = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
       if (block_index < block_count) {
         const int64_t key_base =
             (static_cast<int64_t>(batch) * params.state_capacity + block_index) * kQwenHeadSize;
-        const float4 key_value = LoadQsaVector4(present_key_state + key_base + d);
-        score = query_value.x * key_value.x + query_value.y * key_value.y +
-                query_value.z * key_value.z + query_value.w * key_value.w;
-        score = topk::WarpReduceSum(score);
+        key_value = LoadQsaVector4(present_key_state + key_base + d);
       }
-      if (lane == 0) {
-        head_scores[slot][head] = fmaxf(score, 0.0f);
+#pragma unroll
+      for (int head = 0; head < kQwenNumHeads; ++head) {
+        float score = 0.0f;
+        if (block_index < block_count) {
+          const float4 query_value = query_values[head];
+          score = query_value.x * key_value.x + query_value.y * key_value.y +
+                  query_value.z * key_value.z + query_value.w * key_value.w;
+          score = topk::WarpReduceSum(score);
+        }
+        if (lane == 0) {
+          head_scores[slot][head] = fmaxf(score, 0.0f);
+        }
       }
     }
     __syncthreads();
@@ -621,6 +663,63 @@ __global__ void QsaMergeTileTopKKernel(const uint64_t* input_keys, uint64_t* out
       }
       output_keys[row_base + left_start + rank] = key;
     }
+  }
+}
+
+__global__ void QsaMergeTwoLevelsTopKKernel(const uint64_t* input_keys, uint64_t* output_keys,
+                                          int key_stride, int list_width, int rows) {
+  __shared__ uint64_t inputs[4 * kBoundedTopKMax];
+  __shared__ uint64_t intermediate[2 * kBoundedTopKMax];
+  const int groups_per_row = (key_stride + 4 * list_width - 1) / (4 * list_width);
+  const int input_width = min(list_width, kBoundedTopKMax);
+  const int intermediate_width = min(2 * list_width, kBoundedTopKMax);
+  const int64_t total_groups = static_cast<int64_t>(rows) * groups_per_row;
+  for (int64_t work = blockIdx.x; work < total_groups; work += gridDim.x) {
+    const int start = static_cast<int>(work % groups_per_row) * 4 * list_width;
+    const int64_t row_base = (work / groups_per_row) * key_stride;
+    for (int index = threadIdx.x; index < 4 * input_width; index += blockDim.x) {
+      const int source = start + (index / input_width) * list_width + index % input_width;
+      inputs[index] = source < key_stride ? input_keys[row_base + source] : topk::kPaddingSortKey;
+    }
+    __syncthreads();
+    for (int index = threadIdx.x; index < 2 * intermediate_width; index += blockDim.x) {
+      const int half = index / intermediate_width;
+      const int rank = index % intermediate_width;
+      const int left_start = start + half * 2 * list_width;
+      const int right_start = left_start + list_width;
+      const int left_count = min(min(list_width, kBoundedTopKMax), max(0, key_stride - left_start));
+      const int right_count = min(min(list_width, kBoundedTopKMax), max(0, key_stride - right_start));
+      uint64_t key = topk::kPaddingSortKey;
+      if (rank < left_count + right_count) {
+        const uint64_t* left = inputs + half * 2 * input_width;
+        const uint64_t* right = left + input_width;
+        if (left_count == 0 || left[0] == topk::kPaddingSortKey) {
+          key = rank < right_count ? right[rank] : topk::kPaddingSortKey;
+        } else if (right_count == 0 || right[0] == topk::kPaddingSortKey) {
+          key = rank < left_count ? left[rank] : topk::kPaddingSortKey;
+        } else {
+          key = QsaMergeRank(left, left_count, right, right_count, rank);
+        }
+      }
+      intermediate[index] = key;
+    }
+    __syncthreads();
+    const int left_count = min(intermediate_width, key_stride - start);
+    const int right_count = min(intermediate_width, max(0, key_stride - start - 2 * list_width));
+    const int output_count = min(left_count + right_count, kBoundedTopKMax);
+    const uint64_t* right = intermediate + intermediate_width;
+    for (int rank = threadIdx.x; rank < output_count; rank += blockDim.x) {
+      uint64_t key;
+      if (intermediate[0] == topk::kPaddingSortKey) {
+        key = rank < right_count ? right[rank] : topk::kPaddingSortKey;
+      } else if (right_count == 0 || right[0] == topk::kPaddingSortKey) {
+        key = rank < left_count ? intermediate[rank] : topk::kPaddingSortKey;
+      } else {
+        key = QsaMergeRank(intermediate, left_count, right, right_count, rank);
+      }
+      output_keys[row_base + start + rank] = key;
+    }
+    __syncthreads();
   }
 }
 
@@ -1320,21 +1419,50 @@ size_t GetCsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams&
   return rows * params.num_heads * params.head_size + rows * static_cast<size_t>(std::max(params.state_capacity, 1));
 }
 
-template <typename T>
+__global__ void MapQsaValidationStatusKernel(
+    const int32_t* cumulative_sequence_lengths,
+    const int32_t* overflow_flags,
+    int batch_size,
+    int32_t* validation_status) {
+  const int batch = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (batch >= batch_size) {
+    return;
+  }
+  const int request_length = cumulative_sequence_lengths[batch + 1] - cumulative_sequence_lengths[batch];
+  validation_status[batch] = overflow_flags[batch] == 0 ? 0 : (request_length >= 2 ? 0x99 : 9);
+}
+
+Status LaunchMapQsaValidationStatus(
+    cudaStream_t stream,
+    const int32_t* cumulative_sequence_lengths,
+    const int32_t* overflow_flags,
+    int batch_size,
+    int32_t* validation_status) {
+  if (batch_size <= 0) {
+    return Status::OK();
+  }
+  constexpr int kStatusThreads = 128;
+  const int blocks = (batch_size + kStatusThreads - 1) / kStatusThreads;
+  MapQsaValidationStatusKernel<<<blocks, kStatusThreads, 0, stream>>>(
+      cumulative_sequence_lengths, overflow_flags, batch_size, validation_status);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template <typename T, typename TState>
 Status LaunchQsaPackedSparseAttentionIndexer(
     cudaStream_t stream, const PackedSparseAttentionIndexerParams& params, const T* query, const T* key,
     const T* query_norm_weight, const T* key_norm_weight, const T* cos_cache, const T* sin_cache,
     const int32_t* cumulative_sequence_lengths,
-    const int32_t* past_sequence_lengths, const int64_t* position_ids, const T* past_key_state,
+    const int32_t* past_sequence_lengths, const int64_t* position_ids, const TState* past_key_state,
     const T* past_kv_buffer, const int32_t* past_state_lengths, const int32_t* state_update_capture_count,
     bool state_update_active, int32_t* selected_indices,
-    int32_t* selected_counts, T* present_key_state, T* present_kv_buffer, int32_t* present_state_lengths,
+    int32_t* selected_counts, TState* present_key_state, T* present_kv_buffer, int32_t* present_state_lengths,
     T* state_update, float* float_workspace, int32_t* overflow_flags) {
   if (params.batch_size > 0) {
     const int64_t key_state_elems =
         static_cast<int64_t>(params.batch_size) * params.state_capacity * params.head_size;
     if (key_state_elems > 0 && present_key_state != past_key_state) {
-      ElementwiseCopyKernel<T><<<SaiGridForElements(key_state_elems, kThreads), kThreads, 0, stream>>>(
+      ElementwiseCopyKernel<TState><<<SaiGridForElements(key_state_elems, kThreads), kThreads, 0, stream>>>(
           past_key_state, present_key_state, key_state_elems);
     }
     const int64_t buffer_elems = static_cast<int64_t>(params.batch_size) * params.buffer_capacity * params.head_size;
@@ -1355,7 +1483,7 @@ Status LaunchQsaPackedSparseAttentionIndexer(
 
   const size_t value_bytes = static_cast<size_t>(params.head_size) * sizeof(float);
   const int state_blocks = static_cast<int>(std::min<int64_t>(params.batch_size, kSaiMaxGridDimX));
-  QsaUpdateStateKernel<T><<<state_blocks, kThreads, 2 * value_bytes + kThreads * sizeof(float), stream>>>(
+  QsaUpdateStateKernel<T, TState><<<state_blocks, kThreads, 2 * value_bytes + kThreads * sizeof(float), stream>>>(
       key, key_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths, past_kv_buffer,
       past_state_lengths, state_update_capture_count, state_update_active, present_key_state, present_kv_buffer,
       present_state_lengths, state_update, overflow_flags, params);
@@ -1386,8 +1514,8 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     uint64_t* merge_output = merge_input + key_count;
     const int64_t tile_work =
         static_cast<int64_t>(params.total_tokens) * std::min(tile_count, kHierarchicalScoreMaxBlocksPerRow);
-    QsaScoreTileTopKKernel<T><<<static_cast<int>(std::min<int64_t>(tile_work, kSaiMaxGridDimX)),
-                                kHierarchicalScoreThreads, 0, stream>>>(
+    QsaScoreTileTopKKernel<T, TState><<<static_cast<int>(std::min<int64_t>(tile_work, kSaiMaxGridDimX)),
+                                kHierarchicalTileScoreThreads, 0, stream>>>(
         present_key_state, query_rotated, cumulative_sequence_lengths, past_sequence_lengths, position_ids,
         present_state_lengths, overflow_flags, merge_input, tile_count, params);
     static const bool use_radix_topk =
@@ -1397,12 +1525,22 @@ Status LaunchQsaPackedSparseAttentionIndexer(
           selection_workspace, cumulative_sequence_lengths, past_sequence_lengths, position_ids,
           present_state_lengths, overflow_flags, params);
     } else {
-      for (int list_width = kHierarchicalTopKTileBlocks; list_width < key_stride; list_width *= 2) {
-        const int pairs_per_row = (key_stride + 2 * list_width - 1) / (2 * list_width);
-        const int64_t merge_work = static_cast<int64_t>(params.total_tokens) * pairs_per_row;
-        QsaMergeTileTopKKernel<<<static_cast<int>(std::min<int64_t>(merge_work, kSaiMaxGridDimX)),
-                                 kHierarchicalMergeThreads, 0, stream>>>(
-            merge_input, merge_output, key_stride, list_width, params.total_tokens);
+      for (int list_width = kHierarchicalTopKTileBlocks; list_width < key_stride;) {
+        if (2 * list_width < key_stride) {
+          const int groups_per_row = (key_stride + 4 * list_width - 1) / (4 * list_width);
+          const int64_t merge_work = static_cast<int64_t>(params.total_tokens) * groups_per_row;
+          QsaMergeTwoLevelsTopKKernel<<<static_cast<int>(std::min<int64_t>(merge_work, kSaiMaxGridDimX)),
+                                       kHierarchicalMergeThreads, 0, stream>>>(
+              merge_input, merge_output, key_stride, list_width, params.total_tokens);
+          list_width *= 4;
+        } else {
+          const int pairs_per_row = (key_stride + 2 * list_width - 1) / (2 * list_width);
+          const int64_t merge_work = static_cast<int64_t>(params.total_tokens) * pairs_per_row;
+          QsaMergeTileTopKKernel<<<static_cast<int>(std::min<int64_t>(merge_work, kSaiMaxGridDimX)),
+                                   kHierarchicalMergeThreads, 0, stream>>>(
+              merge_input, merge_output, key_stride, list_width, params.total_tokens);
+          list_width *= 2;
+        }
         std::swap(merge_input, merge_output);
       }
     }
@@ -1413,18 +1551,18 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     static const bool warp_heads =
         ParseEnvironmentVariableWithDefault<bool>("ORT_PACKED_SPARSE_INDEXER_WARP_HEADS", false);
     if (warp_heads) {
-      QsaRaggedPrefillScoreKernel<T, true><<<token_blocks, kHierarchicalTileBlocks * kWarpSize, 0, stream>>>(
+      QsaRaggedPrefillScoreKernel<T, TState, true><<<token_blocks, kHierarchicalTileBlocks * kWarpSize, 0, stream>>>(
           present_key_state, query_rotated, cumulative_sequence_lengths, past_sequence_lengths, position_ids,
           present_state_lengths, overflow_flags, block_scores, params);
     } else {
-      QsaRaggedPrefillScoreKernel<T><<<token_blocks, kHierarchicalScoreThreads, 0, stream>>>(
+      QsaRaggedPrefillScoreKernel<T, TState><<<token_blocks, kHierarchicalScoreThreads, 0, stream>>>(
           present_key_state, query_rotated, cumulative_sequence_lengths, past_sequence_lengths, position_ids,
           present_state_lengths, overflow_flags, block_scores, params);
     }
   } else if (params.state_capacity > 0) {
     const int64_t score_work = static_cast<int64_t>(params.total_tokens) * params.state_capacity;
     const int score_blocks = static_cast<int>(std::min<int64_t>(score_work, kSaiMaxGridDimX));
-    QsaBlockScoreKernel<T><<<score_blocks, kThreads, kThreads * sizeof(float), stream>>>(
+    QsaBlockScoreKernel<T, TState><<<score_blocks, kThreads, kThreads * sizeof(float), stream>>>(
         present_key_state, query_rotated, cumulative_sequence_lengths, past_sequence_lengths, position_ids,
         present_state_lengths, block_scores, params);
   }
@@ -1525,21 +1663,29 @@ Status LaunchCsaPackedSparseAttentionIndexer(
   return CUDA_CALL(cudaGetLastError());
 }
 
-#define INSTANTIATE_PACKED_SPARSE_ATTENTION_INDEXER(T)                                                            \
-  template Status LaunchQsaPackedSparseAttentionIndexer<T>(                                                       \
+#define INSTANTIATE_QSA(T, TState)                                                                                \
+  template Status LaunchQsaPackedSparseAttentionIndexer<T, TState>(                                               \
       cudaStream_t, const PackedSparseAttentionIndexerParams&, const T*, const T*, const T*, const T*,            \
-      const T*, const T*, const int32_t*, const int32_t*, const int64_t*, const T*, const T*, const int32_t*,     \
-      const int32_t*, bool, int32_t*, int32_t*, T*, T*, int32_t*, T*, float*, int32_t*);                          \
+      const T*, const T*, const int32_t*, const int32_t*, const int64_t*, const TState*, const T*,                \
+      const int32_t*, const int32_t*, bool, int32_t*, int32_t*, TState*, T*, int32_t*, T*, float*, int32_t*);
+
+#define INSTANTIATE_CSA(T)                                                                                        \
   template Status LaunchCsaPackedSparseAttentionIndexer<T>(                                                       \
       cudaStream_t, const PackedSparseAttentionIndexerParams&, const T*, const T*, const T*, const T*,            \
       const T*, const T*, const T*, const T*, const T*, const int32_t*, const int32_t*, const int64_t*, const T*, \
       const T*, const T*, const int32_t*, int32_t*, int32_t*, T*, T*, T*, int32_t*, float*, int32_t*);
 
-INSTANTIATE_PACKED_SPARSE_ATTENTION_INDEXER(float)
-INSTANTIATE_PACKED_SPARSE_ATTENTION_INDEXER(half)
-INSTANTIATE_PACKED_SPARSE_ATTENTION_INDEXER(__nv_bfloat16)
+INSTANTIATE_QSA(float, float)
+INSTANTIATE_QSA(half, half)
+INSTANTIATE_QSA(__nv_bfloat16, __nv_bfloat16)
+INSTANTIATE_QSA(__nv_bfloat16, float)
 
-#undef INSTANTIATE_PACKED_SPARSE_ATTENTION_INDEXER
+INSTANTIATE_CSA(float)
+INSTANTIATE_CSA(half)
+INSTANTIATE_CSA(__nv_bfloat16)
+
+#undef INSTANTIATE_QSA
+#undef INSTANTIATE_CSA
 
 }  // namespace cuda
 }  // namespace contrib
