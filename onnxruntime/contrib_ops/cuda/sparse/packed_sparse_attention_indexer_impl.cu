@@ -36,7 +36,6 @@
 
 #include "contrib_ops/cpu/sparse/packed_sparse_attention_indexer_common.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_indexer_device_math.cuh"
-#include "core/common/logging/logging.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "core/providers/cuda/cu_inc/topk_warp_sort.cuh"

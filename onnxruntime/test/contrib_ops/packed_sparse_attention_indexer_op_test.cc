@@ -34,6 +34,7 @@
 #include "core/common/logging/logging.h"
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
+#include "core/platform/env.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
@@ -1076,6 +1077,7 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
   }
 }
 
+#if GTEST_HAS_DEATH_TEST
 QsaPackedProblem MakeRadixTopKProblem(int visible_blocks, int block_topk, int token_count = 1) {
   QsaPackedProblem problem;
   problem.batch_size = 1;
@@ -1119,9 +1121,8 @@ void RunRadixTopKCase(QsaPackedProblem problem) {
 }
 
 void RunRadixTopKRegressionCases() {
-  const char* flag = std::getenv("ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK");
-  ASSERT_NE(flag, nullptr);
-  ASSERT_TRUE(std::string(flag) == "0" || std::string(flag) == "1");
+  const std::string flag = Env::Default().GetEnvironmentVar("ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK");
+  ASSERT_TRUE(flag == "0" || flag == "1");
 
   auto random_scores = MakeRadixTopKProblem(2051, 35);
   std::mt19937 generator(33393);
@@ -1147,6 +1148,7 @@ void RunRadixTopKRegressionCases() {
   SetRadixTopKScoreGroups(fully_selected_bucket, 64, 64);
   RunRadixTopKCase(std::move(fully_selected_bucket));
 }
+#endif
 
 }  // namespace
 

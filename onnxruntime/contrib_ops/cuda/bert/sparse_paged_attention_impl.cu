@@ -10,7 +10,6 @@
 
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
 #include "contrib_ops/cuda/bert/gated_delta_net_mma.cuh"
-#include "core/common/logging/logging.h"
 #include "core/framework/stream_handles.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
