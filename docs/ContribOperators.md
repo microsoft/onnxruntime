@@ -1723,6 +1723,12 @@ This version of the operator has been available since version 1 of the 'com.micr
   auxiliary_key is used as both K and V. DeepSeek-style post-attention inverse/conjugate RoPE and output projection remain
   the exporter's responsibility.
 
+  CUDA also supports INT8 main caches with float32 per-channel key/value scales. Appended rows are
+  quantized with round-to-nearest-even and saturation to [-128, 127]; attention reads the quantized
+  representation, including current rows. Auxiliary caches retain the query's floating-point type.
+  Scales must be positive and finite; requested validation reports invalid scales as status 10,
+  and CUDA strict validation raises an error. WebGPU supports only query-typed floating caches.
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -1758,7 +1764,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Add a zero-valued sink logit when no explicit head_sink is supplied.</dd>
 </dl>
 
-#### Inputs (11 - 17)
+#### Inputs (11 - 20)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -1767,10 +1773,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Current main key [batch, sequence, kv_num_heads * head_size].</dd>
 <dt><tt>value</tt> (optional) : T</dt>
 <dd>Current main value [batch, sequence, kv_num_heads * head_size].</dd>
-<dt><tt>past_key</tt> (optional) : T</dt>
-<dd>Main key cache in BNSH layout.</dd>
-<dt><tt>past_value</tt> (optional) : T</dt>
-<dd>Main value cache in BNSH layout.</dd>
+<dt><tt>past_key</tt> (optional) : TCache</dt>
+<dd>Main key cache in BNSH layout, query-typed or INT8.</dd>
+<dt><tt>past_value</tt> (optional) : TCache</dt>
+<dd>Main value cache in BNSH layout, matching past_key.</dd>
 <dt><tt>auxiliary_key</tt> (optional) : T</dt>
 <dd>Read-only auxiliary key sequence in BNSH layout.</dd>
 <dt><tt>auxiliary_value</tt> (optional) : T</dt>
@@ -1795,17 +1801,25 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Optional K RMSNorm weight [head_size].</dd>
 <dt><tt>head_sink</tt> (optional) : T</dt>
 <dd>Optional sink logit [num_heads]. Participates in the shared softmax denominator in both attention modes.</dd>
+<dt><tt>committed_length</tt> (optional) : M</dt>
+<dd>Optional single-request committed cursor. Inconsistency with sequence metadata produces validation status 9.</dd>
+<dt><tt>key_scale</tt> (optional) : S</dt>
+<dd>Positive finite per-channel INT8 key-cache scales [kv_num_heads * head_size].</dd>
+<dt><tt>value_scale</tt> (optional) : S</dt>
+<dd>Positive finite per-channel INT8 value-cache scales [kv_num_heads * head_size]. Both scales are required for INT8 caches.</dd>
 </dl>
 
-#### Outputs (1 - 3)
+#### Outputs (1 - 4)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>Attention output [batch, sequence, num_heads * head_size].</dd>
-<dt><tt>present_key</tt> (optional) : T</dt>
+<dt><tt>present_key</tt> (optional) : TCache</dt>
 <dd>Updated main key cache in BNSH layout.</dd>
-<dt><tt>present_value</tt> (optional) : T</dt>
+<dt><tt>present_value</tt> (optional) : TCache</dt>
 <dd>Updated main value cache in BNSH layout.</dd>
+<dt><tt>validation_status</tt> (optional) : M</dt>
+<dd>One int32 validation status: zero for valid inputs; 9 for cursor mismatch; 10 for invalid INT8 scales.</dd>
 </dl>
 
 #### Type Constraints
@@ -1813,6 +1827,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain all floating-point inputs and outputs to one element type.</dd>
+<dt><tt>TCache</tt> : tensor(float), tensor(float16), tensor(bfloat16), tensor(int8)</dt>
+<dd>Cache type matches T unless INT8 per-channel scales are supplied.</dd>
+<dt><tt>S</tt> : tensor(float)</dt>
+<dd>INT8 cache scales use float32.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain selection and sequence metadata to int32.</dd>
 </dl>
@@ -8771,4 +8789,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-

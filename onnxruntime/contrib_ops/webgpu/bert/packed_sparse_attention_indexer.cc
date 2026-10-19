@@ -389,6 +389,10 @@ Status PackedSparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHe
   const auto& present_key_state = shader.AddInput("present_key_state", ShaderUsage::UseUniform);
   const auto& rotary_cache = shader.AddInput("rotary_cache", ShaderUsage::UseUniform);
   const auto& sequence_metadata = shader.AddInput("sequence_metadata", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* position_ids = nullptr;
+  if (has_position_ids_) {
+    position_ids = &shader.AddInput("position_ids", ShaderUsage::UseUniform);
+  }
   const auto& present_state_lengths = shader.AddInput("present_state_lengths", ShaderUsage::UseUniform);
   const auto& overflow_flags = shader.AddInput("overflow_flags", ShaderUsage::UseUniform);
   const auto& selected_indices = shader.AddOutput("selected_indices", ShaderUsage::UseUniform);
@@ -411,12 +415,24 @@ Status PackedSparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHe
       << "  let p = u32(position);\n"
       << "  let cr = uniforms.compress_ratio;\n"
       << "  return p / cr + select(0u, 1u, p % cr == cr - 1u);\n"
-      << "}\n"
-      << "fn abs_position(token: u32, b: u32) -> i32 {\n"
-      << "  let req_start = " << sequence_metadata.GetByOffset("b") << ";\n"
-      << "  return " << sequence_metadata.GetByOffset("uniforms.batch_size + 1u + b")
-      << " + (i32(token) - req_start);\n"
-      << "}\n"
+      << "}\n";
+  if (has_position_ids_) {
+    shader.AdditionalImplementation()
+        << "fn abs_position(token: u32, b: u32) -> i32 {\n"
+        << "  let raw = " << position_ids->GetByOffset("token", true) << ";\n"
+        << "  if ((raw.y & 0x80000000u) != 0u) { return -2147483648; }\n"
+        << "  if (raw.y != 0u || raw.x > 2147483647u) { return 2147483647; }\n"
+        << "  return i32(raw.x);\n"
+        << "}\n";
+  } else {
+    shader.AdditionalImplementation()
+        << "fn abs_position(token: u32, b: u32) -> i32 {\n"
+        << "  let req_start = " << sequence_metadata.GetByOffset("b") << ";\n"
+        << "  return " << sequence_metadata.GetByOffset("uniforms.batch_size + 1u + b")
+        << " + (i32(token) - req_start);\n"
+        << "}\n";
+  }
+  shader.AdditionalImplementation()
       << "fn normalized_query_value(token: u32, head: u32, d: u32) -> f32 {\n"
       << "  let base = token * uniforms.query_row_stride + head * uniforms.head_size;\n"
       << "  var square_sum = 0.0;\n"
@@ -904,9 +920,9 @@ Status PackedSparseAttentionIndexer::ComputeInternal(onnxruntime::webgpu::Comput
   }
   const bool position_ids_provided =
       psai::kPositionIds < context.InputCount() && context.Input(psai::kPositionIds) != nullptr;
-  ORT_RETURN_IF(position_ids_provided == is_qsa,
+  ORT_RETURN_IF(!is_qsa && !position_ids_provided,
                 "PackedSparseAttentionIndexer: position_ids is required for "
-                "policy_mode 'csa' and must be omitted for policy_mode 'qsa'");
+                "policy_mode 'csa'");
   const bool gate_buffer_provided =
       psai::kPastGateBuffer < context.InputCount() && context.Input(psai::kPastGateBuffer) != nullptr;
   ORT_RETURN_IF(gate_buffer_provided != !is_qsa, "PackedSparseAttentionIndexer: past_gate_buffer ",
@@ -934,6 +950,7 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
   const Tensor* sin_cache = context.Input(psai::kSinCache);
   const Tensor* cu_seqlens = context.Input(psai::kCumulativeSequenceLengths);
   const Tensor* past_seqlens = context.Input(psai::kPastSequenceLengths);
+  const Tensor* position_ids = context.Input(psai::kPositionIds);
   const Tensor* past_key_state = context.Input(psai::kPastKeyState);
   const Tensor* past_kv_buffer = context.Input(psai::kPastKvBuffer);
   const Tensor* past_state_lengths = context.Input(psai::kPastStateLengths);
@@ -976,6 +993,9 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
   }
   ORT_RETURN_IF_ERROR(CheckShape(query_norm, "query_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(norm, "key_norm_weight", {head_size}));
+  if (position_ids != nullptr) {
+    ORT_RETURN_IF_ERROR(CheckShape(position_ids, "position_ids", {total_tokens}));
+  }
 
   RotaryCacheShape rotary;
   ORT_RETURN_IF_ERROR(CheckRotaryCache(cos_cache, sin_cache, batch_size, rotary));
@@ -1138,14 +1158,17 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
   ORT_RETURN_IF_ERROR(CheckStorageBindingLimit(
       context, "QSA selection",
       {&query_metadata, present_key_state, &rotary_cache, &sequence_metadata, present_state_lengths, &overflow_flags,
-       selected_indices, selected_counts}));
-  PackedSparseAttentionIndexerQsaSelectProgram select{rotary.batched};
-  select.CacheHint(rotary.batched)
+       selected_indices, selected_counts, position_ids}));
+  PackedSparseAttentionIndexerQsaSelectProgram select{rotary.batched, position_ids != nullptr};
+  select.CacheHint(rotary.batched, position_ids != nullptr)
       .SetWorkgroupSize(kWorkgroupSize)
       .AddInputs({{&query_metadata, ProgramTensorMetadataDependency::Type},
                   {present_key_state, ProgramTensorMetadataDependency::Type},
                   {&rotary_cache, ProgramTensorMetadataDependency::Type},
                   {&sequence_metadata, ProgramTensorMetadataDependency::Type}});
+  if (position_ids != nullptr) {
+    select.AddInput({position_ids, ProgramTensorMetadataDependency::Type});
+  }
   select.AddInputs({{present_state_lengths, ProgramTensorMetadataDependency::Type},
                     {&overflow_flags, ProgramTensorMetadataDependency::Type}})
       .AddOutputs({{selected_indices, ProgramTensorMetadataDependency::Type},
