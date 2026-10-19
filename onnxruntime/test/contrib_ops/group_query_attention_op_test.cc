@@ -8069,6 +8069,15 @@ TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_FlashPrefillUnrollBounda
   }
 }
 
+// head_size / 4 is neither a power of two nor a multiple of 16, which exercises partial V slices in flash prefill.
+TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_FlashPrefill_HeadSize80) {
+  RunFp16HighMagnitudeAttention(/*sequence_length=*/40, /*bit_width=*/0, /*head_size=*/80);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_FlashPrefill_HeadSize96) {
+  RunFp16HighMagnitudeAttention(/*sequence_length=*/40, /*bit_width=*/0, /*head_size=*/96);
+}
+
 TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_SplitReduce) {
   RunFp16HighMagnitudeAttention(/*sequence_length=*/4, /*bit_width=*/0);
 }
