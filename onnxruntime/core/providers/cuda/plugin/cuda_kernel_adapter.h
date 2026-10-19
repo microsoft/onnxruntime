@@ -1181,6 +1181,7 @@ class CudaKernel : public OpKernel {
 
     return device_prop_;
   }
+  int GetDeviceId() const { return device_id_; }
   std::filesystem::path GetSessionModelPath() const { return runtime_config_->GetModelPath(); }
   // Identifies the session (execution provider instance) that owns this kernel.
   const void* GetSessionKey() const { return runtime_config_.get(); }
