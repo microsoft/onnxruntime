@@ -359,6 +359,11 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   const int64_t output_channels = conv_W_tensor_proto->dims(0);
   const int64_t input_channels = conv_W_tensor_proto->dims(1);
 
+  // NCHWc Conv requires positive input and output channel counts.
+  if (output_channels <= 0 || input_channels <= 0) {
+    return;
+  }
+
   int64_t group_count;
   const auto* group_attr = graph_utils::GetNodeAttribute(node, "group");
   if (group_attr != nullptr && utils::HasInt(*group_attr)) {

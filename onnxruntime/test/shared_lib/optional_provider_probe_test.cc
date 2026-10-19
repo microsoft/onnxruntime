@@ -91,7 +91,7 @@ TEST_F(OptionalProviderProbeTest, MissingExportUnloadsAndAllowsReplacement) {
 TEST_F(OptionalProviderProbeTest, SuccessfulProbeInitializesOnceAndCanReload) {
   ASSERT_NO_FATAL_FAILURE(Install(ORT_OPTIONAL_PROBE_shared_LIBRARY, shared_path_));
   ASSERT_NO_FATAL_FAILURE(Install(ORT_OPTIONAL_PROBE_valid_LIBRARY, provider_path_));
-  const auto* info = TryGetProviderInfo_OpenVINO();
+  const ::ProviderInfo_OpenVINO* info = TryGetProviderInfo_OpenVINO();
   ASSERT_NE(info, nullptr);
   EXPECT_EQ(TryGetProviderInfo_OpenVINO(), info);
   ASSERT_NO_FATAL_FAILURE(CheckInitializedOnce());

@@ -343,7 +343,6 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   }
 }
 
-// Only CUDA and CoreML kernels have float 16 support
 TEST(GemmOpTest, GemmTransB_f16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -365,6 +364,26 @@ TEST(GemmOpTest, GemmTransB_f16) {
   std::vector<MLFloat16> f_B(12);
   ConvertFloatToMLFloat16(A.data(), f_A.data(), 8);
   ConvertFloatToMLFloat16(B.data(), f_B.data(), 12);
+  {
+    // Missing C makes beta zero, which is eligible for the MLAS path.
+    std::vector<MLFloat16> f_Y(6);
+    std::vector<float> Y{7.1f, -6.2f, -19.0f, -7.1f, 6.2f, 19.0f};
+    ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
+
+    OpTester test("Gemm", 13);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)1);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 0.0f);
+    test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+    test.AddInput<MLFloat16>("B", {3, 4}, f_B, true);
+    test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    test.SetOutputTolerance(0.005f);
+    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
   {
     // bias is a scalar and  transB is True
     std::vector<MLFloat16> f_Y(6);

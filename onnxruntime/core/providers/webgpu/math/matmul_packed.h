@@ -13,9 +13,14 @@ namespace onnxruntime {
 namespace webgpu {
 class MatMulProgram final : public Program<MatMulProgram> {
  public:
-  MatMulProgram(const Activation& activation, bool bias, bool is_vec4,
-                const gsl::span<int64_t>& elements_per_thread, bool is_channels_last = false,
-                uint32_t split_dim_inner = 1, bool use_f32_accumulation = false)
+  MatMulProgram(const Activation& activation,
+                bool bias,
+                bool is_vec4,
+                const gsl::span<int64_t>& elements_per_thread,
+                bool is_channels_last = false,
+                uint32_t split_dim_inner = 1,
+                uint32_t tile_inner = 32,
+                bool use_f32_accumulation = false)
       : Program{"MatMul"},
         activation_(activation),
         has_bias_{bias},
@@ -23,6 +28,7 @@ class MatMulProgram final : public Program<MatMulProgram> {
         elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()),
         is_channels_last_(is_channels_last),
         split_dim_inner_(split_dim_inner),
+        tile_inner_(tile_inner),
         use_f32_accumulation_(use_f32_accumulation) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -44,6 +50,7 @@ class MatMulProgram final : public Program<MatMulProgram> {
   const InlinedVector<int64_t> elements_per_thread_;
   bool is_channels_last_ = false;
   uint32_t split_dim_inner_ = 1;
+  uint32_t tile_inner_ = 32;
   bool use_f32_accumulation_ = false;
 };
 

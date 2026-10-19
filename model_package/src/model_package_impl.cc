@@ -189,7 +189,7 @@ void ModelPackageStatus_Release(ModelPackageStatus* s) {
 
 ModelPackageStatus* ModelPackage_Open(const char* package_root,
                                       const ModelPackageOpenOptions* opts,
-                                      ModelPackage** out) try {
+                                      ModelPackage** out) MODEL_PACKAGE_TRY {
   if (!package_root) return NullArg("package_root");
   if (!out) return NullArg("out");
 
@@ -209,9 +209,8 @@ ModelPackageStatus* ModelPackage_Open(const char* package_root,
   }
   *out = pkg.release();
   return nullptr;
-} catch (const std::system_error& error) {
-  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
+MODEL_PACKAGE_CATCH
 
 void ModelPackage_Close(ModelPackage* pkg) {
   if (!pkg) return;
@@ -285,7 +284,7 @@ ModelPackageStatus* ModelPackage_ResolveStringRef(const ModelPackage* pkg,
                                                   const char* base_dir,
                                                   const char* input,
                                                   bool must_exist,
-                                                  const char** out_path) try {
+                                                  const char** out_path) MODEL_PACKAGE_TRY {
   if (!pkg) return NullArg("pkg");
   if (!input) return NullArg("input");
   if (!out_path) return NullArg("out_path");
@@ -323,9 +322,8 @@ ModelPackageStatus* ModelPackage_ResolveStringRef(const ModelPackage* pkg,
   slot = resolved.u8string();
   *out_path = slot.c_str();
   return nullptr;
-} catch (const std::system_error& error) {
-  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
+MODEL_PACKAGE_CATCH
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Round-trip JSON getters
@@ -383,7 +381,7 @@ ModelPackageStatus* ModelPackage_GetVariantJson(const ModelPackage* pkg,
 // ─────────────────────────────────────────────────────────────────────────────
 
 ModelPackageStatus* ModelPackage_ComputeDirectoryHash(const char* source_dir,
-                                                      const char** out_uri) try {
+                                                      const char** out_uri) MODEL_PACKAGE_TRY {
   if (!source_dir) return NullArg("source_dir");
   if (!out_uri) return NullArg("out_uri");
   static thread_local std::string slot;
@@ -392,8 +390,7 @@ ModelPackageStatus* ModelPackage_ComputeDirectoryHash(const char* source_dir,
   }
   *out_uri = slot.c_str();
   return nullptr;
-} catch (const std::system_error& error) {
-  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
+MODEL_PACKAGE_CATCH
 
 }  // extern "C"

@@ -2507,10 +2507,22 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
                                                                                        ? static_cast<const ScaleBiasType*>(quant_params.groupwise.fc1.weight_zeros)
                                                                                        : nullptr,
                                                                                    fc1_expert_biases, reinterpret_cast<OutputType*>(output), alpha_scale_ptr_array, /*occupancy*/ nullptr,
-                                                                                   fc1_activation_type, expanded_num_rows, /*N*/ int64_t(fc1_out_size),
+                                                                                   fc1_activation_type == ActivationType::Relu2
+                                                                                       ? ActivationType::Identity
+                                                                                       : fc1_activation_type,
+                                                                                   expanded_num_rows, /*N*/ int64_t(fc1_out_size),
                                                                                    /*K*/ hidden_size, num_experts_per_node, quant_params.groupwise.group_size, bias_is_broadcast,
                                                                                    /*use_fused_moe*/ false, stream, activation_params, config};
     gemm_runner.moeGemmBiasAct(universal_input, TmaWarpSpecializedGroupedGemmInput{});
+
+    if (fc1_activation_type == ActivationType::Relu2) {
+      // Preserve the FC1 output-type rounding before squaring; the GEMM already added its bias.
+      doActivation<T, OutputType>(
+          output, reinterpret_cast<const OutputType*>(output), nullptr,
+          static_cast<const OutputType*>(nullptr), bias_is_broadcast,
+          expert_first_token_offset, num_experts_per_node, inter_size, expanded_num_rows,
+          fc1_activation_type, quant_params, false, nullptr, stream, activation_params);
+    }
 
     sync_check_cuda_error(stream);
   } else {

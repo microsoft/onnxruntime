@@ -33,7 +33,7 @@ constexpr ONNXTensorElementDataType ToOrtTensorElementDataType(int tensor_proto_
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2;
     default:
       if (tensor_proto_element_type < 0 ||
-          tensor_proto_element_type > static_cast<int>(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0)) {
+          tensor_proto_element_type > static_cast<int>(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2)) {
         return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
       }
       return static_cast<ONNXTensorElementDataType>(tensor_proto_element_type);

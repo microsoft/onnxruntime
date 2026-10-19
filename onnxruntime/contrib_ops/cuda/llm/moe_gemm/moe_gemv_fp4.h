@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <cuda_runtime.h>
 
@@ -41,6 +42,11 @@ inline constexpr int64_t kMaxProfiledExpandedRowsNvfp4KPacked = 80;
 // compute dispatch query this so the prepacked weights and the kernel always agree.
 bool Fp4MoeGemvUseInterleaved();
 
+// Checks the loaded kernel's compilation target, not just the current device's SM.
+bool Fp4MoeGemvSupportsNativeScale();
+// Identifies native-scale specializations for unfused, no-bias K-packed launches.
+bool Fp4MoeGemvKernelUsesNativeScale(const void* kernel);
+
 // Shape-derived default tiling for the non-interleaved ColumnMajor FP4 GEMV. Used whenever the
 // runtime does not have a profiled result for the shape, which is the shipping default because
 // ORT_FP4_GEMV_AUTOTUNE is off (it synchronizes the inference stream) and is skipped entirely
@@ -72,6 +78,27 @@ bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int
 // no separate ColToRow decode copy of the expert weights has to be allocated.
 bool is_moe_gemv_fp4_sm80_layout_supported(int64_t n, int64_t k, int group_size);
 
+// Table-free E2M1 decode in MoeGemvFp4DecodeKernel requires every block scale (e4m3 * global_scale,
+// with E4M3 max 448) to stay below 4 so the rescaled block scale (block_scale * 2^126 in bf16,
+// * 2^14 in fp16) stays finite. Projections whose per-expert global scales exceed this bound fall
+// back to MoeGemvFp4RawKPackedKernel by default instead of taking the slower generic decode branch.
+inline constexpr float kNvfp4E4M3Max = 448.0f;
+inline constexpr float kNvfp4DecodeFastScaleMaxProduct = 3.98f;
+
+__host__ __device__ inline bool IsNvfp4DecodeFastScale(float global_scale) {
+#if defined(__CUDA_ARCH__)
+  return isfinite(global_scale) && fabsf(global_scale) * kNvfp4E4M3Max < kNvfp4DecodeFastScaleMaxProduct;
+#else
+  return std::isfinite(global_scale) && std::fabs(global_scale) * kNvfp4E4M3Max < kNvfp4DecodeFastScaleMaxProduct;
+#endif
+}
+
+// Returns true when the CUDA image selected on the current device (of architecture `sm`) for
+// MoeGemvFp4DecodeKernel was compiled with virtual architecture >= SM90. Forward-compatible PTX
+// builds below SM90 (e.g. CMAKE_CUDA_ARCHITECTURES=80) compile an empty decode kernel body and
+// return false here so callers fall back to MoeGemvFp4RawKPackedKernel.
+bool is_moe_gemv_fp4_decode_image_available(int sm, bool is_fp16);
+
 // Launches the MXFP4 (e2m1) MoE GEMV in the non-interleaved ColumnMajor layout.
 //   act:      [expanded_num_rows, k]  permuted activations (row-major), T = half/bf16
 //   weight:   [num_experts, n, k/2]  e2m1 codes packed two per byte (even-K low nibble)
@@ -94,7 +121,8 @@ void launch_moe_gemv_fp4_symmetric(
     const float* raw_global_scales, const T* bias, T* out,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
     int64_t n, int64_t k, int group_size, int sm, MoeGemvConfig config, bool sm80_pair_interleaved,
-    bool raw_n_packed, cudaStream_t stream, bool weights_row_major = false);
+    bool raw_n_packed, cudaStream_t stream, bool weights_row_major = false,
+    bool decode_scale_eligible = false, bool* decode_kernel_launched = nullptr);
 
 // Native K-packed NVFP4 FC2 with top-k reduction; false leaves unsupported shapes to the caller.
 // The caller must use single-EP/single-TP routing. Each expert result is rounded to T before reduction.
@@ -116,7 +144,7 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
     int64_t inter_size, int64_t k, int group_size, int sm, cutlass_kernels::ActivationParams activation_params,
     MoeGemvConfig config, bool sm80_pair_interleaved, bool raw_n_packed,
     const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream,
-    bool weights_row_major = false);
+    bool weights_row_major = false, bool decode_scale_eligible = false, bool* decode_kernel_launched = nullptr);
 
 }  // namespace moe_gemv
 }  // namespace kernels

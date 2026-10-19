@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cuda_runtime.h>
+#include <type_traits>
 #include "activations_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/unary_elementwise_impl.cuh"
@@ -47,28 +48,22 @@ struct OP_Selu : public CtxSelu {
 template <typename T>
 struct OP_Sigmoid : public CtxSigmoid {
   __device__ __inline__ T operator()(const T& a) const {
-    return a > T(0) ? (T)1 / ((T)1. + _Exp(-a)) : (T)1 - (T)1 / ((T)1 + _Exp(a));
-  }
-};
-
-template <>
-struct OP_Sigmoid<half> : public CtxSigmoid {
-  __device__ __inline__ half operator()(const half& a) const {
-    // For some small negative values, it will loss precision if using half for compute.
-    // The cast between half and float below won't cause perf issue since there is cast inside _Exp if input is half.
-    float af = static_cast<float>(a);
-    float res = af > 0.0f ? 1.0f / (1.0f + _Exp(-af)) : 1.0f - 1.0f / (1.0f + _Exp(af));
-    return static_cast<half>(res);
+    using ComputeT = std::conditional_t<std::is_same_v<T, double>, double, float>;
+    const ComputeT value = static_cast<ComputeT>(a);
+    const ComputeT exponent = _Exp(value > ComputeT(0) ? -value : value);
+    // Subtracting from one for negative logits erases small, representable probabilities.
+    return static_cast<T>(value > ComputeT(0) ? ComputeT(1) / (ComputeT(1) + exponent)
+                                              : exponent / (ComputeT(1) + exponent));
   }
 };
 
 template <typename T>
 struct OP_Softplus : public CtxSoftplus {
   __device__ __inline__ T operator()(const T& a) const {
-    if (a > (T)0)
-      return a + _Log(_Exp(-a) + (T)1);
-    else
-      return _Log(_Exp(a) + (T)1);
+    using ComputeT = std::conditional_t<std::is_same_v<T, double>, double, float>;
+    const ComputeT value = static_cast<ComputeT>(a);
+    // Adding one before taking log erases small positive tails, especially in FP16/BF16.
+    return static_cast<T>(value > ComputeT(0) ? value + log1p(_Exp(-value)) : log1p(_Exp(value)));
   }
 };
 

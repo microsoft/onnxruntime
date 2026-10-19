@@ -30,7 +30,8 @@ static void InitCxxApi(const OrtApiBase& ort_api_base) {
 }
 
 OpenVINOEpPluginFactory::OpenVINOEpPluginFactory(ApiPtrs apis, const std::string& ov_metadevice_name, std::shared_ptr<ov::Core> core)
-    : ApiPtrs{apis},
+    : OrtEpFactory{},
+      ApiPtrs{apis},
       ep_name_(ov_metadevice_name.empty() ? provider_name_ : std::string(provider_name_) + "." + ov_metadevice_name),
       device_type_(ov_metadevice_name),
       ov_core_(std::move(core)) {
