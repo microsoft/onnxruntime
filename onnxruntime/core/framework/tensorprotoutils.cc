@@ -853,6 +853,7 @@ static void NormalizeBoolBytes(uint8_t* bool_bytes, size_t num_elements) {
 
 Status ReadFloat6ExternalData(const Env& env, const ONNX_NAMESPACE::TensorProto& tensor,
                               const std::filesystem::path& tensor_proto_dir,
+                              const std::filesystem::path& model_path,
                               std::vector<uint8_t>& data, bool& is_native) {
   PathString external_file_path;
   FileOffsetType file_offset;
@@ -860,6 +861,7 @@ Status ReadFloat6ExternalData(const Env& env, const ONNX_NAMESPACE::TensorProto&
   ORT_RETURN_IF_ERROR(GetExternalDataInfo(tensor, tensor_proto_dir, external_file_path, file_offset, data_size));
   is_native = external_file_path == kTensorProtoNativeEndianMemoryAddressTag;
 #if defined(__wasm__)
+  ORT_UNUSED_PARAMETER(model_path);
   if (external_file_path != kTensorProtoNativeEndianMemoryAddressTag &&
       external_file_path != kTensorProtoLittleEndianMemoryAddressTag) {
     SafeInt<FileOffsetType> end_of_read(file_offset);
@@ -873,7 +875,23 @@ Status ReadFloat6ExternalData(const Env& env, const ONNX_NAMESPACE::TensorProto&
                                        ExternalDataLoadType::CPU, reinterpret_cast<char*>(data.data()));
   }
 #else
-  ORT_UNUSED_PARAMETER(env);
+  if (external_file_path != kTensorProtoNativeEndianMemoryAddressTag &&
+      external_file_path != kTensorProtoLittleEndianMemoryAddressTag) {
+    std::unique_ptr<RandomAccessFile> external_data_file;
+    ORT_RETURN_IF_ERROR(OpenValidatedExternalDataFile(env, model_path, external_file_path, external_data_file));
+    uint64_t file_length = 0;
+    ORT_RETURN_IF_ERROR(external_data_file->GetLength(file_length));
+    SafeInt<FileOffsetType> end_of_read(file_offset);
+    end_of_read += data_size;
+    ORT_RETURN_IF(file_offset < 0 || static_cast<std::uintmax_t>(end_of_read) > file_length,
+                  "External initializer: ", tensor.name(), " offset: ", file_offset,
+                  " size to read: ", static_cast<size_t>(data_size), " given file_length: ", file_length,
+                  " are out of bounds or cannot be read in full.");
+    data.resize(data_size);
+    ORT_RETURN_IF_ERROR(external_data_file->Read(
+        file_offset, gsl::make_span(reinterpret_cast<char*>(data.data()), static_cast<size_t>(data_size))));
+    return Status::OK();
+  }
 #endif
   return ReadExternalDataForTensor(tensor, tensor_proto_dir, data);
 }
@@ -884,7 +902,8 @@ Status UnpackFloat6TensorWithExternalData(const ONNX_NAMESPACE::TensorProto& ten
                                           size_t expected_num_elements, FLOAT6_TYPE* p_data) {
   std::vector<uint8_t> data;
   bool is_native = false;
-  ORT_RETURN_IF_ERROR(ReadFloat6ExternalData(Env::Default(), tensor, tensor_proto_dir, data, is_native));
+  const auto model_path = tensor_proto_dir.empty() ? std::filesystem::path{} : tensor_proto_dir / "model.onnx";
+  ORT_RETURN_IF_ERROR(ReadFloat6ExternalData(Env::Default(), tensor, tensor_proto_dir, model_path, data, is_native));
   ORT_RETURN_IF(p_data == nullptr && expected_num_elements != 0, "nullptr == p_data");
   if (is_native) {
     ORT_RETURN_IF(data.size() != expected_num_elements, "Unexpected number of native float6 bytes");
@@ -1974,7 +1993,7 @@ Status GetExtDataFromTensorProto(const Env& env,
     const auto tensor_proto_dir = model_path.empty() ? std::filesystem::path{} : model_path.parent_path();
     std::vector<uint8_t> data;
     bool is_native = false;
-    ORT_RETURN_IF_ERROR(ReadFloat6ExternalData(env, tensor_proto, tensor_proto_dir, data, is_native));
+    ORT_RETURN_IF_ERROR(ReadFloat6ExternalData(env, tensor_proto, tensor_proto_dir, model_path, data, is_native));
     const size_t num_elements = gsl::narrow_cast<size_t>(tensor_shape.Size());
     const DataTypeImpl* type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
     Tensor tensor{type, tensor_shape, CPUAllocator::DefaultInstance()};

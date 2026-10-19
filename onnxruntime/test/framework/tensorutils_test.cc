@@ -954,6 +954,31 @@ TEST_F(PathValidationTest, Float6ExternalInitializerRejectsShortDataBeforeAlloca
   }
 }
 
+TEST_F(PathValidationTest, Float6ExternalInitializerRejectsRedirectedFile) {
+  const auto outside_file = outside_dir_ / "float6.bin";
+  const auto redirected_file = base_dir_ / "float6_redirect.bin";
+  {
+    std::ofstream output(outside_file, std::ios::binary);
+    output.write("\x01\x42\xc3", 3);
+  }
+  try {
+    std::filesystem::create_symlink(outside_file, redirected_file);
+  } catch (const std::filesystem::filesystem_error& e) {
+    GTEST_SKIP() << "Symlink creation not supported: " << e.what();
+  }
+
+  for (const auto data_type : {TensorProto_DataType_FLOAT6E2M3, TensorProto_DataType_FLOAT6E3M2}) {
+    TensorProto proto;
+    proto.set_name("float6_redirect");
+    proto.set_data_type(data_type);
+    proto.add_dims(4);
+    ExternalDataInfo::SetExternalLocationToProto("float6_redirect.bin", 0, 3, proto);
+    OrtValue value;
+    const Status status = utils::GetExtDataFromTensorProto(Env::Default(), base_dir_ / "model.onnx", proto, value);
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, "escapes");
+  }
+}
+
 TEST_F(PathValidationTest, Float6EmptyExternalInitializer) {
   CreateEmptyFile(base_dir_ / "float6_empty.bin");
   for (const auto data_type : {TensorProto_DataType_FLOAT6E2M3, TensorProto_DataType_FLOAT6E3M2}) {
