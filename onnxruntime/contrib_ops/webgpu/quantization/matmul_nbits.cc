@@ -273,13 +273,16 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
     const uint32_t num_N_tile = CeilDiv(N, tile_n);
     const uint32_t num_M_tile = CeilDiv(dispatch_M, tile_m);
 
-    bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
+    // Qualcomm D3D12's FP16 shuffle path produces incorrect values. Use direct
+    // workgroup-memory reads, which NVIDIA also prefers for performance.
+    const bool use_direct_reads = context.AdapterInfo().vendor == std::string_view{"nvidia"} ||
+                                  (is_f16 && context.AdapterInfo().vendor == std::string_view{"qualcomm"} &&
+                                   context.AdapterInfo().backendType == wgpu::BackendType::D3D12);
 
     // The template shuffles tile_m lanes in bands of subgroup_min_size when that's a
     // width it supports; otherwise (including when Subgroups isn't supported) it falls
     // back to a direct reduction.
-    // NOTE: NVIDIA GPUs prefer direct reduction.
-    const uint32_t subgroup_min_size = (context.HasFeature(wgpu::FeatureName::Subgroups) && !is_nvidia)
+    const uint32_t subgroup_min_size = (context.HasFeature(wgpu::FeatureName::Subgroups) && !use_direct_reads)
                                            ? context.AdapterInfo().subgroupMinSize
                                            : 0u;
 
