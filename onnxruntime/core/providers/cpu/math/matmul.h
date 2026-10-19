@@ -156,7 +156,9 @@ class MatMul<MLFloat16> final : public OpKernel {
 
   TensorShape b_shape_;
   IAllocatorUniquePtr<void> packed_b_;
+#if defined(MLAS_HGEMM_PACKB_SUPPORTED)
   bool packed_b_is_hgemm_ = false;
+#endif
 
   // For FusedMatMul contrib ops
   float alpha_attr_;
