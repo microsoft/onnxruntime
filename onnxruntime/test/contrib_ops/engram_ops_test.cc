@@ -9,6 +9,7 @@
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <unordered_set>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -69,13 +70,15 @@ bool IsTypeSupported() {
 
 // Runs the tester on CUDA only for BFloat16, otherwise on the default set of execution providers.
 template <typename T>
-void RunOnSupportedProviders(OpTester& test) {
+void RunOnSupportedProviders(OpTester& test, bool packed = false) {
   if constexpr (std::is_same_v<T, BFloat16>) {
     std::vector<std::unique_ptr<IExecutionProvider>> providers;
     providers.push_back(DefaultCudaExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
   } else {
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+             packed ? std::unordered_set<std::string>{kWebGpuExecutionProvider}
+                    : std::unordered_set<std::string>{});
   }
 }
 
@@ -151,7 +154,7 @@ void RunEngramGateTest(float tolerance) {
 // Verifies gated_value_normed: RMSNorm is applied independently to each hyper-connection branch
 // (each hidden_size-sized slice), not over the concatenated hc_mult * hidden_size dimension.
 template <typename T>
-void RunEngramGateNormedTest(float tolerance) {
+void RunEngramGateNormedTest(float tolerance, bool packed = false) {
   if (!IsTypeSupported<T>()) {
     GTEST_SKIP() << "No execution provider available for this type";
   }
@@ -204,17 +207,21 @@ void RunEngramGateNormedTest(float tolerance) {
 
   OpTester test("EngramGate", 1, kMSDomain);
   test.AddAttribute<float>("epsilon", kEpsilon);
-  test.AddInput<T>("key", {1, 1, hc_mult, hidden_size}, ToTensorType<T>(key));
-  test.AddInput<T>("query", {1, 1, hc_mult, hidden_size}, ToTensorType<T>(query));
-  test.AddInput<T>("value", {1, 1, hidden_size}, ToTensorType<T>(value));
+  const std::vector<int64_t> key_shape = packed ? std::vector<int64_t>{1, hc_mult, hidden_size}
+                                                : std::vector<int64_t>{1, 1, hc_mult, hidden_size};
+  const std::vector<int64_t> value_shape = packed ? std::vector<int64_t>{1, hidden_size}
+                                                  : std::vector<int64_t>{1, 1, hidden_size};
+  test.AddInput<T>("key", key_shape, ToTensorType<T>(key));
+  test.AddInput<T>("query", key_shape, ToTensorType<T>(query));
+  test.AddInput<T>("value", value_shape, ToTensorType<T>(value));
   test.AddInput<T>("key_norm_scale", {hc_mult, hidden_size}, ToTensorType<T>(key_scale));
   test.AddInput<T>("query_norm_scale", {hc_mult, hidden_size}, ToTensorType<T>(query_scale));
   test.AddInput<T>("conv_norm_scale", {hc_mult, hidden_size}, ToTensorType<T>(conv_scale));
-  test.AddOutput<T>("output", {1, 1, hc_mult, hidden_size}, ToTensorType<T>(gated_value), false, tolerance,
+  test.AddOutput<T>("output", key_shape, ToTensorType<T>(gated_value), false, tolerance,
                     tolerance);
-  test.AddOutput<T>("gated_value_normed", {1, 1, hc_mult, hidden_size}, ToTensorType<T>(expected_normed), false,
+  test.AddOutput<T>("gated_value_normed", key_shape, ToTensorType<T>(expected_normed), false,
                     tolerance, tolerance);
-  RunOnSupportedProviders<T>(test);
+  RunOnSupportedProviders<T>(test, packed);
 }
 
 // Exercises hc_mult > 1 and non-unit norm scales for an arbitrary hidden_size. hidden_size == 4
@@ -225,7 +232,7 @@ void RunEngramGateNormedTest(float tolerance) {
 // 64 over hidden_size / components), so only a hidden_size above those strides takes a second
 // iteration and actually accumulates into the per-thread partials.
 template <typename T>
-void RunEngramGateVectorizedTest(float tolerance, int64_t hidden) {
+void RunEngramGateVectorizedTest(float tolerance, int64_t hidden, bool packed = false) {
   if (!IsTypeSupported<T>()) {
     GTEST_SKIP() << "No execution provider available for this type";
   }
@@ -271,14 +278,18 @@ void RunEngramGateVectorizedTest(float tolerance, int64_t hidden) {
 
   OpTester test("EngramGate", 1, kMSDomain);
   test.AddAttribute<float>("epsilon", kEpsilon);
-  test.AddInput<T>("key", {kBatch, kSequence, kHcMult, hidden}, ToTensorType<T>(key));
-  test.AddInput<T>("query", {kBatch, kSequence, kHcMult, hidden}, ToTensorType<T>(query));
-  test.AddInput<T>("value", {kBatch, kSequence, hidden}, ToTensorType<T>(value));
+  const std::vector<int64_t> key_shape = packed ? std::vector<int64_t>{kBatch * kSequence, kHcMult, hidden}
+                                                : std::vector<int64_t>{kBatch, kSequence, kHcMult, hidden};
+  const std::vector<int64_t> value_shape = packed ? std::vector<int64_t>{kBatch * kSequence, hidden}
+                                                  : std::vector<int64_t>{kBatch, kSequence, hidden};
+  test.AddInput<T>("key", key_shape, ToTensorType<T>(key));
+  test.AddInput<T>("query", key_shape, ToTensorType<T>(query));
+  test.AddInput<T>("value", value_shape, ToTensorType<T>(value));
   test.AddInput<T>("key_norm_scale", {kHcMult, hidden}, ToTensorType<T>(key_scale));
   test.AddInput<T>("query_norm_scale", {kHcMult, hidden}, ToTensorType<T>(query_scale));
-  test.AddOutput<T>("output", {kBatch, kSequence, kHcMult, hidden}, ToTensorType<T>(expected), false, tolerance,
+  test.AddOutput<T>("output", key_shape, ToTensorType<T>(expected), false, tolerance,
                     tolerance);
-  RunOnSupportedProviders<T>(test);
+  RunOnSupportedProviders<T>(test, packed);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1793,6 +1804,14 @@ TEST(EngramOpsTest, EngramGateVectorizedFloat16) {
   RunEngramGateVectorizedTest<MLFloat16>(3e-3f, 4);
 }
 
+TEST(EngramOpsTest, EngramGatePackedFloat) {
+  RunEngramGateVectorizedTest<float>(1e-4f, 4, true);
+}
+
+TEST(EngramOpsTest, EngramGatePackedFloat16) {
+  RunEngramGateVectorizedTest<MLFloat16>(3e-3f, 4, true);
+}
+
 // 260 channels is the smallest multiple of 4 above both accumulation strides (CUDA's blockDim.x of
 // 256 and, with components == 4, the WGSL workgroup size of 64 over hidden_size / 4 == 65), so this
 // is the only case where either strided reduction loop runs more than once per thread.
@@ -1814,6 +1833,10 @@ TEST(EngramOpsTest, EngramGateNormedFloat) {
 
 TEST(EngramOpsTest, EngramGateNormedFloat16) {
   RunEngramGateNormedTest<MLFloat16>(2e-3f);
+}
+
+TEST(EngramOpsTest, EngramGatePackedNormedFloat) {
+  RunEngramGateNormedTest<float>(1e-4f, true);
 }
 
 TEST(EngramOpsTest, EngramGateNormedBFloat16) {

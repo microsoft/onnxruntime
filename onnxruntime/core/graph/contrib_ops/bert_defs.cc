@@ -4578,11 +4578,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               1.0e-5f)
         .Input(0,
                "key",
-               "Projected Engram keys with shape (batch_size, sequence_length, hc_mult, hidden_size).",
+               "Projected Engram keys with shape (batch_size, sequence_length, hc_mult, hidden_size) "
+               "or (total_tokens, hc_mult, hidden_size).",
                "T")
         .Input(1,
                "query",
-               "Hidden-state queries with shape (batch_size, sequence_length, hc_mult, hidden_size).",
+               "Hidden-state queries with the same shape as key.",
                "T")
         .Input(2,
                "value",
@@ -4605,7 +4606,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "Gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).",
+                "Gated value tensor with the same shape as key.",
                 "T")
         .Output(1,
                 "gated_value_normed",
@@ -5624,6 +5625,147 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+constexpr const char* FusedTensorOps_ver1_doc = R"DOC(
+CUDA contrib operators for fused tensor operations used by transformer models.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    ArgMaxLastAxis, 1,
+    OpSchema()
+        .SetDoc(FusedTensorOps_ver1_doc)
+        .Attr("keepdims", "Keep a singleton final axis when nonzero.", AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Input(0, "logits", "Logits with vocabulary on the last axis.", "T")
+        .Output(0, "indices", "First maximum index for each leading row.", "I")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Supported logit types.")
+        .TypeConstraint("I", {"tensor(int64)"}, "Argmax indices are int64.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto_DataType_INT64);
+          if (!hasInputShape(ctx, 0)) return;
+          const auto& input_shape = getInputShape(ctx, 0);
+          if (input_shape.dim_size() < 1) {
+            fail_shape_inference("ArgMaxLastAxis: logits must have rank at least one");
+          }
+          ONNX_NAMESPACE::TensorShapeProto output_shape;
+          for (int i = 0; i + 1 < input_shape.dim_size(); ++i) {
+            *output_shape.add_dim() = input_shape.dim(i);
+          }
+          if (getAttribute(ctx, "keepdims", static_cast<int64_t>(0)) != 0) {
+            output_shape.add_dim()->set_dim_value(1);
+          }
+          updateOutputShape(ctx, 0, output_shape);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    EmbeddingRMSNorm, 1,
+    OpSchema()
+        .SetDoc(FusedTensorOps_ver1_doc)
+        .Attr("epsilon", "RMS normalization epsilon.", AttributeProto::FLOAT)
+        .Input(0, "ids", "Embedding row indices with any shape.", "I")
+        .Input(1, "table", "BF16 embedding matrix [vocabulary, hidden].", "T")
+        .Input(2, "weight", "FP32 RMS normalization weight [hidden].", "F")
+        .Output(0, "normalized", "BF16 normalized embeddings [shape(ids), hidden].", "T")
+        .TypeConstraint("I", {"tensor(int64)"}, "Indices use int64.")
+        .TypeConstraint("T", {"tensor(bfloat16)"}, "Embedding and result use BF16.")
+        .TypeConstraint("F", {"tensor(float)"}, "Normalization weight uses FP32.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 1, 0);
+          if (!hasInputShape(ctx, 0) || !hasInputShape(ctx, 1)) return;
+          const auto& ids_shape = getInputShape(ctx, 0);
+          const auto& table_shape = getInputShape(ctx, 1);
+          if (table_shape.dim_size() != 2) {
+            fail_shape_inference("EmbeddingRMSNorm: table must have rank two");
+          }
+          ONNX_NAMESPACE::TensorShapeProto output_shape = ids_shape;
+          *output_shape.add_dim() = table_shape.dim(1);
+          updateOutputShape(ctx, 0, output_shape);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    RowSelect, 1,
+    OpSchema()
+        .SetDoc(FusedTensorOps_ver1_doc)
+        .Input(0, "selection", "Scalar-like int64 row selector; zero selects row 0.", "I")
+        .Input(1, "x0", "BF16 tensor with shape [1, 2, ...].", "T")
+        .Input(2, "x1", "BF16 tensor with shape [1, 2, ...].", "T")
+        .Input(3, "x2", "BF16 tensor with shape [1, 2, ...].", "T")
+        .Output(0, "y0", "Selected BF16 tensor with shape [1, 1, ...].", "T")
+        .Output(1, "y1", "Selected BF16 tensor with shape [1, 1, ...].", "T")
+        .Output(2, "y2", "Selected BF16 tensor with shape [1, 1, ...].", "T")
+        .TypeConstraint("I", {"tensor(int64)"}, "Selector uses int64.")
+        .TypeConstraint("T", {"tensor(bfloat16)"}, "Inputs and outputs use BF16.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          for (int i = 0; i < 3; ++i) {
+            propagateElemTypeFromInputToOutput(ctx, i + 1, i);
+            if (!hasInputShape(ctx, i + 1)) continue;
+            ONNX_NAMESPACE::TensorShapeProto output_shape = getInputShape(ctx, i + 1);
+            if (output_shape.dim_size() < 2) {
+              fail_shape_inference("RowSelect: inputs must have rank at least two");
+            }
+            output_shape.mutable_dim(1)->set_dim_value(1);
+            updateOutputShape(ctx, i, output_shape);
+          }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SigmoidGateMul, 1,
+    OpSchema()
+        .SetDoc(FusedTensorOps_ver1_doc)
+        .Attr("head_dim", "Dimension of each attention head.", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("num_heads", "Number of attention heads.", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("q_stride", "Per-head stride in the packed projection.", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("tok_stride", "Per-token stride in the packed projection.", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("q_offset", "Offset of the query projection within each token.", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("broadcast_gate",
+              "When one, projection has the attention shape with final dimension one. "
+              "Packed layout attributes must be zero. CUDA only.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("sigmoid_in_fp32",
+              "One computes sigmoid in FP32 before BF16 conversion. Zero preserves "
+              "the input-type intermediate arithmetic of CUDA Sigmoid, including subtraction on negative inputs.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("silu_gate",
+              "When one, projection and attention have identical shapes. Multiply the "
+              "BF16-rounded sigmoid by projection and round to BF16 before multiplying attention. "
+              "Cannot be combined with broadcast_gate or packed layout attributes.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "attention", "BF16 attention values.", "T")
+        .Input(1, "projection", "BF16 packed projection containing gate values.", "T")
+        .Input(2, "residual", "Optional BF16 residual with the attention shape.", "T", OpSchema::Optional)
+        .Output(0, "output",
+                "Attention multiplied by BF16-rounded sigmoid gates, rounded to BF16 "
+                "before optionally adding residual and rounding again.",
+                "T")
+        .TypeConstraint("T", {"tensor(bfloat16)"}, "Inputs and output use BF16.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (hasInputShape(ctx, 0)) updateOutputShape(ctx, 0, getInputShape(ctx, 0));
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    UntileHyperConnectionWeights, 1,
+    OpSchema()
+        .SetDoc(FusedTensorOps_ver1_doc)
+        .Attr("kind", "Untile layout kind, either 0 or 1.", AttributeProto::INT)
+        .Input(0, "tiled", "Tiled BF16 weight [160, 20480].", "T")
+        .Input(1, "unused", "Reserved optional input retained for exporter compatibility.", "T",
+               OpSchema::Optional)
+        .Output(0, "untiled", "Untiled BF16 weight.", "T")
+        .TypeConstraint("T", {"tensor(bfloat16)"}, "Input and output use BF16.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasInputShape(ctx, 0)) return;
+          const int64_t kind = getAttribute(ctx, "kind", static_cast<int64_t>(-1));
+          if (kind != 0 && kind != 1) {
+            fail_shape_inference("UntileHyperConnectionWeights: kind must be zero or one");
+          }
+          ONNX_NAMESPACE::TensorShapeProto output_shape;
+          output_shape.add_dim()->set_dim_value(kind == 0 ? 10240 : 320);
+          output_shape.add_dim()->set_dim_value(kind == 0 ? 320 : 10240);
+          updateOutputShape(ctx, 0, output_shape);
+        }));
+
 constexpr const char* LinearAttentionGate_ver1_doc = R"DOC(
 Fuses the gate projections that feed LinearAttention's gated-delta recurrence:
 
@@ -5898,6 +6040,113 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
+constexpr const char* HyperConnectionLowRankMix_ver1_doc = R"DOC(
+One hyper-connection block with a low-rank gate network, fused into one operator. C = num_branches streams of
+width H are kept as one flattened (..., C * H) tensor. With the optional prologue the operator first applies the
+post-mix of the previous block (identity stream mix):
+
+  S[..., c, h] = streams[..., c, h] + prev_post_gate[..., c] * prev_block_output[..., h]
+
+and otherwise S = streams. It then computes, with `rms` taken per branch over H:
+
+  hn[..., c, h] = S[..., c, h] / sqrt(mean_h(S[..., c, :]^2) + epsilon) * norm_scale[c, h]
+  d             = ScaledSiLU(hn @ down_weight, silu_alpha)                   (..., R)
+  g[..., c, h]  = sigmoid(d @ up_weight)                                    per stream and feature
+  pre_output    = reduction_scale * sum_c(hn[..., c, h] * g[..., c, h])     (..., H)
+  post_gate     = sigmoid((hn @ inject_weight) / gate_div) * gate_mul         (..., C)
+
+pre_output is the input of the next transformer block and post_gate is prev_post_gate of the next call.
+streams_out is S (the streams after the prologue; a copy of streams when there is no prologue).
+
+Numerics contract. Matrix products and reductions accumulate in float32. The result of every step is rounded
+to T once, as the output of the equivalent standard operator would be:
+S = cast_T(streams + prev_post_gate * prev_block_output), hn = cast_T(S * inv_rms * norm_scale),
+down = cast_T(hn @ down_weight), Z = cast_T(silu_alpha * down), SG = cast_T(sigmoid(Z)), hidden = cast_T(Z * SG),
+up = cast_T(hidden @ up_weight), g = cast_T(sigmoid(up)), pre_output = cast_T(reduction_scale * sum_c(hn * g)),
+inject = cast_T(hn @ inject_weight), post_gate = cast_T(cast_T(sigmoid(cast_T(inject / gate_div))) * gate_mul).
+sigmoid is evaluated in float32 with expf and rounded once to T; it does not reproduce a Sigmoid kernel that
+rounds to T after every elementary operation. The accumulation order of the matrix products is fixed, so the
+results are deterministic, but they are not bitwise identical to cuBLAS.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    HyperConnectionLowRankMix, 1,
+    OpSchema()
+        .SetDoc(HyperConnectionLowRankMix_ver1_doc)
+        .Attr("num_branches", "Number of residual streams C. The last dimension of streams is C * H.",
+              AttributeProto::INT, true)
+        .Attr("epsilon", "Epsilon added to the mean square of each branch before the reciprocal square root.",
+              AttributeProto::FLOAT, 1e-5f)
+        .Attr("reduction_scale", "Multiplier applied to the sum over branches of pre_output.",
+              AttributeProto::FLOAT, 1.0f)
+        .Attr("silu_alpha", "Scale of the ScaledSiLU between the down and up projections.",
+              AttributeProto::FLOAT, 1.0f)
+        .Attr("gate_div", "Divisor applied to the inject logits before the sigmoid. Must not be zero.",
+              AttributeProto::FLOAT, 1.0f)
+        .Attr("gate_mul", "Multiplier applied to the sigmoid of the inject logits.",
+              AttributeProto::FLOAT, 1.0f)
+        .Input(0, "streams",
+               "Flattened streams (..., C * H). With the prologue these are the streams before the previous "
+               "block's post-mix.",
+               "T")
+        .Input(1, "norm_scale", "Per-branch RMS norm weight with shape (C * H).", "T")
+        .Input(2, "down_weight", "Down projection with shape (C * H, R), row-major [K, N].", "T")
+        .Input(3, "up_weight", "Up projection with shape (R, C * H), row-major [K, N].", "T")
+        .Input(4, "inject_weight", "Post-gate projection with shape (C * H, C), row-major [K, N].", "T")
+        .Input(5, "prev_block_output",
+               "Optional output of the previous block with shape (..., H). Provide together with prev_post_gate.",
+               "T", OpSchema::Optional)
+        .Input(6, "prev_post_gate",
+               "Optional post-mix gate of the previous block with shape (..., C). Provide together with "
+               "prev_block_output.",
+               "T", OpSchema::Optional)
+        .Output(0, "pre_output", "Block input with shape (..., H).", "T")
+        .Output(1, "post_gate", "Post-mix gate for the next call with shape (..., C).", "T")
+        .Output(2, "streams_out",
+                "Optional streams after the prologue, with the same shape as streams. Equal to streams when the "
+                "prologue inputs are absent.",
+                "T", OpSchema::Optional)
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain all floating-point inputs and outputs to the same type.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          if (ctx.getNumOutputs() > 2) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 2);
+          }
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          const auto branches = getAttribute(ctx, "num_branches", 0);
+          if (branches < 1) {
+            fail_shape_inference("num_branches must be positive.");
+          }
+          const auto& input_shape = getInputShape(ctx, 0);
+          const int rank = input_shape.dim_size();
+          if (rank < 1) {
+            fail_shape_inference("streams must have rank at least 1.");
+          }
+          auto* pre_shape = getOutputShape(ctx, 0);
+          auto* gate_shape = getOutputShape(ctx, 1);
+          for (int i = 0; i < rank - 1; ++i) {
+            *pre_shape->add_dim() = input_shape.dim(i);
+            *gate_shape->add_dim() = input_shape.dim(i);
+          }
+          auto* hidden = pre_shape->add_dim();
+          const auto& last = input_shape.dim(rank - 1);
+          if (last.has_dim_value()) {
+            if (last.dim_value() % branches != 0) {
+              fail_shape_inference("The last dimension of streams must be divisible by num_branches.");
+            }
+            hidden->set_dim_value(last.dim_value() / branches);
+          }
+          gate_shape->add_dim()->set_dim_value(branches);
+          if (ctx.getNumOutputs() > 2) {
+            propagateShapeFromInputToOutput(ctx, 0, 2);
+          }
         }));
 
 constexpr const char* GatedAdd_ver1_doc = R"DOC(
