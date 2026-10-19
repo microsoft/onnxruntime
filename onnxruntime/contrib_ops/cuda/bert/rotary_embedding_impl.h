@@ -27,7 +27,8 @@ Status LaunchRotaryEmbeddingKernel(
     const int position_ids_format,
     const bool interleaved,
     const int max_threads_per_block,
-    const bool is_input_bnsh_format);
+    const bool is_input_bnsh_format,
+    const bool use_fp32_arithmetic = false);
 
 template <typename T>
 Status LaunchRotaryEmbeddingKernel(
@@ -48,7 +49,8 @@ Status LaunchRotaryEmbeddingKernel(
     const bool interleaved,
     const int max_threads_per_block,
     int4 in_strides,
-    int4 out_strides);
+    int4 out_strides,
+    const bool use_fp32_arithmetic = false);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -16,6 +16,9 @@ class BranchwiseRMSNorm final : public onnxruntime::cuda::CudaKernel {
  private:
   float epsilon_;
   int64_t num_branches_;
+  bool use_onnx_arithmetic_;
+  int64_t input_start_;
+  int64_t input_width_;
 };
 
 }  // namespace onnxruntime::contrib::cuda

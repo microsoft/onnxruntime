@@ -894,18 +894,39 @@ This version of the operator has been available since version 1 of the 'com.micr
   (..., C, H), or flattened shape (..., C * H) when num_branches is specified.
   The optional scale may have shape (C * H), (C, H), or (H). Arithmetic is
   performed in float32 and the result is converted to T.
+  With use_onnx_arithmetic=1, compute FP32 square, mean, epsilon addition, square
+  root, division, and scale multiplication with separate rounding boundaries.
+  CUDA reuses the standard fast ReduceMean summation order, including its scalar-result
+  path; it does not substitute reciprocal square root or change the reduction tree.
+  For multiple rows, FP32-rounded squaring is performed during the reduction load rather
+  than materializing a separate FP32 square tensor.
+  Optional Y_fp32 losslessly widens the already T-rounded Y and requires
+  use_onnx_arithmetic=1. WebGPU supports only the default mode without Y_fp32.
+  CUDA-only version 2 can select a contiguous last-axis interval directly from
+  packed rows using input_start and input_width. It retains the same reduction
+  order over the selected width and avoids materializing a Slice tensor.
 
 #### Version
 
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+Version 1 retains the original input layout. Version 2 adds CUDA-only packed-input
+selection; CPU and WebGPU implement version 1 only.
 
 #### Attributes
 
 <dl>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>Epsilon added before reciprocal square root.</dd>
-<dt><tt>num_branches</tt> : int</dt>
+<dt><tt>input_start</tt> : int (default is 0, version 2)</dt>
+<dd>Nonnegative starting offset in the last input dimension. A nonzero offset requires input_width.</dd>
+<dt><tt>input_width</tt> : int (default is 0, version 2)</dt>
+<dd>Width selected before normalization. Zero retains the full input. A positive width
+requires use_onnx_arithmetic=1 and num_branches=0, and the selected interval must fit
+within the last input dimension.</dd>
+<dt><tt>num_branches</tt> : int (default is 0)</dt>
 <dd>Number of branches for flattened input. Omit or set to zero for grouped input.</dd>
+<dt><tt>use_onnx_arithmetic</tt> : int (default is 0)</dt>
+<dd>Use explicit FP32 mean/sqrt/divide/multiply arithmetic instead of reciprocal RMS.
+Supported values are 0 (default) and 1.</dd>
 </dl>
 
 #### Inputs (1 - 2)
@@ -921,12 +942,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>Y</tt> : T</dt>
-<dd>RMS-normalized output with the same shape as X.</dd>
+<dd>RMS-normalized output with the same shape as X, except that version 2 with
+positive input_width replaces the last dimension with input_width.</dd>
+<dt><tt>Y_fp32</tt> (optional) : F</dt>
+<dd>Float32 widening of the already T-rounded Y. Requires use_onnx_arithmetic=1.</dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
+<dt><tt>F</tt> : tensor(float)</dt>
+<dd>Widened output is float32.</dd>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output to floating-point tensors.</dd>
 <dt><tt>M</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
@@ -7173,10 +7199,18 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices
   that are multiplied to query and key before the inner product of query and key is taken.
+  Version 2 adds optional FP32 arithmetic with activation-type storage. With
+  use_fp32_arithmetic=1, input and cache values are widened inside the CUDA kernel,
+  each multiplication and addition is rounded separately in float32, and only the
+  final result is converted back to the input type. This preserves a
+  Cast-to-float -> float RotaryEmbedding -> Cast-to-input-type chain.
+  Version 1 and the default arithmetic are unchanged.
 
 #### Version
 
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+The latest version is 2 of the 'com.microsoft' operator set. Version 2 is currently
+implemented by CUDA only; other providers retain version 1 and cannot silently
+execute version 2 with legacy low-precision arithmetic.
 
 #### Attributes
 
@@ -7191,6 +7225,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Rotary embedding dimension. Default value is 0.</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1.0</dd>
+<dt><tt>use_fp32_arithmetic</tt> : int (default is 0; version 2 only)</dt>
+<dd>Widen input and cache values, perform separately rounded float32 multiplication
+and addition, then round the output once to the input type. Supported values are
+0 (legacy arithmetic) and 1.</dd>
 </dl>
 
 #### Inputs

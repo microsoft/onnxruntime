@@ -15,11 +15,11 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                        \
+#define REGISTER_KERNEL_TYPED(T, Version)                               \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
       RotaryEmbedding,                                                  \
       kMSDomain,                                                        \
-      1,                                                                \
+      Version,                                                          \
       T,                                                                \
       kCudaExecutionProvider,                                           \
       (*KernelDefBuilder::Create())                                     \
@@ -27,9 +27,12 @@ namespace cuda {
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>()), \
       RotaryEmbedding<T>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(MLFloat16)
-REGISTER_KERNEL_TYPED(BFloat16)
+REGISTER_KERNEL_TYPED(float, 1)
+REGISTER_KERNEL_TYPED(MLFloat16, 1)
+REGISTER_KERNEL_TYPED(BFloat16, 1)
+REGISTER_KERNEL_TYPED(float, 2)
+REGISTER_KERNEL_TYPED(MLFloat16, 2)
+REGISTER_KERNEL_TYPED(BFloat16, 2)
 
 template <typename T>
 RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : CudaKernel(info) {
@@ -38,6 +41,9 @@ RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : CudaKernel(info)
   num_heads = static_cast<int>(info.GetAttrOrDefault<int64_t>("num_heads", 0));
   interleaved = (info.GetAttrOrDefault<int64_t>("interleaved", 0) == 1);
   is_packed_batching = (info.GetAttrOrDefault<int64_t>("is_packed_batching", 0) == 1);
+  const auto mode = info.GetAttrOrDefault<int64_t>("use_fp32_arithmetic", 0);
+  ORT_ENFORCE(mode == 0 || mode == 1, "use_fp32_arithmetic must be 0 or 1");
+  use_fp32_arithmetic = mode == 1;
 }
 
 template <typename T>
@@ -83,7 +89,8 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
       parameters.position_ids_format,
       interleaved,
       device_prop.maxThreadsPerBlock,
-      parameters.transposed);
+      parameters.transposed,
+      use_fp32_arithmetic);
 }
 
 }  // namespace cuda

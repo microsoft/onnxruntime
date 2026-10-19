@@ -275,7 +275,7 @@ __device__ void reduce_all(
 template <typename TIn, typename TOut, typename TBuf, typename TOp, typename TFinalOp, bool DivideResultBySize>
 __global__ void reduce_matrix_columns_kernel(
     const int num_rows, const int num_cols, const TIn* const input, TOut* const output,
-    TBuf* const block_reductions_buffer, int* const block_done_counts_buffer) {
+    TBuf* const block_reductions_buffer, int* const block_done_counts_buffer, const int input_row_stride) {
   const int num_blocks_in_grid_row = gridDim.x;
   const int row_id_in_grid = blockIdx.y;
   const int num_grid_rows = gridDim.y;
@@ -283,7 +283,7 @@ __global__ void reduce_matrix_columns_kernel(
   // one row per iteration
   // row_id is int64_t to avoid int overflow in offset calculations
   for (int64_t row_id = row_id_in_grid; row_id < num_rows; row_id += num_grid_rows) {
-    const TIn* const row_data = input + row_id * num_cols;
+    const TIn* const row_data = input + row_id * input_row_stride;
     TOut* const row_output = output + row_id;
     TBuf* const row_block_reductions_buffer = block_reductions_buffer + row_id * num_blocks_in_grid_row;
     int* const row_block_done_counts_buffer = block_done_counts_buffer + row_id;
@@ -296,8 +296,10 @@ __global__ void reduce_matrix_columns_kernel(
 
 template <typename TIn, typename TOut, typename TOp, typename TFinalOp, bool DivideResultBySize>
 Status call_reduce_matrix_columns(
-    cudaStream_t stream, const TIn* input, TOut* output, const int num_rows, const int num_cols, void* buffer, size_t buffer_size) {
+    cudaStream_t stream, const TIn* input, TOut* output, const int num_rows, const int num_cols,
+    void* buffer, size_t buffer_size, int input_row_stride = 0) {
   ORT_ENFORCE(num_rows >= 0 && num_cols >= 0);
+  ORT_ENFORCE(input_row_stride == 0 || input_row_stride >= num_cols);
 
   using TBuf = AccumulationType_t<TIn>;
 
@@ -319,7 +321,8 @@ Status call_reduce_matrix_columns(
   const int shared_mem_size = sizeof(TBuf) * block_dim.x * block_dim.y / GPU_WARP_SIZE_HOST;
   reduce_matrix_columns_kernel<TIn, TOut, TBuf, TOp, TFinalOp, DivideResultBySize>
       <<<grid_dim, block_dim, shared_mem_size, stream>>>(
-          num_rows, num_cols, input, output, block_reductions_buffer, block_done_counts_buffer);
+          num_rows, num_cols, input, output, block_reductions_buffer, block_done_counts_buffer,
+          input_row_stride == 0 ? num_cols : input_row_stride);
 
   return Status::OK();
 }
@@ -527,6 +530,26 @@ INSTANTIATE_REDUCE_MATRIX_COLUMNS(float);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(double);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(BFloat16);
 #undef INSTANTIATE_REDUCE_MATRIX_COLUMNS
+
+struct RoundedSquare {
+  __device__ __forceinline__ float operator()(float value) const {
+    return __fmul_rn(value, value);
+  }
+};
+
+template <typename TIn>
+Status reduce_square_matrix_columns(cudaStream_t stream, const TIn* input, float* output,
+                                    int m, int n, void* buffer, size_t buffer_size, int input_row_stride) {
+  return detail::call_reduce_matrix_columns<TIn, float, RoundedSquare, Identity, false>(
+      stream, input, output, m, n, buffer, buffer_size, input_row_stride);
+}
+
+#define INSTANTIATE_REDUCE_SQUARE_MATRIX_COLUMNS(T) \
+  template Status reduce_square_matrix_columns<T>(cudaStream_t, const T*, float*, int, int, void*, size_t, int)
+INSTANTIATE_REDUCE_SQUARE_MATRIX_COLUMNS(float);
+INSTANTIATE_REDUCE_SQUARE_MATRIX_COLUMNS(half);
+INSTANTIATE_REDUCE_SQUARE_MATRIX_COLUMNS(BFloat16);
+#undef INSTANTIATE_REDUCE_SQUARE_MATRIX_COLUMNS
 
 namespace detail {
 constexpr int kMaxReduceRank = 16;

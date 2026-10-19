@@ -160,6 +160,9 @@ class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, ParametricSoftplus);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding);
+class CUDA_MS_OP_TYPED_CLASS_NAME(2, float, RotaryEmbedding);
+class CUDA_MS_OP_TYPED_CLASS_NAME(2, MLFloat16, RotaryEmbedding);
+class CUDA_MS_OP_TYPED_CLASS_NAME(2, BFloat16, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MRotaryEmbedding);
@@ -179,6 +182,9 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedRMSNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, BranchwiseRMSNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, BranchwiseRMSNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, BranchwiseRMSNorm);
+class CUDA_MS_OP_TYPED_CLASS_NAME(2, float, BranchwiseRMSNorm);
+class CUDA_MS_OP_TYPED_CLASS_NAME(2, MLFloat16, BranchwiseRMSNorm);
+class CUDA_MS_OP_TYPED_CLASS_NAME(2, BFloat16, BranchwiseRMSNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, ScaledSiLU);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, ScaledSiLU);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, ScaledSiLU);
@@ -524,6 +530,9 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(2, float, RotaryEmbedding)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(2, MLFloat16, RotaryEmbedding)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(2, BFloat16, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MRotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MRotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MRotaryEmbedding)>,
@@ -543,6 +552,9 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, BranchwiseRMSNorm)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, BranchwiseRMSNorm)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, BranchwiseRMSNorm)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(2, float, BranchwiseRMSNorm)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(2, MLFloat16, BranchwiseRMSNorm)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(2, BFloat16, BranchwiseRMSNorm)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, ScaledSiLU)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, ScaledSiLU)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, ScaledSiLU)>,
