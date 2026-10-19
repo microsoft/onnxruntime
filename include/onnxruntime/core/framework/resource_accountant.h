@@ -67,10 +67,14 @@ struct WorkspaceEstimateComparisonSummary {
 struct WorkspaceEstimatorConfig {
   std::optional<std::string> cuda_fpa_intb_gemm;
   std::optional<std::string> cuda_fpa_intb_profile_m;
-  // Validated nonnegative int64 envelope; zero means unspecified.
-  // Reader-only until the GQA workspace estimator consumes the envelope.
+  // Validated nonnegative, int32-compatible envelope; zero means unspecified.
   int64_t cuda_gqa_workspace_max_total_sequence_length = 0;
 };
+
+// Reads the caller-declared CUDA GQA envelope and validates its runtime ABI range.
+Status ParseCudaGqaWorkspaceMaxTotalSequenceLength(
+    const ConfigOptions& config_options,
+    int64_t& max_total_sequence_length);
 
 using NodeWorkspaceReservationMap = InlinedHashMap<size_t, WorkspaceEstimateSelection>;
 using WorkspaceReservationMap = InlinedHashMap<const void*, NodeWorkspaceReservationMap>;

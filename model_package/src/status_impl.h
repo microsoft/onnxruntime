@@ -9,9 +9,24 @@
 
 #include <new>
 #include <string>
+#include <system_error>
 #include <utility>
 
 #include "model_package_api.h"
+
+/// Function-try-block for functions returning ModelPackageStatus*:
+/// MODEL_PACKAGE_CATCH turns a std::system_error into MODEL_PACKAGE_ERR_IO.
+/// Both expand to nothing when exceptions are disabled.
+#if defined(__cpp_exceptions) || defined(_CPPUNWIND)
+#define MODEL_PACKAGE_TRY try
+#define MODEL_PACKAGE_CATCH                                                 \
+  catch (const std::system_error& error) {                                  \
+    return ::model_package::MakeStatus(MODEL_PACKAGE_ERR_IO, error.what()); \
+  }
+#else
+#define MODEL_PACKAGE_TRY
+#define MODEL_PACKAGE_CATCH
+#endif
 
 struct ModelPackageStatus {
   ModelPackageErrorCode code{MODEL_PACKAGE_ERR_INVALID_ARG};

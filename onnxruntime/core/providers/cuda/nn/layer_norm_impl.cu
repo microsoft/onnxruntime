@@ -240,7 +240,7 @@ struct SharedMemory<double> {
 };
 }  // namespace
 
-template <typename T, typename U, typename V, bool simplified>
+template <typename T, typename U, typename V, bool simplified, bool stash_normalized>
 __global__ void cuApplyLayerNorm(
     V* __restrict__ output_vals,
     U* __restrict__ mean,
@@ -292,8 +292,16 @@ __global__ void cuApplyLayerNorm(
         for (int i = thrx; i < n2 / 2; i += numx) {
           const float2 input_pair = __half22float2(input2[i]);
           const float2 gamma_pair = __half22float2(gamma2[i]);
-          output2[i] = __floats2half2_rn(gamma_pair.x * c_inv_std_dev * input_pair.x,
-                                         gamma_pair.y * c_inv_std_dev * input_pair.y);
+          if constexpr (stash_normalized) {
+            const half2 normalized = __floats2half2_rn(c_inv_std_dev * input_pair.x,
+                                                       c_inv_std_dev * input_pair.y);
+            const float2 normalized_pair = __half22float2(normalized);
+            output2[i] = __floats2half2_rn(gamma_pair.x * normalized_pair.x,
+                                           gamma_pair.y * normalized_pair.y);
+          } else {
+            output2[i] = __floats2half2_rn(gamma_pair.x * c_inv_std_dev * input_pair.x,
+                                           gamma_pair.y * c_inv_std_dev * input_pair.y);
+          }
         }
         use_scalar = false;
       }
@@ -315,7 +323,15 @@ __global__ void cuApplyLayerNorm(
         U beta_i = (beta != nullptr) ? (U)beta[index] : (U)0;
 
         if (simplified) {
-          ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * curr);
+          if constexpr (stash_normalized) {
+            // ONNX RMSNormalization rounds standardization to X's type before scaling.
+            const T normalized = static_cast<T>(c_inv_std_dev * curr);
+            using ScaleType = std::conditional_t<std::is_same_v<V, double>, double, U>;
+            const ScaleType scale = gamma != nullptr ? static_cast<ScaleType>(gamma[index]) : ScaleType(1);
+            ovals[i] = static_cast<V>(scale * static_cast<ScaleType>(normalized));
+          } else {
+            ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * curr);
+          }
         } else {
           ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * (curr - mu) + beta_i);
         }
@@ -343,7 +359,7 @@ int32_t round_up_power_of_2(int32_t v) {
   return v;
 }
 
-template <typename T, typename U, typename V, bool simplified>
+template <typename T, typename U, typename V, bool simplified, bool stash_normalized>
 void HostApplyLayerNorm(
     const cudaDeviceProp& prop,
     cudaStream_t stream,
@@ -379,7 +395,7 @@ void HostApplyLayerNorm(
   const dim3 blocks(1, std::min<unsigned int>(n1, maxGridY), 1);
   int nshared =
       threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
-  cuApplyLayerNorm<T, U, V, simplified><<<blocks, threads, nshared, stream>>>(
+  cuApplyLayerNorm<T, U, V, simplified, stash_normalized><<<blocks, threads, nshared, stream>>>(
       output,
       mean,
       inv_std_dev,
@@ -410,6 +426,21 @@ LAYERNORM_LINEAR_IMPL(float, float, half, false)
 LAYERNORM_LINEAR_IMPL(half, float, float, false)
 LAYERNORM_LINEAR_IMPL(BFloat16, float, BFloat16, true)
 LAYERNORM_LINEAR_IMPL(BFloat16, float, BFloat16, false)
+
+#define RMSNORM_LINEAR_IMPL(T, U, V)                                                                                \
+  template void HostApplyLayerNorm<T, U, V, true, true>(const cudaDeviceProp& prop, cudaStream_t stream, V* output, \
+                                                        U* mean, U* inv_std_dev, const T* input, int n1, int n2,    \
+                                                        double epsilon, const V* gamma, const V* beta,              \
+                                                        int broadcast_param,                                        \
+                                                        const T* skip, const T* bias, T* skip_input_bias_add_output);
+
+RMSNORM_LINEAR_IMPL(float, float, float)
+RMSNORM_LINEAR_IMPL(half, float, half)
+RMSNORM_LINEAR_IMPL(double, double, double)
+RMSNORM_LINEAR_IMPL(double, float, double)
+RMSNORM_LINEAR_IMPL(float, float, half)
+RMSNORM_LINEAR_IMPL(half, float, float)
+RMSNORM_LINEAR_IMPL(BFloat16, float, BFloat16)
 
 }  // namespace cuda
 }  // namespace onnxruntime

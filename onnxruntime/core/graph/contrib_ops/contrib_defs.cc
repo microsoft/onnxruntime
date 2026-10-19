@@ -1435,7 +1435,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     MoE, 1,
     OpSchema()
         .SetDoc(MoE_ver1_doc)
-        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
+        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu", AttributeProto::STRING, std::string("relu"))
         .Attr("swiglu_fusion", "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("swiglu_limit", "The limit used to clamp in SwiGLU. No clamp when limit is not provided.", AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Attr("activation_alpha", "Alpha parameter used in activation function.", AttributeProto::FLOAT, 1.0f)
@@ -1567,13 +1567,15 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       A positive block_size selects square block scaling with float32, float16, or bfloat16 fc*_scales tensors shaped
       [num_experts, ceil(N / block_size), ceil(K / block_size)]:
         dequantized_weight[e, n, k] = float(weight[e, n, k]) * scale[e, n / block_size, k / block_size]
-      Partial edge blocks are allowed. No zero points or activation scales are used.
+      Partial edge blocks are allowed. No zero points or activation scales are accepted.
       Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
       Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
       On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM by default.
       These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
       Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
       Other activation types and unsupported routing sizes retain the fallback.
+      The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
+      that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
 
       Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
       Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
@@ -1600,7 +1602,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(qMoE_ver1_doc)
         .Attr("activation_type",
-              "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu",
+              "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu",
               AttributeProto::STRING,
               std::string("relu"))
         .Attr("k",
@@ -2702,7 +2704,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GatherND, 1,
                                 .Output(0, "output", "Tensor of rank q-1+r-indices[-1].", "T")
                                 .TypeConstraint(
                                     "T",
-                                    OpSchema::all_tensor_types_ir4(),
+                                    OpSchema::all_tensor_types(),
                                     "Constrain input and output types to any tensor type.")
                                 .TypeConstraint(
                                     "Tind",
