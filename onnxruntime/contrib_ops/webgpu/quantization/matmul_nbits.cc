@@ -358,6 +358,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                    context.HasFeature(wgpu::FeatureName::SubgroupSizeControl) &&
                                    adapter.subgroupMinSize <= 32 && adapter.subgroupMaxSize >= 32;
   const bool qlora_down_subgroups = has_qlora_down && context.HasFeature(wgpu::FeatureName::Subgroups) &&
+                                    context.HasWGSLLanguageFeature(wgpu::WGSLLanguageFeatureName::SubgroupId) &&
                                     (fixed_subgroup_32 || request_subgroup_32);
   MatMulNBitsProgram program{tile_size,
                              static_cast<uint32_t>(nbits),
@@ -372,6 +373,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                              has_qlora_up,
                              has_qlora_down,
                              qlora_down_subgroups};
+  program.SetUseSubgroupId(qlora_down_subgroups);
   program.SetWorkgroupSize(workgroup_size);
   if (qlora_down_subgroups && request_subgroup_32) {
     program.SetSubgroupSize(32);

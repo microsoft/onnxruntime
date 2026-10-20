@@ -578,6 +578,23 @@ void CUDAExecutionProvider::RetainBufferForGraphCapture(std::shared_ptr<void> bu
   captured_host_buffers_.push_back(std::move(buffer));
 }
 
+void CUDAExecutionProvider::SetSessionModelPath(std::filesystem::path path) const {
+  if (!path.empty() && path.is_relative()) {
+    std::error_code ec;
+    std::filesystem::path abs_path = std::filesystem::absolute(path, ec);
+    if (!ec && !abs_path.empty()) {
+      path = std::move(abs_path);
+    }
+  }
+  std::lock_guard<std::mutex> lock(model_path_mutex_);
+  model_path_ = std::move(path);
+}
+
+std::filesystem::path CUDAExecutionProvider::GetSessionModelPath() const {
+  std::lock_guard<std::mutex> lock(model_path_mutex_);
+  return model_path_;
+}
+
 namespace cuda {
 
 template <>
@@ -3298,6 +3315,9 @@ void InitializeRegistry() {
 }
 
 void DeleteRegistry() {
+  // Save any tactic caches of sessions still alive when the provider is shut down, before worker
+  // threads are stopped or the provider DLL is unloaded.
+  onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCaches();
   s_kernel_registry.reset();
 }
 
@@ -3501,6 +3521,10 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                      IResourceAccountant* resource_accountant) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   const logging::Logger& logger = *GetLogger();
+
+  if (!graph.ModelPath().empty()) {
+    SetSessionModelPath(graph.ModelPath());
+  }
 
   // Figure out the memory limit if accountant is available
   size_t memory_threshold = std::numeric_limits<size_t>::max();

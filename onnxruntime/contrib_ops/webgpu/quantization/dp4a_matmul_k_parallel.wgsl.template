@@ -109,6 +109,10 @@ fn qlora_down(group: u32, local_idx: u32) {
 $MAIN {
 #if has_qlora_down
     let base_groups = uniforms.batch_count * uniforms.dispatch_M * uniforms.num_N_tile;
+    // Normalization may pad the dispatch beyond the eight adapter groups per batch.
+    if (workgroup_idx >= base_groups + uniforms.batch_count * 8u) {
+        return;
+    }
     if (workgroup_idx >= base_groups) {
         qlora_down(workgroup_idx - base_groups, local_idx);
         return;

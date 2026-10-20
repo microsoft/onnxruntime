@@ -339,6 +339,11 @@ class WebGpuContext final {
   // Serialize with other operations on this recording. Scopes cover flushing, not earlier encoding.
   Status FlushAndWaitChecked(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
 
+  // Scopes cover enqueue (which may run multiple programs), flushing and completion.
+  // Drain and resolve all scopes even if enqueue fails or throws. Do not switch threads in enqueue.
+  Status RunAndWaitChecked(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording,
+                           const std::function<Status()>& enqueue);
+
   // Context-level managers are shared by sessions and synchronize their buffer caches internally.
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
   webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }

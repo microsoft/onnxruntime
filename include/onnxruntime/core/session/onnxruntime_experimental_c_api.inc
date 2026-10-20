@@ -21,8 +21,9 @@
 // Experimental function lifecycle rules:
 //   - Adding: Add one ORT_EXPERIMENTAL_API line with the current API version and implement it.
 //   - Removing: Delete the line. The versioned name is inherently unique and cannot be reused.
-//   - Changing a signature: Add a new entry at the current API version (producing a new name) and optionally delete
-//     the old entry. Both can coexist during a transition period.
+//   - Updating: Backward-compatible fixes and behavioral extensions may retain the existing name. For a signature
+//     change or an incompatible ABI or behavioral-contract change, add a new entry at the current API version
+//     (producing a new name) and optionally delete the old entry. Both can coexist during a transition period.
 //   - Promoting to stable: Move the function to the stable API struct (append-only, drop the _SinceV<SinceVersion>
 //     suffix). Delete the experimental entry.
 

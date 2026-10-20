@@ -171,8 +171,8 @@ TEST(MatMulNBitsQLoRA, PrefillSubgroupMatrixUsesFusedUp) {
     EXPECT_NE(logs.find("SubgroupMatrixMatMulNBits[8|2|1|8|16|16|32|"), std::string::npos) << logs;
     EXPECT_EQ(count_program("SubgroupMatrixMatMulLayout"), down_count) << logs;
     EXPECT_EQ(count_program("SubgroupMatrixMatMulNBitsQLoRAUp"), down_count) << logs;
-    EXPECT_NE(logs.find("|32|32|0]:128"), std::string::npos) << logs;
-    EXPECT_NE(logs.find("|128|128|0]:512"), std::string::npos) << logs;
+    EXPECT_NE(logs.find("|32|32|32|0|0|0|0|0|0]:128"), std::string::npos) << logs;
+    EXPECT_NE(logs.find("|128|128|32|0|0|0|0|1|0]:512"), std::string::npos) << logs;
     EXPECT_EQ(logs.find("Starting program \"MatMulNBits["), std::string::npos) << logs;
     EXPECT_EQ(logs.find("DP4AMatMulQuantize"), std::string::npos) << logs;
     EXPECT_EQ(logs.find("Starting program \"DP4AMatMulNBits"), std::string::npos) << logs;
