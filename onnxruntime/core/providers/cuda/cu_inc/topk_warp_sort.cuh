@@ -41,6 +41,7 @@ constexpr int kWarpSize = 32;
 constexpr int kWarpBitonicMaxSize = 32;
 constexpr int kWarpMergeMaxSize = 64;
 constexpr float kNegativeInfinity = -std::numeric_limits<float>::infinity();
+constexpr uint64_t kPaddingSortKey = 0;
 
 __device__ __forceinline__ int LaneId() {
   int lane_id;
@@ -132,12 +133,33 @@ __device__ inline void WarpBitonicSortDescending(float& score, int& index) {
   }
 }
 
+__device__ inline void WarpBitonicSortDescending(uint64_t& key) {
+  const int lane_id = LaneId();
+
+  for (int k = 2; k <= kWarpSize; k <<= 1) {
+    for (int j = k >> 1; j > 0; j >>= 1) {
+      const int paired_lane = lane_id ^ j;
+      const uint64_t paired_key = static_cast<uint64_t>(
+          __shfl_sync(0xFFFFFFFFu, static_cast<unsigned long long>(key), paired_lane));
+      const bool direction = ((lane_id & k) == 0);
+      const uint64_t key_max = key > paired_key ? key : paired_key;
+      const uint64_t key_min = key > paired_key ? paired_key : key;
+
+      if (direction) {
+        key = (lane_id < paired_lane) ? key_max : key_min;
+      } else {
+        key = (lane_id < paired_lane) ? key_min : key_max;
+      }
+    }
+  }
+}
+
 // Convert a (score, index) pair into a single unsigned integer key. Descending
 // integer order then gives descending float score order, with equal scores
 // preferring the smaller original index. This matches the stable Top-K packing
 // used by onnxruntime-genai while avoiding a compound comparator in CUB.
 __device__ __forceinline__ uint64_t PackStableSortKey(float score, int index) {
-  const uint32_t score_bits = __float_as_uint(score);
+  const uint32_t score_bits = score == 0.0f ? 0u : __float_as_uint(score);
   const uint32_t sortable_score =
       (score_bits & 0x80000000u) ? (~score_bits) : (score_bits | 0x80000000u);
   const uint32_t inverted_index = UINT_MAX - static_cast<uint32_t>(index);
@@ -271,8 +293,10 @@ struct WarpMergeSorter {
   using SortT = cub::WarpMergeSort<uint64_t, kItemsPerThread, kWarpSize, cub::NullType>;
   using TempStorage = typename SortT::TempStorage;
 
-  // num_valid_items elements are read from shared memory; the remainder are
-  // padded with (kNegativeInfinity, INT_MAX) so valid -inf scores sort ahead of padding.
+  // num_valid_items elements are read from shared memory; the remainder use the minimum
+  // packed key so every valid score, including a negative NaN, sorts ahead of padding.
+  // `temp_storage` may alias `smem_scores`/`smem_indices` (callers often union them to save
+  // shared memory), so the write-back is fenced against CUB's final reads of that storage.
   __device__ static void Sort(float* smem_scores, int* smem_indices,
                               TempStorage& temp_storage, int num_valid_items) {
     const int thread_id = LinearThreadIdInBlock();
@@ -289,11 +313,14 @@ struct WarpMergeSorter {
       if (idx < num_valid_items) {
         items[i] = PackStableSortKey(smem_scores[idx], smem_indices[idx]);
       } else {
-        items[i] = PackStableSortKey(kNegativeInfinity, INT_MAX);
+        items[i] = kPaddingSortKey;
       }
     }
 
+    // The loads above need no barrier: CUB syncs before its first temp_storage write.
     SortT(temp_storage).Sort(items, Greater<uint64_t>());
+    // CUB's merge loop ends on a read of temp_storage with no trailing sync.
+    __syncwarp();
 
     // Blocked write-back: rank r lives at smem[r].
 #pragma unroll

@@ -6,7 +6,12 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "device_atomic_functions.h"
+#include "topk_smallk.cuh"
+#ifdef ORT_TOPK_ENABLE_HYBRID
+#include "topk_hybrid.cuh"
+#endif
 #include <limits>
+#include <type_traits>
 // TODO:fix the warnings
 #ifdef _MSC_VER
 #pragma warning(disable : 4244)
@@ -445,6 +450,26 @@ Status TopKImpl(const CudaKernel* kernel, bool use_deterministic_compute,
   using CubT = typename CubSortType<CudaT>::type;
   const CudaT* input_x_ptr = reinterpret_cast<const CudaT*>(input_x);
   CudaT* output_v_ptr = reinterpret_cast<CudaT*>(output_v);
+
+#ifdef ORT_TOPK_ENABLE_HYBRID
+  if constexpr (std::is_same_v<CudaT, float> || std::is_same_v<CudaT, __half> ||
+                std::is_same_v<CudaT, BFloat16> || std::is_same_v<CudaT, __nv_bfloat16>) {
+    if (axis == static_cast<int32_t>(size) - 1 && largest == 1 && sorted == 1 &&
+        hybrid_topk::IsPreferred(N, dimension, K) &&
+        hybrid_topk::IsSupported(kernel, N, dimension, K)) {
+      return hybrid_topk::Run(kernel, stream, alloc_stream, input_x_ptr, output_v_ptr, output_i,
+                              static_cast<int>(N), static_cast<int>(dimension), static_cast<int>(K));
+    }
+  }
+#endif
+
+  if constexpr (smallk_topk::Supported<CudaT>::value) {
+    if (smallk_topk::IsSupported(kernel, axis, size, N, dimension, K)) {
+      // ONNX leaves output order unspecified when sorted == 0. SmallK keeps value order in both modes.
+      return smallk_topk::Run(kernel, stream, alloc_stream, input_x_ptr, output_v_ptr, output_i,
+                              N, dimension, K, largest);
+    }
+  }
 
   auto aligned_K = ALIGN(K);
   auto aligned_dimension = ALIGN(dimension);

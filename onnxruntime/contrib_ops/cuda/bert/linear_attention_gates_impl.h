@@ -4,11 +4,14 @@
 #pragma once
 
 #include <cuda_fp16.h>
+#include "contrib_ops/cpu/bert/linear_attention_gates_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+using namespace onnxruntime::contrib::linear_attention_gates_helper;
 
 // decay = decay_scale * Softplus(a + dt_bias); beta = Sigmoid(b).
 // `beta` and `b` may both be nullptr; the two per-head parameter vectors are float32.
@@ -24,7 +27,7 @@ Status LaunchLinearAttentionGateKernel(
     int64_t num_tokens,
     int num_heads);
 
-// Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate), reduced over groups of
+// Y = X * rsqrt(mean(X^2) + epsilon) * scale * gate_activation(gate), reduced over groups of
 // `norm_size` contiguous elements, with all arithmetic in float32.
 template <typename T>
 Status LaunchGatedRMSNormKernel(
@@ -35,7 +38,9 @@ Status LaunchGatedRMSNormKernel(
     const T* gate,
     int64_t num_rows,
     int norm_size,
-    float epsilon);
+    float epsilon,
+    GatedRMSNormActivation activation,
+    int max_threads_per_block);
 
 }  // namespace cuda
 }  // namespace contrib

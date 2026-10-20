@@ -51,6 +51,7 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
   ORT_ENFORCE(nbits_ == 4 || nbits_ == 8, "Only 4/8 bits are supported for webgpu matmulnbits.");
 
   return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_wide_tile.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect_),
@@ -91,6 +92,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
+                             WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
                              WGSL_TEMPLATE_PARAMETER(broadcast_a_row, broadcast_a_row_),
                              WGSL_TEMPLATE_PARAMETER(component_a, components_a),
                              WGSL_TEMPLATE_PARAMETER(component_b, components_b),
@@ -111,6 +113,113 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
+
+bool CanApplyWideTileMatMulNBits(uint32_t M,
+                                 uint32_t K,
+                                 uint32_t block_size,
+                                 int64_t nbits,
+                                 bool has_weight_idx_indirect,
+                                 uint32_t components_a,
+                                 uint32_t components_b) {
+  if (has_weight_idx_indirect || block_size != 32 || (nbits != 4 && nbits != 8) ||
+      M < kMinMForTileOptimization) {
+    return false;
+  }
+
+  if (components_a == 0) {
+    components_a = GetMaxComponents(K);
+  }
+  if (components_b == 0) {
+    const uint32_t blob_size = (block_size / 8) * static_cast<uint32_t>(nbits);
+    const uint32_t blob_size_in_words = blob_size / 4;
+    components_b = GetMaxComponents(blob_size_in_words);
+  }
+
+  return components_a == 4 && components_b == 4;
+}
+
+namespace {
+
+Status ApplyWideTileMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
+                                const Tensor* zero_points, const Tensor* bias,
+                                uint32_t batch_count, uint32_t dispatch_M, uint32_t N, uint32_t K,
+                                uint32_t block_size, uint32_t zero_blocks_per_col, uint32_t nbits,
+                                onnxruntime::webgpu::ComputeContext& context, Tensor* y,
+                                uint32_t weight_index, const Tensor* weight_index_indirect) {
+  const bool has_zero_points = zero_points != nullptr;
+  const bool has_bias = bias != nullptr;
+  const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
+  const bool has_weight_idx = weight_index > 0 || has_weight_idx_indirect;
+  const bool acc_f32 = context.EnableMatmulFp32Accumulation();
+  const uint32_t block_size_per_col = block_size == K * N ? K : block_size;
+  const uint32_t n_blocks_per_col = CeilDiv(K, block_size_per_col);
+  const uint32_t blob_size = (block_size_per_col / 8) * nbits;
+  const uint32_t components_a = GetMaxComponents(K);
+  const uint32_t components_b = GetMaxComponents(blob_size / 4);
+
+  constexpr uint32_t workgroup_size = 128;
+  constexpr uint32_t tile_n = workgroup_size;
+  const bool is_f16 = a->DataType() == DataTypeImpl::GetType<MLFloat16>();
+  const uint32_t tile_m = is_f16 ? 2 * workgroup_size / 8 : workgroup_size / 8;
+  const uint32_t num_N_tile = CeilDiv(N, tile_n);
+  const uint32_t num_M_tile = CeilDiv(dispatch_M, tile_m);
+
+  const bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
+
+  // The template shuffles tile_m lanes in bands of subgroup_min_size when that's a
+  // width it supports; otherwise (including when Subgroups isn't supported) it falls
+  // back to a direct reduction.
+  // NOTE: NVIDIA GPUs prefer direct reduction.
+  const uint32_t subgroup_min_size = (context.HasFeature(wgpu::FeatureName::Subgroups) && !is_nvidia)
+                                         ? context.AdapterInfo().subgroupMinSize
+                                         : 0u;
+
+  MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect,
+                                     tile_m, tile_n, nbits, subgroup_min_size, acc_f32};
+  program.SetWorkgroupSize(workgroup_size);
+  program.SetDispatchGroupSize(num_N_tile, num_M_tile, batch_count);
+
+  constexpr uint32_t kU32Components = 4;
+  const uint32_t components_b_with_u32 = components_b * kU32Components;
+  const uint32_t K_of_b = n_blocks_per_col * blob_size / components_b_with_u32;
+  const uint32_t K_of_a = K / components_a;
+
+  program.AddInput({a,
+                    ProgramTensorMetadataDependency::TypeAndRank,
+                    onnxruntime::narrow<int>(components_a)});
+  program.AddInput({b,
+                    ProgramTensorMetadataDependency::TypeAndRank,
+                    onnxruntime::narrow<int>(components_b_with_u32)});
+  program.AddInput({scales, ProgramTensorMetadataDependency::TypeAndRank});
+  if (has_zero_points) {
+    program.AddInput({zero_points,
+                      ProgramTensorMetadataDependency::TypeAndRank,
+                      {CeilDiv(zero_points->Shape().Size(), static_cast<int64_t>(4))},
+                      4});
+  }
+  if (has_bias) {
+    program.AddInput({bias, ProgramTensorMetadataDependency::None});
+  }
+  if (has_weight_idx_indirect) {
+    program.AddInput({weight_index_indirect, ProgramTensorMetadataDependency::None});
+  }
+  program.AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 1});
+  program.AddUniformVariables({{batch_count},
+                               {dispatch_M},
+                               {N},
+                               {K_of_a},
+                               {K_of_b},
+                               {n_blocks_per_col},
+                               {zero_blocks_per_col},
+                               {num_N_tile},
+                               {num_M_tile},
+                               {weight_index}});
+  program.CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, subgroup_min_size, acc_f32);
+
+  return context.RunProgram(program);
+}
+
+}  // namespace
 
 Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* a = context.Input(0);
@@ -213,7 +322,6 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   const uint32_t blob_size_in_words = blob_size / 4;
   const uint32_t components_a = GetMaxComponents(K);
   const uint32_t components_b = GetMaxComponents(blob_size_in_words);
-  uint32_t components = GetMaxComponents(N);
   // zero_points has shape[N * CeilDiv(n_blocks_per_col * bits, 8)].
   // The shader uses a flat linear index to address individual n-bit zero point values.
   // Since each column's zero points are byte-aligned in the packed buffer, we must round
@@ -223,7 +331,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   uint32_t zero_blocks_per_col = (n_blocks_per_col + zp_elements_per_byte - 1) / zp_elements_per_byte * zp_elements_per_byte;
 
   // apple|intel - Experimental dawn support for subgroup matrix matmul.
-  int32_t subgroup_matrix_config_index = -1;
+  std::optional<SubgroupMatrixConfig> subgroup_matrix_config;
   if (CanApplySubgroupMatrixMatMulNBits(context,
                                         accuracy_level,
                                         block_size,
@@ -232,10 +340,13 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                         K,
                                         static_cast<uint32_t>(nbits),
                                         y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
-                                        subgroup_matrix_config_index,
+                                        subgroup_matrix_config,
                                         M,
                                         has_weight_idx_indirect)) {
-    return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K, static_cast<uint32_t>(nbits), zero_blocks_per_col, subgroup_matrix_config_index, context, y, weight_index, weight_index_indirect);
+    return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K,
+                                          static_cast<uint32_t>(nbits), zero_blocks_per_col,
+                                          *subgroup_matrix_config, context, y, weight_index,
+                                          weight_index_indirect);
   }
 
   // On FP32 only GPUs and Qualcomm GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
@@ -245,82 +356,15 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
     return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, dispatch_M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index, weight_index_indirect);
   }
 
-  // WideTileProgram
-  // This program is optimized for Block32 prefill.
-  const bool use_wide_tile_program = CanApplyWideTileMatMulNBits(M,
-                                                                 K,
-                                                                 block_size,
-                                                                 nbits,
-                                                                 has_weight_idx_indirect,
-                                                                 components_a,
-                                                                 components_b);
-
-  if (use_wide_tile_program) {
-    // Enforce output components to 1.
-    components = 1;
-
-    constexpr uint32_t workgroup_size = 128;
-    constexpr uint32_t tile_n = workgroup_size;
-    const bool is_f16 = a->DataType() == DataTypeImpl::GetType<MLFloat16>();
-    const uint32_t tile_m = is_f16 ? 2 * workgroup_size / 8 : workgroup_size / 8;
-    const uint32_t num_N_tile = CeilDiv(N, tile_n);
-    const uint32_t num_M_tile = CeilDiv(dispatch_M, tile_m);
-
-    bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
-
-    // The template shuffles tile_m lanes in bands of subgroup_min_size when that's a
-    // width it supports; otherwise (including when Subgroups isn't supported) it falls
-    // back to a direct reduction.
-    // NOTE: NVIDIA GPUs prefer direct reduction.
-    const uint32_t subgroup_min_size = (context.HasFeature(wgpu::FeatureName::Subgroups) && !is_nvidia)
-                                           ? context.AdapterInfo().subgroupMinSize
-                                           : 0u;
-
-    MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, tile_m, tile_n, static_cast<uint32_t>(nbits), subgroup_min_size};
-    program.SetWorkgroupSize(workgroup_size);
-    program.SetDispatchGroupSize(num_N_tile, num_M_tile, batch_count);
-
-    constexpr uint32_t kU32Components = 4;
-    const uint32_t components_b_with_u32 = components_b * kU32Components;
-    const uint32_t K_of_b = n_blocks_per_col * blob_size / components_b_with_u32;
-    const uint32_t K_of_a = K / components_a;
-
-    program.AddInput({a,
-                      ProgramTensorMetadataDependency::TypeAndRank,
-                      onnxruntime::narrow<int>(components_a)});
-    program.AddInput({b,
-                      ProgramTensorMetadataDependency::TypeAndRank,
-                      onnxruntime::narrow<int>(components_b_with_u32)});
-    program.AddInput({scales, ProgramTensorMetadataDependency::TypeAndRank});
-    if (has_zero_points) {
-      program.AddInput({zero_points,
-                        ProgramTensorMetadataDependency::TypeAndRank,
-                        {CeilDiv(zero_points->Shape().Size(), static_cast<int64_t>(4))},
-                        4});
-    }
-    if (has_bias) {
-      program.AddInput({bias, ProgramTensorMetadataDependency::None});
-    }
-    if (has_weight_idx_indirect) {
-      program.AddInput({weight_index_indirect, ProgramTensorMetadataDependency::None});
-    }
-    program.AddOutput({y,
-                       ProgramTensorMetadataDependency::TypeAndRank,
-                       onnxruntime::narrow<int>(components)});
-    program.AddUniformVariables({{batch_count},
-                                 {dispatch_M},
-                                 {N},
-                                 {K_of_a},
-                                 {K_of_b},
-                                 {n_blocks_per_col},
-                                 {zero_blocks_per_col},
-                                 {num_N_tile},
-                                 {num_M_tile},
-                                 {weight_index}});
-    program.CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, subgroup_min_size);
-
-    return context.RunProgram(program);
+  // This program is optimized for FP32/FP16 Block32 prefill.
+  if (CanApplyWideTileMatMulNBits(M, K, block_size, nbits, has_weight_idx_indirect,
+                                  components_a, components_b)) {
+    return ApplyWideTileMatMulNBits(a, b, scales, zero_points, bias, batch_count, dispatch_M, N, K,
+                                    block_size, zero_blocks_per_col, static_cast<uint32_t>(nbits),
+                                    context, y, weight_index, weight_index_indirect);
   }
+
+  const bool acc_f32 = context.EnableMatmulFp32Accumulation();
 
   // Use tile_size_k_vec=32 by default for better K-dimension parallelism.
   // Intel devices use 16 as they have different subgroup/cache characteristics.
@@ -332,7 +376,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   constexpr uint32_t kU32Components = 4;
   uint32_t components_b_with_u32 = components_b * kU32Components;
   uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
-  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, tile_size_k_vec, broadcast_a};
+  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, tile_size_k_vec, broadcast_a, acc_f32};
   program.SetWorkgroupSize(workgroup_size);
   uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
   program.SetDispatchGroupSize(num_N_tile, dispatch_M, batch_count);
@@ -353,7 +397,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                             {batch_count},
                             {weight_index},
                             {dispatch_M}})
-      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, tile_size_k_vec, broadcast_a);
+      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, tile_size_k_vec, broadcast_a, acc_f32);
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }

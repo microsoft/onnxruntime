@@ -592,7 +592,24 @@ bool ReshapeFusion::FuseContiguousReshapes(Node& reshape, Graph& graph) {
                                      reshape);
   reshape_node.SetExecutionProviderType(contiguous_reshapes[0].get().GetExecutionProviderType());
 
+  // The fused node takes only the first Reshape's data input; the new initializer supplies the
+  // shape. FinalizeNodeFusion moves the first node's input edges to the fused node by tensor
+  // name, so an edge on the unused shape input is removed here. Its producer is deleted after
+  // the fusion when this was its last consumer and it does not feed a graph output. The
+  // producer is never one of the fused nodes: those are chained through data outputs, so
+  // producing the first node's shape input would close a cycle in the graph.
+  Node* shape_producer = nullptr;
+  if (const Node::EdgeEnd* shape_input_edge = graph_utils::GetInputEdge(reshape, 1)) {
+    shape_producer = graph.GetNode(shape_input_edge->GetNode().Index());
+    graph.RemoveEdge(shape_producer->Index(), reshape.Index(), shape_input_edge->GetSrcArgIndex(), 1);
+  }
+
   graph_utils::FinalizeNodeFusion(graph, contiguous_reshapes, reshape_node);
+
+  if (shape_producer != nullptr && shape_producer->GetOutputEdgesCount() == 0 &&
+      !graph.NodeProducesGraphOutput(*shape_producer)) {
+    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *shape_producer);
+  }
 
   return true;
 }

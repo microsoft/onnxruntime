@@ -18,12 +18,16 @@
 # SM-agnostic; the tests require SM80+ / CUDA / an ENABLE_FP4 + USE_FP4_QMOE build.
 # --------------------------------------------------------------------------
 
+import base64
+import json
 import os
+import re
 import subprocess
 import sys
 import unittest
 
 import numpy
+import pytest
 import torch
 import torch.nn.functional as F
 from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
@@ -81,7 +85,7 @@ def fp4_e2m1_quantize(values):
     return quantized.reshape(values.shape), codes.reshape(values.shape)
 
 
-def quantize_weight_to_nvfp4(weight, block_size=NVFP4_BLOCK_SIZE):
+def quantize_weight_to_nvfp4(weight, block_size=NVFP4_BLOCK_SIZE, global_scale=None):
     """
     Quantize a per-expert weight matrix [N, K] to NVFP4.
 
@@ -101,19 +105,23 @@ def quantize_weight_to_nvfp4(weight, block_size=NVFP4_BLOCK_SIZE):
 
     w = weight.float()
     num_blocks = k // block_size
+    if global_scale is not None:
+        w = w.clone()
+        w[0, :block_size] *= (abs(global_scale) * FP4_MAX * E4M3_MAX) / w[0, :block_size].abs().amax()
+        global_scale = float(global_scale)
+    else:
+        global_amax = w.abs().amax().item()
+        # Per-expert global scale (weight_scale_2). Chosen so that per-block E4M3
+        # scales land within [0, E4M3_MAX].
+        global_scale = global_amax / (FP4_MAX * E4M3_MAX)
+        if global_scale <= 0:
+            global_scale = 1.0
+
     blocks = w.reshape(n, num_blocks, block_size)
-
     block_amax = blocks.abs().amax(dim=-1)  # [N, num_blocks]
-    global_amax = w.abs().amax().item()
-
-    # Per-expert global scale (weight_scale_2). Chosen so that per-block E4M3
-    # scales land within [0, E4M3_MAX].
-    global_scale = global_amax / (FP4_MAX * E4M3_MAX)
-    if global_scale <= 0:
-        global_scale = 1.0
 
     # Ideal per-block scale before E4M3 quantization.
-    block_scale_f = block_amax / FP4_MAX / global_scale  # [N, num_blocks], all <= E4M3_MAX
+    block_scale_f = (block_amax / FP4_MAX / abs(global_scale)).clamp(max=E4M3_MAX)  # [N, num_blocks], all <= E4M3_MAX
     block_scale_e4m3 = block_scale_f.to(torch.float8_e4m3fn)
     block_scale_deq = block_scale_e4m3.float()  # DecodeE4M3(byte)
 
@@ -176,6 +184,9 @@ def create_nvfp4_moe_onnx_graph(
     fc2_global_scale,  # [E] float32
     block_size=NVFP4_BLOCK_SIZE,
     use_swiglu=False,
+    fc1_bias=None,
+    fc2_bias=None,
+    weights_prepacked=None,
 ):
     """Build ONNX model with QMoE operator in NVFP4 mode."""
     inputs = [
@@ -183,10 +194,10 @@ def create_nvfp4_moe_onnx_graph(
         "router_probs",  # 1
         "fc1_weights",  # 2: uint8 packed FP4
         "fc1_scales",  # 3: Float8E4M3FN NVFP4 block scales
-        "",  # 4: fc1_bias
+        "fc1_bias" if fc1_bias is not None else "",  # 4
         "fc2_weights",  # 5: uint8 packed FP4
         "fc2_scales",  # 6: Float8E4M3FN NVFP4 block scales
-        "",  # 7: fc2_bias
+        "fc2_bias" if fc2_bias is not None else "",  # 7
         "",  # 8:  fc3_weights
         "",  # 9:  fc3_scales
         "",  # 10: fc3_bias
@@ -220,6 +231,9 @@ def create_nvfp4_moe_onnx_graph(
         ),
     ]
 
+    if weights_prepacked is not None:
+        nodes[0].attribute.append(helper.make_attribute("weights_prepacked", weights_prepacked))
+
     initializers = []
 
     # FC1 / FC2 packed weights [E, K, N/2] uint8
@@ -238,6 +252,11 @@ def create_nvfp4_moe_onnx_graph(
     for name, tensor in [("fc1_global_scale", fc1_global_scale), ("fc2_global_scale", fc2_global_scale)]:
         vals = tensor.cpu().float().flatten().tolist()
         initializers.append(helper.make_tensor(name, TensorProto.FLOAT, list(tensor.shape), vals, raw=False))
+
+    for name, tensor in (("fc1_bias", fc1_bias), ("fc2_bias", fc2_bias)):
+        if tensor is not None:
+            raw = tensor.contiguous().view(torch.uint8).cpu().numpy().tobytes()
+            initializers.append(helper.make_tensor(name, onnx_dtype, list(tensor.shape), raw, raw=True))
 
     graph_inputs = [
         helper.make_tensor_value_info("input", onnx_dtype, [num_tokens, hidden_size]),
@@ -310,9 +329,19 @@ class TestQMoENVFP4(unittest.TestCase):
         use_swiglu=False,
         block_size=NVFP4_BLOCK_SIZE,
         gemv_mode=None,
+        disable_prepacking=False,
         input_scale=1.0,
         atol_override=None,
         router_logits_override=None,
+        row_tile_size=0,
+        use_bias=False,
+        rtol_override=0.0,
+        offline_prepacked=False,
+        enable_cuda_graph=False,
+        weights_prepacked=None,
+        global_scale=None,
+        fc1_global_scale=None,
+        fc2_global_scale=None,
     ):
         self._skip_if_no_fp4()
 
@@ -329,17 +358,19 @@ class TestQMoENVFP4(unittest.TestCase):
 
         fc1_packed, fc1_bs, fc1_gs, fc1_deq = [], [], [], []
         fc2_packed, fc2_bs, fc2_gs, fc2_deq = [], [], [], []
+        fc1_scale_override = fc1_global_scale if fc1_global_scale is not None else global_scale
+        fc2_scale_override = fc2_global_scale if fc2_global_scale is not None else global_scale
 
         for _ in range(num_experts):
             w1 = torch.randn(fc1_n, fc1_k, device=device) * 0.1
-            p1, b1, g1, d1 = quantize_weight_to_nvfp4(w1, block_size)
+            p1, b1, g1, d1 = quantize_weight_to_nvfp4(w1, block_size, global_scale=fc1_scale_override)
             fc1_packed.append(p1)
             fc1_bs.append(b1)
             fc1_gs.append(torch.tensor(g1, dtype=torch.float32))
             fc1_deq.append(d1)
 
             w2 = torch.randn(fc2_n, fc2_k, device=device) * 0.1
-            p2, b2, g2, d2 = quantize_weight_to_nvfp4(w2, block_size)
+            p2, b2, g2, d2 = quantize_weight_to_nvfp4(w2, block_size, global_scale=fc2_scale_override)
             fc2_packed.append(p2)
             fc2_bs.append(b2)
             fc2_gs.append(torch.tensor(g2, dtype=torch.float32))
@@ -347,12 +378,22 @@ class TestQMoENVFP4(unittest.TestCase):
 
         fc1_weights = torch.stack(fc1_packed, dim=0)  # [E, K, N/2]
         fc2_weights = torch.stack(fc2_packed, dim=0)  # [E, K, N/2]
+        if offline_prepacked:
+            packed_weights = []
+            for weights in (fc1_weights, fc2_weights):
+                codes = torch.stack((weights & 15, weights >> 4), dim=-1)
+                codes = codes.reshape(weights.shape[0], weights.shape[1], -1).transpose(1, 2)
+                packed_weights.append(((codes[..., 0::2] & 15) | (codes[..., 1::2] << 4)).reshape(weights.shape))
+            fc1_weights, fc2_weights = packed_weights
         fc1_block_scales = torch.stack(fc1_bs, dim=0)  # [E, N, K//16]
         fc2_block_scales = torch.stack(fc2_bs, dim=0)  # [E, N, K//16]
         fc1_global_scale = torch.stack(fc1_gs)  # [E]
         fc2_global_scale = torch.stack(fc2_gs)  # [E]
         fc1_deq_all = torch.stack(fc1_deq, dim=0)  # [E, N, K]
         fc2_deq_all = torch.stack(fc2_deq, dim=0)  # [E, N, K]
+
+        fc1_bias = torch.randn(num_experts, fc1_n, device=device, dtype=torch_dtype) * 0.5 if use_bias else None
+        fc2_bias = torch.randn(num_experts, fc2_n, device=device, dtype=torch_dtype) * 0.5 if use_bias else None
 
         onnx_model = create_nvfp4_moe_onnx_graph(
             num_tokens=num_tokens,
@@ -369,20 +410,28 @@ class TestQMoENVFP4(unittest.TestCase):
             fc2_global_scale=fc2_global_scale,
             block_size=block_size,
             use_swiglu=use_swiglu,
+            fc1_bias=fc1_bias,
+            fc2_bias=fc2_bias,
+            weights_prepacked=1 if offline_prepacked else weights_prepacked,
         )
 
         opts = onnxruntime.SessionOptions()
         opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        opts.add_session_config_entry("ep.cuda.qmoe_row_tile_size", str(row_tile_size))
+        if disable_prepacking:
+            opts.add_session_config_entry("session.disable_prepacking", "1")
         # gemv_mode toggles the fused FP4 GEMV decode path (read once in the QMoE op ctor during
         # session creation): "1" forces it on, "0" forces the dequant fallback, None leaves the
         # default. Restore the previous value right after the session is built.
         prev_gemv_env = os.environ.get("ORT_ENABLE_FP4_GEMV")
         if gemv_mode is not None:
             os.environ["ORT_ENABLE_FP4_GEMV"] = gemv_mode
+        provider = resolve_cuda_plugin_ep("CUDAExecutionProvider")
+        if enable_cuda_graph:
+            provider_name, provider_options = provider if isinstance(provider, tuple) else (provider, {})
+            provider = (provider_name, {**provider_options, "enable_cuda_graph": "1"})
         try:
-            session = onnxruntime.InferenceSession(
-                onnx_model, opts, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
-            )
+            session = onnxruntime.InferenceSession(onnx_model, opts, providers=[provider])
         except Exception as e:
             if "ENABLE_FP4" in str(e) or "requires USE_FP4_QMOE" in str(e):
                 self.skipTest(f"NVFP4 not supported in this build: {e}")
@@ -417,6 +466,14 @@ class TestQMoENVFP4(unittest.TestCase):
             raise
         iobinding.synchronize_outputs()
 
+        if enable_cuda_graph:
+            captured_output = output_tensor.clone()
+            output_tensor.zero_()
+            torch.cuda.synchronize()
+            session.run_with_iobinding(iobinding)
+            iobinding.synchronize_outputs()
+            self.assertTrue(torch.equal(captured_output, output_tensor), "NVFP4 CUDA graph replay differs from capture")
+
         ort_output = output_tensor.clone()
         self.assertTrue(torch.isfinite(ort_output).all().item(), "NVFP4 MoE output contains NaN or infinity")
 
@@ -429,6 +486,8 @@ class TestQMoENVFP4(unittest.TestCase):
             top_k,
             use_swiglu,
             torch_dtype,
+            fc1_bias,
+            fc2_bias,
         )
 
         max_diff = (ort_output.float() - ref_output.float()).abs().max().item()
@@ -452,12 +511,14 @@ class TestQMoENVFP4(unittest.TestCase):
         # not. Allow the corresponding headroom only for shapes that actually route native;
         # every other shape keeps the strict bound. A genuinely broken kernel still produces
         # error far above this (order 1.0+), so gross regressions are still caught.
-        if _routes_native_fp4_prefill(num_tokens):
+        if _routes_native_fp4_prefill(num_tokens) and not (offline_prepacked and disable_prepacking):
             atol = 0.25 if torch_dtype == torch.float16 else 0.28
+        tolerance = atol + rtol_override * ref_output.float().abs().max().item()
         self.assertLess(
             max_diff,
-            atol,
-            f"NVFP4 MoE parity check failed: max_diff={max_diff:.6f} > atol={atol}",
+            tolerance,
+            f"NVFP4 MoE parity check failed: max_diff={max_diff:.6f} > tolerance={tolerance:.6f} "
+            f"(atol={atol}, normwise rtol={rtol_override})",
         )
 
         return ort_output
@@ -469,6 +530,7 @@ class TestQMoENVFP4(unittest.TestCase):
         truncate_fc1_global_scale=False,
         hidden_size=64,
         inter_size=64,
+        weights_prepacked=None,
     ):
         self._skip_if_no_fp4()
         num_experts = 2
@@ -492,10 +554,11 @@ class TestQMoENVFP4(unittest.TestCase):
             fc2_block_scales=fc2_scales,
             fc2_global_scale=torch.ones(num_experts, dtype=torch.float32),
             block_size=block_size,
+            weights_prepacked=weights_prepacked,
         )
         opts = onnxruntime.SessionOptions()
         opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        with self.assertRaisesRegex(Exception, "block_size|fc1_scales|fc1_global_scale|multiple of"):
+        with self.assertRaisesRegex(Exception, "block_size|fc1_scales|fc1_global_scale|multiple of|weights_prepacked"):
             session = onnxruntime.InferenceSession(
                 model, opts, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
             )
@@ -509,6 +572,24 @@ class TestQMoENVFP4(unittest.TestCase):
 
     def test_nvfp4_rejects_wrong_block_size(self):
         self._assert_invalid_nvfp4_model(block_size=32)
+
+    @parameterized.expand([(2,), (-2,)])
+    def test_nvfp4_rejects_unknown_weight_layout(self, weights_prepacked):
+        self._assert_invalid_nvfp4_model(weights_prepacked=weights_prepacked)
+
+    @parameterized.expand([(None,), (-1,), (0,)])
+    def test_nvfp4_legacy_weights_prepacked(self, weights_prepacked):
+        self._run_nvfp4_moe_test(
+            hidden_size=64,
+            inter_size=64,
+            num_experts=4,
+            top_k=2,
+            num_tokens=2,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="0",
+            weights_prepacked=weights_prepacked,
+        )
 
     def test_nvfp4_rejects_malformed_prepacked_block_scales(self):
         self._assert_invalid_nvfp4_model(truncate_fc1_scales=True)
@@ -526,7 +607,18 @@ class TestQMoENVFP4(unittest.TestCase):
         self._assert_invalid_nvfp4_model(hidden_size=64, inter_size=72)
 
     @staticmethod
-    def _compute_reference(input_tensor, router_logits, fc1_deq, fc2_deq, num_experts, top_k, use_swiglu, torch_dtype):
+    def _compute_reference(
+        input_tensor,
+        router_logits,
+        fc1_deq,
+        fc2_deq,
+        num_experts,
+        top_k,
+        use_swiglu,
+        torch_dtype,
+        fc1_bias=None,
+        fc2_bias=None,
+    ):
         """Reference MoE forward pass using dequantized weights."""
         num_tokens = input_tensor.shape[0]
         hidden_size = input_tensor.shape[1]
@@ -550,8 +642,12 @@ class TestQMoENVFP4(unittest.TestCase):
             w2 = fc2_deq[e].float()
 
             h = tokens @ w1.T
+            if fc1_bias is not None:
+                h = h + fc1_bias[e].float()
             h = swiglu_ref(h) if use_swiglu else F.silu(h)
             h = h @ w2.T
+            if fc2_bias is not None:
+                h = h + fc2_bias[e].float()
             h = h * routing_weights[top_x, idx, None]
 
             output.index_add_(0, top_x, h)
@@ -566,7 +662,7 @@ class TestQMoENVFP4(unittest.TestCase):
         self._run_nvfp4_moe_test(
             hidden_size=64,
             inter_size=64,
-            num_experts=4,
+            num_experts=16,
             top_k=2,
             num_tokens=32,
             onnx_dtype=TensorProto.FLOAT16,
@@ -652,6 +748,44 @@ class TestQMoENVFP4(unittest.TestCase):
     # tokens runs N+1 tokens at once, so a top_k=8 model expands to (N+1)*8 rows.
     # ================================================================
 
+    @parameterized.expand(
+        [
+            (TensorProto.FLOAT16, 16, 3),
+            (TensorProto.FLOAT16, 16, 10),
+            (TensorProto.BFLOAT16, 16, 10),
+            (TensorProto.FLOAT16, 512, 2),
+            (TensorProto.BFLOAT16, 512, 2),
+            (TensorProto.FLOAT16, 512, 10),
+            (TensorProto.BFLOAT16, 512, 10),
+        ]
+    )
+    def test_nvfp4_gemv_unfused_expert_maps(self, onnx_dtype, num_experts, top_k):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=num_experts,
+            top_k=top_k,
+            num_tokens=2,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
+
+    @parameterized.expand([(1,), (6,)])
+    @unittest.skipUnless(os.getenv("ORT_RUN_LARGE_NVFP4_QMOE_TEST") == "1", "Opt-in large NVFP4 QMoE test")
+    def test_nvfp4_gemv_qwen38_official_shape(self, num_tokens):
+        self._run_nvfp4_moe_test(
+            hidden_size=2560,
+            inter_size=640,
+            num_experts=512,
+            top_k=10,
+            num_tokens=num_tokens,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+            input_scale=0.05,
+        )
+
     def test_nvfp4_fp16_gemv_decode_swiglu(self):
         self._run_nvfp4_moe_test(
             hidden_size=512,
@@ -659,6 +793,18 @@ class TestQMoENVFP4(unittest.TestCase):
             num_experts=4,
             top_k=2,
             num_tokens=2,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
+
+    def test_nvfp4_fp16_gemv_qwen_flash_decode_shape(self):
+        self._run_nvfp4_moe_test(
+            hidden_size=2560,
+            inter_size=640,
+            num_experts=16,
+            top_k=10,
+            num_tokens=1,
             onnx_dtype=TensorProto.FLOAT16,
             use_swiglu=True,
             gemv_mode="1",
@@ -676,14 +822,90 @@ class TestQMoENVFP4(unittest.TestCase):
             gemv_mode="1",
         )
 
+    @parameterized.expand([("fp16", TensorProto.FLOAT16), ("bf16", TensorProto.BFLOAT16)])
+    def test_nvfp4_gemv_decode_swiglu_bias(self, _name, onnx_dtype):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=4,
+            top_k=2,
+            num_tokens=2,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="1",
+            use_bias=True,
+        )
+
+    @parameterized.expand(
+        [
+            (test_name, raw_layout)
+            for test_name in (
+                "test_nvfp4_fp16_gemv_decode_swiglu",
+                "test_nvfp4_fp16_gemv_qwen_flash_decode_shape",
+                "test_nvfp4_gemv_decode_swiglu_bias_0_fp16",
+                "test_nvfp4_gemv_decode_swiglu_bias_1_bf16",
+                "test_nvfp4_gemv_512_experts",
+            )
+            for raw_layout in (None, "0", "1")
+        ]
+    )
+    def test_nvfp4_gemv_route_debug(self, test_name, raw_layout):
+        # Run in a fresh process because QMoE reads the debug and GEMV env switches when the
+        # session constructs the kernel. Each case must use GEMV, including Qwen's top_k=10
+        # prologue and both bias-enabled raw-kernel instantiations.
+        self._skip_if_no_fp4()
+        env = dict(os.environ)
+        env["ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO"] = "1"
+        env["ORT_ENABLE_FP4_GEMV"] = "1"
+        if raw_layout is None:
+            env.pop("ORT_NVFP4_GEMV_RAW_LAYOUT", None)
+        else:
+            env["ORT_NVFP4_GEMV_RAW_LAYOUT"] = raw_layout
+        env["ORT_FP4_GEMV_AUTOTUNE"] = "1" if raw_layout == "1" else "0"
+        env["ORT_FP4_GEMV_AUTOTUNE_LOG"] = "1"
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                "-v",
+                f"{os.path.splitext(os.path.basename(__file__))[0]}.TestQMoENVFP4.{test_name}",
+            ],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        output = proc.stdout + proc.stderr
+        self.assertEqual(proc.returncode, 0, output)
+        self.assertIn("Operator=QMoE", output)
+        expected_layout = "raw" if raw_layout == "1" else "prepacked"
+        self.assertIn(f"Route=fp4_gemv_{expected_layout}", output)
+        self.assertNotIn("FP4 GEMV autotune", output)
+
+    def test_nvfp4_gemv_512_experts(self):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=512,
+            top_k=10,
+            num_tokens=1,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
+
     def test_nvfp4_fp16_gemv_scales_weights_before_multiply(self):
         # Overflow guard for accumulate_column_tile(): it must apply the group scale to the
         # decoded weight *before* multiplying by the activation. FP4 codes reach 6.0 and the
         # group scales are well below 1, so multiplying first can overflow FP16 (max 65504)
-        # even when the scaled product is representable. Driving the activations to ~1e4 puts
-        # the unscaled products past that limit, which the isfinite() check in the helper
-        # catches. atol is raised because the outputs themselves are ~1e4 times larger; 3.0
-        # there is ~3e-4 relative, i.e. far tighter than the default 0.12 at unit scale.
+        # even when the scaled product is representable. SwiGLU clamps can hide nonfinite
+        # intermediates, so output parity is required in addition to the helper's finiteness check.
+        # At input_scale=1e4, FP16 scale/weight rounding can move nearly cancelled FC1 gates
+        # across zero; FP32 accumulation does not remove this difference from the FP32 reference.
+        # Use a normwise 32-epsilon budget with a small absolute guard: SwiGLU bounds the
+        # outputs, so their magnitude is not proportional to input_scale.
         self._run_nvfp4_moe_test(
             hidden_size=512,
             inter_size=512,
@@ -694,7 +916,7 @@ class TestQMoENVFP4(unittest.TestCase):
             use_swiglu=True,
             gemv_mode="1",
             input_scale=10000.0,
-            atol_override=3.0,
+            rtol_override=32 * torch.finfo(torch.float16).eps,
         )
 
     def test_nvfp4_fp16_gemv_disabled_swiglu(self):
@@ -707,6 +929,444 @@ class TestQMoENVFP4(unittest.TestCase):
             onnx_dtype=TensorProto.FLOAT16,
             use_swiglu=True,
             gemv_mode="0",
+        )
+
+    @parameterized.expand(
+        [
+            (onnx_dtype, disable_prepacking)
+            for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
+            for disable_prepacking in (False, True)
+        ]
+    )
+    def test_nvfp4_offline_row_major_fallback(self, onnx_dtype, disable_prepacking):
+        self._run_nvfp4_moe_test(
+            hidden_size=64,
+            inter_size=64,
+            num_experts=4,
+            top_k=2,
+            num_tokens=4,
+            onnx_dtype=onnx_dtype,
+            gemv_mode="0",
+            disable_prepacking=disable_prepacking,
+            use_bias=True,
+            row_tile_size=2,
+            offline_prepacked=True,
+        )
+
+    @parameterized.expand(
+        [
+            (onnx_dtype, disable_prepacking)
+            for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
+            for disable_prepacking in (False, True)
+        ]
+    )
+    def test_nvfp4_offline_row_major_gemv(self, onnx_dtype, disable_prepacking):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=16,
+            top_k=10,
+            num_tokens=2,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="1",
+            disable_prepacking=disable_prepacking,
+            use_bias=True,
+            offline_prepacked=True,
+        )
+
+    @parameterized.expand(
+        [
+            (onnx_dtype, num_tokens, use_bias)
+            for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
+            for num_tokens in (1, 6)
+            for use_bias in (False, True)
+        ]
+    )
+    def test_nvfp4_offline_row_major_gemv_partial_k_blocks(self, onnx_dtype, num_tokens, use_bias):
+        shape = dict(
+            hidden_size=528,
+            inter_size=656,
+            num_experts=16,
+            top_k=10,
+            num_tokens=num_tokens,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            use_bias=use_bias,
+            row_tile_size=2 if num_tokens > 1 else 0,
+            input_scale=0.1,
+        )
+        packed = self._run_nvfp4_moe_test(
+            **shape, gemv_mode="1", offline_prepacked=True, enable_cuda_graph=num_tokens == 1
+        )
+        legacy = self._run_nvfp4_moe_test(**shape, gemv_mode="1")
+        fallback = self._run_nvfp4_moe_test(**shape, gemv_mode="0", offline_prepacked=True)
+        tolerance = 0.03 if onnx_dtype == TensorProto.BFLOAT16 else 0.005
+        torch.testing.assert_close(packed, legacy, atol=tolerance, rtol=tolerance)
+        torch.testing.assert_close(packed, fallback, atol=tolerance, rtol=tolerance)
+
+    @parameterized.expand(
+        [
+            (onnx_dtype, disable_prepacking)
+            for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
+            for disable_prepacking in (False, True)
+        ]
+    )
+    def test_nvfp4_offline_row_major_above_gemv_limit(self, onnx_dtype, disable_prepacking):
+        shape = dict(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=16,
+            top_k=10,
+            num_tokens=9,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="1",
+            disable_prepacking=disable_prepacking,
+            use_bias=True,
+            input_scale=0.1,
+        )
+        packed = self._run_nvfp4_moe_test(**shape, offline_prepacked=True)
+        legacy = self._run_nvfp4_moe_test(**shape)
+        tolerance = 0.03 if onnx_dtype == TensorProto.BFLOAT16 else 0.005
+        torch.testing.assert_close(packed, legacy, atol=tolerance, rtol=tolerance)
+
+    @parameterized.expand(
+        [
+            (onnx_dtype, disable_prepacking)
+            for onnx_dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16)
+            for disable_prepacking in (False, True)
+        ]
+    )
+    def test_nvfp4_offline_row_major_prefill(self, onnx_dtype, disable_prepacking):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=4,
+            top_k=2,
+            num_tokens=64,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="0",
+            disable_prepacking=disable_prepacking,
+            offline_prepacked=True,
+            input_scale=0.1,
+        )
+
+    @parameterized.expand([(TensorProto.FLOAT16,), (TensorProto.BFLOAT16,)])
+    def test_nvfp4_offline_row_major_cuda_graph(self, onnx_dtype):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=16,
+            top_k=10,
+            num_tokens=2,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="1",
+            offline_prepacked=True,
+            enable_cuda_graph=True,
+        )
+
+    # Decode GEMV parity cases (row-major weights_prepacked=1, fused SwiGLU FC1) as
+    # (default_fc1_decode, default_fc2_decode, optin_fc1_decode, optin_fc2_decode, fc1_scale_ok, fc2_scale_ok, shape).
+    # - Cases 1-2: Qwen3.8 shapes (FC1 N=1280 K=2560 -> 8 K lanes, FC2 N=2560 K=640 -> 4 K lanes) at 10/20 expanded
+    #   rows, inside the default SM90 envelope.
+    # - Case 3: Qwen3.8 shape at 60 expanded rows; declined by default (ORT_FP4_GEMV_DECODE_KERNEL=1 caps expanded
+    #   rows at 20) and enabled by opt-in ORT_FP4_GEMV_DECODE_KERNEL=2 (up to 80 expanded rows).
+    # - Case 4: Partial last K tile (98 and 34 blocks) at 6 expanded rows.
+    # - Case 5: Controlled global_scale just below 3.98 / 448 (table-free decode branch, eligible by default).
+    # - Case 6: Mixed per-projection scale eligibility (FC1 below 3.98 / 448, FC2 above); default mode runs
+    #   MoeGemvFp4DecodeKernel for FC1 and keeps MoeGemvFp4RawKPackedKernel for FC2.
+    # - Case 7: Controlled global_scale above 3.98 / 448; default mode keeps MoeGemvFp4RawKPackedKernel for both
+    #   projections to avoid the slower generic decoder, while opt-in mode (ORT_FP4_GEMV_DECODE_KERNEL=2) exercises
+    #   the generic Fp4I2FConverter branch inside MoeGemvFp4DecodeKernel.
+    # - Case 8: K % 32 != 0, declined in all modes in favor of MoeGemvFp4RawKPackedKernel.
+    _DECODE_GEMV_CASES = (
+        (
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            dict(hidden_size=2560, inter_size=640, num_experts=16, top_k=10, num_tokens=1, use_bias=False),
+        ),
+        (
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            dict(hidden_size=2560, inter_size=640, num_experts=16, top_k=10, num_tokens=2, use_bias=True),
+        ),
+        (
+            False,
+            False,
+            True,
+            True,
+            True,
+            True,
+            dict(hidden_size=2560, inter_size=640, num_experts=16, top_k=10, num_tokens=6, use_bias=False),
+        ),
+        (
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            dict(hidden_size=1568, inter_size=544, num_experts=12, top_k=6, num_tokens=1, use_bias=True),
+        ),
+        (
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            dict(
+                hidden_size=1568,
+                inter_size=544,
+                num_experts=12,
+                top_k=6,
+                num_tokens=1,
+                use_bias=True,
+                global_scale=3.90 / E4M3_MAX,
+            ),
+        ),
+        (
+            True,
+            False,
+            True,
+            True,
+            True,
+            False,
+            dict(
+                hidden_size=1568,
+                inter_size=544,
+                num_experts=12,
+                top_k=6,
+                num_tokens=1,
+                use_bias=True,
+                fc1_global_scale=3.90 / E4M3_MAX,
+                fc2_global_scale=4.10 / E4M3_MAX,
+            ),
+        ),
+        (
+            False,
+            False,
+            True,
+            True,
+            False,
+            False,
+            dict(
+                hidden_size=1568,
+                inter_size=544,
+                num_experts=12,
+                top_k=6,
+                num_tokens=1,
+                use_bias=True,
+                global_scale=4.10 / E4M3_MAX,
+            ),
+        ),
+        (
+            False,
+            False,
+            False,
+            False,
+            True,
+            True,
+            dict(hidden_size=528, inter_size=656, num_experts=16, top_k=10, num_tokens=6, use_bias=True),
+        ),
+    )
+
+    _DECODE_GEMV_RUNNER_SCRIPT = """
+import base64, json, sys
+import torch
+from torch.autograd import DeviceType
+from torch.profiler import ProfilerActivity, profile
+from test_qmoe_nvfp4_cuda import TestQMoENVFP4, device
+
+test = TestQMoENVFP4()
+onnx_dtype = int(sys.argv[1])
+with profile(activities=[ProfilerActivity.CUDA]) as probe_prof:
+    _ = torch.zeros(16, device=device) + 1
+    torch.cuda.synchronize()
+cupti_available = any(e.device_type == DeviceType.CUDA for e in probe_prof.events())
+print("DECODE_GEMV_CUPTI", "1" if cupti_available else "0", sep="\\t", flush=True)
+for idx, case in enumerate(json.loads(sys.argv[2])):
+    print(f"DECODE_GEMV_CASE_BEGIN\\t{idx}", flush=True)
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        out = test._run_nvfp4_moe_test(onnx_dtype=onnx_dtype, gemv_mode="1", offline_prepacked=True, **case)
+    names = sorted({e.name for e in prof.events() if "MoeGemvFp4" in e.name})
+    payload = base64.b64encode(out.view(torch.int16).cpu().numpy().tobytes()).decode()
+    print("DECODE_GEMV_RESULT", str(idx), json.dumps(names), payload, sep="\\t", flush=True)
+"""
+
+    def _run_decode_gemv_subprocess(self, onnx_dtype, cases, decode_mode, native_scale=0):
+        env = dict(os.environ)
+        env["ORT_FP4_GEMV_DECODE_KERNEL"] = str(decode_mode)
+        env["ORT_NVFP4_GEMV_NATIVE_SCALE"] = str(native_scale)
+        env["ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO"] = "1"
+        env.pop("ORT_NVFP4_FC1_EXPERT_REUSE", None)
+        proc = subprocess.run(
+            [sys.executable, "-c", self._DECODE_GEMV_RUNNER_SCRIPT, str(int(onnx_dtype)), json.dumps(cases)],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(
+            proc.returncode,
+            0,
+            f"ORT_FP4_GEMV_DECODE_KERNEL={decode_mode} ORT_NVFP4_GEMV_NATIVE_SCALE={native_scale} run failed:\n"
+            f"{proc.stdout}\n{proc.stderr}",
+        )
+        cupti_available = False
+        current_idx = None
+        case_diags = {}
+        results = {}
+        for line in proc.stdout.splitlines():
+            if line.startswith("DECODE_GEMV_CUPTI\t"):
+                cupti_available = line.split("\t")[1] == "1"
+            elif line.startswith("DECODE_GEMV_CASE_BEGIN\t"):
+                current_idx = int(line.split("\t")[1])
+            elif line.startswith("QMoE NVFP4 DecodeImageAvailable=") and current_idx is not None:
+                fields = dict(item.split("=", 1) for item in line.split()[2:])
+                case_diags[current_idx] = fields
+            elif line.startswith("DECODE_GEMV_RESULT\t"):
+                _, idx_str, names_json, payload = line.split("\t")
+                results[int(idx_str)] = (json.loads(names_json), payload)
+        self.assertEqual(len(results), len(cases), proc.stdout)
+        self.assertEqual(len(case_diags), len(cases), proc.stdout)
+        return cupti_available, [(case_diags[i], results[i][0], results[i][1]) for i in range(len(cases))]
+
+    def _assert_fc1_fc2_gemv_dispatch(
+        self,
+        case,
+        diag,
+        kernels,
+        cupti_available,
+        expected_fc1_scale_ok,
+        expected_fc2_scale_ok,
+        expected_fc1_decode,
+        expected_fc2_decode,
+    ):
+        self.assertEqual(diag.get("FC1ScaleEligible"), "1" if expected_fc1_scale_ok else "0", (case, diag))
+        self.assertEqual(diag.get("FC2ScaleEligible"), "1" if expected_fc2_scale_ok else "0", (case, diag))
+        self.assertEqual(diag.get("FC1Kernel"), "decode" if expected_fc1_decode else "kpacked", (case, diag))
+        self.assertEqual(diag.get("FC2Kernel"), "decode" if expected_fc2_decode else "kpacked", (case, diag))
+        if not cupti_available:
+            return
+        self.assertTrue(kernels, f"CUPTI is available but no MoeGemvFp4 kernel events were recorded for {case}")
+        fc1_decode = any(re.search(r"MoeGemvFp4DecodeKernel<[^,>]+,\s*true\b", name) for name in kernels)
+        fc1_kpacked = any(re.search(r"MoeGemvFp4RawKPackedKernel<[^,>]+,\s*true\b", name) for name in kernels)
+        fc2_decode = any(re.search(r"MoeGemvFp4DecodeKernel<[^,>]+,\s*false\b", name) for name in kernels)
+        fc2_kpacked = any(re.search(r"MoeGemvFp4RawKPackedKernel<[^,>]+,\s*false\b", name) for name in kernels)
+        self.assertEqual(fc1_decode, expected_fc1_decode, (case, kernels))
+        self.assertEqual(fc1_kpacked, not expected_fc1_decode, (case, kernels))
+        self.assertEqual(fc2_decode, expected_fc2_decode, (case, kernels))
+        self.assertEqual(fc2_kpacked, not expected_fc2_decode, (case, kernels))
+
+    @parameterized.expand([(TensorProto.FLOAT16,), (TensorProto.BFLOAT16,)])
+    def test_nvfp4_offline_row_major_decode_gemv_bit_exact(self, onnx_dtype):
+        # The decode GEMV reproduces MoeGemvFp4RawKPackedKernel's summation order, so the QMoE output must be
+        # bit-identical across ORT_FP4_GEMV_DECODE_KERNEL=0 (opt-out), 1 (default measured SM90 envelope with
+        # per-projection scale eligibility), and 2 (opt-in full SM90+ envelope including generic scale decode).
+        self._skip_if_no_fp4()
+        cases = [{"use_swiglu": True, "input_scale": 0.1, **spec[-1]} for spec in self._DECODE_GEMV_CASES]
+        optout_cupti, optout_runs = self._run_decode_gemv_subprocess(onnx_dtype, cases, decode_mode=0)
+        default_cupti, default_runs = self._run_decode_gemv_subprocess(onnx_dtype, cases, decode_mode=1)
+        native_cupti, native_runs = self._run_decode_gemv_subprocess(onnx_dtype, cases, decode_mode=1, native_scale=1)
+        optin_cupti, optin_runs = self._run_decode_gemv_subprocess(onnx_dtype, cases, decode_mode=2)
+
+        sm = _cuda_sm()
+        for (
+            (def_fc1, def_fc2, optin_fc1, optin_fc2, fc1_scale_ok, fc2_scale_ok, _),
+            case,
+            (optout_diag, optout_kernels, optout_payload),
+            (default_diag, default_kernels, default_payload),
+            (native_diag, native_kernels, native_payload),
+            (optin_diag, optin_kernels, optin_payload),
+        ) in zip(self._DECODE_GEMV_CASES, cases, optout_runs, default_runs, native_runs, optin_runs, strict=True):
+            decode_image_available = default_diag.get("DecodeImageAvailable") == "1"
+            self.assertEqual(optout_diag.get("DecodeImageAvailable") == "1", decode_image_available, case)
+            self.assertEqual(native_diag.get("DecodeImageAvailable") == "1", decode_image_available, case)
+            self.assertEqual(optin_diag.get("DecodeImageAvailable") == "1", decode_image_available, case)
+            if sm < 90:
+                self.assertFalse(decode_image_available, (case, default_diag))
+
+            self._assert_fc1_fc2_gemv_dispatch(
+                case, optout_diag, optout_kernels, optout_cupti, fc1_scale_ok, fc2_scale_ok, False, False
+            )
+            can_decode_default = sm == 90 and decode_image_available
+            self._assert_fc1_fc2_gemv_dispatch(
+                case,
+                default_diag,
+                default_kernels,
+                default_cupti,
+                fc1_scale_ok,
+                fc2_scale_ok,
+                def_fc1 and can_decode_default,
+                def_fc2 and can_decode_default,
+            )
+            native_fc2_decode = (
+                def_fc2
+                and can_decode_default
+                and not (onnx_dtype == TensorProto.FLOAT16 and case["inter_size"] <= 1024)
+            )
+            self._assert_fc1_fc2_gemv_dispatch(
+                case,
+                native_diag,
+                native_kernels,
+                native_cupti,
+                fc1_scale_ok,
+                fc2_scale_ok,
+                def_fc1 and can_decode_default,
+                native_fc2_decode,
+            )
+            can_decode_optin = sm >= 90 and decode_image_available
+            self._assert_fc1_fc2_gemv_dispatch(
+                case,
+                optin_diag,
+                optin_kernels,
+                optin_cupti,
+                fc1_scale_ok,
+                fc2_scale_ok,
+                optin_fc1 and can_decode_optin,
+                optin_fc2 and can_decode_optin,
+            )
+
+            expected = torch.frombuffer(bytearray(base64.b64decode(optout_payload)), dtype=torch.int16)
+            default_out = torch.frombuffer(bytearray(base64.b64decode(default_payload)), dtype=torch.int16)
+            native_out = torch.frombuffer(bytearray(base64.b64decode(native_payload)), dtype=torch.int16)
+            optin_out = torch.frombuffer(bytearray(base64.b64decode(optin_payload)), dtype=torch.int16)
+            self.assertTrue(
+                torch.equal(default_out, expected),
+                f"default decode GEMV output differs bitwise from the KPacked kernel for {case}",
+            )
+            self.assertTrue(
+                torch.equal(native_out, expected),
+                f"combined native-scale decode GEMV output differs bitwise from the KPacked kernel for {case}",
+            )
+            self.assertTrue(
+                torch.equal(optin_out, expected),
+                f"opt-in decode GEMV output differs bitwise from the KPacked kernel for {case}",
+            )
+
+    def test_nvfp4_fp16_prepacking_disabled_uses_raw_fallback(self):
+        self._run_nvfp4_moe_test(
+            hidden_size=64,
+            inter_size=64,
+            num_experts=4,
+            top_k=2,
+            num_tokens=4,
+            onnx_dtype=TensorProto.FLOAT16,
+            gemv_mode="1",
+            disable_prepacking=True,
         )
 
     @parameterized.expand(
@@ -756,8 +1416,9 @@ class TestQMoENVFP4(unittest.TestCase):
 
     def test_nvfp4_fp16_gemv_expanded_rows_above_window_limit(self):
         # 9 tokens x top_k 8 = 72 > kMaxProfiledExpandedRowsFp4, so the GEMV path is rejected
-        # even with gemv_mode="1" and the run must still be correct on the dequant fallback.
-        self._run_nvfp4_moe_test(
+        # even with gemv_mode="1". Both sessions must dequantize the retained raw initializer;
+        # compare them to the Torch reference and directly to each other.
+        shape = dict(
             hidden_size=512,
             inter_size=512,
             num_experts=8,
@@ -765,7 +1426,14 @@ class TestQMoENVFP4(unittest.TestCase):
             num_tokens=9,
             onnx_dtype=TensorProto.FLOAT16,
             use_swiglu=True,
-            gemv_mode="1",
+        )
+        enabled_fallback = self._run_nvfp4_moe_test(**shape, gemv_mode="1")
+        raw_fallback = self._run_nvfp4_moe_test(**shape, gemv_mode="0")
+        max_diff = (enabled_fallback.float() - raw_fallback.float()).abs().max().item()
+        self.assertLess(
+            max_diff,
+            0.12,
+            f"NVFP4 enabled fallback diverged from raw-layout fallback: max_diff={max_diff:.6f}",
         )
 
     def test_nvfp4_fp16_gemv_long_k_tiling(self):
@@ -892,6 +1560,140 @@ class TestQMoENVFP4(unittest.TestCase):
             0.12,
             f"NVFP4 fused GEMV diverged from dequant fallback: max_diff={max_diff:.6f}",
         )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="CUDA NVFP4 QMoE required")
+@pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT16, TensorProto.BFLOAT16])
+@pytest.mark.parametrize("num_tokens", list(range(1, 10)))
+@pytest.mark.parametrize("use_bias", [False, True])
+@pytest.mark.parametrize("row_tile_size", [0, 2])
+def test_nvfp4_kpacked_mtp_window(onnx_dtype, num_tokens, use_bias, row_tile_size, capfd, monkeypatch):
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    monkeypatch.setenv("ORT_FP4_PREFILL_MIN_TOKENS", "32")
+    shape = dict(
+        hidden_size=528,
+        inter_size=656,
+        num_experts=16,
+        top_k=10,
+        num_tokens=num_tokens,
+        onnx_dtype=onnx_dtype,
+        use_swiglu=True,
+        use_bias=use_bias,
+        row_tile_size=row_tile_size,
+        offline_prepacked=True,
+        input_scale=0.1,
+    )
+    packed = TestQMoENVFP4()._run_nvfp4_moe_test(**shape, gemv_mode="1", enable_cuda_graph=num_tokens == 8)
+    diagnostics = capfd.readouterr().out
+    if num_tokens <= 8:
+        assert "Route=fp4_gemv_raw" in diagnostics
+        assert "DequantWeightBytes=" not in diagnostics
+    else:
+        assert "Route=grouped_moe" in diagnostics
+        assert "DequantWeightBytes=" in diagnostics
+    fallback = TestQMoENVFP4()._run_nvfp4_moe_test(**shape, gemv_mode="0")
+    tolerance = 0.03 if onnx_dtype == TensorProto.BFLOAT16 else 0.005
+    torch.testing.assert_close(packed, fallback, atol=tolerance, rtol=tolerance)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="CUDA NVFP4 QMoE required")
+@pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT16, TensorProto.BFLOAT16])
+@pytest.mark.parametrize("use_swiglu", [False, True])
+@pytest.mark.parametrize("row_tile_size", [0, 2])
+@pytest.mark.parametrize("disable_prepacking", [False, True])
+def test_nvfp4_compact_routing_and_bias(onnx_dtype, use_swiglu, row_tile_size, disable_prepacking):
+    selected_experts = [(30, 7), (1, 23), (1, 23), (30, 7), (0, 24), (30, 7), (28, 2)]
+    logits = numpy.full((len(selected_experts), 32), -20.0, dtype=numpy.float32)
+    for row, selected in enumerate(selected_experts):
+        logits[row, selected[0]] = 8.0
+        logits[row, selected[1]] = 7.0
+    TestQMoENVFP4()._run_nvfp4_moe_test(
+        hidden_size=64,
+        inter_size=64,
+        num_experts=32,
+        top_k=2,
+        num_tokens=len(selected_experts),
+        onnx_dtype=onnx_dtype,
+        use_swiglu=use_swiglu,
+        gemv_mode="0",
+        row_tile_size=row_tile_size,
+        disable_prepacking=disable_prepacking,
+        use_bias=True,
+        router_logits_override=logits,
+    )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="CUDA NVFP4 QMoE required")
+def test_nvfp4_compact_decode_scratch(capfd, monkeypatch):
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    logits = numpy.arange(512, dtype=numpy.float32).reshape(1, 512) / 128 - 2
+    TestQMoENVFP4()._run_nvfp4_moe_test(
+        hidden_size=64,
+        inter_size=64,
+        num_experts=512,
+        top_k=10,
+        num_tokens=1,
+        onnx_dtype=TensorProto.FLOAT16,
+        use_swiglu=True,
+        gemv_mode="0",
+        disable_prepacking=True,
+        router_logits_override=logits,
+    )
+    assert "QMoE NVFP4 ExpertCapacity=10 DequantWeightBytes=245760" in capfd.readouterr().out
+
+
+@pytest.mark.skipif(
+    os.getenv("ORT_RUN_LARGE_NVFP4_QMOE_TEST") != "1" or not torch.cuda.is_available() or not has_fp4_qmoe,
+    reason="Opt-in official 512-expert NVFP4 memory test",
+)
+@pytest.mark.parametrize("num_tokens", [1, 17])
+def test_nvfp4_compact_qwen38_official_shape(num_tokens, capfd, monkeypatch):
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    logits = numpy.stack(
+        [numpy.roll(numpy.arange(512, dtype=numpy.float32), row * 13) / 128 - 2 for row in range(num_tokens)]
+    )
+    TestQMoENVFP4()._run_nvfp4_moe_test(
+        hidden_size=2560,
+        inter_size=640,
+        num_experts=512,
+        top_k=10,
+        num_tokens=num_tokens,
+        onnx_dtype=TensorProto.FLOAT16,
+        use_swiglu=True,
+        gemv_mode="0",
+        input_scale=0.05,
+        disable_prepacking=True,
+        router_logits_override=logits,
+    )
+    capacity = num_tokens * 10
+    weight_bytes = capacity * (2 * 640 * 2560 + 2560 * 640) * 2
+    assert f"QMoE NVFP4 ExpertCapacity={capacity} DequantWeightBytes={weight_bytes}" in capfd.readouterr().out
+
+
+@pytest.mark.skipif(
+    os.getenv("ORT_RUN_LARGE_NVFP4_QMOE_TEST") != "1" or not torch.cuda.is_available() or not has_fp4_qmoe,
+    reason="Opt-in official 512-expert NVFP4 memory test",
+)
+@pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT16, TensorProto.BFLOAT16])
+@pytest.mark.parametrize("num_tokens", [7, 8])
+def test_nvfp4_kpacked_mtp_qwen38_official_shape(onnx_dtype, num_tokens, capfd, monkeypatch):
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    monkeypatch.setenv("ORT_FP4_PREFILL_MIN_TOKENS", "32")
+    TestQMoENVFP4()._run_nvfp4_moe_test(
+        hidden_size=2560,
+        inter_size=640,
+        num_experts=512,
+        top_k=10,
+        num_tokens=num_tokens,
+        onnx_dtype=onnx_dtype,
+        use_swiglu=True,
+        gemv_mode="1",
+        offline_prepacked=True,
+        input_scale=0.05,
+    )
+    diagnostics = capfd.readouterr().out
+    assert "Route=fp4_gemv_raw" in diagnostics
+    assert "DequantWeightBytes=" not in diagnostics
 
 
 if __name__ == "__main__":

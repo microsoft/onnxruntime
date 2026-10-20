@@ -45,6 +45,12 @@ You do **not** need `--update` when only modifying existing `.cc`/`.h` files —
 # Build with CUDA execution provider
 ./build.sh --config Release --parallel --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/local/cuda
 
+# Configure and build the WebGPU execution provider as a shared library (Windows)
+.\build.bat --config RelWithDebInfo --build_dir .\build\WGPU --use_webgpu --build_shared_lib --update --build --parallel
+
+# Incrementally rebuild the same WebGPU configuration after changing existing source files
+.\build.bat --config RelWithDebInfo --build_dir .\build\WGPU --use_webgpu --build_shared_lib --build --parallel
+
 # Build Python wheel
 ./build.sh --config Release --parallel --build_wheel
 
@@ -76,6 +82,9 @@ Default: `build/<Platform>/<Config>/` where Platform is `Linux`, `MacOS`, or `Wi
 With Visual Studio multi-config generators, the config name appears twice (e.g., `build/Windows/Release/Release/`).
 
 It may be customized with `--build_dir`.
+For example, `--build_dir .\build\WGPU --config RelWithDebInfo` creates the CMake build tree at
+`build/WGPU/RelWithDebInfo/`; Visual Studio places final binaries in its `RelWithDebInfo/` subdirectory.
+The `--build_shared_lib` flag in the WebGPU example is optional and is only needed when building the ONNX Runtime DLL.
 
 ## Agent tips
 

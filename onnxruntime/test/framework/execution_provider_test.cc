@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/execution_provider.h"
+#include "core/framework/execution_providers.h"
 #include "core/graph/model.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
@@ -10,7 +11,10 @@
 
 #include "gtest/gtest.h"
 
+#include <atomic>
 #include <fstream>
+#include <thread>
+#include <unordered_set>
 
 namespace onnxruntime {
 namespace test {
@@ -20,14 +24,102 @@ class TestEP : public IExecutionProvider {
 
  public:
   TestEP() : IExecutionProvider{kEPType} {}
+  TestEP(std::string type, ProviderOptions options)
+      : IExecutionProvider{type}, options_{std::move(options)} {}
 
   int GetId(const GraphViewer& viewer, HashValue& model_hash) {
     return metadef_id_generator_.GenerateId(viewer, model_hash);
   }
 
+  ProviderOptions GetProviderOptions() const override {
+    return options_;
+  }
+
  private:
   ModelMetadefIdGenerator metadef_id_generator_;
+  ProviderOptions options_;
 };
+
+TEST(ExecutionProviderTest, ConcurrentRegistrationAndProviderOptionsSnapshotsAreConsistent) {
+  constexpr size_t kProviderCount = 256;
+  ExecutionProviders execution_providers;
+  ASSERT_STATUS_OK(execution_providers.Add(
+      "TestEP_0", std::make_shared<TestEP>("TestEP_0", ProviderOptions{{"id", "TestEP_0"}})));
+
+  std::atomic<bool> start{false};
+  std::atomic<bool> registration_succeeded{true};
+  std::atomic<bool> duplicate_rejected{false};
+  std::atomic<bool> registration_done{false};
+  std::atomic<bool> snapshots_consistent{true};
+  std::atomic<size_t> snapshot_count{0};
+
+  std::thread registration_thread([&]() {
+    while (!start.load()) {
+      std::this_thread::yield();
+    }
+
+    for (size_t i = 1; i < kProviderCount; ++i) {
+      const std::string provider_id = "TestEP_" + std::to_string(i);
+      if (!execution_providers.Add(
+                                  provider_id,
+                                  std::make_shared<TestEP>(
+                                      provider_id, ProviderOptions{{"id", provider_id}}))
+               .IsOK()) {
+        registration_succeeded = false;
+        break;
+      }
+      std::this_thread::yield();
+    }
+
+    registration_done = true;
+  });
+
+  std::thread duplicate_thread([&]() {
+    while (!start.load()) {
+      std::this_thread::yield();
+    }
+
+    duplicate_rejected =
+        !execution_providers.Add(
+                                "TestEP_0",
+                                std::make_shared<TestEP>(
+                                    "TestEP_0", ProviderOptions{{"id", "duplicate"}}))
+             .IsOK();
+  });
+
+  std::thread snapshot_thread([&]() {
+    while (!start.load()) {
+      std::this_thread::yield();
+    }
+
+    do {
+      const auto snapshot = execution_providers.GetProviderOptionsSnapshot();
+      std::unordered_set<std::string> provider_ids;
+      for (const auto& [provider_id, options] : snapshot) {
+        auto option_it = options.find("id");
+        if (!provider_ids.insert(provider_id).second ||
+            option_it == options.end() || option_it->second != provider_id) {
+          snapshots_consistent = false;
+          break;
+        }
+      }
+      ++snapshot_count;
+    } while (!registration_done.load() && snapshots_consistent.load());
+  });
+
+  start = true;
+  registration_thread.join();
+  duplicate_thread.join();
+  snapshot_thread.join();
+
+  EXPECT_TRUE(registration_succeeded.load());
+  EXPECT_TRUE(duplicate_rejected.load());
+  EXPECT_TRUE(snapshots_consistent.load());
+  EXPECT_GT(snapshot_count.load(), 0u);
+
+  const auto final_snapshot = execution_providers.GetProviderOptionsSnapshot();
+  EXPECT_EQ(final_snapshot.size(), kProviderCount);
+}
 
 TEST(ExecutionProviderTest, MetadefIdGeneratorUsingModelPath) {
   TestEP ep;

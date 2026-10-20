@@ -32,9 +32,9 @@ Abstract:
 
 --*/
 
-#include "mlasi_sve.h"
+#include <numbers>
 
-#include <cmath>  // M_SQRT1_2
+#include "mlasi_sve.h"
 
 #if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 
@@ -134,7 +134,7 @@ constexpr struct {
 } MlasSveGeluConstantsFp16 = {
     0.5f,
     1.0f,
-    static_cast<float>(M_SQRT1_2),
+    1.0f / std::numbers::sqrt2_v<float>,
     0.7978845608028654f,
     0.035677408136300125f,
     -5.0f,
@@ -325,7 +325,13 @@ Return Value:
         Erf = svmin_f16_x(pg, Erf, One);
         Erf = svmax_f16_x(pg, Erf, NegOne);
 
-        const svfloat16_t Result = svsel_f16(ApproxLanes, Erf, Sign);
+        svfloat16_t Result = svsel_f16(ApproxLanes, Erf, Sign);
+
+        // NaN compares false against both Zero and Threshold, so NegativeLanes and
+        // ApproxLanes are false and the select above returns the positive saturation
+        // value +1.0. x == x is false only for NaN, so pass the input through there.
+        const svbool_t NotNanLanes = svcmpeq_f16(pg, x, x);
+        Result = svsel_f16(NotNanLanes, Result, x);
 
         svst1_f16(pg, output + i, Result);
     }
@@ -433,8 +439,12 @@ Routine Description:
 
         const svfloat16_t x = svld1_f16(pg, input + i);
         const svfloat16_t InnerValue = svld1_f16(pg, inner + i);
+        // Associated as x * (0.5 * (1 + t)), not 0.5 * (x * (1 + t)): |0.5 * (1 + t)|
+        // never exceeds 1 for either Gelu approximation, so the fp16 product with a
+        // finite x cannot overflow. Forming x * (1 + t) first overflows for
+        // x >= 32768 and yields +Inf although the true result is finite.
         const svfloat16_t Result =
-            svmul_f16_x(pg, OneHalf, svmul_f16_x(pg, x, svadd_f16_x(pg, One, InnerValue)));
+            svmul_f16_x(pg, x, svmul_f16_x(pg, OneHalf, svadd_f16_x(pg, One, InnerValue)));
 
         svst1_f16(pg, output + i, Result);
     }

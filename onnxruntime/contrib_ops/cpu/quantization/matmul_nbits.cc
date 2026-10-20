@@ -46,6 +46,81 @@ typedef enum {
   Level4, /*!< input int8, accumulator int32 */
 } ACCURACY_LEVEL;
 
+#if defined(MLAS_TARGET_AMD64_IX86)
+constexpr bool kQNBitForceFp32Supported = true;
+#else
+constexpr bool kQNBitForceFp32Supported = false;
+#endif
+
+Status ValidatePrePackInitializerShape(const OpKernelInfo& info,
+                                       const Tensor& tensor,
+                                       int input_idx,
+                                       size_t N,
+                                       size_t K,
+                                       size_t block_size,
+                                       size_t nbits,
+                                       bool has_zp_arg,
+                                       bool has_zp_input) {
+  const int64_t n = static_cast<int64_t>(N);
+  const int64_t k = static_cast<int64_t>(K);
+  const int64_t bs = static_cast<int64_t>(block_size);
+  const int64_t bits = static_cast<int64_t>(nbits);
+  const int64_t k_blocks = matmul_nbits_helper::GetKBlocks(k, bs);
+  const int64_t blob_size = matmul_nbits_helper::GetBlobSize(bs, bits);
+  const int64_t zp_blob_size_uint8 = matmul_nbits_helper::GetUint8ZeroPointBlobSize(k_blocks, bits);
+  const int64_t scales_size = SafeInt<int64_t>(n) * k_blocks;
+  const int64_t packed_zp_size = SafeInt<int64_t>(n) * zp_blob_size_uint8;
+
+  auto validate_scales_shape = [&](const TensorShape& shape) -> Status {
+    ORT_RETURN_IF_NOT(shape == TensorShape({scales_size}) || shape == TensorShape({n, k_blocks}),
+                      "MatMulNBits PrePack: scales initializer shape ", shape,
+                      " does not match attribute-derived shape [", scales_size, "] or [",
+                      n, ",", k_blocks, "]");
+    return Status::OK();
+  };
+
+  auto validate_zero_points_shape = [&](const TensorShape& shape, int32_t element_type) -> Status {
+    if (element_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+      ORT_RETURN_IF_NOT(shape == TensorShape({packed_zp_size}) ||
+                            shape == TensorShape({n, zp_blob_size_uint8}),
+                        "MatMulNBits PrePack: zero_points initializer shape ", shape,
+                        " does not match attribute-derived shape [", packed_zp_size, "] or [",
+                        n, ",", zp_blob_size_uint8, "]");
+    } else {
+      ORT_RETURN_IF_NOT(shape == TensorShape({scales_size}) || shape == TensorShape({n, k_blocks}),
+                        "MatMulNBits PrePack: zero_points initializer shape ", shape,
+                        " does not match attribute-derived shape [", scales_size, "] or [",
+                        n, ",", k_blocks, "]");
+    }
+    return Status::OK();
+  };
+
+  const TensorShape& shape = tensor.Shape();
+  if (input_idx == InputIndex::B) {
+    ORT_RETURN_IF_NOT(shape == TensorShape({n, k_blocks, blob_size}),
+                      "MatMulNBits PrePack: B initializer shape ", shape,
+                      " does not match attribute-derived shape [", n, ",", k_blocks, ",", blob_size,
+                      "] (N=", N, ", K=", K, ", bits=", nbits, ", block_size=", block_size, ")");
+
+    const Tensor* scales_tensor = nullptr;
+    if (info.TryGetConstantInput(InputIndex::scales, &scales_tensor) && scales_tensor != nullptr) {
+      ORT_RETURN_IF_ERROR(validate_scales_shape(scales_tensor->Shape()));
+    }
+
+    const Tensor* zp_tensor = nullptr;
+    if (has_zp_arg && has_zp_input &&
+        info.TryGetConstantInput(InputIndex::zero_points, &zp_tensor) && zp_tensor != nullptr) {
+      ORT_RETURN_IF_ERROR(validate_zero_points_shape(zp_tensor->Shape(), zp_tensor->GetElementType()));
+    }
+  } else if (input_idx == InputIndex::scales) {
+    ORT_RETURN_IF_ERROR(validate_scales_shape(shape));
+  } else if (input_idx == InputIndex::zero_points) {
+    ORT_RETURN_IF_ERROR(validate_zero_points_shape(shape, tensor.GetElementType()));
+  }
+
+  return Status::OK();
+}
+
 // T: A data type.
 template <typename T>
 MLAS_QNBIT_GEMM_COMPUTE_TYPE
@@ -105,13 +180,21 @@ class MatMulNBits final : public OpKernel {
         nbits_{narrow<size_t>(info.GetAttr<int64_t>("bits"))},
         has_g_idx_{info.GetInputCount() > InputIndex::g_idx && info.node().InputDefs()[InputIndex::g_idx]->Exists()},
         has_bias_{info.GetInputCount() > InputIndex::bias && info.node().InputDefs()[InputIndex::bias]->Exists()},
+        force_fp32_{info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasQNBitForceFp32) == "1" &&
+                    kQNBitForceFp32Supported && std::is_same_v<T1, float> &&
+                    nbits_ == 4 && block_size_ == 32 &&
+                    info.GetAttr<int64_t>("accuracy_level") == static_cast<int64_t>(Level4) &&
+                    MlasIsQNBitGemmAvailable(nbits_, block_size_, SQNBIT_CompFp32)},
         prefer_lut_gemm_{std::is_same_v<T1, float> &&
+                         !force_fp32_ &&
                          info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasLutGemm) == "1" &&
                          MlasIsLutGemmAvailable(narrow<size_t>(info.GetAttr<int64_t>("N")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("K")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("bits")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("block_size")))},
-        compute_type_{GetComputeType<T1>(nbits_, block_size_, info.GetAttr<int64_t>("accuracy_level"))} {
+        compute_type_{force_fp32_
+                          ? SQNBIT_CompFp32
+                          : GetComputeType<T1>(nbits_, block_size_, info.GetAttr<int64_t>("accuracy_level"))} {
     SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
 
     const auto& node = info.node();
@@ -159,6 +242,7 @@ class MatMulNBits final : public OpKernel {
   const bool has_g_idx_;
   const bool has_bias_;
   bool scales_are_packed_{false};
+  const bool force_fp32_;
   const bool prefer_lut_gemm_{false};
   const MLAS_QNBIT_GEMM_COMPUTE_TYPE compute_type_;
   bool has_unquantized_zero_point_{false};
@@ -260,91 +344,9 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
                                 /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
-  // Validate the incoming initializer's shape against the attribute-derived shape before any of
-  // the pack routines below dereference tensor.DataRaw(). The MLAS pack routines size their reads
-  // from the (N, K, bits, block_size) attributes; without this check a crafted model whose
-  // attributes overstate the real tensor extents would trigger a heap-buffer-overflow READ at
-  // session initialization. The matching guard in matmul_nbits_helper::CheckInputs is invoked
-  // from Compute() -- too late, because PrePack has already done the OOB read, and by then the
-  // original B tensor is passed as nullptr so the Compute-time check never sees it.
-  //
-  // When input_idx == B, this guard also validates the constant scales and zero_points
-  // initializers (looked up via TryGetConstantInput). SessionState::PrepackConstantInitializedTensors
-  // iterates inputs in index order, so the B PrePack call runs before scales/zero_points are
-  // prepacked on their own. The B prepack path reads those constant tensors and passes their
-  // raw data to the MLAS pack routines (MlasLutGemmPack, MlasQNBitGemmPackQuantBData), which size
-  // their reads from the same (N, K, bits, block_size) attributes. Without validating scales /
-  // zero_points here, a crafted model with an undersized scales or zero_points buffer would still
-  // trigger an OOB read inside the B packing pass before each tensor's own PrePack call could
-  // catch the mismatch.
-  //
-  // This validation runs before the early-return guards below (has_g_idx_, unquantized ZP,
-  // dynamic-ZP-with-LUT, !MlasIsQNBitGemmAvailable). On builds where MLAS QNBit GEMM is not
-  // available (e.g. Windows x86 32-bit) PrePack would otherwise short-circuit before reaching
-  // these checks, and the original B tensor is dropped after PrePack so Compute()'s helper-time
-  // check never sees it. Running the validation first makes session init reject bad-shape models
-  // consistently across all build configurations. The checks are cheap (a few TensorShape
-  // equality comparisons) and independent of any MLAS kernel availability.
-  {
-    const int64_t n = static_cast<int64_t>(N_);
-    const int64_t k = static_cast<int64_t>(K_);
-    const int64_t bs = static_cast<int64_t>(block_size_);
-    const int64_t bits = static_cast<int64_t>(nbits_);
-    // Layout derivations live in matmul_nbits_helper.h so this guard and the Compute-time
-    // CheckInputs stay in lockstep if the canonical packing layout ever changes.
-    const int64_t k_blocks = matmul_nbits_helper::GetKBlocks(k, bs);
-    const int64_t blob_size = matmul_nbits_helper::GetBlobSize(bs, bits);
-    const int64_t zp_blob_size_uint8 = matmul_nbits_helper::GetUint8ZeroPointBlobSize(k_blocks, bits);
-
-    auto validate_scales_shape = [&](const TensorShape& s) -> Status {
-      // scales may be 1D [n * k_blocks] or 2D [n, k_blocks] for backward compatibility.
-      ORT_RETURN_IF_NOT(s == TensorShape({n * k_blocks}) || s == TensorShape({n, k_blocks}),
-                        "MatMulNBits PrePack: scales initializer shape ", s,
-                        " does not match attribute-derived shape [", n * k_blocks, "] or [",
-                        n, ",", k_blocks, "]");
-      return Status::OK();
-    };
-
-    auto validate_zero_points_shape = [&](const TensorShape& s, int32_t element_type) -> Status {
-      if (element_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-        ORT_RETURN_IF_NOT(s == TensorShape({n * zp_blob_size_uint8}) || s == TensorShape({n, zp_blob_size_uint8}),
-                          "MatMulNBits PrePack: zero_points initializer shape ", s,
-                          " does not match attribute-derived shape [", n * zp_blob_size_uint8, "] or [",
-                          n, ",", zp_blob_size_uint8, "]");
-      } else {
-        ORT_RETURN_IF_NOT(s == TensorShape({n * k_blocks}) || s == TensorShape({n, k_blocks}),
-                          "MatMulNBits PrePack: zero_points initializer shape ", s,
-                          " does not match attribute-derived shape [", n * k_blocks, "] or [",
-                          n, ",", k_blocks, "]");
-      }
-      return Status::OK();
-    };
-
-    const TensorShape& shape = tensor.Shape();
-
-    if (input_idx == InputIndex::B) {
-      ORT_RETURN_IF_NOT(shape == TensorShape({n, k_blocks, blob_size}),
-                        "MatMulNBits PrePack: B initializer shape ", shape,
-                        " does not match attribute-derived shape [", n, ",", k_blocks, ",", blob_size,
-                        "] (N=", N_, ", K=", K_, ", bits=", nbits_, ", block_size=", block_size_, ")");
-
-      // Also validate constant scales / zero_points, which the B prepack path below dereferences
-      // (via TryGetConstantInput) and hands to MLAS, before their own PrePack calls run.
-      const Tensor* scales_tensor = nullptr;
-      if (OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales_tensor) && scales_tensor != nullptr) {
-        ORT_RETURN_IF_ERROR(validate_scales_shape(scales_tensor->Shape()));
-      }
-      const Tensor* zp_tensor = nullptr;
-      if (has_zp_arg_ && has_zp_input_ &&
-          OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor) && zp_tensor != nullptr) {
-        ORT_RETURN_IF_ERROR(validate_zero_points_shape(zp_tensor->Shape(), zp_tensor->GetElementType()));
-      }
-    } else if (input_idx == InputIndex::scales) {
-      ORT_RETURN_IF_ERROR(validate_scales_shape(shape));
-    } else if (input_idx == InputIndex::zero_points) {
-      ORT_RETURN_IF_ERROR(validate_zero_points_shape(shape, tensor.GetElementType()));
-    }
-  }
+  ORT_RETURN_IF_ERROR(ValidatePrePackInitializerShape(OpKernel::Info(), tensor, input_idx,
+                                                      N_, K_, block_size_, nbits_,
+                                                      has_zp_arg_, has_zp_input_));
 
   if (has_g_idx_) {
     return Status::OK();
@@ -372,24 +374,15 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   }
 #endif
 
-  // Create a temporary threadpool for parallel packing
-  // This is used during model load time to speed up weight prepacking
   std::unique_ptr<concurrency::ThreadPool> temp_threadpool;
   concurrency::ThreadPool* threadpool_ptr = nullptr;
-
-  // Only create threadpool for LUT GEMM path which can benefit from parallel packing
-  // TODO: Consider extending threadpool usage to non-LUT path (CompInt8) with appropriate tests
-  if (prefer_lut_gemm_) {
+  if (prefer_lut_gemm_ && input_idx == InputIndex::B && !IsOuterPrePackParallelismEnabled()) {
     OrtThreadPoolParams tpo;
     tpo.thread_pool_size = Env::Default().GetNumPhysicalCpuCores();
-    tpo.allow_spinning = false;  // Don't spin during model load
+    tpo.allow_spinning = false;
     tpo.auto_set_affinity = false;
-
     temp_threadpool = concurrency::CreateThreadPool(
-        &Env::Default(),
-        tpo,
-        concurrency::ThreadPoolType::INTRA_OP);
-
+        &Env::Default(), tpo, concurrency::ThreadPoolType::INTRA_OP);
     threadpool_ptr = temp_threadpool.get();
   }
 
@@ -491,7 +484,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
         std::memset(packed_b_.get(), 0, packed_b_size_);
       }
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, effective_compute_type, qptr, packed_b_.get(), scale_ptr,
-                                  has_zp_input_, zp_ptr, threadpool_ptr, &mlas_backend_kernel_selector_config_);
+                                  has_zp_input_, zp_ptr, nullptr, &mlas_backend_kernel_selector_config_);
 
       // Fold the scales and (constant) zero points into packed_b_ now, during the B PrePack, instead
       // of deferring them to the later scales/zero_points PrePack calls. Pre-packed weight sharing
@@ -735,6 +728,10 @@ template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                        /*out*/ bool& is_packed,
                                        /*out*/ PrePackedWeights* prepacked_weights) {
+  ORT_RETURN_IF_ERROR(ValidatePrePackInitializerShape(OpKernel::Info(), tensor, input_idx,
+                                                      N_, K_, block_size_, nbits_,
+                                                      has_zp_arg_, has_zp_input_));
+
   if (input_idx == InputIndex::scales || input_idx == InputIndex::bias) {
     auto sptr = tensor.Data<MLFloat16>();
     auto tensor_size = static_cast<size_t>(tensor.Shape().Size());

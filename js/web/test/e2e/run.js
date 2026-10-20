@@ -71,7 +71,7 @@ async function main() {
 
   if (!PRESERVE) {
     // install dev dependencies
-    await runInShell(`npm install`);
+    await runInShell(`npm ci`);
 
     // npm install with "--cache" to install packed packages with an empty cache folder
     await runInShell(`npm install --cache "${NPM_CACHE_FOLDER}" ${PACKAGES_TO_INSTALL.map((i) => `"${i}"`).join(' ')}`);
@@ -109,6 +109,7 @@ async function main() {
     path.join(serverWwwRoot, 'test-wasm-path-override'),
     'junction',
   );
+  await fs.symlink(path.resolve(TEST_E2E_RUN_FOLDER, 'test-data'), path.join(serverWwwRoot, 'test-data'), 'junction');
 
   // start a HTTP server for hosting .wasm files (for cross-origin testing)
   const server = startServer(serverWwwRoot, 8081);

@@ -46,6 +46,7 @@ def directory_setup_factory(tmp_path):
         linux_native_dir = linux_dir / "ai" / "onnxruntime" / "native" / "linux-x64"
         linux_native_dir.mkdir(parents=True, exist_ok=True)
         create_empty_file(linux_dir / "libcustom_op_library.so")
+        create_empty_file(linux_dir / "libonnxruntime4j_jni_test.so")
         create_empty_file(linux_native_dir / "libonnxruntime.so")
         create_empty_file(linux_native_dir / "libonnxruntime4j_jni.so")
         if package_type == "gpu":
@@ -59,11 +60,13 @@ def directory_setup_factory(tmp_path):
             linux_aarch64_native_dir = linux_aarch64_dir / "ai" / "onnxruntime" / "native" / "linux-aarch64"
             linux_aarch64_native_dir.mkdir(parents=True, exist_ok=True)
             create_empty_file(linux_aarch64_dir / "libcustom_op_library.so")
+            create_empty_file(linux_aarch64_dir / "libonnxruntime4j_jni_test.so")
 
             osx_arm64_dir = java_artifact_dir / "onnxruntime-java-osx-arm64"
             osx_arm64_native_dir = osx_arm64_dir / "ai" / "onnxruntime" / "native" / "osx-arm64"
             osx_arm64_native_dir.mkdir(parents=True, exist_ok=True)
             create_empty_file(osx_arm64_dir / "libcustom_op_library.dylib")
+            create_empty_file(osx_arm64_dir / "libonnxruntime4j_jni_test.dylib")
 
         return tmp_path
 
@@ -99,10 +102,12 @@ def test_gpu_packaging(directory_setup_factory, version_string):
         # The custom op lib for linux is not archived for GPU builds.
         # This checks that it's NOT in the test jar.
         assert "libcustom_op_library.so" not in jar_contents
+        assert "libonnxruntime4j_jni_test.so" in jar_contents
 
-    # 3. Verify the custom op library was removed from the source linux directory
+    # 3. Verify the custom op and JNI test libraries were removed from the source linux directory
     linux_dir = temp_build_dir / "java-artifact" / "onnxruntime-java-linux-x64"
     assert not (linux_dir / "libcustom_op_library.so").exists()
+    assert not (linux_dir / "libonnxruntime4j_jni_test.so").exists()
 
 
 @pytest.mark.parametrize("version_string", ["1.23.0", "1.23.0-rc1"])
@@ -134,11 +139,17 @@ def test_cpu_packaging(directory_setup_factory, version_string):
         jar_contents = zf.namelist()
         assert "libcustom_op_library.so" in jar_contents
         assert "libcustom_op_library.dylib" in jar_contents
+        assert "libonnxruntime4j_jni_test.so" in jar_contents
+        assert "linux-aarch64/libonnxruntime4j_jni_test.so" in jar_contents
+        assert "libonnxruntime4j_jni_test.dylib" in jar_contents
 
-    # 3. Verify the custom op libraries were removed from the source directories
+    # 3. Verify the custom op and JNI test libraries were removed from the source directories
     linux_dir = temp_build_dir / "java-artifact" / "onnxruntime-java-linux-x64"
     linux_aarch64_dir = temp_build_dir / "java-artifact" / "onnxruntime-java-linux-aarch64"
     osx_arm64_dir = temp_build_dir / "java-artifact" / "onnxruntime-java-osx-arm64"
     assert not (linux_dir / "libcustom_op_library.so").exists()
+    assert not (linux_dir / "libonnxruntime4j_jni_test.so").exists()
     assert not (linux_aarch64_dir / "libcustom_op_library.so").exists()
+    assert not (linux_aarch64_dir / "libonnxruntime4j_jni_test.so").exists()
     assert not (osx_arm64_dir / "libcustom_op_library.dylib").exists()
+    assert not (osx_arm64_dir / "libonnxruntime4j_jni_test.dylib").exists()

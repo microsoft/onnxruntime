@@ -14,6 +14,7 @@ It expected the following inputs:
     ├── libonnxruntime.so                (File from --lib-name)
     ├── libonnxruntime4j_jni.so          (File from --native-lib-name)
     ├── libcustom_op_library.so
+    ├── (Optional) libonnxruntime4j_jni_test.so  (only when onnxruntime_BUILD_UNIT_TESTS=ON)
     │
     ├── (Optional) libonnxruntime_providers_shared.so
     ├── (Optional) libonnxruntime_providers_cuda.so
@@ -24,7 +25,7 @@ It performs the following key operations:
 1.  Validates the existence of all required source directories and libraries.
 2.  Creates the specific Java Native Interface (JNI) directory structure
     (ai/onnxruntime/native/<arch>).
-3.  Copies the main, JNI, and custom op libraries to their destinations.
+3.  Copies the main, JNI, custom op, and (if present) JNI test libraries to their destinations.
 4.  For macOS, extracts debug symbols into .dSYM files using `dsymutil`.
 5.  Strips all release binaries of their debug symbols to reduce file size.
 6.  Copies optional provider libraries (e.g., CUDA, TensorRT) for Linux builds.
@@ -126,6 +127,10 @@ def main():
             sys.exit(1)
     logging.info("All required source library files found.")
 
+    # The JNI unit test helper library is only built when onnxruntime_BUILD_UNIT_TESTS is ON. It is optional
+    # here (not added to required_files) so that build configurations which skip it do not fail packaging.
+    test_lib_src = source_build_dir / f"libonnxruntime4j_jni_test{lib_suffix}"
+
     # Start processing now that checks have passed
     if lib_suffix == ".dylib":  # macOS
         logging.info("Processing macOS libraries (.dylib)...")
@@ -138,6 +143,12 @@ def main():
         run_command(["strip", "-S", native_folder / "libonnxruntime4j_jni.dylib"])
 
         shutil.copy2(custom_op_lib_src, target_artifact_dir)
+
+        if test_lib_src.is_file():
+            logging.info(f"Found JNI test library '{test_lib_src.name}'. Copying to artifact for testing.jar...")
+            shutil.copy2(test_lib_src, target_artifact_dir)
+        else:
+            logging.warning(f"JNI test library not found at '{test_lib_src}'. Skipping (not fatal).")
 
     elif lib_suffix == ".so":  # Linux
         logging.info("Processing Linux libraries (.so)...")
@@ -154,6 +165,14 @@ def main():
 
         # Custom op library (not stripped as it's for testing)
         shutil.copy2(custom_op_lib_src, target_artifact_dir)
+
+        # JNI test library (not stripped as it's for testing); optional since it is only built when
+        # onnxruntime_BUILD_UNIT_TESTS is ON.
+        if test_lib_src.is_file():
+            logging.info(f"Found JNI test library '{test_lib_src.name}'. Copying to artifact for testing.jar...")
+            shutil.copy2(test_lib_src, target_artifact_dir)
+        else:
+            logging.warning(f"JNI test library not found at '{test_lib_src}'. Skipping (not fatal).")
 
         # Provider checks are optional, so we check for their existence here.
         for provider in ["cuda", "tensorrt"]:

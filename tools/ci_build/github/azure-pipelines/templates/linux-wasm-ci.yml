@@ -91,11 +91,12 @@ jobs:
       versionSpec: "3.12"
       architecture: $(buildArch)
 
-  - task: NodeTool@0
+  - task: UseNode@1
     inputs:
-      versionSpec: '22.x'
+      version: '24.x'
 
-  - script: python -m pip install flatbuffers
+  - script: |
+      python -m pip install flatbuffers
     displayName: 'Install python dependencies'
 
   - ${{if eq(parameters.WithCache, true)}}:

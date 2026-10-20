@@ -23,27 +23,108 @@
 #include <vector>
 
 #include "contrib_ops/cuda/llm/common/workspace.h"
+#include "core/common/safeint.h"
 #include "core/common/parse_string.h"
 #include "core/common/string_utils.h"
 
 using namespace onnxruntime::llm::common;
 using namespace onnxruntime::llm::kernels::cutlass_kernels;
 
+namespace {
+// Compares tactics by their persisted representation, which is exactly what a cache hit stores.
+bool SameConfigColumns(const std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>& a,
+                       const std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>& b) {
+  std::vector<std::string> columns_a;
+  std::vector<std::string> columns_b;
+  onnxruntime::llm::gemm_cache::AppendConfigColumns(columns_a, a);
+  onnxruntime::llm::gemm_cache::AppendConfigColumns(columns_b, b);
+  return columns_a == columns_b;
+}
+}  // namespace
+
 namespace onnxruntime::llm::kernels::weight_only {
+
+std::optional<std::array<size_t, 7>> ComputeWeightOnlyGemmProfilerBufferSizes(
+    size_t max_m, size_t packed_n, size_t k, int quant_bits,
+    size_t group_size, size_t runner_workspace_bytes, size_t streaming_l2_bytes) {
+  if (max_m == 0 || packed_n == 0 || k == 0 ||
+      (quant_bits != INT2_BITS && quant_bits != INT4_BITS && quant_bits != INT8_BITS) || group_size == 0) {
+    return std::nullopt;
+  }
+
+  try {
+    const SafeInt<size_t> original_n =
+        SafeInt<size_t>(packed_n) * (FP16_BITS / quant_bits);
+    constexpr size_t kElementBytes = sizeof(uint16_t);
+    const SafeInt<size_t> weight_bytes = SafeInt<size_t>(k) * packed_n * kElementBytes;
+    const SafeInt<size_t> scale_bytes = SafeInt<size_t>(k) * original_n * kElementBytes / group_size;
+    const SafeInt<size_t> matrix_bytes = weight_bytes + scale_bytes;
+    const size_t copies = streaming_l2_bytes != 0 && matrix_bytes <= streaming_l2_bytes
+                              ? static_cast<size_t>(SafeInt<size_t>(streaming_l2_bytes) * 2 / matrix_bytes + 1)
+                              : 1;
+    return std::array<size_t, 7>{
+        static_cast<size_t>(SafeInt<size_t>(max_m) * k * kElementBytes),
+        static_cast<size_t>(weight_bytes * copies),
+        static_cast<size_t>(scale_bytes * copies),
+        static_cast<size_t>(scale_bytes),
+        static_cast<size_t>(original_n * kElementBytes),
+        static_cast<size_t>(SafeInt<size_t>(max_m) * original_n * kElementBytes),
+        runner_workspace_bytes};
+  } catch (const OnnxRuntimeException&) {
+    return std::nullopt;
+  }
+}
+
+std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
+    size_t max_m, size_t packed_n, size_t k, int quant_bits,
+    size_t group_size, size_t runner_workspace_bytes, size_t streaming_l2_bytes) {
+  const auto workspaces = ComputeWeightOnlyGemmProfilerBufferSizes(
+      max_m, packed_n, k, quant_bits, group_size, runner_workspace_bytes, streaming_l2_bytes);
+  if (!workspaces) {
+    return std::nullopt;
+  }
+  try {
+    SafeInt<size_t> total = 0;
+    for (const size_t workspace : *workspaces) {
+      SafeInt<size_t> aligned_workspace = workspace;
+      const size_t remainder = workspace % kCudaMemAlign;
+      if (remainder != 0) {
+        aligned_workspace += kCudaMemAlign - remainder;
+      }
+      total += aligned_workspace;
+    }
+    return static_cast<size_t>(total);
+  } catch (const OnnxRuntimeException&) {
+    return std::nullopt;
+  }
+}
 
 void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
     int m, int n, int k,
     WeightOnlyGroupwiseQuantGemmPluginProfiler::Config const& tactic, char* workspace, cudaStream_t const& stream) {
-  int const originalN = mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO;
+  int const originalN = n * (FP16_BITS / mQuantBits);
+  const auto buffer_sizes = ComputeWeightOnlyGemmProfilerBufferSizes(
+      m, n, k, mQuantBits, mGroupSize, 0, canProfileInt4Decode(m) ? mL2CacheBytes : 0);
+  ORT_ENFORCE(buffer_sizes.has_value(), "Failed to compute fpA_intB tactic-profiler buffer sizes.");
+  const auto& sizes = *buffer_sizes;
   half* actPtr = reinterpret_cast<half*>(workspace);
-  void* weightPtr = nextWorkspacePtr(reinterpret_cast<int8_t*>(actPtr), m * k * sizeof(half));
-  half* inputScalesPtr = reinterpret_cast<half*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(weightPtr), n * k * sizeof(half)));
+  void* weightPtr = nextWorkspacePtr(reinterpret_cast<int8_t*>(actPtr), sizes[0]);
+  half* inputScalesPtr = reinterpret_cast<half*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(weightPtr), sizes[1]));
   half* zerosPtr = reinterpret_cast<half*>(
-      nextWorkspacePtr(reinterpret_cast<int8_t*>(inputScalesPtr), k * originalN * sizeof(half) / mGroupSize));
+      nextWorkspacePtr(reinterpret_cast<int8_t*>(inputScalesPtr), sizes[2]));
   half* biasesPtr = reinterpret_cast<half*>(
-      nextWorkspacePtr(reinterpret_cast<int8_t*>(zerosPtr), k * originalN * sizeof(half) / mGroupSize));
-  half* outputPtr = reinterpret_cast<half*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(biasesPtr), n * sizeof(half)));
-  char* workspacePtr = reinterpret_cast<char*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(outputPtr), m * originalN * sizeof(half)));
+      nextWorkspacePtr(reinterpret_cast<int8_t*>(zerosPtr), sizes[3]));
+  half* outputPtr = reinterpret_cast<half*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(biasesPtr), sizes[4]));
+  char* workspacePtr = reinterpret_cast<char*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(outputPtr), sizes[5]));
+
+  if (canProfileInt4Decode(m)) {
+    const size_t weight_bytes = static_cast<size_t>(k) * n * sizeof(half);
+    const size_t scale_bytes = static_cast<size_t>(k) * originalN * sizeof(half) / mGroupSize;
+    const size_t copies = sizes[1] / weight_bytes;
+    const size_t index = mProfileWeightIndex.fetch_add(1, std::memory_order_relaxed) % copies;
+    weightPtr = static_cast<char*>(weightPtr) + index * weight_bytes;
+    inputScalesPtr = reinterpret_cast<half*>(reinterpret_cast<char*>(inputScalesPtr) + index * scale_bytes);
+  }
 
   if (!mHasZeros) {
     zerosPtr = nullptr;
@@ -63,13 +144,19 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
         inputScalesPtr, zerosPtr,
         biasesPtr, outputPtr,
         alpha, m, originalN, k, mGroupSize, mCudaKernelType, apply_alpha_in_advance);
+    params.decode_variant = tactic.cudaKernelVariant >= 2 ? tactic.cudaKernelVariant : 0;
+    params.paired_k = tactic.cudaKernelVariant == 1;
+    params.wave_aware = mWaveAwareGemv;
     onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(mArch, params, stream);
   } else {
     // run CUTLASS kernel
     int const wsSize = static_cast<int>(mRunner->getWorkspaceSize(m, originalN, k));
-    if (mQuantBits == 8) {
+    if (mQuantBits == INT8_BITS) {
       mRunner->gemm(actPtr, reinterpret_cast<int8_t*>(weightPtr), inputScalesPtr, zerosPtr, biasesPtr, outputPtr,
                     m, originalN, k, mGroupSize, tactic, workspacePtr, wsSize, stream);
+    } else if (mQuantBits == INT2_BITS) {
+      mRunner->gemm(actPtr, reinterpret_cast<cutlass::uint2b_t*>(weightPtr), inputScalesPtr, zerosPtr, biasesPtr,
+                    outputPtr, m, originalN, k, mGroupSize, tactic, workspacePtr, wsSize, stream);
     } else {
       mRunner->gemm(actPtr, reinterpret_cast<cutlass::uint4b_t*>(weightPtr), inputScalesPtr, zerosPtr, biasesPtr,
                     outputPtr, m, originalN, k, mGroupSize, tactic, workspacePtr, wsSize, stream);
@@ -78,31 +165,100 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
 }
 
 size_t WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, size_t n, size_t k) {
-  // Quantized weights are packed in FP16 format (INT4*4 -> FP16, INT8*2 -> FP16)
-  int const originalN = static_cast<int>(mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO);
-  std::vector<size_t> workspaces = {
-      /* A */ maxM * k * sizeof(half),
-      /* B */ k * n * sizeof(half),
-      /* scales */ k * originalN * sizeof(half) / mGroupSize,
-      /* zeros */ k * originalN * sizeof(half) / mGroupSize,
-      /* biases */ originalN * sizeof(half),
-      /* C */ maxM * originalN * sizeof(half),
-      mRunner->getWorkspaceSize(static_cast<int>(maxM), originalN, static_cast<int>(k))  // workspace
-  };
-  return calculateTotalWorkspaceSize(workspaces.data(), static_cast<int>(workspaces.size()));
+  maxM = std::max<size_t>(1, maxM);
+  const int original_n = static_cast<int>(n * (FP16_BITS / mQuantBits));
+  const auto scratch_size = ComputeWeightOnlyGemmProfilerScratchSize(
+      maxM, n, k, mQuantBits, mGroupSize,
+      mRunner->getWorkspaceSize(static_cast<int>(maxM), original_n, static_cast<int>(k)),
+      canProfileInt4Decode(static_cast<int>(maxM)) ? mL2CacheBytes : 0);
+  ORT_ENFORCE(scratch_size.has_value(), "Failed to compute fpA_intB tactic-profiler scratch size.");
+  return *scratch_size;
+}
+
+void WeightOnlyGroupwiseQuantGemmPluginProfiler::initTmpData(
+    int m, int /*n*/, int /*k*/, char* workspace, size_t size, cudaStream_t stream) {
+  if (canProfileInt4Decode(m)) {
+    CUDA_CALL_THROW(cudaMemsetAsync(workspace, 0, size, stream));
+    mProfileWeightIndex.store(0, std::memory_order_relaxed);
+  }
 }
 
 std::vector<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config> WeightOnlyGroupwiseQuantGemmPluginProfiler::getTactics(
-    int /*m*/, int /*n*/, int /*k*/) const {
-  return mRunner->getConfigs();
+    int m, int n, int k) const {
+  auto tactics = mRunner->getConfigs();
+  if (canProfileInt4Decode(m)) {
+    const auto default_gemv = std::find_if(tactics.begin(), tactics.end(), [](const auto& tactic) {
+      return tactic.enableCudaKernel && tactic.cudaKernelVariant == 0;
+    });
+    if (default_gemv != tactics.end()) {
+      const auto base = *default_gemv;
+      const int original_n = SafeInt<int>(n) * (FP16_BITS / mQuantBits);
+      for (int variant = 2; variant <= 7; ++variant) {
+        if (fpA_intB_gemv::IsInt4DecodeGeometryLegal(variant, original_n, k, mDecodeInterleave)) {
+          auto decode = base;
+          decode.cudaKernelVariant = variant;
+          tactics.push_back(decode);
+        }
+      }
+    }
+  }
+  if (mPairedGemvMode != 0 && m >= 5 && m <= 8) {
+    for (auto const& tactic : tactics) {
+      if (tactic.enableCudaKernel) {
+        auto paired = tactic;
+        paired.cudaKernelVariant = 1;
+        if (mPairedGemvMode == 2) {
+          return {paired};
+        }
+        tactics.push_back(paired);
+        break;
+      }
+    }
+  }
+  return tactics;
 }
 
-bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, int /*k*/, Config const& tactic) const {
+bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int n, int k, Config const& tactic) const {
   // stop to profile Cuda kernel for m >= 16
   if (tactic.enableCudaKernel) {
-    return m < 16;
+    if (tactic.cudaKernelVariant >= 2) {
+      return canProfileInt4Decode(m) &&
+             fpA_intB_gemv::IsInt4DecodeGeometryLegal(tactic.cudaKernelVariant,
+                                                      SafeInt<int>(n) * (FP16_BITS / mQuantBits), k, mDecodeInterleave);
+    }
+    const bool paired_bucket = m >= 5 && m <= 8;
+    if (tactic.cudaKernelVariant == 1) {
+      return mPairedGemvMode != 0 && paired_bucket;
+    }
+    return tactic.cudaKernelVariant == 0 && m < 16 && !(mPairedGemvMode == 2 && paired_bucket);
+  }
+  if (mPairedGemvMode == 2 && m >= 5 && m <= 8) {
+    return false;
   }
   return true;
+}
+
+float GetWeightOnlyGemmSelectionTime(int m, size_t weight_bytes, size_t l2_cache_bytes,
+                                     bool is_cuda_kernel, float time) {
+  // The profiler replays one synthetic weight matrix back to back, so a matrix that fits in L2 is
+  // timed L2-resident. In decode every weight matrix streams from DRAM once per step, where the CUDA
+  // GEMV (a pure weight stream) keeps its measured speed but the CUTLASS kernels lose much of their
+  // L2 advantage. A matrix larger than L2 is already timed from DRAM, so no bias is applied.
+  constexpr float kCutlassPenaltyWhenGemvEligible = 1.1f;
+  if (!is_cuda_kernel && m < 16 && weight_bytes <= l2_cache_bytes) {
+    return time * kCutlassPenaltyWhenGemvEligible;
+  }
+  return time;
+}
+
+float WeightOnlyGroupwiseQuantGemmPluginProfiler::getSelectionTime(int m, int n, int k, Config const& tactic,
+                                                                   float time) const {
+  if (canProfileInt4Decode(m) && mL2CacheBytes != 0) {
+    return time;
+  }
+  // n counts the 16-bit elements of one packed weight row (see runTactic).
+  const size_t weight_bytes = SafeInt<size_t>(n) * k * sizeof(half);
+  return GetWeightOnlyGemmSelectionTime(m, weight_bytes, mL2CacheBytes, tactic.enableCudaKernel, time);
 }
 
 std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(const std::string& value) {
@@ -127,13 +283,18 @@ std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(c
 
 std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::getProfileMBuckets(
     int minM, int maxM, bool /*hasWeightOnlyCudaKernel*/) const {
-  int const lo = std::max(1, minM);
-  int const hi = std::max(lo, maxM);
+  return GetInitialProfileMBuckets(minM, maxM, mProfileMOverride);
+}
+
+std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
+    int min_m, int max_m, const std::vector<int>& profile_m_override) {
+  int const lo = std::max(1, min_m);
+  int const hi = std::max(lo, max_m);
 
   std::set<int> buckets;
 
-  if (!mProfileMOverride.empty()) {
-    for (int m : mProfileMOverride) {
+  if (!profile_m_override.empty()) {
+    for (int m : profile_m_override) {
       buckets.insert(std::min(std::max(lo, m), hi));
     }
   } else {
@@ -153,5 +314,128 @@ std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::getProfileMBuckets(
   return std::vector<int>(buckets.begin(), buckets.end());
 }
 
+onnxruntime::llm::gemm_cache::MatMulNBitsKey WeightOnlyGroupwiseQuantGemmPluginProfiler::makeCacheKey(
+    GemmIdCore const& gemmId, bool hasWeightOnlyCudaKernel) const {
+  onnxruntime::llm::gemm_cache::MatMulNBitsKey key;
+  key.n_16b = gemmId.n;
+  key.k = gemmId.k;
+  key.activation_dtype = (gemmId.dtype == onnxruntime::llm::nvinfer::DataType::kBF16) ? "bfloat16" : "half";
+  key.weight_type = (mQuantBits == INT8_BITS)   ? "uint8_t"
+                    : (mQuantBits == INT2_BITS) ? "uint2b_t"
+                                                : "uint4b_t";
+  key.bits = mQuantBits;
+  key.block_size = mGroupSize;
+  key.has_zero_points = mHasZeros;
+  key.zero_point_dtype = mHasZeros ? key.weight_type : "none";
+  key.gemv_enabled = hasWeightOnlyCudaKernel;
+  key.has_bias = mHasBiases;
+  key.packing_sm = mArch;
+  key.paired_gemv_mode = gemmId.tag;
+  key.wave_aware_gemv = gemmId.wave_aware;
+  return key;
+}
+
+void WeightOnlyGroupwiseQuantGemmPluginProfiler::loadPersistentCache(
+    GemmIdCore const& gemmId, MProfileMap& map, bool hasWeightOnlyCudaKernel) {
+  if (mCache == nullptr || !mCacheAccess.load) {
+    return;
+  }
+  auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
+  auto buckets = mCache->GetAll(key);
+  if (buckets.empty()) {
+    return;
+  }
+
+  // Validate tactics loaded from disk against the tactics this runner can actually dispatch. A
+  // parseable-but-incompatible cache row (e.g. hand-edited, or written by a build whose signature
+  // happens to match but whose tactic set differs) would otherwise be handed straight to the kernel.
+  // Rejected rows are dropped so the bucket is re-profiled (and the stale row overwritten on staging).
+  // The CUDA-GEMV tactic is only dispatchable when this runner has a GEMV kernel, so it is rejected
+  // otherwise, regardless of what the row's key claims.
+  auto const valid_configs = getTactics(0, gemmId.n, gemmId.k);
+  auto is_valid_cutlass = [&valid_configs](Config const& c) {
+    for (auto const& v : valid_configs) {
+      if (v.sm_version == c.sm_version && v.is_tma_warp_specialized == c.is_tma_warp_specialized &&
+          v.tile_config_sm80 == c.tile_config_sm80 && v.tile_config_sm90 == c.tile_config_sm90 &&
+          v.tile_config_sm100 == c.tile_config_sm100 && v.tile_config_sm120 == c.tile_config_sm120 &&
+          v.split_k_style == c.split_k_style && v.split_k_factor == c.split_k_factor &&
+          v.stages == c.stages && v.cluster_shape == c.cluster_shape &&
+          v.mainloop_schedule == c.mainloop_schedule && v.epilogue_schedule == c.epilogue_schedule) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  size_t accepted = 0;
+  for (auto const& [m, config] : buckets) {
+    if (!config.has_value() || m <= 0 || m > getMaxProfileM() || map.count(m) != 0) {
+      continue;
+    }
+    if (!checkTactic(m, gemmId.n, gemmId.k, *config)) {
+      ORT_LLM_LOG_WARNING("Dropping unsupported cached fpA_intB tactic from the tactic cache; re-profiling.");
+      continue;
+    }
+    if (config->enableCudaKernel && !hasWeightOnlyCudaKernel) {
+      ORT_LLM_LOG_WARNING("Dropping cached fpA_intB CUDA-GEMV tactic: no GEMV kernel is available; re-profiling.");
+      continue;
+    }
+    if (!config->enableCudaKernel && !is_valid_cutlass(*config)) {
+      ORT_LLM_LOG_WARNING("Dropping incompatible cached fpA_intB tactic from the tactic cache; re-profiling.");
+      continue;
+    }
+    if (!validatePersistentTactic(m, gemmId.n, gemmId.k, *config)) {
+      continue;
+    }
+    // Do not clobber tactics already selected in-process this session.
+    if (map.emplace(m, config).second) {
+      markCacheBucketStaged(mCache.get(), gemmId, m);
+    }
+    ++accepted;
+  }
+  if (accepted != 0) {
+    ORT_LLM_LOG_INFO("Loaded " + std::to_string(accepted) + " validated fpA_intB tactics from " + mCache->FilePath());
+  }
+}
+
+bool WeightOnlyGroupwiseQuantGemmPluginProfiler::stageProfiledTactics(
+    GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
+  if (mCache == nullptr && mTuningResultsCache == nullptr) {
+    return false;
+  }
+  auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
+  bool added = false;
+  for (auto const& [m, config] : map) {
+    if (!config.has_value()) {
+      continue;
+    }
+    if (mTuningResultsCache != nullptr &&
+        markCacheBucketStaged(mTuningResultsCache.get(), gemmId, m)) {
+      mTuningResultsCache->Put(key, m, config);
+    }
+    if (mCache == nullptr || !mCacheAccess.save) {
+      continue;
+    }
+    if (!markCacheBucketStaged(mCache.get(), gemmId, m)) {
+      continue;
+    }
+    // Skip buckets already recorded with the same tactic (cache hits). A row rejected on load is still
+    // in the cache, so it must be overwritten by the freshly profiled tactic.
+    auto const cached = mCache->Get(key, m);
+    if (cached.has_value() && SameConfigColumns(*cached, config)) {
+      continue;
+    }
+    mCache->Put(key, m, config);
+    added = true;
+  }
+  return added;
+}
+
+void WeightOnlyGroupwiseQuantGemmPluginProfiler::stagePersistentCache(
+    GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
+  // Construction and lazy/shared-hit paths stage only. The staged tactics are written to disk at
+  // CUDA EP teardown (FlushMatMulNBitsTacticCaches in matmul_nbits.cc).
+  stageProfiledTactics(gemmId, map, hasWeightOnlyCudaKernel);
+}
 }  // namespace onnxruntime::llm::kernels::weight_only
 #endif

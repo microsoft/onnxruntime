@@ -4,6 +4,7 @@
 #include <vector>
 #include <iterator>
 #include <algorithm>
+#include "core/common/safeint.h"
 #include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -39,7 +40,8 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, 
         ORT_THROW("inner_element_size ", inner_element_size, " is not supported.");
     }
   };
-  const std::string coord_a_snippet = is_channels_last_ ? "let coord = vec4<i32>(batch, xRow, xCol, xCh / " + std::to_string(inner_element_size_x == 3 ? 4 : inner_element_size_x) + ");" : "let coord = vec4<i32>(batch, xCh, xRow, xCol);";
+  // The vec3 path assembles three scalar loads, so its channel coordinate is not packed.
+  const std::string coord_a_snippet = is_channels_last_ ? "let coord = vec4<i32>(batch, xRow, xCol, xCh / " + std::to_string(inner_element_size_x == 3 ? 1 : inner_element_size_x) + ");" : "let coord = vec4<i32>(batch, xCh, xRow, xCol);";
   const std::string coord_res_snippet = is_channels_last_ ? "let coords = vec4<i32>(batch, row / outWidth, row % outWidth, col / " + std::to_string(inner_element_size) + ");" : "let coords = vec4<i32>(batch, row, col / outWidth, col % outWidth);";
 
   const std::string xHeight = is_channels_last_ ? "i32(uniforms.x_shape[1])" : "i32(uniforms.x_shape[2])";
@@ -164,8 +166,8 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << Conv2dCommonSnippet(x, w, activation_, "x_element_t", element_size_[0], element_size_[1], element_size_[2]);
   std::string data_type = "x_element_t";
 
-  return is_vec4_ ? MakeMatMulPackedVec4Source(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /* transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, 4, tile_inner_)
-                  : MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /*transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, tile_inner_, /* split_t = */ false, 0);
+  return is_vec4_ ? MakeMatMulPackedVec4Source(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /* transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, 4, tile_inner_, false, 0, true)
+                  : MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /*transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, tile_inner_, /* split_t = */ false, 0, true);
 }
 
 Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, const std::vector<TensorShape>& input_output_shapes) {
@@ -180,20 +182,20 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   const auto output_width = is_channels_last ? output_shape[2] : output_shape[3];
   const auto output_height = is_channels_last ? output_shape[1] : output_shape[2];
   const auto output_channels = is_channels_last ? output_shape[3] : output_shape[1];
+  const int64_t output_spatial_size = SafeMul<int64_t>(output_width, output_height);
   // TODO: enable vec4 for NCHW
   const bool is_vec4 = is_channels_last && (in_channels % 4 == 0 || in_channels % 3 == 0) && output_channels % 4 == 0;
 
   // TODO: fine tune size
-  const auto dispatch_x = is_channels_last ? output_channels : output_width * output_height;
-  const auto dispatch_y = is_channels_last ? output_width * output_height : output_channels;
+  const auto dispatch_x = is_channels_last ? output_channels : output_spatial_size;
+  const auto dispatch_y = is_channels_last ? output_spatial_size : output_channels;
   std::vector<uint32_t> workgroup_size = {8, 8, 1};
   InlinedVector<int64_t> elements_per_thread = {4, static_cast<int64_t>(dim_a_outer <= 8 ? 1 : 4), 1};
-  auto integer_ceil = [](int64_t a, int64_t b) -> int64_t { return (a + b - 1) / b; };
 
   const std::vector<uint32_t> dispatch = {
-      static_cast<uint32_t>(integer_ceil(integer_ceil(dispatch_x, workgroup_size[0]), elements_per_thread[0])),
-      static_cast<uint32_t>(integer_ceil(integer_ceil(dispatch_y, workgroup_size[1]), elements_per_thread[1])),
-      static_cast<uint32_t>(integer_ceil(integer_ceil(batch_size, workgroup_size[2]), elements_per_thread[2])),
+      narrow<uint32_t>(CeilDiv(CeilDiv(dispatch_x, static_cast<int64_t>(workgroup_size[0])), elements_per_thread[0])),
+      narrow<uint32_t>(CeilDiv(CeilDiv(dispatch_y, static_cast<int64_t>(workgroup_size[1])), elements_per_thread[1])),
+      narrow<uint32_t>(CeilDiv(CeilDiv(batch_size, static_cast<int64_t>(workgroup_size[2])), elements_per_thread[2])),
   };
 
   uint32_t inner_element_size = is_vec4 ? (is_channels_last && in_channels % 4 != 0 ? 3 : 4) : 1;

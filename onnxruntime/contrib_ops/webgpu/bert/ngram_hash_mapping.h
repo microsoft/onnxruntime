@@ -15,8 +15,14 @@ using onnxruntime::webgpu::ComputeContext;
 
 class NGramHashMappingProgram final : public Program<NGramHashMappingProgram> {
  public:
-  explicit NGramHashMappingProgram(bool has_past_ids)
-      : Program{"NGramHashMapping"}, has_past_ids_(has_past_ids) {}
+  NGramHashMappingProgram(bool has_past_ids, bool has_head_offsets, bool has_eos_token_id,
+                          bool has_segment_ids, bool reset_on_eos)
+      : Program{"NGramHashMapping"},
+        has_past_ids_(has_past_ids),
+        has_head_offsets_(has_head_offsets),
+        has_eos_token_id_(has_eos_token_id),
+        has_segment_ids_(has_segment_ids),
+        reset_on_eos_(reset_on_eos) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
@@ -26,16 +32,19 @@ class NGramHashMappingProgram final : public Program<NGramHashMappingProgram> {
 
  private:
   bool has_past_ids_;
+  bool has_head_offsets_;
+  bool has_eos_token_id_;
+  bool has_segment_ids_;
+  bool reset_on_eos_;
 };
 
-// Emits the right-aligned trailing window of (past_ids ++ input_ids) so the next call can continue
-// the n-gram windows across invocations.
 class NGramPresentIdsProgram final : public Program<NGramPresentIdsProgram> {
  public:
-  NGramPresentIdsProgram(bool has_input_ids, bool has_past_ids, bool past_aliases_present)
+  NGramPresentIdsProgram(bool has_input_ids, bool has_past_ids, bool has_eos_token_id, bool past_aliases_present)
       : Program{"NGramPresentIds"},
         has_input_ids_(has_input_ids),
         has_past_ids_(has_past_ids),
+        has_eos_token_id_(has_eos_token_id),
         past_aliases_present_(past_aliases_present) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
@@ -44,13 +53,9 @@ class NGramPresentIdsProgram final : public Program<NGramPresentIdsProgram> {
                                           {"pad_id", ProgramUniformVariableDataType::Int32});
 
  private:
-  // False when sequence_length == 0. WebGPU cannot bind a zero-sized buffer, and in that case every
-  // present slot is history or pad_id, so the input_ids branch is omitted entirely.
   bool has_input_ids_;
   bool has_past_ids_;
-  // True when the caller threaded present_ids straight back into past_ids. WebGPU forbids binding
-  // one buffer as both read-only and read-write storage in a single compute pass, so the history is
-  // then read back through the present_ids (read_write) binding rather than a second binding.
+  bool has_eos_token_id_;
   bool past_aliases_present_;
 };
 
@@ -63,6 +68,7 @@ class NGramHashMapping final : public WebGpuKernel {
   int64_t max_ngram_size_;
   int64_t n_head_per_ngram_;
   int64_t pad_id_;
+  int64_t reset_on_eos_;
 };
 
 }  // namespace webgpu

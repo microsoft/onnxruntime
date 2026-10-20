@@ -2,10 +2,11 @@
 # It leverages a reusable workflow (`reusable_linux_build.yml`) to handle the core build and test logic
 # within Docker containers, ensuring a consistent environment.
 #
-# The workflow consists of five parallel jobs targeting different combinations:
+# The workflow consists of parallel jobs targeting different combinations:
 #   - build-linux-x64-debug: Builds/tests Debug config on Linux x64 (AMD CPU pool), enables AddressSanitizer.
 #   - build-linux-x64-release: Builds/tests Release config on Linux x64 (AMD CPU pool), includes wheel/nuget/benchmark flags.
 #   - orttraining-linux-ci-pipeline: Builds/tests Release config with Training enabled (--enable_training) on Linux x64 (AMD CPU pool).
+#   - build-linux-x64-no-exceptions: Builds MinSizeRel config with exceptions disabled (--disable_exceptions), without unit tests, on Linux x64 (AMD CPU pool).
 #   - build-linux-arm64-debug: Builds/tests Debug config on Linux arm64 (ARM CPU pool); ASan is disabled due to excessive runtime. Includes wheel build.
 #   - build-linux-arm64-release: Builds/tests Release config on Linux arm64 (ARM CPU pool), includes wheel/benchmark flags.
 #
@@ -62,7 +63,7 @@ jobs:
       architecture: x64
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
       docker_image_repo: onnxruntimecpubuildpythonx64
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON onnxruntime_RUN_MLAS_TESTS=ON'
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # $ needs escaping in single quotes
       run_go_tests: true
       job_identifier: build-linux-x64-release
@@ -79,7 +80,7 @@ jobs:
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
       docker_image_repo: onnxruntimecpubuildpythonx64
       # MATERIALIZE=ON needs no explicit pre-build pip install on this leg: the manylinux cp314
-      # image already ships onnx==1.22.0 + numpy==2.4.2 (the exact gate pins) via its
+      # image already ships the pinned onnx + numpy versions via its
       # requirements.txt (install_deps.sh installs it into cp311-cp314). Intentional, not an
       # omission -- unlike the QNN/android legs which run on bare agents and pip-install the pins.
       extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON --cmake_extra_defines onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON'
@@ -100,6 +101,22 @@ jobs:
       extra_build_flags: '--enable_training --use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # $ needs escaping in single quotes
       job_identifier: orttraining-linux-ci-pipeline
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-linux-x64-no-exceptions:
+    name: Build Linux x64 MinSizeRel (Exceptions Disabled)
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+      build_config: MinSizeRel
+      architecture: x64
+      dockerfile_path: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+      docker_image_repo: onnxruntimecpubuildcix64
+      # TODO: fix the unit test code (unguarded try/catch and gsl::narrow) to build with exceptions disabled, then build and run the tests here.
+      extra_build_flags: '--use_binskim_compliant_compile_flags --disable_exceptions --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF'
+      run_tests: false
+      job_identifier: build-linux-x64-no-exceptions
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -128,7 +145,7 @@ jobs:
       architecture: arm64
       dockerfile_path: tools/ci_build/github/linux/docker/inference/aarch64/python/cpu/Dockerfile
       docker_image_repo: onnxruntimecpubuildpythonaarch64
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON onnxruntime_RUN_MLAS_TESTS=ON'
       python_path_prefix: 'PATH=/opt/python/cp314-cp314/bin:$PATH' # $ needs escaping in single quotes
       job_identifier: build-linux-arm64-release
     secrets:

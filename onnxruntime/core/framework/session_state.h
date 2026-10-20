@@ -38,6 +38,10 @@
 #include <mutex>
 #include "core/platform/path_lib.h"
 #include "core/platform/threadpool.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/kernel_pilot_moe_expert_state.h"
+#include "core/framework/resource_accountant.h"
+#endif
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
 #endif
@@ -329,6 +333,15 @@ class SessionState {
                               bool remove_initializers = true,
                               bool saving_ort_format = false);
 
+#if !defined(ORT_MINIMAL_BUILD)
+  KernelPilotMoeExpertState* GetMoeExpertState() const noexcept { return moe_expert_state_.get(); }
+  // Generic accessor used by kernel contexts to obtain their per-kernel piloting object.
+  // Callers do not need to know which kernel family (if any) currently owns pilots.
+  KernelPilot* GetKernelPilot(const OpKernel* kernel) const {
+    return moe_expert_state_ ? moe_expert_state_->GetKernelPilot(kernel) : nullptr;
+  }
+#endif
+
   SessionState* Parent() {
     return parent_;
   }
@@ -375,6 +388,12 @@ class SessionState {
 #endif
 
   const SessionOptions& GetSessionOptions() const { return sess_options_; }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  void SetWorkspaceReservations(WorkspaceReservationMap workspace_reservations) {
+    workspace_reservations_ = std::move(workspace_reservations);
+  }
+#endif
 
   /// <summary>
   /// Deduce the flag whether we need to enable or disable
@@ -431,6 +450,10 @@ class SessionState {
 
   Status CreateSubgraphSessionState();
 
+#if !defined(ORT_MINIMAL_BUILD)
+  Status InitializeMoeExpertState(std::shared_ptr<KernelPilotMoeExpertState> state, std::string graph_scope);
+#endif
+
   void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
                                std::unique_ptr<SessionState> session_state);
 
@@ -464,6 +487,9 @@ class SessionState {
 
   // cache of the constructed kernels to avoid spending construction time per executor
   std::vector<std::unique_ptr<OpKernel>> session_kernels_;
+#if !defined(ORT_MINIMAL_BUILD)
+  WorkspaceReservationMap workspace_reservations_;
+#endif
   Graph& graph_;
   std::optional<GraphViewer> graph_viewer_;  // GraphViewer for const access to Graph
 
@@ -502,6 +528,10 @@ class SessionState {
   AllocatorMap* initializer_allocators_;
 
   OrtValueNameIdxMap ort_value_name_idx_map_;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  std::shared_ptr<KernelPilotMoeExpertState> moe_expert_state_;
+#endif
 
   // initialized tensors
   std::unordered_map<int, OrtValue> initialized_tensors_;  // key is ort_value_index

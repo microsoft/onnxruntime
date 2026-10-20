@@ -36,6 +36,49 @@ bool
         return false;
     }
 
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
+    //
+    // Skip the AVX2 kernel for short rows where it cannot win.
+    //
+    // LayerNorm performs vector work from 8 elements onward. RMSNorm needs
+    // at least 16 elements to recover its additional setup costs.
+    //
+    // This threshold is x86-specific. Other platforms (e.g. RISC-V RVV)
+    // use variable-length vectors and handle short rows natively, so they
+    // must not be gated here.
+    //
+    // Keep in sync: test/mlas/unittest/test_layernorm.cpp kKernelDispatchThreshold.
+    //
+    //
+    const size_t dispatch_threshold = Simplified ? 16 : 8;
+    if (NormSize < dispatch_threshold) {
+        return false;
+    }
+#endif
+
+    kernel(Input, Scale, Bias, Output, MeanOut, InvStdDevOut, NormSize, Epsilon, Simplified);
+    return true;
+}
+
+bool
+    MLASCALL
+    MlasLayerNormF16(
+        const uint16_t* Input,
+        const float* Scale,
+        const float* Bias,
+        uint16_t* Output,
+        float* MeanOut,
+        float* InvStdDevOut,
+        size_t NormSize,
+        float Epsilon,
+        bool Simplified
+    )
+{
+    auto kernel = GetMlasPlatform().LayerNormF16Kernel;
+    if (kernel == nullptr || NormSize < 16) {
+        return false;
+    }
+
     kernel(Input, Scale, Bias, Output, MeanOut, InvStdDevOut, NormSize, Epsilon, Simplified);
     return true;
 }

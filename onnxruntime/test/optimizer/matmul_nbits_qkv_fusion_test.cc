@@ -5,6 +5,7 @@
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/matmul_nbits_qkv_fusion.h"
 #include "core/optimizer/utils.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/util/include/asserts.h"
@@ -426,6 +427,41 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionDoesNotFuseWebGpuPatternWit
       0,
       nullptr,
       CheckMatMulNBitsQkvPatternNotFusedGraph));
+}
+
+// The fused QKV decode kernel reads the enableMatmulFp32Accumulation provider option, and it is only
+// reachable through this fusion, so the MatMulNBits op tests cannot exercise it. This is the same
+// comparison as MatMulNBitsQkvFusionMatchesUnfusedWebGpuResults with the option on for both the
+// baseline and the fused session: it fails if the f32 variant of the shader does not compile, if the
+// template parameter is not propagated, or if the cache hint cannot separate the two variants.
+TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedWebGpuResultsWithFp32Accumulation) {
+  auto make_ep = []() {
+    ConfigOptions config_options{};
+    ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation,
+                                                     webgpu::options::kEnableMatmulFp32Accumulation_ON));
+    return WebGpuExecutionProviderWithOptions(config_options);
+  };
+
+  if (!make_ep()) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    ASSERT_STATUS_OK(CheckMatMulNBitsQkvFusedGraphImpl(session.GetGraph(),
+                                                       /*expect_skip_sln_output=*/false,
+                                                       /*expect_skip_input=*/false));
+  };
+
+  RunWebGpuFusionTransformerTest(
+      BuildMatMulNBitsQkvWebGpuPattern,
+      check_transformed_graph,
+      TransformerLevel::Level1,
+      TransformerLevel::Level2,
+      21,
+      2e-3,
+      5e-3,
+      std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      make_ep);
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

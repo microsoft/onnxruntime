@@ -27,6 +27,15 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "559d79fb6994a58b8a15b4b93bf13ccc16edf247",
+          "repositoryUrl": "https://github.com/deepseek-ai/DeepGEMM.git"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "e4a4c02764d37c9c3db0d64c4996651a3ef9513c",
           "repositoryUrl": "https://github.com/dmlc/HalideIR.git"
         }

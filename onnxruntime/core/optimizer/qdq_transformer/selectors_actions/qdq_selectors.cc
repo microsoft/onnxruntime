@@ -65,6 +65,15 @@ std::vector<const Node*> FindQDQNodes(const GraphViewer& graph_viewer, const Nod
 
   return nodes;
 }
+
+bool HasPerTensorQuantizationParams(const Node* node, bool allow_1d) {
+  const auto is_supported = [allow_1d](const NodeArg& input) {
+    return optimizer_utils::IsScalar(input) && (allow_1d || input.Shape()->dim_size() == 0);
+  };
+  const auto& inputs = node->InputDefs();
+  return is_supported(*inputs[1]) &&
+         (inputs.size() < 3 || !inputs[2]->Exists() || is_supported(*inputs[2]));
+}
 }  // namespace
 
 bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node,
@@ -154,7 +163,15 @@ std::optional<NodesToOptimizeIndices> BaseSelector::Select(const GraphViewer& gr
   builder.target_node = qdq_group->target_node;
 
   UpdateBuilder(builder);
-  return builder.Build();
+  auto indices = builder.Build();
+
+  // Append the redundant Clip/Relu after the outputs so it is removed with the group. Otherwise the target survives
+  // (its consumer is outside the removal set) and collides with the same-named replacement node.
+  if (qdq_group->redundant_clip_node.has_value()) {
+    indices.nodes.push_back(*qdq_group->redundant_clip_node);
+  }
+
+  return indices;
 }
 
 bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -327,6 +344,15 @@ bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
     return false;
   }
 
+  // QLinearAdd and QLinearMul require rank-zero scales and zero points.
+  if (require_scalar_quant_params_) {
+    const auto is_supported = [](const Node* qdq) { return HasPerTensorQuantizationParams(qdq, false); };
+    if (!std::all_of(dq_nodes.begin(), dq_nodes.end(), is_supported) ||
+        !std::all_of(q_nodes.begin(), q_nodes.end(), is_supported)) {
+      return false;
+    }
+  }
+
   int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
@@ -353,6 +379,15 @@ bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
                                       const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes)) {
     return false;
+  }
+
+  // QLinearConcat supports scalar or length-one parameters, but not per-axis quantization.
+  if (require_per_tensor_quant_params_) {
+    const auto is_supported = [](const Node* qdq) { return HasPerTensorQuantizationParams(qdq, true); };
+    if (!std::all_of(dq_nodes.begin(), dq_nodes.end(), is_supported) ||
+        !std::all_of(q_nodes.begin(), q_nodes.end(), is_supported)) {
+      return false;
+    }
   }
 
   // All DQs' inputs and Q's output should have same data type

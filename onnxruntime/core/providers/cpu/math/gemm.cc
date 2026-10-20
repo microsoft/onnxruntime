@@ -219,18 +219,25 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   }
   const bool use_mlas_no_bias = beta == onnxruntime::MLFloat16::Zero;
   const bool use_mlas_bias = beta == onnxruntime::MLFloat16::One && support_mlas_bias;
-  if (has_accelerated_half_gemm && trans_a == CblasNoTrans && trans_b == CblasNoTrans &&
+  const bool half_gemm_supports_trans_b =
+      trans_b == CblasNoTrans ||
+      (trans_b == CblasTrans &&
+       MlasHalfGemmNativePackBSize(CblasNoTrans, CblasTrans,
+                                   static_cast<size_t>(N), static_cast<size_t>(K),
+                                   mlas_backend_kernel_selector_config) != 0);
+  if (has_accelerated_half_gemm && half_gemm_supports_trans_b && trans_a == CblasNoTrans &&
       alpha == onnxruntime::MLFloat16::One && (use_mlas_no_bias || use_mlas_bias)) {
     MLAS_HALF_GEMM_DATA_PARAMS data{};
     data.A = a_data;
     data.lda = K;
     data.B = b_data;
-    data.ldb = N;
+    data.ldb = trans_b == CblasNoTrans ? N : K;
     data.C = y_data;
     data.ldc = N;
     if (use_mlas_bias && c_shape != nullptr) {
       data.Bias = c_data;
     }
+    data.BIsTransposed = trans_b == CblasTrans;
     data.BackendKernelSelectorConfig = mlas_backend_kernel_selector_config;
     MlasHalfGemmBatch(M, N, K, 1, &data, thread_pool);
     return;

@@ -36,7 +36,7 @@ class CastProgram final : public Program<CastProgram> {
 class Cast final : public WebGpuKernel {
  public:
   Cast(const OpKernelInfo& info) : WebGpuKernel(info) {
-    int64_t to;
+    int64_t to = 0;
     Status status = info.GetAttr("to", &to);
     ORT_ENFORCE(status.IsOK(), "Attribute to is not set.");
     to_ = onnxruntime::narrow<int32_t>(to);

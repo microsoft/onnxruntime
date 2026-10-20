@@ -307,8 +307,10 @@ This document catalogs all CUDA kernels in ONNX Runtime that allocate temporary/
 
 **Buffers:** Dense Attention uses the `GetAttentionWorkspaceSize()` helper. MultiHeadAttention can additionally
 allocate lean-attention synchronization, Flash split/LSE/output-accumulator, and sequence-length buffers.
-PackedAttention has separate projection and Attention allocations; PackedMultiHeadAttention has no projection
-allocation. See the roadmap for the packed recipe and layout contract.
+PackedAttention currently makes separate dynamic projection and Attention allocations; PackedMultiHeadAttention has
+no projection allocation. Their planning declaration is one 256-byte-aligned operator-owned root. PA places the
+projection region first and the Attention region at a 256-byte-aligned offset; PMHA's root is only its Attention
+region. See the roadmap for the packed recipe and layout contract.
 
 **Size model:** Depends on operator inputs and the selected Attention algorithm:
 
@@ -329,8 +331,20 @@ routes without bias. See the roadmap for the precise layout and eligibility boun
 cache state, and device properties including SM version and `multiProcessorCount`.
 
 **Static determinability:** 🔀 — Runtime-exact when sizing receives the backend selected by the CUDA kernel. For AOT,
-use the maximum workspace across feasible backend recipes when exact selection is not provable, or report estimation
-as unavailable when a required contract is missing. See the linked roadmap for the exact/safe-bound/unavailable model.
+enumerate every backend reachable at a positive runtime geometry within the supplied bounds, evaluate each checked
+recipe at the original componentwise maximum geometry, and take the maximum workspace. PA head sizes derived from the
+immutable `qkv_hidden_sizes` attribute remain exact; PA without that attribute and PMHA use bounded head reachability
+because `WorkspaceInputShape` does not preserve provenance. If a reachable route's checked recipe is invalid at the
+maximum geometry, estimation is unavailable rather than silently omitting that route. See the linked roadmap for the
+exact/safe-bound/unavailable model.
+
+PA and PMHA have Level-1 CUDA EP estimates (currently log-only) and Level-2 declarations. Each nonzero estimate emits
+exactly one slot-0 root with explicit 256-byte alignment; PA's root includes projection-to-Attention alignment padding.
+This design has no multi-slot planner dependency. Runtime still uses the existing dynamic allocation topology. Future
+#32071 integration must atomically add `SupportsPreallocatedWorkspace()`, retrieve the root, and slice PA's projection
+and Attention regions. Declaration alone is not planner opt-in. The current Level-2 boundary represents both
+unavailable and explicit-zero results with no requirements; because `WorkspaceInputShape` has no shape provenance,
+the PA/PMHA adapter treats zero-shaped hints as unavailable.
 
 ---
 
@@ -360,8 +374,12 @@ as unavailable when a required contract is missing. See the linked roadmap for t
 | Buffer | Size formula | Depends on |
 |--------|--------------|-----------|
 | `workspace_buffer` | `weightOnlyGemmRunner_->getWorkspaceSize(m, n, k)` | Dims + tactic |
+| `fpA_intB_weight_buffer_` | `N * K * bits / 8` for runtime-prepacked weights; not allocated when an offline-prepacked CUDA initializer is reused in place | Weight shape + bits + `weight_prepacked` |
+| `fpA_intB_scale_buffer_` | `N * ceil(K / block_size) * sizeof(T)` | Weight shape + block size |
+| `fpA_intB_zero_buffer_` | Same as scale buffer, when zero points exist | Weight shape + block size |
 | `packed_transposed_weight_space` | `packed_weight_bytes` (transient) | Weight shape |
 | `permutation_map_buffer` | `32 * sizeof(int32_t)` (transient) | Constant |
+| tactic-profiler scratch | Aligned synthetic A/B/scales/zeros/bias/output plus GEMM workspace | N, K, bits, block size, profile M, SM count |
 
 **What's needed:** M, N, K dimensions, quantization bits, SM version.
 
@@ -370,8 +388,17 @@ as unavailable when a required contract is missing. See the linked roadmap for t
 (`ComputeFpAIntBGemmWorkspaceSize`), independent of which CUTLASS tactic `profileTactics()` later
 selects for the actual GEMM. The earlier "upper bound only" note in this row was superseded once the
 formula was extracted and verified against the runtime value for MatMulNBits; see
-`onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.{h,cc}` (`EstimateWorkspace` /
+`onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.{h,cc}` (`EstimateMatMulNBitsMemory` /
 `DeclareWorkspaceRequirements`).
+
+The Level-1 estimate keeps runtime workspace, persistent prepack destinations, and initialization-only
+scratch (prepack conversion plus constructor-time tactic profiling) in separate fields. The byte-count
+resource accountant budgets the selected runtime workspace, including runtime-transient scratch via a
+maximum, and adds persistent prepack destinations. Initialization-only scratch is reported separately as
+the maximum across accepted nodes and is excluded from the hard partition budget. Level 2 continues to
+declare only the runtime workspace slot.
+Offline-prepacked CUDA weights remain in base initializer accounting and are not also charged as a
+persistent prepack destination because `PrePack_B()` reuses the device initializer in place.
 
 ---
 
