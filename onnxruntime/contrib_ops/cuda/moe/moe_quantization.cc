@@ -719,6 +719,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool uses_global_weight_scales = is_fp4_family || (is_fp8 && !is_block_fp8) || is_wfp4afp8;
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
+  const Tensor* router_weights = context->InputCount() > 14 ? context->Input<Tensor>(14) : nullptr;
   // When PrePack consumed the int4/int8 expert-weight initializers
   // (``weights_prepacked == false`` opt-in path), the original tensors
   // were freed; ``context->Input<Tensor>(2)/(5)`` would return nothing.
@@ -882,6 +883,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                 fc2_expert_weight_bits_,
                                 fc3_expert_weight_bits_},
       is_fused_swiglu, block_size_));
+  if (router_weights != nullptr && router_weights->Shape() != router_probs->Shape()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'router_weights' is expected to have shape ",
+                           router_probs->Shape(), ", got ", router_weights->Shape());
+  }
   if (is_block_fp8) {
     const int64_t fc1_n = is_fused_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
     ORT_RETURN_IF_NOT(fc1_shape == TensorShape({moe_params.num_experts, fc1_n, moe_params.hidden_size}) &&
@@ -1480,7 +1486,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
     // Fused routing remains limited to an untiled one-row request; a one-row final tile
     // continues using the same routing implementation as the preceding tiles.
-    if (!row_tile_plan.IsTiled() && !is_fp4_family && !use_packed_int && !is_block_fp8 &&
+    if (router_weights == nullptr && !row_tile_plan.IsTiled() && !is_fp4_family && !use_packed_int && !is_block_fp8 &&
         onnxruntime::llm::kernels::cutlass_kernels::isFusedMoeRoutingSupported(
             tile_rows, static_cast<int>(moe_params.num_experts),
             static_cast<int>(moe_params.num_experts) / parallelism_config.ep_size,
@@ -1519,6 +1525,24 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           static_cast<int>(k_),
           normalize_routing_weights_,
           stream);
+    }
+    if (router_weights != nullptr) {
+      const size_t weights_byte_offset = static_cast<size_t>(
+          SafeInt<size_t>(row_offset) * SafeInt<size_t>(moe_params.num_experts) * router_weights->DataType()->Size());
+      const char* rw = reinterpret_cast<const char*>(router_weights->DataRaw()) + weights_byte_offset;
+      if (is_fp16) {
+        LaunchApplyRouterWeights(reinterpret_cast<const half*>(rw), expert_indices, expert_scales,
+                                 static_cast<int>(tile_rows), static_cast<int>(moe_params.num_experts),
+                                 static_cast<int>(k_), normalize_routing_weights_, stream);
+      } else if (is_bf16) {
+        LaunchApplyRouterWeights(reinterpret_cast<const __nv_bfloat16*>(rw), expert_indices, expert_scales,
+                                 static_cast<int>(tile_rows), static_cast<int>(moe_params.num_experts),
+                                 static_cast<int>(k_), normalize_routing_weights_, stream);
+      } else {
+        LaunchApplyRouterWeights(reinterpret_cast<const float*>(rw), expert_indices, expert_scales,
+                                 static_cast<int>(tile_rows), static_cast<int>(moe_params.num_experts),
+                                 static_cast<int>(k_), normalize_routing_weights_, stream);
+      }
     }
     return fused_routing;
   };
