@@ -1,7 +1,8 @@
 name: Linux CUDA No cuDNN CI
 
 on:
-  pull_request:
+  # Use the base branch's workflow definition so forks cannot alter self-hosted runner admission.
+  pull_request_target:
     branches: [main, 'rel-*']
     paths:
       - '.github/workflows/linux_cuda_no_cudnn.yml'
@@ -13,7 +14,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -25,6 +26,7 @@ permissions:
 jobs:
   build-linux-cuda-no-cudnn-x64-release:
     name: Build Linux CUDA x64 Release without cuDNN link
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
       pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
@@ -51,11 +53,14 @@ jobs:
       upload_build_output: true
       execution_providers: 'cuda'
       job_identifier: build-linux-cuda-no-cudnn-x64-release
+      checkout_ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      push_docker_image: ${{ github.event_name != 'pull_request_target' }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   smoke-linux-cuda-no-cudnn-x64-release:
     name: Smoke Linux CUDA x64 Release without cuDNN runtime use
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     needs: build-linux-cuda-no-cudnn-x64-release
     runs-on:
       - self-hosted
@@ -68,6 +73,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         id: build_docker_image_step
@@ -75,7 +82,7 @@ jobs:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecuda13manylinuxbuild
           build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
-          push: true
+          push: ${{ github.event_name != 'pull_request_target' }}
           azure-container-registry-name: onnxruntimebuildcache
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -3,12 +3,13 @@ name: Linux WebGPU CI
 on:
   push:
     branches: [main, 'rel-*', 'plugin-ep-webgpu/rel-*']
-  pull_request:
+  # Use the base branch's workflow definition so forks cannot alter self-hosted runner admission.
+  pull_request_target:
     branches: [main, 'rel-*', 'plugin-ep-webgpu/rel-*']
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -20,6 +21,7 @@ permissions:
 jobs:
   build-linux-webgpu-x64-release:
     name: Build Linux WebGPU x64 Release
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     # This job runs on a CPU node using the reusable build workflow
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
@@ -34,6 +36,8 @@ jobs:
       upload_build_output: true
       execution_providers: 'webgpu'
       job_identifier: build-linux-webgpu-x64-release
+      checkout_ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      push_docker_image: ${{ github.event_name != 'pull_request_target' }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token for reusable workflow needs (e.g., docker build action)
 
@@ -43,6 +47,7 @@ jobs:
   # plugin_boundary_and_web_integration/static_plugin_ep_registration_design.md
   build-linux-webgpu-static-plugin-x64-release:
     name: Build Linux WebGPU Static Plugin x64 Release
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
       pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU" # Build pool
@@ -56,6 +61,8 @@ jobs:
       upload_build_output: false
       execution_providers: 'webgpu'
       job_identifier: build-linux-webgpu-static-plugin-x64-release
+      checkout_ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      push_docker_image: ${{ github.event_name != 'pull_request_target' }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token for reusable workflow needs (e.g., docker build action)
 

@@ -23,12 +23,13 @@ name: Linux CI
 on:
   push:
     branches: [main, 'rel-*']
-  pull_request:
+  # Use the base branch's workflow definition so forks cannot alter self-hosted runner admission.
+  pull_request_target:
     branches: [main, 'rel-*']
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -41,6 +42,7 @@ jobs:
   # --- x64 Builds ---
   build-linux-x64-debug:
     name: Build Linux x64 Debug (ASan)
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
       pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
@@ -50,12 +52,15 @@ jobs:
       docker_image_repo: onnxruntimecpubuildcix64
       extra_build_flags: '--enable_address_sanitizer'
       job_identifier: build-linux-x64-debug
+      checkout_ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      push_docker_image: ${{ github.event_name != 'pull_request_target' }}
       # python_path_prefix: '' # Default empty string is fine, no prefix needed
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux-x64-release:
     name: Build Linux x64 Release
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
       pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
@@ -67,11 +72,14 @@ jobs:
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # $ needs escaping in single quotes
       run_go_tests: true
       job_identifier: build-linux-x64-release
+      checkout_ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      push_docker_image: ${{ github.event_name != 'pull_request_target' }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux-x64-release-py314:
     name: Build Linux x64 Release (Python 3.14)
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
       pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
@@ -86,11 +94,14 @@ jobs:
       extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON --cmake_extra_defines onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON'
       python_path_prefix: 'PATH=/opt/python/cp314-cp314/bin:$PATH' # $ needs escaping in single quotes
       job_identifier: build-linux-x64-release-py314
+      checkout_ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      push_docker_image: ${{ github.event_name != 'pull_request_target' }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   orttraining-linux-ci-pipeline:
     name: Build Linux x64 Release with training
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
       pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
@@ -101,11 +112,14 @@ jobs:
       extra_build_flags: '--enable_training --use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # $ needs escaping in single quotes
       job_identifier: orttraining-linux-ci-pipeline
+      checkout_ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      push_docker_image: ${{ github.event_name != 'pull_request_target' }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux-x64-no-exceptions:
     name: Build Linux x64 MinSizeRel (Exceptions Disabled)
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
       pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
@@ -117,12 +131,15 @@ jobs:
       extra_build_flags: '--use_binskim_compliant_compile_flags --disable_exceptions --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF'
       run_tests: false
       job_identifier: build-linux-x64-no-exceptions
+      checkout_ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      push_docker_image: ${{ github.event_name != 'pull_request_target' }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # --- arm64 Builds ---
   build-linux-arm64-debug:
     name: Build Linux arm64 Debug
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
       pool_name: "onnxruntime-github-Ubuntu2204-ARM-CPU"
@@ -133,11 +150,14 @@ jobs:
       # ASan disabled due to excessive runtime (>4hr). Includes wheel build for basic checks.
       extra_build_flags: '--use_binskim_compliant_compile_flags --build_shared_lib --enable_arm_neon_nchwc'
       job_identifier: build-linux-arm64-debug
+      checkout_ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      push_docker_image: ${{ github.event_name != 'pull_request_target' }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux-arm64-release:
     name: Build Linux arm64 Release
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
       pool_name: "onnxruntime-github-Ubuntu2204-ARM-CPU"
@@ -148,5 +168,7 @@ jobs:
       extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON onnxruntime_RUN_MLAS_TESTS=ON'
       python_path_prefix: 'PATH=/opt/python/cp314-cp314/bin:$PATH' # $ needs escaping in single quotes
       job_identifier: build-linux-arm64-release
+      checkout_ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      push_docker_image: ${{ github.event_name != 'pull_request_target' }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

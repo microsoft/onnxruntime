@@ -29,11 +29,11 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           EVENT_SHA: ${{ github.sha }}
           HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
-          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           source_sha="$EVENT_SHA"
           if [[ "$EVENT_NAME" == "pull_request_target" && "$HEAD_REPOSITORY" == "$GITHUB_REPOSITORY" ]]; then
-            source_sha="$MERGE_SHA"
+            source_sha="$HEAD_SHA"
           fi
 
           if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then

@@ -3,12 +3,13 @@ name: Linux TensorRT CI
 on:
   push:
     branches: [main, 'rel-*']
-  pull_request:
+  # Use the base branch's workflow definition so forks cannot alter self-hosted runner admission.
+  pull_request_target:
     branches: [main, 'rel-*']
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -20,6 +21,7 @@ permissions:
 jobs:
   build-linux-TensorRT-x64-release:
     name: Build Linux TensorRT x64 Release
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     # This job runs on a CPU node using the reusable build workflow
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
@@ -35,11 +37,14 @@ jobs:
       upload_build_output: true   # <<< Upload the build/Release directory
       execution_providers: 'cuda tensorrt'
       job_identifier: build-linux-TensorRT-x64-release
+      checkout_ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      push_docker_image: ${{ github.event_name != 'pull_request_target' }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token for reusable workflow needs (e.g., docker build action)
 
   build-linux-TensorRT-CUDA-Minimal-x64-release:
     name: Build Linux TensorRT CUDA Minimal x64 Release
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     # Build-only job for CUDA minimal build (no tests, no unit tests)
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
@@ -55,11 +60,14 @@ jobs:
       upload_build_output: false
       execution_providers: 'cuda tensorrt'
       job_identifier: build-linux-TensorRT-CUDA-Minimal-x64-release
+      checkout_ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      push_docker_image: ${{ github.event_name != 'pull_request_target' }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test-linux-TensorRT-x64-release:
     name: Test Linux TensorRT x64 Release
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     needs: build-linux-TensorRT-x64-release
     runs-on:
       - self-hosted
@@ -72,6 +80,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       # --- Build the Docker image needed for testing ---
       - name: Build Docker Image for Testing
@@ -81,7 +91,7 @@ jobs:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimetensorrt86gpubuild
           build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1 --build-arg TRT_VERSION=10.14.1.48-1.cuda12.9 --network=host'
-          push: true
+          push: ${{ github.event_name != 'pull_request_target' }}
           azure-container-registry-name: onnxruntimebuildcache
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token to action
