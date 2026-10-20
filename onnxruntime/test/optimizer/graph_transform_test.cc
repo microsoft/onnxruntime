@@ -3081,6 +3081,7 @@ TEST_F(GraphTransformationTests, DoNotApplyFuseMatmulBNDirectly) {
   ASSERT_EQ(op_to_count["Gemm"], 0);
 }
 
+// should not fuse: the Reshape to [1, 1, 1, 5] moves the MatMul columns off the channel axis
 TEST_F(GraphTransformationTests, FuseMatmulBNWithOnlyReshape) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-only-reshape.onnx";
 
@@ -3088,15 +3089,6 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithOnlyReshape) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
 
-  std::string expected_output_name;
-  GraphViewer graphViewer(graph);
-  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
-    auto& node = *graph.GetNode(node_index);
-    if (node.OpType() == "MatMul") {
-      expected_output_name = node.OutputDefs()[0]->Name();
-    }
-  }
-
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
   ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<MatmulBNFusion>()));
@@ -3105,18 +3097,12 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithOnlyReshape) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["BatchNormalization"], 0);
-  ASSERT_EQ(op_to_count["MatMul"], 0);
-  ASSERT_EQ(op_to_count["Gemm"], 1);
-
-  for (auto& node : graph.Nodes()) {
-    if (node.OpType() == "Gemm") {
-      ASSERT_EQ(node.OutputDefs()[0]->Name(), expected_output_name)
-          << "fusion should produce the same output name as the MatMul node";
-    }
-  }
+  ASSERT_EQ(op_to_count["BatchNormalization"], 1);
+  ASSERT_EQ(op_to_count["MatMul"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 0);
 }
 
+// should not fuse: the Transpose moves the MatMul columns off the channel axis
 TEST_F(GraphTransformationTests, FuseMatmulBNWithOnlyTranspose) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-only-transpose.onnx";
 
@@ -3124,15 +3110,6 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithOnlyTranspose) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
 
-  std::string expected_output_name;
-  GraphViewer graphViewer(graph);
-  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
-    auto& node = *graph.GetNode(node_index);
-    if (node.OpType() == "MatMul") {
-      expected_output_name = node.OutputDefs()[0]->Name();
-    }
-  }
-
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
   ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<MatmulBNFusion>()));
@@ -3141,16 +3118,9 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithOnlyTranspose) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["BatchNormalization"], 0);
-  ASSERT_EQ(op_to_count["MatMul"], 0);
-  ASSERT_EQ(op_to_count["Gemm"], 1);
-
-  for (auto& node : graph.Nodes()) {
-    if (node.OpType() == "Gemm") {
-      ASSERT_EQ(node.OutputDefs()[0]->Name(), expected_output_name)
-          << "fusion should produce the same output name as the MatMul node";
-    }
-  }
+  ASSERT_EQ(op_to_count["BatchNormalization"], 1);
+  ASSERT_EQ(op_to_count["MatMul"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 0);
 }
 
 TEST_F(GraphTransformationTests, FuseMatmulBNWithoutBatchNormalization) {
@@ -3198,6 +3168,48 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithNonIgnorableNode) {
   ASSERT_EQ(op_to_count["BatchNormalization"], 1);
   ASSERT_EQ(op_to_count["MatMul"], 1);
   ASSERT_EQ(op_to_count["Gemm"], 0);
+}
+
+// The fusion is only valid if the Reshape keeps the MatMul columns as the BatchNormalization channels.
+TEST_F(GraphTransformationTests, FuseMatmulBNWithChannelChangingReshape) {
+  for (const auto& [reshape_shape, should_fuse] : std::vector<std::pair<std::vector<int64_t>, bool>>{
+           {{2, 4, 1, 1}, true},
+           {{1, 4, 2, 1}, false}}) {
+    auto build_test_case = [&reshape_shape](ModelTestBuilder& builder) {
+      auto* input = builder.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+      auto* matmul_b = builder.MakeInitializer<float>({3, 4}, -1.0f, 1.0f);
+      auto* shape = builder.MakeInitializer<int64_t>({4}, reshape_shape);
+      auto* bn_scale = builder.MakeInitializer<float>({4}, 0.5f, 1.5f);
+      auto* bn_bias = builder.MakeInitializer<float>({4}, -1.0f, 1.0f);
+      auto* bn_mean = builder.MakeInitializer<float>({4}, -1.0f, 1.0f);
+      auto* bn_var = builder.MakeInitializer<float>({4}, 0.5f, 1.5f);
+      auto* matmul_output = builder.MakeIntermediate();
+      auto* reshape_output = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput();
+
+      builder.AddNode("MatMul", {input, matmul_b}, {matmul_output});
+      builder.AddNode("Reshape", {matmul_output, shape}, {reshape_output});
+      builder.AddNode("BatchNormalization", {reshape_output, bn_scale, bn_bias, bn_mean, bn_var}, {output})
+          .AddAttribute("epsilon", 1e-5f);
+    };
+
+    auto check_transformed_graph = [should_fuse](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      ASSERT_EQ(op_to_count["BatchNormalization"], should_fuse ? 0 : 1);
+      ASSERT_EQ(op_to_count["Gemm"], should_fuse ? 1 : 0);
+    };
+
+    auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+    ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<MatmulBNFusion>()));
+    TransformerTester(build_test_case,
+                      check_transformed_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      15,
+                      1e-4,
+                      1e-4,
+                      std::move(rule_transformer_L1));
+  }
 }
 
 TEST_F(GraphTransformationTests, DontFuseConvWithBNWithOptionalOutputs) {

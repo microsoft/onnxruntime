@@ -293,12 +293,15 @@ struct QMoEFp8ProjectionParams {
 void LaunchQMoEFp8ExpertTiles(const int64_t* expert_offsets, int* tile_offsets,
                               int num_experts, cudaStream_t stream);
 
-template <typename T>
+template <typename T, typename OutputT = T>
 void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
-                             const T* input, T* output, cudaStream_t stream);
+                             const T* input, OutputT* output, cudaStream_t stream);
 
-template <typename T>
-void LaunchQMoEFp8Activation(const T* input, const T* bias, T* output,
+bool QMoEFp8GemvSupportsNativeDecode();
+bool QMoEFp8GemvKernelUsesNativeDecode(const void* kernel);
+
+template <typename T, typename InputT = T>
+void LaunchQMoEFp8Activation(const InputT* input, const T* bias, T* output,
                              const int* experts, int rows, int inter_size, int fusion,
                              float alpha, float beta, float limit, cudaStream_t stream);
 
