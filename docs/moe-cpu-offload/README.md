@@ -103,6 +103,9 @@ GPU usage completion stays deferred until the existing end-of-Run boundary (or t
 kernel when its snapshot must be reused). After collecting usage, the end-of-Run scheduler ranks experts by
 popularity for the next invocation. No runtime correlation matrices or predictive placement are maintained.
 
+For a separate mathematical study of exponential averaging and delayed state selection in a fixed Markov chain,
+see [Choosing alpha to predict the states of a Markov chain](markov-state-selection.md).
+
 ### Saved state and diagnostics
 
 `--popularity-output` saves `P`, alpha, and epsilon at session destruction; `--state` restores them.
