@@ -4,6 +4,7 @@
 #include <array>
 #include <chrono>
 #include <condition_variable>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <mutex>
@@ -44,6 +45,43 @@
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
+
+TEST(PrePackedWeightsTest, EquivalenceRequiresMatchingLayoutAndContents) {
+  const AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+
+  auto make_weights = [&](std::initializer_list<uint8_t> data) {
+    PrePackedWeights weights;
+    auto buffer = IAllocator::MakeUniquePtr<void>(allocator, data.size(), true);
+    std::memcpy(buffer.get(), data.begin(), data.size());
+    weights.buffers_.push_back(std::move(buffer));
+    weights.buffer_sizes_.push_back(data.size());
+    return weights;
+  };
+
+  const auto expected = make_weights({1, 2, 3, 4});
+  const auto identical = make_weights({1, 2, 3, 4});
+  EXPECT_TRUE(expected.IsEquivalentTo(identical));
+
+  const auto different_contents = make_weights({1, 2, 3, 5});
+  EXPECT_FALSE(expected.IsEquivalentTo(different_contents));
+
+  auto different_size = make_weights({1, 2, 3, 4});
+  different_size.buffer_sizes_[0] = 3;
+  EXPECT_FALSE(expected.IsEquivalentTo(different_size));
+
+  auto missing_buffer = make_weights({1, 2, 3, 4});
+  missing_buffer.buffers_.clear();
+  missing_buffer.buffer_sizes_.clear();
+  EXPECT_FALSE(expected.IsEquivalentTo(missing_buffer));
+
+  auto null_buffer = make_weights({1, 2, 3, 4});
+  null_buffer.buffers_[0].reset();
+  EXPECT_FALSE(expected.IsEquivalentTo(null_buffer));
+
+  auto kernel_owned = make_weights({1, 2, 3, 4});
+  kernel_owned.has_kernel_owned_packed_weights_ = true;
+  EXPECT_FALSE(expected.IsEquivalentTo(kernel_owned));
+}
 
 #ifndef ENABLE_TRAINING_CORE
 #ifndef __wasm__
