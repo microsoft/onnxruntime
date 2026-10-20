@@ -150,49 +150,37 @@ SubgroupMatrixTiling HeuristicTiling(std::string_view arch, uint32_t M, uint32_t
   return {tile_m, tile_n, split_k};
 }
 
-// Once N needs at least two full-width (kTileNCandidates' max) N tiles, real
-// hardware profiling (an xe-3lpg shape sweep) showed split-K should be picked from
-// K alone, completely ignoring M -- e.g. 8-way splitting pays off equally at M = 64
-// and at M = 4096. An occupancy-based search cannot reproduce that for any fill
-// target: a large M already saturates occupancy at split_k = 1 on its own, yet the
-// profiled-good choice still splits, because the win there is not filling idle
-// subgroups but shortening each workgroup's serial K-reduction chain
-// (gather-latency hiding), which does not care how many other workgroups are
-// already in flight. kConvWideN and kConvWideNSplitKBlocks mirror that one sweep's
-// shape -- wide N, two K tiers -- as the best available estimate on hardware with
-// no sweep of its own; ClampSplitKToProblem (applied by SelectConvTiling after this
-// returns) shrinks the pick back down if K or the scratch budget cannot actually
-// support it.
-constexpr uint32_t kConvWideN = 2 * kTileNCandidates[2];           // 128: needs 2+ tile_n=64 tiles
-constexpr uint32_t kConvWideNSplitKBlocks = 2016 / kSubgroupMatrixK;  // 126 K-blocks
+// Once N needs at least two full-width (kTileNCandidates' max) N tiles, gather
+// volume is already at its floor (see ConvHeuristicTiling's comment), and real
+// hardware profiling (an xe-3lpg shape sweep) showed split-K keeps paying off past
+// the point where occupancy alone would call the machine full: the win there is
+// shortening each workgroup's serial K-reduction chain (gather-latency hiding), not
+// filling idle subgroups, so a large M does not make split-K less useful the way it
+// would under an occupancy model. kConvWideN marks where the search below drops its
+// occupancy cap accordingly.
+constexpr uint32_t kConvWideN = 2 * kTileNCandidates[2];  // 128: needs 2+ tile_n=64 tiles
 
 // Conv tiling heuristic: the sole tiling strategy SelectConvTiling uses, on every
-// architecture. (SelectConvTiling previously also consulted a separate, hardcoded
-// decision tree fit to a shape sweep collected on one specific GPU architecture,
-// used only on that architecture; a per-architecture sweep like that does not
-// generalize to hardware it was never collected on, so that tree was dropped in
-// favor of this heuristic alone, pending a more broadly-informed retuning in a
-// follow-up.)
+// architecture. (A separate decision tree fit to a shape sweep on one GPU used to
+// cover that one architecture; a sweep like that does not generalize to untested
+// hardware, so it was dropped in favor of this heuristic alone, pending a more
+// broadly-informed retuning in a follow-up.)
 //
-// Does *not* pick tile_m/tile_n the way HeuristicTiling does -- shrinking tile_n to
-// manufacture more independent occupancy tiles is free for MatMul (tile_n only
-// trades off against tile_m for a fixed amount of global-memory traffic) but not
-// for Conv: the im2col A tile (tile_m x K) is staged per-workgroup in workgroup
-// memory, not shared, so it is re-gathered once per N tile that covers it. Total
-// gather volume is M * N * K / tile_n -- inversely proportional to tile_n and
-// independent of tile_m or split_k. Measured against a real hardware sweep,
-// HeuristicTiling's occupancy-driven tile choice was shrinking tile_n to 16-32 on
-// shapes that profiled best at 64, multiplying gather volume 2x-4x and dominating
-// the kernel's cost regardless of how split-K was tuned -- which is why an earlier
-// fix that only tightened split-K's fill target did not help.
+// Does *not* pick tile_m/tile_n the way HeuristicTiling does. Shrinking tile_n to
+// manufacture more occupancy tiles is free for MatMul (tile_n only trades off
+// against tile_m for a fixed amount of global-memory traffic), but not for Conv:
+// the im2col A tile is staged per-workgroup in workgroup memory, not shared, so it
+// is re-gathered once per N tile that covers it -- gather volume is
+// M * N * K / tile_n, independent of tile_m or split_k. A real hardware sweep
+// showed HeuristicTiling's occupancy-driven choice shrinking tile_n to 16-32 on
+// shapes that profiled best at 64, multiplying gather volume 2x-4x regardless of
+// how split-K was tuned (why an earlier split-K-only fix did not help).
 //
-// So tile_n is fixed at the largest candidate that fits N (minimizing gather
-// volume) and tile_m at the smallest candidate (splitting M adds independent tiles
-// without touching gather volume). split-K then takes one of two policies: below
-// kConvWideN, an occupancy fill nearly identical in shape to HeuristicTiling's (not
-// shared with it -- see that function's comment); at or above it, the
-// M-independent K-tiered policy from kConvWideN's comment, since occupancy does not
-// predict the profiled-good choice there.
+// So tile_n is fixed at the largest candidate that fits N, and tile_m at the
+// smallest (splitting M adds tiles without touching gather volume). split-K then
+// takes the largest candidate with enough K-blocks per split and scratch headroom,
+// subject to an occupancy cap below kConvWideN (see its comment for why that cap is
+// dropped above it).
 SubgroupMatrixTiling ConvHeuristicTiling(std::string_view arch, uint32_t M, uint32_t N, uint32_t K, uint32_t batch) {
   const uint32_t k_blocks = K / kSubgroupMatrixK;
 
@@ -204,33 +192,32 @@ SubgroupMatrixTiling ConvHeuristicTiling(std::string_view arch, uint32_t M, uint
   }
   const uint32_t tile_m = kTileMCandidates[0];
 
+  const bool wide_n = N >= kConvWideN;
+  const uint32_t hw = EffectiveHwSubgroups(arch);
+  auto tile_count = [](uint32_t dim, uint32_t tile) { return (dim + tile - 1) / tile; };
+  const uint32_t num_tiles = batch * tile_count(M, tile_m) * tile_count(N, tile_n);
+
+  constexpr uint32_t kMinBlocksPerSplit = 2;
   uint32_t split_k = 1;
-  if (N >= kConvWideN) {
-    // Occupancy (hw) is deliberately not consulted here -- see kConvWideN's comment.
-    split_k = k_blocks > kConvWideNSplitKBlocks ? 8u : 2u;
-  } else {
-    const uint32_t hw = EffectiveHwSubgroups(arch);
-    auto tile_count = [](uint32_t dim, uint32_t tile) { return (dim + tile - 1) / tile; };
-    const uint32_t num_tiles = batch * tile_count(M, tile_m) * tile_count(N, tile_n);
-    constexpr uint32_t kMinBlocksPerSplit = 2;
-    for (uint32_t cand : kSplitKCandidates) {
-      if (k_blocks >= cand * kMinBlocksPerSplit &&
-          num_tiles * cand <= 2 * hw &&
-          ScratchElems({tile_m, tile_n, cand}, kConvScratchNPad) <= kMaxScratchElems) {
-        split_k = cand;
-      }
+  for (uint32_t cand : kSplitKCandidates) {
+    if (k_blocks >= cand * kMinBlocksPerSplit &&
+        (wide_n || num_tiles * cand <= 2 * hw) &&
+        ScratchElems({tile_m, tile_n, cand}, kConvScratchNPad) <= kMaxScratchElems) {
+      split_k = cand;
     }
   }
   return {tile_m, tile_n, split_k};
 }
 
 // Repairs a predicted tiling to this problem by halving split_k until it fits both
-// K's block count and the scratch budget. ConvHeuristicTiling's wide-N branch picks
-// split_k from a K-blocks threshold without checking whether K actually has enough
-// blocks to divide that many ways (e.g. K with only 1 block still gets a tentative
-// split_k of 2 there), so this clamp is relied on as the actual correctness
-// guarantee, not just a safety net. Clamping keeps the predicted tile shape -- the
-// part that carries most of the win -- instead of discarding the prediction.
+// K's block count and the scratch budget. ConvHeuristicTiling's own split-K search
+// already checks both of these for the tiling it returns, so in practice this is a
+// no-op safety net (mirroring the Conv kernel's own split-K clamp in
+// subgroup_matrix_conv.cc) rather than something relied on to fire -- kept in case a
+// future change to that search (or a future non-heuristic tiling source) ever
+// predicts a split_k outside what K or the scratch budget can actually support.
+// Clamping keeps the predicted tile shape -- the part that carries most of the win
+// -- instead of discarding the prediction.
 void ClampSplitKToProblem(SubgroupMatrixTiling& t, uint32_t K, uint32_t scratch_n_pad) {
   const uint32_t k_blocks = K / kSubgroupMatrixK;
   while (t.split_k > 1 && (t.split_k > k_blocks || ScratchElems(t, scratch_n_pad) > kMaxScratchElems)) {
