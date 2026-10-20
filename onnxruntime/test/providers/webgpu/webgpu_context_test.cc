@@ -1514,17 +1514,26 @@ TEST(WebGpuContextTest, D3D12AcceleratedCanBeEnabledAfterInitialOffSession) {
     auto off_ep = off_factory->CreateProvider();
     ASSERT_NE(off_ep, nullptr);
 
+    auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+    if (context.SelectedBackendType() != wgpu::BackendType::D3D12 ||
+        !context.D3D12SharedResourceFeaturesAvailable()) {
+      GTEST_SKIP() << "The selected adapter does not support D3D12 weight loading.";
+    }
+    ASSERT_NE(context.WeightLoadingD3D12Device(), nullptr);
+    auto* native_device = context.WeightLoadingD3D12Device();
+    auto* webgpu_device = context.Device().Get();
+    EXPECT_EQ(off_ep->GetExternalDataLoader(), nullptr);
+
     auto required_factory = WebGpuProviderFactoryCreator::Create(
         WeightLoadAccelerationOptions(kWeightLoadAcceleration_Required));
     auto required_ep = required_factory->CreateProvider();
     ASSERT_NE(required_ep, nullptr);
 
-    auto& context = webgpu::WebGpuContextFactory::GetContext(0);
     const auto support_status =
         webgpu::CheckD3D12AcceleratedExternalWeightsSupport(context);
-    if (!support_status.IsOK()) {
-      GTEST_SKIP() << support_status.ErrorMessage();
-    }
+    ASSERT_STATUS_OK(support_status);
+    EXPECT_EQ(context.Device().Get(), webgpu_device);
+    EXPECT_EQ(context.WeightLoadingD3D12Device(), native_device);
     EXPECT_TRUE(context.DeviceHasFeature(
         wgpu::FeatureName::SharedBufferMemoryD3D12Resource));
     EXPECT_TRUE(context.DeviceHasFeature(
@@ -1534,6 +1543,17 @@ TEST(WebGpuContextTest, D3D12AcceleratedCanBeEnabledAfterInitialOffSession) {
     ASSERT_NE(loader, nullptr);
     EXPECT_STATUS_OK(loader->BeginLoad());
     loader->EndLoad();
+
+    auto preferred_ep = WebGpuProviderFactoryCreator::Create(
+                            WeightLoadAccelerationOptions(kWeightLoadAcceleration_Preferred))
+                            ->CreateProvider();
+    ASSERT_NE(preferred_ep, nullptr);
+    auto preferred_loader = preferred_ep->GetExternalDataLoader();
+    ASSERT_NE(preferred_loader, nullptr);
+    EXPECT_STATUS_OK(preferred_loader->BeginLoad());
+    preferred_loader->EndLoad();
+    EXPECT_EQ(context.Device().Get(), webgpu_device);
+    EXPECT_EQ(context.WeightLoadingD3D12Device(), native_device);
   });
 }
 
