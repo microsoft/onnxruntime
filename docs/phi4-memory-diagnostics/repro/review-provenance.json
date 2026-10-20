@@ -1,0 +1,22 @@
+{
+  "scope": "Offline report and optional complete historical capture review",
+  "sources": [
+    {
+      "label": "September 28 assemble-evidence.mjs",
+      "sha256": "fcc4d9cef54ff7d259a510fa290dbfb2b7b00f135ca1945fce873c6941cabb5c",
+      "reuse": "Context/runtime/variant grouping, three-repetition medians, CSV/parity consistency checks and published-table comparison ported to standard-library Python."
+    },
+    {
+      "label": "September 22 reproduction/review/test/python/models/test_phi4_logits_parity.py",
+      "sha256": "e22377e57c94f1b968e8f64197fe8a97ba7048bca764df5a42044866822da598",
+      "reuse": "Complete raw input/configuration/logits/token and recorded library identity checks retained; explicit external capture argument replaces an environment variable; missing requested captures fail instead of skipping."
+    }
+  ],
+  "limitations": [
+    "Standard-library offline review imports no GPU/runtime libraries.",
+    "Compact hashes alone do not compare raw vectors.",
+    "Raw-capture checks inspect recorded historical library identities, not installed binaries.",
+    "Package checksums establish consistency with the supplied checksum list, not independent authenticity.",
+    "No fresh GPU reproduction is performed."
+  ]
+}

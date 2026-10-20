@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "preparation_date": "2026-09-28",
+  "historical_allocation_evidence_summary_sha256": "d8708fc5deadaa31b5c630dbc2b44d3d8e0bc56258c778065dcde64e1332734b",
+  "source_files": {
+    "memory-before-after.csv": "2639717055654751c5aa1017fd1bf9ab2af30d22b0319a9e3e5132706406ad07",
+    "model-manifest.json": "85e0246b4ddfe8f34fe9e2632dac9126e161adf2ab9d4f4c22511640da5d5c52",
+    "first-token-logits-check.json": "ff679a750d552b5a839aadb2f93049270d009582a904bc31d2679b2f2310123f",
+    "output-token-check.json": "5a30fc887985fce8cd289cef8276ff985e937930e4d574c2cf0fac154a70d9b2",
+    "earlier-results.csv": "5c0942be9f3a844086247c8a5639fe187f1e9194c2d01a00710a0f0e36c022f1",
+    "evidence-summary.md": "d8708fc5deadaa31b5c630dbc2b44d3d8e0bc56258c778065dcde64e1332734b",
+    "TEAM-BENCHMARK-REPORT.md": "e71ac6d5c51e4c03a7e1012d526d82734583154aada7c4938e6c7bb34857eee6"
+  },
+  "transformations": [
+    "memory-before-after.csv: newline normalization only; all 12 rows and columns retained",
+    "earlier-runtime-comparison.csv: 14 named non-identifying columns retained from all 45 rows",
+    "parity-checks.json: logits/token results retained; original local experiment labels omitted",
+    "model-manifest.json: local provenance labels omitted; historical native-test base relabeled to avoid target confusion"
+  ],
+  "raw_logits_rechecked_during_preparation": "Both complete baseline/patched binary pairs matched byte-for-byte and their recorded SHA-256; no inference executed",
+  "raw_generated_tokens_rechecked_during_preparation": false,
+  "token_evidence_basis": "Existing recorded exact-comparison results and internal digest/count consistency, not a new raw-token comparison",
+  "replay_limit": "Saved input vectors, original runner and native runtime builds are not included. This is compact evidence, not a self-contained GPU reproducer."
+}

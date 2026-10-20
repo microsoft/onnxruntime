@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "scope": "Historical unchunked baseline versus allocation-fixed GenAI; not chunked versus unchunked parity",
+  "logits": {
+    "method": "Complete binary comparison, no tolerance",
+    "contexts": {
+      "2048": {
+        "baseline_sha256": "19f2e550f9665d24f266f40d855b1e3c19c04d1e5c90a369cf19994ae76f0d4f",
+        "byte_identical": true,
+        "bytes": 800256,
+        "capture_point": "after AppendTokens, before GenerateNextToken",
+        "dtype": "float32",
+        "finite_values": 200064,
+        "patched_sha256": "19f2e550f9665d24f266f40d855b1e3c19c04d1e5c90a369cf19994ae76f0d4f",
+        "shape": [
+          1,
+          1,
+          200064
+        ]
+      },
+      "32768": {
+        "baseline_sha256": "42b02bf7e87b380813ec675e5baafc9d025f2ea474cc59d42f2bd8efc1bbf65d",
+        "byte_identical": true,
+        "bytes": 800256,
+        "capture_point": "after AppendTokens, before GenerateNextToken",
+        "dtype": "float32",
+        "finite_values": 200064,
+        "patched_sha256": "42b02bf7e87b380813ec675e5baafc9d025f2ea474cc59d42f2bd8efc1bbf65d",
+        "shape": [
+          1,
+          1,
+          200064
+        ]
+      }
+    }
+  },
+  "generated_tokens": {
+    "contexts": {
+      "2048": {
+        "baseline_sha256": "fc9a3fe2def208edbcb27ed070ab0756f26649899f993085db23c816ca86a38d",
+        "encoding": "signed int32 little-endian",
+        "first_generated_token": 3253,
+        "generated_token_count": 64,
+        "matching_token_count": 64,
+        "patched_sha256": "fc9a3fe2def208edbcb27ed070ab0756f26649899f993085db23c816ca86a38d"
+      },
+      "32768": {
+        "baseline_sha256": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134",
+        "encoding": "signed int32 little-endian",
+        "first_generated_token": 3253,
+        "generated_token_count": 64,
+        "matching_token_count": 64,
+        "patched_sha256": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134"
+      }
+    },
+    "phase_b_runs": [
+      {
+        "context": 2048,
+        "matches_phase_a": true,
+        "matching_token_count": 64,
+        "repetition": 1,
+        "sha256": "fc9a3fe2def208edbcb27ed070ab0756f26649899f993085db23c816ca86a38d",
+        "variant": "baseline"
+      },
+      {
+        "context": 2048,
+        "matches_phase_a": true,
+        "matching_token_count": 64,
+        "repetition": 1,
+        "sha256": "fc9a3fe2def208edbcb27ed070ab0756f26649899f993085db23c816ca86a38d",
+        "variant": "patched"
+      },
+      {
+        "context": 2048,
+        "matches_phase_a": true,
+        "matching_token_count": 64,
+        "repetition": 2,
+        "sha256": "fc9a3fe2def208edbcb27ed070ab0756f26649899f993085db23c816ca86a38d",
+        "variant": "baseline"
+      },
+      {
+        "context": 2048,
+        "matches_phase_a": true,
+        "matching_token_count": 64,
+        "repetition": 2,
+        "sha256": "fc9a3fe2def208edbcb27ed070ab0756f26649899f993085db23c816ca86a38d",
+        "variant": "patched"
+      },
+      {
+        "context": 2048,
+        "matches_phase_a": true,
+        "matching_token_count": 64,
+        "repetition": 3,
+        "sha256": "fc9a3fe2def208edbcb27ed070ab0756f26649899f993085db23c816ca86a38d",
+        "variant": "baseline"
+      },
+      {
+        "context": 2048,
+        "matches_phase_a": true,
+        "matching_token_count": 64,
+        "repetition": 3,
+        "sha256": "fc9a3fe2def208edbcb27ed070ab0756f26649899f993085db23c816ca86a38d",
+        "variant": "patched"
+      },
+      {
+        "context": 32768,
+        "matches_phase_a": true,
+        "matching_token_count": 64,
+        "repetition": 1,
+        "sha256": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134",
+        "variant": "baseline"
+      },
+      {
+        "context": 32768,
+        "matches_phase_a": true,
+        "matching_token_count": 64,
+        "repetition": 1,
+        "sha256": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134",
+        "variant": "patched"
+      },
+      {
+        "context": 32768,
+        "matches_phase_a": true,
+        "matching_token_count": 64,
+        "repetition": 2,
+        "sha256": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134",
+        "variant": "baseline"
+      },
+      {
+        "context": 32768,
+        "matches_phase_a": true,
+        "matching_token_count": 64,
+        "repetition": 2,
+        "sha256": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134",
+        "variant": "patched"
+      },
+      {
+        "context": 32768,
+        "matches_phase_a": true,
+        "matching_token_count": 64,
+        "repetition": 3,
+        "sha256": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134",
+        "variant": "baseline"
+      },
+      {
+        "context": 32768,
+        "matches_phase_a": true,
+        "matching_token_count": 64,
+        "repetition": 3,
+        "sha256": "4c6b27f48f5e88cc8c30f95a77cf48e3a1af9fde3de41d126d3cf871ac182134",
+        "variant": "patched"
+      }
+    ]
+  },
+  "evidence_limit": "Compact reports and hashes are not substitutes for raw-vector comparisons. Raw vectors are not included."
+}

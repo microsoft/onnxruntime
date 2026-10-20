@@ -1,0 +1,338 @@
+diff --git a/test/CMakeLists.txt b/test/CMakeLists.txt
+index 580a5a0f..9010c312 100644
+--- a/test/CMakeLists.txt
++++ b/test/CMakeLists.txt
+@@ -104,6 +104,20 @@ endif()
+ 
+ add_test(NAME ReInitTests COMMAND reinit_tests)
+ 
++add_executable(logits_allocation_tests "${CMAKE_CURRENT_SOURCE_DIR}/logits_allocation/tests.cpp")
++target_include_directories(logits_allocation_tests PRIVATE
++  ${ORT_HEADER_DIR}
++  ${onnxruntime_extensions_SOURCE_DIR}/shared/api
++  ${CMAKE_SOURCE_DIR}/src)
++target_link_libraries(logits_allocation_tests PRIVATE onnxruntime-genai-obj GTest::gtest)
++add_dependencies(logits_allocation_tests onnxruntime-genai)
++set_target_properties(logits_allocation_tests PROPERTIES
++  RUNTIME_OUTPUT_DIRECTORY "$<TARGET_FILE_DIR:onnxruntime-genai>")
++if(NOT MSVC)
++  target_compile_options(logits_allocation_tests PRIVATE "-fvisibility=hidden")
++endif()
++add_test(NAME LogitsAllocationTests COMMAND logits_allocation_tests)
++
+ if (ENABLE_TELEMETRY AND NOT WIN32 AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+   add_executable(telemetry_device_info_tests
+     "${CMAKE_CURRENT_SOURCE_DIR}/telemetry/device_info_tests.cpp")
+diff --git a/test/logits_allocation/tests.cpp b/test/logits_allocation/tests.cpp
+new file mode 100644
+index 0000000..fcf6f39
+--- /dev/null
++++ b/test/logits_allocation/tests.cpp
+@@ -0,0 +1,307 @@
++#include <algorithm>
++#include <cstring>
++#include <filesystem>
++#include <map>
++#include <tuple>
++#include <vector>
++
++#include <gtest/gtest.h>
++#include "ort_genai.h"
++#include "models/model.h"
++#include "models/logits.h"
++#include "models/graph_builder.h"
++#include "search.h"
++
++using namespace Generators;
++
++namespace {
++
++// The C allocator ABI is forwarded unchanged; only test-owned bookkeeping is added.
++struct CountingAllocator : OrtAllocator {
++  Ort::Allocator& delegate;
++  std::vector<size_t> requests;
++  std::map<void*, size_t> live;
++  bool invalid_free{};
++
++  explicit CountingAllocator(Ort::Allocator& allocator) : OrtAllocator{}, delegate{allocator} {
++    version = ORT_API_VERSION;
++    Alloc = [](OrtAllocator* base, size_t bytes) -> void* {
++      auto& self = *static_cast<CountingAllocator*>(base);
++      void* pointer = self.delegate.Alloc(bytes);
++      self.requests.push_back(bytes);
++      if (pointer) self.live.emplace(pointer, bytes);
++      return pointer;
++    };
++    Free = [](OrtAllocator* base, void* pointer) {
++      auto& self = *static_cast<CountingAllocator*>(base);
++      if (pointer && self.live.erase(pointer) != 1) self.invalid_free = true;
++      self.delegate.Free(pointer);
++    };
++    Info = [](const OrtAllocator* base) -> const OrtMemoryInfo* {
++      return &static_cast<const CountingAllocator*>(base)->delegate.GetInfo();
++    };
++  }
++
++  Ort::Allocator& Interface() {
++    return *reinterpret_cast<Ort::Allocator*>(static_cast<OrtAllocator*>(this));
++  }
++};
++
++struct CountingDevice : DeviceInterface {
++  DeviceInterface& cpu;
++  CountingAllocator allocator;
++  bool fallback{};
++  explicit CountingDevice(DeviceInterface& device) : cpu{device}, allocator{device.GetAllocator()} {}
++  DeviceType GetType() const override { return DeviceType::CPU; }
++  void InitOrt(const OrtApi&, Ort::Allocator&) override { throw std::logic_error("Unused test InitOrt"); }
++  Ort::Allocator& GetAllocator() override { return allocator.Interface(); }
++  std::unique_ptr<OrtMemoryInfo> GetMemoryInfo() const override {
++    return OrtMemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
++  }
++  std::shared_ptr<DeviceBuffer> AllocateBase(size_t bytes) override { return cpu.AllocateBase(bytes); }
++  std::shared_ptr<DeviceBuffer> WrapMemoryBase(void* pointer, size_t bytes) override {
++    return cpu.WrapMemoryBase(pointer, bytes);
++  }
++  std::unique_ptr<Search> CreateGreedy(const GeneratorParams&) override {
++    throw std::logic_error("Unused test search");
++  }
++  std::unique_ptr<Search> CreateBeam(const GeneratorParams&) override {
++    throw std::logic_error("Unused test search");
++  }
++  void Synchronize() override { cpu.Synchronize(); }
++  bool Cast(void* input, void* output, ONNXTensorElementDataType in_type,
++            ONNXTensorElementDataType out_type, size_t count) override {
++    return !fallback && cpu.Cast(input, output, in_type, out_type, count);
++  }
++};
++
++std::unique_ptr<Config> TestConfig() {
++  auto config = std::make_unique<Config>();
++  config->model.type = "gpt2";
++  config->model.vocab_size = 7;
++  config->model.context_length = 64;
++  config->model.pad_token_id = 0;
++  return config;
++}
++
++struct MetadataModel : Model {
++  std::unique_ptr<OrtSession> session;
++  explicit MetadataModel(ONNXTensorElementDataType type, bool trimmed = false) : Model{TestConfig()} {
++    ModelConfig graph{"Identity"};
++    const std::vector<int64_t> shape{-1, trimmed ? 1 : -1, 7};
++    graph.inputs.emplace_back("input", type, shape);
++    graph.outputs.emplace_back("logits", type, shape);
++    auto model = GraphBuilder::Build(graph);
++    session_options_->SetIntraOpNumThreads(1);
++    OrtSession* raw = nullptr;
++    Ort::ThrowOnError(Ort::GetModelEditorApi().CreateSessionFromModel(
++        &GetOrtEnv(), model.get(), session_options_.get(), &raw));
++    session.reset(raw);
++    session_info_.Add(*session);
++  }
++  std::unique_ptr<State> CreateState(DeviceSpan<int32_t>, const GeneratorParams&) const override {
++    throw std::logic_error("Use test state");
++  }
++};
++
++struct ExtractionState : State {
++  Logits logits{*this};
++  ExtractionState(const GeneratorParams& params, const Model& model) : State{params, model} {
++    logits.Add();
++  }
++  DeviceSpan<float> Run(int, DeviceSpan<int32_t>&, DeviceSpan<int32_t>) override {
++    throw std::logic_error("Tests populate deterministic raw output without inference");
++  }
++};
++
++float Value(int row, int token, int vocab, int iteration) {
++  return static_cast<float>(row * 32 + token * 8 + vocab + iteration * 2);
++}
++
++void Populate(ExtractionState& state, ONNXTensorElementDataType type, int batch, int beams,
++              int length, int iteration) {
++  auto* cpu = GetDeviceInterface(DeviceType::CPU);
++  auto ids = cpu->Allocate<int32_t>(batch * length);
++  for (int b = 0; b < batch; ++b)
++    for (int t = 0; t < length; ++t)
++      ids.Span()[b * length + t] = length > 1 && t >= length - b ? 0 : 1;
++  state.logits.Update(ids, length);
++  std::vector<float> values(batch * beams * length * 7);
++  for (int row = 0; row < batch * beams; ++row)
++    for (int token = 0; token < length; ++token)
++      for (int v = 0; v < 7; ++v)
++        values[(row * length + token) * 7 + v] = Value(row, token, v, iteration);
++  void* raw = state.outputs_.at(0)->GetTensorMutableRawData();
++  if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
++    std::memcpy(raw, values.data(), values.size() * sizeof(float));
++  else
++    ASSERT_TRUE(cpu->Cast(values.data(), raw, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, type, values.size()));
++}
++
++using Case = std::tuple<ONNXTensorElementDataType, int, int>;
++class LogitsExtraction : public ::testing::TestWithParam<Case> {};
++
++TEST_P(LogitsExtraction, ValuesAndOwnership) {
++  const auto [type, batch, beams] = GetParam();
++  CountingDevice device{*GetDeviceInterface(DeviceType::CPU)};
++  auto model = std::make_shared<MetadataModel>(type);
++  model->p_device_inputs_ = &device;
++  auto params = CreateGeneratorParams(*model);
++  params->search.batch_size = batch;
++  params->search.num_beams = beams;
++  {
++    ExtractionState state{*params, *model};
++    int iteration = 0;
++    for (int length : {5, 1, 3, 1, 3}) {
++      Populate(state, type, batch, beams, length, iteration);
++      auto result = state.logits.Get();
++      ASSERT_EQ(result.size(), static_cast<size_t>(batch * beams * 7));
++      const auto values = result.CopyDeviceToCpu();
++      for (int b = 0; b < batch; ++b)
++        for (int beam = 0; beam < beams; ++beam)
++          for (int v = 0; v < 7; ++v) {
++            const int row = b * beams + beam;
++            const int last = length > 1 ? length - b - 1 : 0;
++            EXPECT_EQ(values[row * 7 + v], Value(row, last, v, iteration));
++          }
++      EXPECT_FALSE(device.allocator.invalid_free);
++      ++iteration;
++    }
++  }
++  EXPECT_TRUE(device.allocator.live.empty());
++  EXPECT_FALSE(device.allocator.invalid_free);
++}
++
++TEST_P(LogitsExtraction, NoPromptSizedFp32) {
++  const auto [type, batch, beams] = GetParam();
++  CountingDevice device{*GetDeviceInterface(DeviceType::CPU)};
++  auto model = std::make_shared<MetadataModel>(type);
++  model->p_device_inputs_ = &device;
++  auto params = CreateGeneratorParams(*model);
++  params->search.batch_size = batch;
++  params->search.num_beams = beams;
++  {
++    ExtractionState state{*params, *model};
++    void* first_converted = nullptr;
++    int iteration = 0;
++    for (int length : {5, 1, 3}) {
++      Populate(state, type, batch, beams, length, iteration);
++      device.allocator.requests.clear();
++      auto result = state.logits.Get();
++      if (length > 1) {
++        const size_t unwanted = static_cast<size_t>(batch * beams * length * 7) * sizeof(float);
++        ASSERT_EQ(std::count(device.allocator.requests.begin(), device.allocator.requests.end(), unwanted), 0)
++            << "UNWANTED_PROMPT_SIZED_FP32 bytes=" << unwanted;
++      }
++      if (type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
++        const size_t wanted = static_cast<size_t>(batch * beams * 7) * sizeof(float);
++        EXPECT_EQ(std::count(device.allocator.requests.begin(), device.allocator.requests.end(), wanted),
++                  iteration == 0 ? 1 : 0);
++        if (iteration == 0) first_converted = result.Span().data();
++        EXPECT_EQ(result.Span().data(), first_converted);
++      }
++      ++iteration;
++    }
++  }
++  EXPECT_TRUE(device.allocator.live.empty());
++  EXPECT_FALSE(device.allocator.invalid_free);
++}
++
++TEST_P(LogitsExtraction, TrimmedSingleToken) {
++  const auto [type, batch, beams] = GetParam();
++  CountingDevice device{*GetDeviceInterface(DeviceType::CPU)};
++  auto model = std::make_shared<MetadataModel>(type, true);
++  model->p_device_inputs_ = &device;
++  auto params = CreateGeneratorParams(*model);
++  params->search.batch_size = batch;
++  params->search.num_beams = beams;
++  {
++    ExtractionState state{*params, *model};
++    Populate(state, type, batch, beams, 1, 0);
++    const auto result = state.logits.Get().CopyDeviceToCpu();
++    ASSERT_EQ(result.size(), static_cast<size_t>(batch * beams * 7));
++    for (int row = 0; row < batch * beams; ++row)
++      for (int v = 0; v < 7; ++v)
++        EXPECT_EQ(result[row * 7 + v], Value(row, 0, v, 0));
++  }
++  EXPECT_TRUE(device.allocator.live.empty());
++}
++
++INSTANTIATE_TEST_SUITE_P(
++    TypesAndShapes, LogitsExtraction,
++    ::testing::Values(
++        Case{ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, 1, 1},
++        Case{ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, 2, 1},
++        Case{ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, 2, 3},
++        Case{ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, 1, 1},
++        Case{ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, 2, 1},
++        Case{ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, 2, 3},
++        Case{ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, 1, 1},
++        Case{ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, 2, 1},
++        Case{ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, 2, 3}));
++
++TEST(LogitsCastContract, AllocateReuseReplaceAndFallback) {
++  CountingDevice device{*GetDeviceInterface(DeviceType::CPU)};
++  for (bool fallback : {false, true}) {
++    device.fallback = fallback;
++    for (auto type : {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16}) {
++      const std::array<int64_t, 3> shape{2, 1, 7};
++      auto input = OrtValue::CreateTensor(device.GetAllocator(), shape, type);
++      std::vector<float> expected(14, 3.5f);
++      ASSERT_TRUE(device.cpu.Cast(expected.data(), input->GetTensorMutableRawData(),
++                                 ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, type, expected.size()));
++      std::unique_ptr<OrtValue> output;
++      Cast(*input, output, device, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
++      const auto* first = output->GetTensorMutableRawData();
++      device.allocator.requests.clear();
++      Cast(*input, output, device, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
++      EXPECT_EQ(output->GetTensorMutableRawData(), first);
++      EXPECT_TRUE(device.allocator.requests.empty());
++      const std::array<int64_t, 3> wrong_shape{2, 3, 7};
++      output = OrtValue::CreateTensor<float>(device.GetAllocator(), wrong_shape);
++      Cast(*input, output, device, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
++      EXPECT_EQ(output->GetTensorTypeAndShapeInfo()->GetShape(), (std::vector<int64_t>{2, 1, 7}));
++      output = OrtValue::CreateTensor(device.GetAllocator(), shape, type);
++      Cast(*input, output, device, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
++      const auto* values = output->GetTensorMutableData<float>();
++      for (size_t i = 0; i < expected.size(); ++i) EXPECT_EQ(values[i], expected[i]);
++    }
++  }
++  EXPECT_TRUE(device.allocator.live.empty());
++  EXPECT_FALSE(device.allocator.invalid_free);
++}
++
++TEST(LogitsPublicAPI, SnapshotIndependence) {
++  for (const char* fixture : {"tiny-random-gpt2-fp32", "tiny-random-gpt2-fp16-cuda"}) {
++    const auto path = std::filesystem::path(MODEL_PATH) / "hf-internal-testing" / fixture;
++    ASSERT_TRUE(std::filesystem::exists(path / "genai_config.json")) << path;
++    auto model = OgaModel::Create(path.c_str());
++    auto params = OgaGeneratorParams::Create(*model);
++    params->SetSearchOption("max_length", 10);
++    const std::vector<int32_t> ids{0, 0, 195, 731};
++    auto generator = OgaGenerator::Create(*model, *params);
++    generator->AppendTokens(ids.data(), ids.size());
++    auto snapshot = generator->GetLogits();
++    ASSERT_EQ(snapshot->Shape(), (std::vector<int64_t>{1, 1, 1000}));
++    std::vector<float> saved(1000);
++    std::memcpy(saved.data(), snapshot->Data(), saved.size() * sizeof(float));
++    generator->GenerateNextToken();
++    generator->GenerateNextToken();
++    auto later = generator->GetLogits();
++    EXPECT_NE(later->Data(), snapshot->Data());
++    generator.reset();
++    params.reset();
++    model.reset();
++    EXPECT_EQ(std::memcmp(saved.data(), snapshot->Data(), saved.size() * sizeof(float)), 0);
++  }
++}
++
++}  // namespace
++
++int main(int argc, char** argv) {
++  ::testing::InitGoogleTest(&argc, argv);
++  GetOrtEnv();
++  const int result = RUN_ALL_TESTS();
++  OgaShutdown();
++  return result;
++}
