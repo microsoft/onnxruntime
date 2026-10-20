@@ -1,5 +1,6 @@
 numpy==2.2.6; python_version < "3.11"
-numpy==2.4.2; python_version >= "3.11"
+numpy==2.4.2; python_version >= "3.11" and python_version < "3.15"
+numpy==2.5.4; python_version >= "3.15"
 mypy
 pytest
 setuptools>=68.2.2
@@ -7,6 +8,6 @@ wheel
 protobuf==6.33.6
 sympy==1.14
 flatbuffers
-neural-compressor>=2.2.1
-triton==3.5.0
+neural-compressor>=2.2.1; python_version < "3.15"
+triton==3.5.0; python_version < "3.15"
 onnx==1.23.2

@@ -1925,7 +1925,23 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if is_windows():
                 cwd = os.path.join(cwd, config)
 
-            if not args.skip_pip_install and args.enable_transformers_tool_test and not args.disable_contrib_ops:
+            torch_tests_supported = sys.version_info[:2] < (3, 15)
+            if (
+                not torch_tests_supported
+                and not args.disable_contrib_ops
+                and (args.enable_transformers_tool_test or (not args.skip_pip_install and args.use_cuda and is_linux()))
+            ):
+                log.warning(
+                    "Skipping PyTorch installation and torch-dependent tests on Python >=3.15: "
+                    "PyTorch cp315 wheels are unavailable on PyPI."
+                )
+
+            if (
+                torch_tests_supported
+                and not args.skip_pip_install
+                and args.enable_transformers_tool_test
+                and not args.disable_contrib_ops
+            ):
                 # PyTorch is required for transformers tests, and optional for some python tests.
                 # Install cpu only version of torch when cuda is not enabled in Linux.
                 extra = [] if args.use_cuda and is_linux() else ["--index-url", "https://download.pytorch.org/whl/cpu"]
@@ -1935,7 +1951,13 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     dll_path=dll_path,
                     python_path=python_path,
                 )
-            elif not args.skip_pip_install and args.use_cuda and is_linux() and not args.disable_contrib_ops:
+            elif (
+                torch_tests_supported
+                and not args.skip_pip_install
+                and args.use_cuda
+                and is_linux()
+                and not args.disable_contrib_ops
+            ):
                 # CUDA weight-packer parity tests also run without the transformers suite.
                 run_subprocess(
                     [
@@ -2051,10 +2073,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         dll_path=dll_path,
                     )
 
-                    if args.enable_transformers_tool_test and (sys.version_info.major, sys.version_info.minor) < (
-                        3,
-                        15,
-                    ):
+                    if args.enable_transformers_tool_test and torch_tests_supported:
                         import google.protobuf  # noqa: PLC0415
                         import numpy  # noqa: PLC0415
 

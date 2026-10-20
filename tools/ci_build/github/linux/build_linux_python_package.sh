@@ -3,9 +3,8 @@ set -e -x
 
 # This script invokes build.py
 
-mkdir -p /build/dist
-
 EXTRA_ARG=""
+PYTHON_EXE_REQUESTED=false
 # Put 3.12 at the last because Ubuntu 24.04 use python 3.12 and we will upload the intermediate build files of this
 # config to Azure DevOps Artifacts and download them to a Ubuntu 24.04 machine to run the tests.
 PYTHON_EXES=(
@@ -14,6 +13,7 @@ PYTHON_EXES=(
   "/opt/python/cp313-cp313t/bin/python3.13"
   "/opt/python/cp314-cp314/bin/python3.14"
   "/opt/python/cp314-cp314t/bin/python3.14"
+  "/opt/python/cp315-cp315/bin/python3.15"
   "/opt/python/cp312-cp312/bin/python3.12"
   )
 
@@ -29,6 +29,7 @@ p)
     exit 1
   else
     PYTHON_EXES=("${OPTARG}") # Use the provided argument for -p
+    PYTHON_EXE_REQUESTED=true
   fi
   ;;
 x) EXTRA_ARG=${OPTARG};;
@@ -38,6 +39,13 @@ a) CUDA_ARCHS=${OPTARG};;
    exit 1;;
 esac
 done
+
+if [ "$PYTHON_EXE_REQUESTED" == true ] && { [ ! -f "${PYTHON_EXES[0]}" ] || [ ! -x "${PYTHON_EXES[0]}" ]; }; then
+  echo "ERROR: Requested Python executable '${PYTHON_EXES[0]}' does not exist or is not executable."
+  exit 1
+fi
+
+mkdir -p /build/dist
 
 BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--use_binskim_compliant_compile_flags" "--build_wheel" "--use_vcpkg" "--use_vcpkg_ms_internal_asset_cache")
 
@@ -150,7 +158,7 @@ do
     PIP_REQUIREMENTS+=("mypy<1.19")
   fi
   "${PYTHON_EXE}" -m pip install "${PIP_REQUIREMENTS[@]}"
-  PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
+  PATH=$python3_dir:$PATH "${PYTHON_EXE}" /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
   cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist
 done
 

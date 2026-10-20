@@ -239,6 +239,7 @@ class TestCudaQuantizerTorchPackerParity(unittest.TestCase):
             torch_out, oracle, err_msg=f"byte mismatch bits={bits} arch={force_arch} N={n} K={k}"
         )
 
+    @unittest.skipIf(sys.version_info[:2] >= (3, 15), "PyTorch cp315 wheels are unavailable on PyPI")
     def test_torch_packer_matches_cuda_oracle(self):
         # Cover both weight bit-widths, both mixed-GEMM layouts (SM80/SM90), and a GPT-OSS-20B
         # MoE shape (fused gate+up FC1 [5760, 2880] and down FC2 [2880, 2880]).

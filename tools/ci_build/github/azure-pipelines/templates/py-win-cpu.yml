@@ -64,6 +64,8 @@ jobs:
         PythonVersion: '3.13'
       Python314_${{parameters.architecture}}:
         PythonVersion: '3.14'
+      Python315_${{parameters.architecture}}:
+        PythonVersion: '3.15'
   variables:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     ExtraParam: ${{ parameters.build_py_parameters }}
