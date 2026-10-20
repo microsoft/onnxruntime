@@ -2591,6 +2591,53 @@ TEST(QDQTransformerTests, MatMulIntegerToFloat) {
   test_case({22, 11, 13, 15}, {15, 13}, false /*use_contrib_qdq*/);
 }
 
+template <typename InputAType, typename InputBType>
+void RunMatMulIntegerToFloatInputTypeTest(bool expect_fusion) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    // With unit scales and zero points, these inputs produce the reported MatMul result 11.
+    auto* input_a = builder.MakeInput<InputAType>({1, 2},
+                                                  std::vector<InputAType>{static_cast<InputAType>(1),
+                                                                          static_cast<InputAType>(2)});
+    auto* input_b = builder.MakeInput<InputBType>({2, 1},
+                                                  std::vector<InputBType>{static_cast<InputBType>(3),
+                                                                          static_cast<InputBType>(4)});
+    auto* dq_a_output = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 2});
+    auto* dq_b_output = builder.MakeIntermediate<float>(std::vector<int64_t>{2, 1});
+    builder.AddDequantizeLinearNode<InputAType>(input_a, 1.0f, static_cast<InputAType>(0), dq_a_output);
+    builder.AddDequantizeLinearNode<InputBType>(input_b, 1.0f, static_cast<InputBType>(0), dq_b_output);
+
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{1, 1});
+    builder.AddNode("MatMul", {dq_a_output, dq_b_output}, {output});
+  };
+
+  auto check_graph = [expect_fusion](InferenceSessionWrapper& session) {
+    auto op_counts = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_counts["MatMul"], expect_fusion ? 0 : 1);
+    EXPECT_EQ(op_counts["DequantizeLinear"], expect_fusion ? 0 : 2);
+    EXPECT_EQ(op_counts["com.microsoft.DequantizeLinear"], 0);
+    EXPECT_EQ(op_counts["com.microsoft.MatMulIntegerToFloat"], expect_fusion ? 1 : 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    std::vector<int>{13, 19},
+                    1e-5 /*per_sample_tolerance*/,
+                    1e-5 /*relative_per_sample_tolerance*/);
+}
+
+TEST(QDQTransformerTests, MatMulIntegerToFloatPreservesInt32Inputs) {
+  RunMatMulIntegerToFloatInputTypeTest<int32_t, int8_t>(false);
+  RunMatMulIntegerToFloatInputTypeTest<uint8_t, int32_t>(false);
+  RunMatMulIntegerToFloatInputTypeTest<int32_t, int32_t>(false);
+}
+
+TEST(QDQTransformerTests, MatMulIntegerToFloatStillFusesSupported8BitInputs) {
+  RunMatMulIntegerToFloatInputTypeTest<uint8_t, uint8_t>(true);
+  RunMatMulIntegerToFloatInputTypeTest<uint8_t, int8_t>(true);
+}
+
 TEST(QDQTransformerTests, ConvRelu) {
   DNNL_GTEST_SKIP();
 

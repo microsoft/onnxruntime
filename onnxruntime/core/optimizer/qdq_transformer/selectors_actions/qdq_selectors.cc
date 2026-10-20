@@ -728,7 +728,7 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
     return dt_input == dt_output;
   } else {
     // can be converted to MatMulIntegerToFloat if EP supports that.
-    return matmulintegertofloat_allowed_;
+    return matmulintegertofloat_allowed_ && Is8BitIntType(dt_input) && Is8BitIntType(dt_weight);
   }
 }
 
