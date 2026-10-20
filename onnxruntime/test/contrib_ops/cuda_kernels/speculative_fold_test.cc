@@ -145,7 +145,7 @@ TEST(CUDA_EP_Unittest, FoldMid2AcceptCommitsStateAndPublishesRingRecord) {
       d_head_ids.As<int64_t>(), d_head_c.As<int32_t>(),
       d_slot_ids.As<int64_t>(), d_seqlens.As<int32_t>(),
       d_cos_out.As<__nv_bfloat16>(), d_sin_out.As<__nv_bfloat16>(),
-      d_sel.As<int64_t>(), nullptr);
+      d_sel.As<int64_t>(), d_ctl.As<int64_t>(), d_ctx_commit.As<int64_t>(), 16, nullptr);
   ASSERT_TRUE(launch_status.IsOK()) << launch_status.ErrorMessage();
   CheckCuda(cudaStreamSynchronize(nullptr));
 
@@ -256,7 +256,7 @@ TEST(CUDA_EP_Unittest, FoldMid2MutedRejectDoesNotCommitState) {
       d_head_ids.As<int64_t>(), d_head_c.As<int32_t>(),
       d_slot_ids.As<int64_t>(), d_seqlens.As<int32_t>(),
       d_cos_out.As<__nv_bfloat16>(), d_sin_out.As<__nv_bfloat16>(),
-      d_sel.As<int64_t>(), nullptr);
+      d_sel.As<int64_t>(), d_ctl.As<int64_t>(), d_ctx_commit.As<int64_t>(), 16, nullptr);
   ASSERT_TRUE(launch_status.IsOK()) << launch_status.ErrorMessage();
   CheckCuda(cudaStreamSynchronize(nullptr));
 
@@ -297,7 +297,7 @@ TEST(CUDA_EP_Unittest, FoldTailUpdatesDraftAndHonorsMute) {
   Status launch_status = LaunchFoldTail(
       d_next_token.As<int64_t>(), d_status.As<int32_t>(),
       static_cast<int>(status.size()), d_ctl.As<int64_t>(),
-      d_done.As<int32_t>(), nullptr);
+      d_done.As<int32_t>(), d_ctl.As<int64_t>(), nullptr);
   ASSERT_TRUE(launch_status.IsOK()) << launch_status.ErrorMessage();
   CheckCuda(cudaStreamSynchronize(nullptr));
 
@@ -315,7 +315,7 @@ TEST(CUDA_EP_Unittest, FoldTailUpdatesDraftAndHonorsMute) {
   launch_status = LaunchFoldTail(
       d_next_token.As<int64_t>(), d_status.As<int32_t>(),
       static_cast<int>(status.size()), d_ctl.As<int64_t>(),
-      d_done.As<int32_t>(), nullptr);
+      d_done.As<int32_t>(), d_ctl.As<int64_t>(), nullptr);
   ASSERT_TRUE(launch_status.IsOK()) << launch_status.ErrorMessage();
   CheckCuda(cudaStreamSynchronize(nullptr));
   d_ctl.Download(actual_ctl.data(), sizeof(actual_ctl));

@@ -65,15 +65,16 @@ class FoldMid2 final : public CudaKernel {
     Tensor* cos_out = context->Output(4, TensorShape({1, 2, 32}));
     Tensor* sin_out = context->Output(5, TensorShape({1, 2, 32}));
     Tensor* sel = context->Output(6, TensorShape({1}));
+    Tensor* updated_ctl = context->Output(7, ctl->Shape());
+    Tensor* updated_ctx_commit = context->Output(8, ctx_commit->Shape());
     ORT_ENFORCE(head_ids != nullptr && head_c != nullptr && slot_ids != nullptr &&
                 seqlens != nullptr && cos_out != nullptr && sin_out != nullptr &&
-                sel != nullptr);
+                sel != nullptr && updated_ctl != nullptr && updated_ctx_commit != nullptr);
 
     return speculative_fold::LaunchFoldMid2(
         next_tokens->Data<int64_t>(), input_ids->Data<int64_t>(),
         status->Data<int32_t>(), static_cast<int>(status_count),
-        const_cast<int64_t*>(ctl->Data<int64_t>()),
-        const_cast<int64_t*>(ctx_commit->Data<int64_t>()),
+        ctl->Data<int64_t>(), ctx_commit->Data<int64_t>(),
         ctx_a->Data<int64_t>(), ctx_b->Data<int64_t>(), ptrs->Data<int64_t>(),
         reinterpret_cast<const __nv_bfloat16*>(cos_cache->Data<BFloat16>()),
         reinterpret_cast<const __nv_bfloat16*>(sin_cache->Data<BFloat16>()),
@@ -81,7 +82,8 @@ class FoldMid2 final : public CudaKernel {
         slot_ids->MutableData<int64_t>(), seqlens->MutableData<int32_t>(),
         reinterpret_cast<__nv_bfloat16*>(cos_out->MutableData<BFloat16>()),
         reinterpret_cast<__nv_bfloat16*>(sin_out->MutableData<BFloat16>()),
-        sel->MutableData<int64_t>(), Stream(context));
+        sel->MutableData<int64_t>(), updated_ctl->MutableData<int64_t>(),
+        updated_ctx_commit->MutableData<int64_t>(), cos_cache->Shape()[0], Stream(context));
   }
 };
 
@@ -100,12 +102,13 @@ class FoldTail final : public CudaKernel {
     ORT_RETURN_IF_NOT(status_count <= std::numeric_limits<int>::max(),
                       "FoldTail status tensor is too large");
     Tensor* done = context->Output(0, TensorShape({1}));
-    ORT_ENFORCE(done != nullptr);
+    Tensor* updated_ctl = context->Output(1, ctl->Shape());
+    ORT_ENFORCE(done != nullptr && updated_ctl != nullptr);
 
     return speculative_fold::LaunchFoldTail(
         next_token->Data<int64_t>(), status->Data<int32_t>(),
-        static_cast<int>(status_count), const_cast<int64_t*>(ctl->Data<int64_t>()),
-        done->MutableData<int32_t>(), Stream(context));
+        static_cast<int>(status_count), ctl->Data<int64_t>(),
+        done->MutableData<int32_t>(), updated_ctl->MutableData<int64_t>(), Stream(context));
   }
 };
 
@@ -114,6 +117,8 @@ class FoldTail final : public CudaKernel {
 ONNX_OPERATOR_KERNEL_EX(
     FoldMid2, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
+        .MayInplace(3, 7)
+        .MayInplace(4, 8)
         .TypeConstraint("I64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("I32", DataTypeImpl::GetTensorType<int32_t>())
         .TypeConstraint("B", DataTypeImpl::GetTensorType<BFloat16>()),
@@ -122,6 +127,7 @@ ONNX_OPERATOR_KERNEL_EX(
 ONNX_OPERATOR_KERNEL_EX(
     FoldTail, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
+        .MayInplace(2, 1)
         .TypeConstraint("I64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("I32", DataTypeImpl::GetTensorType<int32_t>()),
     FoldTail);
