@@ -3018,6 +3018,9 @@ if (onnxruntime_BUILD_SHARED_LIB AND
 
   set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator ${ONNXRUNTIME_TEST_LIBS} onnxruntime_test_utils
                                    onnx_proto onnx ${onnxruntime_EXTERNAL_LIBRARIES})
+  if(TARGET model_package)
+    list(APPEND onnxruntime_autoep_test_LIBS model_package)
+  endif()
 
   if (onnxruntime_USE_TENSORRT)
     list(APPEND onnxruntime_autoep_test_LIBS ${TENSORRT_LIBRARY_INFER})

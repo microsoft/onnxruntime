@@ -113,12 +113,92 @@ Field reference:
 | `description`        | string          | no       | Free-form. |
 | `layout`             | string          | no       | `"portable"` (default) or `"installed"`. |
 | `components`         | object          | yes      | Map of component name → component value. See below. |
+| `chains`             | object          | no       | Schema 1.1+: named ordered chains, inspected/authored as JSON. |
 | `shared_assets`      | object          | no       | Map of `sha256:<hex>` URI → path override (string). |
 | `additional_metadata`| any JSON value  | no       | Opaque to this library. Round-tripped verbatim. |
 
-By default the parser rejects unknown top-level keys (`strict_unknown_fields`,
-on by default). Disable it via `ModelPackageOpenOptions` to round-trip
-manifests authored against a newer schema.
+For known schema minors, the parser rejects unknown common fields by default
+(`strict_unknown_fields`). Disable that option to preserve unrecognized fields.
+Future minors automatically relax unknown-field strictness, as described under
+[Versioning and compatibility](#versioning-and-compatibility).
+
+### Named chains (schema 1.1)
+
+`chains` is an optional map of nonempty names to inline chain objects. An absent
+or empty map declares no chains. Each chain has a required nonempty `steps`
+array; array order is component order. Each step has a nonempty `id`, unique
+within that chain, and a `component` naming an existing component map key.
+Repeated use of one component is allowed, including components with no variants.
+
+```json
+{
+  "generate": {
+    "steps": [
+      {
+        "id": "prefill",
+        "component": "decoder_prefill",
+        "executor_info": {
+          "ort": {
+            "kind": "session_loop",
+            "loop": { "exit_conditions": [{ "kind": "end_of_inputs" }] }
+          }
+        }
+      },
+      {
+        "id": "decode",
+        "component": "decoder_decode",
+        "executor_info": { "ort": { "kind": "session_loop" } }
+      }
+    ],
+    "additional_metadata": { "description": "Decoder-only chain metadata" }
+  }
+}
+```
+
+This is a chain-map fragment, not a runnable ORT configuration. Components and
+variants still declare their model files using the existing mechanisms. The
+standalone library validates common structure/references, not execution policy.
+
+Chains and steps each allow optional `executor_info` and `additional_metadata`.
+At these new scopes, `executor_info` maps nonempty namespace names to **inline
+objects only**. External chain files and string-valued chain/step payloads are
+not supported. Existing external variant payloads remain supported.
+Identifiers cannot contain embedded NULs. `additional_metadata` accepts any JSON
+value; namespace payload contents are opaque even with strict parsing.
+
+Execution kinds, bindings, exits, provider/cache/sampling policies and
+upstream-output references belong inside consumer namespaces. They are not
+validated by this library. The ORT package consumer currently creates individual
+Sessions; executable chain loading is a separate runtime integration milestone.
+Consumers must explicitly select a chain by name: no implicit/default chain is
+declared by this format.
+
+The JSON-only APIs are:
+
+| API | Behavior |
+| --- | --- |
+| `ModelPackage_GetChainsJson(pkg, &json)` | Complete map, or `"{}"` when absent. |
+| `ModelPackage_GetChainJson(pkg, name, &json)` | Selected object; unknown name returns `MODEL_PACKAGE_ERR_NOT_FOUND`. |
+| `ModelPackage_SetChainsJson(pkg, json)` | Replace the whole map; `"{}"` is valid. |
+| `ModelPackage_SetChainJson(pkg, name, json)` | Insert/replace one object without changing other chains. |
+| `ModelPackage_RemoveChain(pkg, name)` | Remove one chain; unknown name is a no-op; removing the last removes the optional member. |
+
+Names are UTF-8; empty name arguments and null required pointers are invalid
+arguments. Returned JSON is package-owned and remains valid across read-only
+calls until a successful mutation/commit or Close. Failing calls preserve output
+parameters. Rejected chain mutations preserve the package, schema version and
+borrowed views; no-op removal also preserves views.
+
+Create components before referencing them in a chain. Removing a referenced
+component fails; replace/remove its referring chains first. Common references
+are validated immediately, while references inside opaque consumer payloads are
+consumer obligations. There are no typed chain additions to `ModelPackageInfo`.
+
+New packages are authored as 1.1. Existing 1.0 packages stay at 1.0 on inspection
+or unrelated commits; successful chain setters upgrade them to 1.1. Removal does
+not downgrade the version, and future minors are never downgraded. Declaring
+`chains` under 1.0 is a schema error even in permissive mode. Unknown common
+fields tolerated by permissive/future-minor parsing survive round trips.
 
 ### Components
 
@@ -423,6 +503,31 @@ the same thread.
   `executor_info` entry keeps its current inline-or-external shape.
 - `MODEL_PACKAGE_WRITE_DENSE` — flatten every external component back inline
   into `manifest.json`. Useful for single-file authoring inspection.
+  External variant executor-info must first be converted to inline form.
+
+Save-as copies each resolved variant directory, including model/external-data
+files, nested content and empty directories. Shared assets retain their existing
+hash-verified materialization rules. The exported package uses indexed
+`components/component_<index>/variant_<index>/` directories; external component
+definitions use `component.json` beside those directories. Structural paths are
+rebased, while component/variant names, chain order and opaque payload values are
+preserved. PRESERVE retains inline/external **shapes**, not original filenames.
+External namespace JSON keeps a variant-local relative filename where possible;
+otherwise it is materialized within the exported variant using collision-checked
+`.model_package_executor_info_<index>.json` filenames.
+Missing inferred draft directories are exported as empty variant directories.
+
+Only structural references are understood. Absolute/out-of-directory filenames
+inside opaque payloads are not rewritten or discovered: place required local
+model files, weights and related files inside variant directories or shared
+assets before exporting. Export does not indiscriminately copy the package root.
+
+Save-as rejects overlapping source/destination trees, symlinks, unsupported
+filesystem objects and metadata/model output collisions. Source files are never
+rewritten. Failure preserves the live package's root/state and borrowed views,
+but partial destination files may remain; directory-level rollback is not
+promised. A successful DENSE in-place commit also preserves the effective
+variant-directory anchor when flattening external components.
 
 ### Prune
 

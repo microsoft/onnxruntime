@@ -43,6 +43,8 @@ namespace model_package {
 void DropViewCache(ModelPackage* pkg) {
   if (!pkg) return;
   pkg->info_cache.reset();
+  pkg->chains_json_cache.reset();
+  pkg->chain_json_cache.clear();
   for (auto& comp : pkg->components) {
     comp->component_json_cache.reset();
     comp->additional_metadata_cache.reset();
@@ -330,6 +332,35 @@ ModelPackageStatus* ModelPackage_ResolveStringRef(const ModelPackage* pkg,
 // ─────────────────────────────────────────────────────────────────────────────
 // Round-trip JSON getters
 // ─────────────────────────────────────────────────────────────────────────────
+
+ModelPackageStatus* ModelPackage_GetChainsJson(const ModelPackage* pkg, const char** out_json) {
+  if (!pkg) return NullArg("pkg");
+  if (!out_json) return NullArg("out_json");
+  if (!pkg->chains_json_cache) {
+    const auto chains = pkg->manifest.find("chains");
+    pkg->chains_json_cache = chains == pkg->manifest.end() ? "{}" : chains->dump();
+  }
+  *out_json = pkg->chains_json_cache->c_str();
+  return nullptr;
+}
+
+ModelPackageStatus* ModelPackage_GetChainJson(const ModelPackage* pkg, const char* chain_name, const char** out_json) {
+  if (!pkg) return NullArg("pkg");
+  if (!chain_name || !*chain_name) {
+    return MakeStatus(MODEL_PACKAGE_ERR_INVALID_ARG, "chain_name must be nonempty.");
+  }
+  if (!out_json) return NullArg("out_json");
+  const auto chains = pkg->manifest.find("chains");
+  if (chains == pkg->manifest.end() || !chains->contains(chain_name)) {
+    return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND, std::string("chain '") + chain_name + "' not found.");
+  }
+  auto cached = pkg->chain_json_cache.find(chain_name);
+  if (cached == pkg->chain_json_cache.end()) {
+    cached = pkg->chain_json_cache.emplace(chain_name, chains->at(chain_name).dump()).first;
+  }
+  *out_json = cached->second.c_str();
+  return nullptr;
+}
 
 ModelPackageStatus* ModelPackage_GetComponentJson(const ModelPackage* pkg,
                                                   const char* component_name,

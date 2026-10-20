@@ -77,7 +77,7 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Open(const char* package_root
                                                         const ModelPackageOpenOptions* opts,
                                                         ModelPackage** out);
 
-/// Create a new empty in-memory package for from-scratch authoring.
+/// Create a new empty schema-1.1 in-memory package for from-scratch authoring.
 MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_New(ModelPackage** out);
 
 /// Release a ModelPackage handle and all its caches. Safe on NULL.
@@ -165,6 +165,17 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetVariantJson(const ModelPac
                                                                   const char* variant_name,
                                                                   const char** out_json);
 
+/// Get the complete chain map, or "{}" when absent, preserving tolerated unknown
+/// fields and opaque consumer payloads. Chain JSON strings are package-owned and
+/// remain valid across read-only calls until a successful mutation or Close.
+/// Failed calls leave output parameters unchanged.
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetChainsJson(const ModelPackage*, const char** out_json);
+
+/// Get a named chain, or MODEL_PACKAGE_ERR_NOT_FOUND. chain_name must be nonempty.
+/// The returned string has the same ownership as GetChainsJson.
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetChainJson(const ModelPackage*, const char* chain_name,
+                                                                const char** out_json);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Asset resolution + hashing
 // ─────────────────────────────────────────────────────────────────────────────
@@ -215,6 +226,21 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_ComputeDirectoryHash(const ch
 // descendants. Strict unknown-field rejection follows the open-time option
 // `strict_unknown_fields` (default true).
 
+/// Replace the complete chain map with a JSON object. An empty object declares
+/// no chains. References must name existing components. Successful setters
+/// upgrade a schema-1.0 package to 1.1 and never downgrade newer minors.
+/// Failed chain mutations preserve package state and borrowed views.
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetChainsJson(ModelPackage*, const char* chains_json);
+
+/// Insert or replace one inline chain object; other chains are unchanged.
+/// chain_name must be nonempty. Consumer executor_info payloads remain opaque.
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetChainJson(ModelPackage*, const char* chain_name,
+                                                                const char* chain_json);
+
+/// Remove a chain, removing the optional map when the final chain is removed.
+/// An unknown nonempty name is a no-op and does not invalidate borrowed views.
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_RemoveChain(ModelPackage*, const char* chain_name);
+
 /// Set or replace an inline component. `component_json` must be a JSON object
 /// matching the component schema. An existing component with the same name is
 /// replaced.
@@ -232,6 +258,7 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetComponentExternal(ModelPac
                                                                         const char* path);
 
 /// Remove a component by name. No-op when the name is not present.
+/// Removing a component referenced by a chain fails without changing the package.
 MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_RemoveComponent(ModelPackage*, const char* name);
 
 /// Upsert a variant inside a component. `variant_json` must be a JSON object
@@ -319,6 +346,12 @@ typedef enum {
 /// nonexistent and the entire package is materialized there (self-contained
 /// "save as"). On a successful dest_root commit, the package's root is
 /// updated to `dest_root` so subsequent in-place commits go there.
+/// Save-as copies resolved variant directories and external executor-info JSON,
+/// rebasing structural paths into a package-local indexed layout. Consumer
+/// payload paths are opaque: package-local files must be within a variant
+/// directory or shared asset. Symlinks, overlapping source/destination trees
+/// and output collisions are rejected. A failed save-as preserves live package
+/// state but may leave partial files in the destination.
 MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Commit(ModelPackage*,
                                                           const char* dest_root_or_null,
                                                           ModelPackageWriteMode mode);

@@ -30,7 +30,7 @@ namespace {
 // Schema version stamped into newly authored packages, written as a "<major>.<minor>"
 // string. Keep in sync with the parser's supported major + highest known minor
 // (manifest_parser.cc: kMaxSupportedSchemaMajor / kMaxKnownSchemaMinor).
-constexpr const char* kAuthoredSchemaVersion = "1.0";
+constexpr const char* kAuthoredSchemaVersion = "1.1";
 
 ModelPackageStatus* NullArg(const char* name) {
   return MakeStatus(MODEL_PACKAGE_ERR_INVALID_ARG,
@@ -96,6 +96,22 @@ ordered_json& EnsureManifestComponentsObject(ModelPackage* pkg) {
   return pkg->manifest["components"];
 }
 
+ModelPackageStatus* ReplaceChains(ModelPackage* pkg, ordered_json chains, bool remove_empty = false) {
+  if (auto* s = mp::ValidateChains(pkg, chains)) return s;
+  auto manifest = pkg->manifest;
+  if (remove_empty && chains.empty()) {
+    manifest.erase("chains");
+  } else {
+    manifest["chains"] = std::move(chains);
+  }
+  const bool upgrade = pkg->schema_version_minor < 1;
+  if (upgrade) manifest["schema_version"] = "1.1";
+  pkg->manifest.swap(manifest);
+  if (upgrade) pkg->schema_version_minor = 1;
+  mp::DropViewCache(pkg);
+  return nullptr;
+}
+
 }  // namespace
 
 extern "C" {
@@ -118,8 +134,48 @@ ModelPackageStatus* ModelPackage_New(ModelPackage** out) {
   pkg->allow_external_paths = false;
   pkg->package_root = fs::path();
   if (auto* s = mp::RefreshPackageMetadata(pkg.get())) return s;
+  pkg->schema_version_major = 1;
+  pkg->schema_version_minor = 1;
   *out = pkg.release();
   return nullptr;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chains
+// ─────────────────────────────────────────────────────────────────────────────
+
+ModelPackageStatus* ModelPackage_SetChainsJson(ModelPackage* pkg, const char* chains_json) {
+  if (!pkg) return NullArg("pkg");
+  if (!chains_json) return NullArg("chains_json");
+  ordered_json chains;
+  if (auto* s = ParseJsonString(chains_json, "chains", &chains)) return s;
+  return ReplaceChains(pkg, std::move(chains));
+}
+
+ModelPackageStatus* ModelPackage_SetChainJson(ModelPackage* pkg, const char* chain_name, const char* chain_json) {
+  if (!pkg) return NullArg("pkg");
+  if (!chain_name || !*chain_name) {
+    return MakeStatus(MODEL_PACKAGE_ERR_INVALID_ARG, "chain_name must be nonempty.");
+  }
+  if (!chain_json) return NullArg("chain_json");
+  ordered_json chain;
+  if (auto* s = ParseJsonString(chain_json, "chain", &chain)) return s;
+  const auto existing = pkg->manifest.find("chains");
+  auto chains = existing == pkg->manifest.end() ? ordered_json::object() : *existing;
+  chains[chain_name] = std::move(chain);
+  return ReplaceChains(pkg, std::move(chains));
+}
+
+ModelPackageStatus* ModelPackage_RemoveChain(ModelPackage* pkg, const char* chain_name) {
+  if (!pkg) return NullArg("pkg");
+  if (!chain_name || !*chain_name) {
+    return MakeStatus(MODEL_PACKAGE_ERR_INVALID_ARG, "chain_name must be nonempty.");
+  }
+  const auto existing = pkg->manifest.find("chains");
+  if (existing == pkg->manifest.end() || !existing->contains(chain_name)) return nullptr;
+  auto chains = *existing;
+  chains.erase(chain_name);
+  return ReplaceChains(pkg, std::move(chains), true);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -227,6 +283,18 @@ ModelPackageStatus* ModelPackage_RemoveComponent(ModelPackage* pkg, const char* 
   if (!name) return NullArg("name");
   auto it = pkg->component_index_by_name.find(name);
   if (it == pkg->component_index_by_name.end()) return nullptr;
+  const auto chains = pkg->manifest.find("chains");
+  if (chains != pkg->manifest.end()) {
+    for (auto chain = chains->begin(); chain != chains->end(); ++chain) {
+      for (const auto& step : chain->at("steps")) {
+        if (step.at("component") == name) {
+          return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA, "component '" + std::string(name) + "' is referenced by chain '" +
+                                                          chain.key() + "', step '" + step.at("id").get<std::string>() +
+                                                          "'.");
+        }
+      }
+    }
+  }
   size_t idx = it->second;
   mp::RecordOrphanComponent(pkg, *pkg->components[idx]);
   pkg->components.erase(pkg->components.begin() + idx);

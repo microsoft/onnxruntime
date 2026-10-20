@@ -14,6 +14,8 @@
 #include <random>
 #include <string>
 
+#include <nlohmann/json.hpp>
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -112,8 +114,8 @@ bool test_new_creates_empty_package() {
   PkgHandle p(raw);
   const ModelPackageInfo* info = ModelPackage_Info(p.get());
   CHECK(info != nullptr);
-  CHECK(info->schema_version_major == 0);
-  CHECK(info->schema_version_minor == 0);
+  CHECK(info->schema_version_major == 1);
+  CHECK(info->schema_version_minor == 1);
   CHECK((info)->num_components == 0);
   CHECK((info)->num_shared_assets == 0);
   CHECK(std::string(info->layout) == "portable");
@@ -478,12 +480,119 @@ bool test_view_cache_drops_on_remove() {
   return true;
 }
 
+bool test_chain_authoring_and_reference_integrity() {
+  using Json = nlohmann::ordered_json;
+  ModelPackage* raw = nullptr;
+  CHECK_OK(ModelPackage_New(&raw));
+  PkgHandle p(raw);
+  CHECK_OK(ModelPackage_SetComponentInline(raw, "decoder", R"({"variants":{"cpu":{}}})"));
+  CHECK_OK(ModelPackage_SetComponentInline(raw, "unused", R"({"variants":{}})"));
+  const char* chain = R"({"steps":[{"id":"prefill","component":"decoder"},{"id":"decode","component":"decoder"}]})";
+  CHECK_OK(ModelPackage_SetChainJson(raw, "generate", chain));
+  CHECK_OK(ModelPackage_SetChainJson(raw, "other", R"({"steps":[{"id":"run","component":"decoder"}]})"));
+  const char* before = nullptr;
+  const char* named = nullptr;
+  CHECK_OK(ModelPackage_GetChainsJson(raw, &before));
+  CHECK_OK(ModelPackage_GetChainJson(raw, "generate", &named));
+  const auto* info = ModelPackage_Info(raw);
+  const std::string snapshot(before);
+  CHECK_ERR(ModelPackage_SetChainsJson(raw, "{"), MODEL_PACKAGE_ERR_SCHEMA);
+  CHECK_ERR(ModelPackage_SetChainsJson(raw, "[]"), MODEL_PACKAGE_ERR_SCHEMA);
+  CHECK_ERR(ModelPackage_SetChainJson(raw, "generate", "{"), MODEL_PACKAGE_ERR_SCHEMA);
+  CHECK_ERR(ModelPackage_SetChainJson(raw, "generate", "false"), MODEL_PACKAGE_ERR_SCHEMA);
+  CHECK_ERR(ModelPackage_SetChainJson(raw, "generate", R"({"steps":[{"id":"bad","component":"missing"}]})"),
+            MODEL_PACKAGE_ERR_SCHEMA);
+  const char invalid_utf8[] = {'x', static_cast<char>(0xff), '\0'};
+  CHECK_ERR(ModelPackage_SetChainJson(raw, invalid_utf8, chain), MODEL_PACKAGE_ERR_SCHEMA);
+  CHECK_ERR(ModelPackage_RemoveComponent(raw, "decoder"), MODEL_PACKAGE_ERR_SCHEMA);
+  const char* after = nullptr;
+  CHECK_OK(ModelPackage_GetChainsJson(raw, &after));
+  CHECK(before == after);
+  CHECK(snapshot == before);
+  CHECK(ModelPackage_Info(raw) == info);
+  CHECK_OK(ModelPackage_GetChainJson(raw, "generate", &after));
+  CHECK(after == named);
+  CHECK_OK(ModelPackage_RemoveChain(raw, "absent"));
+  CHECK(ModelPackage_Info(raw) == info);
+  CHECK_OK(ModelPackage_RemoveComponent(raw, "unused"));
+  CHECK_OK(ModelPackage_RemoveVariant(raw, "decoder", "cpu"));
+  CHECK_OK(ModelPackage_SetComponentInline(raw, "decoder", R"({"variants":{}})"));
+  CHECK_OK(ModelPackage_GetChainsJson(raw, &after));
+  CHECK(Json::parse(after).size() == 2);
+  CHECK_OK(ModelPackage_SetChainJson(raw, "generate", R"({"steps":[{"id":"new","component":"decoder"}]})"));
+  CHECK_OK(ModelPackage_GetChainsJson(raw, &after));
+  CHECK(Json::parse(after)["other"]["steps"][0]["id"] == "run");
+  CHECK_OK(ModelPackage_SetChainsJson(raw, R"({"only":{"steps":[{"id":"one","component":"decoder"}]}})"));
+  CHECK_OK(ModelPackage_GetChainsJson(raw, &after));
+  CHECK(Json::parse(after).size() == 1);
+  CHECK_OK(ModelPackage_RemoveChain(raw, "only"));
+  CHECK_OK(ModelPackage_GetChainsJson(raw, &after));
+  CHECK(std::string(after) == "{}");
+  CHECK_OK(ModelPackage_RemoveChain(raw, "only"));
+  CHECK_OK(ModelPackage_RemoveComponent(raw, "decoder"));
+  CHECK_OK(ModelPackage_SetChainsJson(raw, "{}"));
+  return true;
+}
+
+bool test_chain_authoring_arguments() {
+  ModelPackage* raw = nullptr;
+  CHECK_OK(ModelPackage_New(&raw));
+  PkgHandle p(raw);
+  CHECK_ERR(ModelPackage_SetChainsJson(nullptr, "{}"), MODEL_PACKAGE_ERR_INVALID_ARG);
+  CHECK_ERR(ModelPackage_SetChainsJson(raw, nullptr), MODEL_PACKAGE_ERR_INVALID_ARG);
+  CHECK_ERR(ModelPackage_SetChainJson(nullptr, "g", "{}"), MODEL_PACKAGE_ERR_INVALID_ARG);
+  CHECK_ERR(ModelPackage_SetChainJson(raw, nullptr, "{}"), MODEL_PACKAGE_ERR_INVALID_ARG);
+  CHECK_ERR(ModelPackage_SetChainJson(raw, "", "{}"), MODEL_PACKAGE_ERR_INVALID_ARG);
+  CHECK_ERR(ModelPackage_SetChainJson(raw, "g", nullptr), MODEL_PACKAGE_ERR_INVALID_ARG);
+  CHECK_ERR(ModelPackage_RemoveChain(nullptr, "g"), MODEL_PACKAGE_ERR_INVALID_ARG);
+  CHECK_ERR(ModelPackage_RemoveChain(raw, nullptr), MODEL_PACKAGE_ERR_INVALID_ARG);
+  CHECK_ERR(ModelPackage_RemoveChain(raw, ""), MODEL_PACKAGE_ERR_INVALID_ARG);
+  return true;
+}
+
+bool test_chain_authoring_version_and_no_filesystem_refresh() {
+  using Json = nlohmann::ordered_json;
+  Sandbox s;
+  const char* chain = R"({"steps":[{"id":"run","component":"decoder"}]})";
+  for (const char* version : {"1.0", "1.7"}) {
+    Json manifest = Json::parse(R"({
+      "components":{"decoder":{"variants":{"cpu":{
+        "variant_directory":"cpu","executor_info":{"ort":"ort.json"}
+      }}}}
+    })");
+    manifest["schema_version"] = version;
+    if (std::string(version) == "1.7") manifest["future_top"] = true;
+    s.Write("manifest.json", manifest.dump());
+    s.Write("cpu/ort.json", "{}");
+    ModelPackage* raw = nullptr;
+    CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &raw));
+    PkgHandle p(raw);
+    const auto* info = ModelPackage_Info(raw);
+    const int64_t minor = info->schema_version_minor;
+    CHECK_OK(ModelPackage_RemoveChain(raw, "absent"));
+    CHECK(ModelPackage_Info(raw) == info);
+    CHECK_ERR(ModelPackage_SetChainsJson(raw, R"({"bad":{"steps":[]}})"), MODEL_PACKAGE_ERR_SCHEMA);
+    CHECK(ModelPackage_Info(raw) == info);
+    CHECK(info->schema_version_minor == minor);
+    s.Write("cpu/ort.json", "{");
+    CHECK_OK(ModelPackage_SetChainJson(raw, "generate", chain));
+    CHECK(ModelPackage_Info(raw)->schema_version_major == 1);
+    CHECK(ModelPackage_Info(raw)->schema_version_minor == (minor == 0 ? 1 : minor));
+    CHECK_OK(ModelPackage_RemoveChain(raw, "generate"));
+    CHECK(ModelPackage_Info(raw)->schema_version_minor == (minor == 0 ? 1 : minor));
+  }
+  return true;
+}
+
 struct Test {
   const char* name;
   bool (*fn)();
 };
 
 const Test kTests[] = {
+    {"chain_authoring_and_reference_integrity", test_chain_authoring_and_reference_integrity},
+    {"chain_authoring_arguments", test_chain_authoring_arguments},
+    {"chain_authoring_version_and_no_filesystem_refresh", test_chain_authoring_version_and_no_filesystem_refresh},
     {"new_creates_empty_package", test_new_creates_empty_package},
     {"set_component_inline_basic", test_set_component_inline_basic},
     {"set_component_inline_replaces_existing", test_set_component_inline_replaces_existing},

@@ -895,3 +895,73 @@ Compressed project memory. This is not the execution plan.
   MacroM09 COMPLETE. M10 not started; no merges. Exact host116/116, unchanged
   M09a25/25 device proof and measured48-byte total generation readbacks documented.
   Parent M08 timing-only sanitizer limitation unchanged; no new case excluded.
+
+## M10 - specification review
+
+- User approved the revised candidate manifest on 2026-10-19 and explicitly
+  confirmed no additional requirements before drafting the specification.
+  User subsequently APPROVED SPEC Appendix J for detailed plan preparation.
+  User separately APPROVED detailed M10 TASKS C1-C7 and authorized standalone
+  implementation. Baseline/implementation are starting; M11 is not authorized.
+- Branch state/m10-package-chain-schema is stacked on verified M09b a7a1173cd1.
+- Approved direction: optional named linear chains, JSON-only inspection and
+  authoring, explicit chain selection/no default, immediate common-reference
+  validation. Common schema owns chain/step/component structure; all execution
+  kinds, wiring, exits and policies live in opaque executor_info.ort payloads.
+- Decoder-only example: decoder_prefill/cpu/model1.onnx and
+  decoder_decode/cpu/model2.onnx. Encoder component and chain removed.
+- User explicitly approved sampling-free prefill: finite prompt/cache-only loop,
+  EndOfInputs only, no generation policy/sampler/EOS/generated-token limit.
+  Decode samples its first token from final prefill logits before its first
+  model invocation; proposed generation.initial_logits points to that output.
+  This is NOT implemented by M01-M09; M11 needs an explicit native/API design and
+  CPU/CUDA validation without silently changing existing prefill-sampling APIs.
+- Approved Appendix J details: schema1.1 with coordinated parser/New
+  version; chain/step inline-only namespace objects; five JSON getters/mutators;
+  transactional chain mutations; reject removal of a referenced component;
+  preserve older/future-minor packages, opaque payloads and existing paths/assets.
+- M10 verification: standalone no-ORT build/C consumer, CPU package regressions,
+  measured100% new executable production lines; GPU execution N/A until M11.
+- Detailed plan: one PR on #23; schema/inspection then atomic authoring and
+  reference guard, followed by persistence/compatibility and C11/shared/static
+  qualification, LLVM coverage + CPU ModelPackageApiTest.*, docs/publication.
+  CMake/CTest commands are PROPOSED, not test results. LLVM18.1.8 and cached
+  nlohmann/json headers verified available; no build/test/install performed yet.
+- Implementation checkpoint: baseline CTest4/4; new inspection/authoring/C11
+  pass, but shared/static full suites fail new save-as fixture because parent
+  commit code never copies variant/model directories. Reproduced on frozen
+  M09b with m10-parent-probe; no commit_prune production edits yet.
+  Frozen parent metadata-only1.1 chain preservation passed. Rebuilt CPU
+  ModelPackageApiTest.*16/16 PASS. Coverage not yet measured.
+- User explicitly chose EXPAND COMMIT SCOPE instead of excluding save-as.
+  Draft SPEC J.9 adds model-directory materialization, structural rebasing,
+  external metadata/directory components, copy confinement/error-state tests
+  and real CPU export inference; review pending, revised plan follows approval.
+  Do not implement the repair or weaken its failing test before both reviews.
+- User APPROVED SPEC J.9; TASKS detailed save-as amendment D1-D4 is now drafted
+  for separate approval. Canonical confined export paths use indices (not raw
+  identifiers), copied variant trees, preserved namespace/component shapes,
+  dense anchor repair, failure-state/overlap/collision checks and CPU inference.
+  No commit production repair yet; chain implementation remains in worktree.
+- User separately APPROVED D1-D4. Repair now implemented with indexed confined
+  export directories, model/nested-data copying, external metadata materializing,
+  dense in-place anchor repair, overlap/symlink/FIFO/collision/error-state checks.
+  Instrumented shared suite PASS5/5: inspection25, hashing15, authoring26,
+  commit19; C11consumer15 checks. Diagnostic changed production coverage278/278.
+  LLVM warnings investigated: only three nlohmann input-stream symbols with
+  hash0 have dormant maps (nine warnings when repeated test objects are loaded);
+  no authored-function mismatch. Final fresh coverage/static/CPU proof pending.
+- Final shared/static standalone5/5 PASS:25inspection+15hashing+26authoring+
+  20commit internalcases, C11consumer15checks. final-verified-2 fresh unit profiles
+  measure282/282 (parser70, impl29, authoring60, commit123), no new line excluded.
+  Three dormant nlohmann stream-adapter hash0 maps, zero authored mismatches.
+  Shared/static ldd proves noORT/ONNX/CUDA deps. Genuine parent reader accepts
+  repaired1.1 export/inplacecommit with chain/model-byte preservation.
+  CPU expanded rebuild includes source-independent real-model inference;
+  still pending. PR not yet created; no merge/M11 authorization.
+- FINAL qualification: CPU ModelPackageApiTest.*17/17 PASS including new
+  source-independent PRESERVE/DENSE real square-model inference. Final rebuild/
+  rerun confirms fresh artifact. Standalone shared/static5/5 PASS, unit282/282
+  new production lines; byte/emptydir/error-state/oldreader/linkage proof passes.
+  C1-C6/D1-D4 verified. C7 publication starting, PR not yet created. No installs,
+  agents, CUDA runtime/kernel changes, merge or M11 implementation.

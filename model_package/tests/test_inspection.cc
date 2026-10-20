@@ -16,6 +16,9 @@
 #include <random>
 #include <string>
 #include <system_error>
+#include <vector>
+
+#include <nlohmann/json.hpp>
 
 namespace fs = std::filesystem;
 
@@ -673,28 +676,194 @@ bool test_invalid_utf8_paths_return_status() {
 }
 #endif
 
+bool test_chain_inspection() {
+  Sandbox s;
+  s.Write("manifest.json", R"({"schema_version":"1.0","components":{}})");
+  ModelPackage* raw = nullptr;
+  CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &raw));
+  const char* map = nullptr;
+  CHECK_OK(ModelPackage_GetChainsJson(raw, &map));
+  CHECK(std::string(map) == "{}");
+  const char* again = nullptr;
+  CHECK_OK(ModelPackage_GetChainsJson(raw, &again));
+  CHECK(map == again);
+  CHECK_ERR(ModelPackage_GetChainJson(raw, "missing", &again), MODEL_PACKAGE_ERR_NOT_FOUND);
+  CHECK(again == map);
+  CHECK_ERR(ModelPackage_GetChainsJson(nullptr, &again), MODEL_PACKAGE_ERR_INVALID_ARG);
+  CHECK_ERR(ModelPackage_GetChainsJson(raw, nullptr), MODEL_PACKAGE_ERR_INVALID_ARG);
+  CHECK_ERR(ModelPackage_GetChainJson(nullptr, "g", &again), MODEL_PACKAGE_ERR_INVALID_ARG);
+  CHECK_ERR(ModelPackage_GetChainJson(raw, nullptr, &again), MODEL_PACKAGE_ERR_INVALID_ARG);
+  CHECK_ERR(ModelPackage_GetChainJson(raw, "", &again), MODEL_PACKAGE_ERR_INVALID_ARG);
+  CHECK_ERR(ModelPackage_GetChainJson(raw, "g", nullptr), MODEL_PACKAGE_ERR_INVALID_ARG);
+  CHECK(again == map);
+  ModelPackage_Close(raw);
+
+  const auto manifest = nlohmann::ordered_json::parse(R"({
+    "schema_version":"1.1",
+    "components":{"decoder":{"component_name":"not-the-key","variants":{}}},
+    "chains":{
+      "generate":{
+        "steps":[
+          {"id":"prefill","component":"decoder","executor_info":{"ort":{"kind":"session_loop"}}},
+          {"id":"decode","component":"decoder","executor_info":{"ort":{"private_future_field":null}}}
+        ],
+        "executor_info":{"foreign":{"arbitrary":[1,true,null]}},
+        "additional_metadata":false
+      },
+      "g\u00e9n\u00e9rer":{"steps":[{"id":"only","component":"decoder","additional_metadata":42}]}
+    }
+  })");
+  s.Write("manifest.json", manifest.dump());
+  raw = nullptr;
+  CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &raw));
+  std::unique_ptr<ModelPackage, decltype(&ModelPackage_Close)> owner(raw, ModelPackage_Close);
+  CHECK_OK(ModelPackage_GetChainsJson(raw, &map));
+  CHECK(nlohmann::ordered_json::parse(map) == manifest.at("chains"));
+  const char* first = nullptr;
+  CHECK_OK(ModelPackage_GetChainJson(raw, "generate", &first));
+  const std::string first_copy(first);
+  CHECK_OK(ModelPackage_GetChainJson(raw, u8"g\u00e9n\u00e9rer", &again));
+  CHECK(nlohmann::ordered_json::parse(again)["steps"][0]["id"] == "only");
+  CHECK_OK(ModelPackage_GetChainJson(raw, "generate", &again));
+  CHECK(first == again);
+  CHECK(first_copy == first);
+  CHECK(ModelPackage_Info(raw)->schema_version_minor == 1);
+  return true;
+}
+
+bool test_chain_schema_errors() {
+  using Json = nlohmann::ordered_json;
+  Sandbox s;
+  const Json valid = Json::parse(R"({"steps":[{"id":"step","component":"decoder"}]})");
+  std::vector<Json> invalid = {nullptr, false, 7, "chains.json", Json::array()};
+  auto add = [&](Json body) { invalid.push_back(Json{{"generate", std::move(body)}}); };
+  add(nullptr);
+  add("chain.json");
+  add(Json::object());
+  for (const auto& value : {Json(nullptr), Json(false), Json::object(), Json::array()}) {
+    add(Json{{"steps", value}});
+  }
+  add(Json{{"steps", Json::array({nullptr})}});
+  for (const char* field : {"id", "component"}) {
+    auto body = valid;
+    body["steps"][0].erase(field);
+    add(body);
+    for (const auto& value : {Json(1), Json(""), Json(std::string("x\0y", 3))}) {
+      body = valid;
+      body["steps"][0][field] = value;
+      add(body);
+    }
+  }
+  auto body = valid;
+  body["steps"][0]["component"] = "missing";
+  add(body);
+  body = valid;
+  body["steps"].push_back(body["steps"][0]);
+  add(body);
+  body = valid;
+  body["unexpected"] = true;
+  add(body);
+  body = valid;
+  body["steps"][0]["unexpected"] = true;
+  add(body);
+  invalid.push_back(Json{{"", valid}});
+  invalid.push_back(Json{{std::string("g\0x", 3), valid}});
+  for (bool step_scope : {false, true}) {
+    for (const auto& value : {Json(nullptr), Json::array(), Json("info.json")}) {
+      body = valid;
+      auto& scope = step_scope ? body["steps"][0] : body;
+      scope["executor_info"] = value;
+      add(body);
+    }
+    for (const auto& value : {Json(nullptr), Json::array(), Json("ort.json")}) {
+      body = valid;
+      auto& scope = step_scope ? body["steps"][0] : body;
+      scope["executor_info"] = Json{{"ort", value}};
+      add(body);
+    }
+    for (const auto& name : {std::string(), std::string("o\0t", 3)}) {
+      body = valid;
+      auto& scope = step_scope ? body["steps"][0] : body;
+      scope["executor_info"] = Json{{name, Json::object()}};
+      add(body);
+    }
+  }
+  for (const auto& chains : invalid) {
+    const Json manifest = {
+        {"schema_version", "1.1"}, {"components", {{"decoder", {{"variants", Json::object()}}}}}, {"chains", chains}};
+    s.Write("manifest.json", manifest.dump());
+    ModelPackage* raw = nullptr;
+    CHECK_ERR(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &raw), MODEL_PACKAGE_ERR_SCHEMA);
+    CHECK(raw == nullptr);
+  }
+  return true;
+}
+
+bool test_chain_versions_and_unknown_fields() {
+  using Json = nlohmann::ordered_json;
+  Sandbox s;
+  Json manifest = Json::parse(R"({
+    "schema_version":"1.0","components":{"decoder":{"variants":{}}},
+    "chains":{"generate":{"steps":[{"id":"step","component":"decoder"}]}}
+  })");
+  ModelPackageOpenOptions options{};
+  options.follow_symlinks = true;
+  for (bool strict : {true, false}) {
+    options.strict_unknown_fields = strict;
+    s.Write("manifest.json", manifest.dump());
+    ModelPackage* raw = nullptr;
+    CHECK_ERR(ModelPackage_Open(s.root().u8string().c_str(), &options, &raw), MODEL_PACKAGE_ERR_SCHEMA);
+  }
+  manifest["schema_version"] = "1.1";
+  manifest["chains"]["generate"]["future_chain"] = 1;
+  manifest["chains"]["generate"]["steps"][0]["future_step"] = 2;
+  for (const char* version : {"1.1", "1.2"}) {
+    manifest["schema_version"] = version;
+    s.Write("manifest.json", manifest.dump());
+    options.strict_unknown_fields = std::string(version) == "1.2";
+    ModelPackage* raw = nullptr;
+    CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), &options, &raw));
+    const char* json = nullptr;
+    CHECK_OK(ModelPackage_GetChainsJson(raw, &json));
+    CHECK(Json::parse(json) == manifest["chains"]);
+    ModelPackage_Close(raw);
+  }
+  manifest["schema_version"] = "1.1";
+  manifest["chains"] = Json::object();
+  s.Write("manifest.json", manifest.dump());
+  ModelPackage* raw = nullptr;
+  CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &raw));
+  const char* json = nullptr;
+  CHECK_OK(ModelPackage_GetChainsJson(raw, &json));
+  CHECK(std::string(json) == "{}");
+  CHECK_ERR(ModelPackage_GetChainJson(raw, "missing", &json), MODEL_PACKAGE_ERR_NOT_FOUND);
+  ModelPackage_Close(raw);
+  return true;
+}
+
 struct Test {
   const char* name;
   bool (*fn)();
 };
 
 const Test kTests[] = {
+    {"chain_inspection", test_chain_inspection},
+    {"chain_schema_errors", test_chain_schema_errors},
+    {"chain_versions_and_unknown_fields", test_chain_versions_and_unknown_fields},
     {"open_minimal_inline", test_open_minimal_inline},
     {"open_full_inline_with_metadata", test_open_full_inline_with_metadata},
     {"external_component_file", test_external_component_file},
     {"external_component_directory", test_external_component_directory},
     {"executor_info_inline_and_external", test_executor_info_inline_and_external},
     {"invalid_external_executor_info", test_invalid_external_executor_info},
-    {"inline_executor_info_without_directory_accepted",
-     test_inline_executor_info_without_directory_accepted},
+    {"inline_executor_info_without_directory_accepted", test_inline_executor_info_without_directory_accepted},
     {"path_confinement_rejects_external_paths", test_path_confinement_rejects_external_paths},
     {"installed_layout_allows_absolute", test_installed_layout_allows_absolute},
     {"shared_assets_resolve", test_shared_assets_resolve},
     {"unknown_field_rejected_strict", test_unknown_field_rejected_strict},
     {"unknown_field_tolerated_lenient", test_unknown_field_tolerated_lenient},
     {"round_trip_getters_preserve_order", test_round_trip_getters_preserve_order},
-    {"round_trip_preserves_unknown_fields_lenient",
-     test_round_trip_preserves_unknown_fields_lenient},
+    {"round_trip_preserves_unknown_fields_lenient", test_round_trip_preserves_unknown_fields_lenient},
     {"missing_manifest", test_missing_manifest},
     {"invalid_manifest_json", test_invalid_manifest_json},
     {"unsupported_schema_version", test_unsupported_schema_version},

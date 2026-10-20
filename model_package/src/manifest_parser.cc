@@ -36,7 +36,7 @@ namespace {
 // which are tolerated rather than rejected.
 constexpr int64_t kMinSupportedSchemaMajor = 1;
 constexpr int64_t kMaxSupportedSchemaMajor = 1;
-constexpr int64_t kMaxKnownSchemaMinor = 0;
+constexpr int64_t kMaxKnownSchemaMinor = 1;
 constexpr const char* kManifestFileName = "manifest.json";
 constexpr const char* kComponentFileName = "component.json";
 
@@ -46,6 +46,7 @@ constexpr const char* kPackageVersionKey = "package_version";
 constexpr const char* kDescriptionKey = "description";
 constexpr const char* kLayoutKey = "layout";
 constexpr const char* kComponentsKey = "components";
+constexpr const char* kChainsKey = "chains";
 constexpr const char* kSharedAssetsKey = "shared_assets";
 constexpr const char* kAdditionalMetadataKey = "additional_metadata";
 
@@ -58,15 +59,9 @@ constexpr const char* kDeviceKey = "device";
 constexpr const char* kCompatibilityStringKey = "compatibility_string";
 constexpr const char* kExecutorInfoKey = "executor_info";
 
-constexpr std::array<std::string_view, 8> kManifestKnownKeys = {
-    kSchemaVersionKey,
-    kPackageNameKey,
-    kPackageVersionKey,
-    kDescriptionKey,
-    kLayoutKey,
-    kComponentsKey,
-    kSharedAssetsKey,
-    kAdditionalMetadataKey,
+constexpr std::array<std::string_view, 9> kManifestKnownKeys = {
+    kSchemaVersionKey, kPackageNameKey, kPackageVersionKey, kDescriptionKey,        kLayoutKey,
+    kComponentsKey,    kChainsKey,      kSharedAssetsKey,   kAdditionalMetadataKey,
 };
 
 constexpr std::array<std::string_view, 3> kComponentKnownKeys = {
@@ -126,6 +121,31 @@ ModelPackageStatus* CheckUnknownFields(const ordered_json& obj,
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         where + ": unknown field '" + it.key() + "'.");
     }
+  }
+  return nullptr;
+}
+
+ModelPackageStatus* ValidateIdentifier(const std::string& name, const std::string& where) {
+  if (name.empty() || name.find('\0') != std::string::npos) {
+    return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA, where + ": expected a nonempty identifier without NUL characters.");
+  }
+  // Names supplied by C callers have not necessarily passed through the JSON parser.
+  try {
+    (void)ordered_json(name).dump();
+  } catch (const ordered_json::type_error& error) {
+    return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA, where + ": " + error.what());
+  }
+  return nullptr;
+}
+
+ModelPackageStatus* ValidateInlineExecutorInfo(const ordered_json& body, const std::string& where) {
+  const auto info = body.find(kExecutorInfoKey);
+  if (info == body.end()) return nullptr;
+  if (auto* s = ExpectObject(*info, where + ".executor_info")) return s;
+  for (auto entry = info->begin(); entry != info->end(); ++entry) {
+    const std::string location = where + ".executor_info['" + entry.key() + "']";
+    if (auto* s = ValidateIdentifier(entry.key(), location)) return s;
+    if (auto* s = ExpectObject(entry.value(), location)) return s;
   }
   return nullptr;
 }
@@ -536,6 +556,48 @@ ModelPackageStatus* PopulatePackageMetadata(ModelPackage* pkg) {
 
 }  // namespace
 
+ModelPackageStatus* ValidateChains(const ModelPackage* pkg, const ordered_json& chains) {
+  if (auto* s = ExpectObject(chains, "chains")) return s;
+  constexpr std::array<std::string_view, 3> chain_keys = {"steps", kExecutorInfoKey, kAdditionalMetadataKey};
+  constexpr std::array<std::string_view, 4> step_keys = {"id", "component", kExecutorInfoKey, kAdditionalMetadataKey};
+  for (auto chain = chains.begin(); chain != chains.end(); ++chain) {
+    const std::string where = "chain '" + chain.key() + "'";
+    if (auto* s = ValidateIdentifier(chain.key(), where)) return s;
+    if (auto* s = ExpectObject(chain.value(), where)) return s;
+    if (auto* s = CheckUnknownFields(chain.value(), chain_keys, where, pkg->strict_unknown_fields)) return s;
+    const auto steps = chain->find("steps");
+    if (steps == chain->end() || !steps->is_array() || steps->empty()) {
+      return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA, where + ": 'steps' must be a nonempty array.");
+    }
+    if (auto* s = ValidateInlineExecutorInfo(chain.value(), where)) return s;
+    std::set<std::string> ids;
+    for (size_t i = 0; i < steps->size(); ++i) {
+      const auto& step = (*steps)[i];
+      const std::string location = where + ".steps[" + std::to_string(i) + "]";
+      if (auto* s = ExpectObject(step, location)) return s;
+      if (auto* s = CheckUnknownFields(step, step_keys, location, pkg->strict_unknown_fields)) return s;
+      for (const char* key : {"id", "component"}) {
+        const auto value = step.find(key);
+        if (value == step.end() || !value->is_string()) {
+          return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA, location + ": '" + key + "' must be a string.");
+        }
+        if (auto* s = ValidateIdentifier(value->get_ref<const std::string&>(), location + "." + key)) return s;
+      }
+      const auto& id = step.at("id").get_ref<const std::string&>();
+      if (!ids.insert(id).second) {
+        return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA, where + ": duplicate step id '" + id + "'.");
+      }
+      const auto& component = step.at("component").get_ref<const std::string&>();
+      if (pkg->component_index_by_name.count(component) == 0) {
+        return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
+                          location + " ('" + id + "'): unknown component '" + component + "'.");
+      }
+      if (auto* s = ValidateInlineExecutorInfo(step, location)) return s;
+    }
+  }
+  return nullptr;
+}
+
 PathResolverOptions PathOptionsFor(const ModelPackage* pkg) {
   PathResolverOptions o;
   o.follow_symlinks = pkg->follow_symlinks;
@@ -681,6 +743,10 @@ ModelPackageStatus* ParsePackage(const fs::path& package_root,
   // Validate the schema version first so an unsupported package fails fast, before any
   // component/asset parsing. May relax pkg->strict_unknown_fields for a newer minor.
   if (auto* s = ParseSchemaVersion(pkg)) return s;
+  const auto chains = pkg->manifest.find(kChainsKey);
+  if (chains != pkg->manifest.end() && pkg->schema_version_minor < 1) {
+    return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA, "manifest: 'chains' requires schema_version 1.1 or newer.");
+  }
 
   // Layout pre-read for path-resolver options. Done before strict-unknown
   // check because we need the layout value to decide path-confinement.
@@ -719,6 +785,9 @@ ModelPackageStatus* ParsePackage(const fs::path& package_root,
     pkg->components.push_back(std::move(rec));
   }
 
+  if (chains != pkg->manifest.end()) {
+    if (auto* s = ValidateChains(pkg, *chains)) return s;
+  }
   if (auto* s = LoadSharedAssets(pkg, presolve_opts)) return s;
   if (auto* s = PopulatePackageMetadata(pkg)) return s;
   if (auto* s = RefreshExecutorInfoCache(pkg, /*strict_missing_external=*/true)) return s;
