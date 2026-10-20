@@ -4214,7 +4214,7 @@ static void RunGQACudaCacheAliasingTest(
   }
   auto key_value = make_gpu_value(key_data, kv_shape);
   auto value_value = make_gpu_value(value_data, kv_shape);
-  const int32_t seqlens_k_value = decode_seqlens_k.value_or(total_length - sequence_length);
+  const int32_t seqlens_k_value = decode_seqlens_k.value_or(total_length - 1);
   auto seqlens_value =
       make_gpu_value(std::vector<int32_t>(batch_size, seqlens_k_value), {batch_size});
   std::vector<int32_t> total_length_data{total_length};
@@ -4296,19 +4296,21 @@ static void RunGQACudaCacheAliasingTest(
       ASSERT_EQ(actual.size(), 3u);
       for (int batch = 0; batch < batch_size; ++batch) {
         for (int head = 0; head < kv_num_heads; ++head) {
+          const int valid_q_len = valid_windowed_cache
+                                      ? std::clamp(seqlens_k_value + 1 - (total_length - sequence_length),
+                                                   0, sequence_length)
+                                      : sequence_length;
           const int expected_cache_length =
               decode_seqlens_k.has_value() ? cache_capacity : (valid_windowed_cache ? cache_capacity : total_length);
-          const int append_offset = decode_seqlens_k.has_value()
+          const int append_offset = decode_seqlens_k.has_value() && !valid_windowed_cache
                                         ? std::clamp(seqlens_k_value, 0, cache_capacity - sequence_length)
                                         : (valid_windowed_cache ? cache_capacity : past_length);
           for (int token = 0; token < expected_cache_length; ++token) {
             for (int channel = 0; channel < head_size; ++channel) {
               const size_t cache_index = ((batch * kv_num_heads + head) * cache_capacity + token) * head_size + channel;
-              const int source_token = valid_windowed_cache && !decode_seqlens_k.has_value()
-                                           ? token + sequence_length
-                                           : token;
+              const int source_token = valid_windowed_cache ? token + valid_q_len : token;
               const bool from_new =
-                  source_token >= append_offset && source_token < append_offset + sequence_length;
+                  source_token >= append_offset && source_token < append_offset + valid_q_len;
               const size_t past_index =
                   ((batch * kv_num_heads + head) * cache_capacity + source_token) *
                       head_size +
@@ -4448,6 +4450,19 @@ TEST(GroupQueryAttentionTest, CudaWindowedStagingFlashUsesEffectiveKvLength) {
   }));
 #else
   GTEST_SKIP() << "FlashAttention is not compiled";
+#endif
+}
+
+TEST(GroupQueryAttentionTest, CudaWindowedRightPaddedChunkPrefill) {
+  constexpr int sequence_length = 3;
+  // total_length is 257 (past_length = 254, padded chunk = 3). Passing seqlens_k = 254 means
+  // total_valid_tokens = 255 (1 valid query token and 2 right-padding tokens in the chunk).
+  constexpr int32_t right_padded_seqlens_k = 254;
+  RunGQACudaCacheAliasingTest(false, true, sequence_length, nullptr, right_padded_seqlens_k);
+#if USE_FLASH_ATTENTION
+  if (HasCudaEnvironment(800)) {
+    RunGQACudaCacheAliasingTest(true, true, sequence_length, nullptr, right_padded_seqlens_k);
+  }
 #endif
 }
 
