@@ -136,7 +136,7 @@ class ConvReplayHarness {
     allocator_ = session_->GetAllocator(memory_info);
     ORT_RETURN_IF_NOT(allocator_, "WebGPU allocator is unavailable.");
     const std::array backing_values{std::make_pair(&source_, &source_value_), std::make_pair(&capture_, &capture_value_),
-                                   std::make_pair(&destination_, &destination_value_)};
+                                    std::make_pair(&destination_, &destination_value_)};
     for (const auto& item : backing_values) {
       Tensor::InitOrtValue(ElementType(), TensorShape{static_cast<int64_t>(item.first->size())},
                            allocator_, *item.second);
