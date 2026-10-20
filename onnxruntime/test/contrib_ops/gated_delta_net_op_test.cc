@@ -302,7 +302,7 @@ void Reference(const Geometry& g, const Options& o, const Inputs& in, std::vecto
         double decay = 1.0;
         if (gated) {
           float raw = in.decay[gi];
-          if (o.gate_activation == "qwen") {
+          if (o.gate_activation == "qwen" || o.gate_activation == "softplus") {
             raw = -std::exp(in.a_log[hv]) * SoftPlus(raw + in.dt_bias[hv]);
           }
           decay = std::exp(static_cast<double>(raw));
@@ -518,7 +518,7 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   } else {
     test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, in.state0);
   }
-  if (o.gate_activation == "qwen") {
+  if (o.gate_activation == "qwen" || o.gate_activation == "softplus") {
     test.AddInput<float>("a_log", {g.hv}, in.a_log);
     test.AddInput<float>("dt_bias", {g.hv}, in.dt_bias);
   } else {
@@ -731,6 +731,47 @@ TEST(GatedDeltaNetTest, RecurrentOutputsIncludeFirstRowState) {
   test.AddOutput<float>("mid_state", {g.batch, g.hv, g.dv, g.dk},
                         expected_mid_state, false, 2e-3f, 2e-3f);
   test.Run();
+}
+
+TEST(GatedDeltaNetTest, RecurrentMidStatePreservesEmptyRequests) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  for (int head_size : {128, 32}) {
+    for (bool with_state : {false, true}) {
+      SCOPED_TRACE(head_size);
+      SCOPED_TRACE(with_state);
+      const Geometry g{1, 2, 1, 1, head_size, head_size};
+      Inputs in = MakeInputs(g, 917, with_state);
+      in.cu_seqlens = {0, 0, 1};
+      in.q = RoundToTensorType<MLFloat16>(in.q);
+      in.k = RoundToTensorType<MLFloat16>(in.k);
+      in.v = RoundToTensorType<MLFloat16>(in.v);
+      Options options;
+      std::vector<float> expected_output, expected_state;
+      Reference(g, options, in, &expected_output, &expected_state);
+
+      OpTester test("GatedDeltaNet", 1, kMSDomain);
+      AddCommonAttrs(test, options);
+      test.AddAttribute<std::string>("state_output", "mid_state");
+      test.AddInput<MLFloat16>("query", {1, 1, head_size}, ToTensorType<MLFloat16>(in.q));
+      test.AddInput<MLFloat16>("key", {1, 1, head_size}, ToTensorType<MLFloat16>(in.k));
+      test.AddInput<MLFloat16>("value", {1, 1, head_size}, ToTensorType<MLFloat16>(in.v));
+      test.AddInput<int32_t>("cu_seqlens", {3}, in.cu_seqlens);
+      test.AddInput<float>("decay", {1, 1}, in.decay);
+      test.AddInput<float>("beta", {1, 1}, in.beta);
+      if (with_state) {
+        test.AddInput<float>("initial_state", {2, 1, head_size, head_size}, in.state0);
+      } else {
+        test.AddOptionalInputEdge<float>();
+      }
+      test.AddOutput<MLFloat16>("output", {1, 1, head_size},
+                                ToTensorType<MLFloat16>(expected_output), false, 6e-3f, 6e-3f);
+      test.AddOutput<float>("final_state", {2, 1, head_size, head_size}, expected_state, false, 2e-3f, 2e-3f);
+      test.AddOutput<float>("mid_state", {2, 1, head_size, head_size}, expected_state, false, 2e-3f, 2e-3f);
+      std::vector<std::unique_ptr<IExecutionProvider>> providers;
+      providers.push_back(DefaultCudaExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+    }
+  }
 }
 
 bool NeedSkipGatedDeltaNetSplitTest() {

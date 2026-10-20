@@ -428,6 +428,12 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
     const int k = lane + i * 32;
     s[i] = pack.initial_state != nullptr ? pack.initial_state[st_off + k] : 0.0f;
   }
+  if (seq_len == 0 && pack.mid_state != nullptr) {
+#pragma unroll
+    for (int i = 0; i < kRegs; ++i) {
+      pack.mid_state[st_off + lane + i * 32] = s[i];
+    }
+  }
 
   for (int t = 0; t < seq_len; ++t) {
     const int64_t tok = tok_base + t;
@@ -583,6 +589,13 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
                  : 0.0f;
   }
   __syncthreads();
+
+  if (seq_len == 0 && pack.mid_state != nullptr) {
+    for (int idx = tid; idx < d_k * d_v; idx += kThreads) {
+      const int r = idx / d_v, c = idx % d_v;
+      pack.mid_state[st_off + static_cast<int64_t>(c) * d_k + r] = S[idx];
+    }
+  }
 
   for (int t = 0; t < seq_len; ++t) {
     const int64_t tok = tok_base + t;
