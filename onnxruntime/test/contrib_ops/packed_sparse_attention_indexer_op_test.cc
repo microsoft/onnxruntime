@@ -1363,7 +1363,9 @@ TEST(PackedSparseAttentionIndexerCudaTest, QsaRadixTopKReferenceParity) {
   for (const char* radix_flag : {"0", "1"}) {
     const char* dispatch_marker =
         radix_flag[0] == '1' ? "QsaPartialTopKKernel<true>" : "QsaMergeTileTopKKernel";
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK", radix_flag}}};
+    // Plugin loggers cache their severity during registration in the re-executed test main.
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK", radix_flag},
+                                                  {"ORT_UNIT_TEST_MAIN_LOG_LEVEL", "0"}}};
     ASSERT_EXIT(
         {
           logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
