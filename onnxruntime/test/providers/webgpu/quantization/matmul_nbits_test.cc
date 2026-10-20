@@ -4,10 +4,12 @@
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
 #include <cstdint>
+#include <limits>
 #include <utility>
 
 #include "gtest/gtest.h"
 
+#include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/span_utils.h"
 #include "core/providers/webgpu/webgpu_context.h"
@@ -144,6 +146,53 @@ TEST(WebGpuMatMulNBitsTest, Float16_4Bits_SubgroupMatrixTiles) {
 
 TEST(WebGpuMatMulNBitsTest, Float16_8Bits_SubgroupMatrixTiles) {
   RunMatMulNBitsTileTests(8);
+}
+
+TEST(WebGpuMatMulNBitsTest, SmallMKernelPreference) {
+  using contrib::webgpu::PreferRegularMatMulNBitsForSmallM;
+  using webgpu::SubgroupMatrixConfig;
+  constexpr auto f16 = wgpu::SubgroupMatrixComponentType::F16;
+  constexpr auto f32 = wgpu::SubgroupMatrixComponentType::F32;
+  constexpr SubgroupMatrixConfig config{f16, f16, 16, 16, 16, 32, true};
+
+  for (uint32_t M : {1u, 3u, 9u, 128u, std::numeric_limits<uint32_t>::max()}) {
+    EXPECT_FALSE(PreferRegularMatMulNBitsForSmallM(M, 64, 4, config));
+  }
+  for (uint32_t M = 4; M <= 8; ++M) {
+    const uint32_t max_N = 128u * 1024u / M;
+    EXPECT_TRUE(PreferRegularMatMulNBitsForSmallM(M, max_N, 4, config));
+    EXPECT_FALSE(PreferRegularMatMulNBitsForSmallM(M, max_N + 1, 4, config));
+    EXPECT_FALSE(PreferRegularMatMulNBitsForSmallM(M, 248320, 4, config));
+    EXPECT_FALSE(PreferRegularMatMulNBitsForSmallM(M, std::numeric_limits<uint32_t>::max(), 4, config));
+  }
+  EXPECT_TRUE(PreferRegularMatMulNBitsForSmallM(4, 17408, 4, config));
+  EXPECT_TRUE(PreferRegularMatMulNBitsForSmallM(8, 14336, 4, config));
+  EXPECT_FALSE(PreferRegularMatMulNBitsForSmallM(8, 17408, 4, config));
+  EXPECT_FALSE(PreferRegularMatMulNBitsForSmallM(4, 5120, 2, config));
+  EXPECT_FALSE(PreferRegularMatMulNBitsForSmallM(4, 5120, 8, config));
+  for (const auto& other : {SubgroupMatrixConfig{f16, f16, 16, 16, 16, 64, true},
+                            SubgroupMatrixConfig{f16, f16, 8, 16, 16, 32, true},
+                            SubgroupMatrixConfig{f16, f16, 8, 8, 8, 32, false},
+                            SubgroupMatrixConfig{f32, f32, 8, 8, 8, 32, false},
+                            SubgroupMatrixConfig{f16, f32, 16, 16, 16, 32, true}}) {
+    EXPECT_FALSE(PreferRegularMatMulNBitsForSmallM(4, 5120, 4, other));
+  }
+}
+
+TEST(WebGpuMatMulNBitsTest, Float16_4Bits_SmallMSelectionBoundaries) {
+  for (bool has_zero_points : {false, true}) {
+    for (bool has_bias : {false, true}) {
+      for (int64_t M : {1, 3, 4, 5, 6, 7, 8, 9}) {
+        RunMatMulNBitsTileTest(4, M, 64, 64, has_zero_points, has_bias);
+      }
+      RunMatMulNBitsTileTest(4, 4, 32768, 64, has_zero_points, has_bias);
+      RunMatMulNBitsTileTest(4, 4, 32832, 64, has_zero_points, has_bias);
+      RunMatMulNBitsTileTest(4, 8, 16384, 64, has_zero_points, has_bias);
+      RunMatMulNBitsTileTest(4, 8, 16448, 64, has_zero_points, has_bias);
+      RunMatMulNBitsTileTest(4, 8, 14336, 64, has_zero_points, has_bias);
+      RunMatMulNBitsTileTest(4, 4, 65, 64, has_zero_points, has_bias);
+    }
+  }
 }
 
 }  // namespace test
