@@ -40,7 +40,12 @@ void DeleteRegistry();
 
 struct CUDAProviderFactory : IExecutionProviderFactory {
   CUDAProviderFactory(const CUDAExecutionProviderInfo& info)
-      : info_{info} {}
+      : info_{info} {
+    if (info.default_memory_arena_cfg) {
+      info_.owned_memory_arena_cfg = std::make_shared<OrtArenaCfg>(*info.default_memory_arena_cfg);
+      info_.default_memory_arena_cfg = info_.owned_memory_arena_cfg.get();
+    }
+  }
   ~CUDAProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
@@ -260,6 +265,7 @@ struct CUDA_Provider : Provider {
    *
    * What this function does is equivalent to resetting the OrtCUDAProviderOptionsV2 instance with
    * default CUDAExecutionProviderInf instance first and then set up the provided provider options.
+   * The arena configuration pointer is preserved because it can only be set through UpdateCUDAProviderOptionsWithValue().
    * See CUDAExecutionProviderInfo::FromProviderOptions() for more details.
    */
   void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
@@ -277,7 +283,6 @@ struct CUDA_Provider : Provider {
     if (options.find("has_user_compute_stream") != options.end()) {
       cuda_options.user_compute_stream = internal_options.user_compute_stream;
     }
-    cuda_options.default_memory_arena_cfg = internal_options.default_memory_arena_cfg;
     cuda_options.cudnn_conv_use_max_workspace = internal_options.cudnn_conv_use_max_workspace;
     cuda_options.enable_cuda_graph = internal_options.enable_cuda_graph;
     cuda_options.cudnn_conv1d_pad_to_nc1d = internal_options.cudnn_conv1d_pad_to_nc1d;
