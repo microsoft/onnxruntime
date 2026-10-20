@@ -2,7 +2,10 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
+
+#include <algorithm>
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits_qlora.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
@@ -61,10 +64,12 @@ Status GenerateShaderCode16x16x16(ShaderHelper& shader,
                                   const ShaderVariableHelper& b,
                                   const ShaderVariableHelper& scales_b,
                                   const ShaderVariableHelper& output,
-                                  uint32_t nbits, const SubgroupMatrixConfig& config, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
+                                  uint32_t nbits, const SubgroupMatrixConfig& config, bool has_zero_points, bool has_bias,
+                                  bool has_weight_idx, bool has_weight_idx_indirect, bool has_qlora_up) {
   // Use the 128x128 tile shader for the 16x16x16 config.
   return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_16x16x16_128.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
+                             WGSL_TEMPLATE_PARAMETER(has_qlora_up, has_qlora_up),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect),
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points),
@@ -82,10 +87,13 @@ Status GenerateShaderCode8x16x16(ShaderHelper& shader,
                                  const ShaderVariableHelper& b,
                                  const ShaderVariableHelper& scales_b,
                                  const ShaderVariableHelper& output,
-                                 uint32_t nbits, const SubgroupMatrixConfig& config, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect,
+                                 uint32_t nbits, const SubgroupMatrixConfig& config, bool has_zero_points, bool has_bias,
+                                 bool has_weight_idx, bool has_weight_idx_indirect, bool has_qlora_up,
                                  uint32_t tile_m, uint32_t tile_n, bool has_tail_buffer) {
   return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_8x16x16.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(acc_f32, config.resultComponentType == wgpu::SubgroupMatrixComponentType::F32),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
+                             WGSL_TEMPLATE_PARAMETER(has_qlora_up, has_qlora_up),
                              WGSL_TEMPLATE_PARAMETER(has_tail_buffer, has_tail_buffer),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect),
@@ -104,9 +112,11 @@ Status GenerateShaderCode8x16x16(ShaderHelper& shader,
 
 Status GenerateShaderCode8x8x8(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b,
                                const ShaderVariableHelper& scales_b,
-                               const ShaderVariableHelper& output, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
+                               const ShaderVariableHelper& output, uint32_t nbits, bool has_zero_points, bool has_bias,
+                               bool has_weight_idx, bool has_weight_idx_indirect, bool has_qlora_up) {
   return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_8x8x8.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
+                             WGSL_TEMPLATE_PARAMETER(has_qlora_up, has_qlora_up),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect),
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points),
@@ -131,17 +141,27 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
   if (has_weight_idx_indirect_) {
     shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
+  if (has_qlora_up_) {
+    shader.AddInput("lora_t", ShaderUsage::UseElementTypeAlias);
+    shader.AddInput("lora_b", ShaderUsage::UseElementTypeAlias);
+    shader.AddInput("lora_b_scales");
+    GenerateQLoRAUp(shader, false);
+  }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   if (has_tail_buffer_) {
     shader.AddOutput("tail_output", ShaderUsage::None);
   }
 
   if (config_.Is(8, 8, 8)) {
-    return GenerateShaderCode8x8x8(shader, a, b, scales_b, output, nbits_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
+    return GenerateShaderCode8x8x8(shader, a, b, scales_b, output, nbits_, has_zero_points_, has_bias_,
+                                   has_weight_idx_, has_weight_idx_indirect_, has_qlora_up_);
   } else if (config_.Is(8, 16, 16)) {
-    return GenerateShaderCode8x16x16(shader, b, scales_b, output, nbits_, config_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_, tile_m_, tile_n_, has_tail_buffer_);
+    return GenerateShaderCode8x16x16(shader, b, scales_b, output, nbits_, config_, has_zero_points_, has_bias_,
+                                     has_weight_idx_, has_weight_idx_indirect_, has_qlora_up_, tile_m_, tile_n_,
+                                     has_tail_buffer_);
   } else if (config_.Is(16, 16, 16)) {
-    return GenerateShaderCode16x16x16(shader, b, scales_b, output, nbits_, config_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
+    return GenerateShaderCode16x16x16(shader, b, scales_b, output, nbits_, config_, has_zero_points_, has_bias_,
+                                      has_weight_idx_, has_weight_idx_indirect_, has_qlora_up_);
   } else {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                   "Unsupported subgroup matrix config dimensions.");
@@ -167,6 +187,53 @@ class SubgroupMatrixMatMulNBitsTailCopyProgram final : public Program<SubgroupMa
       {"output_offset", ProgramUniformVariableDataType::Uint32});
 };
 
+namespace {
+
+struct MatMulNBitsTiling {
+  uint32_t m;
+  uint32_t n;
+  uint32_t workgroup_size;
+};
+
+MatMulNBitsTiling SelectMatMulNBitsTiling(const SubgroupMatrixConfig& config,
+                                          uint32_t M, uint32_t N, bool has_bias) {
+  if (config.Is(8, 16, 16)) {
+    if (!has_bias) {
+      if (M >= 2048 && N % 256 == 0) {
+        return {128, 256, 512};
+      }
+      if (M >= 256 && N % 128 == 0) {
+        return {128, 128, 512};
+      }
+    }
+    return {64, 64, 256};
+  }
+  if (config.Is(16, 16, 16)) {
+    return {128, 128, 128};
+  }
+  return {32, 64, 128};
+}
+
+Status PrepackMatMulNBitsInput(const Tensor* a, uint32_t M, uint32_t K, uint32_t padded_M,
+                               const SubgroupMatrixConfig& config, onnxruntime::webgpu::ComputeContext& context,
+                               Tensor& packed) {
+  PrepackProgram program{config.M, config.K};
+  program.SetWorkgroupSize(config.subgroupSize);
+  if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+    program.SetSubgroupSize(config.subgroupSize);
+  }
+  ORT_ENFORCE(K % config.K == 0 && padded_M % config.M == 0);
+  program.SetDispatchGroupSize(padded_M / config.M, K / config.K, 1);
+  packed = context.CreateGPUTensor(a->DataType(), TensorShape{padded_M, K});
+  program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+      .AddOutputs({{&packed, ProgramTensorMetadataDependency::Rank, packed.Shape(), 1}})
+      .AddUniformVariables({{M}, {K}})
+      .CacheHint(config.M, config.K);
+  return context.RunProgram(program);
+}
+
+}  // namespace
+
 Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
                                       const Tensor* zero_points, const Tensor* bias,
                                       uint32_t M,
@@ -178,40 +245,30 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       onnxruntime::webgpu::ComputeContext& context,
                                       Tensor* y,
                                       const uint32_t weight_index,
-                                      const Tensor* weight_index_indirect) {
+                                      const Tensor* weight_index_indirect,
+                                      const Tensor* lora_t,
+                                      const Tensor* lora_b,
+                                      const Tensor* lora_b_scales,
+                                      const Tensor* prepacked_a,
+                                      uint32_t narrow_tile_m) {
   const bool has_zero_points = zero_points != nullptr;
   const bool has_bias = bias != nullptr;
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
   const bool has_weight_idx = weight_index > 0 || has_weight_idx_indirect;
+  const bool has_qlora_up = lora_t != nullptr;
+  ORT_RETURN_IF_NOT((lora_b != nullptr) == has_qlora_up && (lora_b_scales != nullptr) == has_qlora_up,
+                    "QLoRA up inputs must be provided together.");
 
-  // Determine tile sizes first (needed for prepack padding).
-  uint32_t tile_m = 32;
-  uint32_t tile_n = 64;
-  uint32_t workgroup_size = 128;
-  if (config.Is(8, 16, 16)) {
-    // Default: 64x64 tile size, 256 thread.
-    tile_m = 64;
-    tile_n = 64;
-    workgroup_size = 256;
-    // Bias output uses a scratch tile, so keep it at 64x64 for workgroup memory limits.
-    if (!has_bias) {
-      if (M >= 2048 && N % 256 == 0) {
-        // Large M (M>=2048): 128x256 tile size, 512 threads.
-        tile_m = 128;
-        tile_n = 256;
-        workgroup_size = 512;
-      } else if (M >= 256 && N % 128 == 0) {
-        // Mid-sized M (256<=M<2048): 128x128 tile size, 512 threads.
-        tile_m = 128;
-        tile_n = 128;
-        workgroup_size = 512;
-      }
-    }
-  } else if (config.Is(16, 16, 16)) {
-    // 16x16x16 config: 4 subgroups, 128 threads, 128x128 tiles
-    tile_m = 128;
-    tile_n = 128;
-    workgroup_size = 128;
+  auto [tile_m, tile_n, workgroup_size] = SelectMatMulNBitsTiling(config, M, N, has_bias);
+  if (narrow_tile_m != 0) {
+    ORT_ENFORCE(config.Is(8, 16, 16) && nbits == 8 && N == 32 &&
+                narrow_tile_m % config.M == 0 && !has_bias && !has_qlora_up);
+    tile_m = narrow_tile_m;
+    tile_n = 32;
+    workgroup_size = tile_m / config.M * config.subgroupSize;
+  }
+  if (config.Is(8, 16, 16) && config.resultComponentType == wgpu::SubgroupMatrixComponentType::F32) {
+    ORT_ENFORCE(narrow_tile_m != 0, "FP32 subgroup accumulation is implemented for the narrow QLoRA down tile.");
   }
   ORT_ENFORCE(workgroup_size <= context.DeviceLimits().maxComputeWorkgroupSizeX &&
                   workgroup_size <= context.DeviceLimits().maxComputeInvocationsPerWorkgroup,
@@ -219,32 +276,14 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
 
   // If applicable, layout optimization of input matrix A(MxK) can be used for SubgroupMatrixLoad.
   Tensor a_prepack;
-  if (config.needsPrepack) {
-    const auto m = config.M;
-    const auto k = config.K;
-
-    // Optimize the layout of input matrix A(MxK) for SubgroupMatrixLoad.
-    PrepackProgram prepack_program{m, k};
-    prepack_program.SetWorkgroupSize(config.subgroupSize);
-    if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
-      prepack_program.SetSubgroupSize(config.subgroupSize);
-    }
-
-    // Pad M to workgroup tile size so all subgroups read valid prepacked data.
-    const uint32_t padded_M = CeilDiv(M, tile_m) * tile_m;
-    const auto dispatch_group_size_x = padded_M / m;
-    ORT_ENFORCE(K % k == 0, "K must be a multiple of ", k);
-    const auto dispatch_group_size_y = K / k;
-    // Each workgroup will process one subgroup matrix of size m x k.
-    prepack_program.SetDispatchGroupSize(dispatch_group_size_x, dispatch_group_size_y, 1);
-
-    TensorShape a_prepack_shape{padded_M, K};
-    a_prepack = context.CreateGPUTensor(a->DataType(), a_prepack_shape);
-    prepack_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-        .AddOutputs({{&a_prepack, ProgramTensorMetadataDependency::Rank, a_prepack.Shape(), 1}})
-        .AddUniformVariables({{M}, {K}})
-        .CacheHint(m, k);
-    ORT_RETURN_IF_ERROR(context.RunProgram(prepack_program));
+  if (prepacked_a != nullptr) {
+    ORT_ENFORCE(config.needsPrepack && prepacked_a->DataType() == a->DataType() &&
+                prepacked_a->Shape().NumDimensions() == 2 && prepacked_a->Shape()[1] == K &&
+                prepacked_a->Shape()[0] >= CeilDiv(M, tile_m) * tile_m);
+    a = prepacked_a;
+  } else if (config.needsPrepack) {
+    ORT_RETURN_IF_ERROR(PrepackMatMulNBitsInput(a, M, K, CeilDiv(M, tile_m) * tile_m,
+                                                config, context, a_prepack));
     a = &a_prepack;
   }
 
@@ -255,8 +294,12 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   // padded buffer instead of `y` (which is too short by this point); the crop-copy
   // dispatch below moves the valid rows into `y`. This keeps the no-bias write-out
   // free of any bounds-checked workgroup-scratch store.
-  const bool has_tail_buffer = !has_bias && config.Is(8, 16, 16) && (M % tile_m != 0);
-  SubgroupMatrixMatMulNBitsProgram matmul_program{nbits, config, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, tile_m, tile_n, has_tail_buffer};
+  const bool has_tail_buffer = !has_bias && config.Is(8, 16, 16) &&
+                               config.resultComponentType != wgpu::SubgroupMatrixComponentType::F32 &&
+                               (M % tile_m != 0);
+  SubgroupMatrixMatMulNBitsProgram matmul_program{nbits, config, has_zero_points, has_bias, has_weight_idx,
+                                                  has_weight_idx_indirect, has_qlora_up, tile_m, tile_n,
+                                                  has_tail_buffer};
   matmul_program.SetWorkgroupSize(workgroup_size);
 
   // Pin kernels running on variable-size adapters to the subgroup size they were written for.
@@ -278,7 +321,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                  static_cast<uint32_t>(config.componentType),
                  static_cast<uint32_t>(config.resultComponentType),
                  config.M, config.N, config.K, config.subgroupSize,
-                 has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect,
+                 has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, has_qlora_up,
                  tile_m, tile_n, has_tail_buffer);
   if (has_zero_points) {
     matmul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
@@ -288,6 +331,11 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   }
   if (has_weight_idx_indirect) {
     matmul_program.AddInput({weight_index_indirect, ProgramTensorMetadataDependency::None});
+  }
+  if (has_qlora_up) {
+    matmul_program.AddInput({lora_t, ProgramTensorMetadataDependency::Type, 4});
+    matmul_program.AddInput({lora_b, ProgramTensorMetadataDependency::Type, 16});
+    matmul_program.AddInput({lora_b_scales, ProgramTensorMetadataDependency::Type});
   }
 
   Tensor tail_buffer;
@@ -320,6 +368,34 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   }
 
   return Status::OK();
+}
+
+Status ApplySubgroupMatrixMatMulNBitsQLoRA(
+    const Tensor* x, const Tensor* w, const Tensor* scales,
+    const Tensor* lora_a, const Tensor* lora_a_scales,
+    const Tensor* lora_b, const Tensor* lora_b_scales,
+    uint32_t M, uint32_t N, uint32_t K, const SubgroupMatrixConfig& config,
+    const SubgroupMatrixConfig& down_config,
+    onnxruntime::webgpu::ComputeContext& context, Tensor* t, Tensor* y) {
+  ORT_ENFORCE(config.Is(8, 16, 16) && config.needsPrepack);
+  ORT_ENFORCE(down_config.Is(8, 16, 16) && down_config.needsPrepack &&
+              down_config.componentType == config.componentType &&
+              down_config.resultComponentType == wgpu::SubgroupMatrixComponentType::F32 &&
+              down_config.subgroupSize == config.subgroupSize);
+  constexpr uint32_t kDownTileM = 32;
+  const auto base_tiling = SelectMatMulNBitsTiling(config, M, N, false);
+  const auto padded_M = std::max(CeilDiv(M, base_tiling.m) * base_tiling.m,
+                                 CeilDiv(M, kDownTileM) * kDownTileM);
+  // The layout depends on the subgroup matrix dimensions, not the workgroup tile.
+  // Both projections can read one packed X, padded for the larger workgroup tile.
+  Tensor packed_x;
+  ORT_RETURN_IF_ERROR(PrepackMatMulNBitsInput(x, M, K, padded_M, config, context, packed_x));
+  ORT_RETURN_IF_ERROR(ApplySubgroupMatrixMatMulNBits(
+      x, lora_a, lora_a_scales, nullptr, nullptr, M, 32, K, 8, K / 32, down_config, context, t,
+      0, nullptr, nullptr, nullptr, nullptr, &packed_x, kDownTileM));
+  return ApplySubgroupMatrixMatMulNBits(
+      x, w, scales, nullptr, nullptr, M, N, K, 4, CeilDiv(K / 32, 2u) * 2u, config, context, y,
+      0, nullptr, t, lora_b, lora_b_scales, &packed_x);
 }
 
 bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
@@ -358,12 +434,9 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
     return false;
   }
 
-  // Every fp16 preference below has resultComponentType == F16, and the kernels declare
-  // subgroup_matrix_result<f16, ...> to match, so the accumulation inside
-  // subgroupMatrixMultiplyAccumulate is f16 and there is no variant of this kernel that can
-  // honour an f32 accumulator request. Decline the path instead of ignoring the option: the
-  // caller then falls through to a kernel that does honour it. Only fp16 outputs are affected;
-  // the fp32 config accumulates in f32 already.
+  // The FP16 configurations below accumulate the base projection in FP16. The separately
+  // selected FP32-accumulating QLoRA down tile does not support a general base projection.
+  // Fall back when FP32 accumulation is requested instead of ignoring the option.
   if (is_fp16 && context.EnableMatmulFp32Accumulation()) {
     return false;
   }

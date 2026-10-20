@@ -7,6 +7,7 @@
 #if defined(USE_WEBGPU) && !defined(DISABLE_CONTRIB_OPS)
 #if !defined(ORT_USE_EP_API_ADAPTERS)
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
+#include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
 #include "dawn/native/DawnNative.h"
@@ -106,6 +107,80 @@ void RunQuantizedPrefillAndReusedInput() {
 
 TEST(MatMulNBitsQLoRA, QuantizedPrefillAndReusedInput) { RunQuantizedPrefillAndReusedInput<MLFloat16>(); }
 TEST(MatMulNBitsQLoRA, QuantizedPrefillAndReusedInputFp32) { RunQuantizedPrefillAndReusedInput<float>(); }
+
+TEST(MatMulNBitsQLoRA, PrefillSubgroupMatrixUsesFusedUp) {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  GTEST_SKIP() << "Hardware-specific dispatch checks require direct adapter capability inspection.";
+#else
+  auto ep = DefaultWebGpuExecutionProvider();
+  ASSERT_NE(ep, nullptr);
+  auto& gpu = webgpu::WebGpuContextFactory::GetContext(ep->GetDeviceId());
+  constexpr auto kF16 = wgpu::SubgroupMatrixComponentType::F16;
+  const auto& adapter = gpu.AdapterInfo();
+  const auto& device_configs = gpu.SubgroupMatrixConfigs();
+  const auto config = webgpu::detail::SelectSubgroupMatrixConfigFromAdapterConfigs(
+      {device_configs.configs, device_configs.configCount},
+      adapter.subgroupMinSize, adapter.subgroupMaxSize,
+      gpu.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl),
+      {{kF16, kF16, 16, 16, 16, 32, true},
+       {kF16, kF16, 8, 16, 16, 32, true},
+       {kF16, kF16, 8, 8, 8, 32, false}});
+  if (!gpu.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix) || !config.has_value()) {
+    GTEST_SKIP() << "Requires a compatible FP16 subgroup-matrix configuration.";
+  }
+  const auto down_config = webgpu::detail::SelectSubgroupMatrixConfigFromAdapterConfigs(
+      {device_configs.configs, device_configs.configCount},
+      adapter.subgroupMinSize, adapter.subgroupMaxSize,
+      gpu.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl),
+      {{kF16, wgpu::SubgroupMatrixComponentType::F32, 8, 16, 16, 32, true}});
+
+  constexpr int64_t m = 256, k = 256, n = 128;
+  OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", k);
+  test.AddAttribute<int64_t>("N", n);
+  test.AddAttribute<int64_t>("accuracy_level", 4);
+  test.AddInput<MLFloat16>("X", {1, m, k}, std::vector<MLFloat16>(m * k, MLFloat16(0.5f)));
+  test.AddInput<uint8_t>("W", {n, k / 32, 16}, std::vector<uint8_t>(n * k / 2, 0x99), true);
+  test.AddInput<MLFloat16>("S", {n, k / 32},
+                           std::vector<MLFloat16>(n * k / 32, MLFloat16(0.03125f)), true);
+  test.AddInput<uint8_t>("AQ", {32, k / 32, 32}, std::vector<uint8_t>(32 * k, 129));
+  test.AddInput<MLFloat16>("AS", {32, k / 32}, std::vector<MLFloat16>(k, MLFloat16(0.03125f)));
+  test.AddInput<uint8_t>("BQ", {n, 1, 32}, std::vector<uint8_t>(n * 32, 129));
+  test.AddInput<MLFloat16>("BS", {n, 1}, std::vector<MLFloat16>(n, MLFloat16(0.0625f)));
+  test.AddOutput<MLFloat16>("Y", {1, m, n}, std::vector<MLFloat16>(m * n, MLFloat16(12.0f)));
+
+  SessionOptions session_options;
+  session_options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(std::move(ep));
+  testing::internal::CaptureStderr();
+  test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+  const auto logs = testing::internal::GetCapturedStderr();
+  EXPECT_NE(logs.find("SubgroupMatrixMatMulNBitsQLoRAUp"), std::string::npos) << logs;
+  if (config->Is(8, 16, 16) && down_config.has_value()) {
+    auto count_program = [&logs](const std::string& name) {
+      const auto marker = "Starting program \"" + name + "[";
+      size_t count = 0;
+      for (auto pos = logs.find(marker); pos != std::string::npos; pos = logs.find(marker, pos + marker.size())) {
+        ++count;
+      }
+      return count;
+    };
+    const auto down_count = count_program("SubgroupMatrixMatMulNBits");
+    EXPECT_GT(down_count, 0u) << logs;
+    EXPECT_NE(logs.find("SubgroupMatrixMatMulNBits[8|2|1|8|16|16|32|"), std::string::npos) << logs;
+    EXPECT_EQ(count_program("SubgroupMatrixMatMulLayout"), down_count) << logs;
+    EXPECT_EQ(count_program("SubgroupMatrixMatMulNBitsQLoRAUp"), down_count) << logs;
+    EXPECT_NE(logs.find("|32|32|0]:128"), std::string::npos) << logs;
+    EXPECT_NE(logs.find("|128|128|0]:512"), std::string::npos) << logs;
+    EXPECT_EQ(logs.find("Starting program \"MatMulNBits["), std::string::npos) << logs;
+    EXPECT_EQ(logs.find("DP4AMatMulQuantize"), std::string::npos) << logs;
+    EXPECT_EQ(logs.find("Starting program \"DP4AMatMulNBits"), std::string::npos) << logs;
+  }
+  EXPECT_EQ(logs.find("QLoRAOutputVec4"), std::string::npos) << logs;
+  EXPECT_EQ(logs.find("QLoRAAdd"), std::string::npos) << logs;
+#endif
+}
 
 void RunFp32Numerics(const ConfigOptions& provider_options = {}) {
   struct Shape {

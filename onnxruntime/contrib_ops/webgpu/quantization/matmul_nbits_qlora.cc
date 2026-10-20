@@ -188,21 +188,6 @@ class QLoRAOutputProgram final : public Program<QLoRAOutputProgram> {
   bool acc_f32_;
 };
 
-class QLoRAAddProgram final : public Program<QLoRAAddProgram> {
- public:
-  QLoRAAddProgram() : Program{"QLoRAAdd"} {}
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QLoRAAddProgram);
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"size", ProgramUniformVariableDataType::Uint32});
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("base");
-    shader.AddInput("delta");
-    shader.AddOutput("output");
-    shader.MainFunctionBody()
-        << "if (global_idx < uniforms.size) { output[global_idx] = base[global_idx] + delta[global_idx]; }\n";
-    return Status::OK();
-  }
-};
-
 }  // namespace
 
 Status ApplyQLoRAOutput(onnxruntime::webgpu::ComputeContext& context, const Tensor* base, const Tensor* t,
@@ -274,6 +259,23 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     // shader must not replace that base projection's activation quantization.
     const bool base_dp4a = CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, 32, narrow<uint32_t>(n_),
                                                          narrow<uint32_t>(k_), 4, m, false, y);
+    std::optional<SubgroupMatrixConfig> base_subgroup_matrix_config;
+    const auto subgroup_m = narrow<uint32_t>(helper.M());
+    const bool base_subgroup_matrix =
+        fuse_up && CanApplySubgroupMatrixMatMulNBits(
+                       context, accuracy_level_, 32, narrow<uint32_t>(helper.OutputOffsets().size()),
+                       narrow<uint32_t>(n_), narrow<uint32_t>(k_), 4, x->IsDataType<MLFloat16>(),
+                       base_subgroup_matrix_config, subgroup_m, false);
+    if (base_subgroup_matrix && base_subgroup_matrix_config->Is(8, 16, 16)) {
+      const auto down_config = SelectSubgroupMatrixConfig(
+          context, {{wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F32,
+                     8, 16, 16, 32, true}});
+      if (down_config.has_value()) {
+        return ApplySubgroupMatrixMatMulNBitsQLoRA(
+            x, w, s, aq, as, bq, bs, subgroup_m, narrow<uint32_t>(n_), narrow<uint32_t>(k_),
+            *base_subgroup_matrix_config, *down_config, context, &t, y);
+      }
+    }
     if (!fuse_up && m == 1 && x->IsDataType<float>() && base_dp4a && k_ >= 2048 && k_ <= 8192) {
       auto base = context.CreateGPUTensor(y->DataType(), y->Shape());
       ORT_RETURN_IF_ERROR(ApplyDP4AMatrixMatMulNBits(
@@ -292,16 +294,15 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     // FP32 small-M prefill can use the existing DP4A down kernel and share
     // quantized X with the base projection when accuracy_level permits it.
     const auto down_accuracy =
-        fuse_up && (m >= kMinMForTileOptimization || (x->IsDataType<float>() && base_dp4a)) ? accuracy_level_ : 0;
+        fuse_up &&
+                (m >= kMinMForTileOptimization || (x->IsDataType<float>() && base_dp4a))
+            ? accuracy_level_
+            : 0;
     DP4AQuantizedInput quantized_x;
     ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, aq, as, nullptr, nullptr, k_, 32, 32, down_accuracy, 8, context, &t, 0,
                                          nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
                                          &quantized_x));
-    std::optional<SubgroupMatrixConfig> up_config;
-    const bool subgroup_up =
-        CanApplySubgroupMatrixMatMulNBits(context, 0, 32, narrow<uint32_t>(helper.OutputOffsets().size()),
-                                          narrow<uint32_t>(n_), 32, 8, x->IsDataType<MLFloat16>(), up_config, m);
-    if (fuse_up && !subgroup_up) {
+    if (fuse_up) {
       return ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, y, 0, nullptr, 0, &t,
                               bq, nullptr, nullptr, bs, nullptr, &quantized_x);
     }
@@ -309,19 +310,7 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, &base, 0,
                                          nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
                                          &quantized_x));
-    if (!subgroup_up) return ApplyQLoRAOutput(context, &base, &t, bq, bs, y);
-    // Keep the original up kernel on devices with a different matrix-accumulation path.
-    auto delta = context.CreateGPUTensor(y->DataType(), y->Shape());
-    ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&t, bq, bs, nullptr, nullptr, 32, n_, 32, 0, 8, context, &delta));
-    const auto size = narrow<uint32_t>(y->Shape().Size());
-    QLoRAAddProgram add;
-    add.AddInputs({{&base, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten},
-                   {&delta, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten}})
-        .AddOutput({y, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten})
-        .AddUniformVariables({{size}})
-        .SetWorkgroupSize(64)
-        .SetDispatchGroupSize(CeilDiv(size, 64u));
-    return context.RunProgram(add);
+    return ApplyQLoRAOutput(context, &base, &t, bq, bs, y);
   }
 
  private:
