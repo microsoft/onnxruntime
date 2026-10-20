@@ -13,13 +13,15 @@ namespace onnxruntime::test {
 #ifndef DISABLE_CONTRIB_OPS
 namespace {
 
-template <typename T = MLFloat16>
+template <typename T = MLFloat16, bool ExactBase = false>
 void BuildQLoRA(ModelTestBuilder& builder, int64_t m = 1, int64_t k = 2048, int64_t n = 128, int64_t batch = 1,
                 bool expose = false, bool different_x = false, bool zero_base = false, int64_t adapter_accuracy = 0) {
   auto* x = builder.MakeInput<T>({batch, m, k}, T(-0.5f), T(0.5f));
-  auto* w = builder.MakeInitializer<uint8_t>({n, k / 32, 16}, zero_base ? uint8_t{0x88} : uint8_t{0},
-                                             zero_base ? uint8_t{0x88} : uint8_t{255});
-  auto* s = builder.MakeInitializer<T>({n, k / 32}, T(0.03125f), T(0.0625f));
+  // Integer random ranges exclude the upper bound, even for constant weights.
+  const uint8_t base_weight_min = zero_base ? uint8_t{0x88} : (ExactBase ? uint8_t{0x99} : uint8_t{0});
+  const uint8_t base_weight_max = zero_base ? uint8_t{0x89} : (ExactBase ? uint8_t{0x9a} : uint8_t{255});
+  auto* w = builder.MakeInitializer<uint8_t>({n, k / 32, 16}, base_weight_min, base_weight_max);
+  auto* s = builder.MakeInitializer<T>({n, k / 32}, T(ExactBase ? 0.0625f : 0.03125f), T(0.0625f));
   auto* aq = builder.MakeInput<uint8_t>({32, k / 32, 32}, uint8_t{100}, uint8_t{156});
   auto* as = builder.MakeInput<T>({32, k / 32}, T(0.001f), T(0.002f));
   auto* bq = builder.MakeInput<uint8_t>({n, 1, 32}, uint8_t{100}, uint8_t{156});
@@ -289,7 +291,9 @@ void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 
                 IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, logger);
     auto& graph = model.MainGraph();
     ModelTestBuilder builder(graph);
-    BuildQLoRA<T>(builder, m, k);
+    // A random base can round differently when the subgroup kernel accumulates
+    // adapter-up into it. Keep this state/capture test exact; Numerics covers rounding.
+    BuildQLoRA<T, true>(builder, m, k);
     builder.SetGraphOutputs();
     ASSERT_STATUS_OK(graph.Resolve());
     const auto adapters = graph.GetOverridableInitializers();
@@ -359,6 +363,15 @@ void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 
         std::vector<OrtValue> output;
         ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, builder.output_names_, &output));
         ASSERT_EQ(output.size(), 1u);
+        // X=1/4 and base weights=1/16 give K/64. Unit adapter weights give
+        // 8*K with default scales, or K/128 when both scales are 1/32.
+        const float base_value = static_cast<float>(k) / 64.0f;
+        const float delta = state == 4 ? 8.0f * static_cast<float>(k)
+                                       : (state == 5 ? static_cast<float>(k) / 128.0f : 0.0f);
+        const auto values = output[0].Get<Tensor>().DataAsSpan<T>();
+        EXPECT_TRUE(std::all_of(values.begin(), values.end(),
+                                [base_value, delta](T value) { return value == T(base_value + delta); }))
+            << "Expected every output to equal " << base_value + delta;
         if (!fused) {
           expected.push_back(std::move(output[0]));
         } else {
