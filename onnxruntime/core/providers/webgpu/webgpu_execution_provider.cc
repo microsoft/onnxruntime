@@ -777,6 +777,14 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
       }
     }
 
+    if (node.OpType() == "EngramGate" && node.Domain() == kMSDomain) {
+      const auto* key_shape = node.InputDefs()[0]->Shape();
+      if (key_shape == nullptr || key_shape->dim_size() != 4) {
+        LOGS(*GetLogger(), INFO) << "EngramGate requires rank-4 key input for WebGPU; falling back to CPU";
+        continue;
+      }
+    }
+
     // Check for MatMulBnb4
     if (node.OpType() == "MatMulBnb4" && node.Domain() == kMSDomain) {
       // Current implementation only supports the forward case (transB=1). transB defaults to 1.
