@@ -142,8 +142,8 @@ def verify_logits(directory):
     )
     values = struct.unpack("<200064f", raw)
     require(
-        not any(math.isnan(x) for x in values) and sum(map(math.isfinite, values)) >= 2,
-        "NaN or insufficient finite full logits",
+        all(math.isfinite(value) for value in values),
+        "All 200064 full prefill logits must be finite",
     )
     return raw
 

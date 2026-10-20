@@ -226,6 +226,88 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(rows[0]["peak_vram_mib"], 42)
 
 
+class ResourceSamplerTests(unittest.TestCase):
+    def setUp(self):
+        self.nvml = unittest.mock.Mock()
+        self.nvml.nvmlDeviceGetMemoryInfo.return_value = types.SimpleNamespace(used=42)
+        self.process = unittest.mock.Mock()
+        self.process.memory_info.return_value = types.SimpleNamespace(rss=24)
+        psutil = unittest.mock.Mock()
+        psutil.Process.return_value = self.process
+        modules = patch.dict(sys.modules, {"psutil": psutil, "pynvml": self.nvml})
+        modules.start()
+        self.addCleanup(modules.stop)
+        environment = patch.dict(os.environ, {"BENCHMARK_GPU_INDEX": "0"})
+        environment.start()
+        self.addCleanup(environment.stop)
+
+    def test_sampling_thread_errors_reach_measurements_and_cleanup(self):
+        foreground = threading.current_thread()
+        for target, name, result in (
+            (self.nvml, "nvmlDeviceGetMemoryInfo", types.SimpleNamespace(used=42)),
+            (self.process, "memory_info", types.SimpleNamespace(rss=24)),
+        ):
+            with self.subTest(query=name):
+                trigger = threading.Event()
+                failed = threading.Event()
+                error = ValueError("synthetic periodic query failure")
+
+                def query(*args, result=result, error=error, trigger=trigger, failed=failed):
+                    if threading.current_thread() is not foreground and trigger.is_set():
+                        failed.set()
+                        raise error
+                    return result
+
+                self.nvml.nvmlShutdown.reset_mock()
+                with (
+                    patch.object(target, name, side_effect=query),
+                    patch("threading.excepthook"),
+                    self.assertRaisesRegex(RuntimeError, "Resource sampling failed") as cleanup_error,
+                    benchmark.ResourceSampler(0.001) as sampler,
+                ):
+                    sampler.begin_inference()
+                    sampler.end_inference()
+                    trigger.set()
+                    self.assertTrue(failed.wait(1))
+                    sampler._thread.join(timeout=1)
+                    self.assertFalse(sampler._thread.is_alive())
+                    for measurement in (
+                        "snapshot_vram_bytes",
+                        "begin_inference",
+                        "end_inference",
+                        "initial_vram_bytes",
+                        "peak_vram_bytes",
+                        "peak_inference_vram_bytes",
+                        "idle_vram_bytes",
+                        "peak_ram_bytes",
+                    ):
+                        with self.subTest(measurement=measurement):
+                            with self.assertRaisesRegex(RuntimeError, "synthetic periodic query failure") as raised:
+                                value = getattr(sampler, measurement)
+                                if callable(value):
+                                    value()
+                            self.assertIs(raised.exception.__cause__, error)
+                self.assertIs(cleanup_error.exception.__cause__, error)
+                self.nvml.nvmlShutdown.assert_called_once_with()
+
+    def test_final_snapshot_error_still_shuts_down_nvml(self):
+        with (
+            self.assertRaisesRegex(ValueError, "synthetic final snapshot failure"),
+            benchmark.ResourceSampler(3600),
+        ):
+            self.nvml.nvmlDeviceGetMemoryInfo.side_effect = ValueError("synthetic final snapshot failure")
+        self.nvml.nvmlShutdown.assert_called_once_with()
+
+    def test_sampling_thread_must_stop_before_successful_cleanup(self):
+        sampler = benchmark.ResourceSampler()
+        sampler._thread = unittest.mock.Mock()
+        sampler._thread.is_alive.return_value = True
+        with self.assertRaisesRegex(RuntimeError, "Resource sampling thread did not stop"):
+            sampler.__exit__(None, None, None)
+        sampler._thread.join.assert_called_once_with(timeout=2.0)
+        self.nvml.nvmlShutdown.assert_called_once_with()
+
+
 class RejectOptionalImports:
     def __init__(self):
         self.original_import = __import__
@@ -588,6 +670,7 @@ finally:
 
     def test_whole_device_sample_and_window_calculations(self):
         sampler = benchmark.ResourceSampler.__new__(benchmark.ResourceSampler)
+        sampler._sampling_error = None
         mib = 1024 * 1024
         sampler.samples = [{"vram_bytes": value * mib, "ram_bytes": (value + 1) * mib} for value in (10, 8, 20, 12, 9)]
         sampler._inference_start_index = 1
@@ -607,6 +690,120 @@ finally:
                 "peak_ram_mib": 21,
             },
         )
+
+    def test_sequential_sampling_error_prevents_publishing_affected_rows(self):
+        ort = unittest.mock.Mock()
+        ort.Model.return_value.device_type = "CUDA"
+        ort.Tokenizer.return_value.encode.return_value = [1]
+        ort.Generator.return_value.is_done.return_value = True
+        llama = unittest.mock.Mock()
+        llama.Llama.return_value.tokenize.return_value = [1]
+        llama.Llama.return_value.create_completion.return_value = []
+
+        def load_llama(**kwargs):
+            print("offloaded 1/1 layers to GPU", file=sys.stderr)
+            return llama.Llama.return_value
+
+        llama.Llama.side_effect = load_llama
+        for runtime, model in (("ort", self.ort), ("llama_cpp", self.gguf)):
+            with self.subTest(runtime=runtime):
+                sampler = unittest.mock.MagicMock()
+                sampler.__enter__.return_value = sampler
+                sampler.snapshot_vram_bytes.side_effect = [0, 42, 40]
+                sampler.peak_inference_vram_bytes = 42
+                sampler.raise_if_failed.side_effect = RuntimeError("synthetic periodic query failure")
+                sender = unittest.mock.Mock()
+                with (
+                    patch.dict(sys.modules, {"onnxruntime_genai": ort, "llama_cpp": llama}),
+                    patch.object(benchmark, "ResourceSampler", return_value=sampler),
+                ):
+                    benchmark.sequential_worker(sender, runtime, model, "prompt", 100, 2, 2, 0.01, False, self.output)
+                sender.send.assert_called_once_with({"error": "RuntimeError: synthetic periodic query failure"})
+                with patch.object(
+                    benchmark, "run_worker", return_value={"error": "RuntimeError: synthetic periodic query failure"}
+                ):
+                    rows = benchmark.run_sequential_isolated(
+                        runtime, model, "prompt", 100, 2, 2, 0.01, False, self.output
+                    )
+                self.assertEqual([row["status"] for row in rows], ["error", "error"])
+                self.assertTrue(all("peak_vram_mib" not in row for row in rows))
+
+    def test_inherited_verbose_logging_is_cleared_before_spawning_workers(self):
+        def matrix(runtime, *args):
+            self.assertNotIn("ORTGENAI_ORT_VERBOSE_LOGGING", os.environ)
+            return {"runtime": runtime, "ttft_ms": 1, "decode_tokens_per_second": 2}
+
+        def sequential(runtime, model, prompt, context, output_tokens, count, *args):
+            self.assertNotIn("ORTGENAI_ORT_VERBOSE_LOGGING", os.environ)
+            return [
+                {"runtime": runtime, "request_index": index, "context": context, "status": "complete"}
+                for index in range(1, count + 1)
+            ]
+
+        for sequential_mode in (False, True):
+            for log_arena in (False, True):
+                with self.subTest(sequential=sequential_mode, log_arena=log_arena):
+                    flags = (
+                        ["--sequential-requests", "2"]
+                        if sequential_mode
+                        else ["--contexts", "2048", "--repetitions", "1", "--ort-device-allocator"]
+                    )
+                    if log_arena:
+                        flags.append("--log-arena")
+                    with (
+                        patch.dict(os.environ, {"ORTGENAI_ORT_VERBOSE_LOGGING": "1"}),
+                        patch.object(benchmark, "configure_gpu", return_value="GPU-test"),
+                        patch.object(benchmark, "run_isolated", side_effect=matrix),
+                        patch.object(benchmark, "run_sequential_isolated", side_effect=sequential),
+                        contextlib.redirect_stdout(io.StringIO()),
+                    ):
+                        self.assertEqual(benchmark.main([*self.args, "--allow-existing-output", *flags]), 0)
+
+    def test_workers_enable_arena_logging_only_for_requested_baseline_captures(self):
+        for runtime in ("ort", "llama_cpp"):
+            for requested in (False, True):
+                for device in (False, True):
+                    with self.subTest(runtime=runtime, requested=requested, device=device):
+                        expected = "1" if runtime == "ort" and requested and not device else None
+
+                        def run(*args, expected=expected, runtime=runtime, **kwargs):
+                            self.assertEqual(os.environ.get("ORTGENAI_ORT_VERBOSE_LOGGING"), expected)
+                            self.assertEqual(kwargs.get("log_arena", False), expected == "1")
+                            return {"runtime": runtime}
+
+                        sender = unittest.mock.Mock()
+                        with (
+                            patch.dict(os.environ),
+                            patch.object(benchmark, "run_ort", side_effect=run),
+                            patch.object(benchmark, "run_llama", side_effect=run),
+                            patch.object(benchmark, "redirect_native_stderr", return_value=contextlib.nullcontext()),
+                        ):
+                            os.environ.pop("ORTGENAI_ORT_VERBOSE_LOGGING", None)
+                            benchmark.benchmark_worker(
+                                sender, runtime, self.ort, "prompt", 100, 2, 0.01, device, requested, self.output
+                            )
+                        sender.send.assert_called_once_with({"runtime": runtime})
+            for requested in (False, True):
+                with self.subTest(runtime=runtime, sequential=True, requested=requested):
+                    expected = "1" if runtime == "ort" and requested else None
+
+                    def run(*args, expected=expected, **kwargs):
+                        self.assertEqual(os.environ.get("ORTGENAI_ORT_VERBOSE_LOGGING"), expected)
+                        self.assertEqual(kwargs.get("log_arena", False), expected == "1")
+                        return []
+
+                    sender = unittest.mock.Mock()
+                    with (
+                        patch.dict(os.environ),
+                        patch.object(benchmark, "run_ort_sequential", side_effect=run),
+                        patch.object(benchmark, "run_llama_sequential", side_effect=run),
+                        patch.object(benchmark, "redirect_native_stderr", return_value=contextlib.nullcontext()),
+                    ):
+                        os.environ.pop("ORTGENAI_ORT_VERBOSE_LOGGING", None)
+                        benchmark.sequential_worker(
+                            sender, runtime, self.ort, "prompt", 100, 2, 2, 0.01, requested, self.output
+                        )
+                    sender.send.assert_called_once_with({"rows": []})
 
     def test_matrix_order_and_results(self):
         calls = []
@@ -787,6 +984,59 @@ finally:
         text = (self.output / "report.md").read_text()
         self.assertIn("| 2048 | 110.00 | 80.00 | 50.00 | 210.00 | 150.00 | 100.00 | -30.00 | -60.00 |", text)
         self.assertIn("**110.00 MiB**", text)
+
+    def test_sequential_report_reuses_csv_with_missing_ttft(self):
+        for values, expected in (((None, None), "n/a"), ((None, None, 0, 4), "2.00")):
+            with self.subTest(values=values):
+                rows = [
+                    {
+                        "runtime": "llama_cpp",
+                        "ort_allocator_mode": "n/a",
+                        "status": "complete",
+                        "context_tokens": 2048,
+                        "post_init_vram_mib": 50,
+                        "peak_inference_vram_mib": 100,
+                        "ttft_ms": value,
+                        "decode_tokens_per_second": 4,
+                    }
+                    for value in values
+                ]
+                benchmark.write_report(rows, self.output)
+                loaded = benchmark.read_existing_results(self.output)
+                self.assertEqual([row["ttft_ms"] for row in loaded[:2]], ["", ""])
+                with (
+                    patch.object(benchmark, "configure_gpu", return_value="GPU-test"),
+                    patch.object(
+                        benchmark,
+                        "run_sequential_isolated",
+                        return_value=[
+                            {
+                                "runtime": "llama_cpp",
+                                "request_index": index,
+                                "context": 8192,
+                                "status": "complete",
+                            }
+                            for index in (1, 2)
+                        ],
+                    ),
+                    contextlib.redirect_stdout(io.StringIO()),
+                ):
+                    self.assertEqual(
+                        benchmark.main(
+                            [
+                                *self.args,
+                                "--runtime",
+                                "llama_cpp",
+                                "--sequential-requests",
+                                "2",
+                                "--allow-existing-output",
+                            ]
+                        ),
+                        0,
+                    )
+                report = (self.output / "report.md").read_text()
+                self.assertIn(f"| llama_cpp | n/a | 2048 | {expected} | 4.00 |", report)
+                self.assertIn("Sequential requests", report)
 
 
 if __name__ == "__main__":

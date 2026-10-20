@@ -20,7 +20,7 @@ void SaveLogits(OgaTensor& tensor, const fs::path& directory) {
     else
       ++negative_infinity;
   }
-  Require(finite >= 2 && nan == 0, "Invalid full prefill logits");
+  Require(finite == 200064, "All 200064 full prefill logits must be finite");
   WriteBinary(directory / "logits.bin", values, 800256);
   Write(directory / "logits.json",
         "{\"dtype\":\"float32\",\"shape\":[1,1,200064],\"element_count\":200064,\"byte_count\":800256,"

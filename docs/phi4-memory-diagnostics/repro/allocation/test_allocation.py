@@ -9,9 +9,11 @@ import hashlib
 import importlib
 import shutil
 import struct
+import tempfile
 import types
 import unittest
 import uuid
+from pathlib import Path
 from unittest import mock
 
 import allocation
@@ -120,6 +122,24 @@ class ContractTests(unittest.TestCase):
             mutate(invalid)
             with self.assertRaises(RuntimeError):
                 config.validate_config(invalid)
+
+    def test_paths_must_be_external_to_entire_diagnostics_package(self):
+        package = s.HERE.parents[1]
+        for relative in ("", "evidence/new-run", "repro/comparison/new-run", "repro/allocation/new-run"):
+            with self.subTest(relative=relative):
+                value = example_config()
+                value["output_dir"] = str(package / relative)
+                with self.assertRaisesRegex(RuntimeError, "external"):
+                    config.validate_config(value)
+                with self.assertRaisesRegex(RuntimeError, "external"):
+                    config.absolute_path(str(package / relative), "input")
+        with tempfile.TemporaryDirectory() as directory:
+            external = Path(directory).resolve()
+            self.assertEqual(config.absolute_path(str(external / "output"), "output_dir"), external / "output")
+            alias = external / "package"
+            alias.symlink_to(package, target_is_directory=True)
+            with self.assertRaisesRegex(RuntimeError, "external"):
+                config.absolute_path(str(alias / "evidence/new-run"), "output_dir")
 
     def test_missing_prerequisites_block_without_importing_nvml(self):
         with (
@@ -409,7 +429,7 @@ class FileGateTests(ScratchTest):
     def test_test_build_layout_and_adjacent_companion_hashes(self):
         value = self.runtime_fixture()
         with (
-            mock.patch.object(s, "HERE", self.root / "artifact"),
+            mock.patch.object(s, "HERE", self.root / "artifact/repro/allocation"),
             mock.patch("subprocess.check_output", side_effect=AssertionError("Native execution not permitted")),
         ):
             self.assertIs(config.validate_config(value), value)
@@ -426,7 +446,7 @@ class FileGateTests(ScratchTest):
         detached = self.root / "detached"
         detached.mkdir()
         with (
-            mock.patch.object(s, "HERE", self.root / "artifact"),
+            mock.patch.object(s, "HERE", self.root / "artifact/repro/allocation"),
             mock.patch.object(allocation, "artifact_check"),
             mock.patch.object(config, "runtime_hashes") as hashes,
             mock.patch.object(monitor, "launch", side_effect=AssertionError("Native execution not permitted")),
@@ -526,6 +546,21 @@ class FileGateTests(ScratchTest):
         (self.root / "logits.bin").write_bytes(b"\0")
         with self.assertRaises(RuntimeError):
             s.verify_logits(self.root)
+
+    def test_reject_identical_logits_with_either_infinity_sign(self):
+        left, right = self.root / "left", self.root / "right"
+        for value in (float("inf"), float("-inf")):
+            with self.subTest(value=value):
+                for directory in (left, right):
+                    self.tokens(directory)
+                    self.logits(directory)
+                    with (directory / "logits.bin").open("r+b") as stream:
+                        stream.seek(100000 * 4)
+                        stream.write(struct.pack("<f", value))
+                with self.assertRaisesRegex(RuntimeError, "finite"):
+                    s.verify_logits(left)
+                with self.assertRaisesRegex(RuntimeError, "finite"):
+                    s.compare_phase_a(left, right)
 
     def test_maps_reject_mixed_variant_and_changed_runtime(self):
         expected = {}

@@ -40,8 +40,10 @@ No command downloads, installs, stages, publishes, or falls back to another mode
 
 Saved input vectors and raw capture data are **not approved for publication** and
 are not included here. Keep supplied inputs and all future output directories
-external to this artifact. Generated output includes those vectors and generated
-tokens/logits; do not commit or publish it without separate approval.
+external to the entire `docs/phi4-memory-diagnostics/` package, not just this
+allocation directory. Resolved paths, including symlinks, are checked.
+Generated output includes those vectors and generated tokens/logits; do not
+commit or publish it without separate approval.
 
 The workload's `source_config_sha256` and embedded `effective_config` are
 authoritative. The manifest also records the downloaded `genai_config.json`
@@ -65,7 +67,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -B -m pytest -q -p no:cacheprovider --co
 `config` prints the template; it does not silently fill missing paths or digests.
 `check` without a config verifies artifact/manifest contracts only, **not replay
 readiness**. The unit tests use small invented test fixtures, not historical input
-vectors or measurements. They remove their project-local scratch files.
+vectors or measurements. They clean up their scratch files.
 
 Prepare a JSON config **outside** this artifact using `config.example.json`.
 Every path must be absolute. Replace all path/digest/UUID placeholders; explicitly
@@ -183,7 +185,9 @@ python -B allocation.py report --results /absolute/external/new-allocation-run
    (7 each). Skips, missing fixtures/tests, OOM or other failures abort.
 2. Four Phase A captures: both variants at both saved input lengths. Capture all
    `[1,1,200064]` float32 **prefill** logits before token generation and exactly
-   64 greedy tokens. Full logits and token bytes must agree between variants.
+   64 greedy tokens. All 200,064 logits must be finite: NaN or either infinity
+   sign blocks Phase B even when captures are byte-identical. Full logits and
+   token bytes must agree between variants.
    Metadata alone, top-k comparisons, token-only checks and stale booleans cannot
    open the Phase B gate; actual Phase A files are revalidated for every run.
 3. Twelve fresh serial Phase B processes: 2048 then 32768, repetitions 1–3,
@@ -247,6 +251,8 @@ layouts, missing/mismatched CUDA companion hashes, nonzero memory and counter
 summaries, unchanged raw CSV units, and rejection of old or corrupted summary
 counter fields. Report-schema tests mock raw capture analysis and the Phase A
 gate; they do not validate a native capture or loader execution.
+Further regressions reject package-local paths through sibling directories or
+symlinks and byte-identical full-logits captures containing either infinity sign.
 
 The correction phase passed 23 allocation host tests as part of the package's
 73 tests and 26 integration checks. A subsequent build-only check compiled and

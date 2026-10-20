@@ -25,7 +25,7 @@ LIBRARIES = (
 def absolute_path(value, label):
     s.require(isinstance(value, str) and Path(value).is_absolute(), f"{label} must be an absolute external path")
     path = Path(value).resolve()
-    s.require(not path.is_relative_to(s.HERE), f"{label} must be external to this artifact")
+    s.require(not path.is_relative_to(s.HERE.parents[1]), f"{label} must be external to the diagnostics package")
     return path
 
 

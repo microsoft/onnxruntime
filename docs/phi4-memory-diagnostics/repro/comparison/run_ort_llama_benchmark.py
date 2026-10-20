@@ -41,6 +41,7 @@ class ResourceSampler:
         self._inference_end_index: int | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._sampling_error: Exception | None = None
         self._process = psutil.Process()
 
     def __enter__(self) -> ResourceSampler:  # noqa: PYI034 - retain Python 3.10 compatibility
@@ -52,7 +53,13 @@ class ResourceSampler:
         self._thread.start()
         return self
 
+    def raise_if_failed(self) -> None:
+        error = self._sampling_error
+        if error is not None:
+            raise RuntimeError(f"Resource sampling failed: {type(error).__name__}: {error}") from error
+
     def _sample_once(self) -> None:
+        self.raise_if_failed()
         memory = self._nvml.nvmlDeviceGetMemoryInfo(self._handle)
         self.samples.append(
             {
@@ -60,6 +67,7 @@ class ResourceSampler:
                 "ram_bytes": self._process.memory_info().rss,
             }
         )
+        self.raise_if_failed()
 
     def snapshot_vram_bytes(self) -> int:
         self._sample_once()
@@ -74,26 +82,36 @@ class ResourceSampler:
         self._inference_end_index = len(self.samples)
 
     def _sample(self) -> None:
-        while not self._stop.wait(self.interval_seconds):
-            self._sample_once()
+        try:
+            while not self._stop.wait(self.interval_seconds):
+                self._sample_once()
+        except Exception as error:
+            self._sampling_error = error
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         self._stop.set()
-        if self._thread is not None:
-            self._thread.join(timeout=2.0)
-        self._sample_once()
-        self._nvml.nvmlShutdown()
+        try:
+            if self._thread is not None:
+                self._thread.join(timeout=2.0)
+                if self._thread.is_alive():
+                    raise RuntimeError("Resource sampling thread did not stop")
+            self._sample_once()
+        finally:
+            self._nvml.nvmlShutdown()
 
     @property
     def initial_vram_bytes(self) -> int:
+        self.raise_if_failed()
         return self.samples[0]["vram_bytes"]
 
     @property
     def peak_vram_bytes(self) -> int:
+        self.raise_if_failed()
         return max(sample["vram_bytes"] for sample in self.samples)
 
     @property
     def peak_inference_vram_bytes(self) -> int:
+        self.raise_if_failed()
         if self._inference_start_index is None or self._inference_end_index is None:
             raise RuntimeError("Inference sampling window was not completed")
         inference_samples = self.samples[self._inference_start_index : self._inference_end_index]
@@ -101,10 +119,12 @@ class ResourceSampler:
 
     @property
     def idle_vram_bytes(self) -> int:
+        self.raise_if_failed()
         return self.samples[-1]["vram_bytes"]
 
     @property
     def peak_ram_bytes(self) -> int:
+        self.raise_if_failed()
         return max(sample["ram_bytes"] for sample in self.samples)
 
 
@@ -447,6 +467,7 @@ def run_ort_sequential(
             del generator, params
             gc.collect()
             resident_after_mib = as_mib(sampler.snapshot_vram_bytes())
+            sampler.raise_if_failed()
             rows.append(
                 {
                     "runtime": "ort",
@@ -515,6 +536,7 @@ def run_llama_sequential(
             peak_vram_mib = as_mib(sampler.peak_inference_vram_bytes)
             gc.collect()
             resident_after_mib = as_mib(sampler.snapshot_vram_bytes())
+            sampler.raise_if_failed()
             rows.append(
                 {
                     "runtime": "llama_cpp",
@@ -1019,7 +1041,7 @@ def write_report(
         ]
         for (runtime, allocator, context_tokens), group in sorted(groups.items()):
             speed = [float(row["decode_tokens_per_second"]) for row in group]
-            ttft = [float(row["ttft_ms"]) for row in group if row.get("ttft_ms") is not None]
+            ttft = [float(row["ttft_ms"]) for row in group if row.get("ttft_ms") not in (None, "")]
             lines.append(
                 f"| {runtime} | {allocator} | {context_tokens} | "
                 f"{format_metric(statistics.median(ttft) if ttft else None)} | "
@@ -1234,6 +1256,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(vars(args), default=str, indent=2))
         return 0
     gpu_uuid = configure_gpu(args.gpu_index)
+    os.environ.pop("ORTGENAI_ORT_VERBOSE_LOGGING", None)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "run-config.json").write_text(

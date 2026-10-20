@@ -100,6 +100,9 @@ python3 run_ort_llama_benchmark.py \
 does not use matrix contexts/repetitions or the ORT device allocator variant.
 `--runtime ort` or `llama_cpp` only requires that runtime's model argument.
 `--log-arena` captures ORT baseline native stderr in `ort-arena.log`.
+Inherited `ORTGENAI_ORT_VERBOSE_LOGGING` is cleared before workers are spawned;
+only requested ORT baseline captures enable it, never device-allocator or
+llama.cpp rows.
 Use a new output directory for each run. Deliberate
 `--allow-existing-output` permits replacement and the historical behavior of
 including an existing matrix `results.csv` in a subsequent sequential report.
@@ -128,7 +131,12 @@ or stop the receiver is explicitly reported. No unrelated process is signalled.
 There is no unbounded queue feeder flush or child join.
 
 Runtime errors, OOM, deadline expiry, missing results, and abnormal exit produce
-failed rows. Other requested conditions still run in the original order.
+failed rows. Background NVML or process-RSS sampling errors also fail affected
+rows, even if later foreground queries succeed. Sampling errors are checked
+before returning measurements or delivering sequential rows and during cleanup;
+partial sampling is not reported as a successful peak. NVML shutdown is attempted
+even when a final snapshot fails.
+Other requested conditions still run in the original order.
 **Any requested row failure returns nonzero**, unlike the historical
 any-success policy. Reports expose success/failure/total counts per condition and
 failure diagnostics; medians use only successful rows, with missing conditions
@@ -157,7 +165,10 @@ failure are not durable checkpoint/resume support.
   Neither ignores EOS or forces the requested number of generated tokens.
 - ORT TTFT times the first generation call, including append/prefill. llama.cpp
   TTFT is the first **nonempty text chunk**, not necessarily its first token;
-  completion token count is retokenized generated text. Decode rate remains
+  completion token count is retokenized generated text. If no nonempty chunk
+  is emitted, TTFT is missing. Missing values, including empty fields in reused
+  CSVs, are excluded from TTFT medians and displayed as `n/a` when none remain;
+  a measured zero remains valid. Decode rate remains
   `(completion_tokens - 1) / (total_seconds - TTFT_seconds)`, clamped exactly as
   in the source. These are asymmetric historical metrics, not normalized speed
   comparisons. Initialization, cleanup, and the matrix's three-second idle
@@ -189,6 +200,8 @@ Tests use a self-cleaning `host-test-work-*` directory beside the tests, never a
 system temporary directory. They cover paths, missing files, arguments, host-only
 help/validation/plans, explicit download selection with a mocked client, GPU
 selection with mocked NVML, workload ordering, and report/memory calculations.
+Regressions cover background NVML/RSS errors, cleanup, sequential failure
+delivery, missing-TTFT CSV reuse, and inherited arena-logging isolation.
 CPU-only spawned-worker tests cover oversized results, stalled workers that
 ignore termination, partial pipe transfers, exceptions, missing results,
 partial sequential rows, and mixed/all-success/all-failure exit statuses.
@@ -212,8 +225,9 @@ imports the runner's standard-library validation helpers **only for download**.
 
 Changes are limited to lazy optional imports; explicit physical GPU mapping;
 host-only validation; stricter path/argument/output handling; input metadata;
-bounded worker/result handling, partial sequential row retention, explicit
-failure reporting and any-failure exit status;
+bounded worker/result handling, partial sequential row retention, fail-closed
+resource sampling, opt-in arena logging, missing-TTFT CSV reuse, explicit failure
+reporting and any-failure exit status;
 and replacing unconditional broad downloads, private-feed installation, implicit
 first-config discovery, machine-specific loader setup, and implicit execution with
 optional pinned setup. Token-generation loops, token selection, EOS, metric
