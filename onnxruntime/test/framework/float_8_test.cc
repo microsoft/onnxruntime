@@ -3,6 +3,8 @@
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
+#include <cmath>
+#include <limits>
 #include <vector>
 
 #include "core/common/float8.h"
@@ -34,6 +36,36 @@ TEST(Float8_Tests, CastE4M3FN) {
     auto f8 = onnxruntime::Float8E4M3FN(it.first);
     auto f8_32 = f8.ToFloat();
     EXPECT_EQ(it.second, f8_32);
+  }
+}
+
+TEST(Float8_Tests, Overflow) {
+  const float inf = std::numeric_limits<float>::infinity();
+  for (bool saturate : {false, true}) {
+    for (float sign : {1.f, -1.f}) {
+      SCOPED_TRACE(::testing::Message() << "saturate=" << saturate << " sign=" << sign);
+      for (float input : {57344.f, std::nextafter(61440.f, 0.f)}) {
+        EXPECT_EQ(Float8E5M2(sign * input, saturate).ToFloat(), sign * 57344.f);
+      }
+      // The midpoint rounds to 65536, overflowing to infinity unless saturated.
+      for (float input : {61440.f, std::nextafter(65536.f, 0.f), 65536.f}) {
+        SCOPED_TRACE(input);
+        EXPECT_EQ(Float8E5M2(sign * input, saturate).ToFloat(), sign * (saturate ? 57344.f : inf));
+      }
+      for (float input : {448.f, 464.f}) {
+        EXPECT_EQ(Float8E4M3FN(sign * input, saturate).ToFloat(), sign * 448.f);
+      }
+      // 464 ties to the even significand at 448. Larger values overflow to NaN.
+      for (float input : {std::nextafter(464.f, inf), 480.f, std::nextafter(496.f, 0.f), 496.f, 512.f}) {
+        SCOPED_TRACE(input);
+        const auto value = Float8E4M3FN(sign * input, saturate).ToFloat();
+        if (saturate) {
+          EXPECT_EQ(value, sign * 448.f);
+        } else {
+          EXPECT_TRUE(std::isnan(value));
+        }
+      }
+    }
   }
 }
 
