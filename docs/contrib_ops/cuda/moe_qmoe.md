@@ -843,69 +843,43 @@ When native CUTLASS is enabled, weights and scales are dual-prepacked (native la
 raw e8m0 block scales for GEMV), so `ORT_FP4_PREFILL_MIN_TOKENS` selects per call between the
 prefill and decode kernels with no extra conversion.
 
-### Experimental large-expert INT2 execution
+### Large-expert INT2 execution and single-copy packed weights
 
-`ORT_QMOE_INT2_LARGE_EXPERTS=1` extends the packed INT2 grouped-GEMM
-execution and matching runtime prepacking from at most 256 to at most 512
-experts. It is disabled by default and requires the existing
-`ORT_ENABLE_QMOE_INT2_PREFILL` path, symmetric INT2/INT4 weights with at
-least one INT2 projection, raw initializers (`weights_prepacked=0`), fused
-SwiGLU, supported block sizes, and aligned projection dimensions.
-The packed grouped path also serves decode calls whose expanded row count
-or routing is outside the GEMV eligibility limits, including top-10
-routing. It does not expand GEMV eligibility or bypass the dense-fallback
-scratch guard.
+Compatible INT2 execution supports up to 512 experts and top-10 routing by
+default. `ORT_QMOE_INT2_LARGE_EXPERTS=0` restores the previous 256-expert
+eligibility. Packed INT2 GEMV accepts up to 20 expanded rows, covering one-token
+decode and two-token verification with top-10 routing. Existing GPU, alignment,
+block-size, symmetric-weight and fused-SwiGLU checks remain in force. Larger
+calls use supported packed grouped GEMM; raw inputs retain the bounded dense
+fallback for unsupported configurations.
 
-FP16 regression coverage compares 512-expert, top-10 calls at one, three,
-and 32 rows against the dequantized fallback, with block sizes 64 and 128,
-projection biases, and CUDA graph capture/replay. Full-model quality and
-throughput must be evaluated separately; this flag is not a claim of
-speedup or lossless quantization.
+For raw INT2 initializers (`weights_prepacked=0`), the runtime automatically
+shares packed weights between sessions retaining the same immutable GPU
+initializer. `ORT_QMOE_INT2_SHARE_PACKED=0` disables this cache. Keys include CUDA
+device, buffer identity, dimensions and bit width. Publication follows stream
+synchronization; weak entries do not extend ownership. Shared CUDA allocations
+are independent of session allocators, so the first session may be destroyed
+before surviving users. Callers must preserve the original initializer lifetime
+and immutability required by `AddInitializer`. CPU initializers and other bit
+widths retain their existing allocation behavior.
 
-### Experimental INT4 activation quality simulation for INT2 experts
+Uniform INT2 can instead set **explicit** `weights_prepacked=1` and provide the
+SM80 CUTLASS `W2_A16` bytes produced by `PrePackIntExpertWeights`, retaining
+logical `[E,N,K/4]` dimensions. Scales remain activation-dtype
+`[E,N,K/block_size]`. Packed GEMV and grouped GEMM read these initializer tensors
+directly without another packed expert allocation. Shared GPU `AddInitializer`
+tensors therefore let prefill and decode sessions read one pool-owned weight
+representation. The pool owner must outlive all sessions. CPU initializers use
+normal ORT device transfers; cross-session sharing requires shared GPU tensors.
+Scale transposes and execution workspaces remain per session.
 
-For local calibration diagnostics, `ORT_QMOE_CALIBRATION_CAPTURE_DIR`
-can name an existing directory to capture NVFP4 QMoE inputs and router
-logits. This is disabled when unset, is unavailable in plugin/minimal
-builds, and requires CUDA graphs disabled. Each named node writes at
-most sixteen invocations with at least sixteen rows, keeping the first
-128 rows. Other quantization types are unaffected. Files are never
-intentionally overwritten; missing directories, invalid shapes and I/O
-failures are explicit errors. File names contain an encoded node name,
-process ID, QMoE instance ID, and invocation index so concurrent sessions
-do not collide; destination files are created exclusively. The binary
-format is five int64 values `[version=1, rows, hidden, experts,
-ONNX_activation_dtype]`, followed by
-row-major input and router tensors in their original FP16/BF16 storage.
-Capture synchronizes the stream and is **not suitable for performance
-measurement**. Captured activations are local model data; keep them in
-the experiment directory and leave the option unset in production.
-
-`ORT_QMOE_INT2_FAKE_INT4_ACTIVATIONS=1` enables a default-off numerical
-screen for integer QMoE nodes with at least one INT2 projection. It
-quantizes/dequantizes both the expanded gate/up input and the post-SwiGLU
-down input, independently for each row and contiguous group of 64 values.
-The dynamic FP32 scale is `max(abs(group))/7`; codes are rounded to nearest
-with ties to even in the symmetric range `[-7,7]`. Dequantized values are
-rounded back to the existing FP16/BF16 activation dtype. All-zero groups
-remain zero. Scales are recomputed at inference time; no calibration
-dataset or model-weight change is required.
-
-This is **fake quantization**, not packed INT4 activation storage or
-integer tensor-core execution. Both GEMMs still consume FP16/BF16.
-Additional QDQ launches may slow requests; do not interpret their
-throughput or memory as native W2A4 performance. Routing probabilities,
-residuals, attention, caches and non-INT2 nodes (including FP8 MTP) are
-not quantized by this flag.
-
-The flag requires `ORT_ENABLE_QMOE_INT2_PREFILL=1`, the supported packed
-grouped path, fused interleaved SwiGLU and aligned dimensions; 512-expert
-models additionally require `ORT_QMOE_INT2_LARGE_EXPERTS=1`. GEMV is
-bypassed for affected nodes to apply QDQ at both projections consistently
-in prefill and decode. Unsupported affected nodes fail explicitly rather
-than silently executing an unquantized fallback. Flag values other than
-zero or one are rejected. With the flag unset/zero existing dispatch and
-arithmetic remain unchanged.
+Unsupported prepacked INT2 configurations fail explicitly: the raw dequantization
+fallback cannot interpret CUTLASS-packed bytes. This includes disabling both
+packed paths, unsupported shapes/hardware, zero points or non-fused activations.
+Mixed-width offline prepacking and implicit `weights_prepacked=-1` for INT2 are
+not supported. Sharing alone removes duplicate packed copies, not the retained
+raw initializer; offline prepacking is necessary to eliminate raw-plus-packed
+GPU duplication.
 
 ### 9.10 Interleaved GEMV layout + dtype-conditional accumulation
 
@@ -1241,12 +1215,6 @@ full-model measurements and do not establish performance on other GPU architectu
 Disabling GEMV entirely is not equivalent: the dense fallback dequantizes every expert,
 which can be much slower for large expert counts.
 
-Standalone FP4 GEMV and packed NVFP4 prefill bypass grouped-GEMM tactic profiling
-because neither route consumes its tactics or workspace. The legacy
-`ep.cuda.qmoe_skip_nvfp4_gemv_profiling` session setting and
-`ORT_QMOE_SKIP_NVFP4_GEMV_PROFILING` environment variable remain accepted for
-compatibility, but no longer control profiling on standalone FP4 GEMV.
-
 Raw mode ignores `ORT_FP4_GEMV_AUTOTUNE`: the prepacked tiling candidates do not change
 the raw kernel, so profiling them only adds synchronization and repeated work. With
 `ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO=1`, the routes are reported as `fp4_gemv_raw` and
@@ -1353,150 +1321,6 @@ GEMV/fallback). The parity test
 gate: it applies a looser tolerance **only** to shapes that route native (SM120/SM121, native enabled,
 `num_rows >= ORT_FP4_PREFILL_MIN_TOKENS`) and keeps the strict bound for all decode/fallback shapes,
 so a genuinely broken native kernel (error order ~1.0+) is still caught.
-
-### 9b.6 Experimental packed weight-only prefill
-
-The runtime automatically selects a memory-efficient W4A16
-prefill route on SM80+ when NVFP4 weights already have the offline
-row-major byte layout. `ORT_QMOE_NVFP4_PACKED_PREFILL=0` disables this route;
-`1` explicitly selects the default. It requires fused interleaved
-SwiGLU (`swiglu_fusion=1`), positive hidden/intermediate dimensions that
-are multiples of 64, and supported integer routing sizes. Unsupported
-shapes/layouts retain the existing fallback; eligible small decode
-continues to use the unchanged FP4 GEMV path. Native block-scaled FP4
-prefill is not replaced.
-
-The persistent grouped WMMA kernel reads original E2M1 bytes, block-16
-E4M3 scales and per-expert FP32 global scales. It dequantizes only a
-64x128x64 shared-memory tile, retaining FP16/BF16 activations and FP32
-accumulation. Eight-element loads reuse the existing `Fp4I2FConverter`;
-scaled weights are rounded once to the activation dtype using paired
-round-to-nearest conversion. The per-expert global scale is loaded once
-per tile. Padded shared
-strides and input/epilogue storage reuse reduce tile overhead. No full
-FP16/BF16 expert-weight bank, requantization or expert offloading is
-introduced.
-
-The mainloop uses SM80 asynchronous global-to-shared copies to prefetch
-the next input and packed-weight tile while computing the current tile.
-Only input and packed-weight storage are double buffered; one
-dequantized weight tile is reused after the block barrier. This bounds
-dynamic shared memory to 44 KiB per block. Copy completion and block
-barriers protect both tile reuse and the shared FP32 epilogue.
-
-Expert sorting, input expansion, biased SwiGLU and routing finalization
-reuse the packed integer-prefill pipeline. Its workspace is bounded by
-a 384 MiB scratch policy for this NVFP4 route, using internal
-row tiles when necessary. Integer prefill retains its 256 MiB bound.
-The NVFP4 bound accommodates a full 4,096-row Qwen prefill chunk and
-avoids a second read of expert weights. This is **not** a device-wide
-memory cap. With
-`ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO=1`, the route is
-`packed_nvfp4_prefill`.
-
-Focused H200 tests cover FP16/BF16 reference and dense-path numerical
-parity, row/column tails, biases, empty experts, multi-row tiling,
-packed CUDA graph capture/replay, unsupported-shape/layout fallback and
-unchanged decode routing. Dense comparison sessions are uncaptured;
-exact capture/replay equality is asserted for the packed route.
-Floating-point accumulation can differ from dense GEMM, so passing
-these tolerances does not establish bit-identical full-model outputs.
-Full-model Qwen3.8 experiments reached a sampled 79.80 GiB with
-1,024-token scheduler chunks. A sequential same-GPU comparison of the
-non-pipelined and pipelined builds improved independent E2E throughput
-from 83.54 to 90.52 TPS; the 100 TPS target remains unmet in that experiment.
-Those measurements are workload-specific, not a production throughput guarantee.
-
-With a separately capacity-bounded Qwen indexer graph and 4,096-token
-scheduling, ten independent requests subsequently reached 99.79 E2E /
-133.33 decode TPS and a sampled peak of 79.95 GiB. That graph retains
-only the indexer capacity needed by the candidate's existing 40 KV
-blocks; it is not a 262K-context replacement. The measured Engine
-request ceiling is 9,217 total tokens, and sampled memory headroom is
-only about 56 MiB. This does not qualify actual 80 GiB hardware or
-guarantee strict 100 TPS.
-
-#### Optional fused gate/up epilogue
-
-`ORT_QMOE_NVFP4_FUSED_SWIGLU=1` additionally fuses the eligible packed
-NVFP4 gate/up GEMM epilogue with bias and interleaved SwiGLU. Its default
-is `0`; it has no effect without the packed-prefill route and does not
-change integer prefill, unsupported-layout fallback or decode GEMV.
-The FP32 accumulators are still rounded to FP16/BF16 before adding bias
-and applying the same alpha/beta/limit semantics. Each paired gate/up
-channel belongs to the same tile.
-
-The epilogue writes the activated down-projection input directly, avoiding
-the gate/up output reservation and the separate activation launch. At
-4,096 rows, top-10 and intermediate size 640 this removes exactly 100 MiB
-from the packed workspace. H200 device-wide sampled peak fell from a
-fresh 79.9432 GiB unfused control to 79.7498 GiB; allocator-pool effects
-make this device-wide difference larger than the one workspace buffer.
-Two five-request fused invocations reached 100.71 and 100.44 E2E TPS,
-pooling to 100.58 E2E / 133.60 decode TPS and 1.266 s TTFT. Fresh
-unfused controls pooled to 99.54 E2E TPS and 1.299 s TTFT.
-All 128 paired quality token streams matched, preserving all 110
-control-correct answers. This is workload-specific evidence, not a
-throughput guarantee or qualification on actual 80 GiB hardware;
-sampled headroom remains only about 256 MiB.
-
-#### Optional routing scratch lifetime reuse
-
-`ORT_QMOE_NVFP4_REUSE_ROUTING_SCRATCH=1` reuses the packed NVFP4 sorting
-temporaries (counts, cumulative counts and blocked rows) for the expanded
-input and later down-projection output. Default is `0`. The three sorting
-kernels finish on the same stream before expansion starts; row maps,
-expert offsets and tile offsets remain separate and live through
-finalization. The shared reservation is the larger of the aligned sorting
-scratch and expanded-input storage, so shapes with more sorting scratch
-than input storage are also supported. Integer prefill is unchanged.
-
-At 4,096 rows, 512 experts, top-10 and hidden size 2,560 this removes
-8,404,992 bytes (about 8.02 MiB) of packed workspace. A fresh H200
-flag-off/flag-on memory comparison with fused SwiGLU observed
-79.7479 -> 79.7322 GiB, a 16 MiB device-wide sampled reduction.
-Reversed-order ten-request pools measured 100.01 -> 100.28 E2E TPS;
-that small timing difference does not establish an independent speedup.
-Sampled headroom is about 274 MiB, still not actual 80 GiB qualification.
-
-Direct input gathering into shared memory was also screened. Exact
-numerical tests passed, but 4,096-token scheduling showed slower TTFT
-(1.267 -> 1.289 seconds) and E2E (100.49 -> 99.95 TPS), with no workspace
-reduction because expanded-input storage already aliases down output.
-That implementation was rejected and is not present in the retained path.
-
-#### Optional tiled down-projection output
-
-`ORT_QMOE_NVFP4_TILED_DOWN_OUTPUT=1` enables a further default-off memory
-tradeoff when both supported packed prefill and the fused SwiGLU epilogue
-are active. Gate/up gathers original input rows into shared memory using
-the unchanged sorted maps instead of materializing expanded input.
-Down projection writes at most 1,024 columns of expanded output at a time;
-each tile is reduced in original top-k rank order before its storage is
-reused on the same stream. Bias addition, activation-dtype GEMM rounding,
-FP32 routing accumulation and final rounding match the existing path;
-there are no unordered atomic additions. Sorting-lifetime reuse can
-still be enabled, with a reservation covering the larger live buffer.
-
-For 4,096 rows, top-10, hidden size 2,560 this reduces the shared
-expanded-input/down-output reservation from 200 to 80 MiB, saving exactly
-120 MiB workspace. H200 sampled device-wide peak falls from 79.7322 to
-79.5760 GiB, a 160 MiB reduction including allocator-pool effects. The
-candidate has about 434 MiB sampled headroom, not a hard memory cap.
-
-This is **not an established speed optimization**: final paired pools
-observe TTFT rising from 1.271 to 1.295 seconds. Two five-request tiled
-runs reach 100.02 and 104.46 E2E TPS, but decode variability accounts for
-the high second result; another independent tiled screen reaches 99.996
-TPS. Strict at-least-100 throughput and actual 80 GiB hardware remain
-unqualified. A smaller 512-column screen saved more workspace but was
-slower (99.81 versus 100.31 E2E TPS); it is not selected.
-
-173 focused/regression tests pass, including exact tiled/untiled
-FP16/BF16 output and workspace parity, biases, 512 experts, small hidden
-dimensions, column tails, row tiling, empty experts, graph replay and
-unaffected integer/decode/fallback routes. Fresh paired quality runs match
-all 128 token streams and preserve all 110 control-correct answers.
 
 ---
 

@@ -26,6 +26,16 @@ namespace test {
 namespace {
 
 namespace qmoe = contrib::cuda;
+#if defined(ORT_TEST_NVFP4_GEMV) || (defined(ENABLE_FP4) && defined(USE_FP4_QMOE))
+bool SupportsSm80OrLater() {
+  int device = 0;
+  cudaDeviceProp properties{};
+  CUDA_CALL_THROW(cudaGetDevice(&device));
+  CUDA_CALL_THROW(cudaGetDeviceProperties(&properties, device));
+  return properties.major >= 8;
+}
+#endif
+
 #ifdef ORT_TEST_NVFP4_GEMV
 namespace gemv = llm::kernels::moe_gemv;
 #endif
@@ -131,6 +141,9 @@ TEST(CUDA_EP_Unittest, QMoENvfp4SmallDecodeMapsPreserveStableOrder) {
 
 template <typename T>
 void TestNvfp4KPackedGateUp(int k, bool use_bias, bool varied_scales = false, int n = 48) {
+  if (!SupportsSm80OrLater()) {
+    GTEST_SKIP() << "NVFP4 K-packed gate/up requires SM80 or newer";
+  }
   constexpr int experts = 3;
   constexpr int rows = 4;
   constexpr std::array<int, rows> routes{2, 0, 2, 1};
@@ -225,6 +238,9 @@ TEST(CUDA_EP_Unittest, QMoENvfp4KPackedGateUpPartialTiles) {
 
 template <typename T>
 void TestNvfp4FusedFinalize(int num_rows, int topk, int k, bool use_bias) {
+  if (!SupportsSm80OrLater()) {
+    GTEST_SKIP() << "NVFP4 fused finalization requires SM80 or newer";
+  }
   constexpr int n = 50, experts = 3;
   const int expanded = num_rows * topk;
   std::vector<T> activations(expanded * k), biases(experts * n);
@@ -417,16 +433,6 @@ TEST(CUDA_EP_Unittest, QMoEFp8DequantizesOnlySelectedExpertsAndGathersBias) {
                                         : std::ldexp(1.0f + static_cast<float>(mantissa) / 8.0f, exponent - 7);
   return code & 128 ? -magnitude : magnitude;
 }
-
-#if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
-bool SupportsFp8Gemv() {
-  int device = 0;
-  cudaDeviceProp properties{};
-  CUDA_CALL_THROW(cudaGetDevice(&device));
-  CUDA_CALL_THROW(cudaGetDeviceProperties(&properties, device));
-  return properties.major >= 8;
-}
-#endif
 
 template <typename T, typename S>
 void TestFp8GemvCodeDecoding(int scale_type, int block_size, int k, int fusion, bool graph) {
@@ -668,7 +674,7 @@ void TestNvfp4GemvScaleCodeConfigurations() {
 }
 
 TEST(CUDA_EP_Unittest, QMoENvfp4GemvAllScaleCodesPreserveScaledValuesAndNaNs) {
-  if (!SupportsFp8Gemv()) {
+  if (!SupportsSm80OrLater()) {
     GTEST_SKIP() << "NVFP4 GEMV requires SM80+.";
   }
   TestNvfp4GemvScaleCodeConfigurations();
@@ -678,7 +684,7 @@ TEST(CUDA_EP_Unittest, QMoENvfp4GemvNativeScale) {
   if (!ParseEnvironmentVariableWithDefault<bool>("ORT_NVFP4_GEMV_NATIVE_SCALE", false)) {
     GTEST_SKIP() << "Native-scale coverage runs in its flag-enabled CTest process.";
   }
-  if (!SupportsFp8Gemv() || !onnxruntime::llm::kernels::moe_gemv::Fp4MoeGemvSupportsNativeScale()) {
+  if (!SupportsSm80OrLater() || !onnxruntime::llm::kernels::moe_gemv::Fp4MoeGemvSupportsNativeScale()) {
     GTEST_SKIP() << "Native E4M3 scale conversion requires FP8-enabled kernels compiled for SM90+.";
   }
   TestNvfp4GemvScaleCodeConfigurations();
