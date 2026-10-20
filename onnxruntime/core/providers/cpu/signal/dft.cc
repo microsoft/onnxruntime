@@ -424,8 +424,8 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
   const auto* X = ctx->Input<Tensor>(0);
   const auto* dft_length = ctx->Input<Tensor>(1);
   const auto& X_shape = X->Shape();
-  ORT_RETURN_IF(X_shape.NumDimensions() < 2, "DFT: input must have rank >= 2 (signal and real/imag dimensions). Got: ",
-                X_shape);
+  ORT_RETURN_IF(X_shape.NumDimensions() < 2,
+                "DFT: input must have rank >= 2 (signal and real/imag dimensions). Got: ", X_shape);
   const auto is_real_valued = X_shape[X_shape.NumDimensions() - 1] == 1;
   const auto is_complex_valued = X_shape[X_shape.NumDimensions() - 1] == 2;
 
