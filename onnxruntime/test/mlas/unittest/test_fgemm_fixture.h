@@ -95,6 +95,15 @@ class FgemmShortExecuteTest : public MlasTestFixture<MlasFgemmTest<T, Packed, Th
       test_registered += RegisterTestTransposeABProduct(1, 1, 31, batch_size, 0.0f, 0.25f);
     }
 
+    // Small K with N wide enough for the SVE small-K kernel at any vector
+    // length and past its column block (1024 floats at K == 8, 2048 at
+    // K == 4), five rows for a partial four-row block, and each beta mode.
+    for (size_t k : {1u, 4u, 8u}) {
+      test_registered += RegisterTestTransposeABProduct(5, 2100, k, 1, 1.0f, 0.0f);
+      test_registered += RegisterTestTransposeABProduct(5, 2100, k, 1, 0.5f, 1.0f);
+      test_registered += RegisterTestTransposeABProduct(5, 2100, k, 1, 1.0f, 0.25f);
+    }
+
     return test_registered;
   }
 

@@ -157,6 +157,8 @@ class MlasFgemmTest : public MlasTestBase {
 
   MlasFgemmTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {
     config_.enable_sve_sgemm = Sve;
+    // Otherwise KleidiAI claims the non-transposed A cases on SME parts first.
+    config_.use_kleidiai = !Sve;
   }
 
   void Test(size_t M, size_t N, size_t K, size_t BatchSize, T alpha, T beta) {

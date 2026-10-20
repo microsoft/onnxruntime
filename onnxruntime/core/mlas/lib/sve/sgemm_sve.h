@@ -75,9 +75,7 @@ extern "C" {
 // Compute kernels. Both return the number of rows handled.
 //
 
-MLAS_SVE_TARGET
-MLASCALL
-size_t
+size_t MLAS_SVE_TARGET MLASCALL
 MlasSgemmKernelZero_sve(
     const float* A,
     const float* B,
@@ -90,9 +88,7 @@ MlasSgemmKernelZero_sve(
     float alpha
 );
 
-MLAS_SVE_TARGET
-MLASCALL
-size_t
+size_t MLAS_SVE_TARGET MLASCALL
 MlasSgemmKernelAdd_sve(
     const float* A,
     const float* B,
@@ -165,9 +161,7 @@ MlasSgemmSmallKKernel_sve(
 // gen_sve_asm.py forbids bl/blr.
 //
 
-MLAS_SVE_TARGET
-MLASCALL
-size_t
+size_t MLAS_SVE_TARGET MLASCALL
 MlasSveVectorLengthWords(void);
 
 }  // extern "C"
