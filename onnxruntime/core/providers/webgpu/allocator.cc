@@ -52,6 +52,7 @@ void* GpuBufferAllocator::Alloc(size_t size) {
 }
 
 void* GpuBufferAllocator::Allocate(size_t size, CommandRecordingState& recording, bool submit_zero_initialize) {
+  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   if (size == 0) {
     return nullptr;
   }
