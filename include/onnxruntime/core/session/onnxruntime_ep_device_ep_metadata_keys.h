@@ -29,10 +29,35 @@ static const char* const kOrtModelMetadata_EpCompatibilityInfoPrefix = "ep_compa
 // deprecated "ep.enable_weightless" option, which does not select a mode.
 //
 // Applications can read it via SessionGetModelMetadata()/ModelMetadataLookupCustomMetadataMap(), and EPs via
-// Graph_GetModelMetadata(), e.g., to find out whether the source model is needed to create a session.
+// Graph_GetModelMetadata(), e.g., to find out whether the source model may be needed to create a session.
 //
 // \since Version 1.32.
 static const char* const kOrtModelMetadata_WeightlessMode = "weightless_mode";
+
+// Key for the external dependencies of an EPContext model, stored in model metadata.
+// Written by ORT when generating an EPContext model. The value lists, separated by ";", the external data that the
+// model needs at runtime, resolved from the session and compile options and from how each EP obtains its initializer
+// data:
+//  - "source_model": the source (original) ONNX model. An EP keeps references to initializers stored inside it,
+//    e.g., in weightless mode OrtWeightlessSupport_ALL when the EP loads the initializer data itself
+//    (drop_constant_initializers = true). See "ep.context_source_model_path".
+//  - "external_weights": external data files with initializer data. Either initializers of the model are stored in
+//    external files (e.g., via "ep.context_model_external_initializers_file_name" or
+//    ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc), or an EP keeps references to the source
+//    model's external data files.
+//  - "ep_context_binary": EP context binaries stored outside the model, i.e., EPContext nodes with embed_mode = 0
+//    (e.g., with "ep.context_embed_mode" set to "0"). Their "ep_cache_context" attribute names the binary, which the
+//    EP may also have provided through an EPContext data write callback instead of a file.
+// Values are listed in this order, e.g., "source_model;external_weights;ep_context_binary". The value is empty if the
+// model has none of these dependencies.
+//
+// ORT records the dependencies but does not validate them: missing data is reported when a session is created from
+// the model. Applications and tools can read the value via SessionGetModelMetadata() and
+// ModelMetadataLookupCustomMetadataMap(), or from the model's metadata_props, e.g., to check what to package with the
+// model. Future versions may add values, so readers should expect and ignore values they don't recognize.
+//
+// \since Version 1.32.
+static const char* const kOrtModelMetadata_ExternalDependencies = "external_dependencies";
 
 // Key for the execution provider library path (for dynamically loaded EPs)
 static const char* const kOrtEpDevice_EpMetadataKey_LibraryPath = "library_path";

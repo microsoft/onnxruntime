@@ -98,6 +98,9 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
       GetProcAddress(lib, "ExampleEpTestHooks_ResetEnableWeightlessOption"));
   hooks.get_enable_weightless_option = reinterpret_cast<ExampleEpHooks::GetEnableWeightlessOptionFn>(
       GetProcAddress(lib, "ExampleEpTestHooks_GetEnableWeightlessOption"));
+  hooks.get_enable_weightless_ep_context_nodes_option =
+      reinterpret_cast<ExampleEpHooks::GetEnableWeightlessEpContextNodesOptionFn>(
+          GetProcAddress(lib, "ExampleEpTestHooks_GetEnableWeightlessEpContextNodesOption"));
   hooks.reset_saved_initializer_count = reinterpret_cast<ExampleEpHooks::ResetSavedInitializerCountFn>(
       GetProcAddress(lib, "ExampleEpTestHooks_ResetSavedInitializerCount"));
   hooks.get_saved_initializer_count = reinterpret_cast<ExampleEpHooks::GetSavedInitializerCountFn>(
@@ -128,6 +131,9 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
       dlsym(lib, "ExampleEpTestHooks_ResetEnableWeightlessOption"));
   hooks.get_enable_weightless_option = reinterpret_cast<Utils::ExampleEpHooks::GetEnableWeightlessOptionFn>(
       dlsym(lib, "ExampleEpTestHooks_GetEnableWeightlessOption"));
+  hooks.get_enable_weightless_ep_context_nodes_option =
+      reinterpret_cast<Utils::ExampleEpHooks::GetEnableWeightlessEpContextNodesOptionFn>(
+          dlsym(lib, "ExampleEpTestHooks_GetEnableWeightlessEpContextNodesOption"));
   hooks.reset_saved_initializer_count = reinterpret_cast<Utils::ExampleEpHooks::ResetSavedInitializerCountFn>(
       dlsym(lib, "ExampleEpTestHooks_ResetSavedInitializerCount"));
   hooks.get_saved_initializer_count = reinterpret_cast<Utils::ExampleEpHooks::GetSavedInitializerCountFn>(

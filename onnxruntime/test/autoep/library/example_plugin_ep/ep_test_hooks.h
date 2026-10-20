@@ -24,6 +24,11 @@ inline constexpr const char* kExampleEpTestOrtVersion = "ep.example_ep.test_ort_
 // Overrides the OrtWeightlessSupport value returned by GetWeightlessSupport() (base-10 integer), to make it disagree
 // with the EP metadata.
 inline constexpr const char* kExampleEpTestWeightlessSupport = "ep.example_ep.test_weightless_support";
+// "1" makes the EP obtain the initializer data itself in weightless mode (drop_constant_initializers = true), keeping
+// references to the initializers it doesn't copy, instead of letting ORT provide the initializers. Only for compiling:
+// the EP doesn't actually load the referenced data.
+inline constexpr const char* kExampleEpTestWeightlessDropInitializers =
+    "ep.example_ep.test_weightless_drop_initializers";
 
 extern "C" {
 EXPORT_SYMBOL void ExampleEpTestHooks_ResetSyncCount();
@@ -34,8 +39,12 @@ EXPORT_SYMBOL int ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected();
 EXPORT_SYMBOL void ExampleEpTestHooks_SetCreateDataTransferFailure(int enabled);
 // Value of the deprecated "ep.enable_weightless" session option seen by the last CreateEp() call:
 // -2: CreateEp() not called since the last reset, -1: not set, 0: "0", 1: "1", 2: any other value.
+// ExampleEpTestHooks_ResetEnableWeightlessOption() also resets the value returned by
+// ExampleEpTestHooks_GetEnableWeightlessEpContextNodesOption(), which uses the same encoding for the deprecated
+// "ep.enable_weightless_ep_context_nodes" option.
 EXPORT_SYMBOL void ExampleEpTestHooks_ResetEnableWeightlessOption();
 EXPORT_SYMBOL int ExampleEpTestHooks_GetEnableWeightlessOption();
+EXPORT_SYMBOL int ExampleEpTestHooks_GetEnableWeightlessEpContextNodesOption();
 // Number of constant initializers the EP copied since the last reset.
 EXPORT_SYMBOL void ExampleEpTestHooks_ResetSavedInitializerCount();
 EXPORT_SYMBOL uint64_t ExampleEpTestHooks_GetSavedInitializerCount();
@@ -49,5 +58,6 @@ void RecordPreallocatedOutputQueryResult(int has_preallocated_output);
 void RecordPreallocatedOutputBadIndexRejected(int rejected);
 bool ShouldFailCreateDataTransfer();
 void RecordEnableWeightlessOption(int value);
+void RecordEnableWeightlessEpContextNodesOption(int value);
 void RecordSavedInitializer();
 void RecordWeightlessSourceModelBuffer(const void* data, size_t length);

@@ -24,6 +24,7 @@
 #include "core/framework/layering_annotations.h"
 #include "core/framework/max_shape_inference.h"
 #include "core/framework/resource_accountant.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/function.h"
 #include "core/graph/function_utils.h"
 #include "core/graph/graph_utils.h"
@@ -1887,6 +1888,61 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
   return Status::OK();
 }
 
+// Returns true if the graph, or one of its subgraphs, has an initializer stored in an external file.
+static bool HasInitializersInExternalFiles(const ONNX_NAMESPACE::GraphProto& graph_proto) {
+  for (const auto& initializer : graph_proto.initializer()) {
+    if (utils::HasExternalDataInFile(initializer)) {
+      return true;
+    }
+  }
+
+  for (const auto& node : graph_proto.node()) {
+    for (const auto& attribute : node.attribute()) {
+      if (attribute.has_g() && HasInitializersInExternalFiles(attribute.g())) {
+        return true;
+      }
+      for (const auto& subgraph : attribute.graphs()) {
+        if (HasInitializersInExternalFiles(subgraph)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+// Returns true if the graph, or one of its subgraphs, has an EPContext node whose EP context binary is stored outside
+// the model (embed_mode = 0).
+static bool HasExternalEpContextBinaries(const ONNX_NAMESPACE::GraphProto& graph_proto) {
+  for (const auto& node : graph_proto.node()) {
+    if (node.domain() == kMSDomain && node.op_type() == "EPContext") {
+      int64_t embed_mode = 1;  // Default value of the EPContext "embed_mode" attribute.
+      for (const auto& attribute : node.attribute()) {
+        if (attribute.name() == "embed_mode") {
+          embed_mode = attribute.i();
+        }
+      }
+      if (embed_mode == 0) {
+        return true;
+      }
+    }
+
+    for (const auto& attribute : node.attribute()) {
+      if (attribute.has_g() && HasExternalEpContextBinaries(attribute.g())) {
+        return true;
+      }
+      for (const auto& subgraph : attribute.graphs()) {
+        if (HasExternalEpContextBinaries(subgraph)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
 // TODO: Move function to ep_context_utils.h/cc
 static Status CreateEpContextModel(const ExecutionProviders& execution_providers,
                                    const Graph& graph,
@@ -2050,9 +2106,47 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     }
   }
 
+  // Record the external data the model needs at runtime (see kOrtModelMetadata_ExternalDependencies): what the EPs
+  // report for their EPContext nodes, external files with the model's initializers, and EP context binaries stored
+  // outside the model. The value is written after the
+  // model is serialized, since that determines where the initializers are stored. Any value inherited from the source
+  // model's metadata is replaced.
+  IExecutionProvider::EpContextExternalDependencies external_dependencies;
+  for (const auto& ep : execution_providers) {
+    if (!ep->GetEpContextNodes().empty()) {
+      const IExecutionProvider::EpContextExternalDependencies ep_dependencies = ep->GetEpContextExternalDependencies();
+      external_dependencies.source_model |= ep_dependencies.source_model;
+      external_dependencies.external_weights |= ep_dependencies.external_weights;
+    }
+  }
+  ep_context_model.MetaData().erase(kOrtModelMetadata_ExternalDependencies);
+
   ONNX_NAMESPACE::ModelProto model_proto;
   ORT_RETURN_IF_ERROR(EpContextModelToProto(ep_context_model, valid_output_model_path, ep_context_gen_options,
                                             /*out*/ model_proto));
+
+  external_dependencies.external_weights |= HasInitializersInExternalFiles(model_proto.graph());
+  const bool depends_on_ep_context_binary = HasExternalEpContextBinaries(model_proto.graph());
+
+  std::string external_dependencies_value;
+  auto add_external_dependency = [&external_dependencies_value](std::string_view dependency) {
+    if (!external_dependencies_value.empty()) {
+      external_dependencies_value += ';';
+    }
+    external_dependencies_value += dependency;
+  };
+  if (external_dependencies.source_model) {
+    add_external_dependency("source_model");
+  }
+  if (external_dependencies.external_weights) {
+    add_external_dependency("external_weights");
+  }
+  if (depends_on_ep_context_binary) {
+    add_external_dependency("ep_context_binary");
+  }
+  auto* external_dependencies_entry = model_proto.add_metadata_props();
+  external_dependencies_entry->set_key(kOrtModelMetadata_ExternalDependencies);
+  external_dependencies_entry->set_value(external_dependencies_value);
 
   return epctx::SaveModelProtoToLocation(model_proto, ep_context_gen_options, valid_output_model_path, logger);
 }
