@@ -1510,7 +1510,7 @@ TEST(MathOpTest, Pow_int64_int64_LargeExact) {
   test.AddOutput<int64_t>("Z", dims,
                           {16677181699666569LL, 59604644775390625LL, 11398895185373143LL,
                            9007199254740992LL, 9007199254740993LL, -4052555153018976267LL});
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 TEST(MathOpTest, Pow_int64_int64_ScalarExponent) {
@@ -1519,7 +1519,7 @@ TEST(MathOpTest, Pow_int64_int64_ScalarExponent) {
   test.AddInput<int64_t>("X", dims, {3037000499LL, -2097151LL, 123456789LL});
   test.AddInput<int64_t>("Y", {}, {2});
   test.AddOutput<int64_t>("Z", dims, {9223372030926249001LL, 4398042316801LL, 15241578750190521LL});
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 TEST(MathOpTest, Pow_int64_int32_ScalarBase) {
@@ -1528,7 +1528,7 @@ TEST(MathOpTest, Pow_int64_int32_ScalarBase) {
   test.AddInput<int64_t>("X", {}, {3});
   test.AddInput<int32_t>("Y", dims, {0, 34, 39});
   test.AddOutput<int64_t>("Z", dims, {1, 16677181699666569LL, 4052555153018976267LL});
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 TEST(MathOpTest, Pow_int32_int32_Exact) {

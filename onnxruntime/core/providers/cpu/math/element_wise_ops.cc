@@ -785,6 +785,14 @@ void PowImpl(OpKernelContext& context) {
         const E Y = per_iter_bh.ScalarInput1<E>();
         auto output = per_iter_bh.OutputSpan<T>();
 
+        if constexpr (std::is_integral_v<T> && !std::is_integral_v<E>) {
+          if (Y == 2 || Y == 3) {
+            const int exponent = Y == 2 ? 2 : 3;
+            std::transform(X.begin(), X.end(), output.begin(),
+                           [exponent](T x) { return IntegerPow(x, exponent); });
+            return;
+          }
+        }
         if constexpr (!std::is_integral_v<T>) {
           // Only exists in the float/double copies
           if (Y == 2) {
@@ -799,7 +807,6 @@ void PowImpl(OpKernelContext& context) {
           }
         }
 
-        // Integer bases always come here. Float bases come here when Y is not 2 or 3.
         std::transform(X.begin(), X.end(), output.begin(),
                        [Y](T x) { return PowElement(x, Y); });
       },
