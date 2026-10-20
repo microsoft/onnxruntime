@@ -1,4 +1,4 @@
- — Operator Documentation
+# PackedSparseAttentionIndexer — Operator Documentation
 
 This document describes the `com.microsoft::PackedSparseAttentionIndexer` contrib operator: the
 packed/variable-length counterpart of `com.microsoft::SparseAttentionIndexer`, built for
@@ -99,7 +99,7 @@ later slot keeps its fixed index.
 | 8 | `gate` | `(total_tokens, 2*head_size)` | T | csa only |
 | 9 | `position_bias` | `(compress_ratio, 2*head_size)` | T | csa only |
 | 10 | `head_weights` | `(total_tokens, num_heads)` | T | csa only |
-| 11 | `position_ids` | `(total_tokens)` | int64 | optional qsa / required csa |
+| 11 | `position_ids` | `(total_tokens)` | int64 | omitted qsa / required csa |
 | 12 | `past_key_state` | `(batch_size, state_capacity, head_size)` | T | both (generic) |
 | 13 | `past_kv_buffer` | `(batch_size, 2*compress_ratio-1, width)` | T | both (generic) |
 | 14 | `past_gate_buffer` | same shape as `past_kv_buffer` | T | csa only |
@@ -224,7 +224,9 @@ dense `qsa` policy but against fixed-capacity state instead of a growing cache:
 `past_sequence_lengths[b] + local_offset` — i.e. the request's own absolute token position, which
 is exactly what a per-request main paged KV cache is addressed by. The output is therefore directly
 consumable by `SparsePagedAttention` configured with `attention_mode="selected_only"`,
-`selected_kv_source="main"`.
+`selected_kv_source="main"`. `position_ids` must be omitted for `qsa`; allowing an unrelated
+absolute-position space would make these cache indices ambiguous and would rotate queries
+inconsistently with prepared block keys.
 
 ## 6. Policy `csa`
 
@@ -242,8 +244,7 @@ mapping are packed:
    rejects (caps) new windows beyond `state_capacity` as described in [§3](#3-generic-state-shared-by-both-policies).
 2. **Score** (one launch per query token, per compressed entry): every entry is scored with
    `sum_h w_h * ReLU(q_h . k)` and masked by the causal threshold from `position_ids` (required for
-   `csa`, unlike `qsa` where it is an optional override of the default `past_sequence_length +
-   local offset`).
+   `csa`; `qsa` always derives request-local logical positions from `past_sequence_lengths`).
 3. **Select** (one launch per query token): keeps the `index_topk` highest scoring, causally
    visible entries and writes the exact active count to `selected_counts`.
 
@@ -298,6 +299,13 @@ mechanics with no packed equivalent):
   respective execution provider);
 - `qsa` state-capacity overflow safety;
 - active and disabled transactional QSA capture on CUDA and WebGPU;
+- the CUDA-only `QsaRadixTopKReferenceParity` test, which re-executes its cases in isolated
+  processes with `ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK=0` and `=1`, comparing random scores,
+  threshold ties, an empty row, a partial 32-key tile, and a fully selected radix bucket against
+  the reference indices and counts. Its eligible geometry selects the hierarchical path, so the
+  flag-on process must log `QsaPartialTopKKernel<true>` (the flag-off process must log
+  `QsaMergeTileTopKKernel`) or the test fails. Run it with
+  `--gtest_filter=PackedSparseAttentionIndexerCudaTest.QsaRadixTopKReferenceParity`;
 - FP32/FP16 (and CUDA-only BF16) numeric coverage against an in-file reference that mirrors this
   document's contract.
 
@@ -318,4 +326,3 @@ mechanics with no packed equivalent):
   per-request fixed-size state, analogous to a paged auxiliary cache) is out of scope for this
   operator definition and is expected in a follow-up to `microsoft/onnxruntime-genai`.
 - No CPU kernel is provided.
-# PackedSparseAttentionIndexer

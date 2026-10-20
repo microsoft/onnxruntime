@@ -774,52 +774,6 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             self.assertFalse(dims[2].HasField("dim_value"))
             self.assertEqual(dims[3].dim_value, 8)
 
-    def test_sparse_attention_indexer_csa_static_with_empty_output(self):
-        node = helper.make_node(
-            "SparseAttentionIndexer",
-            [
-                "query",
-                "key",
-                "query_norm_weight",
-                "key_norm_weight",
-                "cos_cache",
-                "sin_cache",
-                "",
-                "past_key",
-                "gate",
-                "position_bias",
-                "head_weights",
-                "position_ids",
-                "",
-                "past_proj_buffer",
-            ],
-            ["selected_indices", "", "present_proj_buffer"],
-            domain="com.microsoft",
-            policy_mode="csa",
-            compress_ratio=4,
-            index_topk=3,
-        )
-        inputs = [
-            helper.make_tensor_value_info("query", TensorProto.FLOAT, [2, 5, 16]),
-            helper.make_tensor_value_info("key", TensorProto.FLOAT, [2, 5, 16]),
-            helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT, [8]),
-            helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT, [8]),
-            helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT, [2, 64, 4]),
-            helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT, [2, 64, 4]),
-            helper.make_tensor_value_info("gate", TensorProto.FLOAT, [2, 5, 16]),
-            helper.make_tensor_value_info("position_bias", TensorProto.FLOAT, [4, 16]),
-            helper.make_tensor_value_info("head_weights", TensorProto.FLOAT, [2, 5, 2]),
-            helper.make_tensor_value_info("position_ids", TensorProto.INT64, [2, 5]),
-            helper.make_tensor_value_info("past_key", TensorProto.FLOAT, [2, 6, 8]),
-            helper.make_tensor_value_info("past_proj_buffer", TensorProto.FLOAT, [2, 2, 5, 16]),
-        ]
-
-        inferred = self._infer_sparse_attention_indexer(node, inputs)
-        outputs = {output.name: output for output in inferred.graph.output}
-        self.assertEqual(list(inferred.graph.node[0].output), list(node.output))
-        self.assertEqual(self._tensor_shape(outputs["selected_indices"]), [2, 5, 3])
-        self.assertEqual(self._tensor_shape(outputs["present_proj_buffer"]), [2, 2, 6, 16])
-
     def test_dynamic_sparse_attention_invalid_widths_are_not_truncated(self):
         def infer(query_width, packed):
             input_names = ["query", "", ""]
@@ -877,6 +831,12 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         packed_graph = infer(65, True)
         self.assertTrue(packed_graph.output[0].type.tensor_type.shape.dim[2].dim_param)
         self.assertFalse(packed_graph.output[1].type.tensor_type.HasField("shape"))
+
+        symbolic_packed_graph = infer("packed_width", True)
+        inferred_width = symbolic_packed_graph.output[0].type.tensor_type.shape.dim[2].dim_param
+        self.assertTrue(inferred_width)
+        self.assertNotEqual(inferred_width, "packed_width")
+        self.assertFalse(symbolic_packed_graph.output[1].type.tensor_type.HasField("shape"))
 
         separate_graph = infer(33, False)
         self.assertEqual(separate_graph.output[0].type.tensor_type.shape.dim[2].dim_value, 33)

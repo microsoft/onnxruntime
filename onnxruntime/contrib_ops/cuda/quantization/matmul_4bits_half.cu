@@ -38,6 +38,7 @@ template bool TryMatMulUnaligned4Bits<half>(
 
 template bool TryMatMul4BitsM1<half>(
     half*, const half*, const uint8_t*, const half*, const uint8_t*, int, int, int, size_t, cudaStream_t);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

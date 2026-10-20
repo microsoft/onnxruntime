@@ -38,6 +38,36 @@ The contiguous auxiliary cache has shape
 | Attention sink | Supported in the joint softmax |
 | CUDA Graphs | Fixed-capacity, device-resident counts; no host synchronization |
 
-The functional kernel reads selected pages directly and performs an online joint
-softmax. Selector fusion, paged auxiliary storage, auxiliary quantization, and
-decode-specialized sparse kernels are deferred.
+## CUDA dispatch
+
+Eligible `selected_only`/`main` calls with matching activation/cache types, head
+size 256, and query-to-KV head ratios divisible by four use tiled grouped-query
+attention. Other geometries and quantized caches retain the general fallback.
+All paths preserve suppressed-write prefix-cache reads; INT8 current rows are
+read back from the quantized cache.
+
+The older six-head FP16 grouped-prefill path remains opt-in through session
+configuration `ep.cuda.sparse_paged_attention_grouped=1`, or environment variable
+`ORT_SPARSE_PAGED_ATTENTION_GROUPED=1` when no session override is present.
+`ep.cuda.sparse_paged_attention_grouped_vectorized=1` selects vectorized loads
+within that path. Both session options accept only `0` or `1`.
+
+`ORT_SPARSE_PREFILL_TENSOR_CORE_QK=1` enables experimental tensor-core query/key
+scoring for eligible twelve-head prefill tiles. With that option enabled,
+`ORT_SPARSE_PREFILL_TENSOR_CORE_PV=1` also permits the FP16 probability/value
+path. These environment options default to off and are cached on first use.
+Neither option establishes broad model-quality or throughput equivalence.
+
+The CUDA Python regression `test_sparse_paged_attention_prefill_cuda.py` runs
+scalar, QK-only, QK+PV, BF16 QK, and both grouped-load configurations in fresh
+processes. Each compares to an independent reference with multiple/partial
+tiles, invalid selections, suppressed-write prefix hits, and attention sinks.
+Verbose dispatch messages are asserted so an unintended fallback cannot pass.
+Run it against a build containing this change on SM80 or newer:
+
+```bash
+python -m pytest onnxruntime/test/python/transformers/test_sparse_paged_attention_prefill_cuda.py
+```
+
+Selector fusion, paged auxiliary storage, and auxiliary quantization remain
+outside this operator's scope.

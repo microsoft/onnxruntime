@@ -33,7 +33,7 @@ using sparse_attention_indexer::TryComputeCsaWindowPlan;
 using sparse_attention_indexer::TryParsePolicy;
 
 // Fixed input slots. Slots 8-10 belong to policy_mode="csa" only; slot 11 (position_ids) is
-// optional for "qsa" and required for "csa". Every other slot is required for both policies.
+// forbidden for "qsa" and required for "csa". Every other slot is required for both policies.
 enum InputIndex : int {
   kQuery = 0,                      // [total_tokens, num_heads * head_size]
   kKey = 1,                        // qsa: [total_tokens, head_size]; csa: [total_tokens, 2 * head_size]
@@ -46,7 +46,7 @@ enum InputIndex : int {
   kGate = 8,                       // csa only: [total_tokens, 2 * head_size]
   kPositionBias = 9,               // csa only: [compress_ratio, 2 * head_size]
   kHeadWeights = 10,               // csa only: [total_tokens, num_heads]
-  kPositionIds = 11,               // optional (qsa) / required (csa): [total_tokens], int64
+  kPositionIds = 11,               // forbidden (qsa) / required (csa): [total_tokens], int64
   kPastKeyState = 12,              // generic: [batch_size, state_capacity, head_size]
   kPastKvBuffer = 13,              // generic: [batch_size, 2 * compress_ratio - 1, width]
   kPastGateBuffer = 14,            // csa only: same shape as past_kv_buffer

@@ -95,6 +95,27 @@ TEST(HyperConnectionOpsTest, BranchwiseRMSNormGroupedBranchScale) {
   });
 }
 
+TEST(HyperConnectionOpsTest, BranchwiseRMSNormBranchScaleFloat32Overflow) {
+  RunOnAvailableProviders("BranchwiseRMSNorm", [&](OpTester& tester) {
+    tester.AddInput<float>("X", {1, 2, 1}, {1e20f, 1e20f});
+    tester.AddInput<float>("scale", {2, 1}, {1.0f, 1.0f});
+    tester.AddOutput<float>("Y", {1, 2, 1}, {0.0f, 0.0f});
+  });
+}
+
+TEST(HyperConnectionOpsTest, BranchwiseRMSNormSharedScaleFloat16Precision) {
+  constexpr float small_value = 1.0f / 16384.0f;
+  constexpr float large_value = 65504.0f;
+  const float inv_rms =
+      1.0f / std::sqrt((small_value * small_value + large_value * large_value) / 2.0f + 1e-5f);
+  RunOnAvailableProviders("BranchwiseRMSNorm", [&](OpTester& tester) {
+    tester.AddInput<MLFloat16>("X", {1, 1, 2}, ToFloat16({small_value, large_value}));
+    tester.AddInput<MLFloat16>("scale", {2}, ToFloat16({large_value, 0.0f}));
+    tester.AddOutput<MLFloat16>("Y", {1, 1, 2},
+                                ToFloat16({small_value * inv_rms * large_value, 0.0f}));
+  });
+}
+
 TEST(HyperConnectionOpsTest, BranchwiseRMSNormMixedScaleType) {
   const std::vector<float> x = {3.0f, 4.0f, 0.0f, 2.0f};
   const float inv_first = 1.0f / std::sqrt(12.5f + 1e-5f);

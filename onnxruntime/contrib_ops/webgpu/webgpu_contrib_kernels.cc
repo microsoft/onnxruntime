@@ -18,10 +18,10 @@
 #include "contrib_ops/webgpu/bert/linear_attention_gates.h"
 #include "contrib_ops/webgpu/bert/ngram_hash_mapping.h"
 #include "contrib_ops/webgpu/bert/paged_attention.h"
-#include "contrib_ops/webgpu/bert/varlen_ngram_hash_mapping.h"
 #include "contrib_ops/webgpu/bert/sparse_attention_indexer.h"
 #include "contrib_ops/webgpu/bert/packed_sparse_attention_indexer.h"
 #include "contrib_ops/webgpu/bert/sparse_paged_attention.h"
+#include "contrib_ops/webgpu/bert/varlen_ngram_hash_mapping.h"
 
 #include "core/framework/op_kernel.h"
 
@@ -40,6 +40,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, Attention)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, BiasAdd)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, CausalConvWithState)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, VarlenCausalConvWithState)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, BiasGelu)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, BiasSplitGelu)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, DynamicSparseAttention)>,
@@ -56,6 +57,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, HyperConnectionPreMix)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, HyperConnectionPostMix)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, Gelu)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, GroupNorm)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, LinearAttention)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, LinearAttentionGate)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, MatMulBnb4)>,

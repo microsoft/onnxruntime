@@ -10,7 +10,6 @@
 #include <cstring>
 #include <new>
 #include <string>
-#include <system_error>
 
 #include "asset_hasher.h"
 #include "manifest_parser.h"

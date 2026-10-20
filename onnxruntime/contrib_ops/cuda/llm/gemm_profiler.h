@@ -579,6 +579,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
   }
 
   int const mRounded = RoundUpProfileM(std::max(1, m), getMaxProfileM());
+  fflush(stdout);
 
   // Capture-time hits may observe buckets added by another session after construction.
   // Staging touches only host memory, never CUDA APIs or the filesystem.
