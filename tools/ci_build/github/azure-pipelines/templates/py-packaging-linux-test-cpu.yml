@@ -40,7 +40,11 @@ jobs:
     SYSTEM_ACCESSTOKEN: $(System.AccessToken)
   workspace:
     clean: all
-  pool: ${{ parameters.machine_pool }}
+  pool:
+    name: ${{ parameters.machine_pool }}
+    ${{ if eq(parameters.machine_pool, 'onnxruntime-Ubuntu2404-AMD-CPU') }}:
+      demands:
+      - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64
   steps:
   - template: jobs/checkout-and-git-redirect.yml
 
