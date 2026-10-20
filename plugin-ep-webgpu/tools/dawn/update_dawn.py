@@ -308,7 +308,7 @@ class Plan:
     def apply(self, validate: Callable[[], None] | None = None) -> None:
         if self.report["blockers"]:
             raise ValueError("cannot apply a roll with unresolved blockers; see report.json")
-        # Check all inputs before the first write, and roll back completed writes
+        # Check all inputs before the first write, and roll back attempted writes
         # if writing or validation fails. Preserve local newlines.
         for path, original in self.original.items():
             if (self.root / path).read_bytes() != original:
@@ -317,15 +317,22 @@ class Plan:
         try:
             for path, text in self.changes.items():
                 data = text.replace("\n", "\r\n") if b"\r\n" in self.original[path] else text
+                # A failed write may already have modified this file.
                 written.append(path)
                 (self.root / path).write_bytes(data.encode("utf-8"))
                 if (self.root / path).read_bytes() != data.encode("utf-8"):
                     raise ValueError(f"{path} does not match the generated update")
             if validate is not None:
                 validate()
-        except Exception:
+        except Exception as error:
+            rollback_errors = []
             for path in reversed(written):
-                (self.root / path).write_bytes(self.original[path])
+                try:
+                    (self.root / path).write_bytes(self.original[path])
+                except Exception as rollback_error:
+                    rollback_errors.append(f"{path}: {rollback_error}")
+            if rollback_errors:
+                raise OSError(f"{error}\nRollback failed for: {'; '.join(rollback_errors)}") from error
             raise
 
 

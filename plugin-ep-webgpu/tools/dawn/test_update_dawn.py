@@ -72,7 +72,7 @@ class TempTest(unittest.TestCase):
     def setUp(self):
         self.contexts = ExitStack()
         self.addCleanup(self.contexts.close)
-        self.root = Path(self.contexts.enter_context(tempfile.TemporaryDirectory()))
+        self.root = Path(self.contexts.enter_context(tempfile.TemporaryDirectory())).resolve()
 
     def write(self, path, text):
         destination = self.root / path
@@ -102,7 +102,7 @@ class PlanTests(TempTest):
         with self.assertRaisesRegex(ValueError, "unresolved blockers"):
             plan.apply()
 
-    def test_restores_written_files_on_write_failure(self):
+    def test_restores_partially_written_file_on_write_failure(self):
         self.write("first", "old1")
         self.write("second", "old2")
         plan = updater.Plan(self.root)
@@ -112,6 +112,7 @@ class PlanTests(TempTest):
 
         def fail_second(path, data):
             if path.name == "second" and data == b"new2":
+                write_bytes(path, b"partial")
                 raise OSError("disk error")
             return write_bytes(path, data)
 
@@ -119,6 +120,33 @@ class PlanTests(TempTest):
             plan.apply()
         self.assertEqual((self.root / "first").read_text(), "old1")
         self.assertEqual((self.root / "second").read_text(), "old2")
+
+    def test_rollback_attempts_all_files_and_preserves_original_error(self):
+        plan = updater.Plan(self.root)
+        for name in ["first", "second", "third"]:
+            self.write(name, "old")
+            plan.edit(name, "new")
+        write_bytes = Path.write_bytes
+        restored = []
+        original_error = ValueError("validation failed")
+
+        def fail_restoration(path, data):
+            if data == b"old":
+                restored.append(path.name)
+                if path.name in {"second", "third"}:
+                    raise PermissionError(f"cannot restore {path.name}")
+            return write_bytes(path, data)
+
+        def reject():
+            raise original_error
+
+        with patch.object(Path, "write_bytes", fail_restoration), self.assertRaises(OSError) as caught:
+            plan.apply(reject)
+        self.assertEqual(restored, ["third", "second", "first"])
+        self.assertEqual((self.root / "first").read_bytes(), b"old")
+        self.assertIs(caught.exception.__cause__, original_error)
+        for message in ["validation failed", "cannot restore third", "cannot restore second"]:
+            self.assertIn(message, str(caught.exception))
 
     def test_validation_failure_restores_every_written_file(self):
         self.write("first", "old1")
@@ -530,6 +558,31 @@ class CommandTests(TempTest):
         report = json.loads((self.root / "build/dawn-upgrade/report.json").read_text())
         self.assertEqual(report["status"], "failed")
         self.assertIn("DXC", report["blockers"][0])
+
+    def test_persistent_manifest_write_error_restores_previous_files(self):
+        files = [updater.DEPS_FILE, updater.MANIFEST, updater.SWIFTSHADER_DOCKERFILE]
+        before = {path: (self.root / path).read_bytes() for path in files}
+        write_bytes = Path.write_bytes
+        denied_writes = []
+
+        def deny_manifest(path, data):
+            if path == self.root / updater.MANIFEST:
+                denied_writes.append(data)
+                raise PermissionError("manifest is read-only")
+            return write_bytes(path, data)
+
+        stderr = io.StringIO()
+        with patch.object(Path, "write_bytes", deny_manifest), redirect_stderr(stderr):
+            self.assertEqual(updater.main(self.args), 2)
+        self.assertEqual(len(denied_writes), 2)
+        self.assertNotEqual(denied_writes[0], before[updater.MANIFEST])
+        self.assertEqual(denied_writes[1], before[updater.MANIFEST])
+        self.assertEqual({path: (self.root / path).read_bytes() for path in files}, before)
+        report = json.loads((self.root / "build/dawn-upgrade/report.json").read_text())
+        self.assertEqual(report["status"], "failed")
+        for message in ["manifest is read-only", "Rollback failed", updater.MANIFEST]:
+            self.assertIn(message, report["blockers"][0])
+            self.assertIn(message, stderr.getvalue())
 
 
 if __name__ == "__main__":

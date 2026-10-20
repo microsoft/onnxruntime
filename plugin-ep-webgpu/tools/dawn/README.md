@@ -52,7 +52,10 @@ registrations can be removed; removed runtime entries require review. Nested
 fetched paths not declared directly in Dawn DEPS also require review.
 
 The command checks that inputs have not changed while preparing the update.
-Writing or final-validation errors restore the files written by that attempt.
+Writing or final-validation errors trigger restoration of every file whose write
+was attempted, including a partially written file. If a file cannot be restored,
+rollback continues for the remaining files and reports all restoration errors
+alongside the original failure. Review any reported paths before retrying.
 It exits `0` after a successful update and validation, and nonzero on failure.
 
 ## Results
