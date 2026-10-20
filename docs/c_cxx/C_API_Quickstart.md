@@ -38,6 +38,11 @@ On Windows with MSVC:
 cl /I <onnxruntime include dir> c_api_quickstart.c /link <onnxruntime lib dir>\onnxruntime.lib
 ```
 
+The C API takes a model path as `ORTCHAR_T`, which is `wchar_t` on Windows, so the program
+declares `wmain` there and receives the path in its native wide form. MSVC links `wmain` as the
+entry point automatically; a MinGW build has to pass `-municode` so that the wide entry point is
+used.
+
 Use the header that comes with the library. The header declares an API version number, and
 `GetApi` returns NULL when the loaded library is older than that header, so a header from a
 newer release than the library fails with "the requested API version is not available".
@@ -77,6 +82,7 @@ model IR version".
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <wchar.h>
 
 #include "onnxruntime_c_api.h"
 
@@ -111,12 +117,23 @@ static size_t element_count(const int64_t* dims, size_t count) {
   return elements;
 }
 
+#ifdef _WIN32
+/* The C API takes a model path as ORTCHAR_T, which is wchar_t on Windows. A narrow argv
+   cannot be handed to CreateSession there, so on Windows the program starts from wmain and
+   receives the path in its native wide form. */
+int wmain(int argc, wchar_t** argv) {
+#else
 int main(int argc, char** argv) {
+#endif
   if (argc != 2) {
+#ifdef _WIN32
+    fwprintf(stderr, L"usage: %ls <model.onnx>\n", argv[0]);
+#else
     fprintf(stderr, "usage: %s <model.onnx>\n", argv[0]);
+#endif
     return EXIT_FAILURE;
   }
-  const char* model_path = argv[1];
+  const ORTCHAR_T* model_path = argv[1];
 
   /* The C API is a table of function pointers. GetApi returns the table that matches the
      version of the header this file was compiled against, and NULL when the loaded library is
@@ -200,6 +217,16 @@ int main(int argc, char** argv) {
     goto cleanup;
   }
   ORT_CHECK(api->GetDimensions(tensor_info, input_dims, dim_count));
+
+  /* GetDimensions reports a symbolic dimension as -1. A concrete size has to be chosen for it
+     before the buffer is sized, because a negative dimension turns into a huge element count
+     and the allocation then fails for the wrong reason. This example resolves every symbolic
+     dimension to 1, which is a valid batch size for the models it supports. */
+  for (size_t i = 0; i < dim_count; ++i) {
+    if (input_dims[i] < 0) {
+      input_dims[i] = 1;
+    }
+  }
   print_shape("model input", input_name, input_dims, dim_count);
 
   /* Fill the input buffer. CreateTensorWithDataAsOrtValue does not copy the data, so this
@@ -244,6 +271,15 @@ int main(int argc, char** argv) {
     goto cleanup;
   }
   ORT_CHECK(api->GetDimensions(output_tensor_info, output_dims, output_dim_count));
+
+  /* The output of a finished run has concrete dimensions. Guard against a symbolic one anyway,
+     so that the element count below cannot be computed from a negative number. */
+  for (size_t i = 0; i < output_dim_count; ++i) {
+    if (output_dims[i] < 0) {
+      fprintf(stderr, "the output tensor reports a symbolic dimension, which this example does not handle\n");
+      goto cleanup;
+    }
+  }
   print_shape("output", output_name, output_dims, output_dim_count);
 
   ORT_CHECK(api->GetTensorMutableData(output, (void**)&output_data));
@@ -282,6 +318,19 @@ Build and run it:
 ./quickstart add.onnx
 ```
 
+The shared library has to be found when the program starts, not only when it is linked. The `-L`
+above tells the linker where to look, but the loader still has to be pointed at the same
+directory, otherwise the program fails before `main` is reached:
+
+| Platform | What the loader needs |
+| --- | --- |
+| Linux | `LD_LIBRARY_PATH=<onnxruntime lib dir> ./quickstart add.onnx` |
+| macOS | `DYLD_LIBRARY_PATH=<onnxruntime lib dir> ./quickstart add.onnx` |
+| Windows | the directory that holds `onnxruntime.dll` on `PATH`, or the DLL next to `quickstart.exe` |
+
+On Linux and macOS an rpath (`-Wl,-rpath,<onnxruntime lib dir>`) is an alternative to setting
+the environment variable for every run.
+
 which prints:
 
 ```
@@ -296,7 +345,7 @@ output values: 2 4
 | --- | --- |
 | `OrtGetApiBase()->GetApi(ORT_API_VERSION)` | `ORT_API_VERSION` is the API version the header declares. Returns the table of function pointers, or NULL when the loaded library does not support that version. |
 | `CreateEnv(log_severity_level, logid, &env)` | The minimum severity of the messages that are logged, a free-form string that tags the log messages, and the output parameter for the new environment. |
-| `CreateSession(env, model_path, options, &session)` | The environment, the path of the `.onnx` file, the session options (NULL selects the defaults) and the output parameter for the new session. |
+| `CreateSession(env, model_path, options, &session)` | The environment, the path of the `.onnx` file as an `ORTCHAR_T` string, the session options (NULL selects the defaults) and the output parameter for the new session. |
 | `GetAllocatorWithDefaultOptions(&allocator)` | The default CPU allocator. It belongs to ONNX Runtime and must not be released. |
 | `SessionGetInputCount(session, &count)` | The number of inputs of the model. |
 | `SessionGetInputName(session, index, allocator, &name)` | The name of the input at `index`. The string is allocated with `allocator` and has to be freed with it. |
@@ -306,9 +355,10 @@ output values: 2 4
 | `CastTypeInfoToTensorInfo(type_info, &tensor_info)` | The tensor view of a type. It belongs to `type_info` and is not released separately. |
 | `GetTensorElementType(tensor_info, &type)` | The element type, for example `ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT`. |
 | `GetDimensionsCount(tensor_info, &count)` | The number of dimensions of the tensor. |
-| `GetDimensions(tensor_info, dims, count)` | The `count` dimensions of the tensor, written into the `dims` array that the caller allocates. |
+| `GetDimensions(tensor_info, dims, count)` | The `count` dimensions of the tensor, written into the `dims` array that the caller allocates. A symbolic dimension is reported as `-1`; the program replaces it with `1` before it sizes the buffer. |
 | `CreateCpuMemoryInfo(type, mem_type, &info)` | Describes a memory region. `OrtArenaAllocator` with `OrtMemTypeDefault` is ordinary CPU memory. |
 | `CreateTensorWithDataAsOrtValue(info, data, len, shape, shape_len, type, &value)` | Wraps the `len` bytes at `data` in a tensor of shape `shape` and element type `type`. The data is not copied. |
+| `CreateTensorWithDataAndDeleterAsOrtValue(allocator, data, len, shape, shape_len, type, deleter, &value)` | The same, but the tensor takes ownership of the buffer: `deleter` is called with `allocator` when the `OrtValue` is released. |
 | `Run(session, run_options, input_names, inputs, input_len, output_names, output_names_len, outputs)` | Runs the model. The names are the ones the model uses, the arrays of names and of values have the same length, `run_options` may be NULL and the results are written into `outputs`. |
 | `GetTensorTypeAndShape(value, &info)` | The shape and the element type of the tensor in `value`. |
 | `GetTensorMutableData(value, &data)` | The address of the tensor data. The memory belongs to the `OrtValue`. |
@@ -332,8 +382,14 @@ then jumps to the cleanup code.
 - The strings returned by `SessionGetInputName` and `SessionGetOutputName` belong to the
   allocator that was passed in, so they are freed with `allocator->Free(allocator, name)`.
 - `CreateTensorWithDataAsOrtValue` does not copy the data, so the buffer has to stay alive until
-  `Run` has returned. `CreateTensorWithDataAndDeleterAsOrtValue` takes a deleter function for
-  the cases where the buffer cannot outlive the `OrtValue`.
+  `Run` has returned. The caller keeps ownership of it and frees it when it is done.
+- `CreateTensorWithDataAndDeleterAsOrtValue` also does not copy the data, but it *transfers*
+  ownership: it takes an `OrtAllocator*` and a deleter of the form
+  `void (*)(OrtAllocator* allocator, void* data)`, and it calls that deleter with the allocator
+  when the `OrtValue` is released. Use it when the buffer should be freed with the runtime's
+  allocator rather than with `free`. It cannot make a buffer that expires before the `OrtValue`
+  safe: the deleter runs when the `OrtValue` is released, so the storage has to live at least
+  that long.
 - The output tensor that `Run` produces is owned by the `OrtValue`; its memory is released with
   `ReleaseValue`.
 - Release the objects in the reverse order of their creation: the values before the session and

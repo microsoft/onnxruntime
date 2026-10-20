@@ -8,6 +8,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <wchar.h>
 
 #include "onnxruntime_c_api.h"
 
@@ -42,12 +43,23 @@ static size_t element_count(const int64_t* dims, size_t count) {
   return elements;
 }
 
+#ifdef _WIN32
+/* The C API takes a model path as ORTCHAR_T, which is wchar_t on Windows. A narrow argv
+   cannot be handed to CreateSession there, so on Windows the program starts from wmain and
+   receives the path in its native wide form. */
+int wmain(int argc, wchar_t** argv) {
+#else
 int main(int argc, char** argv) {
+#endif
   if (argc != 2) {
+#ifdef _WIN32
+    fwprintf(stderr, L"usage: %ls <model.onnx>\n", argv[0]);
+#else
     fprintf(stderr, "usage: %s <model.onnx>\n", argv[0]);
+#endif
     return EXIT_FAILURE;
   }
-  const char* model_path = argv[1];
+  const ORTCHAR_T* model_path = argv[1];
 
   /* The C API is a table of function pointers. GetApi returns the table that matches the
      version of the header this file was compiled against, and NULL when the loaded library is
@@ -131,6 +143,16 @@ int main(int argc, char** argv) {
     goto cleanup;
   }
   ORT_CHECK(api->GetDimensions(tensor_info, input_dims, dim_count));
+
+  /* GetDimensions reports a symbolic dimension as -1. A concrete size has to be chosen for it
+     before the buffer is sized, because a negative dimension turns into a huge element count
+     and the allocation then fails for the wrong reason. This example resolves every symbolic
+     dimension to 1, which is a valid batch size for the models it supports. */
+  for (size_t i = 0; i < dim_count; ++i) {
+    if (input_dims[i] < 0) {
+      input_dims[i] = 1;
+    }
+  }
   print_shape("model input", input_name, input_dims, dim_count);
 
   /* Fill the input buffer. CreateTensorWithDataAsOrtValue does not copy the data, so this
@@ -175,6 +197,15 @@ int main(int argc, char** argv) {
     goto cleanup;
   }
   ORT_CHECK(api->GetDimensions(output_tensor_info, output_dims, output_dim_count));
+
+  /* The output of a finished run has concrete dimensions. Guard against a symbolic one anyway,
+     so that the element count below cannot be computed from a negative number. */
+  for (size_t i = 0; i < output_dim_count; ++i) {
+    if (output_dims[i] < 0) {
+      fprintf(stderr, "the output tensor reports a symbolic dimension, which this example does not handle\n");
+      goto cleanup;
+    }
+  }
   print_shape("output", output_name, output_dims, output_dim_count);
 
   ORT_CHECK(api->GetTensorMutableData(output, (void**)&output_data));
