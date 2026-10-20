@@ -1103,13 +1103,15 @@ void SetRadixTopKScoreGroups(QsaPackedProblem& problem, int high_score_blocks, i
   std::fill(problem.query_norm_weight.begin(), problem.query_norm_weight.end(), 1.0f);
   std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
   std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
-  const int visible_blocks = problem.past_sequence_lengths[0] / problem.compress_ratio;
-  for (int block = 0; block < visible_blocks; ++block) {
-    const float value =
-        block == high_score_index || block < high_score_blocks ? 3.0f : block < tied_score_blocks ? 2.0f
-                                                                                                  : 1.0f;
-    std::fill_n(problem.past_key_state.begin() + static_cast<size_t>(block) * problem.head_size,
-                problem.head_size, value);
+  for (int batch = 0; batch < problem.batch_size; ++batch) {
+    const int visible_blocks = problem.past_sequence_lengths[batch] / problem.compress_ratio;
+    for (int block = 0; block < visible_blocks; ++block) {
+      const float value =
+          block == high_score_index || block < high_score_blocks ? 3.0f : block < tied_score_blocks ? 2.0f
+                                                                                                    : 1.0f;
+      const size_t offset = (static_cast<size_t>(batch) * problem.state_capacity + block) * problem.head_size;
+      std::fill_n(problem.past_key_state.begin() + offset, problem.head_size, value);
+    }
   }
 }
 
@@ -1141,7 +1143,11 @@ void RunRadixTopKRegressionCases() {
   RunRadixTopKCase("threshold_ties", std::move(threshold_ties));
 
   auto empty_row = MakeRadixTopKProblem(2051, 35, 2);
-  empty_row.position_ids = {0, 8204};
+  empty_row.batch_size = 2;
+  empty_row.cumulative_sequence_lengths = {0, 1, 2};
+  empty_row.past_sequence_lengths = {0, 8204};
+  empty_row.past_state_lengths.clear();
+  empty_row = MakeQsaPackedProblem(std::move(empty_row));
   SetRadixTopKScoreGroups(empty_row, 33, 71);
   RunRadixTopKCase("empty_row", std::move(empty_row));
 
