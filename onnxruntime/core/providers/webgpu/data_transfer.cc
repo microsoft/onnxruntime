@@ -72,7 +72,7 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
 }
 
 common::Status DataTransfer::CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) const {
-  if (src_dst_pairs.size() < 2 || buffer_manager_.SupportsUMA()) {
+  if (src_dst_pairs.size() < 2) {
     return IDataTransfer::CopyTensors(src_dst_pairs);
   }
   InlinedVector<BufferManager::UploadInfo> uploads;
