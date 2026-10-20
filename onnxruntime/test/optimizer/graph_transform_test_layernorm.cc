@@ -544,7 +544,7 @@ static void BuildDecomposedLayerNormGraph(ModelTestBuilder& builder, NodeArg* ep
 
 // Epsilon may be either operand of the variance Add. When it is a constant scalar it
 // must be found by connectivity and carried into the fused LayerNormalization node.
-TEST_F(GraphTransformationTests, LayerNormFusionAddEpsilonInput0) {
+TEST_F(GraphTransformationTests, LayerNormFusionDecomposedScalarEpsilonInput0) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     auto* epsilon = builder.MakeInitializer<float>({}, {1e-3f});
     BuildDecomposedLayerNormGraph<float>(builder, epsilon, /*epsilon_is_first_operand=*/true);

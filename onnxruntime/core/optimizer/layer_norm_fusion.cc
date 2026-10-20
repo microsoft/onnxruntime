@@ -195,17 +195,15 @@ static const NodeArg* GetOtherAddInput(const Node& add_node, const NodeArg& know
 }
 
 // Resolve an epsilon operand into a value for the fused node's "epsilon" attribute.
-// A scalar constant initializer gives the value directly; a non-scalar constant
-// initializer (e.g. a zero-element tensor) keeps the historical default-epsilon
-// fallback; and a scalar constant initializer consumed through a Cast producing
-// float (e.g. inserted by InsertCastTransformer for an fp16 initializer) is
-// followed to its source, which is exact since the attribute is a float anyway.
-// Returns false when epsilon is not constant; the fusion must be skipped then
-// because a runtime-provided epsilon cannot be preserved as an attribute.
+// A scalar constant initializer gives the value directly; a scalar constant
+// initializer consumed through a Cast producing float (e.g. inserted by
+// InsertCastTransformer for an fp16 initializer) is followed to its source.
+// Non-scalar constants and runtime-provided epsilon cannot be represented by
+// the fused node's scalar attribute, so the fusion must be skipped.
 static bool TryResolveConstantEpsilon(const Graph& graph, const NodeArg& epsilon_input, double& epsilon) {
   if (graph_utils::GetConstantInitializer(graph, epsilon_input.Name()) != nullptr) {
-    if (!TryGetScalarInitializerAsDouble(graph, epsilon_input, epsilon)) {
-      epsilon = DEFAULT_LAYERNORM_EPSILON;
+    if (!TryGetScalarInitializer(graph, epsilon_input, epsilon)) {
+      return false;
     }
   } else {
     // A Cast to float (e.g. inserted by InsertCastTransformer for an fp16 initializer)
