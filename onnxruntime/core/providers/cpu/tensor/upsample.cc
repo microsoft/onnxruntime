@@ -1214,10 +1214,12 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                               is_valid_non_negative_int32(output_width_i64),
                           "Resize: dimensions exceed supported int32 range for CPU linear mode.");
 
-        ORT_RETURN_IF_ERROR(ValidateBilinearDimensionsForInt32Indexing(
-            batch_size_i64, num_channels_i64,
-            input_height_i64, input_width_i64,
-            output_height_i64, output_width_i64));
+        if (!antialias_) {
+          ORT_RETURN_IF_ERROR(ValidateBilinearDimensionsForInt32Indexing(
+              batch_size_i64, num_channels_i64,
+              input_height_i64, input_width_i64,
+              output_height_i64, output_width_i64));
+        }
 
         batch_size = static_cast<int32_t>(batch_size_i64);
         num_channels = static_cast<int32_t>(num_channels_i64);
