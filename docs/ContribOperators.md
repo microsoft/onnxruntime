@@ -19,6 +19,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.CausalConvWithState">com.microsoft.CausalConvWithState</a>
   * <a href="#com.microsoft.ComplexMul">com.microsoft.ComplexMul</a>
   * <a href="#com.microsoft.ComplexMulConj">com.microsoft.ComplexMulConj</a>
+  * <a href="#com.microsoft.ConvStateReplay">com.microsoft.ConvStateReplay</a>
   * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
   * <a href="#com.microsoft.CropAndResize">com.microsoft.CropAndResize</a>
   * <a href="#com.microsoft.DecoderAttention">com.microsoft.DecoderAttention</a>
@@ -1113,6 +1114,69 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(double), tensor(float16)</dt>
 <dd>Constrain input and output types to float or half tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.ConvStateReplay"></a><a name="com.microsoft.convstatereplay">**com.microsoft.ConvStateReplay**</a>
+
+  Reconstruct rolling convolution history after retaining a prefix of captured inputs, without
+  performing convolution arithmetic. The WebGPU-only implementation copies FP16 or FP32 payload
+  bits exactly, including signed zero and NaN payloads, and waits for checked GPU completion.
+  
+  Inputs 0-2 are full rank-1 backing allocations of the same element type.
+  CPU int64 metadata [8] is ordered as:
+    source_offset_bytes, destination_offset_bytes, capture_offset_bytes,
+    batch_size, channels, history_width, capacity, kept_count.
+  Offsets are logical byte offsets into the full backing tensors, aligned to the element size
+  (two bytes for FP16, four for FP32), not WebGPU storage-binding offsets.
+  All fields are nonnegative; channels must be positive; 0 <= kept_count <= capacity.
+  Zero batch size, history width, or capture capacity is valid. Zero state size is a no-op.
+  Geometry, backing byte extents and metadata must fit the implementation's uint32 indexing range.
+  
+  The source view is the incoming snapshot immediately before capture, with layout
+  [batch_size, channels, history_width]. Captured inputs have layout [batch_size, capacity, channels].
+  capacity is the original capture stride, not kept_count. All retained inputs must have been captured.
+  For each batch b, channel c and position p, with W = history_width and k = kept_count:
+    destination[b,c,p] = source[b,c,p+k]                 if p+k < W
+                       = capture[b,p+k-W,c]            otherwise.
+  For k >= W only the last W inputs of the retained prefix are used; unused capture tails are not read.
+  
+  The output must be explicitly prebound to the same full allocation as destination_backing.
+  Destination backing must be distinct from source and capture backing, even for disjoint logical views.
+  Only the designated destination view is modified; neighboring elements and all source/capture data
+  are preserved. One descriptor is supported per invocation; graph capture is not supported.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>source_backing</tt> : T</dt>
+<dd>Full backing tensor containing the incoming convolution history.</dd>
+<dt><tt>capture_backing</tt> : T</dt>
+<dd>Full backing tensor containing captured token-major inputs.</dd>
+<dt><tt>destination_backing</tt> : T</dt>
+<dd>Full inactive destination-state backing tensor.</dd>
+<dt><tt>metadata</tt> : TI</dt>
+<dd>CPU int64 [8]: byte offsets, batch, channels, history, capacity, kept_count.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>destination_out</tt> : T</dt>
+<dd>Same backing allocation and shape as destination_backing.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
+<dd>State and captured inputs are FP16 or FP32.</dd>
+<dt><tt>TI</tt> : tensor(int64)</dt>
+<dd>CPU replay metadata is int64.</dd>
 </dl>
 
 
