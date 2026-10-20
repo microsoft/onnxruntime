@@ -31,22 +31,20 @@ static bool CheckBiasShape(const TensorShapeProto* bias_shape) {
   return bias_last_dim > 1;
 }
 
-// Returns true if the tensor shape is a scalar or a 1-element tensor (e.g. rank 0, [1], [1, 1]).
-static bool IsScalarOr1Element(const TensorShapeProto* shape) {
+// Returns true if the tensor shape is a scalar (rank 0) or 1D tensor of size 1.
+// Matches the CPU kernel predicate IsScalarOr1ElementVector.
+static bool IsScalarOr1ElementVector(const TensorShapeProto* shape) {
   if (shape == nullptr) {
     return false;
   }
-  if (shape->dim_size() == 0) {
+  int rank = shape->dim_size();
+  if (rank == 0) {
     return true;
   }
-  int64_t num_elements = 1;
-  for (int i = 0; i < shape->dim_size(); ++i) {
-    if (!shape->dim(i).has_dim_value()) {
-      return false;
-    }
-    num_elements *= shape->dim(i).dim_value();
+  if (rank == 1 && shape->dim(0).has_dim_value() && shape->dim(0).dim_value() == 1) {
+    return true;
   }
-  return num_elements == 1;
+  return false;
 }
 
 // Check if B_scale's shape is supported by MLAS direct GEMM quantization.
@@ -99,6 +97,47 @@ static bool IsBScaleSupportedForGEMM(const TensorShapeProto* b_scale_shape, cons
       if (b_scale_shape->dim(i).dim_param() != b_shape->dim(i).dim_param()) {
         return false;
       }
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Simulates MatMulIntegerToFloat::FixupScaleTensor ordering.
+// Returns false if scale tensor shapes cannot be evaluated or their ordering cannot be determined.
+static bool SimulateFixupScaleTensor(const TensorShapeProto* s0, const TensorShapeProto* s1,
+                                     const TensorShapeProto*& a_scale_shape,
+                                     const TensorShapeProto*& b_scale_shape) {
+  if (s0 == nullptr || s1 == nullptr) {
+    return false;
+  }
+  a_scale_shape = s0;
+  b_scale_shape = s1;
+
+  if (!IsScalarOr1ElementVector(a_scale_shape)) {
+    int a_scale_rank = a_scale_shape->dim_size();
+    if (a_scale_rank == 1) {
+      std::swap(a_scale_shape, b_scale_shape);
+    } else if (a_scale_rank > 1) {
+      const auto& last_dim = a_scale_shape->dim(a_scale_rank - 1);
+      if (!last_dim.has_dim_value()) {
+        return false;
+      }
+      if (last_dim.dim_value() != 1) {
+        std::swap(a_scale_shape, b_scale_shape);
+      }
+    }
+  } else if (!IsScalarOr1ElementVector(b_scale_shape)) {
+    int b_scale_rank = b_scale_shape->dim_size();
+    if (b_scale_rank > 1) {
+      const auto& second_last_dim = b_scale_shape->dim(b_scale_rank - 2);
+      if (!second_last_dim.has_dim_value()) {
+        return false;
+      }
+      if (second_last_dim.dim_value() != 1) {
+        std::swap(a_scale_shape, b_scale_shape);
+      }
     }
   }
   return true;
@@ -107,32 +146,25 @@ static bool IsBScaleSupportedForGEMM(const TensorShapeProto* b_scale_shape, cons
 // Bias can only be fused into MatMulIntegerToFloat / DynamicQuantizeMatMul if the GEMM kernel
 // can apply the scaling directly prior to adding the bias. If scaling must be deferred (e.g. matrix-shaped
 // scale), fusing Add would multiply the bias by the scale, altering graph semantics (issue #33331).
-static bool CanFuseBias(const Node& mul_node_right, const Node& matmulinteger_node,
-                        const Node* p_dynamicquantize_node) {
+static bool CanFuseBias(const Node& mul_node_right, const Node& matmulinteger_node) {
   if (mul_node_right.InputDefs().size() < 2 || matmulinteger_node.InputDefs().size() < 2) {
     return false;
   }
 
   const NodeArg* scale_arg_0 = mul_node_right.InputDefs()[0];
   const NodeArg* scale_arg_1 = mul_node_right.InputDefs()[1];
+  const TensorShapeProto* s0 = scale_arg_0->Shape();
+  const TensorShapeProto* s1 = scale_arg_1->Shape();
   const TensorShapeProto* b_shape = matmulinteger_node.InputDefs()[1]->Shape();
 
-  if (p_dynamicquantize_node != nullptr && p_dynamicquantize_node->OutputDefs().size() >= 2) {
-    const std::string& dql_scale_name = p_dynamicquantize_node->OutputDefs()[1]->Name();
-    if (scale_arg_0->Name() == dql_scale_name) {
-      return IsScalarOr1Element(scale_arg_0->Shape()) && IsBScaleSupportedForGEMM(scale_arg_1->Shape(), b_shape);
-    } else if (scale_arg_1->Name() == dql_scale_name) {
-      return IsScalarOr1Element(scale_arg_1->Shape()) && IsBScaleSupportedForGEMM(scale_arg_0->Shape(), b_shape);
-    }
+  const TensorShapeProto* selected_a_scale = nullptr;
+  const TensorShapeProto* selected_b_scale = nullptr;
+  if (!SimulateFixupScaleTensor(s0, s1, selected_a_scale, selected_b_scale)) {
+    return false;
   }
 
-  // Without DynamicQuantizeLinear, either input could be A_scale and the other B_scale.
-  // Bias can be fused safely if either permutation represents a directly supported GEMM scaling.
-  bool order_0_is_a = IsScalarOr1Element(scale_arg_0->Shape()) &&
-                      IsBScaleSupportedForGEMM(scale_arg_1->Shape(), b_shape);
-  bool order_1_is_a = IsScalarOr1Element(scale_arg_1->Shape()) &&
-                      IsBScaleSupportedForGEMM(scale_arg_0->Shape(), b_shape);
-  return order_0_is_a || order_1_is_a;
+  return IsScalarOr1ElementVector(selected_a_scale) &&
+         IsBScaleSupportedForGEMM(selected_b_scale, b_shape);
 }
 
 bool HasElementDataType(const NodeArg& node_arg, int32_t data_type) {
@@ -283,7 +315,7 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
     // Find bias node
     Node* p_add_node = nullptr;
     int idx = 0;
-    if (CanFuseBias(mul_node_right, matmulinteger_node, p_dynamicquantize_node) &&
+    if (CanFuseBias(mul_node_right, matmulinteger_node) &&
         optimizer_utils::CheckOutputEdges(graph, mul_node, 1)) {
       const Node* tmp_add_node = graph_utils::FirstChildByType(mul_node, "Add");
       if (nullptr != tmp_add_node) {
