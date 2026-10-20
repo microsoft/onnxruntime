@@ -2,6 +2,7 @@
 /build/
 /script/
 !/script/install.js
+/script/install-utils.test.js
 /src/
 /test/
 
