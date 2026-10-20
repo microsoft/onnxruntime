@@ -468,7 +468,7 @@ std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
   return SS_GET(s);
 }
 
-WEBGPU_BINARY_IMPL(Pow, "pow_v(a, b)", GetPowImpl)
+WEBGPU_BINARY_IMPL(Pow, "pow_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", GetPowImpl)
 WEBGPU_BINARY_IMPL(PRelu, "select(b * a, a, a >= vec4<input_a_element_t>(0))")
 WEBGPU_BINARY_IMPL(Equal, "vec4<u32>(vec4<input_a_element_t>(a) == vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_IMPL(Greater, "vec4<u32>(vec4<input_a_element_t>(a) > vec4<input_b_element_t>(b))")

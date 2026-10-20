@@ -16,6 +16,12 @@ inline constexpr std::string_view kXeLpg = "xe-lpg";
 inline constexpr std::string_view kXe3Lpg = "xe-3lpg";
 }  // namespace gpu_arch
 
+bool ShouldFoldMatMulSubgroupBatch(std::string_view architecture,
+                                   int64_t m,
+                                   bool can_fold_batch_into_m);
+
+int64_t MatMulSubgroupElementsPerThreadY(std::string_view architecture, uint32_t m);
+
 bool CanUseAVec4CooperativeLoad(std::string_view architecture,
                                 uint32_t dim_inner,
                                 int64_t elements_per_thread_y);

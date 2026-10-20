@@ -103,12 +103,7 @@ Status ApplyMatMulSubgroup(ComputeContext& context,
   // fold actually claws that waste back. Otherwise the Z-dispatch path wins.
   const int64_t M = output_shape[output_shape.NumDimensions() - 2];
   const auto& arch = context.AdapterInfo().architecture;
-  const bool is_xe_lpg_or_xe_3lpg = arch == gpu_arch::kXeLpg ||
-                                    arch == gpu_arch::kXe3Lpg;
-  // 32 = kSubgroupLogicalWorkGroupSizeY * ElementsPerThreadY(M > 32) on Xe-LPG/3LPG
-  const int64_t m_mod_32 = M % 32;
-  const bool xe_lpg_or_xe_3lpg_fold_ok = (m_mod_32 > 0 && m_mod_32 <= 24);
-  if (batchA != 1 && batchB == 1 && (!is_xe_lpg_or_xe_3lpg || xe_lpg_or_xe_3lpg_fold_ok)) {
+  if (ShouldFoldMatMulSubgroupBatch(arch, M, batchA != 1 && batchB == 1)) {
     // dimensions of A: [`batchA` * M, K]
     int64_t batchAndM = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
     TensorShapeVector dims_a = {batchAndM, helper.K()};

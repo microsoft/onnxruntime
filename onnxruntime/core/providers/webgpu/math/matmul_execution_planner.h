@@ -76,46 +76,25 @@ struct MatMulExecutionPlan {
   MatMulAlgorithmConfiguration configuration;
 };
 
-bool IsMatMulAlgorithmConfigurationCompatible(const MatMulExecutionPlan& plan);
-
-// Runtime correctness constraints validated immediately before dispatch.
-struct MatMulAlgorithmPrerequisites {
-  bool can_use_subgroup_matrix = false;
-  bool can_run_gemv = false;
-  bool has_subgroup_capability = false;
-  uint32_t subgroup_size = 0;
-  bool has_nonzero_k = false;
-  bool split_k_configured = false;
-  bool deterministic_compute = false;
-  bool is_vec4 = false;
-  bool has_fused_activation = false;
-  bool split_k_bias_layout_supported = true;
-};
-
-bool MeetsMatMulAlgorithmPrerequisites(
-    MatMulAlgorithm algorithm,
-    const MatMulAlgorithmPrerequisites& prerequisites);
-
-// Pure policy object that selects an algorithm and its tuning configuration to create an execution plan.
-// Runtime prerequisite validation and execution remain in MatMulComputeDispatcher.
+// Pure policy object that selects an algorithm and creates a host-validated execution plan.
+// Device resource validation and execution remain in MatMulComputeDispatcher.
 class MatMulExecutionPlanner {
  public:
   explicit MatMulExecutionPlanner(SplitKConfig split_k_config = {});
   virtual ~MatMulExecutionPlanner();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulExecutionPlanner);
 
-  // Selects one algorithm from immutable invocation facts. A forced algorithm bypasses
-  // automatic policy but remains subject to dispatcher prerequisite validation.
+  // Selects one algorithm from immutable invocation facts without validating executability.
   MatMulAlgorithm SelectAlgorithm(
       const MatMulAlgorithmSelectionParams& params,
       std::optional<MatMulAlgorithm> forced_algorithm = std::nullopt) const;
 
-  // Selects an algorithm and its typed tuning configuration as one immutable plan.
-  // A forced plan may intentionally violate runtime prerequisites; the dispatcher reports
-  // an error naming the requested algorithm instead of silently changing the selection.
-  MatMulExecutionPlan CreateExecutionPlan(
+  // Creates a host-validated plan containing the selected algorithm and its typed tuning
+  // configuration. Unsupported forced requests return an error without falling back.
+  Status CreateExecutionPlan(
       const MatMulAlgorithmSelectionParams& params,
-      std::optional<MatMulAlgorithm> forced_algorithm = std::nullopt) const;
+      std::optional<MatMulAlgorithm> forced_algorithm,
+      MatMulExecutionPlan& plan) const;
 
  protected:
   virtual std::optional<MatMulAlgorithm> SelectVendorAlgorithm(
@@ -131,6 +110,10 @@ class MatMulExecutionPlanner {
   MatMulAlgorithmConfiguration SelectCommonConfiguration(
       MatMulAlgorithm algorithm,
       const MatMulAlgorithmSelectionParams& params) const;
+
+  Status ValidateExecutionPlan(
+      const MatMulAlgorithmSelectionParams& params,
+      const MatMulExecutionPlan& plan) const;
 
   bool ShouldUseSplitK(const MatMulAlgorithmSelectionParams& params) const;
   bool ShouldUseGemv(const MatMulAlgorithmSelectionParams& params) const;
