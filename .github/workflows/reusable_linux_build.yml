@@ -72,6 +72,11 @@ on:
         required: false
         type: string
         default: ''
+      push_docker_image:
+        description: 'Whether to publish the build container image'
+        required: false
+        type: boolean
+        default: true
     secrets:
       GH_TOKEN:
         description: 'GitHub token for accessing actions/packages'
@@ -112,13 +117,21 @@ jobs:
           dockerfile: ${{ github.workspace }}/${{ inputs.dockerfile_path }}
           image-name: ghcr.io/microsoft/onnxruntime/${{ inputs.docker_image_repo }}
           build-args: ${{ inputs.docker_build_args }}
-          push: true
+          push: ${{ inputs.push_docker_image }}
           azure-container-registry-name: onnxruntimebuildcache
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
-      - name: Setup CCache
+      - name: Restore and save CCache
+        if: github.event_name != 'pull_request_target'
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          key: 'ccache | "${{ inputs.job_identifier }}" | "${{ inputs.architecture }}" | "${{ inputs.build_config }}"'
+          path: ~/.cache/cache
+
+      - name: Restore CCache
+        if: github.event_name == 'pull_request_target'
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: 'ccache | "${{ inputs.job_identifier }}" | "${{ inputs.architecture }}" | "${{ inputs.build_config }}"'
           path: ~/.cache/cache

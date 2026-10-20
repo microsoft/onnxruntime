@@ -16,10 +16,41 @@ permissions:
   contents: read
 
 jobs:
+  prepare-source:
+    name: Select source revision
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - name: Select immutable source revision
+        id: source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SHA: ${{ github.sha }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          source_sha="$EVENT_SHA"
+          if [[ "$EVENT_NAME" == "pull_request_target" && "$HEAD_REPOSITORY" == "$GITHUB_REPOSITORY" ]]; then
+            source_sha="$MERGE_SHA"
+          fi
+
+          if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The triggering event does not contain an immutable source revision."
+            exit 1
+          fi
+
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+
   build-linux-cuda-x64-release:
     name: Build Linux CUDA x64 Release
+    needs: prepare-source
     # This condition is evaluated from the trusted base-branch workflow on pull_request_target.
-    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      needs.prepare-source.result == 'success' &&
+      (github.event_name != 'pull_request_target' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
     permissions:
       contents: read
       packages: write
@@ -54,14 +85,21 @@ jobs:
       upload_build_output: true   # <<< Upload the build/Release directory
       execution_providers: 'cuda'
       job_identifier: build-linux-cuda-x64-release
-      checkout_ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
+      checkout_ref: ${{ needs.prepare-source.outputs.source_sha }}
+      push_docker_image: ${{ github.event_name != 'pull_request_target' }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token for reusable workflow needs (e.g., docker build action)
 
   test-linux-cuda-x64-release:
     name: Test Linux CUDA x64 Release
-    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
-    needs: build-linux-cuda-x64-release
+    if: >-
+      needs.prepare-source.result == 'success' &&
+      needs.build-linux-cuda-x64-release.result == 'success' &&
+      (github.event_name != 'pull_request_target' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    needs:
+      - prepare-source
+      - build-linux-cuda-x64-release
     runs-on:
       - self-hosted
       - "1ES.Pool=onnxruntime-github-linux-a10"
@@ -74,7 +112,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
+          ref: ${{ needs.prepare-source.outputs.source_sha }}
 
       - uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         id: build_docker_image_step
@@ -82,7 +120,7 @@ jobs:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecuda13manylinuxbuild
           build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
-          push: true
+          push: ${{ github.event_name != 'pull_request_target' }}
           azure-container-registry-name: onnxruntimebuildcache
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token to action
