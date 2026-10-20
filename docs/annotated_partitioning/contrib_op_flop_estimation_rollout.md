@@ -1,13 +1,14 @@
 # Contrib Operator FLOP Estimation: Design and Rollout Plan
 
-**Status:** Proposal for team review; not a description of an implemented feature.
+**Status:** Rollout proposal with an initial internal implementation; later phases remain proposed.
 
 ## 1. Summary
 
 Introduce an opt-in diagnostic feature that estimates the mathematical work of a contrib operator invocation.
-Start with a pure `com.microsoft::MatMulNBits` estimator and a coverage-aware static report. Then add concrete
-runtime counts, Attention coverage, and measured effective throughput. Keep dispatch, placement, memory admission,
-and allocation behavior unchanged throughout the diagnostic rollout.
+Start with a pure `com.microsoft::MatMulNBits` estimator and a coverage-aware static report. Then complete and
+validate MatMulNBits counting, including bias, concrete runtime shapes, and supported route-specific ancillary
+work, before expanding to Attention/GQA, measured throughput, or other operators. Keep dispatch, placement,
+memory admission, and allocation behavior unchanged throughout the diagnostic rollout.
 
 This plan builds on the
 [ORT Memory Estimates Copilot discussion](https://github.com/copilot/tasks/2cffab6d-eafa-4f8a-8595-590c601ee41c),
@@ -25,9 +26,10 @@ The key distinction is:
 **Recommended first release:** counting conventions, `MatMulNBits` core dense-equivalent operations, and a versioned
 developer report. Throughput and performance-policy changes are separate deliverables.
 
-Ancillary-work estimates are incremental follow-ups, not prerequisites for this first release. Define their
-component contract during reporting design, add shape-based bias counts after static reporting, and add
-implementation-dependent work only when its execution route and frequency can be established.
+The core-only developer preview remains independently reviewable and shippable, but it is not the MatMulNBits
+counting-completion milestone. Prioritize its ancillary and runtime-count follow-ups before starting broader
+operator coverage or throughput work. Add implementation-dependent counts only when their route and frequency
+can be established; otherwise retain explicit unavailable results rather than inventing a total.
 
 ### Initial implementation
 
@@ -37,9 +39,51 @@ core dense-equivalent count under convention version 1 or an explicit unavailabl
 `M = 1`; unknown dimensions remain unavailable even alongside zero extents. The adapter reads canonical graph
 shapes, not maximum-shape scenarios, and does not validate packed weights or replace normal operator validation.
 
-This first increment does not add a graph report, runtime instrumentation, public API, or inference-policy changes.
-The sources are included by the existing CPU contrib source glob, independently of CUDA, and the tests run in
-`onnxruntime_provider_test` with `--gtest_filter="MatMulNBitsComputeEstimate*"` after rebuilding.
+The Phase-2 preview adds a static JSON report via the existing session configuration API. There is no runtime
+instrumentation, new public API function, or inference-policy change. The estimator sources are included by the
+existing CPU contrib source glob, independently of CUDA.
+
+### Generating a review artifact
+
+Set `session.compute_estimate_report_path` to a UTF-8 JSON file path before creating a session:
+
+```python
+import onnxruntime as ort
+
+options = ort.SessionOptions()
+options.add_session_config_entry("session.compute_estimate_report_path", "compute_estimates.json")
+session = ort.InferenceSession("model.onnx", sess_options=options, providers=["CPUExecutionProvider"])
+```
+
+The equivalent C++ configuration is:
+
+```cpp
+Ort::SessionOptions options;
+options.AddConfigEntry("session.compute_estimate_report_path", "compute_estimates.json");
+```
+
+These examples require an ORT build containing this implementation, not an older installed wheel.
+Session initialization generates the report from the final executable graph before removable attributes are
+pruned. No `Run()` or profiling call is required. Relative paths use the process working directory; parents must
+already exist. Existing files are overwritten, so choose a path distinct from model/optimized-model files and a
+different path for each concurrent session. Reports contain node names and shape metadata; review them before sharing.
+
+Unknown/unsupported estimates are normal report entries. Generation/open/write failures log a warning and do not
+fail session initialization. Minimal builds and compile-only sessions warn that export is unsupported. Full builds
+with contrib ops disabled can export coverage reports but label the MatMulNBits estimator unavailable.
+The unset/empty option performs no report traversal or file I/O.
+
+The developer-facing schema is version 1. `nodes` contains per-node components and positional input shapes
+(unknown dimensions are `null`, omitted optional inputs have state `missing`). `graphs` contains separate summaries
+for `main` and each nested graph. Nested identities use `main/<node_index>/<attribute_name>`, recursively;
+attribute segments escape `~` as `~0` and `/` as `~1`. The top-level summary covers only direct nodes in `main`.
+Counts never aggregate alternative branches or unknown loop iteration counts into a per-run total.
+
+Run the targeted tests after rebuilding:
+
+```text
+onnxruntime_provider_test --gtest_filter="ComputeEstimateReportTest.*:MatMulNBitsComputeEstimate*"
+```
 
 ## 2. Motivation and boundaries
 
@@ -189,8 +233,8 @@ per-node result -> coverage-aware report -> optional timing correlation
 7. Defer public C/C++/Python APIs and plugin registration until the internal contract stabilizes.
 
 The result type should make contradictory states impossible: an available estimate has a count, and an unavailable
-estimate has a reason rather than a numeric placeholder. The following JSON is a proposed reporting format, not an
-existing ORT API:
+estimate has a reason rather than a numeric placeholder. The following is an abbreviated version-1 report;
+the implementation also emits positional input metadata, estimator support, and per-graph summaries:
 
 ```json
 {
@@ -207,12 +251,24 @@ existing ORT API:
       "opset_version": 1,
       "provider": "CUDAExecutionProvider",
       "availability": "available",
-      "estimate_kind": "exact_under_convention",
-      "input_basis": "static_concrete",
-      "metric": "dense_equivalent_ops",
-      "scope": "matmul_core",
-      "operation_count": "24576",
-      "excluded_components": ["dequantization", "bias", "packing", "conversion", "padding"]
+      "whole_operator_work_complete": false,
+      "components": [
+        {
+          "component": "matmul_core",
+          "estimate_kind": "exact_under_convention",
+          "input_basis": "static_concrete",
+          "basis": "logical_semantics",
+          "execution_phase": "per_invocation",
+          "convention_version": "core_arithmetic_v1",
+          "availability": "available",
+          "metric": "dense_equivalent_ops",
+          "scope": "matmul_core",
+          "operation_count": "24576",
+          "excluded_components": [
+            "dequantization", "bias", "packing", "conversion", "padding", "route_specific_extra_work"
+          ]
+        }
+      ]
     }
   ],
   "summary": {
@@ -220,15 +276,23 @@ existing ORT API:
     "estimated_node_count": 1,
     "unavailable_node_count": 0,
     "known_dense_equivalent_ops": "24576",
+    "subtotal_availability": "available",
     "complete_for_declared_graph_and_component_scope": true,
-    "whole_operator_work_complete": false
+    "whole_operator_work_complete": false,
+    "count_scope": "direct_nodes_only",
+    "per_run_total_available": false,
+    "graph_path": "main"
   }
 }
 ```
 
-Serialize counts as decimal strings to preserve integer precision in JSON consumers. An unavailable node omits
-`operation_count` and includes a reason such as `unsupported_operator`, `unknown_shape`, `missing_semantic_value`,
-`invalid_metadata`, `overflow`, or `runtime_execution_required`.
+Serialize counts as decimal strings to preserve integer precision in JSON consumers. An unavailable component omits
+`operation_count` and includes a reason such as `unsupported_version`, `unknown_shape`, `invalid_metadata`, `overflow`,
+or `estimators_disabled`. Unsupported operators and opaque partitions have unavailable node entries with empty
+components. Control-flow nodes use `runtime_execution_required`; their nested graphs are reported separately.
+`missing_semantic_value` is reserved for future runtime-dependent components.
+If a graph subtotal overflows, omit it and report `subtotal_unavailable_reason: overflow`; never wrap or silently
+drop a node's count. A zero known subtotal with unavailable nodes is not a zero-work model.
 
 Report the optimized graph actually represented by ORT, with graph/subgraph identity and final node identity.
 Estimate fused nodes directly or mark them unsupported; never count both a fusion and its removed constituents.
@@ -249,14 +313,15 @@ from particular contributors. Calendar estimates should follow contract review a
 | 1. Pure pilot | Internal result type and lookup; graph-free MatMulNBits estimator; unit tests | Phase 0 | Framework + quantization owners | Independent expected counts pass; no CUDA dependency; overflow and invalid metadata diagnosed |
 | 2. Static reporting / MVP | Opt-in developer report over the optimized executable graph; coverage and provenance | Phase 1 | Framework + tooling owners | End-to-end report matches golden expectations; fusion/partial coverage are honest; inference unchanged |
 | 3. Runtime counts | Opt-in invocation estimates using concrete shapes; event identity and bounded caching | Phase 2 | Execution/profiling owners | Dynamic-shape cases pass; no extra device synchronization; agreed overhead gate passes |
-| 4. Attention coverage | Incremental packed Attention and GQA support; phase and active-length semantics | Phase 2; Phase 3 for runtime-only metadata | Attention owners | Prefill/decode/chunked, causal/windowed, and ragged reference cases pass |
-| 5. Measured throughput | Matched CPU and eager-CUDA timing; units, scope, route provenance where available | Phase 3; Phase 4 only for Attention throughput | Profiling + EP owners | Attribution, aggregation, invalid durations, and timing validation pass |
+| 4. Attention coverage | Incremental packed Attention and GQA support; phase and active-length semantics | MatMulNBits counting-completion gate below; Phase 3 for runtime-only metadata | Attention owners | Prefill/decode/chunked, causal/windowed, and ragged reference cases pass |
+| 5. Measured throughput | Matched CPU and eager-CUDA timing; units, scope, route provenance where available | MatMulNBits counting-completion gate and Phase 3; Phase 4 only for Attention throughput | Profiling + EP owners | Attribution, aggregation, invalid durations, and timing validation pass |
 | 6. Cost-model experiments | Calibrated latency/transfer model; separate route/placement experiment | Phase 5 + applicable memory feasibility contracts | Performance + EP owners | Representative end-to-end benefit and fallback behavior proven before any policy adoption |
 
-Phase 4 and Phase 5 can proceed independently after their prerequisites. Do not make pilot throughput wait for
-complete Attention coverage. Phases 0-2 are the useful, independently shippable MVP.
+Phases 0-2 remain the useful, independently shippable core-only MVP. The current priority after Phase 2 is
+MatMulNBits counting completion, not Attention or timing. After that gate passes, Phases 4 and 5 can proceed
+independently; MatMulNBits throughput need not wait for complete Attention coverage.
 
-The ancillary increments below extend these phases without renumbering or blocking the main rollout:
+The ancillary increments below retain their numbering but now participate in the MatMulNBits-first milestone:
 
 | Increment | Deliverables | Dependencies | Proposed owner | Exit gate |
 | --- | --- | --- | --- | --- |
@@ -265,13 +330,46 @@ The ancillary increments below extend these phases without renumbering or blocki
 | 3a. Route-specific ancillary work | Incremental dequantization, unpacking, conversion, layout, padding, and prepacking estimates | Phase 3 plus validated route and preparation-frequency metadata for each supported path | Quantization + EP owners | Route, reuse, padding, repetition, phase, and non-overlap tests pass; unknown paths remain unavailable |
 
 Agree on component semantics during Phase 2 design, but do not implement every component before shipping the MVP.
-Increment 2a can proceed alongside runtime-count development. Increment 3a does not block Attention or core-only
-throughput reporting; each new component is enabled only for routes with enough evidence. Full ancillary coverage
-is not required before subsequent phases or the initial feature PR.
+Deliver Increment 2a next, then Phase 3 for MatMulNBits and Increment 3a for the agreed supported routes.
+Logical reconstruction remains optional and cannot substitute for evidence of executed ancillary work.
+Do not start Attention/GQA, other operator estimators, throughput, or cost-model implementation until the
+MatMulNBits counting-completion gate passes. Each route-specific component is enabled only with sufficient evidence.
+
+### MatMulNBits-first order and completion gate
+
+Here, "MatMul counting" means the existing `com.microsoft::MatMulNBits` target, not new coverage of standard
+`MatMul`, `Gemm`, or every quantized matrix operator.
+
+1. Finish Phase-2 report review and correctness validation, preserving the independent core-only preview.
+2. Implement Increment 2a: separate bias counts and component-level coverage, including absent, unknown, empty,
+   and overflow cases. Keep the `2MNK` core convention unchanged.
+3. Implement Phase 3 for MatMulNBits: concrete invocation geometry, execution identity, repeated/dynamic workloads,
+   and checked aggregation without stale cache reuse or extra device synchronization.
+4. Implement Increment 3a for a bounded, owner-approved CPU/CUDA route matrix. Audit dequantization, unpacking,
+   conversion, layout, padding/recomputation, and prepacking; identify retained/eliminated work, reuse, repetition,
+   and initialization/first-use/per-invocation lifetimes. Record unvalidated routes and components as unavailable.
+5. Review independent reference counts, end-to-end reports, inference compatibility, build coverage, and measured
+   count-only overhead against the agreed workload matrix before opening the next operator/timing workstream.
+
+The gate passes only when:
+
+- Core and bias counts match independent references for the declared static and runtime workload matrix.
+- Every applicable ancillary component on each claimed supported route has a validated count and attribution;
+  components proven absent or eliminated are distinguished from components whose execution is unknown.
+- Unsupported routes/components have explicit reasons and documented limitations. Reviewers approve the bounded
+  coverage and any deferred gaps; marking all ancillary work unavailable is not completion.
+- Reports keep arithmetic categories and lifetimes separate, avoid overlap/shared-preparation double counting,
+  and do not claim literal total executed FLOPs or whole-operator completeness without supporting evidence.
+- Dynamic/repeated/concurrent invocation tests, route/reuse changes, overflow, disabled behavior, and the
+  approved overhead gate pass. Published review artifacts show both covered and unavailable cases.
+
+This is completion of counting within a declared, validated support scope, not a promise to count every hardware
+instruction or support every EP. Broader route coverage can follow, but silently treating unknown work as zero
+or relaxing the gate to begin Attention is not the planned rollout.
 
 ### Phase 2: static-report launch
 
-- Begin with an internal/developer reporting surface; the exact command or API is a Phase 0 decision.
+- Use an explicit-path session config entry for the developer preview, with warning-only report failures.
 - Restrict initial support to full inference builds. Builds excluding contrib ops must retain unchanged behavior
   and must not acquire a dependency on unavailable contrib implementations.
 - Validate real optimized models, including cases where fusion removes all directly supported pilot nodes.
@@ -315,6 +413,8 @@ first-use preparation from steady-state work. Do not attribute shared preparatio
 
 ### Phase 4: Attention expansion
 
+Begin implementation only after the MatMulNBits counting-completion gate passes.
+
 First agree on useful unmasked work versus rectangular dense-equivalent work. For useful core work, define `P` as
 the sum of valid query-key pairs across batches and query heads:
 
@@ -337,6 +437,9 @@ and PackedMultiHeadAttention do not have identical projection work. Backend tili
 belong to a separately named route-specific metric, not an undocumented change to the logical count.
 
 ### Phase 5: throughput
+
+Begin timing integration only after the MatMulNBits counting-completion gate passes. Count-only overhead
+measurements needed to validate Phase 3 are not deferred by this restriction.
 
 Only calculate a rate when the count and duration cover the same invocation and components:
 
@@ -393,7 +496,9 @@ comparing disabled, count-only, and timing-enabled modes. Record exact commands 
 1. **Internal validation:** maintainers exercise the pilot and golden reports on small deterministic graphs.
 2. **Developer preview:** expose opt-in static reporting with documented coverage; gather model/report feedback.
 3. **Runtime preview:** separately opt in to counts, then timing; record overhead and attribution gaps.
-4. **Broader support:** add operators only with owner-reviewed conventions and reference cases. Stabilize a public
+4. **MatMulNBits counting completion:** validate bias, runtime counts, and supported ancillary routes against the
+   gate above before starting Attention/GQA, other operators, or throughput implementation.
+5. **Broader support:** add operators only with owner-reviewed conventions and reference cases. Stabilize a public
    API only after consumers validate the report and unknown-state semantics.
 
 Track unavailable-reason frequencies, supported-node coverage, report generation cost, and count/timing overhead
@@ -404,6 +509,10 @@ independently switchable. Any later placement/dispatch experiment needs its own 
 and rollback plan.
 
 ## 9. Open questions for the team
+
+Phase-2 preview decisions: use `session.compute_estimate_report_path`, versioned component-oriented JSON, separate
+nested graph scopes, and warning-only export failures. These choices are implemented for developer review; ownership,
+additional build coverage, and later-phase semantics still require team agreement.
 
 | ID | Decision to resolve | Recommendation | Needed by |
 | --- | --- | --- | --- |
@@ -418,12 +527,16 @@ and rollback plan.
 | Q9 | Should external EPs/custom ops register estimators? | Revisit after multiple built-in operators demonstrate the needed contract | Public API design |
 | Q10 | When may estimates affect placement or dispatch? | Only after calibrated end-to-end experiments, including bandwidth and transfer costs | Phase 6 |
 | Q11 | Which ancillary components and reconstruction conventions should be supported first? | Bias after static reporting; logical reconstruction only if needed; executed-work estimates require validated route and frequency metadata | Phase 2 design; per-route approval before Increment 3a |
+| Q12 | What is the bounded MatMulNBits counting-completion scope? | Agree on CPU/CUDA routes, workload matrix, applicable components, and explicit deferred gaps; require owner approval before broader work starts | Before Increment 3a; gate review before Phases 4-5 |
 
 ## 10. Completion criteria
 
 The **MVP is complete** when a developer can request a persistent, versioned static report for an optimized graph,
 see the correct `MatMulNBits` core count for supported concrete shapes, and understand every exclusion and missing
 estimate without any change to inference behavior.
+
+The **MatMulNBits counting milestone is complete** only when the MatMulNBits-first gate in Section 6 passes.
+Shipping the core-only MVP does not satisfy that gate or authorize starting broader operator/timing work.
 
 The **diagnostic feature is mature** when supported runtime invocations and matched throughput can be reported with
 validated attribution, honest coverage, and measured overhead. Automatic performance planning remains a separate
