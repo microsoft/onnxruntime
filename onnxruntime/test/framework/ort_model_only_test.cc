@@ -174,7 +174,6 @@ TEST(OrtModelOnlyTests, RejectsMoeExpertCountingInMinimalBuild) {
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterStateFile, "counters.txt"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.5"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight, "0.5"},
-           std::pair{kOrtSessionOptionsConfigMoeExpertPlacementBeta, "0.5"},
            std::pair{kOrtSessionOptionsConfigMoeExpertSwapEpsilon, "0.1"},
            std::pair{kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice, "2"}}) {
     SCOPED_TRACE(key);

@@ -1247,38 +1247,6 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 }
 
 #ifndef __wasm__
-TEST(InferenceSessionTests, ValidatesMoeExpertPlacementBetaBeforeCreatingOffloadResources) {
-  for (const char* value : {"-0.1", "1.1", "nan", "inf", "invalid"}) {
-    SCOPED_TRACE(value);
-    SessionOptions options;
-    options.intra_op_param.thread_pool_size = 1;
-    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "1"));
-    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertPlacementBeta, value));
-    InferenceSession session{options, GetEnvironment()};
-    ASSERT_STATUS_OK(session.Load(MODEL_URI));
-    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "must be finite and in [0, 1]");
-  }
-  for (int scenario = 0; scenario < 3; ++scenario) {
-    SCOPED_TRACE(scenario);
-    SessionOptions options;
-    options.intra_op_param.thread_pool_size = 1;
-    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertPlacementBeta, "0.5"));
-    if (scenario != 0) {
-      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "1"));
-      if (scenario == 1) {
-        ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadStrategy, "basic"));
-      } else {
-        options.execution_mode = ExecutionMode::ORT_PARALLEL;
-        options.inter_op_param.thread_pool_size = 2;
-      }
-    }
-    InferenceSession session{options, GetEnvironment()};
-    ASSERT_STATUS_OK(session.Load(MODEL_URI));
-    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(),
-                                        scenario == 0 ? "requires MoE CPU offload" : "sequential execution");
-  }
-}
-
 TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotLoadStateWithoutOffload) {
   for (const auto* state_file : {"moe_expert_state_ascii.json", "moe_expert_state_\xE6\xB5\x8B\xE8\xAF\x95.json"}) {
     SCOPED_TRACE(state_file);

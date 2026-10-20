@@ -55,9 +55,6 @@ class KernelPilotMoeExpertState {
   Status SetCounterProbabilityWeight(double probability_weight);
   double CounterProbabilityWeight() const noexcept { return counter_probability_weight_; }
 
-  // Blends popularity with same-QMoE previous-invocation co-selection scores.
-  Status SetPlacementBeta(double beta);
-
   // Enables static CUDA placement and sets the global number of experts offloaded to CPU.
   // Must be called before FinalizeInitialization().
   Status SetCpuOffloadExpertCount(size_t cpu_offload_expert_count);
@@ -104,9 +101,6 @@ class KernelPilotMoeExpertState {
   // During a Run, only this kernel may read its counters.
   Status GetCounters(const OpKernel* kernel, InlinedVector<double>& counters) const;
 
-  // Source-major C[i,j] against this QMoE's previous invocation; empty when beta is one.
-  Status GetCorrelations(const OpKernel* kernel, InlinedVector<double>& correlations) const;
-
   // Maps a kernel-local expert ID to its index in the session-wide counter array.
   Status GetExpertId(const OpKernel* kernel, int expert_id, size_t& global_expert_id) const;
 
@@ -136,19 +130,14 @@ class KernelPilotMoeExpertState {
   };
   struct KernelState {
     KernelState(Key key, ExpertRange range, KernelPilotMoeExpertState& owner, const OpKernel* kernel,
-                size_t topological_order, bool is_qmoe)
-        : key(std::move(key)), experts(range), pilot(owner, kernel), topological_order(topological_order), is_qmoe(is_qmoe) {}
+                size_t topological_order)
+        : key(std::move(key)), experts(range), pilot(owner, kernel), topological_order(topological_order) {}
     Key key;
     ExpertRange experts;
     KernelPilot pilot;
     InlinedVector<int> cuda_experts;
     size_t topological_order;
-    bool is_qmoe;
-    InlinedVector<double> correlations;
-    InlinedVector<int> reference_selection;
-    bool has_reference_selection{false};
   };
-  double PlacementScore(const KernelState& state, size_t expert) const;
   NodeHashMap<const OpKernel*, KernelState> kernels_;
   InlinedHashMap<std::pair<const OpKernel*, int>, size_t> expert_ids_;
   InlinedVector<double> counters_;
@@ -161,7 +150,6 @@ class KernelPilotMoeExpertState {
   std::atomic<size_t> logging_record_count_{0};
   double alpha_{0.75};
   double counter_probability_weight_{0.0};
-  double placement_beta_{1.0};
   std::string popularity_output_file_;
   size_t cpu_offload_expert_count_{0};
   double swap_epsilon_{0.01};

@@ -41,7 +41,6 @@ alpha `0.9` and epsilon `0.1` and requires an explicit `--cpu-offload-experts` v
 | **`moe_cpu_offload_on_demand_threshold`** | **`--on-demand-threshold N`** | **`0`** | Synchronously swap required CPU experts onto GPU if at most `N` are missing and all selected experts fit existing GPU capacity. CUDA QMoE adaptive/layered only; `0` disables it. |
 | `moe_expert_counter_alpha` | `--counter-alpha` | `0.75` | Popularity decay coefficient in `[0, 1]`; larger values retain longer history. |
 | `moe_expert_counter_probability_weight` | Not exposed | `0` | Weight in `[0, 1]` blending binary expert selection with routing probability when updating offload counters. |
-| `moe_expert_placement_beta` | `--placement-beta` | `1` | Blend popularity with same-QMoE previous-invocation co-selection predictions. Swaps remain at end of Run; requires adaptive/layered placement and sequential execution. |
 | `moe_expert_swap_epsilon` | `--swap-epsilon` | `0.01` | Non-negative relative popularity margin required for background exchanges. Does not gate on-demand swaps. |
 | `moe_max_in_flight_swaps_per_device` | `--max-in-flight-swaps-per-device` | `4` | Maximum concurrent background exchanges per CUDA device. `0` disables background swaps, not on-demand swaps. |
 | `enable_moe_expert_counting` | Not exposed | `0` | Legacy counting flag; does not enable counters without offload. Offload maintains counters independently of this flag. |
@@ -80,15 +79,9 @@ This threshold is independent of the background swap limit; synchronous swaps al
 To keep early QMoE layers entirely on CPU and later layers partially on GPU, use `layered` with
 `layer_order=last` and choose `K` large enough that the later layers consume all available GPU slots.
 For example, with 40 layers of 256 experts, `K=6144` and `gpu_ratio=0.8` leave the first 19 layers entirely on CPU,
-the last 20 layers with 204 GPU experts each, and the boundary layer with 16 GPU experts. Add
-`session.moe_expert_placement_beta=0.25` (benchmark: `--placement-beta 0.25`) to rank later-layer experts using
-`0.25 * popularity + 0.75 * sum C[current_selected, expert]`. Each QMoE's current selection predicts its own
-next invocation. Background swaps remain at the end of Run, with unchanged epsilon, swap limits, and layer capacities.
-`beta=0` uses only co-selection predictions; `beta=1` preserves popularity-only behavior without correlation matrices
-or any additional per-layer snapshot synchronization. See [counter definitions](#counters-and-predictive-placement) below.
-The benchmark records beta in its result JSON; the historical result tables used the default `1`.
-The [paired beta comparison](#beta-comparison-60-last-more-than-half-of-experts-on-cpu) below measured the earlier
-first-QMoE predictor, not the current same-QMoE temporal predictor.
+the last 20 layers with 204 GPU experts each, and the boundary layer with 16 GPU experts.
+Within each layer's fixed GPU capacity, experts are ranked by popularity.
+Background swaps remain at the end of Run, subject to epsilon and swap limits.
 
 Supported: FP16/BF16 MoE weights and uniform INT4/INT8 QMoE (`quant_type="int"`, `weights_prepacked=0`).
 Both require FP16/BF16 activations, constant weights and connected biases, a static hidden dimension, and prepacking.
@@ -97,7 +90,7 @@ plugin CUDA EP, minimal builds, or overlapping runs on one session.
 
 For operator support, see [MoE/QMoE](../contrib_ops/cuda/moe_qmoe.md).
 
-## Counters and predictive placement
+## Counters
 
 Only offload-eligible built-in CUDA nodes maintain counters, including their CPU-resident experts.
 CPU EP nodes, unsupported nodes, and sessions without offload do not participate.
@@ -106,38 +99,22 @@ and tiles, including prefill. With probability weight `lambda`, their contributi
 `(1-lambda) + lambda * max_routing_probability`; unselected experts only decay.
 Counters start at zero and persist across runs. Updates from successful kernels are not rolled back if a later kernel fails.
 
-With `beta<1`, each QMoE `m` maintains its own zero-initialized temporal co-selection matrix:
-
-```text
-S[t,m,j] = 1 if expert j is selected anywhere in invocation t of QMoE m, otherwise 0
-C[m,i,j] <- alpha * C[m,i,j] + (1-alpha) * S[t-1,m,i] * S[t,m,j]
-score_next[m,j] = beta * P[m,j] + (1-beta) * sum(C[m,k,j] for k selected by the current invocation of QMoE m)
-```
-
-All matrix entries decay on each successful invocation with a previous selection; only joint selections add an
-increment. Routing probabilities do not weight `C`, and the sum is not normalized. The first invocation only seeds
-history; an empty selection is a valid sample, not missing history. Each node keeps independent history across Runs,
-including nodes in subgraphs. An unsuccessful Run invalidates previous selections but retains already learned `C`
-and popularity updates. There is no implicit prompt-boundary reset.
-
 GPU usage completion stays deferred until the existing end-of-Run boundary (or the next invocation of the same
-kernel when its snapshot must be reused). There is no first-layer prediction trigger or added per-layer wait.
-After collecting usage, the existing end-of-Run scheduler ranks experts for the next invocation.
-Initial placement is unchanged; non-QMoE nodes retain popularity-only scoring. With 40 QMoEs and 256 experts each,
-the matrices use 20 MiB; `beta=1` allocates none.
+kernel when its snapshot must be reused). After collecting usage, the end-of-Run scheduler ranks experts by
+popularity for the next invocation. No runtime correlation matrices or predictive placement are maintained.
 
 ### Saved state and diagnostics
 
 `--popularity-output` saves `P`, alpha, and epsilon at session destruction; `--state` restores them.
 Use the same model and graph-optimization settings. Omitted experts start at zero; invalid records fail initialization.
-Neither `C` nor beta is saved or restored. The JSON format is:
+The JSON format is:
 
 ```json
 {"alpha": 0.9, "epsilon": 0.1, "experts": [{"moe": 0, "expert": 0, "popularity": 0.42}]}
 ```
 
 `moe` is a zero-based ordinal sorted by graph scope and resolved node index, **not** the topological QMoE numbering
-used for prediction; `expert` is local to that node.
+used by the analysis scripts; `expert` is local to that node.
 `--counter-log` enables INFO records: `moe_expert_counters`, `moe_expert_swaps`, and `moe_expert_demand_swaps`.
 The 1,024 counter-record limit per run emits `moe_expert_counters_truncated` on overflow; updates continue,
 but analyzers reject truncated traces. Logging adds overhead; keep it off for performance measurements.
@@ -162,7 +139,7 @@ python tools/python/qmoe_expert_activation_correlations.py /tmp/qmoe-counters.lo
 ```
 
 One CPU expert is required to enable collection; swaps are disabled. Generation can stop on EOS before 256 tokens.
-`--reference-layer first` computes binary Pearson correlations, **not** the EMA co-selection counters `C`.
+`--reference-layer first` computes binary Pearson correlations offline; it does not affect runtime placement.
 The default remains `previous` for adjacent-layer analysis. Temporal pairs never cross prompt boundaries.
 In the NPZ archive, `first_qmoe_same_token[q,j,i]` is `corr(S[t,m,j], S[t,0,i])`, with `m` identified by
 `first_qmoe_current_node_names[q]`; `same_qmoe_previous_token[m,i,j]` correlates the current and previous token
@@ -210,6 +187,9 @@ These are single-run observations on a shared host, not statistical estimates or
 
 ### Beta comparison: 60% last, more than half of experts on CPU
 
+**Historical experiment:** runtime beta and correlation-based placement have been removed.
+The measurements and provenance below are retained for reference.
+
 Measured **2026-10-19** using the existing `tools/python/benchmark_moe_cpu_offload.py`, with the earlier first-QMoE predictor
 on top of `314bc93103` (uncommitted working-tree changes). Both series used the same freshly rebuilt runtime and CUDA
 provider on **H200 GPU 1**, with `layered`, `gpu_ratio=0.6`, `layer_order=last`, alpha `0.9`, epsilon `0.1`,
@@ -247,7 +227,8 @@ not immediately when routing is available. These results include that synchroniz
 predictive scheduling; they do not isolate the scoring formula. The all-CPU-expert row cannot show a placement benefit
 and also retains those opt-in costs.
 Its 39 correlation matrices occupied 19.5 MiB; measured RSS includes other allocations as well.
-These measurements do not evaluate the current same-QMoE predictor, which removes eager per-layer completion.
+These measurements do not evaluate the later same-QMoE predictor, which removed eager per-layer completion
+and has also been removed.
 GPU memory is device-wide NVML memory sampled every 50 ms. No external GPU compute processes were present at
 the start of any run, and runtime/provider hashes were unchanged across the sweep, but continuous isolation was not
 enforced. These are one run per configuration on a shared host, not statistical estimates or quality comparisons.
@@ -260,7 +241,7 @@ older cohorts below.
 ### GPU ratio and beta sweep: 33 of 45 configurations completed
 
 Measured **2026-10-19**, after the paired comparison, with the same earlier first-QMoE runtime/provider binaries
-and benchmark script, not the current temporal predictor.
+and benchmark script, not the later, now-removed temporal predictor.
 The sweep was stopped on request after **33 completed configurations**; it was not resumed.
 Placement is `layered/last`, swap limit **5**, beta **1/0.5/0.1**, with the same five prompts and measurement windows.
 All GPU-1 compute-process checks before runs were empty; continuous isolation was not enforced.
@@ -658,28 +639,8 @@ For the six-way position sweep, use `--strategy layered`, ratios `0.6`/`0.8`, an
 with separate output directories and serial runs.
 For the 16-swap comparison, use `--strategy layered --gpu-ratio 0.6 --layer-order last`
 and `--max-in-flight-swaps-per-device 16`.
-For beta comparisons, reuse the same script and environment with the existing five-prompt file.
-The following sweep compares 60%/70%/80% GPU targets and beta 1/0.5/0.1 at each CPU budget, in 45 serial fresh processes.
-Restrict the ratios and beta values to `0.6` and `1 0.5` for the paired configuration.
-The active runtime uses same-QMoE temporal prediction; reproducing historical results requires their recorded source:
-
-```bash
-for k in 6144 7168 8192 9216 10240; do
-  for ratio in 0.6 0.7 0.8; do
-    for beta in 1 0.5 0.1; do
-      name="layered-${ratio}-last-k${k}-beta${beta}"
-      CUDA_VISIBLE_DEVICES=1 python /path/to/onnxruntime/tools/python/benchmark_moe_cpu_offload.py \
-        --name "$name" --model /path/to/qwen3.5-35b-cuda-int4 \
-        --prompts /path/to/onnxruntime/docs/moe-cpu-offload/benchmark-prompts.json \
-        --max-new-tokens 256 --cpu-offload-experts "$k" \
-        --strategy layered --gpu-ratio "$ratio" --layer-order last --placement-beta "$beta" \
-        --counter-alpha 0.9 --swap-epsilon 0.1 --max-in-flight-swaps-per-device 5 \
-        --on-demand-threshold 0 --swap --no-counter-log --no-cuda-graph \
-        --output "/tmp/qwen35-int4/${name}.json" --log "/tmp/qwen35-int4/${name}.log" || exit "$?"
-    done
-  done
-done
-```
+Reproducing the historical beta sweeps requires their recorded source; the current runtime and benchmark
+no longer expose beta or correlation-based placement.
 
 For the on-demand sweep, use `--on-demand-threshold 1` or `2` with `--strategy adaptive`,
 or `--strategy layered --gpu-ratio 0.8 --layer-order first`, for K=1024..9216.
@@ -719,12 +680,13 @@ All strategies preserve exactly `K` CPU experts.
   - GPU layers can be first, last, or middle. No position or GPU fraction is consistently best:
     at K=6144, 80% last reached **40.834 token/s** versus **37.666** for 60% last in the same position sweep;
     at K=7168, 60% middle reached **39.643** versus **34.716** for 60% last.
-- **Latest beta comparison**
+- **Historical beta comparison**
   - At 60% last and K=6144..10240, beta=0.5 lowered decode throughput by **5.1%-14.9%** versus beta=1.
   - The new beta=1 run at K=7168 gives the best observed prefill, **99.192 token/s**;
     at K=9216 it gives the best observed decode, **32.486 token/s**.
-  - These measurements used eager first-QMoE prediction, not the current end-of-Run temporal predictor.
+  - These measurements used eager first-QMoE prediction, not the later end-of-Run temporal predictor.
     They include synchronization overhead and do not isolate prediction quality.
+    Both predictors have been removed.
 - **On-demand swaps**
   - If only one selected expert is on CPU, swap it to CUDA and compute there, provided it fits.
   - Swapping two is worse for decode, but can still improve prefill.
@@ -732,7 +694,6 @@ All strategies preserve exactly `K` CPU experts.
 
 ### Next ideas
 
-- Benchmark the same-QMoE temporal predictor against beta=1 while accounting for swap cost.
 - Automatically increase or reduce parameters when measured throughput improves, instead of relying only on defaults.
   This is not implemented yet.
 
