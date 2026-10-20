@@ -1,7 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M09 complete and published for review; M10 in progress;
-M11-M24 pending.
+**Status:** Approved; M01-M10 complete and published for review; M11-M24 pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -20,7 +19,7 @@ were separately approved on 2026-10-19.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M09 are complete, M10 is in progress and M11-M24 are pending. Check tasks when their
+M01-M10 are complete and M11-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -100,7 +99,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M09 are **complete**; M10 is **in progress**; M11-M24 are **pending**.
+M01-M10 are **complete**; M11-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -113,7 +112,7 @@ M01-M09 are **complete**; M10 is **in progress**; M11-M24 are **pending**.
 | [x] | M07 | Built-in/plugin EP capability contracts / `ep-stateful-hooks` | M04, M05, M06 |
 | [x] | M08 | Native CUDA KV management / `cuda-kv-cache` | M07 |
 | [x] | M09 | Native CUDA greedy sampling / `cuda-greedy` | M07, M08 |
-| [ ] | M10 | Standalone package schema and authoring / `package-schema` | M01, M03 |
+| [x] | M10 | Standalone package schema and authoring / `package-schema` | M01, M03 |
 | [ ] | M11 | ORT package-to-chain loading / `package-runtime` | M06, M07, M08, M09, M10 |
 | [ ] | M12 | DDIM scheduler and denoising state / `ddim-policy` | M03, M06, M08 |
 | [ ] | M13 | Python API and package parity / `python-api` | M06, M11, M12 |
@@ -2355,9 +2354,10 @@ started and no PR has been merged.
 
 ### M10 - Standalone Model Package schema and authoring
 
-**Status:** Authorized/in progress for the original chain scope. The user
-approved SPEC J.9's expanded save-as requirements and separately approved the
-detailed plan amendment on 2026-10-19.
+**Status:** Complete; [PR #24](https://github.com/onnxruntime/ort-state/pull/24)
+is open/ready for human review, stacked on #23. The user approved SPEC J.9's
+expanded save-as requirements and separately approved the detailed plan
+amendment on 2026-10-19.
 **Branch/base:** `state/m10-package-chain-schema`, stacked on verified M09b
 `a7a1173cd1c64d318857fa2987caf26658048509` / PR #23.
 **Outcome:** Read, inspect, author and commit schema-1.1 named linear chains
@@ -2373,7 +2373,7 @@ common-reference integrity. No executable ORT chain construction in this PR.
 - [x] Draft and obtain approval of SPEC Appendix J.
 - [x] Prepare the detailed M10 execution plan.
 - [x] Review this plan with the user and obtain implementation authorization.
-- [ ] Complete all implementation, test, coverage and publication gates below.
+- [x] Complete all implementation, test, coverage and publication gates below.
 
 #### Implementation tasks and dependencies
 
@@ -2436,7 +2436,7 @@ coherent standalone package change.
   including validation/error paths, getters, authoring and the component-removal
   guard. Add targeted unit cases until covered/total is exactly 100%; missing
   instrumentation or unexecuted new code blocks completion.
-- [ ] **C7 - Document and publish.** Update standalone schema/API/authoring
+- [x] **C7 - Document and publish.** Update standalone schema/API/authoring
   documentation and only the necessary ORT consumer-boundary guidance. Keep
   SPEC/TASKS/SCRATCHPAD current. Record commands/results, case counts, source/
   object identities, coverage counts, CPU configuration and CUDA N/A rationale.
@@ -2546,7 +2546,7 @@ commit copied parent sources.
   and tightly coupled changes to existing code.
 - [x] Compatibility, reference-safe mutation, round-trip/path/asset and no-ORT
   dependency evidence are recorded; temporary fixtures/probes are cleaned.
-- [ ] Directly related docs are current and the stacked PR is ready for review.
+- [x] Directly related docs are current and the stacked PR is ready for review.
 
 M10 approval authorizes standalone schema/inspection/authoring and, after the
 amendment approval below, the tightly bounded save-as materialization repair.
@@ -2689,7 +2689,11 @@ hashes are retained in session files as `m10-final-*.log`,
 `m10-cpu-final-*.log`, `m10-parent-*.log`, `m10-host-coverage-final.txt`,
 `m10-verified-artifact-hashes.txt` and `measure_m10_coverage.py`. Final LLVM
 exports/profiles remain in the standalone build tree. No production line was
-waived for tool availability. Publication remains the final completion gate.
+waived for tool availability. Implementation `7f48009fb30054f931624a2068ca7d2bf0518088`
+is published as ready-for-review PR #24, stacked on verified M09b PR #23.
+All M10 gates pass. Temporary compatibility build/source copies and probe
+binaries were cleaned; source probes, reports, profiles and hashes remain.
+No PR was merged and M11 has not begun.
 
 ### M11 - ORT package-to-chain loading
 

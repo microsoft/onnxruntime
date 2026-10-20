@@ -965,3 +965,9 @@ Compressed project memory. This is not the execution plan.
   new production lines; byte/emptydir/error-state/oldreader/linkage proof passes.
   C1-C6/D1-D4 verified. C7 publication starting, PR not yet created. No installs,
   agents, CUDA runtime/kernel changes, merge or M11 implementation.
+- PUBLISHED M10 implementation7f48009fb30054f931624a2068ca7d2bf0518088 as
+  ready/open PR #24 https://github.com/onnxruntime/ort-state/pull/24 on #23.
+  MacroM10 COMPLETE: shared/static5/5, CPU17/17, unit282/282. Every checklist
+  C1-C7/D1-D4 verified. Temp parent copies/builds/fixtures/probe binaries cleaned;
+  reports, probe source, coverage exports/profiles and hashes retained.
+  No merges. M11 remains pending and needs its own design/plan approval.
