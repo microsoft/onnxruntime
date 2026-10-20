@@ -18,6 +18,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/plugin_data_transfer.h"
 #include "core/framework/plugin_ep_stream.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "core/framework/resource_accountant.h"
 #include "core/common/inlined_containers.h"
 #include <limits>
@@ -119,30 +120,117 @@ EpDeviceWeightlessSupport GetEpDeviceWeightlessSupport(const OrtEpDevice& ep_dev
   return {"no weightless EP metadata", OrtWeightlessSupport_NONE};
 }
 
-// Returns a description of the OrtEpDevice instances whose weightless EP metadata does not match the value returned
-// by OrtEp::GetWeightlessSupport(), or an empty string if they all match.
+// Returns a description of the mismatch if the value returned by OrtEp::GetWeightlessSupport() does not match the
+// weightless EP metadata of the EP's devices, or an empty string if it matches. An EP instance created for several
+// devices supports the modes that all of them support, so the value is compared with the weightless support common to
+// all the devices (e.g., "external_only" for one device that reports "all_or_external_only" and another one that
+// reports "external_only"). If a device reports a value that is not recognized, there is no common support to match.
 std::string GetWeightlessSupportEpMetadataMismatch(gsl::span<const OrtEpDevice* const> ep_devices,
                                                    OrtWeightlessSupport support) {
-  std::ostringstream mismatch;
+  if (ep_devices.empty()) {
+    return {};
+  }
+
+  bool all_recognized = true;
+  bool supports_external_only = true;
+  bool supports_all = true;
+  std::ostringstream devices_metadata;
   for (const OrtEpDevice* ep_device : ep_devices) {
     const EpDeviceWeightlessSupport device_support = GetEpDeviceWeightlessSupport(*ep_device);
-    if (device_support.support == support) {
+    devices_metadata << " " << device_support.description << " for " << DescribeEpDevice(*ep_device) << ";";
+    if (!device_support.support.has_value()) {
+      all_recognized = false;
       continue;
     }
 
-    if (mismatch.tellp() == 0) {
-      mismatch << "GetWeightlessSupport() returns '" << WeightlessSupportToString(support)
-               << "', which does not match the EP metadata:";
-    }
-    mismatch << " " << device_support.description << " for " << DescribeEpDevice(*ep_device) << ";";
+    const OrtWeightlessSupport device_modes = *device_support.support;
+    supports_external_only &= WeightlessSupportIncludesMode(device_modes, OrtWeightlessSupport_EXTERNAL_ONLY);
+    supports_all &= WeightlessSupportIncludesMode(device_modes, OrtWeightlessSupport_ALL);
   }
 
-  return mismatch.str();
+  if (!all_recognized) {
+    return MakeString("GetWeightlessSupport() returns '", WeightlessSupportToString(support),
+                      "', but the EP metadata of the EP's devices includes values that are not recognized:",
+                      devices_metadata.str());
+  }
+
+  OrtWeightlessSupport common_support = OrtWeightlessSupport_NONE;
+  if (supports_external_only && supports_all) {
+    common_support = OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY;
+  } else if (supports_external_only) {
+    common_support = OrtWeightlessSupport_EXTERNAL_ONLY;
+  } else if (supports_all) {
+    common_support = OrtWeightlessSupport_ALL;
+  }
+  if (common_support == support) {
+    return {};
+  }
+
+  return MakeString("GetWeightlessSupport() returns '", WeightlessSupportToString(support),
+                    "', but the EP metadata of the EP's devices supports '", WeightlessSupportToString(common_support),
+                    "' in common:", devices_metadata.str());
+}
+
+// The constant initializers consumed by a fused node, by how the EP obtains their data.
+struct FusedNodeConstantInitializers {
+  // Inputs of the fused node (drop_constant_initializers = false): ORT provides them, and copies them into a generated
+  // EPContext model. Names of the ones stored inside the source model.
+  std::vector<std::string> provided_internal;
+  // Not inputs of the fused node (drop_constant_initializers = true): the EP obtains the data itself, either by copying
+  // it or, in weightless mode, by keeping references to it.
+  bool dropped_internal = false;  // Stored inside the source model.
+  bool dropped_external = false;  // Stored in the source model's external data files.
+};
+
+FusedNodeConstantInitializers GetFusedNodeConstantInitializers(
+    const IExecutionProvider::FusedNodeAndGraph& node_and_graph) {
+  const GraphViewer& graph_viewer = node_and_graph.filtered_graph;
+  const Node& fused_node = node_and_graph.fused_node;
+
+  InlinedHashSet<std::string_view> fused_node_inputs;
+  for (const NodeArg* input : fused_node.InputDefs()) {
+    fused_node_inputs.insert(input->Name());
+  }
+
+  FusedNodeConstantInitializers result;
+  InlinedHashSet<std::string_view> visited;
+  auto process_input = [&](const NodeArg* input) {
+    const std::string& name = input->Name();
+    if (!input->Exists() || !visited.insert(name).second ||
+        !graph_viewer.IsConstantInitializer(name, /*check_outer_scope*/ true)) {
+      return;
+    }
+
+    std::unique_ptr<ExternalDataInfo> external_data_info;
+    const bool is_external =
+        graph_viewer.GetGraph().GetExternalInitializerInfo(name, external_data_info, /*check_outer_scope*/ true);
+    if (fused_node_inputs.count(name) != 0) {
+      if (!is_external) {
+        result.provided_internal.push_back(name);
+      }
+    } else if (is_external) {
+      result.dropped_external = true;
+    } else {
+      result.dropped_internal = true;
+    }
+  };
+
+  for (const Node& node : graph_viewer.Nodes()) {
+    for (const NodeArg* input : node.InputDefs()) {
+      process_input(input);
+    }
+    for (const NodeArg* input : node.ImplicitInputDefs()) {
+      process_input(input);
+    }
+  }
+
+  return result;
 }
 
 // Called before the EP is created when the app selects a weightless mode with "ep.enable_weightless_mode".
 // Checks the mode against the weightless support every EP device reports in its EP metadata, and sets the deprecated
-// "ep.enable_weightless" option to match the mode, since EPs built for earlier versions only know that option.
+// "ep.enable_weightless" option to match the mode (and, for OrtWeightlessSupport_NONE, clears the older
+// "ep.enable_weightless_ep_context_nodes" option), since EPs built for earlier versions only know those options.
 // `ep_session_options` is set to a copy of `session_options` if the deprecated option must change.
 Status PrepareWeightlessSessionOptions(const OrtSessionOptions& session_options,
                                        gsl::span<const OrtEpDevice* const> ep_devices, const char* ep_name,
@@ -174,15 +262,34 @@ Status PrepareWeightlessSessionOptions(const OrtSessionOptions& session_options,
     }
   }
 
-  // The EP sees the deprecated option set explicitly, also if the app didn't set it.
-  const char* deprecated_option_value = weightless_mode != OrtWeightlessSupport_NONE ? "1" : "0";
-  const std::optional<std::string> deprecated_option =
+  // Deprecated options to set for the EP.
+  InlinedVector<std::pair<const char*, const char*>> deprecated_options;
+
+  // The EP sees "ep.enable_weightless" set explicitly, also if the app didn't set it.
+  const char* enable_weightless_value = weightless_mode != OrtWeightlessSupport_NONE ? "1" : "0";
+  const std::optional<std::string> enable_weightless =
       config_options.GetConfigEntry(kOrtSessionOptionEpEnableWeightless);
-  if (!deprecated_option.has_value() || *deprecated_option != deprecated_option_value) {
+  if (!enable_weightless.has_value() || *enable_weightless != enable_weightless_value) {
+    deprecated_options.emplace_back(kOrtSessionOptionEpEnableWeightless, enable_weightless_value);
+  }
+
+  // An explicit OrtWeightlessSupport_NONE also disables the older "ep.enable_weightless_ep_context_nodes" option, so
+  // that EPs that only know that option don't generate weightless EPContext nodes. The option is not set for the
+  // other modes: EPs built for version 1.29 or later read "ep.enable_weightless", which was set above.
+  if (weightless_mode == OrtWeightlessSupport_NONE) {
+    const std::optional<std::string> enable_weightless_ep_context_nodes =
+        config_options.GetConfigEntry(kOrtSessionOptionEpEnableWeightlessEpContextNodes);
+    if (enable_weightless_ep_context_nodes.has_value() && *enable_weightless_ep_context_nodes != "0") {
+      deprecated_options.emplace_back(kOrtSessionOptionEpEnableWeightlessEpContextNodes, "0");
+    }
+  }
+
+  if (!deprecated_options.empty()) {
     ep_session_options.emplace(session_options);
-    // Set the entry directly to avoid the warning ConfigOptions::AddConfigEntry() logs when overwriting an entry.
-    ep_session_options->value.config_options.configurations[kOrtSessionOptionEpEnableWeightless] =
-        deprecated_option_value;
+    for (const auto& [key, value] : deprecated_options) {
+      // Set the entry directly to avoid the warning ConfigOptions::AddConfigEntry() logs when overwriting an entry.
+      ep_session_options->value.config_options.configurations[key] = value;
+    }
   }
 
   return Status::OK();
@@ -348,7 +455,9 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
       ep_factory_(ep_factory),
       ep_devices_(ep_devices.begin(), ep_devices.end()),
       kernel_registry_(std::move(kernel_registry)) {
-  generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
+  const epctx::ModelGenOptions ep_context_gen_options = session_options.value.GetEpContextGenerationOptions();
+  generate_ep_ctx_model_ = ep_context_gen_options.enable;
+  has_initializer_location_func_ = ep_context_gen_options.TryGetInitializerHandler() != nullptr;
 
   // Record the weightless mode requested by the app. Validation is deferred to Compile().
   weightless_mode_ = session_options.value.config_options.GetConfigEntry(kOrtSessionOptionEpEnableWeightlessMode);
@@ -830,6 +939,43 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
     }
   }
 
+  // When generating an EPContext model in weightless mode, determine the external data the model depends on because of
+  // how this EP obtains the initializer data, and warn if internal initializers are copied into the model in
+  // OrtWeightlessSupport_ALL mode.
+  if (generate_ep_ctx_model_ && weightless_requested) {
+    // The deprecated option does not select a mode; assume weightless mode for all initializers, as in earlier
+    // versions.
+    const OrtWeightlessSupport mode = requested_mode.value_or(OrtWeightlessSupport_ALL);
+    std::vector<std::string> copied_internal_initializers;
+    for (const FusedNodeAndGraph& node_and_graph : fused_nodes_and_graphs) {
+      FusedNodeConstantInitializers initializers = GetFusedNodeConstantInitializers(node_and_graph);
+
+      // For the initializers it obtains itself, the EP copies the internal ones in OrtWeightlessSupport_EXTERNAL_ONLY
+      // mode and keeps references to the others: to the source model for internal initializers, and to the source
+      // model's external data files for external ones.
+      ep_context_external_dependencies_.source_model |=
+          mode == OrtWeightlessSupport_ALL && initializers.dropped_internal;
+      ep_context_external_dependencies_.external_weights |= initializers.dropped_external;
+
+      copied_internal_initializers.insert(copied_internal_initializers.end(),
+                                          std::make_move_iterator(initializers.provided_internal.begin()),
+                                          std::make_move_iterator(initializers.provided_internal.end()));
+    }
+
+    // ORT copies the internal initializers it provides into the EPContext model, unless the app stores them elsewhere
+    // with an initializer location function. Copies can't be shared by several model variants.
+    if (mode == OrtWeightlessSupport_ALL && !copied_internal_initializers.empty() && !has_initializer_location_func_) {
+      LOGS(GetEpLoggerOrDefault(), WARNING)
+          << "Weightless mode requested (" << requested_option << ") but EP '" << Type()
+          << "' lets ORT provide the constant initializers of the compiled nodes (drop_constant_initializers is "
+          << "false), and " << copied_internal_initializers.size() << " of them (e.g., '"
+          << copied_internal_initializers.front() << "') are stored inside the source model. ORT copies them into "
+          << "the EPContext model because no initializer location function "
+          << "(ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc) is set, so if a package contains "
+          << "several model variants, these initializers can't be shared between them.";
+    }
+  }
+
   const logging::Logger& logger = GetEpLoggerOrDefault();
   const size_t num_graphs = fused_nodes_and_graphs.size();
   std::vector<std::unique_ptr<EpGraph>> api_graphs_holder;
@@ -935,6 +1081,10 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
   }
 
   return Status::OK();
+}
+
+IExecutionProvider::EpContextExternalDependencies PluginExecutionProvider::GetEpContextExternalDependencies() const {
+  return ep_context_external_dependencies_;
 }
 
 const InlinedVector<const Node*> PluginExecutionProvider::GetEpContextNodes() const {

@@ -266,7 +266,7 @@ OrtStatus* ORT_API_CALL ExampleEp::GetEpContextDataCallbackSupportImpl(const Ort
 }
 
 bool ExampleEp::DropsConstantInitializers() const {
-  return config_.weightless_mode == OrtWeightlessSupport_NONE;
+  return config_.weightless_mode == OrtWeightlessSupport_NONE || config_.drop_initializers_in_weightless_mode;
 }
 
 OrtStatus* ExampleEp::TrySaveConstantInitializer(Ort::ConstValueInfo maybe_initializer) {
