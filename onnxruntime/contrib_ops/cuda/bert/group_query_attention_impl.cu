@@ -256,6 +256,8 @@ Status PrepareQKV(
     // If do_rotary is false and QK-Norm is off, Q is used directly from data.query (q_out == nullptr).
     // K/V present buffers already point to the shared past — no work needed.
   } else {
+    const int* valid_cache_seq_lens =
+        parameters.is_windowed_kv_cache ? data.cache_total_seq_lens : data.total_seq_lens;
     ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
         parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,
         parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
@@ -269,7 +271,7 @@ Status PrepareQKV(
         parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
         is_cache_bnsh, parameters.k_quant_type,
         data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
-        stream, max_threads_per_block)));
+        stream, max_threads_per_block, valid_cache_seq_lens)));
   }
 
   if (q_out != nullptr) {
@@ -662,17 +664,23 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
     const int bounded_seqlens_k = seqlens_k < 0 ? 0 : min(seqlens_k, max_total_sequence_length - 1);
     const int total_len = bounded_seqlens_k + 1;
     total_seq_lens[i] = total_len;
-    int past_len;
-    if (is_first_prompt) {
-      past_len = 0;
-      past_seq_lens[i] = 0;
-      padded_seq_lens[i] = sequence_length;
-    } else {
-      past_len = total_len - sequence_length;
-      past_len = past_len > 0 ? past_len : 0;
-      past_seq_lens[i] = past_len;
-      padded_seq_lens[i] = 0;
+    int past_len = 0;
+    if (!is_first_prompt) {
+      // For a subsequent prefill chunk (sequence_length > 1, batch_size == 1),
+      // max_total_sequence_length is past_len + sequence_length while total_len is
+      // past_len + valid_q_len, so derive past_len from max_total_sequence_length when
+      // the chunk is right-padded (valid_q_len < sequence_length).
+      const int chunk_past_len = max_total_sequence_length - sequence_length;
+      if (sequence_length > 1 && chunk_past_len >= 0 && chunk_past_len < total_len) {
+        past_len = chunk_past_len;
+      } else {
+        past_len = total_len - sequence_length;
+        past_len = past_len > 0 ? past_len : 0;
+      }
     }
+    const int valid_q_len = min(sequence_length, max(0, total_len - past_len));
+    past_seq_lens[i] = past_len;
+    padded_seq_lens[i] = past_len + sequence_length;
 
     if (cache_past_seq_lens == nullptr) {
       return;
@@ -682,8 +690,8 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
     // equal local_window_size, so the eviction block size G = C - W + 1 is 1 and the specified
     // resident count L(T) collapses to min(T, C): the cache is simply kept full.
     //   Lp = min(P, C)                  tokens currently resident
-    //   E  = max(0, Lp + S - C)         tokens this append pushes out of the real cache
-    //   D  = max(0, Lp + S - C_used)    tokens that have to be shifted out of the buffer in use
+    //   E  = max(0, Lp + Q_valid - C)   tokens this append pushes out of the real cache
+    //   D  = max(0, Lp + Q_valid - C_used) tokens that have to be shifted out of the buffer in use
     // A multi-token step writes into a staging buffer long enough to hold Lp + S entries, so there
     // D is 0 and E is only the offset of the window inside the staging buffer. For a single-token
     // step the staging buffer is the cache itself (C_used == C) and D == E.
@@ -691,13 +699,15 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
     const int C_used = kv_cache_capacity;
 
     const int Lp = past_len < C ? past_len : C;
-    const int evicted = Lp + sequence_length - C;
-    const int shifted = Lp + sequence_length - C_used;
+    const int evicted = Lp + valid_q_len - C;
+    const int shifted = Lp + valid_q_len - C_used;
     const int E = evicted > 0 ? evicted : 0;
     const int D = shifted > 0 ? shifted : 0;
+    const int cache_past_len = Lp - D;
 
-    cache_past_seq_lens[i] = Lp - D;
-    cache_total_seq_lens[i] = (Lp + sequence_length) < C_used ? (Lp + sequence_length) : C_used;
+    cache_past_seq_lens[i] = cache_past_len;
+    cache_total_seq_lens[i] = (cache_past_len + valid_q_len) < C_used ? (cache_past_len + valid_q_len) : C_used;
+    padded_seq_lens[i] = (cache_past_len + sequence_length) < C_used ? (cache_past_len + sequence_length) : C_used;
     evict_counts[i] = E;
   }
 }
@@ -1001,6 +1011,8 @@ Status ExtremeDecoding(
   ORT_ENFORCE(!fold_k_scale_into_q || q_rot_ptr != nullptr,
               "Per-channel XQA requires a scratch buffer for the scaled Q.");
 
+  const int* valid_cache_seq_lens =
+      parameters.is_windowed_kv_cache ? data.cache_total_seq_lens : data.total_seq_lens;
   ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
       parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
@@ -1030,7 +1042,8 @@ Status ExtremeDecoding(
       parameters.k_quant_type,
       data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
       stream,
-      device_prop.maxThreadsPerBlock)));
+      device_prop.maxThreadsPerBlock,
+      valid_cache_seq_lens)));
 
   // Determine workspace size for XQA
   void* xqa_workspace = data.xqa_buffer;
@@ -1198,12 +1211,13 @@ Status FlashAttention(
   void* kernel_new_k = nullptr;
   void* kernel_new_v = nullptr;
 
-  // Use padded seq lens for first prompt since mha_fwd_kvcache assumes uniform seqlen_q.
-  // A windowed cache is indexed in cache-relative coordinates, so the attention length is the
-  // number of resident entries rather than the absolute total sequence length.
-  int* seq_lens = parameters.is_windowed_kv_cache
-                      ? data.cache_total_seq_lens
-                      : (parameters.is_first_prompt ? data.padded_seq_lens : data.total_seq_lens);
+  // Causal mha_fwd_kvcache aligns query row_idx to key row_idx + seqlens_k - seqlen_q, so pass
+  // padded_seq_lens (past + seqlen_q, or cache_past + seqlen_q when windowed) to keep valid queries
+  // anchored at their true positions even when the query chunk is right-padded. Bidirectional
+  // attention has no causal diagonal and must bound keys at the true valid sequence length.
+  int* seq_lens = is_causal
+                      ? data.padded_seq_lens
+                      : (parameters.is_windowed_kv_cache ? data.cache_total_seq_lens : data.total_seq_lens);
 
   // After PrepareQKV, the input for flash attention is no longer packed.
   constexpr bool is_packed_qkv_for_flash = false;
@@ -1257,6 +1271,8 @@ Status DequantizeFlashAttentionFallback(
   // Step 1: Update Quantized Cache
   // We can use LaunchUnpackRoPEQuantizeAppend to unpack new QKV, apply RoPE, and append to quantized cache.
   // This will also put rotated Q into q_rot.
+  const int* valid_cache_seq_lens =
+      parameters.is_windowed_kv_cache ? data.cache_total_seq_lens : data.total_seq_lens;
   ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
       parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
@@ -1272,31 +1288,28 @@ Status DequantizeFlashAttentionFallback(
       (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH),
       parameters.k_quant_type,
       data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
-      stream, device_prop.maxThreadsPerBlock)));
+      stream, device_prop.maxThreadsPerBlock, valid_cache_seq_lens)));
 
   // Step 2: Dequantize Entire Cache
   // We now have the updated quantized cache in data.present_key/value. We need to dequantize it to k_dequant/v_dequant.
   // Only the rows that belong to the sequence are dequantized: flash attention below is given the
-  // same total_seq_lens and never reads the padding tail of the cache, so dequantizing the full
+  // same seqlens_k_ptr and never reads beyond that limit, so dequantizing the full
   // (max_length sized) capacity on every decode step is pure memory traffic.
   bool is_bsnh = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
+  bool is_causal = parameters.is_unidirectional;
+  bool is_bf16 = std::is_same<T, __nv_bfloat16>::value;
+  const int* dequant_seq_lens = is_causal ? data.padded_seq_lens : valid_cache_seq_lens;
 
   ORT_RETURN_IF_ERROR((LaunchDequantizeKVPair<T, U, float>(
       stream, k_dequant, v_dequant,
       reinterpret_cast<const U*>(data.present_key), reinterpret_cast<const U*>(data.present_value),
       data.k_scale, data.v_scale, parameters.batch_size, parameters.kv_num_heads,
       parameters.seqlen_present_kv_cache, parameters.head_size, parameters.kv_cache_bit_width,
-      parameters.k_quant_type, parameters.v_quant_type, is_bsnh, data.total_seq_lens)));
+      parameters.k_quant_type, parameters.v_quant_type, is_bsnh, dequant_seq_lens)));
 
   // Step 3: Run Flash Attention on dequantized k/v
-  bool is_causal = parameters.is_unidirectional;
-  bool is_bf16 = std::is_same<T, __nv_bfloat16>::value;
-
-  // Use the total_seq_lens here since k_dequant/v_dequant has both past and new tokens.
-  // With a windowed cache the dequantized buffer is capacity-relative, so use the cache-relative
-  // lengths; the causal / local-window masks only depend on relative distances, so this is exact.
-  void* seqlens_k_ptr = const_cast<void*>(reinterpret_cast<const void*>(
-      parameters.is_windowed_kv_cache ? data.cache_total_seq_lens : data.total_seq_lens));
+  // Use padded_seq_lens when causal so right-padded query chunks stay aligned at their past offset.
+  void* seqlens_k_ptr = const_cast<void*>(reinterpret_cast<const void*>(dequant_seq_lens));
   int local_window_size = parameters.local_window_size > 0 ? parameters.local_window_size - 1 : -1;
 
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
@@ -1361,7 +1374,7 @@ Status FlashAttentionAndQuantizeKV(
       false,  // BSNH for scratch
       KVQuantizationType::NONE,
       data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
-      stream, max_threads_per_block)));
+      stream, max_threads_per_block, data.total_seq_lens)));
 
   // 2. Run Float Flash Attention
   bool is_causal = parameters.is_unidirectional;
@@ -1464,9 +1477,9 @@ Status EfficientAttention(
   p.causal = parameters.is_unidirectional;
   p.scale = scale;
   p.softcap = parameters.softcap;
-  const int32_t* seqlen_k_ptr = parameters.is_windowed_kv_cache
-                                    ? data.cache_total_seq_lens
-                                    : (parameters.is_first_prompt ? data.padded_seq_lens : data.total_seq_lens);
+  const int32_t* seqlen_k_ptr = parameters.is_unidirectional
+                                    ? data.padded_seq_lens
+                                    : (parameters.is_windowed_kv_cache ? data.cache_total_seq_lens : data.total_seq_lens);
   p.seqlen_k_ptr = seqlen_k_ptr;
   p.seqstart_q_ptr = nullptr;
   p.seqstart_k_ptr = nullptr;
@@ -1576,6 +1589,7 @@ Status UnfusedGqaAttention(
   p.past_kv_length = parameters.total_sequence_length - parameters.sequence_length;
   p.scale = scale;
   p.softcap = parameters.softcap;
+  p.past_seq_lens = data.past_seq_lens;
   p.seqlens_k = data.total_seq_lens;
 
   if (parameters.is_windowed_kv_cache) {
@@ -1585,6 +1599,7 @@ Status UnfusedGqaAttention(
     p.total_kv_length = static_cast<int>(GetGQAEffectiveWorkspaceKvLength(
         parameters.total_sequence_length, max_kv, /*is_windowed_kv_cache=*/true));
     p.past_kv_length = p.total_kv_length - parameters.sequence_length;
+    p.past_seq_lens = data.cache_past_seq_lens;
     p.seqlens_k = data.cache_total_seq_lens;
   }
 
