@@ -5,7 +5,6 @@
 
 #include <gsl/gsl>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -20,14 +19,6 @@
 
 namespace onnxruntime {
 struct EpGraph;
-
-struct EpInitializerValues {
-  EpInitializerValues() = default;
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(EpInitializerValues);
-
-  std::mutex mutex;
-  InlinedVector<std::unique_ptr<OrtValue>> values;
-};
 
 /// <summary>
 /// Concrete implementation of OrtValueInfo used in the OrtEpApi.
@@ -273,12 +264,10 @@ struct EpGraph : public OrtGraph {
   };
 
  public:
-  using InitializerValues = EpInitializerValues;
-
-  EpGraph(const GraphViewer& graph_viewer, PrivateTag, InitializerValues* retained_initializer_values);
+  EpGraph(const GraphViewer& graph_viewer, PrivateTag);
   EpGraph(std::unique_ptr<GraphViewer> graph_viewer,
           std::unique_ptr<IndexedSubGraph> indexed_sub_graph,
-          PrivateTag, InitializerValues* retained_initializer_values);
+          PrivateTag);
 
   /// <summary>
   /// Creates an instance of EpGraph, which wraps a GraphViewer.
@@ -292,13 +281,10 @@ struct EpGraph : public OrtGraph {
   ///                                  instance. It's mainly used in EP's GetCapability() as it's
   ///                                  a bottom-up approach where inner-most subgraph will be constructed
   ///                                  first and by the time its parent node/graph hasn't be constructed yet.</param>
-  /// <param name="retained_initializer_values">Optional EP-owned storage that keeps constant initializer OrtValues
-  ///                                          alive independently of this graph. Must outlive the graph.</param>
   /// <returns></returns>
   static Status Create(const GraphViewer& graph_viewer,
                        /*out*/ std::unique_ptr<EpGraph>& result,
-                       bool create_parent_node = false,
-                       InitializerValues* retained_initializer_values = nullptr);
+                       bool create_parent_node = false);
 
   /// <summary>
   /// Creates an instance of EpGraph, which wraps a GraphViewer.
@@ -308,13 +294,10 @@ struct EpGraph : public OrtGraph {
   /// </summary>
   /// <param name="graph_viewer"></param>
   /// <param name="result"></param>
-  /// <param name="retained_initializer_values">Optional EP-owned storage inherited by nested graphs and graph views.
-  ///                                          Must outlive the graph.</param>
   /// <returns></returns>
   static Status Create(std::unique_ptr<GraphViewer> graph_viewer,
                        std::unique_ptr<IndexedSubGraph> indexed_sub_graph,
-                       /*out*/ std::unique_ptr<EpGraph>& result,
-                       InitializerValues* retained_initializer_values = nullptr);
+                       /*out*/ std::unique_ptr<EpGraph>& result);
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and EpGraph.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, EpGraph, OrtGraphIrApi::kEpApi)
@@ -392,8 +375,6 @@ struct EpGraph : public OrtGraph {
   // within this graph.
   Status GetInitializerValue(std::string_view name, const OrtValue*& value) const;
 
-  InitializerValues* GetRetainedInitializerValues() const { return retained_initializer_values_; }
-
  private:
   /// <summary>
   /// The real implementation of creating an EpGraph instance.
@@ -409,10 +390,6 @@ struct EpGraph : public OrtGraph {
                            /*out*/ std::unique_ptr<EpGraph>& result, bool create_parent_node = false);
 
   const GraphViewer& graph_viewer_;
-
-  // The EP owns retained constants; other initializers remain scoped to this graph.
-  InitializerValues* retained_initializer_values_;
-  InlinedVector<std::unique_ptr<OrtValue>> initializer_values_holder_;
 
   // Hold the parent node created and owned by this graph
   std::unique_ptr<EpNode> parent_node_owned_ = nullptr;
@@ -431,8 +408,8 @@ struct EpGraph : public OrtGraph {
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_;  // All value infos in the graph
 
   std::vector<EpValueInfo*> initializer_value_infos_;
-  std::unordered_map<std::string_view, OrtValue*> initializer_values_;
-  std::unordered_map<std::string_view, OrtValue*> outer_scope_initializer_values_;
+  std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values_;
+  std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> outer_scope_initializer_values_;
 
   InlinedVector<EpValueInfo*> inputs_;
   InlinedVector<EpValueInfo*> outputs_;

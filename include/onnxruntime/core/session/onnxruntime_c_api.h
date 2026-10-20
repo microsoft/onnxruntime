@@ -5933,19 +5933,9 @@ struct OrtApi {
    * the initializer data on the first call to this function. If caller needs custom memory mapping,
    * use ValueInfo_GetExternalInitializerInfo to get the location of the initializer data.
    *
-   * During OrtEp::Compile(), if "ep.enable_weightless" is enabled and the EP implements GetWeightlessSupport()
-   * and reports weightless support, ORT retains constant initializer OrtValues until after OrtEpFactory::ReleaseEp().
-   * This also applies to nested graphs and graph views created from the Compile-time graphs. The EP may cache the
-   * returned OrtValue and its data pointers for read-only use during inference and teardown. Memory placement does
-   * not change: retaining a CPU tensor does not make its data pointer refer to a later device copy.
-   *
-   * This lifetime extension does not apply to overridable initializers or to values obtained during GetCapability().
-   * OrtGraph, OrtValueInfo, and their metadata are not retained.
-   *
    * \param[in] value_info The OrtValueInfo instance.
-   * \param[out] initializer_value Output parameter set to the initializer value or NULL. The caller must not release
-   *                               it. Except for the weightless Compile-time constants described above, do not cache
-   *                               it as it is released when the owning OrtGraph is released.
+   * \param[out] initializer_value Output parameter set to the initializer value or NULL. Do not cache the OrtValue
+   *                               as it is released when the owning OrtGraph is released.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

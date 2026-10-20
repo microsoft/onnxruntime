@@ -3,7 +3,6 @@
 
 #include <filesystem>
 #include <fstream>
-#include <future>
 #include <gtest/gtest.h>
 #include <gsl/gsl>
 #include <memory>
@@ -11,7 +10,6 @@
 #include <fstream>
 
 #include "core/common/common.h"
-#include "core/framework/tensor_external_data_info.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/onnxruntime_typeinfo.h"
@@ -25,7 +23,6 @@
 #include "test/ep_graph/test_ep_graph_utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
-#include "test/util/include/file_util.h"
 #include "test/util/include/test_environment.h"
 
 // defined in unittest_main/test_main.cc
@@ -181,204 +178,6 @@ TEST(EpGraphTest, CheckModelExternalInitializers) {
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
-}
-
-TEST(EpGraphTest, RetainsConstantsFromNestedGraphsAndGraphViews) {
-  struct TestCase {
-    const ORTCHAR_T* model_path;
-    bool externalize_outer_scope = false;
-  };
-  struct CachedInitializer {
-    const OrtValue* value;
-    const void* data;
-    InlinedVector<uint8_t> expected;
-  };
-
-  for (const auto& test_case : {TestCase{ORT_TSTR("testdata/mul_1.onnx")},
-                                TestCase{ORT_TSTR("testdata/conv_qdq_external_ini.onnx")},
-                                TestCase{ORT_TSTR("testdata/three_layer_nested_subgraph.onnx")},
-                                TestCase{ORT_TSTR("testdata/three_layer_nested_subgraph.onnx"), true}}) {
-    SCOPED_TRACE(std::filesystem::path(test_case.model_path).string());
-    SCOPED_TRACE(test_case.externalize_outer_scope);
-    ScopedFileDeleter external_file_deleter;
-    EpGraph::InitializerValues retained_values;
-    InlinedVector<CachedInitializer> cached_initializers;
-    size_t num_outer_scope_initializers = 0;
-    size_t num_external_initializers = 0;
-    size_t num_external_outer_scope_initializers = 0;
-    auto test_graph = TestGraph::Load(test_case.model_path);
-    ASSERT_NE(test_graph, nullptr);
-
-    if (test_case.externalize_outer_scope) {
-      const PathString external_file = ORT_TSTR("retained_outer_scope_initializers.bin");
-      external_file_deleter = ScopedFileDeleter(external_file);
-      auto model_proto = test_graph->GetModel().ToProto();
-      {
-        std::ofstream output(std::filesystem::path(external_file), std::ios::binary | std::ios::trunc);
-        ASSERT_TRUE(output);
-        int64_t offset = 0;
-        for (auto& initializer : *model_proto.mutable_graph()->mutable_initializer()) {
-          OrtValue value;
-          ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(Env::Default(), test_graph->GetModel().ModelPath(),
-                                                        initializer, CPUAllocator::DefaultInstance(), value));
-          const Tensor& tensor = value.Get<Tensor>();
-          output.write(static_cast<const char*>(tensor.DataRaw()), gsl::narrow<std::streamsize>(tensor.SizeInBytes()));
-          ASSERT_TRUE(output);
-          ONNX_NAMESPACE::TensorProto external_proto;
-          external_proto.set_name(initializer.name());
-          external_proto.set_data_type(initializer.data_type());
-          *external_proto.mutable_dims() = initializer.dims();
-          ExternalDataInfo::SetExternalLocationToProto(external_file, offset, tensor.SizeInBytes(), external_proto);
-          initializer.Swap(&external_proto);
-          offset = SafeInt<int64_t>(offset) + tensor.SizeInBytes();
-        }
-      }
-      auto model = std::make_shared<Model>(std::move(model_proto), nullptr, DefaultLoggingManager().DefaultLogger());
-      ASSERT_STATUS_OK(model->MainGraph().Resolve());
-      test_graph = std::make_unique<TestGraph>(std::move(model));
-    }
-
-    std::unique_ptr<EpGraph> ep_graph;
-    ASSERT_STATUS_OK(EpGraph::Create(test_graph->GetGraphViewer(), ep_graph, /*create_parent_node*/ false,
-                                     &retained_values));
-
-    auto cache_initializer = [&](Ort::ConstValueInfo value_info) {
-      if (value_info == nullptr || !value_info.IsConstantInitializer()) {
-        return;
-      }
-
-      Ort::ConstValue value;
-      ASSERT_ORTSTATUS_OK(value_info.GetInitializer(value));
-      ASSERT_NE(value, nullptr);
-      auto owner = std::find_if(retained_values.values.begin(), retained_values.values.end(),
-                                [value](const auto& candidate) { return candidate.get() == value; });
-      ASSERT_NE(owner, retained_values.values.end());
-
-      const Tensor& tensor = (*owner)->Get<Tensor>();
-      ASSERT_GT(tensor.SizeInBytes(), 0u);
-      const auto* data = static_cast<const uint8_t*>(tensor.DataRaw());
-      cached_initializers.push_back({value, data, InlinedVector<uint8_t>(data, data + tensor.SizeInBytes())});
-      num_outer_scope_initializers += value_info.IsFromOuterScope() ? 1 : 0;
-
-      Ort::ExternalInitializerInfo external_info{nullptr};
-      ASSERT_ORTSTATUS_OK(value_info.GetExternalInitializerInfo(external_info));
-      num_external_initializers += external_info != nullptr ? 1 : 0;
-      num_external_outer_scope_initializers += external_info != nullptr && value_info.IsFromOuterScope() ? 1 : 0;
-    };
-
-    std::function<void(Ort::ConstGraph, bool)> cache_graph;
-    cache_graph = [&](Ort::ConstGraph graph, bool create_views) {
-      for (auto initializer : graph.GetInitializers()) {
-        cache_initializer(initializer);
-      }
-
-      const auto nodes = graph.GetNodes();
-      for (auto node : nodes) {
-        for (auto input : node.GetInputs()) {
-          cache_initializer(input);
-        }
-        for (auto input : node.GetImplicitInputs()) {
-          cache_initializer(input);
-        }
-        for (const auto& subgraph : node.GetSubgraphs()) {
-          cache_graph(subgraph.sub_graph, create_views);
-        }
-      }
-
-      if (create_views && !nodes.empty()) {
-        Ort::Graph view = graph.GetGraphView(nodes);
-        cache_graph(Ort::ConstGraph{view}, /*create_views*/ false);
-      }
-    };
-    cache_graph(Ort::ConstGraph{ep_graph->ToExternal()}, /*create_views*/ true);
-    ASSERT_FALSE(cached_initializers.empty());
-    if (std::filesystem::path(test_case.model_path).filename() == ORT_TSTR("conv_qdq_external_ini.onnx")) {
-      EXPECT_GT(num_external_initializers, 0u);
-    }
-    if (std::filesystem::path(test_case.model_path).filename() == ORT_TSTR("three_layer_nested_subgraph.onnx")) {
-      EXPECT_GT(num_outer_scope_initializers, 0u);
-    }
-    if (test_case.externalize_outer_scope) {
-      EXPECT_GT(num_external_outer_scope_initializers, 0u);
-    }
-
-    ep_graph.reset();
-    test_graph.reset();
-    for (const auto& cached : cached_initializers) {
-      const Tensor& tensor = cached.value->Get<Tensor>();
-      EXPECT_EQ(tensor.DataRaw(), cached.data);
-      EXPECT_THAT(gsl::make_span(static_cast<const uint8_t*>(tensor.DataRaw()), tensor.SizeInBytes()),
-                  ::testing::ElementsAreArray(cached.expected));
-    }
-  }
-}
-
-TEST(EpGraphTest, DoesNotRetainOverridableInitializers) {
-  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/mul_1.onnx"));
-  ASSERT_NE(test_graph, nullptr);
-  auto model_proto = test_graph->GetModel().ToProto();
-  model_proto.set_ir_version(8);
-  auto& graph_proto = *model_proto.mutable_graph();
-  for (const auto& initializer : graph_proto.initializer()) {
-    if (std::none_of(graph_proto.input().begin(), graph_proto.input().end(),
-                     [&initializer](const auto& input) { return input.name() == initializer.name(); })) {
-      auto* input = graph_proto.add_input();
-      input->set_name(initializer.name());
-      *input->mutable_type() = utils::TypeProtoFromTensorProto(initializer);
-    }
-  }
-
-  Model model(std::move(model_proto), nullptr, DefaultLoggingManager().DefaultLogger());
-  ASSERT_STATUS_OK(model.MainGraph().Resolve());
-  GraphViewer graph_viewer(model.MainGraph());
-  EpGraph::InitializerValues retained_values;
-  std::unique_ptr<EpGraph> ep_graph;
-  ASSERT_STATUS_OK(EpGraph::Create(graph_viewer, ep_graph, /*create_parent_node*/ false, &retained_values));
-  const auto initializers = Ort::ConstGraph{ep_graph->ToExternal()}.GetInitializers();
-  ASSERT_FALSE(initializers.empty());
-  for (auto value_info : initializers) {
-    EXPECT_TRUE(value_info.IsOptionalGraphInput());
-    EXPECT_FALSE(value_info.IsConstantInitializer());
-    Ort::ConstValue value;
-    ASSERT_ORTSTATUS_OK(value_info.GetInitializer(value));
-    EXPECT_NE(value, nullptr);
-  }
-  EXPECT_TRUE(retained_values.values.empty());
-}
-
-TEST(EpGraphTest, RetainsConstantsFromConcurrentGraphViews) {
-  EpGraph::InitializerValues retained_values;
-  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/mul_1.onnx"));
-  ASSERT_NE(test_graph, nullptr);
-  std::unique_ptr<EpGraph> ep_graph;
-  ASSERT_STATUS_OK(EpGraph::Create(test_graph->GetGraphViewer(), ep_graph, /*create_parent_node*/ false, &retained_values));
-  const Ort::ConstGraph graph{ep_graph->ToExternal()};
-  const auto nodes = graph.GetNodes();
-
-  InlinedVector<std::future<const OrtValue*>> workers;
-  for (int i = 0; i < 16; ++i) {
-    workers.push_back(std::async(std::launch::async, [graph, nodes]() -> const OrtValue* {
-      Ort::Graph view = graph.GetGraphView(nodes);
-      const OrtValue* value = nullptr;
-      Ort::ThrowOnError(Ort::GetApi().ValueInfo_GetInitializerValue(view.GetInitializers().at(0), &value));
-      return value;
-    }));
-  }
-  InlinedVector<const OrtValue*> cached_values;
-  for (auto& worker : workers) {
-    cached_values.push_back(worker.get());
-  }
-  for (const OrtValue* value : cached_values) {
-    ASSERT_NE(std::find_if(retained_values.values.begin(), retained_values.values.end(),
-                           [value](const auto& owner) { return owner.get() == value; }),
-              retained_values.values.end());
-  }
-
-  ep_graph.reset();
-  test_graph.reset();
-  for (const OrtValue* value : cached_values) {
-    EXPECT_FLOAT_EQ(value->Get<Tensor>().Data<float>()[0], 1.0f);
-  }
 }
 
 static void RunConvQDQExtIni(const ORTCHAR_T* model_path, std::vector<float>& output_data) {
