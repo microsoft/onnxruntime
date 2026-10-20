@@ -18,6 +18,11 @@
 #include <math.h>
 #include <type_traits>
 
+#ifdef USE_DML
+#include "core/providers/dml/dml_session_options_config_keys.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -4341,6 +4346,7 @@ TEST(MathOpTest, ErfCheckMultiThreadDataChunking) {
 }
 
 constexpr int ModOp_ver = 10;
+constexpr int ModOp_ver28 = 28;
 
 TEST(ModOpTest, Fmod_float_mixed_sign) {
   OpTester test("Mod", ModOp_ver);
@@ -4421,6 +4427,48 @@ TEST(ModOpTest, FloorMod_float_special_values_opset28) {
       {-0.0f, 0.0f, 5.0f, -5.0f, nan, nan, nan, nan});
 }
 
+TEST(ModOpTest, FloorMod_opset28_provider_fallback) {
+  InlinedVector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCpuExecutionProvider());
+#ifdef USE_CANN
+  OrtCANNProviderOptions cann_options{};
+  cann_options.enable_cann_graph = 1;
+  auto cann_factory = CannProviderFactoryCreator::Create(&cann_options);
+  ASSERT_NE(cann_factory, nullptr);
+  providers.push_back(cann_factory->CreateProvider());
+#endif
+  providers.push_back(DefaultMIGraphXExecutionProvider());
+  providers.push_back(DefaultOpenVINOExecutionProvider());
+  for (auto& provider : providers) {
+    if (!provider) {
+      continue;
+    }
+    SCOPED_TRACE(provider->Type());
+    const std::vector<int64_t> shape{4};
+    const float infinity = std::numeric_limits<float>::infinity();
+    const std::vector<float> x{-5.0f, 5.0f, -5.0f, 5.0f};
+    const std::vector<float> y{3.0f, -3.0f, infinity, -infinity};
+    OpTester test("Mod", 28);
+    test.AddAttribute<int64_t>("fmod", 0);
+    test.AddInput<float>("X", shape, x);
+    test.AddInput<float>("Y", shape, y);
+    test.AddOutput<float>("Z", shape, {1.0f, -1.0f, infinity, -infinity});
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+    std::string model_data;
+    auto& model = test.BuildModel();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    model.ToProto().SerializeToString(&model_data);
+    EPVerificationParams params;
+    params.ep_node_assignment = provider->Type() == kCpuExecutionProvider
+                                    ? ExpectedEPNodeAssignment::All
+                                    : ExpectedEPNodeAssignment::None;
+    RunAndVerifyOutputsWithEP(
+        AsByteSpan(model_data.data(), model_data.size()), CurrentTestName(), std::move(provider),
+        {{"X", CreateInputOrtValueOnCPU<float>(shape, x)}, {"Y", CreateInputOrtValueOnCPU<float>(shape, y)}},
+        params);
+  }
+}
+
 #if defined(USE_CUDA)
 TEST(ModOpTest, Fmod_bfloat16_mixed_sign) {
   OpTester test("Mod", 13);
@@ -4436,6 +4484,176 @@ TEST(ModOpTest, Fmod_bfloat16_mixed_sign) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
+
+TEST(ModOpTest, FloorMod_float_mixed_sign) {
+  OpTester test("Mod", ModOp_ver28);
+  test.AddInput<float>("X", {6}, {-4.3f, 7.2f, 5.0f, 4.3f, -7.2f, 8.0f});
+  test.AddInput<float>("Y", {6}, {2.1f, -3.4f, 8.0f, -2.1f, 3.4f, 5.0f});
+  test.AddOutput<float>("Z", {6}, {2.0f, -3.0f, 5.0f, -2.0f, 3.0f, 3.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ModOpTest, FloorMod_double_mixed_sign) {
+  OpTester test("Mod", ModOp_ver28);
+  test.AddInput<double>("X", {6}, {-4.3, 7.2, 5.0, 4.3, -7.2, 8.0});
+  test.AddInput<double>("Y", {6}, {2.1, -3.4, 8.0, -2.1, 3.4, 5.0});
+  test.AddOutput<double>("Z", {6}, {2.0, -3.0, 5.0, -2.0, 3.0, 3.0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ModOpTest, FloorMod_float16_mixed_sign) {
+  OpTester test("Mod", ModOp_ver28);
+  test.AddInput<MLFloat16>("X", {6}, MakeMLFloat16({-4.3f, 7.2f, 5.0f, 4.3f, -7.2f, 8.0f}));
+  test.AddInput<MLFloat16>("Y", {6}, MakeMLFloat16({2.1f, -3.4f, 8.0f, -2.1f, 3.4f, 5.0f}));
+  test.AddOutput<MLFloat16>("Z", {6}, MakeMLFloat16({2.0f, -3.0f, 5.0f, -2.0f, 3.0f, 3.0f}));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ModOpTest, FloorMod_float_edge_cases) {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float inf = std::numeric_limits<float>::infinity();
+  OpTester test("Mod", ModOp_ver28);
+  test.AddInput<float>("X", {14},
+                       {0.0f, -0.0f, 0.0f, -0.0f, -3.0f, 3.0f, -1.0f, 1.0f,
+                        inf, -inf, 1.0f, 1.0f, nan, 1.0f});
+  test.AddInput<float>("Y", {14},
+                       {-2.0f, 2.0f, 2.0f, -2.0f, inf, inf, -inf, -inf,
+                        2.0f, 2.0f, 0.0f, -0.0f, 2.0f, nan});
+  test.AddOutput<float>("Z", {14},
+                        {-0.0f, 0.0f, 0.0f, -0.0f, inf, 3.0f, -1.0f, -inf,
+                         nan, nan, nan, nan, nan, nan});
+  test.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches,
+                                  const std::string& /*provider_type*/) {
+    ASSERT_EQ(fetches.size(), 1u);
+    ASSERT_TRUE(fetches[0].IsTensor());
+    const float* output = fetches[0].Get<Tensor>().Data<float>();
+
+    EXPECT_EQ(output[0], 0.0f);
+    EXPECT_TRUE(std::signbit(output[0]));
+    EXPECT_EQ(output[1], 0.0f);
+    EXPECT_FALSE(std::signbit(output[1]));
+    EXPECT_EQ(output[2], 0.0f);
+    EXPECT_FALSE(std::signbit(output[2]));
+    EXPECT_EQ(output[3], 0.0f);
+    EXPECT_TRUE(std::signbit(output[3]));
+    EXPECT_EQ(output[4], std::numeric_limits<float>::infinity());
+    EXPECT_EQ(output[5], 3.0f);
+    EXPECT_EQ(output[6], -1.0f);
+    EXPECT_EQ(output[7], -std::numeric_limits<float>::infinity());
+    for (size_t i = 8; i < 14; ++i) {
+      EXPECT_TRUE(std::isnan(output[i])) << "output index " << i;
+    }
+  });
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+#ifdef USE_DML
+template <typename T>
+void TestDirectMLFloorModBroadcast() {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float inf = std::numeric_limits<float>::infinity();
+  const std::vector<T> x{T(0.0f), T(-0.0f), T(6.0f), T(-6.0f), T(3.0f),
+                         T(-3.0f), T(inf), T(-inf), T(nan), T(1.0f)};
+  const std::vector<T> y{T(2.0f), T(-2.0f), T(inf), T(-inf), T(0.0f), T(-0.0f), T(nan)};
+  const std::vector<float> expected{
+      0.0f, -0.0f, 0.0f, -0.0f, nan, nan, nan,
+      0.0f, -0.0f, 0.0f, -0.0f, nan, nan, nan,
+      0.0f, -0.0f, 6.0f, -inf, nan, nan, nan,
+      0.0f, -0.0f, inf, -6.0f, nan, nan, nan,
+      1.0f, -1.0f, 3.0f, -inf, nan, nan, nan,
+      1.0f, -1.0f, inf, -3.0f, nan, nan, nan,
+      nan, nan, nan, nan, nan, nan, nan,
+      nan, nan, nan, nan, nan, nan, nan,
+      nan, nan, nan, nan, nan, nan, nan,
+      1.0f, -1.0f, 1.0f, -inf, nan, nan, nan};
+  std::vector<T> typed_expected;
+  typed_expected.reserve(expected.size());
+  for (float value : expected) {
+    typed_expected.emplace_back(value);
+  }
+  for (bool disable_fusion : {false, true}) {
+    SCOPED_TRACE(disable_fusion ? "standalone kernel" : "fused graph");
+    OpTester test("Mod", 28);
+    test.AddAttribute<int64_t>("fmod", 0);
+    test.AddInput<T>("X", {10, 1}, x);
+    test.AddInput<T>("Y", {1, 7}, y);
+    test.AddOutput<T>("Z", {10, 7}, typed_expected);
+    test.SetCustomOutputVerifier([&expected](const std::vector<OrtValue>& fetches,
+                                             const std::string& provider_type) {
+      ASSERT_EQ(provider_type, kDmlExecutionProvider);
+      ASSERT_EQ(fetches.size(), 1u);
+      const auto& tensor = fetches[0].Get<Tensor>();
+      ASSERT_EQ(tensor.Shape().Size(), static_cast<int64_t>(expected.size()));
+      const T* output = tensor.Data<T>();
+      for (size_t i = 0; i < expected.size(); ++i) {
+        const float actual = static_cast<float>(output[i]);
+        if (std::isnan(expected[i])) {
+          EXPECT_TRUE(std::isnan(actual)) << "output index " << i;
+        } else {
+          EXPECT_EQ(actual, expected[i]) << "output index " << i;
+          EXPECT_EQ(std::signbit(actual), std::signbit(expected[i])) << "output index " << i;
+        }
+      }
+    });
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigDisableDmlGraphFusion, disable_fusion ? "1" : "0"));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(options).ConfigEp(DefaultDmlExecutionProvider()).RunWithConfig();
+  }
+}
+
+TEST(ModOpTest, FloorMod_DirectML_float_broadcast) {
+  TestDirectMLFloorModBroadcast<float>();
+}
+
+TEST(ModOpTest, FloorMod_DirectML_float16_broadcast) {
+  TestDirectMLFloorModBroadcast<MLFloat16>();
+}
+#endif
+
+TEST(ModOpTest, Signed_integer_overflow_case) {
+  OpTester test("Mod", ModOp_ver28);
+  test.AddInput<int32_t>("X", {2}, {std::numeric_limits<int32_t>::min(), 7});
+  test.AddInput<int32_t>("Y", {2}, {-1, -3});
+  test.AddOutput<int32_t>("Z", {2}, {0, -2});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ModOpTest, Signed_integer_overflow_case_fmod) {
+  OpTester test("Mod", ModOp_ver28);
+  test.AddAttribute<int64_t>("fmod", 1);
+  test.AddInput<int32_t>("X", {2}, {std::numeric_limits<int32_t>::min(), 7});
+  test.AddInput<int32_t>("Y", {2}, {-1, -3});
+  test.AddOutput<int32_t>("Z", {2}, {0, 1});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ModOpTest, Int64_fmod_precision) {
+  OpTester test("Mod", ModOp_ver28);
+  test.AddAttribute<int64_t>("fmod", 1);
+  test.AddInput<int64_t>("X", {1}, {9007199254740993LL});
+  test.AddInput<int64_t>("Y", {1}, {10});
+  test.AddOutput<int64_t>("Z", {1}, {3});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ModOpTest, UInt64_fmod_precision) {
+  OpTester test("Mod", ModOp_ver28);
+  test.AddAttribute<int64_t>("fmod", 1);
+  test.AddInput<uint64_t>("X", {1}, {18446744073709551613ULL});
+  test.AddInput<uint64_t>("Y", {1}, {10});
+  test.AddOutput<uint64_t>("Z", {1}, {3});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
 
 TEST(ModOpTest, Int8_mixed_sign) {
   OpTester test("Mod", ModOp_ver);
@@ -4777,6 +4995,38 @@ TEST(BitShiftOpTest, SignedInt32Opset28) {
 
 TEST(BitShiftOpTest, SignedInt64Opset28) {
   TestSignedBitShiftOpset28<int64_t>();
+}
+
+template <typename T>
+void TestBitShiftOpset28ProviderFallback(const std::vector<T>& x, const std::vector<T>& y,
+                                         const std::vector<T>& expected) {
+  const std::vector<int64_t> shape{static_cast<int64_t>(x.size())};
+  OpTester test("BitShift", 28);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<T>("X", shape, x);
+  test.AddInput<T>("Y", shape, y);
+  test.AddOutput<T>("Z", shape, expected);
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  auto provider = DefaultOpenVINOExecutionProvider();
+  if (!provider) {
+    return;
+  }
+
+  auto& model = test.BuildModel();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  std::string model_data;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
+  EPVerificationParams params;
+  params.ep_node_assignment = ExpectedEPNodeAssignment::None;
+  RunAndVerifyOutputsWithEP(
+      AsByteSpan(model_data.data(), model_data.size()), CurrentTestName(), std::move(provider),
+      {{"X", CreateInputOrtValueOnCPU<T>(shape, x)}, {"Y", CreateInputOrtValueOnCPU<T>(shape, y)}},
+      params);
+}
+
+TEST(BitShiftOpTest, Opset28ProviderFallback) {
+  TestBitShiftOpset28ProviderFallback<int32_t>({-8, -3, -2, -2}, {1, 2, -1, 32}, {-4, -1, -1, -1});
+  TestBitShiftOpset28ProviderFallback<uint32_t>({8, 255, 1, 42}, {1, 32, 33, 64}, {4, 0, 0, 0});
 }
 
 template <typename T>

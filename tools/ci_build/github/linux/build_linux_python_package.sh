@@ -78,7 +78,7 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
     # (cmake_linux_x64_cuda_archs / cmake_linux_aarch64_cuda_archs).
     if [ -z "${CUDA_ARCHS:-}" ]; then
         if [ "$CUDA_VERSION" == "13.0" ] && [ "$ARCH" == "aarch64" ]; then
-            CUDA_ARCHS="89-real;90-real;120-real;121-real"
+            CUDA_ARCHS="87-real;89-real;90-real;100-real;110-real;120-real;121-real"
         elif [ "$CUDA_VERSION" == "12.8" ]; then
             CUDA_ARCHS="60-real;70-real;75-real;80-real;86-real;89-real;90-real;120-real"
         elif [ "$CUDA_VERSION" == "13.0" ]; then
@@ -118,6 +118,7 @@ fi
 
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
+
 FREE_THREADED_REQUIREMENTS=$(mktemp)
 grep -Ev '^(onnx|onnx-ir|onnxscript)==' \
   /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt > "${FREE_THREADED_REQUIREMENTS}"
@@ -141,7 +142,7 @@ do
   ls "$python3_dir"
   PIP_REQUIREMENTS=(-r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt)
   if [[ "${PYTHON_EXE}" == */cp3??-cp3??t/* ]]; then
-    # ONNX does not publish free-threaded wheels, and ONNX-dependent tooling would resolve its unsupported source build.
+    # ONNX-dependent tooling lacks wheels for some free-threaded versions; avoid unsupported source builds.
     PIP_REQUIREMENTS=(-r "${FREE_THREADED_REQUIREMENTS}")
   fi
   if [[ "${PYTHON_EXE}" == */cp313-cp313t/* ]]; then

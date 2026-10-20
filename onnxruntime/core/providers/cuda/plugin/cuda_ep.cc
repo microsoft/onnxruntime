@@ -24,6 +24,7 @@
 
 #include "core/graph/constants.h"
 #include "core/providers/cuda/cuda_nhwc_ops.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -215,6 +216,7 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   adapter_config.sdpa_kernel = config_.sdpa_kernel;
   adapter_config.device_id = config_.device_id;
   adapter_config.do_copy_in_default_stream = config_.do_copy_in_default_stream;
+  adapter_config.enable_cuda_graph = config_.enable_cuda_graph;
   onnxruntime::cuda::SetCudaKernelAdapterRuntimeConfigForProvider(
       static_cast<const void*>(EpImpl()), adapter_config);
 
@@ -222,6 +224,9 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
 }
 
 CudaEp::~CudaEp() {
+  // The plugin build excludes cuda_execution_provider.cc, so persist staged fpA_intB tactics here.
+  onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCaches();
+
   std::lock_guard<std::mutex> lock(per_thread_contexts_mutex_);
   for (const auto& cache_weak : per_thread_context_caches_) {
     auto cache = cache_weak.lock();
@@ -252,6 +257,14 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
 
   if (all_nodes.empty()) {
     return nullptr;
+  }
+
+  if (auto model_path = graph.GetModelPath(); !model_path.empty()) {
+    std::error_code ec;
+    std::filesystem::path path(model_path);
+    std::filesystem::path abs_path = std::filesystem::absolute(path, ec);
+    onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(static_cast<const void*>(ep->EpImpl()))
+        ->SetModelPath((!ec && !abs_path.empty()) ? std::move(abs_path) : std::move(path));
   }
 
   // Three-phase filtering determines which graph nodes run on this EP:

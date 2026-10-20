@@ -36,6 +36,16 @@ struct Node {
     return kernel_info_.GetOperatorSinceVersion();
   }
 
+  /** Gets the number of inputs. */
+  size_t InputCount() const noexcept {
+    return kernel_info_.GetInputCount();
+  }
+
+  /** Gets whether an input exists or is an omitted optional input. */
+  bool InputExists(size_t index) const {
+    return index < InputCount() && !kernel_info_.GetInputName(index).empty();
+  }
+
   /** Gets the number of outputs. */
   size_t OutputCount() const noexcept {
     return kernel_info_.GetOutputCount();

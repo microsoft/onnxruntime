@@ -11,6 +11,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -18,9 +19,13 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 
+#include "core/common/inlined_containers.h"
+#include "core/framework/stream_handles.h"
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/platform/env.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/webgpu/plugin/webgpu_plugin_test_utils.h"
 
@@ -55,13 +60,6 @@ class FirstError {
   mutable std::mutex mutex_;
   std::string message_;
 };
-
-void ThrowOnError(OrtStatus* status_ptr) {
-  Ort::Status status{status_ptr};
-  if (!status.IsOK()) {
-    throw std::runtime_error(status.GetErrorMessage());
-  }
-}
 
 constexpr int kThreads = 4;
 constexpr int kIterations = 20;
@@ -101,7 +99,7 @@ void RunWorkers(FirstError& error, Work work) {
 }
 
 template <typename Allocator>
-void CopyTensorRoundTrip(Allocator& allocator, float value) {
+void CopyTensorRoundTrip(Allocator& allocator, float value, bool verify_zero_initialization = false) {
   const auto cpu_memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   std::array<float, kElements> input_data{};
   input_data.fill(value);
@@ -109,14 +107,52 @@ void CopyTensorRoundTrip(Allocator& allocator, float value) {
   auto cpu_input = Ort::Value::CreateTensor<float>(
       cpu_memory_info, input_data.data(), input_data.size(), kShape.data(), kShape.size());
   auto gpu_tensor = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+  auto gpu_copy = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
   auto cpu_output = Ort::Value::CreateTensor<float>(
       cpu_memory_info, output_data.data(), output_data.size(), kShape.data(), kShape.size());
 
-  ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_tensor, nullptr));
-  ThrowOnError(ort_env->CopyTensor(gpu_tensor, cpu_output, nullptr));
+  if (verify_zero_initialization) {
+    output_data.fill(-1.0f);
+    Ort::ThrowOnError(ort_env->CopyTensor(gpu_tensor, cpu_output, nullptr));
+    if (output_data != std::array<float, kElements>{}) {
+      throw std::runtime_error("Streamless allocation was not zero initialized");
+    }
+  }
+
+  Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_tensor, nullptr));
+  Ort::ThrowOnError(ort_env->CopyTensor(gpu_tensor, gpu_copy, nullptr));
+  Ort::ThrowOnError(ort_env->CopyTensor(gpu_copy, cpu_output, nullptr));
   if (output_data != input_data) {
     throw std::runtime_error("CopyTensor round trip returned incorrect data");
   }
+}
+
+template <typename Allocator>
+Ort::Value CreateReusedNonzeroGpuTensor(Allocator& allocator, float value) {
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<float, kElements> dirty_data{};
+  dirty_data.fill(value);
+  std::array<float, kElements> readback_data{};
+  auto dirty_source = Ort::Value::CreateTensor<float>(
+      cpu_memory, dirty_data.data(), dirty_data.size(), kShape.data(), kShape.size());
+  auto readback = Ort::Value::CreateTensor<float>(
+      cpu_memory, readback_data.data(), readback_data.size(), kShape.data(), kShape.size());
+  void* dirty_buffer = nullptr;
+  {
+    auto dirty_tensor = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+    dirty_buffer = dirty_tensor.GetTensorMutableRawData();
+    Ort::ThrowOnError(ort_env->CopyTensor(dirty_source, dirty_tensor, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(dirty_tensor, readback, nullptr));
+    if (value == 0.0f || readback_data != dirty_data) {
+      throw std::runtime_error("Expected a nonzero GPU buffer before releasing it for reuse");
+    }
+  }
+
+  auto reused_tensor = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+  if (reused_tensor.GetTensorMutableRawData() != dirty_buffer) {
+    throw std::runtime_error("Expected the allocator to reuse the released nonzero GPU buffer");
+  }
+  return reused_tensor;
 }
 
 }  // namespace
@@ -140,10 +176,13 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
         Device(), OrtDeviceMemoryType_DEFAULT, OrtDeviceAllocator, nullptr);
   }
 
-  std::unique_ptr<Ort::Session> CreateSession() const {
+  std::unique_ptr<Ort::Session> CreateSession(bool enable_graph_capture = false) const {
     Ort::SessionOptions session_options;
     session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
     std::unordered_map<std::string, std::string> ep_options;
+    if (enable_graph_capture) {
+      ep_options["enableGraphCapture"] = "1";
+    }
     session_options.AppendExecutionProvider_V2(*ort_env, {Device()}, ep_options);
     return std::make_unique<Ort::Session>(
         *ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
@@ -162,7 +201,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     Ort::Allocator allocator(session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
     auto gpu_input = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
     auto gpu_output = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
-    ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
 
     Ort::IoBinding io_binding(session);
     io_binding.BindInput("X", gpu_input);
@@ -171,7 +210,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     session.Run(Ort::RunOptions{nullptr}, io_binding);
     io_binding.SynchronizeOutputs();
 
-    ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
     VerifyOutput(output_data, value);
   }
 
@@ -208,7 +247,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     std::array<float, kElements> output_data{};
     auto cpu_output = Ort::Value::CreateTensor<float>(
         cpu_memory_info, output_data.data(), output_data.size(), kShape.data(), kShape.size());
-    ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
     VerifyOutput(output_data, value);
   }
 
@@ -220,7 +259,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
         cpu_memory_info, input_data.data(), input_data.size(), kShape.data(), kShape.size());
     Ort::Allocator allocator(session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
     auto gpu_input = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
-    ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
 
     const std::array<const char*, 1> input_names{"X"};
     const std::array<const char*, 1> output_names{"Y"};
@@ -232,12 +271,45 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     VerifyOutput(output_data, value);
   }
 
+  void RunWithCpuBoundInputAndDirtyGpuReuse(Ort::Session& session, float value) const {
+    const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+    std::array<float, kElements> input_data{};
+    input_data.fill(value);
+    std::array<float, kElements> dirty_data{};
+    dirty_data.fill(-value);
+    std::array<float, kElements> output_data{};
+    auto cpu_input = Ort::Value::CreateTensor<float>(
+        cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
+    auto dirty_source = Ort::Value::CreateTensor<float>(
+        cpu_memory, dirty_data.data(), dirty_data.size(), kShape.data(), kShape.size());
+    auto cpu_output = Ort::Value::CreateTensor<float>(
+        cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
+    Ort::Allocator allocator(session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+    auto gpu_output = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+    Ort::IoBinding binding(session);
+    binding.BindOutput("Y", gpu_output);
+
+    // Release a dirty same-size buffer so BindInput's internal allocation can reuse it.
+    // The user input remains on CPU; the GPU scratch tensor only seeds the allocator cache.
+    {
+      auto scratch = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+      Ort::ThrowOnError(ort_env->CopyTensor(dirty_source, scratch, nullptr));
+    }
+
+    binding.BindInput("X", cpu_input);
+    // No intervening allocation, copy, or synchronization may flush the deferred clear.
+    session.Run(Ort::RunOptions{nullptr}, binding);
+    Ort::ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
+    VerifyOutput(output_data, value);
+  }
+
   enum class OutputBinding { None,
                              CpuToGpu,
                              CpuOnlyGraphToGpu };
 
   void RunWithCpuPartitionFeeds(bool use_gpu_feed, bool reverse_feeds = false,
-                                OutputBinding output_binding = OutputBinding::None) const {
+                                OutputBinding output_binding = OutputBinding::None,
+                                bool preallocate_gpu_input = false) const {
     const bool bind_cpu_output_to_gpu = output_binding != OutputBinding::None;
     const bool cpu_only_graph = output_binding == OutputBinding::CpuOnlyGraphToGpu;
     ONNX_NAMESPACE::ModelProto model;
@@ -294,8 +366,12 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     Ort::Allocator allocator(session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
     std::array<float, kElements> gpu_node_data{};
     std::array<float, kElements> cpu_node_data{};
-    auto gpu_node_feed = Ort::Value::CreateTensor<float>(
+    auto gpu_node_source = Ort::Value::CreateTensor<float>(
         cpu_memory, gpu_node_data.data(), gpu_node_data.size(), kShape.data(), kShape.size());
+    auto gpu_node_feed = preallocate_gpu_input
+                             ? Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size())
+                             : Ort::Value::CreateTensor<float>(
+                                   cpu_memory, gpu_node_data.data(), gpu_node_data.size(), kShape.data(), kShape.size());
     auto cpu_node_source = Ort::Value::CreateTensor<float>(
         cpu_memory, cpu_node_data.data(), cpu_node_data.size(), kShape.data(), kShape.size());
     auto cpu_node_feed = use_gpu_feed
@@ -317,7 +393,10 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
         cpu_node_data[index] = static_cast<float>(100 + iteration * kElements + index);
       }
       if (use_gpu_feed) {
-        ThrowOnError(ort_env->CopyTensor(cpu_node_source, feeds[reverse_feeds ? 0 : 1], nullptr));
+        Ort::ThrowOnError(ort_env->CopyTensor(cpu_node_source, feeds[reverse_feeds ? 0 : 1], nullptr));
+      }
+      if (preallocate_gpu_input) {
+        Ort::ThrowOnError(ort_env->CopyTensor(gpu_node_source, feeds[reverse_feeds ? 1 : 0], nullptr));
       }
       if (bind_cpu_output_to_gpu) {
         for (size_t index = 0; index < feeds.size(); ++index) {
@@ -337,7 +416,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
             Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size()),
             Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size())};
         for (auto& cached_tensor : cached_tensors) {
-          ThrowOnError(ort_env->CopyTensor(feeds[reverse_feeds ? 1 : 0], cached_tensor, nullptr));
+          Ort::ThrowOnError(ort_env->CopyTensor(feeds[reverse_feeds ? 1 : 0], cached_tensor, nullptr));
         }
       }
 
@@ -353,7 +432,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
         ASSERT_EQ(outputs[1].GetTensorMemoryInfo().GetDeviceType(), OrtMemoryInfoDeviceType_GPU);
         auto cpu_output = Ort::Value::CreateTensor<float>(
             cpu_memory, cpu_output_data.data(), cpu_output_data.size(), kShape.data(), kShape.size());
-        ThrowOnError(ort_env->CopyTensor(outputs[1], cpu_output, nullptr));
+        Ort::ThrowOnError(ort_env->CopyTensor(outputs[1], cpu_output, nullptr));
         outputs[1] = std::move(cpu_output);
         binding.ClearBoundOutputs();
       } else {
@@ -415,7 +494,9 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
     options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
     options.EnableProfiling(ORT_TSTR("webgpu_copy_regression"));
-    options.AppendExecutionProvider_V2(*ort_env, {Device()}, {{"maxNumPendingDispatches", "4096"}});
+    Ort::KeyValuePairs ep_options;
+    ep_options.Add("maxNumPendingDispatches", "4096");
+    options.AppendExecutionProvider_V2(*ort_env, {Device()}, ep_options);
     const auto bytes = model.SerializeAsString();
     Ort::Session session(*ort_env, bytes.data(), bytes.size(), options);
     for (const auto& device : session.GetEpDeviceForOutputs()) {
@@ -432,7 +513,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     auto gpu_producer = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
     auto gpu_copy = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
     ASSERT_NE(gpu_producer.GetTensorMutableData<float>(), gpu_copy.GetTensorMutableData<float>());
-    ThrowOnError(ort_env->CopyTensor(input, gpu_input, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(input, gpu_input, nullptr));
     Ort::IoBinding binding(session);
     binding.BindInput("X", gpu_input);
     // Preallocated, distinct graph outputs force the no-op kernel's actual copy branch,
@@ -447,7 +528,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     std::array<float, kElements> output_data{};
     auto output = Ort::Value::CreateTensor<float>(cpu_memory, output_data.data(), output_data.size(),
                                                   shape.data(), shape.size());
-    ThrowOnError(ort_env->CopyTensor(gpu_copy, output, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(gpu_copy, output, nullptr));
     for (size_t i = 0; i < input_data.size(); ++i) {
       EXPECT_EQ(output_data[i], -input_data[i]);
     }
@@ -476,6 +557,58 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     }
     EXPECT_EQ(producer_kernels, 1u);
     EXPECT_EQ(copy_kernels, 1u);
+  }
+
+  void RunGraphsConcurrently(bool separate_sessions, bool capture_before_workers) const {
+    InlinedVector<std::unique_ptr<Ort::Session>> sessions;
+    const int session_count = separate_sessions ? kThreads : 1;
+    for (int i = 0; i < session_count; ++i) {
+      sessions.emplace_back(CreateSession(true));
+    }
+    const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+    InlinedVector<Ort::Allocator> allocators;
+    for (const auto& session : sessions) {
+      allocators.emplace_back(*session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+    }
+    InlinedVector<Ort::Value> inputs;
+    InlinedVector<Ort::Value> outputs;
+    InlinedVector<Ort::IoBinding> bindings;
+    InlinedVector<Ort::RunOptions> options;
+    for (int thread_id = 0; thread_id < kThreads; ++thread_id) {
+      auto& session = *sessions[separate_sessions ? thread_id : 0];
+      auto& allocator = allocators[separate_sessions ? thread_id : 0];
+      inputs.emplace_back(Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size()));
+      outputs.emplace_back(Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size()));
+      std::array<float, kElements> input_data{};
+      input_data.fill(static_cast<float>(thread_id + 1));
+      auto cpu_input = Ort::Value::CreateTensor<float>(
+          cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
+      Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, inputs.back(), nullptr));
+      bindings.emplace_back(session);
+      bindings.back().BindInput("X", inputs.back());
+      bindings.back().BindOutput("Y", outputs.back());
+      options.emplace_back();
+      options.back().AddConfigEntry("gpu_graph_id", std::to_string(thread_id).c_str());
+      if (capture_before_workers) {
+        session.Run(options.back(), bindings.back());
+      }
+    }
+
+    FirstError error;
+    RunWorkers(error, [&](int thread_id) {
+      auto& session = *sessions[separate_sessions ? thread_id : 0];
+      for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
+        // Without pre-capture, the first call includes warm-up and capture retries.
+        // Later calls replay using the same bound buffers and graph annotation ID.
+        session.Run(options[thread_id], bindings[thread_id]);
+        std::array<float, kElements> output_data{};
+        auto cpu_output = Ort::Value::CreateTensor<float>(
+            cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
+        Ort::ThrowOnError(ort_env->CopyTensor(outputs[thread_id], cpu_output, nullptr));
+        VerifyOutput(output_data, static_cast<float>(thread_id + 1));
+      }
+    });
+    ASSERT_FALSE(error.Failed()) << error.Message();
   }
 
  private:
@@ -554,6 +687,15 @@ TEST_F(PluginEpWebGpuConcurrency, CpuOutputBoundToGpu) {
 
 TEST_F(PluginEpWebGpuConcurrency, CpuOutputBoundToGpuFirst) {
   RunWithCpuPartitionFeeds(false, true, OutputBinding::CpuToGpu);
+}
+
+TEST_F(PluginEpWebGpuConcurrency, PreallocatedGpuInputWithMixedOutputBindings) {
+  // Bypass BindInput's CPU-to-GPU copy to isolate output-copy ordering.
+  RunWithCpuPartitionFeeds(false, false, OutputBinding::CpuToGpu, true);
+}
+
+TEST_F(PluginEpWebGpuConcurrency, PreallocatedGpuInputWithMixedOutputBindingsReversed) {
+  RunWithCpuPartitionFeeds(false, true, OutputBinding::CpuToGpu, true);
 }
 
 TEST_F(PluginEpWebGpuConcurrency, CpuOnlyGraphOutputBoundToGpu) {
@@ -669,6 +811,380 @@ TEST_F(PluginEpWebGpuConcurrency, CpuInputAndGpuOutputRun) {
   RunWithCpuInputAndGpuOutput(*session, 1.0f);
 }
 
+TEST_F(PluginEpWebGpuConcurrency, CpuBindInputReusesDirtyGpuBuffer) {
+  auto session = CreateSession();
+  const auto input_memory = session->GetMemoryInfoForInputs();
+  const auto output_memory = session->GetMemoryInfoForOutputs();
+  ASSERT_EQ(input_memory.size(), 1u);
+  ASSERT_EQ(output_memory.size(), 1u);
+  ASSERT_EQ(input_memory.front().GetDeviceType(), OrtMemoryInfoDeviceType_GPU);
+  ASSERT_EQ(output_memory.front().GetDeviceType(), OrtMemoryInfoDeviceType_GPU);
+  const auto input_devices = session->GetEpDeviceForInputs();
+  ASSERT_EQ(input_devices.size(), 1u);
+  ASSERT_NE(input_devices.front(), nullptr);
+  ASSERT_STREQ(input_devices.front().EpName(), kWebGpuExecutionProvider);
+
+  for (int iteration = 0; iteration < kIterations; ++iteration) {
+    SCOPED_TRACE(iteration);
+    RunWithCpuBoundInputAndDirtyGpuReuse(*session, static_cast<float>(iteration + 1));
+  }
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SerialInterleavedCpuBindInputsAcrossSessions) {
+  std::array<std::unique_ptr<Ort::Session>, 2> sessions{CreateSession(), CreateSession()};
+  const auto gpu_memory = Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<Ort::Allocator, 2> allocators{
+      Ort::Allocator(*sessions[0], gpu_memory), Ort::Allocator(*sessions[1], gpu_memory)};
+  std::array<Ort::Value, 2> gpu_outputs{
+      CreateReusedNonzeroGpuTensor(allocators[0], -101.0f),
+      CreateReusedNonzeroGpuTensor(allocators[1], -202.0f)};
+  std::array<std::array<float, kElements>, 2> input_data{};
+  std::array<Ort::Value, 2> cpu_inputs{
+      Ort::Value::CreateTensor<float>(
+          cpu_memory, input_data[0].data(), kElements, kShape.data(), kShape.size()),
+      Ort::Value::CreateTensor<float>(
+          cpu_memory, input_data[1].data(), kElements, kShape.data(), kShape.size())};
+  std::array<Ort::IoBinding, 2> bindings{Ort::IoBinding(*sessions[0]), Ort::IoBinding(*sessions[1])};
+  for (size_t index = 0; index < sessions.size(); ++index) {
+    bindings[index].BindOutput("Y", gpu_outputs[index]);
+  }
+  std::array<float, kElements> output_data{};
+  auto cpu_output = Ort::Value::CreateTensor<float>(
+      cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
+
+  for (int iteration = 0; iteration < kIterations; ++iteration) {
+    SCOPED_TRACE(iteration);
+    const std::array<float, 2> values{static_cast<float>(iteration + 1),
+                                      -static_cast<float>(100 + iteration)};
+    for (size_t index = 0; index < sessions.size(); ++index) {
+      bindings[index].ClearBoundInputs();
+      input_data[index].fill(-values[index]);
+      {
+        auto scratch = Ort::Value::CreateTensor<float>(allocators[index], kShape.data(), kShape.size());
+        Ort::ThrowOnError(ort_env->CopyTensor(cpu_inputs[index], scratch, nullptr));
+      }
+      input_data[index].fill(values[index]);
+    }
+
+    // Both CPU uploads precede either Run, with no intervening copy or synchronization.
+    bindings[0].BindInput("X", cpu_inputs[0]);
+    bindings[1].BindInput("X", cpu_inputs[1]);
+    const size_t first = static_cast<size_t>(iteration % 2);
+    sessions[first]->Run(Ort::RunOptions{nullptr}, bindings[first]);
+    sessions[1 - first]->Run(Ort::RunOptions{nullptr}, bindings[1 - first]);
+
+    for (size_t index = 0; index < sessions.size(); ++index) {
+      SCOPED_TRACE(index);
+      auto outputs = bindings[index].GetOutputValues();
+      ASSERT_EQ(outputs.size(), 1u);
+      EXPECT_EQ(outputs[0].GetTensorMutableRawData(), gpu_outputs[index].GetTensorMutableRawData());
+      Ort::ThrowOnError(ort_env->CopyTensor(gpu_outputs[index], cpu_output, nullptr));
+      VerifyOutput(output_data, values[index]);
+    }
+  }
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SerialReusedNonzeroGpuInputAndPreallocatedOutput) {
+  auto session = CreateSession();
+  Ort::Allocator allocator(*session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<float, kElements> input_data{};
+  std::array<float, kElements> output_data{};
+  auto cpu_input = Ort::Value::CreateTensor<float>(
+      cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
+  auto cpu_output = Ort::Value::CreateTensor<float>(
+      cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
+
+  for (int iteration = 0; iteration < kIterations; ++iteration) {
+    SCOPED_TRACE(iteration);
+    const float value = static_cast<float>(iteration + 1);
+    input_data.fill(value);
+    auto gpu_output = CreateReusedNonzeroGpuTensor(allocator, -value);
+    auto gpu_input = CreateReusedNonzeroGpuTensor(allocator, -100.0f - value);
+    Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
+    Ort::IoBinding binding(*session);
+    binding.BindInput("X", gpu_input);
+    binding.BindOutput("Y", gpu_output);
+    // A late reused-buffer clear must not overwrite the new input upload.
+    session->Run(Ort::RunOptions{nullptr}, binding);
+    auto outputs = binding.GetOutputValues();
+    ASSERT_EQ(outputs.size(), 1u);
+    EXPECT_EQ(outputs[0].GetTensorMutableRawData(), gpu_output.GetTensorMutableRawData());
+    Ort::ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
+    VerifyOutput(output_data, value);
+  }
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SerialSessionDestructionPreservesBoundSessionAndEnvTensors) {
+  auto shared_allocator = CreateSharedAllocator();
+  ASSERT_NE(shared_allocator, nullptr);
+  auto env_source = Ort::Value::CreateTensor<float>(shared_allocator, kShape.data(), kShape.size());
+  auto env_destination = Ort::Value::CreateTensor<float>(shared_allocator, kShape.data(), kShape.size());
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<float, kElements> input_data{};
+  std::array<float, kElements> env_data{};
+  std::array<float, kElements> output_data{};
+  auto cpu_input = Ort::Value::CreateTensor<float>(
+      cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
+  auto env_input = Ort::Value::CreateTensor<float>(
+      cpu_memory, env_data.data(), env_data.size(), kShape.data(), kShape.size());
+  auto cpu_output = Ort::Value::CreateTensor<float>(
+      cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
+  {
+    auto surviving_session = CreateSession();
+    Ort::Allocator allocator(*surviving_session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+    auto gpu_output = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+    Ort::IoBinding binding(*surviving_session);
+    binding.BindOutput("Y", gpu_output);
+
+    for (int iteration = 0; iteration < kIterations; ++iteration) {
+      SCOPED_TRACE(iteration);
+      auto retiring_session = CreateSession();
+      RunWithCpuInputAndOutput(*retiring_session, static_cast<float>(100 + iteration));
+      const float value = static_cast<float>(iteration + 1);
+      input_data.fill(value);
+      env_data.fill(-value);
+      binding.ClearBoundInputs();
+      binding.BindInput("X", cpu_input);
+      Ort::ThrowOnError(ort_env->CopyTensor(env_input, env_source, nullptr));
+      Ort::ThrowOnError(ort_env->CopyTensor(env_source, env_destination, nullptr));
+
+      // Destroy only the idle session while another session's binding and Env copies remain live.
+      retiring_session.reset();
+      surviving_session->Run(Ort::RunOptions{nullptr}, binding);
+      Ort::ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
+      VerifyOutput(output_data, value);
+      Ort::ThrowOnError(ort_env->CopyTensor(env_destination, cpu_output, nullptr));
+      EXPECT_EQ(output_data, env_data);
+    }
+  }
+
+  // The same Env allocations must remain usable after the last session is destroyed.
+  output_data.fill(0.0f);
+  Ort::ThrowOnError(ort_env->CopyTensor(env_destination, cpu_output, nullptr));
+  EXPECT_EQ(output_data, env_data);
+  env_data.fill(321.0f);
+  Ort::ThrowOnError(ort_env->CopyTensor(env_input, env_source, nullptr));
+  Ort::ThrowOnError(ort_env->CopyTensor(env_source, env_destination, nullptr));
+  Ort::ThrowOnError(ort_env->CopyTensor(env_destination, cpu_output, nullptr));
+  EXPECT_EQ(output_data, env_data);
+  CopyTensorRoundTrip(shared_allocator, -456.0f);
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SerialGraphCaptureWithCpuFeedsAndFetches) {
+  auto session = CreateSession(true);
+  for (int iteration = 0; iteration < kIterations; ++iteration) {
+    SCOPED_TRACE(iteration);
+    RunWithCpuInputAndOutput(*session, static_cast<float>(iteration + 1));
+    // Framework feed/fetch copies run while the graph manager is active. Recapture each time:
+    // those copies are not replayed, and the next Run supplies new CPU inputs and outputs.
+    session->ReleaseCapturedGraph(0);
+  }
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SerialSingleSessionMultipleGraphCaptureIds) {
+  auto session = CreateSession(true);
+  Ort::Allocator allocator(*session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  constexpr std::array<int, 2> graph_ids{1, 2};
+  std::array<Ort::RunOptions, 2> run_options;
+  std::array<Ort::Value, 2> gpu_inputs{
+      Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size()),
+      Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size())};
+  std::array<Ort::Value, 2> gpu_outputs{
+      Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size()),
+      Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size())};
+  std::array<Ort::IoBinding, 2> bindings{Ort::IoBinding(*session), Ort::IoBinding(*session)};
+  for (size_t index = 0; index < graph_ids.size(); ++index) {
+    run_options[index].AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation,
+                                      std::to_string(graph_ids[index]).c_str());
+    bindings[index].BindInput("X", gpu_inputs[index]);
+    bindings[index].BindOutput("Y", gpu_outputs[index]);
+  }
+  std::array<float, kElements> input_data{};
+  std::array<float, kElements> output_data{};
+  auto cpu_input = Ort::Value::CreateTensor<float>(
+      cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
+  auto cpu_output = Ort::Value::CreateTensor<float>(
+      cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
+
+  for (int iteration = 0; iteration < kIterations; ++iteration) {
+    SCOPED_TRACE(iteration);
+    if (iteration == kIterations / 2) {
+      session->ReleaseCapturedGraph(graph_ids[0]);
+    }
+    const std::array<float, 2> values{static_cast<float>(iteration + 1),
+                                      -static_cast<float>(100 + iteration)};
+    for (size_t index = 0; index < graph_ids.size(); ++index) {
+      input_data.fill(values[index]);
+      Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_inputs[index], nullptr));
+    }
+    // Distinct stable bindings expose replay of the wrong ID; alternate replay order as well.
+    const size_t first = static_cast<size_t>(iteration % 2);
+    session->Run(run_options[first], bindings[first]);
+    session->Run(run_options[1 - first], bindings[1 - first]);
+    for (size_t index = 0; index < graph_ids.size(); ++index) {
+      SCOPED_TRACE(graph_ids[index]);
+      Ort::ThrowOnError(ort_env->CopyTensor(gpu_outputs[index], cpu_output, nullptr));
+      VerifyOutput(output_data, values[index]);
+    }
+  }
+  for (int graph_id : graph_ids) {
+    session->ReleaseCapturedGraph(graph_id);
+  }
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SerialRunsAfterRejectedStreamOverride) {
+  auto first_session = CreateSession();
+  auto second_session = CreateSession();
+  const auto gpu_memory = Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  Ort::Allocator first_allocator(*first_session, gpu_memory);
+  auto first_input = Ort::Value::CreateTensor<float>(first_allocator, kShape.data(), kShape.size());
+  auto first_output = Ort::Value::CreateTensor<float>(first_allocator, kShape.data(), kShape.size());
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<float, kElements> input_data{};
+  input_data.fill(2.0f);
+  auto cpu_input = Ort::Value::CreateTensor<float>(
+      cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
+  Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, first_input, nullptr));
+  Ort::IoBinding first_binding(*first_session);
+  first_binding.BindInput("X", first_input);
+  first_binding.BindOutput("Y", first_output);
+
+  // OrtSyncStream is the C API's opaque alias for Stream; no CUDA runtime or GPU work is needed.
+  const OrtDevice foreign_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0};
+  Stream foreign_stream{nullptr, foreign_device};
+  Ort::RunOptions run_options;
+  run_options.SetSyncStream(reinterpret_cast<OrtSyncStream*>(&foreign_stream));
+  Ort::Status rejected{Ort::GetApi().RunWithBinding(*first_session, run_options, first_binding)};
+  ASSERT_FALSE(rejected.IsOK());
+  ASSERT_EQ(rejected.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  ASSERT_NE(rejected.GetErrorMessage().find("No matching stream found to override from OrtRunOptions"),
+            std::string::npos);
+
+  // This host error occurs after OnRunStart and skips OnRunEnd. Neither Session may be blocked.
+  ASSERT_NO_THROW(RunWithCpuInputAndOutput(*second_session, 3.0f));
+  run_options.SetSyncStream(nullptr);
+  ASSERT_NO_THROW(first_session->Run(run_options, first_binding));
+  std::array<float, kElements> output_data{};
+  auto cpu_output = Ort::Value::CreateTensor<float>(
+      cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
+  Ort::ThrowOnError(ort_env->CopyTensor(first_output, cpu_output, nullptr));
+  VerifyOutput(output_data, 2.0f);
+  for (int iteration = 0; iteration < kIterations; ++iteration) {
+    SCOPED_TRACE(iteration);
+    ASSERT_NO_THROW(RunWithCpuInputAndOutput(*first_session, static_cast<float>(iteration + 1)));
+    ASSERT_NO_THROW(RunWithCpuInputAndOutput(*second_session, -static_cast<float>(iteration + 1)));
+  }
+}
+
+TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsCpuBindInputReusesDirtyGpuBuffersConcurrently) {
+  std::array<std::unique_ptr<Ort::Session>, kThreads> sessions;
+  for (auto& session : sessions) {
+    session = CreateSession();
+  }
+
+  FirstError error;
+  RunWorkers(error, [&](int thread_id) {
+    for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
+      const float value = static_cast<float>(thread_id * kIterations + iteration + 1);
+      RunWithCpuBoundInputAndDirtyGpuReuse(*sessions[thread_id], value);
+    }
+  });
+
+  ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
+TEST_F(PluginEpWebGpuConcurrency, GraphCaptureReplayInterleavedWithIdleSessionCpuBindInput) {
+  auto captured_session = CreateSession(true);
+  auto idle_session = CreateSession();
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  const auto gpu_memory = Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  Ort::Allocator captured_allocator(*captured_session, gpu_memory);
+  Ort::Allocator idle_allocator(*idle_session, gpu_memory);
+  auto captured_input = Ort::Value::CreateTensor<float>(captured_allocator, kShape.data(), kShape.size());
+  auto captured_output = Ort::Value::CreateTensor<float>(captured_allocator, kShape.data(), kShape.size());
+  auto idle_output = Ort::Value::CreateTensor<float>(idle_allocator, kShape.data(), kShape.size());
+  std::array<float, kElements> captured_data{};
+  std::array<float, kElements> idle_data{};
+  std::array<float, kElements> dirty_data{};
+  std::array<float, kElements> output_data{};
+  auto captured_source = Ort::Value::CreateTensor<float>(
+      cpu_memory, captured_data.data(), captured_data.size(), kShape.data(), kShape.size());
+  auto idle_input = Ort::Value::CreateTensor<float>(
+      cpu_memory, idle_data.data(), idle_data.size(), kShape.data(), kShape.size());
+  auto dirty_source = Ort::Value::CreateTensor<float>(
+      cpu_memory, dirty_data.data(), dirty_data.size(), kShape.data(), kShape.size());
+  auto cpu_output = Ort::Value::CreateTensor<float>(
+      cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
+  Ort::IoBinding captured_binding(*captured_session);
+  captured_binding.BindInput("X", captured_input);
+  captured_binding.BindOutput("Y", captured_output);
+  Ort::IoBinding idle_binding(*idle_session);
+  idle_binding.BindOutput("Y", idle_output);
+
+  for (int iteration = 0; iteration < kIterations; ++iteration) {
+    SCOPED_TRACE(iteration);
+    const float captured_value = static_cast<float>(iteration + 1);
+    const float idle_value = static_cast<float>(100 + iteration);
+    captured_data.fill(captured_value);
+    idle_data.fill(idle_value);
+    dirty_data.fill(-idle_value);
+    idle_binding.ClearBoundInputs();
+    {
+      auto scratch = Ort::Value::CreateTensor<float>(idle_allocator, kShape.data(), kShape.size());
+      Ort::ThrowOnError(ort_env->CopyTensor(dirty_source, scratch, nullptr));
+    }
+    // BindInput must flush the idle session's reused-buffer clear without changing
+    // the captured session's buffer-manager routing or retained graph resources.
+    idle_binding.BindInput("X", idle_input);
+    Ort::ThrowOnError(ort_env->CopyTensor(captured_source, captured_input, nullptr));
+    captured_session->Run(Ort::RunOptions{nullptr}, captured_binding);
+    Ort::ThrowOnError(ort_env->CopyTensor(captured_output, cpu_output, nullptr));
+    VerifyOutput(output_data, captured_value);
+
+    idle_session->Run(Ort::RunOptions{nullptr}, idle_binding);
+    Ort::ThrowOnError(ort_env->CopyTensor(idle_output, cpu_output, nullptr));
+    VerifyOutput(output_data, idle_value);
+    if (iteration == kIterations / 2) {
+      captured_session->ReleaseCapturedGraph(0);
+    }
+  }
+  captured_session->ReleaseCapturedGraph(0);
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SessionCreationAndDestructionDuringStreamlessCopies) {
+  std::array<std::unique_ptr<Ort::Session>, kThreads - 1> sessions;
+  for (auto& session : sessions) {
+    session = CreateSession();
+  }
+  auto shared_allocator = CreateSharedAllocator();
+  ASSERT_NE(shared_allocator, nullptr);
+  std::atomic<bool> lifecycle_done{false};
+
+  FirstError error;
+  RunWorkers(error, [&](int thread_id) {
+    if (thread_id == 0) {
+      for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
+        auto session = CreateSession();
+        RunWithCpuBoundInputAndDirtyGpuReuse(*session, static_cast<float>(iteration + 1));
+      }
+      lifecycle_done.store(true);
+      return;
+    }
+
+    // Keep copying through the final session destruction, not just its slower initial creation.
+    for (int iteration = 0; (iteration < kIterations || !lifecycle_done.load()) && !error.Failed(); ++iteration) {
+      const float value = static_cast<float>(thread_id * kIterations + iteration + 1);
+      RunWithCpuBoundInputAndDirtyGpuReuse(*sessions[thread_id - 1], value);
+      CopyTensorRoundTrip(shared_allocator, -value);
+    }
+  });
+
+  ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
 TEST_F(PluginEpWebGpuConcurrency, GpuInputAndCpuOutputRun) {
   auto session = CreateSession();
   RunWithGpuInputAndCpuOutput(*session, 1.0f);
@@ -725,6 +1241,17 @@ TEST_F(PluginEpWebGpuConcurrency, SharedAllocatorCreatesAndCopiesConcurrently) {
   ASSERT_FALSE(error.Failed()) << error.Message();
 }
 
+TEST_F(PluginEpWebGpuConcurrency, SameSessionRunsAreSerialized) {
+  auto session = CreateSession();
+  FirstError error;
+  RunWorkers(error, [&](int thread_id) {
+    for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
+      RunWithCpuInputAndOutput(*session, static_cast<float>(thread_id * kIterations + iteration + 1));
+    }
+  });
+  ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
 TEST_F(PluginEpWebGpuConcurrency, SameSessionAllocatorCreatesAndCopiesConcurrently) {
   auto allocator_session = CreateSession();
   Ort::Allocator allocator(*allocator_session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
@@ -735,6 +1262,106 @@ TEST_F(PluginEpWebGpuConcurrency, SameSessionAllocatorCreatesAndCopiesConcurrent
     }
   });
   ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SameSessionAllocatorCreatesAndCopiesDuringGraphReplay) {
+  auto session = CreateSession(true);
+  Ort::Allocator allocator(*session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  auto gpu_input = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+  auto gpu_output = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<float, kElements> input_data{};
+  std::array<float, kElements> output_data{};
+  auto cpu_input = Ort::Value::CreateTensor<float>(
+      cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
+  auto cpu_output = Ort::Value::CreateTensor<float>(
+      cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
+  Ort::IoBinding binding(*session);
+  binding.BindInput("X", gpu_input);
+  binding.BindOutput("Y", gpu_output);
+  const auto run_and_verify = [&](float value) {
+    input_data.fill(value);
+    Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
+    session->Run(Ort::RunOptions{nullptr}, binding);
+    Ort::ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
+    VerifyOutput(output_data, value);
+  };
+
+  // Warm up and capture before starting allocator workers. Only replay is concurrent;
+  // bound tensors and the binding itself stay on the Run thread.
+  run_and_verify(1.0f);
+  CopyTensorRoundTrip(allocator, 1.0f, true);
+  FirstError error;
+  RunWorkers(error, [&](int thread_id) {
+    for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
+      const float value = static_cast<float>(thread_id * kIterations + iteration + 2);
+      if (thread_id == 0) {
+        run_and_verify(value);
+      } else {
+        CopyTensorRoundTrip(allocator, value, true);
+      }
+    }
+  });
+  ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SessionAllocatorReusesBuffersFreedDuringGraphReplay) {
+  auto session = CreateSession(true);
+  Ort::Allocator allocator(*session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  auto gpu_input = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+  auto gpu_output = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+  Ort::IoBinding binding(*session);
+  binding.BindInput("X", gpu_input);
+  binding.BindOutput("Y", gpu_output);
+  session->Run(Ort::RunOptions{nullptr}, binding);
+
+  // Hold a full bucket so all available buffers of this size belong to this test.
+  // The model's tensors use the separate 64-byte bucket.
+  constexpr size_t kBufferSize = 4096;
+  constexpr size_t kBucketCapacity = 200;
+  InlinedVector<std::optional<Ort::MemoryAllocation>> buffers;
+  InlinedHashSet<void*> handles;
+  for (size_t i = 0; i < kBucketCapacity; ++i) {
+    buffers.emplace_back(allocator.GetAllocation(kBufferSize));
+    ASSERT_NE(buffers.back()->get(), nullptr);
+    handles.insert(buffers.back()->get());
+  }
+
+  FirstError error;
+  RunWorkers(error, [&](int thread_id) {
+    if (thread_id == 0) {
+      for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
+        session->Run(Ort::RunOptions{nullptr}, binding);
+      }
+    } else {
+      for (size_t i = static_cast<size_t>(thread_id - 1); i < buffers.size(); i += kThreads - 1) {
+        buffers[i].reset();
+        std::this_thread::yield();
+      }
+    }
+  });
+  ASSERT_FALSE(error.Failed()) << error.Message();
+  // Submit once after every Free has completed, including frees at the end of the replay loop.
+  session->Run(Ort::RunOptions{nullptr}, binding);
+
+  InlinedVector<Ort::MemoryAllocation> reacquired;
+  for (size_t i = 0; i < kBucketCapacity; ++i) {
+    reacquired.emplace_back(allocator.GetAllocation(kBufferSize));
+    EXPECT_EQ(handles.erase(reacquired.back().get()), 1u);
+  }
+  EXPECT_TRUE(handles.empty());
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SameSessionCapturedGraphsReplayConcurrently) {
+  RunGraphsConcurrently(/*separate_sessions=*/false, /*capture_before_workers=*/true);
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SameSessionGraphsCaptureAndReplayConcurrently) {
+  RunGraphsConcurrently(/*separate_sessions=*/false, /*capture_before_workers=*/false);
+}
+
+TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsGraphsCaptureAndReplayConcurrently) {
+  RunGraphsConcurrently(/*separate_sessions=*/true, /*capture_before_workers=*/false);
 }
 
 TEST_F(PluginEpWebGpuConcurrency, DedicatedSessionAllocatorFeedsConcurrentSessions) {
@@ -756,7 +1383,7 @@ TEST_F(PluginEpWebGpuConcurrency, DedicatedSessionAllocatorFeedsConcurrentSessio
       auto input = Ort::Value::CreateTensor<float>(
           cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
       auto gpu_input = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
-      ThrowOnError(ort_env->CopyTensor(input, gpu_input, nullptr));
+      Ort::ThrowOnError(ort_env->CopyTensor(input, gpu_input, nullptr));
       auto outputs = sessions[thread_id]->Run(Ort::RunOptions{nullptr}, input_names.data(), &gpu_input, 1,
                                               output_names.data(), output_names.size());
       std::array<float, kElements> output_data{};
@@ -781,8 +1408,8 @@ TEST_F(PluginEpWebGpuConcurrency, SharedGpuCopyIsSubmittedBeforeSessionRun) {
                                                  kShape.data(), kShape.size());
     auto source = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
     auto destination = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
-    ThrowOnError(ort_env->CopyTensor(input, source, nullptr));
-    ThrowOnError(ort_env->CopyTensor(source, destination, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(input, source, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(source, destination, nullptr));
     auto result = session->Run(Ort::RunOptions{nullptr}, input_names.data(), &destination, 1,
                                output_names.data(), output_names.size());
     std::array<float, kElements> output{};

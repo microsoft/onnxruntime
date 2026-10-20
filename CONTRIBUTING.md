@@ -71,7 +71,7 @@ To preview your changes, you can push to the gh-pages branch in your fork and th
 
 Once your PR is approved and merged, your changes will be automatically published to https://onnxruntime.ai/docs.
 
-Note: technical reference docs for developers of ONNX Runtime source code can be found [here](https://github.com/microsoft/onnxruntime/docs)
+Note: technical reference docs for developers of ONNX Runtime source code can be found [here](https://github.com/microsoft/onnxruntime/tree/main/docs)
 
 ## Licensing guidelines
 

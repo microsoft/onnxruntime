@@ -310,6 +310,10 @@ __global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
                            const int B, const int S, const int N, const int H) {
   int token_idx = blockIdx.x;
   int source_idx = token_offset[token_idx];
+  if (source_idx < 0 || source_idx >= B * S) {
+    return;
+  }
+
   int b = source_idx / S;
   int s = source_idx - b * S;
 

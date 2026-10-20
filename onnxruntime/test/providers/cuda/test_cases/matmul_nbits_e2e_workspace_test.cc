@@ -23,13 +23,14 @@
 // This translation unit runs a real InferenceSession, so it includes the core framework headers.
 // Those cannot coexist with the CUDA-provider (shared-provider bridge) headers in one TU, so the two
 // provider-world pieces it needs (the Level-1 estimate and the runtime probe) are reached through
-// slim, bridge-free declarations. It lives in the CUDA-only unit-test module because that is the only
+// statically linked test adapters with opaque Node pointers. It lives in the CUDA-only unit-test module because that is the only
 // place these provider-internal symbols are linkable. Requires a real CUDA device; skips otherwise.
 
 #include "gtest/gtest.h"
 
 #if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM) && USE_FPA_INTB_GEMM
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <iostream>
@@ -56,6 +57,7 @@
 
 #include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 
+#include "test/providers/cuda/test_cases/cuda_test_bridge.h"
 #include "test/providers/cuda/test_cases/matmul_nbits_workspace_test_probe.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
@@ -94,7 +96,8 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
                                        int64_t m_dim_value = kE2eM,
                                        int64_t n = kE2eN,
                                        int64_t k = kE2eK,
-                                       uint8_t packed_weight_byte = 0) {
+                                       uint8_t packed_weight_byte = 0,
+                                       [[maybe_unused]] bool include_bias = true) {
   const int64_t k_blocks = (k + kE2eBlockSize - 1) / kE2eBlockSize;
   const int64_t blob_size = (kE2eBlockSize * kE2eBits + 7) / 8;  // 16
 
@@ -163,11 +166,13 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
 #if !USE_COMPACT_FPA_INTB_GEMM
   // Bias initializer: fp16 {N}, zero-filled. Supplying it after two omitted optional inputs is the
   // regression layout for positional Level-2 input-shape resolution.
-  auto* bias = graph->add_initializer();
-  bias->set_name("bias");
-  bias->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-  bias->add_dims(n);
-  bias->mutable_raw_data()->assign(static_cast<size_t>(n * sizeof(uint16_t)), '\0');
+  if (include_bias) {
+    auto* bias = graph->add_initializer();
+    bias->set_name("bias");
+    bias->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    bias->add_dims(n);
+    bias->mutable_raw_data()->assign(static_cast<size_t>(n * sizeof(uint16_t)), '\0');
+  }
 #endif
 
   // MatMulNBits node.
@@ -183,7 +188,7 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
 #if USE_COMPACT_FPA_INTB_GEMM
   node->add_input("");
 #else
-  node->add_input("bias");
+  node->add_input(include_bias ? "bias" : "");
 #endif
   node->add_output("Y");
   auto add_int_attr = [node](const char* name, int64_t v) {
@@ -314,11 +319,12 @@ std::optional<size_t> EstimateWorkspaceFromGraphProtoShape(
   device_prop.major = 8;
   device_prop.minor = 0;
   device_prop.multiProcessorCount = 100;
-  return onnxruntime::contrib::cuda::EstimateMatMulNBitsWorkspace(node, device_prop);
+  return EstimateMatMulNBitsWorkspaceForTest(&node, device_prop);
 }
 
 }  // namespace
 
+// Charge lazy prefill scratch without adding decode's constructor-only rotating buffers.
 TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
   const int device_sm = CudaDeviceComputeCapabilityOrNegative();
   if (device_sm < 0) {
@@ -334,9 +340,10 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
   ScopedEnvironmentVariables scoped_env(
       EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"0"}},
                 {"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"2048"}}});
-  const std::string model_bytes = BuildMatMulNBitsModelBytes();
+  const std::string model_bytes = BuildMatMulNBitsModelBytes(
+      nullptr, 0, kE2eM, kE2eN, kE2eK, 0, false);
 
-  // profile_m=1 limits constructor profiling to M=1. The first M=256 run therefore performs lazy
+  // profile_m=1,16 limits constructor profiling to M=1 and M=16. The first M=256 run performs lazy
   // profiling. Its scratch is runtime transient memory and must be included in the hard budget,
   // while constructor-profile and PrePack_B scratch remain a non-additive initialization peak.
   {
@@ -344,7 +351,7 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsCudaFpAIntBGemm, "1"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
+        kOrtSessionOptionsCudaFpAIntBProfileM, "1,16"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsResourceCudaPartitioningSettings, "2048,"));
     InferenceSessionWrapper session(so, GetEnvironment());
@@ -357,13 +364,36 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
     ASSERT_NE(mm_node, nullptr);
     EXPECT_EQ(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
 
-    const auto estimate = onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
-        *mm_node, cuda_ep->GetDeviceProp(),
-        {/*fpa_intb_gemm=*/std::string_view{"1"}, /*profile_m=*/std::string_view{"1"}});
+    const auto estimate = EstimateMatMulNBitsMemoryForTest(
+        mm_node, cuda_ep->GetDeviceProp(),
+        {/*fpa_intb_gemm=*/std::string_view{"1"}, /*profile_m=*/std::string_view{"1,16"}});
     ASSERT_TRUE(estimate.has_value());
     ASSERT_TRUE(estimate->runtime_workspace_bytes.has_value());
-    EXPECT_GT(estimate->runtime_transient_bytes, *estimate->runtime_workspace_bytes);
-    EXPECT_GT(estimate->runtime_transient_bytes, estimate->initialization_scratch_bytes);
+    const size_t packed_weight_bytes = static_cast<size_t>(kE2eN * kE2eK) / 2;
+    const size_t scale_bytes = static_cast<size_t>(kE2eN * kE2eK / kE2eBlockSize) * sizeof(uint16_t);
+    const size_t matrix_bytes = packed_weight_bytes + scale_bytes;
+    const size_t l2_bytes = static_cast<size_t>(cuda_ep->GetDeviceProp().l2CacheSize);
+    ASSERT_LE(matrix_bytes, l2_bytes);
+    const auto expected_profile_scratch = [&](size_t profile_m, size_t streaming_l2_bytes) {
+      const size_t copies = streaming_l2_bytes == 0 ? 1 : 2 * streaming_l2_bytes / matrix_bytes + 1;
+      const size_t runner_workspace = ((profile_m + 15) / 16) * ((kE2eN + 63) / 64) * 7 * sizeof(float);
+      const std::array<size_t, 7> buffers{
+          profile_m * kE2eK * sizeof(uint16_t), packed_weight_bytes * copies, scale_bytes * copies,
+          scale_bytes, kE2eN * sizeof(uint16_t), profile_m * kE2eN * sizeof(uint16_t), runner_workspace};
+      size_t scratch = 0;
+      for (size_t bytes : buffers) {
+        scratch += (bytes + 127) / 128 * 128;
+      }
+      return scratch;
+    };
+    const size_t streaming_decode_scratch = expected_profile_scratch(1, l2_bytes);
+    const size_t larger_bucket_scratch = expected_profile_scratch(16, 0);
+    const size_t prepack_scratch = packed_weight_bytes + 32 * sizeof(int32_t);
+    ASSERT_GT(streaming_decode_scratch, larger_bucket_scratch);
+    EXPECT_EQ(estimate->initialization_scratch_bytes,
+              std::max({streaming_decode_scratch, larger_bucket_scratch, prepack_scratch}));
+    EXPECT_EQ(estimate->runtime_transient_bytes, expected_profile_scratch(kE2eM, 0));
+    EXPECT_LT(estimate->runtime_transient_bytes, expected_profile_scratch(kE2eM, l2_bytes));
 
     std::vector<MLFloat16> a_data(static_cast<size_t>(kE2eM * kE2eK), MLFloat16(0.0f));
     OrtValue a_value;
@@ -381,7 +411,7 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsCudaFpAIntBGemm, "1"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
+        kOrtSessionOptionsCudaFpAIntBProfileM, "1,16"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsResourceCudaPartitioningSettings, "430,"));
     InferenceSessionWrapper session(so, GetEnvironment());
@@ -431,15 +461,15 @@ TEST(MatMulNBitsWorkspace, MaxShapeBudgetChargesMissingSmallerProfileBucket) {
     EXPECT_EQ(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
 
     const TensorShape planning_shape({256, kE2eK});
-    const auto estimate = onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
-        *mm_node, planning_shape.GetDims(), cuda_ep->GetDeviceProp(),
+    const auto estimate = EstimateMatMulNBitsMemoryForTest(
+        mm_node, planning_shape.GetDims(), cuda_ep->GetDeviceProp(),
         {/*fpa_intb_gemm=*/std::string_view{"1"},
          /*profile_m=*/std::string_view{"256"},
          /*input_shape_is_upper_bound=*/true});
     ASSERT_TRUE(estimate.has_value());
     const TensorShape missing_bucket_shape({128, kE2eK});
-    const auto missing_bucket_estimate = onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
-        *mm_node, missing_bucket_shape.GetDims(), cuda_ep->GetDeviceProp(),
+    const auto missing_bucket_estimate = EstimateMatMulNBitsMemoryForTest(
+        mm_node, missing_bucket_shape.GetDims(), cuda_ep->GetDeviceProp(),
         {/*fpa_intb_gemm=*/std::string_view{"1"},
          /*profile_m=*/std::string_view{"256"}});
     ASSERT_TRUE(missing_bucket_estimate.has_value());
@@ -608,12 +638,12 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
   // ---- Level 1: the estimator function GetCapability() uses, invoked directly on the node + device
   //      properties and the concrete estimation shape for this run. ----
   const std::optional<Level1MemoryEstimate> level1 =
-      onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
-          *mm_node, positive_a_shape.GetDims(), cuda_ep->GetDeviceProp());
+      EstimateMatMulNBitsMemoryForTest(
+          mm_node, positive_a_shape.GetDims(), cuda_ep->GetDeviceProp());
   ASSERT_TRUE(level1.has_value()) << "Level-1 estimate returned nullopt for an eligible node.";
   const auto static_shape_with_bound_option =
-      onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
-          *mm_node, positive_a_shape.GetDims(), cuda_ep->GetDeviceProp(),
+      EstimateMatMulNBitsMemoryForTest(
+          mm_node, positive_a_shape.GetDims(), cuda_ep->GetDeviceProp(),
           {/*fpa_intb_gemm=*/std::string_view{"1"},
            /*profile_m=*/std::string_view{"256"},
            /*input_shape_is_upper_bound=*/true});
@@ -739,8 +769,8 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
   // ---- Empty-output parity on the same dynamic-shape session and kernel. ----
   // Level 1 knows that m == 0 and must return a known zero, including for native SM90.
   const std::optional<size_t> zero_m_level1 =
-      onnxruntime::contrib::cuda::EstimateMatMulNBitsWorkspace(
-          *mm_node, zero_m_a_shape.GetDims(), cuda_ep->GetDeviceProp());
+      EstimateMatMulNBitsWorkspaceForTest(
+          mm_node, zero_m_a_shape.GetDims(), cuda_ep->GetDeviceProp());
   ASSERT_TRUE(zero_m_level1.has_value());
   EXPECT_EQ(*zero_m_level1, 0u);
 
@@ -974,7 +1004,7 @@ TEST(MatMulNBitsWorkspace, FixedShapeViaFreeDimensionOverride) {
 
   // ---- Level 1: estimator reads the (now-overridden) node shape directly. ----
   const std::optional<Level1MemoryEstimate> level1 =
-      onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(*mm_node, cuda_ep->GetDeviceProp());
+      EstimateMatMulNBitsMemoryForTest(mm_node, cuda_ep->GetDeviceProp());
   ASSERT_TRUE(level1.has_value())
       << "Level-1 estimate returned nullopt after the fixed override made the shape static.";
   ASSERT_TRUE(level1->runtime_workspace_bytes.has_value());
@@ -1075,7 +1105,7 @@ TEST(MatMulNBitsWorkspace, DynamicShapeNoOverrideFallsBack) {
   // ---- Level 1: dynamic leading dim leaves runtime workspace unknown, while shape-independent
   //      prepack memory remains estimable. ----
   const std::optional<Level1MemoryEstimate> level1 =
-      onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(*mm_node, cuda_ep->GetDeviceProp());
+      EstimateMatMulNBitsMemoryForTest(mm_node, cuda_ep->GetDeviceProp());
   ASSERT_TRUE(level1.has_value());
   EXPECT_FALSE(level1->runtime_workspace_bytes.has_value())
       << "Level-1 runtime workspace must be unknown for a dynamic (symbolic) leading dim.";
@@ -1087,8 +1117,8 @@ TEST(MatMulNBitsWorkspace, DynamicShapeNoOverrideFallsBack) {
   // modifying its canonical shape metadata.
   const TensorShape max_input_shape({256, kE2eK});
   const std::optional<Level1MemoryEstimate> bounded_level1 =
-      onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
-          *mm_node, max_input_shape.GetDims(), cuda_ep->GetDeviceProp());
+      EstimateMatMulNBitsMemoryForTest(
+          mm_node, max_input_shape.GetDims(), cuda_ep->GetDeviceProp());
   ASSERT_TRUE(bounded_level1.has_value());
   EXPECT_TRUE(bounded_level1->runtime_workspace_bytes.has_value());
 

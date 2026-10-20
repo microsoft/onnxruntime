@@ -4,6 +4,7 @@
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/optimizer/nchwc_transformer.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #include "core/framework/tensorprotoutils.h"
@@ -12,6 +13,7 @@
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include <array>
 #include <cmath>
 
 #include "gtest/gtest.h"
@@ -236,6 +238,118 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
 
 #ifndef DISABLE_CONTRIB_OPS
 
+TEST(NchwcOptimizerTests, ConvWithZeroOutputChannelsIsNotTransformed) {
+  for (bool no_bias : {false, true}) {
+    SCOPED_TRACE(no_bias ? "without bias" : "with bias");
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({1, 8, 5, 5});
+      helper.AddConvNode(input_arg, helper.MakeOutput(), {0, 8, 1, 1}, no_bias);
+    };
+
+    auto check_nchwc_graph = [](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 0);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, 18);
+  }
+}
+
+TEST(NchwcOptimizerTests, ConvWithZeroInputChannelsIsNotTransformed) {
+  if (MlasNchwcGetBlockSize() <= 1) {
+    GTEST_SKIP() << "NCHWc is not supported on this platform.";
+  }
+
+  for (bool no_bias : {false, true}) {
+    SCOPED_TRACE(no_bias ? "without bias" : "with bias");
+    std::unordered_map<std::string, int> domain_to_version{
+        {kOnnxDomain, 18}, {kMSDomain, 1}, {kMSNchwcDomain, 1}};
+    Model model("nchwc_zero_input_channels", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+    Graph& graph = model.MainGraph();
+    NchwcTestHelper helper(graph);
+
+    auto* input_arg = helper.MakeInput<float>({1, 0, 5, 5});
+    auto* weights_arg = helper.MakeInitializer<float>({8, 0, 1, 1}, {});
+    std::vector<NodeArg*> input_args{input_arg, weights_arg};
+    if (!no_bias) {
+      input_args.push_back(helper.Make1DInitializer<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}));
+    }
+    Node& conv = helper.AddNode("Conv", input_args, {helper.MakeOutput()});
+    ASSERT_STATUS_OK(graph.Resolve());
+    conv.SetExecutionProviderType(kCpuExecutionProvider);
+
+    NchwcTransformer transformer;
+    bool modified = false;
+    ASSERT_STATUS_OK(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()));
+    EXPECT_FALSE(modified);
+
+    auto op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["Conv"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 0);
+  }
+}
+
+TEST(NchwcOptimizerTests, BinaryInputsWithUnexpectedRankAreNotTransformed) {
+  if (MlasNchwcGetBlockSize() <= 1) {
+    return;
+  }
+
+  const auto run_case = [](bool mutate_first_operand) {
+    SCOPED_TRACE(mutate_first_operand ? "unexpected rank on first operand" : "unexpected rank on later operand");
+    std::unordered_map<std::string, int> domain_to_version{
+        {kOnnxDomain, 14}, {kMSDomain, 1}, {kMSNchwcDomain, 1}};
+    Model model("nchwc_rank_mismatch", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+    NchwcTestHelper helper(model.MainGraph());
+
+    auto* first_input = helper.MakeInput<float>({1, 3, 3, 3});
+    auto* first_conv = helper.MakeIntermediate();
+    helper.AddConvNode(first_input, first_conv, {3, 3, 1, 1});
+
+    auto* later_input = helper.MakeInput<float>({1, 3, 3, 3});
+    auto* later_conv = helper.MakeIntermediate();
+    helper.AddConvNode(later_input, later_conv, {3, 3, 1, 1});
+
+    Node& add_node = helper.AddNode("Add", {first_conv, later_conv}, {helper.MakeOutput()});
+    const NodeIndex add_node_index = add_node.Index();
+    const std::array<std::string, 2> original_add_inputs{
+        add_node.InputDefs()[0]->Name(), add_node.InputDefs()[1]->Name()};
+
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+    ONNX_NAMESPACE::TensorShapeProto unexpected_rank_shape;
+    for (const int64_t dim : {1, 3, 3}) {
+      unexpected_rank_shape.add_dim()->set_dim_value(dim);
+    }
+    (mutate_first_operand ? first_conv : later_conv)->SetShape(unexpected_rank_shape);
+
+    for (auto& node : model.MainGraph().Nodes()) {
+      node.SetExecutionProviderType(kCpuExecutionProvider);
+    }
+
+    NchwcTransformer transformer;
+    bool modified = false;
+    ASSERT_STATUS_OK(transformer.Apply(model.MainGraph(), modified, DefaultLoggingManager().DefaultLogger()));
+    ASSERT_TRUE(modified);
+
+    const Node* untransformed_add = model.MainGraph().GetNode(add_node_index);
+    ASSERT_NE(untransformed_add, nullptr);
+    EXPECT_EQ(untransformed_add->OpType(), "Add");
+    ASSERT_EQ(untransformed_add->InputDefs().size(), 2u);
+    EXPECT_EQ(untransformed_add->InputDefs()[0]->Name(), original_add_inputs[0]);
+    EXPECT_EQ(untransformed_add->InputDefs()[1]->Name(), original_add_inputs[1]);
+  };
+
+  run_case(true);
+  run_case(false);
+}
+
 TEST(NchwcOptimizerTests, ConvNchw) {
   auto test_case = [&](const std::string& activation_op_type) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
@@ -376,6 +490,47 @@ TEST(NchwcOptimizerTests, ConvNchwcHardSigmoidNotHardSwish) {
     };
 
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  }
+
+  // Keep the ragged filter sets test as well.
+  {
+    // The NCHWc convolution algorithm splits the output channel blocks into filter
+    // sets that are processed one kernel invocation at a time, and those sets are
+    // also the unit of work handed to each thread. When the block count is not a
+    // multiple of the filter set size the sets are unevenly sized, so the per-set
+    // filter count and the offset of each set into the output, filter and bias
+    // buffers all have to be derived rather than assumed. Get either wrong and
+    // channels are written to the wrong place.
+    //
+    // The channel counts below leave a remainder for both the 8 and 16 wide NCHWc
+    // block sizes, so the ragged path is exercised whichever one the platform
+    // selects: at block size 16 the block counts are 3, 5, 6 and 7, and at block
+    // size 8 they are 6, 10, 12 and 14.
+    auto test_case = [&](int64_t output_channels, int64_t kernel_size) {
+      auto build_test_case = [&](NchwcTestHelper& helper) {
+        auto* input_arg = helper.MakeInput<float>({1, 64, 28, 28});
+        auto* output_arg = helper.MakeOutput();
+
+        helper.AddConvNode(input_arg, output_arg, {output_channels, 64, kernel_size, kernel_size});
+      };
+
+      auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+        auto op_to_count = CountOpsInGraph(session.GetGraph());
+        EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+      };
+
+      NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+    };
+
+    // Ragged (non-multiple) channel counts.
+    test_case(103, 3);
+    test_case(173, 3);
+
+    // Both the general and the pointwise algorithms share this filter set logic.
+    for (int64_t output_channels : {48, 80, 96, 112}) {
+      test_case(output_channels, 3);
+      test_case(output_channels, 1);
+    }
   }
 
   // Sub-case 2: Mul(x, HardSigmoid(x)) diamond but with mismatched alpha (0.2,

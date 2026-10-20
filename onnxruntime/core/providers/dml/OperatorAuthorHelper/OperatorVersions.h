@@ -461,6 +461,10 @@ namespace OperatorHelper
     {
         static const int sc_sinceVer_ReduceLogSum = 28;
         static const int sc_sinceVer_ReduceLogSumExp = 28;
+        static const int sc_sinceVer_DepthToSpace = 28;
+        static const int sc_sinceVer_SpaceToDepth = 28;
+        static const int sc_sinceVer_Cast = 28;
+        static const int sc_sinceVer_Mod = 28;
     }
 
     namespace MsftOperatorSet1

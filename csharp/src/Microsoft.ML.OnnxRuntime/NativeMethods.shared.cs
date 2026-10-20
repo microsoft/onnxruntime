@@ -482,6 +482,21 @@ namespace Microsoft.ML.OnnxRuntime
         // v1.25 APIs
         public IntPtr RunOptionsEnableProfiling;
         public IntPtr RunOptionsDisableProfiling;
+        public IntPtr KernelInfoGetAttributeArray_string;
+        public IntPtr SetPerSessionThreadPoolCallbacks;
+        // v1.27 APIs
+        public IntPtr GetMemPatternEnabled;
+        public IntPtr GetSessionExecutionMode;
+        public IntPtr SessionReleaseCapturedGraph;
+        // v1.28 APIs
+        public IntPtr GetExperimentalFunction;
+        public IntPtr KernelContext_GetSyncStream;
+        // v1.29 APIs
+        public IntPtr SessionOptionsSetWeightlessSourceModelBuffer;
+        // v1.30 APIs
+        public IntPtr KernelContext_GetPreallocatedOutput;
+        // v1.31 APIs
+        public IntPtr SessionOptionsSetEpContextDataReadFunc;
     }
 
     internal static class NativeMethods
@@ -490,13 +505,8 @@ namespace Microsoft.ML.OnnxRuntime
 
         static internal CompileApi.NativeMethods CompileApi;
 
-#if NETSTANDARD2_0
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr DOrtGetApi(UInt32 version);
-#else
-        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate ref OrtApi DOrtGetApi(UInt32 version);
-#endif
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr DOrtGetVersionString();
@@ -527,24 +537,25 @@ namespace Microsoft.ML.OnnxRuntime
             }
 #endif
 
-#if NETSTANDARD2_0
-            IntPtr ortApiBasePtr = OrtGetApiBase();
+            IntPtr ortApiBasePtr = OrtGetApiBasePointer();
+            if (ortApiBasePtr == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("OrtGetApiBase returned a null pointer.");
+            }
+
             OrtApiBase ortApiBase = (OrtApiBase)Marshal.PtrToStructure(ortApiBasePtr, typeof(OrtApiBase));
             DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(ortApiBase.GetApi, typeof(DOrtGetApi));
-#else
-            DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetApi, typeof(DOrtGetApi));
-#endif
 
-            const uint ORT_API_VERSION = 14;
-#if NETSTANDARD2_0
+            const uint ORT_API_VERSION = 31;
             IntPtr ortApiPtr = OrtGetApi(ORT_API_VERSION);
+            if (ortApiPtr == IntPtr.Zero)
+            {
+                throw new InvalidOperationException(
+                    $"The native ONNX Runtime library does not support API version {ORT_API_VERSION}.");
+            }
+
             api_ = (OrtApi)Marshal.PtrToStructure(ortApiPtr, typeof(OrtApi));
             OrtGetVersionString = (DOrtGetVersionString)Marshal.GetDelegateForFunctionPointer(ortApiBase.GetVersionString, typeof(DOrtGetVersionString));
-#else
-            // TODO: Make this save the pointer, and not copy the whole structure across
-            api_ = (OrtApi)OrtGetApi(ORT_API_VERSION);
-            OrtGetVersionString = (DOrtGetVersionString)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetVersionString, typeof(DOrtGetVersionString));
-#endif
             OrtCreateStatus = (DOrtCreateStatus)Marshal.GetDelegateForFunctionPointer(
                 api_.CreateStatus, typeof(DOrtCreateStatus));
 
@@ -592,6 +603,10 @@ namespace Microsoft.ML.OnnxRuntime
             OrtCloneSessionOptions = (DOrtCloneSessionOptions)Marshal.GetDelegateForFunctionPointer(api_.CloneSessionOptions, typeof(DOrtCloneSessionOptions));
             OrtSetSessionExecutionMode = (DOrtSetSessionExecutionMode)Marshal.GetDelegateForFunctionPointer(api_.SetSessionExecutionMode, typeof(DOrtSetSessionExecutionMode));
             OrtSessionOptionsSetLoadCancellationFlag = (DOrtSessionOptionsSetLoadCancellationFlag)Marshal.GetDelegateForFunctionPointer(api_.SessionOptionsSetLoadCancellationFlag, typeof(DOrtSessionOptionsSetLoadCancellationFlag));
+            OrtSessionOptionsSetEpContextDataReadFunc =
+                (DOrtSessionOptionsSetEpContextDataReadFunc)Marshal.GetDelegateForFunctionPointer(
+                    api_.SessionOptionsSetEpContextDataReadFunc,
+                    typeof(DOrtSessionOptionsSetEpContextDataReadFunc));
             OrtSetOptimizedModelFilePath = (DOrtSetOptimizedModelFilePath)Marshal.GetDelegateForFunctionPointer(api_.SetOptimizedModelFilePath, typeof(DOrtSetOptimizedModelFilePath));
             OrtEnableProfiling = (DOrtEnableProfiling)Marshal.GetDelegateForFunctionPointer(api_.EnableProfiling, typeof(DOrtEnableProfiling));
             OrtDisableProfiling = (DOrtDisableProfiling)Marshal.GetDelegateForFunctionPointer(api_.DisableProfiling, typeof(DOrtDisableProfiling));
@@ -643,6 +658,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtMemoryInfoGetId = (DOrtMemoryInfoGetId)Marshal.GetDelegateForFunctionPointer(api_.MemoryInfoGetId, typeof(DOrtMemoryInfoGetId));
             OrtMemoryInfoGetMemType = (DOrtMemoryInfoGetMemType)Marshal.GetDelegateForFunctionPointer(api_.MemoryInfoGetMemType, typeof(DOrtMemoryInfoGetMemType));
             OrtMemoryInfoGetType = (DOrtMemoryInfoGetType)Marshal.GetDelegateForFunctionPointer(api_.MemoryInfoGetType, typeof(DOrtMemoryInfoGetType));
+            OrtMemoryInfoGetDeviceType = (DOrtMemoryInfoGetDeviceType)Marshal.GetDelegateForFunctionPointer(api_.MemoryInfoGetDeviceType, typeof(DOrtMemoryInfoGetDeviceType));
             OrtGetAllocatorWithDefaultOptions = (DOrtGetAllocatorWithDefaultOptions)Marshal.GetDelegateForFunctionPointer(api_.GetAllocatorWithDefaultOptions, typeof(DOrtGetAllocatorWithDefaultOptions));
             OrtCreateMemoryInfoV2 = (DOrtCreateMemoryInfoV2)Marshal.GetDelegateForFunctionPointer(api_.CreateMemoryInfo_V2, typeof(DOrtCreateMemoryInfoV2));
             OrtMemoryInfoGetDeviceMemType = (DOrtMemoryInfoGetDeviceMemType)Marshal.GetDelegateForFunctionPointer(api_.MemoryInfoGetDeviceMemType, typeof(DOrtMemoryInfoGetDeviceMemType));
@@ -1114,6 +1130,9 @@ namespace Microsoft.ML.OnnxRuntime
 #else
         public static extern ref OrtApiBase OrtGetApiBase();
 #endif
+
+        [DllImport(NativeLib.DllName, EntryPoint = "OrtGetApiBase", CharSet = CharSet.Ansi)]
+        private static extern IntPtr OrtGetApiBasePointer();
 
         #region Runtime / Environment API
 
@@ -1621,6 +1640,20 @@ namespace Microsoft.ML.OnnxRuntime
                                                                         bool value);
         public static DOrtSessionOptionsSetLoadCancellationFlag OrtSessionOptionsSetLoadCancellationFlag;
 
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtReadNamedBufferDelegate(
+            IntPtr /* void* */ state,
+            IntPtr /* const char* */ name,
+            IntPtr /* OrtAllocator* */ allocator,
+            out IntPtr /* void** */ buffer,
+            out UIntPtr /* size_t* */ dataSize);
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtSessionOptionsSetEpContextDataReadFunc(
+            IntPtr /* OrtSessionOptions* */ options,
+            IntPtr /* DOrtReadNamedBufferDelegate */ readFunc,
+            IntPtr /* void* */ state);
+        public static DOrtSessionOptionsSetEpContextDataReadFunc OrtSessionOptionsSetEpContextDataReadFunc;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetOptimizedModelFilePath(IntPtr /* OrtSessionOptions* */ options, byte[] optimizedModelFilepath);
@@ -2095,6 +2128,13 @@ namespace Microsoft.ML.OnnxRuntime
             out OrtAllocatorType /*(OrtAllocatorType*)*/ alloc_type);
 
         public static DOrtMemoryInfoGetType OrtMemoryInfoGetType;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DOrtMemoryInfoGetDeviceType(
+            IntPtr /*(const OrtMemoryInfo*)*/ memoryInfo,
+            out OrtMemoryInfoDeviceType deviceType);
+
+        public static DOrtMemoryInfoGetDeviceType OrtMemoryInfoGetDeviceType;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate OrtDeviceMemoryType DOrtMemoryInfoGetDeviceMemType(
@@ -2781,13 +2821,8 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region Compile API
 
-#if NETSTANDARD2_0
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr DOrtGetCompileApi();
-#else
-        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate ref CompileApi.OrtCompileApi DOrtGetCompileApi();
-#endif
         public static DOrtGetCompileApi OrtGetCompileApi;
 
         /// <summary>

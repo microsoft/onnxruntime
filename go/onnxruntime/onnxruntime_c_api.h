@@ -187,7 +187,8 @@ extern "C" {
  * @{
  */
 
-/** Copied from TensorProto::DataType
+/** Tensor element types used by the C API.
+ * Numeric values are ABI-stable and are not all identical to TensorProto::DataType.
  * Currently, Ort doesn't support complex64, complex128
  */
 typedef enum ONNXTensorElementDataType {

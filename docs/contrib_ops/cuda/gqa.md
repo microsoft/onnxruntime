@@ -332,10 +332,18 @@ Flash supports local window, softcap, RoPE, and packed QKV. For decode it additi
 Fallback when XQA, cuDNN SDPA, and Flash are all ineligible:
 
 - MEA enabled (not `ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION`, built with `USE_MEMORY_EFFICIENT_ATTENTION`);
+- KV cache is not quantized and no `attention_bias` is present;
 - `has_memory_efficient_attention(sm, is_fp16, is_bf16, head_size)` is true — FP16/FP32 broadly,
-  BF16 on SM80+.
+  BF16 on SM80+;
+- native H512 decode is not preferred: on SM80+, non-quantized BNSH grouped-head caches with
+  `head_size == 512`, `sequence_length == 1`, `is_first_prompt == false`, no smooth softmax,
+  and no `head_sink` skip MEA.
 
 When the query/KV head counts differ, the KV heads are expanded to `num_heads` into a scratch buffer.
+Multi-token H512 prefill retains eligible MEA rather than forcing the unfused route. MEA's expanded
+K/V and FP32 output accumulator grow linearly with sequence length; the unfused QK and softmax
+buffers grow quadratically for full prefill. The H512 MEA kernel also needs sufficient device
+shared-memory capacity; numerical coverage below targets SM90+.
 
 ### 6.5 Unfused
 
@@ -349,6 +357,10 @@ It supports any `head_size` (FP32 QK accumulation), GQA, sliding window, and sof
 `head_size > 256` with past KV. The unfused (math) path can never be turned off and is always
 available as a fallback.
 
+The native H512 preference above applies only to single-token decode after XQA, cuDNN, and Flash
+are ineligible. It does not suppress MEA for first prompts (including one-token prompts) or
+multi-token prefill.
+
 ## 7. XQA Decode Path
 
 XQA (a highly optimized cross/decode attention kernel) is used only when **all** of the following hold:
@@ -361,10 +373,14 @@ XQA (a highly optimized cross/decode attention kernel) is used only when **all**
 6. Standard softmax, **or** smooth softmax expressed via a `head_sink` tensor.
 7. Global attention, **or** local (sliding) window attention (`local_window_size > 0`), supported on
    both the non-quantized and quantized (INT8/FP8) paths.
-8. Supported `head_size` (64, 128, or 256) and query/KV group size:
-   - Non-quantized: `{1, 2, 4, 5, 8, 16, 32}`.
-   - INT8/FP8: `{4, 8, 16, 32}`, with both K and V using `PER_TENSOR` or `PER_CHANNEL`
-     quantization. K and V may use different modes and distinct scale tensors.
+8. Supported `head_size` and query/KV group size (`num_heads / kv_num_heads`):
+   - Non-quantized FP16/BF16, head sizes 64, 128, or 256: `{1, 2, 4, 5, 8, 16, 32}`.
+   - Non-quantized FP16/BF16, head size 512: every positive integral group size, including 3 and 33.
+     This separate H512 decode kernel supports global/local windows and `head_sink` under the
+     same prerequisites above.
+   - INT8/FP8, head sizes 64, 128, or 256 only: `{4, 8, 16, 32}`, with both K and V using
+     `PER_TENSOR` or `PER_CHANNEL` quantization. K and V may use different modes and distinct
+     scale tensors.
 9. For FP8, SM89+ (Ada) or SM90+ and an FP8-enabled build.
 10. The selected XQA kernel's dynamic shared-memory requirement fits the device limit.
 
@@ -495,6 +511,27 @@ Other ways to shorten the iteration loop:
 ```
 
 ## 12. Testing
+
+Native C++ coverage for H512 FP16/BF16 decode and prefill includes:
+
+- `XqaH512Test.*` in `onnxruntime/test/contrib_ops/cuda_kernels/xqa_h512_test.cc`: kernel/reference
+  parity, including nonstandard integral group sizes, local windows, and attention sinks.
+- `GroupQueryAttentionTest.NativeH512FallbackEligibility` and
+  `GroupQueryAttentionTest.CudaH512PrefillMemoryEfficient*` in
+  `onnxruntime/test/contrib_ops/group_query_attention_op_test.cc`: explicit decode/prefill phase
+  gates and SM90+ numerical prefill parity with an asserted MEA dispatch.
+- `GroupQueryAttentionXqaEligibilityTest/*.*` and `GroupQueryAttentionFp16Bf16EligibilityTest/*.*` in
+  `onnxruntime/test/providers/cuda/test_cases/group_query_attention_eligibility_test.cc`: XQA/MEA
+  eligibility gates and 8192/16384-token H512 prefill route/workspace regressions, using analytical
+  sizing rather than allocating the quadratic unfused scratch.
+- `GroupQueryAttentionXqaWorkspaceTest.*`, `GroupQueryAttentionWorkspaceEstimateTest.*`, and
+  `GroupQueryAttentionWorkspaceBoundsTest.*` in
+  `onnxruntime/test/providers/cuda/test_cases/group_query_attention_workspace_{xqa_flash,estimate}_test.cc`:
+  H512 scratch layouts, runtime sizing, and bounded workspace reachability.
+
+The operator tests run in `onnxruntime_provider_test`. The CUDA EP internal kernel, eligibility,
+and workspace suites run through `CUDA_EP_Unittest.All`, selected with the `GTEST_FILTER`
+environment variable. Build with `onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON` to include them.
 
 CUDA parity tests live in
 [onnxruntime/test/python/transformers/test_gqa.py](../../../onnxruntime/test/python/transformers/test_gqa.py):

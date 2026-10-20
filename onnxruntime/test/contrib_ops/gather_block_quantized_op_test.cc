@@ -442,6 +442,21 @@ TEST(GatherBlockQuantizedOpTest, NotSupportedBits) {
 }
 #endif
 
+TEST(GatherBlockQuantizedOpTest, PackedUInt8RejectsEqualAxesWithScalarIndices) {
+  OpTester test("GatherBlockQuantized", 1, kMSDomain);
+  test.AddAttribute<int64_t>("gather_axis", 0);
+  test.AddAttribute<int64_t>("quantize_axis", 0);
+  test.AddAttribute<int64_t>("block_size", 16);
+  test.AddAttribute<int64_t>("bits", 4);
+  test.AddInput<uint8_t>("data", {2, 8}, std::vector<uint8_t>(16));
+  test.AddInput<int64_t>("indices", {}, {0});
+  test.AddInput<float>("scales", {1, 8}, std::vector<float>(8, 1.0f));
+  test.AddOutput<float>("output", {8}, std::vector<float>(8));
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "gather_axis and quantize_axis must not be the same for packed uint8 data");
+}
+
 template <typename T1, typename T2, typename Tind>
 void Test_ShapeMismatch_WithZeroPoints() {
   std::vector<int> data = {-8, -7, -6, -5,

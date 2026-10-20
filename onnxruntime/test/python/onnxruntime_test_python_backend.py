@@ -6,6 +6,7 @@ import os
 import tempfile
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 from helper import get_name
@@ -27,8 +28,33 @@ class TestBackend(unittest.TestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
-    def test_prepare_model_bytes_allows_unreleased_opset_when_policy_disabled(self):
-        model = self._make_unreleased_opset_model()
+    @patch.dict(os.environ, {"ALLOW_RELEASED_ONNX_OPSET_ONLY": "1"})
+    def test_prepare_released_opset28_model_when_policy_enabled(self):
+        model = self._make_opset28_model()
+        original_policy = OnnxRuntimeBackend.allowReleasedOpsetsOnly
+        try:
+            OnnxRuntimeBackend.allowReleasedOpsetsOnly = True
+            rep = backend.prepare(model)
+        finally:
+            OnnxRuntimeBackend.allowReleasedOpsetsOnly = original_policy
+
+        result = rep.run(np.array([1.0], dtype=np.float32))
+        np.testing.assert_array_equal(result[0], np.array([1.0], dtype=np.float32))
+
+    @patch.dict(os.environ, {"ALLOW_RELEASED_ONNX_OPSET_ONLY": "1"})
+    def test_prepare_model_bytes_rejects_unreleased_opset29_when_policy_enabled(self):
+        model = self._make_opset29_model()
+        original_policy = OnnxRuntimeBackend.allowReleasedOpsetsOnly
+        try:
+            OnnxRuntimeBackend.allowReleasedOpsetsOnly = True
+            with self.assertRaisesRegex(onnxrt.capi.onnxruntime_pybind11_state.Fail, "Opset 29 is under development"):
+                backend.prepare(model.SerializeToString())
+        finally:
+            OnnxRuntimeBackend.allowReleasedOpsetsOnly = original_policy
+
+    @patch.dict(os.environ, {"ALLOW_RELEASED_ONNX_OPSET_ONLY": "1"})
+    def test_prepare_model_bytes_allows_unreleased_opset29_when_policy_disabled(self):
+        model = self._make_opset29_model()
 
         original_policy = OnnxRuntimeBackend.allowReleasedOpsetsOnly
         try:
@@ -40,10 +66,11 @@ class TestBackend(unittest.TestCase):
         result = rep.run(np.array([1.0], dtype=np.float32))
         np.testing.assert_array_equal(result[0], np.array([1.0], dtype=np.float32))
 
-    def test_prepare_model_path_allows_unreleased_opset_when_policy_disabled(self):
-        model = self._make_unreleased_opset_model()
+    @patch.dict(os.environ, {"ALLOW_RELEASED_ONNX_OPSET_ONLY": "1"})
+    def test_prepare_model_path_allows_unreleased_opset29_when_policy_disabled(self):
+        model = self._make_opset29_model()
         with tempfile.TemporaryDirectory() as tmpdir:
-            model_path = os.path.join(tmpdir, "unreleased_opset.onnx")
+            model_path = os.path.join(tmpdir, "opset29.onnx")
             with open(model_path, "wb") as model_file:
                 model_file.write(model.SerializeToString())
 
@@ -58,11 +85,20 @@ class TestBackend(unittest.TestCase):
         np.testing.assert_array_equal(result[0], np.array([1.0], dtype=np.float32))
 
     @staticmethod
-    def _make_unreleased_opset_model():
+    def _make_opset29_model():
+        # A passthrough graph tests load policy without requiring unregistered opset-29 schemas.
+        value_info = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1])
+        return helper.make_model(
+            helper.make_graph([], "opset29", [value_info], [value_info]),
+            opset_imports=[helper.make_opsetid("", 29)],
+        )
+
+    @staticmethod
+    def _make_opset28_model():
         model = helper.make_model(
             helper.make_graph(
                 [helper.make_node("Identity", ["X"], ["Y"])],
-                "unreleased_opset",
+                "opset28",
                 [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1])],
                 [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1])],
             ),

@@ -2,4 +2,3 @@ LIBRARY "example_plugin_ep.dll"
 EXPORTS
  CreateEpFactories @1
  ReleaseEpFactory @2
- 

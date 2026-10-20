@@ -58,6 +58,12 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
   }
 
   Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
+  // The NodeArg shape is the inferred type, which is not guaranteed to agree with the dims declared
+  // on the initializer itself. Verify the element count before reading the first element.
+  if (init_const.size() < 1) {
+    return false;
+  }
+
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     const float* val = init_const.data<float>();
@@ -111,7 +117,19 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
     return false;
   }
 
+  // GetConstantInitializer() returns nullptr when the NodeArg is not backed by a constant
+  // initializer, which a model is free to do for any input this helper inspects.
+  if (tensor_proto == nullptr) {
+    return false;
+  }
+
   Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
+  // The NodeArg shape is the inferred type, which is not guaranteed to agree with the dims declared
+  // on the initializer itself. Verify the element count before reading the first element.
+  if (init_const.size() < 1) {
+    return false;
+  }
+
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     const int64_t* val = init_const.data<int64_t>();
@@ -526,6 +544,12 @@ bool GetScalarInitializerValue(const onnxruntime::Graph& graph, const onnxruntim
   }
 
   Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
+  // The NodeArg shape is the inferred type, which is not guaranteed to agree with the dims declared
+  // on the initializer itself. Verify the element count before reading the first element.
+  if (init_const.size() < 1) {
+    return false;
+  }
+
   const T* val = init_const.data<T>();
   value = *val;
 

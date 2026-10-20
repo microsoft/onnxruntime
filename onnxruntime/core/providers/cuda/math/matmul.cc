@@ -10,6 +10,7 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/math/matmul_small_n_gemv.h"
+#include "core/providers/cuda/math/tinygemm2.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
 #include "core/providers/cuda/tunable/math/matmul.h"
@@ -23,6 +24,17 @@ GemmDispatchPolicy GetGemmDispatchPolicy(const OpKernelInfo& info) {
       ParseEnvironmentVariable<std::string>(kSmallNGemvEnvVar),
       info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsCudaEnableGemmAutoTune),
       ParseEnvironmentVariable<std::string>(kGemmAutoTuneEnvVar));
+}
+
+bool GetGemmGraphReplayTuning(const OpKernelInfo& info) {
+  const bool enabled = ParseGemmOnOffOption(ParseEnvironmentVariable<std::string>(kGemmGraphReplayTuneEnvVar),
+                                            kGemmGraphReplayTuneEnvVar)
+                           .value_or(true);
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  return enabled && detail::GetCudaKernelAdapterRuntimeConfigForProvider(info.GetExecutionProvider())->enable_cuda_graph;
+#else
+  return enabled && static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->IsGraphCaptureEnabled();
+#endif
 }
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
@@ -304,9 +316,14 @@ template Status FuncMatMul<MLFloat16>(
     Tensor* Y);
 
 template <typename T>
-Status MatMul<T>::RunSmallNGemv(OpKernelContext* ctx, const void* a, const void* b, void* c,
+Status MatMul<T>::RunGemmKernel(OpKernelContext* ctx, GemmKernel kernel, const void* a, const void* b, void* c,
                                 int m, int n, int k) const {
   using ElementT = std::conditional_t<std::is_same_v<T, MLFloat16>, half, nv_bfloat16>;
+  if (kernel == GemmKernel::kTinyGemm2) {
+    return LaunchTinyGemm2(Stream(ctx), static_cast<const ElementT*>(a), static_cast<const ElementT*>(b),
+                           static_cast<ElementT*>(c), m, n, k, b_is_constant_);
+  }
+  ORT_RETURN_IF_NOT(kernel == GemmKernel::kSmallNGemv, "Unexpected GEMM kernel ", GemmKernelName(kernel));
   auto counter = GetScratchBuffer<unsigned int>(SmallNGemvCounterElements(n), GetComputeStream(ctx));
   auto workspace = GetScratchBuffer<float>(SmallNGemvWorkspaceElements(m, n, k), GetComputeStream(ctx));
   return LaunchSmallNGemv(Stream(ctx), static_cast<const ElementT*>(a), static_cast<const ElementT*>(b),
@@ -315,9 +332,9 @@ Status MatMul<T>::RunSmallNGemv(OpKernelContext* ctx, const void* a, const void*
 
 template <typename T>
 template <typename RunCublas>
-Status MatMul<T>::SelectSmallNGemv(OpKernelContext* ctx, const void* a, const void* b, void* c,
-                                   int m, int n, int k, const RunCublas& run_cublas,
-                                   bool& use_small_n) const {
+Status MatMul<T>::SelectGemmKernel(OpKernelContext* ctx, const void* a, const void* b, void* c,
+                                   int m, int n, int k, uint8_t candidates, const RunCublas& run_cublas,
+                                   GemmKernel& selected) const {
   const cudaDeviceProp& device_prop = GetDeviceProp();
   GemmTuneKey key;
   key.device_uuid = GetDeviceUuid(device_prop);
@@ -326,6 +343,9 @@ Status MatMul<T>::SelectSmallNGemv(OpKernelContext* ctx, const void* a, const vo
   key.n = n;
   key.k = k;
   key.small_n_vectorized = SmallNGemvUsesVectorizedKernel(n, k, a, b);
+  key.candidates = candidates;
+  key.tinygemm2_b_is_constant = (candidates & GemmKernelBit(GemmKernel::kTinyGemm2)) && b_is_constant_;
+  key.cuda_graph_replay = graph_replay_tuning_;
 
   std::optional<GemmKernel> kernel = GemmAutoTuneCache::Instance().Lookup(key);
   if (!kernel.has_value()) {
@@ -340,22 +360,34 @@ Status MatMul<T>::SelectSmallNGemv(OpKernelContext* ctx, const void* a, const vo
       l2.flush_buffer = flush_buffer.get();
       l2.hot_buffer = a;
       l2.hot_bytes = static_cast<size_t>(m) * k * sizeof(T);
-      auto counter = GetScratchBuffer<unsigned int>(SmallNGemvCounterElements(n), GetComputeStream(ctx));
-      auto workspace = GetScratchBuffer<float>(SmallNGemvWorkspaceElements(m, n, k), GetComputeStream(ctx));
       using ElementT = std::conditional_t<std::is_same_v<T, MLFloat16>, half, nv_bfloat16>;
-      std::vector<GemmTuneCandidate> candidates;
-      candidates.push_back({GemmKernel::kCublas, run_cublas});
-      candidates.push_back({GemmKernel::kSmallNGemv, [&]() {
-                              return LaunchSmallNGemv(stream, static_cast<const ElementT*>(a),
-                                                      static_cast<const ElementT*>(b), static_cast<ElementT*>(c),
-                                                      m, n, k, workspace.get(), counter.get());
-                            }});
+      std::vector<GemmTuneCandidate> tune_candidates;
+      tune_candidates.push_back({GemmKernel::kCublas, run_cublas});
+      IAllocatorUniquePtr<unsigned int> counter;
+      IAllocatorUniquePtr<float> workspace;
+      if (candidates & GemmKernelBit(GemmKernel::kSmallNGemv)) {
+        counter = GetScratchBuffer<unsigned int>(SmallNGemvCounterElements(n), GetComputeStream(ctx));
+        workspace = GetScratchBuffer<float>(SmallNGemvWorkspaceElements(m, n, k), GetComputeStream(ctx));
+        tune_candidates.push_back({GemmKernel::kSmallNGemv, [&]() {
+                                     return LaunchSmallNGemv(stream, static_cast<const ElementT*>(a),
+                                                             static_cast<const ElementT*>(b),
+                                                             static_cast<ElementT*>(c), m, n, k, workspace.get(),
+                                                             counter.get());
+                                   }});
+      }
+      if (candidates & GemmKernelBit(GemmKernel::kTinyGemm2)) {
+        tune_candidates.push_back({GemmKernel::kTinyGemm2, [&]() {
+                                     return LaunchTinyGemm2(stream, static_cast<const ElementT*>(a),
+                                                            static_cast<const ElementT*>(b),
+                                                            static_cast<ElementT*>(c), m, n, k, b_is_constant_);
+                                   }});
+      }
       GemmKernel tuned = GemmKernel::kCublas;
-      ORT_RETURN_IF_ERROR(TuneGemmKernel(key, stream, candidates, l2, tuned));
+      ORT_RETURN_IF_ERROR(TuneGemmKernel(key, stream, tune_candidates, l2, tuned));
       kernel = tuned;
     }
   }
-  use_small_n = kernel.value_or(GemmKernel::kCublas) == GemmKernel::kSmallNGemv;
+  selected = kernel.value_or(GemmKernel::kCublas);
   return Status::OK();
 }
 
@@ -415,19 +447,33 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
     if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
       if (gemm_policy_ != GemmDispatchPolicy::kCublas && !transa && !transb && alpha_ == 1.0f &&
           static_cast<int64_t>(lda) == helper.K() && static_cast<int64_t>(ldb) == helper.N() &&
-          static_cast<int64_t>(ldc) == helper.N() &&
-          CanUseSmallNGemv(helper.M(), helper.N(), helper.K(), left_X->DataRaw(), right_X->DataRaw(),
-                           Y->MutableDataRaw())) {
-        const int m = static_cast<int>(helper.M());
-        const int n = static_cast<int>(helper.N());
-        const int k = static_cast<int>(helper.K());
-        bool use_small_n = gemm_policy_ == GemmDispatchPolicy::kSmallNGemv;
-        if (gemm_policy_ == GemmDispatchPolicy::kAutoTune) {
-          ORT_RETURN_IF_ERROR(SelectSmallNGemv(ctx, left_X->DataRaw(), right_X->DataRaw(), Y->MutableDataRaw(),
-                                               m, n, k, run_cublas, use_small_n));
+          static_cast<int64_t>(ldc) == helper.N()) {
+        const void* a = left_X->DataRaw();
+        const void* b = right_X->DataRaw();
+        void* c = Y->MutableDataRaw();
+        uint8_t candidates = 0;
+        if (CanUseSmallNGemv(helper.M(), helper.N(), helper.K(), a, b, c)) {
+          candidates |= GemmKernelBit(GemmKernel::kSmallNGemv);
         }
-        if (use_small_n) {
-          return RunSmallNGemv(ctx, left_X->DataRaw(), right_X->DataRaw(), Y->MutableDataRaw(), m, n, k);
+        if (gemm_policy_ == GemmDispatchPolicy::kAutoTune && CanUseTinyGemm2(helper.M(), helper.N(), helper.K(), a, b)) {
+          std::call_once(tinygemm2_init_flag_, [this]() {
+            tinygemm2_supported_ = IsTinyGemm2Supported(GetDeviceProp());
+          });
+          if (tinygemm2_supported_) {
+            candidates |= GemmKernelBit(GemmKernel::kTinyGemm2);
+          }
+        }
+        if (candidates != 0) {
+          const int m = static_cast<int>(helper.M());
+          const int n = static_cast<int>(helper.N());
+          const int k = static_cast<int>(helper.K());
+          GemmKernel kernel = GemmKernel::kSmallNGemv;
+          if (gemm_policy_ == GemmDispatchPolicy::kAutoTune) {
+            ORT_RETURN_IF_ERROR(SelectGemmKernel(ctx, a, b, c, m, n, k, candidates, run_cublas, kernel));
+          }
+          if (kernel != GemmKernel::kCublas) {
+            return RunGemmKernel(ctx, kernel, a, b, c, m, n, k);
+          }
         }
       }
     }

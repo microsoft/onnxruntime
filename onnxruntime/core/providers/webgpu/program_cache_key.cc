@@ -24,7 +24,6 @@ void AppendTensorInfo(OStringStream& ss,
                       bool& first,
                       uint32_t segments,
                       bool is_buffer_view,
-                      uint32_t buffer_offset_in_elements,
                       size_t buffer_owner) {
   if (first) {
     first = false;
@@ -45,7 +44,7 @@ void AppendTensorInfo(OStringStream& ss,
     ss D("Segs=") << 'S' << segments << ';';
   }
   if (is_buffer_view) {
-    ss D("View=") << 'V' << buffer_owner << '@' << buffer_offset_in_elements << ';';
+    ss D("View=") << 'V' << buffer_owner << ';';
   }
 
   if ((dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape) {
@@ -72,6 +71,9 @@ std::string CalculateProgramCacheKey(const ProgramBase& program,
   // <INPUTS_INFO>       = <INPUTS_INFO_0>|<INPUTS_INFO_1>|...
   // <INPUTS_INFO_i>     = <TENSOR_ELEMENT_TYPE_OR_EMPTY>;<TENSOR_SEGMENTS_OR_EMPTY>;<TENSOR_SHAPE_OR_RANK_OR_EMPTY>
   ss << program.Name();
+  if (program.UseSubgroupId()) {
+    ss << "[SubgroupId]";
+  }
 
   // append custom cache hint if any
   if (auto& hint = program.CacheHint(); !hint.empty()) {
@@ -125,7 +127,6 @@ std::string CalculateProgramCacheKey(const ProgramBase& program,
                      first,
                      inputs_segments[i],
                      input.is_buffer_view,
-                     input.buffer_offset_in_elements,
                      program.InputBufferOwner(i));
   }
 
@@ -140,7 +141,6 @@ std::string CalculateProgramCacheKey(const ProgramBase& program,
                      first,
                      outputs_segments[i],
                      output.is_buffer_view,
-                     output.buffer_offset_in_elements,
                      program.OutputBufferOwner(i));
   }
 

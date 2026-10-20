@@ -286,14 +286,10 @@ GQAXqaWorkspaceResult GetGQAXqaWorkspaceRecipe(
   }
 
   const size_t head_size = static_cast<size_t>(problem.head_size);
-  if (!IsSupportedGQAXqaHeadSize(problem.head_size)) {
-    result.status = Unavailable("XQA supports head sizes 64, 128, and 256.");
-    return result;
-  }
   const int64_t group_size = problem.num_heads / problem.kv_num_heads;
-  if (!IsSupportedGQAXqaGroupSize(
-          group_size, /*is_quantized=*/config.kv_type != GQAXqaKvType::None)) {
-    result.status = Unavailable("XQA does not support this query-to-KV head group.");
+  if (!IsSupportedGQAXqaGeometry(
+          problem.head_size, group_size, /*is_quantized=*/config.kv_type != GQAXqaKvType::None)) {
+    result.status = Unavailable("XQA does not support this head size and query-to-KV head group.");
     return result;
   }
 
@@ -308,75 +304,96 @@ GQAXqaWorkspaceResult GetGQAXqaWorkspaceRecipe(
     return result;
   }
 
-  size_t cache_tiles = 0;
-  result.status = CheckedCeilDivide(
-      static_cast<size_t>(problem.present_kv_cache_capacity), kXqaCtaTile, cache_tiles);
-  if (!result.status.IsOK()) return result;
-  const size_t resident_sequences =
-      static_cast<size_t>(config.multi_processor_count) / recipe.sequence_count;
-  recipe.subsequences_per_sequence =
-      std::min(std::max<size_t>(1, resident_sequences), cache_tiles);
-  result.status = Multiply(
-      recipe.sequence_count, recipe.subsequences_per_sequence, recipe.subsequence_count);
-  if (!result.status.IsOK()) return result;
-  if (recipe.subsequence_count > std::numeric_limits<uint32_t>::max()) {
-    result.status = Invalid("XQA subsequence count must fit uint32.");
-    return result;
+  if (head_size == 512) {
+    recipe.is_h512 = true;
+    result.status = Multiply(static_cast<size_t>(problem.batch_size),
+                             static_cast<size_t>(problem.num_heads), recipe.sequence_count);
+    if (!result.status.IsOK()) return result;
+    recipe.subsequences_per_sequence = kGQAXqaH512Partitions;
+    result.status = Multiply(recipe.sequence_count, recipe.subsequences_per_sequence, recipe.subsequence_count);
+    if (!result.status.IsOK()) return result;
+    result.status = Multiply(recipe.subsequence_count, sizeof(float), recipe.row_max_bytes);
+    if (!result.status.IsOK()) return result;
+    recipe.row_sum_offset_bytes = recipe.row_max_bytes;
+    recipe.row_sum_bytes = recipe.row_max_bytes;
+    result.status = Add(recipe.row_max_bytes, recipe.row_sum_bytes, recipe.output_accumulator_offset_bytes);
+    if (!result.status.IsOK()) return result;
+    result.status = Multiply(recipe.row_max_bytes, head_size, recipe.output_accumulator_bytes);
+    if (!result.status.IsOK()) return result;
+    result.status = Add(recipe.output_accumulator_offset_bytes, recipe.output_accumulator_bytes,
+                        recipe.internal_scratch_bytes);
+    if (!result.status.IsOK()) return result;
+  } else {
+    size_t cache_tiles = 0;
+    result.status = CheckedCeilDivide(
+        static_cast<size_t>(problem.present_kv_cache_capacity), kXqaCtaTile, cache_tiles);
+    if (!result.status.IsOK()) return result;
+    const size_t resident_sequences =
+        static_cast<size_t>(config.multi_processor_count) / recipe.sequence_count;
+    recipe.subsequences_per_sequence =
+        std::min(std::max<size_t>(1, resident_sequences), cache_tiles);
+    result.status = Multiply(
+        recipe.sequence_count, recipe.subsequences_per_sequence, recipe.subsequence_count);
+    if (!result.status.IsOK()) return result;
+    if (recipe.subsequence_count > std::numeric_limits<uint32_t>::max()) {
+      result.status = Invalid("XQA subsequence count must fit uint32.");
+      return result;
+    }
+
+    recipe.m_tile_size = group_size <= 8 ? 8 : (group_size <= 16 ? 16 : 32);
+    result.status = Multiply(recipe.sequence_count, sizeof(uint32_t), recipe.semaphore_bytes);
+    if (!result.status.IsOK()) return result;
+    result.status = CheckedGQAWorkspaceAlign(
+        recipe.semaphore_bytes, kXqaAlignment, recipe.semaphore_aligned_bytes);
+    if (!result.status.IsOK()) return result;
+
+    size_t scratch_cursor = 0;
+    recipe.row_max_offset_bytes = recipe.semaphore_aligned_bytes;
+    result.status = Multiply(kXqaAlignment, recipe.subsequence_count, recipe.row_max_bytes);
+    if (!result.status.IsOK()) return result;
+    result.status = Add(scratch_cursor, recipe.row_max_bytes, scratch_cursor);
+    if (!result.status.IsOK()) return result;
+
+    size_t row_sum_scratch_offset = 0;
+    result.status = CheckedGQAWorkspaceAlign(
+        scratch_cursor, kXqaAlignment, row_sum_scratch_offset);
+    if (!result.status.IsOK()) return result;
+    result.status = Add(
+        recipe.semaphore_aligned_bytes,
+        row_sum_scratch_offset,
+        recipe.row_sum_offset_bytes);
+    if (!result.status.IsOK()) return result;
+    recipe.row_sum_bytes = recipe.row_max_bytes;
+    result.status = Add(row_sum_scratch_offset, recipe.row_sum_bytes, scratch_cursor);
+    if (!result.status.IsOK()) return result;
+
+    size_t vector_bytes = 0;
+    result.status = MultiplyMany(head_size, recipe.m_tile_size, 2, 1, vector_bytes);
+    if (!result.status.IsOK()) return result;
+    size_t output_scratch_offset = 0;
+    result.status = CheckedGQAWorkspaceAlign(
+        scratch_cursor, vector_bytes, output_scratch_offset);
+    if (!result.status.IsOK()) return result;
+    result.status = Add(
+        recipe.semaphore_aligned_bytes,
+        output_scratch_offset,
+        recipe.output_accumulator_offset_bytes);
+    if (!result.status.IsOK()) return result;
+    result.status = Multiply(
+        vector_bytes, recipe.subsequence_count, recipe.output_accumulator_bytes);
+    if (!result.status.IsOK()) return result;
+    result.status = Add(
+        output_scratch_offset, recipe.output_accumulator_bytes, scratch_cursor);
+    if (!result.status.IsOK()) return result;
+    result.status = Add(
+        recipe.semaphore_aligned_bytes, scratch_cursor, recipe.internal_scratch_bytes);
+    if (!result.status.IsOK()) return result;
   }
-
-  recipe.m_tile_size = group_size <= 8 ? 8 : (group_size <= 16 ? 16 : 32);
-  result.status = Multiply(recipe.sequence_count, sizeof(uint32_t), recipe.semaphore_bytes);
-  if (!result.status.IsOK()) return result;
-  result.status = CheckedGQAWorkspaceAlign(
-      recipe.semaphore_bytes, kXqaAlignment, recipe.semaphore_aligned_bytes);
-  if (!result.status.IsOK()) return result;
-
-  size_t scratch_cursor = 0;
-  recipe.row_max_offset_bytes = recipe.semaphore_aligned_bytes;
-  result.status = Multiply(kXqaAlignment, recipe.subsequence_count, recipe.row_max_bytes);
-  if (!result.status.IsOK()) return result;
-  result.status = Add(scratch_cursor, recipe.row_max_bytes, scratch_cursor);
-  if (!result.status.IsOK()) return result;
-
-  size_t row_sum_scratch_offset = 0;
-  result.status = CheckedGQAWorkspaceAlign(
-      scratch_cursor, kXqaAlignment, row_sum_scratch_offset);
-  if (!result.status.IsOK()) return result;
-  result.status = Add(
-      recipe.semaphore_aligned_bytes,
-      row_sum_scratch_offset,
-      recipe.row_sum_offset_bytes);
-  if (!result.status.IsOK()) return result;
-  recipe.row_sum_bytes = recipe.row_max_bytes;
-  result.status = Add(row_sum_scratch_offset, recipe.row_sum_bytes, scratch_cursor);
-  if (!result.status.IsOK()) return result;
-
-  size_t vector_bytes = 0;
-  result.status = MultiplyMany(head_size, recipe.m_tile_size, 2, 1, vector_bytes);
-  if (!result.status.IsOK()) return result;
-  size_t output_scratch_offset = 0;
-  result.status = CheckedGQAWorkspaceAlign(
-      scratch_cursor, vector_bytes, output_scratch_offset);
-  if (!result.status.IsOK()) return result;
-  result.status = Add(
-      recipe.semaphore_aligned_bytes,
-      output_scratch_offset,
-      recipe.output_accumulator_offset_bytes);
-  if (!result.status.IsOK()) return result;
-  result.status = Multiply(
-      vector_bytes, recipe.subsequence_count, recipe.output_accumulator_bytes);
-  if (!result.status.IsOK()) return result;
-  result.status = Add(
-      output_scratch_offset, recipe.output_accumulator_bytes, scratch_cursor);
-  if (!result.status.IsOK()) return result;
-  result.status = Add(
-      recipe.semaphore_aligned_bytes, scratch_cursor, recipe.internal_scratch_bytes);
-  if (!result.status.IsOK()) return result;
   size_t cursor = recipe.internal_scratch_bytes;
 
   if (problem.do_rotary) {
     // Retain the runtime's aligned RoPE Q/K bytes for exact allocation parity.
-    // GQABufferRequirements may later rebind data.qkv_buffer; changing that
+    // QKV preparation may later rebind data.qkv_buffer; changing that
     // runtime allocation is an optimization outside this recipe's scope.
     size_t q_bytes = 0;
     result.status = MultiplyMany(
@@ -549,93 +566,121 @@ GQAFlashWorkspaceResult GetGQAFlashWorkspaceRecipe(
 
 GQAWorkspaceStatus ValidateGQAXqaWorkspaceRecipe(
     const GQAXqaWorkspaceRecipe& recipe) noexcept {
-  if (recipe.sequence_count == 0 || recipe.subsequences_per_sequence == 0 ||
-      recipe.subsequence_count == 0 ||
-      (recipe.m_tile_size != 8 && recipe.m_tile_size != 16 && recipe.m_tile_size != 32) ||
-      recipe.internal_scratch_bytes == 0 ||
-      recipe.total_backend_bytes < recipe.internal_scratch_bytes) {
-    return Invalid("XQA workspace recipe has invalid core geometry.");
-  }
-  if (recipe.semaphore_offset_bytes != 0 ||
-      recipe.semaphore_aligned_bytes < recipe.semaphore_bytes ||
-      recipe.semaphore_aligned_bytes % kXqaAlignment != 0 ||
-      recipe.row_max_offset_bytes != recipe.semaphore_aligned_bytes ||
-      recipe.output_accumulator_bytes == 0) {
-    return Invalid("XQA internal scratch layout is inconsistent.");
-  }
+  GQAWorkspaceStatus status;
+  if (recipe.is_h512) {
+    size_t partial_count = 0;
+    status = Multiply(recipe.sequence_count, kGQAXqaH512Partitions, partial_count);
+    if (!status.IsOK()) return status;
+    size_t row_bytes = 0;
+    status = Multiply(partial_count, sizeof(float), row_bytes);
+    if (!status.IsOK()) return status;
+    size_t output_offset = 0;
+    status = Multiply(row_bytes, 2, output_offset);
+    if (!status.IsOK()) return status;
+    size_t output_bytes = 0;
+    status = Multiply(row_bytes, 512, output_bytes);
+    if (!status.IsOK()) return status;
+    size_t scratch_bytes = 0;
+    status = Add(output_offset, output_bytes, scratch_bytes);
+    if (!status.IsOK()) return status;
+    if (recipe.sequence_count == 0 || recipe.subsequences_per_sequence != kGQAXqaH512Partitions ||
+        recipe.subsequence_count != partial_count || recipe.m_tile_size != 0 ||
+        recipe.semaphore_offset_bytes != 0 || recipe.semaphore_bytes != 0 || recipe.semaphore_aligned_bytes != 0 ||
+        recipe.row_max_offset_bytes != 0 || recipe.row_max_bytes != row_bytes ||
+        recipe.row_sum_offset_bytes != row_bytes || recipe.row_sum_bytes != row_bytes ||
+        recipe.output_accumulator_offset_bytes != output_offset || recipe.output_accumulator_bytes != output_bytes ||
+        recipe.internal_scratch_bytes != scratch_bytes || recipe.total_backend_bytes < scratch_bytes) {
+      return Invalid("H512 XQA scratch does not match its split-KV layout.");
+    }
+  } else {
+    if (recipe.sequence_count == 0 || recipe.subsequences_per_sequence == 0 ||
+        recipe.subsequence_count == 0 ||
+        (recipe.m_tile_size != 8 && recipe.m_tile_size != 16 && recipe.m_tile_size != 32) ||
+        recipe.internal_scratch_bytes == 0 ||
+        recipe.total_backend_bytes < recipe.internal_scratch_bytes) {
+      return Invalid("XQA workspace recipe has invalid core geometry.");
+    }
+    if (recipe.semaphore_offset_bytes != 0 ||
+        recipe.semaphore_aligned_bytes < recipe.semaphore_bytes ||
+        recipe.semaphore_aligned_bytes % kXqaAlignment != 0 ||
+        recipe.row_max_offset_bytes != recipe.semaphore_aligned_bytes ||
+        recipe.output_accumulator_bytes == 0) {
+      return Invalid("XQA internal scratch layout is inconsistent.");
+    }
 
-  size_t expected_subsequence_count = 0;
-  auto status = Multiply(
-      recipe.sequence_count,
-      recipe.subsequences_per_sequence,
-      expected_subsequence_count);
-  if (!status.IsOK()) return status;
-  size_t expected_semaphore_bytes = 0;
-  status = Multiply(recipe.sequence_count, sizeof(uint32_t), expected_semaphore_bytes);
-  if (!status.IsOK()) return status;
-  size_t expected_semaphore_aligned_bytes = 0;
-  status = CheckedGQAWorkspaceAlign(
-      expected_semaphore_bytes, kXqaAlignment, expected_semaphore_aligned_bytes);
-  if (!status.IsOK()) return status;
-  size_t expected_row_bytes = 0;
-  status = Multiply(kXqaAlignment, recipe.subsequence_count, expected_row_bytes);
-  if (!status.IsOK()) return status;
-  if (recipe.subsequence_count != expected_subsequence_count ||
-      recipe.semaphore_bytes != expected_semaphore_bytes ||
-      recipe.semaphore_aligned_bytes != expected_semaphore_aligned_bytes ||
-      recipe.row_max_bytes != expected_row_bytes ||
-      recipe.row_sum_bytes != expected_row_bytes) {
-    return Invalid("XQA internal scratch sizes do not match its sequence geometry.");
-  }
+    size_t expected_subsequence_count = 0;
+    status = Multiply(
+        recipe.sequence_count,
+        recipe.subsequences_per_sequence,
+        expected_subsequence_count);
+    if (!status.IsOK()) return status;
+    size_t expected_semaphore_bytes = 0;
+    status = Multiply(recipe.sequence_count, sizeof(uint32_t), expected_semaphore_bytes);
+    if (!status.IsOK()) return status;
+    size_t expected_semaphore_aligned_bytes = 0;
+    status = CheckedGQAWorkspaceAlign(
+        expected_semaphore_bytes, kXqaAlignment, expected_semaphore_aligned_bytes);
+    if (!status.IsOK()) return status;
+    size_t expected_row_bytes = 0;
+    status = Multiply(kXqaAlignment, recipe.subsequence_count, expected_row_bytes);
+    if (!status.IsOK()) return status;
+    if (recipe.subsequence_count != expected_subsequence_count ||
+        recipe.semaphore_bytes != expected_semaphore_bytes ||
+        recipe.semaphore_aligned_bytes != expected_semaphore_aligned_bytes ||
+        recipe.row_max_bytes != expected_row_bytes ||
+        recipe.row_sum_bytes != expected_row_bytes) {
+      return Invalid("XQA internal scratch sizes do not match its sequence geometry.");
+    }
 
-  size_t row_max_end = 0;
-  status = Add(recipe.row_max_offset_bytes, recipe.row_max_bytes, row_max_end);
-  if (!status.IsOK()) return status;
-  size_t expected_row_sum_offset = 0;
-  status = CheckedGQAWorkspaceAlign(row_max_end, kXqaAlignment, expected_row_sum_offset);
-  if (!status.IsOK()) return status;
-  if (recipe.row_sum_offset_bytes != expected_row_sum_offset) {
-    return Invalid("XQA row-max and row-sum scratch regions are not ordered and contiguous.");
-  }
+    size_t row_max_end = 0;
+    status = Add(recipe.row_max_offset_bytes, recipe.row_max_bytes, row_max_end);
+    if (!status.IsOK()) return status;
+    size_t expected_row_sum_offset = 0;
+    status = CheckedGQAWorkspaceAlign(row_max_end, kXqaAlignment, expected_row_sum_offset);
+    if (!status.IsOK()) return status;
+    if (recipe.row_sum_offset_bytes != expected_row_sum_offset) {
+      return Invalid("XQA row-max and row-sum scratch regions are not ordered and contiguous.");
+    }
 
-  size_t row_sum_end = 0;
-  status = Add(recipe.row_sum_offset_bytes, recipe.row_sum_bytes, row_sum_end);
-  if (!status.IsOK()) return status;
-  if (row_sum_end < recipe.semaphore_aligned_bytes ||
-      recipe.output_accumulator_bytes % recipe.subsequence_count != 0) {
-    return Invalid("XQA output accumulator geometry is inconsistent.");
-  }
+    size_t row_sum_end = 0;
+    status = Add(recipe.row_sum_offset_bytes, recipe.row_sum_bytes, row_sum_end);
+    if (!status.IsOK()) return status;
+    if (row_sum_end < recipe.semaphore_aligned_bytes ||
+        recipe.output_accumulator_bytes % recipe.subsequence_count != 0) {
+      return Invalid("XQA output accumulator geometry is inconsistent.");
+    }
 
-  const size_t vector_bytes =
-      recipe.output_accumulator_bytes / recipe.subsequence_count;
-  if (vector_bytes == 0) {
-    return Invalid("XQA output accumulator vector size must be nonzero.");
-  }
-  const size_t row_sum_scratch_end = row_sum_end - recipe.semaphore_aligned_bytes;
-  size_t expected_output_scratch_offset = 0;
-  status = CheckedGQAWorkspaceAlign(
-      row_sum_scratch_end, vector_bytes, expected_output_scratch_offset);
-  if (!status.IsOK()) return status;
-  size_t expected_output_offset = 0;
-  status = Add(
-      recipe.semaphore_aligned_bytes,
-      expected_output_scratch_offset,
-      expected_output_offset);
-  if (!status.IsOK()) return status;
-  if (recipe.output_accumulator_offset_bytes != expected_output_offset) {
-    return Invalid(
-        "XQA output accumulator is not ordered or aligned to its defining vector size.");
-  }
+    const size_t vector_bytes =
+        recipe.output_accumulator_bytes / recipe.subsequence_count;
+    if (vector_bytes == 0) {
+      return Invalid("XQA output accumulator vector size must be nonzero.");
+    }
+    const size_t row_sum_scratch_end = row_sum_end - recipe.semaphore_aligned_bytes;
+    size_t expected_output_scratch_offset = 0;
+    status = CheckedGQAWorkspaceAlign(
+        row_sum_scratch_end, vector_bytes, expected_output_scratch_offset);
+    if (!status.IsOK()) return status;
+    size_t expected_output_offset = 0;
+    status = Add(
+        recipe.semaphore_aligned_bytes,
+        expected_output_scratch_offset,
+        expected_output_offset);
+    if (!status.IsOK()) return status;
+    if (recipe.output_accumulator_offset_bytes != expected_output_offset) {
+      return Invalid(
+          "XQA output accumulator is not ordered or aligned to its defining vector size.");
+    }
 
-  size_t expected_internal_scratch_bytes = 0;
-  status = Add(
-      recipe.output_accumulator_offset_bytes,
-      recipe.output_accumulator_bytes,
-      expected_internal_scratch_bytes);
-  if (!status.IsOK()) return status;
-  if (recipe.internal_scratch_bytes != expected_internal_scratch_bytes) {
-    return Invalid(
-        "XQA internal scratch does not end at the output accumulator.");
+    size_t expected_internal_scratch_bytes = 0;
+    status = Add(
+        recipe.output_accumulator_offset_bytes,
+        recipe.output_accumulator_bytes,
+        expected_internal_scratch_bytes);
+    if (!status.IsOK()) return status;
+    if (recipe.internal_scratch_bytes != expected_internal_scratch_bytes) {
+      return Invalid(
+          "XQA internal scratch does not end at the output accumulator.");
+    }
   }
 
   if ((recipe.rotary_q_bytes == 0) != (recipe.rotary_k_bytes == 0)) {

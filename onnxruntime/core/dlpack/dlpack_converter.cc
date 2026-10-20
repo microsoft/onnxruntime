@@ -244,6 +244,8 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
 #pragma warning(pop)
 #endif
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
+  ORT_ENFORCE(dlpack != nullptr, "DLPack tensor must not be null.");
+
   // ORT only supports contiguous tensor for now.
   ORT_ENFORCE(IsContiguousTensor(dlpack->dl_tensor), "ORT only supports contiguous tensor for now.");
   OrtDevice device = GetOrtDevice(dlpack->dl_tensor.device);

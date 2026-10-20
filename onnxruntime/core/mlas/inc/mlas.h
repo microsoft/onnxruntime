@@ -232,6 +232,7 @@ struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
     bool use_kleidiai = true; /**< Flag to use KleidiAI backend kernels if available */
     size_t kleidiai_conv_igemm_max_work = 0; /**< Optional SME IGEMM route threshold override; 0 uses default */
     size_t nchwc_pointwise_conv_max_input_channel_batch = 0; /**< Optional NCHWc pointwise conv input channel batch override; 0 uses default (128) */
+    bool nchwc_depthwise_sliding_kernel = true; /**< Use the sliding window AVX-512 NCHWc depthwise kernel (bitwise identical apart from NaN payloads) where it applies */
 };
 
 //
@@ -1361,6 +1362,20 @@ MlasNchwcGetBlockSize(
     void
     );
 
+/**
+ * @brief Returns whether this platform provides the sliding window NCHWc depthwise
+ *        convolution kernel, which MLAS uses in place of the assembly kernel unless
+ *        MLAS_BACKEND_KERNEL_SELECTOR_CONFIG::nchwc_depthwise_sliding_kernel is cleared.
+ *
+ * Tests and benchmarks that compare the two kernels must skip where this returns false,
+ * as both settings then evaluate the same kernel.
+ */
+bool
+MLASCALL
+MlasNchwcDepthwiseSlidingKernelAvailable(
+    void
+    );
+
 void
 MLASCALL
 MlasNchwcConv(
@@ -2013,6 +2028,12 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
      * Bias must be nullptr, and OutputProcessor must be nullptr.
      */
     bool BIsBackendNativePacked = false;
+    /**
+     * Unpacked fp16 B is stored as N x K instead of K x N.
+     * This requires a supporting backend. MlasHalfGemmBatch throws if the
+     * selected backend does not consume this layout.
+     */
+    bool BIsTransposed = false;
 };
 
 /**
@@ -2750,7 +2771,7 @@ MlasComputeFP16Erf(
  * @param algo    GELU algorithm variant (exact erf or tanh approximation).
  */
 void
-MLASCALL 
+MLASCALL
 MlasComputeFP16Gelu(
     const MLAS_FP16* input,
     MLAS_FP16* output,

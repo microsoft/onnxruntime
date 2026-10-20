@@ -17,7 +17,6 @@ limitations under the License.
 #include "core/platform/windows/env.h"
 
 #include "core/platform/env_var.h"
-
 #include <iostream>
 #include <fstream>
 #include <filesystem>
@@ -365,16 +364,92 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
   explicit WindowsRandomAccessFile(wil::unique_hfile file_handle) : file_handle_(std::move(file_handle)) {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WindowsRandomAccessFile);
 
-  Status GetLength(size_t& length) const override {
+  Status GetLength(uint64_t& length) const override {
     LARGE_INTEGER file_size{};
     if (!GetFileSizeEx(file_handle_.get(), &file_size)) {
       return FileError("GetFileSizeEx", GetLastError());
     }
-    if (file_size.QuadPart < 0 ||
-        static_cast<ULONGLONG>(file_size.QuadPart) > std::numeric_limits<size_t>::max()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "RandomAccessFile: invalid or unrepresentable file length");
+    ORT_RETURN_IF(file_size.QuadPart < 0, "RandomAccessFile: received negative file length.");
+    length = static_cast<uint64_t>(file_size.QuadPart);
+    return Status::OK();
+  }
+
+  Status GetCanonicalPath(PathString& path) const override {
+    auto get_final_path = [&](DWORD flags, PathString& result) -> DWORD {
+      std::vector<PathChar> buffer(MAX_PATH);
+      const DWORD length = GetFinalPathNameByHandleW(
+          file_handle_.get(), buffer.data(), static_cast<DWORD>(buffer.size()), flags);
+      if (length == 0) {
+        return GetLastError();
+      }
+      if (length >= buffer.size()) {
+        buffer.resize(length);
+        const DWORD resized_length = GetFinalPathNameByHandleW(
+            file_handle_.get(), buffer.data(), static_cast<DWORD>(buffer.size()), flags);
+        if (resized_length == 0 || resized_length >= buffer.size()) {
+          return resized_length == 0 ? GetLastError() : ERROR_INSUFFICIENT_BUFFER;
+        }
+        result.assign(buffer.data(), resized_length);
+      } else {
+        result.assign(buffer.data(), length);
+      }
+      return ERROR_SUCCESS;
+    };
+
+    DWORD error = get_final_path(FILE_NAME_NORMALIZED | VOLUME_NAME_DOS, path);
+    if (error == ERROR_ACCESS_DENIED) {
+      error = get_final_path(FILE_NAME_NORMALIZED | VOLUME_NAME_NT, path);
+      if (error == ERROR_SUCCESS) {
+        path.insert(0, ORT_TSTR(R"(\\?\GLOBALROOT)"));
+        return Status::OK();
+      }
     }
-    length = static_cast<size_t>(file_size.QuadPart);
+    ORT_RETURN_IF_NOT(error == ERROR_SUCCESS, "GetFinalPathNameByHandleW failed: ", error);
+
+    if (path.find(ORT_TSTR(R"(\\?\)")) == 0) {
+      if (path.size() > 6 && path[5] == ORT_TSTR(':')) {
+        path.erase(0, 4);
+      } else if (path.find(ORT_TSTR(R"(UNC\)"), 4) == 4) {
+        path.erase(2, 6);
+      }
+    }
+    return Status::OK();
+  }
+
+  Status Map(FileOffsetType offset, size_t length, MappedMemoryPtr& mapped_memory) const override {
+    ORT_RETURN_IF_NOT(offset >= 0, "RandomAccessFile::Map: offset < 0");
+    if (length == 0) {
+      mapped_memory = MappedMemoryPtr{};
+      return Status::OK();
+    }
+
+    uint64_t file_size = 0;
+    ORT_RETURN_IF_ERROR(GetLength(file_size));
+    const uint64_t requested_end = SafeInt<uint64_t>(offset) + length;
+    ORT_RETURN_IF(file_size < requested_end, "RandomAccessFile::Map: requested range exceeds file size.");
+
+    wil::unique_handle mapping{CreateFileMappingW(file_handle_.get(), nullptr, PAGE_READONLY, 0, 0, nullptr)};
+    ORT_RETURN_IF(mapping.get() == nullptr,
+                  "CreateFileMappingW failed: ", GetLastError());
+
+    SYSTEM_INFO sysinfo;
+    GetSystemInfo(&sysinfo);
+    const FileOffsetType offset_to_granularity =
+        offset % static_cast<FileOffsetType>(sysinfo.dwAllocationGranularity);
+    const SIZE_T mapped_length = SafeInt<SIZE_T>(offset_to_granularity) + length;
+    const FileOffsetType mapped_offset = offset - offset_to_granularity;
+    const uint64_t mapped_offset_u64 = static_cast<uint64_t>(mapped_offset);
+    void* const mapped_base = MapViewOfFile(mapping.get(), FILE_MAP_READ,
+                                            static_cast<DWORD>(mapped_offset_u64 >> 32),
+                                            static_cast<DWORD>(mapped_offset_u64 & 0xFFFFFFFF),
+                                            mapped_length);
+    ORT_RETURN_IF(mapped_base == nullptr, "MapViewOfFile failed: ", GetLastError());
+
+    mapped_memory = MappedMemoryPtr{
+        reinterpret_cast<char*>(mapped_base) + offset_to_granularity,
+        MappedMemoryDeleter{mapped_base, mapped_length, [](void* base, size_t) noexcept {
+                              UnmapViewOfFile(base);
+                            }}};
     return Status::OK();
   }
 

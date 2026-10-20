@@ -22,7 +22,8 @@ constexpr GQAWorkspaceStatus Unavailable(const char* message) noexcept {
 }
 
 bool IsDefault(const GQAXqaWorkspaceRecipe& recipe) noexcept {
-  return recipe.sequence_count == 0 &&
+  return !recipe.is_h512 &&
+         recipe.sequence_count == 0 &&
          recipe.subsequences_per_sequence == 0 &&
          recipe.subsequence_count == 0 &&
          recipe.m_tile_size == 0 &&

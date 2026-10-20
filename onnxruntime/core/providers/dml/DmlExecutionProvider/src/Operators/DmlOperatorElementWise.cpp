@@ -731,6 +731,134 @@ public:
 
         auto fmod = kernelInfo.GetOptionalAttribute<int>(AttrName::Fmod, 0);
 
+        const DML_TENSOR_DATA_TYPE dataType = m_inputTensorDescs[0].GetDmlDataType();
+        if (!fmod && (dataType == DML_TENSOR_DATA_TYPE_FLOAT16 || dataType == DML_TENSOR_DATA_TYPE_FLOAT32))
+        {
+            // Intermediate tensors must be dense, even when the graph inputs have broadcast strides.
+            TensorDesc valueTensorDesc(dataType, m_outputTensorDescs[0].GetSizes());
+            TensorDesc conditionTensorDesc(DML_TENSOR_DATA_TYPE_UINT8, m_outputTensorDescs[0].GetSizes());
+            DML_TENSOR_DESC valueDesc = valueTensorDesc.GetDmlDesc();
+            DML_TENSOR_DESC conditionDesc = conditionTensorDesc.GetDmlDesc();
+
+            struct Source
+            {
+                uint32_t index;
+                bool isInput = false;
+            };
+            const Source x{0, true};
+            const Source y{1, true};
+            std::vector<DML_OPERATOR_DESC> operators;
+            std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
+            std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
+            auto addNode = [&](const auto& desc, std::initializer_list<Source> sources) -> Source
+            {
+                const uint32_t nodeIndex = gsl::narrow_cast<uint32_t>(operators.size());
+                using Desc = std::decay_t<decltype(desc)>;
+                operators.push_back({ApiTraits::OperatorDescTraits<Desc>::Type, &desc});
+                uint32_t inputIndex = 0;
+                for (const Source& source : sources)
+                {
+                    if (source.isInput)
+                    {
+                        DML_INPUT_GRAPH_EDGE_DESC edge{};
+                        edge.GraphInputIndex = source.index;
+                        edge.ToNodeIndex = nodeIndex;
+                        edge.ToNodeInputIndex = inputIndex;
+                        inputEdges.push_back(edge);
+                    }
+                    else
+                    {
+                        DML_INTERMEDIATE_GRAPH_EDGE_DESC edge{};
+                        edge.FromNodeIndex = source.index;
+                        edge.ToNodeIndex = nodeIndex;
+                        edge.ToNodeInputIndex = inputIndex;
+                        intermediateEdges.push_back(edge);
+                    }
+                    ++inputIndex;
+                }
+                return {nodeIndex};
+            };
+
+            DML_FILL_VALUE_CONSTANT_OPERATOR_DESC zeroDesc{};
+            zeroDesc.OutputTensor = &valueDesc;
+            zeroDesc.ValueDataType = dataType;
+            const Source zero = addNode(zeroDesc, {});
+            DML_FILL_VALUE_CONSTANT_OPERATOR_DESC negativeZeroDesc = zeroDesc;
+            DML_FILL_VALUE_CONSTANT_OPERATOR_DESC infinityDesc = zeroDesc;
+            if (dataType == DML_TENSOR_DATA_TYPE_FLOAT16)
+            {
+                negativeZeroDesc.Value.UInt16 = 0x8000;
+                infinityDesc.Value.UInt16 = 0x7c00;
+            }
+            else
+            {
+                negativeZeroDesc.Value.Float32 = -0.0f;
+                infinityDesc.Value.Float32 = std::numeric_limits<float>::infinity();
+            }
+            const Source negativeZero = addNode(negativeZeroDesc, {});
+            const Source infinity = addNode(infinityDesc, {});
+
+            DML_ELEMENT_WISE_ABS_OPERATOR_DESC absXDesc{&inputDescs[0], &valueDesc};
+            DML_ELEMENT_WISE_ABS_OPERATOR_DESC absYDesc{&inputDescs[1], &valueDesc};
+            const Source absX = addNode(absXDesc, {x});
+            const Source absY = addNode(absYDesc, {y});
+            DML_ELEMENT_WISE_LOGICAL_LESS_THAN_OPERATOR_DESC finiteXDesc{&valueDesc, &valueDesc, &conditionDesc};
+            const Source finiteX = addNode(finiteXDesc, {absX, infinity});
+            DML_ELEMENT_WISE_LOGICAL_EQUALS_OPERATOR_DESC infiniteYDesc{&valueDesc, &valueDesc, &conditionDesc};
+            const Source infiniteY = addNode(infiniteYDesc, {absY, infinity});
+            DML_ELEMENT_WISE_LOGICAL_AND_OPERATOR_DESC infiniteDivisorDesc{&conditionDesc, &conditionDesc, &conditionDesc};
+            const Source infiniteDivisor = addNode(infiniteDivisorDesc, {finiteX, infiniteY});
+
+            DML_ELEMENT_WISE_LOGICAL_LESS_THAN_OPERATOR_DESC negativeXDesc{&inputDescs[0], &valueDesc, &conditionDesc};
+            DML_ELEMENT_WISE_LOGICAL_LESS_THAN_OPERATOR_DESC negativeYDesc{&inputDescs[1], &valueDesc, &conditionDesc};
+            const Source negativeX = addNode(negativeXDesc, {x, zero});
+            const Source negativeY = addNode(negativeYDesc, {y, zero});
+            DML_ELEMENT_WISE_LOGICAL_EQUALS_OPERATOR_DESC sameSignDesc{&conditionDesc, &conditionDesc, &conditionDesc};
+            const Source sameSign = addNode(sameSignDesc, {negativeX, negativeY});
+            DML_ELEMENT_WISE_MODULUS_FLOOR_OPERATOR_DESC floorDesc{&inputDescs[0], &inputDescs[1], &valueDesc};
+            const Source floor = addNode(floorDesc, {x, y});
+            DML_ELEMENT_WISE_IF_OPERATOR_DESC infiniteResultDesc{&conditionDesc, &inputDescs[0], &inputDescs[1], &valueDesc};
+            const Source infiniteResult = addNode(infiniteResultDesc, {sameSign, x, y});
+            DML_ELEMENT_WISE_IF_OPERATOR_DESC resultDesc{&conditionDesc, &valueDesc, &valueDesc, &valueDesc};
+            const Source result = addNode(resultDesc, {infiniteDivisor, infiniteResult, floor});
+
+            DML_ELEMENT_WISE_LOGICAL_EQUALS_OPERATOR_DESC zeroResultDesc{&valueDesc, &valueDesc, &conditionDesc};
+            const Source zeroResult = addNode(zeroResultDesc, {result, zero});
+            DML_ELEMENT_WISE_LOGICAL_EQUALS_OPERATOR_DESC zeroXDesc{&inputDescs[0], &valueDesc, &conditionDesc};
+            const Source zeroX = addNode(zeroXDesc, {x, zero});
+            DML_ELEMENT_WISE_LOGICAL_OR_OPERATOR_DESC anyZeroDesc{&conditionDesc, &conditionDesc, &conditionDesc};
+            const Source anyZero = addNode(anyZeroDesc, {zeroX, zeroResult});
+            DML_ELEMENT_WISE_LOGICAL_GREATER_THAN_OPERATOR_DESC validYDesc{&valueDesc, &valueDesc, &conditionDesc};
+            const Source validY = addNode(validYDesc, {absY, zero});
+            DML_ELEMENT_WISE_LOGICAL_AND_OPERATOR_DESC validZeroDesc{&conditionDesc, &conditionDesc, &conditionDesc};
+            const Source validZero = addNode(validZeroDesc, {anyZero, validY});
+            // Select literal signed zeros rather than relying on arithmetic to preserve the sign bit.
+            DML_ELEMENT_WISE_IF_OPERATOR_DESC signedZeroDesc{&conditionDesc, &valueDesc, &valueDesc, &valueDesc};
+            const Source signedZero = addNode(signedZeroDesc, {negativeY, negativeZero, zero});
+            DML_ELEMENT_WISE_IF_OPERATOR_DESC outputDesc{&conditionDesc, &valueDesc, &valueDesc, &outputDescs[0]};
+            const Source output = addNode(outputDesc, {validZero, signedZero, result});
+
+            std::vector<const DML_OPERATOR_DESC*> nodes;
+            nodes.reserve(operators.size());
+            for (const DML_OPERATOR_DESC& op : operators)
+            {
+                nodes.push_back(&op);
+            }
+            DML_OUTPUT_GRAPH_EDGE_DESC outputEdge{};
+            outputEdge.FromNodeIndex = output.index;
+            MLOperatorGraphDesc graphDesc{};
+            graphDesc.nodeCount = gsl::narrow_cast<uint32_t>(nodes.size());
+            graphDesc.nodes = nodes.data();
+            graphDesc.inputEdgeCount = gsl::narrow_cast<uint32_t>(inputEdges.size());
+            graphDesc.inputEdges = inputEdges.data();
+            graphDesc.intermediateEdgeCount = gsl::narrow_cast<uint32_t>(intermediateEdges.size());
+            graphDesc.intermediateEdges = intermediateEdges.data();
+            graphDesc.outputEdgeCount = 1;
+            graphDesc.outputEdges = &outputEdge;
+            SetDmlOperatorGraphDesc(std::move(graphDesc), kernelInfo);
+            return;
+        }
+
         // Note TRUNCATE and FLOOR modulus operator descriptions are identical.
         static_assert(sizeof(DML_ELEMENT_WISE_MODULUS_TRUNCATE_OPERATOR_DESC) == sizeof(DML_ELEMENT_WISE_MODULUS_FLOOR_OPERATOR_DESC));
         DML_ELEMENT_WISE_MODULUS_TRUNCATE_OPERATOR_DESC opDesc = {};

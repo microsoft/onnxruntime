@@ -9,7 +9,6 @@
 #include "core/providers/webgpu/tensor/transpose.h"
 #include "core/providers/webgpu/nn/grouped_conv.h"
 #include "core/providers/webgpu/webgpu_utils.h"
-#include "core/providers/webgpu/math/matmul.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -214,8 +213,9 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     // reading every kernel tap one channel at a time.
     const bool is_depthwise_vec = is_channels_last && output_channels_per_group == 1 &&
                                   conv_attrs_.group == input_channels && GetMaxComponents(output_channels) > 1;
+    // General grouped-convolution vectors must not cross an output-group boundary.
     auto components = static_cast<int>(is_channels_last && (output_channels_per_group >= 4 || is_depthwise_vec)
-                                           ? GetMaxComponents(output_channels)
+                                           ? GetMaxComponents(is_depthwise_vec ? output_channels : output_channels_per_group)
                                            : 1);
     auto output_size = output_shape.Size() / components;
     GroupedConvProgram program(activation_, has_bias, is_channels_last, is_depthwise_vec);
@@ -281,8 +281,8 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     if (has_bias) {
       matmul_inputs.push_back(bias);
     }
-    return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last,
-                         matmul_compute_cache_, matmul_b_is_constant);
+    return matmul_compute_dispatcher_.Compute(context, activation_, matmul_inputs, output, is_channels_last,
+                                              matmul_b_is_constant);
   }
   // Transpose weights when necessary
   Tensor transposed_kernel;

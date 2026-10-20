@@ -14,6 +14,7 @@
 #include <vector>
 
 #include <gsl/gsl>
+#include "core/common/inlined_containers.h"
 #include "core/common/make_string.h"
 #include "core/graph/constants.h"
 
@@ -2971,12 +2972,74 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, const HandlerMap& exten
   return nullptr;
 }
 
-static int CalculateCost(const api::GraphRef& graph, const api::NodeRef& node,
+static bool HasPathToCancelingTranspose(OptimizerCtx& ctx, std::string_view output,
+                                        const std::vector<int64_t>& perm,
+                                        const std::unordered_set<std::string>& outputs_leading_to_transpose) {
+  const auto perm_inv = InvertPerm(perm);
+  onnxruntime::InlinedVector<std::string> pending{std::string(output)};
+  onnxruntime::InlinedHashSet<std::string> visited;
+  while (!pending.empty()) {
+    auto value = std::move(pending.back());
+    pending.pop_back();
+    if (!visited.insert(value).second || outputs_leading_to_transpose.count(value) == 0) {
+      continue;
+    }
+
+    auto consumers = ctx.graph.GetValueConsumers(value);
+    // A graph output or subgraph input is another use that cannot cancel. Do not credit a
+    // transpose reached through that value.
+    if (!consumers->comprehensive) {
+      continue;
+    }
+    for (auto& consumer : consumers->nodes) {
+      if (consumer->IsOp("Transpose")) {
+        auto downstream_perm = GetPermAttrIfValid(*consumer);
+        if (downstream_perm && *downstream_perm == perm_inv) {
+          return true;
+        }
+        // A non-canceling transpose ends this chain.
+        continue;
+      }
+
+      const auto* handler = GetHandler(*consumer, ctx.extended_handlers);
+      if (handler == nullptr || !handler->transposes_outputs) {
+        continue;
+      }
+
+      // These handlers can change the permutation when changing rank. Do not compare the
+      // original permutation against a transpose beyond them.
+      if (handler->handler_fn == squeeze_handler.handler_fn ||
+          handler->handler_fn == unsqueeze_handler.handler_fn ||
+          handler->handler_fn == gather_handler.handler_fn ||
+          ((handler->handler_fn == reduce_op_handler.handler_fn ||
+            handler->handler_fn == arg_min_max_handler.handler_fn) &&
+           consumer->GetAttributeIntDefault("keepdims", 1) == 0)) {
+        continue;
+      }
+
+      const auto inputs = consumer->Inputs();
+      const auto input_indices = handler->transposible_inputs_fn(ctx, *consumer);
+      if (std::none_of(input_indices.begin(), input_indices.end(),
+                       [&](size_t index) { return inputs[index] == value; })) {
+        continue;
+      }
+
+      for (auto consumer_output : consumer->Outputs()) {
+        pending.emplace_back(consumer_output);
+      }
+    }
+  }
+
+  return false;
+}
+
+static int CalculateCost(OptimizerCtx& ctx, const api::NodeRef& node,
                          const std::vector<int64_t>& perm,
                          const std::unordered_set<std::string>& outputs_leading_to_transpose,
                          const HandlerInfo& info,
                          const std::vector<size_t>& input_indices,
                          const HandlerMap& extended_handlers) {
+  const auto& graph = ctx.graph;
   // We require the input cost (number of transposes before the op) and the total cost to strictly decrease.
   // Strict decrease of the input cost ensures the optimization is stable, since the total cost decrease is just an
   // estimate (the transpose after the op may or may not cancel with a subsequent transpose). We don't want
@@ -2993,7 +3056,14 @@ static int CalculateCost(const api::GraphRef& graph, const api::NodeRef& node,
     for (auto out : outputs) {
       out_cost = std::max(out_cost, EstimateValueRank(graph, out));
       if (outputs_leading_to_transpose.find(std::string(out)) != outputs_leading_to_transpose.end()) {
-        has_output_leading_to_transpose = true;
+        // `nodes` lists only node consumers. A graph output or subgraph input sets `comprehensive` to false
+        // and cannot cancel the permutation, so it blocks the benefit the same way a second branch does.
+        auto consumers = graph.GetValueConsumers(out);
+        if (consumers->comprehensive &&
+            (consumers->nodes.size() <= 1 ||
+             HasPathToCancelingTranspose(ctx, out, perm, outputs_leading_to_transpose))) {
+          has_output_leading_to_transpose = true;
+        }
       }
     }
 
@@ -3006,7 +3076,7 @@ static int CalculateCost(const api::GraphRef& graph, const api::NodeRef& node,
 }
 
 // Default cost check. Returns `true` if pushing the Transpose through the node is considered to be beneficial.
-static bool DefaultCostCheck(const api::GraphRef& graph, const api::NodeRef& node,
+static bool DefaultCostCheck(OptimizerCtx& ctx, const api::NodeRef& node,
                              const std::vector<int64_t>& perm,
                              const std::unordered_set<std::string>& outputs_leading_to_transpose,
                              const HandlerInfo& info,
@@ -3016,7 +3086,7 @@ static bool DefaultCostCheck(const api::GraphRef& graph, const api::NodeRef& nod
     return true;
   }
 
-  int cost = CalculateCost(graph, node, perm, outputs_leading_to_transpose, info, transposable_input_indices,
+  int cost = CalculateCost(ctx, node, perm, outputs_leading_to_transpose, info, transposable_input_indices,
                            extended_handlers);
   return cost < 0;
 }
@@ -3043,7 +3113,7 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
   }
 
   if (cost == CostCheckResult::kFallThrough) {
-    cost = DefaultCostCheck(ctx.graph, node, perm, outputs_leading_to_transpose, *info, input_indices,
+    cost = DefaultCostCheck(ctx, node, perm, outputs_leading_to_transpose, *info, input_indices,
                             ctx.extended_handlers)
                ? CostCheckResult::kPushTranspose
                : CostCheckResult::kStop;

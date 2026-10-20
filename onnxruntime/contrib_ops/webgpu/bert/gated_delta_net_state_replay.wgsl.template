@@ -1,0 +1,21 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use .getByOffset .setByOffset
+
+$MAIN {
+  if (global_idx >= uniforms.state_elements) {
+    return;
+  }
+  let i = global_idx % uniforms.head_size_k;
+  let v = (global_idx / uniforms.head_size_k) % uniforms.head_size_v;
+  let h = global_idx / (uniforms.head_size_v * uniforms.head_size_k);
+  let hk = (h * uniforms.num_heads_k) / uniforms.num_heads_v;
+  var s = source.getByOffset(global_idx);
+  for (var t = 0u; t < uniforms.kept_count; t++) {
+    s *= decay.getByOffset(t * uniforms.num_heads_v + h);
+    s += key.getByOffset((t * uniforms.num_heads_k + hk) * uniforms.head_size_k + i)
+       * delta.getByOffset((t * uniforms.num_heads_v + h) * uniforms.head_size_v + v);
+  }
+  destination.setByOffset(global_idx, s);
+}

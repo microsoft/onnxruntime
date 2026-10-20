@@ -875,6 +875,11 @@ struct ProviderHostImpl : ProviderHost {
   const std::unordered_map<std::string, std::string>& SessionOptions__GetConfigOptionsMap(const OrtSessionOptions* p) override { return p->value.config_options.configurations; }
   const ConfigOptions& SessionOptions__GetConfigOptions(const OrtSessionOptions* p) override { return p->value.config_options; }
   bool SessionOptions__GetEnableProfiling(const OrtSessionOptions* p) override { return p->value.enable_profiling; };
+  void SessionOptions__GetEpContextDataCallbacks(const OrtSessionOptions* p,
+                                                 OrtReadNamedBufferFunc* read_func, void** read_state,
+                                                 OrtWriteNamedBufferFunc* write_func, void** write_state) override {
+    p->GetEpContextDataCallbacks(read_func, read_state, write_func, write_state);
+  }
   // ComputeCapability (wrapped)
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
   void ComputeCapability__operator_delete(ComputeCapability* p) override { delete p; }
@@ -1940,7 +1945,12 @@ struct ProviderSharedLibrary {
     ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_));
 
     void (*PProvider_SetHost)(void*);
-    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost));
+    auto status = Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost);
+    if (!status.IsOK()) {
+      LogRuntimeError(0, status, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
+      Unload();
+      return status;
+    }
 
     PProvider_SetHost(&g_provider_host);
 
@@ -1972,8 +1982,7 @@ static ProviderSharedLibrary s_library_shared;
 
 bool InitProvidersSharedLibrary() {
   ORT_TRY {
-    ORT_THROW_IF_ERROR(s_library_shared.Initialize());
-    return true;
+    return s_library_shared.Initialize().IsOK();
   }
   ORT_CATCH(const std::exception&) {
   }
@@ -2403,6 +2412,12 @@ std::shared_ptr<IExecutionProviderFactory> VitisAIProviderFactoryCreator::Create
 
 ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO() {
   ORT_TRY {
+    auto status = s_library_openvino.Load();
+    if (!status.IsOK()) {
+      LogRuntimeError(0, status, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
+      LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+      return nullptr;
+    }
     return reinterpret_cast<ProviderInfo_OpenVINO*>(s_library_openvino.Get().GetInfo());
   }
   ORT_CATCH_LOG_RETURN_NULLPTR;

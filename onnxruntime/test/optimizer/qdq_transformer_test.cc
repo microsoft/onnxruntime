@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <type_traits>
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/span_utils.h"
@@ -587,6 +588,70 @@ void QDQTransformerBinaryOpTests(const std::string& op_type) {
   test_case({1, 23, 13, 13});
   test_case({1, 22, 11, 13, 15});
   test_case({1, 12, 37}, true);  // Use com.microsoft QDQ ops
+}
+
+static void TestPerAxisQuantizationIsNotFused(const std::string& op_type) {
+  for (int per_axis_node : {-2, -1, 0, 1, 2}) {
+    for (int64_t axis : {0, 1}) {
+      for (bool omit_zero_point : {false, true}) {
+        SCOPED_TRACE(op_type + ", parameter node=" + std::to_string(per_axis_node) +
+                     ", axis=" + std::to_string(axis) + ", omit zero point=" + std::to_string(omit_zero_point));
+        auto build_test_case = [&](ModelTestBuilder& builder) {
+          auto add_qdq = [&](const std::string& type, NodeArg* input, NodeArg* output, int parameter_node) {
+            const bool per_axis = parameter_node == per_axis_node;
+            const int64_t channels = axis == 0 ? 2 : (op_type == "Concat" && parameter_node == 2 ? 6 : 3);
+            const std::vector<int64_t> shape = per_axis ? std::vector<int64_t>{channels}
+                                                        : (per_axis_node == -2 ? std::vector<int64_t>{1}
+                                                                               : std::vector<int64_t>{});
+            const size_t count = per_axis ? static_cast<size_t>(channels) : 1;
+            std::vector<float> scales(count, 1.0f);
+            if (per_axis) {
+              scales.back() = 2.0f;
+            }
+            auto* scale = builder.MakeInitializer<float>(shape, scales);
+            std::vector<NodeArg*> inputs{input, scale};
+            if (!omit_zero_point) {
+              inputs.push_back(builder.MakeInitializer<uint8_t>(shape, std::vector<uint8_t>(count, 1)));
+            }
+            builder.AddNode(type, inputs, {output}).AddAttribute("axis", axis);
+          };
+
+          auto* input_a = builder.MakeInput<uint8_t>({2, 3}, {1, 2, 3, 4, 5, 6});
+          auto* input_b = builder.MakeInput<uint8_t>({2, 3}, {6, 5, 4, 3, 2, 1});
+          auto* dq_a = builder.MakeIntermediate();
+          auto* dq_b = builder.MakeIntermediate();
+          add_qdq("DequantizeLinear", input_a, dq_a, 0);
+          add_qdq("DequantizeLinear", input_b, dq_b, 1);
+          auto* float_output = builder.MakeIntermediate();
+          auto& op = builder.AddNode(op_type, {dq_a, dq_b}, {float_output});
+          if (op_type == "Concat") {
+            op.AddAttribute("axis", int64_t{1});
+          }
+          add_qdq("QuantizeLinear", float_output, builder.MakeOutput(), 2);
+        };
+        auto check_graph = [&](InferenceSessionWrapper& session) {
+          auto counts = CountOpsInGraph(session.GetGraph());
+          const bool should_fuse = per_axis_node == -1 || (per_axis_node == -2 && op_type == "Concat");
+          EXPECT_EQ(counts["com.microsoft.QLinear" + op_type], should_fuse ? 1 : 0);
+          EXPECT_EQ(counts[op_type], should_fuse ? 0 : 1);
+        };
+        TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2,
+                          18, 0.0, 0.0, std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+      }
+    }
+  }
+}
+
+TEST(QDQTransformerTests, AddPerAxisParametersAreNotFused) {
+  TestPerAxisQuantizationIsNotFused("Add");
+}
+
+TEST(QDQTransformerTests, MulPerAxisParametersAreNotFused) {
+  TestPerAxisQuantizationIsNotFused("Mul");
+}
+
+TEST(QDQTransformerTests, ConcatPerAxisParametersAreNotFused) {
+  TestPerAxisQuantizationIsNotFused("Concat");
 }
 
 TEST(QDQTransformerTests, Add) {
@@ -2647,6 +2712,60 @@ TEST(QDQTransformerTests, ConvRelu) {
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3}, false, false /*use_contrib_qdq*/);
 }
 
+// The QDQ selector treats a Relu/Clip made redundant by the Q node as part of the Conv group, even when
+// ReluQuantFusion/ClipQuantFusion cannot remove it. The Relu/Clip must be removed with the group. Otherwise the
+// original Conv survives and has the same name as the QLinearConv, and the graph fails to resolve.
+TEST(QDQTransformerTests, ConvRedundantActivationNotFusedIntoQ) {
+  DNNL_GTEST_SKIP();
+
+  auto test_case = [&](bool use_clip) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({1, 12, 37}, -1.f, 1.f);
+      auto* output_arg = builder.MakeOutput();
+      auto* weight = builder.MakeInitializer<uint8_t>({32, 12, 5}, 0, 255);
+
+      // add QDQ + Conv
+      auto* dq_w_output = builder.MakeIntermediate();
+      auto* conv_output = builder.MakeIntermediate();
+      auto* dq_conv_output = AddQDQNodePair<uint8_t>(builder, input_arg, .004f, 129);
+      builder.AddDequantizeLinearNode<uint8_t>(weight, .003f, 118, dq_w_output);
+      builder.AddConvNode(dq_conv_output, dq_w_output, conv_output);
+
+      auto* activation_output = builder.MakeIntermediate();
+      if (use_clip) {
+        // Clip bounds produced by DQ nodes give the Clip multiple input edges, so ClipQuantFusion cannot remove it.
+        // [0, 6] covers the uint8 Q range [0, 255 * .0082940589], so the Clip is redundant.
+        auto* min_dq = builder.MakeIntermediate();
+        auto* max_dq = builder.MakeIntermediate();
+        builder.AddDequantizeLinearNode<uint8_t>(builder.MakeScalarInitializer<uint8_t>(128), .00784313772f, 128,
+                                                 min_dq);
+        builder.AddDequantizeLinearNode<uint8_t>(builder.MakeScalarInitializer<uint8_t>(255), .0235293377f, 0,
+                                                 max_dq);
+        builder.AddNode("Clip", {conv_output, min_dq, max_dq}, {activation_output});
+        builder.AddQuantizeLinearNode<uint8_t>(activation_output, .0082940589f, 0, output_arg);
+      } else {
+        // A Q node without a zero point input defaults to uint8 with zero point 0, which makes the Relu redundant,
+        // but ReluQuantFusion requires the zero point input to exist.
+        builder.AddNode("Relu", {conv_output}, {activation_output});
+        builder.AddQuantizeLinearNode(activation_output, .0039f, output_arg);
+      }
+    };
+
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QLinearConv"], 1);
+      EXPECT_EQ(op_to_count["Conv"], 0);
+      EXPECT_EQ(op_to_count["Clip"], 0);
+      EXPECT_EQ(op_to_count["Relu"], 0);
+    };
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+  };
+
+  test_case(/*use_clip*/ false);
+  test_case(/*use_clip*/ true);
+}
+
 TEST(QDQTransformerTests, ConvAveragePoolReshape_UInt8) {
   DNNL_GTEST_SKIP();
 
@@ -4051,6 +4170,36 @@ TEST(QDQTransformerTests, Softmax_S8S8) {
 
 TEST(QDQTransformerTests, Softmax_U8U8) {
   QDQTransformerSoftmaxTests<uint8_t, uint8_t>();
+}
+
+TEST(QDQTransformerTests, SoftmaxSaturatesOutputWithoutOverflow) {
+  for (int opset : {12, 13}) {
+    for (int64_t width : {1, 2}) {
+      for (float output_scale : {1.0f / 256.0f, std::ldexp(1.0f, -25)}) {
+        SCOPED_TRACE(testing::Message() << "opset=" << opset << " width=" << width
+                                        << " output_scale=" << output_scale);
+        auto build_test_case = [&](ModelTestBuilder& builder) {
+          auto* input = builder.MakeInput<uint8_t>({1, width}, std::vector<uint8_t>(static_cast<size_t>(width), 127));
+          auto* dq_output = builder.MakeIntermediate();
+          builder.AddDequantizeLinearNode<uint8_t>(input, 0.105f, 127, dq_output);
+          auto* softmax_output = builder.MakeIntermediate();
+          builder.AddNode("Softmax", {dq_output}, {softmax_output}).AddAttribute("axis", int64_t{1});
+          auto* q_output = builder.MakeIntermediate();
+          builder.AddQuantizeLinearNode<uint8_t>(softmax_output, output_scale, 0, q_output);
+          builder.AddDequantizeLinearNode<uint8_t>(q_output, 1.0f / 256.0f, 0, builder.MakeOutput());
+        };
+        auto check_graph = [](InferenceSessionWrapper& session) {
+          const auto counts = CountOpsInGraph(session.GetGraph());
+          EXPECT_EQ(counts.at("com.microsoft.QLinearSoftmax"), 1);
+          EXPECT_EQ(counts.count("Softmax"), 0);
+        };
+        TransformerTester(build_test_case, check_graph,
+                          TransformerLevel::Level1, TransformerLevel::Level2,
+                          opset, 0.0f, 0.0f,
+                          std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+      }
+    }
+  }
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

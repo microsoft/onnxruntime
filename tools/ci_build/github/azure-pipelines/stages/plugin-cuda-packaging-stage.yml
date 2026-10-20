@@ -96,7 +96,7 @@ parameters:
 - name: cmake_linux_aarch64_cuda_archs
   type: string
   displayName: 'CMAKE_CUDA_ARCHITECTURES for Linux aarch64'
-  default: '89-real;90-real;100-real;103-real;120-real;121-real'
+  default: '87-real;89-real;90-real;100-real;103-real;110-real;120-real;121-real'
 
 - name: python_version
   type: string
@@ -275,7 +275,7 @@ stages:
         - job: CreateZipPackages
           displayName: 'Create Foundry Local CUDA Plugin-EP Zip Packages'
           pool:
-            name: 'onnxruntime-Win-CPU-VS2022-Latest'
+            name: onnxruntime-Win-CPU-2022
             os: windows
           templateContext:
             outputs:

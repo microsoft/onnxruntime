@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <utility>
 
@@ -77,6 +78,9 @@ class ComputeContextBase {
   inline bool HasFeature(wgpu::FeatureName feature) const {
     return webgpu_context_.DeviceHasFeature(feature);
   }
+  inline bool HasWGSLLanguageFeature(wgpu::WGSLLanguageFeatureName feature) const {
+    return webgpu_context_.Instance().HasWGSLLanguageFeature(feature);
+  }
   inline const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const {
     return webgpu_context_.SubgroupMatrixConfigs();
   }
@@ -123,6 +127,10 @@ class ComputeContextBase {
     return ep_.EnableMatmulFp32Accumulation();
   }
 
+  inline std::optional<MatMulAlgorithm> ForcedMatMulAlgorithm() const {
+    return ep_.ForcedMatMulAlgorithm();
+  }
+
   //
   // Get the logger.
   //
@@ -139,6 +147,14 @@ class ComputeContextBase {
   //
   inline Status RunProgram(const ProgramBase& program) {
     return webgpu_context_.Run(*this, program);
+  }
+
+  inline Status FlushAndWaitChecked() {
+    return webgpu_context_.FlushAndWaitChecked(ep_.BufferManager(), ep_.Recording());
+  }
+
+  inline Status RunAndWaitChecked(const std::function<Status()>& enqueue) {
+    return webgpu_context_.RunAndWaitChecked(ep_.BufferManager(), ep_.Recording(), enqueue);
   }
 
  protected:
@@ -234,7 +250,6 @@ class ComputeContext final : public ComputeContextBase {
   //
   inline void FillZero(Tensor& dst) {
     auto& recording = ep_.Recording();
-    std::lock_guard<std::recursive_mutex> lock{recording.mutex};
     ORT_THROW_IF_ERROR(webgpu_context_.EncodeDeferredDispatches(recording));
     webgpu_context_.EndComputePass(recording);
     auto& command_encoder = webgpu_context_.GetCommandEncoder(recording);

@@ -4,6 +4,14 @@ from transformers import __version__ as transformers_version
 from transformers.cache_utils import DynamicCache, EncoderDecoderCache
 
 
+def get_dynamic_cache_key_value(
+    cache: DynamicCache,
+) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+    if hasattr(cache, "key_cache"):
+        return cache.key_cache, cache.value_cache
+    return [layer.keys for layer in cache.layers], [layer.values for layer in cache.layers]
+
+
 def is_cache_dynamic_registered(fast: bool = False) -> bool:
     """
     Tells class :class:`DynamicCache` can be
@@ -27,7 +35,9 @@ def is_cache_dynamic_registered(fast: bool = False) -> bool:
     )
     values, spec = torch.utils._pytree.tree_flatten(cache)
     cache2 = torch.utils._pytree.tree_unflatten(values, spec)
-    return len(cache2.key_cache) == len(cache.value_cache)
+    cache2_keys, _ = get_dynamic_cache_key_value(cache2)
+    _, cache_values = get_dynamic_cache_key_value(cache)
+    return len(cache2_keys) == len(cache_values)
 
 
 if pv.Version(transformers_version) > pv.Version("4.49.99999"):
@@ -69,4 +79,4 @@ def make_encoder_decoder_cache(
     """
     Creates an EncoderDecoderCache.
     """
-    return EncoderDecoderCache(self_attention_cache=self_attention_cache, cross_attention_cache=cross_attention_cache)
+    return EncoderDecoderCache(self_attention_cache, cross_attention_cache)

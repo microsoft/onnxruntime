@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "contrib_ops/cpu/bert/attention_parameters.h"
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -43,6 +44,8 @@ class ScatterKVToPagedCacheProgram final : public Program<ScatterKVToPagedCacheP
       {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
       {"block_size", ProgramUniformVariableDataType::Uint32},
+      {"num_blocks", ProgramUniformVariableDataType::Uint32},
+      {"max_num_blocks_per_seq", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
 
@@ -220,6 +223,37 @@ class PagedAttentionPrepareMetadataProgram final : public Program<PagedAttention
       {"batch_size", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
+
+// Dispatch helpers shared with SparsePagedAttention, which reuses the
+// prologue programs above verbatim (packed-QKV split, rotary, and the
+// block_table-driven cache scatter).
+Status RunPagedAttentionScatterKVToPagedCache(onnxruntime::webgpu::ComputeContext& context,
+                                              const PagedAttentionParameters& parameters,
+                                              const Tensor* key,
+                                              const Tensor* value,
+                                              const Tensor* cumulative_seqlens_q,
+                                              const Tensor* past_seqlens,
+                                              const Tensor* block_table,
+                                              Tensor* key_cache_out,
+                                              Tensor* value_cache_out);
+
+Status RunPagedAttentionRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
+                                        const PagedAttentionParameters& parameters,
+                                        uint32_t n_heads,
+                                        bool interleaved,
+                                        const Tensor* input,
+                                        const Tensor* cos_cache,
+                                        const Tensor* sin_cache,
+                                        const Tensor* cumulative_seqlens_q,
+                                        const Tensor* past_seqlens,
+                                        Tensor* output);
+
+Status RunPagedAttentionSplitPackedQKV(onnxruntime::webgpu::ComputeContext& context,
+                                       const PagedAttentionParameters& parameters,
+                                       const Tensor* packed_qkv,
+                                       Tensor* q_out,
+                                       Tensor* k_out,
+                                       Tensor* v_out);
 
 // Op contract, phased delivery plan, and reuse strategy are documented in
 // docs/design/webgpu_paged_attention.md.

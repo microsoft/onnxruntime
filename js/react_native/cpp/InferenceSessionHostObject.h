@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Env.h"
+#include "EpContextDataReadCallback.h"
 #include "JsiHelper.h"
 #include <jsi/jsi.h>
 #include <memory>
@@ -41,6 +42,9 @@ class InferenceSessionHostObject
 
  private:
   std::shared_ptr<Env> env_;
+  // Declared before session_ so the session is destroyed first: ONNX Runtime may call back into
+  // the callback state for as long as the session exists.
+  std::shared_ptr<EpContextDataReadCallback> epContextDataRead_;
   std::shared_ptr<Ort::Session> session_;
 
   DEFINE_METHOD(loadModel);

@@ -9,7 +9,7 @@ index 4a7df7d71..257d77e61 100644
 +find_package(protobuf CONFIG REQUIRED)
  list(APPEND CMAKE_MODULE_PATH ${ONNX_ROOT}/cmake/external)
  if(ONNX_USE_ASAN OR ONNX_USE_TSAN OR ONNX_USE_TYPESAN)
-    find_package(Sanitizer REQUIRED)
+   find_package(Sanitizer REQUIRED)
 diff --git a/cmake/ONNXConfig.cmake.in b/cmake/ONNXConfig.cmake.in
 index aa1ef47d9..d450b51e5 100644
 --- a/cmake/ONNXConfig.cmake.in

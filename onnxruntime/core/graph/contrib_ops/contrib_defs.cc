@@ -1435,7 +1435,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     MoE, 1,
     OpSchema()
         .SetDoc(MoE_ver1_doc)
-        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
+        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu", AttributeProto::STRING, std::string("relu"))
         .Attr("swiglu_fusion", "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("swiglu_limit", "The limit used to clamp in SwiGLU. No clamp when limit is not provided.", AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Attr("activation_alpha", "Alpha parameter used in activation function.", AttributeProto::FLOAT, 1.0f)
@@ -1477,12 +1477,26 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       The quantized weights are stored in column major order per expert.
       The quantization block size can be specified. If not provided, column wise quantization is used.
 
-      The formula of linear dequantization of the quantized weights using scale and (optionally) zero-point is:
+      For integer quantization, the formula of linear dequantization using scale and (optionally) zero-point is:
         dequantized_weight = (quantized_weight - zero_point) * scale
       When zero_point is not provided, the default value is 2^(bits-1): 2 for 2 bits, 8 for 4 bits, 128 for 8 bits.
 
-      If block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
+      For integer quantization, if block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
       the dequantization is performed per block of size block_size along the K (input feature) dimension.
+
+      For quant_type='fp8', weights instead use row-major float8e4m3fn tensors shaped [num_experts, N, K].
+      A positive block_size selects square block scaling with float32, float16, or bfloat16 fc*_scales tensors shaped
+      [num_experts, ceil(N / block_size), ceil(K / block_size)]:
+        dequantized_weight[e, n, k] = float(weight[e, n, k]) * scale[e, n / block_size, k / block_size]
+      Partial edge blocks are allowed. No zero points or activation scales are accepted.
+      Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
+      Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
+      On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM by default.
+      These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
+      Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
+      Other activation types and unsupported routing sizes retain the fallback.
+      The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
+      that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
 
       Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
       Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
@@ -1509,7 +1523,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(qMoE_ver1_doc)
         .Attr("activation_type",
-              "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu",
+              "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu",
               AttributeProto::STRING,
               std::string("relu"))
         .Attr("k",
@@ -1562,11 +1576,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Other values are treated as 0.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("block_size",
-              "Size of each quantization block along the K (input feature) dimension. "
+              "For integer quantization, size of each quantization block along the K (input feature) dimension. "
               "Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). "
-              "Both hidden_size and inter_size must be divisible by the block size. "
+              "For integer and FP4 quantization, both hidden_size and inter_size must be divisible by "
+              "the block size. FP8 with block_size=128 supports partial 128x128 tiles. "
               "The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 "
               "and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. "
+              "For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, "
+              "with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. "
+              "Without a positive value, FP8 uses per-expert global scales. "
               "For integer quantization ('int'), omitting block_size means there is no blocking "
               "and a whole column shares one scaling factor. ",
               AttributeProto::INT,
@@ -1578,14 +1596,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), "
               "fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. "
               "'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales "
-              "with block_size 16.",
+              "with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, "
+              "float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale.",
               AttributeProto::STRING,
               std::string("int"))
         .Attr("weights_prepacked",
-              "Only meaningful when quant_type='int'. Tri-state control over the layout of the "
-              "int4/int8 fc1/fc2 weight initializers. The concrete prepacked layouts selected by "
-              "-1 and 1 are determined by the execution provider. 0: the initializers are raw, "
-              "un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits. Defaults to -1.",
+              "Expert-weight layout selector with quantization-specific meanings. For quant_type='int', "
+              "-1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. "
+              "0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. "
+              "For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; "
+              "1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. "
+              "NVFP4 block scales and global scales retain their original layouts and values. "
+              "Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))
         .Input(0,
@@ -1614,7 +1636,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
                "(num_experts, fusion_size * inter_size, hidden_size / 32). "
                "For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape "
-               "(num_experts, fusion_size * inter_size, hidden_size / 16). Not used for quant_type='fp8'.",
+               "(num_experts, fusion_size * inter_size, hidden_size / 16). "
+               "For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape "
+               "(num_experts, ceil(fusion_size * inter_size / block_size), ceil(hidden_size / block_size)).",
                "T2",
                OpSchema::Optional)
         .Input(4,
@@ -1634,7 +1658,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
                "(num_experts, hidden_size, inter_size / 32). "
                "For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape "
-               "(num_experts, hidden_size, inter_size / 16). Not used for quant_type='fp8'.",
+               "(num_experts, hidden_size, inter_size / 16). "
+               "For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape "
+               "(num_experts, ceil(hidden_size / block_size), ceil(inter_size / block_size)).",
                "T2",
                OpSchema::Optional)
         .Input(7,
@@ -1655,7 +1681,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "(num_experts, inter_size), or a 3D tensor with shape "
                "(num_experts, inter_size, hidden_size / block_size) when block_size is provided. "
                "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
-               "(num_experts, inter_size, hidden_size / 32). Not used for quant_type='fp8'.",
+               "(num_experts, inter_size, hidden_size / 32). "
+               "For quant_type='fp8' and block_size > 0, required when FC3 is present, with floating-point scales shaped "
+               "(num_experts, ceil(inter_size / block_size), ceil(hidden_size / block_size)).",
                "T2",
                OpSchema::Optional)
         .Input(10,
@@ -1697,13 +1725,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(15,
                "fc1_global_scale",
                "1D optional tensor with shape (num_experts,). "
-               "Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8'.",
+               "Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'nvfp4', or 'wfp4afp8', "
+               "or 'fp8' with block_size <= 0. Not used for block-scaled FP8.",
                "T4",
                OpSchema::Optional)
         .Input(16,
                "fc2_global_scale",
                "1D optional tensor with shape (num_experts,). "
-               "Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8'.",
+               "Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'nvfp4', or 'wfp4afp8', "
+               "or 'fp8' with block_size <= 0. Not used for block-scaled FP8.",
                "T4",
                OpSchema::Optional)
         .Input(17,
@@ -1734,7 +1764,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T1", {"tensor(uint8)", "tensor(float8e4m3fn)"},
                         "Constrain quantized weight types. Integer and FP4 weights use uint8. FP8 weights use float8e4m3fn.")
         .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(float8e8m0)", "tensor(float8e4m3fn)"},
-                        "Constrain scale types. Float tensors are used for integer quantization scales. "
+                        "Constrain scale types. Float tensors are used for integer quantization and FP8 square-block scales. "
                         "Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.")
         .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
@@ -4232,7 +4262,8 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
      to dequantize the output.
   4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
   5. For uint8 data, the `gather_axis` must be 0. The supported `bits` values for uint8 data are 2, 4, and 8;
-     for `bits` < 8 the values are packed along the last dimension (low-order bits first).
+     for `bits` < 8 the values are packed along the last dimension (low-order bits first), and `gather_axis`
+     and `quantize_axis` must differ.
   6. `data` may also be an FP8 type (float8e4m3fn, float8e4m3fnuz, float8e5m2 or float8e5m2fnuz) or an FP4 type
      (float4e2m1), rather than an integer block-quantized type. In that case `bits` is ignored, there is
      no `zero_points` input, and dequantization is simply `output[...] = float(data[...]) * scales[block_index(...)]`.
@@ -4363,6 +4394,10 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         }
 
         uint32_t components = (data_elem_type == onnx::TensorProto_DataType_UINT8) ? (8 / bits) : 1;
+        if (components > 1 && gather_axis == quantize_axis) {
+          fail_shape_inference("gather_axis and quantize_axis must not be the same for packed uint8 data");
+        }
+
         for (int i = 0; i < r; ++i) {
           if (data_shape.dim(i).has_dim_value() && scales_shape.dim(i).has_dim_value()) {
             if (i == quantize_axis) {
@@ -4421,7 +4456,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         // Find the correct dimension to expand and multiply it by components
         if (components > 1) {
           int quantize_output_dim_idx = (quantize_axis < gather_axis) ? quantize_axis : quantize_axis + q - 1;
-          if (quantize_output_dim_idx < out_rank) {
+          if (quantize_output_dim_idx >= 0 && quantize_output_dim_idx < out_rank) {
             auto* dim_to_update = output_shape->mutable_dim(quantize_output_dim_idx);
             if (dim_to_update->has_dim_value()) {
               dim_to_update->set_dim_value(dim_to_update->dim_value() * components);
