@@ -13,7 +13,9 @@ namespace webgpu {
 
 class GemmProgram final : public Program<GemmProgram> {
  public:
-  GemmProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul, bool c_is_scalar, int output_components, bool is_vec4 = false, uint32_t split_dim_inner = 1)
+  GemmProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul,
+              bool c_is_scalar, int output_components, bool is_vec4 = false,
+              uint32_t split_dim_inner = 1, bool use_f32_accumulation = false)
       : Program{"Gemm"},
         transA_{transA},
         transB_{transB},
@@ -23,7 +25,8 @@ class GemmProgram final : public Program<GemmProgram> {
         c_is_scalar_(c_is_scalar),
         output_components_(output_components),
         is_vec4_(is_vec4),
-        split_dim_inner_(split_dim_inner) {}
+        split_dim_inner_(split_dim_inner),
+        use_f32_accumulation_(use_f32_accumulation) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -53,6 +56,7 @@ class GemmProgram final : public Program<GemmProgram> {
   int output_components_;
   bool is_vec4_ = false;
   uint32_t split_dim_inner_ = 1;
+  bool use_f32_accumulation_ = false;
 };
 
 Status ApplyGemmPacked(const Tensor* a,

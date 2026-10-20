@@ -12,7 +12,7 @@ inputs:
   node_version:
     required: false
     type: string
-    default: "20.x"
+    default: "24.x"
   java_version:
     required: false
     type: string

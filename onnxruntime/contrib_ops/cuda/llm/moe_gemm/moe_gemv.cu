@@ -897,8 +897,10 @@ static constexpr int kCtaN = 8;
 static constexpr int kThreads = 128;
 // int4 ColumnMajorInterleave (Sm80) tile width along N.
 static constexpr int kTileSizeK = 64;
-static constexpr int kInt4Interleave = 128 * 8 / (kTileSizeK * 4);  // = 4
-static constexpr int kInt8Interleave = 128 * 8 / (kTileSizeK * 8);  // = 2
+
+constexpr int WeightInterleave(int weight_bits) {
+  return 128 * 8 / (kTileSizeK * weight_bits);
+}
 
 // The fused-finalize FC2 GEMV moves the top_k loop inside the block, so at kCtaN it would launch
 // top_k times fewer blocks than the unfused kernel and lose memory-level parallelism. A narrower
@@ -931,7 +933,7 @@ bool is_moe_gemv_shape_supported(int sm, int64_t expanded_num_rows, int64_t n, i
   if (sm < 80) {
     return false;
   }
-  if (weight_bits != 4 && weight_bits != 8) {
+  if (weight_bits != 2 && weight_bits != 4 && weight_bits != 8) {
     return false;
   }
   // group_size <= 0 selects the per-column (per-channel) path; block-wise scales must be 32, 64, or 128.
@@ -953,7 +955,7 @@ bool is_moe_gemv_shape_supported(int sm, int64_t expanded_num_rows, int64_t n, i
     return false;
   }
   // n must tile evenly; k must tile evenly into StepK along interleaved-K.
-  const int interleave = weight_bits == 4 ? kInt4Interleave : kInt8Interleave;
+  const int interleave = WeightInterleave(weight_bits);
   if (n % (cta_n * interleave) != 0) {
     return false;
   }
@@ -978,7 +980,8 @@ bool is_moe_gemv_shape_supported(int sm, int64_t expanded_num_rows, int64_t n, i
 
 bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k,
                            int weight_bits, int group_size) {
-  return is_moe_gemv_shape_supported(sm, expanded_num_rows, n, k, weight_bits, group_size, kCtaN);
+  const int cta_n = weight_bits == 2 ? kCtaN / 2 : kCtaN;
+  return is_moe_gemv_shape_supported(sm, expanded_num_rows, n, k, weight_bits, group_size, cta_n);
 }
 
 bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k) {
@@ -1008,6 +1011,19 @@ bool is_moe_gemv_fused_finalize_supported(int sm, int64_t num_rows, int64_t expe
 template <typename T, typename WeightType>
 struct DetailsForTAndWeight;
 
+template <typename WeightType>
+struct CtaNForWeight : std::integral_constant<int, kCtaN> {};
+
+template <>
+struct CtaNForWeight<cutlass::uint2b_t> : std::integral_constant<int, kCtaN / 2> {};
+
+template <>
+struct DetailsForTAndWeight<half, cutlass::uint2b_t> {
+  using Details = fiv::KernelDetails<fiv::FP16DetailsA, fiv::Int2DetailsW, fiv::ColumnMajorInterleaved, true, kTileSizeK>;
+  using TypeA = half;
+  static constexpr int kWeightBits = 2;
+};
+
 template <>
 struct DetailsForTAndWeight<half, cutlass::uint4b_t> {
   using Details = fiv::KernelDetails<fiv::FP16DetailsA, fiv::Int4DetailsW, fiv::ColumnMajorInterleaved, true, kTileSizeK>;
@@ -1023,6 +1039,13 @@ struct DetailsForTAndWeight<half, uint8_t> {
 };
 
 #ifdef ENABLE_BF16
+template <>
+struct DetailsForTAndWeight<__nv_bfloat16, cutlass::uint2b_t> {
+  using Details = fiv::KernelDetails<fiv::BF16DetailsA, fiv::Int2DetailsW, fiv::ColumnMajorInterleaved, true, kTileSizeK>;
+  using TypeA = __nv_bfloat16;
+  static constexpr int kWeightBits = 2;
+};
+
 template <>
 struct DetailsForTAndWeight<__nv_bfloat16, cutlass::uint4b_t> {
   using Details = fiv::KernelDetails<fiv::BF16DetailsA, fiv::Int4DetailsW, fiv::ColumnMajorInterleaved, true, kTileSizeK>;
@@ -1049,10 +1072,11 @@ void launch_moe_gemv_int_symmetric(const T* act, const WeightType* weight, const
   using TypeA = typename DetailsForTAndWeight<T, WeightType>::TypeA;
   // Accumulate fp16 activations in fp16 by default. ORT_MOE_GEMV_FP32_ACCUM=1
   // restores the previous fp32 accumulation path; bf16 always uses fp32.
-  const bool use_fp32_accum = !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
+  const bool use_fp32_accum = std::is_same_v<WeightType, cutlass::uint2b_t> ||
+                              !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
   auto launch = [&](auto acc_tag) {
     using AccT = typename decltype(acc_tag)::type;
-    fiv::dispatch_moe_gemv_group_size<Details, kCtaN, kThreads, TypeA, AccT>(
+    fiv::dispatch_moe_gemv_group_size<Details, CtaNForWeight<WeightType>::value, kThreads, TypeA, AccT>(
         const_cast<TypeA*>(reinterpret_cast<const TypeA*>(act)),
         const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(weight)),
         const_cast<TypeA*>(reinterpret_cast<const TypeA*>(scales)),
@@ -1077,7 +1101,8 @@ void launch_moe_gemv_int_symmetric_fused_finalize(
   using Details = typename DetailsForTAndWeight<T, WeightType>::Details;
   using TypeA = typename DetailsForTAndWeight<T, WeightType>::TypeA;
   // Accumulation policy matches launch_moe_gemv_int_symmetric.
-  const bool use_fp32_accum = !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
+  const bool use_fp32_accum = std::is_same_v<WeightType, cutlass::uint2b_t> ||
+                              !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
   auto launch = [&](auto acc_tag) {
     using AccT = typename decltype(acc_tag)::type;
     fiv::dispatch_moe_gemv_fused_finalize_group_size<Details, kFusedFinalizeCtaN, kThreads, TypeA, AccT>(
@@ -1107,13 +1132,14 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
   using Details = typename DetailsForTAndWeight<T, WeightType>::Details;
   using TypeA = typename DetailsForTAndWeight<T, WeightType>::TypeA;
   // Accumulation policy matches launch_moe_gemv_int_symmetric.
-  const bool use_fp32_accum = !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
+  const bool use_fp32_accum = std::is_same_v<WeightType, cutlass::uint2b_t> ||
+                              !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
   // The split-K2 two-pass path always reduces FP32 partials, so it is only valid under fp32
   // accumulation. When ORT_MOE_GEMV_FP16_ACCUM=1 requests 16-bit accumulation, fall back to the
   // single-kernel path below so that env knob continues to behave as documented.
   if (splitk_partials != nullptr && use_fp32_accum) {
     if constexpr (std::is_same_v<T, half>) {
-      fiv::dispatch_moe_gemv_splitk_twopass_swiglu_group_size<Details, kCtaN, kThreads, 2, TypeA>(
+      fiv::dispatch_moe_gemv_splitk_twopass_swiglu_group_size<Details, CtaNForWeight<WeightType>::value, kThreads, 2, TypeA>(
           const_cast<TypeA*>(reinterpret_cast<const TypeA*>(act)),
           const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(weight)),
           const_cast<TypeA*>(reinterpret_cast<const TypeA*>(scales)),
@@ -1127,7 +1153,7 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
 
   auto launch = [&](auto acc_tag) {
     using AccT = typename decltype(acc_tag)::type;
-    fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<Details, kCtaN, kThreads, TypeA, AccT>(
+    fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<Details, CtaNForWeight<WeightType>::value, kThreads, TypeA, AccT>(
         const_cast<TypeA*>(reinterpret_cast<const TypeA*>(act)),
         const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(weight)),
         const_cast<TypeA*>(reinterpret_cast<const TypeA*>(scales)),
@@ -1168,6 +1194,9 @@ void launch_moe_gemv_int4_per_channel_interleaved_swiglu(
 template void launch_moe_gemv_int_symmetric<half, cutlass::uint4b_t>(
     const half*, const cutlass::uint4b_t*, const half*, const half*, half*, const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cudaStream_t);
+template void launch_moe_gemv_int_symmetric<half, cutlass::uint2b_t>(
+    const half*, const cutlass::uint2b_t*, const half*, const half*, half*, const int64_t*, const int*, int,
+    int64_t, int64_t, int64_t, int, int, cudaStream_t);
 template void launch_moe_gemv_int_symmetric<half, uint8_t>(
     const half*, const uint8_t*, const half*, const half*, half*, const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cudaStream_t);
@@ -1179,6 +1208,9 @@ template void launch_moe_gemv_int_symmetric_fused_finalize<half, uint8_t>(
     int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
 template void launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::uint4b_t>(
     const half*, const cutlass::uint4b_t*, const half*, const half*, half*, const int64_t*, const int*, int,
+    int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, const int*, int64_t, float*, cudaStream_t);
+template void launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::uint2b_t>(
+    const half*, const cutlass::uint2b_t*, const half*, const half*, half*, const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, const int*, int64_t, float*, cudaStream_t);
 template void launch_moe_gemv_int_symmetric_interleaved_swiglu<half, uint8_t>(
     const half*, const uint8_t*, const half*, const half*, half*, const int64_t*, const int*, int,
@@ -1192,6 +1224,9 @@ template void launch_moe_gemv_int4_per_channel_interleaved_swiglu<half>(
     int64_t, int64_t, int, cutlass_kernels::ActivationParams, cudaStream_t);
 
 #ifdef ENABLE_BF16
+template void launch_moe_gemv_int_symmetric<__nv_bfloat16, cutlass::uint2b_t>(
+    const __nv_bfloat16*, const cutlass::uint2b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
+    const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cudaStream_t);
 template void launch_moe_gemv_int_symmetric<__nv_bfloat16, cutlass::uint4b_t>(
     const __nv_bfloat16*, const cutlass::uint4b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cudaStream_t);
@@ -1206,6 +1241,10 @@ template void launch_moe_gemv_int_symmetric_fused_finalize<__nv_bfloat16, uint8_
     const int*, const int*, const float*, int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
 template void launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint4b_t>(
     const __nv_bfloat16*, const cutlass::uint4b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
+    const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
+    const int*, int64_t, float*, cudaStream_t);
+template void launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint2b_t>(
+    const __nv_bfloat16*, const cutlass::uint2b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
     const int*, int64_t, float*, cudaStream_t);
 template void launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, uint8_t>(

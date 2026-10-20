@@ -16,7 +16,9 @@ limitations under the License.
 
 #include "core/providers/cpu/tensor/onehot.h"
 
+#include <cmath>
 #include <limits>
+#include <type_traits>
 
 #include "core/common/eigen_common_wrapper.h"
 #include "core/common/safeint.h"
@@ -151,11 +153,11 @@ struct EigenTensorTypes {
 };
 
 namespace generator {
-template <typename in_type, typename out_type>
+template <typename index_type, typename out_type>
 class OneGenerator {
  public:
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
-  OneGenerator(const typename EigenTensorTypes<in_type>::ConstMatrix& indices,
+  OneGenerator(const typename EigenTensorTypes<index_type>::ConstMatrix& indices,
                const typename EigenTensorTypes<out_type>::ConstScalar& on_value,
                const typename EigenTensorTypes<out_type>::ConstScalar& off_value)
       : indices_(indices), on_value_(on_value), off_value_(off_value) {}
@@ -168,7 +170,7 @@ class OneGenerator {
   }
 
  private:
-  const typename EigenTensorTypes<in_type>::ConstMatrix indices_;
+  const typename EigenTensorTypes<index_type>::ConstMatrix indices_;
   const typename EigenTensorTypes<out_type>::ConstScalar on_value_;
   const typename EigenTensorTypes<out_type>::ConstScalar off_value_;
 };
@@ -207,21 +209,35 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   Eigen::array<Eigen::DenseIndex, 2> indices_dims_e = {
       {static_cast<Eigen::DenseIndex>(prefix_dim_size), static_cast<Eigen::DenseIndex>(suffix_dim_size)}};
 
-  // Handle negative indices. It's faster to create a new indices instead of comparing in generator
-  // since generator has much larger loops.
+  // Cast floating-point indices to int64 before handling negative values, as required by ONNX.
+  // Keep invalid values out of range without converting them to int64.
   const auto* indices_data = indices->Data<in_type>();
   const auto indices_size = indices->Shape().Size();
-  std::vector<in_type> adjusted_indices;
+  using index_type = std::conditional_t<std::is_floating_point_v<in_type>, int64_t, in_type>;
+  std::vector<index_type> adjusted_indices;
   adjusted_indices.reserve(onnxruntime::narrow<size_t>(indices_size));
   for (int64_t i = 0; i < indices_size; ++i) {
-    if (indices_data[i] < 0)
-      adjusted_indices.push_back(indices_data[i] + static_cast<in_type>(depth_val));
-    else
-      adjusted_indices.push_back(indices_data[i]);
-  }
-  indices_data = adjusted_indices.data();
+    index_type index;
+    if constexpr (std::is_floating_point_v<in_type>) {
+      const double value = static_cast<double>(indices_data[i]);
+      const double int64_min = static_cast<double>(std::numeric_limits<int64_t>::min());
+      const double int64_max_exclusive = -int64_min;
+      if (!std::isfinite(value) || value < int64_min || value >= int64_max_exclusive) {
+        adjusted_indices.push_back(static_cast<index_type>(depth_val));
+        continue;
+      }
+      index = static_cast<int64_t>(value);
+    } else {
+      index = indices_data[i];
+    }
 
-  typename EigenTensorTypes<in_type, 2>::ConstEigenTensorMap indices_tensor_e(indices_data, indices_dims_e);
+    if (index < 0) {
+      index += static_cast<index_type>(depth_val);
+    }
+    adjusted_indices.push_back(index);
+  }
+
+  typename EigenTensorTypes<index_type, 2>::ConstEigenTensorMap indices_tensor_e(adjusted_indices.data(), indices_dims_e);
 
   // Split output into 3-Tensor of size:
   //   prefix_dim_size x depth x suffix_dim_size.
@@ -233,7 +249,7 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   typename EigenTensorTypes<out_type>::ConstScalar on_value_e(values_data + 1);
   typename EigenTensorTypes<out_type>::ConstScalar off_value_e(values_data);
 
-  generator::OneGenerator<in_type, out_type> generator(indices_tensor_e, on_value_e, off_value_e);
+  generator::OneGenerator<index_type, out_type> generator(indices_tensor_e, on_value_e, off_value_e);
 
   // TODO potential optimization opportunity
   // TODO figure out the eigen threadpool stuff for use here

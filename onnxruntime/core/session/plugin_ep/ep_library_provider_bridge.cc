@@ -28,11 +28,10 @@ Status EpLibraryProviderBridge::Load() {
   // we also need to update any returned OrtEpDevice instances to swap the wrapper EpFactoryInternal in so that we can
   // call Provider::CreateIExecutionProvider in EpFactoryInternal::CreateIExecutionProvider.
 
-  for (const auto& factory : ep_library_plugin_->GetFactories()) {
+  for (OrtEpFactory* factory : ep_library_plugin_->GetFactories()) {
     auto factory_impl = std::make_unique<ProviderBridgeEpFactory>(*factory, *provider_library_, library_path_);
     auto internal_factory = std::make_unique<EpFactoryInternal>(std::move(factory_impl));
 
-    factory_ptrs_.push_back(internal_factory.get());
     internal_factory_ptrs_.push_back(internal_factory.get());
     factories_.push_back(std::move(internal_factory));
   }
@@ -44,7 +43,6 @@ Status EpLibraryProviderBridge::Unload() {
   std::lock_guard<std::mutex> lock{mutex_};
 
   internal_factory_ptrs_.clear();
-  factory_ptrs_.clear();
   factories_.clear();
 
   // we loaded ep_library_plugin_ after provider_library_ in LoadPluginOrProviderBridge so do the reverse order here.

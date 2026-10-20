@@ -60,6 +60,13 @@
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
   )
 
+  if(onnxruntime_MINIMAL_BUILD)
+    list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.cc"
+    )
+  endif()
+
   file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cu"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
@@ -555,7 +562,7 @@
 
     if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
       # SM90 TMA warp-specialized files use SM90-specific collective operations.
-      # Compile at exactly 90a-real: SM120+ GPUs run SM90 native code via forward compat.
+      # Compile at exactly 90a-real: sm_90a WGMMA/TMA code runs only on SM90, not SM100/SM120.
       # Also includes fpA_intB SM90 launchers (guarded by #ifndef EXCLUDE_SM_90).
       if(onnxruntime_cuda_sm90_tma_srcs OR onnxruntime_cuda_llm_sm90_srcs)
         set(_ort_sm90_all_srcs ${onnxruntime_cuda_sm90_tma_srcs} ${onnxruntime_cuda_llm_sm90_srcs})

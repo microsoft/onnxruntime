@@ -22,10 +22,10 @@ std::string GenerateZeroPointReadingCode(uint32_t nbits, bool has_zero_points,
     ss << "const elements_in_uint32 = " << (32 / nbits) << "u;\n"
        << "const bits = " << nbits << "u;\n";
     ss << R"(
-fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> )"
+fn mm_read_zero(matrix_idx: u32, row : u32, col : u32, r_dim: u32, c_dim: u32) -> )"
        << output_type << R"( {
   if (row < r_dim && col < c_dim) {
-    let offset = row * c_dim + col;
+    let offset = matrix_idx * r_dim * c_dim + row * c_dim + col;
 
     // u32 holds elements_in_uint32 packed nbits.
     let array_index = offset / elements_in_uint32;
@@ -47,7 +47,7 @@ fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> )"
   } else {
     ss << "const default_zero_point = " << (nbits == 4 ? 8 : 128) << ";\n";
     ss << R"(
-fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> )"
+fn mm_read_zero(matrix_idx: u32, row : u32, col : u32, r_dim: u32, c_dim: u32) -> )"
        << output_type << R"( {
   return )"
        << output_type << R"((default_zero_point);

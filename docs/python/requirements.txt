@@ -12,6 +12,7 @@ numpy<2.0.0
 packaging
 protobuf>=4.25.8
 sympy
-onnx >= 1.21.0
+# ONNX 1.23 removed onnx.tools.net_drawer, which is used by plot_pipeline.py.
+onnx >= 1.21.0, < 1.23.0
 sphinx_exec_code
 sphinx_tabs

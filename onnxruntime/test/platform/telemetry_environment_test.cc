@@ -9,69 +9,85 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(TelemetryEnvironmentTest, IsTruthyCiValue) {
-  using telemetry_detail::IsTruthyCiValue;
-  // Any non-empty, non-falsey value counts as present.
-  EXPECT_TRUE(IsTruthyCiValue("1"));
-  EXPECT_TRUE(IsTruthyCiValue("true"));
-  EXPECT_TRUE(IsTruthyCiValue("TRUE"));
-  EXPECT_TRUE(IsTruthyCiValue("yes"));
-  EXPECT_TRUE(IsTruthyCiValue(" 1 "));
-  EXPECT_TRUE(IsTruthyCiValue("anything"));
-
-  EXPECT_FALSE(IsTruthyCiValue(""));
-  EXPECT_FALSE(IsTruthyCiValue("   "));
-  EXPECT_FALSE(IsTruthyCiValue("0"));
-  EXPECT_FALSE(IsTruthyCiValue("false"));
-  EXPECT_FALSE(IsTruthyCiValue("FALSE"));
-  EXPECT_FALSE(IsTruthyCiValue("no"));
-  EXPECT_FALSE(IsTruthyCiValue("off"));
+TEST(TelemetryEnvironmentTest, BoundsValuesAndRejectsOversizedPaths) {
+  const std::string large(20000, 'a');
+  ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TEST_TELEMETRY_VALUE", large}}};
+  EXPECT_FALSE(telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_VALUE"));
+  EXPECT_FALSE(telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_VALUE", 4096));
+  EXPECT_EQ(telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_VALUE", large.size()), large);
+  EXPECT_FALSE(telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_VALUE", large.size() - 1));
 }
 
-TEST(TelemetryEnvironmentTest, EnvVarOptOut) {
-  {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", "1"}}};
-    EXPECT_TRUE(IsTelemetryDisabledByEnvironment());
-  }
-  {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", "TRUE"}}};
-    EXPECT_TRUE(IsTelemetryDisabledByEnvironment());
-  }
-  {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", "0"}}};
-    EXPECT_FALSE(IsTelemetryDisabledByEnvironment());
-  }
-  {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", "random"}}};
-    EXPECT_FALSE(IsTelemetryDisabledByEnvironment());
-  }
-  {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", nullopt}}};
-    EXPECT_FALSE(IsTelemetryDisabledByEnvironment());
-  }
+TEST(TelemetryEnvironmentTest, RejectsEnvironmentValuesOverUtf8ByteBudget) {
+  const std::string prefix = std::string(1021, 'a') + "\xe2\x82\xac";
+  ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TEST_TELEMETRY_VALUE", prefix + "tail"}}};
+#ifdef _WIN32
+  const std::wstring wide = std::wstring(1021, L'a') + L"\u20actail";
+  ASSERT_NE(::SetEnvironmentVariableW(L"ORT_TEST_TELEMETRY_VALUE", wide.c_str()), 0);
+#endif
+  EXPECT_FALSE(telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_VALUE", prefix.size()));
+  EXPECT_EQ(telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_VALUE", prefix.size() + 4),
+            prefix + "tail");
 }
 
-TEST(TelemetryEnvironmentTest, CiDetectionSuppresses) {
-  // Only the positive direction is asserted so the test is deterministic whether or not it itself
-  // runs in a CI environment. APPVEYOR is not part of ORT's own CI, so save/restore stays clean.
-  ScopedEnvironmentVariables env_vars{EnvVarMap{{"APPVEYOR", "true"}}};
-  EXPECT_TRUE(IsRunningInCI());
+TEST(TelemetryEnvironmentTest, DistinguishesAbsentEmptyAndRejectedValues) {
+  for (const auto& value : {std::optional<std::string>{}, std::optional<std::string>{""}}) {
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TEST_TELEMETRY_VALUE", value}}};
+    EXPECT_EQ(telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_VALUE", 0), "");
+  }
+  ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TEST_TELEMETRY_VALUE", "x"}}};
+  EXPECT_FALSE(telemetry_detail::ReadTelemetryEnvironment("ORT_TEST_TELEMETRY_VALUE", 0));
 }
 
-TEST(TelemetryEnvironmentTest, RunningUnitTestsSuppresses) {
-  // The unit-test entry point sets ORT_RUNNING_UNIT_TESTS process-wide; save/restore so this test can
-  // exercise both directions without leaking state to siblings.
-  {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_RUNNING_UNIT_TESTS", "1"}}};
+TEST(TelemetryEnvironmentTest, SuppressionFlagsAreNotTruncatedAndOversizedValuesFailClosed) {
+  const std::string padded = std::string(kMaxTelemetryStringLength, ' ') + "true";
+  const std::string oversized(telemetry_detail::kMaxTelemetryProbeBytes + 1, ' ');
+  for (const auto& value : {padded, oversized}) {
+    ScopedEnvironmentVariables env_vars{
+        EnvVarMap{{"APPVEYOR", value}, {"ORT_RUNNING_UNIT_TESTS", value}, {"ORT_DISABLE_TELEMETRY", value}}};
+    EXPECT_TRUE(IsRunningInCI());
     EXPECT_TRUE(IsRunningUnitTests());
+    EXPECT_TRUE(IsTelemetryDisabledByEnvironment());
   }
-  {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_RUNNING_UNIT_TESTS", "0"}}};
-    EXPECT_FALSE(IsRunningUnitTests());
+  EXPECT_TRUE(telemetry_detail::IsTruthyCiValue(oversized));
+}
+
+TEST(TelemetryEnvironmentTest, SuppressionFlagsHonorValuesIndependentlyOfRunnerEnvironment) {
+  EnvVarMap cleared_ci;
+  for (const char* name : telemetry_detail::kCiEnvironmentVariableNames) {
+    cleared_ci.emplace(name, nullopt);
   }
-  {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_RUNNING_UNIT_TESTS", nullopt}}};
-    EXPECT_FALSE(IsRunningUnitTests());
+  ScopedEnvironmentVariables runner_environment{cleared_ci};
+  const struct {
+    optional<std::string> value;
+    bool ci_or_unit_test;
+    bool opt_out;
+  } cases[] = {
+      {nullopt, false, false},
+      {"", false, false},
+      {"   ", false, false},
+      {"0", false, false},
+      {"false", false, false},
+      {"FALSE", false, false},
+      {"no", false, false},
+      {"off", false, false},
+      {"1", true, true},
+      {"true", true, true},
+      {"TRUE", true, true},
+      {"yes", true, true},
+      {"on", true, true},
+      {"y", true, true},
+      {" 1 ", true, true},
+      {"anything", true, false},
+  };
+  for (const auto& [value, ci_or_unit_test, opt_out] : cases) {
+    SCOPED_TRACE(value.value_or("<unset>"));
+    ScopedEnvironmentVariables env_vars{
+        EnvVarMap{{"APPVEYOR", value}, {"ORT_RUNNING_UNIT_TESTS", value}, {"ORT_DISABLE_TELEMETRY", value}}};
+    EXPECT_EQ(IsRunningInCI(), ci_or_unit_test);
+    EXPECT_EQ(IsRunningUnitTests(), ci_or_unit_test);
+    EXPECT_EQ(IsTelemetryDisabledByEnvironment(), opt_out);
+    if (value) EXPECT_EQ(telemetry_detail::IsTruthyCiValue(*value), ci_or_unit_test);
   }
 }
 

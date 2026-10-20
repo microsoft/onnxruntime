@@ -23,7 +23,12 @@ Status Check_Q_K_V(const T* query, const T* key, const T* value, const int num_h
   }
   token_count = static_cast<int>(query_dims[0]);
   q_hidden_size = static_cast<int>(query_dims[1]);
-  head_size = static_cast<int>(q_hidden_size) / num_heads;
+  if (query_dims[1] % num_heads != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'query' hidden size must be a multiple of num_heads. Got ", query_dims[1],
+                           " % ", num_heads, " == ", query_dims[1] % num_heads);
+  }
+  head_size = q_hidden_size / num_heads;
   if (head_size % 8 != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "head_size must be a multiple of 8. Got head_size % 8 == ",
@@ -125,7 +130,13 @@ Status Check_QKV(const T* packed_qkv, const T* value, const int num_heads, const
                            packed_dims.size());
   }
   token_count = static_cast<int>(packed_dims[0]);
-  head_size = static_cast<int>(static_cast<int>(packed_dims[1])) / (num_heads + 2 * kv_num_heads);
+  const int64_t packed_hidden_factor = static_cast<int64_t>(num_heads) + 2LL * kv_num_heads;
+  if (packed_dims[1] % packed_hidden_factor != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Packed input 'query' hidden size must be a multiple of num_heads + 2 * kv_num_heads. Got ",
+                           packed_dims[1], " % ", packed_hidden_factor, " == ", packed_dims[1] % packed_hidden_factor);
+  }
+  head_size = static_cast<int>(packed_dims[1] / packed_hidden_factor);
   if (head_size % 8 != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "head_size must be a multiple of 8. Got head_size % 8 == ",

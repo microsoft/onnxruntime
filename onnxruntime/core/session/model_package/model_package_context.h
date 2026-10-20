@@ -72,13 +72,17 @@ struct ComponentInfo {
 };
 
 struct ModelPackageInfo {
-  int64_t schema_version{0};
+  int64_t schema_version_major{0};
+  int64_t schema_version_minor{0};
   std::vector<ComponentInfo> components{};
 };
+
+struct IExecutionProviderFactory;
 
 struct VariantSelectionEpInfo {
   std::string ep_name{};
   OrtEpFactory* ep_factory{nullptr};
+  std::shared_ptr<IExecutionProviderFactory> provider_factory;
   std::vector<const OrtEpDevice*> ep_devices{};
   std::vector<const OrtHardwareDevice*> hardware_devices{};
   std::vector<const OrtKeyValuePairs*> ep_metadata{};
@@ -88,6 +92,8 @@ class ModelPackageOptions;  // forward declaration
 
 class ModelPackageComponentContext {
  public:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ModelPackageComponentContext);
+
   explicit ModelPackageComponentContext(const std::string& component_name,
                                         const ComponentInfo& component_model_info,
                                         const ModelPackageOptions& options);
@@ -129,16 +135,13 @@ class ModelPackageComponentContext {
 
   Status GetSelectedVariantName(const std::string*& out_name) const;
 
-  std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList() { return provider_list_; }
   const std::vector<const OrtEpDevice*>& ExecutionDevices() const { return execution_devices_; }
   const std::vector<const OrtEpDevice*>& DevicesSelected() const { return devices_selected_; }
   gsl::span<const VariantSelectionEpInfo> EpInfos() const { return ep_infos_; }
   bool IsFromPolicy() const { return from_policy_; }
 
-  // Rebuild the provider list for a new session creation call (providers are consumed/moved
-  // when registered, so they must be rebuilt for each session).
-  // Uses the provided session options for provider creation (should include merged provider options).
-  Status RebuildProviderListForSession(const Environment& env, const OrtSessionOptions& effective_options);
+  // Bind the captured EP when the caller did not supply explicit provider factories.
+  Status ConfigureSessionOptions(const Environment& env, OrtSessionOptions& options) const;
 
  private:
   std::string component_model_name_;
@@ -146,7 +149,6 @@ class ModelPackageComponentContext {
 
   gsl::span<const VariantSelectionEpInfo> ep_infos_{};    // non-owning EP intent when options are not used
   std::vector<VariantSelectionEpInfo> owned_ep_infos_{};  // owned copy when constructed from ModelPackageOptions
-  std::vector<std::unique_ptr<IExecutionProvider>> provider_list_{};
 
   // optional runtime state mirrors (if needed by callers)
   std::vector<const OrtEpDevice*> execution_devices_{};
@@ -156,7 +158,6 @@ class ModelPackageComponentContext {
   // Caches for selected variant info.
   mutable std::string consumer_metadata_cache_{};
   mutable bool consumer_metadata_cache_valid_{false};
-  mutable std::filesystem::path folder_path_cache_{};
   mutable std::vector<std::string> session_option_keys_cache_{};
   mutable std::vector<std::string> session_option_values_cache_{};
   mutable std::vector<std::string> provider_option_keys_cache_{};
@@ -175,14 +176,15 @@ class ModelPackageComponentContext {
 class ModelPackageContext {
  public:
   explicit ModelPackageContext(const std::filesystem::path& package_root);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ModelPackageContext);
 
   size_t GetComponentCount() const noexcept;
   Status GetComponentNames(gsl::span<const std::string>& out_names) const;
 
   // C API helpers: return const char* pointer arrays with context-owned lifetime.
   void GetComponentNamePtrs(const char* const*& out_ptrs, size_t& out_count) const;
-  void GetVariantNamePtrs(const std::string& component_name,
-                          const char* const*& out_ptrs, size_t& out_count) const;
+  Status GetVariantNamePtrs(const std::string& component_name,
+                            const char* const*& out_ptrs, size_t& out_count) const;
 
   Status GetVariantCount(const std::string& component_name, size_t& out_count) const;
   Status GetVariantNames(const std::string& component_name,
@@ -227,12 +229,11 @@ class ModelPackageContext {
 
   std::unordered_map<std::string, size_t> component_name_to_index_{};
   std::vector<std::string> component_names_cache_{};
-  mutable std::unordered_map<std::string, std::vector<std::string>> component_to_variant_names_cache_{};
-  mutable std::unordered_map<std::string, std::vector<std::string>> variant_to_file_identifiers_cache_{};
+  std::unordered_map<std::string, std::vector<std::string>> component_to_variant_names_cache_{};
 
   // C API pointer caches: owned by the context so their lifetime matches the documented contract.
-  mutable std::vector<const char*> component_name_ptrs_cache_{};
-  mutable std::unordered_map<std::string, std::vector<const char*>> variant_name_ptrs_cache_{};
+  std::vector<const char*> component_name_ptrs_cache_{};
+  std::unordered_map<std::string, std::vector<const char*>> variant_name_ptrs_cache_{};
 };
 
 }  // namespace onnxruntime

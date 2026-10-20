@@ -1297,6 +1297,7 @@ class Initializer {
   Initializer* this_ptr_;
 };
 
+// Retained for source and provider vtable ABI compatibility. New code should use KernelPilot.
 class RunInstrumentationContext final {
  public:
   const std::string& RequestId() const { return g_host->RunInstrumentationContext__RequestId(this); }
@@ -1360,6 +1361,9 @@ struct OpKernelContext final {
   Stream* GetComputeStream() const { return g_host->OpKernelContext__GetComputeStream(this); }
   const RunInstrumentationContext* GetRunInstrumentationContext() const {
     return g_host->OpKernelContext__GetRunInstrumentationContext(this);
+  }
+  KernelPilot* GetKernelPilot() const {
+    return g_host->OpKernelContext__GetKernelPilot(this);
   }
 
   PROVIDER_DISALLOW_ALL(OpKernelContext)
@@ -1765,6 +1769,12 @@ struct OrtSessionOptions final {
 
   bool GetEnableProfiling() const {
     return onnxruntime::g_host->SessionOptions__GetEnableProfiling(this);
+  }
+
+  void GetEpContextDataCallbacks(OrtReadNamedBufferFunc* read_func, void** read_state,
+                                 OrtWriteNamedBufferFunc* write_func, void** write_state) const {
+    onnxruntime::g_host->SessionOptions__GetEpContextDataCallbacks(this, read_func, read_state,
+                                                                   write_func, write_state);
   }
   PROVIDER_DISALLOW_ALL(OrtSessionOptions)
 };

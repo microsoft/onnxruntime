@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -25,6 +28,7 @@ using json = nlohmann::json;
 
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
+#include "test/util/include/file_util.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #ifdef USE_CUDA
@@ -1922,6 +1926,46 @@ TEST_F(PlannerTest, TestMultiStreamConfig) {
               graph_partitioner_cpu_gpu->Streams() == 2);
 }
 
+TEST_F(PlannerTest, InvalidMultiStreamConfigUsesDefaultPartition) {
+  const PathString config_path = ORT_TSTR("./test_invalid_partition_config.json");
+  ScopedFileDeleter cleanup{config_path};
+  const std::array<const char*, 13> invalid_configs = {
+      "not-json",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]]})",
+      R"({"type":"DeviceBasedPartitioner","streams":1,"devices":["0"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":["node1"],"devices":["0"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[[1]],"devices":["0"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":[0]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":["bad"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":["0","1"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"],["node2"]],"devices":["0","bad"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":["999999999999999999999"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":["-1"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":["5"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":["256"]})",
+  };
+
+  for (const char* config : invalid_configs) {
+    {
+      std::ofstream file{std::filesystem::path(config_path)};
+      ASSERT_TRUE(file.is_open());
+      file << config;
+    }
+    auto partitioner = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), config_path);
+    ASSERT_NE(partitioner, nullptr);
+    EXPECT_EQ(partitioner->Streams(), 0u) << config;
+  }
+
+  {
+    std::ofstream file{std::filesystem::path(config_path)};
+    ASSERT_TRUE(file.is_open());
+    file << R"({"type":"DeviceBasedPartitioner"})";
+  }
+  auto partitioner = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), config_path);
+  ASSERT_NE(partitioner, nullptr);
+  EXPECT_EQ(partitioner->Streams(), 0u);
+}
+
 // Save partition config to a file and check its completeness
 TEST_F(PlannerTest, TestMultiStreamSaveConfig) {
   const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream.json";
@@ -1993,8 +2037,8 @@ TEST_F(PlannerTest, TestMultiStreamMissingNodeConfig) {
   ASSERT_TRUE(!status.IsOK());
 }
 
-// Load with partition config where streams and devices has mismatch
-TEST_F(PlannerTest, TestMultiStreamMismatchDevice) {
+// A mismatched stream/device count falls back to default partitioning.
+TEST_F(PlannerTest, TestMultiStreamMismatchDeviceFallsBackToDefault) {
   const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream_mismatch_device.json";
   SessionOptions sess_opt;
   sess_opt.graph_optimization_level = TransformerLevel::Default;
@@ -2010,7 +2054,7 @@ TEST_F(PlannerTest, TestMultiStreamMismatchDevice) {
   ASSERT_TRUE(status.IsOK());
 
   status = sess.Initialize();
-  ASSERT_TRUE(!status.IsOK());
+  ASSERT_TRUE(status.IsOK());
 }
 #endif
 

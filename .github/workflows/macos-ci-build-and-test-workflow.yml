@@ -159,3 +159,17 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           python ./tools/ci_build/build.py --test ${{ env.build_flags }}
+
+      - name: WebGPU GEMV correctness (Metal)
+        if: ${{ inputs.use_webgpu && matrix.machine == matrix.target }}
+        shell: bash
+        working-directory: ${{ github.workspace }}/build/${{ matrix.build_config }}
+        env:
+          PYTHONPATH: ${{ github.workspace }}/build/${{ matrix.build_config }}
+        run: |
+          python - <<'PY'
+          import onnxruntime as ort
+          assert any(device.ep_name == "WebGpuExecutionProvider" for device in ort.get_ep_devices()), \
+              "A WebGPU device is required for GEMV CI; skipping is not allowed."
+          PY
+          python -m pytest -v transformers/test_webgpu_matmul.py

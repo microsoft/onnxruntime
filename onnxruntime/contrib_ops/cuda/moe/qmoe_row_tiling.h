@@ -55,6 +55,14 @@ inline RowTilePlan MakeRowTilePlan(int64_t num_rows, int64_t row_tile_size, bool
   return RowTilePlan{num_rows, std::min(num_rows, row_tile_size)};
 }
 
+inline int MaxActiveExperts(const RowTilePlan& row_tile_plan, int num_experts, int experts_per_token) {
+  ORT_ENFORCE(row_tile_plan.rows_per_tile > 0 && num_experts > 0 &&
+                  experts_per_token > 0 && experts_per_token <= num_experts,
+              "QMoE expert compaction requires positive rows and 0 < k <= num_experts.");
+  const int64_t expanded_rows = SafeInt<int64_t>(row_tile_plan.rows_per_tile) * experts_per_token;
+  return static_cast<int>(std::min<int64_t>(num_experts, expanded_rows));
+}
+
 struct ScratchLayout {
   size_t scales_bytes;
   size_t indices_bytes;

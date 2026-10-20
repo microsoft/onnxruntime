@@ -192,18 +192,18 @@ class FlashAttentionPagedPrefillProgram final : public Program<FlashAttentionPag
   bool q_varlen_;
 };
 
-Status ComputeFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
-                                         const Tensor* q,
-                                         const Tensor* key_cache,
-                                         const Tensor* value_cache,
-                                         const Tensor* block_table,
-                                         Tensor* output,
-                                         const Tensor* seqlen_k,
-                                         const Tensor* seqlens_q,
-                                         const WebgpuAttentionParameters& parameters,
-                                         uint32_t block_size,
-                                         uint32_t max_num_blocks_per_seq,
-                                         const Tensor* cumulative_seqlens_q = nullptr);
+Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
+                                       const Tensor* q,
+                                       const Tensor* key_cache,
+                                       const Tensor* value_cache,
+                                       const Tensor* block_table,
+                                       Tensor* output,
+                                       const Tensor* seqlen_k,
+                                       const Tensor* seqlens_q,
+                                       const WebgpuAttentionParameters& parameters,
+                                       uint32_t block_size,
+                                       uint32_t max_num_blocks_per_seq,
+                                       const Tensor* cumulative_seqlens_q = nullptr);
 
 class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecodeQKVProgram> {
  public:
@@ -380,11 +380,11 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 //
 // The shader uses only shared-memory algorithms (no subgroup intrinsics), so
 // it runs correctly on every WebGPU adapter — no adapter-class gate.
-bool ShouldRunFusedPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
-                                bool is_fp16,
-                                int max_seqlen_q,
-                                int head_size,
-                                int block_size);
+bool CanApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
+                                        bool is_fp16,
+                                        int max_seqlen_q,
+                                        int head_size,
+                                        int block_size);
 
 bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
 

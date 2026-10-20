@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/narrow.h"
 #include "core/graph/graph_utils.h"
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
@@ -9,6 +10,7 @@
 #include "core/optimizer/utils.h"
 #include "core/optimizer/attention_fusion_helper.h"
 #include <cmath>
+#include <limits>
 #include <optional>
 
 namespace onnxruntime {
@@ -142,13 +144,8 @@ static bool TryGetMobileClipQkvReshapeInfo(const Graph& graph, const Node& qkv_r
   num_heads = reshape_dims[3];
   head_size = reshape_dims[4];
 
-  try {
-    hidden_size = SafeInt<int64_t>(num_heads) * head_size;
-  } catch (const OnnxRuntimeException&) {
-    return false;
-  }
-
-  return hidden_size > 0;
+  return SafeMultiply(num_heads, head_size, hidden_size) && hidden_size > 0 &&
+         hidden_size <= std::numeric_limits<int64_t>::max() / 3;
 }
 
 static std::optional<ONNX_NAMESPACE::TypeProto> TryCreateMobileClipMhaOutputType(const NodeArg& qkv_output,
@@ -749,25 +746,25 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
     const float* k_weight = k_initializer.data<float>();
     const float* v_weight = v_initializer.data<float>();
     std::vector<float> result;
-    result.reserve(gsl::narrow<size_t>(element_count));
+    result.reserve(narrow<size_t>(element_count));
     if (is_matmul) {
       optimizer_utils::MergeMatMulWeightsByRow<float>(q_weight, k_weight, v_weight, result, hidden_size, hidden_size, hidden_size);
     } else {
       optimizer_utils::MergeWeights1d<float>(q_weight, k_weight, v_weight, result, hidden_size, hidden_size);
     }
-    utils::SetRawDataInTensorProto(initializer, result.data(), gsl::narrow<size_t>(element_count) * sizeof(float));
+    utils::SetRawDataInTensorProto(initializer, result.data(), narrow<size_t>(element_count) * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
     const MLFloat16* q_weight = q_initializer.data<MLFloat16>();
     const MLFloat16* k_weight = k_initializer.data<MLFloat16>();
     const MLFloat16* v_weight = v_initializer.data<MLFloat16>();
     std::vector<MLFloat16> result;
-    result.reserve(gsl::narrow<size_t>(element_count));
+    result.reserve(narrow<size_t>(element_count));
     if (is_matmul) {
       optimizer_utils::MergeMatMulWeightsByRow<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size, hidden_size, hidden_size);
     } else {
       optimizer_utils::MergeWeights1d<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size, hidden_size);
     }
-    utils::SetRawDataInTensorProto(initializer, result.data(), gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
+    utils::SetRawDataInTensorProto(initializer, result.data(), narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 
   return graph_utils::AddInitializerWithOrtValue(graph, initializer);
@@ -942,6 +939,12 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
     return false;
   }
 
+  if (!optimizer_utils::CheckOutputEdges(graph, q_matmul, 1) || graph.NodeProducesGraphOutput(q_matmul) ||
+      !optimizer_utils::CheckOutputEdges(graph, q_add, 1) || graph.NodeProducesGraphOutput(q_add)) {
+    DEBUG_LOG("q projection has an external use");
+    return false;
+  }
+
   if (!AttentionFusionHelper::CheckNodesInPathQ(graph, pivot_nodes[1].get(),
                                                 q_reshape, q_transpose, num_heads, head_size, logger)) {
     DEBUG_LOG("CheckNodesInPathQ returns false");
@@ -975,6 +978,13 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
     DEBUG_LOG("k root is not layer norm");
     return false;
   }
+
+  if (!optimizer_utils::CheckOutputEdges(graph, k_matmul, 1) || graph.NodeProducesGraphOutput(k_matmul) ||
+      !optimizer_utils::CheckOutputEdges(graph, k_add, 1) || graph.NodeProducesGraphOutput(k_add)) {
+    DEBUG_LOG("k projection has an external use");
+    return false;
+  }
+
   if (!AttentionFusionHelper::CheckNodesInPathK(graph, k_reshape, k_transpose, num_heads,
                                                 head_size, /*transpose_optimized_pattern*/ false, logger)) {
     DEBUG_LOG("CheckNodesInPathK returns false");

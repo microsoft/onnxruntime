@@ -766,6 +766,18 @@ typedef void(MLASCALL MLAS_LAYERNORM_F32_KERNEL)(
     bool Simplified
 );
 
+typedef void(MLASCALL MLAS_LAYERNORM_F16_KERNEL)(
+    const uint16_t* Input,
+    const float* Scale,
+    const float* Bias,
+    uint16_t* Output,
+    float* MeanOut,
+    float* InvStdDevOut,
+    size_t NormSize,
+    float Epsilon,
+    bool Simplified
+);
+
 typedef
 void
 (MLASCALL MLAS_QLINEAR_BINARY_OP_S8_KERNEL)(
@@ -1379,6 +1391,7 @@ extern "C" {
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelAvx512F;
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelAvx512F;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelAvx512F;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelAvx512FSliding;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelAvx512F;
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelSse;
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx;
@@ -1514,6 +1527,7 @@ MlasReorderOutputNchwBlock16Avx512F(
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
     MLAS_LAYERNORM_F32_KERNEL MlasLayerNormKernelAvx2;
+    MLAS_LAYERNORM_F16_KERNEL MlasLayerNormKernelF16Avx2;
 #endif
 }
 
@@ -1965,6 +1979,7 @@ MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
     MLAS_CAST_F16_TO_F32_KERNEL* CastF16ToF32Kernel;
     MLAS_CAST_F32_TO_F16_KERNEL* CastF32ToF16Kernel;
     MLAS_LAYERNORM_F32_KERNEL* LayerNormF32Kernel{nullptr};
+    MLAS_LAYERNORM_F16_KERNEL* LayerNormF16Kernel{nullptr};
 
     const MLAS_ROPE_DISPATCH* RopeDispatch{nullptr};
     const MLAS_HGEMM_DISPATCH* HGemmDispatch{nullptr};
@@ -2135,6 +2150,54 @@ MlasNchwcCostToWorkIndex(
     }
 
     return (BatchGroup * FilterSetCount + Set) * OutputHeight + Row;
+}
+
+//
+// Picks the filter set size for the NCHWc grouped convolution algorithms.
+// Normally MaximumFilterSetSize, but when that would not produce enough work
+// units (BatchCount * GroupCount * FilterSetCount * OutputHeight) to give
+// every thread at least Target units, the size is halved -- repeatedly, down
+// to 1 -- so the operation splits more finely.
+//
+// Pulled out of MLAS_NCHWC_GROUPED_CONV_ALGORITHM::ChooseFilterSetSize as a
+// pure function of its inputs (no environment variable read, no object
+// state) so the halving dispatch can be exercised directly by unit tests
+// across a range of shapes, including ones with ragged block counts.
+//
+
+inline
+size_t
+MlasNchwcChooseFilterSetSize(
+    size_t MaximumFilterSetSize,
+    size_t Target,
+    ptrdiff_t tids,
+    size_t BlockSize,
+    size_t OutputChannels,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t OutputHeight
+    )
+{
+    if (Target == 0 || tids <= 1) {
+        return MaximumFilterSetSize;
+    }
+
+    const size_t Wanted = static_cast<size_t>(tids) * Target;
+    const size_t Blocks = OutputChannels / BlockSize;
+
+    size_t Size = MaximumFilterSetSize;
+
+    while (Size > 1) {
+        const size_t Sets = (Blocks + Size - 1) / Size;
+
+        if (BatchCount * GroupCount * Sets * OutputHeight >= Wanted) {
+            break;
+        }
+
+        Size /= 2;
+    }
+
+    return Size;
 }
 
 //

@@ -61,6 +61,7 @@ namespace Microsoft.ML.OnnxRuntime
         private List<IntPtr> _namesMemoryPtrs;
 
         private SessionOptions _builtInSessionOptions = null;
+        private SessionOptions.EpContextDataReadRegistration _epContextDataReadRegistration = null;
         private RunOptions _builtInRunOptions = null;
         private ModelMetadata _modelMetadata = null;
         private bool _disposed = false;
@@ -1323,20 +1324,24 @@ namespace Microsoft.ML.OnnxRuntime
         private void Init(string modelPath, SessionOptions options,
                           PrePackedWeightsContainer prepackedWeightsContainer = null)
         {
-            var envHandle = OrtEnv.Instance().Handle;
-            IntPtr session;
-            if (prepackedWeightsContainer == null)
+            IntPtr session = IntPtr.Zero;
+            _epContextDataReadRegistration =
+                options.InvokeWithEpContextDataReadRegistration(optionsHandle =>
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
-                options.Handle, out session));
-            }
+                var envHandle = OrtEnv.Instance().Handle;
+                if (prepackedWeightsContainer == null)
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
+                    optionsHandle, out session));
+                }
 
-            else
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionWithPrepackedWeightsContainer(
-                    envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
-                    options.Handle, prepackedWeightsContainer.Pointer, out session));
-            }
+                else
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionWithPrepackedWeightsContainer(
+                        envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
+                        optionsHandle, prepackedWeightsContainer.Pointer, out session));
+                }
+            });
 
             InitWithSessionHandle(session);
         }
@@ -1344,23 +1349,37 @@ namespace Microsoft.ML.OnnxRuntime
         private void Init(byte[] modelData, SessionOptions options,
                           PrePackedWeightsContainer prepackedWeightsContainer = null)
         {
-            var envHandle = OrtEnv.Instance().Handle;
-            IntPtr session;
-            if (prepackedWeightsContainer == null)
+            IntPtr session = IntPtr.Zero;
+            _epContextDataReadRegistration =
+                options.InvokeWithEpContextDataReadRegistration(optionsHandle =>
             {
+                var envHandle = OrtEnv.Instance().Handle;
+                if (prepackedWeightsContainer == null)
+                {
 
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArray(envHandle, modelData, (UIntPtr)modelData.Length, options.Handle, out session));
-            }
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArray(
+                        envHandle, modelData, (UIntPtr)modelData.Length, optionsHandle, out session));
+                }
 
-            else
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArrayWithPrepackedWeightsContainer(
-                    envHandle, modelData, (UIntPtr)modelData.Length, options.Handle, prepackedWeightsContainer.Pointer,
-                    out session));
-
-            }
+                else
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArrayWithPrepackedWeightsContainer(
+                        envHandle, modelData, (UIntPtr)modelData.Length, optionsHandle,
+                        prepackedWeightsContainer.Pointer,
+                        out session));
+                }
+            });
 
             InitWithSessionHandle(session);
+        }
+
+        private void ReleaseEpContextDataReadDelegate()
+        {
+            if (_epContextDataReadRegistration != null)
+            {
+                _epContextDataReadRegistration.Release();
+                _epContextDataReadRegistration = null;
+            }
         }
 
         /// <summary>
@@ -1731,6 +1750,7 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeMethods.OrtReleaseSession(_nativeHandle);
                 _nativeHandle = IntPtr.Zero;
             }
+            ReleaseEpContextDataReadDelegate();
             _disposed = true;
         }
 

@@ -6,7 +6,8 @@
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "contrib_ops/cuda/moe/moe.h"
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-#include "contrib_ops/cuda/moe/moe_profiler.h"
+#include "contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
+#include "core/framework/kernel_pilot.h"
 #endif
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
@@ -56,11 +57,6 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc2_experts_bias_optional = context->Input<Tensor>(5);
   const Tensor* fc3_experts_weights_optional = context->Input<Tensor>(6);
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
-
-#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  const auto* instrumentation = context->GetRunInstrumentationContext();
-  ORT_RETURN_IF_ERROR(ValidateCudaMoeLoggingBatchSize(instrumentation, input->Shape()));
-#endif
 
   using onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
 
@@ -229,31 +225,6 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   int* expert_indices = reinterpret_cast<int*>(workspace_ptr + ws_size + scales_bytes);
   int* unpermuted_row_to_permuted_row = reinterpret_cast<int*>(workspace_ptr + ws_size + scales_bytes + indices_bytes);
 
-#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  CudaMoeRoutingRecord* routing_record = nullptr;
-  if (instrumentation != nullptr &&
-      !instrumentation->TryReserveMoeRoutingRecord(expanded_rows)) {
-    instrumentation = nullptr;
-  }
-  if (instrumentation != nullptr) {
-    ORT_RETURN_IF(onnxruntime::llm::common::isCapturing(stream),
-                  "MoE expert statistics is not supported during CUDA graph capture.");
-    auto host_expert_ids = AllocateBufferOnCPUPinned<int>(expanded_rows);
-    auto host_router_weights = AllocateBufferOnCPUPinned<float>(expanded_rows);
-    ORT_RETURN_IF_NOT(host_expert_ids && host_router_weights,
-                      "Failed to allocate pinned host memory for CUDA MoE routing statistics.");
-
-    const TimePoint instrumentation_start = instrumentation->StartProfiling();
-    auto record = std::make_unique<CudaMoeRoutingRecord>(
-        *instrumentation, Node().Name(), Node().Index(), Node().OpType(),
-        std::move(host_expert_ids), std::move(host_router_weights),
-        expanded_rows, moe_params.num_rows, k_, GetDeviceId(), instrumentation_start);
-    ORT_RETURN_IF_ERROR(record->Start(stream));
-    routing_record = record.get();
-    instrumentation->AddDeferredRecord(std::move(record));
-  }
-#endif
-
   // Perform Softmax + TopK
   bool is_fp16 = input->IsDataType<MLFloat16>();
   bool is_bf16 = input->IsDataType<BFloat16>();
@@ -325,6 +296,15 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
           stream);
     }
   }
+
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  if (routing_snapshot_) {
+    auto* pilot = context->GetKernelPilot();
+    ORT_RETURN_IF_NOT(pilot, "MoE expert tracking is enabled but its collector is unavailable.");
+    ORT_RETURN_IF_ERROR(routing_snapshot_->BeginInvocation(pilot->Moe(), static_cast<size_t>(moe_params.num_experts)));
+    ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(expert_indices, expanded_rows, stream));
+  }
+#endif
 
   Tensor* output = context->Output(0, input->Shape());
 
@@ -412,9 +392,8 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       stream);
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  if (routing_record != nullptr) {
-    ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
-        expert_indices, expert_scales, 0, expanded_rows, true, stream));
+  if (routing_snapshot_) {
+    ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
   }
 #endif
 

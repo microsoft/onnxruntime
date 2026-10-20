@@ -12,13 +12,6 @@ use std::{
 
 use anyhow::{anyhow, Context, Result};
 
-/// ONNX Runtime version
-///
-/// WARNING: If version is changed, bindings for all platforms will have to be re-generated.
-///          To do so, run this:
-///              cargo build --package onnxruntime-sys --features generate-bindings
-const ORT_VERSION: &str = include_str!("./vendor/onnxruntime-src/VERSION_NUMBER");
-
 /// Base Url from which to download pre-built releases/
 const ORT_RELEASE_BASE_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download";
 
@@ -32,6 +25,10 @@ const ORT_RUST_ENV_STRATEGY: &str = "ORT_RUST_STRATEGY";
 /// Name of environment variable that, if present, contains the location of a pre-built library.
 /// Only used if `ORT_STRATEGY=system`.
 const ORT_RUST_ENV_SYSTEM_LIB_LOCATION: &str = "ORT_RUST_LIB_LOCATION";
+/// Optional path to an ONNX Runtime source/install include directory or onnxruntime_c_api.h.
+const ORT_RUST_ENV_HEADER_LOCATION: &str = "ORT_RUST_HEADER_LOCATION";
+/// Optional ONNX Runtime release version used by the download strategy.
+const ORT_RUST_ENV_VERSION: &str = "ORT_RUST_VERSION";
 /// Name of environment variable that, if present, controls whether to use CUDA or not.
 const ORT_RUST_ENV_GPU: &str = "ORT_RUST_USE_CUDA";
 
@@ -57,14 +54,24 @@ fn main() -> Result<()> {
         "cargo:rerun-if-env-changed={}",
         ORT_RUST_ENV_SYSTEM_LIB_LOCATION
     );
+    println!(
+        "cargo:rerun-if-env-changed={}",
+        ORT_RUST_ENV_HEADER_LOCATION
+    );
+    println!("cargo:rerun-if-env-changed={}", ORT_RUST_ENV_VERSION);
 
-    generate_bindings(&include_dir);
+    generate_bindings(&include_dir)?;
     Ok(())
 }
 
-fn generate_bindings(include_dir: &Path) {
-    let clang_args = &[
+fn generate_bindings(include_dir: &Path) -> Result<()> {
+    let path = find_header(include_dir)?;
+    let header_dir = path
+        .parent()
+        .context("onnxruntime_c_api.h has no parent directory")?;
+    let clang_args = [
         format!("-I{}", include_dir.display()),
+        format!("-I{}", header_dir.display()),
         format!(
             "-I{}",
             include_dir
@@ -75,7 +82,8 @@ fn generate_bindings(include_dir: &Path) {
         ),
     ];
 
-    let path = include_dir.join("onnxruntime").join("onnxruntime_c_api.h");
+    println!("Using ONNX Runtime header: {}", path.display());
+    println!("cargo:rerun-if-changed={}", path.display());
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
@@ -103,12 +111,86 @@ fn generate_bindings(include_dir: &Path) {
         // Finish the builder and generate the bindings.
         .generate()
         // Unwrap the Result and panic on failure.
-        .expect("Unable to generate bindings");
+        .context("generating ONNX Runtime bindings")?;
 
-    let generated_file = PathBuf::from(env::var("OUT_DIR").unwrap()).join("bindings.rs");
+    let generated_file =
+        PathBuf::from(env::var("OUT_DIR").context("OUT_DIR is not set")?).join("bindings.rs");
     bindings
         .write_to_file(generated_file)
-        .expect("Couldn't write bindings!");
+        .context("writing ONNX Runtime bindings")?;
+
+    Ok(())
+}
+
+fn find_header(include_dir: &Path) -> Result<PathBuf> {
+    if let Ok(location) = env::var(ORT_RUST_ENV_HEADER_LOCATION) {
+        let path = PathBuf::from(location);
+        return find_header_under(&path).with_context(|| {
+            format!(
+                "finding onnxruntime_c_api.h under {} from {}",
+                path.display(),
+                ORT_RUST_ENV_HEADER_LOCATION
+            )
+        });
+    }
+
+    let manifest_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR is not set")?);
+    let repository_include = manifest_dir.join("../../include");
+    if let Ok(path) = find_header_under(&repository_include) {
+        return Ok(path);
+    }
+
+    find_header_under(include_dir).with_context(|| {
+        format!(
+            "finding onnxruntime_c_api.h in installed include directory {}",
+            include_dir.display()
+        )
+    })
+}
+
+fn find_header_under(path: &Path) -> Result<PathBuf> {
+    if path.is_file() {
+        return (path.file_name().and_then(|name| name.to_str()) == Some("onnxruntime_c_api.h"))
+            .then(|| path.to_path_buf())
+            .ok_or_else(|| anyhow!("header override is not onnxruntime_c_api.h"));
+    }
+
+    [
+        path.join("onnxruntime_c_api.h"),
+        path.join("onnxruntime").join("onnxruntime_c_api.h"),
+        path.join("onnxruntime")
+            .join("core")
+            .join("session")
+            .join("onnxruntime_c_api.h"),
+    ]
+    .iter()
+    .find(|candidate| candidate.is_file())
+    .cloned()
+    .ok_or_else(|| anyhow!("onnxruntime_c_api.h was not found"))
+}
+
+fn ort_version() -> Result<String> {
+    if let Ok(version) = env::var(ORT_RUST_ENV_VERSION) {
+        return Ok(version);
+    }
+
+    let manifest_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR is not set")?);
+    for path in [
+        manifest_dir.join("../../VERSION_NUMBER"),
+        manifest_dir.join("vendor/onnxruntime-src/VERSION_NUMBER"),
+    ] {
+        if let Ok(version) = fs::read_to_string(&path) {
+            println!("cargo:rerun-if-changed={}", path.display());
+            return Ok(version.trim().to_owned());
+        }
+    }
+
+    Err(anyhow!(
+        "ONNX Runtime version was not found; set {} explicitly",
+        ORT_RUST_ENV_VERSION
+    ))
 }
 
 fn download<P>(source_url: &str, target_file: P)
@@ -335,7 +417,7 @@ impl OnnxPrebuiltArchive for Triplet {
     }
 }
 
-fn prebuilt_archive_url() -> (PathBuf, String) {
+fn prebuilt_archive_url() -> Result<(PathBuf, String)> {
     let triplet = Triplet {
         os: env::var("CARGO_CFG_TARGET_OS")
             .expect("Unable to get TARGET_OS")
@@ -350,27 +432,29 @@ fn prebuilt_archive_url() -> (PathBuf, String) {
             .parse()
             .unwrap(),
     };
+    let ort_version = ort_version()?;
 
     let prebuilt_archive = format!(
         "onnxruntime-{}-{}.{}",
         triplet.as_onnx_str(),
-        ORT_VERSION,
+        ort_version,
         triplet.os.archive_extension()
     );
     let prebuilt_url = format!(
         "{}/v{}/{}",
-        ORT_RELEASE_BASE_URL, ORT_VERSION, prebuilt_archive
+        ORT_RELEASE_BASE_URL, ort_version, prebuilt_archive
     );
 
-    (PathBuf::from(prebuilt_archive), prebuilt_url)
+    Ok((PathBuf::from(prebuilt_archive), prebuilt_url))
 }
 
-fn prepare_libort_dir_prebuilt() -> PathBuf {
-    let (prebuilt_archive, prebuilt_url) = prebuilt_archive_url();
+fn prepare_libort_dir_prebuilt() -> Result<PathBuf> {
+    let (prebuilt_archive, prebuilt_url) = prebuilt_archive_url()?;
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let extract_dir = out_dir.join(ORT_PREBUILT_EXTRACT_DIR);
     let downloaded_file = out_dir.join(&prebuilt_archive);
+    let extracted_dir = extract_dir.join(prebuilt_archive.file_stem().unwrap());
 
     println!("cargo:rerun-if-changed={}", downloaded_file.display());
 
@@ -386,12 +470,12 @@ fn prepare_libort_dir_prebuilt() -> PathBuf {
         download(&prebuilt_url, &downloaded_file);
     }
 
-    if !extract_dir.exists() {
+    if !extracted_dir.exists() {
         println!("Extracting to {}...", extract_dir.display());
         extract_archive(&downloaded_file, &extract_dir);
     }
 
-    extract_dir.join(prebuilt_archive.file_stem().unwrap())
+    Ok(extracted_dir)
 }
 
 fn prepare_libort_dir() -> Result<PathBuf> {
@@ -401,7 +485,7 @@ fn prepare_libort_dir() -> Result<PathBuf> {
         strategy.as_ref().map_or_else(|_| "unknown", String::as_str)
     );
     match strategy.as_ref().map(String::as_str) {
-        Ok("download") => Ok(prepare_libort_dir_prebuilt()),
+        Ok("download") => prepare_libort_dir_prebuilt(),
         Ok("system") => {
             let location = env::var(ORT_RUST_ENV_SYSTEM_LIB_LOCATION).context(format!(
                 "Could not get value of environment variable {:?}",

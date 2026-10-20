@@ -6387,6 +6387,31 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
       });
 }
 
+void TestEmptySetNegativeAxis(const char* op, int opset, bool axes_as_input,
+                              int64_t keepdims, const std::vector<int64_t>& input_shape,
+                              const std::vector<int64_t>& output_shape) {
+  OpTester test(op, opset);
+  test.AddAttribute("keepdims", keepdims);
+  test.AddInput<float>("data", input_shape, {});
+  const std::vector<int64_t> axes{-1};
+  if (axes_as_input) {
+    test.AddInput<int64_t>("axes", {1}, axes);
+  } else {
+    test.AddAttribute("axes", axes);
+  }
+  test.AddOutput<float>("reduced", output_shape, {});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(ReductionOpTest, EmptySetNegativeAxis) {
+  for (const char* op : {"ReduceSum", "ReduceProd", "ReduceMean"}) {
+    TestEmptySetNegativeAxis(op, 18, true, 1, {1, 0, 3}, {1, 0, 1});
+    TestEmptySetNegativeAxis(op, 18, true, 0, {0, 3}, {0});
+  }
+
+  TestEmptySetNegativeAxis("ReduceProd", 13, false, 1, {1, 0, 3}, {1, 0, 1});
+}
+
 TEST(ReductionOpTest, EmptySetMissingOptionalAxesReducesAllDimensions) {
   OpTester test("ReduceSum", 20);
   test.AddInput<float>("data", {2, 0, 4}, {});

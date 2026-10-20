@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -203,6 +204,65 @@ TEST(ConvFp16Test, WebGpuSubgroupPointwiseBias) {
 
 TEST(ConvFp16Test, WebGpuSubgroupPointwiseBatch) {
   RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase::NoBias, 2);
+}
+
+TEST(ConvFp16Test, WebGpuConv2dMMPackedNhwc) {
+  for (int64_t input_channels : {3, 4}) {
+    SCOPED_TRACE(input_channels);
+    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    if (!webgpu_ep) {
+      GTEST_SKIP() << "WebGPU execution provider is not available.";
+    }
+
+    OpTester test("Conv", 11, onnxruntime::kMSInternalNHWCDomain);
+    test.AddAttribute("group", static_cast<int64_t>(1));
+    test.AddAttribute("kernel_shape", vector<int64_t>{1, 3});
+    test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+    test.AddAttribute("strides", vector<int64_t>{1, 1});
+
+    vector<MLFloat16> input;
+    for (int64_t spatial = 0; spatial < 5; ++spatial) {
+      input.insert(input.end(), static_cast<size_t>(input_channels),
+                   MLFloat16(static_cast<float>(spatial + 1)));
+    }
+    vector<MLFloat16> weights;
+    for (int64_t output_channel = 0; output_channel < 4; ++output_channel) {
+      weights.insert(weights.end(), static_cast<size_t>(input_channels * 3),
+                     MLFloat16(static_cast<float>(output_channel + 1)));
+    }
+    vector<MLFloat16> expected;
+    for (int64_t spatial = 0; spatial < 3; ++spatial) {
+      for (int64_t output_channel = 0; output_channel < 4; ++output_channel) {
+        expected.emplace_back(static_cast<float>((6 + 3 * spatial) * input_channels * (output_channel + 1)));
+      }
+    }
+
+    test.AddInput<MLFloat16>("X", {1, 1, 5, input_channels}, input);
+    test.AddInput<MLFloat16>("W", {4, input_channels, 1, 3}, weights, true);
+    test.AddOutput<MLFloat16>("Y", {1, 1, 3, 4}, expected);
+    test.ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+  }
+}
+
+TEST(ConvFp16Test, WebGpuConv2dMMLongReduction) {
+  for (int64_t input_channels : {300, 299}) {
+    SCOPED_TRACE(input_channels);
+    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    if (!webgpu_ep) {
+      GTEST_SKIP() << "WebGPU execution provider is not available";
+    }
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    const MLFloat16 value{0.1f};
+    const MLFloat16 expected{value.ToFloat() * value.ToFloat() * static_cast<float>(input_channels * 3)};
+    OpTester test("Conv", 11, onnxruntime::kMSInternalNHWCDomain);
+    test.AddAttribute("kernel_shape", vector<int64_t>{1, 3});
+    test.AddInput<MLFloat16>("X", {1, 1, 5, input_channels}, vector<MLFloat16>(5 * input_channels, value));
+    test.AddInput<MLFloat16>("W", {4, input_channels, 1, 3}, vector<MLFloat16>(12 * input_channels, value), true);
+    test.AddOutput<MLFloat16>("Y", {1, 1, 3, 4}, vector<MLFloat16>(12, expected));
+    test.SetOutputAbsErr("Y", 0.01f);
+    test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+  }
 }
 
 TEST(ConvFp16Test, WebGpuNaivePointwiseNhwcBias) {

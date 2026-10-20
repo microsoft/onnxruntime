@@ -135,6 +135,9 @@ class OnnxRuntimeBackend(Backend):
             return OnnxRuntimeBackendRep(model)
         elif isinstance(model, (str, bytes)):
             options = SessionOptions()
+            options.add_session_config_entry(
+                "session.allow_released_opsets_only", "1" if cls.allowReleasedOpsetsOnly else "0"
+            )
             for k, v in kwargs.items():
                 if k in _ALLOWED_SESSION_OPTIONS:
                     setattr(options, k, v)

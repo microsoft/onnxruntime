@@ -154,7 +154,15 @@ std::optional<NodesToOptimizeIndices> BaseSelector::Select(const GraphViewer& gr
   builder.target_node = qdq_group->target_node;
 
   UpdateBuilder(builder);
-  return builder.Build();
+  auto indices = builder.Build();
+
+  // Append the redundant Clip/Relu after the outputs so it is removed with the group. Otherwise the target survives
+  // (its consumer is outside the removal set) and collides with the same-named replacement node.
+  if (qdq_group->redundant_clip_node.has_value()) {
+    indices.nodes.push_back(*qdq_group->redundant_clip_node);
+  }
+
+  return indices;
 }
 
 bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,

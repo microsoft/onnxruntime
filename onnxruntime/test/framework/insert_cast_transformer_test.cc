@@ -112,6 +112,43 @@ TEST(TransformerTest, InsertCastAllCPUTest) {
   }
 }
 
+TEST(TransformerTest, Fp16CastFallbackKeepsAttributeAndOutputTypeConsistent) {
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float_16;
+  tensor_float_16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+  onnxruntime::NodeArg& input = graph.GetOrCreateNodeArg("input", &tensor_float_16);
+  onnxruntime::NodeArg& output = graph.GetOrCreateNodeArg("output", &tensor_float_16);
+
+  NodeAttributes attributes = {
+      {"to", utils::MakeAttribute("to", static_cast<int64_t>(TensorProto_DataType_FLOAT16))}};
+  graph.AddNode("cast_to_fp16", "Cast", "Unassigned fp16 Cast", ArgMap{&input}, ArgMap{&output}, &attributes);
+  graph.SetInputs({&input});
+  graph.SetOutputs({&output});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()));
+  EXPECT_TRUE(modified);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() != "Cast") {
+      continue;
+    }
+
+    const auto to_attribute = node.GetAttributes().find("to");
+    ASSERT_NE(to_attribute, node.GetAttributes().end());
+    ASSERT_EQ(node.OutputDefs().size(), 1);
+    ASSERT_NE(node.OutputDefs()[0]->TypeAsProto(), nullptr);
+    EXPECT_EQ(to_attribute->second.i(), node.OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type())
+        << node.Name();
+  }
+}
+
 TEST(TransformerTest, CastRemovalDoesNotLowerPrecisionTest) {
   auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();

@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <limits>
 #include <optional>
 
 namespace onnxruntime {
@@ -121,8 +122,9 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
   // If profiling statistics are available, uses their non-workspace cost and
   // profiled temporary allocations. If a Level-1 runtime workspace estimate is
   // also provided, uses the maximum of the profiled and estimated workspace.
-  // Without profiling, computes known initializer/output bytes and uses the
-  // Level-1 runtime workspace or, when unavailable, fallback workspace.
+  // Without profiling, or when the profile omits a node with a Level-1 estimate,
+  // computes known initializer/output bytes and uses the Level-1 runtime
+  // workspace or, when unavailable, fallback workspace.
   // Initializer bytes are charged separately, so persistent prepack estimates
   // must include only additional allocations, not storage reused directly from
   // an initializer (for example, an offline-prepacked weight). Persistent
@@ -181,11 +183,12 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
         return static_cast<size_t>(resource_count);
       }
 
-      // Preserve the established partial-profile behavior: a node absent from
-      // the stats file has zero cost. Falling through to ad-hoc accounting
-      // would change existing partition decisions and mix profile-based costs
-      // with initializer bookkeeping that the profile path does not use.
-      return static_cast<size_t>(0);
+      // Preserve the established partial-profile behavior when no estimator is
+      // available. An explicit Level-1 estimate must still affect placement, so
+      // use the static initializer/output accounting below for that node.
+      if (!level1_memory_estimate.has_value()) {
+        return static_cast<size_t>(0);
+      }
     }
 
     const auto* graph = node.GetContainingGraph();
@@ -538,10 +541,39 @@ static Status LoadNodeAllocationStats(
   return Status::OK();
 }
 
+Status ParseCudaGqaWorkspaceMaxTotalSequenceLength(
+    const ConfigOptions& config_options,
+    int64_t& max_total_sequence_length) {
+  const auto knob =
+      config_options.GetConfigEntry(kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength);
+  if (!knob.has_value()) {
+    max_total_sequence_length = 0;
+    return Status::OK();
+  }
+
+  int64_t parsed = 0;
+  if (!TryParseStringWithClassicLocale(*knob, parsed) || parsed < 0 ||
+      parsed > std::numeric_limits<int32_t>::max()) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength,
+        " must be a decimal integer in [0, INT32_MAX], but got: '", *knob, "'");
+  }
+
+  max_total_sequence_length = parsed;
+  return Status::OK();
+}
+
 Status CreateAccountants(
     const ConfigOptions& config_options,
     const std::filesystem::path& model_path,
     std::optional<ResourceAccountantMap>& acc_map) {
+  WorkspaceEstimatorConfig estimator_config{
+      config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
+      config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM)};
+  ORT_RETURN_IF_ERROR(ParseCudaGqaWorkspaceMaxTotalSequenceLength(
+      config_options, estimator_config.cuda_gqa_workspace_max_total_sequence_length));
+
   std::optional<ResourceAccountantMap> result;
   // Check if CUDA partitioning settings are provided
   const std::string resource_partitioning_settings = config_options.GetConfigOrDefault(
@@ -586,9 +618,6 @@ Status CreateAccountants(
   }
 
   if (result.has_value()) {
-    WorkspaceEstimatorConfig estimator_config{
-        config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
-        config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM)};
     for (auto& [ep_type, accountant] : *result) {
       ORT_UNUSED_PARAMETER(ep_type);
       accountant->SetWorkspaceEstimatorConfig(estimator_config);

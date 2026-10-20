@@ -234,6 +234,8 @@ struct ProgramInput {
 
   // Creates a logical tensor view into a packed backing tensor. Views sharing a backing tensor are
   // bound once, provided they have the same storage type and are added after their backing view.
+  // Shape dimensions and offset_in_elements are measured in storage elements (for example, vec4 entries
+  // when component is 4), not scalar tensor elements.
   static ProgramInput BufferView(const Tensor* backing_tensor,
                                  ProgramTensorMetadataDependency dependency,
                                  const TensorShape& shape,
@@ -266,6 +268,8 @@ struct ProgramOutput {
 
   // Creates a logical tensor view into a packed backing tensor. Views sharing a backing tensor are
   // bound once, provided they have the same storage type and are added after their backing view.
+  // Shape dimensions and offset_in_elements are measured in storage elements (for example, vec4 entries
+  // when component is 4), not scalar tensor elements.
   static ProgramOutput BufferView(Tensor* backing_tensor,
                                   ProgramTensorMetadataDependency dependency,
                                   const TensorShape& shape,
