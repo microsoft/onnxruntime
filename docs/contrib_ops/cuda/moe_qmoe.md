@@ -1356,9 +1356,10 @@ so a genuinely broken native kernel (error order ~1.0+) is still caught.
 
 ### 9b.6 Experimental packed weight-only prefill
 
-`ORT_QMOE_NVFP4_PACKED_PREFILL=1` opts into a memory-efficient W4A16
+The runtime automatically selects a memory-efficient W4A16
 prefill route on SM80+ when NVFP4 weights already have the offline
-row-major byte layout. The default is `0`. It requires fused interleaved
+row-major byte layout. `ORT_QMOE_NVFP4_PACKED_PREFILL=0` disables this route;
+`1` explicitly selects the default. It requires fused interleaved
 SwiGLU (`swiglu_fusion=1`), positive hidden/intermediate dimensions that
 are multiples of 64, and supported integer routing sizes. Unsupported
 shapes/layouts retain the existing fallback; eligible small decode
@@ -1385,7 +1386,7 @@ barriers protect both tile reuse and the shared FP32 epilogue.
 
 Expert sorting, input expansion, biased SwiGLU and routing finalization
 reuse the packed integer-prefill pipeline. Its workspace is bounded by
-a 384 MiB scratch policy for this opt-in NVFP4 route, using internal
+a 384 MiB scratch policy for this NVFP4 route, using internal
 row tiles when necessary. Integer prefill retains its 256 MiB bound.
 The NVFP4 bound accommodates a full 4,096-row Qwen prefill chunk and
 avoids a second read of expert weights. This is **not** a device-wide
@@ -1403,8 +1404,8 @@ these tolerances does not establish bit-identical full-model outputs.
 Full-model Qwen3.8 experiments reached a sampled 79.80 GiB with
 1,024-token scheduler chunks. A sequential same-GPU comparison of the
 non-pipelined and pipelined builds improved independent E2E throughput
-from 83.54 to 90.52 TPS; the 100 TPS target remains unmet. This remains opt-in and
-experimental, not a production replacement.
+from 83.54 to 90.52 TPS; the 100 TPS target remains unmet in that experiment.
+Those measurements are workload-specific, not a production throughput guarantee.
 
 With a separately capacity-bounded Qwen indexer graph and 4,096-token
 scheduling, ten independent requests subsequently reached 99.79 E2E /

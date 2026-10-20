@@ -1712,6 +1712,35 @@ def _enable_nvfp4_packed_prefill(monkeypatch):
 
 @pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="Requires CUDA NVFP4 QMoE")
 @pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT16, TensorProto.BFLOAT16])
+def test_nvfp4_packed_prefill_default_matches_explicit(onnx_dtype, capfd, monkeypatch):
+    monkeypatch.setenv("ORT_ENABLE_NVFP4_CUTLASS_GEMM", "0")
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    monkeypatch.delenv("ORT_QMOE_NVFP4_PACKED_PREFILL", raising=False)
+    shape = dict(
+        hidden_size=128,
+        inter_size=64,
+        num_experts=16,
+        top_k=10,
+        num_tokens=17,
+        onnx_dtype=onnx_dtype,
+        use_swiglu=True,
+        gemv_mode="0",
+        offline_prepacked=True,
+        input_scale=0.1,
+    )
+    automatic = TestQMoENVFP4()._run_nvfp4_moe_test(**shape)
+    assert "Route=packed_nvfp4_prefill" in capfd.readouterr().out
+    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "1")
+    explicit = TestQMoENVFP4()._run_nvfp4_moe_test(**shape)
+    assert "Route=packed_nvfp4_prefill" in capfd.readouterr().out
+    torch.testing.assert_close(automatic, explicit, atol=0, rtol=0)
+    monkeypatch.setenv("ORT_QMOE_NVFP4_PACKED_PREFILL", "0")
+    TestQMoENVFP4()._run_nvfp4_moe_test(**shape)
+    assert "Route=packed_nvfp4_prefill" not in capfd.readouterr().out
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp4_qmoe, reason="Requires CUDA NVFP4 QMoE")
+@pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT16, TensorProto.BFLOAT16])
 @pytest.mark.parametrize("num_tokens", [17, 65, 257])
 @pytest.mark.parametrize("hidden_size,inter_size", [(128, 64), (64, 128)])
 def test_nvfp4_packed_prefill_reference(onnx_dtype, num_tokens, hidden_size, inter_size, capfd, monkeypatch):

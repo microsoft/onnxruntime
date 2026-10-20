@@ -1383,7 +1383,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(!int2_fake_int4_activations_ || use_packed_int_prefill,
                     "INT4 activation simulation requires the packed INT2 grouped path; refusing an unquantized fallback.");
   const bool use_nvfp4_packed_prefill =
-      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_NVFP4_PACKED_PREFILL", 0) == 1 &&
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_NVFP4_PACKED_PREFILL", 1) == 1 &&
       is_nvfp4 && nvfp4_weights_row_major_ && use_fp4_dequant_fallback_ && !run_fp4_gemv &&
       is_fused_swiglu && swiglu_fusion == 1 && sm_ >= 80 &&
       moe_params.hidden_size > 0 && moe_params.hidden_size <= std::numeric_limits<int>::max() &&
