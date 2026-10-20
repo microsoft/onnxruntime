@@ -1084,3 +1084,14 @@ Compressed project memory. This is not the execution plan.
 - Next persist verified CPU checkpoint (one eventual M11 PR on#24, not ready
   while GPU blocked). No M11 commit/PR yet at this note. Keep minimal measured
   object/probe/profiles; clean non-measured SDK binaries/fixture/header copies.
+- PERSISTED CPU checkpoint2f3e6c0237 pushed to state/m11-package-chain-loading
+  on verified M10 b03b4c2f72/#24. No M11 PR created, no merge/M12.
+  H0/H7/H8/H9 remain BLOCKED; restore compatible CUDA/cuDNN/Nsight/sanitizer
+  tooling before rebuilding GPU artifacts and exercising chain.cc180-185.
+  CPU69/148 all pass, standalone5/5+5/5, C11/C++17/noexceptions/minimal/frozen
+  clients pass. Coverage737/743 (NOT100%). Only final changes after test/profile
+  proof are documentation (including explicit Doxygen struct association).
+- Cleaned named non-measured SDK executables, local generated package fixture,
+  frozen header copies. Kept generator/probe/measurement sources and logs plus
+  actual minimal object/probe/profiles and CPU final-3 library/binaries/profiles.
+  Exact commands/evidence/blocker are in TASKS M11. No subagents or installs.

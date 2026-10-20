@@ -3067,6 +3067,11 @@ follow-up is Doxygen-only and does not change code/record layout.
 No toolchain dependency was installed and no GPU test was claimed. Preserve
 this tested CPU checkpoint on the M11 branch, but do not mark M11 complete or
 publish a ready PR until compatible CUDA tooling and all remaining gates pass.
+CPU checkpoint `2f3e6c0237` is committed and pushed on
+`state/m11-package-chain-loading`, stacked on #24. No M11 PR has been created;
+the requested single-PR delivery remains gated on GPU/tooling and737/743 coverage
+closure. Non-measured SDK binaries, generated fixture and frozen header copies
+were cleaned; reproducible sources/logs and measured CPU/minimal artifacts remain.
 
 ### M12 - DDIM scheduler and denoising execution policy
 
