@@ -114,16 +114,6 @@ processrows_8(
                 float a6 = a[6 * lda + p];
                 float a7 = a[7 * lda + p];
 
-                if constexpr (!Alpha1) {
-                    a0 *= alpha;
-                    a1 *= alpha;
-                    a2 *= alpha;
-                    a3 *= alpha;
-                    a4 *= alpha;
-                    a5 *= alpha;
-                    a6 *= alpha;
-                    a7 *= alpha;
-                }
 
                 acc0_0 = MlasSveMultiplyAddFloat32(pg0, b0, MlasSveBroadcastFloat32(a0), acc0_0);
                 acc0_1 = MlasSveMultiplyAddFloat32(pg1, b1, MlasSveBroadcastFloat32(a0), acc0_1);
@@ -153,6 +143,24 @@ processrows_8(
         float* out6 = res + 6 * ldc + col;
         float* out7 = res + 7 * ldc + col;
 
+        if constexpr (!Alpha1) {
+            acc0_0 = svmul_n_f32_x(pg0, acc0_0, alpha);
+            acc1_0 = svmul_n_f32_x(pg0, acc1_0, alpha);
+            acc2_0 = svmul_n_f32_x(pg0, acc2_0, alpha);
+            acc3_0 = svmul_n_f32_x(pg0, acc3_0, alpha);
+            acc4_0 = svmul_n_f32_x(pg0, acc4_0, alpha);
+            acc5_0 = svmul_n_f32_x(pg0, acc5_0, alpha);
+            acc6_0 = svmul_n_f32_x(pg0, acc6_0, alpha);
+            acc7_0 = svmul_n_f32_x(pg0, acc7_0, alpha);
+            acc0_1 = svmul_n_f32_x(pg1, acc0_1, alpha);
+            acc1_1 = svmul_n_f32_x(pg1, acc1_1, alpha);
+            acc2_1 = svmul_n_f32_x(pg1, acc2_1, alpha);
+            acc3_1 = svmul_n_f32_x(pg1, acc3_1, alpha);
+            acc4_1 = svmul_n_f32_x(pg1, acc4_1, alpha);
+            acc5_1 = svmul_n_f32_x(pg1, acc5_1, alpha);
+            acc6_1 = svmul_n_f32_x(pg1, acc6_1, alpha);
+            acc7_1 = svmul_n_f32_x(pg1, acc7_1, alpha);
+        }
         if constexpr (!ZeroMode) {
             acc0_0 = MlasSveAddFloat32(pg0, acc0_0, svld1(pg0, out0));
             acc1_0 = MlasSveAddFloat32(pg0, acc1_0, svld1(pg0, out1));
@@ -213,16 +221,6 @@ processrows_8(
                 float a6 = a[6 * lda + p];
                 float a7 = a[7 * lda + p];
 
-                if constexpr (!Alpha1) {
-                    a0 *= alpha;
-                    a1 *= alpha;
-                    a2 *= alpha;
-                    a3 *= alpha;
-                    a4 *= alpha;
-                    a5 *= alpha;
-                    a6 *= alpha;
-                    a7 *= alpha;
-                }
                 acc0 = MlasSveMultiplyAddFloat32(pg, b0, MlasSveBroadcastFloat32(a0), acc0);
                 acc1 = MlasSveMultiplyAddFloat32(pg, b0, MlasSveBroadcastFloat32(a1), acc1);
                 acc2 = MlasSveMultiplyAddFloat32(pg, b0, MlasSveBroadcastFloat32(a2), acc2);
@@ -243,6 +241,16 @@ processrows_8(
         float* out6 = res + 6 * ldc + col;
         float* out7 = res + 7 * ldc + col;
 
+        if constexpr (!Alpha1) {
+            acc0 = svmul_n_f32_x(pg, acc0, alpha);
+            acc1 = svmul_n_f32_x(pg, acc1, alpha);
+            acc2 = svmul_n_f32_x(pg, acc2, alpha);
+            acc3 = svmul_n_f32_x(pg, acc3, alpha);
+            acc4 = svmul_n_f32_x(pg, acc4, alpha);
+            acc5 = svmul_n_f32_x(pg, acc5, alpha);
+            acc6 = svmul_n_f32_x(pg, acc6, alpha);
+            acc7 = svmul_n_f32_x(pg, acc7, alpha);
+        }
         if constexpr (!ZeroMode) {
             acc0 = MlasSveAddFloat32(pg, acc0, svld1(pg, out0));
             acc1 = MlasSveAddFloat32(pg, acc1, svld1(pg, out1));
@@ -326,14 +334,6 @@ processrows_6(
                 float a4 = a[4 * lda + p];
                 float a5 = a[5 * lda + p];
 
-                if constexpr (!Alpha1) {
-                    a0 *= alpha;
-                    a1 *= alpha;
-                    a2 *= alpha;
-                    a3 *= alpha;
-                    a4 *= alpha;
-                    a5 *= alpha;
-                }
                 acc0_0 = MlasSveMultiplyAddFloat32(pg0, b0, MlasSveBroadcastFloat32(a0), acc0_0);
                 acc0_1 = MlasSveMultiplyAddFloat32(pg1, b1, MlasSveBroadcastFloat32(a0), acc0_1);
                 acc1_0 = MlasSveMultiplyAddFloat32(pg0, b0, MlasSveBroadcastFloat32(a1), acc1_0);
@@ -349,6 +349,20 @@ processrows_6(
             }
         }
 
+        if constexpr (!Alpha1) {
+            acc0_0 = svmul_n_f32_x(pg0, acc0_0, alpha);
+            acc0_1 = svmul_n_f32_x(pg1, acc0_1, alpha);
+            acc1_0 = svmul_n_f32_x(pg0, acc1_0, alpha);
+            acc1_1 = svmul_n_f32_x(pg1, acc1_1, alpha);
+            acc2_0 = svmul_n_f32_x(pg0, acc2_0, alpha);
+            acc2_1 = svmul_n_f32_x(pg1, acc2_1, alpha);
+            acc3_0 = svmul_n_f32_x(pg0, acc3_0, alpha);
+            acc3_1 = svmul_n_f32_x(pg1, acc3_1, alpha);
+            acc4_0 = svmul_n_f32_x(pg0, acc4_0, alpha);
+            acc4_1 = svmul_n_f32_x(pg1, acc4_1, alpha);
+            acc5_0 = svmul_n_f32_x(pg0, acc5_0, alpha);
+            acc5_1 = svmul_n_f32_x(pg1, acc5_1, alpha);
+        }
         if constexpr (!ZeroMode) {
             acc0_0 = MlasSveAddFloat32(pg0, acc0_0, svld1(pg0, out0_0));
             acc0_1 = MlasSveAddFloat32(pg1, acc0_1, svld1(pg1, out0_1));
@@ -408,14 +422,6 @@ processrows_6(
                 float a4 = a[4 * lda + p];
                 float a5 = a[5 * lda + p];
 
-                if constexpr (!Alpha1) {
-                    a0 *= alpha;
-                    a1 *= alpha;
-                    a2 *= alpha;
-                    a3 *= alpha;
-                    a4 *= alpha;
-                    a5 *= alpha;
-                }
                 acc0 = MlasSveMultiplyAddFloat32(pg, b0, MlasSveBroadcastFloat32(a0), acc0);
                 acc1 = MlasSveMultiplyAddFloat32(pg, b0, MlasSveBroadcastFloat32(a1), acc1);
                 acc2 = MlasSveMultiplyAddFloat32(pg, b0, MlasSveBroadcastFloat32(a2), acc2);
@@ -425,6 +431,14 @@ processrows_6(
             }
         }
 
+        if constexpr (!Alpha1) {
+            acc0 = svmul_n_f32_x(pg, acc0, alpha);
+            acc1 = svmul_n_f32_x(pg, acc1, alpha);
+            acc2 = svmul_n_f32_x(pg, acc2, alpha);
+            acc3 = svmul_n_f32_x(pg, acc3, alpha);
+            acc4 = svmul_n_f32_x(pg, acc4, alpha);
+            acc5 = svmul_n_f32_x(pg, acc5, alpha);
+        }
         if constexpr (!ZeroMode) {
             acc0 = MlasSveAddFloat32(pg, acc0, svld1(pg, out0));
             acc1 = MlasSveAddFloat32(pg, acc1, svld1(pg, out1));
@@ -492,12 +506,6 @@ processrows_4(
                 float a2 = a[2 * lda + p];
                 float a3 = a[3 * lda + p];
 
-                if constexpr (!Alpha1) {
-                    a0 *= alpha;
-                    a1 *= alpha;
-                    a2 *= alpha;
-                    a3 *= alpha;
-                }
 
                 svfloat32_t va0 = MlasSveBroadcastFloat32(a0);
                 svfloat32_t va1 = MlasSveBroadcastFloat32(a1);
@@ -515,6 +523,16 @@ processrows_4(
             }
         }
 
+        if constexpr (!Alpha1) {
+            acc0_0 = svmul_n_f32_x(pg0, acc0_0, alpha);
+            acc0_1 = svmul_n_f32_x(pg1, acc0_1, alpha);
+            acc1_0 = svmul_n_f32_x(pg0, acc1_0, alpha);
+            acc1_1 = svmul_n_f32_x(pg1, acc1_1, alpha);
+            acc2_0 = svmul_n_f32_x(pg0, acc2_0, alpha);
+            acc2_1 = svmul_n_f32_x(pg1, acc2_1, alpha);
+            acc3_0 = svmul_n_f32_x(pg0, acc3_0, alpha);
+            acc3_1 = svmul_n_f32_x(pg1, acc3_1, alpha);
+        }
         if constexpr (!ZeroMode) {
             acc0_0 = MlasSveAddFloat32(pg0, acc0_0, svld1(pg0, out0_0));
             acc0_1 = MlasSveAddFloat32(pg1, acc0_1, svld1(pg1, out0_1));
@@ -556,12 +574,6 @@ processrows_4(
                 float a1 = a[1 * lda + p];
                 float a2 = a[2 * lda + p];
                 float a3 = a[3 * lda + p];
-                if constexpr (!Alpha1) {
-                    a0 *= alpha;
-                    a1 *= alpha;
-                    a2 *= alpha;
-                    a3 *= alpha;
-                }
                 svfloat32_t va0 = MlasSveBroadcastFloat32(a0);
                 svfloat32_t va1 = MlasSveBroadcastFloat32(a1);
                 svfloat32_t va2 = MlasSveBroadcastFloat32(a2);
@@ -573,6 +585,12 @@ processrows_4(
             }
         }
 
+        if constexpr (!Alpha1) {
+            acc0 = svmul_n_f32_x(pg, acc0, alpha);
+            acc1 = svmul_n_f32_x(pg, acc1, alpha);
+            acc2 = svmul_n_f32_x(pg, acc2, alpha);
+            acc3 = svmul_n_f32_x(pg, acc3, alpha);
+        }
         if constexpr (!ZeroMode) {
             acc0 = MlasSveAddFloat32(pg, acc0, svld1(pg, out0));
             acc1 = MlasSveAddFloat32(pg, acc1, svld1(pg, out1));
@@ -623,10 +641,6 @@ processrows_2(
                 svfloat32_t b1 = MlasSveLoadFloat32(pg1, b1_ptr);
                 float a0 = a[0 * lda + p];
                 float a1 = a[1 * lda + p];
-                if constexpr (!Alpha1) {
-                    a0 *= alpha;
-                    a1 *= alpha;
-                }
                 svfloat32_t va0 = MlasSveBroadcastFloat32(a0);
                 svfloat32_t va1 = MlasSveBroadcastFloat32(a1);
                 acc0_0 = MlasSveMultiplyAddFloat32(pg0, b0, va0, acc0_0);
@@ -634,6 +648,12 @@ processrows_2(
                 acc1_0 = MlasSveMultiplyAddFloat32(pg0, b0, va1, acc1_0);
                 acc1_1 = MlasSveMultiplyAddFloat32(pg1, b1, va1, acc1_1);
             }
+        }
+        if constexpr (!Alpha1) {
+            acc0_0 = svmul_n_f32_x(pg0, acc0_0, alpha);
+            acc0_1 = svmul_n_f32_x(pg1, acc0_1, alpha);
+            acc1_0 = svmul_n_f32_x(pg0, acc1_0, alpha);
+            acc1_1 = svmul_n_f32_x(pg1, acc1_1, alpha);
         }
         if constexpr (!ZeroMode) {
             acc0_0 = MlasSveAddFloat32(pg0, acc0_0, svld1(pg0, out0_0));
@@ -659,15 +679,15 @@ processrows_2(
                 svfloat32_t b0 = MlasSveLoadFloat32(pg, b_ptr);
                 float a0 = a[0 * lda + p];
                 float a1 = a[1 * lda + p];
-                if constexpr (!Alpha1) {
-                    a0 *= alpha;
-                    a1 *= alpha;
-                }
                 svfloat32_t va0 = MlasSveBroadcastFloat32(a0);
                 svfloat32_t va1 = MlasSveBroadcastFloat32(a1);
                 acc0 = MlasSveMultiplyAddFloat32(pg, b0, va0, acc0);
                 acc1 = MlasSveMultiplyAddFloat32(pg, b0, va1, acc1);
             }
+        }
+        if constexpr (!Alpha1) {
+            acc0 = svmul_n_f32_x(pg, acc0, alpha);
+            acc1 = svmul_n_f32_x(pg, acc1, alpha);
         }
         if constexpr (!ZeroMode) {
             acc0 = MlasSveAddFloat32(pg, acc0, svld1(pg, out0));
@@ -713,12 +733,14 @@ processrows_1(
                 svfloat32_t b0 = MlasSveLoadFloat32(pg0, b0_ptr);
                 svfloat32_t b1 = MlasSveLoadFloat32(pg1, b1_ptr);
                 float a0 = a[p];
-                if constexpr (!Alpha1)
-                    a0 *= alpha;
                 svfloat32_t va0 = MlasSveBroadcastFloat32(a0);
                 acc0 = MlasSveMultiplyAddFloat32(pg0, b0, va0, acc0);
                 acc1 = MlasSveMultiplyAddFloat32(pg1, b1, va0, acc1);
             }
+        }
+        if constexpr (!Alpha1) {
+            acc0 = svmul_n_f32_x(pg0, acc0, alpha);
+            acc1 = svmul_n_f32_x(pg1, acc1, alpha);
         }
         if constexpr (!ZeroMode) {
             acc0 = MlasSveAddFloat32(pg0, acc0, svld1(pg0, out0));
@@ -737,11 +759,12 @@ processrows_1(
                 const float* b_ptr = b + p * kMlasSvePackedBBlockWidth + col;
                 svfloat32_t b = MlasSveLoadFloat32(pg, b_ptr);
                 float a0 = a[p];
-                if constexpr (!Alpha1)
-                    a0 *= alpha;
                 svfloat32_t va0 = MlasSveBroadcastFloat32(a0);
                 acc = MlasSveMultiplyAddFloat32(pg, b, va0, acc);
             }
+        }
+        if constexpr (!Alpha1) {
+            acc = svmul_n_f32_x(pg, acc, alpha);
         }
         if constexpr (!ZeroMode) {
             acc = MlasSveAddFloat32(pg, acc, svld1(pg, out));
@@ -751,7 +774,7 @@ processrows_1(
 }
 
 template <auto ProcessFn>
-inline void
+MLAS_FORCEINLINE void
 ProcessRowsTemplate(
 
     const float* __restrict A,
