@@ -352,6 +352,9 @@ static bool TryGetRotaryEmbeddingArgs(Node& rotary_node, RotaryEmbeddingArgs& ar
   if (rotary_node.Domain() != kMSDomain) {
     return false;
   }
+  if (GetIntAttributeOrDefault(rotary_node, "use_fp32_arithmetic", 0) != 0) {
+    return false;
+  }
 
   args.interleaved = GetIntAttributeOrDefault(rotary_node, "interleaved", 0);
   args.rotary_embedding_dim = GetIntAttributeOrDefault(rotary_node, "rotary_embedding_dim", 0);

@@ -112,12 +112,14 @@ Status LaunchStandardBranchwiseRMSNorm(cudaStream_t stream, const T* x, const vo
                                        int scale_type, T* y, int groups, int branches,
                                        int hidden, bool shared_scale, float epsilon,
                                        float* widened, float* squares, float* sums, void* reduction_buffer,
-                                       size_t reduction_buffer_size, int input_row_stride) {
+                                       size_t reduction_buffer_size, int input_row_stride,
+                                       bool deterministic_compute) {
   const int64_t count = static_cast<int64_t>(groups) * hidden;
   const int64_t blocks = (count + kThreads - 1) / kThreads;
   ORT_RETURN_IF_NOT(blocks <= std::numeric_limits<int>::max(), "CUDA launch requires too many blocks");
   // Standard ReduceMean removes singleton dimensions and prefers row reduction for a scalar result.
-  if (groups == 1) {
+  // Row reduction uses floating-point atomics; column reduction combines indexed partials in a fixed order.
+  if (groups == 1 && !deterministic_compute) {
     BranchwiseSquareKernel<T><<<static_cast<int>(blocks), kThreads, 0, stream>>>(x, squares, count);
     ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
     ORT_RETURN_IF_ERROR((onnxruntime::cuda::reduce_matrix_rows<float, float>(
@@ -170,7 +172,7 @@ INSTANTIATE(__nv_bfloat16)
 
 #define INSTANTIATE_STANDARD(T)                                                                    \
   template Status LaunchStandardBranchwiseRMSNorm<T>(cudaStream_t, const T*, const void*, int, T*, \
-                                                     int, int, int, bool, float, float*, float*, float*, void*, size_t, int);
+                                                     int, int, int, bool, float, float*, float*, float*, void*, size_t, int, bool);
 INSTANTIATE_STANDARD(float)
 INSTANTIATE_STANDARD(half)
 INSTANTIATE_STANDARD(__nv_bfloat16)

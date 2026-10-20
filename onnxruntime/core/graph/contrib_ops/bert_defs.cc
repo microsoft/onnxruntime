@@ -6076,8 +6076,10 @@ The optional scale may have shape (C * H), (C, H), or (H). Arithmetic is
 performed in float32 and the result is converted to T.
 With use_onnx_arithmetic=1, compute FP32 square, mean, epsilon addition, square
 root, division, and scale multiplication with separate rounding boundaries.
-CUDA reuses the standard fast last-axis ReduceMean summation order. This mode
-does not substitute reciprocal square root or change the reduction tree.
+CUDA reuses the standard fast last-axis ReduceMean summation order by default.
+Deterministic CUDA sessions instead use a fixed-order reduction, which may
+round differently from the default reduction or deterministic ReduceMean.
+This mode does not substitute reciprocal square root.
 Optional Y_fp32 losslessly widens the already T-rounded Y to float32; it does
 not bypass the output rounding boundary and requires use_onnx_arithmetic=1.
 WebGPU currently supports only the default mode without Y_fp32.
