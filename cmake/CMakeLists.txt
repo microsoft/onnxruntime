@@ -391,6 +391,10 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
   endif()
 endif()
 
+if (onnxruntime_DISABLE_STREAM AND onnxruntime_ENABLE_TRAINING)
+  message(FATAL_ERROR "onnxruntime_DISABLE_STREAM=ON is not supported with onnxruntime_ENABLE_TRAINING=ON.")
+endif()
+
 
 # Single output directory for all binaries
 set(RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
