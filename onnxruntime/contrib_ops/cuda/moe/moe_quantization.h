@@ -116,6 +116,13 @@ class QMoE final : public CudaKernel, public MoEBase {
   bool enable_int2_gemv_ = false;
   bool enable_int2_prefill_ = false;
   bool enable_int2_large_experts_ = false;
+  bool int2_fake_int4_activations_ = false;
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  std::string calibration_capture_directory_;
+  std::string calibration_capture_name_;
+  mutable std::mutex calibration_capture_mutex_;
+  mutable size_t calibration_capture_count_ = 0;
+#endif
   int64_t row_tile_size_ = qmoe::kDisabledRowTileSize;
   int64_t int_dequant_max_scratch_bytes_ = int64_t{1} << 30;
 

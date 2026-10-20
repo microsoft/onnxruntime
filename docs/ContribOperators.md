@@ -900,8 +900,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   performed in float32 and the result is converted to T.
   With use_onnx_arithmetic=1, compute FP32 square, mean, epsilon addition, square
   root, division, and scale multiplication with separate rounding boundaries.
-  CUDA reuses the standard fast ReduceMean summation order, including its scalar-result
-  path; it does not substitute reciprocal square root or change the reduction tree.
+  CUDA reuses the standard fast ReduceMean summation order by default, including its scalar-result
+  path. Deterministic sessions instead use a fixed-order reduction, which may round differently.
+  This mode does not substitute reciprocal square root.
   For multiple rows, FP32-rounded squaring is performed during the reduction load rather
   than materializing a separate FP32 square tensor.
   Optional Y_fp32 losslessly widens the already T-rounded Y and requires
@@ -2164,7 +2165,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.FoldMid2"></a><a name="com.microsoft.foldmid2">**com.microsoft.FoldMid2**</a>
 
-  Combines speculative-token acceptance, recurrent-state commit bookkeeping, and head rotary-cache lookup for a two-token verification step. When `ctl[3]` is zero, the operator updates `ctl` and `ctx_commit` in place and writes a result record through the device-accessible pointer and capacity in `ptrs`.
+  Combines speculative-token acceptance, recurrent-state commit bookkeeping, and head rotary-cache lookup for a two-token verification step. Updated control and committed context are explicit outputs; CUDA may reuse their input buffers. Muted calls preserve state unless validation fails. Invalid head-cache length, rotary positions, or ring metadata set error bits 4, 8, or 16 in updated_ctl[5], mute generation, and return sel=-1 without committing context or accessing the ring. The caller supplies an aligned, device-accessible ring of capacity * 8 int64 elements; capacity must be positive.
 
 #### Version
 
@@ -2180,9 +2181,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>status</tt> : I32</dt>
 <dd>Status values aggregated into the result record.</dd>
 <dt><tt>ctl</tt> : I64</dt>
-<dd>Mutable eight-element control state.</dd>
+<dd>Eight-element control state.</dd>
 <dt><tt>ctx_commit</tt> : I64</dt>
-<dd>Mutable two-element committed context.</dd>
+<dd>Two-element committed context.</dd>
 <dt><tt>ctx_a</tt> : I64</dt>
 <dd>Context selected when the draft is rejected.</dd>
 <dt><tt>ctx_b</tt> : I64</dt>
@@ -2211,7 +2212,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>sin_out</tt> : B</dt>
 <dd>Two rows of rotary sine values.</dd>
 <dt><tt>sel</tt> : I64</dt>
-<dd>Selected row: one when the draft is accepted, otherwise zero.</dd>
+<dd>Selected row: one when accepted, zero when rejected, or -1 on invalid metadata.</dd>
+<dt><tt>updated_ctl</tt> : I64</dt>
+<dd>Updated control state with the same shape as ctl.</dd>
+<dt><tt>updated_ctx_commit</tt> : I64</dt>
+<dd>Updated committed context with the same shape as ctx_commit.</dd>
 </dl>
 
 #### Type Constraints
@@ -2228,7 +2233,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.FoldTail"></a><a name="com.microsoft.foldtail">**com.microsoft.FoldTail**</a>
 
-  Updates the next speculative draft token and aggregate error bit from the head result. When `ctl[3]` is zero, the operator updates the control tensor in place; muted calls return `done=0` without changing the state.
+  Updates the next speculative draft token and aggregate error bit from the head result. Control state is returned as updated_ctl, with supported CUDA input-buffer reuse. When ctl[3] is zero the draft is updated and nonzero status sets error bit 2; muted calls return done=0 and preserve control state.
 
 #### Version
 
@@ -2242,7 +2247,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>status</tt> : I32</dt>
 <dd>Head status values.</dd>
 <dt><tt>ctl</tt> : I64</dt>
-<dd>Mutable eight-element control state.</dd>
+<dd>Eight-element control state.</dd>
 </dl>
 
 #### Outputs
@@ -2250,6 +2255,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>done</tt> : I32</dt>
 <dd>One when the control state was updated; zero for muted calls.</dd>
+<dt><tt>updated_ctl</tt> : I64</dt>
+<dd>Updated control state with the same shape as ctl.</dd>
 </dl>
 
 #### Type Constraints
@@ -4765,6 +4772,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MtpMoe"></a><a name="com.microsoft.mtpmoe">**com.microsoft.MtpMoe**</a>
 
   Fused bfloat16 NVFP4 mixture-of-experts projection for multi-token prediction.
+  The row count must be between 1 and 65535. Scratch is fully initialized.
+  Non-finite router rows select valid experts 0 through 9 and report invalid routing
+  through NaN routing weights and output values.
 
 #### Version
 
