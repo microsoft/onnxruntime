@@ -459,10 +459,10 @@ TEST_F(WebGpuConcurrentContextTest, IndependentDataTransfersMultiThreadCopy) {
   auto& context = webgpu::WebGpuContextFactory::GetContext(0);
 
   std::array<webgpu::CommandRecordingState, kThreads> recordings;
-  std::array<std::unique_ptr<webgpu::DataTransferImpl>, kThreads> data_transfers;
+  std::array<std::unique_ptr<webgpu::DataTransfer>, kThreads> data_transfers;
   std::array<wgpu::Buffer, kThreads> gpu_buffers;
   for (int t = 0; t < kThreads; ++t) {
-    data_transfers[t] = std::make_unique<webgpu::DataTransferImpl>(context, context.BufferManager(), recordings[t]);
+    data_transfers[t] = std::make_unique<webgpu::DataTransfer>(context, context.BufferManager(), recordings[t], 0);
     wgpu::BufferDescriptor desc{};
     desc.size = kElements * sizeof(float);
     desc.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
@@ -476,13 +476,17 @@ TEST_F(WebGpuConcurrentContextTest, IndependentDataTransfersMultiThreadCopy) {
     threads.emplace_back([&, t]() {
       std::vector<float> input(kElements, static_cast<float>(t + 1));
       std::vector<float> output(kElements);
+      const TensorShape shape{static_cast<int64_t>(kElements)};
+      const OrtMemoryInfo cpu_info(CPU, OrtDeviceAllocator);
+      const OrtMemoryInfo gpu_info(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
+      Tensor input_tensor(DataTypeImpl::GetType<float>(), shape, input.data(), cpu_info);
+      Tensor output_tensor(DataTypeImpl::GetType<float>(), shape, output.data(), cpu_info);
+      Tensor gpu_tensor(DataTypeImpl::GetType<float>(), shape, gpu_buffers[t].Get(), gpu_info);
       start.arrive_and_wait();
       try {
         for (int i = 0; i < kIters && !sink.Failed(); ++i) {
-          ORT_THROW_IF_ERROR(data_transfers[t]->CopyTensor(input.data(), false, gpu_buffers[t].Get(), true,
-                                                           input.size() * sizeof(float)));
-          ORT_THROW_IF_ERROR(data_transfers[t]->CopyTensor(gpu_buffers[t].Get(), true, output.data(), false,
-                                                           output.size() * sizeof(float)));
+          ORT_THROW_IF_ERROR(data_transfers[t]->CopyTensor(input_tensor, gpu_tensor));
+          ORT_THROW_IF_ERROR(data_transfers[t]->CopyTensor(gpu_tensor, output_tensor));
           if (!std::all_of(output.begin(), output.end(), [&](float value) { return value == input[0]; })) {
             sink.Record("F.thread" + std::to_string(t) + " copied incorrect data");
           }

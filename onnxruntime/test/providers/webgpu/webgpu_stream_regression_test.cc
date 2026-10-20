@@ -14,7 +14,6 @@
 #include "core/graph/model.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/compute_context.h"
-#include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
@@ -62,10 +61,11 @@ TEST(WebGpuContextTest, FillZeroClearsSessionBuffer) {
 
   std::array<uint32_t, 16> data;
   data.fill(42);
-  webgpu::DataTransferImpl transfer(context, webgpu_ep.BufferManager(), recording);
-  ASSERT_STATUS_OK(transfer.CopyTensor(data.data(), false, buffer.Get(), true, sizeof(data)));
+  ASSERT_STATUS_OK(context.CopyTensor(webgpu_ep.BufferManager(), recording,
+                                      data.data(), false, buffer.Get(), true, sizeof(data)));
   compute_context.FillZero(tensor);
-  ASSERT_STATUS_OK(transfer.CopyTensor(buffer.Get(), true, data.data(), false, sizeof(data)));
+  ASSERT_STATUS_OK(context.CopyTensor(webgpu_ep.BufferManager(), recording,
+                                      buffer.Get(), true, data.data(), false, sizeof(data)));
   for (auto value : data) {
     EXPECT_EQ(value, 0u);
   }

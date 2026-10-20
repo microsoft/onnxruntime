@@ -3,7 +3,6 @@
 
 #include "sync_stream.h"
 
-#include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 
@@ -84,8 +83,7 @@ common::Status CopyTensorOnWebGpuStream(const OrtSyncStream* stream, const void*
                                         bool src_is_gpu, void* dst_data, bool dst_is_gpu, size_t bytes) {
   auto& ep = WebGpuSyncStream::From(stream).ep_;
   auto& context = WebGpuContextFactory::GetContext(ep.GetDeviceId());
-  DataTransferImpl transfer(context, ep.BufferManager(), ep.Recording());
-  return transfer.CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, bytes);
+  return context.CopyTensor(ep.BufferManager(), ep.Recording(), src_data, src_is_gpu, dst_data, dst_is_gpu, bytes);
 }
 
 }  // namespace ep

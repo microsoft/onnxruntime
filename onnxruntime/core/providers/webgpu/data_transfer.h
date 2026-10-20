@@ -5,7 +5,6 @@
 
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
-#include "core/providers/webgpu/webgpu_external_header.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -17,11 +16,11 @@ struct CommandRecordingState;
 // Object layers ("outer" is the IDataTransfer object held by a manager):
 // - Built-in Session and plugin-internal adapter:
 //     onnxruntime::webgpu::DataTransfer
-//       -> onnxruntime::webgpu::DataTransferImpl (impl_ member, stored by value).
+//       -> onnxruntime::webgpu::WebGpuContext::CopyTensor.
 // - Built-in Env, plugin Env, and plugin framework Session:
 //     onnxruntime::plugin_ep::DataTransfer (core/framework/plugin_data_transfer.h)
 //       -> onnxruntime::WebGpuDataTransferImpl (derived from OrtDataTransferImpl)
-//       -> onnxruntime::webgpu::DataTransferImpl (local to each CopyTensors call).
+//       -> onnxruntime::webgpu::WebGpuContext::CopyTensor.
 //   The outer wrapper holds the C API object through an OrtDataTransferImpl&
 //   and releases it via its Release callback. OrtDataTransferImpl is the C API
 //   base/function table, not an additional, separately allocated wrapper.
@@ -50,38 +49,15 @@ struct CommandRecordingState;
 // WebGpuDataTransferImpl, defined in webgpu_provider_factory.cc, uses per-call recording
 // for streamless copies, selecting the context from the GPU tensor's memory-device ID. Session-level
 // creation alone does not bind it to the requesting EP. In plugin builds, an explicit-stream copy uses
-// ep/sync_stream.cc to construct a temporary webgpu::DataTransferImpl with the
-// owning EP's BufferManager and recording, rather than the C API wrapper's
-// call-local recording.
+// ep/sync_stream.cc to call the owning EP's context with its BufferManager and
+// recording, rather than the C API wrapper's call-local recording.
 //
-// DataTransferImpl is the shared raw-pointer copy implementation used by both
-// DataTransfer (IDataTransfer subclass) and the C API wrapper.
-class DataTransferImpl {
- public:
-  DataTransferImpl(WebGpuContext& context, const BufferManager& buffer_manager, CommandRecordingState& recording)
-      : context_{context}, buffer_manager_{buffer_manager}, recording_{recording} {}
-
-  common::Status CopyTensor(void const* src_data,
-                            bool src_is_gpu,
-                            void* dst_data,
-                            bool dst_is_gpu,
-                            size_t bytes) const;
-
- private:
-  void Upload(const void* src, WGPUBuffer dst, size_t size) const;
-  void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const;
-  void Download(WGPUBuffer src, void* dst, size_t size) const;
-
-  WebGpuContext& context_;
-  const BufferManager& buffer_manager_;
-  CommandRecordingState& recording_;
-};
-
+// WebGpuContext owns the shared copy implementation and submission mechanics.
 class DataTransfer : public IDataTransfer {
  public:
   DataTransfer(WebGpuContext& context, const BufferManager& buffer_manager,
                CommandRecordingState& recording, int context_id)
-      : impl_{context, buffer_manager, recording}, context_id_{context_id} {}
+      : context_{context}, buffer_manager_{buffer_manager}, recording_{recording}, context_id_{context_id} {}
   ~DataTransfer() {};
 
   // Device-compatibility half of CanCopy, split out because it needs no BufferManager and so can
@@ -93,7 +69,9 @@ class DataTransfer : public IDataTransfer {
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const override;
 
  private:
-  DataTransferImpl impl_;
+  WebGpuContext& context_;
+  const BufferManager& buffer_manager_;
+  CommandRecordingState& recording_;
   int context_id_;
 };
 
