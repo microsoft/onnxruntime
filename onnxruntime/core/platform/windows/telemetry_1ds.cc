@@ -54,6 +54,15 @@ bool PrepareSampledProcessEvent(EventProperties& event) {
 
 namespace telemetry_internal {
 
+bool IsDllShutdownInProgress() {
+  using RtlDllShutdownInProgressFn = BOOLEAN(NTAPI*)();
+  const HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
+  const auto is_shutting_down =
+      ntdll == nullptr ? nullptr
+                       : reinterpret_cast<RtlDllShutdownInProgressFn>(::GetProcAddress(ntdll, "RtlDllShutdownInProgress"));
+  return is_shutting_down != nullptr && is_shutting_down();
+}
+
 const char* GetDefaultEncodedToken() {
   return "fllXSmJHWBYMX1cqWldIYU0KTA0IVnpWD0lkRloSWwhILF5WGmBDDUdEC1csC0NMZhZYWVEPBH9DWEhlR15MCl1UfgwPVWVDX0U=";
 }
