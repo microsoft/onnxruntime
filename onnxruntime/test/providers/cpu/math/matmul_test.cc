@@ -417,7 +417,7 @@ TEST(MathOpTest, MatMulFloat16Cpu) {
   test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
-#if defined(USE_CUDA) || defined(USE_COREML) || defined(USE_XNNPACK)
+#if defined(USE_CUDA) || defined(USE_COREML) || defined(USE_XNNPACK) || defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 TEST(MathOpTest, MatMulFloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -502,6 +502,12 @@ TEST(MathOpTest, MatMulZeroKInt32Type) {
 TEST(MathOpTest, MatMulZeroKDoubleType) {
   RunMatMulZeroKTest<double>();
 }
+
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+TEST(MathOpTest, MatMulZeroKFloat16Type) {
+  RunMatMulZeroKTest<MLFloat16>();
+}
+#endif
 
 template <typename T>
 void RunMatMulZeroKBroadcastCpuTest(bool transpose_a_with_vector_b = false) {
