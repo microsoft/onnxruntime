@@ -2740,8 +2740,10 @@ static Status ValidateWeightlessMode(const SessionOptions& session_options) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-// Warns if a model compiled with OrtWeightlessSupport_ALL is loaded without a source model. The EP may still
-// locate the source model via the "onnx_model_filename" EPContext node attribute, so this is not an error.
+// Warns if a model compiled with OrtWeightlessSupport_ALL is loaded without a source model. Whether the source model is
+// needed depends on the EP: EPs that load the initializer data themselves need it, while EPs that let ORT provide the
+// initializers get them from the compiled model. Such EPs may also still locate the source model via the
+// "onnx_model_filename" EPContext node attribute, so this is not an error.
 static void CheckWeightlessSourceModel(const SessionOptions& session_options, const Model& model,
                                        const logging::Logger& logger) {
   const auto& model_metadata = model.MetaData();
@@ -2755,10 +2757,10 @@ static void CheckWeightlessSourceModel(const SessionOptions& session_options, co
   const bool has_source_model_buffer = session_options.weightless_source_model_data != nullptr;
   if (!has_source_model_path && !has_source_model_buffer) {
     LOGS(logger, WARNING)
-        << "The model was compiled with weightless mode OrtWeightlessSupport_ALL, which requires the source model "
-        << "at runtime, but neither the '" << kOrtSessionOptionEpContextSourceModelPath
+        << "The model was compiled with weightless mode OrtWeightlessSupport_ALL. Depending on the EP, the source "
+        << "model may be needed at runtime, but neither the '" << kOrtSessionOptionEpContextSourceModelPath
         << "' session option nor a source model buffer (SessionOptionsSetWeightlessSourceModelBuffer) is set. "
-        << "The EP will try to locate the source model via the 'onnx_model_filename' EPContext node attribute.";
+        << "An EP that needs it will try to locate it via the 'onnx_model_filename' EPContext node attribute.";
   }
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)

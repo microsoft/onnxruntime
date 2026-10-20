@@ -126,6 +126,8 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
+  EpContextExternalDependencies GetEpContextExternalDependencies() const override;
+
   Status GetEpContextDataCallbackSupport(uint32_t& supported_flags) const override;
 
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
@@ -178,6 +180,9 @@ class PluginExecutionProvider : public IExecutionProvider {
   bool generate_ep_ctx_model_ = false;
   std::optional<std::string> weightless_mode_;  // Value of ep.enable_weightless_mode. std::nullopt if not set.
   bool legacy_weightless_requested_ = false;    // True if app set the deprecated ep.enable_weightless=1
+  bool has_initializer_location_func_ = false;  // True if app set an initializer location function for EPContext models
+  // External data the generated EPContext nodes depend on, determined in Compile() in weightless mode.
+  EpContextExternalDependencies ep_context_external_dependencies_;
 
   // Provider options extracted from session-level config (excluding arena.*).
   // Exposed through GetProviderOptions() so the framework reports the effective EP configuration.

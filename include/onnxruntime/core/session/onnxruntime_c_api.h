@@ -8293,8 +8293,10 @@ typedef enum OrtWeightlessSupport {
   OrtWeightlessSupport_EXTERNAL_ONLY = 1,
 
   /** Weightless mode for all initializers (internal and external).
-   *  When creating a session from an EPContext model compiled in this mode, the EP needs the source model at runtime.
-   *  The EP looks for it in this order:
+   *  When creating a session from an EPContext model compiled in this mode, the EP may need the source model at
+   *  runtime, depending on how it obtains the initializer data: an EP that loads the data itself needs it, while an EP
+   *  that lets ORT provide the initializers gets them from the compiled model. An EP that needs the source model looks
+   *  for it in this order:
    *  - the buffer set with OrtApi::SessionOptionsSetWeightlessSourceModelBuffer(),
    *  - the path in the "ep.context_source_model_path" session option (kOrtSessionOptionEpContextSourceModelPath),
    *  - the "onnx_model_filename" attribute of the EPContext node, resolved against the directory of the compiled

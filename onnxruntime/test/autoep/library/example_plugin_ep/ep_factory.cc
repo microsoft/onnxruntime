@@ -371,6 +371,9 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   std::string weightless_mode;
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessMode, "",
                                                  weightless_mode));
+  std::string test_weightless_drop_initializers;
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kExampleEpTestWeightlessDropInitializers, "0",
+                                                 test_weightless_drop_initializers));
 
   // Record the deprecated weightless option, which ORT sets to match "ep.enable_weightless_mode" before calling
   // CreateEp(). EPs built for earlier versions only know the deprecated option.
@@ -388,6 +391,15 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                : enable_weightless == "1"       ? 1
                                                                 : 2);
 
+  // Also record the older weightless option, which ORT disables for an explicit OrtWeightlessSupport_NONE.
+  std::string enable_weightless_ep_context_nodes;
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessEpContextNodes,
+                                                 "<not set>", enable_weightless_ep_context_nodes));
+  RecordEnableWeightlessEpContextNodesOption(enable_weightless_ep_context_nodes == "<not set>" ? -1
+                                             : enable_weightless_ep_context_nodes == "0"       ? 0
+                                             : enable_weightless_ep_context_nodes == "1"       ? 1
+                                                                                               : 2);
+
   ExampleEp::Config config = {};
   config.enable_ep_context = ep_context_enable == "1";
   config.embed_ep_context_in_model = ep_context_embed_mode == "1";
@@ -401,6 +413,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   } else if (enable_weightless == "1" || (config.enable_ep_context && weightless_ep_context_nodes_enable == "1")) {
     config.weightless_mode = OrtWeightlessSupport_ALL;
   }
+  config.drop_initializers_in_weightless_mode = test_weightless_drop_initializers == "1";
   if (!test_weightless_support.empty()) {
     config.weightless_support = static_cast<OrtWeightlessSupport>(std::stoi(test_weightless_support));
   }

@@ -2751,8 +2751,10 @@ struct OrtEp {
    * older hardware that requires weight transformation. The response must match the "weightless_supported_modes" EP
    * metadata entry (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes) reported for the device, or the
    * "weightless_support" entry (kOrtEpDevice_EpMetadataKey_WeightlessSupport) if the former is not reported, since
-   * applications use these entries to choose a mode. ORT logs a warning if they differ, and includes the difference
-   * in the error it returns when the requested mode is not supported.
+   * applications use these entries to choose a mode. An EP instance created for several devices supports the modes
+   * that all of them support, so its response must match the support common to the EP metadata of all its devices.
+   * ORT logs a warning if they differ, and includes the difference in the error it returns when the requested mode is
+   * not supported.
    *
    * A weightless EP obtains the initializer data in one of two ways:
    * - ORT-provided: the EP sets drop_constant_initializers to false in OrtNodeFusionOptions so that ORT provides

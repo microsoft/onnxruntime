@@ -1145,8 +1145,8 @@ TEST(PluginExecutionProviderTest, Compile_WeightlessSupportDoesNotMatchEpMetadat
   };
 
   const std::string mismatch =
-      "GetWeightlessSupport() returns 'external_only', which does not match the EP metadata: "
-      "EP metadata 'weightless_supported_modes' = 'all_or_external_only'";
+      "GetWeightlessSupport() returns 'external_only', but the EP metadata of the EP's devices supports "
+      "'all_or_external_only' in common: EP metadata 'weightless_supported_modes' = 'all_or_external_only'";
   auto has_mismatch_warning = [&mismatch](const std::vector<std::string>& messages) {
     return std::any_of(messages.begin(), messages.end(), [&mismatch](const std::string& message) {
       return message.find("[W:") != std::string::npos && message.find(mismatch) != std::string::npos;
@@ -1186,10 +1186,39 @@ TEST(PluginExecutionProviderTest, Compile_WeightlessSupportDoesNotMatchEpMetadat
     std::vector<std::string> messages;
     ASSERT_STATUS_OK(compile(legacy_ep_devices, "1", all_or_external_only, messages));
     const std::string legacy_mismatch =
-        "GetWeightlessSupport() returns 'all_or_external_only', which does not match the EP metadata: "
-        "EP metadata 'weightless_support' = 'all_or_external_only'";
+        "GetWeightlessSupport() returns 'all_or_external_only', but the EP metadata of the EP's devices includes "
+        "values that are not recognized: EP metadata 'weightless_support' = 'all_or_external_only'";
     EXPECT_TRUE(std::any_of(messages.begin(), messages.end(), [&legacy_mismatch](const std::string& message) {
       return message.find("[W:") != std::string::npos && message.find(legacy_mismatch) != std::string::npos;
+    }));
+  }
+
+  // An EP instance created for several devices supports the modes all of them support: here "external_only", common
+  // to a device that reports "all_or_external_only" and one that reports "external_only".
+  {
+    auto external_only_ep_device = test_plugin_ep::MakeTestOrtEpDevice(hw_device.get());
+    external_only_ep_device->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes, "external_only");
+    const std::vector<const OrtEpDevice*> heterogeneous_ep_devices{ep_device.get(), external_only_ep_device.get()};
+    auto has_any_warning = [](const std::vector<std::string>& messages) {
+      return std::any_of(messages.begin(), messages.end(), [](const std::string& message) {
+        return message.find("[W:") != std::string::npos &&
+               message.find("GetWeightlessSupport() returns") != std::string::npos;
+      });
+    };
+
+    // Matches the common support: no warning.
+    std::vector<std::string> messages;
+    ASSERT_STATUS_OK(compile(heterogeneous_ep_devices, "1", external_only, messages));
+    EXPECT_FALSE(has_any_warning(messages));
+
+    // Does not match the common support.
+    messages.clear();
+    ASSERT_STATUS_OK(compile(heterogeneous_ep_devices, "1", all_or_external_only, messages));
+    const std::string heterogeneous_mismatch =
+        "GetWeightlessSupport() returns 'all_or_external_only', but the EP metadata of the EP's devices supports "
+        "'external_only' in common:";
+    EXPECT_TRUE(std::any_of(messages.begin(), messages.end(), [&heterogeneous_mismatch](const std::string& message) {
+      return message.find("[W:") != std::string::npos && message.find(heterogeneous_mismatch) != std::string::npos;
     }));
   }
 }
