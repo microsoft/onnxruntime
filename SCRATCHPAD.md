@@ -971,3 +971,116 @@ Compressed project memory. This is not the execution plan.
   C1-C7/D1-D4 verified. Temp parent copies/builds/fixtures/probe binaries cleaned;
   reports, probe source, coverage exports/profiles and hashes retained.
   No merges. M11 remains pending and needs its own design/plan approval.
+
+## M11 - interview
+
+- User requested M11 on 2026-10-20. Clean verified M10 b03b4c2f72955e869401be4d8eaa277728dc6fa8
+  is the base of state/m11-package-chain-loading. No M11 implementation yet.
+- Clarified that prefill logits feed the decode SessionLoop, not the conventional
+  ONNX model's token-ID input. The decode loop owns the first and later samples;
+  prefill remains sampler-free. Existing prefill-sampling APIs remain unchanged.
+- User explicitly chose ONE M11 PR, not an M11a/M11b split.
+- First decode Step is sample-only: expose first token, zero model invocations.
+  Later Steps invoke decode. Initial token counts once and EOS/budget can finish
+  before any decode-model Run. Chain Step must stop on this observable progress,
+  not spin solely until result.executed/model invocation becomes true.
+- New mode budget0: prefill runs according to its explicit EndOfInputs policy;
+  decode invokes neither sampler nor model. Old mode zero-budget behavior stays.
+- Shared caller SessionOptions defaults plus optional per-step overrides.
+  Manifest generation policies are authoritative in M11; runtime token-limit/EOS
+  overrides deferred. Explicit chain name/no default and M10 ORT namespace split
+  remain approved.
+- Native bootstrap must carry actual consumed prompt length for masks/positions/
+  cache validation, not infer prompt length from logits. Existing candidate's
+  explicitly named prefill nonempty_input can identify the prompt binding.
+- Additional-requirements confirmation, SPEC Appendix K review and detailed
+  TASKS approval still pending. No library/runtime/build/commit/PR work for M11.
+- User confirmed NO additional requirements before drafting on 2026-10-20.
+  SPEC Appendix K is now a DRAFT for review, not implementation authorization.
+  Proposed native chain bootstrap record/setter uses explicit logits+prompt
+  sources; package derives prompt binding from source nonempty_input or explicit
+  initial_logits.prompt_input. Optional initial_logits.position is independent
+  of subsequent decoder row selection. Candidate JSON remains unchanged.
+- Proposed package C config: explicit chain name, shared SessionOptions and
+  fixed-stride per-step option records (complete snapshots, no opaque merge).
+  Append CreateSessionChain to OrtModelPackageApi; C++ context method returns
+  existing move-only SessionChain. Owned Sessions live with native definition,
+  retained by executions; Env/external resource obligations remain standard.
+- SPEC draft defines strict ORT payload grammar, cached/cache-free prompt-length
+  validation, observable sample-only Step flags/counts, zero decode budget with
+  real prefill work, old-mode compatibility and CPU/CUDA proof/coverage gates.
+  Detailed TASKS has not been prepared and implementation has not begun.
+- User APPROVED SPEC Appendix K on2026-10-20. Detailed M11 TASKS H0-H9 plan
+  drafted for separate review: onePR, native/bootstrap+C/C++ then strict loader/
+  owned packageSessions, CPU qualification first, realCUDA/proof/coverage later.
+- ENVIRONMENT CHANGE: GPUs8xA100 visible, but prior CUDA13.1/cuDNN root
+  /datadisks/disk4/bmeswani/cuda/cuda13.1 is gone; /usr/local/cuda points to absent
+  /datadisks/disk5/tianlei/cuda13.0. No nvcc/ncu/nsys/compute-sanitizer on PATH
+  or old locations. Existing GPU CMakeCaches still reference missing13.1 paths.
+- User chose CPU-FIRST PLAN WITH GPU QUALIFICATION BLOCKED UNTIL TOOLING RESTORED.
+  No toolchain install authorized. Stale GPU binaries are not M11 validation;
+  one readyPR/complete milestone requires rebuilt actualGPU tests and coverage.
+  Do not mix SDK versions, alter globalCUDA/driver state or silently waive tests.
+- Plan review pending. No M11 implementation/build/test/install/commit/PR yet;
+  only SPEC/TASKS/SCRATCHPAD changed on the M11 branch.
+- User APPROVED the CPU-first H0-H9 plan on2026-10-20. CPU implementation now
+  authorized; start H1 baseline, then H2-H6. H0/H7 GPU prerequisite/proof and
+  H8/H9 full coverage/readiness stay blocked. No install or GPU waiver authorized.
+- H1 CPU baseline PASS63native +52focusedpublic. H2 native bootstrap PASS3new
+  matrix tests and full66/66 native CPU; no reported skips. Tests cover budgets
+  0/1/3, float/half, cache/no-cache, masks/positions, all prompt source kinds,
+  first EOS, reset/prompt validation and NaN failure. Fixed first diagnostic
+  crash by handling token events only in Step's stopping condition, NEVER in
+  StepComponent's model-output/cache/invocation publication branch.
+- Native structs: ChainGenerationBootstrap(logits,prompt,optionalposition) is
+  appended to SessionChainComponent. LoopExecution::Bootstrap initializes state
+  via core/generate helper, validates cache lengths, evaluates exits, samples
+  once via shared Sample helper; it returns executedfalse + optionaltoken.
+  SessionChain::CreateOwned retains unique initialized Sessions; owned_sessions_
+  declared first so loops/providers destroy before Sessions. Ordinary Create
+  stays caller-owned. GPU-origin prepass added but UNVALIDATED without H0.
+- H3-H5 code written pending qualification: public size-tagged BootstrapConfig
+  setter/C++ Set/Clear; ModelPackageChainConfig+fixed per-step record; appended
+  ModelPackageApi factory + C++ context wrapper. abi_stateful_impl.h shares only
+  the opaque chain handle. model_package_chain.h/.cc parses typed selected-chain
+  metadata into native options + optional loop configs; optional vector needs
+  explicit inlinecapacity1 (first build caught default-inline-size assertion).
+  model_package_api reuses existing selection/CreateSession precedence, wraps
+  raw Session immediately before vector insertion, then CreateOwned; out unchanged
+  on error. New GetChainJson uses existing standalone borrowed JSON getter.
+- CPU build/API tests currently m11-api-loader-build-2 (known shellId), logs
+  m11-api-loader-build-2.log / m11-api-loader-tests.log. Public headers were
+  coherently batched but comment-only changes afterward may need final rebuild.
+  Positive package tests in test_model_package.cc cover sampler-free prefill,
+  source-independent model1/model2 export, sessions surviving context/options/
+  chain handle release, ordinary two-stage Sessions and per-step replacements.
+  New typed bootstrap test added in test_stateful_api.cc.
+- Next: finish compilation/positive tests, add strict parser negatives, C11/
+  noexceptions/minimal actual-source probes, CPU coverage and broader regression
+  qualification. No M11 commits/PR yet; GPU and full completion remain blocked.
+- CPU PHASE VERIFIED: full native69/69, unfiltered AutoEP148/148, zero reported
+  skips. Standalone shared/static5/5 each. Genuine C11 package consumer,
+  independent C++17/noexceptions clients and genuine frozen M10 header client
+  all pass. Actual production model_package_api.cc compiled minimal executes
+  NOT_IMPLEMENTED and preserves non-NULL out sentinel. Helper uses actual
+  flags.make because stale compile_commands omitted Session target; no stubbed
+  factory. Only generic CreateStatus forwarding is supplied by the probe.
+- Fresh CPU final-3 plus separate minimal profiles measure737/743 new production
+  lines: generate9/9, loop37/37, chain129/135, statefulAPI45/45, packageAPI90/90,
+  context14/14, parser400/400, C++inline13/13. SIX uncovered chain.cc180-185 GPU
+  prepass lines remain INCLUDED, not waived; M11 NOT100%/NOTcomplete. 358 dormant
+  hash0 maps, zero nonzero-function mismatch. Measured artifacts/hashes retained.
+- H1-H6 done. H0/H7/H8/H9 remain blocked pending restored CUDA/cuDNN/proof tools.
+  User did not authorize installation, GPU waiver, another PR or M12.
+- Runtime fixes during qualification: retain raw Session in unique_ptr BEFORE
+  vector insertion; retain standalone error status via RAII before formatting.
+  Tiny mul_1 model is X*W, not X*X; ordinary two-stage analytical reference is
+  cubes for inputW, explicitly compared with a programmatic chain.
+  Prefer CPUExecutionProvider correctly invokes its native descriptor (provider
+  counter, not direct CPU count). Tests assert actual route rather than proxy.
+- Related package docs now describe new factory/grammar/ownership/Step semantics.
+  Last C API header follow-up only adds explicit Doxygen struct association;
+  no executable/layout change after the final source/artifact proof.
+- Next persist verified CPU checkpoint (one eventual M11 PR on#24, not ready
+  while GPU blocked). No M11 commit/PR yet at this note. Keep minimal measured
+  object/probe/profiles; clean non-measured SDK binaries/fixture/header copies.

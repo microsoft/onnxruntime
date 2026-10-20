@@ -1464,6 +1464,13 @@ inline ModelPackageComponentContext ModelPackageContext::SelectComponent(
   return ModelPackageComponentContext{out};
 }
 
+inline SessionChain ModelPackageContext::CreateSessionChain(const Env& env,
+                                                            const OrtModelPackageChainConfig& config) const {
+  OrtSessionChain* out = nullptr;
+  ThrowOnError(GetModelPackageApi().CreateSessionChain(env, p_, &config, &out));
+  return SessionChain{out};
+}
+
 inline std::string ModelPackageComponentContext::GetSelectedVariantName() const {
   const char* name = nullptr;
   ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantName(this->p_, &name));
@@ -1555,6 +1562,17 @@ inline SessionChainOptions& SessionChainOptions::SetComponentProvider(
 
 inline SessionChain::SessionChain(const SessionChainOptions& options) {
   ThrowOnError(GetStatefulApi().CreateSessionChain(options, &p_));
+}
+
+inline SessionChainOptions& SessionChainOptions::SetGenerationBootstrap(
+    size_t component, const OrtStatefulGenerationBootstrapConfig& config) {
+  ThrowOnError(GetStatefulApi().SessionChainOptionsSetGenerationBootstrap(p_, component, &config));
+  return *this;
+}
+
+inline SessionChainOptions& SessionChainOptions::ClearGenerationBootstrap(size_t component) {
+  ThrowOnError(GetStatefulApi().SessionChainOptionsSetGenerationBootstrap(p_, component, nullptr));
+  return *this;
 }
 
 inline StatefulExecution SessionChain::CreateExecution(const OrtStatefulInputs& inputs) const {

@@ -214,6 +214,7 @@ class ModelPackageContext {
   // lifetime so no reopen/reparse happens per call.
   Status ResolveStringRef(const std::string& base_dir, const std::string& input,
                           bool must_exist, const char*& out_path) const;
+  Status GetChainJson(const std::string& name, std::string& out) const;
 
  private:
   // The open model_package library handle, kept alive for this context's lifetime so path

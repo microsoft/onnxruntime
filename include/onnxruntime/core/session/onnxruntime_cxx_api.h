@@ -872,6 +872,7 @@ struct Graph;
 struct Model;
 struct ModelPackageOptions;
 struct ModelPackageContext;
+struct SessionChain;
 struct ModelPackageComponentContext;
 struct Node;
 struct ModelMetadata;
@@ -1940,6 +1941,8 @@ struct ModelPackageContext : detail::Base<OrtModelPackageContext> {
   std::string ResolveStringRef(const char* base_dir, const char* input, bool must_exist) const;
   ModelPackageComponentContext SelectComponent(const char* component_name,
                                                const ModelPackageOptions& options) const;
+  /// Return an owned executable chain; Env/external resource obligations remain. \since Version 1.32.
+  SessionChain CreateSessionChain(const Env& env, const OrtModelPackageChainConfig& config) const;
 };
 
 /** \brief Context for a selected model package component and variant. */
@@ -3021,9 +3024,12 @@ struct SessionChainOptions : detail::Base<OrtSessionChainOptions> {
   SessionChainOptions& SetConfig(const OrtStatefulChainConfig& config);
   SessionChainOptions& SetComponentProvider(size_t component, OrtStatefulProviderFeature feature,
                                             const OrtStatefulProviderSelection& selection);
+  SessionChainOptions& SetGenerationBootstrap(size_t component, const OrtStatefulGenerationBootstrapConfig& config);
+  SessionChainOptions& ClearGenerationBootstrap(size_t component);
 };
 
-/** \brief Move-only immutable chain; Sessions must outlive its definition/executions.
+/** \brief Move-only immutable chain; programmatic Sessions remain caller-owned.
+ * Package-created chains retain their owned Sessions through their executions.
  * \since Version 1.32.
  */
 struct SessionChain : detail::Base<OrtSessionChain> {
@@ -3045,7 +3051,7 @@ struct StatefulExecution : detail::Base<OrtStatefulExecution> {
   using Base = detail::Base<OrtStatefulExecution>;
   using Base::Base;
   explicit StatefulExecution(std::nullptr_t) {}
-  StatefulStepResult Step();  ///< At most one invocation; intermediate outputs require Step.
+  StatefulStepResult Step();  ///< At most one invocation; bootstrap may emit a token without invoking a model.
   StatefulStepResult Run();   ///< Run to completion; return only the final result.
   void Reset();               ///< Reset progress/cache/generation and reuse original feeds.
   void Cancel();              ///< Atomic boundary request, not kernel preemption.

@@ -573,6 +573,21 @@ size_t ModelPackageContext::GetComponentCount() const noexcept {
   return model_package_info_.components.size();
 }
 
+Status ModelPackageContext::GetChainJson(const std::string& name, std::string& out) const {
+  ORT_RETURN_IF(model_package_info_.schema_version_major != 1 || model_package_info_.schema_version_minor < 1,
+                "Executable chains require package schema 1.1 or newer");
+  const char* json = nullptr;
+  if (auto* status =
+          ::ModelPackage_GetChainJson(static_cast<::ModelPackage*>(package_handle_.get()), name.c_str(), &json)) {
+    std::unique_ptr<::ModelPackageStatus, decltype(&::ModelPackageStatus_Release)> error(status,
+                                                                                         ::ModelPackageStatus_Release);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "chain '", name,
+                           "': ", ::ModelPackageStatus_Message(error.get()));
+  }
+  out = json;
+  return Status::OK();
+}
+
 Status ModelPackageContext::ResolveStringRef(const std::string& base_dir,
                                              const std::string& input,
                                              bool must_exist,

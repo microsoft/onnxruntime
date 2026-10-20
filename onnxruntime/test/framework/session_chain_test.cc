@@ -12,6 +12,8 @@
 #include "core/session/inference_session.h"
 #include "core/session/IOBinding.h"
 #include "core/session/session_chain.h"
+#include "core/session/model_package/model_package_chain.h"
+#include "nlohmann/json.hpp"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
@@ -1456,6 +1458,418 @@ TEST_P(SessionChainTest, ZeroAndSingleTokenBudgetsAvoidExtraDecodeInvocations) {
       EXPECT_EQ(*result.outputs.at("tokens").Get<Tensor>().Data<int64_t>(), 1);
     }
   }
+}
+
+SessionChainOptions BootstrapChain(InferenceSession& prefill, InferenceSession& decode, int64_t budget,
+                                   bool cached = true) {
+  auto first = GenerationOptions(TokenGenerationPhase::Prefill, std::nullopt, false);
+  first.generation.reset();
+  first.nonempty_input = "input_ids";
+  auto second = GenerationOptions(TokenGenerationPhase::Decode, budget, true);
+  if (!cached) {
+    first.kv_caches.clear();
+    second.kv_caches.clear();
+    first.output_names = {"logits"};
+    second.output_names = {"logits"};
+  }
+  auto options = GenerationChain(prefill, decode, std::move(first), std::move(second));
+  options.components[1].generation_bootstrap =
+      ChainGenerationBootstrap{Output(0, "logits"), External("prompt"), std::nullopt};
+  options.outputs[0].component_index = 1;
+  return options;
+}
+
+ONNX_NAMESPACE::ModelProto BootstrapModel(bool auxiliary, bool half, bool cached) {
+  auto model = GenerationModel(auxiliary, half);
+  if (!cached) {
+    auto& graph = *model.mutable_graph();
+    graph.mutable_input()->DeleteSubrange(1, 1);
+    graph.mutable_output()->DeleteSubrange(1, 1);
+    for (int i = graph.node_size() - 1; i >= 0; --i) {
+      if (graph.node(i).op_type() == "Concat") graph.mutable_node()->DeleteSubrange(i, 1);
+    }
+  }
+  return model;
+}
+
+TEST_P(SessionChainTest, BootstrapStepsBudgetsCacheFreeMasksAndReset) {
+  for (bool cached : {false, true}) {
+    for (bool half : {false, true}) {
+      for (int64_t budget : {0, 1, 3}) {
+        auto prefill = Session(BootstrapModel(false, half, cached));
+        auto decode = Session(BootstrapModel(true, half, cached));
+        auto options = BootstrapChain(*prefill, *decode, budget, cached);
+        auto execution = Execution(options, {{{"prompt", Value<int64_t>({1, 2}, {0, 1})}}});
+        SessionChainStepResult first;
+        ASSERT_STATUS_OK(execution->Step(first));
+        EXPECT_TRUE(first.executed);
+        EXPECT_EQ(first.invocations, 1);
+        EXPECT_EQ(first.generated_tokens, 0);
+        EXPECT_EQ(first.component_name, "prefill");
+        EXPECT_FALSE(first.component_result.generated_token);
+        SessionChainStepResult initial;
+        ASSERT_STATUS_OK(execution->Step(initial));
+        EXPECT_FALSE(initial.executed);
+        EXPECT_EQ(initial.invocations, 1);
+        EXPECT_EQ(initial.component_result.iterations, 0);
+        EXPECT_TRUE(initial.component_outputs.empty());
+        EXPECT_EQ(prefill->calls, 1u);
+        EXPECT_EQ(decode->calls, 0u);
+        EXPECT_EQ(initial.component_result.generated_token.has_value(), budget > 0);
+        EXPECT_EQ(initial.generated_tokens, budget > 0 ? 1 : 0);
+        EXPECT_EQ(initial.completed, budget <= 1);
+        if (budget > 0) EXPECT_EQ(*initial.component_result.generated_token, 2);
+        SessionChainStepResult final;
+        if (initial.completed) {
+          final = initial;
+        } else {
+          ASSERT_STATUS_OK(execution->Step(final));
+          EXPECT_EQ(final.component_result.generated_token, 3);
+          EXPECT_EQ(final.component_outputs.at("positions_seen").Get<Tensor>().Data<int64_t>()[0], 2);
+          EXPECT_EQ(final.component_outputs.at("mask_seen").Get<Tensor>().Shape(), (TensorShape{1, 3}));
+          ASSERT_STATUS_OK(execution->Run(final));
+          EXPECT_EQ(final.component_outputs.at("positions_seen").Get<Tensor>().Data<int64_t>()[0], 3);
+          EXPECT_EQ(final.component_outputs.at("mask_seen").Get<Tensor>().Shape(), (TensorShape{1, 4}));
+        }
+        EXPECT_TRUE(final.completed);
+        EXPECT_EQ(final.generated_tokens, budget);
+        EXPECT_EQ(final.invocations, std::max<int64_t>(1, budget));
+        EXPECT_EQ(decode->calls, static_cast<size_t>(std::max<int64_t>(0, budget - 1)));
+        const auto& tokens = final.outputs.at("tokens").Get<Tensor>();
+        EXPECT_EQ(tokens.Shape(), TensorShape{budget});
+        for (int64_t i = 0; i < budget; ++i) EXPECT_EQ(tokens.Data<int64_t>()[i], (i + 2) % 4);
+        EXPECT_EQ(execution->Generation()->processed_tokens, 2 + std::max<int64_t>(0, budget - 1));
+        SessionChainStepResult repeated;
+        ASSERT_STATUS_OK(execution->Step(repeated));
+        EXPECT_FALSE(repeated.executed);
+        EXPECT_FALSE(repeated.component_result.generated_token);
+        EXPECT_TRUE(repeated.outputs.empty());
+        auto retained = final.outputs.at("tokens");
+        ASSERT_STATUS_OK(execution->Reset());
+        EXPECT_TRUE(execution->Generation()->token_ids.empty());
+        EXPECT_EQ(execution->Generation()->processed_tokens, 0);
+        ASSERT_STATUS_OK(execution->Run(final));
+        EXPECT_EQ(final.generated_tokens, budget);
+        EXPECT_EQ(retained.Get<Tensor>().Shape(), TensorShape{budget});
+        EXPECT_EQ(prefill->calls, 2u);
+      }
+    }
+  }
+}
+
+TEST_P(SessionChainTest, BootstrapInitialPositionPromptSourcesAndFirstEos) {
+  for (int variant = 0; variant < 5; ++variant) {
+    const auto kind = variant == 4 ? ChainSourceKind::State : static_cast<ChainSourceKind>(variant);
+    auto source_model = GenerationModel(false);
+    auto& graph = *source_model.mutable_graph();
+    stateful::SetTensorType(*graph.add_output(), "prompt_seen", ONNX_NAMESPACE::TensorProto_DataType_INT64, {1, -1});
+    stateful::AddNode(graph, "Identity", {"input_ids"}, "prompt_seen");
+    auto prefill = Session(std::move(source_model));
+    auto decode = Session(GenerationModel());
+    auto options = BootstrapChain(*prefill, *decode, 1);
+    options.components[1].generation_bootstrap->logits_position = 0;
+    auto& prompt = options.components[1].generation_bootstrap->prompt;
+    prompt = {kind, "seed_prompt", 0};
+    auto value = Value<int64_t>({1, 2}, {0, 1});
+    SessionChainInputs inputs{{{"prompt", value}}};
+    if (kind == ChainSourceKind::ExternalInput) {
+      inputs.inputs.emplace("seed_prompt", value);
+    } else if (kind == ChainSourceKind::ExternalSequence) {
+      inputs.sequences.emplace("seed_prompt", InlinedVector<OrtValue>{value});
+    } else if (kind == ChainSourceKind::State) {
+      if (variant == 4) {
+        options.components[0].state_outputs = {{"seed_prompt", "prompt_seen"}};
+      } else {
+        inputs.initial_state.emplace("seed_prompt", value);
+      }
+    } else {
+      prompt.name = "prompt_seen";
+    }
+    auto decode_options = GenerationOptions(TokenGenerationPhase::Decode, 1);
+    decode_options.exit_conditions.push_back({LoopExitKind::Eos, 0, "", {1}});
+    options.components[1].execution = Loop(*decode, decode_options);
+    auto execution = Execution(options, inputs);
+    SessionChainStepResult result;
+    ASSERT_STATUS_OK(execution->Run(result));
+    EXPECT_EQ(result.generated_tokens, 1);
+    EXPECT_EQ(result.component_result.generated_token, 1);
+    EXPECT_EQ(prefill->calls, 1u);
+    EXPECT_EQ(decode->calls, 0u);
+    EXPECT_EQ(result.component_result.exit_reasons,
+              (InlinedVector<LoopExitKind>{LoopExitKind::MaxGeneratedTokens, LoopExitKind::Eos}));
+  }
+}
+
+TEST_P(SessionChainTest, BootstrapValidatesPromptsBeforePrefillAndFailuresRequireReset) {
+  auto prefill = Session(GenerationModel(false));
+  auto decode = Session(GenerationModel());
+  const auto options = BootstrapChain(*prefill, *decode, 0);
+  std::shared_ptr<const SessionChain> chain;
+  ASSERT_STATUS_OK(SessionChain::Create(options, chain));
+  for (const auto& prompt : {Value<int64_t>({1, 0}, {}), Value<int64_t>({1, 1}, {-1}), Value<float>({1, 1}, {0.f})}) {
+    std::unique_ptr<SessionChainExecution> execution;
+    EXPECT_FALSE(chain->CreateExecution({{{"prompt", prompt}}}, execution).IsOK());
+    EXPECT_EQ(execution, nullptr);
+    EXPECT_EQ(prefill->calls, 0u);
+  }
+  auto model = GenerationModel(false);
+  model.mutable_graph()->mutable_initializer(0)->set_float_data(1, std::numeric_limits<float>::quiet_NaN());
+  auto nan_prefill = Session(std::move(model));
+  auto execution = Execution(BootstrapChain(*nan_prefill, *decode, 2), {{{"prompt", Value<int64_t>({1, 2}, {0, 1})}}});
+  SessionChainStepResult result;
+  ASSERT_STATUS_OK(execution->Step(result));
+  EXPECT_FALSE(execution->Step(result).IsOK());
+  EXPECT_TRUE(execution->RequiresReset());
+  EXPECT_EQ(nan_prefill->calls, 1u);
+  EXPECT_EQ(decode->calls, 0u);
+  ASSERT_STATUS_OK(execution->Reset());
+  EXPECT_FALSE(execution->RequiresReset());
+}
+
+nlohmann::ordered_json PackageBootstrapJson() {
+  return nlohmann::ordered_json::parse(R"({
+    "steps":[
+      {"id":"prefill","component":"decoder","executor_info":{"ort":{
+        "kind":"session_loop",
+        "inputs":{"token":{"kind":"external_sequence","name":"prompt"}},
+        "loop":{"finite_input_names":["token"],"nonempty_input":"token",
+          "exit_conditions":[{"kind":"end_of_inputs"}],
+          "cache_provider":{"mode":"cpu"},
+          "kv_caches":[{"cache":"key","input":"past_key","output":"present_key","update":"share"}]}
+      }}},
+      {"id":"decode","component":"decoder","executor_info":{"ort":{
+        "kind":"session_loop",
+        "loop":{"exit_conditions":[{"kind":"max_generated_tokens","limit":3}],
+          "generation":{"phase":"decode","input_ids":"token","logits_output":"logits",
+            "initial_logits":{"kind":"model_output","step":"prefill","output":"logits"}},
+          "sampler":{"algorithm":"greedy","provider":{"mode":"cpu"}},
+          "kv_caches":[{"cache":"key","input":"past_key","output":"present_key","update":"share"}]}
+      }}}
+    ],
+    "executor_info":{"ort":{
+      "kv_caches":{"key":{"element_type":"float32","shape":[1,1,0,1],"sequence_axis":2,"initial_capacity":8}},
+      "outputs":{"tokens":{"kind":"generated_token_ids","step":"decode"}}
+    }}
+  })");
+}
+
+TEST_P(SessionChainTest, BootstrapDefinitionAndCacheLengthErrorsAreExplicit) {
+  auto prefill = Session(GenerationModel(false));
+  auto decode = Session(GenerationModel());
+  const auto valid = BootstrapChain(*prefill, *decode, 3);
+  for (int kind = 0; kind < 9; ++kind) {
+    auto invalid = valid;
+    auto& bootstrap = *invalid.components[1].generation_bootstrap;
+    if (kind == 0) bootstrap.logits.kind = ChainSourceKind::ExternalInput;
+    if (kind == 1) bootstrap.logits.component_index = 1;
+    if (kind == 2) bootstrap.logits.name = "missing";
+    if (kind == 3) bootstrap.prompt.name.clear();
+    if (kind == 4) bootstrap.prompt.kind = static_cast<ChainSourceKind>(42);
+    if (kind == 5) bootstrap.prompt = Output(1, "logits");
+    if (kind == 6) bootstrap.prompt = Output(0, "logits");
+    if (kind == 7) bootstrap.prompt = State("key");
+    if (kind == 8) bootstrap.logits_position = -1;
+    std::shared_ptr<const SessionChain> chain;
+    EXPECT_FALSE(SessionChain::Create(invalid, chain).IsOK());
+    EXPECT_EQ(chain, nullptr);
+  }
+  {
+    auto invalid = valid;
+    invalid.components[0].generation_bootstrap = valid.components[1].generation_bootstrap;
+    std::shared_ptr<const SessionChain> chain;
+    EXPECT_FALSE(SessionChain::Create(invalid, chain).IsOK());
+  }
+  {
+    auto invalid = valid;
+    auto options = GenerationOptions(TokenGenerationPhase::Decode);
+    options.kv_caches[0].cache.name = "other";
+    invalid.components[1].execution = Loop(*decode, options);
+    std::shared_ptr<const SessionChain> chain;
+    EXPECT_FALSE(SessionChain::Create(invalid, chain).IsOK());
+    options.kv_caches.clear();
+    invalid.components[1].execution = Loop(*decode, options);
+    EXPECT_FALSE(SessionChain::Create(invalid, chain).IsOK());
+  }
+  auto model = GenerationModel(false);
+  for (auto& node : *model.mutable_graph()->mutable_node()) {
+    if (node.op_type() == "Concat") node.add_input("new_key");
+  }
+  auto doubled = Session(std::move(model));
+  auto execution = Execution(BootstrapChain(*doubled, *decode, 3), {{{"prompt", Value<int64_t>({1, 2}, {0, 1})}}});
+  SessionChainStepResult result;
+  ASSERT_STATUS_OK(execution->Step(result));
+  EXPECT_FALSE(execution->Step(result).IsOK());
+  EXPECT_TRUE(execution->RequiresReset());
+  EXPECT_EQ(decode->calls, 0u);
+  ASSERT_STATUS_OK(execution->Reset());
+  TokenGenerationState state;
+  const auto prompt = Value<int64_t>({1, 2}, {0, 1});
+  ASSERT_STATUS_OK(TokenGeneration::InitializeFromPrompt(prompt, state));
+  EXPECT_EQ(state.processed_tokens, 2);
+  EXPECT_FALSE(TokenGeneration::InitializeFromPrompt(prompt, state).IsOK());
+}
+
+TEST(ModelPackageChainParserTest, TypedPoliciesAndBindingEnvelopes) {
+  using Json = nlohmann::ordered_json;
+  const auto base = PackageBootstrapJson();
+  ModelPackageChainDefinition parsed;
+  ASSERT_STATUS_OK(ParseModelPackageChain(base.dump(), parsed));
+  ASSERT_TRUE(parsed.options.components[1].generation_bootstrap);
+  EXPECT_EQ(parsed.options.components[1].generation_bootstrap->prompt.kind, ChainSourceKind::ExternalSequence);
+  for (const char* type : {"float32", "float16", "bfloat16"}) {
+    for (const char* update : {"share", "copy", "append"}) {
+      auto value = base;
+      value["executor_info"]["ort"]["kv_caches"]["key"]["element_type"] = type;
+      value["steps"][0]["executor_info"]["ort"]["loop"]["kv_caches"][0]["update"] = update;
+      ASSERT_STATUS_OK(ParseModelPackageChain(value.dump(), parsed));
+    }
+  }
+  for (const char* mode : {"prefer_provider", "require_provider"}) {
+    for (const char* device : {"cpu", "gpu", "npu"}) {
+      auto value = base;
+      value["steps"][1]["executor_info"]["ort"]["loop"]["sampler"]["provider"] = {
+          {"mode", mode}, {"provider_name", "CPUExecutionProvider"}, {"device_type", device}, {"device_id", 0}};
+      ASSERT_STATUS_OK(ParseModelPackageChain(value.dump(), parsed));
+    }
+  }
+  for (const char* kind : {"external_input", "state"}) {
+    auto value = base;
+    value["steps"][0]["executor_info"]["ort"]["inputs"]["token"]["kind"] = kind;
+    ASSERT_STATUS_OK(ParseModelPackageChain(value.dump(), parsed));
+  }
+  auto value = base;
+  auto& prefill = value["steps"][0]["executor_info"]["ort"];
+  prefill["state_outputs"] = {{"saved", "logits"}};
+  prefill["loop"]["feedback"] = Json::array({{{"input", "past_key"}, {"output", "present_key"}}});
+  auto& decode = value["steps"][1]["executor_info"]["ort"]["loop"];
+  decode["generation"]["attention_mask"] = "mask";
+  decode["generation"]["position_ids"] = "positions";
+  decode["generation"]["logits_position"] = 0;
+  decode["generation"]["initial_logits"]["position"] = 1;
+  decode["generation"]["initial_logits"]["prompt_input"] = "token";
+  decode["sampler"].erase("provider");
+  decode["generated_token_output"] = "token_output";
+  EXPECT_FALSE(ParseModelPackageChain(value.dump(), parsed).IsOK());
+  decode.erase("generated_token_output");
+  ASSERT_STATUS_OK(ParseModelPackageChain(value.dump(), parsed));
+  EXPECT_EQ(parsed.loops[1]->generation->attention_mask, "mask");
+  EXPECT_EQ(parsed.options.components[1].generation_bootstrap->logits_position, 1);
+  value = base;
+  auto generation = value["steps"][1]["executor_info"]["ort"]["loop"]["generation"];
+  generation["phase"] = "prefill";
+  generation.erase("initial_logits");
+  value["steps"][0]["executor_info"]["ort"]["loop"]["generation"] = generation;
+  value["steps"][0]["executor_info"]["ort"]["loop"]["sampler"] = {{"algorithm", "greedy"}};
+  value["steps"][1]["executor_info"]["ort"]["loop"]["generation"].erase("initial_logits");
+  ASSERT_STATUS_OK(ParseModelPackageChain(value.dump(), parsed));
+  value = base;
+  value["steps"][0]["executor_info"]["ort"]["kind"] = "session";
+  value["steps"][0]["executor_info"]["ort"].erase("loop");
+  value["steps"][0]["executor_info"]["ort"]["kv_caches"] =
+      base["steps"][0]["executor_info"]["ort"]["loop"]["kv_caches"];
+  value["steps"][0]["executor_info"]["ort"]["cache_provider"] = {{"mode", "cpu"}};
+  value["steps"][1]["executor_info"]["ort"]["loop"]["generation"]["initial_logits"]["prompt_input"] = "token";
+  ASSERT_STATUS_OK(ParseModelPackageChain(value.dump(), parsed));
+  value = base;
+  value["executor_info"]["ort"]["outputs"] = {
+      {"logits", {{"kind", "model_output"}, {"step", "prefill"}, {"output", "logits"}}}};
+  value["steps"][1]["executor_info"]["ort"]["loop"]["exit_conditions"] =
+      Json::array({{{"kind", "max_iterations"}, {"limit", 3}},
+                   {{"kind", "eos"}, {"token_ids", {2, 3}}},
+                   {{"kind", "boolean_output"}, {"output", "done"}}});
+  ASSERT_STATUS_OK(ParseModelPackageChain(value.dump(), parsed));
+  EXPECT_EQ(parsed.loops[1]->exit_conditions.size(), 3u);
+}
+
+TEST(ModelPackageChainParserTest, RejectsMalformedPayloadsWithoutPublishingPartialDefinition) {
+  using Json = nlohmann::ordered_json;
+  const auto base = PackageBootstrapJson();
+  ModelPackageChainDefinition parsed;
+  ASSERT_STATUS_OK(ParseModelPackageChain(base.dump(), parsed));
+  InlinedVector<Json> invalid;
+  auto corrupt = [&](const char* pointer, Json replacement) {
+    auto value = base;
+    value[Json::json_pointer(pointer)] = std::move(replacement);
+    invalid.push_back(std::move(value));
+  };
+  for (const auto& value : {Json(), Json(false), Json(1), Json("bad"), Json::array()}) invalid.push_back(value);
+  corrupt("/steps", Json::array());
+  corrupt("/steps", "bad");
+  corrupt("/steps/0/id", "");
+  corrupt("/steps/1/id", "prefill");
+  corrupt("/steps/0/component", false);
+  corrupt("/executor_info", nullptr);
+  corrupt("/executor_info/ort", Json::array());
+  corrupt("/executor_info/ort/scripts", true);
+  corrupt("/executor_info/ort/kv_caches", Json::array());
+  corrupt("/executor_info/ort/kv_caches/key/element_type", "int8");
+  corrupt("/executor_info/ort/kv_caches/key/shape", false);
+  corrupt("/executor_info/ort/kv_caches/key/shape", Json::array());
+  corrupt("/executor_info/ort/kv_caches/key/shape/0", -1);
+  corrupt("/executor_info/ort/kv_caches/key/sequence_axis", 99);
+  corrupt("/executor_info/ort/kv_caches/key/initial_capacity", -1);
+  corrupt("/executor_info/ort/kv_caches/key/initial_capacity", std::numeric_limits<uint64_t>::max());
+  corrupt("/executor_info/ort/kv_caches/key/extra", 1);
+  corrupt("/steps/0/executor_info", nullptr);
+  corrupt("/steps/0/executor_info/ort/kind", "script");
+  corrupt("/steps/0/executor_info/ort/script", "run()");
+  corrupt("/steps/0/executor_info/ort/inputs", false);
+  corrupt("/steps/0/executor_info/ort/inputs/token/kind", "unknown");
+  corrupt("/steps/0/executor_info/ort/inputs/token/name", "");
+  corrupt("/steps/0/executor_info/ort/inputs/token/name", std::string("p\0x", 3));
+  corrupt("/steps/0/executor_info/ort/inputs/token/unknown", 1);
+  corrupt("/steps/0/executor_info/ort/state_outputs", 0);
+  corrupt("/steps/0/executor_info/ort/state_outputs/saved", false);
+  corrupt("/steps/0/executor_info/ort/loop", nullptr);
+  corrupt("/steps/0/executor_info/ort/loop/finite_input_names", 1);
+  corrupt("/steps/0/executor_info/ort/loop/finite_input_names/0", 1);
+  corrupt("/steps/0/executor_info/ort/loop/feedback", false);
+  corrupt("/steps/0/executor_info/ort/loop/feedback", Json::array({{{"input", "token"}}}));
+  corrupt("/steps/0/executor_info/ort/loop/exit_conditions", Json::array());
+  corrupt("/steps/0/executor_info/ort/loop/exit_conditions", false);
+  corrupt("/steps/0/executor_info/ort/loop/exit_conditions/0/kind", "custom_predicate");
+  corrupt("/steps/0/executor_info/ort/loop/kv_caches", Json::object());
+  corrupt("/steps/0/executor_info/ort/loop/kv_caches/0/cache", "missing");
+  corrupt("/steps/0/executor_info/ort/loop/kv_caches/0/update", "reserve");
+  corrupt("/steps/0/executor_info/ort/loop/cache_provider/mode", "automatic");
+  corrupt("/steps/0/executor_info/ort/loop/cache_provider",
+          {{"mode", "automatic"}, {"provider_name", "CPUExecutionProvider"}, {"device_type", "cpu"}, {"device_id", 0}});
+  corrupt("/steps/0/executor_info/ort/loop/cache_provider/device_type", "other");
+  corrupt("/steps/0/executor_info/ort/loop/cache_provider/device_id", -1);
+  corrupt("/steps/1/executor_info/ort/loop/generation", false);
+  corrupt("/steps/1/executor_info/ort/loop/generation/phase", "automatic");
+  corrupt("/steps/1/executor_info/ort/loop/generation/phase", "prefill");
+  corrupt("/steps/1/executor_info/ort/loop/generation/logits_position", -1);
+  corrupt("/steps/1/executor_info/ort/loop/generation/initial_logits/kind", "external_input");
+  corrupt("/steps/1/executor_info/ort/loop/generation/initial_logits/step", "decode");
+  corrupt("/steps/1/executor_info/ort/loop/generation/initial_logits/step", "missing");
+  corrupt("/steps/1/executor_info/ort/loop/generation/initial_logits/prompt_input", "missing");
+  corrupt("/steps/1/executor_info/ort/loop/generation/initial_logits/position", -1);
+  corrupt("/steps/1/executor_info/ort/loop/sampler", nullptr);
+  corrupt("/steps/1/executor_info/ort/loop/sampler/algorithm", "random");
+  corrupt("/steps/1/executor_info/ort/loop/sampler/provider/mode", "require_provider");
+  corrupt("/steps/1/executor_info/ort/loop/generated_token_output", "token_output");
+  corrupt("/steps/1/executor_info/ort/loop/exit_conditions/0/limit", -1);
+  corrupt("/steps/1/executor_info/ort/loop/exit_conditions/0/limit", 1.5);
+  corrupt("/steps/1/executor_info/ort/loop/exit_conditions/0/kind", "eos");
+  corrupt("/steps/1/executor_info/ort/loop/exit_conditions/0", {{"kind", "eos"}, {"token_ids", false}});
+  corrupt("/executor_info/ort/outputs", Json::object());
+  corrupt("/executor_info/ort/outputs/tokens/step", "missing");
+  corrupt("/executor_info/ort/outputs/tokens/step", "prefill");
+  corrupt("/executor_info/ort/outputs/tokens/kind", "external_input");
+  for (const auto& value : invalid) {
+    const auto status = ParseModelPackageChain(value.dump(), parsed);
+    EXPECT_FALSE(status.IsOK()) << value.dump();
+    EXPECT_EQ(parsed.options.components.size(), 2u);
+    EXPECT_EQ(parsed.options.components[0].name, "prefill");
+  }
+  auto missing = base;
+  missing["steps"][0]["executor_info"]["ort"]["loop"].erase("exit_conditions");
+  EXPECT_FALSE(ParseModelPackageChain(missing.dump(), parsed).IsOK());
+  missing = base;
+  missing["steps"][1]["executor_info"]["ort"]["loop"].erase("sampler");
+  EXPECT_FALSE(ParseModelPackageChain(missing.dump(), parsed).IsOK());
+  EXPECT_FALSE(ParseModelPackageChain("{", parsed).IsOK());
 }
 
 TEST_P(SessionChainTest, PrefillAndDecodeEosUseOneSharedCounterAndEmitOnce) {

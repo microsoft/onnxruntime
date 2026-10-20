@@ -1,12 +1,16 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M10 complete and published for review; M11-M24 pending.
+**Status:** Approved; M01-M10 complete and published for review; M11 in progress
+(CPU-first, GPU qualification blocked); M12-M24 pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
 **Working memory:** [Shared scratchpad](SCRATCHPAD.md).
 **M10 refinement:** SPEC Appendix J and the detailed M10 implementation plan
 were separately approved on 2026-10-19.
+**M11 refinement:** SPEC Appendix K and the detailed M11 plan were separately
+approved 2026-10-20. CPU-first implementation is authorized; GPU qualification
+is blocked until a compatible CUDA/cuDNN/tooling installation is restored.
 
 ## 1. Approval and tracking
 
@@ -19,7 +23,7 @@ were separately approved on 2026-10-19.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M10 are complete and M11-M24 are pending. Check tasks when their
+M01-M10 are complete, M11 is in progress and M12-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -99,7 +103,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M10 are **complete**; M11-M24 are **pending**.
+M01-M10 are **complete**; M11 is **in progress**; M12-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -2697,22 +2701,372 @@ No PR was merged and M11 has not begun.
 
 ### M11 - ORT package-to-chain loading
 
-**Outcome:** Equivalent stateful execution from a package or programmatic setup.
+**Status:** Authorized CPU-first implementation on 2026-10-20. GPU qualification
+and final completion remain blocked on the tooling prerequisite.
+**Specification:** [Approved Appendix K](SPEC.md#appendix-k-m11-executable-package-chains-approved).
+**Branch/base:** `state/m11-package-chain-loading` on verified M10
+`b03b4c2f72955e869401be4d8eaa277728dc6fa8` / PR #24.
+**Delivery:** ONE independently documented/tested PR, explicitly requested by the
+user. Internal tasks are not an M11a/M11b PR split.
+**Outcome:** Package-built and equivalent programmatic chains share the native
+runtime and C/C++ execution/result surface, including sampling-free prefill and
+an observable sample-only first decode Step.
 
-- [ ] Parse execution-specific policy metadata in ORT's consumer layer; reuse
-  existing variant selection, path resolution, options, and Session construction.
-- [ ] Construct public loop/chain resources and expose package loading via C/C++.
-- [ ] Preserve legacy package Session creation and reject invalid executable
-  scripts/transitions, incompatible variants, options, and configurations.
+#### Approval and environment gates
 
-**CPU test plan:** Package/programmatic parity for outputs, exit reasons, reset,
-cache ownership, cancellation/errors; malformed/missing conditions and wiring;
-external model data/shared assets; existing options and confinement regressions.
-**CUDA test plan:** Select actual CUDA variants; prove M08/M09 dispatch; exercise
-CPU/CUDA packages and explicit failure when required capabilities/variants are
-missing. A successful CPU fallback is not successful CUDA package validation.
-**Completion gate:** Both construction paths and legacy APIs pass shared rules
-with 100% new loader/API-line coverage.
+- [x] Interview the user and clarify decode loop versus ONNX-model inputs.
+- [x] Confirm no additional requirements before specification drafting.
+- [x] Draft/review SPEC Appendix K and obtain specification approval.
+- [x] Prepare this detailed CPU-first/GPU-blocked plan.
+- [x] Review this plan and obtain separate implementation authorization.
+- [x] Complete native/API/loader/CPU validation tasks.
+- [ ] Restore the CUDA prerequisite and pass real GPU qualification.
+- [ ] Pass full new-line coverage/regression/publication gates.
+
+**Current GPU blocker:** On 2026-10-20, all eight A100 GPUs were visible, but
+the CUDA13.1/cuDNN installation referenced by both existing GPU build caches was
+absent. `/usr/local/cuda` was also a broken link; `nvcc`, profilers and Compute
+Sanitizer were not available on PATH or at the previously used locations.
+The user chose to finish the plan with **CPU work first and GPU qualification
+blocked until tooling is restored**. No toolchain installation or global
+CUDA/driver change is authorized by that choice.
+
+Old GPU binaries do not validate new headers/API tables/routing. Do not run a
+new consumer against those stale tables or claim a cached artifact passed M11.
+CPU work can proceed after plan approval, but M11 remains incomplete/not ready
+until rebuilt, genuine CUDA tests and GPU-dependent coverage pass. If a review
+draft is requested before then, clearly label it blocked; do not mark the
+milestone complete or publish it ready by waiving GPU tests.
+
+#### Tasks, dependencies and intended outcomes
+
+| Task | Actual prerequisites | Intended result |
+| --- | --- | --- |
+| H0 | Restored compatible toolchain supplied by the user | Rebuildable plugin/legacy CUDA environments with matching libraries and proof tools. |
+| H1 | Plan approval | Fresh M10 CPU baseline and deterministic reusable handoff/package fixtures. |
+| H2 | H1 | Native sample-only bootstrap and correct Step/Run/exit/state accounting. |
+| H3 | H2 | Additive programmatic C/C++ bootstrap surface with ABI/error guarantees. |
+| H4 | H3 | Strict selected-chain ORT parser and owned native Session-chain construction. |
+| H5 | H4 | Public package C/C++ factory and retained Session ownership. |
+| H6 | H3, H5 | Complete CPU/native/public/package/lifetime/minimal-guard qualification. |
+| H7 | H0, H6 | Rebuilt real CUDA-plugin parity, routing, transfer and lifetime proof. |
+| H8 | H6, H7 | Measured 100% new executable lines and final compatibility regressions. |
+| H9 | H8 | Updated documentation and one ready stacked M11 PR. |
+
+- [ ] **H0 - Restore and rebaseline GPU prerequisites (blocked).** Once the
+  user supplies/restores tooling, resolve actual nvcc, supported host compiler,
+  CUDA runtime, cuDNN, Nsight and Compute Sanitizer locations. Reuse existing
+  build trees only if their compiler/library configuration is valid; otherwise
+  configure fresh plugin/legacy trees with the established flags and reproduce
+  relevant M08/M09 baselines first. Do not mix13.0/13.1 components, force a
+  compiler into an incompatible cache, change global driver settings or install
+  dependencies without the required authorization/failure basis.
+- [x] **H1 - Establish CPU baseline/fixtures.** Rebuild existing focused native
+  and AutoEP targets against M10 and record nonzero relevant baseline counts.
+  Reuse `stateful_execution_test_utils.h`, existing session/chain and package
+  fixture helpers. Add tiny local prefill/decode fixtures supporting known
+  float32/float16 logits, prompt lengths, cache growth, masks/positions and a
+  cache-free path. Build manifests from these same models for parity tests;
+  avoid downloads, large committed weights or a second reference orchestrator.
+- [x] **H2 - Implement native bootstrap and progress.** Add explicit copied
+  logits/prompt source metadata to the decode component. Validate dependency,
+  full-prompt shape/source, known logits metadata and cache/provider invariants.
+  Derive processed-token count from the real prompt. Preserve generic
+  sampler-free prefill; initialize generation once at the handoff.
+  Expose a sample-only token event with no model invocation/cache mutation.
+  Make chain Step return on that event rather than looping until `executed`.
+  Preserve complete history, first-token EOS/limits, zero-budget prefill work,
+  reset/cancellation/failure invalidation and legacy-mode behavior. Keep
+  generation logic under `core/generate` and wiring under the session layer.
+- [x] **H3 - Wire native public C/C++.** Add the size-tagged bootstrap record
+  and append `SessionChainOptionsSetGenerationBootstrap` to the stateful table/
+  initializer. Add C++ Set/Clear conveniences; keep old prefixes, record
+  strides, table signatures and ORT API version unchanged. Copy setters
+  transactionally; NULL clears, SetConfig clears overrides. Reuse existing
+  status/size/source helpers and test true old-prefix consumers, invalid sizes/
+  enums/pointers, options immutability and sample-only result flags.
+- [x] **H4 - Parse and construct selected chains.** Add focused ORT consumer
+  implementation in `core/session/model_package`, reusing standalone chain
+  JSON getters and existing component selection/Session creation.
+  Centralize strict typed field/source/provider/exit/cache parsing rather than
+  scattering JSON access through execution code. Resolve IDs to prior steps,
+  prompt bindings from explicit `nonempty_input`/`prompt_input`, and all existing
+  model/state/finite/feedback/cache/native-generation bindings. Reject missing
+  exits, unknown fields/policies, scripts and incompatible roles before
+  publishing an executable definition. Do not parse unrelated chains for legacy
+  Session creation or turn future-minor tolerance into policy execution.
+- [x] **H5 - Add package factory and ownership.** Add the frozen per-step
+  SessionOptions array record, size-tagged outer config and appended
+  `OrtModelPackageApi::CreateSessionChain` member/initializer, with C++ context
+  wrapper returning the existing SessionChain. Default/per-step options are
+  complete snapshots; reuse default/advanced package precedence exactly.
+  Construct separately initialized Sessions per step. Own them with the
+  retained native definition so package/options/chain-handle release cannot
+  invalidate active executions. Roll back partial construction and preserve
+  out-parameters on every failure. Document Env/external resource obligations.
+- [x] **H6 - Qualify CPU and ABI/lifetimes.** Test native versus public C/C++
+  versus package-created chains against identical fixtures/configurations.
+  Include ordinary Sessions, non-generation loops and both generation modes;
+  all binding/exit kinds; budgets0/1/N; first/later EOS; simultaneous exits;
+  first-sample Step counts and no duplicate events; cache-free masks/positions;
+  reset, cancellation, model/NaN errors and immutable result leases.
+  Cover malformed payload permutations, output/port/type failures, per-step
+  overrides on repeated components, option precedence and construction rollback.
+  Release caller package/options/chain owners before continued execution and
+  retain outputs after teardown. Exercise C11, C++17 and no-exceptions clients.
+  Execute any new minimal-build unsupported stub using a genuine minimal
+  configuration or isolated compilation of that actual production source, not
+  a replacement implementation; preserve outputs and include its lines in
+  coverage. Rerun single-component package APIs and standalone shared/static
+  suites, including source-independent M10 exports.
+- [ ] **H7 - Qualify CUDA after H0.** Route initial prefill logits on the
+  compatible GPU using the actual producer allocator/provider origin and
+  initialized Sessions. Prove real plugin EP model/greedy/cache dispatch,
+  independent cache/sampler policies, nondefault/distinct compatible streams,
+  mismatched-device/CPU-producer rejection and no hidden full-logits migration.
+  Include cached/cache-free paths, mixed ordinary/loop steps, retained GPU values,
+  library unregistration and all-owner release. Verify budget0 performs prefill
+  work but zero sampler calls; budget1/first EOS performs no decode-model call.
+  Trace a dedicated end-to-end package Run, separating compact token/status
+  readback from model feeds/weights and explicit caller-copy diagnostics.
+  Run applicable Compute Sanitizer memory/lifetime/ordering tests. Preserve
+  existing M08 timing-only sanitizer exclusion narrowly; do not suppress a new
+  memory error, broaden the exclusion or infer universal stream serialization.
+- [ ] **H8 - Close coverage and regressions.** Instrument every new production
+  native/loader/parser/API/C++ inline/glue line with matching artifacts. Use
+  fresh per-module/per-configuration profiles and verify source/function maps.
+  Combine CPU/plugin/minimal evidence at source-line level only after mapping
+  verification; never blindly merge incompatible hashes. Add focused unit
+  cases until covered/new executable totals are exactly100%.
+  No new device algorithm is intended: verify reused greedy device-code identity
+  and conformance; if implementation changes, measure every new device line.
+  Rerun complete focused CPU/plugin native and AutoEP suites; use the documented
+  legacy selector rather than claiming an inherited unfiltered legacy pass.
+- [ ] **H9 - Document and publish one PR.** Update public API ownership/Step
+  documentation, ORT package grammar/loading examples, SPEC/TASKS/SCRATCHPAD and
+  the exact local build/test/coverage/dispatch/transfer evidence. Preserve the
+  repository PR template and required commit co-author trailer. Publish one
+  independently verified M11 PR stacked on #24 only after H8 passes. Do not
+  merge automatically or begin M12.
+
+#### Required test observations
+
+| Area | Exact behavior to verify |
+| --- | --- |
+| New-mode Steps | Prefill invokes its model; next decode Step emits token1 with executed=false, has_generated_token=true, iterations0 and unchanged invocation count; later Steps invoke at most one model. |
+| Budgets/EOS | N=0: prefill1/decode0/samples0/tokens0. N=1: prefill1/decode0/samples1/tokens1. N>1 without other exits: decode N-1, samples N, tokens N. First EOS stops before any decode Run. |
+| Prompt/context | Validate nonempty CPU int64[1,S], full-prompt sequence count1, retained prompt source, mask/position offsets and shared-cache logical length; no inference of S from logits. |
+| Outputs/errors | No duplicate completion/token events, no substituted/unproduced model ports, stable retained views; explicit native-equivalent errors and reset requirement after advancement. |
+| Loader/options | Explicit named selection, no default; selected-chain-only ORT validation; all supported source/exit/cache policies; full per-step options replacement; existing package option/path restrictions. |
+| Ownership | Executions survive package/options/chain-handle release; package-created Sessions retained correctly; caller Sessions not adopted; Env/external-buffer obligations unchanged. |
+| Compatibility | Frozen prefixes/array strides, old generation zero-budget behavior, single-component APIs, minimal unsupported path and standalone shared/static independence. |
+| CUDA | Actual selected CUDA variant and callback/device placement, sample-only first call, no full-logits readback, correct streams/device restoration and post-unregistration resource leases. |
+| Coverage | 100% of all new executable production host/glue/wrapper/minimal lines; separately measured device additions if any. Missing tooling leaves gates blocked, never green. |
+
+#### Proposed commands (not M11 validation results)
+
+Run from the repository root unless a subshell changes directories. The tests
+named Bootstrap/ModelPackageChain below are planned selectors; discover and
+verify actual nonzero counts before treating any command as evidence.
+
+```bash
+source .venv/bin/activate
+ROOT="$PWD"
+CPU="$ROOT/build/state-cpu/RelWithDebInfo"
+cmake --build "$CPU" \
+  --target onnxruntime_session_loop_test onnxruntime_autoep_test --parallel 8
+mkdir -p "$CPU/coverage/m11/baseline" "$CPU/coverage/m11/targeted"
+(
+  cd "$CPU"
+  LLVM_PROFILE_FILE="$CPU/coverage/m11/baseline/%m-%p.profraw" \
+    ./onnxruntime_session_loop_test
+  LLVM_PROFILE_FILE="$CPU/coverage/m11/baseline/%m-%p.profraw" \
+    ./onnxruntime_autoep_test --gtest_filter='*Stateful*:*ModelPackage*'
+)
+
+# After coherent source/header/API edits; regenerate for new test sources.
+cmake -S cmake -B "$CPU"
+cmake --build "$CPU" \
+  --target onnxruntime_session_loop_test onnxruntime_autoep_test --parallel 8
+(
+  cd "$CPU"
+  LLVM_PROFILE_FILE="$CPU/coverage/m11/targeted/%m-%p.profraw" \
+    ./onnxruntime_session_loop_test --gtest_filter='*Bootstrap*'
+  LLVM_PROFILE_FILE="$CPU/coverage/m11/targeted/%m-%p.profraw" \
+    ./onnxruntime_autoep_test --gtest_filter='*Bootstrap*:*ModelPackageChain*'
+)
+
+# Use a fresh final directory after the final rebuild.
+mkdir -p "$CPU/coverage/m11/final"
+(
+  cd "$CPU"
+  LLVM_PROFILE_FILE="$CPU/coverage/m11/final/%m-%p.profraw" \
+    ./onnxruntime_session_loop_test
+  LLVM_PROFILE_FILE="$CPU/coverage/m11/final/%m-%p.profraw" \
+    ./onnxruntime_autoep_test
+)
+llvm-profdata merge -sparse "$CPU"/coverage/m11/final/*.profraw \
+  -o "$CPU/coverage/m11/final/merged.profdata"
+llvm-cov export "$CPU/onnxruntime_session_loop_test" \
+  -object "$CPU/onnxruntime_autoep_test" -object "$CPU/libonnxruntime.so" \
+  -instr-profile="$CPU/coverage/m11/final/merged.profdata" \
+  > "$CPU/coverage/m11/final/coverage.json"
+
+cmake --build build/state-package-m10 --parallel 8
+ctest --test-dir build/state-package-m10 --output-on-failure
+cmake --build build/state-package-m10-static --parallel 8
+ctest --test-dir build/state-package-m10-static --output-on-failure
+```
+
+Batch public-header/API/formatting edits before expensive rebuilds. CMake's
+session-source glob uses CONFIGURE_DEPENDS, but explicitly regenerate when adding
+AutoEP test files/build configuration. Preserve existing compiler/coverage flags.
+Resolve the exact C11/C++17/no-exceptions and minimal-source consumer commands
+from the final build targets; record them and their results, not placeholders.
+
+The following is **blocked/not run**, and only becomes applicable after H0
+resolves compatible `GPU_BUILD`, `LEGACY_BUILD`, loader-library and proof-tool
+paths. Do not reuse obsolete compiler/runtime cache entries:
+
+```bash
+cmake --build "$GPU_BUILD" \
+  --target onnxruntime_session_loop_test onnxruntime_autoep_test --parallel 8
+(
+  cd "$GPU_BUILD"
+  ./onnxruntime_session_loop_test
+  ./onnxruntime_autoep_test
+)
+cmake --build "$LEGACY_BUILD" \
+  --target onnxruntime_session_loop_test onnxruntime_autoep_test --parallel 8
+(
+  cd "$LEGACY_BUILD"
+  ./onnxruntime_session_loop_test
+  ./onnxruntime_autoep_test \
+    --gtest_filter='AutoEpSelection.CudaEP:*Stateful*:ModelPackageApiTest.*:*ModelPackageChain*'
+)
+```
+
+Use fresh plugin LLVM profiles and the actual plugin/host objects for coverage.
+Run all available-device conformance before restricting a dedicated profiler
+case to one selected GPU; do not hide multidevice coverage behind visibility
+settings. Respect the shared machine's active workloads. Resolve explicit
+Nsight/Compute Sanitizer commands and verified selectors after tooling returns.
+The existing administrator authorization is for profiling only, not driver
+settings, permission changes or environment-wide installation.
+
+Retain the inherited legacy-contrib/EPContext and sanitizer timing limitations
+with their exact scopes; neither is a waiver for M11 regressions. A new hardware/
+tool limitation blocks its gate and must be disclosed with the failed command.
+
+#### Completion gates
+
+- [x] Native and public bootstrap semantics/old-mode regressions pass on CPU.
+- [x] Package/programmatic C/C++ parity, ownership, option precedence and error
+  validation pass with actual local models and source-independent exports.
+- [x] Genuine C11/C++17/no-exceptions clients, frozen prefixes and new minimal
+  unsupported path are verified; standalone library remains ORT-independent.
+- [ ] Compatible toolchain is restored; rebuilt CUDA-plugin and selected legacy
+  suites pass with real dispatch/placement/transfer/lifetime evidence.
+- [ ] Every new executable production line reaches measured100% across verified
+  CPU/plugin/minimal artifacts; device additions independently measured if any.
+- [ ] Documentation/evidence are current and one stacked PR is ready for review.
+
+Until every gate passes, M11 is not complete. Approving this plan authorizes
+CPU-first implementation and the declared scope, but does not authorize removing
+the GPU gate, an unrequested toolchain install, a second milestone PR, merging,
+or beginning M12.
+
+**CPU implementation checkpoint:** Fresh M10 native baseline63/63 and focused
+public baseline52/52 passed. Native bootstrap is implemented and verified by
+three new tests (including budget/dtype/cache/source matrices); the full native
+suite passes66/66. Sample-only events stop chain Step without publishing model
+outputs or updating invocation/cache bookkeeping. New C/C++ setters, strict ORT
+parser, owned-session package factory and positive public/package tests are
+being compiled/qualified; they are not yet a passed API/loader gate.
+GPU tooling, complete coverage and milestone publication remain blocked/pending.
+
+#### Verified CPU checkpoint (GPU completion still blocked)
+
+The CPU implementation is functional and H1-H6 are verified. Full native
+`onnxruntime_session_loop_test` passes **69/69**; unfiltered
+`onnxruntime_autoep_test` passes **148/148**, with no reported skips.
+The new tests include:
+
+- Sample-only initial decode Steps, budgets0/1/3, first-token EOS, masks/positions,
+  float32/float16, cache-free/cached models, all prompt source kinds, reset and
+  explicit malformed/configuration/runtime errors.
+- Actual package/programmatic parity, ordinary Sessions and feedback/Boolean
+  loops, named state, explicit plain-Session prompt handoff, cache Share/Copy/
+  Append mappings and actual CPU-provider dispatch.
+- Package/context/options/chain-handle release before continued execution,
+  source-independent model1/model2 exports, partial-construction rollback and
+  unchanged out-parameters. Per-step snapshots and fixed array strides are tested.
+- A genuine C11 package consumer, independent C++17/no-exceptions consumers, and
+  a client compiled against genuine frozen M10 headers using the new runtime's
+  old table prefixes. Standalone shared/static package suites both pass5/5.
+- An isolated compile of the **actual** package API production source with
+  ORT_MINIMAL_BUILD executes the new factory's NOT_IMPLEMENTED path and preserves
+  a non-NULL out sentinel. The harness forwards only generic status creation to
+  the ordinary runtime; it does not replace the factory or its guard logic.
+
+Fresh CPU and separately mapped minimal-source profiles cover **737/743** new
+executable production lines against M10 `b03b4c2f72`:
+
+| Source | Covered / new executable lines |
+| --- | --- |
+| `core/generate/token_generation.cc` | 9/9 |
+| `core/session/session_loop.cc` | 37/37 |
+| `core/session/session_chain.cc` | 129/135 |
+| `core/session/stateful_api.cc` | 45/45 |
+| `core/session/model_package_api.cc` | 90/90 |
+| `core/session/model_package/model_package_context.cc` | 14/14 |
+| `core/session/model_package/model_package_chain.cc` | 400/400 |
+| Public C++ inline wrappers | 13/13 |
+
+All six uncovered locations are the actual GPU-origin bootstrap routing prepass
+in `session_chain.cc` (currently lines180-185). They remain in the denominator,
+including mapped braces; no fake provider, exclusion, CPU fallback or rounded
+100% claim substitutes for real GPU execution. H0/H7/H8/H9 remain blocked.
+The profile audit found358 dormant hash-zero maps across loaded inline/helper
+instantiations and **no nonzero function-hash mismatch**. Active production maps
+match their artifacts; minimal/nonminimal mappings are evaluated separately.
+
+Executed CPU commands/results:
+
+```bash
+cmake --build build/state-cpu/RelWithDebInfo \
+  --target onnxruntime_session_loop_test onnxruntime_autoep_test --parallel 8
+# From build/state-cpu/RelWithDebInfo; each command passed:
+LLVM_PROFILE_FILE="$PWD/coverage/m11/cpu-final-3/%m-%p.profraw" \
+  ./onnxruntime_session_loop_test
+LLVM_PROFILE_FILE="$PWD/coverage/m11/cpu-final-3/%m-%p.profraw" \
+  ./onnxruntime_autoep_test
+llvm-profdata merge -sparse coverage/m11/cpu-final-3/*.profraw \
+  -o coverage/m11/cpu-final-3/merged.profdata
+# From repository root; both shared/static builds and CTest suites passed:
+cmake --build build/state-package-m10 --parallel 8
+ctest --test-dir build/state-package-m10 --output-on-failure
+cmake --build build/state-package-m10-static --parallel 8
+ctest --test-dir build/state-package-m10-static --output-on-failure
+```
+
+Independent SDK builds used `clang++-18 -std=c++17` with the public session
+include directory and the rebuilt CPU library; the no-exceptions variant added
+`-fno-exceptions -DORT_NO_EXCEPTIONS`. The frozen-header client used
+`clang-18 -std=c11`. All consumers passed against the local generated tiny
+package, including after owner release/reset. The minimal compile uses the
+actual Session target's flags.make/compiler because the existing compilation
+database omitted that target; this fallback is explicitly logged.
+
+Exact consumer/generator/minimal/measurement sources, commands, logs, profile
+diagnostics and source/object/report hashes are retained in session files with
+the `m11-*` prefix. CPU profiles are in `coverage/m11/cpu-final-3`; the measured
+minimal object/probe/profiles are retained separately. The final public-header
+follow-up is Doxygen-only and does not change code/record layout.
+
+No toolchain dependency was installed and no GPU test was claimed. Preserve
+this tested CPU checkpoint on the M11 branch, but do not mark M11 complete or
+publish a ready PR until compatible CUDA tooling and all remaining gates pass.
 
 ### M12 - DDIM scheduler and denoising execution policy
 

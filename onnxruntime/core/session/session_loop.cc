@@ -416,6 +416,44 @@ void SessionLoopExecution::EvaluateExits(const InlinedVector<OrtValue>& values) 
   progress_.completed = !progress_.exit_reasons.empty();
 }
 
+Status SessionLoopExecution::Sample(const OrtValue& logits, std::optional<int64_t> position, int64_t& token) {
+  ORT_RETURN_IF_ERROR(Sampler::Sample(logits, position, *sampler_, token));
+  const auto& shape = logits.Get<Tensor>().Shape();
+  for (const auto& condition : loop_->options_.exit_conditions) {
+    if (condition.kind == LoopExitKind::Eos) {
+      ORT_RETURN_IF(std::any_of(condition.eos_token_ids.begin(), condition.eos_token_ids.end(),
+                                [&](int64_t id) { return id >= shape[shape.NumDimensions() - 1]; }),
+                    "EOS token ID is outside the runtime logits vocabulary");
+    }
+  }
+  return Status::OK();
+}
+
+Status SessionLoopExecution::Bootstrap(const OrtValue& logits, const OrtValue& prompt, std::optional<int64_t> position,
+                                       SessionLoopStepResult& out) {
+  requires_reset_ = true;
+  ORT_RETURN_IF_ERROR(TokenGeneration::InitializeFromPrompt(prompt, *generation_));
+  for (const auto& item : loop_->options_.kv_caches) {
+    KVCacheView view;
+    ORT_RETURN_IF_ERROR(cache_->Get(item.cache.name, view));
+    ORT_RETURN_IF(view.length != generation_->processed_tokens,
+                  "Bootstrap KV length does not match the consumed prompt");
+  }
+  EvaluateExits({});
+  SessionLoopStepResult result = progress_;
+  if (!progress_.completed) {
+    int64_t token = 0;
+    ORT_RETURN_IF_ERROR(Sample(logits, position, token));
+    generation_->token_ids.push_back(token);
+    EvaluateExits({});
+    result = progress_;
+    result.generated_token = token;
+  }
+  requires_reset_ = false;
+  out = std::move(result);
+  return Status::OK();
+}
+
 Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
   ORT_RETURN_IF(requires_reset_, "SessionLoop execution requires Reset after a failure or cancellation");
   if (cancelled_.load()) {
@@ -529,16 +567,8 @@ Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
   if (loop_->options_.generation) {
     const auto& options = *loop_->options_.generation;
     int64_t token = 0;
-    ORT_RETURN_IF_ERROR(Sampler::Sample(snapshots[FindOutput(loop_->fetch_names_, options.logits_output)],
-                                        options.logits_position, *sampler_, token));
-    const auto& shape = snapshots[FindOutput(loop_->fetch_names_, options.logits_output)].Get<Tensor>().Shape();
-    for (const auto& condition : loop_->options_.exit_conditions) {
-      if (condition.kind == LoopExitKind::Eos) {
-        ORT_RETURN_IF(std::any_of(condition.eos_token_ids.begin(), condition.eos_token_ids.end(),
-                                  [&](int64_t id) { return id >= shape[shape.NumDimensions() - 1]; }),
-                      "EOS token ID is outside the runtime logits vocabulary");
-      }
-    }
+    ORT_RETURN_IF_ERROR(
+        Sample(snapshots[FindOutput(loop_->fetch_names_, options.logits_output)], options.logits_position, token));
     sampled_token = token;
   }
   if (!loop_->options_.generated_token_output.empty()) {

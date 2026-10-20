@@ -8940,7 +8940,8 @@ struct OrtInteropApi {
   /// @}
 };
 
-/** \brief Stable API table for model package workflows.
+/** \struct OrtModelPackageApi
+ * \brief Stable API table for model package workflows.
  *
  * A model package contains one or more components, each with variants targeting execution providers and devices.
  * Obtain this table from OrtApi::GetModelPackageApi().
@@ -8951,6 +8952,29 @@ struct OrtInteropApi {
  *
  * \since Version 1.31.
  */
+/** \brief Complete per-step SessionOptions replacement; array stride is fixed.
+ * Strings and options are borrowed only during CreateSessionChain.
+ * \since Version 1.32.
+ */
+typedef struct OrtModelPackageStepSessionOptions {
+  const char* step_id;
+  const OrtSessionOptions* session_options;
+} OrtModelPackageStepSessionOptions;
+
+/** \brief Explicit named package chain construction configuration.
+ * Initialize struct_size and zero other fields. NULL defaults use the existing
+ * package default creation path; non-NULL options use the advanced path.
+ * Per-step options replace the complete default snapshot, not individual fields.
+ * \since Version 1.32.
+ */
+typedef struct OrtModelPackageChainConfig {
+  size_t struct_size;
+  const char* chain_name;
+  const OrtSessionOptions* default_session_options;
+  const OrtModelPackageStepSessionOptions* step_session_options;
+  size_t num_step_session_options;
+} OrtModelPackageChainConfig;
+
 struct OrtModelPackageApi {
   /** \brief Create model package options from session options.
    *
@@ -9199,6 +9223,21 @@ struct OrtModelPackageApi {
                   _In_ OrtModelPackageComponentContext* context,
                   _In_opt_ const OrtSessionOptions* session_options,
                   _Outptr_ OrtSession** session);
+
+  /** \brief Construct one explicitly named executable chain with owned Sessions.
+   * The chain and its executions retain initialized Sessions. Package context
+   * and caller option handles may be released after this synchronous call.
+   * Env and externally supplied buffers/allocators/streams/custom-op resources
+   * keep their ordinary Session lifetime obligations. Failure preserves out.
+   * \param[in] env Environment that outlives the owned Sessions.
+   * \param[in] context Open package context.
+   * \param[in] config Copied configuration with an explicit nonempty chain name.
+   * \param[out] out Owned chain; release with OrtStatefulApi::ReleaseSessionChain.
+   * \return NULL on success, otherwise an owned OrtStatus.
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(CreateSessionChain, _In_ const OrtEnv* env, _In_ const OrtModelPackageContext* context,
+                  _In_ const OrtModelPackageChainConfig* config, _Outptr_ OrtSessionChain** out);
 };
 
 /*
@@ -9377,6 +9416,21 @@ typedef struct OrtStatefulValueSource {
   const char* name;
   size_t component_index;
 } OrtStatefulValueSource;
+
+/** \brief Decode bootstrap without prefill sampling; copied by its setter.
+ * logits is an earlier component output; prompt identifies the original CPU
+ * int64[1,S] prompt. An external sequence must contain one full prompt batch.
+ * The first decode Step samples without a model invocation. A zero decode
+ * budget skips sampling/decoding but does not skip upstream prefill work.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulGenerationBootstrapConfig {
+  size_t struct_size;
+  OrtStatefulValueSource logits;
+  OrtStatefulValueSource prompt;
+  int has_logits_position;  ///< Exactly 0 or 1; zero selects the final initial row.
+  int64_t logits_position;
+} OrtStatefulGenerationBootstrapConfig;
 
 /** \brief Maps one source to one model input. \since Version 1.32. */
 typedef struct OrtStatefulInputBinding {
@@ -10024,6 +10078,17 @@ struct OrtStatefulApi {
    */
   ORT_API2_STATUS(StatefulExecutionGetStagingInfo, _In_ const OrtStatefulExecution* execution,
                   size_t component, size_t info_size, _Out_ OrtStatefulStagingInfo* out);
+  /** \brief Configure or clear explicit initial logits/prompt sources for decode.
+   * Changes are atomic and copied; SetConfig clears bootstrap overrides.
+   * A sample-only Step reports executed=0 and has_generated_token=1.
+   * \param[in,out] options Mutable chain options.
+   * \param[in] component Zero-based decode component index.
+   * \param[in] bootstrap_or_null Copied config, or NULL to clear.
+   * \return NULL on success, otherwise an owned OrtStatus.
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(SessionChainOptionsSetGenerationBootstrap, _Inout_ OrtSessionChainOptions* options, size_t component,
+                  _In_opt_ const OrtStatefulGenerationBootstrapConfig* bootstrap_or_null);
 };
 
 /*

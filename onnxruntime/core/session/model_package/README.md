@@ -20,10 +20,128 @@ ORT links the `model_package` library as a static archive; the library
 itself never links against ORT.
 
 Schema 1.1 adds JSON-only named chain metadata to the standalone library.
-This consumer still creates individual Sessions; it does not yet load or execute
-chains or interpret chain/step `executor_info.ort`. In particular, the candidate
-sampling-free prefill and decode initial-logits handoff are not implemented by
-this schema milestone. Existing per-component Session creation remains supported.
+This consumer interprets chain/step `executor_info.ort` and constructs owned
+executable chains through `OrtModelPackageApi::CreateSessionChain`. Existing
+per-component Session creation remains supported and does not interpret unrelated
+chains' execution policies.
+
+## Executable named chains
+
+Select a chain explicitly, including when the package contains only one:
+
+```cpp
+Ort::ModelPackageContext package(package_path);
+Ort::SessionOptions options;
+OrtModelPackageChainConfig config{};
+config.struct_size = sizeof(config);
+config.chain_name = "generate";
+config.default_session_options = options;
+Ort::SessionChain chain = package.CreateSessionChain(env, config);
+```
+
+The returned chain uses the existing `CreateExecution`, `Step`, `Run`, `Reset`,
+`Cancel` and immutable result/value APIs. Inputs are ordinary
+`OrtStatefulInputs`: external inputs, finite named sequences and initial state.
+For example, a `prompt_batches` sequence supplies one CPU int64 `[1,S]` tensor
+to a prefill step whose token input is bound to that sequence.
+
+Package-built chains own their initialized per-step Sessions. Executions retain
+the native definition, so package context, caller option handles and the public
+chain handle may be released after construction/execution creation. The Env and
+externally owned buffers, allocators, streams and custom-op resources retain
+their ordinary Session lifetime obligations. Caller Sessions used to construct
+programmatic chains are **not** adopted.
+
+`default_session_options == nullptr` uses the established package default
+creation path and CPU selection defaults. Otherwise existing advanced-path
+precedence applies, including missing package path-valued options. Optional
+`OrtModelPackageStepSessionOptions` entries replace the complete default options
+snapshot for named step IDs; clone defaults first if partial changes are desired.
+Duplicate/unknown IDs or NULL per-step options fail. Model EP/variant selection
+is independent of cache/sampler provider policies.
+
+### Execution payloads
+
+The common standalone schema still owns `chains[name].steps`, IDs and component
+references. The ORT namespace is strict: unknown fields/policies, missing exits,
+invalid references and incompatible model ports fail before publication of a
+chain. Other consumer namespaces remain opaque. Future common-schema minors do
+not authorize execution of unknown ORT policies.
+
+| Scope | Fields |
+| --- | --- |
+| Chain ORT payload | Optional named `kv_caches` specifications; required nonempty `outputs` map. |
+| Session step ORT payload | `kind: "session"`, optional `inputs`, `state_outputs`, `kv_caches`, `cache_provider`. |
+| Loop step ORT payload | `kind: "session_loop"`, optional `inputs`/`state_outputs`, required `loop`. |
+| Loop configuration | `finite_input_names`, `nonempty_input`, `feedback`, explicit `exit_conditions`, `generated_token_output`, `generation`, `sampler`, `cache_provider`, `kv_caches`. |
+
+Input sources are `external_input`/`external_sequence`/`state` with `name`, or
+`model_output` with an earlier `step` and `output`. `state_outputs` maps state
+names to model-output names; feedback entries contain `input` and `output`.
+Final output sources are `model_output`, or `generated_token_ids` with a
+generation `step`.
+
+Exit entries are `end_of_inputs`, `max_iterations`/`max_generated_tokens` with
+`limit`, `eos` with `token_ids`, or `boolean_output` with `output`. Conditions use
+the native OR semantics, type/range checks and deterministic exit reasons.
+Cache specs contain `element_type` (`float32`, `float16`, `bfloat16`), `shape`,
+`sequence_axis` and `initial_capacity`; bindings contain `cache`, `input`,
+`output` and `update` (`share`, `copy`, `append`).
+
+Native generation declares `phase`, `input_ids`, `logits_output`, optional
+`attention_mask`, `position_ids`, `logits_position` and, for explicit decode
+bootstrap, `initial_logits`. It requires an explicit greedy `sampler`; a
+sampler without generation is invalid. Provider objects use `mode` (`cpu`,
+`prefer_provider`, `require_provider`); non-CPU modes also specify
+`provider_name`, `device_type` and `device_id`. Omitted cache provider or omitted
+provider inside an explicit sampler selects the documented CPU policy.
+
+### Sampling-free prefill
+
+Prefill can be an ordinary Session or a generic SessionLoop that consumes the
+full prompt and updates caches without any sampler/generation policy. Decode
+owns token selection and references prefill's final logits:
+
+```json
+{
+  "phase": "decode",
+  "input_ids": "token",
+  "logits_output": "logits",
+  "initial_logits": {
+    "kind": "model_output",
+    "step": "prefill",
+    "output": "logits"
+  }
+}
+```
+
+The prefill loop's explicit `nonempty_input` identifies its prompt binding by
+default; `initial_logits.prompt_input` can name it explicitly and is required
+for a plain Session producer. `initial_logits.position` optionally selects the
+initial logits row, independently of the later decoder `logits_position`.
+Prompt length comes from the actual original CPU token tensor, not logits shape.
+An external prompt sequence must contain one full batch; chunking is not added.
+Prefill masks/positions, if required by its model, use explicit normal bindings.
+
+The first decode Step is **sample-only**: `executed == false`, a generated token
+is present, decode iterations remain0 and model invocation count does not change.
+Do not treat `executed == false` as completion; inspect `completed`. Run handles
+these events internally. The next model Step consumes the pending token.
+First-token EOS or a one-token budget can finish with no decode-model invocation.
+The initial token counts/emits once; sample-only events do not republish model
+outputs or update caches.
+
+In this opt-in mode, a zero decode budget still permits the declared prefill
+work/cache population, but decode invokes neither sampler nor model. Existing
+programmatic/package prefill-sampling mode retains its prior zero-budget
+behavior and matching prefill/decode budgets. Manifest generation policies are
+not overridden per execution.
+
+Explicit GPU policies require compatible producers and initialized providers;
+there is no hidden full-logits migration/host argmax. Native GPU cache/greedy
+implementations remain CUDA-plugin-only. Construction failures preserve output
+parameters and release partial Sessions. Stepping failures/cancellation after
+possible advancement require Reset, as with programmatic chains.
 
 ---
 
