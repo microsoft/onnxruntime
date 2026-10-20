@@ -118,7 +118,8 @@ void RunQuantGemmU8X8Test(const int M,
     test.AddOutput<ActType>("Y", {M, N}, quant_output);
   }
 
-  test.Run();
+  // QGemm has no WebGPU kernel; avoid creating a device for every CPU-only case.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider});
 }
 
 void RunQuantGemmTest(const int M,

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -16,6 +17,34 @@ namespace onnxruntime {
 namespace test {
 
 #if defined(USE_WEBGPU)
+TEST(WebGpuRnnTest, LargeSignedTanhInputs) {
+  for (bool is_lstm : {false, true}) {
+    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    if (webgpu_ep == nullptr) {
+      GTEST_SKIP() << "WebGPU execution provider is not available";
+    }
+
+    const int64_t gates = is_lstm ? 4 : 3;
+    std::vector<float> weights(gates, 0.0f);
+    weights.back() = 1.0f;
+    const float hidden = is_lstm ? 0.5f * std::tanh(0.5f) : 0.5f;
+
+    OpTester test(is_lstm ? "LSTM" : "GRU", 14);
+    test.AddAttribute<int64_t>("hidden_size", 1);
+    test.AddInput<float>("X", {1, 2, 1}, {100.0f, -100.0f});
+    test.AddInput<float>("W", {1, gates, 1}, weights, /*is_initializer=*/true);
+    test.AddInput<float>("R", {1, gates, 1}, std::vector<float>(gates, 0.0f), /*is_initializer=*/true);
+    test.AddOutput<float>("Y", {1, 1, 2, 1}, {hidden, -hidden});
+    test.AddOutput<float>("Y_h", {1, 2, 1}, {hidden, -hidden});
+
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(std::move(webgpu_ep));
+    test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
 TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasLayout1) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (webgpu_ep == nullptr) {
