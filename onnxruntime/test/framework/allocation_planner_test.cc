@@ -389,6 +389,7 @@ class PlannerTest : public ::testing::Test {
     ORT_THROW_IF_ERROR(sess_options_->config_options.AddConfigEntry(kNodePartitionConfigFile, config_file_path));
   }
   std::unique_ptr<::onnxruntime::KernelDef>& GetStdKernel() { return std_kernel_; }
+  void SetExecutionOrder(ExecutionOrder order) { sess_options_->execution_order = order; }
 #ifdef USE_CUDA
   void MemcpyToHostInCuda_TransposeInCudaAndCpu(const char* partitionConfigFile = nullptr) {
     std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("MemcpyToHost").Provider(kCudaExecutionProvider).SetDefaultOutputMemoryType(OrtMemTypeCPUOutput).Build();
@@ -745,6 +746,30 @@ TEST_F(PlannerTest, PlanOutputTest) {
       EXPECT_TRUE(false) << "Exception in producing output: " << ex.what();
     });
   }
+}
+
+TEST_F(PlannerTest, PriorityBasedExecutionOrder) {
+  std::string X("X"), Y1("Y1"), Y2("Y2"), Y3("Y3");
+  AddNormalNode(X, Y1);
+  AddNormalNode(X, Y2)->SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+  AddNormalNode(Y2, Y3);
+
+  SetExecutionOrder(ExecutionOrder::PRIORITY_BASED);
+  CreatePlan({}, false);
+
+  GraphViewer graph_viewer(GetGraph());
+  const auto& expected = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+  ASSERT_NE(expected, graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::DEFAULT));
+
+  const auto* plan = GetState().GetExecutionPlan();
+  ASSERT_EQ(plan->execution_plan.size(), 1u);
+  std::vector<NodeIndex> launched;
+  for (const auto& step : plan->execution_plan[0]->steps_) {
+    if (step->ToString().rfind("LaunchKernel", 0) == 0) {
+      launched.push_back(step->GetNodeIndex());
+    }
+  }
+  EXPECT_EQ(launched, expected);
 }
 
 #ifdef USE_CUDA
