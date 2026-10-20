@@ -36,6 +36,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .TypeConstraint("T_KEY", WebGpuSupportedFloatTypes())
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())
         .MayInplace(psai::kPastKeyState, psai::kPresentKeyState)
@@ -69,12 +70,16 @@ Status CheckShape(const Tensor* tensor, const char* name, std::initializer_list<
 
 Status CheckStorageBindingLimit(const onnxruntime::webgpu::ComputeContext& context,
                                 const char* program_name,
-                                std::initializer_list<const Tensor*> tensors) {
+                                std::initializer_list<const Tensor*> tensors,
+                                const Tensor* optional_tensor = nullptr) {
   const auto& limits = context.DeviceLimits();
   uint32_t binding_count = 0;
   for (const Tensor* tensor : tensors) {
     ORT_RETURN_IF(tensor == nullptr, "PackedSparseAttentionIndexer: missing tensor for ", program_name);
     binding_count += StorageBindingSegments(tensor, limits.maxStorageBufferBindingSize);
+  }
+  if (optional_tensor != nullptr) {
+    binding_count += StorageBindingSegments(optional_tensor, limits.maxStorageBufferBindingSize);
   }
   if (binding_count > limits.maxStorageBuffersPerShaderStage) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
@@ -911,6 +916,15 @@ PackedSparseAttentionIndexer::PackedSparseAttentionIndexer(const OpKernelInfo& i
 Status PackedSparseAttentionIndexer::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   ORT_RETURN_IF(context.InputCount() > psai::kIndexShareMode && context.Input(psai::kIndexShareMode),
                 "PackedSparseAttentionIndexer IndexShare requires the CUDA provider");
+  for (int index : {psai::kMidKvBuffer, psai::kMidStateLengths, psai::kValidationStatus}) {
+    Tensor* output = context.OutputCount() > index ? context.Output(index, TensorShape({0})) : nullptr;
+    ORT_RETURN_IF(output != nullptr,
+                  "PackedSparseAttentionIndexer: mid-state and validation outputs require the CUDA provider");
+  }
+  const Tensor* query = context.Input(psai::kQuery);
+  const Tensor* key_state = context.Input(psai::kPastKeyState);
+  ORT_RETURN_IF(query != nullptr && key_state != nullptr && query->DataType() != key_state->DataType(),
+                "PackedSparseAttentionIndexer: mixed input/state types require the CUDA provider");
   const bool is_qsa = policy_ == psai::Policy::kQsa;
   constexpr int kCsaOnlyInputs[] = {psai::kGate, psai::kPositionBias, psai::kHeadWeights};
   for (int index : kCsaOnlyInputs) {
@@ -1158,7 +1172,8 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
   ORT_RETURN_IF_ERROR(CheckStorageBindingLimit(
       context, "QSA selection",
       {&query_metadata, present_key_state, &rotary_cache, &sequence_metadata, present_state_lengths, &overflow_flags,
-       selected_indices, selected_counts, position_ids}));
+       selected_indices, selected_counts},
+      position_ids));
   PackedSparseAttentionIndexerQsaSelectProgram select{rotary.batched, position_ids != nullptr};
   select.CacheHint(rotary.batched, position_ids != nullptr)
       .SetWorkgroupSize(kWorkgroupSize)

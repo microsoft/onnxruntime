@@ -19,34 +19,6 @@ Source:
 
 ---
 
-## Experimental CUDA warp-local QSA prefill scoring
-
-`ORT_PACKED_SPARSE_INDEXER_WARP_HEADS=1` enables a default-off scoring path for
-QSA packed prefill with more than 64 tokens, four query heads, head size 128,
-and compression ratio four. Set it before session creation; its value is
-cached per process. Other geometries and decode keep their existing dispatch.
-
-Each warp scores one state slot across all four heads, retaining query values
-and reusing the loaded key. It removes the shared head-score handoff and
-CTA-wide barriers while preserving the per-head warp reduction and ordered
-head sum. The path does not change state capacity, causal visibility, top-k
-selection, overflow handling, or workspace layout.
-
-FP16/FP32 flag-off/on regression tests cover random/tied scores, empty and
-partial state tiles, and 32768 live slots (128K-token-equivalent state).
-Fresh 64K/128K MTP-width-three full-model experiments reduced TTFT from about
-11.62 to 10.50 seconds and 27.52 to 22.90 seconds, respectively, in both
-control-first and candidate-first orders. These observations are not universal
-performance guarantees. The first comparison matched all six measured token
-streams; a reverse-order 128K control produced a different stream than both
-the earlier control and candidates. Full-model deterministic/quality
-equivalence across arbitrary tuned executions is therefore not established.
-A further 128K comparison with decoder/MTP GEMM autotuning disabled matched
-all three measured streams, with TTFT 27.52 to 22.94 seconds and essentially
-unchanged decode throughput. This supports exact parity on that controlled
-workload but does not establish the cause of the earlier mismatch or broad
-quality equivalence. Keep the option experimental and off by default.
-
 ## 1. Why a separate operator
 
 `SparseAttentionIndexer` uses dense `[batch_size, sequence_length, ...]` tensors, an explicit dense
@@ -99,8 +71,8 @@ later slot keeps its fixed index.
 | 8 | `gate` | `(total_tokens, 2*head_size)` | T | csa only |
 | 9 | `position_bias` | `(compress_ratio, 2*head_size)` | T | csa only |
 | 10 | `head_weights` | `(total_tokens, num_heads)` | T | csa only |
-| 11 | `position_ids` | `(total_tokens)` | int64 | omitted qsa / required csa |
-| 12 | `past_key_state` | `(batch_size, state_capacity, head_size)` | T | both (generic) |
+| 11 | `position_ids` | `(total_tokens)` | int64 | optional qsa / required csa |
+| 12 | `past_key_state` | `(batch_size, state_capacity, head_size)` | T_KEY | both (generic) |
 | 13 | `past_kv_buffer` | `(batch_size, 2*compress_ratio-1, width)` | T | both (generic) |
 | 14 | `past_gate_buffer` | same shape as `past_kv_buffer` | T | csa only |
 | 15 | `past_state_lengths` | `(batch_size, 2)` | int32, device-resident | both (generic) |
@@ -114,11 +86,21 @@ empty output name for `qsa`; `state_update` is declared only when QSA capture is
 |---|---|---|---|---|
 | 0 | `selected_indices` | `(total_tokens, capacity)` | int32 | both |
 | 1 | `selected_counts` | `(total_tokens)` | int32 | both |
-| 2 | `present_key_state` | same shape as `past_key_state` | T | both |
+| 2 | `present_key_state` | same shape as `past_key_state` | T_KEY | both |
 | 3 | `present_kv_buffer` | same shape as `past_kv_buffer` | T | both |
 | 4 | `present_gate_buffer` | same shape as `past_gate_buffer` | T | csa only |
 | 5 | `present_state_lengths` | same shape as `past_state_lengths` | int32 | both |
 | 6 | `state_update` | `(batch_size, state_update_capacity, head_size)` | T | qsa capture only |
+| 7 | `index_share_status` | `(total_tokens)` | int32 | index sharing |
+| 8 | `mid_kv_buffer` | same shape as `past_kv_buffer` | T | optional CUDA qsa snapshot |
+| 9 | `mid_state_lengths` | same shape as `past_state_lengths` | int32 | optional CUDA qsa snapshot |
+| 10 | `validation_status` | `(batch_size)` | int32 | optional CUDA qsa status |
+
+CUDA supports `T_KEY = T` and, for QSA only, BF16 activations with FP32 key state.
+The pending buffers and captured state updates remain in the activation type.
+`mid_kv_buffer` and `mid_state_lengths` must be connected together and capture the state
+after each request's first token. `validation_status` is zero on success; rejected
+requests report 9, or `0x99` for requests containing at least two tokens.
 
 `capacity` is `token_budget + compress_ratio - 1` for `qsa` and `index_topk` for `csa`, exactly the
 same formula (`SelectedCapacity`) used by `SparseAttentionIndexer`.
@@ -224,9 +206,9 @@ dense `qsa` policy but against fixed-capacity state instead of a growing cache:
 `past_sequence_lengths[b] + local_offset` — i.e. the request's own absolute token position, which
 is exactly what a per-request main paged KV cache is addressed by. The output is therefore directly
 consumable by `SparsePagedAttention` configured with `attention_mode="selected_only"`,
-`selected_kv_source="main"`. `position_ids` must be omitted for `qsa`; allowing an unrelated
-absolute-position space would make these cache indices ambiguous and would rotate queries
-inconsistently with prepared block keys.
+`selected_kv_source="main"`. Optional QSA `position_ids` override query rotary positions and causal
+visibility. Callers must keep these positions consistent with prepared block keys and the cache
+indices consumed by attention.
 
 ## 6. Policy `csa`
 
@@ -244,7 +226,7 @@ mapping are packed:
    rejects (caps) new windows beyond `state_capacity` as described in [§3](#3-generic-state-shared-by-both-policies).
 2. **Score** (one launch per query token, per compressed entry): every entry is scored with
    `sum_h w_h * ReLU(q_h . k)` and masked by the causal threshold from `position_ids` (required for
-   `csa`; `qsa` always derives request-local logical positions from `past_sequence_lengths`).
+   `csa`; `qsa` optionally accepts an explicit position override).
 3. **Select** (one launch per query token): keeps the `index_topk` highest scoring, causally
    visible entries and writes the exact active count to `selected_counts`.
 
@@ -299,29 +281,23 @@ mechanics with no packed equivalent):
   respective execution provider);
 - `qsa` state-capacity overflow safety;
 - active and disabled transactional QSA capture on CUDA and WebGPU;
-- the CUDA-only `QsaRadixTopKReferenceParity` test, which re-executes its cases in isolated
-  processes with `ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK=0` and `=1`, comparing random scores,
-  threshold ties, an empty row, a partial 32-key tile, and a fully selected radix bucket against
-  the reference indices and counts. Its eligible geometry selects the hierarchical path, so the
-  flag-on process must log `QsaPartialTopKKernel<true>` (the flag-off process must log
-  `QsaMergeTileTopKKernel`) or the test fails. Run it with
-  `--gtest_filter=PackedSparseAttentionIndexerCudaTest.QsaRadixTopKReferenceParity`;
 - FP32/FP16 (and CUDA-only BF16) numeric coverage against an in-file reference that mirrors this
   document's contract.
 
 ## 10. Known limitations and follow-ups
 
 - The reference CUDA/WebGPU kernels prioritize correctness over throughput (see the top-of-file
-  comments in the `.cu`/`.cc` implementations). CUDA QSA fuses query rotation into scoring and
-  uses a single-read deterministic block TopK for up to 32 selected blocks. Eligible short QSA
-  calls with four 128-channel heads, compression ratio four and up to 512 selected blocks use
-  hierarchical scoring/selection. Other bounded cases use radix selection.
-- Experimental CUDA flag `ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK=1` replaces the eligible short-QSA
-  merge tree with live-key radix selection and a bounded sort. It preserves the scored keys,
-  ascending-index tie ordering, selected counts and state update semantics; no host readback is
-  introduced. The default is off and preserves hierarchical merging. Set the flag before the
-  first eligible call in a process; dispatch is cached. Long-context performance is not
-  established, so this is not a general throughput recommendation.
+  comments in the `.cu`/`.cc` implementations). CUDA QSA fuses query rotation into scoring, uses
+  the shared-memory TopK path for up to 32 selected blocks, bounded partial TopK for 33–512 blocks,
+  and a hierarchical TopK path for common long-context Qwen shapes. Values above 512 that do not
+  match the hierarchical specialization retain the correctness-first repeated-scan fallback.
+- CUDA has two experimental, default-off dispatch controls. Set them before the first eligible
+  call; each value is cached per process. `ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK=1` uses live-key
+  radix selection for eligible short QSA calls. `ORT_PACKED_SPARSE_INDEXER_WARP_HEADS=1` uses
+  warp-local scoring for eligible packed prefill calls with more than 64 tokens, four heads,
+  head size 128 and compression ratio four. Both retain causal visibility, stable tie ordering,
+  selected counts and state-update semantics. Broad full-model quality and performance
+  qualification remains outstanding; neither option is a general tuning recommendation.
 - OgaEngine / Model Builder integration (declaring `past_key_state` etc. as Engine-managed,
   per-request fixed-size state, analogous to a paged auxiliary cache) is out of scope for this
   operator definition and is expected in a follow-up to `microsoft/onnxruntime-genai`.

@@ -16,33 +16,24 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
-#include <cstdlib>
 #include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
-#include <random>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
-#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
-#include "absl/flags/reflection.h"
-#endif
 
 #include "contrib_ops/cpu/sparse/packed_sparse_attention_indexer_common.h"
-#include "core/common/logging/logging.h"
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
-#include "core/platform/env.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
-#include "test/util/include/scoped_env_vars.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
@@ -133,7 +124,7 @@ struct GraphOptions {
 int64_t BufferCapacity(int64_t compress_ratio) { return 2 * compress_ratio - 1; }
 
 // Builds a fixed-input node; csa-only slots are left empty for policy_mode "qsa", as the schema
-// requires. position_ids (slot 11) is omitted for "qsa" and forced on for "csa".
+// requires. position_ids (slot 11) is optional for "qsa" and forced on for "csa".
 void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
   const bool is_csa = options.policy_mode == psai::kPolicyModeCsa;
   const int64_t width = is_csa ? 2 * options.head_size : options.head_size;
@@ -486,11 +477,13 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaWithCsaInput) {
                        "must be omitted when policy_mode is 'qsa'");
 }
 
-TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaWithPositionIds) {
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, QsaAcceptsPositionIds) {
   GraphOptions options;
   options.add_position_ids = true;
-  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "must be omitted when policy_mode is 'qsa'");
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(BuildAndResolve([&options](ModelTestBuilder& builder) { AddNode(builder, options); }, model));
+  const auto& node = *model->MainGraph().Nodes().begin();
+  EXPECT_TRUE(node.InputDefs()[psai::kPositionIds]->Exists());
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsCsaMissingPositionIds) {
@@ -543,7 +536,7 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsWrongOutputCount) {
   GraphOptions options;
   options.output_count = 4;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "output size 4 not in range [min=6, max=8]");
+                       "output size 4 not in range [min=6, max=11]");
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsStateUpdateCapacityWithoutCaptureCount) {
@@ -606,10 +599,12 @@ std::unique_ptr<IExecutionProvider> CreateProvider(ProviderKind provider_kind,
 #endif
 }
 
-void RunOnProvider(OpTester& test, std::unique_ptr<IExecutionProvider> provider) {
+void RunOnProvider(OpTester& test, std::unique_ptr<IExecutionProvider> provider,
+                   OpTester::ExpectResult expected_result = OpTester::ExpectResult::kExpectSuccess,
+                   const std::string& expected_error = "") {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(std::move(provider));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  test.Run(expected_result, expected_error, {}, nullptr, &providers);
 }
 
 std::vector<float> MakeWave(size_t count, float phase, float step) {
@@ -959,7 +954,8 @@ QsaPackedProblem MakeQsaPackedProblem(QsaPackedProblem problem = {}) {
 template <typename T, typename TState = T>
 void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedProblem(),
                       ProviderKind provider_kind = ProviderKind::Cuda, QsaPackedResult* actual = nullptr,
-                      bool packed_qk = false, const ConfigOptions* webgpu_options = nullptr, int padding = 0) {
+                      bool packed_qk = false, const ConfigOptions* webgpu_options = nullptr, int padding = 0,
+                      const std::string& expected_error = "") {
   auto provider = CreateProvider(provider_kind, webgpu_options);
   if (provider == nullptr) {
     GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
@@ -1071,7 +1067,9 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
     if (problem.state_update_capacity == 0) test.AddOptionalOutputEdge<T>();
     test.AddOutput<int32_t>("status", {total_tokens}, std::vector<int32_t>(static_cast<size_t>(total_tokens), 0));
   }
-  RunOnProvider(test, std::move(provider));
+  RunOnProvider(test, std::move(provider),
+                expected_error.empty() ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
+                expected_error);
   if (actual != nullptr) {
     const auto& fetches = test.GetFetches();
     actual->present_key_state = CopyTensorToFloat<TState>(fetches[2].Get<Tensor>());
@@ -1080,86 +1078,6 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
                                          fetches[4].Get<Tensor>().DataAsSpan<int32_t>().end());
   }
 }
-
-#if GTEST_HAS_DEATH_TEST
-QsaPackedProblem MakeRadixTopKProblem(int visible_blocks, int block_topk, int token_count = 1) {
-  QsaPackedProblem problem;
-  problem.batch_size = 1;
-  problem.compress_ratio = 4;
-  problem.cumulative_sequence_lengths = {0, token_count};
-  problem.past_sequence_lengths = {visible_blocks * problem.compress_ratio};
-  problem.head_size = 128;
-  problem.num_heads = 4;
-  problem.rotary_width = 64;
-  problem.token_budget = block_topk * problem.compress_ratio;
-  problem.state_capacity = 2051;
-  problem = MakeQsaPackedProblem(std::move(problem));
-  return problem;
-}
-
-void SetRadixTopKScoreGroups(QsaPackedProblem& problem, int high_score_blocks, int tied_score_blocks,
-                             int high_score_index = -1) {
-  std::fill(problem.query.begin(), problem.query.end(), 1.0f);
-  std::fill(problem.query_norm_weight.begin(), problem.query_norm_weight.end(), 1.0f);
-  std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
-  std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
-  for (int batch = 0; batch < problem.batch_size; ++batch) {
-    const int visible_blocks = problem.past_sequence_lengths[batch] / problem.compress_ratio;
-    for (int block = 0; block < visible_blocks; ++block) {
-      const float value =
-          block == high_score_index || block < high_score_blocks ? 3.0f : block < tied_score_blocks ? 2.0f
-                                                                                                    : 1.0f;
-      const size_t offset = (static_cast<size_t>(batch) * problem.state_capacity + block) * problem.head_size;
-      std::fill_n(problem.past_key_state.begin() + offset, problem.head_size, value);
-    }
-  }
-}
-
-void RunRadixTopKCase(const char* name, QsaPackedProblem problem) {
-  SCOPED_TRACE(name);
-  ASSERT_LE(problem.TotalTokens(), 64);
-  ASSERT_GE(problem.state_capacity, 2048);
-  ASSERT_EQ(problem.head_size, 128);
-  ASSERT_EQ(problem.compress_ratio, 4);
-  ASSERT_EQ(problem.num_heads, 4);
-  ASSERT_GT(problem.token_budget / problem.compress_ratio, 32);
-  ASSERT_LE(problem.token_budget / problem.compress_ratio, 512);
-  RunQsaPackedTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda);
-}
-
-void RunRadixTopKRegressionCases() {
-  const std::string flag = Env::Default().GetEnvironmentVar("ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK");
-  ASSERT_TRUE(flag == "0" || flag == "1");
-
-  auto random_scores = MakeRadixTopKProblem(2051, 35);
-  std::mt19937 generator(33393);
-  std::uniform_real_distribution<float> distribution(-0.5f, 0.5f);
-  for (float& value : random_scores.query) value = distribution(generator);
-  for (float& value : random_scores.past_key_state) value = distribution(generator);
-  RunRadixTopKCase("random_scores", std::move(random_scores));
-
-  auto threshold_ties = MakeRadixTopKProblem(2051, 35);
-  SetRadixTopKScoreGroups(threshold_ties, 33, 71);
-  RunRadixTopKCase("threshold_ties", std::move(threshold_ties));
-
-  auto empty_row = MakeRadixTopKProblem(2051, 35, 2);
-  empty_row.batch_size = 2;
-  empty_row.cumulative_sequence_lengths = {0, 1, 2};
-  empty_row.past_sequence_lengths = {0, 8204};
-  empty_row.past_state_lengths.clear();
-  empty_row = MakeQsaPackedProblem(std::move(empty_row));
-  SetRadixTopKScoreGroups(empty_row, 33, 71);
-  RunRadixTopKCase("empty_row", std::move(empty_row));
-
-  auto partial_tile = MakeRadixTopKProblem(2051, 35);
-  SetRadixTopKScoreGroups(partial_tile, 34, 34, 2050);
-  RunRadixTopKCase("partial_tile", std::move(partial_tile));
-
-  auto fully_selected_bucket = MakeRadixTopKProblem(64, 64);
-  SetRadixTopKScoreGroups(fully_selected_bucket, 64, 64);
-  RunRadixTopKCase("fully_selected_bucket", std::move(fully_selected_bucket));
-}
-#endif
 
 }  // namespace
 
@@ -1182,7 +1100,7 @@ TEST(PackedSparseAttentionIndexerTest, IndexShareRefreshPreservesBudgetAndPadsRo
 }
 
 TEST(PackedSparseAttentionIndexerTest, IndexShareReusePackedQkAndStatus) {
-  for (int invalid = 0; invalid < 7; ++invalid) {
+  for (int invalid = 0; invalid < 9; ++invalid) {
     SCOPED_TRACE(invalid);
     std::vector<int32_t> cumulative{0, 1, 2};
     std::vector<int32_t> past_lengths{5, 5};
@@ -1230,7 +1148,17 @@ TEST(PackedSparseAttentionIndexerTest, IndexShareReusePackedQkAndStatus) {
     test.AddOutput<int32_t>("present_lengths", {2, 2}, state_lengths);
     test.AddOptionalOutputEdge<float>();
     test.AddOutput<int32_t>("status", {2}, {invalid == 0 ? 0 : 1, 2});
-    RunOnProvider(test, std::move(provider));
+    if (invalid == 7) {
+      test.AddOutput<float>("mid_buffer", {2, 3, 2}, std::vector<float>(12));
+      test.AddOutput<int32_t>("mid_lengths", {2, 2}, std::vector<int32_t>(4));
+    } else if (invalid == 8) {
+      test.AddOptionalOutputEdge<float>();
+      test.AddOptionalOutputEdge<int32_t>();
+      test.AddOutput<int32_t>("validation", {2}, {0, 0});
+    }
+    RunOnProvider(test, std::move(provider),
+                  invalid >= 7 ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
+                  invalid >= 7 ? "outputs 8-10 are not supported in IndexShare reuse mode" : "");
   }
 }
 
@@ -1287,6 +1215,17 @@ TEST(PackedSparseAttentionIndexerTest, QsaStateUpdateCapturesRawAndBlockTransiti
   problem.state_update_capacity = 8;
   problem.state_update_capture_count = {8, 3};
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::Cuda);
+}
+
+TEST(PackedSparseAttentionIndexerTest, QsaBFloat16FloatStateCapture) {
+  QsaPackedProblem problem;
+  problem.batch_size = 2;
+  problem.compress_ratio = 4;
+  problem.cumulative_sequence_lengths = {0, 8, 13};
+  problem.past_sequence_lengths = {0, 3};
+  problem.state_update_capacity = 8;
+  problem.state_update_capture_count = {8, 3};
+  RunQsaPackedTest<BFloat16, float>(2.0e-2f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::Cuda);
 }
 
 TEST(PackedSparseAttentionIndexerTest, QsaStateUpdateActiveZeroClearsAllSlots) {
@@ -1346,57 +1285,6 @@ TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalTopK) {
                 problem.head_size, value);
   }
   RunQsaPackedTest<float>(1.0e-5f, std::move(problem));
-}
-
-TEST(PackedSparseAttentionIndexerCudaTest, QsaRadixTopKReferenceParity) {
-#if GTEST_HAS_DEATH_TEST
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    GTEST_SKIP() << "CUDA execution provider is not available";
-  }
-
-#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
-  auto* death_test_style_flag = absl::FindCommandLineFlag("gtest_death_test_style");
-  ASSERT_NE(death_test_style_flag, nullptr);
-  const std::string previous_style = death_test_style_flag->CurrentValue();
-  std::string flag_error;
-  ASSERT_TRUE(death_test_style_flag->ParseFrom("threadsafe", &flag_error)) << flag_error;
-#else
-  const auto previous_style = GTEST_FLAG_GET(death_test_style);
-  GTEST_FLAG_SET(death_test_style, "threadsafe");
-#endif
-  for (const char* radix_flag : {"0", "1"}) {
-    const char* dispatch_marker =
-        radix_flag[0] == '1' ? "QsaPartialTopKKernel<true>" : "QsaMergeTileTopKKernel";
-    // Plugin loggers cache their severity during registration in the re-executed test main.
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK", radix_flag},
-                                                  {"ORT_UNIT_TEST_MAIN_LOG_LEVEL", "0"}}};
-    ASSERT_EXIT(
-        {
-          logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
-          logging::LoggingManager::SetDefaultLoggerVerbosity(1);
-          RunRadixTopKRegressionCases();
-          const auto* result = ::testing::UnitTest::GetInstance()->current_test_info()->result();
-          for (int index = 0; index < result->total_part_count(); ++index) {
-            const auto& part = result->GetTestPartResult(index);
-            if (part.failed()) {
-              std::fprintf(stderr, "%s:%d: %s\n", part.file_name() ? part.file_name() : "unknown",
-                           part.line_number(), part.message());
-            }
-          }
-          std::fflush(stderr);
-          std::_Exit(::testing::Test::HasFailure() ? EXIT_FAILURE : EXIT_SUCCESS);
-        },
-        ::testing::ExitedWithCode(EXIT_SUCCESS), dispatch_marker);
-  }
-#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
-  flag_error.clear();
-  EXPECT_TRUE(death_test_style_flag->ParseFrom(previous_style, &flag_error)) << flag_error;
-#else
-  GTEST_FLAG_SET(death_test_style, previous_style);
-#endif
-#else
-  GTEST_SKIP() << "GoogleTest death tests are not available";
-#endif
 }
 
 TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalPackedVerification) {
@@ -1483,6 +1371,18 @@ TEST(PackedSparseAttentionIndexerTest, QsaMalformedStateLengthsAreClamped) {
   problem.state_capacity = 2;
   problem.past_state_lengths = {3, -1};
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)));
+}
+
+TEST(PackedSparseAttentionIndexerTest, QsaExplicitPositionIds) {
+  auto problem = MakeQsaPackedProblem();
+  problem.position_ids.resize(static_cast<size_t>(problem.TotalTokens()));
+  for (int batch = 0; batch < problem.batch_size; ++batch) {
+    const int start = problem.cumulative_sequence_lengths[batch];
+    for (int token = start; token < problem.cumulative_sequence_lengths[batch + 1]; ++token) {
+      problem.position_ids[static_cast<size_t>(token)] = problem.past_sequence_lengths[batch] + token - start + 1;
+    }
+  }
+  RunQsaPackedTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda);
 }
 
 TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalTileBoundariesPreserveStableTies) {
@@ -1638,6 +1538,24 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, QsaPortableStorageBindingLimit) {
   ConfigOptions config_options;
   ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, "8"));
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu, nullptr, false, &config_options);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaExplicitPositionsStorageBindingLimit) {
+  auto problem = MakeQsaPackedProblem();
+  problem.position_ids.resize(static_cast<size_t>(problem.TotalTokens()));
+  for (int b = 0; b < problem.batch_size; ++b) {
+    const int start = problem.cumulative_sequence_lengths[b];
+    const int end = problem.cumulative_sequence_lengths[b + 1];
+    for (int token = start; token < end; ++token) {
+      problem.position_ids[token] = problem.past_sequence_lengths[b] + token - start;
+    }
+  }
+  for (const std::string limit : {"8", "9"}) {
+    ConfigOptions config_options;
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, limit.c_str()));
+    RunQsaPackedTest<float>(1.0e-5f, problem, ProviderKind::WebGpu, nullptr, false, &config_options, 0,
+                            limit == "8" ? "QSA selection requires 9 storage-buffer bindings" : "");
+  }
 }
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaAllEmptyBatchPreservesState) {

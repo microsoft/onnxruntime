@@ -661,7 +661,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T", OpSchema::Optional)
         .Input(17, "committed_length",
                "Optional single-request committed token count for cursor validation. When supplied, validation_status "
-               "is 9 if seqlens_k, sequence_length, or cache_capacity is inconsistent.",
+               "is 9 if seqlens_k, sequence_length, or cache_capacity is inconsistent. CUDA only.",
                "M", OpSchema::Optional)
         .Input(18, "key_scale", "Positive finite per-channel INT8 key-cache scales [kv_num_heads * head_size].",
                "S", OpSchema::Optional)
@@ -670,7 +670,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(0, "output", "Attention output [batch, sequence, num_heads * head_size].", "T")
         .Output(1, "present_key", "Updated main key cache in BNSH layout.", "TCache", OpSchema::Optional)
         .Output(2, "present_value", "Updated main value cache in BNSH layout.", "TCache", OpSchema::Optional)
-        .Output(3, "validation_status", "Optional int32 status: 0 when valid, a validation code when invalid.",
+        .Output(3, "validation_status", "Optional CUDA-only int32 status: 0 when valid, a validation code when invalid.",
                 "M", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain all floating-point inputs and outputs to one element type.")
@@ -2881,10 +2881,9 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
                                   : " is required when policy_mode is 'csa'");
     }
   }
-  if (PackedSparseAttentionIndexerHasInput(ctx, psai::kPositionIds) == is_qsa) {
+  if (!is_qsa && !PackedSparseAttentionIndexerHasInput(ctx, psai::kPositionIds)) {
     fail_shape_inference("PackedSparseAttentionIndexer: input ", psai::kPositionIds,
-                         is_qsa ? " (position_ids) must be omitted when policy_mode is 'qsa'"
-                                : " (position_ids) is required when policy_mode is 'csa'");
+                         " (position_ids) is required when policy_mode is 'csa'");
   }
   const bool has_capture_count = PackedSparseAttentionIndexerHasInput(ctx, psai::kStateUpdateCaptureCount);
   const bool has_state_update_active = PackedSparseAttentionIndexerHasInput(ctx, psai::kStateUpdateActive);
@@ -2942,7 +2941,7 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     propagateElemTypeFromInputToOutput(ctx, psai::kPastGateBuffer, psai::kPresentGateBuffer);
   }
   if (has_state_update_output) {
-    propagateElemTypeFromInputToOutput(ctx, psai::kPastKeyState, psai::kStateUpdate);
+    propagateElemTypeFromInputToOutput(ctx, psai::kPastKvBuffer, psai::kStateUpdate);
   }
 
   const auto* query_shape = PackedSparseAttentionIndexerShape(ctx, psai::kQuery, 2);
@@ -3219,7 +3218,7 @@ request's own packed token range and fixed-capacity state slice:
     their token indices are emitted (request-local logical positions, i.e. the same numbering as
     past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
     incomplete block. QSA positions are the request-local logical cache positions derived from
-    past_sequence_lengths and cumulative_sequence_lengths; position_ids must be omitted.
+    past_sequence_lengths and cumulative_sequence_lengths unless optional position_ids are supplied.
 
   policy_mode = "csa" ("compressed sparse attention" block indexer)
     Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window
@@ -3369,8 +3368,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "past_key_state",
                "Generic fixed-capacity state: policy_mode 'qsa' stores prepared complete-block keys; "
                "policy_mode 'csa' stores compressed keys. Shape is (batch_size, state_capacity, head_size) and "
-               "never changes across calls. For QSA, this state may use FLOAT while query/key tensors use "
-               "FLOAT16 or BFLOAT16.",
+               "never changes across calls. CUDA QSA also supports FLOAT key state with BFLOAT16 "
+               "query/key tensors. WebGPU requires key state and activations to have the same type.",
                "T_KEY")
         .Input(13,
                "past_kv_buffer",
@@ -3450,13 +3449,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(7, "indexshare_status", "Selection status [N], forwarded on reuse and zero on refresh.",
                 "M", OpSchema::Optional)
         .Output(8, "mid_kv_buffer",
-                "Only for policy_mode 'qsa': pending-buffer snapshot after the first token of each request.",
+                "Only for CUDA policy_mode 'qsa' refresh: pending-buffer snapshot after the first token of each request. "
+                "Not supported in IndexShare reuse mode.",
                 "T", OpSchema::Optional)
         .Output(9, "mid_state_lengths",
-                "Only for policy_mode 'qsa': state lengths after the first token of each request.",
+                "Only for CUDA policy_mode 'qsa' refresh: state lengths after the first token of each request. "
+                "Not supported in IndexShare reuse mode.",
                 "M", OpSchema::Optional)
         .Output(10, "validation_status",
-                "Only for policy_mode 'qsa': per-request overflow status; two-token rejection is encoded as 0x99.",
+                "Only for CUDA policy_mode 'qsa' refresh: per-request overflow status; two-token rejection is encoded as 0x99. "
+                "Not supported in IndexShare reuse mode.",
                 "M", OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},

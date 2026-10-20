@@ -551,6 +551,11 @@ DynamicSparseAttention::DynamicSparseAttention(const OpKernelInfo& info) : WebGp
 }
 
 Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+  ORT_RETURN_IF(context.InputCount() > 17 && context.Input<Tensor>(17) != nullptr,
+                "DynamicSparseAttention: committed_length is only supported by CUDA.");
+  Tensor* validation_status = context.OutputCount() > 3 ? context.Output(3, TensorShape({0})) : nullptr;
+  ORT_RETURN_IF(validation_status != nullptr,
+                "DynamicSparseAttention: validation_status is only supported by CUDA.");
   const Tensor* query = context.Input<Tensor>(0);
   const Tensor* key = context.Input<Tensor>(1);
   const Tensor* value = context.Input<Tensor>(2);

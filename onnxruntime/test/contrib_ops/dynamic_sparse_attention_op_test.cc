@@ -106,7 +106,7 @@ std::vector<T> ToTensorData(const std::vector<float>& values) {
     std::vector<T> converted;
     converted.reserve(values.size());
     for (float value : values) {
-      converted.emplace_back(value);
+      converted.emplace_back(static_cast<T>(value));
     }
     return converted;
   }
@@ -432,12 +432,14 @@ TEST(DynamicSparseAttentionTest, Int8CacheRejectsMissingOrMalformedScales_CUDA) 
   }
 }
 
-DynamicSparseAttentionCase MakeGroupedInt8CacheCase(int sequence_length, bool auxiliary) {
+DynamicSparseAttentionCase MakeGroupedCacheCase(int sequence_length, bool auxiliary,
+                                                bool floating_cache = false, int batch_size = 2,
+                                                int num_heads = 20, int kv_num_heads = 2) {
   DynamicSparseAttentionCase c;
-  c.batch_size = 2;
+  c.batch_size = batch_size;
   c.sequence_length = sequence_length;
-  c.num_heads = 20;
-  c.kv_num_heads = 2;
+  c.num_heads = num_heads;
+  c.kv_num_heads = kv_num_heads;
   c.head_size = 256;
   c.cache_sequence_length = 520;
   c.max_selected = 512;
@@ -446,7 +448,8 @@ DynamicSparseAttentionCase MakeGroupedInt8CacheCase(int sequence_length, bool au
   c.smooth_softmax = 1;
   c.scale = 0.0625f;
   c.head_sink.assign(c.num_heads, 0.25f);
-  c.seqlens_k = {519, 518};
+  c.seqlens_k.resize(batch_size);
+  for (int b = 0; b < batch_size; ++b) c.seqlens_k[b] = 519 - b % 2;
   c.total_sequence_length = 520;
   const int channels = static_cast<int>(c.kv_num_heads * c.head_size);
   const int rows = static_cast<int>(c.batch_size * c.sequence_length);
@@ -456,8 +459,8 @@ DynamicSparseAttentionCase MakeGroupedInt8CacheCase(int sequence_length, bool au
   c.key_scale.resize(channels);
   c.value_scale.resize(channels);
   for (int d = 0; d < channels; ++d) {
-    c.key_scale[d] = d % 2 ? 0.125f : 0.0625f;
-    c.value_scale[d] = d % 2 ? 0.25f : 0.125f;
+    c.key_scale[d] = floating_cache ? 1.0f : (d % 2 ? 0.125f : 0.0625f);
+    c.value_scale[d] = floating_cache ? 1.0f : (d % 2 ? 0.25f : 0.125f);
   }
   for (size_t i = 0; i < c.query.size(); ++i) {
     c.query[i] = float(int(i % 7) - 3) * 0.125f;
@@ -505,7 +508,7 @@ DynamicSparseAttentionCase MakeGroupedInt8CacheCase(int sequence_length, bool au
     std::iota(c.selected_indices.begin() + row * c.max_selected,
               c.selected_indices.begin() + row * c.max_selected + c.selected_counts[row], 0);
     for (int h = 0; h < c.num_heads; ++h) {
-      const int kv = h / (c.num_heads / c.kv_num_heads);
+      const int64_t kv = h / (c.num_heads / c.kv_num_heads);
       const int64_t out = (row * c.num_heads + h) * c.head_size;
       std::vector<float> numerator(c.head_size, 0.0f);
       double denominator = std::exp(double(c.head_sink[h]));
@@ -537,7 +540,44 @@ DynamicSparseAttentionCase MakeGroupedInt8CacheCase(int sequence_length, bool au
       }
     }
   }
+  if (floating_cache) {
+    c.key_scale.clear();
+    c.value_scale.clear();
+  }
   return c;
+}
+
+TEST(DynamicSparseAttentionTest, FloatingCacheGroupedReferenceParity_CUDA) {
+  for (int sequence_length : {1, 3}) {
+    for (bool auxiliary : {false, true}) {
+      for (bool bf16 : {false, true}) {
+        auto cuda_ep = DefaultCudaExecutionProvider();
+        if (!cuda_ep) GTEST_SKIP() << "CUDA EP not available.";
+        SCOPED_TRACE("sequence_length=" + std::to_string(sequence_length) +
+                     ", auxiliary=" + std::to_string(auxiliary) + ", bf16=" + std::to_string(bf16));
+        auto c = MakeGroupedCacheCase(sequence_length, auxiliary, true);
+        // Ten heads per KV head exercise partial groups of both six (prefill) and eight (decode).
+        if (bf16) {
+          RunDynamicSparseAttentionCase<BFloat16>(c, std::move(cuda_ep));
+        } else {
+          RunDynamicSparseAttentionCase<MLFloat16>(c, std::move(cuda_ep));
+        }
+      }
+    }
+  }
+}
+
+TEST(DynamicSparseAttentionTest, FloatingCacheGroupedSingleSplitWorkspace_CUDA) {
+  for (bool bf16 : {false, true}) {
+    auto cuda_ep = DefaultCudaExecutionProvider();
+    if (!cuda_ep) GTEST_SKIP() << "CUDA EP not available.";
+    auto c = MakeGroupedCacheCase(1, false, true, 128, 4, 1);
+    if (bf16) {
+      RunDynamicSparseAttentionCase<BFloat16>(c, std::move(cuda_ep));
+    } else {
+      RunDynamicSparseAttentionCase<MLFloat16>(c, std::move(cuda_ep));
+    }
+  }
 }
 
 TEST(DynamicSparseAttentionTest, Int8CacheGroupedDecode_CUDA) {
@@ -548,7 +588,7 @@ TEST(DynamicSparseAttentionTest, Int8CacheGroupedDecode_CUDA) {
       auto cuda_ep = DefaultCudaExecutionProvider();
       if (!cuda_ep) GTEST_SKIP();
       RunDynamicSparseAttentionCase<BFloat16, int8_t>(
-          MakeGroupedInt8CacheCase(sequence_length, auxiliary), std::move(cuda_ep));
+          MakeGroupedCacheCase(sequence_length, auxiliary), std::move(cuda_ep));
     }
   }
 }
@@ -557,7 +597,7 @@ TEST(DynamicSparseAttentionTest, Int8CacheGroupedDecodeFloat16_CUDA) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) GTEST_SKIP();
   RunDynamicSparseAttentionCase<MLFloat16, int8_t>(
-      MakeGroupedInt8CacheCase(2, false), std::move(cuda_ep));
+      MakeGroupedCacheCase(2, false), std::move(cuda_ep));
 }
 
 TEST(DynamicSparseAttentionTest, Int8CacheRejectsNonpositiveOrNonfiniteScales_CUDA) {
@@ -1893,6 +1933,22 @@ TEST(DynamicSparseAttentionTest, RejectsUnknownModeAndSource_CUDA) {
 #endif  // USE_CUDA
 
 #ifdef USE_WEBGPU
+
+TEST(DynamicSparseAttentionTest, RejectsCudaValidationOptions_WebGPU) {
+  for (bool committed : {false, true}) {
+    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    if (!webgpu_ep) GTEST_SKIP() << "WebGPU EP not available.";
+    auto c = MakeSingleTokenSelectedOnlyCase();
+    if (committed) {
+      c.committed_length = 0;
+    } else {
+      c.expected_validation_status = 0;
+    }
+    RunDynamicSparseAttentionCase<float>(
+        c, std::move(webgpu_ep), OpTester::ExpectResult::kExpectFailure,
+        committed ? "committed_length is only supported by CUDA" : "validation_status is only supported by CUDA");
+  }
+}
 
 TEST(DynamicSparseAttentionTest, TokenDecodeWithAliasedCache_WebGPU) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
