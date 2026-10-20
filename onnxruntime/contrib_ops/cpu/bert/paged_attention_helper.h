@@ -266,8 +266,8 @@ Status CheckBlockTable(const T* block_table, const int batch_size, int& max_num_
 // slot_mapping (input 10) is the scheduler-owned write map: one flat slot index per query token
 // into the cache viewed as [num_blocks * block_size, kv_num_heads, head_size], or -1 to skip the
 // K/V store for that token. Element range is not validated on the host: that would require a
-// device-to-host copy every step. Out-of-range values are undefined behavior, exactly as for
-// block_table today.
+// device-to-host copy every step. The kernel bound-checks it on device instead, skipping any slot
+// outside [0, num_blocks * block_size).
 template <typename T = Tensor>
 Status CheckSlotMapping(const T* slot_mapping, const int token_count) {
   const auto& dims = slot_mapping->Shape().GetDims();
@@ -536,6 +536,9 @@ Status CheckInputs(const T* query,
   // Check block table and slot mappings
   int max_num_blocks_per_seq = 0;
   ORT_RETURN_IF_ERROR(CheckBlockTable(block_table, batch_size, max_num_blocks_per_seq));
+  // Backends that cannot skip a block redirect invalid entries to block 0, which must exist.
+  ORT_RETURN_IF(num_blocks == 0 && token_count > 0 && block_table->Shape().Size() > 0,
+                "Input 'key_cache' has zero blocks but 'block_table' is not empty.");
   if (slot_mapping != nullptr) {
     ORT_RETURN_IF_ERROR(CheckSlotMapping(slot_mapping, token_count));
   }
