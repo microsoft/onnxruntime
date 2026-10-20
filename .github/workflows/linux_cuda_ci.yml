@@ -3,12 +3,13 @@ name: Linux CUDA CI
 on:
   push:
     branches: [main, 'rel-*']
-  pull_request:
+  # Use the base branch's workflow definition so a fork cannot remove the runner admission checks.
+  pull_request_target:
     branches: [main, 'rel-*']
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -17,8 +18,8 @@ permissions:
 jobs:
   build-linux-cuda-x64-release:
     name: Build Linux CUDA x64 Release
-    # Fork PR content must not run on self-hosted runners that carry an Azure managed identity.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # This condition is evaluated from the trusted base-branch workflow on pull_request_target.
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
       packages: write
@@ -53,12 +54,13 @@ jobs:
       upload_build_output: true   # <<< Upload the build/Release directory
       execution_providers: 'cuda'
       job_identifier: build-linux-cuda-x64-release
+      checkout_ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token for reusable workflow needs (e.g., docker build action)
 
   test-linux-cuda-x64-release:
     name: Test Linux CUDA x64 Release
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     needs: build-linux-cuda-x64-release
     runs-on:
       - self-hosted
@@ -71,6 +73,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
 
       - uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         id: build_docker_image_step

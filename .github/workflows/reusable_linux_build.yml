@@ -67,6 +67,11 @@ on:
         description: 'A unique identifier for the job, used for hosted pool tracking'
         required: true
         type: string
+      checkout_ref:
+        description: 'Commit or ref containing the source to build'
+        required: false
+        type: string
+        default: ''
     secrets:
       GH_TOKEN:
         description: 'GitHub token for accessing actions/packages'
@@ -74,9 +79,10 @@ on:
 
 jobs:
   build_test_pipeline:
-    # Called workflows inherit the caller's event context. Never execute fork-controlled source or
-    # Dockerfiles on self-hosted runners that may have a managed identity.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # Defense in depth for callers that have not moved their admission check to pull_request_target.
+    if: >-
+      (github.event_name != 'pull_request' && github.event_name != 'pull_request_target') ||
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on:
       - self-hosted
       - "1ES.Pool=${{ inputs.pool_name }}"
@@ -90,6 +96,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Set up Python ${{ inputs.python_version }}
         if: inputs.architecture != 'arm64'
