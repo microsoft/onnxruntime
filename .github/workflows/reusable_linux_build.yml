@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       pool_name:
-        description: 'The 1ES hosted pool or scale-set name (e.g., ort-github-linux-16-amd-wcus-ss)'
+        description: 'The 1ES scale-set name (e.g., ort-github-linux-16-amd-wcus-ss)'
         required: true
         type: string
       build_config:
@@ -74,11 +74,7 @@ on:
 
 jobs:
   build_test_pipeline:
-    runs-on: >-
-      ${{ inputs.pool_name == 'ort-github-linux-16-amd-wcus-ss'
-          && fromJSON('["ort-github-linux-16-amd-wcus-ss"]')
-          || fromJSON(format('["self-hosted", "1ES.Pool={0}", "JobId={1}-{2}-{3}-{4}"]',
-              inputs.pool_name, inputs.job_identifier, github.run_id, github.run_number, github.run_attempt)) }}
+    runs-on: ["${{ inputs.pool_name }}"]
     timeout-minutes: 120
     permissions:
       contents: read
