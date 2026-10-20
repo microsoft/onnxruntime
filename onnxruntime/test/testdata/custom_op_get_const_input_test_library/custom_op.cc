@@ -1,7 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
+#include <iostream>
+#include <stdexcept>
+#include <string>
+
 #include "custom_op.h"
-#include "common.h"
 
 void simple_assert(const bool cond, const std::string& text) {
   if (!cond) {
@@ -33,7 +37,7 @@ TestCustomKernel::TestCustomKernel(const OrtKernelInfo* info) {
 }
 
 void TestCustomKernel::Compute(OrtKernelContext* context) {
-  ORT_UNUSED_PARAMETER(context);
+  static_cast<void>(context);
 }
 
 //
@@ -43,7 +47,7 @@ void TestCustomKernel::Compute(OrtKernelContext* context) {
 TestCustomOp::TestCustomOp() {}
 
 void* TestCustomOp::CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const {
-  ORT_UNUSED_PARAMETER(api);
+  static_cast<void>(api);
 #ifdef _WIN32
 #pragma warning(disable : 26409)
 #endif
