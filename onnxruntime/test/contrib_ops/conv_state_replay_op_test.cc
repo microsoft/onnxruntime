@@ -157,7 +157,7 @@ class ConvReplayHarness {
     ORT_RETURN_IF_ERROR(session_->NewIOBinding(&binding));
     OrtValue input_alias;
     if (aliased_input >= 0) {
-      const auto& input = (aliased_input == 0 ? source_value_ : capture_value_).Get<Tensor>();
+      const auto& input = (aliased_input == 0 ? source_value_ : capture_value_).template Get<Tensor>();
       Tensor::InitOrtValue(ElementType(), input.Shape(), destination_value_.GetMutable<Tensor>()->MutableDataRaw(),
                            input.Location(), input_alias);
     }
