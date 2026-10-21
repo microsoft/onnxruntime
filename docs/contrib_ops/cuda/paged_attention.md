@@ -811,9 +811,13 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 >   directly at `group_size = 6`: H256 supports causal and non-causal attention with matching native
 >   FP16/BF16 query and cache types, FP16 query/output with an INT8/FP8 cache, or FP16 query/output
 >   with a `PER_CHANNEL` INT4 cache; causal H128 supports FP16 query/output with an INT8 cache.
->   Quantized `PER_CHANNEL` K scales reach XQA when scale folding is enabled. INT4 with `PER_TENSOR`
->   scales, BF16-query INT4, and disabled per-channel folding use portable paged decode for
->   metadata-bounded speculative steps. Non-causal H128 multi-token steps use a portable or gathered
+>   Quantized `PER_CHANNEL` K scales reach XQA when scale folding is enabled. Other quantized-cache
+>   metadata-bounded steps of 2–8 query tokens use portable paged decode when no XQA specialization
+>   applies, including INT8/FP8 `PER_TENSOR` caches with query/KV group size 16. Disabling XQA with
+>   `ORT_ENABLE_XQA=0` uses the portable path for both single-token and short multi-token decode.
+>   `ORT_PAGED_ATTENTION_DISABLE_SPLIT_KV=1` disables the portable path's occupancy-based KV
+>   partitioning for reproducibility across query shapes, at the cost of decode parallelism.
+>   Non-causal H128 multi-token steps use a portable or gathered
 >   backend. Single-token decode reads and
 >   dequantizes the cache in place through XQA when eligible or `PagedDecodeSplitKV` otherwise.
 > - Because a quantized cache never reaches Flash's *paged* kernel, the `block_size` tiling

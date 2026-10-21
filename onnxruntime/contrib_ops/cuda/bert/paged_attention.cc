@@ -149,6 +149,7 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
   disable_memory_efficient_attention_ = sizeof(T) != 2 || !kernel_options_->UseEfficientAttention();
   disable_paged_decode_ = sizeof(T) != 2 || !kernel_options_->UseDecoderAttention();
+  disable_split_kv_ = ParseEnvironmentVariableWithDefault<int>("ORT_PAGED_ATTENTION_DISABLE_SPLIT_KV", 0) != 0;
   // Quantized-cache XQA defaults on, matching GroupQueryAttention. Native-cache XQA is opt-in
   // because it has not shown a consistent advantage over FlashAttention.
   enable_xqa_ = sizeof(T) == 2 && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0);
@@ -571,7 +572,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       max_query_len_bound > 1 && max_query_len_bound <= 8;
   const bool portable_spec_dec_candidate =
       has_metadata_bounds && max_query_len_bound > 1 && max_query_len_bound <= 8 &&
-      (std::is_same_v<TCACHE, uint8_t> || (kIsQuantizedCache && per_channel_k && !enable_per_channel_xqa_));
+      kIsQuantizedCache;
   const bool cudnn_paged_enabled =
       enable_cudnn_paged_ || (auto_enable_cudnn_paged_ && device_prop.major >= 9);
   const bool cudnn_paged_eligible =
@@ -877,8 +878,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   IAllocatorUniquePtr<void> decode_partial_max_buffer;
   IAllocatorUniquePtr<void> decode_partial_sum_buffer;
   if (use_paged_decode && !use_xqa_decode) {
-    num_splits = ComputePagedDecodeSplits(parameters.token_count, parameters.num_heads, max_kv_len,
-                                          device_prop.multiProcessorCount);
+    if (!disable_split_kv_) {
+      num_splits = ComputePagedDecodeSplits(parameters.token_count, parameters.num_heads, max_kv_len,
+                                            device_prop.multiProcessorCount);
+    }
     const size_t rows = static_cast<size_t>(num_splits) * parameters.token_count * parameters.num_heads;
     decode_partial_out_buffer =
         GetScratchBuffer<void>(sizeof(float) * rows * parameters.head_size, GetComputeStream(context));

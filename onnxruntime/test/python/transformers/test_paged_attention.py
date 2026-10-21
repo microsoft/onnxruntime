@@ -522,8 +522,9 @@ def paged_attention_func(
         "past_seqlens": past_seqlens.detach().cpu().numpy(),
         "block_table": block_table.detach().cpu().numpy(),
     }
-    key_cache_np = key_cache.detach().cpu().numpy()
-    value_cache_np = value_cache.detach().cpu().numpy()
+    if config.ep != "CUDAExecutionProvider" or not quantized:
+        key_cache_np = key_cache.detach().cpu().numpy()
+        value_cache_np = value_cache.detach().cpu().numpy()
 
     if getattr(config, "use_attention_metadata", False):
         override = getattr(config, "attention_metadata_override", None)
@@ -636,7 +637,7 @@ def paged_attention_func(
         io_binding.bind_output("value_cache_out")
     ort_session.run_with_iobinding(io_binding)
     if quantized:
-        output = torch.tensor(numpy.array(io_binding.copy_outputs_to_cpu()[0]))
+        output = torch.tensor(io_binding.get_outputs()[0].numpy())
         return output, key_cache, value_cache
     output, key_cache_out, value_cache_out = io_binding.copy_outputs_to_cpu()
     output = torch.tensor(numpy.array(output))
@@ -3500,6 +3501,71 @@ class TestPagedAttentionAttentionMetadata(unittest.TestCase):
         config = self._config(kv_cache_type="fp8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR")
         parity_check_paged_attention(config, rtol=5e-2, atol=5e-2)
 
+    @parameterized.expand([(f"{cache}_q{q}", cache, q) for cache in ("int8", "fp8") for q in (2, 8)])
+    def test_quantized_speculative_portable_without_gather(self, _, cache, query_length):
+        if cache == "fp8" and not has_fp8_kv_cache():
+            self.skipTest("FP8 KV cache kernels are not built")
+        config = self._config(
+            batch_size=1,
+            sequence_length=query_length,
+            total_sequence_length=256,
+            num_heads=32,
+            kv_num_heads=2,
+            head_size=256,
+            kv_cache_type=cache,
+            k_quant_type="PER_TENSOR",
+            v_quant_type="PER_TENSOR",
+        )
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"}):
+            parity_check_paged_attention(
+                config,
+                rtol=5e-3,
+                atol=5e-3,
+                sdpa_kernel=SDPA_KERNEL_DECODER_ATTENTION,
+                new_seqlens_override=torch.tensor([query_length], dtype=torch.int32),
+            )
+
+    @unittest.skipIf(not has_fp8_kv_cache(), reason="FP8 KV cache kernels are not built")
+    @parameterized.expand([(f"past{past}", past) for past in (128, 2048, 8192)])
+    def test_unsplit_fp8_decode_is_query_shape_invariant(self, _, past):
+        config = self._config(
+            batch_size=1,
+            sequence_length=2,
+            total_sequence_length=past + 2,
+            num_heads=32,
+            kv_num_heads=2,
+            head_size=256,
+            kv_cache_type="fp8",
+            k_quant_type="PER_TENSOR",
+            v_quant_type="PER_TENSOR",
+        )
+        query = torch.randn(2, 32 * 256, device="cuda", dtype=torch.float16)
+        key = torch.randn(2, 2 * 256, device="cuda", dtype=torch.float16)
+        value = torch.randn_like(key)
+        blocks = (past + 2 + 255) // 256
+        caches = [
+            torch.randn(blocks, 256, 2, 256, device="cuda", dtype=torch.float16).to(torch.float8_e4m3fn)
+            for _ in range(2)
+        ]
+        outputs = []
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0", "ORT_PAGED_ATTENTION_DISABLE_SPLIT_KV": "1"}):
+            for count in (1, 2):
+                output, _, _ = paged_attention_func(
+                    config,
+                    query[:count],
+                    key[:count],
+                    value[:count],
+                    *caches,
+                    torch.tensor([0, count], device="cuda", dtype=torch.int32),
+                    torch.tensor([past], device="cuda", dtype=torch.int32),
+                    torch.arange(blocks, device="cuda", dtype=torch.int32).reshape(1, -1),
+                    sdpa_kernel=SDPA_KERNEL_DECODER_ATTENTION,
+                    k_scale=torch.ones(1, device="cuda", dtype=torch.float32),
+                    v_scale=torch.ones(1, device="cuda", dtype=torch.float32),
+                )
+                outputs.append(output[0])
+        torch.testing.assert_close(outputs[0], outputs[1], rtol=0, atol=0)
+
     def test_decode_softcap_portable_kernel(self):
         # softcap rules out XQA, so this exercises the split-KV decode kernel, whose split count is
         # derived from max_kv_len -- here from the bound rather than from a readback.
@@ -3516,12 +3582,17 @@ class TestPagedAttentionAttentionMetadata(unittest.TestCase):
         # exact total_kv_tokens, so the gather kernel has to tolerate indices past the real end of
         # the packed layout.
         config = self._config(
-            sequence_length=8,
+            sequence_length=16,
             kv_cache_type="int8",
             k_quant_type="PER_TENSOR",
             v_quant_type="PER_TENSOR",
         )
-        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+        parity_check_paged_attention(
+            config,
+            rtol=5e-3,
+            atol=5e-3,
+            new_seqlens_override=torch.full((config.batch_size,), 16, dtype=torch.int32),
+        )
 
     def test_ragged_new_token_counts(self):
         # token_count == batch_size even though one sequence contributes two tokens and another
