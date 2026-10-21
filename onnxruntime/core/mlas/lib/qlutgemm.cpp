@@ -124,7 +124,7 @@ MlasInitLutGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size,
     // search space
     std::vector<size_t> bms;
     if (nbits == 1 || nbits == 2 || nbits == 4) {
-        bms = {256, 512, 1024, 2048, 320, 640, 1280};
+        bms = {128, 256, 512, 1024, 2048, 320, 640, 1280};
     } else if (nbits == 3) {
         bms = {192, 384, 576, 758};
     }
@@ -377,7 +377,7 @@ MlasIsLutGemmAvailable(
             n_div = 256;
             break;
         case 2:
-            n_div = 128;
+            n_div = 64;
             break;
         case 3:
             n_div = 64;
