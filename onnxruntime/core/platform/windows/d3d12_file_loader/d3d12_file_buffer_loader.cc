@@ -309,14 +309,18 @@ common::Status D3D12FileBufferLoader::LoadInternal(
   std::future<AllocationResult> allocation_future = std::async(
       std::launch::async, [this, sizes = std::move(sizes)]() noexcept {
         AllocationResult allocation;
-        try {
+        ORT_TRY {
           allocation.status =
               AllocateDestinationGpuBuffers(sizes, allocation.batch);
-        } catch (const std::exception& ex) {
-          allocation.status = ORT_MAKE_STATUS(
-              ONNXRUNTIME, RUNTIME_EXCEPTION,
-              "Destination allocation failed: ", ex.what());
-        } catch (...) {
+        }
+        ORT_CATCH(const std::exception& ex) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            allocation.status = ORT_MAKE_STATUS(
+                ONNXRUNTIME, RUNTIME_EXCEPTION,
+                "Destination allocation failed: ", ex.what());
+          });
+        }
+        ORT_CATCH(...) {
           allocation.status = ORT_MAKE_STATUS(
               ONNXRUNTIME, RUNTIME_EXCEPTION,
               "Destination allocation failed with an unknown exception.");
@@ -327,6 +331,7 @@ common::Status D3D12FileBufferLoader::LoadInternal(
   // CreateFileReadPlan groups buffer sources by file and coalesces overlapping
   // or adjacent sector-aligned ranges into read regions to avoid redundant reads.
   std::vector<FileReadPlan> files;
+  BufferCollection loaded_batch;
   uint64_t last_submitted_fence = 0;
   bool load_succeeded = false;
   // Resources referenced by in-flight I/O or GPU work must remain alive on
@@ -337,10 +342,7 @@ common::Status D3D12FileBufferLoader::LoadInternal(
       WaitForFenceUncancelled(last_submitted_fence);
     }
     if (allocation_future.valid()) {
-      try {
-        (void)allocation_future.get();
-      } catch (...) {
-      }
+      allocation_future.wait();
     }
   });
 
@@ -352,7 +354,6 @@ common::Status D3D12FileBufferLoader::LoadInternal(
   }
   ORT_RETURN_IF_ERROR(PrepareUploadStagingSlots(maximum_alignment, cancellation));
 
-  BufferCollection loaded_batch;
   bool allocation_ready = false;
   auto ensure_allocation = [&]() -> common::Status {
     if (allocation_ready) {
@@ -1113,45 +1114,69 @@ void D3D12FileBufferLoader::DrainActiveReads() noexcept {
 
 common::Status D3D12FileBufferLoader::Create(
     ID3D12Device* device,
+    std::unique_ptr<D3D12FileBufferLoader>& loader) noexcept {
+  return Create(device, loader, Config{});
+}
+
+common::Status D3D12FileBufferLoader::Create(
+    ID3D12Device* device,
     std::unique_ptr<D3D12FileBufferLoader>& loader,
     const Config& config) noexcept {
   loader.reset();
-  try {
+  common::Status status;
+  ORT_TRY {
     auto instance = std::unique_ptr<D3D12FileBufferLoader>(
         new D3D12FileBufferLoader(device, config));
     ORT_RETURN_IF_ERROR(instance->Initialize());
     loader = std::move(instance);
     return common::Status::OK();
-  } catch (const std::exception& ex) {
-    return ORT_MAKE_STATUS(
-        ONNXRUNTIME, RUNTIME_EXCEPTION,
-        "D3D12FileBufferLoader::Create failed: ",
-        ex.what());
-  } catch (...) {
-    return ORT_MAKE_STATUS(
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(
+          ONNXRUNTIME, RUNTIME_EXCEPTION,
+          "D3D12FileBufferLoader::Create failed: ",
+          ex.what());
+    });
+  }
+  ORT_CATCH(...) {
+    status = ORT_MAKE_STATUS(
         ONNXRUNTIME, RUNTIME_EXCEPTION,
         "D3D12FileBufferLoader::Create failed with an unknown exception.");
   }
+  return status;
+}
+
+common::Status D3D12FileBufferLoader::Load(
+    const std::vector<BufferSource>& ranges,
+    BufferCollection& result) noexcept {
+  return Load(ranges, result, CancellationToken{});
 }
 
 common::Status D3D12FileBufferLoader::Load(
     const std::vector<BufferSource>& ranges,
     BufferCollection& result,
     const CancellationToken& cancellation) noexcept {
-  try {
+  common::Status status;
+  ORT_TRY {
     return LoadInternal(ranges, result, cancellation);
-  } catch (const std::exception& ex) {
+  }
+  ORT_CATCH(const std::exception& ex) {
     result.Clear();
-    return ORT_MAKE_STATUS(
-        ONNXRUNTIME, RUNTIME_EXCEPTION,
-        "D3D12FileBufferLoader::Load failed: ",
-        ex.what());
-  } catch (...) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(
+          ONNXRUNTIME, RUNTIME_EXCEPTION,
+          "D3D12FileBufferLoader::Load failed: ",
+          ex.what());
+    });
+  }
+  ORT_CATCH(...) {
     result.Clear();
-    return ORT_MAKE_STATUS(
+    status = ORT_MAKE_STATUS(
         ONNXRUNTIME, RUNTIME_EXCEPTION,
         "D3D12FileBufferLoader::Load failed with an unknown exception.");
   }
+  return status;
 }
 
 }  // namespace d3d12

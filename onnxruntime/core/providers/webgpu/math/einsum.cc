@@ -35,13 +35,21 @@ bool IsInteger(const std::string& s) {
 }
 }  // namespace
 
-#define WEBGPU_EINSUM_KERNEL_DECL(version)                                            \
-  ONNX_OPERATOR_KERNEL_EX(                                                            \
-      Einsum, kOnnxDomain, version, kWebGpuExecutionProvider,                         \
+#define WEBGPU_EINSUM_KERNEL_DECL(start_version, end_version)                         \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                  \
+      Einsum, kOnnxDomain, start_version, end_version, kWebGpuExecutionProvider,      \
       (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()), \
       Einsum);
 
-WEBGPU_EINSUM_KERNEL_DECL(12);
+WEBGPU_EINSUM_KERNEL_DECL(12, 27);
+
+ONNX_OPERATOR_KERNEL_EX(
+    Einsum,
+    kOnnxDomain,
+    28,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()),
+    Einsum);
 
 EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs,
                                const std::string& raw_equation) {

@@ -109,8 +109,9 @@ class ClipNodeGroupSelector : public NodeGroupSelector {
 // 2 DQ nodes providing input -> node -> Q
 class BinaryNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit BinaryNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
-      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+  explicit BinaryNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true,
+                                   bool require_scalar_quant_params = false)
+      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit), require_scalar_quant_params_(require_scalar_quant_params) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -119,13 +120,15 @@ class BinaryNodeGroupSelector : public NodeGroupSelector {
 
   bool allow_16bit_;
   bool allow_4bit_;
+  bool require_scalar_quant_params_;
 };
 
 // Variadic DQ nodes -> node -> Q
 class VariadicNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit VariadicNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
-      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+  explicit VariadicNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true,
+                                     bool require_per_tensor_quant_params = false)
+      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit), require_per_tensor_quant_params_(require_per_tensor_quant_params) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -134,6 +137,7 @@ class VariadicNodeGroupSelector : public NodeGroupSelector {
 
   bool allow_16bit_;
   bool allow_4bit_;
+  bool require_per_tensor_quant_params_;
 };
 
 // DQ node -> Split -> multiple Q nodes with equal quantization types.
@@ -400,7 +404,7 @@ class BinarySelector : public BaseSelector {
  public:
   explicit BinarySelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false,
                           bool allow_4bit = false)
-      : BaseSelector(std::make_unique<BinaryNodeGroupSelector>(allow_16bit, allow_4bit), compatible_providers) {}
+      : BaseSelector(std::make_unique<BinaryNodeGroupSelector>(allow_16bit, allow_4bit, true), compatible_providers) {}
 };
 
 // Variadic DQ nodes -> node -> Q
@@ -409,7 +413,7 @@ class InputVariadicSelector : public BaseSelector {
   explicit InputVariadicSelector(bool allow_16bit = false,
                                  bool allow_4bit = false,
                                  gsl::span<const char*> compatible_providers = {})
-      : BaseSelector(std::make_unique<VariadicNodeGroupSelector>(allow_16bit, allow_4bit),
+      : BaseSelector(std::make_unique<VariadicNodeGroupSelector>(allow_16bit, allow_4bit, true),
                      compatible_providers) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;

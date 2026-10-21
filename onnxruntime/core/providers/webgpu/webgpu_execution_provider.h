@@ -47,8 +47,7 @@ class GpuBufferAllocator;
 class D3D12ImportedBufferRegistry;
 #endif
 
-// Forward declare CapturedCommandInfo which is now defined in webgpu_context.h
-struct CapturedCommandInfo;
+struct CapturedCommand;
 
 // The actual implementation of kernel registration.
 std::shared_ptr<KernelRegistry> GetKernelRegistry(bool enable_graph_capture, bool enable_int64);
@@ -191,7 +190,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   std::unique_ptr<webgpu::SessionBufferPool> session_buffer_pool_;
 
   // Store captured commands per graph annotation ID
-  std::unordered_map<int, std::vector<webgpu::CapturedCommandInfo>> captured_graphs_;
+  std::unordered_map<int, std::vector<webgpu::CapturedCommand>> captured_graphs_;
   // Track which graph annotation IDs have completed capture
   std::unordered_set<int> captured_graph_ids_;
 

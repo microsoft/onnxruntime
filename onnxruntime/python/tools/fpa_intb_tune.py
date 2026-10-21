@@ -11,10 +11,12 @@ later runs (see docs/contrib_ops/cuda/gemm_profiler_cache.md).
 How it works:
   * It creates a CUDA execution-provider session for the model with the fpA_intB path and the
     cache prefix enabled through session config entries. Kernel construction profiles the
-    configured M buckets and stages their successful tactics in memory.
+    configured M buckets that are not already in ``<output-prefix>.matmulnbits_fpa_intb.tsv``
+    (all of them with ``--retune``) and stages their successful tactics in memory.
   * It then (best-effort) runs dummy inferences at each requested M value so that any
-    additional buckets are profiled lazily. All staged tactics are written to
-    ``<output-prefix>.matmulnbits_fpa_intb.tsv`` when the session is released.
+    additional buckets are profiled lazily.
+  * All staged tactics are written to ``<output-prefix>.matmulnbits_fpa_intb.tsv`` when the session
+    (and its CUDA execution provider) is released.
 
 The generated cache is hardware/build specific: it is only reused on the same GPU
 model + SM + CUDA runtime + ORT version.
@@ -88,10 +90,11 @@ def _parse_m_values(text: str) -> list[int]:
     return sorted(set(values))
 
 
-def _make_session_options(output_prefix: str, m_values: list[int]) -> ort.SessionOptions:
+def _make_session_options(output_prefix: str, m_values: list[int], retune: bool = False) -> ort.SessionOptions:
     """Enables the fpA_intB path, its M-bucket sweep, and the persistent cache for one session."""
     sess_options = ort.SessionOptions()
     sess_options.add_session_config_entry("ep.cuda.gemm_tactic_cache_prefix", output_prefix)
+    sess_options.add_session_config_entry("ep.cuda.gemm_tactic_cache_mode", "save" if retune else "load_save")
     sess_options.add_session_config_entry("ep.cuda.fpa_intb_gemm", "1")
     if m_values:
         sess_options.add_session_config_entry("ep.cuda.fpa_intb_profile_m", ",".join(str(m) for m in m_values))
@@ -237,7 +240,7 @@ def _summarize_cache(cache_path: str, signature: dict[str, str], *, display: boo
     return entries
 
 
-def tune(model: str, output_prefix: str, m_values: list[int], run_inference: bool) -> str:
+def tune(model: str, output_prefix: str, m_values: list[int], run_inference: bool, retune: bool = False) -> str:
     available = ort.get_available_providers()
     if "CUDAExecutionProvider" not in available:
         raise RuntimeError(
@@ -245,7 +248,7 @@ def tune(model: str, output_prefix: str, m_values: list[int], run_inference: boo
         )
 
     print(f"Creating CUDA session for {model} (this profiles the M buckets)...")
-    sess_options = _make_session_options(output_prefix, m_values)
+    sess_options = _make_session_options(output_prefix, m_values, retune)
     with tempfile.TemporaryDirectory(prefix="ort_fpa_intb_tune_") as directory:
         results_prefix = os.path.join(directory, "selected")
         sess_options.add_session_config_entry("ep.cuda.gemm_tactic_cache_tuning_results_prefix", results_prefix)
@@ -304,6 +307,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Only trigger construction-time profiling; skip the dummy inference loop.",
     )
+    parser.add_argument(
+        "--retune",
+        action="store_true",
+        help="Ignore tactics already in the cache file and profile every bucket again.",
+    )
     return parser
 
 
@@ -329,6 +337,7 @@ def main(argv: list[str] | None = None) -> int:
         output_prefix=output_prefix,
         m_values=m_values,
         run_inference=not args.no_inference,
+        retune=args.retune,
     )
     return 0
 

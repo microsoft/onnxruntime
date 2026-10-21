@@ -670,6 +670,41 @@ TEST(FusedConvTest, Cpu_Conv3D_Batched_Relu) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+TEST(FusedConvTest, Cpu_ZeroChannel_SumShapeValidation) {
+  auto run_zero_channel_with_sum = [](const vector<int64_t>& sum_shape,
+                                      const vector<float>& sum_data,
+                                      OpTester::ExpectResult expect_result,
+                                      const string& expected_error) {
+    OpTester test("FusedConv", 1, onnxruntime::kMSDomain);
+    test.AddAttribute("group", static_cast<int64_t>(1));
+    test.AddAttribute("kernel_shape", vector<int64_t>{1, 1});
+    test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+    test.AddAttribute("strides", vector<int64_t>{1, 1});
+    test.AddAttribute("dilations", vector<int64_t>{1, 1});
+    test.AddAttribute("activation", string("Relu"));
+
+    test.AddInput<float>("X", {1, 0, 2, 2}, {});
+    test.AddInput<float>("W", {1, 0, 1, 1}, {});
+    test.AddInput<float>("B", {1}, {1.0f});
+    test.AddInput<float>("Z", sum_shape, sum_data);
+    test.AddOutput<float>("Y", {1, 1, 2, 2}, {3.0f, 4.0f, 5.0f, 6.0f});
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(expect_result, expected_error, {}, nullptr, &execution_providers);
+  };
+
+  // Matching residual shape succeeds.
+  run_zero_channel_with_sum({1, 1, 2, 2}, {2.0f, 3.0f, 4.0f, 5.0f},
+                            OpTester::ExpectResult::kExpectSuccess, "");
+  // Smaller residual shape must be rejected before reading Sum data.
+  run_zero_channel_with_sum({1, 1, 1, 1}, {2.0f},
+                            OpTester::ExpectResult::kExpectFailure, "output and sum shape must match");
+  // Empty residual shape must also be rejected.
+  run_zero_channel_with_sum({1, 0, 2, 2}, {},
+                            OpTester::ExpectResult::kExpectFailure, "output and sum shape must match");
+}
+
 #endif
 
 }  // namespace test

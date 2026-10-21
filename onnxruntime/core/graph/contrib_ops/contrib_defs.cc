@@ -1435,7 +1435,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     MoE, 1,
     OpSchema()
         .SetDoc(MoE_ver1_doc)
-        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
+        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu", AttributeProto::STRING, std::string("relu"))
         .Attr("swiglu_fusion", "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("swiglu_limit", "The limit used to clamp in SwiGLU. No clamp when limit is not provided.", AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Attr("activation_alpha", "Alpha parameter used in activation function.", AttributeProto::FLOAT, 1.0f)
@@ -1491,6 +1491,10 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       Partial edge blocks are allowed. No zero points or activation scales are accepted.
       Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
       Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
+      On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM by default.
+      These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
+      Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
+      Other activation types and unsupported routing sizes retain the fallback.
       The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
       that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
 
@@ -1519,7 +1523,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(qMoE_ver1_doc)
         .Attr("activation_type",
-              "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu",
+              "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu",
               AttributeProto::STRING,
               std::string("relu"))
         .Attr("k",
@@ -1597,10 +1601,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::STRING,
               std::string("int"))
         .Attr("weights_prepacked",
-              "Only meaningful when quant_type='int'. Tri-state control over the layout of the "
-              "int4/int8 fc1/fc2 weight initializers. The concrete prepacked layouts selected by "
-              "-1 and 1 are determined by the execution provider. 0: the initializers are raw, "
-              "un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits. Defaults to -1.",
+              "Expert-weight layout selector with quantization-specific meanings. For quant_type='int', "
+              "-1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. "
+              "0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. "
+              "For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; "
+              "1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. "
+              "NVFP4 block scales and global scales retain their original layouts and values. "
+              "Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))
         .Input(0,
