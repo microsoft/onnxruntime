@@ -10,7 +10,7 @@ The save-as scope amendment in J.9 and its revised implementation plan were
 separately approved on 2026-10-19.
 **M11 refinement:** Appendix K was approved on 2026-10-20 for detailed plan
 preparation. The CPU-first `TASKS.md` plan was separately approved on 2026-10-20;
-GPU qualification remains blocked on restoration of compatible tooling.
+GPU qualification was resumed and verified on 2026-10-21 with compatible tooling.
 
 ## 1. Purpose
 

@@ -1095,3 +1095,62 @@ Compressed project memory. This is not the execution plan.
   frozen header copies. Kept generator/probe/measurement sources and logs plus
   actual minimal object/probe/profiles and CPU final-3 library/binaries/profiles.
   Exact commands/evidence/blocker are in TASKS M11. No subagents or installs.
+- GPU RESUMED by user2026-10-21. Installed root is CUDA13.0.48
+  /home/tianlei/cuda13.0 (/usr/local/cuda points here), cuDNN9.23.1
+  /home/tianlei/cudnn_9.23_cuda13, NCU2025.3, Nsys2025.3.2, sanitizer2025.3.
+  All8A100 idle initially. Old13.1 root still absent: DO NOT mutate old caches.
+- Fresh plugin build/state-cuda-plugin-m11-13.0/RelWithDebInfo (Clang18 LLVM)
+  and legacy build/state-cuda-legacy-m11-13.0/RelWithDebInfo (GCC13) configured
+  using old dependency source overrides only. Configuration helper source
+  m11_configure_gpu.py retained in sessionfiles. Initial plugin try-link failed
+  because global-fprofile linkerflag reachedGCC/nvcc; removedglobalflag, retained
+  C/CXX instrumentation matching prior successful setup. Both configs nowPASS.
+  Attached known build shellIds m11-gpu-build / m11-legacy-build; no agents.
+- New GPU/C11 test changes in test_cuda_stateful_integration.cc and
+  stateful_api_c_test.c; exact-plugin-flags syntax checks bothPASS.
+  Options helper extracted for package/model same EP/stream flags; cached/
+  cachefree SamplingModel; native BootstrapChain; TemporaryDirectory package
+  helper with real CPU/CUDA variants. CPU variants use deliberately different
+  score mapping, so accidental CPU variant selection cannot pass token parity.
+- Added CudaBootstrapPackageTest four cases:72 policy/dtype/cache/budget/EOS
+  combinations versus direct/programmatic+CPU reference; plain-session/firstEOS/
+  cancel/NaN/CPUproducer/crossdevice errors; C11 owned-session/library-unregister
+  retained GPU values; dedicated vocab257 transfer test (no caller DtoH copies).
+  C11 helper refactored internally to accept external per-step options and retain
+  result, querying actual GPU greedy counters. Old CPU C entry preserved.
+- Known m11-cpu-c11-update shell rebuilds CPU focused consumer compatibility.
+  GPU production code unchanged so far; no runtime GPU tests/proof yet.
+- GPU FINAL: CPU69/148 unfiltered; plugin132native/204unfilteredAutoEP;
+  legacy120native/69selectedpublic allPASS, zero reported skips.
+  NewGPU4tests (72matrixcases) pass. SharedC11 consumer CPUcompat8/8 passed.
+- Initial fresh native plugin8failures were TEST-INFRA device-id mismatch:
+  first enumerated CUDA device != ordinal0. Fixed default_providers CUDA helper
+  to forward ordinal+userstream. MakeEp now optionally selects requested ordinal
+  among configured devices using retained Env/native factory. Preserves default
+  behavior for otherEPs. Added native device1+stream+invalidordinal regression.
+  Prior8native fixtures nowpass; no runtime validation/engine change.
+- HOST COVERAGE743/743. CPU final-after-harness, GPU final-2, separate minimal
+  profiles. Chain135/135; parser400/400. No exclusions/nonzerohash mismatches;
+  plugin403/CPU358 dormant hash0 maps audited. Production scope unchanged.
+- DEVICE sourcecuda_greedy.cu SHA92837bc... unchanged; actual rebuilt13.0
+  NCU SourceCounters25/25 including mapped braces, noneexcluded. Unprivileged
+  ERR_NVGPUCTRPERM -> authorized sudo-n profiler only; no permission/driver edits.
+- NSYS actual packageRunV257:3DtoH ALL16bytes(total48), no2056/1028 logit
+  readbacks. HtoD5copies8256bytes separate; no device-only/performancegate claim.
+  m11-bootstrap-transfer.sqlite/report and m11-transfer-proof.txt retained.
+- Memcheck public4/native9/publicSDK:0errors/0leakedbytes. Racecheck0hazards/
+  errors/warnings; synccheck0errors. OldM08timing-only exclusion unchanged,
+  no new exclusion. Public C11 and C++17/noexceptions GPU SDKs pass after reset,
+  owned Session teardown/library unregister and retained GPU-logits read.
+- Plugin actualfilename libonnxruntime_providers_cuda.so (not_plugin); first SDK
+  attempt wrongsuffix aborted beforeload, corrected successfully.
+  Freshlegacy initiallylacked testdata; staged repoassets then all69pass.
+- H0/H7/H8 DONE; H9 publication inprogress. Need finaldocs/checks, commit/push,
+  one readyPR on#24 using template. No PR created yet/no merges/M12.
+- Final profileaudit:403plugin/358CPU/17minimal dormant hash0 maps ONLY,
+  no nonzero mismatches. m11-final-proof-hashes.txt + GPUartifacthashes retain
+  production sources, actual CPU/GPU/minimal objects/binaries/profiles/reports.
+  Pinned lintrunner20format checks pass after one brace-indent fix; missing lint
+  adapters restored from repo requirements insideexistingvenv (noGPUinstall).
+  Removed exact generatedSDKbinaries/package+200bytecompiler main.profraw;
+  SDK sources/generator, measured minimal/CPU/GPU trees and reports retained.

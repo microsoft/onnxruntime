@@ -8,19 +8,25 @@
 #include <chrono>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <type_traits>
 
 #include <cuda_runtime_api.h>
+#include "nlohmann/json.hpp"
 #include "gtest/gtest.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/stateful_execution_test_utils.h"
+#include "test/util/include/temp_dir.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 extern "C" int StatefulApiCGpuLoopIntegrationTest(OrtSession*, const OrtValue*, int, OrtStatefulStepResult**);
+extern "C" int StatefulApiCPackageGpuChainTest(const OrtEnv*, const ORTCHAR_T*, const OrtSessionOptions*,
+                                               const OrtSessionOptions*, OrtStatefulStepResult**);
 
 namespace onnxruntime::test {
 namespace {
@@ -46,14 +52,13 @@ class CudaCacheApiIntegrationTest : public testing::Test {
   }
   void TearDown() override { EXPECT_EQ(cudaSetDevice(previous_device_), cudaSuccess); }
 
-  Ort::Session Session(bool gpu = true, cudaStream_t stream = nullptr,
-                       ONNX_NAMESPACE::ModelProto model = stateful::MakeDynamicDecoderModel(), int id = 0) {
+  Ort::SessionOptions Options(bool gpu = true, cudaStream_t stream = nullptr, int id = 0, Ort::Env& env = *ort_env) {
     Ort::SessionOptions options;
     options.SetIntraOpNumThreads(1).SetInterOpNumThreads(1).SetGraphOptimizationLevel(ORT_DISABLE_ALL);
     options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "1");
     if (gpu) {
       Ort::ConstEpDevice selected(nullptr);
-      for (auto device : ort_env->GetEpDevices()) {
+      for (auto device : env.GetEpDevices()) {
         if (std::strcmp(device.EpName(), "CUDAExecutionProvider") == 0 &&
             device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT).GetDeviceId() == id) selected = device;
       }
@@ -62,9 +67,15 @@ class CudaCacheApiIntegrationTest : public testing::Test {
         options.AddConfigEntry("ep.cuda.user_compute_stream",
                                std::to_string(reinterpret_cast<uintptr_t>(stream)).c_str());
       }
-      options.AppendExecutionProvider_V2(*ort_env, {selected}, Ort::KeyValuePairs{});
+      options.AppendExecutionProvider_V2(env, {selected}, Ort::KeyValuePairs{});
       options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
     }
+    return options;
+  }
+
+  Ort::Session Session(bool gpu = true, cudaStream_t stream = nullptr,
+                       ONNX_NAMESPACE::ModelProto model = stateful::MakeDynamicDecoderModel(), int id = 0) {
+    auto options = Options(gpu, stream, id);
     const auto data = model.SerializeAsString();
     Ort::Session session(*ort_env, data.data(), data.size(), options);
     for (const auto& graph : session.GetEpGraphAssignmentInfo()) {
@@ -89,7 +100,7 @@ class CudaCacheApiIntegrationTest : public testing::Test {
             ORT_KV_CACHE_SHARE};
   }
 
-  static ONNX_NAMESPACE::ModelProto SamplingModel(bool half = false, int64_t vocabulary = 4) {
+  static ONNX_NAMESPACE::ModelProto SamplingModel(bool half = false, int64_t vocabulary = 4, bool cached = true) {
     auto model = stateful::MakeDynamicDecoderModel();
     auto& graph = *model.mutable_graph();
     graph.mutable_output(0)->mutable_type()->mutable_tensor_type()->clear_shape();
@@ -113,12 +124,19 @@ class CudaCacheApiIntegrationTest : public testing::Test {
       to->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
       to->set_i(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
     }
+    if (!cached) {
+      graph.mutable_input()->DeleteSubrange(1, 1);
+      graph.mutable_output()->DeleteSubrange(1, 1);
+      for (int i = graph.node_size() - 1; i >= 0; --i) {
+        if (graph.node(i).op_type() == "Concat") graph.mutable_node()->DeleteSubrange(i, 1);
+      }
+    }
     return model;
   }
 
-  Ort::SessionLoop Loop(Ort::Session& session, bool gpu = true, int phase = 0, int64_t budget = 3,
-                        bool eos = false, bool gpu_sampler = false,
-                        std::optional<int64_t> position = std::nullopt) {
+  Ort::SessionLoop Loop(Ort::Session& session, bool gpu = true, int phase = 0, int64_t budget = 3, bool eos = false,
+                        bool gpu_sampler = false, std::optional<int64_t> position = std::nullopt, bool cached = true,
+                        int sampler_device = 0) {
     const char* finite[]{"token"};
     const char* outputs[]{"logits", "present_key"};
     const int64_t eos_id = 3;
@@ -135,16 +153,16 @@ class CudaCacheApiIntegrationTest : public testing::Test {
     config.finite_input_names = phase == 2 ? nullptr : finite;
     config.num_finite_inputs = phase == 2 ? 0 : 1;
     config.output_names = outputs;
-    config.num_outputs = 2;
+    config.num_outputs = cached ? 2 : 1;
     config.exit_conditions = phase == 2 ? &exits[1] : exits.data();
     config.num_exit_conditions = phase == 0 ? 1 : phase == 2 ? (eos ? 2 : 1)
                                                              : (eos ? 3 : 2);
-    config.kv_caches = &cache;
-    config.num_kv_caches = 1;
+    config.kv_caches = cached ? &cache : nullptr;
+    config.num_kv_caches = cached ? 1 : 0;
     config.generation = phase ? &generation : nullptr;
     Ort::SessionLoopOptions options(config);
-    if (gpu) options.SetProvider(ORT_STATEFUL_FEATURE_CACHE, GpuCache());
-    if (gpu_sampler) options.SetProvider(ORT_STATEFUL_FEATURE_SAMPLER, GpuCache());
+    if (gpu && cached) options.SetProvider(ORT_STATEFUL_FEATURE_CACHE, GpuCache());
+    if (gpu_sampler) options.SetProvider(ORT_STATEFUL_FEATURE_SAMPLER, GpuCache(sampler_device));
     return Ort::SessionLoop(session, options);
   }
 
@@ -160,6 +178,126 @@ class CudaCacheApiIntegrationTest : public testing::Test {
     const OrtStatefulChainOutput output{"tokens", 0, nullptr, ORT_STATEFUL_GENERATED_TOKEN_IDS};
     const OrtStatefulChainConfig config{sizeof(config), stages, 2, &output, 1};
     return Ort::SessionChain(Ort::SessionChainOptions(config));
+  }
+
+  Ort::SessionChain BootstrapChain(Ort::Session& prefill, Ort::Session& decode, bool gpu_cache, bool gpu_sampler,
+                                   int64_t budget = 3, bool eos = false, bool cached = true, bool plain = false,
+                                   int sampler_device = 0) {
+    auto first = Loop(prefill, gpu_cache, 0, budget, false, false, std::nullopt, cached);
+    auto second = Loop(decode, gpu_cache, 2, budget, eos, gpu_sampler, std::nullopt, cached, sampler_device);
+    const OrtStatefulInputBinding prompt{
+        "token",
+        {plain ? ORT_STATEFUL_EXTERNAL_INPUT : ORT_STATEFUL_EXTERNAL_SEQUENCE, plain ? "prompt" : "prompt_batches", 0}};
+    const auto cache = CacheBinding();
+    OrtStatefulChainComponent stages[]{{"prefill", nullptr, first, &prompt, 1, nullptr, 0, nullptr, 0},
+                                       {"decode", nullptr, second, nullptr, 0, nullptr, 0, nullptr, 0}};
+    if (plain) {
+      stages[0].loop = nullptr;
+      stages[0].session = prefill;
+      stages[0].kv_caches = cached ? &cache : nullptr;
+      stages[0].num_kv_caches = cached ? 1 : 0;
+    }
+    const OrtStatefulChainOutput outputs[]{{"tokens", 1, nullptr, ORT_STATEFUL_GENERATED_TOKEN_IDS},
+                                           {"prefill_logits", 0, "logits", ORT_STATEFUL_MODEL_OUTPUT}};
+    const OrtStatefulChainConfig config{sizeof(config), stages, 2, outputs, 2};
+    Ort::SessionChainOptions options(config);
+    if (plain && cached && gpu_cache) options.SetComponentProvider(0, ORT_STATEFUL_FEATURE_CACHE, GpuCache());
+    const OrtStatefulGenerationBootstrapConfig bootstrap{
+        sizeof(bootstrap), {ORT_STATEFUL_COMPONENT_OUTPUT, "logits", 0}, prompt.source, 0, 0};
+    options.SetGenerationBootstrap(1, bootstrap);
+    return Ort::SessionChain(options);
+  }
+
+  std::unique_ptr<TemporaryDirectory> Package(int64_t budget = 3, bool eos = false, bool cached = true,
+                                              bool gpu_cache = true, bool gpu_sampler = true, bool half = false,
+                                              int64_t vocabulary = 4, bool plain = false) {
+    using Json = nlohmann::ordered_json;
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("ort_m11_cuda_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    auto directory = std::make_unique<TemporaryDirectory>(root.native(), false);
+    Json components = Json::object();
+    const auto model = SamplingModel(half, vocabulary, cached);
+    for (const char* stage : {"decoder_prefill", "decoder_decode"}) {
+      for (const char* variant : {"cpu", "cuda"}) {
+        auto variant_model = model;
+        if (std::string_view(variant) == "cpu") {
+          auto* scores = variant_model.mutable_graph()->mutable_initializer(0);
+          for (int64_t token = 0; token < 4; ++token) {
+            for (int64_t id = 0; id < vocabulary; ++id) {
+              scores->set_float_data(static_cast<int>(token * vocabulary + id), id == (token + 2) % 4 ? 8.f : -1.f);
+            }
+          }
+        }
+        const bool gpu = std::string_view(variant) == "cuda";
+        const std::string relative = std::string(stage) + "/" + variant;
+        const char* file = std::string_view(stage) == "decoder_prefill" ? "model1.onnx" : "model2.onnx";
+        std::filesystem::create_directories(root / relative);
+        std::ofstream output(root / relative / file, std::ios::binary);
+        ORT_ENFORCE(variant_model.SerializeToOstream(&output));
+        components[stage]["variants"][variant] = {{"variant_directory", relative},
+                                                  {"ep", gpu ? "CUDAExecutionProvider" : "CPUExecutionProvider"},
+                                                  {"device", gpu ? "gpu" : "cpu"},
+                                                  {"executor_info", {{"ort", {{"model_file", file}}}}}};
+      }
+    }
+    const Json gpu = {{"mode", "require_provider"},
+                      {"provider_name", "CUDAExecutionProvider"},
+                      {"device_type", "gpu"},
+                      {"device_id", 0}};
+    const Json cpu = {{"mode", "cpu"}};
+    Json prefill = Json::parse(R"({
+      "id":"prefill","component":"decoder_prefill","executor_info":{"ort":{
+        "kind":"session_loop","inputs":{"token":{"kind":"external_sequence","name":"prompt_batches"}},
+        "loop":{"finite_input_names":["token"],"nonempty_input":"token",
+                "exit_conditions":[{"kind":"end_of_inputs"}]}
+      }}
+    })");
+    Json decode = Json::parse(R"({
+      "id":"decode","component":"decoder_decode","executor_info":{"ort":{
+        "kind":"session_loop","loop":{
+          "exit_conditions":[{"kind":"max_generated_tokens","limit":3}],
+          "generation":{"phase":"decode","input_ids":"token","logits_output":"logits",
+            "initial_logits":{"kind":"model_output","step":"prefill","output":"logits"}},
+          "sampler":{"algorithm":"greedy"}
+        }
+      }}
+    })");
+    auto& loop = decode["executor_info"]["ort"]["loop"];
+    loop["exit_conditions"][0]["limit"] = budget;
+    if (eos) loop["exit_conditions"].push_back({{"kind", "eos"}, {"token_ids", {3}}});
+    loop["sampler"]["provider"] = gpu_sampler ? gpu : cpu;
+    Json chain = {{"outputs",
+                   {{"tokens", {{"kind", "generated_token_ids"}, {"step", "decode"}}},
+                    {"prefill_logits", {{"kind", "model_output"}, {"step", "prefill"}, {"output", "logits"}}}}}};
+    if (cached) {
+      const Json bindings =
+          Json::array({{{"cache", "key"}, {"input", "past_key"}, {"output", "present_key"}, {"update", "share"}}});
+      prefill["executor_info"]["ort"]["loop"]["kv_caches"] = bindings;
+      prefill["executor_info"]["ort"]["loop"]["cache_provider"] = gpu_cache ? gpu : cpu;
+      loop["kv_caches"] = bindings;
+      loop["cache_provider"] = gpu_cache ? gpu : cpu;
+      chain["kv_caches"] = {
+          {"key",
+           {{"element_type", "float32"}, {"shape", {1, 1, 0, 1}}, {"sequence_axis", 2}, {"initial_capacity", 0}}}};
+    }
+    if (plain) {
+      auto& ort = prefill["executor_info"]["ort"];
+      ort["kind"] = "session";
+      ort["inputs"]["token"] = {{"kind", "external_input"}, {"name", "prompt"}};
+      if (cached) {
+        ort["kv_caches"] = ort["loop"]["kv_caches"];
+        ort["cache_provider"] = ort["loop"]["cache_provider"];
+      }
+      ort.erase("loop");
+      loop["generation"]["initial_logits"]["prompt_input"] = "token";
+    }
+    const Json manifest = {
+        {"schema_version", "1.1"},
+        {"layout", "portable"},
+        {"components", components},
+        {"chains", {{"generate", {{"steps", Json::array({prefill, decode})}, {"executor_info", {{"ort", chain}}}}}}}};
+    std::ofstream(root / "manifest.json") << manifest.dump(2);
+    return directory;
   }
 
   static std::vector<float> Read(const Ort::StatefulValue& value) {
@@ -737,6 +875,238 @@ TEST_F(CudaSamplingApiIntegrationTest, ConflictingStateFeedbackAndCrossDeviceLog
     EXPECT_THROW(Ort::SessionChain{options}, Ort::Exception);
   }
   RecordProperty("cross_device_logits_tested", devices > 1);
+}
+
+class CudaBootstrapPackageTest : public CudaCacheApiIntegrationTest {};
+
+TEST_F(CudaBootstrapPackageTest, PackageProgrammaticCpuParityAndIndependentPolicies) {
+  cudaStream_t a = nullptr, b = nullptr;
+  ASSERT_EQ(cudaStreamCreateWithFlags(&a, cudaStreamNonBlocking), cudaSuccess);
+  ASSERT_EQ(cudaStreamCreateWithFlags(&b, cudaStreamNonBlocking), cudaSuccess);
+  auto release = [](cudaStream_t stream) { EXPECT_EQ(cudaStreamDestroy(stream), cudaSuccess); };
+  using StreamOwner = std::unique_ptr<std::remove_pointer_t<cudaStream_t>, decltype(release)>;
+  StreamOwner first_stream(a, release), second_stream(b, release);
+  auto first_options = Options(true, a), second_options = Options(true, b);
+  auto prompt = Tokens();
+  const OrtValue* batches[]{prompt};
+  const OrtStatefulInputSequence sequence{"prompt_batches", batches, 1};
+  OrtStatefulInputs inputs{};
+  inputs.struct_size = sizeof(inputs);
+  inputs.sequences = &sequence;
+  inputs.num_sequences = 1;
+  size_t cases = 0;
+  for (bool cached : {false, true}) {
+    for (bool half : {false, true}) {
+      auto prefill = Session(true, a, SamplingModel(half, 4, cached));
+      auto decode = Session(true, b, SamplingModel(half, 4, cached));
+      auto cpu_prefill = Session(false, nullptr, SamplingModel(half, 4, cached));
+      auto cpu_decode = Session(false, nullptr, SamplingModel(half, 4, cached));
+      for (bool gpu_cache : {false, true}) {
+        if (!cached && gpu_cache) continue;
+        for (bool gpu_sampler : {false, true}) {
+          for (int64_t budget : {0, 1, 3}) {
+            for (bool eos : {false, true}) {
+              auto files = Package(budget, eos, cached, gpu_cache, gpu_sampler, half);
+              Ort::ModelPackageContext package(files->Path().c_str());
+              const OrtModelPackageStepSessionOptions steps[]{{"prefill", first_options}, {"decode", second_options}};
+              const OrtModelPackageChainConfig config{sizeof(config), "generate", nullptr, steps, 2};
+              auto loaded = package.CreateSessionChain(*ort_env, config);
+              auto direct = BootstrapChain(prefill, decode, gpu_cache, gpu_sampler, budget, eos, cached);
+              auto reference = BootstrapChain(cpu_prefill, cpu_decode, false, false, budget, eos, cached);
+              auto execution = loaded.CreateExecution(inputs);
+              auto programmatic = direct.CreateExecution(inputs);
+              auto cpu = reference.CreateExecution(inputs);
+              auto independent = loaded.CreateExecution(inputs);
+              package = Ort::ModelPackageContext(nullptr);
+              loaded = Ort::SessionChain(nullptr);
+              Ort::StatefulStepResult result(nullptr);
+              Ort::StatefulStepResult expected(nullptr);
+              std::vector<std::pair<Ort::StatefulValue, std::vector<uint8_t>>> retained;
+              do {
+                result = execution.Step();
+                auto native = programmatic.Step();
+                expected = cpu.Step();
+                const auto info = result.GetInfo(), other = expected.GetInfo(), native_info = native.GetInfo();
+                EXPECT_EQ(info.executed, other.executed);
+                EXPECT_EQ(info.completed, other.completed);
+                EXPECT_EQ(info.invocations, other.invocations);
+                EXPECT_EQ(info.iterations, other.iterations);
+                EXPECT_EQ(info.generated_token, other.generated_token);
+                EXPECT_EQ(info.exit_reasons, other.exit_reasons);
+                EXPECT_EQ(info.invocations, native_info.invocations);
+                EXPECT_EQ(info.generated_token, native_info.generated_token);
+                ASSERT_EQ(cudaStreamQuery(a), cudaSuccess);
+                ASSERT_EQ(cudaStreamQuery(b), cudaSuccess);
+                if (info.executed) {
+                  auto logits = Named(result, "logits", ORT_STATEFUL_COMPONENT_OUTPUTS);
+                  EXPECT_EQ(logits.GetTensorMemoryInfo().GetDeviceType(),
+                            gpu_sampler ? OrtMemoryInfoDeviceType_GPU : OrtMemoryInfoDeviceType_CPU);
+                  EXPECT_EQ(ReadBytes(logits), ReadBytes(Named(expected, "logits", ORT_STATEFUL_COMPONENT_OUTPUTS)));
+                  EXPECT_EQ(ReadBytes(logits), ReadBytes(Named(native, "logits", ORT_STATEFUL_COMPONENT_OUTPUTS)));
+                  retained.emplace_back(logits, ReadBytes(logits));
+                  if (cached) {
+                    EXPECT_EQ(Named(result, "present_key", ORT_STATEFUL_COMPONENT_OUTPUTS)
+                                  .GetTensorMemoryInfo()
+                                  .GetDeviceType(),
+                              gpu_cache ? OrtMemoryInfoDeviceType_GPU : OrtMemoryInfoDeviceType_CPU);
+                  }
+                } else if (info.generated_token) {
+                  EXPECT_EQ(info.component_name, "decode");
+                  EXPECT_EQ(info.iterations, 0);
+                  EXPECT_EQ(info.invocations, 1);
+                  EXPECT_TRUE(result.GetOutputs(ORT_STATEFUL_COMPONENT_OUTPUTS).empty());
+                }
+              } while (!result.GetInfo().completed);
+              const auto count = static_cast<size_t>(eos && budget == 3 ? 2 : budget);
+              auto tokens = Named(result, "tokens");
+              EXPECT_EQ(tokens.GetTensorTypeAndShapeInfo().GetElementCount(), count);
+              EXPECT_EQ(ReadBytes(tokens), ReadBytes(Named(expected, "tokens")));
+              const auto sampler =
+                  execution.GetDispatchInfo(ORT_STATEFUL_FEATURE_SAMPLER, ORT_STATEFUL_SAMPLE_GREEDY, 1);
+              EXPECT_EQ(sampler.provider_calls, gpu_sampler ? count : 0);
+              EXPECT_EQ(sampler.cpu_calls, gpu_sampler ? 0 : count);
+              EXPECT_EQ(sampler.cpu_delegations, 0u);
+              EXPECT_THROW(execution.GetDispatchInfo(ORT_STATEFUL_FEATURE_SAMPLER, ORT_STATEFUL_SAMPLE_GREEDY, 0),
+                           Ort::Exception);
+              if (cached) {
+                auto state = Named(execution.GetState(), "key", ORT_STATEFUL_STATE_VALUES);
+                EXPECT_EQ(Read(state), Read(Named(cpu.GetState(), "key", ORT_STATEFUL_STATE_VALUES)));
+                EXPECT_EQ(state.GetTensorTypeAndShapeInfo().GetShape()[2],
+                          static_cast<int64_t>(2 + (count ? count - 1 : 0)));
+                EXPECT_TRUE(Read(Named(independent.GetState(), "key", ORT_STATEFUL_STATE_VALUES)).empty());
+                const auto cache = execution.GetDispatchInfo(ORT_STATEFUL_FEATURE_CACHE, ORT_STATEFUL_CACHE_SHARE);
+                EXPECT_EQ(cache.provider_calls, gpu_cache ? std::max<size_t>(1, count) : 0);
+                EXPECT_EQ(cache.cpu_calls, gpu_cache ? 0 : std::max<size_t>(1, count));
+              }
+              if (gpu_sampler && (gpu_cache || !cached)) {
+                EXPECT_EQ(execution.GetStagingInfo(0).cpu_output_bytes, 0u);
+                EXPECT_EQ(execution.GetStagingInfo(1).cpu_output_bytes, 0u);
+              }
+              execution.Reset();
+              EXPECT_EQ(ReadBytes(Named(execution.Run(), "tokens")), ReadBytes(tokens));
+              for (const auto& [value, bytes] : retained) EXPECT_EQ(ReadBytes(value), bytes);
+              ++cases;
+            }
+          }
+        }
+      }
+    }
+  }
+  EXPECT_EQ(cases, 72u);
+  RecordProperty("bootstrap_policy_dtype_budget_eos_cases", cases);
+}
+
+TEST_F(CudaBootstrapPackageTest, PlainPrefillFirstEosCancellationAndInvalidProducers) {
+  auto options = Options();
+  auto files = Package(3, true, true, true, true, false, 4, true);
+  Ort::ModelPackageContext package(files->Path().c_str());
+  const OrtModelPackageChainConfig config{sizeof(config), "generate", options, nullptr, 0};
+  auto chain = package.CreateSessionChain(*ort_env, config);
+  auto prompt = Tokens({0, 2});
+  const OrtStatefulNamedValue feed{"prompt", prompt};
+  OrtStatefulInputs inputs{};
+  inputs.struct_size = sizeof(inputs);
+  inputs.inputs = &feed;
+  inputs.num_inputs = 1;
+  auto execution = chain.CreateExecution(inputs);
+  auto first = execution.Step();
+  EXPECT_TRUE(first.GetInfo().executed);
+  execution.Cancel();
+  EXPECT_THROW(execution.Step(), Ort::Exception);
+  EXPECT_TRUE(execution.RequiresReset());
+  EXPECT_EQ(execution.GetDispatchInfo(ORT_STATEFUL_FEATURE_SAMPLER, ORT_STATEFUL_SAMPLE_GREEDY, 1).provider_calls, 0u);
+  execution.Reset();
+  auto result = execution.Run();
+  EXPECT_TRUE(result.GetInfo().completed);
+  EXPECT_FALSE(result.GetInfo().executed);
+  EXPECT_EQ(result.GetInfo().generated_token, 3);
+  EXPECT_EQ(result.GetInfo().invocations, 1);
+  EXPECT_EQ(result.GetInfo().generated_tokens, 1);
+  auto retained = Named(result, "prefill_logits");
+  const auto bytes = ReadBytes(retained);
+  execution.Reset();
+  EXPECT_EQ(ReadBytes(retained), bytes);
+
+  auto host = Session(false, nullptr, SamplingModel(false, 4, false));
+  auto gpu = Session(true, nullptr, SamplingModel(false, 4, false));
+  EXPECT_THROW(BootstrapChain(host, gpu, false, true, 3, false, false), Ort::Exception);
+  int devices = 0;
+  ASSERT_EQ(cudaGetDeviceCount(&devices), cudaSuccess);
+  if (devices > 1) {
+    auto other = Session(true, nullptr, SamplingModel(false, 4, false), 1);
+    EXPECT_THROW(BootstrapChain(gpu, other, false, true, 3, false, false, false, 1), Ort::Exception);
+  }
+  auto nan = SamplingModel();
+  nan.mutable_graph()->mutable_initializer(0)->set_float_data(0, std::numeric_limits<float>::quiet_NaN());
+  auto bad = Session(true, nullptr, nan);
+  auto decode = Session();
+  auto failing = BootstrapChain(bad, decode, true, true);
+  auto token = Tokens();
+  const OrtValue* batches[]{token};
+  const OrtStatefulInputSequence sequence{"prompt_batches", batches, 1};
+  OrtStatefulInputs finite{};
+  finite.struct_size = sizeof(finite);
+  finite.sequences = &sequence;
+  finite.num_sequences = 1;
+  auto failed = failing.CreateExecution(finite);
+  failed.Step();
+  EXPECT_THROW(failed.Step(), Ort::Exception);
+  EXPECT_TRUE(failed.RequiresReset());
+  const auto dispatch = failed.GetDispatchInfo(ORT_STATEFUL_FEATURE_SAMPLER, ORT_STATEFUL_SAMPLE_GREEDY, 1);
+  EXPECT_EQ(dispatch.provider_calls, 1u);
+  EXPECT_EQ(dispatch.failures, 1u);
+  EXPECT_EQ(dispatch.cpu_calls, 0u);
+  EXPECT_EQ(dispatch.cpu_delegations, 0u);
+  failed.Reset();
+  RecordProperty("cross_device_bootstrap_tested", devices > 1);
+}
+
+TEST_F(CudaBootstrapPackageTest, C11AndGpuValuesSurviveOwnedSessionsAndLibraryUnregistration) {
+  Ort::Env env(ORT_LOGGING_LEVEL_ERROR, "m11-owned-cuda");
+  env.RegisterExecutionProviderLibrary("m11-cuda", ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH);
+  auto options = Options(true, nullptr, 0, env);
+  auto files = Package();
+  OrtStatefulStepResult* raw = nullptr;
+  ASSERT_EQ(StatefulApiCPackageGpuChainTest(env, files->Path().c_str(), options, options, &raw), 0);
+  Ort::StatefulStepResult result(raw);
+  auto logits = Named(result, "prefill_logits");
+  EXPECT_EQ(logits.GetTensorMemoryInfo().GetDeviceType(), OrtMemoryInfoDeviceType_GPU);
+  const auto bytes = ReadBytes(logits);
+  options = Ort::SessionOptions(nullptr);
+  result = Ort::StatefulStepResult(nullptr);
+  env.UnregisterExecutionProviderLibrary("m11-cuda");
+  EXPECT_EQ(ReadBytes(logits), bytes);
+  logits = Ort::StatefulValue(nullptr);
+}
+
+TEST_F(CudaBootstrapPackageTest, BootstrapPackageTransfer) {
+  auto files = Package(3, false, true, true, true, false, 257);
+  auto options = Options();
+  Ort::ModelPackageContext package(files->Path().c_str());
+  const OrtModelPackageChainConfig config{sizeof(config), "generate", options, nullptr, 0};
+  auto chain = package.CreateSessionChain(*ort_env, config);
+  auto prompt = Tokens();
+  const OrtValue* batches[]{prompt};
+  const OrtStatefulInputSequence sequence{"prompt_batches", batches, 1};
+  OrtStatefulInputs inputs{};
+  inputs.struct_size = sizeof(inputs);
+  inputs.sequences = &sequence;
+  inputs.num_sequences = 1;
+  auto execution = chain.CreateExecution(inputs);
+  auto result = execution.Run();
+  const auto tokens = Named(result, "tokens");
+  ASSERT_EQ(tokens.GetTensorTypeAndShapeInfo().GetElementCount(), 3u);
+  EXPECT_EQ(tokens.GetTensorData<int64_t>()[0], 2);
+  EXPECT_EQ(tokens.GetTensorData<int64_t>()[1], 3);
+  EXPECT_EQ(tokens.GetTensorData<int64_t>()[2], 0);
+  EXPECT_EQ(Named(result, "prefill_logits").GetTensorMemoryInfo().GetDeviceType(), OrtMemoryInfoDeviceType_GPU);
+  const auto sampler = execution.GetDispatchInfo(ORT_STATEFUL_FEATURE_SAMPLER, ORT_STATEFUL_SAMPLE_GREEDY, 1);
+  EXPECT_EQ(sampler.provider_calls, 3u);
+  EXPECT_EQ(sampler.cpu_calls, 0u);
+  EXPECT_EQ(sampler.cpu_delegations, 0u);
+  EXPECT_EQ(execution.GetStagingInfo(0).cpu_output_bytes, 0u);
+  EXPECT_EQ(execution.GetStagingInfo(1).cpu_output_bytes, 0u);
+  RecordProperty("gpu_bootstrap_sampler_calls", sampler.provider_calls);
 }
 
 }  // namespace

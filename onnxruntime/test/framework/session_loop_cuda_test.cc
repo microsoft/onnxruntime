@@ -7,6 +7,8 @@
 #include <functional>
 #include <future>
 #include <limits>
+#include <memory>
+#include <type_traits>
 
 #include <cuda_runtime_api.h>
 #include "gtest/gtest.h"
@@ -47,8 +49,8 @@ class CudaCacheIntegrationTest : public testing::Test {
   void TearDown() override { EXPECT_EQ(cudaSetDevice(previous_device_), cudaSuccess); }
 
   std::unique_ptr<ObservedCacheSession> Session(bool gpu = true, cudaStream_t stream = nullptr,
-                                                ONNX_NAMESPACE::ModelProto model =
-                                                    stateful::MakeDynamicDecoderModel()) {
+                                                ONNX_NAMESPACE::ModelProto model = stateful::MakeDynamicDecoderModel(),
+                                                int device_id = 0) {
     SessionOptions options;
     options.intra_op_param.thread_pool_size = 1;
     options.inter_op_param.thread_pool_size = 1;
@@ -56,6 +58,7 @@ class CudaCacheIntegrationTest : public testing::Test {
     auto session = std::make_unique<ObservedCacheSession>(options, GetEnvironment());
     if (gpu) {
       OrtCUDAProviderOptionsV2 cuda{};
+      cuda.device_id = device_id;
       cuda.user_compute_stream = stream;
       cuda.has_user_compute_stream = stream != nullptr;
       ORT_THROW_IF_ERROR(session->RegisterExecutionProvider(CudaExecutionProviderWithOptions(&cuda)));
@@ -152,6 +155,30 @@ class CudaCacheIntegrationTest : public testing::Test {
   }
   int previous_device_ = 0;
 };
+
+TEST_F(CudaCacheIntegrationTest, NativeFactoryHonorsExplicitOrdinalAndStream) {
+  int count = 0;
+  ASSERT_EQ(cudaGetDeviceCount(&count), cudaSuccess);
+  const int device = count > 1 ? 1 : 0;
+  ASSERT_EQ(cudaSetDevice(device), cudaSuccess);
+  cudaStream_t raw = nullptr;
+  ASSERT_EQ(cudaStreamCreateWithFlags(&raw, cudaStreamNonBlocking), cudaSuccess);
+  auto release = [](cudaStream_t stream) { EXPECT_EQ(cudaStreamDestroy(stream), cudaSuccess); };
+  std::unique_ptr<std::remove_pointer_t<cudaStream_t>, decltype(release)> stream(raw, release);
+  auto session = Session(true, raw, stateful::MakeDynamicDecoderModel(), device);
+  auto options = Options();
+  options.cache_provider.device_id = device;
+  auto execution = Execution(*session, options);
+  SessionLoopStepResult result;
+  ASSERT_STATUS_OK(execution->Run(result));
+  EXPECT_EQ(result.outputs[1].Get<Tensor>().Location().device.Id(), device);
+  EXPECT_EQ(Read(result.outputs[1]), (InlinedVector<float>{0.f, 1.f}));
+  ASSERT_EQ(cudaStreamQuery(raw), cudaSuccess);
+  OrtCUDAProviderOptionsV2 invalid{};
+  invalid.device_id = count;
+  EXPECT_ANY_THROW(CudaExecutionProviderWithOptions(&invalid));
+  RecordProperty("native_explicit_second_device_tested", count > 1);
+}
 
 TEST_F(CudaCacheIntegrationTest, NativeCachePortsResultsStateAndRetainedLifetimes) {
   for (const auto kind : {KVCacheUpdateKind::Share, KVCacheUpdateKind::Copy, KVCacheUpdateKind::Append}) {

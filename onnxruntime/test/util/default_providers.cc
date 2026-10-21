@@ -46,6 +46,10 @@ std::unique_ptr<IExecutionProvider> CudaPluginExecutionProviderWithOptions(const
 
   ConfigOptions config_options{};
   if (provider_options != nullptr) {
+    if (provider_options->has_user_compute_stream) {
+      AddCudaPluginOption(config_options, "user_compute_stream",
+                          std::to_string(reinterpret_cast<uintptr_t>(provider_options->user_compute_stream)));
+    }
     AddCudaPluginOption(config_options, "do_copy_in_default_stream", std::to_string(provider_options->do_copy_in_default_stream));
     AddCudaPluginOption(config_options, "cudnn_conv_use_max_workspace", std::to_string(provider_options->cudnn_conv_use_max_workspace));
     AddCudaPluginOption(config_options, "cudnn_conv1d_pad_to_nc1d", std::to_string(provider_options->cudnn_conv1d_pad_to_nc1d));
@@ -57,7 +61,7 @@ std::unique_ptr<IExecutionProvider> CudaPluginExecutionProviderWithOptions(const
     AddCudaPluginOption(config_options, "sdpa_kernel", std::to_string(provider_options->sdpa_kernel));
   }
 
-  return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options);
+  return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options, provider_options ? provider_options->device_id : 0);
 }
 #endif
 

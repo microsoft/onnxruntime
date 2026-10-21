@@ -68,6 +68,8 @@ struct PluginEpInfrastructureState {
   PluginEpLibraryRegistrationHandle plugin_ep_library_registration_handle{};
   std::unique_ptr<IExecutionProviderFactory> ep_factory{};
   std::vector<const OrtEpDevice*> selected_c_ep_devices{};
+  std::vector<const OrtEpDevice*> configured_c_ep_devices{};
+  const Environment* environment = nullptr;
   std::string ep_name{};
 };
 
@@ -142,15 +144,15 @@ Status Initialize(Ort::Env& env, InitializationConfig config) {
                  [&selected_ep_name = std::as_const(config.selected_ep_name)](Ort::ConstEpDevice ep_device) {
                    return ep_device.EpName() == selected_ep_name;
                  });
-
-    // Some EP factories create a provider for a single device at a time yet can surface more than one
-    // OrtEpDevice under the same EP name (e.g. multiple CUDA GPUs, or WebGPU's real + virtual GPU when
-    // virtual devices are enabled). Keep the first match for those.
-    if ((config.selected_ep_name == kCudaExecutionProviderPluginName ||
-         config.selected_ep_name == kWebGpuExecutionProviderPluginName) &&
-        selected_c_ep_devices.size() > 1) {
-      selected_c_ep_devices.resize(1);
-    }
+  }
+  auto configured_c_ep_devices = selected_c_ep_devices;
+  // Some EP factories create a provider for a single device at a time yet can surface more than one
+  // OrtEpDevice under the same EP name (e.g. multiple CUDA GPUs, or WebGPU's real + virtual GPU when
+  // virtual devices are enabled). Keep the first match for those.
+  if ((config.selected_ep_name == kCudaExecutionProviderPluginName ||
+       config.selected_ep_name == kWebGpuExecutionProviderPluginName) &&
+      selected_c_ep_devices.size() > 1) {
+    selected_c_ep_devices.resize(1);
   }
 
   ORT_RETURN_IF(selected_c_ep_devices.empty(), "No EP devices were selected.");
@@ -170,6 +172,8 @@ Status Initialize(Ort::Env& env, InitializationConfig config) {
   state.plugin_ep_library_registration_handle = std::move(ep_library_registration_handle);
   state.ep_factory = std::move(ep_factory);
   state.selected_c_ep_devices = std::move(selected_c_ep_devices);
+  state.configured_c_ep_devices = std::move(configured_c_ep_devices);
+  state.environment = &static_cast<OrtEnv*>(env)->GetEnvironment();
   state.ep_name = std::move(ep_name);
 
   g_plugin_ep_infrastructure_state = std::move(state);
@@ -200,7 +204,8 @@ void RunWithTemporaryShutdownForTesting(const std::function<void()>& test_body) 
   test_body();
 }
 
-std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger, const ConfigOptions* ep_options) {
+std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger, const ConfigOptions* ep_options,
+                                           std::optional<int> cuda_device_id) {
   if (!IsInitialized()) {
     return nullptr;
   }
@@ -210,6 +215,22 @@ std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger, const 
   }
 
   const auto& state = *g_plugin_ep_infrastructure_state;
+  auto selected_devices = state.selected_c_ep_devices;
+  std::unique_ptr<IExecutionProviderFactory> device_factory;
+  auto* factory = state.ep_factory.get();
+  if (cuda_device_id) {
+    ORT_ENFORCE(state.ep_name == kCudaExecutionProviderPluginName, "CUDA ordinal requires the CUDA plugin");
+    selected_devices.clear();
+    for (auto* device : state.configured_c_ep_devices) {
+      if (Ort::ConstEpDevice{device}.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT).GetDeviceId() == *cuda_device_id) {
+        selected_devices.push_back(device);
+      }
+    }
+    ORT_ENFORCE(selected_devices.size() == 1, "Requested CUDA device is not in the configured selection");
+    ORT_THROW_IF_ERROR(
+        CreateIExecutionProviderFactoryForEpDevices(*state.environment, selected_devices, device_factory));
+    factory = device_factory.get();
+  }
 
   std::vector<const char*> default_ep_option_key_cstrs{}, default_ep_option_value_cstrs{};
   StrMapToKeyValueCstrVectors(state.config.default_ep_options,
@@ -223,12 +244,10 @@ std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger, const 
   }
 
   OrtSessionOptions ort_session_options{};
-  ORT_THROW_IF_ERROR(AddEpOptionsToSessionOptions(state.selected_c_ep_devices,
-                                                  default_ep_option_key_cstrs,
-                                                  default_ep_option_value_cstrs,
-                                                  ort_session_options.value));
+  ORT_THROW_IF_ERROR(AddEpOptionsToSessionOptions(selected_devices, default_ep_option_key_cstrs,
+                                                  default_ep_option_value_cstrs, ort_session_options.value));
 
-  return state.ep_factory->CreateProvider(ort_session_options, *logger->ToExternal());
+  return factory->CreateProvider(ort_session_options, *logger->ToExternal());
 }
 
 std::optional<std::string> GetEpName() {

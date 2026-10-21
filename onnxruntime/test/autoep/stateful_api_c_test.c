@@ -17,7 +17,10 @@
     }                                                        \
   } while (0)
 
-int StatefulApiCPackageChainTest(const OrtEnv* env, const ORTCHAR_T* path) {
+static int StatefulApiCPackageChainTestImpl(const OrtEnv* env, const ORTCHAR_T* path,
+                                            const OrtSessionOptions* prefill_options,
+                                            const OrtSessionOptions* decode_options,
+                                            OrtStatefulStepResult** retained_out) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   const OrtStatefulApi* stateful = api->GetStatefulApi();
   const OrtModelPackageApi* package = api->GetModelPackageApi();
@@ -39,6 +42,8 @@ int StatefulApiCPackageChainTest(const OrtEnv* env, const ORTCHAR_T* path) {
   const OrtValue* values[1] = {NULL};
   const OrtStatefulInputSequence sequence = {"prompt_batches", values, 1};
   const OrtStatefulNamedValue* outputs = NULL;
+  const OrtValue* token_output = NULL;
+  OrtStatefulDispatchInfo dispatch = {0};
   size_t count = 0;
   void* writable = NULL;
   const void* data = NULL;
@@ -60,8 +65,8 @@ int StatefulApiCPackageChainTest(const OrtEnv* env, const ORTCHAR_T* path) {
   CHECK(package->CreateModelPackageContext(path, &context));
   overrides[0].step_id = "prefill";
   overrides[1].step_id = "decode";
-  overrides[0].session_options = options;
-  overrides[1].session_options = options;
+  overrides[0].session_options = prefill_options ? prefill_options : options;
+  overrides[1].session_options = decode_options ? decode_options : options;
   config.struct_size = sizeof(config);
   config.chain_name = "generate";
   config.step_session_options = overrides;
@@ -100,19 +105,35 @@ int StatefulApiCPackageChainTest(const OrtEnv* env, const ORTCHAR_T* path) {
   }
   CHECK(stateful->StatefulExecutionRun(execution, &result));
   CHECK(stateful->StatefulStepResultGetOutputs(result, ORT_STATEFUL_SELECTED_OUTPUTS, &outputs, &count));
-  if (count != 1 || strcmp(outputs[0].name, "tokens") != 0) {
+  for (size_t i = 0; i < count; ++i) {
+    if (strcmp(outputs[i].name, "tokens") == 0) token_output = outputs[i].value;
+  }
+  if (token_output == NULL) {
     fprintf(stderr, "Missing selected token output in C11 consumer\n");
     code = 33;
     goto cleanup;
   }
-  CHECK(api->GetTensorTypeAndShape(outputs[0].value, &shape_info));
+  CHECK(api->GetTensorTypeAndShape(token_output, &shape_info));
   CHECK(api->GetTensorShapeElementCount(shape_info, &count));
-  CHECK(api->GetTensorData(outputs[0].value, &data));
+  CHECK(api->GetTensorData(token_output, &data));
   if (count != 3 || ((const int64_t*)data)[0] != 2 || ((const int64_t*)data)[1] != 3 ||
       ((const int64_t*)data)[2] != 0) {
     fprintf(stderr, "Incorrect C11 package token history\n");
     code = 34;
     goto cleanup;
+  }
+  if (retained_out) {
+    CHECK(stateful->StatefulExecutionGetDispatchInfo(execution, ORT_STATEFUL_FEATURE_SAMPLER, 1,
+                                                     ORT_STATEFUL_SAMPLE_GREEDY, sizeof(dispatch), &dispatch));
+    if (dispatch.origin != ORT_STATEFUL_DISPATCH_PROVIDER || dispatch.device_type != OrtMemoryInfoDeviceType_GPU ||
+        dispatch.provider_calls != 3 || dispatch.cpu_calls != 0 || dispatch.cpu_delegations != 0) {
+      fprintf(stderr, "C11 package did not execute native GPU greedy\n");
+      code = 35;
+      goto cleanup;
+    }
+    CHECK(stateful->StatefulExecutionReset(execution));
+    *retained_out = result;
+    result = NULL;
   }
 cleanup:
   api->ReleaseTensorTypeAndShapeInfo(shape_info);
@@ -125,6 +146,15 @@ cleanup:
   api->ReleaseSessionOptions(options);
   package->ReleaseModelPackageContext(context);
   return code;
+}
+
+int StatefulApiCPackageChainTest(const OrtEnv* env, const ORTCHAR_T* path) {
+  return StatefulApiCPackageChainTestImpl(env, path, NULL, NULL, NULL);
+}
+
+int StatefulApiCPackageGpuChainTest(const OrtEnv* env, const ORTCHAR_T* path, const OrtSessionOptions* prefill_options,
+                                    const OrtSessionOptions* decode_options, OrtStatefulStepResult** retained_out) {
+  return StatefulApiCPackageChainTestImpl(env, path, prefill_options, decode_options, retained_out);
 }
 
 int StatefulApiCConsumerTest(void) {

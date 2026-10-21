@@ -1,7 +1,7 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M10 complete and published for review; M11 in progress
-(CPU-first, GPU qualification blocked); M12-M24 pending.
+**Status:** Approved; M01-M10 complete and published for review; M11 validation
+complete/publication in progress; M12-M24 pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -9,8 +9,8 @@ M05's requested generation-folder layout follow-up is complete in the same PR.
 **M10 refinement:** SPEC Appendix J and the detailed M10 implementation plan
 were separately approved on 2026-10-19.
 **M11 refinement:** SPEC Appendix K and the detailed M11 plan were separately
-approved 2026-10-20. CPU-first implementation is authorized; GPU qualification
-is blocked until a compatible CUDA/cuDNN/tooling installation is restored.
+approved 2026-10-20. CPU-first implementation is verified; GPU qualification
+resumed on 2026-10-21 after a compatible toolchain was supplied.
 
 ## 1. Approval and tracking
 
@@ -2701,8 +2701,7 @@ No PR was merged and M11 has not begun.
 
 ### M11 - ORT package-to-chain loading
 
-**Status:** Authorized CPU-first implementation on 2026-10-20. GPU qualification
-and final completion remain blocked on the tooling prerequisite.
+**Status:** CPU/GPU qualification verified on 2026-10-21; publication in progress.
 **Specification:** [Approved Appendix K](SPEC.md#appendix-k-m11-executable-package-chains-approved).
 **Branch/base:** `state/m11-package-chain-loading` on verified M10
 `b03b4c2f72955e869401be4d8eaa277728dc6fa8` / PR #24.
@@ -2720,10 +2719,10 @@ an observable sample-only first decode Step.
 - [x] Prepare this detailed CPU-first/GPU-blocked plan.
 - [x] Review this plan and obtain separate implementation authorization.
 - [x] Complete native/API/loader/CPU validation tasks.
-- [ ] Restore the CUDA prerequisite and pass real GPU qualification.
+- [x] Restore the CUDA prerequisite and pass real GPU qualification.
 - [ ] Pass full new-line coverage/regression/publication gates.
 
-**Current GPU blocker:** On 2026-10-20, all eight A100 GPUs were visible, but
+**Historical GPU blocker:** On 2026-10-20, all eight A100 GPUs were visible, but
 the CUDA13.1/cuDNN installation referenced by both existing GPU build caches was
 absent. `/usr/local/cuda` was also a broken link; `nvcc`, profilers and Compute
 Sanitizer were not available on PATH or at the previously used locations.
@@ -2737,6 +2736,18 @@ CPU work can proceed after plan approval, but M11 remains incomplete/not ready
 until rebuilt, genuine CUDA tests and GPU-dependent coverage pass. If a review
 draft is requested before then, clearly label it blocked; do not mark the
 milestone complete or publish it ready by waiving GPU tests.
+
+**Restoration checkpoint (2026-10-21):** The user supplied CUDA13.0.48 at
+`/home/tianlei/cuda13.0`, matching cuDNN9.23.1 at
+`/home/tianlei/cudnn_9.23_cuda13`, Nsight Compute2025.3, Nsight Systems2025.3.2
+and Compute Sanitizer2025.3. Old13.1 caches remain untouched. Fresh plugin
+`build/state-cuda-plugin-m11-13.0/RelWithDebInfo` and legacy
+`build/state-cuda-legacy-m11-13.0/RelWithDebInfo` trees use matching SDK paths
+and cached dependency **source** directories, not old dependency build products.
+Clang host LLVM instrumentation stays in C/C++ flags; global profile linker flags
+were removed after nvcc's GCC try-link correctly rejected them.
+Both fresh configurations and builds passed. Final GPU results and coverage
+closure are recorded below.
 
 #### Tasks, dependencies and intended outcomes
 
@@ -2753,7 +2764,7 @@ milestone complete or publish it ready by waiving GPU tests.
 | H8 | H6, H7 | Measured 100% new executable lines and final compatibility regressions. |
 | H9 | H8 | Updated documentation and one ready stacked M11 PR. |
 
-- [ ] **H0 - Restore and rebaseline GPU prerequisites (blocked).** Once the
+- [x] **H0 - Restore and rebaseline GPU prerequisites.** Once the
   user supplies/restores tooling, resolve actual nvcc, supported host compiler,
   CUDA runtime, cuDNN, Nsight and Compute Sanitizer locations. Reuse existing
   build trees only if their compiler/library configuration is valid; otherwise
@@ -2819,7 +2830,7 @@ milestone complete or publish it ready by waiving GPU tests.
   a replacement implementation; preserve outputs and include its lines in
   coverage. Rerun single-component package APIs and standalone shared/static
   suites, including source-independent M10 exports.
-- [ ] **H7 - Qualify CUDA after H0.** Route initial prefill logits on the
+- [x] **H7 - Qualify CUDA after H0.** Route initial prefill logits on the
   compatible GPU using the actual producer allocator/provider origin and
   initialized Sessions. Prove real plugin EP model/greedy/cache dispatch,
   independent cache/sampler policies, nondefault/distinct compatible streams,
@@ -2832,7 +2843,7 @@ milestone complete or publish it ready by waiving GPU tests.
   Run applicable Compute Sanitizer memory/lifetime/ordering tests. Preserve
   existing M08 timing-only sanitizer exclusion narrowly; do not suppress a new
   memory error, broaden the exclusion or infer universal stream serialization.
-- [ ] **H8 - Close coverage and regressions.** Instrument every new production
+- [x] **H8 - Close coverage and regressions.** Instrument every new production
   native/loader/parser/API/C++ inline/glue line with matching artifacts. Use
   fresh per-module/per-configuration profiles and verify source/function maps.
   Combine CPU/plugin/minimal evidence at source-line level only after mapping
@@ -2965,9 +2976,9 @@ tool limitation blocks its gate and must be disclosed with the failed command.
   validation pass with actual local models and source-independent exports.
 - [x] Genuine C11/C++17/no-exceptions clients, frozen prefixes and new minimal
   unsupported path are verified; standalone library remains ORT-independent.
-- [ ] Compatible toolchain is restored; rebuilt CUDA-plugin and selected legacy
+- [x] Compatible toolchain is restored; rebuilt CUDA-plugin and selected legacy
   suites pass with real dispatch/placement/transfer/lifetime evidence.
-- [ ] Every new executable production line reaches measured100% across verified
+- [x] Every new executable production line reaches measured100% across verified
   CPU/plugin/minimal artifacts; device additions independently measured if any.
 - [ ] Documentation/evidence are current and one stacked PR is ready for review.
 
@@ -3072,6 +3083,115 @@ CPU checkpoint `2f3e6c0237` is committed and pushed on
 the requested single-PR delivery remains gated on GPU/tooling and737/743 coverage
 closure. Non-measured SDK binaries, generated fixture and frozen header copies
 were cleaned; reproducible sources/logs and measured CPU/minimal artifacts remain.
+
+#### Final GPU qualification and coverage closure
+
+The user restored compatible tools and authorized completion on 2026-10-21.
+Fresh CUDA13.0.48/cuDNN9.23.1 builds, not stale13.1 artifacts, are verified:
+
+| Configuration | Native tests | Public/AutoEP tests |
+| --- | --- | --- |
+| CPU, Clang18 | 69/69 | 148/148 unfiltered |
+| CUDA plugin, Clang18 host/NVCC13.0/GCC13 | 132/132 | 204/204 unfiltered |
+| Legacy CUDA, GCC13 | 120/120 | 69/69 selected |
+
+No reported skips. The legacy selector retains its documented scope rather than
+claiming an unfiltered legacy/contrib/EPContext pass. The first fresh legacy
+public run lacked required repository testdata; staging those assets and
+rerunning all69 resolved the setup failure without exclusions.
+
+Four new `CudaBootstrapPackageTest` cases pass, including **72** cache/sampler/
+dtype/budget/EOS combinations against both programmatic and CPU references,
+distinct nonblocking Session streams, cached/cache-free generation, plain Session
+prefill, first-token EOS, cancellation, NaN failure, CPU-producer/mismatched-GPU
+rejection, and retained values after all owned Sessions/library registration.
+CPU variant files intentionally use different token scores, so accidental
+selection of a CPU variant cannot satisfy the CUDA expected-token reference.
+
+The initial unfiltered native run exposed eight **test harness** device
+mismatches: the generic dynamic-EP infrastructure's first enumerated CUDA device
+was not ordinal0, while native CUDA fixtures explicitly request0. The native
+helper now honors its requested ordinal from configured devices and forwards
+its supplied compute stream. Runtime device validation was not relaxed.
+A new device1/stream/invalid-ordinal regression and all previously failing
+fixtures pass; final unfiltered native result is132/132.
+
+Full source-mapped CPU/plugin/minimal unit evidence closes **743/743 (100%)**
+new executable production lines. Chain routing is now135/135, including the
+previously uncovered six GPU prepass locations; other per-file totals above are
+unchanged. CPU profiles use `coverage/m11/final-after-harness`, plugin profiles
+use `coverage/m11/final-2`, and minimal-source evidence is mapped separately.
+There are no nonzero function-hash mismatches;403 plugin,358 CPU and17 minimal
+dormant hash-zero inline/helper maps are explicitly audited, not hidden.
+
+No new CUDA function/source was authored. Greedy source SHA remains
+`92837bc204a43c0e2ca0f7da8b5f0a037d5a6200d572a235412d9530e587cbcd`.
+Because the compiler changed, actual rebuilt-device Nsight SourceCounters were
+collected again: **25/25 emitted source locations executed**, including mapped
+entry/epilogue braces, with no location excluded. Unprivileged collection failed
+ERR_NVGPUCTRPERM; the existing administrator authorization was used only for the
+profiler process, with no global driver/permission change.
+
+The dedicated real package Run at vocabulary257 has **3 DtoH copies of16 bytes,
+48 bytes total**, matching its three native greedy callbacks. No2056-byte
+prefill or1028-byte decoder logits readback. HtoD is separately **5 copies,
+8256 bytes** for weights/CPU token feeds. This is not a device-only generation
+or release-performance claim.
+
+Compute Sanitizer qualification:
+
+- New public GPU4 tests, new native/explicit-device9 tests and standalone public
+  C++17 GPU SDK: memcheck **zero errors and zero leaked bytes**.
+- Dedicated package-generation racecheck: **zero hazards/errors/warnings**.
+- Dedicated package-generation synccheck: **zero errors**.
+- The inherited M08 timing-only memcheck limitation remains narrow/unchanged;
+  no new test or memory error was excluded.
+- Genuine C11 GPU package construction/execution, public C++17 and no-exceptions
+  GPU clients pass, including reset, owner release, library unregistration and
+  explicit access to retained GPU logits afterwards.
+
+Exact final commands/results (run tests from output directories with matching
+CUDA/cuDNN loader paths):
+
+```bash
+# Fresh plugin output directory; both passed132/204:
+LLVM_PROFILE_FILE="$PWD/coverage/m11/final-2/%m-%p.profraw" \
+  ./onnxruntime_session_loop_test
+LLVM_PROFILE_FILE="$PWD/coverage/m11/final-2/%m-%p.profraw" \
+  ./onnxruntime_autoep_test
+# Fresh legacy output directory; passed120/69:
+./onnxruntime_session_loop_test
+./onnxruntime_autoep_test \
+  --gtest_filter='AutoEpSelection.CudaEP:*Stateful*:ModelPackageApiTest.*:*ModelPackageChain*'
+# CUDA13.0 tools, from plugin output directory; all passed:
+compute-sanitizer --tool memcheck --leak-check full --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter='CudaBootstrapPackageTest.*'
+compute-sanitizer --tool memcheck --leak-check full --error-exitcode 99 \
+  ./onnxruntime_session_loop_test \
+  --gtest_filter='CudaCacheIntegrationTest.NativeFactoryHonorsExplicitOrdinalAndStream:*Bootstrap*'
+compute-sanitizer --tool racecheck --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter='CudaBootstrapPackageTest.BootstrapPackageTransfer'
+compute-sanitizer --tool synccheck --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter='CudaBootstrapPackageTest.BootstrapPackageTransfer'
+```
+
+Actual tool paths, matching library env, complete SDK/profiler arguments and
+configure options are retained in `m11_configure_gpu.py`, `m11-gpu-*`,
+`m11-helper-*`, `m11-legacy-final-*`, `m11-bootstrap-transfer*`,
+`m11-greedy-device*`, `m11-host-coverage-final.txt`,
+`m11-device-coverage-final.txt`, profile diagnostics and artifact hashes in
+session files. The actual CUDA plugin filename is
+`libonnxruntime_providers_cuda.so`; the first SDK attempt used an incorrect
+`_plugin` suffix and was corrected before successful runs.
+
+All validation gates now pass; H9's single stacked PR is the remaining
+publication step. No M12 work or automatic merge is authorized.
+Pinned lintrunner/clang-format20.1.8 checks and `git diff --check` pass.
+The initially missing lint adapters were restored from the repository's pinned
+requirements in the existing virtual environment; no GPU tooling was installed
+by the assistant. Non-measured SDK executables/fixture and the compiler-probe
+profile were cleaned after hashing; measured builds/profiles and proof reports
+remain.
 
 ### M12 - DDIM scheduler and denoising execution policy
 
