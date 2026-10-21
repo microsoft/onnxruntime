@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       pool_name:
-        description: 'The specific 1ES pool name (e.g., onnxruntime-github-Ubuntu2204-AMD-CPU)'
+        description: 'The 1ES scale-set name (e.g., ort-github-linux-16-amd-wcus-ss)'
         required: true
         type: string
       build_config:
@@ -67,16 +67,6 @@ on:
         description: 'A unique identifier for the job, used for hosted pool tracking'
         required: true
         type: string
-      checkout_ref:
-        description: 'Commit or ref containing the source to build'
-        required: false
-        type: string
-        default: ''
-      push_docker_image:
-        description: 'Whether to publish the build container image'
-        required: false
-        type: boolean
-        default: true
     secrets:
       GH_TOKEN:
         description: 'GitHub token for accessing actions/packages'
@@ -84,14 +74,8 @@ on:
 
 jobs:
   build_test_pipeline:
-    # Defense in depth for callers that have not moved their admission check to pull_request_target.
-    if: >-
-      (github.event_name != 'pull_request' && github.event_name != 'pull_request_target') ||
-      github.event.pull_request.head.repo.full_name == github.repository
-    runs-on:
-      - self-hosted
-      - "1ES.Pool=${{ inputs.pool_name }}"
-      - "JobId=${{ inputs.job_identifier }}-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ["${{ inputs.pool_name }}"]
     timeout-minutes: 120
     permissions:
       contents: read
@@ -101,8 +85,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Set up Python ${{ inputs.python_version }}
         if: inputs.architecture != 'arm64'
@@ -117,21 +99,13 @@ jobs:
           dockerfile: ${{ github.workspace }}/${{ inputs.dockerfile_path }}
           image-name: ghcr.io/microsoft/onnxruntime/${{ inputs.docker_image_repo }}
           build-args: ${{ inputs.docker_build_args }}
-          push: ${{ inputs.push_docker_image }}
+          push: true
           azure-container-registry-name: onnxruntimebuildcache
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
-      - name: Restore and save CCache
-        if: github.event_name != 'pull_request_target'
+      - name: Setup CCache
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          key: 'ccache | "${{ inputs.job_identifier }}" | "${{ inputs.architecture }}" | "${{ inputs.build_config }}"'
-          path: ~/.cache/cache
-
-      - name: Restore CCache
-        if: github.event_name == 'pull_request_target'
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: 'ccache | "${{ inputs.job_identifier }}" | "${{ inputs.architecture }}" | "${{ inputs.build_config }}"'
           path: ~/.cache/cache

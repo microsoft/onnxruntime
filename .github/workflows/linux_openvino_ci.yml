@@ -3,13 +3,12 @@ name: Linux OpenVINO CI
 on:
   push:
     branches: [main, 'rel-*']
-  # Use the base branch's workflow definition so forks cannot alter self-hosted runner admission.
-  pull_request_target:
+  pull_request:
     branches: [main, 'rel-*']
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -21,11 +20,10 @@ permissions:
 jobs:
   build_test_openvino:
     name: Build and Test OpenVINO EP (AlamLinux8, Py3.12)
-    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     # Use the reusable workflow as the other Linux CI pipelines
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
-      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+      pool_name: "ort-github-linux-16-amd-wcus-ss"
       build_config: Release
       # Architecture: OpenVino only supports Intel X64
       architecture: x64
@@ -42,8 +40,6 @@ jobs:
       run_tests: true
       upload_build_output: false
       job_identifier: build_test_openvino
-      checkout_ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
-      push_docker_image: ${{ github.event_name != 'pull_request_target' }}
 
     # Secrets: Pass the necessary GitHub token
     secrets:
