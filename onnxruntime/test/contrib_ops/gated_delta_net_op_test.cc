@@ -1546,6 +1546,38 @@ TEST(GatedDeltaNetTest, DirectPackedQkvBFloat16ExactParity) {
   TestDirectPackedQkvParity<BFloat16>();
 }
 
+template <typename T>
+void TestQwenS2PackedParity() {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry geometry{2, 1, 16, 48, 128, 128};
+  Options options;
+  options.qk_l2_norm = 1;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.gates_in_input_type = true;
+  Inputs inputs = MakeInputs(geometry, 151);
+  std::vector<OrtValue> reference, packed;
+  RunTypedCase<T>(geometry, options, inputs, 2e-2f, 2e-2f, true, &reference);
+  RunTypedCase<T>(geometry, options, inputs, 2e-2f, 2e-2f, true, &packed,
+                  false, false, nullptr, 0, true);
+  ASSERT_EQ(reference.size(), packed.size());
+  for (size_t index = 0; index < reference.size(); ++index) {
+    const auto& expected = reference[index].Get<Tensor>();
+    const auto& actual = packed[index].Get<Tensor>();
+    ASSERT_EQ(expected.Shape(), actual.Shape());
+    ASSERT_EQ(expected.SizeInBytes(), actual.SizeInBytes());
+    EXPECT_EQ(std::memcmp(expected.DataRaw(), actual.DataRaw(), expected.SizeInBytes()), 0);
+  }
+}
+
+TEST(GatedDeltaNetTest, QwenS2PackedFloat16ExactParity) {
+  TestQwenS2PackedParity<MLFloat16>();
+}
+
+TEST(GatedDeltaNetTest, QwenS2PackedBFloat16ExactParity) {
+  TestQwenS2PackedParity<BFloat16>();
+}
+
 TEST(GatedDeltaNetTest, Recurrent_VerifyBatch) {
   if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{4, 1, 1, 2, kDim, kDim};

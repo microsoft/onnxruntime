@@ -44,6 +44,7 @@
 #include <algorithm>
 #include <mutex>
 #include <type_traits>
+#include "core/platform/env_var_utils.h"
 
 #include "contrib_ops/cuda/bert/gated_delta_net_impl.h"
 #include "contrib_ops/cuda/bert/gated_delta_net_mma.cuh"
@@ -379,9 +380,23 @@ __device__ __forceinline__ float WarpReduceK(float v) {
   return v;
 }
 
-template <typename T, int DK, int kWarps, bool InputTypeGates, bool PackedQkv>
+template <typename T, int DK, int kWarps, bool InputTypeGates, bool PackedQkv, bool QwenS2 = false>
 __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
     VariantPack<T> pack, KernelParams p, int d_v) {
+  if constexpr (QwenS2) {
+    // Host dispatch checks every field before replacing it with a compile-time constant.
+    p.total_tokens = p.uniform_len = 2;
+    p.num_heads_q = p.num_heads_k = 16;
+    p.num_heads_v = 48;
+    p.gate_activation = GateActivation::kSoftplusDecay;
+    p.beta_activation = BetaActivation::kSigmoid;
+    p.update_rule = UpdateRule::kGatedDelta;
+    p.qk_l2_norm = true;
+    p.state_update_capacity = 0;
+    p.decay_per_key_dim_flag = 0;
+    p.state_update_tail_pass = p.short_row_tail_pass = false;
+    d_v = 128;
+  }
   constexpr int kRegs = DK / 32;  // state elements per lane
   const int lane = threadIdx.x;
   const int warp = threadIdx.y;
@@ -708,25 +723,54 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
 constexpr int kRecurrentThreads = 256;
 constexpr int kDecodeWarps = kRecurrentThreads / 32;
 
-template <typename T, bool InputTypeGates, bool PackedQkv>
-void LaunchDecodeWarp(const Descriptor& desc, const VariantPack<T>& pack,
-                      const KernelParams& p, cudaStream_t stream) {
+template <typename T, bool InputTypeGates, bool PackedQkv, int Warps>
+void LaunchDecodeWarpSized(const Descriptor& desc, const VariantPack<T>& pack,
+                           const KernelParams& p, cudaStream_t stream) {
   const dim3 grid(desc.batch, desc.num_heads_v,
-                  (desc.head_size_v + kDecodeWarps - 1) / kDecodeWarps);
-  const dim3 block(32, kDecodeWarps, 1);
+                  (desc.head_size_v + Warps - 1) / Warps);
+  const dim3 block(32, Warps, 1);
   switch (desc.head_size_qk) {
     case 64:
-      GatedDeltaNetDecodeWarpKernel<T, 64, kDecodeWarps, InputTypeGates, PackedQkv>
+      GatedDeltaNetDecodeWarpKernel<T, 64, Warps, InputTypeGates, PackedQkv>
           <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
       break;
     case 128:
-      GatedDeltaNetDecodeWarpKernel<T, 128, kDecodeWarps, InputTypeGates, PackedQkv>
+      if constexpr (PackedQkv) {
+        static const int specialize = ParseEnvironmentVariableWithDefault<int>("ORT_GDN_S2_SPECIALIZE", 0);
+        ORT_ENFORCE(specialize == 0 || specialize == 1, "ORT_GDN_S2_SPECIALIZE must be 0 or 1.");
+        if (specialize && desc.batch == 1 && p.total_tokens == 2 && p.uniform_len == 2 &&
+            p.num_heads_q == 16 && p.num_heads_k == 16 && p.num_heads_v == 48 &&
+            desc.head_size_v == 128 && pack.cu_seqlens == nullptr &&
+            p.gate_activation == GateActivation::kSoftplusDecay &&
+            p.beta_activation == BetaActivation::kSigmoid && p.update_rule == UpdateRule::kGatedDelta &&
+            p.qk_l2_norm && p.state_update_capacity == 0 && p.decay_per_key_dim_flag == 0 &&
+            !p.state_update_tail_pass && !p.short_row_tail_pass) {
+          GatedDeltaNetDecodeWarpKernel<T, 128, Warps, InputTypeGates, PackedQkv, true>
+              <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
+          break;
+        }
+      }
+      GatedDeltaNetDecodeWarpKernel<T, 128, Warps, InputTypeGates, PackedQkv>
           <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
       break;
     default:
-      GatedDeltaNetDecodeWarpKernel<T, 256, kDecodeWarps, InputTypeGates, PackedQkv>
+      GatedDeltaNetDecodeWarpKernel<T, 256, Warps, InputTypeGates, PackedQkv>
           <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
       break;
+  }
+}
+
+template <typename T, bool InputTypeGates, bool PackedQkv>
+void LaunchDecodeWarp(const Descriptor& desc, const VariantPack<T>& pack,
+                      const KernelParams& p, cudaStream_t stream) {
+  static const int warps = ParseEnvironmentVariableWithDefault<int>("ORT_GDN_DECODE_WARPS", kDecodeWarps);
+  ORT_ENFORCE(warps == 2 || warps == 4 || warps == kDecodeWarps, "ORT_GDN_DECODE_WARPS must be 2, 4, or 8.");
+  if (warps == 2) {
+    LaunchDecodeWarpSized<T, InputTypeGates, PackedQkv, 2>(desc, pack, p, stream);
+  } else if (warps == 4) {
+    LaunchDecodeWarpSized<T, InputTypeGates, PackedQkv, 4>(desc, pack, p, stream);
+  } else {
+    LaunchDecodeWarpSized<T, InputTypeGates, PackedQkv, kDecodeWarps>(desc, pack, p, stream);
   }
 }
 

@@ -19,6 +19,7 @@
 #include <cuda_runtime.h>
 #include <math.h>
 #include "contrib_ops/cuda/bert/causal_conv_with_state_impl.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
 namespace onnxruntime {
@@ -27,12 +28,17 @@ namespace cuda {
 
 namespace {
 
-template <typename T>
+template <typename T, bool S2 = false>
 __global__ void CausalConvProjectionKernel(
     const T* input, const T* weight, const T* bias, const T* past,
     T* output, T* present, T* first_state, int channels, int length,
     int kernel_size, int dilation, int input_width, int channel_offset,
     int state_length, CausalConvLayout state_layout, bool apply_silu) {
+  if constexpr (S2) {
+    length = 2;
+    kernel_size = state_length = 4;
+    dilation = 1;
+  }
   const int b = blockIdx.y;
   const int c = blockIdx.x * blockDim.x + threadIdx.x;
   if (c >= channels) return;
@@ -473,6 +479,15 @@ Status LaunchCausalConvProjectionKernel(
     int kernel_size, int dilation, int input_width, int channel_offset,
     int state_length, bool state_channels_last, bool apply_silu) {
   const dim3 grid((channels - 1) / 128 + 1, batch, length);
+  static const int specialize = ParseEnvironmentVariableWithDefault<int>("ORT_CAUSAL_CONV_S2_SPECIALIZE", 0);
+  ORT_ENFORCE(specialize == 0 || specialize == 1, "ORT_CAUSAL_CONV_S2_SPECIALIZE must be 0 or 1.");
+  if (specialize && length == 2 && kernel_size == 4 && dilation == 1 && state_length == 4) {
+    CausalConvProjectionKernel<T, true><<<grid, 128, 0, stream>>>(
+        input, weight, bias, past, output, present, first_state, channels, length,
+        kernel_size, dilation, input_width, channel_offset, state_length,
+        MakeCausalConvLayout(state_channels_last, channels, state_length), apply_silu);
+    return CUDA_CALL(cudaGetLastError());
+  }
   CausalConvProjectionKernel<T><<<grid, 128, 0, stream>>>(
       input, weight, bias, past, output, present, first_state, channels, length,
       kernel_size, dilation, input_width, channel_offset, state_length,
