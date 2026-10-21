@@ -5,6 +5,7 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#include <type_traits>
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/quantization/matmul_2bits_batched.cuh"
@@ -21,7 +22,7 @@ constexpr int kSmallMMax2b = 8;
 // dequantized weight chunk is reused across CtaM rows and one activation chunk across CtaN
 // channels. Scales and zero points are read straight from global memory; unlike the m1 kernel
 // there is no reuse across warps to justify staging them.
-template <class T, int block_size, bool has_zero_point, int CtaM, int CtaN>
+template <class T, int block_size, bool has_zero_point, int CtaM, int CtaN, int Unroll = 1>
 __global__ void __launch_bounds__(kWarpSize2b* kColsPerThreadBlock2b, 3) MatMulFloat2bKernelBatched(
     T* output,
     const T* a_data,
@@ -60,6 +61,7 @@ __global__ void __launch_bounds__(kWarpSize2b* kColsPerThreadBlock2b, 3) MatMulF
   }
 
   int k_id = 0;
+#pragma unroll Unroll
   for (; k_id + k_per_iter <= k; k_id += k_per_iter) {
     const int blk = (lane_offset + k_id) / block_size;
     typename Traits2b<T>::Weights w[CtaN];
@@ -149,6 +151,31 @@ bool TryMatMul2BitsBatched(
   const int blocks_per_K = k / block_size;
   dim3 threads(onnxruntime::cuda::GPU_WARP_SIZE_HOST, kColsPerThreadBlock2b);
   dim3 blocks(n / (kColsPerThreadBlock2b * cta_n), (m + cta_m - 1) / cta_m);
+
+  if constexpr (std::is_same_v<T, half>) {
+    if (block_size == 128 && zero_points == nullptr && cta_n == 2) {
+      // Long reductions in narrow output grids benefit from more instruction overlap.
+      // Wider grids and eight-row tiles need less unrolling to limit register pressure.
+#define MatMulFloat2bUnrolled(cm, unroll)                                                   \
+  MatMulFloat2bKernelBatched<T, 128, false, cm, 2, unroll><<<blocks, threads, 0, stream>>>( \
+      output, a_data, b_data_quant, scales_data, nullptr, m, n, k, blocks_per_K)
+      if (k >= 8192 && n <= 4096 && cta_m <= 4) {
+        if (cta_m == 2) {
+          MatMulFloat2bUnrolled(2, 8);
+        } else {
+          MatMulFloat2bUnrolled(4, 8);
+        }
+      } else if (cta_m == 2) {
+        MatMulFloat2bUnrolled(2, 2);
+      } else if (cta_m == 4) {
+        MatMulFloat2bUnrolled(4, 2);
+      } else {
+        MatMulFloat2bUnrolled(8, 2);
+      }
+#undef MatMulFloat2bUnrolled
+      return true;
+    }
+  }
 
 #define MatMulFloat2bBatchedDispatch(bs, cm, cn)                                        \
   if (nullptr != zero_points) {                                                         \
