@@ -9,6 +9,9 @@
       "<rootDir>/e2e/node_modules",
       "<rootDir>/dist/"
     ],
+    "moduleNameMapper": {
+      "^onnxruntime-react-native/package.json$": "<rootDir>/package.json"
+    },
     "preset": "react-native"
   },
   "keywords": [
