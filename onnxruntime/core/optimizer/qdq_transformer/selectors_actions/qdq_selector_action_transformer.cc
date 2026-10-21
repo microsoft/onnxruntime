@@ -327,6 +327,27 @@ void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_regi
 #else
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
 #endif
+
+  // CPU EP only: fuse the constant weight DQ when the activation input and/or output are INT16/UINT16
+  // quantized. The activation DQ and output Q nodes are left in place, so the activation quantization
+  // semantics are unchanged. INT8/UINT8 activation boundaries are handled by the MatMul/Gemm QDQ rules.
+  const std::string a16_action_name{"DQMatMulToMatMulNBits_A16"};
+  std::unique_ptr<Action> a16_action =
+      std::make_unique<QDQ::DQMatMulToMatMulNBitsAction>(qdq_matmulnbits_accuracy_level,
+                                                         intra_op_thread_pool,
+                                                         qdq_matmulnbits_block_size);
+#if !defined(ORT_MINIMAL_BUILD)
+  std::vector<const char*> cpu_ep = {kCpuExecutionProvider};
+  std::unique_ptr<NodeSelector> a16_selector =
+      std::make_unique<QDQ::DQMatMulToMatMulNBitsSelector>(cpu_ep, /*allow_16bit_activation_boundaries*/ true);
+  qdq_selector_action_registry.RegisterSelectorAndAction(a16_action_name,
+                                                         {{"MatMul", {}},
+                                                          {"Gemm", {}}},
+                                                         std::move(a16_selector),
+                                                         std::move(a16_action));
+#else
+  qdq_selector_action_registry.RegisterAction(a16_action_name, std::move(a16_action));
+#endif
 }
 
 void GemmQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
