@@ -201,8 +201,15 @@ class PosixRandomAccessFile final : public RandomAccessFile {
     const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
     const size_t mapped_length = SafeInt<size_t>(length) + static_cast<size_t>(offset_to_page);
     const FileOffsetType mapped_offset = offset - offset_to_page;
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+    constexpr int kMmapProt = PROT_READ | PROT_WRITE;
+    constexpr int kMmapFlags = MAP_PRIVATE;
+#else
+    constexpr int kMmapProt = PROT_READ;
+    constexpr int kMmapFlags = MAP_SHARED;
+#endif
     void* const mapped_base =
-        mmap(nullptr, mapped_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, descriptor_.Get(), mapped_offset);
+        mmap(nullptr, mapped_length, kMmapProt, kMmapFlags, descriptor_.Get(), mapped_offset);
     if (mapped_base == MAP_FAILED) {
       return ReportSystemError("mmap", path_);
     }
@@ -616,8 +623,15 @@ class PosixEnv : public Env {
     const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
     const size_t mapped_length = SafeInt<size_t>(length) + static_cast<size_t>(offset_to_page);
     const FileOffsetType mapped_offset = offset - offset_to_page;
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+    constexpr int kMmapProt = PROT_READ | PROT_WRITE;
+    constexpr int kMmapFlags = MAP_PRIVATE;
+#else
+    constexpr int kMmapProt = PROT_READ;
+    constexpr int kMmapFlags = MAP_SHARED;
+#endif
     void* const mapped_base =
-        mmap(nullptr, mapped_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, file_descriptor.Get(), mapped_offset);
+        mmap(nullptr, mapped_length, kMmapProt, kMmapFlags, file_descriptor.Get(), mapped_offset);
 
     if (mapped_base == MAP_FAILED) {
       return ReportSystemError("mmap", file_path);
