@@ -146,19 +146,20 @@ std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig> PickPrefi
     return std::nullopt;
   };
   auto find_ampere = [&](CutlassTileConfig tile) -> std::optional<CutlassGemmConfig> {
-#if defined(EXCLUDE_SM_80) || defined(ORT_QUICK_BUILD)
-    ORT_UNUSED_PARAMETER(tile);
-    return std::nullopt;
-#else
+    // QMoE always dispatches with use_fused_moe=false (ENABLE_FUSED_GATED_ACTIVATION is false),
+    // which uses DefaultGemmGrouped in moe_gemm_kernels_{fp16,bf16}.cu; under ORT_QUICK_BUILD
+    // only stages==4 is instantiated for CtaShape{32,64}x128x64.
     std::optional<CutlassGemmConfig> best;
     for (const auto& t : tactics) {
+#if defined(ORT_QUICK_BUILD)
+      if (t.stages != 4) continue;
+#endif
       if (!t.is_tma_warp_specialized && t.sm_version < 90 && t.tile_config_sm80 == tile &&
           (!best.has_value() || t.stages >= best->stages)) {
         best = t;
       }
     }
     return best;
-#endif
   };
   std::optional<CutlassGemmConfig> pick;
   if (rows_per_expert >= 100.0) {

@@ -35,6 +35,17 @@ enum class IoType : int { kFloat = 0,
                           kFloat16 = 1,
                           kBFloat16 = 2 };
 
+// Intermediate precision mode for BF16 GatedDeltaNet chunked and split-chunked prefill engines.
+enum class Bf16Precision : int {
+  kFp32 = 0,  // 3-slice BF16 state/update + exact FP32 extreme-column fallback (default)
+  kFp16 = 1,  // 1-slice FP16 internal MMA tiles when within safe FP16 range
+  kBf16 = 2,  // 1-slice native BF16 internal MMA tiles
+};
+
+inline constexpr const char* kGatedDeltaNetBf16PrecisionConfig =
+    "ep.cuda.gated_delta_net_bf16_precision";
+inline constexpr const char* kGatedDeltaNetBf16PrecisionEnv = "ORT_GDN_BF16_PRECISION";
+
 enum class Engine : int {
   kAuto = 0,
   kChunked = 1,       // fused tensor-core chunked scan; prefill
@@ -47,6 +58,8 @@ inline constexpr int kChunkedMinTokens = 32;
 
 const char* EngineName(Engine e);
 Engine EngineFromName(const std::string& name);
+const char* Bf16PrecisionName(Bf16Precision p);
+bool TryParseBf16Precision(const std::string& name, Bf16Precision* out);
 
 // Everything that can change the generated code or the launch geometry. Two calls with
 // equal descriptors may share a plan.
@@ -70,6 +83,7 @@ struct Descriptor {
   bool ragged = false;  // cu_seqlens supplied
   // Benchmarking override. kAuto lets the heuristic choose.
   Engine preferred_engine = Engine::kAuto;
+  Bf16Precision bf16_precision = Bf16Precision::kFp32;
   int sm_major = 0;
 };
 
@@ -150,10 +164,11 @@ inline size_t SplitScanSmemBytes(int bt, int dk, int dvb) {
   return f + h;
 }
 
-// Workspace one (head, chunk) needs to hand K1's output to K2: W, Qg, Kd [BT x DK],
-// Uv [BT x DV] and P [BT x BT] in fp16, plus the chunk's scalar decay.
+// Workspace one (head, chunk) needs to hand K1's output to K2: W, Qg, Kd [BT x DK] and
+// P [BT x BT] in 16-bit, Uv [BT x DV] in fp32, plus the chunk's scalar decay.
 inline size_t SplitTileBytes(int bt, int dk, int dv) {
-  return sizeof(uint16_t) * static_cast<size_t>(bt) * (3 * dk + dv + bt) + sizeof(float);
+  return sizeof(uint16_t) * static_cast<size_t>(bt) * (3 * dk + bt) +
+         sizeof(float) * (static_cast<size_t>(bt) * dv + 1);
 }
 
 inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
@@ -213,10 +228,17 @@ inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
         // for a workspace proportional to its length.
         const size_t tile = SplitTileBytes(bt, desc.head_size_qk, desc.head_size_v);
         const size_t per_chunk = tile * static_cast<size_t>(batch) * desc.num_heads_v;
+        const size_t carry_bytes = sizeof(float) * static_cast<size_t>(batch) *
+                                   desc.num_heads_v * desc.head_size_v * desc.head_size_qk;
         const int64_t longest = longest_seq;
         const int total_chunks = static_cast<int>((longest + bt - 1) / bt);
         const size_t kWorkspaceCap = 64u << 20;
-        int per_pass = static_cast<int>(kWorkspaceCap / (per_chunk > 0 ? per_chunk : 1));
+        const bool needs_multi_pass =
+            per_chunk > 0 && static_cast<size_t>(total_chunks) * per_chunk > kWorkspaceCap;
+        const size_t tile_budget =
+            (needs_multi_pass && kWorkspaceCap > carry_bytes) ? (kWorkspaceCap - carry_bytes)
+                                                              : kWorkspaceCap;
+        int per_pass = static_cast<int>(tile_budget / (per_chunk > 0 ? per_chunk : 1));
         per_pass = per_pass < 1 ? 1 : per_pass;
         per_pass = per_pass > total_chunks ? total_chunks : per_pass;
         plan.chunks_per_pass = per_pass;
@@ -224,8 +246,7 @@ inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
         if (per_pass < total_chunks) {
           // A multi-pass walk carries the state between launches through the workspace,
           // because the caller is not obliged to have asked for final_state.
-          plan.workspace_bytes += sizeof(float) * static_cast<size_t>(batch) *
-                                  desc.num_heads_v * desc.head_size_v * desc.head_size_qk;
+          plan.workspace_bytes += carry_bytes;
         }
         plan.supported = true;
         return plan;

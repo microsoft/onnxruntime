@@ -79,6 +79,7 @@ struct KernelParams {
   bool qk_l2_norm;
   int state_update_capacity;
   int decay_per_key_dim_flag;
+  Bf16Precision bf16_precision;
   // Hybrid dispatch. The chunked and recurrent launches use complementary predicates, so
   // every row is computed exactly once.
   bool state_update_tail_pass;
@@ -267,15 +268,17 @@ __device__ __forceinline__ void SmemGemm(CT* C, int ldc, const T* A, int lda,
   }
 }
 
-// C[M][N] (ldc) = A[M][K] @ S[K][N] (+ C if Accumulate), where A is in T (fp16/bf16) and
-// S[K][lds_f] is the FP32 recurrent state, staged through s_h[K][lds_h].
-// For bf16, three exact bf16 slices (hi + mid + lo) reconstruct all 24 IEEE-754 significand
-// bits of S while keeping the tensor-core m16n8k16 path. bf16 has fp32's exponent range but only
-// 8 significand bits, so the mid/lo remainders of a tiny state value fall below the bf16
-// subnormal range and round to zero. Each output column is therefore scaled by an exact power of
-// two so that its largest |S| is raised to at least 2^-64 before slicing; the accumulator is scaled
-// back afterwards.
-template <int M, int N, int K, bool Accumulate, int kWarps = kChunkedWarps, typename T = __half>
+// C[M][N] (ldc) = op(A)[M][K] @ S[K][N] (+ C if Accumulate), where A is in T (fp16/bf16) and
+// S[K][lds_f] is an FP32 matrix (recurrent state or intermediate chunk update), staged through
+// s_h[K][lds_h].
+// For bf16, any nonzero finite float with unbiased exponent in [-110, 126]
+// (0x08800000 <= abits < 0x7f000000) is reconstructed to all 24 IEEE-754 significand bits by
+// three unscaled bf16 slices (hi + mid + lo) without overflow or underflow while keeping the
+// tensor-core m16n8k16 path. Columns containing tiny (< 2^-110), near-FLT_MAX (>= 2^127), or
+// non-finite values set their bit in `extreme_col_mask`, stage zero into `s_h` so MMA never sees
+// Inf, and evaluate their exact FP32 dot product in the epilogue.
+template <int M, int N, int K, bool Accumulate, int kWarps = kChunkedWarps, typename T = __half,
+          bool TA = false>
 __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A, int lda,
                                                   const float* S, int lds_f, T* s_h, int lds_h,
                                                   int warp_id, int lane, int tid) {
@@ -286,6 +289,7 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
   constexpr int kNPerWarp = (kNTiles + kWarpsPerM - 1) / kWarpsPerM;
   constexpr bool kIsBf16 = std::is_same_v<T, __nv_bfloat16>;
   constexpr int kSlices = kIsBf16 ? 3 : 1;
+  constexpr int kMaskWords = (N + 31) / 32;
 
   const int m_group = warp_id / kWarpsPerM;
   const int n_group = warp_id % kWarpsPerM;
@@ -293,29 +297,9 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
   const int m0 = m_group * 16;
   const int r0 = m0 + gid, r1 = m0 + gid + 8;
 
-  // Per-column power-of-two scale and its inverse; unused for fp16.
-  __shared__ int col_max_bits[kIsBf16 ? N : 1];
-  __shared__ float col_up[kIsBf16 ? N : 1];
-  __shared__ float col_down[kIsBf16 ? N : 1];
+  __shared__ uint32_t extreme_col_mask[kIsBf16 ? kMaskWords : 1];
   if constexpr (kIsBf16) {
-    for (int c = tid; c < N; c += kChunkedThreads) col_max_bits[c] = 0;
-    __syncthreads();
-    for (int idx = tid; idx < K * N; idx += kChunkedThreads) {
-      const int r = idx / N, c = idx % N;
-      // Non-negative floats order like their bit patterns; inf/NaN sort above every finite value.
-      atomicMax(&col_max_bits[c], __float_as_int(fabsf(S[r * lds_f + c])));
-    }
-    __syncthreads();
-    for (int c = tid; c < N; c += kChunkedThreads) {
-      const int bits = col_max_bits[c];
-      int shift = 0;
-      if (bits != 0 && bits < 0x7f800000) {
-        const int unbiased_exp = max(bits >> 23, 1) - 127;
-        shift = unbiased_exp < -64 ? -64 - unbiased_exp : 0;
-      }
-      col_up[c] = __int_as_float((127 + shift) << 23);
-      col_down[c] = __int_as_float((127 - shift) << 23);
-    }
+    if (tid < kMaskWords) extreme_col_mask[tid] = 0u;
     __syncthreads();
   }
 
@@ -329,25 +313,34 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
   for (int slice = 0; slice < kSlices; ++slice) {
     for (int idx = tid; idx < K * N; idx += kChunkedThreads) {
       const int r = idx / N, c = idx % N;
+      const float sf = S[r * lds_f + c];
       if constexpr (kIsBf16) {
-        const float sf = S[r * lds_f + c] * col_up[c];
-        const __nv_bfloat16 hi_bf = __float2bfloat16_rn(sf);
-        if (slice == 0) {
-          s_h[r * lds_h + c] = hi_bf;
+        const int abits = __float_as_int(fabsf(sf));
+        const bool extreme = (abits != 0) && (abits < 0x08800000 || abits >= 0x7f000000);
+        if (slice == 0 && extreme) {
+          atomicOr(&extreme_col_mask[c >> 5], 1u << (c & 31));
+        }
+        if (extreme) {
+          s_h[r * lds_h + c] = __float2bfloat16_rn(0.0f);
         } else {
-          const float hi = __bfloat162float(hi_bf);
-          const float rem1 = isfinite(hi) ? (sf - hi) : 0.0f;
-          const __nv_bfloat16 mid_bf = __float2bfloat16_rn(rem1);
-          if (slice == 1) {
-            s_h[r * lds_h + c] = mid_bf;
+          const __nv_bfloat16 hi_bf = __float2bfloat16_rn(sf);
+          if (slice == 0) {
+            s_h[r * lds_h + c] = hi_bf;
           } else {
-            const float mid = __bfloat162float(mid_bf);
-            const float rem2 = isfinite(mid) ? (rem1 - mid) : 0.0f;
-            s_h[r * lds_h + c] = __float2bfloat16_rn(rem2);
+            const float hi = __bfloat162float(hi_bf);
+            const float rem1 = sf - hi;
+            const __nv_bfloat16 mid_bf = __float2bfloat16_rn(rem1);
+            if (slice == 1) {
+              s_h[r * lds_h + c] = mid_bf;
+            } else {
+              const float mid = __bfloat162float(mid_bf);
+              const float rem2 = rem1 - mid;
+              s_h[r * lds_h + c] = __float2bfloat16_rn(rem2);
+            }
           }
         }
       } else {
-        s_h[r * lds_h + c] = FloatToElem<T>(S[r * lds_f + c]);
+        s_h[r * lds_h + c] = FloatToElem<T>(sf);
       }
     }
     __syncthreads();
@@ -355,7 +348,7 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
     if (m_group < kMTiles) {
       for (int k0 = 0; k0 < K; k0 += 16) {
         uint32_t a[4];
-        LoadFragA<false>(a, A, lda, m0, k0, lane);
+        LoadFragA<TA>(a, A, lda, m0, k0, lane);
 #pragma unroll
         for (int i = 0; i < kNPerWarp; ++i) {
           const int nt = n_group + i * kWarpsPerM;
@@ -374,11 +367,11 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
     }
   }
 
-  auto col_unscale = [&](int c) {
+  auto is_extreme_col = [&](int c) -> bool {
     if constexpr (kIsBf16) {
-      return col_down[c];
+      return ((extreme_col_mask[c >> 5] >> (c & 31)) & 1u) != 0u;
     } else {
-      return 1.0f;
+      return false;
     }
   };
 
@@ -388,11 +381,37 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
       const int nt = n_group + i * kWarpsPerM;
       if (nt < kNTiles) {
         const int c0 = nt * 8 + tig * 2;
-        const float d0 = col_unscale(c0), d1 = col_unscale(c0 + 1);
-        StoreC(C + r0 * ldc + c0, (Accumulate ? LoadC(C + r0 * ldc + c0) : 0.0f) + acc[i][0] * d0);
-        StoreC(C + r0 * ldc + c0 + 1, (Accumulate ? LoadC(C + r0 * ldc + c0 + 1) : 0.0f) + acc[i][1] * d1);
-        StoreC(C + r1 * ldc + c0, (Accumulate ? LoadC(C + r1 * ldc + c0) : 0.0f) + acc[i][2] * d0);
-        StoreC(C + r1 * ldc + c0 + 1, (Accumulate ? LoadC(C + r1 * ldc + c0 + 1) : 0.0f) + acc[i][3] * d1);
+        if (!is_extreme_col(c0)) {
+          StoreC(C + r0 * ldc + c0, (Accumulate ? LoadC(C + r0 * ldc + c0) : 0.0f) + acc[i][0]);
+          StoreC(C + r1 * ldc + c0, (Accumulate ? LoadC(C + r1 * ldc + c0) : 0.0f) + acc[i][2]);
+        }
+        if (!is_extreme_col(c0 + 1)) {
+          StoreC(C + r0 * ldc + c0 + 1,
+                 (Accumulate ? LoadC(C + r0 * ldc + c0 + 1) : 0.0f) + acc[i][1]);
+          StoreC(C + r1 * ldc + c0 + 1,
+                 (Accumulate ? LoadC(C + r1 * ldc + c0 + 1) : 0.0f) + acc[i][3]);
+        }
+      }
+    }
+  }
+
+  if constexpr (kIsBf16) {
+    bool any_extreme = false;
+#pragma unroll
+    for (int w = 0; w < kMaskWords; ++w) {
+      any_extreme = any_extreme || (extreme_col_mask[w] != 0u);
+    }
+    if (any_extreme) {
+      for (int idx = tid; idx < M * N; idx += kChunkedThreads) {
+        const int m = idx / N, c = idx % N;
+        if (is_extreme_col(c)) {
+          float sum = 0.0f;
+          for (int k = 0; k < K; ++k) {
+            const float a_val = ElemToFloat(TA ? A[k * lda + m] : A[m * lda + k]);
+            sum += a_val * S[k * lds_f + c];
+          }
+          StoreC(C + m * ldc + c, (Accumulate ? LoadC(C + m * ldc + c) : 0.0f) + sum);
+        }
       }
     }
   }

@@ -88,6 +88,23 @@ GatedDeltaNet<T>::GatedDeltaNet(const OpKernelInfo& info) : CudaKernel(info) {
 
   forced_engine_ = gdn::EngineFromName(
       ParseEnvironmentVariableWithDefault<std::string>("ORT_GDN_PLAN", ""));
+
+  const auto from_config =
+      info.GetConfigOptions().GetConfigEntry(gdn::kGatedDeltaNetBf16PrecisionConfig);
+  if (from_config.has_value()) {
+    ORT_ENFORCE(gdn::TryParseBf16Precision(*from_config, &bf16_precision_),
+                gdn::kGatedDeltaNetBf16PrecisionConfig,
+                " must be one of: fp32 (or high/1), fp16 (or half), bf16 (or fast/0), got '",
+                *from_config, "'");
+    has_session_bf16_precision_ = true;
+  } else {
+    const std::string env_val =
+        ParseEnvironmentVariableWithDefault<std::string>(gdn::kGatedDeltaNetBf16PrecisionEnv, "");
+    ORT_ENFORCE(gdn::TryParseBf16Precision(env_val, &bf16_precision_),
+                gdn::kGatedDeltaNetBf16PrecisionEnv,
+                " must be one of: fp32 (or high/1), fp16 (or half), bf16 (or fast/0), got '",
+                env_val, "'");
+  }
 }
 
 template <typename T>
@@ -325,6 +342,16 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.decay_per_key_dim = decay_per_key_dim;
   desc.ragged = cu_seqlens != nullptr;
   desc.preferred_engine = forced_engine_;
+  desc.bf16_precision = bf16_precision_;
+  if (!has_session_bf16_precision_) {
+    const std::string env_val =
+        ParseEnvironmentVariableWithDefault<std::string>(gdn::kGatedDeltaNetBf16PrecisionEnv, "");
+    ORT_RETURN_IF_NOT(
+        gdn::TryParseBf16Precision(env_val, &desc.bf16_precision),
+        gdn::kGatedDeltaNetBf16PrecisionEnv,
+        " must be one of: fp32 (or high/1), fp16 (or half), bf16 (or fast/0), got '",
+        env_val, "'");
+  }
 
   const cudaDeviceProp& prop = GetDeviceProp();
   desc.sm_major = prop.major;

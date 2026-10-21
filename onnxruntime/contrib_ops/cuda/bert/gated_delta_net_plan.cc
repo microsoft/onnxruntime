@@ -3,6 +3,8 @@
 
 #include "contrib_ops/cuda/bert/gated_delta_net_plan.h"
 
+#include <algorithm>
+#include <cctype>
 #include <string>
 
 namespace onnxruntime {
@@ -31,6 +33,43 @@ Engine EngineFromName(const std::string& name) {
   if (name == "recurrent") return Engine::kRecurrent;
   if (name == "cudnn") return Engine::kCudnn;
   return Engine::kAuto;
+}
+
+const char* Bf16PrecisionName(Bf16Precision p) {
+  switch (p) {
+    case Bf16Precision::kFp32:
+      return "fp32";
+    case Bf16Precision::kFp16:
+      return "fp16";
+    case Bf16Precision::kBf16:
+      return "bf16";
+    default:
+      return "fp32";
+  }
+}
+
+bool TryParseBf16Precision(const std::string& name, Bf16Precision* out) {
+  size_t begin = 0;
+  size_t end = name.size();
+  while (begin < end && std::isspace(static_cast<unsigned char>(name[begin]))) ++begin;
+  while (end > begin && std::isspace(static_cast<unsigned char>(name[end - 1]))) --end;
+  std::string lowered(name.substr(begin, end - begin));
+  std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (lowered.empty() || lowered == "fp32" || lowered == "high" || lowered == "1" ||
+      lowered == "default") {
+    *out = Bf16Precision::kFp32;
+    return true;
+  }
+  if (lowered == "fp16" || lowered == "half") {
+    *out = Bf16Precision::kFp16;
+    return true;
+  }
+  if (lowered == "bf16" || lowered == "bfloat16" || lowered == "fast" || lowered == "0") {
+    *out = Bf16Precision::kBf16;
+    return true;
+  }
+  return false;
 }
 
 }  // namespace gated_delta_net
