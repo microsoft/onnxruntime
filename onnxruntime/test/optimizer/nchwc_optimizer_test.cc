@@ -1034,6 +1034,73 @@ TEST(NchwcOptimizerTests, ConvBinaryBroadcast) {
   }
 }
 
+TEST(NchwcOptimizerTests, ConvBinaryZeroBatch) {
+  auto test_case = [&](const std::string& op_type) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({0, 32, 23, 23});
+      auto* conv1_output_arg = helper.MakeIntermediate();
+      auto* conv2_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv1_output_arg, {32, 32, 3, 3});
+      helper.AddConvNode(input_arg, conv2_output_arg, {32, 32, 3, 3});
+      helper.AddNode(op_type, {conv1_output_arg, conv2_output_arg}, {output_arg});
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["Reshape"], 3);
+      EXPECT_EQ(op_to_count[op_type], 1);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  };
+
+  // A zero dimension is not treated as a proven match, so the inputs of the binary
+  // operator are reshaped. The reshape must not infer the channel count from an
+  // empty tensor.
+  std::vector<std::string> op_types{"Add", "Sum"};
+  for (auto& op_type : op_types) {
+    test_case(op_type);
+  }
+}
+
+TEST(NchwcOptimizerTests, ConvBinarySymbolicBatchZeroAtRuntime) {
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto make_input = [&](const std::string& batch_param) {
+      ONNX_NAMESPACE::TypeProto type_proto;
+      type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param(batch_param);
+      for (int64_t dim : {32, 23, 23}) {
+        type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+      }
+      return helper.MakeInput<float>({0, 32, 23, 23}, type_proto);
+    };
+
+    auto* input1_arg = make_input("batch1");
+    auto* input2_arg = make_input("batch2");
+    auto* conv1_output_arg = helper.MakeIntermediate();
+    auto* conv2_output_arg = helper.MakeIntermediate();
+    auto* output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input1_arg, conv1_output_arg, {32, 32, 3, 3});
+    helper.AddConvNode(input2_arg, conv2_output_arg, {32, 32, 3, 3});
+    helper.AddNode("Add", {conv1_output_arg, conv2_output_arg}, {output_arg});
+  };
+
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+    EXPECT_EQ(op_to_count["Reshape"], 3);
+    EXPECT_EQ(op_to_count["Add"], 1);
+  };
+
+  // The batch dimensions are different symbols, so the inputs of the Add are
+  // reshaped, and both batches are zero when the model is run.
+  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+}
+
 TEST(NchwcOptimizerTests, ConvMulChannelScale) {
   const int64_t input_channels = static_cast<int64_t>(MlasNchwcGetBlockSize()) * 2;
 
