@@ -8,7 +8,6 @@
 #include <limits>
 #include <sstream>
 #include <vector>
-#include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"

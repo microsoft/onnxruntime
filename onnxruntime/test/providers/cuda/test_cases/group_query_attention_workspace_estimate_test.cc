@@ -432,8 +432,9 @@ class GroupQueryAttentionDispatchPolicyTest : public testing::Test {
                            TensorShape{1, 2, test_case.capacity, test_case.head}, gpu_allocator, fetches[i]);
     }
 
+    const std::array<std::string, 3> output_names{"output", "present_key", "present_value"};
     testing::internal::CaptureStdout();
-    const auto status = session.Run(feeds, {"output", "present_key", "present_value"}, &fetches);
+    const auto status = session.Run(feeds, output_names, &fetches);
     const std::string debug_output = testing::internal::GetCapturedStdout();
     const char* selected_backend = test_case.expect_failure ? "none" : test_case.expected_backend;
     const std::string expected_dispatch =
