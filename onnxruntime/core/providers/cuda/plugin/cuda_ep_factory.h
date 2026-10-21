@@ -47,6 +47,9 @@ class CudaEpFactory : public OrtEpFactory {
   /// Abandon every device arena of a device when chunk-level detachment cannot be guaranteed.
   void AbandonDeviceArena(int device_id) noexcept;
 
+  /// Shrink any device arena on the specified device that has had Shrink() enabled via RunOptions.
+  void ShrinkEligibleDeviceArenas(int device_id) noexcept;
+
   /// Get or create the shared kernel registry for this factory.
   /// Lazily created on first call; subsequent calls return the cached instance.
   /// Thread-safe: protected by registry_mutex_.
@@ -122,6 +125,7 @@ class CudaEpFactory : public OrtEpFactory {
     std::mutex arena_mutex;
     // One arena per CreateAllocator call: captured CUDA graphs keep using chunks their session freed.
     std::vector<DeviceArena> device_arenas;
+    std::vector<std::shared_ptr<SessionBudgetAccount>> pending_session_accounts;
     std::unique_ptr<CudaArenaAllocator> pinned_arena;
     std::unique_ptr<CudaMempoolOrtAllocator> mempool_allocator;
     int num_pinned_arena_users = 0;
