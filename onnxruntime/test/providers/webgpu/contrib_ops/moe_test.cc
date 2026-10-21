@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(DISABLE_CONTRIB_OPS)
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -1733,3 +1735,5 @@ TEST(MoETest, QMoETest_WebGPU_Int2RejectUnalignedFc3) {
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  // !defined(DISABLE_CONTRIB_OPS)

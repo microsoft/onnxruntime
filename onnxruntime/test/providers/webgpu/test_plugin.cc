@@ -9,6 +9,7 @@
 #include <mutex>
 #include "gtest/gtest.h"
 
+#include "core/common/inlined_containers.h"
 #include "core/common/path_string.h"
 #include "core/platform/env.h"
 #include "core/providers/providers.h"
@@ -17,6 +18,7 @@
 #include "onnxruntime_cxx_api.h"
 #include "core/session/utils.h"
 #include "test/providers/webgpu/internal_test_api.h"
+#include "test/unittest_util/test_dynamic_plugin_ep.h"
 #include "test/util/include/test/test_environment.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
@@ -102,7 +104,19 @@ std::unique_ptr<IExecutionProvider> WebGpuTestPlugin::MakeEp(
   void* context = nullptr;
   bool supports_dp4a = false;
   OrtSessionOptions options;
-  options.value.config_options = config;
+  const auto defaults = dynamic_plugin_ep_infra::GetDefaultEpOptions();
+  InlinedVector<const char*> keys, values;
+  for (const auto& [key, value] : defaults) {
+    keys.push_back(key.c_str());
+    values.push_back(value.c_str());
+  }
+  const OrtEpDevice* devices[] = {impl_->device};
+  ORT_THROW_IF_ERROR(AddEpOptionsToSessionOptions(devices, keys, values, options.value));
+  // The private helper takes session config keys, including the EP prefix.
+  // Per-call settings override the infrastructure and device defaults.
+  for (const auto& [key, value] : config.GetConfigOptionsMap()) {
+    ORT_THROW_IF_ERROR(options.value.config_options.AddConfigEntry(key.c_str(), value.c_str()));
+  }
   ORT_THROW_IF_ERROR(options.value.config_options.AddConfigEntry(webgpu::options::kPreserveDevice, "0"));
   Ort::ThrowOnError(impl_->begin_context(&options, test_options.max_storage_buffer_binding_size, &context, &supports_dp4a));
   auto release_context = gsl::finally([&]() { impl_->end_context(context); });

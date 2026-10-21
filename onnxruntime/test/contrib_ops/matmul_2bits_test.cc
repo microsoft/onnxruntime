@@ -65,6 +65,8 @@ struct TestOptions2Bits {
 
   // Run the node on the CUDA EP instead of the default (CPU / WebGPU) set.
   bool use_cuda{false};
+  // Dedicated WebGPU cases must fail if the node cannot run on WebGPU.
+  bool use_webgpu{false};
 
   std::optional<float> output_abs_error{};
   std::optional<float> output_rel_error{};
@@ -79,13 +81,15 @@ struct TestOptions2Bits {
             << ", has_typed_zero_point:" << opts.has_typed_zero_point
             << ", has_g_idx:" << opts.has_g_idx
             << ", has_bias:" << opts.has_bias
-            << ", use_cuda:" << opts.use_cuda;
+            << ", use_cuda:" << opts.use_cuda
+            << ", use_webgpu:" << opts.use_webgpu;
 }
 
 template <typename T1>
 void RunTest2Bits(const TestOptions2Bits& opts) {
   SCOPED_TRACE(opts);
   ASSERT_FALSE(opts.has_typed_zero_point && !opts.has_zero_point);
+  ASSERT_FALSE(opts.use_cuda && opts.use_webgpu);
 
   const int64_t M = opts.M,
                 K = opts.K,
@@ -235,6 +239,20 @@ void RunTest2Bits(const TestOptions2Bits& opts) {
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  if (opts.use_webgpu) {
+#ifdef USE_WEBGPU
+    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    ASSERT_NE(webgpu_ep, nullptr);
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(session_options)
+        .ConfigEp(std::move(webgpu_ep))
+        .RunWithConfig();
+#else
+    FAIL() << "WebGPU is required by this test";
+#endif
+    return;
+  }
   if (opts.use_cuda) {
 #ifdef USE_CUDA
     execution_providers.emplace_back(DefaultCudaExecutionProvider());
@@ -1528,7 +1546,7 @@ TEST(MatMul2Bits, Float32_2b_BlkLen32_Accuracy0) {
 
 namespace {
 
-// Runs a 2-bit MatMulNBits test on WebGPU EP with CPU as baseline.
+// Runs a 2-bit MatMulNBits test only on WebGPU EP with a scalar reference.
 // The test quantizes random weights to 2 bits, dequantizes to compute
 // expected output via matmul on CPU, then compares WebGPU output.
 template <typename T>
@@ -1542,6 +1560,7 @@ void RunWebGpu2BitsTest(int64_t M, int64_t N, int64_t K, int64_t block_size,
   opts.has_zero_point = has_zero_point;
   opts.output_abs_error = abs_error;
   opts.output_rel_error = rel_error;
+  opts.use_webgpu = true;
 
   RunTest2Bits<T>(opts);
 }
@@ -1624,6 +1643,7 @@ TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_LargerK) {
 TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_DP4A) {
   // Ensure the WebGPU context is initialized so we can query adapter capabilities.
   auto ep = DefaultWebGpuExecutionProvider();
+  ASSERT_NE(ep, nullptr);
 #if defined(ORT_USE_EP_API_ADAPTERS)
   if (!GetWebGpuTestPlugin().Inspect(*ep).supports_dp4a) {
 #else
@@ -1634,6 +1654,7 @@ TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_DP4A) {
 
   TestOptions2Bits opts{};
   opts.accuracy_level = 4;
+  opts.use_webgpu = true;
   opts.has_zero_point = true;
   opts.output_abs_error = 0.1f;
   opts.output_rel_error = 0.02f;

@@ -247,4 +247,12 @@ std::vector<std::string> GetTestsToSkip() {
   return g_plugin_ep_infrastructure_state->config.tests_to_skip;
 }
 
+std::map<std::string, std::string> GetDefaultEpOptions() {
+  if (!IsInitialized()) {
+    return {};
+  }
+
+  return g_plugin_ep_infrastructure_state->config.default_ep_options;
+}
+
 }  // namespace onnxruntime::test::dynamic_plugin_ep_infra
