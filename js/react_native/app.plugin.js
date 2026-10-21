@@ -4,6 +4,17 @@ const pkg = require('onnxruntime-react-native/package.json');
 const path = require('path');
 const fs = require('fs');
 
+/**
+ * Converts directory path to node_modules to a relative path for the ios/Podfile file.
+ * @param {string} iosProjectRoot the ios/ directory path
+ * @param {string} packageRoot the node_modules/onnxruntime-react-native directory path
+ * @returns {string} the relative path to the packageRoot from the iosProjectRoot
+ */
+function toPodfileRelativePath(iosProjectRoot, packageRoot) {
+  const rel = path.relative(iosProjectRoot, packageRoot);
+  return rel ? rel.split(path.sep).join('/') : '.';
+}
+
 const withOrt = (config) => {
   // Add build dependency to gradle file
   config = configPlugin.withAppBuildGradle(config, (config) => {
@@ -79,9 +90,15 @@ const withOrt = (config) => {
     (config) => {
       const podFilePath = path.join(config.modRequest.platformProjectRoot, 'Podfile');
       const contents = fs.readFileSync(podFilePath, { encoding: 'utf-8' });
+      const packageRoot = path.dirname(
+        require.resolve(`${pkg.name}/package.json`, {
+          paths: [config.modRequest.projectRoot],
+        })
+      );
+      const podPath = toPodfileRelativePath(config.modRequest.platformProjectRoot, packageRoot);
       const updatedContents = generateCode.mergeContents({
         src: contents,
-        newSrc: "  pod 'onnxruntime-react-native', :path => '../node_modules/onnxruntime-react-native'",
+        newSrc: `  pod 'onnxruntime-react-native', :path => '${podPath}'`,
         tag: 'onnxruntime-react-native',
         anchor: /^target.+do$/,
         offset: 1,
