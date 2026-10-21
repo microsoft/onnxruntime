@@ -78,7 +78,10 @@ static bool
 MlasHgemmUseSve()
 {
 #if defined(MLAS_USE_SVE)
-    return MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve();
+    // The SVE kernels use FP16 arithmetic, so SVE alone is not sufficient.
+    static const bool UseSve = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() &&
+                               MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration();
+    return UseSve;
 #else
     return false;
 #endif
@@ -95,7 +98,7 @@ MlasHgemmTransposeA(
     )
 {
 #if defined(MLAS_USE_SVE)
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+    if (MlasHgemmUseSve()) {
         MlasHgemmTransposeA_sve(reinterpret_cast<_mlas_fp16_*>(D),
                                 reinterpret_cast<const _mlas_fp16_*>(A),
                                 lda, CountY, CountX);
@@ -122,7 +125,7 @@ MlasHgemmCopyPackB(
     )
 {
 #if defined(MLAS_USE_SVE)
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+    if (MlasHgemmUseSve()) {
         MlasHgemmCopyPackB_sve(reinterpret_cast<_mlas_fp16_*>(D),
                                reinterpret_cast<const _mlas_fp16_*>(B),
                                ldb, CountX, CountY);
@@ -157,7 +160,7 @@ MlasHgemmTransposePackB(
     )
 {
 #if defined(MLAS_USE_SVE)
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+    if (MlasHgemmUseSve()) {
         MlasHgemmTransposePackB_sve(reinterpret_cast<_mlas_fp16_*>(D),
                                     reinterpret_cast<const _mlas_fp16_*>(B),
                                     ldb, CountY, CountX);
@@ -204,18 +207,10 @@ MlasHgemmKernelLoop(
     auto* c = reinterpret_cast<_mlas_fp16_*>(C);
 
     while (CountM > 0) {
-        size_t RowsHandled = 0;
-
-        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
-            if (ZeroMode) {
-                RowsHandled = MlasHgemmKernelZero_sve(a, b, c, CountK, CountM, CountN, lda, ldc, alpha);
-            } else {
-                RowsHandled = MlasHgemmKernelAdd_sve(a, b, c, CountK, CountM, CountN, lda, ldc, alpha);
-            }
-        } else {
-            // Not reached, MlasGemmBatch routes CPUs without SVE to MlasHgemmNeonBatch.
-            MLAS_THROW_EX(std::runtime_error, "HGEMM requires SVE on this CPU");
-        }
+        // Only reached when MlasHgemmUseSve() is true.
+        const size_t RowsHandled =
+            ZeroMode ? MlasHgemmKernelZero_sve(a, b, c, CountK, CountM, CountN, lda, ldc, alpha)
+                     : MlasHgemmKernelAdd_sve(a, b, c, CountK, CountM, CountN, lda, ldc, alpha);
 
         c += ldc * RowsHandled;
         a += lda * RowsHandled;
@@ -266,7 +261,7 @@ MlasHgemmOperation(
     if (M == 1 && TransA == CblasNoTrans && TransB == CblasNoTrans &&
         alpha == 1.0f && (beta == 0.0f || beta == 1.0f)) {
 #if defined(MLAS_USE_SVE)
-        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+        if (MlasHgemmUseSve()) {
             MlasHgemvFloat16Kernel_sve(
                 reinterpret_cast<const _mlas_fp16_*>(A),
                 reinterpret_cast<const _mlas_fp16_*>(B),
@@ -280,7 +275,7 @@ MlasHgemmOperation(
     if (M == 2 && TransA == CblasNoTrans && TransB == CblasNoTrans &&
         alpha == 1.0f && (beta == 0.0f || beta == 1.0f)) {
 #if defined(MLAS_USE_SVE)
-        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+        if (MlasHgemmUseSve()) {
             MlasHgemv2Float16Kernel_sve(
                 reinterpret_cast<const _mlas_fp16_*>(A), lda,
                 reinterpret_cast<const _mlas_fp16_*>(B),
@@ -295,7 +290,7 @@ MlasHgemmOperation(
     if (M == 1 && TransA == CblasNoTrans && TransB == CblasTrans &&
         (beta == 0.0f || beta == 1.0f)) {
 #if defined(MLAS_USE_SVE)
-        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+        if (MlasHgemmUseSve()) {
             MlasHgemvNKernel_sve(
                 reinterpret_cast<const _mlas_fp16_*>(B),
                 reinterpret_cast<const _mlas_fp16_*>(A),
@@ -310,7 +305,7 @@ MlasHgemmOperation(
     if (N == 1 && TransA == CblasNoTrans && (beta == 0.0f || beta == 1.0f)) {
         const bool b_contiguous = (TransB == CblasTrans) || (ldb == 1);
 #if defined(MLAS_USE_SVE)
-        if (b_contiguous && MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+        if (b_contiguous && MlasHgemmUseSve()) {
             MlasHgemvNKernel_sve(
                 reinterpret_cast<const _mlas_fp16_*>(A),
                 reinterpret_cast<const _mlas_fp16_*>(B),
@@ -460,6 +455,28 @@ MlasHgemmPackedOperation(
 }
 
 
+static bool
+MlasHgemmNeonSupported(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB
+    )
+{
+    const auto* dispatch = GetMlasPlatform().HGemmDispatch;
+    if (TransA == CblasNoTrans && TransB == CblasTrans) {
+        return dispatch &&
+               dispatch->HGemmKernel_TransposedB &&
+               dispatch->HPackBKernel_TransposedB &&
+               dispatch->HGemmKernel_PackedB;
+    } else if (TransA == CblasNoTrans && TransB == CblasNoTrans) {
+        return dispatch &&
+               dispatch->HGemmKernel_B &&
+               dispatch->HPackBKernel_B &&
+               dispatch->HGemmKernel_PackedB;
+    }
+    return false;
+}
+
+
 bool
 MLASCALL
 MlasHGemmSupported(
@@ -476,20 +493,7 @@ MlasHGemmSupported(
         return (TransA == CblasNoTrans || TransA == CblasTrans) &&
                (TransB == CblasNoTrans || TransB == CblasTrans);
     }
-
-    const auto* dispatch = GetMlasPlatform().HGemmDispatch;
-    if (TransA == CblasNoTrans && TransB == CblasTrans) {
-        return dispatch &&
-               dispatch->HGemmKernel_TransposedB &&
-               dispatch->HPackBKernel_TransposedB &&
-               dispatch->HGemmKernel_PackedB;
-    } else if (TransA == CblasNoTrans && TransB == CblasNoTrans) {
-        return dispatch &&
-               dispatch->HGemmKernel_B &&
-               dispatch->HPackBKernel_B &&
-               dispatch->HGemmKernel_PackedB;
-    }
-    return false;
+    return MlasHgemmNeonSupported(TransA, TransB);
 }
 
 
@@ -799,7 +803,16 @@ MlasGemmBatch(
         return;
     }
 
-    if (!MlasHgemmUseSve()) {
+    bool UseNeon = !MlasHgemmUseSve();
+
+    // At K == 1 the product is a rank-1 update and the per-tile setup of the SVE kernels
+    // costs more than the NEON kernels, so use those where they support the call.
+    if (!UseNeon && K == 1 && MlasHgemmNeonSupported(TransA, TransB)) {
+        UseNeon = std::none_of(Data, Data + BatchSize,
+                               [](const MLAS_HGEMM_DATA_PARAMS& d) { return d.BIsPacked; });
+    }
+
+    if (UseNeon) {
         MlasHgemmNeonBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
         return;
     }

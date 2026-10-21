@@ -232,6 +232,11 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
     TestPackB_B<65, 67>();
     TestPackB_B<65, 96>();
     TestPackB_B<271, 263>();
+    // A four-column tail (N % 8 == 4) used to be packed as zeros.
+    TestPackB_B<4, 1>();
+    TestPackB_B<4, 3>();
+    TestPackB_B<12, 3>();
+    TestPackB_B<20, 5>();
   }
 };
 
@@ -805,6 +810,11 @@ class MlasNeonHGemmTest : public MlasTestBase {
     TestHGemm<127, 513, 1023, false, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemm<129, 511, 1025, false, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
     TestHGemm<129, 513, 1025, false, false>(MLAS_FP16(0.5f), MLAS_FP16(0.5f));
+    // K == 1 with M > 2 packs B, including four-column tails (N % 8 == 4).
+    TestHGemm<3, 1, 4, false, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<5, 1, 12, false, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<3, 1, 12, false, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<9, 1, 1023, false, false>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
 
     // extreme value coverage
     TestHGemmFixed<2, 1, 1, false, true>(kFp16Max, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));

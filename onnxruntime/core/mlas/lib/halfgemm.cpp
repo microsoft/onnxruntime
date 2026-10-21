@@ -172,8 +172,9 @@ MlasHalfGemmBatch(
         bool forward = true;
         for (size_t gemm_i = 0; gemm_i < BatchN && forward; gemm_i++) {
             const auto& data = DataParams[gemm_i];
-            forward = !data.AIsfp32 && !data.BIsfp32 && !data.BIsPacked && data.ldb != 0 &&
-                      data.Bias == nullptr && data.OutputProcessor == nullptr;
+            // The forward below passes CblasNoTrans, so a transposed B must never reach it.
+            forward = !data.AIsfp32 && !data.BIsfp32 && !data.BIsPacked && !data.BIsTransposed &&
+                      data.ldb != 0 && data.Bias == nullptr && data.OutputProcessor == nullptr;
         }
         if (forward) {
             std::vector<MLAS_HGEMM_DATA_PARAMS> hgemm_data(BatchN);
