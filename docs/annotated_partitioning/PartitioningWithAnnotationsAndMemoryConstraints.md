@@ -426,18 +426,24 @@ This is pre-commit selection, not late rollback of already materialized layers o
 
 ### Terminology: Graph Regions, Execution Candidates, and Placement
 
-Separate **graph grouping**, **implementation choice**, and **device assignment**:
+Separate **subgraph identification**, **implementation choice**, and **device assignment**.
+
+Here, a **subgraph** is a subset of an existing graph's nodes and the edges between them, with an
+input/output boundary. In ORT, the term is also used for nested control-flow graphs (such as `If`
+branches or a `Loop` body) and node sets offered by EPs for fusion/compilation. A subgraph used for
+planning does not require a separate `Graph` object, fusion, or EP/device assignment.
 
 | Term | Meaning in this proposal |
 |:-----|:-------------------------|
-| **Graph region** (or **region**) | A validated group of source nodes, such as a decoder block, used to organize the search. It does not identify a device, require one kernel, or by itself make the group indivisible. |
-| **Region discovery / region formation** | Finding and validating those groups and their dependencies from annotations, configured names, or graph structure. This answers "which nodes belong together for search?" without assigning them to CPU/GPU or rewriting them. |
+| **Graph region** (or **region**) | A validated subgraph, such as a decoder block, used to organize the search. It does not identify a device, require one kernel, or by itself make the subgraph indivisible. |
+| **Region discovery / region formation** | Identifying and validating those subgraphs and their dependencies from annotations, configured names, or graph structure. This answers "which nodes form each planning subgraph?" without assigning them to CPU/GPU or rewriting them. |
 | **Fusion-aware execution candidate** | An EP's offer to execute a particular source-node set using a specified implementation recipe, with its interface, eligibility conditions, contracts, and requirements. It can describe standalone kernels, a fused kernel, or a compiled region; it is not yet a selected assignment. |
 | **Candidate CPU/GPU cut** (or **assignment boundary**) | A possible graph frontier separating CPU-assigned and GPU-assigned work in a tentative plan. This is the meaning of boundary search below, not merely the input/output boundary of a region or execution candidate. |
 | **Candidate plan** | A provisional whole-graph combination of CPU/GPU assignments, compatible execution candidates, selected contracts, transfers, and backing strategy. Unlike an individual execution candidate, it must cover the complete graph. |
 | **Placement** | Assignment of executable work to particular EPs/devices, such as CPU EP or CUDA EP. A tentative placement is a trial assignment; final placement is committed only after verification. It is distinct from allocating or uploading the associated storage. |
 
-Use **graph region** rather than "placement region", and **region formation** for the grouping step.
+Use **graph region** for a subgraph's planning role rather than "placement region", and
+**region formation** for the subgraph-identification step.
 Reserve **placement** for CPU/GPU assignment. A graph-region boundary, an execution candidate's
 input/output interface, and a CPU/GPU assignment boundary need not coincide.
 
@@ -464,8 +470,8 @@ EPs require additional models or explicit rejection of unsupported budget-planni
 
 ### Discover Graph Regions Separately from EP Capabilities
 
-ORT has no universal semantic layer unit. **Region discovery** forms graph groups to organize candidate
-plans; it does not decide where those groups execute. An EP capability instead describes nodes an EP
+ORT has no universal semantic layer unit. **Region discovery** identifies subgraphs to organize candidate
+plans; it does not decide where those subgraphs execute. An EP capability instead describes nodes an EP
 can execute, possibly as a fused or compiled region. The two need not have the same boundaries: one
 decoder-block region may contain many single-node CUDA capabilities or several fused capabilities.
 Conversely, an indivisible capability can constrain otherwise proposed region boundaries.
@@ -494,7 +500,7 @@ and does not establish semantic block order.
 ### Discover Fusion-Aware Execution Candidates
 
 **Execution-candidate discovery** asks each EP "how could you execute these source nodes?" rather than
-forming graph groups or committing device assignments. **Fusion-aware** means considering the
+identifying planning subgraphs or committing device assignments. **Fusion-aware** means considering the
 resulting implementation after an eligible fusion/lowering, not only the original nodes' standalone
 support and memory estimates. Extend the planning-safe `GetCapability()` path to describe these
 implementations before deciding their placement. A candidate may use standalone kernels, a registered
@@ -636,7 +642,7 @@ may execute inference or bulk-materialize device weights or kernels.
 ### Generate a Small Family of CPU/GPU Assignment Boundaries
 
 **Candidate boundaries** here are candidate CPU/GPU cuts: trial device-assignment frontiers used to
-generate candidate plans. They are not new graph groups or fusion recipes. For a validated ordered
+generate candidate plans. They are not new subgraphs or fusion recipes. For a validated ordered
 chain of `L` blocks, start with a CPU prefix and GPU suffix:
 
 ```text
