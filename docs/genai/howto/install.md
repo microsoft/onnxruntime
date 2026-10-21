@@ -30,6 +30,12 @@ pip install onnxruntime-genai
 pip install onnxruntime-genai-directml
 ```
 
+### TRT-RTX
+
+```bash
+pip install onnxruntime-genai-trt-rtx
+```
+
 ### CUDA
 
 If you are installing the CUDA variant of onnxruntime-genai, the CUDA toolkit must be installed.
