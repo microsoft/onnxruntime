@@ -641,6 +641,11 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::ValidateCompiledModelCompatibilityInfo
     return nullptr;
   }
 
+  // For tests: a "fail_validation" field makes this callback return an error.
+  if (info.find(";fail_validation") != std::string::npos) {
+    return factory.ort_api.CreateStatus(ORT_FAIL, "Validation failure requested by the compatibility info.");
+  }
+
   // Expected format:
   // "<ep_name>;version=<semver>;ort_api_version=<ORT_API_VERSION>;hardware_architecture=<architecture>".
   const auto ep_version = GetCompatibilityField(info, kVersionKey);

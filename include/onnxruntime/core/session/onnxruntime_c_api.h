@@ -8933,7 +8933,11 @@ struct OrtInteropApi {
 struct OrtModelPackageApi {
   /** \brief Create model package options from session options.
    *
-   * Captures the execution provider configuration used to select a component variant.
+   * Records the EP configuration used to choose a variant for a model package component and create sessions.
+   * EP priority comes from the selection policy or the order in which EPs were added.
+   * For explicitly added EPs, their provider factories are kept for session creation.
+   * ORT also stores pointers to the selected OrtEpDevice instances for plugin EPs added with
+   * OrtApi::SessionOptionsAppendExecutionProvider_V2 and for EPs selected by a policy.
    *
    * \param[in] env The ORT environment.
    * \param[in] session_options Session options containing the execution provider configuration.
@@ -9101,6 +9105,17 @@ struct OrtModelPackageApi {
 
   /** \brief Select a component and resolve its best matching variant.
    *
+   * EPs are considered in priority order, as determined by the selection policy or the order in which they were added
+   * to the session options. For the first EP with matching variants, the variant with the highest compatibility score
+   * is selected.
+   * If an EP has no variants or all its variants are incompatible, selection continues to the next EP.
+   * If ORT cannot check a variant's compatibility and no other variant matches that EP, selection returns an error
+   * instead of considering EPs with lower priority. The error identifies the EP.
+   * This can happen when the variant requires a device but no devices were captured for the EP, or when the EP's
+   * compatibility callback returns an error.
+   * Without captured devices, the built-in CPU EP can still match a variant that requires a CPU, but no other device
+   * type.
+   *
    * The returned component context is independent of `context` and must be released with
    * ReleaseModelPackageComponentContext().
    *
@@ -9163,6 +9178,27 @@ struct OrtModelPackageApi {
    * session and provider options. When `session_options` is non-NULL, the caller's options are used and package
    * provider options are not applied; package path-valued session options are still added when the caller did not
    * provide them.
+   *
+   * If the effective options contain no EP factories, ONNX Runtime adds only the EP targeted by the selected variant.
+   * It uses the captured devices that match the variant's declared device type, or all captured devices if no type is
+   * declared. The EP is added as in OrtApi::SessionOptionsAppendExecutionProvider_V2. The usual CPU EP fallback still
+   * applies. ORT does not run the selection policy during session creation.
+   * Device defaults are used only for EP options that have not already been set.
+   * Custom operator domains provided by the EP are registered before loading the model.
+   * If no OrtEpDevice instances were captured for the EP, ORT uses the provider factory saved from the session options
+   * used to create the model package options. The built-in CPU EP does not require a saved factory.
+   * On the default path, non-empty package provider options cause an error if no devices were captured.
+   *
+   * If the caller supplies EP factories, ORT uses that list.
+   * If the selected EP is not the built-in CPU EP, at least one factory in the list must create it.
+   *
+   * The CPU registration APIs behave differently here:
+   * - Adding the built-in ORT CPU EP as "CPU" through OrtApi::SessionOptionsAppendExecutionProvider does not add
+   *   a provider factory to the options.
+   * - OrtSessionOptionsAppendExecutionProvider_CPU adds a CPU EP factory.
+   *
+   * ORT automatically adds the built-in CPU EP if it has not already been registered.
+   * If any other selected EP cannot be created or registered, session creation fails.
    *
    * \param[in] env The ORT environment.
    * \param[in] context The selected component context.
