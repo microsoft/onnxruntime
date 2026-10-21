@@ -30,19 +30,15 @@ enum class KernelLayout {
 template <bool is_channels_last, bool is_fused>
 class Conv : public WebGpuKernel {
  public:
-  // Abstract base class for alternative optimized Conv implementations (currently the
-  // subgroup-matrix path). Implementations hold the parent Conv and read
-  // conv_attrs/activation/... from it, mirroring Gemm::GemmOptImpl.
+  // Abstract base for alternative optimized Conv implementations (mirrors
+  // Gemm::GemmOptImpl); currently just the subgroup-matrix path.
   class ConvOptImpl {
    public:
     explicit ConvOptImpl(const Conv& parent) : parent_(parent) {}
     virtual ~ConvOptImpl() = default;
 
-    // Attempts the optimized path, reading the Conv operands from `context` and the
-    // Conv attributes from the parent. Sets handled=true when it ran; leaves
-    // handled=false (allocating nothing) so the caller falls back to the normal Conv
-    // path. Called before ComputeInternal has resolved auto_pad or allocated the
-    // output, so an implementation that needs those runs its own shape inference.
+    // Sets handled=true if it ran, else leaves handled=false (allocating nothing).
+    // Runs before ComputeInternal resolves auto_pad/output.
     virtual Status Compute(ComputeContext& context, /*out*/ bool& handled) = 0;
 
    protected:
@@ -54,10 +50,6 @@ class Conv : public WebGpuKernel {
       // Throw the Status, not the expression: the message names the activation ORT_ENFORCE would drop.
       ORT_THROW_IF_ERROR(GetFusedActivationAttr(info, activation_));
     }
-    // Whether the weight input (index 1) is a constant initializer. An optimized
-    // implementation uses this to decide whether it may cache a derived form of the
-    // weight (e.g. a transposed copy) across Runs; a non-constant weight can change
-    // between Runs, so anything derived from it must be rebuilt every time.
     const Tensor* w = nullptr;
     w_is_constant_ = info.TryGetConstantInput(1, &w);
   }
@@ -69,13 +61,10 @@ class Conv : public WebGpuKernel {
                          AllocatorPtr alloc,
                          /*out*/ bool& is_packed) override;
 
-  // State an optimized implementation (ConvOptImpl) reads from its parent Conv.
   const ConvAttributes& ConvAttrs() const { return conv_attrs_; }
   const Activation& ConvActivation() const { return activation_; }
-  // True when input 1 (the weight) is a constant initializer. See w_is_constant_.
   bool IsWeightConstant() const { return w_is_constant_; }
-  // The prepacked weight, or null when it is not prepacked. Its layout is HWIO or OHWI,
-  // as reported by kernel_layout_.
+  // Prepacked weight, or null if not prepacked (layout given by kernel_layout_).
   const Tensor* PrepackedKernel() const { return prepacked_kernel_.get(); }
 
  protected:
@@ -92,19 +81,16 @@ class Conv : public WebGpuKernel {
   bool w_is_constant_ = false;  // whether the weight input (index 1) is a constant initializer
 
  private:
-  // Owns the alternative optimized implementation and builds it lazily: the impl
-  // needs device capabilities only reachable through a compute context (not the
-  // ctor), and the same Conv kernel can see concurrent Compute calls, so creation is
-  // guarded by call_once -- mirroring MatMulComputeDispatcher, except nested here
-  // because ConvOptImpl is itself nested in this template. A null impl after
-  // initialization means this device has no optimized path.
+  // Owns the optimized implementation, built lazily (needs a compute context) and
+  // guarded by call_once against concurrent Compute calls. Null after init means no
+  // optimized path on this device.
   class ConvOptImplCache {
    public:
     ConvOptImplCache() = default;
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConvOptImplCache);
 
-    // Defined in conv.cc, not here: it calls into subgroup_matrix_conv.h, which
-    // includes this header, so the include can't go the other way.
+    // Defined in conv.cc: it calls into subgroup_matrix_conv.h, which includes this
+    // header, so the include can't go the other way.
     ConvOptImpl* GetOrCreate(const Conv& parent, const ComputeContextBase& context);
 
    private:

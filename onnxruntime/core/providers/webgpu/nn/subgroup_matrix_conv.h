@@ -18,18 +18,9 @@
 namespace onnxruntime {
 namespace webgpu {
 
-// Computes a channels-last (NHWC) 2D convolution as an implicit-GEMM using
-// subgroupMatrixMultiplyAccumulate. The activation operand is the im2col of the
-// input, gathered on the fly into workgroup memory (never materialized in global
-// memory); the weight is pre-transposed to OHWI, i.e. B stored column-major.
-// config is the device subgroup-matrix config selected by SelectSubgroupMatrixConfig;
-// sg_mat_count_m/n select how many subgroup matrices the output tile spans along
-// M/N; split_k is the number of subgroups that cooperatively reduce K.
-//
-// The bias add and the fused activation live in a generated `write_output` helper
-// rather than in the WGSL template: the activation body comes from
-// GetActivationSnippet / GetActivationDeclaration, so every ActivationKind those
-// support works here without the template knowing the kinds.
+// Implicit-GEMM channels-last Conv via subgroupMatrixMultiplyAccumulate.
+// sg_mat_count_m/n: subgroup matrices per output tile along M/N. split_k:
+// subgroups cooperatively reducing K.
 class SubgroupMatrixConvProgram final : public Program<SubgroupMatrixConvProgram> {
  public:
   SubgroupMatrixConvProgram(bool has_bias, SubgroupMatrixConfig config,
@@ -50,12 +41,9 @@ class SubgroupMatrixConvProgram final : public Program<SubgroupMatrixConvProgram
                                           {"N", ProgramUniformVariableDataType::Uint32},
                                           {"K", ProgramUniformVariableDataType::Uint32},
                                           {"num_n_tile", ProgramUniformVariableDataType::Uint32},
-                                          // Number of batch slices, i.e. the logical z extent of the tile
-                                          // grid. The kernel needs it to drop the extra workgroups a
-                                          // normalized dispatch can add (see the guard in the template).
                                           {"batch", ProgramUniformVariableDataType::Uint32},
-                                          {"src_h", ProgramUniformVariableDataType::Uint32},
-                                          {"src_w", ProgramUniformVariableDataType::Uint32},
+                                          {"input_h", ProgramUniformVariableDataType::Uint32},
+                                          {"input_w", ProgramUniformVariableDataType::Uint32},
                                           {"channel_i", ProgramUniformVariableDataType::Uint32},
                                           {"kernel_h", ProgramUniformVariableDataType::Uint32},
                                           {"kernel_w", ProgramUniformVariableDataType::Uint32},
@@ -74,44 +62,20 @@ class SubgroupMatrixConvProgram final : public Program<SubgroupMatrixConvProgram
   const uint32_t sg_mat_count_n_;
   const uint32_t split_k_;
   const uint32_t vec_size_;
-  // Held by value, like the other subgroup-matrix/MatMul programs (and unlike the
-  // neighbouring Conv programs, which hold a reference into the kernel). The program
-  // outlives the call that builds it -- CacheKey() and the uniform values are read
-  // during Run -- and Activation is two floats plus an enum, so a copy is cheaper
-  // than having to reason about the referent's lifetime.
   const Activation activation_;
 };
 
-// Returns true when the subgroup-matrix Conv fast path can run for this problem:
-// fp16, channels-last, group == 1, a 4D non-1x1 kernel, and a device that reports
-// the 8x16x16 F16 subgroup-matrix config, supports subgroup-size control (the kernel
-// pins its 32 lanes per subgroup) and has a vendor tiling policy. The GEMM
-// contraction dim K = kernel_h * kernel_w * Cin must be a multiple of the
-// subgroup-matrix K (16), and N = Cout must be at least one subgroup-matrix N block
-// (16) wide so that a trailing partial N tile can be shifted back far enough for its
-// unchecked weight loads to stay in bounds. Above that, N needs no parity or
-// block-multiple (the OHWI weight is column-major with stride K, so load alignment
-// comes from K); M = out_h * out_w is unconstrained.
-//
-// The fused activation is deliberately not part of the test: the write-out epilogue
-// is generated from GetActivationSnippet, so every ActivationKind is already handled --
-// unlike CanApplyIm2ColMatMulProgram, this needs no IsActivationSupported() companion.
-//
-// This is a shape/device-level test, decided from the weight shape alone: callers fall
-// back to the default conv paths when it returns false. SubgroupMatrixConvImpl calls it
-// from Compute; Conv::PrePackInternal calls it to skip prepacking for a weight this path
-// will consume in its original OIHW layout.
+// Eligibility: fp16, channels-last, group == 1, a 4D non-1x1 kernel, a device
+// reporting the 8x16x16 F16 subgroup-matrix config, and K = kernel_h * kernel_w *
+// Cin a multiple of 16, N = Cout >= 16. Callers fall back to the default conv
+// paths when this returns false.
 bool CanApplySubgroupMatrixConv(ComputeContextBase& context,
                                 bool is_channels_last,
                                 const TensorShape& kernel_shape,
                                 uint32_t group,
                                 MLDataType data_type);
 
-// Creates a subgroup-matrix Conv implementation on devices whose vendor policy
-// supports it; returns nullptr otherwise, so the caller falls back to the normal Conv
-// paths. The impl reads the Conv attributes from `parent`, and the per-problem output
-// tiling comes from a vendor-specific selector chosen internally from the device
-// context.
+// Nullptr on devices with no vendor tiling policy; callers fall back to normal Conv.
 template <bool is_channels_last, bool is_fused>
 std::unique_ptr<typename Conv<is_channels_last, is_fused>::ConvOptImpl> CreateSubgroupMatrixConvImpl(
     const Conv<is_channels_last, is_fused>& parent,

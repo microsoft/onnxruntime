@@ -25,34 +25,17 @@ namespace webgpu {
 
 namespace {
 
-// Lanes per subgroup assumed by the subgroup-matrix kernel. The workgroup runs
-// split_k subgroups, so its size is kSubgroupMatrixSubgroupSize * split_k.
+// Workgroup size is kSubgroupMatrixSubgroupSize * split_k.
 constexpr uint32_t kSubgroupMatrixSubgroupSize = 32;
 
-// Combined workgroup-memory (SLM) budget in f16 elements for the two scratch
-// buffers the conv kernel uses: the split-K output tiles
-// (split_k * tile_m * tile_n) plus the per-subgroup im2col A staging
-// (split_k * tile_m * sg_mat_k). split_k is clamped to fit this. Shares
-// intel::kMaxScratchElems rather than hardcoding a second copy of the same
-// budget the selector already sizes tilings against.
-
-// Largest per-tile subgroup-matrix counts the WGSL template unrolls: it generates the
-// accumulators sg_mat_c<mi>_<ni> for mi < 8 and ni < 4. A tiling above these would be
-// accepted by the selector but silently mis-computed -- the kernel would accumulate
-// only the blocks it generated while the write-out still covers the whole tile. The
-// tile candidates the selector picks from stay inside this, so this is enforced as a
-// safety net rather than something expected to fire.
+// Max sg_mat_c<mi>_<ni> the WGSL template unrolls (mi < 8, ni < 4); a larger
+// tiling would be accepted by the selector but silently mis-computed.
 constexpr uint32_t kMaxSgMatCountM = 8;
 constexpr uint32_t kMaxSgMatCountN = 4;
 
-// Returns the device's subgroup-matrix config for the fixed 8x16x16 F16 config
-// this kernel is implemented for, or nullopt when the device does not report it.
-// Also requires subgroup-size control and the vendor tiling policy (Intel).
-//
-// Single source of truth for device eligibility: CanApplySubgroupMatrixConv (which
-// Conv::PrePackInternal consults to skip prepacking) and CreateSubgroupMatrixConvImpl
-// both go through here, so the prepack decision and the runtime path can never
-// disagree about whether this device is served.
+// Device's config for the fixed 8x16x16 F16 config this kernel implements, or
+// nullopt if unsupported. Single source of truth for eligibility: both
+// CanApplySubgroupMatrixConv and CreateSubgroupMatrixConvImpl call this.
 std::optional<SubgroupMatrixConfig> GetSupportedConfig(const ComputeContextBase& context) {
   constexpr auto kF16 = wgpu::SubgroupMatrixComponentType::F16;
   const std::optional<SubgroupMatrixConfig> config =
@@ -60,12 +43,8 @@ std::optional<SubgroupMatrixConfig> GetSupportedConfig(const ComputeContextBase&
   if (!config || !config->Is(8, 16, 16)) {
     return std::nullopt;
   }
-  // The adapters reporting that config expose a 16-32 subgroup size range, while the
-  // kernel hard-codes kSubgroupMatrixSubgroupSize lanes per subgroup (sg_index =
-  // local_idx / 32). A driver-chosen 16 still computes the right answer -- the two
-  // hardware subgroups covered by one logical subgroup redundantly load, multiply and
-  // store the identical tile -- but it wastes about half the subgroup-matrix
-  // throughput, so the size is pinned with subgroup-size control instead.
+  // Adapters here may expose a 16-32 subgroup size range, but the kernel hard-codes
+  // 32 (sg_index = local_idx / 32); pin it rather than risk a wasteful driver choice.
   if (!context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
     return std::nullopt;
   }
@@ -75,8 +54,6 @@ std::optional<SubgroupMatrixConfig> GetSupportedConfig(const ComputeContextBase&
   return config;
 }
 
-// The bias add and the fused activation are not template parameters: the template
-// calls the `write_output` helper that GenerateShaderCode builds from fuse_utils.
 Status GenerateShaderCode8x16x16(ShaderHelper& shader, const ShaderVariableHelper& input_src,
                                  uint32_t sg_mat_count_m, uint32_t sg_mat_count_n,
                                  uint32_t split_k, uint32_t vec_size) {
@@ -91,17 +68,9 @@ Status GenerateShaderCode8x16x16(ShaderHelper& shader, const ShaderVariableHelpe
                              WGSL_TEMPLATE_VARIABLE(input_src, input_src));
 }
 
-// Subgroup-matrix Conv implementation. Computes a channels-last 2D convolution as
-// an implicit GEMM during Compute: A is the im2col of the activation, gathered on
-// the fly into workgroup memory (never materialized in global memory), B is the
-// transposed weight, and the product is accumulated with
-// subgroupMatrixMultiplyAccumulate. The class is intended to support all
-// subgroup-matrix configs; for now only 8x16x16 is implemented. The per-problem
-// output tiling is supplied by a vendor-specific selector kept internal to this
-// impl, which declines problems its policy does not cover.
-// It runs its own Conv shape inference to decide eligibility, mirroring
-// Conv::ComputeInternal: ConvOptImpl::Compute is called before ComputeInternal has
-// resolved auto_pad or allocated the output.
+// Computes a channels-last 2D convolution as an implicit GEMM via
+// subgroupMatrixMultiplyAccumulate (only 8x16x16 implemented so far). Runs its own
+// Conv shape inference, since Compute runs before auto_pad/output are resolved.
 template <bool is_channels_last, bool is_fused>
 class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::ConvOptImpl {
   using ConvT = Conv<is_channels_last, is_fused>;
@@ -119,17 +88,17 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     const ConvAttributes& conv_attrs = parent.ConvAttrs();
     const Activation& activation = parent.ConvActivation();
 
-    // The kernel reads the weight in its original OIHW layout (it applies its own
-    // OIHW -> OHWI transpose below), so any prepacked layout (HWIO or OHWI) is
-    // unusable here. Conv::PrePackInternal tests CanApplySubgroupMatrixConv before
-    // every prepacking branch and skips prepacking for exactly the problems accepted
-    // here, so this normally never declines.
+    // Fast decline for any Conv this path doesn't accept: PrePackInternal only skips
+    // prepacking for problems CanApplySubgroupMatrixConv accepts, so a non-null
+    // prepacked_kernel_ here (grouped/1x1/etc. convs prepacked for another path)
+    // means this one would decline below anyway -- this just avoids the shape
+    // inference to get there. The kernel needs OIHW regardless.
     if (parent.PrepackedKernel() != nullptr) {
       return Status::OK();
     }
-    const auto* src = context.Input<Tensor>(0);
+    const auto* input = context.Input<Tensor>(0);
     const auto* weight = context.Input<Tensor>(1);
-    if (src == nullptr || weight == nullptr) {
+    if (input == nullptr || weight == nullptr) {
       return Status::OK();
     }
     const TensorShape& weight_shape = weight->Shape();  // OIHW: [Cout, Cin, kh, kw]
@@ -138,12 +107,10 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
       return Status::OK();
     }
 
-    // Shape inference mirrors Conv::ComputeInternal. channels-last and a 4D weight are
-    // guaranteed by CanApplySubgroupMatrixConv; only a rank-4 NHWC activation is served
-    // (a reshaped Conv1D never gets here -- its kernel becomes 1xW, which
-    // CanApplySubgroupMatrixConv rejects).
-    const TensorShape& src_shape = src->Shape();  // NHWC: [batch, src_h, src_w, Cin]
-    if (src_shape.NumDimensions() != 4) {
+    // Only a rank-4 NHWC activation is served (reshaped Conv1D's 1xW kernel is
+    // already rejected by CanApplySubgroupMatrixConv).
+    const TensorShape& input_shape = input->Shape();  // NHWC: [batch, input_h, input_w, Cin]
+    if (input_shape.NumDimensions() != 4) {
       return Status::OK();
     }
     ConvAttributes::ConvPadVector local_pads(conv_attrs.pads.begin(), conv_attrs.pads.end());
@@ -160,20 +127,17 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     if (local_strides.empty()) {
       local_strides.resize(kernel_spacial_shape_vector.size(), 1);
     }
-    TensorShapeVector src_shape_vector = src_shape.AsShapeVector();
-    TensorShapeVector output_shape_vector = {src_shape[0]};
+    TensorShapeVector input_shape_vector = input_shape.AsShapeVector();
+    TensorShapeVector output_shape_vector = {input_shape[0]};
     TensorShape src_spacial_shape = TensorShape(
-        TensorShapeVector(std::next(src_shape_vector.begin()), std::prev(src_shape_vector.end())));
+        TensorShapeVector(std::next(input_shape_vector.begin()), std::prev(input_shape_vector.end())));
     ORT_RETURN_IF_ERROR(conv_attrs.InferPadsAndOutputShape(src_spacial_shape, kernel_spacial_shape_vector,
                                                            local_strides, local_dilations, local_pads,
                                                            output_shape_vector));
     output_shape_vector.push_back(weight_shape[0]);  // Cout
     const TensorShape output_shape(output_shape_vector);  // NHWC: [batch, out_h, out_w, Cout]
 
-    // Spatial attributes as the kernel's uniforms want them: pads is [begin..., end...]
-    // in ONNX order, strides/dilations one entry per spatial dim. static_cast, not
-    // narrow, so an input the normal Conv path accepts is not turned into an abort here
-    // -- ComputeInternal casts these the same way.
+    // static_cast, not narrow: an input the normal Conv path accepts must not abort here.
     std::vector<uint32_t> pads;
     std::vector<uint32_t> strides;
     std::vector<uint32_t> dilations;
@@ -185,9 +149,9 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
       return Status::OK();
     }
 
-    const uint32_t batch = narrow<uint32_t>(src_shape[0]);
-    const uint32_t src_h = narrow<uint32_t>(src_shape[1]);
-    const uint32_t src_w = narrow<uint32_t>(src_shape[2]);
+    const uint32_t batch = narrow<uint32_t>(input_shape[0]);
+    const uint32_t input_h = narrow<uint32_t>(input_shape[1]);
+    const uint32_t input_w = narrow<uint32_t>(input_shape[2]);
     const uint32_t channel_i = narrow<uint32_t>(weight_shape[1]);
     const uint32_t kernel_h = narrow<uint32_t>(weight_shape[2]);
     const uint32_t kernel_w = narrow<uint32_t>(weight_shape[3]);
@@ -198,63 +162,31 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     const uint32_t K = kernel_h * kernel_w * channel_i;    // contraction dim
     const uint32_t N = narrow<uint32_t>(weight_shape[0]);  // Cout
 
-    // An empty batch, M or N yields an empty output (ONNX permits zero-length dims).
-    // Let the generic Conv paths handle it rather than dispatch a degenerate
-    // (zero-workgroup) kernel.
+    // Empty batch/M/N (ONNX permits zero-length dims): let the generic Conv paths
+    // handle it instead of dispatching a zero-workgroup kernel.
     if (batch == 0 || M == 0 || N == 0) {
       return Status::OK();
     }
 
-    // Pick the per-problem output tiling from the vendor policy (Intel). The GEMM
-    // dims map directly: A [M, K] x B [K, N] with one z-slice per conv batch. The
-    // Conv selector uses the Conv scratch budget and the Conv-specific heuristic.
     const std::optional<SubgroupMatrixTiling> tiling = tiling_selector_(context, M, N, K, batch);
     if (!tiling) {
       return Status::OK();
     }
 
-    // The kernel keeps the unchecked weight loads of a trailing partial N tile in bounds
-    // by shifting that tile's origin back to N - tile_n, which only exists when the tile
-    // fits within N. The Conv selector clamps tile_n for exactly this reason
-    // (ClampTileNToProblem), so this normally never triggers -- it mirrors the same guard
-    // in the subgroup-matrix MatMul/Gemm impls, keeping the precondition enforced on this
-    // side of the vendor boundary too. M needs no such guard: the A operand is staged in
-    // workgroup memory sized by the tile, so tile_m > M only wastes lanes.
-    //
-    // Last thing that can decline, so it comes before the output allocation and the
-    // weight transpose below: an impl that declines must not have allocated or
-    // dispatched anything.
+    // ClampTileNToProblem already guarantees tile_n <= N; mirrored here as the last
+    // possible decline point before output allocation/weight transpose commit below.
     if (N < tiling->tile_n) {
       return Status::OK();
     }
 
-    // Past this point the path is committed, so the output can be allocated: an impl
-    // that declines must allocate nothing.
     Tensor* output = context.Output(0, output_shape);
 
-    // Transpose the weight OIHW -> OHWI = [Cout, kh, kw, Cin], which flattens to the
-    // GEMM right operand B stored column-major: element B[k, n] lives at n*K + k, so
-    // the kernel loads B right tiles as col_major with stride K. (This matches the
-    // im2col-matmul weight layout; the alternative HWIO -> row-major stride-N load is
-    // the other option.) This allocates a GPU tensor and dispatches a Transpose
-    // program, so the path is already committed at this point.
+    // Transpose weight OIHW -> OHWI = [Cout, kh, kw, Cin] (B column-major, B[k,n] at
+    // n*K+k). Constant weights are cached; non-constant ones are redone every Run.
     //
-    // A constant weight is transposed once and reused; a non-constant one can change
-    // between Runs, so it has to be redone every time. Declining the non-constant case
-    // instead would cost more than the transpose it saves.
-    //
-    // TODO: prepack the constant case, which would drop the cache and the first-Run
-    // dispatch too. The layout is not the obstacle -- KernelLayout::OHWI is exactly
-    // what PrePackIm2ColMatMulWeight already produces, with the same {0, 2, 3, 1} perm.
-    // The blocker is the fallback: PrePackInternal must commit from the weight alone,
-    // while Compute can still decline at runtime (empty batch/M/N, or fewer than two
-    // spatial entries in dilations/pads/strides) onto a path that only reads OHWI via
-    // im2col -- and CanApplyIm2ColMatMulProgram is not implied by
-    // CanApplySubgroupMatrixConv (different gates: arch/activation whitelist vs
-    // subgroup-matrix config/fuse_utils), so a decline could land where OHWI can't be
-    // read. Prepacking therefore means dropping PrePackInternal's early return so the
-    // im2col branch prepacks when *both* predicates hold, and accepting a prepacked
-    // OHWI weight here instead of declining on it.
+    // TODO: prepack the constant case too (PrePackIm2ColMatMulWeight already produces
+    // this layout) -- blocked on PrePackInternal committing from the weight alone
+    // while Compute can still decline at runtime onto the im2col path.
     Tensor run_local_ohwi_weight;
     const Tensor* ohwi_weight = nullptr;
     if (parent.IsWeightConstant()) {
@@ -279,35 +211,18 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
                 tile_m, "x", tile_n, " spans ", sg_mat_count_m, "x", sg_mat_count_n,
                 " subgroup matrices, at most ", kMaxSgMatCountM, "x", kMaxSgMatCountN);
 
-    // Safety net: the Conv selector already enforces the Conv scratch budget
-    // (output tiles + im2col A staging), so this clamp normally does nothing; it
-    // guards against a stray oversized split-K from the selector. Only split_k is
-    // clamped, not the tile area: ConvHeuristicTiling always picks the smallest
-    // tile_m (8), so the largest candidate tile needs 8 * (64 + 16) = 640 elements
-    // at split_k 1, or 8 * 8 * 80 = 5120 at the largest split_k (8), well inside
-    // the budget.
-    uint32_t split_k = tiling->split_k;
-    while (split_k > 1 &&
-           split_k * tile_m * (tile_n + config.K) > intel::kMaxScratchElems) {
-      split_k /= 2;
-    }
-
     const uint32_t dispatch_x = (N + tile_n - 1) / tile_n;
     const uint32_t dispatch_y = (M + tile_m - 1) / tile_m;
 
-    // Vectorize the im2col gather along the input channel (cin), which is the
-    // fastest-varying, contiguous NHWC dimension. channel_i % vec_size == 0 keeps
-    // each vec chunk inside a single kernel position, so all lanes of a chunk share
-    // one bounds check and map to contiguous input.
+    // Vectorize the im2col gather along cin (contiguous in NHWC).
     const uint32_t vec_size = channel_i % 4 == 0 ? 4 : (channel_i % 2 == 0 ? 2 : 1);
 
     const Tensor* bias = context.InputCount() > 2 ? context.Input<Tensor>(2) : nullptr;
     const bool has_bias = bias != nullptr;
+    const uint32_t split_k = tiling->split_k;
     SubgroupMatrixConvProgram program{has_bias, config, sg_mat_count_m, sg_mat_count_n, split_k, vec_size,
                                       activation};
     program.SetWorkgroupSize(kSubgroupMatrixSubgroupSize * split_k);
-    // Pin the lanes per subgroup the kernel assumes; GetSupportedConfig has
-    // already established that the device supports subgroup-size control.
     program.SetSubgroupSize(kSubgroupMatrixSubgroupSize);
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, batch);
     program.CacheHint(has_bias, static_cast<uint32_t>(config.componentType),
@@ -315,7 +230,7 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
                       config.M, config.N, config.K, config.subgroupSize,
                       sg_mat_count_m, sg_mat_count_n, split_k, vec_size,
                       activation.CacheKey())
-        .AddInputs({{src, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(vec_size)},
+        .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(vec_size)},
                     {ohwi_weight, ProgramTensorMetadataDependency::TypeAndRank, 1}})
         .AddOutput({output, ProgramTensorMetadataDependency::Rank, output_shape, 1})
         .AddUniformVariables({{M},
@@ -323,8 +238,8 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
                               {K},
                               {dispatch_x},
                               {batch},
-                              {src_h},
-                              {src_w},
+                              {input_h},
+                              {input_w},
                               {channel_i},
                               {kernel_h},
                               {kernel_w},
@@ -344,14 +259,8 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
   }
 
  private:
-  // Builds the OIHW -> OHWI transposed weight on first use and caches it. Only valid
-  // because the caller checked the weight is a constant initializer. impl_ is shared
-  // across concurrent Compute calls on the same Conv kernel, so the build is guarded
-  // by call_once, which also synchronizes the read of cached_ohwi_weight_ below.
-  // The transpose is attempted exactly once: if it fails, every later Run on this
-  // Conv node reports the same error rather than retrying.
-  // const, with a mutable cache, like SubgroupMatrixMatMulImpl::EnsurePaddedB: the
-  // cached tensor is a memo of the constant weight, not observable state of the impl.
+  // Builds the OIHW -> OHWI transpose on first use and caches it; call_once guards
+  // against concurrent Compute calls on the same (shared) impl.
   Status EnsureTransposedKernel(ComputeContext& context, const Tensor* weight,
                                 const TensorShape& weight_shape) const {
     std::call_once(transpose_once_, [&]() {
@@ -384,9 +293,8 @@ Status SubgroupMatrixConvProgram::GenerateShaderCode(ShaderHelper& shader) const
   const auto& output = shader.AddOutput(
       "output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
-  // Write-out epilogue the template calls once per output element: bias add, then the
-  // fused activation (see the class doc in subgroup_matrix_conv.h for why this needs no
-  // per-ActivationKind handling). Mirrors SubgroupMatrixMatMulProgram::GenerateShaderCode.
+  // Write-out epilogue the template calls per output element: bias add, then the
+  // fused activation.
   auto& additional_implementation = shader.AdditionalImplementation();
   additional_implementation
       << GetActivationDeclaration(activation_, "output_value_t", "output_element_t")
@@ -413,9 +321,6 @@ bool CanApplySubgroupMatrixConv(ComputeContextBase& context,
                                 const TensorShape& kernel_shape,
                                 uint32_t group,
                                 MLDataType data_type) {
-  // The subgroup-matrix kernel is F16-only and computes a channels-last,
-  // non-grouped 2D convolution. A fused activation is applied in the write-out
-  // epilogue, so fused convs are accepted.
   if (data_type != DataTypeImpl::GetType<MLFloat16>()) {
     LOGS_DEFAULT(VERBOSE) << "SubgroupMatrixConv rejected: data_type is not F16.";
     return false;
@@ -437,9 +342,8 @@ bool CanApplySubgroupMatrixConv(ComputeContextBase& context,
   const uint32_t kernel_height = narrow<uint32_t>(kernel_shape[2]);
   const uint32_t kernel_width = narrow<uint32_t>(kernel_shape[3]);
 
-  // Mirror the im2col-matmul path: skip 1xW / Hx1 (and 1x1) kernels, which the
-  // plain MatMul / naive conv paths handle better. This also excludes reshaped
-  // Conv1D (kernel becomes 1xW).
+  // Mirrors the im2col-matmul path: 1xW/Hx1/1x1 kernels (incl. reshaped Conv1D) are
+  // handled better by the plain MatMul/naive conv paths.
   if (kernel_height == 1 || kernel_width == 1) {
     LOGS_DEFAULT(VERBOSE) << "SubgroupMatrixConv rejected: 1xW/Hx1/1x1 kernel not handled (kernel_shape[OIHW]="
                           << kernel_shape.ToString() << ", kh=" << kernel_height << " kw=" << kernel_width << ").";
@@ -448,24 +352,10 @@ bool CanApplySubgroupMatrixConv(ComputeContextBase& context,
 
   const uint32_t K = kernel_height * kernel_width * channel_input;
   const uint32_t N = channel_output;
-  // The subgroup-matrix K must be a whole number of 16-wide blocks: the kernel walks
-  // K in sg_mat_k blocks with no tail handling.
-  //
-  // N must cover at least one whole subgroup-matrix N block (16). The kernel loads B
-  // straight from the weight buffer with subgroupMatrixLoad, which is not
-  // bounds-checked, and handles a trailing partial N tile by shifting the tile origin
-  // back to N - tile_n; below one block there is no tile_n that fits, so such a Cout
-  // cannot be served at all (it goes to the generic conv paths, which handle a tiny
-  // Cout better anyway). Must stay in agreement with the N guard in
-  // CreateSubgroupMatrixConvTilingSelector, or PrePackInternal would skip prepacking
-  // for a problem this path then declines.
-  //
-  // N has no parity or block-multiple requirement beyond that. The f16 right-operand
-  // load needs a 4-byte-aligned offset and row stride, but B is OHWI, i.e.
-  // column-major with stride K, so the offset n*K + kb*sg_mat_k is a multiple of
-  // sg_mat_k for any n -- alignment follows from K, not from N. (The MatMul kernel
-  // does need an even N: its B is [K, N] row-major, so N *is* the row stride, which is
-  // why it pads odd N. Do not copy that constraint here.)
+  // K: the kernel walks it in sg_mat_k blocks with no tail handling, so it must be a
+  // multiple of 16. N: B is loaded unchecked, shifting a trailing partial tile back
+  // to N - tile_n, which needs one full 16-wide block to exist; must agree with the
+  // N guard in CreateSubgroupMatrixConvTilingSelector.
   if (K == 0 || K % 16 != 0 || N < 16) {
     LOGS_DEFAULT(VERBOSE) << "SubgroupMatrixConv rejected: K/N constraints not met (kernel_shape[OIHW]="
                           << kernel_shape.ToString() << ", Cout(N)=" << N << " Cin=" << channel_input
@@ -474,14 +364,9 @@ bool CanApplySubgroupMatrixConv(ComputeContextBase& context,
     return false;
   }
 
-  // The weight buffer is bound as a single WGSL binding (input_b), and the shader's
-  // subgroupMatrixLoad calls address it with offsets derived from the full [N, K]
-  // weight -- they know nothing about ProgramManager's binding-segment split, which
-  // kicks in once a tensor exceeds maxStorageBufferBindingSize. A weight past that
-  // limit would still pass every check above, get split into multiple bindings, and
-  // then have its later output channels load past the first binding. Reject it here,
-  // before PrePackInternal or any output allocation/transpose, so it falls back to
-  // the normal (prepacked) conv paths instead.
+  // subgroupMatrixLoad addresses the weight as a single binding; a weight past
+  // maxStorageBufferBindingSize gets split by ProgramManager, which this offset
+  // arithmetic doesn't know about.
   const uint64_t max_weight_elems = context.DeviceLimits().maxStorageBufferBindingSize / sizeof(MLFloat16);
   if (static_cast<uint64_t>(kernel_shape.Size()) > max_weight_elems) {
     LOGS_DEFAULT(VERBOSE) << "SubgroupMatrixConv rejected: weight exceeds maxStorageBufferBindingSize"
@@ -515,23 +400,15 @@ template <bool is_channels_last, bool is_fused>
 std::unique_ptr<typename Conv<is_channels_last, is_fused>::ConvOptImpl> CreateSubgroupMatrixConvImpl(
     const Conv<is_channels_last, is_fused>& parent,
     const ComputeContextBase& context) {
-  // Only channels-last Conv is served by this kernel; the caller falls back to the
-  // normal Conv path for channels-first.
   if constexpr (!is_channels_last) {
     ORT_UNUSED_PARAMETER(parent);
     ORT_UNUSED_PARAMETER(context);
     return nullptr;
   } else {
-    // Only run on devices that report the fixed 8x16x16 F16 subgroup-matrix config
-    // this kernel is implemented for, and for which a vendor tiling policy exists
-    // (Intel today - GetSupportedConfig enforces both).
     const std::optional<SubgroupMatrixConfig> config = GetSupportedConfig(context);
     if (!config) {
       return nullptr;
     }
-    // The Conv selector shares the tile candidates with MatMul, but budgets the
-    // extra im2col staging the Conv kernel keeps in workgroup memory and uses the
-    // Conv-specific heuristic.
     SubgroupMatrixTilingSelector tiling_selector = intel::CreateSubgroupMatrixConvTilingSelector(context);
     if (!tiling_selector) {
       return nullptr;

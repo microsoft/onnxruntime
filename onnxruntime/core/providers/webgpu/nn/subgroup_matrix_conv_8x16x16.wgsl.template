@@ -1,55 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Subgroup-matrix Conv kernel (F16) for the 8x16x16 (sg_mat_m x sg_mat_n x
-// sg_mat_k) subgroup-matrix shape. It computes a channels-last (NHWC) 2D
-// convolution as an implicit GEMM Y[MxN] = A[MxK] @ B[KxN] (+ optional bias),
-// where the activation operand A is the im2col of the input and never
-// materialized in global memory.
+// Subgroup-matrix Conv kernel (F16), 8x16x16 shape: channels-last 2D convolution
+// as an implicit GEMM Y[MxN] = A[MxK] @ B[KxN] (+ optional bias), A the im2col of
+// the input (never materialized in global memory).
+//   M = out_h * out_w, K = kernel_h * kernel_w * Cin, N = Cout
 //
-//   M = out_h * out_w          (output pixels per batch slice)
-//   K = kernel_h * kernel_w * Cin
-//   N = Cout
+// A: gathered per K-block into a_scratch (im2col rows are scattered, but
+//    subgroupMatrixLoad needs a contiguous buffer); K order (kh, kw, cin) matches
+//    the OHWI weight.
+// B: weight pre-transposed to OHWI, column-major (B[k,n] at n*K+k).
 //
-// A: im2col of the NHWC input. subgroupMatrixLoad requires a contiguous strided
-//    buffer, but im2col rows are gathered from scattered input pixels, so each
-//    K-block A-tile is gathered into workgroup scratch (a_scratch) first and then
-//    loaded as a left operand (subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>) with
-//    stride kSgMatK. K index order is (kh, kw, cin) so it matches the OHWI weight.
-//    Because cin is the fastest-varying, contiguous NHWC dimension, the gather
-//    reads vec_size channels at a time (host guarantees channel_i % vec_size == 0).
-// B: weight pre-transposed OIHW -> OHWI = [Cout, kh, kw, Cin], i.e. B stored
-//    column-major ([N, K] row-major; element B[k, n] at n*K + k). Loaded directly
-//    from global memory as a right operand (subgroup_matrix_right<f16, sg_mat_n,
-//    sg_mat_k>) with col_major and stride K. Shared across all batch slices.
+// Workgroup: split_k subgroups x 32 lanes, tile kTileM x kTileN (host-selected). K
+// blocks round-robin across subgroups when split_k > 1; partials summed at
+// write-out. Staging A forces the K reduction into a per-step
+// gather/barrier/multiply-accumulate loop in uniform control flow.
 //
-// Workgroup: split_k subgroups x 32 lanes (split_k in {1,2,4,8}).
-// Tile: kTileM x kTileN, chosen adaptively by the host tiling selector. Each
-// subgroup computes the whole tile as kSgMatCountM x kSgMatCountN subgroup
-// matrices. K is iterated in sg_mat_k blocks. When split_k > 1 the K blocks are
-// distributed round-robin across the subgroups, each accumulates its own partial
-// tile in shared memory, and the partials are summed at write-out.
+// Bias/activation: write_output(), built by the host from GetActivationSnippet.
 //
-// Unlike the plain subgroup-matrix MatMul kernel, A must be staged in workgroup
-// memory before it can be loaded as a subgroup matrix. To keep the workgroup
-// barriers in uniform control flow when split_k > 1, the K reduction runs as a
-// per-step loop: every subgroup gathers its K-block A-tile into its own
-// a_scratch slot, a workgroup barrier makes those tiles visible, then every
-// subgroup multiply-accumulates its tile. This keeps all subgroups in lockstep
-// at each barrier regardless of how many K-blocks remain.
-//
-// The bias add and the fused activation are not implemented here: the write-out
-// pass calls write_output(), which the host builds in AdditionalImplementation from
-// GetActivationSnippet / GetActivationDeclaration. That keeps every ActivationKind
-// available without this template enumerating them.
-//
-// Preconditions enforced by the host: K % sg_mat_k == 0, and kTileN <= N (the tiling
-// selector clamps tile_n and the impl re-checks it) so a trailing partial N tile can be
-// shifted back far enough for its weight loads to stay in bounds. N itself may be odd --
-// B is column-major with stride K, so the load alignment comes from K, not N. M may be
-// any size: a partial M tile just wastes a few a_scratch rows (its im2col reads stay
-// in-bounds even past out_h/out_w, see load_im2col_vec), and the write-out bounds-checks
-// M so those rows are never stored.
+// Host guarantees: K % sg_mat_k == 0; kTileN <= N so a trailing partial N tile can
+// shift back in bounds. M is unconstrained (see load_im2col_vec).
 
 #param sg_mat_k
 #param sg_mat_m
@@ -72,30 +42,18 @@ const kSplitK: u32 = u32(split_k);               // Number of subgroups cooperat
 const kSubgroupSize: u32 = 32;                   // Lanes per subgroup
 const kVecSize: u32 = u32(vec_size);             // im2col gather width along cin (channel_i % vec_size == 0)
 
-// Scratch space for kSplitK partial [kTileM, kTileN] tiles, row-major. Each
-// split-K subgroup accumulates its slice of K into its own slot; the slots are
-// summed during write-back. Storing here also lets us write to global memory
-// with M/N bounds checks for dimensions that are not multiples of the tile size.
+// kSplitK partial [kTileM, kTileN] tiles, row-major; one slot per split-K
+// subgroup, summed at write-back.
 var<workgroup> scratch: array<f16, kTileM * kTileN * kSplitK>;
 
-// Per-subgroup staging for the current K-block A-tile: kSplitK slots, each a
-// [kTileM, kSgMatK] row-major (stride kSgMatK) tile gathered by im2col.
+// Per-subgroup [kTileM, kSgMatK] staging for the current K-block A-tile.
 var<workgroup> a_scratch: array<f16, kTileM * kSgMatK * kSplitK>;
 
-// Gathers a contiguous vec_size-wide chunk of im2col elements
-// A[m, k_base .. k_base + vec_size - 1] for the given batch slice, where
-// k_base = k_vec * vec_size. The chunk always lies within a single (kh, kw)
-// kernel position: the K order is (kh, kw, cin) with cin fastest and the host
-// guarantees channel_i % vec_size == 0, so all vec lanes share one (ih, iw) and a
-// single bounds check and map to contiguous NHWC input. Out-of-range input pixels
-// (padding) contribute zero.
-//
-// m past M (a partial M tile stages whole rows) is index-safe but not zero: oh >= out_h
-// there, yet ih = oh * stride + kh * dilation - pad can still land inside [0, src_h), so
-// the gather reads real input. That is harmless -- the (ih, iw) bounds check is what
-// keeps every read inside the input buffer, and those rows are never written back.
-//   m -> output pixel (oh, ow); k_vec -> (kh_idx, kw_idx, cin_vec) with cin_vec fastest.
-fn load_im2col_vec(m: u32, k_vec: u32, src_vec_batch_offset: u32) -> input_src_value_t {
+// Gathers A[m, k_base..k_base+vec_size-1] (k_base = k_vec * vec_size), always
+// within one (kh, kw) position, so all vec lanes share one bounds check. Padding
+// reads as zero; m past M is index-safe (not necessarily zero) but never stored.
+//   m -> (oh, ow); k_vec -> (kh_idx, kw_idx, cin_vec), cin_vec fastest.
+fn load_im2col_vec(m: u32, k_vec: u32, input_batch_base_vec: u32) -> input_src_value_t {
     let channel_i_vec = uniforms.channel_i / kVecSize;
     let oh = m / uniforms.output_w;
     let ow = m % uniforms.output_w;
@@ -105,61 +63,36 @@ fn load_im2col_vec(m: u32, k_vec: u32, src_vec_batch_offset: u32) -> input_src_v
     let kh_idx = khw / uniforms.kernel_w;
     let ih = i32(oh * uniforms.strides.x + kh_idx * uniforms.dilations.x) - i32(uniforms.pads.x);
     let iw = i32(ow * uniforms.strides.y + kw_idx * uniforms.dilations.y) - i32(uniforms.pads.y);
-    if (ih < 0 || ih >= i32(uniforms.src_h) || iw < 0 || iw >= i32(uniforms.src_w)) {
+    if (ih < 0 || ih >= i32(uniforms.input_h) || iw < 0 || iw >= i32(uniforms.input_w)) {
         return input_src_value_t();
     }
-    let src_vec_idx = src_vec_batch_offset +
-                      (u32(ih) * uniforms.src_w + u32(iw)) * channel_i_vec + cin_vec;
-    return input_src.getByOffset(src_vec_idx);
+    let input_vec_idx = input_batch_base_vec +
+                      (u32(ih) * uniforms.input_w + u32(iw)) * channel_i_vec + cin_vec;
+    return input_src.getByOffset(input_vec_idx);
 }
 
 $MAIN {
-    // Recover the batch slice and the logical (n_tile, m_tile) from the flattened
-    // workgroup index. The host dispatches num_n_tile x num_m_tile tiles per batch
-    // slice on (x, y, z=batch), but that grid may be normalized (reshaped across
-    // x/y/z to stay within per-dimension limits), so workgroup_id.x/y/z cannot be
-    // used directly. workgroup_idx is the true linear index, invariant under
-    // normalization; batch slices are contiguous blocks of tiles_per_slice tiles.
+    // workgroup_idx (not workgroup_id.x/y/z, which may be normalized/reshaped) is
+    // the true linear index used to recover batch_id and (n_tile, m_tile).
     let num_m_tile = (uniforms.M + kTileM - 1u) / kTileM;
-    let tiles_per_slice = uniforms.num_n_tile * num_m_tile;
-    let batch_id = workgroup_idx / tiles_per_slice;     // which batch slice
-    // Normalization rounds the workgroup count up (see
-    // ProgramManager::NormalizeDispatchGroupSize), so more workgroups can be launched
-    // than there are tiles. Those extras land past the last slice; without this guard
-    // they would derive batch_id >= batch and write past the end of the output (the
-    // in-tile M/N checks below cannot catch them, since their m_tile/n_tile look
-    // perfectly valid). workgroup_idx is workgroup-uniform, so the whole workgroup
-    // returns together and the barriers below stay in uniform control flow.
+    let tiles_per_batch = uniforms.num_n_tile * num_m_tile;
+    let batch_id = workgroup_idx / tiles_per_batch;
+    // Dispatch normalization can add extra workgroups past the last batch element;
+    // drop them here (workgroup-uniform, so the barriers below stay uniform).
     if (batch_id >= uniforms.batch) {
         return;
     }
-    let slice_idx = workgroup_idx % tiles_per_slice;    // tile index within the slice
-    let n_tile = slice_idx % uniforms.num_n_tile;       // which kTileN-wide column tile
+    let tile_idx = workgroup_idx % tiles_per_batch;     // tile index within this batch element
+    let n_tile = tile_idx % uniforms.num_n_tile;        // which kTileN-wide column tile
     let n_tile_start = n_tile * kTileN;
-    // Shift a trailing partial N tile back so the B right-operand loads stay inside
-    // the weight buffer. subgroupMatrixLoad has no bounds check of its own and the
-    // N-block j of this tile reads weight columns global_base_n + j*kSgMatN ..
-    // +kSgMatN-1, so an unshifted last tile would read up to kTileN-1 columns past
-    // Cout whenever N is not a multiple of kTileN.
-    //
-    // Unlike the MatMul kernel this needs no alignment fixup: B is column-major with
-    // stride K and K % kSgMatK == 0, so the load offset n*K + kb*kSgMatK is a
-    // multiple of kSgMatK for any n. The max() only guards the u32 subtraction; the
-    // host clamps kTileN to at most N, so the shifted tile always fits.
+    // Shift a trailing partial N tile back so unchecked B loads stay inside the
+    // weight buffer (max() just guards the u32 subtraction; host clamps kTileN <= N).
     let global_base_n = min(n_tile_start, max(uniforms.N, kTileN) - kTileN);
-    // Columns before the unshifted origin belong to the previous tile and are skipped
-    // at write-out, so a shifted tile never writes the same output element twice.
-    let n_skip = n_tile_start - global_base_n;
-    // M needs no such shift: the A left operand is gathered into a_scratch, which is
-    // sized by the tile rather than by M, so a partial M tile only stages unused rows
-    // (and the im2col gather itself is index-safe for them).
-    let m_tile = slice_idx / uniforms.num_n_tile;       // which kTileM-tall row tile
+    let n_skip = n_tile_start - global_base_n;  // columns already written by the previous tile
+    let m_tile = tile_idx / uniforms.num_n_tile;        // which kTileM-tall row tile
     let m_base = m_tile * kTileM;
-    // Flat-element offset into the NHWC input for this batch slice. The weight is
-    // shared across batch slices, so B has no batch offset. The output is laid out
-    // as [batch, M, N] row-major.
-    let src_vec_batch_offset = batch_id * uniforms.src_h * uniforms.src_w * (uniforms.channel_i / kVecSize);
-    let out_batch_offset = batch_id * uniforms.M * uniforms.N;
+    let input_batch_base_vec = batch_id * uniforms.input_h * uniforms.input_w * (uniforms.channel_i / kVecSize);
+    let out_batch_base = batch_id * uniforms.M * uniforms.N;
     let k_blocks = uniforms.K / kSgMatK;
     let sg_index = local_idx / kSubgroupSize;          // which split-K subgroup (0..kSplitK-1)
     let sg_lane = local_idx % kSubgroupSize;           // lane within the subgroup (0..kSubgroupSize-1)
@@ -262,25 +195,21 @@ $MAIN {
 #endif
 #endif
 
-    // K reduction. Each subgroup processes K-blocks kb = sg_index, sg_index +
-    // kSplitK, ... The loop bound num_steps is workgroup-uniform, so the barriers
-    // below stay in uniform control flow even though a subgroup may run out of
-    // K-blocks before the last step (valid == false).
+    // K reduction: subgroup sg_index processes kb = sg_index, sg_index + kSplitK,
+    // ... num_steps is workgroup-uniform even if a subgroup runs out of K-blocks
+    // early (valid == false), keeping the barriers below in uniform control flow.
     let num_steps = (k_blocks + kSplitK - 1u) / kSplitK;
     for (var step: u32 = 0u; step < num_steps; step = step + 1u) {
         let kb = sg_index + step * kSplitK;
         let valid = kb < k_blocks;
 
-        // Stage this subgroup's [kTileM, kSgMatK] A-tile for K-block kb. The 32
-        // lanes cooperatively gather the tile row-major (stride kSgMatK), each
-        // lane fetching a contiguous vec_size-wide chunk of cin per step.
         if (valid) {
-            let k_vec_base = kb * kSgMatK / kVecSize;
-            let k_vec_per_row = kSgMatK / kVecSize;
-            for (var vidx: u32 = sg_lane; vidx < kTileM * k_vec_per_row; vidx = vidx + kSubgroupSize) {
-                let row = vidx / k_vec_per_row;
-                let kc_vec = vidx % k_vec_per_row;
-                let chunk = load_im2col_vec(m_base + row, k_vec_base + kc_vec, src_vec_batch_offset);
+            let k_vec_per_sgmat_row = kSgMatK / kVecSize;
+            let k_vec_base = kb * k_vec_per_sgmat_row;
+            for (var vidx: u32 = sg_lane; vidx < kTileM * k_vec_per_sgmat_row; vidx = vidx + kSubgroupSize) {
+                let row = vidx / k_vec_per_sgmat_row;
+                let kc_vec = vidx % k_vec_per_sgmat_row;
+                let chunk = load_im2col_vec(m_base + row, k_vec_base + kc_vec, input_batch_base_vec);
                 let dst = a_scratch_base + row * kSgMatK + kc_vec * kVecSize;
 #if vec_size == 1
                 a_scratch[dst] = chunk;
@@ -465,9 +394,8 @@ $MAIN {
         workgroupBarrier();
     }
 
-    // Store this subgroup's partial results into its split-K slot of scratch,
-    // laid out as kSplitK x [kTileM, kTileN] row-major. Offset of block (mi, ni)
-    // within a slot = mi * kSgMatM * kTileN + ni * kSgMatN, stride kTileN.
+    // Store into this subgroup's split-K slot (kSplitK x [kTileM, kTileN] row-major;
+    // block (mi, ni) at mi*kSgMatM*kTileN + ni*kSgMatN).
     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 0 * kSgMatM * kTileN + 0 * kSgMatN, sg_mat_c0_0, kTileN);
 #if sg_mat_count_n >= 2
     subgroupMatrixStore<row_major>(&scratch, sg_scratch_base + 0 * kSgMatM * kTileN + 1 * kSgMatN, sg_mat_c0_1, kTileN);
@@ -567,11 +495,8 @@ $MAIN {
     // Make all subgroups' partial tiles visible before the reduction.
     workgroupBarrier();
 
-    // Sum pass: a single subgroup reduces the kSplitK partial [kTileM, kTileN]
-    // tiles into slot 0 of scratch. Each lane owns a strided set of element
-    // positions and sums that position across all kSplitK slots. Writing slot 0
-    // is safe: a position is only overwritten by the same lane that already read
-    // it as the slot-0 term of its own sum.
+    // Subgroup 0 reduces the kSplitK partial tiles into slot 0; safe since each
+    // position is only overwritten by the lane that already read it.
     if (sg_index == 0u) {
         for (var idx: u32 = sg_lane; idx < kTileM * kTileN; idx = idx + kSubgroupSize) {
             var acc: f16 = f16(0);
@@ -585,19 +510,14 @@ $MAIN {
     workgroupBarrier();
 #endif
 
-    // Write-out pass: every subgroup writes out whole M-rows from the summed tile
-    // in slot 0, striding by kSplitK subgroups (subgroup sg_index handles rows
-    // sg_index, sg_index + kSplitK, ...). The subgroup's lanes cooperate on a
-    // row's N elements (strided by the subgroup size). Columns below n_skip belong to
-    // the previous (unshifted) tile and M is bounds-checked, so non-multiple
-    // dimensions write each valid output element exactly once. write_output applies
-    // the bias and the fused activation before storing.
+    // Write-out: subgroups stride M-rows by kSplitK, lanes cooperate per row. n_skip
+    // and M's bounds check make non-multiple dimensions write each element once.
     let n_count = min(kTileN, uniforms.N - global_base_n);
     for (var r: u32 = sg_index; r < kTileM; r = r + kSplitK) {
         let global_m = m_base + r;
         if (global_m < uniforms.M) {
             let scratch_base = r * kTileN;
-            let out_base = out_batch_offset + global_m * uniforms.N + global_base_n;
+            let out_base = out_batch_base + global_m * uniforms.N + global_base_n;
             for (var i: u32 = sg_lane + n_skip; i < n_count; i = i + kSubgroupSize) {
                 write_output(out_base + i, global_base_n + i,
                              output_value_t(scratch[scratch_base + i]));

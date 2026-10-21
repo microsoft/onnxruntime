@@ -40,11 +40,8 @@ Conv<is_channels_last, is_fused>::ConvOptImplCache::GetOrCreate(
 
 template <bool is_channels_last, bool is_fused>
 Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context) const {
-  // Preferred fast path on devices with a vendor subgroup-matrix tiling policy (see
-  // subgroup_matrix_conv.h). Created once on first use (it needs a device query), then
-  // it decides inside Compute whether the kernel/attrs qualify. It declines
-  // (handled=false, allocating nothing) otherwise and we fall through to the normal
-  // path order below.
+  // Preferred fast path on devices with a vendor subgroup-matrix tiling policy;
+  // declines (handled=false) when the kernel/attrs don't qualify.
   if (ConvOptImpl* opt_impl = opt_impl_cache_.GetOrCreate(*this, context); opt_impl != nullptr) {
     bool handled = false;
     ORT_RETURN_IF_ERROR(opt_impl->Compute(context, handled));
@@ -347,21 +344,11 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
     return Status::OK();
   }
 
-  // Subgroup-matrix Conv path: it reads the weight in its original OIHW layout (it
-  // applies its own OIHW -> OHWI transpose at runtime to build the GEMM right
-  // operand), so the weight must not be prepacked at all.
-  //
-  // Must come before the Im2ColMatMul branch below: ComputeInternal tries the
-  // subgroup-matrix path first, and on the devices this path targets
-  // CanApplyIm2ColMatMulProgram() accepts the same problems. If im2col prepacked
-  // first, SubgroupMatrixConvImpl::Compute would see a non-null prepacked_kernel_ and
-  // decline on every constant-weight Conv -- i.e. the path would silently never run.
-  //
-  // Placed before the auto_pad check below for the same pads-independence reason as
-  // the im2col branch (see the comment there). Skipping the prepack here is always
-  // safe even if Compute() later declines for another reason: is_packed stays false,
-  // so input 1 stays in OIHW and every fallback path can still transpose it at
-  // runtime.
+  // Subgroup-matrix Conv needs the weight in OIHW, so skip prepacking for it. Must
+  // come before Im2ColMatMul below: prepacking there first would leave
+  // prepacked_kernel_ non-null, making SubgroupMatrixConvImpl::Compute silently
+  // decline on every constant-weight Conv. Safe even if Compute() later declines
+  // for another reason: is_packed stays false, so input 1 stays OIHW.
   if (CanApplySubgroupMatrixConv(context, is_channels_last, kernel_shape,
                                  onnxruntime::narrow<uint32_t>(conv_attrs_.group), tensor.DataType())) {
     return Status::OK();

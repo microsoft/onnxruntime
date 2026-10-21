@@ -16,9 +16,7 @@
 namespace onnxruntime {
 namespace test {
 
-// Reference NCHW 2D convolution (group == 1). Mirrors the ONNX Conv semantics the
-// WebGPU EP exercises after its internal NCHW->NHWC layout transform, so the
-// subgroup-matrix implicit-GEMM conv can be validated against it.
+// Reference NCHW 2D convolution (group == 1).
 static void ComputeExpectedConv(const std::vector<float>& x, const std::vector<float>& w,
                                 const std::vector<float>& b, std::vector<float>& y,
                                 int64_t N, int64_t Cin, int64_t H, int64_t W,
@@ -54,10 +52,8 @@ static void ComputeExpectedConv(const std::vector<float>& x, const std::vector<f
 }
 
 #if !defined(DISABLE_CONTRIB_OPS)
-// Reference for the fused activations, one case per branch of GetActivationSnippet in
-// core/providers/webgpu/nn/fuse_utils.cc. The subgroup-matrix conv builds its epilogue
-// from that same snippet, so these have to stay in step with it: if a branch there
-// changes shape, the matching case here must change too.
+// Reference for the fused activations; must stay in step with GetActivationSnippet
+// (core/providers/webgpu/nn/fuse_utils.cc), which the kernel's epilogue builds from.
 static void ApplyExpectedActivation(const std::string& kind, const std::vector<float>& params,
                                     std::vector<float>& y) {
   const float alpha = params.size() > 0 ? params[0] : 0.0f;
@@ -98,22 +94,13 @@ static void ApplyExpectedActivation(const std::string& kind, const std::vector<f
 }
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
-// Runs a Conv over the WebGPU EP and compares against the CPU reference above.
-// Inputs/outputs are standard ONNX NCHW; the WebGPU EP transforms to its
-// channels-last kernels internally, which is where the subgroup-matrix conv runs.
+// Runs a Conv over the WebGPU EP and compares against the CPU reference above. A
+// non-empty `activation` switches to FusedConv instead.
 //
-// A non-empty `activation` switches the node to com.microsoft::FusedConv, which the
-// layout transform rewrites to kMSInternalNHWCDomain::Conv (Conv<true, true>) with the
-// attribute preserved -- the same kernel, now with a fused epilogue.
-//
-// These cases are device-independent by construction, so they are enabled rather than
-// DISABLED_ like the *_large tests in this directory. The subgroup-matrix path needs an
-// adapter that reports the 8x16x16 F16 subgroup-matrix config plus a vendor tiling
-// policy; where that is missing, CanApplySubgroupMatrixConv() declines and the EP falls
-// back to its regular conv kernels, which must produce the same result against the same
-// reference. So a failure here is a real defect on either path, not a capability gap --
-// only the absence of the WebGPU EP itself is skipped. The problem sizes are small
-// (<= 32x20x20 in, <= 130 out channels) to keep them cheap enough for that.
+// Device-independent by construction (enabled, not DISABLED_ like the *_large tests
+// here): where CanApplySubgroupMatrixConv() declines, the EP falls back to regular
+// conv, which must match the same reference -- so a failure is a real defect
+// either way, not a capability gap.
 static void RunConvTest(int64_t N, int64_t Cin, int64_t H, int64_t W,
                         int64_t Cout, int64_t kh, int64_t kw,
                         int64_t stride = 1, int64_t pad = 0, int64_t dilation = 1,
@@ -174,10 +161,8 @@ static void RunConvTest(int64_t N, int64_t Cin, int64_t H, int64_t W,
   test->AddAttribute("dilations", std::vector<int64_t>{dilation, dilation});
 
   test->AddInput<MLFloat16>("X", x_dims, FloatsToMLFloat16s(x_vals));
-  // A constant weight (the default) takes the branch that matters most: PrePackInternal
-  // must decline to prepack so the weight stays OIHW, and the impl caches its own OHWI
-  // transpose across runs. A non-constant weight instead redoes the transpose every
-  // run; RuntimeWeight covers that one.
+  // Default (constant) weight exercises the cached-transpose branch; RuntimeWeight
+  // covers the non-constant (rebuilt every run) one.
   test->AddInput<MLFloat16>("W", w_dims, FloatsToMLFloat16s(w_vals), weight_is_initializer);
   if (has_bias) {
     test->AddInput<MLFloat16>("B", b_dims, FloatsToMLFloat16s(b_vals));
@@ -203,11 +188,11 @@ TEST(SubgroupMatrixConv, PartialTiles) {
   RunConvTest(/*N=*/1, /*Cin=*/16, /*H=*/17, /*W=*/9, /*Cout=*/130, /*kh=*/3, /*kw=*/3);
 }
 
-// Cout (GEMM N) values that stress the trailing-N-tile shift, which is what keeps the
-// unchecked subgroupMatrixLoad of the weight inside the buffer. tile_n is clamped to
-// the largest multiple of 16 that fits in Cout, so with Cout in (16, 32) the shifted
-// tile overlaps the previous one by all but (Cout - 16) columns -- n_skip near kTileN,
-// the narrowest write-out this kernel ever does.
+// Cout (GEMM N) values that stress the trailing-N-tile shift keeping the unchecked
+// weight load inside the buffer. tile_n clamps to the largest multiple of 16 in
+// Cout, so Cout in (16, 32) overlaps the shifted tile with the previous one by all
+// but (Cout - 16) columns -- n_skip near kTileN, the narrowest write-out this
+// kernel does.
 //
 //   16  -> exactly one N block, num_n_tile == 1, no shift at all
 //   17  -> odd, minimal overhang: last tile shifts back by 15, writes 1 column
