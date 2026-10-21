@@ -547,6 +547,41 @@ class TestFpAIntBCacheCuda(unittest.TestCase):
                 log_file.seek(0)
                 self.assertEqual(process.returncode, 0, log_file.read())
 
+            # Loading a relative model path and changing cwd before closing the session must still write
+            # the sidecar cache next to the model rather than under the new working directory.
+            models_dir = root / "rel_models"
+            other_cwd = root / "other_cwd"
+            models_dir.mkdir()
+            other_cwd.mkdir()
+            rel_model_abs = models_dir / "model.onnx"
+            save(model, rel_model_abs)
+            saved_cwd = Path.cwd()
+            try:
+                os.chdir(root)
+                plugin = os.environ.get("ORT_CUDA_PLUGIN_PATH")
+                if plugin and not any(device.ep_name == "CUDAExecutionProvider" for device in ort.get_ep_devices()):
+                    ort.register_execution_provider_library("CUDAExecutionProvider", plugin)
+                sidecar_options = ort.SessionOptions()
+                sidecar_options.add_session_config_entry("ep.cuda.fpa_intb_gemm", "1")
+                sidecar_options.add_session_config_entry("ep.cuda.fpa_intb_profile_m", "1")
+                sidecar_options.add_session_config_entry("ep.cuda.gemm_tactic_cache_to_model", "1")
+                sidecar_options.add_session_config_entry("ep.cuda.gemm_tactic_cache_mode", "save")
+                sidecar_session = ort.InferenceSession(
+                    str(Path("rel_models") / "model.onnx"),
+                    sidecar_options,
+                    providers=["CUDAExecutionProvider"],
+                    enable_fallback=False,
+                )
+                os.chdir(other_cwd)
+                del sidecar_session
+                gc.collect()
+            finally:
+                os.chdir(saved_cwd)
+            expected_sidecar = Path(str(rel_model_abs) + tune._CACHE_TABLE_SUFFIX)
+            wrong_sidecar = other_cwd / "rel_models" / ("model.onnx" + tune._CACHE_TABLE_SUFFIX)
+            self.assertTrue(expected_sidecar.exists())
+            self.assertFalse(wrong_sidecar.exists())
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--gpu-worker":
