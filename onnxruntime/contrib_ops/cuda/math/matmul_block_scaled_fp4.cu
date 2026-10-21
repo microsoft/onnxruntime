@@ -7,6 +7,7 @@
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
 #include <cstring>
+#include <type_traits>
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 12080
 #include <cuda_fp4.h>
@@ -16,6 +17,7 @@
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
+#include "contrib_ops/cuda/quantization/quantized_decode_l2_prefetch.cuh"
 
 namespace onnxruntime::contrib::cuda {
 
@@ -331,7 +333,7 @@ __global__ __launch_bounds__(32 * kGemvWarpsPerBlock,
                                                                                                                    int m,
                                                                                                                    int n,
                                                                                                                    int k,
-                                                                                                                   int k_blocks) {
+                                                                                                                   int k_blocks, bool l2_prefetch) {
   using Cvt = Fp4Cvt<T>;
   using T2 = typename Cvt::T2;
 
@@ -366,6 +368,7 @@ __global__ __launch_bounds__(32 * kGemvWarpsPerBlock,
 
   for (int base = 0; base < k; base += stride) {
     const int koff = base + lane * kElemsPerLane;
+    PrefetchQuantizedDecodeL2(b_row, koff / 2, stride / 2, k / 2, l2_prefetch);
     if (koff < k) {
       // 16-byte vectorized loads. Both are guaranteed to be naturally aligned, so no guarded
       // fallback is needed:
@@ -571,7 +574,7 @@ __device__ __forceinline__ void Fp4DecodeWord(uint32_t word, typename Fp4Cvt<T>:
   Fp4Cvt<T>::DecodeQuad(mag >> 16, sgn >> 16, out[2], out[3]);
 }
 
-template <typename T, int KSplit, int ColTiles, int MTiles>
+template <typename T, int KSplit, int ColTiles, int MTiles, bool EnableL2Prefetch>
 __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantizedFp4WeightMmaGemvKernel(
     T* __restrict__ y,
     const T* __restrict__ a,
@@ -627,6 +630,12 @@ __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantize
 
   for (int wi = warp_k; wi < windows; wi += KSplit) {
     const int kbase = (wi << 7) + (t << 5);
+    if (lo_ok) {
+      PrefetchQuantizedDecodeL2(b_lo, kbase / 2, KSplit * 64, k / 2, EnableL2Prefetch);
+    }
+    if (hi_ok) {
+      PrefetchQuantizedDecodeL2(b_hi, kbase / 2, KSplit * 64, k / 2, EnableL2Prefetch);
+    }
     const uint4 wl4 = *reinterpret_cast<const uint4*>(b_lo + (kbase >> 1));
     const uint4 wh4 = *reinterpret_cast<const uint4*>(b_hi + (kbase >> 1));
     const int kb = (wi << 3) + (t << 1);
@@ -969,6 +978,7 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
         block_size, is_bf16, device_prop, stream);
   }
 
+  const bool l2_prefetch = QuantizedDecodeL2PrefetchEnabled();
   // Tensor-core sub-path: needs mma.m16n8k16 (SM80+), a whole number of 128-element K windows,
   // and M within the mma's 8-row N extent times the number of M tiles the kernel unrolls.
   //
@@ -989,12 +999,22 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
     const uint8_t* mbp = reinterpret_cast<const uint8_t*>(b_packed);
     const uint8_t* mws = reinterpret_cast<const uint8_t*>(weight_scale);
 
-#define ORT_LAUNCH_FP4_MMA_GEMV(T, KS, CT, MT)                                                   \
-  MatMulBlockQuantizedFp4WeightMmaGemvKernel<T, KS, CT, MT>                                      \
-      <<<mma_blocks, mma_threads, 0, stream>>>(reinterpret_cast<T*>(y),                          \
-                                               reinterpret_cast<const T*>(a), mbp, mws,          \
-                                               weight_scale_2, reinterpret_cast<const T*>(bias), \
-                                               m, n, k, k_blocks)
+#define ORT_LAUNCH_FP4_MMA_GEMV(T, KS, CT, MT)                                                       \
+  do {                                                                                               \
+    const auto launch_mma = [&](auto prefetch_tag) {                                                 \
+      constexpr bool prefetch = decltype(prefetch_tag)::value;                                       \
+      MatMulBlockQuantizedFp4WeightMmaGemvKernel<T, KS, CT, MT, prefetch>                            \
+          <<<mma_blocks, mma_threads, 0, stream>>>(reinterpret_cast<T*>(y),                          \
+                                                   reinterpret_cast<const T*>(a), mbp, mws,          \
+                                                   weight_scale_2, reinterpret_cast<const T*>(bias), \
+                                                   m, n, k, k_blocks);                               \
+    };                                                                                               \
+    if (l2_prefetch) {                                                                               \
+      launch_mma(std::true_type{});                                                                  \
+    } else {                                                                                         \
+      launch_mma(std::false_type{});                                                                 \
+    }                                                                                                \
+  } while (false)
 
 #define ORT_DISPATCH_FP4_MMA_GEMV_MT(T, MT)      \
   do {                                           \
@@ -1069,17 +1089,17 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
       case 4:                                                                               \
         MatMulBlockQuantizedFp4WeightGemvKernel<T, 4><<<blocks, threads, 0, stream>>>(      \
             reinterpret_cast<T*>(y), reinterpret_cast<const T*>(a), bp, ws, weight_scale_2, \
-            reinterpret_cast<const T*>(bias), m, n, k, k_blocks);                           \
+            reinterpret_cast<const T*>(bias), m, n, k, k_blocks, l2_prefetch);              \
         break;                                                                              \
       case 2:                                                                               \
         MatMulBlockQuantizedFp4WeightGemvKernel<T, 2><<<blocks, threads, 0, stream>>>(      \
             reinterpret_cast<T*>(y), reinterpret_cast<const T*>(a), bp, ws, weight_scale_2, \
-            reinterpret_cast<const T*>(bias), m, n, k, k_blocks);                           \
+            reinterpret_cast<const T*>(bias), m, n, k, k_blocks, l2_prefetch);              \
         break;                                                                              \
       default:                                                                              \
         MatMulBlockQuantizedFp4WeightGemvKernel<T, 1><<<blocks, threads, 0, stream>>>(      \
             reinterpret_cast<T*>(y), reinterpret_cast<const T*>(a), bp, ws, weight_scale_2, \
-            reinterpret_cast<const T*>(bias), m, n, k, k_blocks);                           \
+            reinterpret_cast<const T*>(bias), m, n, k, k_blocks, l2_prefetch);              \
         break;                                                                              \
     }                                                                                       \
   } while (0)

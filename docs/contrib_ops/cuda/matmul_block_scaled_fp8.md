@@ -295,6 +295,11 @@ latency with `ORT_FP8_MATMUL_DEEPGEMM=0` and `1`, including helper kernels.
 
 ## 7. Testing and Benchmarking
 
+`ORT_QUANTIZED_DECODE_L2_PREFETCH=1` opts into experimental SM121-only weight
+prefetching in scalar/unrolled and tensor-core decode GEMV, including the
+pinned-residency variant. It is disabled by default and leaves GEMM paths unchanged.
+See [the shared policy and A/B commands](matmul_nbits.md#experimental-sm121-l2-prefetching).
+
 The commands below use two environment variables so they can be copied without
 editing developer-specific paths. Set them once to your repo root and build
 output directory:
