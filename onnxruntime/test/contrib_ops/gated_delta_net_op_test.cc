@@ -1495,6 +1495,59 @@ TEST(GatedDeltaNetTest, BFloat16PreservesFp32StateCancellation) {
   }
 }
 
+TEST(GatedDeltaNetTest, BFloat16PreservesTinyFp32StateCancellation) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{64, 1, 1, 2, kDim, kDim};
+  Inputs in;
+  in.q.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+  in.k.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+  in.v.assign(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f);
+  in.decay.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+  in.beta.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+  in.state0.assign(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+
+  // Each (q, state) pair contributes 2^125 * (2^-125 - 2^-125 * (1 + 2^-10)) = -2^-10. The
+  // difference between the two states is below the bf16 subnormal range after a 3-way bf16
+  // split of the unscaled state, so it only survives when the state is scaled before slicing.
+  const float big = std::ldexp(1.0f, 125);
+  const float tiny = std::ldexp(1.0f, -125);
+  const float tiny_plus = tiny * (1.0f + std::ldexp(1.0f, -10));
+  for (int t = 0; t < g.total_tokens; ++t) {
+    for (int d = 0; d < g.dk; d += 2) {
+      in.q[static_cast<size_t>(t) * g.dk + d] = big;
+      in.q[static_cast<size_t>(t) * g.dk + d + 1] = -big;
+    }
+  }
+  for (int hv = 0; hv < g.hv; ++hv) {
+    for (int c = 0; c < g.dv; ++c) {
+      for (int d = 0; d < g.dk; d += 2) {
+        in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + d] = tiny;
+        in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + d + 1] = tiny_plus;
+      }
+    }
+  }
+
+  Options o;
+  o.update_rule = "linear";
+  o.qk_l2_norm = 0;
+  o.scale = 1.0f;
+  const BFloat16 expected(-0.0625f);
+
+  for (const char* plan_env : {"", "chunked_split"}) {
+    if (std::string(plan_env) == "chunked_split" && NeedSkipGatedDeltaNetSplitTest()) continue;
+    SCOPED_TRACE(plan_env);
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{{"ORT_GDN_PLAN", plan_env}}};
+    std::vector<OrtValue> fetches;
+    RunTypedCase<BFloat16>(g, o, in, 0.0f, 0.0f, false, &fetches);
+    ASSERT_EQ(fetches.size(), 3u);
+    const BFloat16* out = fetches[0].Get<Tensor>().Data<BFloat16>();
+    for (int64_t i = 0; i < fetches[0].Get<Tensor>().Shape().Size(); ++i) {
+      ASSERT_EQ(out[i].val, expected.val) << "output element " << i;
+    }
+  }
+}
+
 TEST(GatedDeltaNetTest, BFloat16SplitPreservesMultiChunkDecay) {
   if (NeedSkipGatedDeltaNetSplitTest()) return;
   ScopedEnvironmentVariables scoped_env_vars{

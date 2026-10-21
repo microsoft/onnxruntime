@@ -316,8 +316,8 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
       const int t = idx / DK, d = idx % DK;
       s.k_h[t * L::kKh + d] =
-          MulElem(s.k_h[t * L::kKh + d], FloatToElem<T>(__expf(g_total - s.gc[t])));
-      s.q_h[t * L::kKh + d] = MulElem(s.q_h[t * L::kKh + d], FloatToElem<T>(__expf(s.gc[t])));
+          ScaleElem(s.k_h[t * L::kKh + d], __expf(g_total - s.gc[t]));
+      s.q_h[t * L::kKh + d] = ScaleElem(s.q_h[t * L::kKh + d], __expf(s.gc[t]));
     }
     __syncthreads();
 

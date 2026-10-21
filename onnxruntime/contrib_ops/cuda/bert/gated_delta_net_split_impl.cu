@@ -247,7 +247,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
   // Uv = (I+M)^-1 (beta v). v_h holds v; scale it in place, then overwrite with Uv.
   for (int idx = tid; idx < BT * DV; idx += kChunkedThreads) {
     const int t = idx / DV, d = idx % DV;
-    s.v_h[t * L::kVh + d] = MulElem(s.v_h[t * L::kVh + d], FloatToElem<T>(s.beta[t]));
+    s.v_h[t * L::kVh + d] = ScaleElem(s.v_h[t * L::kVh + d], s.beta[t]);
   }
   __syncthreads();
   SmemGemm<BT, DV, BT, false, false, false>(s.t_f, L::kF1, s.ti_h, L::kMh, s.v_h, L::kVh, warp_id,
@@ -261,8 +261,8 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
   // row scaling W needs.
   for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
     const int t = idx / DK, d = idx % DK;
-    kd_out[idx] = MulElem(s.k_h[t * L::kKh + d], FloatToElem<T>(__expf(g_total - s.gc[t])));
-    qg_out[idx] = MulElem(s.q_h[t * L::kKh + d], FloatToElem<T>(__expf(s.gc[t])));
+    kd_out[idx] = ScaleElem(s.k_h[t * L::kKh + d], __expf(g_total - s.gc[t]));
+    qg_out[idx] = ScaleElem(s.q_h[t * L::kKh + d], __expf(s.gc[t]));
   }
   __syncthreads();
 
