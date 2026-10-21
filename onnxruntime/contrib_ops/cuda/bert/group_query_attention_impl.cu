@@ -1240,7 +1240,7 @@ Status DequantizeFlashAttentionFallback(
   static_assert(std::is_same<T, typename OrtToCudaType<T>::type>::value);
   static_assert(std::is_same<U, typename OrtToCudaType<U>::type>::value);
 
-  assert(!parameters.is_first_prompt);  // Only support first prompt for this function.
+  assert(!parameters.is_first_prompt);
   assert(parameters.k_quant_type != KVQuantizationType::NONE || parameters.v_quant_type != KVQuantizationType::NONE);
 
   ORT_GQA_TRACE("DequantizeFlashAttentionFallback");
@@ -1254,25 +1254,11 @@ Status DequantizeFlashAttentionFallback(
   T* k_dequant = q_rot + q_elements;
   T* v_dequant = k_dequant + k_elements;
 
-  // Step 1: Update Quantized Cache
-  // We can use LaunchUnpackRoPEQuantizeAppend to unpack new QKV, apply RoPE, and append to quantized cache.
-  // This will also put rotated Q into q_rot.
-  ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
-      parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.key),
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.value),
-      q_rot, reinterpret_cast<U*>(data.present_key), reinterpret_cast<U*>(data.present_value),
-      data.k_scale, data.v_scale, nullptr /* q_fold_scale: this path dequantizes the cache itself */,
-      parameters.num_heads, parameters.kv_num_heads, parameters.head_size, parameters.sequence_length, parameters.batch_size,
-      RopeMaxPosition(parameters), parameters.seqlen_present_kv_cache,
-      data.past_seq_lens, data.cache_past_seq_lens,
-      reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
-      parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
-      (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH),
-      parameters.k_quant_type,
-      data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
-      stream, device_prop.maxThreadsPerBlock)));
+  // Preserve non-shared past KV before appending: the append kernel only writes new token rows.
+  const T* prepared_q = nullptr;
+  ORT_RETURN_IF_ERROR((PrepareQKV<T, U>(
+      stream, device_prop.maxThreadsPerBlock, parameters, data, prepared_q)));
+  q_rot = const_cast<T*>(prepared_q);
 
   // Step 2: Dequantize Entire Cache
   // We now have the updated quantized cache in data.present_key/value. We need to dequantize it to k_dequant/v_dequant.
