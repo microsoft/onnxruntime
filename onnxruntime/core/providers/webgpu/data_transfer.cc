@@ -84,7 +84,13 @@ common::Status DataTransfer::CopyTensors(const std::vector<SrcDstPair>& src_dst_
         dst.Location().device.Type() != OrtDevice::GPU) {
       return IDataTransfer::CopyTensors(src_dst_pairs);
     }
-    uploads.push_back({src.DataRaw(), static_cast<WGPUBuffer>(dst.MutableDataRaw()), src.SizeInBytes()});
+    const size_t size = src.SizeInBytes();
+    auto target = static_cast<WGPUBuffer>(dst.MutableDataRaw());
+    // Preserve Upload's direct write/unmap path without partially copying the list.
+    if (size != 0 && wgpuBufferGetMapState(target) != WGPUBufferMapState_Unmapped) {
+      return IDataTransfer::CopyTensors(src_dst_pairs);
+    }
+    uploads.push_back({src.DataRaw(), target, size});
   }
   buffer_manager_.UploadBatch(recording_, uploads);
   return Status::OK();
