@@ -3526,8 +3526,10 @@ class TestPagedAttentionAttentionMetadata(unittest.TestCase):
             )
 
     @unittest.skipIf(not has_fp8_kv_cache(), reason="FP8 KV cache kernels are not built")
-    @parameterized.expand([(f"past{past}", past) for past in (128, 2048, 8192)])
-    def test_unsplit_fp8_decode_is_query_shape_invariant(self, _, past):
+    @parameterized.expand(
+        [(f"past{past}_split{splits}", past, splits) for past in (128, 2048, 8192) for splits in (1, 8, 32)]
+    )
+    def test_fixed_split_fp8_decode_is_query_shape_invariant(self, _, past, splits):
         config = self._config(
             batch_size=1,
             sequence_length=2,
@@ -3548,7 +3550,7 @@ class TestPagedAttentionAttentionMetadata(unittest.TestCase):
             for _ in range(2)
         ]
         outputs = []
-        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0", "ORT_PAGED_ATTENTION_DISABLE_SPLIT_KV": "1"}):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0", "ORT_PAGED_ATTENTION_DECODE_NUM_SPLITS": str(splits)}):
             for count in (1, 2):
                 output, _, _ = paged_attention_func(
                     config,
@@ -3565,6 +3567,14 @@ class TestPagedAttentionAttentionMetadata(unittest.TestCase):
                 )
                 outputs.append(output[0])
         torch.testing.assert_close(outputs[0], outputs[1], rtol=0, atol=0)
+
+    @parameterized.expand([("negative", -1), ("above_capacity", 33)])
+    def test_invalid_fixed_decode_split_count(self, _, splits):
+        config = self._config()
+        graph = create_paged_attention_graph(config, num_tokens=4, num_blocks=16, max_blocks_per_sequence=4)
+        with patch.dict(os.environ, {"ORT_PAGED_ATTENTION_DECODE_NUM_SPLITS": str(splits)}):
+            with self.assertRaisesRegex(Exception, "ORT_PAGED_ATTENTION_DECODE_NUM_SPLITS must be between 0"):
+                InferenceSession(graph, providers=["CUDAExecutionProvider"])
 
     def test_decode_softcap_portable_kernel(self):
         # softcap rules out XQA, so this exercises the split-KV decode kernel, whose split count is

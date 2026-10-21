@@ -68,6 +68,7 @@ Status LaunchPrepareCudnnBlockTable(const int32_t* block_table, int32_t* cudnn_b
 // Paged decode backend sizing helpers, used by paged_attention.cc to test eligibility (the kernel
 // needs more dynamic shared memory than the device provides for very wide heads) and to size the
 // split-KV workspaces.
+inline constexpr int kPagedDecodeMaxSplits = 32;
 size_t GetPagedDecodeSharedMemoryBytes(const int head_size);
 int ComputePagedDecodeSplits(const int token_count, const int num_heads, const int max_kv_len,
                              const int multi_processor_count);

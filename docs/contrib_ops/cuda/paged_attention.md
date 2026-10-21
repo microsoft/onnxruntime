@@ -815,8 +815,9 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 >   metadata-bounded steps of 2–8 query tokens use portable paged decode when no XQA specialization
 >   applies, including INT8/FP8 `PER_TENSOR` caches with query/KV group size 16. Disabling XQA with
 >   `ORT_ENABLE_XQA=0` uses the portable path for both single-token and short multi-token decode.
->   `ORT_PAGED_ATTENTION_DISABLE_SPLIT_KV=1` disables the portable path's occupancy-based KV
->   partitioning for reproducibility across query shapes, at the cost of decode parallelism.
+>   `ORT_PAGED_ATTENTION_DECODE_NUM_SPLITS` overrides the portable path's occupancy-based KV
+>   partitioning for reproducibility across query shapes: `0` (default) selects automatically,
+>   `1` disables splitting, and values up to `32` retain a fixed degree of decode parallelism.
 >   Non-causal H128 multi-token steps use a portable or gathered
 >   backend. Single-token decode reads and
 >   dequantizes the cache in place through XQA when eligible or `PagedDecodeSplitKV` otherwise.

@@ -149,7 +149,9 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
   disable_memory_efficient_attention_ = sizeof(T) != 2 || !kernel_options_->UseEfficientAttention();
   disable_paged_decode_ = sizeof(T) != 2 || !kernel_options_->UseDecoderAttention();
-  disable_split_kv_ = ParseEnvironmentVariableWithDefault<int>("ORT_PAGED_ATTENTION_DISABLE_SPLIT_KV", 0) != 0;
+  decode_num_splits_ = ParseEnvironmentVariableWithDefault<int>("ORT_PAGED_ATTENTION_DECODE_NUM_SPLITS", 0);
+  ORT_ENFORCE(decode_num_splits_ >= 0 && decode_num_splits_ <= kPagedDecodeMaxSplits,
+              "ORT_PAGED_ATTENTION_DECODE_NUM_SPLITS must be between 0 (automatic) and ", kPagedDecodeMaxSplits);
   // Quantized-cache XQA defaults on, matching GroupQueryAttention. Native-cache XQA is opt-in
   // because it has not shown a consistent advantage over FlashAttention.
   enable_xqa_ = sizeof(T) == 2 && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0);
@@ -878,10 +880,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   IAllocatorUniquePtr<void> decode_partial_max_buffer;
   IAllocatorUniquePtr<void> decode_partial_sum_buffer;
   if (use_paged_decode && !use_xqa_decode) {
-    if (!disable_split_kv_) {
-      num_splits = ComputePagedDecodeSplits(parameters.token_count, parameters.num_heads, max_kv_len,
-                                            device_prop.multiProcessorCount);
-    }
+    num_splits = decode_num_splits_ > 0
+                     ? decode_num_splits_
+                     : ComputePagedDecodeSplits(parameters.token_count, parameters.num_heads, max_kv_len,
+                                                device_prop.multiProcessorCount);
     const size_t rows = static_cast<size_t>(num_splits) * parameters.token_count * parameters.num_heads;
     decode_partial_out_buffer =
         GetScratchBuffer<void>(sizeof(float) * rows * parameters.head_size, GetComputeStream(context));

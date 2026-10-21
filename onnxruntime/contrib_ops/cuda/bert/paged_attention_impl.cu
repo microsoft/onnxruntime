@@ -977,7 +977,6 @@ Status LaunchGatherAndExpandPagedKVCache(const TCACHE* key_cache, const TCACHE* 
 
 constexpr int kPagedDecodeThreads = 128;
 constexpr int kPagedDecodeTile = 128;  // KV tokens scored per iteration
-constexpr int kPagedDecodeMaxSplits = 32;
 
 // Cache element -> float. Identical to DequantizeFromCache with a scale of 1, kept separate because
 // the decode kernel folds the scales into Q and into the output instead of applying them per read.
