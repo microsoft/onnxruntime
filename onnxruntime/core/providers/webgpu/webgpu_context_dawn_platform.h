@@ -12,6 +12,9 @@ namespace onnxruntime::webgpu {
 
 const DawnProcTable& GetBundledDawnProcs();
 wgpu::Instance CreateBundledDawnInstance(wgpu::InstanceDescriptor instance_desc);
+// Call after all instances created by CreateBundledDawnInstance() and their dependent objects have been destroyed.
+// Must not run concurrently with CreateBundledDawnInstance().
+void CleanupBundledDawnPlatform();
 InlinedVector<wgpu::Adapter> EnumerateBundledDawnAdapters(WGPUInstance instance,
                                                           const wgpu::RequestAdapterOptions& options);
 

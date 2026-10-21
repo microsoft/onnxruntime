@@ -31,10 +31,13 @@ class DawnPlatform final : public dawn::platform::Platform {
   }
 };
 
+DawnPlatform* dawn_platform = nullptr;
+
 DawnPlatform& GetDawnPlatform() {
-  // Dawn retains this non-owning pointer; keep it alive through instance teardown.
-  static DawnPlatform* platform = new DawnPlatform();
-  return *platform;
+  if (dawn_platform == nullptr) {
+    dawn_platform = new DawnPlatform();
+  }
+  return *dawn_platform;
 }
 
 }  // namespace
@@ -48,6 +51,11 @@ wgpu::Instance CreateBundledDawnInstance(wgpu::InstanceDescriptor instance_desc)
   dawn_instance_desc.platform = &GetDawnPlatform();
   instance_desc.nextInChain = &dawn_instance_desc;
   return wgpu::CreateInstance(&instance_desc);
+}
+
+void CleanupBundledDawnPlatform() {
+  delete dawn_platform;
+  dawn_platform = nullptr;
 }
 
 InlinedVector<wgpu::Adapter> EnumerateBundledDawnAdapters(WGPUInstance instance,

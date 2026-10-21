@@ -1817,6 +1817,10 @@ void WebGpuContextFactory::Cleanup() {
     wgpuInstanceRelease(default_instance_);
     default_instance_ = nullptr;
   }
+
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+  CleanupBundledDawnPlatform();
+#endif
 }
 
 WebGpuContext& WebGpuContextFactory::DefaultContext() {
