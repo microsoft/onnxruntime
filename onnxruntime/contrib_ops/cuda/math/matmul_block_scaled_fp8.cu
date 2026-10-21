@@ -527,7 +527,7 @@ __device__ __forceinline__ T* Fp8OutputColumn(T* output, int col, int& stride,
   return output + col;
 }
 
-template <int KSplit, int MTiles, bool SplitOutput, typename AType>
+template <int KSplit, int MTiles, bool SplitOutput, typename AType, bool PerColumnS2 = false>
 __device__ __forceinline__ void Fp8MmaGemvBody(AType* __restrict__ output,
                                                const AType* __restrict__ input_a,
                                                const __nv_fp8_e4m3* __restrict__ input_b,
@@ -542,7 +542,13 @@ __device__ __forceinline__ void Fp8MmaGemvBody(AType* __restrict__ output,
                                                const Fp8GemvOutputSplit& split) {
   using Mma = Fp8GemvMma<AType>;
 
-  const bool act_qdq = act_scale != nullptr;
+  // Keep the same MMA/KSplit reduction, but remove per-block scaling and QDQ
+  // bookkeeping for weight-only, two-row projections with one scale per column.
+  if constexpr (PerColumnS2) {
+    m = 2;
+    k_blocks = 1;
+  }
+  const bool act_qdq = !PerColumnS2 && act_scale != nullptr;
   const float a_scale = act_qdq ? *act_scale : 0.f;
   const float a_inv_scale = a_scale != 0.f ? 1.0f / a_scale : 0.f;
 
@@ -577,7 +583,7 @@ __device__ __forceinline__ void Fp8MmaGemvBody(AType* __restrict__ output,
 #pragma unroll 2
   for (int wi = warp; wi < windows; wi += KSplit) {
     const int k0 = wi << 6;
-    const int kb = k0 / block_size;
+    const int kb = PerColumnS2 ? 0 : k0 / block_size;
     if (kb != cur_kb) {
       if (cur_kb >= 0) {
         const float s_lo = lo_ok ? weight_scale[static_cast<size_t>(col_lo) * k_blocks + cur_kb] : 0.f;
@@ -740,6 +746,11 @@ __device__ __forceinline__ void Fp8MmaGemvBody(AType* __restrict__ output,
 template <int KSplit, int MTiles, bool SplitOutput, typename AType>
 __global__ void MatMulBlockScaledFp8MmaGemvKernel(ORT_FP8_MMA_GEMV_PARAMS) {
   Fp8MmaGemvBody<KSplit, MTiles, SplitOutput, AType>(ORT_FP8_MMA_GEMV_ARGS);
+}
+
+template <int KSplit, int MTiles, bool SplitOutput, typename AType>
+__global__ void MatMulBlockScaledFp8MmaGemvPerColumnS2Kernel(ORT_FP8_MMA_GEMV_PARAMS) {
+  Fp8MmaGemvBody<KSplit, MTiles, SplitOutput, AType, true>(ORT_FP8_MMA_GEMV_ARGS);
 }
 
 template <int KSplit, int MTiles, bool SplitOutput, typename AType>
@@ -1038,6 +1049,10 @@ static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
     const dim3 mma_blocks{static_cast<unsigned int>((n + 15) / 16)};
     const bool pin_residency = Fp8MmaGemvPinsResidency(
         n, k_split, mtiles, device_prop.multiProcessorCount, device_prop.major, device_prop.minor);
+    static const int per_column_s2 =
+        ParseEnvironmentVariableWithDefault<int>("ORT_FP8_GEMV_PER_COLUMN_S2", 0);
+    ORT_ENFORCE(per_column_s2 == 0 || per_column_s2 == 1,
+                "ORT_FP8_GEMV_PER_COLUMN_S2 must be 0 or 1.");
     const auto launch_mma = [&]<int KSplit, int MTiles>() {
       const dim3 mma_threads{32, KSplit};
       const auto launch_variant = [&]<bool SplitOutput>() {
@@ -1055,6 +1070,12 @@ static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
           block_size, k_blocks, split);                                                      \
     }                                                                                        \
   } while (0)
+        if constexpr (MTiles == 1) {
+          if (per_column_s2 && m == 2 && block_size == k && act_scale == nullptr && !pin_residency) {
+            ORT_FP8_LAUNCH_MMA(MatMulBlockScaledFp8MmaGemvPerColumnS2Kernel);
+            return;
+          }
+        }
         if constexpr (KSplit == 16 && MTiles == 1) {
           if (pin_residency) {
             ORT_FP8_LAUNCH_MMA(MatMulBlockScaledFp8MmaGemvKernelPinned);

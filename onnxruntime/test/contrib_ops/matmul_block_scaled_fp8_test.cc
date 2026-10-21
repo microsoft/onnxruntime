@@ -152,6 +152,66 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, SplitOutputsFp16) {
   TestFp8SplitOutputs<MLFloat16>();
 }
 
+template <typename T>
+void TestPerColumnS2ExactOutputs() {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for per-column FP8 matmul.";
+  }
+  constexpr int64_t m = 2, n = 33;
+  for (int64_t k : {320, 640, 2560, 6144}) {
+    std::vector<T> a(m * k), bias(n), expected(m * n);
+    std::vector<Float8E4M3FN> b(n * k);
+    std::vector<float> scales(n);
+    for (int64_t i = 0; i < m * k; ++i) a[i] = T(float(i % 5 - 2) / 8.f);
+    for (int64_t col = 0; col < n; ++col) {
+      scales[col] = float(col % 3 + 1) / 8.f;
+      bias[col] = T(float(col % 7 - 3) / 32.f);
+      for (int64_t i = 0; i < k; ++i) b[col * k + i] = Float8E4M3FN(float((col + i) % 7 - 3) / 16.f);
+      for (int64_t row = 0; row < m; ++row) {
+        float sum = 0.f;
+        for (int64_t i = 0; i < k; ++i) {
+          sum += float(a[row * k + i]) * b[col * k + i].ToFloat();
+        }
+        expected[row * n + col] = T(sum * scales[col] + float(bias[col]));
+      }
+    }
+    for (bool split : {false, true}) {
+      OpTester test("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
+      test.AddAttribute<int64_t>("block_size", k);
+      const std::vector<int64_t> widths = split ? std::vector<int64_t>{1, 7, 25}
+                                                : std::vector<int64_t>{n};
+      if (split) test.AddAttribute<std::vector<int64_t>>("split_sizes", widths);
+      test.AddInput<T>("A", {m, k}, a);
+      test.AddInput<Float8E4M3FN>("B", {n, k}, b);
+      test.AddInput<float>("b_scale", {n, 1}, scales);
+      test.AddOptionalInputEdge<float>();
+      test.AddInput<T>("bias", {n}, bias);
+      int64_t offset = 0;
+      for (size_t index = 0; index < widths.size(); ++index) {
+        std::vector<T> values;
+        for (int64_t row = 0; row < m; ++row) {
+          values.insert(values.end(), expected.begin() + row * n + offset,
+                        expected.begin() + row * n + offset + widths[index]);
+        }
+        test.AddOutput<T>(("Y" + std::to_string(index)).c_str(), {m, widths[index]}, values);
+        offset += widths[index];
+      }
+      test.SetOutputTolerance(0.f, 0.f);
+      std::vector<std::unique_ptr<IExecutionProvider>> providers;
+      providers.push_back(DefaultCudaExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+    }
+  }
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, PerColumnS2ExactOutputsFp16) {
+  TestPerColumnS2ExactOutputs<MLFloat16>();
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, PerColumnS2ExactOutputsBf16) {
+  TestPerColumnS2ExactOutputs<BFloat16>();
+}
+
 TEST(MatMulBlockQuantizedFp8WeightOpTest, SplitOutputsBFloat16) {
   TestFp8SplitOutputs<BFloat16>();
 }

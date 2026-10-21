@@ -1545,6 +1545,21 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     return fused_routing;
   };
 
+  auto route_with_expert_maps = [&](int64_t rows, int experts, int* row_to_source,
+                                    int* sorted_experts, int64_t* expert_offsets) {
+    if (rows > 2) return false;
+    auto launch = [&](auto* type_ptr) {
+      using T = std::remove_pointer_t<decltype(type_ptr)>;
+      return TryLaunchSoftmaxTopKExpertMaps(
+          static_cast<const T*>(router_probs->DataRaw()), expert_scales, expert_indices,
+          row_to_source, unpermuted_row_to_permuted_row, sorted_experts, expert_offsets,
+          static_cast<int>(rows), experts, static_cast<int>(k_), normalize_routing_weights_, stream);
+    };
+    if (is_fp16) return launch(static_cast<half*>(nullptr));
+    if (is_bf16) return launch(static_cast<__nv_bfloat16*>(nullptr));
+    return launch(static_cast<float*>(nullptr));
+  };
+
   if (use_fp8_fused) {
     Tensor* output = context->Output(0, input->Shape());
     namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
@@ -2145,7 +2160,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     int* p_exp = p_exp_buf.get();
     int64_t* p_efto = p_efto_buf.get();
 
-    const auto fused_routing = route_tile(0, num_rows);
+    const bool fused_expert_maps = route_with_expert_maps(num_rows, num_experts, p_r2u, p_exp, p_efto);
+    const auto fused_routing = fused_expert_maps
+                                   ? ck::FusedRoutingParams{}
+                                   : route_tile(0, num_rows);
     ORT_ENFORCE(fused_routing.router_logits == nullptr,
                 "QMoE packed INT GEMV requires materialized routing outputs.");
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
@@ -2154,9 +2172,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           expert_indices, SafeInt<size_t>(num_rows) * SafeInt<size_t>(k_), stream));
     }
 #endif
-    const bool expert_maps_built = ck::fusedBuildExpertMapsSortFirstToken(
-        expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
-        num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream);
+    const bool expert_maps_built = fused_expert_maps || ck::fusedBuildExpertMapsSortFirstToken(
+                                                            expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
+                                                            num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream);
     ORT_ENFORCE(expert_maps_built,
                 "QMoE packed INT GEMV failed to build fused expert maps for a supported routing configuration.");
 
@@ -2290,7 +2308,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     act_params.swiglu_fusion = swiglu_fusion;
     act_params.limit = swiglu_limit_;
 
-    const auto fused_routing = route_tile(0, num_rows);
+    const bool fused_expert_maps = route_with_expert_maps(num_rows, num_experts, p_r2u, p_exp, p_efto);
+    const auto fused_routing = fused_expert_maps
+                                   ? ck::FusedRoutingParams{}
+                                   : route_tile(0, num_rows);
     ORT_ENFORCE(fused_routing.router_logits == nullptr,
                 "QMoE FP4 GEMV does not support fused routing.");
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
@@ -2302,9 +2323,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     IAllocatorUniquePtr<int> blocked_expert_counts;
     IAllocatorUniquePtr<int> blocked_expert_counts_cumsum;
     IAllocatorUniquePtr<int> blocked_row_to_unpermuted_row;
-    if (!TryLaunchSmallDecodeExpertMaps(
-            expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
-            static_cast<int>(num_rows), num_experts, static_cast<int>(k_), stream) &&
+    if (!fused_expert_maps && !TryLaunchSmallDecodeExpertMaps(expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto, static_cast<int>(num_rows), num_experts, static_cast<int>(k_), stream) &&
         !ck::fusedBuildExpertMapsSortFirstToken(
             expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
             num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream)) {
