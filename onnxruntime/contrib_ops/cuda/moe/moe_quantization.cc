@@ -398,6 +398,12 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
                          (fc2_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 4) &&
                          (fc1_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 2) &&
                          onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_QMOE_INT2_PREFILL", 1) != 0;
+  release_int2_raw_weights_ =
+      quant_type_ == "int" && expert_weight_bits_ == 2 && fc1_expert_weight_bits_ == 2 &&
+      fc2_expert_weight_bits_ == 2 && fc3_expert_weight_bits_ == 2 && !weights_prepacked_ &&
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT2_PACKED_ONLY", 0) == 1;
+  ORT_ENFORCE(!release_int2_raw_weights_ || enable_int2_prefill_,
+              "ORT_QMOE_INT2_PACKED_ONLY requires packed INT2 prefill support.");
 
   fp4_deep_gemm_num_experts_ = StaticFp4DeepGemmNumExperts(op_kernel_info);
   enable_fp4_deep_gemm_ =
@@ -719,7 +725,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool uses_global_weight_scales = is_fp4_family || (is_fp8 && !is_block_fp8) || is_wfp4afp8;
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
-  // When PrePack consumed the int4/int8 expert-weight initializers
+  // When PrePack consumed the int4/int8 or packed-only INT2 expert-weight initializers
   // (``weights_prepacked == false`` opt-in path), the original tensors
   // were freed; ``context->Input<Tensor>(2)/(5)`` would return nothing.
   // Mirror how ``MatMulNBits`` reads its prepacked B input.
@@ -728,8 +734,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // path must not null out fc2_experts_weights and feed a null fc2 weight/shape
   // to the runner.
   const bool int_weights_consumed_by_prepack =
-      is_int && !use_int_dequant_fallback && !weights_prepacked_ &&
+      is_int && (!use_int_dequant_fallback || release_int2_raw_weights_) && !weights_prepacked_ &&
       packed_fc1_weights_ != nullptr && packed_fc2_weights_ != nullptr;
+  ORT_RETURN_IF_NOT(!release_int2_raw_weights_ ||
+                        (int_weights_consumed_by_prepack && fc1_weights_shape_.NumDimensions() == 3 &&
+                         fc2_weights_shape_.NumDimensions() == 3),
+                    "ORT_QMOE_INT2_PACKED_ONLY requires both expert initializers to be prepacked; "
+                    "disable session.disable_prepacking and provide supported constant weights.");
   // Same idea for MXFP4 in the SM80 grouped-GEMM regime: PrePack laid the e2m1 weights out in the
   // CUTLASS interleaved layout (and, unless low-memory mode is on, an extra ColToRow copy for the
   // decode GEMV), nothing reads the raw [E, K, N/2] initializer, so it was released
@@ -1270,6 +1281,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     }
   }
   const bool use_packed_int = use_packed_int_gemv || use_packed_int_prefill;
+  ORT_RETURN_IF_NOT(!release_int2_raw_weights_ || use_packed_int,
+                    "ORT_QMOE_INT2_PACKED_ONLY cannot use the raw-weight fallback for this invocation. "
+                    "Use symmetric fused SwiGLU weights with supported packed INT2 shapes, "
+                    "or reload the session without ORT_QMOE_INT2_PACKED_ONLY.");
   const bool use_fp8_fused = is_block_fp8 && enable_fp8_fused_ &&
                              (kernel_activation_type == ActivationType::Silu ||
                               kernel_activation_type == ActivationType::Swiglu) &&
@@ -3115,7 +3130,14 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
         bool local_packed = false;
         PrePackIntExpertWeights(tensor, stream, alloc, packed_fc1_weights_, local_packed,
                                 fc1_expert_weight_bits_);
+        if (release_int2_raw_weights_) {
+          ORT_RETURN_IF_NOT(local_packed, "Packed-only INT2 FC1 weight prepacking failed.");
+          fc1_weights_shape_ = tensor.Shape();
+          is_packed = true;
+          return Status::OK();
+        }
       }
+      ORT_RETURN_IF(release_int2_raw_weights_, "Packed-only INT2 FC1 shape is unsupported.");
       is_packed = false;
     } else {
       fc1_weights_shape_ = tensor.Shape();
@@ -3128,7 +3150,14 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
         bool local_packed = false;
         PrePackIntExpertWeights(tensor, stream, alloc, packed_fc2_weights_, local_packed,
                                 fc2_expert_weight_bits_);
+        if (release_int2_raw_weights_) {
+          ORT_RETURN_IF_NOT(local_packed, "Packed-only INT2 FC2 weight prepacking failed.");
+          fc2_weights_shape_ = tensor.Shape();
+          is_packed = true;
+          return Status::OK();
+        }
       }
+      ORT_RETURN_IF(release_int2_raw_weights_, "Packed-only INT2 FC2 shape is unsupported.");
       is_packed = false;
     } else {
       fc2_weights_shape_ = tensor.Shape();

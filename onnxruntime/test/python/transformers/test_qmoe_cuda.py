@@ -2687,6 +2687,98 @@ class TestQMoEInt2SpeculativeDecode(unittest.TestCase):
         numpy.testing.assert_array_equal(actual, expected)
 
 
+@unittest.skipUnless(
+    torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8,
+    "Packed-only INT2 prefill requires SM80 or newer",
+)
+class TestQMoEInt2PackedOnly(unittest.TestCase):
+    def _graph(self, block_size=128, hidden=512, asymmetric=False):
+        generator = torch.Generator().manual_seed(914)
+        experts, intermediate = 16, 512
+        return create_moe_onnx_graph(
+            hidden_size=hidden,
+            sequence_length="tokens",
+            num_experts=experts,
+            top_k=8,
+            intermediate_size=intermediate,
+            torch_dtype=torch.float16,
+            onnx_dtype=TensorProto.FLOAT16,
+            fc1_experts_weights=torch.randint(
+                0, 256, (experts, 2 * intermediate, hidden // 4), dtype=torch.uint8, generator=generator
+            ),
+            fc2_experts_weights=torch.randint(
+                0, 256, (experts, hidden, intermediate // 4), dtype=torch.uint8, generator=generator
+            ),
+            fc1_scales=torch.full((experts, 2 * intermediate, (hidden + block_size - 1) // block_size), 1 / 128),
+            fc2_scales=torch.full((experts, hidden, intermediate // block_size), 1 / 128),
+            fc1_zero_points=(
+                torch.zeros((experts, 2 * intermediate, (hidden // block_size + 3) // 4), dtype=torch.uint8)
+                if asymmetric
+                else None
+            ),
+            use_swiglu=True,
+            use_quant=True,
+            quant_bits=2,
+            weights_prepacked=0,
+            swiglu_fusion=1,
+            block_size=block_size,
+        )
+
+    def _session(self, graph, *, packed_only, disable_prepacking=False, prefill=True):
+        options = onnxruntime.SessionOptions()
+        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        options.add_session_config_entry("session.use_device_allocator_for_initializers", "1")
+        if disable_prepacking:
+            options.add_session_config_entry("session.disable_prepacking", "1")
+        with patch.dict(
+            os.environ,
+            {
+                "ORT_QMOE_INT2_PACKED_ONLY": str(int(packed_only)),
+                "ORT_ENABLE_QMOE_INT2_PREFILL": str(int(prefill)),
+                "ORT_DISABLE_MOE_GEMV": "0",
+            },
+        ):
+            return onnxruntime.InferenceSession(graph, options, providers=["CUDAExecutionProvider"])
+
+    @parameterized.expand([(32,), (64,), (128,)])
+    def test_matches_retained_raw_weights(self, block_size):
+        graph = self._graph(block_size)
+        reference = self._session(graph, packed_only=False)
+        packed = self._session(graph, packed_only=True)
+        generator = numpy.random.default_rng(18)
+        for rows in (1, 2, 8, 32):
+            with self.subTest(rows=rows):
+                feed = {
+                    "input": generator.normal(size=(rows, 512)).astype(numpy.float16),
+                    "router_probs": generator.normal(size=(rows, 16)).astype(numpy.float16),
+                }
+                numpy.testing.assert_array_equal(packed.run(None, feed)[0], reference.run(None, feed)[0])
+
+    def test_requires_prefill(self):
+        with self.assertRaisesRegex(Exception, "requires packed INT2 prefill support"):
+            self._session(self._graph(), packed_only=True, prefill=False)
+
+    def test_rejects_unsupported_weight_shape(self):
+        with self.assertRaisesRegex(Exception, "Packed-only INT2 FC[12] shape is unsupported"):
+            self._session(self._graph(hidden=544), packed_only=True)
+
+    def test_rejects_disabled_prepacking(self):
+        session = self._session(self._graph(), packed_only=True, disable_prepacking=True)
+        with self.assertRaisesRegex(Exception, "requires both expert initializers to be prepacked"):
+            session.run(
+                None,
+                {"input": numpy.zeros((1, 512), numpy.float16), "router_probs": numpy.zeros((1, 16), numpy.float16)},
+            )
+
+    def test_rejects_asymmetric_fallback(self):
+        session = self._session(self._graph(asymmetric=True), packed_only=True)
+        with self.assertRaisesRegex(Exception, "cannot use the raw-weight fallback"):
+            session.run(
+                None,
+                {"input": numpy.zeros((1, 512), numpy.float16), "router_probs": numpy.zeros((1, 16), numpy.float16)},
+            )
+
+
 @unittest.skipUnless(torch.cuda.is_available(), "QMoE PrePack smoke test requires CUDA")
 class TestQMoEIntPrePackSmoke(unittest.TestCase):
     """Smoke test for the QMoE int4 PrePack hook (issue #28748 / PR #28749).

@@ -62,8 +62,8 @@ class QMoE final : public CudaKernel, public MoEBase {
   void TryBuildGemvFp4Scales(int fc, cudaStream_t stream, AllocatorPtr alloc);
   void TryBuildFp4DeepGemmWeights(int fc, cudaStream_t stream, AllocatorPtr alloc);
   // Prepacks int2/int4/int8 expert weights into the CUTLASS fpA_intB layout. INT4/INT8 are
-  // consumed by the QMoE runner; INT2 is consumed by the decode GEMV while the raw initializer
-  // remains live for dense prefill fallback. Mirrors what MatMulNBits.PrePack
+  // consumed by the QMoE runner; INT2 is consumed by packed prefill and decode GEMV. The raw
+  // initializer remains live for fallback unless packed-only mode is enabled. Mirrors MatMulNBits.PrePack
   // does, looped over the E expert dimension. ``tensor`` is the 3-D
   // ``[E, N, K / (8 / bits)]`` weight initializer; ``packed_buf`` receives a
   // GPU buffer in the kernel-expected ``[E, K, N / (8 / bits)]`` layout.
@@ -96,7 +96,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   bool nvfp4_fc1_decode_scale_eligible_ = false;
   bool nvfp4_fc2_decode_scale_eligible_ = false;
   // Cached source weight shapes captured at PrePack time. When the
-  // PrePack hook consumed and released the original int4/int8 or MXFP4
+  // PrePack hook consumed and released the original int or MXFP4
   // weight initializers (``is_packed = true``), ``context->Input<Tensor>(2)``
   // and ``(5)`` return nothing, so ``moe_helper::CheckInputs`` can no
   // longer read the shapes from the live tensors. We feed it these
@@ -115,6 +115,9 @@ class QMoE final : public CudaKernel, public MoEBase {
   bool enable_kernel_debug_info_ = false;
   bool enable_int2_gemv_ = false;
   bool enable_int2_prefill_ = false;
+  // Opt-in packed-only execution releases raw INT2 weights; unsupported calls fail instead of
+  // entering the raw-weight fallback. Direct initializer allocation is needed to reclaim VRAM.
+  bool release_int2_raw_weights_ = false;
   int64_t row_tile_size_ = qmoe::kDisabledRowTileSize;
   int64_t int_dequant_max_scratch_bytes_ = int64_t{1} << 30;
 

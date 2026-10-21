@@ -242,6 +242,23 @@ GEMV arithmetic. INT4/INT8 retain the eight-row limit. Exact per-token equality
 across query shapes is covered by `TestQMoEInt2SpeculativeDecode`; exceeding the
 INT2 limit retains the existing packed grouped-GEMM or bounded dense fallback.
 
+For symmetric, raw INT2 fused SwiGLU models, `ORT_QMOE_INT2_PACKED_ONLY=1`
+opts into releasing the raw FC1/FC2 weight initializers after packing. Both
+prefill and decode then read the existing CUTLASS-interleaved copy; weight
+values, scales, and kernel arithmetic do not change. This can avoid retaining
+an entire second copy of the expert weights. Use the session configuration
+`session.use_device_allocator_for_initializers=1` to return consumed initializer
+memory to CUDA rather than retaining it inside the BFC arena.
+
+This mode is off by default, applies only to all-INT2 `quant_type="int"` nodes
+with `weights_prepacked=0`, and requires `ORT_ENABLE_QMOE_INT2_PREFILL` enabled,
+constant packable FC1/FC2 weights, fused interleaved SwiGLU, and supported packed
+prefill shapes (at most 256 experts, positive dimensions divisible by 64).
+Zero points, disabled prepacking, unsupported weights, or any invocation that
+would require the raw-weight fallback fail explicitly. Disable the option and
+reload the session to retain fallback support; it cannot be restored after the
+raw weights have been released. Mixed-width and FP8/FP4 nodes are unaffected.
+
 Set `ORT_DISABLE_MOE_GEMV=1` before process start to force the grouped GEMM
 fallback for debugging, benchmarking, or bisecting numerical differences. The
 switch is cached on first use.
