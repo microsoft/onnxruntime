@@ -97,7 +97,7 @@ Repeat the steps in this section as many times as needed.
    - Specify the release branch as the target branch, `plugin-ep-webgpu/rel-X.Y`.
    - Create a new tag for the release, `plugin-ep-webgpu/vX.Y.Z`.
    - Author the release notes. Tip: From a local checkout at the release commit, ask an AI agent to generate WebGPU
-     EP release notes with the [`ort-release-notes`](.github/skills/ort-release-notes/SKILL.md) skill. The skill
+     EP release notes with the [`ort-release-notes`](../.github/skills/ort-release-notes/SKILL.md) skill. The skill
      handles scoping the changes to WebGPU EP-related files.
    - In the "Release label" section, select "None" instead of "Latest". WebGPU EP releases are currently hosted in the
      ORT repo and we don't want a WebGPU EP release to appear as the latest ORT release.
