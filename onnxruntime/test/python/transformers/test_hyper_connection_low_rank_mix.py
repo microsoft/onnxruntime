@@ -49,6 +49,16 @@ def has_cuda():
     return "CUDAExecutionProvider" in ort.get_available_providers()
 
 
+def has_bf16_support():
+    # The BFloat16 kernels need compute capability 8.0+ (cuBLAS BFloat16 GEMM, cp.async in the fused kernels).
+    if torch.cuda.is_available():
+        return torch.cuda.get_device_capability()[0] >= 8
+    return True
+
+
+HALF_TYPES = (TP.FLOAT16, TP.BFLOAT16) if has_bf16_support() else (TP.FLOAT16,)
+
+
 def make_initializer(name, io_elem, tensor):
     dtype = DTYPES[io_elem]
     raw = tensor.to(dtype).contiguous().view(torch.uint8).numpy().tobytes()
@@ -221,7 +231,7 @@ class TestHyperConnectionLowRankMix(unittest.TestCase):
 
     def test_other_gate_constants(self):
         attrs = dict(epsilon=1e-6, reduction_scale=0.5, silu_alpha=0.75, gate_div=3.0, gate_mul=1.5)
-        for io_elem in (TP.FLOAT16, TP.BFLOAT16):
+        for io_elem in HALF_TYPES:
             for rows in (1, 2):
                 with self.subTest(io_elem=io_elem, rows=rows):
                     self._check(io_elem, rows, REAL_SHAPE, True, attrs=attrs, seed=3)
@@ -230,7 +240,7 @@ class TestHyperConnectionLowRankMix(unittest.TestCase):
         """Two consecutive blocks in the same graph equal the explicit post-mix between them."""
         C, H, R = REAL_SHAPE
         weight_names = ("norm_scale", "down_weight", "up_weight", "inject_weight")
-        for io_elem in (TP.FLOAT16, TP.BFLOAT16):
+        for io_elem in HALF_TYPES:
             dtype = DTYPES[io_elem]
             with self.subTest(io_elem=io_elem):
                 inputs0 = make_inputs(dtype, 2, C, H, R, False, seed=4)
@@ -299,7 +309,7 @@ class TestHyperConnectionLowRankMix(unittest.TestCase):
         prod_C, H, prod_R = 8, 8, 512
         cons_C, cons_R = 1, 8
         weight_names = ("norm_scale", "down_weight", "up_weight", "inject_weight")
-        for io_elem in (TP.FLOAT16, TP.BFLOAT16):
+        for io_elem in HALF_TYPES:
             dtype = DTYPES[io_elem]
             for dynamic_weight in ("down_weight", "up_weight"):
                 with self.subTest(io_elem=io_elem, dynamic_weight=dynamic_weight):
@@ -369,7 +379,7 @@ class TestHyperConnectionLowRankMix(unittest.TestCase):
     def test_fused_rows_are_independent(self):
         """The fused kernels use a fixed reduction order: a row gives the same bits at any batch size."""
         C, H, R = REAL_SHAPE
-        for io_elem in (TP.FLOAT16, TP.BFLOAT16):
+        for io_elem in HALF_TYPES:
             dtype = DTYPES[io_elem]
             with self.subTest(io_elem=io_elem):
                 inputs = make_inputs(dtype, 4, C, H, R, True, seed=5)
@@ -387,15 +397,16 @@ class TestHyperConnectionLowRankMix(unittest.TestCase):
 
     def test_no_prologue_streams_out_is_passthrough(self):
         C, H, R = 4, 64, 16
-        inputs = make_inputs(torch.bfloat16, 2, C, H, R, False, seed=6)
-        session = self.cache.get(TP.BFLOAT16, C, H, R, False, ATTRS)
+        io_elem = HALF_TYPES[-1]
+        inputs = make_inputs(DTYPES[io_elem], 2, C, H, R, False, seed=6)
+        session = self.cache.get(io_elem, C, H, R, False, ATTRS)
         _, _, streams_out = session.run(None, {k: v.numpy() for k, v in inputs.items()})
         np.testing.assert_array_equal(streams_out, inputs["streams"].numpy())
 
     def test_cuda_graph_capture_and_replay(self):
         """No host synchronization or unmanaged allocation: the op can be captured and replayed."""
         C, H, R = REAL_SHAPE
-        for io_elem in (TP.FLOAT16, TP.BFLOAT16):
+        for io_elem in HALF_TYPES:
             for rows in (1, 2):
                 with self.subTest(io_elem=io_elem, rows=rows):
                     dtype = DTYPES[io_elem]
@@ -457,7 +468,7 @@ class TestHyperConnectionLowRankMix(unittest.TestCase):
         rows = 16
         K = C * H
         weight_names = ("norm_scale", "down_weight", "up_weight", "inject_weight")
-        for io_elem in (TP.FLOAT16, TP.BFLOAT16):
+        for io_elem in HALF_TYPES:
             dtype = DTYPES[io_elem]
             with self.subTest(io_elem=io_elem):
                 inputs = make_inputs(dtype, rows, C, H, R, True, seed=12)

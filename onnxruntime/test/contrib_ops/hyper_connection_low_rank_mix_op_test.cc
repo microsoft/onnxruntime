@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -139,6 +140,11 @@ void RunProblem(const Problem& p, const Attrs& a, bool request_streams_out, floa
   auto cuda = DefaultCudaExecutionProvider();
   if (!cuda) {
     GTEST_SKIP() << "HyperConnectionLowRankMix is only implemented for CUDA";
+  }
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    if (!CudaHasBF16Support()) {
+      GTEST_SKIP() << "BFloat16 requires CUDA compute capability 8.0 or higher";
+    }
   }
   const Expected e = Reference<T>(p, a);
   const int64_t K = p.C * p.H;

@@ -762,7 +762,16 @@ Status LaunchWithProgrammaticSerialization(bool use_pdl, Kernel kernel, dim3 gri
     launch_config.stream = stream;
     launch_config.attrs = &attribute;
     launch_config.numAttrs = 1;
-    return CUDA_CALL(cudaLaunchKernelEx(&launch_config, kernel, args...));
+    const cudaError_t status = cudaLaunchKernelEx(&launch_config, kernel, args...);
+    if (status == cudaSuccess) {
+      return Status::OK();
+    }
+    // An older driver can reject the programmatic serialization attribute; plain launches are always correct.
+    if (status != cudaErrorInvalidValue && status != cudaErrorNotSupported &&
+        status != cudaErrorCallRequiresNewerDriver) {
+      return CUDA_CALL(status);
+    }
+    (void)cudaGetLastError();
   }
 #else
   ORT_UNUSED_PARAMETER(use_pdl);
@@ -771,10 +780,47 @@ Status LaunchWithProgrammaticSerialization(bool use_pdl, Kernel kernel, dim3 gri
   return CUDA_CALL(cudaGetLastError());
 }
 
+// griddepcontrol is compiled only for sm_90+; a kernel image JIT-compiled from older PTX would not contain it,
+// so programmatic dependent launch must not be requested for such an image (or for a driver older than 12.3).
+template <typename T, int ROWS>
+bool IsProgrammaticLaunchAvailable() {
+#if defined(CUDART_VERSION) && CUDART_VERSION >= 12030
+  static thread_local int cached_device = -1;
+  static thread_local bool cached_available = false;
+  int device = -1;
+  if (cudaGetDevice(&device) != cudaSuccess) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  if (device != cached_device) {
+    int driver_version = 0;
+    int sm_major = 0;
+    bool available = cudaDriverGetVersion(&driver_version) == cudaSuccess && driver_version >= 12030 &&
+                     cudaDeviceGetAttribute(&sm_major, cudaDevAttrComputeCapabilityMajor, device) == cudaSuccess &&
+                     sm_major >= 9;
+    auto image_has_griddepcontrol = [](auto kernel) {
+      cudaFuncAttributes attributes{};
+      return cudaFuncGetAttributes(&attributes, kernel) == cudaSuccess && attributes.ptxVersion >= 90 &&
+             attributes.binaryVersion >= 90;
+    };
+    available = available && image_has_griddepcontrol(HcDownKernel<T, true, ROWS>) &&
+                image_has_griddepcontrol(HcDownKernel<T, false, ROWS>) &&
+                image_has_griddepcontrol(HcUpPreKernel<T, ROWS>);
+    (void)cudaGetLastError();
+    cached_device = device;
+    cached_available = available;
+  }
+  return cached_available;
+#else
+  return false;
+#endif
+}
+
 template <typename T, int ROWS>
 Status LaunchFusedRows(bool use_pdl, cudaStream_t stream, const HyperConnectionLowRankMixConfig& config,
                        const HyperConnectionLowRankMixTensors<T>& tensors, const FusedGeometry& g, float* partial,
                        float* inv_rms, const DownParams& down, const UpParams& up) {
+  use_pdl = use_pdl && IsProgrammaticLaunchAvailable<T, ROWS>();
   const unsigned row_groups = static_cast<unsigned>((config.rows + ROWS - 1) / ROWS);
   const dim3 down_grid(g.col_tiles + 1, g.splits, row_groups);
   const dim3 up_grid((config.hidden + kUpTile - 1) / kUpTile, 1, row_groups);

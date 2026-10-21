@@ -4,6 +4,7 @@
 #include "contrib_ops/cuda/bert/hyper_connection_low_rank_mix.h"
 
 #include <limits>
+#include <type_traits>
 
 #include "contrib_ops/cpu/hyper_connection_helper.h"
 #include "contrib_ops/cuda/bert/hyper_connection_low_rank_mix_impl.h"
@@ -45,6 +46,11 @@ HyperConnectionLowRankMix<T>::HyperConnectionLowRankMix(const OpKernelInfo& info
 template <typename T>
 Status HyperConnectionLowRankMix<T>::ComputeInternal(OpKernelContext* context) const {
   using CudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
+
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    ORT_RETURN_IF_NOT(GetDeviceProp().major >= 8,
+                      "HyperConnectionLowRankMix with BFloat16 requires CUDA compute capability 8.0 or higher");
+  }
 
   const Tensor* streams = context->Input<Tensor>(0);
   const Tensor* norm_scale = context->Input<Tensor>(1);
