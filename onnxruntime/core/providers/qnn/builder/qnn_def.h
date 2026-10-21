@@ -75,6 +75,7 @@ enum class HtpPerformanceMode : uint8_t {
   kHtpLowBalanced,
   kHtpBalanced,
   kHtpExtremePowerSaver,
+  kHtpInvalid = 255
 };
 
 typedef struct PerThreadHtpPowerConfigs {
