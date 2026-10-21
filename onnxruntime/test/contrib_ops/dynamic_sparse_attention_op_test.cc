@@ -434,7 +434,8 @@ TEST(DynamicSparseAttentionTest, Int8CacheRejectsMissingOrMalformedScales_CUDA) 
 
 DynamicSparseAttentionCase MakeGroupedCacheCase(int sequence_length, bool auxiliary,
                                                 bool floating_cache = false, int batch_size = 2,
-                                                int num_heads = 20, int kv_num_heads = 2) {
+                                                int num_heads = 20, int kv_num_heads = 2,
+                                                bool varied_channels = false, int selected_count = 509) {
   DynamicSparseAttentionCase c;
   c.batch_size = batch_size;
   c.sequence_length = sequence_length;
@@ -459,11 +460,11 @@ DynamicSparseAttentionCase MakeGroupedCacheCase(int sequence_length, bool auxili
   c.key_scale.resize(channels);
   c.value_scale.resize(channels);
   for (int d = 0; d < channels; ++d) {
-    c.key_scale[d] = floating_cache ? 1.0f : (d % 2 ? 0.125f : 0.0625f);
-    c.value_scale[d] = floating_cache ? 1.0f : (d % 2 ? 0.25f : 0.125f);
+    c.key_scale[d] = floating_cache ? 1.0f : (varied_channels ? (d % 8 + 1) * 0.03125f : (d % 2 ? 0.125f : 0.0625f));
+    c.value_scale[d] = floating_cache ? 1.0f : (varied_channels ? (8 - d % 8) * 0.0625f : (d % 2 ? 0.25f : 0.125f));
   }
   for (size_t i = 0; i < c.query.size(); ++i) {
-    c.query[i] = float(int(i % 7) - 3) * 0.125f;
+    c.query[i] = float(int(i % 7) - 3) * (varied_channels ? 0.00390625f : 0.125f);
   }
   for (size_t i = 0; i < c.key.size(); ++i) {
     c.key[i] = float(int(i % 11) - 5) * c.key_scale[i % channels];
@@ -471,9 +472,10 @@ DynamicSparseAttentionCase MakeGroupedCacheCase(int sequence_length, bool auxili
   }
   c.past_key.resize(c.batch_size * c.cache_sequence_length * channels);
   c.past_value.resize(c.past_key.size());
+  constexpr int8_t kSignedBytes[] = {-128, -127, -65, -1, 0, 1, 64, 127};
   for (size_t i = 0; i < c.past_key.size(); ++i) {
-    c.past_key[i] = float(int(i % 17) - 8);
-    c.past_value[i] = float(int(i % 19) - 9);
+    c.past_key[i] = varied_channels ? float(kSignedBytes[i % 8]) : float(int(i % 17) - 8);
+    c.past_value[i] = varied_channels ? float(kSignedBytes[7 - i % 8]) : float(int(i % 19) - 9);
   }
   c.expected_present_key = c.past_key;
   c.expected_present_value = c.past_value;
@@ -504,7 +506,7 @@ DynamicSparseAttentionCase MakeGroupedCacheCase(int sequence_length, bool auxili
   for (int row = 0; row < rows; ++row) {
     const int b = row / sequence_length;
     const int pos = c.seqlens_k[b] + 1 - sequence_length + row % sequence_length;
-    c.selected_counts[row] = row == 0 ? 0 : 509;
+    c.selected_counts[row] = row == 0 ? 0 : selected_count;
     std::iota(c.selected_indices.begin() + row * c.max_selected,
               c.selected_indices.begin() + row * c.max_selected + c.selected_counts[row], 0);
     for (int h = 0; h < c.num_heads; ++h) {
@@ -598,6 +600,34 @@ TEST(DynamicSparseAttentionTest, Int8CacheGroupedDecodeFloat16_CUDA) {
   if (!cuda_ep) GTEST_SKIP();
   RunDynamicSparseAttentionCase<MLFloat16, int8_t>(
       MakeGroupedCacheCase(2, false), std::move(cuda_ep));
+}
+
+TEST(DynamicSparseAttentionTest, Int8CacheGroupedDecodeVectorStagingChannels_CUDA) {
+  for (int sequence_length : {1, 2}) {
+    for (bool auxiliary : {false, true}) {
+      SCOPED_TRACE("sequence_length=" + std::to_string(sequence_length) +
+                   ", auxiliary=" + std::to_string(auxiliary));
+      const auto c = MakeGroupedCacheCase(sequence_length, auxiliary, false, 2, 20, 2, true);
+      auto cuda_ep = DefaultCudaExecutionProvider();
+      if (!cuda_ep) GTEST_SKIP();
+      RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, std::move(cuda_ep));
+      cuda_ep = DefaultCudaExecutionProvider();
+      RunDynamicSparseAttentionCase<MLFloat16, int8_t>(c, std::move(cuda_ep));
+    }
+  }
+}
+
+TEST(DynamicSparseAttentionTest, GroupedMergeActiveSplitBoundaries_CUDA) {
+  for (int count : {1, 31, 32, 33, 255, 256, 257, 511}) {
+    for (bool auxiliary : {false, true}) {
+      SCOPED_TRACE("selected_count=" + std::to_string(count) +
+                   ", auxiliary=" + std::to_string(auxiliary));
+      auto cuda_ep = DefaultCudaExecutionProvider();
+      if (!cuda_ep) GTEST_SKIP();
+      RunDynamicSparseAttentionCase<BFloat16, int8_t>(
+          MakeGroupedCacheCase(2, auxiliary, false, 2, 20, 2, true, count), std::move(cuda_ep));
+    }
+  }
 }
 
 TEST(DynamicSparseAttentionTest, Int8CacheRejectsNonpositiveOrNonfiniteScales_CUDA) {

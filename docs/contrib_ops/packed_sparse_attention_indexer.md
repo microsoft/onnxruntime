@@ -1,5 +1,33 @@
 # PackedSparseAttentionIndexer — Operator Documentation
 
+## Experimental CUDA decode specializations
+
+Set these process-level options before the first operator invocation. All three
+default to `0`; only `0` and `1` are accepted. Existing dispatch remains available
+when an option is disabled or its geometry is unsupported.
+
+- `ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK=1`: compact QSA chunks of 2048 keys
+  to 512 keys with device-side 512/1024/2048 sorting probes. Up to five chunks
+  use a fused final merge/emit; larger selections use the existing pairwise
+  merge. Stable tie ordering, causal tails, capacity stride/padding, and
+  overflow handling are preserved. This option is mutually exclusive with
+  `ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK=1`.
+- `ORT_DSA_INT8_VECTOR_STAGING=1`: the companion `DynamicSparseAttention`
+  grouped INT8 path uses eight-byte cache loads and independent per-channel
+  key/value scales. Its existing guards still require head size 256, FP16/BF16
+  queries, one or two tokens, GQA ratio at least four, more than 256 candidates,
+  and sufficient resources. Auxiliary floating-point caches retain their own
+  unscaled load path.
+- `ORT_DSA_SHARED_SCALE_MERGE=1`: grouped attention merges with at most 32
+  splits compute the exponential factor once per split and share it across
+  output channels. A nonzero partial sum, not the maximum-score sentinel,
+  determines whether a split is active. Active factors that underflow to zero
+  remain in the accumulation.
+
+These options change kernels, not graph schemas or cache layouts. Qualify
+accuracy and performance on the target runtime, hardware, and workload before
+enabling them in a deployment.
+
 This document describes the `com.microsoft::PackedSparseAttentionIndexer` contrib operator: the
 packed/variable-length counterpart of `com.microsoft::SparseAttentionIndexer`, built for
 continuous-batching (paged) inference engines such as an OgaEngine-style `PagedAttention` model.

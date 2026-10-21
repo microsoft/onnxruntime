@@ -1344,6 +1344,28 @@ TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalPairedVerification) {
   }
 }
 
+TEST(PackedSparseAttentionIndexerTest, QsaCompactChunkAndFallbackBoundaries) {
+  for (int live_blocks : {511, 512, 513, 1023, 1024, 1025, 2047, 2048, 2049, 8193, 10240, 10241}) {
+    SCOPED_TRACE(live_blocks);
+    QsaPackedProblem problem;
+    problem.batch_size = 2;
+    problem.cumulative_sequence_lengths = {0, 2, 3};
+    problem.past_sequence_lengths = {live_blocks * 4, 0};
+    problem.head_size = 128;
+    problem.num_heads = 4;
+    problem.rotary_width = 64;
+    problem.compress_ratio = 4;
+    problem.token_budget = 2048;
+    problem.state_capacity = std::max(2051, live_blocks + 1);
+    problem.max_position = live_blocks * 4 + 4;
+    problem = MakeQsaPackedProblem(std::move(problem));
+    std::fill(problem.query.begin(), problem.query.end(), 0.0f);
+    std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
+    std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
+    RunQsaPackedTest<BFloat16>(2.0e-2f, std::move(problem), ProviderKind::Cuda);
+  }
+}
+
 TEST(PackedSparseAttentionIndexerTest, QsaRaggedPrefill) {
   QsaPackedProblem problem;
   problem.batch_size = 1;
