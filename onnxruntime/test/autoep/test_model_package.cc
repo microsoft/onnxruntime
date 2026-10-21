@@ -16,6 +16,7 @@
 #include "gtest/gtest.h"
 #include "nlohmann/json.hpp"
 
+#include "core/common/inlined_containers.h"
 #include "core/common/path_string.h"
 #include "core/framework/compute_capability.h"
 #include "core/providers/providers.h"
@@ -24,6 +25,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/abi_devices.h"
+#include "core/session/abi_logger.h"
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/api_asserts.h"
@@ -205,6 +207,11 @@ class RecordingExecutionProvider : public IExecutionProvider {
   RecordingExecutionProvider(const std::string& name, std::shared_ptr<ProviderObservations> observations)
       : IExecutionProvider(name), observations_(std::move(observations)) {}
 
+  // Reports the supplied OrtEpDevice instances through GetEpDevices, like a plugin EP created for those devices.
+  RecordingExecutionProvider(const std::string& name, std::shared_ptr<ProviderObservations> observations,
+                             std::vector<const OrtEpDevice*> ep_devices, const logging::Logger& logger)
+      : IExecutionProvider(name, OrtDevice(), std::move(ep_devices), logger), observations_(std::move(observations)) {}
+
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const GraphViewer&, const IKernelLookup&, const GraphOptimizerRegistry&, IResourceAccountant*) const override {
     return {};
@@ -222,8 +229,12 @@ class RecordingExecutionProvider : public IExecutionProvider {
 class RecordingProviderFactory : public IExecutionProviderFactory {
  public:
   RecordingProviderFactory(std::string name, std::shared_ptr<ProviderObservations> observations,
-                           std::shared_ptr<IExecutionProviderFactory> wrapped = nullptr)
-      : name_(std::move(name)), observations_(std::move(observations)), wrapped_(std::move(wrapped)) {}
+                           std::shared_ptr<IExecutionProviderFactory> wrapped = nullptr,
+                           std::vector<const OrtEpDevice*> ep_devices = {})
+      : name_(std::move(name)),
+        observations_(std::move(observations)),
+        wrapped_(std::move(wrapped)),
+        ep_devices_(std::move(ep_devices)) {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     return wrapped_ ? wrapped_->CreateProvider() : std::make_unique<RecordingExecutionProvider>(name_, observations_);
@@ -238,13 +249,73 @@ class RecordingProviderFactory : public IExecutionProviderFactory {
     if (observations_->return_null) {
       return nullptr;
     }
-    return wrapped_ ? wrapped_->CreateProvider(options, logger) : CreateProvider();
+    if (wrapped_) {
+      return wrapped_->CreateProvider(options, logger);
+    }
+    if (!ep_devices_.empty()) {
+      return std::make_unique<RecordingExecutionProvider>(name_, observations_, ep_devices_, *logger.ToInternal());
+    }
+    return CreateProvider();
   }
 
  private:
   std::string name_;
   std::shared_ptr<ProviderObservations> observations_;
   std::shared_ptr<IExecutionProviderFactory> wrapped_;
+  std::vector<const OrtEpDevice*> ep_devices_;
+};
+
+constexpr const char* kMultiDeviceEpName = "ModelPackageMultiDeviceEP";
+
+// A test plugin EP used without loading a separate library. It claims no nodes, so the ORT CPU EP executes the model.
+struct NoNodesOrtEp : OrtEp {
+  NoNodesOrtEp() : OrtEp{} {
+    ort_version_supported = ORT_API_VERSION;
+    GetName = GetNameImpl;
+    GetCapability = GetCapabilityImpl;
+  }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(NoNodesOrtEp);
+
+  static const char* ORT_API_CALL GetNameImpl(const OrtEp* /*this_ptr*/) noexcept { return kMultiDeviceEpName; }
+
+  static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* /*this_ptr*/, const OrtGraph* /*graph*/,
+                                                   OrtEpGraphSupportInfo* /*graph_support_info*/) noexcept {
+    return nullptr;
+  }
+};
+
+// Records the hardware devices passed to CreateEp for each EP instance.
+struct RecordingOrtEpFactory : OrtEpFactory {
+  RecordingOrtEpFactory() : OrtEpFactory{} {
+    ort_version_supported = ORT_API_VERSION;
+    GetName = GetNameImpl;
+    GetVendor = GetVendorImpl;
+    CreateEp = CreateEpImpl;
+    ReleaseEp = ReleaseEpImpl;
+  }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RecordingOrtEpFactory);
+
+  static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* /*this_ptr*/) noexcept { return kMultiDeviceEpName; }
+
+  static const char* ORT_API_CALL GetVendorImpl(const OrtEpFactory* /*this_ptr*/) noexcept { return "Test"; }
+
+  static OrtStatus* ORT_API_CALL CreateEpImpl(OrtEpFactory* this_ptr, const OrtHardwareDevice* const* devices,
+                                              const OrtKeyValuePairs* const* /*ep_metadata_pairs*/, size_t num_devices,
+                                              const OrtSessionOptions* /*session_options*/,
+                                              const OrtLogger* /*logger*/, OrtEp** ep) noexcept {
+    auto& ep_devices = static_cast<RecordingOrtEpFactory*>(this_ptr)->created_for.emplace_back();
+    for (size_t i = 0; i < num_devices; ++i) {
+      ep_devices.push_back(devices[i]);
+    }
+    *ep = new NoNodesOrtEp();
+    return nullptr;
+  }
+
+  static void ORT_API_CALL ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) noexcept {
+    delete static_cast<NoNodesOrtEp*>(ep);
+  }
+
+  InlinedVector<InlinedVector<const OrtHardwareDevice*>> created_for;
 };
 
 // A variant built from `model`, without variant session or provider options.
@@ -1225,6 +1296,54 @@ TEST(ModelPackageTest, VariantSelection_StopsAtEpWithUncheckedVariant) {
     selection_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice{example_ep.get()}}, ep_options);
     const auto component = SelectPackageComponent(package_root, "model_1", selection_options);
     ASSERT_EQ(component.GetSelectedVariantName(), "legacy_any_device_variant");
+  }
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+// Verifies that CreateSession creates the selected EP for devices matching the variant's device type.
+// The captured selection contains one CPU and two GPUs. A GPU variant creates the EP for both GPUs, in capture order,
+// through a new provider factory. A variant without a device type keeps all three devices and uses the saved factory.
+// Both cases cover the default CreateSession path and the path where the caller provides session options without
+// EP factories.
+TEST(ModelPackageTest, CreateSession_CreatesEpForVariantDeviceType) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_variant_device_type";
+  RecordingOrtEpFactory ep_factory;
+  const OrtHardwareDevice cpu{OrtHardwareDeviceType_CPU, 0, 0, "Test", {}};
+  const OrtHardwareDevice gpu{OrtHardwareDeviceType_GPU, 0, 1, "Test", {}};
+  const OrtHardwareDevice gpu2{OrtHardwareDeviceType_GPU, 0, 2, "Test", {}};
+  const OrtEpDevice cpu_device{kMultiDeviceEpName, "Test", &cpu, {}, {}, &ep_factory};
+  const OrtEpDevice gpu_device{kMultiDeviceEpName, "Test", &gpu, {}, {}, &ep_factory};
+  const OrtEpDevice gpu2_device{kMultiDeviceEpName, "Test", &gpu2, {}, {}, &ep_factory};
+  auto observations = std::make_shared<ProviderObservations>();
+  Ort::SessionOptions selection_options;
+  const std::vector<const OrtEpDevice*> ep_devices{&cpu_device, &gpu_device, &gpu2_device};
+  auto factory = std::make_shared<RecordingProviderFactory>(kMultiDeviceEpName, observations, nullptr, ep_devices);
+  static_cast<OrtSessionOptions*>(selection_options)->provider_factories.push_back(std::move(factory));
+
+  using Devices = InlinedVector<const OrtHardwareDevice*>;
+  for (const std::string_view device : {"gpu", ""}) {
+    SCOPED_TRACE(testing::Message() << "variant device type: \"" << device << "\"");
+    BuildPackage(package_root, "model_1", {MakeVariant("variant", kMultiDeviceEpName, device)});
+    auto component = SelectPackageComponent(package_root, "model_1", selection_options);
+    observations->created = 0;
+    ep_factory.created_for.clear();
+
+    Ort::SessionOptions create_session_options;
+    for (const bool pass_session_options : {false, true}) {
+      SCOPED_TRACE(testing::Message() << "session options passed to CreateSession: " << pass_session_options);
+      Ort::Session session = CreatePackageSession(component, pass_session_options ? &create_session_options : nullptr);
+      ASSERT_NO_FATAL_FAILURE(CheckSquareModel(session));
+    }
+
+    if (device == "gpu") {
+      EXPECT_THAT(ep_factory.created_for, ::testing::ElementsAre(Devices{&gpu, &gpu2}, Devices{&gpu, &gpu2}));
+      EXPECT_EQ(observations->created, 0u);
+    } else {
+      EXPECT_THAT(ep_factory.created_for, ::testing::IsEmpty());
+      EXPECT_EQ(observations->created, 2u);
+    }
   }
 
   std::error_code ec;
