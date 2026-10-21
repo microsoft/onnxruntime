@@ -116,6 +116,13 @@ Status AffineGrid<T>::Compute(OpKernelContext* context) const {
 
   const Tensor* size = context->Input<Tensor>(1);
   const TensorShape& size_shape = size->Shape();
+  // 'size' is a 1-D tensor per the spec. Check it before touching its dims:
+  // GetDims() returns a gsl::span, so a rank-0 input makes the indexing below
+  // an out-of-bounds access on an empty span. Enforcing rank 1 also means
+  // GetDims()[0] is the element count, which keeps the size_data[] reads in
+  // range.
+  ORT_RETURN_IF(size_shape.NumDimensions() != 1, "AffineGrid: input 'size' must be a 1-D tensor, got rank ",
+                size_shape.NumDimensions());
   const int64_t* size_data = size->Data<int64_t>();
 
   if (size_shape.GetDims()[0] == 4) {
