@@ -34,6 +34,8 @@ class QMoE final : public CudaKernel, public MoEBase {
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
  private:
+  Status ComputeInt3(OpKernelContext* context) const;
+  bool has_int3_ = false;
   // PrePack helpers - each handles one category of input tensor.
   void PrePackTransposeAndPack(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
