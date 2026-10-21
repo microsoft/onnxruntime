@@ -1,5 +1,7 @@
 # Notes on Threading in ORT
 
+# Deprecation warning : openmp thread support is removed from ORT
+
 This document is intended for ORT developers.
 
 ORT allows the usage of either OpenMP or non-OpenMP (ORT) threads for execution. Threadpool management
