@@ -11,6 +11,8 @@ separately approved on 2026-10-19.
 **M11 refinement:** Appendix K was approved on 2026-10-20 for detailed plan
 preparation. The CPU-first `TASKS.md` plan was separately approved on 2026-10-20;
 GPU qualification was resumed and verified on 2026-10-21 with compatible tooling.
+M11 is published for review in [#25](https://github.com/onnxruntime/ort-state/pull/25),
+stacked on M10; later milestones are not started.
 
 ## 1. Purpose
 

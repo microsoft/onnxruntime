@@ -1154,3 +1154,8 @@ Compressed project memory. This is not the execution plan.
   adapters restored from repo requirements insideexistingvenv (noGPUinstall).
   Removed exact generatedSDKbinaries/package+200bytecompiler main.profraw;
   SDK sources/generator, measured minimal/CPU/GPU trees and reports retained.
+- M11 COMPLETE/PUBLISHED: one ready/open PR#25
+  https://github.com/onnxruntime/ort-state/pull/25 on#24
+  base state/m10-package-chain-schema. Qualifiedcommit3e1124c6eb91e0325d58084d742b482d37275248
+  pushed, PRcorrectbase/notdraft verified. H0-H9/allcompletiongates checked;
+  SPEC/TASKS current. No merge/M12. Finalpublicationdocs commit follows.

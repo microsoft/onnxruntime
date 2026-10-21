@@ -1,7 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M10 complete and published for review; M11 validation
-complete/publication in progress; M12-M24 pending.
+**Status:** Approved; M01-M11 complete and published for review; M12-M24 pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -23,7 +22,7 @@ resumed on 2026-10-21 after a compatible toolchain was supplied.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M10 are complete, M11 is in progress and M12-M24 are pending. Check tasks when their
+M01-M11 are complete and M12-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -103,7 +102,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M10 are **complete**; M11 is **in progress**; M12-M24 are **pending**.
+M01-M11 are **complete**; M12-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -117,7 +116,7 @@ M01-M10 are **complete**; M11 is **in progress**; M12-M24 are **pending**.
 | [x] | M08 | Native CUDA KV management / `cuda-kv-cache` | M07 |
 | [x] | M09 | Native CUDA greedy sampling / `cuda-greedy` | M07, M08 |
 | [x] | M10 | Standalone package schema and authoring / `package-schema` | M01, M03 |
-| [ ] | M11 | ORT package-to-chain loading / `package-runtime` | M06, M07, M08, M09, M10 |
+| [x] | M11 | ORT package-to-chain loading / `package-runtime` | M06, M07, M08, M09, M10 |
 | [ ] | M12 | DDIM scheduler and denoising state / `ddim-policy` | M03, M06, M08 |
 | [ ] | M13 | Python API and package parity / `python-api` | M06, M11, M12 |
 | [ ] | M14 | Local Phi-3 package and text demo / `phi3-demo` | M05, M08, M09, M11, M13 |
@@ -2701,12 +2700,14 @@ No PR was merged and M11 has not begun.
 
 ### M11 - ORT package-to-chain loading
 
-**Status:** CPU/GPU qualification verified on 2026-10-21; publication in progress.
+**Status:** Complete; CPU/GPU qualified and published for review on 2026-10-21.
 **Specification:** [Approved Appendix K](SPEC.md#appendix-k-m11-executable-package-chains-approved).
 **Branch/base:** `state/m11-package-chain-loading` on verified M10
 `b03b4c2f72955e869401be4d8eaa277728dc6fa8` / PR #24.
 **Delivery:** ONE independently documented/tested PR, explicitly requested by the
 user. Internal tasks are not an M11a/M11b PR split.
+**PR:** [#25](https://github.com/onnxruntime/ort-state/pull/25), OPEN and ready for
+review, stacked on #24. GPU qualification commit `3e1124c6eb91e0325d58084d742b482d37275248`.
 **Outcome:** Package-built and equivalent programmatic chains share the native
 runtime and C/C++ execution/result surface, including sampling-free prefill and
 an observable sample-only first decode Step.
@@ -2720,7 +2721,7 @@ an observable sample-only first decode Step.
 - [x] Review this plan and obtain separate implementation authorization.
 - [x] Complete native/API/loader/CPU validation tasks.
 - [x] Restore the CUDA prerequisite and pass real GPU qualification.
-- [ ] Pass full new-line coverage/regression/publication gates.
+- [x] Pass full new-line coverage/regression/publication gates.
 
 **Historical GPU blocker:** On 2026-10-20, all eight A100 GPUs were visible, but
 the CUDA13.1/cuDNN installation referenced by both existing GPU build caches was
@@ -2853,7 +2854,7 @@ closure are recorded below.
   and conformance; if implementation changes, measure every new device line.
   Rerun complete focused CPU/plugin native and AutoEP suites; use the documented
   legacy selector rather than claiming an inherited unfiltered legacy pass.
-- [ ] **H9 - Document and publish one PR.** Update public API ownership/Step
+- [x] **H9 - Document and publish one PR.** Update public API ownership/Step
   documentation, ORT package grammar/loading examples, SPEC/TASKS/SCRATCHPAD and
   the exact local build/test/coverage/dispatch/transfer evidence. Preserve the
   repository PR template and required commit co-author trailer. Publish one
@@ -2980,7 +2981,7 @@ tool limitation blocks its gate and must be disclosed with the failed command.
   suites pass with real dispatch/placement/transfer/lifetime evidence.
 - [x] Every new executable production line reaches measured100% across verified
   CPU/plugin/minimal artifacts; device additions independently measured if any.
-- [ ] Documentation/evidence are current and one stacked PR is ready for review.
+- [x] Documentation/evidence are current and one stacked PR is ready for review.
 
 Until every gate passes, M11 is not complete. Approving this plan authorizes
 CPU-first implementation and the declared scope, but does not authorize removing
@@ -3079,8 +3080,8 @@ No toolchain dependency was installed and no GPU test was claimed. Preserve
 this tested CPU checkpoint on the M11 branch, but do not mark M11 complete or
 publish a ready PR until compatible CUDA tooling and all remaining gates pass.
 CPU checkpoint `2f3e6c0237` is committed and pushed on
-`state/m11-package-chain-loading`, stacked on #24. No M11 PR has been created;
-the requested single-PR delivery remains gated on GPU/tooling and737/743 coverage
+`state/m11-package-chain-loading`, stacked on #24. At that checkpoint no M11 PR existed;
+the requested single-PR delivery remained gated on GPU/tooling and737/743 coverage
 closure. Non-measured SDK binaries, generated fixture and frozen header copies
 were cleaned; reproducible sources/logs and measured CPU/minimal artifacts remain.
 
@@ -3184,8 +3185,11 @@ session files. The actual CUDA plugin filename is
 `libonnxruntime_providers_cuda.so`; the first SDK attempt used an incorrect
 `_plugin` suffix and was corrected before successful runs.
 
-All validation gates now pass; H9's single stacked PR is the remaining
-publication step. No M12 work or automatic merge is authorized.
+All validation gates pass. H9 is complete:
+[#25](https://github.com/onnxruntime/ort-state/pull/25) is OPEN, not draft,
+and uses the repository template with exact validation commands/results.
+The base is `state/m10-package-chain-schema` / #24; no extra milestone PR was
+created. No M12 work or automatic merge is authorized.
 Pinned lintrunner/clang-format20.1.8 checks and `git diff --check` pass.
 The initially missing lint adapters were restored from the repository's pinned
 requirements in the existing virtual environment; no GPU tooling was installed
