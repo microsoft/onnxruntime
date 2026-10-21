@@ -2788,13 +2788,38 @@ class TestQMoEWithRouter(unittest.TestCase):
     _graph = TestQMoEInt2PackedOnly._graph
     _session = TestQMoEInt2PackedOnly._session
 
-    def _router_graph(self, weight, **kwargs):
+    def _router_graph(self, weight, *, use_matmul=None, **kwargs):
         model = onnx.load_model_from_string(self._graph(**kwargs))
         model.graph.node[0].op_type = "QMoEWithRouter"
         model.graph.node[0].input[1] = "router_weight"
+        if use_matmul is not None:
+            model.graph.node[0].attribute.append(helper.make_attribute("router_use_matmul", use_matmul))
         del model.graph.input[1]
         model.graph.initializer.append(onnx.numpy_helper.from_array(weight, "router_weight"))
         return model.SerializeToString()
+
+    def test_matmul_projection_exact_parity(self):
+        rng = numpy.random.default_rng(183)
+        weight = rng.normal(0, 0.1, (16, 512)).astype(numpy.float16)
+        fused = self._session(self._router_graph(weight, use_matmul=1), packed_only=True)
+        model = onnx.load_model_from_string(self._graph())
+        del model.graph.input[1]
+        model.graph.initializer.append(onnx.numpy_helper.from_array(weight, "weight"))
+        model.graph.node.insert(0, helper.make_node("Transpose", ["weight"], ["wt"], perm=[1, 0]))
+        model.graph.node.insert(1, helper.make_node("MatMul", ["input", "wt"], ["router_probs"]))
+        reference = self._session(model.SerializeToString(), packed_only=True)
+        x = rng.normal(size=(128, 512)).astype(numpy.float16)
+        for rows in (1, 2, 4, 8, 9, 32, 128):
+            with self.subTest(rows=rows):
+                feed = {"input": x[:rows]}
+                numpy.testing.assert_array_equal(fused.run(None, feed)[0], reference.run(None, feed)[0])
+
+    def test_rejects_invalid_projection_mode(self):
+        with self.assertRaisesRegex(Exception, "router_use_matmul must be 0 or 1"):
+            self._session(
+                self._router_graph(numpy.zeros((16, 512), numpy.float16), use_matmul=2),
+                packed_only=True,
+            )
 
     def test_projection_and_query_shape_parity(self):
         rng = numpy.random.default_rng(182)

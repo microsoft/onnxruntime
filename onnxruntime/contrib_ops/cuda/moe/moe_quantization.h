@@ -35,6 +35,7 @@ class QMoE final : public CudaKernel, public MoEBase {
 
  private:
   bool fuse_router_projection_ = false;
+  bool router_use_matmul_ = false;
   // PrePack helpers - each handles one category of input tensor.
   void PrePackTransposeAndPack(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);

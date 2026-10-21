@@ -266,6 +266,12 @@ REGISTER_KERNEL_TYPED_OP(QMoEWithRouter, MLFloat16)
 
 QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info, GetDeviceProp()) {
   fuse_router_projection_ = op_kernel_info.GetKernelDef().OpName() == "QMoEWithRouter";
+  if (fuse_router_projection_) {
+    const auto router_use_matmul = op_kernel_info.GetAttrOrDefault<int64_t>("router_use_matmul", 0);
+    ORT_ENFORCE(router_use_matmul == 0 || router_use_matmul == 1,
+                "QMoEWithRouter router_use_matmul must be 0 or 1.");
+    router_use_matmul_ = router_use_matmul == 1;
+  }
   enable_kernel_debug_info_ =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>(kEnableQMoEKernelDebugInfo, 0) != 0;
   const auto configured_row_tile_size =
@@ -758,7 +764,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     router_logits = Tensor::Create(
         input->DataType(), TensorShape{input_shape[0], weight_shape[0]},
         router_logits_buffer.get(), input->Location());
-    if (input_shape[0] <= 8) {
+    if (!router_use_matmul_ && input_shape[0] <= 8) {
       ORT_RETURN_IF_ERROR(LaunchQMoERouterProjection(
           reinterpret_cast<const half*>(input->Data<MLFloat16>()),
           reinterpret_cast<const half*>(router_probs->Data<MLFloat16>()),

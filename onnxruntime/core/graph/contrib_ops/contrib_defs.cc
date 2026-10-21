@@ -1519,13 +1519,14 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       )DOC";
 
 static OpSchema QMoESchema(bool with_router) {
-  return OpSchema()
+  auto schema = OpSchema()
         .SetDoc(with_router
                     ? "CUDA FP16 group-128 INT2 MoE with integrated router projection. "
                       "Input 0 is [M,K]; input 1 is a router weight [E,K], not logits. "
                       "Computes FP16 MatMul(input, Transpose(router_weight)) followed by QMoE. "
                       "Decode (M<=8) uses FP32 dot accumulation with fixed per-row reduction order, "
                       "which need not match cuBLAS rounding. Prefill uses the CUDA MatMul implementation. "
+                      "router_use_matmul=1 uses CUDA MatMul for every row count instead. "
                       "Supports symmetric raw INT2 experts with weights_prepacked=0 and standard softmax routing. "
                       "Expert bias input 4 and optional inputs 7-20 must be absent. "
                       "Expert evaluation and routing reuse QMoE kernels; router logits are internal scratch."
@@ -1781,6 +1782,13 @@ static OpSchema QMoESchema(bool with_router) {
                         "Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.")
         .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+  if (with_router) {
+    schema.Attr("router_use_matmul",
+                "Use CUDA MatMul for router projection at every row count (1), or custom decode GEMV "
+                "for M<=8 and CUDA MatMul otherwise (0, default). Numerical results may differ.",
+                AttributeProto::INT, static_cast<int64_t>(0));
+  }
+  return schema;
 }
 
 ONNX_MS_OPERATOR_SET_SCHEMA(QMoE, 1, QMoESchema(false));
