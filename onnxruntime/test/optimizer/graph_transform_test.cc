@@ -5559,6 +5559,42 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusion) {
   ASSERT_TRUE(op_to_count["com.microsoft.FusedMatMul"] == 1);
 }
 
+TEST_F(GraphTransformationTests, TransposeMatmulFusionEmptyReduction) {
+  for (bool batch_transpose_b : {false, true}) {
+    SCOPED_TRACE(batch_transpose_b);
+    auto build_test_case = [batch_transpose_b](ModelTestBuilder& builder) {
+      auto* a = builder.MakeInput<float>(batch_transpose_b ? std::vector<int64_t>{3, 0, 2}
+                                                           : std::vector<int64_t>{0, 3, 2},
+                                         std::vector<float>{});
+      auto* b = builder.MakeInput<float>(batch_transpose_b ? std::vector<int64_t>{0, 3, 2}
+                                                           : std::vector<int64_t>{3, 2, 0},
+                                         std::vector<float>{});
+      auto* at = builder.MakeIntermediate();
+      auto* bt = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput<float>({{3, 2, 2}});
+      builder.AddNode("Transpose", {a}, {at})
+          .AddAttribute("perm", batch_transpose_b ? std::vector<int64_t>{0, 2, 1}
+                                                  : std::vector<int64_t>{1, 2, 0});
+      builder.AddNode("Transpose", {b}, {bt})
+          .AddAttribute("perm", batch_transpose_b ? std::vector<int64_t>{1, 0, 2}
+                                                  : std::vector<int64_t>{0, 2, 1});
+      builder.AddNode("MatMul", {at, bt}, {output});
+    };
+    auto check_fused = [batch_transpose_b](InferenceSessionWrapper& session) {
+      auto counts = CountOpsInGraph(session.GetGraph());
+      ASSERT_EQ(counts["Transpose"], 0);
+      ASSERT_EQ(counts["MatMul"], 0);
+      ASSERT_EQ(counts["com.microsoft.FusedMatMul"], 1);
+      const auto& node = *session.GetGraph().Nodes().begin();
+      EXPECT_EQ(node.GetAttributes().at("transBatchA").i(), batch_transpose_b ? 0 : 1);
+      EXPECT_EQ(node.GetAttributes().at("transBatchB").i(), batch_transpose_b ? 1 : 0);
+    };
+    TransformerTester(build_test_case, check_fused, TransformerLevel::Default,
+                      TransformerLevel::Level2, 13, 0.0, 0.0,
+                      std::make_unique<MatmulTransposeFusion>());
+  }
+}
+
 TEST_F(GraphTransformationTests, TransposeMatmulNoFusionForCpuFp16) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     auto* q = builder.MakeInput<MLFloat16>({{2, 4, 8, 16}});
