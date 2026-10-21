@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "contrib_ops/cuda/math/matmul_block_scaled_fp4_tiling.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime::contrib::cuda {
@@ -76,6 +77,11 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
                                                bool is_bf16,
                                                const cudaDeviceProp& device_prop,
                                                cudaStream_t stream);
+
+// Largest M selected for GEMV dispatch. The tensor-core default is conservative because the
+// crossover with dequantize + cuBLAS depends on the matrix shape; ORT_FP4_GEMV_MAX_M can raise the
+// limit through 64 for tuned workloads. The direct launcher accepts tensor-core cases through 64.
+int MatMulBlockQuantizedFp4WeightGemvMaxM(int k, const cudaDeviceProp& device_prop);
 
 // Repacks the [N, ceil(K/block_size)] row-major E4M3 weight-scale tensor into the swizzled layout
 // the SM120 block-scaled tensor cores expect. b_scale must be sized for the *rounded* dimensions:

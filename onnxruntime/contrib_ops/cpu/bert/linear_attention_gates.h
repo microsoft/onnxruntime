@@ -3,11 +3,14 @@
 
 #pragma once
 
+#include "contrib_ops/cpu/bert/linear_attention_gates_helper.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {
+
+using namespace onnxruntime::contrib::linear_attention_gates_helper;
 
 // decay = decay_scale * Softplus(a + dt_bias), beta = Sigmoid(b).
 template <typename T>
@@ -17,7 +20,7 @@ class LinearAttentionGate final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-// Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate).
+// Y = X * rsqrt(mean(X^2) + epsilon) * scale * gate_activation(gate).
 template <typename T>
 class GatedRMSNorm final : public OpKernel {
  public:
@@ -25,6 +28,7 @@ class GatedRMSNorm final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
+  GatedRMSNormActivation activation_;
   float epsilon_;
 };
 

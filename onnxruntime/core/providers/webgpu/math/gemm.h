@@ -60,11 +60,11 @@ class Gemm final : public WebGpuKernel {
   };
 
   Gemm(const OpKernelInfo& info) : WebGpuKernel(info) {
-    int64_t transA_temp;
+    int64_t transA_temp = 0;
     info.GetAttrOrDefault("transA", &transA_temp, static_cast<int64_t>(0));
     transA_ = transA_temp != 0;
 
-    int64_t transB_temp;
+    int64_t transB_temp = 0;
     info.GetAttrOrDefault("transB", &transB_temp, static_cast<int64_t>(0));
     transB_ = transB_temp != 0;
 

@@ -5,7 +5,7 @@
 # Build onnxruntime-gpu python package with CUDA 12.x & CUDNN 9.x for python 3.12 in Ubuntu 24.04.
 # If memory is less than 64GB, you may change "--parallel" to "--parallel 4" to avoid out-of-memory error.
 
-ARG CUDA_VERSION=12.6.1
+ARG CUDA_VERSION=12.8.1
 ARG CUDNN_VERSION=9.5.0.50
 ARG OS=ubuntu24.04
 
@@ -14,7 +14,7 @@ ARG CUDA_VERSION
 ARG CUDNN_VERSION
 # Adjust as needed 
 # Check your CUDA arch: https://developer.nvidia.com/cuda-gpus
-ARG CMAKE_CUDA_ARCHITECTURES="75;80;90"
+ARG CMAKE_CUDA_ARCHITECTURES="75;80;90;120"
 
 ENV DEBIAN_FRONTEND=noninteractive
 

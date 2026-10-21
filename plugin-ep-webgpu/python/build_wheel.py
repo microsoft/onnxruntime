@@ -25,22 +25,10 @@ MIN_ONNXRUNTIME_VERSION_FILE = SCRIPT_DIR.parent / "MIN_ONNXRUNTIME_VERSION"
 
 # Import the shared template helper from _packaging_utils.py in the parent directory.
 sys.path.insert(0, str(SCRIPT_DIR.parent))
-from _packaging_utils import gen_file_from_template  # noqa: E402, I001  (path setup must precede import)
-
-
-# Patterns for binaries to include in the package
-BINARY_PATTERNS = [
-    "onnxruntime_providers_webgpu.dll",
-    "libonnxruntime_providers_webgpu.so",
-    "libonnxruntime_providers_webgpu.dylib",
-    # DXC dependencies (Windows)
-    "dxil.dll",
-    "dxcompiler.dll",
-    # Dawn shared library (if built as shared)
-    "webgpu_dawn.dll",
-    "libwebgpu_dawn.so",
-    "libwebgpu_dawn.dylib",
-]
+from _packaging_utils import (  # noqa: E402  (path setup must precede import)
+    gen_file_from_template,
+    get_plugin_binaries,
+)
 
 # Libraries to exclude from auditwheel bundling (user-provided drivers)
 AUDITWHEEL_EXCLUDE = [
@@ -48,8 +36,17 @@ AUDITWHEEL_EXCLUDE = [
 ]
 
 
-def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str):
+def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str, *, use_dawn_agility_sdk: bool = False):
     """Copy the package source tree into staging_dir, copy binaries, and stamp the version."""
+    target_platform = platform.system()
+    if use_dawn_agility_sdk and target_platform != "Windows":
+        raise ValueError("--use-dawn-agility-sdk is only supported for Windows wheels")
+
+    required_binaries = get_plugin_binaries(
+        target_platform,
+        include_agility_sdk_files=use_dawn_agility_sdk,
+    )
+
     staging_dir.mkdir(parents=True, exist_ok=True)
 
     # Copy only the files needed to build the wheel
@@ -65,18 +62,13 @@ def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str):
             raise FileNotFoundError(f"Expected license file not found: {src}")
         shutil.copy2(src, staging_dir / license_filename)
 
-    # Copy plugin binaries into the package directory
-    # Note: The binaries are assumed to be directly under `binary_dir`.
     package_dir = staging_dir / "onnxruntime_ep_webgpu"
-    copied = []
-    for pattern in BINARY_PATTERNS:
-        for src in binary_dir.glob(pattern):
-            dst = package_dir / src.name
-            print(f"Copying {src} -> {dst}")
-            shutil.copy2(src, dst)
-            copied.append(dst)
-    if not copied:
-        raise FileNotFoundError(f"No plugin binaries found in {binary_dir}. Looked for: {BINARY_PATTERNS}")
+    for relative_path in required_binaries:
+        src = binary_dir / relative_path
+        dst = package_dir / relative_path
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Copying {src} -> {dst}")
+        shutil.copy2(src, dst)
 
     # Substitute the minimum ORT version into the staged README in place.
     min_ort_version = MIN_ONNXRUNTIME_VERSION_FILE.read_text(encoding="utf-8").strip()
@@ -167,6 +159,11 @@ def main():
     )
     parser.add_argument("--version", required=True, help="Package version string (PEP 440 format)")
     parser.add_argument("--output_dir", required=True, type=Path, help="Directory to place the built wheel")
+    parser.add_argument(
+        "--use-dawn-agility-sdk",
+        action="store_true",
+        help="Require both D3D12 Agility SDK DLLs in the pre-built input (used by Windows release pipelines).",
+    )
     args = parser.parse_args()
 
     if not args.binary_dir.is_dir():
@@ -176,7 +173,12 @@ def main():
         staging_dir = Path(tmp) / "package"
         wheel_dir = Path(tmp) / "wheels"
 
-        prepare_staging_dir(staging_dir, args.binary_dir, args.version)
+        prepare_staging_dir(
+            staging_dir,
+            args.binary_dir,
+            args.version,
+            use_dawn_agility_sdk=args.use_dawn_agility_sdk,
+        )
         build_wheel(staging_dir, wheel_dir)
         auditwheel_repair(wheel_dir)
         collect_wheels(wheel_dir, args.output_dir)

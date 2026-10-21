@@ -10,7 +10,9 @@ namespace onnxruntime::llm {
 namespace kernels {
 namespace fpA_intB_gemv {
 
-template <bool is_zero_point_int4_packed, typename T, typename Z>
+// ``ZeroPointBits`` is 0 when each zero point occupies a whole ``Z`` element, or the packed
+// element width (4 or 2) when several share a uint8.
+template <int ZeroPointBits, typename T, typename Z>
 void launch_scaled_zero_point_kernel(
     cudaStream_t stream,
     const Z* zero_point,
@@ -27,6 +29,13 @@ void launch_transpose_scale_kernel(
 
 // Transpose uint4 weight matrix and add default zero points then pack as int8.
 void unpack_uint4_transposed_to_int8_direct_cuda(cudaStream_t stream,
+                                                 void* packed_transposed_weight,
+                                                 const void* packed_weight,
+                                                 int n,
+                                                 int k);
+
+// Transpose uint2 weight matrix and subtract the default zero point then repack as 2-bit.
+void unpack_uint2_transposed_to_int8_direct_cuda(cudaStream_t stream,
                                                  void* packed_transposed_weight,
                                                  const void* packed_weight,
                                                  int n,

@@ -1453,8 +1453,10 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryFileNotExistTest) {
 
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options, &so)));
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
-  // Verify the return status with code INVALID_GRAPH
-  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
+  const auto status = session_object.Initialize();
+  ASSERT_EQ(status.Code(), common::StatusCode::INVALID_GRAPH);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("session.model_external_initializers_file_folder_path"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("ep.context_file_path"));
 }
 
 // Create a model with EPContext node. Set the node property ep_cache_context to empty string

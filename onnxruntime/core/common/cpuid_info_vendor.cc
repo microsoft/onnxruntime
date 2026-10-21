@@ -11,6 +11,8 @@
 #include "cpuinfo.h"
 #endif
 
+#include "core/common/pci_vendor_ids.h"
+
 namespace {
 
 #if !defined(CPUINFO_SUPPORTED)
@@ -192,14 +194,16 @@ struct CpuVendorInfo {
 constexpr auto kUnknownCpuVendorInfo = CpuVendorInfo{cpuinfo_vendor_unknown, "unknown", 0x0000};
 
 constexpr std::array kCpuVendorInfos{
-    CpuVendorInfo{cpuinfo_vendor_amd, "AMD", 0x1022},
-    CpuVendorInfo{cpuinfo_vendor_intel, "Intel", 0x8086},
+    CpuVendorInfo{cpuinfo_vendor_amd, "AMD", pci_vendor_ids::kAmd},  // AMD CPU/NPU ID. GPUs use kAmdAti.
+    CpuVendorInfo{cpuinfo_vendor_intel, "Intel", pci_vendor_ids::kIntel},
+    // Use the ACPI vendor identifier 'QCOM' (0x4D4F4351), not a Qualcomm PCI ID.
+    // Windows device discovery encodes VEN_QCOM the same way, and the QNN EP matches this value.
     CpuVendorInfo{cpuinfo_vendor_qualcomm, "Qualcomm", uint32_t{'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24)}},
-    CpuVendorInfo{cpuinfo_vendor_nvidia, "Nvidia", 0x10DE},
-    CpuVendorInfo{cpuinfo_vendor_apple, "Apple", 0x106B},
-    CpuVendorInfo{cpuinfo_vendor_arm, "ARM", 0x13B5},
-    CpuVendorInfo{cpuinfo_vendor_ibm, "IBM", 0x1014},
-    CpuVendorInfo{cpuinfo_vendor_huawei, "HiSilicon", 0x19E5},
+    CpuVendorInfo{cpuinfo_vendor_nvidia, "Nvidia", pci_vendor_ids::kNvidia},
+    CpuVendorInfo{cpuinfo_vendor_apple, "Apple", pci_vendor_ids::kApple},
+    CpuVendorInfo{cpuinfo_vendor_arm, "ARM", pci_vendor_ids::kArm},
+    CpuVendorInfo{cpuinfo_vendor_ibm, "IBM", pci_vendor_ids::kIbm},
+    CpuVendorInfo{cpuinfo_vendor_huawei, "HiSilicon", pci_vendor_ids::kHuawei},
     // TODO add more as needed
 };
 

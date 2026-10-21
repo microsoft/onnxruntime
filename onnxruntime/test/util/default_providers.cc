@@ -400,6 +400,22 @@ std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const Con
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithTestOptions(
+    const WebGpuExecutionProviderTestOptions& test_options) {
+  return WebGpuExecutionProviderWithTestOptions(ConfigOptions{}, test_options);
+}
+
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithTestOptions(
+    const ConfigOptions& config_options, const WebGpuExecutionProviderTestOptions& test_options) {
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+  return WebGpuProviderFactoryCreator::CreateForTesting(config_options, test_options)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(config_options);
+  ORT_UNUSED_PARAMETER(test_options);
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 #ifdef USE_CANN
   OrtCANNProviderOptions provider_options{};

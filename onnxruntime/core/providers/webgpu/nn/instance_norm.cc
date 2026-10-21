@@ -73,7 +73,8 @@ Status ComputeChannelScaleAndShift(ComputeContext& context, const Tensor* input,
   TensorShape reduced_output_shape(reduced_output_shape_vector);
   *output = context.CreateGPUTensor(input->DataType(), output_shape);
   ComputeChannelScaleShiftProgram program = ComputeChannelScaleShiftProgram(components, epsilon, workgroup_size);
-  program.CacheHint(components, units_of_work)
+  // Match the epsilon literal embedded in GenerateShaderCode.
+  program.CacheHint(components, units_of_work, std::to_string(epsilon))
       .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, components},
                   {scale, ProgramTensorMetadataDependency::TypeAndRank},
                   {bias, ProgramTensorMetadataDependency::TypeAndRank}})

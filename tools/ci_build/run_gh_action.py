@@ -7,6 +7,9 @@ import zipfile
 from pathlib import Path
 
 import requests
+import truststore
+
+truststore.inject_into_ssl()
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_DIR = (SCRIPT_DIR / ".." / "..").resolve()
@@ -14,6 +17,7 @@ REPO_DIR = (SCRIPT_DIR / ".." / "..").resolve()
 sys.path.insert(0, str(REPO_DIR / "tools" / "python"))
 
 from util import run  # noqa: E402
+from vcpkg_tool_info import get_vcpkg_release_tag, get_vcpkg_sha512  # noqa: E402
 
 # Hash structure for platform-specific binaries
 CMAKE_HASHES = {
@@ -85,8 +89,8 @@ def main() -> None:
     action_inputs = {
         "INPUT_CMAKE-VERSION": "3.31.8",
         "INPUT_CMAKE-HASH": cmake_hash,
-        "INPUT_VCPKG-VERSION": "2025.08.27",
-        "INPUT_VCPKG-HASH": "9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079",
+        "INPUT_VCPKG-VERSION": get_vcpkg_release_tag(),
+        "INPUT_VCPKG-HASH": get_vcpkg_sha512(),
         "INPUT_ADD-CMAKE-TO-PATH": "true",
     }
 

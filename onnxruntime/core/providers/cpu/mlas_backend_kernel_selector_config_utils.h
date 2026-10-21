@@ -18,6 +18,8 @@ namespace onnxruntime {
 inline void SetupMlasBackendKernelSelectorFromConfigOptions(MLAS_BACKEND_KERNEL_SELECTOR_CONFIG& config,
                                                             const ConfigOptions& config_options) {
   config.use_kleidiai = config_options.GetConfigOrDefault(kOrtSessionOptionsMlasDisableKleidiAi, "0") != "1";
+  config.nchwc_depthwise_sliding_kernel =
+      config_options.GetConfigOrDefault(kOrtSessionOptionsMlasNchwcDepthwiseSliding, "1") != "0";
 
   if (auto conv_igemm_max_work =
           config_options.GetConfigEntry(kOrtSessionOptionsMlasKleidiAiConvIgemmMaxWork)) {

@@ -17,6 +17,9 @@ JSEP is in maintenance mode: **bug fixes and security fixes only.**
 | New operator | The native WebGPU EP — `onnxruntime/core/providers/webgpu/` or `onnxruntime/contrib_ops/webgpu/` |
 | New feature, or performance work | The native WebGPU EP |
 
+For a correctness or security fix to a JSEP WebGPU kernel, check the corresponding native WebGPU EP implementation
+and include the equivalent fix and regression coverage when the same defect applies.
+
 Note that [`js/web/docs/webgpu-operators.md`](../js/web/docs/webgpu-operators.md) lists **JSEP** operators despite
 its name, so it cannot be used to check what the native WebGPU EP already covers.
 

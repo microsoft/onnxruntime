@@ -13,9 +13,8 @@ namespace onnxruntime {
 class WebGpuEpFactory : public EpFactoryInternalImpl {
  public:
   // allow_virtual_devices is captured at construction (from the OrtEnv config "allow_virtual_devices")
-  // rather than queried from the OrtEnv singleton inside GetSupportedDevices: internal EPs are
-  // registered while the OrtEnv creation mutex is already held on this thread, so querying the singleton
-  // there would self-deadlock.
+  // rather than queried from the OrtEnv singleton inside GetSupportedDevices: internal EPs are registered
+  // from Environment::Create, before OrtEnv publishes p_instance_, so there is no instance to find.
   explicit WebGpuEpFactory(bool allow_virtual_devices)
       : EpFactoryInternalImpl(kWebGpuExecutionProvider, "Microsoft", OrtDevice::VendorIds::MICROSOFT),
         allow_virtual_devices_{allow_virtual_devices} {

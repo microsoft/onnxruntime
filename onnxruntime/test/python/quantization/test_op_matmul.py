@@ -5,7 +5,9 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
@@ -13,7 +15,9 @@ from numpy.testing import assert_almost_equal
 from onnx import TensorProto, helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
+from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail
+from onnxruntime.capi.onnxruntime_pybind11_state import NotImplemented as OrtNotImplemented
 from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, quantize_dynamic, quantize_static
 from onnxruntime.quantization.calibrate import entropy
 
@@ -31,6 +35,65 @@ def skip_if_new_opset_exception_raised(func):
 
 
 class TestOpMatMul(unittest.TestCase):
+    def test_quantize_matmul_large_finite_range(self):
+        for dtype, tensor_type, magnitude in (
+            (np.float16, TensorProto.FLOAT16, 40000),
+            (np.float32, TensorProto.FLOAT, 3e38),
+        ):
+            for per_channel in (False, True):
+                with self.subTest(dtype=dtype, per_channel=per_channel), tempfile.TemporaryDirectory() as directory:
+                    weights = np.array([[-magnitude, -magnitude / 2], [magnitude, magnitude / 2]], dtype=dtype)
+                    inputs = {"input": np.eye(2, dtype=dtype)}
+                    model = helper.make_model(
+                        helper.make_graph(
+                            [helper.make_node("MatMul", ["input", "weight"], ["output"])],
+                            "large_finite_range",
+                            [helper.make_tensor_value_info("input", tensor_type, [2, 2])],
+                            [helper.make_tensor_value_info("output", tensor_type, [2, 2])],
+                            [onnx.numpy_helper.from_array(weights, "weight")],
+                        ),
+                        opset_imports=[helper.make_opsetid("", 21)],
+                        ir_version=10,
+                    )
+                    options = SessionOptions()
+                    options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
+                    options.intra_op_num_threads = 1
+                    if dtype == np.float16:
+                        # Calibration also requires a CPU kernel for the original FP16 MatMul.
+                        try:
+                            InferenceSession(model.SerializeToString(), options, providers=["CPUExecutionProvider"])
+                        except OrtNotImplemented as e:
+                            if "Could not find an implementation for MatMul" in str(e):
+                                self.skipTest("CPU FP16 MatMul kernel is unavailable.")
+                            raise
+                    output_path = Path(directory) / "quantized.onnx"
+                    quantize_static(
+                        model,
+                        output_path,
+                        TestDataFeeds([inputs]),
+                        quant_format=QuantFormat.QDQ,
+                        activation_type=QuantType.QUInt8,
+                        weight_type=QuantType.QInt8,
+                        per_channel=per_channel,
+                        extra_options={"WeightSymmetric": True},
+                    )
+                    quantized = onnx.load(output_path)
+                    onnx.checker.check_model(quantized)
+                    scales = [
+                        onnx.numpy_helper.to_array(t) for t in quantized.graph.initializer if t.name.endswith("_scale")
+                    ]
+                    self.assertTrue(scales)
+                    for scale in scales:
+                        self.assertTrue(np.isfinite(scale).all())
+                        self.assertTrue((scale > 0).all())
+
+                    result = InferenceSession(str(output_path), options, providers=["CPUExecutionProvider"]).run(
+                        None, inputs
+                    )[0]
+                    self.assertTrue(np.isfinite(result).all())
+                    # Identity input preserves the weights, up to INT8 quantization error.
+                    np.testing.assert_allclose(result.astype(np.float64), weights.astype(np.float64), rtol=0.02)
+
     def test_entropy(self):
         try:
             from scipy.stats import entropy as scipy_entropy  # noqa: PLC0415

@@ -165,6 +165,63 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtModelCompilationOptions_setEpConte
 
 /*
  * Class:     ai_onnxruntime_OrtModelCompilationOptions
+ * Method:    setEpContextDataWriteCallback
+ * Signature: (JJJLai/onnxruntime/OrtModelCompilationOptions/EpContextDataWriteCallback;)J
+ */
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtModelCompilationOptions_setEpContextDataWriteCallback
+    (JNIEnv* jniEnv, jclass jclazz, jlong apiHandle, jlong compileApiHandle,
+     jlong nativeHandle, jobject callback) {
+  (void)jclazz;
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  const OrtCompileApi* compileApi = (const OrtCompileApi*)compileApiHandle;
+  EpContextDataCallbackState* callbackState = createEpContextDataCallbackState(
+      jniEnv, api, callback, "write", "(Ljava/lang/String;[B)V", 0);
+  if (callbackState == NULL) {
+    return 0;
+  }
+
+  OrtStatus* status = compileApi->ModelCompilationOptions_SetEpContextDataWriteFunc(
+      (OrtModelCompilationOptions*)nativeHandle, javaEpContextDataWriteCallback, callbackState);
+  if (status != NULL) {
+    releaseEpContextDataCallbackState(jniEnv, callbackState);
+    checkOrtStatus(jniEnv, api, status);
+    return 0;
+  }
+
+  return (jlong)callbackState;
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtModelCompilationOptions
+ * Method:    clearEpContextDataWriteCallback
+ * Signature: (JJJ)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtModelCompilationOptions_clearEpContextDataWriteCallback
+    (JNIEnv* jniEnv, jclass jclazz, jlong apiHandle, jlong compileApiHandle,
+     jlong nativeHandle) {
+  (void)jclazz;
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  const OrtCompileApi* compileApi = (const OrtCompileApi*)compileApiHandle;
+  checkOrtStatus(
+      jniEnv, api,
+      compileApi->ModelCompilationOptions_SetEpContextDataWriteFunc(
+          (OrtModelCompilationOptions*)nativeHandle, NULL, NULL));
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtModelCompilationOptions
+ * Method:    releaseEpContextDataCallback
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtModelCompilationOptions_releaseEpContextDataCallback
+    (JNIEnv* jniEnv, jclass jclazz, jlong callbackHandle) {
+  (void)jclazz;
+  releaseEpContextDataCallbackState(
+      jniEnv, (EpContextDataCallbackState*)callbackHandle);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtModelCompilationOptions
  * Method:    setCompilationFlags
  * Signature: (JJJI)V
  */

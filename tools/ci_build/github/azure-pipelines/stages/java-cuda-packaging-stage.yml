@@ -17,12 +17,12 @@ stages:
       - input: pipelineArtifact
         artifactName: drop-onnxruntime-java-linux-x64-tensorrt
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
-        
+
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64
         artifactName: onnxruntime-java-gpu
-    pool: 'onnxruntime-Win-CPU-VS2022-Latest'
+    pool: 'onnxruntime-Win-CPU-2022'
     dependsOn: []
     condition: succeeded()
     steps:

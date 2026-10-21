@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cfloat>  // FLT_MAX
 #include <cuda_fp16.h>
+#include <limits>
 #include <type_traits>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
@@ -12,7 +13,9 @@
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
+#include "contrib_ops/cuda/bert/group_query_attention_qdq.cuh"
 #include "contrib_ops/cuda/bert/xqa/xqa_paged_loader.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
@@ -23,6 +26,121 @@ using namespace onnxruntime::cuda;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+__global__ void SanitizeBlockTableKernel(const int32_t* block_table, int32_t* sanitized_block_table,
+                                         size_t element_count, int num_blocks) {
+  const size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < element_count) {
+    const int32_t block_id = block_table[index];
+    sanitized_block_table[index] = block_id >= -1 && block_id < num_blocks ? block_id : -1;
+  }
+}
+
+Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_block_table,
+                                size_t element_count, int num_blocks, cudaStream_t stream) {
+  if (element_count == 0) {
+    return Status::OK();
+  }
+
+  if (element_count > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "block_table element count exceeds the CUDA kernel indexing limit.");
+  }
+  constexpr int kThreadsPerBlock = 256;
+  const size_t blocks = (element_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
+  SanitizeBlockTableKernel<<<static_cast<unsigned int>(blocks), kThreadsPerBlock, 0, stream>>>(
+      block_table, sanitized_block_table, element_count, num_blocks);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+__global__ void PrepareCudnnBlockTableKernel(
+    const int32_t* block_table, int32_t* cudnn_block_table,
+    const int32_t* cumulative_seqlens_kv, int32_t* cudnn_seqlens_kv,
+    int32_t* sequence_validity, int batch_size,
+    int max_num_blocks_per_seq, int block_size) {
+  for (int batch = blockIdx.x; batch < batch_size; batch += gridDim.x) {
+    const int row_offset = batch * max_num_blocks_per_seq;
+    if (threadIdx.x == 0) {
+      const int sequence_length =
+          cumulative_seqlens_kv[batch + 1] - cumulative_seqlens_kv[batch];
+      const int live_blocks = (sequence_length + block_size - 1) / block_size;
+      const int last_block_tokens = sequence_length % block_size;
+      int mapped_blocks = 0;
+      int mapped_length = 0;
+      for (int block = 0; block < live_blocks; ++block) {
+        const int block_id = block_table[row_offset + block];
+        if (block_id >= 0) {
+          cudnn_block_table[row_offset + mapped_blocks++] = block_id;
+          mapped_length +=
+              block + 1 == live_blocks && last_block_tokens != 0
+                  ? last_block_tokens
+                  : block_size;
+        }
+      }
+      for (int block = mapped_blocks; block < max_num_blocks_per_seq; ++block) {
+        cudnn_block_table[row_offset + block] = 0;
+      }
+      cudnn_seqlens_kv[batch] = mapped_length;
+      if (mapped_length == 0) {
+        sequence_validity[batch] = 0;
+      }
+    }
+  }
+}
+
+Status LaunchPrepareCudnnBlockTable(
+    const int32_t* block_table, int32_t* cudnn_block_table,
+    const int32_t* cumulative_seqlens_kv, int32_t* cudnn_seqlens_kv,
+    int32_t* sequence_validity, size_t element_count, int batch_size,
+    int max_num_blocks_per_seq, int block_size,
+    cudaStream_t stream) {
+  ORT_RETURN_IF_NOT(
+      element_count <= static_cast<size_t>(std::numeric_limits<int32_t>::max()),
+      "block_table element count exceeds the CUDA kernel indexing limit.");
+  if (element_count == 0) {
+    return Status::OK();
+  }
+  constexpr int kMaxBlocks = 65535;
+  const int blocks = std::min(batch_size, kMaxBlocks);
+  PrepareCudnnBlockTableKernel<<<blocks, 1, 0, stream>>>(
+      block_table, cudnn_block_table, cumulative_seqlens_kv,
+      cudnn_seqlens_kv, sequence_validity, batch_size,
+      max_num_blocks_per_seq, block_size);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template <typename T>
+__global__ void MaskInvalidSequenceOutputs(
+    T* output, const int32_t* sequence_validity,
+    const int32_t* cumulative_seqlens_q, int batch_size, int v_hidden_size) {
+  for (int batch = blockIdx.x; batch < batch_size; batch += gridDim.x) {
+    if (sequence_validity[batch] != 0) {
+      continue;
+    }
+
+    const int64_t query_start = cumulative_seqlens_q[batch];
+    const int64_t query_length = cumulative_seqlens_q[batch + 1] - query_start;
+    const int64_t element_count = query_length * v_hidden_size;
+    for (int64_t offset = threadIdx.x; offset < element_count; offset += blockDim.x) {
+      output[query_start * v_hidden_size + offset] = static_cast<T>(0.0f);
+    }
+  }
+}
+
+template <typename T>
+Status LaunchMaskInvalidSequenceOutputs(
+    T* output, const int32_t* sequence_validity,
+    const int32_t* cumulative_seqlens_q, int batch_size,
+    int v_hidden_size, cudaStream_t stream) {
+  constexpr int kThreadsPerBlock = 256;
+  constexpr int kMaxBlocks = 65535;
+  if (batch_size > 0 && v_hidden_size > 0) {
+    const int blocks = std::min(batch_size, kMaxBlocks);
+    MaskInvalidSequenceOutputs<<<blocks, kThreadsPerBlock, 0, stream>>>(
+        output, sequence_validity, cumulative_seqlens_q, batch_size, v_hidden_size);
+  }
+  return CUDA_CALL(cudaGetLastError());
+}
 
 ////////// Quantized paged KV cache helpers
 //
@@ -42,13 +160,16 @@ template <typename TCACHE>
 struct IsQuantizedCache : std::false_type {};
 template <>
 struct IsQuantizedCache<int8_t> : std::true_type {};
+#ifdef USE_INT4_KV_CACHE
+template <>
+struct IsQuantizedCache<uint8_t> : std::true_type {};
+#endif
 #if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
 template <>
 struct IsQuantizedCache<Float8E4M3FN> : std::true_type {};
 #endif
 
-// PER_CHANNEL scales are indexed by (kv_head * head_size + channel); PER_TENSOR uses scale[0].
-// `channel_index` is that flattened kv-hidden offset.
+// PER_CHANNEL uses the flattened kv-hidden channel_index; PER_TENSOR uses scale[0].
 __device__ __forceinline__ float GetCacheScale(const float* __restrict__ scale, const int channel_index,
                                                const bool per_channel) {
   if (scale == nullptr) {
@@ -60,13 +181,12 @@ __device__ __forceinline__ float GetCacheScale(const float* __restrict__ scale, 
 template <typename T, typename TCACHE>
 __device__ __forceinline__ TCACHE QuantizeToCache(const T value, const float scale) {
   if constexpr (std::is_same<TCACHE, int8_t>::value) {
-    const float inv_scale = (scale == 0.0f) ? 0.0f : (1.0f / scale);
-    const int32_t q = static_cast<int32_t>(rintf(static_cast<float>(value) * inv_scale));
-    return static_cast<int8_t>(max(kPagedInt8Min, min(kPagedInt8Max, q)));
+    const float scaled = scale == 0.0f ? 0.0f : static_cast<float>(value) / scale;
+    const float clamped = fminf(static_cast<float>(kPagedInt8Max), fmaxf(static_cast<float>(kPagedInt8Min), scaled));
+    return static_cast<int8_t>(__float2int_rn(clamped));
 #if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
   } else if constexpr (std::is_same<TCACHE, Float8E4M3FN>::value) {
-    const float inv_scale = (scale == 0.0f) ? 0.0f : (1.0f / scale);
-    const float v = static_cast<float>(value) * inv_scale;
+    const float v = scale == 0.0f ? 0.0f : static_cast<float>(value) / scale;
     return Float8E4M3FN(fmaxf(-kPagedFp8E4M3Max, fminf(kPagedFp8E4M3Max, v)));
 #endif
   } else {
@@ -84,6 +204,16 @@ __device__ __forceinline__ T DequantizeFromCache(const TCACHE value, const float
 #endif
   } else {
     return static_cast<T>(value);
+  }
+}
+
+template <typename TCACHE>
+__device__ __forceinline__ float ReadPagedCache(const TCACHE* cache, int64_t logical_index) {
+  if constexpr (std::is_same_v<TCACHE, uint8_t>) {
+    const uint8_t packed = cache[logical_index / 2];
+    return static_cast<float>(((packed >> ((logical_index & 1) * 4)) & 15) + kInt4Min);
+  } else {
+    return DequantizeFromCache<float, TCACHE>(cache[logical_index], 1.0f);
   }
 }
 
@@ -323,50 +453,136 @@ Status LaunchQkNormRotaryKernel(cudaStream_t stream, T* output, const T* input, 
   return CUDA_CALL(cudaGetLastError());
 }
 
-// Single-block inclusive scan over the per-sequence KV lengths. One block loops over the batch in
-// kBlockSize-sized tiles carrying a running total, so there is no cap on batch_size (the previous
-// implementation launched independent blocks whose cub::BlockScan did not compose, which silently
-// produced wrong offsets past 256 concurrent sequences).
-template <int kBlockSize>
-__global__ void GetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
-                                       const int32_t* past_seqlens, const int batch_size) {
-  typedef cub::BlockScan<int, kBlockSize> BlockScan;
-  __shared__ typename BlockScan::TempStorage temp_storage;
-  __shared__ int running_total;
-
-  if (threadIdx.x == 0) {
-    cumulative_seqlens_kv[0] = 0;
-    running_total = 0;
+struct MaxInt32 {
+  __host__ __device__ __forceinline__ int32_t operator()(int32_t lhs, int32_t rhs) const {
+    return lhs > rhs ? lhs : rhs;
   }
-  __syncthreads();
+};
 
-  for (int base = 0; base < batch_size; base += kBlockSize) {
-    const int id = base + static_cast<int>(threadIdx.x);
-    // Sum past_seqlens to the new sequence length (which we get by subtracting cumulative_seqlens_q),
-    // then inclusive-scan across present sequence lengths.
-    const int length = (id < batch_size)
-                           ? past_seqlens[id] + cumulative_seqlens_q[id + 1] - cumulative_seqlens_q[id]
-                           : 0;
-    int prefix = 0;
-    int aggregate = 0;
-    BlockScan(temp_storage).InclusiveSum(length, prefix, aggregate);
-    if (id < batch_size) {
-      cumulative_seqlens_kv[id + 1] = running_total + prefix;
-    }
-    __syncthreads();  // all reads of running_total and of temp_storage are done
-    if (threadIdx.x == 0) {
-      running_total += aggregate;
-    }
-    __syncthreads();  // running_total visible, temp_storage safe to reuse
+struct SaturatingAddInt32 {
+  __host__ __device__ __forceinline__ int32_t operator()(int32_t lhs, int32_t rhs) const {
+    const int64_t sum = static_cast<int64_t>(lhs) + rhs;
+    return sum < INT32_MAX ? static_cast<int32_t>(sum) : INT32_MAX;
+  }
+};
+
+__global__ void ClampCumulativeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
+                                               const int32_t* cumulative_seqlens_q,
+                                               int batch_size,
+                                               int token_count) {
+  const int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index > batch_size) {
+    return;
+  }
+
+  if (index == 0) {
+    sanitized_cumulative_seqlens_q[index] = 0;
+  } else if (index == batch_size) {
+    sanitized_cumulative_seqlens_q[index] = token_count;
+  } else {
+    sanitized_cumulative_seqlens_q[index] = min(token_count, max(0, cumulative_seqlens_q[index]));
   }
 }
 
-Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
-                                    const int32_t* past_seqlens, const int batch_size, cudaStream_t stream) {
-  constexpr int kThreads = 256;
-  GetCumulativeSeqlensKV<kThreads><<<1, kThreads, 0, stream>>>(cumulative_seqlens_kv, cumulative_seqlens_q,
-                                                               past_seqlens, batch_size);
-  return CUDA_CALL(cudaGetLastError());
+__global__ void SanitizePastSequenceLengths(int32_t* sanitized_past_seqlens,
+                                            int32_t* sequence_validity,
+                                            int32_t* cumulative_seqlens_kv,
+                                            const int32_t* sanitized_cumulative_seqlens_q,
+                                            const int32_t* past_seqlens,
+                                            int batch_size,
+                                            int max_num_blocks_per_seq,
+                                            int block_size) {
+  const int b = blockIdx.x * blockDim.x + threadIdx.x;
+  if (b < batch_size) {
+    const int32_t query_length =
+        sanitized_cumulative_seqlens_q[b + 1] - sanitized_cumulative_seqlens_q[b];
+    const int64_t mapped_capacity = static_cast<int64_t>(max_num_blocks_per_seq) * block_size;
+    const int64_t available_past_capacity = mapped_capacity - query_length;
+    const int64_t max_past_length = available_past_capacity > 0 ? available_past_capacity : 0;
+    const int64_t input_past_length = past_seqlens[b];
+    if (query_length > mapped_capacity ||
+        input_past_length < 0 || input_past_length > max_past_length) {
+      sanitized_past_seqlens[b] = 0;
+      sequence_validity[b] = 0;
+      cumulative_seqlens_kv[b + 1] = 0;
+      if (b == 0) {
+        cumulative_seqlens_kv[0] = 0;
+      }
+      return;
+    }
+    sequence_validity[b] = 1;
+    const int64_t bounded_past_length =
+        input_past_length;
+    sanitized_past_seqlens[b] = static_cast<int32_t>(bounded_past_length);
+
+    const int64_t uncapped_kv_length = bounded_past_length + query_length;
+    const int64_t kv_length = uncapped_kv_length < mapped_capacity ? uncapped_kv_length : mapped_capacity;
+    cumulative_seqlens_kv[b + 1] =
+        static_cast<int32_t>(kv_length < INT32_MAX ? kv_length : INT32_MAX);
+
+    if (b == 0) {
+      cumulative_seqlens_kv[0] = 0;
+    }
+  }
+}
+
+Status GetSanitizeSequenceLengthsWorkspaceSize(int batch_size,
+                                               size_t& workspace_bytes,
+                                               cudaStream_t stream) {
+  if (batch_size <= 0 || batch_size > (INT32_MAX - 1) / 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "batch_size exceeds the sequence sanitizer indexing limit.");
+  }
+  const int element_count = batch_size + 1;
+  int32_t* placeholder = nullptr;
+  size_t max_scan_bytes = 0;
+  size_t sum_scan_bytes = 0;
+  CUDA_RETURN_IF_ERROR(cub::DeviceScan::InclusiveScan(
+      nullptr, max_scan_bytes, placeholder, placeholder, MaxInt32{}, element_count, stream));
+  CUDA_RETURN_IF_ERROR(cub::DeviceScan::InclusiveScan(
+      nullptr, sum_scan_bytes, placeholder, placeholder, SaturatingAddInt32{}, element_count, stream));
+  workspace_bytes = std::max(max_scan_bytes, sum_scan_bytes);
+  return Status::OK();
+}
+
+Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
+                                     int32_t* sanitized_past_seqlens,
+                                     int32_t* sequence_validity,
+                                     int32_t* cumulative_seqlens_kv,
+                                     const int32_t* cumulative_seqlens_q,
+                                     const int32_t* past_seqlens,
+                                     void* workspace,
+                                     size_t workspace_bytes,
+                                     int batch_size,
+                                     int max_num_blocks_per_seq,
+                                     int block_size,
+                                     int token_count,
+                                     cudaStream_t stream) {
+  if (batch_size <= 0 || batch_size > (INT32_MAX - 1) / 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "batch_size exceeds the sequence sanitizer indexing limit.");
+  }
+  constexpr int kThreadsPerBlock = 256;
+  const int cumulative_element_count = batch_size + 1;
+  const int cumulative_blocks = (cumulative_element_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
+  ClampCumulativeSequenceLengths<<<cumulative_blocks, kThreadsPerBlock, 0, stream>>>(
+      sanitized_cumulative_seqlens_q, cumulative_seqlens_q, batch_size, token_count);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  CUDA_RETURN_IF_ERROR(cub::DeviceScan::InclusiveScan(
+      workspace, workspace_bytes,
+      sanitized_cumulative_seqlens_q, sanitized_cumulative_seqlens_q,
+      MaxInt32{}, cumulative_element_count, stream));
+
+  const int batch_blocks = (batch_size + kThreadsPerBlock - 1) / kThreadsPerBlock;
+  SanitizePastSequenceLengths<<<batch_blocks, kThreadsPerBlock, 0, stream>>>(
+      sanitized_past_seqlens, sequence_validity, cumulative_seqlens_kv, sanitized_cumulative_seqlens_q,
+      past_seqlens, batch_size, max_num_blocks_per_seq, block_size);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  CUDA_RETURN_IF_ERROR(cub::DeviceScan::InclusiveScan(
+      workspace, workspace_bytes,
+      cumulative_seqlens_kv, cumulative_seqlens_kv,
+      SaturatingAddInt32{}, cumulative_element_count, stream));
+  return Status::OK();
 }
 
 // Resolves the flat cache slot that a query token's K/V is written to, in the cache viewed as
@@ -376,34 +592,41 @@ Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_
 // past_seqlens[b] + (token_id - cumulative_seqlens_q[b]) of its own sequence. The binary search is
 // guarded against token_id >= cumulative_seqlens_q[batch_size], which previously walked off the end
 // of past_seqlens / block_table.
+__device__ __forceinline__ int FindTokenBatch(
+    int token_id, const int* cumulative_seqlens_q, int batch_size) {
+  if (token_id < 0 || token_id >= cumulative_seqlens_q[batch_size]) {
+    return -1;
+  }
+  int left = 0;
+  int right = batch_size - 1;
+  while (left < right) {
+    const int mid = left + (right - left) / 2;
+    if (token_id < cumulative_seqlens_q[mid + 1]) {
+      right = mid;
+    } else {
+      left = mid + 1;
+    }
+  }
+  return left;
+}
+
 struct DerivedSlotResolver {
   const int* __restrict__ block_table;
   const int* __restrict__ past_seqlens;
   const int* __restrict__ cumulative_seqlens_q;
+  const int* __restrict__ sequence_validity;
   int batch_size;
   int max_num_blocks_per_seq;
   int block_size;
 
   __device__ __forceinline__ int operator()(int token_id) const {
-    if (token_id < 0 || token_id >= cumulative_seqlens_q[batch_size]) {
+    const int batch_id = FindTokenBatch(token_id, cumulative_seqlens_q, batch_size);
+    if (batch_id < 0 || sequence_validity[batch_id] == 0) {
       return -1;
     }
-    // cumulative_seqlens_q is a non-decreasing prefix sum, so binary search finds the owning
-    // sequence in log2(batch_size) steps instead of the previous O(batch_size) scan.
-    int left = 0;
-    int right = batch_size - 1;
-    while (left < right) {
-      const int mid = left + (right - left) / 2;
-      if (token_id < cumulative_seqlens_q[mid + 1]) {
-        right = mid;
-      } else {
-        left = mid + 1;
-      }
-    }
-    const int batch_id = left;
     const int position = past_seqlens[batch_id] + (token_id - cumulative_seqlens_q[batch_id]);
     const int block_idx_in_seq = position / block_size;
-    if (block_idx_in_seq >= max_num_blocks_per_seq) {
+    if (block_idx_in_seq < 0 || block_idx_in_seq >= max_num_blocks_per_seq) {
       return -1;
     }
     const int block_id = block_table[batch_id * max_num_blocks_per_seq + block_idx_in_seq];
@@ -419,8 +642,17 @@ struct DerivedSlotResolver {
 // kernel, owns block placement. It also removes the per-thread binary search entirely.
 struct ExplicitSlotResolver {
   const int* __restrict__ slot_mapping;
+  const int* __restrict__ cumulative_seqlens_q = nullptr;
+  const int* __restrict__ sequence_validity = nullptr;
+  int batch_size = 0;
 
   __device__ __forceinline__ int operator()(int token_id) const {
+    if (sequence_validity != nullptr) {
+      const int batch_id = FindTokenBatch(token_id, cumulative_seqlens_q, batch_size);
+      if (batch_id < 0 || sequence_validity[batch_id] == 0) {
+        return -1;
+      }
+    }
     return slot_mapping[token_id];
   }
 };
@@ -481,24 +713,78 @@ Status LaunchReshapeAndCacheImpl(const T* key, const T* value, TCACHE* key_cache
   return CUDA_CALL(cudaGetLastError());
 }
 
+template <typename T, typename TCACHE, typename SlotResolver>
+__global__ void ReshapeAndCacheHeads(const T* input, TCACHE* cache, const float* static_scale,
+                                     bool per_channel, SlotResolver resolver, int head_size, int kv_num_heads,
+                                     int input_stride, int64_t num_slots) {
+  const int token = blockIdx.x;
+  const int head = blockIdx.y;
+  const int channel = threadIdx.x;
+  const int slot = resolver(token);
+  if (slot < 0 || slot >= num_slots) return;
+  // Staging buffer for the INT4 nibble pack below.
+  extern __shared__ float shared_values[];
+  float value = channel < head_size
+                    ? static_cast<float>(input[static_cast<int64_t>(token) * input_stride + head * head_size + channel])
+                    : 0.0f;
+  const int64_t scale_index = static_cast<int64_t>(slot) * kv_num_heads + head;
+  const float scale = channel < head_size ? GetCacheScale(static_scale, head * head_size + channel, per_channel) : 1.0f;
+  if constexpr (std::is_same_v<TCACHE, uint8_t>) {
+    const float scaled = scale == 0.0f ? 0.0f : value / scale;
+    const float clamped = fminf(static_cast<float>(kInt4Max), fmaxf(static_cast<float>(kInt4Min), scaled));
+    shared_values[channel] = static_cast<float>(__float2int_rn(clamped) - kInt4Min);
+    __syncthreads();
+    if (channel < (head_size + 1) / 2) {
+      const int low = static_cast<int>(shared_values[2 * channel]);
+      const int high = 2 * channel + 1 < head_size ? static_cast<int>(shared_values[2 * channel + 1]) : -kInt4Min;
+      cache[scale_index * ((head_size + 1) / 2) + channel] = static_cast<uint8_t>(low | (high << 4));
+    }
+  } else if (channel < head_size) {
+    cache[scale_index * head_size + channel] = QuantizeToCache<float, TCACHE>(value, scale);
+  }
+}
+
+template <typename T, typename TCACHE, typename SlotResolver>
+Status LaunchCacheHeads(const T* key, const T* value, PagedAttentionData<T, TCACHE>& data,
+                        const PagedAttentionParameters& parameters, SlotResolver resolver,
+                        int key_stride, int value_stride, cudaStream_t stream) {
+  int threads = 1;
+  while (threads < parameters.head_size) threads <<= 1;
+  const dim3 grid(parameters.token_count, parameters.kv_num_heads);
+  const int64_t num_slots = static_cast<int64_t>(parameters.num_blocks) * parameters.block_size;
+  ReshapeAndCacheHeads<<<grid, threads, threads * sizeof(float), stream>>>(
+      key, data.key_cache, data.k_scale, parameters.k_quant_type == KVQuantizationType::PER_CHANNEL, resolver,
+      parameters.head_size, parameters.kv_num_heads, key_stride, num_slots);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  if (data.value_cache != nullptr) {
+    ReshapeAndCacheHeads<<<grid, threads, threads * sizeof(float), stream>>>(
+        value, data.value_cache, data.v_scale, parameters.v_quant_type == KVQuantizationType::PER_CHANNEL, resolver,
+        parameters.head_size, parameters.kv_num_heads, value_stride, num_slots);
+  }
+  return CUDA_CALL(cudaGetLastError());
+}
+
 template <typename T, typename TCACHE>
 Status LaunchReshapeAndCache(const T* key, const T* value, TCACHE* key_cache, TCACHE* value_cache,
                              const float* k_scale, const float* v_scale, const bool k_per_channel,
                              const bool v_per_channel, const int* block_table,
-                             const int* past_seqlens, const int* cumulative_seqlens_q, const int* slot_mapping,
+                             const int* past_seqlens, const int* cumulative_seqlens_q,
+                             const int* sequence_validity, const int* slot_mapping,
                              const int batch_size, const int max_num_blocks_per_seq, const int token_count,
                              const int kv_hidden_size, const int block_size, const int num_blocks,
                              const int key_stride, const int value_stride, cudaStream_t stream,
                              const int max_threads_per_block) {
   const int64_t num_slots = static_cast<int64_t>(num_blocks) * block_size;
   if (slot_mapping != nullptr) {
-    ExplicitSlotResolver resolver{slot_mapping};
+    ExplicitSlotResolver resolver{
+        slot_mapping, cumulative_seqlens_q, sequence_validity, batch_size};
     return LaunchReshapeAndCacheImpl<T, TCACHE, ExplicitSlotResolver>(
         key, value, key_cache, value_cache, k_scale, v_scale, k_per_channel, v_per_channel, resolver,
         token_count, kv_hidden_size, key_stride, value_stride, num_slots, stream, max_threads_per_block);
   }
-  DerivedSlotResolver resolver{block_table, past_seqlens, cumulative_seqlens_q, batch_size,
-                               max_num_blocks_per_seq, block_size};
+  DerivedSlotResolver resolver{
+      block_table, past_seqlens, cumulative_seqlens_q, sequence_validity,
+      batch_size, max_num_blocks_per_seq, block_size};
   return LaunchReshapeAndCacheImpl<T, TCACHE, DerivedSlotResolver>(
       key, value, key_cache, value_cache, k_scale, v_scale, k_per_channel, v_per_channel, resolver,
       token_count, kv_hidden_size, key_stride, value_stride, num_slots, stream, max_threads_per_block);
@@ -630,10 +916,10 @@ __global__ void GatherAndExpandPagedKVCache(const TCACHE* __restrict__ key_cache
                               kv_head_id * head_size +
                               h;
 
-    gathered_key[tid] =
-        DequantizeFromCache<T, TCACHE>(key_cache[paged_idx], GetCacheScale(k_scale, channel_index, k_per_channel));
-    gathered_value[tid] =
-        DequantizeFromCache<T, TCACHE>(value_cache[paged_idx], GetCacheScale(v_scale, channel_index, v_per_channel));
+    gathered_key[tid] = static_cast<T>(ReadPagedCache(key_cache, paged_idx) *
+                                       GetCacheScale(k_scale, channel_index, k_per_channel));
+    gathered_value[tid] = static_cast<T>(ReadPagedCache(value_cache, paged_idx) *
+                                         GetCacheScale(v_scale, channel_index, v_per_channel));
   }
 }
 
@@ -737,6 +1023,7 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
                                    const float scale,
                                    const float softcap,
                                    const int local_window_size,
+                                   const bool is_causal,
                                    const bool k_per_channel) {
   extern __shared__ float paged_decode_smem[];
   const int channel_groups = PagedDecodeChannelGroups(head_size);
@@ -778,22 +1065,20 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
   const int64_t partial_head_index =
       (static_cast<int64_t>(split_id) * token_count + token_id) * num_heads + head_id;
 
-  // Causality is resolved per query token instead of assuming one new token per sequence:
-  // kv_len - q_len is past_seqlens[batch_id], so the token at offset q_index inside its sequence
-  // attends to cached positions [0, past + q_index]. For the decode case (q_len == 1) this reduces
-  // to the whole live context, as before.
+  // Resolve the query position even for non-causal attention: the left window stays anchored
+  // there, while the right bound expands to the full live context.
   const int q_index = token_id - cumulative_seqlens_q[batch_id];
   const int q_len = cumulative_seqlens_q[batch_id + 1] - cumulative_seqlens_q[batch_id];
   const int seq_kv_len = cumulative_seqlens_kv[batch_id + 1] - cumulative_seqlens_kv[batch_id];
-  const int kv_len = seq_kv_len - q_len + q_index + 1;
+  const int query_end = seq_kv_len - q_len + q_index + 1;
+  const int kv_len = is_causal ? query_end : seq_kv_len;
 
-  // Sliding window matches FlashAttention's window_size_left = local_window_size - 1 convention at
-  // query position kv_len - 1, i.e. positions in [kv_len - local_window_size, kv_len).
+  // Sliding window matches FlashAttention's window_size_left = local_window_size - 1.
   const int tokens_per_split = (kv_len + num_splits - 1) / num_splits;
   int kv_begin = split_id * tokens_per_split;
   const int kv_end = min(kv_len, kv_begin + tokens_per_split);
   if (local_window_size > 0) {
-    kv_begin = max(kv_begin, kv_len - local_window_size);
+    kv_begin = max(kv_begin, query_end - local_window_size);
   }
 
   if (kv_begin >= kv_end) {
@@ -840,11 +1125,11 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
                                : -1;
       float dot = 0.0f;
       if (block_id >= 0) {
-        const TCACHE* k_ptr = key_cache +
-                              (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page +
-                              head_offset_in_page;
+        const int64_t key_offset =
+            (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page +
+            head_offset_in_page;
         for (int c = lane_id; c < head_size; c += 32) {
-          dot += q_sh[c] * CacheToFloat<TCACHE>(k_ptr[c]);
+          dot += q_sh[c] * ReadPagedCache(key_cache, key_offset + c);
         }
       }
 #pragma unroll
@@ -914,10 +1199,10 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
             continue;
           }
           const int pos = tile_begin + t;
-          const TCACHE* v_ptr = value_cache +
-                                (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page +
-                                head_offset_in_page;
-          acc += logits_sh[t] * CacheToFloat<TCACHE>(v_ptr[c]);
+          const int64_t value_offset =
+              (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
+              head_offset_in_page;
+          acc += logits_sh[t] * ReadPagedCache(value_cache, value_offset + c);
         }
         acc_sh[c] = acc;
       }
@@ -931,10 +1216,10 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
           continue;
         }
         const int pos = tile_begin + t;
-        const TCACHE* v_ptr = value_cache +
-                              (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page +
-                              head_offset_in_page;
-        acc += logits_sh[t] * CacheToFloat<TCACHE>(v_ptr[c]);
+        const int64_t value_offset =
+            (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
+            head_offset_in_page;
+        acc += logits_sh[t] * ReadPagedCache(value_cache, value_offset + c);
       }
       acc_sh[tid] = acc;
     }
@@ -1063,14 +1348,14 @@ Status LaunchPagedDecodeAttention(const T* query, const TCACHE* key_cache, const
                                   const int batch_size, const int num_heads, const int kv_num_heads,
                                   const int head_size, const int block_size, const int max_num_blocks_per_seq,
                                   const int token_count, const int num_splits, const float scale,
-                                  const float softcap, const int local_window_size,
+                                  const float softcap, const int local_window_size, const bool is_causal,
                                   const bool use_smooth_softmax, cudaStream_t stream) {
   const size_t smem_bytes = GetPagedDecodeSharedMemoryBytes(head_size);
   const dim3 grid(num_heads, token_count, num_splits);
   PagedDecodeSplitKV<T, TCACHE><<<grid, kPagedDecodeThreads, smem_bytes, stream>>>(
       query, key_cache, value_cache, k_scale, cumulative_seqlens_q, cumulative_seqlens_kv, block_table,
       partial_out, partial_max, partial_sum, batch_size, num_heads, kv_num_heads, head_size, block_size,
-      max_num_blocks_per_seq, token_count, num_splits, scale, softcap, local_window_size, k_per_channel);
+      max_num_blocks_per_seq, token_count, num_splits, scale, softcap, local_window_size, is_causal, k_per_channel);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   const dim3 reduce_grid(num_heads, token_count);
@@ -1130,6 +1415,7 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
                                            const float scale,
                                            const float softcap,
                                            const int local_window_size,
+                                           const bool is_causal,
                                            const bool k_per_channel,
                                            const bool v_per_channel) {
   extern __shared__ float paged_latent_smem[];
@@ -1159,14 +1445,13 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
   const int batch_id = left;
   const int s = token_id - cumulative_seqlens_q[batch_id];
 
-  // Causality: this token's logical position is past_seqlens[b] + s, and it attends every cached
-  // position up to and including its own. That is exactly FlashAttention's bottom-right-aligned
-  // causal convention for seqlen_k = past + seqlen_q.
-  const int kv_end = past_seqlens[batch_id] + s + 1;
+  const int query_end = past_seqlens[batch_id] + s + 1;
+  const int q_len = cumulative_seqlens_q[batch_id + 1] - cumulative_seqlens_q[batch_id];
+  const int kv_end = is_causal ? query_end : past_seqlens[batch_id] + q_len;
   int kv_begin = 0;
   if (local_window_size > 0) {
     // local_window_size counts the current token, matching mha_varlen_fwd's window_size_left = W-1.
-    kv_begin = max(0, kv_end - local_window_size);
+    kv_begin = max(0, query_end - local_window_size);
   }
 
   const int kv_head_id = head_id / (num_heads / kv_num_heads);
@@ -1305,13 +1590,14 @@ Status LaunchPagedLatentAttention(const T* query, const TCACHE* key_cache, const
                                   const int batch_size, const int num_heads, const int kv_num_heads,
                                   const int head_size, const int v_head_size, const int block_size,
                                   const int max_num_blocks_per_seq, const int token_count, const float scale,
-                                  const float softcap, const int local_window_size, cudaStream_t stream) {
+                                  const float softcap, const int local_window_size, const bool is_causal,
+                                  cudaStream_t stream) {
   const size_t smem_bytes = GetPagedLatentSharedMemoryBytes(head_size, v_head_size);
   const dim3 grid(token_count, num_heads);
   PagedLatentAttentionKernel<T, TCACHE><<<grid, kLatentThreads, smem_bytes, stream>>>(
       query, key_cache, value_cache, k_scale, v_scale, cumulative_seqlens_q, past_seqlens, block_table, output,
       batch_size, num_heads, kv_num_heads, head_size, v_head_size, block_size, max_num_blocks_per_seq, scale,
-      softcap, local_window_size, k_per_channel, v_per_channel);
+      softcap, local_window_size, is_causal, k_per_channel, v_per_channel);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -1324,7 +1610,8 @@ Status LaunchPagedLatentAttention(const T* query, const TCACHE* key_cache, const
 template <typename T, typename TCACHE>
 Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParameters& parameters,
                             PagedAttentionData<T, TCACHE>& data, const int max_threads_per_block,
-                            T** query_out) {
+                            T** query_out, T** key_out = nullptr, T** value_out = nullptr,
+                            int* key_stride_out = nullptr, int* value_stride_out = nullptr) {
   const int batch_size = parameters.batch_size;
   const int token_count = parameters.token_count;
   const int q_hidden_size = parameters.hidden_size;
@@ -1381,13 +1668,37 @@ Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParamete
   const int value_stride = parameters.is_packed_qkv ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
   const bool k_per_channel = parameters.k_quant_type == KVQuantizationType::PER_CHANNEL;
   const bool v_per_channel = parameters.v_quant_type == KVQuantizationType::PER_CHANNEL;
-  ORT_RETURN_IF_ERROR((LaunchReshapeAndCache<T, TCACHE>(
-      key, value, data.key_cache, data.value_cache, data.k_scale, data.v_scale, k_per_channel, v_per_channel,
-      const_cast<int*>(data.block_table), past_seqlens, cumulative_seqlens_q, data.slot_mapping, batch_size,
-      parameters.max_num_blocks_per_seq, token_count, kv_hidden_size, parameters.block_size,
-      parameters.num_blocks, key_stride, value_stride, stream, max_threads_per_block)));
+  if constexpr (std::is_same_v<TCACHE, uint8_t>) {
+    if (data.slot_mapping != nullptr) {
+      ORT_RETURN_IF_ERROR(LaunchCacheHeads(
+          key, value, data, parameters,
+          ExplicitSlotResolver{
+              data.slot_mapping, cumulative_seqlens_q,
+              data.sequence_validity, batch_size},
+          key_stride, value_stride, stream));
+    } else {
+      DerivedSlotResolver resolver{
+          data.block_table, past_seqlens, cumulative_seqlens_q,
+          data.sequence_validity, batch_size,
+          parameters.max_num_blocks_per_seq, parameters.block_size};
+      ORT_RETURN_IF_ERROR(LaunchCacheHeads(key, value, data, parameters, resolver, key_stride, value_stride, stream));
+    }
+  } else {
+    ORT_RETURN_IF_ERROR((LaunchReshapeAndCache<T, TCACHE>(
+        key, value, data.key_cache, data.value_cache, data.k_scale, data.v_scale, k_per_channel, v_per_channel,
+        const_cast<int*>(data.block_table), past_seqlens, cumulative_seqlens_q,
+        data.sequence_validity, data.slot_mapping, batch_size,
+        parameters.max_num_blocks_per_seq, token_count, kv_hidden_size, parameters.block_size,
+        parameters.num_blocks, key_stride, value_stride, stream, max_threads_per_block)));
+  }
 
   *query_out = query;
+  if (key_out != nullptr) {
+    *key_out = key;
+    *value_out = value;
+    *key_stride_out = key_stride;
+    *value_stride_out = value_stride;
+  }
   return Status::OK();
 }
 
@@ -1414,7 +1725,7 @@ Status LatentAttention(
       data.cumulative_seqlens_q, data.past_seqlens, data.block_table, data.output,
       parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
       parameters.v_head_size, parameters.block_size, parameters.max_num_blocks_per_seq,
-      parameters.token_count, scale, parameters.softcap, parameters.local_window_size, stream)));
+      parameters.token_count, scale, parameters.softcap, parameters.local_window_size, parameters.is_causal, stream)));
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR("latent (MLA) paged attention output", data.output, parameters.token_count, parameters.num_heads,
@@ -1442,7 +1753,8 @@ Status PagedDecodeAttention(
       data.decode_partial_out, data.decode_partial_max, data.decode_partial_sum,
       parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
       parameters.block_size, parameters.max_num_blocks_per_seq, parameters.token_count, data.num_splits,
-      scale, parameters.softcap, parameters.local_window_size, parameters.use_smooth_softmax, stream)));
+      scale, parameters.softcap, parameters.local_window_size, parameters.is_causal,
+      parameters.use_smooth_softmax, stream)));
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR("paged decode attention output", data.output, parameters.token_count, parameters.num_heads,
@@ -1471,7 +1783,9 @@ Status PagedDecodeAttention(
 //     scale is folded out exactly the same way GroupQueryAttention does it (see the derivation
 //     next to LaunchScaleHeadsByChannelScale in group_query_attention_qdq.cuh): k_scale into Q
 //     (it multiplies the QK contraction dim) and v_scale into the attention output (it is a free
-//     dim of the PV accumulation, so it never touches the softmax denominator).
+//     dim of the PV accumulation, so it never touches the softmax denominator). The K fold is
+//     normalized by a power of two so the fp16 copy of Q cannot overflow; see
+//     PagedScaleNormalizerKernel.
 //  3. Attention sinks. XQA consumes them as fp32, laid out [kv_head][group] -- which is ORT's
 //     [num_heads] order -- so only a dtype conversion is needed.
 
@@ -1496,10 +1810,13 @@ __global__ void ExpandBlockTableToPages(const int* __restrict__ block_table,
 // Multiply every head vector by a PER_CHANNEL scale indexed [kv_head, channel]. Used to fold
 // k_scale into Q before XQA and v_scale into XQA's output afterwards. dst may alias src (the
 // output scaling is done in place), so neither pointer is marked __restrict__.
+// When scale_norm is set, the scale is divided by it first; XQA multiplies the same value back
+// into qkScale, which keeps the folded product inside T's range without changing the result.
 template <typename T>
 __global__ void PagedFoldChannelScaleKernel(T* dst,
                                             const T* src,
                                             const float* __restrict__ channel_scale,
+                                            const float* __restrict__ scale_norm,
                                             const int num_heads, const int head_size,
                                             const int group_size, const int64_t total_elements) {
   const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -1508,7 +1825,59 @@ __global__ void PagedFoldChannelScaleKernel(T* dst,
   }
   const int h = static_cast<int>(i / head_size) % num_heads;
   const int c = static_cast<int>(i % head_size);
-  dst[i] = static_cast<T>(static_cast<float>(src[i]) * channel_scale[(h / group_size) * head_size + c]);
+  const float scale = channel_scale[(h / group_size) * head_size + c];
+  const float normalized_scale = (scale_norm == nullptr) ? scale : (scale / scale_norm[0]);
+  dst[i] = static_cast<T>(static_cast<float>(src[i]) * normalized_scale);
+}
+
+// Normalizer for the PER_CHANNEL K fold, computed in one block so the XQA path stays capturable.
+//
+// The fold stores Q * k_scale in T, so a large scale saturates fp16 and a zero cache code then
+// turns that infinity into a NaN. Dividing the scale table by this normalizer and handing the
+// normalizer to XQA as its scalar K scale keeps the product in range: XQA folds it back into
+// qkScale once per CTA, outside the K/V loop, so the result is unchanged.
+//
+// The normalizer is the power of two just above max|k_scale| rather than max|k_scale| itself:
+// dividing by it is exact, so the fold adds no rounding of its own; qkScale * norm is an exponent
+// adjustment in fp32, so reapplying it is exact too; and every normalized scale then lies in
+// (0, 1], so |Q * s| <= |Q| and the fp16 store cannot overflow for any finite table. The exponent
+// is bounded so both the normalizer and attention_scale * normalizer stay in fp32's normal range.
+//
+// Channels more than 24 binades below the largest flush to zero in fp16. Calibrated tables sit far
+// inside that budget (the widest we have measured spans 4.9 binades), but a table that does not can
+// be routed to the portable FP32 kernel with ORT_ENABLE_XQA_PER_CHANNEL_KV=0.
+__global__ void PagedScaleNormalizerKernel(float* __restrict__ out, const float* __restrict__ scale,
+                                           const int count, const float attention_scale) {
+  constexpr int kWarpSize = 32;
+  __shared__ float warp_max[kWarpSize];
+  float local = 0.0f;
+  for (int i = threadIdx.x; i < count; i += blockDim.x) {
+    const float s = fabsf(scale[i]);
+    local = fmaxf(local, isfinite(s) ? s : 0.0f);
+  }
+  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+    local = fmaxf(local, __shfl_down_sync(0xffffffffu, local, offset));
+  }
+  const int lane = threadIdx.x % kWarpSize;
+  const int warp = threadIdx.x / kWarpSize;
+  if (lane == 0) {
+    warp_max[warp] = local;
+  }
+  __syncthreads();
+  if (warp == 0) {
+    const int num_warps = (blockDim.x + kWarpSize - 1) / kWarpSize;
+    local = lane < num_warps ? warp_max[lane] : 0.0f;
+    for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+      local = fmaxf(local, __shfl_down_sync(0xffffffffu, local, offset));
+    }
+    if (lane == 0) {
+      // An all-zero (or non-finite) table would make the normalized fold 0/0, so it reports 1.
+      // 126 - ilogb(attention_scale) keeps attention_scale * 2^e below 2^127.
+      const int headroom = 126 - ilogbf(fmaxf(attention_scale, 1.0f));
+      const int exponent = max(min(ilogbf(local) + 1, headroom), -126);
+      out[0] = local > 0.0f ? ldexpf(1.0f, exponent) : 1.0f;
+    }
+  }
 }
 
 template <typename T>
@@ -1518,6 +1887,50 @@ __global__ void PagedConvertHeadSinkToFloatKernel(float* __restrict__ dst, const
   if (i < count) {
     dst[i] = static_cast<float>(src[i]);
   }
+}
+
+// Packed mask for the speculative XQA kernel: row = query token (global, packed token-major),
+// bit p of word w = "may attend to draft token w*32+p".
+__global__ void PagedXqaSpecDecMaskKernel(uint32_t* __restrict__ mask,
+                                          const int* __restrict__ cumulative_seqlens_q,
+                                          const int batch_size,
+                                          const int token_count,
+                                          const int words_per_row,
+                                          const bool is_causal) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= token_count * words_per_row) {
+    return;
+  }
+
+  const int token_id = i / words_per_row;
+  const int word = i - token_id * words_per_row;
+  int lo = 0;
+  int hi = batch_size;
+  while (lo < hi) {
+    const int mid = lo + (hi - lo) / 2;
+    if (token_id < cumulative_seqlens_q[mid + 1]) {
+      hi = mid;
+    } else {
+      lo = mid + 1;
+    }
+  }
+
+  const int local_row = token_id - cumulative_seqlens_q[lo];
+  const int q_len = cumulative_seqlens_q[lo + 1] - cumulative_seqlens_q[lo];
+  const int allowed_bits = (is_causal ? local_row + 1 : q_len) - word * 32;
+  // Do NOT write this as `clamped == 32`. ptxas (CUDA 13.0.48) folds min/max into VIMNMX.RELU and
+  // then reuses that instruction's clamp predicate for an equality test against the clamp bound
+  // with inverted polarity, so `max(0, min(32, x)) == 32` is true for every x. That silently made
+  // every mask word all-ones, i.e. no intra-block causal mask at all.
+  uint32_t value;
+  if (allowed_bits >= 32) {
+    value = ~uint32_t{0};
+  } else if (allowed_bits <= 0) {
+    value = 0u;
+  } else {
+    value = (uint32_t{1} << allowed_bits) - 1u;
+  }
+  mask[i] = value;
 }
 
 template <typename T, typename TCACHE>
@@ -1552,14 +1965,20 @@ Status PagedXqaDecodeAttention(
 
   const bool k_per_channel = parameters.k_quant_type == KVQuantizationType::PER_CHANNEL;
   const bool v_per_channel = parameters.v_quant_type == KVQuantizationType::PER_CHANNEL;
-  const int64_t q_elements = static_cast<int64_t>(batch_size) * num_heads * head_size;
+  const int64_t q_elements = static_cast<int64_t>(parameters.token_count) * num_heads * head_size;
 
   if (k_per_channel) {
     // Q may point straight at the (const) graph input when there is no packed-QKV / rotary
     // prologue, so the scaled copy always goes to a dedicated scratch buffer.
+    ORT_RETURN_IF_NOT(data.xqa_k_scale_norm, "XQA k_scale normalizer scratch was not allocated.");
+    ORT_RETURN_IF_NOT(data.xqa_query, "XQA folded-query scratch was not allocated.");
+    PagedScaleNormalizerKernel<<<1, 256, 0, stream>>>(data.xqa_k_scale_norm, data.k_scale,
+                                                      kv_num_heads * head_size, scale);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
     const int blocks = static_cast<int>((q_elements + max_threads_per_block - 1) / max_threads_per_block);
     PagedFoldChannelScaleKernel<T><<<blocks, max_threads_per_block, 0, stream>>>(
-        data.xqa_query, query, data.k_scale, num_heads, head_size, num_heads / kv_num_heads, q_elements);
+        data.xqa_query, query, data.k_scale, data.xqa_k_scale_norm, num_heads, head_size,
+        num_heads / kv_num_heads, q_elements);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
     query = data.xqa_query;
   }
@@ -1579,27 +1998,57 @@ Status PagedXqaDecodeAttention(
 #else
       false;
 #endif
-  const XqaQuantType kv_quant_type = kIsFp8Cache ? XqaQuantType::kFp8 : XqaQuantType::kInt8;
-  ORT_RETURN_IF_ERROR(LaunchXQAPagedKernel(
-      device_prop, stream,
-      reinterpret_cast<const void*>(query),
-      reinterpret_cast<const void*>(data.key_cache),
-      reinterpret_cast<const void*>(data.value_cache),
-      reinterpret_cast<void*>(data.output),
-      page_table,
-      batch_size, num_heads, kv_num_heads, head_size, max_pages_per_seq,
-      scale, parameters.local_window_size, data.past_seqlens, attention_sinks,
-      // A PER_CHANNEL scale has already been folded into Q / will be applied to the output, so the
-      // kernel must use a scale of 1 (which it does when the pointer is null).
-      k_per_channel ? nullptr : data.k_scale,
-      v_per_channel ? nullptr : data.v_scale,
-      kv_quant_type, std::is_same<T, BFloat16>::value,
-      data.xqa_workspace, data.xqa_workspace_size));
+  constexpr bool kIsInt8Cache = std::is_same<TCACHE, int8_t>::value;
+  constexpr bool kIsInt4Cache = std::is_same_v<TCACHE, uint8_t>;
+  const XqaQuantType kv_quant_type =
+      kIsInt4Cache  ? XqaQuantType::kInt4
+      : kIsFp8Cache ? XqaQuantType::kFp8
+                    : (kIsInt8Cache ? XqaQuantType::kInt8 : XqaQuantType::kNone);
+  // A PER_CHANNEL K scale is folded into Q up to a power-of-two normalizer, which XQA reapplies as
+  // its scalar scale; a PER_CHANNEL V scale is applied to the output below, so XQA sees a null
+  // scale (one).
+  const float* xqa_k_scale = k_per_channel ? data.xqa_k_scale_norm : data.k_scale;
+  const float* xqa_v_scale = v_per_channel ? nullptr : data.v_scale;
+  if (data.use_xqa_spec_dec) {
+    ORT_RETURN_IF_NOT(data.xqa_spec_dec_mask, "Speculative XQA mask scratch was not allocated.");
+    const int words_per_row = (data.max_query_len + 31) / 32;
+    const int mask_words = parameters.token_count * words_per_row;
+    const int blocks = (mask_words + max_threads_per_block - 1) / max_threads_per_block;
+    PagedXqaSpecDecMaskKernel<<<blocks, max_threads_per_block, 0, stream>>>(
+        data.xqa_spec_dec_mask, data.cumulative_seqlens_q, batch_size,
+        parameters.token_count, words_per_row, parameters.is_causal);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+    ORT_RETURN_IF_ERROR(LaunchXQAPagedSpecDecKernel(
+        device_prop, stream,
+        reinterpret_cast<const void*>(query),
+        reinterpret_cast<const void*>(data.key_cache),
+        reinterpret_cast<const void*>(data.value_cache),
+        reinterpret_cast<void*>(data.output), page_table,
+        batch_size, num_heads, kv_num_heads, head_size, max_pages_per_seq,
+        scale, parameters.local_window_size, data.past_seqlens,
+        data.max_query_len, data.cumulative_seqlens_q, data.xqa_spec_dec_mask,
+        attention_sinks, xqa_k_scale, xqa_v_scale, kv_quant_type,
+        std::is_same<T, BFloat16>::value,
+        data.xqa_workspace, data.xqa_workspace_size));
+  } else {
+    ORT_RETURN_IF_ERROR(LaunchXQAPagedKernel(
+        device_prop, stream,
+        reinterpret_cast<const void*>(query),
+        reinterpret_cast<const void*>(data.key_cache),
+        reinterpret_cast<const void*>(data.value_cache),
+        reinterpret_cast<void*>(data.output), page_table,
+        batch_size, num_heads, kv_num_heads, head_size, max_pages_per_seq,
+        scale, parameters.local_window_size, data.past_seqlens, attention_sinks,
+        xqa_k_scale, xqa_v_scale, kv_quant_type, std::is_same<T, BFloat16>::value,
+        data.xqa_workspace, data.xqa_workspace_size));
+  }
 
   if (v_per_channel) {
     const int blocks = static_cast<int>((q_elements + max_threads_per_block - 1) / max_threads_per_block);
     PagedFoldChannelScaleKernel<T><<<blocks, max_threads_per_block, 0, stream>>>(
-        data.output, data.output, data.v_scale, num_heads, head_size, num_heads / kv_num_heads, q_elements);
+        data.output, data.output, data.v_scale, /*scale_norm*/ nullptr, num_heads, head_size,
+        num_heads / kv_num_heads, q_elements);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
   }
 
@@ -1607,6 +2056,71 @@ Status PagedXqaDecodeAttention(
   DUMP_TENSOR("paged xqa decode attention output", data.output, parameters.token_count, parameters.num_heads,
               parameters.head_size);
 
+  return Status::OK();
+}
+
+// cuDNN paged SDPA decode kernel. Opt-in on H100+ for one-token-per-sequence decode when the cache
+// is unquantized and none of the fused options are requested. Runs the shared rotary / QK-Norm /
+// ReshapeAndCache prologue (so cache and Q are up to date), derives per-batch KV lengths for the
+// padding mask, then hands off to the cudnn-frontend graph in cudnn_flash_attention.cc.
+template <typename T, typename TCACHE>
+Status CudnnPagedAttention(
+    const cudaDeviceProp& device_prop,
+    Stream* ort_stream,
+    contrib::PagedAttentionParameters& parameters,
+    PagedAttentionData<T, TCACHE>& data) {
+  auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
+  const int max_threads_per_block = device_prop.maxThreadsPerBlock;
+
+  T* query = nullptr;
+  // Apply rotary / QK-Norm to Q, unpack packed_qkv Q into workspace, insert K/V into the paged
+  // cache. Every case cuDNN paged serves has token_count == batch_size and max_query_len == 1, so
+  // the packed decode Q layout (one token per sequence) survives the prologue verbatim.
+  ORT_RETURN_IF_ERROR((PrepareQueryAndCache<T, TCACHE>(stream, parameters, data,
+                                                       max_threads_per_block, &query)));
+
+  cudnnHandle_t cudnn_handle = static_cast<cudnnHandle_t>(data.cudnn_handle);
+  bool cache_hit = false;
+  const bool ok = onnxruntime::cudnn_sdpa::run_paged(
+      /*output=*/reinterpret_cast<void*>(data.output),
+      /*q=*/reinterpret_cast<void*>(query),
+      /*k_cache=*/reinterpret_cast<void*>(data.key_cache),
+      /*v_cache=*/reinterpret_cast<void*>(data.value_cache),
+      /*block_table=*/const_cast<int*>(data.cudnn_block_table),
+      /*mask_sequence_lengths_kv=*/data.cudnn_seqlens_kv,
+      parameters.batch_size,
+      parameters.num_heads,
+      parameters.kv_num_heads,
+      parameters.head_size,
+      parameters.head_size,  // head_size_v == head_size in every SEPARATE-mode configuration
+      parameters.num_blocks,
+      parameters.block_size,
+      parameters.max_num_blocks_per_seq,
+      data.cudnn_scale,
+      std::is_same<T, BFloat16>::value,
+      cudnn_handle,
+      ort_stream,
+      data.cudnn_allocator,
+      &cache_hit);
+  if (data.cudnn_debug_info) {
+    printf("Operator=PagedAttention CudnnPagedGraphCacheHit=%d\n", cache_hit ? 1 : 0);
+  }
+  if (!ok) {
+    // The cuDNN paged graph was not available at dispatch time. PagedAttention runs a
+    // try_build_paged_graph probe before selecting this backend, so a false here means either the
+    // node's first Compute was under CUDA graph capture (probe deferred, cache miss disallowed) or
+    // the shape signature has genuinely changed since the probe. Either way, surface a clear
+    // Status rather than silently mis-executing.
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "PagedAttention: cuDNN paged SDPA graph unavailable at dispatch "
+                           "(build failed or attempted during CUDA graph capture). Run at least "
+                           "one Compute step outside capture to warm the graph cache, or set "
+                           "ORT_ENABLE_CUDNN_FLASH_ATTENTION=0 to disable this backend.");
+  }
+
+  DUMP_TENSOR_INIT();
+  DUMP_TENSOR("cudnn paged sdpa output", data.output, parameters.token_count, parameters.num_heads,
+              parameters.head_size);
   return Status::OK();
 }
 
@@ -1654,9 +2168,6 @@ Status FlashAttention(
   void* softmax_lse = reinterpret_cast<void*>(data.softmax_lse);
 
   if constexpr (IsQuantizedCache<TCACHE>::value) {
-    // FlashAttention cannot read a quantized page, so dequantize the live context into a dense
-    // packed-varlen [total_kv_tokens, kv_num_heads, head_size] buffer (no GQA expansion — Flash
-    // does the grouping itself) and use the non-paged varlen entry point.
     ORT_RETURN_IF_ERROR((LaunchGatherAndExpandPagedKVCache<T, TCACHE>(
         data.key_cache, data.value_cache, data.gathered_key, data.gathered_value,
         data.k_scale, data.v_scale, k_per_channel, v_per_channel,
@@ -1667,18 +2178,16 @@ Status FlashAttention(
         device_prop, stream, q, reinterpret_cast<void*>(data.gathered_key),
         reinterpret_cast<void*>(data.gathered_value), output, cumulative_seqlens_q, cumulative_seqlens_kv,
         /*seqused_k*/ nullptr, /*block_table*/ nullptr, softmax_lse, batch_size, num_heads, kv_num_heads, head_size,
-        max_query_len, data.max_kv_len, token_count, scale, softcap, /*is_causal*/ true, is_bf16,
+        max_query_len, data.max_kv_len, token_count, scale, softcap, parameters.is_causal, is_bf16,
         local_window_size - 1, /*max_num_blocks_per_seq*/ 0, /*page_block_size*/ 1,
         data.flash_num_splits, data.flash_softmax_lse_accum, data.flash_out_accum));
   } else {
-    void* key_cache = reinterpret_cast<void*>(data.key_cache);
-    void* value_cache = reinterpret_cast<void*>(data.value_cache);
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
-        device_prop, stream, q, key_cache, value_cache, output, cumulative_seqlens_q, cumulative_seqlens_kv,
+        device_prop, stream, q, reinterpret_cast<void*>(data.key_cache),
+        reinterpret_cast<void*>(data.value_cache), output, cumulative_seqlens_q, cumulative_seqlens_kv,
         /*seqused_k*/ nullptr, block_table, softmax_lse, batch_size, num_heads, kv_num_heads, head_size,
-        max_query_len, data.max_kv_len, token_count, scale, softcap, /*is_causal*/ true, is_bf16,
-        local_window_size - 1,
-        max_num_blocks_per_seq, block_size,
+        max_query_len, data.max_kv_len, token_count, scale, softcap, parameters.is_causal, is_bf16,
+        local_window_size - 1, max_num_blocks_per_seq, block_size,
         data.flash_num_splits, data.flash_softmax_lse_accum, data.flash_out_accum));
   }
 
@@ -1710,7 +2219,7 @@ Status EfficientAttention(
     float scale) {
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
-  const int token_count = parameters.token_count;
+  [[maybe_unused]] const int token_count = parameters.token_count;
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
@@ -1753,7 +2262,7 @@ Status EfficientAttention(
   p.max_sequence_length = total_kv_tokens;
   p.qk_head_size = head_size;
   p.v_head_size = head_size;
-  p.causal = true;
+  p.causal = parameters.is_causal;
   p.scale = scale;
   p.softcap = parameters.softcap;
   p.local_window_size = local_window_size;
@@ -1783,6 +2292,22 @@ Status EfficientAttention(
 ////////// API Functions
 
 template <typename T, typename TCACHE>
+Status PreparePagedAttentionQueryAndCache(
+    const cudaDeviceProp& device_prop,
+    Stream* ort_stream,
+    contrib::PagedAttentionParameters& parameters,
+    PagedAttentionData<T, TCACHE>& data,
+    T** query,
+    T** key,
+    T** value,
+    int* key_stride,
+    int* value_stride) {
+  return PrepareQueryAndCache<T, TCACHE>(
+      static_cast<cudaStream_t>(ort_stream->GetHandle()), parameters, data,
+      device_prop.maxThreadsPerBlock, query, key, value, key_stride, value_stride);
+}
+
+template <typename T, typename TCACHE>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& /*cublas*/,
@@ -1791,50 +2316,59 @@ Status QkvToContext(
     PagedAttentionData<T, TCACHE>& data) {
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size)) : parameters.scale;
+  Status attention_status;
 
   // LATENT (MLA) has its own backend: no other kernel can serve v_head_size != head_size over a
   // single aliased cache. Validation guarantees an explicit scale here, so the default above is
   // never the one used.
   if (parameters.is_latent_kv) {
-    return LatentAttention(device_prop, stream, parameters, data, scale);
-  }
-
-  if (data.use_xqa_decode) {
-    return PagedXqaDecodeAttention(device_prop, stream, parameters, data, scale);
-  }
-
-  if (data.use_paged_decode) {
-    return PagedDecodeAttention(device_prop, stream, parameters, data, scale);
-  }
-
+    attention_status = LatentAttention(device_prop, stream, parameters, data, scale);
+  } else if (data.use_xqa_decode) {
+    attention_status = PagedXqaDecodeAttention(device_prop, stream, parameters, data, scale);
+  } else if (data.use_cudnn_paged) {
+    attention_status = CudnnPagedAttention(device_prop, ort_stream, parameters, data);
+  } else if (data.use_paged_decode) {
+    attention_status = PagedDecodeAttention(device_prop, stream, parameters, data, scale);
 #if USE_FLASH_ATTENTION
-  if (data.use_flash_attention) {
-    return FlashAttention(device_prop, stream, parameters, data, scale);
-  }
+  } else if (data.use_flash_attention) {
+    attention_status = FlashAttention(device_prop, stream, parameters, data, scale);
 #endif
-
 #if USE_MEMORY_EFFICIENT_ATTENTION
-  if (data.use_memory_efficient_attention) {
-    return EfficientAttention(device_prop, stream, parameters, data, scale);
-  }
+  } else if (data.use_memory_efficient_attention) {
+    attention_status = EfficientAttention(device_prop, stream, parameters, data, scale);
 #endif
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No PagedAttention kernel available for the current configuration.");
+  }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No PagedAttention kernel available for the current configuration.");
+  ORT_RETURN_IF_ERROR(attention_status);
+  return LaunchMaskInvalidSequenceOutputs(
+      data.output, data.sequence_validity, data.cumulative_seqlens_q,
+      parameters.batch_size, parameters.v_hidden_size, stream);
 }
 
-#define INSTANTIATE_PAGED_ATTENTION(T, TCACHE)       \
-  template struct PagedAttentionData<T, TCACHE>;     \
-  template Status QkvToContext<T, TCACHE>(           \
-      const cudaDeviceProp& device_prop,             \
-      cublasHandle_t& cublas,                        \
-      Stream* ort_stream,                            \
-      contrib::PagedAttentionParameters& parameters, \
+#define INSTANTIATE_PAGED_ATTENTION(T, TCACHE)                   \
+  template struct PagedAttentionData<T, TCACHE>;                 \
+  template Status PreparePagedAttentionQueryAndCache<T, TCACHE>( \
+      const cudaDeviceProp& device_prop, Stream* stream,         \
+      contrib::PagedAttentionParameters& parameters,             \
+      PagedAttentionData<T, TCACHE>& data, T** query, T** key,   \
+      T** value, int* key_stride, int* value_stride);            \
+  template Status QkvToContext<T, TCACHE>(                       \
+      const cudaDeviceProp& device_prop,                         \
+      cublasHandle_t& cublas,                                    \
+      Stream* ort_stream,                                        \
+      contrib::PagedAttentionParameters& parameters,             \
       PagedAttentionData<T, TCACHE>& data);
 
 INSTANTIATE_PAGED_ATTENTION(half, half)
 INSTANTIATE_PAGED_ATTENTION(BFloat16, BFloat16)
 INSTANTIATE_PAGED_ATTENTION(half, int8_t)
 INSTANTIATE_PAGED_ATTENTION(BFloat16, int8_t)
+#ifdef USE_INT4_KV_CACHE
+INSTANTIATE_PAGED_ATTENTION(half, uint8_t)
+INSTANTIATE_PAGED_ATTENTION(BFloat16, uint8_t)
+#endif
 #if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
 INSTANTIATE_PAGED_ATTENTION(half, Float8E4M3FN)
 INSTANTIATE_PAGED_ATTENTION(BFloat16, Float8E4M3FN)

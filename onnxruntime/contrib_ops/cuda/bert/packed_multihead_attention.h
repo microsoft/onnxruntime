@@ -16,6 +16,12 @@ class PackedMultiHeadAttention final : public TrtFusedAttention<T> {
   PackedMultiHeadAttention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
 
+#if !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+  Status DeclareWorkspaceRequirements(
+      gsl::span<const WorkspaceInputShape> input_shapes,
+      /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const override;
+#endif
+
  private:
   Status CheckInputs(const TensorShape& query_shape,
                      const Tensor* key,
@@ -24,12 +30,13 @@ class PackedMultiHeadAttention final : public TrtFusedAttention<T> {
                      const TensorShape& token_offset_shape,
                      const TensorShape& cu_seq_len_shape,
                      const Tensor* attention_bias,
-                     PackedAttentionParameters& parameters) const;
-  int GetNumHeads() const { return num_heads_; }
+                     PackedAttentionParameters& parameters,
+                     PackedMultiHeadAttentionProblem& problem) const;
+  int64_t GetNumHeads() const { return num_heads_; }
   float GetScale() const { return scale_; }
 
-  int num_heads_;  // number of attention heads
-  float scale_;    // the scale for softmax in memory efficient attention or unfused attention.
+  int64_t num_heads_;  // number of attention heads
+  float scale_;        // the scale for softmax in memory efficient attention or unfused attention.
 
   bool disable_memory_efficient_attention_;
   bool disable_flash_attention_;

@@ -35,13 +35,11 @@ stages:
         clean: all
       pool:
         ${{ if eq(parameters.arch, 'arm64') }}:
-          name: onnxruntime-qnn-windows-vs-2022-arm64
+          name: onnxruntime-medium-arm64-scus
           os: windows
           hostArchitecture: Arm64
-          demands:
-            - Agent.Version -equals 4.264.2
         ${{ else }}:
-          name: onnxruntime-Win-CPU-VS2022-Latest
+          name: onnxruntime-Win-CPU-2022
           os: windows
       templateContext:
         sdl:
@@ -64,9 +62,7 @@ stages:
       - name: VSGenerator
         value: 'Visual Studio 17 2022'
       steps:
-      - checkout: self
-        clean: true
-        submodules: none
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/setup-build-tools.yml
         parameters:
@@ -103,6 +99,7 @@ stages:
             --build
             --enable_onnx_tests
             --use_webgpu shared_lib
+            --use_dawn_agility_sdk
             --wgsl_template static
             --disable_rtti
             --enable_lto
@@ -145,11 +142,10 @@ stages:
             New-Item -Path $targetPath -ItemType Directory -Force
           }
 
-          Write-Host "Copying dxil.dll and dxcompiler.dll from $sourcePath to $targetPath"
-          Copy-Item -Path "$sourcePath\dxil.dll" -Destination $targetPath -Force
+          Write-Host "Copying dxcompiler.dll from $sourcePath to $targetPath"
           Copy-Item -Path "$sourcePath\dxcompiler.dll" -Destination $targetPath -Force
 
-          Write-Host "DXC DLLs successfully copied to the target directory"
+          Write-Host "DXC DLL successfully copied to the target directory"
         displayName: 'Download and Copy DXC Binaries'
 
       # Esrp signing
@@ -176,8 +172,8 @@ stages:
           Contents: |
             onnxruntime_providers_webgpu.dll
             onnxruntime_providers_webgpu.pdb
-            dxil.dll
             dxcompiler.dll
+            D3D12/**
           TargetFolder: '$(Build.ArtifactStagingDirectory)\bin'
 
       - script: |
@@ -195,13 +191,11 @@ stages:
         clean: all
       pool:
         ${{ if eq(parameters.arch, 'arm64') }}:
-          name: onnxruntime-qnn-windows-vs-2022-arm64
+          name: onnxruntime-medium-arm64-scus
           os: windows
           hostArchitecture: Arm64
-          demands:
-            - Agent.Version -equals 4.264.2
         ${{ else }}:
-          name: onnxruntime-Win-CPU-VS2022-Latest
+          name: onnxruntime-Win-CPU-2022
           os: windows
       templateContext:
         outputs:
@@ -211,9 +205,7 @@ stages:
       variables:
       - template: ../templates/common-variables.yml
       steps:
-      - checkout: self
-        clean: true
-        submodules: none
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/setup-build-tools.yml
         parameters:
@@ -238,5 +230,6 @@ stages:
           python "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\build_wheel.py" `
             --binary_dir "$(Build.BinariesDirectory)\plugin_artifacts\bin" `
             --version "$(PluginPythonPackageVersion)" `
+            --use-dawn-agility-sdk `
             --output_dir "$(Build.ArtifactStagingDirectory)\python"
         displayName: 'Build Python wheel'

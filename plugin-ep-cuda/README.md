@@ -18,6 +18,19 @@ For more information about plugin EPs, see the documentation
 - [`csharp/`](csharp/) - Sources and packaging script for the per-RID
   `Microsoft.ML.OnnxRuntime.EP.Cuda{12,13}.<rid>` NuGet packages.
 
+## Contrib operator compatibility
+
+`MIN_ONNXRUNTIME_VERSION` defines the minimum supported ONNX Runtime core version, but it does not by itself guarantee
+compatibility when contributed operators are involved. ONNX Runtime core and a plugin EP can be built from different
+revisions, and a contributed operator such as `GroupQueryAttention` may gain an input, output, attribute, or supported
+type without a change to its historical schema version. In that case, core may fuse or validate a node using one
+operator contract and dispatch it to a plugin kernel compiled against another, potentially causing incorrect execution
+or a crash.
+
+When a plugin EP implements contributed operators, it must be built against the same contributed-operator schemas used
+by ONNX Runtime core. Building core and the plugin EP from the same ONNX Runtime revision is the recommended way to
+ensure that alignment.
+
 ## Usage
 
 Install the CUDA-family-specific Python distribution, then register the plugin EP at runtime. The package names are

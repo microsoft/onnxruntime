@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <vector>
+
 #include "core/providers/cuda/tensor/split.h"
 
 #include "core/providers/cuda/tensor/split_impl.h"
@@ -8,6 +11,10 @@
 
 namespace onnxruntime {
 namespace cuda {
+namespace {
+constexpr int kMaxInlinePointerCount = 32;
+}
+
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
                                   kOnnxDomain,
                                   2, 10,
@@ -57,11 +64,11 @@ Status SplitKernel::PrepareForComputeLocal(const TensorShape& input_shape,
   axis = HandleNegativeAxis(axis_, num_dimensions);
   const int64_t split_dim_size = input_dims[onnxruntime::narrow<size_t>(axis)];
 
-  before_dims = gsl::narrow_cast<int>(input_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis)));
-  after_dims_including_split_axis = gsl::narrow_cast<int>(input_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis)));
+  before_dims = onnxruntime::narrow<int>(input_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis)));
+  after_dims_including_split_axis = onnxruntime::narrow<int>(input_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis)));
   after_dims_excluding_split = (axis + 1 == num_dimensions)
                                    ? 1
-                                   : gsl::narrow_cast<int>(input_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis + 1)));
+                                   : onnxruntime::narrow<int>(input_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis + 1)));
 
   if (num_outputs_ != -1) {
     if (num_outputs_ > split_dim_size) {
@@ -147,66 +154,66 @@ Status SplitKernel::ComputeInternal(OpKernelContext* ctx) const {
   auto input_dims = input_shape.GetDims();
   auto output_dimensions{input_shape.AsShapeVector()};
 
-  if (split_sizes.size() == 3 && ((axis + 1) == gsl::narrow_cast<int64_t>(input_shape.NumDimensions()))) {
-    // we use (axis + 1) == num_dimensions to check if we are splitting on inner most axis.
-    // only when split on inner axis and output size is 3, we can use Split3Inner.
-    // this kernel is not using pin_memory, so it is ok for using cuda graph.
-    output_dimensions[axis] = split_sizes[0];
-    Tensor* output0 = ctx->Output(0, TensorShape{output_dimensions});
-    output_dimensions[axis] = split_sizes[1];
-    Tensor* output1 = ctx->Output(1, TensorShape{output_dimensions});
-    output_dimensions[axis] = split_sizes[2];
-    Tensor* output2 = ctx->Output(2, TensorShape{output_dimensions});
+  if (num_outputs >= 2 && num_outputs <= kMaxSmallInnerSplitOutputs &&
+      ((axis + 1) == gsl::narrow_cast<int64_t>(input_shape.NumDimensions()))) {
+    TArray<int64_t, kMaxSmallInnerSplitOutputs> split_sizes_array(num_outputs);
+    TArray<void*, kMaxSmallInnerSplitOutputs> output_ptr_array(num_outputs);
+    for (int i = 0; i < num_outputs; ++i) {
+      split_sizes_array[i] = split_sizes[i];
+      output_dimensions[axis] = split_sizes[i];
+      output_ptr_array[i] = ctx->Output(i, TensorShape{output_dimensions})->MutableDataRaw();
+    }
 
     // if input tensor is empty, we don't need to launch kernel, but still need to set output tensor.
     if (input_tensor->Shape().Size() <= 0) return Status::OK();
 
-    return Split3Inner(Stream(ctx),
-                       input_tensor->DataType()->Size(),
-                       split_sizes[0], split_sizes[1],
-                       split_sizes[2],
-                       input_tensor->DataRaw(),
-                       output0->MutableDataRaw(),
-                       output1->MutableDataRaw(),
-                       output2->MutableDataRaw(),
-                       input_dims);
+    return SplitSmallInner(Stream(ctx), input_tensor->DataType()->Size(), split_sizes_array,
+                           input_tensor->DataRaw(), output_ptr_array, input_dims);
+  }
+
+  size_t element_size = input_tensor->DataType()->Size();
+  const bool same_split_size =
+      std::all_of(split_sizes.begin(), split_sizes.end(), [&](int64_t size) { return size == split_sizes[0]; });
+  // Dispatch before allocating the pinned pointer buffer. This path passes pointers by value and
+  // needs no pinned memory, which also keeps it CUDA Graph capturable.
+  if (same_split_size && num_outputs <= kMaxInlinePointerCount) {
+    TArray<void*, kMaxInlinePointerCount> output_ptr_array(num_outputs);
+    output_dimensions[axis] = split_sizes[0];
+    for (int i = 0; i < num_outputs; ++i) {
+      output_ptr_array[i] = ctx->Output(i, TensorShape{output_dimensions})->MutableDataRaw();
+    }
+
+    if (input_tensor->Shape().Size() <= 0) return Status::OK();
+
+    return SplitSameSplitDimImpl(Stream(ctx), element_size, block_size_including_axis_dim,
+                                 block_size_inside_axis_dim, split_sizes[0], num_outputs, input_data,
+                                 output_ptr_array, static_cast<size_t>(input_shape.Size()));
   }
 
   CudaAsyncBuffer<void*> output_ptr(this, num_outputs);
   gsl::span<void*> output_ptr_span = output_ptr.CpuSpan();
-  TensorShapeVector axis_dimension_input_output_mapping(input_dims[axis]);
-  int index = 0;
   for (int i = 0; i < num_outputs; ++i) {
-    // update size of dimension for axis we're splitting on
     auto split_size = gsl::narrow<int>(split_sizes[i]);
     output_dimensions[axis] = split_size;
-
-    Tensor* output = ctx->Output(i, TensorShape{output_dimensions});
-    auto output_data = output->MutableDataRaw();
-    output_ptr_span[i] = output_data;
-    for (int j = 0; j < split_size; ++j) {
-      axis_dimension_input_output_mapping.at(index++) = i;
-    }
+    output_ptr_span[i] = ctx->Output(i, TensorShape{output_dimensions})->MutableDataRaw();
   }
 
   if (input_tensor->Shape().Size() <= 0) return Status::OK();
 
-  size_t element_size = input_tensor->DataType()->Size();
-  if (std::all_of(split_sizes.begin(), split_sizes.end(), [&](int64_t size) { return size == split_sizes[0]; })) {
-    if (num_outputs <= 32) {
-      TArray<void*, 32> output_ptr_array(num_outputs);
-      for (int i = 0; i < num_outputs; ++i) output_ptr_array[i] = output_ptr_span[i];
-      ORT_RETURN_IF_ERROR(SplitSameSplitDimImpl(Stream(ctx), element_size, block_size_including_axis_dim,
-                                                block_size_inside_axis_dim, split_sizes[0], num_outputs, input_data,
-                                                output_ptr_array, static_cast<size_t>(input_shape.Size())));
-    } else {
-      ORT_RETURN_IF_ERROR(output_ptr.CopyToGpu(GetComputeStream(ctx)));
-      ORT_RETURN_IF_ERROR(SplitSameSplitDimImpl(Stream(ctx), element_size, block_size_including_axis_dim,
-                                                block_size_inside_axis_dim, split_sizes[0], num_outputs, input_data,
-                                                output_ptr.GpuPtr(), static_cast<size_t>(input_shape.Size())));
-    }
+  ORT_RETURN_IF_ERROR(output_ptr.CopyToGpu(GetComputeStream(ctx)));
+  if (same_split_size) {
+    ORT_RETURN_IF_ERROR(SplitSameSplitDimImpl(Stream(ctx), element_size, block_size_including_axis_dim,
+                                              block_size_inside_axis_dim, split_sizes[0], num_outputs, input_data,
+                                              output_ptr.GpuPtr(), static_cast<size_t>(input_shape.Size())));
   } else {
-    ORT_RETURN_IF_ERROR(output_ptr.CopyToGpu(GetComputeStream(ctx)));
+    TensorShapeVector axis_dimension_input_output_mapping(input_dims[axis]);
+    int index = 0;
+    for (int i = 0; i < num_outputs; ++i) {
+      const int split_size = gsl::narrow<int>(split_sizes[i]);
+      for (int j = 0; j < split_size; ++j) {
+        axis_dimension_input_output_mapping.at(index++) = i;
+      }
+    }
     CudaAsyncBuffer<int64_t> split_sizes_gpu(this, split_sizes);
     ORT_RETURN_IF_ERROR(split_sizes_gpu.CopyToGpu(GetComputeStream(ctx)));
     std::vector<int64_t> split_sizes_range(split_sizes);

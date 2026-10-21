@@ -67,6 +67,10 @@ PyObject* ToDlpack(OrtValue ort_value) {
 // Consume a Capsule object and claims the ownership of its underlying tensor to
 // create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.
 OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor) {
+  if (!PyCapsule_IsValid(dlpack_tensor, "dltensor")) {
+    throw py::type_error("from_dlpack expected a valid DLPack capsule named 'dltensor'");
+  }
+
   // Extract DLPack tensor pointer from the capsule carrier.
   DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(dlpack_tensor, "dltensor");
   OrtValue ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);

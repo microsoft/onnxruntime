@@ -19,6 +19,7 @@ parameters:
     win_x64: false
     win_arm64: false
     linux_x64: false
+    linux_aarch64: false
     macos_arm64: false
 
 stages:
@@ -31,6 +32,8 @@ stages:
     - Win_plugin_webgpu_arm64_Build
   - ${{ if eq(parameters.platforms.linux_x64, true) }}:
     - Linux_plugin_webgpu_x64_Build
+  - ${{ if eq(parameters.platforms.linux_aarch64, true) }}:
+    - Linux_plugin_webgpu_aarch64_Build
   - ${{ if eq(parameters.platforms.macos_arm64, true) }}:
     - MacOS_plugin_webgpu_arm64_Build
   jobs:
@@ -41,7 +44,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: onnxruntime-Win-CPU-VS2022-Latest
+      name: onnxruntime-Win-CPU-2022
       os: windows
     templateContext:
       outputs:
@@ -59,15 +62,20 @@ stages:
         --output-dir "$(Build.ArtifactStagingDirectory)\nuget"
         --staging-dir "$(WebGpuPackStagingDir)"
         --configuration Release
+        --use-dawn-agility-sdk
         --nuget-config "$(Build.SourcesDirectory)\NuGet.config"
     steps:
-    - checkout: self
-      clean: true
-      submodules: none
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/setup-build-tools.yml
       parameters:
         host_cpu_arch: 'x64'
+
+    - task: UseDotNet@2
+      displayName: 'Install .NET 8 SDK'
+      inputs:
+        packageType: sdk
+        version: '8.x'
 
     - template: ../templates/set-nightly-build-option-variable-step.yml
 
@@ -98,6 +106,13 @@ stages:
           artifactName: webgpu_plugin_linux_x64
           targetPath: '$(Build.BinariesDirectory)\artifacts\linux_x64'
 
+    - ${{ if eq(parameters.platforms.linux_aarch64, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download linux-arm64 artifacts'
+        inputs:
+          artifactName: webgpu_plugin_linux_aarch64
+          targetPath: '$(Build.BinariesDirectory)\artifacts\linux_aarch64'
+
     - ${{ if eq(parameters.platforms.macos_arm64, true) }}:
       - task: DownloadPipelineArtifact@2
         displayName: 'Download macos-arm64 artifacts'
@@ -123,6 +138,7 @@ stages:
               "win_x64":     "${{ parameters.platforms.win_x64 }}".lower() == "true",
               "win_arm64":   "${{ parameters.platforms.win_arm64 }}".lower() == "true",
               "linux_x64":   "${{ parameters.platforms.linux_x64 }}".lower() == "true",
+              "linux_aarch64": "${{ parameters.platforms.linux_aarch64 }}".lower() == "true",
               "macos_arm64": "${{ parameters.platforms.macos_arm64 }}".lower() == "true",
           }
           expected = [name for name, enabled in platforms_enabled.items() if enabled]

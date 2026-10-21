@@ -239,7 +239,7 @@ void SCONV_NCHWC_DIRECT(benchmark::State& state, const char* /*dummy*/) {
   BenchDirectNchwc(state);
 }
 
-static void DirectNchwcCases(benchmark::internal::Benchmark* b) {
+static void DirectNchwcCases(benchmark::Benchmark* b) {
   b->ArgNames(ArgNamesForDirectNchwc());
 
   // IC, OC, IH, IW, KH, KW, PT, PL, PB, PR, S, D

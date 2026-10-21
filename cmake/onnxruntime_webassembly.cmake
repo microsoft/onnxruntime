@@ -116,7 +116,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       onnxruntime_graph
       onnxruntime_mlas
       onnxruntime_optimizer
-      onnxruntime_providers
+      ${onnxruntime_providers_target}
       ${PROVIDERS_JS}
       ${PROVIDERS_XNNPACK}
       ${PROVIDERS_WEBNN}
@@ -172,6 +172,7 @@ else()
     file(GLOB_RECURSE onnxruntime_webassembly_src_exc CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/wasm/api.cc"
       "${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc"
+      "${ONNXRUNTIME_ROOT}/core/session/lora_adapters.cc"
     )
     message(STATUS "onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING_ON_API set")
     set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS "-sDISABLE_EXCEPTION_CATCHING=0")
@@ -189,7 +190,7 @@ else()
     onnxruntime_graph
     onnxruntime_mlas
     onnxruntime_optimizer
-    onnxruntime_providers
+    ${onnxruntime_providers_target}
     ${PROVIDERS_JS}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_WEBNN}
@@ -274,7 +275,7 @@ else()
     if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
       target_link_options(onnxruntime_webassembly PRIVATE
         "SHELL:-s JSPI=1"
-        "SHELL:-s JSPI_EXPORTS=[OrtAppendExecutionProvider,OrtCreateSession,OrtRun,OrtRunWithBinding,OrtBindInput]"
+        "SHELL:-s JSPI_EXPORTS=[OrtAppendExecutionProvider,OrtAppendExecutionProviderV2,OrtCreateSession,OrtRun,OrtRunWithBinding,OrtBindInput]"
       )
     else()
       # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU

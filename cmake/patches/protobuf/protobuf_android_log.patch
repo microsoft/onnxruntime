@@ -1,26 +1,28 @@
 diff --git a/cmake/libprotobuf-lite.cmake b/cmake/libprotobuf-lite.cmake
-index 83e970312..96908991f 100644
+index 6a923f6c8..4c485d054 100644
 --- a/cmake/libprotobuf-lite.cmake
 +++ b/cmake/libprotobuf-lite.cmake
-@@ -102,7 +102,7 @@ if(protobuf_LINK_LIBATOMIC)
-   target_link_libraries(libprotobuf-lite PRIVATE atomic)
- endif()
+@@ -18,6 +18,6 @@ endif()
+ target_link_libraries(libprotobuf-lite PRIVATE ${CMAKE_THREAD_LIBS_INIT})
  if(${CMAKE_SYSTEM_NAME} STREQUAL "Android")
 -  target_link_libraries(libprotobuf-lite PRIVATE log)
 +  target_link_libraries(libprotobuf-lite PRIVATE -llog)
  endif()
- target_include_directories(libprotobuf-lite PUBLIC ${protobuf_SOURCE_DIR}/src)
- if(protobuf_BUILD_SHARED_LIBS)
+ target_include_directories(libprotobuf-lite PUBLIC
+   $<BUILD_INTERFACE:${protobuf_SOURCE_DIR}/src>
+@@ -46 +46 @@ add_library(protobuf::libprotobuf-lite ALIAS libprotobuf-lite)
+-target_link_libraries(libprotobuf-lite PRIVATE utf8_validity)
++target_link_libraries(libprotobuf-lite PUBLIC utf8_validity)
 diff --git a/cmake/libprotobuf.cmake b/cmake/libprotobuf.cmake
-index 07e4bcf57..0cf27caff 100644
+index 22df1fd14..e4b24ece6 100644
 --- a/cmake/libprotobuf.cmake
 +++ b/cmake/libprotobuf.cmake
-@@ -118,7 +118,7 @@ if(protobuf_LINK_LIBATOMIC)
-   target_link_libraries(libprotobuf PRIVATE atomic)
+@@ -21,7 +21,7 @@ if(protobuf_WITH_ZLIB)
+   target_link_libraries(libprotobuf PRIVATE ${ZLIB_LIBRARIES})
  endif()
  if(${CMAKE_SYSTEM_NAME} STREQUAL "Android")
 -  target_link_libraries(libprotobuf PRIVATE log)
 +  target_link_libraries(libprotobuf PRIVATE -llog)
  endif()
- target_include_directories(libprotobuf PUBLIC ${protobuf_SOURCE_DIR}/src)
- if(protobuf_BUILD_SHARED_LIBS)
+ target_include_directories(libprotobuf PUBLIC
+   $<BUILD_INTERFACE:${protobuf_SOURCE_DIR}/src>

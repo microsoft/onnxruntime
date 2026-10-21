@@ -61,5 +61,21 @@ TEST(QMoERowTilingTest, BoundsRoutingScratchByTileSize) {
   EXPECT_LT(tiled.total_bytes, untiled.total_bytes);
 }
 
+TEST(QMoERowTilingTest, BoundsFp8ExpertsByRoutesInTile) {
+  const auto decode = qmoe::MakeRowTilePlan(1, 0, false);
+  const auto prefill = qmoe::MakeRowTilePlan(17, 0, false);
+  const auto tiled = qmoe::MakeRowTilePlan(65, 4, true);
+  EXPECT_EQ(qmoe::MaxActiveExperts(decode, 512, 10), 10);
+  EXPECT_EQ(qmoe::MaxActiveExperts(prefill, 512, 10), 170);
+  EXPECT_EQ(qmoe::MaxActiveExperts(tiled, 512, 10), 40);
+  EXPECT_EQ(qmoe::MaxActiveExperts(prefill, 16, 10), 16);
+  EXPECT_EQ(qmoe::MaxActiveExperts(decode, 1, 1), 1);
+
+  const size_t weight_bytes = SafeInt<size_t>(qmoe::MaxActiveExperts(decode, 512, 10)) * 3 * 2560 * 640 * 2;
+  EXPECT_EQ(weight_bytes, 98304000u);  // 93.75 MiB instead of 4.6875 GiB.
+  EXPECT_THROW((void)qmoe::MaxActiveExperts(decode, 512, 0), OnnxRuntimeException);
+  EXPECT_THROW((void)qmoe::MaxActiveExperts(decode, 512, 513), OnnxRuntimeException);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

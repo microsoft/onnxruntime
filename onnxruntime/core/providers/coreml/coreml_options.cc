@@ -43,10 +43,10 @@ CoreMLOptions::CoreMLOptions(uint32_t coreml_flags) {
 
 void CoreMLOptions::ValidateAndParseProviderOption(const ProviderOptions& options) {
   const std::unordered_map<std::string, COREMLFlags> available_computeunits_options = {
-      {"CPUAndNeuralEngine", COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE},
-      {"CPUAndGPU", COREML_FLAG_USE_CPU_AND_GPU},
-      {"CPUOnly", COREML_FLAG_USE_CPU_ONLY},
-      {"ALL", COREML_FLAG_USE_NONE},
+      {kCoremlProviderOption_MLComputeUnits_CPUAndNeuralEngine, COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE},
+      {kCoremlProviderOption_MLComputeUnits_CPUAndGPU, COREML_FLAG_USE_CPU_AND_GPU},
+      {kCoremlProviderOption_MLComputeUnits_CPUOnly, COREML_FLAG_USE_CPU_ONLY},
+      {kCoremlProviderOption_MLComputeUnits_ALL, COREML_FLAG_USE_NONE},
   };
   const std::unordered_map<std::string, COREMLFlags> available_modelformat_options = {
       {"MLProgram", COREML_FLAG_CREATE_MLPROGRAM},
@@ -97,5 +97,35 @@ void CoreMLOptions::ValidateAndParseProviderOption(const ProviderOptions& option
       model_cache_directory_ = option.second;
     }
   }
+}
+
+ProviderOptions CoreMLOptions::ToProviderOptions() const {
+  // MLComputeUnits uses constants defined in coreml_provider_factory.h. The other strings match
+  // those accepted by ValidateAndParseProviderOption.
+  const char* compute_units = kCoremlProviderOption_MLComputeUnits_ALL;
+  if (ComputeUnits(COREML_FLAG_USE_CPU_ONLY)) {
+    compute_units = kCoremlProviderOption_MLComputeUnits_CPUOnly;
+  } else if (ComputeUnits(COREML_FLAG_USE_CPU_AND_GPU)) {
+    compute_units = kCoremlProviderOption_MLComputeUnits_CPUAndGPU;
+  } else if (ComputeUnits(COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE)) {
+    compute_units = kCoremlProviderOption_MLComputeUnits_CPUAndNeuralEngine;
+  }
+
+  ProviderOptions options{
+      {kCoremlProviderOption_MLComputeUnits, compute_units},
+      {kCoremlProviderOption_ModelFormat, create_mlprogram_ ? "MLProgram" : "NeuralNetwork"},
+      {kCoremlProviderOption_RequireStaticInputShapes, require_static_shape_ ? "1" : "0"},
+      {kCoremlProviderOption_EnableOnSubgraphs, enable_on_subgraph_ ? "1" : "0"},
+      {kCoremlProviderOption_SpecializationStrategy, strategy_.empty() ? std::string{"Default"} : strategy_},
+      // The effective value: profiling applies to MLProgram models only.
+      {kCoremlProviderOption_ProfileComputePlan, ProfileComputePlan() ? "1" : "0"},
+      {kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU, allow_low_precision_accumulation_on_gpu_ ? "1" : "0"},
+  };
+
+  if (!model_cache_directory_.empty()) {
+    options[kCoremlProviderOption_ModelCacheDirectory] = model_cache_directory_;
+  }
+
+  return options;
 }
 }  // namespace onnxruntime

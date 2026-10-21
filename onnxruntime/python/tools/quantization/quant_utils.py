@@ -279,7 +279,8 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
         rmax = +absmax
 
     assert qmin <= qmax, f"qmin={rmin} > qmax={rmax}"
-    dr = numpy.array(rmax - rmin, dtype=numpy.float64)
+    # Promote before subtraction: a finite input range can overflow its original dtype.
+    dr = numpy.array(rmax, dtype=numpy.float64) - numpy.array(rmin, dtype=numpy.float64)
     dq = numpy.array(qmax, dtype=numpy.float64) - numpy.array(qmin, dtype=numpy.float64)
     scale = numpy.array(dr / dq)
     assert scale >= 0, "scale issue"
