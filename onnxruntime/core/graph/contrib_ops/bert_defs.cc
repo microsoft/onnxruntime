@@ -4833,6 +4833,41 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MatMulSigmoidGatedResidual, 1,
+    OpSchema()
+        .SetDoc("Fuses a shared-expert scalar gate with routed and residual additions. "
+                "gate = Sigmoid(MatMul(X, Transpose(weight))); "
+                "output = residual + (routed + shared * gate). "
+                "X is [M,K], weight is [1,K], and shared/routed/residual/output are [M,N]. "
+                "The dot product accumulates in FP32 and is rounded to FP16 before sigmoid. "
+                "Sigmoid, multiply and each addition round separately to FP16. "
+                "Dot reduction order need not match an unfused MatMul implementation.")
+        .Input(0, "X", "Gate activation [M,K].", "T")
+        .Input(1, "weight", "Gate weight [1,K].", "T")
+        .Input(2, "shared", "Shared expert output [M,N].", "T")
+        .Input(3, "routed", "Routed expert output [M,N].", "T")
+        .Input(4, "residual", "Residual [M,N].", "T")
+        .Output(0, "output", "Gated expert residual result [M,N].", "T")
+        .TypeConstraint("T", {"tensor(float16)"}, "FP16 inputs and output.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          for (int i = 0; i < 5; ++i) {
+            if (hasInputShape(ctx, i) && getInputShape(ctx, i).dim_size() != 2) {
+              fail_shape_inference("MatMulSigmoidGatedResidual inputs must have rank 2");
+            }
+          }
+          if (hasInputShape(ctx, 1)) {
+            const auto& w = getInputShape(ctx, 1);
+            if (w.dim(0).has_dim_value() && w.dim(0).dim_value() != 1) {
+              fail_shape_inference("MatMulSigmoidGatedResidual weight must have shape [1,K]");
+            }
+          }
+          if (hasInputShape(ctx, 2)) {
+            propagateShapeFromInputToOutput(ctx, 2, 0);
+          }
+        }));
+
 constexpr const char* VarlenCausalConvWithState_ver1_doc = R"DOC(
 Stateful causal depthwise convolution over a packed, token-major batch of variable-length
 sequences (CUDA and WebGPU).
