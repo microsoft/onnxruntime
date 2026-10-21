@@ -67,12 +67,18 @@ RunTiming OnnxRuntimeTestSession::Run() {
     for (size_t i = 0; i < input_names_.size(); ++i) {
       io_binding.BindInput(input_names_[i], input[i]);
     }
-    for (auto& name : output_names_) {
-      io_binding.BindOutput(name.c_str(), mem_info);
+    // String outputs require host-accessible memory, so let the session allocate them on the CPU.
+    const auto cpu_mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    for (size_t i = 0; i < output_names_.size(); ++i) {
+      io_binding.BindOutput(output_names_[i].c_str(), is_output_string_[i] ? cpu_mem_info : mem_info);
     }
 
-    // Use async execution and rely on IO binding's SynchronizeOutputs to synchronize.
-    run_options.AddConfigEntry(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "1");
+    // Plugin EPs may synchronize at run end (OnRunEnd / stream flush) without implementing OrtEp::Sync, in which case
+    // IoBinding::SynchronizeOutputs() does not wait. Only defer synchronization for the built-in CUDA/TensorRT path.
+    if (!use_plugin_ep_io_binding_) {
+      // Use async execution and rely on IO binding's SynchronizeOutputs to synchronize.
+      run_options.AddConfigEntry(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "1");
+    }
 
     // do not time IO binding creation
     start = std::chrono::high_resolution_clock::now();
@@ -1008,7 +1014,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     // String tensors require host-accessible memory; skip pre-allocation for them when allocator_
     // is device-only and let the session allocate them itself.
     bool is_string_output = tensor_info.GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
-    if (is_dynamic || (device_memory_name_.empty() && !plugin_ep_allocator_selection_.has_value()) ||
+    is_output_string_.push_back(is_string_output);
+    // With plugin EP IO binding, Run() binds fresh outputs and never uses outputs_.
+    if (is_dynamic || use_plugin_ep_io_binding_ ||
+        (device_memory_name_.empty() && !plugin_ep_allocator_selection_.has_value()) ||
         (is_string_output && IsAllocatorDeviceOnly())) {
       outputs_.emplace_back(Ort::Value(nullptr));
     } else {

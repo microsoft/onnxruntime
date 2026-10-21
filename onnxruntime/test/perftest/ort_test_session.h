@@ -80,6 +80,8 @@ class OnnxRuntimeTestSession : public TestSession {
   // Per-output dynamic-shape flag, aligned with outputs_. Lets Run() reset only the outputs that
   // actually have dynamic shapes instead of discarding every pre-allocated buffer.
   std::vector<bool> is_output_dynamic_;
+  // Per-output string-type flag, used to bind string outputs to host memory under IO binding.
+  std::vector<bool> is_output_string_;
   std::atomic<size_t> round_robin_counter_{0};
   bool use_round_robin_{false};
   // True when the selected plugin EP device's allocator is used for IO binding (-g).
