@@ -112,7 +112,7 @@ Status get_reduction_buffers(
 
 template <typename TIn, typename TOut, typename TBuf, typename TOp, typename TFinalOp, bool DivideResultBySize>
 __device__ void reduce_all(
-    const int num_elements, const TIn* const input, TOut* const output,
+    const int num_elements, const TBuf inverse_num_elements, const TIn* const input, TOut* const output,
     TBuf* const block_reductions_buffer, int* const block_done_count_buffer) {
   extern __shared__ unsigned char shared_memory_bytes[];
   TBuf* shared_memory = reinterpret_cast<TBuf*>(shared_memory_bytes);
@@ -140,13 +140,16 @@ __device__ void reduce_all(
   // Total number of threads in a grid row with 2-D blocks.
   const int num_threads_in_grid_row = num_blocks_in_grid_row * num_threads_in_block;
 
-  const auto write_result = [&output, &num_elements](const TOut result) {
+  // Finish in TBuf so a 16-bit TOut doesn't overflow on the sum.
+  const auto write_result = [&output, &num_elements, &inverse_num_elements](const TBuf result) {
     // Compilation time if-else branch controlled by template argument can be
     // optimized out, so there will be no branch in real computation phase.
     if (DivideResultBySize) {
-      output[0] = TFinalOp()(result / TOut(num_elements));
+      // Rounding to a 16-bit TOut hides the error of multiplying by the inverse, which avoids a divide per row.
+      const TBuf mean = sizeof(TOut) < sizeof(TBuf) ? result * inverse_num_elements : result / TBuf(num_elements);
+      output[0] = TOut(TFinalOp()(mean));
     } else {
-      output[0] = TFinalOp()(result);
+      output[0] = TOut(TFinalOp()(result));
     }
   };
 
@@ -280,6 +283,8 @@ __global__ void reduce_matrix_columns_kernel(
   const int row_id_in_grid = blockIdx.y;
   const int num_grid_rows = gridDim.y;
 
+  const TBuf inverse_num_cols = TBuf(1) / TBuf(num_cols);
+
   // one row per iteration
   // row_id is int64_t to avoid int overflow in offset calculations
   for (int64_t row_id = row_id_in_grid; row_id < num_rows; row_id += num_grid_rows) {
@@ -289,7 +294,7 @@ __global__ void reduce_matrix_columns_kernel(
     int* const row_block_done_counts_buffer = block_done_counts_buffer + row_id;
 
     reduce_all<TIn, TOut, TBuf, TOp, TFinalOp, DivideResultBySize>(
-        num_cols, row_data, row_output,
+        num_cols, inverse_num_cols, row_data, row_output,
         row_block_reductions_buffer, row_block_done_counts_buffer);
   }
 }
@@ -386,7 +391,22 @@ INSTANTIATE_REDUCE_MEAN(double, double);
 #undef INSTANTIATE_REDUCE_MEAN
 
 namespace detail {
-template <typename TIn, typename TOut, typename TBuf>
+template <typename TBuf, typename TOut, typename TFinalOp, bool DivideResultBySize>
+struct OP_FinishSum {
+  __device__ __inline__ TOut operator()(TBuf sum) const {
+    if (DivideResultBySize) {
+      sum /= TBuf(count_);
+    }
+    return TOut(TFinalOp()(sum));
+  }
+
+  __host__ __device__ OP_FinishSum(int count) : count_(count) {}
+
+  int count_;
+};
+
+// Without AtomicOutput, the grid must have one block per column (gridDim.y == 1).
+template <typename TIn, typename TOut, typename TBuf, typename TFinalOp, bool DivideResultBySize, bool AtomicOutput>
 __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m, int n) {
   constexpr int x_load_count_per_thread = 1;
   constexpr int y_load_count_per_thread = 4;
@@ -444,9 +464,41 @@ __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m,
     }
 
     if (threadIdx.y == 0 && valid_col) {
-      atomic_add(output + col, TOut(shared_memory[threadIdx.x]));
+      if (AtomicOutput) {
+        atomic_add(output + col, TOut(shared_memory[threadIdx.x]));
+      } else {
+        output[col] = OP_FinishSum<TBuf, TOut, TFinalOp, DivideResultBySize>(m)(shared_memory[threadIdx.x]);
+      }
     }
   }
+}
+
+std::pair<dim3, dim3> compute_reduce_matrix_rows_grid_and_block_dims(int m, int n) {
+  constexpr int max_num_threads_in_block = 512;
+  constexpr int max_num_blocks_in_grid = 512;
+  constexpr int load_count_per_thread = 4;
+
+  const int block_x_dim = least_pow2_bound(std::max(1, std::min(n, GPU_WARP_SIZE_HOST)));
+  const int block_y_dim = least_pow2_bound(std::max(1, std::min(max_num_threads_in_block / block_x_dim, m / load_count_per_thread)));
+  const int grid_x_dim = std::max(1, std::min(n / block_x_dim, max_num_blocks_in_grid));
+  const int grid_y_dim = std::max(1, std::min(max_num_blocks_in_grid / grid_x_dim, m / block_y_dim / 4));
+
+  return {dim3(grid_x_dim, grid_y_dim, 1), dim3(block_x_dim, block_y_dim, 1)};
+}
+
+size_t compute_reduce_matrix_rows_intermediate_buffer_size(int element_size, int num_rows, int num_cols) {
+  ORT_ENFORCE(element_size >= 0 && num_rows >= 0 && num_cols >= 0);
+  const auto grid_dim = compute_reduce_matrix_rows_grid_and_block_dims(num_rows, num_cols).first;
+  return grid_dim.y == 1 ? 0 : static_cast<size_t>(num_cols) * element_size;
+}
+
+template <typename TIn, typename TOut, typename TBuf, typename TFinalOp, bool DivideResultBySize, bool AtomicOutput>
+void launch_reduce_matrix_rows_kernel(cudaStream_t stream, const TIn* input, TOut* output, int m, int n) {
+  const auto grid_and_block_dims = compute_reduce_matrix_rows_grid_and_block_dims(m, n);
+  const dim3& grid = grid_and_block_dims.first;
+  const dim3& block = grid_and_block_dims.second;
+  reduce_matrix_rows_kernel<TIn, TOut, TBuf, TFinalOp, DivideResultBySize, AtomicOutput>
+      <<<grid, block, block.y * block.x * sizeof(TBuf), stream>>>(input, output, m, n);
 }
 
 template <typename TIn, typename TOut, typename TBuf>
@@ -457,53 +509,56 @@ Status call_reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* outp
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output, 0, n * sizeof(TOut), stream));
   }
 
-  constexpr int max_num_threads_in_block = 512;
-  constexpr int max_num_blocks_in_grid = 512;
-  constexpr int load_count_per_thread = 4;
+  launch_reduce_matrix_rows_kernel<TIn, TOut, TBuf, Identity, false, true>(stream, input, output, m, n);
 
-  const int block_x_dim = least_pow2_bound(std::max(1, std::min(n, GPU_WARP_SIZE_HOST)));
-  const int block_y_dim = least_pow2_bound(std::max(1, std::min(max_num_threads_in_block / block_x_dim, m / load_count_per_thread)));
-  const int grid_x_dim = std::max(1, std::min(n / block_x_dim, max_num_blocks_in_grid));
-  const int grid_y_dim = std::max(1, std::min(max_num_blocks_in_grid / grid_x_dim, m / block_y_dim / 4));
+  return Status::OK();
+}
 
-  const dim3 grid(grid_x_dim, grid_y_dim, 1);
-  const dim3 block(block_x_dim, block_y_dim, 1);
+template <typename TIn, typename TOut, typename TFinalOp, bool DivideResultBySize>
+Status call_reduce_matrix_rows_with_final_op(cudaStream_t stream, const TIn* input, TOut* output, int m, int n,
+                                             void* buffer, size_t buffer_size) {
+  ORT_ENFORCE(m >= 0 && n >= 0);
+  using TBuf = AccumulationType_t<TIn>;
 
-  reduce_matrix_rows_kernel<TIn, TOut, TBuf><<<grid, block, block.y * block.x * sizeof(TBuf), stream>>>(
-      input, output, m, n);
+  if (compute_reduce_matrix_rows_grid_and_block_dims(m, n).first.y == 1) {
+    launch_reduce_matrix_rows_kernel<TIn, TOut, TBuf, TFinalOp, DivideResultBySize, false>(stream, input, output, m, n);
+    return Status::OK();
+  }
+
+  TBuf* sums = nullptr;
+  if constexpr (std::is_same<TOut, TBuf>::value) {
+    sums = output;
+  } else {
+    ORT_RETURN_IF_NOT(buffer_size >= static_cast<size_t>(n) * sizeof(TBuf),
+                      "Buffer size is too small (", buffer_size, " bytes) for ", n, " column sums.");
+    sums = static_cast<TBuf*>(buffer);
+  }
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(sums, 0, n * sizeof(TBuf), stream));
+  launch_reduce_matrix_rows_kernel<TIn, TBuf, TBuf, Identity, false, true>(stream, input, sums, m, n);
+  UnaryElementWiseImpl(stream, sums, output, OP_FinishSum<TBuf, TOut, TFinalOp, DivideResultBySize>(m), n);
 
   return Status::OK();
 }
 }  // namespace detail
 
-template <typename T>
-struct OP_Div {
-  __device__ __inline__ T operator()(const T& a) const {
-    return a / v_;
-  }
-
-  OP_Div(T v) : v_(v) {}
-
-  T v_;
-};
-
-template <typename T>
-void UnaryDiv(cudaStream_t stream, const T* input, T* output, T denominator, size_t count) {
-  UnaryElementWiseImpl(stream, input, output, OP_Div<T>(denominator), count);
-}
-
-#define INSTANTIATE_UNARY_DIV(T) \
-  template void UnaryDiv<T>(cudaStream_t stream, const T* input, T* output, T denominator, size_t count)
-INSTANTIATE_UNARY_DIV(half);
-INSTANTIATE_UNARY_DIV(float);
-INSTANTIATE_UNARY_DIV(double);
-INSTANTIATE_UNARY_DIV(BFloat16);
-#undef INSTANTIATE_UNARY_DIV
-
 template <typename TIn, typename TOut>
 Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, bool reset_initial_output) {
   using TBuf = AccumulationType_t<TIn>;
   return detail::call_reduce_matrix_rows<TIn, TOut, TBuf>(stream, input, output, m, n, reset_initial_output);
+}
+
+template <typename TIn, typename TOut>
+Status reduce_matrix_rows_mean(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer,
+                               size_t buffer_size) {
+  return detail::call_reduce_matrix_rows_with_final_op<TIn, TOut, Identity, true>(
+      stream, input, output, m, n, buffer, buffer_size);
+}
+
+template <typename TIn, typename TOut>
+Status reduce_matrix_rows_log_sum(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer,
+                                  size_t buffer_size) {
+  return detail::call_reduce_matrix_rows_with_final_op<TIn, TOut, Log, false>(
+      stream, input, output, m, n, buffer, buffer_size);
 }
 
 #define INSTANTIATE_REDUCE_MATRIX_ROWS(T) \
@@ -513,6 +568,17 @@ INSTANTIATE_REDUCE_MATRIX_ROWS(float);
 INSTANTIATE_REDUCE_MATRIX_ROWS(double);
 INSTANTIATE_REDUCE_MATRIX_ROWS(BFloat16);
 #undef INSTANTIATE_REDUCE_MATRIX_ROWS
+
+#define INSTANTIATE_REDUCE_MATRIX_ROWS_MEAN_AND_LOG_SUM(T)                                                       \
+  template Status reduce_matrix_rows_mean<T, T>(cudaStream_t stream, const T* input, T* output, int m, int n,    \
+                                                void* buffer, size_t buffer_size);                               \
+  template Status reduce_matrix_rows_log_sum<T, T>(cudaStream_t stream, const T* input, T* output, int m, int n, \
+                                                   void* buffer, size_t buffer_size)
+INSTANTIATE_REDUCE_MATRIX_ROWS_MEAN_AND_LOG_SUM(half);
+INSTANTIATE_REDUCE_MATRIX_ROWS_MEAN_AND_LOG_SUM(float);
+INSTANTIATE_REDUCE_MATRIX_ROWS_MEAN_AND_LOG_SUM(double);
+INSTANTIATE_REDUCE_MATRIX_ROWS_MEAN_AND_LOG_SUM(BFloat16);
+#undef INSTANTIATE_REDUCE_MATRIX_ROWS_MEAN_AND_LOG_SUM
 
 template <typename TIn, typename TOut>
 Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size) {
@@ -527,6 +593,31 @@ INSTANTIATE_REDUCE_MATRIX_COLUMNS(float);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(double);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(BFloat16);
 #undef INSTANTIATE_REDUCE_MATRIX_COLUMNS
+
+template <typename TIn, typename TOut>
+Status reduce_matrix_columns_mean(
+    cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size) {
+  return detail::call_reduce_matrix_columns<TIn, TOut, Identity, Identity, true>(
+      stream, input, output, m, n, buffer, buffer_size);
+}
+
+template <typename TIn, typename TOut>
+Status reduce_matrix_columns_log_sum(
+    cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size) {
+  return detail::call_reduce_matrix_columns<TIn, TOut, Identity, Log, false>(
+      stream, input, output, m, n, buffer, buffer_size);
+}
+
+#define INSTANTIATE_REDUCE_MATRIX_COLUMNS_MEAN_AND_LOG_SUM(T)                                                       \
+  template Status reduce_matrix_columns_mean<T, T>(cudaStream_t stream, const T* input, T* output, int m, int n,    \
+                                                   void* buffer, size_t buffer_size);                               \
+  template Status reduce_matrix_columns_log_sum<T, T>(cudaStream_t stream, const T* input, T* output, int m, int n, \
+                                                      void* buffer, size_t buffer_size)
+INSTANTIATE_REDUCE_MATRIX_COLUMNS_MEAN_AND_LOG_SUM(half);
+INSTANTIATE_REDUCE_MATRIX_COLUMNS_MEAN_AND_LOG_SUM(float);
+INSTANTIATE_REDUCE_MATRIX_COLUMNS_MEAN_AND_LOG_SUM(double);
+INSTANTIATE_REDUCE_MATRIX_COLUMNS_MEAN_AND_LOG_SUM(BFloat16);
+#undef INSTANTIATE_REDUCE_MATRIX_COLUMNS_MEAN_AND_LOG_SUM
 
 namespace detail {
 constexpr int kMaxReduceRank = 16;

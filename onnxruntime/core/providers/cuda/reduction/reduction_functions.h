@@ -15,6 +15,9 @@ size_t compute_reduce_matrix_columns_intermediate_buffer_size(
 
 size_t compute_arg_min_max_last_axis_intermediate_buffer_size(
     int element_size, int num_rows, int num_cols);
+
+size_t compute_reduce_matrix_rows_intermediate_buffer_size(
+    int element_size, int num_rows, int num_cols);
 }  // namespace detail
 
 /**
@@ -29,6 +32,25 @@ size_t compute_reduce_matrix_columns_buffer_size(int m, int n) {
   using TBuf = AccumulationType_t<TIn>;
   return detail::compute_reduce_matrix_columns_intermediate_buffer_size(
       sizeof(TBuf), m, n);
+}
+
+/**
+ * Computes the size in bytes of the intermediate buffer needed by reduce_matrix_rows_mean() and
+ * reduce_matrix_rows_log_sum().
+ * @tparam TIn The input data type.
+ * @tparam TOut The output data type.
+ * @param m The number of matrix rows.
+ * @param n The number of matrix columns.
+ * @return The size of the intermediate buffer. Zero when no buffer is needed.
+ */
+template <typename TIn, typename TOut>
+size_t compute_reduce_matrix_rows_buffer_size(int m, int n) {
+  using TBuf = AccumulationType_t<TIn>;
+  if constexpr (std::is_same<TOut, TBuf>::value) {
+    return 0;
+  } else {
+    return detail::compute_reduce_matrix_rows_intermediate_buffer_size(sizeof(TBuf), m, n);
+  }
 }
 
 /**
@@ -95,6 +117,21 @@ template <typename TIn, typename TOut>
 Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, bool reset_initial_output = true);
 
 /**
+ * Like reduce_matrix_rows(), but outputs the mean of each column. The sum and the division use the
+ * accumulation type, and only the result is converted to TOut.
+ * @param buffer The intermediate buffer, may be nullptr if the required size is 0.
+ * @param buffer_size The size of the intermediate buffer in bytes, see compute_reduce_matrix_rows_buffer_size().
+ */
+template <typename TIn, typename TOut>
+Status reduce_matrix_rows_mean(cudaStream_t stream, const TIn* input, TOut* output, int m, int n,
+                               void* buffer, size_t buffer_size);
+
+/** Like reduce_matrix_rows_mean(), but outputs the log of the sum of each column. */
+template <typename TIn, typename TOut>
+Status reduce_matrix_rows_log_sum(cudaStream_t stream, const TIn* input, TOut* output, int m, int n,
+                                  void* buffer, size_t buffer_size);
+
+/**
  * Reduces the columns in a row-major matrix to a single column containing the sum of each row.
  * @param input The input data.
  * @param output The output data.
@@ -105,6 +142,16 @@ Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, i
  */
 template <typename TIn, typename TOut>
 Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size);
+
+/** Like reduce_matrix_columns(), but outputs the mean of each row. */
+template <typename TIn, typename TOut>
+Status reduce_matrix_columns_mean(cudaStream_t stream, const TIn* input, TOut* output, int m, int n,
+                                  void* buffer, size_t buffer_size);
+
+/** Like reduce_matrix_columns_mean(), but outputs the log of the sum of each row. */
+template <typename TIn, typename TOut>
+Status reduce_matrix_columns_log_sum(cudaStream_t stream, const TIn* input, TOut* output, int m, int n,
+                                     void* buffer, size_t buffer_size);
 
 /**
  * Computes ReduceSum for an arbitrary set of axes. This is the general fallback
@@ -142,10 +189,6 @@ template <typename TIn>
 size_t compute_arg_min_max_last_axis_buffer_size(int m, int n) {
   return detail::compute_arg_min_max_last_axis_intermediate_buffer_size(sizeof(TIn), m, n);
 }
-
-/** Apply unary elementwise division. */
-template <typename T>
-void UnaryDiv(cudaStream_t stream, const T* input, T* output, T denominator, size_t count);
 
 /**
  * Saturating absolute value for norm no-op reductions.
