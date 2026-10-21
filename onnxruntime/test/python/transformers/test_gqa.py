@@ -4862,24 +4862,45 @@ class TestGQAWindowedKvCacheCpu(TestGQAWindowedKvCache):
                         buffer_sequence_length=capacity,
                     )
 
+    def test_right_padded_chunked_prefill_past_capacity(self):
+        # 137 valid tokens fill the cache (capacity 128 or 136), so the later padded steps start from a
+        # nearly full cache: appending all S padded rows in place would run past the capacity.
+        steps = [(1, 32), 32, (1, 32), (7, 32), 32, 32, 32, (1, 32), (3, 64), 1, (40, 64), (1, 64), 64, 1, 1]
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                    self._check_parity(
+                        self._base_config(batch_size=1, rotary=True),
+                        step_lengths=steps,
+                        buffer_sequence_length=capacity,
+                    )
+
     def test_right_padded_chunked_prefill_int8(self):
         steps = [64, (1, 64), (5, 64), 1, 1]
+        self._check_right_padded_int8(steps)
+
+    def test_right_padded_chunked_prefill_int8_past_capacity(self):
+        steps = [64, (1, 64), (5, 64), 64, (1, 64), (40, 64), (1, 64), 64, 1, 1]
+        self._check_right_padded_int8(steps)
+
+    def _check_right_padded_int8(self, steps):
         for disable_flash in ("0", "1"):
-            with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
-                self._check_parity(
-                    self._base_config(
-                        batch_size=1,
-                        rotary=True,
-                        kv_cache_type="int8",
-                        k_quant_type="PER_CHANNEL",
-                        v_quant_type="PER_CHANNEL",
-                        kv_cache_bit_width=8,
-                    ),
-                    step_lengths=steps,
-                    buffer_sequence_length=self.window_size + 8,
-                    rtol=5e-2,
-                    atol=1e-1,
-                )
+            for capacity in (self.window_size, self.window_size + 8):
+                with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                    self._check_parity(
+                        self._base_config(
+                            batch_size=1,
+                            rotary=True,
+                            kv_cache_type="int8",
+                            k_quant_type="PER_CHANNEL",
+                            v_quant_type="PER_CHANNEL",
+                            kv_cache_bit_width=8,
+                        ),
+                        step_lengths=steps,
+                        buffer_sequence_length=capacity,
+                        rtol=5e-2,
+                        atol=1e-1,
+                    )
 
 
 if __name__ == "__main__":

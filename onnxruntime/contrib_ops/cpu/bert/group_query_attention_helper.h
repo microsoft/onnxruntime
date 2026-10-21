@@ -576,8 +576,11 @@ inline Status CheckNoQKOutput(int num_outputs, int qk_output) {
 }
 
 // Resolves the past KV length and the number of valid query/KV tokens in the current step.
-// For a subsequent prefill chunk (sequence_length > 1, !is_first_prompt), max_total_sequence_length
-// is past_sequence_length + sequence_length while seqlens_k + 1 is past_sequence_length + valid_q_length.
+// The two length inputs differ for a right-padded chunk: seqlens_k + 1 is the valid total
+// (past_sequence_length + valid_q_length), while max_total_sequence_length is the padded total
+// (past_sequence_length + sequence_length). For a subsequent prefill chunk (sequence_length > 1,
+// !is_first_prompt) the past length is therefore max_total_sequence_length - sequence_length; this is
+// only equal to the batch maximum of seqlens_k + 1 when valid_q_length == sequence_length.
 inline void ResolveGQAStepLengths(int64_t seqlens_k,
                                   int sequence_length,
                                   int max_total_sequence_length,
