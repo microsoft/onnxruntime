@@ -24,6 +24,7 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>  // NOLINT(build/c++17)
 #include <istream>
 #include <map>
 #include <memory>
@@ -31,6 +32,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "core/common/status.h"
@@ -52,12 +54,33 @@ constexpr const char* kTableMatMulNBits = "matmulnbits_fpa_intb";
 // Environment variables (see docs section 9).
 constexpr const char* kEnvCacheDir = "ORT_CUDA_GEMM_TACTIC_CACHE_DIR";
 constexpr const char* kEnvCachePrefix = "ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX";
+constexpr const char* kEnvCacheMode = "ORT_CUDA_GEMM_TACTIC_CACHE_MODE";
+constexpr const char* kEnvCacheToModel = "ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL";
 
 // Session-option config keys (equivalents of the env vars). These can be set via
 // SessionOptions::AddConfigEntry, or through onnxruntime-genai's session_options in
 // genai_config.json (any unrecognized session_options key is forwarded to AddConfigEntry).
 constexpr const char* kSessionConfigCacheDir = "ep.cuda.gemm_tactic_cache_dir";
 constexpr const char* kSessionConfigCachePrefix = "ep.cuda.gemm_tactic_cache_prefix";
+constexpr const char* kSessionConfigCacheMode = "ep.cuda.gemm_tactic_cache_mode";
+constexpr const char* kSessionConfigCacheToModel = "ep.cuda.gemm_tactic_cache_to_model";
+
+// Persistence directions used by a session. Parsed from the cache mode:
+//   "load_save" (default): load at session creation, save newly tuned tactics at session close.
+//   "load": read-only; never writes (e.g. a pre-tuned cache shipped with an application).
+//   "save": ignore existing rows, re-tune, and write the results at session close.
+struct CacheAccess {
+  bool load = true;
+  bool save = true;
+};
+
+// Returns std::nullopt for an unrecognized mode. An empty mode means "load_save".
+std::optional<CacheAccess> ParseCacheAccess(const std::string& mode);
+
+// Returns true for "1"/"true"/"on" (case-insensitive), false for empty/"0"/"false"/"off",
+// and std::nullopt otherwise.
+std::optional<bool> ParseCacheFlag(const std::string& value);
+
 // Optional separate output containing only tactics selected by the tuning session.
 constexpr const char* kSessionConfigTuningResultsPrefix = "ep.cuda.gemm_tactic_cache_tuning_results_prefix";
 
@@ -146,9 +169,10 @@ struct MatMulNBitsKeyHash {
 class MatMulNBitsTacticCache {
  public:
   // Resolves the cache file path, or returns an empty string when persistence is disabled.
-  // Resolution order: session-config prefix, session-config dir, env prefix, env dir.
+  // Resolution order: session-config prefix, session-config dir, `sidecar_prefix` (the model path
+  // when the model sidecar is enabled), env prefix, env dir.
   static std::string ResolveFilePath(const std::string& config_dir, const std::string& config_prefix,
-                                     const HardwareSignature& signature);
+                                     const HardwareSignature& signature, const std::string& sidecar_prefix = "");
 
   // Returns a configured cache if persistence is enabled, otherwise nullptr (callers keep the
   // in-process-only behavior). The file location follows ResolveFilePath. The returned cache has
@@ -180,11 +204,38 @@ class MatMulNBitsTacticCache {
   // Parses a complete snapshot. No rows are accepted if the stream reports a read error.
   onnxruntime::common::Status Load(std::istream& in);
 
+  // Loads again if the file changed on disk since the last Load() or Flush(), refreshing clean
+  // rows from disk while preserving locally pending updates.
+  onnxruntime::common::Status ReloadIfChanged();
+
   // Atomically merges locally changed rows with the current on-disk file and writes
   // it back. No-op (OK) if there is nothing to persist.
   onnxruntime::common::Status Flush();
 
+  // Non-blocking variant of Flush() for shutdown/unload paths where waiting on a mutex or file
+  // lock held by a stopped worker thread could hang the process.
+  onnxruntime::common::Status TryFlush();
+
+  // Test hook used to simulate a worker thread stopped while holding the cache mutex.
+  std::unique_lock<std::mutex> LockMutexForTesting() const {
+    return std::unique_lock<std::mutex>(mutex_);
+  }
+
  private:
+  struct DirtyRow {
+    std::optional<CutlassGemmConfig> config;
+    uint64_t generation = 0;
+  };
+  using DirtyBucketMap = std::map<int, DirtyRow>;
+
+  bool IsDirtyLocked(const MatMulNBitsKey& key, int m_bucket) const;
+
+  onnxruntime::common::Status FlushImpl(bool allow_blocking);
+
+  // Last write time and size of the file, or std::nullopt if it does not exist.
+  using FileStamp = std::pair<std::filesystem::file_time_type, uintmax_t>;
+  std::optional<FileStamp> CurrentFileStamp() const;
+
   onnxruntime::common::Status WriteAllLocked(
       const std::unordered_map<MatMulNBitsKey, BucketMap, MatMulNBitsKeyHash>& table) const;
 
@@ -194,7 +245,9 @@ class MatMulNBitsTacticCache {
   mutable std::mutex mutex_;
   std::unordered_map<MatMulNBitsKey, BucketMap, MatMulNBitsKeyHash> table_;
   // Only locally changed rows participate in a flush; loaded rows must not undo another writer's update.
-  std::unordered_map<MatMulNBitsKey, BucketMap, MatMulNBitsKeyHash> dirty_rows_;
+  uint64_t next_dirty_generation_ = 0;
+  std::unordered_map<MatMulNBitsKey, DirtyBucketMap, MatMulNBitsKeyHash> dirty_rows_;
+  std::optional<FileStamp> known_stamp_;
 };
 
 }  // namespace onnxruntime::llm::gemm_cache

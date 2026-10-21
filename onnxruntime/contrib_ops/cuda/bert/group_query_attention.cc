@@ -296,6 +296,12 @@ Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
       config, input_shapes, GetDeviceProp(), *kernel_options_);
   if (!estimate.has_value()) {
     ORT_RETURN_IF(
+        dispatch_policy_ == KernelDispatchPolicy::Memory &&
+            !sliding_window_cache_ && max_total_sequence_length_ <= 0,
+        "GroupQueryAttention memory dispatch policy requires a positive ",
+        kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength,
+        " for a non-windowed KV cache; no workspace bound was established.");
+    ORT_RETURN_IF(
         dispatch_policy_ == KernelDispatchPolicy::Memory,
         "GroupQueryAttention could not commit the '",
         KernelDispatchPolicyName(dispatch_policy_),

@@ -1929,6 +1929,25 @@ TEST_F(GroupQueryAttentionDispatchPolicyTest, SafeExcludesCudnnWhileAutoUsesIt) 
 }
 #endif
 
+TEST_F(GroupQueryAttentionDispatchPolicyTest, MemoryInitializationExplainsMissingEnvelope) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsKernelDispatchPolicy, "memory"));
+  InferenceSessionWrapper session(session_options, GetEnvironment());
+  CUDAExecutionProviderInfo provider_info;
+  provider_info.sdpa_kernel = kMath;
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+      std::make_shared<CUDAExecutionProvider>(provider_info)));
+  const std::string model = BuildGroupQueryAttentionKernelModel(false, false);
+  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+  const auto status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find(
+                "requires a positive ep.cuda.gqa_workspace_max_total_sequence_length"),
+            std::string::npos)
+      << status.ErrorMessage();
+}
+
 TEST_F(GroupQueryAttentionDispatchPolicyTest, SafeRunsWithoutWorkspaceBound) {
   for (bool dynamic_sequence : {false, true}) {
     for (auto phase : {GQAExecutionPhase::Prefill, GQAExecutionPhase::Decode, GQAExecutionPhase::ChunkedPrefill}) {

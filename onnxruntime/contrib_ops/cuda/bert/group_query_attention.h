@@ -62,6 +62,9 @@ class GroupQueryAttention final : public CudaKernel {
   int64_t max_total_sequence_length_ = 0;
 #endif
   KernelDispatchPolicy dispatch_policy_ = KernelDispatchPolicy::Auto;
+  // Construction and post-PrePack declaration finish before any Run. Relaxed
+  // atomics do not publish a coherent three-phase snapshot; concurrent
+  // re-declaration with Run is unsupported.
   mutable std::atomic<uint32_t> committed_prefill_backends_{
       static_cast<uint32_t>(GetGQAReachableBackendsForPhase(
           kAllGQAReachableBackends, GQAExecutionPhase::Prefill))};

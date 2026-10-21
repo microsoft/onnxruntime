@@ -216,9 +216,11 @@ constexpr bool IsGQAPhaseAdmitted(
 
 struct GQAWorkspaceAggregate {
   GQAWorkspaceStatus status;
+  // Maximum across admitted phase/route alternatives, not their sum.
   size_t total_workspace_bytes = 0;
   size_t persistent_prepack_bytes = 0;
   size_t initialization_scratch_bytes = 0;
+  // Union of sized committed routes; reachable routes may have been excluded.
   GQAReachableBackend sized_backends = GQAReachableBackend::None;
   GQACommittedBackends committed_backends;
 };

@@ -12,6 +12,18 @@ registered.
 
 On Linux, a system Vulkan loader (`libvulkan.so.1`) must be installed and available at runtime.
 
+On Windows, Agility-enabled builds of this package include the pinned preview D3D12 Agility SDK runtime in a `D3D12`
+directory next to the WebGPU provider. Locally built wheels may use a plugin built without Agility and omit the SDK
+runtime. Activation requires a supported Windows version with the Agility SDK loader update, Windows Developer Mode
+because the SDK is a preview release, and a compatible GPU driver. The pinned SDK requires Windows 10 version 1909 or
+newer. For Windows 10 versions 1909, 2004, and 20H2, version 1909 requires build 18363.1350 or newer, while versions
+2004 and 20H2 require revision 789 or newer. Later Windows versions do not require a separate revision check. The
+presence of `%SystemRoot%\System32\D3D12Core.dll` also confirms that the system has the Agility SDK loader update. For
+setup details and current driver guidance, see Microsoft's
+[DirectX 12 Agility SDK setup guide](https://devblogs.microsoft.com/directx/gettingstarted-dx12agility/#setup)
+and the
+[Agility SDK 721 Preview announcement](https://devblogs.microsoft.com/directx/announcing-agilitysdk-721-preview-and-more-shader-model-6-10-features/).
+
 ## Supported Platforms
 
 | Platform |
