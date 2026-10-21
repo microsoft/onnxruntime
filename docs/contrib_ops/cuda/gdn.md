@@ -491,14 +491,17 @@ support three intermediate precision modes controlled by session option
      `extreme_col_mask` and evaluate an exact `float32` dot product in the epilogue.
 2. **`fp16` (`ep.cuda.gated_delta_net_bf16_precision="fp16"`)**:
    - Uses 1-slice `float16` (`__half`, 10 mantissa bits vs. `bfloat16`'s 7 mantissa bits) for
-     the internal chunk MMA tiles whenever the chunk inputs ($Q, K, V$) and state ($S$) fit
-     within the safe `float16` dynamic range ($\le 8192$, state $\ge 2^{-110}$, checked in
-     registers via `__syncthreads_or` during the single global-to-shared load pass).
+     the internal chunk MMA tiles in both the fused `chunked` and split `chunked_split` engines
+     whenever the chunk inputs ($Q, K, V$), gating ($g \le 0, |\beta| \le 1$), scale
+     ($|\text{scale}| \le 16$), and recurrent state ($S$) fit within bounds that guarantee both
+     the operands and all intermediate tile products ($Q K^T$, $(I+M)^{-1}$, $W$, $U$, $P$, $K_d$)
+     stay within the normal `float16` dynamic range ($[2^{-14}, 65504]$), checked in registers
+     via `__syncthreads_or` during the single global-to-shared load pass.
    - Evaluates `qk_l2_norm` in `float32` before rounding once to `float16`, and writes the
      `bfloat16` output directly from the `float32` accumulator (avoiding `float16` $\to$
-     `bfloat16` double-rounding). If any chunk value falls outside the safe `float16` range,
-     that chunk automatically falls back to the `fp32` (3-slice `bfloat16`) path so it never
-     overflows or underflows.
+     `bfloat16` double-rounding). If any chunk value or intermediate product bound falls outside
+     the safe `float16` range, that chunk automatically falls back to the `fp32` (3-slice
+     `bfloat16`) path so it never overflows or underflows.
 3. **`bf16` (`ep.cuda.gated_delta_net_bf16_precision="bf16"`)**:
    - Uses 1-slice native `bfloat16` for all internal chunk MMA tiles, providing maximum 1-slice
      throughput with native `bfloat16` dynamic range and 7-bit mantissa precision.

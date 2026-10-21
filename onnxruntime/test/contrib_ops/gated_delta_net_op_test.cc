@@ -1724,6 +1724,178 @@ TEST(GatedDeltaNetTest, BFloat16PrecisionModesAndSessionOption) {
   }
 }
 
+TEST(GatedDeltaNetTest, BFloat16Fp16ModeGuardsAndSplitEngineSelection) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{64, 1, 1, 2, kDim, kDim};
+
+  for (const char* plan_env : {"", "chunked_split"}) {
+    if (std::string(plan_env) == "chunked_split" && NeedSkipGatedDeltaNetSplitTest()) continue;
+    SCOPED_TRACE(plan_env);
+
+    // 1. Verify that both chunked and chunked_split actually execute the 10-mantissa-bit FP16
+    // tile path when fp16 mode is selected: S = (1 + 2^-10 + 2^-12, 1, 0, ...) with q = (1, -1, 0, ...)
+    // rounds S[0] to 1 in bf16 (7 mantissa bits -> 0), to 1 + 2^-10 in fp16 (10 mantissa bits ->
+    // 2^-10), and preserves 1 + 2^-10 + 2^-12 in fp32 (24 significand bits -> 2^-10 + 2^-12).
+    {
+      Inputs in;
+      in.q.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+      in.k.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+      in.v.assign(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f);
+      in.decay.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+      in.beta.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+      in.state0.assign(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+      for (int t = 0; t < g.total_tokens; ++t) {
+        in.q[static_cast<size_t>(t) * g.dk + 0] = 1.0f;
+        in.q[static_cast<size_t>(t) * g.dk + 1] = -1.0f;
+      }
+      const float s0_val = 1.0f + std::ldexp(1.0f, -10) + std::ldexp(1.0f, -12);
+      for (int hv = 0; hv < g.hv; ++hv) {
+        for (int c = 0; c < g.dv; ++c) {
+          in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + 0] = s0_val;
+          in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + 1] = 1.0f;
+        }
+      }
+      Options o;
+      o.update_rule = "linear";
+      o.qk_l2_norm = 0;
+      o.scale = 1.0f;
+
+      const std::pair<const char*, BFloat16> mode_expectations[] = {
+          {"bf16", BFloat16(0.0f)},
+          {"fp16", BFloat16(std::ldexp(1.0f, -10))},
+          {"fp32", BFloat16(std::ldexp(1.0f, -10) + std::ldexp(1.0f, -12))},
+      };
+      for (const auto& [mode, expected] : mode_expectations) {
+        SCOPED_TRACE(mode);
+        ScopedEnvironmentVariables scoped_env_vars{
+            EnvVarMap{{"ORT_GDN_PLAN", plan_env}, {"ORT_GDN_BF16_PRECISION", mode}}};
+        std::vector<OrtValue> fetches;
+        RunTypedCase<BFloat16>(g, o, in, 1e-2f, 1e-2f, false, &fetches);
+        ASSERT_EQ(fetches.size(), 3u);
+        const BFloat16* out = fetches[0].Get<Tensor>().Data<BFloat16>();
+        for (int64_t i = 0; i < fetches[0].Get<Tensor>().Shape().Size(); ++i) {
+          ASSERT_EQ(out[i].val, expected.val) << "mode=" << mode << " element " << i;
+        }
+      }
+    }
+
+    // 2. Intermediate product q @ k^T = 256 * 256 = 65536 (> FP16 max 65504) in fp16 mode must
+    // fall back to the 3-slice BF16 path instead of overflowing to Inf.
+    {
+      ScopedEnvironmentVariables scoped_env_vars{
+          EnvVarMap{{"ORT_GDN_PLAN", plan_env}, {"ORT_GDN_BF16_PRECISION", "fp16"}}};
+      Inputs in;
+      in.q.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+      in.k.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+      in.v.assign(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 1.0f);
+      in.decay.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+      in.beta.assign(static_cast<size_t>(g.total_tokens) * g.hv, 1.0f);
+      in.state0.assign(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+      for (int t = 0; t < g.total_tokens; ++t) {
+        in.q[static_cast<size_t>(t) * g.dk + 0] = 256.0f;
+        in.k[static_cast<size_t>(t) * g.dk + 0] = 256.0f;
+      }
+      Options o;
+      o.update_rule = "linear";
+      o.qk_l2_norm = 0;
+      o.scale = 1.0f;
+      std::vector<OrtValue> fetches;
+      RunTypedCase<BFloat16>(g, o, in, 0.0f, 0.0f, false, &fetches);
+      ASSERT_EQ(fetches.size(), 3u);
+      const BFloat16* out = fetches[0].Get<Tensor>().Data<BFloat16>();
+      ASSERT_EQ(out[0].val, BFloat16(65536.0f).val);
+    }
+
+    // 3. Intermediate update beta * v = 16 * 8192 = 131072 (> FP16 max 65504) in fp16 mode must
+    // fall back to the 3-slice BF16 path instead of producing NaN/Inf.
+    {
+      ScopedEnvironmentVariables scoped_env_vars{
+          EnvVarMap{{"ORT_GDN_PLAN", plan_env}, {"ORT_GDN_BF16_PRECISION", "fp16"}}};
+      Inputs in;
+      in.q.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+      in.k.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+      in.v.assign(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 8192.0f);
+      in.decay.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+      in.beta.assign(static_cast<size_t>(g.total_tokens) * g.hv, 16.0f);
+      in.state0.assign(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+      for (int t = 0; t < g.total_tokens; ++t) {
+        in.q[static_cast<size_t>(t) * g.dk + 0] = 1.0f;
+      }
+      in.k[0] = 1.0f;
+      Options o;
+      o.update_rule = "delta";
+      o.qk_l2_norm = 0;
+      o.scale = 1.0f;
+      std::vector<OrtValue> fetches;
+      RunTypedCase<BFloat16>(g, o, in, 0.0f, 0.0f, false, &fetches);
+      ASSERT_EQ(fetches.size(), 3u);
+      const BFloat16* out = fetches[0].Get<Tensor>().Data<BFloat16>();
+      for (int64_t i = 0; i < fetches[0].Get<Tensor>().Shape().Size(); ++i) {
+        ASSERT_TRUE(std::isfinite(out[i].ToFloat())) << "output element " << i;
+      }
+      const float* final_state = fetches[1].Get<Tensor>().Data<float>();
+      for (int64_t i = 0; i < fetches[1].Get<Tensor>().Shape().Size(); ++i) {
+        ASSERT_TRUE(std::isfinite(final_state[i])) << "state element " << i;
+      }
+    }
+
+    // 4. Tiny state 2^-30 (< FP16 min subnormal 2^-24) in fp16 mode must fall back to the
+    // 3-slice BF16 path instead of rounding to zero.
+    {
+      ScopedEnvironmentVariables scoped_env_vars{
+          EnvVarMap{{"ORT_GDN_PLAN", plan_env}, {"ORT_GDN_BF16_PRECISION", "fp16"}}};
+      Inputs in;
+      in.q.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+      in.k.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+      in.v.assign(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f);
+      in.decay.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+      in.beta.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+      in.state0.assign(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+      const float tiny_s = std::ldexp(1.0f, -30);
+      for (int t = 0; t < g.total_tokens; ++t) {
+        in.q[static_cast<size_t>(t) * g.dk + 0] = 1.0f;
+      }
+      for (int hv = 0; hv < g.hv; ++hv) {
+        for (int c = 0; c < g.dv; ++c) {
+          in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + 0] = tiny_s;
+        }
+      }
+      Options o;
+      o.update_rule = "linear";
+      o.qk_l2_norm = 0;
+      o.scale = 1.0f;
+      const BFloat16 expected(tiny_s);
+      std::vector<OrtValue> fetches;
+      RunTypedCase<BFloat16>(g, o, in, 0.0f, 0.0f, false, &fetches);
+      ASSERT_EQ(fetches.size(), 3u);
+      const BFloat16* out = fetches[0].Get<Tensor>().Data<BFloat16>();
+      for (int64_t i = 0; i < fetches[0].Get<Tensor>().Shape().Size(); ++i) {
+        ASSERT_EQ(out[i].val, expected.val) << "output element " << i;
+      }
+
+      // Also verify when the same column mixes an O(1) entry at row 0 (ignored by q = (0, ..., 1 at d=8))
+      // and a tiny 2^-30 entry at row 8 (shared by the same thread tid=0).
+      for (int t = 0; t < g.total_tokens; ++t) {
+        in.q[static_cast<size_t>(t) * g.dk + 0] = 0.0f;
+        in.q[static_cast<size_t>(t) * g.dk + 8] = 1.0f;
+      }
+      for (int hv = 0; hv < g.hv; ++hv) {
+        for (int c = 0; c < g.dv; ++c) {
+          in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + 0] = 1.0f;
+          in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + 8] = tiny_s;
+        }
+      }
+      fetches.clear();
+      RunTypedCase<BFloat16>(g, o, in, 0.0f, 0.0f, false, &fetches);
+      ASSERT_EQ(fetches.size(), 3u);
+      out = fetches[0].Get<Tensor>().Data<BFloat16>();
+      for (int64_t i = 0; i < fetches[0].Get<Tensor>().Shape().Size(); ++i) {
+        ASSERT_EQ(out[i].val, expected.val) << "mixed-row output element " << i;
+      }
+    }
+  }
+}
+
 TEST(GatedDeltaNetTest, BFloat16SplitPreservesMultiChunkDecay) {
   if (NeedSkipGatedDeltaNetSplitTest()) return;
   ScopedEnvironmentVariables scoped_env_vars{
