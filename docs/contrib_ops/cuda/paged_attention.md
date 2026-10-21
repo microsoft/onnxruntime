@@ -821,6 +821,10 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 >   Portable decode uses 256 threads per CTA so a 256-channel head's PV accumulation
 >   does not serialize two output channels per thread. FP8 reads use CUDA's E4M3-to-half
 >   conversion followed by exact widening to FP32; all finite FP8 encodings are tested.
+>   QK resolves each token's 64-bit cache offset once and shares it with PV, removing
+>   repeated page/offset arithmetic per output channel without changing reduction
+>   order. Unmapped pages retain a negative-offset sentinel, and the shared-memory
+>   offset array is explicitly aligned to eight bytes.
 >   Non-causal H128 multi-token steps use a portable or gathered
 >   backend. Single-token decode reads and
 >   dequantizes the cache in place through XQA when eligible or `PagedDecodeSplitKV` otherwise.

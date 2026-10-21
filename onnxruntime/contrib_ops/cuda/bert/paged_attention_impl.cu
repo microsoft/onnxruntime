@@ -1030,12 +1030,13 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
   const int acc_elems = channel_groups * head_size;
   // Carve the dynamic block into: Q (head_size), the tile's logits (kPagedDecodeTile), the output
   // accumulator (acc_elems), a block-reduction scratchpad (kPagedDecodeThreads) and the tile's
-  // resolved page ids (kPagedDecodeTile ints).
+  // resolved cache offsets (kPagedDecodeTile int64s).
   float* q_sh = paged_decode_smem;
   float* logits_sh = q_sh + head_size;
   float* acc_sh = logits_sh + kPagedDecodeTile;
   float* red_sh = acc_sh + acc_elems;
-  int* block_id_sh = reinterpret_cast<int*>(red_sh + kPagedDecodeThreads);
+  const int offset_start = (head_size + kPagedDecodeTile + acc_elems + kPagedDecodeThreads + 1) & ~1;
+  int64_t* cache_offset_sh = reinterpret_cast<int64_t*>(paged_decode_smem + offset_start);
 
   const int head_id = blockIdx.x;
   const int token_id = blockIdx.y;
@@ -1124,8 +1125,9 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
                                ? block_table[batch_id * max_num_blocks_per_seq + block_index]
                                : -1;
       float dot = 0.0f;
+      int64_t key_offset = -1;
       if (block_id >= 0) {
-        const int64_t key_offset =
+        key_offset =
             (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page +
             head_offset_in_page;
         for (int c = lane_id; c < head_size; c += 32) {
@@ -1137,7 +1139,7 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
         dot += __shfl_xor_sync(0xFFFFFFFFU, dot, offset);
       }
       if (lane_id == 0) {
-        block_id_sh[t] = block_id;
+        cache_offset_sh[t] = key_offset;
         logits_sh[t] = block_id < 0 ? -FLT_MAX
                                     : (softcap > 0.0f ? softcap * tanhf(dot * softcap_scale) : dot * scale);
       }
@@ -1194,14 +1196,10 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
       for (int c = tid; c < head_size; c += kPagedDecodeThreads) {
         float acc = acc_sh[c] * alpha;
         for (int t = 0; t < tile_len; ++t) {
-          const int block_id = block_id_sh[t];
-          if (block_id < 0) {
+          const int64_t value_offset = cache_offset_sh[t];
+          if (value_offset < 0) {
             continue;
           }
-          const int pos = tile_begin + t;
-          const int64_t value_offset =
-              (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
-              head_offset_in_page;
           acc += logits_sh[t] * ReadPagedCache(value_cache, value_offset + c);
         }
         acc_sh[c] = acc;
@@ -1211,14 +1209,10 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
       const int c = tid - group * head_size;
       float acc = acc_sh[tid] * alpha;
       for (int t = group; t < tile_len; t += channel_groups) {
-        const int block_id = block_id_sh[t];
-        if (block_id < 0) {
+        const int64_t value_offset = cache_offset_sh[t];
+        if (value_offset < 0) {
           continue;
         }
-        const int pos = tile_begin + t;
-        const int64_t value_offset =
-            (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
-            head_offset_in_page;
         acc += logits_sh[t] * ReadPagedCache(value_cache, value_offset + c);
       }
       acc_sh[tid] = acc;
@@ -1335,7 +1329,8 @@ size_t GetPagedDecodeSharedMemoryBytes(const int head_size) {
   const size_t float_elems = static_cast<size_t>(head_size) + kPagedDecodeTile +
                              static_cast<size_t>(PagedDecodeChannelGroups(head_size)) * head_size +
                              kPagedDecodeThreads;
-  return float_elems * sizeof(float) + static_cast<size_t>(kPagedDecodeTile) * sizeof(int);
+  return ((float_elems + 1) & ~size_t{1}) * sizeof(float) +
+         static_cast<size_t>(kPagedDecodeTile) * sizeof(int64_t);
 }
 
 template <typename T, typename TCACHE>
