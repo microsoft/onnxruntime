@@ -5,6 +5,7 @@
 
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/utils.h"
 
 namespace onnxruntime {
 
@@ -17,7 +18,7 @@ int ReplaceOrCreateZeroPointInitializer(Graph& graph, Node& quantize_node) {
   // not previously exist.
 
   const auto quant_node_input_defs = quantize_node.MutableInputDefs();
-  int zero_point_type = ONNX_NAMESPACE::TensorProto_DataType_INT8;
+  int zero_point_type = ONNX_NAMESPACE::TensorProto_DataType_UINT8;
   ONNX_NAMESPACE::TensorProto zero_point_tensor_float;
   if (quant_node_input_defs.size() >= 3) {
     // The quantize node has the zero point input
@@ -41,8 +42,6 @@ int ReplaceOrCreateZeroPointInitializer(Graph& graph, Node& quantize_node) {
     for (const auto dim : zero_point_tensor_int.dims()) {
       zero_point_tensor_float.add_dims(dim);
     }
-    graph.RemoveInitializedTensor(zero_point_tensor_int.name());
-
     // Since the quantize node has the zero point initializer input, replace it
     graph_utils::ReplaceNodeInput(quantize_node, 2,
                                   graph_utils::AddInitializerWithOrtValue(graph, zero_point_tensor_float));
@@ -94,7 +93,8 @@ std::pair<bool, Node*> CheckForQDQPatternMatch(Graph& graph, Node& quantize_node
   // Try to match the current node with QuantizeLinear in the effort of searching for the pattern
   // QuantizeLinear -> DequantizeLinear.
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(quantize_node, "QuantizeLinear", {10, 13, 19}) ||
-      !graph_utils::IsSupportedProvider(quantize_node, compatible_execution_providers)) {
+      !graph_utils::IsSupportedProvider(quantize_node, compatible_execution_providers) ||
+      graph.NodeProducesGraphOutput(quantize_node)) {
     return {false, nullptr};
   }
 
@@ -116,6 +116,26 @@ std::pair<bool, Node*> CheckForQDQPatternMatch(Graph& graph, Node& quantize_node
               "Expected that every QuantizeLinear node be followed by a unique DequantizeLinear node. ",
               "Actual: QuantizeLinear (", quantize_node.Name(), ") is followed by ", dequantize_node_ptr->OpType(), "(",
               dequantize_node_ptr->Name(), ").");
+
+  const auto& quantize_inputs = quantize_node.InputDefs();
+  const auto& dequantize_inputs = dequantize_node_ptr->InputDefs();
+  const auto* quantize_axis = graph_utils::GetNodeAttribute(quantize_node, "axis");
+  const auto* dequantize_axis = graph_utils::GetNodeAttribute(*dequantize_node_ptr, "axis");
+  if (quantize_inputs.size() != dequantize_inputs.size() ||
+      (quantize_axis ? quantize_axis->i() : 1) != (dequantize_axis ? dequantize_axis->i() : 1)) {
+    return {false, nullptr};
+  }
+
+  if (!optimizer_utils::IsScalar(*quantize_inputs[1]) ||
+      (quantize_inputs.size() > 2 && !optimizer_utils::IsScalar(*quantize_inputs[2]))) {
+    return {false, nullptr};
+  }
+
+  for (size_t i = 1; i < quantize_inputs.size(); ++i) {
+    if (quantize_inputs[i]->Name() != dequantize_inputs[i]->Name()) {
+      return {false, nullptr};
+    }
+  }
 
   return {true, dequantize_node_ptr};
 }
@@ -141,8 +161,8 @@ Status QDQFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const
     }
 
     // QuantizeLinear zero_point is INT8 or UINT8. FakeQuant uses quant_zero_point as FLOAT.
-    // So, remove the old initializers and update the zero point to be of FLOAT type if it exists.
-    // If the initializer does not exist, create a new zero point initializer with the correct type.
+    // Add a FLOAT replacement for FakeQuant and retain the original initializer until graph cleanup
+    // so any other consumers remain valid. Create a zero point initializer when none exists.
     const auto quant_type = ReplaceOrCreateZeroPointInitializer(graph, quantize_node);
 
     // Fuse the QDQ pattern into FakeQuant and move the inputs and outputs.
