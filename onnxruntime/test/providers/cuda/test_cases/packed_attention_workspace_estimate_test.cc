@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "core/framework/node_shape_resolver.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph.h"

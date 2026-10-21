@@ -71,6 +71,9 @@ std::string CalculateProgramCacheKey(const ProgramBase& program,
   // <INPUTS_INFO>       = <INPUTS_INFO_0>|<INPUTS_INFO_1>|...
   // <INPUTS_INFO_i>     = <TENSOR_ELEMENT_TYPE_OR_EMPTY>;<TENSOR_SEGMENTS_OR_EMPTY>;<TENSOR_SHAPE_OR_RANK_OR_EMPTY>
   ss << program.Name();
+  if (program.UseSubgroupId()) {
+    ss << "[SubgroupId]";
+  }
 
   // append custom cache hint if any
   if (auto& hint = program.CacheHint(); !hint.empty()) {

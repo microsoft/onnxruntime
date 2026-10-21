@@ -48,6 +48,11 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = SCRIPT_DIR / "Microsoft.ML.OnnxRuntime.EP.Cuda"
 CSPROJ = PROJECT_DIR / "Microsoft.ML.OnnxRuntime.EP.Cuda.csproj"
 MIN_ORT_VERSION_FILE = SCRIPT_DIR.parent / "MIN_ONNXRUNTIME_VERSION"
+REPO_ROOT = SCRIPT_DIR.parents[1]
+
+# License-related files to bundle into the .nupkg. Sourced from the repo root and copied into
+# the staging directory so the staged csproj can reference them by simple relative paths.
+LICENSE_FILES: tuple[Path, ...] = (REPO_ROOT / "LICENSE", REPO_ROOT / "ThirdPartyNotices.txt")
 
 # Import the shared template helper from _packaging_utils.py in the parent directory.
 sys.path.insert(0, str(SCRIPT_DIR.parent))
@@ -154,6 +159,19 @@ def stage_sources(staging_dir: Path) -> None:
         staging_dir,
         ignore=shutil.ignore_patterns("bin", "obj"),
     )
+
+
+def stage_license_files(staging_dir: Path) -> None:
+    """Copy LICENSE and ThirdPartyNotices.txt from the repo root into the staging directory.
+
+    The staged csproj references these via <None Include="LICENSE" .../> and
+    <None Include="ThirdPartyNotices.txt" .../> so they are bundled into the .nupkg at its root.
+    """
+    for src in LICENSE_FILES:
+        if not src.is_file():
+            raise PackError(f"expected license file not found: {src}")
+        shutil.copy2(src, staging_dir / src.name)
+        print(f"Staged {src.name}")
 
 
 def resolve_platform_source(
@@ -321,6 +339,7 @@ def run_in_staging(args: argparse.Namespace, staging_dir: Path, min_ort_version_
             stage_binaries(staging_dir, args, required_platforms)
     else:
         stage_sources(staging_dir)
+        stage_license_files(staging_dir)
         stage_binaries(staging_dir, args, required_platforms)
         min_ort_version = min_ort_version_file.read_text(encoding="utf-8").strip()
         if not min_ort_version:
