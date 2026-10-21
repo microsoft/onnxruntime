@@ -829,7 +829,7 @@ TEST(ReductionOpTest, ReduceLogOps_Opset28_Dml) {
       const KernelRegistry::TypeConstraintMap type_constraints{{"T", DataTypeImpl::GetTensorType<float>()}};
       const int since_version = opset == 28 ? 28 : 18;
       ASSERT_STATUS_OK(registry->TryFindKernel(kDmlExecutionProvider, op, kOnnxDomain, since_version, type_constraints,
-                                              DefaultLoggingManager().DefaultLogger(), &kernel_info));
+                                               DefaultLoggingManager().DefaultLogger(), &kernel_info));
       ASSERT_NE(kernel_info, nullptr);
       EXPECT_EQ(kernel_info->kernel_def->SinceVersion().first, since_version);
       if (opset == 28) {
