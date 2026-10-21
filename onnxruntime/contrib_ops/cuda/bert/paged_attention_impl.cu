@@ -7,6 +7,7 @@
 #include <limits>
 #include <type_traits>
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/bert/attention_softmax.h"
@@ -200,7 +201,7 @@ __device__ __forceinline__ T DequantizeFromCache(const TCACHE value, const float
     return static_cast<T>(static_cast<float>(value) * scale);
 #if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
   } else if constexpr (std::is_same<TCACHE, Float8E4M3FN>::value) {
-    return static_cast<T>(value.ToFloat() * scale);
+    return static_cast<T>(e4m3_to_float(value.val) * scale);
 #endif
   } else {
     return static_cast<T>(value);
@@ -975,7 +976,7 @@ Status LaunchGatherAndExpandPagedKVCache(const TCACHE* key_cache, const TCACHE* 
 // The KV range of a sequence is split across `num_splits` CTAs; each emits a partial
 // (max, denominator, unnormalized accumulator) triple that PagedDecodeReduce combines.
 
-constexpr int kPagedDecodeThreads = 128;
+constexpr int kPagedDecodeThreads = 256;
 constexpr int kPagedDecodeTile = 128;  // KV tokens scored per iteration
 
 // Cache element -> float. Identical to DequantizeFromCache with a scale of 1, kept separate because
@@ -984,7 +985,7 @@ template <typename TCACHE>
 __device__ __forceinline__ float CacheToFloat(const TCACHE value) {
 #if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
   if constexpr (std::is_same<TCACHE, Float8E4M3FN>::value) {
-    return value.ToFloat();
+    return e4m3_to_float(value.val);
   } else  // NOLINT(readability/braces)
 #endif
   {

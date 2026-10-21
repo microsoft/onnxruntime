@@ -222,7 +222,7 @@ QMoE when all of the following are true:
 - weights are INT4 or INT8 for per-column scales, or INT4/INT8 for symmetric block-wise scales;
 - `block_size <= 0` for per-column INT4/INT8, or `block_size` is 32, 64, or 128 for block-wise INT4/INT8;
 - block-wise GEMV is symmetric only; if zero-point compensation is present, dispatch falls back to grouped GEMM;
-- `expanded_num_rows = num_tokens * top_k` is in `(0, 8]`;
+- `expanded_num_rows = num_tokens * top_k` is in `(0, 8]` for INT4/INT8;
 - `N >= 512` and `K >= 512`;
 - if `expanded_num_rows > 4`, the logical MoE intermediate size is at least 512;
 - `N` is divisible by the column-interleaved tile width (32 for INT4, 16 for INT8),
@@ -233,6 +233,14 @@ outside the profiled gate stay on grouped GEMM until profile data shows an
 end-to-end GEMV win. FP16 and BF16 share the same dispatch gate and custom
 kernels; for a given shape, BF16 routes to GEMV exactly where FP16 does and
 shows comparable latency.
+
+The raw-weight INT2 fused SwiGLU path additionally supports up to 64 expanded
+rows with symmetric block sizes 64 or 128, no zero points, and the same minimum
+matrix dimensions. This covers one through eight query tokens with top-8 routing,
+keeping single-token decode and short speculative verification on identical
+GEMV arithmetic. INT4/INT8 retain the eight-row limit. Exact per-token equality
+across query shapes is covered by `TestQMoEInt2SpeculativeDecode`; exceeding the
+INT2 limit retains the existing packed grouped-GEMM or bounded dense fallback.
 
 Set `ORT_DISABLE_MOE_GEMV=1` before process start to force the grouped GEMM
 fallback for debugging, benchmarking, or bisecting numerical differences. The

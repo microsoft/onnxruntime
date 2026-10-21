@@ -24,18 +24,19 @@ import time
 import unittest
 from collections import OrderedDict
 from contextlib import nullcontext
+from unittest.mock import patch
 
 import numpy
 import torch
 import torch.nn.functional as F
 from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
 from onnx import helper
+from onnxruntime.capi import _pybind_state as _pybind
+from onnxruntime.quantization import CudaQuantizer
 from parameterized import parameterized
 from torch import nn
 
 import onnxruntime
-from onnxruntime.capi import _pybind_state as _pybind
-from onnxruntime.quantization import CudaQuantizer
 
 try:
     import nvtx
@@ -287,6 +288,7 @@ def create_moe_onnx_graph(
     quant_bits=4,
     swiglu_fusion=0,
     block_size=0,
+    weights_prepacked=None,
 ):
     if not has_onnx:
         return None
@@ -370,6 +372,8 @@ def create_moe_onnx_graph(
 
     if use_quant:
         nodes[0].attribute.extend([helper.make_attribute("expert_weight_bits", quant_bits)])
+        if weights_prepacked is not None:
+            nodes[0].attribute.append(helper.make_attribute("weights_prepacked", weights_prepacked))
 
     # Add block_size attribute for block-wise quantization
     if block_size > 0:
@@ -2631,6 +2635,56 @@ class TestQMoESwiGLUBenchmark(unittest.TestCase):
 # This is a smoke test, not a numerical parity check — see the class
 # docstring for why a bit-parity comparison is intentionally omitted.
 # ============================================================================
+
+
+@unittest.skipUnless(torch.cuda.is_available(), "INT2 speculative decode requires CUDA")
+class TestQMoEInt2SpeculativeDecode(unittest.TestCase):
+    @parameterized.expand([(rows, block) for rows in (2, 8) for block in (64, 128)])
+    def test_top8_query_shape_invariance(self, rows, block_size):
+        generator = torch.Generator().manual_seed(738)
+        hidden, intermediate, experts = 512, 512, 16
+        graph = create_moe_onnx_graph(
+            hidden_size=hidden,
+            sequence_length="tokens",
+            num_experts=experts,
+            top_k=8,
+            intermediate_size=intermediate,
+            torch_dtype=torch.float16,
+            onnx_dtype=TensorProto.FLOAT16,
+            fc1_experts_weights=torch.randint(
+                0, 256, (experts, 2 * intermediate, hidden // 4), dtype=torch.uint8, generator=generator
+            ),
+            fc2_experts_weights=torch.randint(
+                0, 256, (experts, hidden, intermediate // 4), dtype=torch.uint8, generator=generator
+            ),
+            fc1_scales=torch.full((experts, 2 * intermediate, hidden // block_size), 1 / 128),
+            fc2_scales=torch.full((experts, hidden, intermediate // block_size), 1 / 128),
+            use_swiglu=True,
+            use_quant=True,
+            quant_bits=2,
+            weights_prepacked=0,
+            swiglu_fusion=1,
+            block_size=block_size,
+        )
+        options = onnxruntime.SessionOptions()
+        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        options.add_session_config_entry("ep.cuda.qmoe_int_dequant_max_scratch_bytes", "1")
+        feed = {
+            "input": torch.randn(rows, hidden, generator=generator).half().numpy(),
+            "router_probs": torch.randn(rows, experts, generator=generator).half().numpy(),
+        }
+        with patch.dict(os.environ, {"ORT_DISABLE_MOE_GEMV": "0", "ORT_ENABLE_QMOE_INT2_PREFILL": "0"}):
+            session = onnxruntime.InferenceSession(graph, options, providers=["CUDAExecutionProvider"])
+            actual = session.run(None, feed)[0]
+            expected = numpy.concatenate(
+                [
+                    session.run(None, {name: value[row : row + 1] for name, value in feed.items()})[0]
+                    for row in range(rows)
+                ]
+            )
+        self.assertTrue(numpy.isfinite(actual).all())
+        self.assertGreater(numpy.max(numpy.abs(actual)), 0)
+        numpy.testing.assert_array_equal(actual, expected)
 
 
 @unittest.skipUnless(torch.cuda.is_available(), "QMoE PrePack smoke test requires CUDA")

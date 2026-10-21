@@ -3526,6 +3526,42 @@ class TestPagedAttentionAttentionMetadata(unittest.TestCase):
             )
 
     @unittest.skipIf(not has_fp8_kv_cache(), reason="FP8 KV cache kernels are not built")
+    def test_portable_decode_all_finite_fp8_encodings(self):
+        config = self._config(
+            batch_size=1,
+            sequence_length=1,
+            total_sequence_length=128,
+            num_heads=2,
+            kv_num_heads=1,
+            head_size=256,
+            kv_cache_type="fp8",
+            k_quant_type="PER_TENSOR",
+            v_quant_type="PER_TENSOR",
+        )
+        codes = torch.arange(256, device="cuda", dtype=torch.int32).to(torch.uint8)
+        codes[127] = codes[255] = 0
+        values = codes.view(torch.float8_e4m3fn)
+        value_cache = values.reshape(1, 1, 1, 256).expand(1, 256, 1, 256).contiguous()
+        key_cache = torch.zeros_like(value_cache)
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0", "ORT_PAGED_ATTENTION_DECODE_NUM_SPLITS": "8"}):
+            output, _, _ = paged_attention_func(
+                config,
+                torch.zeros(1, 2 * 256, device="cuda", dtype=torch.float16),
+                torch.zeros(1, 256, device="cuda", dtype=torch.float16),
+                torch.zeros(1, 256, device="cuda", dtype=torch.float16),
+                key_cache,
+                value_cache,
+                torch.tensor([0, 1], device="cuda", dtype=torch.int32),
+                torch.tensor([127], device="cuda", dtype=torch.int32),
+                torch.tensor([[0]], device="cuda", dtype=torch.int32),
+                sdpa_kernel=SDPA_KERNEL_DECODER_ATTENTION,
+                k_scale=torch.ones(1, device="cuda", dtype=torch.float32),
+                v_scale=torch.ones(1, device="cuda", dtype=torch.float32),
+            )
+        expected = (values.float() * (127 / 128)).half().repeat(2).reshape_as(output).to(output.device)
+        torch.testing.assert_close(output, expected, rtol=0, atol=0)
+
+    @unittest.skipIf(not has_fp8_kv_cache(), reason="FP8 KV cache kernels are not built")
     @parameterized.expand(
         [(f"past{past}_split{splits}", past, splits) for past in (128, 2048, 8192) for splits in (1, 8, 32)]
     )

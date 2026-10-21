@@ -818,6 +818,9 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 >   `ORT_PAGED_ATTENTION_DECODE_NUM_SPLITS` overrides the portable path's occupancy-based KV
 >   partitioning for reproducibility across query shapes: `0` (default) selects automatically,
 >   `1` disables splitting, and values up to `32` retain a fixed degree of decode parallelism.
+>   Portable decode uses 256 threads per CTA so a 256-channel head's PV accumulation
+>   does not serialize two output channels per thread. FP8 reads use CUDA's E4M3-to-half
+>   conversion followed by exact widening to FP32; all finite FP8 encodings are tested.
 >   Non-causal H128 multi-token steps use a portable or gathered
 >   backend. Single-token decode reads and
 >   dequantizes the cache in place through XQA when eligible or `PagedDecodeSplitKV` otherwise.
