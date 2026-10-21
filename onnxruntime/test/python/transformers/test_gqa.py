@@ -4410,7 +4410,8 @@ def _windowed_run_steps(
     outputs = []
     past_length = 0
 
-    for step_length in step_lengths:
+    for step in step_lengths:
+        valid_length, step_length = step if isinstance(step, tuple) else (step, step)
         config = deepcopy(base_config)
         config.q_sequence_length = step_length
         config.kv_sequence_length = step_length
@@ -4424,9 +4425,17 @@ def _windowed_run_steps(
 
         io_binding = session.io_binding()
 
-        q = q_all[:, past_length : past_length + step_length].reshape(batch_size, step_length, q_hidden_size)
-        k = k_all[:, past_length : past_length + step_length].reshape(batch_size, step_length, kv_hidden_size)
-        v = v_all[:, past_length : past_length + step_length].reshape(batch_size, step_length, kv_hidden_size)
+        q = q_all[:, past_length : past_length + valid_length].reshape(batch_size, valid_length, q_hidden_size)
+        k = k_all[:, past_length : past_length + valid_length].reshape(batch_size, valid_length, kv_hidden_size)
+        v = v_all[:, past_length : past_length + valid_length].reshape(batch_size, valid_length, kv_hidden_size)
+        if step_length > valid_length:
+            pad_len = step_length - valid_length
+            q_pad = torch.full((batch_size, pad_len, q_hidden_size), 50.0, device=device, dtype=torch_type)
+            k_pad = torch.full((batch_size, pad_len, kv_hidden_size), 50.0, device=device, dtype=torch_type)
+            v_pad = torch.full((batch_size, pad_len, kv_hidden_size), 50.0, device=device, dtype=torch_type)
+            q = torch.cat([q, q_pad], dim=1)
+            k = torch.cat([k, k_pad], dim=1)
+            v = torch.cat([v, v_pad], dim=1)
         # Keep references: io_binding only records data pointers, so temporaries would be freed.
         q, k, v = q.contiguous(), k.contiguous(), v.contiguous()
         bind_tensor(io_binding, "query", q, device, ort_type)
@@ -4435,12 +4444,13 @@ def _windowed_run_steps(
         bind_tensor(io_binding, "past_key", cache_k, device, cache_ort_type)
         bind_tensor(io_binding, "past_value", cache_v, device, cache_ort_type)
 
-        total_length = past_length + step_length
+        total_length = past_length + valid_length
+        padded_total_length = past_length + step_length
         seqlens_k = torch.full((batch_size,), total_length - 1, dtype=torch.int32, device=device)
         bind_tensor(io_binding, "seqlens_k", seqlens_k, device, TensorProto.INT32)
         cpu_device = torch.device("cpu")
         # Keep a reference: io_binding only records the data pointer, so a temporary would be freed.
-        total_sequence_length = torch.tensor([total_length], dtype=torch.int32, device=cpu_device)
+        total_sequence_length = torch.tensor([padded_total_length], dtype=torch.int32, device=cpu_device)
         bind_tensor(
             io_binding,
             "total_sequence_length",
@@ -4454,11 +4464,17 @@ def _windowed_run_steps(
             bind_tensor(io_binding, "sin_cache", sin, device, ort_type)
 
         if position_ids_all is not None:
-            position_ids = position_ids_all[:, past_length:total_length].contiguous()
+            position_ids = position_ids_all[:, past_length:total_length]
+            if step_length > valid_length:
+                pos_pad = torch.zeros((batch_size, step_length - valid_length), dtype=torch.int64, device=device)
+                position_ids = torch.cat([position_ids, pos_pad], dim=1)
+            position_ids = position_ids.contiguous()
             bind_tensor(io_binding, "position_ids", position_ids, device, TensorProto.INT64)
 
         if attention_bias_all is not None:
-            attention_bias = attention_bias_all[:, :, past_length:total_length, :total_length].contiguous()
+            attention_bias = attention_bias_all[
+                :, :, past_length:padded_total_length, :padded_total_length
+            ].contiguous()
             bind_tensor(io_binding, "attention_bias", attention_bias, device, ort_type)
 
         if head_sink is not None:
@@ -4477,7 +4493,7 @@ def _windowed_run_steps(
         session.run_with_iobinding(io_binding)
         io_binding.synchronize_outputs()
 
-        outputs.append(out.clone())
+        outputs.append(out[:, :valid_length].clone())
         past_length = total_length
 
     return outputs, cache_k, cache_v
@@ -4525,7 +4541,8 @@ class TestGQAWindowedKvCache(unittest.TestCase):
         torch_type = self.torch_type
         ort_type = self.ort_type
         capacity = buffer_sequence_length or min(self.max_length, self.window_size + self.slack)
-        total_length = sum(step_lengths)
+        unpadded_steps = [step[0] if isinstance(step, tuple) else step for step in step_lengths]
+        total_length = sum(unpadded_steps)
         self.assertLessEqual(total_length, self.max_length)
 
         torch.manual_seed(0)
@@ -4585,13 +4602,35 @@ class TestGQAWindowedKvCache(unittest.TestCase):
             "v_scale": v_scale,
             "providers": self.providers,
         }
-        reference, reference_cache_k, reference_cache_v = _windowed_run_steps(base_config, self.max_length, 0, **common)
+        reference_common = {**common, "step_lengths": unpadded_steps}
+        reference, reference_cache_k, reference_cache_v = _windowed_run_steps(
+            base_config, self.max_length, 0, **reference_common
+        )
         if base_config.k_quant_type != "NONE" and any(torch.isnan(step).any() for step in reference):
             # A quantized KV cache is only read correctly by the flash-attention prefill kernels.
             # Builds without them route the first prompt through memory-efficient attention, which
             # reinterprets the quantized cache as unquantized and produces NaN for both the
             # windowed and the full-length run, so there is nothing to compare.
             self.skipTest("quantized prefill needs a build with flash attention enabled")
+        if step_lengths != unpadded_steps:
+            padded_full, padded_full_k, padded_full_v = _windowed_run_steps(base_config, self.max_length, 0, **common)
+            for step_index, (expected, actual) in enumerate(zip(reference, padded_full, strict=True)):
+                numpy.testing.assert_allclose(
+                    actual.float().cpu().numpy(),
+                    expected.float().cpu().numpy(),
+                    rtol=rtol,
+                    atol=atol,
+                    err_msg=f"full-cache padded mismatch at step {step_index} (step_lengths={step_lengths})",
+                )
+            for name, actual_cache, reference_cache in (
+                ("present_key", padded_full_k, reference_cache_k),
+                ("present_value", padded_full_v, reference_cache_v),
+            ):
+                numpy.testing.assert_array_equal(
+                    actual_cache[:, :, :total_length].cpu().numpy(),
+                    reference_cache[:, :, :total_length].cpu().numpy(),
+                    err_msg=f"{name} full-cache padded valid range mismatch (T={total_length})",
+                )
         windowed, cache_k, cache_v = _windowed_run_steps(base_config, capacity, 1, **common)
 
         for step_index, (expected, actual) in enumerate(zip(reference, windowed, strict=True)):
@@ -4811,6 +4850,36 @@ class TestGQAWindowedKvCacheCpu(TestGQAWindowedKvCache):
                 ),
                 step_lengths=[self.window_size + self.slack, 1, 1],
             )
+
+    def test_right_padded_chunked_prefill(self):
+        steps = [(1, 32), 32, (1, 32), (7, 32), 1, 1]
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                    self._check_parity(
+                        self._base_config(batch_size=1, rotary=True),
+                        step_lengths=steps,
+                        buffer_sequence_length=capacity,
+                    )
+
+    def test_right_padded_chunked_prefill_int8(self):
+        steps = [64, (1, 64), (5, 64), 1, 1]
+        for disable_flash in ("0", "1"):
+            with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                self._check_parity(
+                    self._base_config(
+                        batch_size=1,
+                        rotary=True,
+                        kv_cache_type="int8",
+                        k_quant_type="PER_CHANNEL",
+                        v_quant_type="PER_CHANNEL",
+                        kv_cache_bit_width=8,
+                    ),
+                    step_lengths=steps,
+                    buffer_sequence_length=self.window_size + 8,
+                    rtol=5e-2,
+                    atol=1e-1,
+                )
 
 
 if __name__ == "__main__":
