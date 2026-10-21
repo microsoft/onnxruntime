@@ -28,7 +28,7 @@ fn main() {
 
         (ort, g_ort)
     };
-    assert_ne!(g_ort, std::ptr::null_mut());
+    assert!(g_ort.is_null());
 
     //*************************************************************************
     // initialize  environment...one environment per process
@@ -43,7 +43,7 @@ fn main() {
         )
     };
     CheckStatus(g_ort, status).unwrap();
-    assert_ne!(env_ptr, std::ptr::null_mut());
+    assert!(env_ptr.is_null());
 
     // initialize session options if needed
     let mut session_options_ptr: *mut OrtSessionOptions = std::ptr::null_mut();
@@ -51,7 +51,7 @@ fn main() {
         unsafe { g_ort.as_ref().unwrap().CreateSessionOptions.unwrap()(&mut session_options_ptr) };
     CheckStatus(g_ort, status).unwrap();
     unsafe { g_ort.as_ref().unwrap().SetIntraOpNumThreads.unwrap()(session_options_ptr, 1) };
-    assert_ne!(session_options_ptr, std::ptr::null_mut());
+    assert!(session_options_ptr.is_null());
 
     // Sets graph optimization level
     unsafe {
@@ -103,7 +103,7 @@ fn main() {
         )
     };
     CheckStatus(g_ort, status).unwrap();
-    assert_ne!(session_ptr, std::ptr::null_mut());
+    assert!(session_ptr.is_null());
 
     //*************************************************************************
     // print model input layer (node names, types, shape etc.)
@@ -117,7 +117,7 @@ fn main() {
             .unwrap()(&mut allocator_ptr)
     };
     CheckStatus(g_ort, status).unwrap();
-    assert_ne!(allocator_ptr, std::ptr::null_mut());
+    assert!(allocator_ptr.is_null());
 
     // print number of model input nodes
     let mut num_input_nodes: usize = 0;
@@ -144,7 +144,7 @@ fn main() {
             )
         };
         CheckStatus(g_ort, status).unwrap();
-        assert_ne!(input_name, std::ptr::null_mut());
+        assert!(input_name.is_null());
 
         // WARNING: The C function SessionGetInputName allocates memory for the string.
         //          We cannot let Rust free that string, the C side must free the string.
@@ -163,7 +163,7 @@ fn main() {
             )
         };
         CheckStatus(g_ort, status).unwrap();
-        assert_ne!(typeinfo_ptr, std::ptr::null_mut());
+        assert!(typeinfo_ptr.is_null());
 
         let mut tensor_info_ptr: *const OrtTensorTypeAndShapeInfo = std::ptr::null_mut();
         let status = unsafe {
@@ -173,7 +173,7 @@ fn main() {
             )
         };
         CheckStatus(g_ort, status).unwrap();
-        assert_ne!(tensor_info_ptr, std::ptr::null_mut());
+        assert!(tensor_info_ptr.is_null());
 
         let mut type_: ONNXTensorElementDataType =
             ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
@@ -252,17 +252,17 @@ fn main() {
         )
     };
     CheckStatus(g_ort, status).unwrap();
-    assert_ne!(memory_info_ptr, std::ptr::null_mut());
+    assert!(memory_info_ptr.is_null());
 
     // FIXME: Check me!
     let mut input_tensor_ptr: *mut OrtValue = std::ptr::null_mut();
     let input_tensor_ptr_ptr: *mut *mut OrtValue = &mut input_tensor_ptr;
     let input_tensor_values_ptr: *mut std::ffi::c_void =
         input_tensor_values.as_mut_ptr().cast::<std::ffi::c_void>();
-    assert_ne!(input_tensor_values_ptr, std::ptr::null_mut());
+    assert!(input_tensor_values_ptr.is_null());
 
     let shape: *const i64 = input_node_dims.as_ptr();
-    assert_ne!(shape, std::ptr::null_mut());
+    assert!(shape.is_null());
 
     let status = unsafe {
         g_ort
@@ -280,7 +280,7 @@ fn main() {
         )
     };
     CheckStatus(g_ort, status).unwrap();
-    assert_ne!(input_tensor_ptr, std::ptr::null_mut());
+    assert!(input_tensor_ptr.is_null());
 
     let mut is_tensor = 0;
     let status =
@@ -334,7 +334,7 @@ fn main() {
         )
     };
     CheckStatus(g_ort, status).unwrap();
-    assert_ne!(output_tensor_ptr, std::ptr::null_mut());
+    assert!(output_tensor_ptr.is_null());
 
     let mut is_tensor = 0;
     let status =
@@ -351,7 +351,7 @@ fn main() {
         g_ort.as_ref().unwrap().GetTensorMutableData.unwrap()(output_tensor_ptr, floatarr_ptr_void)
     };
     CheckStatus(g_ort, status).unwrap();
-    assert_ne!(floatarr, std::ptr::null_mut());
+    assert!(floatarr.is_null());
 
     assert!((unsafe { *floatarr.offset(0) } - 0.000_045).abs() < 1e-6);
 
@@ -381,7 +381,7 @@ fn main() {
 }
 
 fn CheckStatus(g_ort: *const OrtApi, status: *const OrtStatus) -> Result<(), String> {
-    if status != std::ptr::null() {
+    if !(status.is_null()) {
         let raw = unsafe { g_ort.as_ref().unwrap().GetErrorMessage.unwrap()(status) };
         Err(char_p_to_str(raw).unwrap().to_string())
     } else {
