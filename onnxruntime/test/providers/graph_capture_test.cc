@@ -3,8 +3,11 @@
 
 #ifdef USE_WEBGPU
 
+#include <algorithm>
 #include <filesystem>
 #include <numeric>
+#include <string_view>
+#include <tuple>
 
 #include <gsl/gsl>
 
@@ -311,6 +314,154 @@ TEST_P(WebGpuScatterGraphCaptureTests, ScatterNDCopyBetweenProfiledDispatches) {
 }
 
 INSTANTIATE_TEST_SUITE_P(CaptureDisabledAndEnabled, WebGpuScatterGraphCaptureTests, testing::Bool());
+
+class WebGpuRnnGraphCaptureTests : public testing::TestWithParam<std::tuple<bool, int64_t>> {};
+
+void TestRnnReplayClearsState(const char* op_type, bool enable_graph_capture, int64_t sequence_length) {
+  Env& env = *ort_env;
+  const bool is_lstm = std::string_view(op_type) == "LSTM";
+  const bool surrounding_dispatch = sequence_length == 3;
+  SessionOptions session_options;
+  session_options.DisableMemPattern();
+  session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  if (surrounding_dispatch) {
+    session_options.EnableProfiling(ORT_TSTR("webgpu_rnn_capture_test"));
+  }
+  ASSERT_NO_FATAL_FAILURE(AppendWebGpuEp(
+      env, session_options, {{"enableGraphCapture", enable_graph_capture ? "1" : "0"}, {"maxNumPendingDispatches", "2"}}));
+
+  const std::vector<int64_t> x_shape{sequence_length, 1, 1};
+  const std::vector<int64_t> weight_shape{1, is_lstm ? 4 : 3, 1};
+  const std::vector<int64_t> state_shape{1, 1, 1};
+  TensorTypeAndShapeInfo x_info(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, x_shape);
+  TensorTypeAndShapeInfo weight_info(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, weight_shape);
+  TensorTypeAndShapeInfo state_info(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, state_shape);
+  auto x_type = TypeInfo::CreateTensorInfo(x_info.GetConst());
+  auto weight_type = TypeInfo::CreateTensorInfo(weight_info.GetConst());
+  auto state_type = TypeInfo::CreateTensorInfo(state_info.GetConst());
+  std::vector<ValueInfo> inputs;
+  inputs.emplace_back("X", x_type.GetConst());
+  inputs.emplace_back("W", weight_type.GetConst());
+  inputs.emplace_back("R", weight_type.GetConst());
+  std::vector<ValueInfo> outputs;
+  outputs.emplace_back("Y_h", state_type.GetConst());
+  if (is_lstm) {
+    outputs.emplace_back("Y_c", state_type.GetConst());
+  }
+  Graph graph;
+  graph.SetInputs(inputs);
+  graph.SetOutputs(outputs);
+  if (surrounding_dispatch) {
+    Node before("Relu", onnxruntime::kOnnxDomain, "before", {"X"}, {"T"});
+    graph.AddNode(before);
+  }
+  const int64_t hidden_size = 1;
+  std::vector<OpAttr> attributes;
+  attributes.emplace_back("hidden_size", &hidden_size, 1, ORT_OP_ATTR_INT);
+  std::vector<std::string> node_outputs{"", "Y_h"};
+  if (is_lstm) {
+    node_outputs.emplace_back("Y_c");
+  }
+  Node rnn(op_type, onnxruntime::kOnnxDomain, "rnn",
+           {surrounding_dispatch ? "T" : "X", "W", "R"}, node_outputs, attributes);
+  graph.AddNode(rnn);
+  Model model(std::vector<Model::DomainOpsetPair>{{onnxruntime::kOnnxDomain, 14}});
+  model.AddGraph(graph);
+  Session session(env, model, session_options);
+  Session cpu_session(env, model, SessionOptions{});
+
+  MemoryInfo gpu_mem_info("WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Allocator gpu_allocator(session, gpu_mem_info);
+  auto gpu_x = Value::CreateTensor<float>(gpu_allocator, x_shape.data(), x_shape.size());
+  auto gpu_w = Value::CreateTensor<float>(gpu_allocator, weight_shape.data(), weight_shape.size());
+  auto gpu_r = Value::CreateTensor<float>(gpu_allocator, weight_shape.data(), weight_shape.size());
+  std::vector<Value> gpu_outputs;
+  const std::vector<const char*> output_names = is_lstm ? std::vector<const char*>{"Y_h", "Y_c"}
+                                                        : std::vector<const char*>{"Y_h"};
+  IoBinding binding(session);
+  binding.BindInput("X", gpu_x);
+  binding.BindInput("W", gpu_w);
+  binding.BindInput("R", gpu_r);
+  for (const char* name : output_names) {
+    gpu_outputs.emplace_back(Value::CreateTensor<float>(gpu_allocator, state_shape.data(), state_shape.size()));
+    binding.BindOutput(name, gpu_outputs.back());
+  }
+
+  MemoryInfo cpu_mem_info = MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  // Keep non-null storage for the empty input tensor as well.
+  std::vector<float> x(static_cast<size_t>(std::max(sequence_length, int64_t{1})), 0.5f);
+  std::vector<float> weights(static_cast<size_t>(weight_shape[1]), 0.5f);
+  std::vector<Value> cpu_inputs;
+  cpu_inputs.emplace_back(Value::CreateTensor<float>(
+      cpu_mem_info, x.data(), x.size(), x_shape.data(), x_shape.size()));
+  for (int i = 0; i < 2; ++i) {
+    cpu_inputs.emplace_back(Value::CreateTensor<float>(
+        cpu_mem_info, weights.data(), weights.size(), weight_shape.data(), weight_shape.size()));
+  }
+  float result = 0.0f;
+  auto cpu_result = Value::CreateTensor<float>(cpu_mem_info, &result, 1, state_shape.data(), state_shape.size());
+  auto copy = [&](const Value& src, Value& dst) {
+    auto status = env.CopyTensor(src, dst, nullptr);
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  };
+  ASSERT_NO_FATAL_FAILURE(copy(cpu_inputs[1], gpu_w));
+  ASSERT_NO_FATAL_FAILURE(copy(cpu_inputs[2], gpu_r));
+  const std::vector<const char*> input_names{"X", "W", "R"};
+  RunOptions run_options;
+  run_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "1");
+  // Exercise capture, multiple replays, release, recapture, and another replay.
+  for (int run = 0; run < 6; ++run) {
+    SCOPED_TRACE(testing::Message() << op_type << ", capture=" << enable_graph_capture
+                                    << ", sequence_length=" << sequence_length << ", run=" << run);
+    if (enable_graph_capture && run == 3) {
+      session.ReleaseCapturedGraph(1);
+    }
+    std::fill(x.begin(), x.end(), 0.5f + 0.25f * run);
+    std::vector<float> expected(output_names.size(), 0.0f);
+    if (sequence_length > 0) {
+      ASSERT_NO_FATAL_FAILURE(copy(cpu_inputs[0], gpu_x));
+      auto reference = cpu_session.Run(RunOptions{nullptr}, input_names.data(), cpu_inputs.data(), cpu_inputs.size(),
+                                       output_names.data(), output_names.size());
+      for (size_t i = 0; i < reference.size(); ++i) {
+        expected[i] = reference[i].GetTensorData<float>()[0];
+      }
+    }
+    // Empty sequences only clear the bound states. Dirty them on every call so an omitted clear is observable.
+    for (auto& output : gpu_outputs) {
+      result = -42.0f;
+      ASSERT_NO_FATAL_FAILURE(copy(cpu_result, output));
+    }
+    binding.SynchronizeInputs();
+    session.Run(run_options, binding);
+    binding.SynchronizeOutputs();
+    for (size_t i = 0; i < gpu_outputs.size(); ++i) {
+      ASSERT_NO_FATAL_FAILURE(copy(gpu_outputs[i], cpu_result));
+      EXPECT_NEAR(result, expected[i], 1e-5f) << output_names[i];
+    }
+  }
+  if (enable_graph_capture) {
+    session.ReleaseCapturedGraph(1);
+  }
+  if (surrounding_dispatch) {
+    AllocatorWithDefaultOptions allocator;
+    auto profile_path = session.EndProfilingAllocated(allocator);
+    std::filesystem::remove(profile_path.get());
+  }
+}
+
+TEST_P(WebGpuRnnGraphCaptureTests, GruInitialHiddenState) {
+  const auto [capture, sequence_length] = GetParam();
+  TestRnnReplayClearsState("GRU", capture, sequence_length);
+}
+
+TEST_P(WebGpuRnnGraphCaptureTests, LstmInitialHiddenAndCellState) {
+  const auto [capture, sequence_length] = GetParam();
+  TestRnnReplayClearsState("LSTM", capture, sequence_length);
+}
+
+INSTANTIATE_TEST_SUITE_P(CaptureDisabledAndEnabled, WebGpuRnnGraphCaptureTests,
+                         testing::Combine(testing::Bool(), testing::Values(int64_t{0}, int64_t{1}, int64_t{2}, int64_t{3})));
 
 TEST(GraphCaptureTests, TestReleaseCapturedGraph) {
   Env& env = *ort_env;

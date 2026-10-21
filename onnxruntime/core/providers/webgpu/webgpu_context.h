@@ -123,9 +123,14 @@ struct CapturedBufferCopy {
   uint64_t size;
 };
 
-// Copies retain both buffers and share dispatch ordering, but do not consume timestamp query slots.
+struct CapturedBufferClear {
+  wgpu::Buffer buffer;
+  uint64_t size;
+};
+
+// Copies and clears retain their buffers and share dispatch ordering, but do not consume timestamp query slots.
 struct CapturedCommand {
-  std::variant<DispatchCommandInfo, CapturedBufferCopy> operation;
+  std::variant<DispatchCommandInfo, CapturedBufferCopy, CapturedBufferClear> operation;
 };
 
 // A command recording timeline has one caller at a time. ORT serializes Run on a Session;
@@ -324,6 +329,7 @@ class WebGpuContext final {
     }
   }
   void CopyBuffer(WGPUBuffer source, WGPUBuffer destination, uint64_t size, CommandRecordingState& recording);
+  void ClearBuffer(WGPUBuffer buffer, uint64_t size, CommandRecordingState& recording);
   void CaptureBegin(std::vector<webgpu::CapturedCommand>* captured_commands,
                     const webgpu::BufferManager& buffer_manager,
                     CommandRecordingState& recording);
