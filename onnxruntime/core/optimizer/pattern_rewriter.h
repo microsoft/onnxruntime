@@ -122,18 +122,20 @@ class Pattern {
   InlinedHashMap<int, InlinedVector<TypeConstraint, 1>> type_constraints_;
   InlinedHashSet<int> attribute_inputs_;
   InlinedHashMap<std::string, Value> aliases_;
+  InlinedHashMap<std::string, std::string> attribute_aliases_;
   InlinedVector<std::pair<int, InlinedVector<TypeConstraint, 1>>> additional_type_constraints_;
   struct Instance {
     std::string definition;
     std::string interface_name;
     std::string alternative;
+    std::shared_ptr<const Instance> selected;
   };
   InlinedHashMap<std::string, Instance> instances_;
   InlinedVector<std::shared_ptr<const Pattern>, 1> alternatives_;
   Value AddValue(std::string_view name);
 };
 
-// A library owns independent interfaces, fragments, unions and named entry patterns.
+// A library owns interfaces and named patterns (graph bodies or alternatives).
 class PatternLibrary {
  public:
   explicit PatternLibrary(std::string_view text);
@@ -155,15 +157,19 @@ class BindingView {
   BindingView instance(std::string_view name) const;
   std::string_view definition() const;
   std::string_view interfaceName() const;
-  // Empty for a concrete call; the selected member name for a union occurrence.
+  // Empty for a body call; otherwise the selected immediate member name.
   std::string_view alternative() const;
+  // Descend one named alternative without losing the enclosing selection tag.
+  BindingView alternativeView() const;
 
  private:
   friend struct Match;
   BindingView(const Match& match, std::string path) : match_(&match), path_(std::move(path)) {}
   std::string Qualify(std::string_view name) const;
+  const Pattern::Instance& Selection() const;
   const Match* match_;
   std::string path_;
+  size_t alternative_depth_ = 0;
 };
 
 // A missing/nonconstant/wrongly typed or externally stored payload is unavailable.

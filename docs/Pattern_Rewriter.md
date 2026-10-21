@@ -657,9 +657,10 @@ normally and are not converted to nonmatches.
 
 ## Limits and unsupported forms
 
-Definitions are limited to 64 nodes, 256 values, and 64 inputs/outputs per
+Concrete entry plans are limited to 64 nodes, 256 values, and 64 inputs/outputs per
 operator. They are connected acyclic graphs rooted at the final operator.
-There is no operator/subgraph alternation, implicit commutation, variadic matching,
+Named pattern alternatives are expanded as described below. There is no inline
+operator/subgraph alternation, implicit commutation, variadic matching,
 general tensor synthesis, domain-import editing, or model-local function
 rewriting. Control-flow operators are not matched, although their subgraphs can
 be rewritten through `Apply`.
@@ -711,10 +712,12 @@ With `indexed=false`, the reference mode instead tries all opset-applicable
 rules in registration order at each node. Match-only mode processes one batch,
 counts all passing rules, and never applies replacements.
 
-## Composable fragment libraries
+## Composable pattern libraries
 
-`PatternLibrary` parses an owning library of independent definitions and links
-named entry patterns. Definitions may refer forward to other definitions.
+`PatternLibrary` parses an owning library of interfaces and named patterns.
+Every concrete named pattern is callable; graph bodies and alternatives are
+two definition forms in one namespace, not separate declaration kinds.
+Definitions may refer forward to other definitions.
 `library.GetPattern("Fuse")` returns a copyable `Pattern` usable by every
 existing `Rule` constructor. The library and its source text need not outlive
 the returned pattern.
@@ -723,14 +726,14 @@ the returned pattern.
 PatternLibrary library(R"(
   interface GatedActivation(g:float[M,N], u:float[M,N]) -> (product:float[M,N])
 
-  fragment plain implements GatedActivation {
+  pattern plain implements GatedActivation {
     s = Sigmoid(g)
     a = Mul(g,s)
     p = Mul(a,u)
     return (product=p)
   }
 
-  fragment scaled implements GatedActivation: (alpha:float[...]) -> {
+  pattern scaled implements GatedActivation: (alpha:float[...]) -> {
     scaled = Mul(g,alpha)
     s = Sigmoid(scaled)
     a = Mul(g,s)
@@ -738,9 +741,9 @@ PatternLibrary library(R"(
     return (product=p)
   }
 
-  union Forms = plain | scaled
+  pattern Forms = plain | scaled
 
-  fragment wrapped implements GatedActivation {
+  pattern wrapped implements GatedActivation {
     act = Forms(g,u)
     return (product=act.product)
   }
@@ -753,16 +756,50 @@ PatternLibrary library(R"(
 ```
 
 An **interface** is an abstract tensor binding contract, not a callable graph.
-A **fragment** supplies a graph body implementing that contract. It inherits
-interface inputs and returns its interface outputs, either positionally or
+A **pattern body** can implement that contract, inheriting interface inputs
+and returning its interface outputs, either positionally or
 with explicit `(port=local_value, ...)` mappings. Named mappings may reorder
 ports. Output annotations constrain the mapped values as well as input
 annotations; they do not manufacture shape evidence. Identity mappings such
-as `return (y=x)` are allowed inside fragments and emit no operator.
-A fragment can return independent branches, provided the complete expanded
-entry pattern still has the single connected root required by the matcher.
+as `return (y=x)` are allowed inside patterns and emit no operator.
+A body without `implements` declares its inputs directly, as in `pattern Fuse(g,u)`.
+Its output port names come from explicit `(port=value)` mappings or returned
+value names (`return act.product` exposes `product`). A returned unnamed
+operator call exposes `output`, or `output0`, `output1`, etc. for multiple
+outputs. All named patterns, including patterns suitable for entry use, may
+be called directly or through alternatives.
 
-The colon signature extends a fragment with external inputs discovered by
+### Calls versus standalone entries
+
+Reusable bodies may return identity aliases or independent output branches.
+Every declared input must be used, and every operator must reach at least
+one returned value, but those returned values need not have a single root.
+`GetPattern(name)` validates **every fully expanded plan** as a standalone
+entry: it must have an operator root, all operators must feed that final
+operator, and returned values cannot be leaf/identity aliases. A violation
+raises a use-time diagnostic naming the requested entry. Thus a library
+may contain useful callable patterns that cannot independently serve as rules:
+
+```text
+pattern identity(x) { return (y=x) }
+pattern branches(x,z) {
+  left = Identity(x)
+  right = Neg(z)
+  return (a=left,b=right)
+}
+pattern join(x,z) {
+  p = branches(x,z)
+  q = identity(p.a)
+  return Add(q.y,p.b)
+}
+```
+
+`GetPattern("join")` succeeds; `GetPattern("identity")` and
+`GetPattern("branches")` fail. These checks apply equally to body patterns,
+aliases and alternative definitions. Legacy standalone `Pattern("(x)=>...")`
+syntax and its existing entry validation are unchanged.
+
+The colon signature extends a pattern with external inputs discovered by
 matching. Here callers supply only `g,u`, while `alpha` binds to the input of
 the matched Mul. It remains a tensor, not an automatically decoded float.
 Additional attribute captures can also be declared in that signature using
@@ -770,13 +807,35 @@ the existing attribute-annotation syntax. There is no separate capture
 language. Both `float[]` and `float[...]` continue to mean **any rank**, not
 scalar.
 
-A **union** supplies ordered alternatives with the same named interface.
-Its members are concrete fragments, not interfaces, entry patterns or other
-unions. A named call `act=Forms(g,u)` and the anonymous call
+An **alternative pattern** supplies ordered named members. Members can be
+body patterns, other alternative patterns, or single aliases; interfaces
+cannot be members. They must have the same named interface (or all have no
+interface) and identical ordered input/output port names and annotations.
+This is a strict structural annotation check (including symbol spellings),
+not semantic type equivalence; equivalent any-rank `[]`/`[...]` are normalized.
+Extra discovered inputs of an `implements` body are not common call ports.
+A named call `act=Forms(g,u)` and the anonymous call
 `act=(plain | scaled)(g,u)` have the same matching behavior. Each occurrence
-has an independent selected member, available through `alternative()`;
-no user-defined tag name is required. Fragments may call fragments and unions
-at arbitrary nesting depths within the expansion bounds. Inline operator or
+has an independent selected immediate member, available through `alternative()`;
+no user-defined tag name is required. Nesting and single aliases preserve
+their selection identities:
+
+```text
+pattern Inner = plain | scaled
+pattern Outer = Inner | plain
+pattern Alias = Outer
+pattern nested(g,u) {
+  act = Alias(g,u)
+  return Identity(act.product)
+}
+```
+
+For a selection of `scaled`, `act` reports definition `Alias`, member `Outer`;
+successive `alternativeView()` calls report `Outer`/`Inner`, `Inner`/`scaled`,
+then body `scaled` with no member. Anonymous alternatives use the same
+representation and retain their immediate named members too. Patterns may
+call other patterns at arbitrary nesting depths within the expansion bounds.
+Inline operator or
 subgraph alternative spellings are not supported; existing `|` type
 annotations are unchanged.
 
@@ -797,7 +856,7 @@ type-annotation combinations. Libraries contain at most 256 definitions.
 Recursive calls, duplicate definitions/ports, missing members, incompatible
 interfaces and invalid mappings fail during construction. An unresolved
 unqualified call must name a registered standard ONNX operator; use an
-explicit domain for other operators. This disambiguates misspelled fragment
+explicit domain for other operators. This disambiguates misspelled pattern
 calls from ONNX calls without changing standalone `Pattern` parsing.
 
 Each complete candidate passes the existing structural, type/constant,
@@ -814,8 +873,14 @@ so multiple alternatives of one logical rule can contribute matches.
 `match.instance("outer").instance("act")` returns a read-only `BindingView`.
 Its `valueOf`, `attributeOf`, `dimensionOf`, and `elementTypeOf` use names
 relative to that occurrence. `definition()` identifies the called definition,
-`interfaceName()` its contract, and `alternative()` the selected concrete member
-(empty for a concrete call). Fully qualified lookups such as
+`interfaceName()` its contract, and `alternative()` the selected immediate member
+(empty for a body call). `alternativeView()` enters that member's metadata;
+calling it on a body view raises an error. Repeated calls traverse nested
+alternatives/aliases without losing intermediate tags. This navigation does
+not add tensor namespaces: all selected member locals use the same occurrence
+path, and `instance("child")` addresses a nested call inside the selected body.
+Entry metadata is available through `match.bindings()`.
+Fully qualified lookups such as
 `match.valueOf("outer.act.alpha")` are equivalent. Missing instances and
 unavailable member-local names raise errors; they are not nullable optional
 fields. Only the selected member's concrete bindings exist.
@@ -848,9 +913,9 @@ struct ActivationView {
   GatedView ports;
   std::variant<PlainView, ScaledView> alternative;
   static std::variant<PlainView, ScaledView> Select(BindingView v) {
-    if (v.alternative() == "plain") return PlainView(v);
+    if (v.alternative() == "plain") return PlainView(v.alternativeView());
     ORT_ENFORCE(v.alternative() == "scaled", "Unexpected activation member.");
-    return ScaledView(v);
+    return ScaledView(v.alternativeView());
   }
   explicit ActivationView(BindingView v) : ports(v), alternative(Select(v)) {}
 };
@@ -875,7 +940,7 @@ bool CheckGatingShapes(const GatedView& v) {
   return true;
 }
 
-Rule MakeFragmentFusion(const PatternLibrary& library) {
+Rule MakePatternFusion(const PatternLibrary& library) {
   auto check = [](const Graph& graph, Match& match) {
     FusionView view(match);
     if (!CheckGatingShapes(view.outer) || !CheckGatingShapes(view.act.ports))
@@ -906,7 +971,7 @@ Rule MakeFragmentFusion(const PatternLibrary& library) {
       return Mul(a,u)
     }
   )");
-  return Rule{"FragmentActivation", library.GetPattern("Fuse"), recipe, check,
+  return Rule{"PatternActivation", library.GetPattern("Fuse"), recipe, check,
               {{kOnnxDomain, 17, 17}, {kMSDomain, 1, 1}}};
 }
 ```
@@ -946,7 +1011,7 @@ does not implicitly enforce scalar shape. Propagate reader errors, for
 example with `ORT_THROW_IF_ERROR` in a bool checker, rather than turning
 corruption into an ordinary alternative rejection.
 
-There are no fragment-valued parameters, construction-time scalar parameters,
+There are no pattern-valued parameters, construction-time scalar parameters,
 `where` clauses, tensor-content capture declarations, or C++ code generation.
 Semantic acceptance, tensor decoding, arithmetic and kernel support checks
 remain C++ responsibilities.

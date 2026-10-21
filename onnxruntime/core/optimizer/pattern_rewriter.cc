@@ -621,9 +621,8 @@ struct Port {
 
 struct Definition {
   enum class Kind { Interface,
-                    Fragment,
-                    Union,
-                    Pattern };
+                    Body,
+                    Alternatives };
   Kind kind;
   std::string name;
   std::string interface_name;
@@ -638,6 +637,23 @@ struct Definition {
 
 using ResolveDefinition = std::function<const Definition*(std::string_view)>;
 
+bool CompatiblePorts(const InlinedVector<Port>& a, const InlinedVector<Port>& b) {
+  if (a.size() != b.size()) return false;
+  for (size_t i = 0; i < a.size(); ++i) {
+    if (a[i].name != b[i].name || a[i].constraints.size() != b[i].constraints.size()) return false;
+    for (size_t j = 0; j < a[i].constraints.size(); ++j) {
+      const auto& x = a[i].constraints[j];
+      const auto& y = b[i].constraints[j];
+      if (x.element_type != y.element_type || x.element_variable != y.element_variable ||
+          x.dimensions != y.dimensions || x.any_rank != y.any_rank || (!x.any_rank && x.prefix != y.prefix) ||
+          x.attribute_type != y.attribute_type || x.tensor_type != y.tensor_type ||
+          x.absent != y.absent || x.immutable != y.immutable)
+        return false;
+    }
+  }
+  return true;
+}
+
 class PatternParser {
  public:
   explicit PatternParser(std::string_view text, InlinedVector<NodeAttributes, 1>* attributes = nullptr,
@@ -649,8 +665,10 @@ class PatternParser {
       : text_(text), resolve_(std::move(resolve)), choices_(choices), definition_(definition) {}
 
   const auto& Radices() const { return radices_; }
+  const auto& ReturnedNames() const { return returned_names_; }
   Status Declarations(InlinedVector<Definition, 1>& definitions);
   static Status ValidateTypes(const Pattern& pattern);
+  static Status AppendAlternative(Definition& target, const Definition& member);
 
   Status Parse(Pattern& destination) {
     ORT_RETURN_IF_ERROR(Next());
@@ -702,15 +720,22 @@ class PatternParser {
           auto found = symbols_.find(local);
           ORT_RETURN_IF(found == symbols_.end(), Error("undefined return value"));
           ORT_RETURN_IF(!ports.emplace(port, found->second).second, Error("duplicate return port"));
+          returned_names_.push_back(port);
           if (token_ != ",") break;
           ORT_RETURN_IF_ERROR(Next());
         } while (true);
         ORT_RETURN_IF_ERROR(Expect(")"));
-        ORT_RETURN_IF(ports.size() != definition_->outputs.size(), Error("interface return ports differ"));
-        for (const auto& port : definition_->outputs) {
-          auto found = ports.find(port.name);
-          ORT_RETURN_IF(found == ports.end(), Error("missing interface return port"));
-          pattern_.outputs_.push_back(found->second);
+        if (definition_->interface_name.empty()) {
+          for (const auto& name : returned_names_) pattern_.outputs_.push_back(ports.at(name));
+        } else {
+          ORT_RETURN_IF(ports.size() != definition_->outputs.size(), Error("interface return ports differ"));
+          returned_names_.clear();
+          for (const auto& port : definition_->outputs) {
+            auto found = ports.find(port.name);
+            ORT_RETURN_IF(found == ports.end(), Error("missing interface return port"));
+            pattern_.outputs_.push_back(found->second);
+            returned_names_.push_back(port.name);
+          }
         }
         returned_values = true;
       } else {
@@ -749,6 +774,9 @@ class PatternParser {
               ORT_RETURN_IF(found == symbols_.end(), Error("undefined return value"));
               ORT_RETURN_IF(pattern_.IsInput(found->second) && !definition_, Error("cannot return a leaf input"));
               pattern_.outputs_.push_back(found->second);
+              returned_names_.push_back(names[i].substr(names[i].rfind('.') == std::string::npos
+                                                            ? 0
+                                                            : names[i].rfind('.') + 1));
             }
             returned_values = true;
           } else {
@@ -766,12 +794,16 @@ class PatternParser {
         for (auto& [name, constraint] : annotations) {
           auto found = symbols_.find(name);
           ORT_RETURN_IF(found == symbols_.end() || pattern_.instances_.count(name),
-                        Error("annotate fragment ports in their interface"));
+                        Error("annotate the called pattern's ports, not its instance"));
           pattern_.type_constraints_.emplace(found->second.handle, std::move(constraint));
         }
       }
       if (returned) {
-        if (!returned_values) pattern_.outputs_ = last_outputs_;
+        if (!returned_values) {
+          pattern_.outputs_ = last_outputs_;
+          for (size_t i = 0; i < last_outputs_.size(); ++i)
+            returned_names_.push_back(last_outputs_.size() == 1 ? "output" : "output" + std::to_string(i));
+        }
         if (kind_ == Kind::Symbol && token_ == ";") ORT_RETURN_IF_ERROR(Next());
         if (braced) ORT_RETURN_IF_ERROR(Expect("}"));
         ORT_RETURN_IF(kind_ != Kind::End, Error("unexpected text after return"));
@@ -1037,34 +1069,22 @@ class PatternParser {
   Status Call(const InlinedVector<std::string>& names) {
     if (resolve_ && token_ == "(") {
       Definition anonymous;
-      anonymous.kind = Definition::Kind::Union;
+      anonymous.kind = Definition::Kind::Alternatives;
       anonymous.name = "<anonymous>";
       InlinedHashSet<std::string> members;
       ORT_RETURN_IF_ERROR(Next());
       do {
         std::string member;
         ORT_RETURN_IF_ERROR(Identifier(member));
-        ORT_RETURN_IF(!members.insert(member).second, Error("duplicate union member"));
+        ORT_RETURN_IF(!members.insert(member).second, Error("duplicate alternative member"));
         const auto* definition = resolve_(member);
-        ORT_RETURN_IF(!definition || definition->kind != Definition::Kind::Fragment,
-                      Error("anonymous alternatives require concrete fragments"));
-        ORT_RETURN_IF(!anonymous.interface_name.empty() && anonymous.interface_name != definition->interface_name,
-                      Error("incompatible union interfaces"));
-        anonymous.interface_name = definition->interface_name;
-        anonymous.inputs = definition->inputs;
-        anonymous.outputs = definition->outputs;
-        for (const auto& plan : definition->plans) {
-          Pattern alternative = *plan;
-          alternative.instances_[""] = {anonymous.name, anonymous.interface_name, member};
-          anonymous.plans.push_back(std::make_shared<const Pattern>(std::move(alternative)));
-          ORT_RETURN_IF(anonymous.plans.size() > 64, Error("graph alternatives exceed 64 concrete plans"));
-        }
+        ORT_RETURN_IF(!definition, Error("unknown alternative pattern"));
+        ORT_RETURN_IF_ERROR(AppendAlternative(anonymous, *definition));
         if (token_ != "|") break;
         ORT_RETURN_IF_ERROR(Next());
       } while (true);
-      ORT_RETURN_IF(anonymous.plans.size() < 2, Error("anonymous union needs at least two alternatives"));
       ORT_RETURN_IF_ERROR(Expect(")"));
-      return FragmentCall(names, anonymous);
+      return PatternCall(names, anonymous);
     }
     ORT_RETURN_IF(kind_ != Kind::Identifier || token_ == "return", Error("expected operator name"));
     Operator op{token_, ""};
@@ -1085,9 +1105,9 @@ class PatternParser {
     }
     if (resolve_ && op.domain.empty()) {
       if (const auto* definition = resolve_(op.name))
-        return FragmentCall(names, *definition);
+        return PatternCall(names, *definition);
       ORT_RETURN_IF(!ONNX_NAMESPACE::OpSchemaRegistry::Schema(op.name),
-                    Error("unknown fragment or unqualified ONNX operator"));
+                    Error("unknown pattern or unqualified ONNX operator"));
     }
     ORT_RETURN_IF_ERROR(Expect("("));
     InlinedVector<Value> inputs;
@@ -1109,7 +1129,7 @@ class PatternParser {
             if (kind_ == Kind::Identifier) {
               std::string capture;
               ORT_RETURN_IF_ERROR(Identifier(capture, replacement_bindings_ != nullptr));
-              ORT_RETURN_IF(pattern_.instances_.count(capture), Error("attribute capture conflicts with a fragment instance"));
+              ORT_RETURN_IF(pattern_.instances_.count(capture), Error("attribute capture conflicts with a pattern instance"));
               if (replacement_bindings_) {
                 auto found = symbols_.find(capture);
                 ORT_RETURN_IF(found == symbols_.end() || !pattern_.IsInput(found->second),
@@ -1239,9 +1259,31 @@ class PatternParser {
   const Definition* definition_ = nullptr;
   InlinedVector<size_t> radices_;
   InlinedVector<Value> last_outputs_;
+  InlinedVector<std::string> returned_names_;
   Status Header(InlinedVector<Port>& ports, std::string& signature);
-  Status FragmentCall(const InlinedVector<std::string>& names, const Definition& definition);
+  Status PatternCall(const InlinedVector<std::string>& names, const Definition& definition);
 };
+
+Status PatternParser::AppendAlternative(Definition& target, const Definition& member) {
+  ORT_RETURN_IF(member.kind == Definition::Kind::Interface, "Interfaces are not alternative patterns: ", member.name);
+  if (target.plans.empty()) {
+    target.interface_name = member.interface_name;
+    target.inputs = member.inputs;
+    target.outputs = member.outputs;
+  } else {
+    ORT_RETURN_IF(target.interface_name != member.interface_name ||
+                      !CompatiblePorts(target.inputs, member.inputs) || !CompatiblePorts(target.outputs, member.outputs),
+                  "Incompatible alternative interfaces/ports: ", target.name, " / ", member.name);
+  }
+  for (const auto& plan : member.plans) {
+    Pattern copy = *plan;
+    auto selected = std::make_shared<const Pattern::Instance>(copy.instances_.at(""));
+    copy.instances_[""] = {target.name, target.interface_name, member.name, std::move(selected)};
+    target.plans.push_back(std::make_shared<const Pattern>(std::move(copy)));
+    ORT_RETURN_IF(target.plans.size() > 64, "Graph alternatives exceed 64 concrete plans.");
+  }
+  return Status::OK();
+}
 
 Status PatternParser::ValidateTypes(const Pattern& pattern) {
   InlinedHashSet<std::string> dimensions, elements, names;
@@ -1310,33 +1352,28 @@ Status PatternParser::Declarations(InlinedVector<Definition, 1>& definitions) {
     Definition definition;
     if (token_ == "interface")
       definition.kind = Definition::Kind::Interface;
-    else if (token_ == "fragment")
-      definition.kind = Definition::Kind::Fragment;
-    else if (token_ == "union")
-      definition.kind = Definition::Kind::Union;
     else if (token_ == "pattern")
-      definition.kind = Definition::Kind::Pattern;
+      definition.kind = Definition::Kind::Body;
     else
-      return Error("expected interface, fragment, union or pattern");
+      return Error("expected interface or pattern");
     ORT_RETURN_IF_ERROR(Next());
     ORT_RETURN_IF_ERROR(Identifier(definition.name));
     ORT_RETURN_IF(!names.insert(definition.name).second, Error("duplicate definition"));
-    if (definition.kind == Definition::Kind::Union) {
+    if (definition.kind != Definition::Kind::Interface && token_ == "=") {
+      definition.kind = Definition::Kind::Alternatives;
       ORT_RETURN_IF_ERROR(Expect("="));
       do {
         std::string member;
         ORT_RETURN_IF_ERROR(Identifier(member));
         ORT_RETURN_IF(std::find(definition.members.begin(), definition.members.end(), member) != definition.members.end(),
-                      Error("duplicate union member"));
+                      Error("duplicate alternative member"));
         definition.members.push_back(std::move(member));
         if (token_ != "|") break;
         ORT_RETURN_IF_ERROR(Next());
       } while (true);
-      ORT_RETURN_IF(definition.members.size() < 2 || definition.members.size() > 64,
-                    Error("unions need between 2 and 64 members"));
+      ORT_RETURN_IF(definition.members.size() > 64, Error("alternatives are limited to 64 members"));
     } else {
-      if (definition.kind == Definition::Kind::Fragment) {
-        ORT_RETURN_IF(token_ != "implements", Error("fragment requires an interface"));
+      if (definition.kind == Definition::Kind::Body && token_ == "implements") {
         ORT_RETURN_IF_ERROR(Next());
         ORT_RETURN_IF_ERROR(Identifier(definition.interface_name));
         definition.signature = "()";
@@ -1386,26 +1423,25 @@ Status PatternParser::Declarations(InlinedVector<Definition, 1>& definitions) {
   return Status::OK();
 }
 
-Status PatternParser::FragmentCall(const InlinedVector<std::string>& names, const Definition& definition) {
+Status PatternParser::PatternCall(const InlinedVector<std::string>& names, const Definition& definition) {
   ORT_RETURN_IF(definition.kind == Definition::Kind::Interface, Error("interfaces are not callable"));
-  ORT_RETURN_IF(definition.kind == Definition::Kind::Pattern, Error("call a fragment, not an entry pattern"));
-  ORT_RETURN_IF(names.size() != 1, Error("fragment calls require one named instance"));
+  ORT_RETURN_IF(names.size() != 1, Error("pattern calls require one named instance"));
   const std::string& path = names.front();
-  ORT_RETURN_IF(pattern_.instances_.count(path), Error("duplicate fragment instance"));
+  ORT_RETURN_IF(pattern_.instances_.count(path), Error("duplicate pattern instance"));
   ORT_RETURN_IF_ERROR(Expect("("));
   InlinedVector<Value> inputs;
   while (token_ != ")") {
     std::string actual;
     ORT_RETURN_IF_ERROR(Identifier(actual, true));
     auto found = symbols_.find(actual);
-    ORT_RETURN_IF(found == symbols_.end(), Error("undefined fragment argument"));
+    ORT_RETURN_IF(found == symbols_.end(), Error("undefined pattern argument"));
     inputs.push_back(found->second);
     if (token_ != ",") break;
     ORT_RETURN_IF_ERROR(Next());
   }
   ORT_RETURN_IF_ERROR(Expect(")"));
-  ORT_RETURN_IF(inputs.size() != definition.inputs.size(), Error("fragment argument count mismatch"));
-  ORT_RETURN_IF(definition.plans.empty(), Error("fragment has no concrete plans"));
+  ORT_RETURN_IF(inputs.size() != definition.inputs.size(), Error("pattern argument count mismatch"));
+  ORT_RETURN_IF(definition.plans.empty(), Error("pattern has no concrete plans"));
   const size_t call = radices_.size();
   radices_.push_back(definition.plans.size());
   const size_t choice = call < choices_.size() ? choices_[call] : 0;
@@ -1413,13 +1449,23 @@ Status PatternParser::FragmentCall(const InlinedVector<std::string>& names, cons
   const Pattern& source = *definition.plans[choice];
   ORT_RETURN_IF(pattern_.Nodes().size() + source.Nodes().size() > 64, Error("expanded node limit exceeded"));
   InlinedVector<Value> map(source.ValueCount(), Value{-1});
+  InlinedHashMap<std::string, std::string> attributes;
   for (size_t i = 0; i < inputs.size(); ++i) {
     const Value formal = source.NamedValue(definition.inputs[i].name);
-    ORT_RETURN_IF(source.IsAttribute(formal), Error("fragment tensor ports cannot be attributes"));
+    if (source.IsAttribute(formal)) {
+      ORT_RETURN_IF(!pattern_.IsInput(inputs[i]), Error("attribute arguments must be external inputs"));
+      pattern_.attribute_inputs_.insert(inputs[i].handle);
+      attribute_inputs_.insert(inputs[i].handle);
+      attributes.emplace(formal.name, inputs[i].name);
+    }
     map[formal.handle] = inputs[i];
     if (!source.IsOptional(formal)) pattern_.optional_inputs_.erase(inputs[i].handle);
   }
   auto scoped = [&](std::string_view name) { return path + "." + std::string(name); };
+  auto attribute_name = [&](const std::string& name) {
+    auto found = attributes.find(name);
+    return found == attributes.end() ? scoped(name) : found->second;
+  };
   for (const auto& value : source.values_) {
     if (map[value.handle].handle < 0) {
       ORT_RETURN_IF(pattern_.ValueCount() >= 256, Error("expanded value limit exceeded"));
@@ -1443,10 +1489,16 @@ Status PatternParser::FragmentCall(const InlinedVector<std::string>& names, cons
     for (auto& input : copy.inputs) input = remap(input);
     for (auto& output : copy.outputs) output = remap(output);
     for (auto& attribute : copy.attributes)
-      if (!attribute.capture.empty()) attribute.capture = scoped(attribute.capture);
+      if (!attribute.capture.empty()) attribute.capture = attribute_name(attribute.capture);
     pattern_.nodes_.push_back(std::move(copy));
   }
-  for (const auto& name : source.attribute_names_) pattern_.attribute_names_.insert(scoped(name));
+  for (const auto& name : source.attribute_names_) {
+    const auto binding = attribute_name(name);
+    pattern_.attribute_names_.insert(binding);
+    pattern_.attribute_aliases_.emplace(scoped(name), binding);
+  }
+  for (const auto& [name, binding] : source.attribute_aliases_)
+    pattern_.attribute_aliases_.emplace(scoped(name), attribute_name(binding));
   for (int handle : source.attribute_inputs_) {
     pattern_.attribute_inputs_.insert(map[handle].handle);
     attribute_inputs_.insert(map[handle].handle);
@@ -1454,7 +1506,7 @@ Status PatternParser::FragmentCall(const InlinedVector<std::string>& names, cons
   auto constraints = [&](int handle, const auto& alternatives) {
     auto copy = alternatives;
     for (auto& type : copy) {
-      type.value_name = scoped(type.value_name);
+      type.value_name = source.IsAttribute(handle) ? attribute_name(type.value_name) : scoped(type.value_name);
       if (!type.element_variable.empty()) type.element_variable = scoped(type.element_variable);
       for (auto& dim : type.dimensions)
         if (auto* name = std::get_if<std::string>(&dim)) *name = scoped(*name);
@@ -1492,13 +1544,33 @@ class PatternModule {
     auto found = by_name_.find(std::string(name));
     ORT_ENFORCE(found != by_name_.end(), "Unknown library pattern: ", name);
     const auto& definition = definitions_[found->second];
-    ORT_ENFORCE(definition.kind == Definition::Kind::Pattern, "Expected an entry pattern: ", name);
+    ORT_ENFORCE(definition.kind != Definition::Kind::Interface, "Interfaces cannot be rule entries: ", name);
+    for (const auto& plan : definition.plans) ValidateEntry(*plan, name);
     Pattern result = *definition.plans.front();
     for (size_t i = 1; i < definition.plans.size(); ++i) result.alternatives_.push_back(definition.plans[i]);
     return result;
   }
 
  private:
+  static void ValidateEntry(const Pattern& plan, std::string_view name) {
+    ORT_ENFORCE(!plan.Nodes().empty(), "Pattern ", name, " cannot be a rule entry: no operator root.");
+    for (Value output : plan.Outputs())
+      ORT_ENFORCE(!plan.IsInput(output), "Pattern ", name,
+                  " cannot be a rule entry: returned leaf/identity alias; compose it into a rooted pattern.");
+    InlinedHashSet<int> reachable;
+    for (Value value : plan.Nodes().back().outputs) reachable.insert(value.handle);
+    for (auto it = plan.Nodes().rbegin(); it != plan.Nodes().rend(); ++it) {
+      ORT_ENFORCE(std::any_of(it->outputs.begin(), it->outputs.end(),
+                              [&](Value value) { return reachable.count(value.handle); }),
+                  "Pattern ", name, " cannot be a rule entry: independent branches do not reach one operator root.");
+      for (Value value : it->outputs) reachable.insert(value.handle);
+      for (Value value : it->inputs)
+        if (value.handle >= 0) reachable.insert(value.handle);
+    }
+    for (int handle : plan.attribute_inputs_) reachable.insert(handle);
+    ORT_ENFORCE(reachable.size() == plan.ValueCount(), "Pattern ", name, " cannot be a rule entry: unused inputs.");
+  }
+
   const Definition* Resolve(std::string_view name) {
     auto found = by_name_.find(std::string(name));
     if (found == by_name_.end()) return nullptr;  // Unqualified ONNX operator.
@@ -1508,31 +1580,20 @@ class PatternModule {
   }
 
   void Compile(Definition& definition) {
-    ORT_ENFORCE(!definition.compiling, "Recursive fragment/union definition: ", definition.name);
+    ORT_ENFORCE(!definition.compiling, "Recursive pattern definition: ", definition.name);
     if (definition.kind == Definition::Kind::Interface || !definition.plans.empty()) return;
     definition.compiling = true;
-    if (definition.kind == Definition::Kind::Union) {
+    if (definition.kind == Definition::Kind::Alternatives) {
       for (const auto& member : definition.members) {
         const auto* concrete = Resolve(member);
-        ORT_ENFORCE(concrete && concrete->kind == Definition::Kind::Fragment,
-                    "Union members must name concrete fragments: ", member);
-        ORT_ENFORCE(definition.interface_name.empty() || definition.interface_name == concrete->interface_name,
-                    "Incompatible union interfaces: ", definition.name);
-        definition.interface_name = concrete->interface_name;
-        definition.inputs = concrete->inputs;
-        definition.outputs = concrete->outputs;
-        for (const auto& plan : concrete->plans) {
-          Pattern copy = *plan;
-          copy.instances_[""] = {definition.name, definition.interface_name, member};
-          definition.plans.push_back(std::make_shared<const Pattern>(std::move(copy)));
-          ORT_ENFORCE(definition.plans.size() <= 64, "Graph alternatives exceed 64 concrete plans.");
-        }
+        ORT_ENFORCE(concrete, "Unknown alternative pattern: ", member);
+        ORT_THROW_IF_ERROR(PatternParser::AppendAlternative(definition, *concrete));
       }
     } else {
-      if (definition.kind == Definition::Kind::Fragment) {
+      if (!definition.interface_name.empty()) {
         const auto* contract = Resolve(definition.interface_name);
         ORT_ENFORCE(contract && contract->kind == Definition::Kind::Interface,
-                    "Unknown fragment interface: ", definition.interface_name);
+                    "Unknown pattern interface: ", definition.interface_name);
         // Extra external inputs are part of the body signature, not the call signature.
         std::string extra = definition.signature.substr(1, definition.signature.size() - 2);
         definition.signature = contract->signature;
@@ -1548,22 +1609,37 @@ class PatternModule {
       InlinedVector<size_t> choices;
       do {
         Pattern plan;
-        PatternParser parser(text, [&](std::string_view name) { return Resolve(name); }, choices, definition.kind == Definition::Kind::Fragment ? &definition : nullptr);
+        PatternParser parser(text, [&](std::string_view name) { return Resolve(name); }, choices, &definition);
         const auto status = parser.Parse(plan);
         ORT_ENFORCE(status.IsOK(), "In definition ", definition.name, ": ", status.ErrorMessage());
-        ORT_ENFORCE(!plan.Nodes().empty() || definition.kind == Definition::Kind::Fragment,
-                    "Entry patterns must contain an operator.");
-        if (definition.kind == Definition::Kind::Fragment) {
-          ORT_ENFORCE(plan.outputs_.size() == definition.outputs.size(), "Fragment return count differs from interface.");
+        if (definition.interface_name.empty()) {
+          InlinedVector<Port> outputs;
+          InlinedHashSet<std::string> names;
+          for (size_t i = 0; i < parser.ReturnedNames().size(); ++i) {
+            const auto& name = parser.ReturnedNames()[i];
+            ORT_ENFORCE(names.insert(name).second, "Duplicate inferred output port in pattern ", definition.name, ": ", name);
+            auto constraints = plan.type_constraints_.find(plan.outputs_[i].handle);
+            outputs.push_back({name, constraints == plan.type_constraints_.end()
+                                         ? InlinedVector<TypeConstraint, 1>{}
+                                         : constraints->second});
+          }
+          if (definition.outputs.empty())
+            definition.outputs = std::move(outputs);
+          else
+            ORT_ENFORCE(CompatiblePorts(definition.outputs, outputs), "Pattern alternatives change output ports: ", definition.name);
+        }
+        {
+          ORT_ENFORCE(plan.outputs_.size() == definition.outputs.size(),
+                      "Pattern return count differs from its ports: ", definition.name);
           for (size_t i = 0; i < definition.outputs.size(); ++i) {
             const auto& port = definition.outputs[i];
             const Value output = plan.outputs_[i];
             const auto local = std::find_if(plan.values_.begin(), plan.values_.end(),
                                             [&](const auto& value) { return value.name == port.name; });
             ORT_ENFORCE(local == plan.values_.end() || local->handle == output.handle,
-                        "Interface output shadows a different local value: ", port.name);
+                        "Output port shadows a different local value in pattern ", definition.name, ": ", port.name);
             plan.aliases_.insert_or_assign(port.name, output);
-            if (!port.constraints.empty())
+            if (!definition.interface_name.empty() && !port.constraints.empty())
               plan.additional_type_constraints_.emplace_back(output.handle, port.constraints);
           }
         }
@@ -1680,20 +1756,26 @@ std::optional<int32_t> BindingView::elementTypeOf(std::string_view name) const {
 BindingView BindingView::instance(std::string_view name) const {
   ORT_ENFORCE(match_->pattern && !name.empty(), "Instance lookup requires a matched pattern and a name.");
   const std::string path = Qualify(name);
-  ORT_ENFORCE(match_->pattern->instances_.count(path), "Unknown fragment instance: ", path);
+  ORT_ENFORCE(match_->pattern->instances_.count(path), "Unknown pattern instance: ", path);
   return BindingView(*match_, path);
 }
-std::string_view BindingView::definition() const {
+const Pattern::Instance& BindingView::Selection() const {
   ORT_ENFORCE(match_->pattern && match_->pattern->instances_.count(path_), "No definition at binding path: ", path_);
-  return match_->pattern->instances_.at(path_).definition;
+  const auto* selection = &match_->pattern->instances_.at(path_);
+  for (size_t depth = 0; depth < alternative_depth_; ++depth) {
+    ORT_ENFORCE(selection->selected, "No selected alternative at binding path: ", path_);
+    selection = selection->selected.get();
+  }
+  return *selection;
 }
-std::string_view BindingView::interfaceName() const {
-  ORT_ENFORCE(match_->pattern && match_->pattern->instances_.count(path_), "No definition at binding path: ", path_);
-  return match_->pattern->instances_.at(path_).interface_name;
-}
-std::string_view BindingView::alternative() const {
-  ORT_ENFORCE(match_->pattern && match_->pattern->instances_.count(path_), "No definition at binding path: ", path_);
-  return match_->pattern->instances_.at(path_).alternative;
+std::string_view BindingView::definition() const { return Selection().definition; }
+std::string_view BindingView::interfaceName() const { return Selection().interface_name; }
+std::string_view BindingView::alternative() const { return Selection().alternative; }
+BindingView BindingView::alternativeView() const {
+  ORT_ENFORCE(Selection().selected, "Pattern has no selected alternative: ", path_);
+  BindingView result = *this;
+  ++result.alternative_depth_;
+  return result;
 }
 
 namespace {
@@ -1742,7 +1824,8 @@ void Match::update(std::string_view name, ONNX_NAMESPACE::AttributeProto value) 
     ORT_ENFORCE(std::none_of(pattern->values_.begin(), pattern->values_.end(),
                              [&](const Value& binding) { return binding.name == name; }),
                 "Extra attribute binding cannot overwrite a pattern value: ", name);
-    ORT_ENFORCE(!pattern->AttributeNames().count(std::string(name)),
+    ORT_ENFORCE(!pattern->AttributeNames().count(std::string(name)) &&
+                    !pattern->attribute_aliases_.count(std::string(name)),
                 "Extra attribute binding cannot overwrite a captured attribute: ", name);
   }
   value.set_name(std::string(name));
@@ -1750,6 +1833,10 @@ void Match::update(std::string_view name, ONNX_NAMESPACE::AttributeProto value) 
 }
 
 const ONNX_NAMESPACE::AttributeProto& Match::attributeOf(std::string_view name) const {
+  if (pattern) {
+    auto alias = pattern->attribute_aliases_.find(std::string(name));
+    if (alias != pattern->attribute_aliases_.end()) name = alias->second;
+  }
   auto captured = captured_attributes_.find(std::string(name));
   if (captured != captured_attributes_.end()) return captured->second;
   auto found = extra_attributes_.find(std::string(name));
