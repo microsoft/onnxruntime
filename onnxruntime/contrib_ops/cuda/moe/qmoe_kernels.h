@@ -7,10 +7,14 @@
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
 #include <stdint.h>
+#include "core/common/status.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+Status LaunchQMoERouterProjection(const half* input, const half* weight, half* logits,
+                                  int rows, int hidden, int experts, cudaStream_t stream);
 
 void LaunchSoftmaxTopK(
     const float* logits,

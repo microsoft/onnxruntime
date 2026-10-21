@@ -8,6 +8,7 @@
 #endif
 
 #include "contrib_ops/cuda/moe/moe_quantization.h"
+#include "core/providers/cuda/math/matmul.h"
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
 #include "contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
 #include "core/framework/kernel_pilot.h"
@@ -239,9 +240,9 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                               \
+#define REGISTER_KERNEL_TYPED_OP(Op, T)                                        \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
-      QMoE,                                                                    \
+      Op,                                                                      \
       kMSDomain,                                                               \
       1,                                                                       \
       T,                                                                       \
@@ -259,10 +260,12 @@ namespace cuda {
           .TypeConstraint("T4", DataTypeImpl::GetTensorType<float>()),         \
       QMoE);
 
-REGISTER_KERNEL_TYPED(MLFloat16)
-REGISTER_KERNEL_TYPED(BFloat16)
+REGISTER_KERNEL_TYPED_OP(QMoE, MLFloat16)
+REGISTER_KERNEL_TYPED_OP(QMoE, BFloat16)
+REGISTER_KERNEL_TYPED_OP(QMoEWithRouter, MLFloat16)
 
 QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info, GetDeviceProp()) {
+  fuse_router_projection_ = op_kernel_info.GetKernelDef().OpName() == "QMoEWithRouter";
   enable_kernel_debug_info_ =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>(kEnableQMoEKernelDebugInfo, 0) != 0;
   const auto configured_row_tile_size =
@@ -361,6 +364,13 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(weights_prepacked_mode == -1 || weights_prepacked_mode == 0 || weights_prepacked_mode == 1,
               "weights_prepacked must be -1 (default), 0, or 1, but got ", weights_prepacked_mode);
   weights_prepacked_ = (weights_prepacked_mode != 0);
+  ORT_ENFORCE(!fuse_router_projection_ ||
+                  (quant_type_ == "int" && expert_weight_bits_ == 2 &&
+                   fc1_expert_weight_bits_ == 2 && fc2_expert_weight_bits_ == 2 &&
+                   fc3_expert_weight_bits_ == 2 && block_size_ == 128 &&
+                   !weights_prepacked_ && !use_sparse_mixer_),
+              "QMoEWithRouter requires symmetric group-128 INT2 weights, weights_prepacked=0, "
+              "and standard softmax routing.");
   if (use_int_dequant_fallback) {
     ORT_ENFORCE(!weights_prepacked_,
                 "INT2 or mixed-width CUDA QMoE requires raw weights with weights_prepacked=0.");
@@ -725,6 +735,41 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool uses_global_weight_scales = is_fp4_family || (is_fp8 && !is_block_fp8) || is_wfp4afp8;
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
+  IAllocatorUniquePtr<half> router_logits_buffer;
+  std::unique_ptr<Tensor> router_logits;
+  if (fuse_router_projection_) {
+    ORT_RETURN_IF_NOT(context->Input<Tensor>(4) == nullptr,
+                      "QMoEWithRouter does not support expert biases.");
+    for (int index = 7; index < context->InputCount(); ++index) {
+      ORT_RETURN_IF_NOT(context->Input<Tensor>(index) == nullptr,
+                        "QMoEWithRouter only supports symmetric INT2 weights without optional inputs 7-20.");
+    }
+    const auto& input_shape = input->Shape();
+    const auto& weight_shape = router_probs->Shape();
+    ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 2 && input_shape[0] > 0 &&
+                          input_shape[0] <= std::numeric_limits<int>::max() &&
+                          input_shape[1] > 0 && input_shape[1] <= std::numeric_limits<int>::max() &&
+                          weight_shape.NumDimensions() == 2 &&
+                          weight_shape[0] > 0 && weight_shape[0] <= std::numeric_limits<int>::max() &&
+                          weight_shape[1] == input_shape[1],
+                      "QMoEWithRouter requires input [M,K] and router weight [E,K] with positive int32 dimensions.");
+    router_logits_buffer = GetScratchBuffer<half>(
+        SafeInt<size_t>(input_shape[0]) * SafeInt<size_t>(weight_shape[0]), GetComputeStream(context));
+    router_logits = Tensor::Create(
+        input->DataType(), TensorShape{input_shape[0], weight_shape[0]},
+        router_logits_buffer.get(), input->Location());
+    if (input_shape[0] <= 8) {
+      ORT_RETURN_IF_ERROR(LaunchQMoERouterProjection(
+          reinterpret_cast<const half*>(input->Data<MLFloat16>()),
+          reinterpret_cast<const half*>(router_probs->Data<MLFloat16>()),
+          router_logits_buffer.get(), static_cast<int>(input_shape[0]),
+          static_cast<int>(input_shape[1]), static_cast<int>(weight_shape[0]), Stream(context)));
+    } else {
+      ORT_RETURN_IF_ERROR(onnxruntime::cuda::FuncMatMul<MLFloat16>(
+          this, context, input, router_probs, 1.0f, false, true, false, false, router_logits.get()));
+    }
+    router_probs = router_logits.get();
+  }
   // When PrePack consumed the int4/int8 or packed-only INT2 expert-weight initializers
   // (``weights_prepacked == false`` opt-in path), the original tensors
   // were freed; ``context->Input<Tensor>(2)/(5)`` would return nothing.

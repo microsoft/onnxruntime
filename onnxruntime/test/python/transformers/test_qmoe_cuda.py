@@ -27,6 +27,7 @@ from contextlib import nullcontext
 from unittest.mock import patch
 
 import numpy
+import onnx
 import torch
 import torch.nn.functional as F
 from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
@@ -2777,6 +2778,71 @@ class TestQMoEInt2PackedOnly(unittest.TestCase):
                 None,
                 {"input": numpy.zeros((1, 512), numpy.float16), "router_probs": numpy.zeros((1, 16), numpy.float16)},
             )
+
+
+@unittest.skipUnless(
+    torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8,
+    "Router-integrated INT2 QMoE requires SM80 or newer",
+)
+class TestQMoEWithRouter(unittest.TestCase):
+    _graph = TestQMoEInt2PackedOnly._graph
+    _session = TestQMoEInt2PackedOnly._session
+
+    def _router_graph(self, weight, **kwargs):
+        model = onnx.load_model_from_string(self._graph(**kwargs))
+        model.graph.node[0].op_type = "QMoEWithRouter"
+        model.graph.node[0].input[1] = "router_weight"
+        del model.graph.input[1]
+        model.graph.initializer.append(onnx.numpy_helper.from_array(weight, "router_weight"))
+        return model.SerializeToString()
+
+    def test_projection_and_query_shape_parity(self):
+        rng = numpy.random.default_rng(182)
+        weight = rng.normal(0, 0.1, (16, 512)).astype(numpy.float16)
+        fused = self._session(self._router_graph(weight), packed_only=True)
+        reference = self._session(self._graph(), packed_only=True)
+        retained = self._session(self._router_graph(weight), packed_only=False)
+        x = rng.normal(size=(128, 512)).astype(numpy.float16)
+        for rows in (1, 2, 4, 8, 9, 32, 128):
+            with self.subTest(rows=rows):
+                actual = fused.run(None, {"input": x[:rows]})[0]
+                expected = reference.run(
+                    None,
+                    {
+                        "input": x[:rows],
+                        "router_probs": (x[:rows].astype(numpy.float32) @ weight.astype(numpy.float32).T).astype(
+                            numpy.float16
+                        ),
+                    },
+                )[0]
+                numpy.testing.assert_allclose(actual, expected, atol=2e-4, rtol=2e-3)
+                numpy.testing.assert_array_equal(actual, retained.run(None, {"input": x[:rows]})[0])
+                if rows <= 8:
+                    single = numpy.concatenate([fused.run(None, {"input": row[None]})[0] for row in x[:rows]])
+                    numpy.testing.assert_array_equal(actual, single)
+
+    def test_rejects_router_shape(self):
+        session = self._session(
+            self._router_graph(numpy.zeros((16, 128), numpy.float16)),
+            packed_only=True,
+        )
+        with self.assertRaisesRegex(Exception, r"router weight \[E,K\]"):
+            session.run(None, {"input": numpy.zeros((1, 512), numpy.float16)})
+
+    def test_rejects_unsupported_group_size(self):
+        with self.assertRaisesRegex(Exception, "QMoEWithRouter requires symmetric group-128 INT2"):
+            self._session(
+                self._router_graph(numpy.zeros((16, 512), numpy.float16), block_size=64),
+                packed_only=True,
+            )
+
+    def test_rejects_zero_points(self):
+        session = self._session(
+            self._router_graph(numpy.zeros((16, 512), numpy.float16), asymmetric=True),
+            packed_only=True,
+        )
+        with self.assertRaisesRegex(Exception, "without optional inputs"):
+            session.run(None, {"input": numpy.zeros((1, 512), numpy.float16)})
 
 
 @unittest.skipUnless(torch.cuda.is_available(), "QMoE PrePack smoke test requires CUDA")

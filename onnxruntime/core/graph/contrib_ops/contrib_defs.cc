@@ -1518,10 +1518,18 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
       )DOC";
 
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    QMoE, 1,
-    OpSchema()
-        .SetDoc(qMoE_ver1_doc)
+static OpSchema QMoESchema(bool with_router) {
+  return OpSchema()
+        .SetDoc(with_router
+                    ? "CUDA FP16 group-128 INT2 MoE with integrated router projection. "
+                      "Input 0 is [M,K]; input 1 is a router weight [E,K], not logits. "
+                      "Computes FP16 MatMul(input, Transpose(router_weight)) followed by QMoE. "
+                      "Decode (M<=8) uses FP32 dot accumulation with fixed per-row reduction order, "
+                      "which need not match cuBLAS rounding. Prefill uses the CUDA MatMul implementation. "
+                      "Supports symmetric raw INT2 experts with weights_prepacked=0 and standard softmax routing. "
+                      "Expert bias input 4 and optional inputs 7-20 must be absent. "
+                      "Expert evaluation and routing reuse QMoE kernels; router logits are internal scratch."
+                    : qMoE_ver1_doc)
         .Attr("activation_type",
               "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu",
               AttributeProto::STRING,
@@ -1612,14 +1620,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               static_cast<int64_t>(-1))
         .Input(0,
                "input",
-               "2D packed token tensor with shape (total_tokens, hidden_size), where tokens from ragged sequences "
-               "may be concatenated without padding, or "
-               "3D tensor with shape (batch_size, sequence_length, hidden_size)",
+               with_router ? "2D FP16 activation [total_tokens, hidden_size]."
+                           : "2D packed token tensor with shape (total_tokens, hidden_size), where tokens from ragged sequences "
+                             "may be concatenated without padding, or "
+                             "3D tensor with shape (batch_size, sequence_length, hidden_size)",
                "T")
         .Input(1,
-               "router_probs",
-               "2D tensor with shape (total_tokens, num_experts), where total_tokens must match the flattened "
-               "token count of input",
+               with_router ? "router_projection_weight" : "router_probs",
+               with_router ? "FP16 router projection weight [num_experts, hidden_size]."
+                           : "2D tensor with shape (total_tokens, num_experts), where total_tokens must match the flattened token count of input",
                "T")
         .Input(2,
                "fc1_experts_weights",
@@ -1760,14 +1769,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "output",
                 "output tensor with same shape of input",
                 "T")
-        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
-        .TypeConstraint("T1", {"tensor(uint8)", "tensor(float8e4m3fn)"},
+        .TypeConstraint("T", with_router ? std::vector<std::string>{"tensor(float16)"}
+                                         : std::vector<std::string>{"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeConstraint("T1", with_router ? std::vector<std::string>{"tensor(uint8)"}
+                                          : std::vector<std::string>{"tensor(uint8)", "tensor(float8e4m3fn)"},
                         "Constrain quantized weight types. Integer and FP4 weights use uint8. FP8 weights use float8e4m3fn.")
-        .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(float8e8m0)", "tensor(float8e4m3fn)"},
+        .TypeConstraint("T2", with_router ? std::vector<std::string>{"tensor(float16)"}
+                                          : std::vector<std::string>{"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(float8e8m0)", "tensor(float8e4m3fn)"},
                         "Constrain scale types. Float tensors are used for integer quantization and FP8 square-block scales. "
                         "Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.")
         .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
-        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+}
+
+ONNX_MS_OPERATOR_SET_SCHEMA(QMoE, 1, QMoESchema(false));
+ONNX_MS_OPERATOR_SET_SCHEMA(QMoEWithRouter, 1, QMoESchema(true));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(SampleOp, 1,
                             OpSchema()

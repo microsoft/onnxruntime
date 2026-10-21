@@ -31,6 +31,30 @@ int Compute1DGridSize(int num_elements, int block_size) {
 
 constexpr float kTopKNormalizeEpsilon = onnxruntime::cuda::topk::kTopKNormalizeEpsilon;
 
+__global__ void QMoERouterProjectionKernel(const half* input, const half* weight, half* logits,
+                                           int hidden, int experts) {
+  const int lane = threadIdx.x;
+  const int expert = blockIdx.x;
+  const int row = blockIdx.y;
+  if (expert >= experts) return;
+  float sum = 0.0f;
+  for (int c = lane; c < hidden; c += 32) {
+    sum = fmaf(__half2float(input[static_cast<int64_t>(row) * hidden + c]),
+               __half2float(weight[static_cast<int64_t>(expert) * hidden + c]), sum);
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    sum += __shfl_down_sync(0xffffffffU, sum, offset);
+  }
+  if (lane == 0) logits[static_cast<int64_t>(row) * experts + expert] = __float2half_rn(sum);
+}
+
+Status LaunchQMoERouterProjection(const half* input, const half* weight, half* logits,
+                                  int rows, int hidden, int experts, cudaStream_t stream) {
+  QMoERouterProjectionKernel<<<dim3(experts, rows), 32, 0, stream>>>(
+      input, weight, logits, hidden, experts);
+  return CUDA_CALL(cudaGetLastError());
+}
+
 // Shared with the fused routing prologue in the LLM MoE runner (moe_kernels.cu); see
 // core/providers/cuda/cu_inc/topk_warp_sort.cuh for why these live in a header.
 using onnxruntime::cuda::topk::SafeInvSum;
