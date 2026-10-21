@@ -22,7 +22,7 @@ jobs:
     name: Build Linux CUDA Plugin EP x64 Release
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
-      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU" # Build pool
+      pool_name: "ort-github-linux-16-amd-wcus-ss" # Build pool
       build_config: Release
       architecture: x64
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
@@ -54,11 +54,7 @@ jobs:
   test-linux-cuda-plugin-x64-release:
     name: Test Linux CUDA Plugin EP x64 Release
     needs: build-linux-cuda-plugin-x64-release
-    runs-on:
-      - self-hosted
-      - "1ES.Pool=onnxruntime-github-linux-a10"
-      - "1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10"
-      - "JobId=test-linux-cuda-plugin-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    runs-on: [ort-github-linux-6-a10-scus-ss]
     timeout-minutes: 210
     permissions:
       contents: read
@@ -136,24 +132,18 @@ jobs:
             -v ${{ runner.temp }}/Release:/build/Release \
             -e NVIDIA_VISIBLE_DEVICES=all \
             -e ORT_TEST_CUDA_PLUGIN_EP=1 \
-            -e PYTHONUNBUFFERED=1 \
+            -e ORT_RUN_CUDA_TACTIC_CACHE_TESTS=1 \
+            -e ORT_CUDA_PLUGIN_PATH=/build/Release/Release/libonnxruntime_providers_cuda.so \
             ${{ steps.build_docker_image_step.outputs.full-image-name }} \
             bash -c "
               set -ex
               export PATH=/opt/python/cp312-cp312/bin:\$PATH
               export LD_LIBRARY_PATH=/build/Release/Release:/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
-              echo '[CUDA plugin diagnostics] Installing ORT wheel'
               python -m pip install /build/Release/Release/dist/onnxruntime*.whl
-              echo '[CUDA plugin diagnostics] Installing numpy and onnx'
               python -m pip install numpy onnx
-              echo '[CUDA plugin diagnostics] Installing CPU torch'
               python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+              cd /build/Release/Release
+              python /onnxruntime_src/onnxruntime/test/python/onnxruntime_test_python_fpa_intb_tune.py
               cd /onnxruntime_src/onnxruntime/test/python/transformers
-              echo '[CUDA plugin diagnostics] Running complete Python suite with 300s periodic stack dumps'
-              python -u -X faulthandler -c \"import atexit, faulthandler, runpy, sys; \
-                faulthandler.dump_traceback_later(300, repeat=True); \
-                atexit.register(faulthandler.cancel_dump_traceback_later); \
-                sys.argv=['test_cuda_plugin_ep.py', '-v']; \
-                runpy.run_path('test_cuda_plugin_ep.py', run_name='__main__')\"
-              echo '[CUDA plugin diagnostics] Python suite exited successfully'
+              python test_cuda_plugin_ep.py
             "

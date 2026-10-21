@@ -545,10 +545,7 @@ void BufferManager::MemCpy(CommandRecordingState& recording, WGPUBuffer src, WGP
               "Source and destination buffers must have enough space for the copy operation. src_size=",
               src_size, ", dst_size=", dst_size, ", copy_size=", copy_size, ".");
 
-  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
-  auto& command_encoder = context_.GetCommandEncoder(recording);
-  context_.EndComputePass(recording);
-  command_encoder.CopyBufferToBuffer(src, 0, dst, 0, copy_size);
+  context_.CopyBuffer(src, dst, copy_size, recording);
 }
 
 WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, wgpu::BufferUsage usage,
@@ -564,7 +561,7 @@ WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, 
   }
   if (buffer) {
     if (initialize_to_zero) {
-      // Plugin plain allocations pass call-local recording and submit only their own clear.
+      // Modern plugin plain allocations pass call-local recording and submit only their own clear.
       // AllocOnStream defers the clear on the Session timeline. Built-in allocations use the
       // Session recording and retain their caller-supplied submission policy.
       auto buffer_guard = wgpu::Buffer::Acquire(buffer);

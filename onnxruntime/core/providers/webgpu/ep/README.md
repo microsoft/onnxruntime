@@ -22,6 +22,54 @@ To ensure both static library and dynamic library builds work, we need to make a
 
   - use a bridge to connect EP ABI and the internal classes
 
+### Runtime compatibility
+
+The plugin supports ORT 1.24.4 and later. Both execution modes use Session-owned recordings.
+Concurrent independent Sessions are enabled on 1.28.x starting at 1.28.3, on 1.30.x starting
+at 1.30.1, and on 1.31 and later. Other supported versions, including all 1.29.x hosts, use
+serialized compatibility mode, selected by `UseSerializedExecutionMode()` in
+`runtime_compatibility.h` and `runtime_compatibility.cc`. There is no shared
+legacy recording. Cached-buffer clearing remains enabled, and kernels still batch their
+dispatches; there is no per-kernel submission and no traversal of other Sessions.
+
+Serialized-mode callers must serialize **all WebGPU operations on the same device**, including Session
+creation/destruction, Run, I/O binding, allocator use, and Env transfers. Use sequential graph
+execution. Multiple Sessions may be used sequentially; overlapping operations are unsupported and
+are not detected or serialized by the plugin. This is not a restriction to one fixed CPU thread,
+but operations must not overlap or reenter from callbacks.
+The plugin's same-Session Run concurrency flag alone cannot serialize separate Sessions or Env calls.
+
+In serialized mode, Session ordinary `Alloc` uses its owning Session's recording and a
+`!IsRunActive()` submission-policy callback: submit cached-buffer clears outside Run, defer them
+during Run. `AllocOnStream` uses the same policy after validating the stream's Session.
+Kernel scratch uses ordinary Tensor allocation through that same allocator, without
+`KernelContext_GetSyncStream`, which is unavailable on 1.24. Under the required serial,
+non-reentrant calling contract, application allocations occur outside Run and submit before
+returning. `OnRunEnd` cleanup resets the active flag on success and failure.
+Env allocations and concurrent-mode ordinary allocations continue to submit independent clears,
+including during Run. Submission does not wait for GPU completion. Other plugin allocators
+without this explicit submission callback retain the independent-clear policy.
+
+The context tracks a non-owning pointer to the active Session's recording during a serialized
+Run or replay. Framework copies with a stream use that stream's Session recording. If an old host
+drops the stream, the copy first flushes the active Session's recording, then uses a local recording.
+This preserves `clear -> upload -> compute -> readback` ordering without sharing command state.
+Framework/Env copies and Env allocations use the default context buffer manager; graph execution
+keeps its per-graph buffer manager. Capture/replay boundaries drain pending Session work.
+BufferManager tracks deferred releases by recording, and Session teardown discards only that
+Session's pending entries. Env allocations retain no Session recording and can survive Session teardown.
+Run/replay callbacks clear the active pointer on their cleanup paths; Run cleanup also resets the
+Session's graph-manager selection. There is no context-wide Run gate, so a host error that skips
+`OnRunEnd` cannot permanently reject subsequent Runs. Such errors can still leave pre-existing
+Run/capture state, and complete recovery from host-side or partially recorded replay failures
+is not guaranteed.
+
+The execution mode is selected once at plugin registration using the host's minor and patch
+versions. Set `ORT_WEBGPU_EP_FORCE_LEGACY=1` **before loading the plugin** to exercise serialized
+mode on a host that supports concurrent Sessions. The existing override name is retained for
+compatibility; it does not enable a legacy recording. The setting is process-wide and only forces
+the safe compatibility direction; it cannot enable concurrency on an unsupported host.
+
 ### Session streams
 
 Concurrent use of independent Sessions is supported only by the plugin WebGPU EP.
@@ -40,7 +88,7 @@ internally created devices; callers supplying an external device must include it
 `DeviceDescriptor.requiredFeatures` when creating that device. Initialization rejects native
 devices without this feature, even for serial use. This requirement does not apply to WASM.
 
-Session allocators expose the existing `OrtAllocator::AllocOnStream` callback and validate
+In concurrent mode, Session allocators expose the existing `OrtAllocator::AllocOnStream` callback and validate
 that the stream belongs to the same Session. Allocations with a matching stream defer cached-buffer
 clears. Plugin kernel scratch tensors created through `CreateGPUTensor` use the kernel's explicit
 sync stream, so cached-buffer clears stay ordered with kernel work without submitting each scratch
@@ -103,6 +151,17 @@ error for checked completion; ordinary Flush/Run behavior is unchanged.
 For externally supplied devices, earlier errors captured by the caller's
 scopes or callbacks remain the caller's responsibility.
 
+`WebGpuContext::RunAndWaitChecked(buffer_manager, recording, enqueue)` extends
+that boundary to the supplied Status-returning callback. All three scopes are
+active before the callback creates, validates or encodes programs and remain
+active through flush/wait. The callback may enqueue multiple programs on the
+owning recording; it must stay on the calling thread. An enqueue failure or
+exception is reported alongside completion errors, and already-enqueued work
+is drained before all scopes are popped. Scope cleanup also runs on exception
+unwinding. Caller-owned scopes and external-device callbacks are not replaced.
+The ordinary `FlushAndWaitChecked` entry point uses the same implementation
+with an empty enqueue callback and retains its existing boundary.
+
 The helper polls `Device::GetLostFuture` after waiting, rather than treating
 a successful queue callback as proof of device health. This also detects loss
 of an external device without replacing its callbacks. A failed wait or
@@ -114,6 +173,7 @@ this is not a new stream or cross-provider API.
 
 Focused context tests cover empty, pending and submitted work, deferred
 dispatch, validation at Flush, scope cleanup after a failed wait,
+enqueue failure/exception cleanup, early shader errors on an external device,
 validation/OOM injection and external device loss. Dawn's existing InjectError
 API accepts validation and OOM only. Deterministic internal-error and
 non-success work-done callback injection is not available here; those branches
@@ -140,8 +200,135 @@ are covered by the tests in
 The tests also cover initial graph capture and replay across independent Sessions, and concurrent
 Run calls for different graph IDs within one Session, serialized by ORT. Initial-capture tests use
 preallocated bindings; they do not cover external Session allocator calls overlapping capture.
-Concurrent profiling, cross-device transfer, and arbitrary foreign stream overrides are not
+The compatibility regressions additionally exercise single-input CPU BindInput with dirty-buffer
+reuse, interleaved bindings across serialized Sessions, Env tensors surviving Session destruction,
+and serial graph capture/replay with multiple graph IDs. A regression verifies that a rejected
+device-mismatched stream override does not block subsequent serial Runs on either the failed
+Session or another Session on the same device. Run serial tests with
+`ORT_WEBGPU_EP_FORCE_LEGACY=1`; the concurrent-success tests apply only to modern mode.
+The `onnxruntime_webgpu_legacy_test` CTest entry sets this environment variable before loading
+the plugin and runs a serial-safe allowlist in normal PR CI. The existing CTest name is retained.
+Public allocation tests verify dirty-buffer reuse and read the raw buffer with an independent
+Dawn command encoder, so ORT's readback path cannot hide an unsubmitted clear. Submission counts
+are also checked before that external readback, including after a cancelled Run.
+Concurrent profiling, cross-device transfer, and successful arbitrary foreign stream overrides are not
 established by these tests. Performance must be measured separately.
+
+### Convolution state replay
+
+`com.microsoft::ConvStateReplay` version 1 reconstructs convolution history without
+convolution arithmetic. It is WebGPU-only and accepts FP16 or FP32 tensors. Inputs
+0-2 are full rank-1 source, capture, and inactive destination backing tensors of
+the same type. Input 3 is CPU `int64[8]`, ordered as:
+`source_offset_bytes, destination_offset_bytes, capture_offset_bytes,
+batch_size, channels, history_width, capacity, kept_count`.
+Offsets are bytes from the allocation base, aligned to the element size; FP16
+offsets need not be four-byte aligned. State views have layout
+`[batch_size, channels, history_width]`, and captured inputs have layout
+`[batch_size, capacity, channels]`. `capacity` is the original batch stride,
+not the retained count. All fields are nonnegative, channels must be positive,
+and `0 <= kept_count <= capacity`. Zero batch/history is a no-op; zero capacity
+is valid with zero retained inputs. Full view extents, including capture capacity,
+must fit their backings even when only part of a view is read.
+
+The caller must supply the incoming state immediately before capture and valid
+captured inputs for the retained prefix. With width `W` and retained count `k`,
+the output history is the final `W` entries of the concatenation of the incoming
+history and the first `k` captured inputs. Thus `k=0` copies the source, while
+`k>=W` selects only the last `W` inputs of the retained prefix.
+
+The output must be explicitly I/O-bound to the same full allocation as
+`destination_backing`; `.MayInplace` alone does not guarantee this. Destination
+backing must not alias source or capture backing, even for disjoint views. No
+other destination elements or source/capture payloads are modified.
+
+The kernel wraps the full opaque buffer handles as non-owning `uint32` tensors.
+`ProgramInput::BufferView` / `ProgramOutput::BufferView` supply word offsets via
+uniforms, while binding full allocations (or framework-aligned segments).
+FP16's remaining two-byte offset is a lane uniform. One invocation owns each
+destination word and merges selected 16-bit payloads with the original word at
+view boundaries, preserving adjacent halves without races. No floating-point
+loads, stores, conversions, or arithmetic are used, including for FP32, so
+signed zeros, subnormals and NaN payloads are preserved exactly. Backings must
+have WebGPU's four-byte allocation padding, including odd-sized FP16 tensors.
+
+The operation uses checked GPU completion before returning, like the separate
+GatedDeltaNet replay operator. Failure must not be treated as a committed state
+update. There is no graph-capture support or GenAI integration in this milestone.
+Metadata and backing byte extents are limited to uint32; geometry, alignment,
+bounds, output aliasing, dispatch, and device binding limits are checked.
+Integration should convert descriptor offsets to bytes, retain the original
+capture capacity, prebind the inactive bank, and publish it only after success.
+
+### GatedDeltaNet state replay
+
+`com.microsoft::GatedDeltaNetStateReplay` version 1 is a WebGPU-only, FP32
+operator for one request and one recurrent-state descriptor. Inputs 0-2 are
+full, rank-1 source-state, compact-capsule and inactive destination backing
+tensors. Input 3 is CPU `int64[11]`, in this order:
+`source_offset, destination_offset, decay_offset, key_offset, delta_offset,
+Hv, Dv, Dk, Hk, capacity, kept_count`. Offsets count FP32 elements.
+Dimensions and capacity must be positive, and `1 <= kept_count <= capacity`.
+The caller must provide valid captured transitions for the entire kept prefix.
+
+The `source_state` selected by `source_offset` must be the state snapshot from
+immediately before the captured GatedDeltaNet transitions began. Using the
+producer's final state or another same-shaped snapshot is invalid because
+captured delta is state-dependent. Capsule geometry (`Hv, Dv, Dk, Hk`) and
+capacity must match the producer that generated the capsule. `capacity` is
+the original capsule capture/layout capacity. `kept_count` only selects the
+leading transitions to replay; `kept_count` must NOT be substituted for
+`capacity` when deriving the decay/key/delta section offsets.
+
+The output must be explicitly I/O-bound to the same allocation as the
+destination input; `.MayInplace` alone does not guarantee aliasing of a graph
+input. Writable destination backing must not alias source or capsule backing.
+Only the selected destination row is written. Source, capsule and neighboring
+destination slots are preserved, including unused capsule tails.
+
+State layout is `[Hv,Dv,Dk]`; capsule views are `[capacity,Hv]` decay,
+`[capacity,Hk,Dk]` key and `[capacity,Hv,Dv]` delta. Each invocation owns one
+state element, maps `hk = floor(h*Hk/Hv)`, and applies the captured factors in
+token order: `s *= decay[t,h]; s += key[t,hk,i] * delta[t,h,v]`.
+Workgroups contain 128 invocations; large dispatches use a flattened 2D grid.
+`BufferView` accessors add element-offset uniforms while binding the backing
+allocation (or its aligned framework segments), so a logical capsule row does
+not require a storage-binding-aligned offset. Source and capsule may share
+read-only backing. Storage binding counts use `ProgramBase::InputBufferOwner` and
+`OutputBufferOwner`, counting each owner's full backing segments once, plus
+one uniform binding. Distinct Tensor wrappers are not deduplicated merely
+because their raw buffer handles match. Extents, uint32 indexing and device
+binding limits are checked before dispatch.
+
+The kernel calls `ComputeContextBase::RunAndWaitChecked()` on the owning EP
+recording, with its enqueue helper inside the checked callback. This captures
+errors from shader/pipeline creation and binding/encoding as well as the
+subsequent flush/wait, including on externally supplied devices. The enqueue
+helper remains separate so future internal callers can enqueue multiple
+descriptors within one checked region and check completion once. A failing
+completion returns failure rather than publishing success; destination contents
+on failure are unspecified and must not be committed. As with the context helper,
+errors from before the checked region remain the external caller's responsibility.
+
+This operator has no graph-capture support, batching, or external session
+integration; convolution replay uses the separate `ConvStateReplay` operator.
+Tests cover all kept prefixes at capacities
+1, 4, 7 and 8, non-divisible head mappings, Qwen's 230,720-byte capsule-row
+offset (64 modulo 256), segmented and shared source/capsule backing, poisoned
+tails, preservation, alias requirements and invalid metadata. GPU/CPU replay comparisons use
+absolute tolerance `1e-5` plus relative tolerance `2e-5`, not bitwise equality.
+Artificially small segmentation limits use the existing native-only test factory.
+`CapturedStateReplayMatchesIndependentPrefixes` uses the actual WebGPU producer's
+capsule, replays the original incoming state and compares with independent prefix
+runs with capture disabled. `RunCompletesBeforeReadback` checks the owning recording
+and polls queue completion with timeout zero immediately after Session::Run, before
+any tensor readback. The completion observation uses native Dawn context access and
+is not compiled for plugin EP, WASM or external-Dawn builds.
+`CheckedRegionReportsRunProgramBindingError` uses a validation-enabled external
+device without session/kernel scopes. A source buffer lacking Storage usage
+must report the original CreateBindGroup error through the replay call, not just
+the subsequent invalid-encoder error, while leaving the caller's outer scope
+empty. A valid replay before and after the rejected run verifies recovery.
 
 ### Missing parts
 

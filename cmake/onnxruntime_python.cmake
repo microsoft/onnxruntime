@@ -348,6 +348,9 @@ if (onnxruntime_USE_CUDA AND NOT WIN32 AND onnxruntime_BUILD_CUDA_QUANT_PREPROCE
     ${cutlass_SOURCE_DIR}/tools/util/include
   )
   target_compile_definitions(onnxruntime_cuda_quant_preprocess PRIVATE USE_CUDA)
+  # Offline packing must honor force_arch=90 even when the build excludes SM90 GEMM kernels.
+  # Otherwise get_arch_for_mixed_gemm_weight_preprocess silently substitutes the SM80 layout.
+  target_compile_options(onnxruntime_cuda_quant_preprocess PRIVATE "-UEXCLUDE_SM_90")
   target_link_libraries(onnxruntime_cuda_quant_preprocess PRIVATE
     onnxruntime_common
     Boost::mp11
@@ -1262,6 +1265,19 @@ if (onnxruntime_USE_WEBGPU)
         COMMAND ${CMAKE_COMMAND} -E copy
             $<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll
             $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      )
+    endif()
+
+    if (DAWN_USE_AGILITY_SDK)
+      add_dependencies(onnxruntime_pybind11_state copy_agility_sdk_dlls)
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/D3D12
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE_DIR:${build_output_target}>/D3D12/D3D12Core.dll
+            $<TARGET_FILE_DIR:${build_output_target}>/D3D12/d3d12SDKLayers.dll
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/D3D12
       )
     endif()
   endif()

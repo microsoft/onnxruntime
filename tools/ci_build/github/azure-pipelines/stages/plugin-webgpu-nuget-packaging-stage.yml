@@ -62,6 +62,7 @@ stages:
         --output-dir "$(Build.ArtifactStagingDirectory)\nuget"
         --staging-dir "$(WebGpuPackStagingDir)"
         --configuration Release
+        --use-dawn-agility-sdk
         --nuget-config "$(Build.SourcesDirectory)\NuGet.config"
     steps:
     - template: ../templates/jobs/checkout-and-git-redirect.yml
@@ -69,6 +70,12 @@ stages:
     - template: ../templates/setup-build-tools.yml
       parameters:
         host_cpu_arch: 'x64'
+
+    - task: UseDotNet@2
+      displayName: 'Install .NET 8 SDK'
+      inputs:
+        packageType: sdk
+        version: '8.x'
 
     - template: ../templates/set-nightly-build-option-variable-step.yml
 

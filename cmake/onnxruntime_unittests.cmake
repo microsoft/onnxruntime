@@ -1120,6 +1120,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
 
   if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
     list(APPEND onnxruntime_test_providers_cuda_plugin_internal_test_src
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/gemm_tactic_cache_test.cc"
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/moe_gemm_int2_test.cc"
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/qmoe_fp4_to_fp8_kernel_test.cc"
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/qmoe_fp8_compaction_test.cc"
@@ -1153,11 +1154,16 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
 
     if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
       list(APPEND onnxruntime_providers_cuda_plugin_ut_impl_src
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/gemm_tactic_cache.cc"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.cu"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.cu"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels_fp16_uint2.cu"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_kernels.cu"
       )
+      if (onnxruntime_USE_FP4_QMOE)
+        list(APPEND onnxruntime_providers_cuda_plugin_ut_impl_src
+          "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.cu")
+      endif()
     endif()
 
     onnxruntime_add_object_library(onnxruntime_providers_cuda_plugin_ut_impl ${onnxruntime_providers_cuda_plugin_ut_impl_src})
@@ -1176,6 +1182,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
       ORT_USE_EP_API_ADAPTERS=1)
     target_compile_options(onnxruntime_providers_cuda_plugin_ut_impl PRIVATE
       ${_cuda_plugin_shared_compile_options}
+      "$<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>"
       "$<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-parameter>"
       "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">")
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
@@ -1677,6 +1684,91 @@ block()
   onnxruntime_apply_test_target_workarounds(${onnxruntime_provider_test_target})
   onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
 
+  if (onnxruntime_USE_CUDA AND onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND
+      NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    set(fp8_decode_filter "CUDA_EP_Unittest.QMoEFp8Gemv*")
+    if (onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+      set(fp8_decode_outer_filter "${fp8_decode_filter}")
+    else()
+      set(fp8_decode_outer_filter "CUDA_EP_Unittest.All")
+    endif()
+    foreach(native_decode 0 1)
+      add_test(NAME onnxruntime_fp8_native_decode_${native_decode}
+        COMMAND $<TARGET_FILE:${onnxruntime_provider_test_target}>
+          "--gtest_filter=${fp8_decode_outer_filter}"
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:${onnxruntime_provider_test_target}>)
+      set_tests_properties(onnxruntime_fp8_native_decode_${native_decode} PROPERTIES
+        ENVIRONMENT "GTEST_FILTER=${fp8_decode_filter};ORT_QMOE_FP8_GEMV_NATIVE_DECODE=${native_decode}"
+        RUN_SERIAL TRUE)
+    endforeach()
+  endif()
+
+  if (onnxruntime_USE_CUDA AND onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND
+      onnxruntime_USE_FP4_QMOE AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    set(nvfp4_scale_filter "CUDA_EP_Unittest.QMoENvfp4Gemv*")
+    if (onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+      set(nvfp4_scale_outer_filter "${nvfp4_scale_filter}")
+    else()
+      set(nvfp4_scale_outer_filter "CUDA_EP_Unittest.All")
+    endif()
+    foreach(native_scale 0 1)
+      add_test(NAME onnxruntime_nvfp4_native_scale_${native_scale}
+        COMMAND $<TARGET_FILE:${onnxruntime_provider_test_target}>
+          "--gtest_filter=${nvfp4_scale_outer_filter}"
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:${onnxruntime_provider_test_target}>)
+      set_tests_properties(onnxruntime_nvfp4_native_scale_${native_scale} PROPERTIES
+        ENVIRONMENT "GTEST_FILTER=${nvfp4_scale_filter};ORT_NVFP4_GEMV_NATIVE_SCALE=${native_scale}"
+        RUN_SERIAL TRUE)
+    endforeach()
+  endif()
+
+  if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND
+      NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD AND
+      NOT IOS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # Run legacy-safe regressions separately; concurrent-success tests require modern mode.
+    string(JOIN ":" webgpu_legacy_test_filter
+      "WebGpuPluginRecordingModeTest.*"
+      "WebGpuPluginSharedAllocatorRegistrationTest.*"
+      "WebGpuPluginSharedAllocatorTest.*"
+      "WebGpuSessionAllocatorDeathTest.*"
+      "PluginEpWebGpuConcurrency.DeferredProducerThen*"
+      "PluginEpWebGpuConcurrency.CpuInputAndOutputRun"
+      "PluginEpWebGpuConcurrency.MixedCpuAndGpuFeeds"
+      "PluginEpWebGpuConcurrency.MixedCpuAndGpuFeedsReversed"
+      "PluginEpWebGpuConcurrency.CpuFeedsWithCpuPartition"
+      "PluginEpWebGpuConcurrency.CpuOutputBoundToGpu"
+      "PluginEpWebGpuConcurrency.CpuOutputBoundToGpuFirst"
+      "PluginEpWebGpuConcurrency.PreallocatedGpuInputWithMixedOutputBindings"
+      "PluginEpWebGpuConcurrency.PreallocatedGpuInputWithMixedOutputBindingsReversed"
+      "PluginEpWebGpuConcurrency.CpuOnlyGraphOutputBoundToGpu"
+      "PluginEpWebGpuConcurrency.RepeatedKernelScratchBufferReuse"
+      "PluginEpWebGpuConcurrency.CpuPartitionBetweenGpuKernels"
+      "PluginEpWebGpuConcurrency.CpuInputAndGpuOutputRun"
+      "PluginEpWebGpuConcurrency.CpuBindInputReusesDirtyGpuBuffer"
+      "PluginEpWebGpuConcurrency.Serial*"
+      "PluginEpWebGpuConcurrency.GraphCaptureReplayInterleavedWithIdleSessionCpuBindInput"
+      "PluginEpWebGpuConcurrency.GpuInputAndCpuOutputRun"
+      "PluginEpWebGpuConcurrency.SharedGpuCopyIsSubmittedBeforeSessionRun"
+    )
+    set(webgpu_legacy_test_args "--gtest_filter=${webgpu_legacy_test_filter}")
+    if (onnxruntime_GENERATE_TEST_REPORTS)
+      list(APPEND webgpu_legacy_test_args
+        "--gtest_output=xml:onnxruntime_webgpu_legacy_test.$<CONFIG>.results.xml")
+    endif()
+    add_test(NAME onnxruntime_webgpu_legacy_test
+      COMMAND ${onnxruntime_provider_test_target} ${webgpu_legacy_test_args}
+      WORKING_DIRECTORY $<TARGET_FILE_DIR:${onnxruntime_provider_test_target}>
+    )
+    set_tests_properties(onnxruntime_webgpu_legacy_test PROPERTIES
+      TIMEOUT 10800
+      FAIL_REGULAR_EXPRESSION
+        "0 tests from 0 test suites"
+    )
+    onnxruntime_set_plugin_ep_test_environment(onnxruntime_webgpu_legacy_test)
+    set_property(TEST onnxruntime_webgpu_legacy_test APPEND PROPERTY
+      ENVIRONMENT "ORT_WEBGPU_EP_FORCE_LEGACY=1")
+  endif()
+
   # The CUDA EP internal unit tests (onnxruntime_providers_cuda_ut) are built as a shared-library
   # module that is dlopen'd at runtime by this binary (see CUDA_EP_Unittest.All -> TestAll()). Some
   # of those tests (e.g. the MatMulNBits two-level workspace end-to-end test) run a full
@@ -1942,13 +2034,13 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   # coverage gap this feature exists to close.
   # ---------------------------------------------------------------------------
   if (onnxruntime_MATERIALIZE_ONNX_NODE_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    # onnx version pin: derive from the archive URL in cmake/deps.txt (single source of truth).
-    string(REGEX MATCH "v([0-9]+\\.[0-9]+\\.[0-9]+)" _onnx_url_ver "${DEP_URL_onnx}")
+    # Derive the expected wheel version from the archive URL so this also works with installed ONNX packages.
+    string(REGEX MATCH "v([0-9]+\\.[0-9]+\\.[0-9]+)" _onnx_url_version "${DEP_URL_onnx}")
     if(CMAKE_MATCH_1)
       set(_onnx_pinned_version ${CMAKE_MATCH_1})
     else()
-      message(FATAL_ERROR "Could not parse the pinned onnx version from DEP_URL_onnx='${DEP_URL_onnx}' "
-        "(expected a vX.Y.Z tag). Fix cmake/deps.txt or this regex.")
+      message(FATAL_ERROR "Could not parse the pinned ONNX version from DEP_URL_onnx='${DEP_URL_onnx}' "
+        "(expected a vX.Y.Z tag). Fix cmake/deps.txt or this parser.")
     endif()
 
     # Python interpreter is not guaranteed for static test-only builds (the top-level
@@ -1976,27 +2068,10 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         "  OR reconfigure with -Donnxruntime_MATERIALIZE_ONNX_NODE_TESTS=OFF (node-test coverage will be dropped).\n"
         "  Details: ${_onnx_err}")
     endif()
-    # onnx version gate: HARD FAIL on a genuine mismatch, but RC / pre-release AWARE.
-    # ONNX's opset-bump workflow ships wheels like 1.23.0rc1 or 1.23.0.dev20240101 whose
-    # COMPILED opset registry already matches the formal 1.23.0 tag, so we compare on the
-    # RELEASE BASE (major.minor.micro) rather than the raw string. This mirrors
-    # materialize_onnx_node_tests.py::_release_base EXACTLY (regex ^(\d+)\.(\d+)\.(\d+), with a
-    # raw-string fallback when there is no leading X.Y.Z) so the cmake and Python layers agree:
-    # an rcN/.devN wheel of the pinned tag passes, while a real major/minor/micro mismatch
-    # (e.g. 1.21.x, or 1.23.0 when pinned at 1.22.0) still FATALs. Both sides are normalized;
-    # _onnx_pinned_version is already a clean X.Y.Z (parsed from the deps.txt vX.Y.Z tag), so
-    # normalizing it is a no-op kept only for symmetry with the Python two-sided compare.
-    string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" _onnx_ver_base "${_onnx_ver}")
-    if(_onnx_ver_base STREQUAL "")
-      set(_onnx_ver_base "${_onnx_ver}")
-    endif()
-    string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" _onnx_pin_base "${_onnx_pinned_version}")
-    if(_onnx_pin_base STREQUAL "")
-      set(_onnx_pin_base "${_onnx_pinned_version}")
-    endif()
-    if(NOT _onnx_ver_base STREQUAL _onnx_pin_base)
+    # The source and wheel are both final releases, so require exact version parity.
+    if(NOT _onnx_ver STREQUAL _onnx_pinned_version)
       message(FATAL_ERROR
-        "onnx ${_onnx_ver} (release base ${_onnx_ver_base}) != pinned ${_onnx_pinned_version} "
+        "onnx ${_onnx_ver} != pinned ${_onnx_pinned_version} "
         "(cmake/deps.txt). A mismatched wheel bakes the wrong opset/IR into the materialized "
         "corpus (silent drift).\n"
         "  Fix: pip install onnx==${_onnx_pinned_version}")
@@ -2074,6 +2149,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       VERBATIM)
     add_custom_target(onnx_node_tests_materialized ALL
       DEPENDS ${_materialized_node_root}/.stamp)
+    # Keep the corpus available for targeted onnx_test_runner builds as well as
+    # normal ALL builds. The runner is the direct C++ consumer of this artifact.
+    if(TARGET onnx_test_runner)
+      add_dependencies(onnx_test_runner onnx_node_tests_materialized)
+    endif()
 
     if (NOT onnxruntime_REDUCED_OPS_BUILD)
       # First-class ctest over the materialized node corpus (the durable replacement for the
@@ -3095,6 +3175,28 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
           LIBS ${onnxruntime_ep_graph_test_LIBS}
           DEPENDS ${all_dependencies}
   )
+endif()
+
+if(WIN32 AND onnxruntime_USE_1DS_TELEMETRY)
+  if(NOT GDK_PLATFORM AND NOT CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
+    set(telemetry_lifecycle_test_dir "${TEST_SRC_DIR}/platform/windows_telemetry/lifecycle")
+    onnxruntime_add_shared_library(onnxruntime_telemetry_shutdown_test_library
+      "${telemetry_lifecycle_test_dir}/telemetry_shutdown_test_library.cc"
+      "${telemetry_lifecycle_test_dir}/telemetry_shutdown_test_library.def")
+    target_link_libraries(onnxruntime_telemetry_shutdown_test_library PRIVATE onnxruntime_common mat)
+    onnxruntime_add_executable(onnxruntime_telemetry_shutdown_test
+      "${telemetry_lifecycle_test_dir}/telemetry_shutdown_test.cc")
+    add_dependencies(onnxruntime_telemetry_shutdown_test onnxruntime_telemetry_shutdown_test_library)
+    foreach(mode process_exit normal_destruction explicit_unload)
+      add_test(NAME onnxruntime_telemetry_${mode}_test
+        COMMAND onnxruntime_telemetry_shutdown_test
+          "$<TARGET_FILE:onnxruntime_telemetry_shutdown_test_library>" ${mode}
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:onnxruntime_telemetry_shutdown_test>")
+      set_tests_properties(onnxruntime_telemetry_${mode}_test PROPERTIES TIMEOUT 15)
+    endforeach()
+    set_target_properties(onnxruntime_telemetry_shutdown_test_library onnxruntime_telemetry_shutdown_test
+      PROPERTIES FOLDER "ONNXRuntimeTest")
+  endif()
 endif()
 
 include(onnxruntime_fuzz_test.cmake)

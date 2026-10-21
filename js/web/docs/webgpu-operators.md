@@ -25,7 +25,7 @@ Do not modify directly.*
 | BatchNormalization | ai.onnx(7-8,9-13,14,15+); com.ms.internal.nhwc(7-8,9-13,14,15+) |  |
 | BiasAdd | com.microsoft(1+) |  |
 | BiasSplitGelu | com.microsoft(1+) |  |
-| Cast | ai.onnx(6-8,9-12,13-18,19-20,21+) |  |
+| Cast | ai.onnx(6-8,9-12,13-18,19-20,21-27,28+) |  |
 | Ceil | ai.onnx(6-12,13+) |  |
 | Clip | ai.onnx(6-10,11,12,13+) |  |
 | Concat | ai.onnx(1-3,4-10,11-12,13+) |  |
@@ -38,7 +38,7 @@ Do not modify directly.*
 | DepthToSpace | ai.onnx(11-12,13+); com.ms.internal.nhwc(11-12,13+) |  |
 | DequantizeLinear | ai.onnx(10-12,13-18,19-20,21+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
-| Einsum | ai.onnx(12+) |  |
+| Einsum | ai.onnx(12-27,28+) |  |
 | Elu | ai.onnx(6+) |  |
 | Equal | ai.onnx(7-10,11-12,13-18,19+) |  |
 | Erf | ai.onnx(9-12,13+) |  |

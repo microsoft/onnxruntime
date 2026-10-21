@@ -2185,6 +2185,8 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
 #if !defined(DISABLE_FLOAT4_TYPES)
     CASE_TYPE(FLOAT4E2M1)
 #endif
+    CASE_TYPE(FLOAT6E2M3)
+    CASE_TYPE(FLOAT6E3M2)
 
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
@@ -2658,6 +2660,25 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   if (type == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ",
                            ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  }
+
+  // CopySparseData also validates the type, but it runs after allocating the dense buffer
+  // and is skipped entirely for an empty dense tensor. Validate here so unsupported types
+  // are rejected before either path.
+  if (indices.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8 &&
+      indices.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT16 &&
+      indices.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT32 &&
+      indices.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_GRAPH,
+        "Sparse tensor: ", name,
+        " indices. Should be one of the following types: int8, int16, int32 or int64");
+  }
+
+  // Validate embedded indices before allocating the dense zero-filled buffer so malformed
+  // inline data is rejected before a large representable dense allocation is attempted.
+  if (!HasExternalData(indices)) {
+    ORT_RETURN_IF_ERROR(ValidateEmbeddedTensorProtoDataSizeAndShape(indices));
   }
 
   if (dense_elements == 0) {

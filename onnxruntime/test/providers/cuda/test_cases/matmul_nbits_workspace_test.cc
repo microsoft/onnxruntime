@@ -37,6 +37,7 @@
 // below (TensorProto_DataType_FLOAT16 etc.) come from provider_api.h via matmul_nbits.h.
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 #include "test/providers/cuda/test_cases/matmul_nbits_workspace_test_probe.h"
 
 namespace onnxruntime {
@@ -78,6 +79,112 @@ bool CheckDefault(int32_t elem_type = kFp16, int64_t N = 256, int64_t K = 1024,
                                  has_zero_points, has_g_idx, has_bias, device_sm, option);
 }
 }  // namespace
+
+TEST(MatMulNBitsWorkspace, DeterministicTacticsIgnoreProfiledCache) {
+  using namespace onnxruntime::llm::cutlass_extensions;
+  using namespace onnxruntime::llm::kernels::weight_only;
+  using onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
+  using Runner = CutlassFpAIntBGemmRunner<half, uint8_t,
+                                          cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
+
+  class TestProfiler : public WeightOnlyGroupwiseQuantGemmPluginProfiler {
+   public:
+    TestProfiler() {
+      mRunner = std::make_shared<Runner>();
+      mRunner->setArch(80);
+      setCudaKernelType({}, 80);
+    }
+  } profiler;
+
+  const GemmIdCore gemm_id(640, 2560, onnxruntime::llm::nvinfer::DataType::kHALF, 80);
+  auto cache = std::make_shared<TestProfiler::MNKProfileMap>();
+  cache->createMProfileMap(gemm_id);
+  profiler.setSelectionTactics(cache);
+
+  const auto decode = profiler.getDeterministicConfig(1);
+  const auto prefill = profiler.getDeterministicConfig(77);
+  ASSERT_TRUE(decode.has_value());
+  ASSERT_TRUE(prefill.has_value());
+  EXPECT_TRUE(decode->enableCudaKernel);
+  EXPECT_FALSE(prefill->enableCudaKernel);
+  EXPECT_EQ(prefill->split_k_style, SplitKStyle::NO_SPLIT_K);
+  EXPECT_EQ(prefill->split_k_factor, 1);
+
+  for (int split_k : {2, 5}) {
+    const CutlassGemmConfig timed(CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64,
+                                  SplitKStyle::SPLIT_K_SERIAL, split_k, 3);
+    for (int rows : {1, 77}) {
+      (*cache->getMProfileMap(gemm_id))[rows] = timed;
+      ASSERT_TRUE(profiler.getBestConfig(rows, gemm_id).has_value());
+      EXPECT_EQ(profiler.getBestConfig(rows, gemm_id)->split_k_factor, split_k);
+      const auto selected = profiler.getDeterministicConfig(rows);
+      ASSERT_TRUE(selected.has_value());
+      EXPECT_EQ(selected->toString(), (rows == 1 ? decode : prefill)->toString());
+    }
+  }
+}
+
+TEST(MatMulNBitsWorkspace, DeterministicTacticsUseSupportedStages) {
+  using namespace onnxruntime::llm::cutlass_extensions;
+  using onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
+  using Runner = CutlassFpAIntBGemmRunner<half, uint8_t,
+                                          cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
+
+  class TestProfiler : public WeightOnlyGroupwiseQuantGemmPluginProfiler {
+   public:
+    explicit TestProfiler(int arch) {
+      mRunner = std::make_shared<Runner>();
+      mRunner->setArch(arch);
+      setCudaKernelType({}, arch);
+    }
+  };
+
+  for (int arch : {75, 80, 86, 89, 90}) {
+    SCOPED_TRACE(arch);
+    TestProfiler profiler(arch);
+    for (int rows : {16, 77}) {
+      const auto config = profiler.getDeterministicConfig(rows);
+      ASSERT_TRUE(config.has_value());
+      EXPECT_FALSE(config->enableCudaKernel);
+      EXPECT_EQ(config->split_k_style, SplitKStyle::NO_SPLIT_K);
+      if (config->is_tma_warp_specialized) {
+        EXPECT_EQ(arch, 90);
+        EXPECT_EQ(config->sm_version, 90);
+        EXPECT_NE(config->tile_config_sm90, CutlassTileConfigSM90::Undefined);
+        EXPECT_NE(config->tile_config_sm90, CutlassTileConfigSM90::ChooseWithHeuristic);
+        // Native SM90 tactics do not use the legacy split-K factor or pipeline-stage count.
+        EXPECT_EQ(config->split_k_factor, -1);
+        EXPECT_EQ(config->stages, -1);
+      } else {
+        EXPECT_LT(config->sm_version, 90);
+        EXPECT_EQ(config->split_k_factor, 1);
+        EXPECT_GE(config->stages, arch < 89 ? 2 : 3);
+        EXPECT_LE(config->stages, arch < 80 ? 2 : 4);
+      }
+    }
+  }
+}
+
+TEST(MatMulNBitsWorkspace, SingleRowInt4GemvShapeEligibility) {
+  using onnxruntime::contrib::cuda::IsSupportedSingleRowGemvShape;
+  EXPECT_TRUE(IsSupportedSingleRowGemvShape(false, 1, 248320, 2560, 32));
+  EXPECT_TRUE(IsSupportedSingleRowGemvShape(false, 1, 32, 2880, 32));
+  EXPECT_TRUE(IsSupportedSingleRowGemvShape(false, 1, 32, 2880, 64));
+  EXPECT_FALSE(IsSupportedSingleRowGemvShape(true, 1, 248320, 2560, 32));
+  EXPECT_FALSE(IsSupportedSingleRowGemvShape(true, 1, 32, 2880, 32));
+  for (int rows : {0, 2, 8}) {
+    EXPECT_FALSE(IsSupportedSingleRowGemvShape(false, rows, 248320, 2560, 32));
+  }
+  for (int columns : {248288, 248319, 248321, 248352}) {
+    EXPECT_FALSE(IsSupportedSingleRowGemvShape(false, 1, columns, 2560, 32));
+  }
+  for (int reduction : {2528, 2559, 2561, 2592}) {
+    EXPECT_FALSE(IsSupportedSingleRowGemvShape(false, 1, 248320, reduction, 32));
+  }
+  for (int block_size : {16, 64, 128}) {
+    EXPECT_FALSE(IsSupportedSingleRowGemvShape(false, 1, 248320, 2560, block_size));
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Shared workspace-size formula (ComputeFpAIntBGemmWorkspaceSize).
@@ -197,6 +304,24 @@ TEST(MatMulNBitsWorkspace, TacticProfilerMaxMRoundingMatchesRuntime) {
   EXPECT_EQ(RoundUpProfileM(1, 8192), 1);
   EXPECT_EQ(RoundUpProfileM(3000, 8192), 4096);
   EXPECT_EQ(RoundUpProfileM(std::numeric_limits<int>::max(), 8192), 8192);
+}
+
+// Profiler buffers must support sizes beyond INT32 and reject overflow of size_t arithmetic.
+TEST(MatMulNBitsWorkspace, TacticProfilerBufferOffsetsExceedInt32) {
+  const auto buffers = llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerBufferSizes(
+      8192, 65536, 1536, 4, 32, 1024);
+  ASSERT_TRUE(buffers.has_value());
+  EXPECT_EQ((*buffers)[4], size_t{262144} * sizeof(uint16_t));
+  EXPECT_EQ((*buffers)[5], size_t{8192} * 262144 * sizeof(uint16_t));
+  EXPECT_GT((*buffers)[5], static_cast<size_t>(std::numeric_limits<int32_t>::max()));
+  size_t total = 0;
+  for (size_t bytes : *buffers) {
+    total += bytes;
+  }
+  EXPECT_EQ(ComputeWeightOnlyGemmProfilerScratchSize(8192, 65536, 1536, 4, 32, 1024), total);
+  EXPECT_FALSE(llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerBufferSizes(
+                   std::numeric_limits<size_t>::max(), 65536, 1536, 4, 32, 1024)
+                   .has_value());
 }
 
 TEST(MatMulNBitsWorkspace, TacticProfilerMCapStaysWithinScratchLimit) {

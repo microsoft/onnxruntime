@@ -490,15 +490,27 @@ static const char* const kOrtSessionOptionsCudaFpAIntBGemvPairedK = "ep.cuda.fpa
 /// Opt in with "1" to wave-aware fp16/int4 M=8 GEMV tiles on sm_12x; "0" or unset keeps the default dispatch.
 static const char* const kOrtSessionOptionsCudaFpAIntBGemvWaveAware = "ep.cuda.fpa_intb_gemv_wave_aware";
 
-/// Reserved total KV-length envelope (accumulated past + current tokens) for CUDA
-/// GroupQueryAttention workspace estimation. Currently reader-only: the value is validated and
-/// forwarded to the Level-1 estimator but is not consumed, so it does not change workspace
-/// estimates or partitioning. Non-windowed estimation remains unavailable.
-/// A nonnegative decimal int64 is required; "0" or unset (default) means unspecified.
-/// Negative, malformed, or overflowing explicit values cause INVALID_ARGUMENT when creating
-/// resource accountants. This is not a runtime-enforced input limit or a no-OOM guarantee.
+/// Declared total KV-length envelope (accumulated past + current tokens) for CUDA
+/// GroupQueryAttention workspace estimation. A positive value enables non-windowed Level-1
+/// estimation using this bound; "0" or unset (default) leaves non-windowed estimation unavailable.
+/// The estimate also covers the allocated past cache capacity if it exceeds this envelope.
+/// Windowed estimation continues to use the cache capacity instead.
+/// A decimal integer in [0, INT32_MAX] is required. Invalid or out-of-ABI values cause
+/// INVALID_ARGUMENT during session initialization. Under capacity-aware partitioning, CUDA
+/// placement is declined when no proven GQA estimate is available; the generic workspace fallback
+/// is not used as a proof bound. This caller-declared envelope is not a runtime-enforced input limit
+/// or a no-OOM guarantee.
 static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength =
     "ep.cuda.gqa_workspace_max_total_sequence_length";
+
+/// Reader-only, hardware-neutral kernel dispatch intent shared across operators and EPs.
+/// Valid values are "auto", "latency", "memory", and "safe"; matching is case-sensitive.
+/// Unset or empty values map to "auto". Other values cause INVALID_ARGUMENT during
+/// session initialization.
+/// CUDA GroupQueryAttention Level-1 estimation is the first consumer; sizing does not use it.
+/// No value changes runtime dispatch, workspace estimates, or partitioning, and this option
+/// does not enforce a workload envelope or memory budget or provide a no-OOM guarantee.
+static const char* const kOrtSessionOptionsKernelDispatchPolicy = "session.kernel_dispatch_policy";
 
 /// Maximum number of rows of input A per CUDA MatMulNBits fpA_intB GEMM launch. Values below 8192 are
 /// rounded down to a supported tactic-profiler M bucket. Chunking requires M to exceed this limit

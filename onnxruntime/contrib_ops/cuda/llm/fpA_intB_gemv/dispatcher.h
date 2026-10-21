@@ -560,6 +560,12 @@ void dispatcher(Params& params, cudaStream_t s) {
   // RTX 4090 it makes the M = 4..8 GEMVs 2-12% faster with DRAM-resident weights. The 2-bit layout
   // already uses the narrow tile.
   static constexpr int CtaNLargeM = Details::kStepK >= 64 ? CtaN : (CtaN / 2 < 2 ? 2 : CtaN / 2);
+  // For single-row INT4 decode with group size 32 and no explicit zero points, use a narrower
+  // N tile to launch more blocks and more threads per block to parallelize the K reduction.
+  // Other configurations retain the default tile and 128-thread launch.
+  static constexpr bool NarrowInt4Decode = !EnableZero && Details::kElemsPerByteW == 2 && GroupSize == 32;
+  static constexpr int CtaNDecode = NarrowInt4Decode ? 2 : CtaN;
+  static constexpr int DecodeThreads = NarrowInt4Decode ? 256 : 128;
 
   // Paired-K kernel (fp16, int4, scale-only, SM80-interleaved layout). It is only requested through the
   // profiler's optional tactic, and covers the M = 5..8 range that one profiled M bucket serves.
@@ -589,7 +595,53 @@ void dispatcher(Params& params, cudaStream_t s) {
     }                                                                                               \
   } while (0);
 
-  DISPATCHER_FOR_M(1, 1, CtaN, 128);
+  if (params.decode_variant != 0) {
+    if constexpr (NarrowInt4Decode && Details::kStepK == 32 && Details::kInterleave == 4 &&
+                  !EnableActScale && !EnableBias && !ApplyAlphaInAdvance) {
+      ORT_ENFORCE(params.m == 1 && IsInt4DecodeGeometryLegal(params.decode_variant, params.n, params.k,
+                                                             Details::kInterleave),
+                  "Unsupported INT4 decode geometry");
+      switch (params.decode_variant) {
+        case 2:
+          DISPATCHER_FOR_M(1, 1, 2, 128);
+          break;
+        case 3:
+          DISPATCHER_FOR_M(1, 1, 2, 256);
+          break;
+        case 4:
+          DISPATCHER_FOR_M(1, 1, 4, 128);
+          break;
+        case 5:
+          DISPATCHER_FOR_M(1, 1, 4, 256);
+          break;
+        case 6:
+          DISPATCHER_FOR_M(1, 1, 8, 128);
+          break;
+        case 7:
+          DISPATCHER_FOR_M(1, 1, 8, 256);
+          break;
+      }
+    } else {
+      ORT_THROW("INT4 decode geometry requires the symmetric group32 interleave4 layout");
+    }
+  }
+
+  if constexpr (NarrowInt4Decode) {
+    if (params.m == 1) {
+      if (params.n >= 64 && params.n <= 8192 && params.k >= 64 && params.k <= 4096 &&
+          (params.n <= 256 || params.k >= 2560) &&
+          params.n % (CtaNDecode * Details::kInterleave) == 0 &&
+          params.n / (CtaNDecode * Details::kInterleave) <= 65535) {
+        exec_kernel<Details, 1, CtaNDecode, DecodeThreads, GroupSize, EnableActScale, EnableZero, EnableBias,
+                    ApplyAlphaInAdvance>(params, s);
+        return;
+      }
+      exec_kernel<Details, 1, CtaN, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
+                  ApplyAlphaInAdvance>(params, s);
+      return;
+    }
+  }
+  DISPATCHER_FOR_M(1, 1, CtaNDecode, DecodeThreads);
   DISPATCHER_FOR_M(2, 2, CtaN, 128);
   DISPATCHER_FOR_M(3, 3, CtaN, 128);
   DISPATCHER_FOR_M(4, 4, CtaNLargeM, 128);
