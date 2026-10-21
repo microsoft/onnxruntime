@@ -19,7 +19,7 @@ namespace {
 using ONNX_NAMESPACE::TensorProto;
 
 struct QMoEShapeCase {
-  int version = 2;
+  int version = 1;
   int activation_type = TensorProto::FLOAT16;
   int64_t root_bits = 4;
   std::optional<int64_t> fc1_bits = 3;
@@ -99,7 +99,7 @@ TEST(QMoEShapeInferenceTest, Int3BaselineCombinationsAndTypes) {
         spec.fc3_bits = bits.first;
         spec.shapes = {{0, {2, 128}}, {1, {2, 3}}, {2, {3, 512, 128 * bits.first / 8}}, {3, {3, 512, 128 / block}}, {5, {3, 128, 256 * bits.second / 8}}, {6, {3, 128, 256 / block}}, {4, {3, 512}}, {7, {3, 128}}, {14, {2, 3}}, {11, {3, 512, ((128 / block) * bits.first + 7) / 8}}, {12, {3, 128, ((256 / block) * bits.second + 7) / 8}}};
         ASSERT_STATUS_OK(ResolveQMoE(spec, [&](const Node& node, const NodeArg& output) {
-          EXPECT_EQ(node.SinceVersion(), 2);
+          EXPECT_EQ(node.SinceVersion(), 1);
           ASSERT_NE(output.Shape(), nullptr);
           ASSERT_EQ(output.Shape()->dim_size(), 2);
           EXPECT_EQ(output.Shape()->dim(0).dim_value(), 2);
@@ -122,6 +122,10 @@ TEST(QMoEShapeInferenceTest, InheritanceAndLegacyActivationChoices) {
     spec.activation = activation;
     ASSERT_STATUS_OK(ResolveQMoE(spec));
   }
+  spec.quant_type.reset();
+  ASSERT_STATUS_OK(ResolveQMoE(spec, [](const Node& node, const NodeArg&) {
+    EXPECT_EQ(node.GetAttributes().at("quant_type").s(), "int");
+  }));
 }
 
 TEST(QMoEShapeInferenceTest, IndependentProjectionWidthsAndPackedZeroPointRows) {
@@ -153,24 +157,25 @@ TEST(QMoEShapeInferenceTest, PaddedAndSymbolicInputs) {
   ASSERT_STATUS_OK(ResolveQMoE(spec));
 }
 
-TEST(QMoEShapeInferenceTest, LegacyWidthsRemainGenericInBothVersions) {
-  for (int version : {1, 2}) {
-    for (int64_t bits : {2, 4, 8}) {
-      QMoEShapeCase spec;
-      spec.version = version;
-      spec.root_bits = bits;
-      spec.fc1_bits.reset();
-      spec.fc2_bits.reset();
-      spec.fc3_bits.reset();
-      spec.block.reset();
-      spec.prepacked.reset();
-      spec.quant_type.reset();
-      spec.activation_type = TensorProto::FLOAT;
-      spec.shapes.erase(3);
-      spec.shapes.erase(6);
-      spec.fusion = 0;
-      ASSERT_STATUS_OK(ResolveQMoE(spec));
-    }
+TEST(QMoEShapeInferenceTest, LegacyWidthsRemainGenericInVersion1) {
+  for (int64_t bits : {2, 4, 8}) {
+    QMoEShapeCase spec;
+    spec.root_bits = bits;
+    spec.fc1_bits.reset();
+    spec.fc2_bits.reset();
+    spec.fc3_bits.reset();
+    spec.block.reset();
+    spec.prepacked.reset();
+    spec.quant_type.reset();
+    spec.activation_type = TensorProto::FLOAT;
+    spec.shapes.erase(3);
+    spec.shapes.erase(6);
+    spec.fusion = 0;
+    ASSERT_STATUS_OK(ResolveQMoE(spec, [](const Node& node, const NodeArg&) {
+      EXPECT_EQ(node.SinceVersion(), 1);
+      EXPECT_EQ(node.GetAttributes().at("quant_type").s(), "int");
+      EXPECT_EQ(node.GetAttributes().at("weights_prepacked").i(), -1);
+    }));
   }
 }
 
@@ -186,7 +191,7 @@ TEST(QMoEShapeInferenceTest, LargeHiddenDimensionDoesNotOverflowPackedByteCalcul
   ASSERT_STATUS_OK(ResolveQMoE(spec));
 }
 
-TEST(QMoEShapeInferenceTest, Version2HasNoCpuKernel) {
+TEST(QMoEShapeInferenceTest, Version1RetainsCpuKernelRegistration) {
   CPUExecutionProvider provider(CPUExecutionProviderInfo{});
   auto registry = provider.GetKernelRegistry();
   ASSERT_NE(registry, nullptr);
@@ -194,16 +199,14 @@ TEST(QMoEShapeInferenceTest, Version2HasNoCpuKernel) {
       {"T", DataTypeImpl::GetTensorType<MLFloat16>()},
       {"T1", DataTypeImpl::GetTensorType<uint8_t>()},
       {"T2", DataTypeImpl::GetTensorType<MLFloat16>()}};
-  for (int version : {1, 2}) {
-    const KernelCreateInfo* kernel = nullptr;
-    auto status = registry->TryFindKernel(kCpuExecutionProvider, "QMoE", kMSDomain, version, types,
-                                          DefaultLoggingManager().DefaultLogger(), &kernel);
-    EXPECT_EQ(status.IsOK(), version == 1) << status.ErrorMessage();
-    EXPECT_EQ(kernel != nullptr, version == 1);
-  }
+  const KernelCreateInfo* kernel = nullptr;
+  auto status = registry->TryFindKernel(kCpuExecutionProvider, "QMoE", kMSDomain, 1, types,
+                                        DefaultLoggingManager().DefaultLogger(), &kernel);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_NE(kernel, nullptr);
 }
 
-TEST(QMoEShapeInferenceTest, LegacyInt4RequiresExplicitMicrosoftVersion1ImportForCpu) {
+TEST(QMoEShapeInferenceTest, LegacyInt4ResolvesToVersion1WithOrWithoutExplicitImport) {
   QMoEShapeCase spec;
   spec.version = 1;
   spec.activation_type = TensorProto::FLOAT;
@@ -251,20 +254,20 @@ TEST(QMoEShapeInferenceTest, LegacyInt4RequiresExplicitMicrosoftVersion1ImportFo
     auto& graph = model.MainGraph();
     ASSERT_STATUS_OK(graph.Resolve());
     const auto& node = *graph.Nodes().begin();
-    EXPECT_EQ(graph.DomainToVersionMap().at(kMSDomain), explicit_import ? 1 : 2);
+    EXPECT_EQ(graph.DomainToVersionMap().at(kMSDomain), 1);
     EXPECT_EQ(graph.DomainToVersionMap().at(kOnnxDomain), 17);
-    EXPECT_EQ(node.SinceVersion(), explicit_import ? 1 : 2);
+    EXPECT_EQ(node.SinceVersion(), 1);
     const KernelCreateInfo* kernel = nullptr;
     auto status = registry->TryFindKernel(kCpuExecutionProvider, node.OpType(), node.Domain(),
                                           node.SinceVersion(), types,
                                           DefaultLoggingManager().DefaultLogger(), &kernel);
-    EXPECT_EQ(status.IsOK(), explicit_import) << status.ErrorMessage();
-    EXPECT_EQ(kernel != nullptr, explicit_import);
+    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+    EXPECT_NE(kernel, nullptr);
   }
 }
 
 TEST(QMoEShapeInferenceTest, OtherMicrosoftOperatorsStillResolveToVersion1) {
-  const std::unordered_map<std::string, int> versions{{kOnnxDomain, 17}, {kMSDomain, 2}};
+  const std::unordered_map<std::string, int> versions{{kOnnxDomain, 17}, {kMSDomain, 1}};
   Model model("legacy_ms_schema", false, ModelMetaData(), PathString(),
               IOnnxRuntimeOpSchemaRegistryList(), versions, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
@@ -287,7 +290,6 @@ TEST(QMoEShapeInferenceTest, RejectsInvalidInt3Metadata) {
       {"prepacked omitted", [](auto& spec) { spec.prepacked.reset(); }},
       {"prepacked auto", [](auto& spec) { spec.prepacked = -1; }},
       {"prepacked enabled", [](auto& spec) { spec.prepacked = 1; }},
-      {"quant type omitted", [](auto& spec) { spec.quant_type.reset(); }},
       {"fp4", [](auto& spec) { spec.quant_type = "fp4"; }},
       {"fp8", [](auto& spec) { spec.quant_type = "fp8"; }},
       {"block omitted", [](auto& spec) { spec.block.reset(); }},
@@ -368,23 +370,16 @@ TEST(QMoEShapeInferenceTest, RejectsInvalidInt3Metadata) {
   }
 }
 
-TEST(QMoEShapeInferenceTest, RejectsUnapprovedWidthsAndVersion1Int3) {
-  for (int version : {1, 2}) {
-    for (const std::string attribute : {"root", "fc1", "fc2", "fc3"}) {
-      for (int64_t invalid_bits : {0, 1, 3, 5, 6, 7, 9}) {
-        if ((version == 1 && invalid_bits != 3) || (version == 2 && invalid_bits == 3)) continue;
-        SCOPED_TRACE(std::to_string(version) + ":" + attribute + ":" + std::to_string(invalid_bits));
-        QMoEShapeCase spec;
-        spec.version = version;
-        spec.fc1_bits = 4;
-        spec.fc2_bits = 4;
-        spec.fc3_bits = 4;
-        if (attribute == "root") spec.root_bits = invalid_bits;
-        if (attribute == "fc1") spec.fc1_bits = invalid_bits;
-        if (attribute == "fc2") spec.fc2_bits = invalid_bits;
-        if (attribute == "fc3") spec.fc3_bits = invalid_bits;
-        EXPECT_FALSE(ResolveQMoE(spec).IsOK());
-      }
+TEST(QMoEShapeInferenceTest, RejectsUnapprovedWidthsInInt3Profile) {
+  for (const std::string attribute : {"root", "fc1", "fc2", "fc3"}) {
+    for (int64_t invalid_bits : {0, 1, 5, 6, 7, 9}) {
+      SCOPED_TRACE(attribute + ":" + std::to_string(invalid_bits));
+      QMoEShapeCase spec;
+      if (attribute == "root") spec.root_bits = invalid_bits;
+      if (attribute == "fc1") spec.fc1_bits = invalid_bits;
+      if (attribute == "fc2") spec.fc2_bits = invalid_bits;
+      if (attribute == "fc3") spec.fc3_bits = invalid_bits;
+      EXPECT_FALSE(ResolveQMoE(spec).IsOK());
     }
   }
 }

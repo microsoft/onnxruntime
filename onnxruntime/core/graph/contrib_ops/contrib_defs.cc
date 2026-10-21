@@ -1519,28 +1519,25 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
       )DOC";
 
-static void QMoETypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool allow_int3) {
+static void QMoETypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   using namespace ONNX_NAMESPACE;
   const int64_t root_bits = getAttribute(ctx, "expert_weight_bits", 4);
   const int64_t fc1_bits = getAttribute(ctx, "fc1_expert_weight_bits", root_bits);
   const int64_t fc2_bits = getAttribute(ctx, "fc2_expert_weight_bits", root_bits);
   const int64_t fc3_bits = getAttribute(ctx, "fc3_expert_weight_bits", root_bits);
-  for (int64_t bits : {root_bits, fc1_bits, fc2_bits, fc3_bits}) {
-    if (!allow_int3 && bits == 3) {
-      fail_shape_inference("QMoE version 1 does not support INT3; use QMoE version 2.");
-    }
-    if (allow_int3 && bits != 2 && bits != 3 && bits != 4 && bits != 8) {
-      fail_shape_inference("QMoE version 2 supports only expert weight widths 2, 3, 4, and 8.");
-    }
-  }
   propagateShapeAndTypeFromFirstInput(ctx);
-  if (!allow_int3 || (fc1_bits != 3 && fc2_bits != 3 && fc3_bits != 3)) {
+  if (fc1_bits != 3 && fc2_bits != 3 && fc3_bits != 3) {
     return;
+  }
+  for (int64_t bits : {root_bits, fc1_bits, fc2_bits, fc3_bits}) {
+    if (bits != 2 && bits != 3 && bits != 4 && bits != 8) {
+      fail_shape_inference("QMoE INT3 supports only expert weight widths 2, 3, 4, and 8.");
+    }
   }
 
   const auto* quant_type = ctx.getAttribute("quant_type");
-  if (!quant_type || quant_type->s() != "int" || getAttribute(ctx, "weights_prepacked", -1) != 0) {
-    fail_shape_inference("QMoE INT3 requires quant_type='int' and explicit weights_prepacked=0 (raw weights).");
+  if ((quant_type && quant_type->s() != "int") || getAttribute(ctx, "weights_prepacked", -1) != 0) {
+    fail_shape_inference("QMoE INT3 requires integer quantization and explicit weights_prepacked=0 (raw weights).");
   }
   if (getAttribute(ctx, "swiglu_fusion", 0) != 1 || fc3_bits != fc1_bits) {
     fail_shape_inference("QMoE INT3 requires swiglu_fusion=1 and equal effective FC1/FC3 widths after inheritance.");
@@ -1695,9 +1692,25 @@ static void QMoETypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, boo
   }
 }
 
-static OpSchema QMoESchema(bool allow_int3) {
+constexpr const char* qMoE_int3_doc = R"DOC(
+  The raw INT3 profile extends version 1; execution support is provider-specific.
+  For INT3, the requirements below supersede the legacy format descriptions above.
+  Effective widths are 2, 3, 4, or 8. Models without INT3 retain the legacy format contracts.
+  With INT3, use quant_type='int' (the default), and explicitly set weights_prepacked=0, swiglu_fusion=1,
+  and block_size=32, 64, or 128. Effective FC3 must equal FC1 after independent inheritance.
+  H comes from input and I from half the FC1 row count; both must be divisible by block_size.
+  Weights are uint8 [E,N,ceil(K*bits/8)], row-local LSB-first bitstreams, without per-block padding.
+  Scales are required [E,N,K/block_size], matching FP16/BF16 activations.
+  INT3 codes dequantize as (u-4)*scale; scales must be finite and nonnegative.
+  Optional INT3 zero points are uint8 [E,N,ceil(3*(K/block_size)/8)], with every code 4.
+  Unused high padding bits must be zero. INT2/4/8 projections retain their zero-point semantics.
+  FC1 rows are interleaved gate/up; FC2 is [E,H,ceil(I*fc2_bits/8)].
+  Separate FC3, global scales, and activation scales are not accepted by the INT3 profile.
+)DOC";
+
+static OpSchema QMoESchema() {
   constexpr const char* quant_type_doc =
-      "Quantization type: 'int' for integer quantization (default without INT3), 'fp4' for MXFP4 quantization, "
+      "Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, "
       "'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, "
       "or 'wfp4afp8' for MXFP4 weight with FP8 activation. "
       "When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), "
@@ -1705,24 +1718,9 @@ static OpSchema QMoESchema(bool allow_int3) {
       "'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales "
       "with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, "
       "float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale. "
-      "The version 2 INT3 profile requires an explicit 'int' value.";
+      "The INT3 profile requires integer quantization.";
   auto schema = OpSchema()
-                    .SetDoc(allow_int3 ? std::string(qMoE_ver1_doc) + R"DOC(
-      Version 2 adds a raw INT3 profile; it does not register execution kernels.
-      For INT3, the requirements below supersede the legacy format descriptions above.
-      Effective widths are 2, 3, 4, or 8. Models without INT3 retain the legacy format contracts.
-      With INT3, explicitly set quant_type='int', weights_prepacked=0, swiglu_fusion=1,
-      and block_size=32, 64, or 128. Effective FC3 must equal FC1 after independent inheritance.
-      H comes from input and I from half the FC1 row count; both must be divisible by block_size.
-      Weights are uint8 [E,N,ceil(K*bits/8)], row-local LSB-first bitstreams, without per-block padding.
-      Scales are required [E,N,K/block_size], matching FP16/BF16 activations.
-      INT3 codes dequantize as (u-4)*scale; scales must be finite and nonnegative.
-      Optional INT3 zero points are uint8 [E,N,ceil(3*(K/block_size)/8)], with every code 4.
-      Unused high padding bits must be zero. INT2/4/8 projections retain their zero-point semantics.
-      FC1 rows are interleaved gate/up; FC2 is [E,H,ceil(I*fc2_bits/8)].
-      Separate FC3, global scales, and activation scales are not accepted by the INT3 profile.
-)DOC"
-                                       : qMoE_ver1_doc)
+                    .SetDoc(std::string(qMoE_ver1_doc) + qMoE_int3_doc)
                     .Attr("activation_type",
                           "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu",
                           AttributeProto::STRING,
@@ -1740,8 +1738,7 @@ static OpSchema QMoESchema(bool allow_int3) {
                           AttributeProto::INT,
                           static_cast<int64_t>(0))
                     .Attr("expert_weight_bits",
-                          allow_int3 ? "Number of bits used in quantized weights: 2, 3, 4, or 8. Default is 4 bits."
-                                     : "Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits",
+                          "Number of bits used in quantized weights: 2, 3, 4, or 8. Default is 4 bits.",
                           AttributeProto::INT,
                           static_cast<int64_t>(4))
                     .Attr("fc1_expert_weight_bits",
@@ -1958,19 +1955,12 @@ static OpSchema QMoESchema(bool allow_int3) {
                                     "Constrain scale types. Float tensors are used for integer quantization and FP8 square-block scales. "
                                     "Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.")
                     .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
-                    .TypeAndShapeInferenceFunction([allow_int3](ONNX_NAMESPACE::InferenceContext& ctx) {
-                      QMoETypeAndShapeInference(ctx, allow_int3);
-                    });
-  if (allow_int3) {
-    schema.Attr("quant_type", quant_type_doc, AttributeProto::STRING, OPTIONAL_VALUE);
-  } else {
-    schema.Attr("quant_type", quant_type_doc, AttributeProto::STRING, std::string("int"));
-  }
+                    .TypeAndShapeInferenceFunction(QMoETypeAndShapeInference);
+  schema.Attr("quant_type", quant_type_doc, AttributeProto::STRING, std::string("int"));
   return schema;
 }
 
-ONNX_MS_OPERATOR_SET_SCHEMA(QMoE, 1, QMoESchema(false));
-ONNX_MS_OPERATOR_SET_SCHEMA(QMoE, 2, QMoESchema(true));
+ONNX_MS_OPERATOR_SET_SCHEMA(QMoE, 1, QMoESchema());
 
 ONNX_MS_OPERATOR_SET_SCHEMA(SampleOp, 1,
                             OpSchema()
