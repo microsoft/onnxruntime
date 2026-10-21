@@ -22,19 +22,20 @@ using onnxruntime::cuda::CudaKernel;
 using onnxruntime::cuda::OrtToCudaType;
 namespace gdn = gated_delta_net;
 
-#define REGISTER_KERNEL_TYPED(T)                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      GatedDeltaNet,                                                    \
-      kMSDomain,                                                        \
-      1,                                                                \
-      T,                                                                \
-      kCudaExecutionProvider,                                           \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>())   \
-          .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>()) \
-          .InputMemoryType(OrtMemTypeCPUInput, 10)                      \
-          .MayInplace(6, 1),                                            \
+#define REGISTER_KERNEL_TYPED(T)                                                                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                  \
+      GatedDeltaNet,                                                                                              \
+      kMSDomain,                                                                                                  \
+      1,                                                                                                          \
+      T,                                                                                                          \
+      kCudaExecutionProvider,                                                                                     \
+      (*KernelDefBuilder::Create())                                                                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                                                  \
+          .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>())                                             \
+          .TypeConstraint("TR", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<MLFloat16>()}) \
+          .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>())                                           \
+          .InputMemoryType(OrtMemTypeCPUInput, 10)                                                                \
+          .MayInplace(6, 1),                                                                                      \
       GatedDeltaNet<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -406,11 +407,14 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   pack.capture_count = desc.state_update_active ? capture_count->Data<int32_t>() : nullptr;
   pack.decay = decay != nullptr ? decay->Data<float>() : nullptr;
   pack.beta = beta != nullptr ? beta->Data<float>() : nullptr;
-  pack.initial_state = initial_state != nullptr ? initial_state->Data<float>() : nullptr;
+  pack.initial_state = initial_state != nullptr ? initial_state->DataRaw() : nullptr;
+  pack.state_is_fp16 = final_state != nullptr
+                           ? final_state->IsDataType<MLFloat16>()
+                           : initial_state != nullptr && initial_state->IsDataType<MLFloat16>();
   pack.a_log = a_log != nullptr ? a_log->Data<float>() : nullptr;
   pack.dt_bias = dt_bias != nullptr ? dt_bias->Data<float>() : nullptr;
   pack.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
-  pack.final_state = final_state != nullptr ? final_state->MutableData<float>() : nullptr;
+  pack.final_state = final_state != nullptr ? final_state->MutableDataRaw() : nullptr;
   pack.state_update = state_update != nullptr ? state_update->MutableData<float>() : nullptr;
 
   // Only the inactive case is cleared. While capture is active the kernels write just the

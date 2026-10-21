@@ -5,6 +5,7 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <cuda_fp16.h>
 
 #include "core/common/status.h"
 #include "contrib_ops/cuda/bert/gated_delta_net_plan.h"
@@ -24,13 +25,34 @@ struct VariantPack {
   const int32_t* capture_count = nullptr;  // [B] or null when transition capture is disabled
   const float* decay = nullptr;            // [total_tokens, Hv] or [total_tokens, Hv, K]
   const float* beta = nullptr;             // [total_tokens, Hv]
-  const float* initial_state = nullptr;    // [B, Hv, V, K] V-major, may alias final_state
+  const void* initial_state = nullptr;     // [B, Hv, V, K] V-major, may alias final_state
   const float* a_log = nullptr;            // [Hv]
   const float* dt_bias = nullptr;          // [Hv]
   T* output = nullptr;                     // [total_tokens, max(Hq,Hv), V]
-  float* final_state = nullptr;            // [B, Hv, V, K]
-  float* state_update = nullptr;           // [B, C * (Hv + Hk*K + Hv*V)]
+  void* final_state = nullptr;             // [B, Hv, V, K]
+  bool state_is_fp16 = false;
+  float* state_update = nullptr;  // [B, C * (Hv + Hk*K + Hv*V)]
   void* workspace = nullptr;
+
+#ifdef __CUDACC__
+  __device__ float LoadState(int64_t index) const {
+    if (initial_state == nullptr) return 0.0f;
+    return state_is_fp16 ? __half2float(static_cast<const half*>(initial_state)[index])
+                         : static_cast<const float*>(initial_state)[index];
+  }
+
+  __device__ void StoreState(int64_t index, float value) const {
+    if (state_is_fp16) {
+      static_cast<half*>(final_state)[index] = __float2half_rn(value);
+    } else {
+      static_cast<float*>(final_state)[index] = value;
+    }
+  }
+
+  __device__ float RoundState(float value) const {
+    return state_is_fp16 ? __half2float(__float2half_rn(value)) : value;
+  }
+#endif
 };
 
 template <typename T>

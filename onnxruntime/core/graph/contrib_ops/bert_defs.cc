@@ -5358,9 +5358,13 @@ requests may have different lengths. When it is absent the packing is uniform an
 size is taken from `initial_state`, which is then required.
 
 State. `initial_state` and `final_state` are V-major, `[batch_size, num_heads_v, head_size_v,
-head_size_qk]`, and always float regardless of the query/key/value type: the recurrence
-boundary is where reduced precision hurts most. The two may be the same allocation; the
-implementation reads the whole incoming state before writing any of it.
+head_size_qk]`, with matching float or float16 storage independent of query/key/value type.
+CUDA supports both state types; WebGPU requires float state. FP16 storage is opt-in and
+can increase long-context numerical drift or overflow. Recurrent execution computes each
+token's output in float arithmetic before rounding its updated state to float16 for the
+next token. Chunked prefill retains the selected engine's internal arithmetic and rounds
+the final stored state. The two may be the same allocation; the implementation reads
+the whole incoming state before writing any of it.
 
 Compact state updates. When `state_update_capacity` C is greater than zero, `capture_count`
 is required with shape `[batch_size]`. For request b, the first `capture_count[b]` local token
@@ -5370,6 +5374,8 @@ Each row is struct-of-arrays: all decay values, then all keys, then all deltas. 
 greater than or equal to `min(capture_count[b], C, sequence_length)` are unspecified; consumers must
 read only the captured prefix. The key retains its shared `num_heads_k` representation. For scalar
 decay the decoded factors replay one transition as `S *= decay; S += outer(key, delta)`.
+For FP16 state, replay must round to float16 after each transition, not only after the
+entire prefix. The compact transition factors remain float for either state storage type.
 Per-key-dimension decay is not supported when compact updates are enabled. `capture_count` is
 forbidden when C is zero.
 
@@ -5452,7 +5458,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(6, "initial_state",
                "Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), "
                "V-major. Required for packed QKV. May alias final_state.",
-               "TS", OpSchema::Optional)
+               "TR", OpSchema::Optional)
         .Input(7, "a_log",
                "Per-head A_log, shape (num_heads_v). Requires gate_activation=qwen.",
                "TS", OpSchema::Optional)
@@ -5474,7 +5480,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(1, "final_state",
                 "State after the last token of each request, shape "
                 "(batch_size, num_heads_v, head_size_v, head_size_qk)",
-                "TS", OpSchema::Optional)
+                "TR", OpSchema::Optional)
         .Output(2, "state_update",
                 "Struct-of-arrays compact transition factors, shape "
                 "(batch_size, state_update_capacity * (num_heads_v + num_heads_k * "
@@ -5483,12 +5489,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain query/key/value/output types.")
         .TypeConstraint("TS", {"tensor(float)"},
-                        "State, gate, beta and compact state-update tensors are always float.")
+                        "Gate, beta and compact state-update tensors are always float.")
+        .TypeConstraint("TR", {"tensor(float)", "tensor(float16)"},
+                        "Recurrent state storage; update arithmetic remains float. FP16 recurrent "
+                        "execution rounds state after each token, after computing its output.")
         .TypeConstraint("TI", {"tensor(int32)"}, "Constrain index and count tensors to int32.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           if (ctx.getNumOutputs() > 1) {
-            updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+            if (ctx.getNumInputs() > 6 && ctx.getInputType(6) != nullptr) {
+              propagateElemTypeFromInputToOutput(ctx, 6, 1);
+            } else {
+              updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+            }
           }
           if (ctx.getNumOutputs() > 2) {
             updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);

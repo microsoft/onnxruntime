@@ -204,9 +204,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
   for (int idx = tid; idx < DK * kDVB; idx += kChunkedThreads) {
     const int r = idx / kDVB, c = idx % kDVB;
     s.s_f[r * L::kVf + c] =
-        pack.initial_state != nullptr
-            ? pack.initial_state[st_off + static_cast<int64_t>(v0 + c) * DK + r]
-            : 0.0f;
+        pack.LoadState(st_off + static_cast<int64_t>(v0 + c) * DK + r);
   }
   __syncthreads();
 
@@ -353,7 +351,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
   if (pack.final_state != nullptr) {
     for (int idx = tid; idx < DK * kDVB; idx += kChunkedThreads) {
       const int r = idx / kDVB, c = idx % kDVB;
-      pack.final_state[st_off + static_cast<int64_t>(v0 + c) * DK + r] = s.s_f[r * L::kVf + c];
+      pack.StoreState(st_off + static_cast<int64_t>(v0 + c) * DK + r, s.s_f[r * L::kVf + c]);
     }
   }
 }
@@ -423,7 +421,7 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
 #pragma unroll
   for (int i = 0; i < kRegs; ++i) {
     const int k = lane + i * 32;
-    s[i] = pack.initial_state != nullptr ? pack.initial_state[st_off + k] : 0.0f;
+    s[i] = pack.LoadState(st_off + k);
   }
 
   for (int t = 0; t < seq_len; ++t) {
@@ -512,12 +510,15 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
       pack.output[tok * v_stride + hv * d_v + col] =
           static_cast<T>(p.scale * o);
     }
+    // Match a sequence of one-token calls and compact rollback replay.
+#pragma unroll
+    for (int i = 0; i < kRegs; ++i) s[i] = pack.RoundState(s[i]);
   }
 
   if (pack.final_state != nullptr) {
 #pragma unroll
     for (int i = 0; i < kRegs; ++i) {
-      pack.final_state[st_off + lane + i * 32] = s[i];
+      pack.StoreState(st_off + lane + i * 32, s[i]);
     }
   }
 }
@@ -569,9 +570,7 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
   // final_state are permitted to be the same allocation.
   for (int idx = tid; idx < d_k * d_v; idx += kThreads) {
     const int r = idx / d_v, c = idx % d_v;
-    S[idx] = pack.initial_state != nullptr
-                 ? pack.initial_state[st_off + static_cast<int64_t>(c) * d_k + r]
-                 : 0.0f;
+    S[idx] = pack.LoadState(st_off + static_cast<int64_t>(c) * d_k + r);
   }
   __syncthreads();
 
@@ -667,12 +666,18 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
     }
 
     __syncthreads();
+    if (pack.state_is_fp16) {
+      for (int idx = tid; idx < d_k * d_v; idx += kThreads) {
+        S[idx] = pack.RoundState(S[idx]);
+      }
+      __syncthreads();
+    }
   }
 
   if (pack.final_state != nullptr) {
     for (int idx = tid; idx < d_k * d_v; idx += kThreads) {
       const int r = idx / d_v, c = idx % d_v;
-      pack.final_state[st_off + static_cast<int64_t>(c) * d_k + r] = S[idx];
+      pack.StoreState(st_off + static_cast<int64_t>(c) * d_k + r, S[idx]);
     }
   }
 }

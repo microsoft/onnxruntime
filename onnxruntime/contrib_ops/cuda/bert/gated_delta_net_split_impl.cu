@@ -354,13 +354,12 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
   // The state crosses a pass boundary through `carry`, which is workspace the launcher only
   // reserves when there is more than one pass. final_state is not usable for that: the
   // caller may not have asked for it.
-  const float* seed = first_pass ? pack.initial_state : carry;
   for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
     const int r = idx / DVB, c = idx % DVB;
     s.s_h[r * L::kSh + c] =
-        seed != nullptr
-            ? __float2half(seed[st_off + static_cast<int64_t>(v0 + c) * DK + r])
-            : __float2half(0.f);
+        __float2half(first_pass
+                        ? pack.LoadState(st_off + static_cast<int64_t>(v0 + c) * DK + r)
+                        : carry[st_off + static_cast<int64_t>(v0 + c) * DK + r]);
   }
   __syncthreads();
 
@@ -433,7 +432,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
     const int64_t off = st_off + static_cast<int64_t>(v0 + c) * DK + r;
     const float v = __half2float(s.s_h[r * L::kSh + c]);
     if (carry != nullptr) carry[off] = v;
-    if (last_pass && pack.final_state != nullptr) pack.final_state[off] = v;
+    if (last_pass && pack.final_state != nullptr) pack.StoreState(off, v);
   }
 }
 
