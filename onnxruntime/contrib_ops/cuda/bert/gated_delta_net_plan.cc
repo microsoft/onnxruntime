@@ -49,23 +49,15 @@ const char* Bf16PrecisionName(Bf16Precision p) {
 }
 
 bool TryParseBf16Precision(const std::string& name, Bf16Precision* out) {
-  size_t begin = 0;
-  size_t end = name.size();
-  while (begin < end && std::isspace(static_cast<unsigned char>(name[begin]))) ++begin;
-  while (end > begin && std::isspace(static_cast<unsigned char>(name[end - 1]))) --end;
-  std::string lowered(name.substr(begin, end - begin));
-  std::transform(lowered.begin(), lowered.end(), lowered.begin(),
-                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  if (lowered.empty() || lowered == "fp32" || lowered == "high" || lowered == "1" ||
-      lowered == "default") {
+  if (name == "fp32") {
     *out = Bf16Precision::kFp32;
     return true;
   }
-  if (lowered == "fp16" || lowered == "half") {
+  if (name == "fp16") {
     *out = Bf16Precision::kFp16;
     return true;
   }
-  if (lowered == "bf16" || lowered == "bfloat16" || lowered == "fast" || lowered == "0") {
+  if (name == "bf16") {
     *out = Bf16Precision::kBf16;
     return true;
   }

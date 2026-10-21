@@ -480,7 +480,7 @@ When the operator I/O type `T` is `bfloat16`, the chunked and split-chunked pref
 support three intermediate precision modes controlled by session option
 `ep.cuda.gated_delta_net_bf16_precision` (or environment variable `ORT_GDN_BF16_PRECISION`):
 
-1. **`fp32` (default — `ep.cuda.gated_delta_net_bf16_precision="fp32"` / `"high"` / `"1"`)**:
+1. **`fp32` (default — `ep.cuda.gated_delta_net_bf16_precision="fp32"`)**:
    - Keeps both the recurrent state $S$ and the intermediate chunk updates ($R$, $U$, and $U_v$)
      in `float32` and decomposes them into 3 exact `bfloat16` slices (`hi + mid + lo`) for the
      `mma.sync.aligned.m16n8k16.row.col.f32.bf16.bf16.f32` tensor-core GEMMs.
@@ -489,7 +489,7 @@ support three intermediate precision modes controlled by session option
      by the three unscaled `bfloat16` slices without overflow or underflow. Columns containing
      extreme exponents ($< 2^{-110}$ or $\ge 2^{127}$, such as `FLT_MAX`) set their bit in
      `extreme_col_mask` and evaluate an exact `float32` dot product in the epilogue.
-2. **`fp16` (`ep.cuda.gated_delta_net_bf16_precision="fp16"` / `"half"`)**:
+2. **`fp16` (`ep.cuda.gated_delta_net_bf16_precision="fp16"`)**:
    - Uses 1-slice `float16` (`__half`, 10 mantissa bits vs. `bfloat16`'s 7 mantissa bits) for
      the internal chunk MMA tiles whenever the chunk inputs ($Q, K, V$) and state ($S$) fit
      within the safe `float16` dynamic range ($\le 8192$, state $\ge 2^{-110}$, checked in
@@ -499,7 +499,7 @@ support three intermediate precision modes controlled by session option
      `bfloat16` double-rounding). If any chunk value falls outside the safe `float16` range,
      that chunk automatically falls back to the `fp32` (3-slice `bfloat16`) path so it never
      overflows or underflows.
-3. **`bf16` (`ep.cuda.gated_delta_net_bf16_precision="bf16"` / `"fast"` / `"0"`)**:
+3. **`bf16` (`ep.cuda.gated_delta_net_bf16_precision="bf16"`)**:
    - Uses 1-slice native `bfloat16` for all internal chunk MMA tiles, providing maximum 1-slice
      throughput with native `bfloat16` dynamic range and 7-bit mantissa precision.
 
@@ -561,8 +561,8 @@ error per element), achieving **2.7x lower output RMSE**, **5.5x lower state RMS
 
 | Option / Variable | Values | Description |
 |---|---|---|
-| `ep.cuda.gated_delta_net_bf16_precision` (`kOrtSessionOptionsCudaGatedDeltaNetBf16Precision`) | `fp32` (or `high`, `1`, default), `fp16` (or `half`), `bf16` (or `fast`, `0`) | Session option controlling the intermediate precision of the `bfloat16` chunked and split-chunked prefill kernels. `fp32` preserves 24-bit FP32 state and chunk-update residuals via 3-slice BF16 decomposition with an exact FP32 fallback for extreme exponents; `fp16` uses 1-slice FP16 (10 mantissa bits) for internal chunk MMA tiles when chunk values fit within the safe FP16 dynamic range and falls back to `fp32` otherwise; `bf16` uses 1-slice native BF16 for all internal chunk MMA tiles. Overrides `ORT_GDN_BF16_PRECISION`. |
-| `ORT_GDN_BF16_PRECISION` | `fp32` (or `high`, `1`, default), `fp16` (or `half`), `bf16` (or `fast`, `0`) | Environment-variable fallback for `ep.cuda.gated_delta_net_bf16_precision` when the session option is not set. |
+| `ep.cuda.gated_delta_net_bf16_precision` (`kOrtSessionOptionsCudaGatedDeltaNetBf16Precision`) | `fp32` (default), `fp16`, `bf16` | Session option controlling the intermediate precision of the `bfloat16` chunked and split-chunked prefill kernels. `fp32` preserves 24-bit FP32 state and chunk-update residuals via 3-slice BF16 decomposition with an exact FP32 fallback for extreme exponents; `fp16` uses 1-slice FP16 (10 mantissa bits) for internal chunk MMA tiles when chunk values fit within the safe FP16 dynamic range and falls back to `fp32` otherwise; `bf16` uses 1-slice native BF16 for all internal chunk MMA tiles. Overrides `ORT_GDN_BF16_PRECISION`. |
+| `ORT_GDN_BF16_PRECISION` | `fp32` (default), `fp16`, `bf16` | Environment-variable fallback for `ep.cuda.gated_delta_net_bf16_precision` when the session option is not set. |
 | `ORT_GDN_PLAN` | `chunked`, `chunked_split`, `recurrent`, `cudnn` | Pins an engine, bypassing the heuristic, in either direction: `chunked` keeps the fused engine where the heuristic would split, and `chunked_split` forces the split engine where it would not. Either chunked override reports an error when the descriptor cannot use that engine. The analog of cuDNN's `select_plan(name)`. Intended for benchmarking and bisection. `cudnn` is reserved and returns an error. |
 
 ## 10. Testing

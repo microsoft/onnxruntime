@@ -1709,16 +1709,18 @@ TEST(GatedDeltaNetTest, BFloat16PrecisionModesAndSessionOption) {
     test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
   }
 
-  {
+  for (const char* invalid_mode : {"invalid_mode", "high", "fast", "half", "1", "0", ""}) {
+    SCOPED_TRACE(invalid_mode);
     SessionOptions bad_options;
     ASSERT_STATUS_OK(bad_options.config_options.AddConfigEntry(
-        contrib::cuda::gated_delta_net::kGatedDeltaNetBf16PrecisionConfig, "invalid_mode"));
+        contrib::cuda::gated_delta_net::kGatedDeltaNetBf16PrecisionConfig, invalid_mode));
     OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
     populate_tester(test);
     std::vector<std::unique_ptr<IExecutionProvider>> eps;
     eps.push_back(DefaultCudaExecutionProvider());
     test.Run(bad_options, OpTester::ExpectResult::kExpectFailure,
-             "ep.cuda.gated_delta_net_bf16_precision", {}, nullptr, &eps);
+             "ep.cuda.gated_delta_net_bf16_precision must be one of: fp32, fp16, bf16", {}, nullptr,
+             &eps);
   }
 }
 

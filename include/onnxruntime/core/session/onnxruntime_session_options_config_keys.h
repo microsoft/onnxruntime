@@ -520,11 +520,11 @@ static const char* const kOrtSessionOptionsCudaEnableGemmAutoTune = "ep.cuda.ena
 
 /// Controls the intermediate precision of the CUDA GatedDeltaNet chunked prefill kernels when the
 /// input/output tensor type is BFloat16:
-/// - "fp32" (or "high", "1", default): preserve 24-bit FP32 state and chunk-update residuals using
-///   3-slice BF16 tensor-core decomposition with an exact FP32 fallback for extreme exponents.
+/// - "fp32" (default): preserve 24-bit FP32 state and chunk-update residuals using 3-slice BF16
+///   tensor-core decomposition with an exact FP32 fallback for extreme exponents.
 /// - "fp16": use 1-slice FP16 (10 mantissa bits) for internal chunk MMA tiles when chunk values fit
 ///   within the safe FP16 dynamic range, falling back to the FP32-preserving BF16 path otherwise.
-/// - "bf16" (or "fast", "0"): use 1-slice native BF16 for all internal chunk MMA tiles.
+/// - "bf16": use 1-slice native BF16 for all internal chunk MMA tiles.
 /// Overrides the ORT_GDN_BF16_PRECISION environment variable.
 static const char* const kOrtSessionOptionsCudaGatedDeltaNetBf16Precision =
     "ep.cuda.gated_delta_net_bf16_precision";
