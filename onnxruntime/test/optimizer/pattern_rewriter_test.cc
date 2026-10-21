@@ -3491,5 +3491,682 @@ TEST(PatternRewriterTests, NumericalDecoderPrefillAndDecode) {
 }
 #endif
 
+#ifndef DISABLE_CONTRIB_OPS
+namespace {
+
+const char* ActivationLibrary = R"(
+  interface GatedActivation(g:float[M,N], u:float[M,N]) -> (product:float[M,N])
+  fragment plain implements GatedActivation {
+    s = Sigmoid(g)
+    a = Mul(g,s)
+    p = Mul(a,u)
+    return (product=p)
+  }
+  fragment scaled implements GatedActivation: (alpha:float[...]) -> {
+    scaled = Mul(g,alpha)
+    s = Sigmoid(scaled)
+    a = Mul(g,s)
+    p = Mul(a,u)
+    return (product=p)
+  }
+  union Forms = plain | scaled
+  fragment wrapped implements GatedActivation {
+    act = Forms(g,u)
+    return (product=act.product)
+  }
+  pattern Fuse(g,u) {
+    outer = wrapped(g,u)
+    return Identity(outer.product)
+  }
+)";
+
+// Handwritten views illustrate a future generator's common/concrete/nested API.
+struct GatedView {
+  const NodeArg* g;
+  const NodeArg* u;
+  const NodeArg* product;
+  explicit GatedView(BindingView view)
+      : g(view.valueOf("g")), u(view.valueOf("u")), product(view.valueOf("product")) {
+    ORT_ENFORCE(view.interfaceName() == "GatedActivation");
+  }
+};
+
+struct PlainView {
+  GatedView ports;
+  const NodeArg* sigmoid;
+  explicit PlainView(BindingView view) : ports(view), sigmoid(view.valueOf("s")) {}
+};
+
+struct ScaledView {
+  GatedView ports;
+  const NodeArg* alpha;
+  const NodeArg* scaled;
+  explicit ScaledView(BindingView view) : ports(view), alpha(view.valueOf("alpha")), scaled(view.valueOf("scaled")) {}
+};
+
+struct ActivationView {
+  GatedView ports;
+  std::variant<PlainView, ScaledView> alternative;
+  static std::variant<PlainView, ScaledView> Select(BindingView view) {
+    if (view.alternative() == "plain") return PlainView(view);
+    ORT_ENFORCE(view.alternative() == "scaled", "Unexpected activation member.");
+    return ScaledView(view);
+  }
+  explicit ActivationView(BindingView view) : ports(view), alternative(Select(view)) {}
+};
+
+struct FusionView {
+  GatedView outer;
+  ActivationView act;
+  explicit FusionView(const Match& match)
+      : outer(match.instance("outer")), act(match.instance("outer").instance("act")) {}
+};
+
+bool CheckCommon(const GatedView& view) {
+  if (!view.g || !view.u || !view.product || !view.g->Shape() || !view.u->Shape() ||
+      view.g->Shape()->dim_size() != 2 || view.u->Shape()->dim_size() != 2)
+    return false;
+  for (int i = 0; i < 2; ++i) {
+    const auto& g = view.g->Shape()->dim(i);
+    const auto& u = view.u->Shape()->dim(i);
+    if (!g.has_dim_value() || !u.has_dim_value() || g.dim_value() <= 0 || g.dim_value() != u.dim_value()) return false;
+  }
+  return true;
+}
+
+Rule ActivationRule(const PatternLibrary& library, std::string_view entry = "Fuse") {
+  auto check = [](const Graph& graph, Match& match) {
+    const FusionView view(match);
+    if (!CheckCommon(view.outer) || !CheckCommon(view.act.ports)) return match.Reject("Incompatible gating shapes.");
+    float alpha = 1.0f;
+    if (const auto* scaled = std::get_if<ScaledView>(&view.act.alternative)) {
+      const auto* shape = scaled->alpha->Shape();
+      if (!shape || !(shape->dim_size() == 0 ||
+                      (shape->dim_size() == 1 && shape->dim(0).has_dim_value() && shape->dim(0).dim_value() == 1)))
+        return match.Reject("Alpha must have scalar or [1] shape.");
+      InlinedVector<float> values;
+      bool available;
+      ORT_THROW_IF_ERROR(ReadConstantTensor(graph, scaled->alpha, values, available));
+      if (!available || values.size() != 1 || !std::isfinite(values[0]) || values[0] <= 0)
+        return match.Reject("Alpha must be a supported immutable float.");
+      alpha = values[0];
+    }
+    ONNX_NAMESPACE::AttributeProto attribute;
+    attribute.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
+    attribute.set_f(alpha);
+    match.update("activation_alpha", std::move(attribute));
+    return true;
+  };
+  Replacement replacement(R"(
+    (g,u,activation_alpha) => {
+      a = com.microsoft.QuickGelu(g,alpha=activation_alpha)
+      return Mul(a,u)
+    }
+  )");
+  return Rule{"FragmentActivation", library.GetPattern(entry), replacement, check, {{kOnnxDomain, 17, 17}, {kMSDomain, 1, 1}}};
+}
+
+}  // namespace
+
+TEST(PatternRewriterTests, FragmentManualViewsAndSyntheticFusion) {
+  const PatternLibrary library(ActivationLibrary);
+  for (bool indexed : {false, true}) {
+    for (int variant = 0; variant < 5; ++variant) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* g = b.MakeInput<float>({2, 4}, -1.0f, 1.0f);
+      auto* u = b.MakeInput<float>({2, 4}, -1.0f, 1.0f);
+      NodeArg* scaled = g;
+      if (variant != 0) {
+        auto* alpha = variant == 1   ? b.MakeScalarInitializer<float>(1.5f)
+                      : variant == 2 ? b.MakeInitializer<float>({1}, {0.5f})
+                      : variant == 3 ? b.MakeInput<float>({1}, 1.0f, 2.0f)
+                                     : b.MakeInitializer<float>({2, 4}, 0.5f, 1.0f);
+        scaled = b.MakeIntermediate();
+        b.AddNode("Mul", {g, alpha}, {scaled});
+      }
+      auto* sigmoid = b.MakeIntermediate();
+      auto* activated = b.MakeIntermediate();
+      auto* product = b.MakeIntermediate();
+      b.AddNode("Sigmoid", {scaled}, {sigmoid});
+      b.AddNode("Mul", {g, sigmoid}, {activated});
+      b.AddNode("Mul", {activated, u}, {product});
+      b.AddNode("Identity", {product}, {b.MakeOutput()});
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      std::string original;
+      test.model.ToProto().SerializeToString(&original);
+      const bool accepted = variant < 3;
+      Options options;
+      options.indexed = indexed;
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({ActivationRule(library)}, options).Run(test.graph, stats));
+      EXPECT_EQ(stats.rewrites, accepted ? 1u : 0u);
+      EXPECT_EQ(Count(test.graph, "QuickGelu"), accepted ? 1u : 0u);
+      if (accepted) {
+        for (const auto& node : test.graph.Nodes())
+          if (node.OpType() == "QuickGelu")
+            EXPECT_EQ(node.GetAttributes().at("alpha").f(), variant == 0 ? 1.0f : variant == 1 ? 1.5f
+                                                                                               : 0.5f);
+      }
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      if (accepted) {
+        std::string rewritten;
+        test.model.ToProto().SerializeToString(&rewritten);
+        auto execute = [&](const std::string& serialized, std::vector<OrtValue>& outputs) {
+          SessionOptions session_options;
+          session_options.graph_optimization_level = TransformerLevel::Default;
+          session_options.intra_op_param.thread_pool_size = 1;
+          InferenceSessionWrapper session{session_options, GetEnvironment()};
+          std::istringstream stream(serialized);
+          ORT_RETURN_IF_ERROR(session.Load(stream));
+          ORT_RETURN_IF_ERROR(session.Initialize());
+          return session.Run(RunOptions{}, b.feeds_, b.output_names_, &outputs);
+        };
+        std::vector<OrtValue> baseline, fused;
+        ASSERT_STATUS_OK(execute(original, baseline));
+        ASSERT_STATUS_OK(execute(rewritten, fused));
+        ASSERT_EQ(baseline.size(), 1u);
+        ASSERT_EQ(fused.size(), 1u);
+        const auto& expected = baseline[0].Get<Tensor>();
+        const auto& actual = fused[0].Get<Tensor>();
+        ASSERT_EQ(expected.Shape(), actual.Shape());
+        for (int64_t i = 0; i < expected.Shape().Size(); ++i)
+          EXPECT_NEAR(expected.Data<float>()[i], actual.Data<float>()[i], 1e-6f);
+      }
+    }
+  }
+}
+#endif
+
+TEST(PatternRewriterTests, FragmentNamedAndAnonymousAlternativesAreOccurrenceLocal) {
+  for (const char* call : {"Forms", "(first | second)"}) {
+    const std::string text = std::string(R"(
+      interface Unary(x:tensor<T>[N]) -> (y:tensor<T>[N])
+      fragment first implements Unary { local=Identity(x); return (y=local) }
+      fragment second implements Unary { local=Identity(x); return (y=local) }
+      union Forms = first | second
+      pattern P(x,z) { a=)") +
+                             call + "(x); b=" + call + R"((z); return Add(a.y,b.y) }
+    )";
+    const PatternLibrary library(text);
+    for (bool indexed : {false, true}) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = b.MakeInput<float>({2}, 0.0f, 1.0f);
+      auto* z = b.MakeInput<float>({2}, 0.0f, 1.0f);
+      auto* a = b.MakeIntermediate();
+      auto* c = b.MakeIntermediate();
+      b.AddNode("Identity", {x}, {a});
+      b.AddNode("Identity", {z}, {c});
+      b.AddNode("Add", {a, c}, {b.MakeOutput()});
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      InlinedVector<std::string> attempts;
+      auto check = [&](const Graph&, Match& match) {
+        auto av = match.instance("a"), bv = match.instance("b");
+        attempts.push_back(std::string(av.alternative()) + "/" + std::string(bv.alternative()));
+        EXPECT_EQ(av.valueOf("x"), x);
+        EXPECT_EQ(bv.valueOf("x"), z);
+        EXPECT_EQ(av.valueOf("y"), av.valueOf("local"));
+        EXPECT_EQ(bv.valueOf("y"), bv.valueOf("local"));
+        EXPECT_NE(av.valueOf("local"), bv.valueOf("local"));
+        EXPECT_EQ(std::get<int64_t>(av.dimensionOf("N")), 2);
+        EXPECT_EQ(av.elementTypeOf("T"), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+        EXPECT_THROW(match.attributeOf("leaked"), OnnxRuntimeException);
+        EXPECT_THROW(match.instance("absent"), OnnxRuntimeException);
+        if (av.alternative() == "first" && bv.alternative() == "second") return true;
+        ONNX_NAMESPACE::AttributeProto leaked;
+        leaked.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+        leaked.set_i(99);
+        match.update("leaked", std::move(leaked));
+        return match.Reject("Try the next complete candidate.");
+      };
+      Options options;
+      options.indexed = indexed;
+      Statistics stats;
+      Rule rule{"Alternatives", library.GetPattern("P"), "(x,z) => Add(x,z)", check, {{kOnnxDomain, 17, 17}}};
+      ASSERT_STATUS_OK(PatternRewriter({rule}, options).Run(test.graph, stats));
+      EXPECT_EQ(stats.rewrites, 1u);
+      EXPECT_EQ(attempts, (InlinedVector<std::string>{"first/first", "first/second"}));
+      EXPECT_EQ(Count(test.graph, "Identity"), 0u);
+    }
+  }
+}
+
+TEST(PatternRewriterTests, FragmentHygienicDimensionsAttributesAndCommonOutputs) {
+  PatternLibrary library(R"(
+    interface Permute(x:float[N,M]) -> (y:float[M,N])
+    fragment transpose implements Permute: (axes:ints) -> {
+      local=Transpose(x,perm=axes)
+      return (y=local)
+    }
+    pattern P(x,z) {
+      a=transpose(x)
+      b=transpose(z)
+      return MatMul(a.y,b.y)
+    }
+  )");
+  TestGraph test;
+  auto& b = test.builder;
+  auto* x = b.MakeInput<float>({4, 3}, 0.0f, 1.0f);
+  auto* z = b.MakeInput<float>({4, 4}, 0.0f, 1.0f);
+  auto* a = b.MakeIntermediate();
+  auto* c = b.MakeIntermediate();
+  b.AddNode("Transpose", {x}, {a}).AddAttribute("perm", std::vector<int64_t>{1, 0});
+  b.AddNode("Transpose", {z}, {c}).AddAttribute("perm", std::vector<int64_t>{0, 1});
+  b.AddNode("MatMul", {a, c}, {b.MakeOutput()});
+  b.SetGraphOutputs();
+  ASSERT_STATUS_OK(test.graph.Resolve());
+  auto check = [&](const Graph&, Match& match) {
+    EXPECT_EQ(std::get<int64_t>(match.instance("a").dimensionOf("M")), 3);
+    EXPECT_EQ(std::get<int64_t>(match.instance("b").dimensionOf("M")), 4);
+    EXPECT_EQ(match.instance("a").attributeOf("axes").ints(0), 1);
+    EXPECT_EQ(match.instance("b").attributeOf("axes").ints(1), 1);
+    EXPECT_EQ(match.instance("a").valueOf("y"), a);
+    EXPECT_THROW(match.update("a.y", {}), OnnxRuntimeException);
+    return true;
+  };
+  Statistics stats;
+  Options options;
+  options.max_iterations = 1;
+  Rule rule{"Hygiene", library.GetPattern("P"), "(x,z,a.axes,b.axes)=>{a=Transpose(x,perm=a.axes);b=Transpose(z,perm=b.axes);return MatMul(a,b)}", check, {{kOnnxDomain, 17, 17}}};
+  ASSERT_STATUS_OK(PatternRewriter({rule}, options).Run(test.graph, stats));
+  EXPECT_EQ(stats.matches, 1u);
+  EXPECT_EQ(stats.rewrites, 1u);
+  ASSERT_STATUS_OK(test.graph.Resolve());
+}
+
+TEST(PatternRewriterTests, FragmentIdentityPortsRemapAndInterfaceConstraintsConjoin) {
+  PatternLibrary library(R"(
+    interface Pass(x:float[N]) -> (y:float[N])
+    fragment pass implements Pass { return (y=x) }
+    pattern P(x:float[2]) { p=pass(x); return Identity(p.y) }
+  )");
+  for (int64_t size : {2, 3}) {
+    TestGraph test;
+    auto* x = test.builder.MakeInput<float>({size}, 0.0f, 1.0f);
+    test.builder.AddNode("Identity", {x}, {test.builder.MakeOutput()});
+    test.builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    auto check = [&](const Graph&, Match& match) {
+      EXPECT_EQ(match.instance("p").valueOf("x"), x);
+      EXPECT_EQ(match.instance("p").valueOf("y"), x);
+      return true;
+    };
+    Options options;
+    options.match_only = true;
+    Statistics stats;
+    Rule rule{"Pass", library.GetPattern("P"), "(x)=>Identity(x)", check, {{kOnnxDomain, 17, 17}}};
+    ASSERT_STATUS_OK(PatternRewriter({rule}, options).Run(test.graph, stats));
+    EXPECT_EQ(stats.matches, size == 2 ? 1u : 0u);
+  }
+}
+
+TEST(PatternRewriterTests, FragmentOutputAnnotationsAreEnforcedOnAliases) {
+  const PatternLibrary library(R"(
+    interface Pass(x:float[]) -> (y:float[3])
+    fragment pass implements Pass { return (y=x) }
+    pattern P(x) { p=pass(x); return Identity(p.y) }
+  )");
+  for (int64_t size : {2, 3}) {
+    TestGraph test;
+    auto* x = test.builder.MakeInput<float>({size}, 0.0f, 1.0f);
+    test.builder.AddNode("Identity", {x}, {test.builder.MakeOutput()});
+    test.builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    Options options;
+    options.match_only = true;
+    Statistics stats;
+    Rule rule{"OutputConstraint", library.GetPattern("P"), "(x)=>Identity(x)", {}, {{kOnnxDomain, 17, 17}}};
+    ASSERT_STATUS_OK(PatternRewriter({rule}, options).Run(test.graph, stats));
+    EXPECT_EQ(stats.matches, size == 3 ? 1u : 0u);
+  }
+}
+
+TEST(PatternRewriterTests, FragmentUnionTypeAndConstantRejectionRetry) {
+  const PatternLibrary library(R"(
+    interface Unary(x:float[...]) -> (y:float[...])
+    fragment fixed implements Unary: (a:const float[1]) -> { y=Mul(x,a); return (y=y) }
+    fragment dynamic implements Unary: (a:float[]) -> { y=Mul(x,a); return (y=y) }
+    union Forms = fixed | dynamic
+    pattern P(x) { f=Forms(x); return Identity(f.y) }
+  )");
+  TestGraph test;
+  auto& b = test.builder;
+  auto* x = b.MakeInput<float>({2, 4}, 0.0f, 1.0f);
+  auto* a = b.MakeInput<float>({1}, 0.0f, 1.0f);
+  auto* y = b.MakeIntermediate();
+  b.AddNode("Mul", {x, a}, {y});
+  b.AddNode("Identity", {y}, {b.MakeOutput()});
+  b.SetGraphOutputs();
+  ASSERT_STATUS_OK(test.graph.Resolve());
+  auto check = [&](const Graph&, Match& match) {
+    EXPECT_EQ(match.instance("f").alternative(), "dynamic");
+    EXPECT_EQ(match.instance("f").valueOf("a"), a);
+    return true;
+  };
+  Options options;
+  options.match_only = true;
+  Statistics stats;
+  Rule rule{"ConstantRetry", library.GetPattern("P"), "(x)=>Identity(x)", check, {{kOnnxDomain, 17, 17}}};
+  ASSERT_STATUS_OK(PatternRewriter({rule}, options).Run(test.graph, stats));
+  EXPECT_EQ(stats.matches, 1u);
+  EXPECT_EQ(stats.check_and_bind_calls, 1u);
+}
+
+TEST(PatternRewriterTests, FragmentDeletionProviderAndLayerBoundaries) {
+  const PatternLibrary library(R"(
+    interface Unary(x) -> (y)
+    fragment pair implements Unary { a=Identity(x); y=Identity(a); return (y=y) }
+    pattern P(x) { p=pair(x); return p.y }
+  )");
+  for (int scenario = 0; scenario < 6; ++scenario) {
+    TestGraph test;
+    auto& b = test.builder;
+    auto* x = b.MakeInput<float>({2}, 0.0f, 1.0f);
+    auto* a = scenario == 1 ? b.MakeOutput() : b.MakeIntermediate();
+    auto& first = b.AddNode("Identity", {x}, {a});
+    b.AddNode("Identity", {a}, {b.MakeOutput()});
+    if (scenario == 2) b.AddNode("Neg", {a}, {b.MakeOutput()});
+    if (scenario == 3) first.SetExecutionProviderType(kCudaExecutionProvider);
+    if (scenario == 4) first.SetLayeringAnnotation("other");
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    Statistics stats;
+    Rule rule{"Safety", library.GetPattern("P"), "(x)=>Identity(x)", {}, {{kOnnxDomain, scenario == 5 ? 18 : 17, 21}}};
+    ASSERT_STATUS_OK(PatternRewriter({rule}).Run(test.graph, stats));
+    EXPECT_EQ(stats.rewrites, scenario == 0 ? 1u : 0u);
+    ASSERT_STATUS_OK(test.graph.Resolve());
+  }
+}
+
+TEST(PatternRewriterTests, FragmentReplacementFailureDoesNotRetry) {
+  PatternLibrary library(R"(
+    interface Unary(x) -> (y)
+    fragment first implements Unary { a=Identity(x); y=Identity(a); return (y=y) }
+    fragment second implements Unary { a=Identity(x); y=Identity(a); return (y=y) }
+    union Forms=first|second
+    pattern P(x) { p=Forms(x); return p.y }
+  )");
+  TestGraph test;
+  auto& b = test.builder;
+  auto* x = b.MakeInput<float>({2}, 0.0f, 1.0f);
+  auto* a = b.MakeIntermediate();
+  b.AddNode("Identity", {x}, {a});
+  b.AddNode("Identity", {a}, {b.MakeOutput()});
+  b.SetGraphOutputs();
+  ASSERT_STATUS_OK(test.graph.Resolve());
+  const auto before = test.graph.ToGraphProto().SerializeAsString();
+  size_t checks = 0;
+  auto check = [&](const Graph&, Match&) { ++checks; return true; };
+  Rule rule{"BadRecipe", library.GetPattern("P"), "(x)=>UndefinedOperator(x)", check, {{kOnnxDomain, 17, 17}}};
+  Statistics stats;
+  EXPECT_FALSE(PatternRewriter({rule}).Run(test.graph, stats).IsOK());
+  EXPECT_EQ(checks, 1u);
+  EXPECT_EQ(stats.rewrites, 0u);
+  EXPECT_EQ(test.graph.ToGraphProto().SerializeAsString(), before);
+  ASSERT_STATUS_OK(test.graph.Resolve());
+}
+
+TEST(PatternRewriterTests, FragmentExtraInputsAreUsableByParsedReplacement) {
+  PatternLibrary library(R"(
+    interface Unary(x:float[]) -> (y:float[])
+    fragment scale implements Unary: (alpha:float[]) -> {
+      y=Mul(x,alpha)
+      return (y=y)
+    }
+    pattern P(x) { p=scale(x); return Identity(p.y) }
+  )");
+  TestGraph test;
+  auto& b = test.builder;
+  auto* x = b.MakeInput<float>({2}, 0.0f, 1.0f);
+  auto* alpha = b.MakeInitializer<float>({1}, {2.0f});
+  auto* y = b.MakeIntermediate();
+  b.AddNode("Mul", {x, alpha}, {y});
+  b.AddNode("Identity", {y}, {b.MakeOutput()});
+  b.SetGraphOutputs();
+  ASSERT_STATUS_OK(test.graph.Resolve());
+  Rule rule{"Scale", library.GetPattern("P"), "(x,p.alpha)=>Mul(x,p.alpha)", {}, {{kOnnxDomain, 17, 17}}};
+  Statistics stats;
+  ASSERT_STATUS_OK(PatternRewriter({rule}).Run(test.graph, stats));
+  EXPECT_EQ(stats.rewrites, 1u);
+  EXPECT_EQ(Count(test.graph, "Identity"), 0u);
+  ASSERT_EQ(test.graph.Nodes().begin()->InputDefs()[1], alpha);
+  EXPECT_THROW((PatternRewriter({Rule{"Unsafe", library.GetPattern("P"), "(p.y)=>Identity(p.y)", {}, {{kOnnxDomain, 17, 17}}}})),
+               OnnxRuntimeException);
+}
+
+TEST(PatternRewriterTests, FragmentDifferentRootsAndHostRecipeSelection) {
+  // The returned pattern owns its linked plans after both text and library die.
+  const Pattern pattern = [] {
+    std::string text = R"(
+      interface Unary(x) -> (y)
+      fragment positive implements Unary { y=Relu(x); return (y=y) }
+      fragment negative implements Unary { y=Neg(x); return (y=y) }
+      union Forms=positive|negative
+      pattern P(x) { p=Forms(x); return p.y }
+    )";
+    return PatternLibrary(text).GetPattern("P");
+  }();
+  for (bool indexed : {false, true}) {
+    for (const char* op : {"Relu", "Neg"}) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = b.MakeInput<float>({2}, -1.0f, 1.0f);
+      b.AddNode(op, {x}, {b.MakeOutput()});
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      auto choose = [positive = Replacement("(x)=>Relu(x)"), negative = Replacement("(x)=>Neg(x)")](
+                        const Graph&, const Match& match) {
+        return match.instance("p").alternative() == "positive" ? positive : negative;
+      };
+      Rule rule{"SelectRecipe", pattern, choose, {}, {{kOnnxDomain, 17, 17}}};
+      Options options;
+      options.indexed = indexed;
+      options.max_iterations = 1;
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({rule}, options).Run(test.graph, stats));
+      EXPECT_EQ(stats.rewrites, 1u);
+      EXPECT_EQ(Count(test.graph, op), 1u);
+      EXPECT_EQ(Count(test.graph, "If"), 0u);
+      ASSERT_STATUS_OK(test.graph.Resolve());
+    }
+  }
+}
+
+TEST(PatternRewriterTests, FragmentCommonMultiOutputsPreserveGraphOutputs) {
+  PatternLibrary library(R"(
+    interface SplitPair(x:float[4]) -> (left:float[2],right:float[2])
+    fragment split implements SplitPair {
+      a,b=Split(x,axis=0)
+      return (right=b,left=a)
+    }
+    pattern P(x) { p=split(x); y=Concat(p.left,p.right,axis=0); return p.left,y }
+  )");
+  TestGraph test;
+  auto& b = test.builder;
+  auto* x = b.MakeInput<float>({4}, 0.0f, 1.0f);
+  auto* a = b.MakeOutput();
+  auto* c = b.MakeIntermediate();
+  auto* output = b.MakeOutput();
+  b.AddNode("Split", {x}, {a, c}).AddAttribute("axis", int64_t{0});
+  b.AddNode("Concat", {a, c}, {output}).AddAttribute("axis", int64_t{0});
+  b.SetGraphOutputs();
+  ASSERT_STATUS_OK(test.graph.Resolve());
+  auto check = [&](const Graph&, Match& match) {
+    EXPECT_EQ(match.instance("p").valueOf("left"), a);
+    EXPECT_EQ(match.instance("p").valueOf("a"), a);
+    EXPECT_EQ(match.instance("p").valueOf("right"), c);
+    return true;
+  };
+  Rule rule{"MultiOutput", library.GetPattern("P"), "(x)=>{a,b=Split(x,axis=0); y=Concat(a,b,axis=0); return a,y}", check, {{kOnnxDomain, 17, 17}}};
+  Options options;
+  options.max_iterations = 1;
+  Statistics stats;
+  ASSERT_STATUS_OK(PatternRewriter({rule}, options).Run(test.graph, stats));
+  EXPECT_EQ(stats.rewrites, 1u);
+  ASSERT_STATUS_OK(test.graph.Resolve());
+  EXPECT_EQ(test.graph.GetOutputs()[0], a);
+  EXPECT_EQ(test.graph.GetOutputs()[1], output);
+}
+
+TEST(PatternRewriterTests, FragmentLibraryErrorsAndBounds) {
+  const char* invalid[] = {
+      "interface I(x)->(y) pattern P(x){a=I(x);return a.y}",
+      "fragment f implements Missing {return (y=x)}",
+      "interface I(x)->(y) fragment f implements I {a=f(x);return (y=a.y)}",
+      "interface I(x)->(y) fragment f implements I {a=g(x);return (y=a.y)} "
+      "fragment g implements I {a=f(x);return (y=a.y)}",
+      "interface I(x)->(y) fragment f implements I {y=Identity(x);return (wrong=y)}",
+      "interface I(x)->(y) fragment f implements I {y=Identity(x);return (y=y,y=y)}",
+      "interface I(x)->(y) fragment f implements I {y=Identity(x);return (y=z)}",
+      "interface I(x)->(x)",
+      "interface I(x:float[x])->(y)",
+      "interface I(x:float[N])->(y:tensor<N>[])",
+      "interface I(x)->(y) fragment f implements I:(unused:float[])->{y=Identity(x);return (y=y)}",
+      "interface I(x)->(y) fragment f implements I {a=Identity(x);y=Identity(a);return (y=a)}",
+      "interface I(x)->(y) fragment f implements I {y=Identity(x);return (y=y)} "
+      "pattern P(x){a=f(x,x);return a.y}",
+      "interface I(x)->(y) fragment f implements I {y=Identity(x);return (y=y)} "
+      "pattern P(x){a,b=f(x);return a}",
+      "interface I(x)->(y) interface J(x)->(y) "
+      "fragment f implements I {y=Identity(x);return (y=y)} "
+      "fragment g implements J {y=Identity(x);return (y=y)} union U=f|g",
+      "interface I(x)->(y) fragment f implements I {y=Identity(x);return (y=y)} union U=f|missing",
+      "interface I(x)->(y) fragment f implements I {y=Identity(x);return (y=y)} union U=f|f",
+      "interface I(x)->(y) fragment f implements I {y=Identity(x);return (y=y)} "
+      "pattern P(x){a=(f|missing)(x);return a.y}",
+      "interface I(x)->(y) fragment f implements I {y=Identity(x);return (y=y)} "
+      "pattern P(x){a=f(x);a=Identity(a.y);return a}",
+      "pattern P(x){return misspelled(x)}",
+      "pattern P(x){return Identity(x)} pattern P(x){return Identity(x)}",
+      "pattern P(x:const int){return Identity(x)}",
+      "pattern P(x,a:const float){return LeakyRelu(x,alpha=a)}",
+      "pattern P(x:float[N]){y:float[x]=Identity(x);return y}",
+      "pattern P(x:float[]=[1.0]){return Identity(x)}",
+  };
+  for (const auto* text : invalid) {
+    SCOPED_TRACE(text);
+    EXPECT_THROW(PatternLibrary{text}, OnnxRuntimeException);
+  }
+  std::string too_many = R"(
+    interface I(x)->(y)
+    fragment f implements I {return (y=x)}
+    fragment g implements I {return (y=x)}
+    union U=f|g
+    pattern P(x) {
+  )";
+  for (int i = 0; i < 7; ++i)
+    too_many += "a" + std::to_string(i) + "=U(" + (i == 0 ? "x" : "a" + std::to_string(i - 1) + ".y") + ");";
+  too_many += "return Identity(a6.y)}";
+  EXPECT_THROW(PatternLibrary{too_many}, OnnxRuntimeException);
+  PatternLibrary valid("pattern P(x){return Identity(x)}");
+  EXPECT_THROW(valid.GetPattern("missing"), OnnxRuntimeException);
+}
+
+TEST(PatternRewriterTests, ConstTensorQualifierAndTypedReaders) {
+  for (int scenario = 0; scenario < 5; ++scenario) {
+    TestGraph test;
+    auto& b = test.builder;
+    auto* x = b.MakeInput<float>({2}, 0.0f, 1.0f);
+    auto* c = scenario == 1 ? b.MakeInput<float>({1}, 0.0f, 1.0f)
+                            : b.MakeInitializer<float>({1}, {2.0f});
+    b.AddNode("Add", {x, c}, {b.MakeOutput()});
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    if (scenario == 2) {
+      auto inputs = test.graph.GetInputsIncludingInitializers();
+      inputs.push_back(c);
+      test.graph.SetInputs(inputs);
+      ASSERT_STATUS_OK(test.graph.Resolve());
+    }
+    if (scenario == 3 || scenario == 4) {
+      const auto* original = test.graph.GetInitializer(c->Name(), false);
+      ASSERT_NE(original, nullptr);
+      auto tensor = *original;
+      if (scenario == 3) {
+        tensor.clear_raw_data();
+        tensor.clear_float_data();
+      } else {
+        tensor.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+      }
+      test.graph.RemoveInitializedTensor(c->Name());
+      test.graph.AddInitializedTensor(tensor);
+      ASSERT_STATUS_OK(test.graph.Resolve());
+    }
+    InlinedVector<float> values{99.0f};
+    bool available = true;
+    const auto status = ReadConstantTensor(test.graph, c, values, available);
+    if (scenario == 3) {
+      EXPECT_FALSE(status.IsOK());
+      EXPECT_EQ(values, (InlinedVector<float>{99.0f}));
+    } else {
+      ASSERT_STATUS_OK(status);
+      EXPECT_EQ(available, scenario == 0);
+      EXPECT_EQ(values, (InlinedVector<float>{scenario == 0 ? 2.0f : 99.0f}));
+    }
+    InlinedVector<int64_t> wrong_type;
+    ASSERT_STATUS_OK(ReadConstantTensor(test.graph, c, wrong_type, available));
+    EXPECT_FALSE(available);
+    Statistics stats;
+    Options options;
+    options.match_only = true;
+    Rule rule{"Const", "(x,c:const float[])=>return Add(x,c)", "(x,c)=>Add(x,c)", {}, {{kOnnxDomain, 17, 17}}};
+    ASSERT_STATUS_OK(PatternRewriter({rule}, options).Run(test.graph, stats));
+    EXPECT_EQ(stats.matches, scenario == 1 || scenario == 2 ? 0u : 1u);
+  }
+  TestGraph test;
+  auto* value = test.builder.MakeInitializer<int64_t>({2}, {-1, 8});
+  InlinedVector<int64_t> values;
+  bool available;
+  ASSERT_STATUS_OK(ReadConstantTensor(test.graph, value, values, available));
+  EXPECT_TRUE(available);
+  EXPECT_EQ(values, (InlinedVector<int64_t>{-1, 8}));
+  EXPECT_THROW(Pattern("(x:const const float[])=>Identity(x)"), OnnxRuntimeException);
+}
+
+TEST(PatternRewriterTests, ConstQualifierIsSpecificToItsTypeAlternative) {
+  for (int scenario = 0; scenario < 3; ++scenario) {
+    TestGraph test;
+    auto& b = test.builder;
+    auto* x = scenario == 0 ? b.MakeInitializer<float>({1}, {1.0f})
+                            : b.MakeInput<float>({scenario == 1 ? 1 : 2}, 0.0f, 1.0f);
+    b.AddNode("Identity", {x}, {b.MakeOutput()});
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    Options options;
+    options.match_only = true;
+    Statistics stats;
+    Rule rule{"ConstAlternative", "(x:const float[1] | float[2])=>return Identity(x)", "(x)=>Identity(x)", {}, {{kOnnxDomain, 17, 17}}};
+    ASSERT_STATUS_OK(PatternRewriter({rule}, options).Run(test.graph, stats));
+    EXPECT_EQ(stats.matches, scenario == 1 ? 0u : 1u);
+  }
+  Pattern optional("(x:const float[] | None)=>return Identity(x)");
+  EXPECT_TRUE(optional.IsOptional(optional.NamedValue("x")));
+}
+
+TEST(PatternRewriterTests, FragmentLiteralConstantsAreRemapped) {
+  const PatternLibrary library(R"(
+    interface Shift(x) -> (y)
+    fragment shift implements Shift { y=Add(x,3.0); return (y=y) }
+    pattern P(x) { p=shift(x); return p.y }
+  )");
+  for (float constant : {3.0f, 4.0f}) {
+    TestGraph test;
+    auto& b = test.builder;
+    auto* x = b.MakeInput<float>({2}, 0.0f, 1.0f);
+    b.AddNode("Add", {x, b.MakeScalarInitializer<float>(constant)}, {b.MakeOutput()});
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    Options options;
+    options.match_only = true;
+    Statistics stats;
+    Rule rule{"Literal", library.GetPattern("P"), "(x)=>Identity(x)", {}, {{kOnnxDomain, 17, 17}}};
+    ASSERT_STATUS_OK(PatternRewriter({rule}, options).Run(test.graph, stats));
+    EXPECT_EQ(stats.matches, constant == 3.0f ? 1u : 0u);
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

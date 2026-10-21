@@ -13,6 +13,7 @@
 #include <type_traits>
 
 #include "core/graph/graph_utils.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
 #include "onnx/checker.h"
 
@@ -59,13 +60,14 @@ std::string Signature(const Pattern& pattern) {
 
 using Producers = InlinedHashMap<const NodeArg*, NodeIndex>;
 
-bool MatchType(const Pattern& pattern, int handle, const TypeConstraint& constraint, Match& match) {
+bool MatchType(const Pattern& pattern, const Graph& graph, int handle, const TypeConstraint& constraint, Match& match) {
   if (pattern.IsAttribute(handle)) {
     return match.attributeOf(constraint.value_name).type() == constraint.attribute_type;
   }
   const NodeArg* value = match.values[handle];
   if (constraint.absent) return !value;
   if (!value) return false;
+  if (constraint.immutable && !graph_utils::GetConstantInitializer(graph, value->Name())) return false;
   const auto* type = value->TypeAsProto();
   if (!type || !type->has_tensor_type()) return false;
   const int32_t element = type->tensor_type().elem_type();
@@ -93,23 +95,28 @@ bool MatchType(const Pattern& pattern, int handle, const TypeConstraint& constra
   return true;
 }
 
-bool MatchTypes(const Pattern& pattern, Match& match) {
-  InlinedVector<int> handles;
+bool MatchTypes(const Pattern& pattern, const Graph& graph, Match& match) {
+  using Constraints = InlinedVector<TypeConstraint, 1>;
+  InlinedVector<std::pair<int, const Constraints*>> groups;
   for (const auto& [handle, alternatives] : pattern.TypeConstraints()) {
-    handles.push_back(handle);
-    for (const auto& constraint : alternatives) {
+    groups.emplace_back(handle, &alternatives);
+  }
+  for (const auto& [handle, alternatives] : pattern.AdditionalTypeConstraints())
+    groups.emplace_back(handle, &alternatives);
+  std::stable_sort(groups.begin(), groups.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+  for (const auto& [handle, alternatives] : groups) {
+    for (const auto& constraint : *alternatives) {
       if (!constraint.element_variable.empty()) match.BindElementType(constraint.element_variable, 0);
       for (const auto& dim : constraint.dimensions)
         if (const auto* name = std::get_if<std::string>(&dim)) match.BindDimension(*name, std::monostate{});
     }
   }
-  std::sort(handles.begin(), handles.end());
   std::function<bool(size_t, Match&)> search = [&](size_t index, Match& state) {
-    if (index == handles.size()) return true;
-    const int handle = handles[index];
-    for (const auto& constraint : pattern.TypeConstraints().at(handle)) {
+    if (index == groups.size()) return true;
+    const auto& [handle, alternatives] = groups[index];
+    for (const auto& constraint : *alternatives) {
       Match candidate = state;
-      if (MatchType(pattern, handle, constraint, candidate) && search(index + 1, candidate)) {
+      if (MatchType(pattern, graph, handle, constraint, candidate) && search(index + 1, candidate)) {
         state = std::move(candidate);
         return true;
       }
@@ -191,7 +198,7 @@ bool MatchPattern(const Pattern& pattern, const Graph& graph, const Node& root, 
     }
   }
   // Input variables must be outside the deletion set, even when aliasing another binding.
-  if (!MatchTypes(pattern, match))
+  if (!MatchTypes(pattern, graph, match))
     return fail(FailureStage::TypeShape, "Tensor type/rank/dimension or captured attribute type mismatch.");
   for (int value = 0; value < static_cast<int>(pattern.ValueCount()); ++value) {
     if (!pattern.IsInput(value)) continue;
@@ -547,6 +554,8 @@ Value Pattern::Constant(Literal constant) {
 }
 
 Value Pattern::NamedValue(std::string_view name) const {
+  auto alias = aliases_.find(std::string(name));
+  if (alias != aliases_.end()) return alias->second;
   auto it = std::find_if(values_.begin(), values_.end(), [&](const auto& value) { return value.name == name; });
   ORT_ENFORCE(!name.empty() && it != values_.end(), "Unknown pattern value: ", name);
   return *it;
@@ -605,11 +614,43 @@ bool Pattern::IsInput(Value value) const {
 }
 
 namespace detail {
+struct Port {
+  std::string name;
+  InlinedVector<TypeConstraint, 1> constraints;
+};
+
+struct Definition {
+  enum class Kind { Interface,
+                    Fragment,
+                    Union,
+                    Pattern };
+  Kind kind;
+  std::string name;
+  std::string interface_name;
+  std::string signature;
+  std::string body;
+  InlinedVector<Port> inputs;
+  InlinedVector<Port> outputs;
+  InlinedVector<std::string> members;
+  InlinedVector<std::shared_ptr<const Pattern>, 1> plans;
+  bool compiling = false;
+};
+
+using ResolveDefinition = std::function<const Definition*(std::string_view)>;
+
 class PatternParser {
  public:
   explicit PatternParser(std::string_view text, InlinedVector<NodeAttributes, 1>* attributes = nullptr,
                          InlinedVector<InlinedHashMap<std::string, std::string>, 1>* bindings = nullptr)
       : text_(text), replacement_attributes_(attributes), replacement_bindings_(bindings) {}
+
+  PatternParser(std::string_view text, ResolveDefinition resolve, gsl::span<const size_t> choices,
+                const Definition* definition = nullptr)
+      : text_(text), resolve_(std::move(resolve)), choices_(choices), definition_(definition) {}
+
+  const auto& Radices() const { return radices_; }
+  Status Declarations(InlinedVector<Definition, 1>& definitions);
+  static Status ValidateTypes(const Pattern& pattern);
 
   Status Parse(Pattern& destination) {
     ORT_RETURN_IF_ERROR(Next());
@@ -617,7 +658,7 @@ class PatternParser {
     if (token_ != ")") {
       do {
         std::string name;
-        ORT_RETURN_IF_ERROR(Identifier(name));
+        ORT_RETURN_IF_ERROR(Identifier(name, replacement_attributes_ != nullptr));
         ORT_RETURN_IF(symbols_.count(name), Error("duplicate input name"));
         ORT_RETURN_IF(pattern_.ValueCount() >= 256, Error("too many values"));
         Value input = pattern_.Input(name);
@@ -650,11 +691,33 @@ class PatternParser {
         ORT_RETURN_IF_ERROR(Next());
       }
       bool returned_values = false;
-      {
+      if (returned && definition_ && token_ == "(") {
+        ORT_RETURN_IF_ERROR(Next());
+        InlinedHashMap<std::string, Value> ports;
+        do {
+          std::string port, local;
+          ORT_RETURN_IF_ERROR(Identifier(port));
+          ORT_RETURN_IF_ERROR(Expect("="));
+          ORT_RETURN_IF_ERROR(Identifier(local, true));
+          auto found = symbols_.find(local);
+          ORT_RETURN_IF(found == symbols_.end(), Error("undefined return value"));
+          ORT_RETURN_IF(!ports.emplace(port, found->second).second, Error("duplicate return port"));
+          if (token_ != ",") break;
+          ORT_RETURN_IF_ERROR(Next());
+        } while (true);
+        ORT_RETURN_IF_ERROR(Expect(")"));
+        ORT_RETURN_IF(ports.size() != definition_->outputs.size(), Error("interface return ports differ"));
+        for (const auto& port : definition_->outputs) {
+          auto found = ports.find(port.name);
+          ORT_RETURN_IF(found == ports.end(), Error("missing interface return port"));
+          pattern_.outputs_.push_back(found->second);
+        }
+        returned_values = true;
+      } else {
         const size_t start = token_start_;
         do {
           std::string name;
-          ORT_RETURN_IF_ERROR(Identifier(name, names.empty()));
+          ORT_RETURN_IF_ERROR(Identifier(name, names.empty() || static_cast<bool>(resolve_)));
           ORT_RETURN_IF(std::find(names.begin(), names.end(), name) != names.end(), Error("duplicate assignment name"));
           names.push_back(std::move(name));
           if (token_ == ":") {
@@ -675,34 +738,40 @@ class PatternParser {
           names.clear();
           returned = true;
         } else {
-          ORT_RETURN_IF(std::any_of(names.begin(), names.end(),
-                                    [](const auto& name) { return name.find('.') != std::string::npos; }),
+          ORT_RETURN_IF(!resolve_ && std::any_of(names.begin(), names.end(),
+                                                 [](const auto& name) { return name.find('.') != std::string::npos; }),
                         Error("expected value identifier"));
           if (returned) {
             ORT_RETURN_IF(token_ == "=", Error("assign outputs before returning them"));
-            ORT_RETURN_IF(pattern_.Nodes().empty(), Error("return must identify operator outputs"));
+            ORT_RETURN_IF(pattern_.Nodes().empty() && !definition_, Error("return must identify operator outputs"));
             for (size_t i = 0; i < names.size(); ++i) {
               auto found = symbols_.find(names[i]);
               ORT_RETURN_IF(found == symbols_.end(), Error("undefined return value"));
-              ORT_RETURN_IF(pattern_.IsInput(found->second), Error("cannot return a leaf input"));
+              ORT_RETURN_IF(pattern_.IsInput(found->second) && !definition_, Error("cannot return a leaf input"));
               pattern_.outputs_.push_back(found->second);
             }
             returned_values = true;
           } else {
-            for (const auto& name : names)
-              ORT_RETURN_IF(symbols_.count(name) || pattern_.attribute_names_.count(name),
+            for (const auto& name : names) {
+              ORT_RETURN_IF(name.find('.') != std::string::npos, Error("expected assignment identifier"));
+              ORT_RETURN_IF(symbols_.count(name) || pattern_.attribute_names_.count(name) || pattern_.instances_.count(name),
                             Error("duplicate assignment or capture name"));
+            }
             ORT_RETURN_IF_ERROR(Expect("="));
           }
         }
       }
       if (!returned_values) {
         ORT_RETURN_IF_ERROR(Call(names));
-        for (auto& [name, constraint] : annotations)
-          pattern_.type_constraints_.emplace(symbols_.at(name).handle, std::move(constraint));
+        for (auto& [name, constraint] : annotations) {
+          auto found = symbols_.find(name);
+          ORT_RETURN_IF(found == symbols_.end() || pattern_.instances_.count(name),
+                        Error("annotate fragment ports in their interface"));
+          pattern_.type_constraints_.emplace(found->second.handle, std::move(constraint));
+        }
       }
       if (returned) {
-        if (!returned_values) pattern_.outputs_ = pattern_.Nodes().back().outputs;
+        if (!returned_values) pattern_.outputs_ = last_outputs_;
         if (kind_ == Kind::Symbol && token_ == ";") ORT_RETURN_IF_ERROR(Next());
         if (braced) ORT_RETURN_IF_ERROR(Expect("}"));
         ORT_RETURN_IF(kind_ != Kind::End, Error("unexpected text after return"));
@@ -710,36 +779,15 @@ class PatternParser {
       }
     }
     ORT_RETURN_IF(!returned, Error("missing return"));
-    InlinedHashSet<std::string> dimension_names;
-    InlinedHashSet<std::string> element_names;
-    size_t combinations = 1;
-    for (const auto& [handle, alternatives] : pattern_.type_constraints_) {
-      ORT_RETURN_IF(combinations > 64 / alternatives.size(), Error("type alternatives exceed 64 combinations"));
-      combinations *= alternatives.size();
-      for (const auto& constraint : alternatives) {
-        if (pattern_.IsAttribute(handle)) {
-          ORT_RETURN_IF(alternatives.size() != 1 || !constraint.attribute_type || pattern_.IsOptional(handle),
-                        Error("invalid attribute annotation or optional attribute"));
-        } else {
-          ORT_RETURN_IF(!constraint.tensor_type, Error("annotation requires an attribute variable"));
-        }
-        if (!constraint.element_variable.empty()) element_names.insert(constraint.element_variable);
-        for (const auto& dim : constraint.dimensions)
-          if (const auto* name = std::get_if<std::string>(&dim)) dimension_names.insert(*name);
-      }
-    }
-    ORT_RETURN_IF(dimension_names.size() + element_names.size() > 256, Error("too many annotation variables"));
-    for (const auto& name : dimension_names)
-      ORT_RETURN_IF(symbols_.count(name) || pattern_.attribute_names_.count(name) || element_names.count(name),
-                    Error("dimension name conflicts with another variable"));
-    for (const auto& name : element_names)
-      ORT_RETURN_IF(symbols_.count(name) || pattern_.attribute_names_.count(name),
-                    Error("element type name conflicts with another variable"));
+    ORT_RETURN_IF_ERROR(ValidateTypes(pattern_));
     for (const auto& node : pattern_.Nodes())
       for (Value input : node.inputs)
         ORT_RETURN_IF(pattern_.IsAttribute(input), Error("attribute variable used as a tensor input"));
     InlinedHashSet<int> reachable;
-    for (Value output : pattern_.Nodes().back().outputs) reachable.insert(output.handle);
+    if (!pattern_.Nodes().empty() && !definition_)
+      for (Value output : pattern_.Nodes().back().outputs) reachable.insert(output.handle);
+    else
+      for (Value output : pattern_.Outputs()) reachable.insert(output.handle);
     for (int handle : attribute_inputs_) reachable.insert(handle);
     for (auto it = pattern_.Nodes().rbegin(); it != pattern_.Nodes().rend(); ++it) {
       ORT_RETURN_IF(std::none_of(it->outputs.begin(), it->outputs.end(),
@@ -785,6 +833,8 @@ class PatternParser {
       while (position_ < text_.size() &&
              (Alpha(text_[position_]) || Digit(text_[position_]) || text_[position_] == '.'))
         ++position_;
+    } else if (c == '-' && position_ < text_.size() && text_[position_] == '>') {
+      ++position_;
     } else if (Digit(c) || c == '-' || c == '+' || c == '.') {
       kind_ = Kind::Number;
       while (position_ < text_.size()) {
@@ -849,7 +899,8 @@ class PatternParser {
         return other.absent == constraint.absent && other.element_type == constraint.element_type &&
                other.element_variable == constraint.element_variable && other.dimensions == constraint.dimensions &&
                other.any_rank == constraint.any_rank && (constraint.any_rank || other.prefix == constraint.prefix) &&
-               other.attribute_type == constraint.attribute_type && other.tensor_type == constraint.tensor_type;
+               other.attribute_type == constraint.attribute_type && other.tensor_type == constraint.tensor_type &&
+               other.immutable == constraint.immutable;
       };
       ORT_RETURN_IF(std::any_of(alternatives.begin(), alternatives.end(), equivalent), Error("duplicate type alternative"));
       alternatives.push_back(std::move(constraint));
@@ -864,6 +915,10 @@ class PatternParser {
   Status AnnotationType(TypeConstraint& constraint) {
     std::string type;
     ORT_RETURN_IF_ERROR(Identifier(type));
+    if (type == "const") {
+      constraint.immutable = true;
+      ORT_RETURN_IF_ERROR(Identifier(type));
+    }
     if (type == "int" || type == "ints" || type == "floats" || type == "strings") {
       constraint.tensor_type = false;
       if (type == "int") constraint.attribute_type = ONNX_NAMESPACE::AttributeProto_AttributeType_INT;
@@ -927,6 +982,8 @@ class PatternParser {
       }
       ORT_RETURN_IF_ERROR(Expect("]"));
     }
+    ORT_RETURN_IF(constraint.immutable && !constraint.tensor_type, Error("const requires a tensor type"));
+    if (constraint.immutable) constraint.attribute_type = 0;
     return Status::OK();
   }
 
@@ -978,6 +1035,37 @@ class PatternParser {
   }
 
   Status Call(const InlinedVector<std::string>& names) {
+    if (resolve_ && token_ == "(") {
+      Definition anonymous;
+      anonymous.kind = Definition::Kind::Union;
+      anonymous.name = "<anonymous>";
+      InlinedHashSet<std::string> members;
+      ORT_RETURN_IF_ERROR(Next());
+      do {
+        std::string member;
+        ORT_RETURN_IF_ERROR(Identifier(member));
+        ORT_RETURN_IF(!members.insert(member).second, Error("duplicate union member"));
+        const auto* definition = resolve_(member);
+        ORT_RETURN_IF(!definition || definition->kind != Definition::Kind::Fragment,
+                      Error("anonymous alternatives require concrete fragments"));
+        ORT_RETURN_IF(!anonymous.interface_name.empty() && anonymous.interface_name != definition->interface_name,
+                      Error("incompatible union interfaces"));
+        anonymous.interface_name = definition->interface_name;
+        anonymous.inputs = definition->inputs;
+        anonymous.outputs = definition->outputs;
+        for (const auto& plan : definition->plans) {
+          Pattern alternative = *plan;
+          alternative.instances_[""] = {anonymous.name, anonymous.interface_name, member};
+          anonymous.plans.push_back(std::make_shared<const Pattern>(std::move(alternative)));
+          ORT_RETURN_IF(anonymous.plans.size() > 64, Error("graph alternatives exceed 64 concrete plans"));
+        }
+        if (token_ != "|") break;
+        ORT_RETURN_IF_ERROR(Next());
+      } while (true);
+      ORT_RETURN_IF(anonymous.plans.size() < 2, Error("anonymous union needs at least two alternatives"));
+      ORT_RETURN_IF_ERROR(Expect(")"));
+      return FragmentCall(names, anonymous);
+    }
     ORT_RETURN_IF(kind_ != Kind::Identifier || token_ == "return", Error("expected operator name"));
     Operator op{token_, ""};
     ORT_RETURN_IF_ERROR(Next());
@@ -994,6 +1082,12 @@ class PatternParser {
         op.name.erase(0, dot + 1);
         ORT_RETURN_IF(op.name.empty(), Error("expected qualified operator name"));
       }
+    }
+    if (resolve_ && op.domain.empty()) {
+      if (const auto* definition = resolve_(op.name))
+        return FragmentCall(names, *definition);
+      ORT_RETURN_IF(!ONNX_NAMESPACE::OpSchemaRegistry::Schema(op.name),
+                    Error("unknown fragment or unqualified ONNX operator"));
     }
     ORT_RETURN_IF_ERROR(Expect("("));
     InlinedVector<Value> inputs;
@@ -1014,7 +1108,8 @@ class PatternParser {
             ORT_RETURN_IF_ERROR(Next());
             if (kind_ == Kind::Identifier) {
               std::string capture;
-              ORT_RETURN_IF_ERROR(Identifier(capture));
+              ORT_RETURN_IF_ERROR(Identifier(capture, replacement_bindings_ != nullptr));
+              ORT_RETURN_IF(pattern_.instances_.count(capture), Error("attribute capture conflicts with a fragment instance"));
               if (replacement_bindings_) {
                 auto found = symbols_.find(capture);
                 ORT_RETURN_IF(found == symbols_.end() || !pattern_.IsInput(found->second),
@@ -1110,6 +1205,7 @@ class PatternParser {
     ORT_RETURN_IF(outputs > 64 || pattern_.Nodes().size() >= 64 || pattern_.ValueCount() + outputs > 256,
                   Error("pattern limits exceeded"));
     auto values = pattern_.MultiOp(std::move(op), gsl::span<const Value>(inputs), outputs);
+    last_outputs_ = values;
     pattern_.Attributes(std::move(attributes));
     if (replacement_attributes_) replacement_attributes_->push_back(std::move(literal_attributes));
     if (replacement_bindings_) replacement_bindings_->push_back(std::move(bindings));
@@ -1138,8 +1234,364 @@ class PatternParser {
   InlinedVector<NodeAttributes, 1>* replacement_attributes_ = nullptr;
   InlinedVector<InlinedHashMap<std::string, std::string>, 1>* replacement_bindings_ = nullptr;
   InlinedHashSet<int> attribute_inputs_;
+  ResolveDefinition resolve_;
+  gsl::span<const size_t> choices_;
+  const Definition* definition_ = nullptr;
+  InlinedVector<size_t> radices_;
+  InlinedVector<Value> last_outputs_;
+  Status Header(InlinedVector<Port>& ports, std::string& signature);
+  Status FragmentCall(const InlinedVector<std::string>& names, const Definition& definition);
+};
+
+Status PatternParser::ValidateTypes(const Pattern& pattern) {
+  InlinedHashSet<std::string> dimensions, elements, names;
+  for (const auto& value : pattern.values_)
+    if (!value.name.empty()) names.insert(value.name);
+  for (const auto& [name, value] : pattern.aliases_) names.insert(name);
+  for (const auto& name : pattern.attribute_names_) names.insert(name);
+  for (const auto& [name, instance] : pattern.instances_) names.insert(name);
+  size_t combinations = 1;
+  auto validate = [&](int handle, const auto& alternatives) -> Status {
+    ORT_RETURN_IF(alternatives.empty() || combinations > 64 / alternatives.size(),
+                  "Type alternatives exceed 64 combinations.");
+    combinations *= alternatives.size();
+    for (const auto& type : alternatives) {
+      if (pattern.IsAttribute(handle)) {
+        ORT_RETURN_IF(alternatives.size() != 1 || !type.attribute_type || type.immutable || pattern.IsOptional(handle),
+                      "Invalid attribute annotation or optional attribute.");
+      } else {
+        ORT_RETURN_IF(!type.tensor_type, "Annotation requires an attribute variable.");
+      }
+      if (!type.element_variable.empty()) elements.insert(type.element_variable);
+      for (const auto& dim : type.dimensions)
+        if (const auto* name = std::get_if<std::string>(&dim)) dimensions.insert(*name);
+    }
+    return Status::OK();
+  };
+  for (const auto& [handle, alternatives] : pattern.type_constraints_) ORT_RETURN_IF_ERROR(validate(handle, alternatives));
+  for (const auto& [handle, alternatives] : pattern.additional_type_constraints_)
+    ORT_RETURN_IF_ERROR(validate(handle, alternatives));
+  ORT_RETURN_IF(dimensions.size() + elements.size() > 256, "Too many annotation variables.");
+  for (const auto& name : dimensions)
+    ORT_RETURN_IF(names.count(name) || elements.count(name), "Dimension name conflicts with another variable: ", name);
+  for (const auto& name : elements)
+    ORT_RETURN_IF(names.count(name), "Element type name conflicts with another variable: ", name);
+  return Status::OK();
+}
+
+Status PatternParser::Header(InlinedVector<Port>& ports, std::string& signature) {
+  const size_t start = token_start_;
+  ORT_RETURN_IF_ERROR(Expect("("));
+  InlinedHashSet<std::string> names;
+  while (token_ != ")") {
+    Port port;
+    ORT_RETURN_IF_ERROR(Identifier(port.name));
+    ORT_RETURN_IF(!names.insert(port.name).second, Error("duplicate port"));
+    if (token_ == ":") ORT_RETURN_IF_ERROR(Annotation(port.name, port.constraints));
+    ports.push_back(std::move(port));
+    ORT_RETURN_IF(ports.size() > 64, Error("too many ports"));
+    if (token_ != ",") break;
+    ORT_RETURN_IF_ERROR(Next());
+  }
+  const size_t end = token_start_ + 1;
+  ORT_RETURN_IF_ERROR(Expect(")"));
+  signature = text_.substr(start, end - start);
+  return Status::OK();
+}
+
+Status PatternParser::Declarations(InlinedVector<Definition, 1>& definitions) {
+  ORT_RETURN_IF_ERROR(Next());
+  InlinedHashSet<std::string> names;
+  while (kind_ != Kind::End) {
+    if (token_ == ";") {
+      ORT_RETURN_IF_ERROR(Next());
+      continue;
+    }
+    Definition definition;
+    if (token_ == "interface")
+      definition.kind = Definition::Kind::Interface;
+    else if (token_ == "fragment")
+      definition.kind = Definition::Kind::Fragment;
+    else if (token_ == "union")
+      definition.kind = Definition::Kind::Union;
+    else if (token_ == "pattern")
+      definition.kind = Definition::Kind::Pattern;
+    else
+      return Error("expected interface, fragment, union or pattern");
+    ORT_RETURN_IF_ERROR(Next());
+    ORT_RETURN_IF_ERROR(Identifier(definition.name));
+    ORT_RETURN_IF(!names.insert(definition.name).second, Error("duplicate definition"));
+    if (definition.kind == Definition::Kind::Union) {
+      ORT_RETURN_IF_ERROR(Expect("="));
+      do {
+        std::string member;
+        ORT_RETURN_IF_ERROR(Identifier(member));
+        ORT_RETURN_IF(std::find(definition.members.begin(), definition.members.end(), member) != definition.members.end(),
+                      Error("duplicate union member"));
+        definition.members.push_back(std::move(member));
+        if (token_ != "|") break;
+        ORT_RETURN_IF_ERROR(Next());
+      } while (true);
+      ORT_RETURN_IF(definition.members.size() < 2 || definition.members.size() > 64,
+                    Error("unions need between 2 and 64 members"));
+    } else {
+      if (definition.kind == Definition::Kind::Fragment) {
+        ORT_RETURN_IF(token_ != "implements", Error("fragment requires an interface"));
+        ORT_RETURN_IF_ERROR(Next());
+        ORT_RETURN_IF_ERROR(Identifier(definition.interface_name));
+        definition.signature = "()";
+        if (token_ == ":") {
+          ORT_RETURN_IF_ERROR(Next());
+          ORT_RETURN_IF_ERROR(Header(definition.inputs, definition.signature));
+          ORT_RETURN_IF_ERROR(Expect("->"));
+        }
+      } else {
+        ORT_RETURN_IF_ERROR(Header(definition.inputs, definition.signature));
+      }
+      if (definition.kind == Definition::Kind::Interface) {
+        std::string output_signature;
+        ORT_RETURN_IF_ERROR(Expect("->"));
+        ORT_RETURN_IF_ERROR(Header(definition.outputs, output_signature));
+        ORT_RETURN_IF(definition.outputs.empty(), Error("interface requires output ports"));
+        InlinedHashSet<std::string> ports;
+        for (const auto& input : definition.inputs) ports.insert(input.name);
+        for (const auto& output : definition.outputs) {
+          ORT_RETURN_IF(!ports.insert(output.name).second, Error("input/output port name collision"));
+          ORT_RETURN_IF(std::any_of(output.constraints.begin(), output.constraints.end(),
+                                    [](const auto& constraint) { return constraint.absent; }),
+                        Error("interface outputs cannot be optional"));
+        }
+        Pattern contract;
+        for (const auto* port_list : {&definition.inputs, &definition.outputs}) {
+          for (const auto& port : *port_list) {
+            for (const auto& type : port.constraints)
+              ORT_RETURN_IF(!type.tensor_type, Error("interface ports must be tensors"));
+            const Value value = contract.Input(port.name);
+            if (!port.constraints.empty()) contract.type_constraints_.emplace(value.handle, port.constraints);
+          }
+        }
+        ORT_RETURN_IF_ERROR(ValidateTypes(contract));
+      } else {
+        const size_t start = token_start_;
+        ORT_RETURN_IF_ERROR(Expect("{"));
+        while (!(kind_ == Kind::Symbol && token_ == "}") && kind_ != Kind::End) ORT_RETURN_IF_ERROR(Next());
+        ORT_RETURN_IF(kind_ == Kind::End, Error("unterminated definition body"));
+        definition.body = text_.substr(start, token_start_ + 1 - start);
+        ORT_RETURN_IF_ERROR(Expect("}"));
+      }
+    }
+    definitions.push_back(std::move(definition));
+    ORT_RETURN_IF(definitions.size() > 256, Error("too many definitions"));
+  }
+  return Status::OK();
+}
+
+Status PatternParser::FragmentCall(const InlinedVector<std::string>& names, const Definition& definition) {
+  ORT_RETURN_IF(definition.kind == Definition::Kind::Interface, Error("interfaces are not callable"));
+  ORT_RETURN_IF(definition.kind == Definition::Kind::Pattern, Error("call a fragment, not an entry pattern"));
+  ORT_RETURN_IF(names.size() != 1, Error("fragment calls require one named instance"));
+  const std::string& path = names.front();
+  ORT_RETURN_IF(pattern_.instances_.count(path), Error("duplicate fragment instance"));
+  ORT_RETURN_IF_ERROR(Expect("("));
+  InlinedVector<Value> inputs;
+  while (token_ != ")") {
+    std::string actual;
+    ORT_RETURN_IF_ERROR(Identifier(actual, true));
+    auto found = symbols_.find(actual);
+    ORT_RETURN_IF(found == symbols_.end(), Error("undefined fragment argument"));
+    inputs.push_back(found->second);
+    if (token_ != ",") break;
+    ORT_RETURN_IF_ERROR(Next());
+  }
+  ORT_RETURN_IF_ERROR(Expect(")"));
+  ORT_RETURN_IF(inputs.size() != definition.inputs.size(), Error("fragment argument count mismatch"));
+  ORT_RETURN_IF(definition.plans.empty(), Error("fragment has no concrete plans"));
+  const size_t call = radices_.size();
+  radices_.push_back(definition.plans.size());
+  const size_t choice = call < choices_.size() ? choices_[call] : 0;
+  ORT_RETURN_IF(choice >= definition.plans.size(), Error("invalid alternative selection"));
+  const Pattern& source = *definition.plans[choice];
+  ORT_RETURN_IF(pattern_.Nodes().size() + source.Nodes().size() > 64, Error("expanded node limit exceeded"));
+  InlinedVector<Value> map(source.ValueCount(), Value{-1});
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    const Value formal = source.NamedValue(definition.inputs[i].name);
+    ORT_RETURN_IF(source.IsAttribute(formal), Error("fragment tensor ports cannot be attributes"));
+    map[formal.handle] = inputs[i];
+    if (!source.IsOptional(formal)) pattern_.optional_inputs_.erase(inputs[i].handle);
+  }
+  auto scoped = [&](std::string_view name) { return path + "." + std::string(name); };
+  for (const auto& value : source.values_) {
+    if (map[value.handle].handle < 0) {
+      ORT_RETURN_IF(pattern_.ValueCount() >= 256, Error("expanded value limit exceeded"));
+      map[value.handle] = pattern_.AddValue(value.name.empty() ? "" : scoped(value.name));
+      if (source.IsOptional(value)) pattern_.optional_inputs_.insert(map[value.handle].handle);
+    }
+    if (!value.name.empty()) {
+      pattern_.aliases_.emplace(scoped(value.name), map[value.handle]);
+      symbols_.emplace(scoped(value.name), map[value.handle]);
+    }
+  }
+  auto remap = [&](Value value) { return value.handle < 0 ? value : map[value.handle]; };
+  for (const auto& [name, value] : source.aliases_) {
+    pattern_.aliases_.insert_or_assign(scoped(name), remap(value));
+    symbols_.insert_or_assign(scoped(name), remap(value));
+  }
+  for (const auto& [handle, literal] : source.constants_)
+    pattern_.constants_.emplace(map[handle].handle, literal);
+  for (const auto& node : source.nodes_) {
+    Pattern::NodePattern copy = node;
+    for (auto& input : copy.inputs) input = remap(input);
+    for (auto& output : copy.outputs) output = remap(output);
+    for (auto& attribute : copy.attributes)
+      if (!attribute.capture.empty()) attribute.capture = scoped(attribute.capture);
+    pattern_.nodes_.push_back(std::move(copy));
+  }
+  for (const auto& name : source.attribute_names_) pattern_.attribute_names_.insert(scoped(name));
+  for (int handle : source.attribute_inputs_) {
+    pattern_.attribute_inputs_.insert(map[handle].handle);
+    attribute_inputs_.insert(map[handle].handle);
+  }
+  auto constraints = [&](int handle, const auto& alternatives) {
+    auto copy = alternatives;
+    for (auto& type : copy) {
+      type.value_name = scoped(type.value_name);
+      if (!type.element_variable.empty()) type.element_variable = scoped(type.element_variable);
+      for (auto& dim : type.dimensions)
+        if (auto* name = std::get_if<std::string>(&dim)) *name = scoped(*name);
+    }
+    pattern_.additional_type_constraints_.emplace_back(map[handle].handle, std::move(copy));
+  };
+  for (const auto& [handle, alternatives] : source.type_constraints_) constraints(handle, alternatives);
+  for (const auto& [handle, alternatives] : source.additional_type_constraints_) constraints(handle, alternatives);
+  for (const auto& [name, instance] : source.instances_)
+    pattern_.instances_.emplace(name.empty() ? path : scoped(name), instance);
+  last_outputs_.clear();
+  for (size_t i = 0; i < source.outputs_.size(); ++i) {
+    const Value output = remap(source.outputs_[i]);
+    const auto output_name = scoped(definition.outputs[i].name);
+    pattern_.aliases_.insert_or_assign(output_name, output);
+    symbols_.insert_or_assign(output_name, output);
+    last_outputs_.push_back(output);
+  }
+  if (last_outputs_.size() == 1) {
+    symbols_.emplace(path, last_outputs_.front());
+    pattern_.aliases_.emplace(path, last_outputs_.front());
+  }
+  return Status::OK();
+}
+
+class PatternModule {
+ public:
+  explicit PatternModule(std::string_view text) {
+    ORT_THROW_IF_ERROR(PatternParser(text).Declarations(definitions_));
+    for (size_t i = 0; i < definitions_.size(); ++i) by_name_.emplace(definitions_[i].name, i);
+    for (auto& definition : definitions_) Compile(definition);
+  }
+
+  Pattern GetPattern(std::string_view name) const {
+    auto found = by_name_.find(std::string(name));
+    ORT_ENFORCE(found != by_name_.end(), "Unknown library pattern: ", name);
+    const auto& definition = definitions_[found->second];
+    ORT_ENFORCE(definition.kind == Definition::Kind::Pattern, "Expected an entry pattern: ", name);
+    Pattern result = *definition.plans.front();
+    for (size_t i = 1; i < definition.plans.size(); ++i) result.alternatives_.push_back(definition.plans[i]);
+    return result;
+  }
+
+ private:
+  const Definition* Resolve(std::string_view name) {
+    auto found = by_name_.find(std::string(name));
+    if (found == by_name_.end()) return nullptr;  // Unqualified ONNX operator.
+    auto& definition = definitions_[found->second];
+    Compile(definition);
+    return &definition;
+  }
+
+  void Compile(Definition& definition) {
+    ORT_ENFORCE(!definition.compiling, "Recursive fragment/union definition: ", definition.name);
+    if (definition.kind == Definition::Kind::Interface || !definition.plans.empty()) return;
+    definition.compiling = true;
+    if (definition.kind == Definition::Kind::Union) {
+      for (const auto& member : definition.members) {
+        const auto* concrete = Resolve(member);
+        ORT_ENFORCE(concrete && concrete->kind == Definition::Kind::Fragment,
+                    "Union members must name concrete fragments: ", member);
+        ORT_ENFORCE(definition.interface_name.empty() || definition.interface_name == concrete->interface_name,
+                    "Incompatible union interfaces: ", definition.name);
+        definition.interface_name = concrete->interface_name;
+        definition.inputs = concrete->inputs;
+        definition.outputs = concrete->outputs;
+        for (const auto& plan : concrete->plans) {
+          Pattern copy = *plan;
+          copy.instances_[""] = {definition.name, definition.interface_name, member};
+          definition.plans.push_back(std::make_shared<const Pattern>(std::move(copy)));
+          ORT_ENFORCE(definition.plans.size() <= 64, "Graph alternatives exceed 64 concrete plans.");
+        }
+      }
+    } else {
+      if (definition.kind == Definition::Kind::Fragment) {
+        const auto* contract = Resolve(definition.interface_name);
+        ORT_ENFORCE(contract && contract->kind == Definition::Kind::Interface,
+                    "Unknown fragment interface: ", definition.interface_name);
+        // Extra external inputs are part of the body signature, not the call signature.
+        std::string extra = definition.signature.substr(1, definition.signature.size() - 2);
+        definition.signature = contract->signature;
+        if (!extra.empty()) {
+          definition.signature.pop_back();
+          if (!contract->inputs.empty()) definition.signature += ",";
+          definition.signature += extra + ")";
+        }
+        definition.inputs = contract->inputs;
+        definition.outputs = contract->outputs;
+      }
+      const std::string text = definition.signature + " => " + definition.body;
+      InlinedVector<size_t> choices;
+      do {
+        Pattern plan;
+        PatternParser parser(text, [&](std::string_view name) { return Resolve(name); }, choices, definition.kind == Definition::Kind::Fragment ? &definition : nullptr);
+        const auto status = parser.Parse(plan);
+        ORT_ENFORCE(status.IsOK(), "In definition ", definition.name, ": ", status.ErrorMessage());
+        ORT_ENFORCE(!plan.Nodes().empty() || definition.kind == Definition::Kind::Fragment,
+                    "Entry patterns must contain an operator.");
+        if (definition.kind == Definition::Kind::Fragment) {
+          ORT_ENFORCE(plan.outputs_.size() == definition.outputs.size(), "Fragment return count differs from interface.");
+          for (size_t i = 0; i < definition.outputs.size(); ++i) {
+            const auto& port = definition.outputs[i];
+            const Value output = plan.outputs_[i];
+            const auto local = std::find_if(plan.values_.begin(), plan.values_.end(),
+                                            [&](const auto& value) { return value.name == port.name; });
+            ORT_ENFORCE(local == plan.values_.end() || local->handle == output.handle,
+                        "Interface output shadows a different local value: ", port.name);
+            plan.aliases_.insert_or_assign(port.name, output);
+            if (!port.constraints.empty())
+              plan.additional_type_constraints_.emplace_back(output.handle, port.constraints);
+          }
+        }
+        ORT_THROW_IF_ERROR(PatternParser::ValidateTypes(plan));
+        plan.instances_[""] = {definition.name, definition.interface_name, ""};
+        definition.plans.push_back(std::make_shared<const Pattern>(std::move(plan)));
+        ORT_ENFORCE(definition.plans.size() <= 64, "Graph alternatives exceed 64 concrete plans.");
+        const auto& radices = parser.Radices();
+        choices.resize(radices.size(), 0);
+        size_t index = choices.size();
+        while (index > 0) {
+          --index;
+          if (++choices[index] < radices[index]) break;
+          choices[index] = 0;
+        }
+        if (index == 0 && (choices.empty() || choices[0] == 0)) break;
+      } while (true);
+    }
+    definition.compiling = false;
+  }
+
+  InlinedVector<Definition, 1> definitions_;
+  InlinedHashMap<std::string, size_t> by_name_;
 };
 }  // namespace detail
+
+PatternLibrary::PatternLibrary(std::string_view text) : module_(std::make_shared<const detail::PatternModule>(text)) {}
+Pattern PatternLibrary::GetPattern(std::string_view name) const { return module_->GetPattern(name); }
 
 Rule::Rule(std::string name, Pattern pattern, ReplacementFunction replacement, CheckAndBind check_and_bind,
            InlinedVector<OpsetRequirement, 1> opsets)
@@ -1206,13 +1658,76 @@ Replacement::Replacement(std::string_view text) {
 
 const NodeArg* Match::valueOf(std::string_view name) const {
   ORT_ENFORCE(pattern, "Named lookup requires a matched pattern.");
-  auto value = std::find_if(pattern->values_.begin(), pattern->values_.end(),
-                            [&](const Value& candidate) { return candidate.name == name; });
-  ORT_ENFORCE(!name.empty() && value != pattern->values_.end(), "Unknown pattern value: ", name);
-  ORT_ENFORCE(value->handle >= 0 && static_cast<size_t>(value->handle) < values.size() &&
-                  (values[value->handle] || pattern->IsOptional(*value)),
+  const Value value = pattern->NamedValue(name);
+  ORT_ENFORCE(value.handle >= 0 && static_cast<size_t>(value.handle) < values.size() &&
+                  (values[value.handle] || pattern->IsOptional(value)),
               "Pattern value is not bound: ", name);
-  return values[value->handle];
+  return values[value.handle];
+}
+
+std::string BindingView::Qualify(std::string_view name) const {
+  return path_.empty() ? std::string(name) : path_ + "." + std::string(name);
+}
+
+const NodeArg* BindingView::valueOf(std::string_view name) const { return match_->valueOf(Qualify(name)); }
+const ONNX_NAMESPACE::AttributeProto& BindingView::attributeOf(std::string_view name) const {
+  return match_->attributeOf(Qualify(name));
+}
+const Dimension& BindingView::dimensionOf(std::string_view name) const { return match_->dimensionOf(Qualify(name)); }
+std::optional<int32_t> BindingView::elementTypeOf(std::string_view name) const {
+  return match_->elementTypeOf(Qualify(name));
+}
+BindingView BindingView::instance(std::string_view name) const {
+  ORT_ENFORCE(match_->pattern && !name.empty(), "Instance lookup requires a matched pattern and a name.");
+  const std::string path = Qualify(name);
+  ORT_ENFORCE(match_->pattern->instances_.count(path), "Unknown fragment instance: ", path);
+  return BindingView(*match_, path);
+}
+std::string_view BindingView::definition() const {
+  ORT_ENFORCE(match_->pattern && match_->pattern->instances_.count(path_), "No definition at binding path: ", path_);
+  return match_->pattern->instances_.at(path_).definition;
+}
+std::string_view BindingView::interfaceName() const {
+  ORT_ENFORCE(match_->pattern && match_->pattern->instances_.count(path_), "No definition at binding path: ", path_);
+  return match_->pattern->instances_.at(path_).interface_name;
+}
+std::string_view BindingView::alternative() const {
+  ORT_ENFORCE(match_->pattern && match_->pattern->instances_.count(path_), "No definition at binding path: ", path_);
+  return match_->pattern->instances_.at(path_).alternative;
+}
+
+namespace {
+template <typename T>
+Status ReadConstant(const Graph& graph, const NodeArg* value, int32_t type, InlinedVector<T>& data, bool& available) {
+  const auto* tensor = value ? graph_utils::GetConstantInitializer(graph, value->Name()) : nullptr;
+  if (!tensor || tensor->data_type() != type ||
+      tensor->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+    available = false;
+    return Status::OK();
+  }
+  size_t size = 1;
+  for (int64_t dimension : tensor->dims()) {
+    ORT_RETURN_IF(dimension < 0 || static_cast<uint64_t>(dimension) > std::numeric_limits<size_t>::max(),
+                  "Invalid constant tensor dimension.");
+    const auto dim = static_cast<size_t>(dimension);
+    ORT_RETURN_IF(dim != 0 && size > std::numeric_limits<size_t>::max() / dim, "Constant tensor size overflow.");
+    size *= dim;
+  }
+  InlinedVector<T> decoded(size);
+  ORT_RETURN_IF_ERROR(utils::UnpackTensor(*tensor, tensor->has_raw_data() ? tensor->raw_data().data() : nullptr,
+                                          tensor->raw_data().size(),
+                                          decoded.data(), decoded.size()));
+  data = std::move(decoded);
+  available = true;
+  return Status::OK();
+}
+}  // namespace
+
+Status ReadConstantTensor(const Graph& graph, const NodeArg* value, InlinedVector<float>& data, bool& available) {
+  return ReadConstant(graph, value, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, data, available);
+}
+Status ReadConstantTensor(const Graph& graph, const NodeArg* value, InlinedVector<int64_t>& data, bool& available) {
+  return ReadConstant(graph, value, ONNX_NAMESPACE::TensorProto_DataType_INT64, data, available);
 }
 
 void Match::update(std::string_view name, ONNX_NAMESPACE::AttributeProto value) {
@@ -1222,6 +1737,8 @@ void Match::update(std::string_view name, ONNX_NAMESPACE::AttributeProto value) 
   ORT_ENFORCE(!dimensions_.count(std::string(name)) && !element_types_.count(std::string(name)),
               "Extra attribute binding cannot overwrite a dimension or element type: ", name);
   if (pattern) {
+    ORT_ENFORCE(!pattern->aliases_.count(std::string(name)) && !pattern->instances_.count(std::string(name)),
+                "Extra attribute binding cannot overwrite a pattern binding: ", name);
     ORT_ENFORCE(std::none_of(pattern->values_.begin(), pattern->values_.end(),
                              [&](const Value& binding) { return binding.name == name; }),
                 "Extra attribute binding cannot overwrite a pattern value: ", name);
@@ -1283,7 +1800,19 @@ bool Match::BindElementType(std::string_view name, int32_t value) {
 }
 
 PatternRewriter::PatternRewriter(Rules rules, Options options)
-    : GraphTransformer("PatternRewriter"), rules_(std::move(rules)), options_(options) {
+    : GraphTransformer("PatternRewriter"), options_(options) {
+  // Expand in rule/branch order before indexing. Every attempt gets a fresh Match,
+  // including check-and-bind updates; replacement failures are never search failures.
+  for (auto& rule : rules) {
+    auto alternatives = std::move(rule.pattern.alternatives_);
+    rule.pattern.alternatives_.clear();
+    rules_.push_back(rule);
+    for (const auto& alternative : alternatives) {
+      Rule concrete = rule;
+      concrete.pattern = *alternative;
+      rules_.push_back(std::move(concrete));
+    }
+  }
   ORT_ENFORCE(options_.max_iterations > 0, "PatternRewriter max_iterations must be positive.");
   InlinedHashMap<std::string, size_t> signatures;
   for (size_t i = 0; i < rules_.size(); ++i) {
@@ -1306,6 +1835,9 @@ PatternRewriter::PatternRewriter(Rules rules, Options options)
         if (node.domain == kOnnxDomainAlias) node.domain = kOnnxDomain;
         ORT_ENFORCE(domains.count(node.domain), "Missing rule opset requirement for replacement domain: ", node.domain);
         for (const auto& [name, binding] : node.attribute_bindings) {
+          auto alias = rule.pattern.aliases_.find(binding);
+          ORT_ENFORCE(alias == rule.pattern.aliases_.end() || rule.pattern.IsAttribute(alias->second),
+                      "Replacement attribute binding conflicts with a pattern value: ", binding);
           ORT_ENFORCE(std::none_of(rule.pattern.values_.begin(), rule.pattern.values_.end(),
                                    [&](const Value& value) {
                                      return value.name == binding && !rule.pattern.IsAttribute(value);
@@ -1343,7 +1875,7 @@ PatternRewriter::PatternRewriter(Rules rules, Options options)
     // Opaque predicates cannot be compared safely; keep their plans distinct.
     if (std::any_of(rule.pattern.Nodes().begin(), rule.pattern.Nodes().end(),
                     [](const auto& node) { return !node.attributes.empty(); }) ||
-        !rule.pattern.TypeConstraints().empty())
+        !rule.pattern.TypeConstraints().empty() || !rule.pattern.AdditionalTypeConstraints().empty())
       signature += "#" + std::to_string(i);
     auto [it, inserted] = signatures.emplace(signature, groups_.size());
     if (inserted) {

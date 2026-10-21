@@ -17,7 +17,8 @@ namespace rewrite {
 
 namespace detail {
 class PatternParser;
-}
+class PatternModule;
+}  // namespace detail
 
 struct Value {
   std::string name;
@@ -62,6 +63,7 @@ struct TypeConstraint {
   int32_t attribute_type = 0;  // Scalar/list attribute interpretation, when applicable.
   bool tensor_type = true;
   bool absent = false;
+  bool immutable = false;
 };
 
 struct OpsetRequirement {
@@ -91,9 +93,13 @@ class Pattern {
   const auto& AttributeNames() const { return attribute_names_; }
   const auto& TypeConstraints() const { return type_constraints_; }
   bool IsAttribute(Value value) const { return attribute_inputs_.count(value.handle) != 0; }
+  const auto& AdditionalTypeConstraints() const { return additional_type_constraints_; }
 
  private:
   friend class detail::PatternParser;
+  friend class detail::PatternModule;
+  friend class PatternLibrary;
+  friend class BindingView;
   friend struct Replacement;
   friend struct Match;
   friend class PatternRewriter;
@@ -115,8 +121,55 @@ class Pattern {
   InlinedHashSet<std::string> attribute_names_;
   InlinedHashMap<int, InlinedVector<TypeConstraint, 1>> type_constraints_;
   InlinedHashSet<int> attribute_inputs_;
+  InlinedHashMap<std::string, Value> aliases_;
+  InlinedVector<std::pair<int, InlinedVector<TypeConstraint, 1>>> additional_type_constraints_;
+  struct Instance {
+    std::string definition;
+    std::string interface_name;
+    std::string alternative;
+  };
+  InlinedHashMap<std::string, Instance> instances_;
+  InlinedVector<std::shared_ptr<const Pattern>, 1> alternatives_;
   Value AddValue(std::string_view name);
 };
+
+// A library owns independent interfaces, fragments, unions and named entry patterns.
+class PatternLibrary {
+ public:
+  explicit PatternLibrary(std::string_view text);
+  Pattern GetPattern(std::string_view name) const;
+
+ private:
+  std::shared_ptr<const detail::PatternModule> module_;
+};
+
+struct Match;
+
+// Non-owning, instance-scoped access. Valid only during this candidate's callback.
+class BindingView {
+ public:
+  const NodeArg* valueOf(std::string_view name) const;
+  const ONNX_NAMESPACE::AttributeProto& attributeOf(std::string_view name) const;
+  const Dimension& dimensionOf(std::string_view name) const;
+  std::optional<int32_t> elementTypeOf(std::string_view name) const;
+  BindingView instance(std::string_view name) const;
+  std::string_view definition() const;
+  std::string_view interfaceName() const;
+  // Empty for a concrete call; the selected member name for a union occurrence.
+  std::string_view alternative() const;
+
+ private:
+  friend struct Match;
+  BindingView(const Match& match, std::string path) : match_(&match), path_(std::move(path)) {}
+  std::string Qualify(std::string_view name) const;
+  const Match* match_;
+  std::string path_;
+};
+
+// A missing/nonconstant/wrongly typed or externally stored payload is unavailable.
+// Malformed available payloads return an error. Outputs change only on success.
+Status ReadConstantTensor(const Graph& graph, const NodeArg* value, InlinedVector<float>& data, bool& available);
+Status ReadConstantTensor(const Graph& graph, const NodeArg* value, InlinedVector<int64_t>& data, bool& available);
 
 struct Match {
   InlinedVector<const Node*> nodes;
@@ -126,6 +179,8 @@ struct Match {
   const ONNX_NAMESPACE::AttributeProto& attributeOf(std::string_view name) const;
   const Dimension& dimensionOf(std::string_view name) const;
   std::optional<int32_t> elementTypeOf(std::string_view name) const;
+  BindingView bindings() const { return BindingView(*this, ""); }
+  BindingView instance(std::string_view name) const { return bindings().instance(name); }
   void ClearUpdates() {
     extra_attributes_.clear();
     rejection_reason_.clear();

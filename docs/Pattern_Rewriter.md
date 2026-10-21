@@ -710,3 +710,243 @@ rule wins even across groups, and lower-priority work is skipped when possible.
 With `indexed=false`, the reference mode instead tries all opset-applicable
 rules in registration order at each node. Match-only mode processes one batch,
 counts all passing rules, and never applies replacements.
+
+## Composable fragment libraries
+
+`PatternLibrary` parses an owning library of independent definitions and links
+named entry patterns. Definitions may refer forward to other definitions.
+`library.GetPattern("Fuse")` returns a copyable `Pattern` usable by every
+existing `Rule` constructor. The library and its source text need not outlive
+the returned pattern.
+
+```cpp
+PatternLibrary library(R"(
+  interface GatedActivation(g:float[M,N], u:float[M,N]) -> (product:float[M,N])
+
+  fragment plain implements GatedActivation {
+    s = Sigmoid(g)
+    a = Mul(g,s)
+    p = Mul(a,u)
+    return (product=p)
+  }
+
+  fragment scaled implements GatedActivation: (alpha:float[...]) -> {
+    scaled = Mul(g,alpha)
+    s = Sigmoid(scaled)
+    a = Mul(g,s)
+    p = Mul(a,u)
+    return (product=p)
+  }
+
+  union Forms = plain | scaled
+
+  fragment wrapped implements GatedActivation {
+    act = Forms(g,u)
+    return (product=act.product)
+  }
+
+  pattern Fuse(g,u) {
+    outer = wrapped(g,u)
+    return Identity(outer.product)
+  }
+)");
+```
+
+An **interface** is an abstract tensor binding contract, not a callable graph.
+A **fragment** supplies a graph body implementing that contract. It inherits
+interface inputs and returns its interface outputs, either positionally or
+with explicit `(port=local_value, ...)` mappings. Named mappings may reorder
+ports. Output annotations constrain the mapped values as well as input
+annotations; they do not manufacture shape evidence. Identity mappings such
+as `return (y=x)` are allowed inside fragments and emit no operator.
+A fragment can return independent branches, provided the complete expanded
+entry pattern still has the single connected root required by the matcher.
+
+The colon signature extends a fragment with external inputs discovered by
+matching. Here callers supply only `g,u`, while `alpha` binds to the input of
+the matched Mul. It remains a tensor, not an automatically decoded float.
+Additional attribute captures can also be declared in that signature using
+the existing attribute-annotation syntax. There is no separate capture
+language. Both `float[]` and `float[...]` continue to mean **any rank**, not
+scalar.
+
+A **union** supplies ordered alternatives with the same named interface.
+Its members are concrete fragments, not interfaces, entry patterns or other
+unions. A named call `act=Forms(g,u)` and the anonymous call
+`act=(plain | scaled)(g,u)` have the same matching behavior. Each occurrence
+has an independent selected member, available through `alternative()`;
+no user-defined tag name is required. Fragments may call fragments and unions
+at arbitrary nesting depths within the expansion bounds. Inline operator or
+subgraph alternative spellings are not supported; existing `|` type
+annotations are unchanged.
+
+Calls require one assigned instance name. Use `act.product` for common outputs
+and C++ views for concrete internals. A single-output instance additionally
+allows `act` as shorthand for its output. Tensor handles, attribute captures,
+dimensions and element-type variables are remapped into the call occurrence.
+Two instances do not share a capture just because its local spelling is the
+same. Formal inputs and returned aliases bind to the caller's actual
+`NodeArg`s; no integer handle from another definition is reused.
+Caller and callee annotations are conjunctive, while alternatives within
+one annotation remain disjunctive.
+
+Graph alternatives expand to at most **64 complete concrete plans per
+definition**, in source order (the rightmost call varies fastest).
+Each plan retains the existing limits of 64 nodes, 256 values and 64
+type-annotation combinations. Libraries contain at most 256 definitions.
+Recursive calls, duplicate definitions/ports, missing members, incompatible
+interfaces and invalid mappings fail during construction. An unresolved
+unqualified call must name a registered standard ONNX operator; use an
+explicit domain for other operators. This disambiguates misspelled fragment
+calls from ONNX calls without changing standalone `Pattern` parsing.
+
+Each complete candidate passes the existing structural, type/constant,
+deletion-boundary, layer, provider and opset checks before C++ acceptance.
+If the checker rejects it, the next concrete candidate is tried with fresh
+captures and computed attributes. Earlier rules retain priority over every
+alternative of a later rule. Search is bounded enumeration, not a recursive
+producer/permutation matcher. Replacement or callback errors propagate;
+they never cause a retry. Match-only statistics count passing concrete plans,
+so multiple alternatives of one logical rule can contribute matches.
+
+### Instance binding views and handwritten C++ structs
+
+`match.instance("outer").instance("act")` returns a read-only `BindingView`.
+Its `valueOf`, `attributeOf`, `dimensionOf`, and `elementTypeOf` use names
+relative to that occurrence. `definition()` identifies the called definition,
+`interfaceName()` its contract, and `alternative()` the selected concrete member
+(empty for a concrete call). Fully qualified lookups such as
+`match.valueOf("outer.act.alpha")` are equivalent. Missing instances and
+unavailable member-local names raise errors; they are not nullable optional
+fields. Only the selected member's concrete bindings exist.
+
+Views are non-owning and valid only during the candidate callback. They must
+not be retained across graph mutation. The following manual structs show what
+a future generator could emit; **this API does not generate C++**:
+
+```cpp
+struct GatedView {
+  const NodeArg* g;
+  const NodeArg* u;
+  const NodeArg* product;
+  explicit GatedView(BindingView v)
+      : g(v.valueOf("g")), u(v.valueOf("u")), product(v.valueOf("product")) {
+    ORT_ENFORCE(v.interfaceName() == "GatedActivation");
+  }
+};
+struct PlainView {
+  GatedView ports;
+  const NodeArg* sigmoid;
+  explicit PlainView(BindingView v) : ports(v), sigmoid(v.valueOf("s")) {}
+};
+struct ScaledView {
+  GatedView ports;
+  const NodeArg* alpha;
+  explicit ScaledView(BindingView v) : ports(v), alpha(v.valueOf("alpha")) {}
+};
+struct ActivationView {
+  GatedView ports;
+  std::variant<PlainView, ScaledView> alternative;
+  static std::variant<PlainView, ScaledView> Select(BindingView v) {
+    if (v.alternative() == "plain") return PlainView(v);
+    ORT_ENFORCE(v.alternative() == "scaled", "Unexpected activation member.");
+    return ScaledView(v);
+  }
+  explicit ActivationView(BindingView v) : ports(v), alternative(Select(v)) {}
+};
+struct FusionView {
+  GatedView outer;
+  ActivationView act;
+  explicit FusionView(const Match& m)
+      : outer(m.instance("outer")), act(m.instance("outer").instance("act")) {}
+};
+
+bool CheckGatingShapes(const GatedView& v) {
+  if (!v.g->Shape() || !v.u->Shape() ||
+      v.g->Shape()->dim_size() != 2 || v.u->Shape()->dim_size() != 2)
+    return false;
+  for (int i = 0; i < 2; ++i) {
+    const auto& g = v.g->Shape()->dim(i);
+    const auto& u = v.u->Shape()->dim(i);
+    if (!g.has_dim_value() || !u.has_dim_value() ||
+        g.dim_value() <= 0 || g.dim_value() != u.dim_value())
+      return false;
+  }
+  return true;
+}
+
+Rule MakeFragmentFusion(const PatternLibrary& library) {
+  auto check = [](const Graph& graph, Match& match) {
+    FusionView view(match);
+    if (!CheckGatingShapes(view.outer) || !CheckGatingShapes(view.act.ports))
+      return match.Reject("Unsupported gating shapes.");
+    float alpha = 1.0f;
+    if (const auto* scaled = std::get_if<ScaledView>(&view.act.alternative)) {
+      const auto* shape = scaled->alpha->Shape();
+      if (!shape || !(shape->dim_size() == 0 ||
+                      (shape->dim_size() == 1 && shape->dim(0).has_dim_value() &&
+                       shape->dim(0).dim_value() == 1)))
+        return match.Reject("Alpha must have scalar or [1] shape.");
+      InlinedVector<float> data;
+      bool available;
+      ORT_THROW_IF_ERROR(ReadConstantTensor(graph, scaled->alpha, data, available));
+      if (!available || data.size() != 1 || !std::isfinite(data[0]) || data[0] <= 0)
+        return match.Reject("Unsupported alpha.");
+      alpha = data[0];
+    }
+    ONNX_NAMESPACE::AttributeProto attribute;
+    attribute.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
+    attribute.set_f(alpha);
+    match.update("activation_alpha", std::move(attribute));
+    return true;
+  };
+  Replacement recipe(R"(
+    (g,u,activation_alpha) => {
+      a = com.microsoft.QuickGelu(g,alpha=activation_alpha)
+      return Mul(a,u)
+    }
+  )");
+  return Rule{"FragmentActivation", library.GetPattern("Fuse"), recipe, check,
+              {{kOnnxDomain, 17, 17}, {kMSDomain, 1, 1}}};
+}
+```
+
+Include `<cmath>` for `std::isfinite`, in addition to the rewriter header.
+This synthetic fusion recognizes `g * sigmoid(alpha*g) * u`, removes its
+trailing Identity, and selects the QuickGelu alpha in C++. The tests execute
+both source and replacement with CPU EP for plain, scalar-alpha and
+one-element-alpha cases. This is a small floating-point example, not a
+general MoE/QMoE lowering or a bitwise-equivalence guarantee.
+
+Replacement callbacks may likewise select among pre-parsed recipes in C++;
+that choice is host construction, **not** an ONNX If. Pre-parsed recipes can
+reference scoped tensor leaves, for example `(x,p.alpha)=>Mul(x,p.alpha)`.
+Such names must exist in every concrete plan when the recipe is attached
+directly to a rule; use a callback to choose a member-specific recipe.
+Matched internal outputs remain forbidden replacement inputs, including
+when accessed through an interface alias.
+
+### Optional immutable tensor constraints and constant readers
+
+The prefix qualifier `const`, as in `top_k:const int64[1]`, requires an
+immutable constant initializer in addition to the tensor annotation.
+It does not decode contents, bind a scalar, or require local payload storage.
+Runtime inputs and overridable initializers do not satisfy it.
+It can qualify individual tensor alternatives, including
+`const float[1] | float[] | None`. It cannot qualify an attribute type.
+
+`ReadConstantTensor(graph, value, data, available)` has typed overloads for
+`InlinedVector<float>` and `InlinedVector<int64_t>`. A missing value,
+nonconstant/overridable initializer, wrong element type, or external payload
+returns OK with `available=false`, leaving `data` unchanged. A malformed
+available payload returns an error, leaving both outputs unchanged.
+Success decodes raw or typed protobuf storage and sets `available=true`.
+C++ checks rank, supported values and all dependent relationships; decoding
+does not implicitly enforce scalar shape. Propagate reader errors, for
+example with `ORT_THROW_IF_ERROR` in a bool checker, rather than turning
+corruption into an ordinary alternative rejection.
+
+There are no fragment-valued parameters, construction-time scalar parameters,
+`where` clauses, tensor-content capture declarations, or C++ code generation.
+Semantic acceptance, tensor decoding, arithmetic and kernel support checks
+remain C++ responsibilities.
