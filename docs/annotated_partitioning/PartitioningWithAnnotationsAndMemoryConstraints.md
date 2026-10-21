@@ -416,13 +416,30 @@ GPU memory budget **before** materializing device weights and kernels. CPU offlo
 execution of selected regions with their required weights on the host, not CPU-resident weights that
 are repeatedly streamed to GPU kernels during `Run()`.
 
-This section owns region discovery, fusion-aware execution candidates, candidate boundaries, and
+This section owns graph-region discovery, fusion-aware execution candidates, candidate CPU/GPU cuts, and
 partitioner integration through final placement commitment. Dispatch-contract semantics and whole-session
 lifetime/backing accounting are defined in the companion
 [policy/workspace design proposal (PR #32944)](https://github.com/microsoft/onnxruntime/pull/32944),
 which proposes `policy_based_workspace_estimation.md`. The
 [constrained-environment roadmap](future_directions_constrained_env.md) provides broader context.
 This is pre-commit selection, not late rollback of already materialized layers or retry after OOM.
+
+### Terminology: Graph Regions, Execution Candidates, and Placement
+
+Separate **graph grouping**, **implementation choice**, and **device assignment**:
+
+| Term | Meaning in this proposal |
+|:-----|:-------------------------|
+| **Graph region** (or **region**) | A validated group of source nodes, such as a decoder block, used to organize the search. It does not identify a device, require one kernel, or by itself make the group indivisible. |
+| **Region discovery / region formation** | Finding and validating those groups and their dependencies from annotations, configured names, or graph structure. This answers "which nodes belong together for search?" without assigning them to CPU/GPU or rewriting them. |
+| **Fusion-aware execution candidate** | An EP's offer to execute a particular source-node set using a specified implementation recipe, with its interface, eligibility conditions, contracts, and requirements. It can describe standalone kernels, a fused kernel, or a compiled region; it is not yet a selected assignment. |
+| **Candidate CPU/GPU cut** (or **assignment boundary**) | A possible graph frontier separating CPU-assigned and GPU-assigned work in a tentative plan. This is the meaning of boundary search below, not merely the input/output boundary of a region or execution candidate. |
+| **Candidate plan** | A provisional whole-graph combination of CPU/GPU assignments, compatible execution candidates, selected contracts, transfers, and backing strategy. Unlike an individual execution candidate, it must cover the complete graph. |
+| **Placement** | Assignment of executable work to particular EPs/devices, such as CPU EP or CUDA EP. A tentative placement is a trial assignment; final placement is committed only after verification. It is distinct from allocating or uploading the associated storage. |
+
+Use **graph region** rather than "placement region", and **region formation** for the grouping step.
+Reserve **placement** for CPU/GPU assignment. A graph-region boundary, an execution candidate's
+input/output interface, and a CPU/GPU assignment boundary need not coincide.
 
 ### Initial Scope and Compatibility
 
@@ -445,19 +462,20 @@ when a fitting contract change preserves GPU placement. It must not claim an opt
 comparable performance evidence. Concurrent Runs, capture-retained pools, control flow, and compiling
 EPs require additional models or explicit rejection of unsupported budget-planning modes.
 
-### Discover Placement Regions Separately from EP Capabilities
+### Discover Graph Regions Separately from EP Capabilities
 
-ORT has no universal semantic layer unit. A **placement region** is a validated group used to generate
-alternatives; an EP capability describes nodes an EP can execute, possibly as a fused or compiled region.
-The two need not have the same boundaries. CUDA commonly claims individual nodes, while another EP may
-require a multi-node capability to remain indivisible.
+ORT has no universal semantic layer unit. **Region discovery** forms graph groups to organize candidate
+plans; it does not decide where those groups execute. An EP capability instead describes nodes an EP
+can execute, possibly as a fused or compiled region. The two need not have the same boundaries: one
+decoder-block region may contain many single-node CUDA capabilities or several fused capabilities.
+Conversely, an indivisible capability can constrain otherwise proposed region boundaries.
 
 Use the following discovery hierarchy:
 
 1. Prefer per-block-instance `layer_ann` metadata, with exporter-supplied structure where available.
 2. Otherwise use configured, validated node-name grouping. Do not guess a block index from arbitrary
    numeric substrings or assume exporter naming conventions are universal.
-3. Optionally generate a bounded set of graph-frontier candidates when structure is unavailable.
+3. Optionally form a bounded set of graph regions using graph frontiers when structure is unavailable.
    These are graph-based heuristics, not recovered semantic layers; otherwise retain fixed-placement
    contract selection and report that automatic block-boundary search is unavailable.
 
@@ -467,7 +485,7 @@ lexicographically. Check that contracting proposed groups does not introduce dep
 or merge incompatible groups. Respect mandatory fusion/compilation and QDQ constraints, and do not cut
 an accepted indivisible capability. Potential optional fusion does not by itself make a group a no-cut
 region. Shared nodes, embeddings, output heads, and nodes outside groups must have explicit treatment
-in every complete candidate.
+in every complete candidate plan.
 
 The existing `LayeringIndex` maps device rules to node membership and filters EP graph views. It is
 useful for applying a selected placement, but is not itself a region-discovery or boundary-search engine,
@@ -475,12 +493,13 @@ and does not establish semantic block order.
 
 ### Discover Fusion-Aware Execution Candidates
 
-Planning must discover implementations before deciding their placement, including implementations
-that fuse native ONNX operators. Extend the planning-safe `GetCapability()` path to describe executable
-candidates, not just whether individual nodes are supported or whether an arbitrary set could fuse.
-A candidate may use standalone kernels, a registered fused kernel, or a compiled subgraph; it need not
-correspond to one device kernel. An EP may support a pattern only as a fused region without supporting
-its constituent nodes separately.
+**Execution-candidate discovery** asks each EP "how could you execute these source nodes?" rather than
+forming graph groups or committing device assignments. **Fusion-aware** means considering the
+resulting implementation after an eligible fusion/lowering, not only the original nodes' standalone
+support and memory estimates. Extend the planning-safe `GetCapability()` path to describe these
+implementations before deciding their placement. A candidate may use standalone kernels, a registered
+fused kernel, or a compiled subgraph; it need not correspond to one device kernel. An EP may support a
+pattern only as a fused region without supporting its constituent nodes separately.
 
 Each EP returns only candidates it owns. ORT combines CUDA candidates with independently discovered
 CPU candidates; the CUDA EP does not propose CPU EP assignments. Planning queries identify the graph
@@ -558,6 +577,10 @@ standalone view:         {A}, {B}, {C}
 preferred optimized view: {A, B fused}, {C}
 ```
 
+Here `{A, B, C}` can remain one graph region in both views. Its grouping has not changed; the EP has
+offered different ways to implement its work. Neither view alone decides whether that region runs on
+CPU or GPU.
+
 These are alternative sets of capabilities, not necessarily two `ComputeCapability` objects. ORT
 selects a non-overlapping, complete cover across EPs that respects each view's compatibility constraints.
 The preferred view is not "all possible fusion": patterns can overlap, and a standalone view is valid
@@ -610,9 +633,11 @@ fallback, not a requirement to run the existing L2+ pipeline for every trial. Un
 remain unresolved. Neither this fallback nor ordinary discovery, provisional rewriting, and verification
 may execute inference or bulk-materialize device weights or kernels.
 
-### Generate a Small Family of Boundaries
+### Generate a Small Family of CPU/GPU Assignment Boundaries
 
-For a validated ordered chain of `L` blocks, start with a CPU prefix and GPU suffix:
+**Candidate boundaries** here are candidate CPU/GPU cuts: trial device-assignment frontiers used to
+generate candidate plans. They are not new graph groups or fusion recipes. For a validated ordered
+chain of `L` blocks, start with a CPU prefix and GPU suffix:
 
 ```text
 cut k: block[0 .. k-1] on CPU | block[k .. L-1] on GPU
@@ -623,10 +648,12 @@ This defines at most `L + 1` cuts, rather than `2^L` independent block assignmen
 support, and indivisible regions can exclude cuts or create unavoidable device islands. Generate cuts
 on demand near the current boundary instead of storing a full node-placement copy for every cut.
 
-A boundary is a graph frontier, not just the output of block `k-1`. Identify **every** tensor edge
-crossing devices, including residual/skip connections, shared consumers, and graph I/O. Include
-necessary copies, staging backing, casts/layout conversions, and synchronization in the provisional
-plan; deduplicate physical allocations separately from edge enumeration.
+A CPU/GPU assignment boundary is a graph frontier, not just the output of block `k-1`. Two adjacent
+graph regions both assigned to CUDA do not create an inter-device transfer merely because they are
+different regions. For each trial assignment, identify **every** tensor edge crossing devices,
+including residual/skip connections, shared consumers, and graph I/O. Include necessary copies,
+staging backing, casts/layout conversions, and synchronization in the provisional plan; deduplicate
+physical allocations separately from edge enumeration.
 
 Moving a region to CPU does not necessarily release all of its apparent GPU bytes: a shared initializer
 may still have a GPU consumer, and transfers can create new backing or prolong lifetimes. Do not assume
@@ -635,11 +662,13 @@ after validating that property for the candidate family; otherwise use a bounded
 Additional families, such as explicitly identified expert regions, can be added later without attempting
 all node-placement combinations.
 
-### Evaluate Candidates with a Provisional Session Plan
+### Evaluate Candidate Plans with a Provisional Session Plan
 
 `GetCapability()` can see connectivity and shape metadata, but not the finalized placement, transfer
 nodes, execution schedule, allocation reuse, and requirements across all EPs. Its local node estimates
-cannot by themselves decide which placement has the lowest whole-session backing.
+cannot by themselves decide which placement has the lowest whole-session backing. This stage evaluates
+complete candidate plans assembled from graph regions, assignment boundaries, and EP execution
+candidates, not an isolated fusion candidate.
 
 The framework should use this loop:
 
