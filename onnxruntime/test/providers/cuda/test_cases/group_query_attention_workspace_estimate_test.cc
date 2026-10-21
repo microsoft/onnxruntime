@@ -523,6 +523,53 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, ParsesPackedAndSeparateLayouts) {
   EXPECT_GT(packed->total_workspace_bytes, separate->total_workspace_bytes);
 }
 
+TEST(GroupQueryAttentionWorkspaceEstimateTest, MissingPastInputsDoNotProducePrefillOnlyEstimates) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  for (bool windowed : {false, true}) {
+    for (int64_t sequence : {int64_t{1}, int64_t{4}}) {
+      auto config = Config();
+      config.sliding_window_cache = windowed;
+      config.local_window_size = windowed ? 256 : -1;
+      config.max_total_sequence_length = 256;
+      const auto complete_shapes = SeparateShapes(sequence);
+      ASSERT_TRUE(EstimateGroupQueryAttentionWorkspace(
+                      config, complete_shapes, Device(), options)
+                      .has_value());
+      for (int missing : {1, 2, 3}) {
+        SCOPED_TRACE(testing::Message() << "windowed=" << windowed
+                                        << " sequence=" << sequence << " missing=" << missing);
+        auto shapes = complete_shapes;
+        if ((missing & 1) != 0) shapes[3] = {};
+        if ((missing & 2) != 0) shapes[4] = {};
+        EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(config, shapes, Device(), options).has_value());
+      }
+    }
+  }
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, QueryBoundAdmitsEveryRuntimeClassifierOutcome) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  for (int64_t sequence : {int64_t{1}, int64_t{4}}) {
+    for (auto policy : {KernelDispatchPolicy::Auto, KernelDispatchPolicy::Latency,
+                        KernelDispatchPolicy::Memory, KernelDispatchPolicy::Safe}) {
+      SCOPED_TRACE(testing::Message() << "sequence=" << sequence
+                                      << " policy=" << KernelDispatchPolicyName(policy));
+      auto config = Config();
+      config.dispatch_policy = policy;
+      const auto estimate = EstimateGroupQueryAttentionWorkspace(
+          config, SeparateShapes(sequence), Device(), options);
+      ASSERT_TRUE(estimate.has_value());
+      for (auto phase : {GQAExecutionPhase::Prefill, GQAExecutionPhase::Decode,
+                         GQAExecutionPhase::ChunkedPrefill}) {
+        EXPECT_EQ(estimate->committed_backends.Get(phase) != GQAReachableBackend::None,
+                  phase != GQAExecutionPhase::ChunkedPrefill || sequence > 1);
+      }
+    }
+  }
+}
+
 // Budget H512-only group ratios with rotary/sink scratch and reject malformed or inactive XQA layouts.
 TEST(GroupQueryAttentionWorkspaceEstimateTest, H512EstimatorDominatesCompleteRuntimeWorkspace) {
   AttentionKernelOptions options;
