@@ -2,7 +2,13 @@
 
 ONNX Runtime Web is a Javascript library for running ONNX models on browsers and on Node.js.
 
-ONNX Runtime Web has adopted WebAssembly and WebGL technologies for providing an optimized ONNX model inference runtime for both CPUs and GPUs.
+> [!WARNING]
+> The WebGL backend is deprecated and will be removed in a future release. Migrate to the WebGPU or WebAssembly
+> backend. See the [WebGL deprecation tracking issue](https://github.com/microsoft/onnxruntime/issues/32241) for
+> current status and migration support.
+
+ONNX Runtime Web uses WebAssembly for CPU inference and supports GPU acceleration through WebGPU. The legacy WebGL
+backend remains available during its deprecation window.
 
 ### Why ONNX models
 
@@ -12,7 +18,7 @@ The [Open Neural Network Exchange](http://onnx.ai/) (ONNX) is an open standard f
 
 With ONNX Runtime Web, web developers can score models directly on browsers with various benefits including reducing server-client communication and protecting user privacy, as well as offering install-free and cross-platform in-browser ML experience.
 
-ONNX Runtime Web can run on both CPU and GPU. On CPU side, [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly) is adopted to execute the model at near-native speed. ONNX Runtime Web compiles the native ONNX Runtime CPU engine into WebAssembly backend by using Emscripten, so it supports most functionalities native ONNX Runtime offers, including full ONNX operator coverage, multi-threading, [ONNX Runtime Quantization](https://www.onnxruntime.ai/docs/how-to/quantization.html) as well as [ONNX Runtime Mobile](https://onnxruntime.ai/docs/tutorials/mobile/). For performance acceleration with GPUs, ONNX Runtime Web leverages WebGL, a popular standard for accessing GPU capabilities. We are keeping improving op coverage and optimizing performance in WebGL backend.
+ONNX Runtime Web can run on both CPU and GPU. On CPU side, [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly) is adopted to execute the model at near-native speed. ONNX Runtime Web compiles the native ONNX Runtime CPU engine into WebAssembly backend by using Emscripten, so it supports most functionalities native ONNX Runtime offers, including full ONNX operator coverage, multi-threading, [ONNX Runtime Quantization](https://www.onnxruntime.ai/docs/how-to/quantization.html) as well as [ONNX Runtime Mobile](https://onnxruntime.ai/docs/tutorials/mobile/). For GPU acceleration, use the WebGPU backend where it is supported.
 
 See [Compatibility](#Compatibility) and [Operators Supported](#Operators) for a list of platforms and operators ONNX Runtime Web currently supports.
 
@@ -48,7 +54,8 @@ Refer to the following links for development information:
 - \[1]: Node.js only support single-threaded `wasm` EP.
 - \[2]: WebGPU requires Chromium v113 or later on Windows. Float16 support requires Chrome v121 or later, and Edge v122 or later.
 - \[3]: WebGPU requires Chromium v121 or later on Windows.
-- \[4]: WebGL support is in maintenance mode. It is recommended to use WebGPU for better performance.
+- \[4]: WebGL is deprecated. Migrate to WebGPU or WebAssembly; see the
+  [tracking issue](https://github.com/microsoft/onnxruntime/issues/32241).
 - \[5]: Requires to launch browser with commandline flag `--enable-features=WebMachineLearningNeuralNetwork`.
 
 ### Operators
@@ -59,7 +66,9 @@ ONNX Runtime Web currently support all operators in [ai.onnx](https://github.com
 
 #### WebGL backend
 
-ONNX Runtime Web currently supports a subset of operators in [ai.onnx](https://github.com/onnx/onnx/blob/main/docs/Operators.md) operator set. See [webgl-operators.md](./docs/webgl-operators.md) for a complete, detailed list of which ONNX operators are supported by WebGL backend.
+The WebGL backend is deprecated and supports a subset of operators in the
+[ai.onnx](https://github.com/onnx/onnx/blob/main/docs/Operators.md) operator set. During the deprecation window, see
+[webgl-operators.md](./docs/webgl-operators.md) for the detailed list of supported operators.
 
 #### WebGPU backend
 

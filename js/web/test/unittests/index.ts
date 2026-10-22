@@ -17,6 +17,8 @@ require('./backends/wasm/test-lora-adapter');
 
 require('./ep-context-data-read');
 
+require('./deprecation-warning');
+
 require('./pool-output-shape');
 
 require('./opset');
