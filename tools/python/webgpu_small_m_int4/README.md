@@ -71,9 +71,14 @@ python tools/python/webgpu_small_m_int4/experiment.py \
   --modes regular regular-f32 simt auto --warmup 32 --repeat 15 --reference \
   --output build/webgpu-small-m-simt/full-new
 
+c++ -std=c++17 -O2 -shared -fPIC \
+  -I build/webgpu-pipeline-lifetime/Release/_deps/dawn-src/third_party/vulkan-headers/src/include \
+  tools/python/webgpu_small_m_int4/vulkan_pipeline_stats.cc \
+  -o build/webgpu-small-m-simt-pad/pipeline_stats.so -ldl -pthread
 python tools/python/webgpu_small_m_int4/experiment.py \
   --executable build/webgpu-small-m-simt-pad/diagnostic \
   --bn 8 --a-block-padding 1 resources \
+  --stats-library build/webgpu-small-m-simt-pad/pipeline_stats.so \
   --output build/webgpu-small-m-simt/resources-new
 ```
 
@@ -98,8 +103,11 @@ numerical comparisons. FP64 references independently decode bytes, multiply
 scales, and accumulate; a second reference first rounds weights to FP16.
 Cancellation fixtures deliberately expose nonfinite FP16 regular results.
 Instrumented `resources` timings must not be used as clean performance data.
-The default statistics interposer is the existing
-`build/int4-native-investigation/pipeline_stats.so`.
+The optional compiler-statistics interposer requires Linux/glibc, Vulkan headers,
+and `VK_KHR_pipeline_executable_properties`. Its source is preserved as
+`vulkan_pipeline_stats.cc`; the historical default library remains
+`build/int4-native-investigation/pipeline_stats.so`. It is never loaded for clean
+timing or full-model headline runs.
 
 ## Metal validation
 
