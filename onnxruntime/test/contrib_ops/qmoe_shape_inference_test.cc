@@ -342,6 +342,14 @@ TEST(QMoEShapeInferenceTest, RejectsInvalidInt3Metadata) {
          spec.symbolic_dimension = {{2, 0}};
          spec.shapes[6][0] = 4;
        }},
+      {"symbolic FC1 rows still checks scale and bias agreement", [](auto& spec) {
+         spec.symbolic_dimension = {{2, 1}};
+         spec.shapes[4] = {3, 128};
+       }},
+      {"symbolic FC1 rows still checks scale and zero-point agreement", [](auto& spec) {
+         spec.symbolic_dimension = {{2, 1}};
+         spec.shapes[11] = {3, 128, 1};
+       }},
       {"FC1 zero point bytes", [](auto& spec) { spec.shapes[11] = {3, 256, 2}; }},
       {"FC2 zero point bytes", [](auto& spec) { spec.shapes[12] = {3, 64, 1}; }},
       {"INT3 zero points use ceil bits not integer pack", [](auto& spec) {
