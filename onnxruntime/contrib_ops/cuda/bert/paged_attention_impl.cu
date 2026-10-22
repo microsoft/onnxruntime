@@ -1001,6 +1001,43 @@ __host__ __device__ __forceinline__ int PagedDecodeChannelGroups(const int head_
   return head_size >= kPagedDecodeThreads ? 1 : (kPagedDecodeThreads / head_size);
 }
 
+template <bool IsMax>
+__device__ __forceinline__ float PagedDecodeCombine(const float a, const float b) {
+  if constexpr (IsMax) {
+    return fmaxf(a, b);
+  } else {
+    return a + b;
+  }
+}
+
+template <bool IsMax>
+__device__ __forceinline__ float PagedDecodeTileReduce(const float value, float* scratch) {
+  static_assert(kPagedDecodeThreads == 256);
+  const int tid = threadIdx.x;
+  scratch[tid] = value;
+  __syncthreads();
+  if (tid < 32) {
+    // Preserve the shared-memory tree's 128, 64, 32, 16, ..., 1 pairing order.
+    const float a = PagedDecodeCombine<IsMax>(scratch[tid], scratch[tid + 128]);
+    const float b = PagedDecodeCombine<IsMax>(scratch[tid + 32], scratch[tid + 160]);
+    const float c = PagedDecodeCombine<IsMax>(scratch[tid + 64], scratch[tid + 192]);
+    const float d = PagedDecodeCombine<IsMax>(scratch[tid + 96], scratch[tid + 224]);
+    float reduced = PagedDecodeCombine<IsMax>(
+        PagedDecodeCombine<IsMax>(a, c), PagedDecodeCombine<IsMax>(b, d));
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      reduced = PagedDecodeCombine<IsMax>(reduced, __shfl_down_sync(0xFFFFFFFFU, reduced, offset));
+    }
+    if (tid == 0) {
+      scratch[0] = reduced;
+    }
+  }
+  __syncthreads();
+  const float result = scratch[0];
+  __syncthreads();
+  return result;
+}
+
 template <typename T, typename TCACHE>
 __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
                                    const TCACHE* __restrict__ key_cache,
@@ -1151,16 +1188,7 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
     for (int t = tid; t < tile_len; t += kPagedDecodeThreads) {
       local_max = fmaxf(local_max, logits_sh[t]);
     }
-    red_sh[tid] = local_max;
-    __syncthreads();
-    for (int stride = kPagedDecodeThreads / 2; stride > 0; stride >>= 1) {
-      if (tid < stride) {
-        red_sh[tid] = fmaxf(red_sh[tid], red_sh[tid + stride]);
-      }
-      __syncthreads();
-    }
-    const float m_tile = red_sh[0];
-    __syncthreads();
+    const float m_tile = PagedDecodeTileReduce<true>(local_max, red_sh);
 
     // A tile whose pages are all unmapped contributes nothing and would otherwise make the
     // rescale factor exp(-FLT_MAX - -FLT_MAX) == 1 for masked entries.
@@ -1177,16 +1205,7 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
       logits_sh[t] = p;
       local_sum += p;
     }
-    red_sh[tid] = local_sum;
-    __syncthreads();
-    for (int stride = kPagedDecodeThreads / 2; stride > 0; stride >>= 1) {
-      if (tid < stride) {
-        red_sh[tid] += red_sh[tid + stride];
-      }
-      __syncthreads();
-    }
-    const float sum_tile = red_sh[0];
-    __syncthreads();
+    const float sum_tile = PagedDecodeTileReduce<false>(local_sum, red_sh);
 
     l_state = l_state * alpha + sum_tile;
     m_state = m_new;

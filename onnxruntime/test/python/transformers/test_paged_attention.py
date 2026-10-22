@@ -2845,6 +2845,43 @@ class TestPagedAttentionPagedDecode(unittest.TestCase):
         config = self._config(kv_cache_type="fp8", k_quant_type="PER_CHANNEL", v_quant_type="PER_CHANNEL", rotary=True)
         parity_check_paged_attention(config, rtol=5e-3, atol=2e-2)
 
+    @unittest.skipIf(not has_fp8_kv_cache(), reason="FP8 KV cache kernels are not built")
+    @parameterized.expand(
+        [
+            ("partial_tile", 1, 126, 1, "PER_TENSOR", False),
+            ("full_tile", 2, 127, 1, "PER_CHANNEL", False),
+            ("cross_tile", 4, 128, 1, "PER_TENSOR", False),
+            ("multi_split", 2, 4093, 32, "PER_CHANNEL", False),
+            ("long_context", 8, 32768, 32, "PER_TENSOR", False),
+            ("score_transforms", 2, 4093, 32, "PER_CHANNEL", True),
+        ]
+    )
+    def test_decode_fp8_head256_tile_reductions(self, _, rows, past, splits, quant_type, transforms):
+        config = self._config(
+            batch_size=1,
+            sequence_length=rows,
+            total_sequence_length=past + rows,
+            num_heads=32,
+            kv_num_heads=2,
+            head_size=256,
+            kv_cache_type="fp8",
+            k_quant_type=quant_type,
+            v_quant_type=quant_type,
+            softcap=4.0 if transforms else 0.0,
+            use_head_sink=transforms,
+        )
+        config.use_attention_metadata = True
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0", "ORT_PAGED_ATTENTION_DECODE_NUM_SPLITS": str(splits)}):
+            parity_check_paged_attention(
+                config,
+                rtol=5e-3,
+                atol=5e-3,
+                sdpa_kernel=SDPA_KERNEL_DECODER_ATTENTION,
+                new_seqlens_override=torch.tensor([rows], dtype=torch.int32),
+                past_seqlens_override=torch.tensor([past], dtype=torch.int32),
+                local_window_size_override=129 if transforms else None,
+            )
+
 
 @unittest.skipIf(not has_xqa(), reason="XQA requires an SM80 or newer GPU")
 class TestPagedAttentionXqaDecode(unittest.TestCase):
