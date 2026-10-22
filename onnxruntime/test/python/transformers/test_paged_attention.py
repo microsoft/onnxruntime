@@ -2882,6 +2882,89 @@ class TestPagedAttentionPagedDecode(unittest.TestCase):
                 local_window_size_override=129 if transforms else None,
             )
 
+    @unittest.skipIf(not has_fp8_kv_cache(), reason="FP8 KV cache kernels are not built")
+    @parameterized.expand(
+        [
+            ("pair", 6, 3, 1, 129, "PER_TENSOR", False),
+            ("group16", 32, 2, 2, 4093, "PER_CHANNEL", False),
+            ("multirow", 8, 2, 8, 8193, "PER_TENSOR", False),
+            ("partial_tile_transforms", 8, 2, 3, 257, "PER_CHANNEL", True),
+            ("mqa", 8, 1, 2, 2047, "PER_CHANNEL", False),
+            ("odd_group_fallback", 6, 2, 2, 257, "PER_TENSOR", False),
+            ("mha_fallback", 4, 4, 1, 129, "PER_CHANNEL", False),
+        ]
+    )
+    def test_decode_fp8_head256_grouping(self, _, heads, kv_heads, rows, past, quant_type, transforms):
+        config = self._config(
+            batch_size=1,
+            sequence_length=rows,
+            total_sequence_length=past + rows,
+            num_heads=heads,
+            kv_num_heads=kv_heads,
+            head_size=256,
+            kv_cache_type="fp8",
+            k_quant_type=quant_type,
+            v_quant_type=quant_type,
+            softcap=4.0 if transforms else 0.0,
+            use_head_sink=transforms,
+        )
+        config.use_attention_metadata = True
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0", "ORT_PAGED_ATTENTION_DECODE_NUM_SPLITS": "32"}):
+            parity_check_paged_attention(
+                config,
+                rtol=5e-3,
+                atol=5e-3,
+                sdpa_kernel=SDPA_KERNEL_DECODER_ATTENTION,
+                new_seqlens_override=torch.tensor([rows], dtype=torch.int32),
+                past_seqlens_override=torch.tensor([past], dtype=torch.int32),
+                local_window_size_override=129 if transforms else None,
+            )
+
+    @unittest.skipIf(not has_fp8_kv_cache(), reason="FP8 KV cache kernels are not built")
+    @parameterized.expand([("plain", False), ("score_transforms", True)])
+    def test_decode_fp8_gqa_matches_expanded_mha(self, _, transforms):
+        query = torch.randn(3, 6 * 256, device="cuda", dtype=torch.float16)
+        key = torch.randn(3, 3, 256, device="cuda", dtype=torch.float16)
+        value = torch.randn_like(key)
+        caches = [torch.randn(3, 256, 3, 256, device="cuda").to(torch.float8_e4m3fn) for _ in range(2)]
+        scales = [0.5 + torch.rand(3, 1, 256, device="cuda") for _ in range(2)]
+        head_sink = torch.randn(6, device="cuda", dtype=torch.float16) if transforms else None
+        outputs = []
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0", "ORT_PAGED_ATTENTION_DECODE_NUM_SPLITS": "32"}):
+            for expanded in (False, True):
+                config = self._config(
+                    batch_size=2,
+                    sequence_length=2,
+                    total_sequence_length=259,
+                    num_heads=6,
+                    kv_num_heads=6 if expanded else 3,
+                    head_size=256,
+                    kv_cache_type="fp8",
+                    k_quant_type="PER_CHANNEL",
+                    v_quant_type="PER_CHANNEL",
+                    softcap=4.0 if transforms else 0.0,
+                    use_head_sink=transforms,
+                )
+                config.use_attention_metadata = True
+                output, _, _ = paged_attention_func(
+                    config,
+                    query,
+                    (key.repeat_interleave(2, dim=1) if expanded else key).flatten(1),
+                    (value.repeat_interleave(2, dim=1) if expanded else value).flatten(1),
+                    *[cache.repeat_interleave(2, dim=2) if expanded else cache.clone() for cache in caches],
+                    torch.tensor([0, 2, 3], device="cuda", dtype=torch.int32),
+                    torch.tensor([257, 0], device="cuda", dtype=torch.int32),
+                    torch.tensor([[2, -1, 0], [-1, -1, -1]], device="cuda", dtype=torch.int32),
+                    window_size=129 if transforms else -1,
+                    sdpa_kernel=SDPA_KERNEL_DECODER_ATTENTION,
+                    head_sink=head_sink,
+                    k_scale=scales[0].repeat_interleave(2, dim=0) if expanded else scales[0],
+                    v_scale=scales[1].repeat_interleave(2, dim=0) if expanded else scales[1],
+                )
+                outputs.append(output)
+        torch.testing.assert_close(outputs[0].view(torch.int16), outputs[1].view(torch.int16), rtol=0, atol=0)
+        torch.testing.assert_close(outputs[0][2], torch.zeros_like(outputs[0][2]), rtol=0, atol=0)
+
 
 @unittest.skipIf(not has_xqa(), reason="XQA requires an SM80 or newer GPU")
 class TestPagedAttentionXqaDecode(unittest.TestCase):
