@@ -86,6 +86,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool IsNHWCPreferred() const { return info_.prefer_nhwc; }
   bool IsFuseConvBias() const { return info_.fuse_conv_bias; }
   bool UseTF32() const { return info_.use_tf32; }
+  bool EnableHostPageableGather() const { return info_.enable_host_pageable_gather; }
 
   // Attention kernel options parsed from sdpa_kernel cuda provider option.
   const AttentionKernelOptions* GetAttentionKernelOptions() const {

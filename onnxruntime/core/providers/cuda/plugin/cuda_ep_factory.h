@@ -171,8 +171,9 @@ class CudaEpFactory : public OrtEpFactory {
   /// Same as FindDeviceCacheEntryByOrdinal but assumes device_cache_mutex_ is already held.
   DeviceCacheEntry* FindDeviceCacheEntryByOrdinalLocked(int cuda_ordinal);
 
-  // Kernel registry (cached, shared across EP instances)
+  // Kernel registries (cached, shared across EP instances)
   OrtKernelRegistry* kernel_registry_ = nullptr;
+  OrtKernelRegistry* host_pageable_gather_kernel_registry_ = nullptr;
   std::mutex registry_mutex_;
 };
 

@@ -34,6 +34,7 @@ class CudaEp : public onnxruntime::ep::adapter::Ep {
     bool fuse_conv_bias = false;                     ///< Enable cuDNN frontend conv+bias fusion.
     int sdpa_kernel = 0;                             ///< Attention backend bitmask override.
     bool enable_cuda_graph = false;                  ///< Enable CUDA graph capture and replay.
+    bool enable_host_pageable_gather = false;        ///< Enable direct host-pageable FP8 gather access.
     int min_num_runs_before_cuda_graph_capture = 2;  ///< Warm-up runs before graph capture begins.
     bool has_user_compute_stream = false;            ///< Whether user provided an external CUDA stream.
     void* user_compute_stream = nullptr;             ///< User-provided CUDA stream (cudaStream_t cast to void*).
