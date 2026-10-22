@@ -613,7 +613,7 @@ __global__ void NormKernel(const T* __restrict__ streams, const T* __restrict__ 
   if constexpr (kPost) gate_c = to_float<T>(prev_gate[group]);
 
   float sum_sq = 0.0f;
-  for (int h = threadIdx.x; h < hidden; h += kThreads) {
+  for (int64_t h = threadIdx.x; h < hidden; h += kThreads) {
     float v = to_float<T>(streams[base + h]);
     if constexpr (kPost) {
       v = Rnd<T>(fmaf(gate_c, to_float<T>(prev_out[row * hidden + h]), v));
@@ -626,7 +626,7 @@ __global__ void NormKernel(const T* __restrict__ streams, const T* __restrict__ 
   const float total = BlockReduce(storage).Sum(sum_sq);
   if (threadIdx.x == 0) inv_rms = rsqrtf(total / static_cast<float>(hidden) + epsilon);
   __syncthreads();
-  for (int h = threadIdx.x; h < hidden; h += kThreads) {
+  for (int64_t h = threadIdx.x; h < hidden; h += kThreads) {
     float v = to_float<T>(streams[base + h]);
     if constexpr (kPost) v = Rnd<T>(fmaf(gate_c, to_float<T>(prev_out[row * hidden + h]), v));
     hn[base + h] = from_float<T>(v * inv_rms * to_float<T>(norm_w[static_cast<int64_t>(c) * hidden + h]));
