@@ -10,7 +10,7 @@ import sys
 
 import onnx
 
-from .onnx_model_utils import fix_output_shapes, make_dim_param_fixed, make_input_shape_fixed
+from .onnx_model_utils import PROTOBUF_SIZE_LIMIT, fix_output_shapes, make_dim_param_fixed, make_input_shape_fixed
 
 
 def make_dynamic_shape_fixed_helper():
@@ -41,6 +41,13 @@ def make_dynamic_shape_fixed_helper():
         "All values must be > 0. e.g. --input_shape 1,3,256,256",
     )
 
+    parser.add_argument(
+        "--use_external_data_format",
+        action="store_true",
+        help="Write the initializers to a separate '<output_model>.data' file. This is required for models "
+        "of 2GB or more, and is enabled automatically for them.",
+    )
+
     parser.add_argument("input_model", type=pathlib.Path, help="Provide path to ONNX model to update.")
     parser.add_argument("output_model", type=pathlib.Path, help="Provide path to write updated ONNX model to.")
 
@@ -66,7 +73,17 @@ def make_dynamic_shape_fixed_helper():
     # update the output shapes to make them fixed if possible.
     fix_output_shapes(model)
 
-    onnx.save(model, str(args.output_model.resolve()))
+    output_model = args.output_model.resolve()
+    if args.use_external_data_format or model.ByteSize() >= PROTOBUF_SIZE_LIMIT:
+        onnx.save_model(
+            model,
+            str(output_model),
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            location=f"{output_model.name}.data",
+        )
+    else:
+        onnx.save(model, str(output_model))
 
 
 if __name__ == "__main__":
