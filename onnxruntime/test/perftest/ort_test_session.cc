@@ -137,9 +137,15 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     if (performance_test_config.run_config.enable_cuda_io_binding) {
       use_plugin_ep_io_binding_ = IsAllocatorDeviceOnly();
       if (!use_plugin_ep_io_binding_) {
-        fprintf(stdout,
-                "[Plugin EP] -g requires a single selected EP device with a device allocator. "
-                "IO binding is disabled.\n");
+        if (performance_test_config.plugin_ep_force_cpu_allocator) {
+          fprintf(stdout,
+                  "[Plugin EP] -g is ignored because --plugin_ep_force_cpu_allocator was specified. "
+                  "IO binding is disabled.\n");
+        } else {
+          fprintf(stdout,
+                  "[Plugin EP] -g requires a single selected EP device with a device allocator. "
+                  "IO binding is disabled.\n");
+        }
       }
     }
   }
