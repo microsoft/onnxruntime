@@ -5,6 +5,8 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 
 #include "core/common/status.h"
 #include "contrib_ops/cuda/bert/gated_delta_net_plan.h"
@@ -49,7 +51,7 @@ Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const Varia
                            float scale, int max_threads_per_block,
                            size_t max_shared_memory_per_block, cudaStream_t stream);
 
-// Engine::kChunkedSplit. Defined in gated_delta_net_split_impl.cu; float16 only.
+// Engine::kChunkedSplit. Defined in gated_delta_net_split_impl.cu; float16 and bfloat16.
 template <typename T>
 Status LaunchGatedDeltaNetSplit(const Descriptor& desc, const Plan& plan,
                                 const VariantPack<T>& pack, float scale, cudaStream_t stream);

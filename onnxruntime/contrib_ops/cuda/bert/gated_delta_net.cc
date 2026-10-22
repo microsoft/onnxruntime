@@ -99,7 +99,24 @@ GatedDeltaNet<T>::GatedDeltaNet(const OpKernelInfo& info)
   forced_engine_ = gdn::EngineFromName(
       ParseEnvironmentVariableWithDefault<std::string>("ORT_GDN_PLAN", ""));
   if (mid_state_output_) {
-    forced_engine_ = gdn::Engine::kRecurrent;
+    bf16_precision_ = gdn::Bf16Precision::kBf16;
+  }
+
+  const auto from_config =
+      info.GetConfigOptions().GetConfigEntry(gdn::kGatedDeltaNetBf16PrecisionConfig);
+  if (from_config.has_value()) {
+    ORT_ENFORCE(gdn::TryParseBf16Precision(*from_config, &bf16_precision_),
+                gdn::kGatedDeltaNetBf16PrecisionConfig,
+                " must be one of: fp32, fp16, bf16, got '", *from_config, "'");
+    has_session_bf16_precision_ = true;
+  } else {
+    const std::string env_val =
+        ParseEnvironmentVariableWithDefault<std::string>(gdn::kGatedDeltaNetBf16PrecisionEnv, "");
+    if (!env_val.empty()) {
+      ORT_ENFORCE(gdn::TryParseBf16Precision(env_val, &bf16_precision_),
+                  gdn::kGatedDeltaNetBf16PrecisionEnv,
+                  " must be one of: fp32, fp16, bf16, got '", env_val, "'");
+    }
   }
 }
 
@@ -355,27 +372,42 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.qk_l2_norm = qk_l2_norm_;
   desc.decay_per_key_dim = decay_per_key_dim;
   desc.ragged = cu_seqlens != nullptr;
-  desc.preferred_engine = forced_engine_;
+  const gdn::Engine effective_engine =
+      (mid_state_output_ && total_tokens <= 512LL * batch && forced_engine_ == gdn::Engine::kAuto)
+          ? gdn::Engine::kRecurrent
+          : forced_engine_;
+  desc.preferred_engine = effective_engine;
+  desc.bf16_precision = bf16_precision_;
+  if (!has_session_bf16_precision_) {
+    const std::string env_val =
+        ParseEnvironmentVariableWithDefault<std::string>(gdn::kGatedDeltaNetBf16PrecisionEnv, "");
+    if (!env_val.empty()) {
+      ORT_RETURN_IF_NOT(
+          gdn::TryParseBf16Precision(env_val, &desc.bf16_precision),
+          gdn::kGatedDeltaNetBf16PrecisionEnv,
+          " must be one of: fp32, fp16, bf16, got '", env_val, "'");
+    }
+  }
 
   const cudaDeviceProp& prop = GetDeviceProp();
   desc.sm_major = prop.major;
 
   gdn::Plan plan = gdn::SelectPlan(desc, prop.sharedMemPerBlockOptin);
-  if (forced_engine_ == gdn::Engine::kChunked ||
-      forced_engine_ == gdn::Engine::kChunkedSplit) {
+  if (effective_engine == gdn::Engine::kChunked ||
+      effective_engine == gdn::Engine::kChunkedSplit) {
     ORT_RETURN_IF_NOT(
-        plan.engine == forced_engine_,
-        "GatedDeltaNet: the ", gdn::EngineName(forced_engine_),
+        plan.engine == effective_engine,
+        "GatedDeltaNet: the ", gdn::EngineName(effective_engine),
         " engine cannot serve this descriptor (",
         plan.reject_reason ? plan.reject_reason : "no reason recorded", ")");
-  } else if (forced_engine_ == gdn::Engine::kRecurrent) {
+  } else if (effective_engine == gdn::Engine::kRecurrent) {
     plan.engine = gdn::Engine::kRecurrent;
     // Match the fallback path's kernel choice: the override must measure what the
     // heuristic would have run, not the generic kernel.
     plan.warp_specialized = gdn::RecurrentIsWarpSpecialized(head_size_qk);
     plan.state_update_tail_pass = false;
     plan.short_row_tail_pass = false;
-  } else if (forced_engine_ == gdn::Engine::kCudnn) {
+  } else if (effective_engine == gdn::Engine::kCudnn) {
     plan.engine = gdn::Engine::kCudnn;
   }
   ORT_RETURN_IF_NOT(plan.supported, "GatedDeltaNet: no supported plan (",
