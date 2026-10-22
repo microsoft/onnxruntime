@@ -34,6 +34,100 @@ void MatMulShapeInference(
 namespace onnxruntime {
 namespace contrib {
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    FoldMid2, 2,
+    OpSchema()
+        .SetDoc("Commits a batch-one speculative prefix and prepares rotary/head inputs for two through four head rows. "
+                "Control and committed-context outputs must alias their inputs on CUDA. This is stateful: callers "
+                "must serialize access to these buffers. The result-ring address must identify a device-accessible, "
+                "aligned allocation of capacity*8 int64 words. The mid stage writes the payload; FoldTail publishes "
+                "its sequence word after downstream validation. Muted prefill calls prepare inputs without committing "
+                "state or touching ring metadata. Invalid device metadata sets error bits and mutes execution.")
+        .Attr("head_rows", "Fixed number of head rows, 2 through 4.", AttributeProto::INT, int64_t{2})
+        .Attr("head_capacity", "Maximum head-cache token capacity.", AttributeProto::INT, int64_t{33028})
+        .Input(0, "next_tokens", "Verifier predictions, batch one.", "I64")
+        .Input(1, "input_ids", "Verifier input IDs.", "I64")
+        .Input(2, "status", "Verifier status words.", "I32")
+        .Input(3, "ctl", "Mutable control state: at least 8 words for S2, 16 for S3/S4.", "I64")
+        .Input(4, "ctx_commit", "Mutable committed context, two words.", "I64")
+        .Input(5, "prefixes", "Two-word context for each accepted-prefix length; S2 needs only the first.", "I64")
+        .Input(6, "prefix2", "Two-word context for acceptance length one.", "I64")
+        .Input(7, "ptrs", "Result ring address and positive record capacity.", "I64")
+        .Input(8, "cos_cache", "Rotary cosine cache [positions, width].", "B")
+        .Input(9, "sin_cache", "Rotary sine cache [positions, width].", "B")
+        .Input(10, "hidden", "Optional hidden states [1, verifier_rows, ...].", "B", OpSchema::Optional)
+        .Output(0, "head_ids", "Head token IDs [1, head_rows].", "I64")
+        .Output(1, "head_c", "Head committed length [1].", "I32")
+        .Output(2, "slot_ids", "Head slots [1, head_rows].", "I64")
+        .Output(3, "seqlens", "Head sequence length [1].", "I32")
+        .Output(4, "cos_out", "Gathered rotary cosine [1, head_rows, width].", "B")
+        .Output(5, "sin_out", "Gathered rotary sine [1, head_rows, width].", "B")
+        .Output(6, "sel", "Accepted-prefix length, or -1 on invalid metadata.", "I64")
+        .Output(7, "head_hidden", "Hidden rows, repeating the last source row when necessary.", "B", OpSchema::Optional)
+        .Output(8, "updated_ctl", "Updated control state, aliases ctl.", "I64")
+        .Output(9, "updated_ctx_commit", "Updated context, aliases ctx_commit.", "I64")
+        .TypeConstraint("I64", {"tensor(int64)"}, "Token and control words.")
+        .TypeConstraint("I32", {"tensor(int32)"}, "Status and sequence lengths.")
+        .TypeConstraint("B", {"tensor(bfloat16)"}, "Rotary and hidden tensors.")
+        .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+          for (int output : {0, 2, 6, 8, 9}) propagateElemTypeFromInputToOutput(ctx, 0, output);
+          for (int output : {1, 3}) propagateElemTypeFromInputToOutput(ctx, 2, output);
+          for (int output : {4, 5}) propagateElemTypeFromInputToOutput(ctx, 8, output);
+          if (hasInputShape(ctx, 10)) propagateElemTypeFromInputToOutput(ctx, 10, 7);
+          const auto rows = getAttribute(ctx, "head_rows", 2);
+          const auto capacity = getAttribute(ctx, "head_capacity", 33028);
+          if (rows < 2 || rows > 4 || capacity < rows || capacity > std::numeric_limits<int>::max())
+            fail_shape_inference("FoldMid2: invalid head_rows/head_capacity");
+          for (int output : {0, 2}) {
+            auto* shape = getOutputShape(ctx, output);
+            shape->add_dim()->set_dim_value(1);
+            shape->add_dim()->set_dim_value(rows);
+          }
+          for (int output : {1, 3, 6}) getOutputShape(ctx, output)->add_dim()->set_dim_value(1);
+          if (hasInputShape(ctx, 8)) {
+            const auto& rope = getInputShape(ctx, 8);
+            if (rope.dim_size() != 2) fail_shape_inference("FoldMid2: rotary cache must have rank 2");
+            TensorShapeProto shape;
+            shape.add_dim()->set_dim_value(1);
+            shape.add_dim()->set_dim_value(rows);
+            *shape.add_dim() = rope.dim(1);
+            updateOutputShape(ctx, 4, shape);
+            updateOutputShape(ctx, 5, shape);
+          }
+          if (hasInputShape(ctx, 10)) {
+            auto shape = getInputShape(ctx, 10);
+            if (shape.dim_size() < 3) fail_shape_inference("FoldMid2: hidden must have rank at least 3");
+            shape.mutable_dim(1)->set_dim_value(rows);
+            updateOutputShape(ctx, 7, shape);
+          }
+          propagateShapeFromInputToOutput(ctx, 3, 8);
+          propagateShapeFromInputToOutput(ctx, 4, 9);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    FoldTail, 2,
+    OpSchema()
+        .SetDoc("Updates the selected draft-control slot and publishes the result-ring sequence after validation. "
+                "updated_ctl must alias ctl on CUDA. Muted calls do not access the ring. Invalid ring metadata "
+                "sets error bit 16 and mutes execution. done is a dependency output initialized to zero.")
+        .Attr("ctl_slot", "Draft-control slot: 2, 8 or 9.", AttributeProto::INT, int64_t{2})
+        .Input(0, "next_token", "Next draft token (or ignored selector in DFlash).", "I64")
+        .Input(1, "status", "Downstream validation status words.", "I32")
+        .Input(2, "ctl", "Mutable control state.", "I64")
+        .Input(3, "ptrs", "Result ring address and record capacity.", "I64")
+        .Output(0, "done", "Dependency output [1].", "I32")
+        .Output(1, "updated_ctl", "Updated control state, aliases ctl.", "I64")
+        .TypeConstraint("I64", {"tensor(int64)"}, "Token and control words.")
+        .TypeConstraint("I32", {"tensor(int32)"}, "Status and dependency output.")
+        .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 1, 0);
+          propagateElemTypeFromInputToOutput(ctx, 2, 1);
+          const auto slot = getAttribute(ctx, "ctl_slot", 2);
+          if (slot != 2 && slot != 8 && slot != 9) fail_shape_inference("FoldTail: invalid ctl_slot");
+          getOutputShape(ctx, 0)->add_dim()->set_dim_value(1);
+          propagateShapeFromInputToOutput(ctx, 2, 1);
+        }));
+
 void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
