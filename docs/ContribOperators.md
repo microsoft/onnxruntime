@@ -19,6 +19,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.CausalConvWithState">com.microsoft.CausalConvWithState</a>
   * <a href="#com.microsoft.ComplexMul">com.microsoft.ComplexMul</a>
   * <a href="#com.microsoft.ComplexMulConj">com.microsoft.ComplexMulConj</a>
+  * <a href="#com.microsoft.ConvStateReplay">com.microsoft.ConvStateReplay</a>
   * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
   * <a href="#com.microsoft.CropAndResize">com.microsoft.CropAndResize</a>
   * <a href="#com.microsoft.DecoderAttention">com.microsoft.DecoderAttention</a>
@@ -150,6 +151,8 @@ Do not modify directly.*
   The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
   is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
   and v_hidden_size is that of V.
+  Q, K and V hidden sizes must be positive multiples of num_heads. Their sum must match the weights' second dimension.
+  When qkv_hidden_sizes is omitted, the weights' second dimension must be divisible by three.
   
   The mask_index is optional. Besides raw attention mask with shape (batch_size, total_sequence_length)
   or (batch_size, sequence_length, total_sequence_length) with value 0 for masked and 1 otherwise,
@@ -1113,6 +1116,69 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(double), tensor(float16)</dt>
 <dd>Constrain input and output types to float or half tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.ConvStateReplay"></a><a name="com.microsoft.convstatereplay">**com.microsoft.ConvStateReplay**</a>
+
+  Reconstruct rolling convolution history after retaining a prefix of captured inputs, without
+  performing convolution arithmetic. The WebGPU-only implementation copies FP16 or FP32 payload
+  bits exactly, including signed zero and NaN payloads, and waits for checked GPU completion.
+  
+  Inputs 0-2 are full rank-1 backing allocations of the same element type.
+  CPU int64 metadata [8] is ordered as:
+    source_offset_bytes, destination_offset_bytes, capture_offset_bytes,
+    batch_size, channels, history_width, capacity, kept_count.
+  Offsets are logical byte offsets into the full backing tensors, aligned to the element size
+  (two bytes for FP16, four for FP32), not WebGPU storage-binding offsets.
+  All fields are nonnegative; channels must be positive; 0 <= kept_count <= capacity.
+  Zero batch size, history width, or capture capacity is valid. Zero state size is a no-op.
+  Geometry, backing byte extents and metadata must fit the implementation's uint32 indexing range.
+  
+  The source view is the incoming snapshot immediately before capture, with layout
+  [batch_size, channels, history_width]. Captured inputs have layout [batch_size, capacity, channels].
+  capacity is the original capture stride, not kept_count. All retained inputs must have been captured.
+  For each batch b, channel c and position p, with W = history_width and k = kept_count:
+    destination[b,c,p] = source[b,c,p+k]                 if p+k < W
+                       = capture[b,p+k-W,c]            otherwise.
+  For k >= W only the last W inputs of the retained prefix are used; unused capture tails are not read.
+  
+  The output must be explicitly prebound to the same full allocation as destination_backing.
+  Destination backing must be distinct from source and capture backing, even for disjoint logical views.
+  Only the designated destination view is modified; neighboring elements and all source/capture data
+  are preserved. One descriptor is supported per invocation; graph capture is not supported.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>source_backing</tt> : T</dt>
+<dd>Full backing tensor containing the incoming convolution history.</dd>
+<dt><tt>capture_backing</tt> : T</dt>
+<dd>Full backing tensor containing captured token-major inputs.</dd>
+<dt><tt>destination_backing</tt> : T</dt>
+<dd>Full inactive destination-state backing tensor.</dd>
+<dt><tt>metadata</tt> : TI</dt>
+<dd>CPU int64 [8]: byte offsets, batch, channels, history, capacity, kept_count.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>destination_out</tt> : T</dt>
+<dd>Same backing allocation and shape as destination_backing.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
+<dd>State and captured inputs are FP16 or FP32.</dd>
+<dt><tt>TI</tt> : tensor(int64)</dt>
+<dd>CPU replay metadata is int64.</dd>
 </dl>
 
 
@@ -3241,6 +3307,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether to apply a causal mask. Must be 0 or 1. Default value is 1. Set to 0 for bidirectional attention.</dd>
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
+<dt><tt>k_norm_epsilon</tt> : float</dt>
+<dd>Epsilon for per-head K RMS normalization. Overrides qk_norm_epsilon for K when provided. Must be finite and positive.</dd>
 <dt><tt>k_quant_type</tt> : string</dt>
 <dd>Quantization type for K cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.</dd>
 <dt><tt>kv_cache_bit_width</tt> : int</dt>
@@ -3251,6 +3319,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>left_window_size for causal local attention (like Mistral). Must be -1 when causal is 0. Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
+<dt><tt>q_norm_epsilon</tt> : float</dt>
+<dd>Epsilon for per-head Q RMS normalization. Overrides qk_norm_epsilon for Q when provided. Must be finite and positive.</dd>
 <dt><tt>qk_norm_epsilon</tt> : float</dt>
 <dd>Epsilon used by the per-head RMS norm applied to Q and K when q_norm_weight and k_norm_weight inputs are provided. Default value is 1e-6.</dd>
 <dt><tt>qk_output</tt> : int</dt>
@@ -5104,7 +5174,8 @@ This version of the operator has been available since version 1 of the 'com.micr
     * uses a single generic set of state slots (past_key_state / past_kv_buffer / past_gate_buffer /
       past_state_lengths) for both policy_mode values, each with a shape that is fixed across calls
       (state never grows and is never concatenated); a step that would overflow the fixed capacity is
-      rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory;
+      rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory
+      (the optional state_status output reports which requests were rejected and why);
     * additionally emits selected_counts, the exact number of active (non -1) entries per query, so
       that no downstream consumer needs to scan selected_indices for its query's true count.
   
@@ -5237,7 +5308,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Merged device status [N].</dd>
 </dl>
 
-#### Outputs (6 - 8)
+#### Outputs (6 - 9)
 
 <dl>
 <dt><tt>selected_indices</tt> : M</dt>
@@ -5256,6 +5327,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'qsa': compact transition payloads with shape (batch_size, state_update_capacity, head_size). A token that completes a compression block stores the prepared block representative; any other captured token stores its raw key. Inactive and unused slots are zero.</dd>
 <dt><tt>indexshare_status</tt> (optional) : M</dt>
 <dd>Selection status [N], forwarded on reuse and zero on refresh.</dd>
+<dt><tt>state_status</tt> (optional) : M</dt>
+<dd>Device-side per-request state update status with shape (batch_size). 0: the request's state update was applied (or intentionally held by IndexShare reuse); 1: invalid device metadata (cumulative_sequence_lengths, past_sequence_lengths or past_state_lengths are inconsistent); 2: the update would exceed state_capacity. A non-zero request leaves its state payloads unchanged, clamps out-of-range past_state_lengths into present_state_lengths, and emits an empty selection (selected_counts is 0 and selected_indices is -1). Intended for CUDA graph replay, where the host checks it after the replay instead of synchronizing inside the operator. Currently supported by the CUDA provider only.</dd>
 </dl>
 
 #### Type Constraints
@@ -5464,9 +5537,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>cumulative_sequence_length</tt> : S</dt>
 <dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence lengths between the packed entries in Q/K/V.</dd>
 <dt><tt>past_seqlens</tt> : S</dt>
-<dd>A tensor with shape (batch_size). It specifies the past lengths of cached sequence in the KV cache.</dd>
+<dd>A tensor with shape (batch_size). It specifies the past lengths of cached sequences. CUDA sanitizes malformed values on device: an invalid value suppresses that sequence's cache writes and produces zero output. A backend requiring exact host lengths may instead return INVALID_ARGUMENT when attention_metadata is absent.</dd>
 <dt><tt>block_table</tt> : S</dt>
-<dd>2D tensor with shape (batch_size, max_blocks_per_sequence) that maps each sequence in the batch to itscorresponding blocks in the KV cache.</dd>
+<dd>2D tensor with shape (batch_size, max_blocks_per_sequence) that maps each sequence in the batch to itscorresponding blocks in the KV cache. -1 denotes an unmapped page. CUDA converts values below -1 or greater than or equal to num_blocks to the unmapped sentinel before resolving cache addresses; mapped pages remain attendable.</dd>
 <dt><tt>cos_cache</tt> (optional) : T</dt>
 <dd>2D tensor with shape (max total seqlen, head_size / 2).</dd>
 <dt><tt>sin_cache</tt> (optional) : T</dt>
@@ -6290,6 +6363,21 @@ This version of the operator has been available since version 1 of the 'com.micr
         When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
         When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
         
+    The raw INT3 profile extends version 1; execution support is provider-specific.
+    For INT3, the requirements below supersede the legacy format descriptions above.
+    Effective widths are 2, 3, 4, or 8. Models without INT3 retain the legacy format contracts.
+    With INT3, use quant_type='int' (the default), and explicitly set activation_type='swiglu', weights_prepacked=0, swiglu_fusion=1,
+    and block_size=32, 64, or 128. Effective FC3 must equal FC1 after independent inheritance.
+    H comes from input and I from half the FC1 row count; both must be divisible by block_size.
+    Weights are uint8 [E,N,ceil(K*bits/8)], row-local LSB-first bitstreams, without per-block padding.
+    Scales are required [E,N,K/block_size], matching FP16/BF16 activations.
+    INT3 codes dequantize as (u-4)*scale; scales must be finite and nonnegative.
+    Optional INT3 zero points are uint8 [E,N,ceil(3*(K/block_size)/8)]. Each unpacked 3-bit
+    zero-point code must equal 4 (binary 100), the unsigned offset representing logical zero;
+    this does not mean each packed byte is 4. Omission implies the same zero point 4.
+    Unused high padding bits must be zero. INT2/4/8 projections retain their zero-point semantics.
+    FC1 rows are interleaved gate/up; FC2 is [E,H,ceil(I*fc2_bits/8)].
+    Separate FC3, global scales, and activation scales are not accepted by the INT3 profile.
 
 #### Version
 
@@ -6309,7 +6397,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>block_size</tt> : int</dt>
 <dd>For integer quantization, size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). For integer and FP4 quantization, both hidden_size and inter_size must be divisible by the block size. FP8 with block_size=128 supports partial 128x128 tiles. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. Without a positive value, FP8 uses per-expert global scales. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
-<dd>Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits</dd>
+<dd>Number of bits used in quantized weights: 2, 3, 4, or 8. Default is 4 bits.</dd>
 <dt><tt>fc1_expert_weight_bits</tt> : int</dt>
 <dd>Optional FC1 override for expert_weight_bits. Inherits expert_weight_bits when omitted.</dd>
 <dt><tt>fc2_expert_weight_bits</tt> : int</dt>
@@ -6321,7 +6409,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to normalize routing weights</dd>
 <dt><tt>quant_type</tt> : string</dt>
-<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale.</dd>
+<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale. The INT3 profile requires integer quantization.</dd>
 <dt><tt>swiglu_fusion</tt> : int</dt>
 <dd>0: not fused, 1: fused and interleaved. 2: fused and not interleaved.</dd>
 <dt><tt>swiglu_limit</tt> : float</dt>
@@ -8771,4 +8859,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
 

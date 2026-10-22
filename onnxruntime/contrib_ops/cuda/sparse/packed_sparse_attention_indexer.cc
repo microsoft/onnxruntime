@@ -57,6 +57,12 @@ Status CheckShape(const Tensor* tensor, const char* name, std::initializer_list<
   return Status::OK();
 }
 
+// The optional per-request state update status. When requested, it doubles as the update kernels' rejection flags.
+Tensor* GetStateStatusOutput(OpKernelContext* context, int64_t batch_size) {
+  return context->OutputCount() > psai::kStateStatus ? context->Output(psai::kStateStatus, TensorShape({batch_size}))
+                                                     : nullptr;
+}
+
 Status CheckIntDimension(const char* name, int64_t value, bool allow_zero = true) {
   ORT_RETURN_IF(value < (allow_zero ? 0 : 1) || value > std::numeric_limits<int>::max(),
                 "PackedSparseAttentionIndexer: ", name, " must be in ", allow_zero ? "[0, INT_MAX]" : "(0, INT_MAX]",
@@ -384,8 +390,10 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
   params.state_update_capacity = static_cast<int>(state_update_capacity_);
 
   auto float_workspace = GetScratchBuffer<float>(GetQsaPackedWorkspaceFloatCount(params), GetComputeStream(context));
-  auto overflow_flags =
-      GetScratchBuffer<int32_t>(static_cast<size_t>(std::max<int64_t>(batch_size, 1)), GetComputeStream(context));
+  Tensor* state_status = GetStateStatusOutput(context, batch_size);
+  auto overflow_scratch = GetScratchBuffer<int32_t>(
+      state_status == nullptr ? static_cast<size_t>(std::max<int64_t>(batch_size, 1)) : 0, GetComputeStream(context));
+  int32_t* overflow_flags = state_status != nullptr ? state_status->MutableData<int32_t>() : overflow_scratch.get();
 
   const CudaT* query_data = reinterpret_cast<const CudaT*>(query->Data<T>());
   const CudaT* key_data = has_separate_key
@@ -414,7 +422,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
       present_state_lengths->MutableData<int32_t>(),
       state_update != nullptr ? reinterpret_cast<CudaT*>(state_update->MutableData<T>()) : nullptr,
       float_workspace.get(),
-      overflow_flags.get());
+      overflow_flags);
 }
 
 template <typename T>
@@ -550,8 +558,10 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context, con
   params.state_only = state_only;
 
   auto float_workspace = GetScratchBuffer<float>(GetCsaPackedWorkspaceFloatCount(params), GetComputeStream(context));
-  auto overflow_flags =
-      GetScratchBuffer<int32_t>(static_cast<size_t>(std::max<int64_t>(batch_size, 1)), GetComputeStream(context));
+  Tensor* state_status = GetStateStatusOutput(context, batch_size);
+  auto overflow_scratch = GetScratchBuffer<int32_t>(
+      state_status == nullptr ? static_cast<size_t>(std::max<int64_t>(batch_size, 1)) : 0, GetComputeStream(context));
+  int32_t* overflow_flags = state_status != nullptr ? state_status->MutableData<int32_t>() : overflow_scratch.get();
 
   Tensor* reuse_status = nullptr;
   if (state_only) {
@@ -566,14 +576,16 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context, con
                                              cudaMemcpyDeviceToDevice, Stream(context)));
       }
     }
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(overflow_flags.get(), 0, std::max<int64_t>(batch_size, 1) * sizeof(int32_t),
-                                         Stream(context)));
+    if (batch_size > 0) {
+      CUDA_RETURN_IF_ERROR(
+          cudaMemsetAsync(overflow_flags, 0, static_cast<size_t>(batch_size) * sizeof(int32_t), Stream(context)));
+    }
     ORT_RETURN_IF_ERROR(LaunchValidatePackedIndexerReuse(
         Stream(context), cumulative_sequence_lengths->Data<int32_t>(), past_sequence_lengths->Data<int32_t>(),
         past_state_lengths->Data<int32_t>(), selected_indices->MutableData<int32_t>(),
         selected_counts->MutableData<int32_t>(), reuse_status->MutableData<int32_t>(),
         static_cast<int>(batch_size), static_cast<int>(output_capacity), static_cast<int>(state_capacity),
-        static_cast<int>(compress_ratio_), false, overflow_flags.get()));
+        static_cast<int>(compress_ratio_), false, overflow_flags));
   }
 
   ORT_RETURN_IF_ERROR(LaunchCsaPackedSparseAttentionIndexer<CudaT>(
@@ -601,14 +613,14 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context, con
       reinterpret_cast<CudaT*>(present_gate_buffer->MutableData<T>()),
       present_state_lengths->MutableData<int32_t>(),
       float_workspace.get(),
-      overflow_flags.get()));
+      overflow_flags));
   if (!state_only) return Status::OK();
   return LaunchValidatePackedIndexerReuse(Stream(context), cumulative_sequence_lengths->Data<int32_t>(),
                                           past_sequence_lengths->Data<int32_t>(), past_state_lengths->Data<int32_t>(),
                                           selected_indices->MutableData<int32_t>(), selected_counts->MutableData<int32_t>(),
                                           reuse_status->MutableData<int32_t>(), static_cast<int>(batch_size),
                                           static_cast<int>(output_capacity), static_cast<int>(state_capacity),
-                                          static_cast<int>(compress_ratio_), false, overflow_flags.get());
+                                          static_cast<int>(compress_ratio_), false, overflow_flags);
 }
 
 template <typename T>
@@ -702,6 +714,12 @@ Status PackedSparseAttentionIndexer<T>::ComputeReuse(OpKernelContext* context) c
     if (snapshot != nullptr && snapshot->SizeInBytes() != 0) {
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(snapshot->MutableDataRaw(), 0, snapshot->SizeInBytes(), Stream(context)));
     }
+  }
+  // The state is held (not updated) on this path, so there is nothing to reject.
+  Tensor* state_status = GetStateStatusOutput(context, batch);
+  if (state_status != nullptr && state_status->SizeInBytes() != 0) {
+    CUDA_RETURN_IF_ERROR(
+        cudaMemsetAsync(state_status->MutableDataRaw(), 0, state_status->SizeInBytes(), Stream(context)));
   }
   return LaunchValidatePackedIndexerReuse(Stream(context),
                                           context->Input<Tensor>(psai::kCumulativeSequenceLengths)->Data<int32_t>(),
