@@ -193,8 +193,9 @@ bool AllEpDevicesReportLegacyExternalOnlyWeightlessSupport(gsl::span<const OrtEp
 // The constant initializers consumed by a fused node, by how the EP obtains their data.
 struct FusedNodeConstantInitializers {
   // Inputs of the fused node (drop_constant_initializers = false): ORT provides them, and copies them into a generated
-  // EPContext model. Names of the ones stored inside the source model.
-  std::vector<std::string> provided_internal;
+  // EPContext model. Number of the ones stored inside the source model, and the name of one of them (for messages).
+  size_t num_provided_internal = 0;
+  std::string provided_internal_example;
   // Not inputs of the fused node (drop_constant_initializers = true): the EP obtains the data itself, either by copying
   // it or, in weightless mode, by keeping references to it.
   bool dropped_internal = false;  // Stored inside the source model.
@@ -225,7 +226,10 @@ FusedNodeConstantInitializers GetFusedNodeConstantInitializers(
         graph_viewer.GetGraph().GetExternalInitializerInfo(name, external_data_info, /*check_outer_scope*/ true);
     if (fused_node_inputs.count(name) != 0) {
       if (!is_external) {
-        result.provided_internal.push_back(name);
+        if (result.num_provided_internal == 0) {
+          result.provided_internal_example = name;
+        }
+        ++result.num_provided_internal;
       }
     } else if (is_external) {
       result.dropped_external = true;
@@ -966,7 +970,8 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
                     AllEpDevicesReportLegacyExternalOnlyWeightlessSupport(ep_devices_))) {
           mode = OrtWeightlessSupport_EXTERNAL_ONLY;
         }
-        std::vector<std::string> copied_internal_initializers;
+        size_t num_copied_internal_initializers = 0;
+        std::string copied_internal_initializer_example;
         for (const FusedNodeAndGraph& node_and_graph : fused_nodes_and_graphs) {
           FusedNodeConstantInitializers initializers = GetFusedNodeConstantInitializers(node_and_graph);
 
@@ -977,20 +982,21 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
               mode == OrtWeightlessSupport_ALL && initializers.dropped_internal;
           ep_context_external_dependencies_.external_weights |= initializers.dropped_external;
 
-          copied_internal_initializers.insert(copied_internal_initializers.end(),
-                                              std::make_move_iterator(initializers.provided_internal.begin()),
-                                              std::make_move_iterator(initializers.provided_internal.end()));
+          if (num_copied_internal_initializers == 0) {
+            copied_internal_initializer_example = std::move(initializers.provided_internal_example);
+          }
+          num_copied_internal_initializers += initializers.num_provided_internal;
         }
 
         // ORT copies the internal initializers it provides into the EPContext model, unless the app stores them
         // elsewhere with an initializer location function. Copies can't be shared by several model variants.
-        if (mode == OrtWeightlessSupport_ALL && !copied_internal_initializers.empty() &&
+        if (mode == OrtWeightlessSupport_ALL && num_copied_internal_initializers != 0 &&
             !has_initializer_location_func_) {
           LOGS(GetEpLoggerOrDefault(), WARNING)
               << "Weightless mode requested (" << requested_option << ") but EP '" << Type()
               << "' lets ORT provide the constant initializers of the compiled nodes (drop_constant_initializers is "
-              << "false), and " << copied_internal_initializers.size() << " of them (e.g., '"
-              << copied_internal_initializers.front() << "') are stored inside the source model. ORT copies them "
+              << "false), and " << num_copied_internal_initializers << " of them (e.g., '"
+              << copied_internal_initializer_example << "') are stored inside the source model. ORT copies them "
               << "into the EPContext model because no initializer location function "
               << "(ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc) is set, so if a package "
               << "contains several model variants, these initializers can't be shared between them.";
