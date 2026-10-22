@@ -8,6 +8,14 @@ The current product priority is mixed-width INT2 QMoE for expert-heavy Qwen mode
 
 This choice prioritizes implementation readiness and maximum memory-bandwidth reduction while accepting material model-quality risk. The first week must establish uniform and mixed-precision INT2 quality baselines against INT4, INT8, and BF16. Mixed INT2/INT4/INT8 quantization may be required for sensitive layers. INT3, INT5, and INT6 remain follow-up quality/size options if INT2 cannot meet coding and tool-calling targets or if a less aggressive quantization point is needed.
 
+### INT3 QMoE Progress (October 22, 2026)
+
+[ORT #33394](https://github.com/microsoft/onnxruntime/pull/33394) merged as `d9c279b72f5ed6b4f5f67cbda1eb118b7e9dca41`. It delivers portable packed-code references and the compatible QMoE v1 INT3 schema/host-validation foundation (P0/P1), not CPU/CUDA INT3 execution kernels, a new ONNX datatype, or dense `MatMulNBits(bits=3)` support. The references are self-contained and run in existing Python quantization CI; no external ONNX source pin is required.
+
+Draft [ORT #33519](https://github.com/microsoft/onnxruntime/pull/33519) carries the CUDA correctness baseline, all three `(FC1,FC2)` pairs `(3,4)`, `(3,3)` and `(4,3)`, bounded prefill, 82 actual CUDA Session cases, and full Qwen3-30B-A3B export/experiment records. Draft [Olive #2749](https://github.com/microsoft/Olive/pull/2749) and [Mobius #783](https://github.com/onnxruntime/mobius/pull/783) supply producer changes. Draft [ORT #33530](https://github.com/microsoft/onnxruntime/pull/33530) keeps padding experiments separate from the merged portable contract.
+
+These drafts do not close the remaining stage gates: clean provider build/formal integration acceptance, provider-private prepack and cache qualification, GEMM-based optimized prefill, CPU/provider parity, and full-model quality/performance qualification. Current experimental INT3 inference is substantially slower than INT4. The 57-question MMLU diagnostic is not a full MMLU score. See [INT3 QMoE End-to-End Delivery Plan](int3-qmoe-end-to-end-delivery-plan.md#implementation-progress-october-22-2026) for evidence and limits; QMoE progress does not expand the dense-operator support matrix below.
+
 ## Scope
 
 This document focuses on weight-only block quantization for `MatMulNBits` and related embedding gather operations. It covers:
