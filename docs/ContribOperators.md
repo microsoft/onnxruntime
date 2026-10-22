@@ -3496,20 +3496,20 @@ This version of the operator has been available since version 1 of the 'com.micr
   One hyper-connection block with a low-rank gate network, fused into one operator. C = num_branches streams of
   width H are kept as one flattened (..., C * H) tensor. With the optional prologue the operator first applies the
   post-mix of the previous block (identity stream mix):
-  
+
     S[..., c, h] = streams[..., c, h] + prev_post_gate[..., c] * prev_block_output[..., h]
-  
+
   and otherwise S = streams. It then computes, with `rms` taken per branch over H:
-  
+
     hn[..., c, h] = S[..., c, h] / sqrt(mean_h(S[..., c, :]^2) + epsilon) * norm_scale[c, h]
     d             = ScaledSiLU(hn @ down_weight, silu_alpha)                   (..., R)
     g[..., c, h]  = sigmoid(d @ up_weight)                                    per stream and feature
     pre_output    = reduction_scale * sum_c(hn[..., c, h] * g[..., c, h])     (..., H)
     post_gate     = sigmoid((hn @ inject_weight) / gate_div) * gate_mul         (..., C)
-  
+
   pre_output is the input of the next transformer block and post_gate is prev_post_gate of the next call.
   streams_out is S (the streams after the prologue; a copy of streams when there is no prologue).
-  
+
   Numerics contract. Matrix products and reductions accumulate in float32. The result of every step is rounded
   to T once, as the output of the equivalent standard operator would be:
   S = cast_T(streams + prev_post_gate * prev_block_output), hn = cast_T(S * inv_rms * norm_scale),
@@ -9156,4 +9156,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
