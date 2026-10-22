@@ -1732,8 +1732,7 @@ bool UseGroupedDecodeAttention(const DynamicSparseAttentionParameters& parameter
                                size_t element_size,
                                size_t max_shared_memory_per_block,
                                bool quantized_cache = false) {
-  return (parameters.sequence_length == 1 ||
-          (quantized_cache && parameters.sequence_length == 2)) &&
+  return (parameters.sequence_length == 1 || parameters.sequence_length == 2) &&
          parameters.num_heads / parameters.kv_num_heads >= 4 &&
          GetCandidateCapacity(parameters) > kSplitCandidateSize &&
          SupportsGroupedAttention(parameters, element_size, max_shared_memory_per_block) &&
@@ -1824,17 +1823,18 @@ size_t GetDynamicSparseAttentionWorkspaceSize(
     return SafeInt<size_t>(query_blocks) * split_count *
            (static_cast<size_t>(parameters.head_size) + 2);
   }
-  if (UseGroupedPrefillAttention(parameters, element_size, max_shared_memory_per_block)) {
-    return 0;
-  }
-  if (UseFusedAttention(parameters, element_size, max_shared_memory_per_block)) {
-    return 0;
-  }
-
   const size_t query_blocks =
       static_cast<size_t>(parameters.batch_size) * parameters.sequence_length * parameters.num_heads;
   const bool grouped_decode =
       UseGroupedDecodeAttention(parameters, element_size, max_shared_memory_per_block);
+  if (!grouped_decode) {
+    if (UseGroupedPrefillAttention(parameters, element_size, max_shared_memory_per_block)) {
+      return 0;
+    }
+    if (UseFusedAttention(parameters, element_size, max_shared_memory_per_block)) {
+      return 0;
+    }
+  }
   const size_t split_count =
       grouped_decode
           ? GetGroupedDecodeSplitCount(parameters)
