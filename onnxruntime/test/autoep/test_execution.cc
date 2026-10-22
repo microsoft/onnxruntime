@@ -2080,9 +2080,119 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_ExternalDependencies) {
         << "test case " << i;
   }
 
+  // The deprecated "ep.enable_weightless" option does not select a mode, so ORT derives it from GetWeightlessSupport().
+  // Here the EP only supports external initializers: the internal ones it obtains itself are copied, not referenced.
+  struct DeprecatedOptionTestCase {
+    const ORTCHAR_T* model_file;
+    const char* ep_weightless_support;  // Returned by GetWeightlessSupport(), see kExampleEpTestWeightlessSupport.
+    const char* expected_external_dependencies;
+  };
+  const std::string external_only = std::to_string(OrtWeightlessSupport_EXTERNAL_ONLY);
+  const std::string all_or_external_only = std::to_string(OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY);
+  const DeprecatedOptionTestCase deprecated_option_test_cases[] = {
+      {internal_model_file, external_only.c_str(), ""},
+      {mixed_model_file, external_only.c_str(), "external_weights"},
+      // An EP that supports all initializers keeps the earlier behavior: weightless mode for all initializers.
+      {mixed_model_file, all_or_external_only.c_str(), "source_model;external_weights"},
+  };
+
+  for (size_t i = 0; i < std::size(deprecated_option_test_cases); ++i) {
+    const DeprecatedOptionTestCase& test_case = deprecated_option_test_cases[i];
+    std::filesystem::remove(output_model_file);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    session_options.AddConfigEntry(kExampleEpTestWeightlessDropInitializers, "1");
+    session_options.AddConfigEntry(kExampleEpTestWeightlessSupport, test_case.ep_weightless_support);
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+    compile_options.SetInputModelPath(test_case.model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    compile_options.SetEpContextEmbedMode(true);
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+    ONNX_NAMESPACE::ModelProto compiled_model;
+    ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(output_model_file, compiled_model));
+    ASSERT_EQ(GetModelMetadataValue(compiled_model, kOrtModelMetadata_ExternalDependencies),
+              std::optional<std::string>(test_case.expected_external_dependencies))
+        << "deprecated option test case " << i;
+  }
+
   // Clean up.
   for (const ORTCHAR_T* file : {external_model_file, external_data_file, mixed_model_file, mixed_data_file,
                                 output_model_file, output_data_file}) {
+    std::filesystem::remove(file);
+  }
+}
+
+// Test that for the deprecated "ep.enable_weightless" option, when GetWeightlessSupport() reports several modes, ORT
+// uses the older "weightless_support" EP metadata, which keeps the EP's behavior from before version 1.32, to determine
+// the "external_dependencies" of the compiled model.
+TEST(OrtEpLibrary, PluginEp_WeightlessMode_ExternalDependencies_DeprecatedOptionUsesLegacyMetadata) {
+  Utils::LoadExampleEpHooksPtr hooks;
+  ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, hooks));
+  ASSERT_NE(hooks->set_legacy_weightless_support_metadata, nullptr);
+
+  const ORTCHAR_T* mixed_model_file = ORT_TSTR("plugin_ep_legacy_metadata_mixed.onnx");
+  const ORTCHAR_T* mixed_data_file = ORT_TSTR("plugin_ep_legacy_metadata_mixed.bin");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_legacy_metadata_ctx.onnx");
+  ASSERT_NO_FATAL_FAILURE(WriteMulModelWithInternalAndExternalInitializers(mixed_model_file, mixed_data_file));
+
+  struct TestCase {
+    const char* legacy_weightless_support;  // Older "weightless_support" EP metadata of the EP device.
+    const char* expected_external_dependencies;
+  };
+  const TestCase test_cases[] = {
+      // The EP's legacy behavior is external initializers only: it copies the internal initializers it obtains.
+      {"external_only", "external_weights"},
+      // The EP's legacy behavior is all initializers: it keeps references to the internal ones too.
+      {"all", "source_model;external_weights"},
+  };
+
+  for (size_t i = 0; i < std::size(test_cases); ++i) {
+    const TestCase& test_case = test_cases[i];
+
+    // The metadata is set when the EP device is created, i.e., when the library is registered.
+    hooks->set_legacy_weightless_support_metadata(test_case.legacy_weightless_support);
+    auto restore_metadata = gsl::finally([&hooks]() { hooks->set_legacy_weightless_support_metadata(nullptr); });
+
+    RegisteredEpDeviceUniquePtr example_ep;
+    ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+    Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+    ASSERT_STREQ(plugin_ep_device.EpMetadata().GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupport),
+                 test_case.legacy_weightless_support);
+
+    std::filesystem::remove(output_model_file);
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    session_options.AddConfigEntry(kExampleEpTestWeightlessDropInitializers, "1");
+    // GetWeightlessSupport() reports both modes, so it doesn't establish the legacy behavior.
+    session_options.AddConfigEntry(kExampleEpTestWeightlessSupport,
+                                   std::to_string(OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY).c_str());
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+    compile_options.SetInputModelPath(mixed_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    compile_options.SetEpContextEmbedMode(true);
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+    ONNX_NAMESPACE::ModelProto compiled_model;
+    ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(output_model_file, compiled_model));
+    ASSERT_EQ(GetModelMetadataValue(compiled_model, kOrtModelMetadata_ExternalDependencies),
+              std::optional<std::string>(test_case.expected_external_dependencies))
+        << "test case " << i;
+  }
+
+  // Clean up.
+  for (const ORTCHAR_T* file : {mixed_model_file, mixed_data_file, output_model_file}) {
     std::filesystem::remove(file);
   }
 }
