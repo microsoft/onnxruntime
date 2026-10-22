@@ -3204,14 +3204,12 @@ class TestInferenceSession(unittest.TestCase):
         onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so, providers=["CPUExecutionProvider"])
 
     def test_weightless_all_model_warns_without_source_model(self):
-        # A model compiled with weightless mode OrtWeightlessSupport_ALL records "weightless_mode" = "2" in its metadata
-        # and needs the source model at runtime. ORT logs a warning when such a model is loaded without
-        # "ep.context_source_model_path" or a source model buffer. The warning is written to the native stderr, so the
+        # A compiled model that depends on the source model lists "source_model" in its "external_dependencies"
+        # metadata. ORT logs a warning when such a model is loaded without "ep.context_source_model_path" or a source
+        # model buffer. For models without "external_dependencies", ORT warns if the model was compiled with weightless
+        # mode OrtWeightlessSupport_ALL ("weightless_mode" = "2"). The warning is written to the native stderr, so the
         # session is created in a subprocess.
         import onnx  # noqa: PLC0415
-
-        model = onnx.load(get_name("mul_1.onnx"))
-        onnx.helper.set_model_props(model, {"weightless_mode": "2"})
 
         script = (
             "import sys\n"
@@ -3226,24 +3224,46 @@ class TestInferenceSession(unittest.TestCase):
             [os.path.dirname(os.path.dirname(os.path.abspath(onnxrt.__file__))), env.get("PYTHONPATH", "")]
         )
 
+        def create_session(model_path, *args):
+            result = subprocess.run(
+                [sys.executable, "-c", script, model_path, *args],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=True,
+            )
+            # On Windows, ORT writes log messages to stderr as UTF-16, so drop the NUL characters of ASCII text.
+            return result.stderr.replace("\x00", "")
+
+        warning = "but neither the 'ep.context_source_model_path' session option nor a source model buffer"
+        test_cases = [
+            # (model metadata, expect a warning without a source model)
+            ({"external_dependencies": "source_model"}, True),
+            ({"external_dependencies": "source_model;external_weights"}, True),
+            # The deprecated "ep.enable_weightless" option doesn't record "weightless_mode".
+            ({"external_dependencies": "source_model", "weightless_mode": "2"}, True),
+            # "external_dependencies" takes precedence over "weightless_mode", e.g., for ORT-provided initializers.
+            ({"external_dependencies": "", "weightless_mode": "2"}, False),
+            ({"external_dependencies": "external_weights;ep_context_binary", "weightless_mode": "2"}, False),
+            # Models without "external_dependencies", e.g., compiled by an earlier version.
+            ({"weightless_mode": "2"}, True),
+            ({"weightless_mode": "1"}, False),
+        ]
+
         with tempfile.TemporaryDirectory() as temp_dir:
-            model_path = os.path.join(temp_dir, "weightless_all.onnx")
-            onnx.save(model, model_path)
+            model_path = os.path.join(temp_dir, "weightless.onnx")
+            for metadata, expect_warning in test_cases:
+                with self.subTest(metadata=metadata):
+                    model = onnx.load(get_name("mul_1.onnx"))
+                    onnx.helper.set_model_props(model, metadata)
+                    onnx.save(model, model_path)
 
-            def create_session(*args):
-                result = subprocess.run(
-                    [sys.executable, "-c", script, model_path, *args],
-                    capture_output=True,
-                    text=True,
-                    env=env,
-                    check=True,
-                )
-                # On Windows, ORT writes log messages to stderr as UTF-16, so drop the NUL characters of ASCII text.
-                return result.stderr.replace("\x00", "")
-
-            warning = "compiled with weightless mode OrtWeightlessSupport_ALL"
-            self.assertIn(warning, create_session())
-            self.assertNotIn(warning, create_session(get_name("mul_1.onnx")))
+                    if expect_warning:
+                        self.assertIn(warning, create_session(model_path))
+                    else:
+                        self.assertNotIn(warning, create_session(model_path))
+                    # No warning when the source model is provided.
+                    self.assertNotIn(warning, create_session(model_path, get_name("mul_1.onnx")))
 
 
 if __name__ == "__main__":

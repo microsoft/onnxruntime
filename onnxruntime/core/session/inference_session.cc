@@ -4,6 +4,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
+#include <algorithm>
 #include <charconv>
 #include <memory>
 #include <sstream>
@@ -2740,16 +2741,31 @@ static Status ValidateWeightlessMode(const SessionOptions& session_options) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-// Warns if a model compiled with OrtWeightlessSupport_ALL is loaded without a source model. Whether the source model is
-// needed depends on the EP: EPs that load the initializer data themselves need it, while EPs that let ORT provide the
-// initializers get them from the compiled model. Such EPs may also still locate the source model via the
-// "onnx_model_filename" EPContext node attribute, so this is not an error.
+// Warns if a model that may depend on the source model is loaded without one. The "external_dependencies" metadata
+// records whether a compiled model depends on the source model: e.g., an EP that loads the initializer data itself in
+// weightless mode OrtWeightlessSupport_ALL needs it, while an EP that lets ORT provide the initializers doesn't. Models
+// without that metadata (e.g., compiled by an earlier version) may depend on the source model if they were compiled
+// with OrtWeightlessSupport_ALL. An EP may still locate the source model via the "onnx_model_filename" EPContext node
+// attribute, so this is not an error.
 static void CheckWeightlessSourceModel(const SessionOptions& session_options, const Model& model,
                                        const logging::Logger& logger) {
   const auto& model_metadata = model.MetaData();
-  auto it = model_metadata.find(kOrtModelMetadata_WeightlessMode);
-  if (it == model_metadata.end() || it->second != std::to_string(static_cast<int>(OrtWeightlessSupport_ALL))) {
-    return;
+  std::string reason;
+  if (auto it = model_metadata.find(kOrtModelMetadata_ExternalDependencies); it != model_metadata.end()) {
+    const auto dependencies = utils::SplitString(it->second, ";");
+    if (std::find(dependencies.begin(), dependencies.end(), "source_model") == dependencies.end()) {
+      return;
+    }
+    reason = MakeString("The model depends on the source model ('", kOrtModelMetadata_ExternalDependencies,
+                        "' metadata = '", it->second, "')");
+  } else {
+    it = model_metadata.find(kOrtModelMetadata_WeightlessMode);
+    if (it == model_metadata.end() || it->second != std::to_string(static_cast<int>(OrtWeightlessSupport_ALL))) {
+      return;
+    }
+    reason =
+        "The model was compiled with weightless mode OrtWeightlessSupport_ALL, so depending on the EP, it may "
+        "depend on the source model";
   }
 
   const bool has_source_model_path =
@@ -2757,8 +2773,7 @@ static void CheckWeightlessSourceModel(const SessionOptions& session_options, co
   const bool has_source_model_buffer = session_options.weightless_source_model_data != nullptr;
   if (!has_source_model_path && !has_source_model_buffer) {
     LOGS(logger, WARNING)
-        << "The model was compiled with weightless mode OrtWeightlessSupport_ALL. Depending on the EP, the source "
-        << "model may be needed at runtime, but neither the '" << kOrtSessionOptionEpContextSourceModelPath
+        << reason << ", but neither the '" << kOrtSessionOptionEpContextSourceModelPath
         << "' session option nor a source model buffer (SessionOptionsSetWeightlessSourceModelBuffer) is set. "
         << "An EP that needs it will try to locate it via the 'onnx_model_filename' EPContext node attribute.";
   }

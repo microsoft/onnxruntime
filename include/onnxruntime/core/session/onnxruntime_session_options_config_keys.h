@@ -935,8 +935,10 @@ static const char* const kOrtSessionOptionEpEnableWeightlessMode = "ep.enable_we
 // "onnx_model_filename" is resolved against the directory of the compiled model: the directory of the model path,
 // or of "ep.context_file_path" (kOrtSessionOptionEpContextFilePath) when the compiled model is loaded from memory.
 //
-// ORT logs a warning when creating a session from a model compiled with OrtWeightlessSupport_ALL if neither this
-// option nor a source model buffer is set, since the EP may need the source model.
+// ORT logs a warning when creating a session from a model whose "external_dependencies" metadata
+// (kOrtModelMetadata_ExternalDependencies) includes "source_model" if neither this option nor a source model buffer is
+// set. For models without that metadata, ORT does so if the model was compiled with OrtWeightlessSupport_ALL, since the
+// EP may need the source model.
 //
 // If the source model is available as a byte buffer rather than a file path, use
 // OrtApi::SessionOptionsSetWeightlessSourceModelBuffer() instead.
