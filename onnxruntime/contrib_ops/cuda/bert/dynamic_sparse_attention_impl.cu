@@ -1732,8 +1732,12 @@ bool UseGroupedDecodeAttention(const DynamicSparseAttentionParameters& parameter
                                size_t element_size,
                                size_t max_shared_memory_per_block,
                                bool quantized_cache = false) {
+  static const int max_decode_rows =
+      ParseEnvironmentVariableWithDefault<int>("ORT_DSA_INT8_GROUPED_MAX_ROWS", 2);
+  ORT_ENFORCE(max_decode_rows >= 2 && max_decode_rows <= 4,
+              "ORT_DSA_INT8_GROUPED_MAX_ROWS must be in [2, 4].");
   return (parameters.sequence_length == 1 ||
-          (quantized_cache && parameters.sequence_length == 2)) &&
+          (quantized_cache && parameters.sequence_length <= max_decode_rows)) &&
          parameters.num_heads / parameters.kv_num_heads >= 4 &&
          GetCandidateCapacity(parameters) > kSplitCandidateSize &&
          SupportsGroupedAttention(parameters, element_size, max_shared_memory_per_block) &&
