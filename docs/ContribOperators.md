@@ -1743,6 +1743,12 @@ This version of the operator has been available since version 1 of the 'com.micr
   Auxiliary K/V use BNSH layout and are read-only. When `auxiliary_kv_shared=1`, auxiliary_value may be omitted and
   auxiliary_key is used as both K and V. DeepSeek-style post-attention inverse/conjugate RoPE and output projection remain
   the exporter's responsibility.
+  
+  Main caches may instead use INT8 with positive finite float32 key_scale and value_scale vectors, one scale per
+  KV-head channel. Newly appended keys (after optional normalization and RoPE) and values are divided by their scales,
+  rounded to nearest with ties to even, and saturated to [-128, 127]. Attention reads the quantized representation,
+  including newly appended rows. Auxiliary caches remain floating point. Invalid scale values produce validation_status=10
+  when validation is requested; CUDA strict validation also reports them as an error.
 
 #### Version
 
@@ -1751,35 +1757,35 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>attention_mode</tt> : string</dt>
+<dt><tt>attention_mode</tt> : string (default is selected_only)</dt>
 <dd>One of 'selected_only' or 'local_plus_selected'.</dd>
-<dt><tt>auxiliary_kv_shared</tt> : int</dt>
+<dt><tt>auxiliary_kv_shared</tt> : int (default is 0)</dt>
 <dd>Use auxiliary_key as both key and value when auxiliary_value is omitted.</dd>
-<dt><tt>do_rotary</tt> : int</dt>
+<dt><tt>do_rotary</tt> : int (default is 0)</dt>
 <dd>Whether to apply rotary embedding to Q and newly appended K.</dd>
-<dt><tt>is_causal</tt> : int</dt>
+<dt><tt>is_causal</tt> : int (default is 1)</dt>
 <dd>Must be 1. DynamicSparseAttention version 1 supports causal attention only.</dd>
-<dt><tt>kv_num_heads</tt> : int (required)</dt>
+<dt><tt>kv_num_heads</tt> : int</dt>
 <dd>Number of main and auxiliary KV heads.</dd>
-<dt><tt>local_window_size</tt> : int</dt>
+<dt><tt>local_window_size</tt> : int (default is -1)</dt>
 <dd>Number of causally visible main-cache entries in local_plus_selected mode.</dd>
-<dt><tt>num_heads</tt> : int (required)</dt>
+<dt><tt>num_heads</tt> : int</dt>
 <dd>Number of query heads.</dd>
-<dt><tt>qk_norm_epsilon</tt> : float</dt>
+<dt><tt>qk_norm_epsilon</tt> : float (default is 0.0)</dt>
 <dd>Epsilon for optional per-head Q/K RMS normalization.</dd>
-<dt><tt>rotary_interleaved</tt> : int</dt>
+<dt><tt>rotary_interleaved</tt> : int (default is 0)</dt>
 <dd>Whether rotary pairs use interleaved layout.</dd>
-<dt><tt>rotary_offset</tt> : int</dt>
+<dt><tt>rotary_offset</tt> : int (default is 0)</dt>
 <dd>First head channel covered by rotary embedding. Must be nonnegative, a multiple of 8, and leave room for the rotary dimensions within head_size.</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Scaling factor applied to QK. Defaults to 1/sqrt(head_size).</dd>
-<dt><tt>selected_kv_source</tt> : string</dt>
+<dt><tt>selected_kv_source</tt> : string (default is main)</dt>
 <dd>Source addressed by selected indices: 'main' or 'auxiliary'.</dd>
-<dt><tt>smooth_softmax</tt> : int</dt>
+<dt><tt>smooth_softmax</tt> : int (default is 0)</dt>
 <dd>Add a zero-valued sink logit when no explicit head_sink is supplied.</dd>
 </dl>
 
-#### Inputs (11 - 17)
+#### Inputs (5 - 20)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -1788,10 +1794,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Current main key [batch, sequence, kv_num_heads * head_size].</dd>
 <dt><tt>value</tt> (optional) : T</dt>
 <dd>Current main value [batch, sequence, kv_num_heads * head_size].</dd>
-<dt><tt>past_key</tt> (optional) : T</dt>
-<dd>Main key cache in BNSH layout.</dd>
-<dt><tt>past_value</tt> (optional) : T</dt>
-<dd>Main value cache in BNSH layout.</dd>
+<dt><tt>past_key</tt> (optional) : TCache</dt>
+<dd>Main key cache in BNSH layout, same type as query or INT8.</dd>
+<dt><tt>past_value</tt> (optional) : TCache</dt>
+<dd>Main value cache in BNSH layout, same type as past_key.</dd>
 <dt><tt>auxiliary_key</tt> (optional) : T</dt>
 <dd>Read-only auxiliary key sequence in BNSH layout.</dd>
 <dt><tt>auxiliary_value</tt> (optional) : T</dt>
@@ -1816,17 +1822,25 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Optional K RMSNorm weight [head_size].</dd>
 <dt><tt>head_sink</tt> (optional) : T</dt>
 <dd>Optional sink logit [num_heads]. Participates in the shared softmax denominator in both attention modes.</dd>
+<dt><tt>committed_length</tt> (optional) : M</dt>
+<dd>Optional single-request committed token count for cursor validation. When supplied, validation_status is 9 if seqlens_k, sequence_length, or cache_capacity is inconsistent. CUDA only.</dd>
+<dt><tt>key_scale</tt> (optional) : S</dt>
+<dd>Positive finite per-channel INT8 key-cache scales [kv_num_heads * head_size].</dd>
+<dt><tt>value_scale</tt> (optional) : S</dt>
+<dd>Positive finite per-channel INT8 value-cache scales [kv_num_heads * head_size].</dd>
 </dl>
 
-#### Outputs (1 - 3)
+#### Outputs (1 - 4)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>Attention output [batch, sequence, num_heads * head_size].</dd>
-<dt><tt>present_key</tt> (optional) : T</dt>
+<dt><tt>present_key</tt> (optional) : TCache</dt>
 <dd>Updated main key cache in BNSH layout.</dd>
-<dt><tt>present_value</tt> (optional) : T</dt>
+<dt><tt>present_value</tt> (optional) : TCache</dt>
 <dd>Updated main value cache in BNSH layout.</dd>
+<dt><tt>validation_status</tt> (optional) : M</dt>
+<dd>Optional CUDA-only int32 status: 0 when valid, a validation code when invalid.</dd>
 </dl>
 
 #### Type Constraints
@@ -1834,6 +1848,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain all floating-point inputs and outputs to one element type.</dd>
+<dt><tt>TCache</tt> : tensor(float), tensor(float16), tensor(bfloat16), tensor(int8)</dt>
+<dd>Cache type must match T unless INT8 per-channel scales are supplied.</dd>
+<dt><tt>S</tt> : tensor(float)</dt>
+<dd>INT8 cache scales use float32.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain selection and sequence metadata to int32.</dd>
 </dl>
@@ -5128,6 +5146,8 @@ This version of the operator has been available since version 1 of the 'com.micr
       rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory;
     * additionally emits selected_counts, the exact number of active (non -1) entries per query, so
       that no downstream consumer needs to scan selected_indices for its query's true count.
+    * for QSA, optionally emits the pending-state snapshot after the first request token and a
+      per-request validation status for overflow or inconsistent state metadata.
   
   Both policy_mode values keep the semantics of SparseAttentionIndexer, applied independently to each
   request's own packed token range and fixed-capacity state slice:
@@ -5142,7 +5162,7 @@ This version of the operator has been available since version 1 of the 'com.micr
       their token indices are emitted (request-local logical positions, i.e. the same numbering as
       past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
       incomplete block. QSA positions are the request-local logical cache positions derived from
-      past_sequence_lengths and cumulative_sequence_lengths; position_ids must be omitted.
+      past_sequence_lengths and cumulative_sequence_lengths unless optional position_ids are supplied.
   
     policy_mode = "csa" ("compressed sparse attention" block indexer)
       Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window
@@ -5185,31 +5205,31 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>compress_ratio</tt> : int (required)</dt>
+<dt><tt>compress_ratio</tt> : int</dt>
 <dd>Number of consecutive tokens folded into one compressed/pooled entry. Must be > 0 and 2 * compress_ratio - 1 must not exceed INT_MAX.</dd>
-<dt><tt>epsilon</tt> : float</dt>
+<dt><tt>epsilon</tt> : float (default is 0.0)</dt>
 <dd>Epsilon of the RMS normalization applied to queries and compressed keys. Default is 1e-6.</dd>
 <dt><tt>head_weight_scale</tt> : float</dt>
 <dd>Only for policy_mode 'csa': scale applied to head_weights. Default is 1/sqrt(num_heads). Must be omitted when policy_mode is 'qsa'.</dd>
 <dt><tt>index_topk</tt> : int</dt>
 <dd>Only for policy_mode 'csa': number of compressed entries selected per query. Must be > 0. Must be omitted when policy_mode is 'qsa'.</dd>
-<dt><tt>indexshare_state_policy</tt> : string</dt>
+<dt><tt>indexshare_state_policy</tt> : string (default is default)</dt>
 <dd>Reuse state policy: default holds QSA and advances CSA; hold or advance overrides it.</dd>
-<dt><tt>max_output_entries</tt> : int</dt>
+<dt><tt>max_output_entries</tt> : int (default is 0)</dt>
 <dd>Fixed padded output width for the optional IndexShare interface.</dd>
-<dt><tt>policy_mode</tt> : string (required)</dt>
+<dt><tt>policy_mode</tt> : string</dt>
 <dd>Indexer policy. Must be exactly 'qsa' (token indexer) or 'csa' (compressed block indexer).</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Scale applied to the per-head ReLU scores. Default is 1/sqrt(head_size).</dd>
-<dt><tt>state_capacity</tt> : int (required)</dt>
+<dt><tt>state_capacity</tt> : int</dt>
 <dd>Fixed capacity (number of entries) of past_key_state / present_key_state. Must be > 0.</dd>
-<dt><tt>state_update_capacity</tt> : int</dt>
+<dt><tt>state_update_capacity</tt> : int (default is 0)</dt>
 <dd>Only for policy_mode 'qsa': maximum number of leading token transitions captured per request. Must be in [0, 8]. Default is 0.</dd>
 <dt><tt>token_budget</tt> : int</dt>
 <dd>Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.</dd>
 </dl>
 
-#### Inputs (16 - 22)
+#### Inputs (10 - 22)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -5236,8 +5256,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'csa': per-head score weights with shape (total_tokens, num_heads).</dd>
 <dt><tt>position_ids</tt> (optional) : I</dt>
 <dd>Only for policy_mode 'csa': absolute position of every packed query, with shape (total_tokens).</dd>
-<dt><tt>past_key_state</tt> : T</dt>
-<dd>Generic fixed-capacity state: policy_mode 'qsa' stores prepared complete-block keys; policy_mode 'csa' stores compressed keys. Shape is (batch_size, state_capacity, head_size) and never changes across calls.</dd>
+<dt><tt>past_key_state</tt> : T_KEY</dt>
+<dd>Generic fixed-capacity state: policy_mode 'qsa' stores prepared complete-block keys; policy_mode 'csa' stores compressed keys. Shape is (batch_size, state_capacity, head_size) and never changes across calls. CUDA QSA also supports FLOAT key state with BFLOAT16 query/key tensors. WebGPU requires key state and activations to have the same type.</dd>
 <dt><tt>past_kv_buffer</tt> : T</dt>
 <dd>Generic fixed-capacity pending-token buffer. Shape is (batch_size, 2 * compress_ratio - 1, head_size) for policy_mode 'qsa' (which only ever uses up to compress_ratio - 1 of these entries) and (batch_size, 2 * compress_ratio - 1, 2 * head_size) for policy_mode 'csa'.</dd>
 <dt><tt>past_gate_buffer</tt> (optional) : T</dt>
@@ -5258,14 +5278,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Merged device status [N].</dd>
 </dl>
 
-#### Outputs (6 - 8)
+#### Outputs (5 - 11)
 
 <dl>
 <dt><tt>selected_indices</tt> : M</dt>
 <dd>Selected entries with shape (total_tokens, capacity). capacity is token_budget + compress_ratio - 1 for policy_mode 'qsa' (request-local token positions into the main key/value cache) and index_topk for policy_mode 'csa' (compressed entry indices into key_state). Unused entries are -1.</dd>
 <dt><tt>selected_counts</tt> : M</dt>
 <dd>Exact number of used (non -1) entries of selected_indices for every query, with shape (total_tokens).</dd>
-<dt><tt>present_key_state</tt> : T</dt>
+<dt><tt>present_key_state</tt> : T_KEY</dt>
 <dd>Updated generic key state, with the same fixed shape as past_key_state.</dd>
 <dt><tt>present_kv_buffer</tt> : T</dt>
 <dd>Updated generic pending-token buffer, with the same fixed shape as past_kv_buffer.</dd>
@@ -5277,6 +5297,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'qsa': compact transition payloads with shape (batch_size, state_update_capacity, head_size). A token that completes a compression block stores the prepared block representative; any other captured token stores its raw key. Inactive and unused slots are zero.</dd>
 <dt><tt>indexshare_status</tt> (optional) : M</dt>
 <dd>Selection status [N], forwarded on reuse and zero on refresh.</dd>
+<dt><tt>mid_kv_buffer</tt> (optional) : T</dt>
+<dd>Only for CUDA policy_mode 'qsa' refresh: pending-buffer snapshot after the first token of each request. Not supported in IndexShare reuse mode.</dd>
+<dt><tt>mid_state_lengths</tt> (optional) : M</dt>
+<dd>Only for CUDA policy_mode 'qsa' refresh: state lengths after the first token of each request. Not supported in IndexShare reuse mode.</dd>
+<dt><tt>validation_status</tt> (optional) : M</dt>
+<dd>Only for CUDA policy_mode 'qsa' refresh: per-request overflow status; two-token rejection is encoded as 0x99. Not supported in IndexShare reuse mode.</dd>
 </dl>
 
 #### Type Constraints
@@ -5284,6 +5310,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain floating point tensors to float, float16 and bfloat16.</dd>
+<dt><tt>T_KEY</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain the generic key-state tensor to float, float16 and bfloat16.</dd>
 <dt><tt>I</tt> : tensor(int64)</dt>
 <dd>Constrain position ids to 64-bit integer tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
