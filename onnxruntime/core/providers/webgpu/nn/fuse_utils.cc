@@ -45,6 +45,19 @@ size_t GetActivationUsedUniformCount(const Activation& activation) {
   }
 }
 
+// ConvActivationFusion writes the attribute from the core library while the table above lives in
+// the EP, so separately versioned binaries can disagree on the activation set. Name that cause:
+// the bare activation name alone sends people looking for a bug in their model.
+Status UnsupportedActivationError(const std::string& activation_type) {
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                         "The WebGPU EP cannot fuse activation '", activation_type,
+                         "'. The attribute comes from ConvActivationFusion in the onnxruntime core "
+                         "library; if the core library and the WebGPU EP binary are from different "
+                         "builds, core can emit an activation this EP does not implement. Either "
+                         "match the two versions, or create the session with graph_optimization_level "
+                         "ORT_ENABLE_BASIC so the activation stays a separate node.");
+}
+
 }  // namespace
 
 Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation) {
@@ -97,7 +110,7 @@ Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation) 
         activation.activation_kind_ = ActivationKind::ThresholdedRelu;
         activation_params_count = 1;
       } else {
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "unimplemented activation: " + activation_type);
+        return UnsupportedActivationError(activation_type);
       }
 
       std::vector<float> activation_params;

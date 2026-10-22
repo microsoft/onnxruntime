@@ -569,7 +569,7 @@ def add_size_reduction_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--disable_exceptions",
         action="store_true",
-        help="Disable exceptions (requires --minimal_build).",
+        help="Disable exceptions.",
     )
 
 
@@ -840,9 +840,10 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         "--use_dawn_agility_sdk",
         action="store_true",
         help=(
-            "Build Dawn's D3D12 backend with the Agility SDK for local development "
-            "(Windows desktop x86, x64, or ARM64 only; static library build only; "
-            "packaging and plugin EP builds unsupported)."
+            "Build Dawn's D3D12 backend with the Agility SDK "
+            "(Windows desktop x86, x64, or ARM64 only; Python wheels are supported; "
+            "C#, NuGet, Java, and Node.js packaging through build.py is unsupported. "
+            "Package the WebGPU plugin separately for Python or NuGet)."
         ),
     )
     webgpu_group.add_argument(
@@ -1100,9 +1101,10 @@ def parse_arguments() -> argparse.Namespace:
                 "Cross-compiling build detected: Defaulting to --update --build. Specify --test explicitly to run tests."
             )
 
-    # Validation: Minimal build requires disabling exceptions
-    if args.disable_exceptions and args.minimal_build is None:
-        parser.error("--disable_exceptions requires --minimal_build to be specified.")
+    # The Emscripten vcpkg triplets disable the dependencies' exceptions only for minimal builds, so a
+    # non-minimal wasm build with --disable_exceptions would mix exception settings.
+    if args.build_wasm and args.disable_exceptions and args.minimal_build is None:
+        parser.error("--build_wasm --disable_exceptions requires --minimal_build to be specified.")
     if is_windows():
         if getattr(args, "use_winml", False) and not getattr(args, "enable_wcos", False):
             parser.error("--use_winml requires --enable_wcos to be specified.")

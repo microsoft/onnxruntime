@@ -19,7 +19,8 @@ class PackedSparseAttentionIndexer final : public onnxruntime::cuda::CudaKernel 
 
  private:
   Status ComputeQsa(OpKernelContext* context) const;
-  Status ComputeCsa(OpKernelContext* context) const;
+  Status ComputeCsa(OpKernelContext* context, bool state_only = false) const;
+  Status ComputeReuse(OpKernelContext* context) const;
 
   packed_sparse_attention_indexer::Policy policy_;
   int64_t compress_ratio_;
@@ -27,6 +28,8 @@ class PackedSparseAttentionIndexer final : public onnxruntime::cuda::CudaKernel 
   int64_t state_update_capacity_;
   int64_t token_budget_;
   int64_t index_topk_;
+  int64_t output_capacity_;
+  bool advance_reuse_state_;
   float epsilon_;
   float scale_;
   float head_weight_scale_;

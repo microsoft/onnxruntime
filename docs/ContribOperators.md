@@ -19,6 +19,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.CausalConvWithState">com.microsoft.CausalConvWithState</a>
   * <a href="#com.microsoft.ComplexMul">com.microsoft.ComplexMul</a>
   * <a href="#com.microsoft.ComplexMulConj">com.microsoft.ComplexMulConj</a>
+  * <a href="#com.microsoft.ConvStateReplay">com.microsoft.ConvStateReplay</a>
   * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
   * <a href="#com.microsoft.CropAndResize">com.microsoft.CropAndResize</a>
   * <a href="#com.microsoft.DecoderAttention">com.microsoft.DecoderAttention</a>
@@ -42,6 +43,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.FusedMatMulActivation">com.microsoft.FusedMatMulActivation</a>
   * <a href="#com.microsoft.GatedAdd">com.microsoft.GatedAdd</a>
   * <a href="#com.microsoft.GatedDeltaNet">com.microsoft.GatedDeltaNet</a>
+  * <a href="#com.microsoft.GatedDeltaNetStateReplay">com.microsoft.GatedDeltaNetStateReplay</a>
   * <a href="#com.microsoft.GatedRMSNorm">com.microsoft.GatedRMSNorm</a>
   * <a href="#com.microsoft.GatedRelativePositionBias">com.microsoft.GatedRelativePositionBias</a>
   * <a href="#com.microsoft.GatherBlockQuantized">com.microsoft.GatherBlockQuantized</a>
@@ -84,6 +86,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.PackedAttention">com.microsoft.PackedAttention</a>
   * <a href="#com.microsoft.PackedMultiHeadAttention">com.microsoft.PackedMultiHeadAttention</a>
   * <a href="#com.microsoft.PackedSparseAttentionIndexer">com.microsoft.PackedSparseAttentionIndexer</a>
+  * <a href="#com.microsoft.PackedSparseAttentionIndexerMerge">com.microsoft.PackedSparseAttentionIndexerMerge</a>
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
   * <a href="#com.microsoft.PagedAttention">com.microsoft.PagedAttention</a>
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
@@ -1111,6 +1114,69 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(double), tensor(float16)</dt>
 <dd>Constrain input and output types to float or half tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.ConvStateReplay"></a><a name="com.microsoft.convstatereplay">**com.microsoft.ConvStateReplay**</a>
+
+  Reconstruct rolling convolution history after retaining a prefix of captured inputs, without
+  performing convolution arithmetic. The WebGPU-only implementation copies FP16 or FP32 payload
+  bits exactly, including signed zero and NaN payloads, and waits for checked GPU completion.
+  
+  Inputs 0-2 are full rank-1 backing allocations of the same element type.
+  CPU int64 metadata [8] is ordered as:
+    source_offset_bytes, destination_offset_bytes, capture_offset_bytes,
+    batch_size, channels, history_width, capacity, kept_count.
+  Offsets are logical byte offsets into the full backing tensors, aligned to the element size
+  (two bytes for FP16, four for FP32), not WebGPU storage-binding offsets.
+  All fields are nonnegative; channels must be positive; 0 <= kept_count <= capacity.
+  Zero batch size, history width, or capture capacity is valid. Zero state size is a no-op.
+  Geometry, backing byte extents and metadata must fit the implementation's uint32 indexing range.
+  
+  The source view is the incoming snapshot immediately before capture, with layout
+  [batch_size, channels, history_width]. Captured inputs have layout [batch_size, capacity, channels].
+  capacity is the original capture stride, not kept_count. All retained inputs must have been captured.
+  For each batch b, channel c and position p, with W = history_width and k = kept_count:
+    destination[b,c,p] = source[b,c,p+k]                 if p+k < W
+                       = capture[b,p+k-W,c]            otherwise.
+  For k >= W only the last W inputs of the retained prefix are used; unused capture tails are not read.
+  
+  The output must be explicitly prebound to the same full allocation as destination_backing.
+  Destination backing must be distinct from source and capture backing, even for disjoint logical views.
+  Only the designated destination view is modified; neighboring elements and all source/capture data
+  are preserved. One descriptor is supported per invocation; graph capture is not supported.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>source_backing</tt> : T</dt>
+<dd>Full backing tensor containing the incoming convolution history.</dd>
+<dt><tt>capture_backing</tt> : T</dt>
+<dd>Full backing tensor containing captured token-major inputs.</dd>
+<dt><tt>destination_backing</tt> : T</dt>
+<dd>Full inactive destination-state backing tensor.</dd>
+<dt><tt>metadata</tt> : TI</dt>
+<dd>CPU int64 [8]: byte offsets, batch, channels, history, capacity, kept_count.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>destination_out</tt> : T</dt>
+<dd>Same backing allocation and shape as destination_backing.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
+<dd>State and captured inputs are FP16 or FP32.</dd>
+<dt><tt>TI</tt> : tensor(int64)</dt>
+<dd>CPU replay metadata is int64.</dd>
 </dl>
 
 
@@ -2503,6 +2569,78 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>State, gate, beta and compact state-update tensors are always float.</dd>
 <dt><tt>TI</tt> : tensor(int32)</dt>
 <dd>Constrain index and count tensors to int32.</dd>
+</dl>
+
+
+### <a name="com.microsoft.GatedDeltaNetStateReplay"></a><a name="com.microsoft.gateddeltanetstatereplay">**com.microsoft.GatedDeltaNetStateReplay**</a>
+
+  Replay one request's captured GatedDeltaNet transitions into an inactive recurrent-state row.
+  The WebGPU implementation uses FP32 backing tensors and CPU metadata; it does not recompute
+  normalization, gates, beta, or retrieval. It waits for checked GPU completion before returning.
+  
+  `metadata` is int64 [11], ordered as:
+    source_offset, destination_offset, decay_offset, key_offset, delta_offset,
+    Hv, Dv, Dk, Hk, capacity, kept_count.
+  Offsets are FP32-element offsets into the full backing tensors, not storage-binding byte offsets.
+  All offsets are nonnegative; dimensions and capacity are positive; 1 <= kept_count <= capacity.
+  The caller must ensure that all kept transitions were actually captured.
+  
+  The source_state selected by source_offset must be the state snapshot from immediately before
+  the captured GatedDeltaNet transitions began. Using the producer's final state or another
+  same-shaped snapshot is invalid because captured delta is state-dependent.
+  The capsule geometry (Hv, Dv, Dk, Hk) and capacity must match the producer that generated it.
+  capacity is the original capsule capture/layout capacity. kept_count only selects the leading
+  transitions to replay; kept_count must NOT be substituted for capacity when deriving the
+  decay/key/delta section offsets.
+  
+  State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv],
+  key [capacity, Hk, Dk], and delta [capacity, Hv, Dv] starting at their respective offsets.
+  For every state element (h,v,i):
+    hk = floor(h * Hk / Hv)
+    s = source[h,v,i]
+    for t = 0 .. kept_count-1:
+      s *= decay[t,h]
+      s += key[t,hk,i] * delta[t,h,v]
+    destination[h,v,i] = s
+  Unused capsule tail entries are not read. All other destination elements are preserved.
+  
+  The output must be explicitly prebound to the same full allocation as destination_backing.
+  Destination backing must be distinct from source and capsule backing. This first implementation
+  supports one descriptor, uint32 shader indexing and no graph capture.
+  Source and capsule may share read-only backing; storage bindings are deduplicated only when
+  their BufferViews have the same Program binding owner, not merely equal raw buffer handles.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>source_backing</tt> : T</dt>
+<dd>Full rank-1 FP32 backing tensor containing the state snapshot from immediately before capture.</dd>
+<dt><tt>capsule_backing</tt> : T</dt>
+<dd>Full rank-1 FP32 compact-update backing tensor.</dd>
+<dt><tt>destination_backing</tt> : T</dt>
+<dd>Full rank-1 FP32 inactive destination-state backing tensor.</dd>
+<dt><tt>metadata</tt> : TI</dt>
+<dd>CPU int64 [11] containing offsets, geometry, capacity and kept_count.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>destination_out</tt> : T</dt>
+<dd>Same backing allocation and shape as destination_backing.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>State and capsule tensors are FP32.</dd>
+<dt><tt>TI</tt> : tensor(int64)</dt>
+<dd>CPU replay metadata is int64.</dd>
 </dl>
 
 
@@ -4377,7 +4515,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_beta</tt> : float</dt>
 <dd>Beta parameter used in activation function.</dd>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
+<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu</dd>
 <dt><tt>k</tt> : int</dt>
 <dd>Number of top experts to select from expert pool</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
@@ -5030,7 +5168,8 @@ This version of the operator has been available since version 1 of the 'com.micr
     * uses a single generic set of state slots (past_key_state / past_kv_buffer / past_gate_buffer /
       past_state_lengths) for both policy_mode values, each with a shape that is fixed across calls
       (state never grows and is never concatenated); a step that would overflow the fixed capacity is
-      rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory;
+      rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory
+      (the optional state_status output reports which requests were rejected and why);
     * additionally emits selected_counts, the exact number of active (non -1) entries per query, so
       that no downstream consumer needs to scan selected_indices for its query's true count.
   
@@ -5098,6 +5237,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'csa': scale applied to head_weights. Default is 1/sqrt(num_heads). Must be omitted when policy_mode is 'qsa'.</dd>
 <dt><tt>index_topk</tt> : int</dt>
 <dd>Only for policy_mode 'csa': number of compressed entries selected per query. Must be > 0. Must be omitted when policy_mode is 'qsa'.</dd>
+<dt><tt>indexshare_state_policy</tt> : string</dt>
+<dd>Reuse state policy: default holds QSA and advances CSA; hold or advance overrides it.</dd>
+<dt><tt>max_output_entries</tt> : int</dt>
+<dd>Fixed padded output width for the optional IndexShare interface.</dd>
 <dt><tt>policy_mode</tt> : string (required)</dt>
 <dd>Indexer policy. Must be exactly 'qsa' (token indexer) or 'csa' (compressed block indexer).</dd>
 <dt><tt>scale</tt> : float</dt>
@@ -5110,7 +5253,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.</dd>
 </dl>
 
-#### Inputs (16 - 18)
+#### Inputs (16 - 22)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -5149,9 +5292,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'qsa': number of leading token transitions to capture for each request, with shape (batch_size). Values are clamped to the request length and state_update_capacity. Required when state_update_capacity is positive.</dd>
 <dt><tt>state_update_active</tt> (optional) : M</dt>
 <dd>Only for policy_mode 'qsa': optional capture gate with shape (1). A zero value disables capture.</dd>
+<dt><tt>indexshare_mode</tt> (optional) : M</dt>
+<dd>CPU scalar [1]: 0 refresh, 1 reuse.</dd>
+<dt><tt>merged_indices</tt> (optional) : M</dt>
+<dd>Packed merged selection [N,max_output_entries].</dd>
+<dt><tt>merged_counts</tt> (optional) : M</dt>
+<dd>Merged counts [N].</dd>
+<dt><tt>merged_status</tt> (optional) : M</dt>
+<dd>Merged device status [N].</dd>
 </dl>
 
-#### Outputs (6 - 7)
+#### Outputs (6 - 9)
 
 <dl>
 <dt><tt>selected_indices</tt> : M</dt>
@@ -5168,6 +5319,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Updated generic per-request state length, with the same fixed shape as past_state_lengths.</dd>
 <dt><tt>state_update</tt> (optional) : T</dt>
 <dd>Only for policy_mode 'qsa': compact transition payloads with shape (batch_size, state_update_capacity, head_size). A token that completes a compression block stores the prepared block representative; any other captured token stores its raw key. Inactive and unused slots are zero.</dd>
+<dt><tt>indexshare_status</tt> (optional) : M</dt>
+<dd>Selection status [N], forwarded on reuse and zero on refresh.</dd>
+<dt><tt>state_status</tt> (optional) : M</dt>
+<dd>Device-side per-request state update status with shape (batch_size). 0: the request's state update was applied (or intentionally held by IndexShare reuse); 1: invalid device metadata (cumulative_sequence_lengths, past_sequence_lengths or past_state_lengths are inconsistent); 2: the update would exceed state_capacity. A non-zero request leaves its state payloads unchanged, clamps out-of-range past_state_lengths into present_state_lengths, and emits an empty selection (selected_counts is 0 and selected_indices is -1). Intended for CUDA graph replay, where the host checks it after the replay instead of synchronizing inside the operator. Currently supported by the CUDA provider only.</dd>
 </dl>
 
 #### Type Constraints
@@ -5179,6 +5334,61 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain position ids to 64-bit integer tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain packed metadata, generic state lengths and selected indices/counts to 32-bit integer tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.PackedSparseAttentionIndexerMerge"></a><a name="com.microsoft.packedsparseattentionindexermerge">**com.microsoft.PackedSparseAttentionIndexerMerge**</a>
+
+  Stable union of a mapped base selection and either [range_start, range_end) or an additional selection prefix. Valid prefixes contain nonnegative indices. Padding is ignored. Outputs preserve first-occurrence order and are padded with -1. Status is 0 for success, 1 for invalid device metadata, or 2 for capacity overflow; failures return count 0 and all -1. The caller supplies a common index namespace and guarantees causal visibility.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>max_output_entries</tt> : int (required)</dt>
+<dd>Fixed output width, in [1, 2^30].</dd>
+<dt><tt>policy_mode</tt> : string (required)</dt>
+<dd>append_range or append_indices.</dd>
+</dl>
+
+#### Inputs (3 - 7)
+
+<dl>
+<dt><tt>base_indices</tt> : T</dt>
+<dd>Cached selections, shape (R, C).</dd>
+<dt><tt>base_counts</tt> : T</dt>
+<dd>Valid base-prefix lengths, shape (R).</dd>
+<dt><tt>base_row_indices</tt> : T</dt>
+<dd>Output-query to cached-row mapping, shape (N).</dd>
+<dt><tt>range_starts</tt> (optional) : T</dt>
+<dd>Inclusive nonnegative starts, shape (N).</dd>
+<dt><tt>range_ends</tt> (optional) : T</dt>
+<dd>Exclusive ends not less than starts, shape (N).</dd>
+<dt><tt>additional_indices</tt> (optional) : T</dt>
+<dd>Required for append_indices: selections of shape (N, A); absent for append_range.</dd>
+<dt><tt>additional_counts</tt> (optional) : T</dt>
+<dd>Required for append_indices: valid prefix lengths of shape (N); absent for append_range.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>selected_indices</tt> : T</dt>
+<dd>Merged indices, shape (N, max_output_entries).</dd>
+<dt><tt>selected_counts</tt> : T</dt>
+<dd>Merged prefix lengths, shape (N).</dd>
+<dt><tt>status</tt> : T</dt>
+<dd>Per-query device validation status, shape (N).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(int32)</dt>
+<dd>Integer selection tensors.</dd>
 </dl>
 
 
@@ -5321,9 +5531,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>cumulative_sequence_length</tt> : S</dt>
 <dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence lengths between the packed entries in Q/K/V.</dd>
 <dt><tt>past_seqlens</tt> : S</dt>
-<dd>A tensor with shape (batch_size). It specifies the past lengths of cached sequence in the KV cache.</dd>
+<dd>A tensor with shape (batch_size). It specifies the past lengths of cached sequences. CUDA sanitizes malformed values on device: an invalid value suppresses that sequence's cache writes and produces zero output. A backend requiring exact host lengths may instead return INVALID_ARGUMENT when attention_metadata is absent.</dd>
 <dt><tt>block_table</tt> : S</dt>
-<dd>2D tensor with shape (batch_size, max_blocks_per_sequence) that maps each sequence in the batch to itscorresponding blocks in the KV cache.</dd>
+<dd>2D tensor with shape (batch_size, max_blocks_per_sequence) that maps each sequence in the batch to itscorresponding blocks in the KV cache. -1 denotes an unmapped page. CUDA converts values below -1 or greater than or equal to num_blocks to the unmapped sentinel before resolving cache addresses; mapped pages remain attendable.</dd>
 <dt><tt>cos_cache</tt> (optional) : T</dt>
 <dd>2D tensor with shape (max total seqlen, head_size / 2).</dd>
 <dt><tt>sin_cache</tt> (optional) : T</dt>
@@ -6121,6 +6331,10 @@ This version of the operator has been available since version 1 of the 'com.micr
         Partial edge blocks are allowed. No zero points or activation scales are accepted.
         Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
         Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
+        On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM by default.
+        These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
+        Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
+        Other activation types and unsupported routing sizes retain the fallback.
         The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
         that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
   
@@ -6158,7 +6372,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_beta</tt> : float</dt>
 <dd>Beta parameter used in activation function.</dd>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
+<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu</dd>
 <dt><tt>block_size</tt> : int</dt>
 <dd>For integer quantization, size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). For integer and FP4 quantization, both hidden_size and inter_size must be divisible by the block size. FP8 with block_size=128 supports partial 128x128 tiles. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. Without a positive value, FP8 uses per-expert global scales. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
@@ -6182,7 +6396,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>use_sparse_mixer</tt> : int</dt>
 <dd>Whether to use sparse mixer</dd>
 <dt><tt>weights_prepacked</tt> : int</dt>
-<dd>Only meaningful when quant_type='int'. Tri-state control over the layout of the int4/int8 fc1/fc2 weight initializers. The concrete prepacked layouts selected by -1 and 1 are determined by the execution provider. 0: the initializers are raw, un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits. Defaults to -1.</dd>
+<dd>Expert-weight layout selector with quantization-specific meanings. For quant_type='int', -1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. 0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; 1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. NVFP4 block scales and global scales retain their original layouts and values. Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.</dd>
 </dl>
 
 #### Inputs (6 - 21)
@@ -8624,3 +8838,4 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
