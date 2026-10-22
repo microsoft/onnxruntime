@@ -24,7 +24,7 @@ bool FusedFp8ActivationQdqDisabled() {
 }
 
 size_t DequantScratchLimitBytes() {
-  const int64_t limit = ParseEnvironmentVariableWithDefault<int64_t>("ORT_FP8_DEQUANT_SCRATCH_MIB", 256);
+  const int64_t limit = ParseEnvironmentVariableWithDefault<int64_t>("ORT_FP8_DEQUANT_SCRATCH_MIB", 2048);
   ORT_ENFORCE(limit > 0, "ORT_FP8_DEQUANT_SCRATCH_MIB must be positive.");
   return SafeInt<size_t>(limit) * 1024 * 1024;
 }
@@ -306,7 +306,7 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
   // A fused warp-per-column kernel reads the FP8 weight directly, avoiding both the [N, K]
   // dequant scratch buffer and the cuBLAS GEMM (which is underutilized at M == 1).
   if (use_gemv) {
-    if (shared_expert_ && m_i <= 2 && GetDeviceProp().major == 9 &&
+    if (shared_expert_ && m_i <= 2 && GetDeviceProp().major >= 8 &&
         MatMulBlockScaledFp8GemvSupportsSplitOutput(m_i, k_i, SafeInt<int>(block_size_), GetDeviceProp())) {
       ORT_RETURN_IF_ERROR(LaunchMatMulFp8SharedExpert(
           y_data, a_ptr, b->DataRaw(), b_scale->Data<float>(), m_i, n_i, k_i,
@@ -357,19 +357,19 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
         SafeInt<int>(k),
         SafeInt<int>(block_size_),
         std::is_same<T, BFloat16>::value,
-        Stream(context), dense_prefill));
+        Stream(context), true));
 
     // The row-major [M, N] output is column-major [N, M] to cuBLAS, so an N tile is a row offset.
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         GetCublasHandle(context),
-        dense_prefill ? CUBLAS_OP_N : CUBLAS_OP_T,
+        CUBLAS_OP_N,
         CUBLAS_OP_N,  // transA
         rows,
         m_i,
         k_i,
         &alpha,
         b_dequant.get(),
-        dense_prefill ? n_i : helper.Ldb(transb),
+        rows,
         reinterpret_cast<const CudaT*>(a_ptr),
         helper.Lda(transa),
         &zero,

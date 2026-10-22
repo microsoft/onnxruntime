@@ -2054,7 +2054,7 @@ Status LaunchDynamicSparseAttention(
         GetGroupedAttentionSharedBytes(parameters, data.quantized_cache ? sizeof(float) : sizeof(T));
     if (data.quantized_cache) {
       static const int vectorized_staging =
-          ParseEnvironmentVariableWithDefault<int>("ORT_DSA_INT8_VECTOR_STAGING", 0);
+          ParseEnvironmentVariableWithDefault<int>("ORT_DSA_INT8_VECTOR_STAGING", 1);
       ORT_ENFORCE(vectorized_staging == 0 || vectorized_staging == 1,
                   "ORT_DSA_INT8_VECTOR_STAGING must be 0 or 1.");
       const auto launch = [&](auto vectorized) {
@@ -2111,7 +2111,7 @@ Status LaunchDynamicSparseAttention(
 
     if (split_count <= 32) {
       static const int shared_scales =
-          ParseEnvironmentVariableWithDefault<int>("ORT_DSA_SHARED_SCALE_MERGE", 0);
+          ParseEnvironmentVariableWithDefault<int>("ORT_DSA_SHARED_SCALE_MERGE", 1);
       ORT_ENFORCE(shared_scales == 0 || shared_scales == 1,
                   "ORT_DSA_SHARED_SCALE_MERGE must be 0 or 1.");
       const auto merge = [&](auto specialized) {

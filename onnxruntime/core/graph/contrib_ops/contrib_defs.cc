@@ -1516,8 +1516,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     FoldMid2, 1,
     OpSchema()
         .SetDoc(FoldMid2_ver1_doc)
-        .Input(0, "next_tokens", "Two predicted token IDs.", "I64")
-        .Input(1, "input_ids", "Two input token IDs; input_ids[1] is the draft token.", "I64")
+        .Attr("head_rows", "Number of head rows to emit (default 2).", AttributeProto::INT, static_cast<int64_t>(2))
+        .Input(0, "next_tokens", "Predicted token IDs.", "I64")
+        .Input(1, "input_ids", "Input token IDs.", "I64")
         .Input(2, "status", "Status values aggregated into the result record.", "I32")
         .Input(3, "ctl", "Eight-element control state.", "I64")
         .Input(4, "ctx_commit", "Two-element committed context.", "I64")
@@ -1526,23 +1527,34 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(7, "ptrs", "Device pointers containing the result-ring address and capacity.", "I64")
         .Input(8, "cos_cache", "BFloat16 rotary cosine cache with shape [positions, 32].", "B")
         .Input(9, "sin_cache", "BFloat16 rotary sine cache with shape [positions, 32].", "B")
-        .Output(0, "head_ids", "Two token IDs consumed by the head.", "I64")
+        .Input(10, "hidden_states", "Optional BFloat16 target hidden states [1, rows, 2560].", "B", OpSchema::Optional)
+        .Output(0, "head_ids", "Token IDs consumed by the head.", "I64")
         .Output(1, "head_c", "Current head-cache length.", "I32")
-        .Output(2, "slot_ids", "Two consecutive head-cache slots.", "I64")
+        .Output(2, "slot_ids", "Consecutive head-cache slots.", "I64")
         .Output(3, "seqlens", "Head sequence length.", "I32")
-        .Output(4, "cos_out", "Two rows of rotary cosine values.", "B")
-        .Output(5, "sin_out", "Two rows of rotary sine values.", "B")
+        .Output(4, "cos_out", "Rows of rotary cosine values.", "B")
+        .Output(5, "sin_out", "Rows of rotary sine values.", "B")
         .Output(6, "sel", "Selected row: one when accepted, zero when rejected, or -1 on invalid metadata.", "I64")
-        .Output(7, "updated_ctl", "Updated control state with the same shape as ctl.", "I64")
-        .Output(8, "updated_ctx_commit", "Updated committed context with the same shape as ctx_commit.", "I64")
+        .Output(7, "updated_ctl_or_head_hidden", "Updated control state or head hidden states.", "T_OUT7", OpSchema::Optional)
+        .Output(8, "updated_ctx_commit", "Updated committed context with the same shape as ctx_commit.", "I64", OpSchema::Optional)
+        .Output(9, "head_hidden", "Optional BFloat16 head hidden states [1, head_rows, 2560].", "B", OpSchema::Optional)
         .TypeConstraint("I64", {"tensor(int64)"}, "Constrain control and token tensors to int64.")
         .TypeConstraint("I32", {"tensor(int32)"}, "Constrain status and sequence tensors to int32.")
         .TypeConstraint("B", {"tensor(bfloat16)"}, "Constrain rotary cache tensors to bfloat16.")
+        .TypeConstraint("T_OUT7", {"tensor(int64)", "tensor(bfloat16)"}, "Control state or head hidden states.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 3, 7);
-          ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 3, 7);
-          ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 4, 8);
-          ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 4, 8);
+          if (ctx.getNumInputs() <= 10 || ctx.getInputType(10) == nullptr) {
+            if (ctx.getNumOutputs() > 7 && ctx.hasOutput(7)) {
+              ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 3, 7);
+              ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 3, 7);
+            }
+            if (ctx.getNumOutputs() > 8 && ctx.hasOutput(8)) {
+              ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 4, 8);
+              ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 4, 8);
+            }
+          } else if (ctx.getNumOutputs() == 8 && ctx.hasOutput(7)) {
+            ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 10, 7);
+          }
         }));
 
 constexpr const char* FoldTail_ver1_doc = R"DOC(
@@ -1559,12 +1571,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(1, "status", "Head status values.", "I32")
         .Input(2, "ctl", "Eight-element control state.", "I64")
         .Output(0, "done", "One when the control state was updated; zero for muted calls.", "I32")
-        .Output(1, "updated_ctl", "Updated control state with the same shape as ctl.", "I64")
+        .Output(1, "updated_ctl", "Updated control state with the same shape as ctl.", "I64", OpSchema::Optional)
         .TypeConstraint("I64", {"tensor(int64)"}, "Constrain token and control tensors to int64.")
         .TypeConstraint("I32", {"tensor(int32)"}, "Constrain status and output tensors to int32.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 1);
-          ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 2, 1);
+          if (ctx.getNumOutputs() > 1 && ctx.hasOutput(1)) {
+            ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 1);
+            ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 2, 1);
+          }
         }));
 
 constexpr const char* qMoE_ver1_doc = R"DOC(

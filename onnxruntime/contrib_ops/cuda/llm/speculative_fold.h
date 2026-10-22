@@ -23,7 +23,11 @@ Status LaunchFoldMid2(const int64_t* next_tokens, const int64_t* input_ids,
                       int32_t* head_c, int64_t* slot_ids, int32_t* seqlens,
                       __nv_bfloat16* cos_out, __nv_bfloat16* sin_out,
                       int64_t* sel, int64_t* updated_ctl, int64_t* updated_ctx_commit,
-                      int64_t cache_positions, cudaStream_t stream);
+                      int64_t cache_positions, cudaStream_t stream,
+                      int rows = 2, int head_rows = 2,
+                      const __nv_bfloat16* hidden_states = nullptr,
+                      __nv_bfloat16* head_hidden = nullptr,
+                      int hidden_rows = 0, int hidden_width = 0);
 
 Status LaunchFoldTail(const int64_t* next_token, const int32_t* status,
                       int status_count, const int64_t* ctl, int32_t* done, int64_t* updated_ctl,

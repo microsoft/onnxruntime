@@ -736,7 +736,7 @@ void LaunchDecodeWarpSized(const Descriptor& desc, const VariantPack<T>& pack,
       break;
     case 128:
       if constexpr (PackedQkv) {
-        static const int specialize = ParseEnvironmentVariableWithDefault<int>("ORT_GDN_S2_SPECIALIZE", 0);
+        static const int specialize = ParseEnvironmentVariableWithDefault<int>("ORT_GDN_S2_SPECIALIZE", 1);
         ORT_ENFORCE(specialize == 0 || specialize == 1, "ORT_GDN_S2_SPECIALIZE must be 0 or 1.");
         if (specialize && desc.batch == 1 && p.total_tokens == 2 && p.uniform_len == 2 &&
             p.num_heads_q == 16 && p.num_heads_k == 16 && p.num_heads_v == 48 &&

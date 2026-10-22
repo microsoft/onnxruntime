@@ -479,7 +479,7 @@ Status LaunchCausalConvProjectionKernel(
     int kernel_size, int dilation, int input_width, int channel_offset,
     int state_length, bool state_channels_last, bool apply_silu) {
   const dim3 grid((channels - 1) / 128 + 1, batch, length);
-  static const int specialize = ParseEnvironmentVariableWithDefault<int>("ORT_CAUSAL_CONV_S2_SPECIALIZE", 0);
+  static const int specialize = ParseEnvironmentVariableWithDefault<int>("ORT_CAUSAL_CONV_S2_SPECIALIZE", 1);
   ORT_ENFORCE(specialize == 0 || specialize == 1, "ORT_CAUSAL_CONV_S2_SPECIALIZE must be 0 or 1.");
   if (specialize && length == 2 && kernel_size == 4 && dilation == 1 && state_length == 4) {
     CausalConvProjectionKernel<T, true><<<grid, 128, 0, stream>>>(

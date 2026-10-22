@@ -5858,14 +5858,29 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Embedding row indices with any shape. Negative indices in [-vocabulary, -1] "
                "count from the end. Out-of-range indices produce NaN output rows.",
                "I")
-        .Input(1, "table", "BF16 embedding matrix [vocabulary, hidden].", "T")
+        .Input(1, "table", "BF16 or INT8 embedding matrix [vocabulary, hidden].", "TT")
         .Input(2, "weight", "FP32 RMS normalization weight [hidden].", "F")
+        .Input(3, "committed_length", "Optional int32[1] committed length for head capture.", "I32", OpSchema::Optional)
         .Output(0, "normalized", "BF16 normalized embeddings [shape(ids), hidden].", "T")
+        .Output(1, "slot_ids", "Optional int64[1, R] slot ids.", "I", OpSchema::Optional)
+        .Output(2, "seqlens_k", "Optional int32[1] seqlens_k.", "I32", OpSchema::Optional)
+        .Output(3, "cumulative_sequence_lengths", "Optional int32[2] cumulative sequence lengths.", "I32", OpSchema::Optional)
         .TypeConstraint("I", {"tensor(int64)"}, "Indices use int64.")
-        .TypeConstraint("T", {"tensor(bfloat16)"}, "Embedding and result use BF16.")
+        .TypeConstraint("I32", {"tensor(int32)"}, "Committed length and sequence lengths use int32.")
+        .TypeConstraint("TT", {"tensor(bfloat16)", "tensor(int8)"}, "Embedding table uses BF16 or INT8.")
+        .TypeConstraint("T", {"tensor(bfloat16)"}, "Normalized result uses BF16.")
         .TypeConstraint("F", {"tensor(float)"}, "Normalization weight uses FP32.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 1, 0);
+          updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
+          if (ctx.getNumOutputs() > 1 && ctx.hasOutput(1)) {
+            updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_INT64);
+          }
+          if (ctx.getNumOutputs() > 2 && ctx.hasOutput(2)) {
+            updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto_DataType_INT32);
+          }
+          if (ctx.getNumOutputs() > 3 && ctx.hasOutput(3)) {
+            updateOutputElemType(ctx, 3, ONNX_NAMESPACE::TensorProto_DataType_INT32);
+          }
           if (!hasInputShape(ctx, 0) || !hasInputShape(ctx, 1)) return;
           const auto& ids_shape = getInputShape(ctx, 0);
           const auto& table_shape = getInputShape(ctx, 1);

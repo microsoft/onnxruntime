@@ -1743,7 +1743,7 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     static const bool use_radix_topk =
         ParseEnvironmentVariableWithDefault<bool>("ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK", false);
     static const int compact_topk =
-        ParseEnvironmentVariableWithDefault<int>("ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK", 0);
+        ParseEnvironmentVariableWithDefault<int>("ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK", 1);
     ORT_ENFORCE(compact_topk == 0 || compact_topk == 1,
                 "ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK must be 0 or 1.");
     ORT_ENFORCE(!compact_topk || !use_radix_topk,

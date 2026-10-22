@@ -857,7 +857,7 @@ Status LaunchMatMulFp8SharedExpert(void* y, const void* a, const void* weight,
   const int selected = PickGenericFp8MmaKSplit(n, k / 64);
   const int k_split = ApplyFp8MmaKSplitOverride(selected, m, n, k);
   static const int per_column_s2 =
-      ParseEnvironmentVariableWithDefault<int>("ORT_FP8_GEMV_PER_COLUMN_S2", 0);
+      ParseEnvironmentVariableWithDefault<int>("ORT_FP8_GEMV_PER_COLUMN_S2", 1);
   ORT_RETURN_IF_NOT(per_column_s2 == 0 || per_column_s2 == 1,
                     "ORT_FP8_GEMV_PER_COLUMN_S2 must be 0 or 1");
   const auto launch = [&]<int KSplit>() {
@@ -1164,7 +1164,7 @@ static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
     const bool pin_residency = Fp8MmaGemvPinsResidency(
         n, k_split, mtiles, device_prop.multiProcessorCount, device_prop.major, device_prop.minor);
     static const int per_column_s2 =
-        ParseEnvironmentVariableWithDefault<int>("ORT_FP8_GEMV_PER_COLUMN_S2", 0);
+        ParseEnvironmentVariableWithDefault<int>("ORT_FP8_GEMV_PER_COLUMN_S2", 1);
     ORT_ENFORCE(per_column_s2 == 0 || per_column_s2 == 1,
                 "ORT_FP8_GEMV_PER_COLUMN_S2 must be 0 or 1.");
     const auto launch_mma = [&]<int KSplit, int MTiles>() {
