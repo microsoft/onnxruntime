@@ -38,7 +38,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.AddInput("lora_t");
     shader.AddInput("lora_b");
     shader.AddInput("lora_b_scales");
-    GenerateQLoRAUp(shader, acc_f32_, true);
+    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, acc_f32_, true));
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   return WGSL_TEMPLATE_APPLY(
@@ -73,7 +73,7 @@ Status DP4AMatMulNBitsKParallelProgram::GenerateShaderCode(ShaderHelper& shader)
     shader.AddInput("lora_t");
     shader.AddInput("lora_b");
     shader.AddInput("lora_b_scales");
-    GenerateQLoRAUp(shader, acc_f32_);
+    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, acc_f32_));
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 

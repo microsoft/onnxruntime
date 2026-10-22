@@ -149,7 +149,7 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
     shader.AddInput("lora_t", ShaderUsage::UseElementTypeAlias);
     shader.AddInput("lora_b", ShaderUsage::UseElementTypeAlias);
     shader.AddInput("lora_b_scales");
-    GenerateQLoRAUp(shader, false);
+    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, false));
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   if (has_tail_buffer_) {

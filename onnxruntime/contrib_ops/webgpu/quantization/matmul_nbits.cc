@@ -44,7 +44,7 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
     shader.AddInput("lora_t", ShaderUsage::UseElementTypeAlias);
     shader.AddInput("lora_b", ShaderUsage::UseElementTypeAlias);
     shader.AddInput("lora_b_scales");
-    GenerateQLoRAUp(shader, acc_f32_);
+    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, acc_f32_));
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
@@ -82,7 +82,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.AddInput("lora_t", ShaderUsage::UseElementTypeAlias);
     shader.AddInput("lora_b", ShaderUsage::UseElementTypeAlias);
     shader.AddInput("lora_b_scales");
-    GenerateQLoRAUp(shader, acc_f32_);
+    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, acc_f32_));
   }
   if (has_qlora_down_) {
     shader.AddInput("lora_at");
@@ -91,7 +91,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
   if (has_qlora_down_) {
     shader.AddOutput("lora_down", ShaderUsage::UseElementTypeAlias);
-    GenerateQLoRADown(shader, "uniforms.num_N_tile", a.GetByOffset("k4"), acc_f32_, qlora_down_subgroups_);
+    ORT_RETURN_IF_ERROR(GenerateQLoRADown(shader, a, acc_f32_, qlora_down_subgroups_));
   }
 
   const uint32_t components_a = a.NumComponents();

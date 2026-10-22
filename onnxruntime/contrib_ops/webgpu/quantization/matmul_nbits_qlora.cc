@@ -14,157 +14,24 @@
 
 namespace onnxruntime::contrib::webgpu {
 
-void GenerateQLoRADown(ShaderHelper& shader, const std::string& base_groups, const std::string& x_value, bool acc_f32,
-                       bool use_subgroups) {
-  auto& body = shader.MainFunctionBody();
-  // Dispatch normalization can append workgroups beyond the four adapter groups.
-  body << "let qlora_base_groups = " << base_groups << ";\n"
-       << "if (workgroup_idx >= qlora_base_groups + 4u) { return; }\n";
-  if (use_subgroups) {
-    shader.AdditionalImplementation() << "alias qlora_acc_t = " << (acc_f32 ? "f32" : "output_element_t") << ";\n";
-    // Subgroup membership need not match consecutive local invocation indices.
-    body << R"(
-if (workgroup_idx >= qlora_base_groups) {
-  let rank_base = (workgroup_idx - qlora_base_groups) * 8u;
-  let lane = sg_id;
-  let rank_local = subgroup_index;
-  var partial0 = qlora_acc_t(0);
-  var partial1 = qlora_acc_t(0);
-  for (var k = lane * 16u; k < uniforms.K; k += 512u) {
-    var k4 = k / 4u;
-)";
-    // Keep each X vector in a register for both ranks assigned to this lane.
-    for (uint32_t i = 0; i < 4; ++i) {
-      body << "let x" << i << " = vec4<qlora_acc_t>(" << x_value << ");\n";
-      if (i != 3) body << "k4 += 1u;\n";
-    }
-    for (uint32_t r = 0; r < 2; ++r) {
-      body << "let rank" << r << " = rank_base + rank_local + " << r * 4 << "u;\n"
-           << "let packed" << r << " = lora_at[rank" << r << " * (uniforms.K / 16u) + k / 16u];\n"
-           << "let scale" << r << " = lora_a_scales[rank" << r << " * (uniforms.K / 32u) + k / 32u];\n"
-           << "var sum" << r << " = qlora_acc_t(0);\n";
-      for (uint32_t i = 0; i < 4; ++i) {
-        body << "sum" << r << " += dot(x" << i << ", vec4<qlora_acc_t>((vec4<output_element_t>(unpack4xU8(packed" << r
-             << "[" << i << "])) - vec4<output_element_t>(128)) * scale" << r << "));\n";
-      }
-      body << "partial" << r << " += sum" << r << ";\n";
-    }
-    // FP32 avoids half-precision rounding at each step of the subgroup tree.
-    body << R"(
-  }
-  let result0 = subgroupAdd(f32(partial0));
-  let result1 = subgroupAdd(f32(partial1));
-  if (lane == 0u) {
-    lora_down[rank_base + rank_local] = output_element_t(result0);
-    lora_down[rank_base + rank_local + 4u] = output_element_t(result1);
-  }
-  return;
-}
-)";
-    return;
-  }
-  shader.AdditionalImplementation() << "alias qlora_acc_t = " << (acc_f32 ? "f32" : "output_element_t") << ";\n"
-                                    << R"(
-var<workgroup> qlora_x_tile: array<vec4<output_element_t>, 128>;
-var<workgroup> qlora_partials: array<array<qlora_acc_t, 32>, 8>;
-)";
-  body << R"(
-if (workgroup_idx >= qlora_base_groups) {
-  let rank_base = (workgroup_idx - qlora_base_groups) * 8u;
-  let lane = local_idx % 32u;
-  let rank_local = local_idx / 32u;
-  // Match the generic INT8 MatMulNBits tile, dot grouping and reduction order.
-  for (var start = 0u; start < uniforms.K; start += 512u) {
-    let k4 = start / 4u + local_idx;
-    var xv = vec4<output_element_t>(0);
-    if (k4 < uniforms.K / 4u) { xv = )"
-       << x_value << R"(; }
-    qlora_x_tile[local_idx] = xv;
-    workgroupBarrier();
-    for (var rank_offset = 0u; rank_offset < 8u; rank_offset += 4u) {
-      let rank = rank_base + rank_offset + rank_local;
-      let k = start + lane * 16u;
-      if (k < uniforms.K) {
-        let packed = lora_at[rank * (uniforms.K / 16u) + k / 16u];
-        let scale = lora_a_scales[rank * (uniforms.K / 32u) + k / 32u];
-        var sum = qlora_acc_t(0);
-        for (var i = 0u; i < 4u; i++) {
-          let bv = (vec4<output_element_t>(unpack4xU8(packed[i])) - vec4<output_element_t>(128)) * scale;
-          sum += dot(vec4<qlora_acc_t>(qlora_x_tile[lane * 4u + i]), vec4<qlora_acc_t>(bv));
-        }
-        qlora_partials[rank_offset + rank_local][lane] += sum;
-      }
-    }
-    workgroupBarrier();
-  }
-  if (local_idx < 8u) {
-    var value = qlora_acc_t(0);
-    for (var i = 0u; i < 32u; i++) { value += qlora_partials[local_idx][i]; }
-    lora_down[rank_base + local_idx] = output_element_t(value);
-  }
-  return;
-}
-)";
+Status GenerateQLoRADown(ShaderHelper& shader, const ShaderVariableHelper& x, bool acc_f32,
+                         bool use_subgroups) {
+  return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_qlora_down.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32),
+                             WGSL_TEMPLATE_PARAMETER(use_subgroups, use_subgroups),
+                             WGSL_TEMPLATE_VARIABLE(x, x));
 }
 
-void GenerateQLoRAUp(ShaderHelper& shader, bool acc_f32, bool vector_output) {
-  shader.AdditionalImplementation() << "alias qlora_acc_t = " << (acc_f32 ? "f32" : "output_element_t") << ";\n"
-                                    << R"(
-fn qlora_weight(col: u32, r4: u32) -> vec4<output_element_t> {
-  let packed = lora_b[col * 2u + r4 / 4u][r4 % 4u];
-  return (vec4<output_element_t>(unpack4xU8(packed)) - vec4<output_element_t>(128)) * lora_b_scales[col];
-}
-fn qlora_delta(row: u32, col: u32) -> output_element_t {
-  var delta = qlora_acc_t(0);
-  // The original K=32 INT8 up projection uses wide tiles at M>=4.
-  if (uniforms.M >= 4u) {
-    for (var r4 = 0u; r4 < 8u; r4 += 2u) {
-      let a0 = lora_t[row * 8u + r4];
-      let a1 = lora_t[row * 8u + r4 + 1u];
-      delta += dot(vec4<qlora_acc_t>(a0), vec4<qlora_acc_t>(qlora_weight(col, r4))) +
-               dot(vec4<qlora_acc_t>(a1), vec4<qlora_acc_t>(qlora_weight(col, r4 + 1u)));
-    }
-  } else {
-    for (var block = 0u; block < 2u; block++) {
-      var sum = qlora_acc_t(0);
-      for (var i = 0u; i < 4u; i++) {
-        let r4 = block * 4u + i;
-        sum += dot(vec4<qlora_acc_t>(lora_t[row * 8u + r4]), vec4<qlora_acc_t>(qlora_weight(col, r4)));
-      }
-      delta += sum;
-    }
-    // The remaining generic-kernel partials are zero, including their sign.
-    delta += qlora_acc_t(0);
-  }
-  return output_element_t(delta);
-}
-)";
-  if (vector_output) {
-    shader.AdditionalImplementation() << R"(
-fn qlora_delta4(row: u32, col: u32) -> vec4<output_element_t> {
-  var delta = vec4<qlora_acc_t>(0);
-  for (var r4 = 0u; r4 < 8u; r4 += 2u) {
-    let a0 = vec4<qlora_acc_t>(lora_t[row * 8u + r4]);
-    let a1 = vec4<qlora_acc_t>(lora_t[row * 8u + r4 + 1u]);
-    delta += vec4<qlora_acc_t>(
-        dot(a0, vec4<qlora_acc_t>(qlora_weight(col, r4))),
-        dot(a0, vec4<qlora_acc_t>(qlora_weight(col + 1u, r4))),
-        dot(a0, vec4<qlora_acc_t>(qlora_weight(col + 2u, r4))),
-        dot(a0, vec4<qlora_acc_t>(qlora_weight(col + 3u, r4)))) +
-        vec4<qlora_acc_t>(
-        dot(a1, vec4<qlora_acc_t>(qlora_weight(col, r4 + 1u))),
-        dot(a1, vec4<qlora_acc_t>(qlora_weight(col + 1u, r4 + 1u))),
-        dot(a1, vec4<qlora_acc_t>(qlora_weight(col + 2u, r4 + 1u))),
-        dot(a1, vec4<qlora_acc_t>(qlora_weight(col + 3u, r4 + 1u))));
-  }
-  return vec4<output_element_t>(delta);
-}
-)";
-  }
+Status GenerateQLoRAUp(ShaderHelper& shader, bool acc_f32, bool vector_output) {
+  return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_qlora_up.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32),
+                             WGSL_TEMPLATE_PARAMETER(vector_output, vector_output));
 }
 
 namespace {
 
+// Single-row execution stores the base projection separately. This shader computes
+// the rank-32 up projection and adds it to that base output in one dispatch.
 class QLoRAOutputProgram final : public Program<QLoRAOutputProgram> {
  public:
   explicit QLoRAOutputProgram(bool acc_f32) : Program{"QLoRAOutputVec4"}, acc_f32_(acc_f32) {}
@@ -178,7 +45,7 @@ class QLoRAOutputProgram final : public Program<QLoRAOutputProgram> {
     shader.AddInput("lora_b");
     shader.AddInput("lora_b_scales");
     shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
-    GenerateQLoRAUp(shader, acc_f32_);
+    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, acc_f32_));
     shader.MainFunctionBody()
         << "if (global_idx >= uniforms.size) { return; }\n"
         << "output[global_idx] = base[global_idx] + qlora_delta(global_idx / uniforms.N, global_idx % uniforms.N);\n";
@@ -257,10 +124,14 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     }
     ORT_RETURN_IF_NOT(as->Shape() == TensorShape({32, k_ / 32}) && bs->Shape() == TensorShape({n_, 1}),
                       "Invalid adapter scales shape.");
+    // With logical dequantized weights, Y = X * W + T * B_up, where T = X * A_down.
+    // T keeps X's leading dimensions and replaces K with the adapter rank (32).
     auto t_shape = x->Shape().AsShapeVector();
     t_shape.back() = 32;
     auto t = context.CreateGPUTensor(x->DataType(), TensorShape(t_shape));
     const auto m = narrow<uint32_t>(x->Shape()[x->Shape().NumDimensions() - 2]);
+    // Prefill fuses T * B_up into the base shader's output stage. Single-row
+    // decode uses ApplyQLoRAOutput after computing the base projection and T.
     const bool fuse_up = m > 1;
     // FP32 may select DP4A even for M=1. The joint floating-point down
     // shader must not replace that base projection's activation quantization.
@@ -291,6 +162,8 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
           nullptr, nullptr, aq, &t, nullptr, nullptr, as));
       return ApplyQLoRAOutput(context, &base, &t, bq, bs, y);
     }
+    // For one input vector, append four rank-reduction workgroups to the generic
+    // base dispatch. GenerateQLoRADown supplies their shader body; DP4A has its own.
     const bool joint_down = !fuse_up && x->Shape().Size() == k_ && k_ >= 2048 && k_ <= 8192 && !base_dp4a;
     if (joint_down) {
       auto base = context.CreateGPUTensor(y->DataType(), y->Shape());
