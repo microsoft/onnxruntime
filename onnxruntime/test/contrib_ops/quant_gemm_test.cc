@@ -5,6 +5,7 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/quantization_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 #include "core/common/common.h"
 #include "core/common/safeint.h"
@@ -200,6 +201,71 @@ TEST(QuantGemmTest, GEMM) {
   RunQuantGemmTestBatch(2, 48, 33);
   RunQuantGemmTestBatch(2, 51, 40);
   RunQuantGemmTestBatch(4, 8, 68);
+}
+
+TEST(QuantGemmTest, KZeroNonEmptyOutput) {
+  auto add_k_zero_inputs = [](OpTester& test, bool b_is_initializer) {
+    test.AddAttribute<int64_t>("transA", 0);
+    test.AddAttribute<int64_t>("transB", 0);
+    test.AddAttribute<float>("alpha", 1.0f);
+    test.AddInput<uint8_t>("A", {2, 0}, std::vector<uint8_t>{});
+    test.AddInput<float>("a_scale", {}, {0.5f});
+    test.AddInput<uint8_t>("a_zero_point", {}, {1});
+    test.AddInput<int8_t>("B", {0, 2}, std::vector<int8_t>{}, b_is_initializer);
+    test.AddInput<float>("b_scale", {}, {0.25f});
+    test.AddInput<int8_t>("b_zero_point", {}, {1});
+  };
+
+  for (bool b_is_initializer : {false, true}) {
+    SCOPED_TRACE(b_is_initializer ? "B initializer" : "B runtime input");
+    OpTester test("QGemm", 1, onnxruntime::kMSDomain);
+    add_k_zero_inputs(test, b_is_initializer);
+    test.AddOptionalInputEdge<int32_t>();  // C
+    test.AddInput<float>("y_scale", {}, {0.125f});
+    test.AddInput<uint8_t>("y_zero_point", {}, {97});
+    test.AddOutput<uint8_t>("Y", {2, 2}, {97, 97, 97, 97});
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+
+  {
+    OpTester test("QGemm", 1, onnxruntime::kMSDomain);
+    add_k_zero_inputs(test, false);
+    test.AddInput<int32_t>("C", {2, 2}, {3, -2, 1, 0});
+    test.AddInput<float>("y_scale", {}, {0.125f});
+    test.AddInput<uint8_t>("y_zero_point", {}, {97});
+    test.AddOutput<uint8_t>("Y", {2, 2}, {100, 95, 98, 97});
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+
+  // The floating-point output form has no output scale/zero-point inputs.
+  {
+    OpTester test("QGemm", 1, onnxruntime::kMSDomain);
+    add_k_zero_inputs(test, true);
+    test.AddInput<int32_t>("C", {2, 2}, {3, -2, 1, 0});
+    test.AddOptionalInputEdge<float>();    // y_scale
+    test.AddOptionalInputEdge<uint8_t>();  // y_zero_point
+    test.AddOutput<float>("Y", {2, 2}, {0.375f, -0.25f, 0.125f, 0.0f});
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+}
+
+TEST(QuantGemmTest, KOneNonEmptyOutputControl) {
+  OpTester test("QGemm", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("transA", 0);
+  test.AddAttribute<int64_t>("transB", 0);
+  test.AddAttribute<float>("alpha", 1.0f);
+  test.AddInput<uint8_t>("A", {2, 1}, {1, 2});
+  test.AddInput<float>("a_scale", {}, {0.5f});
+  test.AddInput<uint8_t>("a_zero_point", {}, {1});
+  test.AddInput<int8_t>("B", {1, 2}, {2, 0});
+  test.AddInput<float>("b_scale", {}, {0.25f});
+  test.AddInput<int8_t>("b_zero_point", {}, {1});
+  test.AddOptionalInputEdge<int32_t>();  // C
+  test.AddInput<float>("y_scale", {}, {0.125f});
+  test.AddInput<uint8_t>("y_zero_point", {}, {97});
+  test.AddOutput<uint8_t>("Y", {2, 2}, {97, 97, 98, 96});
+
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 }  // namespace test

@@ -14,6 +14,7 @@ Abstract:
     operation (QGEMM).
 
 --*/
+#include <algorithm>
 #include <cassert>
 #include "core/mlas/lib/mlasi.h"
 #include "qgemm.h"
@@ -139,6 +140,26 @@ MlasGemmBatch(
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool)
 {
+    // An empty reduction skips the kernels' accumulator and output processing.
+    // Handle it before dispatch so existing bias and output zero points are preserved.
+    if (Shape.K == 0) {
+        if (Shape.M == 0 || Shape.N == 0) {
+            return;
+        }
+        for (size_t batch = 0; batch < BatchN; ++batch) {
+            const auto& Data = DataParams[batch];
+            if (!Shape.IsAccumulateMode) {
+                for (size_t row = 0; row < Shape.M; ++row) {
+                    std::fill_n(Data.C + row * Data.ldc, Shape.N, int32_t{0});
+                }
+            }
+            if (Data.OutputProcessor != nullptr) {
+                Data.OutputProcessor->Process(Data.C, 0, 0, Shape.M, Shape.N, Data.ldc);
+            }
+        }
+        return;
+    }
+
     const size_t M = Shape.M;
     const size_t N = Shape.N;
     const size_t K = Shape.K;
