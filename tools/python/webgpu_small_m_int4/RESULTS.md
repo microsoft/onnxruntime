@@ -1,5 +1,11 @@
 # Small-M INT4 SIMT prototype: A100 results and Apple feasibility
 
+This report records the original standalone investigation, before the prototype
+was committed or integrated. Its statements about unchanged production sources
+and absence of full-model benchmarks describe that original experiment.
+See [README.md](README.md#opt-in-full-model-routing) for the subsequent
+disabled-by-default benchmark-branch integration.
+
 ## Decision
 
 **Proceed with the padded SIMT architecture for large MLP projections, not as a

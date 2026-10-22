@@ -89,7 +89,8 @@ Status ShaderHelper::Init() {
               "        @builtin(workgroup_id) workgroup_id : vec3<u32>,\n"
               "        @builtin(local_invocation_index) local_idx : u32,\n"
               "        @builtin(local_invocation_id) local_id : vec3<u32>";
-  if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
+  if (program_.Name() != "DiagnosticSmallMSimt" &&
+      webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
     body_ss_ << ",\n"
                 "        @builtin(subgroup_invocation_id) sg_id : u32,\n";
     if (program_.UseSubgroupId()) {
@@ -478,13 +479,15 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
     ORT_RETURN_IF_NOT(webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ShaderF16), "Program ", program_.Name(), " requires f16 but the device does not support it.");
     ss << "enable f16;\n";
   }
-  if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
+  if (program_.Name() != "DiagnosticSmallMSimt" &&
+      webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
     ss << "enable subgroups;\n";
   }
   if (program_.SubgroupSize() != 0) {
     ss << "enable subgroup_size_control;\n";
   }
-  if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
+  if (program_.Name() != "DiagnosticSmallMSimt" &&
+      webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
     ss << "enable chromium_experimental_subgroup_matrix;\n";
 
     // Dawn enforces the subgroup matrix builtin arguments to be uniform in change https://dawn-review.googlesource.com/c/dawn/+/236054

@@ -9,6 +9,7 @@
 
 #include "gtest/gtest.h"
 
+#include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/span_utils.h"
@@ -176,6 +177,22 @@ TEST(WebGpuMatMulNBitsTest, SmallMKernelPreference) {
                             SubgroupMatrixConfig{f32, f32, 8, 8, 8, 32, false},
                             SubgroupMatrixConfig{f16, f32, 16, 16, 16, 32, true}}) {
     EXPECT_FALSE(PreferRegularMatMulNBitsForSmallM(4, 5120, 4, other));
+  }
+}
+
+TEST(WebGpuMatMulNBitsTest, ExperimentalSimtMlpShapes) {
+  using contrib::webgpu::IsSmallMSimtMlpShape;
+  for (uint32_t M : {2u, 4u, 8u}) {
+    EXPECT_TRUE(IsSmallMSimtMlpShape(M, 17408, 5120));
+    EXPECT_TRUE(IsSmallMSimtMlpShape(M, 5120, 17408));
+    EXPECT_FALSE(IsSmallMSimtMlpShape(M, 1024, 5120));
+    EXPECT_FALSE(IsSmallMSimtMlpShape(M, 10240, 5120));
+    EXPECT_FALSE(IsSmallMSimtMlpShape(M, 17409, 5120));
+    EXPECT_FALSE(IsSmallMSimtMlpShape(M, 5120, 17409));
+  }
+  for (uint32_t M : {0u, 1u, 3u, 5u, 7u, 9u, std::numeric_limits<uint32_t>::max()}) {
+    EXPECT_FALSE(IsSmallMSimtMlpShape(M, 17408, 5120));
+    EXPECT_FALSE(IsSmallMSimtMlpShape(M, 5120, 17408));
   }
 }
 

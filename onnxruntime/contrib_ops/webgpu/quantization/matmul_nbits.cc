@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstdlib>
 #include <string>
 #include <string_view>
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits_small_m_simt.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
@@ -112,6 +114,11 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_VARIABLE(b, b),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
+}
+
+bool IsSmallMSimtMlpShape(uint32_t M, uint32_t N, uint32_t K) {
+  return (M == 2 || M == 4 || M == 8) &&
+         ((K == 5120 && N == 17408) || (K == 17408 && N == 5120));
 }
 
 bool CanApplyWideTileMatMulNBits(uint32_t M,
@@ -329,6 +336,21 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   // values per byte — so that the linear stride correctly skips byte-boundary padding.
   const uint32_t zp_elements_per_byte = 8 / static_cast<uint32_t>(nbits);
   uint32_t zero_blocks_per_col = (n_blocks_per_col + zp_elements_per_byte - 1) / zp_elements_per_byte * zp_elements_per_byte;
+
+  const char* experimental_simt = std::getenv("ORT_WEBGPU_EXPERIMENTAL_SMALL_M_SIMT");
+  ORT_ENFORCE(experimental_simt == nullptr || std::string_view{experimental_simt} == "0" ||
+                  std::string_view{experimental_simt} == "1",
+              "ORT_WEBGPU_EXPERIMENTAL_SMALL_M_SIMT must be 0 or 1.");
+  if (experimental_simt != nullptr && std::string_view{experimental_simt} == "1" &&
+      IsSmallMSimtMlpShape(M, N, K) && batch_count == 1 && dispatch_M == M &&
+      nbits == 4 && block_size == 32 && accuracy_level == 4 && !has_weight_idx &&
+      !has_zero_points && !has_bias && context.HasFeature(wgpu::FeatureName::ShaderF16) &&
+      a->DataType() == DataTypeImpl::GetType<MLFloat16>() &&
+      scales->DataType() == a->DataType() && y->DataType() == a->DataType()) {
+    return RunSmallMSimt(a, b, scales, zero_points, bias, M, N, K, block_size, batch_count, weight_index,
+                         weight_index_indirect, dispatch_M, static_cast<uint32_t>(nbits), context, y,
+                         8, 512, 1);
+  }
 
   // apple|intel - Experimental dawn support for subgroup matrix matmul.
   std::optional<SubgroupMatrixConfig> subgroup_matrix_config;

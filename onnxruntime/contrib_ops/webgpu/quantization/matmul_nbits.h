@@ -95,6 +95,8 @@ class MatMulNBits final : public WebGpuKernel {
   int64_t bits_;
 };
 
+bool IsSmallMSimtMlpShape(uint32_t M, uint32_t N, uint32_t K);
+
 bool CanApplyWideTileMatMulNBits(uint32_t M,
                                  uint32_t K,
                                  uint32_t block_size,

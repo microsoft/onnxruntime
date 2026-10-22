@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
 SOURCE = ROOT / "onnxruntime/contrib_ops/webgpu/quantization/matmul_nbits.cc"
 SHADER_HELPER = ROOT / "onnxruntime/core/providers/webgpu/shader_helper.cc"
+KERNEL = ROOT / "onnxruntime/contrib_ops/webgpu/quantization/matmul_nbits_small_m_simt.h"
 
 
 def replace_once(text, before, after):
@@ -28,7 +29,7 @@ def instrument_source(source):
         "namespace onnxruntime {",
         f'#include "{HERE / "diagnostic.h"}"\n\nnamespace onnxruntime {{',
     )
-    marker = "  // apple|intel - Experimental dawn support for subgroup matrix matmul."
+    marker = '  const char* experimental_simt = std::getenv("ORT_WEBGPU_EXPERIMENTAL_SMALL_M_SIMT");'
     insertion = """
   const char* diagnostic_text = std::getenv("ORT_WEBGPU_SMALL_M_DIAGNOSTIC");
   const std::string_view diagnostic_mode = diagnostic_text ? diagnostic_text : "auto";
@@ -43,12 +44,22 @@ def instrument_source(source):
 
 """
     source = replace_once(source, marker, insertion + marker)
-    for name in (
-        "CanApplySubgroupMatrixMatMulNBits",
-        "CanApplyDP4AMatrixMatMulNBits",
-        "CanApplyWideTileMatMulNBits",
-    ):
-        source = replace_once(source, f"if ({name}(", f"if (!diagnostic_regular && {name}(")
+    source = replace_once(
+        source,
+        "if (experimental_simt != nullptr &&",
+        "if (!diagnostic_regular && experimental_simt != nullptr &&",
+    )
+    source = replace_once(
+        source,
+        "const bool can_use_subgroup_matrix = CanApplySubgroupMatrixMatMulNBits(",
+        "const bool can_use_subgroup_matrix = !diagnostic_regular && CanApplySubgroupMatrixMatMulNBits(",
+    )
+    for name in ("CanApplyDP4AMatrixMatMulNBits", "CanApplyWideTileMatMulNBits"):
+        source = replace_once(
+            source,
+            f"if (!prefer_regular && {name}(",
+            f"if (!diagnostic_regular && !prefer_regular && {name}(",
+        )
     return source
 
 
@@ -83,16 +94,8 @@ def main():
     compile_command = compile_copy(commands, SOURCE, source, obj, build)
     helper_source = output / "diagnostic_shader_helper.cc"
     helper_text = SHADER_HELPER.read_text()
-    # Production enables every available extension. Prove this program needs only f16.
-    for feature, occurrences in (("Subgroups", 2), ("ChromiumExperimentalSubgroupMatrix", 1)):
-        before = f"  if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::{feature})) {{"
-        after = (
-            '  if (program_.Name() != "DiagnosticSmallMSimt" && '
-            f"webgpu_context_.DeviceHasFeature(wgpu::FeatureName::{feature})) {{"
-        )
-        if helper_text.count(before) != occurrences:
-            raise ValueError(f"Unexpected ShaderHelper feature/builtin emission for {feature}")
-        helper_text = helper_text.replace(before, after)
+    if helper_text.count('program_.Name() != "DiagnosticSmallMSimt"') != 3:
+        raise ValueError("Expected the integrated f16-only SIMT ShaderHelper guards.")
     helper_source.write_text(helper_text)
     helper_obj = output / "diagnostic_shader_helper.o"
     helper_command = compile_copy(commands, SHADER_HELPER, helper_source, helper_obj, build)
@@ -127,6 +130,7 @@ def main():
         "production_matmul_sha256": sha256(SOURCE),
         "diagnostic_source_sha256": sha256(source),
         "diagnostic_header_sha256": sha256(HERE / "diagnostic.h"),
+        "kernel_header_sha256": sha256(KERNEL),
         "compile_command": compile_command,
         "shader_helper_command": helper_command,
         "production_shader_helper_sha256": sha256(SHADER_HELPER),
