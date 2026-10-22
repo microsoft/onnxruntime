@@ -1427,8 +1427,17 @@ for idx, case in enumerate(json.loads(sys.argv[2])):
         cases = [
             {**base_case, "enable_cuda_graph": False},
             {**base_case, "enable_cuda_graph": True},
-            {**base_case_256, "enable_cuda_graph": False},
-            {**base_case_256, "enable_cuda_graph": True},
+            *[
+                {
+                    **base_case_256,
+                    "top_k": top_k,
+                    "num_tokens": num_tokens,
+                    "enable_cuda_graph": enable_cuda_graph,
+                }
+                for top_k in (1, 2, 4, 6, 8)
+                for num_tokens in (1, 8)
+                for enable_cuda_graph in (False, True)
+            ],
         ]
         _, baseline_runs = self._run_decode_gemv_subprocess(onnx_dtype, cases, decode_mode=0)
         pdl_cupti, pdl_runs = self._run_decode_gemv_subprocess(
