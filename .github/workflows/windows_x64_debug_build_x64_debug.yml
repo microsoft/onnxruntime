@@ -13,11 +13,7 @@ concurrency:
 
 jobs:
   build_x64_debug:
-    runs-on: [
-      "self-hosted",
-      "1ES.Pool=onnxruntime-github-vs2022-latest",
-      "JobId=windows-x64-debug-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-      ]
+    runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 300
 
     steps:

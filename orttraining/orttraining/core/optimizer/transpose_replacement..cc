@@ -61,8 +61,8 @@ Status TransposeReplacement::Apply(Graph& graph,
   return Status::OK();
 }
 
-bool TransposeReplacement::SatisfyCondition(const Graph&, const Node&, const logging::Logger&) const {
-  return true;
+bool TransposeReplacement::SatisfyCondition(const Graph&, const Node& node, const logging::Logger&) const {
+  return node.GetAttributes().find("perm") != node.GetAttributes().end();
 }
 
 }  // namespace onnxruntime

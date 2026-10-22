@@ -122,7 +122,12 @@ void launch_moe_gemv_fp4_symmetric(
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
     int64_t n, int64_t k, int group_size, int sm, MoeGemvConfig config, bool sm80_pair_interleaved,
     bool raw_n_packed, cudaStream_t stream, bool weights_row_major = false,
-    bool decode_scale_eligible = false, bool* decode_kernel_launched = nullptr);
+    bool decode_scale_eligible = false, bool* decode_kernel_launched = nullptr,
+    bool programmatic_dependent_launch = false);
+
+// `programmatic_dependent_launch` (raw row-major NVFP4 decode kernel only) launches the grid with the PDL attribute: it
+// must directly follow the fused-SwiGLU launch below on the same stream and may only read that kernel's output after
+// its own griddepcontrol.wait (see MoeGemvFp4DecodeKernel).
 
 // Native K-packed NVFP4 FC2 with top-k reduction; false leaves unsupported shapes to the caller.
 // The caller must use single-EP/single-TP routing. Each expert result is rounded to T before reduction.
@@ -144,7 +149,8 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
     int64_t inter_size, int64_t k, int group_size, int sm, cutlass_kernels::ActivationParams activation_params,
     MoeGemvConfig config, bool sm80_pair_interleaved, bool raw_n_packed,
     const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream,
-    bool weights_row_major = false, bool decode_scale_eligible = false, bool* decode_kernel_launched = nullptr);
+    bool weights_row_major = false, bool decode_scale_eligible = false, bool* decode_kernel_launched = nullptr,
+    bool programmatic_dependent_launch = false);
 
 }  // namespace moe_gemv
 }  // namespace kernels

@@ -522,9 +522,22 @@ __global__ void MoeGemvFp4RawKPackedKernel(
 
 bool Fp4MoeGemvSupportsNativeScale() {
 #if defined(ORT_CUDA_TYPE_HELPER_HAS_FP8)
+  int device = -1;
+  if (cudaGetDevice(&device) != cudaSuccess) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  int sm_major = 0;
+  if (cudaDeviceGetAttribute(&sm_major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess || sm_major < 9) {
+    (void)cudaGetLastError();
+    return false;
+  }
   cudaFuncAttributes attributes{};
-  CUDA_CALL_THROW(cudaFuncGetAttributes(
-      &attributes, MoeGemvFp4RawKPackedKernel<half, false, false, 4, false, true>));
+  if (cudaFuncGetAttributes(
+          &attributes, MoeGemvFp4RawKPackedKernel<half, false, false, 4, false, true>) != cudaSuccess) {
+    (void)cudaGetLastError();
+    return false;
+  }
   return attributes.binaryVersion >= 90 && attributes.ptxVersion >= 90;
 #else
   return false;
@@ -788,6 +801,18 @@ __global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
   static_assert(KLanes == 4 || KLanes == 8);
   static_assert(Batch >= 1);
 
+  // Programmatic dependent launch (only active when launched with the PDL attribute, otherwise no-ops): let the next
+  // kernel of the MoE chain start its prologue while this one runs. FC2 reads only data of kernels that completed
+  // before FC1 passed its wait (expert maps, weights) before its own wait and the FC1 output after it.
+  // FC1 triggers only after its own wait (the routing kernel may be its primary grid), so FC2 and the finalize
+  // kernel, which read routing metadata before their waits, never launch before that metadata is complete.
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+  if constexpr (FusedSwiGlu) {
+    asm volatile("griddepcontrol.wait;" ::: "memory");
+  }
+  asm volatile("griddepcontrol.launch_dependents;");
+#endif
+
   const int row = static_cast<int>(blockIdx.x);
   int expert = permuted_row_to_expert != nullptr ? permuted_row_to_expert[row] : 0;
 #pragma unroll 1
@@ -838,6 +863,11 @@ __global__ void __launch_bounds__(Warps * 32, MinBlocks) MoeGemvFp4DecodeKernel(
   uint32_t scale_codes[Batch][kDecodeColsPerThread];
   load_batch(0, packed, scale_codes);
 
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+  if constexpr (!FusedSwiGlu) {
+    asm volatile("griddepcontrol.wait;" ::: "memory");  // the activation row is the FC1 output
+  }
+#endif
   // Stage the activation row as FP32, one padded 32-element unit per lane pair.
   extern __shared__ __align__(16) float act_smem[];
   {
@@ -945,6 +975,47 @@ template bool try_launch_moe_gemv_nvfp4_fused_finalize<__nv_bfloat16>(
     const __nv_bfloat16*, const uint8_t*, const uint8_t*, const float*, const __nv_bfloat16*, __nv_bfloat16*,
     const int*, const int*, const float*, int, int, int, int, int, cudaStream_t);
 
+// Opt-out for the programmatic dependent launch of FC2 (env ORT_FP4_GEMV_PDL=0).
+static bool Fp4MoeGemvUsePdl() {
+  static const bool enabled = onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_PDL", 1) != 0;
+  return enabled;
+}
+
+template <typename KernelPtr>
+static bool QuerySm90DecodeKernelCaps(KernelPtr kernel, bool* pdl_supported = nullptr) {
+  if (pdl_supported != nullptr) {
+    *pdl_supported = false;
+  }
+  int device = -1;
+  if (cudaGetDevice(&device) != cudaSuccess) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  int sm_major = 0;
+  if (cudaDeviceGetAttribute(&sm_major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess || sm_major < 9) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  cudaFuncAttributes attributes{};
+  if (cudaFuncGetAttributes(&attributes, kernel) != cudaSuccess) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  const bool image_available = attributes.ptxVersion >= 90 && attributes.binaryVersion >= 90;
+  if (!image_available) {
+    return false;
+  }
+  if (pdl_supported != nullptr) {
+    int driver_version = 0;
+    if (cudaDriverGetVersion(&driver_version) == cudaSuccess) {
+      *pdl_supported = driver_version >= 12000;
+    } else {
+      (void)cudaGetLastError();
+    }
+  }
+  return true;
+}
+
 template <typename T, bool FusedSwiGlu>
 void LaunchMoeGemvFp4RawNPacked(
     const T* act, const uint8_t* weight, const uint8_t* block_scales, const float* global_scales,
@@ -952,7 +1023,8 @@ void LaunchMoeGemvFp4RawNPacked(
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t expanded_num_rows, int64_t n, int64_t k, cutlass_kernels::ActivationParams activation_params,
     const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream, bool weights_row_major, int sm,
-    bool decode_scale_eligible = false, bool* decode_kernel_launched = nullptr) {
+    bool decode_scale_eligible = false, bool* decode_kernel_launched = nullptr,
+    bool programmatic_dependent_launch = false) {
   if (decode_kernel_launched != nullptr) {
     *decode_kernel_launched = false;
   }
@@ -1006,26 +1078,49 @@ void LaunchMoeGemvFp4RawNPacked(
                                static_cast<unsigned>((n + kBlockCols - 1) / kBlockCols));
         const auto launch_bias = [&](auto bias_tag) {
           constexpr bool kEnableBias = decltype(bias_tag)::value;
+          auto kernel = MoeGemvFp4DecodeKernel<T, FusedSwiGlu, kEnableBias, kKLanes, kWarps, kBatch, kMinBlocks>;
           // PTX compiled below SM90 has an empty decode body, even when JIT-loaded on SM90+.
           // Image selection depends on the device SM; refresh when a thread switches architectures.
           static thread_local int cached_sm = -1;
           static thread_local bool available = false;
+          static thread_local bool pdl_supported = false;
           if (cached_sm != sm) {
-            cudaFuncAttributes attributes{};
-            CUDA_CALL_THROW(cudaFuncGetAttributes(
-                &attributes, MoeGemvFp4DecodeKernel<T, FusedSwiGlu, kEnableBias, kKLanes, kWarps, kBatch, kMinBlocks>));
-            available = attributes.ptxVersion >= 90;
+            available = QuerySm90DecodeKernelCaps(kernel, &pdl_supported);
             cached_sm = sm;
           }
           if (!available) {
             return false;
           }
-          MoeGemvFp4DecodeKernel<T, FusedSwiGlu, kEnableBias, kKLanes, kWarps, kBatch, kMinBlocks>
-              <<<decode_grid, kWarps * 32, decode_smem, stream>>>(
-                  act, weight, block_scales, global_scales, bias, out,
-                  expert_first_token_offset, permuted_row_to_expert, num_experts,
-                  weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k),
-                  activation_params, permuted_row_to_source_row, static_cast<int>(num_rows));
+          if (programmatic_dependent_launch && Fp4MoeGemvUsePdl() && pdl_supported) {
+            cudaLaunchConfig_t config{};
+            config.gridDim = decode_grid;
+            config.blockDim = dim3(kWarps * 32);
+            config.dynamicSmemBytes = decode_smem;
+            config.stream = stream;
+            cudaLaunchAttribute attribute[1]{};
+            attribute[0].id = cudaLaunchAttributeProgrammaticStreamSerialization;
+            attribute[0].val.programmaticStreamSerializationAllowed = 1;
+            config.attrs = attribute;
+            config.numAttrs = 1;
+            const cudaError_t status = cudaLaunchKernelEx(
+                &config, kernel, act, weight, block_scales, global_scales, bias, out, expert_first_token_offset,
+                permuted_row_to_expert, num_experts, weight_expert_stride, scale_expert_stride, static_cast<int>(n),
+                static_cast<int>(k), activation_params, permuted_row_to_source_row, static_cast<int>(num_rows));
+            if (status == cudaSuccess) {
+              return true;
+            }
+            if (status != cudaErrorInvalidValue && status != cudaErrorNotSupported) {
+              ORT_ENFORCE(status == cudaSuccess, "FP4 GEMV decode launch failed: ", cudaGetErrorString(status));
+            }
+            (void)cudaGetLastError();
+            pdl_supported = false;
+          }
+          kernel<<<decode_grid, kWarps * 32, decode_smem, stream>>>(
+              act, weight, block_scales, global_scales, bias, out,
+              expert_first_token_offset, permuted_row_to_expert, num_experts,
+              weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k),
+              activation_params, permuted_row_to_source_row, static_cast<int>(num_rows));
+          CUDA_CALL_THROW(cudaGetLastError());
           return true;
         };
         if (bias != nullptr) {
@@ -1187,10 +1282,8 @@ bool is_moe_gemv_fp4_decode_image_available(int sm, bool is_fp16) {
   }
   const auto check_type = [&](auto type_tag) {
     using T = typename decltype(type_tag)::type;
-    cudaFuncAttributes attributes{};
-    CUDA_CALL_THROW(cudaFuncGetAttributes(
-        &attributes, MoeGemvFp4DecodeKernel<T, true, false, 8, kDecodeK8Warps, kDecodeK8Batch, kDecodeK8MinBlocks>));
-    return attributes.ptxVersion >= 90;
+    return QuerySm90DecodeKernelCaps(
+        MoeGemvFp4DecodeKernel<T, true, false, 8, kDecodeK8Warps, kDecodeK8Batch, kDecodeK8MinBlocks>);
   };
   if (is_fp16) {
     return check_type(TypeTag<half>{});
@@ -1210,7 +1303,7 @@ void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T*
                                    int num_experts, int64_t expanded_num_rows, int64_t n, int64_t k, int group_size,
                                    int sm, MoeGemvConfig config, bool sm80_pair_interleaved, bool raw_n_packed,
                                    cudaStream_t stream, bool weights_row_major, bool decode_scale_eligible,
-                                   bool* decode_kernel_launched) {
+                                   bool* decode_kernel_launched, bool programmatic_dependent_launch) {
   if (decode_kernel_launched != nullptr) {
     *decode_kernel_launched = false;
   }
@@ -1222,7 +1315,7 @@ void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T*
         act, weight, raw_block_scales, raw_global_scales, bias, out,
         expert_first_token_offset, permuted_row_to_expert, num_experts,
         expanded_num_rows, n, k, cutlass_kernels::ActivationParams{}, nullptr, expanded_num_rows, stream,
-        weights_row_major, sm, decode_scale_eligible, decode_kernel_launched);
+        weights_row_major, sm, decode_scale_eligible, decode_kernel_launched, programmatic_dependent_launch);
     return;
   }
   // Interleaved path: ColumnMajorInterleaved layout + dtype-conditional accumulation + smaller
@@ -1282,7 +1375,7 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
     cutlass_kernels::ActivationParams activation_params, MoeGemvConfig config, bool sm80_pair_interleaved,
     bool raw_n_packed,
     const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream, bool weights_row_major,
-    bool decode_scale_eligible, bool* decode_kernel_launched) {
+    bool decode_scale_eligible, bool* decode_kernel_launched, bool programmatic_dependent_launch) {
   if (decode_kernel_launched != nullptr) {
     *decode_kernel_launched = false;
   }
@@ -1294,7 +1387,7 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
         act, weight, raw_block_scales, raw_global_scales, bias, out,
         expert_first_token_offset, permuted_row_to_expert, num_experts,
         expanded_num_rows, inter_size * 2, k, activation_params, permuted_row_to_source_row, num_rows, stream,
-        weights_row_major, sm, decode_scale_eligible, decode_kernel_launched);
+        weights_row_major, sm, decode_scale_eligible, decode_kernel_launched, programmatic_dependent_launch);
     return;
   }
   // Interleaved path: ColumnMajorInterleaved layout + dtype-conditional accumulation + smaller
@@ -1350,23 +1443,23 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
 template void launch_moe_gemv_fp4_symmetric<half>(
     const half*, const uint8_t*, const half*, const uint8_t*, const float*, const half*, half*,
     const int64_t*, const int*, int,
-    int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool, bool, cudaStream_t, bool, bool, bool*);
+    int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool, bool, cudaStream_t, bool, bool, bool*, bool);
 template void launch_moe_gemv_fp4_symmetric_interleaved_swiglu<half>(
     const half*, const uint8_t*, const half*, const uint8_t*, const float*, const half*, half*,
     const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, MoeGemvConfig, bool, bool,
-    const int*, int64_t, cudaStream_t, bool, bool, bool*);
+    const int*, int64_t, cudaStream_t, bool, bool, bool*, bool);
 #ifdef ENABLE_BF16
 template void launch_moe_gemv_fp4_symmetric<__nv_bfloat16>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const uint8_t*, const float*,
     const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, MoeGemvConfig, bool, bool, cudaStream_t,
-    bool, bool, bool*);
+    bool, bool, bool*, bool);
 template void launch_moe_gemv_fp4_symmetric_interleaved_swiglu<__nv_bfloat16>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const uint8_t*, const float*,
     const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
-    MoeGemvConfig, bool, bool, const int*, int64_t, cudaStream_t, bool, bool, bool*);
+    MoeGemvConfig, bool, bool, const int*, int64_t, cudaStream_t, bool, bool, bool*, bool);
 #endif
 
 }  // namespace moe_gemv

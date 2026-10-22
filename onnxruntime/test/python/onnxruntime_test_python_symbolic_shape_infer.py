@@ -510,6 +510,8 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
                 "",
                 "present_state_lengths",
                 "state_update",
+                "",
+                "state_status",
             ],
             domain="com.microsoft",
             policy_mode="qsa",
@@ -546,6 +548,8 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         self.assertEqual(outputs["present_state_lengths"].type.tensor_type.elem_type, TensorProto.INT32)
         self.assertEqual(self._tensor_shape(outputs["state_update"]), [2, 4, 8])
         self.assertEqual(outputs["state_update"].type.tensor_type.elem_type, TensorProto.FLOAT16)
+        self.assertEqual(self._tensor_shape(outputs["state_status"]), [2])
+        self.assertEqual(outputs["state_status"].type.tensor_type.elem_type, TensorProto.INT32)
 
     def test_packed_sparse_attention_indexer_csa(self):
         node = helper.make_node(

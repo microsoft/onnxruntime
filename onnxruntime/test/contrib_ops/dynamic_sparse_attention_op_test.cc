@@ -966,6 +966,131 @@ TEST(DynamicSparseAttentionTest, SelectedOnlyBFloat16_CUDA) {
       MakeSingleTokenSelectedValueCase(), std::move(cuda_ep));
 }
 
+TEST(DynamicSparseAttentionTest, SelectedOnlyPrefillBFloat16_CUDA) {
+  auto cuda_ep_check = DefaultCudaExecutionProvider();
+  if (!cuda_ep_check) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (!CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  }
+
+  constexpr int64_t sequence_length = 80;
+  constexpr int64_t num_heads = 6;
+  constexpr int64_t kv_num_heads = 2;
+  constexpr int64_t group_size = num_heads / kv_num_heads;
+  constexpr int64_t head_size = 256;
+  constexpr int64_t max_selected = 72;
+
+  DynamicSparseAttentionCase c;
+  c.sequence_length = sequence_length;
+  c.num_heads = num_heads;
+  c.kv_num_heads = kv_num_heads;
+  c.head_size = head_size;
+  c.cache_sequence_length = sequence_length;
+  c.max_selected = max_selected;
+  c.total_sequence_length = sequence_length;
+  c.scale = 0.0625f;
+  c.query.resize(sequence_length * num_heads * head_size);
+  c.key.resize(sequence_length * kv_num_heads * head_size);
+  c.value.resize(sequence_length * kv_num_heads * head_size);
+  c.past_key.assign(sequence_length * kv_num_heads * head_size, 0.0f);
+  c.past_value.assign(sequence_length * kv_num_heads * head_size, 0.0f);
+  c.selected_indices.assign(sequence_length * max_selected, -1);
+  c.selected_counts.resize(sequence_length);
+  c.seqlens_k = {static_cast<int32_t>(sequence_length - 1)};
+  c.expected_output.assign(sequence_length * num_heads * head_size, 0.0f);
+
+  auto round_bf16 = [](float x) -> float {
+    return BFloat16(x).ToFloat();
+  };
+
+  for (int64_t s = 0; s < sequence_length; ++s) {
+    for (int64_t h = 0; h < num_heads; ++h) {
+      for (int64_t d = 0; d < head_size; ++d) {
+        const float q_val = 0.125f * static_cast<float>(((s * 13 + h * 7 + d * 3) % 9) - 4);
+        c.query[(s * num_heads + h) * head_size + d] = round_bf16(q_val);
+      }
+    }
+    for (int64_t kh = 0; kh < kv_num_heads; ++kh) {
+      for (int64_t d = 0; d < head_size; ++d) {
+        if (s == 0) {
+          // Unselected cache entry 0 holds NaN to verify padded candidates zero-fill instead of clamping to index 0.
+          c.key[(s * kv_num_heads + kh) * head_size + d] = std::numeric_limits<float>::quiet_NaN();
+          c.value[(s * kv_num_heads + kh) * head_size + d] = std::numeric_limits<float>::quiet_NaN();
+        } else {
+          const float k_val = 0.125f * static_cast<float>(((s * 11 + kh * 5 + d * 5) % 9) - 4);
+          const float v_val = 0.125f * static_cast<float>(((s * 17 + kh * 19 + d * 7) % 13) - 6);
+          c.key[(s * kv_num_heads + kh) * head_size + d] = round_bf16(k_val);
+          c.value[(s * kv_num_heads + kh) * head_size + d] = round_bf16(v_val);
+        }
+      }
+    }
+
+    if (s == 0) {
+      c.selected_counts[s] = 0;
+      continue;
+    }
+
+    const int32_t count = static_cast<int32_t>(std::min<int64_t>(s, 70));
+    c.selected_counts[s] = count;
+    for (int32_t j = 0; j < count; ++j) {
+      c.selected_indices[s * max_selected + j] = static_cast<int32_t>(s - count + 1 + j);
+    }
+
+    for (int64_t h = 0; h < num_heads; ++h) {
+      const int64_t kh = h / group_size;
+      const float* q_row = c.query.data() + (s * num_heads + h) * head_size;
+      std::vector<float> logits(count);
+      float max_logit = -std::numeric_limits<float>::infinity();
+      for (int32_t j = 0; j < count; ++j) {
+        const int32_t tok = c.selected_indices[s * max_selected + j];
+        const float* k_row = c.key.data() + (static_cast<int64_t>(tok) * kv_num_heads + kh) * head_size;
+        float dot = 0.0f;
+        for (int64_t d = 0; d < head_size; ++d) {
+          dot += q_row[d] * k_row[d];
+        }
+        logits[j] = dot * c.scale;
+        max_logit = std::max(max_logit, logits[j]);
+      }
+      float sum_prob = 0.0f;
+      std::vector<float> probs(count);
+      for (int32_t j = 0; j < count; ++j) {
+        const float p = round_bf16(std::exp(logits[j] - max_logit));
+        probs[j] = p;
+        sum_prob += p;
+      }
+      float* out_row = c.expected_output.data() + (s * num_heads + h) * head_size;
+      for (int64_t d = 0; d < head_size; ++d) {
+        float acc = 0.0f;
+        for (int32_t j = 0; j < count; ++j) {
+          const int32_t tok = c.selected_indices[s * max_selected + j];
+          const float v_val = c.value[(static_cast<int64_t>(tok) * kv_num_heads + kh) * head_size + d];
+          acc += probs[j] * v_val;
+        }
+        out_row[d] = sum_prob > 0.0f ? round_bf16(acc / sum_prob) : 0.0f;
+      }
+    }
+  }
+  c.expected_present_key.resize(c.key.size());
+  c.expected_present_value.resize(c.value.size());
+  for (int64_t kh = 0; kh < kv_num_heads; ++kh) {
+    for (int64_t s = 0; s < sequence_length; ++s) {
+      std::copy_n(c.key.begin() + (s * kv_num_heads + kh) * head_size, head_size,
+                  c.expected_present_key.begin() + (kh * sequence_length + s) * head_size);
+      std::copy_n(c.value.begin() + (s * kv_num_heads + kh) * head_size, head_size,
+                  c.expected_present_value.begin() + (kh * sequence_length + s) * head_size);
+    }
+  }
+
+  for (const char* prefill_env : {"1", "0"}) {
+    SCOPED_TRACE(prefill_env);
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{{"ORT_DSA_PREFILL_KERNEL", prefill_env}}};
+    RunDynamicSparseAttentionCase<BFloat16>(c, DefaultCudaExecutionProvider());
+  }
+}
+
 TEST(DynamicSparseAttentionTest, QkRmsNormPartialInterleavedRotary_CUDA) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {
