@@ -3,6 +3,7 @@
 
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/platform/env_var.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -500,11 +501,28 @@ BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buf
 }
 
 void BufferManager::Upload(CommandRecordingState& recording, void* src, WGPUBuffer dst, size_t size) const {
+  const auto queue_uploads = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_ENABLE_QUEUE_UPLOADS");
+  ORT_ENFORCE(queue_uploads.empty() || queue_uploads == "0" || queue_uploads == "1",
+              "ORT_WEBGPU_ENABLE_QUEUE_UPLOADS must be 0 or 1.");
   // If the buffer is mapped, we can directly write to it.
   void* mapped_data = wgpuBufferGetMappedRange(dst, 0, WGPU_WHOLE_MAP_SIZE);  // ensure the buffer is mapped
   if (mapped_data) {
-    memcpy(mapped_data, src, size);
+    if (size > 0) {
+      memcpy(mapped_data, src, size);
+    }
     wgpuBufferUnmap(dst);
+    return;
+  }
+
+  if (size == 0) {
+    return;
+  }
+
+  if (queue_uploads == "1" && recording.graph_capture_state == GraphCaptureState::Default && size % 4 == 0) {
+    // Queue writes copy host bytes before returning. Submit recorded readers first so the write
+    // cannot overtake them; Dawn owns staging lifetimes and can batch subsequent queue work.
+    ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
+    context_.Device().GetQueue().WriteBuffer(wgpu::Buffer{dst}, 0, src, size);
     return;
   }
 

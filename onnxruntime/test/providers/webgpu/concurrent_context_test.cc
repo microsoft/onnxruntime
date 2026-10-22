@@ -34,6 +34,7 @@
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "test/util/include/temp_dir.h"
 
 namespace onnxruntime {
@@ -248,6 +249,8 @@ class WebGpuConcurrentContextTest : public ::testing::Test {
     }
   }
 
+  static void TestIndependentDataTransfersMultiThreadCopy();
+
   std::string model_bytes_;
   std::unique_ptr<InferenceSession> keepalive_;
 };
@@ -452,7 +455,7 @@ TEST_F(WebGpuConcurrentContextTest, ColdAndWarmSessionsRunConcurrently) {
 
 // Case F: separate data-transfer objects share the context-level BufferManager but own distinct
 // command recording timelines. Their command encoders and pending buffers must remain isolated.
-TEST_F(WebGpuConcurrentContextTest, IndependentDataTransfersMultiThreadCopy) {
+void WebGpuConcurrentContextTest::TestIndependentDataTransfersMultiThreadCopy() {
   constexpr int kThreads = 4;
   constexpr int kIters = 30;
   constexpr size_t kElements = 4096;
@@ -495,6 +498,15 @@ TEST_F(WebGpuConcurrentContextTest, IndependentDataTransfersMultiThreadCopy) {
   JoinAll(threads);
 
   ASSERT_FALSE(sink.Failed()) << sink.FirstError();
+}
+
+TEST_F(WebGpuConcurrentContextTest, IndependentDataTransfersMultiThreadCopy) {
+  TestIndependentDataTransfersMultiThreadCopy();
+}
+
+TEST_F(WebGpuConcurrentContextTest, QueueUploadsIndependentDataTransfersMultiThreadCopy) {
+  ScopedEnvironmentVariables enabled{{{"ORT_WEBGPU_ENABLE_QUEUE_UPLOADS", "1"}}};
+  TestIndependentDataTransfersMultiThreadCopy();
 }
 
 // DIAGNOSTIC (disabled by default): keeps N sessions over an identical model alive and runs them
