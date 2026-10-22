@@ -565,7 +565,8 @@ __global__ void moe_gemv_splitk_reduce_swiglu_kernel(
 }
 
 template <typename Details, int CtaN, int Threads, int GroupSize, bool EnableBias,
-          typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA>
+          typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA, int Unroll = 1,
+          bool PrefetchWeights = false>
 __global__ void moe_gemv_interleaved_swiglu_kernel(
     TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
@@ -651,19 +652,30 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
     }
   }
 
+#pragma unroll Unroll
   for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
     TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
-    uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
+    alignas(alignof(AccessTypeW)) uint8_t tile_w_quantized[(PrefetchWeights ? CtaN : 1) * StepK / Details::kElemsPerByteW];
     if constexpr (GroupSize != 0) {
 #pragma unroll
       for (int i = 0; i < CtaN; ++i) {
         scales_iterator.load(vec_scale + i, iter, i);
       }
     }
+    if constexpr (PrefetchWeights) {
+#pragma unroll
+      for (int i = 0; i < CtaN; ++i) {
+        weight_iterator.load(tile_w_quantized + i * StepK / Details::kElemsPerByteW, iter, i);
+      }
+    }
 #pragma unroll
     for (int i = 0; i < CtaN; ++i) {
-      weight_iterator.load(tile_w_quantized, iter, i);
-      dequantize<Details, 1, StepK, false, false>(tile_w, tile_w_quantized, vec_scale + i, nullptr, 1.0f);
+      if constexpr (!PrefetchWeights) {
+        weight_iterator.load(tile_w_quantized, iter, i);
+      }
+      dequantize<Details, 1, StepK, false, false>(
+          tile_w, tile_w_quantized + (PrefetchWeights ? i * StepK / Details::kElemsPerByteW : 0),
+          vec_scale + i, nullptr, 1.0f);
       pack_to_vec2<Details, StepK>(tile_w_pack2, tile_w, i);
     }
 #pragma unroll
@@ -714,6 +726,28 @@ static void launch_moe_gemv_interleaved_swiglu(
         weight_expert_stride, scale_expert_stride, static_cast<int>(inter_size), static_cast<int>(k), activation_params,
         permuted_row_to_source_row, static_cast<int>(num_rows));
   } else {
+    if constexpr (std::is_same_v<TypeA, half> && std::is_same_v<AccT, float> &&
+                  Details::TypeDetailsW::kElemBits == 2 && GroupSize == 128 &&
+                  CtaN == 4 && Threads == 128) {
+      if (k == 3072 && inter_size == 1024) {
+        // Unrolling hides load latency for one token; larger grids need column loads in flight
+        // together to offset the extra register pressure.
+        if (expanded_num_rows <= 8) {
+          moe_gemv_interleaved_swiglu_kernel<Details, CtaN, Threads, GroupSize, false, TypeA, AccT, 2, false>
+              <<<grid, block, 0, stream>>>(
+                  act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
+                  weight_expert_stride, scale_expert_stride, static_cast<int>(inter_size), static_cast<int>(k),
+                  activation_params, permuted_row_to_source_row, static_cast<int>(num_rows));
+        } else {
+          moe_gemv_interleaved_swiglu_kernel<Details, CtaN, Threads, GroupSize, false, TypeA, AccT, 2, true>
+              <<<grid, block, 0, stream>>>(
+                  act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
+                  weight_expert_stride, scale_expert_stride, static_cast<int>(inter_size), static_cast<int>(k),
+                  activation_params, permuted_row_to_source_row, static_cast<int>(num_rows));
+        }
+        return;
+      }
+    }
     moe_gemv_interleaved_swiglu_kernel<Details, CtaN, Threads, GroupSize, false, TypeA, AccT><<<grid, block, 0, stream>>>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
         weight_expert_stride, scale_expert_stride, static_cast<int>(inter_size), static_cast<int>(k), activation_params,

@@ -2693,9 +2693,9 @@ class TestQMoEInt2SpeculativeDecode(unittest.TestCase):
     "Packed-only INT2 prefill requires SM80 or newer",
 )
 class TestQMoEInt2PackedOnly(unittest.TestCase):
-    def _graph(self, block_size=128, hidden=512, asymmetric=False):
+    def _graph(self, block_size=128, hidden=512, asymmetric=False, intermediate=512):
         generator = torch.Generator().manual_seed(914)
-        experts, intermediate = 16, 512
+        experts = 16
         return create_moe_onnx_graph(
             hidden_size=hidden,
             sequence_length="tokens",
@@ -2758,6 +2758,30 @@ class TestQMoEInt2PackedOnly(unittest.TestCase):
     def test_requires_prefill(self):
         with self.assertRaisesRegex(Exception, "requires packed INT2 prefill support"):
             self._session(self._graph(), packed_only=True, prefill=False)
+
+    def test_ornith_expert_query_shape_parity(self):
+        graph = self._graph(hidden=3072, intermediate=1024)
+        session = self._session(graph, packed_only=True)
+        retained = self._session(graph, packed_only=False)
+        rng = numpy.random.default_rng(186)
+        x = rng.normal(0, 0.1, (8, 3072)).astype(numpy.float16)
+        for shared_experts in (False, True):
+            router = rng.normal(size=(1 if shared_experts else 8, 16)).astype(numpy.float16)
+            if shared_experts:
+                router = numpy.repeat(router, 8, axis=0)
+            reference = numpy.concatenate(
+                [
+                    session.run(None, {"input": row[None], "router_probs": scores[None]})[0]
+                    for row, scores in zip(x, router, strict=True)
+                ]
+            )
+            self.assertTrue(numpy.isfinite(reference).all())
+            for rows in (1, 2, 3, 4, 5, 8):
+                with self.subTest(rows=rows, shared_experts=shared_experts):
+                    feed = {"input": x[:rows], "router_probs": router[:rows]}
+                    actual = session.run(None, feed)[0]
+                    numpy.testing.assert_array_equal(actual, reference[:rows])
+                    numpy.testing.assert_array_equal(actual, retained.run(None, feed)[0])
 
     def test_rejects_unsupported_weight_shape(self):
         with self.assertRaisesRegex(Exception, "Packed-only INT2 FC[12] shape is unsupported"):
