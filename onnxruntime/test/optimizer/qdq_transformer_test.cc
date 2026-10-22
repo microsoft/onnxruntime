@@ -2676,7 +2676,7 @@ void RunMatMulIntegerToFloatDtypeCombinationTest() {
     BuildMatMulIntegerToFloatDtypeCombinationGraph<ScaleAType, ScaleBType, OutputType>(builder);
   };
 
-  auto check_graph = [expect_fusion](InferenceSessionWrapper& session) {
+  auto check_graph = [](InferenceSessionWrapper& session) {
     auto op_counts = CountOpsInGraph(session.GetGraph());
     EXPECT_EQ(op_counts["com.microsoft.MatMulIntegerToFloat"], expect_fusion ? 1 : 0);
     EXPECT_EQ(op_counts["MatMul"], expect_fusion ? 0 : 1);
