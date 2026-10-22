@@ -117,7 +117,7 @@ OrtEnvPtr OrtEnv::GetOrCreateInstance(const OrtEnv::LoggingManagerConstructionIn
 
 #if !defined(ORT_MINIMAL_BUILD)
     // Register statically linked plugin EPs *after* p_instance_ is published. They use the public ORT API, so any
-    // OrtEnv API they call while enumerating their devices must be able to find the instance. m_ is recursive so
+    // OrtEnv API they call while enumerating their devices must be able to find the instance. Mutex() is recursive so
     // that such a call from this thread doesn't self-deadlock.
     status = p_instance_->GetEnvironment().CreateAndRegisterStaticPluginEps(
         Environment::StaticPluginEpRegistrationToken{});
@@ -165,7 +165,7 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
 #endif
       }
     }
-  }  // Mutex m_ is released here when lock_guard goes out of scope.
+  }  // Mutex() is released here when lock_guard goes out of scope.
 
   // Perform the deletion outside the lock if an instance was marked for deletion.
   // instance_to_delete can be null here, but it's perfectly safe to delete a nullptr

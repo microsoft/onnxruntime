@@ -21,8 +21,9 @@ void RunUniqueTest(const std::vector<int64_t>& X_dims,
                    const std::vector<int64_t>& inverse_indices_dims,
                    const std::vector<int64_t>& inverse_indices,
                    const std::vector<int64_t>& counts_dims,
-                   const std::vector<int64_t>& counts) {
-  OpTester test("Unique", 11);
+                   const std::vector<int64_t>& counts,
+                   int opset_version = 11) {
+  OpTester test("Unique", opset_version);
 
   if (axis) {
     test.AddAttribute("axis", *axis);
@@ -75,6 +76,17 @@ TEST(Unique, Flatten_Unsorted_Double) {
 
   RunUniqueTest<double>(X_dims, X, axis, sorted, Y_dims, Y, indices_dims, indices,
                         inverse_indices_dims, inverse_indices, counts_dims, counts);
+}
+
+TEST(Unique, BFloat16Opset28Axis1Sorted) {
+  const std::vector<int64_t> X_dims{2, 3};
+  const std::vector<BFloat16> X{BFloat16(1.0f), BFloat16(2.0f), BFloat16(1.0f),
+                                BFloat16(3.0f), BFloat16(4.0f), BFloat16(3.0f)};
+  constexpr int64_t axis = 1;
+  const std::vector<int64_t> Y_dims{2, 2};
+  const std::vector<BFloat16> Y{BFloat16(1.0f), BFloat16(2.0f), BFloat16(3.0f), BFloat16(4.0f)};
+  RunUniqueTest<BFloat16>(X_dims, X, &axis, true, Y_dims, Y, {2}, {0, 1}, {3}, {0, 1, 0},
+                          {2}, {2, 1}, 28);
 }
 
 // TEMPORARY. The ONNX test expected data for Y for unique_not_sorted_without_axis doesn't match the comments in that

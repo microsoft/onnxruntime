@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       pool_name:
-        description: 'The specific 1ES pool name (e.g., onnxruntime-github-Ubuntu2204-AMD-CPU)'
+        description: 'The 1ES scale-set name (e.g., ort-github-linux-16-amd-wcus-ss)'
         required: true
         type: string
       build_config:
@@ -74,10 +74,7 @@ on:
 
 jobs:
   build_test_pipeline:
-    runs-on:
-      - self-hosted
-      - "1ES.Pool=${{ inputs.pool_name }}"
-      - "JobId=${{ inputs.job_identifier }}-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    runs-on: ["${{ inputs.pool_name }}"]
     timeout-minutes: 120
     permissions:
       contents: read
