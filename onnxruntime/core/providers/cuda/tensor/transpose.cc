@@ -238,6 +238,17 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
 
   // Transpose021 has a specialized Transpose3DImpl kernel
   dim3 grid_size, block_size;
+  // A [1, m, n] -> [1, n, m] transpose collapses to a rank-2 problem above (leading unit dims are dropped), which would fall
+  // through to the generic strided kernel for the element types without a cuBLAS path (bfloat16). Run it as a batch-1 3D transpose.
+  if (new_rank == 2 && new_permutations[0] == 1 && new_permutations[1] == 0) {
+    TensorShapeVector dims3{1, new_input_dims[0], new_input_dims[1]};
+    InlinedVector<size_t> perm3{0, 2, 1};
+    if (CanDoTranspose3D(prop, 3, dims3, perm3, grid_size, block_size)) {
+      TensorPitches pitches3(dims3);
+      return Transpose3DImpl(stream, element_size, ToConstSpan(dims3), ToConstSpan(pitches3), input.DataRaw(),
+                             output.MutableDataRaw(), output.Shape().Size(), grid_size, block_size);
+    }
+  }
   if (CanDoTranspose3D(prop, static_cast<size_t>(new_rank), new_input_dims, new_permutations, grid_size, block_size)) {
     TensorPitches new_input_strides(new_input_dims);
     return Transpose3DImpl(stream, element_size, ToConstSpan(new_input_dims), ToConstSpan(new_input_strides),

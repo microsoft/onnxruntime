@@ -385,7 +385,7 @@ void TestPackedChannelHistory(int length, bool state_last, bool use_past, bool u
 }
 
 TEST(CausalConvWithStateTest, PackedChannelsExtendedHistoryAndFirstState) {
-  for (int length : {1, 2, 9}) {
+  for (int length : {1, 2, 8, 9}) {
     for (bool state_last : {false, true}) {
       for (bool past : {false, true}) {
         for (int dilation : {1, 2}) {

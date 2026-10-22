@@ -19,11 +19,7 @@ concurrency:
 jobs:
   build:
     name: Windows GPU TensorRT CI Pipeline
-    runs-on: [
-        "self-hosted",
-        "1ES.Pool=onnxruntime-github-vs2022-latest",
-        "JobId=windows-tensorrt-build-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-      ]
+    runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 210
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -167,11 +163,7 @@ jobs:
     name: Windows GPU TensorRT CI Pipeline Test Job
     needs: build
     timeout-minutes: 300
-    runs-on: [
-      "self-hosted",
-      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-      "JobId=windows-tensorrt-test-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-    ]
+    runs-on: [ort-github-win-6-a10-scus-ss]
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:

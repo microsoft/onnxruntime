@@ -784,10 +784,15 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
                                               build.future,
                                               build.callback_context));
       in_flight_build = &*pending_build;
+    } else if (program_mgr_->IsShaderCacheValidationEnabled()) {
+      ORT_RETURN_IF_ERROR(program_mgr_->ValidateShaderCache(program, inputs_segments, outputs_segments, key, x, y, z));
     }
     deferred_ranks = &in_flight_build->shape_uniform_ranks;
     bind_group_layout = &in_flight_build->bind_group_layout;
   } else {
+    if (program_mgr_->IsShaderCacheValidationEnabled()) {
+      ORT_RETURN_IF_ERROR(program_mgr_->ValidateShaderCache(program, inputs_segments, outputs_segments, key, x, y, z));
+    }
     bind_group_layout = &program_artifact->bind_group_layout;
   }
 

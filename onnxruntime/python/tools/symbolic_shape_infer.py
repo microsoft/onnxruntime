@@ -2855,6 +2855,17 @@ class SymbolicShapeInference:
                         get_shape_from_sympy_shape([past_key_shape[0], state_update_capacity, past_key_shape[2]]),
                     )
                 )
+        if len(node.output) > 8 and node.output[8]:
+            past_key_shape = self._get_sympy_shape(node, 12)
+            if past_key_shape is not None:
+                vi = self.known_vi_[node.output[8]]
+                vi.CopyFrom(
+                    helper.make_tensor_value_info(
+                        node.output[8],
+                        onnx.TensorProto.INT32,
+                        get_shape_from_sympy_shape([past_key_shape[0]]),
+                    )
+                )
 
     def _infer_SkipGroupNorm(self, node):  # noqa: N802
         self._propagate_shape_and_type(node, 0, 0)

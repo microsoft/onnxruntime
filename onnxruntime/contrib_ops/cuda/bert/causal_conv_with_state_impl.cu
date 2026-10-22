@@ -35,9 +35,9 @@ __global__ void CausalConvProjectionKernel(
     int kernel_size, int dilation, int input_width, int channel_offset,
     int state_length, CausalConvLayout state_layout, bool apply_silu) {
   if constexpr (S2) {
-    length = 2;
     kernel_size = state_length = 4;
     dilation = 1;
+    apply_silu = true;
   }
   const int b = blockIdx.y;
   const int c = blockIdx.x * blockDim.x + threadIdx.x;
@@ -479,9 +479,10 @@ Status LaunchCausalConvProjectionKernel(
     int kernel_size, int dilation, int input_width, int channel_offset,
     int state_length, bool state_channels_last, bool apply_silu) {
   const dim3 grid((channels - 1) / 128 + 1, batch, length);
-  static const int specialize = ParseEnvironmentVariableWithDefault<int>("ORT_CAUSAL_CONV_S2_SPECIALIZE", 0);
+  static const int specialize = ParseEnvironmentVariableWithDefault<int>("ORT_CAUSAL_CONV_S2_SPECIALIZE", 1);
   ORT_ENFORCE(specialize == 0 || specialize == 1, "ORT_CAUSAL_CONV_S2_SPECIALIZE must be 0 or 1.");
-  if (specialize && length == 2 && kernel_size == 4 && dilation == 1 && state_length == 4) {
+  if (specialize && length >= 1 && length <= 8 && kernel_size == 4 && dilation == 1 &&
+      state_length == 4 && apply_silu) {
     CausalConvProjectionKernel<T, true><<<grid, 128, 0, stream>>>(
         input, weight, bias, past, output, present, first_state, channels, length,
         kernel_size, dilation, input_width, channel_offset, state_length,
