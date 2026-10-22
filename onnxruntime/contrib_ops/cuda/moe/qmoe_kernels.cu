@@ -430,18 +430,27 @@ bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indice
   // k is limited to the values the single-CTA radix-rank map builder supports (1, 2, 4, 6, 8, 10): the fused path then
   // replaces exactly the launches it is bit-identical to; other k keep the generic route.
   const bool supported_k = k == 1 || k == 2 || k == 4 || k == 6 || k == 8 || k == 10;
-  if (num_rows < 1 || num_rows > kFusedRouteMaxRows || num_experts != kFusedRouteExperts || !supported_k ||
-      reinterpret_cast<uintptr_t>(logits) % 8 != 0) {
+  if (reinterpret_cast<uintptr_t>(logits) % 8 != 0 || !supported_k) {
     return false;
   }
-  const auto kernel = k == 10 ? FusedSoftmaxTopKMapsKernel<T, 10> : FusedSoftmaxTopKMapsKernel<T, 0>;
+  const bool is_512 = num_experts == kFusedRouteExperts && num_rows >= 1 && num_rows <= kFusedRouteMaxRows;
+  const bool is_256 =
+      num_experts == kFusedRoute256Experts && num_rows >= 1 && num_rows <= kFusedRoute256MaxRows &&
+      k <= kFusedRoute256MaxK && (num_rows * k <= 64);
+  if (!is_512 && !is_256) {
+    return false;
+  }
+  const auto kernel = is_256
+                          ? (k == 8 ? FusedSoftmaxTopKMaps256Kernel<T, 8> : FusedSoftmaxTopKMaps256Kernel<T, 0>)
+                          : (k == 10 ? FusedSoftmaxTopKMapsKernel<T, 10> : FusedSoftmaxTopKMapsKernel<T, 0>);
+  const int threads = is_256 ? kFusedRoute256Threads : kFusedRouteThreads;
   if (!IsFusedRouteKernelSm90Available(kernel)) {
     return false;
   }
   if (pdl) {
     cudaLaunchConfig_t config{};
     config.gridDim = dim3(1);
-    config.blockDim = dim3(kFusedRouteThreads);
+    config.blockDim = dim3(threads);
     config.dynamicSmemBytes = 0;
     config.stream = stream;
     cudaLaunchAttribute attribute[1]{};
@@ -460,7 +469,7 @@ bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indice
     }
     (void)cudaGetLastError();
   }
-  kernel<<<1, kFusedRouteThreads, 0, stream>>>(
+  kernel<<<1, threads, 0, stream>>>(
       logits, topk_scales, topk_indices, permuted_row_to_unpermuted_row,
       unpermuted_row_to_permuted_row, permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales);
   CUDA_CALL_THROW(cudaGetLastError());
