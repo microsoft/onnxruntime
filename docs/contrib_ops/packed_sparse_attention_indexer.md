@@ -120,15 +120,21 @@ empty output name for `qsa`; `state_update` is declared only when QSA capture is
 | 5 | `present_state_lengths` | same shape as `past_state_lengths` | int32 | both |
 | 6 | `state_update` | `(batch_size, state_update_capacity, head_size)` | T | qsa capture only |
 | 7 | `index_share_status` | `(total_tokens)` | int32 | index sharing |
-| 8 | `mid_kv_buffer` | same shape as `past_kv_buffer` | T | optional CUDA qsa snapshot |
-| 9 | `mid_state_lengths` | same shape as `past_state_lengths` | int32 | optional CUDA qsa snapshot |
-| 10 | `validation_status` | `(batch_size)` | int32 | optional CUDA qsa status |
+| 8 | `state_status` | `(batch_size)` | int32 | optional, CUDA only |
+| 9 | `mid_kv_buffer` | same shape as `past_kv_buffer` | T | optional CUDA qsa snapshot |
+| 10 | `mid_state_lengths` | same shape as `past_state_lengths` | int32 | optional CUDA qsa snapshot |
+| 11 | `validation_status` | `(batch_size)` | int32 | optional CUDA qsa status |
 
 CUDA supports `T_KEY = T` and, for QSA only, BF16 activations with FP32 key state.
 The pending buffers and captured state updates remain in the activation type.
 `mid_kv_buffer` and `mid_state_lengths` must be connected together and capture the state
 after each request's first token. `validation_status` is zero on success; rejected
 requests report 9, or `0x99` for requests containing at least two tokens.
+
+Output 8 retains main's `state_status` contract. Graphs built against the earlier
+experimental snapshot layout must insert an empty output at slot 8 before the
+snapshot outputs, which now occupy slots 9-11. Existing graphs using only the
+mainline outputs do not require changes.
 
 `capacity` is `token_budget + compress_ratio - 1` for `qsa` and `index_topk` for `csa`, exactly the
 same formula (`SelectedCapacity`) used by `SparseAttentionIndexer`.
@@ -170,6 +176,17 @@ and buffer compaction reads entries at or above the destination index before ove
 `state_capacity - old_entry_count` allows, that request's step is rejected as a deterministic
 no-op: its state and state lengths remain unchanged, and its selection outputs stay empty. This
 never reads or writes outside a tensor's fixed extent and never silently truncates state.
+
+**State status.** The rejection above is silent unless the optional output 8, `state_status`, is
+requested (outputs 6 and 7 are then declared, possibly with empty names). It holds one int32 per
+request, written on the device by the state update kernel, so a CUDA-graph-captured caller can
+check it on the host after replay without any synchronization inside the operator: `0` the update
+was applied (or intentionally held by IndexShare reuse), `1` invalid device metadata (inconsistent
+`cumulative_sequence_lengths`, `past_sequence_lengths` or `past_state_lengths`), `2` the update
+would exceed `state_capacity`. The values follow the status convention of
+`PackedSparseAttentionIndexerMerge`. A non-zero request leaves its state payloads unchanged, clamps
+out-of-range `past_state_lengths` into `present_state_lengths`, and emits an empty selection. The
+WebGPU kernel does not implement the output and fails if it is requested.
 
 **Transactional QSA capture.** When `state_update_capacity > 0`,
 `state_update_capture_count[b]` requests capture of that request's leading transitions, clamped to

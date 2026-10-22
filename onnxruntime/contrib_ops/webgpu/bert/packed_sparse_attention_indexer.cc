@@ -925,6 +925,9 @@ Status PackedSparseAttentionIndexer::ComputeInternal(onnxruntime::webgpu::Comput
   const Tensor* key_state = context.Input(psai::kPastKeyState);
   ORT_RETURN_IF(query != nullptr && key_state != nullptr && query->DataType() != key_state->DataType(),
                 "PackedSparseAttentionIndexer: mixed input/state types require the CUDA provider");
+  ORT_RETURN_IF(
+      context.OutputCount() > psai::kStateStatus && context.Output(psai::kStateStatus, TensorShape({0})) != nullptr,
+      "PackedSparseAttentionIndexer state_status requires the CUDA provider");
   const bool is_qsa = policy_ == psai::Policy::kQsa;
   constexpr int kCsaOnlyInputs[] = {psai::kGate, psai::kPositionBias, psai::kHeadWeights};
   for (int index : kCsaOnlyInputs) {

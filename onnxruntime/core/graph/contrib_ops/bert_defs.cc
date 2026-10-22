@@ -1525,6 +1525,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Default value is 1e-6.",
               AttributeProto::FLOAT,
               1e-6f)
+        .Attr("q_norm_epsilon",
+              "Epsilon for per-head Q RMS normalization. Overrides qk_norm_epsilon for Q when provided. "
+              "Must be finite and positive.",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("k_norm_epsilon",
+              "Epsilon for per-head K RMS normalization. Overrides qk_norm_epsilon for K when provided. "
+              "Must be finite and positive.",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape"
@@ -1929,12 +1939,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "S")
         .Input(6,
                "past_seqlens",
-               "A tensor with shape (batch_size). It specifies the past lengths of cached sequence in the KV cache.",
+               "A tensor with shape (batch_size). It specifies the past lengths of cached sequences. "
+               "CUDA sanitizes malformed values on device: an invalid value suppresses that sequence's cache writes "
+               "and produces zero output. A backend requiring exact host lengths may instead return INVALID_ARGUMENT "
+               "when attention_metadata is absent.",
                "S")
         .Input(7,
                "block_table",
                "2D tensor with shape (batch_size, max_blocks_per_sequence) that maps each sequence in the batch to its"
-               "corresponding blocks in the KV cache.",
+               "corresponding blocks in the KV cache. -1 denotes an unmapped page. CUDA converts values below -1 or "
+               "greater than or equal to num_blocks to the unmapped sentinel before resolving cache addresses; mapped "
+               "pages remain attendable.",
                "S")
         .Input(8,
                "cos_cache",
@@ -2928,6 +2943,10 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     updateOutputElemType(ctx, psai::kValidationStatus, ONNX_NAMESPACE::TensorProto_DataType_INT32);
     propagateShapeFromInputToOutput(ctx, psai::kPastSequenceLengths, psai::kValidationStatus);
   }
+  const bool has_state_status_output = ctx.hasOutput(psai::kStateStatus);
+  if (has_state_status_output) {
+    updateOutputElemType(ctx, psai::kStateStatus, ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  }
   propagateElemTypeFromInputToOutput(ctx, psai::kPastKeyState, psai::kPresentKeyState);
   propagateElemTypeFromInputToOutput(ctx, psai::kPastKvBuffer, psai::kPresentKvBuffer);
   if (has_mid_kv_buffer) {
@@ -3182,6 +3201,12 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     *state_update_shape.add_dim() = key_state_shape->dim(2);
     updateOutputShape(ctx, psai::kStateUpdate, state_update_shape);
   }
+  if (has_state_status_output && (key_state_shape != nullptr || past_sequence_shape != nullptr)) {
+    ONNX_NAMESPACE::TensorShapeProto state_status_shape;
+    *state_status_shape.add_dim() =
+        key_state_shape != nullptr ? key_state_shape->dim(0) : past_sequence_shape->dim(0);
+    updateOutputShape(ctx, psai::kStateStatus, state_status_shape);
+  }
 }
 
 constexpr const char* PackedSparseAttentionIndexer_ver1_doc = R"DOC(
@@ -3198,7 +3223,8 @@ Unlike SparseAttentionIndexer, this operator:
   * uses a single generic set of state slots (past_key_state / past_kv_buffer / past_gate_buffer /
     past_state_lengths) for both policy_mode values, each with a shape that is fixed across calls
     (state never grows and is never concatenated); a step that would overflow the fixed capacity is
-    rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory;
+    rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory
+    (the optional state_status output reports which requests were rejected and why);
   * additionally emits selected_counts, the exact number of active (non -1) entries per query, so
     that no downstream consumer needs to scan selected_indices for its query's true count.
   * for QSA, optionally emits the pending-state snapshot after the first request token and a
@@ -3447,15 +3473,27 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 OpSchema::Optional)
         .Output(7, "indexshare_status", "Selection status [N], forwarded on reuse and zero on refresh.",
                 "M", OpSchema::Optional)
-        .Output(8, "mid_kv_buffer",
+        .Output(8,
+                "state_status",
+                "Device-side per-request state update status with shape (batch_size). 0: the request's state "
+                "update was applied (or intentionally held by IndexShare reuse); 1: invalid device metadata "
+                "(cumulative_sequence_lengths, past_sequence_lengths or past_state_lengths are inconsistent); "
+                "2: the update would exceed state_capacity. A non-zero request leaves its state payloads "
+                "unchanged, clamps out-of-range past_state_lengths into present_state_lengths, and emits an "
+                "empty selection (selected_counts is 0 and selected_indices is -1). "
+                "Intended for CUDA graph replay, where the host checks it after the replay instead of "
+                "synchronizing inside the operator. Currently supported by the CUDA provider only.",
+                "M",
+                OpSchema::Optional)
+        .Output(9, "mid_kv_buffer",
                 "Only for CUDA policy_mode 'qsa' refresh: pending-buffer snapshot after the first token of each request. "
                 "Not supported in IndexShare reuse mode.",
                 "T", OpSchema::Optional)
-        .Output(9, "mid_state_lengths",
+        .Output(10, "mid_state_lengths",
                 "Only for CUDA policy_mode 'qsa' refresh: state lengths after the first token of each request. "
                 "Not supported in IndexShare reuse mode.",
                 "M", OpSchema::Optional)
-        .Output(10, "validation_status",
+        .Output(11, "validation_status",
                 "Only for CUDA policy_mode 'qsa' refresh: per-request overflow status; two-token rejection is encoded as 0x99. "
                 "Not supported in IndexShare reuse mode.",
                 "M", OpSchema::Optional)
@@ -5343,6 +5381,63 @@ their BufferViews have the same Program binding owner, not merely equal raw buff
             }
             if (index == 3 && shape.dim(0).has_dim_value() && shape.dim(0).dim_value() != 11) {
               fail_shape_inference("GatedDeltaNetStateReplay metadata must have shape [11].");
+            }
+          }
+          if (hasInputShape(ctx, 2)) {
+            propagateShapeFromInputToOutput(ctx, 2, 0);
+          }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    ConvStateReplay, 1,
+    OpSchema()
+        .SetDoc(R"DOC(
+Reconstruct rolling convolution history after retaining a prefix of captured inputs, without
+performing convolution arithmetic. The WebGPU-only implementation copies FP16 or FP32 payload
+bits exactly, including signed zero and NaN payloads, and waits for checked GPU completion.
+
+Inputs 0-2 are full rank-1 backing allocations of the same element type.
+CPU int64 metadata [8] is ordered as:
+  source_offset_bytes, destination_offset_bytes, capture_offset_bytes,
+  batch_size, channels, history_width, capacity, kept_count.
+Offsets are logical byte offsets into the full backing tensors, aligned to the element size
+(two bytes for FP16, four for FP32), not WebGPU storage-binding offsets.
+All fields are nonnegative; channels must be positive; 0 <= kept_count <= capacity.
+Zero batch size, history width, or capture capacity is valid. Zero state size is a no-op.
+Geometry, backing byte extents and metadata must fit the implementation's uint32 indexing range.
+
+The source view is the incoming snapshot immediately before capture, with layout
+[batch_size, channels, history_width]. Captured inputs have layout [batch_size, capacity, channels].
+capacity is the original capture stride, not kept_count. All retained inputs must have been captured.
+For each batch b, channel c and position p, with W = history_width and k = kept_count:
+  destination[b,c,p] = source[b,c,p+k]                 if p+k < W
+                     = capture[b,p+k-W,c]            otherwise.
+For k >= W only the last W inputs of the retained prefix are used; unused capture tails are not read.
+
+The output must be explicitly prebound to the same full allocation as destination_backing.
+Destination backing must be distinct from source and capture backing, even for disjoint logical views.
+Only the designated destination view is modified; neighboring elements and all source/capture data
+are preserved. One descriptor is supported per invocation; graph capture is not supported.
+)DOC")
+        .Input(0, "source_backing", "Full backing tensor containing the incoming convolution history.", "T")
+        .Input(1, "capture_backing", "Full backing tensor containing captured token-major inputs.", "T")
+        .Input(2, "destination_backing", "Full inactive destination-state backing tensor.", "T")
+        .Input(3, "metadata", "CPU int64 [8]: byte offsets, batch, channels, history, capacity, kept_count.", "TI")
+        .Output(0, "destination_out", "Same backing allocation and shape as destination_backing.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "State and captured inputs are FP16 or FP32.")
+        .TypeConstraint("TI", {"tensor(int64)"}, "CPU replay metadata is int64.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 2, 0);
+          for (size_t index = 0; index < 4; ++index) {
+            if (!hasInputShape(ctx, index)) {
+              continue;
+            }
+            const auto& shape = getInputShape(ctx, index);
+            if (shape.dim_size() != 1) {
+              fail_shape_inference("ConvStateReplay inputs must have rank 1.");
+            }
+            if (index == 3 && shape.dim(0).has_dim_value() && shape.dim(0).dim_value() != 8) {
+              fail_shape_inference("ConvStateReplay metadata must have shape [8].");
             }
           }
           if (hasInputShape(ctx, 2)) {

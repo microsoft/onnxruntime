@@ -13,9 +13,12 @@
 #include <limits>
 #include <type_traits>
 
+#include "contrib_ops/cuda/bert/dynamic_sparse_attention_prefill.cuh"
 #include "core/common/safeint.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
+
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -2032,11 +2035,45 @@ Status LaunchDynamicSparseAttention(
   const size_t fused_shared_bytes =
       (static_cast<size_t>(candidate_capacity) + static_cast<size_t>(fused_threads)) * sizeof(float) +
       static_cast<size_t>(parameters.head_size) * sizeof(T);
+  bool use_prefill_kernel = false;
+  if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+    const bool enabled = ParseEnvironmentVariableWithDefault<int>("ORT_DSA_PREFILL_KERNEL", 1) != 0;
+    // max_shared_memory_per_block is the default 48 KB limit; the kernel opts in to more and requires SM80+.
+    int device = 0;
+    int cc_major = 0;
+    int optin_shared = 0;
+    CUDA_RETURN_IF_ERROR(cudaGetDevice(&device));
+    CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, device));
+    CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&optin_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, device));
+    constexpr int kMaxGridDimYZ = 65535;
+    use_prefill_kernel =
+        enabled && !data.quantized_cache && cc_major >= 8 && parameters.sequence_length >= 8 &&
+        parameters.head_size == dsa_prefill::kHeadDim && !local_plus_selected &&
+        parameters.selected_kv_source == DynamicSparseAttentionKvSource::kMain &&
+        !parameters.use_smooth_softmax && parameters.max_selected > 0 &&
+        parameters.kv_num_heads > 0 && parameters.kv_num_heads <= kMaxGridDimYZ &&
+        parameters.num_heads % parameters.kv_num_heads == 0 &&
+        parameters.num_heads / parameters.kv_num_heads <= dsa_prefill::kMaxGroup &&
+        static_cast<size_t>(optin_shared) >= dsa_prefill::kSharedBytes;
+  }
   constexpr int kGroupedDecodeThreads = 32 * kGroupedDecodeQueryHeadsPerBlock;
   constexpr int kGroupedPrefillThreads = 32 * kGroupedPrefillQueryHeadsPerBlock;
   const bool grouped_decode_threads_supported = kGroupedDecodeThreads <= max_threads_per_block;
   const bool grouped_prefill_threads_supported = kGroupedPrefillThreads <= max_threads_per_block;
-  if (grouped_decode_threads_supported &&
+  if (use_prefill_kernel) {
+    if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+      CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
+          dsa_prefill::DynamicSparseAttentionPrefillKernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+          static_cast<int>(dsa_prefill::kSharedBytes)));
+      const dim3 grid(static_cast<unsigned>(parameters.batch_size * parameters.sequence_length),
+                      static_cast<unsigned>(parameters.kv_num_heads));
+      dsa_prefill::DynamicSparseAttentionPrefillKernel<<<grid, dsa_prefill::kThreads, dsa_prefill::kSharedBytes,
+                                                         stream>>>(
+          data.prepared_query, data.present_key, data.present_value, data.selected_indices, data.selected_counts,
+          data.seqlens_k, data.output, parameters.sequence_length, parameters.num_heads, parameters.kv_num_heads,
+          parameters.cache_capacity, parameters.max_selected, parameters.scale);
+    }
+  } else if (grouped_decode_threads_supported &&
       UseGroupedDecodeAttention(parameters, sizeof(T), max_shared_memory_per_block, data.quantized_cache)) {
     const int split_count = GetGroupedDecodeSplitCount(parameters, data.quantized_cache);
     const int64_t partial_blocks = query_blocks * split_count;
