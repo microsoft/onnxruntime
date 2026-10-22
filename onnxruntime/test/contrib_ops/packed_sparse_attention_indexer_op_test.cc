@@ -1114,10 +1114,10 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
       ASSERT_EQ(problem.cumulative_sequence_lengths[batch + 1] - problem.cumulative_sequence_lengths[batch], 1);
     }
     test.AddOutput<T>("mid_kv_buffer", {batch_size, buffer_capacity, head_size},
-                     ToElementType<T>(expected.present_kv_buffer), false, 0.0f, tolerance);
+                      ToElementType<T>(expected.present_kv_buffer), false, 0.0f, tolerance);
     test.AddOutput<int32_t>("mid_state_lengths", {batch_size, 2}, expected.present_state_lengths);
     test.AddOutput<int32_t>("validation_status", {batch_size},
-                           std::vector<int32_t>(static_cast<size_t>(batch_size), 0));
+                            std::vector<int32_t>(static_cast<size_t>(batch_size), 0));
   }
   RunOnProvider(test, std::move(provider),
                 expected_error.empty() ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,

@@ -2074,7 +2074,7 @@ Status LaunchDynamicSparseAttention(
           parameters.cache_capacity, parameters.max_selected, parameters.scale);
     }
   } else if (grouped_decode_threads_supported &&
-      UseGroupedDecodeAttention(parameters, sizeof(T), max_shared_memory_per_block, data.quantized_cache)) {
+             UseGroupedDecodeAttention(parameters, sizeof(T), max_shared_memory_per_block, data.quantized_cache)) {
     const int split_count = GetGroupedDecodeSplitCount(parameters, data.quantized_cache);
     const int64_t partial_blocks = query_blocks * split_count;
     const int64_t grouped_blocks =
