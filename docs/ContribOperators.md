@@ -36,6 +36,8 @@ Do not modify directly.*
   * <a href="#com.microsoft.EngramGate">com.microsoft.EngramGate</a>
   * <a href="#com.microsoft.ExpandDims">com.microsoft.ExpandDims</a>
   * <a href="#com.microsoft.FastGelu">com.microsoft.FastGelu</a>
+  * <a href="#com.microsoft.FoldMid2">com.microsoft.FoldMid2</a>
+  * <a href="#com.microsoft.FoldTail">com.microsoft.FoldTail</a>
   * <a href="#com.microsoft.FusedConv">com.microsoft.FusedConv</a>
   * <a href="#com.microsoft.FusedGemm">com.microsoft.FusedGemm</a>
   * <a href="#com.microsoft.FusedMatMul">com.microsoft.FusedMatMul</a>
@@ -74,6 +76,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
+  * <a href="#com.microsoft.MtpMoe">com.microsoft.MtpMoe</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
@@ -141,7 +144,6 @@ Do not modify directly.*
   * <a href="#com.microsoft.WordConvEmbedding">com.microsoft.WordConvEmbedding</a>
   * <sub>experimental</sub> <a href="#com.microsoft.IsAllFinite">com.microsoft.IsAllFinite</a>
   * <sub>experimental</sub> <a href="#com.microsoft.QEmbedLayerNormalization">com.microsoft.QEmbedLayerNormalization</a>
-
 ## com.microsoft
 ### <a name="com.microsoft.Attention"></a><a name="com.microsoft.attention">**com.microsoft.Attention**</a>
 
@@ -2136,6 +2138,122 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(double), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float or half tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.FoldMid2"></a><a name="com.microsoft.foldmid2">**com.microsoft.FoldMid2**</a>
+
+  Combines speculative-token acceptance, recurrent-state commit bookkeeping, and head rotary-cache lookup for a
+  two-token verification step. Updated control and committed context are returned explicitly; CUDA may reuse
+  their input buffers. When ctl[3] is nonzero, state is preserved unless validation fails.
+  The pointer tensor contains the device-accessible result-ring address and its positive record capacity;
+  ctl[4] must be a nonnegative record counter below INT64_MAX. The caller must supply an aligned device-accessible
+  allocation holding capacity * 8 int64 elements. Both rotary positions ctl[1]+1 and ctl[1]+2 must be in range.
+  Invalid head-cache length, rotary positions, or ring metadata set error bits 4, 8, or 16 respectively in
+  updated_ctl[5], set updated_ctl[3]=1 (muted), and return sel=-1 with zero head/rotary outputs, without committing
+  context or accessing the ring. Ring metadata is not accessed on muted calls.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>next_tokens</tt> : I64</dt>
+<dd>Two predicted token IDs.</dd>
+<dt><tt>input_ids</tt> : I64</dt>
+<dd>Two input token IDs; input_ids[1] is the draft token.</dd>
+<dt><tt>status</tt> : I32</dt>
+<dd>Status values aggregated into the result record.</dd>
+<dt><tt>ctl</tt> : I64</dt>
+<dd>Eight-element control state.</dd>
+<dt><tt>ctx_commit</tt> : I64</dt>
+<dd>Two-element committed context.</dd>
+<dt><tt>ctx_a</tt> : I64</dt>
+<dd>Context selected when the draft is rejected.</dd>
+<dt><tt>ctx_b</tt> : I64</dt>
+<dd>Context selected when the draft is accepted.</dd>
+<dt><tt>ptrs</tt> : I64</dt>
+<dd>Device pointers containing the result-ring address and capacity.</dd>
+<dt><tt>cos_cache</tt> : B</dt>
+<dd>BFloat16 rotary cosine cache with shape [positions, 32].</dd>
+<dt><tt>sin_cache</tt> : B</dt>
+<dd>BFloat16 rotary sine cache with shape [positions, 32].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>head_ids</tt> : I64</dt>
+<dd>Two token IDs consumed by the head.</dd>
+<dt><tt>head_c</tt> : I32</dt>
+<dd>Current head-cache length.</dd>
+<dt><tt>slot_ids</tt> : I64</dt>
+<dd>Two consecutive head-cache slots.</dd>
+<dt><tt>seqlens</tt> : I32</dt>
+<dd>Head sequence length.</dd>
+<dt><tt>cos_out</tt> : B</dt>
+<dd>Two rows of rotary cosine values.</dd>
+<dt><tt>sin_out</tt> : B</dt>
+<dd>Two rows of rotary sine values.</dd>
+<dt><tt>sel</tt> : I64</dt>
+<dd>Selected row: one when accepted, zero when rejected, or -1 on invalid metadata.</dd>
+<dt><tt>updated_ctl</tt> : I64</dt>
+<dd>Updated control state with the same shape as ctl.</dd>
+<dt><tt>updated_ctx_commit</tt> : I64</dt>
+<dd>Updated committed context with the same shape as ctx_commit.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>I64</tt> : tensor(int64)</dt>
+<dd>Constrain control and token tensors to int64.</dd>
+<dt><tt>I32</tt> : tensor(int32)</dt>
+<dd>Constrain status and sequence tensors to int32.</dd>
+<dt><tt>B</tt> : tensor(bfloat16)</dt>
+<dd>Constrain rotary cache tensors to bfloat16.</dd>
+</dl>
+
+
+### <a name="com.microsoft.FoldTail"></a><a name="com.microsoft.foldtail">**com.microsoft.FoldTail**</a>
+
+  Updates the next speculative draft token and aggregate error bit from the head result. The eight-element control
+  tensor is returned as updated_ctl, with supported CUDA input-buffer reuse. When ctl[3] is zero, the draft token
+  is updated and nonzero status sets error bit 2; muted calls return done=0 and preserve the control state.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>next_token</tt> : I64</dt>
+<dd>Next draft token ID.</dd>
+<dt><tt>status</tt> : I32</dt>
+<dd>Head status values.</dd>
+<dt><tt>ctl</tt> : I64</dt>
+<dd>Eight-element control state.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>done</tt> : I32</dt>
+<dd>One when the control state was updated; zero for muted calls.</dd>
+<dt><tt>updated_ctl</tt> : I64</dt>
+<dd>Updated control state with the same shape as ctl.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>I64</tt> : tensor(int64)</dt>
+<dd>Constrain token and control tensors to int64.</dd>
+<dt><tt>I32</tt> : tensor(int32)</dt>
+<dd>Constrain status and output tensors to int32.</dd>
 </dl>
 
 
@@ -4536,6 +4654,62 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MtpMoe"></a><a name="com.microsoft.mtpmoe">**com.microsoft.MtpMoe**</a>
+
+  Mixture-of-experts projection for multi-token prediction. The input and router logits are bfloat16.
+  The row count must be between 1 and 65535, inclusive, to fit the CUDA projection grid dimensions.
+  Expert weights are packed NVFP4 bytes with shape [512, 1280, 1440] for gate/up and [512, 2560, 360]
+  for down projection. The output has the same shape as input. The second output is a fully initialized float
+  scratch buffer. A row containing non-finite router logits selects valid expert indices 0 through 9 and
+  reports invalid routing through NaN routing weights and output values.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>down_global_scale</tt> : float (required)</dt>
+<dd>Global scale applied to the down projection weights.</dd>
+<dt><tt>gate_up_global_scale</tt> : float (required)</dt>
+<dd>Global scale applied to the gate/up projection weights.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>BFloat16 hidden states with shape [1, rows, 2560].</dd>
+<dt><tt>router_logits</tt> : T</dt>
+<dd>BFloat16 router logits with shape [1, rows, 512].</dd>
+<dt><tt>gate_up_weights</tt> : T1</dt>
+<dd>Packed NVFP4 gate/up weights with shape [512, 1280, 1440].</dd>
+<dt><tt>down_weights</tt> : T1</dt>
+<dd>Packed NVFP4 down weights with shape [512, 2560, 360].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>BFloat16 output with the same shape as input.</dd>
+<dt><tt>scratch</tt> : T2</dt>
+<dd>Float scratch buffer used by the fused expert projections.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>Constrain activations and output to bfloat16.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Constrain packed expert weights to uint8.</dd>
+<dt><tt>T2</tt> : tensor(float)</dt>
+<dd>Constrain scratch to float.</dd>
 </dl>
 
 
@@ -8824,4 +8998,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
