@@ -340,7 +340,7 @@ runtime:
 
 | Value | Recorded when |
 |---|---|
-| `"source_model"` | An EP keeps references to initializers stored inside the source model: `ALL` mode (or the deprecated `"ep.enable_weightless"` option) with EP-managed initializers. |
+| `"source_model"` | An EP keeps references to initializers stored inside the source model: `ALL` mode with EP-managed initializers. For the deprecated `"ep.enable_weightless"` option, which doesn't select a mode, ORT uses the value of `GetWeightlessSupport()` if it is a single mode. Otherwise, e.g. for `ALL_OR_EXTERNAL_ONLY`, it uses `EXTERNAL_ONLY` if every device reports `"external_only"` in the older `"weightless_support"` metadata, which keeps the EP's behavior from before 1.32, and `ALL` if not. |
 | `"external_weights"` | Initializers of the compiled model are stored in external files (external initializers file or buffer, or initializer location function), or an EP keeps references to the source model's external data files (`EXTERNAL_ONLY` or `ALL` with EP-managed initializers). |
 | `"ep_context_binary"` | An EP context binary is stored outside the model: an EPContext node has `embed_mode = 0` (e.g., `"ep.context_embed_mode"` = `"0"`). |
 

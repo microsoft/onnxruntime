@@ -51,6 +51,9 @@ EXPORT_SYMBOL uint64_t ExampleEpTestHooks_GetSavedInitializerCount();
 // Weightless source model buffer seen by the last CreateEp() call (nullptr and 0 if not set or after a reset).
 EXPORT_SYMBOL void ExampleEpTestHooks_ResetWeightlessSourceModelBuffer();
 EXPORT_SYMBOL void ExampleEpTestHooks_GetWeightlessSourceModelBuffer(const void** data, size_t* length);
+// Value the factory reports in the older "weightless_support" EP metadata entry for EP devices created afterwards,
+// i.e., when the library is registered. nullptr restores the default value ("all").
+EXPORT_SYMBOL void ExampleEpTestHooks_SetLegacyWeightlessSupportMetadata(const char* value);
 }
 
 // Internal to the library; not exported.
@@ -61,3 +64,4 @@ void RecordEnableWeightlessOption(int value);
 void RecordEnableWeightlessEpContextNodesOption(int value);
 void RecordSavedInitializer();
 void RecordWeightlessSourceModelBuffer(const void* data, size_t length);
+const char* GetLegacyWeightlessSupportMetadata();

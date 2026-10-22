@@ -4,6 +4,8 @@
 #define EXAMPLE_PLUGIN_EP_BUILD
 #include "ep_test_hooks.h"
 #include <atomic>
+#include <mutex>
+#include <string>
 
 std::atomic<uint64_t> g_sync_count{0};
 std::atomic<int> g_preallocated_output_query_result{-1};
@@ -58,6 +60,19 @@ extern "C" void ExampleEpTestHooks_ResetWeightlessSourceModelBuffer() {
 extern "C" void ExampleEpTestHooks_GetWeightlessSourceModelBuffer(const void** data, size_t* length) {
   *data = g_weightless_source_model_data.load();
   *length = g_weightless_source_model_data_length.load();
+}
+namespace {
+std::mutex g_legacy_weightless_support_metadata_mutex;
+std::string g_legacy_weightless_support_metadata = "all";
+}  // namespace
+
+extern "C" void ExampleEpTestHooks_SetLegacyWeightlessSupportMetadata(const char* value) {
+  std::lock_guard<std::mutex> lock(g_legacy_weightless_support_metadata_mutex);
+  g_legacy_weightless_support_metadata = value != nullptr ? value : "all";
+}
+const char* GetLegacyWeightlessSupportMetadata() {
+  std::lock_guard<std::mutex> lock(g_legacy_weightless_support_metadata_mutex);
+  return g_legacy_weightless_support_metadata.c_str();
 }
 void RecordWeightlessSourceModelBuffer(const void* data, size_t length) {
   g_weightless_source_model_data.store(data);
