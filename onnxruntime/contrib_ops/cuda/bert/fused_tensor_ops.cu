@@ -85,8 +85,21 @@ Status LaunchTypedArgmax(cudaStream_t stream, const T* input, int64_t rows,
 
 __global__ void EmbedNormKernel(const int64_t* ids, const uint16_t* table,
                                 const float* weight, float epsilon,
-                                uint16_t* output, int64_t vocab_size, int64_t hidden_size) {
+                                uint16_t* output, int64_t vocab_size, int64_t hidden_size,
+                                const int32_t* committed, int64_t* slot_ids,
+                                int32_t* seqlens_k, int32_t* cu_seqlens, int64_t rows) {
   __shared__ float sums[512];
+  if (threadIdx.x == 0 && committed != nullptr) {
+    const int32_t c = committed[0];
+    if (slot_ids != nullptr) slot_ids[blockIdx.x] = static_cast<int64_t>(c) + static_cast<int64_t>(blockIdx.x);
+    if (blockIdx.x == 0) {
+      if (seqlens_k != nullptr) seqlens_k[0] = c + static_cast<int32_t>(rows) - 1;
+      if (cu_seqlens != nullptr) {
+        cu_seqlens[0] = 0;
+        cu_seqlens[1] = static_cast<int32_t>(rows);
+      }
+    }
+  }
   const int64_t row_index = blockIdx.x;
   int64_t token_id = ids[row_index];
   if (token_id < -vocab_size || token_id >= vocab_size) {
@@ -119,17 +132,68 @@ __global__ void EmbedNormKernel(const int64_t* ids, const uint16_t* table,
   }
 }
 
+__global__ void EmbedNormKernelInt8(const int64_t* ids, const int8_t* table_i8, const float* row_scales,
+                                    const float* weight, float epsilon,
+                                    uint16_t* output, int64_t vocab_size, int64_t hidden_size,
+                                    const int32_t* committed, int64_t* slot_ids,
+                                    int32_t* seqlens_k, int32_t* cu_seqlens, int64_t rows) {
+  __shared__ float sums[512];
+  if (threadIdx.x == 0 && committed != nullptr) {
+    const int32_t c = committed[0];
+    if (slot_ids != nullptr) slot_ids[blockIdx.x] = static_cast<int64_t>(c) + static_cast<int64_t>(blockIdx.x);
+    if (blockIdx.x == 0) {
+      if (seqlens_k != nullptr) seqlens_k[0] = c + static_cast<int32_t>(rows) - 1;
+      if (cu_seqlens != nullptr) {
+        cu_seqlens[0] = 0;
+        cu_seqlens[1] = static_cast<int32_t>(rows);
+      }
+    }
+  }
+  const int64_t row_index = blockIdx.x;
+  int64_t token_id = ids[row_index];
+  if (token_id < -vocab_size || token_id >= vocab_size) {
+    for (int64_t col = threadIdx.x; col < hidden_size; col += blockDim.x) {
+      output[row_index * hidden_size + col] = __bfloat16_as_ushort(__float2bfloat16_rn(CUDART_NAN_F));
+    }
+    return;
+  }
+  if (token_id < 0) token_id += vocab_size;
+  const int8_t* embedding = table_i8 + token_id * hidden_size;
+  const float rscale = row_scales[token_id];
+  float sum = 0.0f;
+  for (int64_t col = threadIdx.x; col < hidden_size; col += blockDim.x) {
+    const float value = __bfloat162float(__float2bfloat16_rn(static_cast<float>(embedding[col]) * rscale));
+    sum += value * value;
+  }
+  sums[threadIdx.x] = sum;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      sums[threadIdx.x] += sums[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  const float scale = 1.0f / sqrtf(sums[0] / static_cast<float>(hidden_size) + epsilon);
+  for (int64_t col = threadIdx.x; col < hidden_size; col += blockDim.x) {
+    const float value = __bfloat162float(__float2bfloat16_rn(static_cast<float>(embedding[col]) * rscale));
+    const float normalized = (value * scale) * weight[col];
+    output[row_index * hidden_size + col] =
+        __bfloat16_as_ushort(__float2bfloat16_rn(normalized));
+  }
+}
+
 __global__ void RowSelectKernel(const int64_t* selection,
                                 const uint16_t* input0, const uint16_t* input1,
                                 const uint16_t* input2, uint16_t* output0,
                                 uint16_t* output1, uint16_t* output2,
                                 int64_t row_size0, int64_t row_size1,
-                                int64_t row_size2) {
+                                int64_t row_size2, int64_t num_rows) {
   const int which = blockIdx.y;
   const uint16_t* input = which == 0 ? input0 : (which == 1 ? input1 : input2);
   uint16_t* output = which == 0 ? output0 : (which == 1 ? output1 : output2);
   const int64_t row_size = which == 0 ? row_size0 : (which == 1 ? row_size1 : row_size2);
-  const int64_t selected_row = selection[0] != 0 ? 1 : 0;
+  const int64_t raw_sel = selection[0];
+  const int64_t selected_row = raw_sel <= 0 ? 0 : (raw_sel >= num_rows ? (num_rows - 1) : raw_sel);
   for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
        i < row_size; i += static_cast<int64_t>(gridDim.x) * blockDim.x) {
     output[i] = input[selected_row * row_size + i];
@@ -305,24 +369,43 @@ Status LaunchArgMaxLastAxis(cudaStream_t stream, const void* input, int input_ty
 
 Status LaunchEmbeddingRMSNorm(cudaStream_t stream, const int64_t* ids, const uint16_t* table,
                               const float* weight, float epsilon, uint16_t* output,
-                              int64_t rows, int64_t vocab_size, int64_t hidden_size) {
+                              int64_t rows, int64_t vocab_size, int64_t hidden_size,
+                              const int32_t* committed, int64_t* slot_ids,
+                              int32_t* seqlens_k, int32_t* cu_seqlens) {
   ORT_RETURN_IF_NOT(hidden_size > 0 && vocab_size > 0,
                     "EmbeddingRMSNorm requires non-empty table dimensions");
   ORT_RETURN_IF_NOT(rows <= std::numeric_limits<unsigned>::max(),
                     "EmbeddingRMSNorm has too many rows for a CUDA grid");
   if (rows == 0) return Status::OK();
   EmbedNormKernel<<<static_cast<unsigned>(rows), 512, 0, stream>>>(
-      ids, table, weight, epsilon, output, vocab_size, hidden_size);
+      ids, table, weight, epsilon, output, vocab_size, hidden_size,
+      committed, slot_ids, seqlens_k, cu_seqlens, rows);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+Status LaunchEmbeddingRMSNormInt8(cudaStream_t stream, const int64_t* ids, const int8_t* table_i8,
+                                  const float* row_scales, const float* weight, float epsilon,
+                                  uint16_t* output, int64_t rows, int64_t vocab_size, int64_t hidden_size,
+                                  const int32_t* committed, int64_t* slot_ids,
+                                  int32_t* seqlens_k, int32_t* cu_seqlens) {
+  ORT_RETURN_IF_NOT(hidden_size > 0 && vocab_size > 0,
+                    "EmbeddingRMSNorm requires non-empty table dimensions");
+  ORT_RETURN_IF_NOT(rows <= std::numeric_limits<unsigned>::max(),
+                    "EmbeddingRMSNorm has too many rows for a CUDA grid");
+  if (rows == 0) return Status::OK();
+  EmbedNormKernelInt8<<<static_cast<unsigned>(rows), 512, 0, stream>>>(
+      ids, table_i8, row_scales, weight, epsilon, output, vocab_size, hidden_size,
+      committed, slot_ids, seqlens_k, cu_seqlens, rows);
   return CUDA_CALL(cudaGetLastError());
 }
 
 Status LaunchRowSelect(cudaStream_t stream, const int64_t* selection,
                        const uint16_t* const* inputs, uint16_t* const* outputs,
-                       const int64_t* row_sizes) {
+                       const int64_t* row_sizes, int64_t num_rows) {
   const dim3 grid(8, 3);
   RowSelectKernel<<<grid, kThreads, 0, stream>>>(
       selection, inputs[0], inputs[1], inputs[2], outputs[0], outputs[1], outputs[2],
-      row_sizes[0], row_sizes[1], row_sizes[2]);
+      row_sizes[0], row_sizes[1], row_sizes[2], num_rows);
   return CUDA_CALL(cudaGetLastError());
 }
 

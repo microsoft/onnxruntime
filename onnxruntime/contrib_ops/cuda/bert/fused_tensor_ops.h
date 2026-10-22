@@ -17,10 +17,17 @@ inline int64_t GetArgMaxLastAxisPartitions(int64_t width) {
 }
 Status LaunchEmbeddingRMSNorm(cudaStream_t stream, const int64_t* ids, const uint16_t* table,
                               const float* weight, float epsilon, uint16_t* output,
-                              int64_t rows, int64_t vocab_size, int64_t hidden_size);
+                              int64_t rows, int64_t vocab_size, int64_t hidden_size,
+                              const int32_t* committed = nullptr, int64_t* slot_ids = nullptr,
+                              int32_t* seqlens_k = nullptr, int32_t* cu_seqlens = nullptr);
+Status LaunchEmbeddingRMSNormInt8(cudaStream_t stream, const int64_t* ids, const int8_t* table_i8,
+                                  const float* row_scales, const float* weight, float epsilon,
+                                  uint16_t* output, int64_t rows, int64_t vocab_size, int64_t hidden_size,
+                                  const int32_t* committed = nullptr, int64_t* slot_ids = nullptr,
+                                  int32_t* seqlens_k = nullptr, int32_t* cu_seqlens = nullptr);
 Status LaunchRowSelect(cudaStream_t stream, const int64_t* selection,
                        const uint16_t* const* inputs, uint16_t* const* outputs,
-                       const int64_t* row_sizes);
+                       const int64_t* row_sizes, int64_t num_rows = 2);
 Status LaunchSigmoidGateMul(cudaStream_t stream, const uint16_t* attention,
                             const uint16_t* projection, uint16_t* output, int64_t count,
                             int head_dim, int heads, int q_stride,

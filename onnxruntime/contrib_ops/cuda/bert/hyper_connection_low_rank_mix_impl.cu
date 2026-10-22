@@ -656,13 +656,40 @@ __global__ void PreMixKernel(const T* __restrict__ hn, const T* __restrict__ up,
 }
 
 template <typename T>
-__global__ void PostGateKernel(const T* __restrict__ inject, T* __restrict__ gate, int64_t count, float gate_div,
-                               float gate_mul) {
-  const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (i >= count) return;
-  const float t = Rnd<T>(to_float<T>(inject[i]) / gate_div);
-  const float u = Rnd<T>(SigmoidF32(t));
-  gate[i] = from_float<T>(u * gate_mul);
+__global__ void FusedInjectPostGateKernel(const T* __restrict__ hn, const T* __restrict__ w_inject,
+                                          T* __restrict__ gate_out, int64_t rows, int branches, int64_t K,
+                                          float gate_div, float gate_mul) {
+  const int64_t row = blockIdx.x;
+  if (row >= rows) return;
+  const int tid = threadIdx.x;
+  const T* x_row = hn + row * K;
+  __shared__ float smem[8][8];
+  float acc[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+  for (int64_t k = tid; k < K; k += kThreads) {
+    const float xv = to_float<T>(x_row[k]);
+    const T* wk = w_inject + k * branches;
+#pragma unroll
+    for (int b = 0; b < 8; ++b) {
+      if (b < branches) acc[b] = fmaf(xv, to_float<T>(wk[b]), acc[b]);
+    }
+  }
+#pragma unroll
+  for (int b = 0; b < 8; ++b) {
+    if (b < branches) {
+#pragma unroll
+      for (int off = 16; off > 0; off >>= 1) acc[b] += __shfl_down_sync(0xffffffffu, acc[b], off);
+      if ((tid & 31) == 0) smem[tid >> 5][b] = acc[b];
+    }
+  }
+  __syncthreads();
+  if (tid < branches) {
+    float v = 0.0f;
+#pragma unroll
+    for (int w = 0; w < 8; ++w) v += smem[w][tid];
+    const float t = Rnd<T>(Rnd<T>(v) / gate_div);
+    const float u = Rnd<T>(SigmoidF32(t));
+    gate_out[row * branches + tid] = from_float<T>(u * gate_mul);
+  }
 }
 
 template <typename T>
@@ -848,7 +875,7 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
   ORT_RETURN_IF_ERROR(Gemm<T>(cublas, rows, config.rank, K, hn, tensors.down_weight, down));
-  ORT_RETURN_IF_ERROR(Gemm<T>(cublas, rows, config.branches, K, hn, tensors.inject_weight, inject));
+  (void)inject;
 
   const int64_t down_count = rows * config.rank;
   ScaledSiluKernel<T><<<static_cast<int>(BlocksFor(down_count)), kThreads, 0, stream>>>(
@@ -862,8 +889,8 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
   PreMixKernel<T><<<static_cast<int>(BlocksFor(pre_count)), kThreads, 0, stream>>>(
       hn, up, tensors.pre_output, pre_count, config.branches, config.hidden, config.reduction_scale);
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
-  PostGateKernel<T><<<static_cast<int>(BlocksFor(groups)), kThreads, 0, stream>>>(
-      inject, tensors.post_gate, groups, config.gate_div, config.gate_mul);
+  FusedInjectPostGateKernel<T><<<static_cast<int>(rows), kThreads, 0, stream>>>(
+      hn, tensors.inject_weight, tensors.post_gate, rows, config.branches, K, config.gate_div, config.gate_mul);
   return CUDA_CALL(cudaGetLastError());
 }
 
