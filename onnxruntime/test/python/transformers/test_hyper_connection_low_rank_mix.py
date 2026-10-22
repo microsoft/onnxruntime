@@ -10,12 +10,14 @@ The reference is the unfused subgraph the operator replaces,
 evaluated with float32 math and rounded to the activation type at the points the standard operators round
 (see the schema documentation), with a correctly rounded sigmoid. The fused path (few rows, 16-bit types) and
 the cuBLAS based path (many rows, float32, shapes the fused kernels do not support) are both covered.
+BF16 cases require a confirmed compute capability of 8.0+; FP32/FP16 cases remain enabled on older GPUs.
 """
 
 # Tensor dimensions keep the upper-case names the schema doc gives them.
 # ruff: noqa: N806
 
 import unittest
+from unittest import mock
 
 import numpy as np
 import torch
@@ -51,12 +53,11 @@ def has_cuda():
 
 def has_bf16_support():
     # The BFloat16 kernels need compute capability 8.0+ (cuBLAS BFloat16 GEMM, cp.async in the fused kernels).
-    if torch.cuda.is_available():
-        return torch.cuda.get_device_capability()[0] >= 8
-    return True
+    return torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
 
 
 HALF_TYPES = (TP.FLOAT16, TP.BFLOAT16) if has_bf16_support() else (TP.FLOAT16,)
+IO_TYPES = (TP.FLOAT, *HALF_TYPES)
 
 
 def make_initializer(name, io_elem, tensor):
@@ -186,6 +187,25 @@ def tolerances(io_elem):
     return {TP.FLOAT: (1e-3, 1e-5), TP.FLOAT16: (4e-3, 2e-3), TP.BFLOAT16: (3e-2, 8e-3)}[io_elem]
 
 
+class TestCudaCapabilities(unittest.TestCase):
+    def test_bf16_requires_sm80(self):
+        for capability, expected in (((7, 5), False), ((8, 0), True), ((9, 0), True)):
+            with (
+                self.subTest(capability=capability),
+                mock.patch.object(torch.cuda, "is_available", return_value=True),
+                mock.patch.object(torch.cuda, "get_device_capability", return_value=capability),
+            ):
+                self.assertEqual(has_bf16_support(), expected)
+
+    def test_bf16_without_cuda(self):
+        with (
+            mock.patch.object(torch.cuda, "is_available", return_value=False),
+            mock.patch.object(torch.cuda, "get_device_capability") as get_capability,
+        ):
+            self.assertFalse(has_bf16_support())
+            get_capability.assert_not_called()
+
+
 @unittest.skipUnless(has_cuda(), "HyperConnectionLowRankMix is a CUDA-only kernel")
 class TestHyperConnectionLowRankMix(unittest.TestCase):
     @classmethod
@@ -208,14 +228,14 @@ class TestHyperConnectionLowRankMix(unittest.TestCase):
         return pre, gate, streams_out
 
     def test_real_shape(self):
-        for io_elem in DTYPES:
+        for io_elem in IO_TYPES:
             for rows in (1, 2, 4, 16, 128):
                 for prologue in (False, True):
                     with self.subTest(io_elem=io_elem, rows=rows, prologue=prologue):
                         self._check(io_elem, rows, REAL_SHAPE, prologue)
 
     def test_small_shapes(self):
-        for io_elem in DTYPES:
+        for io_elem in IO_TYPES:
             for shape in SMALL_SHAPES:
                 for rows in (1, 2, 16):
                     for prologue in (False, True):
@@ -224,7 +244,7 @@ class TestHyperConnectionLowRankMix(unittest.TestCase):
 
     def test_default_attributes(self):
         attrs = dict(epsilon=1e-5, reduction_scale=1.0, silu_alpha=1.0, gate_div=1.0, gate_mul=1.0)
-        for io_elem in DTYPES:
+        for io_elem in IO_TYPES:
             for rows in (1, 3):
                 with self.subTest(io_elem=io_elem, rows=rows):
                     self._check(io_elem, rows, (4, 64, 16), True, attrs=attrs, seed=2)
