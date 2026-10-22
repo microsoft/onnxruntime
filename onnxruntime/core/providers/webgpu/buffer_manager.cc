@@ -3,7 +3,6 @@
 
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
-#include "core/platform/env_var.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -501,9 +500,6 @@ BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buf
 }
 
 void BufferManager::Upload(CommandRecordingState& recording, void* src, WGPUBuffer dst, size_t size) const {
-  const auto queue_uploads = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_ENABLE_QUEUE_UPLOADS");
-  ORT_ENFORCE(queue_uploads.empty() || queue_uploads == "0" || queue_uploads == "1",
-              "ORT_WEBGPU_ENABLE_QUEUE_UPLOADS must be 0 or 1.");
   // If the buffer is mapped, we can directly write to it.
   void* mapped_data = wgpuBufferGetMappedRange(dst, 0, WGPU_WHOLE_MAP_SIZE);  // ensure the buffer is mapped
   if (mapped_data) {
@@ -518,7 +514,10 @@ void BufferManager::Upload(CommandRecordingState& recording, void* src, WGPUBuff
     return;
   }
 
-  if (queue_uploads == "1" && recording.graph_capture_state == GraphCaptureState::Default && size % 4 == 0) {
+  // A100/Vulkan measurements improve through 1 MiB but can regress for larger
+  // transfers. Keep the cap at the largest consistently beneficial measured size.
+  constexpr size_t kMaxQueueUploadSize = 1024 * 1024;
+  if (size <= kMaxQueueUploadSize && recording.graph_capture_state == GraphCaptureState::Default && size % 4 == 0) {
     // Queue writes copy host bytes before returning. Submit recorded readers first so the write
     // cannot overtake them; Dawn owns staging lifetimes and can batch subsequent queue work.
     ORT_THROW_IF_ERROR(context_.Flush(*this, recording));

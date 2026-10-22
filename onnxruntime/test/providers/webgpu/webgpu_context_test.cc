@@ -10,7 +10,6 @@
 #include <fstream>
 #include <limits>
 #include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -39,7 +38,6 @@
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
-#include "test/util/include/scoped_env_vars.h"
 #include "test/util/include/temp_dir.h"
 
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
@@ -263,18 +261,7 @@ TEST(WebGpuContextTest, UploadFollowsDeferredDispatch) {
   TestCopyAfterDeferredDispatch(true);
 }
 
-class WebGpuQueueUploadTest : public testing::TestWithParam<const char*> {
- protected:
-  void SetUp() override {
-    environment_.emplace(EnvVarMap{{"ORT_WEBGPU_ENABLE_QUEUE_UPLOADS",
-                                    GetParam() == nullptr ? std::nullopt : std::make_optional<std::string>(GetParam())}});
-  }
-
- private:
-  std::optional<ScopedEnvironmentVariables> environment_;
-};
-
-TEST_P(WebGpuQueueUploadTest, SizesSourceOffsetsAndPartialWrites) {
+TEST(WebGpuQueueUploadTest, SizesSourceOffsetsAndPartialWrites) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   ASSERT_NE(ep, nullptr);
@@ -283,7 +270,7 @@ TEST_P(WebGpuQueueUploadTest, SizesSourceOffsetsAndPartialWrites) {
   auto& manager = context.BufferManager();
   context.PushErrorScope();
   for (const size_t size : {0u, 1u, 2u, 3u, 4u, 5u, 7u, 8u, 15u, 16u, 17u, 255u, 256u, 257u,
-                            65536u, 1048576u, 4194308u}) {
+                            65536u, 1048572u, 1048576u, 1048577u, 1048580u, 4194308u}) {
     for (const size_t source_offset : {0u, 1u, 3u}) {
       SCOPED_TRACE(testing::Message() << "size=" << size << ", source_offset=" << source_offset);
       const size_t capacity = (size + 15) / 16 * 16 + 32;
@@ -309,7 +296,7 @@ TEST_P(WebGpuQueueUploadTest, SizesSourceOffsetsAndPartialWrites) {
   ASSERT_STATUS_OK(context.PopErrorScope());
 }
 
-TEST_P(WebGpuQueueUploadTest, MappedAtCreation) {
+TEST(WebGpuQueueUploadTest, MappedAtCreation) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   ASSERT_NE(ep, nullptr);
@@ -336,11 +323,7 @@ TEST_P(WebGpuQueueUploadTest, MappedAtCreation) {
   ASSERT_STATUS_OK(context.PopErrorScope());
 }
 
-TEST_P(WebGpuQueueUploadTest, FollowsDeferredDispatch) {
-  TestCopyAfterDeferredDispatch(true);
-}
-
-TEST_P(WebGpuQueueUploadTest, RepeatedUploadsFollowRecordedCopies) {
+TEST(WebGpuQueueUploadTest, RepeatedUploadsFollowRecordedCopies) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   ASSERT_NE(ep, nullptr);
@@ -373,7 +356,7 @@ TEST_P(WebGpuQueueUploadTest, RepeatedUploadsFollowRecordedCopies) {
   ASSERT_STATUS_OK(context.PopErrorScope());
 }
 
-TEST_P(WebGpuQueueUploadTest, CaptureAndReplayRetainStagingPath) {
+TEST(WebGpuQueueUploadTest, CaptureAndReplayRetainStagingPath) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   ASSERT_NE(ep, nullptr);
@@ -397,13 +380,6 @@ TEST_P(WebGpuQueueUploadTest, CaptureAndReplayRetainStagingPath) {
   ASSERT_STATUS_OK(context.PopErrorScope());
 }
 
-INSTANTIATE_TEST_SUITE_P(UploadModes, WebGpuQueueUploadTest, testing::Values(nullptr, "", "0", "1"),
-                         [](const testing::TestParamInfo<const char*>& info) {
-                           if (info.param == nullptr) return std::string{"Default"};
-                           if (info.param[0] == '\0') return std::string{"Empty"};
-                           return std::string{info.param[0] == '0' ? "Staging" : "Queue"};
-                         });
-
 template <typename T>
 class WebGpuQueueUploadTypeTest : public testing::Test {};
 
@@ -411,7 +387,6 @@ using QueueUploadTypes = testing::Types<uint8_t, int8_t, bool, MLFloat16, float,
 TYPED_TEST_SUITE(WebGpuQueueUploadTypeTest, QueueUploadTypes);
 
 TYPED_TEST(WebGpuQueueUploadTypeTest, PreservesTensorBytesAndHostLifetime) {
-  ScopedEnvironmentVariables enabled{{{"ORT_WEBGPU_ENABLE_QUEUE_UPLOADS", "1"}}};
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   ASSERT_NE(ep, nullptr);
@@ -437,41 +412,42 @@ TYPED_TEST(WebGpuQueueUploadTypeTest, PreservesTensorBytesAndHostLifetime) {
   ASSERT_STATUS_OK(context.PopErrorScope());
 }
 
-TEST(WebGpuContextTest, QueueUploadRejectsInvalidConfiguration) {
-#if defined(ORT_NO_EXCEPTIONS)
-  GTEST_SKIP() << "Exceptions are disabled.";
-#else
-  ConfigOptions options;
-  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
-  ASSERT_NE(ep, nullptr);
-  auto& recording = static_cast<WebGpuExecutionProvider*>(ep.get())->Recording();
-  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
-  for (const auto* value : {"2", "-1", "true", "invalid"}) {
-    ScopedEnvironmentVariables enabled{{{"ORT_WEBGPU_ENABLE_QUEUE_UPLOADS", value}}};
-    std::array<uint32_t, 1> data{7};
-    EXPECT_THROW(context.BufferManager().Upload(recording, data.data(), nullptr, sizeof(data)), OnnxRuntimeException);
-  }
-#endif
-}
-
 TEST(WebGpuContextTest, QueueUploadReportsValidationAndCleansScopes) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native device creation is unavailable.";
 #else
-  ScopedEnvironmentVariables enabled{{{"ORT_WEBGPU_ENABLE_QUEUE_UPLOADS", "1"}}};
   RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&, auto&) {
-    for (const bool invalid_usage : {false, true}) {
+    struct UploadCase {
+      size_t size;
+      webgpu::GraphCaptureState state;
+      bool invalid_range;
+      bool queue_upload;
+    };
+    using webgpu::GraphCaptureState;
+    for (const auto& test : {UploadCase{64, GraphCaptureState::Default, true, true},
+                             UploadCase{64, GraphCaptureState::Default, false, true},
+                             UploadCase{1048572, GraphCaptureState::Default, false, true},
+                             UploadCase{1048576, GraphCaptureState::Default, false, true},
+                             UploadCase{1048580, GraphCaptureState::Default, false, false},
+                             UploadCase{3, GraphCaptureState::Default, false, false},
+                             UploadCase{64, GraphCaptureState::Capturing, false, false},
+                             UploadCase{64, GraphCaptureState::Replaying, false, false}}) {
+      SCOPED_TRACE(testing::Message() << "size=" << test.size << ", state=" << static_cast<int>(test.state)
+                                      << ", invalid_range=" << test.invalid_range);
       wgpu::BufferDescriptor desc{};
-      desc.size = invalid_usage ? 64 : 16;
-      desc.usage = invalid_usage ? wgpu::BufferUsage::CopySrc : wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+      desc.size = test.invalid_range ? 16 : (test.size + 15) / 16 * 16;
+      desc.usage = test.invalid_range ? wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst
+                                      : wgpu::BufferUsage::CopySrc;
       auto buffer = context.Device().CreateBuffer(&desc);
-      std::array<uint32_t, 16> source{};
+      InlinedVector<uint8_t> source(test.size);
+      ep.Recording().graph_capture_state = test.state;
       const auto status = context.RunAndWaitChecked(ep.BufferManager(), ep.Recording(), [&]() {
-        ep.BufferManager().Upload(ep.Recording(), source.data(), buffer.Get(), sizeof(source));
+        ep.BufferManager().Upload(ep.Recording(), source.data(), buffer.Get(), source.size());
         return Status::OK();
       });
+      ep.Recording().graph_capture_state = GraphCaptureState::Default;
       EXPECT_FALSE(status.IsOK());
-      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("WriteBuffer"));
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(test.queue_upload ? "WriteBuffer" : "CopyBufferToBuffer"));
       ASSERT_STATUS_OK(context.FlushAndWaitChecked(ep.BufferManager(), ep.Recording()));
     }
   });

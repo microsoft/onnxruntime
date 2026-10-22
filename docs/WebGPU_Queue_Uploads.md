@@ -1,23 +1,23 @@
-# Opt-in native WebGPU queue uploads
+# Native WebGPU queue uploads
 
-Set `ORT_WEBGPU_ENABLE_QUEUE_UPLOADS=1` to use WebGPU `Queue.WriteBuffer` for
-eligible CPU-to-GPU uploads. The default is off; unset, empty, and `0` retain
-the staging-buffer path. Other values are rejected. Set the variable before
-using WebGPU and do not change process environment variables concurrently with
-WebGPU operations.
+ONNX Runtime automatically uses WebGPU `Queue.WriteBuffer` for eligible
+CPU-to-GPU uploads up to and including **1 MiB (1,048,576 bytes)**. No
+environment-variable toggle or provider option is required.
 
 The upload API is byte-oriented and writes at **destination offset zero**.
 An upload may cover a prefix of a larger buffer. Queue uploads require a byte
-count divisible by four, an unmapped destination with `CopyDst` usage, and
-ordinary (non-capture, non-replay) command recording. No new tensor element-type
-restriction is introduced, and the host source pointer need not be aligned.
+count divisible by four and no larger than 1 MiB, an unmapped destination with
+`CopyDst` usage, and ordinary (non-capture, non-replay) command recording. No new
+tensor element-type restriction is introduced, and the host source pointer
+need not be aligned.
 Zero-byte uploads copy no data; mapped destinations are still unmapped.
 
 Mapped-at-creation destinations retain their direct host-copy/unmap path.
-Unaligned byte counts and graph capture/replay retain the existing staging
-path. That path rounds the GPU copy size up to four bytes; padding bytes are
-not part of the logical tensor and remain unspecified. This option does not
-add support for nonzero destination offsets or unaligned GPU copy offsets.
+Larger transfers, unaligned byte counts, and graph capture/replay retain the
+existing staging path. That path rounds the GPU copy size up to four bytes;
+padding bytes are not part of the logical tensor and remain unspecified.
+Queue uploads do not add support for nonzero destination offsets or unaligned
+GPU copy offsets.
 
 ## Ordering and lifetime
 
@@ -36,8 +36,8 @@ Each session's recording timeline still requires serialization. Independent
 sessions sharing tensors still require caller-provided dependency ordering;
 the flush and queue write are not a device-wide atomic transaction.
 
-Submitting prior commands is **not a CPU wait for GPU completion**. This
-option removes no readback, completion, error-scope, device-loss, or session
+Submitting prior commands is **not a CPU wait for GPU completion**. Queue
+uploads remove no readback, completion, error-scope, device-loss, or session
 synchronization checks. Queue-write validation failures use the existing
 WebGPU error-reporting path; they are not silently retried as staging copies.
 
@@ -51,17 +51,24 @@ and batch pending transfers with later queue work. It may still submit work
 internally, so fewer ORT encoders do not imply an identical reduction in
 backend submissions.
 
-`WriteBuffer` is a core WebGPU API, not a Vulkan-only extension. The queue and
+The 1 MiB limit is conservative: A100/Vulkan measurements consistently
+improved both host and completion-fenced latency through that size, with and
+without preceding GPU reads. At 4 MiB + 4 bytes, completion-fenced transfers
+regressed. Sizes between 1 MiB and that regression were not validated, so they
+remain on staging rather than extrapolating the small-upload improvement.
+The limit is also below the pinned Dawn dynamic uploader's 4 MiB ring size;
+larger uploads can require dedicated staging rather than allocation reuse.
+
+`WriteBuffer` is a core WebGPU API, not a Vulkan-only extension. Its queue and
 host-source lifetime guarantees apply to Dawn's Vulkan, D3D12, and Metal
-backends. Backend performance, memory pressure during large weight uploads,
-and external Dawn hosts still require platform-specific validation. Large
-transfers can still require dedicated staging and may be slower, particularly
-when overwriting a buffer recently read by the GPU. Keeping
-this option off by default avoids treating one backend's measured improvement
-as a universal performance guarantee.
+backends. A100/Vulkan correctness has been exercised locally; macOS/Metal and
+Windows/D3D12 native CI must still validate default routing, ordering,
+threshold boundaries, and concurrency. Backend performance, memory pressure,
+and external Dawn hosts require platform-specific validation before raising
+the size limit.
 
 Correctness coverage is part of `onnxruntime_provider_test`, including the
-`WebGpuQueueUploadTest` parameterized tests, typed byte/lifetime tests,
+`WebGpuQueueUploadTest` cases, typed byte/lifetime tests,
 deferred-dispatch and copy ordering, and independent concurrent transfers.
 These run with the native WebGPU test suites in Windows and macOS CI.
 Performance benchmarks and model-generation comparisons are not CI tests.
