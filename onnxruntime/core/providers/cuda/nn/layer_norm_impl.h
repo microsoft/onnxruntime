@@ -28,6 +28,13 @@
 namespace onnxruntime {
 namespace cuda {
 
+void HostApplyRMSNormFp32(const cudaDeviceProp& prop, cudaStream_t stream,
+                         void* output, const void* input, const float* scale,
+                         int rows, int width, float epsilon);
+void HostApplyRMSNormRotaryFp32(const cudaDeviceProp& prop, cudaStream_t stream,
+                               void* output, const void* input, const float* scale,
+                               const void* cos, const void* sin, int tokens, int heads, float epsilon);
+
 template <typename T, typename U, typename V, bool simplified, bool stash_normalized = false>
 void HostApplyLayerNorm(
     const cudaDeviceProp& prop,

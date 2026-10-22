@@ -4834,6 +4834,64 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
+    SigmoidMul, 1,
+    OpSchema()
+        .SetDoc("FP16 X * Sigmoid(gate), rounding sigmoid to FP16 before multiplication. "
+                "Both inputs must have identical shapes; broadcasting is not supported.")
+        .Input(0, "X", "FP16 values.", "T")
+        .Input(1, "gate", "FP16 gate with the same shape as X.", "T")
+        .Output(0, "Y", "FP16 gated output.", "T")
+        .TypeConstraint("T", {"tensor(float16)"}, "FP16 storage.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateShapeAndTypeFromFirstInput(ctx);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    RMSNormRotaryFp32, 1,
+    OpSchema()
+        .SetDoc("FP32 RMS normalization of FP16 [tokens,heads,256], rounded to FP16, "
+                "followed by standard RotaryEmbedding with noninterleaved rotary dimension 64. "
+                "Heads must be 2 or 32. Cos/sin are pre-gathered [1,tokens,32]. "
+                "Output is reshaped to [1,tokens,heads*256].")
+        .Attr("epsilon", "Finite nonnegative normalization epsilon.", AttributeProto::FLOAT, 1e-6f)
+        .Input(0, "X", "FP16 input [tokens,heads,256].", "T")
+        .Input(1, "scale", "FP32 scale [256].", "S")
+        .Input(2, "cos", "FP16 cosine [1,tokens,32].", "T")
+        .Input(3, "sin", "FP16 sine [1,tokens,32].", "T")
+        .Output(0, "Y", "FP16 output [1,tokens,heads*256].", "T")
+        .TypeConstraint("T", {"tensor(float16)"}, "FP16 storage.")
+        .TypeConstraint("S", {"tensor(float)"}, "FP32 scale.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (hasInputShape(ctx, 0)) {
+            const auto& input = getInputShape(ctx, 0);
+            if (input.dim_size() != 3) fail_shape_inference("X must have rank3");
+            auto* output = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+            output->add_dim()->set_dim_value(1);
+            *output->add_dim() = input.dim(0);
+            auto* width = output->add_dim();
+            if (input.dim(1).has_dim_value()) width->set_dim_value(input.dim(1).dim_value() * 256);
+          }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    RMSNormFp32, 1,
+    OpSchema()
+        .SetDoc("FP16 block RMS normalization equivalent to Cast(X,float), "
+                "RMSNormalization(axis=-1,stash_type=1) with FP32 scale, then Cast to FP16. "
+                "Uses the CUDA RMSNormalization reduction and FP32 rounding order. "
+                "X and Y are [rows,3072]; scale is [3072].")
+        .Attr("epsilon", "Finite nonnegative normalization epsilon.", AttributeProto::FLOAT, 1e-6f)
+        .Input(0, "X", "FP16 input [rows,3072].", "T")
+        .Input(1, "scale", "FP32 scale [3072].", "S")
+        .Output(0, "Y", "FP16 output matching X.", "T")
+        .TypeConstraint("T", {"tensor(float16)"}, "FP16 input and output.")
+        .TypeConstraint("S", {"tensor(float)"}, "FP32 scale.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateShapeAndTypeFromFirstInput(ctx);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
     GatedRMSNormExact, 1,
     OpSchema()
         .SetDoc("FP16 width-128 gated RMS normalization with FP32 scale and arithmetic. "
@@ -5524,8 +5582,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(4, "decay",
                "Log-space decay, shape (total_tokens, num_heads_v) for a scalar per-head decay or "
                "(total_tokens, num_heads_v, head_size_qk) for a per-key-dimension decay.",
-               "TS", OpSchema::Optional)
-        .Input(5, "beta", "Update rate, shape (total_tokens, num_heads_v)", "TS",
+               "TG", OpSchema::Optional)
+        .Input(5, "beta", "Update rate, shape (total_tokens, num_heads_v)", "TG",
                OpSchema::Optional)
         .Input(6, "initial_state",
                "Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), "
@@ -5561,7 +5619,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain query/key/value/output types.")
         .TypeConstraint("TS", {"tensor(float)"},
-                        "Gate, beta and compact state-update tensors are always float.")
+                        "Gate parameters and compact state-update tensors are always float.")
+        .TypeConstraint("TG", {"tensor(float)", "tensor(float16)"},
+                        "Decay and beta storage; activation arithmetic remains float.")
         .TypeConstraint("TR", {"tensor(float)", "tensor(float16)"},
                         "Recurrent state storage; update arithmetic remains float. FP16 recurrent "
                         "execution rounds state after each token, after computing its output.")

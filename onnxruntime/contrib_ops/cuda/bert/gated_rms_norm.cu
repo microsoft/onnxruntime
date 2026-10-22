@@ -11,6 +11,17 @@
 namespace onnxruntime::contrib::cuda {
 namespace {
 
+__global__ void SigmoidMulKernel(const half* input, const half* gate, half* output, int64_t count) {
+  for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       i < count; i += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    const float value = __half2float(gate[i]);
+    const float exponent = expf(value > 0.0f ? -value : value);
+    const half sigmoid = __float2half_rn(value > 0.0f ? 1.0f / (1.0f + exponent)
+                                                    : exponent / (1.0f + exponent));
+    output[i] = __hmul_rn(input[i], sigmoid);
+  }
+}
+
 __global__ void GatedRMSNormKernel(const half* input, const half* gate,
                                    const float* scale, half* output, int rows, float epsilon) {
   for (int64_t row = blockIdx.x; row < rows; row += gridDim.x) {
@@ -52,6 +63,14 @@ __global__ void GatedRMSNormKernel(const half* input, const half* gate,
 }
 
 }  // namespace
+
+Status LaunchSigmoidMul(cudaStream_t stream, const void* input, const void* gate,
+                        void* output, int64_t count) {
+  const int blocks = static_cast<int>(std::min<int64_t>((count + 255) / 256, 65535));
+  SigmoidMulKernel<<<blocks, 256, 0, stream>>>(
+      static_cast<const half*>(input), static_cast<const half*>(gate), static_cast<half*>(output), count);
+  return CUDA_CALL(cudaGetLastError());
+}
 
 Status LaunchGatedRMSNorm(cudaStream_t stream, const void* input, const void* gate,
                           const float* scale, void* output, int rows, float epsilon) {

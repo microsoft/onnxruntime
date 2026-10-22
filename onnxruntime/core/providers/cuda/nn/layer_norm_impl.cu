@@ -240,21 +240,25 @@ struct SharedMemory<double> {
 };
 }  // namespace
 
-template <typename T, typename U, typename V, bool simplified, bool stash_normalized>
+template <typename T, typename U, typename V, bool simplified, bool stash_normalized,
+          typename InputStorage = T, typename OutputStorage = V>
 __global__ void cuApplyLayerNorm(
-    V* __restrict__ output_vals,
+    OutputStorage* __restrict__ output_vals,
     U* __restrict__ mean,
     U* __restrict__ inv_std_dev,
-    const T* __restrict__ vals,
+    const InputStorage* __restrict__ vals,
     const int n1,
     const int n2,
     const U epsilon,
     const V* __restrict__ gamma,
     const V* __restrict__ beta,
     int broadcast_param,
-    const T* __restrict__ skip,
-    const T* __restrict__ bias,
-    T* __restrict__ skip_input_bias_add_output) {
+    const InputStorage* __restrict__ skip,
+    const InputStorage* __restrict__ bias,
+    InputStorage* __restrict__ skip_input_bias_add_output,
+    const half* rotary_cos = nullptr,
+    const half* rotary_sin = nullptr,
+    int rotary_heads = 0) {
   // Assumptions:
   // 1) blockDim.x == GPU_WARP_SIZE
   // 2) Tensors are contiguous
@@ -263,13 +267,13 @@ __global__ void cuApplyLayerNorm(
     SharedMemory<U> shared;
     U* buf = shared.getPointer();
     U mu, sigma2;
-    cuWelfordMuSigma2<T, U, simplified>(vals, n1, n2, i1, mu, sigma2, buf, skip, bias);
+    cuWelfordMuSigma2<InputStorage, U, simplified>(vals, n1, n2, i1, mu, sigma2, buf, skip, bias);
     const int offset = i1 * n2;
-    const T* lvals = vals + offset;
-    const T* skip_vals = (skip != nullptr) ? skip + offset : nullptr;
+    const InputStorage* lvals = vals + offset;
+    const InputStorage* skip_vals = (skip != nullptr) ? skip + offset : nullptr;
 
-    V* ovals = output_vals + offset;
-    T* skip_input_bias_add_ovals = (skip_input_bias_add_output != nullptr) ? skip_input_bias_add_output + offset : nullptr;
+    OutputStorage* ovals = output_vals + offset;
+    InputStorage* skip_input_bias_add_ovals = (skip_input_bias_add_output != nullptr) ? skip_input_bias_add_output + offset : nullptr;
     U c_inv_std_dev = rsqrt(sigma2 + epsilon);
 
     // Compute the offset of gamma and beta to support broadcasting.
@@ -328,7 +332,22 @@ __global__ void cuApplyLayerNorm(
             const T normalized = static_cast<T>(c_inv_std_dev * curr);
             using ScaleType = std::conditional_t<std::is_same_v<V, double>, double, U>;
             const ScaleType scale = gamma != nullptr ? static_cast<ScaleType>(gamma[index]) : ScaleType(1);
-            ovals[i] = static_cast<V>(scale * static_cast<ScaleType>(normalized));
+            if constexpr (std::is_same_v<InputStorage, half> && std::is_same_v<OutputStorage, half> &&
+                          std::is_same_v<T, float> && std::is_same_v<V, float>) {
+              const half weighted = __float2half_rn(scale * normalized);
+              if (rotary_cos != nullptr && i < 64) {
+                const int partner = (i + 32) % 64;
+                const float partner_normalized = c_inv_std_dev * static_cast<float>(lvals[partner]);
+                const half partner_weighted = __float2half_rn(gamma[partner] * partner_normalized);
+                const int cache_index = (i1 / rotary_heads) * 32 + i % 32;
+                const half sign = __float2half_rn(i < 32 ? -1.0f : 1.0f);
+                ovals[i] = weighted * rotary_cos[cache_index] + sign * partner_weighted * rotary_sin[cache_index];
+              } else {
+                ovals[i] = weighted;
+              }
+            } else {
+              ovals[i] = static_cast<V>(scale * static_cast<ScaleType>(normalized));
+            }
           } else {
             ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * curr);
           }
@@ -359,6 +378,49 @@ int32_t round_up_power_of_2(int32_t v) {
   return v;
 }
 
+static int LayerNormThreadsY(const cudaDeviceProp& prop, int n1, int n2) {
+  const int warp_size = prop.warpSize;
+  ORT_ENFORCE(warp_size == GPU_WARP_SIZE_HOST);
+
+  // Be careful for the logic on treads_y calc:
+  //     * 4 is current implementation related, yet it does not using vectorized load
+  //     * Do not using maxTreads as it will cause resource issue.
+  int threads_y = std::min(round_up_power_of_2((n2 + 4 * warp_size - 1) / (4 * warp_size)),
+                           prop.maxThreadsPerBlock / (warp_size * 2));
+  // threads_y could be 16, 8, 4, 2, 1. Calculate total number of rows that could be run in parallel.
+  int parallel_rows = prop.multiProcessorCount * ((prop.maxThreadsPerBlock / 2) / warp_size / threads_y);
+  while (threads_y > 2 && parallel_rows < n1) {
+    threads_y /= 2;
+    parallel_rows *= 2;
+  }
+  return threads_y;
+}
+
+void HostApplyRMSNormFp32(const cudaDeviceProp& prop, cudaStream_t stream,
+                         void* output, const void* input, const float* scale,
+                         int rows, int width, float epsilon) {
+  const dim3 threads(prop.warpSize, LayerNormThreadsY(prop, rows, width), 1);
+  const dim3 blocks(1, std::min(rows, prop.maxGridSize[1]), 1);
+  const int shared = threads.y > 1 ? threads.y * sizeof(float) + (threads.y / 2) * sizeof(float) : 0;
+  // Retain FP32 normalization/scale rounding while loading/storing FP16 directly.
+  cuApplyLayerNorm<float, float, float, true, true, half, half><<<blocks, threads, shared, stream>>>(
+      static_cast<half*>(output), nullptr, nullptr, static_cast<const half*>(input),
+      rows, width, epsilon, scale, nullptr, 0, nullptr, nullptr, nullptr);
+}
+
+void HostApplyRMSNormRotaryFp32(const cudaDeviceProp& prop, cudaStream_t stream,
+                               void* output, const void* input, const float* scale,
+                               const void* cos, const void* sin, int tokens, int heads, float epsilon) {
+  const int rows = tokens * heads;
+  const dim3 threads(prop.warpSize, LayerNormThreadsY(prop, rows, 256), 1);
+  const dim3 blocks(1, std::min(rows, prop.maxGridSize[1]), 1);
+  const int shared = threads.y > 1 ? threads.y * sizeof(float) + (threads.y / 2) * sizeof(float) : 0;
+  cuApplyLayerNorm<float, float, float, true, true, half, half><<<blocks, threads, shared, stream>>>(
+      static_cast<half*>(output), nullptr, nullptr, static_cast<const half*>(input),
+      rows, 256, epsilon, scale, nullptr, 0, nullptr, nullptr, nullptr,
+      static_cast<const half*>(cos), static_cast<const half*>(sin), heads);
+}
+
 template <typename T, typename U, typename V, bool simplified, bool stash_normalized>
 void HostApplyLayerNorm(
     const cudaDeviceProp& prop,
@@ -378,19 +440,7 @@ void HostApplyLayerNorm(
     T* skip_input_bias_add_output) {
   const int maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
-  ORT_ENFORCE(warp_size == GPU_WARP_SIZE_HOST);
-
-  // Be careful for the logic on treads_y calc:
-  //     * 4 is current implementation related, yet it does not using vectorized load
-  //     * Do not using maxTreads as it will cause resource issue.
-  int threads_y = std::min(round_up_power_of_2((n2 + 4 * warp_size - 1) / (4 * warp_size)),
-                           prop.maxThreadsPerBlock / (warp_size * 2));
-  // threads_y could be 16, 8, 4, 2, 1. Calculate total number of rows that could be run in parallel.
-  int parallel_rows = prop.multiProcessorCount * ((prop.maxThreadsPerBlock / 2) / warp_size / threads_y);
-  while (threads_y > 2 && parallel_rows < n1) {
-    threads_y /= 2;
-    parallel_rows *= 2;
-  }
+  const int threads_y = LayerNormThreadsY(prop, n1, n2);
   dim3 threads(warp_size, threads_y, 1);
   const dim3 blocks(1, std::min<unsigned int>(n1, maxGridY), 1);
   int nshared =

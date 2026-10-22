@@ -153,11 +153,11 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
   if (chunk0 >= seq_len) return;
   const int len = min(BT, seq_len - chunk0);
 
-  const int64_t q_stride = static_cast<int64_t>(p.num_heads_q) * DK;
-  const int64_t k_stride = static_cast<int64_t>(p.num_heads_k) * DK;
+  const int64_t q_stride = pack.packed_qkv_stride != 0 ? pack.packed_qkv_stride : static_cast<int64_t>(p.num_heads_q) * DK;
+  const int64_t k_stride = pack.packed_qkv_stride != 0 ? pack.packed_qkv_stride : static_cast<int64_t>(p.num_heads_k) * DK;
   const int64_t v_stride = static_cast<int64_t>(p.num_heads_v) * DV;
 
-  const bool needs_decay = pack.decay != nullptr &&
+  const bool needs_decay = pack.HasDecay() &&
                            (p.update_rule == UpdateRule::kGated ||
                             p.update_rule == UpdateRule::kGatedDelta);
   const bool needs_retrieval =
@@ -176,7 +176,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
     const int t = idx / DV, d = idx % DV;
     const int64_t tok = tok_base + chunk0 + t;
     s.v_h[t * L::kVh + d] =
-        (t < len) ? __float2half((float)pack.value[tok * v_stride + hv * DV + d])
+        (t < len) ? __float2half((float)pack.value[tok * (pack.packed_qkv_stride != 0 ? pack.packed_qkv_stride : v_stride) + hv * DV + d])
                   : __float2half(0.f);
   }
   if (tid < BT) {
@@ -184,10 +184,10 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
     const int64_t gi = tok * p.num_heads_v + hv;
     float g = 0.0f, be = 0.0f;
     if (tid < len) {
-      g = needs_decay ? EffectiveDecay(pack.decay[gi], pack.a_log, pack.dt_bias, hv,
+      g = needs_decay ? EffectiveDecay(pack.LoadDecay(gi), pack.a_log, pack.dt_bias, hv,
                                        p.gate_activation)
                       : 0.0f;
-      be = pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
+      be = pack.HasBeta() ? EffectiveBeta(pack.LoadBeta(gi), p.beta_activation) : 1.0f;
     }
     s.gc[tid] = g;
     s.beta[tid] = be;

@@ -9,6 +9,21 @@
 namespace onnxruntime::contrib::cuda {
 
 ONNX_OPERATOR_KERNEL_EX(
+    SigmoidMul, kMSDomain, 1, kCudaExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    SigmoidMul);
+
+Status SigmoidMul::ComputeInternal(OpKernelContext* context) const {
+  const auto* x = context->Input<Tensor>(0);
+  const auto* gate = context->Input<Tensor>(1);
+  ORT_RETURN_IF_NOT(x->Shape() == gate->Shape(), "SigmoidMul inputs must have identical shapes");
+  auto* output = context->Output(0, x->Shape());
+  if (x->Shape().Size() == 0) return Status::OK();
+  return LaunchSigmoidMul(Stream(context), x->DataRaw(), gate->DataRaw(),
+                          output->MutableDataRaw(), x->Shape().Size());
+}
+
+ONNX_OPERATOR_KERNEL_EX(
     GatedRMSNormExact, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>())

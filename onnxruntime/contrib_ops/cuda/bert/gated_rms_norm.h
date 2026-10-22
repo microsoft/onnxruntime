@@ -7,6 +7,15 @@
 
 namespace onnxruntime::contrib::cuda {
 
+class SigmoidMul final : public onnxruntime::cuda::CudaKernel {
+ public:
+  explicit SigmoidMul(const OpKernelInfo& info) : CudaKernel(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+Status LaunchSigmoidMul(cudaStream_t stream, const void* input, const void* gate,
+                        void* output, int64_t count);
+
 class GatedRMSNormExact final : public onnxruntime::cuda::CudaKernel {
  public:
   explicit GatedRMSNormExact(const OpKernelInfo& info);

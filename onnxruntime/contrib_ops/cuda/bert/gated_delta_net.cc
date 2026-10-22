@@ -32,6 +32,7 @@ namespace gdn = gated_delta_net;
       (*KernelDefBuilder::Create())                                                                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                                                  \
           .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>())                                             \
+          .TypeConstraint("TG", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<MLFloat16>()}) \
           .TypeConstraint("TR", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<MLFloat16>()}) \
           .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>())                                           \
           .InputMemoryType(OrtMemTypeCPUInput, 10)                                                                \
@@ -364,13 +365,9 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   const size_t query_row_bytes = static_cast<size_t>(num_heads_q) * head_size_qk * sizeof(T);
   const size_t key_row_bytes = static_cast<size_t>(num_heads_k) * head_size_qk * sizeof(T);
   const size_t value_row_bytes = static_cast<size_t>(num_heads_v) * head_size_v * sizeof(T);
-  const size_t unpacked_qkv_bytes = is_packed_qkv
-                                        ? static_cast<size_t>(total_tokens) *
-                                              (query_row_bytes + key_row_bytes + value_row_bytes)
-                                        : 0;
   IAllocatorUniquePtr<uint8_t> workspace;
-  if (unpacked_qkv_bytes + plan.workspace_bytes > 0) {
-    workspace = GetScratchBuffer<uint8_t>(unpacked_qkv_bytes + plan.workspace_bytes,
+  if (plan.workspace_bytes > 0) {
+    workspace = GetScratchBuffer<uint8_t>(plan.workspace_bytes,
                                           GetComputeStream(context));
   }
 
@@ -379,34 +376,25 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   const CudaT* key_data = key != nullptr ? reinterpret_cast<const CudaT*>(key->Data<T>()) : nullptr;
   const CudaT* value_data = value != nullptr ? reinterpret_cast<const CudaT*>(value->Data<T>()) : nullptr;
   if (is_packed_qkv) {
-    const size_t packed_row_bytes = query_row_bytes + key_row_bytes + value_row_bytes;
-    auto* unpacked_query = workspace.get();
-    auto* unpacked_key = unpacked_query + static_cast<size_t>(total_tokens) * query_row_bytes;
-    auto* unpacked_value = unpacked_key + static_cast<size_t>(total_tokens) * key_row_bytes;
-    CUDA_RETURN_IF_ERROR(cudaMemcpy2DAsync(unpacked_query, query_row_bytes,
-                                           query_data, packed_row_bytes, query_row_bytes,
-                                           static_cast<size_t>(total_tokens), cudaMemcpyDeviceToDevice, stream));
-    CUDA_RETURN_IF_ERROR(cudaMemcpy2DAsync(unpacked_key, key_row_bytes,
-                                           reinterpret_cast<const uint8_t*>(query_data) + query_row_bytes,
-                                           packed_row_bytes, key_row_bytes,
-                                           static_cast<size_t>(total_tokens), cudaMemcpyDeviceToDevice, stream));
-    CUDA_RETURN_IF_ERROR(cudaMemcpy2DAsync(unpacked_value, value_row_bytes,
-                                           reinterpret_cast<const uint8_t*>(query_data) + query_row_bytes + key_row_bytes,
-                                           packed_row_bytes, value_row_bytes,
-                                           static_cast<size_t>(total_tokens), cudaMemcpyDeviceToDevice, stream));
-    query_data = reinterpret_cast<const CudaT*>(unpacked_query);
-    key_data = reinterpret_cast<const CudaT*>(unpacked_key);
-    value_data = reinterpret_cast<const CudaT*>(unpacked_value);
+    key_data = query_data + query_row_bytes / sizeof(T);
+    value_data = key_data + key_row_bytes / sizeof(T);
   }
 
   gdn::VariantPack<CudaT> pack{};
   pack.query = query_data;
   pack.key = key_data;
   pack.value = value_data;
+  pack.packed_qkv_stride = is_packed_qkv
+                               ? static_cast<int64_t>((query_row_bytes + key_row_bytes + value_row_bytes) / sizeof(T))
+                               : 0;
   pack.cu_seqlens = cu_seqlens != nullptr ? cu_seqlens->Data<int32_t>() : nullptr;
   pack.capture_count = desc.state_update_active ? capture_count->Data<int32_t>() : nullptr;
-  pack.decay = decay != nullptr ? decay->Data<float>() : nullptr;
-  pack.beta = beta != nullptr ? beta->Data<float>() : nullptr;
+  pack.decay = decay != nullptr && decay->IsDataType<float>() ? decay->Data<float>() : nullptr;
+  pack.beta = beta != nullptr && beta->IsDataType<float>() ? beta->Data<float>() : nullptr;
+  pack.decay_fp16 = decay != nullptr && decay->IsDataType<MLFloat16>()
+                        ? reinterpret_cast<const half*>(decay->Data<MLFloat16>()) : nullptr;
+  pack.beta_fp16 = beta != nullptr && beta->IsDataType<MLFloat16>()
+                       ? reinterpret_cast<const half*>(beta->Data<MLFloat16>()) : nullptr;
   pack.initial_state = initial_state != nullptr ? initial_state->DataRaw() : nullptr;
   pack.state_is_fp16 = final_state != nullptr
                            ? final_state->IsDataType<MLFloat16>()
@@ -425,7 +413,7 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   const float scale = scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size_qk));
 
   if (plan.workspace_bytes > 0) {
-    pack.workspace = workspace.get() + unpacked_qkv_bytes;
+    pack.workspace = workspace.get();
   }
 
   return gdn::LaunchGatedDeltaNet<CudaT>(

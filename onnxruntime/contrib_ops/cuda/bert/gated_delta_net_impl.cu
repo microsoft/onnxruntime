@@ -190,12 +190,12 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
   // Uniform across the CTA: seq_len depends only on blockIdx.x.
   if (IsRecurrentTailRow(pack, p, b, seq_len)) return;
 
-  const int64_t q_stride = static_cast<int64_t>(p.num_heads_q) * DK;
-  const int64_t k_stride = static_cast<int64_t>(p.num_heads_k) * DK;
+  const int64_t q_stride = pack.packed_qkv_stride != 0 ? pack.packed_qkv_stride : static_cast<int64_t>(p.num_heads_q) * DK;
+  const int64_t k_stride = pack.packed_qkv_stride != 0 ? pack.packed_qkv_stride : static_cast<int64_t>(p.num_heads_k) * DK;
   const int64_t v_stride = static_cast<int64_t>(p.num_heads_v) * DV;
   const int64_t st_off = (static_cast<int64_t>(b) * p.num_heads_v + hv) * DV * DK;
 
-  const bool needs_decay = pack.decay != nullptr &&
+  const bool needs_decay = pack.HasDecay() &&
                            (p.update_rule == UpdateRule::kGated ||
                             p.update_rule == UpdateRule::kGatedDelta);
   const bool needs_retrieval =
@@ -227,7 +227,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
       const int t = idx / kDVB, d = idx % kDVB;
       const int64_t tok = tok_base + chunk0 + t;
       s.v_h[t * L::kVh + d] =
-          (t < len) ? __float2half((float)pack.value[tok * v_stride + hv * DV + v0 + d])
+          (t < len) ? __float2half((float)pack.value[tok * (pack.packed_qkv_stride != 0 ? pack.packed_qkv_stride : v_stride) + hv * DV + v0 + d])
                     : __float2half(0.f);
     }
     if (tid < BT) {
@@ -235,10 +235,10 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
       const int64_t gi = tok * p.num_heads_v + hv;
       float g = 0.0f, be = 0.0f;
       if (tid < len) {
-        g = needs_decay ? EffectiveDecay(pack.decay[gi], pack.a_log, pack.dt_bias, hv,
+        g = needs_decay ? EffectiveDecay(pack.LoadDecay(gi), pack.a_log, pack.dt_bias, hv,
                                          p.gate_activation)
                         : 0.0f;
-        be = pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
+        be = pack.HasBeta() ? EffectiveBeta(pack.LoadBeta(gi), p.beta_activation) : 1.0f;
       }
       s.gc[tid] = g;
       s.beta[tid] = be;
@@ -399,14 +399,14 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
   }
   const int capture_count = CaptureCount(pack, p, b, seq_len);
 
-  const int64_t q_stride = static_cast<int64_t>(p.num_heads_q) * DK;
-  const int64_t k_stride = static_cast<int64_t>(p.num_heads_k) * DK;
+  const int64_t q_stride = pack.packed_qkv_stride != 0 ? pack.packed_qkv_stride : static_cast<int64_t>(p.num_heads_q) * DK;
+  const int64_t k_stride = pack.packed_qkv_stride != 0 ? pack.packed_qkv_stride : static_cast<int64_t>(p.num_heads_k) * DK;
   const int64_t v_stride = static_cast<int64_t>(p.num_heads_v) * d_v;
   const int64_t st_off =
       (static_cast<int64_t>(b) * p.num_heads_v + hv) * static_cast<int64_t>(d_v) * DK +
       static_cast<int64_t>(col) * DK;
 
-  const bool needs_decay = pack.decay != nullptr && (p.update_rule == UpdateRule::kGated ||
+  const bool needs_decay = pack.HasDecay() && (p.update_rule == UpdateRule::kGated ||
                                                      p.update_rule == UpdateRule::kGatedDelta);
   const bool needs_retrieval =
       p.update_rule == UpdateRule::kDelta || p.update_rule == UpdateRule::kGatedDelta;
@@ -454,14 +454,14 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
 
     float decay_scalar = 1.0f;
     if (needs_decay && !decay_per_key_dim) {
-      decay_scalar = __expf(EffectiveDecay(pack.decay[gi], pack.a_log, pack.dt_bias, hv,
+      decay_scalar = __expf(EffectiveDecay(pack.LoadDecay(gi), pack.a_log, pack.dt_bias, hv,
                                            p.gate_activation));
     }
 #pragma unroll
     for (int i = 0; i < kRegs; ++i) {
       if (needs_decay && decay_per_key_dim) {
         const int k = lane + i * 32;
-        const float raw = pack.decay[(tok * p.num_heads_v + hv) * DK + k];
+        const float raw = pack.LoadDecay((tok * p.num_heads_v + hv) * DK + k);
         s[i] *= __expf(EffectiveDecay(raw, pack.a_log, pack.dt_bias, hv, p.gate_activation));
       } else {
         s[i] *= decay_scalar;
@@ -476,8 +476,8 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
     }
 
     const float beta_t =
-        pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
-    const float vv = static_cast<float>(pack.value[tok * v_stride + hv * d_v + col]);
+        pack.HasBeta() ? EffectiveBeta(pack.LoadBeta(gi), p.beta_activation) : 1.0f;
+    const float vv = static_cast<float>(pack.value[tok * (pack.packed_qkv_stride != 0 ? pack.packed_qkv_stride : v_stride) + hv * d_v + col]);
     const float delta = beta_t * (vv - r);
 
     if (t < capture_count) {
@@ -553,13 +553,13 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
   }
   const int capture_count = CaptureCount(pack, p, b, seq_len);
 
-  const int64_t q_stride = static_cast<int64_t>(p.num_heads_q) * d_k;
-  const int64_t k_stride = static_cast<int64_t>(p.num_heads_k) * d_k;
+  const int64_t q_stride = pack.packed_qkv_stride != 0 ? pack.packed_qkv_stride : static_cast<int64_t>(p.num_heads_q) * d_k;
+  const int64_t k_stride = pack.packed_qkv_stride != 0 ? pack.packed_qkv_stride : static_cast<int64_t>(p.num_heads_k) * d_k;
   const int64_t v_stride = static_cast<int64_t>(p.num_heads_v) * d_v;
   const int64_t st_off = (static_cast<int64_t>(b) * p.num_heads_v + hv) *
                          static_cast<int64_t>(d_v) * d_k;
 
-  const bool needs_decay = pack.decay != nullptr &&
+  const bool needs_decay = pack.HasDecay() &&
                            (p.update_rule == UpdateRule::kGated ||
                             p.update_rule == UpdateRule::kGatedDelta);
   const bool needs_retrieval =
@@ -584,7 +584,7 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
     }
     if (needs_decay && decay_per_key_dim) {
       for (int i = tid; i < d_k; i += kThreads) {
-        const float raw = pack.decay[(tok * p.num_heads_v + hv) * d_k + i];
+        const float raw = pack.LoadDecay((tok * p.num_heads_v + hv) * d_k + i);
         gbuf[i] = __expf(EffectiveDecay(raw, pack.a_log, pack.dt_bias, hv, p.gate_activation));
       }
     }
@@ -611,11 +611,11 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
 
     const float g_scalar =
         (needs_decay && !decay_per_key_dim)
-            ? __expf(EffectiveDecay(pack.decay[gi], pack.a_log, pack.dt_bias, hv,
+            ? __expf(EffectiveDecay(pack.LoadDecay(gi), pack.a_log, pack.dt_bias, hv,
                                     p.gate_activation))
             : 1.0f;
     const float beta_t =
-        pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
+        pack.HasBeta() ? EffectiveBeta(pack.LoadBeta(gi), p.beta_activation) : 1.0f;
 
     // Decay, then retrieval against the decayed state.
     for (int idx = tid; idx < d_k * d_v; idx += kThreads) {
@@ -629,7 +629,7 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
       if (needs_retrieval) {
         for (int r = 0; r < d_k; ++r) acc += S[r * d_v + c] * kbuf[r];
       }
-      const float vv = (float)pack.value[tok * v_stride + hv * d_v + c];
+      const float vv = (float)pack.value[tok * (pack.packed_qkv_stride != 0 ? pack.packed_qkv_stride : v_stride) + hv * d_v + c];
       rbuf[c] = beta_t * (vv - acc);
     }
     __syncthreads();

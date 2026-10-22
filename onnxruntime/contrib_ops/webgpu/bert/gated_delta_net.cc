@@ -37,6 +37,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
         .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("TG", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("TR", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>())
         .InputMemoryType(OrtMemTypeCPUInput, 10)

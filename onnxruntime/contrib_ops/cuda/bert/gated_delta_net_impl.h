@@ -25,6 +25,9 @@ struct VariantPack {
   const int32_t* capture_count = nullptr;  // [B] or null when transition capture is disabled
   const float* decay = nullptr;            // [total_tokens, Hv] or [total_tokens, Hv, K]
   const float* beta = nullptr;             // [total_tokens, Hv]
+  const half* decay_fp16 = nullptr;
+  const half* beta_fp16 = nullptr;
+  int64_t packed_qkv_stride = 0;
   const void* initial_state = nullptr;     // [B, Hv, V, K] V-major, may alias final_state
   const float* a_log = nullptr;            // [Hv]
   const float* dt_bias = nullptr;          // [Hv]
@@ -35,6 +38,17 @@ struct VariantPack {
   void* workspace = nullptr;
 
 #ifdef __CUDACC__
+  __device__ float LoadDecay(int64_t index) const {
+    return decay_fp16 != nullptr ? __half2float(decay_fp16[index]) : decay[index];
+  }
+
+  __device__ float LoadBeta(int64_t index) const {
+    return beta_fp16 != nullptr ? __half2float(beta_fp16[index]) : beta[index];
+  }
+
+  __device__ bool HasDecay() const { return decay != nullptr || decay_fp16 != nullptr; }
+  __device__ bool HasBeta() const { return beta != nullptr || beta_fp16 != nullptr; }
+
   __device__ float LoadState(int64_t index) const {
     if (initial_state == nullptr) return 0.0f;
     return state_is_fp16 ? __half2float(static_cast<const half*>(initial_state)[index])
