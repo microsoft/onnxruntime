@@ -16,7 +16,7 @@ struct DawnProcTable;
 
 namespace onnxruntime::webgpu {
 
-// Defined out of line so unique_ptr can destroy the platform without callers needing
+// Deletes a bundled Dawn platform. Defined out of line so unique_ptr can destroy the platform without callers needing
 // the complete Platform type, as std::default_delete would require.
 struct BundledDawnPlatformDeleter {
   void operator()(dawn::platform::Platform* platform) const;

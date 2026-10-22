@@ -5,7 +5,7 @@
 
 namespace onnxruntime::webgpu {
 
-WebGpuInstanceWrapper::WebGpuInstanceWrapper(wgpu::InstanceDescriptor instance_desc) {
+WebGpuInstanceWrapper::WebGpuInstanceWrapper(const wgpu::InstanceDescriptor& instance_desc) {
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
   platform_ = CreateBundledDawnPlatform();
   instance_ = CreateBundledDawnInstance(instance_desc, *platform_);

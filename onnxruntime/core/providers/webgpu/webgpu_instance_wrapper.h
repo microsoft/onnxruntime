@@ -16,7 +16,7 @@ namespace onnxruntime::webgpu {
 // Dependent WebGPU objects must be destroyed before this owner.
 class WebGpuInstanceWrapper final {
  public:
-  explicit WebGpuInstanceWrapper(wgpu::InstanceDescriptor instance_desc);
+  explicit WebGpuInstanceWrapper(const wgpu::InstanceDescriptor& instance_desc);
   ~WebGpuInstanceWrapper();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuInstanceWrapper);
 
