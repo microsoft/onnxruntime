@@ -21,7 +21,9 @@ TEST(QGemmKleidiAIOps, PackedWeightsPreserveQuantizationAndAccumulation) {
   for (size_t i = 0; i < N; ++i) zero_points[i] = static_cast<uint8_t>(i * 17 + 5);
 
   const size_t packed_size = ArmKleidiAI::MlasQGemmPackBSizeKleidiAIOps(N, K, true, true);
-  if (packed_size == 0) GTEST_SKIP() << "No compatible KleidiAI Ops signed INT8 packer";
+  if (packed_size == 0) {
+    GTEST_SKIP() << "No compatible KleidiAI Ops signed INT8 packer";
+  }
   ASSERT_EQ(MlasGemmPackBSize(N, K, true, true, nullptr), packed_size);
   MatrixGuardBuffer<uint8_t> packed_buffer;
   void* packed_b = packed_buffer.GetBuffer(packed_size);
@@ -84,7 +86,9 @@ TEST(QGemmKleidiAIOps, MixedPackedBatchFallsBackWithoutChangingUnsupportedEntrie
   b.fill(3);
   const uint8_t zero_point = 0;
   const size_t packed_size = ArmKleidiAI::MlasQGemmPackBSizeKleidiAIOps(N, K, true, true);
-  if (packed_size == 0) GTEST_SKIP() << "No compatible KleidiAI Ops signed INT8 packer";
+  if (packed_size == 0) {
+    GTEST_SKIP() << "No compatible KleidiAI Ops signed INT8 packer";
+  }
   MatrixGuardBuffer<uint8_t> packed_buffer;
   void* packed_b = packed_buffer.GetBuffer(packed_size);
   MlasGemmPackB(N, K, b.data(), N, true, true, packed_b);
@@ -164,10 +168,16 @@ TEST(QGemmPackB, UsesKleidiAIBackendSelector) {
     const size_t packed_size = MlasGemmPackBSize(N, K, true, true, &selector_config);
 #if defined(MLAS_KLEIDIAI_INT8_OPS_AVAILABLE)
     // Correct native packing alone would not catch an oversized Ops allocation.
-    if (!enabled) EXPECT_EQ(packed_size, native_size);
+    if (!enabled) {
+      EXPECT_EQ(packed_size, native_size);
+    }
 #endif
-    if (packed_size == 0) GTEST_SKIP() << "Signed INT8 packing is not supported";
-    if (enabled) EXPECT_EQ(packed_size, MlasGemmPackBSize(N, K, true, true, nullptr));
+    if (packed_size == 0) {
+      GTEST_SKIP() << "Signed INT8 packing is not supported";
+    }
+    if (enabled) {
+      EXPECT_EQ(packed_size, MlasGemmPackBSize(N, K, true, true, nullptr));
+    }
     MatrixGuardBuffer<uint8_t> packed_buffer;
     void* packed_b = packed_buffer.GetBuffer(packed_size);
     data.B = packed_b;
