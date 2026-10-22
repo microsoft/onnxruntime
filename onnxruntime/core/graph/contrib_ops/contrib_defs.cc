@@ -1648,11 +1648,13 @@ static void QMoETypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     const auto* scales = shape(scale_index, 3);
     const auto* zero_points = shape(zp_index, 3);
     const auto* bias = shape(bias_index, 2);
+    Dimension concrete_rows;
+    if (rows) concrete_rows = *rows;
     for (const auto* tensor : {weights, scales, zero_points, bias}) {
       if (tensor) {
         match_experts(tensor->dim(0));
-        match(tensor->dim(1), rows, "output rows");
-        if (weights) match(tensor->dim(1), &weights->dim(1), "projection metadata rows");
+        match(tensor->dim(1), &concrete_rows, "projection metadata rows");
+        if (tensor->dim(1).has_dim_value()) concrete_rows = tensor->dim(1);
       }
     }
     if (reduction && reduction->has_dim_value()) {
@@ -1702,7 +1704,9 @@ constexpr const char* qMoE_int3_doc = R"DOC(
   Weights are uint8 [E,N,ceil(K*bits/8)], row-local LSB-first bitstreams, without per-block padding.
   Scales are required [E,N,K/block_size], matching FP16/BF16 activations.
   INT3 codes dequantize as (u-4)*scale; scales must be finite and nonnegative.
-  Optional INT3 zero points are uint8 [E,N,ceil(3*(K/block_size)/8)], with every code 4.
+  Optional INT3 zero points are uint8 [E,N,ceil(3*(K/block_size)/8)]. Each unpacked 3-bit
+  zero-point code must equal 4 (binary 100), the unsigned offset representing logical zero;
+  this does not mean each packed byte is 4. Omission implies the same zero point 4.
   Unused high padding bits must be zero. INT2/4/8 projections retain their zero-point semantics.
   FC1 rows are interleaved gate/up; FC2 is [E,H,ceil(I*fc2_bits/8)].
   Separate FC3, global scales, and activation scales are not accepted by the INT3 profile.
