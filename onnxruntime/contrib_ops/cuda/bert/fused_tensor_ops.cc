@@ -46,7 +46,9 @@ ONNX_OPERATOR_KERNEL_EX(
 ONNX_OPERATOR_KERNEL_EX(
     SigmoidGateMul, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()),
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>())
+        .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>())
+        .InputMemoryType(OrtMemTypeCPUInput, 3),
     SigmoidGateMul);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -152,12 +154,46 @@ SigmoidGateMul::SigmoidGateMul(const OpKernelInfo& info)
 }
 
 Status SigmoidGateMul::ComputeInternal(OpKernelContext* context) const {
+  const Tensor* numerics = context->Input<Tensor>(3);
+  ORT_RETURN_IF_NOT(numerics == nullptr ||
+                        (numerics->IsDataType<int32_t>() && numerics->Shape().Size() == 1 &&
+                         (numerics->Data<int32_t>()[0] == 0 || numerics->Data<int32_t>()[0] == 1)),
+                    "prefill_numerics must be an int32 scalar containing 0 or 1");
+  const bool dense_prefill = numerics != nullptr && numerics->Data<int32_t>()[0] == 1;
   const Tensor* attention = context->Input<Tensor>(0);
   const Tensor* projection = context->Input<Tensor>(1);
   const Tensor* residual = context->Input<Tensor>(2);
+  const Tensor* gate_weight = context->Input<Tensor>(4);
   const int64_t count = attention->Shape().Size();
   ORT_RETURN_IF_NOT(residual == nullptr || residual->Shape() == attention->Shape(),
                     "SigmoidGateMul residual must have the same shape as attention");
+  if (gate_weight != nullptr) {
+    ORT_RETURN_IF_NOT(broadcast_gate_ && !silu_gate_,
+                      "SigmoidGateMul gate_weight requires broadcast_gate without silu_gate");
+    const auto& shape = attention->Shape();
+    const auto& activation_shape = projection->Shape();
+    ORT_RETURN_IF_NOT(shape.NumDimensions() >= 1 && shape[shape.NumDimensions() - 1] > 0 &&
+                          activation_shape.NumDimensions() == shape.NumDimensions() &&
+                          activation_shape[activation_shape.NumDimensions() - 1] > 0,
+                      "SigmoidGateMul projected gate requires matching ranks and positive final dimensions");
+    for (size_t axis = 0; axis + 1 < shape.NumDimensions(); ++axis) {
+      ORT_RETURN_IF_NOT(shape[axis] == activation_shape[axis],
+                        "SigmoidGateMul projected gate leading dimensions must match attention");
+    }
+    const int64_t input_width = activation_shape[activation_shape.NumDimensions() - 1];
+    ORT_RETURN_IF_NOT(gate_weight->Shape().NumDimensions() == 2 &&
+                          gate_weight->Shape()[0] == input_width && gate_weight->Shape()[1] == 1,
+                      "SigmoidGateMul gate_weight must have shape [input_width, 1]");
+    Tensor* output = context->Output(0, shape);
+    return LaunchProjectedSigmoidGateMul(
+        Stream(context), reinterpret_cast<const uint16_t*>(attention->Data<BFloat16>()),
+        reinterpret_cast<const uint16_t*>(projection->Data<BFloat16>()),
+        reinterpret_cast<const uint16_t*>(gate_weight->Data<BFloat16>()),
+        residual == nullptr ? nullptr : reinterpret_cast<const uint16_t*>(residual->Data<BFloat16>()),
+        reinterpret_cast<uint16_t*>(output->MutableData<BFloat16>()),
+        count / shape[shape.NumDimensions() - 1], input_width, shape[shape.NumDimensions() - 1],
+        dense_prefill ? false : sigmoid_in_fp32_);
+  }
   int64_t gate_row_width = 0;
   if (silu_gate_) {
     ORT_RETURN_IF_NOT(projection->Shape() == attention->Shape(),
@@ -195,7 +231,7 @@ Status SigmoidGateMul::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<uint16_t*>(output->MutableData<BFloat16>()), count, head_dim_, heads_,
       q_stride_, tok_stride_, q_offset_, gate_row_width,
       residual == nullptr ? nullptr : reinterpret_cast<const uint16_t*>(residual->Data<BFloat16>()),
-      sigmoid_in_fp32_, silu_gate_);
+      dense_prefill ? false : sigmoid_in_fp32_, silu_gate_);
 }
 
 UntileHyperConnectionWeights::UntileHyperConnectionWeights(const OpKernelInfo& info)

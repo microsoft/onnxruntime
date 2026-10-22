@@ -5746,11 +5746,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(0, "attention", "BF16 attention values.", "T")
         .Input(1, "projection", "BF16 packed projection containing gate values.", "T")
         .Input(2, "residual", "Optional BF16 residual with the attention shape.", "T", OpSchema::Optional)
+        .Input(3, "prefill_numerics", "Optional CPU int32 scalar 0/1.", "TI", OpSchema::Optional)
+        .Input(4, "gate_weight", "Optional BF16 projected-gate weight [input_width,1], requires broadcast_gate.", "T", OpSchema::Optional)
         .Output(0, "output",
                 "Attention multiplied by BF16-rounded sigmoid gates, rounded to BF16 "
                 "before optionally adding residual and rounding again.",
                 "T")
         .TypeConstraint("T", {"tensor(bfloat16)"}, "Inputs and output use BF16.")
+        .TypeConstraint("TI", {"tensor(int32)"}, "CPU numerical control.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           if (hasInputShape(ctx, 0)) updateOutputShape(ctx, 0, getInputShape(ctx, 0));

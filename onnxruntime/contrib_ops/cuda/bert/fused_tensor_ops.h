@@ -27,6 +27,15 @@ Status LaunchSigmoidGateMul(cudaStream_t stream, const uint16_t* attention,
                             int64_t token_stride, int64_t q_offset,
                             int64_t gate_row_width, const uint16_t* residual, bool sigmoid_in_fp32,
                             bool silu_gate);
+Status LaunchProjectedSigmoidGateMul(cudaStream_t stream, const uint16_t* attention,
+                                     const uint16_t* activation, const uint16_t* weight,
+                                     const uint16_t* residual, uint16_t* output,
+                                     int64_t rows, int64_t input_width, int64_t output_width,
+                                     bool sigmoid_in_fp32);
+Status LaunchPrepareSharedExpert(cudaStream_t stream, const uint16_t* up, const uint16_t* silu_gate,
+                                const uint16_t* activation, const uint16_t* weight,
+                                uint16_t* prepared, float* row_gates,
+                                int rows, int width, int input_width);
 Status LaunchUntileHyperConnectionWeights(cudaStream_t stream, const uint16_t* input,
                                           uint16_t* output, int kind);
 
