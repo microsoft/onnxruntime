@@ -847,6 +847,12 @@ Return Value:
     }
 #endif
 
+#if defined(MLAS_KLEIDIAI_INT8_OPS_AVAILABLE)
+    this->MlasQGemmBatchOverride = ArmKleidiAI::MlasQGemmBatchKleidiAIOps;
+    this->MlasQGemmPackBSizeOverride = ArmKleidiAI::MlasQGemmPackBSizeKleidiAIOps;
+    this->MlasQGemmPackBOverride = ArmKleidiAI::MlasQGemmPackBKleidiAIOps;
+#endif
+
 #if defined(MLAS_USE_SVE)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
         this->ErfKernelRoutine = MlasSveErfKernel;

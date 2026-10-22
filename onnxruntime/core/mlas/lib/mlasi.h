@@ -1,6 +1,7 @@
 /*++
 
 Copyright (c) Microsoft Corporation.  All rights reserved.
+SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 
 Licensed under the MIT License.
 
@@ -1026,6 +1027,19 @@ void
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool);
 
+typedef bool(MLASCALL MLAS_QGEMM_BATCH_OVERRIDE)(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
+    size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool
+);
+typedef size_t(MLASCALL MLAS_QGEMM_PACK_B_SIZE_OVERRIDE)(
+    size_t N, size_t K, bool AIsSigned, bool BIsSigned
+);
+typedef void(MLASCALL MLAS_QGEMM_PACK_B_OVERRIDE)(
+    size_t N, size_t K, const uint8_t* B, size_t ldb, bool AIsSigned, bool BIsSigned, void* PackedB
+);
+
 typedef
 size_t
 (MLASCALL MLAS_DYNAMIC_QGEMM_PACK_B_SIZE_OVERRIDE)(
@@ -1802,6 +1816,9 @@ struct MLAS_PLATFORM {
     MLAS_SGEMM_BATCH_OVERRIDE* MlasSGemmBatchOverride = nullptr;
     MLAS_SGEMM_PACK_B_SIZE_OVERRIDE* MlasSGemmPackBSizeOverride = nullptr;
     MLAS_SGEMM_PACK_B_OVERRIDE* MlasSGemmPackBOverride = nullptr;
+    MLAS_QGEMM_BATCH_OVERRIDE* MlasQGemmBatchOverride = nullptr;
+    MLAS_QGEMM_PACK_B_SIZE_OVERRIDE* MlasQGemmPackBSizeOverride = nullptr;
+    MLAS_QGEMM_PACK_B_OVERRIDE* MlasQGemmPackBOverride = nullptr;
     // MLAS Dynamic QGemm overrides
     MLAS_DYNAMIC_QGEMM_BATCH_OVERRIDE* MlasDynamicQGemmBatchOverride = nullptr;
     MLAS_DYNAMIC_QGEMM_PACK_B_SIZE_OVERRIDE* MlasDynamicQGemmPackBSizeOverride = nullptr;
