@@ -554,7 +554,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
            (src_type == OrtMemoryInfoDeviceType_CPU && dst_type == OrtMemoryInfoDeviceType_GPU);
   }
 
-  // BufferManager::MemCpy reports misuse by throwing (ORT_ENFORCE), not by returning a Status.
+  // WebGpuContext::CopyTensor reports misuse by throwing (ORT_ENFORCE), not by returning a Status.
   // This callback crosses the C ABI and is noexcept, so an escaping exception would terminate the
   // process. Convert throws to an OrtStatus.
   static OrtStatus* ORT_API_CALL CopyTensorsImpl(
@@ -631,8 +631,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
         }
 #endif
         CommandRecordingState recording;
-        DataTransferImpl data_transfer{context.BufferManager(), recording};
-        status = data_transfer.CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size);
+        status = context.CopyTensor(context.BufferManager(), recording, src_data, src_is_gpu, dst_data, dst_is_gpu, size);
         if (status.IsOK() && src_is_gpu && dst_is_gpu) {
           ORT_THROW_IF_ERROR(context.Flush(context.BufferManager(), recording));
         }

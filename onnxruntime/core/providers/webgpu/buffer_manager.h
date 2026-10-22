@@ -88,20 +88,17 @@ class IBufferCacheManager {
 };
 
 //
-// BufferManager manages operations on buffers.
+// BufferManager manages buffer allocation, caching, and release.
 //
 class BufferManager {
  public:
   BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode);
-  void Upload(CommandRecordingState& recording, void* src, WGPUBuffer dst, size_t size) const;
-  void MemCpy(CommandRecordingState& recording, WGPUBuffer src, WGPUBuffer dst, size_t size) const;
   WGPUBuffer Create(CommandRecordingState& recording, size_t size, wgpu::BufferUsage usage,
                     bool initialize_to_zero = false,
                     bool submit_zero_initialize = false) const;
   bool SupportsUMA() const;  // Check if CreateUMA is supported (i.e., the device has BufferMapExtendedUsages feature)
   // A null recording releases directly to the cache (e.g., plugin Env allocations).
   void Release(WGPUBuffer buffer, const CommandRecordingState* recording = nullptr) const;
-  void Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const;
   void RefreshPendingBuffers(CommandRecordingState& recording, GraphCaptureState graph_capture_state) const;
   // Drop retained references when a recording is abandoned instead of submitted.
   void DiscardPendingBuffers(CommandRecordingState& recording) const;

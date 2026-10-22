@@ -324,6 +324,9 @@ class WebGpuContext final {
     }
   }
   void CopyBuffer(WGPUBuffer source, WGPUBuffer destination, uint64_t size, CommandRecordingState& recording);
+  // Use the caller's recording and pool policy for ordering, capture, and buffer retirement.
+  Status CopyTensor(const webgpu::BufferManager& buffer_manager, CommandRecordingState& recording,
+                    const void* src_data, bool src_is_gpu, void* dst_data, bool dst_is_gpu, size_t bytes);
   void CaptureBegin(std::vector<webgpu::CapturedCommand>* captured_commands,
                     const webgpu::BufferManager& buffer_manager,
                     CommandRecordingState& recording);
@@ -458,6 +461,10 @@ class WebGpuContext final {
                                   std::string_view label) const;
   void DispatchCommand(const webgpu::DispatchCommandInfo& command, CommandRecordingState& recording);
   Status EncodeDeferredDispatches(CommandRecordingState& recording);
+  void UploadBuffer(const webgpu::BufferManager& buffer_manager, CommandRecordingState& recording,
+                    const void* src, WGPUBuffer dst, size_t size);
+  void DownloadBuffer(const webgpu::BufferManager& buffer_manager, CommandRecordingState& recording,
+                      WGPUBuffer src, void* dst, size_t size);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
   std::vector<const char*> GetEnabledDeviceToggles() const;

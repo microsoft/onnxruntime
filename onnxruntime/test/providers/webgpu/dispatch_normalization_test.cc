@@ -124,15 +124,17 @@ void RunAndReadProgram(WebGpuExecutionProvider& ep, const ProgramBase& program,
   DispatchTestKernel kernel(info);
   ComputeContextBase compute_context(context, ep, kernel);
   ASSERT_STATUS_OK(compute_context.RunProgram(program));
-  ep.BufferManager().Download(ep.Recording(), output_buffer, output_data.data(), output_data.size() * sizeof(T));
+  ASSERT_STATUS_OK(context.CopyTensor(ep.BufferManager(), ep.Recording(), output_buffer, true,
+                                      output_data.data(), false, output_data.size() * sizeof(T)));
 }
 
 template <typename T>
 wgpu::Buffer CreateStorageBuffer(WebGpuExecutionProvider& ep, std::vector<T>& data) {
+  auto& context = WebGpuContextFactory::GetContext(ep.GetDeviceId());
   const size_t size = data.size() * sizeof(T);
   auto buffer = wgpu::Buffer::Acquire(ep.BufferManager().Create(
       ep.Recording(), size, wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst));
-  ep.BufferManager().Upload(ep.Recording(), data.data(), buffer.Get(), size);
+  EXPECT_STATUS_OK(context.CopyTensor(ep.BufferManager(), ep.Recording(), data.data(), false, buffer.Get(), true, size));
   return buffer;
 }
 

@@ -204,7 +204,8 @@ void TestCopyAfterDeferredDispatch(bool upload, bool checked_completion = false)
   auto input = context.Device().CreateBuffer(&buffer_desc);
   auto output = context.Device().CreateBuffer(&buffer_desc);
   auto copy = context.Device().CreateBuffer(&buffer_desc);
-  buffer_manager.Upload(recording, input_data.data(), input.Get(), sizeof(input_data));
+  ASSERT_STATUS_OK(context.CopyTensor(buffer_manager, recording,
+                                      input_data.data(), false, input.Get(), true, sizeof(input_data)));
 
   wgpu::ShaderSourceWGSL source{};
   source.code = R"(
@@ -243,15 +244,18 @@ void TestCopyAfterDeferredDispatch(bool upload, bool checked_completion = false)
   } else if (upload) {
     // The dispatch must consume the original input before Upload overwrites it.
     input_data.fill(42);
-    buffer_manager.Upload(recording, input_data.data(), input.Get(), sizeof(input_data));
+    ASSERT_STATUS_OK(context.CopyTensor(buffer_manager, recording,
+                                        input_data.data(), false, input.Get(), true, sizeof(input_data)));
   } else {
     // MemCpy must read the dispatch result, not the output buffer's initial zeros.
-    buffer_manager.MemCpy(recording, output.Get(), copy.Get(), sizeof(input_data));
+    ASSERT_STATUS_OK(context.CopyTensor(buffer_manager, recording,
+                                        output.Get(), true, copy.Get(), true, sizeof(input_data)));
   }
   EXPECT_TRUE(recording.deferred_dispatches.empty());
 
   std::array<uint32_t, 16> result{};
-  buffer_manager.Download(recording, upload ? output.Get() : copy.Get(), result.data(), sizeof(result));
+  ASSERT_STATUS_OK(context.CopyTensor(buffer_manager, recording,
+                                      upload ? output.Get() : copy.Get(), true, result.data(), false, sizeof(result)));
   std::array<uint32_t, 16> expected;
   expected.fill(8);
   EXPECT_EQ(result, expected);
@@ -807,7 +811,8 @@ TEST(WebGpuContextTest, IndependentClearPreservesPendingAndCapturedUniformBuffer
     std::array<uint32_t, 16> dirty_data;
     dirty_data.fill(0xffffffffu);
     auto dirty_buffer = manager.Create(independent_recording, sizeof(dirty_data), storage_usage);
-    manager.Upload(independent_recording, dirty_data.data(), dirty_buffer, sizeof(dirty_data));
+    ASSERT_STATUS_OK(context.CopyTensor(manager, independent_recording,
+                                        dirty_data.data(), false, dirty_buffer, true, sizeof(dirty_data)));
     manager.Release(dirty_buffer, &independent_recording);
     auto cleared_buffer = wgpu::Buffer::Acquire(
         manager.Create(independent_recording, sizeof(dirty_data), storage_usage, true, true));
@@ -991,7 +996,8 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
   void* allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
-  buffer_manager.Upload(webgpu_ep->Recording(), nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  ASSERT_STATUS_OK(context.CopyTensor(buffer_manager, webgpu_ep->Recording(),
+                                      nonzero_data.data(), false, dirty_buffer, true, sizeof(nonzero_data)));
   allocator.Free(allocation);
 
   allocation = allocator.Alloc(sizeof(nonzero_data));
@@ -1020,12 +1026,13 @@ TEST(WebGpuContextTest, ReplaysCopyOnlyGraphAndRetainsBuffersUntilRelease) {
   auto source = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
   auto intermediate = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
   auto destination = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
-  manager.Upload(recording, values.data(), source.Get(), sizeof(values));
+  ASSERT_STATUS_OK(context.CopyTensor(manager, recording, values.data(), false, source.Get(), true, sizeof(values)));
 
   std::vector<webgpu::CapturedCommand> commands;
   context.CaptureBegin(&commands, manager, recording);
-  manager.MemCpy(recording, source.Get(), intermediate.Get(), sizeof(values));
-  manager.MemCpy(recording, intermediate.Get(), destination.Get(), sizeof(values));
+  ASSERT_STATUS_OK(context.CopyTensor(manager, recording, source.Get(), true, intermediate.Get(), true, sizeof(values)));
+  ASSERT_STATUS_OK(context.CopyTensor(manager, recording,
+                                      intermediate.Get(), true, destination.Get(), true, sizeof(values)));
   ASSERT_STATUS_OK(context.Flush(manager, recording));
   context.CaptureEnd(recording);
   ASSERT_EQ(commands.size(), 2u);
@@ -1035,7 +1042,7 @@ TEST(WebGpuContextTest, ReplaysCopyOnlyGraphAndRetainsBuffersUntilRelease) {
   // Only the captured copies now own the intermediate; replay must keep it alive.
   intermediate = nullptr;
   values = {4, 5, 6};
-  manager.Upload(recording, values.data(), source.Get(), sizeof(values));
+  ASSERT_STATUS_OK(context.CopyTensor(manager, recording, values.data(), false, source.Get(), true, sizeof(values)));
   context.Replay(commands, manager, recording);
   EXPECT_EQ(ReadBufferWithExternalCommandEncoder<3>(context, destination.Get()), values);
   EXPECT_EQ(recording.num_pending_dispatches, 0u);
@@ -1067,7 +1074,8 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   void* allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
-  buffer_manager.Upload(webgpu_ep->Recording(), nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  ASSERT_STATUS_OK(context.CopyTensor(buffer_manager, webgpu_ep->Recording(),
+                                      nonzero_data.data(), false, dirty_buffer, true, sizeof(nonzero_data)));
   allocator.Free(allocation);
 
   context.CaptureBegin(&captured_commands, buffer_manager, webgpu_ep->Recording());
@@ -1114,7 +1122,8 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
   void* allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
-  buffer_manager.Upload(webgpu_ep->Recording(), nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  ASSERT_STATUS_OK(context.CopyTensor(buffer_manager, webgpu_ep->Recording(),
+                                      nonzero_data.data(), false, dirty_buffer, true, sizeof(nonzero_data)));
   ASSERT_STATUS_OK(context.Flush(buffer_manager, webgpu_ep->Recording()));
   allocator.Free(allocation);
 

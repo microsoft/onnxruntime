@@ -460,8 +460,10 @@ static void CheckSingleTokenGateIndices(const std::vector<float>& logits, int k,
   logits_desc.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopyDst;
   auto logits_buffer = context.Device().CreateBuffer(&logits_desc);
   ASSERT_NE(logits_buffer.Get(), nullptr);
-  webgpu_ep.BufferManager().Upload(recording, use_fp16 ? static_cast<void*>(fp16_logits.data()) : static_cast<void*>(fp32_logits.data()),
-                                   logits_buffer.Get(), cols * element_size);
+  ASSERT_STATUS_OK(context.CopyTensor(
+      webgpu_ep.BufferManager(), recording,
+      use_fp16 ? static_cast<void*>(fp16_logits.data()) : static_cast<void*>(fp32_logits.data()), false,
+      logits_buffer.Get(), true, cols * element_size));
   wgpu::BufferDescriptor weights_desc{};
   weights_desc.size = buffer_size;
   weights_desc.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc;
@@ -488,7 +490,8 @@ static void CheckSingleTokenGateIndices(const std::vector<float>& logits, int k,
   ASSERT_STATUS_OK(compute_context.RunProgram(gate));
 
   std::vector<uint32_t> actual(k);
-  webgpu_ep.BufferManager().Download(recording, indices_buffer.Get(), actual.data(), actual.size() * sizeof(uint32_t));
+  ASSERT_STATUS_OK(context.CopyTensor(webgpu_ep.BufferManager(), recording, indices_buffer.Get(), true,
+                                      actual.data(), false, actual.size() * sizeof(uint32_t)));
   EXPECT_EQ(actual, expected);
 }
 

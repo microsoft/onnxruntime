@@ -3,44 +3,10 @@
 
 #include "core/providers/webgpu/data_transfer.h"
 
-#include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
 namespace webgpu {
-
-common::Status DataTransferImpl::CopyTensor(void const* src_data,
-                                            bool src_is_gpu,
-                                            void* dst_data,
-                                            bool dst_is_gpu,
-                                            size_t bytes) const {
-  auto& command_state = recording_;
-  if (bytes > 0) {
-    if (dst_is_gpu) {
-      if (src_is_gpu) {
-        // copy from GPU to GPU
-        buffer_manager_.MemCpy(command_state,
-                               static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
-                               static_cast<WGPUBuffer>(dst_data),
-                               bytes);
-      } else {
-        // copy from CPU to GPU
-        buffer_manager_.Upload(command_state,
-                               const_cast<void*>(src_data),
-                               static_cast<WGPUBuffer>(dst_data),
-                               bytes);
-      }
-    } else {
-      // copy from GPU to CPU
-      buffer_manager_.Download(command_state,
-                               static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
-                               dst_data,
-                               bytes);
-    }
-  }
-
-  return Status::OK();
-}
 
 bool DataTransfer::IsSupportedDevicePair(const OrtDevice& src_device, const OrtDevice& dst_device, int context_id) {
   // WebGPU allocations carry VendorIds::NONE. A vendor-tagged GPU handle belongs to another EP, and
@@ -64,11 +30,11 @@ bool DataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_dev
 }
 
 common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
-  return impl_.CopyTensor(src.DataRaw(),
-                          src.Location().device.Type() == OrtDevice::GPU,
-                          dst.MutableDataRaw(),
-                          dst.Location().device.Type() == OrtDevice::GPU,
-                          src.SizeInBytes());
+  return context_.CopyTensor(buffer_manager_, recording_, src.DataRaw(),
+                             src.Location().device.Type() == OrtDevice::GPU,
+                             dst.MutableDataRaw(),
+                             dst.Location().device.Type() == OrtDevice::GPU,
+                             src.SizeInBytes());
 }
 
 }  // namespace webgpu

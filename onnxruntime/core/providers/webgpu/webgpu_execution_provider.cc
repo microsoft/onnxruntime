@@ -79,7 +79,8 @@ class Memcpy final : public OpKernel {
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
     const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
-    DataTransfer transfer(ep.BufferManager(), ep.Recording(), ep.GetDeviceId());
+    DataTransfer transfer(WebGpuContextFactory::GetContext(ep.GetDeviceId()), ep.BufferManager(),
+                          ep.Recording(), ep.GetDeviceId());
     return transfer.CopyTensor(*X, *Y);
   }
 };
@@ -813,7 +814,7 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
 #endif  // !defined(ORT_USE_EP_API_ADAPTERS)
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<webgpu::DataTransfer>(BufferManager(), Recording(), context_id_);
+  return std::make_unique<webgpu::DataTransfer>(context_, BufferManager(), Recording(), context_id_);
 }
 
 #if defined(__wasm__)

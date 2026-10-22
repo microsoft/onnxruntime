@@ -826,7 +826,7 @@ TEST_F(WebGpuPluginSharedAllocatorTest, DeviceTensorDataRoundTripsWithSharedAndS
   }
 }
 
-// BufferManager::MemCpy rejects a self-copy with ORT_ENFORCE, which throws rather than returning a
+// WebGpuContext::CopyTensor rejects a self-copy with ORT_ENFORCE, which throws rather than returning a
 // Status. CopyTensorsImpl is a noexcept C ABI callback, so before the throw was converted to an
 // OrtStatus this ended the process instead of reporting the misuse.
 TEST_F(WebGpuPluginSharedAllocatorTest, DeviceTensorSelfCopyIsReportedInsteadOfTerminating) {

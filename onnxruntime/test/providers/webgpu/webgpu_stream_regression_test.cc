@@ -61,9 +61,11 @@ TEST(WebGpuContextTest, FillZeroClearsSessionBuffer) {
 
   std::array<uint32_t, 16> data;
   data.fill(42);
-  webgpu_ep.BufferManager().Upload(recording, data.data(), buffer.Get(), sizeof(data));
+  ASSERT_STATUS_OK(context.CopyTensor(webgpu_ep.BufferManager(), recording,
+                                      data.data(), false, buffer.Get(), true, sizeof(data)));
   compute_context.FillZero(tensor);
-  webgpu_ep.BufferManager().Download(recording, buffer.Get(), data.data(), sizeof(data));
+  ASSERT_STATUS_OK(context.CopyTensor(webgpu_ep.BufferManager(), recording,
+                                      buffer.Get(), true, data.data(), false, sizeof(data)));
   for (auto value : data) {
     EXPECT_EQ(value, 0u);
   }
