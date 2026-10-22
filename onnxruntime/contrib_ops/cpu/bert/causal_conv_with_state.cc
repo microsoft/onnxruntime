@@ -41,6 +41,12 @@ REGISTER_KERNEL_TYPED(float)
 
 template <typename T>
 CausalConvWithState<T>::CausalConvWithState(const OpKernelInfo& info) : OpKernel(info) {
+  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("input_channels", 0) == 0 &&
+                  info.GetAttrOrDefault<int64_t>("input_channel_offset", 0) == 0 &&
+                  info.GetAttrOrDefault<int64_t>("state_length", 0) == 0 &&
+                  info.GetAttrOrDefault<int64_t>("state_channels_last", -1) == -1 &&
+                  info.node().OutputDefs().size() <= 2,
+              "CPU CausalConvWithState does not support extended channel/state options (CUDA only)");
   int64_t ndim = info.GetAttrOrDefault<int64_t>("ndim", 1);
   ORT_ENFORCE(ndim == 1, "CPU CausalConvWithState only supports ndim=1");
   ndim_ = static_cast<int>(ndim);

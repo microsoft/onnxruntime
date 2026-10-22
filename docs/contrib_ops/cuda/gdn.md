@@ -1,5 +1,24 @@
 # GatedDeltaNet — Operator Documentation
 
+## Experimental two-token CUDA dispatch
+
+Set process-level tuning options before the first applicable invocation:
+
+- `ORT_GDN_S2_SPECIALIZE=1` specializes packed QKV for a single request with
+  two tokens, 16 query/key heads, 48 value heads, and 128-wide heads.
+  It additionally requires Qwen softplus-decay gates, sigmoid beta,
+  gated-delta updates, Q/K L2 normalization, uniform non-packed sequence
+  metadata, and no per-key decay, state-update capture, or tail passes.
+- `ORT_CAUSAL_CONV_S2_SPECIALIZE=1` specializes the companion
+  `CausalConvProjection` for length two, kernel/state length four, and dilation
+  one. Layout, optional bias/SiLU, and first-token state semantics are unchanged.
+- `ORT_GDN_DECODE_WARPS` selects 2, 4, or 8 warps for the existing warp decode
+  family; its default is 8.
+
+Both specialization switches default to `0` and accept only `0` or `1`.
+Unsupported geometry retains generic dispatch. These options do not alter
+operator schemas, state layouts, or the default package configuration.
+
 This document describes the `com.microsoft::GatedDeltaNet` contrib operator: its schema and
 state contract, the chunked and warp-specialised CUDA engines and how one is selected, the
 consumer-Blackwell shared-memory constraint, and measured comparisons against
