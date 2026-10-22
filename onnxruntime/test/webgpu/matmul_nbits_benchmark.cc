@@ -8,9 +8,15 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
-#include "onnxruntime_cxx_api.h"
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#include "core/session/onnxruntime_cxx_api.h"
 
 namespace {
 
@@ -35,6 +41,19 @@ void Copy(Ort::Env& env, const Ort::Value& from, Ort::Value& to) {
   Ort::ThrowOnError(Ort::GetApi().CopyTensors(env, &source, &target, nullptr, 1));
 }
 
+#ifdef _WIN32
+void PrintLoadedModule(const char* label, const wchar_t* name) {
+  const HMODULE module = GetModuleHandleW(name);
+  std::wstring path(32768, L'\0');
+  const DWORD length = module ? GetModuleFileNameW(module, path.data(), static_cast<DWORD>(path.size())) : 0;
+  if (length == 0 || length == path.size()) {
+    throw std::runtime_error("Cannot identify the loaded benchmark binary.");
+  }
+  path.resize(length);
+  std::cout << label << '=' << std::filesystem::path(path).string() << '\n';
+}
+#endif
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -47,23 +66,66 @@ int main(int argc, char** argv) {
     if (mode != "auto" && mode != "regular" && mode != "simt") {
       throw std::invalid_argument("mode must be auto, regular, or simt");
     }
+#ifdef _WIN32
+    if (!SetEnvironmentVariableA("ORT_WEBGPU_SMALL_M_DIAGNOSTIC", mode.c_str())) {
+#else
     if (setenv("ORT_WEBGPU_SMALL_M_DIAGNOSTIC", mode.c_str(), 1) != 0) {
+#endif
       throw std::runtime_error("Cannot set the explicit diagnostic selection.");
     }
     const int warmup = ParseCount(argv[4], false), repeat = ParseCount(argv[5], true);
-    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "small-m-simt");
+    std::cout << "ORT_BUILD=" << Ort::GetBuildInfoString() << '\n';
+    Ort::Env env(ORT_LOGGING_LEVEL_INFO, "small-m-simt");
     Ort::SessionOptions options;
     options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
     options.SetIntraOpNumThreads(1);
     options.SetInterOpNumThreads(1);
     options.AddConfigEntry("session.disable_cpu_ep_fallback", "1");
-    options.EnableProfiling(prefix.c_str());
-    options.AppendExecutionProvider("WebGPU", {{"dawnBackendType", "Vulkan"},
-                                               {"enableGraphCapture", "0"},
-                                               {"enableRobustness", "0"},
-                                               {"validationMode", argv[6]},
-                                               {"enableMatmulFp32Accumulation", argv[7]}});
-    Ort::Session session(env, argv[1], options);
+    const auto profile_prefix = std::filesystem::path(prefix);
+    options.EnableProfiling(profile_prefix.c_str());
+#ifdef _WIN32
+    constexpr const char* backend = "D3D12";
+#else
+    constexpr const char* backend = "Vulkan";
+#endif
+    const std::unordered_map<std::string, std::string> provider_options{{"dawnBackendType", backend},
+                                                                        {"enableGraphCapture", "0"},
+                                                                        {"enableRobustness", "0"},
+                                                                        {"validationMode", argv[6]},
+                                                                        {"enableMatmulFp32Accumulation", argv[7]}};
+#ifdef ORT_WEBGPU_BENCHMARK_PLUGIN_PATH
+    std::cout << "ORT_PROVIDER_MODE=shared-plugin\n";
+    env.RegisterExecutionProviderLibrary("small_m_simt", ORT_TSTR_ON_MACRO(ORT_WEBGPU_BENCHMARK_PLUGIN_PATH));
+#elif defined(ORT_WEBGPU_BENCHMARK_STATIC_PLUGIN)
+    std::cout << "ORT_PROVIDER_MODE=static-plugin\n";
+#else
+  std::cout << "ORT_PROVIDER_MODE=in-tree\n";
+#endif
+#if defined(ORT_WEBGPU_BENCHMARK_PLUGIN_PATH) || defined(ORT_WEBGPU_BENCHMARK_STATIC_PLUGIN)
+    std::vector<Ort::ConstEpDevice> devices;
+    for (const auto& device : env.GetEpDevices()) {
+      if (std::string_view{device.EpName()} == "WebGpuExecutionProvider" &&
+          device.Device().Type() == OrtHardwareDeviceType_GPU) {
+        devices.push_back(device);
+      }
+    }
+    if (devices.size() != 1) {
+      throw std::runtime_error("Benchmark requires exactly one WebGPU hardware GPU; refuse ambiguous/software selection.");
+    }
+    options.AppendExecutionProvider_V2(env, devices, provider_options);
+    std::cout << "ADAPTER_VENDOR_ID=" << devices[0].Device().VendorId()
+              << "\nADAPTER_DEVICE_ID=" << devices[0].Device().DeviceId() << '\n';
+#else
+    options.AppendExecutionProvider("WebGPU", provider_options);
+#endif
+    const auto model_path = std::filesystem::path(argv[1]);
+    Ort::Session session(env, model_path.c_str(), options);
+#ifdef _WIN32
+    PrintLoadedModule("ORT_CORE_PATH", L"onnxruntime.dll");
+#ifdef ORT_WEBGPU_BENCHMARK_PLUGIN_PATH
+    PrintLoadedModule("ORT_PLUGIN_PATH", ORT_TSTR_ON_MACRO(ORT_WEBGPU_BENCHMARK_PLUGIN_PATH));
+#endif
+#endif
     Ort::AllocatorWithDefaultOptions cpu_allocator;
     Ort::MemoryInfo gpu_info("WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault);
     Ort::Allocator gpu_allocator(session, gpu_info);
@@ -110,8 +172,10 @@ int main(int argc, char** argv) {
     const auto last_shape = outputs.back().GetTensorTypeAndShapeInfo().GetShape();
     auto fence = Ort::Value::CreateTensor<Ort::Float16_t>(cpu_allocator, last_shape.data(), last_shape.size());
     Ort::RunOptions run;
+    run.SetRunLogSeverityLevel(ORT_LOGGING_LEVEL_INFO);
     const auto run_and_wait = [&]() {
       session.Run(run, binding);
+      run.SetRunLogSeverityLevel(ORT_LOGGING_LEVEL_WARNING);
       Copy(env, outputs.back(), fence);
     };
     for (int i = 0; i < warmup; ++i) {
@@ -123,7 +187,8 @@ int main(int argc, char** argv) {
       run_and_wait();
     }
     std::cout << "MEASURE_END=" << Timestamp() << '\n';
-    std::cout << "PROFILE=" << session.EndProfilingAllocated(cpu_allocator).get() << '\n';
+    const auto profile_path = session.EndProfilingAllocated(cpu_allocator);
+    std::cout << "PROFILE=" << std::filesystem::path(profile_path.get()).string() << '\n';
     std::ofstream output(prefix + "-outputs.bin", std::ios::binary);
     std::ofstream index(prefix + "-outputs.tsv");
     size_t offset = 0;

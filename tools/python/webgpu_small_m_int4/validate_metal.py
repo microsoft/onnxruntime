@@ -25,15 +25,15 @@ def main():
     sources = {}
     for dump in args.dump:
         for code in re.findall(
-            r"=== WebGPU Shader code \[DiagnosticSmallMSimt,[^\n]*\] Start ===\n\n"
-            r"(.*?)\n=== WebGPU Shader code \[DiagnosticSmallMSimt,[^\n]*\] End ===",
+            r"=== WebGPU Shader code \[(?:MatMulNBitsSmallMSimt|DiagnosticSmallMSimt),[^\n]*\] Start ===\n\n"
+            r"(.*?)\n=== WebGPU Shader code \[(?:MatMulNBitsSmallMSimt|DiagnosticSmallMSimt),[^\n]*\] End ===",
             dump.read_text(),
             re.DOTALL,
         ):
             digest = hashlib.sha256(code.encode()).hexdigest()
             sources.setdefault(digest, (code, []))[1].append(str(dump))
     if not sources:
-        raise ValueError("No actual DiagnosticSmallMSimt shader dumps were found.")
+        raise ValueError("No actual small-M SIMT shader dumps were found.")
     report = {
         "dawn_dependency": dependency,
         "tint": str(args.tint.resolve()),

@@ -359,6 +359,12 @@ class ProgramBase {
     return *this;
   }
 
+  // Omit subgroup extensions and builtins for programs that do not use them.
+  ProgramBase& SetUseSubgroups(bool value) {
+    use_subgroups_ = value;
+    return *this;
+  }
+
   // add a uniform variable.
   //
   // the specified uniform variable should match the uniform definition in the class,
@@ -405,6 +411,7 @@ class ProgramBase {
   inline uint32_t WorkgroupSizeZ() const { return workgroup_size_z_; }
   inline uint32_t SubgroupSize() const { return subgroup_size_; }
   inline bool UseSubgroupId() const { return use_subgroup_id_; }
+  inline bool UseSubgroups() const { return use_subgroups_; }
   inline const std::vector<ProgramUniformVariableValue>& UniformVariables() const { return variables_; }
   inline const std::vector<ProgramOverridableConstantValue>& OverridableConstants() const { return overridable_constants_; }
 
@@ -435,6 +442,7 @@ class ProgramBase {
   uint32_t workgroup_size_z_;
   uint32_t subgroup_size_;
   bool use_subgroup_id_{false};
+  bool use_subgroups_{true};
 
   std::vector<ProgramUniformVariableValue> variables_;
   std::vector<ProgramOverridableConstantValue> overridable_constants_;

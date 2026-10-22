@@ -1,12 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
-
-#include <cstdlib>
-#include <initializer_list>
-#include <string>
-#include <string_view>
+#include "contrib_ops/webgpu/quantization/matmul_nbits_small_m_simt.h"
 
 #include "core/common/safeint.h"
 #include "core/providers/webgpu/compute_context.h"
@@ -14,28 +9,19 @@
 #include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime::contrib::webgpu {
+
+using namespace onnxruntime::webgpu;
+
 namespace {
-
-uint32_t DiagnosticTileSize(const char* name, uint32_t fallback, std::initializer_list<uint32_t> supported) {
-  const char* text = std::getenv(name);
-  if (text == nullptr) {
-    return fallback;
-  }
-  for (uint32_t value : supported) {
-    if (std::string_view{text} == std::to_string(value)) {
-      return value;
-    }
-  }
-  ORT_THROW("Unsupported diagnostic tile setting: ", name, "=", text);
-}
-
-class DiagnosticSmallMSimtProgram final : public Program<DiagnosticSmallMSimtProgram> {
+class MatMulNBitsSmallMSimtProgram final : public Program<MatMulNBitsSmallMSimtProgram> {
  public:
-  DiagnosticSmallMSimtProgram(uint32_t bm, uint32_t bn, uint32_t bk, uint32_t a_components,
-                              uint32_t a_block_padding, bool has_zero_points, bool has_bias, bool single_scale)
-      : Program{"DiagnosticSmallMSimt"}, bm_{bm}, bn_{bn}, bk_{bk}, a_components_{a_components}, a_block_padding_{a_block_padding}, has_zero_points_{has_zero_points}, has_bias_{has_bias}, single_scale_{single_scale} {}
+  MatMulNBitsSmallMSimtProgram(uint32_t bm, uint32_t bn, uint32_t bk, uint32_t a_components,
+                               uint32_t a_block_padding, bool has_zero_points, bool has_bias, bool single_scale)
+      : Program{"MatMulNBitsSmallMSimt"}, bm_{bm}, bn_{bn}, bk_{bk}, a_components_{a_components}, a_block_padding_{a_block_padding}, has_zero_points_{has_zero_points}, has_bias_{has_bias}, single_scale_{single_scale} {
+    SetUseSubgroups(false);
+  }
 
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DiagnosticSmallMSimtProgram);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulNBitsSmallMSimtProgram);
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     const auto& a = shader.AddInput("a", ShaderUsage::UseValueTypeAlias);
@@ -190,12 +176,14 @@ class DiagnosticSmallMSimtProgram final : public Program<DiagnosticSmallMSimtPro
   bool has_bias_;
   bool single_scale_;
 };
+}  // namespace
 
-Status RunDiagnosticSmallMSimt(const Tensor* a, const Tensor* b, const Tensor* scales,
-                               const Tensor* zero_points, const Tensor* bias, uint32_t M, uint32_t N,
-                               uint32_t K, uint32_t block_size, uint32_t batch_count, uint32_t weight_index,
-                               const Tensor* weight_index_indirect, uint32_t dispatch_M, uint32_t nbits,
-                               onnxruntime::webgpu::ComputeContext& context, Tensor* y) {
+Status ApplySmallMSimtMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
+                                  const Tensor* zero_points, const Tensor* bias, uint32_t M, uint32_t N,
+                                  uint32_t K, uint32_t block_size, uint32_t batch_count, uint32_t weight_index,
+                                  const Tensor* weight_index_indirect, uint32_t dispatch_M, uint32_t nbits,
+                                  onnxruntime::webgpu::ComputeContext& context, Tensor* y,
+                                  const SmallMSimtConfig& config) {
   ORT_RETURN_IF_NOT(nbits == 4 && M >= 1 && M <= 8 && N > 0 && K > 0,
                     "SIMT diagnostic requires INT4, 1 <= effective M <= 8, and positive N/K.");
   ORT_RETURN_IF_NOT(context.HasFeature(wgpu::FeatureName::ShaderF16) &&
@@ -232,16 +220,17 @@ Status RunDiagnosticSmallMSimt(const Tensor* a, const Tensor* b, const Tensor* s
 
   const uint32_t bm = M <= 2 ? M : M <= 4 ? 4
                                           : 8;
-  const uint32_t bn = DiagnosticTileSize("ORT_WEBGPU_SMALL_M_BN", 16, {8, 16, 32});
-  const uint32_t bk = DiagnosticTileSize("ORT_WEBGPU_SMALL_M_BK", 512, {256, 512, 1024});
-  const uint32_t a_block_padding = DiagnosticTileSize("ORT_WEBGPU_SMALL_M_A_BLOCK_PADDING", 0, {0, 1});
+  const auto [bn, bk, a_block_padding] = config;
+  ORT_RETURN_IF_NOT((bn == 8 || bn == 16 || bn == 32) && (bk == 256 || bk == 512 || bk == 1024) &&
+                        a_block_padding <= 1,
+                    "Unsupported small-M SIMT tile configuration.");
   const uint32_t shared_bytes = bm * (bk / 32) * (8 + a_block_padding) * 8 + bm * 128 * 4;
   ORT_RETURN_IF_NOT(shared_bytes <= context.DeviceLimits().maxComputeWorkgroupStorageSize,
                     "SIMT diagnostic workgroup storage exceeds the device limit: ", shared_bytes);
   const uint32_t a_components = K % 4 == 0 ? 4 : 1;
   const uint32_t n_tiles = CeilDiv(N, bn);
-  DiagnosticSmallMSimtProgram program{bm, bn, bk, a_components, a_block_padding,
-                                      zero_points != nullptr, bias != nullptr, single_scale};
+  MatMulNBitsSmallMSimtProgram program{bm, bn, bk, a_components, a_block_padding,
+                                       zero_points != nullptr, bias != nullptr, single_scale};
   program.SetWorkgroupSize(128);
   program.SetDispatchGroupSize(n_tiles, batch_count);
   program.AddInput({a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(a_components)});
@@ -260,5 +249,4 @@ Status RunDiagnosticSmallMSimt(const Tensor* a, const Tensor* b, const Tensor* s
   return context.RunProgram(program);
 }
 
-}  // namespace
 }  // namespace onnxruntime::contrib::webgpu

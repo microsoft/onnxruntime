@@ -18,10 +18,6 @@ import numpy as np
 import onnx
 from reference import assert_fp32_accuracy, errors, pack_nibbles, pack_zero_points, projection
 
-ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_OUTPUT = ROOT / "build/webgpu-small-m-simt"
-DEFAULT_MODEL = Path("/workspace/models/qwen3.8-27b-int4-webgpu-paged/model.onnx")
-DEFAULT_CAPTURES = ROOT / "build/mlp-up-epilogue-20261021/current-wall"
 SHAPES = {(5120, 1024), (5120, 10240), (5120, 17408), (17408, 5120)}
 MS = (1, 2, 3, 4, 5, 7, 8)
 
@@ -224,18 +220,20 @@ def write_model(cases, directory):
     return model_path
 
 
-def invoke(args, model, prefix, mode, warmup, repeat, *, fp32=False, validation="full", dump=False):
+def invoke(
+    args, model, prefix, mode, warmup, repeat, *, fp32=False, validation="full", dump=False, require_gpu_timing=True
+):
     env = {
         **os.environ,
-        "VK_ICD_FILENAMES": str(args.icd),
-        "XDG_RUNTIME_DIR": "/tmp",
         "OPENBLAS_NUM_THREADS": "1",
         "OMP_NUM_THREADS": "1",
         "ORT_WEBGPU_SMALL_M_BN": str(args.bn),
         "ORT_WEBGPU_SMALL_M_BK": str(args.bk),
         "ORT_WEBGPU_SMALL_M_A_BLOCK_PADDING": str(args.a_block_padding),
     }
-    env.pop("VK_DRIVER_FILES", None)
+    if args.icd is not None:
+        env["VK_ICD_FILENAMES"] = str(args.icd)
+        env.pop("VK_DRIVER_FILES", None)
     if dump:
         env["ORT_WEBGPU_EP_SHADER_DUMP_FILE"] = str(prefix) + ".wgsl"
     if getattr(args, "stats_library", None) is not None:
@@ -254,21 +252,28 @@ def invoke(args, model, prefix, mode, warmup, repeat, *, fp32=False, validation=
         mode,
     ]
     with Path(str(prefix) + "-clocks.csv").open("w") as clock_file:
-        monitor = subprocess.Popen(
-            [
-                "nvidia-smi",
-                "--query-gpu=timestamp,clocks.sm,clocks.mem,utilization.gpu,temperature.gpu",
-                "--format=csv,noheader,nounits",
-                "--loop-ms=50",
-            ],
-            stdout=clock_file,
-            stderr=subprocess.STDOUT,
+        monitor = (
+            subprocess.Popen(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=timestamp,clocks.sm,clocks.mem,utilization.gpu,temperature.gpu",
+                    "--format=csv,noheader,nounits",
+                    "--loop-ms=50",
+                ],
+                stdout=clock_file,
+                stderr=subprocess.STDOUT,
+            )
+            if args.monitor_nvidia
+            else None
         )
         try:
             process = subprocess.run(command, env=env, capture_output=True, text=True, check=False)
         finally:
-            monitor.terminate()
-            monitor.wait()
+            if monitor is not None:
+                if monitor.poll() is not None:
+                    raise RuntimeError(f"NVIDIA clock monitor exited prematurely: {monitor.returncode}")
+                monitor.terminate()
+                monitor.wait()
     text = process.stdout + process.stderr
     Path(str(prefix) + ".log").write_text(text)
     if process.returncode:
@@ -279,11 +284,17 @@ def invoke(args, model, prefix, mode, warmup, repeat, *, fp32=False, validation=
     if not nodes or any(e["args"].get("provider") != "WebGpuExecutionProvider" for e in nodes):
         raise AssertionError("The diagnostic did not exclusively execute nodes on WebGPU.")
     kernels = [e for e in events if e.get("cat") == "Api" and e.get("ph") == "X"]
-    if not kernels:
+    if require_gpu_timing and not kernels:
         raise AssertionError("No native GPU timestamp events were captured.")
-    programs = Counter(e["name"].split("&")[-1] for e in kernels)
+    programs = (
+        Counter(e["name"].split("&")[-1] for e in kernels)
+        if kernels
+        else Counter(re.findall(r'Starting program "([^[:"]+)', text))
+    )
+    if not programs:
+        raise AssertionError("No actual program dispatches were observed.")
     if mode in ("simt", "regular"):
-        expected = "DiagnosticSmallMSimt" if mode == "simt" else "MatMulNBits"
+        expected = "MatMulNBitsSmallMSimt" if mode == "simt" else "MatMulNBits"
         if set(programs) != {expected}:
             raise AssertionError(f"Unexpected GPU dispatches: {programs}")
     stamps = {key: int(value) for key, value in re.findall(r"(MEASURE_START|MEASURE_END)=(\d+)", text)}
@@ -293,7 +304,7 @@ def invoke(args, model, prefix, mode, warmup, repeat, *, fp32=False, validation=
         if len(fields) != 5:
             raise ValueError(f"Invalid clock sample: {line}")
         timestamp = datetime.datetime.strptime(fields[0].strip(), "%Y/%m/%d %H:%M:%S.%f")
-        timestamp = timestamp.replace(tzinfo=datetime.timezone.utc).timestamp() * 1e6
+        timestamp = timestamp.timestamp() * 1e6
         if stamps["MEASURE_START"] <= timestamp <= stamps["MEASURE_END"]:
             clocks.append([int(value) for value in fields[1:]])
     result = {
@@ -303,8 +314,10 @@ def invoke(args, model, prefix, mode, warmup, repeat, *, fp32=False, validation=
         "warmup": warmup,
         "repeat": repeat,
         "programs": dict(programs),
+        "gpu_timestamps_available": bool(kernels),
         "profile": str(profile),
         "clocks_sm_mem_util_temp": clocks,
+        "clock_monitor": "nvidia-smi" if args.monitor_nvidia else "unavailable; not monitored",
         "measurement_timestamps": stamps,
         "BN": args.bn,
         "BK": args.bk,
@@ -333,7 +346,15 @@ def correctness(args):
     for mode in ("simt", "regular", "regular-f32"):
         native_mode = "regular" if mode == "regular-f32" else mode
         run, _, flat = invoke(
-            args, model, args.output / mode, native_mode, 1, 1, fp32=mode == "regular-f32", dump=mode == "simt"
+            args,
+            model,
+            args.output / mode,
+            native_mode,
+            1,
+            1,
+            fp32=mode == "regular-f32",
+            dump=mode == "simt",
+            require_gpu_timing=False,
         )
         values[mode] = split_outputs(cases, flat)
         runs[mode] = run
@@ -494,7 +515,9 @@ def benchmark(args):
         "hardware": subprocess.check_output(
             ["nvidia-smi", "--query-gpu=name,driver_version,memory.total", "--format=csv"],
             text=True,
-        ),
+        )
+        if args.monitor_nvidia
+        else "See native runner logs for the selected adapter; clocks not monitored.",
     }
     for mi, m in enumerate(args.m):
         directory = args.output / f"m{m}" / "model"
@@ -577,8 +600,9 @@ def resources(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--executable", type=Path, default=DEFAULT_OUTPUT / "diagnostic")
-    parser.add_argument("--icd", type=Path, default=Path("/tmp/nvidia_icd.json"))
+    parser.add_argument("--executable", type=Path, required=True, help="Normal CMake MatMulNBits benchmark target.")
+    parser.add_argument("--icd", type=Path, help="Optional Vulkan ICD override; unused on D3D12.")
+    parser.add_argument("--monitor-nvidia", action="store_true", help="Collect NVIDIA clocks using nvidia-smi.")
     parser.add_argument("--bn", type=int, choices=(8, 16, 32), default=16)
     parser.add_argument("--bk", type=int, choices=(256, 512, 1024), default=512)
     parser.add_argument("--a-block-padding", type=int, choices=(0, 1), default=0)
@@ -588,8 +612,8 @@ def main():
     check.add_argument("--smoke", action="store_true")
     bench = commands.add_parser("benchmark")
     bench.add_argument("--output", type=Path, required=True)
-    bench.add_argument("--weights-model", type=Path, default=DEFAULT_MODEL)
-    bench.add_argument("--captures", type=Path, default=DEFAULT_CAPTURES)
+    bench.add_argument("--weights-model", type=Path, required=True)
+    bench.add_argument("--captures", type=Path, required=True)
     bench.add_argument("--m", type=int, nargs="+", choices=(2, 4, 8), default=[2, 4, 8])
     bench.add_argument(
         "--modes", nargs="+", choices=("simt", "regular", "regular-f32", "auto"), default=["regular", "simt", "auto"]
@@ -603,7 +627,7 @@ def main():
     bench.add_argument("--validation", choices=("full", "disabled"), default="full")
     stats = commands.add_parser("resources")
     stats.add_argument("--output", type=Path, required=True)
-    stats.add_argument("--stats-library", type=Path, default=ROOT / "build/int4-native-investigation/pipeline_stats.so")
+    stats.add_argument("--stats-library", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "correctness":
         correctness(args)

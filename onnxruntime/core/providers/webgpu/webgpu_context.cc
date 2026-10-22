@@ -449,6 +449,10 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     }
 #endif
     ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_) == wgpu::Status::Success);
+    LOGS_DEFAULT(INFO) << "WebGPU adapter: vendor_id=" << adapter_info_.vendorID
+                       << ", device_id=" << adapter_info_.deviceID
+                       << ", backend_type=" << static_cast<uint32_t>(adapter_info_.backendType)
+                       << ", adapter_type=" << static_cast<uint32_t>(adapter_info_.adapterType);
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
     // Use the backend selected by Dawn rather than the requested backend. The
     // request can be Undefined when Dawn performs automatic adapter selection.

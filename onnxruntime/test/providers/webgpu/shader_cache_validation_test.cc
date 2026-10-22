@@ -6,6 +6,7 @@
 
 #include "gtest/gtest.h"
 #include "core/providers/webgpu/program_manager.h"
+#include "core/providers/webgpu/program_cache_key.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
@@ -74,6 +75,16 @@ class DiagnosticProgram final : public webgpu::Program<DiagnosticProgram> {
   size_t& generations_;
 };
 }  // namespace
+
+TEST(WebGpuShaderCacheValidationTest, SubgroupOptOutChangesCacheIdentity) {
+  size_t generations = 0;
+  DiagnosticProgram program{1, 10, 2, generations};
+  const auto original_key = webgpu::CalculateProgramCacheKey(program, {}, {});
+  program.SetUseSubgroups(false);
+  EXPECT_NE(original_key, webgpu::CalculateProgramCacheKey(program, {}, {}));
+  program.SetUseSubgroups(true);
+  EXPECT_EQ(original_key, webgpu::CalculateProgramCacheKey(program, {}, {}));
+}
 
 TEST(WebGpuShaderCacheValidationTest, ChecksPendingAndCompletedDescriptionsWithoutCompilingAgain) {
   auto provider = DefaultWebGpuExecutionProvider();
