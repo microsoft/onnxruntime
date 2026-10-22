@@ -21,6 +21,8 @@ using namespace onnxruntime::cuda;
       (*KernelDefBuilder::Create())                                        \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())           \
           .TypeConstraint("F", DataTypeImpl::GetTensorType<float>())       \
+          .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>())    \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                         \
           .TypeConstraint("M", {DataTypeImpl::GetTensorType<float>(),      \
                                 DataTypeImpl::GetTensorType<MLFloat16>(),  \
                                 DataTypeImpl::GetTensorType<BFloat16>()}), \
@@ -56,6 +58,17 @@ Status BranchwiseRMSNorm<T>::ComputeInternal(OpKernelContext* context) const {
   using CudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
   const auto* x = context->Input<Tensor>(0);
   const auto* scale = context->Input<Tensor>(1);
+  const auto* numerical_mode = context->Input<Tensor>(2);
+  bool dense_prefill = false;
+  if (numerical_mode != nullptr) {
+    ORT_RETURN_IF_NOT(numerical_mode->Shape().Size() == 1,
+                      "prefill_numerics must contain one int32 value");
+    const int32_t mode = *numerical_mode->Data<int32_t>();
+    ORT_RETURN_IF_NOT(mode == 0 || mode == 1, "prefill_numerics must be 0 or 1");
+    dense_prefill = mode == 1;
+    ORT_RETURN_IF_NOT(!dense_prefill || use_onnx_arithmetic_,
+                      "Dense prefill numerical mode requires use_onnx_arithmetic=1");
+  }
   auto output_dims = x->Shape().AsShapeVector();
   ORT_RETURN_IF_NOT(!output_dims.empty(), "BranchwiseRMSNorm requires a non-scalar input");
   const int64_t input_stride = output_dims.back();
@@ -103,7 +116,7 @@ Status BranchwiseRMSNorm<T>::ComputeInternal(OpKernelContext* context) const {
         scale == nullptr || scale->Shape().Size() == params.hidden, epsilon_,
         widened == nullptr ? nullptr : widened->MutableData<float>(),
         squares.get(), sums.get(), buffer.get(), buffer_size,
-        static_cast<int>(input_width_ == 0 ? params.hidden : input_stride), deterministic_compute);
+        static_cast<int>(input_width_ == 0 ? params.hidden : input_stride), deterministic_compute, dense_prefill);
   }
   return LaunchMixedScaleBranchwiseRMSNorm<CudaT>(
       Stream(context), x_data, scale == nullptr ? nullptr : scale->DataRaw(),

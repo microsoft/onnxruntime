@@ -184,6 +184,11 @@ template Status RunRotaryEmbedding<MLFloat16>(concurrency::ThreadPool* tp, Rotar
 
 template <typename T>
 Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
+  const auto* numerics = context->Input<Tensor>(4);
+  ORT_RETURN_IF_NOT(numerics == nullptr ||
+                        (numerics->IsDataType<int32_t>() && numerics->Shape().Size() == 1 &&
+                         numerics->Data<int32_t>()[0] == 0),
+                    "RotaryEmbedding: nonzero prefill_numerics requires CUDA");
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* position_ids = context->Input<Tensor>(1);
   const Tensor* cos_cache = context->Input<Tensor>(2);

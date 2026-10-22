@@ -68,6 +68,11 @@ BranchwiseRMSNorm::BranchwiseRMSNorm(const OpKernelInfo& info)
 }
 
 Status BranchwiseRMSNorm::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+  const auto* numerics = context.Input(2);
+  ORT_RETURN_IF_NOT(numerics == nullptr ||
+                        (numerics->IsDataType<int32_t>() && numerics->Shape().Size() == 1 &&
+                         numerics->Data<int32_t>()[0] == 0),
+                    "BranchwiseRMSNorm: nonzero prefill_numerics requires CUDA");
   const auto* x = context.Input(0);
   const auto* scale = context.Input(1);
   hyper_connection::StreamShape params;

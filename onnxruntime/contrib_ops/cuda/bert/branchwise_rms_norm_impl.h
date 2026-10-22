@@ -20,6 +20,6 @@ Status LaunchStandardBranchwiseRMSNorm(cudaStream_t stream, const T* x, const vo
                                        int hidden, bool shared_scale, float epsilon,
                                        float* widened, float* squares, float* sums, void* reduction_buffer,
                                        size_t reduction_buffer_size, int input_row_stride,
-                                       bool deterministic_compute);
+                                       bool deterministic_compute, bool reciprocal_multiply = false);
 
 }  // namespace onnxruntime::contrib::cuda
