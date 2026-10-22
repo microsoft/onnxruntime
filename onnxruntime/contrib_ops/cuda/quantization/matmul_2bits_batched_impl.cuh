@@ -22,7 +22,8 @@ constexpr int kSmallMMax2b = 8;
 // dequantized weight chunk is reused across CtaM rows and one activation chunk across CtaN
 // channels. Scales and zero points are read straight from global memory; unlike the m1 kernel
 // there is no reuse across warps to justify staging them.
-template <class T, int block_size, bool has_zero_point, int CtaM, int CtaN, int Unroll = 1>
+template <class T, int block_size, bool has_zero_point, int CtaM, int CtaN, int Unroll = 1,
+          bool SwiGLU = false>
 __global__ void __launch_bounds__(kWarpSize2b* kColsPerThreadBlock2b, 3) MatMulFloat2bKernelBatched(
     T* output,
     const T* a_data,
@@ -36,7 +37,9 @@ __global__ void __launch_bounds__(kWarpSize2b* kColsPerThreadBlock2b, 3) MatMulF
   using Acc = typename Traits2b<T>::Acc;
   const int lane_id = threadIdx.x;
   const int warp_id = threadIdx.y;
-  const int col_base = (blockIdx.x * kColsPerThreadBlock2b + warp_id) * CtaN;
+  static_assert(!SwiGLU || (std::is_same_v<T, half> && CtaN == 2 && !has_zero_point));
+  const int col_base = (blockIdx.x * kColsPerThreadBlock2b + warp_id) * (SwiGLU ? 1 : CtaN);
+  const int col_stride = SwiGLU ? n / 2 : 1;
   const int m_base = blockIdx.y * CtaM;
   const int valid = m - m_base;
   constexpr int k_per_iter = kWarpSize2b * kElementsPerThreadPerIteration2b;
@@ -48,7 +51,7 @@ __global__ void __launch_bounds__(kWarpSize2b* kColsPerThreadBlock2b, 3) MatMulF
 #pragma unroll
   for (int c = 0; c < CtaN; ++c) {
     b_ptr[c] = b_data_quant +
-               static_cast<size_t>(col_base + c) * blocks_per_K * (block_size / kElementsPerByte2b) + lane_offset / kElementsPerByte2b;
+               static_cast<size_t>(col_base + c * col_stride) * blocks_per_K * (block_size / kElementsPerByte2b) + lane_offset / kElementsPerByte2b;
   }
 
   Acc acc[CtaM][CtaN];
@@ -72,7 +75,7 @@ __global__ void __launch_bounds__(kWarpSize2b* kColsPerThreadBlock2b, 3) MatMulF
         zp = UnpackZeroPoint2b(zero_points + static_cast<size_t>(col_base + c) * zp_bytes_per_col, blk);
       }
       DequantizeSixteen2b(*reinterpret_cast<const uint32_t*>(b_ptr[c] + k_id / kElementsPerByte2b),
-                          scales_data[static_cast<size_t>(col_base + c) * blocks_per_K + blk], zp, w[c]);
+                          scales_data[static_cast<size_t>(col_base + c * col_stride) * blocks_per_K + blk], zp, w[c]);
     }
 #pragma unroll
     for (int r = 0; r < CtaM; ++r) {
@@ -97,7 +100,7 @@ __global__ void __launch_bounds__(kWarpSize2b* kColsPerThreadBlock2b, 3) MatMulF
         zp = UnpackZeroPoint2b(zero_points + static_cast<size_t>(col_base + c) * zp_bytes_per_col, blk);
       }
       DequantizeSixteen2b(*reinterpret_cast<const uint32_t*>(b_ptr[c] + k_id / kElementsPerByte2b),
-                          scales_data[static_cast<size_t>(col_base + c) * blocks_per_K + blk], zp, w[c]);
+                          scales_data[static_cast<size_t>(col_base + c * col_stride) * blocks_per_K + blk], zp, w[c]);
     }
 #pragma unroll
     for (int r = 0; r < CtaM; ++r) {
@@ -115,6 +118,7 @@ __global__ void __launch_bounds__(kWarpSize2b* kColsPerThreadBlock2b, 3) MatMulF
 #pragma unroll
   for (int r = 0; r < CtaM; ++r) {
     if (r >= valid) continue;
+    T rounded[CtaN];
 #pragma unroll
     for (int c = 0; c < CtaN; ++c) {
       float sum = HorizontalAdd2b(acc[r][c]);
@@ -122,7 +126,17 @@ __global__ void __launch_bounds__(kWarpSize2b* kColsPerThreadBlock2b, 3) MatMulF
         sum += onnxruntime::cuda::WARP_SHFL_DOWN(sum, offset);
       }
       if (lane_id == 0) {
-        output[static_cast<size_t>(m_base + r) * n + (col_base + c)] = static_cast<T>(sum);
+        if constexpr (SwiGLU) {
+          rounded[c] = static_cast<T>(sum);
+        } else {
+          output[static_cast<size_t>(m_base + r) * n + (col_base + c)] = static_cast<T>(sum);
+        }
+      }
+    }
+    if constexpr (SwiGLU) {
+      if (lane_id == 0) {
+        output[static_cast<size_t>(m_base + r) * (n / 2) + col_base] =
+            MatMul2BitsSwiGLU(rounded[0], rounded[1]);
       }
     }
   }

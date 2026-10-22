@@ -100,6 +100,7 @@ class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, GatedDeltaNetStateReplay
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, GatedRMSNorm);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, GatedAdd);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, MatMulSigmoidGatedResidual);
+class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, MatMulNBitsSwiGLU);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, NGramHashMapping);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, VarlenNGramHashMapping);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, EngramGate);
@@ -236,6 +237,7 @@ class OpSet_Microsoft_ver1 {
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, GatedRMSNorm)>());
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, GatedAdd)>());
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, MatMulSigmoidGatedResidual)>());
+    fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, MatMulNBitsSwiGLU)>());
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, NGramHashMapping)>());
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, VarlenNGramHashMapping)>());
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, EngramGate)>());

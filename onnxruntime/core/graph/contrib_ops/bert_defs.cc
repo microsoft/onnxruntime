@@ -4834,6 +4834,43 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
+    MatMulNBitsSwiGLU, 1,
+    OpSchema()
+        .SetDoc("FP16 symmetric group-128 INT2 packed gate/up projection with SwiGLU. "
+                "Equivalent to MatMulNBits(bits=2, block_size=128), splitting the N columns "
+                "into equal gate/up halves, then QuickGelu(gate, alpha=1) * up. "
+                "Projection, QuickGelu and the final multiply round separately to FP16; "
+                "the fused sigmoid/product inside QuickGelu uses FP32 arithmetic. "
+                "This matches optimized Swish, not an unoptimized FP16 Sigmoid/Mul chain. "
+                "Zero points, bias, reordered or prepacked weights are not supported.")
+        .Attr("K", "Input width, a positive multiple of 128.", AttributeProto::INT)
+        .Attr("N", "Combined gate/up width, a positive multiple of 16.", AttributeProto::INT)
+        .Input(0, "X", "Input [M,K].", "T")
+        .Input(1, "weight", "Raw INT2 weights [N,K/128,32], gate columns then up columns.", "TWeight")
+        .Input(2, "scales", "FP16 scales [N,K/128].", "T")
+        .Output(0, "Y", "Activated shared-expert input [M,N/2].", "T")
+        .TypeConstraint("T", {"tensor(float16)"}, "FP16 activations and scales.")
+        .TypeConstraint("TWeight", {"tensor(uint8)"}, "Packed INT2 weights.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          const int64_t k = getAttribute(ctx, "K", int64_t{0});
+          const int64_t n = getAttribute(ctx, "N", int64_t{0});
+          if (k <= 0 || k % 128 || n <= 0 || n % 16) {
+            fail_shape_inference("K must be a positive multiple of 128 and N a positive multiple of 16");
+          }
+          if (hasInputShape(ctx, 0)) {
+            const auto& x = getInputShape(ctx, 0);
+            if (x.dim_size() != 2 || (x.dim(1).has_dim_value() && x.dim(1).dim_value() != k)) {
+              fail_shape_inference("X must have shape [M,K]");
+            }
+            TensorShapeProto shape;
+            *shape.add_dim() = x.dim(0);
+            shape.add_dim()->set_dim_value(n / 2);
+            updateOutputShape(ctx, 0, shape);
+          }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
     MatMulSigmoidGatedResidual, 1,
     OpSchema()
         .SetDoc("Fuses a shared-expert scalar gate with routed and residual additions. "

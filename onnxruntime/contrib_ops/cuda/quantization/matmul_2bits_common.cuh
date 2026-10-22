@@ -22,6 +22,22 @@ constexpr int kWarpSize2b = onnxruntime::cuda::GPU_WARP_SIZE;
 constexpr int kElementsPerByte2b = 4;
 constexpr uint8_t kDefaultZeroPoint2b = 2;  // 1 << (bits - 1)
 
+__device__ __forceinline__ half MatMul2BitsSwiGLU(half gate, half up) {
+  const float value = __half2float(gate);
+  float activated;
+  // Match CUDA QuickGelu(alpha=1), including its wide negative-tail product.
+  if (value < -87.0f) {
+    const double wide_value = static_cast<double>(value);
+    const double exponent = exp(wide_value);
+    activated = static_cast<float>(wide_value * exponent / (1.0 + exponent));
+  } else {
+    const float exponent = expf(value >= 0.0f ? -value : value);
+    const float sigmoid = value >= 0.0f ? 1.0f / (1.0f + exponent) : exponent / (1.0f + exponent);
+    activated = value * sigmoid;
+  }
+  return __hmul_rn(__float2half_rn(activated), up);
+}
+
 template <class T>
 __device__ __forceinline__ float ToFloat2b(T v);
 template <>
