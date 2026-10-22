@@ -706,6 +706,70 @@ class TestInferenceSession(unittest.TestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
+    @unittest.skipUnless(
+        importlib.util.find_spec("onnx") is not None,
+        "onnx package is required to build the test model",
+    )
+    def test_model_test_tool_preserves_zero_sized_dimensions(self):
+        import tempfile  # noqa: PLC0415
+
+        import onnx  # noqa: PLC0415
+        from onnx import TensorProto, helper  # noqa: PLC0415
+
+        from onnxruntime.tools.onnxruntime_test import generate_feeds, run_model  # noqa: PLC0415
+
+        # Opset 9 is the first standard opset mapped to IR v4, where initializers
+        # can also be graph inputs and therefore overridable at runtime.
+        opset_imports = [helper.make_opsetid("", 9)]
+        input_info = helper.make_tensor_value_info("X", TensorProto.FLOAT, [0, 3])
+        output_info = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [0, 3])
+        graph = helper.make_graph(
+            [helper.make_node("Identity", ["X"], ["Y"])],
+            "zero_sized_input",
+            [input_info],
+            [output_info],
+        )
+        model = helper.make_model_gen_version(
+            graph,
+            opset_imports=opset_imports,
+        )
+
+        session = onnxrt.InferenceSession(
+            model.SerializeToString(),
+            providers=["CPUExecutionProvider"],
+        )
+        feeds = generate_feeds(session)
+
+        self.assertEqual(feeds["X"].shape, (0, 3))
+        output = session.run(None, feeds)[0]
+        self.assertEqual(output.shape, (0, 3))
+
+        initializer = helper.make_tensor("W", TensorProto.FLOAT, [0, 3], [])
+        initializer_info = helper.make_tensor_value_info("W", TensorProto.FLOAT, [0, 3])
+        initializer_graph = helper.make_graph(
+            [helper.make_node("Identity", ["W"], ["Y"])],
+            "zero_sized_initializer",
+            [initializer_info],
+            [output_info],
+            [initializer],
+        )
+        initializer_model = helper.make_model_gen_version(
+            initializer_graph,
+            opset_imports=opset_imports,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_path = pathlib.Path(temp_dir) / "zero_sized_initializer.onnx"
+            onnx.save_model(initializer_model, model_path)
+            exit_code, initializer_feeds, outputs = run_model(
+                model_path,
+                providers=["CPUExecutionProvider"],
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(initializer_feeds["W"].shape, (0, 3))
+        self.assertEqual(outputs[0].shape, (0, 3))
+
     def test_run_async(self):
         event = threading.Event()
         allow_callback = threading.Event()
