@@ -2258,6 +2258,7 @@ TEST(MoETest, QMoETest_Int2CudaPrepackedRejectsRawFallback) {
 // path selected and once with it disabled (forcing the already-validated dense fallback from
 // #32743), so a stride/permutation/top-k bug in the new packed pipeline shows up as a numeric
 // mismatch instead of only a shape or gate mismatch.
+template <typename T = MLFloat16>
 static std::vector<float> RunQMoEPackedIntGemvParityCase(
     bool disable_packed_gemv, int64_t num_rows = 4, int64_t num_experts = 4, int64_t k = 2) {
   constexpr int64_t hidden_size = 512;
@@ -2266,6 +2267,12 @@ static std::vector<float> RunQMoEPackedIntGemvParityCase(
   constexpr int64_t bits = 2;
   constexpr int64_t pack_size = 8 / bits;
   constexpr int64_t fc1_rows = 2 * inter_size;  // Fused SwiGLU doubles FC1's output rows.
+  auto convert = [](const std::vector<float>& values) {
+    std::vector<T> result;
+    result.reserve(values.size());
+    for (float value : values) result.emplace_back(value);
+    return result;
+  };
 
   uint32_t rng_state = 12345u;
   auto next_rand = [&rng_state]() {
@@ -2328,27 +2335,27 @@ static std::vector<float> RunQMoEPackedIntGemvParityCase(
   tester.AddAttribute<int64_t>("weights_prepacked", 0);
   tester.AddAttribute<int64_t>("block_size", block_size);
 
-  tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, ToFloat16(input));
-  tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, ToFloat16(router_probs));
+  tester.AddInput<T>("input", {num_rows, hidden_size}, convert(input));
+  tester.AddInput<T>("router_probs", {num_rows, num_experts}, convert(router_probs));
   tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, fc1_rows, hidden_size / pack_size},
                            fc1_weights, /*is_initializer=*/true);
-  tester.AddInput<MLFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size},
-                             ToFloat16(fc1_scales), /*is_initializer=*/true);
-  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<T>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size},
+                     convert(fc1_scales), /*is_initializer=*/true);
+  tester.AddOptionalInputEdge<T>();
   tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, hidden_size, inter_size / pack_size},
                            fc2_weights, /*is_initializer=*/true);
-  tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size},
-                             ToFloat16(fc2_scales), /*is_initializer=*/true);
-  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<T>("fc2_scales", {num_experts, hidden_size, inter_size / block_size},
+                     convert(fc2_scales), /*is_initializer=*/true);
+  tester.AddOptionalInputEdge<T>();
   tester.AddOptionalInputEdge<uint8_t>();
-  tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<T>();
+  tester.AddOptionalInputEdge<T>();
 
   // The real assertion is the packed-vs-dense parity check the caller performs on GetFetches();
   // use a placeholder expected output and a huge tolerance so the framework's own comparison
   // never fails here.
   const std::vector<float> placeholder(static_cast<size_t>(num_rows * hidden_size), 0.0f);
-  tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(placeholder));
+  tester.AddOutput<T>("output", {num_rows, hidden_size}, convert(placeholder));
   tester.SetOutputTolerance(1e6f);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -2379,7 +2386,7 @@ static std::vector<float> RunQMoEPackedIntGemvParityCase(
 
   const auto fetches = tester.GetFetches();
   const Tensor& out = fetches[0].Get<Tensor>();
-  const MLFloat16* data = out.Data<MLFloat16>();
+  const T* data = out.Data<T>();
   std::vector<float> result(static_cast<size_t>(out.Shape().Size()));
   for (size_t i = 0; i < result.size(); ++i) {
     result[i] = data[i].ToFloat();
@@ -2410,6 +2417,26 @@ TEST(MoETest, QMoETest_Int2Cuda512ExpertsTop10Parity) {
     ASSERT_EQ(packed.size(), dense.size());
     for (size_t i = 0; i < packed.size(); ++i) {
       EXPECT_NEAR(packed[i], dense[i], 0.02f) << "mismatch at index " << i;
+    }
+  }
+}
+
+TEST(MoETest, QMoETest_Int2CudaPackedDecodeFourRowsTop10Parity) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  for (bool fused : {false, true}) {
+    ScopedEnvironmentVariables settings{{{"ORT_QMOE_INT2_DECODE_MAX_EXPANDED_ROWS", "40"},
+                                         {"ORT_INT2_S4_FUSED_FINALIZE", fused ? "1" : "0"}}};
+    const auto packed = RunQMoEPackedIntGemvParityCase(false, 4, 16, 10);
+    const auto dense = RunQMoEPackedIntGemvParityCase(true, 4, 16, 10);
+    ASSERT_EQ(packed.size(), dense.size());
+    for (size_t i = 0; i < packed.size(); ++i) {
+      EXPECT_NEAR(packed[i], dense[i], 0.02f) << "mismatch at index " << i;
+    }
+    const auto packed_bf16 = RunQMoEPackedIntGemvParityCase<BFloat16>(false, 4, 16, 10);
+    const auto dense_bf16 = RunQMoEPackedIntGemvParityCase<BFloat16>(true, 4, 16, 10);
+    ASSERT_EQ(packed_bf16.size(), dense_bf16.size());
+    for (size_t i = 0; i < packed_bf16.size(); ++i) {
+      EXPECT_NEAR(packed_bf16[i], dense_bf16[i], 0.02f) << "BF16 mismatch at index " << i;
     }
   }
 }

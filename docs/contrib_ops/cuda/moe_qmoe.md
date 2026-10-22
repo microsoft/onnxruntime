@@ -4,6 +4,22 @@ This document describes the design, schema, kernel dispatch, weight formats, and
 implementation status of the **MoE** (`com.microsoft::MoE`) and **QMoE**
 (`com.microsoft::QMoE`) operators on the CUDA execution provider.
 
+### Four-row INT2 speculative verification
+
+Set `ORT_QMOE_INT2_DECODE_MAX_EXPANDED_ROWS=40` to admit four input rows with
+top-10 routing to the existing packed INT2 GEMV path. Its default expanded-row
+limit remains 20; other eligibility checks still apply.
+
+For eligible four-row/top-10 INT2 FC2 GEMV, `ORT_INT2_S4_FUSED_FINALIZE=1`
+fuses the FC2 computation and routing finalization, avoiding the intermediate
+FC2 output traffic and separate routing kernel launch. This is opt-in and
+supports FP16 and BF16 activations. INT2 results are rounded to the activation
+dtype before expert weighting, matching the unfused intermediate tensor.
+Unsupported configurations retain the unfused path.
+
+`QMoETest_Int2CudaPackedDecodeFourRowsTop10Parity` compares fused and unfused
+outputs with a dense reference for both activation types.
+
 The CUTLASS kernels are derived from TensorRT-LLM (CUTLASS 4.4.2, commit `346018db87`)
 and have been significantly modified for ONNX Runtime — see
 [§16 Differences vs. TensorRT-LLM](#16-differences-vs-tensorrt-llm).
