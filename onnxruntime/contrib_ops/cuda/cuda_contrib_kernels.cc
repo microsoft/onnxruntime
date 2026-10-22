@@ -183,6 +183,9 @@ class CUDA_MS_OP_CLASS_NAME(1, EmbeddingRMSNorm);
 class CUDA_MS_OP_CLASS_NAME(1, RowSelect);
 class CUDA_MS_OP_CLASS_NAME(1, SigmoidGateMul);
 class CUDA_MS_OP_CLASS_NAME(1, UntileHyperConnectionWeights);
+#if !defined(DISABLE_FLOAT8_TYPES)
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, Float8E4M3FN_BFloat16, DequantizeLinear);
+#endif
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttentionGate);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttentionGate);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LinearAttentionGate);
@@ -568,6 +571,9 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, RowSelect)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, SigmoidGateMul)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, UntileHyperConnectionWeights)>,
+#if !defined(DISABLE_FLOAT8_TYPES)
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, Float8E4M3FN_BFloat16, DequantizeLinear)>,
+#endif
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttentionGate)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttentionGate)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LinearAttentionGate)>,
