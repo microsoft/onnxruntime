@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import onnx
@@ -47,6 +48,7 @@ def _build_canonical_nvfp4_qmoe_model(
     layer_experts: list[int] | None = None,
     quant_type: str = "nvfp4",
     use_fp16: bool = False,
+    fc1_bias_scale: float = 0.1,
 ) -> str:
     rng = np.random.default_rng(seed)
     ext_filename = "weights.data"
@@ -135,7 +137,7 @@ def _build_canonical_nvfp4_qmoe_model(
             if with_bias:
                 b1_name = f"model.layers.{l_idx}.mlp.fc1_bias"
                 b2_name = f"model.layers.{l_idx}.mlp.fc2_bias"
-                b1_f32 = rng.uniform(-0.1, 0.1, size=(ne, 2 * inter_size)).astype(np.float32)
+                b1_f32 = rng.uniform(-fc1_bias_scale, fc1_bias_scale, size=(ne, 2 * inter_size)).astype(np.float32)
                 b2_f32 = rng.uniform(-0.1, 0.1, size=(ne, hidden_size)).astype(np.float32)
                 if use_fp16:
                     fc1_b = b1_f32.astype(np.float16).view(np.uint16)
@@ -586,6 +588,70 @@ class TestQMoEOffloadV4(unittest.TestCase):
         r_f16 = r_f32.astype(np.float16)
         out = sess.run(["Y"], {"X": x_f16, "router_probs": r_f16})[0]
         return out.astype(np.float32)
+
+    def test_v4_fc1_bias_in_resident_and_streamed_decode(self):
+        for use_fp16 in (False, True):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                model_path = _build_canonical_nvfp4_qmoe_model(
+                    tmpdir, num_layers=1, with_bias=True, use_fp16=use_fp16, fc1_bias_scale=1.0
+                )
+                runner = self._run_fp16 if use_fp16 else self._run_bf16
+                sess_ref = self._make_session(model_path, {"session.moe.offload.mode": "disabled"})
+                # Six resident slots; all other experts execute on the CPU or stream to the GPU.
+                budget = 2 * 16 * 4 + 16 * 128 * 2 + 6 * (13832 + 2 * 64 * 2)
+                for cpu_execution in ("auto", "disabled"):
+                    sess = self._make_session(
+                        model_path,
+                        {
+                            "session.moe.offload.mode": "required",
+                            "session.moe.offload.placement": "static",
+                            "session.moe.offload.cpu_execution": cpu_execution,
+                            "session.moe.offload.device_expert_bytes": str(budget),
+                        },
+                    )
+                    for first_expert in (0, 12):
+                        with self.subTest(fp16=use_fp16, cpu=cpu_execution, first_expert=first_expert):
+                            # Zero activations isolate the FC1 bias contribution before SwiGLU.
+                            x = np.zeros((1, 128), dtype=np.float32)
+                            r = np.full((1, 16), -10.0, dtype=np.float32)
+                            r[:, first_expert : first_expert + 4] = 10.0
+                            y_ref = runner(sess_ref, x, r)
+                            y_got = runner(sess, x, r)
+                            np.testing.assert_allclose(y_got, y_ref, rtol=2e-2, atol=2e-3)
+                    del sess
+
+    def test_v4_gpu_stream_decode_restores_lent_prefill_slabs(self):
+        # Force a small prefill to lend resident slabs, as long prompts do in production.
+        with (
+            mock.patch.dict(
+                os.environ,
+                {
+                    "ORT_QMOE_PREFILL_PROACTIVE_LEND": "1",
+                    "ORT_QMOE_PREFILL_LEND_THRESHOLD": "0",
+                    "ORT_QMOE_PREFILL_LEND_LOW_MIB": "1",
+                },
+            ),
+            tempfile.TemporaryDirectory() as tmpdir,
+        ):
+            model_path = _build_canonical_nvfp4_qmoe_model(tmpdir, use_fp16=True)
+            sess_ref = self._make_session(model_path, {"session.moe.offload.mode": "disabled"})
+            sess = self._make_session(
+                model_path,
+                {
+                    "session.moe.offload.mode": "required",
+                    "session.moe.offload.placement": "adaptive",
+                    "session.moe.offload.cpu_execution": "disabled",
+                    "session.moe.offload.device_expert_bytes": str(2 * 128 + 16 * 13832),
+                },
+            )
+            rng = np.random.default_rng(917)
+            for num_rows in (1, 16, 1, 16, 2):
+                with self.subTest(rows=num_rows):
+                    x = rng.standard_normal((num_rows, 128), dtype=np.float32) * 0.5
+                    r = rng.standard_normal((num_rows, 16), dtype=np.float32)
+                    y_ref = self._run_fp16(sess_ref, x, r)
+                    y_got = self._run_fp16(sess, x, r)
+                    np.testing.assert_allclose(y_got, y_ref, rtol=2e-2, atol=2e-3)
 
     def test_v4_mxfp4_decode_prefill_bounded_host_and_full_residency(self):
         with tempfile.TemporaryDirectory() as tmpdir:

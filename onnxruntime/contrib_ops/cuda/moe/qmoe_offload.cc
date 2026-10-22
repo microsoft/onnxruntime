@@ -6045,6 +6045,10 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
     return ComputeSharedAsync(context, input, router, bias, phase, output, route_rows, route_calls, counts,
                               static_cast<int>(rows));
   }
+  // Synchronous decode also needs slabs lent to the prefill DMA workspace restored.
+  if (rows <= async_max_tokens_ && g_prefill_dma_active.load(std::memory_order_acquire)) {
+    FinalizeQMoEPrefillAndSeedDecode(device_id_, stream);
+  }
   if (nvfp4_mode_ && prefill_qmoe_ != nullptr) {
     if (async_in_flight_.load(std::memory_order_acquire)) {
       if (aux_stream_) CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(aux_stream_));
@@ -6283,7 +6287,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
     if (is_bf16_) {
       gemv::launch_moe_gemv_fp4_symmetric_interleaved_swiglu<__nv_bfloat16>(
           static_cast<const __nv_bfloat16*>(act_in), fc1_w,
-          static_cast<const __nv_bfloat16*>(fc1_bias_dev), fc1_s, fc1_g, nullptr,
+          nullptr, fc1_s, fc1_g, static_cast<const __nv_bfloat16*>(fc1_bias_dev),
           reinterpret_cast<__nv_bfloat16*>(nvfp4_inter_buf), nullptr, expert_map, num_exp,
           num_r, inter_size_, hidden_size_, fp4_group, sm_, runner_activation, gemv::MoeGemvConfig::kDefault,
           false, true, nullptr, num_r, stream, true, false);
@@ -6297,7 +6301,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
     } else {
       gemv::launch_moe_gemv_fp4_symmetric_interleaved_swiglu<half>(
           static_cast<const half*>(act_in), fc1_w,
-          static_cast<const half*>(fc1_bias_dev), fc1_s, fc1_g, nullptr,
+          nullptr, fc1_s, fc1_g, static_cast<const half*>(fc1_bias_dev),
           reinterpret_cast<half*>(nvfp4_inter_buf), nullptr, expert_map, num_exp,
           num_r, inter_size_, hidden_size_, fp4_group, sm_, runner_activation, gemv::MoeGemvConfig::kDefault,
           false, true, nullptr, num_r, stream, true, false);
@@ -7142,7 +7146,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
       if (is_bf16_) {
         gemv::launch_moe_gemv_fp4_symmetric_interleaved_swiglu<__nv_bfloat16>(
             reinterpret_cast<const __nv_bfloat16*>(input->DataRaw()), fc1_w,
-            static_cast<const __nv_bfloat16*>(fc1_bias_dev), fc1_s, fc1_g, nullptr,
+            nullptr, fc1_s, fc1_g, static_cast<const __nv_bfloat16*>(fc1_bias_dev),
             reinterpret_cast<__nv_bfloat16*>(nvfp4_inter_buf), nullptr, hit_compact, physical_slots_,
             routes, inter_size_, hidden_size_, fp4_group, sm_, runner_activation, gemv::MoeGemvConfig::kDefault,
             false, true, hit_ids, tile_rows, stream, true, false);
@@ -7156,7 +7160,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
       } else {
         gemv::launch_moe_gemv_fp4_symmetric_interleaved_swiglu<half>(
             reinterpret_cast<const half*>(input->DataRaw()), fc1_w,
-            static_cast<const half*>(fc1_bias_dev), fc1_s, fc1_g, nullptr,
+            nullptr, fc1_s, fc1_g, static_cast<const half*>(fc1_bias_dev),
             reinterpret_cast<half*>(nvfp4_inter_buf), nullptr, hit_compact, physical_slots_,
             routes, inter_size_, hidden_size_, fp4_group, sm_, runner_activation, gemv::MoeGemvConfig::kDefault,
             false, true, hit_ids, tile_rows, stream, true, false);
