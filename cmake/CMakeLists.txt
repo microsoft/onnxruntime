@@ -1,5 +1,5 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
-# SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
+# SPDX-FileCopyrightText: Copyright 2024-2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 # Licensed under the MIT License.
 
 # Minimum CMake required
@@ -711,6 +711,16 @@ if(onnxruntime_USE_KLEIDIAI)
     message(WARNING "onnxruntime_USE_KLEIDIAI was set but it is not supported. It will be disabled.")
     set(onnxruntime_USE_KLEIDIAI OFF)
   endif()
+endif()
+
+# Linux and Android KleidiAI targets use Ops for FP32 SGEMM with generic MLAS fallback.
+# Other targets retain the legacy FP32 adapter; other datatypes are unchanged.
+set(onnxruntime_KLEIDIAI_OPS_AVAILABLE OFF)
+if(onnxruntime_USE_KLEIDIAI AND NOT MSVC AND
+   (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID))
+  set(onnxruntime_KLEIDIAI_OPS_AVAILABLE ON)
+elseif(onnxruntime_USE_KLEIDIAI)
+  message(WARNING "KleidiAI Ops FP32 SGEMM is not supported with this target/toolchain; using the legacy KleidiAI FP32 adapter.")
 endif()
 
 #Dependencies begin

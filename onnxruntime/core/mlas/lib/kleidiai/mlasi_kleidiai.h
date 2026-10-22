@@ -254,6 +254,46 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     );
 
+size_t
+    MLASCALL
+    MlasGemmPackBExtensionSizeKleidiAIOps(
+        CBLAS_TRANSPOSE TransA,
+        CBLAS_TRANSPOSE TransB,
+        size_t N,
+        size_t K,
+        bool UseOps
+    );
+
+bool
+    MLASCALL
+    MlasGemmPackBExtensionKleidiAIOps(
+        CBLAS_TRANSPOSE TransA,
+        CBLAS_TRANSPOSE TransB,
+        size_t N,
+        size_t K,
+        const float* B,
+        size_t ldb,
+        void* Extension,
+        bool UseOps
+    );
+
+bool
+    MLASCALL
+    MlasGemmBatchKleidiAIOps(
+        CBLAS_TRANSPOSE TransA,
+        CBLAS_TRANSPOSE TransB,
+        size_t M,
+        size_t N,
+        size_t K,
+        const MLAS_SGEMM_DATA_PARAMS* Data,
+        size_t BatchSize,
+        MLAS_THREADPOOL* ThreadPool
+    );
+
+bool
+    MLASCALL
+    MlasGemmPackedBIsKleidiAIOps(const void* PackedB, size_t N, size_t K);
+
 #if defined(MLAS_SBGEMM_AVAILABLE)
 size_t
 MLASCALL

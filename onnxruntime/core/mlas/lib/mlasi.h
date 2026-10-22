@@ -1,6 +1,7 @@
 /*++
 
 Copyright (c) Microsoft Corporation.  All rights reserved.
+SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 
 Licensed under the MIT License.
 
@@ -1019,6 +1020,34 @@ bool
     void* PackedB);
 
 typedef
+size_t
+(MLASCALL MLAS_SGEMM_PACK_B_EXTENSION_SIZE_OVERRIDE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    bool UseBackend);
+
+typedef
+bool
+(MLASCALL MLAS_SGEMM_PACK_B_EXTENSION_OVERRIDE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* Extension,
+    bool UseBackend);
+
+typedef
+bool
+(MLASCALL MLAS_SGEMM_PACKED_B_HAS_EXTENSION_OVERRIDE)(
+    const void* PackedB,
+    size_t N,
+    size_t K);
+
+typedef
 void
 (MLASCALL MLAS_DYNAMIC_QGEMM_BATCH_OVERRIDE)(
     const MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS& Shape,
@@ -1583,6 +1612,9 @@ MlasSgemmOperation(
     size_t ldc
     );
 
+// Size of the native MLAS packed representation, excluding backend extensions.
+size_t MlasSgemmNativePackBSize(size_t N, size_t K);
+
 //
 // Quantized integer matrix/matrix dispatch structure.
 //
@@ -1802,6 +1834,11 @@ struct MLAS_PLATFORM {
     MLAS_SGEMM_BATCH_OVERRIDE* MlasSGemmBatchOverride = nullptr;
     MLAS_SGEMM_PACK_B_SIZE_OVERRIDE* MlasSGemmPackBSizeOverride = nullptr;
     MLAS_SGEMM_PACK_B_OVERRIDE* MlasSGemmPackBOverride = nullptr;
+    // Optional backend data follows a native packed-B prefix. Extensions are
+    // reserved and initialized even when backend execution is disabled.
+    MLAS_SGEMM_PACK_B_EXTENSION_SIZE_OVERRIDE* MlasSGemmPackBExtensionSizeOverride = nullptr;
+    MLAS_SGEMM_PACK_B_EXTENSION_OVERRIDE* MlasSGemmPackBExtensionOverride = nullptr;
+    MLAS_SGEMM_PACKED_B_HAS_EXTENSION_OVERRIDE* MlasSGemmPackedBHasExtensionOverride = nullptr;
     // MLAS Dynamic QGemm overrides
     MLAS_DYNAMIC_QGEMM_BATCH_OVERRIDE* MlasDynamicQGemmBatchOverride = nullptr;
     MLAS_DYNAMIC_QGEMM_PACK_B_SIZE_OVERRIDE* MlasDynamicQGemmPackBSizeOverride = nullptr;
