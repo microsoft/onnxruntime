@@ -52,11 +52,11 @@ struct Fp8SharedExpertEpilogue {
 };
 
 Status LaunchMatMulFp8SharedExpert(void* y, const void* a, const void* weight,
-                                  const float* scales, int m, int n, int k, int block_size,
-                                  const Fp8SharedExpertEpilogue& epilogue,
-                                  const cudaDeviceProp& device_prop, cudaStream_t stream);
+                                   const float* scales, int m, int n, int k, int block_size,
+                                   const Fp8SharedExpertEpilogue& epilogue,
+                                   const cudaDeviceProp& device_prop, cudaStream_t stream);
 Status LaunchFp8SharedExpertEpilogue(void* y, const Fp8SharedExpertEpilogue& epilogue,
-                                    int m, int n, cudaStream_t stream);
+                                     int m, int n, cudaStream_t stream);
 
 bool MatMulBlockScaledFp8GemvSupportsSplitOutput(int m, int k, int block_size,
                                                  const cudaDeviceProp& device_prop);

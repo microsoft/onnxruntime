@@ -2423,8 +2423,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 #endif
       if (!fused_expert_maps &&
           !TryLaunchSmallDecodeExpertMaps(expert_indices, p_r2u, unpermuted_row_to_permuted_row,
-                                         p_exp, p_efto, static_cast<int>(num_rows), num_experts,
-                                         static_cast<int>(k_), stream) &&
+                                          p_exp, p_efto, static_cast<int>(num_rows), num_experts,
+                                          static_cast<int>(k_), stream) &&
           !ck::fusedBuildExpertMapsSortFirstToken(
               expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
               num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream)) {

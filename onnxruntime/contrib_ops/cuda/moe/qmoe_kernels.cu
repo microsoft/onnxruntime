@@ -368,7 +368,7 @@ __global__ void WarpSelectSoftmaxTopKExpertMapsKernel(
   }
   __syncthreads();
   BuildSmallDecodeExpertMaps(selected, row_to_source, source_to_row, sorted_experts,
-                            expert_offsets, rows, kExperts, k);
+                             expert_offsets, rows, kExperts, k);
 }
 
 template <typename T>

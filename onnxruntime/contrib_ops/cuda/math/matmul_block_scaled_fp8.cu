@@ -531,7 +531,7 @@ __device__ __forceinline__ T* Fp8OutputColumn(T* output, int col, int& stride,
 
 template <typename T, bool SharedExpert>
 __device__ __forceinline__ T Fp8RoundOutput(float value, int row, int col, int n,
-                                          const Fp8SharedExpertEpilogue& epilogue) {
+                                            const Fp8SharedExpertEpilogue& epilogue) {
   T rounded = from_float<T>(value);
   if constexpr (SharedExpert) {
     rounded = from_float<T>(to_float<T>(rounded) * epilogue.row_gates[row]);
@@ -792,7 +792,7 @@ __global__ void MatMulFp8SharedExpertKernel(
 }
 
 __global__ void Fp8SharedExpertEpilogueKernel(__nv_bfloat16* output, Fp8SharedExpertEpilogue epilogue,
-                                            int64_t count, int n) {
+                                              int64_t count, int n) {
   const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index < count) {
     output[index] = Fp8RoundOutput<__nv_bfloat16, true>(
@@ -827,7 +827,7 @@ int Fp8MmaGemvDispatchMaxM() {
 int ApplyFp8MmaKSplitOverride(int k_split, int m, int n, int k);
 
 Status LaunchFp8SharedExpertEpilogue(void* y, const Fp8SharedExpertEpilogue& epilogue,
-                                    int m, int n, cudaStream_t stream) {
+                                     int m, int n, cudaStream_t stream) {
 #if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
   const int64_t count = static_cast<int64_t>(m) * n;
   ORT_RETURN_IF_NOT(m >= 0 && n > 0 && epilogue.row_gates && epilogue.residual,
@@ -847,9 +847,9 @@ Status LaunchFp8SharedExpertEpilogue(void* y, const Fp8SharedExpertEpilogue& epi
 }
 
 Status LaunchMatMulFp8SharedExpert(void* y, const void* a, const void* weight,
-                                  const float* scales, int m, int n, int k, int block_size,
-                                  const Fp8SharedExpertEpilogue& epilogue,
-                                  const cudaDeviceProp& device_prop, cudaStream_t stream) {
+                                   const float* scales, int m, int n, int k, int block_size,
+                                   const Fp8SharedExpertEpilogue& epilogue,
+                                   const cudaDeviceProp& device_prop, cudaStream_t stream) {
 #if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
   ORT_RETURN_IF_NOT(m >= 1 && m <= 2 && k >= 256 && k % 64 == 0 && block_size % 64 == 0 &&
                         device_prop.major >= 8 && epilogue.row_gates && epilogue.residual,
@@ -863,7 +863,7 @@ Status LaunchMatMulFp8SharedExpert(void* y, const void* a, const void* weight,
   const auto launch = [&]<int KSplit>() {
     const auto variant = [&]<bool S2>() {
       MatMulFp8SharedExpertKernel<KSplit, S2><<<static_cast<unsigned int>((n + 15) / 16),
-                                               dim3(32, KSplit), 0, stream>>>(
+                                                dim3(32, KSplit), 0, stream>>>(
           static_cast<__nv_bfloat16*>(y), static_cast<const __nv_bfloat16*>(a),
           static_cast<const __nv_fp8_e4m3*>(weight), scales, m, n, k, block_size,
           (k + block_size - 1) / block_size, epilogue);
@@ -875,11 +875,20 @@ Status LaunchMatMulFp8SharedExpert(void* y, const void* a, const void* weight,
     }
   };
   switch (k_split) {
-    case 4: launch.template operator()<4>(); break;
-    case 8: launch.template operator()<8>(); break;
-    case 16: launch.template operator()<16>(); break;
-    case 32: launch.template operator()<32>(); break;
-    default: return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported shared expert K split: ", k_split);
+    case 4:
+      launch.template operator()<4>();
+      break;
+    case 8:
+      launch.template operator()<8>();
+      break;
+    case 16:
+      launch.template operator()<16>();
+      break;
+    case 32:
+      launch.template operator()<32>();
+      break;
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported shared expert K split: ", k_split);
   }
   return CUDA_CALL(cudaGetLastError());
 #else
