@@ -148,6 +148,153 @@ void TestFp8SplitOutputs() {
   }
 }
 
+TEST(MatMulBlockQuantizedFp8WeightOpTest, SharedExpertNumericsAndFallbacks) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "SM80+ CUDA device required.";
+  const auto round = [](float x) { return static_cast<float>(BFloat16(x)); };
+  for (const int64_t m : {0, 1, 2, 3, 65}) {
+    for (const int64_t k : {64, 256, 640}) {
+      for (const int32_t prefill : {0, 1}) {
+        SCOPED_TRACE("M=" + std::to_string(m) + " K=" + std::to_string(k) +
+                     " prefill=" + std::to_string(prefill));
+        constexpr int64_t n = 17;
+        constexpr int64_t gate_width = 32;
+        const int64_t block_size = k == 256 ? 128 : k;
+        const int64_t k_blocks = k / block_size;
+        const std::vector<int64_t> input_shape = m == 3 ? std::vector<int64_t>{1, m, k} : std::vector<int64_t>{m, k};
+        const std::vector<int64_t> output_shape = m == 3 ? std::vector<int64_t>{1, m, n} : std::vector<int64_t>{m, n};
+        const std::vector<int64_t> activation_shape = m == 3 ? std::vector<int64_t>{1, m, gate_width} : std::vector<int64_t>{m, gate_width};
+        std::vector<BFloat16> up(m * k), gate(m * k), prepared(m * k), residual(m * n), expected(m * n);
+        for (int64_t row = 0; row < m; ++row) {
+          for (int64_t col = 0; col < k; ++col) {
+            const float g = static_cast<float>(col % 3 - 1);
+            const float u = static_cast<float>((col + row) % 5 - 2) / 16.f;
+            up[row * k + col] = BFloat16(u);
+            gate[row * k + col] = BFloat16(g);
+            const float sig = g > 0 ? round(1.f / round(1.f + round(std::exp(-g))))
+                                    : round(1.f - round(1.f / round(1.f + round(std::exp(g)))));
+            prepared[row * k + col] = BFloat16(round(u * round(g * sig)));
+          }
+          for (int64_t col = 0; col < n; ++col) {
+            residual[row * n + col] = BFloat16(static_cast<float>(col % 5 - 2) / 8.f);
+          }
+        }
+        const auto run = [](OpTester& op) {
+          std::vector<std::unique_ptr<IExecutionProvider>> providers;
+          providers.push_back(DefaultCudaExecutionProvider());
+          op.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+        };
+        OpTester silu("SigmoidGateMul", 1, kMSDomain);
+        silu.AddAttribute<int64_t>("silu_gate", 1);
+        silu.AddAttribute<int64_t>("sigmoid_in_fp32", 0);
+        silu.AddInput<BFloat16>("up", input_shape, up);
+        silu.AddInput<BFloat16>("gate", input_shape, gate);
+        silu.AddOptionalInputEdge<BFloat16>();
+        silu.AddInput<int32_t>("prefill", {1}, {prefill});
+        silu.AddOutput<BFloat16>("prepared", input_shape, prepared);
+        silu.SetOutputTolerance(0.f, 0.f);
+        run(silu);
+
+        std::vector<BFloat16> projected(m * n);
+        OpTester projection("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
+        projection.AddAttribute<int64_t>("block_size", block_size);
+        projection.AddInput<BFloat16>("A", input_shape, prepared);
+        projection.AddInput<Float8E4M3FN>("B", {n, k}, MakeConstRowWeight(std::vector<float>(n, 1.f), k));
+        projection.AddInput<float>("scale", {n, k_blocks}, std::vector<float>(n * k_blocks, .125f));
+        projection.AddOptionalInputEdge<float>();
+        projection.AddOptionalInputEdge<BFloat16>();
+        projection.AddInput<int32_t>("prefill", {1}, {prefill});
+        projection.AddOutput<BFloat16>("down", output_shape, projected);
+        projection.SetCustomOutputVerifier([&](const std::vector<OrtValue>& fetches, const std::string&) {
+          ASSERT_EQ(fetches.size(), 1u);
+          const auto& output = fetches[0].Get<Tensor>();
+          projected.assign(output.Data<BFloat16>(), output.Data<BFloat16>() + m * n);
+        });
+        run(projection);
+
+        std::vector<BFloat16> gate_activation(m * gate_width);
+        const std::vector<BFloat16> gate_weight(gate_width, BFloat16(.125f));
+        for (int64_t i = 0; i < m * gate_width; ++i) {
+          gate_activation[i] = BFloat16(static_cast<float>((i / gate_width) % 3 - 1));
+        }
+        OpTester post("SigmoidGateMul", 1, kMSDomain);
+        post.AddAttribute<int64_t>("broadcast_gate", 1);
+        post.AddAttribute<int64_t>("sigmoid_in_fp32", 0);
+        post.AddInput<BFloat16>("down", output_shape, projected);
+        post.AddInput<BFloat16>("activation", activation_shape, gate_activation);
+        post.AddInput<BFloat16>("residual", output_shape, residual);
+        post.AddInput<int32_t>("prefill", {1}, {prefill});
+        post.AddInput<BFloat16>("weight", {gate_width, 1}, gate_weight);
+        post.AddOutput<BFloat16>("Y", output_shape, expected);
+        post.SetCustomOutputVerifier([&](const std::vector<OrtValue>& fetches, const std::string&) {
+          ASSERT_EQ(fetches.size(), 1u);
+          const auto& output = fetches[0].Get<Tensor>();
+          expected.assign(output.Data<BFloat16>(), output.Data<BFloat16>() + m * n);
+        });
+        run(post);
+
+        OpTester test("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
+        test.AddAttribute<int64_t>("block_size", block_size);
+        test.AddAttribute<int64_t>("shared_expert", 1);
+        test.AddInput<BFloat16>("up", input_shape, up);
+        test.AddInput<Float8E4M3FN>("B", {n, k}, MakeConstRowWeight(std::vector<float>(n, 1.f), k));
+        test.AddInput<float>("scale", {n, k_blocks}, std::vector<float>(n * k_blocks, .125f));
+        test.AddOptionalInputEdge<float>();
+        test.AddOptionalInputEdge<BFloat16>();
+        test.AddInput<int32_t>("prefill", {1}, {prefill});
+        for (int i = 0; i < 3; ++i) test.AddOptionalInputEdge<BFloat16>();
+        test.AddInput<BFloat16>("gate", input_shape, gate);
+        test.AddInput<BFloat16>("gate_activation", activation_shape, gate_activation);
+        test.AddInput<BFloat16>("gate_weight", {gate_width, 1}, gate_weight);
+        test.AddInput<BFloat16>("residual", output_shape, residual);
+        test.AddOutput<BFloat16>("Y", output_shape, expected);
+        test.SetOutputTolerance(0.f, 0.f);
+        run(test);
+      }
+    }
+  }
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, SharedExpertRejectsMissingInputs) {
+  OpTester test("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
+  test.AddAttribute<int64_t>("shared_expert", 1);
+  test.AddInput<BFloat16>("A", {1, 256}, std::vector<BFloat16>(256));
+  test.AddInput<Float8E4M3FN>("B", {1, 256}, MakeConstRowWeight({1.f}, 256));
+  test.AddInput<float>("scale", {1, 2}, {1.f, 1.f});
+  test.AddOutput<BFloat16>("Y", {1, 1}, {BFloat16(0.f)});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "shared_expert requires all shared inputs");
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, SharedExpertRejectsInvalidContracts) {
+  for (int kind = 0; kind < 7; ++kind) {
+    SCOPED_TRACE(kind);
+    OpTester test("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
+    test.AddAttribute<int64_t>("block_size", 256);
+    test.AddAttribute<int64_t>("shared_expert", kind == 5 ? 2 : kind == 6 ? 0
+                                                                          : 1);
+    if (kind == 4) test.AddAttribute<std::vector<int64_t>>("split_sizes", {8});
+    test.AddInput<BFloat16>("A", {2, 256}, std::vector<BFloat16>(512));
+    test.AddInput<Float8E4M3FN>("B", {8, 256}, MakeConstRowWeight(std::vector<float>(8, 1.f), 256));
+    test.AddInput<float>("scale", {8, 1}, std::vector<float>(8, 1.f));
+    if (kind == 3) {
+      test.AddInput<float>("a_scale", {1}, {1.f});
+    } else {
+      test.AddOptionalInputEdge<float>();
+    }
+    test.AddOptionalInputEdge<BFloat16>();
+    test.AddInput<int32_t>("prefill", {1}, {0});
+    for (int i = 0; i < 3; ++i) test.AddOptionalInputEdge<BFloat16>();
+    test.AddInput<BFloat16>("gate", {kind == 0 ? 3 : 2, 256}, std::vector<BFloat16>((kind == 0 ? 3 : 2) * 256));
+    test.AddInput<BFloat16>("activation", {2, 8}, std::vector<BFloat16>(16));
+    test.AddInput<BFloat16>("gate_weight", {kind == 1 ? 9 : 8, 1}, std::vector<BFloat16>(kind == 1 ? 9 : 8));
+    test.AddInput<BFloat16>("residual", {kind == 2 ? 3 : 2, 8}, std::vector<BFloat16>((kind == 2 ? 3 : 2) * 8));
+    test.AddOutput<BFloat16>("Y", {2, 8}, std::vector<BFloat16>(16));
+    const std::string error = kind <= 2 ? "shared_expert input shapes are incompatible" : kind <= 4 ? "shared_expert excludes"
+                                                                                      : kind == 5   ? "shared_expert must be 0 or 1"
+                                                                                                    : "Shared expert inputs require shared_expert=1";
+    test.Run(OpTester::ExpectResult::kExpectFailure, error);
+  }
+}
+
 TEST(MatMulBlockQuantizedFp8WeightOpTest, SplitOutputsFp16) {
   TestFp8SplitOutputs<MLFloat16>();
 }

@@ -269,8 +269,10 @@ TEST(CUDA_EP_Unittest, SoftmaxTopK_RejectsKGreaterThanExperts) {
 }
 
 template <typename T>
-void RunFusedRoutingMapsTest(int rows, int experts, int k, bool ties = false, bool nonfinite = false) {
-  auto values = MakeLogits(rows, experts);
+void RunFusedRoutingMapsTest(int rows, int experts, int k, bool ties = false, bool nonfinite = false,
+                             const std::vector<float>* custom_values = nullptr) {
+  auto values = custom_values ? *custom_values : MakeLogits(rows, experts);
+  ASSERT_EQ(values.size(), static_cast<size_t>(rows) * experts);
   if (ties) std::fill(values.begin(), values.end(), 0.0f);
   if (nonfinite) {
     std::fill(values.begin(), values.end(), -std::numeric_limits<float>::infinity());
@@ -378,6 +380,33 @@ TEST(CUDA_EP_Unittest, FusedSoftmaxTopKExpertMaps_WarpSelectSpecialized) {
       RunFusedRoutingMapsTest<__nv_bfloat16>(rows, 512, 10, ties);
     }
     RunFusedRoutingMapsTest<float>(rows, 512, 10, false, true);
+  }
+}
+
+TEST(CUDA_EP_Unittest, FusedSoftmaxTopKExpertMaps_WarpSelectAdversarialKeys) {
+  for (int rows : {1, 2}) {
+    for (int pattern = 0; pattern < 4; ++pattern) {
+      SCOPED_TRACE(::testing::Message() << "rows=" << rows << " pattern=" << pattern);
+      auto values = MakeLogits(rows, 512);
+      for (int row = 0; row < rows; ++row) {
+        for (int expert = 0; expert < 512; ++expert) {
+          float& value = values[row * 512 + expert];
+          if (pattern == 0) {
+            value = expert % 32 == row ? 32.0f - expert / 32 : -32.0f;
+          } else if (pattern == 1) {
+            value = expert % 2 ? -0.0f : 0.0f;
+          } else if (pattern == 2) {
+            value = expert % 3 ? -std::numeric_limits<float>::infinity()
+                               : std::numeric_limits<float>::quiet_NaN();
+          } else {
+            value = (expert + row) % 7 == 0 ? 1000.0f : -1000.0f;
+          }
+        }
+      }
+      RunFusedRoutingMapsTest<float>(rows, 512, 10, false, false, &values);
+      RunFusedRoutingMapsTest<half>(rows, 512, 10, false, false, &values);
+      RunFusedRoutingMapsTest<__nv_bfloat16>(rows, 512, 10, false, false, &values);
+    }
   }
 }
 

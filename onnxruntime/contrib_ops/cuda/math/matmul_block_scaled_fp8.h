@@ -35,6 +35,8 @@ class MatMulBlockQuantizedFp8Weight final : public onnxruntime::cuda::CudaKernel
   std::vector<int64_t> split_sizes_;
   size_t max_dequant_scratch_bytes_;
   bool enable_deep_gemm_;
+  bool shared_expert_;
+  std::vector<int64_t> prefill_weight_offsets_;
 };
 
 struct Fp8GemvOutputSplit {
@@ -43,6 +45,18 @@ struct Fp8GemvOutputSplit {
   int widths[kMaxOutputs]{};
   int count = 0;
 };
+
+struct Fp8SharedExpertEpilogue {
+  const float* row_gates = nullptr;
+  const void* residual = nullptr;
+};
+
+Status LaunchMatMulFp8SharedExpert(void* y, const void* a, const void* weight,
+                                  const float* scales, int m, int n, int k, int block_size,
+                                  const Fp8SharedExpertEpilogue& epilogue,
+                                  const cudaDeviceProp& device_prop, cudaStream_t stream);
+Status LaunchFp8SharedExpertEpilogue(void* y, const Fp8SharedExpertEpilogue& epilogue,
+                                    int m, int n, cudaStream_t stream);
 
 bool MatMulBlockScaledFp8GemvSupportsSplitOutput(int m, int k, int block_size,
                                                  const cudaDeviceProp& device_prop);
@@ -69,7 +83,8 @@ Status LaunchDequantizeBlockScaledFp8(void* b_dequant,
                                       int k,
                                       int block_size,
                                       bool is_bf16,
-                                      cudaStream_t stream);
+                                      cudaStream_t stream,
+                                      bool transpose = false);
 
 // Adds a per-column bias of shape [N] to a [M, N] row-major output in place.
 Status LaunchAddBiasBlockScaledFp8(void* y,

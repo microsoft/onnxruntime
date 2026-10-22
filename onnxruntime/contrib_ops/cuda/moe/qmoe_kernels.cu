@@ -304,7 +304,7 @@ __global__ void FusedSoftmaxTopKExpertMapsKernel(
                              expert_offsets, rows, experts, k);
 }
 
-template <typename T>
+template <typename T, bool HardwareReduce = false>
 __global__ void WarpSelectSoftmaxTopKExpertMapsKernel(
     const T* logits, float* scales, int* indices, int* row_to_source,
     int* source_to_row, int* sorted_experts, int64_t* expert_offsets, int rows) {
@@ -327,10 +327,22 @@ __global__ void WarpSelectSoftmaxTopKExpertMapsKernel(
       uint64_t best = keys[0];
 #pragma unroll
       for (int i = 1; i < 16; ++i) best = best > keys[i] ? best : keys[i];
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+      if constexpr (HardwareReduce) {
+        // Reduce the packed key lexicographically, retaining stable expert-index ties.
+        const unsigned score = static_cast<unsigned>(best >> 32);
+        const unsigned maximum_score = __reduce_max_sync(0xffffffff, score);
+        const unsigned index = __reduce_max_sync(
+            0xffffffff, score == maximum_score ? static_cast<unsigned>(best) : 0u);
+        best = (static_cast<uint64_t>(maximum_score) << 32) | index;
+      } else
+#endif
+      {
 #pragma unroll
-      for (int offset = 16; offset > 0; offset >>= 1) {
-        const uint64_t other = __shfl_xor_sync(0xffffffff, static_cast<unsigned long long>(best), offset);
-        best = best > other ? best : other;
+        for (int offset = 16; offset > 0; offset >>= 1) {
+          const uint64_t other = __shfl_xor_sync(0xffffffff, static_cast<unsigned long long>(best), offset);
+          best = best > other ? best : other;
+        }
       }
 #pragma unroll
       for (int i = 0; i < 16; ++i) {
@@ -355,7 +367,7 @@ __global__ void WarpSelectSoftmaxTopKExpertMapsKernel(
   }
   __syncthreads();
   BuildSmallDecodeExpertMaps(selected, row_to_source, source_to_row, sorted_experts,
-                             expert_offsets, rows, kExperts, k);
+                            expert_offsets, rows, kExperts, k);
 }
 
 template <typename T>
@@ -369,9 +381,12 @@ bool TryLaunchSoftmaxTopKExpertMaps(
   }
   static const int warp_select =
       ParseEnvironmentVariableWithDefault<int>("ORT_MOE_ROUTING_WARP_SELECT", 0);
-  ORT_ENFORCE(warp_select == 0 || warp_select == 1,
-              "ORT_MOE_ROUTING_WARP_SELECT must be 0 or 1.");
-  if (warp_select && experts == 512 && k == 10) {
+  ORT_ENFORCE(warp_select >= 0 && warp_select <= 2,
+              "ORT_MOE_ROUTING_WARP_SELECT must be 0, 1 or 2.");
+  if (warp_select == 2 && experts == 512 && k == 10) {
+    WarpSelectSoftmaxTopKExpertMapsKernel<T, true><<<1, 128, 0, stream>>>(
+        logits, scales, indices, row_to_source, source_to_row, sorted_experts, expert_offsets, rows);
+  } else if (warp_select == 1 && experts == 512 && k == 10) {
     WarpSelectSoftmaxTopKExpertMapsKernel<<<1, 128, 0, stream>>>(
         logits, scales, indices, row_to_source, source_to_row, sorted_experts, expert_offsets, rows);
   } else {

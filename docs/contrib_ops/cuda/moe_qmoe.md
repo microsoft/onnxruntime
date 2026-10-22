@@ -1938,3 +1938,31 @@ The CUTLASS kernels are derived from TensorRT-LLM (CUTLASS 4.4.2, commit
   `BlockScaleParams`)
 - `Deep Gemm`, standalone FP4 GEMM, FP8 block-scale GEMM, fused gated GEMM
   directories (the relevant pieces are inlined into the MoE runner).
+
+## Hardware-reduction routing
+
+For normalized 512-expert, top-10 routing, `ORT_MOE_ROUTING_WARP_SELECT=1`
+selects the warp-per-row register-selection implementation instead of the
+default merge sort (`=0`). Experimental `=2` retains the same selection,
+exponentials, normalization and expert maps but reduces each 64-bit stable key
+with two native unsigned 32-bit warp maxima on SM80 and newer: first the score
+word, then the index word among matching score lanes. Older architectures
+retain the shuffle reduction. This preserves the full packed-key ordering,
+including stable ties and nonfinite-score handling. Unsupported shapes retain
+merge sort in all modes. Mode 2 remains opt-in; the default is unchanged.
+
+On the H200 Qwen INT2 S2 package with shared-expert and RMSNormRotary fusions,
+forward and reverse fresh-process ABBA brackets (12 measured requests per
+mode/context combined) gave 274.48 -> 275.22 decode TPS at 2K (+0.27%) and
+254.54 -> 255.05 at 8K (+0.20%). Both bracket orders improved, but the small
+gain is not a general performance guarantee. Paired 8K CUDA Graph captures
+retain 946 kernels/cycle and 48 routing launches/cycle, with summed routing
+duration 286.52 -> 264.44 us/cycle. Profiled kernel sums are not additive
+end-to-end savings. All 76 requests including warmups/captures preserved exact
+512-token outputs; full accuracy qualification remains deferred.
+
+All 13 focused CUDA routing tests pass in modes 0, 1 and 2. Tests cover exact
+indices and stable maps, scale tolerances, one-node CUDA Graph replay, generic
+fallbacks, all winners in one lane, signed-zero ties, large logits, NaNs and
+infinities for FP32/FP16/BF16 one/two-row inputs. Invalid modes fail explicitly.
+Seven INT2/mixed-width packed-decode integration tests also pass in mode 2.
