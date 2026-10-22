@@ -29,17 +29,18 @@ constexpr uint32_t kSubgroupMatrixK = 16;
 constexpr uint32_t kTileMCandidates[] = {8, 16, 32, 64};
 constexpr uint32_t kTileNCandidates[] = {16, 32, 64};
 constexpr uint32_t kSplitKCandidates[] = {1, 2, 4, 8};
-// Extra per-tile N staged beyond split-K output tiles: 0 for MatMul; kSubgroupMatrixK
-// for Conv (which also stages an im2col A tile).
-constexpr uint32_t kMatMulScratchNPad = 0;
-constexpr uint32_t kConvScratchNPad = kSubgroupMatrixK;
+// Per-tile-row a_scratch footprint, in elements, beyond the output scratch tile:
+// 0 for MatMul (no im2col A-tile staging); kSubgroupMatrixK for Conv (width of
+// its im2col A-tile staging buffer).
+constexpr uint32_t kMatMulAScratchCols = 0;
+constexpr uint32_t kConvAScratchCols = kSubgroupMatrixK;
 
 // Workgroup-memory footprint of a tiling, in f16 elements.
-uint64_t ScratchElems(const SubgroupMatrixTiling& t, uint32_t scratch_n_pad) {
-  return static_cast<uint64_t>(t.split_k) * t.tile_m * (t.tile_n + scratch_n_pad);
+uint64_t ScratchElems(const SubgroupMatrixTiling& t, uint32_t a_scratch_cols) {
+  return static_cast<uint64_t>(t.split_k) * t.tile_m * (t.tile_n + a_scratch_cols);
 }
 
-bool IsTilingValid(const SubgroupMatrixTiling& t, uint32_t K, uint32_t scratch_n_pad) {
+bool IsTilingValid(const SubgroupMatrixTiling& t, uint32_t K, uint32_t a_scratch_cols) {
   if (t.tile_m == 0 || t.tile_n == 0 ||
       t.tile_m % kSubgroupMatrixM != 0 || t.tile_n % kSubgroupMatrixN != 0) {
     return false;
@@ -48,7 +49,7 @@ bool IsTilingValid(const SubgroupMatrixTiling& t, uint32_t K, uint32_t scratch_n
   if (t.split_k == 0 || t.split_k > k_blocks) {
     return false;
   }
-  return ScratchElems(t, scratch_n_pad) <= kMaxScratchElems;
+  return ScratchElems(t, a_scratch_cols) <= kMaxScratchElems;
 }
 
 // Falls back to a conservative default when HwSubgroups doesn't recognize arch.
@@ -84,6 +85,9 @@ SubgroupMatrixTiling HeuristicTiling(std::string_view arch, uint32_t M, uint32_t
       const uint32_t tiles = batch * tile_count(M, tm) * tile_count(N, tn);
       const uint32_t area = tm * tn;
       if (tiles >= hw) {
+        // This tile fills the machine on its own. Among all such tiles, keep the
+        // largest-area one (best operand reuse); this also supersedes any
+        // under-filling pick made earlier.
         if (!filled || area > best_area) {
           filled = true;
           best_area = area;
@@ -91,6 +95,8 @@ SubgroupMatrixTiling HeuristicTiling(std::string_view arch, uint32_t M, uint32_t
           tile_n = tn;
         }
       } else if (!filled && (tiles > best_tiles || (tiles == best_tiles && area > best_area))) {
+        // No tile has filled the machine yet: chase occupancy by maximizing the
+        // number of independent tiles, breaking ties toward larger area.
         best_tiles = tiles;
         best_area = area;
         tile_m = tm;
@@ -99,13 +105,15 @@ SubgroupMatrixTiling HeuristicTiling(std::string_view arch, uint32_t M, uint32_t
     }
   }
 
+  // Add split-K only while the independent tiles under-fill the machine; cap the
+  // total at 2x hardware and keep enough K work per subgroup and scratch budget.
   const uint32_t num_tiles = batch * tile_count(M, tile_m) * tile_count(N, tile_n);
   constexpr uint32_t kMinBlocksPerSplit = 2;
   uint32_t split_k = 1;
   for (uint32_t cand : kSplitKCandidates) {
     if (k_blocks >= cand * kMinBlocksPerSplit &&
         num_tiles * cand <= 2 * hw &&
-        ScratchElems({tile_m, tile_n, cand}, kMatMulScratchNPad) <= kMaxScratchElems) {
+        ScratchElems({tile_m, tile_n, cand}, kMatMulAScratchCols) <= kMaxScratchElems) {
       split_k = cand;
     }
   }
@@ -134,20 +142,11 @@ SubgroupMatrixTiling ConvHeuristicTiling(uint32_t N, uint32_t K) {
   uint32_t split_k = 1;
   for (uint32_t cand : kSplitKCandidates) {
     if (k_blocks >= cand * kMinBlocksPerSplit &&
-        ScratchElems({tile_m, tile_n, cand}, kConvScratchNPad) <= kMaxScratchElems) {
+        ScratchElems({tile_m, tile_n, cand}, kConvAScratchCols) <= kMaxScratchElems) {
       split_k = cand;
     }
   }
   return {tile_m, tile_n, split_k};
-}
-
-// Halves split_k until it fits K's block count and the scratch budget. No-op today
-// (ConvHeuristicTiling already guarantees both); a safety net for future callers.
-void ClampSplitKToProblem(SubgroupMatrixTiling& t, uint32_t K, uint32_t scratch_n_pad) {
-  const uint32_t k_blocks = K / kSubgroupMatrixK;
-  while (t.split_k > 1 && (t.split_k > k_blocks || ScratchElems(t, scratch_n_pad) > kMaxScratchElems)) {
-    t.split_k /= 2;
-  }
 }
 
 // Caps tile_n at the largest multiple of kSubgroupMatrixN that fits in N.
@@ -206,7 +205,7 @@ void ClampSplitKForBatch(SubgroupMatrixTiling& t, uint32_t M, uint32_t N, uint32
 
 // Uses the pretuned table entry when one exists and fits, else the heuristic.
 SubgroupMatrixTiling SelectTiling(std::string_view arch, uint32_t M, uint32_t N, uint32_t K, uint32_t batch) {
-  if (const auto tuned = LookupPretunedTiling(arch, M, N, K); tuned && IsTilingValid(*tuned, K, kMatMulScratchNPad)) {
+  if (const auto tuned = LookupPretunedTiling(arch, M, N, K); tuned && IsTilingValid(*tuned, K, kMatMulAScratchCols)) {
     SubgroupMatrixTiling tiling = *tuned;
     // The table is tuned at batch 1, so only revisit split-K when batch > 1.
     if (batch > 1) {
@@ -220,7 +219,6 @@ SubgroupMatrixTiling SelectTiling(std::string_view arch, uint32_t M, uint32_t N,
 // Conv counterpart of SelectTiling: no pretuned table, always ConvHeuristicTiling.
 SubgroupMatrixTiling SelectConvTiling(uint32_t N, uint32_t K) {
   SubgroupMatrixTiling tiling = ConvHeuristicTiling(N, K);
-  ClampSplitKToProblem(tiling, K, kConvScratchNPad);
   ClampTileNToProblem(tiling, N);
   return tiling;
 }

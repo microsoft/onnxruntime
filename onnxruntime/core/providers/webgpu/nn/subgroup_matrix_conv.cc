@@ -152,14 +152,14 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     const uint32_t batch = narrow<uint32_t>(input_shape[0]);
     const uint32_t input_h = narrow<uint32_t>(input_shape[1]);
     const uint32_t input_w = narrow<uint32_t>(input_shape[2]);
-    const uint32_t channel_i = narrow<uint32_t>(weight_shape[1]);
+    const uint32_t cin = narrow<uint32_t>(weight_shape[1]);
     const uint32_t kernel_h = narrow<uint32_t>(weight_shape[2]);
     const uint32_t kernel_w = narrow<uint32_t>(weight_shape[3]);
     const uint32_t output_h = narrow<uint32_t>(output_shape[1]);
     const uint32_t output_w = narrow<uint32_t>(output_shape[2]);
 
     const uint32_t M = output_h * output_w;                // output pixels per batch slice
-    const uint32_t K = kernel_h * kernel_w * channel_i;    // contraction dim
+    const uint32_t K = kernel_h * kernel_w * cin;          // contraction dim
     const uint32_t N = narrow<uint32_t>(weight_shape[0]);  // Cout
 
     // Empty batch/M/N (ONNX permits zero-length dims): let the generic Conv paths
@@ -215,7 +215,7 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     const uint32_t dispatch_y = (M + tile_m - 1) / tile_m;
 
     // Vectorize the im2col gather along cin (contiguous in NHWC).
-    const uint32_t vec_size = channel_i % 4 == 0 ? 4 : (channel_i % 2 == 0 ? 2 : 1);
+    const uint32_t vec_size = cin % 4 == 0 ? 4 : (cin % 2 == 0 ? 2 : 1);
 
     const Tensor* bias = context.InputCount() > 2 ? context.Input<Tensor>(2) : nullptr;
     const bool has_bias = bias != nullptr;
@@ -240,7 +240,7 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
                               {batch},
                               {input_h},
                               {input_w},
-                              {channel_i},
+                              {cin},
                               {kernel_h},
                               {kernel_w},
                               {output_w},

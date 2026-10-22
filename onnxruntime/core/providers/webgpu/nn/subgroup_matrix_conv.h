@@ -44,7 +44,7 @@ class SubgroupMatrixConvProgram final : public Program<SubgroupMatrixConvProgram
                                           {"batch", ProgramUniformVariableDataType::Uint32},
                                           {"input_h", ProgramUniformVariableDataType::Uint32},
                                           {"input_w", ProgramUniformVariableDataType::Uint32},
-                                          {"channel_i", ProgramUniformVariableDataType::Uint32},
+                                          {"cin", ProgramUniformVariableDataType::Uint32},
                                           {"kernel_h", ProgramUniformVariableDataType::Uint32},
                                           {"kernel_w", ProgramUniformVariableDataType::Uint32},
                                           {"output_w", ProgramUniformVariableDataType::Uint32},

@@ -40,7 +40,7 @@ const kTileM: u32 = kSgMatM * kSgMatCountM;      // Tile size along M (output ro
 const kTileN: u32 = kSgMatN * kSgMatCountN;      // Tile size along N (output columns per workgroup)
 const kSplitK: u32 = u32(split_k);               // Number of subgroups cooperating along K
 const kSubgroupSize: u32 = 32;                   // Lanes per subgroup
-const kVecSize: u32 = u32(vec_size);             // im2col gather width along cin (channel_i % vec_size == 0)
+const kVecSize: u32 = u32(vec_size);             // im2col gather width along cin (cin % vec_size == 0)
 
 // kSplitK partial [kTileM, kTileN] tiles, row-major; one slot per split-K
 // subgroup, summed at write-back.
@@ -52,22 +52,22 @@ var<workgroup> a_scratch: array<f16, kTileM * kSgMatK * kSplitK>;
 // Gathers A[m, k_base..k_base+vec_size-1] (k_base = k_vec * vec_size), always
 // within one (kh, kw) position, so all vec lanes share one bounds check. Padding
 // reads as zero; m past M is index-safe (not necessarily zero) but never stored.
-//   m -> (oh, ow); k_vec -> (kh_idx, kw_idx, cin_vec), cin_vec fastest.
+//   m -> (oh, ow); k_vec -> (kh_idx, kw_idx, k_cin), k_cin fastest.
 fn load_im2col_vec(m: u32, k_vec: u32, input_batch_base_vec: u32) -> input_src_value_t {
-    let channel_i_vec = uniforms.channel_i / kVecSize;
+    let cin_vec = uniforms.cin / kVecSize;
     let oh = m / uniforms.output_w;
     let ow = m % uniforms.output_w;
-    let cin_vec = k_vec % channel_i_vec;
-    let khw = k_vec / channel_i_vec;
-    let kw_idx = khw % uniforms.kernel_w;
-    let kh_idx = khw / uniforms.kernel_w;
+    let k_cin = k_vec % cin_vec;
+    let k_hw = k_vec / cin_vec;
+    let kw_idx = k_hw % uniforms.kernel_w;
+    let kh_idx = k_hw / uniforms.kernel_w;
     let ih = i32(oh * uniforms.strides.x + kh_idx * uniforms.dilations.x) - i32(uniforms.pads.x);
     let iw = i32(ow * uniforms.strides.y + kw_idx * uniforms.dilations.y) - i32(uniforms.pads.y);
     if (ih < 0 || ih >= i32(uniforms.input_h) || iw < 0 || iw >= i32(uniforms.input_w)) {
         return input_src_value_t();
     }
     let input_vec_idx = input_batch_base_vec +
-                      (u32(ih) * uniforms.input_w + u32(iw)) * channel_i_vec + cin_vec;
+                      (u32(ih) * uniforms.input_w + u32(iw)) * cin_vec + k_cin;
     return input_src.getByOffset(input_vec_idx);
 }
 
@@ -91,7 +91,7 @@ $MAIN {
     let n_skip = n_tile_start - global_base_n;  // columns already written by the previous tile
     let m_tile = tile_idx / uniforms.num_n_tile;        // which kTileM-tall row tile
     let m_base = m_tile * kTileM;
-    let input_batch_base_vec = batch_id * uniforms.input_h * uniforms.input_w * (uniforms.channel_i / kVecSize);
+    let input_batch_base_vec = batch_id * uniforms.input_h * uniforms.input_w * (uniforms.cin / kVecSize);
     let out_batch_base = batch_id * uniforms.M * uniforms.N;
     let k_blocks = uniforms.K / kSgMatK;
     let sg_index = local_idx / kSubgroupSize;          // which split-K subgroup (0..kSplitK-1)
