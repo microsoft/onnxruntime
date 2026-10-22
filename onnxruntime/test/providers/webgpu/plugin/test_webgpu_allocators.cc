@@ -232,7 +232,7 @@ void CheckSessionInputUploads(Ort::Env& env, Ort::ConstEpDevice ep_device,
   Ort::SessionOptions options;
   options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
   options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
-  options.AppendExecutionProvider_V2(env, {ep_device}, {});
+  options.AppendExecutionProvider_V2(env, {ep_device}, Ort::KeyValuePairs{});
   const auto model_bytes = model.SerializeAsString();
   Ort::Session session(env, model_bytes.data(), model_bytes.size(), options);
   const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
