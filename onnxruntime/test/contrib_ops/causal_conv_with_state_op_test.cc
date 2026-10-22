@@ -1848,6 +1848,44 @@ TEST(ContribOpVarlenCausalConvWithStateTest, SingleRequestPrefill) {
   RunVarlenCausalConvCase(c);
 }
 
+TEST(ContribOpVarlenCausalConvWithStateTest, TiledPrefillWithStateUpdate) {
+  for (int length : {255, 256, 257}) {
+    for (int dilation : {1, 3}) {
+      for (int capture : {0, 7, 99}) {
+        SCOPED_TRACE(length);
+        SCOPED_TRACE(dilation);
+        SCOPED_TRACE(capture);
+        for (int type = 0; type < 3; ++type) {
+          SCOPED_TRACE(type);
+          VarlenCausalConvCase c;
+          c.seq_lens = {length};
+          c.channels = 129;
+          c.kernel_size = 4;
+          c.dilation = dilation;
+          c.with_initial_state = true;
+          c.use_fp16 = type == 1;
+          c.use_bf16 = type == 2;
+          c.state_update_capacity = 7;
+          c.capture_count = {capture};
+          RunVarlenCausalConvCase(c);
+        }
+      }
+    }
+  }
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, TiledPrefillWithoutStateUpdate) {
+  for (const char* activation : {"none", "silu"}) {
+    VarlenCausalConvCase c;
+    c.seq_lens = {257};
+    c.channels = 129;
+    c.kernel_size = 4;
+    c.activation = activation;
+    c.with_bias = false;
+    RunVarlenCausalConvCase(c);
+  }
+}
+
 TEST(ContribOpVarlenCausalConvWithStateTest, WithInitialState) {
   VarlenCausalConvCase c;
   c.seq_lens = {3, 1, 2};
@@ -2268,6 +2306,21 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
 TEST(ContribOpVarlenCausalConvWithStateTest, AliasedGeneralKernelTwoCallContinuation) {
   RunAliasedStateTwoCallContinuationIOBinding(
       3, 3, {6.0f, 6.0f, 6.0f}, {2.0f, 3.0f});
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, AliasedTiledPrefillTwoCallContinuation) {
+  for (int length : {256, 257, 512}) {
+    std::vector<float> expected_output(static_cast<size_t>(length), 0.0f);
+    for (int t = 0; t < length; ++t) {
+      for (int tap = 0; tap < 4; ++tap) {
+        const int index = t - 3 + tap;
+        expected_output[t] += static_cast<float>(index < 0 ? length + index + 1 : index + 1);
+      }
+    }
+    RunAliasedStateTwoCallContinuationIOBinding(
+        length, 4, expected_output,
+        {static_cast<float>(length - 2), static_cast<float>(length - 1), static_cast<float>(length)});
+  }
 }
 
 TEST(ContribOpVarlenCausalConvWithStateTest, AliasedDecodeKernelSize1TwoCallContinuation) {
