@@ -25,11 +25,7 @@ env:
 jobs:
   webgpu_compile_x64_RelWithDebInfo:
     name: webgpu_compile_x64_RelWithDebInfo (${{ matrix.vcpkg_option }})
-    runs-on: [
-      "self-hosted",
-      "1ES.Pool=onnxruntime-github-vs2022-latest",
-      "JobId=webgpu_compile_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}-${{ matrix.vcpkg_option }}"
-      ]
+    runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 300
     strategy:
       matrix: &webgpu_matrix
@@ -99,6 +95,13 @@ jobs:
         with:
           dotnet-version: "8.x"
 
+      - name: Test WebGPU NuGet packaging
+        run: python -m unittest plugin-ep-webgpu\csharp\test\test_pack_nuget.py -v
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+        env:
+          ORT_WEBGPU_TEST_REQUIRE_DOTNET_SDK: "1"
+
       - name: Use Nuget 6.x
         uses: nuget/setup-nuget@d105a947828025cd7a980103c35ba2bfae586d0f # v2.0.2
         with:
@@ -167,11 +170,7 @@ jobs:
   webgpu_test_x64_RelWithDebInfo:
     name: webgpu_test_x64_RelWithDebInfo (${{ matrix.vcpkg_option }})
     needs: webgpu_compile_x64_RelWithDebInfo
-    runs-on: [
-      "self-hosted",
-      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-      "JobId=webgpu_test_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}-${{ matrix.vcpkg_option }}"
-      ]
+    runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 300
     strategy:
       matrix: *webgpu_matrix
@@ -289,11 +288,7 @@ jobs:
 
   webgpu_plugin_compile_x64_RelWithDebInfo:
     name: webgpu_plugin_compile_x64_RelWithDebInfo
-    runs-on: [
-      "self-hosted",
-      "1ES.Pool=onnxruntime-github-vs2022-latest",
-      "JobId=webgpu_plugin_compile_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-      ]
+    runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 300
     env:
       setVcvars: true
@@ -381,11 +376,7 @@ jobs:
     # Preserve the legacy required-check name so branch protection waits for GPU tests.
     name: webgpu_plugin_build_x64_RelWithDebInfo
     needs: webgpu_plugin_compile_x64_RelWithDebInfo
-    runs-on: [
-      "self-hosted",
-      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-      "JobId=webgpu_plugin_test_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-      ]
+    runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 300
     env:
       setVcvars: true
@@ -446,11 +437,7 @@ jobs:
   # Same plugin EP sources as webgpu_plugin_build_x64_RelWithDebInfo, but linked into the ORT binary
   # instead of built as a separate shared library.
   webgpu_static_plugin_build_x64_RelWithDebInfo:
-    runs-on: [
-      "self-hosted",
-      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-      "JobId=webgpu_static_plugin_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-      ]
+    runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 300
     env:
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}
@@ -515,11 +502,7 @@ jobs:
           }
 
   webgpu_external_dawn_build_x64_RelWithDebInfo:
-    runs-on: [
-        "self-hosted",
-        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-        "JobId=webgpu_external_dawn_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-      ]
+    runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 300
     steps:
       - name: Checkout
@@ -600,11 +583,7 @@ jobs:
 
   webgpu_dawn_package_build_x64_RelWithDebInfo:
     needs: webgpu_external_dawn_build_x64_RelWithDebInfo
-    runs-on: [
-        "self-hosted",
-        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-        "JobId=webgpu_dawn_package_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-      ]
+    runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 300
     steps:
       - name: Checkout
@@ -720,11 +699,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Plugin-backed cache exception containment failed" }
 
   webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
-    runs-on: [
-        "self-hosted",
-        "1ES.Pool=onnxruntime-github-vs2022-latest",
-        "JobId=webgpu_minimal_build_edge_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-        ]
+    runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 300
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
