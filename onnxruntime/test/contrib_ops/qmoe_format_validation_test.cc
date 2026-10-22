@@ -127,20 +127,24 @@ TEST(QMoEFormatValidationTest, ByteHelpers) {
       EXPECT_EQ(PackedByteCountWithPadding(count, bits), (count * bits + 7) / 8);
     }
   }
+#ifndef ORT_NO_EXCEPTIONS
   EXPECT_ANY_THROW(PackedByteCount(1, 3));
   EXPECT_ANY_THROW(PackedByteCount(std::numeric_limits<int64_t>::max(), 8));
   EXPECT_ANY_THROW(PackedByteCountWithPadding(-1, 3));
   EXPECT_ANY_THROW(PackedByteCountWithPadding(1, 0));
   EXPECT_ANY_THROW(PackedByteCountWithPadding(1, -1));
   EXPECT_ANY_THROW(PackedByteCountWithPadding(1, 9));
+#endif
   EXPECT_EQ(PackedByteCountWithPadding(std::numeric_limits<int64_t>::max(), 8),
             std::numeric_limits<int64_t>::max());
   EXPECT_EQ(PackedByteCountWithPadding(std::numeric_limits<int64_t>::max(), 3),
             (std::numeric_limits<int64_t>::max() / 8) * 3 + 3);
   EXPECT_EQ(WeightBitsFromPackSize(2).fc1, 4);
   EXPECT_EQ(WeightBitsFromPackSize(1).fc2, 8);
+#ifndef ORT_NO_EXCEPTIONS
   EXPECT_ANY_THROW(WeightBitsFromPackSize(0));
   EXPECT_ANY_THROW(WeightBitsFromPackSize(3));
+#endif
 }
 }  // namespace
 }  // namespace onnxruntime::test
