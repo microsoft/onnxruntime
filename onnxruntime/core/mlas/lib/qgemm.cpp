@@ -433,7 +433,7 @@ Return Value:
 --*/
 {
     auto* override = GetMlasPlatform().MlasQGemmPackBSizeOverride;
-    if (override != nullptr) {
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) && override != nullptr) {
         const size_t bytes = override(N, K, AIsSigned, BIsSigned);
         if (bytes != 0) {
             return bytes;
@@ -513,6 +513,22 @@ MlasGemmPackB(
     bool BIsSigned,
     void* PackedB
     )
+{
+    MlasGemmPackB(N, K, B, ldb, AIsSigned, BIsSigned, PackedB, nullptr);
+}
+
+void
+MLASCALL
+MlasGemmPackB(
+    size_t N,
+    size_t K,
+    const uint8_t* B,
+    size_t ldb,
+    bool AIsSigned,
+    bool BIsSigned,
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    )
 /*++
 
 Routine Description:
@@ -535,6 +551,9 @@ Arguments:
 
     PackedB - Supplies the address of packed matrix B.
 
+    BackendKernelSelectorConfig - Supplies the same backend selection used by
+        MlasGemmPackBSize, else nullptr for the default configuration.
+
 Return Value:
 
     None.
@@ -542,7 +561,8 @@ Return Value:
 --*/
 {
     const auto& platform = GetMlasPlatform();
-    if (platform.MlasQGemmPackBOverride != nullptr &&
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        platform.MlasQGemmPackBOverride != nullptr &&
         platform.MlasQGemmPackBSizeOverride(N, K, AIsSigned, BIsSigned) != 0) {
         platform.MlasQGemmPackBOverride(N, K, B, ldb, AIsSigned, BIsSigned, PackedB);
         return;

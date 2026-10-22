@@ -4,17 +4,18 @@
 #include "test_qgemm.h"
 #include "test_qgemm_fixture.h"
 
-#if defined(MLAS_KLEIDIAI_INT8_OPS_AVAILABLE)
 #include <array>
 #include <cstdint>
 
+#if defined(MLAS_KLEIDIAI_INT8_OPS_AVAILABLE)
 #include "core/mlas/lib/kleidiai/mlasi_kleidiai.h"
+#include "core/mlas/lib/qgemm.h"
 
 TEST(QGemmKleidiAIOps, PackedWeightsPreserveQuantizationAndAccumulation) {
   constexpr size_t N = 17, K = 13, MaxM = 65, lda = K + 3, ldb = N + 3, ldc = N + 4;
-  std::array<uint8_t, MaxM * lda> a;
-  std::array<uint8_t, K * ldb> b;
-  std::array<uint8_t, N> zero_points;
+  std::array<uint8_t, MaxM * lda> a{};
+  std::array<uint8_t, K * ldb> b{};
+  std::array<uint8_t, N> zero_points{};
   for (size_t i = 0; i < a.size(); ++i) a[i] = static_cast<uint8_t>(i * 37);
   for (size_t i = 0; i < b.size(); ++i) b[i] = static_cast<uint8_t>(i * 53);
   for (size_t i = 0; i < N; ++i) zero_points[i] = static_cast<uint8_t>(i * 17 + 5);
@@ -26,12 +27,12 @@ TEST(QGemmKleidiAIOps, PackedWeightsPreserveQuantizationAndAccumulation) {
   void* packed_b = packed_buffer.GetBuffer(packed_size);
   MlasGemmPackB(N, K, b.data(), ldb, true, true, packed_b);
 
-  MLAS_GEMM_QUANT_SHAPE_PARAMS shape;
+  MLAS_GEMM_QUANT_SHAPE_PARAMS shape{};
   shape.N = N;
   shape.K = K;
   shape.AIsSigned = true;
   shape.BIsSigned = true;
-  MLAS_GEMM_QUANT_DATA_PARAMS data;
+  MLAS_GEMM_QUANT_DATA_PARAMS data{};
   data.A = a.data();
   data.lda = lda;
   data.ZeroPointA = static_cast<uint8_t>(-3);
@@ -39,7 +40,7 @@ TEST(QGemmKleidiAIOps, PackedWeightsPreserveQuantizationAndAccumulation) {
   data.BIsPacked = true;
   data.ZeroPointB = zero_points.data();
   data.ldc = ldc;
-  std::array<int32_t, MaxM * ldc> output, expected;
+  std::array<int32_t, MaxM * ldc> output{}, expected{};
 
   for (size_t m : {size_t(1), MaxM}) {
     shape.M = m;
@@ -77,8 +78,8 @@ TEST(QGemmKleidiAIOps, PackedWeightsPreserveQuantizationAndAccumulation) {
 
 TEST(QGemmKleidiAIOps, MixedPackedBatchFallsBackWithoutChangingUnsupportedEntries) {
   constexpr size_t M = 3, N = 17, K = 13;
-  std::array<uint8_t, M * K> a;
-  std::array<uint8_t, K * N> b;
+  std::array<uint8_t, M * K> a{};
+  std::array<uint8_t, K * N> b{};
   a.fill(2);
   b.fill(3);
   const uint8_t zero_point = 0;
@@ -87,15 +88,15 @@ TEST(QGemmKleidiAIOps, MixedPackedBatchFallsBackWithoutChangingUnsupportedEntrie
   MatrixGuardBuffer<uint8_t> packed_buffer;
   void* packed_b = packed_buffer.GetBuffer(packed_size);
   MlasGemmPackB(N, K, b.data(), N, true, true, packed_b);
-  MLAS_GEMM_QUANT_SHAPE_PARAMS shape;
+  MLAS_GEMM_QUANT_SHAPE_PARAMS shape{};
   shape.M = M;
   shape.N = N;
   shape.K = K;
   shape.AIsSigned = true;
   shape.BIsSigned = true;
-  std::array<int32_t, M * N * 2> output;
+  std::array<int32_t, M * N * 2> output{};
   output.fill(-11);
-  std::array<MLAS_GEMM_QUANT_DATA_PARAMS, 2> data;
+  std::array<MLAS_GEMM_QUANT_DATA_PARAMS, 2> data{};
   for (size_t i = 0; i < data.size(); ++i) {
     data[i].A = a.data();
     data[i].lda = K;
@@ -128,17 +129,59 @@ TEST(QGemmKleidiAIOps, MixedPackedBatchFallsBackWithoutChangingUnsupportedEntrie
 }
 #endif
 
-TEST(QGemmPackB, SizeDoesNotIncludeDynamicQGemmPacking) {
+TEST(QGemmPackB, UsesKleidiAIBackendSelector) {
+  constexpr size_t M = 3, N = 17, K = 13;
+  std::array<uint8_t, M * K> a{};
+  std::array<uint8_t, K * N> b{};
+  std::array<int32_t, M * N> output{};
+  a.fill(2);
+  b.fill(3);
+  const uint8_t zero_point = 0;
+  MLAS_GEMM_QUANT_SHAPE_PARAMS shape{};
+  shape.M = M;
+  shape.N = N;
+  shape.K = K;
+  shape.AIsSigned = true;
+  shape.BIsSigned = true;
+  MLAS_GEMM_QUANT_DATA_PARAMS data{};
+  data.A = a.data();
+  data.lda = K;
+  data.BIsPacked = true;
+  data.ZeroPointB = &zero_point;
+  data.C = output.data();
+  data.ldc = N;
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG selector_config{};
-  selector_config.use_kleidiai = false;
-  const size_t standard_packed_size = MlasGemmPackBSize(
-      1024, 1024, true /* AIsSigned */, true /* BIsSigned */, &selector_config);
-
-  selector_config.use_kleidiai = true;
-  const size_t packed_size_with_kleidiai_enabled = MlasGemmPackBSize(
-      1024, 1024, true /* AIsSigned */, true /* BIsSigned */, &selector_config);
-
-  ASSERT_EQ(packed_size_with_kleidiai_enabled, standard_packed_size);
+#if defined(MLAS_KLEIDIAI_INT8_OPS_AVAILABLE)
+  const auto* dispatch = MlasGemmQuantGetDispatch(true, true);
+  const size_t aligned_n = (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
+  const size_t aligned_k = dispatch->PackedK == 0 ? 0 : (K + dispatch->PackedK - 1) & ~(dispatch->PackedK - 1);
+  const size_t alignment = MlasGetPreferredBufferAlignment();
+  const size_t native_size = dispatch->PackedStrideK == 0 ? 0 : (aligned_n * (sizeof(int32_t) + aligned_k) + alignment - 1) & ~(alignment - 1);
+#endif
+  for (bool enabled : {false, true, false}) {
+    SCOPED_TRACE(testing::Message() << "use_kleidiai=" << enabled);
+    selector_config.use_kleidiai = enabled;
+    const size_t packed_size = MlasGemmPackBSize(N, K, true, true, &selector_config);
+#if defined(MLAS_KLEIDIAI_INT8_OPS_AVAILABLE)
+    // Correct native packing alone would not catch an oversized Ops allocation.
+    if (!enabled) EXPECT_EQ(packed_size, native_size);
+#endif
+    if (packed_size == 0) GTEST_SKIP() << "Signed INT8 packing is not supported";
+    if (enabled) EXPECT_EQ(packed_size, MlasGemmPackBSize(N, K, true, true, nullptr));
+    MatrixGuardBuffer<uint8_t> packed_buffer;
+    void* packed_b = packed_buffer.GetBuffer(packed_size);
+    data.B = packed_b;
+    MlasGemmPackB(N, K, b.data(), N, true, true, packed_b, &selector_config);
+    output.fill(-11);
+#if defined(MLAS_KLEIDIAI_INT8_OPS_AVAILABLE)
+    const bool uses_ops = enabled && ArmKleidiAI::MlasQGemmPackBSizeKleidiAIOps(N, K, true, true) != 0;
+    ASSERT_EQ(ArmKleidiAI::MlasQGemmBatchKleidiAIOps(shape, &data, 1, nullptr), uses_ops);
+    for (int32_t value : output) EXPECT_EQ(value, uses_ops ? int32_t(6 * K) : -11);
+    output.fill(-11);
+#endif
+    MlasGemmBatch(shape, &data, 1, nullptr);
+    for (int32_t value : output) EXPECT_EQ(value, int32_t(6 * K));
+  }
 }
 
 static size_t QGemmRegistLongExecute() {
