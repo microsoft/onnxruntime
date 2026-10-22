@@ -490,6 +490,8 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
     // The fused legacy helpers decide at launch time whether they can run.
     // Reserve the dequantize+GEMM catch-all so every reachable legacy route
     // remains covered without duplicating those kernel predicates.
+    // Keep env defaults and clamping identical to the constructor's legacy
+    // N-chunk policy; the fpA-only M-chunk session option does not apply here.
     int64_t chunk_target_rows =
         ParseEnvironmentVariableWithDefault<int64_t>(
             kChunkSizeEnvVar, kDefaultChunkTargetRows);
@@ -656,6 +658,8 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
             onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
                 SafeInt<int>(*maximum_runtime_rows),
                 onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+        // M=1 is always profiled at construction. Scratch for the remaining
+        // buckets is nondecreasing in M, so retain the largest missing bucket.
         for (int candidate_m = 1; candidate_m <= maximum_runtime_profile_m; candidate_m *= 2) {
           if (std::find(initial_profile_m.begin(), initial_profile_m.end(), candidate_m) ==
               initial_profile_m.end()) {

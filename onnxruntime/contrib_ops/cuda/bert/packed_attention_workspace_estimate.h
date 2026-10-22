@@ -89,6 +89,7 @@ void SetPackedAttentionWorkspaceRequirements(
     const PackedAttentionWorkspaceAggregate& estimate,
     InlinedVector<WorkspaceRequirement>& requirements);
 
+// Requires a successful aggregate; on failure, leaves the existing estimate unchanged.
 void SetPackedAttentionLevel1MemoryEstimate(
     const PackedAttentionWorkspaceAggregate& workspace,
     Level1MemoryEstimate& estimate);

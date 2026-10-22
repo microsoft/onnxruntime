@@ -585,9 +585,19 @@ peaks become 3114 -> 2568 MiB (chunk off -> 256; run peak 2430 / 2416 MiB). In a
 full model the session-creation peak also overlaps other nodes' initializers, so
 the saving applies per profiled node.
 
-The Level-2 `DeclareWorkspaceRequirements` estimate uses the chunk size. The
-Level-1 (partition-time) estimate ignores it and stays a conservative upper
-bound.
+Both the Level-1 (partition-time) and Level-2 `DeclareWorkspaceRequirements`
+estimates use the chunk policy. The `ep.cuda.matmul_nbits_m_chunk_size` session
+option takes precedence over `ORT_MATMULNBITS_M_CHUNK_SIZE`, matching runtime
+configuration. A maximum-shape hint is a bound, not an exact runtime shape:
+Level 1 also covers smaller, unchunked launches below the size gate and missing
+tail-profile buckets.
+
+For dynamic `M`, a positive chunk size can bound the largest launch. Without a
+launch bound, a profiling-scratch estimate alone is insufficient: capacity-aware
+placement intentionally declines CUDA assignment when ordinary runtime workspace
+is unknown. It may use CPU fallback, or initialization fails if no compatible
+fallback exists. This partition-time coverage is for the in-tree CUDA EP; it
+does not establish equivalent CUDA plugin placement accounting.
 
 M chunking applies only to the fpA_intB path. The dequantize + cuBLAS fallback
 (§5) needs no `M`-proportional scratch; its dequantized-weight buffer is bounded

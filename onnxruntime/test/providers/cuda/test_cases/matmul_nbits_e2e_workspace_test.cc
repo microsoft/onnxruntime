@@ -296,7 +296,8 @@ const Node* FindNodeByOpType(const Graph& graph, const std::string& op_type) {
 
 std::optional<Level1MemoryEstimate> EstimateMemoryFromGraphProtoShape(
     gsl::span<const int64_t> input_a_shape,
-    contrib::cuda::MatMulNBitsMemoryEstimateOptions options = {}) {
+    contrib::cuda::MatMulNBitsMemoryEstimateOptions options = {},
+    gsl::span<const int64_t> inferred_shape = {}) {
   ONNX_NAMESPACE::TypeProto input_type;
   auto* tensor_type = input_type.mutable_tensor_type();
   tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
@@ -327,7 +328,9 @@ std::optional<Level1MemoryEstimate> EstimateMemoryFromGraphProtoShape(
   device_prop.major = 8;
   device_prop.minor = 0;
   device_prop.multiProcessorCount = 108;
-  return EstimateMatMulNBitsMemoryForTest(&node, device_prop, options);
+  return inferred_shape.empty()
+             ? EstimateMatMulNBitsMemoryForTest(&node, device_prop, options)
+             : EstimateMatMulNBitsMemoryForTest(&node, inferred_shape, device_prop, options);
 }
 
 #if USE_FPA_INTB_GEMM
@@ -566,6 +569,60 @@ TEST(MatMulNBitsWorkspace, RuntimeTransientPeakCoversRetainedWorkspaceDuringLazy
               std::optional<size_t>{test_case.workspace_bytes});
     EXPECT_EQ(estimate->runtime_transient_bytes, test_case.preparation_peak_bytes);
   }
+}
+
+TEST(MatMulNBitsWorkspace, Level1ChunkOptionsOverrideEnvironmentAndCapConstructorProfiling) {
+  ScopedEnvironmentVariables scoped_env(
+      EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"0"}},
+                {"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"1,4096"}},
+                {"ORT_MATMULNBITS_M_CHUNK_SIZE", optional<std::string>{"4096"}},
+                {"ORT_MATMULNBITS_FORCE_CHUNKED", optional<std::string>{"1"}}});
+  const std::array<int64_t, 2> shape{512, kE2eK};
+  const auto estimate = EstimateMemoryFromGraphProtoShape(
+      shape, {/*fpa_intb_gemm=*/std::string_view{"1"},
+              /*profile_m=*/std::string_view{"1,2,4,8,16,32,64,128,256"},
+              /*input_shape_is_upper_bound=*/false,
+              /*m_chunk_size=*/std::string_view{"256"}});
+  ASSERT_TRUE(estimate.has_value());
+  EXPECT_EQ(estimate->runtime_workspace_bytes, std::optional<size_t>{1792});
+  EXPECT_EQ(estimate->runtime_transient_bytes, 0U);
+
+  const auto capped = EstimateMemoryFromGraphProtoShape(
+      shape, {/*fpa_intb_gemm=*/std::string_view{"1"},
+              /*profile_m=*/std::string_view{"1,4096"},
+              /*input_shape_is_upper_bound=*/false,
+              /*m_chunk_size=*/std::string_view{"256"}});
+  const auto unchunked = EstimateMemoryFromGraphProtoShape(
+      shape, {/*fpa_intb_gemm=*/std::string_view{"1"},
+              /*profile_m=*/std::string_view{"1,4096"},
+              /*input_shape_is_upper_bound=*/false,
+              /*m_chunk_size=*/std::string_view{"0"}});
+  ASSERT_TRUE(capped.has_value());
+  ASSERT_TRUE(unchunked.has_value());
+  EXPECT_LT(capped->initialization_scratch_bytes, unchunked->initialization_scratch_bytes);
+}
+
+TEST(MatMulNBitsWorkspace, Level1UpperBoundIncludesUnchunkedRowsBelowSizeGate) {
+  ScopedEnvironmentVariables scoped_env(
+      EnvVarMap{{"ORT_MATMULNBITS_FORCE_CHUNKED", optional<std::string>{"0"}}});
+  // For N=256/K=1024 FP16, M=104857 is still unchunked; M=104858 is split into 256-row launches.
+  const std::array<int64_t, 2> max_shape{104858, kE2eK};
+  const std::array<int64_t, 2> dynamic_shape{-1, kE2eK};
+  const auto bounded = EstimateMemoryFromGraphProtoShape(
+      dynamic_shape, {/*fpa_intb_gemm=*/std::string_view{"1"},
+                      /*profile_m=*/std::string_view{"1,256"},
+                      /*input_shape_is_upper_bound=*/true,
+                      /*m_chunk_size=*/std::string_view{"256"}},
+      max_shape);
+  const auto exact = EstimateMemoryFromGraphProtoShape(
+      max_shape, {/*fpa_intb_gemm=*/std::string_view{"1"},
+                  /*profile_m=*/std::string_view{"1,256"},
+                  /*input_shape_is_upper_bound=*/false,
+                  /*m_chunk_size=*/std::string_view{"256"}});
+  ASSERT_TRUE(bounded.has_value());
+  ASSERT_TRUE(exact.has_value());
+  EXPECT_EQ(bounded->runtime_workspace_bytes, std::optional<size_t>{734048});
+  EXPECT_EQ(exact->runtime_workspace_bytes, std::optional<size_t>{1792});
 }
 
 TEST(MatMulNBitsWorkspace, MaxShapeBudgetChargesMissingSmallerProfileBucket) {

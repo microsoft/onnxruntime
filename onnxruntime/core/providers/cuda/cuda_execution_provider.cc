@@ -3712,6 +3712,12 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                 << " bytes, initialization scratch="
                                 << level1_memory_estimate->initialization_scratch_bytes << " bytes";
         } else {
+          LOGS(logger, WARNING)
+              << "CUDA_EP declining capacity-aware assignment for MatMulNBits node "
+              << node->Name() << " because "
+              << (level1_memory_estimate.has_value()
+                      ? "ordinary runtime workspace is unknown for the admitted input shapes."
+                      : "no proven route-complete memory estimate is available for this configuration.");
           continue;
         }
       }
@@ -3736,6 +3742,10 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                 << ": runtime workspace="
                                 << ws->total_workspace_bytes << " bytes";
         } else {
+          LOGS(logger, WARNING)
+              << "CUDA_EP declining capacity-aware assignment for " << node->OpType()
+              << " node " << node->Name()
+              << " because required shape metadata or a proven route-complete workspace estimate is unavailable.";
           continue;
         }
       }
