@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include <functional>
 #include <limits>
 #include <map>
@@ -30,6 +33,7 @@ struct QMoEShapeCase {
   std::optional<std::string> quant_type = "int";
   int64_t fusion = 1;
   std::string activation = "swiglu";
+  bool omit_activation = false;
   std::map<size_t, std::vector<int64_t>> shapes{
       {0, {2, 64}}, {1, {2, 3}}, {2, {3, 256, 24}}, {3, {3, 256, 2}}, {5, {3, 64, 64}}, {6, {3, 64, 4}}};
   std::map<size_t, int> types;
@@ -78,7 +82,7 @@ common::Status ResolveQMoE(const QMoEShapeCase& spec,
   if (spec.block) node.AddAttribute("block_size", *spec.block);
   if (spec.quant_type) node.AddAttribute("quant_type", *spec.quant_type);
   node.AddAttribute("swiglu_fusion", spec.fusion);
-  node.AddAttribute("activation_type", spec.activation);
+  if (!spec.omit_activation) node.AddAttribute("activation_type", spec.activation);
   graph.SetOutputs({&output});
   auto status = graph.Resolve();
   if (status.IsOK() && verify) verify(node, output);
@@ -118,14 +122,18 @@ TEST(QMoEShapeInferenceTest, InheritanceAndLegacyActivationChoices) {
   spec.fc2_bits.reset();
   spec.fc3_bits.reset();
   spec.shapes[5][2] = 48;
-  for (const std::string activation : {"relu", "gelu", "silu", "swiglu", "identity", "relu2"}) {
-    spec.activation = activation;
-    ASSERT_STATUS_OK(ResolveQMoE(spec));
-  }
+  ASSERT_STATUS_OK(ResolveQMoE(spec));
   spec.quant_type.reset();
   ASSERT_STATUS_OK(ResolveQMoE(spec, [](const Node& node, const NodeArg&) {
     EXPECT_EQ(node.GetAttributes().at("quant_type").s(), "int");
   }));
+  spec.root_bits = 4;
+  spec.shapes[2][2] = 32;
+  spec.shapes[5][2] = 64;
+  for (const std::string activation : {"relu", "gelu", "silu", "swiglu", "identity", "relu2"}) {
+    spec.activation = activation;
+    ASSERT_STATUS_OK(ResolveQMoE(spec));
+  }
 }
 
 TEST(QMoEShapeInferenceTest, IndependentProjectionWidthsAndPackedZeroPointRows) {
@@ -298,6 +306,8 @@ TEST(QMoEShapeInferenceTest, RejectsInvalidInt3Metadata) {
       {"block negative", [](auto& spec) { spec.block = -32; }},
       {"unfused", [](auto& spec) { spec.fusion = 0; }},
       {"concatenated fusion", [](auto& spec) { spec.fusion = 2; }},
+      {"non-SwiGLU activation", [](auto& spec) { spec.activation = "relu"; }},
+      {"default activation is not SwiGLU", [](auto& spec) { spec.omit_activation = true; }},
       {"FC3 independent inheritance", [](auto& spec) { spec.fc3_bits.reset(); }},
       {"FC3 mismatch", [](auto& spec) { spec.fc3_bits = 4; }},
       {"activation float32", [](auto& spec) { spec.activation_type = TensorProto::FLOAT; }},

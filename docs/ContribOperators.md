@@ -6293,7 +6293,7 @@ This version of the operator has been available since version 1 of the 'com.micr
     The raw INT3 profile extends version 1; execution support is provider-specific.
     For INT3, the requirements below supersede the legacy format descriptions above.
     Effective widths are 2, 3, 4, or 8. Models without INT3 retain the legacy format contracts.
-    With INT3, use quant_type='int' (the default), and explicitly set weights_prepacked=0, swiglu_fusion=1,
+    With INT3, use quant_type='int' (the default), and explicitly set activation_type='swiglu', weights_prepacked=0, swiglu_fusion=1,
     and block_size=32, 64, or 128. Effective FC3 must equal FC1 after independent inheritance.
     H comes from input and I from half the FC1 row count; both must be divisible by block_size.
     Weights are uint8 [E,N,ceil(K*bits/8)], row-local LSB-first bitstreams, without per-block padding.

@@ -622,7 +622,6 @@ def create_cpu_moe_onnx_graph(
     )
 
     model = helper.make_model(graph)
-    model.opset_import.append(helper.make_opsetid("com.microsoft", 1))
     return model.SerializeToString()
 
 

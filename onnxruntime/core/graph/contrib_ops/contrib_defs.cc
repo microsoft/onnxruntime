@@ -1539,8 +1539,10 @@ static void QMoETypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   if ((quant_type && quant_type->s() != "int") || getAttribute(ctx, "weights_prepacked", -1) != 0) {
     fail_shape_inference("QMoE INT3 requires integer quantization and explicit weights_prepacked=0 (raw weights).");
   }
-  if (getAttribute(ctx, "swiglu_fusion", 0) != 1 || fc3_bits != fc1_bits) {
-    fail_shape_inference("QMoE INT3 requires swiglu_fusion=1 and equal effective FC1/FC3 widths after inheritance.");
+  const auto* activation_type_attr = ctx.getAttribute("activation_type");
+  if (!activation_type_attr || activation_type_attr->s() != "swiglu" ||
+      getAttribute(ctx, "swiglu_fusion", 0) != 1 || fc3_bits != fc1_bits) {
+    fail_shape_inference("QMoE INT3 requires activation_type='swiglu', swiglu_fusion=1 and equal effective FC1/FC3 widths after inheritance.");
   }
   const int64_t block_size = getAttribute(ctx, "block_size", 0);
   if (block_size != 32 && block_size != 64 && block_size != 128) {
@@ -1698,7 +1700,7 @@ constexpr const char* qMoE_int3_doc = R"DOC(
   The raw INT3 profile extends version 1; execution support is provider-specific.
   For INT3, the requirements below supersede the legacy format descriptions above.
   Effective widths are 2, 3, 4, or 8. Models without INT3 retain the legacy format contracts.
-  With INT3, use quant_type='int' (the default), and explicitly set weights_prepacked=0, swiglu_fusion=1,
+  With INT3, use quant_type='int' (the default), and explicitly set activation_type='swiglu', weights_prepacked=0, swiglu_fusion=1,
   and block_size=32, 64, or 128. Effective FC3 must equal FC1 after independent inheritance.
   H comes from input and I from half the FC1 row count; both must be divisible by block_size.
   Weights are uint8 [E,N,ceil(K*bits/8)], row-local LSB-first bitstreams, without per-block padding.

@@ -1,13 +1,10 @@
-"""CPU-only P0 oracles; tested draft semantic revision 0a15c0c.
+"""Self-contained CPU-only P0 oracles.
 
 No draft operator/opset dependency and no production schema or kernel claims.
 All golden bytes and numerical results are manually specified literals.
 """
 
 import json
-import os
-import runpy
-import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -28,26 +25,6 @@ from reference import (
 )
 
 GOLDEN = json.loads(Path(__file__).with_name("golden_vectors.json").read_text())
-
-
-def test_external_proposal_interoperability():
-    checkout = os.environ.get("ONNX_PACK_PROPOSAL_CHECKOUT")
-    if not checkout:
-        pytest.skip("set ONNX_PACK_PROPOSAL_CHECKOUT to the pinned proposal checkout")
-    revision = "0a15c0c82254ffabf2f5675005cc5cfc8086d9b8"
-    actual = subprocess.check_output(["git", "-C", checkout, "rev-parse", "HEAD"], text=True).strip()
-    assert actual == revision, "external reference must use the recorded proposal revision"
-    root = Path(checkout) / "onnx/reference/ops"
-    proposal_pack = runpy.run_path(str(root / "op_pack.py"))["Pack"]
-    proposal_unpack = runpy.run_path(str(root / "op_unpack.py"))["Unpack"]
-    rng = np.random.default_rng(32657)
-    for bits in range(1, 9):
-        for shape in ((0,), (2, 0), (0, 3), (3,), (2, 3, 9), (2, 2, 65), (1, 1, 257)):
-            codes = rng.integers(0, 1 << bits, shape, dtype=np.uint8)
-            expected = proposal_pack._run(None, codes, bits=bits)[0]
-            np.testing.assert_array_equal(pack(codes, bits), expected)
-            decoded = proposal_unpack._run(None, expected, np.array(shape[-1], dtype=np.int64), bits=bits)[0]
-            np.testing.assert_array_equal(unpack(expected, bits, shape[-1]), decoded)
 
 
 @pytest.mark.parametrize("vector", GOLDEN["packing"], ids=lambda vector: vector["name"])

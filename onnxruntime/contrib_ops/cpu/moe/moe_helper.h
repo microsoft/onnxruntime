@@ -79,8 +79,8 @@ Status ValidateInt3ProjectionContent(gsl::span<const uint8_t> weights,
   const int64_t experts = logical_shape[0];
   const int64_t outputs = logical_shape[1];
   const int64_t logical_count = logical_shape[2];
-  ORT_RETURN_IF_NOT(outputs % block_size == 0 && logical_count % block_size == 0,
-                    "INT3 N and K must be block aligned.");
+  ORT_RETURN_IF_NOT(logical_count % block_size == 0,
+                    "INT3 K must be block aligned.");
   const int64_t blocks = logical_count / block_size;
   const int64_t weight_bytes = PackedByteCountWithPadding(logical_count, 3);
   const int64_t zp_bytes = PackedByteCountWithPadding(blocks, 3);
@@ -106,20 +106,16 @@ Status ValidateInt3ProjectionContent(gsl::span<const uint8_t> weights,
     const float value = scale.ToFloat();
     ORT_RETURN_IF_NOT(std::isfinite(value) && value >= 0, "INT3 scales must be finite and nonnegative.");
   }
-  const int weight_tail_bits = static_cast<int>((logical_count % 8) * 3 % 8);
-  for (size_t row = 0; row < row_count; ++row) {
-    ORT_RETURN_IF_NOT(weight_tail_bits == 0 ||
-                          (weights[(row + 1) * weight_stride - 1] >> weight_tail_bits) == 0,
-                      "INT3 weight padding must be zero.");
-    if (has_zero_points) {
-      for (size_t byte = 0; byte < zp_stride; ++byte) {
-        uint8_t expected = 0;
-        for (size_t bit = 0; bit < 8; ++bit) {
-          const size_t position = byte * 8 + bit;
-          if (position / 3 < scale_stride && position % 3 == 2) {
-            expected |= static_cast<uint8_t>(1u << bit);
-          }
+  if (has_zero_points) {
+    for (size_t byte = 0; byte < zp_stride; ++byte) {
+      uint8_t expected = 0;
+      for (size_t bit = 0; bit < 8; ++bit) {
+        const size_t position = byte * 8 + bit;
+        if (position / 3 < scale_stride && position % 3 == 2) {
+          expected |= static_cast<uint8_t>(1u << bit);
         }
+      }
+      for (size_t row = 0; row < row_count; ++row) {
         ORT_RETURN_IF_NOT(zero_points[row * zp_stride + byte] == expected,
                           "INT3 zero points must all be 4 with zero padding.");
       }

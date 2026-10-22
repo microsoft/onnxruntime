@@ -926,7 +926,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_quantization_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/quantization/
-      COMMAND ${CMAKE_COMMAND} -E copy_directory
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${ONNXRUNTIME_ROOT}/test/python/quantization/qmoe_packed_reference
         $<TARGET_FILE_DIR:${build_output_target}>/quantization/qmoe_packed_reference
     COMMAND ${CMAKE_COMMAND} -E copy

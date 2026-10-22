@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include <array>
 #include <limits>
 #include <vector>
@@ -108,6 +111,7 @@ TEST(QMoEFormatValidationTest, ShapeAlignmentAndOverflow) {
   data.block = 32;
   for (size_t axis = 0; axis < 3; ++axis) {
     for (int64_t invalid : std::array<int64_t, 4>{-1, 0, 127, std::numeric_limits<int64_t>::max()}) {
+      if (invalid == 127 && axis != 2) continue;
       const auto original = data.shape;
       data.shape[axis] = invalid;
       EXPECT_FALSE(data.Validate().IsOK());
@@ -118,6 +122,16 @@ TEST(QMoEFormatValidationTest, ShapeAlignmentAndOverflow) {
   EXPECT_FALSE(ValidateInt3ProjectionContent<MLFloat16>({}, {}, {}, false, rank2, 32).IsOK());
   data.shape = {std::numeric_limits<int64_t>::max() / 128, 128, 128};
   EXPECT_FALSE(data.Validate().IsOK());
+}
+
+TEST(QMoEFormatValidationTest, ProjectionOutputRowsNeedNotBeBlockAligned) {
+  Int3Content<MLFloat16> data;
+  data.SetBlock(32, 4);
+  data.shape = {2, 127, 128};
+  data.weights.resize(254 * 48);
+  data.scales.resize(254 * 4);
+  data.zp.resize(254 * 2);
+  EXPECT_TRUE(data.Validate().IsOK());
 }
 
 TEST(QMoEFormatValidationTest, ByteHelpers) {

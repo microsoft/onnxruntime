@@ -1,3 +1,6 @@
+<!-- Copyright (c) Microsoft Corporation. All rights reserved.
+	Licensed under the MIT License. -->
+
 # Packed-Code Reference Tests
 
 CPU-only format and numerical references, not a production quantizer or kernel.
@@ -16,10 +19,9 @@ The collection boundaries avoid importing the enclosing native ORT package.
 Existing Python build/test CI copies this directory, including the golden JSON
 fixtures, to the build output and runs the pytest suite after the quantization
 unittest suite when contrib ops are enabled. No feature-specific workflow is needed.
-For the optional external reference check, set `ONNX_PACK_PROPOSAL_CHECKOUT` to
-a trusted, unmodified checkout at the revision pinned in the test. The test
-checks HEAD, executes that checkout's Python references, and otherwise skips;
-it never downloads code or requires draft operators in the installed ONNX.
+The tests are self-contained: no external ONNX source checkout or pinned ONNX
+commit is needed. Golden vectors and existing standard-operator graphs provide
+the format and numerical checks using the installed ONNX package.
 
 ## Validation Boundaries
 
@@ -30,6 +32,7 @@ Call `validate_int3` before evaluating the ONNX decoding reference: that graph
 expresses arithmetic, not profile validation.
 
 The Python reference accepts tails, empty dimensions, and FP32 scales for
-format/numerical testing. The QMoE INT3 schema and C++ host validator instead
-require block-aligned model dimensions and matching FP16/BF16 activation and
-scale types. These references do not imply provider execution support.
+format/numerical testing. The QMoE INT3 schema requires block-aligned H/I and
+matching FP16/BF16 activation and scale types. The projection-level C++ host
+validator requires block-aligned K, not N. These references do not imply
+provider execution support.
