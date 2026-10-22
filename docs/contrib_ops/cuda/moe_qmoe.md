@@ -29,6 +29,7 @@ and have been significantly modified for ONNX Runtime — see
   - [9b.2 Fused GEMV decode (group-16)](#9b2-fused-gemv-decode-group-16)
   - [9b.3 Fast E2M1 → half/bf16 decode](#9b3-fast-e2m1--halfbf16-decode)
   - [9b.5 Native prefill accuracy & routing](#9b5-native-prefill-accuracy--routing)
+9c. [Native IQ2_XXS with external routing](#9c-native-iq2_xxs-with-external-routing)
 10. [FP8 (W8A16) Details](#10-fp8-w8a16-details)
 11. [WFP4AFP8 Details](#11-wfp4afp8-details)
 12. [Future / Deferred Modes](#12-future--deferred-modes)
@@ -91,7 +92,8 @@ input tokens → router (top-k softmax) → permute by expert
 | `T`  | `float`, `float16`, `bfloat16` | input, output, biases, router |
 | `T1` | `uint8`, `float8e4m3fn` | quantized weights and zero points: INT4/INT8/FP4/NVFP4 weights use `uint8`; FP8 weights use `float8e4m3fn` |
 | `T2` | `float`, `float16`, `bfloat16`, `uint8`, `float8e4m3fn` | INT4/INT8 weight scales use floating-point tensors; MXFP block scales use `uint8` (`float8e8m0`) storage; **NVFP4 block scales use `float8e4m3fn`** |
-| `T4` | `float` | per-expert global scales, FP8 activation scales |
+| `T4` | `float` | per-expert global scales, FP8 activation scales, final selected routing weights |
+| `T3` | `int64` | externally selected expert IDs (`iq2_xxs` only) |
 
 ### 2.3 Inputs
 
@@ -158,6 +160,46 @@ FP4 e2m1 (both MXFP4 and NVFP4) are symmetric formats with no zero-point.
 
 ---
 
+### 2.5 Native IQ2_XXS external-routing ABI
+
+`quant_type="iq2_xxs"` extends `com.microsoft::QMoE` version 1 without changing
+the existing affine INT2, INT4/8, FP4 or FP8 paths. It is a two-projection,
+non-gated ReLU-squared expert path; the router, shared experts and any latent
+projections remain outside the node. This avoids a new operator for each
+quantization/activation combination.
+
+| Input index | Type | Shape / requirement |
+|---:|---|---|
+| 0 | float32 / float16 / bfloat16 | `[T,L]` or `[B,S,L]`; output preserves shape and type |
+| 1 | omitted | No internal routing |
+| 2 | uint8 | Up bank `[E,I,L/256,66]` |
+| 5 | uint8 | Down bank `[E,L,I/256,66]` |
+| 3, 4, 6 through 20 | omitted | No bias, FC3, zero point, scale or alternate router tensors |
+| 21 | int64 | Unique selected IDs `[T,k]`, each in `[0,E)` |
+| 22 | float32 | Finite **final** mixing weights `[T,k]`, paired with input 21 |
+
+For rank-3 activations, `T=B*S`. Token count is dynamic; zero tokens, zero batch,
+and zero sequence length are supported. `L` and `I` must be positive multiples
+of 256, `E >= k`, and `1 <= k <= 32`. Expert and intermediate sizes are
+per-node, not fixed model constants. Banks preserve every serialized GGML
+IQ2_XXS byte, including embedded FP16 scales; they are neither affine INT2 nor
+the repacked/BF16-scale format of third-party MoE implementations.
+
+Set attributes explicitly:
+
+```text
+quant_type="iq2_xxs", activation_type="relu2", expert_weight_bits=2,
+block_size=256, weights_prepacked=0, k=<selected width>,
+swiglu_fusion=0, normalize_routing_weights=0, use_sparse_mixer=0
+```
+
+Optional per-projection bit-width overrides, if present, must also be 2.
+All other quantization modes still require input 1 and reject inputs 21/22.
+No selection, softmax, sigmoid, renormalization or cast of FP32 mixing weights
+is performed internally. In particular, externally computed sigmoid routing
+with a correction bias and separately normalized/scaled unbiased weights is
+preserved unchanged.
+
 ## 3. Quantization Modes
 
 | `quant_type` | Notation | Activation | Weight | Native SM | Fallback | Build gate |
@@ -168,6 +210,7 @@ FP4 e2m1 (both MXFP4 and NVFP4) are symmetric formats with no zero-point.
 | `"fp4"` | W4A16-MXFP4 | BF16/FP16 | MXFP4 e2m1, group=32 | **SM80+** fused-dequant grouped GEMM prefill + fused GEMV decode (including SM120/SM121) | dequant→A16 on SM<80 or with `ORT_FP4_SM80_GEMM=0` | `ENABLE_FP4` + `USE_FP4_QMOE` (CUDA ≥ 12.8) |
 | `"nvfp4"` | W4A16-NVFP4 | BF16/FP16 | NVFP4 e2m1, group=16, `float8e4m3fn` block scale + per-expert FP32 global scale | **SM120/SM121** native (block-scaled FP4×FP4 prefill) + **fused GEMV decode** | dequant→A16 on other SMs | `ENABLE_FP4` + `USE_FP4_QMOE` (CUDA ≥ 12.8) |
 | `"wfp4afp8"` | W4A8-MXFP4×FP8 | FP8 e4m3 (quantized in-runner) | MXFP4 e2m1, group=32 | **SM100+** native | dequant→A16 on SM<100 | `ENABLE_FP4` + `USE_FP4_QMOE` + `ENABLE_FP8` |
+| `"iq2_xxs"` | Native GGML IQ2_XXS | FP32/FP16/BF16 | serialized 66-byte blocks per 256 weights | **SM80+** selected-row CUDA | **none** | CUDA contrib ops; independent of FP4/FP8 MoE build flags |
 
 Selection logic (see [moe_quantization.cc](onnxruntime/contrib_ops/cuda/moe/moe_quantization.cc)):
 
@@ -1168,6 +1211,69 @@ gate: it applies a looser tolerance **only** to shapes that route native (SM120/
 so a genuinely broken native kernel (error order ~1.0+) is still caught.
 
 ---
+
+## 9c. Native IQ2_XXS with external routing
+
+The CUDA implementation reads native expert-major banks directly. One warp
+computes each selected up-projection row using the **same decoder and dot
+reduction** as `MatMulGGMLIQ2XXS`. Reconstructed weights round to the activation
+type before FP32 FMA accumulation. The up result rounds to that type, then
+ReLU and its square store in the same type. The down projection uses another
+FP32 dot and native output rounding. Finally, selected expert outputs use
+separate FP32 multiply/add operations in **ascending expert ID** order, followed
+by one output cast. Mixing weights never round to FP16/BF16. This matches the
+exporter's expert accumulation order, not an assertion of bitwise equivalence
+to a different grouped GEMM implementation's reduction tree.
+
+Only `T*k` expert/token pairs execute. Neither bank is expanded, repacked or
+cached in a dequantized format; there is no all-expert computation followed
+by masking, and no dense fallback for prefill. A per-token route permutation
+sorts at most 32 selected IDs on device; it does not reorder host payloads.
+Intermediate up activations and permutation indices are token-tiled into
+a **16 MiB** scratch budget, including the device validation flag. A single
+token exceeding that budget is rejected. Output memory still scales with the
+number of input tokens. This is an initial scalar/warp implementation, not a
+claim of optimal grouped-prefill throughput.
+
+Before the first bank read, a GPU pass checks every ID for bounds/duplicates
+and every mixing weight for finiteness. Only one integer error flag is copied
+to the host; no route or weight payload is copied for host-side scheduling.
+Invalid routes fail explicitly instead of reading out of range or silently
+clamping. Because validation synchronizes the stream, **CUDA graph capture
+must be disabled**. The framework CUDA EP rejects the graph-capture option at
+kernel construction; active stream capture is also rejected at execution
+(including the plugin path). Callers/GenAI must not enable capture implicitly.
+
+The companion [Mobius exporter PR](https://github.com/onnxruntime/mobius/pull/785)
+emits this ABI behind `MOBIUS_SPARSE_IQ2_MOE=1` and disables decoder capture.
+Keep this path opt-in pending qualification on supported GPUs. It does not
+resolve historical full-model numerical failures or establish throughput,
+full-checkpoint parity, or a 24 GB runtime footprint.
+
+Focused runtime coverage is in `matmul_ggml_iq2_xxs_test.cc`:
+
+```powershell
+# Run from the directory containing the newly built executable.
+.\onnxruntime_provider_test.exe --gtest_filter="MatMulGGMLIQ2XXS.*:QMoEIQ2XXS.*"
+```
+
+The new tests cover an independent selected-expert scalar oracle, heterogeneous
+geometry, packed/batched and empty tokens, unselected non-finite expert bytes,
+route permutations, native stores/FP32 mixing, ascending-ID cancellation,
+cross-tile prefill, malformed device routes, shape/type rejection and capture
+gating. Device tests require SM80+ and explicitly skip otherwise. A CPU-only
+build can run the schema tests but cannot validate CUDA execution.
+
+With the built runtime installed in the companion exporter environment, run:
+
+```powershell
+$env:MOBIUS_TEST_SPARSE_IQ2_CUDA = "1"
+python -m pytest src\mobius\components\_iq2_moe_test.py -k real_cuda -q
+```
+
+This compares sparse execution to the parent native-matmul diagnostic without
+CPU fallback. Missing companion operators/CUDA are errors when explicitly
+enabled. No full model/checkpoint is required.
 
 ## 10. FP8 (W8A16) Details
 

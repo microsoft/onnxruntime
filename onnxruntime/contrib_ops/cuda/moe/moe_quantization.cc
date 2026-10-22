@@ -19,6 +19,7 @@
 #include "core/common/safeint.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
+#include "contrib_ops/cuda/moe/qmoe_iq2_xxs.h"
 #include "contrib_ops/cuda/llm/common/env_utils.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
@@ -256,13 +257,39 @@ namespace cuda {
                                  DataTypeImpl::GetTensorType<BFloat16>(),      \
                                  DataTypeImpl::GetTensorType<Float8E8M0>(),    \
                                  DataTypeImpl::GetTensorType<Float8E4M3FN>()}) \
-          .TypeConstraint("T4", DataTypeImpl::GetTensorType<float>()),         \
+          .TypeConstraint("T4", DataTypeImpl::GetTensorType<float>())          \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<int64_t>()),       \
       QMoE);
 
+REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 REGISTER_KERNEL_TYPED(BFloat16)
 
 QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info, GetDeviceProp()) {
+  quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
+  if (quant_type_ == "iq2_xxs") {
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+    ORT_ENFORCE(!op_kernel_info.GetExecutionProvider()->IsGraphCaptureEnabled(),
+                "QMoE IQ2_XXS is not supported when CUDA graph capture is enabled.");
+#endif
+    ORT_ENFORCE(sm_ >= 80, "QMoE IQ2_XXS requires CUDA SM80 or newer.");
+    ORT_ENFORCE(k_ >= 1 && k_ <= kIQ2XXSMaxSelectedExperts, "QMoE IQ2_XXS requires k in [1, 32].");
+    ORT_ENFORCE(activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Relu2 &&
+                    swiglu_fusion_ == 0,
+                "QMoE IQ2_XXS requires activation_type='relu2' and swiglu_fusion=0.");
+    ORT_ENFORCE(op_kernel_info.GetAttrOrDefault<int64_t>("normalize_routing_weights", 0) == 0 &&
+                    op_kernel_info.GetAttrOrDefault<int64_t>("use_sparse_mixer", 0) == 0,
+                "QMoE IQ2_XXS consumes final routing weights without normalization or sparse mixer.");
+    ORT_ENFORCE(op_kernel_info.GetAttrOrDefault<int64_t>("weights_prepacked", -1) == 0 &&
+                    op_kernel_info.GetAttrOrDefault<int64_t>("block_size", -1) == 256,
+                "QMoE IQ2_XXS requires weights_prepacked=0 and block_size=256.");
+    ORT_ENFORCE(op_kernel_info.GetAttrOrDefault<int64_t>("expert_weight_bits", 4) == 2 &&
+                    op_kernel_info.GetAttrOrDefault<int64_t>("fc1_expert_weight_bits", 2) == 2 &&
+                    op_kernel_info.GetAttrOrDefault<int64_t>("fc2_expert_weight_bits", 2) == 2 &&
+                    op_kernel_info.GetAttrOrDefault<int64_t>("fc3_expert_weight_bits", 2) == 2,
+                "QMoE IQ2_XXS requires 2-bit expert weights for every projection.");
+    return;
+  }
   enable_kernel_debug_info_ =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>(kEnableQMoEKernelDebugInfo, 0) != 0;
   const auto configured_row_tile_size =
@@ -389,6 +416,8 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   int32_t input_type = op_kernel_info.node().InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   bool is_fp16 = input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
 #endif
+  ORT_ENFORCE(input_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+              "CUDA QMoE float32 activations are supported only for quant_type='iq2_xxs'.");
   is_fp16_ = is_fp16;
   enable_int2_prefill_ = quant_type_ == "int" && sm_ >= 80 &&
                          (block_size_ == 32 || block_size_ == 64 || block_size_ == 128) &&
@@ -688,7 +717,106 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   }
 }
 
+Status QMoE::ComputeIQ2XXS(OpKernelContext* context) const {
+  const auto* input = context->Input<Tensor>(0);
+  const auto* up = context->Input<Tensor>(2);
+  const auto* down = context->Input<Tensor>(5);
+  const auto* ids = context->InputCount() > 21 ? context->Input<Tensor>(21) : nullptr;
+  const auto* weights = context->InputCount() > 22 ? context->Input<Tensor>(22) : nullptr;
+  ORT_RETURN_IF_NOT(input && up && down && ids && weights,
+                    "QMoE IQ2_XXS requires input, both banks, selected_experts and selected_expert_weights.");
+  for (int index = 1; index < std::min(context->InputCount(), 21); ++index) {
+    if (index != 2 && index != 5) {
+      ORT_RETURN_IF(context->Input<Tensor>(index) != nullptr,
+                    "QMoE IQ2_XXS requires input ", index, " to be omitted.");
+    }
+  }
+  ORT_RETURN_IF_NOT(up->IsDataType<uint8_t>() && down->IsDataType<uint8_t>() &&
+                        ids->IsDataType<int64_t>() && weights->IsDataType<float>(),
+                    "QMoE IQ2_XXS requires uint8 banks, int64 selected IDs and float32 final weights.");
+  const auto& shape = input->Shape();
+  const auto& up_shape = up->Shape();
+  const auto& down_shape = down->Shape();
+  ORT_RETURN_IF_NOT(shape.NumDimensions() == 2 || shape.NumDimensions() == 3,
+                    "QMoE IQ2_XXS input must have rank 2 or 3.");
+  ORT_RETURN_IF_NOT(up_shape.NumDimensions() == 4 && down_shape.NumDimensions() == 4,
+                    "QMoE IQ2_XXS banks must have rank 4.");
+  const int64_t hidden = shape[shape.NumDimensions() - 1];
+  const int64_t experts = up_shape[0];
+  const int64_t inter = up_shape[1];
+  ORT_RETURN_IF_NOT(experts > 0 && k_ <= experts && hidden > 0 && inter > 0 &&
+                        hidden % 256 == 0 && inter % 256 == 0,
+                    "QMoE IQ2_XXS requires E >= k and positive hidden/inter sizes divisible by 256.");
+  ORT_RETURN_IF_NOT(up_shape[2] == hidden / 256 && up_shape[3] == 66 &&
+                        down_shape[0] == experts && down_shape[1] == hidden &&
+                        down_shape[2] == inter / 256 && down_shape[3] == 66,
+                    "QMoE IQ2_XXS banks must have shapes [E,I,L/256,66] and [E,L,I/256,66].");
+  const int64_t tokens = shape.SizeToDimension(shape.NumDimensions() - 1);
+  ORT_RETURN_IF_NOT(ids->Shape().NumDimensions() == 2 && ids->Shape()[0] == tokens &&
+                        ids->Shape()[1] == k_ && weights->Shape() == ids->Shape(),
+                    "QMoE IQ2_XXS selected IDs and weights must have shape [flattened_tokens,k].");
+  const auto packed_bytes = SafeInt<int64_t>(experts) * inter * (hidden / 256) * 66;
+  const auto output_elements = SafeInt<int64_t>(tokens) * hidden;
+  const auto route_elements = SafeInt<int64_t>(tokens) * k_;
+  ORT_UNUSED_PARAMETER(packed_bytes);
+  ORT_UNUSED_PARAMETER(output_elements);
+  ORT_UNUSED_PARAMETER(route_elements);
+
+  const size_t element_bytes = input->DataType()->Size();
+  const size_t bytes_per_token = SafeInt<size_t>(k_) * (SafeInt<size_t>(inter) * element_bytes + sizeof(int));
+  ORT_RETURN_IF_NOT(bytes_per_token <= kIQ2XXSScratchBytes - sizeof(int),
+                    "QMoE IQ2_XXS selected intermediates for one token exceed the 16 MiB scratch limit.");
+  cudaStream_t stream = Stream(context);
+  cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+  CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
+  ORT_RETURN_IF_NOT(capture_status == cudaStreamCaptureStatusNone,
+                    "QMoE IQ2_XXS route validation is not supported during CUDA graph capture.");
+  auto* output = context->Output(0, shape);
+  if (tokens == 0) {
+    return Status::OK();
+  }
+
+  auto error = GetScratchBuffer<int>(1, GetComputeStream(context));
+  ORT_RETURN_IF_ERROR(ValidateQMoEIQ2XXSRoutes(ids->Data<int64_t>(), weights->Data<float>(),
+                                               tokens, experts, static_cast<int>(k_), error.get(), stream));
+  auto host_error = AllocateBufferOnCPUPinned<int>(1);
+  // Only a validation status crosses to the host. Tensor payloads and scheduling remain on device.
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_error.get(), error.get(), sizeof(int), cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+  ORT_RETURN_IF((*host_error & 1) != 0, "QMoE IQ2_XXS selected expert ID is outside [0,E).");
+  ORT_RETURN_IF((*host_error & 2) != 0, "QMoE IQ2_XXS selected expert weights must be finite.");
+  ORT_RETURN_IF((*host_error & 4) != 0, "QMoE IQ2_XXS selected expert IDs must be unique per token.");
+
+  const int64_t tile_tokens = std::min<int64_t>(
+      tokens, static_cast<int64_t>((kIQ2XXSScratchBytes - sizeof(int)) / bytes_per_token));
+  const size_t tile_routes = SafeInt<size_t>(tile_tokens) * k_;
+  auto intermediate = GetScratchBuffer<uint8_t>(
+      SafeInt<size_t>(tile_routes) * inter * element_bytes, GetComputeStream(context));
+  auto order = GetScratchBuffer<int>(tile_routes, GetComputeStream(context));
+  const auto type = input->IsDataType<float>()       ? IQ2XXSActivationType::Float
+                    : input->IsDataType<MLFloat16>() ? IQ2XXSActivationType::Float16
+                                                     : IQ2XXSActivationType::BFloat16;
+  for (int64_t first = 0; first < tokens;) {
+    const int64_t count = std::min(tile_tokens, tokens - first);
+    const size_t byte_offset = SafeInt<size_t>(first) * hidden * element_bytes;
+    ORT_RETURN_IF_ERROR(LaunchQMoEIQ2XXS(
+        static_cast<const uint8_t*>(input->DataRaw()) + byte_offset, up->Data<uint8_t>(), down->Data<uint8_t>(),
+        ids->Data<int64_t>() + first * k_, weights->Data<float>() + first * k_,
+        static_cast<uint8_t*>(output->MutableDataRaw()) + byte_offset,
+        intermediate.get(), order.get(), count, hidden, inter, static_cast<int>(k_), type, stream));
+    first += count;
+  }
+  return Status::OK();
+}
+
 Status QMoE::ComputeInternal(OpKernelContext* context) const {
+  if (quant_type_ == "iq2_xxs") {
+    return ComputeIQ2XXS(context);
+  }
+  for (int index = 21; index < context->InputCount(); ++index) {
+    ORT_RETURN_IF(context->Input<Tensor>(index) != nullptr,
+                  "QMoE selected routing inputs require quant_type='iq2_xxs'.");
+  }
   const bool is_fp4 = (quant_type_ == "fp4");
   const bool is_nvfp4 = (quant_type_ == "nvfp4");
   // NVFP4 shares the E2M1 4-bit weight format, [E,K,N/2] weight layout, and the per-expert
@@ -2714,6 +2842,9 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                      bool& is_packed, PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
+  if (quant_type_ == "iq2_xxs") {
+    return Status::OK();
+  }
   if (quant_type_ == "int" && (input_idx == 3 || input_idx == 6)) {
     ORT_RETURN_IF_NOT(is_fp16_ ? tensor.IsDataType<MLFloat16>() : tensor.IsDataType<BFloat16>(),
                       "QMoE integer fc", input_idx == 3 ? 1 : 2, "_scales must match the activation type.");

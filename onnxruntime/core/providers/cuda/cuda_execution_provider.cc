@@ -3586,6 +3586,11 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     } else if ("NhwcConv" == node.OpType()) {
       not_supported = NhwcConvNeedFallbackToCPU(node, logger, graph, IsNHWCPreferred());
       force_inside = !not_supported;
+    } else if ("QMoE" == node.OpType() && node.Domain() == kMSDomain) {
+      // The new FP32 kernel is only for external IQ2 routing. Preserve legacy CPU placement.
+      not_supported = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() ==
+                          ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT &&
+                      node.InputDefs()[1]->Exists();
     }
 
     if (!force_inside && not_supported) {

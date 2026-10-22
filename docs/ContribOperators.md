@@ -6281,7 +6281,23 @@ This version of the operator has been available since version 1 of the 'com.micr
         sequence_length independent token rows. router_probs and optional router_weights must contain
         one corresponding row per token in either form.
   
-        The quantized weights are stored in column major order per expert.
+        CUDA quant_type='iq2_xxs' instead consumes externally selected routes without reselection:
+        selected_experts is int64 [total_tokens,k] and selected_expert_weights is float32 [total_tokens,k].
+        Omit router_probs and every optional input except these two routing inputs. FC1 and FC2 are native
+        GGML IQ2_XXS uint8 banks [E,I,L/256,66] and [E,L,I/256,66], including embedded FP16 scale bits.
+        Requires activation_type='relu2', expert_weight_bits=2, block_size=256, weights_prepacked=0,
+        swiglu_fusion=0, normalize_routing_weights=0 and use_sparse_mixer=0. L and I are positive multiples
+        of 256, 1 <= k <= min(E,32), and selected IDs are unique per token and in [0,E). Final weights must
+        be finite and are not normalized or cast to the activation type. Float/float16/bfloat16 input/output
+        are supported on CUDA SM80+. Empty token dimensions are supported. No biases or third projection.
+        Complete weights round to the activation type before FP32 dot products. Both projection outputs
+        and the ReLU square round to the activation type. Native expert outputs are multiplied by final
+        weights and sequentially added in FP32 in ascending expert ID order, then cast once to the output.
+        Only selected experts execute, with token-tiled intermediates capped at 16 MiB (one token must fit).
+        A scalar device validation status synchronizes to the host before any bank access; CUDA graph
+        capture is explicitly unsupported and must be disabled by callers. No dense or CPU fallback.
+
+        Except for the native IQ2_XXS layout above, quantized weights are stored in column major order per expert.
         The quantization block size can be specified. If not provided, column wise quantization is used.
   
         For integer quantization, the formula of linear dequantization using scale and (optionally) zero-point is:
@@ -6301,7 +6317,7 @@ This version of the operator has been available since version 1 of the 'com.micr
         The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
         that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
   
-        Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
+        Except for native IQ2_XXS blocks, packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
         Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
   
         fc1_expert_weight_bits, fc2_expert_weight_bits, and fc3_expert_weight_bits optionally override
@@ -6337,7 +6353,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_type</tt> : string</dt>
 <dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu</dd>
 <dt><tt>block_size</tt> : int</dt>
-<dd>For integer quantization, size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). For integer and FP4 quantization, both hidden_size and inter_size must be divisible by the block size. FP8 with block_size=128 supports partial 128x128 tiles. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. Without a positive value, FP8 uses per-expert global scales. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
+<dd>For integer quantization, size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). For integer and FP4 quantization, both hidden_size and inter_size must be divisible by the block size. FP8 with block_size=128 supports partial 128x128 tiles. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. Without a positive value, FP8 uses per-expert global scales. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. For 'iq2_xxs', block_size must be 256.</dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
 <dd>Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits</dd>
 <dt><tt>fc1_expert_weight_bits</tt> : int</dt>
@@ -6351,7 +6367,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to normalize routing weights</dd>
 <dt><tt>quant_type</tt> : string</dt>
-<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale.</dd>
+<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale. CUDA 'iq2_xxs' uses native GGML 66-byte blocks and external selected routing; see operator documentation.</dd>
 <dt><tt>swiglu_fusion</tt> : int</dt>
 <dd>0: not fused, 1: fused and interleaved. 2: fused and not interleaved.</dd>
 <dt><tt>swiglu_limit</tt> : float</dt>
@@ -6359,24 +6375,24 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>use_sparse_mixer</tt> : int</dt>
 <dd>Whether to use sparse mixer</dd>
 <dt><tt>weights_prepacked</tt> : int</dt>
-<dd>Only meaningful when quant_type='int'. Tri-state control over the layout of the int4/int8 fc1/fc2 weight initializers. The concrete prepacked layouts selected by -1 and 1 are determined by the execution provider. 0: the initializers are raw, un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits. Defaults to -1.</dd>
+<dd>For quant_type='iq2_xxs', must be 0 (native GGML bytes). Otherwise only meaningful when quant_type='int'. Tri-state control over the layout of the int4/int8 fc1/fc2 weight initializers. The concrete prepacked layouts selected by -1 and 1 are determined by the execution provider. 0: the initializers are raw, un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits. Defaults to -1.</dd>
 </dl>
 
-#### Inputs (6 - 21)
+#### Inputs (6 - 23)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
 <dd>2D packed token tensor with shape (total_tokens, hidden_size), where tokens from ragged sequences may be concatenated without padding, or 3D tensor with shape (batch_size, sequence_length, hidden_size)</dd>
-<dt><tt>router_probs</tt> : T</dt>
-<dd>2D tensor with shape (total_tokens, num_experts), where total_tokens must match the flattened token count of input</dd>
+<dt><tt>router_probs</tt> (optional) : T</dt>
+<dd>2D tensor with shape (total_tokens, num_experts), where total_tokens must match the flattened token count of input. Required except for quant_type='iq2_xxs', where it must be omitted.</dd>
 <dt><tt>fc1_experts_weights</tt> : T1</dt>
-<dd>3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size * effective_fc1_bits / 8). The last dimension must be byte-aligned. The fusion_size is 2 for fused swiglu, or 1 otherwise. effective_fc1_bits is fc1_expert_weight_bits when provided, otherwise expert_weight_bits.</dd>
+<dd>3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size * effective_fc1_bits / 8). The last dimension must be byte-aligned. The fusion_size is 2 for fused swiglu, or 1 otherwise. effective_fc1_bits is fc1_expert_weight_bits when provided, otherwise expert_weight_bits. For iq2_xxs, native uint8 GGML blocks shaped [E,I,L/256,66].</dd>
 <dt><tt>fc1_scales</tt> (optional) : T2</dt>
 <dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, fusion_size * inter_size), or a 3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, fusion_size * inter_size, hidden_size / 32). For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape (num_experts, fusion_size * inter_size, hidden_size / 16). For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape (num_experts, ceil(fusion_size * inter_size / block_size), ceil(hidden_size / block_size)).</dd>
 <dt><tt>fc1_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_experts, fusion_size * inter_size)</dd>
 <dt><tt>fc2_experts_weights</tt> : T1</dt>
-<dd>3D tensor with shape (num_experts, hidden_size, inter_size * effective_fc2_bits / 8). The last dimension must be byte-aligned. effective_fc2_bits is fc2_expert_weight_bits when provided, otherwise expert_weight_bits.</dd>
+<dd>3D tensor with shape (num_experts, hidden_size, inter_size * effective_fc2_bits / 8). The last dimension must be byte-aligned. effective_fc2_bits is fc2_expert_weight_bits when provided, otherwise expert_weight_bits. For iq2_xxs, native uint8 GGML blocks shaped [E,L,I/256,66].</dd>
 <dt><tt>fc2_scales</tt> (optional) : T2</dt>
 <dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, hidden_size), or a 3D tensor with shape (num_experts, hidden_size, inter_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, hidden_size, inter_size / 32). For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape (num_experts, hidden_size, inter_size / 16). For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape (num_experts, ceil(hidden_size / block_size), ceil(inter_size / block_size)).</dd>
 <dt><tt>fc2_experts_bias</tt> (optional) : T</dt>
@@ -6407,6 +6423,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>3D optional float8e8m0 MXFP activation block-scale tensor for FC1 FP8 activation modes.</dd>
 <dt><tt>fc2_act_block_scale</tt> (optional) : T2</dt>
 <dd>3D optional float8e8m0 MXFP activation block-scale tensor for FC2 FP8 activation modes.</dd>
+<dt><tt>selected_experts</tt> (optional) : T3</dt>
+<dd>Optional int64 [total_tokens,k] selected IDs. Required only for iq2_xxs; IDs must be unique per token and in [0,E). Omit for all other quantization modes.</dd>
+<dt><tt>selected_expert_weights</tt> (optional) : T4</dt>
+<dd>Optional float32 [total_tokens,k] final finite mixing weights, paired with selected_experts. Required only for iq2_xxs; used without normalization or conversion to the activation type.</dd>
 </dl>
 
 #### Outputs
@@ -6426,7 +6446,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>T2</tt> : tensor(float), tensor(float16), tensor(bfloat16), tensor(float8e8m0), tensor(float8e4m3fn)</dt>
 <dd>Constrain scale types. Float tensors are used for integer quantization and FP8 square-block scales. Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.</dd>
 <dt><tt>T4</tt> : tensor(float)</dt>
-<dd>Constrain FP4 global scale type to float32 tensors.</dd>
+<dd>Constrain global scales and final selected routing weights to float32 tensors.</dd>
+<dt><tt>T3</tt> : tensor(int64)</dt>
+<dd>Constrain externally selected expert IDs to int64.</dd>
 </dl>
 
 
@@ -8801,5 +8823,4 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
 

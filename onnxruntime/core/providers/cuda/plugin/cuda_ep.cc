@@ -285,6 +285,17 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
         graph_support_info, node, &kernel_def));
 
     if (kernel_def != nullptr) {
+      if (node.GetOperatorType() == "QMoE" && node.GetDomain() == kMSDomain) {
+        const auto inputs = node.GetInputs();
+        // Match framework CUDA placement: FP32 with an internal router remains on CPU.
+        if (inputs[0].TypeInfo().GetTensorTypeAndShapeInfo().GetElementType() ==
+                ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT &&
+            inputs[1] != nullptr && !inputs[1].GetName().empty()) {
+          ORT_CXX_LOG(Ort::Logger(&ep->logger_), ORT_LOGGING_LEVEL_INFO,
+                      "CUDA QMoE FP32 requires external IQ2 routing; retaining CPU placement.");
+          continue;
+        }
+      }
       candidate_nodes.push_back(node);
       tentative_nodes.push_back(node);
     } else {

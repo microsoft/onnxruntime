@@ -1466,6 +1466,129 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
+void QMoEShapeInference(InferenceContext& ctx) {
+  propagateShapeAndTypeFromFirstInput(ctx);
+  const auto* quant_type = ctx.getAttribute("quant_type");
+  const bool is_iq2 = quant_type != nullptr && quant_type->s() == "iq2_xxs";
+  const auto present = [&](size_t index) { return index < ctx.getNumInputs() && ctx.hasInput(index); };
+  if (!is_iq2) {
+    if (!present(1)) {
+      fail_shape_inference("QMoE router_probs is required unless quant_type='iq2_xxs'.");
+    }
+    if (present(21) || present(22)) {
+      fail_shape_inference("QMoE selected routing inputs require quant_type='iq2_xxs'.");
+    }
+    return;
+  }
+
+  const int64_t k = getAttribute(ctx, "k", 1);
+  const auto* activation = ctx.getAttribute("activation_type");
+  if (k < 1 || k > 32 || activation == nullptr || activation->s() != "relu2" ||
+      getAttribute(ctx, "swiglu_fusion", 0) != 0 ||
+      getAttribute(ctx, "normalize_routing_weights", 0) != 0 ||
+      getAttribute(ctx, "use_sparse_mixer", 0) != 0) {
+    fail_shape_inference("QMoE IQ2_XXS requires relu2, k in [1,32], and no fused gate, normalization or sparse mixer.");
+  }
+  if (getAttribute(ctx, "expert_weight_bits", 4) != 2 ||
+      getAttribute(ctx, "fc1_expert_weight_bits", 2) != 2 ||
+      getAttribute(ctx, "fc2_expert_weight_bits", 2) != 2 ||
+      getAttribute(ctx, "fc3_expert_weight_bits", 2) != 2 ||
+      getAttribute(ctx, "block_size", -1) != 256 || getAttribute(ctx, "weights_prepacked", -1) != 0) {
+    fail_shape_inference("QMoE IQ2_XXS requires 2-bit weights, block_size=256 and weights_prepacked=0.");
+  }
+  if (!present(21) || !present(22)) {
+    fail_shape_inference("QMoE IQ2_XXS requires selected_experts and selected_expert_weights.");
+  }
+  for (size_t index = 1; index <= 20; ++index) {
+    if (index != 2 && index != 5 && present(index)) {
+      fail_shape_inference("QMoE IQ2_XXS requires input ", index, " to be omitted.");
+    }
+  }
+  for (const size_t index : {size_t{2}, size_t{5}}) {
+    const auto* type = ctx.getInputType(index);
+    if (type != nullptr && type->tensor_type().has_elem_type() &&
+        type->tensor_type().elem_type() != TensorProto::UNDEFINED &&
+        type->tensor_type().elem_type() != TensorProto::UINT8) {
+      fail_type_inference("QMoE IQ2_XXS banks must use uint8.");
+    }
+  }
+
+  const TensorShapeProto* x = hasInputShape(ctx, 0) ? &getInputShape(ctx, 0) : nullptr;
+  const TensorShapeProto* up = hasInputShape(ctx, 2) ? &getInputShape(ctx, 2) : nullptr;
+  const TensorShapeProto* down = hasInputShape(ctx, 5) ? &getInputShape(ctx, 5) : nullptr;
+  if (x != nullptr && x->dim_size() != 2 && x->dim_size() != 3) {
+    fail_shape_inference("QMoE IQ2_XXS input must have rank 2 or 3.");
+  }
+  const auto equal = [](const TensorShapeProto::Dimension& a, const TensorShapeProto::Dimension& b) {
+    if (a.has_dim_value() && b.has_dim_value() && a.dim_value() != b.dim_value()) {
+      fail_shape_inference("QMoE IQ2_XXS dimensions do not match.");
+    }
+  };
+  for (const auto* bank : {up, down}) {
+    if (bank != nullptr) {
+      if (bank->dim_size() != 4) {
+        fail_shape_inference("QMoE IQ2_XXS banks must have rank 4.");
+      }
+      if ((bank->dim(0).has_dim_value() && bank->dim(0).dim_value() < k) ||
+          (bank->dim(1).has_dim_value() &&
+           (bank->dim(1).dim_value() <= 0 || bank->dim(1).dim_value() % 256 != 0)) ||
+          (bank->dim(2).has_dim_value() && bank->dim(2).dim_value() <= 0) ||
+          (bank->dim(3).has_dim_value() && bank->dim(3).dim_value() != 66)) {
+        fail_shape_inference("QMoE IQ2_XXS banks require E >= k, positive 256-aligned features and 66-byte blocks.");
+      }
+    }
+  }
+  if (up != nullptr && down != nullptr) {
+    equal(up->dim(0), down->dim(0));
+    for (const auto pair : {std::pair{up, down}, std::pair{down, up}}) {
+      if (pair.first->dim(1).has_dim_value() && pair.second->dim(2).has_dim_value() &&
+          pair.first->dim(1).dim_value() / 256 != pair.second->dim(2).dim_value()) {
+        fail_shape_inference("QMoE IQ2_XXS projection block counts do not match.");
+      }
+    }
+  }
+  int64_t tokens = -1;
+  if (x != nullptr) {
+    const auto& hidden = x->dim(x->dim_size() - 1);
+    if (hidden.has_dim_value() && (hidden.dim_value() <= 0 || hidden.dim_value() % 256 != 0)) {
+      fail_shape_inference("QMoE IQ2_XXS hidden size must be positive and divisible by 256.");
+    }
+    if (down != nullptr) {
+      equal(hidden, down->dim(1));
+    }
+    if (hidden.has_dim_value() && up != nullptr && up->dim(2).has_dim_value() &&
+        hidden.dim_value() / 256 != up->dim(2).dim_value()) {
+      fail_shape_inference("QMoE IQ2_XXS up block count does not match hidden size.");
+    }
+    tokens = 1;
+    for (int i = 0; i < x->dim_size() - 1; ++i) {
+      const auto& dim = x->dim(i);
+      if (!dim.has_dim_value()) {
+        tokens = -1;
+        break;
+      }
+      if (dim.dim_value() < 0 || (dim.dim_value() != 0 &&
+                                  tokens > std::numeric_limits<int64_t>::max() / dim.dim_value())) {
+        fail_shape_inference("QMoE IQ2_XXS flattened token count is out of range.");
+      }
+      tokens *= dim.dim_value();
+    }
+  }
+  for (const size_t index : {size_t{21}, size_t{22}}) {
+    if (hasInputShape(ctx, index)) {
+      const auto& routes = getInputShape(ctx, index);
+      if (routes.dim_size() != 2 ||
+          (routes.dim(1).has_dim_value() && routes.dim(1).dim_value() != k) ||
+          (tokens >= 0 && routes.dim(0).has_dim_value() && routes.dim(0).dim_value() != tokens)) {
+        fail_shape_inference("QMoE IQ2_XXS selected IDs and weights must have shape [flattened_tokens,k].");
+      }
+    }
+  }
+  if (hasInputShape(ctx, 21) && hasInputShape(ctx, 22)) {
+    equal(getInputShape(ctx, 21).dim(0), getInputShape(ctx, 22).dim(0));
+  }
+}
+
 constexpr const char* qMoE_ver1_doc = R"DOC(
       Quantized mixture of experts (MoE).
       A 2D input is the packed token-major form used by continuous-batching engines: tokens from
@@ -1475,7 +1598,23 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       sequence_length independent token rows. router_probs and optional router_weights must contain
       one corresponding row per token in either form.
 
-      The quantized weights are stored in column major order per expert.
+      CUDA quant_type='iq2_xxs' instead consumes externally selected routes without reselection:
+      selected_experts is int64 [total_tokens,k] and selected_expert_weights is float32 [total_tokens,k].
+      Omit router_probs and every optional input except these two routing inputs. FC1 and FC2 are native
+      GGML IQ2_XXS uint8 banks [E,I,L/256,66] and [E,L,I/256,66], including embedded FP16 scale bits.
+      Requires activation_type='relu2', expert_weight_bits=2, block_size=256, weights_prepacked=0,
+      swiglu_fusion=0, normalize_routing_weights=0 and use_sparse_mixer=0. L and I are positive multiples
+      of 256, 1 <= k <= min(E,32), and selected IDs are unique per token and in [0,E). Final weights must
+      be finite and are not normalized or cast to the activation type. Float/float16/bfloat16 input/output
+      are supported on CUDA SM80+. Empty token dimensions are supported. No biases or third projection.
+      Complete weights round to the activation type before FP32 dot products. Both projection outputs
+      and the ReLU square round to the activation type. Native expert outputs are multiplied by final
+      weights and sequentially added in FP32 in ascending expert ID order, then cast once to the output.
+      Only selected experts execute, with token-tiled intermediates capped at 16 MiB (one token must fit).
+      A scalar device validation status synchronizes to the host before any bank access; CUDA graph
+      capture is explicitly unsupported and must be disabled by callers. No dense or CPU fallback.
+
+      Except for the native IQ2_XXS layout above, quantized weights are stored in column major order per expert.
       The quantization block size can be specified. If not provided, column wise quantization is used.
 
       For integer quantization, the formula of linear dequantization using scale and (optionally) zero-point is:
@@ -1495,7 +1634,7 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
       that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
 
-      Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
+      Except for native IQ2_XXS blocks, packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
       Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
 
       fc1_expert_weight_bits, fc2_expert_weight_bits, and fc3_expert_weight_bits optionally override
@@ -1583,7 +1722,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. "
               "Without a positive value, FP8 uses per-expert global scales. "
               "For integer quantization ('int'), omitting block_size means there is no blocking "
-              "and a whole column shares one scaling factor. ",
+              "and a whole column shares one scaling factor. For 'iq2_xxs', block_size must be 256.",
               AttributeProto::INT,
               OPTIONAL_VALUE)
         .Attr("quant_type",
@@ -1594,11 +1733,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. "
               "'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales "
               "with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, "
-              "float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale.",
+              "float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale. "
+              "CUDA 'iq2_xxs' uses native GGML 66-byte blocks and external selected routing; see operator documentation.",
               AttributeProto::STRING,
               std::string("int"))
         .Attr("weights_prepacked",
-              "Only meaningful when quant_type='int'. Tri-state control over the layout of the "
+              "For quant_type='iq2_xxs', must be 0 (native GGML bytes). Otherwise only meaningful when "
+              "quant_type='int'. Tri-state control over the layout of the "
               "int4/int8 fc1/fc2 weight initializers. The concrete prepacked layouts selected by "
               "-1 and 1 are determined by the execution provider. 0: the initializers are raw, "
               "un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits. Defaults to -1.",
@@ -1613,14 +1754,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(1,
                "router_probs",
                "2D tensor with shape (total_tokens, num_experts), where total_tokens must match the flattened "
-               "token count of input",
-               "T")
+               "token count of input. Required except for quant_type='iq2_xxs', where it must be omitted.",
+               "T",
+               OpSchema::Optional)
         .Input(2,
                "fc1_experts_weights",
                "3D tensor with shape (num_experts, fusion_size * inter_size, "
                "hidden_size * effective_fc1_bits / 8). The last dimension must be byte-aligned. "
                "The fusion_size is 2 for fused swiglu, or 1 otherwise. effective_fc1_bits is "
-               "fc1_expert_weight_bits when provided, otherwise expert_weight_bits.",
+               "fc1_expert_weight_bits when provided, otherwise expert_weight_bits. "
+               "For iq2_xxs, native uint8 GGML blocks shaped [E,I,L/256,66].",
                "T1")
         .Input(3,
                "fc1_scales",
@@ -1642,7 +1785,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "fc2_experts_weights",
                "3D tensor with shape (num_experts, hidden_size, inter_size * effective_fc2_bits / 8). "
                "The last dimension must be byte-aligned. effective_fc2_bits is fc2_expert_weight_bits "
-               "when provided, otherwise expert_weight_bits.",
+               "when provided, otherwise expert_weight_bits. "
+               "For iq2_xxs, native uint8 GGML blocks shaped [E,L,I/256,66].",
                "T1")
         .Input(6,
                "fc2_scales",
@@ -1750,6 +1894,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "3D optional float8e8m0 MXFP activation block-scale tensor for FC2 FP8 activation modes.",
                "T2",
                OpSchema::Optional)
+        .Input(21,
+               "selected_experts",
+               "Optional int64 [total_tokens,k] selected IDs. Required only for iq2_xxs; IDs must be unique "
+               "per token and in [0,E). Omit for all other quantization modes.",
+               "T3",
+               OpSchema::Optional)
+        .Input(22,
+               "selected_expert_weights",
+               "Optional float32 [total_tokens,k] final finite mixing weights, paired with selected_experts. "
+               "Required only for iq2_xxs; used without normalization or conversion to the activation type.",
+               "T4",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "output tensor with same shape of input",
@@ -1760,8 +1916,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(float8e8m0)", "tensor(float8e4m3fn)"},
                         "Constrain scale types. Float tensors are used for integer quantization and FP8 square-block scales. "
                         "Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.")
-        .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
-        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+        .TypeConstraint("T4", {"tensor(float)"}, "Constrain global scales and final selected routing weights to float32 tensors.")
+        .TypeConstraint("T3", {"tensor(int64)"}, "Constrain externally selected expert IDs to int64.")
+        .TypeAndShapeInferenceFunction(QMoEShapeInference));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(SampleOp, 1,
                             OpSchema()

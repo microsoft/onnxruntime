@@ -34,6 +34,7 @@ class QMoE final : public CudaKernel, public MoEBase {
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
  private:
+  Status ComputeIQ2XXS(OpKernelContext* context) const;
   // PrePack helpers - each handles one category of input tensor.
   void PrePackTransposeAndPack(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
@@ -107,7 +108,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   // WFP4AFP8 (W4A8) requires SM100+ (Blackwell) block-scaled tensor ops. On older GPUs we
   // dequantize MXFP4 weights to FP16/BF16 and run the dense A16 MoE runner.
   bool use_wfp4afp8_dequant_fallback_ = false;
-  std::string quant_type_;  // "int", "fp4", "nvfp4", "fp8", or "wfp4afp8"
+  std::string quant_type_;  // "int", "fp4", "nvfp4", "fp8", "wfp4afp8", or "iq2_xxs"
   bool enable_kernel_debug_info_ = false;
   bool enable_int2_gemv_ = false;
   bool enable_int2_prefill_ = false;
