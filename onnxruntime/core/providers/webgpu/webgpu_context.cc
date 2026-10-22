@@ -45,6 +45,7 @@
 
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/webgpu_instance_wrapper.h"
 #include "core/providers/webgpu/webgpu_profiler.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
@@ -1674,7 +1675,7 @@ std::mutex WebGpuContextFactory::mutex_;
 std::once_flag WebGpuContextFactory::init_default_flag_;
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo>* WebGpuContextFactory::contexts_ = nullptr;
-WGPUInstance WebGpuContextFactory::default_instance_ = nullptr;
+WebGpuInstanceWrapper* WebGpuContextFactory::default_instance_ = nullptr;
 
 WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& config) {
   const int context_id = config.context_id;
@@ -1713,20 +1714,14 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     wgpu::InstanceDescriptor instance_desc{};
     instance_desc.requiredFeatures = required_instance_features;
     instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
-#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
-    default_instance_ = CreateBundledDawnInstance(instance_desc).MoveToCHandle();
-#else
-    default_instance_ = wgpu::CreateInstance(&instance_desc).MoveToCHandle();
-#endif
-
-    ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
+    default_instance_ = new WebGpuInstanceWrapper(instance_desc);
   }
 
   if (context_id == 0) {
     ORT_ENFORCE(instance == nullptr && device == nullptr,
                 "WebGPU EP default contexts must not have custom WebGPU instance or device.");
 
-    instance = default_instance_;
+    instance = default_instance_->Get();
   } else {
     // for context ID > 0, user must provide custom WebGPU instance and device.
     ORT_ENFORCE(instance != nullptr && device != nullptr,
@@ -1814,13 +1809,9 @@ void WebGpuContextFactory::Cleanup() {
   }
 
   if (default_instance_ != nullptr) {
-    wgpuInstanceRelease(default_instance_);
+    delete default_instance_;
     default_instance_ = nullptr;
   }
-
-#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
-  CleanupBundledDawnPlatform();
-#endif
 }
 
 WebGpuContext& WebGpuContextFactory::DefaultContext() {
