@@ -2,13 +2,16 @@
 
 This document describes the release conventions and process for the WebGPU plugin EP.
 
+Note: This document uses placeholders, e.g., `X`, `Y`, and `Z` for major, minor, and patch version numbers,
+respectively. Substitute them for the actual values accordingly.
+
 ## Versioning
 
 The plugin follows [Semantic Versioning](https://semver.org/):
 
-- **MAJOR** — incompatible API/ABI changes.
-- **MINOR** — backwards-compatible feature additions.
-- **PATCH** — backwards-compatible bug and security fixes.
+- **MAJOR** - incompatible API/ABI changes.
+- **MINOR** - backwards-compatible feature additions.
+- **PATCH** - backwards-compatible bug and security fixes.
 
 The current version is tracked in [VERSION_NUMBER](VERSION_NUMBER).
 
@@ -69,8 +72,8 @@ Follow whichever sub-section matches the release type.
    run succeeds. A successful packaging pipeline run will trigger a packaging test pipeline run.
 4. Optionally, run the publishing pipelines to publish a test version of the packages:
    - [NuGet publishing](https://aiinfra.visualstudio.com/Lotus/_build?definitionId=2229). Set the `PublishLocation`
-     parameter to "nugettest" (int.nugettest.org) or "ado" (ADO nightly feed). **⚠ Caution:** this pipeline is also
-     used to publish to nuget.org — double-check the `PublishLocation` value before running.
+     parameter to "nugettest" (int.nugettest.org) or "ado" (ADO nightly feed). **Caution:** this pipeline is also
+     used to publish to nuget.org - double-check the `PublishLocation` value before running.
    - [Test Python publishing](https://aiinfra.visualstudio.com/Lotus/_build?definitionId=2225). Publishes to ADO
      nightly feed.
 5. Run any other manual validation as needed.
@@ -79,13 +82,22 @@ Repeat the steps in this section as many times as needed.
 
 ### Step 3: Release
 
-1. Run the packaging pipeline and set the `Package Version` parameter to "release". This run produces the release
-   build.
+1. Run the packaging pipeline at the release branch tip and set the `Package Version` parameter to "release". This run
+   produces a release build (without a development version suffix) at the release commit.
+   **Important:** The release tag should point to the release commit and published packages should be built from it.
+   If any changes are required in the release branch after this point, start again from the beginning of this step.
 2. Run the publishing pipelines to publish the packages. Take care to select the release build from item 1 as the
    source packaging pipeline run.
    - [NuGet publishing](https://aiinfra.visualstudio.com/Lotus/_build?definitionId=2229). Set the `PublishLocation`
      parameter to "nuget".
    - [Python publishing](https://aiinfra.visualstudio.com/Lotus/_build?definitionId=2228).
-3. Tag the release branch at the same commit that the release build was created from with tag
-   `plugin-ep-webgpu/vX.Y.Z`.
-4. Create a new GitHub release at that tag.
+3. Create a new GitHub release. This step also covers release tag creation.
+   - Start a new release on GitHub: https://github.com/microsoft/onnxruntime/releases/new
+   - Name it `ONNX Runtime WebGPU Plugin EP vX.Y.Z`.
+   - Specify the release branch as the target branch, `plugin-ep-webgpu/rel-X.Y`.
+   - Create a new tag for the release, `plugin-ep-webgpu/vX.Y.Z`.
+   - Author the release notes. Tip: From a local checkout at the release commit, ask an AI agent to generate WebGPU
+     EP release notes with the [`ort-release-notes`](../.github/skills/ort-release-notes/SKILL.md) skill. The skill
+     handles scoping the changes to WebGPU EP-related files.
+   - In the "Release label" section, select "None" instead of "Latest". WebGPU EP releases are currently hosted in the
+     ORT repo and we don't want a WebGPU EP release to appear as the latest ORT release.
