@@ -2640,10 +2640,12 @@ class TestQMoESwiGLUBenchmark(unittest.TestCase):
 
 @unittest.skipUnless(torch.cuda.is_available(), "INT2 speculative decode requires CUDA")
 class TestQMoEInt2SpeculativeDecode(unittest.TestCase):
-    @parameterized.expand([(rows, block) for rows in (2, 8) for block in (64, 128)])
-    def test_top8_query_shape_invariance(self, rows, block_size):
+    @parameterized.expand(
+        [(rows, block, hidden) for rows in (1, 2, 3, 8) for block in (64, 128) for hidden in (512, 3072)]
+    )
+    def test_top8_query_shape_invariance(self, rows, block_size, hidden):
         generator = torch.Generator().manual_seed(738)
-        hidden, intermediate, experts = 512, 512, 16
+        intermediate, experts = 512, 16
         graph = create_moe_onnx_graph(
             hidden_size=hidden,
             sequence_length="tokens",
