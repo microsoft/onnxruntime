@@ -13,6 +13,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -p no:cacheprovider --rootdir=. -
 ```
 
 The collection boundaries avoid importing the enclosing native ORT package.
+Existing Python build/test CI copies this directory, including the golden JSON
+fixtures, to the build output and runs the pytest suite after the quantization
+unittest suite when contrib ops are enabled. No feature-specific workflow is needed.
 For the optional external reference check, set `ONNX_PACK_PROPOSAL_CHECKOUT` to
 a trusted, unmodified checkout at the revision pinned in the test. The test
 checks HEAD, executes that checkout's Python references, and otherwise skips;
