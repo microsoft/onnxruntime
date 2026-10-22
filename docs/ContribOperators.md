@@ -4280,7 +4280,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.MatMulNBitsQLoRA"></a><a name="com.microsoft.matmulnbitsqlora">**com.microsoft.MatMulNBitsQLoRA**</a>
 
-  Computes MatMulNBits(X,W,scales) + MatMulNBits(MatMulNBits(X,lora_A,lora_A_scales),lora_B,lora_B_scales). The base uses INT4 block-32 weights with implicit zero point 8. Adapters use INT8 block-32 weights stored as unsigned bytes with implicit zero point 128 and block scales matching the activation type. Eligible adapter down projections may quantize activations according to accuracy_level. Rank is 32; an empty rank dimension in either packed adapter disables the adapter. Intermediate projections use the activation type (FP16 or FP32) before the final addition. Adapters remain replaceable.
+  Computes MatMulNBits(X,W,scales) + MatMulNBits(MatMulNBits(X,lora_A,lora_A_scales),lora_B,lora_B_scales). Each projection follows MatMulNBits block quantization and bit packing, with implicit zero points 2^(bits-1) for the base and 2^(lora_bits-1) for the adapters. No bias or explicit zero points are applied. The adapter rank R may be any positive integer and need not be a multiple of lora_block_size. Partial final blocks are padded; only the logical K or R elements participate in each projection. An empty rank dimension in either packed adapter disables the adapter, while scale defaults are retained. Intermediate projections and block scales use the activation type before the final addition. Adapters remain replaceable. Execution providers may support a subset of the defined types, quantization settings, and ranks.
 
 #### Version
 
@@ -4290,38 +4290,38 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>K</tt> : int (required)</dt>
-<dd>Input feature dimension; a positive multiple of 32.</dd>
+<dd>Positive input feature dimension of the base and down-projection weight matrices.</dd>
 <dt><tt>N</tt> : int (required)</dt>
-<dd>Output feature dimension; a positive multiple of 4.</dd>
+<dd>Positive output feature dimension of the base and up-projection weight matrices.</dd>
 <dt><tt>accuracy_level</tt> : int</dt>
-<dd>Accuracy policy for the base and eligible adapter down projections.</dd>
+<dd>Accuracy policy following MatMulNBits: 0 (unset), 1 (fp32), 2 (fp16), 3 (bf16), or 4 (int8). Applies to the base and eligible adapter down projections; the up projection uses level 0.</dd>
 <dt><tt>bits</tt> : int</dt>
-<dd>Base weight bit width; must be 4.</dd>
+<dd>Base weight bit width, following MatMulNBits (2, 4, or 8).</dd>
 <dt><tt>block_size</tt> : int</dt>
-<dd>Base weight block size; must be 32.</dd>
+<dd>Base quantization block size along K, following MatMulNBits: a power of two, at least 16.</dd>
 <dt><tt>lora_bits</tt> : int</dt>
-<dd>Adapter weight bit width; must be 8.</dd>
+<dd>Adapter weight bit width, following MatMulNBits (2, 4, or 8).</dd>
 <dt><tt>lora_block_size</tt> : int</dt>
-<dd>Adapter weight block size; must be 32.</dd>
+<dd>Adapter quantization block size along K for lora_A and R for lora_B: a power of two, at least 16.</dd>
 </dl>
 
 #### Inputs
 
 <dl>
 <dt><tt>X</tt> : T</dt>
-<dd>Input of rank at least two, with last dimension K.</dd>
+<dd>Input of rank at least one, with last dimension K, following MatMulNBits.</dd>
 <dt><tt>W</tt> : TQ</dt>
-<dd>Packed INT4 base weights [N,K/32,16].</dd>
+<dd>Packed base weights [N,ceil(K/block_size),block_size*bits/8].</dd>
 <dt><tt>scales</tt> : T</dt>
-<dd>Base block scales with N*K/32 elements; may be flattened.</dd>
+<dd>Base block scales [N,ceil(K/block_size)]; may be flattened.</dd>
 <dt><tt>lora_A</tt> : TQ</dt>
-<dd>Packed INT8 down weights [R_A,K/32,32], R_A=0 or 32.</dd>
+<dd>Packed down weights [R_A,ceil(K/lora_block_size),lora_block_size*lora_bits/8], R_A=R or 0.</dd>
 <dt><tt>lora_A_scales</tt> : T</dt>
-<dd>Down block scales [32,K/32]; retained even when the adapter is empty.</dd>
+<dd>Down block scales [R,ceil(K/lora_block_size)]; retained when the adapter is empty.</dd>
 <dt><tt>lora_B</tt> : TQ</dt>
-<dd>Packed INT8 up weights [N,R_B/32,32], R_B=0 or 32.</dd>
+<dd>Packed up weights [N,R_blocks,lora_block_size*lora_bits/8], R_blocks=ceil(R/lora_block_size) or 0.</dd>
 <dt><tt>lora_B_scales</tt> : T</dt>
-<dd>Up block scales [N,1]; retained even when the adapter is empty.</dd>
+<dd>Up block scales [N,ceil(R/lora_block_size)]; retained when the adapter is empty.</dd>
 </dl>
 
 #### Outputs
@@ -4335,7 +4335,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
-<dd>FP16 or FP32 activations and block scales.</dd>
+<dd>Activations and block scales share the same floating-point type (FP16 or FP32).</dd>
 <dt><tt>TQ</tt> : tensor(uint8)</dt>
 <dd>Packed quantized weights.</dd>
 </dl>

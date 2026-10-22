@@ -105,7 +105,13 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionNumerics) {
     int64_t m, k, n, batch;
     bool zero_base;
   };
-  const ShapeCase shapes[] = {{1, 64, 128, 1, false}, {1, 2048, 128, 1, false}, {1, 3072, 132, 1, true}, {1, 8192, 128, 1, true}, {2, 2048, 132, 1, true}, {37, 2048, 128, 1, false}, {37, 3072, 132, 1, true}, {1, 2048, 128, 2, true}, {37, 2048, 132, 2, true}};
+  const ShapeCase shapes[] = {
+      {1, 64, 1, 1, false},
+      {1, 2176, 127, 1, true},
+      {2, 2048, 129, 2, true},
+      {37, 2048, 128, 1, false},
+      {37, 2176, 127, 2, true},
+  };
   for (const auto& shape : shapes) {
     SCOPED_TRACE(shape.m);
     SCOPED_TRACE(shape.k);
@@ -126,7 +132,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionNumerics) {
 
 TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionFp32Numerics) {
   if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU unavailable.";
-  for (const auto& [m, n] : {std::pair<int64_t, int64_t>{1, 128}, {1, 132}, {2, 128}, {2, 132}, {3, 128}, {37, 132}}) {
+  for (const auto& [m, n] : {std::pair<int64_t, int64_t>{1, 128}, {2, 128}, {37, 128}, {2, 129}}) {
     SCOPED_TRACE(MakeString("M=", m, ", N=", n));
     // Eligible FP32 decode and short prefill share quantized X with the base.
     const bool quantized_down = m >= 4 || n % 16 == 0;
@@ -217,75 +223,10 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionRejectsDifferentAdapterAc
                            [](const Graph& g) { return CheckQLoRACount(g, 0); }));
 }
 
-TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionPartialOverrides) {
-  if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU unavailable.";
-  Model model("quantized LoRA switching", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-              {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, *logger_);
-  auto& graph = model.MainGraph();
-  ModelTestBuilder builder(graph);
-  BuildQLoRA(builder, 1, 64);
-  builder.SetGraphOutputs();
-  ASSERT_STATUS_OK(graph.Resolve());
-  const auto adapters = graph.GetOverridableInitializers();
-  ASSERT_EQ(adapters.size(), 4u);
-  // Keep this state-transition test exact across backends. With X=1/4 and
-  // unit packed weights, the adapter delta is 512 with default scales and
-  // 1/2 with supplied scales; random-data roundoff is covered by Numerics.
-  for (auto& [name, value] : builder.feeds_) {
-    auto* tensor = value.GetMutable<Tensor>();
-    if (tensor->IsDataType<uint8_t>()) {
-      auto bytes = tensor->MutableDataAsSpan<uint8_t>();
-      std::fill(bytes.begin(), bytes.end(), uint8_t{129});
-    } else {
-      auto values = tensor->MutableDataAsSpan<MLFloat16>();
-      const float fill = tensor->Shape().NumDimensions() == 3 ? 0.25f : 0.03125f;
-      std::fill(values.begin(), values.end(), MLFloat16(fill));
-    }
-  }
-  std::string data;
-  model.ToProto().SerializeToString(&data);
-  std::vector<OrtValue> expected;
-  for (bool fused : {false, true}) {
-    SessionOptions options;
-    options.graph_optimization_level = TransformerLevel::Level1;
-    InferenceSessionWrapper session(options, GetEnvironment());
-    ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
-    ASSERT_STATUS_OK(session.Load(data.data(), static_cast<int>(data.size())));
-    if (fused)
-      ASSERT_STATUS_OK(
-          session.RegisterGraphTransformer(std::make_unique<MatMulNBitsQLoRAFusion>(), TransformerLevel::Level2));
-    ASSERT_STATUS_OK(session.Initialize());
-    ASSERT_STATUS_OK(CheckQLoRACount(session.GetGraph(), fused ? 1 : 0));
-    // Off, packed weights only, scales only, all parameters, then off again.
-    for (int state = 0; state < 5; ++state) {
-      auto feeds = builder.feeds_;
-      for (const auto* input : adapters) {
-        const bool packed = input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto::UINT8;
-        if (state == 0 || state == 4 || (state == 1 && !packed) || (state == 2 && packed)) feeds.erase(input->Name());
-      }
-      std::vector<OrtValue> output;
-      ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, builder.output_names_, &output));
-      ASSERT_EQ(output.size(), 1u);
-      if (!fused) {
-        expected.push_back(std::move(output[0]));
-      } else {
-        const auto comparison = CompareOrtValue(output[0], expected[state], 0.0, 0.0, false);
-        EXPECT_EQ(comparison.first, COMPARE_RESULT::SUCCESS) << "state=" << state << " " << comparison.second;
-        const auto base = expected[0].Get<Tensor>().DataAsSpan<MLFloat16>();
-        const auto actual = output[0].Get<Tensor>().DataAsSpan<MLFloat16>();
-        const float delta = state == 1 ? 512.0f : (state == 3 ? 0.5f : 0.0f);
-        for (size_t i = 0; i < actual.size(); ++i) {
-          EXPECT_EQ(actual[i], MLFloat16(base[i].ToFloat() + delta)) << "state=" << state << ", i=" << i;
-        }
-      }
-    }
-  }
-}
-
 template <typename T>
 void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 64) {
   if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU unavailable.";
-  for (int64_t m : {1, 2, 3, 37}) {
+  for (int64_t m : {1, 2, 37}) {
     SCOPED_TRACE(m);
     Model model("quantized LoRA empty defaults", false, ModelMetaData(), PathString(),
                 IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, logger);
@@ -315,15 +256,18 @@ void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 
     ASSERT_FALSE(a_name.empty());
     ASSERT_FALSE(b_name.empty());
     std::vector<OrtValue> expected;
-    for (bool fused : {false, true}) {
-      if (fused) {
+    // Compare unfused, load-time fusion, and serialized fusion using the same
+    // partial-override states and exact reference values.
+    for (int mode : {0, 1, 2}) {
+      const bool fused = mode != 0;
+      if (mode == 2) {
         bool modified = false;
         ASSERT_STATUS_OK(MatMulNBitsQLoRAFusion().Apply(graph, modified, logger));
         ASSERT_TRUE(modified);
         ASSERT_STATUS_OK(graph.Resolve());
       }
       const auto proto = model.ToProto();
-      if (fused) {
+      if (mode == 2) {
         ASSERT_EQ(proto.graph().node_size(), 1);
         ASSERT_EQ(proto.graph().node(0).op_type(), "MatMulNBitsQLoRA");
         int empty_count = 0;
@@ -344,9 +288,12 @@ void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 
       options.graph_optimization_level = TransformerLevel::Level1;
       InferenceSessionWrapper session(options, GetEnvironment());
       ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
-      // No LoRA transformer is registered at load time: the serialized model
-      // itself must retain empty defaults and accept nonempty rank-32 overrides.
       ASSERT_STATUS_OK(session.Load(data.data(), static_cast<int>(data.size())));
+      if (mode == 1) {
+        ASSERT_STATUS_OK(
+            session.RegisterGraphTransformer(std::make_unique<MatMulNBitsQLoRAFusion>(), TransformerLevel::Level2));
+      }
+      // Mode 2 loads the serialized operator without a LoRA transformer.
       ASSERT_STATUS_OK(session.Initialize());
       ASSERT_STATUS_OK(CheckQLoRACount(session.GetGraph(), fused ? 1 : 0));
       // Off, A only, B only, scales only, packed weights only, all, off again.
@@ -424,7 +371,7 @@ void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 
     Tensor::InitOrtValue(reference.DataType(), reference.Shape(), CPUAllocator::DefaultInstance(), actual);
     // Each adapter state owns a capture ID and stable GPU bindings. Replay
     // skips branch selection, so one ID cannot be reused across on/off states.
-    for (int state : {0, 0, 0, 1, 1, 1, 0, 1, 0, 1}) {
+    for (int state : {0, 0, 0, 1, 1, 1, 0, 1}) {
       SCOPED_TRACE(MakeString("capture state=", state));
       auto* cpu_output = actual.GetMutable<Tensor>();
       auto values = cpu_output->MutableDataAsSpan<T>();

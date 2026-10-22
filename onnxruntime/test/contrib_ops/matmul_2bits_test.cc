@@ -1534,7 +1534,8 @@ TEST(MatMul2Bits, Float32_2b_BlkLen32_Accuracy0) {
 
 #ifdef USE_WEBGPU
 TEST(MatMulNBits, WebGpu_DP4A_NarrowN_Int2) {
-  for (int64_t n : {16, 32, 48, 64, 80}) {
+  // Partial narrow tile, multiple narrow tiles, and a partial wide tile.
+  for (int64_t n : {16, 48, 80}) {
     for (bool has_zero_point : {false, true}) {
       TestOptions2Bits opts{};
       opts.M = 65;

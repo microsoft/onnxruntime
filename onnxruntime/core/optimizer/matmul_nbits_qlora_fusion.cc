@@ -98,7 +98,7 @@ Status MatMulNBitsQLoRAFusion::ApplyImpl(Graph& graph, bool& modified, int graph
       continue;
     const int64_t k = GetIntAttr(*base, "K", -1, true);
     const int64_t n = GetIntAttr(*base, "N", -1, true);
-    if (k <= 0 || k % 32 != 0 || n <= 0 || n % 4 != 0 || GetIntAttr(*down, "K", -1, true) != k ||
+    if (k <= 0 || k % 32 != 0 || n <= 0 || GetIntAttr(*down, "K", -1, true) != k ||
         GetIntAttr(*down, "N", -1, true) != 32 || GetIntAttr(*up, "K", -1, true) != 32 ||
         GetIntAttr(*up, "N", -1, true) != n)
       continue;

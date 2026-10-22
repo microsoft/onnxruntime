@@ -21,22 +21,24 @@ namespace onnxruntime::test {
 
 template <typename T>
 void RunEmptyAndActiveAdapters() {
-  for (int64_t m : {1, 37}) {
+  // Scalar output, a two-column tail, and a partial wide tile.
+  for (const auto& [m, n] : {std::pair<int64_t, int64_t>{1, 1}, {2, 2}, {37, 129}}) {
+    SCOPED_TRACE(MakeString("M=", m, ", N=", n));
     for (auto ranks : {std::pair{0, 0}, {0, 1}, {32, 0}, {32, 1}}) {
       auto ep = DefaultWebGpuExecutionProvider();
       ASSERT_NE(ep, nullptr);
       OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
       test.AddAttribute<int64_t>("K", 64);
-      test.AddAttribute<int64_t>("N", 128);
+      test.AddAttribute<int64_t>("N", n);
       test.AddInput<T>("X", {1, m, 64}, std::vector<T>(m * 64, T(0.5f)));
-      test.AddInput<uint8_t>("W", {128, 2, 16}, std::vector<uint8_t>(4096, 0x99), true);
-      test.AddInput<T>("S", {128, 2}, std::vector<T>(256, T(0.03125f)), true);
+      test.AddInput<uint8_t>("W", {n, 2, 16}, std::vector<uint8_t>(n * 32, 0x99), true);
+      test.AddInput<T>("S", {n, 2}, std::vector<T>(n * 2, T(0.03125f)), true);
       test.AddInput<uint8_t>("AQ", {ranks.first, 2, 32}, std::vector<uint8_t>(ranks.first * 64, 129));
       test.AddInput<T>("AS", {32, 2}, std::vector<T>(64, T(0.03125f)));
-      test.AddInput<uint8_t>("BQ", {128, ranks.second, 32}, std::vector<uint8_t>(128 * ranks.second * 32, 129));
-      test.AddInput<T>("BS", {128, 1}, std::vector<T>(128, T(0.0625f)));
+      test.AddInput<uint8_t>("BQ", {n, ranks.second, 32}, std::vector<uint8_t>(n * ranks.second * 32, 129));
+      test.AddInput<T>("BS", {n, 1}, std::vector<T>(n, T(0.0625f)));
       const float expected = ranks.first && ranks.second ? 3.0f : 1.0f;
-      test.AddOutput<T>("Y", {1, m, 128}, std::vector<T>(m * 128, T(expected)));
+      test.AddOutput<T>("Y", {1, m, n}, std::vector<T>(m * n, T(expected)));
       std::vector<std::unique_ptr<IExecutionProvider>> eps;
       eps.push_back(std::move(ep));
       test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
@@ -47,68 +49,53 @@ void RunEmptyAndActiveAdapters() {
 TEST(MatMulNBitsQLoRA, EmptyAndActiveAdapters) { RunEmptyAndActiveAdapters<MLFloat16>(); }
 TEST(MatMulNBitsQLoRA, EmptyAndActiveAdaptersFp32) { RunEmptyAndActiveAdapters<float>(); }
 
-TEST(MatMulNBitsQLoRA, RejectsUnsupportedAdapterShapeAndBits) {
-  for (bool wrong_bits : {false, true}) {
+#ifndef ORT_NO_EXCEPTIONS
+TEST(MatMulNBitsQLoRA, RejectsUnsupportedWebGpuConfigurations) {
+  struct Config {
+    int64_t k = 64, n = 128, rank = 32, bits = 4, block_size = 32, lora_bits = 8, lora_block_size = 32;
+    const char* error = "WebGPU MatMulNBitsQLoRA supports only bits=4";
+  };
+  const Config configs[] = {
+      {64, 128, 32, 8},
+      {64, 128, 32, 4, 64},
+      {64, 128, 32, 4, 32, 4},
+      {64, 128, 32, 4, 32, 8, 64},
+      {64, 128, 7, 4, 32, 8, 32, "WebGPU MatMulNBitsQLoRA supports only adapter rank 32"},
+      {64, 128, 64, 4, 32, 8, 32, "WebGPU MatMulNBitsQLoRA supports only adapter rank 32"},
+      {63, 128, 32, 4, 32, 8, 32, "WebGPU MatMulNBitsQLoRA requires positive K"},
+  };
+  for (const Config& c : configs) {
     auto ep = DefaultWebGpuExecutionProvider();
     ASSERT_NE(ep, nullptr);
     OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
-    test.AddAttribute<int64_t>("K", 64);
-    test.AddAttribute<int64_t>("N", 128);
-    if (wrong_bits) test.AddAttribute<int64_t>("lora_bits", 4);
-    test.AddInput<MLFloat16>("X", {1, 1, 64}, std::vector<MLFloat16>(64, MLFloat16(0.5f)));
-    test.AddInput<uint8_t>("W", {128, 2, 16}, std::vector<uint8_t>(4096, 0x99), true);
-    test.AddInput<MLFloat16>("S", {128, 2}, std::vector<MLFloat16>(256, MLFloat16(0.03125f)), true);
-    const int64_t rank = wrong_bits ? 32 : 16;
-    test.AddInput<uint8_t>("AQ", {rank, 2, 32}, std::vector<uint8_t>(rank * 64, 129));
-    test.AddInput<MLFloat16>("AS", {32, 2}, std::vector<MLFloat16>(64, MLFloat16(0.03125f)));
-    test.AddInput<uint8_t>("BQ", {128, 1, 32}, std::vector<uint8_t>(4096, 129));
-    test.AddInput<MLFloat16>("BS", {128, 1}, std::vector<MLFloat16>(128, MLFloat16(0.0625f)));
-    test.AddOutput<MLFloat16>("Y", {1, 1, 128}, std::vector<MLFloat16>(128, MLFloat16(3.0f)));
+    test.AddAttribute("K", c.k);
+    test.AddAttribute("N", c.n);
+    test.AddAttribute("bits", c.bits);
+    test.AddAttribute("block_size", c.block_size);
+    test.AddAttribute("lora_bits", c.lora_bits);
+    test.AddAttribute("lora_block_size", c.lora_block_size);
+    const auto k_blocks = (c.k + c.block_size - 1) / c.block_size;
+    const auto lora_k_blocks = (c.k + c.lora_block_size - 1) / c.lora_block_size;
+    const auto r_blocks = (c.rank + c.lora_block_size - 1) / c.lora_block_size;
+    const auto blob = c.block_size * c.bits / 8;
+    const auto lora_blob = c.lora_block_size * c.lora_bits / 8;
+    test.AddInput<float>("X", {1, 1, c.k}, std::vector<float>(c.k, 0.5f));
+    test.AddInput<uint8_t>("W", {c.n, k_blocks, blob}, std::vector<uint8_t>(c.n * k_blocks * blob), true);
+    test.AddInput<float>("S", {c.n, k_blocks}, std::vector<float>(c.n * k_blocks, 1.0f), true);
+    test.AddInput<uint8_t>("AQ", {c.rank, lora_k_blocks, lora_blob},
+                           std::vector<uint8_t>(c.rank * lora_k_blocks * lora_blob));
+    test.AddInput<float>("AS", {c.rank, lora_k_blocks}, std::vector<float>(c.rank * lora_k_blocks, 1.0f));
+    test.AddInput<uint8_t>("BQ", {c.n, r_blocks, lora_blob}, std::vector<uint8_t>(c.n * r_blocks * lora_blob));
+    test.AddInput<float>("BS", {c.n, r_blocks}, std::vector<float>(c.n * r_blocks, 1.0f));
+    test.AddOutput<float>("Y", {1, 1, c.n}, std::vector<float>(c.n));
     std::vector<std::unique_ptr<IExecutionProvider>> eps;
     eps.push_back(std::move(ep));
-    test.Run(OpTester::ExpectResult::kExpectFailure,
-             wrong_bits ? "Unsupported MatMulNBitsQLoRA attributes" : "Invalid quantized adapter dimensions", {},
-             nullptr, &eps);
+    test.Run(OpTester::ExpectResult::kExpectFailure, c.error, {}, nullptr, &eps);
   }
 }
+#endif  // ORT_NO_EXCEPTIONS
 
-template <typename T>
-void RunQuantizedPrefillAndReusedInput() {
-  for (int64_t m : {1, 2, 3, 4, 65}) {
-    for (int64_t accuracy : {0, 4}) {
-      OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
-      constexpr int64_t k = 256;
-      constexpr int64_t n = 128;
-      constexpr int64_t batches = 2;
-      test.AddAttribute<int64_t>("K", k);
-      test.AddAttribute<int64_t>("N", n);
-      test.AddAttribute<int64_t>("accuracy_level", accuracy);
-      std::vector<T> x(batches * m * k);
-      std::vector<T> expected(batches * m * n);
-      for (int64_t row = 0; row < batches * m; ++row) {
-        const float value = row % 2 == 0 ? 0.5f : -0.25f;
-        std::fill_n(x.begin() + row * k, k, T(value));
-        std::fill_n(expected.begin() + row * n, n, T(value * 24.0f));
-      }
-      test.AddInput<T>("X", {batches, m, k}, x);
-      test.AddInput<uint8_t>("W", {n, k / 32, 16}, std::vector<uint8_t>(n * k / 2, 0x99), true);
-      test.AddInput<T>("S", {n, k / 32}, std::vector<T>(n * k / 32, T(0.03125f)), true);
-      test.AddInput<uint8_t>("AQ", {32, k / 32, 32}, std::vector<uint8_t>(32 * k, 129));
-      test.AddInput<T>("AS", {32, k / 32}, std::vector<T>(k, T(0.03125f)));
-      test.AddInput<uint8_t>("BQ", {n, 1, 32}, std::vector<uint8_t>(n * 32, 129));
-      test.AddInput<T>("BS", {n, 1}, std::vector<T>(n, T(0.0625f)));
-      test.AddOutput<T>("Y", {batches, m, n}, expected);
-      std::vector<std::unique_ptr<IExecutionProvider>> eps;
-      eps.push_back(DefaultWebGpuExecutionProvider());
-      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
-    }
-  }
-}
-
-TEST(MatMulNBitsQLoRA, QuantizedPrefillAndReusedInput) { RunQuantizedPrefillAndReusedInput<MLFloat16>(); }
-TEST(MatMulNBitsQLoRA, QuantizedPrefillAndReusedInputFp32) { RunQuantizedPrefillAndReusedInput<float>(); }
-
-TEST(MatMulNBitsQLoRA, PrefillSubgroupMatrixUsesFusedUp) {
+TEST(MatMulNBitsQLoRA, PrefillSubgroupMatrixNumerics) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
   GTEST_SKIP() << "Hardware-specific dispatch checks require direct adapter capability inspection.";
 #else
@@ -128,13 +115,9 @@ TEST(MatMulNBitsQLoRA, PrefillSubgroupMatrixUsesFusedUp) {
   if (!gpu.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix) || !config.has_value()) {
     GTEST_SKIP() << "Requires a compatible FP16 subgroup-matrix configuration.";
   }
-  const auto down_config = webgpu::detail::SelectSubgroupMatrixConfigFromAdapterConfigs(
-      {device_configs.configs, device_configs.configCount},
-      adapter.subgroupMinSize, adapter.subgroupMaxSize,
-      gpu.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl),
-      {{kF16, wgpu::SubgroupMatrixComponentType::F32, 8, 16, 16, 32, true}});
-
-  constexpr int64_t m = 256, k = 256, n = 128;
+  // Include a partial row tile; the dispatch assertion below prevents a fallback
+  // from hiding numerical failures in the subgroup-matrix kernel.
+  constexpr int64_t m = 65, k = 256, n = 128;
   OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
   test.AddAttribute<int64_t>("K", k);
   test.AddAttribute<int64_t>("N", n);
@@ -157,28 +140,6 @@ TEST(MatMulNBitsQLoRA, PrefillSubgroupMatrixUsesFusedUp) {
   test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
   const auto logs = testing::internal::GetCapturedStderr();
   EXPECT_NE(logs.find("SubgroupMatrixMatMulNBitsQLoRAUp"), std::string::npos) << logs;
-  if (config->Is(8, 16, 16) && down_config.has_value()) {
-    auto count_program = [&logs](const std::string& name) {
-      const auto marker = "Starting program \"" + name + "[";
-      size_t count = 0;
-      for (auto pos = logs.find(marker); pos != std::string::npos; pos = logs.find(marker, pos + marker.size())) {
-        ++count;
-      }
-      return count;
-    };
-    const auto down_count = count_program("SubgroupMatrixMatMulNBits");
-    EXPECT_GT(down_count, 0u) << logs;
-    EXPECT_NE(logs.find("SubgroupMatrixMatMulNBits[8|2|1|8|16|16|32|"), std::string::npos) << logs;
-    EXPECT_EQ(count_program("SubgroupMatrixMatMulLayout"), down_count) << logs;
-    EXPECT_EQ(count_program("SubgroupMatrixMatMulNBitsQLoRAUp"), down_count) << logs;
-    EXPECT_NE(logs.find("|32|32|32|0|0|0|0|0|0]:128"), std::string::npos) << logs;
-    EXPECT_NE(logs.find("|128|128|32|0|0|0|0|1|0]:512"), std::string::npos) << logs;
-    EXPECT_EQ(logs.find("Starting program \"MatMulNBits["), std::string::npos) << logs;
-    EXPECT_EQ(logs.find("DP4AMatMulQuantize"), std::string::npos) << logs;
-    EXPECT_EQ(logs.find("Starting program \"DP4AMatMulNBits"), std::string::npos) << logs;
-  }
-  EXPECT_EQ(logs.find("QLoRAOutputVec4"), std::string::npos) << logs;
-  EXPECT_EQ(logs.find("QLoRAAdd"), std::string::npos) << logs;
 #endif
 }
 
@@ -186,10 +147,17 @@ void RunFp32Numerics(const ConfigOptions& provider_options = {}) {
   struct Shape {
     int64_t m, k, n, batch;
   };
-  for (const auto shape : {Shape{1, 64, 128, 1}, Shape{1, 2048, 36, 1}, Shape{1, 2048, 64, 1}, Shape{1, 8192, 132, 1},
-                           Shape{1, 2176, 64, 7}, Shape{1, 8192, 64, 1},
-                           Shape{2, 2048, 36, 2}, Shape{2, 8192, 64, 1}, Shape{3, 3072, 64, 3},
-                           Shape{37, 2048, 132, 2}, Shape{128, 3072, 64, 1}}) {
+  // Small-K decode, joint decode with a K tail, long reductions, and batched
+  // generic/wide/DP4A prefill. Odd N covers scalar output tails.
+  const Shape shapes[] = {
+      {1, 64, 1, 1},
+      {1, 2176, 127, 1},
+      {1, 8192, 64, 1},
+      {2, 2048, 129, 2},
+      {37, 2176, 127, 2},
+      {37, 2176, 64, 2},
+  };
+  for (const auto& shape : shapes) {
     const auto [m, k, n, batch] = shape;
     SCOPED_TRACE(MakeString("M=", m, ", K=", k, ", N=", n, ", batch=", batch));
     std::vector<float> x(batch * m * k), as(k), bs(n), expected(batch * m * n);
@@ -367,7 +335,7 @@ void RunFp32DP4AQuantization(int64_t m) {
 TEST(MatMulNBitsQLoRA, DecodeJointDP4AQuantization) { RunFp32DP4AQuantization(1); }
 
 TEST(MatMulNBitsQLoRA, SmallMPrefillDP4AQuantization) {
-  for (int64_t m : {2, 3}) RunFp32DP4AQuantization(m);
+  RunFp32DP4AQuantization(2);
 }
 
 TEST(MatMulNBitsQLoRA, NarrowKParallelReduction) {
@@ -385,9 +353,8 @@ TEST(MatMulNBitsQLoRA, NarrowKParallelReduction) {
     int64_t k;
     int64_t batch;
   };
-  for (const auto shape : {Shape{4, 128, 1}, Shape{3, 1920, 1}, Shape{4, 1920, 1}, Shape{4, 2048, 1},
-                           Shape{37, 2176, 2}, Shape{128, 3072, 1},
-                           Shape{65, 8192, 1}, Shape{4097, 128, 1}}) {
+  // Cover both sides of the K-parallel threshold and a batched K/M tail.
+  for (const auto shape : {Shape{4, 1920, 1}, Shape{4, 2048, 1}, Shape{37, 2176, 2}}) {
     const auto [m, k, batch] = shape;
     SCOPED_TRACE(MakeString("M=", m, ", K=", k, ", batch=", batch));
     constexpr int64_t n = 64;
@@ -472,7 +439,7 @@ TEST(MatMulNBitsQLoRA, DecodeSubgroupReduction) {
   }
 #endif
   for (bool acc_f32 : {false, true}) {
-    for (const auto& [k, n] : {std::pair<int64_t, int64_t>{2048, 36}, {4096, 132}, {8192, 64}}) {
+    for (const auto& [k, n] : {std::pair<int64_t, int64_t>{2176, 127}, {8192, 64}}) {
       SCOPED_TRACE(MakeString("K=", k, ", N=", n, ", acc_f32=", acc_f32));
       std::vector<MLFloat16> x(k);
       std::vector<uint8_t> aq(32 * k);

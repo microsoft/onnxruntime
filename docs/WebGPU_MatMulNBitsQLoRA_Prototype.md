@@ -1,7 +1,7 @@
 # WebGPU MatMulNBitsQLoRA prototype
 
-`com.microsoft.MatMulNBitsQLoRA` fuses an INT4 base projection, two INT8 adapter
-projections, and their residual Add. Adapter weights remain replaceable. This
+`com.microsoft.MatMulNBitsQLoRA` fuses a quantized base projection, two quantized
+adapter projections, and their residual Add. Adapter weights remain replaceable. This
 is an inference operator for quantized adapters; it does not merge adapter
 weights into the base or perform adapter training.
 
@@ -29,8 +29,22 @@ the transformer does not undo those explicit nodes.
 
 ## Weight format and arithmetic
 
+The [operator definition](ContribOperators.md#com.microsoft.matmulnbitsqlora)
+follows MatMulNBits quantization settings and permits any positive adapter rank,
+including ranks that are not divisible by 8 or by the quantization block size.
+Packed storage pads the final block; the logical rank determines how many
+elements participate in the up projection.
+
+The current WebGPU kernel and graph matcher support a subset: FP16/FP32
+activations and scales, INT4 base weights, INT8 adapter weights, block size 32
+for all projections, active adapter rank 32, positive K divisible by 32,
+positive N, and X of rank at least two. Other configurations
+are not supported by this kernel. Explicit nodes reject unsupported configurations,
+and the matcher leaves them unfused. These are
+implementation limits rather than restrictions on the operator definition.
+
 The operator takes `X, W, scales, lora_A, lora_A_scales, lora_B, lora_B_scales`.
-For rank 32, positive K divisible by 32, and positive N divisible by 4:
+For the current WebGPU implementation:
 
 | Tensor | Type | Shape |
 |---|---|---|
@@ -54,7 +68,7 @@ delta   = F(T * Bt^T)
 Y       = F(MatMulNBits(X,W,scales) + delta)
 ```
 
-Base quantization stays INT4 with block size 32 and implicit zero point 8.
+This implementation uses INT4 base quantization with block size 32 and implicit zero point 8.
 The equations describe the weight interpretation and mathematical projections;
 the optimized kernels can change reduction order and activation precision.
 Eligible prefill down projections use DP4A activation quantization when the
