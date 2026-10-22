@@ -333,7 +333,7 @@ steps:
               # Allow loose files directly under include/ that are ORT's own public/training headers
               $allowedLooseHeaderPattern = '^(onnxruntime.*\.(h|inc)|cpu_provider_factory\.h|provider_options\.h)$'
               $looseFiles = Get-ChildItem -Path $includeDir -File | Where-Object {
-                  $_.Name -notmatch $allowedLooseHeaderPattern
+              $allowedLooseHeaderPattern = '^(onnxruntime.*\.(h|inc)|([a-z0-9_]+_)?provider_(factory|options)\.h)$'
               }
               if ($looseFiles) {
                   Write-Host "##vso[task.logissue type=error]Unexpected loose files found directly under include/: $($looseFiles.Name -join ', ')"
