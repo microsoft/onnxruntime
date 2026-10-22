@@ -124,11 +124,75 @@ bool TryGetStaticDim(const ONNX_NAMESPACE::TensorShapeProto* shape, int dim_inde
   return value > 0;
 }
 
+// Profile-free tactic choice for the dense A16 grouped GEMMs (NVFP4/FP4 dequant route) when ORT_FORCE_DETERMINISTIC_MOE
+// pins the tactic. The first entry of the tactic list is a decode tile (CTA 128x16x64) that runs prefill-sized problems at
+// ~12% of the tensor-core peak. Picks below were taken from the profiler's choices on H200 for the Qwen3.8 shapes
+// (hidden 2560, inter 640, 512 experts, top-10) at 128..8192 tokens per call; rows_per_expert = expanded rows / experts.
+// ORT_QMOE_PREFILL_TACTIC=0 restores the first-tactic behaviour.
+std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig> PickPrefillTactic(
+    const std::vector<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>& tactics, bool is_fc2, double rows_per_expert) {
+  using onnxruntime::llm::cutlass_extensions::ClusterShape;
+  using onnxruntime::llm::cutlass_extensions::CutlassGemmConfig;
+  using onnxruntime::llm::cutlass_extensions::CutlassTileConfig;
+  using onnxruntime::llm::cutlass_extensions::CutlassTileConfigSM90;
+  static const bool enabled = onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PREFILL_TACTIC", 1) != 0;
+  if (!enabled || tactics.empty() || rows_per_expert < 4.0) {
+    return std::nullopt;
+  }
+  auto find_tma = [&](CutlassTileConfigSM90 tile, ClusterShape cluster) -> std::optional<CutlassGemmConfig> {
+    for (const auto& t : tactics) {
+      if (t.is_tma_warp_specialized && t.sm_version == 90 && t.tile_config_sm90 == tile && t.cluster_shape == cluster) return t;
+    }
+    return std::nullopt;
+  };
+  auto find_ampere = [&](CutlassTileConfig tile) -> std::optional<CutlassGemmConfig> {
+    // QMoE always dispatches with use_fused_moe=false (ENABLE_FUSED_GATED_ACTIVATION is false),
+    // which uses DefaultGemmGrouped in moe_gemm_kernels_{fp16,bf16}.cu; under ORT_QUICK_BUILD
+    // only stages==4 is instantiated for CtaShape{32,64}x128x64.
+    std::optional<CutlassGemmConfig> best;
+    for (const auto& t : tactics) {
+#if defined(ORT_QUICK_BUILD)
+      if (t.stages != 4) continue;
+#endif
+      if (!t.is_tma_warp_specialized && t.sm_version < 90 && t.tile_config_sm80 == tile &&
+          (!best.has_value() || t.stages >= best->stages)) {
+        best = t;
+      }
+    }
+    return best;
+  };
+  std::optional<CutlassGemmConfig> pick;
+  if (rows_per_expert >= 100.0) {
+    pick = is_fc2 ? find_tma(CutlassTileConfigSM90::CtaShape128x64x128B, ClusterShape::ClusterShape_2x1x1)
+                  : find_tma(CutlassTileConfigSM90::CtaShape128x256x128B, ClusterShape::ClusterShape_2x1x1);
+  } else if (rows_per_expert >= 24.0) {
+    pick = is_fc2 ? find_tma(CutlassTileConfigSM90::CtaShape128x64x128B, ClusterShape::ClusterShape_2x1x1)
+                  : find_ampere(CutlassTileConfig::CtaShape64x128x64_WarpShape32x64x64);
+  } else {
+    pick = find_ampere(CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64);
+  }
+  return pick;
+}
+
 bool StaticFp4CutlassShapeSupported(const OpKernelInfo& op_kernel_info, bool is_swiglu) {
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
-  ORT_UNUSED_PARAMETER(op_kernel_info);
-  ORT_UNUSED_PARAMETER(is_swiglu);
-  return false;
+  if (op_kernel_info.GetInputCount() <= 5) {
+    return false;
+  }
+
+  const auto fc1_shape = op_kernel_info.GetKernelInfo().GetInputTypeInfo(2).GetTensorTypeAndShapeInfo().GetShape();
+  const auto fc2_shape = op_kernel_info.GetKernelInfo().GetInputTypeInfo(5).GetTensorTypeAndShapeInfo().GetShape();
+  if (fc1_shape.size() != 3 || fc2_shape.size() != 3) {
+    return false;
+  }
+
+  const int64_t fc1_k = fc1_shape[1];
+  const int64_t fc1_packed_n = fc1_shape[2];
+  const int64_t fc2_k = fc2_shape[1];
+  const int64_t fc2_packed_n = fc2_shape[2];
+  if (fc1_k <= 0 || fc1_packed_n <= 0 || fc2_k <= 0 || fc2_packed_n <= 0) {
+    return false;
+  }
 #else
   const auto& input_defs = op_kernel_info.node().InputDefs();
   if (input_defs.size() <= 5 || input_defs[2] == nullptr || input_defs[5] == nullptr) {
@@ -149,6 +213,7 @@ bool StaticFp4CutlassShapeSupported(const OpKernelInfo& op_kernel_info, bool is_
       !TryGetStaticDim(fc2_shape, 1, fc2_k) || !TryGetStaticDim(fc2_shape, 2, fc2_packed_n)) {
     return false;
   }
+#endif
 
   const int64_t hidden_size = fc1_k;
   const int64_t hidden_size_from_fc2 = fc2_packed_n * 2;
@@ -176,7 +241,6 @@ bool StaticFp4CutlassShapeSupported(const OpKernelInfo& op_kernel_info, bool is_
   // broader shapes are validated.
   constexpr int64_t kMxfp4CutlassAlignment = 64;
   return hidden_size % kMxfp4CutlassAlignment == 0 && inter_size % kMxfp4CutlassAlignment == 0;
-#endif
 }
 
 // Returns the per-rank expert count DeepGEMM would run, or 0 if the static shapes rule it out.
@@ -1343,7 +1407,14 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       }
       for (size_t i = 0; i < distinct_tile_row_count; ++i) {
         const int64_t tile_rows = distinct_tile_rows[i];
-        RunnerTileConfig tile_config{tile_rows, deterministic_config, deterministic_config, 0};
+        std::optional<MoeConfig> config1 = deterministic_config;
+        std::optional<MoeConfig> config2 = deterministic_config;
+        if (is_nvfp4 && !use_fp4_gemv && !route_native_fp4) {
+          const double rows_per_expert = static_cast<double>(tile_rows) * static_cast<double>(k_) / runner_num_experts;
+          if (auto fc1 = PickPrefillTactic(tactics, false, rows_per_expert)) config1 = fc1;
+          if (auto fc2 = PickPrefillTactic(tactics, true, rows_per_expert)) config2 = fc2;
+        }
+        RunnerTileConfig tile_config{tile_rows, config1, config2, 0};
         active_runner->setTactic(tile_config.config1, tile_config.config2);
         tile_config.workspace_size = active_runner->getWorkspaceSize(
             tile_rows, moe_params.hidden_size, moe_params.inter_size, runner_num_experts, k_,
