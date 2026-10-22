@@ -512,14 +512,19 @@ CPU candidates; the CUDA EP does not propose CPU EP assignments. Planning querie
 revision, workload bounds, device/configuration, and user constraints. The following information is
 conceptual planning metadata, not an existing `ComputeCapability` payload or a finalized public API:
 
-| Information | Purpose |
-|:------------|:--------|
-| Candidate and alternative-view identity | Identify compatible sets of capabilities and alternatives that must not be accepted together. |
-| Source membership and boundaries | Identify covered nodes, required inputs/outputs, and indivisible execution units. |
-| Optimization/lowering recipe | Identify the reproducible transformations and target implementation, including a handle for later application. |
-| Resulting graph/interface description | Expose created/removed tensors, shapes/types, aliases, and other planning-relevant effects; provide a planning graph when a summary cannot describe them sufficiently. |
-| Enforceable contract menu | Identify supported runtime choices, workload coverage, and explicit-failure conditions for that implementation. |
-| Allocation requirements and bound status | Describe implementation-owned persistent/prepack storage, initialization scratch, and runtime workspace, with resource identity, location, size bound, alignment, lifetime, sharing relationships, and unresolved terms. |
+| Metadata | Meaning and responsibility |
+|:---------|:---------------------------|
+| `sub_graph` membership and boundaries | Identify the source work covered by this offer, including external value/initializer dependencies. These are not necessarily the nodes remaining after lowering, and one planning region can contain several capabilities. |
+| `candidate_id` and `graph_revision` | Identify the particular offer from an EP instance and the source graph version against which it was discovered. They prevent applying a stale match; they are not sufficient cache keys without the relevant query context. |
+| `alternative_view_ids` | Identify alternative sets of capabilities produced together, such as standalone and optimized views. A shared capability can belong to several views. |
+| `compatibility_constraints` | Express exclusions, required companions, boundary/layout agreements, and indivisibility. Disjoint source membership alone does not establish compatibility. |
+| `implementation_recipe` | Identify the reproducible implementation: standalone kernels, a registered fused kernel, or compiled-region lowering. A standalone recipe may require no rewrite. |
+| `application_handle / recipe_state` | Retain the prepared match, replacement/lowering choice, and dependencies needed to apply that implementation without independently selecting a different one. This can be CPU-side metadata, not a compiled executable or constructed kernel. |
+| `planning_graph or graph_effects_description` | Expose resulting tensors, boundaries, shapes/types, aliases, and storage effects. Prefer a compact description when sufficient; a planning graph does not require a full graph copy for every candidate. |
+| `contract_id` and EP-owned resolved state | Identify an enforceable execution policy for this implementation, including the permitted runtime choices. The ID references retained, versioned state, not just an intent string that may later resolve differently. |
+| Eligibility, workload coverage, and explicit-failure conditions | Distinguish static support conditions, admitted runtime states, and states that must fail instead of escaping to an unaccounted implementation. A bounded contract need not guarantee successful execution for every request. |
+| `allocation_requirements[]` | Describe implementation-owned persistent/prepack storage, initialization scratch, and runtime workspace, with resource identity, location, size bound, alignment, lifetime, and established sharing/alias relationships. ORT resolves these into whole-session physical backing. |
+| `bound_status / unresolved_terms` | Record whether the requirements are sufficiently bounded for the query and which terms remain unknown or unsupported. A candidate may be executable yet lack enough information for strict-budget admission. |
 
 A conceptual internal representation is:
 
@@ -535,16 +540,23 @@ ComputeCapability
     |   |-- application_handle / recipe_state
     |   `-- planning_graph or graph_effects_description
     `-- contracts[]
-        |-- contract_id
+        |-- contract_id + EP-owned resolved contract state
         |-- eligibility / workload coverage / explicit-failure conditions
         |-- allocation_requirements[]
         `-- bound_status / unresolved_terms
 ```
 
+The current `ComputeCapability` supplies `sub_graph`, `nodes_to_optimize`, and `optimization_func`;
+the optional planning payload above is proposed. It is an information model, not a requirement to
+embed every object in the capability: shared descriptors can be referenced by IDs or retained handles.
 The optional payload preserves legacy capabilities outside budget-planned mode. A missing payload is
 not a zero-cost estimate or sufficient evidence for strict-budget admission without a proven adapter.
 Boundary information can be supplied or derived from the graph; the sketch does not imply that every
 boundary field already exists on `IndexedSubGraph`.
+
+Prepared recipe and resolved contract state need explicit validity, retention, and release rules,
+including discarded candidates and initialization failures. Their IDs do not permit retaining borrowed
+graph/node views beyond the views' documented lifetimes.
 
 The corresponding planning query could look like:
 
@@ -575,6 +587,11 @@ tensors, transfers, and global backing/lifetimes; a shared framework optimizer m
 its rewrite creates without duplicating the target kernel's scratch formulas. A workspace scalar alone
 does not describe the transformed execution plan or whole-session peak.
 
+For example, replacing `A -> temporary T -> B` with `fused_AB` may eliminate materialized `T` while
+introducing packed weight `P`. The description must identify those effects and any coexistence of
+source weights, `P`, initialization scratch, and runtime workspace. A compiler can keep private
+operations opaque if its interface and resource description are sufficient for planning.
+
 For an initial implementation, an EP can expose a standalone view and a preferred optimized view of a
 queried tentative region, where supported:
 
@@ -589,6 +606,8 @@ CPU or GPU.
 
 These are alternative sets of capabilities, not necessarily two `ComputeCapability` objects. ORT
 selects a non-overlapping, complete cover across EPs that respects each view's compatibility constraints.
+For example, two disjoint candidates may still require incompatible layouts at their connecting
+boundary; combining them requires a described conversion or a different candidate selection.
 The preferred view is not "all possible fusion": patterns can overlap, and a standalone view is valid
 only where standalone execution is supported. Two views are a bounded starting point, not a claim of
 optimality or a proof that no fitting implementation exists.
@@ -597,6 +616,130 @@ A placement boundary may prevent optional fusion. Re-query/refine the affected r
 the unfused intermediates, implementation requirements, and transfers instead of retaining the fused
 estimate. Once selected, an indivisible fused/compiled candidate must be accepted wholly or rejected.
 Already-fused input nodes remain atomic unless supported expansion or rebuilding is available.
+
+### Integrate L1 Estimates and Policy-Based Route-Aware Contracts
+
+The companion L1/policy work supplies the sizing foundation; the adapters, capability payload, and
+selected-contract transport below are proposed framework integration. Reuse the existing sizing and
+policy logic rather than introducing a second estimator with separate formulas.
+
+#### Reuse L1 Requirements Separately from Budget Acceptance
+
+The existing CUDA path combines support discovery, L1 estimation, `ComputeResourceCount()`, and an
+additive threshold decision. In planning mode, L1 instead describes each offered implementation's
+requirements before ORT chooses a complete placement. The intended split is:
+
+```text
+Shared implementation sizing and policy logic
+    |-- legacy summary: Level1MemoryEstimate
+    |       `-- existing resource accountant and additive acceptance
+    `-- planning descriptor: recipe + contract + allocation requirements
+            `-- provisional whole-session execution/backing evaluator
+```
+
+`Level1MemoryEstimate` is a compatibility summary, not a whole-session memory bound:
+
+| Existing L1 field | Planning interpretation |
+|:------------------|:------------------------|
+| `runtime_workspace_bytes` | Execution workspace, with resource identity, alignment, and operation/Run lifetime. `nullopt` means unknown, not zero. |
+| `persistent_prepack_bytes` | Additional packed destinations retained for the session, distinct from original initializers already represented in the graph. |
+| `initialization_scratch_bytes` | Temporary construction/PrePack storage, including its coexistence with source weights and packed destinations. |
+| `runtime_transient_bytes` | Runtime-preparation storage, such as lazy profiling scratch, with preparation lifetime and explicit non-overlap conditions relative to ordinary execution workspace. |
+
+An adapter must establish implementation identity, workload validity, allocation coverage, and lifetime
+semantics, not just copy byte counts. Default zero fields are not proof that an unsupported allocation
+category costs nothing. Use the raw implementation requirements, not the full `ComputeResourceCount()`
+result: that total already includes graph-related costs, which ORT must not charge again as workspace.
+The current maximum of runtime-preparation and execution scratch is valid only while their declared
+non-overlap holds. Persistent backing, asynchronous completion, and retained pools still require the
+whole-session plan; neither summing all L1 peaks nor taking their maximum is a generic budget test.
+
+For a changed/fused implementation, query its own recipe and contract. Do not assume that adding the
+source nodes' L1 estimates bounds the replacement. Current reservation consolidation preserves
+bookkeeping; it does not establish the replacement's requirements, coverage, or runtime permissions.
+
+| Mode and available information | Treatment |
+|:-------------------------------|:----------|
+| Ordinary partitioning without planning metadata | Preserve existing discovery/accounting behavior. |
+| Budget planning with complete metadata | Evaluate the described requirements and graph effects. |
+| Budget planning with a proven compatibility adapter | Construct equivalent planning information, for example for an unchanged singleton implementation with trusted L1 sizing and known lifetimes. |
+| Budget planning without adequate metadata or adapter | Keep requirements unresolved; exclude the candidate from strict-budget feasibility and report failure if no complete feasible plan remains. |
+
+Profiles and generic safety margins are not substitutes for missing analytical bounds. A null resource
+accountant is not the adapter: current CUDA also skips its L1 queries in that path, so estimation must
+be callable independently of additive acceptance.
+
+#### Resolve Policy Intent into an EP-Owned Contract
+
+A policy name such as `memory` is an intent supplied to the EP's resolver, not a complete contract.
+The resolved policy, together with its workload/device conditions, defines the contract:
+
+```text
+Candidate implementation + workload bounds + device/configuration + allowed intent
+    -> shared policy resolver and complete route-aware sizing
+    -> resolved phase-specific route permissions
+       + coverage / explicit-failure conditions
+       + allocation requirements / bound status
+    -> one planning contract
+```
+
+The [GQA committed-policy work (PR #33316)](https://github.com/microsoft/onnxruntime/pull/33316) provides
+a useful foundation: `GQAWorkspaceAggregate` contains the workspace, persistent-prepack, and
+initialization-scratch sizes together with `committed_backends`. A planning
+adapter should retain their relationship rather than discard the permissions after extracting bytes.
+The proposed `contract_id` references that resolved state. ORT need not learn GQA backend enums or
+route-selection formulas, and no CUDA-specific masks need to cross the public plugin ABI.
+
+For a GQA contract `C`, the existing soundness obligation remains:
+
+```text
+W_L1(C) = max over admitted workload states x:
+              max over routes r permitted by C in phase(x):
+                  CompleteWorkspace(x, r)
+```
+
+`CompleteWorkspace` includes all coexisting route preparation, conversion/preservation, and backend
+scratch. Separate persistent and initialization requirements are retained rather than collapsed into
+this runtime scalar. For example, where eligibility supports these sets, a contract could permit:
+
+```text
+prefill:         {Flash}
+decode:          {XQA, Flash}
+chunked prefill: {Flash}
+```
+
+L1 bounds both decode routes even when XQA is preferred. Runtime can fall back to Flash, but cannot
+escape to unfused attention unless that route is also permitted and bounded. Phase admission follows
+the actual classifier's possible outcomes, including device-resident length inputs, not assumptions
+about the semantic prompt stage. The workload/enforcement assumptions stated above still apply.
+
+The EP resolves route permissions and owns runtime selection within them; ORT selects candidate and
+contract IDs when evaluating the whole session. Offer only eligible, user-permitted contracts. The
+first implementation can expose one contract for the configured policy; automatic comparison of a
+small menu can follow without changing the evaluator. Preserve hard policy restrictions and legacy
+defaults rather than silently overriding them. A policy named `memory` is a local selection rule,
+not proof of the smallest session footprint once persistent storage and initialization are included.
+
+If a permitted route lacks an adequate bound, the contract remains unresolved. For example, the GQA
+aggregate cannot establish a graph-free bound for a committed cuDNN route. Strict-budget planning
+must not silently remove that route or substitute a different policy; any alternative must be
+explicitly offered and allowed. A change that alters graph effects or interfaces must also be reflected
+in the recipe description, not hidden behind a different contract ID.
+
+#### Bind the Selected Contract through L2 and Runtime
+
+Selection must retain the candidate/recipe/contract identities, resolved permissions, workload/device
+conditions, and plan generation through application, verification, and kernel initialization. Kernel
+construction must consume the selected binding, not independently re-resolve an intent string to a
+different policy. Exact post-transformation or PrePack facts may refine requirements only through
+validated reconciliation with the selected contract.
+
+L2 may tighten requirements without broadening permissions or changing the accepted backing
+assumptions. Larger allocations, different lifetimes, or a different implementation require a verified
+revised plan before allocation/use, or an explicit initialization failure. Runtime dispatch remains
+inside the committed permissions and fails explicitly when no permitted route is available. Existing
+GQA policy enforcement is the foundation; the proposed capability-to-kernel binding and whole-session
+checks are not already supplied by that enforcement or by post-PrePack verification alone.
 
 ### Select Placement-Sensitive Optimizations through EP Recipes
 
@@ -783,10 +926,10 @@ not `ComputeCapability`, STL containers, or `std::function` across the ABI. The 
 selected candidate, recipe, and contract identities into application/compilation so the plugin cannot
 silently choose an unmodeled implementation.
 
-ORT-owned descriptors can copy candidate metadata; EP-owned opaque recipe state needs explicit
-retention/release rules covering discarded candidates and initialization failures. Specify counted
-arrays, allocator ownership, handle validity, and `OrtStatus*` failure behavior. Do not retain borrowed
-graph/node views beyond their documented lifetimes.
+ORT-owned descriptors can copy candidate metadata; EP-owned opaque recipe and contract state need
+explicit retention/release rules covering discarded candidates and initialization failures. Specify
+counted arrays, allocator ownership, handle validity, and `OrtStatus*` failure behavior. Do not retain
+borrowed graph/node views beyond their documented lifetimes.
 
 A compiling EP can apply its internal recipe during compilation of the selected region without exposing
 every internal rewrite to the host, provided the result honors the planned interface, contracts, and
@@ -819,9 +962,10 @@ and boundaries crossing indivisible capabilities. Planner tests should cover ini
 peaks, scratch reuse/tied peaks, transfer-induced non-monotonic memory, transformed/fused bindings,
 fusion-only support, optional fusion lost across a cut, stale recipe/graph revisions, mismatched optimizer
 results, rejected-candidate isolation, unexpected EP fallback, and search-limit exhaustion. Plugin
-extensions need coverage for older/missing callbacks, selected-contract propagation, recipe-state cleanup,
+extensions need coverage for older/missing callbacks, selected-contract propagation, recipe/contract-state cleanup,
 and explicit unsupported-planning diagnostics. Distinguish recipe-description queries from mutating
 application callbacks, and check agreement between logical candidate plans and concretely transformed
-graphs. Validate modeled physical backing against measured device peaks for representative admitted
-workloads; measurements calibrate/validate the model rather than prove coverage of unobserved shapes
-or routes.
+graphs. Cover L1 adapter completeness, unknown versus proven-zero requirements, resolved-policy identity,
+phase/route fallback closure, policy pins, and rejection of unresolved route bounds. Validate modeled
+physical backing against measured device peaks for representative admitted workloads; measurements
+calibrate/validate the model rather than prove coverage of unobserved shapes or routes.
