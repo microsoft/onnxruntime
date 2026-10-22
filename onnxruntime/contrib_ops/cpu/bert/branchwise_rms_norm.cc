@@ -15,6 +15,7 @@ namespace onnxruntime::contrib {
       BranchwiseRMSNorm, kMSDomain, 1, T, kCpuExecutionProvider,           \
       KernelDefBuilder()                                                   \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())           \
+          .TypeConstraint("F", DataTypeImpl::GetTensorType<float>())       \
           .TypeConstraint("M", {DataTypeImpl::GetTensorType<float>(),      \
                                 DataTypeImpl::GetTensorType<MLFloat16>(),  \
                                 DataTypeImpl::GetTensorType<BFloat16>()}), \
@@ -47,7 +48,11 @@ template <typename T>
 BranchwiseRMSNorm<T>::BranchwiseRMSNorm(const OpKernelInfo& info)
     : LayerNormImpl(info, -1, info.GetAttrOrDefault<float>("epsilon", 1e-5f), true),
       epsilon_(info.GetAttrOrDefault<float>("epsilon", 1e-5f)),
-      num_branches_(info.GetAttrOrDefault<int64_t>("num_branches", 0)) {}
+      num_branches_(info.GetAttrOrDefault<int64_t>("num_branches", 0)),
+      use_onnx_arithmetic_(info.GetAttrOrDefault<int64_t>("use_onnx_arithmetic", 0) != 0) {
+  const auto mode = info.GetAttrOrDefault<int64_t>("use_onnx_arithmetic", 0);
+  ORT_ENFORCE(mode == 0 || mode == 1, "use_onnx_arithmetic must be 0 or 1");
+}
 
 template <typename T>
 Status BranchwiseRMSNorm<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
@@ -62,6 +67,10 @@ Status BranchwiseRMSNorm<T>::PrePack(const Tensor& tensor, int input_idx, Alloca
 
 template <typename T>
 Status BranchwiseRMSNorm<T>::Compute(OpKernelContext* context) const {
+  const auto* numerics = context->Input<Tensor>(2);
+  ORT_RETURN_IF_NOT(numerics == nullptr ||
+                        (numerics->Shape().Size() == 1 && *numerics->Data<int32_t>() == 0),
+                    "BranchwiseRMSNorm: nonzero prefill_numerics requires CUDA");
   const auto* x = context->Input<Tensor>(0);
   const auto* scale = context->Input<Tensor>(1);
   hyper_connection::StreamShape params;
@@ -71,7 +80,10 @@ Status BranchwiseRMSNorm<T>::Compute(OpKernelContext* context) const {
   }
 
   auto* y = context->Output(0, x->Shape());
-  if (scale != nullptr &&
+  auto* widened = context->OutputCount() > 1 ? context->Output(1, x->Shape()) : nullptr;
+  ORT_RETURN_IF_NOT(widened == nullptr || use_onnx_arithmetic_,
+                    "Y_fp32 requires use_onnx_arithmetic=1");
+  if (!use_onnx_arithmetic_ && scale != nullptr &&
       scale->Shape().Size() == params.hidden &&
       scale->GetElementType() == x->GetElementType()) {
     TensorShapeVector grouped_dims(x->Shape().GetDims().begin(),
@@ -98,15 +110,20 @@ Status BranchwiseRMSNorm<T>::Compute(OpKernelContext* context) const {
           const float value = static_cast<float>(x_data[offset + h]);
           sum_sq += value * value;
         }
-        const float inv_rms = 1.0f / std::sqrt(sum_sq / static_cast<float>(params.hidden) + epsilon_);
+        const float rms = std::sqrt(sum_sq / static_cast<float>(params.hidden) + epsilon_);
+        const float inv_rms = 1.0f / rms;
         for (int64_t h = 0; h < params.hidden; ++h) {
           const int64_t scale_index =
               scale != nullptr && scale->Shape().Size() == params.hidden
                   ? h
                   : (group % params.branches) * params.hidden + h;
           const float weight = scale == nullptr ? 1.0f : LoadFloat(*scale, scale_index);
-          y_data[offset + h] =
-              static_cast<T>(static_cast<float>(x_data[offset + h]) * inv_rms * weight);
+          const float value = static_cast<float>(x_data[offset + h]);
+          y_data[offset + h] = static_cast<T>(
+              (use_onnx_arithmetic_ ? value / rms : value * inv_rms) * weight);
+          if (widened != nullptr) {
+            widened->MutableData<float>()[offset + h] = static_cast<float>(y_data[offset + h]);
+          }
         }
       },
       0);

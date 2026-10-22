@@ -17,7 +17,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
-        .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>()),
+        .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>())
+        .InputMemoryType(OrtMemTypeCPUInput, 4),
     RotaryEmbedding);
 
 Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -313,6 +314,11 @@ Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
 }
 
 Status RotaryEmbedding::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+  const auto* numerics = context.Input(4);
+  ORT_RETURN_IF_NOT(numerics == nullptr ||
+                        (numerics->IsDataType<int32_t>() && numerics->Shape().Size() == 1 &&
+                         numerics->Data<int32_t>()[0] == 0),
+                    "RotaryEmbedding: nonzero prefill_numerics requires CUDA");
   const auto* input = context.Input<Tensor>(0);
   const auto input_shape = input->Shape();
   const auto* position_ids = context.Input<Tensor>(1);

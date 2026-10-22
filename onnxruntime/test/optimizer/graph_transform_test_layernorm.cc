@@ -1237,7 +1237,9 @@ static void BuildRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
                                                int64_t q_interleaved = 0,
                                                int64_t k_interleaved = 0,
                                                int64_t rotary_embedding_dim = 0,
-                                               int64_t gqa_num_heads = 2) {
+                                               int64_t gqa_num_heads = 2,
+                                               bool q_fp32_arithmetic = false,
+                                               bool k_fp32_arithmetic = false) {
   constexpr int64_t batch_size = 1;
   constexpr int64_t sequence_length = 2;
   constexpr int64_t input_hidden_size = 8;
@@ -1307,6 +1309,10 @@ static void BuildRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
   k_rotary.AddAttribute("num_heads", kv_num_heads);
   k_rotary.AddAttribute("interleaved", k_interleaved);
   k_rotary.AddAttribute("rotary_embedding_dim", rotary_embedding_dim);
+  if (q_fp32_arithmetic || k_fp32_arithmetic) {
+    q_rotary.AddAttribute("use_fp32_arithmetic", static_cast<int64_t>(q_fp32_arithmetic));
+    k_rotary.AddAttribute("use_fp32_arithmetic", static_cast<int64_t>(k_fp32_arithmetic));
+  }
 
   NodeArg* past_key =
       builder.MakeInput<MLFloat16>({{batch_size, kv_num_heads, max_sequence_length, head_size}});
@@ -1716,6 +1722,28 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionMsRotaryEmbeddingForwa
                                         std::make_unique<GroupQueryAttentionFusion>(),
                                         TransformerLevel::Level2, 3, nullptr,
                                         check_fused_graph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionPreservesExactRotaryArithmetic) {
+  for (const auto& [q_exact, k_exact] :
+       {std::pair{false, false}, std::pair{true, false}, std::pair{false, true}, std::pair{true, true}}) {
+    Model model("ExactRotaryGQAFusion", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 23}, {kMSDomain, 2}}, {}, *logger_);
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder builder(graph);
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kMS, true, 1, 1, 0, 2,
+                                       q_exact, k_exact);
+    builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(graph.Resolve());
+    GraphTransformerManager transformers{3};
+    ASSERT_STATUS_OK(transformers.Register(std::make_unique<GroupQueryAttentionFusion>(), TransformerLevel::Level2));
+    ASSERT_STATUS_OK(transformers.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+    if (q_exact || k_exact) {
+      ASSERT_STATUS_OK(CheckMsRotaryEmbeddingGQANotFused(graph));
+    } else {
+      ASSERT_STATUS_OK(CheckMsRotaryEmbeddingGQAFused(graph, 1));
+    }
+  }
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsMismatchedProjectionSizesTest) {
