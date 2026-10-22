@@ -3305,6 +3305,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether to apply a causal mask. Must be 0 or 1. Default value is 1. Set to 0 for bidirectional attention.</dd>
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
+<dt><tt>k_norm_epsilon</tt> : float</dt>
+<dd>Epsilon for per-head K RMS normalization. Overrides qk_norm_epsilon for K when provided. Must be finite and positive.</dd>
 <dt><tt>k_quant_type</tt> : string</dt>
 <dd>Quantization type for K cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.</dd>
 <dt><tt>kv_cache_bit_width</tt> : int</dt>
@@ -3315,6 +3317,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>left_window_size for causal local attention (like Mistral). Must be -1 when causal is 0. Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
+<dt><tt>q_norm_epsilon</tt> : float</dt>
+<dd>Epsilon for per-head Q RMS normalization. Overrides qk_norm_epsilon for Q when provided. Must be finite and positive.</dd>
 <dt><tt>qk_norm_epsilon</tt> : float</dt>
 <dd>Epsilon used by the per-head RMS norm applied to Q and K when q_norm_weight and k_norm_weight inputs are provided. Default value is 1e-6.</dd>
 <dt><tt>qk_output</tt> : int</dt>
