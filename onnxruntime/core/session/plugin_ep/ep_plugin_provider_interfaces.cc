@@ -171,6 +171,25 @@ std::string GetWeightlessSupportEpMetadataMismatch(gsl::span<const OrtEpDevice* 
                     "' in common:", devices_metadata.str());
 }
 
+// Returns true if every EP device reports "external_only" in the older "weightless_support" EP metadata entry. EPs keep
+// reporting the value from before version 1.32 in that entry, so it describes their behavior for the deprecated
+// "ep.enable_weightless" option, which does not select a mode.
+bool AllEpDevicesReportLegacyExternalOnlyWeightlessSupport(gsl::span<const OrtEpDevice* const> ep_devices) {
+  if (ep_devices.empty()) {
+    return false;
+  }
+
+  for (const OrtEpDevice* ep_device : ep_devices) {
+    const auto& ep_metadata = ep_device->ep_metadata.Entries();
+    auto it = ep_metadata.find(kOrtEpDevice_EpMetadataKey_WeightlessSupport);
+    if (it == ep_metadata.end() || it->second != "external_only") {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 // The constant initializers consumed by a fused node, by how the EP obtains their data.
 struct FusedNodeConstantInitializers {
   // Inputs of the fused node (drop_constant_initializers = false): ORT provides them, and copies them into a generated
@@ -929,6 +948,54 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
                                WeightlessSupportToString(support), "'.", metadata_mismatch.empty() ? "" : " ",
                                metadata_mismatch);
       }
+
+      // When generating an EPContext model, determine the external data the model depends on because of how this EP
+      // obtains the initializer data, and warn if internal initializers are copied into the model in
+      // OrtWeightlessSupport_ALL mode.
+      if (generate_ep_ctx_model_) {
+        // The deprecated option does not select a mode, so derive it from what the EP reports: the value returned by
+        // GetWeightlessSupport() if it is a single mode, otherwise (e.g., OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY)
+        // the older "weightless_support" EP metadata, which keeps the EP's behavior from before version 1.32.
+        // Without a clear answer, assume all initializers, which may list more dependencies than needed but none
+        // fewer.
+        OrtWeightlessSupport mode = OrtWeightlessSupport_ALL;
+        if (requested_mode.has_value()) {
+          mode = *requested_mode;
+        } else if (support == OrtWeightlessSupport_EXTERNAL_ONLY ||
+                   (support != OrtWeightlessSupport_ALL &&
+                    AllEpDevicesReportLegacyExternalOnlyWeightlessSupport(ep_devices_))) {
+          mode = OrtWeightlessSupport_EXTERNAL_ONLY;
+        }
+        std::vector<std::string> copied_internal_initializers;
+        for (const FusedNodeAndGraph& node_and_graph : fused_nodes_and_graphs) {
+          FusedNodeConstantInitializers initializers = GetFusedNodeConstantInitializers(node_and_graph);
+
+          // For the initializers it obtains itself, the EP copies the internal ones in
+          // OrtWeightlessSupport_EXTERNAL_ONLY mode and keeps references to the others: to the source model for
+          // internal initializers, and to the source model's external data files for external ones.
+          ep_context_external_dependencies_.source_model |=
+              mode == OrtWeightlessSupport_ALL && initializers.dropped_internal;
+          ep_context_external_dependencies_.external_weights |= initializers.dropped_external;
+
+          copied_internal_initializers.insert(copied_internal_initializers.end(),
+                                              std::make_move_iterator(initializers.provided_internal.begin()),
+                                              std::make_move_iterator(initializers.provided_internal.end()));
+        }
+
+        // ORT copies the internal initializers it provides into the EPContext model, unless the app stores them
+        // elsewhere with an initializer location function. Copies can't be shared by several model variants.
+        if (mode == OrtWeightlessSupport_ALL && !copied_internal_initializers.empty() &&
+            !has_initializer_location_func_) {
+          LOGS(GetEpLoggerOrDefault(), WARNING)
+              << "Weightless mode requested (" << requested_option << ") but EP '" << Type()
+              << "' lets ORT provide the constant initializers of the compiled nodes (drop_constant_initializers is "
+              << "false), and " << copied_internal_initializers.size() << " of them (e.g., '"
+              << copied_internal_initializers.front() << "') are stored inside the source model. ORT copies them "
+              << "into the EPContext model because no initializer location function "
+              << "(ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc) is set, so if a package "
+              << "contains several model variants, these initializers can't be shared between them.";
+        }
+      }
     } else {
       LOGS(GetEpLoggerOrDefault(), INFO) << "Weightless mode requested (" << requested_option << ") but EP '"
                                          << Type() << "' was compiled with API version "
@@ -936,43 +1003,6 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
                                          << " which predates GetWeightlessSupport (version 29). "
                                          << "ORT cannot verify EP weightless support. "
                                          << "The EP may still handle weightless via its own provider options.";
-    }
-  }
-
-  // When generating an EPContext model in weightless mode, determine the external data the model depends on because of
-  // how this EP obtains the initializer data, and warn if internal initializers are copied into the model in
-  // OrtWeightlessSupport_ALL mode.
-  if (generate_ep_ctx_model_ && weightless_requested) {
-    // The deprecated option does not select a mode; assume weightless mode for all initializers, as in earlier
-    // versions.
-    const OrtWeightlessSupport mode = requested_mode.value_or(OrtWeightlessSupport_ALL);
-    std::vector<std::string> copied_internal_initializers;
-    for (const FusedNodeAndGraph& node_and_graph : fused_nodes_and_graphs) {
-      FusedNodeConstantInitializers initializers = GetFusedNodeConstantInitializers(node_and_graph);
-
-      // For the initializers it obtains itself, the EP copies the internal ones in OrtWeightlessSupport_EXTERNAL_ONLY
-      // mode and keeps references to the others: to the source model for internal initializers, and to the source
-      // model's external data files for external ones.
-      ep_context_external_dependencies_.source_model |=
-          mode == OrtWeightlessSupport_ALL && initializers.dropped_internal;
-      ep_context_external_dependencies_.external_weights |= initializers.dropped_external;
-
-      copied_internal_initializers.insert(copied_internal_initializers.end(),
-                                          std::make_move_iterator(initializers.provided_internal.begin()),
-                                          std::make_move_iterator(initializers.provided_internal.end()));
-    }
-
-    // ORT copies the internal initializers it provides into the EPContext model, unless the app stores them elsewhere
-    // with an initializer location function. Copies can't be shared by several model variants.
-    if (mode == OrtWeightlessSupport_ALL && !copied_internal_initializers.empty() && !has_initializer_location_func_) {
-      LOGS(GetEpLoggerOrDefault(), WARNING)
-          << "Weightless mode requested (" << requested_option << ") but EP '" << Type()
-          << "' lets ORT provide the constant initializers of the compiled nodes (drop_constant_initializers is "
-          << "false), and " << copied_internal_initializers.size() << " of them (e.g., '"
-          << copied_internal_initializers.front() << "') are stored inside the source model. ORT copies them into "
-          << "the EPContext model because no initializer location function "
-          << "(ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc) is set, so if a package contains "
-          << "several model variants, these initializers can't be shared between them.";
     }
   }
 

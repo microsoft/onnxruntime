@@ -99,6 +99,8 @@ static const char* const kOrtHardwareDevice_MetadataKey_IsVirtual = "is_virtual"
 // Since version 1.32, "weightless_supported_modes" (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes) describes
 // all the modes an EP supports. EPs should keep reporting this key, with the value they reported before, so that
 // applications written for earlier versions keep working. Applications should prefer the newer key when present.
+// ORT uses this key to tell which initializers the deprecated "ep.enable_weightless" option makes weightless when
+// OrtEp::GetWeightlessSupport() reports several modes (e.g., OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY).
 //
 // \since Version 1.29.
 static const char* const kOrtEpDevice_EpMetadataKey_WeightlessSupport = "weightless_support";

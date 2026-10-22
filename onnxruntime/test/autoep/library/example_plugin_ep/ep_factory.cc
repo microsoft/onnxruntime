@@ -215,7 +215,8 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
     // Report weightless support for both external initializers only and all initializers. "weightless_support"
     // keeps the value reported before "weightless_supported_modes" was introduced, for apps written for earlier
     // versions.
-    factory->ort_api.AddKeyValuePair(ep_metadata.get(), kOrtEpDevice_EpMetadataKey_WeightlessSupport, "all");
+    factory->ort_api.AddKeyValuePair(ep_metadata.get(), kOrtEpDevice_EpMetadataKey_WeightlessSupport,
+                                     GetLegacyWeightlessSupportMetadata());  // "all" unless changed by a test.
     factory->ort_api.AddKeyValuePair(ep_metadata.get(), kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes,
                                      "all_or_external_only");
     factory->ort_api.AddKeyValuePair(ep_options.get(), "run_really_fast", "true");
