@@ -4834,6 +4834,41 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
+    GatedRMSNormExact, 1,
+    OpSchema()
+        .SetDoc("FP16 width-128 gated RMS normalization with FP32 scale and arithmetic. "
+                "Equivalent to FP32 Cast(X), RMSNormalization(axis=-1,stash_type=1), "
+                "multiplied by QuickGelu(Cast(gate),alpha=1), then Cast to FP16. "
+                "Normalization and gating results round separately to FP32 before the multiply. "
+                "Uses the single-warp CUDA RMSNormalization reduction order for width 128.")
+        .Attr("epsilon", "Finite nonnegative normalization epsilon.", AttributeProto::FLOAT, 1e-6f)
+        .Input(0, "X", "FP16 input [rows,128].", "T")
+        .Input(1, "gate", "FP16 gating input with the same shape as X.", "T")
+        .Input(2, "scale", "FP32 scale [128].", "S")
+        .Output(0, "Y", "FP16 gated output with the same shape as X.", "T")
+        .TypeConstraint("T", {"tensor(float16)"}, "FP16 input and output.")
+        .TypeConstraint("S", {"tensor(float)"}, "FP32 scale.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateShapeAndTypeFromFirstInput(ctx);
+          for (int i = 0; i < 2; ++i) {
+            if (hasInputShape(ctx, i)) {
+              const auto& shape = getInputShape(ctx, i);
+              if (shape.dim_size() != 2 ||
+                  (shape.dim(1).has_dim_value() && shape.dim(1).dim_value() != 128)) {
+                fail_shape_inference("GatedRMSNorm X and gate must have shape [rows,128]");
+              }
+            }
+          }
+          if (hasInputShape(ctx, 2)) {
+            const auto& scale = getInputShape(ctx, 2);
+            if (scale.dim_size() != 1 ||
+                (scale.dim(0).has_dim_value() && scale.dim(0).dim_value() != 128)) {
+              fail_shape_inference("GatedRMSNorm scale must have shape [128]");
+            }
+          }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
     MatMulNBitsSwiGLU, 1,
     OpSchema()
         .SetDoc("FP16 symmetric group-128 INT2 packed gate/up projection with SwiGLU. "

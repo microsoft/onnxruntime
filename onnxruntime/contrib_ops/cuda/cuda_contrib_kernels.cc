@@ -201,6 +201,7 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedAdd);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedAdd);
 class CUDA_MS_OP_CLASS_NAME(1, MatMulSigmoidGatedResidual);
 class CUDA_MS_OP_CLASS_NAME(1, MatMulNBitsSwiGLU);
+class CUDA_MS_OP_CLASS_NAME(1, GatedRMSNormExact);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, CausalConvWithState);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CausalConvWithState);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CausalConvWithState);
@@ -568,6 +569,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedAdd)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MatMulSigmoidGatedResidual)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MatMulNBitsSwiGLU)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, GatedRMSNormExact)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, CausalConvWithState)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CausalConvWithState)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CausalConvWithState)>,
