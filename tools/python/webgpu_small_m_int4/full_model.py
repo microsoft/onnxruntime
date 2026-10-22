@@ -129,9 +129,12 @@ def profile_summary(path):
             role_programs[role][program] += 1
             if is_projection:
                 projection += 1
-        elif "/mlp/down_proj/" in node:
-            role_us["down"] += event["dur"]
-            role_programs["down"][program] += 1
+        else:
+            for role in ("gate", "up", "down"):
+                if f"/mlp/{role}_proj/" in node:
+                    role_us[role] += event["dur"]
+                    role_programs[role][program] += 1
+                    break
     return {
         "gpu_ms": sum(event["dur"] for event in kernels) / 1000,
         "dispatches": len(kernels),

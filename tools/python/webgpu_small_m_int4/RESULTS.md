@@ -4,7 +4,8 @@ This report records the original standalone investigation, before the prototype
 was committed or integrated. Its statements about unchanged production sources
 and absence of full-model benchmarks describe that original experiment.
 See [README.md](README.md#opt-in-full-model-routing) for the subsequent
-disabled-by-default benchmark-branch integration.
+disabled-by-default benchmark-branch integration and
+[FULL_MODEL_RESULTS.md](FULL_MODEL_RESULTS.md) for measured full-model results.
 
 ## Decision
 

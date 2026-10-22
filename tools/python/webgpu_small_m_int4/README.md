@@ -221,3 +221,8 @@ portable WGSL does not make this executable an Apple benchmark harness.
 Historical isolated measurements, go/no-go reasoning, and target-verification
 estimates are in [RESULTS.md](RESULTS.md). Raw generated artifacts are under the ignored
 `build/webgpu-small-m-simt/` directory.
+
+The preserved branches, actual full-target routing, controlled verification,
+and genuine baseline/width-1/width-3 generation results are in
+[FULL_MODEL_RESULTS.md](FULL_MODEL_RESULTS.md), with compact samples and counters
+in [FULL_MODEL_RESULTS.json](FULL_MODEL_RESULTS.json).

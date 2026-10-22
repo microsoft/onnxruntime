@@ -93,6 +93,16 @@ class FullModelTest(unittest.TestCase):
         replay = original.index("WebGpuExecutionProvider::ReplayGraph(")
         self.assertIn(original[replay:], changed)
 
+    def test_unfused_drafter_projections_are_included_in_role_totals(self):
+        events = [
+            {"name": f"/dflash2/layers.0/mlp/{role}_proj/MatMul&MatMulNBits&MatMulNBits", "dur": 1000}
+            for role in ("gate", "up", "down")
+        ]
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "profile.jsonl"
+            path.write_text(json.dumps({"kernels": events}) + "\n")
+            self.assertEqual(profile_summary(path)["mlp_gpu_ms"], {"gate": 1.0, "up": 1.0, "down": 1.0})
+
     def test_explicit_diagnostic_modes_precede_integrated_routing(self):
         original = (ROOT / "onnxruntime/contrib_ops/webgpu/quantization/matmul_nbits.cc").read_text()
         changed = instrument_source(original)
