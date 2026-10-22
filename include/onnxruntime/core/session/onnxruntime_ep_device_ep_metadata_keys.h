@@ -52,9 +52,11 @@ static const char* const kOrtModelMetadata_WeightlessMode = "weightless_mode";
 // model has none of these dependencies.
 //
 // ORT records the dependencies but does not validate them: missing data is reported when a session is created from
-// the model. Applications and tools can read the value via SessionGetModelMetadata() and
-// ModelMetadataLookupCustomMetadataMap(), or from the model's metadata_props, e.g., to check what to package with the
-// model. Future versions may add values, so readers should expect and ignore values they don't recognize.
+// the model. When creating a session from a model that lists "source_model", ORT logs a warning if neither the
+// "ep.context_source_model_path" session option nor a source model buffer is set. Applications and tools can read the
+// value via SessionGetModelMetadata() and ModelMetadataLookupCustomMetadataMap(), or from the model's metadata_props,
+// e.g., to check what to package with the model. Future versions may add values, so readers should expect and ignore
+// values they don't recognize.
 //
 // \since Version 1.32.
 static const char* const kOrtModelMetadata_ExternalDependencies = "external_dependencies";

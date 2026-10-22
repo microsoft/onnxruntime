@@ -221,7 +221,7 @@ earlier version that reports `"weightless_support"` = `"all"` therefore works wi
 | `GetWeightlessSupport()` differs from the weightless EP metadata of a device | Warning (see [1.4](#1-ep-reports-its-supported-modes)). |
 | EP built against an API older than 29 | No `GetWeightlessSupport` check. ORT logs an INFO message and lets the EP handle the request. |
 | Compiling in `ALL` mode with ORT-provided internal initializers and no initializer location function | Warning: the internal initializers are copied into the compiled model and can't be shared by model variants (see [4.1](#41-where-the-weights-are-stored)). |
-| Session created from a model with `"weightless_mode"` = `"2"` without `"ep.context_source_model_path"` or a source model buffer | Warning, since the EP may need the source model. An EP that needs it may still find it through `"onnx_model_filename"` (see [4.2](#42-requirements-per-mode)). |
+| Session created from a model whose `"external_dependencies"` include `"source_model"` (or, for models without that entry, with `"weightless_mode"` = `"2"`) without `"ep.context_source_model_path"` or a source model buffer | Warning. An EP that needs the source model may still find it through `"onnx_model_filename"` (see [4.2](#42-requirements-per-mode)). |
 
 The deprecated `"ep.enable_weightless"` = `"1"` (and `SetWeightlessEnabled(true)`, which sets it) still works when
 `"ep.enable_weightless_mode"` isn't set. It does not select a mode, so ORT accepts any mode the EP supports
@@ -301,9 +301,10 @@ folder.
    the same relative location as at compile time.
 
 `"ep.context_source_model_path"` is only used in `ALL` mode, by EPs that manage their initializers, and only needed
-when the source model isn't at the location given by `"onnx_model_filename"`. ORT logs a warning if a model recorded
-as `ALL` is loaded without a path or buffer, since the EP may need the source model and the attribute fallback is
-then the only way left.
+when the source model isn't at the location given by `"onnx_model_filename"`. ORT logs a warning if a model whose
+`"external_dependencies"` include `"source_model"` is loaded without a path or buffer, since the attribute fallback is
+then the only way left. For models without `"external_dependencies"` (e.g., compiled by an earlier version), ORT warns
+if the model is recorded as `ALL`.
 
 ```cpp
 // Creating a session from a model compiled with OrtWeightlessSupport_ALL.
@@ -374,9 +375,9 @@ inside the variant directory under that name.
    without an external initializers file or initializer location function embeds the weights in the compiled
    `.onnx`. ORT only warns, for internal initializers in `ALL` mode, and records the result in
    `"external_dependencies"`.
-2. **The source model is not enforced for `ALL`.** ORT warns, but doesn't fail, when a model recorded as `ALL`
-   is loaded without a source model path or buffer: EPs that use ORT-provided initializers don't need it, and EPs
-   that do may still find it through `"onnx_model_filename"`. ORT can't tell which strategy the EP uses.
+2. **The source model is not enforced.** ORT warns, but doesn't fail, when a model whose `"external_dependencies"`
+   include `"source_model"` is loaded without a source model path or buffer, since the EP may still find it
+   through `"onnx_model_filename"`.
 3. **Metadata and `GetWeightlessSupport` consistency is only checked when weightless mode is requested.**
    `GetWeightlessSupport()` is only called then, so an inconsistent EP goes unnoticed until an application
    requests a mode.
