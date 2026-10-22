@@ -75,15 +75,8 @@ Status ValidateDynamicSparseAttentionOnDevice(
     size_t max_shared_memory_per_block,
     bool copy_result_to_host,
     const float* key_scale = nullptr,
-    const float* value_scale = nullptr);
-
-Status ValidateDynamicSparseAttentionCursor(
-    cudaStream_t stream,
-    const int32_t* seqlens_k,
-    const int32_t* committed_length,
-    int32_t sequence_length,
-    int32_t cache_capacity,
-    int32_t* status);
+    const float* value_scale = nullptr,
+    const int32_t* committed_length = nullptr);
 
 template <typename T>
 Status LaunchDynamicSparseAttention(

@@ -415,6 +415,8 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeQsa(OpKernelContext* cont
       mid_kv_buffer == nullptr ? nullptr : reinterpret_cast<CudaT*>(mid_kv_buffer->MutableData<T>());
   params.mid_state_lengths =
       mid_state_lengths == nullptr ? nullptr : mid_state_lengths->MutableData<int32_t>();
+  params.validation_status =
+      validation_status == nullptr ? nullptr : validation_status->MutableData<int32_t>();
 
   auto float_workspace = GetScratchBuffer<float>(GetQsaPackedWorkspaceFloatCount(params), GetComputeStream(context));
   Tensor* state_status = GetStateStatusOutput(context, batch_size);
@@ -426,7 +428,7 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeQsa(OpKernelContext* cont
   const CudaT* key_data = has_separate_key
                               ? reinterpret_cast<const CudaT*>(key->Data<T>())
                               : query_data + query_width;
-  ORT_RETURN_IF_ERROR((LaunchQsaPackedSparseAttentionIndexer<CudaT, CudaStateT>(
+  return LaunchQsaPackedSparseAttentionIndexer<CudaT, CudaStateT>(
       Stream(context), params,
       query_data,
       key_data,
@@ -449,13 +451,7 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeQsa(OpKernelContext* cont
       present_state_lengths->MutableData<int32_t>(),
       state_update != nullptr ? reinterpret_cast<CudaT*>(state_update->MutableData<T>()) : nullptr,
       float_workspace.get(),
-      overflow_flags)));
-  if (validation_status != nullptr) {
-    return LaunchMapQsaValidationStatus(
-        Stream(context), cumulative_sequence_lengths->Data<int32_t>(), overflow_flags,
-        static_cast<int>(batch_size), validation_status->MutableData<int32_t>());
-  }
-  return Status::OK();
+      overflow_flags);
 }
 
 template <typename T, typename TState>

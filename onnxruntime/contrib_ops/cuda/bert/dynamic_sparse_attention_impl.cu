@@ -18,8 +18,6 @@
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 
-#include "core/platform/env_var_utils.h"
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -77,7 +75,11 @@ __device__ __forceinline__ void MmaM16N8K16(float (&output)[4],
 
 __device__ __forceinline__ void SetValidationError(int32_t* error_flag,
                                                    DynamicSparseAttentionValidationError error) {
-  atomicCAS(error_flag, kDynamicSparseAttentionValidationOk, static_cast<int32_t>(error));
+  const int32_t previous =
+      atomicCAS(error_flag, kDynamicSparseAttentionValidationOk, static_cast<int32_t>(error));
+  if (previous == 9) {
+    atomicCAS(error_flag, 9, static_cast<int32_t>(error));
+  }
 }
 
 __global__ void ValidateInputsKernel(const int32_t* selected_indices,
@@ -99,7 +101,8 @@ __global__ void ValidateInputsKernel(const int32_t* selected_indices,
                                      int32_t* error_flag,
                                      const float* key_scale,
                                      const float* value_scale,
-                                     int cache_channels) {
+                                     int cache_channels,
+                                     const int32_t* committed_length) {
   const int row = static_cast<int>(blockIdx.x);
   const int b = row / sequence_length;
   const int s = row - b * sequence_length;
@@ -224,6 +227,14 @@ __global__ void ValidateInputsKernel(const int32_t* selected_indices,
       SetValidationError(error_flag, error);
     }
     return;
+  }
+
+  if (row == 0 && threadIdx.x == 0 && committed_length != nullptr) {
+    const int64_t committed = *committed_length;
+    const int64_t total = committed + sequence_length;
+    if (committed < 0 || total > main_capacity || seqlens_k[0] != total - 1) {
+      atomicCAS(error_flag, kDynamicSparseAttentionValidationOk, 9);
+    }
   }
 }
 
@@ -1732,8 +1743,8 @@ bool UseGroupedDecodeAttention(const DynamicSparseAttentionParameters& parameter
                                size_t element_size,
                                size_t max_shared_memory_per_block,
                                bool quantized_cache = false) {
-  return (parameters.sequence_length == 1 ||
-          (quantized_cache && parameters.sequence_length == 2)) &&
+  return parameters.sequence_length >= 1 &&
+         parameters.sequence_length <= 8 &&
          parameters.num_heads / parameters.kv_num_heads >= 4 &&
          GetCandidateCapacity(parameters) > kSplitCandidateSize &&
          SupportsGroupedAttention(parameters, element_size, max_shared_memory_per_block) &&
@@ -1777,23 +1788,6 @@ bool UseSharedValidationHashTable(const DynamicSparseAttentionParameters& parame
          shared_bytes < max_shared_memory_per_block;
 }
 
-__global__ void ValidateCommittedLengthKernel(
-    const int32_t* seqlens_k,
-    const int32_t* committed_length,
-    int32_t sequence_length,
-    int32_t cache_capacity,
-    int32_t* status) {
-  if (blockIdx.x != 0 || threadIdx.x != 0) {
-    return;
-  }
-  const int64_t committed = *committed_length;
-  const int64_t total = committed + sequence_length;
-  if (*status == kDynamicSparseAttentionValidationOk &&
-      (committed < 0 || total > cache_capacity || *seqlens_k != total - 1)) {
-    *status = 9;
-  }
-}
-
 }  // namespace
 
 size_t GetDynamicSparseAttentionValidationWorkspaceSize(
@@ -1824,17 +1818,19 @@ size_t GetDynamicSparseAttentionWorkspaceSize(
     return SafeInt<size_t>(query_blocks) * split_count *
            (static_cast<size_t>(parameters.head_size) + 2);
   }
-  if (UseGroupedPrefillAttention(parameters, element_size, max_shared_memory_per_block)) {
-    return 0;
-  }
-  if (UseFusedAttention(parameters, element_size, max_shared_memory_per_block)) {
-    return 0;
+  const bool grouped_decode =
+      UseGroupedDecodeAttention(parameters, element_size, max_shared_memory_per_block);
+  if (!grouped_decode) {
+    if (UseGroupedPrefillAttention(parameters, element_size, max_shared_memory_per_block)) {
+      return 0;
+    }
+    if (UseFusedAttention(parameters, element_size, max_shared_memory_per_block)) {
+      return 0;
+    }
   }
 
   const size_t query_blocks =
       static_cast<size_t>(parameters.batch_size) * parameters.sequence_length * parameters.num_heads;
-  const bool grouped_decode =
-      UseGroupedDecodeAttention(parameters, element_size, max_shared_memory_per_block);
   const size_t split_count =
       grouped_decode
           ? GetGroupedDecodeSplitCount(parameters)
@@ -1858,7 +1854,8 @@ Status ValidateDynamicSparseAttentionOnDevice(
     size_t max_shared_memory_per_block,
     bool copy_result_to_host,
     const float* key_scale,
-    const float* value_scale) {
+    const float* value_scale,
+    const int32_t* committed_length) {
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(error_flag, 0, sizeof(int32_t), stream));
   const int64_t row_count =
       static_cast<int64_t>(parameters.batch_size) * parameters.sequence_length;
@@ -1887,7 +1884,8 @@ Status ValidateDynamicSparseAttentionOnDevice(
       parameters.rotary_max_position, parameters.do_rotary,
       parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
       validation_bitmap, validation_hash_entries, use_shared_hash_table, error_flag,
-      key_scale, value_scale, parameters.kv_num_heads * parameters.head_size);
+      key_scale, value_scale, parameters.kv_num_heads * parameters.head_size,
+      committed_length);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   if (!copy_result_to_host) {
@@ -1898,7 +1896,7 @@ Status ValidateDynamicSparseAttentionOnDevice(
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
       &host_error, error_flag, sizeof(host_error), cudaMemcpyDeviceToHost, stream));
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-  if (host_error == kDynamicSparseAttentionValidationOk) {
+  if (host_error == kDynamicSparseAttentionValidationOk || host_error == 9) {
     return Status::OK();
   }
 
@@ -1936,18 +1934,6 @@ Status ValidateDynamicSparseAttentionOnDevice(
   }
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                          "DynamicSparseAttention: ", message, ".");
-}
-
-Status ValidateDynamicSparseAttentionCursor(
-    cudaStream_t stream,
-    const int32_t* seqlens_k,
-    const int32_t* committed_length,
-    int32_t sequence_length,
-    int32_t cache_capacity,
-    int32_t* status) {
-  ValidateCommittedLengthKernel<<<1, 1, 0, stream>>>(
-      seqlens_k, committed_length, sequence_length, cache_capacity, status);
-  return CUDA_CALL(cudaGetLastError());
 }
 
 template <typename T>
@@ -2035,46 +2021,37 @@ Status LaunchDynamicSparseAttention(
   const size_t fused_shared_bytes =
       (static_cast<size_t>(candidate_capacity) + static_cast<size_t>(fused_threads)) * sizeof(float) +
       static_cast<size_t>(parameters.head_size) * sizeof(T);
-  bool use_prefill_kernel = false;
-  if constexpr (std::is_same_v<T, __nv_bfloat16>) {
-    const bool enabled = ParseEnvironmentVariableWithDefault<int>("ORT_DSA_PREFILL_KERNEL", 1) != 0;
-    // max_shared_memory_per_block is the default 48 KB limit; the kernel opts in to more and requires SM80+.
-    int device = 0;
-    int cc_major = 0;
-    int optin_shared = 0;
-    CUDA_RETURN_IF_ERROR(cudaGetDevice(&device));
-    CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, device));
-    CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&optin_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, device));
-    constexpr int kMaxGridDimYZ = 65535;
-    use_prefill_kernel =
-        enabled && !data.quantized_cache && cc_major >= 8 && parameters.sequence_length >= 8 &&
-        parameters.head_size == dsa_prefill::kHeadDim && !local_plus_selected &&
-        parameters.selected_kv_source == DynamicSparseAttentionKvSource::kMain &&
-        !parameters.use_smooth_softmax && parameters.max_selected > 0 &&
-        parameters.kv_num_heads > 0 && parameters.kv_num_heads <= kMaxGridDimYZ &&
-        parameters.num_heads % parameters.kv_num_heads == 0 &&
-        parameters.num_heads / parameters.kv_num_heads <= dsa_prefill::kMaxGroup &&
-        static_cast<size_t>(optin_shared) >= dsa_prefill::kSharedBytes;
-  }
   constexpr int kGroupedDecodeThreads = 32 * kGroupedDecodeQueryHeadsPerBlock;
   constexpr int kGroupedPrefillThreads = 32 * kGroupedPrefillQueryHeadsPerBlock;
   const bool grouped_decode_threads_supported = kGroupedDecodeThreads <= max_threads_per_block;
   const bool grouped_prefill_threads_supported = kGroupedPrefillThreads <= max_threads_per_block;
-  if (use_prefill_kernel) {
-    if constexpr (std::is_same_v<T, __nv_bfloat16>) {
-      CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
-          dsa_prefill::DynamicSparseAttentionPrefillKernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
-          static_cast<int>(dsa_prefill::kSharedBytes)));
-      const dim3 grid(static_cast<unsigned>(parameters.batch_size * parameters.sequence_length),
-                      static_cast<unsigned>(parameters.kv_num_heads));
-      dsa_prefill::DynamicSparseAttentionPrefillKernel<<<grid, dsa_prefill::kThreads, dsa_prefill::kSharedBytes,
-                                                         stream>>>(
-          data.prepared_query, data.present_key, data.present_value, data.selected_indices, data.selected_counts,
-          data.seqlens_k, data.output, parameters.sequence_length, parameters.num_heads, parameters.kv_num_heads,
-          parameters.cache_capacity, parameters.max_selected, parameters.scale);
+  const bool use_grouped_decode =
+      grouped_decode_threads_supported &&
+      UseGroupedDecodeAttention(parameters, sizeof(T), max_shared_memory_per_block, data.quantized_cache);
+  bool use_prefill_kernel = false;
+  if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+    if (!use_grouped_decode) {
+      const bool enabled = ParseEnvironmentVariableWithDefault<int>("ORT_DSA_PREFILL_KERNEL", 1) != 0;
+      // max_shared_memory_per_block is the default 48 KB limit; the kernel opts in to more and requires SM80+.
+      int device = 0;
+      int cc_major = 0;
+      int optin_shared = 0;
+      CUDA_RETURN_IF_ERROR(cudaGetDevice(&device));
+      CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, device));
+      CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&optin_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, device));
+      constexpr int kMaxGridDimYZ = 65535;
+      use_prefill_kernel =
+          enabled && !data.quantized_cache && cc_major >= 8 && parameters.sequence_length >= 8 &&
+          parameters.head_size == dsa_prefill::kHeadDim && !local_plus_selected &&
+          parameters.selected_kv_source == DynamicSparseAttentionKvSource::kMain &&
+          !parameters.use_smooth_softmax && parameters.max_selected > 0 &&
+          parameters.kv_num_heads > 0 && parameters.kv_num_heads <= kMaxGridDimYZ &&
+          parameters.num_heads % parameters.kv_num_heads == 0 &&
+          parameters.num_heads / parameters.kv_num_heads <= dsa_prefill::kMaxGroup &&
+          static_cast<size_t>(optin_shared) >= dsa_prefill::kSharedBytes;
     }
-  } else if (grouped_decode_threads_supported &&
-             UseGroupedDecodeAttention(parameters, sizeof(T), max_shared_memory_per_block, data.quantized_cache)) {
+  }
+  if (use_grouped_decode) {
     const int split_count = GetGroupedDecodeSplitCount(parameters, data.quantized_cache);
     const int64_t partial_blocks = query_blocks * split_count;
     const int64_t grouped_blocks =
@@ -2091,7 +2068,7 @@ Status LaunchDynamicSparseAttention(
         GetGroupedAttentionSharedBytes(parameters, data.quantized_cache ? sizeof(float) : sizeof(T));
     if (data.quantized_cache) {
       static const int vectorized_staging =
-          ParseEnvironmentVariableWithDefault<int>("ORT_DSA_INT8_VECTOR_STAGING", 0);
+          ParseEnvironmentVariableWithDefault<int>("ORT_DSA_INT8_VECTOR_STAGING", 1);
       ORT_ENFORCE(vectorized_staging == 0 || vectorized_staging == 1,
                   "ORT_DSA_INT8_VECTOR_STAGING must be 0 or 1.");
       const auto launch = [&](auto vectorized) {
@@ -2148,7 +2125,7 @@ Status LaunchDynamicSparseAttention(
 
     if (split_count <= 32) {
       static const int shared_scales =
-          ParseEnvironmentVariableWithDefault<int>("ORT_DSA_SHARED_SCALE_MERGE", 0);
+          ParseEnvironmentVariableWithDefault<int>("ORT_DSA_SHARED_SCALE_MERGE", 1);
       ORT_ENFORCE(shared_scales == 0 || shared_scales == 1,
                   "ORT_DSA_SHARED_SCALE_MERGE must be 0 or 1.");
       const auto merge = [&](auto specialized) {
@@ -2167,6 +2144,19 @@ Status LaunchDynamicSparseAttention(
       MergeDynamicSparseAttentionKernel<<<static_cast<int>(query_blocks), threads, merge_shared_bytes, stream>>>(
           partial_max, partial_sum, partial_output, data.output,
           static_cast<int>(query_blocks), split_count, parameters.head_size);
+    }
+  } else if (use_prefill_kernel) {
+    if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+      CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
+          dsa_prefill::DynamicSparseAttentionPrefillKernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+          static_cast<int>(dsa_prefill::kSharedBytes)));
+      const dim3 grid(static_cast<unsigned>(parameters.batch_size * parameters.sequence_length),
+                      static_cast<unsigned>(parameters.kv_num_heads));
+      dsa_prefill::DynamicSparseAttentionPrefillKernel<<<grid, dsa_prefill::kThreads, dsa_prefill::kSharedBytes,
+                                                         stream>>>(
+          data.prepared_query, data.present_key, data.present_value, data.selected_indices, data.selected_counts,
+          data.seqlens_k, data.output, parameters.sequence_length, parameters.num_heads, parameters.kv_num_heads,
+          parameters.cache_capacity, parameters.max_selected, parameters.scale);
     }
   } else if (!data.quantized_cache && grouped_prefill_threads_supported &&
              UseGroupedPrefillAttention(parameters, sizeof(T), max_shared_memory_per_block)) {

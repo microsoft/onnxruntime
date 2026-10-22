@@ -41,6 +41,7 @@ struct PackedSparseAttentionIndexerParams {
   int state_update_capacity = 0;
   void* mid_kv_buffer = nullptr;         // [batch, buffer_capacity, head_size] T
   int32_t* mid_state_lengths = nullptr;  // [batch, 2]
+  int32_t* validation_status = nullptr;  // [batch]
 
   // policy_mode = "csa"
   int index_topk = 0;
@@ -89,13 +90,6 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     T* state_update,
     float* float_workspace,
     int32_t* overflow_flags);
-
-Status LaunchMapQsaValidationStatus(
-    cudaStream_t stream,
-    const int32_t* cumulative_sequence_lengths,
-    const int32_t* overflow_flags,
-    int batch_size,
-    int32_t* validation_status);
 
 template <typename T>
 Status LaunchCsaPackedSparseAttentionIndexer(

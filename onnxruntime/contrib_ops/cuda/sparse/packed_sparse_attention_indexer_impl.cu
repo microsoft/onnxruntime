@@ -200,6 +200,10 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
       overflow_flags[b] = invalid_metadata ? psai::kStateStatusInvalidMetadata
                           : rejected       ? psai::kStateStatusCapacityOverflow
                                            : psai::kStateStatusOk;
+      if (params.validation_status != nullptr) {
+        const int request_length = req_end - req_start;
+        params.validation_status[b] = !rejected ? 0 : (request_length >= 2 ? 0x99 : 9);
+      }
     }
 
     if (params.mid_kv_buffer != nullptr && params.mid_state_lengths != nullptr) {
@@ -1643,35 +1647,6 @@ size_t GetCsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams&
   return rows * params.num_heads * params.head_size + rows * static_cast<size_t>(std::max(params.state_capacity, 1));
 }
 
-__global__ void MapQsaValidationStatusKernel(
-    const int32_t* cumulative_sequence_lengths,
-    const int32_t* overflow_flags,
-    int batch_size,
-    int32_t* validation_status) {
-  const int batch = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (batch >= batch_size) {
-    return;
-  }
-  const int request_length = cumulative_sequence_lengths[batch + 1] - cumulative_sequence_lengths[batch];
-  validation_status[batch] = overflow_flags[batch] == 0 ? 0 : (request_length >= 2 ? 0x99 : 9);
-}
-
-Status LaunchMapQsaValidationStatus(
-    cudaStream_t stream,
-    const int32_t* cumulative_sequence_lengths,
-    const int32_t* overflow_flags,
-    int batch_size,
-    int32_t* validation_status) {
-  if (batch_size <= 0) {
-    return Status::OK();
-  }
-  constexpr int kStatusThreads = 128;
-  const int blocks = (batch_size + kStatusThreads - 1) / kStatusThreads;
-  MapQsaValidationStatusKernel<<<blocks, kStatusThreads, 0, stream>>>(
-      cumulative_sequence_lengths, overflow_flags, batch_size, validation_status);
-  return CUDA_CALL(cudaGetLastError());
-}
-
 template <typename T, typename TState>
 Status LaunchQsaPackedSparseAttentionIndexer(
     cudaStream_t stream, const PackedSparseAttentionIndexerParams& params, const T* query, const T* key,
@@ -1749,7 +1724,7 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     static const bool use_radix_topk =
         ParseEnvironmentVariableWithDefault<bool>("ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK", false);
     static const int compact_topk =
-        ParseEnvironmentVariableWithDefault<int>("ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK", 0);
+        ParseEnvironmentVariableWithDefault<int>("ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK", 1);
     ORT_ENFORCE(compact_topk == 0 || compact_topk == 1,
                 "ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK must be 0 or 1.");
     ORT_ENFORCE(!compact_topk || !use_radix_topk,
