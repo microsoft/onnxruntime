@@ -40,6 +40,10 @@ Options:
                                       Refer to onnxruntime_session_options_config_keys.h for valid keys and values.
                                       [Example] -C "session.disable_cpu_ep_fallback|1 ep.context_enable|1"
 
+        --run_config: [run_config_entries]: Specify run configuration entries as key-value pairs: --run_config "<key1>|<val1> <key2>|<val2>"
+                                      [Example] --run_config "gpu_graph_id|1 qnn.htp_perf_mode|burst"
+                                      When -g (CUDA IO binding) is enabled, disable_synchronize_execution_providers is forced to 1.
+
 	-h: help.
 
 Model path and input data dependency:
