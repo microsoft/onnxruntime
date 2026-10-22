@@ -243,6 +243,9 @@ Memory_LeakCheck::~Memory_LeakCheck() {
         "dynamic initializer for 'FLAGS_",
         "AbslFlagDefaultGenForgtest_",
         "AbslFlagDefaultGenForundefok::Gen",
+        // Abseil retains heap-allocated flag values and their freelist for process lifetime so lock-free readers
+        // can safely access old values. See absl/flags/internal/flag.cc:AddToFreelist and FlagImpl::StoreValue.
+        "::flags_internal::FlagImpl::StoreValue",
         "::SetProgramUsageMessage",
         // Google test has memory leaks that they haven't fixed. One such issue is tracked here:
         // https://github.com/google/googletest/issues/692
@@ -261,12 +264,6 @@ Memory_LeakCheck::~Memory_LeakCheck() {
         "PyInit_onnxruntime_pybind11_state",
         "google::protobuf::internal::InitProtobufDefaultsSlow",
         "EtwEventWriteNoRegistration",
-#if defined(USE_WEBGPU)
-        // In onnxruntime/core/providers/webgpu/webgpu_context_dawn_platform.cc:GetDawnPlatform(), there is an
-        // intentional leak of a function-local static:
-        //     static DawnPlatform* platform = new DawnPlatform();
-        "onnxruntime::webgpu::`anonymous namespace'::GetDawnPlatform",
-#endif  // defined(USE_WEBGPU),
     });
 
     if (std::none_of(allow_list.begin(), allow_list.end(),

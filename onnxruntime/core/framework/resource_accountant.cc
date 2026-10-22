@@ -562,7 +562,8 @@ Status CreateAccountants(
     std::optional<ResourceAccountantMap>& acc_map) {
   WorkspaceEstimatorConfig estimator_config{
       config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
-      config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM)};
+      config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM),
+      config_options.GetConfigEntry(kOrtSessionOptionsCudaMatMulNBitsMChunkSize)};
   estimator_config.kernel_dispatch_policy =
       config_options.GetConfigEntry(kOrtSessionOptionsKernelDispatchPolicy);
   if (estimator_config.kernel_dispatch_policy.has_value()) {

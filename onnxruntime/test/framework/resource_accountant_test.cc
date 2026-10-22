@@ -836,6 +836,12 @@ TEST(CudaGqaWorkspaceEnvelopeTest, RawValueParserPreservesRangeAndFailureOutput)
   }
 }
 
+TEST(RealAccountantTest, PartialWorkspaceEstimatorConfigDefaultsChunkPolicy) {
+  const WorkspaceEstimatorConfig config{std::string{"1"}, std::string{"1,16"}};
+  EXPECT_FALSE(config.cuda_matmul_nbits_m_chunk_size.has_value());
+  EXPECT_EQ(config.cuda_gqa_workspace_max_total_sequence_length, 0);
+}
+
 TEST(KernelDispatchPolicyTest, PartialEstimatorConfigDefaultsPolicyToUnset) {
   const WorkspaceEstimatorConfig config{std::nullopt, std::nullopt};
   EXPECT_FALSE(config.kernel_dispatch_policy.has_value());
@@ -878,6 +884,8 @@ TEST(RealAccountantTest, FactoryRetainsNarrowWorkspaceEstimatorConfig) {
   ASSERT_STATUS_OK(config.AddConfigEntry(
       kOrtSessionOptionsCudaFpAIntBProfileM, "1,16"));
   ASSERT_STATUS_OK(config.AddConfigEntry(
+      kOrtSessionOptionsCudaMatMulNBitsMChunkSize, "4096"));
+  ASSERT_STATUS_OK(config.AddConfigEntry(
       kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, "4096"));
   ASSERT_STATUS_OK(config.AddConfigEntry(
       kOrtSessionOptionsKernelDispatchPolicy, "memory"));
@@ -891,6 +899,8 @@ TEST(RealAccountantTest, FactoryRetainsNarrowWorkspaceEstimatorConfig) {
   const auto& estimator_config = accountant->GetWorkspaceEstimatorConfig();
   EXPECT_EQ(estimator_config.cuda_fpa_intb_gemm, std::optional<std::string>{"1"});
   EXPECT_EQ(estimator_config.cuda_fpa_intb_profile_m, std::optional<std::string>{"1,16"});
+  EXPECT_EQ(estimator_config.cuda_matmul_nbits_m_chunk_size,
+            std::optional<std::string>{"4096"});
   EXPECT_EQ(estimator_config.cuda_gqa_workspace_max_total_sequence_length,
             int64_t{4096});
   EXPECT_EQ(estimator_config.kernel_dispatch_policy,

@@ -51,7 +51,7 @@
 // The header is self-contained (no contrib/CUTLASS dependencies) and resolves to an inline no-op
 // when the fpA_intB path is not compiled in.
 #include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
-#if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)
 #include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 #endif
 
@@ -3668,7 +3668,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       auto* node = graph.GetNode(node_index);
       std::optional<Level1MemoryEstimate> level1_memory_estimate;
 
-#if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)
       // Level 1 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): a partition-time,
       // kernel-independent memory estimate for MatMulNBits. Runtime workspace and prepack
       // allocations remain separate so their different lifetimes are visible in reporting.
@@ -3676,6 +3676,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         const auto& estimator_config = resource_accountant->GetWorkspaceEstimatorConfig();
         const auto& fpa_intb_gemm = estimator_config.cuda_fpa_intb_gemm;
         const auto& profile_m = estimator_config.cuda_fpa_intb_profile_m;
+        const auto& m_chunk_size = estimator_config.cuda_matmul_nbits_m_chunk_size;
         const auto& inferred_shapes = resource_accountant->GetMaxShapeInferenceResult();
         const auto& input_defs = node->InputDefs();
         const TensorShape* input_a_shape =
@@ -3689,14 +3690,18 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
             profile_m.has_value()
                 ? std::optional<std::string_view>{*profile_m}
                 : std::nullopt,
-            /*input_shape_is_upper_bound=*/input_a_shape != nullptr};
+            /*input_shape_is_upper_bound=*/input_a_shape != nullptr,
+            m_chunk_size.has_value()
+                ? std::optional<std::string_view>{*m_chunk_size}
+                : std::nullopt};
         level1_memory_estimate =
             input_a_shape != nullptr
                 ? contrib::cuda::EstimateMatMulNBitsMemory(
                       *node, input_a_shape->GetDims(), GetDeviceProp(), estimate_options)
                 : contrib::cuda::EstimateMatMulNBitsMemory(
                       *node, GetDeviceProp(), estimate_options);
-        if (level1_memory_estimate.has_value()) {
+        if (level1_memory_estimate.has_value() &&
+            level1_memory_estimate->runtime_workspace_bytes.has_value()) {
           LOGS(logger, VERBOSE) << "Level-1 memory estimate for " << node->Name()
                                 << ": runtime workspace="
                                 << level1_memory_estimate->runtime_workspace_bytes.value_or(0)
@@ -3706,13 +3711,19 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                 << level1_memory_estimate->persistent_prepack_bytes
                                 << " bytes, initialization scratch="
                                 << level1_memory_estimate->initialization_scratch_bytes << " bytes";
+        } else {
+          LOGS(logger, WARNING)
+              << "CUDA_EP declining capacity-aware assignment for MatMulNBits node "
+              << node->Name() << " because "
+              << (level1_memory_estimate.has_value()
+                      ? "ordinary runtime workspace is unknown for the admitted input shapes."
+                      : "no proven route-complete memory estimate is available for this configuration.");
+          continue;
         }
       }
 #endif
 
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
-      // PackedAttention and PackedMultiHeadAttention remain log-only. Their
-      // route-aware workspace is not added to the partition budget yet.
       if (node != nullptr &&
           (node->OpType() == "PackedAttention" ||
            node->OpType() == "PackedMultiHeadAttention") &&
@@ -3724,16 +3735,23 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
             *node, gsl::make_span(input_shapes), GetDeviceProp(),
             *GetAttentionKernelOptions());
         if (ws.has_value()) {
-          LOGS(logger, INFO) << "Level-1 workspace estimate for " << node->Name()
-                             << ": " << ws->total_workspace_bytes << " bytes";
+          Level1MemoryEstimate estimate;
+          contrib::cuda::SetPackedAttentionLevel1MemoryEstimate(*ws, estimate);
+          level1_memory_estimate = estimate;
+          LOGS(logger, VERBOSE) << "Level-1 memory estimate for " << node->Name()
+                                << ": runtime workspace="
+                                << ws->total_workspace_bytes << " bytes";
+        } else {
+          LOGS(logger, WARNING)
+              << "CUDA_EP declining capacity-aware assignment for " << node->OpType()
+              << " node " << node->Name()
+              << " because required shape metadata or a proven route-complete workspace estimate is unavailable.";
+          continue;
         }
       }
 
       if (node != nullptr && node->OpType() == "GroupQueryAttention" &&
           node->Domain() == kMSDomain) {
-        // Unlike PA/PMHA above, GQA participates in #31962 accounting. A
-        // successful estimate is supplied to ComputeResourceCount and can
-        // affect the CUDA partition acceptance decision.
         const auto input_shapes = ResolveNodeInputShapes(
             *node, &graph.GetGraph(),
             resource_accountant->GetMaxShapeInferenceResult());
