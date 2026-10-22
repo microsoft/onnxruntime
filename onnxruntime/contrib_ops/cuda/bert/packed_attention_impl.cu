@@ -28,6 +28,60 @@ namespace cuda {
 
 constexpr int32_t kMAX_THREADS_PER_BLOCK = 256;
 
+__global__ void ValidatePackedAttentionTokenOffsetKernel(
+    const int32_t* token_offset,
+    int32_t token_offset_count,
+    int32_t* validation_flag) {
+  for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       i < token_offset_count;
+       i += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    const int32_t offset = token_offset[i];
+    if (offset < 0 || offset >= token_offset_count) {
+      atomicExch(validation_flag, 1);
+      return;
+    }
+  }
+}
+
+Status ValidatePackedAttentionTokenOffset(
+    const int32_t* token_offset,
+    int32_t token_offset_count,
+    int32_t* validation_flag,
+    cudaStream_t stream) {
+  if (token_offset_count == 0) {
+    return Status::OK();
+  }
+
+  cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+  CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
+  if (capture_status != cudaStreamCaptureStatusNone) {
+    return Status::OK();
+  }
+
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(validation_flag, 0, sizeof(int32_t), stream));
+  constexpr int32_t threads_per_block = 256;
+  const int32_t required_blocks =
+      static_cast<int32_t>((static_cast<int64_t>(token_offset_count) + threads_per_block - 1) /
+                           threads_per_block);
+  const int32_t blocks = std::min(required_blocks, 1024);
+  ValidatePackedAttentionTokenOffsetKernel<<<blocks, threads_per_block, 0, stream>>>(
+      token_offset, token_offset_count, validation_flag);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+  int32_t host_validation_flag = 0;
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+      &host_validation_flag, validation_flag, sizeof(int32_t),
+      cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+  if (host_validation_flag != 0) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "PackedAttention token_offset values must be in [0, B * S).");
+  }
+
+  return Status::OK();
+}
+
 // Grid: (S, B)
 // Block: 256
 // For unfused PackedAttention
@@ -58,6 +112,9 @@ __global__ void AddBiasTransposeQKVPacked(
 
   const int packing_token_idx = b * S + s;
   const int padding_token_idx = token_offset[packing_token_idx];
+  if (padding_token_idx < 0 || padding_token_idx >= gridDim.x * gridDim.y) {
+    return;
+  }
   b = padding_token_idx / S;
   s = padding_token_idx - b * S;
 
@@ -311,6 +368,10 @@ __global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
   int token_idx = blockIdx.x;
   int source_idx = token_offset[token_idx];
   if (source_idx < 0 || source_idx >= B * S) {
+    target += token_idx * N * H;
+    for (int i = threadIdx.x; i < N * H; i += blockDim.x) {
+      target[i] = T{};
+    }
     return;
   }
 

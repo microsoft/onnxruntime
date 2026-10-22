@@ -42,6 +42,17 @@ void LaunchSoftmaxTopK(
     bool normalize_scales,
     cudaStream_t stream);
 
+// Decode-only fused routing: softmax + top-k (bit-identical to LaunchSoftmaxTopK) and the (expert, token)-sorted expert
+// maps of fusedBuildExpertMapsSortFirstToken in one single-CTA launch. Returns false (nothing launched) outside its
+// envelope: 1..4 rows, exactly 512 experts, k in {1, 2, 4, 6, 8, 10}, 8-byte aligned logits.
+bool LaunchFusedRouteMaps(const half* logits, float* topk_scales, int* topk_indices, int* permuted_row_to_unpermuted_row,
+                          int* unpermuted_row_to_permuted_row, int* permuted_expert, int64_t* expert_first_token_offset,
+                          int num_rows, int num_experts, int k, bool normalize_scales, bool pdl, cudaStream_t stream);
+bool LaunchFusedRouteMaps(const __nv_bfloat16* logits, float* topk_scales, int* topk_indices,
+                          int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
+                          int* permuted_expert, int64_t* expert_first_token_offset, int num_rows, int num_experts,
+                          int k, bool normalize_scales, bool pdl, cudaStream_t stream);
+
 void LaunchSparseMixerTop2(
     const float* input,
     float* output,
@@ -293,15 +304,15 @@ struct QMoEFp8ProjectionParams {
 void LaunchQMoEFp8ExpertTiles(const int64_t* expert_offsets, int* tile_offsets,
                               int num_experts, cudaStream_t stream);
 
-template <typename T>
+template <typename T, typename OutputT = T>
 void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
-                             const T* input, T* output, cudaStream_t stream);
+                             const T* input, OutputT* output, cudaStream_t stream);
 
 bool QMoEFp8GemvSupportsNativeDecode();
 bool QMoEFp8GemvKernelUsesNativeDecode(const void* kernel);
 
-template <typename T>
-void LaunchQMoEFp8Activation(const T* input, const T* bias, T* output,
+template <typename T, typename InputT = T>
+void LaunchQMoEFp8Activation(const InputT* input, const T* bias, T* output,
                              const int* experts, int rows, int inter_size, int fusion,
                              float alpha, float beta, float limit, cudaStream_t stream);
 

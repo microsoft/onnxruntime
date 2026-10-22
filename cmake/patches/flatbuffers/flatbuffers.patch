@@ -28,3 +28,24 @@ index bc828a31..3d3effe8 100644
    // ElementaryType
    unsigned short base_type : 4;
    // Either vector (in table) or array (in struct)
+diff --git a/grpc/examples/go/greeter/client/go.mod b/grpc/examples/go/greeter/client/go.mod
+index 6f151292..e2107728 100644
+--- a/grpc/examples/go/greeter/client/go.mod
++++ b/grpc/examples/go/greeter/client/go.mod
+@@ -10 +10 @@ require (
+-	google.golang.org/grpc v1.35.0
++	google.golang.org/grpc v1.84.0
+diff --git a/grpc/examples/go/greeter/models/go.mod b/grpc/examples/go/greeter/models/go.mod
+index c62fb381..b25c1662 100644
+--- a/grpc/examples/go/greeter/models/go.mod
++++ b/grpc/examples/go/greeter/models/go.mod
+@@ -7 +7 @@ require (
+-	google.golang.org/grpc v1.35.0
++	google.golang.org/grpc v1.84.0
+diff --git a/grpc/examples/go/greeter/server/go.mod b/grpc/examples/go/greeter/server/go.mod
+index 3e10997e..8a1b7208 100644
+--- a/grpc/examples/go/greeter/server/go.mod
++++ b/grpc/examples/go/greeter/server/go.mod
+@@ -10 +10 @@ require (
+-	google.golang.org/grpc v1.39.0-dev
++	google.golang.org/grpc v1.84.0

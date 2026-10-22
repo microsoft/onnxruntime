@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
+#include "contrib_ops/cuda/moe/qmoe_fused_route.cuh"
 
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
@@ -391,6 +392,93 @@ __global__ void SoftmaxTopKWarpMergeKernel(const T* logits, float* topk_scales, 
     topk_scales[static_cast<size_t>(row) * k + i] = normalize_scales ? (prob / denom) : prob;
     topk_indices[static_cast<size_t>(row) * k + i] = s_indices[i];
   }
+}
+
+template <typename KernelPtr>
+bool IsFusedRouteKernelSm90Available(KernelPtr kernel) {
+  static thread_local int cached_device = -1;
+  static thread_local KernelPtr cached_kernel = nullptr;
+  static thread_local bool available = false;
+  int device = -1;
+  if (cudaGetDevice(&device) != cudaSuccess) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  if (device != cached_device || kernel != cached_kernel) {
+    int driver_version = 0;
+    int sm_major = 0;
+    cudaFuncAttributes attributes{};
+    if (cudaDriverGetVersion(&driver_version) != cudaSuccess ||
+        cudaDeviceGetAttribute(&sm_major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess ||
+        cudaFuncGetAttributes(&attributes, kernel) != cudaSuccess) {
+      (void)cudaGetLastError();
+      return false;
+    }
+    available = driver_version >= 12000 && sm_major >= 9 &&
+                attributes.ptxVersion >= 90 && attributes.binaryVersion >= 90;
+    cached_device = device;
+    cached_kernel = kernel;
+  }
+  return available;
+}
+
+template <typename T>
+bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indices,
+                           int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
+                           int* permuted_expert, int64_t* expert_first_token_offset, int num_rows,
+                           int num_experts, int k, bool normalize_scales, bool pdl, cudaStream_t stream) {
+  // k is limited to the values the single-CTA radix-rank map builder supports (1, 2, 4, 6, 8, 10): the fused path then
+  // replaces exactly the launches it is bit-identical to; other k keep the generic route.
+  const bool supported_k = k == 1 || k == 2 || k == 4 || k == 6 || k == 8 || k == 10;
+  if (num_rows < 1 || num_rows > kFusedRouteMaxRows || num_experts != kFusedRouteExperts || !supported_k ||
+      reinterpret_cast<uintptr_t>(logits) % 8 != 0) {
+    return false;
+  }
+  const auto kernel = k == 10 ? FusedSoftmaxTopKMapsKernel<T, 10> : FusedSoftmaxTopKMapsKernel<T, 0>;
+  if (!IsFusedRouteKernelSm90Available(kernel)) {
+    return false;
+  }
+  if (pdl) {
+    cudaLaunchConfig_t config{};
+    config.gridDim = dim3(1);
+    config.blockDim = dim3(kFusedRouteThreads);
+    config.dynamicSmemBytes = 0;
+    config.stream = stream;
+    cudaLaunchAttribute attribute[1]{};
+    attribute[0].id = cudaLaunchAttributeProgrammaticStreamSerialization;
+    attribute[0].val.programmaticStreamSerializationAllowed = 1;
+    config.attrs = attribute;
+    config.numAttrs = 1;
+    const cudaError_t status = cudaLaunchKernelEx(
+        &config, kernel, logits, topk_scales, topk_indices, permuted_row_to_unpermuted_row,
+        unpermuted_row_to_permuted_row, permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales);
+    if (status == cudaSuccess) {
+      return true;
+    }
+    if (status != cudaErrorInvalidValue && status != cudaErrorNotSupported) {
+      ORT_ENFORCE(status == cudaSuccess, "fused QMoE routing launch failed: ", cudaGetErrorString(status));
+    }
+    (void)cudaGetLastError();
+  }
+  kernel<<<1, kFusedRouteThreads, 0, stream>>>(
+      logits, topk_scales, topk_indices, permuted_row_to_unpermuted_row,
+      unpermuted_row_to_permuted_row, permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales);
+  CUDA_CALL_THROW(cudaGetLastError());
+  return true;
+}
+
+bool LaunchFusedRouteMaps(const half* logits, float* topk_scales, int* topk_indices, int* r2u, int* u2r, int* expert,
+                          int64_t* offsets, int num_rows, int num_experts, int k, bool normalize_scales, bool pdl,
+                          cudaStream_t stream) {
+  return LaunchFusedRouteMapsT<half>(logits, topk_scales, topk_indices, r2u, u2r, expert, offsets, num_rows,
+                                     num_experts, k, normalize_scales, pdl, stream);
+}
+
+bool LaunchFusedRouteMaps(const __nv_bfloat16* logits, float* topk_scales, int* topk_indices, int* r2u, int* u2r,
+                          int* expert, int64_t* offsets, int num_rows, int num_experts, int k, bool normalize_scales,
+                          bool pdl, cudaStream_t stream) {
+  return LaunchFusedRouteMapsT<__nv_bfloat16>(logits, topk_scales, topk_indices, r2u, u2r, expert, offsets, num_rows,
+                                              num_experts, k, normalize_scales, pdl, stream);
 }
 
 template <typename T>
@@ -1583,8 +1671,8 @@ __device__ __forceinline__ T QMoEFp8Weight(const QMoEFp8ProjectionParams& params
   return static_cast<T>(DecodeFloat8E4M3FN<NativeDecode>(weights[weight_index]) * scale);
 }
 
-template <typename T, bool NativeDecode = false>
-__global__ void QMoEFp8GemvKernel(QMoEFp8ProjectionParams params, const T* input, T* output) {
+template <typename T, bool NativeDecode = false, typename OutputT = T>
+__global__ void QMoEFp8GemvKernel(QMoEFp8ProjectionParams params, const T* input, OutputT* output) {
   const int row = static_cast<int>(blockIdx.y);
   const int expert = params.experts[row];
   const int output_col = static_cast<int>(blockIdx.x) * 4 + threadIdx.x / 32;
@@ -1599,7 +1687,7 @@ __global__ void QMoEFp8GemvKernel(QMoEFp8ProjectionParams params, const T* input
   }
   sum = WarpReduceSum(sum);
   if (threadIdx.x % 32 == 0) {
-    output[static_cast<int64_t>(row) * params.n + output_col] = static_cast<T>(sum);
+    output[static_cast<int64_t>(row) * params.n + output_col] = static_cast<OutputT>(sum);
   }
 }
 
@@ -1615,7 +1703,9 @@ bool QMoEFp8GemvSupportsNativeDecode() {
 
 bool QMoEFp8GemvKernelUsesNativeDecode(const void* kernel) {
   return kernel == reinterpret_cast<const void*>(QMoEFp8GemvKernel<half, true>) ||
-         kernel == reinterpret_cast<const void*>(QMoEFp8GemvKernel<__nv_bfloat16, true>);
+         kernel == reinterpret_cast<const void*>(QMoEFp8GemvKernel<__nv_bfloat16, true>) ||
+         kernel == reinterpret_cast<const void*>(QMoEFp8GemvKernel<half, true, float>) ||
+         kernel == reinterpret_cast<const void*>(QMoEFp8GemvKernel<__nv_bfloat16, true, float>);
 }
 
 __global__ void QMoEFp8ExpertTilesKernel(const int64_t* expert_offsets, int* tile_offsets, int num_experts) {
@@ -1633,8 +1723,8 @@ void LaunchQMoEFp8ExpertTiles(const int64_t* expert_offsets, int* tile_offsets,
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
-template <typename T>
-__global__ void QMoEFp8GemmKernel(QMoEFp8ProjectionParams params, const T* input, T* output) {
+template <typename T, typename OutputT>
+__global__ void QMoEFp8GemmKernel(QMoEFp8ProjectionParams params, const T* input, OutputT* output) {
 #if __CUDA_ARCH__ >= 800
   namespace wmma = nvcuda::wmma;
   const int tile = static_cast<int>(blockIdx.y);
@@ -1696,33 +1786,33 @@ __global__ void QMoEFp8GemmKernel(QMoEFp8ProjectionParams params, const T* input
     const int64_t row = row_start + index / 64;
     const int col = column_start + index % 64;
     if (row < row_end && col < params.n) {
-      output[row * params.n + col] = static_cast<T>(output_tile[index]);
+      output[row * params.n + col] = static_cast<OutputT>(output_tile[index]);
     }
   }
 #endif
 }
 
-template <typename T>
+template <typename T, typename OutputT>
 void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
-                             const T* input, T* output, cudaStream_t stream) {
+                             const T* input, OutputT* output, cudaStream_t stream) {
   if (params.tile_offsets) {
     const int tiles = std::min(params.expanded_rows,
                                std::min(params.num_experts, params.expanded_rows) + params.expanded_rows / 16);
-    QMoEFp8GemmKernel<<<dim3((params.n + 63) / 64, tiles), 128, 0, stream>>>(params, input, output);
+    QMoEFp8GemmKernel<T, OutputT><<<dim3((params.n + 63) / 64, tiles), 128, 0, stream>>>(params, input, output);
   } else {
     static const bool native_decode =
         ParseEnvironmentVariableWithDefault<bool>("ORT_QMOE_FP8_GEMV_NATIVE_DECODE", false);
     if (native_decode) {
-      QMoEFp8GemvKernel<T, true><<<dim3((params.n + 3) / 4, params.expanded_rows), 128, 0, stream>>>(params, input, output);
+      QMoEFp8GemvKernel<T, true, OutputT><<<dim3((params.n + 3) / 4, params.expanded_rows), 128, 0, stream>>>(params, input, output);
     } else {
-      QMoEFp8GemvKernel<T, false><<<dim3((params.n + 3) / 4, params.expanded_rows), 128, 0, stream>>>(params, input, output);
+      QMoEFp8GemvKernel<T, false, OutputT><<<dim3((params.n + 3) / 4, params.expanded_rows), 128, 0, stream>>>(params, input, output);
     }
   }
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
-template <typename T>
-__global__ void QMoEFp8ActivationKernel(const T* input, const T* bias, T* output,
+template <typename T, typename InputT>
+__global__ void QMoEFp8ActivationKernel(const InputT* input, const T* bias, T* output,
                                         const int* experts, int rows, int inter_size, int fusion,
                                         float alpha, float beta, float limit) {
   const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -1750,8 +1840,8 @@ __global__ void QMoEFp8ActivationKernel(const T* input, const T* bias, T* output
   output[index] = static_cast<T>(gate / (1.0f + expf(-alpha * gate)) * up);
 }
 
-template <typename T>
-void LaunchQMoEFp8Activation(const T* input, const T* bias, T* output,
+template <typename T, typename InputT>
+void LaunchQMoEFp8Activation(const InputT* input, const T* bias, T* output,
                              const int* experts, int rows, int inter_size, int fusion,
                              float alpha, float beta, float limit, cudaStream_t stream) {
   const int64_t count = static_cast<int64_t>(rows) * inter_size;
@@ -1762,8 +1852,12 @@ void LaunchQMoEFp8Activation(const T* input, const T* bias, T* output,
 
 template void LaunchQMoEFp8Projection<half>(const QMoEFp8ProjectionParams&, const half*, half*, cudaStream_t);
 template void LaunchQMoEFp8Projection<__nv_bfloat16>(const QMoEFp8ProjectionParams&, const __nv_bfloat16*, __nv_bfloat16*, cudaStream_t);
+template void LaunchQMoEFp8Projection<half, float>(const QMoEFp8ProjectionParams&, const half*, float*, cudaStream_t);
+template void LaunchQMoEFp8Projection<__nv_bfloat16, float>(const QMoEFp8ProjectionParams&, const __nv_bfloat16*, float*, cudaStream_t);
 template void LaunchQMoEFp8Activation<half>(const half*, const half*, half*, const int*, int, int, int, float, float, float, cudaStream_t);
 template void LaunchQMoEFp8Activation<__nv_bfloat16>(const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, const int*, int, int, int, float, float, float, cudaStream_t);
+template void LaunchQMoEFp8Activation<half, float>(const float*, const half*, half*, const int*, int, int, int, float, float, float, cudaStream_t);
+template void LaunchQMoEFp8Activation<__nv_bfloat16, float>(const float*, const __nv_bfloat16*, __nv_bfloat16*, const int*, int, int, int, float, float, float, cudaStream_t);
 
 template <typename T>
 __global__ void QMoEDequantizeFp8WeightsKernel(
@@ -1930,6 +2024,83 @@ __global__ void QMoEDequantizeNvfp4WeightsKernel(
   }
 }
 
+// Float8E4M3FN decode built from float bits; returns exactly the values of DecodeFloat8E4M3FN.
+__device__ __forceinline__ float DecodeFloat8E4M3FNFast(uint32_t code) {
+  const uint32_t exponent = (code >> 3) & 0x0Fu;
+  const uint32_t mantissa = code & 0x07u;
+  float value;
+  if (exponent == 0u) {
+    value = static_cast<float>(mantissa) * 0.001953125f;  // 2^-9
+  } else if (exponent == 0x0Fu && mantissa == 0x07u) {
+    return __int_as_float(0x7fffffff);
+  } else {
+    value = __uint_as_float(((exponent + 120u) << 23) | (mantissa << 20));
+  }
+  return (code & 0x80u) ? -value : value;
+}
+
+// Row-major NVFP4 dequantization, [E, n, k/2] packed bytes (low nibble = even column) and
+// [E, n, k/16] block scales. One thread converts 32 consecutive columns of one row: a 16-byte load,
+// two scale bytes and 64 bytes of output, so loads and stores are fully coalesced (the scalar kernel
+// above issues one byte load and one 2-byte store per element with a 64-bit div/mod each).
+// Values are computed in the same order as the scalar kernel, (e2m1 * e4m3) * global, so the output is bit identical.
+template <typename T>
+__global__ void QMoEDequantizeNvfp4RowMajorKernel(
+    const uint8_t* __restrict__ packed_weights,
+    const uint8_t* __restrict__ block_scales,
+    const float* __restrict__ global_scales,
+    T* __restrict__ output,
+    int num_experts,
+    int n,
+    int k,
+    const int* __restrict__ compact_to_expert,
+    const T* __restrict__ bias,
+    T* __restrict__ output_bias) {
+  const int groups_per_row = k >> 5;
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t total = static_cast<int64_t>(num_experts) * n * groups_per_row;
+  if (index >= total) {
+    return;
+  }
+  const int64_t global_row = index / groups_per_row;
+  const int group = static_cast<int>(index - global_row * groups_per_row);
+  const int output_expert = static_cast<int>(global_row / n);
+  const int row = static_cast<int>(global_row - static_cast<int64_t>(output_expert) * n);
+  const int expert = compact_to_expert ? compact_to_expert[output_expert] : output_expert;
+  if (expert < 0) {
+    return;
+  }
+  const int64_t source_row = static_cast<int64_t>(expert) * n + row;
+  const uint4 packed = *reinterpret_cast<const uint4*>(packed_weights + source_row * (k >> 1) + (static_cast<int64_t>(group) << 4));
+  const uint16_t scale_pair = *reinterpret_cast<const uint16_t*>(block_scales + source_row * (k >> 4) + (group << 1));
+  const float global_scale = global_scales[expert];
+  const uint32_t words[4] = {packed.x, packed.y, packed.z, packed.w};
+
+  uint4 staged[4];
+  T* values = reinterpret_cast<T*>(staged);
+#pragma unroll
+  for (int half_block = 0; half_block < 2; ++half_block) {
+    const float block_scale = DecodeFloat8E4M3FNFast((scale_pair >> (8 * half_block)) & 0xFFu);
+#pragma unroll
+    for (int w = 0; w < 2; ++w) {
+      const uint32_t word = words[half_block * 2 + w];
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const float fp4 = DecodeFp4E2M1(static_cast<uint8_t>((word >> (4 * j)) & 0x0Fu));
+        values[half_block * 16 + w * 8 + j] = static_cast<T>((fp4 * block_scale) * global_scale);
+      }
+    }
+  }
+  uint4* dst = reinterpret_cast<uint4*>(output + global_row * k + (static_cast<int64_t>(group) << 5));
+#pragma unroll
+  for (int v = 0; v < 4; ++v) {
+    dst[v] = staged[v];
+  }
+  if (bias && group == 0) {
+    output_bias[global_row] = bias[source_row];
+  }
+}
+
 template <typename T>
 void LaunchQMoEDequantizeNvfp4WeightsImpl(
     const uint8_t* packed_weights,
@@ -1952,6 +2123,14 @@ void LaunchQMoEDequantizeNvfp4WeightsImpl(
                          k / kQMoEDequantizeFp4TileK, num_experts);
     QMoEDequantizeFp4WeightsVecKernel<T, 16, true><<<tile_grid, tile_block, 0, stream>>>(
         packed_weights, block_scales, global_scales, output, n, k);
+    CUDA_CALL_THROW(cudaGetLastError());
+    return;
+  }
+  if (weights_row_major && (k % 32) == 0) {
+    const int64_t threads = static_cast<int64_t>(num_experts) * n * (k / 32);
+    const int64_t blocks = (threads + block - 1) / block;
+    QMoEDequantizeNvfp4RowMajorKernel<T><<<onnxruntime::narrow<int>(blocks), block, 0, stream>>>(
+        packed_weights, block_scales, global_scales, output, num_experts, n, k, compact_to_expert, bias, output_bias);
     CUDA_CALL_THROW(cudaGetLastError());
     return;
   }

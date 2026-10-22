@@ -125,9 +125,15 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
-  qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
-  ORT_ENFORCE(std::isfinite(qk_norm_epsilon_) && qk_norm_epsilon_ > 0.0f,
+  const float qk_norm_epsilon = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
+  ORT_ENFORCE(std::isfinite(qk_norm_epsilon) && qk_norm_epsilon > 0.0f,
               "GroupQueryAttention (CUDA): qk_norm_epsilon must be finite and positive.");
+  q_norm_epsilon_ = info.GetAttrOrDefault<float>("q_norm_epsilon", qk_norm_epsilon);
+  k_norm_epsilon_ = info.GetAttrOrDefault<float>("k_norm_epsilon", qk_norm_epsilon);
+  ORT_ENFORCE(std::isfinite(q_norm_epsilon_) && q_norm_epsilon_ > 0.0f,
+              "GroupQueryAttention (CUDA): q_norm_epsilon must be finite and positive.");
+  ORT_ENFORCE(std::isfinite(k_norm_epsilon_) && k_norm_epsilon_ > 0.0f,
+              "GroupQueryAttention (CUDA): k_norm_epsilon must be finite and positive.");
 
   k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
@@ -423,7 +429,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     }
     parameters.use_qk_norm = true;
   }
-  parameters.qk_norm_epsilon = qk_norm_epsilon_;
+  parameters.q_norm_epsilon = q_norm_epsilon_;
+  parameters.k_norm_epsilon = k_norm_epsilon_;
 
   parameters.local_window_size = local_window_size_;
   parameters.is_unidirectional = is_unidirectional_;
@@ -1031,7 +1038,6 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   if (parameters.use_qk_norm) {
     data.q_norm_weight = reinterpret_cast<const CudaT*>(q_norm_weight->Data<T>());
     data.k_norm_weight = reinterpret_cast<const CudaT*>(k_norm_weight->Data<T>());
-    data.qk_norm_epsilon = qk_norm_epsilon_;
   }
 
 #if DUMP_TENSOR_LEVEL > 0
