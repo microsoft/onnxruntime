@@ -190,6 +190,14 @@ class MatMulIntegerBase : public OpKernel {
       return false;
     }
 
+    const auto* a_shape = Node().InputDefs()[GetAIdx()]->Shape();
+    if (a_shape != nullptr && a_shape->dim_size() == 2 &&
+        a_shape->dim(0).has_dim_value() && a_shape->dim(0).dim_value() == 1) {
+      // MLAS has a direct GEMV path. Avoid KleidiAI here because its per-inference
+      // LHS packing overhead outweighs the SME2 kernel for a single row.
+      return false;
+    }
+
     ctx.bias = GetConstantInputTensor(GetBiasIdx());
 
     ctx.K = static_cast<size_t>(b_shape_[0]);
