@@ -147,8 +147,10 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // Replace with internal QLinear version of operator. Delete all original nodes.
   const std::string action_name{"1DQ"};
   const std::string cpu_action_name{"1DQ_CPU"};
+  const std::string cpu_softmax_action_name{"1DQ_CPU_Softmax"};
   std::unique_ptr<Action> action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
   std::unique_ptr<Action> cpu_action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
+  std::unique_ptr<Action> cpu_softmax_action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Operators with DML QLinear kernel support (QLinearAveragePool, QLinearGlobalAveragePool, QLinearSigmoid)
@@ -167,13 +169,21 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::vector<const char*> cpu_only_provider = {kCpuExecutionProvider};
   std::unique_ptr<NodeSelector> cpu_selector = std::make_unique<QDQ::UnarySelector>(cpu_only_provider);
   qdq_selector_action_registry.RegisterSelectorAndAction(cpu_action_name,
-                                                         {{"LeakyRelu", {}},
-                                                          {"Softmax", {}}},
+                                                         {{"LeakyRelu", {}}},
                                                          std::move(cpu_selector),
                                                          std::move(cpu_action));
+
+  // QLinearSoftmax requires a positive input scale (same policy as MaxPool/ReduceMax/ReduceMin).
+  std::unique_ptr<NodeSelector> softmax_selector = std::make_unique<QDQ::UnarySelector>(
+      cpu_only_provider, /*allow_16bit=*/false, /*allow_4bit=*/false, /*allow_nonpositive_scale=*/false);
+  qdq_selector_action_registry.RegisterSelectorAndAction(cpu_softmax_action_name,
+                                                         {{"Softmax", {}}},
+                                                         std::move(softmax_selector),
+                                                         std::move(cpu_softmax_action));
 #else
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
   qdq_selector_action_registry.RegisterAction(cpu_action_name, std::move(cpu_action));
+  qdq_selector_action_registry.RegisterAction(cpu_softmax_action_name, std::move(cpu_softmax_action));
 #endif
 }
 
