@@ -125,7 +125,7 @@ TEST_F(FoldContribTest, AllPrefixLengthsAndDeferredRingPublication) {
       ASSERT_TRUE(f.Tail().IsOK());
       Check(cudaDeviceSynchronize());
       EXPECT_EQ(f.ring.Read()[8], 4);
-      EXPECT_EQ(f.done.Read()[0], 0);
+      EXPECT_EQ(f.done.Read()[0], 1);
       const auto cos = f.head_cos.Read();
       EXPECT_EQ(cos[0], 13);
       EXPECT_EQ(cos[3 * heads - 1], 12 + 3 * heads);

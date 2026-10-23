@@ -19,7 +19,8 @@ __global__ void MidKernel(const int64_t* tokens, const int64_t* ids, const int32
                           const int64_t* ptrs, const uint16_t* cosine, const uint16_t* sine,
                           int64_t* head_ids, int32_t* head_c, int64_t* slots, int32_t* lengths,
                           uint16_t* head_cos, uint16_t* head_sin, int64_t* selection,
-                          int rows, int head_rows, int rope_rows, int rope_width, int capacity) {
+                          int rows, int head_rows, int rope_rows, int rope_width, int capacity,
+                          bool publish_ring) {
   __shared__ int64_t length;
   __shared__ int64_t cache_length;
   __shared__ int64_t errors;
@@ -87,7 +88,10 @@ __global__ void MidKernel(const int64_t* tokens, const int64_t* ids, const int32
                              static_cast<uint64_t>(static_cast<uint32_t>(tokens[2])) |
                              (rows > 3 ? static_cast<uint64_t>(static_cast<uint32_t>(tokens[3])) << 32 : 0))
                        : 0;
-  // The tail publishes record[0] only after all downstream validation has completed.
+  if (publish_ring) {
+    __threadfence_system();
+    record[0] = ctl[4];
+  }
 }
 
 __global__ void HiddenKernel(const uint16_t* source, uint16_t* output, int64_t width, int rows, int head_rows) {
@@ -103,19 +107,22 @@ __global__ void TailKernel(const int64_t* token, const int32_t* status, int coun
   if (threadIdx.x != 0) return;
   done[0] = 0;
   if (ctl[3] != 0) return;
-  if (ctl[4] <= 0 || !ValidRing(ptrs, ctl[4] - 1)) {
+  if (ptrs != nullptr && (ctl[4] <= 0 || !ValidRing(ptrs, ctl[4] - 1))) {
     ctl[5] |= 16;
     ctl[3] = 1;
     return;
   }
   int32_t error = 0;
   for (int i = 0; i < count; ++i) error |= status[i];
-  ctl[slot] = token[0];
+  if (slot >= 0) ctl[slot] = token[0];
   if (error) ctl[5] |= 2;
-  volatile int64_t* record = reinterpret_cast<int64_t*>(ptrs[0]) + 8 * ((ctl[4] - 1) % ptrs[1]);
-  record[4] = record[4] | error | ctl[5];
-  __threadfence_system();
-  record[0] = ctl[4];
+  if (ptrs != nullptr) {
+    volatile int64_t* record = reinterpret_cast<int64_t*>(ptrs[0]) + 8 * ((ctl[4] - 1) % ptrs[1]);
+    record[4] = record[4] | error | ctl[5];
+    __threadfence_system();
+    record[0] = ctl[4];
+  }
+  done[0] = 1;
 }
 
 Status LaunchStatus(cudaError_t error) {
@@ -130,10 +137,11 @@ Status LaunchMid(const int64_t* tokens, const int64_t* ids, const int32_t* statu
                  int64_t* head_ids, int32_t* head_c, int64_t* slots, int32_t* lengths,
                  uint16_t* head_cos, uint16_t* head_sin, int64_t* selection,
                  const uint16_t* hidden, uint16_t* head_hidden, int64_t hidden_width,
-                 int rows, int head_rows, int rope_rows, int rope_width, int capacity, cudaStream_t stream) {
+                 int rows, int head_rows, int rope_rows, int rope_width, int capacity, cudaStream_t stream,
+                 bool publish_ring) {
   MidKernel<<<1, 256, 0, stream>>>(tokens, ids, status, status_count, ctl, context, prefixes, prefix2, ptrs,
                                    cosine, sine, head_ids, head_c, slots, lengths, head_cos, head_sin, selection,
-                                   rows, head_rows, rope_rows, rope_width, capacity);
+                                   rows, head_rows, rope_rows, rope_width, capacity, publish_ring);
   ORT_RETURN_IF_ERROR(LaunchStatus(cudaGetLastError()));
   if (head_hidden) {
     HiddenKernel<<<32, 256, 0, stream>>>(hidden, head_hidden, hidden_width, rows, head_rows);

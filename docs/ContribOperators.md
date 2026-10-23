@@ -76,7 +76,6 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
-  * <a href="#com.microsoft.MtpMoe">com.microsoft.MtpMoe</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
@@ -2104,7 +2103,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.FoldMid2"></a><a name="com.microsoft.foldmid2">**com.microsoft.FoldMid2**</a>
 
-  Commits a batch-one speculative prefix and prepares rotary/head inputs for two through four head rows. Control and committed-context outputs must alias their inputs on CUDA. This is stateful: callers must serialize access to these buffers. The result-ring address must identify a device-accessible, aligned allocation of capacity*8 int64 words. The mid stage writes the payload; FoldTail publishes its sequence word after downstream validation. Muted prefill calls prepare inputs without committing state or touching ring metadata. Invalid device metadata sets error bits and mutes execution.
+  Commits a batch-one speculative prefix and prepares rotary/head inputs for two through four head rows. Control and committed-context outputs must alias their inputs on CUDA when present. This is stateful: callers must serialize access to these buffers. The result-ring address must identify a device-accessible, aligned allocation of capacity*8 int64 words. The mid stage writes the payload; FoldTail publishes its sequence word after downstream validation when ptrs is passed to FoldTail, or FoldMid2 publishes it directly when updated_ctl/updated_ctx_commit are omitted. Muted prefill calls prepare inputs without committing state or touching ring metadata. Invalid device metadata sets error bits and mutes execution.
 
 #### Version
 
@@ -2113,7 +2112,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>head_capacity</tt> : int (default is 33028)</dt>
+<dt><tt>head_capacity</tt> : int (default is 262144)</dt>
 <dd>Maximum head-cache token capacity.</dd>
 <dt><tt>head_rows</tt> : int (default is 2)</dt>
 <dd>Fixed number of head rows, 2 through 4.</dd>
@@ -2146,7 +2145,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Optional hidden states [1, verifier_rows, ...].</dd>
 </dl>
 
-#### Outputs
+#### Outputs (7 - 10)
 
 <dl>
 <dt><tt>head_ids</tt> : I64</dt>
@@ -2165,10 +2164,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Accepted-prefix length, or -1 on invalid metadata.</dd>
 <dt><tt>head_hidden</tt> (optional) : B</dt>
 <dd>Hidden rows, repeating the last source row when necessary.</dd>
-<dt><tt>updated_ctl</tt> : I64</dt>
-<dd>Updated control state, aliases ctl.</dd>
-<dt><tt>updated_ctx_commit</tt> : I64</dt>
-<dd>Updated context, aliases ctx_commit.</dd>
+<dt><tt>updated_ctl</tt> (optional) : I64</dt>
+<dd>Optional updated control state, aliases ctl.</dd>
+<dt><tt>updated_ctx_commit</tt> (optional) : I64</dt>
+<dd>Optional updated context, aliases ctx_commit.</dd>
 </dl>
 
 #### Type Constraints
@@ -2185,7 +2184,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.FoldTail"></a><a name="com.microsoft.foldtail">**com.microsoft.FoldTail**</a>
 
-  Updates the selected draft-control slot and publishes the result-ring sequence after validation. updated_ctl must alias ctl on CUDA. Muted calls do not access the ring. Invalid ring metadata sets error bit 16 and mutes execution. done is a dependency output initialized to zero.
+  Updates the selected draft-control slot and publishes the result-ring sequence after validation. updated_ctl must alias ctl on CUDA when present. Muted calls do not access the ring. Invalid ring metadata sets error bit 16 and mutes execution. done is a dependency output set to 1 when unmuted and 0 when muted.
 
 #### Version
 
@@ -2195,10 +2194,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>ctl_slot</tt> : int (default is 2)</dt>
-<dd>Draft-control slot: 2, 8 or 9.</dd>
+<dd>Draft-control slot: -1 (none), 2, 8 or 9.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (3 - 4)
 
 <dl>
 <dt><tt>next_token</tt> : I64</dt>
@@ -2207,17 +2206,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Downstream validation status words.</dd>
 <dt><tt>ctl</tt> : I64</dt>
 <dd>Mutable control state.</dd>
-<dt><tt>ptrs</tt> : I64</dt>
-<dd>Result ring address and record capacity.</dd>
+<dt><tt>ptrs</tt> (optional) : I64</dt>
+<dd>Optional result ring address and record capacity.</dd>
 </dl>
 
-#### Outputs
+#### Outputs (1 - 2)
 
 <dl>
 <dt><tt>done</tt> : I32</dt>
 <dd>Dependency output [1].</dd>
-<dt><tt>updated_ctl</tt> : I64</dt>
-<dd>Updated control state, aliases ctl.</dd>
+<dt><tt>updated_ctl</tt> (optional) : I64</dt>
+<dd>Optional updated control state, aliases ctl.</dd>
 </dl>
 
 #### Type Constraints
@@ -4627,62 +4626,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
-</dl>
-
-
-### <a name="com.microsoft.MtpMoe"></a><a name="com.microsoft.mtpmoe">**com.microsoft.MtpMoe**</a>
-
-  Mixture-of-experts projection for multi-token prediction. The input and router logits are bfloat16.
-  The row count must be between 1 and 65535, inclusive, to fit the CUDA projection grid dimensions.
-  Expert weights are packed NVFP4 bytes with shape [512, 1280, 1440] for gate/up and [512, 2560, 360]
-  for down projection. The output has the same shape as input. The second output is a fully initialized float
-  scratch buffer. A row containing non-finite router logits selects valid expert indices 0 through 9 and
-  reports invalid routing through NaN routing weights and output values.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>down_global_scale</tt> : float (required)</dt>
-<dd>Global scale applied to the down projection weights.</dd>
-<dt><tt>gate_up_global_scale</tt> : float (required)</dt>
-<dd>Global scale applied to the gate/up projection weights.</dd>
-</dl>
-
-#### Inputs
-
-<dl>
-<dt><tt>input</tt> : T</dt>
-<dd>BFloat16 hidden states with shape [1, rows, 2560].</dd>
-<dt><tt>router_logits</tt> : T</dt>
-<dd>BFloat16 router logits with shape [1, rows, 512].</dd>
-<dt><tt>gate_up_weights</tt> : T1</dt>
-<dd>Packed NVFP4 gate/up weights with shape [512, 1280, 1440].</dd>
-<dt><tt>down_weights</tt> : T1</dt>
-<dd>Packed NVFP4 down weights with shape [512, 2560, 360].</dd>
-</dl>
-
-#### Outputs
-
-<dl>
-<dt><tt>output</tt> : T</dt>
-<dd>BFloat16 output with the same shape as input.</dd>
-<dt><tt>scratch</tt> : T2</dt>
-<dd>Float scratch buffer used by the fused expert projections.</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T</tt> : tensor(bfloat16)</dt>
-<dd>Constrain activations and output to bfloat16.</dd>
-<dt><tt>T1</tt> : tensor(uint8)</dt>
-<dd>Constrain packed expert weights to uint8.</dd>
-<dt><tt>T2</tt> : tensor(float)</dt>
-<dd>Constrain scratch to float.</dd>
 </dl>
 
 
