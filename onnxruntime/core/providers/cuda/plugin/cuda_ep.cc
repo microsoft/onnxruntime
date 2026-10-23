@@ -502,7 +502,10 @@ OrtStatus* ORT_API_CALL CudaEp::CreateAllocatorImpl(
     return nullptr;
   }
 
-  return ep.factory_.CreateAllocator(&ep.factory_, memory_info, nullptr, allocator);
+  Ort::KeyValuePairs allocator_options;
+  allocator_options.Add(kEpInstanceIdOptionKey,
+                        std::to_string(reinterpret_cast<uintptr_t>(static_cast<const OrtEp*>(&ep))).c_str());
+  return ep.factory_.CreateAllocator(&ep.factory_, memory_info, allocator_options, allocator);
 
   EXCEPTION_TO_STATUS_END
 }
@@ -646,14 +649,39 @@ OrtStatus* ORT_API_CALL CudaEp::OnSessionInitializationEndImpl(OrtEp* this_ptr) 
   EXCEPTION_TO_STATUS_END
 }
 
+namespace {
+// Ends a controller run on scope exit unless released. ORT does not call OnRunEnd for a provider whose OnRunStart
+// failed, and an error or exception inside OnRunEnd must not leave the controller run active.
+class QMoEControllerRunRollback {
+ public:
+  QMoEControllerRunRollback() = default;
+  QMoEControllerRunRollback(const QMoEControllerRunRollback&) = delete;
+  QMoEControllerRunRollback& operator=(const QMoEControllerRunRollback&) = delete;
+  ~QMoEControllerRunRollback() {
+    if (controller_) {
+      try {
+        static_cast<void>(controller_->OnRunEnd(/*sync_stream=*/false, /*run_succeeded=*/false));
+      } catch (...) {
+      }
+    }
+  }
+  void Arm(std::shared_ptr<onnxruntime::cuda::QMoESessionController> controller) { controller_ = std::move(controller); }
+  void Release() { controller_.reset(); }
+
+ private:
+  std::shared_ptr<onnxruntime::cuda::QMoESessionController> controller_;
+};
+}  // namespace
+
 /*static*/
 OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
     OrtEp* this_ptr, const OrtRunOptions* run_options) noexcept {
   EXCEPTION_TO_STATUS_BEGIN
 
   auto* ep = static_cast<CudaEp*>(this_ptr);
+  QMoEControllerRunRollback controller_rollback;
   if (!ep->config_.enable_cuda_graph) {
-    ep->factory_.ShrinkEligibleDeviceArenas(ep->config_.device_id);
+    ep->factory_.ShrinkEligibleDeviceArenas(ep->config_.device_id, ep->config_.budget_account.get());
   }
   if (ep->EpImpl() != nullptr) {
     auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
@@ -673,9 +701,11 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
       if (!st.IsOK()) {
         return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, st.ErrorMessage().c_str());
       }
+      controller_rollback.Arm(runtime_cfg->qmoe_controller);
     }
   }
   if (!ep->config_.enable_cuda_graph) {
+    controller_rollback.Release();
     return nullptr;
   }
 
@@ -709,10 +739,13 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
     if (cudaMemGetInfo(&free_mem, &total_mem) == cudaSuccess) {
       context.pre_capture_free_mem = free_mem;
     }
+    // Captured graphs embed arena addresses, so this session's arenas must not be shrunk from now on.
+    ep->factory_.MarkSessionGraphCapture(ep->config_.device_id, ep->config_.budget_account.get());
     context.cuda_graph.CaptureBegin(id);
     IsThreadCapturingCudaGraph() = true;
   }
 
+  controller_rollback.Release();
   return nullptr;
 
   EXCEPTION_TO_STATUS_END
@@ -733,8 +766,12 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
     }
   }
 
+  QMoEControllerRunRollback controller_rollback;
+  controller_rollback.Arm(qmoe_controller);
+
   if (!ep->config_.enable_cuda_graph) {
     if (qmoe_controller) {
+      controller_rollback.Release();
       bool run_succeeded = true;
       if (run_options != nullptr) {
         const char* outcome = ep->factory_.GetOrtApi().GetRunConfigEntry(run_options, "__ort.run_outcome");
@@ -793,12 +830,19 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
         return status;
       }
       replayed_graph = true;
+      if (qmoe_controller) {
+        auto after_st = qmoe_controller->OnAfterGraphReplay(context.graph_stream, sync_stream);
+        if (!after_st.IsOK()) {
+          return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, after_st.ErrorMessage().c_str());
+        }
+      }
     } else {
       context.cuda_graph.IncrementRegularRunCount(id);
     }
   }
 
   if (qmoe_controller) {
+    controller_rollback.Release();
     bool run_succeeded = true;
     if (run_options != nullptr) {
       const char* outcome = ep->factory_.GetOrtApi().GetRunConfigEntry(run_options, "__ort.run_outcome");
@@ -841,7 +885,7 @@ bool ORT_API_CALL CudaEp::IsGraphCapturedImpl(const OrtEp* this_ptr, int graph_a
   try {
     if (const char* handoff_env = std::getenv("ORT_QMOE_PREFILL_HANDOFF_DONE");
         handoff_env != nullptr && std::strcmp(handoff_env, "1") == 0) {
-      ep->factory_.ShrinkEligibleDeviceArenas(ep->config_.device_id);
+      ep->factory_.ShrinkEligibleDeviceArenas(ep->config_.device_id, ep->config_.budget_account.get());
     }
     auto& context = ep->GetPerThreadContext();
     if (ep->EpImpl() != nullptr) {

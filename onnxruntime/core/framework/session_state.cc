@@ -1907,30 +1907,45 @@ Status PlaceMoeOffloadInitializersOnCpu(const GraphViewer& graph_viewer,
     }
   }
 
-  InlinedHashSet<std::string_view> initializers_to_place_on_cpu;
-  for (const Node* node : eligible_moe_nodes) {
-    const auto& input_defs = node->InputDefs();
-    bool has_shared_non_offload_input = false;
-    std::string shared_init_name;
-    for (size_t i = 0; i < input_defs.size(); ++i) {
-      if (!IsMoeOffloadExpertInputIndex(node->OpType(), i)) continue;
-      const NodeArg* arg = input_defs[i];
-      if (arg == nullptr || !arg->Exists() || arg->Name().empty()) continue;
-      if (non_offload_consumed_initializers.find(arg->Name()) != non_offload_consumed_initializers.end()) {
-        has_shared_non_offload_input = true;
-        shared_init_name = arg->Name();
+  // A node that shares an expert initializer with a non-offload consumer cannot relocate it. Rejecting the node makes
+  // all of its other expert initializers non-offload consumed too, which can in turn reject other nodes that share
+  // them, so iterate until no more nodes are rejected.
+  for (;;) {
+    InlinedVector<const Node*> rejected_nodes;
+    for (const Node* node : eligible_moe_nodes) {
+      const auto& input_defs = node->InputDefs();
+      for (size_t i = 0; i < input_defs.size(); ++i) {
+        if (!IsMoeOffloadExpertInputIndex(node->OpType(), i)) continue;
+        const NodeArg* arg = input_defs[i];
+        if (arg == nullptr || !arg->Exists() || arg->Name().empty()) continue;
+        if (non_offload_consumed_initializers.find(arg->Name()) == non_offload_consumed_initializers.end()) continue;
+        if (policy.mode == moe_offload::OffloadMode::kRequired) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "MoE offload mode='required' rejected node '", node->Name(),
+                                 "': expert initializer '", arg->Name(),
+                                 "' is shared with a non-offload consumer.");
+        }
+        rejected_nodes.push_back(node);
         break;
       }
     }
-    if (has_shared_non_offload_input) {
-      if (policy.mode == moe_offload::OffloadMode::kRequired) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "MoE offload mode='required' rejected node '", node->Name(),
-                               "': expert initializer '", shared_init_name,
-                               "' is shared with a non-offload consumer.");
+    if (rejected_nodes.empty()) break;
+    for (const Node* node : rejected_nodes) {
+      eligible_moe_nodes.erase(node);
+      const auto& input_defs = node->InputDefs();
+      for (size_t i = 0; i < input_defs.size(); ++i) {
+        const NodeArg* arg = input_defs[i];
+        if (arg == nullptr || !arg->Exists() || arg->Name().empty()) continue;
+        if (initialized_tensors.find(arg->Name()) != initialized_tensors.end()) {
+          non_offload_consumed_initializers.insert(arg->Name());
+        }
       }
-      continue;
     }
+  }
+
+  InlinedHashSet<std::string_view> initializers_to_place_on_cpu;
+  for (const Node* node : eligible_moe_nodes) {
+    const auto& input_defs = node->InputDefs();
     for (size_t i = 0; i < input_defs.size(); ++i) {
       if (!IsMoeOffloadExpertInputIndex(node->OpType(), i)) continue;
       const NodeArg* arg = input_defs[i];
@@ -2235,7 +2250,16 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   moe_offload::MoeOffloadSessionPolicy moe_offload_policy;
   ORT_RETURN_IF_ERROR(moe_offload::MoeOffloadSessionPolicy::ParseFromConfigOptions(
       session_options.config_options, std::filesystem::path(graph_location), moe_offload_policy));
-  if (moe_offload_policy.mode != moe_offload::OffloadMode::kDisabled) {
+  if (moe_offload_policy.mode != moe_offload::OffloadMode::kDisabled && !moe_offload::kExpertRelocationBackendAvailable) {
+    // Relocating expert weights to CPU is only valid when the consuming kernel understands offloaded weights;
+    // otherwise it would hand host pointers to GPU execution.
+    if (moe_offload_policy.mode == moe_offload::OffloadMode::kRequired) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "MoE offload mode='required' is not available: no offload-capable MoE/QMoE kernel "
+                             "backend is present in this build.");
+    }
+    LOGS(logger_, INFO) << "MoE offload mode='auto' ignored: no offload-capable MoE/QMoE kernel backend is present.";
+  } else if (moe_offload_policy.mode != moe_offload::OffloadMode::kDisabled) {
     auto cpu_alloc = GetAllocator(OrtDevice());
     ORT_ENFORCE(cpu_alloc != nullptr, "Default CPU allocator is required for MoE offload initializer placement.");
     ORT_RETURN_IF_ERROR(PlaceMoeOffloadInitializersOnCpu(

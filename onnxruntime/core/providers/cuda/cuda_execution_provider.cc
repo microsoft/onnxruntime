@@ -553,7 +553,31 @@ Status CUDAExecutionProvider::OnSessionInitializationEnd() {
   return Status::OK();
 }
 
+namespace {
+// Ends a controller run on scope exit unless released; ORT does not call OnRunEnd for a provider whose OnRunStart failed.
+class QMoEControllerRunRollback {
+ public:
+  QMoEControllerRunRollback() = default;
+  QMoEControllerRunRollback(const QMoEControllerRunRollback&) = delete;
+  QMoEControllerRunRollback& operator=(const QMoEControllerRunRollback&) = delete;
+  ~QMoEControllerRunRollback() {
+    if (controller_ != nullptr) {
+      try {
+        static_cast<void>(controller_->OnRunEnd(/*sync_stream=*/false, /*run_succeeded=*/false));
+      } catch (...) {
+      }
+    }
+  }
+  void Arm(onnxruntime::cuda::QMoESessionController* controller) { controller_ = controller; }
+  void Release() { controller_ = nullptr; }
+
+ private:
+  onnxruntime::cuda::QMoESessionController* controller_ = nullptr;
+};
+}  // namespace
+
 Status CUDAExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+  QMoEControllerRunRollback controller_rollback;
   if (qmoe_controller_ && qmoe_controller_->HasOffloadNodes()) {
     const char* strict_env = std::getenv("ORT_QMOE_REJECT_DISABLE_SYNC");
     if (strict_env != nullptr && std::strcmp(strict_env, "1") == 0 &&
@@ -563,6 +587,7 @@ Status CUDAExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_opti
           "QMoEOffload does not support disable_synchronize_execution_providers=1; required completion sync cannot be skipped.");
     }
     ORT_RETURN_IF_ERROR(qmoe_controller_->OnRunStart());
+    controller_rollback.Arm(qmoe_controller_.get());
     if (IsGraphCaptureEnabled()) {
       const uint64_t cur_gen = qmoe_controller_->GraphGeneration();
       if (cur_gen != GetPerThreadContext().LastQMoEGraphGen()) {
@@ -576,31 +601,48 @@ Status CUDAExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_opti
     LOGS(*GetLogger(), INFO) << "Capturing the cuda graph for this model";
     GetPerThreadContext().CaptureBegin(cuda_graph_annotation_id);
   }
+  controller_rollback.Release();
   return Status::OK();
 }
 
 Status CUDAExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) {
+  const bool has_offload = qmoe_controller_ && qmoe_controller_->HasOffloadNodes();
+  // Every exit below (error status or exception) must still end the controller run, otherwise the controller stays
+  // active and rejects later runs as overlapping.
+  QMoEControllerRunRollback controller_rollback;
+  if (has_offload) controller_rollback.Arm(qmoe_controller_.get());
+
+  Status capture_status = Status::OK();
   CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCudaGraphAnnotationId(run_options);
   if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
     if (GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {
       GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
-      if (qmoe_controller_ && qmoe_controller_->HasOffloadNodes()) {
-        ORT_RETURN_IF_ERROR(qmoe_controller_->OnBeforeGraphReplay(static_cast<cudaStream_t>(stream_)));
-      }
-      // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
-      // so run the captured graph here to actually execute the work.
-      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_stream));
-      if (qmoe_controller_ && qmoe_controller_->HasOffloadNodes()) {
-        ORT_RETURN_IF_ERROR(qmoe_controller_->OnAfterGraphReplay(static_cast<cudaStream_t>(stream_), sync_stream));
-      }
+      capture_status = [&]() -> Status {
+        if (has_offload) {
+          ORT_RETURN_IF_ERROR(qmoe_controller_->OnBeforeGraphReplay(static_cast<cudaStream_t>(stream_)));
+        }
+        // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
+        // so run the captured graph here to actually execute the work.
+        ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_stream));
+        if (has_offload) {
+          ORT_RETURN_IF_ERROR(qmoe_controller_->OnAfterGraphReplay(static_cast<cudaStream_t>(stream_), sync_stream));
+        }
+        return Status::OK();
+      }();
     } else {
       GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture(cuda_graph_annotation_id);
     }
   }
-  if (qmoe_controller_ && qmoe_controller_->HasOffloadNodes()) {
+  if (has_offload) {
+    controller_rollback.Release();
     const bool run_succeeded =
+        capture_status.IsOK() &&
         run_options.GetConfigOptions().GetConfigOrDefault("__ort.run_outcome", "ok") == "ok";
-    ORT_RETURN_IF_ERROR(qmoe_controller_->OnRunEnd(sync_stream, run_succeeded));
+    auto controller_status = qmoe_controller_->OnRunEnd(sync_stream, run_succeeded);
+    ORT_RETURN_IF_ERROR(capture_status);
+    ORT_RETURN_IF_ERROR(controller_status);
+  } else {
+    ORT_RETURN_IF_ERROR(capture_status);
   }
 
   if (sync_stream) {

@@ -941,7 +941,15 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
   std::vector<AllocatorPtr> allocators;
   allocators.reserve(allocator_mem_infos_.size());
 
-  const OrtKeyValuePairs* allocator_options = session_arena_options_ ? &*session_arena_options_ : nullptr;
+  // Identify the OrtEp the allocators are created for so a factory shared by several sessions can bind each allocator
+  // to the right session state instead of guessing from device-wide queues.
+  OrtKeyValuePairs allocator_options_storage;
+  if (session_arena_options_) {
+    allocator_options_storage = *session_arena_options_;
+  }
+  allocator_options_storage.Add("ep_instance_id",
+                                std::to_string(reinterpret_cast<uintptr_t>(ort_ep_.get())).c_str());
+  const OrtKeyValuePairs* allocator_options = &allocator_options_storage;
 
   auto* ep_factory = &ep_factory_;
 

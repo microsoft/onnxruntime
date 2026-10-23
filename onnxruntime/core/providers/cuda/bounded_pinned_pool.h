@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <memory>
+#include <new>
 #include <mutex>
 #include <stdexcept>
 #include <vector>
@@ -34,6 +35,8 @@ class BoundedPinnedPool {
       selected->available = false;
       return selected->pointer;
     }
+    // Idle blocks that are too small must not hold capacity hostage; return them to the system before rejecting.
+    if (bytes > limit_ - committed_) ReclaimAvailable(bytes - (limit_ - committed_));
     if (bytes > limit_ - committed_) throw std::runtime_error("Pinned pool capacity exhausted");
     auto* pointer = allocate_(bytes);
     if (!pointer) throw std::bad_alloc();
@@ -69,6 +72,22 @@ class BoundedPinnedPool {
     size_t bytes;
     bool available;
   };
+
+  // Frees available blocks, largest first, until at least `needed` bytes are released. Caller holds mutex_.
+  void ReclaimAvailable(size_t needed) {
+    size_t reclaimed = 0;
+    while (reclaimed < needed) {
+      auto victim = blocks_.end();
+      for (auto it = blocks_.begin(); it != blocks_.end(); ++it) {
+        if (it->available && (victim == blocks_.end() || it->bytes > victim->bytes)) victim = it;
+      }
+      if (victim == blocks_.end()) return;
+      free_(victim->pointer);
+      reclaimed += victim->bytes;
+      committed_ -= victim->bytes;
+      blocks_.erase(victim);
+    }
+  }
   size_t limit_;
   size_t committed_ = 0;
   Allocate allocate_;

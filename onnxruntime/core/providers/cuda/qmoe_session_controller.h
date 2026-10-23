@@ -1078,6 +1078,7 @@ class QMoESessionController {
     // Validate minimum host/device working budgets and check for duplicate layer indices (F09, F14).
     std::unordered_map<int32_t, size_t> layer_to_idx;
     uint64_t total_fixed_table_bytes = 0;
+    uint64_t total_dummy_bytes = 0;
     uint64_t total_full_gpu_bytes = 0;
     for (size_t i = 0; i < num_layers; ++i) {
       auto* node = nodes[i];
@@ -1098,13 +1099,20 @@ class QMoESessionController {
                                ") is smaller than minimum CPU working buffer (", min_node_host_work,
                                " bytes) for node '", desc.stable_node_id, "'.");
       }
+      // The dummy slot is mandatory for every node whose decode kernel cannot skip negative slots, so it is
+      // reserved before any resident capacity is distributed.
+      const uint64_t dummy_bytes = caps.decode_kernel_skips_negative_slots ? 0ULL : caps.gpu_slot_bytes;
       total_fixed_table_bytes += caps.gpu_fixed_table_bytes;
-      total_full_gpu_bytes += caps.gpu_fixed_table_bytes +
+      total_dummy_bytes += dummy_bytes;
+      total_full_gpu_bytes += caps.gpu_fixed_table_bytes + dummy_bytes +
                               static_cast<uint64_t>(desc.num_experts) * caps.gpu_slot_bytes;
     }
+    const uint64_t total_base_bytes = total_fixed_table_bytes + total_dummy_bytes;
 
-    // Resolve optional per-node overrides (F14).
+    // Resolve optional per-node overrides (F14). Byte caps cover the complete node cost: fixed tables, dummy slot,
+    // resident slots and spare slots.
     std::vector<int32_t> max_resident_slots_for_node(num_layers);
+    std::vector<uint64_t> node_slot_budget_bytes(num_layers, std::numeric_limits<uint64_t>::max());
     for (size_t i = 0; i < num_layers; ++i) {
       max_resident_slots_for_node[i] = nodes[i]->GetSourceDescriptor().num_experts;
     }
@@ -1122,15 +1130,10 @@ class QMoESessionController {
           }
           if (ov.device_expert_bytes.has_value()) {
             const auto& caps = nodes[i]->GetBackendCapabilities();
-            const uint64_t avail = (*ov.device_expert_bytes > caps.gpu_fixed_table_bytes)
-                                       ? (*ov.device_expert_bytes - caps.gpu_fixed_table_bytes)
-                                       : 0ULL;
-            const int32_t by_bytes =
-                (caps.gpu_slot_bytes > 0)
-                    ? static_cast<int32_t>(std::min<uint64_t>(avail / caps.gpu_slot_bytes,
-                                                              static_cast<uint64_t>(desc.num_experts)))
-                    : 0;
-            max_resident_slots_for_node[i] = std::min(max_resident_slots_for_node[i], by_bytes);
+            const uint64_t base = caps.gpu_fixed_table_bytes +
+                                  (caps.decode_kernel_skips_negative_slots ? 0ULL : caps.gpu_slot_bytes);
+            const uint64_t avail = (*ov.device_expert_bytes > base) ? (*ov.device_expert_bytes - base) : 0ULL;
+            node_slot_budget_bytes[i] = std::min(node_slot_budget_bytes[i], avail);
           }
         }
       }
@@ -1148,15 +1151,15 @@ class QMoESessionController {
       admitted_gpu_expert_budget = (usable_free_vram > reserves) ? (usable_free_vram - reserves) : 0ULL;
     }
 
-    if (admitted_gpu_expert_budget < total_fixed_table_bytes) {
+    if (admitted_gpu_expert_budget < total_base_bytes) {
       if (policy.mode == onnxruntime::moe_offload::OffloadMode::kRequired &&
           !policy.device_expert_bytes.is_auto && policy.device_expert_bytes.bytes == 0) {
-        admitted_gpu_expert_budget = total_fixed_table_bytes;
+        admitted_gpu_expert_budget = total_base_bytes;
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "MoE Offload session admission failed: device_expert_bytes (",
-                               admitted_gpu_expert_budget, ") is smaller than fixed lookup table overhead (",
-                               total_fixed_table_bytes, " bytes across ", num_layers, " layers).");
+                               admitted_gpu_expert_budget, ") is smaller than fixed lookup table and dummy slot overhead (",
+                               total_base_bytes, " bytes across ", num_layers, " layers).");
       }
     }
 
@@ -1200,24 +1203,55 @@ class QMoESessionController {
 
     std::vector<int32_t> resident_counts(num_layers, 0);
     std::vector<int32_t> spare_counts(num_layers, 0);
-    uint64_t remaining_gpu = admitted_gpu_expert_budget - total_fixed_table_bytes;
+    uint64_t remaining_gpu = admitted_gpu_expert_budget - total_base_bytes;
     const bool is_adaptive = (policy.placement == onnxruntime::moe_offload::PlacementPolicy::kAdaptive);
 
     bool all_unconstrained = true;
     for (size_t i = 0; i < num_layers; ++i) {
-      if (max_resident_slots_for_node[i] < nodes[i]->GetSourceDescriptor().num_experts) {
+      const auto& desc = nodes[i]->GetSourceDescriptor();
+      const uint64_t full_slot_bytes =
+          static_cast<uint64_t>(desc.num_experts) * nodes[i]->GetBackendCapabilities().gpu_slot_bytes;
+      if (max_resident_slots_for_node[i] < desc.num_experts || node_slot_budget_bytes[i] < full_slot_bytes) {
         all_unconstrained = false;
         break;
       }
     }
+
+    // Moves node `idx` to one more resident slot. Spare slots exist only while a node is adaptively and partially
+    // resident, so the byte delta (and the node cap) is computed from the complete resident+spare cost before/after.
+    auto spare_slots_for = [&](size_t idx, int32_t resident) -> int32_t {
+      return (is_adaptive && resident > 0 && resident < nodes[idx]->GetSourceDescriptor().num_experts) ? 2 : 0;
+    };
+    auto try_add_slot = [&](size_t idx) -> bool {
+      const auto& desc = nodes[idx]->GetSourceDescriptor();
+      const uint64_t slot_cost = nodes[idx]->GetBackendCapabilities().gpu_slot_bytes;
+      const int32_t cur = resident_counts[idx];
+      if (cur >= max_resident_slots_for_node[idx] || cur >= desc.num_experts) return false;
+      const uint64_t old_slots = static_cast<uint64_t>(cur + spare_slots_for(idx, cur));
+      const uint64_t new_slots = static_cast<uint64_t>(cur + 1 + spare_slots_for(idx, cur + 1));
+      if (new_slots * slot_cost > node_slot_budget_bytes[idx]) return false;
+      if (new_slots >= old_slots) {
+        const uint64_t delta = (new_slots - old_slots) * slot_cost;
+        if (remaining_gpu < delta) return false;
+        remaining_gpu -= delta;
+      } else {
+        remaining_gpu += (old_slots - new_slots) * slot_cost;
+      }
+      ++resident_counts[idx];
+      spare_counts[idx] = spare_slots_for(idx, resident_counts[idx]);
+      return true;
+    };
 
     // Check if full GPU residency fits when mode == kAuto and no explicit smaller cap was set.
     if (policy.mode == onnxruntime::moe_offload::OffloadMode::kAuto &&
         all_unconstrained &&
         admitted_gpu_expert_budget >= total_full_gpu_bytes) {
       for (size_t i = 0; i < num_layers; ++i) {
-        resident_counts[i] = nodes[i]->GetSourceDescriptor().num_experts;
+        const int32_t ne = nodes[i]->GetSourceDescriptor().num_experts;
+        resident_counts[i] = ne;
         spare_counts[i] = 0;
+        per_layer_ranked[i].resize(static_cast<size_t>(ne));
+        for (int32_t e = 0; e < ne; ++e) per_layer_ranked[i][static_cast<size_t>(e)] = e;
       }
       remaining_gpu = admitted_gpu_expert_budget - total_full_gpu_bytes;
     } else if (!global_ranked_pairs.empty()) {
@@ -1242,28 +1276,6 @@ class QMoESessionController {
           if (!seen[i][static_cast<size_t>(e)]) per_layer_ranked[i].push_back(e);
         }
       }
-
-      auto try_add_slot = [&](size_t idx) -> bool {
-        const auto& desc = nodes[idx]->GetSourceDescriptor();
-        const auto& caps = nodes[idx]->GetBackendCapabilities();
-        if (resident_counts[idx] >= max_resident_slots_for_node[idx]) return false;
-        const uint64_t slot_cost = caps.gpu_slot_bytes;
-        uint64_t transition_cost = slot_cost;
-        if (is_adaptive && resident_counts[idx] == 0 && (resident_counts[idx] + 1) < desc.num_experts) {
-          transition_cost += 2ULL * slot_cost;
-        }
-        if (remaining_gpu < transition_cost) return false;
-        remaining_gpu -= transition_cost;
-        if (is_adaptive && resident_counts[idx] == 0 && (resident_counts[idx] + 1) < desc.num_experts) {
-          spare_counts[idx] = 2;
-        }
-        ++resident_counts[idx];
-        if (resident_counts[idx] == desc.num_experts && spare_counts[idx] > 0) {
-          remaining_gpu += static_cast<uint64_t>(spare_counts[idx]) * slot_cost;
-          spare_counts[idx] = 0;
-        }
-        return true;
-      };
 
       constexpr int32_t kMinFloorSlotsPerLayer = 4;
       std::vector<std::vector<uint8_t>> admitted(num_layers);
@@ -1319,26 +1331,7 @@ class QMoESessionController {
       while (progress) {
         progress = false;
         for (size_t i = 0; i < num_layers; ++i) {
-          const auto& desc = nodes[i]->GetSourceDescriptor();
-          const auto& caps = nodes[i]->GetBackendCapabilities();
-          if (resident_counts[i] >= max_resident_slots_for_node[i]) continue;
-          const uint64_t slot_cost = caps.gpu_slot_bytes;
-          uint64_t transition_cost = slot_cost;
-          if (is_adaptive && resident_counts[i] == 0 && (resident_counts[i] + 1) < desc.num_experts) {
-            transition_cost += 2ULL * slot_cost;
-          }
-          if (remaining_gpu >= transition_cost) {
-            remaining_gpu -= transition_cost;
-            if (is_adaptive && resident_counts[i] == 0 && (resident_counts[i] + 1) < desc.num_experts) {
-              spare_counts[i] = 2;
-            }
-            ++resident_counts[i];
-            if (resident_counts[i] == desc.num_experts && spare_counts[i] > 0) {
-              remaining_gpu += static_cast<uint64_t>(spare_counts[i]) * slot_cost;
-              spare_counts[i] = 0;
-            }
-            progress = true;
-          }
+          if (try_add_slot(i)) progress = true;
         }
       }
     }

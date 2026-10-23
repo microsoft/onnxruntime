@@ -66,7 +66,6 @@ struct NodeOverrideSpec {
   std::string graph_scope{"main"};
   std::string node_name;
   std::optional<uint64_t> device_expert_bytes;
-  std::optional<uint64_t> host_expert_bytes;
   std::optional<int32_t> max_resident_slots;
 };
 
@@ -206,11 +205,6 @@ struct MoeOffloadSessionPolicy {
           uint64_t b = 0;
           if (!TryParseUint64(v, b)) return false;
           spec.device_expert_bytes = b;
-          has_field = true;
-        } else if (k == "host_expert_bytes") {
-          uint64_t b = 0;
-          if (!TryParseUint64(v, b)) return false;
-          spec.host_expert_bytes = b;
           has_field = true;
         } else {
           return false;
@@ -382,7 +376,7 @@ struct MoeOffloadSessionPolicy {
           return ORT_MAKE_STATUS(
               ONNXRUNTIME, INVALID_ARGUMENT,
               "Invalid ", kOrtSessionOptionsMoeOffloadNodeOverrides, " value '", val,
-              "'; expected semicolon-separated 'node_name:max_resident_slots=<N>,device_expert_bytes=<B>,host_expert_bytes=<B>'.");
+              "'; expected semicolon-separated 'node_name:max_resident_slots=<N>,device_expert_bytes=<B>'.");
         }
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -556,6 +550,10 @@ struct MoeNodeExecutionPlan {
   std::vector<int32_t> initial_resident_experts;
   std::vector<int32_t> ranked_experts;
 };
+
+// Whether an offload-aware MoE/QMoE kernel backend exists. Expert initializers are only relocated to host memory
+// when it does; the backend integration that implements IMoeOffloadNode enables this.
+inline constexpr bool kExpertRelocationBackendAvailable = false;
 
 class IMoeOffloadNode {
  public:
