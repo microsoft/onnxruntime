@@ -1,7 +1,7 @@
 cerberus
 flatbuffers
 h5py
-numpy >= 1.16.6
+numpy >= 2.4.6
 onnx
 packaging
 protobuf>=4.25.8
