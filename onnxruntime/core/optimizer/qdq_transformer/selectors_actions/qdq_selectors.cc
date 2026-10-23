@@ -299,6 +299,18 @@ bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
     return false;
   }
 
+  if (!allow_nonpositive_scale_) {
+    auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
+      return graph_viewer.GetConstantInitializer(initializer_name, true);
+    };
+
+    const Node& dq_node = *dq_nodes.front();
+    if (!IsQOrDQScalePositiveConstantScalar(graph_viewer.GetGraph(), dq_node, get_const_initializer,
+                                            graph_viewer.ModelPath())) {
+      return false;
+    }
+  }
+
   return true;
 }
 
