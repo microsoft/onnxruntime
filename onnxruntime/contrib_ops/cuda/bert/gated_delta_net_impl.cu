@@ -417,8 +417,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
   for (int chunk0 = 0; chunk0 < seq_len; chunk0 += BT) {
     const int len = min(BT, seq_len - chunk0);
     // Safe FP16 range check in registers during the single global->shared load pass:
-    // ensure inputs and all intermediate products (q k^T, (I+M)^-1, beta v, U, S) stay within
-    // the normal FP16 range without overflow or underflow.
+    // fall back when conservative FP16 operand and intermediate-product bounds are exceeded.
     constexpr bool kCheckFp16 =
         std::is_same_v<T, __nv_bfloat16> && kBf16Prec == Bf16Precision::kFp16;
     bool thread_out_of_fp16 = kCheckFp16 && (fabsf(p.scale) > 16.0f);
@@ -435,7 +434,10 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
         thread_out_of_fp16 = true;
       }
     }
-    const int max_k_bits = p.qk_l2_norm ? 0x46000000 : (needs_retrieval ? 0x3f800000 : 0x41000000);
+    // Bound ||k||_2 <= 1, not just individual components, so retrieval cannot amplify the inverse.
+    const int max_k_bits = p.qk_l2_norm      ? 0x46000000
+                           : needs_retrieval ? __float_as_int(1.0f / sqrtf(static_cast<float>(DK)))
+                                             : 0x41000000;
     const int max_q_bits = p.qk_l2_norm ? 0x46000000 : 0x41000000;
     int thread_q_max = 0, thread_k_max = 0;
     for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
@@ -489,7 +491,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
       s.gc[tid] = g;
       s.beta[tid] = be;
       if constexpr (kCheckFp16) {
-        if (tid < len && (!(g <= 0.0f) || !(fabsf(be) <= 1.0f))) {
+        if (tid < len && (!(g <= 0.0f) || !(fabsf(be) <= 1.0f) || (needs_retrieval && be < 0.0f))) {
           thread_out_of_fp16 = true;
         }
       }

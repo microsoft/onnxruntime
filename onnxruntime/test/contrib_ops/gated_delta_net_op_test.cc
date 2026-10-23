@@ -1896,6 +1896,67 @@ TEST(GatedDeltaNetTest, BFloat16Fp16ModeGuardsAndSplitEngineSelection) {
   }
 }
 
+TEST(GatedDeltaNetTest, BFloat16Fp16ModeRetrievalInverseGuards) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  const Geometry g{64, 1, 1, 2, kDim, kDim};
+
+  for (const char* plan_env : {"", "chunked_split"}) {
+    if (std::string(plan_env) == "chunked_split" && NeedSkipGatedDeltaNetSplitTest()) continue;
+    for (const char* update_rule : {"delta", "gated_delta"}) {
+      for (int scenario = 0; scenario < 3; ++scenario) {
+        SCOPED_TRACE(MakeString("plan=", plan_env, " rule=", update_rule, " scenario=", scenario));
+        const bool negative_beta = scenario != 0;
+        const bool normalize = scenario == 2;
+        const int active_tokens = negative_beta ? (normalize ? 20 : 48) : 4;
+        const float key = negative_beta && !normalize ? 0.0625f : 1.0f;
+        Inputs in;
+        in.q.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+        in.k.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+        in.v.assign(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 1.0f);
+        in.decay.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+        in.beta.assign(static_cast<size_t>(g.total_tokens) * g.hv, negative_beta ? -1.0f : 1.0f);
+        in.state0.assign(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+        for (int t = 0; t < g.total_tokens; ++t) {
+          in.q[static_cast<size_t>(t) * g.dk] = 1.0f;
+          if (t < active_tokens) {
+            for (int d = 0; d < (normalize ? 1 : g.dk); ++d) {
+              in.k[static_cast<size_t>(t) * g.dk + d] = key;
+            }
+          }
+        }
+        Options o;
+        o.update_rule = update_rule;
+        o.qk_l2_norm = normalize ? 1 : 0;
+        o.scale = 1.0f;
+
+        // Four unnormalized all-one keys overflow the inverse despite |k_i| <= 1.
+        // Negative beta makes even norm-bounded keys amplify the inverse exponentially.
+        std::vector<OrtValue> fp32_fetches, fp16_fetches;
+        for (const char* mode : {"fp32", "fp16"}) {
+          ScopedEnvironmentVariables scoped_env_vars{
+              EnvVarMap{{"ORT_GDN_PLAN", plan_env}, {"ORT_GDN_BF16_PRECISION", mode}}};
+          auto& fetches = std::string(mode) == "fp32" ? fp32_fetches : fp16_fetches;
+          RunTypedCase<BFloat16>(g, o, in, 2e-2f, 2e-2f, false, &fetches);
+          ASSERT_EQ(fetches.size(), 3u);
+        }
+        const Tensor& output = fp16_fetches[0].Get<Tensor>();
+        const Tensor& state = fp16_fetches[1].Get<Tensor>();
+        for (int64_t i = 0; i < output.Shape().Size(); ++i) {
+          const BFloat16 actual = output.Data<BFloat16>()[i];
+          ASSERT_TRUE(std::isfinite(actual.ToFloat())) << "output element " << i;
+          EXPECT_EQ(actual.val, fp32_fetches[0].Get<Tensor>().Data<BFloat16>()[i].val)
+              << "output element " << i;
+        }
+        for (int64_t i = 0; i < state.Shape().Size(); ++i) {
+          const float actual = state.Data<float>()[i];
+          ASSERT_TRUE(std::isfinite(actual)) << "state element " << i;
+          EXPECT_EQ(actual, fp32_fetches[1].Get<Tensor>().Data<float>()[i]) << "state element " << i;
+        }
+      }
+    }
+  }
+}
+
 TEST(GatedDeltaNetTest, BFloat16SplitPreservesMultiChunkDecay) {
   if (NeedSkipGatedDeltaNetSplitTest()) return;
   ScopedEnvironmentVariables scoped_env_vars{
