@@ -33,12 +33,12 @@ __global__ void FoldMid2Kernel(
     int32_t* head_c, int64_t* slot_ids, int32_t* seqlens,
     __nv_bfloat16* cos_out, __nv_bfloat16* sin_out, int64_t* sel,
     int64_t* ctl, int64_t* ctx_commit, int64_t cache_positions,
-    int rows, int head_rows) {
+    int rows, int head_rows, int ctl_count) {
   __shared__ int64_t committed_length;
   __shared__ int64_t cache_length;
   __shared__ int64_t validation_bits;
   if (threadIdx.x == 0) {
-    for (int i = 0; i < 8; ++i) ctl[i] = input_ctl[i];
+    for (int i = 0; i < ctl_count; ++i) ctl[i] = input_ctl[i];
     for (int i = 0; i < 2; ++i) ctx_commit[i] = input_ctx_commit[i];
     const bool muted = ctl[3] != 0;
     committed_length = muted ? 0 : ctl[1];
@@ -147,11 +147,12 @@ __global__ void FoldMid2Kernel(
 
 __global__ void FoldTailKernel(const int64_t* next_token,
                                const int32_t* status, int status_count,
-                               const int64_t* input_ctl, int32_t* done, int64_t* ctl) {
+                               const int64_t* input_ctl, int32_t* done, int64_t* ctl,
+                               int ctl_count, int ctl_slot) {
   if (threadIdx.x != 0) {
     return;
   }
-  for (int i = 0; i < 8; ++i) ctl[i] = input_ctl[i];
+  for (int i = 0; i < ctl_count; ++i) ctl[i] = input_ctl[i];
   if (ctl[3] != 0) {
     done[0] = 0;
     return;
@@ -161,7 +162,9 @@ __global__ void FoldTailKernel(const int64_t* next_token,
   for (int i = 0; i < status_count; ++i) {
     status_bits |= static_cast<int64_t>(status[i]);
   }
-  ctl[2] = next_token[0];
+  if (ctl_slot >= 0 && ctl_slot < ctl_count) {
+    ctl[ctl_slot] = next_token[0];
+  }
   if (status_bits != 0) {
     ctl[5] |= 2;
   }
@@ -189,7 +192,7 @@ Status LaunchFoldMid2(const int64_t* next_tokens, const int64_t* input_ids,
                       int rows, int head_rows,
                       const __nv_bfloat16* hidden_states,
                       __nv_bfloat16* head_hidden,
-                      int hidden_rows, int hidden_width) {
+                      int hidden_rows, int hidden_width, int ctl_count) {
   if (status_count < 0) {
     return Status(common::StatusCategory::ONNXRUNTIME,
                   common::StatusCode::INVALID_ARGUMENT,
@@ -200,7 +203,7 @@ Status LaunchFoldMid2(const int64_t* next_tokens, const int64_t* input_ids,
       next_tokens, input_ids, status, status_count, ctl, ctx_commit, ctx_a,
       ctx_b, ptrs, cos_cache, sin_cache, head_ids, head_c, slot_ids, seqlens,
       cos_out, sin_out, sel, updated_ctl, updated_ctx_commit, cache_positions,
-      rows, head_rows);
+      rows, head_rows, ctl_count);
   if (hidden_states != nullptr && head_hidden != nullptr && hidden_rows > 0 && hidden_width > 0) {
     CopyHeadHiddenKernel<<<20, 256, 0, stream>>>(hidden_states, head_hidden, hidden_rows, head_rows, hidden_width);
   }
@@ -209,14 +212,14 @@ Status LaunchFoldMid2(const int64_t* next_tokens, const int64_t* input_ids,
 
 Status LaunchFoldTail(const int64_t* next_token, const int32_t* status,
                       int status_count, const int64_t* ctl, int32_t* done, int64_t* updated_ctl,
-                      cudaStream_t stream) {
+                      cudaStream_t stream, int ctl_count, int ctl_slot) {
   if (status_count < 0) {
     return Status(common::StatusCategory::ONNXRUNTIME,
                   common::StatusCode::INVALID_ARGUMENT,
                   "FoldTail status count must not be negative");
   }
   FoldTailKernel<<<1, 32, 0, stream>>>(next_token, status, status_count, ctl,
-                                       done, updated_ctl);
+                                       done, updated_ctl, ctl_count, ctl_slot);
   return LaunchStatus(cudaGetLastError());
 }
 

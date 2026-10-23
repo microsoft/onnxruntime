@@ -1517,6 +1517,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(FoldMid2_ver1_doc)
         .Attr("head_rows", "Number of head rows to emit (default 2).", AttributeProto::INT, static_cast<int64_t>(2))
+        .Attr("head_capacity", "Maximum head-cache token capacity.", AttributeProto::INT, static_cast<int64_t>(262144))
         .Input(0, "next_tokens", "Predicted token IDs.", "I64")
         .Input(1, "input_ids", "Input token IDs.", "I64")
         .Input(2, "status", "Status values aggregated into the result record.", "I32")
@@ -1567,6 +1568,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     FoldTail, 1,
     OpSchema()
         .SetDoc(FoldTail_ver1_doc)
+        .Attr("ctl_slot", "Draft-control slot to update (default 2; -1 disables slot write for DFlash2).",
+              AttributeProto::INT, static_cast<int64_t>(2))
         .Input(0, "next_token", "Next draft token ID.", "I64")
         .Input(1, "status", "Head status values.", "I32")
         .Input(2, "ctl", "Eight-element control state.", "I64")

@@ -603,9 +603,8 @@ __device__ __forceinline__ void Fp8MmaGemvBody(AType* __restrict__ output,
   using Mma = Fp8GemvMma<AType>;
 
   // Keep the same MMA/KSplit reduction, but remove per-block scaling and QDQ
-  // bookkeeping for weight-only, two-row projections with one scale per column.
+  // bookkeeping for weight-only small-M projections with one scale per column.
   if constexpr (PerColumnS2) {
-    m = 2;
     k_blocks = 1;
   }
   const bool act_qdq = !PerColumnS2 && act_scale != nullptr;
@@ -943,7 +942,7 @@ Status LaunchMatMulFp8SharedExpert(void* y, const void* a, const void* weight,
           static_cast<const __nv_fp8_e4m3*>(weight), scales, m, n, k, block_size,
           (k + block_size - 1) / block_size, epilogue);
     };
-    if (per_column_s2 && m == 2 && block_size == k) {
+    if (per_column_s2 && m >= 1 && m <= 8 && block_size == k) {
       variant.template operator()<true>();
     } else {
       variant.template operator()<false>();
@@ -1260,7 +1259,7 @@ static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
     }                                                                                        \
   } while (0)
         if constexpr (MTiles == 1) {
-          if (per_column_s2 && m == 2 && block_size == k && act_scale == nullptr && !pin_residency) {
+          if (per_column_s2 && m >= 1 && m <= 8 && block_size == k && act_scale == nullptr && !pin_residency) {
             ORT_FP8_LAUNCH_MMA(MatMulBlockScaledFp8MmaGemvPerColumnS2Kernel);
             return;
           }

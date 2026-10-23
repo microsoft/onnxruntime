@@ -27,11 +27,11 @@ Status LaunchFoldMid2(const int64_t* next_tokens, const int64_t* input_ids,
                       int rows = 2, int head_rows = 2,
                       const __nv_bfloat16* hidden_states = nullptr,
                       __nv_bfloat16* head_hidden = nullptr,
-                      int hidden_rows = 0, int hidden_width = 0);
+                      int hidden_rows = 0, int hidden_width = 0, int ctl_count = 8);
 
 Status LaunchFoldTail(const int64_t* next_token, const int32_t* status,
                       int status_count, const int64_t* ctl, int32_t* done, int64_t* updated_ctl,
-                      cudaStream_t stream);
+                      cudaStream_t stream, int ctl_count = 8, int ctl_slot = 2);
 
 }  // namespace speculative_fold
 }  // namespace cuda

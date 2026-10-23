@@ -204,16 +204,20 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
       }
     }
 
-    if (params.mid_kv_buffer != nullptr && params.mid_state_lengths != nullptr) {
-      const int mid_req = min(req_len, 1);
+    void* snapshots[3] = {params.mid_kv_buffer, params.mid_kv_buffer2, params.mid_kv_buffer3};
+    int32_t* length_snapshots[3] = {params.mid_state_lengths, params.mid_state_lengths2, params.mid_state_lengths3};
+#pragma unroll
+    for (int prefix = 0; prefix < 3; ++prefix) {
+      if (snapshots[prefix] == nullptr || length_snapshots[prefix] == nullptr) continue;
+      const int mid_req = min(req_len, prefix + 1);
       const int mid_pending = old_buf_len + mid_req;
       const int mid_blocks = rejected ? 0 : mid_pending / params.compress_ratio;
       const int mid_buf_len = rejected ? old_buf_len : mid_pending % params.compress_ratio;
       if (threadIdx.x == 0) {
-        params.mid_state_lengths[b * 2 + psai::kKeyStateLength] = old_key_len + mid_blocks;
-        params.mid_state_lengths[b * 2 + psai::kBufferLength] = mid_buf_len;
+        length_snapshots[prefix][b * 2 + psai::kKeyStateLength] = old_key_len + mid_blocks;
+        length_snapshots[prefix][b * 2 + psai::kBufferLength] = mid_buf_len;
       }
-      T* mid_buffer = static_cast<T*>(params.mid_kv_buffer);
+      T* mid_buffer = static_cast<T*>(snapshots[prefix]);
       const int mid_total = params.buffer_capacity * params.head_size;
       for (int i = static_cast<int>(threadIdx.x); i < mid_total; i += static_cast<int>(blockDim.x)) {
         const int t = i / params.head_size;

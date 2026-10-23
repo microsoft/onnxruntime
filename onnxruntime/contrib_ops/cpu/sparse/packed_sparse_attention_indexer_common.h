@@ -75,7 +75,11 @@ enum OutputIndex : int {
   kMidStateLengths = 9,    // qsa only, optional: state lengths after the first request token
   kValidationStatus = 10,  // qsa only, optional: per-request overflow/metadata status
   kOutputCount = 8,
-  kMaxOutputCount = 11,
+  kMidKvBuffer2 = 11,
+  kMidStateLengths2 = 12,
+  kMidKvBuffer3 = 13,
+  kMidStateLengths3 = 14,
+  kMaxOutputCount = 15,
 };
 
 // Every PackedSparseAttentionIndexer node declares all 6 fixed outputs; present_gate_buffer is an

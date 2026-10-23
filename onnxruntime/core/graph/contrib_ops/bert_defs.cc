@@ -2934,6 +2934,18 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     propagateElemTypeFromInputToOutput(ctx, psai::kPastKvBuffer, psai::kMidKvBuffer);
     propagateShapeFromInputToOutput(ctx, psai::kPastKvBuffer, psai::kMidKvBuffer);
   }
+  for (int prefix = 0; prefix < 2; ++prefix) {
+    const int buffer = psai::kMidKvBuffer2 + 2 * prefix;
+    const int lengths = buffer + 1;
+    if (ctx.hasOutput(buffer) != ctx.hasOutput(lengths))
+      fail_shape_inference("PackedSparseAttentionIndexer: prefix buffer and lengths must be connected together");
+    if (!ctx.hasOutput(buffer)) continue;
+    if (!is_qsa) fail_shape_inference("PackedSparseAttentionIndexer: prefix outputs require policy_mode='qsa'");
+    propagateElemTypeFromInputToOutput(ctx, psai::kPastKvBuffer, buffer);
+    propagateShapeFromInputToOutput(ctx, psai::kPastKvBuffer, buffer);
+    updateOutputElemType(ctx, lengths, ONNX_NAMESPACE::TensorProto_DataType_INT32);
+    propagateShapeFromInputToOutput(ctx, psai::kPastStateLengths, lengths);
+  }
   if (!is_qsa) {
     // present_gate_buffer keeps its fixed positional slot (with an empty name) for policy_mode
     // 'qsa'; only propagate its type/shape when it is actually produced.
@@ -3458,6 +3470,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(10, "validation_status",
                 "Only for CUDA policy_mode 'qsa' refresh: per-request overflow status; two-token rejection is encoded as 0x99. "
                 "Not supported in IndexShare reuse mode.",
+                "M", OpSchema::Optional)
+        .Output(11, "mid_kv_buffer2", "CUDA QSA pending-buffer snapshot after at most two request tokens.",
+                "T", OpSchema::Optional)
+        .Output(12, "mid_state_lengths2", "CUDA QSA state lengths after at most two request tokens.",
+                "M", OpSchema::Optional)
+        .Output(13, "mid_kv_buffer3", "CUDA QSA pending-buffer snapshot after at most three request tokens.",
+                "T", OpSchema::Optional)
+        .Output(14, "mid_state_lengths3", "CUDA QSA state lengths after at most three request tokens.",
                 "M", OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
@@ -4835,6 +4855,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "layout and length as present_state. CUDA only; requires rank-3 channels-last input "
                 "and state_window=0.",
                 "T", OpSchema::Optional)
+        .Output(3, "second_state",
+                "Optional carry state after at most two input positions, with the same layout and length as present_state.",
+                "T", OpSchema::Optional)
+        .Output(4, "third_state",
+                "Optional carry state after at most three input positions, with the same layout and length as present_state.",
+                "T", OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
@@ -4859,7 +4885,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 state_window != 0 || getAttribute(ctx, "dilation", 1) < 1) {
               fail_shape_inference("CausalConvWithState: extended attributes require channels_last=1, ndim=1, state_window=0");
             }
-            if (ctx.getNumOutputs() > 2) propagateElemTypeFromInputToOutput(ctx, 0, 2);
+            for (size_t i = 2; i < ctx.getNumOutputs(); ++i) propagateElemTypeFromInputToOutput(ctx, 0, i);
             if (!hasInputShape(ctx, 0)) return;
             const auto& input = getInputShape(ctx, 0);
             if (input.dim_size() != 3) fail_shape_inference("CausalConvWithState: extended input must have rank 3");
@@ -4897,7 +4923,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             *state.add_dim() = state_layout == 0 ? *channels : length;
             *state.add_dim() = state_layout == 0 ? length : *channels;
             updateOutputShape(ctx, 1, state);
-            if (ctx.getNumOutputs() > 2) updateOutputShape(ctx, 2, state);
+            for (size_t i = 2; i < ctx.getNumOutputs(); ++i) updateOutputShape(ctx, i, state);
             return;
           }
           if (state_window < 0 || state_window > kMaxStateWindow) {
@@ -5614,6 +5640,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "Struct-of-arrays transition factors when state_output='state_update', or "
                 "the state after the first token when state_output='mid_state'.",
                 "TS", OpSchema::Optional)
+        .Output(3, "mid_state2", "CUDA state after at most two request tokens; requires state_output='mid_state'.",
+                "TS", OpSchema::Optional)
+        .Output(4, "mid_state3", "CUDA state after at most three request tokens; requires state_output='mid_state'.",
+                "TS", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain query/key/value/output types.")
         .TypeConstraint("TS", {"tensor(float)"},
@@ -5626,8 +5656,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (ctx.getNumOutputs() > 1) {
             updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
           }
-          if (ctx.getNumOutputs() > 2) {
-            updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+          for (size_t i = 2; i < ctx.getNumOutputs(); ++i) {
+            updateOutputElemType(ctx, i, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
           }
 
           const bool has_key = ctx.getNumInputs() > 1 && ctx.getInputType(1) != nullptr;
@@ -5762,9 +5792,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 fail_shape_inference("GatedDeltaNet: mid_state output requires state_update_capacity=0");
               }
               if (state_shape != nullptr) {
-                updateOutputShape(ctx, 2, *state_shape);
+                for (size_t i = 2; i < ctx.getNumOutputs(); ++i) updateOutputShape(ctx, i, *state_shape);
               }
             } else {
+              if (ctx.getNumOutputs() > 3)
+                fail_shape_inference("GatedDeltaNet: additional prefix states require state_output='mid_state'");
               ONNX_NAMESPACE::TensorShapeProto capsule_shape;
               add_batch_dim(capsule_shape);
               auto* width = capsule_shape.add_dim();

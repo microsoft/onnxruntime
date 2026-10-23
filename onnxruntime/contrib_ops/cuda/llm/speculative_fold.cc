@@ -44,7 +44,7 @@ class FoldMid2 final : public CudaKernel {
 
     const int64_t rows = next_tokens->Shape().Size();
     ORT_RETURN_IF_NOT(rows >= 1 && input_ids->Shape().Size() >= 1 &&
-                          HasElementCount(ctl, 8) &&
+                          ctl->Shape().Size() >= 8 &&
                           HasElementCount(ctx_commit, 2) &&
                           ctx_a->Shape().Size() >= 2 &&
                           HasElementCount(ctx_b, 2) &&
@@ -120,7 +120,7 @@ class FoldMid2 final : public CudaKernel {
         updated_ctx_commit_ptr, cos_cache->Shape()[0], Stream(context),
         static_cast<int>(rows), static_cast<int>(head_rows_),
         hidden_states != nullptr ? reinterpret_cast<const __nv_bfloat16*>(hidden_states->Data<BFloat16>()) : nullptr,
-        head_hidden_ptr, hidden_rows, hidden_width);
+        head_hidden_ptr, hidden_rows, hidden_width, static_cast<int>(ctl->Shape().Size()));
   }
 
  private:
@@ -129,14 +129,15 @@ class FoldMid2 final : public CudaKernel {
 
 class FoldTail final : public CudaKernel {
  public:
-  explicit FoldTail(const OpKernelInfo& info) : CudaKernel(info) {}
+  explicit FoldTail(const OpKernelInfo& info)
+      : CudaKernel(info), ctl_slot_(static_cast<int>(info.GetAttrOrDefault<int64_t>("ctl_slot", 2))) {}
 
   Status ComputeInternal(OpKernelContext* context) const override {
     const Tensor* next_token = context->Input<Tensor>(0);
     const Tensor* status = context->Input<Tensor>(1);
     const Tensor* ctl = context->Input<Tensor>(2);
     ORT_ENFORCE(next_token != nullptr && status != nullptr && ctl != nullptr);
-    ORT_RETURN_IF_NOT(next_token->Shape().Size() >= 1 && HasElementCount(ctl, 8),
+    ORT_RETURN_IF_NOT(next_token->Shape().Size() >= 1 && ctl->Shape().Size() >= 8,
                       "FoldTail received an invalid control tensor shape");
     const int64_t status_count = status->Shape().Size();
     ORT_RETURN_IF_NOT(status_count <= std::numeric_limits<int>::max(),
@@ -152,8 +153,12 @@ class FoldTail final : public CudaKernel {
     return speculative_fold::LaunchFoldTail(
         next_token->Data<int64_t>(), status->Data<int32_t>(),
         static_cast<int>(status_count), ctl->Data<int64_t>(),
-        done->MutableData<int32_t>(), updated_ctl_ptr, Stream(context));
+        done->MutableData<int32_t>(), updated_ctl_ptr, Stream(context),
+        static_cast<int>(ctl->Shape().Size()), ctl_slot_);
   }
+
+ private:
+  int ctl_slot_;
 };
 
 }  // namespace
