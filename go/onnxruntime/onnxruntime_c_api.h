@@ -308,6 +308,10 @@ ORT_RUNTIME_CLASS(ThreadingOptions);
 ORT_RUNTIME_CLASS(ArenaCfg);
 ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
+/** \deprecated The provider-bridge NvTensorRTRTXExecutionProvider has been removed. Retained for source
+ * compatibility only. Use the NVIDIA TensorRT RTX plugin EP via OrtApi::RegisterExecutionProviderLibrary instead.
+ */
+ORT_RUNTIME_CLASS(NvTensorRtRtxProviderOptions);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 ORT_RUNTIME_CLASS(CANNProviderOptions);
 ORT_RUNTIME_CLASS(DnnlProviderOptions);
