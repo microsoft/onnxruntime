@@ -1537,8 +1537,36 @@ TEST(MathOpTest, Pow_int32_int32_Exact) {
   test.AddInput<int32_t>("X", dims, {3, -2, 46340, 7});
   test.AddInput<int32_t>("Y", dims, {19, 31, 2, 0});
   test.AddOutput<int32_t>("Z", dims, {1162261467, std::numeric_limits<int32_t>::min(), 2147395600, 1});
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
+
+TEST(MathOpTest, Pow_Int32_ScalarFloatExponent_2) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims_x{4};
+  test.AddInput<int32_t>("X", dims_x, {3, -2, 46340, 7});
+  test.AddInput<float>("Y", {}, {2.0f});
+  test.AddOutput<int32_t>("Z", dims_x, {9, 4, 2147395600, 49});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(MathOpTest, Pow_Int32_ScalarDoubleExponent_3) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims_x{4};
+  test.AddInput<int32_t>("X", dims_x, {3, -2, 1290, 7});
+  test.AddInput<double>("Y", {}, {3.0});
+  test.AddOutput<int32_t>("Z", dims_x, {27, -8, 2146689000, 343});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(MathOpTest, Pow_Int64_ScalarFloatExponent_Overflow) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims_x{1};
+  test.AddInput<int64_t>("X", dims_x, {4294967296LL});
+  test.AddInput<float>("Y", {}, {2.0f});
+  test.AddOutput<int64_t>("Z", dims_x, {0});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
 
 TEST(MathOpTest, Pow_float16_float16) {
   std::vector<int64_t> dims{4};
