@@ -4,8 +4,7 @@ from pathlib import Path
 
 import ml_dtypes
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, checker, helper, numpy_helper, save
 
 
 def pack_rows(values, bits):
@@ -113,8 +112,8 @@ def make_model(path, block, first_bits, second_bits, bfloat, separate, malformed
         graph, opset_imports=[helper.make_opsetid("", 18), helper.make_opsetid("com.microsoft", 1)]
     )
     model.ir_version = 10
-    onnx.checker.check_model(model)
-    onnx.save(model, path)
+    checker.check_model(model)
+    save(model, path)
     if dense:
         first_weight, first_bias = projections[0]
         second_weight, second_bias = projections[1]

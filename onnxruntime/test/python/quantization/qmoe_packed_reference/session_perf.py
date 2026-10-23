@@ -12,9 +12,9 @@ from pathlib import Path
 
 import ml_dtypes
 import numpy as np
-import onnx
 from make_cuda_session_smoke import pack_rows
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, checker, helper, numpy_helper, save_model
+from onnx import __version__ as onnx_version
 
 ROOT = Path(__file__).resolve().parents[5]
 MODES = ("constant", "dynamic_metadata", "dynamic_all")
@@ -148,8 +148,8 @@ def fixtures(args, first_bits, second_bits, dtype_name):
             graph, opset_imports=[helper.make_opsetid("", 18), helper.make_opsetid("com.microsoft", 1)]
         )
         model.ir_version = 10
-        onnx.checker.check_model(model)
-        onnx.save_model(model, directory / f"{mode}.onnx")
+        checker.check_model(model)
+        save_model(model, directory / f"{mode}.onnx")
         lines = [
             f"{name} {directory / (name + '.bin')} {initializers[name].data_type} {values.ndim} "
             + " ".join(map(str, values.shape))
@@ -229,7 +229,7 @@ def main():
             ["git", "-C", ROOT.parent / "onnxruntime/cmake/external/onnx", "rev-parse", "HEAD"]
         ),
         "onnx_pinned_gitlink": command(["git", "-C", ROOT, "ls-tree", "HEAD", "cmake/external/onnx"]),
-        "python_dependencies": {"numpy": np.__version__, "onnx": onnx.__version__, "ml_dtypes": ml_dtypes.__version__},
+        "python_dependencies": {"numpy": np.__version__, "onnx": onnx_version, "ml_dtypes": ml_dtypes.__version__},
         "gpu_inventory": command(
             ["nvidia-smi", "--query-gpu=index,name,uuid,driver_version,memory.used", "--format=csv"]
         ),

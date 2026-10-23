@@ -37,7 +37,9 @@ struct Feed {
   std::string name;
   void* device = nullptr;
   Ort::Value value{nullptr};
-  ~Feed() { if (device) cudaFree(device); }
+  ~Feed() {
+    if (device) cudaFree(device);
+  }
 };
 
 int main(int argc, char** argv) {
@@ -68,7 +70,10 @@ int main(int argc, char** argv) {
     while (manifest >> name >> path >> type >> rank) {
       std::vector<int64_t> shape(rank);
       size_t elements = 1;
-      for (auto& dimension : shape) { manifest >> dimension; elements *= dimension; }
+      for (auto& dimension : shape) {
+        manifest >> dimension;
+        elements *= dimension;
+      }
       const size_t bytes = elements * (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8 ? 1 : 2);
       std::vector<char> host(bytes);
       std::ifstream input(path, std::ios::binary);
@@ -78,13 +83,14 @@ int main(int argc, char** argv) {
       Check(cudaMalloc(&feed->device, bytes));
       Check(cudaMemcpy(feed->device, host.data(), bytes, cudaMemcpyHostToDevice));
       values.push_back(Ort::Value::CreateTensor(gpu, feed->device, bytes, shape.data(), shape.size(),
-                                               static_cast<ONNXTensorElementDataType>(type)));
+                                                static_cast<ONNXTensorElementDataType>(type)));
       feeds.push_back(std::move(feed));
     }
     for (const auto& feed : feeds) names.push_back(feed->name.c_str());
     const size_t before_init = Used();
     const double feed_setup_ms = std::chrono::duration<double, std::milli>(
-      std::chrono::steady_clock::now() - feed_start).count();
+                                     std::chrono::steady_clock::now() - feed_start)
+                                     .count();
     std::unique_ptr<Ort::Session> session;
     const double init_ms = Time([&] { session = std::make_unique<Ort::Session>(env, argv[1], options); });
     const size_t after_init = Used();
@@ -124,7 +130,7 @@ int main(int argc, char** argv) {
            << "\",\"device\":\"" << properties.name << "\",\"uuid_hex\":\"";
     for (unsigned char byte : properties.uuid.bytes) result << std::hex << std::setw(2) << std::setfill('0') << int(byte);
     result << std::dec << "\",\"cuda_runtime\":" << runtime << ",\"cuda_driver\":" << driver
-          << ",\"feed_setup_ms\":" << feed_setup_ms << ",\"peak_host_rss_bytes\":" << usage.ru_maxrss * 1024ULL
+           << ",\"feed_setup_ms\":" << feed_setup_ms << ",\"peak_host_rss_bytes\":" << usage.ru_maxrss * 1024ULL
            << ",\"init_ms\":" << init_ms << ",\"first_run_ms\":" << first_ms
            << ",\"device_used_bytes\":{\"before_feeds\":" << before_feeds << ",\"before_init\":" << before_init
            << ",\"after_init\":" << after_init << ",\"after_first\":" << after_first
