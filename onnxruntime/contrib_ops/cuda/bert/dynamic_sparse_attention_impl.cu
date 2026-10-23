@@ -14,6 +14,7 @@
 #include <type_traits>
 
 #include "core/common/safeint.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
@@ -892,7 +893,16 @@ __global__ void GroupedPrefillDynamicSparseAttentionKernel(
   }
 }
 
-template <typename T, int kQueryHeadsPerBlock, bool kWarpLocalMetadata, bool kQuantizedCache = false>
+__device__ __forceinline__ float4 DequantizeCacheWord(uint32_t packed, float4 scales) {
+  return make_float4(
+      static_cast<float>(static_cast<int32_t>(packed << 24) >> 24) * scales.x,
+      static_cast<float>(static_cast<int32_t>(packed << 16) >> 24) * scales.y,
+      static_cast<float>(static_cast<int32_t>(packed << 8) >> 24) * scales.z,
+      static_cast<float>(static_cast<int32_t>(packed) >> 24) * scales.w);
+}
+
+template <typename T, int kQueryHeadsPerBlock, bool kWarpLocalMetadata,
+          bool kQuantizedCache = false, bool kVectorizedStaging = false>
 __global__ void GroupedDecodeDynamicSparseAttentionKernel(
     const T* query,
     const T* main_key,
@@ -1084,7 +1094,32 @@ __global__ void GroupedDecodeDynamicSparseAttentionKernel(
             ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * source_length +
              candidate_index) *
             head_size;
-        if constexpr (kQuantizedCache) {
+        if constexpr (kQuantizedCache && kVectorizedStaging) {
+          const int d = load_lane * 8;
+          float4* staged_key = reinterpret_cast<float4*>(shared_key + shared_offset + d);
+          float4* staged_value = reinterpret_cast<float4*>(shared_value + shared_offset + d);
+          if (candidate_is_auxiliary) {
+            const uint4 packed_key = __ldg(reinterpret_cast<const uint4*>(auxiliary_key + offset + d));
+            const uint4 packed_value = __ldg(reinterpret_cast<const uint4*>(auxiliary_value + offset + d));
+            const T* key = reinterpret_cast<const T*>(&packed_key);
+            const T* value = reinterpret_cast<const T*>(&packed_value);
+            staged_key[0] = make_float4(ToFloat(key[0]), ToFloat(key[1]), ToFloat(key[2]), ToFloat(key[3]));
+            staged_key[1] = make_float4(ToFloat(key[4]), ToFloat(key[5]), ToFloat(key[6]), ToFloat(key[7]));
+            staged_value[0] = make_float4(ToFloat(value[0]), ToFloat(value[1]), ToFloat(value[2]), ToFloat(value[3]));
+            staged_value[1] = make_float4(ToFloat(value[4]), ToFloat(value[5]), ToFloat(value[6]), ToFloat(value[7]));
+          } else {
+            const uint2 packed_key = __ldg(reinterpret_cast<const uint2*>(
+                reinterpret_cast<const int8_t*>(main_key) + offset + d));
+            const uint2 packed_value = __ldg(reinterpret_cast<const uint2*>(
+                reinterpret_cast<const int8_t*>(main_value) + offset + d));
+            const float4* key_scales = reinterpret_cast<const float4*>(key_scale + kv_head * head_size + d);
+            const float4* value_scales = reinterpret_cast<const float4*>(value_scale + kv_head * head_size + d);
+            staged_key[0] = DequantizeCacheWord(packed_key.x, __ldg(key_scales));
+            staged_key[1] = DequantizeCacheWord(packed_key.y, __ldg(key_scales + 1));
+            staged_value[0] = DequantizeCacheWord(packed_value.x, __ldg(value_scales));
+            staged_value[1] = DequantizeCacheWord(packed_value.y, __ldg(value_scales + 1));
+          }
+        } else if constexpr (kQuantizedCache) {
           for (int d = load_lane; d < head_size; d += 32) {
             const int channel = kv_head * head_size + d;
             shared_key[shared_offset + d] =
@@ -1507,7 +1542,7 @@ __global__ void MergeDynamicSparseAttentionKernel(const float* partial_max,
   }
 }
 
-template <typename T>
+template <typename T, bool kSharedScales = false>
 __global__ void MergeGroupedDecodeDynamicSparseAttentionKernel(const float* partial_max,
                                                                const float* partial_sum,
                                                                const float* partial_output,
@@ -1525,6 +1560,51 @@ __global__ void MergeGroupedDecodeDynamicSparseAttentionKernel(const float* part
   const int partial_start = query_block * split_count;
   __shared__ float max_logit;
   __shared__ float denominator;
+  __shared__ float split_scales[kSharedScales ? 32 : 1];
+  __shared__ unsigned active_splits;
+
+  if constexpr (kSharedScales) {
+    if (h < 32) {
+      const float split_max = lane < split_count ? partial_max[partial_start + lane] : -FLT_MAX;
+      float value = split_max;
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        value = fmaxf(value, __shfl_down_sync(0xffffffff, value, offset));
+      }
+      const float maximum = __shfl_sync(0xffffffff, value, 0);
+      const float sum = lane < split_count ? partial_sum[partial_start + lane] : 0.0f;
+      const bool active = lane < split_count && sum != 0.0f;
+      const float factor = active ? expf(split_max - maximum) : 0.0f;
+      split_scales[lane] = factor;
+      const unsigned mask = __ballot_sync(0xffffffff, active);
+      value = active ? sum * factor : 0.0f;
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        value += __shfl_down_sync(0xffffffff, value, offset);
+      }
+      if (lane == 0) {
+        denominator = value;
+        active_splits = mask;
+      }
+    }
+    __syncthreads();
+
+    if (h < head_size) {
+      float accumulator = 0.0f;
+      const unsigned mask = active_splits;
+      const int end = mask == 0 ? 0 : 32 - __clz(mask);
+      for (int split = 0; split < end; ++split) {
+        // Do not skip an active split whose scale underflows: zero times a
+        // nonfinite partial must retain the generic path's behavior.
+        if (mask & (1u << split)) {
+          const int64_t partial_offset =
+              static_cast<int64_t>(partial_start + split) * head_size + h;
+          accumulator += partial_output[partial_offset] * split_scales[split];
+        }
+      }
+      output[static_cast<int64_t>(query_block) * head_size + h] =
+          denominator == 0.0f ? FromFloat<T>(0.0f) : FromFloat<T>(accumulator / denominator);
+    }
+    return;
+  }
 
   if (h < 32) {
     float value = lane < split_count ? partial_max[partial_start + lane] : -FLT_MAX;
@@ -1649,8 +1729,12 @@ bool UseGroupedDecodeAttention(const DynamicSparseAttentionParameters& parameter
                                size_t element_size,
                                size_t max_shared_memory_per_block,
                                bool quantized_cache = false) {
+  static const int max_decode_rows =
+      ParseEnvironmentVariableWithDefault<int>("ORT_DSA_INT8_GROUPED_MAX_ROWS", 2);
+  ORT_ENFORCE(max_decode_rows >= 2 && max_decode_rows <= 4,
+              "ORT_DSA_INT8_GROUPED_MAX_ROWS must be in [2, 4].");
   return (parameters.sequence_length == 1 ||
-          (quantized_cache && parameters.sequence_length == 2)) &&
+          (quantized_cache && parameters.sequence_length <= max_decode_rows)) &&
          parameters.num_heads / parameters.kv_num_heads >= 4 &&
          GetCandidateCapacity(parameters) > kSplitCandidateSize &&
          SupportsGroupedAttention(parameters, element_size, max_shared_memory_per_block) &&
@@ -1971,19 +2055,31 @@ Status LaunchDynamicSparseAttention(
     const size_t grouped_shared_bytes =
         GetGroupedAttentionSharedBytes(parameters, data.quantized_cache ? sizeof(float) : sizeof(T));
     if (data.quantized_cache) {
-      GroupedDecodeDynamicSparseAttentionKernel<T, kGroupedDecodeQueryHeadsPerBlock, true, true>
-          <<<static_cast<int>(grouped_blocks), kGroupedDecodeThreads, grouped_shared_bytes, stream>>>(
-              data.prepared_query, data.present_key, data.present_value,
-              data.auxiliary_key, data.auxiliary_value, data.selected_indices,
-              data.selected_counts, data.seqlens_k, data.head_sink,
-              partial_max, partial_sum, partial_output,
-              static_cast<int>(grouped_blocks), split_count, parameters.sequence_length,
-              parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
-              parameters.cache_capacity, parameters.auxiliary_sequence_length,
-              parameters.max_selected, parameters.local_window_size, parameters.scale,
-              local_plus_selected,
-              parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
-              parameters.use_smooth_softmax, data.key_scale, data.value_scale);
+      static const int vectorized_staging =
+          ParseEnvironmentVariableWithDefault<int>("ORT_DSA_INT8_VECTOR_STAGING", 0);
+      ORT_ENFORCE(vectorized_staging == 0 || vectorized_staging == 1,
+                  "ORT_DSA_INT8_VECTOR_STAGING must be 0 or 1.");
+      const auto launch = [&](auto vectorized) {
+        GroupedDecodeDynamicSparseAttentionKernel<T, kGroupedDecodeQueryHeadsPerBlock, true, true,
+                                                  decltype(vectorized)::value>
+            <<<static_cast<int>(grouped_blocks), kGroupedDecodeThreads, grouped_shared_bytes, stream>>>(
+                data.prepared_query, data.present_key, data.present_value,
+                data.auxiliary_key, data.auxiliary_value, data.selected_indices,
+                data.selected_counts, data.seqlens_k, data.head_sink,
+                partial_max, partial_sum, partial_output,
+                static_cast<int>(grouped_blocks), split_count, parameters.sequence_length,
+                parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
+                parameters.cache_capacity, parameters.auxiliary_sequence_length,
+                parameters.max_selected, parameters.local_window_size, parameters.scale,
+                local_plus_selected,
+                parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
+                parameters.use_smooth_softmax, data.key_scale, data.value_scale);
+      };
+      if (vectorized_staging) {
+        launch(std::true_type{});
+      } else {
+        launch(std::false_type{});
+      }
     } else if (parameters.cache_capacity <= 131072) {
       GroupedDecodeDynamicSparseAttentionKernel<T, kGroupedDecodeQueryHeadsPerBlock, true>
           <<<static_cast<int>(grouped_blocks), kGroupedDecodeThreads, grouped_shared_bytes, stream>>>(
@@ -2016,9 +2112,21 @@ Status LaunchDynamicSparseAttention(
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     if (split_count <= 32) {
-      MergeGroupedDecodeDynamicSparseAttentionKernel<<<static_cast<int>(query_blocks), threads, 0, stream>>>(
-          partial_max, partial_sum, partial_output, data.output,
-          static_cast<int>(query_blocks), split_count, parameters.head_size);
+      static const int shared_scales =
+          ParseEnvironmentVariableWithDefault<int>("ORT_DSA_SHARED_SCALE_MERGE", 0);
+      ORT_ENFORCE(shared_scales == 0 || shared_scales == 1,
+                  "ORT_DSA_SHARED_SCALE_MERGE must be 0 or 1.");
+      const auto merge = [&](auto specialized) {
+        MergeGroupedDecodeDynamicSparseAttentionKernel<T, decltype(specialized)::value>
+            <<<static_cast<int>(query_blocks), threads, 0, stream>>>(
+                partial_max, partial_sum, partial_output, data.output,
+                static_cast<int>(query_blocks), split_count, parameters.head_size);
+      };
+      if (shared_scales) {
+        merge(std::true_type{});
+      } else {
+        merge(std::false_type{});
+      }
     } else {
       const size_t merge_shared_bytes = static_cast<size_t>(threads) * sizeof(float);
       MergeDynamicSparseAttentionKernel<<<static_cast<int>(query_blocks), threads, merge_shared_bytes, stream>>>(
@@ -2099,6 +2207,56 @@ Status LaunchDynamicSparseAttention(
   }
   return CUDA_CALL(cudaGetLastError());
 }
+
+template <typename T>
+Status AppendDynamicSparseAttentionCache(
+    cudaStream_t stream, const DynamicSparseAttentionParameters& parameters,
+    const DynamicSparseAttentionData<T>& data, bool initialize_key_cache,
+    bool initialize_value_cache, int max_threads_per_block) {
+  const int threads = GetThreadsPerBlock(parameters.head_size);
+  ORT_RETURN_IF_NOT(threads <= max_threads_per_block,
+                    "DynamicSparseAttention: head_size exceeds the CUDA thread-block limit.");
+  const int64_t cache_elements = static_cast<int64_t>(parameters.batch_size) *
+      parameters.kv_num_heads * parameters.cache_capacity * parameters.head_size;
+  const size_t cache_bytes = SafeInt<size_t>(cache_elements) * (data.quantized_cache ? 1 : sizeof(T));
+  for (const auto& cache : {std::make_pair(data.present_key, data.past_key),
+                            std::make_pair(data.present_value, data.past_value)}) {
+    const bool initialize = cache.first == data.present_key ? initialize_key_cache : initialize_value_cache;
+    if (initialize) {
+      if (cache.second == nullptr) {
+        CUDA_RETURN_IF_ERROR(cudaMemsetAsync(cache.first, 0, cache_bytes, stream));
+      } else {
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cache.first, cache.second, cache_bytes,
+                                             cudaMemcpyDeviceToDevice, stream));
+      }
+    }
+  }
+  const int64_t kv_blocks = static_cast<int64_t>(parameters.batch_size) *
+      parameters.sequence_length * parameters.kv_num_heads;
+  ORT_RETURN_IF_ERROR(CheckBlockCount(kv_blocks, "prefill KV handoff"));
+  const size_t shared_bytes = static_cast<size_t>(threads) * sizeof(float) +
+      static_cast<size_t>(parameters.head_size) * sizeof(T);
+  const int packed_stride = parameters.query_hidden_size + 2 * parameters.kv_hidden_size;
+  AppendKvKernel<<<static_cast<int>(kv_blocks), threads, shared_bytes, stream>>>(
+      data.query, data.key, data.value, data.present_key, data.present_value,
+      data.seqlens_k, data.position_ids, data.cos_cache, data.sin_cache,
+      data.k_norm_weight, static_cast<int>(kv_blocks), parameters.sequence_length,
+      parameters.kv_num_heads, parameters.head_size, parameters.query_hidden_size,
+      parameters.kv_hidden_size, packed_stride, parameters.cache_capacity,
+      parameters.rotary_dim, parameters.rotary_max_position, parameters.rotary_offset,
+      parameters.rotary_interleaved, parameters.is_packed_qkv,
+      parameters.qk_norm_epsilon, data.quantized_cache, data.key_scale, data.value_scale);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+#define INSTANTIATE_PREFILL_CACHE(T) \
+  template Status AppendDynamicSparseAttentionCache<T>( \
+      cudaStream_t, const DynamicSparseAttentionParameters&, \
+      const DynamicSparseAttentionData<T>&, bool, bool, int);
+INSTANTIATE_PREFILL_CACHE(float)
+INSTANTIATE_PREFILL_CACHE(half)
+INSTANTIATE_PREFILL_CACHE(__nv_bfloat16)
+#undef INSTANTIATE_PREFILL_CACHE
 
 template Status LaunchDynamicSparseAttention<float>(
     cudaStream_t, const DynamicSparseAttentionParameters&,

@@ -70,7 +70,8 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())
         .MayInplace(3, 1)
         .MayInplace(4, 2)
-        .InputMemoryType(OrtMemTypeCPUInput, 10),
+        .InputMemoryType(OrtMemTypeCPUInput, 10)
+        .InputMemoryType(OrtMemTypeCPUInput, 20),
     DynamicSparseAttention);
 
 Status DynamicSparseAttentionPrepareQueryProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -551,6 +552,11 @@ DynamicSparseAttention::DynamicSparseAttention(const OpKernelInfo& info) : WebGp
 }
 
 Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+  const auto* numerics = context.Input(20);
+  ORT_RETURN_IF_NOT(numerics == nullptr ||
+                        (numerics->IsDataType<int32_t>() && numerics->Shape().Size() == 1 &&
+                         numerics->Data<int32_t>()[0] == 0),
+                    "DynamicSparseAttention: nonzero prefill_numerics requires CUDA");
   const Tensor* query = context.Input<Tensor>(0);
   const Tensor* key = context.Input<Tensor>(1);
   const Tensor* value = context.Input<Tensor>(2);

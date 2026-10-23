@@ -5,18 +5,29 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#include <cub/block/block_reduce.cuh>
 #include <math_constants.h>
 #include <cmath>
 #include <limits>
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "contrib_ops/cuda/bert/mtp_moe_kernels.cuh"
 
 namespace onnxruntime::contrib::cuda {
 namespace {
 
 constexpr int kThreads = 256;
 constexpr int kArgmaxThreads = 256;
+
+__global__ void MtpProjectionAddKernel(const __nv_bfloat16* hidden, const __nv_bfloat16* embedding,
+                                       __nv_bfloat16* output, int64_t count, int64_t width, int64_t branches) {
+  const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (i < count) {
+    const int64_t embedding_index = i / (branches * width) * width + i % width;
+    output[i] = __float2bfloat16_rn(__bfloat162float(hidden[i]) + __bfloat162float(embedding[embedding_index]));
+  }
+}
 
 __device__ __forceinline__ float ToFloat(float value) { return value; }
 __device__ __forceinline__ float ToFloat(half value) { return __half2float(value); }
@@ -117,12 +128,14 @@ __global__ void RowSelectKernel(const int64_t* selection,
                                 const uint16_t* input2, uint16_t* output0,
                                 uint16_t* output1, uint16_t* output2,
                                 int64_t row_size0, int64_t row_size1,
-                                int64_t row_size2) {
+                                int64_t row_size2, int64_t rows) {
   const int which = blockIdx.y;
   const uint16_t* input = which == 0 ? input0 : (which == 1 ? input1 : input2);
   uint16_t* output = which == 0 ? output0 : (which == 1 ? output1 : output2);
   const int64_t row_size = which == 0 ? row_size0 : (which == 1 ? row_size1 : row_size2);
-  const int64_t selected_row = selection[0] != 0 ? 1 : 0;
+  const int64_t index = selection[0];
+  const int64_t selected_row = rows == 2 ? (index != 0 ? 1 : 0)
+                                        : (index < 0 ? 0 : (index >= rows ? rows - 1 : index));
   for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
        i < row_size; i += static_cast<int64_t>(gridDim.x) * blockDim.x) {
     output[i] = input[selected_row * row_size + i];
@@ -135,6 +148,159 @@ __device__ __forceinline__ float StableSigmoid(float value) {
   }
   const float exp_value = expf(value);
   return exp_value / (1.0f + exp_value);
+}
+
+__global__ void DotProductGateKernel(
+    const __nv_bfloat16* key, const __nv_bfloat16* query, const __nv_bfloat16* value,
+    __nv_bfloat16* output, int64_t width, int64_t value_repeat, float divisor, float epsilon) {
+  using Reduce = cub::BlockReduce<float, kThreads>;
+  __shared__ typename Reduce::TempStorage reduction;
+  __shared__ float gate;
+  const int64_t base = static_cast<int64_t>(blockIdx.x) * width;
+  float dot = 0.0f;
+  for (int64_t k = threadIdx.x; k < width; k += kThreads) {
+    dot += __bfloat162float(__float2bfloat16_rn(
+        __bfloat162float(key[base + k]) * __bfloat162float(query[base + k])));
+  }
+  const float total = Reduce(reduction).Sum(dot);
+  if (threadIdx.x == 0) {
+    const auto round = [](float x) { return __bfloat162float(__float2bfloat16_rn(x)); };
+    const float scaled = round(round(total) / round(divisor));
+    const float sign = scaled > 0 ? 1.0f : (scaled < 0 ? -1.0f : scaled);
+    const float root = round(sqrtf(fmaxf(fabsf(scaled), round(epsilon))));
+    using namespace onnxruntime::cuda;
+    const BFloat16 a(round(sign * root));
+    gate = static_cast<float>(a > BFloat16(0.0f)
+                                 ? BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(-a))
+                                 : BFloat16(1.0f) - BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(a)));
+  }
+  __syncthreads();
+  for (int64_t k = threadIdx.x; k < width; k += kThreads) {
+    const int64_t value_base = static_cast<int64_t>(blockIdx.x) / value_repeat * width;
+    output[base + k] = __float2bfloat16_rn(__bfloat162float(value[value_base + k]) * gate);
+  }
+}
+
+__global__ void RMSNormRotaryKernel(
+    const __nv_bfloat16* input, const float* scale, const int64_t* positions,
+    const __nv_bfloat16* cosine, const __nv_bfloat16* sine, __nv_bfloat16* output,
+    float* normalized, int heads, int sequence, int input_stride, int rotary_dim,
+    int cache_rows, bool scalar_position, float epsilon, bool dense_prefill, bool fp32_rotary) {
+  constexpr int threads = 64;
+  constexpr int width = 256;
+  __shared__ float partial[2];
+  __shared__ __nv_bfloat16 values[width];
+  const int group = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int token = group / heads;
+  const auto* x = input + static_cast<int64_t>(group) * input_stride;
+  float v[4];
+  float sum = 0.f;
+#pragma unroll
+  for (int i = 0; i < 4; ++i) v[i] = __bfloat162float(x[tid + i * threads]);
+  // Match reduce_square_matrix_columns' four strided values and two-warp shuffle tree.
+#pragma unroll
+  for (int i = 0; i < 4; ++i) sum += v[i] * v[i];
+#pragma unroll
+  for (int step = 16; step > 0; step >>= 1) sum += __shfl_down_sync(0xffffffff, sum, step);
+  if ((tid & 31) == 0) partial[tid / 32] = sum;
+  __syncthreads();
+  const float total = partial[0] + partial[1];
+  const float rms = sqrtf(__fadd_rn(total / float(width), epsilon));
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    const int column = tid + i * threads;
+    const float norm = dense_prefill ? __fmul_rn(v[i], __fdiv_rn(1.f, rms)) : v[i] / rms;
+    const auto rounded = __float2bfloat16_rn(__fmul_rn(norm, scale[column]));
+    values[column] = rounded;
+    if (normalized) normalized[static_cast<int64_t>(group) * width + column] = __bfloat162float(rounded);
+  }
+  __syncthreads();
+  const int64_t base = positions[scalar_position ? 0 : token];
+  const bool valid = scalar_position ? base >= 0 && base <= static_cast<int64_t>(cache_rows) - sequence
+                                     : base >= 0 && base < cache_rows;
+  const int64_t position = valid && scalar_position ? base + token % sequence : base;
+  const int half = rotary_dim / 2;
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    const int column = tid + i * threads;
+    auto value = values[column];
+    if (column < rotary_dim && valid) {
+      const int partner = (column + half) % rotary_dim;
+      const int64_t cache = position * half + column % half;
+      if (!dense_prefill && fp32_rotary) {
+        const float a = __bfloat162float(value), b = __bfloat162float(values[partner]);
+        value = __float2bfloat16_rn(__fadd_rn(
+            __fmul_rn(a, __bfloat162float(cosine[cache])),
+            __fmul_rn(column < half ? -b : b, __bfloat162float(sine[cache]))));
+      } else {
+        const __nv_bfloat16 sign = __float2bfloat16_rn(column < half ? -1.f : 1.f);
+        value = value * cosine[cache] + sign * values[partner] * sine[cache];
+      }
+    }
+    output[static_cast<int64_t>(group) * width + column] = value;
+  }
+}
+
+__device__ __forceinline__ float RoundedBf16Sigmoid(float value, bool sigmoid_in_fp32) {
+  if (sigmoid_in_fp32) {
+    return __bfloat162float(__float2bfloat16_rn(StableSigmoid(value)));
+  }
+  using namespace onnxruntime::cuda;
+  const BFloat16 a(value);
+  return static_cast<float>(a > BFloat16(0.0f)
+                               ? BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(-a))
+                               : BFloat16(1.0f) - BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(a)));
+}
+
+__device__ float ProjectedRowGate(const __nv_bfloat16* activation, const __nv_bfloat16* weight,
+                                int64_t row, int64_t input_width, bool sigmoid_in_fp32) {
+  using Reduce = cub::BlockReduce<float, kThreads>;
+  __shared__ typename Reduce::TempStorage reduction;
+  __shared__ float gate;
+  float dot = 0.0f;
+  for (int64_t k = threadIdx.x; k < input_width; k += kThreads) {
+    dot = fmaf(__bfloat162float(activation[row * input_width + k]),
+               __bfloat162float(weight[k]), dot);
+  }
+  const float total = Reduce(reduction).Sum(dot);
+  if (threadIdx.x == 0) {
+    const float value = __bfloat162float(__float2bfloat16_rn(total));
+    gate = RoundedBf16Sigmoid(value, sigmoid_in_fp32);
+  }
+  __syncthreads();
+  return gate;
+}
+
+__global__ void PrepareSharedExpertKernel(
+    const __nv_bfloat16* up, const __nv_bfloat16* silu_gate, const __nv_bfloat16* activation,
+    const __nv_bfloat16* weight, __nv_bfloat16* prepared, float* row_gates,
+    int width, int input_width) {
+  const int row = blockIdx.x;
+  const float gate = ProjectedRowGate(activation, weight, row, input_width, false);
+  if (threadIdx.x == 0) row_gates[row] = gate;
+  for (int column = threadIdx.x; column < width; column += blockDim.x) {
+    const int64_t index = static_cast<int64_t>(row) * width + column;
+    const float value = __bfloat162float(silu_gate[index]);
+    const auto silu = __float2bfloat16_rn(value * RoundedBf16Sigmoid(value, false));
+    prepared[index] = __float2bfloat16_rn(__bfloat162float(up[index]) * __bfloat162float(silu));
+  }
+}
+
+__global__ void ProjectedSigmoidGateMulKernel(
+    const __nv_bfloat16* attention, const __nv_bfloat16* activation,
+    const __nv_bfloat16* weight, const __nv_bfloat16* residual, __nv_bfloat16* output,
+    int64_t input_width, int64_t output_width, bool sigmoid_in_fp32) {
+  const int64_t row = blockIdx.x;
+  const float gate = ProjectedRowGate(activation, weight, row, input_width, sigmoid_in_fp32);
+  for (int64_t column = threadIdx.x; column < output_width; column += kThreads) {
+    const int64_t index = row * output_width + column;
+    __nv_bfloat16 value = __float2bfloat16_rn(__bfloat162float(attention[index]) * gate);
+    if (residual != nullptr) {
+      value = __float2bfloat16_rn(__bfloat162float(value) + __bfloat162float(residual[index]));
+    }
+    output[index] = value;
+  }
 }
 
 template <bool BroadcastGate, bool HasResidual, bool SiluGate = false>
@@ -281,11 +447,98 @@ Status LaunchEmbeddingRMSNorm(cudaStream_t stream, const int64_t* ids, const uin
 
 Status LaunchRowSelect(cudaStream_t stream, const int64_t* selection,
                        const uint16_t* const* inputs, uint16_t* const* outputs,
-                       const int64_t* row_sizes) {
+                       const int64_t* row_sizes, int64_t rows) {
   const dim3 grid(8, 3);
   RowSelectKernel<<<grid, kThreads, 0, stream>>>(
       selection, inputs[0], inputs[1], inputs[2], outputs[0], outputs[1], outputs[2],
-      row_sizes[0], row_sizes[1], row_sizes[2]);
+      row_sizes[0], row_sizes[1], row_sizes[2], rows);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+Status LaunchDotProductGate(cudaStream_t stream, const uint16_t* key, const uint16_t* query,
+                            const uint16_t* value, uint16_t* output, int64_t groups,
+                            int64_t width, int64_t value_repeat, float divisor, float epsilon) {
+  ORT_RETURN_IF_NOT(groups >= 0 && groups <= std::numeric_limits<int>::max(),
+                    "DotProductGate exceeds CUDA grid limits");
+  if (groups == 0) return Status::OK();
+  DotProductGateKernel<<<static_cast<int>(groups), kThreads, 0, stream>>>(
+      reinterpret_cast<const __nv_bfloat16*>(key), reinterpret_cast<const __nv_bfloat16*>(query),
+      reinterpret_cast<const __nv_bfloat16*>(value), reinterpret_cast<__nv_bfloat16*>(output),
+      width, value_repeat, divisor, epsilon);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+Status LaunchPackedMtpMoe(cudaStream_t stream, const uint16_t* input, const uint16_t* router,
+                          const uint8_t* gate_up, const uint8_t* down, uint16_t* output,
+                          float* scratch, int rows, float gate_up_scale, float down_scale) {
+  if (rows == 0) return Status::OK();
+  mtp_moe::RouterKernel<<<rows, 32, 0, stream>>>(reinterpret_cast<const __nv_bfloat16*>(router), scratch);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  mtp_moe::GateUpQuantKernel<2><<<dim3(40, 10, rows), 256, 0, stream>>>(
+      reinterpret_cast<const __nv_bfloat16*>(input), gate_up, scratch, gate_up_scale);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  mtp_moe::DownQuantKernel<2><<<dim3(640, rows), 320, 0, stream>>>(
+      down, scratch, reinterpret_cast<__nv_bfloat16*>(output), down_scale);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+Status LaunchMtpProjectionAdd(cudaStream_t stream, const uint16_t* hidden, const uint16_t* embedding,
+                              uint16_t* output, int64_t count, int64_t width, int64_t branches) {
+  if (count == 0) return Status::OK();
+  const int64_t blocks = (count - 1) / kThreads + 1;
+  ORT_RETURN_IF_NOT(blocks <= std::numeric_limits<int>::max(), "MtpInputProjection exceeds CUDA grid limits");
+  MtpProjectionAddKernel<<<static_cast<int>(blocks), kThreads, 0, stream>>>(
+      reinterpret_cast<const __nv_bfloat16*>(hidden), reinterpret_cast<const __nv_bfloat16*>(embedding),
+      reinterpret_cast<__nv_bfloat16*>(output), count, width, branches);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+Status LaunchRMSNormRotary(cudaStream_t stream, const uint16_t* input, const float* scale,
+                          const int64_t* positions, const uint16_t* cosine, const uint16_t* sine,
+                          uint16_t* output, float* normalized, int groups, int heads, int sequence,
+                          int input_stride, int rotary_dim, int cache_rows, bool scalar_position,
+                          float epsilon, bool dense_prefill, bool fp32_rotary) {
+  ORT_RETURN_IF_NOT(groups > 1 && heads > 0 && sequence > 0 && input_stride >= 256 &&
+                        rotary_dim > 0 && rotary_dim <= 256 && rotary_dim % 2 == 0 && cache_rows > 0 &&
+                        (dense_prefill || fp32_rotary),
+                    "RMSNormRotary fast path requires valid dimensions and width 256");
+  RMSNormRotaryKernel<<<groups, 64, 0, stream>>>(
+      reinterpret_cast<const __nv_bfloat16*>(input), scale, positions,
+      reinterpret_cast<const __nv_bfloat16*>(cosine), reinterpret_cast<const __nv_bfloat16*>(sine),
+      reinterpret_cast<__nv_bfloat16*>(output), normalized, heads, sequence, input_stride,
+      rotary_dim, cache_rows, scalar_position, epsilon, dense_prefill, fp32_rotary);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+Status LaunchPrepareSharedExpert(cudaStream_t stream, const uint16_t* up, const uint16_t* silu_gate,
+                                const uint16_t* activation, const uint16_t* weight,
+                                uint16_t* prepared, float* row_gates,
+                                int rows, int width, int input_width) {
+  ORT_RETURN_IF_NOT(rows >= 0 && width > 0 && input_width > 0,
+                    "Shared expert preparation requires nonnegative rows and positive widths");
+  if (rows == 0) return Status::OK();
+  PrepareSharedExpertKernel<<<rows, kThreads, 0, stream>>>(
+      reinterpret_cast<const __nv_bfloat16*>(up), reinterpret_cast<const __nv_bfloat16*>(silu_gate),
+      reinterpret_cast<const __nv_bfloat16*>(activation), reinterpret_cast<const __nv_bfloat16*>(weight),
+      reinterpret_cast<__nv_bfloat16*>(prepared), row_gates, width, input_width);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+Status LaunchProjectedSigmoidGateMul(cudaStream_t stream, const uint16_t* attention,
+                                     const uint16_t* activation, const uint16_t* weight,
+                                     const uint16_t* residual, uint16_t* output,
+                                     int64_t rows, int64_t input_width, int64_t output_width,
+                                     bool sigmoid_in_fp32) {
+  ORT_RETURN_IF_NOT(rows >= 0 && rows <= std::numeric_limits<int>::max() &&
+                        input_width > 0 && output_width > 0,
+                    "SigmoidGateMul projected gate dimensions exceed CUDA limits");
+  if (rows == 0) return Status::OK();
+  ProjectedSigmoidGateMulKernel<<<static_cast<int>(rows), kThreads, 0, stream>>>(
+      reinterpret_cast<const __nv_bfloat16*>(attention),
+      reinterpret_cast<const __nv_bfloat16*>(activation),
+      reinterpret_cast<const __nv_bfloat16*>(weight),
+      reinterpret_cast<const __nv_bfloat16*>(residual), reinterpret_cast<__nv_bfloat16*>(output),
+      input_width, output_width, sigmoid_in_fp32);
   return CUDA_CALL(cudaGetLastError());
 }
 

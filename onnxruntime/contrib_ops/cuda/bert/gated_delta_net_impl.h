@@ -14,6 +14,12 @@ namespace contrib {
 namespace cuda {
 namespace gated_delta_net {
 
+template <typename T>
+size_t DensePrefillNormalizeWorkspaceBytes(int rows, int width);
+
+template <typename T>
+Status DensePrefillNormalize(T* data, int rows, int width, void* workspace, cudaStream_t stream);
+
 // Device pointers bound at execute time. The analog of a cuDNN variant pack.
 template <typename T>
 struct VariantPack {
@@ -32,6 +38,8 @@ struct VariantPack {
   T* output = nullptr;                     // [total_tokens, max(Hq,Hv), V]
   float* final_state = nullptr;            // [B, Hv, V, K]
   float* mid_state = nullptr;              // [B, Hv, V, K], state after local row 0
+  float* mid_state2 = nullptr;             // state after local row 1
+  float* mid_state3 = nullptr;             // state after local row 2
   float* state_update = nullptr;           // [B, C * (Hv + Hk*K + Hv*V)]
   void* workspace = nullptr;
 };

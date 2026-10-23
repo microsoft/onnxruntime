@@ -1465,6 +1465,30 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MtpMoe, 1,
+    OpSchema()
+        .SetDoc("Compatibility schema for legacy multi-token-prediction expert projection libraries. "
+                "Packed NVFP4 layouts and supported dimensions are defined by the supplying kernel library. "
+                "New generic expert graphs should use QMoE.")
+        .Attr("gate_up_global_scale", "Global gate/up weight scale.", AttributeProto::FLOAT, true)
+        .Attr("down_global_scale", "Global down weight scale.", AttributeProto::FLOAT, true)
+        .Input(0, "input", "BFloat16 hidden states.", "T")
+        .Input(1, "router_logits", "BFloat16 expert routing logits.", "T")
+        .Input(2, "gate_up_weights", "Legacy packed NVFP4 gate/up weights.", "T1")
+        .Input(3, "down_weights", "Legacy packed NVFP4 down weights.", "T1")
+        .Output(0, "output", "Hidden states with the input shape.", "T")
+        .Output(1, "scratch", "Implementation-defined projection scratch.", "T2")
+        .TypeConstraint("T", {"tensor(bfloat16)"}, "BFloat16 activations.")
+        .TypeConstraint("T1", {"tensor(uint8)"}, "Packed weights.")
+        .TypeConstraint("T2", {"tensor(float)"}, "Projection scratch.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput(ctx);
+          if (auto* scratch = ctx.getOutputType(1)) {
+            scratch->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+          }
+        }));
+
 constexpr const char* qMoE_ver1_doc = R"DOC(
       Quantized mixture of experts (MoE).
       A 2D input is the packed token-major form used by continuous-batching engines: tokens from
@@ -1602,12 +1626,28 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Expert-weight layout selector with quantization-specific meanings. For quant_type='int', "
               "-1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. "
               "0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. "
+              "Uniform INT2 on CUDA also accepts explicit 1 for SM80 CUTLASS W2_A16 bytes, "
+              "retaining logical [E,N,K/4] dimensions and ordinary block scales. It requires "
+              "supported packed GEMV/grouped-GEMM execution; raw fallback is unavailable. "
+              "Mixed-width CUDA INT execution requires 0; INT2 does not accept -1. "
               "For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; "
               "1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. "
               "NVFP4 block scales and global scales retain their original layouts and values. "
               "Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))
+        .Attr("int2_cache_experts",
+              "CUDA-only bounded resident expert cache capacity, default 0 (disabled). Requires uniform "
+              "prepacked INT2, mapped host FC1/FC2 weights and eager warmup before CUDA graph capture. "
+              "Requested resident experts are retained; inactive slots are replaced from GPU routing. "
+              "Active experts beyond capacity read mapped weights directly. Session/kernel-local allocation.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("int2_cache_lend_prefill",
+              "CUDA-only boolean, default 0. Lends the INT2 cache allocation to this same QMoE operator's "
+              "packed prefill workspace, tiling to fit. Invalidates cache metadata before lending; "
+              "subsequent decode repopulates it. Requires int2_cache_experts > 0 and one ordered stream. "
+              "Does not coordinate separate inference sessions.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0,
                "input",
                "2D packed token tensor with shape (total_tokens, hidden_size), where tokens from ragged sequences "
@@ -3196,6 +3236,18 @@ The partition widths must be positive and sum to N.)DOC")
               AttributeProto::INT, static_cast<int64_t>(128))
         .Attr("split_sizes", "Optional last-dimension output widths (one to eight positive sizes).",
               AttributeProto::INTS, OPTIONAL_VALUE)
+        .Attr("shared_expert",
+              "When one, BF16 A is the up branch and shared_silu_gate is the equal-shaped gate branch. "
+              "Multiply A by BF16(shared_silu_gate * BF16(sigmoid(shared_silu_gate))) before projection. "
+              "Round the projection to BF16, multiply by the BF16 sigmoid of the BF16 dot product "
+              "shared_gate_activation @ shared_gate_weight, round to BF16, then add shared_residual. "
+              "Sigmoid uses BF16 intermediates. Requires all shared inputs and excludes bias, a_scale, "
+              "split_sizes and original prefill weights. Default zero preserves ordinary projection.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("prefill_weight_offsets",
+              "Output-column offsets for optional original-type [K, segmentN] prefill weights. "
+              "Used only when prefill_numerics is one; decode retains FP8 weights.",
+              AttributeProto::INTS, std::vector<int64_t>{})
         .Input(0, "A", "Row-major FP16/BF16 activation of shape [..., K].", "T")
         .Input(1, "B", "Row-major FP8 E4M3 weight of shape [N, K].", "T1")
         .Input(2, "b_scale", "Per-block FP32 weight scales of shape [N, ceil(K / block_size)].", "T2")
@@ -3205,14 +3257,62 @@ The partition widths must be positive and sum to N.)DOC")
                "its FP16/BF16 precision.",
                "T2", OpSchema::Optional)
         .Input(4, "bias", "Optional bias of shape [N].", "T", OpSchema::Optional)
+        .Input(5, "prefill_numerics",
+               "Optional CUDA CPU-memory int32 control of shape [1]. Zero or omission preserves existing "
+               "dispatch; one selects dense BF16 dequantization/GEMM rounding during eager prefill. "
+               "Decode CUDA graph capture must bind an immutable zero.",
+               "TI", OpSchema::Optional)
+        .Input(6, "prefill_weight", "Optional original-type [K, segmentN] eager-prefill weight.", "T", OpSchema::Optional)
+        .Input(7, "prefill_weight2", "Optional second original-type eager-prefill weight segment.", "T", OpSchema::Optional)
+        .Input(8, "prefill_weight3", "Optional third original-type eager-prefill weight segment.", "T", OpSchema::Optional)
+        .Input(9, "shared_silu_gate", "BF16 gate branch matching A, for shared_expert=1.", "T", OpSchema::Optional)
+        .Input(10, "shared_gate_activation", "BF16 projected-gate activation with matching leading axes.", "T", OpSchema::Optional)
+        .Input(11, "shared_gate_weight", "BF16 [gate_input_width, 1] projected-gate weight.", "T", OpSchema::Optional)
+        .Input(12, "shared_residual", "BF16 residual matching the unsplit output.", "T", OpSchema::Optional)
         .Output(0, "Y", "Output(s) of shape [..., N] or [..., split_sizes[i]] in the activation type.",
                 "T", OpSchema::Variadic)
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"},
                         "Constrain activation, bias and output to FP16 or BF16.")
         .TypeConstraint("T1", {"tensor(float8e4m3fn)"}, "Constrain weight to FP8 E4M3.")
         .TypeConstraint("T2", {"tensor(float)"}, "Constrain scales to FP32.")
+        .TypeConstraint("TI", {"tensor(int32)"}, "CPU prefill numerical-mode control.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           const auto* split = ctx.getAttribute("split_sizes");
+          const auto shared = getAttribute(ctx, "shared_expert", 0);
+          if (shared != 0 && shared != 1) {
+            fail_shape_inference("shared_expert must be 0 or 1.");
+          }
+          if (shared) {
+            if (split != nullptr || (ctx.getNumInputs() > 3 && ctx.getInputType(3)) ||
+                (ctx.getNumInputs() > 4 && ctx.getInputType(4)) ||
+                (ctx.getAttribute("prefill_weight_offsets") &&
+                 ctx.getAttribute("prefill_weight_offsets")->ints_size() != 0)) {
+              fail_shape_inference("shared_expert excludes split_sizes, bias, a_scale and prefill weights.");
+            }
+            if (ctx.getInputType(0) &&
+                ctx.getInputType(0)->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto::BFLOAT16) {
+              fail_type_inference("shared_expert requires BF16.");
+            }
+            for (size_t index = 9; index <= 12; ++index) {
+              if (ctx.getNumInputs() <= index || ctx.getInputType(index) == nullptr) {
+                fail_shape_inference("shared_expert requires all shared inputs.");
+              }
+              if (ctx.getInputType(index)->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto::BFLOAT16) {
+                fail_type_inference("shared_expert requires BF16 shared inputs.");
+              }
+            }
+            for (size_t index = 6; index <= 8 && index < ctx.getNumInputs(); ++index) {
+              if (ctx.getInputType(index)) {
+                fail_shape_inference("shared_expert excludes original prefill weights.");
+              }
+            }
+          } else {
+            for (size_t index = 9; index < ctx.getNumInputs(); ++index) {
+              if (ctx.getInputType(index)) {
+                fail_shape_inference("Shared expert inputs require shared_expert=1.");
+              }
+            }
+          }
           if ((split == nullptr && ctx.getNumOutputs() != 1) ||
               (split != nullptr && (split->ints_size() < 1 || split->ints_size() > 8 ||
                                    static_cast<size_t>(split->ints_size()) != ctx.getNumOutputs()))) {
@@ -3247,6 +3347,36 @@ The partition widths must be positive and sum to N.)DOC")
             *output_shape.add_dim() = a_shape.dim(i);
           }
           *output_shape.add_dim() = b_shape.dim(0);
+          if (shared) {
+            const auto check_shape = [&](size_t input, const ONNX_NAMESPACE::TensorShapeProto& expected) {
+              if (!hasInputShape(ctx, input)) return;
+              const auto& actual = getInputShape(ctx, input);
+              if (actual.dim_size() != expected.dim_size()) {
+                fail_shape_inference("shared_expert input ranks are incompatible.");
+              }
+              for (int axis = 0; axis < actual.dim_size(); ++axis) {
+                if (actual.dim(axis).has_dim_value() && expected.dim(axis).has_dim_value() &&
+                    actual.dim(axis).dim_value() != expected.dim(axis).dim_value()) {
+                  fail_shape_inference("shared_expert input shapes are incompatible.");
+                }
+              }
+            };
+            check_shape(9, a_shape);
+            check_shape(12, output_shape);
+            if (hasInputShape(ctx, 10)) {
+              auto gate_shape = a_shape;
+              const auto& activation = getInputShape(ctx, 10);
+              if (activation.dim_size() != a_shape.dim_size()) {
+                fail_shape_inference("shared_expert gate activation rank must match A.");
+              }
+              *gate_shape.mutable_dim(gate_shape.dim_size() - 1) = activation.dim(activation.dim_size() - 1);
+              check_shape(10, gate_shape);
+              ONNX_NAMESPACE::TensorShapeProto weight_shape;
+              *weight_shape.add_dim() = activation.dim(activation.dim_size() - 1);
+              weight_shape.add_dim()->set_dim_value(1);
+              check_shape(11, weight_shape);
+            }
+          }
           if (split != nullptr && b_shape.dim(0).has_dim_value() &&
               split_total != b_shape.dim(0).dim_value()) {
             fail_shape_inference("split_sizes must sum to the weight's N dimension.");

@@ -12,10 +12,13 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <cutlass/numeric_types.h>
 
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_int2.h"
+#include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
+#include "contrib_ops/cuda/llm/moe_gemm/moe_int2_cache.h"
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN)
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -63,6 +66,264 @@ class DeviceEvent {
  private:
   cudaEvent_t event_ = nullptr;
 };
+
+template <typename T>
+void RunInt2CacheRegression(bool bf16) {
+  namespace gemv = llm::kernels::moe_gemv;
+  int device = 0;
+  cudaDeviceProp properties{};
+  CUDA_CALL_THROW(cudaGetDevice(&device));
+  CUDA_CALL_THROW(cudaGetDeviceProperties(&properties, device));
+  constexpr int experts = 4, slots = 2, hidden = 512, inter = 512, rows = 3;
+  constexpr size_t bytes1 = hidden * inter / 2, bytes2 = hidden * inter / 4;
+  std::vector<uint8_t> host1(experts * bytes1), host2(experts * bytes2);
+  for (size_t i = 0; i < host1.size(); ++i) host1[i] = static_cast<uint8_t>(i * 73 + i / 19);
+  for (size_t i = 0; i < host2.size(); ++i) host2[i] = static_cast<uint8_t>(i * 29 + i / 13);
+  void *mapped1 = nullptr, *mapped2 = nullptr;
+  CUDA_CALL_THROW(cudaHostAlloc(&mapped1, host1.size(), cudaHostAllocMapped));
+  std::unique_ptr<void, decltype(&cudaFreeHost)> owned1(mapped1, cudaFreeHost);
+  CUDA_CALL_THROW(cudaHostAlloc(&mapped2, host2.size(), cudaHostAllocMapped));
+  std::unique_ptr<void, decltype(&cudaFreeHost)> owned2(mapped2, cudaFreeHost);
+  std::copy(host1.begin(), host1.end(), static_cast<uint8_t*>(mapped1));
+  std::copy(host2.begin(), host2.end(), static_cast<uint8_t*>(mapped2));
+  DeviceBuffer cache(slots * (bytes1 + bytes2)), metadata((experts + 2 * slots) * sizeof(int));
+  DeviceBuffer offsets((experts + 1) * sizeof(int64_t)), row_experts(rows * sizeof(int));
+  DeviceBuffer input(rows * hidden * sizeof(T)), scales(experts * 16 * hidden * sizeof(T));
+  DeviceBuffer result(rows * hidden * sizeof(T)), control(rows * hidden * sizeof(T));
+  DeviceBuffer poisoned_weights(host1.size());
+  CUDA_CALL_THROW(cudaMemset(poisoned_weights.Data<uint8_t>(), 0x55, host1.size()));
+  std::vector<T> values(experts * 16 * hidden);
+  for (size_t i = 0; i < values.size(); ++i) values[i] = T(0.125f);
+  CUDA_CALL_THROW(cudaMemcpy(scales.Data<T>(), values.data(), values.size() * sizeof(T), cudaMemcpyHostToDevice));
+  for (size_t i = 0; i < rows * hidden; ++i) values[i] = T(static_cast<float>(int(i % 7) - 3) / 8);
+  CUDA_CALL_THROW(cudaMemcpy(input.Data<T>(), values.data(), rows * hidden * sizeof(T), cudaMemcpyHostToDevice));
+  CUDA_CALL_THROW(cudaMemset(metadata.Data<int>(), 0xff, (experts + 2 * slots) * sizeof(int)));
+  cudaStream_t stream;
+  CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+  for (int iteration = 0; iteration < 4; ++iteration) {
+    const std::vector<int> row_ids = iteration == 0 ? std::vector<int>{0, 0, 1}
+                                    : iteration == 1 ? std::vector<int>{1, 1, 2}
+                                    : iteration == 2 ? std::vector<int>{0, 1, 2}
+                                                     : std::vector<int>{0, 0, 3};
+    std::vector<int64_t> ends(experts + 1, 0);
+    for (int id : row_ids) ++ends[id + 1];
+    for (int e = 0; e < experts; ++e) ends[e + 1] += ends[e];
+    CUDA_CALL_THROW(cudaMemcpy(row_experts.Data<int>(), row_ids.data(), rows * sizeof(int), cudaMemcpyHostToDevice));
+    CUDA_CALL_THROW(cudaMemcpy(offsets.Data<int64_t>(), ends.data(), ends.size() * sizeof(int64_t), cudaMemcpyHostToDevice));
+    if (iteration == 3) {
+      // The real operator lends these bytes to prefill and invalidates the tags first.
+      CUDA_CALL_THROW(cudaMemsetAsync(cache.Data<uint8_t>(), 0xaa, slots * (bytes1 + bytes2), stream));
+      CUDA_CALL_THROW(cudaMemsetAsync(metadata.Data<int>(), 0xff, (experts + 2 * slots) * sizeof(int), stream));
+    }
+    for (int group_size : {64, 128}) {
+      for (bool swiglu : {false, true}) {
+        gemv::CachedInt2GemvParams p;
+        p.bf16 = bf16;
+        p.swiglu = swiglu;
+        p.input = input.Data<T>();
+        p.weights = static_cast<const uint8_t*>(swiglu ? mapped1 : mapped2);
+        if (iteration == 0) p.weights = poisoned_weights.Data<uint8_t>();
+        p.scales = scales.Data<T>();
+        p.output = result.Data<T>();
+        p.expert_offsets = offsets.Data<int64_t>();
+        p.row_experts = row_experts.Data<int>();
+        p.experts = experts;
+        p.expanded_rows = rows;
+        p.rows = rows;
+        p.n = hidden;
+        p.k = hidden;
+        p.group_size = group_size;
+        p.activation = llm::kernels::cutlass_kernels::ActivationParams(
+            llm::kernels::cutlass_kernels::ActivationType::Swiglu);
+        p.activation.swiglu_fusion = 1;
+        p.cache = {metadata.Data<int>(), cache.Data<uint8_t>() + (swiglu ? 0 : slots * bytes1)};
+        p.stream = stream;
+        auto run = [&] {
+          gemv::PrepareInt2ExpertCache(static_cast<uint8_t*>(mapped1), static_cast<uint8_t*>(mapped2),
+                                      cache.Data<uint8_t>(), metadata.Data<int>(), offsets.Data<int64_t>(),
+                                      experts, slots, bytes1, bytes2, stream);
+          gemv::LaunchCachedInt2Gemv(p);
+        };
+        auto compare = [&] {
+          if (swiglu) {
+            gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<T, cutlass::uint2b_t>(
+                input.Data<T>(), reinterpret_cast<const cutlass::uint2b_t*>(mapped1), scales.Data<T>(),
+                nullptr, control.Data<T>(), offsets.Data<int64_t>(), row_experts.Data<int>(), experts, rows,
+                inter, hidden, group_size, 90, p.activation, nullptr, rows, nullptr, stream);
+          } else {
+            gemv::launch_moe_gemv_int_symmetric<T, cutlass::uint2b_t>(
+                input.Data<T>(), reinterpret_cast<const cutlass::uint2b_t*>(mapped2), scales.Data<T>(),
+                nullptr, control.Data<T>(), offsets.Data<int64_t>(), row_experts.Data<int>(), experts, rows,
+                hidden, inter, group_size, 90, stream);
+          }
+          CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+          std::vector<uint16_t> actual(rows * hidden), expected(rows * hidden);
+          CUDA_CALL_THROW(cudaMemcpy(actual.data(), result.Data<T>(), actual.size() * sizeof(T), cudaMemcpyDeviceToHost));
+          CUDA_CALL_THROW(cudaMemcpy(expected.data(), control.Data<T>(), expected.size() * sizeof(T), cudaMemcpyDeviceToHost));
+          EXPECT_EQ(actual, expected) << "iteration=" << iteration << " swiglu=" << swiglu << " group=" << group_size;
+        };
+        if (iteration == 2) {
+          cudaGraph_t graph;
+          cudaGraphExec_t executable;
+          CUDA_CALL_THROW(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
+          run();
+          CUDA_CALL_THROW(cudaStreamEndCapture(stream, &graph));
+          CUDA_CALL_THROW(cudaGraphInstantiate(&executable, graph, nullptr, nullptr, 0));
+          CUDA_CALL_THROW(cudaGraphLaunch(executable, stream));
+          CUDA_CALL_THROW(cudaGraphLaunch(executable, stream));
+          compare();
+          const std::vector<int> different_ids{0, 0, 3};
+          const std::vector<int64_t> different_ends{0, 2, 2, 2, 3};
+          CUDA_CALL_THROW(cudaMemcpyAsync(row_experts.Data<int>(), different_ids.data(), rows * sizeof(int),
+                                         cudaMemcpyHostToDevice, stream));
+          CUDA_CALL_THROW(cudaMemcpyAsync(offsets.Data<int64_t>(), different_ends.data(),
+                                         different_ends.size() * sizeof(int64_t), cudaMemcpyHostToDevice, stream));
+          CUDA_CALL_THROW(cudaGraphLaunch(executable, stream));
+          compare();
+          CUDA_CALL_THROW(cudaMemcpyAsync(row_experts.Data<int>(), row_ids.data(), rows * sizeof(int),
+                                         cudaMemcpyHostToDevice, stream));
+          CUDA_CALL_THROW(cudaMemcpyAsync(offsets.Data<int64_t>(), ends.data(), ends.size() * sizeof(int64_t),
+                                         cudaMemcpyHostToDevice, stream));
+          CUDA_CALL_THROW(cudaGraphLaunch(executable, stream));
+          CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+          CUDA_CALL_THROW(cudaGraphExecDestroy(executable));
+          CUDA_CALL_THROW(cudaGraphDestroy(graph));
+        } else {
+          run();
+        }
+        compare();
+        {
+          const int columns = swiglu ? 2 * inter : hidden;
+          DeviceBuffer grouped_control(rows * columns * sizeof(T));
+          DeviceBuffer grouped_result(rows * columns * sizeof(T));
+          llm::kernels::cutlass_kernels::Int2GroupedGemmParamsT<T> grouped;
+          grouped.activations = input.Data<T>();
+          grouped.packed_weights = p.weights;
+          grouped.block_scales = scales.Data<T>();
+          grouped.expert_row_ends = offsets.Data<int64_t>() + 1;
+          grouped.output = grouped_result.Data<T>();
+          grouped.num_rows = rows;
+          grouped.num_columns = columns;
+          grouped.reduction_size = hidden;
+          grouped.num_experts = experts;
+          grouped.block_size = group_size;
+          grouped.sm = properties.major * 10 + properties.minor;
+          grouped.multiprocessor_count = properties.multiProcessorCount;
+          grouped.stream = stream;
+          grouped.expert_slots = metadata.Data<int>();
+          grouped.expert_cache_weights = p.cache.weights;
+          auto run_grouped = [&] {
+            gemv::PrepareInt2ExpertCache(static_cast<uint8_t*>(mapped1), static_cast<uint8_t*>(mapped2),
+                                        cache.Data<uint8_t>(), metadata.Data<int>(), offsets.Data<int64_t>(),
+                                        experts, slots, bytes1, bytes2, stream);
+            llm::kernels::cutlass_kernels::RunInt2GroupedGemm(grouped);
+          };
+          auto compare_grouped = [&] {
+            auto reference = grouped;
+            reference.packed_weights = static_cast<const uint8_t*>(swiglu ? mapped1 : mapped2);
+            reference.expert_slots = nullptr;
+            reference.expert_cache_weights = nullptr;
+            reference.output = grouped_control.Data<T>();
+            llm::kernels::cutlass_kernels::RunInt2GroupedGemm(reference);
+            CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+            std::vector<uint16_t> actual(rows * columns), expected(rows * columns);
+            CUDA_CALL_THROW(cudaMemcpy(actual.data(), grouped_result.Data<T>(), actual.size() * sizeof(T), cudaMemcpyDeviceToHost));
+            CUDA_CALL_THROW(cudaMemcpy(expected.data(), grouped_control.Data<T>(), expected.size() * sizeof(T), cudaMemcpyDeviceToHost));
+            EXPECT_EQ(actual, expected) << "Grouped cache iteration=" << iteration
+                                       << " swiglu=" << swiglu << " group=" << group_size;
+          };
+          if (iteration == 2) {
+            cudaGraph_t graph;
+            cudaGraphExec_t executable;
+            CUDA_CALL_THROW(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
+            run_grouped();
+            CUDA_CALL_THROW(cudaStreamEndCapture(stream, &graph));
+            CUDA_CALL_THROW(cudaGraphInstantiate(&executable, graph, nullptr, nullptr, 0));
+            CUDA_CALL_THROW(cudaGraphLaunch(executable, stream));
+            CUDA_CALL_THROW(cudaGraphLaunch(executable, stream));
+            compare_grouped();
+            const std::vector<int64_t> different_ends{0, 2, 2, 2, 3};
+            CUDA_CALL_THROW(cudaMemcpyAsync(offsets.Data<int64_t>(), different_ends.data(),
+                                           different_ends.size() * sizeof(int64_t), cudaMemcpyHostToDevice, stream));
+            CUDA_CALL_THROW(cudaGraphLaunch(executable, stream));
+            compare_grouped();
+            CUDA_CALL_THROW(cudaMemcpyAsync(offsets.Data<int64_t>(), ends.data(), ends.size() * sizeof(int64_t),
+                                           cudaMemcpyHostToDevice, stream));
+            CUDA_CALL_THROW(cudaGraphLaunch(executable, stream));
+            CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+            CUDA_CALL_THROW(cudaGraphExecDestroy(executable));
+            CUDA_CALL_THROW(cudaGraphDestroy(graph));
+          } else {
+            run_grouped();
+          }
+          compare_grouped();
+        }
+      }
+    }
+    std::vector<int> tags(experts + 2 * slots);
+    CUDA_CALL_THROW(cudaMemcpy(tags.data(), metadata.Data<int>(), tags.size() * sizeof(int), cudaMemcpyDeviceToHost));
+    if (iteration != 2) {
+      for (int slot = 0; slot < slots; ++slot) {
+        EXPECT_EQ(tags[experts + slots + slot], -1);
+      }
+    }
+    if (iteration == 1) {
+      EXPECT_EQ(tags[1], 1) << "An active resident expert must not be evicted";
+    }
+    for (int slot = 0; slot < slots; ++slot) {
+      const int expert = tags[experts + slot];
+      ASSERT_GE(expert, 0);
+      ASSERT_LT(expert, experts);
+      EXPECT_EQ(tags[expert], slot);
+      std::vector<uint8_t> actual1(bytes1), actual2(bytes2);
+      CUDA_CALL_THROW(cudaMemcpy(actual1.data(), cache.Data<uint8_t>() + slot * bytes1, bytes1, cudaMemcpyDeviceToHost));
+      CUDA_CALL_THROW(cudaMemcpy(actual2.data(), cache.Data<uint8_t>() + slots * bytes1 + slot * bytes2,
+                                bytes2, cudaMemcpyDeviceToHost));
+      EXPECT_TRUE(std::equal(actual1.begin(), actual1.end(), host1.begin() + expert * bytes1));
+      EXPECT_TRUE(std::equal(actual2.begin(), actual2.end(), host2.begin() + expert * bytes2));
+    }
+  }
+  CUDA_CALL_THROW(cudaStreamDestroy(stream));
+}
+
+TEST(Int2ExpertCacheTest, HalfHitsEvictionOverflowCaptureAndLending) {
+  RunInt2CacheRegression<half>(false);
+}
+#if defined(ENABLE_BF16)
+TEST(Int2ExpertCacheTest, BFloat16HitsEvictionOverflowCaptureAndLending) {
+  RunInt2CacheRegression<__nv_bfloat16>(true);
+}
+#endif
+
+TEST(Int2ExpertCacheTest, UnalignedWeightsAndUnequalByteCounts) {
+  namespace gemv = llm::kernels::moe_gemv;
+  constexpr int experts = 3, slots = 2;
+  constexpr size_t bytes1 = 37, bytes2 = 29;
+  std::vector<uint8_t> source1(experts * bytes1 + 1), source2(experts * bytes2 + 1);
+  for (size_t i = 0; i < source1.size(); ++i) source1[i] = static_cast<uint8_t>(i * 19);
+  for (size_t i = 0; i < source2.size(); ++i) source2[i] = static_cast<uint8_t>(i * 31);
+  DeviceBuffer fc1(source1.size()), fc2(source2.size()), cache(slots * (bytes1 + bytes2));
+  DeviceBuffer metadata((experts + 2 * slots) * sizeof(int)), offsets((experts + 1) * sizeof(int64_t));
+  CUDA_CALL_THROW(cudaMemcpy(fc1.Data<uint8_t>(), source1.data(), source1.size(), cudaMemcpyHostToDevice));
+  CUDA_CALL_THROW(cudaMemcpy(fc2.Data<uint8_t>(), source2.data(), source2.size(), cudaMemcpyHostToDevice));
+  CUDA_CALL_THROW(cudaMemset(metadata.Data<int>(), 0xff, (experts + 2 * slots) * sizeof(int)));
+  const std::vector<int64_t> ends{0, 0, 1, 2};
+  CUDA_CALL_THROW(cudaMemcpy(offsets.Data<int64_t>(), ends.data(), ends.size() * sizeof(int64_t), cudaMemcpyHostToDevice));
+  gemv::PrepareInt2ExpertCache(fc1.Data<uint8_t>() + 1, fc2.Data<uint8_t>() + 1, cache.Data<uint8_t>(),
+                              metadata.Data<int>(), offsets.Data<int64_t>(), experts, slots, bytes1, bytes2, nullptr);
+  std::vector<uint8_t> actual(slots * (bytes1 + bytes2));
+  CUDA_CALL_THROW(cudaMemcpy(actual.data(), cache.Data<uint8_t>(), actual.size(), cudaMemcpyDeviceToHost));
+  for (int slot = 0; slot < slots; ++slot) {
+    EXPECT_TRUE(std::equal(actual.begin() + slot * bytes1, actual.begin() + (slot + 1) * bytes1,
+                           source1.begin() + 1 + (slot + 1) * bytes1));
+    EXPECT_TRUE(std::equal(actual.begin() + slots * bytes1 + slot * bytes2,
+                           actual.begin() + slots * bytes1 + (slot + 1) * bytes2,
+                           source2.begin() + 1 + (slot + 1) * bytes2));
+  }
+  EXPECT_THROW(gemv::PrepareInt2ExpertCache(nullptr, fc2.Data<uint8_t>(), cache.Data<uint8_t>(),
+                                           metadata.Data<int>(), offsets.Data<int64_t>(), experts, slots,
+                                           bytes1, bytes2, nullptr), std::exception);
+}
 
 class Int2GroupedGemmTest : public ::testing::Test {
  protected:
@@ -688,6 +949,22 @@ void TestMisalignedBuffers() {
 
 TEST(Int2GroupedGemmValidationTest, RejectsMisalignedFp16Buffers) {
   TestMisalignedBuffers<half>();
+}
+
+TEST(Int2GroupedGemmValidationTest, RejectsIncompleteExpertCache) {
+  auto check = [](auto params) {
+    int slot = 0;
+    uint8_t weight = 0;
+    params.expert_slots = &slot;
+    EXPECT_THROW(RunInt2GroupedGemm(params), OnnxRuntimeException);
+    params.expert_slots = nullptr;
+    params.expert_cache_weights = &weight;
+    EXPECT_THROW(RunInt2GroupedGemm(params), OnnxRuntimeException);
+  };
+  check(Int2GroupedGemmParams{});
+#if defined(ENABLE_BF16)
+  check(Bf16Int2GroupedGemmParams{});
+#endif
 }
 
 #if defined(ENABLE_BF16)

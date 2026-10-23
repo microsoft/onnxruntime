@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/llm/moe_gemm/moe_int2_prefill.h"
+#include "contrib_ops/cuda/llm/moe_gemm/moe_int2_cache.h"
 #include "cutlass/epilogue/thread/activation.h"
 #include "contrib_ops/cuda/llm/cutlass_type_conversion.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_int2.h"
@@ -354,7 +355,8 @@ void RunPackedGroupedGemm(const Int2MoePrefillParams& params,
                           const void* scales, const int64_t* offsets, ElementType* output,
                           int64_t num_rows, int num_columns, int reduction_size, int weight_bits,
                           const int* tile_offsets, const float* global_scales, bool fuse_swiglu = false,
-                          const int* gathered_rows = nullptr, int column_offset = 0, int output_columns = 0) {
+                          const int* gathered_rows = nullptr, int column_offset = 0, int output_columns = 0,
+                          const uint8_t* cached_weights = nullptr) {
   if (params.is_nvfp4) {
     auto kernel = gathered_rows
                       ? (fuse_swiglu ? Nvfp4GroupedGemm<ElementType, true, true> : Nvfp4GroupedGemm<ElementType, false, true>)
@@ -384,6 +386,10 @@ void RunPackedGroupedGemm(const Int2MoePrefillParams& params,
     gemm.sm = params.sm;
     gemm.multiprocessor_count = params.multiprocessor_count;
     gemm.stream = params.stream;
+    if (cached_weights) {
+      gemm.expert_slots = params.cache_metadata;
+      gemm.expert_cache_weights = cached_weights;
+    }
     RunInt2GroupedGemm(gemm);
     return;
   }
@@ -416,6 +422,20 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
       reinterpret_cast<int*>(storage + layout.counts), reinterpret_cast<int*>(storage + layout.cumulative_counts),
       reinterpret_cast<int*>(storage + layout.blocked_rows), params.num_rows, params.num_experts, params.top_k,
       0, params.stream);
+  const uint8_t* cached_fc1 = nullptr;
+  const uint8_t* cached_fc2 = nullptr;
+  if (params.cache_capacity > 0) {
+    ORT_ENFORCE(!params.is_nvfp4 && params.fc1_weight_bits == 2 && params.fc2_weight_bits == 2 &&
+                    params.cache_weights && params.cache_metadata,
+                "Grouped INT2 expert cache requires uniform INT2 and owned cache buffers");
+    const size_t fc1_bytes = SafeInt<size_t>(params.hidden_size) * params.inter_size / 2;
+    const size_t fc2_bytes = SafeInt<size_t>(params.hidden_size) * params.inter_size / 4;
+    moe_gemv::PrepareInt2ExpertCache(
+        params.fc1_weights, params.fc2_weights, params.cache_weights, params.cache_metadata, offsets,
+        params.num_experts, params.cache_capacity, fc1_bytes, fc2_bytes, params.stream);
+    cached_fc1 = params.cache_weights;
+    cached_fc2 = params.cache_weights + params.cache_capacity * fc1_bytes;
+  }
   if (params.is_nvfp4) {
     BuildNvfp4TileOffsets<<<1, 32, 0, params.stream>>>(offsets, tile_offsets, params.num_experts);
     CUDA_CALL_THROW(cudaGetLastError());
@@ -437,7 +457,7 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
                        params.fc1_weights, params.fc1_scales,
                        offsets, fused ? activated_output : fc1_output, expanded, params.inter_size * 2,
                        params.hidden_size, params.fc1_weight_bits, tile_offsets, params.fc1_global_scales, fused,
-                       tiled_down ? permuted_rows : nullptr);
+                       tiled_down ? permuted_rows : nullptr, 0, 0, cached_fc1);
 
   if (!fused) {
     ActivationParams activation(ActivationType::Swiglu);
@@ -472,7 +492,8 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
   }
   RunPackedGroupedGemm(params, activated_output, params.fc2_weights, params.fc2_scales,
                        offsets, fc2_output, expanded, params.hidden_size,
-                       params.inter_size, params.fc2_weight_bits, tile_offsets, params.fc2_global_scales);
+                       params.inter_size, params.fc2_weight_bits, tile_offsets, params.fc2_global_scales,
+                       false, nullptr, 0, 0, cached_fc2);
   finalizeMoeRoutingKernelLauncher<ElementType, ElementType, ElementType>(
       fc2_output, static_cast<ElementType*>(params.output), static_cast<const ElementType*>(params.fc2_bias),
       params.routing_weights, params.unpermuted_to_permuted,

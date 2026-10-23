@@ -221,7 +221,7 @@ void Reference(const Geometry& g, const Options& o, const Inputs& in, std::vecto
         double decay = 1.0;
         if (gated) {
           float raw = in.decay[gi];
-          if (o.gate_activation == "qwen") {
+          if (o.gate_activation == "qwen" || o.gate_activation == "softplus") {
             raw = -std::exp(in.a_log[hv]) * SoftPlus(raw + in.dt_bias[hv]);
           }
           decay = std::exp(static_cast<double>(raw));
@@ -604,11 +604,12 @@ bool NeedSkipGatedDeltaNetTest() {
   return !HasCudaEnvironment(800);
 }
 
-TEST(GatedDeltaNetTest, RecurrentOutputsIncludeFirstRowState) {
+void RunGdnPrefixStateTest(int tokens, int dim, int prefixes, bool ragged = false) {
   if (NeedSkipGatedDeltaNetTest()) return;
 
-  const Geometry g{2, 1, 1, 2, 128, 128};
+  const Geometry g{tokens, ragged ? 2 : 1, 1, 2, dim, dim};
   Inputs in = MakeInputs(g, 211);
+  if (ragged) in.cu_seqlens = {0, 0, tokens};
   Options options;
   options.gate_activation = "softplus";
   options.beta_activation = "sigmoid";
@@ -620,36 +621,58 @@ TEST(GatedDeltaNetTest, RecurrentOutputsIncludeFirstRowState) {
   std::vector<float> expected_output, expected_final_state;
   Reference(g, options, in, &expected_output, &expected_final_state);
 
-  Geometry first_row_geometry = g;
-  first_row_geometry.total_tokens = 1;
-  Inputs first_row = in;
-  first_row.q.resize(static_cast<size_t>(g.hq) * g.dk);
-  first_row.k.resize(static_cast<size_t>(g.hq) * g.dk);
-  first_row.v.resize(static_cast<size_t>(g.hv) * g.dv);
-  first_row.decay.resize(g.hv);
-  first_row.beta.resize(g.hv);
-  std::vector<float> unused_output, expected_mid_state;
-  Reference(first_row_geometry, options, first_row, &unused_output, &expected_mid_state);
-
   OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
   AddCommonAttrs(test, options);
   test.AddAttribute<std::string>("state_output", "mid_state");
-  test.AddInput<BFloat16>("query", {1, 2, g.hq, g.dk}, ToTensorType<BFloat16>(in.q));
-  test.AddInput<BFloat16>("key", {1, 2, g.hq, g.dk}, ToTensorType<BFloat16>(in.k));
-  test.AddInput<BFloat16>("value", {1, 2, g.hv, g.dv}, ToTensorType<BFloat16>(in.v));
-  test.AddOptionalInputEdge<int32_t>();
-  test.AddInput<float>("decay", {1, 2, g.hv}, in.decay);
-  test.AddInput<float>("beta", {1, 2, g.hv}, in.beta);
+  const std::vector<int64_t> query_shape = ragged ? std::vector<int64_t>{tokens, g.hq, g.dk}
+                                                 : std::vector<int64_t>{1, tokens, g.hq, g.dk};
+  const std::vector<int64_t> value_shape = ragged ? std::vector<int64_t>{tokens, g.hv, g.dv}
+                                                 : std::vector<int64_t>{1, tokens, g.hv, g.dv};
+  const std::vector<int64_t> gate_shape = ragged ? std::vector<int64_t>{tokens, g.hv}
+                                                : std::vector<int64_t>{1, tokens, g.hv};
+  test.AddInput<BFloat16>("query", query_shape, ToTensorType<BFloat16>(in.q));
+  test.AddInput<BFloat16>("key", query_shape, ToTensorType<BFloat16>(in.k));
+  test.AddInput<BFloat16>("value", value_shape, ToTensorType<BFloat16>(in.v));
+  if (ragged) test.AddInput<int32_t>("cu_seqlens", {g.batch + 1}, in.cu_seqlens);
+  else test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<float>("decay", gate_shape, in.decay);
+  test.AddInput<float>("beta", gate_shape, in.beta);
   test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, in.state0);
   test.AddInput<float>("a_log", {g.hv}, in.a_log);
   test.AddInput<float>("dt_bias", {g.hv}, in.dt_bias);
-  test.AddOutput<BFloat16>("output", {1, 2, g.hv, g.dv},
+  test.AddOutput<BFloat16>("output", value_shape,
                            ToTensorType<BFloat16>(expected_output), false, 6e-3f, 6e-3f);
   test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk},
                         expected_final_state, false, 2e-3f, 2e-3f);
-  test.AddOutput<float>("mid_state", {g.batch, g.hv, g.dv, g.dk},
-                        expected_mid_state, false, 2e-3f, 2e-3f);
+  for (int prefix = 1; prefix <= prefixes; ++prefix) {
+    Geometry prefix_geometry = g;
+    prefix_geometry.total_tokens = std::min(prefix, tokens);
+    Inputs prefix_in = in;
+    if (ragged) prefix_in.cu_seqlens = {0, 0, prefix_geometry.total_tokens};
+    prefix_in.q.resize(static_cast<size_t>(prefix_geometry.total_tokens) * g.hq * g.dk);
+    prefix_in.k.resize(static_cast<size_t>(prefix_geometry.total_tokens) * g.hq * g.dk);
+    prefix_in.v.resize(static_cast<size_t>(prefix_geometry.total_tokens) * g.hv * g.dv);
+    prefix_in.decay.resize(prefix_geometry.total_tokens * g.hv);
+    prefix_in.beta.resize(prefix_geometry.total_tokens * g.hv);
+    std::vector<float> unused_output, expected_mid_state;
+    Reference(prefix_geometry, options, prefix_in, &unused_output, &expected_mid_state);
+    test.AddOutput<float>(("mid_state" + std::to_string(prefix)).c_str(), {g.batch, g.hv, g.dv, g.dk},
+                          expected_mid_state, false, 2e-3f, 2e-3f);
+  }
   test.Run();
+}
+
+TEST(GatedDeltaNetTest, RecurrentOutputsIncludeFirstRowState) {
+  RunGdnPrefixStateTest(2, 128, 1);
+}
+
+TEST(GatedDeltaNetTest, MultiDraftPrefixStates) {
+  for (int tokens : {1, 2, 3, 4}) {
+    for (int dim : {32, 64, 128}) {
+      RunGdnPrefixStateTest(tokens, dim, 3);
+      RunGdnPrefixStateTest(tokens, dim, 3, true);
+    }
+  }
 }
 
 bool NeedSkipGatedDeltaNetSplitTest() {
@@ -1288,6 +1311,38 @@ TEST(GatedDeltaNetTest, DirectPackedQkvFloat16ExactParity) {
 
 TEST(GatedDeltaNetTest, DirectPackedQkvBFloat16ExactParity) {
   TestDirectPackedQkvParity<BFloat16>();
+}
+
+template <typename T>
+void TestQwenS2PackedParity() {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry geometry{2, 1, 16, 48, 128, 128};
+  Options options;
+  options.qk_l2_norm = 1;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.gates_in_input_type = true;
+  Inputs inputs = MakeInputs(geometry, 151);
+  std::vector<OrtValue> reference, packed;
+  RunTypedCase<T>(geometry, options, inputs, 2e-2f, 2e-2f, true, &reference);
+  RunTypedCase<T>(geometry, options, inputs, 2e-2f, 2e-2f, true, &packed,
+                  false, false, nullptr, 0, true);
+  ASSERT_EQ(reference.size(), packed.size());
+  for (size_t index = 0; index < reference.size(); ++index) {
+    const auto& expected = reference[index].Get<Tensor>();
+    const auto& actual = packed[index].Get<Tensor>();
+    ASSERT_EQ(expected.Shape(), actual.Shape());
+    ASSERT_EQ(expected.SizeInBytes(), actual.SizeInBytes());
+    EXPECT_EQ(std::memcmp(expected.DataRaw(), actual.DataRaw(), expected.SizeInBytes()), 0);
+  }
+}
+
+TEST(GatedDeltaNetTest, QwenS2PackedFloat16ExactParity) {
+  TestQwenS2PackedParity<MLFloat16>();
+}
+
+TEST(GatedDeltaNetTest, QwenS2PackedBFloat16ExactParity) {
+  TestQwenS2PackedParity<BFloat16>();
 }
 
 TEST(GatedDeltaNetTest, Recurrent_VerifyBatch) {

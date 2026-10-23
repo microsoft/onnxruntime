@@ -67,6 +67,10 @@ Status BranchwiseRMSNorm<T>::PrePack(const Tensor& tensor, int input_idx, Alloca
 
 template <typename T>
 Status BranchwiseRMSNorm<T>::Compute(OpKernelContext* context) const {
+  const auto* numerics = context->Input<Tensor>(2);
+  ORT_RETURN_IF_NOT(numerics == nullptr ||
+                        (numerics->Shape().Size() == 1 && *numerics->Data<int32_t>() == 0),
+                    "BranchwiseRMSNorm: nonzero prefill_numerics requires CUDA");
   const auto* x = context->Input<Tensor>(0);
   const auto* scale = context->Input<Tensor>(1);
   hyper_connection::StreamShape params;

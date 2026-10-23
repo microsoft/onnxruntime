@@ -96,6 +96,8 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
     Tensor* output = context->Output(0, TensorShape({batch, length, channels}));
     Tensor* present = context->Output(1, state_shape);
     Tensor* first = context->OutputCount() > 2 ? context->Output(2, state_shape) : nullptr;
+    Tensor* second = context->OutputCount() > 3 ? context->Output(3, state_shape) : nullptr;
+    Tensor* third = context->OutputCount() > 4 ? context->Output(4, state_shape) : nullptr;
     using CudaT = typename OrtToCudaType<T>::type;
     return LaunchCausalConvProjectionKernel<CudaT>(
         Stream(context), reinterpret_cast<const CudaT*>(input_tensor->Data<T>()),
@@ -105,6 +107,8 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
         reinterpret_cast<CudaT*>(output->MutableData<T>()),
         reinterpret_cast<CudaT*>(present->MutableData<T>()),
         first ? reinterpret_cast<CudaT*>(first->MutableData<T>()) : nullptr,
+        second ? reinterpret_cast<CudaT*>(second->MutableData<T>()) : nullptr,
+        third ? reinterpret_cast<CudaT*>(third->MutableData<T>()) : nullptr,
         batch, channels, length, kernel, dilation_, width, input_channel_offset_, state_length,
         state_last, activation_ != "none");
   }

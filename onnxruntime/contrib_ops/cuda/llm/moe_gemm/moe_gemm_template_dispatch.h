@@ -112,9 +112,10 @@ inline bool isTmaWarpSpecializedGroupedGemmCompiledForSm(int sm) {
 
 // ============================= Variable batched Gemm things ===========================
 template <typename T, typename WeightType, typename GemmOutputType, typename arch, cutlass::WeightOnlyQuantOp QuantOp,
-          typename EpilogueTag, typename ThreadblockShape, typename WarpShape, int Stages>
+          typename EpilogueTag, typename ThreadblockShape, typename WarpShape, int Stages, bool UseExpertCache = false>
 struct genericMoeGemmKernelLauncher {
-  static void call(GroupedGemmInput<T, WeightType, GemmOutputType, GemmOutputType> inputs, int sm_count_) {
+  static void call(GroupedGemmInput<T, WeightType, GemmOutputType, GemmOutputType> inputs, int sm_count_,
+                   const int* expert_slots = nullptr, const uint8_t* expert_weights = nullptr) {
     ORT_LLM_LOG_ENTRY();
 #if defined(ENABLE_FP8)
     static_assert(cutlass::platform::is_same<T, __nv_bfloat16>::value || cutlass::platform::is_same<T, half>::value || cutlass::platform::is_same<T, __nv_fp8_e4m3>::value || cutlass::platform::is_same<T, __nv_fp8_e5m2>::value || cutlass::platform::is_same<T, float>::value,
@@ -182,7 +183,7 @@ struct genericMoeGemmKernelLauncher {
       using GemmKernel = cutlass::gemm::kernel::MoeFCGemm<typename GemmKernel_::Mma,
                                                           typename GemmKernel_::Epilogue, typename GemmKernel_::ThreadblockSwizzle,
                                                           arch,  // Ensure top level arch is used for dispatch
-                                                          GemmKernel_::kGroupScheduleMode>;
+                                                          GemmKernel_::kGroupScheduleMode, UseExpertCache>;
 
       using GemmGrouped = cutlass::gemm::device::GemmGrouped<GemmKernel>;
 
@@ -202,6 +203,11 @@ struct genericMoeGemmKernelLauncher {
                                            reinterpret_cast<const CutlassGemmOutputType*>(inputs.biases), inputs.bias_is_broadcast,
                                            reinterpret_cast<CutlassGemmOutputType*>(inputs.C), inputs.total_tokens_including_expert, inputs.n,
                                            inputs.k);
+      if constexpr (UseExpertCache) {
+        ORT_ENFORCE(expert_slots && expert_weights, "Grouped expert cache requires a slot map and resident weights");
+        args.expert_slots = expert_slots;
+        args.expert_weights = expert_weights;
+      }
 #if ORT_DEBUG_MOE
       // Debug: Print GEMM dimensions and samples for float types
       if constexpr (std::is_same_v<T, float>) {
@@ -330,7 +336,8 @@ template <typename GemmOutputType, typename arch, cutlass::WeightOnlyQuantOp Qua
 struct genericMoeGemmKernelLauncher<__nv_bfloat16, __nv_fp8_e4m3, GemmOutputType, arch, QuantOp, EpilogueTag,
                                     ThreadblockShape, WarpShape, Stages> {
   static void call(
-      GroupedGemmInput<__nv_bfloat16, __nv_fp8_e4m3, GemmOutputType, GemmOutputType> inputs, int sm_count_) {
+      GroupedGemmInput<__nv_bfloat16, __nv_fp8_e4m3, GemmOutputType, GemmOutputType> inputs, int sm_count_,
+      const int* = nullptr, const uint8_t* = nullptr) {
   }
 };
 
@@ -340,7 +347,8 @@ template <typename GemmOutputType, typename arch, cutlass::WeightOnlyQuantOp Qua
 struct genericMoeGemmKernelLauncher<half, __nv_fp8_e4m3, GemmOutputType, arch, QuantOp, EpilogueTag,
                                     ThreadblockShape, WarpShape, Stages> {
   static void call(
-      GroupedGemmInput<half, __nv_fp8_e4m3, GemmOutputType, GemmOutputType> inputs, int sm_count_) {
+      GroupedGemmInput<half, __nv_fp8_e4m3, GemmOutputType, GemmOutputType> inputs, int sm_count_,
+      const int* = nullptr, const uint8_t* = nullptr) {
   }
 };
 
@@ -372,7 +380,7 @@ static void dispatch(GroupedGemmInput<T, WeightType, GemmOutputType, GemmOutputT
                                                                                        GemmOutputType, Arch, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY,
                                                                                        EpilogueTag, ThreadblockShape, WarpShape, Stages>::call;
     }
-    launcher(inputs, sm_count_);
+    launcher(inputs, sm_count_, nullptr, nullptr);
   } else {
     ORT_THROW(
         "Cutlass gemm. Not instantiated for arch %d with stages set to %d", int{Arch::kMinComputeCapability}, Stages);

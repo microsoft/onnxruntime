@@ -3,7 +3,19 @@
 
 #pragma once
 
+#include <cstdint>
+
 namespace onnxruntime::contrib::cuda {
+
+// H200 standalone CUDA-graph measurements qualify only this long-K/narrow-N shape.
+// Other shapes, M values and devices retain MMA until independently measured.
+inline constexpr bool Fp8SkinnyGemmEligible(int m, int64_t n, int64_t k, int64_t block_size,
+                                            bool is_bf16, bool has_packed_weight,
+                                            int compute_capability_major, int sm_count) {
+  return is_bf16 && has_packed_weight && compute_capability_major == 9 && sm_count > 0 &&
+         sm_count == 132 && m >= 1 && m <= 2 && n == 320 && k == 10240 &&
+         block_size >= k && block_size % 32 == 0;
+}
 
 inline int PickGenericFp8MmaKSplit(int n, int windows) {
   int k_split = (n >= 8192) ? 8 : 16;

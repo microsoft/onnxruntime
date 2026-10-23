@@ -69,12 +69,22 @@ CUTLASS_HOST_DEVICE bool tensor_aligned(Element const* ref, int stride, int alig
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
+template <bool Enabled>
+struct MoeExpertCacheParameters {};
+
+template <>
+struct MoeExpertCacheParameters<true> {
+  int const* expert_slots = nullptr;
+  uint8_t const* expert_weights = nullptr;
+};
+
 template <typename Mma_,                        ///! Threadblock-scoped matrix multiply-accumulate
           typename Epilogue_,                   ///! Epilogue
           typename ThreadblockSwizzle_,         ///! Threadblock swizzling function
           typename KernelArch,                  ///! The Architecture this kernel is compiled for. Used since SIMT kernels lose top-level
                                                 /// arch.
-          GroupScheduleMode GroupScheduleMode_  ///! Type of scheduling to perform
+          GroupScheduleMode GroupScheduleMode_,  ///! Type of scheduling to perform
+          bool UseExpertCache = false
           >
 struct MoeFCGemm {
  public:
@@ -129,7 +139,7 @@ struct MoeFCGemm {
   //
 
   /// Argument structure
-  struct Arguments {
+  struct Arguments : MoeExpertCacheParameters<UseExpertCache> {
     //
     // Data members
     //
@@ -197,7 +207,7 @@ struct MoeFCGemm {
   //
 
   /// Parameters structure
-  struct Params {
+  struct Params : MoeExpertCacheParameters<UseExpertCache> {
     typename ProblemVisitor::Params problem_visitor;
     int threadblock_count;
     int group_size;
@@ -243,6 +253,10 @@ struct MoeFCGemm {
           gather_A_indices(args.gather_A_indices),
           gather_B_indices(args.gather_B_indices),
           scatter_D_indices(args.scatter_D_indices) {
+      if constexpr (UseExpertCache) {
+        this->expert_slots = args.expert_slots;
+        this->expert_weights = args.expert_weights;
+      }
     }
 
     CUTLASS_HOST_DEVICE
@@ -261,6 +275,10 @@ struct MoeFCGemm {
       gather_A_indices = args.gather_A_indices;
       gather_B_indices = args.gather_B_indices;
       scatter_D_indices = args.scatter_D_indices;
+      if constexpr (UseExpertCache) {
+        this->expert_slots = args.expert_slots;
+        this->expert_weights = args.expert_weights;
+      }
     }
   };
 
@@ -443,6 +461,13 @@ struct MoeFCGemm {
       typename LayoutA::LongIndex ldm_A = gemm_k;
 
       char* byte_ptr_B = ((char*)params.ptr_B) + problem_idx * bytes_per_expert_matrix;
+      if constexpr (UseExpertCache) {
+        const int slot = params.expert_slots[problem_idx];
+        if (slot >= 0) {
+          byte_ptr_B = reinterpret_cast<char*>(const_cast<uint8_t*>(params.expert_weights)) +
+                       static_cast<int64_t>(slot) * bytes_per_expert_matrix;
+        }
+      }
       ElementB* ptr_B = reinterpret_cast<ElementB*>(byte_ptr_B);
       typename LayoutB::LongIndex ldm_B = platform::is_same<layout::RowMajor, LayoutB>::value ? gemm_n : gemm_k * kInterleave;
       [[maybe_unused]] ElementScale* ptr_Scale = use_dq_gemm<Mma>::value

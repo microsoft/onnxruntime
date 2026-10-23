@@ -31,7 +31,10 @@ template <typename T>
 HyperConnectionPreMix<T>::HyperConnectionPreMix(const OpKernelInfo& info)
     : CudaKernel(info),
       num_branches_(info.GetAttrOrDefault<int64_t>("num_branches", 0)),
-      reduction_scale_(info.GetAttrOrDefault<float>("reduction_scale", 1.0f)) {}
+      reduction_scale_(info.GetAttrOrDefault<float>("reduction_scale", 1.0f)),
+      sigmoid_mode_(static_cast<int>(info.GetAttrOrDefault<int64_t>("sigmoid_mode", 0))) {
+  ORT_ENFORCE(sigmoid_mode_ >= 0 && sigmoid_mode_ <= 2, "sigmoid_mode must be 0, 1, or 2");
+}
 
 template <typename T>
 Status HyperConnectionPreMix<T>::ComputeInternal(OpKernelContext* context) const {
@@ -52,7 +55,7 @@ Status HyperConnectionPreMix<T>::ComputeInternal(OpKernelContext* context) const
       pre_mix->DataRaw(), pre_mix->GetElementType(),
       reinterpret_cast<CudaT*>(y->MutableData<T>()), y->Shape().Size(),
       static_cast<int>(params.branches), static_cast<int>(params.hidden),
-      static_cast<int>(layout), reduction_scale_);
+      static_cast<int>(layout), reduction_scale_, sigmoid_mode_);
 }
 
 template class HyperConnectionPreMix<float>;

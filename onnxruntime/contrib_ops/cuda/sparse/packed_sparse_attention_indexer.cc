@@ -34,6 +34,7 @@ namespace psai = onnxruntime::contrib::packed_sparse_attention_indexer;
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())      \
           .InputMemoryType(OrtMemTypeCPUInput, psai::kStateUpdateActive)    \
           .InputMemoryType(OrtMemTypeCPUInput, psai::kIndexShareMode)       \
+          .InputMemoryType(OrtMemTypeCPUInput, psai::kPrefillNumerics)       \
           .MayInplace(psai::kMergedIndices, psai::kSelectedIndices)         \
           .MayInplace(psai::kMergedCounts, psai::kSelectedCounts)           \
           .MayInplace(psai::kMergedStatus, psai::kIndexShareStatus)         \
@@ -170,6 +171,14 @@ PackedSparseAttentionIndexer<T, TState>::PackedSparseAttentionIndexer(const OpKe
 
 template <typename T, typename TState>
 Status PackedSparseAttentionIndexer<T, TState>::ComputeInternal(OpKernelContext* context) const {
+  const auto* numerics = context->Input<Tensor>(psai::kPrefillNumerics);
+  ORT_RETURN_IF_NOT(numerics == nullptr ||
+                        (numerics->IsDataType<int32_t>() && numerics->Shape().Size() == 1 &&
+                         (numerics->Data<int32_t>()[0] == 0 || numerics->Data<int32_t>()[0] == 1)),
+                    "PackedSparseAttentionIndexer: prefill_numerics must contain int32 0 or 1");
+  const bool dense_prefill = numerics != nullptr && numerics->Data<int32_t>()[0] == 1;
+  ORT_RETURN_IF_NOT(!dense_prefill || policy_ == psai::Policy::kQsa,
+                    "PackedSparseAttentionIndexer: dense prefill requires QSA policy");
   const Tensor* mode = context->InputCount() > psai::kIndexShareMode
                            ? context->Input<Tensor>(psai::kIndexShareMode)
                            : nullptr;
@@ -238,6 +247,8 @@ template <typename T, typename TState>
 Status PackedSparseAttentionIndexer<T, TState>::ComputeQsa(OpKernelContext* context) const {
   using CudaT = typename OrtToCudaType<T>::type;
   using CudaStateT = typename OrtToCudaType<TState>::type;
+  const auto* numerics = context->Input<Tensor>(psai::kPrefillNumerics);
+  const bool dense_prefill = numerics != nullptr && numerics->Data<int32_t>()[0] == 1;
 
   const Tensor* query = context->Input<Tensor>(psai::kQuery);
   const Tensor* key = context->Input<Tensor>(psai::kKey);
@@ -350,6 +361,21 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeQsa(OpKernelContext* cont
   Tensor* selected_indices = context->Output(psai::kSelectedIndices, TensorShape({total_tokens, output_capacity}));
   Tensor* selected_counts = context->Output(psai::kSelectedCounts, TensorShape({total_tokens}));
   Tensor* present_key_state = context->Output(psai::kPresentKeyState, key_state_shape);
+  const Tensor* scoring_state = context->InputCount() > psai::kPrefillScoringState
+                                    ? context->Input<Tensor>(psai::kPrefillScoringState) : nullptr;
+  Tensor* scoring_state_out = context->OutputCount() > psai::kPrefillScoringStateOut
+                                 ? context->Output(psai::kPrefillScoringStateOut,
+                                                   dense_prefill ? key_state_shape
+                                                                 : TensorShape({batch_size, 0, head_size}))
+                                 : nullptr;
+  ORT_RETURN_IF((scoring_state == nullptr) != (scoring_state_out == nullptr),
+                "PackedSparseAttentionIndexer: numerical scoring state input/output must be paired");
+  if (dense_prefill && scoring_state != nullptr) {
+    ORT_RETURN_IF_ERROR(CheckShape(scoring_state, "prefill_scoring_state",
+                                   {batch_size, state_capacity_, head_size}));
+    ORT_RETURN_IF_NOT(scoring_state->IsDataType<TState>(),
+                      "PackedSparseAttentionIndexer: numerical scoring state type must match key state");
+  }
   Tensor* present_kv_buffer =
       context->Output(psai::kPresentKvBuffer, TensorShape({batch_size, buffer_capacity, head_size}));
   Tensor* present_state_lengths =
@@ -382,6 +408,22 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeQsa(OpKernelContext* cont
   }
 
   PackedSparseAttentionIndexerParams params;
+  Tensor* mid_buffers[2]{};
+  Tensor* mid_lengths[2]{};
+  for (int prefix = 0; prefix < 2; ++prefix) {
+    const int buffer_index = psai::kMidKvBuffer2 + prefix * 2;
+    const int length_index = buffer_index + 1;
+    if (context->OutputCount() > buffer_index)
+      mid_buffers[prefix] = context->Output(buffer_index, TensorShape({batch_size, buffer_capacity, head_size}));
+    if (context->OutputCount() > length_index)
+      mid_lengths[prefix] = context->Output(length_index, TensorShape({batch_size, psai::kStateLengthColumns}));
+    ORT_RETURN_IF((mid_buffers[prefix] == nullptr) != (mid_lengths[prefix] == nullptr),
+                  "PackedSparseAttentionIndexer: every prefix buffer requires its matching lengths");
+  }
+  params.mid_kv_buffer2 = mid_buffers[0] ? mid_buffers[0]->MutableData<T>() : nullptr;
+  params.mid_state_lengths2 = mid_lengths[0] ? mid_lengths[0]->MutableData<int32_t>() : nullptr;
+  params.mid_kv_buffer3 = mid_buffers[1] ? mid_buffers[1]->MutableData<T>() : nullptr;
+  params.mid_state_lengths3 = mid_lengths[1] ? mid_lengths[1]->MutableData<int32_t>() : nullptr;
   params.batch_size = static_cast<int>(batch_size);
   params.total_tokens = static_cast<int>(total_tokens);
   params.num_heads = static_cast<int>(num_heads);
@@ -399,6 +441,14 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeQsa(OpKernelContext* cont
   params.has_position_ids = position_ids != nullptr;
   params.output_capacity = static_cast<int>(output_capacity);
   params.epsilon = epsilon_;
+  params.dense_prefill = dense_prefill;
+  if (dense_prefill && scoring_state != nullptr) {
+    params.past_scoring_state = scoring_state->DataRaw();
+    params.present_scoring_state = scoring_state_out->MutableDataRaw();
+  }
+  ORT_RETURN_IF_NOT(!dense_prefill ||
+                        (params.head_size == 128 && params.compress_ratio == 4 && params.num_heads == 4),
+                    "PackedSparseAttentionIndexer: dense prefill requires Qwen QSA dimensions");
   params.scale = has_scale_ ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size));
   params.block_topk = static_cast<int>(token_budget_ / compress_ratio_);
   params.state_update_capacity = static_cast<int>(state_update_capacity_);
@@ -621,6 +671,8 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeCsa(OpKernelContext* cont
 
 template <typename T, typename TState>
 Status PackedSparseAttentionIndexer<T, TState>::ComputeReuse(OpKernelContext* context) const {
+  ORT_RETURN_IF(context->OutputCount() > psai::kMidKvBuffer2,
+                "PackedSparseAttentionIndexer: additional prefix outputs require refresh, not IndexShare reuse");
   const Tensor* query = context->Input<Tensor>(psai::kQuery);
   const Tensor* lengths = context->Input<Tensor>(psai::kPastSequenceLengths);
   const Tensor* indices = context->Input<Tensor>(psai::kMergedIndices);

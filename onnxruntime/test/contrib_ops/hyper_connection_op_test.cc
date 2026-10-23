@@ -354,6 +354,26 @@ TEST(HyperConnectionOpsTest, BranchwiseRMSNormRejectsInvalidArithmeticMode) {
   }
 }
 
+TEST(HyperConnectionOpsTest, BranchwiseRMSNormCpuRejectsNonzeroPrefillNumerics) {
+  for (int version : {1, 2}) {
+    for (int32_t mode : {0, 1, 2}) {
+      OpTester tester("BranchwiseRMSNorm", version, kMSDomain);
+      tester.AddAttribute<float>("epsilon", 0.0f);
+      tester.AddInput<float>("X", {1, 2}, {1.0f, 1.0f});
+      tester.AddOptionalInputEdge<float>();
+      tester.AddInput<int32_t>("prefill_numerics", {1}, {mode});
+      tester.AddOutput<float>("Y", {1, 2}, {1.0f, 1.0f});
+      std::vector<std::unique_ptr<IExecutionProvider>> providers;
+      providers.push_back(DefaultCpuExecutionProvider());
+      const bool supported = version == 1 && mode == 0;
+      tester.Run(supported ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
+                 version == 2 ? "Could not find an implementation for BranchwiseRMSNorm(2)"
+                              : mode == 0 ? "" : "nonzero prefill_numerics requires CUDA",
+                 {}, nullptr, &providers);
+    }
+  }
+}
+
 TEST(HyperConnectionOpsTest, ScaledSiLU) {
   RunOnAvailableProviders("ScaledSiLU", [&](OpTester& tester) {
     tester.AddAttribute<float>("alpha", 0.5f);

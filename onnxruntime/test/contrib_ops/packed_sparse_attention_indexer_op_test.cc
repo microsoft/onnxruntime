@@ -105,7 +105,9 @@ struct GraphOptions {
   int64_t state_update_capacity = 0;
   bool add_qsa_gate_output = false;
   bool omit_csa_gate_output = false;
+  int64_t prefill_scoring_capacity = -1;
   int output_count = psai::kFixedOutputCount;
+  std::vector<int> omitted_outputs;
   std::string policy_mode = psai::kPolicyModeQsa;
 };
 
@@ -171,11 +173,18 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
   if (options.add_state_update_active) {
     inputs.push_back(builder.MakeInput<int32_t>(std::vector<int64_t>{1}));
   }
+  if (options.prefill_scoring_capacity >= 0) {
+    inputs.resize(23, &empty);
+    inputs.push_back(builder.MakeInput<float>(
+        std::vector<int64_t>{options.batch_size, options.prefill_scoring_capacity, options.head_size}));
+  }
 
   std::vector<NodeArg*> outputs;
   for (int i = 0; i < options.output_count; ++i) {
     const bool omit_gate = (!is_csa && !options.add_qsa_gate_output) || (is_csa && options.omit_csa_gate_output);
-    outputs.push_back(i == psai::kPresentGateBuffer && omit_gate ? &empty : builder.MakeOutput());
+    const bool omitted = std::find(options.omitted_outputs.begin(), options.omitted_outputs.end(), i) !=
+                          options.omitted_outputs.end();
+    outputs.push_back((i == psai::kPresentGateBuffer && omit_gate) || omitted ? &empty : builder.MakeOutput());
   }
   Node& node = builder.AddNode("PackedSparseAttentionIndexer", inputs, outputs, kMSDomain);
   node.AddAttribute("policy_mode", options.policy_mode);
@@ -224,6 +233,35 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, QsaAcceptsPackedQueryKey) {
   ExpectShape(model->MainGraph(), node.OutputDefs()[psai::kPresentKeyState]->Name(),
               ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
               {options.batch_size, options.state_capacity, options.head_size});
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, PrefillScoringShadowHasIndependentCapacity) {
+  for (int64_t capacity : {int64_t{0}, int64_t{3}, int64_t{6}}) {
+    GraphOptions options;
+    options.prefill_scoring_capacity = capacity;
+    options.output_count = 16;
+    options.omitted_outputs = {6, 7, 8, 9, 10, 11, 12, 13, 14};
+    std::unique_ptr<Model> model;
+    ASSERT_STATUS_OK(BuildAndResolve([&](ModelTestBuilder& builder) { AddNode(builder, options); }, model));
+    const auto& graph = model->MainGraph();
+    const auto& node = *graph.Nodes().begin();
+    ExpectShape(graph, node.OutputDefs()[15]->Name(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                {options.batch_size, capacity, options.head_size});
+    ExpectShape(graph, node.OutputDefs()[psai::kPresentKeyState]->Name(),
+                ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                {options.batch_size, options.state_capacity, options.head_size});
+  }
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsScoringShadowOutputWithoutInput) {
+  GraphOptions options;
+  options.output_count = 16;
+  options.omitted_outputs = {6, 7, 8, 9, 10, 11, 12, 13, 14};
+  std::unique_ptr<Model> model;
+  auto status = BuildAndResolve([&](ModelTestBuilder& builder) { AddNode(builder, options); }, model);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("Prefill scoring shadow output requires prefill_scoring_state"),
+            std::string::npos);
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, QsaInfersStateUpdate) {
@@ -408,7 +446,32 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsWrongOutputCount) {
   GraphOptions options;
   options.output_count = 4;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "output size 4 not in range [min=6, max=8]");
+                       "output size 4 not in range [min=6, max=" + std::to_string(psai::kMaxOutputCount) + "]");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, MultiDraftPrefixOutputs) {
+  GraphOptions options;
+  options.output_count = psai::kMaxOutputCount;
+  options.omitted_outputs = {
+      psai::kStateUpdate, psai::kIndexShareStatus, psai::kValidationStatus, psai::kPrefillScoringStateOut};
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(BuildAndResolve([&](ModelTestBuilder& builder) { AddNode(builder, options); }, model));
+  const Graph& graph = model->MainGraph();
+  const Node& node = *graph.Nodes().begin();
+  for (int buffer : {psai::kMidKvBuffer2, psai::kMidKvBuffer3}) {
+    ExpectShape(graph, node.OutputDefs()[buffer]->Name(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                {options.batch_size, BufferCapacity(options.compress_ratio), options.head_size});
+    ExpectShape(graph, node.OutputDefs()[buffer + 1]->Name(), ONNX_NAMESPACE::TensorProto_DataType_INT32,
+                {options.batch_size, 2});
+  }
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsUnpairedMultiDraftPrefixOutput) {
+  GraphOptions options;
+  options.output_count = psai::kMidKvBuffer2 + 1;
+  options.omitted_outputs = {6, 7, 8, 9, 10};
+  ExpectResolveFailure([&](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "prefix buffer and lengths must be connected together");
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsStateUpdateCapacityWithoutCaptureCount) {
@@ -797,7 +860,8 @@ QsaPackedProblem MakeQsaPackedProblem(QsaPackedProblem problem = {}) {
 template <typename T, typename TState = T>
 void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedProblem(),
                       ProviderKind provider_kind = ProviderKind::Cuda, QsaPackedResult* actual = nullptr,
-                      bool packed_qk = false, int padding = 0, const ConfigOptions* webgpu_options = nullptr) {
+                      bool packed_qk = false, int padding = 0, const ConfigOptions* webgpu_options = nullptr,
+                      bool prefix_snapshots = false) {
   auto provider = CreateProvider(provider_kind, webgpu_options);
   if (provider == nullptr) {
     GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
@@ -909,6 +973,41 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
     if (problem.state_update_capacity == 0) test.AddOptionalOutputEdge<T>();
     test.AddOutput<int32_t>("status", {total_tokens}, std::vector<int32_t>(static_cast<size_t>(total_tokens), 0));
   }
+  if (prefix_snapshots) {
+    if (padding == 0) {
+      if (problem.state_update_capacity == 0) test.AddOptionalOutputEdge<T>();
+      test.AddOptionalOutputEdge<int32_t>();
+    }
+    for (int prefix = 1; prefix <= 3; ++prefix) {
+      if (prefix == 2) test.AddOptionalOutputEdge<int32_t>();  // validation_status
+      auto buffer = problem.past_kv_buffer;
+      auto lengths = problem.past_state_lengths;
+      for (int b = 0; b < batch_size; ++b) {
+        const int start = problem.cumulative_sequence_lengths[b];
+        const int request = problem.cumulative_sequence_lengths[b + 1] - start;
+        const int old_keys = problem.past_state_lengths[b * 2];
+        const int old_buffer = problem.past_state_lengths[b * 2 + 1];
+        const bool rejected = old_keys + (old_buffer + request) / problem.compress_ratio > problem.state_capacity;
+        if (rejected) continue;
+        const int pending = old_buffer + std::min(prefix, request);
+        const int blocks = pending / problem.compress_ratio;
+        const int remaining = pending % problem.compress_ratio;
+        lengths[b * 2] = old_keys + blocks;
+        lengths[b * 2 + 1] = remaining;
+        for (int t = 0; t < remaining; ++t) {
+          const int source = blocks * problem.compress_ratio + t;
+          for (int d = 0; d < head_size; ++d) {
+            buffer[(b * buffer_capacity + t) * head_size + d] =
+                source < old_buffer ? problem.past_kv_buffer[(b * buffer_capacity + source) * head_size + d]
+                                    : problem.key[(start + source - old_buffer) * head_size + d];
+          }
+        }
+      }
+      test.AddOutput<T>(("mid_buffer" + std::to_string(prefix)).c_str(),
+                        {batch_size, buffer_capacity, head_size}, ToElementType<T>(buffer), false, 0.0f, tolerance);
+      test.AddOutput<int32_t>(("mid_lengths" + std::to_string(prefix)).c_str(), {batch_size, 2}, lengths);
+    }
+  }
   RunOnProvider(test, std::move(provider));
   if (actual != nullptr) {
     const auto& fetches = test.GetFetches();
@@ -922,6 +1021,25 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
 }  // namespace
 
 TEST(PackedSparseAttentionIndexerTest, QsaFloat) { RunQsaPackedTest<float>(1.0e-5f); }
+
+TEST(PackedSparseAttentionIndexerTest, MultiDraftPrefixStates) {
+  for (int tokens : {1, 2, 3, 4, 9}) {
+    QsaPackedProblem problem;
+    problem.batch_size = 3;
+    problem.state_capacity = 16;
+    problem.cumulative_sequence_lengths = {0, tokens, tokens, tokens + 4};
+    problem.past_sequence_lengths = {0, 3, 3};
+    problem = MakeQsaPackedProblem(std::move(problem));
+    RunQsaPackedTest<float>(1e-5f, problem, ProviderKind::Cuda, nullptr, true, 0, nullptr, true);
+    RunQsaPackedTest<BFloat16>(2e-2f, problem, ProviderKind::Cuda, nullptr, false, 0, nullptr, true);
+  }
+  QsaPackedProblem rejected;
+  rejected.state_capacity = 1;
+  rejected.cumulative_sequence_lengths = {0, 4, 8};
+  rejected.past_sequence_lengths = {0, 1};
+  RunQsaPackedTest<float>(1e-5f, MakeQsaPackedProblem(std::move(rejected)),
+                          ProviderKind::Cuda, nullptr, false, 0, nullptr, true);
+}
 
 TEST(PackedSparseAttentionIndexerTest, QsaFloat16) { RunQsaPackedTest<MLFloat16>(2.0e-3f); }
 
@@ -1091,6 +1209,28 @@ TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalTopK) {
                 problem.head_size, value);
   }
   RunQsaPackedTest<float>(1.0e-5f, std::move(problem));
+}
+
+TEST(PackedSparseAttentionIndexerTest, QsaCompactChunkAndFallbackBoundaries) {
+  for (int live_blocks : {511, 512, 513, 1023, 1024, 1025, 2047, 2048, 2049, 8193, 10240, 10241}) {
+    SCOPED_TRACE(live_blocks);
+    QsaPackedProblem problem;
+    problem.batch_size = 2;
+    problem.cumulative_sequence_lengths = {0, 2, 3};
+    problem.past_sequence_lengths = {live_blocks * 4, 0};
+    problem.head_size = 128;
+    problem.num_heads = 4;
+    problem.rotary_width = 64;
+    problem.compress_ratio = 4;
+    problem.token_budget = 2048;
+    problem.state_capacity = std::max(2051, live_blocks + 1);
+    problem.max_position = live_blocks * 4 + 4;
+    problem = MakeQsaPackedProblem(std::move(problem));
+    std::fill(problem.query.begin(), problem.query.end(), 0.0f);
+    std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
+    std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
+    RunQsaPackedTest<BFloat16>(2.0e-2f, std::move(problem), ProviderKind::Cuda);
+  }
 }
 
 TEST(PackedSparseAttentionIndexerTest, QsaRaggedPrefill) {

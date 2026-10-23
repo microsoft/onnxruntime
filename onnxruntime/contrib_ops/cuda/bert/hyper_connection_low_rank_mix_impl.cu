@@ -3,7 +3,9 @@
 
 // Fused low-rank hyper-connection block (see the HyperConnectionLowRankMix schema in bert_defs.cc).
 //
-// Fused path (rows <= kHyperConnectionLowRankMixMaxFusedRows, 16-bit T, 16-byte aligned shapes): two kernels.
+// Fused path (rows <= kHyperConnectionLowRankMixMaxFusedRows, 16-bit T, 16-byte aligned shapes):
+// For rows 1/2, a cooperative kernel runs the same down/up bodies with a grid.sync() between them
+// when the entire grid can reside concurrently. Otherwise the existing two-kernel path is used.
 //   HcDownKernel  grid (column tiles + 1, splits, row groups)
 //                 [post-mix of the previous block] + branchwise RMS norm + down GEMV + inject GEMV.
 //                 The K = C * H reduction is split in slices that each stay inside one branch; every CTA
@@ -24,6 +26,8 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#include <cooperative_groups.h>
+#include "core/platform/env_var_utils.h"
 #include <cub/block/block_reduce.cuh>
 #include <algorithm>
 #include <limits>
@@ -44,6 +48,24 @@ constexpr int kMaxVecIters = 2;      // 16-byte vectors per thread in the norm p
 constexpr int kMaxFusedHidden = kMaxVecIters * kThreads * 8;
 constexpr int kMaxFusedRank = 512;
 constexpr int kMaxFusedBranches = 8;
+
+__global__ void PackHcWeightKernel(uint4* packed, const uint16_t* source, bool up) {
+  const int tile = blockIdx.x;
+  for (int q = threadIdx.x; q < kWeightSlots * kThreads; q += blockDim.x) {
+    const int i = q / kThreads;
+    const int tid = q % kThreads;
+    int64_t offset;
+    if (up) {
+      const int row = tid / 8 + 32 * i;
+      const int c = (tid % 8) / 2;
+      offset = static_cast<int64_t>(row) * 10240 + c * 2560 + tile * 16 + (tid % 2) * 8;
+    } else {
+      const int row = (tile / 20) * 1280 + tid / 2 + 128 * i;
+      offset = static_cast<int64_t>(row) * 320 + (tile % 20) * 16 + (tid % 2) * 8;
+    }
+    packed[tile * kWeightSlots * kThreads + q] = *reinterpret_cast<const uint4*>(source + offset);
+  }
+}
 
 __device__ __forceinline__ float SigmoidF32(float v) {
   if (v >= 0.0f) return 1.0f / (1.0f + expf(-v));
@@ -101,6 +123,20 @@ __device__ __forceinline__ uint4 Pack8(const float (&f)[8]) {
   u.z = Pack2<T>(f[4], f[5]);
   u.w = Pack2<T>(f[6], f[7]);
   return u;
+}
+
+__device__ __forceinline__ uint4 LoadActivation(const uint4* p) {
+  uint4 v;
+  asm volatile("ld.global.cg.v4.u32 {%0,%1,%2,%3}, [%4];"
+               : "=r"(v.x), "=r"(v.y), "=r"(v.z), "=r"(v.w) : "l"(p) : "memory");
+  return v;
+}
+
+template <typename T>
+__device__ __forceinline__ float LoadActivation(const T* p) {
+  uint16_t bits;
+  asm volatile("ld.global.cg.u16 %0, [%1];" : "=h"(bits) : "l"(p) : "memory");
+  return BitsToFloat<T>(bits);
 }
 
 __device__ __forceinline__ void GridWait() {
@@ -162,18 +198,42 @@ struct UpParams {
   float gate_mul;
 };
 
+template <int ROWS>
+struct DownShared {
+  __align__(16) uint4 wsm[kWeightSlots * kThreads];
+  __align__(16) uint16_t xs[ROWS][kMaxSliceRows];
+  float red[8][ROWS][kColTile];
+  float sq_red[8][ROWS];
+};
+
+template <int ROWS, int BRANCHES, int RANK>
+struct UpShared {
+  __align__(16) uint4 wsm[kWeightSlots * kThreads];
+  __align__(16) float sf[ROWS][RANK == 0 ? kMaxFusedRank : RANK];
+  float sg[ROWS][(BRANCHES == 0 ? kMaxFusedBranches : BRANCHES) * kUpTile];
+};
+
+template <int ROWS, int BRANCHES, int RANK>
+union CooperativeShared {
+  DownShared<ROWS> down;
+  UpShared<ROWS, BRANCHES, RANK> up;
+};
+
+template <int ROWS>
+struct CooperativePrefetchShared {
+  DownShared<ROWS> down;
+  UpShared<ROWS, 4, 320> up;
+};
+
 // CTA (j, s, z): K slice s (rows [k0, k0 + len) of the flattened stream, inside branch c) of the ROWS rows
 // z * ROWS ... z * ROWS + ROWS - 1, which share every weight read.
 // j < ceil(R / 16) owns down columns [16 j, 16 j + 16); the last j owns the C inject columns.
-template <typename T, bool kPost, int ROWS>
-__global__ void __launch_bounds__(kThreads)
-    HcDownKernel(const T* __restrict__ streams, const T* __restrict__ prev_out, const T* __restrict__ prev_gate,
+template <typename T, bool kPost, int ROWS, bool COOPERATIVE = false, bool PACKED = false>
+__device__ __forceinline__ void
+    HcDownBody(const T* __restrict__ streams, const T* __restrict__ prev_out, const T* __restrict__ prev_gate,
                  const T* __restrict__ norm_w, const T* __restrict__ w_down, const T* __restrict__ w_inject,
                  T* __restrict__ streams_out, float* __restrict__ partial, float* __restrict__ inv_rms_out,
-                 DownParams p) {
-  const int j = blockIdx.x;
-  const int s = blockIdx.y;
-  const int64_t row0 = static_cast<int64_t>(blockIdx.z) * ROWS;
+                 DownParams p, DownShared<ROWS>& shared, int j, int s, int64_t row0) {
   const int tid = threadIdx.x;
   const int branches = p.branches;
   const int hidden = p.hidden;
@@ -193,20 +253,27 @@ __global__ void __launch_bounds__(kThreads)
     row_idx[r] = row_ok[r] ? row0 + r : p.rows - 1;  // keep loads of unused rows in bounds
   }
 
-  __shared__ __align__(16) uint4 wsm[kWeightSlots * kThreads];
-  __shared__ __align__(16) uint16_t xs[ROWS][kMaxSliceRows];
-  __shared__ float red[8][ROWS][kColTile];
-  __shared__ float sq_red[8][ROWS];
+  auto& wsm = shared.wsm;
+  auto& xs = shared.xs;
+  auto& red = shared.red;
+  auto& sq_red = shared.sq_red;
 
   const int cg = tid & 1;
   const int rp = tid >> 1;
   const int col = j * kColTile + cg * 8;
   // Let the up kernel start right away and prefetch its weights; its results are only read after GridWait().
-  GridTrigger();
+  if constexpr (!COOPERATIVE) GridTrigger();
 
   // Weights do not depend on any previous kernel: start streaming them into shared memory first.
-  if (!is_inject) {
-    if (col < p.rank) {
+  if (!COOPERATIVE && !is_inject) {
+    if constexpr (PACKED) {
+      const uint4* tile = reinterpret_cast<const uint4*>(w_down) +
+                          (s * 20 + j) * kWeightSlots * kThreads;
+#pragma unroll
+      for (int i = 0; i < kWeightSlots; ++i) {
+        CpAsync16(&wsm[i * kThreads + tid], tile + i * kThreads + tid);
+      }
+    } else if (col < p.rank) {
       const T* base = w_down + k0 * p.rank + col;
 #pragma unroll
       for (int i = 0; i < kWeightSlots; ++i) {
@@ -214,11 +281,11 @@ __global__ void __launch_bounds__(kThreads)
         if (row < len) CpAsync16(&wsm[i * kThreads + tid], base + static_cast<int64_t>(row) * p.rank);
       }
     }
-  } else {
+  } else if (!COOPERATIVE) {
     const int chunks = len * branches / 8;
     for (int q = tid; q < chunks; q += kThreads) CpAsync16(&wsm[q], w_inject + k0 * branches + q * 8);
   }
-  CpCommit();
+  if constexpr (!COOPERATIVE) CpCommit();
 
   // Norm weights for the 8 consecutive features of the slice this thread normalizes below.
   const bool norm_active = tid * 8 < len;
@@ -226,7 +293,7 @@ __global__ void __launch_bounds__(kThreads)
   if (norm_active) wv = *reinterpret_cast<const uint4*>(norm_w + k0 + tid * 8);
 
   // Everything below consumes results of the previous kernel.
-  GridWait();
+  if constexpr (!COOPERATIVE) GridWait();
 
   const int nvec = hidden / 8;
   uint4 sv[ROWS][kMaxVecIters];
@@ -238,15 +305,15 @@ __global__ void __launch_bounds__(kThreads)
 #pragma unroll
     for (int i = 0; i < kMaxVecIters; ++i) {
       const int qi = tid + kThreads * i;
-      sv[r][i] = qi < nvec ? sp[qi] : make_uint4(0u, 0u, 0u, 0u);
+      sv[r][i] = qi < nvec ? LoadActivation(sp + qi) : make_uint4(0u, 0u, 0u, 0u);
     }
     if constexpr (kPost) {
-      gate_c[r] = to_float<T>(prev_gate[row_idx[r] * branches + c]);
+      gate_c[r] = LoadActivation(prev_gate + row_idx[r] * branches + c);
       const uint4* bp = reinterpret_cast<const uint4*>(prev_out + row_idx[r] * hidden);
 #pragma unroll
       for (int i = 0; i < kMaxVecIters; ++i) {
         const int qi = tid + kThreads * i;
-        bv[r][i] = qi < nvec ? bp[qi] : make_uint4(0u, 0u, 0u, 0u);
+        bv[r][i] = qi < nvec ? LoadActivation(bp + qi) : make_uint4(0u, 0u, 0u, 0u);
       }
     }
   }
@@ -273,11 +340,10 @@ __global__ void __launch_bounds__(kThreads)
         if (h >= h0 && h < h0 + len) {
           const uint4 packed = Pack8<T>(v);
           *reinterpret_cast<uint4*>(&xs[r][h - h0]) = packed;
-          if constexpr (kPost) {
-            if (j == 0 && row_ok[r]) {
-              *reinterpret_cast<uint4*>(streams_out + row_idx[r] * K + static_cast<int64_t>(c) * hidden + h) =
-                  packed;
-            }
+          if (j == 0 && row_ok[r] && streams_out != nullptr) {
+            // A no-prologue output is a bitwise pass-through, including NaN payloads.
+            *reinterpret_cast<uint4*>(streams_out + row_idx[r] * K + static_cast<int64_t>(c) * hidden + h) =
+                kPost ? packed : sv[r][i];
           }
         }
       }
@@ -398,13 +464,13 @@ __global__ void __launch_bounds__(kThreads)
 }
 
 // CTA (hb, 0, z) owns features [16 hb, 16 hb + 16) of every branch for ROWS rows.
-template <typename T, int ROWS, int BRANCHES = 0, int RANK = 0>
-__global__ void __launch_bounds__(kThreads)
-    HcUpPreKernel(const T* __restrict__ streams, const T* __restrict__ norm_w, const T* __restrict__ w_up,
+template <typename T, int ROWS, int BRANCHES = 0, int RANK = 0, bool COOPERATIVE = false,
+          bool PREFETCHED = false, bool PACKED = false>
+__device__ __forceinline__ void
+    HcUpPreBody(const T* __restrict__ streams, const T* __restrict__ norm_w, const T* __restrict__ w_up,
                   const float* __restrict__ partial, const float* __restrict__ inv_rms_in,
-                  T* __restrict__ pre_out, T* __restrict__ gate_out, UpParams p) {
-  const int hb = blockIdx.x;
-  const int64_t row0 = static_cast<int64_t>(blockIdx.z) * ROWS;
+                  T* __restrict__ pre_out, T* __restrict__ gate_out, UpParams p,
+                  UpShared<ROWS, BRANCHES, RANK>& shared, int hb, int64_t row0) {
   const int tid = threadIdx.x;
   const int branches = BRANCHES == 0 ? p.branches : BRANCHES;
   const int rank = RANK == 0 ? p.rank : RANK;
@@ -429,24 +495,31 @@ __global__ void __launch_bounds__(kThreads)
     row_idx[r] = row_ok[r] ? row0 + r : p.rows - 1;
   }
 
-  __shared__ __align__(16) uint4 wsm[kWeightSlots * kThreads];
-  __shared__ __align__(16) float sf[ROWS][RANK == 0 ? kMaxFusedRank : RANK];
-  __shared__ float sg[ROWS][kBranchStorage * kUpTile];
+  auto& wsm = shared.wsm;
+  auto& sf = shared.sf;
+  auto& sg = shared.sg;
 
   // Prefetch the first chunk of up weights before waiting for the down kernel.
   const T* wbase = w_up + static_cast<int64_t>(c) * hidden + col;
-  if (valid) {
+  if (!PREFETCHED && valid) {
 #pragma unroll
     for (int i = 0; i < kWeightSlots; ++i) {
-      const int row = rp + phases * i;
-      if (row < rank) CpAsync16(&wsm[i * kThreads + tid], wbase + static_cast<int64_t>(row) * K);
+      if constexpr (PACKED) {
+        const uint4* tile = reinterpret_cast<const uint4*>(w_up) + hb * kWeightSlots * kThreads;
+        CpAsync16(&wsm[i * kThreads + tid], tile + i * kThreads + tid);
+      } else {
+        const int row = rp + phases * i;
+        if (row < rank) CpAsync16(&wsm[i * kThreads + tid], wbase + static_cast<int64_t>(row) * K);
+      }
     }
   }
-  CpCommit();
+  if constexpr (!PREFETCHED) CpCommit();
 
   // The next block's down kernel may start (and prefetch its weights) while this kernel waits.
-  GridTrigger();
-  GridWait();
+  if constexpr (!COOPERATIVE) {
+    GridTrigger();
+    GridWait();
+  }
 
   float xv[ROWS][kBranchStorage], inv[ROWS][kBranchStorage], nw[kBranchStorage];
   const int hl = tid;  // feature owned by threads < 16 in the final pre-mix
@@ -458,7 +531,7 @@ __global__ void __launch_bounds__(kThreads)
         nw[b] = to_float<T>(norm_w[static_cast<int64_t>(b) * hidden + h0 + hl]);
 #pragma unroll
         for (int r = 0; r < ROWS; ++r) {
-          xv[r][b] = to_float<T>(streams[row_idx[r] * K + static_cast<int64_t>(b) * hidden + h0 + hl]);
+          xv[r][b] = LoadActivation(streams + row_idx[r] * K + static_cast<int64_t>(b) * hidden + h0 + hl);
           inv[r][b] = inv_rms_in[row_idx[r] * branches + b];
         }
       }
@@ -594,6 +667,121 @@ __global__ void __launch_bounds__(kThreads)
       }
       if (row_ok[r]) pre_out[row_idx[r] * hidden + h0 + hl] = from_float<T>(sum * p.reduction_scale);
     }
+  }
+}
+
+template <typename T, bool kPost, int ROWS, bool PACKED = false>
+__global__ void __launch_bounds__(kThreads)
+    HcDownKernel(const T* streams, const T* prev_out, const T* prev_gate,
+                 const T* norm_w, const T* w_down, const T* w_inject,
+                 T* streams_out, float* partial, float* inv_rms_out, DownParams p) {
+  __shared__ DownShared<ROWS> shared;
+  HcDownBody<T, kPost, ROWS, false, PACKED>(streams, prev_out, prev_gate, norm_w, w_down, w_inject,
+                             streams_out, partial, inv_rms_out, p, shared, blockIdx.x, blockIdx.y,
+                             static_cast<int64_t>(blockIdx.z) * ROWS);
+}
+
+template <typename T, int ROWS, int BRANCHES = 0, int RANK = 0, bool PACKED = false>
+__global__ void __launch_bounds__(kThreads)
+    HcUpPreKernel(const T* streams, const T* norm_w, const T* w_up,
+                  const float* partial, const float* inv_rms_in,
+                  T* pre_out, T* gate_out, UpParams p) {
+  __shared__ UpShared<ROWS, BRANCHES, RANK> shared;
+  HcUpPreBody<T, ROWS, BRANCHES, RANK, false, false, PACKED>(streams, norm_w, w_up, partial, inv_rms_in,
+                                     pre_out, gate_out, p, shared, blockIdx.x,
+                                     static_cast<int64_t>(blockIdx.z) * ROWS);
+}
+
+template <typename T, bool kPost, int ROWS, int BRANCHES, int RANK, bool PACKED = false>
+__global__ void __launch_bounds__(kThreads, 2)
+    HcCooperativeKernel(HyperConnectionLowRankMixTensors<T> tensors, float* partial,
+                         float* inv_rms, DownParams down, UpParams up) {
+  constexpr bool kPrefetchUp = BRANCHES == 4 && RANK == 320;
+  using Shared = std::conditional_t<kPrefetchUp, CooperativePrefetchShared<ROWS>,
+                                    CooperativeShared<ROWS, BRANCHES, RANK>>;
+  extern __shared__ __align__(16) unsigned char storage[];
+  auto& shared = *reinterpret_cast<Shared*>(storage);
+  const int down_columns = (down.rank + kColTile - 1) / kColTile + 1;
+  const int block = blockIdx.x;
+  GridTrigger();
+  if (block < down_columns * down.splits) {
+    const int j = block % down_columns;
+    const int s = block / down_columns;
+    const int c = s / down.pieces;
+    const int h0 = (s % down.pieces) * down.slice;
+    const int len = min(down.slice, down.hidden - h0);
+    const int tid = threadIdx.x;
+    const int64_t k0 = static_cast<int64_t>(c) * down.hidden + h0;
+    if (j < down_columns - 1 && PACKED) {
+      const uint4* tile = reinterpret_cast<const uint4*>(tensors.packed_down_weight) +
+                          (s * 20 + j) * kWeightSlots * kThreads;
+#pragma unroll
+      for (int i = 0; i < kWeightSlots; ++i) {
+        CpAsync16(&shared.down.wsm[i * kThreads + tid], tile + i * kThreads + tid);
+      }
+    } else if (j < down_columns - 1) {
+      const int col = j * kColTile + (tid & 1) * 8;
+      if (col < down.rank) {
+#pragma unroll
+        for (int i = 0; i < kWeightSlots; ++i) {
+          const int row = (tid >> 1) + 128 * i;
+          if (row < len) CpAsync16(&shared.down.wsm[i * kThreads + tid],
+                                  tensors.down_weight + (k0 + row) * down.rank + col);
+        }
+      }
+    } else {
+      for (int q = tid; q < len * down.branches / 8; q += kThreads) {
+        CpAsync16(&shared.down.wsm[q], tensors.inject_weight + k0 * down.branches + q * 8);
+      }
+    }
+    CpCommit();
+  }
+  if constexpr (kPrefetchUp) {
+    // All 320 rows fit in one weight chunk for four branches. Start both phases' reads
+    // together, rather than putting the entire up-weight latency after the grid barrier.
+    if (block < (up.hidden + kUpTile - 1) / kUpTile) {
+      const int tid = threadIdx.x;
+      const int col = block * kUpTile + (tid & 1) * 8;
+      const int c = (tid % 8) >> 1;
+      if constexpr (PACKED) {
+        const uint4* tile = reinterpret_cast<const uint4*>(tensors.packed_up_weight) +
+                            block * kWeightSlots * kThreads;
+#pragma unroll
+        for (int i = 0; i < kWeightSlots; ++i) {
+          CpAsync16(&shared.up.wsm[i * kThreads + tid], tile + i * kThreads + tid);
+        }
+      } else if (col < up.hidden) {
+        const int64_t K = static_cast<int64_t>(up.branches) * up.hidden;
+        const T* base = tensors.up_weight + static_cast<int64_t>(c) * up.hidden + col;
+#pragma unroll
+        for (int i = 0; i < kWeightSlots; ++i) {
+          const int row = tid / 8 + 32 * i;
+          CpAsync16(&shared.up.wsm[i * kThreads + tid], base + static_cast<int64_t>(row) * K);
+        }
+      }
+      CpCommit();
+    }
+  }
+  // Only immutable weights were touched above. Volatile activation loads in the bodies
+  // prevent readonly-load hoisting across this programmatic dependency wait.
+  GridWait();
+  if (block < down_columns * down.splits) {
+    HcDownBody<T, kPost, ROWS, true>(
+        tensors.streams, tensors.prev_block_output, tensors.prev_post_gate, tensors.norm_scale,
+        tensors.down_weight, tensors.inject_weight, tensors.streams_out, partial, inv_rms, down,
+        shared.down, block % down_columns, block / down_columns, 0);
+  }
+  // The down body normally drains this thread's asynchronous copies too. Idle down
+  // CTAs must explicitly drain their up prefetch before the grid-wide rendezvous.
+  if constexpr (kPrefetchUp) CpWaitAll();
+  // All CTAs, including ones idle in either phase, participate. This also publishes partials,
+  // inverse RMS and post-mixed streams before any up body reads them. No persistent state/reset.
+  cooperative_groups::this_grid().sync();
+  if (block < (up.hidden + kUpTile - 1) / kUpTile) {
+    const T* streams = kPost ? tensors.streams_out : tensors.streams;
+    HcUpPreBody<T, ROWS, BRANCHES, RANK, true, kPrefetchUp>(
+        streams, tensors.norm_scale, tensors.up_weight, partial, inv_rms, tensors.pre_output,
+        tensors.post_gate, up, shared.up, block, 0);
   }
 }
 
@@ -740,29 +928,117 @@ Status LaunchWithProgrammaticSerialization(bool use_pdl, Kernel kernel, dim3 gri
   return CUDA_CALL(cudaGetLastError());
 }
 
-template <typename T, int ROWS>
-Status LaunchFusedRows(bool use_pdl, cudaStream_t stream, const HyperConnectionLowRankMixConfig& config,
+template <typename T, bool kPost, int ROWS, int BRANCHES = 0, int RANK = 0, bool PACKED = false>
+Status TryLaunchCooperative(const cudaDeviceProp& device_prop, cudaStream_t stream,
+                            HyperConnectionLowRankMixTensors<T> tensors, const FusedGeometry& g,
+                            float* partial, float* inv_rms, DownParams down, UpParams up,
+                            bool weights_ready, bool& launched) {
+  launched = false;
+  if (!device_prop.cooperativeLaunch || down.rows != ROWS) return Status::OK();
+
+  auto kernel = HcCooperativeKernel<T, kPost, ROWS, BRANCHES, RANK, PACKED>;
+  constexpr bool kPrefetchUp = BRANCHES == 4 && RANK == 320;
+  constexpr size_t shared_bytes = kPrefetchUp ? sizeof(CooperativePrefetchShared<ROWS>)
+                                             : sizeof(CooperativeShared<ROWS, BRANCHES, RANK>);
+  if (shared_bytes > static_cast<size_t>(device_prop.sharedMemPerBlockOptin)) return Status::OK();
+  // The prefetched path needs opt-in shared memory (about 90 KiB for two rows).
+  // Attribute setup and occupancy inspection are host-only and absent from graph replay.
+  if constexpr (shared_bytes > 48 * 1024) {
+    CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                             static_cast<int>(shared_bytes)));
+  }
+  int blocks_per_sm = 0;
+  // Query the exact instantiated kernel with its registers and requested dynamic shared memory.
+  // This host-side query does not synchronize or allocate, and is safe during stream capture.
+  CUDA_RETURN_IF_ERROR(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+      &blocks_per_sm, kernel, kThreads, shared_bytes));
+  const int blocks = std::max((g.col_tiles + 1) * g.splits, (up.hidden + kUpTile - 1) / kUpTile);
+  if (static_cast<int64_t>(blocks) >
+      static_cast<int64_t>(blocks_per_sm) * device_prop.multiProcessorCount) return Status::OK();
+
+  void* args[] = {&tensors, &partial, &inv_rms, &down, &up};
+  // Do not turn a failed launch into a fallback: in particular a capture failure invalidates
+  // the capture. Only an unsupported device/shape or insufficient residency selects fallback.
+#if defined(CUDART_VERSION) && CUDART_VERSION >= 12030
+  if (device_prop.major >= 9 && weights_ready) {
+    cudaLaunchAttribute attributes[2]{};
+    attributes[0].id = cudaLaunchAttributeCooperative;
+    attributes[0].val.cooperative = 1;
+    attributes[1].id = cudaLaunchAttributeProgrammaticStreamSerialization;
+    attributes[1].val.programmaticStreamSerializationAllowed = 1;
+    cudaLaunchConfig_t launch{};
+    launch.gridDim = dim3(blocks);
+    launch.blockDim = dim3(kThreads);
+    launch.dynamicSmemBytes = shared_bytes;
+    launch.stream = stream;
+    launch.attrs = attributes;
+    launch.numAttrs = 2;
+    CUDA_RETURN_IF_ERROR(cudaLaunchKernelEx(&launch, kernel, tensors, partial, inv_rms, down, up));
+    launched = true;
+    return Status::OK();
+  }
+#endif
+  ORT_UNUSED_PARAMETER(weights_ready);
+  CUDA_RETURN_IF_ERROR(cudaLaunchCooperativeKernel(reinterpret_cast<const void*>(kernel), dim3(blocks),
+                                                   dim3(kThreads), args, shared_bytes, stream));
+  launched = true;
+  return Status::OK();
+}
+
+template <typename T, bool kPost, int ROWS>
+Status TryLaunchCooperativeRows(const cudaDeviceProp& device_prop, cudaStream_t stream,
+                                const HyperConnectionLowRankMixConfig& config,
+                                const HyperConnectionLowRankMixTensors<T>& tensors, const FusedGeometry& g,
+                                float* partial, float* inv_rms, DownParams down, UpParams up, bool& launched) {
+  if (config.branches == 4 && config.rank == 320) {
+    if (config.hidden == 2560 && tensors.packed_down_weight != nullptr &&
+        tensors.packed_up_weight != nullptr && config.weights_ready) {
+      return TryLaunchCooperative<T, kPost, ROWS, 4, 320, true>(
+          device_prop, stream, tensors, g, partial, inv_rms, down, up, config.weights_ready, launched);
+    }
+    return TryLaunchCooperative<T, kPost, ROWS, 4, 320>(device_prop, stream, tensors, g, partial,
+                                                      inv_rms, down, up, config.weights_ready, launched);
+  }
+  return TryLaunchCooperative<T, kPost, ROWS>(device_prop, stream, tensors, g, partial,
+                                             inv_rms, down, up, config.weights_ready, launched);
+}
+
+template <typename T, int ROWS, bool PACKED = false>
+Status LaunchFusedRowsImpl(const cudaDeviceProp& device_prop, bool use_pdl, cudaStream_t stream,
+                       const HyperConnectionLowRankMixConfig& config,
                        const HyperConnectionLowRankMixTensors<T>& tensors, const FusedGeometry& g, float* partial,
                        float* inv_rms, const DownParams& down, const UpParams& up) {
+  bool launched = false;
+  if (tensors.prev_block_output != nullptr) {
+    ORT_RETURN_IF_ERROR((TryLaunchCooperativeRows<T, true, ROWS>(
+        device_prop, stream, config, tensors, g, partial, inv_rms, down, up, launched)));
+  } else {
+    ORT_RETURN_IF_ERROR((TryLaunchCooperativeRows<T, false, ROWS>(
+        device_prop, stream, config, tensors, g, partial, inv_rms, down, up, launched)));
+  }
+  if (launched) return Status::OK();
+
   const unsigned row_groups = static_cast<unsigned>((config.rows + ROWS - 1) / ROWS);
   const dim3 down_grid(g.col_tiles + 1, g.splits, row_groups);
   const dim3 up_grid((config.hidden + kUpTile - 1) / kUpTile, 1, row_groups);
+  const T* down_weight = PACKED ? tensors.packed_down_weight : tensors.down_weight;
+  const T* up_weight = PACKED ? tensors.packed_up_weight : tensors.up_weight;
   if (tensors.prev_block_output != nullptr) {
     ORT_RETURN_IF_ERROR(LaunchWithProgrammaticSerialization(
-        use_pdl, HcDownKernel<T, true, ROWS>, down_grid, dim3(kThreads), stream, tensors.streams,
-        tensors.prev_block_output, tensors.prev_post_gate, tensors.norm_scale, tensors.down_weight,
+        use_pdl, HcDownKernel<T, true, ROWS, PACKED>, down_grid, dim3(kThreads), stream, tensors.streams,
+        tensors.prev_block_output, tensors.prev_post_gate, tensors.norm_scale, down_weight,
         tensors.inject_weight, tensors.streams_out, partial, inv_rms, down));
   } else {
     ORT_RETURN_IF_ERROR(LaunchWithProgrammaticSerialization(
-        use_pdl, HcDownKernel<T, false, ROWS>, down_grid, dim3(kThreads), stream, tensors.streams,
+        use_pdl, HcDownKernel<T, false, ROWS, PACKED>, down_grid, dim3(kThreads), stream, tensors.streams,
         static_cast<const T*>(nullptr), static_cast<const T*>(nullptr), tensors.norm_scale,
-        tensors.down_weight, tensors.inject_weight, static_cast<T*>(nullptr), partial, inv_rms, down));
+        down_weight, tensors.inject_weight, tensors.streams_out, partial, inv_rms, down));
   }
 
   const T* up_streams = tensors.prev_block_output != nullptr ? tensors.streams_out : tensors.streams;
   if (config.branches == 4 && config.rank == 320) {
-    return LaunchWithProgrammaticSerialization(use_pdl, HcUpPreKernel<T, ROWS, 4, 320>, up_grid, dim3(kThreads), stream,
-                                               up_streams, tensors.norm_scale, tensors.up_weight,
+    return LaunchWithProgrammaticSerialization(use_pdl, HcUpPreKernel<T, ROWS, 4, 320, PACKED>, up_grid, dim3(kThreads), stream,
+                                               up_streams, tensors.norm_scale, up_weight,
                                                static_cast<const float*>(partial),
                                                static_cast<const float*>(inv_rms), tensors.pre_output,
                                                tensors.post_gate, up);
@@ -774,7 +1050,27 @@ Status LaunchFusedRows(bool use_pdl, cudaStream_t stream, const HyperConnectionL
                                              tensors.post_gate, up);
 }
 
+template <typename T, int ROWS>
+Status LaunchFusedRows(const cudaDeviceProp& device_prop, bool use_pdl, cudaStream_t stream,
+                       const HyperConnectionLowRankMixConfig& config,
+                       const HyperConnectionLowRankMixTensors<T>& tensors, const FusedGeometry& g, float* partial,
+                       float* inv_rms, const DownParams& down, const UpParams& up) {
+  if (config.branches == 4 && config.hidden == 2560 && config.rank == 320 && config.weights_ready &&
+      tensors.packed_down_weight != nullptr && tensors.packed_up_weight != nullptr) {
+    return LaunchFusedRowsImpl<T, ROWS, true>(device_prop, use_pdl, stream, config, tensors, g,
+                                             partial, inv_rms, down, up);
+  }
+  return LaunchFusedRowsImpl<T, ROWS>(device_prop, use_pdl, stream, config, tensors, g,
+                                     partial, inv_rms, down, up);
+}
+
 }  // namespace
+
+Status LaunchPackHyperConnectionWeight(void* packed, const void* source, bool up, cudaStream_t stream) {
+  PackHcWeightKernel<<<160, kThreads, 0, stream>>>(
+      static_cast<uint4*>(packed), static_cast<const uint16_t*>(source), up);
+  return CUDA_CALL(cudaGetLastError());
+}
 
 template <typename T>
 bool CanUseFusedHyperConnectionLowRankMix(const cudaDeviceProp& device_prop,
@@ -820,11 +1116,16 @@ Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, c
                     g.splits, g.partial_stride, config.epsilon};
     UpParams up{config.rows, config.branches, config.hidden, config.rank, g.splits, g.partial_stride,
                 config.silu_alpha, config.reduction_scale, config.gate_div, config.gate_mul};
-    const bool use_pdl = device_prop.major >= 9;
+    const bool use_pdl = device_prop.major >= 9 && config.weights_ready;
     if (config.rows == 1) {
-      return LaunchFusedRows<T, 1>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
+      return LaunchFusedRows<T, 1>(device_prop, use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
     }
-    return LaunchFusedRows<T, 2>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
+    static const int decode_rows = ParseEnvironmentVariableWithDefault<int>("ORT_HC_DECODE_ROWS", 2);
+    ORT_ENFORCE(decode_rows == 1 || decode_rows == 2, "ORT_HC_DECODE_ROWS must be 1 or 2");
+    if (config.rows == 4 && decode_rows == 1) {
+      return LaunchFusedRows<T, 1>(device_prop, use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
+    }
+    return LaunchFusedRows<T, 2>(device_prop, use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
   }
 }
 

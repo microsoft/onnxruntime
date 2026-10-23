@@ -33,6 +33,9 @@ using namespace onnxruntime::cuda;
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()) \
           .MayInplace(3, 1)                                            \
           .MayInplace(4, 2)                                            \
+          .MayInplace(21, 4)                                          \
+          .MayInplace(22, 5)                                          \
+          .InputMemoryType(OrtMemTypeCPUInput, 20)                     \
           .InputMemoryType(OrtMemTypeCPUInput, 10),                    \
       DynamicSparseAttention<T>);
 
@@ -134,6 +137,14 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* committed_length =
       context->InputCount() > 17 ? context->Input<Tensor>(17) : nullptr;
   const Tensor* key_scale = context->InputCount() > 18 ? context->Input<Tensor>(18) : nullptr;
+  const Tensor* numerics = context->Input<Tensor>(20);
+  const Tensor* prefill_key = context->Input<Tensor>(21);
+  const Tensor* prefill_value = context->Input<Tensor>(22);
+  ORT_RETURN_IF_NOT(numerics == nullptr ||
+                        (numerics->IsDataType<int32_t>() && numerics->Shape().Size() == 1 &&
+                         (numerics->Data<int32_t>()[0] == 0 || numerics->Data<int32_t>()[0] == 1)),
+                    "prefill_numerics must be an int32 scalar containing 0 or 1");
+  const bool dense_prefill = numerics != nullptr && numerics->Data<int32_t>()[0] == 1;
   const Tensor* value_scale = context->InputCount() > 19 ? context->Input<Tensor>(19) : nullptr;
   const bool quantized_cache = past_key != nullptr && past_key->IsDataType<int8_t>();
   ORT_RETURN_IF_NOT((key_scale != nullptr) == (value_scale != nullptr),
@@ -264,15 +275,47 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
     }
   }
 
+  Tensor* prefill_key_output = nullptr;
+  Tensor* prefill_value_output = nullptr;
+  if (context->OutputCount() > 4) {
+    ORT_RETURN_IF_NOT(prefill_key != nullptr && prefill_value != nullptr,
+                      "DynamicSparseAttention: shadow outputs require shadow inputs");
+    prefill_key_output = context->Output(4, prefill_key->Shape());
+    prefill_value_output = context->Output(5, prefill_value->Shape());
+  }
+  if (dense_prefill) {
+    ORT_RETURN_IF_NOT(quantized_cache && prefill_key != nullptr && prefill_value != nullptr &&
+                          prefill_key_output != nullptr && prefill_value_output != nullptr &&
+                          prefill_key->IsDataType<T>() && prefill_value->IsDataType<T>() &&
+                          prefill_key->Shape() == past_key->Shape() &&
+                          prefill_value->Shape() == past_value->Shape(),
+                      "DynamicSparseAttention: dense prefill requires full-size activation-type shadow KV");
+  }
   const size_t attention_workspace_elements =
       GetDynamicSparseAttentionWorkspaceSize(
-          parameters, sizeof(CudaT), GetDeviceProp().sharedMemPerBlock, quantized_cache);
+          parameters, sizeof(CudaT), GetDeviceProp().sharedMemPerBlock, dense_prefill ? false : quantized_cache);
   auto attention_workspace =
       GetScratchBuffer<float>(attention_workspace_elements, GetComputeStream(context));
   data.attention_workspace = attention_workspace.get();
 
   const bool initialize_key_cache = data.past_key != data.present_key;
   const bool initialize_value_cache = data.past_value != data.present_value;
+  if (dense_prefill) {
+    ORT_RETURN_IF_ERROR(AppendDynamicSparseAttentionCache(
+        stream, parameters, data, initialize_key_cache, initialize_value_cache,
+        GetDeviceProp().maxThreadsPerBlock));
+    data.past_key = reinterpret_cast<const CudaT*>(prefill_key->Data<T>());
+    data.past_value = reinterpret_cast<const CudaT*>(prefill_value->Data<T>());
+    data.present_key = reinterpret_cast<CudaT*>(prefill_key_output->MutableData<T>());
+    data.present_value = reinterpret_cast<CudaT*>(prefill_value_output->MutableData<T>());
+    data.quantized_cache = false;
+    data.key_scale = nullptr;
+    data.value_scale = nullptr;
+    return LaunchDynamicSparseAttention<CudaT>(
+        stream, parameters, data, data.past_key != data.present_key,
+        data.past_value != data.present_value,
+        GetDeviceProp().maxThreadsPerBlock, GetDeviceProp().sharedMemPerBlock);
+  }
   return LaunchDynamicSparseAttention<CudaT>(
       stream, parameters, data, initialize_key_cache, initialize_value_cache,
       GetDeviceProp().maxThreadsPerBlock, GetDeviceProp().sharedMemPerBlock);

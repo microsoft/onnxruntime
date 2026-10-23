@@ -1168,7 +1168,6 @@ class CudaKernel : public OpKernel {
   bool EnableHostPageableGather() const { return runtime_config_->enable_host_pageable_gather; }
   bool IsCudaGraphEnabled() const { return runtime_config_->enable_cuda_graph; }
   bool IsArchAvailable(int arch) const { return GetDeviceProp().major >= arch; }
-  int GetDeviceId() const { return device_id_; }
   // Delegate to the base OpKernel::Info() which holds a safe copy of OpKernelInfo.
   // Do NOT store a reference to the constructor parameter — it becomes dangling.
   const OpKernelInfo& Info() const { return OpKernel::Info(); }

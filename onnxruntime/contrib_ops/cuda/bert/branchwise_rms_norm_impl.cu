@@ -43,7 +43,8 @@ __global__ void BranchwiseSquareKernel(const T* x, float* squares, int64_t count
 template <typename T, bool Packed>
 __global__ void BranchwiseStandardEpilogueKernel(
     const T* x, const void* scale, int scale_type, const float* sums, T* y, float* widened,
-    int64_t count, int branches, int hidden, bool shared_scale, float epsilon, int input_row_stride) {
+    int64_t count, int branches, int hidden, bool shared_scale, float epsilon, int input_row_stride,
+    bool reciprocal_multiply) {
   const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index < count) {
     const int64_t group = index / hidden;
@@ -52,7 +53,10 @@ __global__ void BranchwiseStandardEpilogueKernel(
     const float mean = sums[group] / static_cast<float>(hidden);
     const float rms = sqrtf(__fadd_rn(mean, epsilon));
     const int64_t source_index = Packed ? group * input_row_stride + index % hidden : index;
-    const float normalized = to_float<T>(x[source_index]) / rms;
+    const float value = to_float<T>(x[source_index]);
+    const float normalized = reciprocal_multiply
+                                 ? __fmul_rn(value, __fdiv_rn(1.0f, rms))
+                                 : value / rms;
     const T rounded = from_float<T>(__fmul_rn(normalized, weight));
     y[index] = rounded;
     if (widened != nullptr) widened[index] = to_float<T>(rounded);
@@ -112,7 +116,8 @@ Status LaunchStandardBranchwiseRMSNorm(cudaStream_t stream, const T* x, const vo
                                        int scale_type, T* y, int groups, int branches,
                                        int hidden, bool shared_scale, float epsilon,
                                        float* widened, float* squares, float* sums, void* reduction_buffer,
-                                       size_t reduction_buffer_size, int input_row_stride) {
+                                       size_t reduction_buffer_size, int input_row_stride,
+                                       bool reciprocal_multiply) {
   const int64_t count = static_cast<int64_t>(groups) * hidden;
   const int64_t blocks = (count + kThreads - 1) / kThreads;
   ORT_RETURN_IF_NOT(blocks <= std::numeric_limits<int>::max(), "CUDA launch requires too many blocks");
@@ -130,10 +135,12 @@ Status LaunchStandardBranchwiseRMSNorm(cudaStream_t stream, const T* x, const vo
   }
   if (input_row_stride == hidden) {
     BranchwiseStandardEpilogueKernel<T, false><<<static_cast<int>(blocks), kThreads, 0, stream>>>(
-        x, scale, scale_type, sums, y, widened, count, branches, hidden, shared_scale, epsilon, input_row_stride);
+        x, scale, scale_type, sums, y, widened, count, branches, hidden, shared_scale, epsilon,
+        input_row_stride, reciprocal_multiply);
   } else {
     BranchwiseStandardEpilogueKernel<T, true><<<static_cast<int>(blocks), kThreads, 0, stream>>>(
-        x, scale, scale_type, sums, y, widened, count, branches, hidden, shared_scale, epsilon, input_row_stride);
+        x, scale, scale_type, sums, y, widened, count, branches, hidden, shared_scale, epsilon,
+        input_row_stride, reciprocal_multiply);
   }
   return CUDA_CALL(cudaGetLastError());
 }
@@ -170,7 +177,7 @@ INSTANTIATE(__nv_bfloat16)
 
 #define INSTANTIATE_STANDARD(T) \
   template Status LaunchStandardBranchwiseRMSNorm<T>(cudaStream_t, const T*, const void*, int, T*, \
-                                                      int, int, int, bool, float, float*, float*, float*, void*, size_t, int);
+                                                      int, int, int, bool, float, float*, float*, float*, void*, size_t, int, bool);
 INSTANTIATE_STANDARD(float)
 INSTANTIATE_STANDARD(half)
 INSTANTIATE_STANDARD(__nv_bfloat16)

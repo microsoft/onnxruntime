@@ -63,6 +63,40 @@ input tokens → router (top-k softmax) → permute by expert
   → GEMM2 (per-expert) → un-permute → weighted sum
 ```
 
+For normalized packed-INT and FP4 GEMV decode, one CTA fuses softmax/top-k selection
+with expert-map construction for one or two rows, up to 512 experts, and up to 16
+selected experts. FP32, FP16, and BF16 router logits are supported. Two independent
+128-thread sorts use stable expert-index tie-breaking; the CTA emits routing
+weights, selected experts, both permutation maps, sorted experts, and all
+`num_experts + 1` expert offsets. Unsupported shapes and unnormalized routing
+retain the separate routing/map paths. This does not fuse the expert GEMVs.
+
+For normalized 512-expert, top-10 routing, `ORT_MOE_ROUTING_WARP_SELECT=1`
+selects the warp-per-row register-selection implementation instead of the
+default merge sort (`=0`). Experimental `=2` retains the same selection,
+exponentials, normalization and expert maps but reduces each 64-bit stable key
+with two native unsigned 32-bit warp maxima on SM80 and newer: first the score
+word, then the index word among matching score lanes. Older architectures
+retain the shuffle reduction. This preserves the full packed-key ordering,
+including stable ties and nonfinite-score handling. Unsupported shapes retain
+merge sort in all modes. Mode 2 remains opt-in; the default is unchanged.
+
+On the H200 Qwen INT2 S2 package with shared-expert and RMSNormRotary fusions,
+forward and reverse fresh-process ABBA brackets (12 measured requests per
+mode/context combined) gave 274.48 -> 275.22 decode TPS at 2K (+0.27%) and
+254.54 -> 255.05 at 8K (+0.20%). Both bracket orders improved, but the small
+gain is not a general performance guarantee. Paired 8K CUDA Graph captures
+retain 946 kernels/cycle and 48 routing launches/cycle, with summed routing
+duration 286.52 -> 264.44 us/cycle. Profiled kernel sums are not additive
+end-to-end savings. All 76 requests including warmups/captures preserved exact
+512-token outputs; full accuracy qualification remains deferred.
+
+All 13 focused CUDA routing tests pass in modes 0, 1 and 2. Tests cover exact
+indices and stable maps, scale tolerances, one-node CUDA Graph replay, generic
+fallbacks, all winners in one lane, signed-zero ties, large logits, NaNs and
+infinities for FP32/FP16/BF16 one/two-row inputs. Invalid modes fail explicitly.
+Seven INT2/mixed-width packed-decode integration tests also pass in mode 2.
+
 ---
 
 ## 2. QMoE Operator Schema
@@ -823,16 +857,63 @@ prefill and decode kernels with no extra conversion.
 
 ### Experimental large-expert INT2 execution
 
-`ORT_QMOE_INT2_LARGE_EXPERTS=1` extends the packed INT2 grouped-GEMM
+Automatic large-expert eligibility extends the packed INT2 grouped-GEMM
 execution and matching runtime prepacking from at most 256 to at most 512
-experts. It is disabled by default and requires the existing
+experts. It is enabled by default and requires the existing
 `ORT_ENABLE_QMOE_INT2_PREFILL` path, symmetric INT2/INT4 weights with at
-least one INT2 projection, raw initializers (`weights_prepacked=0`), fused
-SwiGLU, supported block sizes, and aligned projection dimensions.
-The packed grouped path also serves decode calls whose expanded row count
-or routing is outside the GEMV eligibility limits, including top-10
-routing. It does not expand GEMV eligibility or bypass the dense-fallback
-scratch guard.
+least one INT2 projection, fused SwiGLU, supported block sizes, and aligned
+projection dimensions. Mixed-width execution requires raw initializers
+(`weights_prepacked=0`); uniform INT2 also accepts the offline-packed layout
+described below.
+For INT2 projections, this eligibility also allows up to 20 expanded GEMV rows
+and top-10 routing with up to 512 experts, covering one-token decode and
+two-token verification. Existing alignment, block-size, zero-point and
+projection-shape checks still apply. Larger batches and unsupported
+projections retain the packed grouped path. The dense-fallback scratch
+guard is unchanged.
+Set `ORT_QMOE_INT2_LARGE_EXPERTS=0` to restore the previous eligibility
+limits; `1` explicitly selects the default.
+
+The INT2 GEMV kernels use a `CtaN=2` interleaved output tile with 128 threads per
+CTA, including the interleaved SwiGLU path. This narrows the output tile
+without changing the packed weight layout, accumulation policy, routing,
+or grouped-prefill dispatch. INT4 and INT8 GEMV tiling is unchanged.
+
+The runtime automatically shares packed INT2
+expert weights between sessions that retain the same immutable GPU raw
+initializer. Set `ORT_QMOE_INT2_SHARE_PACKED=0` to disable sharing, or `1`
+to explicitly select the default. Sharing requires
+`expert_weight_bits=2` and a 2-bit projection; CPU initializers and other
+bit widths keep their existing allocation behavior. The cache keys include
+CUDA device, raw buffer identity, dimensions and bit width. Construction
+is synchronized and entries are weak: packed buffers are released after
+their last kernel owner is destroyed. Shared allocations are independent
+of the first session's allocator, so that session may be destroyed before
+other users. Callers must preserve the raw initializer's lifetime and
+immutability as required by `AddInitializer`.
+
+Sharing removes duplicate packed weight copies, not the retained raw
+weights, per-session scales or execution workspaces. Do not assume total
+VRAM will halve.
+
+Uniform INT2 models can instead set **explicit** `weights_prepacked=1`
+and supply the same SM80 CUTLASS `W2_A16` bytes produced by
+`PrePackIntExpertWeights`. Initializer dimensions retain the logical
+`[E,N,K/4]` shape; scales remain activation-dtype `[E,N,K/block_size]`.
+The CUDA kernels read these weight tensors directly, without allocating
+runtime-packed expert copies. With shared GPU `AddInitializer` tensors,
+prefill and decode sessions use one pool-owned weight representation.
+The pool owner must outlive all sessions. CPU-loaded initializers are
+transferred normally by ORT; cross-session sharing requires the shared
+GPU initializer pool. Scale transposes and workspaces remain per session.
+
+This explicit prepacked INT2 contract requires supported packed GEMV or
+grouped-GEMM execution (SM80+, aligned dimensions, symmetric weights,
+fused SwiGLU and supported block sizes). Unsupported configurations,
+including overrides that disable both paths, return an error rather than
+interpreting CUTLASS-packed bytes as raw weights. Mixed-width offline
+prepacking and the legacy default `weights_prepacked=-1` for INT2 are not
+supported.
 
 FP16 regression coverage compares 512-expert, top-10 calls at one, three,
 and 32 rows against the dequantized fallback, with block sizes 64 and 128,
@@ -878,7 +959,7 @@ not quantized by this flag.
 
 The flag requires `ORT_ENABLE_QMOE_INT2_PREFILL=1`, the supported packed
 grouped path, fused interleaved SwiGLU and aligned dimensions; 512-expert
-models additionally require `ORT_QMOE_INT2_LARGE_EXPERTS=1`. GEMV is
+models use the default large-expert eligibility (unless explicitly disabled). GEMV is
 bypassed for affected nodes to apply QDQ at both projections consistently
 in prefill and decode. Unsupported affected nodes fail explicitly rather
 than silently executing an unquantized fallback. Flag values other than
@@ -1239,9 +1320,10 @@ so a genuinely broken native kernel (error order ~1.0+) is still caught.
 
 ### 9b.6 Experimental packed weight-only prefill
 
-`ORT_QMOE_NVFP4_PACKED_PREFILL=1` opts into a memory-efficient W4A16
+The runtime automatically selects a memory-efficient W4A16
 prefill route on SM80+ when NVFP4 weights already have the offline
-row-major byte layout. The default is `0`. It requires fused interleaved
+row-major byte layout. Set `ORT_QMOE_NVFP4_PACKED_PREFILL=0` to disable
+this route, or `1` to explicitly select the default. It requires fused interleaved
 SwiGLU (`swiglu_fusion=1`), positive hidden/intermediate dimensions that
 are multiples of 64, and supported integer routing sizes. Unsupported
 shapes/layouts retain the existing fallback; eligible small decode

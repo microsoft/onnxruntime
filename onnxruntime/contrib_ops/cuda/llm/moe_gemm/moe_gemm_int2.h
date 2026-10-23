@@ -29,6 +29,8 @@ struct Int2GroupedGemmParamsT {
   int sm = 0;
   int multiprocessor_count = 0;
   cudaStream_t stream = nullptr;
+  const int* expert_slots = nullptr;
+  const uint8_t* expert_cache_weights = nullptr;
 };
 
 using Int2GroupedGemmParams = Int2GroupedGemmParamsT<half>;

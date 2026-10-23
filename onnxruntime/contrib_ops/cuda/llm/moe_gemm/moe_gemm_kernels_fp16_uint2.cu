@@ -19,8 +19,8 @@ bool IsInt2GroupedGemmSupportedImpl(const Int2GroupedGemmParamsT<ElementType>& p
          (params.tile_rows == 32 || params.tile_rows == 64);
 }
 
-template <typename ElementType>
-void RunInt2GroupedGemmImpl(const Int2GroupedGemmParamsT<ElementType>& params) {
+template <typename ElementType, bool UseExpertCache>
+void LaunchInt2GroupedGemm(const Int2GroupedGemmParamsT<ElementType>& params) {
   ORT_ENFORCE(IsInt2GroupedGemmSupportedImpl(params), "Unsupported SM80+ A16 INT2 grouped GEMM configuration");
   ORT_ENFORCE(params.activations && params.packed_weights && params.block_scales &&
                   params.expert_row_ends && params.output,
@@ -57,13 +57,26 @@ void RunInt2GroupedGemmImpl(const Int2GroupedGemmParamsT<ElementType>& params) {
                                  cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY,
                                  cutlass_extensions::EpilogueOpDefault,
                                  cutlass::gemm::GemmShape<64, 128, 64>,
-                                 cutlass::gemm::GemmShape<32, 64, 64>, 3>::call(inputs, params.multiprocessor_count);
+                                 cutlass::gemm::GemmShape<32, 64, 64>, 3, UseExpertCache>::call(
+        inputs, params.multiprocessor_count, params.expert_slots, params.expert_cache_weights);
   } else {
     genericMoeGemmKernelLauncher<ElementType, cutlass::uint2b_t, ElementType, cutlass::arch::Sm80,
                                  cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY,
                                  cutlass_extensions::EpilogueOpDefault,
                                  cutlass::gemm::GemmShape<32, 128, 64>,
-                                 cutlass::gemm::GemmShape<32, 32, 64>, 3>::call(inputs, params.multiprocessor_count);
+                                 cutlass::gemm::GemmShape<32, 32, 64>, 3, UseExpertCache>::call(
+        inputs, params.multiprocessor_count, params.expert_slots, params.expert_cache_weights);
+  }
+}
+
+template <typename ElementType>
+void RunInt2GroupedGemmImpl(const Int2GroupedGemmParamsT<ElementType>& params) {
+  ORT_ENFORCE((params.expert_slots == nullptr) == (params.expert_cache_weights == nullptr),
+              "Grouped INT2 cache requires both resident weights and an expert slot map");
+  if (params.expert_slots) {
+    LaunchInt2GroupedGemm<ElementType, true>(params);
+  } else {
+    LaunchInt2GroupedGemm<ElementType, false>(params);
   }
 }
 

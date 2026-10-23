@@ -321,7 +321,7 @@ static void RunCausalConvWithStateTests(
 
 template <typename T>
 void TestPackedChannelHistory(int length, bool state_last, bool use_past, bool use_bias, bool silu, int dilation,
-                              bool first_output = true) {
+                              bool first_output = true, bool extra_prefixes = false) {
   constexpr int batch = 2, channels = 7, width = 13, offset = 3, kernel = 4;
   const int history = (kernel - 1) * dilation + 1;
   auto cuda = DefaultCudaExecutionProvider();
@@ -329,7 +329,7 @@ void TestPackedChannelHistory(int length, bool state_last, bool use_past, bool u
   const auto round = [](float value) { return static_cast<float>(T(value)); };
   std::vector<T> input(batch * length * width), weight(channels * kernel), bias(channels);
   std::vector<T> past(batch * channels * history), output(batch * length * channels);
-  std::vector<T> present(past.size()), first(past.size());
+  std::vector<T> present(past.size()), first(past.size()), second(past.size()), third(past.size());
   for (size_t i = 0; i < input.size(); ++i) input[i] = T(float(int(i % 17) - 8) / 16);
   for (size_t i = 0; i < weight.size(); ++i) weight[i] = T(float(int(i % 11) - 5) / 32);
   for (size_t i = 0; i < bias.size(); ++i) bias[i] = T(float(i) / 64);
@@ -352,6 +352,8 @@ void TestPackedChannelHistory(int length, bool state_last, bool use_past, bool u
       for (int t = 0; t < history; ++t) {
         present[state_index(b, t, c)] = T(value(length - history + t));
         first[state_index(b, t, c)] = T(value(1 - history + t));
+        second[state_index(b, t, c)] = T(value(std::min(length, 2) - history + t));
+        third[state_index(b, t, c)] = T(value(std::min(length, 3) - history + t));
       }
     }
   }
@@ -374,6 +376,10 @@ void TestPackedChannelHistory(int length, bool state_last, bool use_past, bool u
   test.AddOutput<T>("output", {batch, length, channels}, output);
   test.AddOutput<T>("present", state_shape, present);
   if (first_output) test.AddOutput<T>("first", state_shape, first);
+  if (extra_prefixes) {
+    test.AddOutput<T>("second", state_shape, second);
+    test.AddOutput<T>("third", state_shape, third);
+  }
   test.SetOutputTolerance(std::is_same_v<T, BFloat16> ? 0.01f : 0.001f, 0.001f);
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(std::move(cuda));
@@ -390,10 +396,23 @@ TEST(CausalConvWithStateTest, PackedChannelsExtendedHistoryAndFirstState) {
           TestPackedChannelHistory<BFloat16>(length, state_last, past, true, false, dilation);
           TestPackedChannelHistory<BFloat16>(length, state_last, past, false, true, dilation);
         }
+
       }
     }
   }
   TestPackedChannelHistory<float>(2, false, true, true, true, 1, false);
+}
+
+TEST(CausalConvWithStateTest, MultiDraftPrefixStates) {
+  for (int length : {1, 2, 3, 4, 9}) {
+    for (bool state_last : {false, true}) {
+      for (bool past : {false, true}) {
+        TestPackedChannelHistory<float>(length, state_last, past, true, false, 1, true, true);
+        TestPackedChannelHistory<MLFloat16>(length, state_last, past, false, true, 2, true, true);
+        TestPackedChannelHistory<BFloat16>(length, state_last, past, true, true, 1, true, true);
+      }
+    }
+  }
 }
 
 TEST(CausalConvWithStateTest, PackedChannelsInvalidConfigurations) {

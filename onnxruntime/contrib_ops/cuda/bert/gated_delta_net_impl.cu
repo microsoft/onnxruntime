@@ -49,11 +49,69 @@
 #include "contrib_ops/cuda/bert/gated_delta_net_mma.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/reduction/reduction_functions.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 namespace gated_delta_net {
+
+template <typename T>
+__global__ void DensePrefillSquares(const T* input, T* squares, int64_t count) {
+  const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (i < count) {
+    const float x = static_cast<float>(input[i]);
+    squares[i] = static_cast<T>(x * x);
+  }
+}
+
+template <typename T>
+__global__ void DensePrefillDivide(T* data, const T* sums, int width, int64_t count) {
+  const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (i < count) {
+    const T epsilon = static_cast<T>(1e-6f);
+    const T shifted = static_cast<T>(static_cast<float>(sums[i / width]) + static_cast<float>(epsilon));
+    const T root = static_cast<T>(sqrtf(static_cast<float>(shifted)));
+    data[i] = static_cast<T>(static_cast<float>(data[i]) / static_cast<float>(root));
+  }
+}
+
+template <typename T>
+size_t DensePrefillNormalizeWorkspaceBytes(int rows, int width) {
+  using ReduceT = std::conditional_t<std::is_same_v<T, __nv_bfloat16>, BFloat16, T>;
+  const size_t elements = static_cast<size_t>(rows) * width + rows;
+  return ((elements * sizeof(T) + 255) / 256) * 256 +
+         onnxruntime::cuda::compute_reduce_matrix_columns_buffer_size<ReduceT>(rows, width);
+}
+
+template <typename T>
+Status DensePrefillNormalize(T* data, int rows, int width, void* workspace, cudaStream_t stream) {
+  using ReduceT = std::conditional_t<std::is_same_v<T, __nv_bfloat16>, BFloat16, T>;
+  if (rows == 0) return Status::OK();
+  const int64_t count = static_cast<int64_t>(rows) * width;
+  auto* squares = static_cast<T*>(workspace);
+  auto* sums = squares + count;
+  const size_t buffer_offset = ((static_cast<size_t>(count + rows) * sizeof(T) + 255) / 256) * 256;
+  auto* buffer = static_cast<uint8_t*>(workspace) + buffer_offset;
+  const size_t buffer_bytes = onnxruntime::cuda::compute_reduce_matrix_columns_buffer_size<ReduceT>(rows, width);
+  const int blocks = static_cast<int>((count + 255) / 256);
+  DensePrefillSquares<<<blocks, 256, 0, stream>>>(data, squares, count);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  ORT_RETURN_IF_ERROR(onnxruntime::cuda::reduce_matrix_columns(
+      stream, reinterpret_cast<const ReduceT*>(squares), reinterpret_cast<ReduceT*>(sums),
+      rows, width, buffer, buffer_bytes));
+  DensePrefillDivide<<<blocks, 256, 0, stream>>>(data, sums, width, count);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+#define INSTANTIATE_DENSE_PREFILL(T) \
+  template size_t DensePrefillNormalizeWorkspaceBytes<T>(int, int); \
+  template Status DensePrefillNormalize<T>(T*, int, int, void*, cudaStream_t);
+INSTANTIATE_DENSE_PREFILL(float)
+INSTANTIATE_DENSE_PREFILL(half)
+INSTANTIATE_DENSE_PREFILL(__nv_bfloat16)
+#undef INSTANTIATE_DENSE_PREFILL
 
 namespace {
 
@@ -379,9 +437,23 @@ __device__ __forceinline__ float WarpReduceK(float v) {
   return v;
 }
 
-template <typename T, int DK, int kWarps, bool InputTypeGates, bool PackedQkv>
+template <typename T, int DK, int kWarps, bool InputTypeGates, bool PackedQkv, bool QwenS2 = false>
 __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
     VariantPack<T> pack, KernelParams p, int d_v) {
+  if constexpr (QwenS2) {
+    // Host dispatch checks every field before replacing it with a compile-time constant.
+    p.total_tokens = p.uniform_len = 2;
+    p.num_heads_q = p.num_heads_k = 16;
+    p.num_heads_v = 48;
+    p.gate_activation = GateActivation::kSoftplusDecay;
+    p.beta_activation = BetaActivation::kSigmoid;
+    p.update_rule = UpdateRule::kGatedDelta;
+    p.qk_l2_norm = true;
+    p.state_update_capacity = 0;
+    p.decay_per_key_dim_flag = 0;
+    p.state_update_tail_pass = p.short_row_tail_pass = false;
+    d_v = 128;
+  }
   constexpr int kRegs = DK / 32;  // state elements per lane
   const int lane = threadIdx.x;
   const int warp = threadIdx.y;
@@ -515,10 +587,14 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
       pack.output[tok * v_stride + hv * d_v + col] =
           static_cast<T>(p.scale * o);
     }
-    if (t == 0 && pack.mid_state != nullptr) {
+    float* snapshots[3] = {pack.mid_state, pack.mid_state2, pack.mid_state3};
+#pragma unroll
+    for (int prefix = 0; prefix < 3; ++prefix) {
+      float* prefix_state = snapshots[prefix];
+      if (prefix_state == nullptr || t != min(prefix + 1, seq_len) - 1) continue;
 #pragma unroll
       for (int i = 0; i < kRegs; ++i) {
-        pack.mid_state[st_off + lane + i * 32] = s[i];
+        prefix_state[st_off + lane + i * 32] = s[i];
       }
     }
   }
@@ -527,6 +603,15 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
 #pragma unroll
     for (int i = 0; i < kRegs; ++i) {
       pack.final_state[st_off + lane + i * 32] = s[i];
+    }
+  }
+  if (seq_len == 0) {
+    float* snapshots[3] = {pack.mid_state, pack.mid_state2, pack.mid_state3};
+#pragma unroll
+    for (int prefix = 0; prefix < 3; ++prefix) {
+      if (snapshots[prefix] == nullptr) continue;
+#pragma unroll
+      for (int i = 0; i < kRegs; ++i) snapshots[prefix][st_off + lane + i * 32] = s[i];
     }
   }
 }
@@ -674,10 +759,14 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
       for (int r = 0; r < d_k; ++r) acc += S[r * d_v + c] * qbuf[r];
       pack.output[tok * v_stride + hv * d_v + c] = (T)(p.scale * acc);
     }
-    if (t == 0 && pack.mid_state != nullptr) {
+    float* snapshots[3] = {pack.mid_state, pack.mid_state2, pack.mid_state3};
+#pragma unroll
+    for (int prefix = 0; prefix < 3; ++prefix) {
+      float* prefix_state = snapshots[prefix];
+      if (prefix_state == nullptr || t != min(prefix + 1, seq_len) - 1) continue;
       for (int idx = tid; idx < d_k * d_v; idx += kThreads) {
         const int r = idx / d_v, c = idx % d_v;
-        pack.mid_state[st_off + static_cast<int64_t>(c) * d_k + r] = S[idx];
+        prefix_state[st_off + static_cast<int64_t>(c) * d_k + r] = S[idx];
       }
     }
 
@@ -690,30 +779,70 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
       pack.final_state[st_off + static_cast<int64_t>(c) * d_k + r] = S[idx];
     }
   }
+  if (seq_len == 0) {
+    float* snapshots[3] = {pack.mid_state, pack.mid_state2, pack.mid_state3};
+#pragma unroll
+    for (int prefix = 0; prefix < 3; ++prefix) {
+      if (snapshots[prefix] == nullptr) continue;
+      for (int idx = tid; idx < d_k * d_v; idx += kThreads) {
+        const int r = idx / d_v, c = idx % d_v;
+        snapshots[prefix][st_off + static_cast<int64_t>(c) * d_k + r] = S[idx];
+      }
+    }
+  }
 }
 
 constexpr int kRecurrentThreads = 256;
 constexpr int kDecodeWarps = kRecurrentThreads / 32;
 
-template <typename T, bool InputTypeGates, bool PackedQkv>
-void LaunchDecodeWarp(const Descriptor& desc, const VariantPack<T>& pack,
-                      const KernelParams& p, cudaStream_t stream) {
+template <typename T, bool InputTypeGates, bool PackedQkv, int Warps>
+void LaunchDecodeWarpSized(const Descriptor& desc, const VariantPack<T>& pack,
+                          const KernelParams& p, cudaStream_t stream) {
   const dim3 grid(desc.batch, desc.num_heads_v,
-                  (desc.head_size_v + kDecodeWarps - 1) / kDecodeWarps);
-  const dim3 block(32, kDecodeWarps, 1);
+                  (desc.head_size_v + Warps - 1) / Warps);
+  const dim3 block(32, Warps, 1);
   switch (desc.head_size_qk) {
     case 64:
-      GatedDeltaNetDecodeWarpKernel<T, 64, kDecodeWarps, InputTypeGates, PackedQkv>
+      GatedDeltaNetDecodeWarpKernel<T, 64, Warps, InputTypeGates, PackedQkv>
           <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
       break;
     case 128:
-      GatedDeltaNetDecodeWarpKernel<T, 128, kDecodeWarps, InputTypeGates, PackedQkv>
+      if constexpr (PackedQkv) {
+        static const int specialize = ParseEnvironmentVariableWithDefault<int>("ORT_GDN_S2_SPECIALIZE", 0);
+        ORT_ENFORCE(specialize == 0 || specialize == 1, "ORT_GDN_S2_SPECIALIZE must be 0 or 1.");
+        if (specialize && desc.batch == 1 && p.total_tokens == 2 && p.uniform_len == 2 &&
+            p.num_heads_q == 16 && p.num_heads_k == 16 && p.num_heads_v == 48 &&
+            desc.head_size_v == 128 && pack.cu_seqlens == nullptr &&
+            p.gate_activation == GateActivation::kSoftplusDecay &&
+            p.beta_activation == BetaActivation::kSigmoid && p.update_rule == UpdateRule::kGatedDelta &&
+            p.qk_l2_norm && p.state_update_capacity == 0 && p.decay_per_key_dim_flag == 0 &&
+            !p.state_update_tail_pass && !p.short_row_tail_pass) {
+          GatedDeltaNetDecodeWarpKernel<T, 128, Warps, InputTypeGates, PackedQkv, true>
+              <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
+          break;
+        }
+      }
+      GatedDeltaNetDecodeWarpKernel<T, 128, Warps, InputTypeGates, PackedQkv>
           <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
       break;
     default:
-      GatedDeltaNetDecodeWarpKernel<T, 256, kDecodeWarps, InputTypeGates, PackedQkv>
+      GatedDeltaNetDecodeWarpKernel<T, 256, Warps, InputTypeGates, PackedQkv>
           <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
       break;
+  }
+}
+
+template <typename T, bool InputTypeGates, bool PackedQkv>
+void LaunchDecodeWarp(const Descriptor& desc, const VariantPack<T>& pack,
+                      const KernelParams& p, cudaStream_t stream) {
+  static const int warps = ParseEnvironmentVariableWithDefault<int>("ORT_GDN_DECODE_WARPS", kDecodeWarps);
+  ORT_ENFORCE(warps == 2 || warps == 4 || warps == kDecodeWarps, "ORT_GDN_DECODE_WARPS must be 2, 4, or 8.");
+  if (warps == 2) {
+    LaunchDecodeWarpSized<T, InputTypeGates, PackedQkv, 2>(desc, pack, p, stream);
+  } else if (warps == 4) {
+    LaunchDecodeWarpSized<T, InputTypeGates, PackedQkv, 4>(desc, pack, p, stream);
+  } else {
+    LaunchDecodeWarpSized<T, InputTypeGates, PackedQkv, kDecodeWarps>(desc, pack, p, stream);
   }
 }
 

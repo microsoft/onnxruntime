@@ -6,6 +6,7 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#include <cooperative_groups.h>
 
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -24,6 +25,180 @@ namespace onnxruntime::contrib::cuda {
 
 namespace {
 
+__global__ void PackFp8SkinnyWeightKernel(uint8_t* __restrict__ packed,
+                                          const uint8_t* __restrict__ source, int n, int k) {
+  __shared__ uint8_t tile[32][33];
+  const int col_k = blockIdx.x * 32 + threadIdx.x;
+  const int row_n = blockIdx.y * 32 + threadIdx.y;
+#pragma unroll
+  for (int i = 0; i < 32; i += 8) {
+    if (col_k < k && row_n + i < n) {
+      tile[threadIdx.y + i][threadIdx.x] = source[static_cast<size_t>(row_n + i) * k + col_k];
+    }
+  }
+  __syncthreads();
+  const int col_n = blockIdx.y * 32 + threadIdx.x;
+  const int row_k = blockIdx.x * 32 + threadIdx.y;
+#pragma unroll
+  for (int i = 0; i < 32; i += 8) {
+    if (col_n < n && row_k + i < k) {
+      packed[static_cast<size_t>(row_k + i) * n + col_n] = tile[threadIdx.x][threadIdx.y + i];
+    }
+  }
+}
+
+#if CUDA_VERSION >= 12000
+// Measured Tianlei FP8 schedules: M1 TX4/512/C8/U4, M2 TX8/256/C16/U4. The cluster
+// cooperates over K and combines DSM partials in rank order without atomics or workspace.
+template <int M>
+__global__ __launch_bounds__(M == 1 ? 512 : 256, M == 1 ? 2 : 4) void MatMulBlockScaledFp8SkinnyKernel(
+    __nv_bfloat16* __restrict__ output, const __nv_bfloat16* __restrict__ input,
+    const uint8_t* __restrict__ weight_kn, const float* __restrict__ scales,
+    const __nv_bfloat16* __restrict__ bias, const float* __restrict__ act_scale,
+    int n, int k, const __grid_constant__ Fp8GemvOutputSplit split) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+  // Release a PDL-enabled consumer's independent prefetch prologue immediately. Its grid
+  // dependency wait still gates reads of these projection outputs until producer completion.
+  asm volatile("griddepcontrol.launch_dependents;" ::: "memory");
+  constexpr int kThreads = M == 1 ? 512 : 256;
+  constexpr int kColumnGroups = M == 1 ? 4 : 8;
+  constexpr int kKLanes = kThreads / kColumnGroups;
+  constexpr int kUnroll = 4;
+  constexpr int kColumns = kColumnGroups * 8;
+  constexpr int kCluster = M == 1 ? 8 : 16;
+  constexpr int kWarps = kThreads / 32;
+  const int tid = threadIdx.x;
+  const int group = tid % kColumnGroups;
+  const int lane_k = tid / kColumnGroups;
+  const int col = blockIdx.x * kColumns + group * 8;
+  const bool valid = col < n;
+  const float a_scale = act_scale != nullptr ? *act_scale : 0.f;
+  const float inv_scale = a_scale != 0.f ? 1.f / a_scale : 0.f;
+  float acc[M][8] = {};
+  const int k_per = (k + kCluster - 1) / kCluster;
+  const int begin = blockIdx.y * k_per;
+  const int end = min(k, begin + k_per);
+
+  if (valid) {
+    for (int64_t base = begin; base < end; base += kKLanes * kUnroll) {
+      uint2 raw[kUnroll];
+      float x[kUnroll][M];
+#pragma unroll
+      for (int u = 0; u < kUnroll; ++u) {
+        const int64_t kk = base + lane_k + u * kKLanes;
+        raw[u] = make_uint2(0, 0);
+        if (kk < end) {
+          const auto* p = weight_kn + static_cast<size_t>(kk) * n + col;
+          asm volatile("ld.global.nc.L1::no_allocate.v2.u32 {%0,%1}, [%2];"
+                       : "=r"(raw[u].x), "=r"(raw[u].y) : "l"(p));
+        }
+#pragma unroll
+        for (int row = 0; row < M; ++row) {
+          float value = kk < end ? __bfloat162float(input[static_cast<size_t>(row) * k + kk]) : 0.f;
+          if (act_scale != nullptr) {
+            const float q = static_cast<float>(__nv_fp8_e4m3(value * inv_scale));
+            value = __bfloat162float(__float2bfloat16_rn(q * a_scale));
+          }
+          x[u][row] = value;
+        }
+      }
+#pragma unroll
+      for (int u = 0; u < kUnroll; ++u) {
+        const uint32_t words[2] = {raw[u].x, raw[u].y};
+#pragma unroll
+        for (int pair = 0; pair < 4; ++pair) {
+          const auto bits = static_cast<__nv_fp8x2_storage_t>(words[pair / 2] >> ((pair % 2) * 16));
+          const __half2 h = __half2(__nv_cvt_fp8x2_to_halfraw2(bits, __NV_E4M3));
+          const float2 w = __half22float2(h);
+#pragma unroll
+          for (int row = 0; row < M; ++row) {
+            acc[row][2 * pair] = fmaf(w.x, x[u][row], acc[row][2 * pair]);
+            acc[row][2 * pair + 1] = fmaf(w.y, x[u][row], acc[row][2 * pair + 1]);
+          }
+        }
+      }
+    }
+  }
+
+  __shared__ __align__(16) float partial[kWarps][M][kColumns];
+  __shared__ __align__(16) float cluster_partial[M * kColumns];
+#pragma unroll
+  for (int row = 0; row < M; ++row) {
+#pragma unroll
+    for (int c = 0; c < 8; ++c) {
+#pragma unroll
+      for (int delta = kColumnGroups; delta < 32; delta *= 2) {
+        acc[row][c] += __shfl_xor_sync(0xffffffffu, acc[row][c], delta);
+      }
+      if ((tid & 31) < kColumnGroups) {
+        partial[tid / 32][row][group * 8 + c] = acc[row][c];
+      }
+    }
+  }
+  __syncthreads();
+  for (int e = tid; e < M * kColumns; e += kThreads) {
+    float sum = 0.f;
+#pragma unroll
+    for (int warp = 0; warp < kWarps; ++warp) {
+      sum += partial[warp][e / kColumns][e % kColumns];
+    }
+    cluster_partial[e] = sum;
+  }
+  auto cluster = cooperative_groups::this_cluster();
+  cluster.sync();
+  constexpr int kChunk = (M * kColumns + kCluster - 1) / kCluster;
+  for (int i = tid; i < kChunk; i += kThreads) {
+    const int e = static_cast<int>(cluster.block_rank()) * kChunk + i;
+    if (e < M * kColumns) {
+      float sum = 0.f;
+#pragma unroll
+      for (int rank = 0; rank < kCluster; ++rank) {
+        sum += cluster.map_shared_rank(cluster_partial, rank)[e];
+      }
+      const int row = e / kColumns;
+      const int out_col = blockIdx.x * kColumns + e % kColumns;
+      if (out_col < n) {
+        sum *= scales[out_col];
+        if (bias != nullptr) {
+          sum += __bfloat162float(bias[out_col]);
+        }
+        auto* destination = output;
+        int stride = n;
+        int local_col = out_col;
+        for (int index = 0; index < split.count; ++index) {
+          if (local_col < split.widths[index]) {
+            destination = static_cast<__nv_bfloat16*>(split.outputs[index]);
+            stride = split.widths[index];
+            break;
+          }
+          local_col -= split.widths[index];
+        }
+        destination[static_cast<size_t>(row) * stride + local_col] = __float2bfloat16_rn(sum);
+      }
+    }
+  }
+  // Every rank must finish its remote loads before another CTA can retire its shared storage.
+  cluster.sync();
+#endif
+}
+
+cudaLaunchConfig_t Fp8SkinnyLaunchConfig(int m, int n, cudaStream_t stream, cudaLaunchAttribute& attr) {
+  attr = {};
+  attr.id = cudaLaunchAttributeClusterDimension;
+  attr.val.clusterDim.x = 1;
+  attr.val.clusterDim.y = m == 1 ? 8 : 16;
+  attr.val.clusterDim.z = 1;
+  cudaLaunchConfig_t config{};
+  const int columns = m == 1 ? 32 : 64;
+  config.gridDim = dim3(static_cast<unsigned int>((n + columns - 1LL) / columns), attr.val.clusterDim.y);
+  config.blockDim = dim3(m == 1 ? 512 : 256);
+  config.stream = stream;
+  config.attrs = &attr;
+  config.numAttrs = 1;
+  return config;
+}
+#endif  // CUDA_VERSION >= 12000
+
 // to_float / from_float / to_float2 / Vec2 come from core/providers/cuda/cu_inc/cuda_type_helper.cuh.
 
 // Dequantizes FP8 E4M3 weights with per-block FP32 scales into FP16/BF16.
@@ -36,7 +211,8 @@ __global__ void DequantizeBlockScaledFp8Kernel(T* __restrict__ out,
                                                int n,
                                                int k,
                                                int k_blocks,
-                                               int block_size) {
+                                               int block_size,
+                                               bool transpose) {
   const long long total = static_cast<long long>(n) * k;
   const long long idx = static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (idx >= total) {
@@ -46,7 +222,8 @@ __global__ void DequantizeBlockScaledFp8Kernel(T* __restrict__ out,
   const int col = static_cast<int>(idx - static_cast<long long>(row) * k);
   const int blk = col / block_size;
   const float scale = weight_scale[row * k_blocks + blk];
-  out[idx] = from_float<T>(static_cast<float>(b_fp8[idx]) * scale);
+  out[transpose ? static_cast<long long>(col) * n + row : idx] =
+      from_float<T>(static_cast<float>(b_fp8[idx]) * scale);
 }
 
 // Vectorized dequantization for K % 16 == 0. Each thread converts one 16-element K chunk of a
@@ -527,7 +704,20 @@ __device__ __forceinline__ T* Fp8OutputColumn(T* output, int col, int& stride,
   return output + col;
 }
 
-template <int KSplit, int MTiles, bool SplitOutput, typename AType>
+template <typename T, bool SharedExpert>
+__device__ __forceinline__ T Fp8RoundOutput(float value, int row, int col, int n,
+                                          const Fp8SharedExpertEpilogue& epilogue) {
+  T rounded = from_float<T>(value);
+  if constexpr (SharedExpert) {
+    rounded = from_float<T>(to_float<T>(rounded) * epilogue.row_gates[row]);
+    rounded = from_float<T>(to_float<T>(rounded) +
+                            to_float<T>(static_cast<const T*>(epilogue.residual)[static_cast<size_t>(row) * n + col]));
+  }
+  return rounded;
+}
+
+template <int KSplit, int MTiles, bool SplitOutput, typename AType, bool PerColumnS2 = false,
+          bool SharedExpert = false>
 __device__ __forceinline__ void Fp8MmaGemvBody(AType* __restrict__ output,
                                                const AType* __restrict__ input_a,
                                                const __nv_fp8_e4m3* __restrict__ input_b,
@@ -539,10 +729,17 @@ __device__ __forceinline__ void Fp8MmaGemvBody(AType* __restrict__ output,
                                                int k,
                                                int block_size,
                                                int k_blocks,
-                                               const Fp8GemvOutputSplit& split) {
+                                               const Fp8GemvOutputSplit& split,
+                                               const Fp8SharedExpertEpilogue& epilogue = {}) {
   using Mma = Fp8GemvMma<AType>;
 
-  const bool act_qdq = act_scale != nullptr;
+  // Keep the same MMA/KSplit reduction, but remove per-block scaling and QDQ
+  // bookkeeping for weight-only, two-row projections with one scale per column.
+  if constexpr (PerColumnS2) {
+    m = 2;
+    k_blocks = 1;
+  }
+  const bool act_qdq = !PerColumnS2 && act_scale != nullptr;
   const float a_scale = act_qdq ? *act_scale : 0.f;
   const float a_inv_scale = a_scale != 0.f ? 1.0f / a_scale : 0.f;
 
@@ -577,7 +774,7 @@ __device__ __forceinline__ void Fp8MmaGemvBody(AType* __restrict__ output,
 #pragma unroll 2
   for (int wi = warp; wi < windows; wi += KSplit) {
     const int k0 = wi << 6;
-    const int kb = k0 / block_size;
+    const int kb = PerColumnS2 ? 0 : k0 / block_size;
     if (kb != cur_kb) {
       if (cur_kb >= 0) {
         const float s_lo = lo_ok ? weight_scale[static_cast<size_t>(col_lo) * k_blocks + cur_kb] : 0.f;
@@ -698,18 +895,22 @@ __device__ __forceinline__ void Fp8MmaGemvBody(AType* __restrict__ output,
     const int row = (t << 1) + (mt << 3);
     if (row < m) {
       if (lo_ok) {
-        output_lo[static_cast<size_t>(row) * stride_lo] = from_float<AType>(acc[mt][0] + bias_lo);
+        output_lo[static_cast<size_t>(row) * stride_lo] =
+            Fp8RoundOutput<AType, SharedExpert>(acc[mt][0] + bias_lo, row, col_lo, n, epilogue);
       }
       if (hi_ok) {
-        output_hi[static_cast<size_t>(row) * stride_hi] = from_float<AType>(acc[mt][2] + bias_hi);
+        output_hi[static_cast<size_t>(row) * stride_hi] =
+            Fp8RoundOutput<AType, SharedExpert>(acc[mt][2] + bias_hi, row, col_hi, n, epilogue);
       }
     }
     if (row + 1 < m) {
       if (lo_ok) {
-        output_lo[static_cast<size_t>(row + 1) * stride_lo] = from_float<AType>(acc[mt][1] + bias_lo);
+        output_lo[static_cast<size_t>(row + 1) * stride_lo] =
+            Fp8RoundOutput<AType, SharedExpert>(acc[mt][1] + bias_lo, row + 1, col_lo, n, epilogue);
       }
       if (hi_ok) {
-        output_hi[static_cast<size_t>(row + 1) * stride_hi] = from_float<AType>(acc[mt][3] + bias_hi);
+        output_hi[static_cast<size_t>(row + 1) * stride_hi] =
+            Fp8RoundOutput<AType, SharedExpert>(acc[mt][3] + bias_hi, row + 1, col_hi, n, epilogue);
       }
     }
   }
@@ -739,17 +940,49 @@ __device__ __forceinline__ void Fp8MmaGemvBody(AType* __restrict__ output,
 
 template <int KSplit, int MTiles, bool SplitOutput, typename AType>
 __global__ void MatMulBlockScaledFp8MmaGemvKernel(ORT_FP8_MMA_GEMV_PARAMS) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900 && CUDA_VERSION >= 12000
+  asm volatile("griddepcontrol.launch_dependents;" ::: "memory");
+#endif
   Fp8MmaGemvBody<KSplit, MTiles, SplitOutput, AType>(ORT_FP8_MMA_GEMV_ARGS);
 }
 
 template <int KSplit, int MTiles, bool SplitOutput, typename AType>
+__global__ void MatMulBlockScaledFp8MmaGemvPerColumnS2Kernel(ORT_FP8_MMA_GEMV_PARAMS) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900 && CUDA_VERSION >= 12000
+  asm volatile("griddepcontrol.launch_dependents;" ::: "memory");
+#endif
+  Fp8MmaGemvBody<KSplit, MTiles, SplitOutput, AType, true>(ORT_FP8_MMA_GEMV_ARGS);
+}
+
+template <int KSplit, int MTiles, bool SplitOutput, typename AType>
 __global__ __launch_bounds__(32 * KSplit, 3) void MatMulBlockScaledFp8MmaGemvKernelPinned(ORT_FP8_MMA_GEMV_PARAMS) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900 && CUDA_VERSION >= 12000
+  asm volatile("griddepcontrol.launch_dependents;" ::: "memory");
+#endif
   Fp8MmaGemvBody<KSplit, MTiles, SplitOutput, AType>(ORT_FP8_MMA_GEMV_ARGS);
 }
 
 #undef ORT_FP8_MMA_GEMV_ARGS
 #undef ORT_FP8_MMA_GEMV_PARAMS
 #undef ORT_FP8_SPLIT_PARAM
+
+template <int KSplit, bool PerColumnS2>
+__global__ void MatMulFp8SharedExpertKernel(
+    __nv_bfloat16* output, const __nv_bfloat16* a, const __nv_fp8_e4m3* b,
+    const float* scales, int m, int n, int k, int block_size, int k_blocks,
+    Fp8SharedExpertEpilogue epilogue) {
+  Fp8MmaGemvBody<KSplit, 1, false, __nv_bfloat16, PerColumnS2, true>(
+      output, a, b, scales, nullptr, nullptr, m, n, k, block_size, k_blocks, {}, epilogue);
+}
+
+__global__ void Fp8SharedExpertEpilogueKernel(__nv_bfloat16* output, Fp8SharedExpertEpilogue epilogue,
+                                            int64_t count, int n) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < count) {
+    output[index] = Fp8RoundOutput<__nv_bfloat16, true>(
+        __bfloat162float(output[index]), static_cast<int>(index / n), static_cast<int>(index % n), n, epilogue);
+  }
+}
 
 // Kill switch for A/B testing the tensor-core path against the FMA path in the same binary.
 bool Fp8GemvMmaEnabled() {
@@ -775,6 +1008,203 @@ int Fp8MmaGemvDispatchMaxM() {
 
 #endif  // !DISABLE_FLOAT8_TYPES && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 
+int ApplyFp8MmaKSplitOverride(int k_split, int m, int n, int k);
+
+Status LaunchFp8SharedExpertEpilogue(void* y, const Fp8SharedExpertEpilogue& epilogue,
+                                    int m, int n, cudaStream_t stream) {
+#if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+  const int64_t count = static_cast<int64_t>(m) * n;
+  ORT_RETURN_IF_NOT(m >= 0 && n > 0 && epilogue.row_gates && epilogue.residual,
+                    "Shared expert epilogue requires valid dimensions, gates and residual");
+  if (count == 0) return Status::OK();
+  Fp8SharedExpertEpilogueKernel<<<static_cast<unsigned int>((count + 255) / 256), 256, 0, stream>>>(
+      static_cast<__nv_bfloat16*>(y), epilogue, count, n);
+  return CUDA_CALL(cudaGetLastError());
+#else
+  ORT_UNUSED_PARAMETER(y);
+  ORT_UNUSED_PARAMETER(epilogue);
+  ORT_UNUSED_PARAMETER(m);
+  ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(stream);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Shared expert requires FP8 support.");
+#endif
+}
+
+Status LaunchMatMulFp8SharedExpert(void* y, const void* a, const void* weight,
+                                  const float* scales, int m, int n, int k, int block_size,
+                                  const Fp8SharedExpertEpilogue& epilogue,
+                                  const cudaDeviceProp& device_prop, cudaStream_t stream) {
+#if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+  ORT_RETURN_IF_NOT(m >= 1 && m <= 2 && k >= 256 && k % 64 == 0 && block_size % 64 == 0 &&
+                        device_prop.major >= 8 && epilogue.row_gates && epilogue.residual,
+                    "Shared expert fused GEMV requires SM80+, M <= 2 and aligned K/block size");
+  const int selected = PickGenericFp8MmaKSplit(n, k / 64);
+  const int k_split = ApplyFp8MmaKSplitOverride(selected, m, n, k);
+  static const int per_column_s2 =
+      ParseEnvironmentVariableWithDefault<int>("ORT_FP8_GEMV_PER_COLUMN_S2", 0);
+  ORT_RETURN_IF_NOT(per_column_s2 == 0 || per_column_s2 == 1,
+                    "ORT_FP8_GEMV_PER_COLUMN_S2 must be 0 or 1");
+  const auto launch = [&]<int KSplit>() {
+    const auto variant = [&]<bool S2>() {
+      MatMulFp8SharedExpertKernel<KSplit, S2><<<static_cast<unsigned int>((n + 15) / 16),
+                                               dim3(32, KSplit), 0, stream>>>(
+          static_cast<__nv_bfloat16*>(y), static_cast<const __nv_bfloat16*>(a),
+          static_cast<const __nv_fp8_e4m3*>(weight), scales, m, n, k, block_size,
+          (k + block_size - 1) / block_size, epilogue);
+    };
+    if (per_column_s2 && m == 2 && block_size == k) {
+      variant.template operator()<true>();
+    } else {
+      variant.template operator()<false>();
+    }
+  };
+  switch (k_split) {
+    case 4: launch.template operator()<4>(); break;
+    case 8: launch.template operator()<8>(); break;
+    case 16: launch.template operator()<16>(); break;
+    case 32: launch.template operator()<32>(); break;
+    default: return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported shared expert K split: ", k_split);
+  }
+  return CUDA_CALL(cudaGetLastError());
+#else
+  ORT_UNUSED_PARAMETER(y);
+  ORT_UNUSED_PARAMETER(a);
+  ORT_UNUSED_PARAMETER(weight);
+  ORT_UNUSED_PARAMETER(scales);
+  ORT_UNUSED_PARAMETER(m);
+  ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(k);
+  ORT_UNUSED_PARAMETER(block_size);
+  ORT_UNUSED_PARAMETER(epilogue);
+  ORT_UNUSED_PARAMETER(device_prop);
+  ORT_UNUSED_PARAMETER(stream);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Shared expert requires FP8 support.");
+#endif
+}
+
+Status LaunchPackFp8SkinnyWeight(void* packed_kn, const void* weight_nk,
+                                 int n, int k, cudaStream_t stream) {
+#if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+  ORT_RETURN_IF_NOT(n > 0 && k > 0, "FP8 skinny packing requires positive dimensions.");
+  const dim3 grid{static_cast<unsigned int>((k + 31LL) / 32),
+                  static_cast<unsigned int>((n + 31LL) / 32)};
+  ORT_RETURN_IF_NOT(grid.y <= 65535, "FP8 skinny packing exceeds the transpose grid limit.");
+  PackFp8SkinnyWeightKernel<<<grid, dim3(32, 8), 0, stream>>>(
+      static_cast<uint8_t*>(packed_kn), static_cast<const uint8_t*>(weight_nk), n, k);
+  return CUDA_CALL(cudaGetLastError());
+#else
+  ORT_UNUSED_PARAMETER(packed_kn);
+  ORT_UNUSED_PARAMETER(weight_nk);
+  ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(k);
+  ORT_UNUSED_PARAMETER(stream);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "FP8 skinny packing requires CUDA 11.8 or later.");
+#endif
+}
+
+bool Fp8SkinnyClusterSupported(int m, int n, int k) {
+#if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 12000
+  if (m < 1 || m > 2) {
+    return false;
+  }
+  int device = 0;
+  int cluster_launch = 0;
+  int major = 0;
+  if (cudaGetDevice(&device) != cudaSuccess ||
+      cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess ||
+      major != 9 ||
+      cudaDeviceGetAttribute(&cluster_launch, cudaDevAttrClusterLaunch, device) != cudaSuccess ||
+      cluster_launch == 0 || k < 256) {
+    return false;
+  }
+  cudaLaunchAttribute attr{};
+  auto config = Fp8SkinnyLaunchConfig(m, n, nullptr, attr);
+  const auto check = [&]<int M>() {
+    int max_cluster_size = 0;
+    int active_clusters = 0;
+    const auto kernel = MatMulBlockScaledFp8SkinnyKernel<M>;
+    cudaFuncAttributes attributes{};
+    if constexpr (M == 2) {
+      if (cudaFuncSetAttribute(kernel, cudaFuncAttributeNonPortableClusterSizeAllowed, 1) != cudaSuccess) {
+        return false;
+      }
+    }
+    // Validate the actual compiled specialization (registers/static shared memory), not
+    // merely hardware cluster support. Unsupported MIG/occupancy configurations use MMA.
+    return cudaFuncGetAttributes(&attributes, kernel) == cudaSuccess &&
+           attributes.binaryVersion >= 90 && attributes.ptxVersion >= 90 &&
+           cudaOccupancyMaxPotentialClusterSize(&max_cluster_size, kernel, &config) == cudaSuccess &&
+           max_cluster_size >= (M == 1 ? 8 : 16) &&
+           cudaOccupancyMaxActiveClusters(&active_clusters, kernel, &config) == cudaSuccess &&
+           active_clusters > 0;
+  };
+  switch (m) {
+    case 1:
+      return check.template operator()<1>();
+    case 2:
+      return check.template operator()<2>();
+    default:
+      return false;
+  }
+#else
+  ORT_UNUSED_PARAMETER(m);
+  ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(k);
+  return false;
+#endif
+}
+
+Status LaunchMatMulBlockScaledFp8Skinny(void* y, const void* a, const void* packed_kn,
+                                        const float* weight_scale, const void* bias,
+                                        const float* act_scale, int m, int n, int k,
+                                        int block_size, cudaStream_t stream,
+                                        const Fp8GemvOutputSplit& split) {
+#if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 12000
+  ORT_RETURN_IF_NOT(Fp8SkinnyGemmEligible(m, n, k, block_size, true, packed_kn != nullptr, 9, 132),
+                    "Unsupported FP8 skinny GEMM shape or weight layout.");
+  ORT_RETURN_IF_NOT(split.count >= 0 && split.count <= Fp8GemvOutputSplit::kMaxOutputs,
+                    "FP8 skinny split output count must be between zero and eight.");
+  if (split.count != 0) {
+    int64_t total = 0;
+    for (int index = 0; index < split.count; ++index) {
+      ORT_RETURN_IF_NOT(split.widths[index] > 0 && split.outputs[index] != nullptr,
+                        "FP8 skinny split outputs require positive widths and non-null buffers.");
+      total += split.widths[index];
+    }
+    ORT_RETURN_IF_NOT(total == n, "FP8 skinny split widths must sum to N.");
+  }
+  cudaLaunchAttribute attr{};
+  auto config = Fp8SkinnyLaunchConfig(m, n, stream, attr);
+  const auto launch = [&]<int M>() {
+    return CUDA_CALL(cudaLaunchKernelEx(&config, MatMulBlockScaledFp8SkinnyKernel<M>,
+                                        static_cast<__nv_bfloat16*>(y), static_cast<const __nv_bfloat16*>(a),
+                                        static_cast<const uint8_t*>(packed_kn), weight_scale,
+                                        static_cast<const __nv_bfloat16*>(bias), act_scale, n, k, split));
+  };
+  switch (m) {
+    case 1:
+      return launch.template operator()<1>();
+    case 2:
+      return launch.template operator()<2>();
+  }
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported FP8 skinny M.");
+#else
+  ORT_UNUSED_PARAMETER(y);
+  ORT_UNUSED_PARAMETER(a);
+  ORT_UNUSED_PARAMETER(packed_kn);
+  ORT_UNUSED_PARAMETER(weight_scale);
+  ORT_UNUSED_PARAMETER(bias);
+  ORT_UNUSED_PARAMETER(act_scale);
+  ORT_UNUSED_PARAMETER(m);
+  ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(k);
+  ORT_UNUSED_PARAMETER(block_size);
+  ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(split);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "FP8 cluster skinny GEMM requires CUDA 12 or later.");
+#endif
+}
+
 Status LaunchDequantizeBlockScaledFp8(void* b_dequant,
                                       const void* b_fp8,
                                       const float* weight_scale,
@@ -782,7 +1212,8 @@ Status LaunchDequantizeBlockScaledFp8(void* b_dequant,
                                       int k,
                                       int block_size,
                                       bool is_bf16,
-                                      cudaStream_t stream) {
+                                      cudaStream_t stream,
+                                      bool transpose) {
 #if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
   const long long total = static_cast<long long>(n) * k;
   if (total == 0) {
@@ -793,7 +1224,7 @@ Status LaunchDequantizeBlockScaledFp8(void* b_dequant,
 
   // Fast path: K is a multiple of 16, so each thread owns one aligned 16-element chunk and both the
   // FP8 load and the FP16/BF16 store are fully coalesced. This is the common prefill layout.
-  if (k % 16 == 0) {
+  if (!transpose && k % 16 == 0) {
     const int kv = k / 16;  // 16-element chunks per row
     constexpr int kThreads = 256;
     const unsigned int grid_x = static_cast<unsigned int>((kv + kThreads - 1) / kThreads);
@@ -815,10 +1246,10 @@ Status LaunchDequantizeBlockScaledFp8(void* b_dequant,
   const int blocks = static_cast<int>((total + kThreads - 1) / kThreads);
   if (is_bf16) {
     DequantizeBlockScaledFp8Kernel<__nv_bfloat16><<<blocks, kThreads, 0, stream>>>(
-        reinterpret_cast<__nv_bfloat16*>(b_dequant), b, weight_scale, n, k, k_blocks, block_size);
+        reinterpret_cast<__nv_bfloat16*>(b_dequant), b, weight_scale, n, k, k_blocks, block_size, transpose);
   } else {
     DequantizeBlockScaledFp8Kernel<half><<<blocks, kThreads, 0, stream>>>(
-        reinterpret_cast<half*>(b_dequant), b, weight_scale, n, k, k_blocks, block_size);
+        reinterpret_cast<half*>(b_dequant), b, weight_scale, n, k, k_blocks, block_size, transpose);
   }
   return CUDA_CALL(cudaGetLastError());
 #else
@@ -829,6 +1260,7 @@ Status LaunchDequantizeBlockScaledFp8(void* b_dequant,
   ORT_UNUSED_PARAMETER(k);
   ORT_UNUSED_PARAMETER(block_size);
   ORT_UNUSED_PARAMETER(is_bf16);
+  ORT_UNUSED_PARAMETER(transpose);
   ORT_UNUSED_PARAMETER(stream);
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MatMulBlockQuantizedFp8Weight requires CUDA 11.8 or later.");
 #endif
@@ -1038,6 +1470,10 @@ static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
     const dim3 mma_blocks{static_cast<unsigned int>((n + 15) / 16)};
     const bool pin_residency = Fp8MmaGemvPinsResidency(
         n, k_split, mtiles, device_prop.multiProcessorCount, device_prop.major, device_prop.minor);
+    static const int per_column_s2 =
+        ParseEnvironmentVariableWithDefault<int>("ORT_FP8_GEMV_PER_COLUMN_S2", 0);
+    ORT_ENFORCE(per_column_s2 == 0 || per_column_s2 == 1,
+                "ORT_FP8_GEMV_PER_COLUMN_S2 must be 0 or 1.");
     const auto launch_mma = [&]<int KSplit, int MTiles>() {
       const dim3 mma_threads{32, KSplit};
       const auto launch_variant = [&]<bool SplitOutput>() {
@@ -1055,6 +1491,12 @@ static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
           block_size, k_blocks, split);                                                     \
     }                                                                                      \
   } while (0)
+        if constexpr (MTiles == 1) {
+          if (per_column_s2 && m == 2 && block_size == k && act_scale == nullptr && !pin_residency) {
+            ORT_FP8_LAUNCH_MMA(MatMulBlockScaledFp8MmaGemvPerColumnS2Kernel);
+            return;
+          }
+        }
         if constexpr (KSplit == 16 && MTiles == 1) {
           if (pin_residency) {
             ORT_FP8_LAUNCH_MMA(MatMulBlockScaledFp8MmaGemvKernelPinned);

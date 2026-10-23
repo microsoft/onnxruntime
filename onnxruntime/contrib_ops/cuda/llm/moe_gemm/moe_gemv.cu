@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
+#include "contrib_ops/cuda/llm/moe_gemm/moe_int2_cache.h"
 
 #include <cuda_fp16.h>
 #include <type_traits>
@@ -44,7 +45,8 @@ template <typename Details, int CtaN, int Threads, int GroupSize, bool EnableBia
 __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
                                 const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
                                 int num_experts,
-                                int64_t weight_expert_stride, int64_t scale_expert_stride, int n, int k) {
+                                int64_t weight_expert_stride, int64_t scale_expert_stride, int n, int k,
+                                onnxruntime::llm::kernels::moe_gemv::ExpertCacheView cache = {}) {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   using AccessTypeA = typename Details::AccessTypeA;
   using AccessTypeW = typename Details::AccessTypeW;
@@ -75,6 +77,9 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
   }
 
   weight += expert * weight_expert_stride;
+  if (cache.slots != nullptr && cache.slots[expert] >= 0) {
+    weight = const_cast<uint8_t*>(cache.weights) + cache.slots[expert] * weight_expert_stride;
+  }
   scales += static_cast<int64_t>(expert) * scale_expert_stride;
   if constexpr (EnableBias) {
     bias += static_cast<int64_t>(expert) * n;
@@ -187,7 +192,11 @@ __device__ __forceinline__ void fused_finalize_accumulate(float* out_acc, void* 
     for (int jj = 0; jj < WarpNum; ++jj) {
       val += shmem[jj * CtaN * Interleave + ii];
     }
-    out_acc[ii] += row_scale * (val + v_bias);
+    if constexpr (Details::kElemsPerByteW == 4) {
+      out_acc[ii] += row_scale * static_cast<float>(static_cast<Type>(val + v_bias));
+    } else {
+      out_acc[ii] += row_scale * (val + v_bias);
+    }
   }
 }
 #endif  // (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750)) || !defined(__CUDA_ARCH__)
@@ -571,7 +580,8 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t weight_expert_stride, int64_t scale_expert_stride, int inter_size, int k,
     cutlass_kernels::ActivationParams activation_params,
-    const int* permuted_row_to_source_row, int num_rows) {
+    const int* permuted_row_to_source_row, int num_rows,
+    onnxruntime::llm::kernels::moe_gemv::ExpertCacheView cache = {}) {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   using AccessTypeA = typename Details::AccessTypeA;
   using AccessTypeW = typename Details::AccessTypeW;
@@ -609,6 +619,9 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
 
   const int n = inter_size * 2;
   weight += expert * weight_expert_stride;
+  if (cache.slots != nullptr && cache.slots[expert] >= 0) {
+    weight = const_cast<uint8_t*>(cache.weights) + cache.slots[expert] * weight_expert_stride;
+  }
   scales += static_cast<int64_t>(expert) * scale_expert_stride;
   if constexpr (EnableBias) {
     bias += static_cast<int64_t>(expert) * n;
@@ -680,7 +693,8 @@ template <typename Details, int CtaN, int Threads, int GroupSize, typename TypeA
 static void launch_moe_gemv(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
                             const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
                             int num_experts, int64_t expanded_num_rows, int64_t n, int64_t k,
-                            cudaStream_t stream) {
+                            cudaStream_t stream,
+                            onnxruntime::llm::kernels::moe_gemv::ExpertCacheView cache = {}) {
   const int64_t weight_expert_stride = n * k / Details::kElemsPerByteW;
   const int64_t scale_expert_stride = GroupSize == 0 ? n : ((k + GroupSize - 1) / GroupSize) * n;
   dim3 grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>(n / (CtaN * Details::kInterleave)));
@@ -688,11 +702,11 @@ static void launch_moe_gemv(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* b
   if (bias != nullptr) {
     moe_gemv_kernel<Details, CtaN, Threads, GroupSize, true, TypeA, AccT><<<grid, block, 0, stream>>>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
-        weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k));
+        weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), cache);
   } else {
     moe_gemv_kernel<Details, CtaN, Threads, GroupSize, false, TypeA, AccT><<<grid, block, 0, stream>>>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
-        weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k));
+        weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k), cache);
   }
 }
 
@@ -702,7 +716,8 @@ static void launch_moe_gemv_interleaved_swiglu(
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t expanded_num_rows, int64_t inter_size, int64_t k,
     cutlass_kernels::ActivationParams activation_params, const int* permuted_row_to_source_row,
-    int64_t num_rows, cudaStream_t stream) {
+    int64_t num_rows, cudaStream_t stream,
+    onnxruntime::llm::kernels::moe_gemv::ExpertCacheView cache = {}) {
   const int64_t n = inter_size * 2;
   const int64_t weight_expert_stride = n * k / Details::kElemsPerByteW;
   const int64_t scale_expert_stride = GroupSize == 0 ? n : ((k + GroupSize - 1) / GroupSize) * n;
@@ -712,12 +727,12 @@ static void launch_moe_gemv_interleaved_swiglu(
     moe_gemv_interleaved_swiglu_kernel<Details, CtaN, Threads, GroupSize, true, TypeA, AccT><<<grid, block, 0, stream>>>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
         weight_expert_stride, scale_expert_stride, static_cast<int>(inter_size), static_cast<int>(k), activation_params,
-        permuted_row_to_source_row, static_cast<int>(num_rows));
+        permuted_row_to_source_row, static_cast<int>(num_rows), cache);
   } else {
     moe_gemv_interleaved_swiglu_kernel<Details, CtaN, Threads, GroupSize, false, TypeA, AccT><<<grid, block, 0, stream>>>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
         weight_expert_stride, scale_expert_stride, static_cast<int>(inter_size), static_cast<int>(k), activation_params,
-        permuted_row_to_source_row, static_cast<int>(num_rows));
+        permuted_row_to_source_row, static_cast<int>(num_rows), cache);
   }
 }
 
@@ -797,19 +812,20 @@ static void dispatch_moe_gemv_group_size(TypeA* act, uint8_t* weight, TypeA* sca
                                          const int64_t* expert_first_token_offset,
                                          const int* permuted_row_to_expert, int num_experts,
                                          int64_t expanded_num_rows, int64_t n, int64_t k,
-                                         int group_size, cudaStream_t stream) {
+                                         int group_size, cudaStream_t stream,
+                                         onnxruntime::llm::kernels::moe_gemv::ExpertCacheView cache = {}) {
   if (group_size <= 0) {
     launch_moe_gemv<Details, CtaN, Threads, 0, TypeA, AccT>(act, weight, scales, bias, out, expert_first_token_offset,
-                                                            permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
+                                                            permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream, cache);
   } else if (group_size == 32) {
     launch_moe_gemv<Details, CtaN, Threads, 32, TypeA, AccT>(act, weight, scales, bias, out, expert_first_token_offset,
-                                                             permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
+                                                             permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream, cache);
   } else if (group_size == 64) {
     launch_moe_gemv<Details, CtaN, Threads, 64, TypeA, AccT>(act, weight, scales, bias, out, expert_first_token_offset,
-                                                             permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
+                                                             permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream, cache);
   } else if (group_size == 128) {
     launch_moe_gemv<Details, CtaN, Threads, 128, TypeA, AccT>(act, weight, scales, bias, out, expert_first_token_offset,
-                                                              permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
+                                                              permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream, cache);
   } else {
     ORT_THROW("unsupported MoE GEMV group_size: ", group_size);
   }
@@ -821,11 +837,12 @@ static void dispatch_moe_gemv_interleaved_swiglu_group_size(
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t expanded_num_rows, int64_t inter_size, int64_t k, int group_size,
     cutlass_kernels::ActivationParams activation_params, const int* permuted_row_to_source_row,
-    int64_t num_rows, cudaStream_t stream) {
+    int64_t num_rows, cudaStream_t stream,
+    onnxruntime::llm::kernels::moe_gemv::ExpertCacheView cache = {}) {
 #define LAUNCH_MOE_GEMV_INTERLEAVED_SWIGLU(GROUP_SIZE)                                                \
   launch_moe_gemv_interleaved_swiglu<Details, CtaN, Threads, GROUP_SIZE, TypeA, AccT>(                \
       act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts, \
-      expanded_num_rows, inter_size, k, activation_params, permuted_row_to_source_row, num_rows, stream)
+      expanded_num_rows, inter_size, k, activation_params, permuted_row_to_source_row, num_rows, stream, cache)
   if (group_size <= 0) {
     LAUNCH_MOE_GEMV_INTERLEAVED_SWIGLU(0);
   } else if (group_size == 32) {
@@ -944,7 +961,14 @@ bool is_moe_gemv_shape_supported(int sm, int64_t expanded_num_rows, int64_t n, i
   if (group_size > 0 && k % group_size != 0) {
     return false;
   }
-  if (expanded_num_rows <= 0 || expanded_num_rows > kMaxProfiledExpandedRows) {
+  const int64_t max_expanded_rows =
+      weight_bits == 2 &&
+              onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT2_LARGE_EXPERTS", 1) == 1
+          ? onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT2_DECODE_MAX_EXPANDED_ROWS", 20)
+          : kMaxProfiledExpandedRows;
+  ORT_ENFORCE(max_expanded_rows >= kMaxProfiledExpandedRows && max_expanded_rows <= 40,
+              "INT2 decode expanded-row limit must not exceed 40.");
+  if (expanded_num_rows <= 0 || expanded_num_rows > max_expanded_rows) {
     return false;
   }
   if (n < kMinProfiledProblemDim || k < kMinProfiledProblemDim) {
@@ -1015,7 +1039,7 @@ template <typename WeightType>
 struct CtaNForWeight : std::integral_constant<int, kCtaN> {};
 
 template <>
-struct CtaNForWeight<cutlass::uint2b_t> : std::integral_constant<int, kCtaN / 2> {};
+struct CtaNForWeight<cutlass::uint2b_t> : std::integral_constant<int, kCtaN / 4> {};
 
 template <>
 struct DetailsForTAndWeight<half, cutlass::uint2b_t> {
@@ -1169,6 +1193,109 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
   }
 }
 
+namespace {
+__global__ void PlanExpertCache(int* metadata, const int64_t* offsets, int experts, int slots) {
+  if (threadIdx.x != 0) return;
+  int* tags = metadata + experts;
+  int* fills = tags + slots;
+  for (int slot = 0; slot < slots; ++slot) fills[slot] = -1;
+  for (int expert = 0; expert < experts; ++expert) {
+    if (offsets[expert + 1] <= offsets[expert] || metadata[expert] >= 0) continue;
+    for (int slot = 0; slot < slots; ++slot) {
+      const int previous = tags[slot];
+      if (previous >= 0 && offsets[previous + 1] > offsets[previous]) continue;
+      if (previous >= 0) metadata[previous] = -1;
+      metadata[expert] = slot;
+      tags[slot] = expert;
+      fills[slot] = expert;
+      break;
+    }
+  }
+}
+
+__global__ void FillExpertCache(const uint8_t* fc1, const uint8_t* fc2, uint8_t* cache,
+                                const int* fills, int slots, size_t bytes1, size_t bytes2) {
+  const int slot = blockIdx.y;
+  const int expert = fills[slot];
+  if (expert < 0) return;
+  const size_t total = bytes1 + bytes2;
+  if (((reinterpret_cast<uintptr_t>(fc1) | reinterpret_cast<uintptr_t>(fc2) |
+        reinterpret_cast<uintptr_t>(cache) | bytes1 | bytes2) & 15) == 0) {
+    const auto* source1 = reinterpret_cast<const uint4*>(fc1);
+    const auto* source2 = reinterpret_cast<const uint4*>(fc2);
+    auto* destination = reinterpret_cast<uint4*>(cache);
+    const size_t vectors1 = bytes1 / sizeof(uint4);
+    const size_t vectors2 = bytes2 / sizeof(uint4);
+    for (size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+         i < vectors1 + vectors2; i += static_cast<size_t>(gridDim.x) * blockDim.x) {
+      if (i < vectors1) {
+        destination[slot * vectors1 + i] = source1[expert * vectors1 + i];
+      } else {
+        const size_t j = i - vectors1;
+        destination[slots * vectors1 + slot * vectors2 + j] = source2[expert * vectors2 + j];
+      }
+    }
+    return;
+  }
+  for (size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x; i < total;
+       i += static_cast<size_t>(gridDim.x) * blockDim.x) {
+    if (i < bytes1) {
+      cache[slot * bytes1 + i] = fc1[expert * bytes1 + i];
+    } else {
+      const size_t j = i - bytes1;
+      cache[slots * bytes1 + slot * bytes2 + j] = fc2[expert * bytes2 + j];
+    }
+  }
+}
+
+template <typename T>
+void LaunchCachedInt2(const CachedInt2GemvParams& p) {
+  using Details = typename DetailsForTAndWeight<T, cutlass::uint2b_t>::Details;
+  auto* input = const_cast<T*>(static_cast<const T*>(p.input));
+  auto* weights = const_cast<uint8_t*>(p.weights);
+  auto* scales = const_cast<T*>(static_cast<const T*>(p.scales));
+  auto* bias = const_cast<T*>(static_cast<const T*>(p.bias));
+  auto* output = static_cast<T*>(p.output);
+  constexpr int cta_n = CtaNForWeight<cutlass::uint2b_t>::value;
+  if (p.swiglu) {
+    fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<Details, cta_n, kThreads, T, float>(
+        input, weights, scales, bias, output, p.expert_offsets, p.row_experts, p.experts,
+        p.expanded_rows, p.n, p.k, p.group_size, p.activation, p.source_rows, p.rows, p.stream, p.cache);
+  } else {
+    fiv::dispatch_moe_gemv_group_size<Details, cta_n, kThreads, T, float>(
+        input, weights, scales, bias, output, p.expert_offsets, p.row_experts, p.experts,
+        p.expanded_rows, p.n, p.k, p.group_size, p.stream, p.cache);
+  }
+}
+}  // namespace
+
+void PrepareInt2ExpertCache(const uint8_t* fc1, const uint8_t* fc2, uint8_t* cache, int* metadata,
+                           const int64_t* expert_offsets, int experts, int slots,
+                           size_t fc1_bytes, size_t fc2_bytes, cudaStream_t stream) {
+  ORT_ENFORCE(fc1 && fc2 && cache && metadata && expert_offsets && experts > 0 &&
+                  slots > 0 && slots <= experts && fc1_bytes > 0 && fc2_bytes > 0,
+              "Invalid INT2 expert cache buffers/dimensions");
+  PlanExpertCache<<<1, 1, 0, stream>>>(metadata, expert_offsets, experts, slots);
+  CUDA_CALL_THROW(cudaGetLastError());
+  FillExpertCache<<<dim3(64, slots), 256, 0, stream>>>(
+      fc1, fc2, cache, metadata + experts + slots, slots, fc1_bytes, fc2_bytes);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+void LaunchCachedInt2Gemv(const CachedInt2GemvParams& params) {
+  ORT_ENFORCE(params.cache.slots && params.cache.weights, "INT2 cache view is missing");
+  if (params.bf16) {
+#ifdef ENABLE_BF16
+    LaunchCachedInt2<__nv_bfloat16>(params);
+#else
+    ORT_THROW("Cached BF16 INT2 GEMV requires ENABLE_BF16");
+#endif
+  } else {
+    LaunchCachedInt2<half>(params);
+  }
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
 template <typename T>
 void launch_moe_gemv_int4_per_channel(const T* act, const uint8_t* weight, const T* scales, const T* bias, T* out,
                                       const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
@@ -1203,6 +1330,9 @@ template void launch_moe_gemv_int_symmetric<half, uint8_t>(
 template void launch_moe_gemv_int_symmetric_fused_finalize<half, cutlass::uint4b_t>(
     const half*, const cutlass::uint4b_t*, const half*, const half*, half*, const int*, const int*, const float*,
     int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
+template void launch_moe_gemv_int_symmetric_fused_finalize<half, cutlass::uint2b_t>(
+    const half*, const cutlass::uint2b_t*, const half*, const half*, half*, const int*, const int*, const float*,
+    int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
 template void launch_moe_gemv_int_symmetric_fused_finalize<half, uint8_t>(
     const half*, const uint8_t*, const half*, const half*, half*, const int*, const int*, const float*,
     int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
@@ -1235,6 +1365,9 @@ template void launch_moe_gemv_int_symmetric<__nv_bfloat16, uint8_t>(
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cudaStream_t);
 template void launch_moe_gemv_int_symmetric_fused_finalize<__nv_bfloat16, cutlass::uint4b_t>(
     const __nv_bfloat16*, const cutlass::uint4b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
+    const int*, const int*, const float*, int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
+template void launch_moe_gemv_int_symmetric_fused_finalize<__nv_bfloat16, cutlass::uint2b_t>(
+    const __nv_bfloat16*, const cutlass::uint2b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int*, const int*, const float*, int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
 template void launch_moe_gemv_int_symmetric_fused_finalize<__nv_bfloat16, uint8_t>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,

@@ -28,6 +28,8 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+class CUDA_MS_OP_CLASS_NAME(2, FoldMid2);
+class CUDA_MS_OP_CLASS_NAME(2, FoldTail);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GridSample);
 
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, FastGelu);
@@ -179,6 +181,12 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, ArgMaxLastAxis);
 class CUDA_MS_OP_CLASS_NAME(1, EmbeddingRMSNorm);
 class CUDA_MS_OP_CLASS_NAME(1, RowSelect);
 class CUDA_MS_OP_CLASS_NAME(1, SigmoidGateMul);
+class CUDA_MS_OP_CLASS_NAME(1, RMSNormRotary);
+class CUDA_MS_OP_CLASS_NAME(1, DotProductGate);
+class CUDA_MS_OP_CLASS_NAME(1, MtpInputProjection);
+class CUDA_MS_OP_CLASS_NAME(1, HyperConnectionMixer);
+class CUDA_MS_OP_CLASS_NAME(1, MtpAttentionProjection);
+class CUDA_MS_OP_CLASS_NAME(1, PackedMtpMoe);
 #if !defined(DISABLE_FLOAT8_TYPES)
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, Float8E4M3FN_BFloat16, DequantizeLinear);
 #endif
@@ -563,6 +571,12 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, EmbeddingRMSNorm)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, RowSelect)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, SigmoidGateMul)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, RMSNormRotary)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, DotProductGate)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MtpInputProjection)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, HyperConnectionMixer)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MtpAttentionProjection)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, PackedMtpMoe)>,
 #if !defined(DISABLE_FLOAT8_TYPES)
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, Float8E4M3FN_BFloat16, DequantizeLinear)>,
 #endif
@@ -602,6 +616,8 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedAdd)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedAdd)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, CausalConvWithState)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(2, FoldMid2)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(2, FoldTail)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CausalConvWithState)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CausalConvWithState)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, VarlenCausalConvWithState)>,

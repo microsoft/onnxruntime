@@ -909,6 +909,13 @@ PackedSparseAttentionIndexer::PackedSparseAttentionIndexer(const OpKernelInfo& i
 }
 
 Status PackedSparseAttentionIndexer::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+  const auto* numerics = context.Input(22);
+  ORT_RETURN_IF_NOT(numerics == nullptr ||
+                        (numerics->IsDataType<int32_t>() && numerics->Shape().Size() == 1 &&
+                         numerics->Data<int32_t>()[0] == 0),
+                    "PackedSparseAttentionIndexer: nonzero prefill_numerics requires CUDA");
+  ORT_RETURN_IF(context.OutputCount() > psai::kMidKvBuffer2,
+                "PackedSparseAttentionIndexer: additional prefix states require CUDA");
   ORT_RETURN_IF(context.InputCount() > psai::kIndexShareMode && context.Input(psai::kIndexShareMode),
                 "PackedSparseAttentionIndexer IndexShare requires the CUDA provider");
   const bool is_qsa = policy_ == psai::Policy::kQsa;

@@ -16,6 +16,7 @@ class HyperConnectionPreMix final : public onnxruntime::cuda::CudaKernel {
  private:
   int64_t num_branches_;
   float reduction_scale_;
+  int sigmoid_mode_;
 };
 
 }  // namespace onnxruntime::contrib::cuda

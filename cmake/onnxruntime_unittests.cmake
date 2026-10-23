@@ -1037,6 +1037,11 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
     "${TEST_SRC_DIR}/providers/cuda/test_cases/*"
     ${onnxruntime_test_cuda_kernels_src_patterns}
   )
+  if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD AND
+      NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    list(APPEND onnxruntime_test_providers_cuda_ut_src
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/hyper_connection_low_rank_mix_test_producer.cu")
+  endif()
 
   if (onnxruntime_DISABLE_CONTRIB_OPS OR onnxruntime_CUDA_MINIMAL)
     list(REMOVE_ITEM onnxruntime_test_providers_cuda_ut_src
@@ -1121,6 +1126,8 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
   if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
     list(APPEND onnxruntime_test_providers_cuda_plugin_internal_test_src
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/moe_gemm_int2_test.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/hyper_connection_low_rank_mix_kernel_test.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/speculative_fold_v2_test.cc"
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/qmoe_fp4_to_fp8_kernel_test.cc"
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/qmoe_fp8_compaction_test.cc"
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/softmax_topk_kernel_test.cc"
@@ -1153,9 +1160,13 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
 
     if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
       list(APPEND onnxruntime_providers_cuda_plugin_ut_impl_src
+        "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/hyper_connection_low_rank_mix_test_producer.cu"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/hyper_connection_low_rank_mix_impl.cu"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/speculative_fold.cu"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.cu"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.cu"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels_fp16_uint2.cu"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/moe_gemm/moe_gemv.cu"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_kernels.cu"
       )
       if (TARGET onnxruntime_providers_cuda_plugin_llm_fp4)

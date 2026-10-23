@@ -228,6 +228,8 @@ void ProcessChannelPrefill(
 
 template <typename T>
 Status CausalConvWithState<T>::Compute(OpKernelContext* context) const {
+  ORT_RETURN_IF(context->OutputCount() > 2,
+                "CausalConvWithState: prefix state outputs require CUDA");
   const Tensor* input_tensor = context->Input<Tensor>(0);
   const Tensor* weight_tensor = context->Input<Tensor>(1);
   const Tensor* bias_tensor = context->Input<Tensor>(2);        // optional

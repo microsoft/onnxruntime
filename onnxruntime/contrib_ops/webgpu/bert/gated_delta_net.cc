@@ -40,6 +40,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("TG", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>())
         .InputMemoryType(OrtMemTypeCPUInput, 10)
+        .InputMemoryType(OrtMemTypeCPUInput, 11)
         .MayInplace(6, 1),
     GatedDeltaNet);
 
@@ -307,6 +308,13 @@ Status GatedDeltaNetUnpackQkvProgram::GenerateShaderCode(ShaderHelper& shader) c
 }
 
 Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+  const auto* numerics = context.Input(11);
+  ORT_RETURN_IF_NOT(numerics == nullptr ||
+                        (numerics->IsDataType<int32_t>() && numerics->Shape().Size() == 1 &&
+                         numerics->Data<int32_t>()[0] == 0),
+                    "GatedDeltaNet: nonzero prefill_numerics requires CUDA");
+  ORT_RETURN_IF(context.OutputCount() > 3,
+                "GatedDeltaNet: additional prefix states require CUDA");
   const auto* query = context.Input(0);
   const auto* key = context.Input(1);
   const auto* value = context.Input(2);

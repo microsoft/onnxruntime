@@ -32,6 +32,9 @@ struct PackedSparseAttentionIndexerParams {
   int capacity = 0;         // selected_indices.shape[1]
   int output_capacity = 0;
   bool state_only = false;
+  bool dense_prefill = false;
+  const void* past_scoring_state = nullptr;
+  void* present_scoring_state = nullptr;
   float epsilon = 1e-6f;
   float scale = 0.0f;
 
@@ -40,6 +43,10 @@ struct PackedSparseAttentionIndexerParams {
   int state_update_capacity = 0;
   void* mid_kv_buffer = nullptr;         // [batch, buffer_capacity, head_size] T
   int32_t* mid_state_lengths = nullptr;  // [batch, 2]
+  void* mid_kv_buffer2 = nullptr;
+  int32_t* mid_state_lengths2 = nullptr;
+  void* mid_kv_buffer3 = nullptr;
+  int32_t* mid_state_lengths3 = nullptr;
 
   // policy_mode = "csa"
   int index_topk = 0;

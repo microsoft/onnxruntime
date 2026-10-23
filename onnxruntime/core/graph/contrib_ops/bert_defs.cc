@@ -34,6 +34,100 @@ void MatMulShapeInference(
 namespace onnxruntime {
 namespace contrib {
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    FoldMid2, 2,
+    OpSchema()
+        .SetDoc("Commits a batch-one speculative prefix and prepares rotary/head inputs for two through four head rows. "
+                "Control and committed-context outputs must alias their inputs on CUDA. This is stateful: callers "
+                "must serialize access to these buffers. The result-ring address must identify a device-accessible, "
+                "aligned allocation of capacity*8 int64 words. The mid stage writes the payload; FoldTail publishes "
+                "its sequence word after downstream validation. Muted prefill calls prepare inputs without committing "
+                "state or touching ring metadata. Invalid device metadata sets error bits and mutes execution.")
+        .Attr("head_rows", "Fixed number of head rows, 2 through 4.", AttributeProto::INT, int64_t{2})
+        .Attr("head_capacity", "Maximum head-cache token capacity.", AttributeProto::INT, int64_t{33028})
+        .Input(0, "next_tokens", "Verifier predictions, batch one.", "I64")
+        .Input(1, "input_ids", "Verifier input IDs.", "I64")
+        .Input(2, "status", "Verifier status words.", "I32")
+        .Input(3, "ctl", "Mutable control state: at least 8 words for S2, 16 for S3/S4.", "I64")
+        .Input(4, "ctx_commit", "Mutable committed context, two words.", "I64")
+        .Input(5, "prefixes", "Two-word context for each accepted-prefix length; S2 needs only the first.", "I64")
+        .Input(6, "prefix2", "Two-word context for acceptance length one.", "I64")
+        .Input(7, "ptrs", "Result ring address and positive record capacity.", "I64")
+        .Input(8, "cos_cache", "Rotary cosine cache [positions, width].", "B")
+        .Input(9, "sin_cache", "Rotary sine cache [positions, width].", "B")
+        .Input(10, "hidden", "Optional hidden states [1, verifier_rows, ...].", "B", OpSchema::Optional)
+        .Output(0, "head_ids", "Head token IDs [1, head_rows].", "I64")
+        .Output(1, "head_c", "Head committed length [1].", "I32")
+        .Output(2, "slot_ids", "Head slots [1, head_rows].", "I64")
+        .Output(3, "seqlens", "Head sequence length [1].", "I32")
+        .Output(4, "cos_out", "Gathered rotary cosine [1, head_rows, width].", "B")
+        .Output(5, "sin_out", "Gathered rotary sine [1, head_rows, width].", "B")
+        .Output(6, "sel", "Accepted-prefix length, or -1 on invalid metadata.", "I64")
+        .Output(7, "head_hidden", "Hidden rows, repeating the last source row when necessary.", "B", OpSchema::Optional)
+        .Output(8, "updated_ctl", "Updated control state, aliases ctl.", "I64")
+        .Output(9, "updated_ctx_commit", "Updated context, aliases ctx_commit.", "I64")
+        .TypeConstraint("I64", {"tensor(int64)"}, "Token and control words.")
+        .TypeConstraint("I32", {"tensor(int32)"}, "Status and sequence lengths.")
+        .TypeConstraint("B", {"tensor(bfloat16)"}, "Rotary and hidden tensors.")
+        .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+          for (int output : {0, 2, 6, 8, 9}) propagateElemTypeFromInputToOutput(ctx, 0, output);
+          for (int output : {1, 3}) propagateElemTypeFromInputToOutput(ctx, 2, output);
+          for (int output : {4, 5}) propagateElemTypeFromInputToOutput(ctx, 8, output);
+          if (hasInputShape(ctx, 10)) propagateElemTypeFromInputToOutput(ctx, 10, 7);
+          const auto rows = getAttribute(ctx, "head_rows", 2);
+          const auto capacity = getAttribute(ctx, "head_capacity", 33028);
+          if (rows < 2 || rows > 4 || capacity < rows || capacity > std::numeric_limits<int>::max())
+            fail_shape_inference("FoldMid2: invalid head_rows/head_capacity");
+          for (int output : {0, 2}) {
+            auto* shape = getOutputShape(ctx, output);
+            shape->add_dim()->set_dim_value(1);
+            shape->add_dim()->set_dim_value(rows);
+          }
+          for (int output : {1, 3, 6}) getOutputShape(ctx, output)->add_dim()->set_dim_value(1);
+          if (hasInputShape(ctx, 8)) {
+            const auto& rope = getInputShape(ctx, 8);
+            if (rope.dim_size() != 2) fail_shape_inference("FoldMid2: rotary cache must have rank 2");
+            TensorShapeProto shape;
+            shape.add_dim()->set_dim_value(1);
+            shape.add_dim()->set_dim_value(rows);
+            *shape.add_dim() = rope.dim(1);
+            updateOutputShape(ctx, 4, shape);
+            updateOutputShape(ctx, 5, shape);
+          }
+          if (hasInputShape(ctx, 10)) {
+            auto shape = getInputShape(ctx, 10);
+            if (shape.dim_size() < 3) fail_shape_inference("FoldMid2: hidden must have rank at least 3");
+            shape.mutable_dim(1)->set_dim_value(rows);
+            updateOutputShape(ctx, 7, shape);
+          }
+          propagateShapeFromInputToOutput(ctx, 3, 8);
+          propagateShapeFromInputToOutput(ctx, 4, 9);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    FoldTail, 2,
+    OpSchema()
+        .SetDoc("Updates the selected draft-control slot and publishes the result-ring sequence after validation. "
+                "updated_ctl must alias ctl on CUDA. Muted calls do not access the ring. Invalid ring metadata "
+                "sets error bit 16 and mutes execution. done is a dependency output initialized to zero.")
+        .Attr("ctl_slot", "Draft-control slot: 2, 8 or 9.", AttributeProto::INT, int64_t{2})
+        .Input(0, "next_token", "Next draft token (or ignored selector in DFlash).", "I64")
+        .Input(1, "status", "Downstream validation status words.", "I32")
+        .Input(2, "ctl", "Mutable control state.", "I64")
+        .Input(3, "ptrs", "Result ring address and record capacity.", "I64")
+        .Output(0, "done", "Dependency output [1].", "I32")
+        .Output(1, "updated_ctl", "Updated control state, aliases ctl.", "I64")
+        .TypeConstraint("I64", {"tensor(int64)"}, "Token and control words.")
+        .TypeConstraint("I32", {"tensor(int32)"}, "Status and dependency output.")
+        .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 1, 0);
+          propagateElemTypeFromInputToOutput(ctx, 2, 1);
+          const auto slot = getAttribute(ctx, "ctl_slot", 2);
+          if (slot != 2 && slot != 8 && slot != 9) fail_shape_inference("FoldTail: invalid ctl_slot");
+          getOutputShape(ctx, 0)->add_dim()->set_dim_value(1);
+          propagateShapeFromInputToOutput(ctx, 2, 1);
+        }));
+
 void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -666,11 +760,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "S", OpSchema::Optional)
         .Input(19, "value_scale", "Positive finite per-channel INT8 value-cache scales [kv_num_heads * head_size].",
                "S", OpSchema::Optional)
+        .Input(20, "prefill_numerics",
+               "Optional CPU int32 tensor [1]. Zero or absent preserves decode arithmetic; one enables dense BF16 prefill.",
+               "M", OpSchema::Optional)
+        .Input(21, "prefill_key", "Optional BF16/FP16/FP32 prefill key shadow in BNSH layout.", "T", OpSchema::Optional)
+        .Input(22, "prefill_value", "Optional prefill value shadow with the same shape as prefill_key.", "T", OpSchema::Optional)
         .Output(0, "output", "Attention output [batch, sequence, num_heads * head_size].", "T")
         .Output(1, "present_key", "Updated main key cache in BNSH layout.", "TCache", OpSchema::Optional)
         .Output(2, "present_value", "Updated main value cache in BNSH layout.", "TCache", OpSchema::Optional)
         .Output(3, "validation_status", "Optional int32 status: 0 when valid, a validation code when invalid.",
                 "M", OpSchema::Optional)
+        .Output(4, "prefill_present_key", "Updated prefill key shadow, aliasing prefill_key.", "T", OpSchema::Optional)
+        .Output(5, "prefill_present_value", "Updated prefill value shadow, aliasing prefill_value.", "T", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain all floating-point inputs and outputs to one element type.")
         .TypeConstraint("TCache", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(int8)"},
@@ -679,6 +780,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain selection and sequence metadata to int32.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           DynamicSparseAttentionTypeAndShapeInference(ctx);
+          for (int index = 4; index <= 5; ++index) {
+            if (ctx.getNumOutputs() > static_cast<size_t>(index) && ctx.hasOutput(index)) {
+              const int input_index = index + 17;
+              if (ctx.getNumInputs() <= static_cast<size_t>(input_index) || ctx.getInputType(input_index) == nullptr) {
+                fail_shape_inference("Prefill shadow output requires its corresponding input");
+              }
+              propagateElemTypeFromInputToOutput(ctx, input_index, index);
+              if (hasInputShape(ctx, input_index)) {
+                propagateShapeFromInputToOutput(ctx, input_index, index);
+              }
+            }
+          }
           if (ctx.getNumOutputs() > 3 && ctx.hasOutput(3)) {
             updateOutputElemType(ctx, 3, ONNX_NAMESPACE::TensorProto_DataType_INT32);
             ONNX_NAMESPACE::TensorShapeProto status_shape;
@@ -2886,6 +2999,18 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     propagateElemTypeFromInputToOutput(ctx, psai::kPastKvBuffer, psai::kMidKvBuffer);
     propagateShapeFromInputToOutput(ctx, psai::kPastKvBuffer, psai::kMidKvBuffer);
   }
+  for (int prefix = 0; prefix < 2; ++prefix) {
+    const int buffer = psai::kMidKvBuffer2 + 2 * prefix;
+    const int lengths = buffer + 1;
+    if (ctx.hasOutput(buffer) != ctx.hasOutput(lengths))
+      fail_shape_inference("PackedSparseAttentionIndexer: prefix buffer and lengths must be connected together");
+    if (!ctx.hasOutput(buffer)) continue;
+    if (!is_qsa) fail_shape_inference("PackedSparseAttentionIndexer: prefix outputs require policy_mode='qsa'");
+    propagateElemTypeFromInputToOutput(ctx, psai::kPastKvBuffer, buffer);
+    propagateShapeFromInputToOutput(ctx, psai::kPastKvBuffer, buffer);
+    updateOutputElemType(ctx, lengths, ONNX_NAMESPACE::TensorProto_DataType_INT32);
+    propagateShapeFromInputToOutput(ctx, psai::kPastStateLengths, lengths);
+  }
   if (!is_qsa) {
     // present_gate_buffer keeps its fixed positional slot (with an empty name) for policy_mode
     // 'qsa'; only propagate its type/shape when it is actually produced.
@@ -3341,6 +3466,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(19, "merged_indices", "Packed merged selection [N,max_output_entries].", "M", OpSchema::Optional)
         .Input(20, "merged_counts", "Merged counts [N].", "M", OpSchema::Optional)
         .Input(21, "merged_status", "Merged device status [N].", "M", OpSchema::Optional)
+        .Input(22, "prefill_numerics",
+               "Optional CPU int32 tensor [1]. Zero or absent preserves decode dispatch; one uses dense "
+               "QSA pooling arithmetic for four heads, width 128, and compression ratio four.",
+               "M", OpSchema::Optional)
+        .Input(23, "prefill_scoring_state",
+               "Optional dense-prefill scoring shadow [batch, prefill_scoring_capacity, head_size]. "
+               "Mode one uses full capacity; mode zero uses zero capacity and does not read the shadow. "
+               "The ordinary key state retains dense handoff-pooling arithmetic.",
+               "T_KEY", OpSchema::Optional)
         .Attr("max_output_entries", "Fixed padded output width for the optional IndexShare interface.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("indexshare_state_policy", "Reuse state policy: default holds QSA and advances CSA; hold or advance overrides it.",
@@ -3393,6 +3527,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(10, "validation_status",
                 "Only for policy_mode 'qsa': per-request overflow status; two-token rejection is encoded as 0x99.",
                 "M", OpSchema::Optional)
+        .Output(11, "mid_kv_buffer2", "CUDA QSA pending-buffer snapshot after at most two request tokens.",
+                "T", OpSchema::Optional)
+        .Output(12, "mid_state_lengths2", "CUDA QSA state lengths after at most two request tokens.",
+                "M", OpSchema::Optional)
+        .Output(13, "mid_kv_buffer3", "CUDA QSA pending-buffer snapshot after at most three request tokens.",
+                "T", OpSchema::Optional)
+        .Output(14, "mid_state_lengths3", "CUDA QSA state lengths after at most three request tokens.",
+                "M", OpSchema::Optional)
+        .Output(15, "prefill_scoring_state_out",
+                "Updated scoring shadow with the shape of prefill_scoring_state, independently of ordinary key-state capacity.",
+                "T_KEY", OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain floating point tensors to float, float16 and bfloat16.")
@@ -3405,6 +3550,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         "integer tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           PackedSparseAttentionIndexerTypeAndShapeInference(ctx);
+          if (ctx.getNumOutputs() > 15 && ctx.hasOutput(15)) {
+            if (!PackedSparseAttentionIndexerHasInput(ctx, psai::kPrefillScoringState)) {
+              fail_shape_inference("Prefill scoring shadow output requires prefill_scoring_state");
+            }
+            propagateElemTypeFromInputToOutput(ctx, 23, 15);
+            if (hasInputShape(ctx, 23)) {
+              propagateShapeFromInputToOutput(ctx, 23, 15);
+            }
+          }
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(
@@ -3516,12 +3670,16 @@ static OpSchema RotaryEmbeddingSchema() {
                "sin_cache",
                "2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)",
                "T")
+        .Input(4, "prefill_numerics",
+               "Optional CPU int32 tensor [1]. Zero or absent preserves legacy arithmetic; one uses native-type dense prefill arithmetic.",
+               "TI", OpSchema::Optional)
         .Output(0,
                 "output",
                 "tensor with same shape as input.",
                 "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("M", {"tensor(int64)"}, "Constrain input and output types to integer tensors")
+        .TypeConstraint("TI", {"tensor(int32)"}, "Constrain the optional CPU prefill numerical mode to int32")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateShapeFromInputToOutput(ctx, 0, 0);
@@ -4784,6 +4942,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(2, "first_state", "Optional carry state after the first input position, with the same "
                 "layout and length as present_state. CUDA only; requires rank-3 channels-last input "
                 "and state_window=0.", "T", OpSchema::Optional)
+        .Output(3, "second_state", "CUDA carry state after at most two input positions, same layout as present_state.",
+                "T", OpSchema::Optional)
+        .Output(4, "third_state", "CUDA carry state after at most three input positions, same layout as present_state.",
+                "T", OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
@@ -4808,7 +4970,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 state_window != 0 || getAttribute(ctx, "dilation", 1) < 1) {
               fail_shape_inference("CausalConvWithState: extended attributes require channels_last=1, ndim=1, state_window=0");
             }
-            if (ctx.getNumOutputs() > 2) propagateElemTypeFromInputToOutput(ctx, 0, 2);
+            for (size_t i = 2; i < ctx.getNumOutputs(); ++i) propagateElemTypeFromInputToOutput(ctx, 0, i);
             if (!hasInputShape(ctx, 0)) return;
             const auto& input = getInputShape(ctx, 0);
             if (input.dim_size() != 3) fail_shape_inference("CausalConvWithState: extended input must have rank 3");
@@ -4846,7 +5008,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             *state.add_dim() = state_layout == 0 ? *channels : length;
             *state.add_dim() = state_layout == 0 ? length : *channels;
             updateOutputShape(ctx, 1, state);
-            if (ctx.getNumOutputs() > 2) updateOutputShape(ctx, 2, state);
+            for (size_t i = 2; i < ctx.getNumOutputs(); ++i) updateOutputShape(ctx, i, state);
             return;
           }
           if (state_window < 0 || state_window > kMaxStateWindow) {
@@ -5502,6 +5664,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "CPU int32 control with shape (1). Zero disables transition capture, ignores "
                "capture_count, and produces a zero-filled state_update. Omission is conservative.",
                "TI", OpSchema::Optional)
+        .Input(11, "prefill_numerics",
+               "Optional CUDA CPU-memory int32 control of shape [1]. Zero or omission preserves existing "
+               "normalization. One selects dense BF16 query/key normalization with epsilon 1e-6 during "
+               "eager prefill. Decode CUDA graph capture must bind an immutable zero.",
+               "TI", OpSchema::Optional)
         .Output(0, "output",
                 "Output, shape (total_tokens, max(num_heads_q, num_heads_v), head_size_v)", "T")
         .Output(1, "final_state",
@@ -5511,6 +5678,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(2, "state_update",
                 "Struct-of-arrays transition factors when state_output='state_update', or "
                 "the state after the first token when state_output='mid_state'.",
+                "TS", OpSchema::Optional)
+        .Output(3, "mid_state2", "CUDA state after at most two request tokens; requires state_output='mid_state'.",
+                "TS", OpSchema::Optional)
+        .Output(4, "mid_state3", "CUDA state after at most three request tokens; requires state_output='mid_state'.",
                 "TS", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain query/key/value/output types.")
@@ -5524,9 +5695,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (ctx.getNumOutputs() > 1) {
             updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
           }
-          if (ctx.getNumOutputs() > 2) {
-            updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-          }
+          for (size_t i = 2; i < ctx.getNumOutputs(); ++i)
+            updateOutputElemType(ctx, i, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
           if (!hasInputShape(ctx, 0)) {
             return;
@@ -5619,9 +5789,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 fail_shape_inference("GatedDeltaNet: mid_state output requires state_update_capacity=0");
               }
               if (state_shape != nullptr) {
-                updateOutputShape(ctx, 2, *state_shape);
+                for (size_t i = 2; i < ctx.getNumOutputs(); ++i) updateOutputShape(ctx, i, *state_shape);
               }
             } else {
+              if (ctx.getNumOutputs() > 3)
+                fail_shape_inference("GatedDeltaNet: additional prefix states require state_output='mid_state'");
               ONNX_NAMESPACE::TensorShapeProto capsule_shape;
               add_batch_dim(capsule_shape);
               auto* width = capsule_shape.add_dim();
@@ -5732,10 +5904,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     RowSelect, 1,
     OpSchema()
         .SetDoc(FusedTensorOps_ver1_doc)
-        .Input(0, "selection", "Scalar-like int64 row selector; zero selects row 0.", "I")
-        .Input(1, "x0", "BF16 tensor with shape [1, 2, ...].", "T")
-        .Input(2, "x1", "BF16 tensor with shape [1, 2, ...].", "T")
-        .Input(3, "x2", "BF16 tensor with shape [1, 2, ...].", "T")
+        .Input(0, "selection", "Scalar-like int64 row selector. Two-row inputs preserve the legacy "
+               "zero/nonzero selection rule; three-/four-row inputs clamp the index to valid rows.", "I")
+        .Input(1, "x0", "BF16 tensor with shape [1, R, ...], R in [2, 4].", "T")
+        .Input(2, "x1", "BF16 tensor with shape [1, R, ...], matching x0's row count.", "T")
+        .Input(3, "x2", "BF16 tensor with shape [1, R, ...], matching x0's row count.", "T")
         .Output(0, "y0", "Selected BF16 tensor with shape [1, 1, ...].", "T")
         .Output(1, "y1", "Selected BF16 tensor with shape [1, 1, ...].", "T")
         .Output(2, "y2", "Selected BF16 tensor with shape [1, 1, ...].", "T")
@@ -5752,6 +5925,186 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             output_shape.mutable_dim(1)->set_dim_value(1);
             updateOutputShape(ctx, i, output_shape);
           }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    PackedMtpMoe, 1,
+    OpSchema()
+        .SetDoc("CUDA NVFP4 MTP expert block with 512 experts, top-10 normalized routing, hidden "
+                "width 2560 and expert width 640. Preserves the original three-kernel MtpMoe "
+                "routing/GEMV arithmetic and packed row format. Not interchangeable with QMoE "
+                "weight layouts. Optional scratch is an opaque work buffer, not a numerical output.")
+        .Attr("gate_up_global_scale", "Positive NVFP4 gate/up global scale.", AttributeProto::FLOAT, 1.0f)
+        .Attr("down_global_scale", "Positive NVFP4 down global scale.", AttributeProto::FLOAT, 1.0f)
+        .Input(0, "input", "BF16 activation [...,2560].", "T")
+        .Input(1, "router", "BF16 logits [...,512] with matching leading dimensions.", "T")
+        .Input(2, "gate_up", "Packed NVFP4 [512,1280,1440].", "W")
+        .Input(3, "down", "Packed NVFP4 [512,2560,360].", "W")
+        .Output(0, "output", "BF16 routed output, same shape as input.", "T")
+        .Output(1, "scratch", "Opaque [rows,6432] FP32 allocation.", "F", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(bfloat16)"}, "BF16 activation and output.")
+        .TypeConstraint("W", {"tensor(uint8)"}, "Packed NVFP4 weights.")
+        .TypeConstraint("F", {"tensor(float)"}, "Opaque FP32 scratch.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateShapeAndTypeFromFirstInput(ctx);
+          if (ctx.getNumOutputs() > 1) updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MtpInputProjection, 1,
+    OpSchema()
+        .SetDoc("CUDA BF16 MTP dual projection and branch-broadcast add. Uses original row-major "
+                "BF16 weights and two cuBLAS GEMMs with BF16 output rounding before the add. "
+                "Input normalizations remain explicit contrib operations.")
+        .Input(0, "hidden", "Normalized hidden [B,S,C,H].", "T")
+        .Input(1, "embedding", "Normalized embedding [B,S,E].", "T")
+        .Input(2, "hidden_weight", "Row-major [H,H].", "T")
+        .Input(3, "embedding_weight", "Row-major [E,H].", "T")
+        .Output(0, "output", "Flattened sum [B,S,C*H].", "T")
+        .TypeConstraint("T", {"tensor(bfloat16)"}, "BF16 tensors."));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    HyperConnectionMixer, 1,
+    OpSchema()
+        .SetDoc("CUDA BF16 final HC mixer: down GEMM, ScaledSiLU, up GEMM, input-type sigmoid "
+                "and feature-gated branch reduction. Uses original BF16 weights, not quantized "
+                "substitutes. Each former operation boundary retains BF16 rounding. "
+                "This is a multi-kernel contrib block, not a single fused GEMM.")
+        .Attr("num_branches", "Branch count.", AttributeProto::INT, static_cast<int64_t>(4))
+        .Attr("alpha", "ScaledSiLU scale.", AttributeProto::FLOAT, 0.25f)
+        .Attr("reduction_scale", "Final branch reduction scale.", AttributeProto::FLOAT, 0.25f)
+        .Input(0, "streams", "Normalized streams [B,S,C*H].", "T")
+        .Input(1, "down_weight", "Row-major [C*H,R].", "T")
+        .Input(2, "up_weight", "Row-major [R,C*H].", "T")
+        .Output(0, "output", "Mixed streams [B,S,H].", "T")
+        .TypeConstraint("T", {"tensor(bfloat16)"}, "BF16 tensors."));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MtpAttentionProjection, 1,
+    OpSchema()
+        .SetDoc("CUDA BF16 MTP index/key/value projection block. Three cuBLAS GEMMs preserve original "
+                "BF16 weights. Key RMSNorm uses the standard ONNX reduction and reciprocal-multiply "
+                "arithmetic, followed by the existing non-interleaved CUDA RoPE kernel. This is a "
+                "multi-kernel contrib block, not one GEMM or one fused norm/RoPE kernel. "
+                "Cache values are already selected for current positions.")
+        .Attr("num_heads", "Key head count.", AttributeProto::INT, static_cast<int64_t>(2))
+        .Attr("rotary_embedding_dim", "Even rotary width.", AttributeProto::INT, static_cast<int64_t>(64))
+        .Attr("epsilon", "RMS epsilon.", AttributeProto::FLOAT, 1e-6f)
+        .Input(0, "input", "Activation [B,S,K].", "T")
+        .Input(1, "index_weight", "Index projection [K,I].", "T")
+        .Input(2, "key_weight", "Key projection [K,N*H].", "T")
+        .Input(3, "value_weight", "Value projection [K,V].", "T")
+        .Input(4, "norm_scale", "FP32 key RMS scale [H], including any weight offset.", "F")
+        .Input(5, "cosine", "BF16 selected cache [B,S,rotary_embedding_dim/2].", "T")
+        .Input(6, "sine", "BF16 selected cache, same shape as cosine.", "T")
+        .Output(0, "index", "Index projection [B,S,I].", "T")
+        .Output(1, "key", "Normalized rotated key [B,S,N*H].", "T")
+        .Output(2, "value", "Value projection [B,S,V].", "T")
+        .TypeConstraint("T", {"tensor(bfloat16)"}, "BF16 tensors.")
+        .TypeConstraint("F", {"tensor(float)"}, "FP32 scale."));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    DotProductGate, 1,
+    OpSchema()
+        .SetDoc("CUDA BF16 grouped dot-product gate. Rounds key*query and its reduction to BF16, "
+                "divides by divisor, applies sign(x)*sqrt(max(abs(x),epsilon)), input-type CUDA sigmoid, "
+                "and multiplies value with BF16 rounding at every standard-op boundary. "
+                "The FP32 reduction association may differ from ReduceSum.")
+        .Attr("group_width", "Number of consecutive features per dot product.", AttributeProto::INT)
+        .Attr("divisor", "Positive divisor, rounded to BF16 before division.", AttributeProto::FLOAT, 1.0f)
+        .Attr("epsilon", "Nonnegative floor, rounded to BF16.", AttributeProto::FLOAT, 1e-6f)
+        .Input(0, "key", "BF16 normalized key.", "T")
+        .Input(1, "query", "BF16 normalized query, same shape as key.", "T")
+        .Input(2, "value", "BF16 values with matching leading dimensions. Last dimension equals "
+               "key width or group_width; the latter broadcasts across groups in each row.", "T")
+        .Output(0, "output", "Gated BF16 values, same shape as key.", "T")
+        .TypeConstraint("T", {"tensor(bfloat16)"}, "BF16 inputs and output.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (hasInputShape(ctx, 0)) updateOutputShape(ctx, 0, getInputShape(ctx, 0));
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    RMSNormRotary, 1,
+    OpSchema()
+        .SetDoc("CUDA BF16 ONNX-arithmetic RMS normalization followed by non-interleaved partial RoPE. "
+                "Input is [B,S,heads,stride]; a contiguous last-axis slice is normalized with FP32 scale. "
+                "Normalization rounds to BF16 before rotation. Output is flattened [B,S,heads*width]. "
+                "Width 256 and more than one row use one kernel for FP32 decode rotary or prefill; "
+                "other shapes and BF16 decode rotary reuse existing CUDA kernels. "
+                "Prefill mode uses reciprocal-multiply normalization and BF16 rotary intermediates; "
+                "decode uses division normalization and the selected rotary arithmetic.")
+        .Attr("epsilon", "Finite nonnegative RMS epsilon.", AttributeProto::FLOAT, 1e-6f)
+        .Attr("input_start", "Nonnegative start of normalized last-axis slice.", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("input_width", "Normalized width; zero uses the full last dimension.", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("rotary_embedding_dim", "Positive even rotary width, no larger than normalized width.", AttributeProto::INT)
+        .Attr("use_fp32_arithmetic", "Decode rotary FP32 (1) or BF16 intermediates (0).", AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("flatten_batch", "One flattens B*S to sequence and outputs [1,B*S,heads*width].", AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "X", "BF16 input [B,S,heads,stride].", "T")
+        .Input(1, "scale", "FP32 RMS scale [width].", "F")
+        .Input(2, "position_ids", "One base position or [B,S] positions.", "I")
+        .Input(3, "cosine", "BF16 cache [cache_rows,rotary_embedding_dim/2].", "T")
+        .Input(4, "sine", "Same shape/type as cosine.", "T")
+        .Input(5, "prefill_numerics", "Optional CPU int32 scalar 0/1.", "TI", OpSchema::Optional)
+        .Output(0, "Y", "Normalized and rotated [B,S,heads*width].", "T")
+        .Output(1, "normalized_fp32", "Optional BF16-rounded normalized values widened to FP32, before rotation, "
+                "[B,S,heads,width].", "F", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(bfloat16)"}, "BF16 data.")
+        .TypeConstraint("F", {"tensor(float)"}, "FP32 scale and optional normalized output.")
+        .TypeConstraint("I", {"tensor(int64)"}, "Position indices.")
+        .TypeConstraint("TI", {"tensor(int32)"}, "Numerical control.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) {
+            updateOutputElemType(ctx, 1, TensorProto::FLOAT);
+          }
+          const int64_t width_attr = getAttribute(ctx, "input_width", 0);
+          const int64_t start = getAttribute(ctx, "input_start", 0);
+          const int64_t rotary = getAttribute(ctx, "rotary_embedding_dim", 0);
+          const int64_t mode = getAttribute(ctx, "use_fp32_arithmetic", 1);
+          const int64_t flatten = getAttribute(ctx, "flatten_batch", 0);
+          if (width_attr < 0 || start < 0 || rotary <= 0 || rotary % 2 || (mode != 0 && mode != 1) ||
+              (flatten != 0 && flatten != 1)) {
+            fail_shape_inference("RMSNormRotary has invalid slice, rotary width or mode.");
+          }
+          if (!hasInputShape(ctx, 0)) return;
+          const auto& input = getInputShape(ctx, 0);
+          if (input.dim_size() != 4) fail_shape_inference("RMSNormRotary input must have rank four.");
+          auto normalized = input;
+          if (width_attr) normalized.mutable_dim(3)->set_dim_value(width_attr);
+          if (input.dim(3).has_dim_value() && normalized.dim(3).has_dim_value() &&
+              (normalized.dim(3).dim_value() <= 0 || start > input.dim(3).dim_value() ||
+               normalized.dim(3).dim_value() > input.dim(3).dim_value() - start ||
+               rotary > normalized.dim(3).dim_value())) {
+            fail_shape_inference("RMSNormRotary slice or rotary width exceeds input width.");
+          }
+          if (hasInputShape(ctx, 1)) {
+            const auto& scale = getInputShape(ctx, 1);
+            if (scale.dim_size() != 1 || (scale.dim(0).has_dim_value() && normalized.dim(3).has_dim_value() &&
+                scale.dim(0).dim_value() != normalized.dim(3).dim_value())) {
+              fail_shape_inference("RMSNormRotary scale must have shape [width].");
+            }
+          }
+          ONNX_NAMESPACE::TensorShapeProto output;
+          *output.add_dim() = input.dim(0);
+          *output.add_dim() = input.dim(1);
+          if (flatten) {
+            output.mutable_dim(0)->set_dim_value(1);
+            output.mutable_dim(1)->Clear();
+            if (input.dim(0).has_dim_value() && input.dim(1).has_dim_value()) {
+              const auto batch = input.dim(0).dim_value(), sequence = input.dim(1).dim_value();
+              if (batch > 0 && sequence > INT64_MAX / batch) fail_shape_inference("RMSNormRotary sequence overflow.");
+              output.mutable_dim(1)->set_dim_value(batch * sequence);
+            }
+          }
+          auto* flat = output.add_dim();
+          if (input.dim(2).has_dim_value() && normalized.dim(3).has_dim_value()) {
+            const auto heads = input.dim(2).dim_value(), width = normalized.dim(3).dim_value();
+            if (heads <= 0 || width > INT64_MAX / heads) fail_shape_inference("Invalid RMSNormRotary head width.");
+            flat->set_dim_value(heads * width);
+          }
+          updateOutputShape(ctx, 0, output);
+          if (ctx.getNumOutputs() > 1) updateOutputShape(ctx, 1, normalized);
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -5775,9 +6128,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(0, "attention", "BF16 attention values.", "T")
         .Input(1, "projection", "BF16 packed projection containing gate values.", "T")
         .Input(2, "residual", "Optional BF16 residual with the attention shape.", "T", OpSchema::Optional)
+        .Input(3, "prefill_numerics",
+               "Optional CPU int32 tensor [1]. Zero or absent preserves decode arithmetic; one uses dense prefill sigmoid arithmetic.",
+               "TI", OpSchema::Optional)
+        .Input(4, "gate_weight",
+               "Optional BF16 [K, 1] gate projection weight. Requires broadcast_gate=1 and silu_gate=0. "
+               "With this input, projection is the activation [..., K] with the same leading dimensions as attention. "
+               "Fuses its matrix-vector product, BF16 rounding, sigmoid, multiply, and optional residual. "
+               "Uses deterministic FP32 reduction, not guaranteed bitwise equal to a separate MatMul. CUDA only.",
+               "T", OpSchema::Optional)
         .Output(0, "output", "Attention multiplied by BF16-rounded sigmoid gates, rounded to BF16 "
                 "before optionally adding residual and rounding again.", "T")
         .TypeConstraint("T", {"tensor(bfloat16)"}, "Inputs and output use BF16.")
+        .TypeConstraint("TI", {"tensor(int32)"}, "Constrain the optional CPU prefill numerical mode to int32.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           if (hasInputShape(ctx, 0)) updateOutputShape(ctx, 0, getInputShape(ctx, 0));
@@ -5960,6 +6323,9 @@ static OpSchema BranchwiseRMSNormSchema() {
         .Input(0, "X", "Grouped (..., C, H) or flattened (..., C * H) input.", "T")
         .Input(1, "scale", "Optional scale with shape (C * H), (C, H), or (H).",
                "M", OpSchema::Optional)
+        .Input(2, "prefill_numerics",
+               "Optional CPU int32 tensor [1]. Zero or absent preserves decode arithmetic; one selects dense prefill reciprocal-RMS arithmetic.",
+               "TI", OpSchema::Optional)
         .Output(0, "Y", "RMS-normalized output with the same shape as X.", "T")
         .Output(1, "Y_fp32", "Optional float32 widening of the already T-rounded Y. "
                 "Requires use_onnx_arithmetic=1.", "F", OpSchema::Optional)
@@ -5970,6 +6336,7 @@ static OpSchema BranchwiseRMSNormSchema() {
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain scale to floating-point tensors.")
         .TypeConstraint("F", {"tensor(float)"}, "Widened output is float32.")
+        .TypeConstraint("TI", {"tensor(int32)"}, "Constrain the optional CPU prefill numerical mode to int32.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           const auto start = getAttribute(ctx, "input_start", 0);
@@ -6057,6 +6424,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     HyperConnectionPreMix, 1,
     OpSchema()
         .SetDoc(HyperConnectionPreMix_ver1_doc)
+        .Attr("sigmoid_mode", "CUDA only: zero consumes gates directly; one applies FP32 sigmoid "
+              "rounded to the mixing type; two preserves input-type CUDA Sigmoid intermediates.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("num_branches",
               "Number of branches for flattened streams. Omit or set to zero for grouped streams.",
               AttributeProto::INT, static_cast<int64_t>(0))

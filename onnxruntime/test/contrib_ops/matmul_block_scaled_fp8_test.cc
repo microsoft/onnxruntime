@@ -10,6 +10,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/unittest_util/conversion.h"
 #include "test/util/include/scoped_env_vars.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -158,12 +159,451 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, SplitOutputsBFloat16) {
   TestFp8SplitOutputs<BFloat16>();
 }
 
+TEST(MatMulBlockQuantizedFp8WeightOpTest, SharedExpertNumericsAndFallbacks) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "SM80+ CUDA device required.";
+  const auto round = [](float x) { return static_cast<float>(BFloat16(x)); };
+  for (const int64_t m : {0, 1, 2, 3, 65}) {
+    for (const int64_t k : {64, 256, 640}) {
+      for (const int32_t prefill : {0, 1}) {
+        SCOPED_TRACE("M=" + std::to_string(m) + " K=" + std::to_string(k) +
+                     " prefill=" + std::to_string(prefill));
+        constexpr int64_t n = 17;
+        constexpr int64_t gate_width = 32;
+        const int64_t block_size = k == 256 ? 128 : k;
+        const int64_t k_blocks = k / block_size;
+        const std::vector<int64_t> input_shape = m == 3 ? std::vector<int64_t>{1, m, k} : std::vector<int64_t>{m, k};
+        const std::vector<int64_t> output_shape = m == 3 ? std::vector<int64_t>{1, m, n} : std::vector<int64_t>{m, n};
+        const std::vector<int64_t> activation_shape = m == 3 ? std::vector<int64_t>{1, m, gate_width} : std::vector<int64_t>{m, gate_width};
+        std::vector<BFloat16> up(m * k), gate(m * k), prepared(m * k), residual(m * n), expected(m * n);
+        for (int64_t row = 0; row < m; ++row) {
+          for (int64_t col = 0; col < k; ++col) {
+            const float g = static_cast<float>(col % 3 - 1);
+            const float u = static_cast<float>((col + row) % 5 - 2) / 16.f;
+            up[row * k + col] = BFloat16(u);
+            gate[row * k + col] = BFloat16(g);
+            const float sig = g > 0 ? round(1.f / round(1.f + round(std::exp(-g))))
+                                    : round(1.f - round(1.f / round(1.f + round(std::exp(g)))));
+            prepared[row * k + col] = BFloat16(round(u * round(g * sig)));
+          }
+          for (int64_t col = 0; col < n; ++col) {
+            residual[row * n + col] = BFloat16(static_cast<float>(col % 5 - 2) / 8.f);
+          }
+        }
+        const auto run = [](OpTester& op) {
+          std::vector<std::unique_ptr<IExecutionProvider>> providers;
+          providers.push_back(DefaultCudaExecutionProvider());
+          op.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+        };
+        OpTester silu("SigmoidGateMul", 1, kMSDomain);
+        silu.AddAttribute<int64_t>("silu_gate", 1);
+        silu.AddAttribute<int64_t>("sigmoid_in_fp32", 0);
+        silu.AddInput<BFloat16>("up", input_shape, up);
+        silu.AddInput<BFloat16>("gate", input_shape, gate);
+        silu.AddOptionalInputEdge<BFloat16>();
+        silu.AddInput<int32_t>("prefill", {1}, {prefill});
+        silu.AddOutput<BFloat16>("prepared", input_shape, prepared);
+        silu.SetOutputTolerance(0.f, 0.f);
+        run(silu);
+
+        std::vector<BFloat16> projected(m * n);
+        OpTester projection("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
+        projection.AddAttribute<int64_t>("block_size", block_size);
+        projection.AddInput<BFloat16>("A", input_shape, prepared);
+        projection.AddInput<Float8E4M3FN>("B", {n, k}, MakeConstRowWeight(std::vector<float>(n, 1.f), k));
+        projection.AddInput<float>("scale", {n, k_blocks}, std::vector<float>(n * k_blocks, .125f));
+        projection.AddOptionalInputEdge<float>();
+        projection.AddOptionalInputEdge<BFloat16>();
+        projection.AddInput<int32_t>("prefill", {1}, {prefill});
+        projection.AddOutput<BFloat16>("down", output_shape, projected);
+        projection.SetCustomOutputVerifier([&](const std::vector<OrtValue>& fetches, const std::string&) {
+          ASSERT_EQ(fetches.size(), 1u);
+          const auto& output = fetches[0].Get<Tensor>();
+          projected.assign(output.Data<BFloat16>(), output.Data<BFloat16>() + m * n);
+        });
+        run(projection);
+
+        std::vector<BFloat16> gate_activation(m * gate_width);
+        const std::vector<BFloat16> gate_weight(gate_width, BFloat16(.125f));
+        for (int64_t i = 0; i < m * gate_width; ++i) {
+          gate_activation[i] = BFloat16(static_cast<float>((i / gate_width) % 3 - 1));
+        }
+        OpTester post("SigmoidGateMul", 1, kMSDomain);
+        post.AddAttribute<int64_t>("broadcast_gate", 1);
+        post.AddAttribute<int64_t>("sigmoid_in_fp32", 0);
+        post.AddInput<BFloat16>("down", output_shape, projected);
+        post.AddInput<BFloat16>("activation", activation_shape, gate_activation);
+        post.AddInput<BFloat16>("residual", output_shape, residual);
+        post.AddInput<int32_t>("prefill", {1}, {prefill});
+        post.AddInput<BFloat16>("weight", {gate_width, 1}, gate_weight);
+        post.AddOutput<BFloat16>("Y", output_shape, expected);
+        post.SetCustomOutputVerifier([&](const std::vector<OrtValue>& fetches, const std::string&) {
+          ASSERT_EQ(fetches.size(), 1u);
+          const auto& output = fetches[0].Get<Tensor>();
+          expected.assign(output.Data<BFloat16>(), output.Data<BFloat16>() + m * n);
+        });
+        run(post);
+
+        OpTester test("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
+        test.AddAttribute<int64_t>("block_size", block_size);
+        test.AddAttribute<int64_t>("shared_expert", 1);
+        test.AddInput<BFloat16>("up", input_shape, up);
+        test.AddInput<Float8E4M3FN>("B", {n, k}, MakeConstRowWeight(std::vector<float>(n, 1.f), k));
+        test.AddInput<float>("scale", {n, k_blocks}, std::vector<float>(n * k_blocks, .125f));
+        test.AddOptionalInputEdge<float>();
+        test.AddOptionalInputEdge<BFloat16>();
+        test.AddInput<int32_t>("prefill", {1}, {prefill});
+        for (int i = 0; i < 3; ++i) test.AddOptionalInputEdge<BFloat16>();
+        test.AddInput<BFloat16>("gate", input_shape, gate);
+        test.AddInput<BFloat16>("gate_activation", activation_shape, gate_activation);
+        test.AddInput<BFloat16>("gate_weight", {gate_width, 1}, gate_weight);
+        test.AddInput<BFloat16>("residual", output_shape, residual);
+        test.AddOutput<BFloat16>("Y", output_shape, expected);
+        test.SetOutputTolerance(0.f, 0.f);
+        run(test);
+      }
+    }
+  }
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, SharedExpertRejectsMissingInputs) {
+  OpTester test("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
+  test.AddAttribute<int64_t>("shared_expert", 1);
+  test.AddInput<BFloat16>("A", {1, 256}, std::vector<BFloat16>(256));
+  test.AddInput<Float8E4M3FN>("B", {1, 256}, MakeConstRowWeight({1.f}, 256));
+  test.AddInput<float>("scale", {1, 2}, {1.f, 1.f});
+  test.AddOutput<BFloat16>("Y", {1, 1}, {BFloat16(0.f)});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "shared_expert requires all shared inputs");
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, SharedExpertRejectsInvalidContracts) {
+  for (int kind = 0; kind < 7; ++kind) {
+    SCOPED_TRACE(kind);
+    OpTester test("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
+    test.AddAttribute<int64_t>("block_size", 256);
+    test.AddAttribute<int64_t>("shared_expert", kind == 5 ? 2 : kind == 6 ? 0
+                                                                          : 1);
+    if (kind == 4) test.AddAttribute<std::vector<int64_t>>("split_sizes", {8});
+    test.AddInput<BFloat16>("A", {2, 256}, std::vector<BFloat16>(512));
+    test.AddInput<Float8E4M3FN>("B", {8, 256}, MakeConstRowWeight(std::vector<float>(8, 1.f), 256));
+    test.AddInput<float>("scale", {8, 1}, std::vector<float>(8, 1.f));
+    if (kind == 3) {
+      test.AddInput<float>("a_scale", {1}, {1.f});
+    } else {
+      test.AddOptionalInputEdge<float>();
+    }
+    test.AddOptionalInputEdge<BFloat16>();
+    test.AddInput<int32_t>("prefill", {1}, {0});
+    for (int i = 0; i < 3; ++i) test.AddOptionalInputEdge<BFloat16>();
+    test.AddInput<BFloat16>("gate", {kind == 0 ? 3 : 2, 256}, std::vector<BFloat16>((kind == 0 ? 3 : 2) * 256));
+    test.AddInput<BFloat16>("activation", {2, 8}, std::vector<BFloat16>(16));
+    test.AddInput<BFloat16>("gate_weight", {kind == 1 ? 9 : 8, 1}, std::vector<BFloat16>(kind == 1 ? 9 : 8));
+    test.AddInput<BFloat16>("residual", {kind == 2 ? 3 : 2, 8}, std::vector<BFloat16>((kind == 2 ? 3 : 2) * 8));
+    test.AddOutput<BFloat16>("Y", {2, 8}, std::vector<BFloat16>(16));
+    const std::string error = kind <= 2 ? "shared_expert input shapes are incompatible" : kind <= 4 ? "shared_expert excludes"
+                                                                                      : kind == 5   ? "shared_expert must be 0 or 1"
+                                                                                                    : "Shared expert inputs require shared_expert=1";
+    test.Run(OpTester::ExpectResult::kExpectFailure, error);
+  }
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, SkinnyDispatchBoundaries) {
+  using onnxruntime::contrib::cuda::Fp8SkinnyGemmEligible;
+  for (const int m : {1, 2}) {
+    EXPECT_TRUE(Fp8SkinnyGemmEligible(m, 320, 10240, 10240, true, true, 9, 132));
+    EXPECT_TRUE(Fp8SkinnyGemmEligible(m, 320, 10240, 10272, true, true, 9, 132));
+  }
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(0, 4096, 288, 288, true, true, 9, 128));
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(5, 4096, 288, 288, true, true, 9, 128));
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(1, 4096, 288, 288, false, true, 9, 128));  // FP16
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(1, 4096, 288, 288, true, false, 9, 128));  // Dynamic B
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(1, 4096, 288, 288, true, true, 7, 128));
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(1, 4096, 288, 288, true, true, 9, 0));
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(1, 960, 288, 288, true, true, 9, 128));  // Too few CTAs
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(2, 2560, 2560, 2560, true, true, 9, 132));
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(3, 320, 10240, 10240, true, true, 9, 132));
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(2, 2560, 2560, 2560, true, true, 8, 108));
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(2, 2560, 2560, 2560, true, true, 12, 48));
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(1, 4097, 288, 288, true, true, 9, 128));
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(1, 4096, 224, 288, true, true, 9, 128));
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(1, 4096, 272, 288, true, true, 9, 128));
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(1, 4096, 288, 304, true, true, 9, 128));
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(1, 4096, 288, 0, true, true, 9, 128));
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(1, 32 * 65536, 288, 288, true, true, 9, 128));
+  EXPECT_FALSE(Fp8SkinnyGemmEligible(1, 248320, 2560, 128, true, true, 12, 48));  // Block-scale head
+}
+
+namespace {
+void TestSkinnyProjection(int64_t m, int64_t k, int64_t block_size, bool constant_weight,
+                          bool activation_qdq, float activation_scale, bool add_bias,
+                          bool split_output, bool ragged_n = false, bool disable_prepacking = false) {
+  int device = 0;
+  ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
+  cudaDeviceProp prop{};
+  ASSERT_EQ(cudaGetDeviceProperties(&prop, device), cudaSuccess);
+  // Occupancy-derived rather than model-specific dimensions, with a partial column tile.
+  const int64_t n = k == 10240 ? 320 : 32 * prop.multiProcessorCount + (ragged_n ? 7 : 8);
+  const int64_t blocks = (k + block_size - 1) / block_size;
+  const bool eligible = onnxruntime::contrib::cuda::Fp8SkinnyGemmEligible(
+      static_cast<int>(m), n, k, block_size, true, constant_weight && !disable_prepacking,
+      prop.major, prop.multiProcessorCount);
+  EXPECT_EQ(eligible, constant_weight && !disable_prepacking && m <= 2 && n == 320 &&
+                          k == 10240 && block_size >= k && prop.major == 9 &&
+                          prop.multiProcessorCount == 132);
+  SCOPED_TRACE("M=" + std::to_string(m) + " K=" + std::to_string(k) +
+               " N=" + std::to_string(n) + " skinny=" + std::to_string(eligible));
+  std::vector<BFloat16> a(m * k), bias(n);
+  std::vector<Float8E4M3FN> b(n * k);
+  std::vector<float> scales(n * blocks);
+  for (int64_t row = 0; row < m; ++row) {
+    for (int64_t i = 0; i < k; ++i) {
+      a[row * k + i] = BFloat16(static_cast<float>((i * 3 + row) % 7 - 3) / 16.f);
+    }
+  }
+  for (int64_t col = 0; col < n; ++col) {
+    bias[col] = BFloat16(static_cast<float>(col % 13 - 6) / 64.f);
+    for (int64_t i = 0; i < k; ++i) {
+      b[col * k + i] = Float8E4M3FN(static_cast<float>((col * 5 + i * 7) % 9 - 4) / 4.f);
+    }
+    for (int64_t kb = 0; kb < blocks; ++kb) {
+      // Non-power-of-two scales catch premature BF16 weight dequantization rounding.
+      scales[col * blocks + kb] = static_cast<float>(1 + (col + kb * 3) % 4) *
+                                  (eligible ? 0.13f : 0.125f);
+    }
+  }
+  std::vector<BFloat16> expected(m * n);
+  for (int64_t row = 0; row < m; ++row) {
+    for (int64_t col = 0; col < n; ++col) {
+      float sum = 0.f;
+      for (int64_t i = 0; i < k; ++i) {
+        float x = static_cast<float>(a[row * k + i]);
+        if (activation_qdq) {
+          const float inv = activation_scale != 0.f ? 1.f / activation_scale : 0.f;
+          x = static_cast<float>(BFloat16(Float8E4M3FN(x * inv).ToFloat() * activation_scale));
+        }
+        sum += x * b[col * k + i].ToFloat() * scales[col * blocks + i / block_size];
+      }
+      expected[row * n + col] = BFloat16(sum + (add_bias ? static_cast<float>(bias[col]) : 0.f));
+    }
+  }
+  OpTester test("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
+  if (disable_prepacking) {
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, "1"));
+    test.Config(options);
+  }
+  test.AddAttribute<int64_t>("block_size", block_size);
+  const std::vector<int64_t> widths = split_output ? std::vector<int64_t>{1, 7, n - 8}
+                                                   : std::vector<int64_t>{n};
+  if (split_output) {
+    test.AddAttribute<std::vector<int64_t>>("split_sizes", widths);
+  }
+  const TensorShapeVector a_shape = m == 1 ? TensorShapeVector{k}
+                                           : (m == 3 ? TensorShapeVector{1, m, k} : TensorShapeVector{m, k});
+  test.AddInput<BFloat16>("A", a_shape, a);
+  test.AddInput<Float8E4M3FN>("B", {n, k}, b, constant_weight);
+  test.AddInput<float>("b_scale", {n, blocks}, scales);
+  if (activation_qdq) {
+    test.AddInput<float>("a_scale", {}, {activation_scale});
+  } else {
+    test.AddOptionalInputEdge<float>();
+  }
+  if (add_bias) {
+    test.AddInput<BFloat16>("bias", {n}, bias);
+  }
+  int64_t offset = 0;
+  for (size_t index = 0; index < widths.size(); ++index) {
+    std::vector<BFloat16> values;
+    for (int64_t row = 0; row < m; ++row) {
+      values.insert(values.end(), expected.begin() + row * n + offset,
+                    expected.begin() + row * n + offset + widths[index]);
+    }
+    auto shape = a_shape;
+    shape.back() = widths[index];
+    test.AddOutput<BFloat16>(("Y" + std::to_string(index)).c_str(), shape, values);
+    offset += widths[index];
+  }
+  // Scale application and FP32 reduction order may differ; never accept BF16-rounded weights
+  // as the reference. Exact fallback vectors use power-of-two scales.
+  test.SetOutputTolerance(eligible ? 0.002f : 0.f, eligible ? 0.002f : 0.f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+}  // namespace
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, SkinnyDefaultDispatchBf16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80+ CUDA device is required for FP8 skinny projections.";
+  }
+
+  TestSkinnyProjection(1, 256, 256, true, false, 1.f, false, false);
+  TestSkinnyProjection(1, 288, 288, true, false, 1.f, true, false);  // Per-column scale
+  TestSkinnyProjection(4, 320, 320, true, true, 0.3f, true, true);
+  TestSkinnyProjection(2, 288, 288, true, false, 1.f, true, true);
+  TestSkinnyProjection(3, 320, 352, true, true, 0.3f, true, true);
+  TestSkinnyProjection(4, 352, 352, true, true, 0.f, true, false);
+  TestSkinnyProjection(4, 352, 352, true, false, 1.f, true, false);
+  TestSkinnyProjection(1, 10240, 10240, true, false, 1.f, true, false);
+  TestSkinnyProjection(2, 10240, 10240, true, false, 1.f, true, true);
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, PerColumnS2AndFallbackBoundariesBf16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for per-column FP8 matmul.";
+  }
+  for (int64_t k : {320, 640, 2560, 6144}) {
+    for (bool split : {false, true}) {
+      for (int64_t m : {1, 2, 3}) {
+        TestSkinnyProjection(m, k, k, false, false, 1.f, true, split, true);
+      }
+      TestSkinnyProjection(2, k, 64, false, false, 1.f, false, split, true);
+      TestSkinnyProjection(2, k, k, false, true, 1.f, true, split, true);
+    }
+  }
+}
+
+template <typename T>
+void TestPerColumnS2ExactOutputs() {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for per-column FP8 matmul.";
+  }
+  constexpr int64_t m = 2, n = 33;
+  for (int64_t k : {320, 640, 2560, 6144}) {
+    std::vector<T> a(m * k), bias(n), expected(m * n);
+    std::vector<Float8E4M3FN> b(n * k);
+    std::vector<float> scales(n);
+    for (int64_t i = 0; i < m * k; ++i) a[i] = T(float(i % 5 - 2) / 8.f);
+    for (int64_t col = 0; col < n; ++col) {
+      scales[col] = float(col % 3 + 1) / 8.f;
+      bias[col] = T(float(col % 7 - 3) / 32.f);
+      for (int64_t i = 0; i < k; ++i) b[col * k + i] = Float8E4M3FN(float((col + i) % 7 - 3) / 16.f);
+      for (int64_t row = 0; row < m; ++row) {
+        float sum = 0.f;
+        for (int64_t i = 0; i < k; ++i) {
+          sum += float(a[row * k + i]) * b[col * k + i].ToFloat();
+        }
+        expected[row * n + col] = T(sum * scales[col] + float(bias[col]));
+      }
+    }
+    for (bool split : {false, true}) {
+      OpTester test("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
+      test.AddAttribute<int64_t>("block_size", k);
+      const std::vector<int64_t> widths = split ? std::vector<int64_t>{1, 7, 25}
+                                                : std::vector<int64_t>{n};
+      if (split) test.AddAttribute<std::vector<int64_t>>("split_sizes", widths);
+      test.AddInput<T>("A", {m, k}, a);
+      test.AddInput<Float8E4M3FN>("B", {n, k}, b);
+      test.AddInput<float>("b_scale", {n, 1}, scales);
+      test.AddOptionalInputEdge<float>();
+      test.AddInput<T>("bias", {n}, bias);
+      int64_t offset = 0;
+      for (size_t index = 0; index < widths.size(); ++index) {
+        std::vector<T> values;
+        for (int64_t row = 0; row < m; ++row) {
+          values.insert(values.end(), expected.begin() + row * n + offset,
+                        expected.begin() + row * n + offset + widths[index]);
+        }
+        test.AddOutput<T>(("Y" + std::to_string(index)).c_str(), {m, widths[index]}, values);
+        offset += widths[index];
+      }
+      test.SetOutputTolerance(0.f, 0.f);
+      std::vector<std::unique_ptr<IExecutionProvider>> providers;
+      providers.push_back(DefaultCudaExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+    }
+  }
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, PerColumnS2ExactOutputsFp16) {
+  TestPerColumnS2ExactOutputs<MLFloat16>();
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, PerColumnS2ExactOutputsBf16) {
+  TestPerColumnS2ExactOutputs<BFloat16>();
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, SkinnyFallbackBf16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80+ CUDA device is required for FP8 projection fallbacks.";
+  }
+  TestSkinnyProjection(2, 256, 256, false, false, 1.f, true, true);              // Dynamic NK weight
+  TestSkinnyProjection(5, 256, 256, true, false, 1.f, true, false);              // Larger M, packed B retained
+  TestSkinnyProjection(1, 256, 256, true, false, 1.f, false, true, true);        // N not divisible by 8
+  TestSkinnyProjection(2, 256, 256, true, false, 1.f, true, true, false, true);  // Prepacking disabled
+  TestSkinnyProjection(2, 256, 128, true, false, 1.f, true, true);               // Block-scale MMA retained
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, SkinnyPerColumnScaleNoPrematureRounding) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80+ CUDA device is required for FP8 skinny projections.";
+  }
+  int device = 0;
+  ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
+  cudaDeviceProp prop{};
+  ASSERT_EQ(cudaGetDeviceProperties(&prop, device), cudaSuccess);
+  const int64_t n = 32 * prop.multiProcessorCount + 8;
+  constexpr int64_t k = 288;
+  OpTester test("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
+  test.AddAttribute<int64_t>("block_size", k);
+  test.AddInput<BFloat16>("A", {1, k}, std::vector<BFloat16>(k, BFloat16(1.f)));
+  test.AddInput<Float8E4M3FN>("B", {n, k}, std::vector<Float8E4M3FN>(n * k, Float8E4M3FN(0.75f)), true);
+  test.AddInput<float>("b_scale", {n, 1}, std::vector<float>(n, 0.39f));
+  // BF16(288 * .75 * .39) = 84, whereas BF16(288 * BF16(.75 * .39)) = 84.5.
+  test.AddOutput<BFloat16>("Y", {1, n}, std::vector<BFloat16>(n, BFloat16(84.f)));
+  test.SetOutputTolerance(0.f, 0.f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, SkinnyDirectSplitPerColumnScale) {
+  if (!HasCudaEnvironment(900)) {
+    GTEST_SKIP() << "SM90 CUDA device is required for cluster skinny direct split.";
+  }
+  int device = 0;
+  ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
+  cudaDeviceProp prop{};
+  ASSERT_EQ(cudaGetDeviceProperties(&prop, device), cudaSuccess);
+  if (prop.major != 9 || prop.multiProcessorCount != 132) {
+    GTEST_SKIP() << "Qualified cluster configurations require a 132-SM SM90 device.";
+  }
+  constexpr int64_t n = 320;
+  constexpr int64_t k = 10240;
+  for (const int64_t m : {1, 2}) {
+    const std::vector<int64_t> widths{1, 2, 3, 4, 5, 6, 7, n - 28};
+    OpTester test("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
+    test.AddAttribute<int64_t>("block_size", k);
+    test.AddAttribute<std::vector<int64_t>>("split_sizes", widths);
+    std::vector<BFloat16> a(m * k);
+    for (int64_t row = 0; row < m; ++row) {
+      std::fill(a.begin() + row * k, a.begin() + (row + 1) * k, BFloat16(static_cast<float>(row + 1)));
+    }
+    test.AddInput<BFloat16>("A", {m, k}, a);
+    test.AddInput<Float8E4M3FN>("B", {n, k}, std::vector<Float8E4M3FN>(n * k, Float8E4M3FN(0.75f)), true);
+    test.AddInput<float>("b_scale", {n, 1}, std::vector<float>(n, 0.39f));
+    for (size_t index = 0; index < widths.size(); ++index) {
+      std::vector<BFloat16> expected;
+      for (int64_t row = 0; row < m; ++row) {
+        expected.insert(expected.end(), widths[index],
+                        BFloat16(static_cast<float>(row + 1) * k * 0.75f * 0.39f));
+      }
+      test.AddOutput<BFloat16>(("Y" + std::to_string(index)).c_str(), {m, widths[index]}, expected);
+    }
+    // Same unrounded FP8 arithmetic as the unsplit test, including unaligned partition
+    // boundaries crossing DSM store chunks. Eligible Compute uses output buffers directly:
+    // no concatenated output allocation or cudaMemcpy2DAsync partition copies.
+    test.SetOutputTolerance(0.f, 0.f);
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  }
+}
+
 TEST(MatMulBlockQuantizedFp8WeightOpTest, RejectsInvalidSplitSizes) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA device is required for split-output FP8 matmul.";
   }
-  for (const std::vector<int64_t>& widths : {std::vector<int64_t>{}, {0, 17}, {-1, 18}, {8, 8},
-                                            {1, 1, 1, 1, 1, 1, 1, 1, 9}}) {
+  for (const std::vector<int64_t>& widths : {std::vector<int64_t>{}, {0, 17}, {-1, 18}, {8, 8}, {1, 1, 1, 1, 1, 1, 1, 1, 9}}) {
     OpTester test("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
     test.AddAttribute<std::vector<int64_t>>("split_sizes", widths);
     test.AddInput<BFloat16>("A", {1, 16}, std::vector<BFloat16>(16));

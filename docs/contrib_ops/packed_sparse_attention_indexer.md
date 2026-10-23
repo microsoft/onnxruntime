@@ -19,6 +19,22 @@ Source:
 
 ---
 
+## CUDA speculative prefix snapshots
+
+QSA optionally exposes pending-buffer and length snapshots after the first,
+second, and third consumed request tokens. Existing output slots are unchanged:
+slots 8/9 hold the first prefix, 11/12 the second, and 13/14 the third; slot 10
+remains `validation_status`. Each buffer must be connected with its matching
+length output. A shorter request clips the snapshot prefix to its actual length;
+an empty request preserves the incoming state. Rejected requests preserve the
+incoming buffer and lengths for every prefix.
+
+Compressed key state remains shared: consumers must use the selected prefix's
+lengths to hide keys belonging to a longer speculative branch. The additional
+outputs are CUDA QSA-only and do not enable multi-draft decoding by themselves.
+The model exporter, runtime state-bank bindings and folded acceptance loop must
+also support the corresponding verification width.
+
 ## Experimental CUDA warp-local QSA prefill scoring
 
 `ORT_PACKED_SPARSE_INDEXER_WARP_HEADS=1` enables a default-off scoring path for

@@ -356,8 +356,9 @@ __global__ void MoeGemvFp4RawKPackedKernel(
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
   constexpr int kKLanes = FusedSwiGlu ? 16 : 8;
   constexpr int kBlockSize = 16;
-  constexpr int kColsPerBlock = FusedFinalize ? 8 : 128 / kKLanes;
-  constexpr int kReductionUnroll = FusedSwiGlu ? 2 : 1;
+  constexpr int kColumnsPerGroup = FusedSwiGlu ? 2 : 1;
+  constexpr int kColsPerBlock = FusedFinalize ? 8 : 128 / kKLanes * kColumnsPerGroup;
+  constexpr int kReductionUnroll = FusedSwiGlu ? 4 : 1;
   constexpr unsigned kFullMask = 0xffffffffu;
   using PackedT = std::conditional_t<std::is_same_v<T, half>, half2, __nv_bfloat162>;
 
@@ -382,7 +383,8 @@ __global__ void MoeGemvFp4RawKPackedKernel(
     expert = 0;
   }
 
-  const int column = static_cast<int>(blockIdx.y) * kColsPerBlock + threadIdx.x / kKLanes;
+  const int column = static_cast<int>(blockIdx.y) * kColsPerBlock +
+                     threadIdx.x / kKLanes * kColumnsPerGroup;
   const int k_lane = threadIdx.x % kKLanes;
   const int source_row = permuted_row_to_source_row ? permuted_row_to_source_row[row] % num_rows
                                                     : (FusedFinalize ? max(0, row) : row);
@@ -392,37 +394,48 @@ __global__ void MoeGemvFp4RawKPackedKernel(
   const float global_scale = global_scales[expert];
   const T* expert_bias = EnableBias ? bias + static_cast<int64_t>(expert) * output_columns : nullptr;
 
-  float accumulators[2] = {};
+  float accumulators[kColumnsPerGroup][2] = {};
 #pragma unroll(kReductionUnroll)
   for (int reduction_column = k_lane * kBlockSize;
        valid_expert && column < output_columns && reduction_column < reduction_size;
        reduction_column += kKLanes * kBlockSize) {
-    uint2 packed = *reinterpret_cast<const uint2*>(
-        expert_weight + static_cast<int64_t>(column) * (reduction_size / 2) + reduction_column / 2);
-    const T scale = static_cast<T>(DecodeE4M3Fn(
-                                       expert_scales[static_cast<int64_t>(column) * (reduction_size / kBlockSize) +
-                                                     reduction_column / kBlockSize]) *
-                                   global_scale);
-    alignas(4) T scale_pair[2] = {scale, scale};
     alignas(16) T activations[kBlockSize];
     reinterpret_cast<uint4*>(activations)[0] = reinterpret_cast<const uint4*>(row_act + reduction_column)[0];
     reinterpret_cast<uint4*>(activations)[1] = reinterpret_cast<const uint4*>(row_act + reduction_column)[1];
-    alignas(4) T decoded[kBlockSize];
-    fiv::Fp4I2FConverter<T>::template convert<kBlockSize>(&packed, decoded);
 #pragma unroll
-    for (int pair = 0; pair < kBlockSize / 2; ++pair) {
-      reinterpret_cast<PackedT*>(decoded)[pair] =
-          __hmul2(reinterpret_cast<const PackedT*>(decoded)[pair], *reinterpret_cast<const PackedT*>(scale_pair));
-      accumulators[0] += static_cast<float>(decoded[pair * 2]) * static_cast<float>(activations[pair * 2]);
-      accumulators[1] += static_cast<float>(decoded[pair * 2 + 1]) * static_cast<float>(activations[pair * 2 + 1]);
+    for (int projection = 0; projection < kColumnsPerGroup; ++projection) {
+      if (column + projection < output_columns) {
+        uint2 packed = *reinterpret_cast<const uint2*>(
+            expert_weight + static_cast<int64_t>(column + projection) * (reduction_size / 2) + reduction_column / 2);
+        const T scale = static_cast<T>(DecodeE4M3Fn(
+                                           expert_scales[static_cast<int64_t>(column + projection) *
+                                                             (reduction_size / kBlockSize) +
+                                                         reduction_column / kBlockSize]) *
+                                       global_scale);
+        alignas(4) T scale_pair[2] = {scale, scale};
+        alignas(4) T decoded[kBlockSize];
+        fiv::Fp4I2FConverter<T>::template convert<kBlockSize>(&packed, decoded);
+#pragma unroll
+        for (int pair = 0; pair < kBlockSize / 2; ++pair) {
+          reinterpret_cast<PackedT*>(decoded)[pair] =
+              __hmul2(reinterpret_cast<const PackedT*>(decoded)[pair], *reinterpret_cast<const PackedT*>(scale_pair));
+          accumulators[projection][0] += static_cast<float>(decoded[pair * 2]) * static_cast<float>(activations[pair * 2]);
+          accumulators[projection][1] += static_cast<float>(decoded[pair * 2 + 1]) * static_cast<float>(activations[pair * 2 + 1]);
+        }
+      }
     }
   }
 
-  float accumulator = accumulators[0] + accumulators[1];
+  float results[kColumnsPerGroup];
 #pragma unroll
-  for (int offset = kKLanes / 2; offset > 0; offset /= 2) {
-    accumulator += __shfl_xor_sync(kFullMask, accumulator, offset, kKLanes);
+  for (int projection = 0; projection < kColumnsPerGroup; ++projection) {
+    results[projection] = accumulators[projection][0] + accumulators[projection][1];
+#pragma unroll
+    for (int offset = kKLanes / 2; offset > 0; offset /= 2) {
+      results[projection] += __shfl_xor_sync(kFullMask, results[projection], offset, kKLanes);
+    }
   }
+  float accumulator = results[0];
   if constexpr (FusedFinalize) {
     __shared__ float expert_results[16][kColsPerBlock];
     __shared__ bool expert_valid[16];
@@ -446,6 +459,11 @@ __global__ void MoeGemvFp4RawKPackedKernel(
         }
         out[static_cast<int64_t>(blockIdx.x) * output_columns + output_column] = static_cast<T>(sum);
       }
+    }
+  } else if constexpr (FusedSwiGlu) {
+    if (k_lane == 0 && column < output_columns) {
+      StoreMoeGemvFp4Pair<T, true, EnableBias>(
+          results[0], results[1], expert_bias, out, row, column, output_columns, expert, activation_params);
     }
   } else {
     const float paired_accumulator = __shfl_xor_sync(kFullMask, accumulator, kKLanes);
@@ -502,7 +520,7 @@ void LaunchMoeGemvFp4RawNPacked(
     int64_t expanded_num_rows, int64_t n, int64_t k, cutlass_kernels::ActivationParams activation_params,
     const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream, bool weights_row_major) {
   constexpr int kThreads = 128;
-  constexpr int kColsPerBlock = FusedSwiGlu ? 8 : 16;
+  constexpr int kColsPerBlock = 16;
   const int64_t weight_expert_stride = n * k / 2;
   const int64_t scale_expert_stride = n * (k / 16);
   const int columns_per_block = weights_row_major ? kColsPerBlock : 16;

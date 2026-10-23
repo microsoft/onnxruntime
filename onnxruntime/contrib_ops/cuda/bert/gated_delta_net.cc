@@ -37,6 +37,7 @@ namespace gdn = gated_delta_net;
                                  DataTypeImpl::GetTensorType<BFloat16>()}) \
           .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>()) \
           .InputMemoryType(OrtMemTypeCPUInput, 10)                      \
+          .InputMemoryType(OrtMemTypeCPUInput, 11)                      \
           .MayInplace(6, 1),                                            \
       GatedDeltaNet<T>);
 
@@ -118,6 +119,12 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* dt_bias = context->Input<Tensor>(8);
   const Tensor* capture_count = context->Input<Tensor>(9);
   const Tensor* state_update_active = context->Input<Tensor>(10);
+  const Tensor* numerics = context->Input<Tensor>(11);
+  ORT_RETURN_IF_NOT(numerics == nullptr ||
+                        (numerics->IsDataType<int32_t>() && numerics->Shape().Size() == 1 &&
+                         (numerics->Data<int32_t>()[0] == 0 || numerics->Data<int32_t>()[0] == 1)),
+                    "prefill_numerics must be an int32 scalar containing 0 or 1");
+  const bool dense_prefill = numerics != nullptr && numerics->Data<int32_t>()[0] == 1;
 
   ORT_RETURN_IF_NOT(query != nullptr, "query is required");
   for (const Tensor* gate : {decay, beta}) {
@@ -320,9 +327,15 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* state_update = nullptr;
   Tensor* mid_state = nullptr;
+  Tensor* mid_state2 = nullptr;
+  Tensor* mid_state3 = nullptr;
   if (mid_state_output_) {
     mid_state = context->Output(2, state_shape);
+    if (context->OutputCount() > 3) mid_state2 = context->Output(3, state_shape);
+    if (context->OutputCount() > 4) mid_state3 = context->Output(4, state_shape);
   } else {
+    ORT_RETURN_IF_NOT(context->OutputCount() <= 3,
+                      "additional prefix states require state_output='mid_state'");
     const int64_t state_update_width = static_cast<int64_t>(state_update_capacity_) *
                                        (num_heads_v + num_heads_k * head_size_qk +
                                         num_heads_v * head_size_v);
@@ -352,7 +365,9 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   } else {
     desc.io_type = gdn::IoType::kFloat;
   }
-  desc.qk_l2_norm = qk_l2_norm_;
+  ORT_RETURN_IF_NOT(!dense_prefill || (is_packed_qkv && qk_l2_norm_),
+                    "dense prefill numerics requires packed QKV with internal QK normalization");
+  desc.qk_l2_norm = dense_prefill ? false : qk_l2_norm_;
   desc.decay_per_key_dim = decay_per_key_dim;
   desc.ragged = cu_seqlens != nullptr;
   desc.preferred_engine = forced_engine_;
@@ -394,7 +409,7 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   const size_t query_row_bytes = static_cast<size_t>(num_heads_q) * head_size_qk * sizeof(T);
   const size_t key_row_bytes = static_cast<size_t>(num_heads_k) * head_size_qk * sizeof(T);
   const size_t value_row_bytes = static_cast<size_t>(num_heads_v) * head_size_v * sizeof(T);
-  const bool direct_packed_decode = is_packed_qkv && plan.engine == gdn::Engine::kRecurrent &&
+  const bool direct_packed_decode = !dense_prefill && is_packed_qkv && plan.engine == gdn::Engine::kRecurrent &&
                                     plan.warp_specialized && total_tokens <= 2LL * batch;
   const size_t unpacked_qkv_bytes = is_packed_qkv && !direct_packed_decode
                                         ? static_cast<size_t>(total_tokens) *
@@ -433,6 +448,19 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
     key_data = reinterpret_cast<const CudaT*>(unpacked_key);
     value_data = reinterpret_cast<const CudaT*>(unpacked_value);
   }
+  IAllocatorUniquePtr<uint8_t> normalize_workspace;
+  if (dense_prefill) {
+    const int query_rows = SafeInt<int>(total_tokens * num_heads_q);
+    const int key_rows = SafeInt<int>(total_tokens * num_heads_k);
+    const size_t bytes = std::max(
+        gdn::DensePrefillNormalizeWorkspaceBytes<CudaT>(query_rows, head_size_qk),
+        gdn::DensePrefillNormalizeWorkspaceBytes<CudaT>(key_rows, head_size_qk));
+    normalize_workspace = GetScratchBuffer<uint8_t>(bytes, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(gdn::DensePrefillNormalize(
+        const_cast<CudaT*>(query_data), query_rows, head_size_qk, normalize_workspace.get(), stream));
+    ORT_RETURN_IF_ERROR(gdn::DensePrefillNormalize(
+        const_cast<CudaT*>(key_data), key_rows, head_size_qk, normalize_workspace.get(), stream));
+  }
 
   gdn::VariantPack<CudaT> pack{};
   pack.query = query_data;
@@ -451,6 +479,8 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   pack.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   pack.final_state = final_state != nullptr ? final_state->MutableData<float>() : nullptr;
   pack.mid_state = mid_state != nullptr ? mid_state->MutableData<float>() : nullptr;
+  pack.mid_state2 = mid_state2 != nullptr ? mid_state2->MutableData<float>() : nullptr;
+  pack.mid_state3 = mid_state3 != nullptr ? mid_state3->MutableData<float>() : nullptr;
   pack.state_update = state_update != nullptr ? state_update->MutableData<float>() : nullptr;
 
   // Only the inactive case is cleared. While capture is active the kernels write just the

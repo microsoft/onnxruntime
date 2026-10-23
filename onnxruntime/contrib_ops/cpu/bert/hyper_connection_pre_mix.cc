@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cpu/bert/hyper_connection_pre_mix.h"
 
+#include <cmath>
 #include "contrib_ops/cpu/hyper_connection_helper.h"
 #include "core/platform/threadpool.h"
 
@@ -45,7 +46,11 @@ template <typename T>
 HyperConnectionPreMix<T>::HyperConnectionPreMix(const OpKernelInfo& info)
     : OpKernel(info),
       num_branches_(info.GetAttrOrDefault<int64_t>("num_branches", 0)),
-      reduction_scale_(info.GetAttrOrDefault<float>("reduction_scale", 1.0f)) {}
+      reduction_scale_(info.GetAttrOrDefault<float>("reduction_scale", 1.0f)),
+      sigmoid_mode_(static_cast<int>(info.GetAttrOrDefault<int64_t>("sigmoid_mode", 0))) {
+  ORT_ENFORCE(sigmoid_mode_ >= 0 && sigmoid_mode_ <= 2, "sigmoid_mode must be 0, 1, or 2");
+  ORT_ENFORCE(sigmoid_mode_ == 0, "HyperConnectionPreMix sigmoid_mode is supported only by CUDA");
+}
 
 template <typename T>
 Status HyperConnectionPreMix<T>::Compute(OpKernelContext* context) const {

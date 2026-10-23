@@ -35,6 +35,40 @@ HyperConnectionLowRankMix<T>::HyperConnectionLowRankMix(const OpKernelInfo& info
       gate_mul_(info.GetAttrOrDefault<float>("gate_mul", 1.0f)) {
   ORT_ENFORCE(num_branches_ > 0, "HyperConnectionLowRankMix requires a positive num_branches");
   ORT_ENFORCE(gate_div_ != 0.0f, "gate_div must be non-zero");
+  weights_ready_ = true;
+  for (int index = 1; index <= 4; ++index) {
+    const Tensor* constant = nullptr;
+    weights_ready_ = info.TryGetConstantInput(index, &constant) && weights_ready_;
+  }
+}
+
+template <typename T>
+Status HyperConnectionLowRankMix<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                                            bool& is_packed, PrePackedWeights* /*prepacked_weights*/) {
+  is_packed = false;  // Preserve ordinary initializers for general-shape and resource fallback.
+  if constexpr (sizeof(T) == 2) {
+    const auto& shape = tensor.Shape();
+    if (!weights_ready_ || num_branches_ != 4 || GetDeviceProp().major < 9 ||
+        shape.NumDimensions() != 2 ||
+        !((input_idx == 2 && shape[0] == 10240 && shape[1] == 320) ||
+          (input_idx == 3 && shape[0] == 320 && shape[1] == 10240))) return Status::OK();
+    auto packed = IAllocator::MakeUniquePtr<uint8_t>(alloc, kHyperConnectionPackedWeightBytes, true);
+    IAllocatorUniquePtr<uint8_t> staging;
+    const void* source = tensor.DataRaw();
+    const auto stream = cudaStreamPerThread;
+    if (tensor.Location().device.Type() != OrtDevice::GPU) {
+      staging = IAllocator::MakeUniquePtr<uint8_t>(alloc, kHyperConnectionPackedWeightBytes, true);
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(staging.get(), source, kHyperConnectionPackedWeightBytes,
+                                           cudaMemcpyDefault, stream));
+      source = staging.get();
+    }
+    const auto status = LaunchPackHyperConnectionWeight(packed.get(), source, input_idx == 3, stream);
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+    ORT_RETURN_IF_ERROR(status);
+    if (input_idx == 2) packed_down_ = std::move(packed);
+    else packed_up_ = std::move(packed);
+  }
+  return Status::OK();
 }
 
 template <typename T>
@@ -106,6 +140,7 @@ Status HyperConnectionLowRankMix<T>::ComputeInternal(OpKernelContext* context) c
   config.silu_alpha = silu_alpha_;
   config.gate_div = gate_div_;
   config.gate_mul = gate_mul_;
+  config.weights_ready = weights_ready_;
 
   IAllocatorUniquePtr<T> streams_scratch;
   HyperConnectionLowRankMixTensors<CudaT> tensors;
@@ -114,6 +149,10 @@ Status HyperConnectionLowRankMix<T>::ComputeInternal(OpKernelContext* context) c
   tensors.down_weight = reinterpret_cast<const CudaT*>(down_weight->Data<T>());
   tensors.up_weight = reinterpret_cast<const CudaT*>(up_weight->Data<T>());
   tensors.inject_weight = reinterpret_cast<const CudaT*>(inject_weight->Data<T>());
+  if (branches == 4 && hidden == 2560 && rank == 320 && weights_ready_) {
+    tensors.packed_down_weight = reinterpret_cast<const CudaT*>(packed_down_.get());
+    tensors.packed_up_weight = reinterpret_cast<const CudaT*>(packed_up_.get());
+  }
   if (has_prologue) {
     tensors.prev_block_output = reinterpret_cast<const CudaT*>(prev_block_output->Data<T>());
     tensors.prev_post_gate = reinterpret_cast<const CudaT*>(prev_post_gate->Data<T>());
@@ -125,9 +164,8 @@ Status HyperConnectionLowRankMix<T>::ComputeInternal(OpKernelContext* context) c
       tensors.streams_out = reinterpret_cast<CudaT*>(streams_scratch.get());
     }
   } else if (streams_out != nullptr) {
-    // Without a prologue the streams pass through unchanged.
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(streams_out->MutableDataRaw(), streams->DataRaw(),
-                                         streams->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(context)));
+    // The fused down body can copy the pass-through output without an extra launch.
+    tensors.streams_out = reinterpret_cast<CudaT*>(streams_out->MutableData<T>());
   }
   tensors.pre_output = reinterpret_cast<CudaT*>(pre_output->MutableData<T>());
   tensors.post_gate = reinterpret_cast<CudaT*>(post_gate->MutableData<T>());
@@ -145,6 +183,11 @@ Status HyperConnectionLowRankMix<T>::ComputeInternal(OpKernelContext* context) c
                                            GetComputeStream(context));
     return LaunchHyperConnectionLowRankMixFused<CudaT>(device_prop, Stream(context), config, tensors,
                                                        scratch.get());
+  }
+
+  if (!has_prologue && streams_out != nullptr) {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(streams_out->MutableDataRaw(), streams->DataRaw(),
+                                         streams->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(context)));
   }
 
   const size_t rows = static_cast<size_t>(params.rows);

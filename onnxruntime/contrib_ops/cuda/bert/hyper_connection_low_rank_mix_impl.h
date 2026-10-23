@@ -13,6 +13,10 @@
 
 namespace onnxruntime::contrib::cuda {
 
+constexpr size_t kHyperConnectionPackedWeightBytes = 160 * 2560 * 16;
+// Exact CTA shared-memory image for C4/H2560/R320. Does not change arithmetic order.
+Status LaunchPackHyperConnectionWeight(void* packed, const void* source, bool up, cudaStream_t stream);
+
 struct HyperConnectionLowRankMixConfig {
   int64_t rows = 0;
   int branches = 0;  // C
@@ -23,6 +27,8 @@ struct HyperConnectionLowRankMixConfig {
   float silu_alpha = 1.0f;
   float gate_div = 1.0f;
   float gate_mul = 1.0f;
+  // Early weight reads are legal only when all weight inputs are immutable/already ready.
+  bool weights_ready = false;
 };
 
 template <typename T>
@@ -32,17 +38,20 @@ struct HyperConnectionLowRankMixTensors {
   const T* down_weight = nullptr;
   const T* up_weight = nullptr;
   const T* inject_weight = nullptr;
+  const T* packed_down_weight = nullptr;
+  const T* packed_up_weight = nullptr;
   const T* prev_block_output = nullptr;  // prologue inputs; both null or both non-null
   const T* prev_post_gate = nullptr;
   T* pre_output = nullptr;
   T* post_gate = nullptr;
-  T* streams_out = nullptr;  // written when the prologue is present; must then be non-null
+  T* streams_out = nullptr;  // required with prologue; fused paths also write optional pass-through output
 };
 
-// Rows up to this value use the two-kernel fused path; larger inputs use the cuBLAS based path.
+// Rows up to this value use the fused path; larger inputs use the cuBLAS based path.
 constexpr int64_t kHyperConnectionLowRankMixMaxFusedRows = 8;
 
-// True when the fused two-kernel path supports this problem on the given device.
+// True when the fused path supports this problem on the given device. Rows 1/2 use one cooperative
+// kernel if supported and fully resident; otherwise they (and rows 3..8) use two kernels.
 template <typename T>
 bool CanUseFusedHyperConnectionLowRankMix(const cudaDeviceProp& device_prop,
                                           const HyperConnectionLowRankMixConfig& config);

@@ -53,6 +53,12 @@ struct DynamicSparseAttentionData {
   const float* value_scale = nullptr;
 };
 
+template <typename T>
+Status AppendDynamicSparseAttentionCache(
+    cudaStream_t stream, const DynamicSparseAttentionParameters& parameters,
+    const DynamicSparseAttentionData<T>& data, bool initialize_key_cache,
+    bool initialize_value_cache, int max_threads_per_block);
+
 size_t GetDynamicSparseAttentionValidationWorkspaceSize(
     const DynamicSparseAttentionParameters& parameters,
     size_t max_shared_memory_per_block);

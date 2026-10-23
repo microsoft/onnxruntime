@@ -25,6 +25,9 @@ class MatMulBlockQuantizedFp8Weight final : public onnxruntime::cuda::CudaKernel
  public:
   explicit MatMulBlockQuantizedFp8Weight(const OpKernelInfo& info);
 
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool& is_packed, PrePackedWeights* prepacked_weights) override;
+
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
@@ -33,8 +36,14 @@ class MatMulBlockQuantizedFp8Weight final : public onnxruntime::cuda::CudaKernel
 
   int64_t block_size_;
   std::vector<int64_t> split_sizes_;
+  std::vector<int64_t> prefill_weight_offsets_;
   size_t max_dequant_scratch_bytes_;
   bool enable_deep_gemm_;
+  bool shared_expert_;
+  IAllocatorUniquePtr<uint8_t> skinny_weight_kn_;
+  int64_t skinny_n_{0};
+  int64_t skinny_k_{0};
+  bool skinny_cluster_supported_[4]{};
 };
 
 struct Fp8GemvOutputSplit {
@@ -44,8 +53,36 @@ struct Fp8GemvOutputSplit {
   int count = 0;
 };
 
+struct Fp8SharedExpertEpilogue {
+  const float* row_gates = nullptr;
+  const void* residual = nullptr;
+};
+
+Status LaunchMatMulFp8SharedExpert(void* y, const void* a, const void* weight,
+                                  const float* scales, int m, int n, int k, int block_size,
+                                  const Fp8SharedExpertEpilogue& epilogue,
+                                  const cudaDeviceProp& device_prop, cudaStream_t stream);
+Status LaunchFp8SharedExpertEpilogue(void* y, const Fp8SharedExpertEpilogue& epilogue,
+                                    int m, int n, cudaStream_t stream);
+
 bool MatMulBlockScaledFp8GemvSupportsSplitOutput(int m, int k, int block_size,
                                                 const cudaDeviceProp& device_prop);
+
+// Session-initialization-only transpose of FP8 bytes from [N,K] to [K,N].
+Status LaunchPackFp8SkinnyWeight(void* packed_kn, const void* weight_nk,
+                                 int n, int k, cudaStream_t stream);
+
+// Initialization-only capability and compiled-kernel occupancy check; never called in capture.
+bool Fp8SkinnyClusterSupported(int m, int n, int k);
+
+// SM90 BF16 small-M cluster column-stream GEMM; requires initialization capability checks.
+// The packed weight is private to the instance. Scales are per-column (block_size >= K)
+// and may change between runs. All other layouts retain the original NK MMA/cuBLAS path.
+Status LaunchMatMulBlockScaledFp8Skinny(void* y, const void* a, const void* packed_kn,
+                                        const float* weight_scale, const void* bias,
+                                        const float* act_scale, int m, int n, int k,
+                                        int block_size, cudaStream_t stream,
+                                        const Fp8GemvOutputSplit& split = {});
 
 #if defined(USE_DEEP_GEMM)
 Status LaunchPrepareMatMulFp8DeepGemm(void* a_quant, float* a_scales, const void* a,
@@ -69,7 +106,8 @@ Status LaunchDequantizeBlockScaledFp8(void* b_dequant,
                                       int k,
                                       int block_size,
                                       bool is_bf16,
-                                      cudaStream_t stream);
+                                      cudaStream_t stream,
+                                      bool transpose = false);
 
 // Adds a per-column bias of shape [N] to a [M, N] row-major output in place.
 Status LaunchAddBiasBlockScaledFp8(void* y,

@@ -245,6 +245,10 @@ template Status LaunchRotaryEmbeddingKernel<half>(cudaStream_t stream, half* out
                                                   const int max_threads_per_block, const bool is_input_bnsh_format,
                                                   const bool use_fp32_arithmetic);
 
+template Status LaunchRotaryEmbeddingKernel<__nv_bfloat16>(
+    cudaStream_t, __nv_bfloat16*, const __nv_bfloat16*, const int64_t*, const int*,
+    const __nv_bfloat16*, const __nv_bfloat16*, int, int, int, int, int, int, int, bool, int, bool, bool);
+
 template Status LaunchRotaryEmbeddingKernel<BFloat16>(
     cudaStream_t stream, BFloat16* output, const BFloat16* input, const int64_t* position_ids, const int* past_sequence_lengths,
     const BFloat16* cos_cache, const BFloat16* sin_cache, const int batch_size, const int sequence_length,

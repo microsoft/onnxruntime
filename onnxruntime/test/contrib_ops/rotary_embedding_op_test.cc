@@ -164,6 +164,23 @@ TEST(RotaryEmbeddingTest, Version2DoesNotFallBackToLegacyCpuArithmetic) {
            {}, nullptr, &providers);
 }
 
+TEST(RotaryEmbeddingTest, CpuRejectsNonzeroPrefillNumerics) {
+  for (int32_t mode : {0, 1, 2}) {
+    OpTester test("RotaryEmbedding", 1, kMSDomain);
+    test.AddAttribute<int64_t>("num_heads", 1);
+    test.AddInput<float>("input", {1, 1, 4}, {1, 2, 3, 4});
+    test.AddInput<int64_t>("positions", {1}, {0});
+    test.AddInput<float>("cos", {1, 2}, {1, 1});
+    test.AddInput<float>("sin", {1, 2}, {0, 0});
+    test.AddInput<int32_t>("prefill_numerics", {1}, {mode});
+    test.AddOutput<float>("output", {1, 1, 4}, {1, 2, 3, 4});
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(mode == 0 ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
+             mode == 0 ? "" : "nonzero prefill_numerics requires CUDA", {}, nullptr, &providers);
+  }
+}
+
 static void RunTest(
     const std::vector<float>& input_data,
     const std::vector<int64_t>& position_ids,

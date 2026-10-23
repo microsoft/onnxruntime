@@ -44,6 +44,9 @@ struct Int2MoePrefillParams {
   float beta = 0.0f;
   float limit = 0.0f;
   cudaStream_t stream = nullptr;
+  int cache_capacity = 0;
+  int* cache_metadata = nullptr;
+  uint8_t* cache_weights = nullptr;
 };
 
 size_t GetInt2MoePrefillWorkspaceSize(const Int2MoePrefillParams& params);
