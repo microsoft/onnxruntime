@@ -11,6 +11,7 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 
+#include <atomic>
 #include <mutex>
 #include <unordered_map>
 
@@ -30,6 +31,7 @@ class QMoE final : public CudaKernel, public MoEBase {
  public:
   explicit QMoE(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* ctx) const override;
+  Status ComputeInt3(OpKernelContext* ctx) const;
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
@@ -73,6 +75,8 @@ class QMoE final : public CudaKernel, public MoEBase {
   int64_t fc1_expert_weight_bits_;
   int64_t fc2_expert_weight_bits_;
   int64_t fc3_expert_weight_bits_;
+  bool has_int3_ = false;
+  mutable std::atomic<bool> int3_content_validated_{false};
   bool is_fp16_;
   // When true, the int4/int8 fc1/fc2 weight initializers are already in a
   // CUTLASS fpA_intB layout — produced offline e.g. via
