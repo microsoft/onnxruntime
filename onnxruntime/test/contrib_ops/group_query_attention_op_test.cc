@@ -572,12 +572,15 @@ WindowedCacheState RunWindowedCacheStep(int capacity,
                                         int window,
                                         int past_length,
                                         const std::vector<float>& step_values,
-                                        const WindowedCacheState& past) {
+                                        const WindowedCacheState& past,
+                                        int valid_step_length = -1) {
   constexpr int batch_size = 1;
   constexpr int num_heads = 1;
   constexpr int kv_num_heads = 1;
   const int step_length = static_cast<int>(step_values.size()) / kWindowedHeadSize;
+  const int effective_step_length = valid_step_length > 0 ? valid_step_length : step_length;
   const int total_length = past_length + step_length;
+  const int valid_total_length = past_length + effective_step_length;
   const size_t cache_elements = static_cast<size_t>(capacity) * kWindowedHeadSize;
 
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
@@ -593,7 +596,7 @@ WindowedCacheState RunWindowedCacheStep(int capacity,
   tester.AddInput<float>("value", {batch_size, step_length, kWindowedHeadSize}, step_values);
   tester.AddInput<float>("past_key", {batch_size, kv_num_heads, capacity, kWindowedHeadSize}, past.key);
   tester.AddInput<float>("past_value", {batch_size, kv_num_heads, capacity, kWindowedHeadSize}, past.value);
-  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {total_length - 1});
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {valid_total_length - 1});
   tester.AddInput<int32_t>("total_sequence_length", {1}, {total_length}, /*is_initializer=*/true);
   tester.AddOptionalInputEdge<float>();    // cos_cache
   tester.AddOptionalInputEdge<float>();    // sin_cache
@@ -708,6 +711,35 @@ TEST(GroupQueryAttentionTest, WindowedCacheMultiTokenStepMatchesSingleTokenSteps
   ASSERT_EQ(verified.output.size(), sequential_outputs.size());
   for (size_t i = 0; i < sequential_outputs.size(); ++i) {
     EXPECT_NEAR(verified.output[i], sequential_outputs[i], 1e-4f) << "output element " << i;
+  }
+}
+
+TEST(GroupQueryAttentionTest, WindowedCacheRightPaddedChunkMatchesUnpadded_CPU) {
+  constexpr int capacity = 6;
+  constexpr int window = 4;
+  constexpr int padded_chunk_length = 4;
+  constexpr int valid_chunk_length = 2;
+
+  const WindowedCacheState prefill = RunWindowedCacheStep(capacity, window, 0, WindowedValueRows(0, 8),
+                                                          EmptyWindowedCache(capacity));
+
+  std::vector<float> padded_values = WindowedValueRows(8, valid_chunk_length);
+  padded_values.resize(static_cast<size_t>(padded_chunk_length) * kWindowedHeadSize, 999.0f);
+
+  const WindowedCacheState padded_step =
+      RunWindowedCacheStep(capacity, window, 8, padded_values, prefill, valid_chunk_length);
+  const WindowedCacheState unpadded_step =
+      RunWindowedCacheStep(capacity, window, 8, WindowedValueRows(8, valid_chunk_length), prefill);
+
+  ExpectResidentRange(padded_step, 8 + valid_chunk_length, capacity, window);
+  const int resident = WindowedResidentCount(8 + valid_chunk_length, capacity, window);
+  const size_t resident_elements = static_cast<size_t>(resident) * kWindowedHeadSize;
+  for (size_t i = 0; i < resident_elements; ++i) {
+    EXPECT_EQ(padded_step.value[i], unpadded_step.value[i]) << "present_value element " << i;
+    EXPECT_EQ(padded_step.key[i], unpadded_step.key[i]) << "present_key element " << i;
+  }
+  for (size_t i = 0; i < unpadded_step.output.size(); ++i) {
+    EXPECT_NEAR(padded_step.output[i], unpadded_step.output[i], 1e-4f) << "output element " << i;
   }
 }
 

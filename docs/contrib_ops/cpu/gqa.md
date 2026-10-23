@@ -275,6 +275,58 @@ Constraints specific to `sliding_window_cache=1` on CPU:
 - For quantized caches, `head_size` must be a multiple of 16 for 8-bit and of 32 for 4-bit, because
   the compaction and staging copies move whole rows with vectorized loads.
 
+## Right-Padded Prefill Chunks
+
+Fixed-shape execution pads the last prefill chunk to a fixed `sequence_length = S` even when only
+`Q_valid` tokens remain (`1 <= Q_valid <= S`). The valid rows come first and the padding rows follow.
+The CPU kernel supports this for the first prompt and for every subsequent chunk, with a full-length
+or a windowed (`sliding_window_cache=1`) cache, with and without a quantized cache, and on both the
+naive and the flash paths.
+
+### Length inputs
+
+With `P` tokens already processed, the two length inputs deliberately disagree for a padded chunk:
+
+| Input | Value | Meaning |
+| --- | --- | --- |
+| `seqlens_k[b]` | `P + Q_valid - 1` | Valid total minus one. |
+| `total_sequence_length` | `P + S` | Padded total (batch maximum). |
+
+`total_sequence_length` therefore equals the batch maximum of `seqlens_k + 1` only when
+`Q_valid == S`. For example, with `P = 8`, `S = 4` and `Q_valid = 2`, pass `seqlens_k = 9` and
+`total_sequence_length = 12`. `attention_bias`, when present, has shape
+`(batch_size or 1, num_heads or 1, S, total_sequence_length)` using the padded total, and
+`position_ids` has `S` entries per batch entry.
+
+### Resolving the step
+
+`ResolveGQAStepLengths` (`group_query_attention_helper.h`) turns the two inputs into the step's
+`past_sequence_length` and `valid_q_length`:
+
+- First prompt: `past_sequence_length = 0` and `valid_q_length = min(seqlens_k + 1, S)`.
+- Subsequent chunk with `S > 1`: `past_sequence_length = total_sequence_length - S` when that lies in
+  `[0, seqlens_k + 1)`, and `valid_q_length = seqlens_k + 1 - past_sequence_length`.
+- Otherwise (single-token decode and single-token steps): `past_sequence_length =
+  max(seqlens_k + 1 - S, 0)`.
+
+The bound `seqlens_k + 1 >= total_sequence_length - S + 1` is still enforced, so a `seqlens_k` that is
+too small cannot make the kernel read or write out of bounds.
+
+### Effect on the cache and attention
+
+- Only the `valid_q_length` new rows are copied (or quantized) into the KV cache. Padding rows never
+  overwrite resident rows and never run past the end of the cache, which matters when the cache is
+  already close to its capacity.
+- Windowed planning (`PlanWindowedKvCache`) evaluates `end_before = L(P)` and
+  `end_after = L(P + valid_q_length)` with the valid length, so a padded chunk evicts exactly what the
+  same tokens would evict unpadded, and the cache layout is identical to the unpadded run.
+- The causal and local-window masks, flash block ranges, and the default RoPE `position_ids` use the
+  resolved past length instead of `seqlens_k + 1 - S`.
+- Output rows `[valid_q_length, S)` are unspecified.
+
+The existing restriction still applies: a multi-token step with past context requires
+`batch_size == 1`.
+
 ## Naive Path: QK GEMM + Softmax + SV GEMM
 
 The naive (full materialization) path executes attention as three separate stages:
