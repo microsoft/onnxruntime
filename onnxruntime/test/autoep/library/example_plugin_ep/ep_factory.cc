@@ -332,53 +332,30 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
 
   // Create EP configuration from session options, if needed.
   // Note: should not store a direct reference to the session options object as its lifespan is not guaranteed.
-  std::string ep_context_enable;
-  std::string ep_context_embed_mode;
-  std::string ep_context_output_model_path;
-  std::string weightless_ep_context_nodes_enable;
-  std::string advertise_ep_context_data_support;
+  ExampleEp::Config config = {};
   std::string test_ort_version;
-  std::string use_default_cpu_allocator;
-  std::string test_read_ep_context_during_compile;
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEnable, "0",
-                                                 ep_context_enable));
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEmbedMode, "0",
-                                                 ep_context_embed_mode));
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, kOrtSessionOptionEpContextEnable, false,
+                                                config.enable_ep_context));
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, kOrtSessionOptionEpContextEmbedMode, false,
+                                                config.embed_ep_context_in_model));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextFilePath, "",
-                                                 ep_context_output_model_path));
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessEpContextNodes,
-                                                 "0", weightless_ep_context_nodes_enable));
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kExampleEpTestEpContextDataSupport, "1",
-                                                 advertise_ep_context_data_support));
-
-  if (advertise_ep_context_data_support != "0" && advertise_ep_context_data_support != "1") {
-    return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
-                                         "Example EP context data support test option must be '0' or '1'.");
-  }
+                                                 config.ep_context_output_model_path));
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessEpContextNodes,
+                                                false, config.enable_weightless_ep_context_nodes));
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, kExampleEpTestEpContextDataSupport, true,
+                                                config.advertise_ep_context_data_support));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kExampleEpTestOrtVersion, "current",
                                                  test_ort_version));
   if (test_ort_version != "current" && test_ort_version != "30") {
     return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
                                          "Example EP test ORT version must be 'current' or '30'.");
   }
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, "ep.example.use_default_cpu_allocator",
-                                                 "0", use_default_cpu_allocator));
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options,
-                                                 "ep.example.test_read_ep_context_during_compile", "0",
-                                                 test_read_ep_context_during_compile));
-  if (test_read_ep_context_during_compile != "0" && test_read_ep_context_during_compile != "1") {
-    return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
-                                         "Example EP test read EPContext during compile option must be '0' or '1'.");
-  }
-
-  ExampleEp::Config config = {};
-  config.enable_ep_context = ep_context_enable == "1";
-  config.embed_ep_context_in_model = ep_context_embed_mode == "1";
-  config.ep_context_output_model_path = std::move(ep_context_output_model_path);
-  config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
-  config.advertise_ep_context_data_support = advertise_ep_context_data_support == "1";
-  config.use_default_cpu_allocator = use_default_cpu_allocator == "1";
-  config.test_read_ep_context_during_compile = test_read_ep_context_during_compile == "1";
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, "ep.example.use_default_cpu_allocator",
+                                                false, config.use_default_cpu_allocator));
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, "ep.example.test_read_ep_context_during_compile",
+                                                false, config.test_read_ep_context_during_compile));
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, "ep.example.test_execute_ep_context",
+                                                false, config.test_execute_ep_context));
 
   // The EpContextConfig wrapper captures a stable snapshot of the EPContext callbacks from the session options and
   // owns the snapshot handle. EXCEPTION_TO_RETURNED_STATUS_END converts extraction failures into an OrtStatus.
