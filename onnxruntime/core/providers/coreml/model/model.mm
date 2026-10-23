@@ -556,11 +556,6 @@ Status Execution::LoadModel() {
     @autoreleasepool {
       NSError* error = nil;
 
-      NSURL* modelUrl = [NSURL URLWithString:coreml_model_path_];
-      if (modelUrl == nil) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create model URL from path");
-      }
-
       NSMutableString* compiled_model_path = [[NSMutableString alloc] init];
       ORT_RETURN_IF_ERROR(CompileOrReadCachedModel(
           [NSURL fileURLWithPath:coreml_model_path_], coreml_options_, compiled_model_path));
