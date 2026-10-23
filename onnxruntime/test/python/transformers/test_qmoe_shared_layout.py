@@ -417,6 +417,8 @@ class SharedLayoutTest(unittest.TestCase):
         try:
             import onnxruntime as ort  # noqa: PLC0415
         except ImportError:
+            ort = None
+        if ort is None:
             self.skipTest("onnxruntime python package is not available on PYTHONPATH")
 
         rng = np.random.default_rng(20261024)
