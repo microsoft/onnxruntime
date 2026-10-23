@@ -187,7 +187,11 @@ __device__ __forceinline__ void fused_finalize_accumulate(float* out_acc, void* 
     for (int jj = 0; jj < WarpNum; ++jj) {
       val += shmem[jj * CtaN * Interleave + ii];
     }
-    out_acc[ii] += row_scale * (val + v_bias);
+    if constexpr (Details::kElemsPerByteW == 4) {
+      out_acc[ii] += row_scale * static_cast<float>(static_cast<Type>(val + v_bias));
+    } else {
+      out_acc[ii] += row_scale * (val + v_bias);
+    }
   }
 }
 #endif  // (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750)) || !defined(__CUDA_ARCH__)
@@ -947,8 +951,10 @@ bool is_moe_gemv_shape_supported(int sm, int64_t expanded_num_rows, int64_t n, i
   const int64_t max_expanded_rows =
       weight_bits == 2 &&
               onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT2_LARGE_EXPERTS", 1) == 1
-          ? 20
+          ? onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT2_DECODE_MAX_EXPANDED_ROWS", 20)
           : kMaxProfiledExpandedRows;
+  ORT_ENFORCE(max_expanded_rows >= kMaxProfiledExpandedRows && max_expanded_rows <= 40,
+              "INT2 decode expanded-row limit must not exceed 40.");
   if (expanded_num_rows <= 0 || expanded_num_rows > max_expanded_rows) {
     return false;
   }
@@ -1208,6 +1214,9 @@ template void launch_moe_gemv_int_symmetric<half, uint8_t>(
 template void launch_moe_gemv_int_symmetric_fused_finalize<half, cutlass::uint4b_t>(
     const half*, const cutlass::uint4b_t*, const half*, const half*, half*, const int*, const int*, const float*,
     int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
+template void launch_moe_gemv_int_symmetric_fused_finalize<half, cutlass::uint2b_t>(
+    const half*, const cutlass::uint2b_t*, const half*, const half*, half*, const int*, const int*, const float*,
+    int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
 template void launch_moe_gemv_int_symmetric_fused_finalize<half, uint8_t>(
     const half*, const uint8_t*, const half*, const half*, half*, const int*, const int*, const float*,
     int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
@@ -1240,6 +1249,9 @@ template void launch_moe_gemv_int_symmetric<__nv_bfloat16, uint8_t>(
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cudaStream_t);
 template void launch_moe_gemv_int_symmetric_fused_finalize<__nv_bfloat16, cutlass::uint4b_t>(
     const __nv_bfloat16*, const cutlass::uint4b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
+    const int*, const int*, const float*, int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
+template void launch_moe_gemv_int_symmetric_fused_finalize<__nv_bfloat16, cutlass::uint2b_t>(
+    const __nv_bfloat16*, const cutlass::uint2b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int*, const int*, const float*, int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
 template void launch_moe_gemv_int_symmetric_fused_finalize<__nv_bfloat16, uint8_t>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,

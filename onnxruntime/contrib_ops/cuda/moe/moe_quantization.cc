@@ -2286,15 +2286,28 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       } else {
         launch_fc1(static_cast<cutlass::uint4b_t*>(nullptr));
       }
-      if (fc2_expert_weight_bits_ == 2) {
+      const bool fuse_fc2 =
+          fc2_expert_weight_bits_ == 2 && num_rows == 4 && k_ == 10 &&
+          onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_INT2_S4_FUSED_FINALIZE", 0) == 1 &&
+          gemv::is_moe_gemv_fused_finalize_supported(
+              sm_, num_rows, k_, expanded, hidden, inter, 2, static_cast<int>(block_size_));
+      if (fuse_fc2) {
+        gemv::launch_moe_gemv_int_symmetric_fused_finalize<T, cutlass::uint2b_t>(
+            fc1_output, static_cast<const cutlass::uint2b_t*>(packed_int_fc2),
+            static_cast<const T*>(p_fc2_scales), fc2_bias, reinterpret_cast<T*>(output->MutableDataRaw()),
+            unpermuted_row_to_permuted_row, p_exp, expert_scales, num_experts, num_rows, k_,
+            hidden, inter, static_cast<int>(block_size_), sm_, stream);
+      } else if (fc2_expert_weight_bits_ == 2) {
         launch_fc2(static_cast<cutlass::uint2b_t*>(nullptr));
       } else {
         launch_fc2(static_cast<cutlass::uint4b_t*>(nullptr));
       }
-      ck::finalizeMoeRoutingKernelLauncher<T, T, T>(
-          fc2_output, reinterpret_cast<T*>(output->MutableDataRaw()),
-          nullptr, expert_scales, unpermuted_row_to_permuted_row, p_r2u, expert_indices,
-          p_efto, num_rows, hidden, k_, num_experts, parallelism_config, false, stream);
+      if (!fuse_fc2) {
+        ck::finalizeMoeRoutingKernelLauncher<T, T, T>(
+            fc2_output, reinterpret_cast<T*>(output->MutableDataRaw()),
+            nullptr, expert_scales, unpermuted_row_to_permuted_row, p_r2u, expert_indices,
+            p_efto, num_rows, hidden, k_, num_experts, parallelism_config, false, stream);
+      }
     };
     if (is_fp16_) {
       run_packed_int_gemv(static_cast<half*>(nullptr));
